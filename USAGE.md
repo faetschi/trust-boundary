@@ -1,145 +1,194 @@
-# How TBound is used, end to end
+# Using TBound
 
-This is the practical guide: what runs where, in which order, and which commands you type.
-For what TBound *is*, read `docs/README.md`. For the current state, read `OVERVIEW.md`.
+A practical guide from installation to a governed run and an evaluation. It is
+general: it works on a native Linux host, or on Windows with a Linux VM. For
+details, follow the links into `docs/`.
 
-## 1. The big picture in one minute
+## 1. What TBound does
 
-TBound sits between the Pi coding agent and your code. Pi proposes tool calls (read, write,
-edit, bash). TBound checks every call against a fixed policy, runs bash in an isolated
-container ("command cell"), keeps Pi's changes in a private copy, and copies them to the real
-repository ("live root") only through a controlled publication step. Everything is written to
-append-only journals. Independent checkers ("oracles") measure whether anything forbidden
-happened: a protected file changed, data left the machine, a process escaped.
+TBound sits between the [Pi](https://pi.dev) coding agent and your repository.
 
-The thesis question (H1) is measured on a corpus of test cases:
-- **PVR**: how often an attack still causes a forbidden effect (should be ~0).
-- **ORR**: how often a normal, allowed task is wrongly blocked (should be ≤ 10%).
+- Pi proposes tool calls (`read`, `write`, `edit`, `bash`). TBound checks every
+  call against a fixed policy and answers `ALLOW` or `DENY`; a denial comes with
+  a short hint naming what is allowed instead.
+- Allowed `bash` commands run in a fresh, isolated container ("command cell"):
+  rootless Podman, no network, Landlock, seccomp, its own user id.
+- Pi works on a private copy. Its changes reach the real repository ("live
+  root") only through a controlled publication step, and only inside the
+  allowed output paths.
+- Every step is written to append-only journals with signed evidence.
+- Independent checkers ("oracles") measure whether anything forbidden happened:
+  a protected file changed, data left the machine, a process survived or escaped.
 
-## 2. The three machines
+TBound is a Linux system. It does not turn Windows or macOS into a security
+boundary.
 
-| Machine | What it is | What you do there |
+## 2. Where to run it
+
+| Setup | Supported for | Notes |
 |---|---|---|
-| **Your Windows PC** | The Git repos (`trust-boundary`, `MSE_MA_Thesis`) and the freeze kits on `F:\TBoundAssets\recovery-20261015` | Edit, commit, start kit scripts from Git Bash, run `tbound-panel` |
-| **WSL Ubuntu** (on the PC) | Builds and tests (Go 1.27.1 at `/home/jeli2k/opt/go1.27.1`), signing work dirs | The kit runs builds, the test gate and signing here for you |
-| **Guest VM** (Hyper-V Ubuntu 24.04, user `tboundadmin`) | The real, locked-down TBound service (`tbound-pi`, uid 995) with rootless podman cells | Nothing by hand; the kit drives it over pinned SSH |
+| **Native Linux host** | Building, tests, the development fixtures, and the governed service | Needs the host requirements below |
+| **Windows + Linux VM** (e.g. Hyper-V, VirtualBox) | The governed service runs **inside the VM** | Treat the VM as the Linux host; reach it over SSH with strict host-key checking (pin the key, the DHCP address can change) |
+| **Windows + WSL** | Building, the test suite, the development fixtures | Not a governed host: WSL lacks the required Landlock ABI and a pure cgroup v2 setup |
 
-The guest IP changes after a PC restart. Find it in PowerShell:
-`Get-NetNeighbor -LinkLayerAddress 00-15-5D-0C-40-02`. SSH always uses the pinned host key alias `172.18.155.19`.
+Host requirements for the governed service:
 
-## 3. The life of one governed run (what happens inside)
+- Linux kernel with **Landlock ABI 8** and **cgroup v2** (unified hierarchy).
+- **systemd**, **rootless Podman** (4.9+) with **crun**.
+- A dedicated, unprivileged service user, and an ext4 filesystem for the managed
+  live root.
+- **Node.js 22.19+** and the **Pi CLI 0.87.1** (`npm install --global @earendil-works/pi-coding-agent@0.87.1`).
+- To build: **Go 1.27.1**.
 
-1. A client sends a request (task text) to the service socket on the guest.
-2. The service checks the request is admitted (one-use admission id, signed registration).
-3. It starts Pi in a cell. Pi talks to the model only through TBound's provider bridge.
-4. Each tool call goes through the gate: `ALLOW` or `DENY` (+ a fixed hint sentence on deny).
-5. Allowed `bash` runs in a fresh command cell (no network, Landlock, seccomp, own uid).
-6. When Pi is done, TBound checks the private copy and publishes the allowed changes to the live root.
-7. The client gets a signed-receipt-backed response: `completed` / `unknown` / `refused`.
+## 3. Install
 
-"G1" is exactly this with read, edit, bash and publish. It passes on the real guest.
-
-## 4. The engineering loop: gate → freeze → guest
-
-Every code change reaches the guest only through a **freeze**: one exact Git commit, built,
-pinned and signed, then installed. All steps are scripts in the freeze kit.
-
-**Since F13 there is one reusable kit:** `F:\TBoundAssets\recovery-20261015\kit`, plus one small
-values file per freeze in `kit\freezes\F<n>.env` (older kits `F4`..`F12` are history; never edit them).
-
-1. **Gate** (all tests, build, vet, Windows build, gofmt) on the commit you want to freeze.
-2. **Freeze** (owner-side, in WSL): `10` record the commit → `20` build binaries → `25` runtime bundle →
-   `30` build the cell image → `35` EVQ capture (test evidence) → `40` sign.
-3. **Guest chain**: `27` archive the previous guest state → `00` open temporary sudo → `10` upgrade →
-   `20` calibrations → `50` image/state checks → `00` close sudo → `29` recovery status →
-   `30` G1 run → `40` guest evidence (capability, procoracle, landlock-connect, provider-exchange) →
-   `31` route probe → `40` route-bash-view → `32` direct-runtime probe → `40` route-direct-runtime.
-
-To start a new freeze: copy `kit\freezes\F<prev>.env` to `F<new>.env`, fill the previous freeze's
-values from its logs, set `FREEZE_COMMIT` to the gated commit, then (Git Bash):
-```bash
-export KIT_FREEZE=F13 TBA_PW=...   # TBA_PW = the guest admin sudo password, only in your shell
-bash /f/TBoundAssets/recovery-20261015/kit/tools/all.sh      # gate -> freeze -> guest chain
-```
-Logs land in `F:\TBoundAssets\recovery-20261015\F13\logs`. A step stops the chain on its first failure;
-read its log, fix, rerun (steps are resumable). Each G1 / probe run spends a one-use admission id;
-a new freeze needs new ids (in `infra/guest/serve-pi-service.*.json`).
-
-## 5. The research pipeline (to get H1)
-
-```
-corpus  ->  checks  ->  AI panel  ->  advisor  ->  corpus mode  ->  pilot  ->  register  ->  H1
+```sh
+# from a Linux checkout of this repository
+make build VERSION=dev
+bash install/install.sh --version dev --local-dist dist --no-path
+export PATH="$HOME/.local/share/tbound/bin:$PATH"
+tbound-doctor --pi "$(command -v pi)"    # advisory health check
 ```
 
-1. **Corpus** (`corpus/pilot/`, later the full corpus): test cases adapted from established
-   benchmarks (InjecAgent, AgentDojo, ASB, RiOSWorld, RepoQA, HumanEval-JS, ToolEmu, ...).
-   Rebuild with `python3 -I corpus/pilot/build.py` (deterministic).
-2. **Deterministic checks** (D35 step 1): schema, sources/licenses, root overlap, leak checks,
-   oracle mutation controls. One command writes one report (being added now).
-3. **AI panel** (D35 step 2): three independent model families rate every case — see section 6.
-4. **Advisor sign-off** (D35 step 3): your advisor checks the audit list the panel produces.
-5. **Corpus mode** (one owner session): you sign the corpus registration and host profile
-   (S3', S4') with your keys and approve the guest installs; then the corpus-mode rehearsal
-   (reset, net-sink, no-reap, vanilla Pi).
-6. **Pilot**: `tbound-run plan` / `run` / `export` / `report` run the pilot cases; the pilot fixes
-   the caps and costs.
-7. **EVQ / route report**: `tbound-run evq` and `tbound-run route-report` turn the guest evidence
-   into the evidence-quality result (all obligations must pass).
-8. **Pre-registration**, then **H1** under the registered rules.
+Details: [docs/install.md](docs/install.md), [docs/doctor.md](docs/doctor.md).
 
-## 6. Running the AI panel yourself (step 3 above)
+## 4. Try it without a governed host
 
-`go build` prints nothing when it succeeds — it just creates `tbound-panel.exe`.
+Two fixtures run without any setup. Their receipts say `claim_bearing=false`:
+they show the flow, not a security boundary.
 
-```powershell
-cd "C:\Users\Admin\Desktop\FH\Master Software Engineering\MA Thesis\trust-boundary\supervisor"
-go build -o tbound-panel.exe ./cmd/tbound-panel
-Copy-Item cmd\tbound-panel\panel.default.json ..\panel.mine.json
+```sh
+cd supervisor && go build -o "$HOME/.cache/tbound-build/tbound" ./cmd/tbound
+"$HOME/.cache/tbound-build/tbound" serve --pi --native-fixture   # Go-only
+"$HOME/.cache/tbound-build/tbound" serve --pi --dev-fixture      # real Pi CLI, scripted provider
 ```
 
-Edit `..\panel.mine.json`: put exactly **three** models from **three different families** into
-`"models"` (Claude/Anthropic, GPT/OpenAI and DeepSeek are refused; router or `-latest` ids too).
-Take the id and prices from each model's page on openrouter.ai:
+The `--dev-fixture` needs a few environment variables (Pi, Node, adapter path,
+a private ext4 directory): see [docs/launch.md](docs/launch.md).
+
+## 5. Set up a governed host (one time)
+
+This is the part that makes TBound a real boundary. In short:
+
+1. **Prepare the host**: dedicated service user, rootless Podman storage for it,
+   the managed live-root filesystem, systemd socket + service units.
+2. **Build and sign the cell image** that runs Pi and the `bash` cells.
+3. **Measure and sign** (offline, with your own Ed25519 admin key that never
+   leaves your machine): the **host profile** (what this host is), the **cell
+   template**, and the **managed live-root registration** (which directory may
+   be written, by whom).
+4. **Install** the signed files and the pins with the operator dispatcher
+   (a narrow, root-owned `sudo` command), then start the socket.
+
+The full procedure, with every measured field: [docs/governed-setup.md](docs/governed-setup.md)
+and the guest runbooks in [infra/guest/](infra/guest/README.md) (including
+`PROVISIONING-SIGNING.md`).
+
+## 6. Run a governed task
+
+The client sends a task to the local service. The output scope says which paths
+`bash` may change; read/write/edit are checked by the policy on their own.
+
+```sh
+tbound serve --pi --task-id TASK_ID \
+  --task-request-id UNIQUE_REQUEST_ID \
+  --bash-output out/result.txt \
+  --task "approved task text"
+```
+
+- `--bash-output PATH` (repeatable): exact relative paths `bash` may change.
+  `--bash-no-outputs`: `bash` may run but change nothing. Neither: `bash` is off.
+- The answer is one of: `completed` (with a receipt: tool sequence, verdicts,
+  publication status), `refused` (with a stable error code and a hint), or
+  `unknown` (the outcome could not be proven; see section 8).
+
+Details: [docs/launch.md](docs/launch.md), [docs/production-pi-session.md](docs/production-pi-session.md),
+[docs/publication-contract.md](docs/publication-contract.md).
+
+## 7. Updating a governed host ("freeze")
+
+Never copy binaries to a governed host by hand. Every update goes through a
+freeze of one exact Git commit:
+
+1. **Gate**: build, vet, cross-build, format check and the full test suite with
+   the race detector, on a clean export of the commit.
+2. **Freeze**: build the binaries and the cell image, record their digests
+   ("pins"), capture the test evidence, sign.
+3. **Install**: archive the previous service state, install the new binaries,
+   image and pins, re-run the host checks.
+4. **Smoke**: run one governed task that reads, edits, runs `bash` and publishes.
+
+Each request uses a one-use admission id from the signed service config, so a
+repeated run needs a new id. Scripted freeze kits implement these steps; see
+[infra/guest/README.md](infra/guest/README.md).
+
+## 8. Operating
+
+| Situation | What to do |
+|---|---|
+| Health check | `tbound-doctor --pi "$(command -v pi)"` |
+| A run ended `unknown` | Read the service log (`journalctl -u tbound-pi.service`): it names the cause. The next request is blocked until the unknown run is reconciled (`tbound abandon-unknown`, or the operator verb `abandon`) or the service state is archived before a fresh install. |
+| `refused` | The error code and hint say why (e.g. a prior run is not settled, the request is not admitted). |
+| Guest/VM unreachable | Its DHCP address changed; look it up and reconnect with the pinned host key. |
+
+## 9. Evaluating TBound (research workflow)
+
+The thesis evaluates TBound on a corpus of test cases (attacks, normal tasks,
+borderline cases) and two measures: **PVR** (how often an attack still causes a
+forbidden effect) and **ORR** (how often an allowed task is wrongly blocked).
+
+1. **Corpus**: cases adapted from established benchmarks (with source, license
+   and the adaptation recorded per case); a pilot set in `corpus/pilot/`
+   (rebuild deterministically with `python3 -I corpus/pilot/build.py`).
+2. **Deterministic checks** of every case (schema, sources/licenses, overlaps,
+   leaks, oracle mutation controls).
+3. **AI construct-review panel**: three independent model families rate every
+   case blind, then against its claimed labels; agreement is measured with
+   Fleiss' kappa (`tbound-panel`, below).
+4. **Human sign-off** of the panel's audit list by a non-author reviewer.
+5. **Corpus mode** on the governed host (signed corpus registration), then the
+   **pilot** and the full runs with `tbound-run plan | run | export | report`.
+6. **Evidence quality**: `tbound-run evq` and `tbound-run route-report` turn the
+   host evidence into the evidence-quality result; every obligation must pass.
+7. **Pre-registration**, then the confirmatory run.
+
+### Running the AI panel
+
+`go build` prints nothing when it succeeds; it just creates the program.
+
+```sh
+cd supervisor
+go build -o tbound-panel ./cmd/tbound-panel          # tbound-panel.exe on Windows
+cp cmd/tbound-panel/panel.default.json ../panel.json
+```
+
+Put exactly **three** models from **three different families** into `"models"`
+in `panel.json` (OpenRouter ids; routers and `-latest` aliases are refused; the
+families that authored the cases or are evaluated are refused too). Each entry
+needs real, non-zero prices so the spend cap has a worst case:
 
 ```json
-"models": [
-  {"id": "qwen/qwen3.8-27b",                  "temperature": 0, "max_tokens": 4000, "prompt_usd_per_mtok": 0.0, "completion_usd_per_mtok": 0.0},
-  {"id": "z-ai/glm-5.3-flash",                "temperature": 0, "max_tokens": 4000, "prompt_usd_per_mtok": 0.0, "completion_usd_per_mtok": 0.0},
-  {"id": "nvidia/nemotron-3-ultra-550b-a55b", "temperature": 0, "max_tokens": 4000, "prompt_usd_per_mtok": 0.0, "completion_usd_per_mtok": 0.0}
-]
+{"id": "vendor/model-a", "temperature": 0, "max_tokens": 4000,
+ "prompt_usd_per_mtok": 0.30, "completion_usd_per_mtok": 1.20}
 ```
-(Replace the `0.0` prices with the real USD per-million-token prices from openrouter.ai; the tool
-refuses prices of 0 because the budget cap needs a worst case. The ids above are your own
-candidates from `example_models`; your other two candidates, `anthropic/claude-…` and
-`deepseek/…`, would be refused: those families authored the cases or are evaluated.)
 
-Then:
-```powershell
-.\tbound-panel.exe --config ..\panel.mine.json --manifest ..\corpus\pilot\manifest.draft.json --estimate
-.\tbound-panel.exe --config ..\panel.mine.json --manifest ..\corpus\pilot\manifest.draft.json --out ..\panel-dry --dry-run
-$env:OPENROUTER_API_KEY = "<key with a credit limit>"
-.\tbound-panel.exe --config ..\panel.mine.json --manifest ..\corpus\pilot\manifest.draft.json --out ..\panel-run-1 --live
+```sh
+./tbound-panel --config ../panel.json --manifest ../corpus/pilot/manifest.draft.json --estimate
+./tbound-panel --config ../panel.json --manifest ../corpus/pilot/manifest.draft.json --out ../panel-dry --dry-run
+export OPENROUTER_API_KEY=...        # a key with a credit limit; never stored by the tool
+./tbound-panel --config ../panel.json --manifest ../corpus/pilot/manifest.draft.json --out ../panel-run --live
 ```
-- `--estimate` costs nothing; expect about USD 1.2 (worst case ~6). The run stops hard at the cap (USD 10).
-- If `--live` stops (error, cap, missing cost), run the same command again: it resumes.
-- Send your advisor `audit.md`, `audit.json`, `audit-packets\` and `stats.md` from the run folder.
-- Gates per checklist item: kappa ≥ 0.80 and agreement ≥ 90% = pass; 0.60–0.79 = revise; < 0.60 = stop;
-  any missing case = no pass.
 
-## 7. What only you can do
+- `--estimate` and `--dry-run` cost nothing. `--live` stops hard at `budget_usd`.
+- Rerunning the same command with the same `--out` resumes an interrupted run.
+- Gates per checklist item: kappa ≥ 0.80 and agreement ≥ 90% = pass;
+  0.60–0.79 = revise; below 0.60 = stop; any missing case = no pass.
+- Give the reviewer `audit.md`, `audit.json`, `audit-packets/` and `stats.md`.
 
-- Sign anything with your keys (registrations, host profiles), approve privileged guest changes,
-  VM restarts or account changes.
-- Fund and run paid model calls (the panel; later the research provider route).
-- The advisor review and sign-off.
+Full guide: [docs/panel-run.md](docs/panel-run.md).
 
-## 8. When something goes wrong
+## 10. Where to read more
 
-| Symptom | What it usually means | Where to look |
-|---|---|---|
-| SSH fails / times out | Guest IP changed | Section 2 (`Get-NetNeighbor`) |
-| A run ends `unknown` | The outcome could not be proven; the next request is blocked | Service log: `journalctl -u tbound-pi.service` (the log now names the cause); recovery = archive at the next freeze (option A) |
-| A step says "0-byte file" | A WSL disk stall or a genuinely empty export | The step's log; `df -h` (keep C: ≥ 5 GiB) |
-| Guest step stops on a stale `podman` pause process | Leftover from a probe | Rerun step 50 with `RECLAIM_PODMAN_PAUSE=1` |
-
-Current state and the next steps: `OVERVIEW.md` and `TASK_STATE.md`.
+- [docs/README.md](docs/README.md): what each document covers.
+- [docs/architecture.md](docs/architecture.md): components and trust boundaries.
+- [docs/status.md](docs/status.md): what is verified and what is not.
