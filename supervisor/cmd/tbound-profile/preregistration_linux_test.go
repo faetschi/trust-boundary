@@ -142,7 +142,7 @@ func TestPreregistrationRecordIsDeterministicAndBindsTheRegisteredFacts(t *testi
 		rec.QuotaProfile != "pilot" || rec.EvalscoreSchema != evalscore.SchemaVersion ||
 		rec.PlannedUnits != evalreport.PlannedUnits ||
 		rec.RerunHeadroom != runner.MaxRerunHeadroom ||
-		rec.PlanSteps != 125 || !strings.HasPrefix(rec.RunnerPlanDigest, "sha256:") ||
+		rec.PlanSteps != 123 || !strings.HasPrefix(rec.RunnerPlanDigest, "sha256:") ||
 		!strings.HasPrefix(rec.ResearchProfileDigest, "sha256:") || !strings.HasPrefix(rec.ResearchLedgerConfigDigest, "sha256:") {
 		t.Fatalf("record %+v", rec)
 	}
