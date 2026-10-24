@@ -38,6 +38,10 @@ type Collector struct {
 	// NewTag draws the interval tag (32 lowercase hex digits); nil means a random one. A
 	// test seam.
 	NewTag func() (string, error)
+	// RetainDir, if set, receives one file per evaluated interval (Retained, named RetainedName): the
+	// original canary and journal documents. A file that cannot be written makes the interval evidence
+	// absent, so a verdict is never journaled without the evidence behind it.
+	RetainDir string
 
 	mu     sync.Mutex
 	active map[string]*netInterval
@@ -144,6 +148,11 @@ func (c *Collector) Net(ctx context.Context, ref runner.EvidenceRef) (runner.Obs
 	digest, err := rep.Digest()
 	if err != nil || digest == "" {
 		return absent("the NET report has no digest")
+	}
+	if c.RetainDir != "" {
+		if err := retain(c.RetainDir, Retained{Schema: RetainedSchema, Interval: ref.Interval, Start: iv.start, End: end, Journal: doc}); err != nil {
+			return absent("the interval evidence could not be retained: %v", err)
+		}
 	}
 	return runner.ObserverEvidence{
 		Findings: OraclesFromNET01(rep),

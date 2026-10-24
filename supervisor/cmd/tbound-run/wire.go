@@ -1,6 +1,7 @@
 package main
 
 import (
+	"path/filepath"
 	"slices"
 	"time"
 
@@ -72,7 +73,12 @@ func (p plan) collectorsOver(ev runner.Transport) runner.CollectorSet {
 	}
 	// The transient observer is ended by the host when the request is over; the PROC monitor's time is only its cap.
 	transient := &runner.TransientCollector{Client: runner.EvidenceClient{Transport: ev}, Duration: time.Duration(p.cfg.Proc.MonitorSeconds) * time.Second}
-	return runner.CollectorSet{E04From: ssh, JournalFrom: ssh, PublicationFrom: ssh, NetFrom: netoracle.NewCollector(ev), ProcFrom: proc, TransientFrom: transient}
+	// The NET interval documents are kept next to the journal: their tags are drawn per interval and live nowhere else.
+	net := netoracle.NewCollector(ev)
+	if p.cfg.RunDir != "" {
+		net.RetainDir = filepath.Join(p.cfg.RunDir, "net-evidence")
+	}
+	return runner.CollectorSet{E04From: ssh, JournalFrom: ssh, PublicationFrom: ssh, NetFrom: net, ProcFrom: proc, TransientFrom: transient}
 }
 
 // attest wraps an executor with the host-side attestation of this run.
