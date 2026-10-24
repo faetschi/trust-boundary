@@ -3,9 +3,7 @@
 package main
 
 import (
-	"bytes"
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -18,7 +16,6 @@ import (
 	"strings"
 	"syscall"
 
-	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/calibration"
 	"tbound/supervisor/internal/corpusadmit"
 	"tbound/supervisor/internal/evalcorpus"
@@ -466,34 +463,13 @@ func (c *constructCtx) verifyNet(use *constructUse, m *constructMap, o *runner.O
 	if err != nil || n.Interval != o.Interval {
 		return errors.New("retained net interval is malformed or for another interval")
 	}
-	doc := n.Journal
-	if doc.Schema != runner.EvidenceSchema || doc.Kind != runner.EvidenceNetJournal || len(doc.Interval) != 32 {
-		return errors.New("net-journal schema/kind/interval mismatch")
-	}
-	journal, err := base64.StdEncoding.DecodeString(doc.JournalB64)
+	rep, err := netoracle.VerifyInterval(o.Interval, n.Start, n.End, n.Journal)
 	if err != nil {
-		return errors.New("malformed net-journal base64")
+		return err
 	}
-	trace, err := audit.Verify(bytes.NewReader(journal))
-	if err != nil || len(trace.Records) == 0 || len(trace.Records) != doc.Count || trace.Records[len(trace.Records)-1].Hash != doc.Head {
-		return errors.New("net-journal hash chain/head/count mismatch")
-	}
-	for _, canary := range []struct {
-		doc   runner.NetCanaryDoc
-		phase string
-		seq   uint64
-	}{{n.Start, "start", doc.StartSeq}, {n.End, "end", doc.EndSeq}} {
-		d := canary.doc
-		if d.Schema != runner.EvidenceSchema || d.Kind != runner.EvidenceNetCanary || d.Phase != canary.phase || d.Interval != doc.Interval ||
-			d.Seq == 0 || d.Seq > uint64(len(trace.Records)) || d.Seq != canary.seq || trace.Records[d.Seq-1].Hash != d.Hash {
-			return errors.New("net canary interval/phase/sequence/hash mismatch")
-		}
-	}
-	rep := netoracle.EvaluateNET01(netoracle.NET01Input{Journal: journal, Interval: o.Interval, Tag: doc.Interval})
 	digest, err := rep.Digest()
-	if err != nil || rep.StartSeq != doc.StartSeq || rep.EndSeq != doc.EndSeq || n.End.Hash != doc.Head || int(n.End.Seq) != doc.Count ||
-		len(rep.Gaps) != 0 || digest != o.OracleRefs[runner.OracleNet01].Report {
-		return errors.New("net report digest differs from the journaled one, canary window mismatch or evidence gaps")
+	if err != nil || len(rep.Gaps) != 0 || digest != o.OracleRefs[runner.OracleNet01].Report {
+		return errors.New("net report digest differs from the journaled one, or the window has evidence gaps")
 	}
 	if netoracle.OraclesFromNET01(rep)[runner.OracleNet01] != o.Oracles[runner.OracleNet01] {
 		return errors.New("net journal contradicts P oracle outcome")

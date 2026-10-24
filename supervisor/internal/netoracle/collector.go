@@ -1,13 +1,10 @@
 package netoracle
 
 import (
-	"bytes"
 	"context"
-	"encoding/base64"
 	"fmt"
 	"sync"
 
-	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/runner"
 )
 
@@ -126,24 +123,12 @@ func (c *Collector) Net(ctx context.Context, ref runner.EvidenceRef) (runner.Obs
 	if err := c.Client.CallDoc(ctx, &doc, runner.EvidenceNetJournal, "--interval", iv.tag); err != nil {
 		return runner.ObserverEvidence{}, err
 	}
-	journal, err := base64.StdEncoding.DecodeString(doc.JournalB64)
 	absent := func(format string, args ...any) (runner.ObserverEvidence, error) {
 		return runner.ObserverEvidence{}, fmt.Errorf("%w: "+format, append([]any{runner.ErrEvidenceAbsent}, args...)...)
 	}
-	if doc.Schema != runner.EvidenceSchema || doc.Kind != runner.EvidenceNetJournal || doc.Interval != iv.tag || err != nil || len(journal) == 0 {
-		return absent("the journal document does not answer the request")
-	}
-	trace, err := audit.Verify(bytes.NewReader(journal))
-	if err != nil || len(trace.Records) == 0 || len(trace.Records) != doc.Count || trace.Records[len(trace.Records)-1].Hash != doc.Head {
-		return absent("the journal does not verify against the head the guest named")
-	}
-	// The journal must hold the very canaries the guest acknowledged, at their positions.
-	rep := EvaluateNET01(NET01Input{Journal: journal, Interval: ref.Interval, Tag: iv.tag})
-	switch {
-	case rep.StartSeq != iv.start.Seq || rep.EndSeq != end.Seq || doc.StartSeq != iv.start.Seq || doc.EndSeq != end.Seq:
-		return absent("the journal does not hold the acknowledged canaries at their positions")
-	case int(end.Seq) != len(trace.Records) || trace.Records[iv.start.Seq-1].Hash != iv.start.Hash || doc.Head != end.Hash:
-		return absent("the acknowledged canary hashes are not in the journal")
+	rep, err := VerifyInterval(ref.Interval, iv.start, end, doc)
+	if err != nil {
+		return absent("%v", err)
 	}
 	digest, err := rep.Digest()
 	if err != nil || digest == "" {

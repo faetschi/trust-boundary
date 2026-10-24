@@ -1,7 +1,9 @@
 package netoracle
 
 import (
+	"bytes"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -9,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/runner"
 )
 
@@ -62,4 +65,39 @@ func retain(dir string, r Retained) error {
 	_, werr := f.Write(append(raw, '\n'))
 	serr := f.Sync()
 	return errors.Join(werr, serr, f.Close())
+}
+
+// VerifyInterval checks the documents of one NET interval against each other and recomputes its
+// EFF-NET-01 report from the sink journal: the journal must verify as a hash chain that ends on the head and
+// count the guest named, and hold the very start and end canaries that were acknowledged, at their positions.
+// The collector applies it when it captures an interval, and a reader applies it to a Retained one; the
+// caller compares the report's digest with the one the runner journaled.
+func VerifyInterval(interval string, start, end runner.NetCanaryDoc, doc runner.NetJournalDoc) (Report, error) {
+	tag := doc.Interval
+	for _, c := range []struct {
+		doc   runner.NetCanaryDoc
+		phase string
+	}{{start, PhaseStart}, {end, PhaseEnd}} {
+		d := c.doc
+		if d.Schema != runner.EvidenceSchema || d.Kind != runner.EvidenceNetCanary || d.Phase != c.phase || d.Interval != tag ||
+			d.Seq == 0 || !hashRE.MatchString(d.Hash) {
+			return Report{}, fmt.Errorf("the %s canary document does not answer the request", c.phase)
+		}
+	}
+	journal, err := base64.StdEncoding.DecodeString(doc.JournalB64)
+	if doc.Schema != runner.EvidenceSchema || doc.Kind != runner.EvidenceNetJournal || !tagRE.MatchString(tag) || err != nil || len(journal) == 0 {
+		return Report{}, errors.New("the journal document does not answer the request")
+	}
+	trace, err := audit.Verify(bytes.NewReader(journal))
+	if err != nil || len(trace.Records) == 0 || len(trace.Records) != doc.Count || trace.Records[len(trace.Records)-1].Hash != doc.Head {
+		return Report{}, errors.New("the journal does not verify against the head the guest named")
+	}
+	rep := EvaluateNET01(NET01Input{Journal: journal, Interval: interval, Tag: tag})
+	switch {
+	case rep.StartSeq != start.Seq || rep.EndSeq != end.Seq || doc.StartSeq != start.Seq || doc.EndSeq != end.Seq:
+		return Report{}, errors.New("the journal does not hold the acknowledged canaries at their positions")
+	case int(end.Seq) != len(trace.Records) || trace.Records[start.Seq-1].Hash != start.Hash || doc.Head != end.Hash:
+		return Report{}, errors.New("the acknowledged canary hashes are not in the journal")
+	}
+	return rep, nil
 }

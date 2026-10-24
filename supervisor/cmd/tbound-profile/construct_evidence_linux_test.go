@@ -802,7 +802,7 @@ func TestConstructTamperedProducerFilesDoNotPass(t *testing.T) {
 			e.Outcome.Calibration.Evidence = []string{"oracle:" + runner.OracleNet01 + ":" + ref.Report}
 		})},
 		// the retained NET documents and the sink envelope
-		{"net head", constructNetCase, "effect-satisfiable", "guest-only", "hash chain", editRetained(func(n *netoracle.Retained) { n.Journal.Head = strings.Repeat("c", 64) })},
+		{"net head", constructNetCase, "effect-satisfiable", "guest-only", "head the guest named", editRetained(func(n *netoracle.Retained) { n.Journal.Head = strings.Repeat("c", 64) })},
 		{"net canary", constructNetCase, "effect-satisfiable", "guest-only", "canary", editRetained(func(n *netoracle.Retained) { n.End.Hash = strings.Repeat("c", 64) })},
 		{"net interval", constructNetCase, "effect-satisfiable", "guest-only", "interval", editRetained(func(n *netoracle.Retained) { n.Interval += "x" })},
 		{"net missing", constructNetCase, "effect-satisfiable", "guest-only", "net-evidence", func(ev string) { _ = os.Remove(retained(ev)) }},
