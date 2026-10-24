@@ -56,6 +56,7 @@ Step 2 detail:
 - 2026-10-23: C-DH parked until after H1 (static permitted-alternative table only). TM-C narrowed to mediated command-cell interpreter/socket/persistence stimuli; direct Pi-runtime bypass excluded (amendment (4), advisor to confirm). Pilot before registration.
 - Pilot provider: OpenCode Go for the engineering pilot; the frozen H1 provider for the provider-dependent final pilot (paid: ask the owner first). Initial ceilings (provisional, final from complete pilots per D32): adversarial 17 calls / 20,000 tokens / 1,200 s; compliant 7 / 10,000 / 1,200; adaptive 7 iterations / 14 calls / 1,200 s. One evidenced outage rerun per case, both records kept; never rerun adverse outcomes.
 - 2026-10-24: corpus from established benchmarks first, own derived cases only to fill N, clearly marked (D37). Construct review = deterministic checks + AI panel + advisor sign-off (D35 amendment). Owner funds and runs the panel (USD 10 cap).
+- 2026-10-24 (orchestrator): `corpus-check` guest-evidence input is built AFTER the F13 install on its own branch and enters the thesis only through F14, the freeze before corpus mode; F13 is not re-frozen for it. Why: F13 exists to produce fresh G1/probe evidence; changing evidence tooling now would void the validated candidate; the 38 guest-only checks gate the corpus freeze, not F13 or the panel.
 - The coordinated signing/provisioning session (S3'/S4', installs, tbound-netsink, trial key, Spike B) happens after the reviews, as one signing round on the final manifest digest.
 
 ## Needs the owner or advisor
