@@ -135,6 +135,31 @@ func TestUnsettledReservationCountsAsSpent(t *testing.T) {
 	}
 }
 
+type failingProvider struct{}
+
+func (failingProvider) complete(context.Context, modelConfig, []byte) ([]byte, error) {
+	return nil, errors.New("connection reset")
+}
+
+// A call with an unknown outcome stays counted after the pair is retried on resume.
+func TestUnknownOutcomeStaysCountedAcrossResume(t *testing.T) {
+	out := t.TempDir()
+	cfg := testConfig(t, 10)
+	if _, err := newRunner(t, cfg, out, failingProvider{}, "fake").run(context.Background()); err == nil {
+		t.Fatal("transport failure not reported")
+	}
+	if _, err := newRunner(t, cfg, out, fakeProvider{}, "fake").run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	s, err := loadSpend(filepath.Join(out, "calls.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.uncertain <= 0 {
+		t.Fatalf("the failed call's reservation was released by the retry: %+v", s)
+	}
+}
+
 // The real OpenRouter client against a local stand-in: the key travels only in the header
 // and is written nowhere; the reported cost is what the ledger settles.
 func TestOpenRouterClientKeepsKeyOutOfOutputs(t *testing.T) {

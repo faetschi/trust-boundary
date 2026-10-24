@@ -207,7 +207,7 @@ func (r *runner) writeAudit(cases []evalcorpus.Case, byCase map[string]map[strin
 	k := min(r.cfg.AuditSample, len(eligible))
 	seed := strconv.FormatUint(r.cfg.Seed, 10)
 	selected, err := evalcorpus.SelectSeeded(seed, "tbound-panel/unanimous-audit", eligible, k)
-	if err != nil && len(eligible) > 0 {
+	if err != nil {
 		return err
 	}
 	sel := map[string]bool{}

@@ -45,13 +45,16 @@ type spendRecord struct {
 	Time        string  `json:"time,omitempty"`
 }
 
-type spend struct{ settled, uncertain float64 }
+type spend struct {
+	settled, uncertain float64
+	attempts           map[string]int // model + "\x00" + case id -> reservations so far
+}
 
 func (s spend) total() float64 { return s.settled + s.uncertain }
 
 func loadSpend(path string) (spend, error) {
 	reserved := map[string]float64{}
-	var s spend
+	s := spend{attempts: map[string]int{}}
 	err := readJSONL(path, func(raw []byte) error {
 		var r spendRecord
 		if err := json.Unmarshal(raw, &r); err != nil {
@@ -59,7 +62,11 @@ func loadSpend(path string) (spend, error) {
 		}
 		switch r.Kind {
 		case "reserve":
+			if _, dup := reserved[r.CallID]; dup {
+				return fmt.Errorf("call id %q reserved twice", r.CallID)
+			}
 			reserved[r.CallID] = r.ReservedUSD
+			s.attempts[r.Model+"\x00"+r.CaseID]++
 		case "settle":
 			delete(reserved, r.CallID)
 			s.settled += r.CostUSD
@@ -304,13 +311,11 @@ func (r *runner) run(ctx context.Context) (runSummary, error) {
 	}
 	callsPath, ratingsPath := filepath.Join(r.out, "calls.jsonl"), filepath.Join(r.out, "ratings.jsonl")
 	done := map[string]bool{}
-	attempts := map[string]int{}
 	if err := readJSONL(ratingsPath, func(raw []byte) error {
 		var rt rating
 		if err := json.Unmarshal(raw, &rt); err != nil {
 			return err
 		}
-		attempts[rt.Model+"\x00"+rt.CaseID]++
 		if rt.Valid {
 			done[rt.Model+"\x00"+rt.CaseID] = true
 		}
@@ -332,7 +337,7 @@ func (r *runner) run(ctx context.Context) (runSummary, error) {
 				if err := ctx.Err(); err != nil {
 					return err
 				}
-				if err := r.rateOne(ctx, m, cases[caseID], plan.ids[m.ID][caseID], attempts[key]+1, callsPath, ratingsPath, &sum); err != nil {
+				if err := r.rateOne(ctx, m, cases[caseID], plan.ids[m.ID][caseID], callsPath, ratingsPath, &sum); err != nil {
 					return err
 				}
 			}
@@ -344,7 +349,7 @@ func (r *runner) run(ctx context.Context) (runSummary, error) {
 	return sum, errors.Join(runErr, finishErr)
 }
 
-func (r *runner) rateOne(ctx context.Context, m modelConfig, c evalcorpus.Case, blindID string, attempt int, callsPath, ratingsPath string, sum *runSummary) error {
+func (r *runner) rateOne(ctx context.Context, m modelConfig, c evalcorpus.Case, blindID string, callsPath, ratingsPath string, sum *runSummary) error {
 	p, err := renderCase(r.corpus, c, blindID)
 	if err != nil {
 		return err
@@ -361,6 +366,8 @@ func (r *runner) rateOne(ctx context.Context, m modelConfig, c evalcorpus.Case, 
 	if spent.total()+worst > r.cfg.BudgetUSD {
 		return fmt.Errorf("%w: spent %.4f USD (%.4f uncertain) + worst case %.4f USD of the next call > cap %.2f USD", errBudget, spent.total(), spent.uncertain, worst, r.cfg.BudgetUSD)
 	}
+	// Attempts come from the ledger, so a retry never reuses an uncertain call's id.
+	attempt := spent.attempts[m.ID+"\x00"+c.CaseID] + 1
 	callID := fmt.Sprintf("%s/%s/%d", m.ID, blindID, attempt)
 	base := filepath.Join(slug(m.ID), fmt.Sprintf("%s.%d.json", blindID, attempt))
 	reqFile, respFile := filepath.ToSlash(filepath.Join("requests", base)), filepath.ToSlash(filepath.Join("responses", base))
