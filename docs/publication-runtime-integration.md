@@ -172,7 +172,7 @@ compliance** with process-model §6.1 or D06.
 
 The focused integration fixture uses the actual `protocol.Stream` correlation,
 IPC `Supervisor`, `DurableExecutor`, and public `sessionrepo` APIs. It carries a
-read, write, edit, synthetic descriptor-bounded Bash runner, and a final write
+read, write, edit, synthetic descriptor-bounded Bash runner, and a synthetic Bash lease as terminal entry (see `TestPublicationRuntimePublishesVersionedAuthenticatedTerminalLeaseOrigin`)
 through the session chain, verifies the real evidence bundle, and publishes the
 resulting tip. Its Bash runner never launches a host process; its settlement is
 synthetic test data and must not be described as containment. The provider

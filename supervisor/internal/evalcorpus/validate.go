@@ -45,17 +45,19 @@ func ThesisQuotas() Quotas {
 }
 
 // PilotQuotas returns the explicit counts of a pilot or G4 dry-run corpus: 11 adversarial
-// units (TM-A 4, TM-B 4, TM-C 3), 8 compliant tasks (2 per governed tool), 2 ambiguous
-// cases, a 3-member variance subset (1 per class) and the same 20% cold share. They are
-// not the pre-registered quotas. Validate applies every structural rule under them, so a
-// pilot corpus is checked as strictly as the thesis corpus except for its counts, and a
-// result obtained from it must never be reported as a thesis result.
+// units (TM-A 7, TM-B 4, TM-C 0), 20 compliant tasks (5 per governed tool), 2 ambiguous
+// cases, a 2-member variance subset (1 each for TM-A and TM-B) and the same 20% cold
+// share. The adversarial units are established benchmark roots only (D37 amendment
+// 2026-10-24); TM-C is entirely derived and therefore absent from the established-only
+// pilot. They are not the pre-registered quotas. Validate applies every structural rule
+// under them, so a pilot corpus is checked as strictly as the thesis corpus except for
+// its counts, and a result obtained from it must never be reported as a thesis result.
 func PilotQuotas() Quotas {
 	return Quotas{
-		Adversarial: map[ThreatClass]int{ClassTMA: 4, ClassTMB: 4, ClassTMC: 3},
-		Compliant:   map[Tool]int{ToolRead: 2, ToolWrite: 2, ToolEdit: 2, ToolBash: 2},
+		Adversarial: map[ThreatClass]int{ClassTMA: 7, ClassTMB: 4, ClassTMC: 0},
+		Compliant:   map[Tool]int{ToolRead: 5, ToolWrite: 5, ToolEdit: 5, ToolBash: 5},
 		Ambiguous:   2,
-		Variance:    map[ThreatClass]int{ClassTMA: 1, ClassTMB: 1, ClassTMC: 1},
+		Variance:    map[ThreatClass]int{ClassTMA: 1, ClassTMB: 1, ClassTMC: 0},
 		ColdPercent: 20,
 	}
 }
@@ -71,6 +73,10 @@ func PilotQuotas() Quotas {
 //   - review.count, review.role, review.identity, review.human, review.blinded: two
 //     reviews from different roles and different reviewers, both human and blinded
 //     (role and reviewer comparisons use the normalized forms of sameIdentity);
+//   - review.decision, review.placeholder, review.rejected: a decision is exactly accept
+//     or reject, role, reviewer and adjudicator do not start with TODO, and the standing
+//     decision of every case (the agreed review decision, or the adjudication when the
+//     reviews disagree) is accept, so one rejected case makes the manifest non-admissible;
 //   - adjudication.missing, adjudication.unexpected, adjudication.human,
 //     adjudication.blinded, adjudication.not_third: an adjudication exactly when the
 //     reviews disagree, by a third human and blinded reviewer;
@@ -172,6 +178,9 @@ func (v *validator) caseRules(c *Case) {
 		v.caseIDs[c.CaseID] = true
 	}
 	v.reviews(label, c)
+	if c.MeaningRecord != nil {
+		v.meaningRecord(label, c.MeaningRecord)
+	}
 	if c.Trial != nil {
 		v.trial(label, c)
 	}
@@ -215,7 +224,9 @@ func (v *validator) reviews(label string, c *Case) {
 		}
 		v.required(p+" role", r.Role)
 		v.required(p+" reviewer", r.Reviewer)
-		v.required(p+" decision", r.Decision)
+		v.noPlaceholder(p+" role", r.Role)
+		v.noPlaceholder(p+" reviewer", r.Reviewer)
+		v.decision(p+" decision", r.Decision)
 	}
 	a, b := c.Reviews[0], c.Reviews[1]
 	if sameIdentity(a.Role, b.Role) {
@@ -228,6 +239,7 @@ func (v *validator) reviews(label string, c *Case) {
 		if c.Adjudication != nil {
 			v.add("adjudication.unexpected", "%s: the reviews agree but an adjudication is recorded", label)
 		}
+		v.settled(label, a.Decision)
 		return
 	}
 	adj := c.Adjudication
@@ -235,16 +247,80 @@ func (v *validator) reviews(label string, c *Case) {
 		v.add("adjudication.missing", "%s: the reviews disagree and no adjudication is recorded", label)
 		return
 	}
+	v.settled(label, adj.Decision)
 	if !adj.Human {
 		v.add("adjudication.human", "%s: the adjudicator is not a human reviewer", label)
 	}
 	if !adj.Blinded {
 		v.add("adjudication.blinded", "%s: the adjudicator is not blinded", label)
 	}
-	v.required(label+" adjudication decision", adj.Decision)
+	v.decision(label+" adjudication decision", adj.Decision)
 	v.required(label+" adjudicator", adj.Adjudicator)
+	v.noPlaceholder(label+" adjudicator", adj.Adjudicator)
 	if sameIdentity(adj.Adjudicator, a.Reviewer) || sameIdentity(adj.Adjudicator, b.Reviewer) {
 		v.add("adjudication.not_third", "%s: the adjudicator is one of the two reviewers", label)
+	}
+}
+
+// decision reports a blank value as field.empty and any value other than exactly
+// DecisionAccept or DecisionReject as review.decision.
+func (v *validator) decision(path, value string) {
+	switch {
+	case strings.TrimSpace(value) == "":
+		v.add("field.empty", "%s is empty", path)
+	case value != DecisionAccept && value != DecisionReject:
+		v.add("review.decision", "%s is %q; want exactly %q or %q", path, value, DecisionAccept, DecisionReject)
+	}
+}
+
+// noPlaceholder reports a role, reviewer or adjudicator that still carries the TODO-
+// prefix of the draft manifest.
+func (v *validator) noPlaceholder(path, value string) {
+	if strings.HasPrefix(strings.ToUpper(strings.TrimSpace(value)), "TODO") {
+		v.add("review.placeholder", "%s is the placeholder %q", path, value)
+	}
+}
+
+// settled reports review.rejected when the decision that stands for a case, the shared
+// review decision or else the adjudication, is a reject. A decision outside the
+// enumeration is reported by decision and is not repeated here.
+func (v *validator) settled(label, decision string) {
+	if decision == DecisionReject {
+		v.add("review.rejected", "%s: the standing review decision is reject; the manifest is not admissible", label)
+	}
+}
+
+// meaningRecord checks a present D37 meaning record: a known case_origin, the required
+// provenance strings, well-formed benchmark digest, and a non-empty transformation list.
+// Rule codes are meaning.origin, meaning.field, meaning.digest, and the shared field.empty.
+func (v *validator) meaningRecord(label string, mr *MeaningRecord) {
+	switch mr.CaseOrigin {
+	case OriginEstablished, OriginDerived:
+	default:
+		v.add("meaning.origin", "%s: case_origin %q is not established or derived", label, mr.CaseOrigin)
+	}
+	v.required(label+" meaning_record.benchmark_key", mr.BenchmarkKey)
+	v.required(label+" meaning_record.benchmark_revision", mr.BenchmarkRevision)
+	v.digest(label+" meaning_record.benchmark_digest", mr.BenchmarkDigest)
+	v.required(label+" meaning_record.source_item_id", mr.SourceItemID)
+	v.required(label+" meaning_record.root_id", mr.RootID)
+	v.required(label+" meaning_record.license", mr.License)
+	v.required(label+" meaning_record.redistribution", mr.Redistribution)
+	v.required(label+" meaning_record.preserved_intent", mr.PreservedIntent)
+	v.required(label+" meaning_record.task_unit", mr.TaskUnit)
+	v.required(label+" meaning_record.authorization_class", mr.AuthorizationClass)
+	v.required(label+" meaning_record.tool_mapping", mr.ToolMapping)
+	v.required(label+" meaning_record.oracle_mapping", mr.OracleMapping)
+	if len(mr.Transformations) == 0 {
+		v.add("meaning.field", "%s: meaning_record.transformations is empty", label)
+	}
+	for i, s := range mr.Transformations {
+		v.required(fmt.Sprintf("%s meaning_record.transformations[%d]", label, i), s)
+	}
+	switch mr.LabelOrigin {
+	case LabelSourceInherited, LabelExternalOracle:
+	default:
+		v.add("meaning.field", "%s: meaning_record.label_origin %q is not source_inherited or external_oracle", label, mr.LabelOrigin)
 	}
 }
 

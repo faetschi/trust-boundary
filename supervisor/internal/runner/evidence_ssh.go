@@ -48,7 +48,7 @@ const (
 	EvidenceBinaryPath = "/usr/local/bin/tbound"
 	// EvidenceLiveRoot is the one protected root e04-snapshot accepts. The guest pins it
 	// to piruntime.D09ManagedPiLiveRootPath (a test keeps the two equal).
-	EvidenceLiveRoot = "/var/lib/tbound/live"
+	EvidenceLiveRoot = "/var/lib/tbound/live/root"
 
 	// The guest NET sink (`tbound netsink`, infra/guest/systemd/tbound-netsink.service) and its
 	// fixed places. NetsinkAddr is a loopback alias of the guest root network namespace: a cell
@@ -173,6 +173,20 @@ func (c EvidenceClient) CanReport() bool {
 	return ok
 }
 
+// StdinTransport is a ReadyTransport that also gives the remote command a stdin the caller controls: the command
+// sees what is written to stdin and its end of file when the caller closes it, or when the session is gone (the
+// guest transient-watch ends on a stop line and treats an end of file without one as an abort).
+type StdinTransport interface {
+	ReadyTransport
+	RunReadyStdin(ctx context.Context, argv []string, stdin io.Reader, ready func(firstLine []byte)) (stdout, stderr []byte, exitCode int, err error)
+}
+
+// CanStop reports whether the evidence transport can hand the remote command a controlled stdin.
+func (c EvidenceClient) CanStop() bool {
+	_, ok := c.Transport.(StdinTransport)
+	return ok
+}
+
 // CallReady is Call over a ReadyTransport: ready receives the command's first stdout line as
 // soon as it is written. A transport that cannot report it is a configuration error, not
 // absent evidence.
@@ -182,6 +196,10 @@ func (c EvidenceClient) CallReady(ctx context.Context, ready func([]byte), argv 
 		return nil, errors.New("evidence transport cannot report the first output line (ReadyTransport)")
 	}
 	stdout, stderr, exit, err := rt.RunReady(ctx, argv, ready)
+	return evidenceOutput(stdout, stderr, exit, err)
+}
+
+func evidenceOutput(stdout, stderr []byte, exit int, err error) ([]byte, error) {
 	switch {
 	case err != nil:
 		return nil, evidenceAbsent("evidence transport: %v", err)
@@ -239,7 +257,7 @@ type IntervalCollectors interface {
 // own slot, and a nil slot is AbsentCollectors. BeginInterval and EndInterval reach every
 // distinct slot that implements IntervalCollectors once.
 type CollectorSet struct {
-	E04From, JournalFrom, NetFrom, ProcFrom Collectors
+	E04From, JournalFrom, PublicationFrom, NetFrom, ProcFrom, TransientFrom Collectors
 }
 
 func (s CollectorSet) slot(c Collectors) Collectors {
@@ -257,6 +275,10 @@ func (s CollectorSet) PublicationJournal(ctx context.Context, ref EvidenceRef) (
 	return s.slot(s.JournalFrom).PublicationJournal(ctx, ref)
 }
 
+func (s CollectorSet) Publication(ctx context.Context, ref EvidenceRef) (PublicationInputs, error) {
+	return s.slot(s.PublicationFrom).Publication(ctx, ref)
+}
+
 func (s CollectorSet) Net(ctx context.Context, ref EvidenceRef) (ObserverEvidence, error) {
 	return s.slot(s.NetFrom).Net(ctx, ref)
 }
@@ -265,11 +287,15 @@ func (s CollectorSet) Proc(ctx context.Context, ref EvidenceRef) (ObserverEviden
 	return s.slot(s.ProcFrom).Proc(ctx, ref)
 }
 
+func (s CollectorSet) Transient(ctx context.Context, ref EvidenceRef) (ObserverEvidence, error) {
+	return s.slot(s.TransientFrom).Transient(ctx, ref)
+}
+
 // distinct returns the slots once each. Slots whose dynamic type is not comparable are
 // kept as they are.
 func (s CollectorSet) distinct() []Collectors {
 	var out []Collectors
-	for _, c := range []Collectors{s.E04From, s.JournalFrom, s.NetFrom, s.ProcFrom} {
+	for _, c := range []Collectors{s.E04From, s.JournalFrom, s.PublicationFrom, s.NetFrom, s.ProcFrom, s.TransientFrom} {
 		if c == nil {
 			continue
 		}
@@ -324,8 +350,9 @@ func (s CollectorSet) Validate() error {
 	return errors.Join(errs...)
 }
 
-// SSHCollectors collects E04 manifests and the publication interval journal from the
-// guest. NET and PROC stay absent here (see CollectorSet).
+// SSHCollectors collects E04 manifests, the publication interval journal and the EFF-WS-05 and
+// EFF-WS-06 inputs from the guest. NET and PROC stay absent here (see CollectorSet), and so does
+// the transient observer (TransientCollector).
 //
 // E04. The seven registered points are moments inside the service run (materialization,
 // settlement, teardown import, publication, cleanup). A collector outside the service
@@ -352,11 +379,8 @@ func (c *SSHCollectors) Validate() error { return c.Client.Validate() }
 
 // E04 implements Collectors.
 func (c *SSHCollectors) E04(ctx context.Context, ref EvidenceRef) (wsoracle.EvaluateE04Input, error) {
-	if ref.E04Head == "" || ref.E04Count <= 0 {
-		return wsoracle.EvaluateE04Input{}, evidenceAbsent("the receipt carries no E04 evidence binding for %s", ref.Interval)
-	}
-	var doc E04PointsDoc
-	if err := c.Client.CallDoc(ctx, &doc, EvidenceE04Points, "--interval-ref", ref.Interval); err != nil {
+	doc, err := c.Client.e04Doc(ctx, ref)
+	if err != nil {
 		return wsoracle.EvaluateE04Input{}, err
 	}
 	return E04PointsInput(doc, ref.Interval, ref.E04Head, ref.E04Count)
@@ -382,4 +406,62 @@ func (c *SSHCollectors) PublicationJournal(ctx context.Context, ref EvidenceRef)
 		return nil, evidenceAbsent("journal does not verify against the head the guest named")
 	}
 	return journal, nil
+}
+
+// Publication implements Collectors. EFF-WS-05 and EFF-WS-06 are publication predicates, so their inputs are the
+// ones publication itself keeps: the service's baseline, pre-publication and post-publication manifests, the
+// approved-delta ledger it applied and, in the post-publication record, the sealed generation's manifest, the
+// intended affected set and the lock identity (E04PublicationEvidence). They come from the same store the receipt
+// binds as E04 does (e04-points), so a document that does not match the receipt is absent, and the interval journal
+// stays the only judge of whether the interval published at all (PublicationFree).
+func (c *SSHCollectors) Publication(ctx context.Context, ref EvidenceRef) (PublicationInputs, error) {
+	doc, err := c.Client.e04Doc(ctx, ref)
+	if err != nil {
+		return PublicationInputs{}, err
+	}
+	in, err := E04PublicationInputs(doc, ref.Interval, ref.E04Head, ref.E04Count)
+	if err != nil {
+		return PublicationInputs{}, err
+	}
+	// The transaction the store says it recorded must be one the anchored publication journal holds.
+	journal, err := c.PublicationJournal(ctx, ref)
+	if err != nil {
+		return PublicationInputs{}, err
+	}
+	if err := bindPublicationTransaction(journal, ref.PublicationHead, in); err != nil {
+		return PublicationInputs{}, err
+	}
+	return in, nil
+}
+
+// e04Doc fetches the E04 point store of the interval the receipt binds and checks that it is the store of the run the
+// receipt names: the store of a workflow can hold the points of earlier runs, and the receipt's head and count bind
+// the whole store, not one run.
+func (c EvidenceClient) e04Doc(ctx context.Context, ref EvidenceRef) (E04PointsDoc, error) {
+	if ref.E04Head == "" || ref.E04Count <= 0 {
+		return E04PointsDoc{}, evidenceAbsent("the receipt carries no E04 evidence binding for %s", ref.Interval)
+	}
+	var doc E04PointsDoc
+	if err := c.CallDoc(ctx, &doc, EvidenceE04Points, "--interval-ref", ref.Interval); err != nil {
+		return E04PointsDoc{}, err
+	}
+	// An empty RunID on either side never matches (e04DocRecords refuses a store with none).
+	if doc.RunID != ref.RunID {
+		return E04PointsDoc{}, evidenceAbsent("the E04 store is for run %q, the receipt names %q", doc.RunID, ref.RunID)
+	}
+	return doc, nil
+}
+
+// CallStdin is CallReady with a stdin for the remote command (a transport that cannot give one is a configuration
+// error, not absent evidence). It also says whether the remote command ended with an exit status of its own: the
+// transport reported one (it did not fail, and the command was not killed by a signal or the end of its session), and
+// it is not the 255 ssh itself exits with.
+func (c EvidenceClient) CallStdin(ctx context.Context, stdin io.Reader, ready func([]byte), argv ...string) ([]byte, bool, error) {
+	st, ok := c.Transport.(StdinTransport)
+	if !ok {
+		return nil, false, errors.New("evidence transport cannot give the command a controlled stdin (StdinTransport)")
+	}
+	stdout, stderr, exit, err := st.RunReadyStdin(ctx, argv, stdin, ready)
+	raw, oerr := evidenceOutput(stdout, stderr, exit, err)
+	return raw, err == nil && exit >= 0 && exit != 255, oerr
 }

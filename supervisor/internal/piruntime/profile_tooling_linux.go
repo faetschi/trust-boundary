@@ -26,17 +26,13 @@ const (
 	// PiWorkerCellExecutable is the in-cell Node executable path recorded in a
 	// signed production profile. The frozen cell supplies the pinned Node bytes.
 	PiWorkerCellExecutable = PiCLIProductionExecutable
-	// PiWorkerCellWorkdir is the in-cell mount point of the sealed worker
-	// exposure. It is deliberately a fixed in-cell path, never a live host path.
+	// PiWorkerCellWorkdir is the command cell's mount point of the workspace. The
+	// Pi cell has no /work: it mounts the source at PiWorkerCellDefaultWorkingDirectory.
 	PiWorkerCellWorkdir = "/work"
 	// PiWorkerCellHome and PiWorkerCellTemp are private in-cell tmpfs locations;
 	// neither points into the sealed, read-only source view.
 	PiWorkerCellHome = PiCLIProductionHome
 	PiWorkerCellTemp = PiCLIProductionTemp
-	// PiWorkerCellDefaultWorkingDirectory is the host-side working directory a
-	// generated production profile records. The launcher binds exactly this
-	// path into the cell at PiWorkerCellWorkdir.
-	PiWorkerCellDefaultWorkingDirectory = "/var/lib/tbound/pi-worker"
 	// PiWorkerCellRuntimeBundleRoot is the host-side runtime bundle root a
 	// generated production profile records.
 	PiWorkerCellRuntimeBundleRoot = PiCLIProductionRuntimeBundleRoot
@@ -282,4 +278,34 @@ func DefaultLinuxHostProfileTemplate() HostProfile {
 // unsigned template. It is the exact byte form the signer consumes.
 func MarshalUnsignedLinuxHostProfileTemplate() ([]byte, error) {
 	return json.Marshal(DefaultLinuxHostProfileTemplate())
+}
+
+// PlaceholderFields names the fields of a profile that still hold the value the generated template put there for
+// the operator to replace: the template id, and the digests of the Node executable, the cgroup root, the runtime
+// bundle, the source provenance, the offline verifier and the provider profile. A profile with one is not a
+// profile of anything measured, and neither the signing tool nor the launcher accepts it.
+func (p HostProfile) PlaceholderFields() []string {
+	var fields []string
+	if p.ID == LinuxHostProfileTemplateID {
+		fields = append(fields, "ID")
+	}
+	for _, f := range []struct{ name, value, label string }{
+		{"ExecutableDigest", p.ExecutableDigest, "node-executable"},
+		{"CgroupRootDigest", p.CgroupRootDigest, "cgroup-root"},
+		{"PiRuntimeBundleDigest", p.PiRuntimeBundleDigest, "pi-runtime-bundle"},
+		{"SourceProvenanceDigest", p.SourceProvenanceDigest, "source-provenance"},
+		{"OfflineVerifierDigest", p.OfflineVerifierDigest, "cosign-offline"},
+		{"ProviderProfileDigest", p.ProviderProfileDigest, "go-providerbridge"},
+	} {
+		if f.value == placeholderDigest(f.label) {
+			fields = append(fields, f.name)
+		}
+	}
+	return fields
+}
+
+// OfflineVerifierDigest is the OfflineVerifierDigest a profile pins for the offline image verifier: the digest of
+// the pinned cosign executable and of the cosign public key it verifies under, in that order.
+func OfflineVerifierDigest(cosignDigest, cosignPublicKeyDigest string) string {
+	return DigestBytes([]byte("tbound-offline-verifier/v1\x00" + cosignDigest + "\x00" + cosignPublicKeyDigest))
 }

@@ -1,18 +1,14 @@
 import type { Static, TSchema } from "typebox";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { IpcClient, IpcProposal, IpcResult } from "./ipc-transport.ts";
+import { permittedAlternativeHints } from "./result-hints.ts";
 
 export const declaredToolNames = ["read", "write", "edit", "bash"] as const;
 export type DeclaredToolName = (typeof declaredToolNames)[number];
 
 export type ToolProposal = IpcProposal;
 
-export interface ProbeProposalReply {
-  verdict: "DENY";
-  reason: "probe-only";
-}
-
-export type ProposalReply = IpcResult | ProbeProposalReply;
+export type ProposalReply = IpcResult;
 
 export interface ProposalSender {
   send(proposal: ToolProposal, signal?: AbortSignal): Promise<ProposalReply>;
@@ -107,7 +103,14 @@ function makeProxyTool<TParams extends TSchema>(
         },
         signal,
       );
-      return { content: [{ type: "text", text: JSON.stringify(reply) }], details: undefined };
+      let text = JSON.stringify(reply);
+      if ("reason_code" in reply) {
+        const reason = reply.verdict === "DENY" ? reply.reason_code : reply.status;
+        if (reason && Object.hasOwn(permittedAlternativeHints, reason)) {
+          text += `\nhint: ${permittedAlternativeHints[reason]}`;
+        }
+      }
+      return { content: [{ type: "text", text }], details: undefined };
     },
   };
 }

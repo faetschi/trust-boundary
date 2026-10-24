@@ -18,18 +18,24 @@ import (
 	"testing"
 	"time"
 
+	"tbound/supervisor/internal/cgroupguard"
 	"tbound/supervisor/internal/trialfix"
 )
 
 // Tests of the process cleanup of `tbound trial reset`: cgroup.kill on the cells cgroup and the
 // wait for populated 0.
 //
-// The kernel semantics are tested for real when the test runs in a cgroup2 subtree it may
-// write (a systemd user scope with Delegate=yes, for example: systemd-run --user --scope -p
-// Delegate=yes go test ...); otherwise that test skips and says so. The churn processes are
+// The kernel semantics are tested for real when TBOUND_REAL_CGROUP_TESTS=1 and the test runs
+// in a cgroup2 subtree it may write (a systemd user scope with Delegate=yes, for example: systemd-run --user --scope -p
+// Delegate=yes go test ...); otherwise that test skips and says so. The test refuses a base
+// cgroup that is / or holds init.scope or session-*, and caps pids (512) and memory (2G) on
+// the cgroup it creates before any churn (internal/cgroupguard). The churn processes are
 // started inside the cgroup (clone3 with CLONE_INTO_CGROUP) and keep forking and exiting.
 
 const testRoleEnv = "TBOUND_TEST_ROLE"
+
+// forkerMaxChildren bounds the live children of one forker role.
+const forkerMaxChildren = 16
 
 // init turns this test binary into a churn process when it is re-executed with testRoleEnv.
 // Every role is bounded by a watchdog. Children are started from /proc/self/exe and inherit
@@ -46,10 +52,18 @@ func init() {
 		_ = startRole("chain")
 		os.Exit(0)
 	case "forker":
-		// Forks sleeping children without pause; every child that survives is a live process.
+		// Forks sleeping children without pause. At most forkerMaxChildren are alive at once:
+		// past that the oldest is killed before the next fork, so the churn goes on with a
+		// fixed number of processes.
+		var live []*exec.Cmd
 		for {
+			if len(live) >= forkerMaxChildren {
+				_ = live[0].Process.Kill()
+				go func(old *exec.Cmd) { _ = old.Wait() }(live[0])
+				live = live[1:]
+			}
 			if cmd := startRole("sleeper"); cmd != nil {
-				go func() { _ = cmd.Wait() }()
+				live = append(live, cmd)
 			}
 			time.Sleep(time.Millisecond)
 		}
@@ -136,6 +150,9 @@ type testCgroup struct {
 
 func newTestCgroup(t *testing.T) testCgroup {
 	t.Helper()
+	if !cgroupguard.Enabled() {
+		t.Skip("set " + cgroupguard.Env + "=1 to run the real-cgroup churn tests (in a delegated scope, not a login session)")
+	}
 	mountinfo, err := os.ReadFile("/proc/self/mountinfo")
 	if err != nil {
 		t.Fatal(err)
@@ -156,6 +173,9 @@ func newTestCgroup(t *testing.T) testCgroup {
 	}
 	if rel == "" {
 		t.Skip("the test process has no cgroup2 membership: the real cgroup.kill test cannot run")
+	}
+	if why := cgroupguard.RefuseBase(rel); why != "" {
+		t.Fatalf("%s: refusing to churn processes below %q; run under systemd-run --user --scope -p Delegate=yes", why, rel)
 	}
 	path := filepath.Join(mount, rel, fmt.Sprintf("tbound-trial-test-%d-%d", os.Getpid(), time.Now().UnixNano()))
 	if err := os.Mkdir(path, 0o755); err != nil {
@@ -183,6 +203,9 @@ func newTestCgroup(t *testing.T) testCgroup {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { dir.Close() })
+	if err := cgroupguard.ApplyLimits(path, filepath.Join(mount, rel)); err != nil {
+		t.Fatalf("refusing to churn processes in an uncapped cgroup: %v", err)
+	}
 	if err := writeCgroupFile(dir, "cgroup.kill", ""); err != nil && !errors.Is(err, syscall.EINVAL) {
 		t.Skipf("cgroup.kill is not writable in the test cgroup: %v", err)
 	}
@@ -519,5 +542,90 @@ func TestResetHostRemovesNrCgroupsAndCreatesTheNetSinkParentOnRealCgroups(t *tes
 		if _, err := os.Stat(filepath.Join(cg.path, name)); (err == nil) != want {
 			t.Errorf("%s present=%v, want %v", name, err == nil, want)
 		}
+	}
+}
+
+// A no-reap/v1 run leaves its survivors in tbound-nr-* scopes by design, and only the reset kills
+// them. `reset --check` (the runner's Prepare, which runs before the reset) must therefore not count
+// them, or the next trial after a no-reap run is refused forever; a live process anywhere else in
+// the cells subtree still refuses.
+func TestCellsLiveOutsideNoReapIgnoresOnlyNoReapScopes(t *testing.T) {
+	for name, tc := range map[string]struct {
+		events, procs string
+		children      map[string]string // name -> cgroup.events
+		want          bool
+	}{
+		"idle":                          {"populated 0\n", "", map[string]string{"net-sink": "populated 0\n"}, false},
+		"only no-reap survivors":        {"populated 1\n", "", map[string]string{"tbound-nr-aa": "populated 1\n", "net-sink": "populated 0\n"}, false},
+		"a live command scope":          {"populated 1\n", "", map[string]string{"tbound-nr-aa": "populated 1\n", "tbound-cmd-bb": "populated 1\n"}, true},
+		"a live net-sink scope":         {"populated 1\n", "", map[string]string{"net-sink": "populated 1\n"}, true},
+		"a process in the cells itself": {"populated 1\n", "42\n", map[string]string{"tbound-nr-aa": "populated 1\n"}, true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir, path := fakeCgroupDir(t, true, tc.events)
+			if err := os.WriteFile(filepath.Join(path, "cgroup.procs"), []byte(tc.procs), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			for child, events := range tc.children {
+				if err := os.Mkdir(filepath.Join(path, child), 0o700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(path, child, "cgroup.events"), []byte(events), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if got, err := cgroupLiveOutsideNoReap(dir); err != nil || got != tc.want {
+				t.Fatalf("cgroupLiveOutsideNoReap = %v, %v; want %v", got, err, tc.want)
+			}
+		})
+	}
+	// A child without readable cgroup.events is an error, not idle.
+	dir, path := fakeCgroupDir(t, true, "populated 1\n")
+	_ = os.WriteFile(filepath.Join(path, "cgroup.procs"), nil, 0o600)
+	_ = os.Mkdir(filepath.Join(path, "tbound-cmd-x"), 0o700)
+	if _, err := cgroupLiveOutsideNoReap(dir); err == nil {
+		t.Fatal("an unreadable child cgroup was taken as idle")
+	}
+}
+
+// The same on the kernel: a live process in a tbound-nr-* scope does not make --check refuse, one in
+// any other child does, and the reset's kill ends both.
+func TestCellsLiveOutsideNoReapOnARealCgroup(t *testing.T) {
+	cg := newTestCgroup(t)
+	liveOutsideNoReap := func() (bool, error) {
+		dir, err := os.Open(cg.path)
+		if err != nil {
+			return false, err
+		}
+		defer dir.Close()
+		return cgroupLiveOutsideNoReap(dir)
+	}
+	start := func(child string) {
+		path := filepath.Join(cg.path, child)
+		if err := os.Mkdir(path, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		d, err := os.Open(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer d.Close()
+		cmd := inCgroup(roleCmd("sleeper"), d)
+		if err := cmd.Start(); err != nil {
+			t.Fatal(err)
+		}
+		go func() { _ = cmd.Wait() }()
+		time.Sleep(100 * time.Millisecond)
+	}
+	start("tbound-nr-aa")
+	if live, err := liveOutsideNoReap(); err != nil || live {
+		t.Fatalf("a no-reap survivor alone: live %v, err %v", live, err)
+	}
+	start("tbound-cmd-bb")
+	if live, err := liveOutsideNoReap(); err != nil || !live {
+		t.Fatalf("a live command scope: live %v, err %v", live, err)
+	}
+	if err := killCgroup(cg.dir, 5*time.Second); err != nil {
+		t.Fatal(err)
 	}
 }

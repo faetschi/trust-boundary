@@ -107,15 +107,18 @@ func TestRouteReportGuestCellsAreCoveredByTheirArtifactsAndTheirTests(t *testing
 func guestRouteEnv(t *testing.T) *routeEnv {
 	t.Helper()
 	e := newRouteEnv(t, guestRouteDoc(), passingRoutePkgs(allRouteRefs...))
-	pins := `{"freeze_commit":"` + commit + `","pins":{"profile_hash":"` + guestPins.profile + `","containment_profile_digest":"` + sha256Of([]byte("production template")) + `","frozen_source_digest":"` + guestPins.source + `","admin_pubkey_digest":"` + guestPins.admin + `"}}`
+	pins := `{"freeze_commit":"` + commit + `","v_image_digest":"` + guestPins.image + `","pins":{"profile_hash":"` + sha256Of([]byte("pilot profile")) + `","containment_profile_digest":"` + sha256Of([]byte("pilot template")) + `","base_template_digest":"` + guestPins.base + `","frozen_source_digest":"` + guestPins.source + `","admin_pubkey_digest":"` + guestPins.admin + `","runtime_bundle_digest":"` + guestPins.bundle + `","runner_digest":"` + guestPins.runner + `"}}`
 	if err := os.WriteFile(e.config, []byte(pins), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	return e
 }
 
-var guestPins = struct{ profile, source, binary, admin string }{
-	"sha256:" + strings.Repeat("a", 64), "sha256:" + strings.Repeat("b", 64), "sha256:" + strings.Repeat("c", 64), "sha256:" + strings.Repeat("e", 64)}
+// guestPins are the pins the guest artifacts are bound to; profile is the run's own profile (never the pilot's).
+var guestPins = struct{ profile, source, binary, admin, base, image, bundle, runner string }{
+	"sha256:" + strings.Repeat("a", 64), fixtureDigest("tree"), "sha256:" + strings.Repeat("c", 64), "sha256:" + strings.Repeat("e", 64),
+	"sha256:" + strings.Repeat("f", 64), "sha256:" + strings.Repeat("9", 64),
+	"sha256:" + strings.Repeat("7", 64), "sha256:" + strings.Repeat("6", 64)}
 
 // writeRouteArtifact writes a good artifact of kind, bound to the run's pins and the commit.
 func writeRouteArtifact(t *testing.T, dir, kind string, mutate func(*guestevidence.RouteDenied)) string {
@@ -129,7 +132,10 @@ func writeRouteArtifact(t *testing.T, dir, kind string, mutate func(*guesteviden
 			ResultDigest: sha256Of([]byte("result " + method)), ReceiptDigest: sha256Of([]byte("receipt " + method)), ContainerID: "c-" + method, JournalSequence: seq}
 	}
 	d := guestevidence.RouteDenied{RunID: "run-1", ProfileHash: guestPins.profile, FrozenSourceDigest: guestPins.source, Target: "/home/node/.profile",
-		Cell:    guestevidence.RouteCell{Kind: cell, ImageDigest: sha256Of([]byte("i")), TemplateDigest: sha256Of([]byte("t")), LandlockRulesetDigest: sha256Of([]byte("l"))},
+		Binding: guestevidence.ProfileBinding{ProfileDigest: guestPins.profile, TemplateDigest: sha256Of([]byte("t")), BaseTemplateDigest: guestPins.base,
+			RegistrationDigest: sha256Of([]byte("registration")), ImageDigest: guestPins.image, SourceDigest: guestPins.source, AdminPubkeyDigest: guestPins.admin,
+			RuntimeBundleDigest: guestPins.bundle, RunnerDigest: guestPins.runner},
+		Cell:    guestevidence.RouteCell{Kind: cell, ImageDigest: guestPins.image, TemplateDigest: sha256Of([]byte("t")), LandlockRulesetDigest: sha256Of([]byte("l"))},
 		Journal: guestevidence.RouteJournal{Records: 9, HeadHash: strings.Repeat("d", 64)},
 		Control: attempt("control", "read", 0, 2),
 		Attempts: []guestevidence.RouteAttempt{attempt("absolute", "denied", 1, 3), attempt("traversal", "denied", 1, 4),
@@ -147,14 +153,13 @@ func writeRouteArtifact(t *testing.T, dir, kind string, mutate func(*guesteviden
 			}
 		}
 		var err error
-		d.Control, d.Attempts, err = guestevidence.DirectRuntimeAttempts(d.Target, "/work/src/release.txt", "tbound-d09-cell-1", sha256Of([]byte("proof")), 2, 0, observed)
+		d.Control, d.Attempts, err = guestevidence.DirectRuntimeAttempts(d.Target, "/var/lib/tbound/pi-worker/src/release.txt", "tbound-d09-cell-1", sha256Of([]byte("proof")), 2, 0, observed)
 		if err != nil {
 			t.Fatal(err)
 		}
 		d.Cell.ProductionTemplateDigest = sha256Of([]byte("production template"))
-		d.ProbeProfileDigest, d.ProfileSourceDigest = sha256Of([]byte("probe profile")), guestPins.source
 		d.Cell.CellUID, d.Cell.CellGID = 100731, 100731
-		d.AdminPubkeyDigest, d.Limits = guestPins.admin, guestevidence.DirectRuntimeLimits
+		d.Limits = guestevidence.DirectRuntimeLimits
 		d.View = &cellview.View{EUID: 100731, EGID: 100731, OverflowRead: true, OverflowUID: 65534, OverflowGID: 65534, Facts: []cellview.Fact{
 			{Path: "/", Kind: cellview.KindDir, Mode: 0o755}, {Path: "/home", Kind: cellview.KindDir, Mode: 0o755},
 			{Path: "/home/node", Kind: cellview.KindDir, Mode: 0o755, UID: 1000, GID: 1000},
@@ -241,6 +246,21 @@ func TestRouteReportCommandCoversGuestCellsOnlyWithValidArtifacts(t *testing.T) 
 	}
 	if rep := status(foreign); rep.Complete || rep.ByRoute[routematrix.RouteBashView][routematrix.StatusPendingGuest] != 1 {
 		t.Fatalf("foreign artifact: %+v", rep)
+	}
+
+	// A run of another service build or of another runtime bundle than run.json pins covers nothing.
+	for name, mutate := range map[string]func(*guestevidence.RouteDenied){
+		"another runner":         func(d *guestevidence.RouteDenied) { d.Binding.RunnerDigest = sha256Of([]byte("another runner")) },
+		"another runtime bundle": func(d *guestevidence.RouteDenied) { d.Binding.RuntimeBundleDigest = sha256Of([]byte("another bundle")) },
+	} {
+		art := writeRouteArtifact(t, t.TempDir(), guestevidence.KindRouteBashView, mutate)
+		out := filepath.Join(e.dir, strings.ReplaceAll(name, " ", "-")+".json")
+		if err := e.run(with(out, "--artifact", guestevidence.KindRouteBashView+"="+art)...); err != nil {
+			t.Fatal(err)
+		}
+		if rep := status(out); rep.Complete || rep.ByRoute[routematrix.RouteBashView][routematrix.StatusPendingGuest] != 1 {
+			t.Fatalf("%s: %+v", name, rep)
+		}
 	}
 }
 

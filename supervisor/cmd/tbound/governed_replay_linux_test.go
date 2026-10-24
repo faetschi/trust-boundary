@@ -175,10 +175,7 @@ func newGovernedReplayFixtureWithPolicy(t *testing.T, turns []providerbridge.Dev
 	systemCopy, developerCopy := config.SystemPrompt, config.DeveloperPrompt
 	profile := broker.Profile{
 		ID: config.ProfileID, Model: providerbridge.ApprovedModel,
-		Messages: []openrouter.Message{
-			{Role: openrouter.System, Content: &systemCopy},
-			{Role: openrouter.Developer, Content: &developerCopy},
-		},
+		Messages:     providerbridge.InitialPromptMessages(openrouter.Route{}, systemCopy, developerCopy),
 		ToolManifest: broker.DeclaredToolManifest(), ToolCallIssuer: governedCallIssuer,
 		ResponseIDIssuer: governedResponseIssuer, Generation: g0.ID(),
 	}

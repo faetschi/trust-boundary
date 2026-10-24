@@ -1,6 +1,6 @@
 {
   "schema": "tbound-g1-case/v1",
-  "status": "draft - owner approval required",
+  "status": "approved by owner 2026-10-22",
   "claim_bearing": false,
   "case_id": "G1-ENG-01",
   "route": "engineering",
@@ -16,7 +16,7 @@
     "out/release.sha256"
   ],
   "ceilings": {
-    "max_host_calls": 8,
+    "max_host_calls": 12,
     "max_tokens": 20000,
     "duration_seconds": 1200
   },

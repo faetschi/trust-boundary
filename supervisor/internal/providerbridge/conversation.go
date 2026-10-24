@@ -57,6 +57,9 @@ type eventJournal interface {
 }
 
 type Config struct {
+	// HintProvider is host-owned and nil selects the frozen static treatment.
+	HintProvider HintProvider
+
 	ConversationID      string
 	WorkflowID          string
 	ProfileID           string
@@ -256,25 +259,26 @@ type promptEvidence struct {
 }
 
 type resultEvidence struct {
-	WorkflowID       string `json:"workflow_id"`
-	ConversationID   string `json:"conversation_id"`
-	ResponseIDIssuer string `json:"response_id_issuer"`
-	ToolCallIDIssuer string `json:"tool_call_id_issuer"`
-	ResponseID       string `json:"response_id"`
-	ToolCallID       string `json:"tool_call_id"`
-	Tool             string `json:"tool"`
-	ArgumentDigest   string `json:"argument_digest"`
-	Sequence         uint64 `json:"sequence"`
-	GenerationFrom   string `json:"generation_from"`
-	GenerationTo     string `json:"generation_to"`
-	TreeDigestFrom   string `json:"tree_digest_from"`
-	TreeDigestTo     string `json:"tree_digest_to"`
-	ResultID         string `json:"result_id"`
-	ResultDigest     string `json:"result_digest"`
-	Result           []byte `json:"result"`
-	TransitionID     string `json:"transition_id,omitempty"`
-	TransitionSeq    uint64 `json:"transition_sequence,omitempty"`
-	EffectID         string `json:"effect_id,omitempty"`
+	WorkflowID       string         `json:"workflow_id"`
+	ConversationID   string         `json:"conversation_id"`
+	ResponseIDIssuer string         `json:"response_id_issuer"`
+	ToolCallIDIssuer string         `json:"tool_call_id_issuer"`
+	ResponseID       string         `json:"response_id"`
+	ToolCallID       string         `json:"tool_call_id"`
+	Tool             string         `json:"tool"`
+	ArgumentDigest   string         `json:"argument_digest"`
+	Sequence         uint64         `json:"sequence"`
+	GenerationFrom   string         `json:"generation_from"`
+	GenerationTo     string         `json:"generation_to"`
+	TreeDigestFrom   string         `json:"tree_digest_from"`
+	TreeDigestTo     string         `json:"tree_digest_to"`
+	ResultID         string         `json:"result_id"`
+	ResultDigest     string         `json:"result_digest"`
+	Result           []byte         `json:"result"`
+	Hint             *HintSelection `json:"hint,omitempty"`
+	TransitionID     string         `json:"transition_id,omitempty"`
+	TransitionSeq    uint64         `json:"transition_sequence,omitempty"`
+	EffectID         string         `json:"effect_id,omitempty"`
 }
 
 // admissionDeniedEvidence is the provider_admission_denied record: the exact DENY Result released for an
@@ -359,11 +363,7 @@ func newWithDoer(cfg Config, model string, doer broker.HTTPDoer, journal eventJo
 	if err != nil {
 		return nil, fmt.Errorf("register provider identifier issuers: %w", err)
 	}
-	system, developer := cfg.SystemPrompt, cfg.DeveloperPrompt
-	history := []openrouter.Message{
-		{Role: openrouter.System, Content: &system},
-		{Role: openrouter.Developer, Content: &developer},
-	}
+	history := InitialPromptMessages(route, cfg.SystemPrompt, cfg.DeveloperPrompt)
 	if _, err := openrouter.BuildRequestForRoute(route, history, 0); err != nil {
 		return nil, fmt.Errorf("validate immutable provider prompt: %w", err)
 	}
@@ -432,94 +432,120 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 	if c.turns >= MaxTranscriptTurns || c.sequence == math.MaxUint64 {
 		return Turn{}, c.failLocked(errors.New("provider conversation turn/sequence budget exhausted"))
 	}
-	profile := broker.Profile{
-		ID: c.cfg.ProfileID, ConversationID: c.cfg.ConversationID, Model: c.model, Route: c.cfg.Route, Messages: cloneMessages(c.history),
-		ToolManifest: broker.DeclaredToolManifest(), ToolCallIssuer: callIssuer,
-		ResponseIDIssuer: responseIssuer, Generation: c.generation,
-	}
-	requestBroker, err := broker.New(profile, c.doer)
-	if err != nil {
-		return Turn{}, c.failLocked(fmt.Errorf("construct registered provider broker: %w", err))
-	}
-	completionLimit := uint64(0)
-	if c.cfg.SelectCompletionTokenLimit != nil {
-		completionLimit, err = c.cfg.SelectCompletionTokenLimit(ctx)
-		if err != nil || completionLimit == 0 {
-			return Turn{}, c.failLocked(errors.Join(errors.New("host selected no positive provider completion-token cap"), err))
-		}
-	} else if c.cfg.BeforeExchange != nil {
-		if err := c.cfg.BeforeExchange(ctx); err != nil {
-			return Turn{}, c.failLocked(fmt.Errorf("reserve durable provider allowance before dispatch: %w", err))
-		}
-	}
 	var hostCallBinding *HostCallBinding
+	var completionLimit uint64
 	// Monetary accounting (research route only). spendUnit is the open ledger
 	// reservation of this request. Once the request may have left the process
 	// (spendDispatched) and until SettleSpend has run (spendSettled), any return
 	// from NextTurn leaves the cost unestablished and marks the unit uncertain.
 	var spendUnit string
 	spendDispatched, spendSettled := false, false
+	// disposed is set where the failed exchange is left disposed of in the provider journal.
+	disposed := false
 	defer func() {
 		if spendUnit != "" && spendDispatched && !spendSettled {
 			if err := c.cfg.Spend.UncertainSpend(context.WithoutCancel(ctx), spendUnit); err != nil {
 				turnErr = errors.Join(turnErr, fmt.Errorf("mark provider spend uncertain: %w", err))
+				disposed = false
 			}
+		}
+		if disposed && turnErr != nil {
+			turnErr = journaledFailure{turnErr}
 		}
 	}()
-	captured, exchangeErr := requestBroker.ExchangeWithCompletionLimit(ctx, completionLimit, func(request broker.RequestRecord) error {
-		if c.cfg.Spend != nil {
-			unit, spendErr := c.cfg.Spend.ReserveSpend(ctx, SpendReservation{WorkflowID: c.cfg.WorkflowID,
-				ConversationID: c.cfg.ConversationID, Turn: c.turns + 1, CompletionLimit: completionLimit, Request: request})
-			if spendErr != nil {
-				return fmt.Errorf("reserve provider spend before dispatch: %w", spendErr)
-			}
-			spendUnit = unit
+	var captured openrouter.CapturedResponse
+	var exchangeErr error
+	var records []broker.ExchangeRecord
+	// A pre-effect provider failure may be retried (see retry.go): only with host-call accounting and
+	// without monetary spend, so every attempt is its own reserved host call.
+	retryable := c.cfg.Spend == nil && c.cfg.SelectCompletionTokenLimit != nil && c.cfg.ReserveHostCall != nil && c.cfg.CompleteHostCall != nil
+	for attempt := uint64(0); ; attempt++ {
+		hostCallBinding = nil
+		profile := broker.Profile{
+			ID: c.cfg.ProfileID, ConversationID: c.cfg.ConversationID, Model: c.model, Route: c.cfg.Route, Messages: cloneMessages(c.history),
+			ToolManifest: broker.DeclaredToolManifest(), ToolCallIssuer: callIssuer,
+			ResponseIDIssuer: responseIssuer, Generation: c.generation,
 		}
-		// refuse reports a refusal that happens before the request is handed to the
-		// transport, after the spend reservation: the request provably never left.
-		refuse := func(cause error) error {
-			if spendUnit != "" {
-				if err := c.cfg.Spend.ReleaseSpend(ctx, spendUnit); err != nil {
-					spendDispatched = true // the release is not durable; keep the unit counted
-					return errors.Join(cause, fmt.Errorf("release provider spend: %w", err))
+		requestBroker, err := broker.New(profile, c.doer)
+		if err != nil {
+			return Turn{}, c.failLocked(fmt.Errorf("construct registered provider broker: %w", err))
+		}
+		completionLimit = 0
+		if c.cfg.SelectCompletionTokenLimit != nil {
+			completionLimit, err = c.cfg.SelectCompletionTokenLimit(ctx)
+			if err != nil || completionLimit == 0 {
+				return Turn{}, c.failLocked(errors.Join(errors.New("host selected no positive provider completion-token cap"), err))
+			}
+		} else if c.cfg.BeforeExchange != nil {
+			if err := c.cfg.BeforeExchange(ctx); err != nil {
+				return Turn{}, c.failLocked(fmt.Errorf("reserve durable provider allowance before dispatch: %w", err))
+			}
+		}
+		captured, exchangeErr = requestBroker.ExchangeWithCompletionLimit(ctx, completionLimit, func(request broker.RequestRecord) error {
+			if c.cfg.Spend != nil {
+				unit, spendErr := c.cfg.Spend.ReserveSpend(ctx, SpendReservation{WorkflowID: c.cfg.WorkflowID,
+					ConversationID: c.cfg.ConversationID, Turn: c.turns + 1, CompletionLimit: completionLimit, Request: request})
+				if spendErr != nil {
+					return fmt.Errorf("reserve provider spend before dispatch: %w", spendErr)
 				}
-				spendUnit = ""
+				spendUnit = unit
 			}
-			return cause
-		}
-		if c.cfg.ReserveHostCall == nil {
+			// refuse reports a refusal that happens before the request is handed to the
+			// transport, after the spend reservation: the request provably never left.
+			refuse := func(cause error) error {
+				if spendUnit != "" {
+					if err := c.cfg.Spend.ReleaseSpend(ctx, spendUnit); err != nil {
+						spendDispatched = true // the release is not durable; keep the unit counted
+						return errors.Join(cause, fmt.Errorf("release provider spend: %w", err))
+					}
+					spendUnit = ""
+				}
+				return cause
+			}
+			if c.cfg.ReserveHostCall == nil {
+				spendDispatched = spendUnit != ""
+				return nil
+			}
+			binding, reserveErr := c.cfg.ReserveHostCall(ctx, request, completionLimit)
+			if reserveErr != nil {
+				return refuse(reserveErr)
+			}
+			if !validHostCallBinding(binding) || len(binding.RequestDigest) != 64 || binding.RequestDigest != broker.DigestRequestRecord(request) ||
+				binding.TokenUpperBound != completionLimit {
+				return refuse(errors.New("host-call reservation does not bind the exact outbound request and completion cap"))
+			}
+			hostCallBinding = &binding
+			reservation := hostCallReservationEvidence{WorkflowID: c.cfg.WorkflowID,
+				ConversationID: c.cfg.ConversationID, ProfileID: c.cfg.ProfileID,
+				Turn: c.turns + 1, Binding: binding, Request: requestEvidenceFromBroker(request)}
+			encoded, marshalErr := json.Marshal(reservation)
+			if marshalErr != nil {
+				return refuse(marshalErr)
+			}
+			if _, appendErr := c.appendLocked("provider_host_call_reserved", "host-call-reserved", encoded); appendErr != nil {
+				return refuse(fmt.Errorf("persist exact host-call reservation before HTTP dispatch: %w", appendErr))
+			}
 			spendDispatched = spendUnit != ""
 			return nil
+		})
+		records = requestBroker.Records()
+		if exchangeErr != nil && retryable && attempt < MaxProviderRetries && ctx.Err() == nil &&
+			hostCallBinding != nil && retryableExchange(records) {
+			if retryErr := c.recordRetryableFailureLocked(ctx, records, *hostCallBinding, attempt+1); retryErr != nil {
+				return Turn{}, c.failLocked(retryErr)
+			}
+			continue
 		}
-		binding, reserveErr := c.cfg.ReserveHostCall(ctx, request, completionLimit)
-		if reserveErr != nil {
-			return refuse(reserveErr)
-		}
-		if !validHostCallBinding(binding) || len(binding.RequestDigest) != 64 || binding.RequestDigest != broker.DigestRequestRecord(request) ||
-			binding.TokenUpperBound != completionLimit {
-			return refuse(errors.New("host-call reservation does not bind the exact outbound request and completion cap"))
-		}
-		hostCallBinding = &binding
-		reservation := hostCallReservationEvidence{WorkflowID: c.cfg.WorkflowID,
-			ConversationID: c.cfg.ConversationID, ProfileID: c.cfg.ProfileID,
-			Turn: c.turns + 1, Binding: binding, Request: requestEvidenceFromBroker(request)}
-		encoded, marshalErr := json.Marshal(reservation)
-		if marshalErr != nil {
-			return refuse(marshalErr)
-		}
-		if _, appendErr := c.appendLocked("provider_host_call_reserved", "host-call-reserved", encoded); appendErr != nil {
-			return refuse(fmt.Errorf("persist exact host-call reservation before HTTP dispatch: %w", appendErr))
-		}
-		spendDispatched = spendUnit != ""
-		return nil
-	})
-	records := requestBroker.Records()
+		break
+	}
 	if exchangeErr != nil {
 		persistErr := c.persistFailedExchangeLocked(records, exchangeErr, hostCallBinding)
+		disposed = exchangeDisposed(persistErr, records, hostCallBinding)
 		return Turn{}, c.failLocked(errors.Join(fmt.Errorf("registered provider exchange failed; response withheld: %w", exchangeErr), persistErr))
 	}
 	if err := ctx.Err(); err != nil {
 		persistErr := c.persistFailedExchangeLocked(records, err, hostCallBinding)
+		disposed = exchangeDisposed(persistErr, records, hostCallBinding)
 		return Turn{}, c.failLocked(errors.Join(fmt.Errorf("provider exchange canceled; response withheld: %w", err), persistErr))
 	}
 	if len(records) != 1 || !records[0].HasResponse() {
@@ -553,6 +579,7 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 	}
 	if err := validateTurnProjectionBudget(projection); err != nil {
 		persistErr := c.persistFailedExchangeLocked(records, err, hostCallBinding)
+		disposed = exchangeDisposed(persistErr, records, hostCallBinding)
 		return Turn{}, c.failLocked(errors.Join(fmt.Errorf("provider response projection exceeds its durable evidence budget: %w", err), persistErr))
 	}
 	callArray := []openrouter.PriorToolCall(nil)
@@ -719,7 +746,7 @@ func (c *Conversation) RecordDecision(ctx context.Context, proposal protocol.Pro
 	c.current.decision = decision
 	if decision.Verdict == gate.Deny {
 		result := resultFor(proposal, decision, nil)
-		if err := c.appendToolResultLocked(result, "", c.treeDigest, 0); err != nil {
+		if err := c.appendToolResultLocked(ctx, result, "", c.treeDigest, 0); err != nil {
 			return c.failLocked(fmt.Errorf("persist denied tool result; result withheld: %w", err))
 		}
 		if c.cfg.AdvanceProgress != nil {
@@ -809,7 +836,7 @@ func (e *ResultingExecutor) Execute(ctx context.Context, proposal protocol.Propo
 		}
 	}
 	result := resultFor(proposal, decision, output)
-	if err := c.appendToolResultLocked(result, nextGeneration, nextTreeDigest, transitionSequence, transitionID, effectID); err != nil {
+	if err := c.appendToolResultLocked(ctx, result, nextGeneration, nextTreeDigest, transitionSequence, transitionID, effectID); err != nil {
 		return nil, c.recordUnknownExecutionLocked(proposal, decision, fmt.Errorf("persist exact executor result; IPC result withheld: %w", err), output)
 	}
 	if transitionSequence != 0 {
@@ -847,7 +874,7 @@ func (c *Conversation) recordAdmissionDenied(ctx context.Context, proposal proto
 		return c.recordUnknownExecutionLocked(proposal, decision, errors.New("admission denial effect ID was replayed"))
 	}
 	result := admissionDeniedResult(proposal, decision, denied.ReasonCode)
-	if err := c.appendResultLocked("provider_admission_denied", result, denied.ReasonCode, c.generation, c.treeDigest, 0, "", denied.EffectID); err != nil {
+	if err := c.appendResultLocked(ctx, "provider_admission_denied", result, denied.ReasonCode, c.generation, c.treeDigest, 0, "", denied.EffectID); err != nil {
 		return c.recordUnknownExecutionLocked(proposal, decision, fmt.Errorf("persist admission denial; IPC result withheld: %w", err))
 	}
 	c.effectIDs[denied.EffectID] = struct{}{}
@@ -893,6 +920,9 @@ func (c *Conversation) recordUnknownExecutionLocked(proposal protocol.Proposal, 
 			ExecutorOutput       []byte `json:"executor_output,omitempty"`
 			Outcome              string `json:"outcome"`
 			Failure              string `json:"failure"`
+			// CommandNotStarted types the UNKNOWN: the runner proved the command never started and its cell
+			// gone, and no output exists. Abandon accepts exactly that as the call's disposition.
+			CommandNotStarted bool `json:"command_not_started,omitempty"`
 		}{
 			WorkflowID: c.cfg.WorkflowID, ConversationID: c.cfg.ConversationID,
 			ResponseIDIssuer: responseIssuer, ToolCallIDIssuer: callIssuer,
@@ -900,6 +930,7 @@ func (c *Conversation) recordUnknownExecutionLocked(proposal protocol.Proposal, 
 			Generation: c.current.generation, ResultID: stableResultID(c.cfg.WorkflowID, c.cfg.ConversationID, c.current.responseID, c.current.call.ID),
 			ResultDigest: resultDigest, ExecutorOutputDigest: "sha256:" + hex.EncodeToString(rawDigest[:]), ExecutorOutput: rawOutput,
 			Outcome: "UNKNOWN", Failure: safeFailure(cause),
+			CommandNotStarted: proposal.Tool == "bash" && len(rawOutput) == 0 && errors.Is(cause, protocol.ErrCommandNotStarted),
 		})
 		if marshalErr == nil {
 			if _, appendErr := c.appendLocked("provider_tool_result_unknown", "unknown-result", data); appendErr != nil {
@@ -924,7 +955,7 @@ func (c *Conversation) Close() {
 	c.mu.Unlock()
 }
 
-func (c *Conversation) appendToolResultLocked(result protocol.Result, nextGeneration, nextTreeDigest string, transitionSequence uint64, transitionIDs ...string) error {
+func (c *Conversation) appendToolResultLocked(ctx context.Context, result protocol.Result, nextGeneration, nextTreeDigest string, transitionSequence uint64, transitionIDs ...string) error {
 	transitionID, effectID := "", ""
 	if len(transitionIDs) > 0 {
 		transitionID = transitionIDs[0]
@@ -932,12 +963,12 @@ func (c *Conversation) appendToolResultLocked(result protocol.Result, nextGenera
 	if len(transitionIDs) > 1 {
 		effectID = transitionIDs[1]
 	}
-	return c.appendResultLocked("provider_tool_result", result, "", nextGeneration, nextTreeDigest, transitionSequence, transitionID, effectID)
+	return c.appendResultLocked(ctx, "provider_tool_result", result, "", nextGeneration, nextTreeDigest, transitionSequence, transitionID, effectID)
 }
 
 // appendResultLocked journals the exact protocol result of the current call and appends it to the history.
 // A non-empty denialReason makes it the provider_admission_denied record of an ALLOWed operation.
-func (c *Conversation) appendResultLocked(kind string, result protocol.Result, denialReason, nextGeneration, nextTreeDigest string,
+func (c *Conversation) appendResultLocked(ctx context.Context, kind string, result protocol.Result, denialReason, nextGeneration, nextTreeDigest string,
 	transitionSequence uint64, transitionID, effectID string) error {
 	if c.current == nil {
 		return ErrWrongState
@@ -967,6 +998,18 @@ func (c *Conversation) appendResultLocked(kind string, result protocol.Result, d
 		ResultDigest: resultDigest, Result: encoded, TransitionID: transitionID,
 		TransitionSeq: transitionSequence, EffectID: effectID,
 	}
+	if reason := hintReason(result); reason != "" {
+		input := HintInput{ReasonCode: reason, Tool: c.current.call.Name}
+		input.Arguments, _ = protocol.CanonicalArguments(input.Tool, c.current.call.RawArguments)
+		for i := len(c.history) - 1; i >= 0; i-- {
+			if c.history[i].Role == openrouter.User && c.history[i].Content != nil {
+				input.Task = *c.history[i].Content
+				break
+			}
+		}
+		selection := selectHint(ctx, c.cfg.HintProvider, input)
+		base.Hint = &selection
+	}
 	var evidence []byte
 	if denialReason != "" {
 		evidence, err = json.Marshal(admissionDeniedEvidence{resultEvidence: base, ReasonCode: denialReason})
@@ -980,7 +1023,10 @@ func (c *Conversation) appendResultLocked(kind string, result protocol.Result, d
 	if err != nil {
 		return err
 	}
-	content := string(encoded)
+	content, err := journaledResultText(encoded, result, base.Hint)
+	if err != nil {
+		return err
+	}
 	message := openrouter.Message{Role: openrouter.Tool, ToolCallID: c.current.call.ID, Content: &content}
 	if err := c.appendHistoryLocked(message); err != nil {
 		return err
@@ -1061,6 +1107,19 @@ func validateTurnProjectionBudget(projection Turn) error {
 		return errors.New("canonical provider turn projection exceeds one mebibyte")
 	}
 	return nil
+}
+
+// journaledFailure marks a NextTurn error whose failed exchange is disposed of in the provider
+// journal: persistFailedExchangeLocked wrote its unknown record, or nothing reserved was left open.
+// It keeps the wrapped error's text, which reaches the worker.
+type journaledFailure struct{ error }
+
+func (f journaledFailure) Unwrap() error { return f.error }
+
+// exchangeDisposed reports whether persistFailedExchangeLocked left the exchange disposed of. With no
+// exchange record to journal, a made host-call reservation stays open (it is not in the journal).
+func exchangeDisposed(persistErr error, records []broker.ExchangeRecord, hostCall *HostCallBinding) bool {
+	return persistErr == nil && (len(records) > 0 || hostCall == nil)
 }
 
 func (c *Conversation) persistFailedExchangeLocked(records []broker.ExchangeRecord, failure error,
@@ -1343,5 +1402,25 @@ func reflectNil(value any) bool {
 		return v.IsNil()
 	default:
 		return false
+	}
+}
+
+// InitialPromptMessages builds the immutable prompt prefix of a conversation: the system
+// prompt and the registered developer prompt. The fresh path and the recovery replay both
+// build it here, so a rebuilt request body is identical to the original.
+//
+// The OpenCode Go engineering route rejects the "developer" role ("chat message role
+// developer is not supported"), so there the developer prompt text goes out as a second
+// "system" message; DeveloperPrompt and its digest fields are unchanged. The research
+// route keeps "developer": its request shape is frozen by the research profile.
+func InitialPromptMessages(route openrouter.Route, systemPrompt, developerPrompt string) []openrouter.Message {
+	system, developer := systemPrompt, developerPrompt
+	developerRole := openrouter.Developer
+	if !route.IsResearch() {
+		developerRole = openrouter.System
+	}
+	return []openrouter.Message{
+		{Role: openrouter.System, Content: &system},
+		{Role: developerRole, Content: &developer},
 	}
 }

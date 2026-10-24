@@ -67,6 +67,8 @@ type trialTestEnv struct {
 	dirtyAtKill bool
 	killErr     error
 	snapshotFn  func(root, label string) wsoracle.Manifest
+	// snapshotDirFn replaces the digest snapshot of the pinned root.
+	snapshotDirFn func(dir *os.File, label string) wsoracle.Manifest
 	// events is the order in which the reset used its seams.
 	events     []string
 	lockErr    error
@@ -107,6 +109,13 @@ func newTrialTestEnv(t *testing.T) *trialTestEnv {
 		artifacts: e.files,
 		liveRoot:  root,
 		owner:     owner,
+		registeredRoot: func(context.Context) (uint64, uint64, error) {
+			var st syscall.Stat_t
+			if err := syscall.Stat(root, &st); err != nil {
+				return 0, 0, err
+			}
+			return uint64(st.Dev), st.Ino, nil
+		},
 		cell: func(context.Context) (evidenceCell, error) {
 			return evidenceCell{ID: "cells", CgroupPath: "/cells", Hierarchy: "/cells", Inode: 1,
 				UID: owner.UID + trialTestInCellOffset, GID: owner.GID + trialTestInCellOffset, HostUID: owner.UID, HostGID: owner.GID}, nil
@@ -144,6 +153,13 @@ func newTrialTestEnv(t *testing.T) *trialTestEnv {
 				return e.snapshotFn(r, label)
 			}
 			return wsoracle.Snapshot(r, label)
+		},
+		snapshotDir: func(dir *os.File, label string) wsoracle.Manifest {
+			e.events = append(e.events, "verify")
+			if e.snapshotDirFn != nil {
+				return e.snapshotDirFn(dir, label)
+			}
+			return wsoracle.SnapshotDir(dir, label)
 		},
 	}
 	return e
@@ -209,6 +225,42 @@ func TestTrialResetCheckOnlyVerifiesPreconditionsAndTheArtifact(t *testing.T) {
 	e.rootUntouched(t)
 	if len(e.killed) != 0 {
 		t.Fatalf("--check killed %v", e.killed)
+	}
+}
+
+func TestTrialResetCheckProductionReadinessIgnoresOnlyNoReapSurvivors(t *testing.T) {
+	e := newTrialTestEnv(t)
+	_, path := fakeCgroupDir(t, true, "populated 1\n")
+	if err := os.WriteFile(filepath.Join(path, "cgroup.procs"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	addScope := func(name string) {
+		t.Helper()
+		child := filepath.Join(path, name)
+		if err := os.Mkdir(child, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(child, "cgroup.events"), []byte("populated 1\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	addScope("tbound-nr-aa")
+	old := openResetCheckCgroup
+	t.Cleanup(func() { openResetCheckCgroup = old })
+	openResetCheckCgroup = func(evidenceCell) (*os.File, error) { return os.Open(path) }
+	// Keep the production --check predicate: replacing it with the helper would miss a wiring regression.
+	e.cellPopulated = productionTrialEnv().cellPopulated
+	doc, _, err := e.run(t, "reset", trialTestCase, "--check")
+	if err != nil || !doc.Check || doc.FixtureDigest != e.digest {
+		t.Fatalf("--check with only no-reap survivors: doc %+v, err %v", doc, err)
+	}
+	addScope("tbound-cmd-bb")
+	if _, out, err := e.run(t, "reset", trialTestCase, "--check"); err == nil || !strings.Contains(err.Error(), "cells cgroup holds processes") || out != "" {
+		t.Fatalf("--check with a live command scope: err %v, output %q; want a refusal", err, out)
+	}
+	e.rootUntouched(t)
+	if got := strings.Join(e.events, ","); got != "lock,pending,unlock,lock,pending,unlock" {
+		t.Fatalf("--check did work beyond readiness: %s", got)
 	}
 }
 
@@ -300,8 +352,8 @@ func TestTrialResetFailsWhenTheKillOrTheVerificationFails(t *testing.T) {
 	e.rootUntouched(t) // the kill precedes the wipe
 
 	e = newTrialTestEnv(t)
-	e.snapshotFn = func(r, label string) wsoracle.Manifest {
-		m := wsoracle.Snapshot(r, label)
+	e.snapshotDirFn = func(dir *os.File, label string) wsoracle.Manifest {
+		m := wsoracle.SnapshotDir(dir, label)
 		m.Entries = append(m.Entries, wsoracle.Entry{Path: "extra", Type: wsoracle.TypeFile, Mode: 0o600, UID: e.owner.UID, GID: e.owner.GID, Nlink: 1,
 			SHA256: strings.Repeat("0", 64)})
 		return m
@@ -309,7 +361,7 @@ func TestTrialResetFailsWhenTheKillOrTheVerificationFails(t *testing.T) {
 	if _, out, err := e.run(t, "reset", trialTestCase); err == nil || out != "" || !strings.Contains(err.Error(), "does not digest") {
 		t.Fatalf("verification failure: err %v, output %q", err, out)
 	}
-	e.snapshotFn = func(r, label string) wsoracle.Manifest {
+	e.snapshotDirFn = func(dir *os.File, label string) wsoracle.Manifest {
 		return wsoracle.Manifest{Label: label, Gaps: []wsoracle.Gap{{Manifest: label, Kind: wsoracle.GapUnreadable}}}
 	}
 	if _, out, err := e.run(t, "reset", trialTestCase); err == nil || out != "" {

@@ -1,16 +1,29 @@
 # TBound — current state
 
-Updated 2026-10-19. Branch `codex/tbound-prototype`, HEAD after `051cfe0` (local only; do not push — origin diverged, backup `backup/tbound-prototype-3aed7bf`). **Paused at the owner's request** pending the merge of `integration/prototype-merge` (oracle calibration fixes wsoracle/v8, procoracle/v4 + origin's commits). Green results verify code only: G1 false, H1 unexecuted, containment not established. Engineering route OpenCode Go only.
+Updated 2026-10-23. Last freeze on the guest: **F12 = eed7722** (guest 172.24.152.73). Engineering route OpenCode Go.
 
-| Milestone | Current state |
+**Headline: the governed path works on the real guest; the pilot is not ready yet.** G1 (read, edit, bash, publish), the route probe and the direct-runtime probe pass on F11/F12 with correct Landlock confinement. The EVQ dry run passes 18 of 22 items; the rest need fresh artifacts from the next freeze and a netsink artifact from a trial reset.
+
+What the real guest exposed, freeze by freeze (each fixed with a regression test):
+
+| Freeze | Real-host bug |
 | --- | --- |
-| System | Code complete, reviewed. Not installed on the guest. |
-| Measurement | Oracles + runner complete. Gap: EFF-TRANSIENT, WS-05, WS-06 have no production source (observer coverage can't be complete) — first item after the merge. |
-| Research enablement | All five configurations wired (C, P scripted replay + deltas, B, V container, adaptive attacker), per-trial reset, task oracle, `tbound-run`. Every increment Codex-reviewed. |
-| Evidence (EVQ / routes) | 18 of 22 EVQ obligations established offline (bound to the frozen commit via `evq-capture`); 4 need guest artifacts (real provider exchange, net sink, process oracle, Linux capability). Route report: 2 of 4 cells covered; bash-view and direct-runtime need guest probe runs (producers exist). |
-| Experiment | Pilot corpus built and validated except reviews; G1 engineering case drafted (needs your approval). |
-| Guest (ABI 8) | 172.30.8.106; nft + Landlock present. Signing runbook consolidated (5 signatures + 2 deferred). |
+| F4-F6 | ownership via uid_map, read-only check on the root mount, namespace scan of other users' processes |
+| F7 | Bash evidence compared host and cell mount IDs |
+| F8 | publication never attested quiescence |
+| F9 | (G1 passed) route probe: nil vs empty change list broke the evidence binding |
+| F10 | Landlock restricted only one thread (wrong flag constant); prior settlement used the wrong epoch |
+| F11 | direct-runtime probe read its control file at the wrong path |
+| F12 | freeze kit reused stale guest evidence |
 
-After the merge: rebuild + re-pin digests, observer-coverage sources, runbook gaps (cosign key generation, root console after Z1, R5-5 alias), freeze → signing session + spikes + smoke + guest evidence → owner + advisor reviews → pre-registration → pilot → thesis corpus → G0/G1.
+| Milestone | State |
+| --- | --- |
+| System | Built; G1 and both probes pass on the real guest. |
+| Measurement | 18/22 EVQ in the dry run; full EVQ + route report needed at the pilot freeze. |
+| Research enablement | Static denial hints (H1 treatment) merged. C-DH parked until after H1. |
+| Pilot | Needs advisor review, protocol decisions, then corpus-mode checks (reset, net-sink, no-reap, V). |
+| Pre-registration, H1 | After the pilots (caps and costs come from the pilot). |
 
-Thesis amendments needed: D32 feedback allowlist (+ command_failed boolean), retry budget semantics, mismatched-budget pairs invalid; configuration definitions (P scripted replay, B no denials, V container); new stated limits (see TASK_STATE.md).
+Needs you: advisor review of the pilot manifest, the D26 scope cut and the residual-channel claim; pre-registration decisions.
+
+Next: TASK_STATE.md "Goal, in order".

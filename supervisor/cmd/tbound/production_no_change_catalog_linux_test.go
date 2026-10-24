@@ -37,6 +37,7 @@ type catalogReplaySummary struct {
 	TerminalProofSequence   uint64
 	TerminalTransactionID   string
 	OwnerDBPath             string
+	BashOutputPathsJSON     string
 }
 
 type catalogReplayFreshRequest struct {
@@ -186,6 +187,43 @@ func TestCatalogReplayFreshProcessHelper(t *testing.T) {
 	}
 }
 
+func TestCatalogRecoveryPreservesBashOutputScopeInFreshProcess(t *testing.T) {
+	for _, paths := range [][]string{nil, {}, {"task.txt"}} {
+		encodedPaths, err := json.Marshal(paths)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Run(string(encodedPaths), func(t *testing.T) {
+			root := privateGovernedTestRoot(t)
+			ownerRoot := filepath.Join(root, "owner-store")
+			journalPath := filepath.Join(root, "workflow-catalog.jsonl")
+			journal, err := audit.Open(journalPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			admissionHash := bareWorkflowDigest(digestBytes([]byte("bash-scope-recovery")))
+			entry := catalogReplayEntry(root, ownerRoot, admissionHash)
+			entry.BashOutputPaths = paths
+			reserved, err := json.Marshal(piServiceWorkflowEvent{SchemaVersion: workflowCatalogSchema, AdmissionHash: admissionHash, Entry: entry})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := journal.Append(audit.Event{Kind: "pi_workflow_admission_reserved",
+				ID: workflowCatalogEventID("reserved", admissionHash), Data: reserved}); err != nil {
+				t.Fatal(err)
+			}
+			if err := journal.Close(); err != nil {
+				t.Fatal(err)
+			}
+			// The cold catalog accessor clones the entry used by recovery; [] must remain distinct from null.
+			got := runCatalogReplayFreshProcess(t, journalPath, ownerRoot, admissionHash)
+			if got.BashOutputPathsJSON != string(encodedPaths) {
+				t.Fatalf("recovered Bash output scope = %s, want %s", got.BashOutputPathsJSON, encodedPaths)
+			}
+		})
+	}
+}
+
 // catalogReplayEntry is the reserved admission. Every field is a well-formed
 // production-shaped value, and the owner DB path sits under the test owner root.
 func catalogReplayEntry(root, ownerRoot, admissionHash string) piServiceWorkflowEntry {
@@ -232,13 +270,17 @@ func summarizeCatalogAdmission(t *testing.T, catalog *piServiceWorkflowCatalog, 
 	if !ok {
 		t.Fatalf("catalog has no admission %s", admissionHash)
 	}
+	paths, err := json.Marshal(entry.BashOutputPaths)
+	if err != nil {
+		t.Fatal(err)
+	}
 	return catalogReplaySummary{
 		FreshAuthorizationUsed: entry.FreshAuthorizationUsed, IncarnationDigest: entry.OwnerIncarnation.Digest,
 		InitialCheckpointDigest: entry.InitialCheckpointDigest, CheckpointBound: entry.CheckpointBound,
 		LatestCheckpointDigest: entry.LatestCheckpointDigest, Terminal: entry.Terminal,
 		TerminalRunID: entry.TerminalRunID, TerminalProofDigest: entry.TerminalProofDigest,
 		TerminalProofSequence: entry.TerminalProofSequence, TerminalTransactionID: entry.TerminalTransactionID,
-		OwnerDBPath: entry.OwnerDBPath,
+		OwnerDBPath: entry.OwnerDBPath, BashOutputPathsJSON: string(paths),
 	}
 }
 

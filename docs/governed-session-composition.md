@@ -1,5 +1,9 @@
 # Governed session and D06 composition
 
+**Status (2026-10-24):** historical embedded-SDK composition detail, still cited
+by code. It records an earlier increment; G1=false statements below describe that
+time. G1 later passed at F12. See [current status](status.md).
+
 **Worker migration:** this document retains implementation details from the
 former embedded Pi SDK worker. The selected worker is the official Pi 0.87.1
 CLI in RPC mode with the TBound extension. The offline CLI/RPC fixture and
@@ -151,18 +155,9 @@ durable response/call/sequence/digest records—no caller-supplied origin string
 is used. The provider audit is synthetic, so it is not evidence of provider
 authenticity or actual Pi operation.
 
-**Known publication blocker:** the current `workflow.Finalizer.Finalize` in
-`supervisor/internal/workflow/publication_linux.go` rejects a terminal
-`delta.OperationLease` before invoking `Trust.VerifyOrigin` (the explicit
-lease-only refusal at the finalizer origin check). The E05 chain ends in Bash,
-whose durable operation identity is a lease. `SessionOperationAuthority` can
-verify the authentic lease→provider proposal association and
-`CheckFinalizerOrigin` reports `ErrLeaseOriginUnsupported`, but this increment
-does not modify the workflow/delta owner or fabricate a final write. Therefore
-the tested E05 source/operation chain is **not yet publishable by the existing
-finalizer**.
+**Terminal Bash lease origin (component-level, non-claim-bearing):** `workflow.Finalizer.Finalize` authenticates a terminal `delta.OperationLease` through the optional `TerminalOriginResolver` and persists a `TerminalLeaseOriginBinding`. The synthetic read->edit->bash chain publishes through a fixture `Trust`. This is not production publication evidence.
 
-Before changing the workflow contract, authorize a narrow follow-up in
+**Historical plan (implemented in 87e969a; kept for history):** before changing the workflow contract, authorize a narrow follow-up in
 `supervisor/internal/workflow/publication_linux.go` and its tests: add an
 optional lease-origin resolver that derives a typed proposal-origin receipt
 from the exact session evidence bundle's `OperationEvidence.DecisionID` and the
@@ -246,7 +241,7 @@ The fixture receipt reported `provider_exchange=false` and
 `containment=not-established`. The E05 test passed actual `sessionrepo` and
 `DurableExecutor` transitions over `g0 → g1 → g2` and proved the Bash lease's
 proposal origin from synthetic synced providerbridge-shaped records, then
-returned the explicit lease-only finalizer blocker. It does **not** prove Pi,
+published through the fixture finalizer with the authenticated Bash-call origin. It does **not** prove Pi,
 real provider capture, production isolation, publication, G1, H1, or thesis
 acceptance.
 
@@ -276,8 +271,7 @@ mount/process scope and shutdown settlement; the current runner is only
 `SessionOperationAuthority.AdmitPrompt` before forwarding the same user prompt
 to actual Pi; (4) the broker owner must supply the real Go-owned provider turn
 loop without exposing credentials/history to Node; and (5) publication needs
-the narrow workflow lease-origin extension described above plus an actual
-registered `workflow.Trust` implementation. The managed-service source-capture
+an actual registered `workflow.Trust` implementation. The managed-service source-capture
 code path now exists, but remains unqualified on Linux with a provisioned
 service. No positive governed run has occurred, so production admission is not
 established and `G1=false` remains the status.

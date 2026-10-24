@@ -373,7 +373,16 @@ func writeNativeFixtureWorkspace(root, content string) error {
 	if err := os.Mkdir(buildPath, 0o755); err != nil {
 		return err
 	}
-	return os.Chmod(buildPath, 0o755)
+	if err := os.Chmod(buildPath, 0o755); err != nil {
+		return err
+	}
+	// The managed live root holds the effect oracle's fence directory (effectoracle.FenceDir), and
+	// the baseline generation is imported from the live root.
+	fencePath := filepath.Join(root, "lost+found")
+	if err := os.Mkdir(fencePath, 0o755); err != nil {
+		return err
+	}
+	return os.Chmod(fencePath, 0o755)
 }
 
 func nativeFixtureOpenRoot(path string) (*os.File, error) {

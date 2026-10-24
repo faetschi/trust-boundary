@@ -16,6 +16,8 @@ import (
 	"tbound/supervisor/internal/corpusadmit"
 	"tbound/supervisor/internal/evalcorpus"
 	"tbound/supervisor/internal/piruntime"
+	"tbound/supervisor/internal/providerbridge"
+	"tbound/supervisor/internal/runner"
 )
 
 // ErrPiServiceCorpus means the corpus manifest of a corpus-mode service is missing,
@@ -56,6 +58,9 @@ const (
 )
 
 func validCorpusRole(role string) bool {
+	if _, _, ok := corpusadmit.CDHRoleParts(role); ok {
+		return true
+	}
 	switch role {
 	case corpusRoleTrajectory, corpusRoleStaticReplay, corpusRoleAdaptiveReplay, corpusRoleVariance1,
 		corpusRoleVariance2, corpusRoleCompliant, corpusRoleAmbiguous, corpusRolePStaticReplay, corpusRolePAdaptiveReplay,
@@ -75,7 +80,9 @@ type corpusCase struct {
 // productionCorpus is the frozen, digest-pinned set of trials a corpus-mode service
 // admits. It is built once at service start and is read-only afterwards.
 type productionCorpus struct {
-	digest string
+	cdh           *runner.CDHConfig
+	hintProviders map[string]providerbridge.HintProvider
+	digest        string
 	// quotaProfile is the profile the manifest was validated under: "thesis" or "pilot".
 	quotaProfile string
 	trials       map[string]evalcorpus.Trial
@@ -99,6 +106,9 @@ func corpusAdmissionID(caseID, role string, attempt int) string {
 // variance subset, compliant and b-compliant only for compliant tasks, ambiguous and
 // b-ambiguous only for ambiguous cases.
 func (c *productionCorpus) roleAllowed(caseID, role string) bool {
+	if _, _, ok := corpusadmit.CDHRoleParts(role); ok {
+		return c.cdhAllowed(caseID, role)
+	}
 	if c == nil {
 		return false
 	}
@@ -203,10 +213,11 @@ func loadProductionCorpus(config piServiceConfig) (*productionCorpus, error) {
 	corpus := &productionCorpus{digest: digest, quotaProfile: profile, trials: make(map[string]evalcorpus.Trial, len(manifest.Cases)),
 		cases: make(map[string]corpusCase, len(manifest.Cases)), fixtures: make(map[string]string, len(manifest.Cases))}
 	if err := corpusadmit.CheckTrials(manifest.Cases, &corpusadmit.Ceilings{MaxHostCalls: config.WorkflowMaxHostCalls,
-		MaxTokens: config.WorkflowMaxTokens, DurationSeconds: config.WorkflowDurationSeconds}); err != nil {
+		MaxTokens: config.WorkflowMaxTokens, DurationSeconds: config.WorkflowDurationSeconds,
+		MaxPreEffectRetries: config.WorkflowMaxPreEffectRetries}); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrPiServiceCorpus, err)
 	}
-	if err := corpusadmit.CheckAttacker(manifest, attackerArtifacts()); err != nil {
+	if err := corpusadmit.CheckAttacker(manifest, attackerArtifacts(), config.WorkflowMaxPreEffectRetries); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrPiServiceCorpus, err)
 	}
 	if manifest.Pins.AttackerDigest != "" {

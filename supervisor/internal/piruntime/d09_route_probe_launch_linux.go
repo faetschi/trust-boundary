@@ -7,6 +7,18 @@ import (
 	"fmt"
 )
 
+// ErrD09RouteProbeLaunched is the cause of every launch from a route-probe template. The cell ran its
+// probe, reported it in the launch proof and did not start Pi, so it never sends readiness and the launch
+// yields no worker. The validated proof is in PiWorkerLaunchError.RouteProbe.
+var ErrD09RouteProbeLaunched = errors.New("route-probe cell reported its probe and did not start Pi")
+
+// D09RouteProbeLaunch is the validated launch proof of a route-probe cell and the PID of the launched
+// process it is bound to.
+type D09RouteProbeLaunch struct {
+	LauncherPID int
+	Proof       D09TCBProof
+}
+
 // d09WorkerProbeLaunch returns the entrypoint arguments and the extra environment of a worker cell. A
 // production template (no route probe) gets the Pi arguments of the launch request and no probe variable.
 // A route-probe template gets the probe argument alone (Pi is never started) and the variables the

@@ -32,6 +32,7 @@ const (
 	workflowVerticalProfile      = "profile-vertical-fresh"
 	workflowVerticalTaskID       = "task-vertical-fresh"
 	workflowVerticalPrompt       = "Read the pinned fixture file twice."
+	workflowVerticalBashOutput   = "out.txt"
 )
 
 type verticalFreshWorkflowPolicy struct {
@@ -238,6 +239,183 @@ func verifyWorkflowVerticalCapturedOperationMismatches(t *testing.T, ctx context
 }
 
 func TestWorkflowVerticalFreshPromptMultiTurnStoreTerminal(t *testing.T) {
+	runWorkflowVertical(t, false, 0)
+}
+
+// Two retryable provider failures precede the first read: each attempt is its own reserved host call
+// and token reservation, settled in the ledger, and the run then proceeds exactly as without them.
+func TestWorkflowVerticalRetriesRetryableProviderFailuresBeforeTheFirstRead(t *testing.T) {
+	runWorkflowVertical(t, true, 2)
+}
+
+// A real launch journals the worker's TCB proof in the Store journal after the workflow checkpoint
+// and before the first provider exchange, so the first exchange sees the journal one record past
+// the checkpointed count. The checkpoint must absorb exactly that record.
+func TestWorkflowVerticalFirstTurnAfterTheLaunchProofRecord(t *testing.T) {
+	runWorkflowVertical(t, true, 0)
+}
+
+// workflowVerticalFixture is a fresh workflow with a real owner store, protected root and ledger, a
+// Store seeded from one fixture file, and an offline provider conversation over turns whose first
+// prompt is admitted.
+type workflowVerticalFixture struct {
+	ctx                 context.Context
+	authority           *SessionOperationAuthority
+	ledger              *workflowrecovery.Ledger
+	conversation        *providerbridge.Conversation
+	durable             *DurableExecutor
+	policy              gate.Policy
+	store               *sessionrepo.Store
+	storeJournal        *audit.Journal
+	providerJournal     *audit.Journal
+	providerJournalPath string
+	limits              workflowrecovery.Limits
+	ownerStoreIdentity  workflowrecovery.OwnerStoreIdentity
+}
+
+func runWorkflowVertical(t *testing.T, launchProof bool, retries int) {
+	turns := make([]providerbridge.DevelopmentProviderTurn, 0, 2+retries)
+	for attempt := 0; attempt < retries; attempt++ {
+		turns = append(turns, providerbridge.DevelopmentProviderTurn{FailStatus: 503 - attempt%2,
+			FailBody: `{"error":{"type":"server_error","message":"Upstream request failed: Endpoint is unavailable."}}`})
+	}
+	turns = append(turns, []providerbridge.DevelopmentProviderTurn{
+		{ResponseID: "vertical-response-1", CallID: "vertical-tool-call-1", Tool: "read", Arguments: json.RawMessage(`{"path":"task.txt"}`)},
+		{ResponseID: "vertical-response-2", CallID: "vertical-tool-call-2", Tool: "read", Arguments: json.RawMessage(`{"path":"task.txt"}`)},
+	}...)
+	f := newWorkflowVerticalFixture(t, launchProof, retries, turns)
+	ctx, authority, ledger, conversation := f.ctx, f.authority, f.ledger, f.conversation
+	durable, policy, store, storeJournal, providerJournal := f.durable, f.policy, f.store, f.storeJournal, f.providerJournal
+	var checkpoint workflowrecovery.Checkpoint
+	observer := &verticalObserveStoreTerminal{inner: durable, ledger: ledger, store: store, providerAudit: providerJournal}
+	providerExecutor, err := providerbridge.NewExecutor(conversation, observer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var previousHostCall string
+	for index, expectedToolCall := range []string{"vertical-tool-call-1", "vertical-tool-call-2"} {
+		turn, err := conversation.NextTurn(ctx)
+		if err != nil || turn.ToolCall == nil || turn.ToolCall.ID != expectedToolCall || turn.ToolCall.Name != "read" {
+			t.Fatalf("provider turn %d did not return its exact scripted read: turn=%+v err=%v", index+1, turn, err)
+		}
+		checkpoint, _ = ledger.Snapshot()
+		reservation := checkpoint.Pins.HostCallReservation
+		priorEffectSettled := checkpoint.Pins.EffectReservation == nil
+		if index > 0 {
+			priorEffect := checkpoint.Pins.EffectReservation
+			priorEffectSettled = priorEffect != nil &&
+				priorEffect.Disposition == workflowrecovery.EffectReservationTerminal &&
+				priorEffect.OutcomeDigest != "" &&
+				priorEffect.Binding.WorkflowID == workflowVerticalID &&
+				priorEffect.Binding.ConversationID == workflowVerticalConversation &&
+				priorEffect.Binding.HostCallID == previousHostCall &&
+				priorEffect.Binding.ToolCallID == "vertical-tool-call-1"
+		}
+		if reservation == nil || reservation.Disposition != workflowrecovery.HostCallTerminal ||
+			reservation.Binding.CallID == "" || reservation.Binding.CallID == previousHostCall ||
+			reservation.Binding.TokenUpperBound != 1024 || reservation.CapturedCall == nil ||
+			reservation.CapturedCall.Disposition != workflowrecovery.CapturedCallAvailable ||
+			reservation.CapturedCall.ToolCallID != expectedToolCall ||
+			checkpoint.Counters.HostCalls != uint64(index*2+1+retries) || checkpoint.Counters.Tokens != uint64(index+1+retries)*1024 ||
+			checkpoint.Pins.PendingCallDisposition != workflowrecovery.PendingCallCaptured ||
+			checkpoint.Pins.ProviderDisposition != workflowrecovery.DispositionAwaitingGateDecision ||
+			!priorEffectSettled {
+			t.Fatalf("provider turn %d was not charged and captured in a nonterminal phase: pins=%+v counters=%+v",
+				index+1, checkpoint.Pins, checkpoint.Counters)
+		}
+		previousHostCall = reservation.Binding.CallID
+		proposal := protocol.Proposal{SchemaVersion: protocol.ProposalSchemaVersion,
+			ToolCallID: turn.ToolCall.ID, Tool: turn.ToolCall.Name, Arguments: append(json.RawMessage(nil), turn.ToolCall.Arguments...)}
+		matched, err := conversation.Correlate(ctx, proposal)
+		if err != nil || !matched.Accepted || matched.StreamClosed {
+			t.Fatalf("correlate captured provider call %s: matched=%+v err=%v", expectedToolCall, matched, err)
+		}
+		decision := gate.Evaluate(proposal, matched, policy)
+		if decision.Verdict != gate.Allow {
+			t.Fatalf("read proposal was not allowed by the pinned test policy: %+v", decision)
+		}
+		if err := conversation.RecordDecision(ctx, proposal, decision); err != nil {
+			t.Fatalf("durably record exact ALLOW decision: %v", err)
+		}
+		verifyWorkflowVerticalCapturedOperationMismatches(t, ctx, authority, ledger, proposal, decision, expectedToolCall)
+		if _, err := providerExecutor.Execute(ctx, proposal, decision); err != nil {
+			t.Fatalf("execute Store effect and release provider result for turn %d: %v", index+1, err)
+		}
+		checkpoint, _ = ledger.Snapshot()
+		reservation = checkpoint.Pins.HostCallReservation
+		if reservation == nil || reservation.Disposition != workflowrecovery.HostCallTerminal || reservation.CapturedCall != nil ||
+			checkpoint.Pins.EffectReservation == nil ||
+			checkpoint.Pins.EffectReservation.Disposition != workflowrecovery.EffectReservationTerminal ||
+			checkpoint.Pins.PendingCallDisposition != workflowrecovery.PendingCallTerminal ||
+			checkpoint.Pins.ProviderDisposition != workflowrecovery.DispositionAwaitingProviderExchange ||
+			checkpoint.Counters.HostCalls != uint64((index+1)*2+retries) || checkpoint.Counters.Tokens != uint64(index+1+retries)*1024 {
+			t.Fatalf("provider result was not checkpointed after the terminal Store outcome on turn %d: pins=%+v counters=%+v",
+				index+1, checkpoint.Pins, checkpoint.Counters)
+		}
+		var authorizedRequest sessionrepo.OperationRequest
+		authority.mu.Lock()
+		for _, proof := range authority.operationProofs {
+			if proof.capture.proposal.ToolCallID == expectedToolCall {
+				authorizedRequest = proof.request
+				break
+			}
+		}
+		authority.mu.Unlock()
+		if authorizedRequest.EffectID == "" {
+			t.Fatalf("no durable authorization request was retained for %s", expectedToolCall)
+		}
+		for _, replayRequest := range []sessionrepo.OperationRequest{
+			authorizedRequest,
+			func() sessionrepo.OperationRequest {
+				changed := authorizedRequest
+				changed.EffectID += "-replay"
+				return changed
+			}(),
+		} {
+			beforeCheckpoint, beforeDigest := ledger.Snapshot()
+			beforeStoreTrace, err := storeJournal.Trace()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := authority.AuthorizeOperation(replayRequest); err == nil {
+				t.Fatalf("replayed or rebound effect authorization was accepted for %s", expectedToolCall)
+			}
+			afterCheckpoint, afterDigest := ledger.Snapshot()
+			afterStoreTrace, err := storeJournal.Trace()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if beforeDigest != afterDigest || !reflect.DeepEqual(beforeCheckpoint.Counters, afterCheckpoint.Counters) ||
+				auditHeadHash(beforeStoreTrace.Records) != auditHeadHash(afterStoreTrace.Records) ||
+				len(beforeStoreTrace.Records) != len(afterStoreTrace.Records) ||
+				len(beforeStoreTrace.Effects) != len(afterStoreTrace.Effects) {
+				t.Fatalf("rejected duplicate authorization changed durable state for %s", expectedToolCall)
+			}
+		}
+	}
+	providedTrace, traceErr := providerJournal.Trace()
+	if traceErr != nil {
+		t.Fatal(traceErr)
+	}
+	retryRecords := 0
+	for _, record := range providedTrace.Records {
+		if record.Event.Kind == "provider_exchange_retryable_failure" {
+			retryRecords++
+		}
+	}
+	if retryRecords != retries {
+		t.Fatalf("provider journal holds %d retryable-failure records, want %d", retryRecords, retries)
+	}
+	if observer.seen != 2 {
+		t.Fatalf("observed Store-terminal-before-provider-result checkpoints = %d, want 2", observer.seen)
+	}
+}
+
+// newWorkflowVerticalFixture builds a read-only workflow; a production command runner also allows Bash
+// with the output scope workflowVerticalBashOutput.
+func newWorkflowVerticalFixture(t *testing.T, launchProof bool, retries int,
+	turns []providerbridge.DevelopmentProviderTurn, bash ...*productionCommandRunner) *workflowVerticalFixture {
+	t.Helper()
 	ctx := context.Background()
 	root := privateGovernedTestRoot(t)
 	sourcePath, storePath, adminPath := filepath.Join(root, "source"), filepath.Join(root, "store"), filepath.Join(root, "admin")
@@ -269,15 +447,21 @@ func TestWorkflowVerticalFreshPromptMultiTurnStoreTerminal(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = commandJournal.Close() })
 
-	policy, err := gate.NewPolicy(gate.Profile{Version: gate.ProfileVersion,
-		Rules: []gate.Rule{{Tool: "read", Effect: gate.EffectAllow}}})
+	rules := []gate.Rule{{Tool: "read", Effect: gate.EffectAllow}}
+	var runner governedCommandRunner = newDevelopmentFixtureCommandRunner()
+	var commandRunner sessionrepo.CommandRunner
+	var bashOutput []string
+	if len(bash) == 1 {
+		rules = append(rules, gate.Rule{Tool: "bash", Effect: gate.EffectAllow})
+		runner, commandRunner, bashOutput = bash[0], bash[0], []string{workflowVerticalBashOutput}
+	}
+	policy, err := gate.NewPolicy(gate.Profile{Version: gate.ProfileVersion, Rules: rules})
 	if err != nil {
 		t.Fatal(err)
 	}
-	runner := newDevelopmentFixtureCommandRunner()
 	authority, err := NewSessionOperationAuthority(storeJournal, providerJournal,
 		workflowVerticalID, workflowVerticalConversation, workflowVerticalProfile,
-		policy, governedReplayStorePolicy, governedReplayMetaPolicy, runner, nil)
+		policy, governedReplayStorePolicy, governedReplayMetaPolicy, runner, bashOutput)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -329,6 +513,7 @@ func TestWorkflowVerticalFreshPromptMultiTurnStoreTerminal(t *testing.T) {
 		Store: store, Tip: baseline, CallIssuer: governedCallIssuer,
 		PolicyDigest: governedReplayStorePolicy, MetadataPolicyDigest: governedReplayMetaPolicy,
 		AfterDurableOperation: authority.SettleDurableOperation,
+		CommandRunner:         commandRunner, BashOutputPaths: bashOutput,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -408,7 +593,7 @@ func TestWorkflowVerticalFreshPromptMultiTurnStoreTerminal(t *testing.T) {
 	}
 	taskDigest := digestBytes([]byte("vertical task source identity"))
 	limits := workflowrecovery.Limits{MaxPreEffectRetries: 2, MaxCleanRestarts: 2,
-		MaxHostCalls: 4, MaxTokens: 2048, Deadline: deadline}
+		MaxHostCalls: uint64(4 + 2*retries), MaxTokens: uint64(2048 + 1024*retries), Deadline: deadline}
 	pins := workflowrecovery.Pins{
 		WorkflowID: workflowVerticalID, SessionID: workflowVerticalSessionID,
 		RecoveryGeneration: 1, OwnerEpoch: 1,
@@ -464,13 +649,24 @@ func TestWorkflowVerticalFreshPromptMultiTurnStoreTerminal(t *testing.T) {
 	if err := authority.BindInitialWorkflowPrompt(workflowVerticalTaskID, workflowVerticalPrompt+" changed", taskDigest); err == nil {
 		t.Fatal("changed initial prompt replaced the exact fresh catalog prompt")
 	}
+	if launchProof {
+		before, _ := ledger.Snapshot()
+		proofData, err := json.Marshal(productionLaunchTCBProofEvent{SchemaVersion: "tbound-production-launch-tcb-proof/v1",
+			RunID: "vertical-run", SessionID: workflowVerticalSessionID, WorkflowID: workflowVerticalID,
+			ConversationID: workflowVerticalConversation})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := storeJournal.Append(audit.Event{Kind: "production_tcb_proof", ID: "production-tcb-proof:vertical-run", Data: proofData}); err != nil {
+			t.Fatal(err)
+		}
+		if trace, err := storeJournal.Trace(); err != nil || uint64(len(trace.Records)) != before.Pins.StoreJournalCount+1 {
+			t.Fatalf("the launch proof did not put the Store journal one record past the checkpoint: %v", err)
+		}
+	}
 	config := providerbridge.Config{WorkflowID: workflowVerticalID, ConversationID: workflowVerticalConversation,
 		ProfileID: workflowVerticalProfile, InitialGenerationID: baseline.ID(), InitialTreeDigest: baseline.TreeDigest(),
 		SystemPrompt: governedReplaySystem, DeveloperPrompt: governedReplayDeveloper}
-	turns := []providerbridge.DevelopmentProviderTurn{
-		{ResponseID: "vertical-response-1", CallID: "vertical-tool-call-1", Tool: "read", Arguments: json.RawMessage(`{"path":"task.txt"}`)},
-		{ResponseID: "vertical-response-2", CallID: "vertical-tool-call-2", Tool: "read", Arguments: json.RawMessage(`{"path":"task.txt"}`)},
-	}
 	conversation, err := authority.newProviderConversation(config, func(config providerbridge.Config,
 		journal *audit.Journal) (*providerbridge.Conversation, error) {
 		return providerbridge.NewDevelopmentOfflineConversation(config, journal, turns)
@@ -488,115 +684,9 @@ func TestWorkflowVerticalFreshPromptMultiTurnStoreTerminal(t *testing.T) {
 	if err := authority.AdmitPrompt(conversation, durable, workflowVerticalTaskID, workflowVerticalPrompt); err == nil {
 		t.Fatal("duplicate initial prompt was admitted to the provider conversation")
 	}
-	observer := &verticalObserveStoreTerminal{inner: durable, ledger: ledger, store: store, providerAudit: providerJournal}
-	providerExecutor, err := providerbridge.NewExecutor(conversation, observer)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var previousHostCall string
-	for index, expectedToolCall := range []string{"vertical-tool-call-1", "vertical-tool-call-2"} {
-		turn, err := conversation.NextTurn(ctx)
-		if err != nil || turn.ToolCall == nil || turn.ToolCall.ID != expectedToolCall || turn.ToolCall.Name != "read" {
-			t.Fatalf("provider turn %d did not return its exact scripted read: turn=%+v err=%v", index+1, turn, err)
-		}
-		checkpoint, _ = ledger.Snapshot()
-		reservation := checkpoint.Pins.HostCallReservation
-		priorEffectSettled := checkpoint.Pins.EffectReservation == nil
-		if index > 0 {
-			priorEffect := checkpoint.Pins.EffectReservation
-			priorEffectSettled = priorEffect != nil &&
-				priorEffect.Disposition == workflowrecovery.EffectReservationTerminal &&
-				priorEffect.OutcomeDigest != "" &&
-				priorEffect.Binding.WorkflowID == workflowVerticalID &&
-				priorEffect.Binding.ConversationID == workflowVerticalConversation &&
-				priorEffect.Binding.HostCallID == previousHostCall &&
-				priorEffect.Binding.ToolCallID == "vertical-tool-call-1"
-		}
-		if reservation == nil || reservation.Disposition != workflowrecovery.HostCallTerminal ||
-			reservation.Binding.CallID == "" || reservation.Binding.CallID == previousHostCall ||
-			reservation.Binding.TokenUpperBound != 1024 || reservation.CapturedCall == nil ||
-			reservation.CapturedCall.Disposition != workflowrecovery.CapturedCallAvailable ||
-			reservation.CapturedCall.ToolCallID != expectedToolCall ||
-			checkpoint.Counters.HostCalls != uint64(index*2+1) || checkpoint.Counters.Tokens != uint64(index+1)*1024 ||
-			checkpoint.Pins.PendingCallDisposition != workflowrecovery.PendingCallCaptured ||
-			checkpoint.Pins.ProviderDisposition != workflowrecovery.DispositionAwaitingGateDecision ||
-			!priorEffectSettled {
-			t.Fatalf("provider turn %d was not charged and captured in a nonterminal phase: pins=%+v counters=%+v",
-				index+1, checkpoint.Pins, checkpoint.Counters)
-		}
-		previousHostCall = reservation.Binding.CallID
-		proposal := protocol.Proposal{SchemaVersion: protocol.ProposalSchemaVersion,
-			ToolCallID: turn.ToolCall.ID, Tool: turn.ToolCall.Name, Arguments: append(json.RawMessage(nil), turn.ToolCall.Arguments...)}
-		matched, err := conversation.Correlate(ctx, proposal)
-		if err != nil || !matched.Accepted || matched.StreamClosed {
-			t.Fatalf("correlate captured provider call %s: matched=%+v err=%v", expectedToolCall, matched, err)
-		}
-		decision := gate.Evaluate(proposal, matched, policy)
-		if decision.Verdict != gate.Allow {
-			t.Fatalf("read proposal was not allowed by the pinned test policy: %+v", decision)
-		}
-		if err := conversation.RecordDecision(ctx, proposal, decision); err != nil {
-			t.Fatalf("durably record exact ALLOW decision: %v", err)
-		}
-		verifyWorkflowVerticalCapturedOperationMismatches(t, ctx, authority, ledger, proposal, decision, expectedToolCall)
-		if _, err := providerExecutor.Execute(ctx, proposal, decision); err != nil {
-			t.Fatalf("execute Store effect and release provider result for turn %d: %v", index+1, err)
-		}
-		checkpoint, _ = ledger.Snapshot()
-		reservation = checkpoint.Pins.HostCallReservation
-		if reservation == nil || reservation.Disposition != workflowrecovery.HostCallTerminal || reservation.CapturedCall != nil ||
-			checkpoint.Pins.EffectReservation == nil ||
-			checkpoint.Pins.EffectReservation.Disposition != workflowrecovery.EffectReservationTerminal ||
-			checkpoint.Pins.PendingCallDisposition != workflowrecovery.PendingCallTerminal ||
-			checkpoint.Pins.ProviderDisposition != workflowrecovery.DispositionAwaitingProviderExchange ||
-			checkpoint.Counters.HostCalls != uint64((index+1)*2) || checkpoint.Counters.Tokens != uint64(index+1)*1024 {
-			t.Fatalf("provider result was not checkpointed after the terminal Store outcome on turn %d: pins=%+v counters=%+v",
-				index+1, checkpoint.Pins, checkpoint.Counters)
-		}
-		var authorizedRequest sessionrepo.OperationRequest
-		authority.mu.Lock()
-		for _, proof := range authority.operationProofs {
-			if proof.capture.proposal.ToolCallID == expectedToolCall {
-				authorizedRequest = proof.request
-				break
-			}
-		}
-		authority.mu.Unlock()
-		if authorizedRequest.EffectID == "" {
-			t.Fatalf("no durable authorization request was retained for %s", expectedToolCall)
-		}
-		for _, replayRequest := range []sessionrepo.OperationRequest{
-			authorizedRequest,
-			func() sessionrepo.OperationRequest {
-				changed := authorizedRequest
-				changed.EffectID += "-replay"
-				return changed
-			}(),
-		} {
-			beforeCheckpoint, beforeDigest := ledger.Snapshot()
-			beforeStoreTrace, err := storeJournal.Trace()
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := authority.AuthorizeOperation(replayRequest); err == nil {
-				t.Fatalf("replayed or rebound effect authorization was accepted for %s", expectedToolCall)
-			}
-			afterCheckpoint, afterDigest := ledger.Snapshot()
-			afterStoreTrace, err := storeJournal.Trace()
-			if err != nil {
-				t.Fatal(err)
-			}
-			if beforeDigest != afterDigest || !reflect.DeepEqual(beforeCheckpoint.Counters, afterCheckpoint.Counters) ||
-				auditHeadHash(beforeStoreTrace.Records) != auditHeadHash(afterStoreTrace.Records) ||
-				len(beforeStoreTrace.Records) != len(afterStoreTrace.Records) ||
-				len(beforeStoreTrace.Effects) != len(afterStoreTrace.Effects) {
-				t.Fatalf("rejected duplicate authorization changed durable state for %s", expectedToolCall)
-			}
-		}
-	}
-	if observer.seen != 2 {
-		t.Fatalf("observed Store-terminal-before-provider-result checkpoints = %d, want 2", observer.seen)
-	}
+	return &workflowVerticalFixture{ctx: ctx, authority: authority, ledger: ledger, conversation: conversation,
+		durable: durable, policy: policy, store: store, storeJournal: storeJournal, providerJournal: providerJournal,
+		providerJournalPath: providerJournalPath, limits: limits, ownerStoreIdentity: ownerStoreIdentity}
 }
 
 func TestWorkflowDigestDomainsFailClosed(t *testing.T) {

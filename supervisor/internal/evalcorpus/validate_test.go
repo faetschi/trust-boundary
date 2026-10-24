@@ -1,6 +1,7 @@
 package evalcorpus
 
 import (
+	"os"
 	"strings"
 	"testing"
 )
@@ -198,8 +199,8 @@ func TestValidateReviewRules(t *testing.T) {
 			c.Reviews[1].Reviewer = "\tteam alpha  "
 		}, "review.identity"},
 		{"adjudicator is a reviewer after normalization", func(c *Case) {
-			c.Reviews[1].Decision = "other"
-			c.Adjudication = &Adjudication{Adjudicator: " SYNTHETIC-REVIEWER-1 ", Human: true, Blinded: true, Decision: "other"}
+			c.Reviews[1].Decision = "reject"
+			c.Adjudication = &Adjudication{Adjudicator: " SYNTHETIC-REVIEWER-1 ", Human: true, Blinded: true, Decision: "accept"}
 		}, "adjudication.not_third"},
 		{"distinct identities that differ only inside a word stay distinct", func(c *Case) {
 			c.Reviews[1].Reviewer = "synthetic-reviewer-10"
@@ -207,25 +208,25 @@ func TestValidateReviewRules(t *testing.T) {
 		{"not human", func(c *Case) { c.Reviews[0].Human = false }, "review.human"},
 		{"not blinded", func(c *Case) { c.Reviews[1].Blinded = false }, "review.blinded"},
 		{"empty decision", func(c *Case) { c.Reviews[0].Decision = "" }, "field.empty"},
-		{"disagreement without adjudication", func(c *Case) { c.Reviews[1].Decision = "other" }, "adjudication.missing"},
+		{"disagreement without adjudication", func(c *Case) { c.Reviews[1].Decision = "reject" }, "adjudication.missing"},
 		{"adjudication without disagreement", func(c *Case) {
-			c.Adjudication = &Adjudication{Adjudicator: "synthetic-adjudicator", Human: true, Blinded: true, Decision: "synthetic-label"}
+			c.Adjudication = &Adjudication{Adjudicator: "synthetic-adjudicator", Human: true, Blinded: true, Decision: "accept"}
 		}, "adjudication.unexpected"},
 		{"adjudicator is a reviewer", func(c *Case) {
-			c.Reviews[1].Decision = "other"
-			c.Adjudication = &Adjudication{Adjudicator: "synthetic-reviewer-1", Human: true, Blinded: true, Decision: "other"}
+			c.Reviews[1].Decision = "reject"
+			c.Adjudication = &Adjudication{Adjudicator: "synthetic-reviewer-1", Human: true, Blinded: true, Decision: "accept"}
 		}, "adjudication.not_third"},
 		{"adjudicator is not human", func(c *Case) {
-			c.Reviews[1].Decision = "other"
-			c.Adjudication = &Adjudication{Adjudicator: "synthetic-adjudicator", Human: false, Blinded: true, Decision: "other"}
+			c.Reviews[1].Decision = "reject"
+			c.Adjudication = &Adjudication{Adjudicator: "synthetic-adjudicator", Human: false, Blinded: true, Decision: "accept"}
 		}, "adjudication.human"},
 		{"adjudicator is not blinded", func(c *Case) {
-			c.Reviews[1].Decision = "other"
-			c.Adjudication = &Adjudication{Adjudicator: "synthetic-adjudicator", Human: true, Blinded: false, Decision: "other"}
+			c.Reviews[1].Decision = "reject"
+			c.Adjudication = &Adjudication{Adjudicator: "synthetic-adjudicator", Human: true, Blinded: false, Decision: "accept"}
 		}, "adjudication.blinded"},
 		{"disagreement resolved by a third reviewer", func(c *Case) {
-			c.Reviews[1].Decision = "other"
-			c.Adjudication = &Adjudication{Adjudicator: "synthetic-adjudicator", Human: true, Blinded: true, Decision: "other"}
+			c.Reviews[1].Decision = "reject"
+			c.Adjudication = &Adjudication{Adjudicator: "synthetic-adjudicator", Human: true, Blinded: true, Decision: "accept"}
 		}, ""},
 	}
 	for _, tc := range cases {
@@ -404,9 +405,9 @@ func TestPilotQuotasAreSmallExplicitAndDistinctFromThesis(t *testing.T) {
 	if err := q.check(); err != nil {
 		t.Fatal(err)
 	}
-	if q.Adversarial[ClassTMA] != 4 || q.Adversarial[ClassTMB] != 4 || q.Adversarial[ClassTMC] != 3 ||
-		q.Compliant[ToolRead] != 2 || q.Compliant[ToolWrite] != 2 || q.Compliant[ToolEdit] != 2 || q.Compliant[ToolBash] != 2 ||
-		q.Ambiguous != 2 || q.Variance[ClassTMA] != 1 || q.Variance[ClassTMB] != 1 || q.Variance[ClassTMC] != 1 ||
+	if q.Adversarial[ClassTMA] != 7 || q.Adversarial[ClassTMB] != 4 || q.Adversarial[ClassTMC] != 0 ||
+		q.Compliant[ToolRead] != 5 || q.Compliant[ToolWrite] != 5 || q.Compliant[ToolEdit] != 5 || q.Compliant[ToolBash] != 5 ||
+		q.Ambiguous != 2 || q.Variance[ClassTMA] != 1 || q.Variance[ClassTMB] != 1 || q.Variance[ClassTMC] != 0 ||
 		q.ColdPercent != 20 {
 		t.Errorf("pilot quotas drifted: %+v", q)
 	}
@@ -415,4 +416,130 @@ func TestPilotQuotasAreSmallExplicitAndDistinctFromThesis(t *testing.T) {
 	wantRule(t, Validate(m, thesis), "count.total")
 	pilotAsThesis := allocated(t, synthManifest(thesis, synthSeed), thesis)
 	wantRule(t, Validate(pilotAsThesis, q), "count.total")
+}
+
+func TestValidateReviewDecisionGate(t *testing.T) {
+	q := smallQuotas()
+	const target = "SYNTH-ADV-TM-B-002"
+	adjudicate := func(c *Case, second, final string) {
+		c.Reviews[1].Decision = second
+		c.Adjudication = &Adjudication{Adjudicator: "synthetic-adjudicator", Human: true, Blinded: true, Decision: final}
+	}
+	cases := []struct {
+		name   string
+		mutate func(c *Case)
+		want   []string // rules that must be reported
+		not    []string // rules that must not be reported
+	}{
+		{"both accept", func(c *Case) {}, nil, []string{"review.rejected", "review.decision"}},
+		{"both reject", func(c *Case) {
+			c.Reviews[0].Decision, c.Reviews[1].Decision = "reject", "reject"
+		}, []string{"review.rejected"}, []string{"review.decision"}},
+		{"disagreement adjudicated to reject", func(c *Case) { adjudicate(c, "reject", "reject") },
+			[]string{"review.rejected"}, nil},
+		{"disagreement adjudicated to accept", func(c *Case) { adjudicate(c, "reject", "accept") },
+			nil, []string{"review.rejected", "review.decision"}},
+		{"free-text decision", func(c *Case) { c.Reviews[0].Decision = "synthetic-label" }, []string{"review.decision"}, nil},
+		{"decision with different case", func(c *Case) { c.Reviews[0].Decision = "Accept" }, []string{"review.decision"}, nil},
+		{"decision with surrounding space", func(c *Case) { c.Reviews[1].Decision = "accept " }, []string{"review.decision"}, nil},
+		{"placeholder decision", func(c *Case) {
+			c.Reviews[0].Decision, c.Reviews[1].Decision = "TODO-DECISION", "TODO-DECISION"
+		}, []string{"review.decision"}, nil},
+		{"adjudication decision outside the enumeration", func(c *Case) { adjudicate(c, "reject", "maybe") },
+			[]string{"review.decision"}, nil},
+		{"TODO role", func(c *Case) { c.Reviews[0].Role = "TODO-ROLE-1" }, []string{"review.placeholder"}, nil},
+		{"TODO reviewer", func(c *Case) { c.Reviews[1].Reviewer = "  todo-reviewer-owner" }, []string{"review.placeholder"}, nil},
+		{"TODO adjudicator", func(c *Case) {
+			adjudicate(c, "reject", "accept")
+			c.Adjudication.Adjudicator = "TODO-ADJUDICATOR"
+		}, []string{"review.placeholder"}, nil},
+		{"role that merely contains todo", func(c *Case) { c.Reviews[0].Role = "methodology-todo-lead" }, nil, []string{"review.placeholder"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := allocated(t, synthManifest(q, synthSeed), q)
+			tc.mutate(findCase(t, &m, target))
+			vs := Validate(m, q)
+			for _, rule := range tc.want {
+				wantRule(t, vs, rule)
+				for _, v := range vs {
+					if v.Rule == rule && !strings.Contains(v.Detail, target) {
+						t.Errorf("violation %s does not name the case %q: %s", rule, target, v.Detail)
+					}
+				}
+			}
+			for _, rule := range tc.not {
+				wantNoRule(t, vs, rule)
+			}
+			if len(tc.want) == 0 {
+				wantClean(t, vs)
+			}
+		})
+	}
+}
+
+// A draft manifest whose reviews are still placeholders must stay non-admissible even
+// after someone sets human and blinded, which are the only fields a hand edit flips first.
+func TestValidateDraftPilotManifestWithHumanAndBlindedSetIsStillRefused(t *testing.T) {
+	f, err := os.Open("../../../corpus/pilot/manifest.draft.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	m, err := Load(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range m.Cases {
+		for j := range m.Cases[i].Reviews {
+			m.Cases[i].Reviews[j].Human = true
+			m.Cases[i].Reviews[j].Blinded = true
+		}
+	}
+	vs := Validate(m, PilotQuotas())
+	wantRule(t, vs, "review.placeholder")
+	wantRule(t, vs, "review.decision")
+	wantNoRule(t, vs, "review.human")
+	wantNoRule(t, vs, "review.blinded")
+}
+
+// A valid D37 meaning record attached to a case passes; a case with no record stays
+// valid; and each missing or malformed field is reported under a meaning.* or shared rule.
+func TestValidateMeaningRecordGate(t *testing.T) {
+	q := smallQuotas()
+	const target = "SYNTH-ADV-TM-A-001"
+	good := func() *MeaningRecord {
+		return &MeaningRecord{
+			CaseOrigin: OriginEstablished, BenchmarkKey: "InjecAgent", BenchmarkRevision: "f19c9f2",
+			BenchmarkDigest: synthDigest("item"), SourceItemID: "dh:line:10", RootID: "InjecAgent:dh:line:10",
+			License: "MIT", Redistribution: "notice retained", PreservedIntent: "move a protected file away",
+			TaskUnit: "single injected instruction", AuthorizationClass: "injected-third-party-instruction",
+			Transformations: []string{"service tool mapped to bash mv"}, LostDistinctions: []string{},
+			ToolMapping: "Pi bash mv", OracleMapping: "EFF-WS-02 removal", LabelOrigin: LabelExternalOracle,
+		}
+	}
+	base := allocated(t, synthManifest(q, synthSeed), q)
+	findCase(t, &base, target).MeaningRecord = good()
+	wantClean(t, Validate(base, q))
+
+	cases := []struct {
+		name   string
+		mutate func(mr *MeaningRecord)
+		rule   string
+	}{
+		{"bad origin", func(mr *MeaningRecord) { mr.CaseOrigin = "authored" }, "meaning.origin"},
+		{"empty benchmark key", func(mr *MeaningRecord) { mr.BenchmarkKey = "" }, "field.empty"},
+		{"bad benchmark digest", func(mr *MeaningRecord) { mr.BenchmarkDigest = "sha256:zz" }, "digest.format"},
+		{"no transformations", func(mr *MeaningRecord) { mr.Transformations = nil }, "meaning.field"},
+		{"bad label origin", func(mr *MeaningRecord) { mr.LabelOrigin = "guess" }, "meaning.field"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := allocated(t, synthManifest(q, synthSeed), q)
+			mr := good()
+			tc.mutate(mr)
+			findCase(t, &m, target).MeaningRecord = mr
+			wantRule(t, Validate(m, q), tc.rule)
+		})
+	}
 }

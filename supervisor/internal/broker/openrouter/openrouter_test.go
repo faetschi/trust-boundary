@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -375,5 +376,84 @@ func TestCaptureSSERejectsMultipleToolCalls(t *testing.T) {
 	raw := append(chunk("response", delta, "tool_calls"), doneEvent()...)
 	if _, err := CaptureSSE(bytes.NewReader(raw)); err == nil {
 		t.Fatal("multiple tool calls were accepted")
+	}
+}
+
+// g1Turn1 is the exact 200 response body the OpenCode Go route returned for the
+// first G1 turn on F3 (production run 7d7fa9c6619260d4888ec5e7). Its delta
+// chunks omit finish_reason instead of sending null; only the last chunk has it.
+func g1Turn1(t *testing.T) []byte {
+	t.Helper()
+	raw, err := os.ReadFile("testdata/opencode-go-g1-turn1.sse")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
+}
+
+const g1ResponseID = "0217926074272997e031431b40d2024cf18919c414bfdfa14ad95"
+
+func g1Chunk(choice string) []byte {
+	return event([]byte(`{"id":"` + g1ResponseID + `","object":"chat.completion.chunk","created":1792607427,"model":"deepseek-v4.1-flash","choices":[` + choice + `],"usage":null}`))
+}
+
+func TestCaptureSSEAcceptsChunksThatOmitFinishReason(t *testing.T) {
+	raw := g1Turn1(t)
+	got, err := CaptureSSE(bytes.NewReader(raw))
+	if err != nil {
+		t.Fatalf("capture G1 turn 1: %v", err)
+	}
+	if got.ResponseID() != g1ResponseID || got.Model() != "deepseek-v4.1-flash" || got.Created() != 1792607427 ||
+		got.FinishReason() != "tool_calls" || got.AssistantText() != "I'll start by reading the file." || len(got.Usage()) == 0 {
+		t.Fatalf("captured id=%q model=%q created=%d finish=%q text=%q usage=%s",
+			got.ResponseID(), got.Model(), got.Created(), got.FinishReason(), got.AssistantText(), got.Usage())
+	}
+	call, ok := got.ToolCall()
+	if !ok || call.ID != "call_00_fcclznj2afzx4mynrkrqjnuv" || call.Name != "read" || string(call.RawArguments) != `{"path": "src/release.txt"}` {
+		t.Fatalf("tool call ok=%v call=%+v args=%s", ok, call, call.RawArguments)
+	}
+	if !bytes.Equal(got.RawResponse(), raw) {
+		t.Fatal("raw response bytes changed")
+	}
+	replayed, err := CaptureSSE(bytes.NewReader(got.RawResponse()))
+	if err != nil || !reflect.DeepEqual(replayed, got) {
+		t.Fatalf("journaled bytes do not replay to the same capture: %v", err)
+	}
+
+	withTrailer := append(bytes.TrimSuffix(raw, []byte("data: [DONE]\n\n")), g1Chunk(`{"index":0,"delta":{}}`)...)
+	withTrailer = append(withTrailer, doneEvent()...)
+	if _, err := CaptureSSE(bytes.NewReader(withTrailer)); err != nil {
+		t.Fatalf("empty trailer chunk without finish_reason: %v", err)
+	}
+}
+
+func TestCaptureSSERejectsIncompleteStreamsThatOmitFinishReason(t *testing.T) {
+	raw := g1Turn1(t)
+	done := []byte("data: [DONE]\n\n")
+	finishAt := bytes.Index(raw, []byte(`data: {"id":"`+g1ResponseID+`","object":"chat.completion.chunk","created":1792607427,"model":"deepseek-v4.1-flash","choices":[{"index":0,"finish_reason":"tool_calls"`))
+	if finishAt < 0 || !bytes.HasSuffix(raw, done) {
+		t.Fatal("fixture no longer has its final chunk and [DONE]")
+	}
+	noFinal := append(append([]byte(nil), raw[:finishAt]...), done...)
+	noDone := bytes.TrimSuffix(raw, done)
+	cutMidEvent := raw[:finishAt+40]
+	lateContent := append(append([]byte(nil), noDone...), g1Chunk(`{"index":0,"delta":{"content":"late"}}`)...)
+	lateContent = append(lateContent, done...)
+	lateCall := append(append([]byte(nil), noDone...), g1Chunk(`{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"x"}}]}}`)...)
+	lateCall = append(lateCall, done...)
+	cases := map[string][]byte{
+		"final chunk missing":               noFinal,
+		"no [DONE]":                         noDone,
+		"cut inside the final chunk":        cutMidEvent,
+		"content after finish":              lateContent,
+		"tool-call fragment after finish":   lateCall,
+		"only deltas, no finish and no end": raw[:finishAt],
+	}
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			if _, err := CaptureSSE(bytes.NewReader(body)); err == nil {
+				t.Fatal("incomplete stream accepted")
+			}
+		})
 	}
 }

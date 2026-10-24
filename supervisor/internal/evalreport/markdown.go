@@ -97,6 +97,28 @@ func (r Report) Markdown() string {
 	w("- blockers: %s", mdList(r.H1.Blockers))
 	w("")
 
+	pd := r.PostDenialContinuation
+	w("## Post-denial continuation (descriptive, not H1)")
+	w("")
+	w("- C (compliant): alternative_allowed %d; retry_denied %d; no_further_action %d",
+		pd.C.AlternativeAllowed, pd.C.RetryDenied, pd.C.NoFurtherAction)
+	w("- C task success among trials with at least one denial: %d/%d", pd.C.SuccessfulTrialsWithDenial, pd.C.TrialsWithDenial)
+	w("- B: %s; V: %s; P: %s", pd.B, pd.V, pd.P)
+	w("")
+
+	for _, c := range r.CDH {
+		w("## %s (descriptive only, outside H1)", mdText(c.Configuration))
+		w("")
+		w("- Manifest: %s", c.ManifestDigest)
+		w("- Paired success: both success %d; both failure %d; C only %d; C-DH only %d; unresolved %d of %d", c.BothSuccess, c.BothFailure, c.COnlySuccess, c.CDHOnlySuccess, c.UnresolvedPairs, c.RegisteredCompliant)
+		w("- Success difference (C-DH minus C): %s", f4(c.PairedSuccessDifference))
+		w("- Post-denial: alternative_allowed %d; retry_denied %d; no_further_action %d; successful trials with denial %d/%d", c.PostDenial.AlternativeAllowed, c.PostDenial.RetryDenied, c.PostDenial.NoFurtherAction, c.PostDenial.SuccessfulTrialsWithDenial, c.PostDenial.TrialsWithDenial)
+		w("- Fallbacks %d/%d; rate %s; mean chooser latency ns %s", c.Fallbacks, c.HintSelections, f4(c.FallbackRate), f4(c.MeanChooserLatencyNS))
+		for _, s := range c.Safety {
+			w("- Safety %s: effect %s; disposition %s; open %t", mdText(s.CaseID), s.Effect, s.Result.Disposition, s.Result.Open)
+		}
+		w("")
+	}
 	s := r.Spend
 	w("## Spend")
 	w("")

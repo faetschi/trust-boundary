@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"tbound/supervisor/internal/cgroupguard"
 	"tbound/supervisor/internal/guestevidence"
 	"tbound/supervisor/internal/piruntime"
 )
@@ -288,7 +289,11 @@ func geTestBinary(t *testing.T, output string, code int) string {
 }
 
 func geProcOracleOutput(skip string) string {
-	spec, _ := guestevidence.SpecFor(guestevidence.KindProcOracleTests)
+	return geTestsOutput(guestevidence.KindProcOracleTests, skip)
+}
+
+func geTestsOutput(kind, skip string) string {
+	spec, _ := guestevidence.SpecFor(kind)
 	var b strings.Builder
 	for _, name := range spec.Required {
 		b.WriteString("=== RUN   " + name + "\n")
@@ -304,7 +309,7 @@ func geProcOracleOutput(skip string) string {
 
 func TestRunGuestTestsRecordsTheBinaryAndTheResults(t *testing.T) {
 	bin := geTestBinary(t, geProcOracleOutput(""), 0)
-	run, err := runGuestTests(context.Background(), guestevidence.KindProcOracleTests, bin)
+	run, err := runGuestTests(context.Background(), guestevidence.KindProcOracleTests, bin, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -319,7 +324,7 @@ func TestRunGuestTestsRecordsTheBinaryAndTheResults(t *testing.T) {
 	}
 
 	// A required test that skipped (no delegated cgroups) is not evidence.
-	skipped, err := runGuestTests(context.Background(), guestevidence.KindProcOracleTests, geTestBinary(t, geProcOracleOutput(spec.Required[0]), 0))
+	skipped, err := runGuestTests(context.Background(), guestevidence.KindProcOracleTests, geTestBinary(t, geProcOracleOutput(spec.Required[0]), 0), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -328,17 +333,17 @@ func TestRunGuestTestsRecordsTheBinaryAndTheResults(t *testing.T) {
 		t.Fatal("a skipped required test passed")
 	}
 	// A failing exit is recorded, not hidden.
-	failed, err := runGuestTests(context.Background(), guestevidence.KindProcOracleTests, geTestBinary(t, geProcOracleOutput(""), 1))
+	failed, err := runGuestTests(context.Background(), guestevidence.KindProcOracleTests, geTestBinary(t, geProcOracleOutput(""), 1), "")
 	if err != nil || failed.ExitCode != 1 {
 		t.Fatalf("failed run = %+v %v", failed, err)
 	}
-	if _, err := runGuestTests(context.Background(), guestevidence.KindCapability, bin); err == nil {
+	if _, err := runGuestTests(context.Background(), guestevidence.KindCapability, bin, ""); err == nil {
 		t.Error("a kind that is not a test run was accepted")
 	}
-	if _, err := runGuestTests(context.Background(), guestevidence.KindProcOracleTests, "procoracle.test"); err == nil {
+	if _, err := runGuestTests(context.Background(), guestevidence.KindProcOracleTests, "procoracle.test", ""); err == nil {
 		t.Error("a relative test binary path was accepted")
 	}
-	if _, err := runGuestTests(context.Background(), guestevidence.KindProcOracleTests, filepath.Join(t.TempDir(), "none")); err == nil {
+	if _, err := runGuestTests(context.Background(), guestevidence.KindProcOracleTests, filepath.Join(t.TempDir(), "none"), ""); err == nil {
 		t.Error("a missing test binary was accepted")
 	}
 }
@@ -541,9 +546,9 @@ func TestDialOutcomes(t *testing.T) {
 
 // ---- the command ----
 
-func geResponse(t *testing.T, mutate func(receipt map[string]any)) string {
+func geResponse(t *testing.T, w bindWorld, mutate func(receipt map[string]any)) string {
 	t.Helper()
-	receipt := map[string]any{"schema_version": "tbound-production-pi-receipt/v1", "profile_hash": geDigest("profile"), "frozen_source_digest": geDigest("source"),
+	receipt := map[string]any{"schema_version": "tbound-production-pi-receipt/v1", "run_id": "run-g1", "profile_hash": w.profileDigest, "containment_profile_digest": w.templateDigest, "frozen_source_digest": rtSource,
 		"provider_exchange": true, "claim_bearing": false, "task_admitted": true, "turn_completed": true, "success": true,
 		"tool_sequence": []string{"read", "edit", "bash", "read"}, "provider_turns": 5, "source_generation": "g0", "final_generation": "g2", "generation_count": 3,
 		"settlement": "STOPPED", "exit_observed": true, "exit_code": 0, "descendants_settled": true}
@@ -559,6 +564,7 @@ func geResponse(t *testing.T, mutate func(receipt map[string]any)) string {
 
 func TestGuestEvidenceProviderExchangeCommand(t *testing.T) {
 	dir := t.TempDir()
+	w := newBindWorld(t, dir)
 	write := func(name, content string) string {
 		p := filepath.Join(dir, name)
 		if err := os.WriteFile(p, []byte(content), 0o600); err != nil {
@@ -567,11 +573,12 @@ func TestGuestEvidenceProviderExchangeCommand(t *testing.T) {
 		return p
 	}
 	args := func(response, out string) []string {
-		return []string{"provider-exchange", "--commit", geCommit, "--response", response, "--profile-hash", geDigest("profile"),
-			"--frozen-source-digest", geDigest("source"), "--out", out}
+		return []string{"provider-exchange", "--commit", geCommit, "--response", response, "--run-config", w.runConfig, "--template", w.files.template,
+			"--host-profile", w.files.hostProfile, "--host-profile-signature", w.files.hostProfileSig, "--host-profile-key", w.files.hostProfileKey,
+			"--registration", w.files.registration, "--registration-signature", w.files.registrationSig, "--out", out}
 	}
 	var stdout, stderr bytes.Buffer
-	good := write("good.txt", geResponse(t, nil)+"\n")
+	good := write("good.txt", geResponse(t, w, nil)+"\n")
 	out := filepath.Join(dir, "provider.json")
 	if err := runGuestEvidence(args(good, out), &stdout, &stderr); err != nil {
 		t.Fatal(err)
@@ -581,8 +588,7 @@ func TestGuestEvidenceProviderExchangeCommand(t *testing.T) {
 		t.Fatal(err)
 	}
 	self, _ := selfDigest()
-	if err := guestevidence.Validate(guestevidence.KindProviderExchange, data, guestevidence.Expect{Commit: geCommit, BinarySHA256: self,
-		ProfileHash: geDigest("profile"), FrozenSourceDigest: geDigest("source")}); err != nil {
+	if err := guestevidence.Validate(guestevidence.KindProviderExchange, data, withBinary(w.expect(), self)); err != nil {
 		t.Fatalf("the written artifact does not validate: %v", err)
 	}
 	if !strings.Contains(stdout.String(), "binary_sha256 "+self) {
@@ -590,10 +596,10 @@ func TestGuestEvidenceProviderExchangeCommand(t *testing.T) {
 	}
 	// Nothing is written for a response that does not show the exchange, and an artifact is never replaced.
 	for name, response := range map[string]string{
-		"read only run":   geResponse(t, func(r map[string]any) { r["tool_sequence"] = []string{"read"} }),
-		"no exchange":     geResponse(t, func(r map[string]any) { r["provider_exchange"] = false }),
-		"another profile": geResponse(t, func(r map[string]any) { r["profile_hash"] = geDigest("x") }),
-		"two lines":       geResponse(t, nil) + "\n" + geResponse(t, nil),
+		"read only run":   geResponse(t, w, func(r map[string]any) { r["tool_sequence"] = []string{"read"} }),
+		"no exchange":     geResponse(t, w, func(r map[string]any) { r["provider_exchange"] = false }),
+		"another profile": geResponse(t, w, func(r map[string]any) { r["profile_hash"] = geDigest("x") }),
+		"two lines":       geResponse(t, w, nil) + "\n" + geResponse(t, w, nil),
 		"empty":           "",
 	} {
 		refused := filepath.Join(dir, "refused-"+strings.ReplaceAll(name, " ", "-")+".json")
@@ -628,22 +634,23 @@ func TestGuestEvidenceTestsCommandWritesOnlyValidRuns(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	run := func(bin, name string) (string, error) {
 		out := filepath.Join(dir, name+".json")
-		return out, runGuestEvidence([]string{"tests", "--commit", geCommit, "--kind", "guest-tests-procoracle", "--test-binary", bin, "--out", out}, &stdout, &stderr)
+		return out, runGuestEvidence([]string{"tests", "--commit", geCommit, "--kind", guestevidence.KindLandlockConnectTests, "--test-binary", bin, "--out", out}, &stdout, &stderr)
 	}
 	// The command cannot know which binary the capture built; the evq side compares the digest. Here the
 	// run is valid in itself, so the artifact is written even though the digest is not yet compared.
 	// (Producer-side validation is given the digest of the binary that ran.)
-	out, err := run(geTestBinary(t, geProcOracleOutput(""), 0), "ok")
+	// The procoracle kind needs a fresh cgroup (TestRunGuestTestsRunsTheRealCgroupTestsInAFreshCgroupAndRemovesIt).
+	out, err := run(geTestBinary(t, geTestsOutput(guestevidence.KindLandlockConnectTests, ""), 0), "ok")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(out); err != nil {
 		t.Fatal(err)
 	}
-	spec, _ := guestevidence.SpecFor(guestevidence.KindProcOracleTests)
+	spec, _ := guestevidence.SpecFor(guestevidence.KindLandlockConnectTests)
 	for name, bin := range map[string]string{
-		"skipped":    geTestBinary(t, geProcOracleOutput(spec.Required[1]), 0),
-		"exit":       geTestBinary(t, geProcOracleOutput(""), 1),
+		"skipped":    geTestBinary(t, geTestsOutput(guestevidence.KindLandlockConnectTests, spec.Required[0]), 0),
+		"exit":       geTestBinary(t, geTestsOutput(guestevidence.KindLandlockConnectTests, ""), 1),
 		"no results": geTestBinary(t, "PASS\n", 0),
 	} {
 		out, err := run(bin, "bad-"+strings.ReplaceAll(name, " ", "-"))
@@ -784,5 +791,134 @@ func TestCellsProbeAsServiceNeedsRoot(t *testing.T) {
 	// The switch happened on one thread only: this goroutine keeps its identity.
 	if os.Geteuid() == guestevidence.ServiceUID {
 		t.Fatal("the identity switch leaked into the test thread")
+	}
+}
+
+func withBinary(e guestevidence.Expect, binary string) guestevidence.Expect {
+	e.BinarySHA256 = binary
+	return e
+}
+
+// A G1 run has a config, registration, template and signed profile of its own. Its artifact is accepted
+// although none of them is the pilot's, and refused when the run does not share the pilot's base cell, source,
+// image or admin key, or when the profile is not the one the receipt names.
+func TestGuestEvidenceProviderExchangeIsBoundToWhatTheRunSharesWithThePilot(t *testing.T) {
+	dir := t.TempDir()
+	w := newBindWorld(t, dir)
+	response := filepath.Join(dir, "response.txt")
+	if err := os.WriteFile(response, []byte(geResponse(t, w, nil)+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	env := productionRouteProbeEnv()
+	ex, err := providerExchangeBound(response, w.files, w.pins, env)
+	if err != nil {
+		t.Fatalf("a run under its own profile is refused: %v", err)
+	}
+	if ex.Binding.ProfileDigest != w.profileDigest || ex.Binding.TemplateDigest != w.templateDigest ||
+		ex.Binding.BaseTemplateDigest != w.pins.BaseTemplateDigest || !guestevidence.IsDigest(ex.Binding.RegistrationDigest) ||
+		ex.Binding.RunnerDigest != w.pins.RunnerDigest || ex.Binding.RuntimeBundleDigest != w.pins.RuntimeBundleDigest {
+		t.Errorf("binding = %+v", ex.Binding)
+	}
+	if ex.Binding.TemplateDigest == ex.Binding.BaseTemplateDigest {
+		t.Error("the run's template is the base template: it was not given a registration of its own")
+	}
+	for name, mutate := range map[string]func(*guestevidence.RunBinding){
+		"another base cell":      func(p *guestevidence.RunBinding) { p.BaseTemplateDigest = geDigest("another base") },
+		"another source":         func(p *guestevidence.RunBinding) { p.FrozenSourceDigest = geDigest("another source") },
+		"another image":          func(p *guestevidence.RunBinding) { p.ImageDigest = geDigest("another image") },
+		"another admin key":      func(p *guestevidence.RunBinding) { p.AdminPubkeyDigest = geDigest("another key") },
+		"another runtime bundle": func(p *guestevidence.RunBinding) { p.RuntimeBundleDigest = geDigest("another bundle") },
+		"another runner (not the build of the frozen commit)": func(p *guestevidence.RunBinding) { p.RunnerDigest = geDigest("another runner") },
+	} {
+		pins := w.pins
+		mutate(&pins)
+		if _, err := providerExchangeBound(response, w.files, pins, env); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+	// The receipt names a profile other than the signed one.
+	other := filepath.Join(dir, "other.txt")
+	if err := os.WriteFile(other, []byte(geResponse(t, w, func(r map[string]any) { r["profile_hash"] = geDigest("another profile") })+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := providerExchangeBound(other, w.files, w.pins, env); err == nil {
+		t.Error("a receipt of another profile than the signed one was accepted")
+	}
+}
+
+func TestRunGuestTestsStopsAHangingBinary(t *testing.T) {
+	old := guestTestsTimeout
+	guestTestsTimeout = time.Second
+	t.Cleanup(func() { guestTestsTimeout = old })
+	bin := filepath.Join(t.TempDir(), "procoracle.test")
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\nexec sleep 60\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	start := time.Now()
+	if _, err := runGuestTests(context.Background(), guestevidence.KindProcOracleTests, bin, ""); err == nil {
+		t.Fatal("a binary killed at the timeout was recorded as a run")
+	}
+	if took := time.Since(start); took > 20*time.Second {
+		t.Fatalf("the hanging binary was stopped only after %s", took)
+	}
+}
+
+// The real-cgroup tests skip without the guard variable and refuse a login-session cgroup, so the
+// producer runs them, and only them, in a fresh capped cgroup with the variable set, and removes it.
+func TestRunGuestTestsRunsTheRealCgroupTestsInAFreshCgroupAndRemovesIt(t *testing.T) {
+	info, err := os.ReadFile("/proc/self/mountinfo")
+	if err != nil {
+		t.Skip(err)
+	}
+	mount, err := cgroup2Mount(string(info))
+	if err != nil {
+		t.Skip(err)
+	}
+	own := ""
+	if data, err := os.ReadFile("/proc/self/cgroup"); err == nil {
+		for _, line := range strings.Split(string(data), "\n") {
+			if p, ok := strings.CutPrefix(line, "0::"); ok {
+				own = p
+			}
+		}
+	}
+	if why := cgroupguard.RefuseBase(own); why != "" {
+		t.Skipf("%s: run under systemd-run --user --scope -p Delegate=yes -p TasksMax=512 -p MemoryMax=2G; the fresh-cgroup run is NOT verified here", why)
+	}
+	if _, err := os.Stat(filepath.Join(mount, own, "pids.max")); err != nil {
+		t.Skipf("no cgroup2 pids controller on %q (hybrid hierarchy?): the fresh-cgroup run is NOT verified here", own)
+	}
+	leftover := filepath.Join(mount, own, "tbound-guest-tests-leftover")
+	if err := os.MkdirAll(filepath.Join(leftover, "procoracle-1"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	seen := filepath.Join(dir, "seen")
+	script := "#!/bin/sh\nprintf 'guard=%s\\n' \"$" + cgroupguard.Env + "\" > " + seen + "\ncat /proc/self/cgroup >> " + seen + "\n"
+	bin := filepath.Join(dir, "procoracle.test")
+	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runGuestTests(context.Background(), guestevidence.KindProcOracleTests, bin, filepath.Join(mount, own)); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(seen)
+	_, cg, _ := strings.Cut(string(data), "0::")
+	cg = strings.TrimSpace(cg)
+	if !strings.HasPrefix(string(data), "guard=1\n") || !strings.HasPrefix(cg, strings.TrimSuffix(own, "/")+"/tbound-guest-tests-") {
+		t.Fatalf("the test binary did not run with the guard in a fresh child cgroup of %q:\n%s", own, data)
+	}
+	if _, err := os.Stat(filepath.Join(mount, cg)); !os.IsNotExist(err) {
+		t.Fatalf("the fresh cgroup %q was not removed: %v", cg, err)
+	}
+	if _, err := os.Stat(leftover); !os.IsNotExist(err) {
+		t.Fatalf("the leftover cgroup of an earlier run was not removed: %v", err)
+	}
+	// Without a cgroup parent nothing is created and the guard is not set.
+	if _, err := runGuestTests(context.Background(), guestevidence.KindProcOracleTests, bin, ""); err != nil {
+		t.Fatal(err)
+	}
+	if data, _ := os.ReadFile(seen); !strings.HasPrefix(string(data), "guard=\n") {
+		t.Fatalf("the guard was set without a fresh cgroup:\n%s", data)
 	}
 }

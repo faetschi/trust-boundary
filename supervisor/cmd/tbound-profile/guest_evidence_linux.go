@@ -26,6 +26,7 @@ import (
 
 	"golang.org/x/sys/unix"
 
+	"tbound/supervisor/internal/cgroupguard"
 	"tbound/supervisor/internal/guestevidence"
 	"tbound/supervisor/internal/piruntime"
 )
@@ -33,9 +34,9 @@ import (
 // guestEvidenceUsage is the part of the usage text for `tbound-profile guest-evidence`.
 const guestEvidenceUsage = `  tbound-profile guest-evidence capability        --commit <40-hex> --seccomp-profile <abs file> --out <new file> [--service-cgroup </system.slice/..service>]
   tbound-profile guest-evidence netsink           --commit <40-hex> --out <new file>
-  tbound-profile guest-evidence provider-exchange --commit <40-hex> --response <file> --profile-hash <sha256> --frozen-source-digest <sha256> --out <new file>
-  tbound-profile guest-evidence route-denied      --commit <40-hex> --route bash-view --run-id <id> --response <file> --target <abs path> --control-path <rel path> --control-file <file> --profile-hash <sha256> --frozen-source-digest <sha256> [--audit-root <dir>] --out <new file>
-  tbound-profile guest-evidence route-denied      --commit <40-hex> --route direct-runtime --run-id <id> --target <abs path> --control-path <rel path> --run-config <run.json> --probe-template <file> --production-template <file> [--host-profile <file> --host-profile-signature <file> --host-profile-key <file>] [--audit-root <dir>] --out <new file>
+  tbound-profile guest-evidence provider-exchange --commit <40-hex> --response <file> --run-config <run.json> --template <file> [--host-profile <file> --host-profile-signature <file> --host-profile-key <file> --registration <file> --registration-signature <file>] --out <new file>
+  tbound-profile guest-evidence route-denied      --commit <40-hex> --route bash-view --run-id <id> --response <file> --target <abs path> --control-path <rel path> --control-file <file> --run-config <run.json> --template <file> [--host-profile <file> --host-profile-signature <file> --host-profile-key <file> --registration <file> --registration-signature <file>] [--audit-root <dir>] --out <new file>
+  tbound-profile guest-evidence route-denied      --commit <40-hex> --route direct-runtime --run-id <id> --target <abs path> --control-path <rel path> --run-config <run.json> --probe-template <file> --production-template <file> [--host-profile <file> --host-profile-signature <file> --host-profile-key <file> --registration <file> --registration-signature <file>] [--audit-root <dir>] --out <new file>
   tbound-profile guest-evidence tests             --commit <40-hex> --kind guest-tests-procoracle|guest-tests-landlock-connect --test-binary <abs file> --out <new file>
 `
 
@@ -52,6 +53,9 @@ const (
 	maxGuestInputSize = 1 << 20
 )
 
+// guestTestsTimeout bounds a guest test run; a variable so a test can shorten it.
+var guestTestsTimeout = 15 * time.Minute
+
 func runGuestEvidence(args []string, stdout, stderr io.Writer) error {
 	if len(args) == 0 {
 		return errors.New("guest-evidence needs a kind\n" + guestEvidenceUsage)
@@ -67,22 +71,23 @@ func runGuestEvidence(args []string, stdout, stderr io.Writer) error {
 	seccomp := flags.String("seccomp-profile", "", "capability: the installed static seccomp profile file named by the cell template")
 	serviceCgroup := flags.String("service-cgroup", guestevidence.ServiceCgroup, "capability: cgroup of the governed service")
 	response := flags.String("response", "", "provider-exchange: the response line the governed client printed")
-	profileHash := flags.String("profile-hash", "", "provider-exchange: run.json pins.profile_hash")
-	frozenSource := flags.String("frozen-source-digest", "", "provider-exchange: run.json pins.frozen_source_digest")
 	testKind := flags.String("kind", "", "tests: the artifact kind")
 	testBinary := flags.String("test-binary", "", "tests: the test binary built by tbound-run evq-capture")
 	route := flags.String("route", "", "route-denied: bash-view or direct-runtime")
 	runID := flags.String("run-id", "", "route-denied: receipt.run_id of the route-probe run")
 	auditRoot := flags.String("audit-root", "/var/lib/tbound/audit", "route-denied: directory of the service audit journals")
 	target := flags.String("target", "", "route-denied: the registered outside-workspace file the probe commands request")
-	controlPath := flags.String("control-path", "", "route-denied: the workspace file the control command reads, relative to /work")
+	controlPath := flags.String("control-path", "", "route-denied: the workspace file the control read opens, relative to the workspace root")
 	controlFile := flags.String("control-file", "", "route-denied: that workspace file as it is on the guest, for its bytes")
 	probeTemplate := flags.String("probe-template", "", "route-denied direct-runtime: the route-probe cell template the probe cell was launched from")
 	productionTemplate := flags.String("production-template", "", "route-denied direct-runtime: the production cell template the probe template derives from")
-	runConfig := flags.String("run-config", "", "route-denied direct-runtime: run.json; its freeze_commit (must be --commit) and pins (profile_hash, containment_profile_digest, frozen_source_digest, admin_pubkey_digest) are the expectations the journal and the probe profile are held to")
-	hostProfile := flags.String("host-profile", "/etc/tbound/pi-host-profile.json", "route-denied direct-runtime: the signed host profile the probe run used (its digest must be the one the session journal records)")
-	hostProfileSig := flags.String("host-profile-signature", "/etc/tbound/pi-host-profile.ed25519", "route-denied direct-runtime: the Ed25519 signature of that profile")
-	hostProfileKey := flags.String("host-profile-key", "/etc/tbound/pi-host-profile.pub", "route-denied direct-runtime: the admin public key that verifies it (its sha256 must be run.json pins.admin_pubkey_digest)")
+	template := flags.String("template", "", "provider-exchange, route-denied bash-view: the cell template (d09-cell.json) the run used")
+	runConfig := flags.String("run-config", "", "run.json; its freeze_commit (must be --commit), v_image_digest and pins (frozen_source_digest, base_template_digest, admin_pubkey_digest, runtime_bundle_digest, runner_digest) are the expectations the run's own signed profile, registration and template are held to")
+	hostProfile := flags.String("host-profile", "/etc/tbound/pi-host-profile.json", "the signed host profile the run used; copy it away before the next profile is installed (its digest must be the run's: the receipt's profile_hash, or the one the session journal records)")
+	hostProfileSig := flags.String("host-profile-signature", "/etc/tbound/pi-host-profile.ed25519", "the Ed25519 signature of that profile")
+	hostProfileKey := flags.String("host-profile-key", "/etc/tbound/pi-host-profile.pub", "the admin public key that verifies it (its sha256 must be run.json pins.admin_pubkey_digest)")
+	registration := flags.String("registration", piruntime.D09ManagedLiveRootRegistrationPath, "the signed managed live root registration the run used (copy it away with the profile); verified under the same admin key, its runner_digest must be run.json pins.runner_digest")
+	registrationSig := flags.String("registration-signature", piruntime.D09ManagedLiveRootSignaturePath, "the Ed25519 signature of that registration")
 	if err := flags.Parse(rest); err != nil {
 		return err
 	}
@@ -102,7 +107,19 @@ func runGuestEvidence(args []string, stdout, stderr io.Writer) error {
 
 	var artifactKind string
 	var data any
-	expect := guestevidence.Expect{Commit: *commit, BinarySHA256: self, ProfileHash: *profileHash, FrozenSourceDigest: *frozenSource}
+	expect := guestevidence.Expect{Commit: *commit, BinarySHA256: self}
+	files := runProfileFiles{template: *template, hostProfile: *hostProfile, hostProfileSig: *hostProfileSig, hostProfileKey: *hostProfileKey,
+		registration: *registration, registrationSig: *registrationSig}
+	// The artifacts of runs under a config of their own are held to what run.json pins, which also names the freeze
+	// commit, and never to what the caller says.
+	var pins guestevidence.RunBinding
+	if kind == "provider-exchange" || kind == "route-denied" {
+		if pins, err = runBindingPins(*runConfig, *commit); err != nil {
+			return err
+		}
+		expect.FrozenSourceDigest, expect.BaseTemplateDigest, expect.ImageDigest, expect.AdminPubkeyDigest = pins.FrozenSourceDigest, pins.BaseTemplateDigest, pins.ImageDigest, pins.AdminPubkeyDigest
+		expect.RuntimeBundleDigest, expect.RunnerDigest = pins.RuntimeBundleDigest, pins.RunnerDigest
+	}
 	switch kind {
 	case "capability":
 		artifactKind = guestevidence.KindCapability
@@ -112,26 +129,30 @@ func runGuestEvidence(args []string, stdout, stderr io.Writer) error {
 		data, err = probeNetSink(context.Background(), productionNetSinkEnv(self))
 	case "provider-exchange":
 		artifactKind = guestevidence.KindProviderExchange
-		data, err = providerExchangeFrom(*response)
+		data, err = providerExchangeBound(*response, files, pins, productionRouteProbeEnv())
 	case "route-denied":
 		opts := routeProbeOptions{route: *route, runID: *runID, auditRoot: *auditRoot, response: *response,
 			target: *target, controlPath: *controlPath, controlFile: *controlFile,
-			profileHash: *profileHash, frozenSource: *frozenSource, probeTemplate: *probeTemplate, productionTemplate: *productionTemplate,
-			hostProfile: *hostProfile, hostProfileSig: *hostProfileSig, hostProfileKey: *hostProfileKey}
-		if *route == "direct-runtime" {
-			// The expectations come from run.json, which also names the freeze commit, not from the caller.
-			binding, pinErr := directRuntimePins(*runConfig, *commit, *profileHash, *frozenSource)
-			if pinErr != nil {
-				return pinErr
-			}
-			opts.profileHash, opts.frozenSource, opts.containmentDigest, opts.adminPubkeyDigest = binding.ProfileHash, binding.FrozenSourceDigest, binding.ContainmentProfileDigest, binding.AdminPubkeyDigest
-			expect.ProfileHash, expect.FrozenSourceDigest, expect.ContainmentProfileDigest, expect.AdminPubkeyDigest = binding.ProfileHash, binding.FrozenSourceDigest, binding.ContainmentProfileDigest, binding.AdminPubkeyDigest
-		}
+			pins: pins, template: *template, probeTemplate: *probeTemplate, productionTemplate: *productionTemplate,
+			hostProfile: *hostProfile, hostProfileSig: *hostProfileSig, hostProfileKey: *hostProfileKey,
+			registration: *registration, registrationSig: *registrationSig}
 		data, artifactKind, err = probeRouteDenied(opts, productionRouteProbeEnv())
 	case "tests":
 		artifactKind = *testKind
 		var run guestevidence.TestRun
-		run, err = runGuestTests(context.Background(), *testKind, *testBinary)
+		cgroupParent := ""
+		if *testKind == guestevidence.KindProcOracleTests {
+			// The real-cgroup tests run in a fresh cgroup below the hierarchy root, not in the
+			// operator's login session.
+			var info []byte
+			if info, err = os.ReadFile("/proc/self/mountinfo"); err == nil {
+				cgroupParent, err = cgroup2Mount(string(info))
+			}
+			if err != nil {
+				return err
+			}
+		}
+		run, err = runGuestTests(context.Background(), *testKind, *testBinary, cgroupParent)
 		expect.TestBinaries = map[string]string{run.Package: run.TestBinarySHA256}
 		data = run
 	default:
@@ -401,8 +422,10 @@ func parseTestOutput(out []byte) []guestevidence.TestResult {
 }
 
 // runGuestTests runs the test binary the capture of the frozen commit built, with the fixed arguments, and
-// records what happened. The digest of the binary is the digest of the file that ran.
-func runGuestTests(ctx context.Context, kind, binary string) (guestevidence.TestRun, error) {
+// records what happened. The digest of the binary is the digest of the file that ran. With a
+// cgroupParent the binary runs in a fresh capped child cgroup of it, with the real-cgroup opt-in
+// (cgroupguard.Env) set, and the child is removed afterwards.
+func runGuestTests(ctx context.Context, kind, binary, cgroupParent string) (run guestevidence.TestRun, err error) {
 	spec, ok := guestevidence.SpecFor(kind)
 	if !ok {
 		return guestevidence.TestRun{}, fmt.Errorf("--kind must be one of guest-tests-procoracle, guest-tests-landlock-connect, not %q", kind)
@@ -424,10 +447,26 @@ func runGuestTests(ctx context.Context, kind, binary string) (guestevidence.Test
 	}
 	defer os.RemoveAll(work)
 	var out bytes.Buffer
+	ctx, cancel := context.WithTimeout(ctx, guestTestsTimeout)
+	defer cancel()
 	cmd := exec.CommandContext(ctx, binary, guestevidence.TestRunArgs...)
+	cmd.WaitDelay = 10 * time.Second // a leftover child holding the output pipe must not block Wait
 	cmd.Dir, cmd.Env = work, []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "HOME=" + work, "TMPDIR=" + work, "LANG=C", "LC_ALL=C"}
 	cmd.Stdout, cmd.Stderr = &limitedWriter{w: &out, left: maxTestRunOutput}, &limitedWriter{w: &out, left: maxTestRunOutput}
-	run := guestevidence.TestRun{Package: spec.Package, TestBinarySHA256: digest, Args: slices.Clone(guestevidence.TestRunArgs),
+	if cgroupParent != "" {
+		cell, remove, cgErr := newGuestTestsCgroup(cgroupParent)
+		if cgErr != nil {
+			return guestevidence.TestRun{}, cgErr
+		}
+		defer func() {
+			if removeErr := remove(); removeErr != nil && err == nil {
+				err = removeErr
+			}
+		}()
+		cmd.SysProcAttr = &syscall.SysProcAttr{UseCgroupFD: true, CgroupFD: int(cell.Fd())}
+		cmd.Env = append(cmd.Env, cgroupguard.Env+"=1")
+	}
+	run = guestevidence.TestRun{Package: spec.Package, TestBinarySHA256: digest, Args: slices.Clone(guestevidence.TestRunArgs),
 		KernelRelease: unix.ByteSliceToString(uts.Release[:])}
 	var exitErr *exec.ExitError
 	switch err := cmd.Run(); {
@@ -441,6 +480,57 @@ func runGuestTests(ctx context.Context, kind, binary string) (guestevidence.Test
 	run.OutputSHA256 = "sha256:" + hex.EncodeToString(sum[:])
 	run.Results = parseTestOutput(out.Bytes())
 	return run, nil
+}
+
+// newGuestTestsCgroup makes a fresh cgroup below parent, capped as cgroupguard caps a test cgroup,
+// and returns it open with the function that kills what is left in it and removes its tree.
+func newGuestTestsCgroup(parent string) (*os.File, func() error, error) {
+	// A run that was killed before its removal leaves its cgroup behind.
+	leftovers, _ := filepath.Glob(filepath.Join(parent, "tbound-guest-tests-*"))
+	for _, leftover := range leftovers {
+		if err := removeCgroupTree(leftover); err != nil {
+			return nil, nil, fmt.Errorf("leftover guest-tests cgroup: %w", err)
+		}
+	}
+	dir, err := os.MkdirTemp(parent, "tbound-guest-tests-")
+	if err != nil {
+		return nil, nil, fmt.Errorf("guest-tests cgroup: %w", err)
+	}
+	if err := cgroupguard.ApplyLimits(dir, parent); err != nil {
+		return nil, nil, errors.Join(err, removeCgroupTree(dir))
+	}
+	cell, err := os.Open(dir)
+	if err != nil {
+		return nil, nil, errors.Join(err, removeCgroupTree(dir))
+	}
+	return cell, func() error { _ = cell.Close(); return removeCgroupTree(dir) }, nil
+}
+
+// removeCgroupTree kills every process in the cgroup tree at dir and removes its directories,
+// deepest first, retrying while the killed processes exit.
+func removeCgroupTree(dir string) error {
+	_ = os.WriteFile(filepath.Join(dir, "cgroup.kill"), []byte("1"), 0)
+	var err error
+	for range 50 {
+		var dirs []string
+		_ = filepath.WalkDir(dir, func(path string, d os.DirEntry, walkErr error) error {
+			if walkErr == nil && d.IsDir() {
+				dirs = append(dirs, path)
+			}
+			return nil
+		})
+		err = nil
+		for _, d := range slices.Backward(dirs) {
+			if removeErr := os.Remove(d); removeErr != nil && !os.IsNotExist(removeErr) {
+				err = fmt.Errorf("remove guest-tests cgroup: %w", removeErr)
+			}
+		}
+		if err == nil {
+			return nil
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return err
 }
 
 type limitedWriter struct {

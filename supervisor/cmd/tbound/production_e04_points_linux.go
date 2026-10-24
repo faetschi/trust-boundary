@@ -170,6 +170,25 @@ func productionE04LedgerUnavailable() productionE04Ledger {
 	return productionE04Ledger{basis: runner.E04LedgerUnavailable}
 }
 
+// productionE04PublicationFromResult is the publication evidence of a publication outcome: what publication.Publish
+// held under the live-root lock (Result.Evidence) with the status the service saw. A result without that evidence
+// (the request was refused before it was planned, or the result was recovered from the journal) gives nil: the
+// evidence is absent, not an empty publication. The ledger is not part of it: the points carry it
+// (productionE04LedgerFromResult), and EFF-WS-05 is judged only where they say what was applied.
+func productionE04PublicationFromResult(result publication.Result) *runner.E04PublicationEvidence {
+	if result.Evidence == nil || result.TransactionID == "" {
+		return nil
+	}
+	status := string(result.Status)
+	if status == "" {
+		status = string(publication.StatusUnknown)
+	}
+	return &runner.E04PublicationEvidence{TransactionID: result.TransactionID, PublicationID: result.PublicationID, Status: status,
+		LockIdentity: result.Evidence.LockIdentity, AffectedPaths: append([]string(nil), result.Evidence.AffectedPaths...),
+		Sealed: result.Evidence.Sealed, SealedIdentityDigest: result.Evidence.Sealed.IdentityDigest(),
+		FenceDir: result.Evidence.FenceDir, FenceBursts: result.Evidence.FenceBursts}
+}
+
 // productionE04Journal is the part of audit.Journal the recorder uses.
 type productionE04Journal interface {
 	Append(audit.Event) (audit.Record, error)
@@ -201,11 +220,13 @@ type productionE04Recorder struct {
 	journal productionE04Journal
 	next    uint64
 	ledger  productionE04Ledger
-	fatal   error
-	gapped  int
-	closed  bool
-	sealed  productionE04Binding
-	sealErr error
+	// publication is the publication evidence the post-publication record carries (see setPublication).
+	publication *runner.E04PublicationEvidence
+	fatal       error
+	gapped      int
+	closed      bool
+	sealed      productionE04Binding
+	sealErr     error
 }
 
 // newProductionE04Recorder opens the workflow's store. It never fails: a store that cannot be
@@ -258,6 +279,17 @@ func (r *productionE04Recorder) setLedger(ledger productionE04Ledger) {
 	r.mu.Unlock()
 }
 
+// setPublication sets the publication evidence the post-publication record carries. Nil (the default) records none:
+// the run did not reach Finalize, or Finalize left no evidence, and EFF-WS-05 and EFF-WS-06 are then not judged.
+func (r *productionE04Recorder) setPublication(evidence *runner.E04PublicationEvidence) {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	r.publication = evidence
+	r.mu.Unlock()
+}
+
 // recordE04 records the point on the session's recorder, if the session has one.
 func (s *productionPiSession) recordE04(point string) {
 	if s != nil {
@@ -287,6 +319,9 @@ func (r *productionE04Recorder) record(point string) {
 	if r.ledger.basis == runner.E04LedgerPublication {
 		rec.Ledger = r.ledger.entries
 	}
+	if point == wsoracle.PointPostPublication {
+		rec.Publication = r.publication
+	}
 	manifest, reason := r.capture(point)
 	rec.Status = runner.E04StatusSnapshot
 	if reason != "" {
@@ -296,6 +331,12 @@ func (r *productionE04Recorder) record(point string) {
 		rec.Manifest, rec.ManifestIdentityDigest = &manifest, manifest.IdentityDigest()
 	}
 	err := r.append(rec)
+	if errors.Is(err, audit.ErrRecordTooLarge) && rec.Publication != nil {
+		// The sealed manifest does not fit beside the point. The point keeps its own manifest and the publication
+		// evidence is left out: EFF-WS-05/06 are then not judged (absent), and E04 loses nothing.
+		rec.Publication = nil
+		err = r.append(rec)
+	}
 	if errors.Is(err, audit.ErrRecordTooLarge) {
 		// The manifest does not fit one journal frame. The point is still recorded, as a gap
 		// that keeps only the digest of what was seen.
@@ -454,7 +495,7 @@ func verifyReceiptE04Binding(receipt productionPiReceipt, trace audit.Trace) err
 	count := receipt.E04EvidenceRecordCount
 	if receipt.E04EvidenceHead == "" || count <= 0 || count > len(trace.Records) ||
 		auditHeadHash(trace.Records[:count]) != receipt.E04EvidenceHead {
-		return ErrPiWorkflowCatalog
+		return fmt.Errorf("%w: receipt e04 evidence head or count differs from the store", ErrPiWorkflowCatalog)
 	}
 	return nil
 }

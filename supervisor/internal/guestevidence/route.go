@@ -48,8 +48,9 @@ var RouteRulesetRoots = []string{"/usr", "/lib", "/lib64", "/etc", "/runtime", "
 
 // RouteDenied is the data of a guest-route-* artifact.
 type RouteDenied struct {
-	// RunID, ProfileHash and FrozenSourceDigest identify the governed run that made the attempts. The
-	// last two must equal the run.json pins.
+	// RunID, ProfileHash and FrozenSourceDigest identify the governed run that made the attempts. The run has
+	// its own signed profile (ProfileHash), which Binding ties to the run.json pins; the frozen source must equal
+	// the run.json pin.
 	RunID              string `json:"run_id"`
 	ProfileHash        string `json:"profile_hash"`
 	FrozenSourceDigest string `json:"frozen_source_digest"`
@@ -59,20 +60,15 @@ type RouteDenied struct {
 	Cell RouteCell `json:"cell"`
 	// Journal is the head of the verified hash chain the attempts were read from.
 	Journal RouteJournal `json:"journal"`
-	// ProbeProfileDigest and ProfileSourceDigest (Pi runtime cell only) are read from the signed host profile
-	// whose digest the session journal records for the probe run: the probe profile's own digest, and its
-	// source provenance digest, which is the run's frozen source digest. The producer takes the source from
-	// there and refuses a pin that differs; the validator requires both to equal the run pins.
-	ProbeProfileDigest  string `json:"probe_profile_digest,omitempty"`
-	ProfileSourceDigest string `json:"profile_source_digest,omitempty"`
+	// Binding ties the run's own signed profile, template and image to the pins the run shares with the pilot
+	// (the base template, the image, the source, the admin key). For a direct-runtime probe the profile is the
+	// probe profile, whose template is the probe template.
+	Binding ProfileBinding `json:"binding"`
 	// View (Pi runtime cell only) is what the probe process measured inside the cell, before its attempts: the
 	// lstat facts of every component of the target's path as the cell's own mounts show them, and the identity of
 	// the probe. Ordinary file permissions computed from it must allow the access, so that only the cell's
 	// confinement stands between the cell and the bytes.
 	View *cellview.View `json:"view,omitempty"`
-	// AdminPubkeyDigest (Pi runtime cell only) is the digest of the admin public key the signed probe host
-	// profile was verified under; the validator requires it to equal run.json pins.admin_pubkey_digest.
-	AdminPubkeyDigest string `json:"admin_pubkey_digest,omitempty"`
 	// Limits (Pi runtime cell only) are what the artifact does not establish (DirectRuntimeLimits).
 	Limits []string `json:"limits,omitempty"`
 	// Control reads a file inside the workspace in the same cell: the detector sees a successful read.
@@ -152,11 +148,10 @@ func validateRoute(kind string, raw []byte, e Expect) error {
 	if strings.TrimSpace(r.RunID) == "" {
 		add("run_id is empty")
 	}
-	if e.ProfileHash == "" || e.FrozenSourceDigest == "" {
-		add("run.json pins.profile_hash and pins.frozen_source_digest are required to bind the run")
-	} else if r.ProfileHash != e.ProfileHash || r.FrozenSourceDigest != e.FrozenSourceDigest {
-		add("the run is for profile %q and source %q, the run pins %q and %q", r.ProfileHash, r.FrozenSourceDigest, e.ProfileHash, e.FrozenSourceDigest)
+	if !IsDigest(r.ProfileHash) || r.FrozenSourceDigest != e.FrozenSourceDigest {
+		add("the run is for profile %q and source %q, the run pins source %q", r.ProfileHash, r.FrozenSourceDigest, e.FrozenSourceDigest)
 	}
+	bindingProblems(r.Binding, e, r.ProfileHash, r.Cell.TemplateDigest, r.Cell.ImageDigest, r.FrozenSourceDigest, add)
 	switch {
 	case !path.IsAbs(r.Target) || path.Clean(r.Target) != r.Target:
 		add("target %q is not a clean absolute path", r.Target)
@@ -178,13 +173,13 @@ func validateRoute(kind string, raw []byte, e Expect) error {
 	}
 
 	if kind == KindRouteDirectRuntime {
-		directRuntimeProblems(r, e, add)
+		directRuntimeProblems(r, add)
 		if len(problems) > 0 {
 			return errors.New(strings.Join(problems, "; "))
 		}
 		return nil
 	}
-	if r.Cell.ProductionTemplateDigest != "" || r.Cell.CellUID != 0 || r.Cell.CellGID != 0 || r.View != nil || r.AdminPubkeyDigest != "" || len(r.Limits) != 0 || r.ProbeProfileDigest != "" || r.ProfileSourceDigest != "" || r.Control.Op != "" || r.Control.Errno != "" {
+	if r.Cell.ProductionTemplateDigest != "" || r.Cell.CellUID != 0 || r.Cell.CellGID != 0 || r.View != nil || len(r.Limits) != 0 || r.Control.Op != "" || r.Control.Errno != "" {
 		add("a command cell artifact carries members of the Pi runtime cell artifact")
 	}
 	seenContainers := map[string]bool{}

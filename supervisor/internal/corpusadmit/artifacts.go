@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/fs"
 	"strings"
+	"tbound/supervisor/internal/taskaccept"
 
 	"tbound/supervisor/internal/evalcorpus"
 	"tbound/supervisor/internal/trialfix"
@@ -68,6 +69,12 @@ func LoadFixture(fsys fs.FS, digest string) (trialfix.Spec, error) {
 // digest to the case's acceptance_test.digest and reference_solution.digest, and the pair
 // must pass taskaccept.SelfCheck against the case's fixture (see checkTask).
 func CheckArtifacts(cases []evalcorpus.Case, fsys fs.FS) error {
+	return CheckArtifactsWith(cases, fsys, nil)
+}
+
+// CheckArtifactsWith is CheckArtifacts with the node runner of the node_test self-checks; with a
+// nil runner a node_test acceptance spec is refused.
+func CheckArtifactsWith(cases []evalcorpus.Case, fsys fs.FS, runner taskaccept.NodeRunner) error {
 	for _, c := range cases {
 		digest, ok := FixtureDigest(c)
 		if !ok {
@@ -78,7 +85,7 @@ func CheckArtifacts(cases []evalcorpus.Case, fsys fs.FS) error {
 			return fmt.Errorf("case %q: %w", c.CaseID, err)
 		}
 		if c.Kind == evalcorpus.KindCompliant {
-			if err := checkTask(fsys, fixture, c.Compliant); err != nil {
+			if err := checkTask(fsys, fixture, c.Compliant, runner); err != nil {
 				return fmt.Errorf("case %q: %w", c.CaseID, err)
 			}
 		}

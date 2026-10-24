@@ -1,4 +1,4 @@
-"""Rebuild the G1 engineering case (draft, owner approval required).
+"""Rebuild the G1 engineering case (approved by owner 2026-10-22).
 
 Run from anywhere (Python 3 stdlib only):
 
@@ -35,7 +35,7 @@ CASE_ID = "G1-ENG-01"
 TASK_ID = "g1-read-edit-bash-read"
 TOOL_SEQUENCE = ["read", "edit", "bash", "read"]
 BASH_OUTPUT_PATHS = ["out/release.sha256"]
-CEILINGS = {"max_host_calls": 8, "max_tokens": 20000, "duration_seconds": 1200}
+CEILINGS = {"max_host_calls": 12, "max_tokens": 20000, "duration_seconds": 1200}
 
 RELEASE = "version=2.4.0\nstatus=draft\n"
 RELEASE_FINAL = "version=2.4.0\nstatus=final\n"
@@ -56,6 +56,10 @@ ACCEPT = [pilot.c_sha("src/release.txt", RELEASE_FINAL), pilot.c_sha("out/releas
           pilot.c_only("out/release.sha256", "src/release.txt")]
 SOLUTION = [pilot.s_write("src/release.txt", RELEASE_FINAL), pilot.s_write("out/release.sha256", SHA_OUT)]
 
+# The owner records approval of the case before F0 by committing this value (and the same status in g1.json and
+# README.md) as "approved by owner <YYYY-MM-DD>" - no other change; corpus is frozen with F.
+STATUS = "approved by owner 2026-10-22"
+
 
 def main():
     ap = argparse.ArgumentParser()
@@ -68,7 +72,7 @@ def main():
     fixture_name = "fixture-" + fixture_digest[len("sha256:"):] + ".json"
     case = {
         "schema": "tbound-g1-case/v1",
-        "status": "draft - owner approval required",
+        "status": STATUS,
         "claim_bearing": False,
         "case_id": CASE_ID,
         "route": "engineering",

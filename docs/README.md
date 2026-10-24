@@ -1,75 +1,60 @@
 # TBound documentation
 
-## Start here
+## What TBound is
 
-- [Architecture](architecture.md): authority boundaries, runtime seams, and limits.
-- [Status](status.md): current gates, checkpoint validation, and priorities.
-- [Install](install.md): install Pi inside Linux and build/install TBound.
-- [Launch](launch.md): Go-only and offline Pi CLI fixtures, managed-service
-  behavior, and existing Hyper-V VM resume steps.
-- [Reproducibility setup](reproducible-setup.md): prototype native Linux and
-  Hyper-V provisioning paths; offline verification is in the guest
-  [runbook](../infra/guest/README.md).
-- [Governed host setup](governed-setup.md): operator prerequisites, profile trust,
-  and CLI routes with exit codes for `serve --pi`.
-- [Doctor](doctor.md): local diagnostic behavior.
-- [CLI reproduction decision](decisions/2026-10-12-cli-reproduction.md):
-  official Pi RPC/extension direction and its unqualified status.
+TBound is a Linux supervisor that runs one Pi coding task under a fixed tool surface.
+Pi and the model are untrusted; a Go process owns policy, durable state, command isolation, publication, and evidence.
+Every tool call goes through a small Pi extension to the Go gate, which checks deterministic policy before any effect.
+The gate journals the decision and the result in a hash-chained audit log, and it fails closed when a binding is missing or stale.
+`read` is mediated; `write` and `edit` create sealed generations instead of touching the live workspace.
+`bash` runs in an isolated rootless Podman cell with filesystem, process, network, and syscall limits.
+Approved changes reach the live repository only through publication, which checks the exact delta, quiescence, and one-use authority.
+Independent oracles observe the host and the workspace to measure forbidden effects that the supervisor may have missed.
+The thesis treats H1 as two measurements: PVR (forbidden effects in adversarial runs) and ORR (friction on compliant tasks).
+The prototype has passed G1 on the real guest, but the pilot and H1 are not finished; this repository is not a qualified product.
 
-## Runtime and security contracts
+## Map
 
-- [Production Pi session](production-pi-session.md)
-- [Governed session composition](governed-session-composition.md)
-- [Private Git staging](private-git-staging.md)
-- [Publication contract](publication-contract.md)
-- [Publication runtime integration](publication-runtime-integration.md)
-- [Provider conversation bridge](provider-conversation-bridge.md)
-- [Provider profiles](provider-profiles.md)
-- [Provider durable evidence](provider-durable-evidence.md)
-- [Release and packaging](release.md)
+Read the first two before trusting any other page. They carry the claim boundary and the current checkpoint.
 
-## Presentation / frontend
+- [Current state](../OVERVIEW.md) and [working log](../TASK_STATE.md): where the thesis is, what changed, what is next.
+- [Architecture](architecture.md): authority boundaries and runtime seams.
+- [Status and gates](status.md): the short gate summary and claim boundary.
 
-- [Pi web chat workspace](../extensions/webchat/docs/web-chat.md): untrusted, read-only chat
-  workspace for the Pi CLI/RPC harness; claim boundary, projection contract, security posture,
-  and the fixes for the previously reviewed frontend defects. The React client at `/app/` is the
-  default UI (`/` redirects there); the legacy workspace at `/legacy/` is deprecated.
-- [Web chat extension README](../extensions/webchat/README.md): what the extension contains, how
-  to run and test it, and its dependency rule.
-- [Web chat projection service contract](../extensions/webchat/docs/web-chat-contract.md): proposed
-  supervisor-owned projection/stream API needed for live read and interactive integration.
-- [Web chat extension decision record (ADR-0001)](../extensions/webchat/docs/adr-0001-optional-extension.md):
-  the web chat is an optional standalone extension in `extensions/webchat/`; the core neither
-  requires nor imports it. It also records the frontend toolchain direction and the P0 to P3 phase
-  status, with commits and receipts.
-- [Web chat frontend](../extensions/webchat/docs/frontend.md): the React and TypeScript client under
-  `/app/`. Phases P1 to P3 are committed (through `57e6406`), the React client is the default UI,
-  and the Linux gates and open items are listed there.
-- [Web chat frontend dependencies](../extensions/webchat/frontend/DEPENDENCIES.md): the pinned direct
-  dependencies, the licence census, and the install-script policy.
-- Web chat phase evidence (dated snapshots; the current state is in `frontend.md`):
-  [Phase 2a parity](../extensions/webchat/docs/phase2-parity.md),
-  [Phase 2b markdown AST](../extensions/webchat/docs/phase2-markdown.md) and
-  [Phase 3 parity table](../extensions/webchat/docs/phase3-parity.md).
-- [Web chat design language](../extensions/webchat/docs/design/design-language.md): the visual spec
-  (tokens and contrast receipts). The current static design mockup is
-  [v3](../extensions/webchat/docs/webchat/mockups/tbound-redesign-v3.html), with demo data and
-  offline. [v2](../extensions/webchat/docs/webchat/mockups/tbound-redesign-v2.html) is the earlier
-  layout mockup, kept until sign-off.
-  In v3, buttons inside the desktop frames jump to the frame that shows the result.
-- [Modular architecture vision](modular-architecture-vision.md): VISION / FUTURE-WORK, not
-  part of the thesis claim. A trust-tiered plugin/extension model, the headless CLI direction
-  (`serve --headless` is future work), and decision records for the open questions.
+Setup and operation:
 
-These documents describe code or intended contracts. Read the status page
-before treating any design or fixture as a qualified production result.
+- [Install](install.md): Pi, Go, and TBound installation.
+- [Reproducibility setup](reproducible-setup.md): native Linux and Hyper-V host paths.
+- [Governed host setup](governed-setup.md): operator prerequisites, signed profile, and CLI routes.
+- [Launch](launch.md): Go-only fixture, offline Pi fixture, and managed-service client.
+- [Doctor](doctor.md): local prerequisite checks.
+- [Release](release.md): build, package, and publish artifacts.
 
-## Evaluation
+Runtime and security:
 
-- [Candidate experiment manifest](experiment-manifest.md): not a registered
-  protocol or G1 result.
-- [Historical evidence and source map](evidence/README.md), with the
-  [machine-readable source identities](evidence/historical-sources.json).
-  Dated readiness reviews, blocker inventories, and superseded plans are
-  retained in Git history only; the source map gives their paths, blob IDs,
-  and hashes.
+- [Production Pi session](production-pi-session.md): `serve --pi` service-side composition.
+- [Governed session composition](governed-session-composition.md): legacy embedded-SDK detail, still cited by code.
+- [Delta admission](delta-admission.md): the post-operation decision that precedes publication.
+- [Publication contract](publication-contract.md) and [runtime integration](publication-runtime-integration.md): how approved changes reach the live root.
+- [Providers](providers.md) and [provider durable evidence](provider-durable-evidence.md): profiles, conversation bridge, and the dated real-exchange receipt.
+- [Design notes](design/): denial hints for H1 and the parked C-DH provider design.
+
+Research:
+
+- [Panel guide](panel-run.md): how the owner runs the blinded three-model construct panel.
+- [Evidence receipts](evidence/README.md): bounded receipts and the historical source map.
+- [Decision records](decisions/): the three ADRs, kept as history.
+
+## History and archive
+
+Finished audits, post-thesis proposals, and one-off working notes are in
+[archive/](archive/README.md). Dated engineering receipts are in
+[evidence/](evidence/README.md); [historical-sources.json](evidence/historical-sources.json)
+maps retired documents to commit and hash. Git history is the archive for deleted
+notes. The [candidate experiment manifest](experiment-manifest.md) is an old
+candidate, not a registered protocol; it is kept because an infrastructure
+worksheet cites it.
+
+A page describes code or an intended contract, never a result. Read
+[status](status.md) and [OVERVIEW](../OVERVIEW.md) before treating a design,
+fixture, or receipt as evidence.

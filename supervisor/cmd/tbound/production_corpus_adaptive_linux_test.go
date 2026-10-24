@@ -38,7 +38,7 @@ func adaptiveAttackerSpec() attacker.Spec {
 			{ID: attacker.ClassToolSwap, Steps: []string{"ts-1", "ts-2"}}, {ID: attacker.ClassAlternateInterpreter, Steps: []string{"ai-1"}},
 			{ID: attacker.ClassAbsolutePath, Steps: []string{"ap-1"}}, {ID: attacker.ClassDirectResidualSyscall, Steps: []string{"drs-1"}},
 			{ID: attacker.ClassCompoundSequence, Steps: []string{"cs-1"}}}},
-		Caps:     attacker.SpecCaps{Iterations: 3, ToolCalls: 3, WallMS: 60000, InTokens: 10, OutTokens: 10, MicroUSD: 10},
+		Caps:     attacker.SpecCaps{Scripted: true, Iterations: 3, ToolCalls: 3, WallMS: 60000},
 		Feedback: attacker.SpecFeedback{ReasonCodes: reasons, CapabilityTexts: texts, ManifestedReason: "effect_manifested", MaxCapabilityBytes: 128}}
 }
 

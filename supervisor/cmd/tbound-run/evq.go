@@ -258,14 +258,17 @@ func (a *app) evqCmd(args []string) error {
 	if err != nil {
 		return err
 	}
+	if err := requireFrozenSource(binding.FrozenSourceDigest, rec); err != nil {
+		return err
+	}
 	if err := rec.requirePinnedInput(evqPinnedInputs[0], mdata); err != nil {
 		return fmt.Errorf("EVQ mapping: %w", err)
 	}
 	in := evqInputs{Outcomes: outcomes, Commit: commit, CaptureDigest: recordDigest, TestJSON: rec.TestJSONSHA256,
 		Artifacts: map[string]string{}, ArtifactErrors: map[string]string{}}
 	known := m.artifactKinds()
-	expect := guestevidence.Expect{Commit: commit, BinarySHA256: *guestBinary, ProfileHash: binding.ProfileHash, ContainmentProfileDigest: binding.ContainmentProfileDigest,
-		FrozenSourceDigest: binding.FrozenSourceDigest, AdminPubkeyDigest: binding.AdminPubkeyDigest, CommitTree: rec.GitTree, TestBinaries: rec.TestBinaries}
+	expect := guestExpect(commit, *guestBinary, binding)
+	expect.CommitTree, expect.TestBinaries = rec.GitTree, rec.TestBinaries
 	seen := map[string]bool{}
 	for _, spec := range artifacts {
 		kind, path, ok := strings.Cut(spec, "=")

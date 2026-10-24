@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -60,11 +61,14 @@ func newEvTestEnv(uid int) *evTestEnv {
 	e.evidenceEnv = evidenceEnv{
 		geteuid: func() int { return uid },
 		getenv:  func(string) string { return "" },
-		snapshot: func(root, label string) wsoracle.Manifest {
+		snapshotDir: func(dir *os.File, label string) wsoracle.Manifest {
 			return wsoracle.Manifest{Label: label, Complete: true, Dev: 3, Entries: []wsoracle.Entry{},
 				Root: &wsoracle.Entry{Type: wsoracle.TypeDir, Mode: 0o700, UID: 995, GID: 986, Nlink: 2, Ino: 42}}
 		},
 		cell: func(context.Context) (evidenceCell, error) { return evTestCell(), nil },
+		pinRoot: func(context.Context, string) (*os.File, uint64, uint64, error) {
+			return nil, 3, 42, nil
+		},
 		capture: func(c evidenceCell, reg procoracle.Registration, p procoracle.Point, seq int) (procoracle.Snapshot, error) {
 			e.captured = append(e.captured, string(p))
 			return procoracle.Snapshot{Seq: seq, Point: p, RegistrationDigest: reg.Digest(), CellPath: c.Hierarchy, CellInode: c.Inode,
@@ -174,6 +178,122 @@ func TestEvidenceE04SnapshotOfTheRegisteredRootOnEveryPoint(t *testing.T) {
 	}
 }
 
+func TestOpenPinnedLiveRootRefusesARenamedRootAndADecoy(t *testing.T) {
+	dir := t.TempDir()
+	var st syscall.Stat_t
+	if err := syscall.Stat(dir, &st); err != nil {
+		t.Fatal(err)
+	}
+	decoy := filepath.Join(filepath.Dir(dir), "decoy")
+	if err := os.Mkdir(decoy, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(dir, dir+"-old"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(decoy, dir); err != nil {
+		t.Fatal(err)
+	}
+	if fd, err := openPinnedLiveRoot(dir, uint64(st.Dev), st.Ino); err == nil {
+		syscall.Close(fd)
+		t.Fatal("openPinnedLiveRoot accepted a decoy at the registered root's path")
+	}
+	fd, err := openPinnedLiveRoot(dir+"-old", uint64(st.Dev), st.Ino)
+	if err != nil {
+		t.Fatalf("openPinnedLiveRoot of the real root under its new name: %v", err)
+	}
+	syscall.Close(fd)
+}
+
+func TestEvidenceE04SnapshotRefusesARootThatIsNotPinned(t *testing.T) {
+	env := newEvTestEnv(0)
+	env.pinRoot = func(context.Context, string) (*os.File, uint64, uint64, error) {
+		return nil, 0, 0, errors.New("device 1 inode 2, want device 3 inode 4")
+	}
+	if _, err := runEvTest(t, env, "e04-snapshot", "--root", piruntime.D09ManagedPiLiveRootPath, "--point", "baseline"); err == nil ||
+		!strings.Contains(err.Error(), "not the registered live root") {
+		t.Fatalf("e04-snapshot of an unpinned root: %v", err)
+	}
+}
+
+// TestEvidenceE04SnapshotSnapshotsThroughThePinnedDescriptor is the path race: the root is pinned
+// once, and the manifest is taken through that descriptor, so a decoy at the path afterwards is
+// not what the snapshot reads.
+func TestEvidenceE04SnapshotSnapshotsThroughThePinnedDescriptor(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "kept.txt"), []byte("original"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var st syscall.Stat_t
+	if err := syscall.Stat(dir, &st); err != nil {
+		t.Fatal(err)
+	}
+	env := newEvTestEnv(0)
+	held, err := os.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	env.pinRoot = func(context.Context, string) (*os.File, uint64, uint64, error) {
+		return held, uint64(st.Dev), st.Ino, nil
+	}
+	env.snapshotDir = wsoracle.SnapshotDir
+	// The pin holds the original directory. Swapping the path now must not change what is read.
+	decoy := filepath.Join(filepath.Dir(dir), "decoy")
+	if err := os.Mkdir(decoy, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(dir, dir+"-held"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(decoy, dir); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runEvTest(t, env, "e04-snapshot", "--root", piruntime.D09ManagedPiLiveRootPath, "--point", "baseline")
+	if err != nil {
+		t.Fatalf("e04-snapshot through the pinned descriptor: %v", err)
+	}
+	var doc runner.E04SnapshotDoc
+	singleDoc(t, out, &doc)
+	if doc.Manifest.Dev != uint64(st.Dev) || doc.Manifest.Root == nil || doc.Manifest.Root.Ino != st.Ino {
+		t.Fatalf("the manifest is not the pinned root: %+v", doc.Manifest)
+	}
+	found := false
+	for _, e := range doc.Manifest.Entries {
+		if e.Path == "kept.txt" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("the snapshot did not read the pinned tree: %+v", doc.Manifest.Entries)
+	}
+}
+
+// TestEvidenceE04SnapshotRefusesADecoySnapshot: if the descriptor does not read the registered
+// device and inode (a decoy was opened), the snapshot is refused rather than published as the
+// live root.
+func TestEvidenceE04SnapshotRefusesADecoySnapshot(t *testing.T) {
+	dir := t.TempDir()
+	decoy := filepath.Join(filepath.Dir(dir), "decoy")
+	if err := os.Mkdir(decoy, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	var original syscall.Stat_t
+	if err := syscall.Stat(dir, &original); err != nil {
+		t.Fatal(err)
+	}
+	env := newEvTestEnv(0)
+	env.pinRoot = func(context.Context, string) (*os.File, uint64, uint64, error) {
+		// The descriptor is the decoy, but the identity is the registered root's.
+		f, err := os.Open(decoy)
+		return f, uint64(original.Dev), original.Ino, err
+	}
+	env.snapshotDir = wsoracle.SnapshotDir
+	if _, err := runEvTest(t, env, "e04-snapshot", "--root", piruntime.D09ManagedPiLiveRootPath, "--point", "baseline"); err == nil ||
+		!strings.Contains(err.Error(), "not the registered live root") {
+		t.Fatalf("e04-snapshot of a decoy descriptor: %v", err)
+	}
+}
+
 func TestEvidenceRefusesEverythingOutsideTheAllowlists(t *testing.T) {
 	live := piruntime.D09ManagedPiLiveRootPath
 	cases := map[string][]string{
@@ -237,7 +357,7 @@ func TestEvidenceRefusesAnyUidButTheEvidenceUid(t *testing.T) {
 			}
 		}
 		env.getenv = func(string) string {
-			return "/usr/local/bin/tbound evidence e04-snapshot --root /var/lib/tbound/live --point baseline"
+			return "/usr/local/bin/tbound evidence e04-snapshot --root /var/lib/tbound/live/root --point baseline"
 		}
 		if out, err := runEvTest(t, env, "ssh-original-command"); err == nil || out != "" {
 			t.Errorf("uid %d: forced command ran: %v %q", uid, err, out)

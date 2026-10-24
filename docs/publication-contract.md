@@ -63,10 +63,7 @@ and evidence contract E07:
 
 `OriginProposalID` is accepted only if it exactly matches the `ProposalID` of an
 approved `OperationProposalCall` transition in the validated chain. This is the
-bounded origin-membership rule implemented here; no independent registered
-session-origin or lease-origin verifier API is available in this slice. A
-lease-only chain, or an origin not present among its approved proposal calls,
-fails closed before preparation or authorization. Mixed chains are admissible
+bounded origin-membership rule implemented here. A lease-ending chain requires a versioned `TerminalLeaseOriginBinding` and a `VerifyTerminalLeaseOrigin` verifier (supervisor/internal/publication/publication_linux.go); without them it fails closed before preparation. An origin not present among its approved proposal calls fails closed before preparation or authorization. Mixed chains are admissible
 only when the supplied origin also appears as an approved proposal call.
 
 The journal is durable and access-controlled within the TCB, not tamper-proof.

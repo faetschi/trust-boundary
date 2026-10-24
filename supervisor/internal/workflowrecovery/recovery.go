@@ -148,6 +148,10 @@ type HostCallReservationPin struct {
 	OutcomeDigest    string           `json:"outcome_digest,omitempty"`
 	RetirementDigest string           `json:"retirement_digest,omitempty"`
 	CapturedCall     *CapturedCallPin `json:"captured_call,omitempty"`
+	// RetryableFailure marks a terminal reservation whose provider attempt failed before any effect
+	// and was journaled as a retryable failure: the exchange is still awaited and the next attempt may
+	// reserve its own host call. It is set only by the verified progress that settles that attempt.
+	RetryableFailure bool `json:"retryable_failure,omitempty"`
 }
 
 const (
@@ -1183,10 +1187,39 @@ func validateHostCallReservationAdmission(cp Checkpoint, now time.Time) error {
 	} else if !errors.Is(err, ErrPendingUnknown) {
 		return err
 	}
-	if !isPostResultProviderExchangeReady(cp) {
+	if !isPostResultProviderExchangeReady(cp) && !isRetryableFailureProviderExchangeReady(cp) {
 		return ErrPendingUnknown
 	}
 	return nil
+}
+
+// isRetryableFailureProviderExchangeReady admits one further provider reservation after a
+// failed, retryable provider attempt was journaled and its reservation settled: the exchange is
+// still awaited, the failed attempt's host call is terminal with an outcome digest and captured
+// nothing, and no effect or captured call is open. Whether the retry bound holds is enforced by the
+// provider conversation and its replay; the host-call and token ceilings charged by every
+// reservation bound the total here.
+func isRetryableFailureProviderExchangeReady(cp Checkpoint) bool {
+	pins := cp.Pins
+	if pins.ProviderDisposition != DispositionAwaitingProviderExchange || len(pins.ProviderTranscripts) == 0 ||
+		pins.PendingCallDisposition != PendingCallNone && pins.PendingCallDisposition != PendingCallTerminal {
+		return false
+	}
+	activeIndex := len(pins.ProviderTranscripts) - 1
+	if pins.ProviderTranscripts[activeIndex].Disposition != DispositionAwaitingProviderExchange {
+		return false
+	}
+	for index, transcript := range pins.ProviderTranscripts {
+		if index != activeIndex && transcript.Disposition != DispositionTerminal && transcript.Disposition != DispositionRetired {
+			return false
+		}
+	}
+	host, effect := pins.HostCallReservation, pins.EffectReservation
+	if host == nil || host.Disposition != HostCallTerminal || !host.RetryableFailure || host.CapturedCall != nil ||
+		!validDigest(host.OutcomeDigest) || host.RetirementDigest != "" {
+		return false
+	}
+	return effect == nil || effect.Disposition == EffectReservationTerminal || effect.Disposition == EffectReservationRetired
 }
 
 func isPostResultProviderExchangeReady(cp Checkpoint) bool {
@@ -1370,15 +1403,18 @@ func validatePins(p Pins) error {
 		}
 		switch reservation.Disposition {
 		case HostCallReserved, HostCallUnknown:
-			if reservation.OutcomeDigest != "" || reservation.RetirementDigest != "" {
+			if reservation.OutcomeDigest != "" || reservation.RetirementDigest != "" || reservation.RetryableFailure {
 				return fmt.Errorf("%w: unsettled host call has fabricated terminal evidence", ErrRollback)
 			}
 		case HostCallTerminal:
 			if !validDigest(reservation.OutcomeDigest) || reservation.RetirementDigest != "" {
 				return fmt.Errorf("%w: terminal host call has no valid result digest", ErrInvalid)
 			}
+			if reservation.RetryableFailure && reservation.CapturedCall != nil {
+				return fmt.Errorf("%w: a retryable failed attempt captured a call", ErrInvalid)
+			}
 		case HostCallRetired:
-			if !validDigest(reservation.RetirementDigest) || reservation.OutcomeDigest != "" {
+			if !validDigest(reservation.RetirementDigest) || reservation.OutcomeDigest != "" || reservation.RetryableFailure {
 				return fmt.Errorf("%w: retired host call has no valid retirement digest", ErrInvalid)
 			}
 		default:

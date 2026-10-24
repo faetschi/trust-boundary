@@ -210,11 +210,11 @@ func TestManagedLiveRootAuthorityPermitCoversDurableRootLedgerTerminal(t *testin
 
 func TestManagedLiveRootAuthorityRejectsWrongDescriptorRegistrationAndStaleRuntimeIdentity(t *testing.T) {
 	for name, mutate := range map[string]func(*piruntime.D09ManagedLiveRootRegistration){
-		"wrong root path":  func(registration *piruntime.D09ManagedLiveRootRegistration) { registration.RootPath += "/other" },
-		"wrong root mount": func(registration *piruntime.D09ManagedLiveRootRegistration) { registration.RootMountID++ },
-		"wrong root uid":   func(registration *piruntime.D09ManagedLiveRootRegistration) { registration.RootUID++ },
-		"wrong root gid":   func(registration *piruntime.D09ManagedLiveRootRegistration) { registration.RootGID++ },
-		"wrong root mode":  func(registration *piruntime.D09ManagedLiveRootRegistration) { registration.RootMode = 0o755 },
+		"wrong root path":   func(registration *piruntime.D09ManagedLiveRootRegistration) { registration.RootPath += "/other" },
+		"wrong root device": func(registration *piruntime.D09ManagedLiveRootRegistration) { registration.RootDevice++ },
+		"wrong root uid":    func(registration *piruntime.D09ManagedLiveRootRegistration) { registration.RootUID++ },
+		"wrong root gid":    func(registration *piruntime.D09ManagedLiveRootRegistration) { registration.RootGID++ },
+		"wrong root mode":   func(registration *piruntime.D09ManagedLiveRootRegistration) { registration.RootMode = 0o755 },
 		"wrong registration": func(registration *piruntime.D09ManagedLiveRootRegistration) {
 			registration.Digest = "sha256:" + stringsOf('f', 64)
 		},

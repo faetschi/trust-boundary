@@ -163,7 +163,7 @@ func newTestLauncher(config D09Config, runner D09ProbeRunner) *D09PodmanCrunLaun
 }
 
 func validD09Profile() HostProfile {
-	profile := DefaultLinuxHostProfileTemplate()
+	profile := measuredProfile()
 	profile.ID = "pi-host-profile-v1"
 	profile.Digest = DigestBytes([]byte("signed-test"))
 	profile.ContainmentProfileDigest = DigestBytes([]byte("test-template"))
@@ -324,6 +324,13 @@ func TestD09AdmissionRequiresARealBoundManagedLiveRoot(t *testing.T) {
 	if err := launcher.admitsFrozenLinuxProfile(templateProfile); !errors.Is(err, ErrProductionLauncherUnavailable) {
 		t.Fatalf("an unedited template profile was admitted: %v", err)
 	}
+	// A profile with a real id that still holds a placeholder identity (here the source provenance of the frozen
+	// commit) is not admitted for any config, smoke or corpus.
+	placeholder := validD09Profile()
+	placeholder.SourceProvenanceDigest = placeholderDigest("source-provenance")
+	if err := launcher.admitsFrozenLinuxProfile(placeholder); !errors.Is(err, ErrProductionLauncherUnavailable) {
+		t.Fatalf("a profile with a placeholder source provenance was admitted: %v", err)
+	}
 	profile.ContainmentProfile = "host-exec-v1"
 	if err := launcher.admitsFrozenLinuxProfile(profile); !errors.Is(err, ErrProductionLauncherUnavailable) {
 		t.Fatalf("a non-D09 profile was admitted: %v", err)
@@ -462,7 +469,7 @@ func TestD09ContainerArgumentsComposeFrozenCell(t *testing.T) {
 		"--memory 512m",
 		"--cpus 1",
 		"--runtime /usr/bin/crun",
-		"--cgroup-parent /sys/fs/cgroup/tbound",
+		"--cgroup-parent /tbound",
 		"--preserve-fds 8",
 		"--uidmap 1000:0:1",
 		"--gidmap 1000:0:1",
@@ -851,7 +858,7 @@ func TestD09TakeLaunchProofIsPerCommand(t *testing.T) {
 		ImageDigest: DigestBytes([]byte("image")), TemplateDigest: DigestBytes([]byte("template")),
 	}
 	stdoutA := io.NopCloser(strings.NewReader(`{"id":"request-a","type":"response","command":"prompt","success":true}` + "\n"))
-	launcher.storeLaunchProof(cmdA, proof, proofRead, stdoutA)
+	launcher.storeLaunchProof(cmdA, proof, D09NamespaceInodes{}, proofRead, stdoutA)
 	if _, ok := launcher.TakeLaunchProof(cmdB); ok {
 		t.Fatal("a foreign command was returned a proof")
 	}
@@ -1175,5 +1182,225 @@ func TestD09XattrAttestationRejectsUnregisteredTemplate(t *testing.T) {
 	defer source.Close()
 	if _, err := VerifyD09XattrVisibility(source, HostProfile{}, template); err == nil {
 		t.Fatal("caller-built/unregistered template minted a workspace xattr attestation")
+	}
+}
+
+// The launcher config built from the registered template carries no service
+// uid/gid (they are only set when the managed root is bound), but Probe checks
+// the cell identity before that bind. The signed registration supplies them.
+func TestProbeCellIdentityUsesTheRegisteredServiceIdentityBeforeTheManagedRootIsBound(t *testing.T) {
+	config, _ := completeD09Host(t)
+	serviceUID, serviceGID := config.UserNamespaceHostUID, config.UserNamespaceHostGID
+	config.registeredTemplate = true
+	unbound := config
+	unbound.UserNamespaceHostUID, unbound.UserNamespaceHostGID = 0, 0
+	if err := validateD09CellIdentity(unbound); err == nil {
+		t.Fatal("a config without the service identity passed the cell identity check")
+	}
+	registration := D09ManagedLiveRootRegistration{Digest: config.ManagedLiveRootRegistrationDigest,
+		ServiceUID: serviceUID, ServiceGID: serviceGID}
+	if err := validateD09CellIdentity(withRegisteredServiceIdentity(unbound, registration)); err != nil {
+		t.Fatalf("the registered service identity was not used: %v", err)
+	}
+	other := registration
+	other.Digest = DigestBytes([]byte("another registration"))
+	if err := validateD09CellIdentity(withRegisteredServiceIdentity(unbound, other)); err == nil {
+		t.Fatal("the service identity of another registration was used")
+	}
+	wrong := registration
+	wrong.ServiceUID++
+	if err := validateD09CellIdentity(withRegisteredServiceIdentity(unbound, wrong)); err == nil {
+		t.Fatal("a registered service identity that does not reproduce the signed mapping digest was accepted")
+	}
+	bound := config
+	bound.UserNamespaceHostUID++
+	if got := withRegisteredServiceIdentity(bound, registration); got.UserNamespaceHostUID != bound.UserNamespaceHostUID {
+		t.Fatal("an already-bound service identity was overwritten")
+	}
+}
+
+func envValue(env []string, key string) (string, bool) {
+	for _, entry := range env {
+		if value, ok := strings.CutPrefix(entry, key+"="); ok {
+			return value, true
+		}
+	}
+	return "", false
+}
+
+func TestD09ProbeEnvCarriesTheServicePinnedPodmanConfiguration(t *testing.T) {
+	t.Setenv("CONTAINERS_CONF", D09ManagedPiContainersConfPath)
+	t.Setenv("CONTAINERS_STORAGE_CONF", D09ManagedPiStorageConfPath)
+	t.Setenv("XDG_CACHE_HOME", D09ManagedPiPodmanCacheHome)
+	env := d09ProbeEnv()
+	for key, want := range map[string]string{"CONTAINERS_CONF": D09ManagedPiContainersConfPath,
+		"CONTAINERS_STORAGE_CONF": D09ManagedPiStorageConfPath, "XDG_CACHE_HOME": D09ManagedPiPodmanCacheHome} {
+		if got, ok := envValue(env, key); !ok || got != want {
+			t.Fatalf("%s = %q (present %v), want the pinned %q", key, got, ok, want)
+		}
+	}
+}
+
+func TestD09ProbeEnvDropsPodmanConfigurationThatIsNotThePinnedOne(t *testing.T) {
+	t.Setenv("CONTAINERS_CONF", "/tmp/attacker/containers.conf")
+	t.Setenv("CONTAINERS_STORAGE_CONF", "/tmp/attacker/storage.conf")
+	t.Setenv("XDG_CACHE_HOME", "/tmp/attacker/cache")
+	env := d09ProbeEnv()
+	for _, key := range []string{"CONTAINERS_CONF", "CONTAINERS_STORAGE_CONF", "XDG_CACHE_HOME"} {
+		if got, ok := envValue(env, key); ok {
+			t.Fatalf("%s=%q was inherited although it is not the pinned value", key, got)
+		}
+	}
+}
+
+// The signed image declares ENTRYPOINT ["/usr/local/bin/tbound-pi-entrypoint"], so podman runs
+// the ENTRYPOINT followed by whatever comes after the image reference. The entrypoint refuses
+// unless argv[1] is the held fd3 binary (or, in command mode, the signed command).
+func TestD09ContainerArgumentsDoNotRepeatTheImageEntrypointAsAnArgument(t *testing.T) {
+	const image = "localhost/tbound/pi-cell@" + fakeD09Digest
+	config := D09Config{UID: 1000, GID: 1000, PidsMax: 128, MemoryMB: 512, CPUs: "1", SeccompProfilePath: "/etc/tbound/seccomp.json",
+		CgroupsPath: "/sys/fs/cgroup/tbound", EntrypointPath: "/usr/local/bin/tbound-pi-entrypoint", CrunPath: "/usr/bin/crun",
+		LandlockABI: 1, LandlockRulesetDigest: DigestBytes([]byte("landlock")), LandlockROPath: "/usr", LandlockRWPath: "/work",
+		CommandExecutable: "/bin/bash"}
+	bindTestD09UserNamespace(&config, 1000, 1000, 1701, 1702)
+
+	check := func(name string, args []string, wantFirst string) {
+		t.Helper()
+		imageAt := indexOfString(args, image)
+		if imageAt < 0 || imageAt+1 >= len(args) {
+			t.Fatalf("%s: image reference is missing or last: %q", name, args)
+		}
+		if args[imageAt+1] != wantFirst {
+			t.Fatalf("%s: the word after the image is %q, want %q (an ENTRYPOINT image would see the entrypoint as argv[1]):\n%q",
+				name, args[imageAt+1], wantFirst, args)
+		}
+		flag := indexOfString(args, "--entrypoint")
+		if flag < 0 || flag+1 >= imageAt || args[flag+1] != config.EntrypointPath {
+			t.Fatalf("%s: --entrypoint %s is not pinned before the image: %q", name, config.EntrypointPath, args)
+		}
+		for _, word := range args[imageAt+1:] {
+			if word == config.EntrypointPath {
+				t.Fatalf("%s: the entrypoint path is repeated after the image: %q", name, args)
+			}
+		}
+	}
+	worker := d09ContainerArgumentsAtWithEnv(config, "tbound-pi-cell-deadbeef", image, PiWorkerCellEnvironment(), nil,
+		PiWorkerCellArguments(), PiWorkerCellWorkdir, nil, "")
+	check("worker cell", worker, "/proc/self/fd/3")
+	command := d09CommandCellArguments(config, "tbound-pi-cell-cmd-x", "/tmp/cid", image, "/work-view", "view-1", "lease-1", 1, 2,
+		sessionrepo.CommandSpec{Executable: "/bin/bash", Args: []string{"-lc", "true"}})
+	check("command cell", command, "/bin/bash")
+}
+
+func indexOfString(values []string, want string) int {
+	for index, value := range values {
+		if value == want {
+			return index
+		}
+	}
+	return -1
+}
+
+// cgroup_manager=cgroupfs makes podman and crun prepend /sys/fs/cgroup themselves.
+func TestD09CgroupParentIsRelativeToTheCgroup2Root(t *testing.T) {
+	const scope = "/sys/fs/cgroup/system.slice/tbound-pi.service/cells/pi-wf-abc-e1"
+	const want = "/system.slice/tbound-pi.service/cells/pi-wf-abc-e1"
+	if got, err := d09PodmanCgroupParent(scope); err != nil || got != want {
+		t.Fatalf("d09PodmanCgroupParent = %q, %v; want %q", got, err, want)
+	}
+	for _, bad := range []string{"", "/", "/sys/fs/cgroup", "/sys/fs/cgroup/", "/system.slice/x", "/sys/fs/cgroup/../x",
+		"/sys/fs/cgroup//x", "/sys/fs/cgroup/a,b", "sys/fs/cgroup/x", "/sys/fs/cgroupx/y"} {
+		if got, err := d09PodmanCgroupParent(bad); err == nil {
+			t.Fatalf("%q was accepted as %q", bad, got)
+		}
+	}
+
+	config := D09Config{UID: 1000, GID: 1000, PidsMax: 128, MemoryMB: 512, CPUs: "1", SeccompProfilePath: "/etc/tbound/seccomp.json",
+		CgroupsPath: scope, EntrypointPath: "/usr/local/bin/tbound-pi-entrypoint", CrunPath: "/usr/bin/crun",
+		LandlockABI: 1, LandlockRulesetDigest: DigestBytes([]byte("landlock")), CommandExecutable: "/bin/bash"}
+	bindTestD09UserNamespace(&config, 1000, 1000, 1701, 1702)
+	image := "localhost/tbound/pi-cell@" + fakeD09Digest
+	vectors := map[string][]string{
+		"worker": d09ContainerArgumentsAtWithEnv(config, "n", image, PiWorkerCellEnvironment(), nil, PiWorkerCellArguments(), PiWorkerCellWorkdir, nil, ""),
+		"command": d09CommandCellArguments(config, "n", "/tmp/cid", image, "/view", "v", "l", 1, 2,
+			sessionrepo.CommandSpec{Executable: "/bin/bash"}),
+	}
+	for name, vector := range vectors {
+		at := indexOfString(vector, "--cgroup-parent")
+		if at < 0 || at+1 >= len(vector) || vector[at+1] != want {
+			t.Fatalf("%s cell: --cgroup-parent = %q, want %q", name, vector, want)
+		}
+		if strings.Contains(strings.Join(vector, " "), "/sys/fs/cgroup") {
+			t.Fatalf("%s cell: the host cgroup mount prefix reached podman: %q", name, vector)
+		}
+	}
+}
+
+// StartVerified captures the host namespaces on a local copy of the config, so the launcher's base
+// config has none; the per-launch record carries them to ValidateLaunchProof.
+func TestValidateLaunchProofUsesTheHostNamespacesCapturedAtLaunch(t *testing.T) {
+	imageDigest := DigestBytes([]byte("image"))
+	templateDigest := DigestBytes([]byte("template"))
+	config := D09Config{UID: 1, GID: 1, ExpectedImageDigest: imageDigest, TemplateDigest: templateDigest,
+		LandlockABI: 8, LandlockRulesetDigest: DigestBytes([]byte("landlock"))}
+	bindTestD09UserNamespace(&config, 1, 1, 1701, 1702)
+	profile := HostProfile{Mode: ModeProduction, ContainmentProfileDigest: templateDigest}
+	launcher := &D09PodmanCrunLauncher{config: config}
+	cmd := exec.Command("/bin/true")
+	cmd.Process = &os.Process{Pid: 4242}
+	proof := D09TCBProof{
+		Schema: "tbound-pi-entrypoint/v1", UID: 1, GID: 1, CapEff: d09EmptyCapabilitySet,
+		NoNewPrivs: true, Seccomp: 2, LandlockABI: 8, LandlockRulesetDigest: config.LandlockRulesetDigest,
+		LandlockTSYNC: true, CgroupV2: true, ContainerName: "cell", LeaderPID: 9,
+		ContainerLeaderPID: 1, LauncherProcessPID: 4242, ImageRef: "image@" + imageDigest,
+		ImageDigest: imageDigest, TemplateDigest: templateDigest, ConsumerMountsVerified: true,
+		RawSourceFDsClosed: true, WorkerMountID: 1, RuntimeMountID: 2,
+		WorkerDevice: 1, WorkerInode: 2, RuntimeDevice: 1, RuntimeInode: 3,
+		UserNSInode: 200, MountNSInode: 201, PIDNSInode: 202, IPCNSInode: 203, UTSNSInode: 204, NetworkNSInode: 205,
+		NoExternalRoutes: true,
+	}
+	bindTestD09TCBProofMaps(&proof, config)
+	if err := launcher.ValidateLaunchProof(proof, profile, cmd); err == nil {
+		t.Fatal("a proof was validated against namespaces nobody captured")
+	}
+	host := D09NamespaceInodes{User: 100, Mount: 101, PID: 102, IPC: 103, UTS: 104, Network: 105}
+	launcher.storeLaunchProof(cmd, proof, host, nil, nil)
+	if err := launcher.ValidateLaunchProof(proof, profile, cmd); err != nil {
+		t.Fatalf("a proof in private namespaces was refused against the namespaces captured at launch: %v", err)
+	}
+	same := proof
+	same.NetworkNSInode = host.Network
+	if err := launcher.ValidateLaunchProof(same, profile, cmd); err == nil {
+		t.Fatal("a proof sharing the host's network namespace was accepted")
+	}
+	same = proof
+	same.UserNSInode = host.User
+	if err := launcher.ValidateLaunchProof(same, profile, cmd); err == nil {
+		t.Fatal("a proof sharing the host's user namespace was accepted")
+	}
+}
+
+// Pi's --mode rpc reads its requests on stdin; podman forwards the service's stdin to the
+// container only with --interactive, otherwise Pi reads EOF after initialising and exits.
+func TestD09WorkerCellForwardsStdinButCommandCellsDoNot(t *testing.T) {
+	const image = "localhost/tbound/pi-cell@" + fakeD09Digest
+	config := D09Config{UID: 1000, GID: 1000, PidsMax: 128, MemoryMB: 512, CPUs: "1", SeccompProfilePath: "/etc/tbound/seccomp.json",
+		CgroupsPath: "/sys/fs/cgroup/tbound", EntrypointPath: "/usr/local/bin/tbound-pi-entrypoint", CrunPath: "/usr/bin/crun",
+		LandlockABI: 1, LandlockRulesetDigest: DigestBytes([]byte("landlock")), CommandExecutable: "/bin/bash"}
+	bindTestD09UserNamespace(&config, 1000, 1000, 1701, 1702)
+	worker := d09ContainerArgumentsAtWithEnv(config, "n", image, PiWorkerCellEnvironment(), nil, PiWorkerCellArguments(), PiWorkerCellWorkdir, nil, "")
+	at := indexOfString(worker, "--interactive")
+	if at < 0 || at > indexOfString(worker, image) {
+		t.Fatalf("the worker cell does not forward stdin (no --interactive before the image): %q", worker)
+	}
+	for _, flag := range []string{"-t", "--tty", "-it", "-ti"} {
+		if indexOfString(worker, flag) >= 0 {
+			t.Fatalf("the worker cell allocates a tty (%s): %q", flag, worker)
+		}
+	}
+	command := d09CommandCellArguments(config, "n", "/tmp/cid", image, "/view", "v", "l", 1, 2,
+		sessionrepo.CommandSpec{Executable: "/bin/bash"})
+	if indexOfString(command, "--interactive") >= 0 || indexOfString(command, "-i") >= 0 {
+		t.Fatalf("a command cell reads no stdin but forwards it: %q", command)
 	}
 }

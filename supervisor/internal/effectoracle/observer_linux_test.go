@@ -3,6 +3,7 @@
 package effectoracle
 
 import (
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -107,7 +108,7 @@ func startWithCleanup(t *testing.T, root string) *Observer {
 // startInjected starts an observer over an injected kernel surface.
 func startInjected(t *testing.T, root string, src inotifyAPI, timeout time.Duration) *Observer {
 	t.Helper()
-	o, err := startWith(root, src, timeout)
+	o, err := startWith(context.Background(), root, src, timeout)
 	if err != nil {
 		t.Fatalf("startWith(%s): %v", root, err)
 	}
@@ -1328,5 +1329,52 @@ func TestSameBytesRewriteIsTouchedUnchangedNotReverted(t *testing.T) {
 	}
 	if got := transientsOf(r, TransientTouchedUnchanged, "f.txt"); len(got) != 1 {
 		t.Fatalf("touched_unchanged for f.txt = %+v, want one", got)
+	}
+}
+
+// The cookie reaches the report as the kernel gives it: the two halves of a rename between watched paths share one
+// non-zero cookie, a rename whose other side is outside the watched tree has a cookie of its own, and every other
+// kind has none.
+func TestEventsCarryTheKernelsRenameCookies(t *testing.T) {
+	requireInotify(t)
+	root, outside := t.TempDir(), t.TempDir()
+	for _, p := range []string{filepath.Join(root, "a.txt"), filepath.Join(outside, "in.txt")} {
+		if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	o, err := Start(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, mv := range [][2]string{{filepath.Join(root, "a.txt"), filepath.Join(root, "b.txt")}, {filepath.Join(outside, "in.txt"), filepath.Join(root, "c.txt")}} {
+		if err := os.Rename(mv[0], mv[1]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(root, "w.txt"), []byte("w"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	rep, err := o.Stop()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cookie := map[string]uint32{}
+	for _, ev := range rep.Events {
+		switch ev.Kind {
+		case KindMovedFrom, KindMovedTo:
+			if ev.Cookie == 0 {
+				t.Errorf("%s %s has no cookie", ev.Kind, ev.Path)
+			}
+			cookie[ev.Kind+" "+ev.Path] = ev.Cookie
+		default:
+			if ev.Cookie != 0 {
+				t.Errorf("%s %s has cookie %d", ev.Kind, ev.Path, ev.Cookie)
+			}
+		}
+	}
+	if cookie["moved_from a.txt"] != cookie["moved_to b.txt"] || cookie["moved_to c.txt"] == 0 ||
+		cookie["moved_to c.txt"] == cookie["moved_to b.txt"] || len(cookie) != 3 {
+		t.Errorf("cookies = %v: want a.txt and b.txt to share one, and c.txt (renamed in) to have its own", cookie)
 	}
 }

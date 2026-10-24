@@ -48,7 +48,8 @@ import (
 //	    kept), populates it from the fixture, and prints the digest of the fixture next to the
 //	    digest of the resulting tree, which must be equal.
 //	reset <case_id> --check
-//	    the refusals only, and a populated cells cgroup is one of them. It changes nothing.
+//	    the refusals only, and a populated cells cgroup is one of them, except for live processes in
+//	    tbound-nr-* scopes: no-reap/v1 leaves them by design and the reset kills them. It changes nothing.
 //	accept <case_id> [--tree live]
 //	    evaluates the case's pinned acceptance artifact against the live root (read-only,
 //	    links are never followed) and prints the result document (trial_accept_linux.go).
@@ -89,6 +90,9 @@ type trialEnv struct {
 	// liveRoot is the root that is reset, and owner the owner of what is put in it.
 	liveRoot string
 	owner    trialfix.Owner
+	// registeredRoot returns the device and inode of the verified managed live root
+	// registration: the identity a path-only consumer of liveRoot must pin.
+	registeredRoot func(ctx context.Context) (device, inode uint64, err error)
 	// cell resolves the registered cell, as the evidence kinds do, with its host identity.
 	cell func(ctx context.Context) (evidenceCell, error)
 	// lock takes the maintenance lock without waiting (maintenance_lock_linux.go) and returns its
@@ -97,7 +101,8 @@ type trialEnv struct {
 	// pending returns an error naming what is still pending: a workflow admission without a
 	// terminal, or a managed-root run that holds the live root.
 	pending func(ctx context.Context) error
-	// cellPopulated reports whether the cells cgroup (or one below it) holds a live process.
+	// cellPopulated reports whether the cells cgroup (or one below it) holds a live process that is
+	// not in a tbound-nr-* scope (no-reap/v1 survivors are the reset's work, not a refusal).
 	cellPopulated func(cell evidenceCell) (bool, error)
 	// killCell kills every process of the cells cgroup subtree and fails unless the cgroup is
 	// unpopulated afterwards.
@@ -109,6 +114,8 @@ type trialEnv struct {
 	netSink func(ctx context.Context, cell evidenceCell) error
 	// snapshot is wsoracle.Snapshot.
 	snapshot func(root, label string) wsoracle.Manifest
+	// snapshotDir is wsoracle.SnapshotDir: the digest snapshot of a directory the caller holds.
+	snapshotDir func(dir *os.File, label string) wsoracle.Manifest
 	// task is what the accept and v-run verbs need (trial_accept_linux.go, trial_vrun_linux.go).
 	task trialTaskEnv
 }
@@ -119,10 +126,20 @@ func productionTrialEnv() trialEnv {
 		geteuid: os.Geteuid, getenv: os.Getenv,
 		fixtureDigest: trialPinnedFixtureDigest, artifacts: os.DirFS(trialArtifactDir),
 		liveRoot: piruntime.D09ManagedPiLiveRootPath, owner: trialfix.Canonical,
+		registeredRoot: func(ctx context.Context) (uint64, uint64, error) {
+			reg, err := piruntime.LoadVerifiedD09ManagedLiveRootPolicy(ctx)
+			if err != nil {
+				return 0, 0, err
+			}
+			if reg.RootPath != piruntime.D09ManagedPiLiveRootPath {
+				return 0, 0, fmt.Errorf("the registration names the live root %q, not %q", reg.RootPath, piruntime.D09ManagedPiLiveRootPath)
+			}
+			return reg.RootDevice, reg.RootInode, nil
+		},
 		cell: loadTrialCell, lock: resetMaintenanceLock.acquire, pending: trialPending, cellPopulated: cellsCgroupPopulated, killCell: killCellsCgroup,
 		cleanNoReap: host.cleanNoReap, netSink: host.ensureNetSink,
-		snapshot: wsoracle.Snapshot,
-		task:     productionTrialTaskEnv(),
+		snapshot: wsoracle.Snapshot, snapshotDir: wsoracle.SnapshotDir,
+		task: productionTrialTaskEnv(),
 	}
 }
 
@@ -244,6 +261,10 @@ func trialReset(ctx context.Context, args []string, env trialEnv) (trialfix.Rese
 	// Whatever still runs in the cells cgroup goes first: a process that outlived its cell
 	// could write into the tree that is about to be built. The kill is the kernel's and
 	// atomic over the subtree, and the reset proceeds only on populated 0.
+	device, inode, err := env.registeredRoot(ctx)
+	if err != nil {
+		return trialfix.ResetDoc{}, fmt.Errorf("the managed live root registration cannot be verified: %w", err)
+	}
 	if err := env.killCell(cell); err != nil {
 		return trialfix.ResetDoc{}, err
 	}
@@ -255,10 +276,24 @@ func trialReset(ctx context.Context, args []string, env trialEnv) (trialfix.Rese
 	if err := env.netSink(ctx, cell); err != nil {
 		return trialfix.ResetDoc{}, fmt.Errorf("refusing the reset: net-sink confinement: %w", err)
 	}
-	if err := trialfix.Reset(env.liveRoot, spec, env.owner); err != nil {
+	if err := trialfix.ResetPinned(env.liveRoot, spec, env.owner, trialfix.RootIdentity{Device: device, Inode: inode}); err != nil {
 		return trialfix.ResetDoc{}, err
 	}
-	tree, err := trialfix.TreeDigest(env.snapshot(env.liveRoot, trialResetLabel))
+	// The digest is taken through the registered inode the reset verified, not through the path:
+	// a root that is renamed after the reset and replaced by a decoy does not change what is
+	// digested.
+	pinned, err := openPinnedLiveRoot(env.liveRoot, device, inode)
+	if err != nil {
+		return trialfix.ResetDoc{}, fmt.Errorf("the reset root is no longer the registered live root: %w", err)
+	}
+	pinnedFile := os.NewFile(uintptr(pinned), env.liveRoot)
+	manifest := env.snapshotDir(pinnedFile, trialResetLabel)
+	_ = pinnedFile.Close()
+	if manifest.Dev != device || manifest.Root == nil || manifest.Root.Ino != inode {
+		return trialfix.ResetDoc{}, fmt.Errorf("the reset tree is not the registered live root: device %d inode %d, want device %d inode %d",
+			manifest.Dev, manifestRootIno(manifest), device, inode)
+	}
+	tree, err := trialfix.TreeDigest(manifest)
 	if err != nil {
 		return trialfix.ResetDoc{}, err
 	}
@@ -325,15 +360,33 @@ func trialPending(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("the publication lifecycle journal cannot be read: %w", err)
 	}
-	info, err := os.Lstat(piruntime.D09ManagedPiLiveRootPath)
-	if err != nil || !info.IsDir() {
-		return fmt.Errorf("the live root cannot be identified: %v", err)
+	root, err := trialRootIdentity(registration, piruntime.D09ManagedPiLiveRootPath)
+	if err != nil {
+		return err
+	}
+	return trialPendingFrom(catalog, lifecycle, root, registration.Digest)
+}
+
+// trialRootIdentity reports the registration's device and inode for path, and refuses when the
+// path no longer is that directory: a live root that was renamed and replaced by a decoy is not
+// the root the registered runs were made on.
+func trialRootIdentity(registration piruntime.D09ManagedLiveRootRegistration, path string) (workflow.RootIdentity, error) {
+	if registration.RootPath != path {
+		return workflow.RootIdentity{}, fmt.Errorf("the registration names %q, not %q", registration.RootPath, path)
+	}
+	info, err := os.Lstat(path)
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return workflow.RootIdentity{}, fmt.Errorf("the live root cannot be identified: %v", err)
 	}
 	stat, ok := info.Sys().(*syscall.Stat_t)
 	if !ok {
-		return errors.New("the live root cannot be identified")
+		return workflow.RootIdentity{}, errors.New("the live root cannot be identified")
 	}
-	return trialPendingFrom(catalog, lifecycle, workflow.RootIdentity{Device: uint64(stat.Dev), Inode: stat.Ino}, registration.Digest)
+	if uint64(stat.Dev) != registration.RootDevice || stat.Ino != registration.RootInode {
+		return workflow.RootIdentity{}, fmt.Errorf("the live root is device %d inode %d, not the registered live root device %d inode %d",
+			stat.Dev, stat.Ino, registration.RootDevice, registration.RootInode)
+	}
+	return workflow.RootIdentity{Device: registration.RootDevice, Inode: registration.RootInode}, nil
 }
 
 // trialPendingFrom is trialPending over the two traces: a catalog admission without a terminal
@@ -410,14 +463,58 @@ func openCellsCgroup(cell evidenceCell) (*os.File, error) {
 	return dir, nil
 }
 
-// cellsCgroupPopulated reports whether the cells cgroup or one below it holds a live process.
+// openResetCheckCgroup is the verified opener; tests replace it with a fake cgroupfs.
+var openResetCheckCgroup = openCellsCgroup
+
+// cellsCgroupPopulated reports whether the cells cgroup or one below it holds a live process
+// outside the tbound-nr-* scopes (cgroupLiveOutsideNoReap).
 func cellsCgroupPopulated(cell evidenceCell) (bool, error) {
-	dir, err := openCellsCgroup(cell)
+	dir, err := openResetCheckCgroup(cell)
 	if err != nil {
 		return false, err
 	}
 	defer dir.Close()
-	return cgroupPopulated(dir)
+	return cgroupLiveOutsideNoReap(dir)
+}
+
+// cgroupLiveOutsideNoReap reports whether dir itself or a child cgroup other than a tbound-nr-*
+// scope holds a live process. Those scopes hold what no-reap/v1 leaves running by design; only the
+// reset's cgroup.kill ends it, and the reset runs after the --check of the runner's Prepare, so
+// counting them would refuse every trial after a no-reap run.
+func cgroupLiveOutsideNoReap(dir *os.File) (bool, error) {
+	if populated, err := cgroupPopulated(dir); err != nil || !populated {
+		return populated, err
+	}
+	fd, err := unix.Openat(int(dir.Fd()), "cgroup.procs", unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
+	if err != nil {
+		return false, fmt.Errorf("read cgroup.procs: %w", err)
+	}
+	procs := os.NewFile(uintptr(fd), "cgroup.procs")
+	data, err := io.ReadAll(io.LimitReader(procs, 1))
+	procs.Close()
+	if err != nil || len(data) != 0 {
+		return true, err
+	}
+	entries, err := dir.ReadDir(-1)
+	if err != nil {
+		return false, err
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() || strings.HasPrefix(entry.Name(), trialNoReapPrefix) {
+			continue
+		}
+		fd, err := unix.Openat(int(dir.Fd()), entry.Name(), unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
+		if err != nil {
+			return false, fmt.Errorf("cgroup %s: %w", entry.Name(), err)
+		}
+		child := os.NewFile(uintptr(fd), entry.Name())
+		populated, err := cgroupPopulated(child)
+		child.Close()
+		if err != nil || populated {
+			return populated, err
+		}
+	}
+	return false, nil
 }
 
 // killCellsCgroup is the production killCell: cgroup.kill, then the wait for populated 0.

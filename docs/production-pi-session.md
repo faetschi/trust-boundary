@@ -92,8 +92,10 @@ each authenticated lease/view. It consumes only the writable disposable
 `CommandView` descriptor. Immediately after that exact `inner.Run` succeeds, the
 wrapper calls `TakeCommandReceipt(view, spec, result, settlement)`, requires the
 live private issuance seal through `Validate()`/`Digest()`, and checks the exact
-view descriptor device/inode/mount identity against the captured proof and
-registered image/template before retaining the opaque receipt. It returns no
+view descriptor device/inode against the captured proof and registered
+image/template before retaining the opaque receipt. The proof's mount ID is the
+cell's own consumer mount and is never equated with the host view descriptor's
+mount ID. Each refusal names its failed check. It returns no
 result on any receipt or cleanup failure.
 
 Only after `sessionrepo.RunBash` has durably committed the effect result,
@@ -162,8 +164,7 @@ terminal transition digest, lease operation, and trusted proposal/call identity.
 That binding is persisted in the prepare/token/commit records, included in the
 commit digest through a derived origin identifier, and checked again by recovery.
 Legacy v1 proposal-call journals keep their original digest/decoder path. The
-read->write->edit->bash regression publishes with the Bash proposal identity,
-without a fake final write or caller-supplied origin string.
+component regression `TestPublicationRuntimePublishesVersionedAuthenticatedTerminalLeaseOrigin` (fixture Trust, read->write->edit->bash) publishes with the Bash proposal identity. Production publication of a bash-last chain is not yet evidenced.
 
 ## Legacy SDK-worker TCB proof (not the current CLI dev path)
 

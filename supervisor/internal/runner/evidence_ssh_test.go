@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/wsoracle"
@@ -53,7 +54,7 @@ func e04PointsGuest(doc E04PointsDoc, mutate func(*E04PointsDoc)) func([]string)
 }
 
 func e04BoundRef(doc E04PointsDoc) EvidenceRef {
-	return EvidenceRef{Interval: doc.IntervalRef, E04Head: doc.Head, E04Count: doc.Count}
+	return EvidenceRef{Interval: doc.IntervalRef, RunID: doc.RunID, E04Head: doc.Head, E04Count: doc.Count}
 }
 
 // The collector asks the guest for the service's own manifests of the seven lifecycle points
@@ -129,10 +130,13 @@ func TestSSHCollectorsE04DocumentThatDoesNotMatchTheReceiptIsAbsent(t *testing.T
 		ref     EvidenceRef
 		handler func([]string) ([]byte, int, error)
 	}{
-		"receipt head differs":   {EvidenceRef{Interval: doc.IntervalRef, E04Head: strings.Repeat("0", 64), E04Count: doc.Count}, good},
-		"receipt count differs":  {EvidenceRef{Interval: doc.IntervalRef, E04Head: doc.Head, E04Count: doc.Count - 1}, good},
+		"receipt head differs":   {EvidenceRef{Interval: doc.IntervalRef, RunID: doc.RunID, E04Head: strings.Repeat("0", 64), E04Count: doc.Count}, good},
+		"receipt count differs":  {EvidenceRef{Interval: doc.IntervalRef, RunID: doc.RunID, E04Head: doc.Head, E04Count: doc.Count - 1}, good},
 		"document head differs":  {e04BoundRef(doc), e04PointsGuest(doc, func(d *E04PointsDoc) { d.Head = strings.Repeat("0", 64) })},
 		"document count differs": {e04BoundRef(doc), e04PointsGuest(doc, func(d *E04PointsDoc) { d.Count-- })},
+		"store of another run":   {e04BoundRef(doc), e04PointsGuest(doc, func(d *E04PointsDoc) { d.RunID = "run-earlier" })},
+		"receipt names no run":   {EvidenceRef{Interval: doc.IntervalRef, E04Head: doc.Head, E04Count: doc.Count}, good},
+		"receipt names another":  {EvidenceRef{Interval: doc.IntervalRef, RunID: "run-other", E04Head: doc.Head, E04Count: doc.Count}, good},
 		"other interval":         {e04BoundRef(doc), e04PointsGuest(doc, func(d *E04PointsDoc) { d.IntervalRef = "x#2" })},
 		"wrong schema":           {e04BoundRef(doc), e04PointsGuest(doc, func(d *E04PointsDoc) { d.Schema = "tbound-evidence/v0" })},
 		"wrong kind":             {e04BoundRef(doc), e04PointsGuest(doc, func(d *E04PointsDoc) { d.Kind = EvidenceNetJournal })},
@@ -227,7 +231,7 @@ func TestEvidenceClientRefusesTheClientTransportAndAnUnvalidSSHConfig(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := args[len(args)-1]; got != `'/usr/local/bin/tbound' 'evidence' 'e04-snapshot' '--root' '/var/lib/tbound/live' '--point' 'baseline'` {
+	if got := args[len(args)-1]; got != `'/usr/local/bin/tbound' 'evidence' 'e04-snapshot' '--root' '/var/lib/tbound/live/root' '--point' 'baseline'` {
 		t.Fatalf("remote command = %s", got)
 	}
 	ssh.KnownHostsFile = ""
@@ -291,17 +295,23 @@ func TestGovernedCBeginsCollectorsBeforeTheRequestAndEndsThemOnEveryPath(t *test
 	f.g.Transport = orderTransport{events: &events, inner: f.tr}
 	f.g.Collectors = rc
 	f.respond("completed", "", f.receipt(true), 0)
+	before := time.Now()
 	if _, err := f.g.Execute(context.Background(), f.step); err != nil {
 		t.Fatal(err)
 	}
+	after := time.Now()
 	if want := []string{"begin", "request", "e04", "end"}; !reflect.DeepEqual(events, want) {
 		t.Fatalf("order = %v, want %v", events, want)
 	}
 	if rc.begin[0].Interval != IntervalRef(f.step) || rc.begin[0].Request != f.req {
 		t.Fatalf("begin ref = %+v", rc.begin[0])
 	}
-	if e := rc.e04[0]; !e.PublicationsKnown || e.Publications != 0 || e.RunID != "production-run-abc" {
+	if e := rc.e04[0]; !e.PublicationsKnown || e.Publications != 0 || e.RunID != "production-run-abc" || e.PublicationHead != strings.Repeat("a", 64) {
 		t.Fatalf("E04 ref = %+v", e)
+	}
+	// The end of the request reaches the collectors: a window bounded in time is compared with it.
+	if e := rc.e04[0]; e.Ended.IsZero() || e.Ended.Before(before) || e.Ended.After(after) {
+		t.Fatalf("Ended = %v, want a time between %v and %v", e.Ended, before, after)
 	}
 
 	// A transport failure still ends what Begin started.

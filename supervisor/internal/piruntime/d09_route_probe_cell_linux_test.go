@@ -3,6 +3,7 @@
 package piruntime
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
@@ -13,6 +14,7 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 
 	"tbound/supervisor/internal/cellview"
 )
@@ -21,7 +23,7 @@ import (
 // reads and writes /work.
 func measuredRouteProbeTemplate(t *testing.T) D09CellTemplate {
 	t.Helper()
-	landlockDigest, err := DigestD09LandlockRules([]string{"/usr"}, []string{"/work"})
+	landlockDigest, err := DigestD09LandlockRules([]string{"/usr", PiWorkerCellDefaultWorkingDirectory}, []string{"/work"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -29,7 +31,7 @@ func measuredRouteProbeTemplate(t *testing.T) D09CellTemplate {
 		Image: "localhost/tbound/pi-cell:latest", ExpectedImageDigest: fakeD09Digest,
 		CosignPublicKeyPath: "/etc/tbound/cosign.pub", CosignPublicKeyDigest: DigestBytes([]byte("cosign-pub")),
 		OCILayoutPath: "/etc/tbound/oci", SeccompProfilePath: "/etc/tbound/seccomp.json", SeccompProfileDigest: DigestBytes([]byte("{}")),
-		LandlockABI: 8, LandlockRulesetDigest: landlockDigest, LandlockROPath: "/usr", LandlockRWPath: "/work",
+		LandlockABI: 8, LandlockRulesetDigest: landlockDigest, LandlockROPath: "/usr," + PiWorkerCellDefaultWorkingDirectory, LandlockRWPath: "/work",
 		FrozenCapabilities: d09EmptyCapabilitySet, EntrypointPath: "/usr/local/bin/tbound-pi-entrypoint", EntrypointDigest: DigestBytes([]byte("entrypoint")),
 		Runtime: "crun", CgroupsPath: "/sys/fs/cgroup/tbound", CPUs: "1", PidsMax: 256, MemoryMB: 1024,
 		PodmanPath: "/usr/bin/podman", PodmanDigest: DigestBytes([]byte("podman")), CrunPath: "/usr/bin/crun", CrunDigest: DigestBytes([]byte("crun")),
@@ -50,7 +52,7 @@ func measuredRouteProbeTemplate(t *testing.T) D09CellTemplate {
 
 func probeTemplate(t *testing.T) D09CellTemplate {
 	template := measuredRouteProbeTemplate(t)
-	template.RouteProbe = &D09RouteProbe{Name: D09RouteProbeName, Target: "/home/node/.profile", Control: "/work/src/release.txt"}
+	template.RouteProbe = &D09RouteProbe{Name: D09RouteProbeName, Target: "/home/node/.profile", Control: PiWorkerCellDefaultWorkingDirectory + "/src/release.txt"}
 	return template
 }
 
@@ -96,6 +98,7 @@ func TestRouteProbeIsASignedTemplateMemberThatLeavesTheProductionTemplateAlone(t
 		"another probe":         func(p *D09RouteProbe) { p.Name = "direct-runtime/v2" },
 		"target in the ruleset": func(p *D09RouteProbe) { p.Target = "/usr/bin/env" },
 		"control outside":       func(p *D09RouteProbe) { p.Control = "/home/node/.bashrc" },
+		"control in /work":      func(p *D09RouteProbe) { p.Control = "/work/src/release.txt" },
 	} {
 		bad := probeTemplate(t)
 		p := *bad.RouteProbe
@@ -124,7 +127,7 @@ func TestWorkerLaunchSelectsTheProbeOnlyFromTheSignedTemplate(t *testing.T) {
 	want := []string{
 		"TBOUND_TEMPLATE_DIGEST=" + digest,
 		"TBOUND_ROUTE_PROBE_TARGET=/home/node/.profile",
-		"TBOUND_ROUTE_PROBE_CONTROL=/work/src/release.txt",
+		"TBOUND_ROUTE_PROBE_CONTROL=" + PiWorkerCellDefaultWorkingDirectory + "/src/release.txt",
 		"TBOUND_ROUTE_PROBE_TEMPLATE_FLAG=" + template.RouteProbe.TemplateFlag(digest),
 	}
 	if !slices.Equal(env, want) {
@@ -326,5 +329,37 @@ func TestOSRouteProbeFSMeasuresARealPathAndChangesNothing(t *testing.T) {
 	}
 	if after := treeSnapshot(t, root); !slices.Equal(before, after) {
 		t.Fatalf("the measurement changed the tree:\nbefore %q\nafter  %q", before, after)
+	}
+}
+
+// A probe cell never sends readiness. Its launch ends once the launch proof is validated: the cell is
+// stopped and the proof is handed to the caller, which journals it, instead of a readiness timeout that
+// loses it.
+func TestRouteProbeLaunchEndsWithItsProofInsteadOfWaitingForReadiness(t *testing.T) {
+	probe := D09RouteProbeResult{Name: D09RouteProbeName, Target: "/home/node/.profile", Control: PiWorkerCellDefaultWorkingDirectory + "/src/release.txt"}
+	profile, capability, channels, _, settler, _ :=
+		newSimulatedD09LaunchHelperFixture(t, func(p *D09TCBProof) { p.RouteProbe = &probe })
+	bootstrap := PiWorkerBootstrap{SessionID: "session-1", WorkflowID: "workflow-1", ConversationID: "conversation-1"}
+	if err := bindD09BootstrapSourceEvidence(&bootstrap, capability.runtime.D09SourceEvidence); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	worker, err := launchPiCLIWorker(ctx, profile, capability.runtime, capability, channels.channels, bootstrap, false, "")
+	var launchErr *PiWorkerLaunchError
+	if worker != nil || !errors.As(err, &launchErr) || !errors.Is(err, ErrD09RouteProbeLaunched) {
+		t.Fatalf("route-probe launch returned worker=%v err=%v, want a launch error caused by ErrD09RouteProbeLaunched", worker, err)
+	}
+	if launchErr.Settlement.State != SettlementStopped || !launchErr.Settlement.ExitObserved ||
+		!launchErr.Settlement.DescendantsSettled || launchErr.CleanupErr != nil {
+		t.Fatalf("route-probe cell was not settled: %+v cleanup=%v", launchErr.Settlement, launchErr.CleanupErr)
+	}
+	launch := launchErr.RouteProbe
+	if launch == nil || launch.LauncherPID <= 0 || launch.Proof.LauncherProcessPID != launch.LauncherPID ||
+		launch.Proof.RouteProbe == nil || launch.Proof.RouteProbe.Target != probe.Target {
+		t.Fatalf("route-probe launch error carries launch=%+v, want the cell's validated proof with its probe result", launch)
+	}
+	if got := settler.Calls(); got != 1 {
+		t.Fatalf("per-command settlement calls=%d, want 1", got)
 	}
 }

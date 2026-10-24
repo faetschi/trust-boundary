@@ -28,6 +28,11 @@ var (
 	ErrProductionCommandEvidence       = errors.New("production Bash operation lacks registered signed D09 settlement evidence")
 )
 
+// commandEvidenceRefused names the failed check so a refusal on a real host says which evidence was refused.
+func commandEvidenceRefused(check string, causes ...error) error {
+	return errors.Join(append([]error{fmt.Errorf("%w: %s", ErrProductionCommandEvidence, check)}, causes...)...)
+}
+
 // productionLifecycleEvidence records observations made by this run. These
 // fields are populated only from PiSDKWorker.Close, the joined governed loops,
 // task admission, turn_end, and the actual command runner receipt map. They are
@@ -42,6 +47,7 @@ type productionLifecycleEvidence struct {
 	proofRecordHash       string
 	proofEventID          string
 	workerLaunchAttempted bool
+	launchFailureSettled  bool
 	workerLaunched        bool
 	workerPID             int
 	workerClosed          bool
@@ -61,6 +67,7 @@ type productionLifecycleSnapshot struct {
 	proofRecordHash       string
 	proofEventID          string
 	workerLaunchAttempted bool
+	launchFailureSettled  bool
 	workerLaunched        bool
 	workerPID             int
 	workerClosed          bool
@@ -141,6 +148,33 @@ func (e *productionLifecycleEvidence) markWorkerLaunched(pid int) {
 	e.mu.Unlock()
 }
 
+// markLaunchFailed records a launch that yielded no worker. Only a typed launch error whose whole tree
+// proves the cell stopped, its exit observed and its descendants settled counts as settled; any other
+// failure leaves the launch unsettled.
+func (e *productionLifecycleEvidence) markLaunchFailed(err error) {
+	if e == nil {
+		return
+	}
+	var launchErr *piruntime.PiWorkerLaunchError
+	settled := errors.As(err, &launchErr) && !incompleteProductionLaunchFailure(err) && !unresolvedProductionLaunchUnknown(err, false)
+	e.mu.Lock()
+	e.launchFailureSettled = settled
+	e.mu.Unlock()
+}
+
+// workerSettled reports whether no Pi worker process of this run can still run: no launch was
+// attempted, a failed launch was settled, or the launched worker closed with a complete settlement.
+func (s productionLifecycleSnapshot) workerSettled() bool {
+	switch {
+	case !s.workerLaunchAttempted:
+		return true
+	case !s.workerLaunched:
+		return s.launchFailureSettled
+	}
+	return s.workerClosed && s.workerCloseErr == nil && s.settlement.State == piruntime.SettlementStopped &&
+		s.settlement.ExitObserved && s.settlement.DescendantsSettled
+}
+
 func (e *productionLifecycleEvidence) markWorkerLaunchAttempted() {
 	if e == nil {
 		return
@@ -159,7 +193,7 @@ func (e *productionLifecycleEvidence) snapshot() productionLifecycleSnapshot {
 	return productionLifecycleSnapshot{
 		proofDigest: e.proofDigest, proofSeq: e.proofSeq, proofRunID: e.proofRunID,
 		proofRecordHash: e.proofRecordHash, proofEventID: e.proofEventID,
-		workerLaunchAttempted: e.workerLaunchAttempted, workerLaunched: e.workerLaunched, workerPID: e.workerPID,
+		workerLaunchAttempted: e.workerLaunchAttempted, launchFailureSettled: e.launchFailureSettled, workerLaunched: e.workerLaunched, workerPID: e.workerPID,
 		workerClosed: e.workerClosed, workerCloseErr: e.workerCloseErr, settlement: e.settlement,
 		taskAdmitted: e.taskAdmitted, turnCompleted: e.turnCompleted,
 		channelsStarted: e.channelsStarted, channelsJoined: e.channelsJoined, channelsErr: e.channelsErr,
@@ -173,12 +207,25 @@ func productionCleanupSafe(evidence productionLifecycleSnapshot, runner *product
 	if !evidence.workerLaunchAttempted {
 		return true
 	}
-	if !evidence.workerLaunched || !evidence.workerClosed || evidence.workerCloseErr != nil || evidence.settlement.State != piruntime.SettlementStopped ||
-		!evidence.settlement.ExitObserved || !evidence.settlement.DescendantsSettled ||
-		(evidence.channelsStarted && (!evidence.channelsJoined || evidence.channelsErr != nil)) {
+	return evidence.workerSettled() && evidence.channelsSettled()
+}
+
+// channelsSettled reports whether the governed loops ended without a local failure: they never
+// started, or they joined either cleanly, with only a failed provider turn, or on a command cell that
+// never started its command. The bridge types the turn failure only when the turn left its exchange
+// disposed of in the provider journal (an unknown one is reconciled at abandon); the command failure
+// is typed only once the runner proved the cell gone, and its call is reconciled at abandon. Nothing
+// local is open. Cleanup and the managed-root abort share this check.
+func (s productionLifecycleSnapshot) channelsSettled() bool {
+	if !s.channelsStarted {
+		return true
+	}
+	if !s.channelsJoined {
 		return false
 	}
-	return true
+	_, providerTurnOnly := s.channelsErr.(providerTurnFailure)
+	_, commandNotStarted := s.channelsErr.(commandNotStartedFailure)
+	return s.channelsErr == nil || providerTurnOnly || commandNotStarted
 }
 
 func validateProductionLifecycle(evidence productionLifecycleSnapshot, runID string, runner *productionCommandRunner) error {
@@ -205,21 +252,21 @@ type productionBashEvidenceVerifier interface {
 func verifyProductionBashEvidence(ctx context.Context, runner sessionrepo.CommandRunner, operation sessionrepo.OperationEvidence) error {
 	if ctx == nil || runner == nil || operation.Tool != "bash" || operation.CommandContainmentStatus != "not-established" ||
 		operation.CommandRunnerProfile == "" {
-		return ErrProductionCommandEvidence
+		return commandEvidenceRefused("verify-operation-shape")
 	}
 	profile, ok := runner.(sessionrepo.CommandRunnerProfile)
 	if !ok || profile.Profile() == "" || operation.CommandRunnerProfile != profile.Profile() {
-		return ErrProductionCommandEvidence
+		return commandEvidenceRefused("verify-runner-profile")
 	}
 	verifier, ok := runner.(productionBashEvidenceVerifier)
 	if !ok {
-		return ErrProductionCommandEvidence
+		return commandEvidenceRefused("verify-not-verifier")
 	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 	if err := verifier.VerifyProductionBashEvidence(ctx, operation); err != nil {
-		return errors.Join(ErrProductionCommandEvidence, err)
+		return commandEvidenceRefused("verify-runner", err)
 	}
 	return nil
 }

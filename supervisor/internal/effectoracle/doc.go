@@ -86,15 +86,18 @@
 //   - Bind-mount and mount-namespace boundaries. A bind mount that makes one
 //     directory appear at two paths is reported only when it causes a watch
 //     alias. An unmount below the root is reported as a mount_boundary gap.
-//   - Reads, opens, and closes that do not write. IN_ACCESS, IN_OPEN, and
-//     IN_CLOSE_NOWRITE are not requested.
+//   - Reads, opens, and closes that do not write, except in the fence directory
+//     (below). IN_ACCESS, IN_OPEN, and IN_CLOSE_NOWRITE are not requested for any
+//     other directory.
 //   - Event multiplicity. inotify drops an event that is identical to the
 //     unread event at the tail of the queue, so a burst of identical events can
 //     arrive as one. The presence of an event for a path is recorded. Event
 //     counts are lower bounds and are not exact.
 //   - Kernel-level races between an event and the oracle's later read or hash.
-//     Events carry the time the oracle read them, not the kernel's time, and a
-//     file can change again before its digest is taken.
+//     Events carry the time the oracle read them, not the kernel's time (a later
+//     reading says nothing about when the event happened, only that it did not
+//     happen after it), and a file can change again before its digest is taken.
+//     The order of the records is the kernel's, though: see the fence directory.
 //   - Mutations that happen during Start, before the first barrier. Start must
 //     run before the workload begins.
 //   - Mutations between a directory's creation and the installation of its
@@ -129,7 +132,32 @@
 //
 // The at_ns fields are monotonic offsets from Start. Report.JSON includes them,
 // and Report.Digest excludes them, so identical workloads produce identical
-// digests.
+// digests. An at_ns is when the reader recorded the record, which is at or after the
+// kernel event by an amount nothing bounds, so it places an event from above and never
+// from below. What orders records is Seq: the inotify queue is FIFO and an event is
+// queued by the system call that causes it.
+//
+// The fence directory (FenceDir, lost+found, the directory a file system makes at its
+// root) is watched for opens and reads from the end of the start mark on, and for
+// nothing in the observer's own snapshots (it switches the records off for them). A
+// process that wants to say "my writes to the root are between these two points" opens
+// the directory read-only and reads it, FenceBurst times in a row (FenceRoot), before the
+// writes and again after them; each open and each read is a Fence record (op open, op
+// access) in the same Seq order as the events, so the events with a Seq between the two
+// fences happened between them whenever the reader got to them. Report.FenceDir says
+// the directory was watched; a root without it has no fence. A reader of the report
+// decides which records are a fence: a scan of the tree opens the directory and reads
+// it, but leaves a few opens and reads at most, not an unbroken alternation of
+// 2*FenceBurst of them in records with consecutive sequence numbers (identical events
+// next to each other in the queue are merged by the kernel, so a run of opens alone is
+// not reliable). Another process that makes such an alternation leaves a third one,
+// which makes the two ambiguous.
+// A moved_from or moved_to event carries the kernel's rename cookie. The two
+// halves of a rename between watched paths share one; a rename whose other side
+// is outside the watched tree has a cookie of its own. The digest keeps which
+// events share a cookie, not the cookie values. StartContext is Start that a
+// done context calls off: it checks the context before every canary it writes,
+// so a start that is called off writes nothing more into the root.
 //
 // On platforms other than Linux, Start returns ErrUnsupported.
 package effectoracle

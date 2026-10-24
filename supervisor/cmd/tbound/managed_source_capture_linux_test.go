@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -241,7 +242,10 @@ func newManagedSourceSeedFixture(t *testing.T) (*sessionrepo.Store, *audit.Journ
 		t.Fatal(err)
 	}
 	sourceFile := filepath.Join(sourcePath, "task.txt")
-	if err := os.WriteFile(sourceFile, []byte("before\n"), 0o600); err != nil {
+	if err := os.WriteFile(sourceFile, []byte("before\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(sourceFile, 0o644); err != nil { // the umask must not leave the live-root fixture non-canonical
 		t.Fatal(err)
 	}
 	journal, err := audit.Open(filepath.Join(root, "store-audit.jsonl"))
@@ -300,4 +304,22 @@ func managedRootCaptureEventCount(t *testing.T, journal *audit.Journal, kind str
 		}
 	}
 	return count
+}
+
+// A managed root with a 0600 fixture is seeded (Seed normalizes), but its release rescan and its
+// publication baseline scan demand the canonical form. The seed bridge refuses it up front.
+func TestManagedSourceSeedBridgeRefusesANonCanonicalRootBeforeExposure(t *testing.T) {
+	store, journal, source, _ := newManagedSourceSeedFixture(t)
+	path, err := os.Readlink(fmt.Sprintf("/proc/self/fd/%d", source.Fd()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(filepath.Join(path, "task.txt"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	proof := managedSourceSeedTestProof("seed-noncanonical", func(context.Context, *os.File) error { return nil })
+	generation, err := seedManagedRootSourceWithProof(context.Background(), store, source, journal, "seed-noncanonical", proof)
+	if generation != nil || !errors.Is(err, ErrManagedSourceCaptureUnavailable) || !errors.Is(err, workspace.ErrNoncanonicalMode) {
+		t.Fatalf("non-canonical managed root: generation=%v err=%v", generation, err)
+	}
 }

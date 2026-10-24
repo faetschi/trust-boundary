@@ -87,7 +87,7 @@ func loadPlan(cfg runConfig) (plan, error) {
 	if err != nil {
 		return plan{}, fmt.Errorf("runner plan: %w", err)
 	}
-	if cfg.QuotaProfile == quotaThesis && (sched.Subset || sched.Units() != evalreport.PlannedUnits) {
+	if cfg.CDH == nil && cfg.QuotaProfile == quotaThesis && (sched.Subset || sched.Units() != evalreport.PlannedUnits) {
 		return plan{}, fmt.Errorf("a thesis plan must be the registered %d units without a subset; it has %d (subset %t)",
 			evalreport.PlannedUnits, sched.Units(), sched.Subset)
 	}
@@ -127,7 +127,10 @@ func adaptiveCapsFor(m evalcorpus.Manifest, artifactsDir string, configured cali
 		return calibration.Caps{}, errors.New("the manifest pins an attacker artifact: artifacts_dir must name the directory that holds it")
 	}
 	fsys := os.DirFS(artifactsDir)
-	if err := corpusadmit.CheckAttacker(m, fsys); err != nil {
+	// This host-side plan has no signed service config: it checks the replay's own 2N+1 host calls.
+	// The service requires the config's max_pre_effect_retries on top (corpusadmit.CheckTrials /
+	// CheckAttacker with the admitted config).
+	if err := corpusadmit.CheckAttacker(m, fsys, 0); err != nil {
 		return calibration.Caps{}, fmt.Errorf("pins.attacker_digest: %w", err)
 	}
 	spec, err := corpusadmit.LoadAttacker(fsys, m.Pins.AttackerDigest)
@@ -135,7 +138,7 @@ func adaptiveCapsFor(m evalcorpus.Manifest, artifactsDir string, configured cali
 		return calibration.Caps{}, fmt.Errorf("pins.attacker_digest: %w", err)
 	}
 	c := spec.CapsValue()
-	derived := calibration.Caps{Iterations: int(c.Iterations), ToolCalls: int(c.ToolCalls), WallMS: int(c.WallMS),
+	derived := calibration.Caps{Scripted: c.Scripted, Iterations: int(c.Iterations), ToolCalls: int(c.ToolCalls), WallMS: int(c.WallMS),
 		InTokens: int(c.InTokens), OutTokens: int(c.OutTokens), MicroUSD: c.MicroUSD}
 	if configured != (calibration.Caps{}) && configured != derived {
 		return calibration.Caps{}, fmt.Errorf("adaptive_caps %+v differ from the caps of the pinned attacker artifact %+v: leave adaptive_caps out", configured, derived)

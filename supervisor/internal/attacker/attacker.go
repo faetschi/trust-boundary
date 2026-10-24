@@ -272,6 +272,7 @@ func (l Library) Digest() ([32]byte, error) {
 
 // Caps are the cumulative budget dimensions. Iterations counts pivots issued.
 type Caps struct {
+	Scripted   bool // token and money dimensions are not applicable and must be zero
 	Iterations int64
 	ToolCalls  int64
 	WallMS     int64
@@ -280,7 +281,8 @@ type Caps struct {
 	MicroUSD   int64
 }
 
-// Validate requires every cap to be strictly positive.
+// Validate requires positive operational caps. Real providers also require positive token
+// and money caps; scripted sources must explicitly mark those dimensions as zero.
 func (c Caps) Validate() error {
 	dims := []struct {
 		name string
@@ -289,12 +291,23 @@ func (c Caps) Validate() error {
 		{"Iterations", c.Iterations},
 		{"ToolCalls", c.ToolCalls},
 		{"WallMS", c.WallMS},
-		{"InTokens", c.InTokens},
-		{"OutTokens", c.OutTokens},
-		{"MicroUSD", c.MicroUSD},
 	}
 	for _, d := range dims {
 		if d.v <= 0 {
+			return fmt.Errorf("attacker: cap %s must be positive", d.name)
+		}
+	}
+	for _, d := range []struct {
+		name string
+		v    int64
+	}{
+		{"InTokens", c.InTokens}, {"OutTokens", c.OutTokens}, {"MicroUSD", c.MicroUSD},
+	} {
+		if c.Scripted {
+			if d.v != 0 {
+				return fmt.Errorf("attacker: scripted cap %s must be zero (not applicable)", d.name)
+			}
+		} else if d.v <= 0 {
 			return fmt.Errorf("attacker: cap %s must be positive", d.name)
 		}
 	}
@@ -543,7 +556,8 @@ func (m Machine) Charge(st State, u Usage) State {
 	if st.stop != StopNone {
 		return st
 	}
-	if u.ToolCalls < 0 || u.WallMS < 0 || u.InTokens < 0 || u.OutTokens < 0 || u.MicroUSD < 0 {
+	if u.ToolCalls < 0 || u.WallMS < 0 || u.InTokens < 0 || u.OutTokens < 0 || u.MicroUSD < 0 ||
+		(m.caps.Scripted && (u.InTokens != 0 || u.OutTokens != 0 || u.MicroUSD != 0)) {
 		next, _ := m.stop(st, StopInvalid)
 		return next
 	}
@@ -552,12 +566,14 @@ func (m Machine) Charge(st State, u Usage) State {
 	st.exhausted = st.exhausted || reached
 	st.used.WallMS, reached = clampAdd(st.used.WallMS, u.WallMS, m.caps.WallMS)
 	st.exhausted = st.exhausted || reached
-	st.used.InTokens, reached = clampAdd(st.used.InTokens, u.InTokens, m.caps.InTokens)
-	st.exhausted = st.exhausted || reached
-	st.used.OutTokens, reached = clampAdd(st.used.OutTokens, u.OutTokens, m.caps.OutTokens)
-	st.exhausted = st.exhausted || reached
-	st.used.MicroUSD, reached = clampAdd(st.used.MicroUSD, u.MicroUSD, m.caps.MicroUSD)
-	st.exhausted = st.exhausted || reached
+	if !m.caps.Scripted {
+		st.used.InTokens, reached = clampAdd(st.used.InTokens, u.InTokens, m.caps.InTokens)
+		st.exhausted = st.exhausted || reached
+		st.used.OutTokens, reached = clampAdd(st.used.OutTokens, u.OutTokens, m.caps.OutTokens)
+		st.exhausted = st.exhausted || reached
+		st.used.MicroUSD, reached = clampAdd(st.used.MicroUSD, u.MicroUSD, m.caps.MicroUSD)
+		st.exhausted = st.exhausted || reached
+	}
 	st.chain = digestOf(st.chain, "charge",
 		u64(u.ToolCalls), u64(u.WallMS), u64(u.InTokens), u64(u.OutTokens), u64(u.MicroUSD))
 	return st

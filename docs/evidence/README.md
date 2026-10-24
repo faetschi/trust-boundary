@@ -68,6 +68,8 @@ ledger. Its original source references may name documents retired from active
 navigation. Do not rewrite the ledger or receipts to make historical outcomes
 look current.
 
+`evaluation-evidence-index-2026-10-07.json` is a dated snapshot (checkout efda19e). Its schema rejects extra fields, so it is not edited in place. Known stale entries: secondary-recovery-16x3 (16 scenarios/48 trials; current proposal is 17x3=51, unadopted) and g4-g5-registration-reproduction (OSF/Zenodo registration was removed by the 2026-10-14 decision). Current status is in docs/status.md.
+
 [historical-sources.json](historical-sources.json) maps the retired source paths,
 generated snapshots, and removed binary to their original SHA-256, byte length,
 and preserved Git source at commit

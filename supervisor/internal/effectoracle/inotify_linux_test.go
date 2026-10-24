@@ -96,3 +96,12 @@ func TestKernelInotifyWatchRoundTrip(t *testing.T) {
 		t.Fatalf("AddWatch on a missing path: %v, want ENOENT", err)
 	}
 }
+
+func TestParseEventsDecodesTheCookie(t *testing.T) {
+	rec := appendInotifyRecord(nil, 3, syscall.IN_MOVED_FROM, "a")
+	binary.NativeEndian.PutUint32(rec[8:12], 0xdeadbeef)
+	got, err := parseEvents(rec)
+	if err != nil || len(got) != 1 || got[0].cookie != 0xdeadbeef {
+		t.Fatalf("parseEvents = %+v, %v", got, err)
+	}
+}

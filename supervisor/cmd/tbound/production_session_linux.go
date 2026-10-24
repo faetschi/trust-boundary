@@ -15,6 +15,7 @@ import (
 
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/corpusadmit"
+	"tbound/supervisor/internal/evalscore"
 	"tbound/supervisor/internal/gate"
 	"tbound/supervisor/internal/piruntime"
 	"tbound/supervisor/internal/providerbridge"
@@ -227,6 +228,10 @@ func (a authorityPromptAdmission) Close() {
 // launch. It records only observed launch/lifecycle facts; success is never
 // claimed before a verified STOPPED settlement.
 type productionPiReceipt struct {
+	HintChooser        string               `json:"hint_chooser,omitempty"`
+	HintManifestDigest string               `json:"hint_manifest_digest,omitempty"`
+	Hints              []evalscore.HintFact `json:"hints,omitempty"`
+
 	SchemaVersion            string   `json:"schema_version"`
 	Mode                     string   `json:"mode"`
 	RunID                    string   `json:"run_id"`
@@ -244,20 +249,22 @@ type productionPiReceipt struct {
 	ProposalCount            uint64   `json:"proposal_count"`
 	ToolSequence             []string `json:"tool_sequence"`
 	ProviderTurns            int      `json:"provider_turns"`
-	SourceGeneration         string   `json:"source_generation"`
-	FinalGeneration          string   `json:"final_generation"`
-	GenerationCount          int      `json:"generation_count"`
-	Settlement               string   `json:"settlement"`
-	ExitObserved             bool     `json:"exit_observed"`
-	ExitCode                 int      `json:"exit_code"`
-	DescendantsSettled       bool     `json:"descendants_settled"`
-	CommandRunnerProfile     string   `json:"command_runner_profile"`
-	CommandCellSettlements   int      `json:"command_cell_settlement_count"`
-	TCBProofDigest           string   `json:"tcb_proof_digest,omitempty"`
-	TCBProofJournalSequence  uint64   `json:"tcb_proof_journal_sequence,omitempty"`
-	PublicationStatus        string   `json:"publication_status"`
-	Disposition              string   `json:"disposition"`
-	PublicationTransactionID string   `json:"publication_transaction_id,omitempty"`
+	// ProviderRetries counts failed, retryable provider attempts that were repeated (each its own reserved host call).
+	ProviderRetries          int    `json:"provider_retries,omitempty"`
+	SourceGeneration         string `json:"source_generation"`
+	FinalGeneration          string `json:"final_generation"`
+	GenerationCount          int    `json:"generation_count"`
+	Settlement               string `json:"settlement"`
+	ExitObserved             bool   `json:"exit_observed"`
+	ExitCode                 int    `json:"exit_code"`
+	DescendantsSettled       bool   `json:"descendants_settled"`
+	CommandRunnerProfile     string `json:"command_runner_profile"`
+	CommandCellSettlements   int    `json:"command_cell_settlement_count"`
+	TCBProofDigest           string `json:"tcb_proof_digest,omitempty"`
+	TCBProofJournalSequence  uint64 `json:"tcb_proof_journal_sequence,omitempty"`
+	PublicationStatus        string `json:"publication_status"`
+	Disposition              string `json:"disposition"`
+	PublicationTransactionID string `json:"publication_transaction_id,omitempty"`
 	// The publication anchor of a corpus-mode interval (see production_publication_anchor_linux.go).
 	// The service fills it from its own publication journal and its host catalog entry, never from
 	// a request field. PublicationIntervalRef is the runner's IntervalRef of the trial
@@ -511,11 +518,17 @@ func runComposedProductionPiSession(ctx context.Context, output io.Writer, confi
 		WorkflowID:     session.WorkflowID,
 		ConversationID: session.ConversationID,
 	}
+	journalLaunchProof := func(launcherPID int, proof piruntime.D09TCBProof) error {
+		return journalProductionLaunchProof(session.StoreJournal, session.Lifecycle, session.RunID,
+			session.SessionID, session.WorkflowID, session.ConversationID, session.Generation.ID(),
+			session.Prepared.Provenance().BindingDigest, session.Profile, session.D09Template, launcherPID, proof)
+	}
 	session.Lifecycle.markWorkerLaunchAttempted()
 	worker, err := piruntime.LaunchD09PiSDKWorker(ctx, capability, session.D09Channels, bootstrap)
 	if err != nil {
 		workerLaunchErr = err
-		return fmt.Errorf("launch admitted production Pi worker: %w", err)
+		session.Lifecycle.markLaunchFailed(err)
+		return productionLaunchFailure(err, journalLaunchProof)
 	}
 	session.Lifecycle.markWorkerLaunched(worker.PID())
 	closeWorker := func() piruntime.Settlement {
@@ -538,9 +551,7 @@ func runComposedProductionPiSession(ctx context.Context, output io.Writer, confi
 		settlement = closeWorker()
 		return errors.Join(errors.New("production D09 worker has no captured launch TCB proof"), workerCloseErr)
 	}
-	if err := journalProductionLaunchProof(session.StoreJournal, session.Lifecycle, session.RunID,
-		session.SessionID, session.WorkflowID, session.ConversationID, session.Generation.ID(),
-		session.Prepared.Provenance().BindingDigest, session.Profile, session.D09Template, worker.PID(), launchProof); err != nil {
+	if err := journalLaunchProof(worker.PID(), launchProof); err != nil {
 		settlement = closeWorker()
 		return errors.Join(fmt.Errorf("journal production D09 launch proof before task release: %w", err), workerCloseErr)
 	}
@@ -725,6 +736,10 @@ func runComposedProductionPiSession(ctx context.Context, output io.Writer, confi
 	}
 	if providerTraceErr == nil {
 		for _, record := range providerTrace.Records {
+			if record.Event.Kind == "provider_exchange_retryable_failure" {
+				receipt.ProviderRetries++
+				continue
+			}
 			if record.Event.Kind != "provider_exchange" {
 				continue
 			}
@@ -859,6 +874,8 @@ func (session *productionPiSession) settleProductionTurn(ctx context.Context, op
 			// The live-root ledger is what the publication itself applied (result.Ledger), taken
 			// only when the outcome says exactly what happened; otherwise it stays unavailable.
 			session.E04.setLedger(productionE04LedgerFromResult(result, finalizeErr))
+			// What publication held besides the ledger, for EFF-WS-05/06: carried by the post-publication record.
+			session.E04.setPublication(productionE04PublicationFromResult(result))
 			e04LedgerSet = true
 			if finalizeErr == nil && result.Status == publication.StatusSucceeded && len(result.Objects) == 0 {
 				out.publicationStatus, out.disposition = "NO_DIFF", "NO_DIFF"
@@ -994,6 +1011,22 @@ func releaseProductionSessionAdmissionIfSafe(
 		release()
 	}
 	return true
+}
+
+// productionLaunchFailure is the error of a launch that yielded no worker. A route-probe cell never
+// yields one: it ran its probe and did not start Pi. Its validated launch proof is journaled as the
+// run's production_tcb_proof, the record the guest-route-direct-runtime producer reads, and the run
+// still fails.
+func productionLaunchFailure(err error, journalLaunchProof func(launcherPID int, proof piruntime.D09TCBProof) error) error {
+	var launchErr *piruntime.PiWorkerLaunchError
+	if !errors.As(err, &launchErr) || launchErr.RouteProbe == nil {
+		return fmt.Errorf("launch admitted production Pi worker: %w", err)
+	}
+	if journalErr := journalLaunchProof(launchErr.RouteProbe.LauncherPID, launchErr.RouteProbe.Proof); journalErr != nil {
+		return errors.Join(fmt.Errorf("launch route-probe cell: %w", err),
+			fmt.Errorf("journal route-probe launch proof: %w", journalErr))
+	}
+	return fmt.Errorf("route-probe launch proof journaled, Pi not started: %w", err)
 }
 
 // productionSessionCloseIfUnsafe lets the binder's own Close guard run when

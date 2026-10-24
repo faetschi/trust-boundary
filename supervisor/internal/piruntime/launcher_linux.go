@@ -304,7 +304,7 @@ func (s *LinuxCgroupScope) Remove(ctx context.Context) error {
 	if err != nil || !settled {
 		return errors.Join(ErrUnknownSettlement, err)
 	}
-	if err := unlinkatDir(int(s.root.Fd()), filepath.Base(childPath)); err != nil {
+	if err := removeSettledCgroup(ctx, int(s.root.Fd()), filepath.Base(childPath)); err != nil {
 		return fmt.Errorf("remove settled unique cgroup scope: %w", err)
 	}
 	return s.Close()

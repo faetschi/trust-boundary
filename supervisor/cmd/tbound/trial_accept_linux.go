@@ -193,12 +193,16 @@ func trialAccept(ctx context.Context, args []string, env trialEnv) (taskaccept.A
 	if err != nil {
 		return taskaccept.AcceptDoc{}, fmt.Errorf("case %q: %w", caseID, err)
 	}
-	root, err := taskaccept.OpenRoot(env.liveRoot)
+	device, inode, err := env.registeredRoot(ctx)
+	if err != nil {
+		return taskaccept.AcceptDoc{}, fmt.Errorf("the managed live root registration cannot be verified: %w", err)
+	}
+	root, err := taskaccept.OpenRootPinned(env.liveRoot, taskaccept.RootIdentity{Device: device, Inode: inode})
 	if err != nil {
 		return taskaccept.AcceptDoc{}, err
 	}
 	defer root.Close()
-	return taskaccept.Evaluate(caseID, spec, fixture, root)
+	return taskaccept.EvaluateWith(caseID, spec, fixture, root, cellNodeRunner{ctx: ctx, task: env.task})
 }
 
 // runTrialTask runs one of the task verbs and writes its document: one JSON line on stdout.

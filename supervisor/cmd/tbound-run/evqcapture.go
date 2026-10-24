@@ -154,19 +154,13 @@ func runEVQCapture(ctx context.Context, o evqCaptureOptions) (err error) {
 	rec := evqCapture{Schema: evqCaptureSchema, Commit: o.commit, Argv: slices.Clone(evqCaptureArgv), WorkDir: evqModuleDir,
 		PinnedInputs: map[string]string{}, Env: map[string]string{}, TestBinaries: map[string]string{}}
 
+	var (
+		tree       map[string]treeEntry
+		files      map[string]string
+		treeDigest string
+	)
 	g := gitRunner{ctx: ctx, bin: o.gitBin, repo: o.repo}
-	if rec.GitTree, err = g.verifyCommit(o.commit); err != nil {
-		return err
-	}
-	tree, err := g.listTree(o.commit)
-	if err != nil {
-		return err
-	}
-	if err := g.extract(o.commit, tree, src); err != nil {
-		return err
-	}
-	files, treeDigest, err := verifyTree(src, tree)
-	if err != nil {
+	if rec.GitTree, tree, files, treeDigest, err = archiveVerified(g, o.commit, src); err != nil {
 		return err
 	}
 	rec.ArchiveTreeDigest, rec.ArchiveFiles = treeDigest, len(files)

@@ -137,6 +137,7 @@ func (a *SessionOperationAuthority) applyProviderRoute(config providerbridge.Con
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	config.Route, config.Spend = a.providerRoute, a.providerSpend
+	config.HintProvider = a.hintProvider
 	return config
 }
 

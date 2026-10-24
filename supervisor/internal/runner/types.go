@@ -20,6 +20,8 @@ const (
 	CfgB Configuration = "B"
 	// CfgC is proxy tools with the gate: the confirmatory treatment.
 	CfgC Configuration = "C"
+	// CfgCDH is descriptive; executable identities append /<exact chooser model id>.
+	CfgCDH Configuration = "C-DH"
 	// CfgP is a deterministic stub or hostile entrypoint in a synthetic fixture.
 	// It makes no model call and is calibration only.
 	CfgP Configuration = "P"
@@ -132,6 +134,10 @@ type E01Identity struct {
 // the host compares with its pins (Attest). They come from the receipt, never from the
 // executor's own configuration, and stay in the journal next to the outcome.
 type ReceiptFacts struct {
+	HintChooser        string               `json:"hint_chooser,omitempty"`
+	HintManifestDigest string               `json:"hint_manifest_digest,omitempty"`
+	Hints              []evalscore.HintFact `json:"hints,omitempty"`
+
 	ProfileHash              string `json:"profile_hash"`
 	ContainmentProfileDigest string `json:"containment_profile_digest"`
 	FrozenSourceDigest       string `json:"frozen_source_digest"`
@@ -164,11 +170,7 @@ type ReceiptFacts struct {
 }
 
 // ProposalFact is the gate verdict of one tool proposal as the service's receipt reports it.
-type ProposalFact struct {
-	Tool       string `json:"tool"`
-	Verdict    string `json:"verdict"`
-	ReasonCode string `json:"reason_code"`
-}
+type ProposalFact = evalscore.ProposalFact
 
 // RouteCoverage is the E06 exposure-matrix coverage (routematrix.Report) that
 // held for the trial.
@@ -311,6 +313,12 @@ var (
 	ErrPlanMismatch = errors.New("runner: journal plan digest or run binding differs from the plan")
 	// ErrJournalCorrupt means a journal failed validation other than a torn tail.
 	ErrJournalCorrupt = errors.New("runner: journal is corrupt")
+	// ErrJournalLocked means another journal handle holds the file's exclusive
+	// lock; a journal has one writer at a time.
+	ErrJournalLocked = errors.New("runner: journal already has an exclusive writer")
+	// ErrJournalLockUnsupported means the platform cannot take the journal's
+	// exclusive lock, so the journal fails closed.
+	ErrJournalLockUnsupported = errors.New("runner: journal locking is not supported on this platform")
 	// ErrOverPlanned means the plan has more steps than the unit cap.
 	ErrOverPlanned = errors.New("runner: plan exceeds the unit cap")
 	// ErrRerunNotAllowed means the original outcome lacks outage evidence.

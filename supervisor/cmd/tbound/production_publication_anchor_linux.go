@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"tbound/supervisor/internal/audit"
+	"tbound/supervisor/internal/corpusadmit"
 )
 
 // The publication anchor is what the runner (internal/runner, PublicationFree.AnchorHead
@@ -57,6 +58,9 @@ type publicationAnchor struct {
 // p-* roles are the replay roles of Configuration P, the b-* roles are the compliant and ambiguous roles of
 // Configuration B, every other role is configuration C.
 func runnerStepRole(role string) (string, int, string, bool) {
+	if model, base, ok := corpusadmit.CDHRoleParts(role); ok {
+		return base, 0, "C-DH/" + model, true
+	}
 	switch role {
 	case corpusRoleTrajectory, corpusRoleStaticReplay, corpusRoleAdaptiveReplay, corpusRoleCompliant, corpusRoleAmbiguous:
 		return role, 0, "C", true
@@ -238,14 +242,14 @@ func verifyReceiptPublicationAnchor(receipt productionPiReceipt, entry piService
 	}
 	ref, ok := admissionIntervalRef(entry)
 	if !ok || ref != receipt.PublicationIntervalRef {
-		return ErrPiWorkflowCatalog
+		return fmt.Errorf("%w: receipt publication interval is not this admission's", ErrPiWorkflowCatalog)
 	}
 	anchor, err := publicationAnchorFor(trace, entry.WorkflowID, ref)
 	if err != nil {
 		return errors.Join(ErrPiWorkflowCatalog, err)
 	}
 	if anchor.Head != receipt.PublicationJournalHead || anchor.Count != receipt.PublicationJournalRecordCount {
-		return ErrPiWorkflowCatalog
+		return fmt.Errorf("%w: receipt publication head or count differs from the journal anchor", ErrPiWorkflowCatalog)
 	}
 	return nil
 }

@@ -117,6 +117,28 @@ func CalibrationPayloadDigestOf(script []ScriptTurn, pivots map[string]ScriptTur
 	return "sha256:" + hex.EncodeToString(sum[:]), nil
 }
 
+// RequiredHostCalls is the least number of host calls the trial's script needs: one provider turn
+// for each turn, one governed effect for each tool turn, and one provider turn for the final text
+// turn when the script ends with a tool call (2N+1 for N tool turns). It does not add the service's
+// pre-effect retry allowance, which this type cannot see; the admission rules that see it require
+// that margin (corpusadmit.CheckTrials, corpusadmit.CheckAttacker).
+func (t Trial) RequiredHostCalls() uint64 {
+	n := uint64(len(t.Script))
+	if n == 0 {
+		return 0
+	}
+	tools := uint64(0)
+	for _, turn := range t.Script {
+		if turn.Tool != "" {
+			tools++
+		}
+	}
+	if t.Script[len(t.Script)-1].Tool != "" {
+		tools++
+	}
+	return n + tools
+}
+
 // CheckStimulus reports the first reason the stimulus members of t are not admissible: the script,
 // the delta with its justification, and the protected paths. It does not look at the case kind or the
 // calibration digest (CheckCalibrationDigest).
@@ -124,14 +146,14 @@ func (t Trial) CheckStimulus() error {
 	if err := checkScript(t.Script); err != nil {
 		return err
 	}
-	// Scripted turns count as host calls: one per turn, and one more for the final text turn that
-	// the replay appends when the script does not end with its own.
+	// A tool turn costs two host calls: the provider turn that returns the tool call (ReserveHostCall)
+	// and the governed effect the call performs (ReserveEffect). The final text turn costs one provider
+	// turn, so N tool turns need 2N+1 host calls. A service that allows a pre-effect provider retry
+	// (max_pre_effect_retries) needs one more host call per retry; this function does not see that
+	// setting, so the margin is required where the signed service config is admitted
+	// (corpusadmit.CheckTrials and corpusadmit.CheckAttacker).
 	if n := len(t.Script); n > 0 {
-		needed := uint64(n)
-		if t.Script[n-1].Tool != "" {
-			needed++
-		}
-		if t.MaxHostCalls < needed {
+		if needed := t.RequiredHostCalls(); t.MaxHostCalls < needed {
 			return fmt.Errorf("max_host_calls %d is below the %d host calls of the script", t.MaxHostCalls, needed)
 		}
 	}

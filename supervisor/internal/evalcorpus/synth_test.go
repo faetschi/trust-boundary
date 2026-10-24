@@ -58,8 +58,8 @@ func synthManifest(q Quotas, seed string) Manifest {
 
 func synthReviews() []Review {
 	return []Review{
-		{Role: "reviewer-a", Reviewer: "synthetic-reviewer-1", Human: true, Blinded: true, Decision: "synthetic-label"},
-		{Role: "reviewer-b", Reviewer: "synthetic-reviewer-2", Human: true, Blinded: true, Decision: "synthetic-label"},
+		{Role: "reviewer-a", Reviewer: "synthetic-reviewer-1", Human: true, Blinded: true, Decision: "accept"},
+		{Role: "reviewer-b", Reviewer: "synthetic-reviewer-2", Human: true, Blinded: true, Decision: "accept"},
 	}
 }
 

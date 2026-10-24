@@ -21,6 +21,7 @@ import (
 	"tbound/supervisor/internal/broker/correlation"
 	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/delta"
+	"tbound/supervisor/internal/effectoracle"
 	"tbound/supervisor/internal/gate"
 	"tbound/supervisor/internal/ipc"
 	"tbound/supervisor/internal/publication"
@@ -805,6 +806,10 @@ func newPublicationRuntimeFixture(t *testing.T, inject publication.FaultInjector
 	durableWriteFile(t, filepath.Join(base, "live", durableWritePath), "baseline\n", 0o644)
 	durableMkdir(t, filepath.Join(base, "live", "build"), 0o755)
 	durableWriteFile(t, filepath.Join(base, "live", "build", "result.txt"), "baseline result\n", 0o644)
+	// The managed live root holds the effect oracle's fence directory, and the baseline generation
+	// is imported from the live root.
+	durableMkdir(t, filepath.Join(base, "source", effectoracle.FenceDir), 0o755)
+	durableMkdir(t, filepath.Join(base, "live", effectoracle.FenceDir), 0o755)
 	storeJournal, err := audit.Open(filepath.Join(base, "session-audit", "journal.jsonl"))
 	if err != nil {
 		t.Fatal(err)
@@ -848,9 +853,10 @@ func newPublicationRuntimeFixture(t *testing.T, inject publication.FaultInjector
 	if err != nil {
 		t.Fatal(err)
 	}
-	workspaceOptions := workspace.Options{Generation: "g0", MetadataPolicyDigest: durableMetadataDigest,
-		Limits: workspace.DefaultLimits(), QuiescentRoot: true,
-		XattrVisibility: workspace.XattrVisibilityAttestation{ProfileDigest: durableXattrDigest, Authority: workspace.XattrAuthorityBoundedNoHiddenTrusted}}
+	// The binding a production session gives the root ledger and the publication repository (G1 at F8
+	// published nothing because that binding was refused by every publication scan).
+	workspaceOptions := productionWorkspaceOptions("g0", durableMetadataDigest,
+		workspace.XattrVisibilityAttestation{ProfileDigest: durableXattrDigest, Authority: workspace.XattrAuthorityBoundedNoHiddenTrusted})
 	trust := customTrust
 	if trust == nil {
 		trust = &runtimeFixtureTrust{authority: authority, callIssuer: durableCallIssuer, callID: durableCallID, sequence: 1,

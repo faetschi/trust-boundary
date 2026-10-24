@@ -114,6 +114,12 @@ type ExchangeRecord struct {
 	responseBody []byte
 	responseSet  bool
 	failure      string
+	retryAfter   string
+	contentTypes []string
+	// responseComplete is true only when the endpoint was validated, the body was non-nil and
+	// read to its end within the bound, and the body closed cleanly. An empty body still counts: it is
+	// a complete (empty) HTTP response, which the 200 path refuses for its own reason.
+	responseComplete bool
 }
 
 func (r ExchangeRecord) Request() RequestRecord { return cloneRequestRecord(r.request) }
@@ -121,6 +127,19 @@ func (r ExchangeRecord) StatusCode() int        { return r.statusCode }
 func (r ExchangeRecord) HasResponse() bool      { return r.responseSet }
 func (r ExchangeRecord) ResponseBody() []byte   { return append([]byte(nil), r.responseBody...) }
 func (r ExchangeRecord) Failure() string        { return r.failure }
+
+// RetryAfter is the bounded Retry-After header value of the response, as sent.
+func (r ExchangeRecord) RetryAfter() string { return r.retryAfter }
+
+// ContentTypes is every Content-Type header value of the response, in order, each cut at 256
+// bytes (a longer value is ineligible whatever its tail says) and at most 9 values (more than one is
+// ambiguous whatever the rest say).
+func (r ExchangeRecord) ContentTypes() []string { return append([]string(nil), r.contentTypes...) }
+
+// ResponseComplete reports that the response was received whole: endpoint and method validated, a
+// body read to its end within the byte bound, and a clean close. A read failure (for example an
+// unexpected EOF), a nil body or a transport that changed the endpoint leaves it false.
+func (r ExchangeRecord) ResponseComplete() bool { return r.responseSet && r.responseComplete }
 
 // Broker serializes provider exchanges and proposal correlation for one
 // registered profile/session. A valid provider tool call is admitted to the
@@ -253,6 +272,18 @@ func (b *Broker) ExchangeWithCompletionLimit(ctx context.Context, completionLimi
 	}
 	record := &b.records[recordIndex]
 	record.statusCode = response.StatusCode
+	if value := response.Header.Get("Retry-After"); len(value) <= 32 {
+		record.retryAfter = value
+	}
+	for index, value := range response.Header.Values("Content-Type") {
+		if index == 9 {
+			break
+		}
+		if len(value) > 256 {
+			value = value[:256]
+		}
+		record.contentTypes = append(record.contentTypes, value)
+	}
 	record.responseSet = true
 	if response.Request != nil && response.Request.URL != nil &&
 		(response.Request.Method != http.MethodPost || response.Request.URL.String() != b.profile.Route.Resolved().Endpoint) {
@@ -273,6 +304,7 @@ func (b *Broker) ExchangeWithCompletionLimit(ctx context.Context, completionLimi
 	closeErr := response.Body.Close()
 	record.responseBody = append([]byte(nil), responseBody...)
 	b.recorded += uint64(len(responseBody))
+	record.responseComplete = (readErr == nil || errors.Is(readErr, errEmptyResponse)) && closeErr == nil
 	if readErr != nil {
 		return openrouter.CapturedResponse{}, b.failLocked(recordIndex, fmt.Errorf("read OpenRouter response: %w", readErr))
 	}
@@ -384,11 +416,16 @@ func readBoundedResponse(reader io.Reader, limit int) ([]byte, error) {
 	if err != nil {
 		return raw, err
 	}
-	if len(raw) == 0 || len(raw) > limit {
+	if len(raw) == 0 {
+		return raw, errEmptyResponse
+	}
+	if len(raw) > limit {
 		return raw, errors.New("provider response byte length out of bounds")
 	}
 	return raw, nil
 }
+
+var errEmptyResponse = errors.New("provider response byte length out of bounds: empty")
 
 func (b *Broker) failLocked(recordIndex int, err error) error {
 	b.closed = true

@@ -275,18 +275,23 @@ func TestValidateRecomputesTheCalibrationPayloadDigest(t *testing.T) {
 }
 
 func TestValidateScriptedTurnsMustFitTheHostCallBudget(t *testing.T) {
-	// scripted turns count as host calls: one per turn, plus the final text turn that the
-	// replay appends when the script does not end with one.
+	// A tool turn costs two host calls: the provider turn that returns the tool call
+	// (ReserveHostCall) and the governed effect the call performs (ReserveEffect). The final
+	// text turn costs one provider turn. A script with N tool turns therefore needs 2N+1 host
+	// calls, and exactly that many is enough.
 	for _, tc := range []struct {
 		name   string
 		script []ScriptTurn
 		calls  uint64
 		ok     bool
 	}{
-		{"ends with text, exactly enough", scriptFixture(), 3, true},
-		{"ends with text, one short", scriptFixture(), 2, false},
-		{"ends with a tool turn, needs the appended text", scriptFixture()[:2], 3, true},
-		{"ends with a tool turn, one short", scriptFixture()[:2], 2, false},
+		{"ends with text, exactly enough", scriptFixture(), 5, true},
+		{"ends with text, one short", scriptFixture(), 4, false},
+		{"ends with a tool turn, needs the appended text", scriptFixture()[:2], 5, true},
+		{"ends with a tool turn, one short", scriptFixture()[:2], 4, false},
+		{"one tool turn, exactly enough", scriptFixture()[:1], 3, true},
+		{"one tool turn, one short", scriptFixture()[:1], 2, false},
+		{"text only, exactly enough", []ScriptTurn{{Text: "done"}}, 1, true},
 	} {
 		m, q := scriptedManifest(t)
 		trial := *m.Cases[0].Trial

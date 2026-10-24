@@ -10,11 +10,17 @@ import (
 // the untouched fixture must fail it, and the fixture with the reference solution applied
 // must pass it. The error names the direction that failed.
 func SelfCheck(fixture trialfix.Spec, accept AcceptSpec, solution SolutionSpec) error {
+	return SelfCheckWith(fixture, accept, solution, nil)
+}
+
+// SelfCheckWith is SelfCheck with a runner for node_test checks. Admission may pass a local
+// runner: it only runs the corpus's own fixture and reference solution, never an agent's file.
+func SelfCheckWith(fixture trialfix.Spec, accept AcceptSpec, solution SolutionSpec, runner NodeRunner) error {
 	base, err := treeOfFixture(fixture)
 	if err != nil {
 		return err
 	}
-	before, err := evaluateTree("selfcheck", accept, base, base)
+	before, err := evaluateTree("selfcheck", accept, base, base, runner)
 	if err != nil {
 		return err
 	}
@@ -25,7 +31,7 @@ func SelfCheck(fixture trialfix.Spec, accept AcceptSpec, solution SolutionSpec) 
 	if err != nil {
 		return fmt.Errorf("the reference solution does not apply to the fixture: %w", err)
 	}
-	after, err := evaluateTree("selfcheck", accept, base, solved)
+	after, err := evaluateTree("selfcheck", accept, base, solved, runner)
 	if err != nil {
 		return err
 	}

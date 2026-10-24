@@ -323,3 +323,49 @@ func TestPreservationFieldsNameTheGapAndHeartbeatFields(t *testing.T) {
 		}
 	}
 }
+
+func TestOracleVersionIsV3ForTheFenceRecords(t *testing.T) {
+	if OracleVersion != "effectoracle/v3" {
+		t.Fatalf("OracleVersion = %q: the report gained fence_dir and fences and lost start_mono_ns", OracleVersion)
+	}
+}
+
+func renameReport(fenceAt int64, cookies ...uint32) *Report {
+	r := sampleReport(1, "f.txt")
+	r.Fences = []Fence{{Seq: 1, AtNS: fenceAt, Op: FenceOpen, Path: FenceDir, IsDir: true}}
+	r.Events = nil
+	for i, c := range cookies {
+		kind := KindMovedTo
+		if i%2 == 1 {
+			kind = KindMovedFrom
+		}
+		r.Events = append(r.Events, Event{Seq: uint64(i + 2), Kind: kind, Path: "f.txt", Cookie: c})
+	}
+	return r
+}
+
+// The digest keeps which events share a cookie and not the kernel's cookie values, so identical workloads still have
+// identical digests; the time of a fence is dropped like at_ns.
+func TestDigestKeepsCookiePairingButNotCookieValues(t *testing.T) {
+	digest := func(r *Report) string {
+		d, err := r.Digest()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return d
+	}
+	a, b := renameReport(5, 111, 222, 333, 444), renameReport(99999, 7, 8, 9, 10)
+	if digest(a) != digest(b) {
+		t.Error("the digest depends on cookie values or the time of a fence")
+	}
+	if digest(renameReport(5, 111, 111, 333, 444)) == digest(a) {
+		t.Error("the digest does not tell a shared cookie from distinct ones")
+	}
+	if digest(renameReport(5, 0, 222, 333, 444)) == digest(a) {
+		t.Error("the digest does not tell a missing cookie from a present one")
+	}
+	js, err := a.JSON()
+	if err != nil || !strings.Contains(string(js), `"cookie": 111`) || !strings.Contains(string(js), `"at_ns": 5`) {
+		t.Errorf("JSON drops the cookie or the fence: %v\n%s", err, js)
+	}
+}

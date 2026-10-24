@@ -28,6 +28,7 @@ import (
 	"golang.org/x/sys/unix"
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/delta"
+	"tbound/supervisor/internal/effectoracle"
 	"tbound/supervisor/internal/workspace"
 	"tbound/supervisor/internal/wsoracle"
 )
@@ -238,6 +239,31 @@ type Result struct {
 	Objects       []ObjectResult         `json:"objects"`
 	Binding       CommitBinding          `json:"binding"`
 	Ledger        []wsoracle.LedgerEntry `json:"ledger,omitempty"`
+	// Evidence is what the EFF-WS-05 and EFF-WS-06 oracles need of the transaction besides Ledger (see
+	// OracleEvidence). Publish sets it on every result it returns once the transaction is planned; it is nil for a
+	// request refused before that, and for a Recover result. It is process-local: it is not journaled, so a result
+	// read back from the journal has none.
+	Evidence *OracleEvidence `json:"-"`
+}
+
+// OracleEvidence is the publication-side input of the EFF-WS-05 and EFF-WS-06 oracles that the live-root manifests
+// and the ledger do not carry. Sealed is the wsoracle manifest of the sealed generation as Publish held it (the
+// tree the ledger is reconciled against), AffectedPaths the intended affected-object set (every planned object,
+// and the source of a move, as sorted canonical relative paths), and LockIdentity the identity of the live-root
+// repository lock Publish held for the transaction.
+type OracleEvidence struct {
+	Sealed        wsoracle.Manifest
+	AffectedPaths []string
+	LockIdentity  string
+	// FenceDir and FenceBursts (the number of fences) say how the writes of the transaction to the live root were bracketed for the inotify
+	// observer (effectoracle.FenceDir): the directory of the live root opened and read (effectoracle.FenceRoot) just
+	// before the first object is applied and again just after the last: FenceBursts fences (2 when both were made, 1
+	// when the closing fence failed after the apply, 0 when the transaction never reached the apply loop). A failed
+	// opening fence refuses the apply, so a transaction that applied anything has at least one fence. The queue of the
+	// observer is in the order of the system calls, so every rename publication makes into or out of the live root lies
+	// between the two fences in it, however late the observer's reader takes the events.
+	FenceDir    string
+	FenceBursts int
 }
 
 type openHow struct {
@@ -585,6 +611,8 @@ func (r *Repository) Publish(ctx context.Context, request Request, authorize Aut
 			plans[index].BackupName = fmt.Sprintf("original-%04d", index)
 		}
 	}
+	evidence := &OracleEvidence{Sealed: wsoracle.SnapshotDir(request.SealedRoot, "sealed"), AffectedPaths: affectedPaths(plans),
+		LockIdentity: r.liveRootLockIdentity(rootID)}
 	prep := prepareRecord{SchemaVersion: publicationSchema, TransactionID: txID, WorkflowID: r.options.WorkflowID,
 		OwnerEpoch: r.options.OwnerEpoch, PublicationID: request.PublicationID, OriginProposalID: binding.OriginProposalID,
 		SealedGeneration: request.Chain.Sealed.Generation, Binding: binding, LiveRoot: rootID,
@@ -592,7 +620,7 @@ func (r *Repository) Publish(ctx context.Context, request Request, authorize Aut
 	if err := r.appendRecord("publication_prepare", txID, prep); err != nil {
 		return Result{}, fmt.Errorf("persist publication recovery plan: %w", err)
 	}
-	pendingResult := Result{TransactionID: txID, PublicationID: request.PublicationID, Status: StatusUnknown, Binding: binding}
+	pendingResult := Result{TransactionID: txID, PublicationID: request.PublicationID, Status: StatusUnknown, Binding: binding, Evidence: evidence}
 	if err := injectFault(inject, "after-prepare-checkpoint", -1); err != nil {
 		return pendingResult, err
 	}
@@ -670,6 +698,15 @@ func (r *Repository) Publish(ctx context.Context, request Request, authorize Aut
 	if err != nil {
 		return pendingResult, r.abortPrepared(artifactParent, artifact, prep, err, inject)
 	}
+	// The opening fence is what places the apply in the observer's queue. Without it the apply
+	// cannot be placed, so a write publication made could not be told from one it did not: refuse
+	// to apply rather than apply unexplained. Fence before the token is consumed, so the refusal is
+	// the ordinary abort-before-token, which keeps the journal's ordering valid for later publications.
+	evidence.FenceDir = effectoracle.FenceDir
+	if err := effectoracle.FenceRoot(request.LiveRoot); err != nil {
+		return pendingResult, r.abortPrepared(artifactParent, artifact, prep, fmt.Errorf("refusing to apply without the fence directory: %w", err), inject)
+	}
+	evidence.FenceBursts = 1
 	token := tokenRecord{TransactionID: txID, TokenID: tokenID, DecisionID: authorization.DecisionID, BindingDigest: binding.BindingDigest, Binding: binding}
 	if err := r.appendRecord("publication_token_consumed", txID, token); err != nil {
 		return pendingResult, fmt.Errorf("persist single-use commit token: %w", err)
@@ -677,14 +714,49 @@ func (r *Repository) Publish(ctx context.Context, request Request, authorize Aut
 	if err := injectFault(inject, "after-token-checkpoint", -1); err != nil {
 		return pendingResult, err
 	}
-	if err := r.apply(ctx, request.LiveRoot, artifact, prep, inject); err != nil {
-		return pendingResult, err
+	applyErr := r.apply(ctx, request.LiveRoot, artifact, prep, inject)
+	if applyErr == nil && effectoracle.FenceRoot(request.LiveRoot) == nil {
+		// The apply is durable; a missing closing fence leaves the window unplaceable, which the
+		// transient oracle reads as lost evidence (FenceBursts 1), never as none.
+		evidence.FenceBursts = 2
+	}
+	if applyErr != nil {
+		return pendingResult, applyErr
 	}
 	tx, err := readOneTransaction(r.options.Journal, r.options.WorkflowID, txID)
 	if err != nil {
-		return Result{TransactionID: txID, PublicationID: request.PublicationID, Status: StatusUnknown, Binding: binding}, err
+		return Result{TransactionID: txID, PublicationID: request.PublicationID, Status: StatusUnknown, Binding: binding, Evidence: evidence}, err
 	}
-	return r.reconcile(request.LiveRoot, artifact, tx, inject)
+	result, err := r.reconcile(request.LiveRoot, artifact, tx, inject)
+	result.Evidence = evidence
+	return result, err
+}
+
+// affectedPaths is the intended affected-object set of a plan: every object path and the source path of a move,
+// sorted and without repeats.
+func affectedPaths(plans []objectPlan) []string {
+	seen := map[string]bool{}
+	var paths []string
+	for _, plan := range plans {
+		for _, p := range []string{plan.Path, plan.SourcePath} {
+			if p != "" && !seen[p] {
+				seen[p] = true
+				paths = append(paths, p)
+			}
+		}
+	}
+	sort.Strings(paths)
+	return paths
+}
+
+// liveRootLockIdentity names the live-root repository lock the repository holds for the root: the lock file name
+// (which carries the root identity) and the device and inode of the held lock file.
+func (r *Repository) liveRootLockIdentity(rootID fileIdentity) string {
+	lock := r.liveLocks[liveRootLockKey(rootID)]
+	if lock == nil {
+		return ""
+	}
+	return fmt.Sprintf("%s@%016x:%016x", lock.name, lock.lockID.Device, lock.lockID.Inode)
 }
 
 func clonePublicationTransitions(input []delta.Transition) []delta.Transition {
@@ -2165,6 +2237,11 @@ func validateRelativePath(path string) error {
 				return delta.ErrInvalidChain
 			}
 		}
+	}
+	// The fence directory of the live root is the effect oracle's, not published content: a plan
+	// may not create, rewrite or remove it or anything below it.
+	if path == effectoracle.FenceDir || strings.HasPrefix(path, effectoracle.FenceDir+"/") {
+		return delta.ErrInvalidChain
 	}
 	return nil
 }

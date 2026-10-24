@@ -12,7 +12,9 @@ import (
 	"strings"
 	"time"
 
+	"tbound/supervisor/internal/corpusadmit"
 	"tbound/supervisor/internal/evalcorpus"
+	"tbound/supervisor/internal/evalscore"
 	"tbound/supervisor/internal/wsoracle"
 )
 
@@ -54,12 +56,17 @@ type EvidenceRef struct {
 	// unavailable (see E04LedgerUnavailable).
 	Publications      int
 	PublicationsKnown bool
+	// PublicationHead is the receipt's publication_journal_head: the anchor of the interval's publication journal.
+	PublicationHead string
 	// E04Head, E04Count and E04GapCount are the receipt's e04_evidence_head,
 	// e04_evidence_record_count and e04_gap_count: the service's binding of its E04 point
 	// store. They are empty/zero when the receipt carries no binding.
 	E04Head     string
 	E04Count    int
 	E04GapCount int
+	// Ended is when the client invocation returned: the end of the request, as the host saw it. It is what a collector
+	// whose observation window is bounded in time (TransientCollector) compares its window with.
+	Ended time.Time
 }
 
 // ObserverEvidence is what a NET or PROC collector returns: the findings and, for each
@@ -89,6 +96,13 @@ type Collectors interface {
 	Net(ctx context.Context, ref EvidenceRef) (ObserverEvidence, error)
 	// Proc returns findings for EFF-PROC-01..03. Adversarial steps only.
 	Proc(ctx context.Context, ref EvidenceRef) (ObserverEvidence, error)
+	// Publication returns the EFF-WS-05 and EFF-WS-06 inputs of an interval that published, from the service's own
+	// store, bound to the receipt. They are publication predicates, not a separate observer: GovernedC has
+	// wsoracle judge them and records them with RecordWS. Adversarial steps only.
+	Publication(ctx context.Context, ref EvidenceRef) (PublicationInputs, error)
+	// Transient returns the finding for EFF-TRANSIENT (key OracleTransient) and the reference of the effectoracle
+	// report behind it. Adversarial steps only.
+	Transient(ctx context.Context, ref EvidenceRef) (ObserverEvidence, error)
 }
 
 // AbsentCollectors has no evidence of any kind. It is the default, and the base for
@@ -105,6 +119,12 @@ func (AbsentCollectors) Net(context.Context, EvidenceRef) (ObserverEvidence, err
 	return ObserverEvidence{}, ErrEvidenceAbsent
 }
 func (AbsentCollectors) Proc(context.Context, EvidenceRef) (ObserverEvidence, error) {
+	return ObserverEvidence{}, ErrEvidenceAbsent
+}
+func (AbsentCollectors) Publication(context.Context, EvidenceRef) (PublicationInputs, error) {
+	return PublicationInputs{}, ErrEvidenceAbsent
+}
+func (AbsentCollectors) Transient(context.Context, EvidenceRef) (ObserverEvidence, error) {
 	return ObserverEvidence{}, ErrEvidenceAbsent
 }
 
@@ -134,13 +154,14 @@ func (AbsentCollectors) Proc(context.Context, EvidenceRef) (ObserverEvidence, er
 //     IntervalRef of the step), head and record count, carried in PublicationFree
 //     together with the journal bytes of Collectors. Without those bytes the interval is
 //     not exempt;
-//   - oracle findings come only from Collectors (E04 manifests judged by wsoracle, NET,
-//     PROC). A missing collector leaves its oracles missing; nothing is filled in. Route
+//   - oracle findings come only from Collectors (E04 manifests and the publication inputs of
+//     EFF-WS-05/06 judged by wsoracle, NET, PROC, the transient observer). A missing collector leaves its oracles missing; nothing is filled in. Route
 //     coverage is not set.
 //
 // Prepare checks the configuration and the step mapping and sends nothing; the runner
 // journals the start before Execute sends the request.
 type GovernedC struct {
+	CDH *CDHConfig
 	// Configuration is the configuration this executor serves: CfgC (the zero value), CfgP, whose steps
 	// run through the same service under the p-* roles, or CfgB, whose compliant and ambiguous steps run
 	// under the b-* roles.
@@ -163,13 +184,23 @@ func (g GovernedC) Request(s Step) (GovernedRequest, error) {
 	if want == "" {
 		want = CfgC
 	}
-	if want != CfgC && want != CfgP && want != CfgB {
+	if want != CfgC && want != CfgP && want != CfgB && !want.IsCDH() {
 		return GovernedRequest{}, fmt.Errorf("runner: governed executor serves B, C or P, not %s", want)
 	}
 	if s.Configuration != want {
 		return GovernedRequest{}, fmt.Errorf("runner: step %s is configuration %s, not %s", s.ID(), s.Configuration, want)
 	}
 	request := GovernedRequestFor(g.PlanDigest, s)
+	if want.IsCDH() {
+		if g.CDH == nil || g.CDH.Validate() != nil {
+			return GovernedRequest{}, errors.New("runner: C-DH needs a valid pinned manifest")
+		}
+		_, ok := (Config{CDH: g.CDH}).cdhSlot(want)
+		if !ok || (s.Role != RoleCompliant && s.Role != RoleTrajectory) || (s.Role == RoleTrajectory && !slices.Contains(g.CDH.LiveAdversarialCases, s.CaseID)) {
+			return GovernedRequest{}, errors.New("runner: unregistered C-DH chooser or cohort")
+		}
+		request.Role = corpusadmit.CDHRole(strings.TrimPrefix(string(want), "C-DH/"), string(s.Role))
+	}
 	if _, err := request.Argv(); err != nil {
 		return GovernedRequest{}, err
 	}
@@ -223,6 +254,10 @@ type governedResponse struct {
 // governedReceipt is the part of productionPiReceipt (cmd/tbound/production_session_linux.go)
 // that the executor reads. The token and cost fields are optional extensions.
 type governedReceipt struct {
+	HintChooser        string               `json:"hint_chooser"`
+	HintManifestDigest string               `json:"hint_manifest_digest"`
+	Hints              []evalscore.HintFact `json:"hints"`
+
 	SchemaVersion string   `json:"schema_version"`
 	RunID         string   `json:"run_id"`
 	Success       bool     `json:"success"`
@@ -251,11 +286,14 @@ type governedReceipt struct {
 	AdmissionPolicyDigest string         `json:"admission_policy_digest"`
 	Proposals             []ProposalFact `json:"proposals"`
 
-	PivotsIssued        int    `json:"pivots_issued"`
-	AttackerStop        string `json:"attacker_stop"`
-	AttackerStateDigest string `json:"attacker_state_digest"`
-	AttackerDigest      string `json:"attacker_digest"`
-	PivotsDigest        string `json:"pivots_digest"`
+	PivotsIssued            int                  `json:"pivots_issued"`
+	AttackerStop            string               `json:"attacker_stop"`
+	AttackerStateDigest     string               `json:"attacker_state_digest"`
+	AttackerDigest          string               `json:"attacker_digest"`
+	PivotsDigest            string               `json:"pivots_digest"`
+	AttackerUsage           *AttackerUsage       `json:"attacker_usage"`
+	AttackerCumulativeUsage *AttackerUsage       `json:"attacker_cumulative_usage"`
+	AttackerPredecessor     *AttackerPredecessor `json:"attacker_predecessor"`
 }
 
 // parseGovernedResponse reads the one response line. It returns the line (the bytes
@@ -293,11 +331,17 @@ func (g GovernedC) Execute(ctx context.Context, s Step) (Outcome, error) {
 	if ic, ok := g.Collectors.(IntervalCollectors); ok && s.Kind == evalcorpus.KindAdversarial {
 		defer ic.EndInterval(begin)
 		if err := ic.BeginInterval(ctx, begin); err != nil && !errors.Is(err, ErrEvidenceAbsent) {
+			if errors.Is(err, ErrObserverStartUnconfirmed) {
+				// An observer may still be starting in the live root: the request is not sent. Nothing ran, so
+				// there is no outcome; the unit is spent as a setup failure.
+				return Outcome{}, fmt.Errorf("%w: collector begin: %v", ErrSetupRefused, err)
+			}
 			beginErr = fmt.Errorf("runner: collector begin: %w", err)
 		}
 	}
 	t0 := time.Now()
 	stdout, stderr, exit, err := g.Transport.Run(ctx, argv)
+	ended := time.Now()
 	latency := int(time.Since(t0).Milliseconds())
 	if err != nil {
 		return Outcome{}, fmt.Errorf("runner: governed transport: %w", err)
@@ -326,7 +370,7 @@ func (g GovernedC) Execute(ctx context.Context, s Step) (Outcome, error) {
 		E01:     E01Identity{Digest: "sha256:" + hex.EncodeToString(sum[:])},
 		Metrics: Metrics{LatencyMS: latency},
 	}
-	ref := EvidenceRef{Step: s, Interval: IntervalRef(s), Request: request}
+	ref := EvidenceRef{Step: s, Interval: IntervalRef(s), Request: request, Ended: ended}
 	var errs []error
 	if beginErr != nil {
 		errs = append(errs, beginErr)
@@ -345,14 +389,20 @@ func (g GovernedC) Execute(ctx context.Context, s Step) (Outcome, error) {
 		}
 		ref.RunID = receipt.RunID
 		o.Receipt = &ReceiptFacts{ProfileHash: receipt.ProfileHash, ContainmentProfileDigest: receipt.ContainmentProfileDigest,
+			HintChooser: receipt.HintChooser, HintManifestDigest: receipt.HintManifestDigest, Hints: slices.Clone(receipt.Hints),
 			FrozenSourceDigest: receipt.FrozenSourceDigest, Delta: receipt.Delta,
 			ProviderMode: receipt.ProviderMode, ScriptDigest: receipt.ScriptDigest,
 			AdmissionPolicyDigest: receipt.AdmissionPolicyDigest, Proposals: slices.Clone(receipt.Proposals),
 			PivotsIssued: receipt.PivotsIssued, AttackerStop: receipt.AttackerStop, AttackerStateDigest: receipt.AttackerStateDigest,
-			AttackerDigest: receipt.AttackerDigest, PivotsDigest: receipt.PivotsDigest}
+			AttackerDigest: receipt.AttackerDigest, PivotsDigest: receipt.PivotsDigest,
+			AttackerUsage: receipt.AttackerUsage, AttackerCumulativeUsage: receipt.AttackerCumulativeUsage,
+			AttackerPredecessor: receipt.AttackerPredecessor}
 		o.ToolAttempt = slices.ContainsFunc(receipt.Proposals, func(p ProposalFact) bool { return strings.EqualFold(p.Verdict, "deny") }) || o.ToolAttempt
 		ref.Publications = receipt.PublicationJournalRecordCount
 		ref.PublicationsKnown = receipt.PublicationIntervalRef == ref.Interval && receipt.PublicationJournalHead != ""
+		if ref.PublicationsKnown {
+			ref.PublicationHead = receipt.PublicationJournalHead
+		}
 		ref.E04Head, ref.E04Count, ref.E04GapCount = receipt.E04EvidenceHead, receipt.E04EvidenceRecordCount, receipt.E04GapCount
 		o.Metrics.ToolCalls = len(receipt.ToolSequence)
 		o.Metrics.InTokens, o.Metrics.OutTokens, o.Metrics.CostMicroUSD = receipt.InTokens, receipt.OutTokens, receipt.CostMicroUSD
@@ -421,11 +471,12 @@ func (g GovernedC) collectors() Collectors {
 }
 
 var (
-	netKeys  = []string{OracleNet01, OracleNet02}
-	procKeys = []string{OracleProc01, OracleProc02, OracleProc03}
+	netKeys       = []string{OracleNet01, OracleNet02}
+	procKeys      = []string{OracleProc01, OracleProc02, OracleProc03}
+	transientKeys = []string{OracleTransient}
 )
 
-// collect folds the collectors' E04, NET and PROC evidence into o. Absent evidence
+// collect folds the collectors' E04, publication (EFF-WS-05, EFF-WS-06), NET, PROC and transient evidence into o. Absent evidence
 // adds nothing. Anything else wrong with a collector is an error, and keeps what the
 // other collectors established.
 func (g GovernedC) collect(ctx context.Context, ref EvidenceRef, o *Outcome) []error {
@@ -451,11 +502,16 @@ func (g GovernedC) collect(ctx context.Context, ref EvidenceRef, o *Outcome) []e
 	} else if !errors.Is(err, ErrEvidenceAbsent) {
 		errs = append(errs, fmt.Errorf("runner: E04 collector: %w", err))
 	}
+	if in, err := c.Publication(ctx, ref); err == nil {
+		errs = append(errs, o.recordPublication(ref.Step.ThreatClass, in)...)
+	} else if !errors.Is(err, ErrEvidenceAbsent) {
+		errs = append(errs, fmt.Errorf("runner: publication collector: %w", err))
+	}
 	for _, src := range []struct {
 		name string
 		keys []string
 		get  func(context.Context, EvidenceRef) (ObserverEvidence, error)
-	}{{"NET", netKeys, c.Net}, {"PROC", procKeys, c.Proc}} {
+	}{{"NET", netKeys, c.Net}, {"PROC", procKeys, c.Proc}, {"TRANSIENT", transientKeys, c.Transient}} {
 		ev, err := src.get(ctx, ref)
 		switch {
 		case errors.Is(err, ErrEvidenceAbsent):
@@ -465,6 +521,24 @@ func (g GovernedC) collect(ctx context.Context, ref EvidenceRef, o *Outcome) []e
 			if err := o.recordObserver(src.name, src.keys, ev); err != nil {
 				errs = append(errs, err)
 			}
+		}
+	}
+	return errs
+}
+
+// recordPublication judges the publication inputs with wsoracle and records the reports with RecordWS. EFF-WS-06 is
+// recorded only for a class the matrix registers it for (TM-A, TM-B): for another class it is not a predicate of the
+// run, and an effect it found would be an unregistered observation.
+func (o *Outcome) recordPublication(class evalcorpus.ThreatClass, in PublicationInputs) []error {
+	var errs []error
+	if in.WS05 != nil {
+		if err := o.RecordWS(wsoracle.EvaluateWS05(*in.WS05)); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if _, registered := observerFor(wsoracle.PredicateWS06, class); registered && in.WS06 != nil {
+		if err := o.RecordWS(wsoracle.EvaluateWS06(*in.WS06)); err != nil {
+			errs = append(errs, err)
 		}
 	}
 	return errs

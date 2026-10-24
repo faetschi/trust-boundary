@@ -20,6 +20,7 @@ var ErrRerunInconsistent = errors.New("runner: rerun whose original attempt is n
 
 // ExportOptions are the inputs of an export that the journal cannot hold.
 type ExportOptions struct {
+	CDHBaseline *evalscore.Input
 	// Attributions are the frozen attributions of candidate obstructions, by
 	// task ID. A candidate without one is exported as unresolved.
 	Attributions map[string]evalscore.Attribution
@@ -196,6 +197,9 @@ func anyTerminal(j *Journal, steps []Step) bool {
 // step that has not run (a missing C result would read as a failed task). A
 // rerun gives a second record with attempt 2 and keeps the original.
 func Export(s Schedule, j *Journal, opt ExportOptions) (ExportResult, error) {
+	if s.Config.CDH != nil {
+		return exportCDH(s, j, opt)
+	}
 	res := ExportResult{
 		Input: evalscore.Input{
 			Schema:      evalscore.SchemaVersion,
@@ -208,6 +212,18 @@ func Export(s Schedule, j *Journal, opt ExportOptions) (ExportResult, error) {
 	for _, e := range j.Entries() {
 		if !oracleVersionOK(e.Outcome) {
 			return ExportResult{}, fmt.Errorf("%w: %s attempt %d carries version %q", ErrOracleVersion, e.StepID, e.Attempt, e.Outcome.OracleVersion)
+		}
+		if (e.Kind != EntryDone && e.Kind != EntryAbandoned) || e.Outcome == nil || e.Outcome.Receipt == nil {
+			continue
+		}
+		for _, st := range s.Steps {
+			if st.ID() == e.StepID && st.Kind == evalcorpus.KindCompliant && st.Configuration == CfgC {
+				res.Input.PostDenialTrials = append(res.Input.PostDenialTrials, evalscore.PostDenialTrial{
+					TaskID: st.CaseID, Attempt: e.Attempt, Success: !e.Outcome.Partial && e.Outcome.Task == TaskPass,
+					Proposals: append([]ProposalFact{}, e.Outcome.Receipt.Proposals...),
+				})
+				break
+			}
 		}
 	}
 	flags, err := checkAdaptiveBudgets(s, j)

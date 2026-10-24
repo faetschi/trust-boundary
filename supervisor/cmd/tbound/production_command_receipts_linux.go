@@ -131,35 +131,35 @@ func (r *productionD09BashRunner) Run(ctx context.Context, view *sessionrepo.Com
 	// result release. TakeCommandReceipt is one-use and validates this view,
 	// canonical spec, actual result, and actual settlement against the invocation.
 	if !reflect.DeepEqual(runnerSpec, authorizedSpec) {
-		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, errors.Join(ErrProductionCommandEvidence, errors.New("D09 runner modified the authorized command spec"))
+		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, commandEvidenceRefused("runner-modified-spec", errors.New("D09 runner modified the authorized command spec"))
 	}
 	runtimeReceipt, err := r.inner.TakeCommandReceipt(view, runnerSpec, result, settlement)
 	if err != nil {
-		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, errors.Join(ErrProductionCommandEvidence, err)
+		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, commandEvidenceRefused("take-receipt", err)
 	}
 	if err := runtimeReceipt.Validate(); err != nil {
-		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, errors.Join(ErrProductionCommandEvidence, err)
+		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, commandEvidenceRefused("receipt-seal", err)
 	}
 	receiptDigest, err := runtimeReceipt.Digest()
 	if err != nil {
-		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, errors.Join(ErrProductionCommandEvidence, err)
+		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, commandEvidenceRefused("receipt-digest", err)
 	}
 	receiptSnapshot, err := json.Marshal(runtimeReceipt)
 	if err != nil {
-		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, errors.Join(ErrProductionCommandEvidence, err)
+		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, commandEvidenceRefused("receipt-snapshot", err)
 	}
 	if runtimeReceipt.ReceiptDigest != receiptDigest || runtimeReceipt.LeaseID != r.leaseID ||
 		runtimeReceipt.ViewID != view.ID() || runtimeReceipt.Settlement != settlement ||
 		runtimeReceipt.ExitCode != result.ExitCode || !result.ExitObserved {
-		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, ErrProductionCommandEvidence
+		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, commandEvidenceRefused("receipt-identity")
 	}
 	if err := validateProductionD09ReceiptInvocation(view, runnerSpec, result, settlement, runtimeReceipt, r.profile, r.template, r.delta); err != nil {
-		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, errors.Join(ErrProductionCommandEvidence, err)
+		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, commandEvidenceRefused("receipt-invocation", err)
 	}
 	if settlement.LeaseID != r.leaseID || settlement.ViewID != view.ID() || !settlement.ExitObserved ||
 		!settlement.Admitted() || settlement.SurvivorsTolerated != r.delta.NoReap() ||
 		!strings.HasPrefix(settlement.EvidenceClass, piruntime.D09CommandRunnerProfile+":") {
-		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, ErrProductionCommandEvidence
+		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, commandEvidenceRefused("settlement-admission")
 	}
 	receipt := productionD09RunEvidence{leaseID: r.leaseID, viewID: view.ID(), receipt: runtimeReceipt,
 		receiptSnapshot: append([]byte(nil), receiptSnapshot...), receiptDigest: receiptDigest}
@@ -180,7 +180,7 @@ func validateProductionD09ReceiptInvocation(view *sessionrepo.CommandView, spec 
 		receipt.ViewID != view.ID() || receipt.Settlement != settlement || receipt.ExitCode != result.ExitCode ||
 		profile.Mode != piruntime.ModeProduction || profile.ContainmentProfile != piruntime.D09ContainmentProfile ||
 		profile.SettlementProfile != piruntime.D09SettlementProfile {
-		return ErrProductionCommandEvidence
+		return commandEvidenceRefused("invocation-profile")
 	}
 	templateDigest, err := template.Digest()
 	cellRuleset, rulesetErr := template.DeltaLandlockRulesetDigest(cell)
@@ -191,47 +191,58 @@ func validateProductionD09ReceiptInvocation(view *sessionrepo.CommandView, spec 
 	if err == nil {
 		err = errors.Join(rulesetErr, cellErr)
 	}
-	if err != nil || templateDigest != profile.ContainmentProfileDigest || receipt.TemplateDigest != templateDigest ||
-		receipt.ImageDigest != template.ExpectedImageDigest || receipt.ImageRef != registeredD09ImageDigestRef(template) ||
-		template.CommandExecutable != spec.Executable || receipt.Proof.CommandDigest != template.CommandExecutableDigest || receipt.Proof.CommandPath != spec.Executable ||
-		receipt.Proof.CommandWorkdir != filepath.Clean(spec.WorkingDirectory) || receipt.Proof.UID != template.CellUID ||
-		receipt.Proof.GID != template.CellGID || receipt.Proof.CapEff != "0000000000000000" || !receipt.Proof.NoNewPrivs ||
-		receipt.Proof.Seccomp != 2 || !receipt.Proof.CgroupV2 || !receipt.Proof.LandlockTSYNC ||
-		receipt.Proof.LandlockABI < template.LandlockABI || receipt.Proof.LandlockRulesetDigest != cellRuleset ||
-		!receipt.Proof.ConsumerMountsVerified || !receipt.Proof.RawSourceFDsClosed || receipt.Proof.NoExternalRoutes != cell.ExpectNoExternalRoutes() ||
-		receipt.Proof.Delta != cell.Name() || receipt.Proof.DeltaTemplateDigest != cellTemplate ||
+	if err != nil || templateDigest != profile.ContainmentProfileDigest || receipt.TemplateDigest != templateDigest {
+		return commandEvidenceRefused("invocation-template", err)
+	}
+	if receipt.ImageDigest != template.ExpectedImageDigest || receipt.ImageRef != registeredD09ImageDigestRef(template) {
+		return commandEvidenceRefused("invocation-image")
+	}
+	if template.CommandExecutable != spec.Executable || receipt.Proof.CommandDigest != template.CommandExecutableDigest || receipt.Proof.CommandPath != spec.Executable ||
+		receipt.Proof.CommandWorkdir != filepath.Clean(spec.WorkingDirectory) {
+		return commandEvidenceRefused("invocation-command")
+	}
+	if receipt.Proof.UID != template.CellUID || receipt.Proof.GID != template.CellGID || receipt.Proof.CapEff != "0000000000000000" ||
+		!receipt.Proof.NoNewPrivs || receipt.Proof.Seccomp != 2 || !receipt.Proof.CgroupV2 {
+		return commandEvidenceRefused("invocation-credentials")
+	}
+	if !receipt.Proof.LandlockTSYNC || receipt.Proof.LandlockABI < template.LandlockABI || receipt.Proof.LandlockRulesetDigest != cellRuleset {
+		return commandEvidenceRefused("invocation-landlock")
+	}
+	if receipt.Proof.NoExternalRoutes != cell.ExpectNoExternalRoutes() || receipt.Proof.Delta != cell.Name() ||
+		receipt.Proof.DeltaTemplateDigest != cellTemplate {
+		return commandEvidenceRefused("invocation-delta")
+	}
+	if !receipt.Proof.ConsumerMountsVerified || !receipt.Proof.RawSourceFDsClosed ||
 		receipt.Proof.WorkerMountID == 0 || receipt.Proof.WorkerMountID != receipt.Proof.RuntimeMountID {
-		return errors.Join(ErrProductionCommandEvidence, err)
+		return commandEvidenceRefused("invocation-consumer-mount")
 	}
 	encodedSpec, err := json.Marshal(spec)
 	if err != nil || digestBytes(encodedSpec) != receipt.CommandSpecDigest {
-		return errors.Join(ErrProductionCommandEvidence, err)
+		return commandEvidenceRefused("invocation-spec-digest", err)
 	}
 	encodedResult, err := json.Marshal(result)
 	if err != nil || digestBytes(encodedResult) != receipt.ResultDigest {
-		return errors.Join(ErrProductionCommandEvidence, err)
+		return commandEvidenceRefused("invocation-result-digest", err)
 	}
 	encodedSettlement, err := json.Marshal(settlement)
 	if err != nil || digestBytes(encodedSettlement) != receipt.SettlementDigest {
-		return errors.Join(ErrProductionCommandEvidence, err)
+		return commandEvidenceRefused("invocation-settlement-digest", err)
 	}
 	source, err := view.MountSource()
 	if err != nil {
-		return errors.Join(ErrProductionCommandEvidence, err)
+		return commandEvidenceRefused("view-mount-source", err)
 	}
 	defer source.Close()
 	info, err := source.Stat()
 	if err != nil || !info.IsDir() {
-		return errors.Join(ErrProductionCommandEvidence, err)
+		return commandEvidenceRefused("view-not-directory", err)
 	}
+	// The proof's mount ID is the cell's own /work mount in its private mount namespace, never this
+	// host descriptor's mount; the view binds by device/inode (docs/governed-session-composition.md).
 	stat, ok := info.Sys().(*syscall.Stat_t)
 	if !ok || uint64(stat.Dev) != receipt.Proof.WorkerDevice || stat.Ino != receipt.Proof.WorkerInode ||
 		uint64(stat.Dev) != receipt.Proof.RuntimeDevice || stat.Ino != receipt.Proof.RuntimeInode {
-		return ErrProductionCommandEvidence
-	}
-	mountID, err := productionDescriptorMountID(source.Fd())
-	if err != nil || mountID != receipt.Proof.WorkerMountID || mountID != receipt.Proof.RuntimeMountID {
-		return errors.Join(ErrProductionCommandEvidence, err)
+		return commandEvidenceRefused("view-device-inode")
 	}
 	return nil
 }
@@ -265,7 +276,7 @@ func productionDescriptorMountID(fd uintptr) (uint64, error) {
 func (r *productionD09BashRunner) BindProductionBashEvidence(ctx context.Context, providerCall delta.OperationIdentity,
 	bundle sessionrepo.EvidenceBundle, transition delta.Transition, operation sessionrepo.OperationEvidence) error {
 	if r == nil || r.inner == nil || r.journal == nil || ctx == nil || operation.ViewID == "" {
-		return ErrProductionCommandEvidence
+		return commandEvidenceRefused("bind-precondition")
 	}
 	if err := ctx.Err(); err != nil {
 		return err
@@ -274,31 +285,31 @@ func (r *productionD09BashRunner) BindProductionBashEvidence(ctx context.Context
 	receipt, exists := r.evidence[operation.ViewID]
 	if !exists || receipt.journalSeq != 0 || receipt.binding {
 		r.mu.Unlock()
-		return ErrProductionCommandEvidence
+		return commandEvidenceRefused("bind-receipt-unavailable")
 	}
 	receipt.binding = true
 	r.evidence[operation.ViewID] = receipt
 	r.mu.Unlock()
 	if err := validateProductionD09OperationBundle(bundle, transition, operation, receipt.receipt); err != nil {
-		return errors.Join(ErrProductionCommandEvidence, err)
+		return commandEvidenceRefused("bind-operation-bundle", err)
 	}
 	if providerCall.Kind != delta.OperationProposalCall || providerCall.ProposalID == "" ||
 		providerCall.CallIssuer == "" || providerCall.CallID == "" || transition.Operation.Kind != delta.OperationLease ||
 		transition.Operation.LeaseID != receipt.leaseID || operation.Operation != transition.Operation {
-		return ErrProductionCommandEvidence
+		return commandEvidenceRefused("bind-provider-call")
 	}
 	eventID := "production-d09-command:" + r.runID + ":" + receipt.leaseID + ":" + receipt.viewID + ":" + operation.EffectID
 	data, err := marshalProductionD09CommandEvent(r, providerCall, transition, operation, receipt)
 	if err != nil {
-		return errors.Join(ErrProductionCommandEvidence, err)
+		return commandEvidenceRefused("bind-event-encode", err)
 	}
 	before, err := r.journal.Trace()
 	if err != nil {
-		return errors.Join(ErrProductionCommandEvidence, err)
+		return commandEvidenceRefused("bind-journal-trace", err)
 	}
 	for _, record := range before.Records {
 		if record.Event.Kind == "production_d09_command_settled" && record.Event.ID == eventID {
-			return ErrProductionCommandEvidence
+			return commandEvidenceRefused("bind-event-duplicate")
 		}
 	}
 	journalRecord, err := r.journal.Append(audit.Event{Kind: "production_d09_command_settled", ID: eventID, Data: data})
@@ -308,7 +319,7 @@ func (r *productionD09BashRunner) BindProductionBashEvidence(ctx context.Context
 	receipt.operation, receipt.transition, receipt.providerCall = operation, transition, providerCall
 	receipt.journalSeq, receipt.journalHash, receipt.eventID = journalRecord.Sequence, journalRecord.Hash, eventID
 	if err := r.verifyProductionBashEvent(ctx, receipt, operation, transition, providerCall, bundle, journalRecord); err != nil {
-		return errors.Join(ErrProductionCommandEvidence, err)
+		return commandEvidenceRefused("bind-event-verify", err)
 	}
 	r.mu.Lock()
 	r.evidence[operation.ViewID] = receipt
@@ -379,7 +390,7 @@ func validateProductionD09OperationBundle(bundle sessionrepo.EvidenceBundle, tra
 	operation sessionrepo.OperationEvidence, receipt piruntime.D09CommandReceipt) error {
 	disposition, err := sessionrepo.Reconstruct(bundle)
 	if err != nil || disposition.Quarantined {
-		return errors.Join(ErrProductionCommandEvidence, err)
+		return commandEvidenceRefused("bundle-reconstruct", err)
 	}
 	matchedOperations := 0
 	for _, candidate := range disposition.Operations {
@@ -387,12 +398,12 @@ func validateProductionD09OperationBundle(bundle sessionrepo.EvidenceBundle, tra
 			continue
 		}
 		if !reflect.DeepEqual(candidate, operation) {
-			return ErrProductionCommandEvidence
+			return commandEvidenceRefused("bundle-operation-differs")
 		}
 		matchedOperations++
 	}
 	if matchedOperations != 1 {
-		return ErrProductionCommandEvidence
+		return commandEvidenceRefused("bundle-operation-count")
 	}
 	if operation.Tool != "bash" || operation.Operation.Kind != delta.OperationLease || operation.Operation.LeaseID != receipt.LeaseID ||
 		operation.ViewID != receipt.ViewID || operation.Admission == nil || operation.ExitCode == nil ||
@@ -408,11 +419,11 @@ func validateProductionD09OperationBundle(bundle sessionrepo.EvidenceBundle, tra
 		operation.ExecutionContextDigest != governedExecutionContextDigest(operation.ViewID, operation.InputTreeDigest, receipt.LeaseID) ||
 		transition.Tool != "bash" || transition.ID == "" || transition.Sequence == 0 ||
 		transition.OutputGeneration == transition.InputGeneration || len(bundle.AuditJournal) == 0 {
-		return ErrProductionCommandEvidence
+		return commandEvidenceRefused("bundle-operation-fields")
 	}
 	trace, err := audit.Verify(bytes.NewReader(bundle.AuditJournal))
 	if err != nil || uint64(len(trace.Records)) != bundle.AuditRecordCount || auditHeadHash(trace.Records) != bundle.AuditHeadHash {
-		return errors.Join(ErrProductionCommandEvidence, err)
+		return commandEvidenceRefused("bundle-audit-journal", err)
 	}
 	var effect *audit.EffectTrace
 	for index := range trace.Effects {
@@ -421,21 +432,21 @@ func validateProductionD09OperationBundle(bundle sessionrepo.EvidenceBundle, tra
 			continue
 		}
 		if effect != nil {
-			return ErrProductionCommandEvidence
+			return commandEvidenceRefused("bundle-effect-duplicate")
 		}
 		effect = candidate
 	}
 	if effect == nil || effect.Unresolved || effect.Outcome != "success" || effect.OutcomeSequence != operation.AuditSequence ||
 		digestBytes(effect.Result) != operation.ResultDigest {
-		return ErrProductionCommandEvidence
+		return commandEvidenceRefused("bundle-effect-outcome")
 	}
 	request, intentSpec, intentProfile, err := decodeProductionD09CommandIntent(effect.Intent)
 	if err != nil {
-		return errors.Join(ErrProductionCommandEvidence, err)
+		return commandEvidenceRefused("bundle-intent", err)
 	}
 	var commandResult productionD09CommandEffectResult
 	if err := unmarshalGovernedJSON(effect.Result, &commandResult); err != nil {
-		return errors.Join(ErrProductionCommandEvidence, err)
+		return commandEvidenceRefused("bundle-effect-result", err)
 	}
 	effectSpec := commandResult.Spec
 	effectSpec.DeclaredOutputPaths = cloneProductionD09Paths(intentSpec.DeclaredOutputPaths)
@@ -444,7 +455,7 @@ func validateProductionD09OperationBundle(bundle sessionrepo.EvidenceBundle, tra
 	specBytes, specErr := json.Marshal(effectSpec)
 	argumentDigest, argumentErr := sessionrepo.CommandArgumentsDigest(intentSpec)
 	if commandErr != nil || settlementErr != nil || specErr != nil ||
-		!reflect.DeepEqual(commandResult.Transition, transition) || commandResult.RunnerProfile != piruntime.D09CommandRunnerProfile ||
+		!sameDurableTransition(commandResult.Transition, transition) || commandResult.RunnerProfile != piruntime.D09CommandRunnerProfile ||
 		intentProfile != commandResult.RunnerProfile || !reflect.DeepEqual(effectSpec, intentSpec) ||
 		request.Tool != operation.Tool || request.Tool != transition.Tool || request.EffectID != operation.EffectID ||
 		request.Operation != operation.Operation || request.Operation != transition.Operation ||
@@ -461,13 +472,13 @@ func validateProductionD09OperationBundle(bundle sessionrepo.EvidenceBundle, tra
 		commandResult.Command.ExitCode != receipt.ExitCode || !commandResult.Command.ExitObserved ||
 		digestBytes(commandBytes) != receipt.ResultDigest || digestBytes(settlementBytes) != receipt.SettlementDigest ||
 		digestBytes(specBytes) != receipt.CommandSpecDigest || commandResult.Settlement != receipt.Settlement {
-		return errors.Join(ErrProductionCommandEvidence, errors.Join(commandErr, settlementErr, specErr))
+		return commandEvidenceRefused("bundle-effect-binding", errors.Join(commandErr, settlementErr, specErr))
 	}
 	matchedOperation := 0
 	for _, candidate := range bundle.Operations {
 		if candidate.EffectID == operation.EffectID {
 			if !reflect.DeepEqual(candidate, operation) {
-				return ErrProductionCommandEvidence
+				return commandEvidenceRefused("bundle-ledger-operation-differs")
 			}
 			matchedOperation++
 		}
@@ -476,26 +487,26 @@ func validateProductionD09OperationBundle(bundle sessionrepo.EvidenceBundle, tra
 	for _, candidate := range bundle.ApprovedDeltaLedger {
 		if candidate.ID == transition.ID {
 			if !reflect.DeepEqual(candidate, transition) {
-				return ErrProductionCommandEvidence
+				return commandEvidenceRefused("bundle-ledger-transition-differs")
 			}
 			matchedTransition++
 		}
 	}
 	if matchedOperation != 1 || matchedTransition != 1 {
-		return ErrProductionCommandEvidence
+		return commandEvidenceRefused("bundle-ledger-count")
 	}
 	return nil
 }
 
 func (r *productionD09BashRunner) VerifyProductionBashEvidence(ctx context.Context, operation sessionrepo.OperationEvidence) error {
 	if r == nil || ctx == nil || operation.ViewID == "" {
-		return ErrProductionCommandEvidence
+		return commandEvidenceRefused("verify-precondition")
 	}
 	r.mu.Lock()
 	retained, exists := r.evidence[operation.ViewID]
 	r.mu.Unlock()
 	if !exists {
-		return ErrProductionCommandEvidence
+		return commandEvidenceRefused("verify-receipt-missing")
 	}
 	return r.verifyProductionBashEvent(ctx, retained, operation, retained.transition, retained.providerCall, sessionrepo.EvidenceBundle{}, audit.Record{})
 }
@@ -504,13 +515,13 @@ func (r *productionD09BashRunner) VerifyProductionBashEvidenceWithOrigin(ctx con
 	bundle sessionrepo.EvidenceBundle, providerCall delta.OperationIdentity, transition delta.Transition,
 	operation sessionrepo.OperationEvidence) error {
 	if r == nil || ctx == nil || operation.ViewID == "" || len(bundle.AuditJournal) == 0 {
-		return ErrProductionCommandEvidence
+		return commandEvidenceRefused("verify-origin-precondition")
 	}
 	r.mu.Lock()
 	retained, exists := r.evidence[operation.ViewID]
 	r.mu.Unlock()
 	if !exists {
-		return ErrProductionCommandEvidence
+		return commandEvidenceRefused("verify-origin-receipt-missing")
 	}
 	return r.verifyProductionBashEvent(ctx, retained, operation, transition, providerCall, bundle, audit.Record{})
 }
@@ -529,21 +540,21 @@ func (r *productionD09BashRunner) verifyProductionBashEvent(ctx context.Context,
 		*operation.ExitCode != retained.receipt.ExitCode || operation.CommandContainmentStatus != "not-established" ||
 		operation.CommandRunnerProfile != piruntime.D09CommandRunnerProfile || retained.receipt.LeaseID != retained.leaseID ||
 		retained.receipt.ViewID != retained.viewID || retained.receipt.ReceiptDigest != retained.receiptDigest {
-		return ErrProductionCommandEvidence
+		return commandEvidenceRefused("event-retained-binding")
 	}
 	if err := retained.receipt.Validate(); err != nil {
-		return errors.Join(ErrProductionCommandEvidence, err)
+		return commandEvidenceRefused("event-receipt-seal", err)
 	}
 	encodedReceipt, err := json.Marshal(retained.receipt)
 	if err != nil || !bytes.Equal(encodedReceipt, retained.receiptSnapshot) {
-		return errors.Join(ErrProductionCommandEvidence, err)
+		return commandEvidenceRefused("event-receipt-snapshot-drift", err)
 	}
 	var snapshot piruntime.D09CommandReceipt
 	if err := unmarshalGovernedJSON(retained.receiptSnapshot, &snapshot); err != nil {
-		return errors.Join(ErrProductionCommandEvidence, err)
+		return commandEvidenceRefused("event-snapshot-decode", err)
 	}
 	if err := snapshot.ValidateSnapshot(); err != nil || snapshot.ReceiptDigest != retained.receiptDigest {
-		return errors.Join(ErrProductionCommandEvidence, err)
+		return commandEvidenceRefused("event-snapshot-validate", err)
 	}
 	if bundle.AuditJournal != nil {
 		if err := validateProductionD09OperationBundle(bundle, transition, operation, retained.receipt); err != nil {
@@ -552,7 +563,7 @@ func (r *productionD09BashRunner) verifyProductionBashEvent(ctx context.Context,
 	}
 	trace, err := r.journal.Trace()
 	if err != nil {
-		return errors.Join(ErrProductionCommandEvidence, err)
+		return commandEvidenceRefused("event-journal-trace", err)
 	}
 	var matched *audit.Record
 	for index := range trace.Records {
@@ -561,19 +572,19 @@ func (r *productionD09BashRunner) verifyProductionBashEvent(ctx context.Context,
 			continue
 		}
 		if matched != nil {
-			return ErrProductionCommandEvidence
+			return commandEvidenceRefused("event-journal-duplicate")
 		}
 		matched = candidate
 	}
 	if err := validateProductionD09JournalRecord(matched, retained, expected); err != nil {
-		return ErrProductionCommandEvidence
+		return err
 	}
 	var event productionD09CommandSettledEvent
 	if err := unmarshalGovernedJSON(matched.Event.Data, &event); err != nil {
-		return errors.Join(ErrProductionCommandEvidence, err)
+		return commandEvidenceRefused("event-decode", err)
 	}
 	if err := compareProductionD09CommandEvent(r, event, retained, providerCall, operation, transition); err != nil {
-		return ErrProductionCommandEvidence
+		return err
 	}
 	return nil
 }
@@ -582,7 +593,7 @@ func validateProductionD09JournalRecord(record *audit.Record, retained productio
 	if record == nil || record.Event.Kind != "production_d09_command_settled" || record.Event.ID != retained.eventID ||
 		record.Sequence == 0 || record.Sequence != retained.journalSeq || record.Hash == "" || record.Hash != retained.journalHash ||
 		expected.Sequence != 0 && (record.Sequence != expected.Sequence || record.Hash != expected.Hash) {
-		return ErrProductionCommandEvidence
+		return commandEvidenceRefused("event-journal-record")
 	}
 	return nil
 }
@@ -600,7 +611,7 @@ func compareProductionD09CommandEvent(r *productionD09BashRunner, event producti
 		!reflect.DeepEqual(event.ProviderCall, providerCall) || !reflect.DeepEqual(event.Operation, operation) ||
 		!reflect.DeepEqual(event.Transition, transition) || event.ReceiptDigest != retained.receiptDigest ||
 		!bytes.Equal(event.Receipt, retained.receiptSnapshot) {
-		return ErrProductionCommandEvidence
+		return commandEvidenceRefused("event-payload")
 	}
 	return nil
 }

@@ -16,7 +16,6 @@ import (
 
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/broker"
-	"tbound/supervisor/internal/broker/openrouter"
 	"tbound/supervisor/internal/gate"
 	"tbound/supervisor/internal/piruntime"
 	"tbound/supervisor/internal/privategit"
@@ -201,8 +200,7 @@ func bindProductionPiRecoverySession(ctx context.Context, config productionServe
 		if identityErr != nil || identity != pin.JournalIdentityDigest {
 			return fail(errors.Join(workflowrecovery.ErrObservation, identityErr))
 		}
-		profileMessages := []openrouter.Message{{Role: openrouter.System, Content: stringPointer(productionSystemPrompt)},
-			{Role: openrouter.Developer, Content: stringPointer(productionDeveloperPrompt)}}
+		profileMessages := providerbridge.InitialPromptMessages(config.providerRoute.Route(), productionSystemPrompt, productionDeveloperPrompt)
 		providerProfile := broker.Profile{ID: profile.ProviderProfile, Model: config.providerRoute.Model(), Route: config.providerRoute.Route(),
 			Messages: profileMessages, ToolManifest: broker.DeclaredToolManifest(), ToolCallIssuer: governedCallIssuer,
 			ResponseIDIssuer: governedResponseIssuer}
@@ -275,8 +273,7 @@ func bindProductionPiRecoverySession(ctx context.Context, config productionServe
 		return fail(err)
 	}
 	providerProfile := broker.Profile{ID: profile.ProviderProfile, Model: config.providerRoute.Model(), Route: config.providerRoute.Route(),
-		Messages: []openrouter.Message{{Role: openrouter.System, Content: stringPointer(productionSystemPrompt)},
-			{Role: openrouter.Developer, Content: stringPointer(productionDeveloperPrompt)}},
+		Messages:     providerbridge.InitialPromptMessages(config.providerRoute.Route(), productionSystemPrompt, productionDeveloperPrompt),
 		ToolManifest: broker.DeclaredToolManifest(), ToolCallIssuer: governedCallIssuer,
 		ResponseIDIssuer: governedResponseIssuer}
 	request := governedRecoveryRequest{
@@ -404,8 +401,7 @@ func bindProductionPiRecoverySession(ctx context.Context, config productionServe
 		LiveRoot:                      liveRoot, ManagedLiveRootLease: managedRootLease,
 		PublicationStateRoot: publicationStateRoot, PublicationJournal: publicationJournal,
 		OwnerEpoch: publicationEpoch, PublicationID: publicationID,
-		Workspace: workspace.Options{Generation: tip.ID(), MetadataPolicyDigest: metadataPolicyDigest,
-			Limits: workspace.DefaultLimits(), XattrVisibility: qualifiedXattr},
+		Workspace: productionWorkspaceOptions(tip.ID(), metadataPolicyDigest, qualifiedXattr),
 	}
 	if err := managedRootLease.revalidate(ctx, liveRoot); err != nil {
 		return fail(err)

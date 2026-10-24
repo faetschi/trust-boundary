@@ -62,6 +62,16 @@ const (
 	D09LandlockReadExec   = D09LandlockFSExecute | D09LandlockFSReadFile | D09LandlockFSReadDir
 )
 
+// D09LandlockHeldBinaryFD is the descriptor of the held Node binary the entrypoint execs.
+const D09LandlockHeldBinaryFD = 3
+
+// D09LandlockHeldBinaryAccess is the only access the file rule on that descriptor grants.
+const D09LandlockHeldBinaryAccess = D09LandlockFSExecute | D09LandlockFSReadFile
+
+// D09LandlockHeldBinaryRulePath names the descriptor rule inside the canonical digest. It is not
+// an absolute path, so it cannot collide with a path rule.
+const D09LandlockHeldBinaryRulePath = "fd:3"
+
 type d09LandlockRule struct {
 	path   string
 	access uint64
@@ -121,6 +131,10 @@ func DigestD09LandlockRulesNet(readOnlyPaths, readWritePaths []string, connectPo
 	if len(rules) == 0 {
 		return "", errors.New("Landlock profile must contain at least one path rule")
 	}
+	// The held, digest-verified Node binary at fd3 lives on a host mount that no path rule
+	// covers, so the entrypoint allows exactly execute and read on that one descriptor. The rule
+	// is part of the canonical definition: every cell's signed digest covers it.
+	rules = append(rules, d09LandlockRule{path: D09LandlockHeldBinaryRulePath, access: D09LandlockHeldBinaryAccess})
 	hash := sha256.New()
 	var field [8]byte
 	binary.LittleEndian.PutUint64(field[:], D09LandlockHandledFS)

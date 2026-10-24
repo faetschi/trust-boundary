@@ -1,0 +1,21 @@
+{
+  "schema": "tbound-fixture/v1",
+  "entries": [
+    {
+      "path": "docs",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "docs/prod_signs.spec.md",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "Ly9Zb3UgYXJlIGdpdmVuIGFuIGFycmF5IGFyciBvZiBpbnRlZ2VycyBhbmQgeW91IG5lZWQgdG8gcmV0dXJuCi8vIHN1bSBvZiBtYWduaXR1ZGVzIG9mIGludGVnZXJzIG11bHRpcGxpZWQgYnkgcHJvZHVjdCBvZiBhbGwgc2lnbnMKLy8gb2YgZWFjaCBudW1iZXIgaW4gdGhlIGFycmF5LCByZXByZXNlbnRlZCBieSAxLCAtMSBvciAwLgovLyBOb3RlOiByZXR1cm4gdW5kZWZpbmVkIGZvciBlbXB0eSBhcnIuCi8vIEV4YW1wbGU6Ci8vID4+PiBwcm9kX3NpZ25zKFsxLCAyLCAyLCAtNF0pCi8vIDkKLy8gPj4+IHByb2Rfc2lnbnMoWzAsIDFdKQovLyAwCi8vID4+PiBwcm9kX3NpZ25zKFtdKQovLyB1bmRlZmluZWQKZnVuY3Rpb24gcHJvZF9zaWducyhhcnIpewo="
+    },
+    {
+      "path": "src",
+      "type": "dir",
+      "mode": "0755"
+    }
+  ]
+}

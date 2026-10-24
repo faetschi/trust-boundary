@@ -44,7 +44,7 @@ const (
 	productionStoreRootDefault = "/var/lib/tbound/sessions"
 	productionAuditRootDefault = "/var/lib/tbound/audit"
 	productionAdminRootDefault = "/var/lib/tbound/private-admin"
-	productionLiveRootDefault  = "/var/lib/tbound/live"
+	productionLiveRootDefault  = piruntime.D09ManagedPiLiveRootPath
 	productionStateRootDefault = "/var/lib/tbound/publication-state"
 	productionGitPathDefault   = "/usr/bin/git"
 	productionGitApprovalPath  = "/etc/tbound/pi-git-approval.json"
@@ -478,10 +478,7 @@ func (b *productionBinder) BindProductionPiSession(ctx context.Context, config p
 		return fail(fmt.Errorf("bind verified baseline generation: %w", err))
 	}
 	session.Generation = g0
-	session.Workspace = workspace.Options{
-		Generation: g0.ID(), MetadataPolicyDigest: metadataPolicyDigest, Limits: workspace.DefaultLimits(),
-		XattrVisibility: xattrVisibility,
-	}
+	session.Workspace = productionWorkspaceOptions(g0.ID(), metadataPolicyDigest, xattrVisibility)
 
 	adminRoot, err := os.Open(adminRootPath)
 	if err != nil {
@@ -965,4 +962,16 @@ func productionToken() (string, error) {
 		return "", fmt.Errorf("mint production cgroup token: %w", err)
 	}
 	return hex.EncodeToString(token[:]), nil
+}
+
+// productionWorkspaceOptions is the workspace binding of a production session: the root ledger
+// records it and the publication repository scans the live and sealed roots with it. It may say
+// quiescent only because every such scan runs while nothing can write the root: Publish scans run
+// after productionTrust.AttestQuiescent issued the one-use permit (sole writer domain, STOPPED
+// worker, joined loops), and recovery reads the recorded binding back and scans before source
+// capture and before any cell launch, under the managed lease. A scan added anywhere else must
+// not reuse this binding. Without the flag workspace.Scan refuses every publication scan.
+func productionWorkspaceOptions(generation, metadataPolicyDigest string, xattr workspace.XattrVisibilityAttestation) workspace.Options {
+	return workspace.Options{Generation: generation, MetadataPolicyDigest: metadataPolicyDigest,
+		Limits: workspace.DefaultLimits(), QuiescentRoot: true, XattrVisibility: xattr}
 }

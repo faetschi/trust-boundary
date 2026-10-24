@@ -1,0 +1,49 @@
+✔ adapter's registered model is the broker-approved model (0.606388ms)
+✔ Go turn projection must match its fixed model and finish/call shape (4.608302ms)
+✔ provider cancellation sends only the matching bounded cancel frame (1.476158ms)
+✔ Go-compatible frame golden vector encodes and decodes (3.75867ms)
+▶ rejects oversized, truncated, and malformed frames
+  ✔ clean EOF is a normal close (2.48539ms)
+  ✔ oversized announced length (1.353644ms)
+  ✔ truncated prefix (1.035076ms)
+  ✔ truncated payload (0.773764ms)
+  ✔ duplicate and unknown fields (3.787496ms)
+✔ rejects oversized, truncated, and malformed frames (10.3284ms)
+▶ checks token, sequence, replay, and message direction
+  ✔ binding token mismatch (0.748683ms)
+  ✔ sequence must start at one and increase by one (0.905649ms)
+  ✔ replayed sequence is rejected (1.112905ms)
+  ✔ wrong direction is rejected (0.570192ms)
+  ✔ unknown kind is rejected (0.435603ms)
+✔ checks token, sequence, replay, and message direction (4.377737ms)
+✔ proxy tools each round-trip one proposal and return its correlated result (4.139554ms)
+▶ proxy feedback appends exactly the fixed hint, and leaves successful ALLOW unchanged
+  ✔ successful ALLOW (1.236935ms)
+  ✔ failed command (0.867571ms)
+  ✔ unknown reason (0.850999ms)
+  ✔ empty status (0.8467ms)
+  ✔ object prototype name (1.077572ms)
+  ✔ argument_digest_mismatch (0.750347ms)
+  ✔ correlation_required (0.769326ms)
+  ✔ invalid_arguments (0.747366ms)
+  ✔ invalid_policy (0.841172ms)
+  ✔ policy_default_deny (0.77635ms)
+  ✔ policy_rule_deny (0.682235ms)
+  ✔ scope_path_not_covered (0.714478ms)
+  ✔ scope_protected_path (0.722878ms)
+  ✔ unknown_tool (0.812416ms)
+✔ proxy feedback appends exactly the fixed hint, and leaves successful ALLOW unchanged (12.713704ms)
+▶ IPC rejects command status outside allowed failed bash results
+  ✔ DENY read command_failed (0.437763ms)
+  ✔ DENY read unexpected (0.354624ms)
+  ✔ ALLOW read command_failed (0.363133ms)
+✔ IPC rejects command status outside allowed failed bash results (1.491462ms)
+﹣ official Pi CLI 0.87.1 loads the mediated extension and settles simulated host-fixture denials (0.658465ms) # set TBOUND_REQUIRE_PI_CLI_INTEGRATION=1 in CI or provide the pinned pi executable on PATH
+ℹ tests 37
+ℹ suites 0
+ℹ pass 36
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 6849.41721

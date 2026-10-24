@@ -3,6 +3,7 @@
 package effectoracle
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
@@ -31,11 +32,15 @@ const watchMask = syscall.IN_CREATE | syscall.IN_DELETE | syscall.IN_MODIFY |
 	syscall.IN_ATTRIB | syscall.IN_DELETE_SELF | syscall.IN_MOVE_SELF |
 	syscall.IN_ONLYDIR | syscall.IN_DONT_FOLLOW
 
+// fenceMask is added to the watch of FenceDir, and to no other: the opens and reads of the fence directory. Any other
+// directory would make a record of every scan of the tree.
+const fenceMask = syscall.IN_OPEN | syscall.IN_ACCESS
+
 // maskNames lists the requested masks, sorted, for Report.Masks.
 var maskNames = []string{
-	"IN_ATTRIB", "IN_CLOSE_WRITE", "IN_CREATE", "IN_DELETE", "IN_DELETE_SELF",
+	"IN_ACCESS", "IN_ATTRIB", "IN_CLOSE_WRITE", "IN_CREATE", "IN_DELETE", "IN_DELETE_SELF",
 	"IN_DONT_FOLLOW", "IN_MODIFY", "IN_MOVED_FROM", "IN_MOVED_TO", "IN_MOVE_SELF",
-	"IN_ONLYDIR",
+	"IN_ONLYDIR", "IN_OPEN",
 }
 
 // canaryExpect lists the events the oracle itself causes for one canary, in the
@@ -56,13 +61,17 @@ type Observer struct {
 	src     inotifyAPI
 	timeout time.Duration
 
-	ctrl sync.Mutex // serializes Mark, Stop, and canary writes
-	mu   sync.Mutex // guards the state below, which the reader also updates
+	ctrl     sync.Mutex      // serializes Mark, Stop, and canary writes
+	startCtx context.Context // set under ctrl only while Start takes the start mark; once done, no canary is written
+	mu       sync.Mutex      // guards the state below, which the reader also updates
 
 	seq        uint64
 	wds        map[int]string           // watch descriptor -> slash-relative directory
 	rootWd     int                      // -1 when the root is not watched
 	rootLost   bool                     // the root was deleted, moved, or unmounted
+	fenceWd    int                      // watch descriptor of FenceDir, -1 when it is not watched
+	fenceArmed bool                     // the watch of FenceDir asks for opens and reads
+	fenceEver  bool                     // it was armed after the start mark
 	readerDead bool                     // the reader stopped after a read or parse failure
 	issued     map[string]*canaryWaiter // every canary name issued, kept for matching
 	canaries   int
@@ -75,6 +84,7 @@ type Observer struct {
 	beats  []Heartbeat
 	gaps   []Gap
 	marks  []Mark
+	fences []Fence
 
 	readerDone chan struct{}
 
@@ -100,12 +110,23 @@ type canaryWaiter struct {
 // when the root itself cannot be snapshotted. A watch that cannot be installed
 // does not fail Start. It is recorded as a gap, and the verdict is evidence_lost.
 func Start(root string) (*Observer, error) {
-	return startWith(root, nil, defaultCanaryTimeout)
+	return startWith(context.Background(), root, nil, defaultCanaryTimeout)
 }
 
-// startWith is Start with an injectable kernel surface and canary timeout. A
+// StartContext is Start that can be called off. ctx is checked before every canary the start writes: once it is done,
+// the start writes nothing more into the root, closes the watch and returns ctx's error (a canary already written is
+// still removed). A ctx that is done before the call writes nothing at all. Once StartContext has returned an
+// observer, ctx no longer matters: use Abort or Stop.
+func StartContext(ctx context.Context, root string) (*Observer, error) {
+	return startWith(ctx, root, nil, defaultCanaryTimeout)
+}
+
+// startWith is StartContext with an injectable kernel surface and canary timeout. A
 // nil src selects the kernel implementation.
-func startWith(root string, src inotifyAPI, timeout time.Duration) (*Observer, error) {
+func startWith(ctx context.Context, root string, src inotifyAPI, timeout time.Duration) (*Observer, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	abs, err := filepath.Abs(root)
 	if err != nil {
 		return nil, err
@@ -137,6 +158,7 @@ func startWith(root string, src inotifyAPI, timeout time.Duration) (*Observer, e
 		timeout:    timeout,
 		wds:        make(map[int]string),
 		rootWd:     -1,
+		fenceWd:    -1,
 		issued:     make(map[string]*canaryWaiter),
 		raced:      make(map[string]map[string]bool),
 		readerDone: make(chan struct{}),
@@ -147,8 +169,18 @@ func startWith(root string, src inotifyAPI, timeout time.Duration) (*Observer, e
 	go o.readLoop()
 
 	o.ctrl.Lock()
+	o.startCtx = ctx
 	err = o.markLocked(MarkStart)
+	o.startCtx = nil
+	if err == nil {
+		o.mu.Lock()
+		o.setFenceLocked(true)
+		o.mu.Unlock()
+	}
 	o.ctrl.Unlock()
+	if err == nil {
+		err = ctx.Err()
+	}
 	if err != nil {
 		_ = src.Close()
 		<-o.readerDone
@@ -192,6 +224,21 @@ func (o *Observer) Stop() (*Report, error) {
 	<-o.readerDone
 	o.report = o.buildReport()
 	return o.report, nil
+}
+
+// Abort ends the observation without a report. Unlike Stop it takes no stop mark and writes no canary or any other
+// file into the root: the caller uses it when the window can no longer be reported (the process that asked for it
+// is gone), so that nothing is written into the root after the session that owned the observer. Stop after Abort
+// returns ErrStopped. Abort is idempotent and does nothing after Stop.
+func (o *Observer) Abort() {
+	o.ctrl.Lock()
+	defer o.ctrl.Unlock()
+	if o.stopped {
+		return
+	}
+	o.stopped = true
+	_ = o.src.Close()
+	<-o.readerDone
 }
 
 // readLoop applies kernel records in queue order until the source is closed or
@@ -286,6 +333,15 @@ func (o *Observer) applyLocked(rec rawEvent) {
 			}
 		}
 	}
+	if rec.mask&fenceMask != 0 {
+		// Only the fence directory's watch asks for these.
+		op := FenceOpen
+		if rec.mask&syscall.IN_ACCESS != 0 {
+			op = FenceAccess
+		}
+		o.fences = append(o.fences, Fence{Seq: o.nextSeqLocked(), AtNS: o.sinceLocked(), Op: op, Path: rel, IsDir: rec.mask&syscall.IN_ISDIR != 0})
+		return
+	}
 	kind, ok := kindOf(rec.mask)
 	if !ok {
 		o.gapLocked(GapUnmappedEvent, rel, o.seq, fmt.Sprintf("unexpected mask %#x", rec.mask))
@@ -293,6 +349,9 @@ func (o *Observer) applyLocked(rec rawEvent) {
 	}
 	isDir := rec.mask&syscall.IN_ISDIR != 0
 	ev := Event{Seq: o.nextSeqLocked(), AtNS: o.sinceLocked(), Kind: kind, Path: rel, IsDir: isDir}
+	if kind == KindMovedFrom || kind == KindMovedTo {
+		ev.Cookie = rec.cookie
+	}
 	o.events = append(o.events, ev)
 	if anomaly {
 		o.gapLocked(GapCanaryAnomaly, rel, ev.Seq-1, kind+" event for an issued canary name that the oracle did not cause")
@@ -371,7 +430,11 @@ func (o *Observer) watchTreeLocked(rel string, from uint64) {
 		return
 	}
 	defer func() { _ = dir.Close() }()
-	wd, err := o.src.AddWatch(abs, watchMask)
+	mask := uint32(watchMask)
+	if rel == FenceDir && o.fenceArmed {
+		mask |= fenceMask
+	}
+	wd, err := o.src.AddWatch(abs, mask)
 	if err != nil {
 		kind := GapWatchError
 		if errors.Is(err, syscall.ENOSPC) {
@@ -399,6 +462,8 @@ func (o *Observer) watchTreeLocked(rel string, from uint64) {
 	o.wds[wd] = rel
 	if rel == "." {
 		o.rootWd = wd
+	} else if rel == FenceDir {
+		o.fenceWd = wd
 	}
 	names, err := dirNames(dir)
 	if err != nil {
@@ -544,6 +609,9 @@ func (o *Observer) rootLostLocked(detail string) {
 func (o *Observer) markLocked(name string) error {
 	o.canaryLocked("mark:" + name + ":pre")
 	o.mu.Lock()
+	// The snapshot opens and reads the fence directory like any other: its records are not a process's fence.
+	wasArmed := o.fenceArmed
+	o.setFenceLocked(false)
 	pre := o.seq
 	o.mu.Unlock()
 
@@ -551,6 +619,9 @@ func (o *Observer) markLocked(name string) error {
 	o.canaryLocked("mark:" + name + ":post")
 	o.mu.Lock()
 	defer o.mu.Unlock()
+	if wasArmed && name != MarkStop {
+		o.setFenceLocked(true)
+	}
 	for _, u := range res.unreadable {
 		o.gapLocked(GapSnapshotUnreadable, u.path, pre, errnoName(u.err))
 	}
@@ -585,6 +656,12 @@ func canaryFileName(nonce string, n int) string {
 func (o *Observer) canaryLocked(label string) bool {
 	freeze := label == stopPostLabel
 	o.mu.Lock()
+	if o.startCtx != nil && o.startCtx.Err() != nil {
+		// Start was called off: nothing more is written into the root.
+		o.beatLocked(label, false, "start cancelled")
+		o.mu.Unlock()
+		return false
+	}
 	if o.readerDead || o.rootLost || o.rootWd < 0 {
 		detail := "root not watched"
 		if o.readerDead {
@@ -721,6 +798,10 @@ func (o *Observer) buildReport() *Report {
 		Gaps:          append([]Gap(nil), o.gaps...),
 		Marks:         append([]Mark(nil), o.marks...),
 		Events:        append([]Event(nil), o.events...),
+		Fences:        append([]Fence(nil), o.fences...),
+	}
+	if o.fenceWd >= 0 && o.fenceEver {
+		r.FenceDir = FenceDir
 	}
 	r.Verdict = verdictFor(r.Gaps, r.Heartbeats)
 	return r
@@ -742,4 +823,30 @@ func newNonce() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(b[:]), nil
+}
+
+// setFenceLocked switches the fence records of the fence directory's watch on or off. It does nothing when the
+// directory is not watched or the watch is already so. A watch that cannot be changed is a gap: the records it keeps or
+// withholds cannot be trusted. The caller holds mu.
+func (o *Observer) setFenceLocked(on bool) {
+	if o.fenceWd < 0 || o.fenceArmed == on {
+		return
+	}
+	mask := uint32(watchMask)
+	if on {
+		mask |= fenceMask
+	}
+	wd, err := o.src.AddWatch(filepath.Join(o.root, FenceDir), mask)
+	if err != nil {
+		o.gapLocked(GapWatchError, FenceDir, o.seq, "fence: "+errnoName(err))
+		return
+	}
+	if wd != o.fenceWd {
+		o.gapLocked(GapWatchError, FenceDir, o.seq, "fence: the directory was replaced")
+		return
+	}
+	o.fenceArmed = on
+	if on {
+		o.fenceEver = true
+	}
 }

@@ -14,7 +14,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"sort"
-	"strconv"
 	"strings"
 	"syscall"
 
@@ -517,13 +516,13 @@ func QualifyD09ManagedLiveRootSeedSource(ctx context.Context, verified *Verified
 	}
 	stat, err := statD09QualificationSource(candidate)
 	if err != nil || stat.device != registration.RootDevice || stat.inode != registration.RootInode ||
-		stat.mountID != registration.RootMountID {
+		stat.mountID != leaseEvidence.RootMountID {
 		return nil, errors.Join(ErrD09ManagedLiveRootRefused, err)
 	}
 	snapshot := D09ManagedLiveRootSnapshotEvidence{
 		SchemaVersion: "tbound-d09-managed-live-snapshot-evidence/v1", RunID: leaseEvidence.RunID,
 		OwnerEpoch: leaseEvidence.OwnerEpoch, RegistrationDigest: registration.Digest,
-		RootDevice: registration.RootDevice, RootInode: registration.RootInode, RootMountID: registration.RootMountID,
+		RootDevice: registration.RootDevice, RootInode: registration.RootInode, RootMountID: leaseEvidence.RootMountID,
 		LeaseEvidenceDigest: leaseEvidence.EvidenceDigest, EntryCount: xattrEvidence.EntryCount,
 		DirectoryCount: xattrEvidence.DirectoryCount, XattrNameCount: xattrEvidence.XattrNameCount,
 		ObservationDigest: xattrEvidence.ObservationDigest,
@@ -849,10 +848,15 @@ func verifyD09ManagedLeaseEvidence(ctx context.Context, verified *VerifiedD09Man
 		return D09ManagedLiveRootRegistration{}, D09ManagedLiveRootCgroupIdentity{},
 			D09ManagedSourceLeaseEvidence{}, ErrD09ManagedLiveRootRefused
 	}
+	rootMountID, mountErr := verified.rootMountID()
+	if mountErr != nil {
+		return D09ManagedLiveRootRegistration{}, D09ManagedLiveRootCgroupIdentity{},
+			D09ManagedSourceLeaseEvidence{}, errors.Join(ErrD09ManagedLiveRootRefused, mountErr)
+	}
 	evidence, err := lease.D09ManagedSourceLeaseEvidence(ctx, verified)
 	if err != nil || evidence.Validate() != nil || evidence.RegistrationDigest != registration.Digest ||
 		evidence.RootDevice != registration.RootDevice || evidence.RootInode != registration.RootInode ||
-		evidence.RootMountID != registration.RootMountID || evidence.ServiceCgroupPath != cgroup.Path ||
+		evidence.RootMountID != rootMountID || evidence.ServiceCgroupPath != cgroup.Path ||
 		evidence.ServiceCgroupDevice != cgroup.Device || evidence.ServiceCgroupInode != cgroup.Inode ||
 		evidence.ServiceCgroupMountID != cgroup.MountID {
 		return D09ManagedLiveRootRegistration{}, D09ManagedLiveRootCgroupIdentity{},
@@ -893,7 +897,7 @@ func QualifyD09ManagedLiveRootSnapshot(ctx context.Context, verified *VerifiedD0
 	evidence := D09ManagedLiveRootSnapshotEvidence{
 		SchemaVersion: "tbound-d09-managed-live-snapshot-evidence/v1", RunID: leaseEvidence.RunID,
 		OwnerEpoch: leaseEvidence.OwnerEpoch, RegistrationDigest: registration.Digest,
-		RootDevice: registration.RootDevice, RootInode: registration.RootInode, RootMountID: registration.RootMountID,
+		RootDevice: registration.RootDevice, RootInode: registration.RootInode, RootMountID: leaseEvidence.RootMountID,
 		LeaseEvidenceDigest: leaseEvidence.EvidenceDigest, EntryCount: observation.EntryCount,
 		DirectoryCount: observation.DirectoryCount, XattrNameCount: observation.XattrNameCount,
 		ObservationDigest: observation.ObservationDigest,
@@ -981,7 +985,7 @@ func MeasureD09ManagedLiveRootXattrs(ctx context.Context, verified *VerifiedD09M
 		SchemaVersion: "tbound-d09-managed-live-xattr-evidence/v2", Authority: calibration.Authority, RunID: leaseEvidence.RunID,
 		OwnerEpoch: leaseEvidence.OwnerEpoch, RegistrationDigest: registration.Digest,
 		CalibrationDigest: calibration.Digest, LeaseEvidenceDigest: leaseEvidence.EvidenceDigest,
-		RootDevice: registration.RootDevice, RootInode: registration.RootInode, RootMountID: registration.RootMountID,
+		RootDevice: registration.RootDevice, RootInode: registration.RootInode, RootMountID: leaseEvidence.RootMountID,
 		FilesystemMagic: measurements.FilesystemMagic, MountOptionsDigest: measurements.MountOptionsDigest,
 		ScanUID: measurements.ScanUID, ScanGID: measurements.ScanGID,
 		ScanPrivilegeProfile: measurements.ScanPrivilegeProfile,
@@ -1202,22 +1206,9 @@ func mountOptionsForID(mountID uint64) (options string, readOnly bool, err error
 	if err != nil {
 		return "", false, err
 	}
-	for _, line := range strings.Split(string(data), "\n") {
-		parts := strings.SplitN(line, " - ", 2)
-		if len(parts) != 2 {
-			continue
-		}
-		left, right := strings.Fields(parts[0]), strings.Fields(parts[1])
-		if len(left) < 6 || len(right) < 3 {
-			continue
-		}
-		id, parseErr := strconv.ParseUint(left[0], 10, 64)
-		if parseErr != nil || id != mountID {
-			continue
-		}
-		options = strings.Join([]string{left[3], left[4], left[5], right[0], right[1], right[2]}, "\x00")
-		readOnly = strings.Contains(","+left[5]+",", ",ro,")
-		return options, readOnly, nil
+	record, err := parseMountRecord(string(data), mountID)
+	if err != nil {
+		return "", false, err
 	}
-	return "", false, errors.New("source descriptor mount ID is absent from mountinfo")
+	return record.options(), record.readOnly(), nil
 }

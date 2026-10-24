@@ -302,7 +302,7 @@ func measureManagedLiveRootDescriptor(root *os.File) (managedLiveRootDescriptorI
 func managedRegistrationMatchesDescriptor(registration piruntime.D09ManagedLiveRootRegistration,
 	identity managedLiveRootDescriptorIdentity) bool {
 	return registration.RootPath == identity.Path && registration.RootDevice == identity.Device &&
-		registration.RootInode == identity.Inode && registration.RootMountID == identity.MountID &&
+		registration.RootInode == identity.Inode &&
 		registration.RootFilesystemMagic == identity.Filesystem && uint32(registration.RootUID) == identity.UID &&
 		uint32(registration.RootGID) == identity.GID && registration.RootMode == identity.Mode
 }
@@ -544,11 +544,7 @@ func (l *managedLiveRootLease) abortBeforeTask(lifecycle productionLifecycleSnap
 	if l == nil || lifecycle.taskAdmitted || lifecycle.turnCompleted || runner != nil && runner.Pending() != 0 {
 		return ErrManagedLiveRootRetained
 	}
-	if lifecycle.workerLaunchAttempted && (!lifecycle.workerLaunched || !lifecycle.workerClosed || lifecycle.workerCloseErr != nil ||
-		lifecycle.settlement.State != piruntime.SettlementStopped || !lifecycle.settlement.ExitObserved || !lifecycle.settlement.DescendantsSettled) {
-		return ErrManagedLiveRootRetained
-	}
-	if lifecycle.channelsStarted && (!lifecycle.channelsJoined || lifecycle.channelsErr != nil) {
+	if !lifecycle.workerSettled() || !lifecycle.channelsSettled() {
 		return ErrManagedLiveRootRetained
 	}
 	l.mu.Lock()

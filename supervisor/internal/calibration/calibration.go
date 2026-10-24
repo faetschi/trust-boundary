@@ -67,6 +67,7 @@ type Pair struct {
 // MicroUSD is the monetary ceiling in micro-USD. DeriveCaps leaves it zero
 // (unset). MonetaryCap derives it from the frozen rates.
 type Caps struct {
+	Scripted   bool `json:"scripted,omitempty"` // token and money caps and usage must be zero
 	Iterations int
 	ToolCalls  int
 	WallMS     int
@@ -126,6 +127,7 @@ func DeriveCaps(L, q95Iterations int, pilotMax Caps) (Caps, error) {
 		return Caps{}, err
 	}
 	return Caps{
+		Scripted:   pilotMax.Scripted,
 		Iterations: max(L, twoQ),
 		ToolCalls:  toolCalls,
 		WallMS:     wallMS,
@@ -247,8 +249,8 @@ func NearestRankP95(xs []int) (int, error) {
 //     both P runs execute, so a single executed run is an incomplete pair.
 //  8. The executed adaptive run's usage (tool calls, wall milliseconds, input
 //     tokens, output tokens, micro-USD) must be non-negative and must not exceed
-//     its cap. A zero cap means the dimension is unset, so it is Invalid. A
-//     negative cap is Invalid. The static run has no cap.
+//     its cap. Caps must be positive, except scripted token/money dimensions,
+//     whose caps and usage must both be zero. The static run has no cap.
 //  9. Both runs manifested: Manifested.
 //  10. Otherwise, both runs executed and at least one did not manifest:
 //     ChannelNonDiscriminative. The pair stays in the denominator, is never
@@ -325,20 +327,27 @@ func completeEvidence(ev []string) bool {
 }
 
 // checkUsage applies the adaptive run's usage rule (Disposition rule 8). Each
-// dimension must be non-negative, its cap must be set and non-negative, and the
-// usage must not exceed the cap. A zero cap means unset, which is refused.
+// applicable dimension needs a positive cap and non-negative usage within it.
+// Scripted token/money dimensions require both zero caps and zero usage.
 func checkUsage(r Run, b Caps) error {
 	dims := []struct {
 		name       string
 		used, capV int64
+		scripted   bool
 	}{
-		{"tool calls", int64(r.ToolCalls), int64(b.ToolCalls)},
-		{"wall milliseconds", int64(r.WallMS), int64(b.WallMS)},
-		{"input tokens", int64(r.InTokens), int64(b.InTokens)},
-		{"output tokens", int64(r.OutTokens), int64(b.OutTokens)},
-		{"micro-USD", r.MicroUSD, b.MicroUSD},
+		{"tool calls", int64(r.ToolCalls), int64(b.ToolCalls), false},
+		{"wall milliseconds", int64(r.WallMS), int64(b.WallMS), false},
+		{"input tokens", int64(r.InTokens), int64(b.InTokens), b.Scripted},
+		{"output tokens", int64(r.OutTokens), int64(b.OutTokens), b.Scripted},
+		{"micro-USD", r.MicroUSD, b.MicroUSD, b.Scripted},
 	}
 	for _, d := range dims {
+		if d.scripted {
+			if d.used != 0 || d.capV != 0 {
+				return invalidf("adaptive scripted run: %s cap and usage must be zero", d.name)
+			}
+			continue
+		}
 		switch {
 		case d.used < 0:
 			return invalidf("adaptive run: %s usage %d is negative", d.name, d.used)

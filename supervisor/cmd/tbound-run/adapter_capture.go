@@ -105,7 +105,7 @@ func runAdapterCapture(ctx context.Context, o adapterCaptureOptions) (err error)
 		}
 	}
 
-	rec := guestevidence.AdapterRun{Argv: slices.Clone(guestevidence.AdapterCheckArgv)}
+	rec := guestevidence.AdapterRun{Argv: slices.Clone(guestevidence.AdapterCheckArgv), TestReporter: "spec"}
 	rec.Npm.InstallArgv = slices.Clone(guestevidence.AdapterInstallArgv)
 	g := gitRunner{ctx: ctx, bin: o.gitBin, repo: o.repo}
 	if rec.CommitTree, err = g.verifyCommit(o.commit); err != nil {

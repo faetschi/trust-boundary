@@ -59,6 +59,18 @@ type providerExchangeEvidence struct {
 	HostCall *providerbridge.HostCallBinding `json:"host_call,omitempty"`
 }
 
+type providerRetryEvidence struct {
+	WorkflowID  string                         `json:"workflow_id"`
+	Turn        uint64                         `json:"turn"`
+	Attempt     uint64                         `json:"attempt"`
+	Request     providerRequestEvidence        `json:"request"`
+	StatusCode  int                            `json:"status_code"`
+	Response    []byte                         `json:"response"`
+	RetryAfter  string                         `json:"retry_after,omitempty"`
+	ContentType string                         `json:"content_type,omitempty"`
+	HostCall    providerbridge.HostCallBinding `json:"host_call"`
+}
+
 type providerHostCallReservationEvidence struct {
 	WorkflowID     string                         `json:"workflow_id"`
 	ConversationID string                         `json:"conversation_id"`
@@ -124,25 +136,26 @@ type providerPromptEvidence struct {
 }
 
 type providerResultEvidence struct {
-	WorkflowID       string `json:"workflow_id"`
-	ConversationID   string `json:"conversation_id"`
-	ResponseIDIssuer string `json:"response_id_issuer"`
-	ToolCallIDIssuer string `json:"tool_call_id_issuer"`
-	ResponseID       string `json:"response_id"`
-	ToolCallID       string `json:"tool_call_id"`
-	Tool             string `json:"tool"`
-	ArgumentDigest   string `json:"argument_digest"`
-	Sequence         uint64 `json:"sequence"`
-	GenerationFrom   string `json:"generation_from"`
-	GenerationTo     string `json:"generation_to"`
-	TreeDigestFrom   string `json:"tree_digest_from"`
-	TreeDigestTo     string `json:"tree_digest_to"`
-	ResultID         string `json:"result_id"`
-	ResultDigest     string `json:"result_digest"`
-	Result           []byte `json:"result"`
-	TransitionID     string `json:"transition_id,omitempty"`
-	TransitionSeq    uint64 `json:"transition_sequence,omitempty"`
-	EffectID         string `json:"effect_id,omitempty"`
+	WorkflowID       string                        `json:"workflow_id"`
+	ConversationID   string                        `json:"conversation_id"`
+	ResponseIDIssuer string                        `json:"response_id_issuer"`
+	ToolCallIDIssuer string                        `json:"tool_call_id_issuer"`
+	ResponseID       string                        `json:"response_id"`
+	ToolCallID       string                        `json:"tool_call_id"`
+	Tool             string                        `json:"tool"`
+	ArgumentDigest   string                        `json:"argument_digest"`
+	Sequence         uint64                        `json:"sequence"`
+	GenerationFrom   string                        `json:"generation_from"`
+	GenerationTo     string                        `json:"generation_to"`
+	TreeDigestFrom   string                        `json:"tree_digest_from"`
+	TreeDigestTo     string                        `json:"tree_digest_to"`
+	ResultID         string                        `json:"result_id"`
+	ResultDigest     string                        `json:"result_digest"`
+	Result           []byte                        `json:"result"`
+	Hint             *providerbridge.HintSelection `json:"hint,omitempty"`
+	TransitionID     string                        `json:"transition_id,omitempty"`
+	TransitionSeq    uint64                        `json:"transition_sequence,omitempty"`
+	EffectID         string                        `json:"effect_id,omitempty"`
 }
 
 // providerAdmissionDeniedEvidence is the provider_admission_denied journal record: the DENY Result of an
@@ -267,6 +280,7 @@ type SessionOperationAuthority struct {
 	providerRoute   openrouter.Route
 	providerSpend   providerbridge.SpendAccountant
 	providerFactory func(providerbridge.Config, *audit.Journal) (*providerbridge.Conversation, error)
+	hintProvider    providerbridge.HintProvider
 
 	// admissionScope is the delta-admission rule of the Store (BindCorpusBinding). The zero value is
 	// the registered exact-path rule without protected paths.
@@ -800,6 +814,22 @@ func (a *SessionOperationAuthority) resolveFromTrace(trace audit.Trace, decision
 			return governedCapture{}, ErrGovernedSessionEvidence
 		}
 		providerOrdinal = record.Sequence
+		if pendingHostCall != nil && record.Event.Kind == "provider_exchange_retryable_failure" {
+			// A failed, retryable attempt closes exactly the open reservation (see providerbridge/retry.go).
+			if err := verifyProviderEventID(record, a.conversationID, "exchange-retry", providerOrdinal); err != nil {
+				return governedCapture{}, err
+			}
+			var retry providerRetryEvidence
+			if err := unmarshalGovernedJSON(record.Event.Data, &retry); err != nil || retry.WorkflowID != a.workflowID ||
+				retry.Turn != pendingHostCall.Turn || retry.Turn != providerTurn+1 || retry.HostCall != pendingHostCall.Binding ||
+				!reflect.DeepEqual(retry.Request, pendingHostCall.Request) ||
+				providerRequestEvidenceDigest(retry.Request) != pendingHostCall.Binding.RequestDigest ||
+				!providerbridge.RetryableProviderFailure(retry.StatusCode, retry.ContentType, retry.Response, retry.RetryAfter) {
+				return governedCapture{}, ErrGovernedSessionEvidence
+			}
+			pendingHostCall = nil
+			continue
+		}
 		if pendingHostCall != nil && record.Event.Kind != "provider_exchange" {
 			if record.Event.Kind == "provider_exchange_unknown" {
 				if err := verifyProviderEventID(record, a.conversationID, "exchange", providerOrdinal); err != nil {
@@ -1278,6 +1308,33 @@ func RunGovernedChannels(ctx context.Context, supervisor *Supervisor, providerCh
 		}
 	}
 	conversation.Close()
+	return governedChannelsError(serveErr, bridgeErr)
+}
+
+// providerTurnFailure is RunGovernedChannels' error when its only failure is the provider bridge
+// closing the conversation after a failed provider turn: the supervisor loop returned nil.
+type providerTurnFailure struct{ err error }
+
+func (f providerTurnFailure) Error() string { return f.err.Error() }
+func (f providerTurnFailure) Unwrap() error { return f.err }
+
+// commandNotStartedFailure is RunGovernedChannels' error when the supervisor loop failed on a command
+// cell that the runner proved never started its command. The provider result wrapper recorded that
+// call as UNKNOWN and closed the conversation, which serializes it with every provider exchange, so
+// whatever the bridge returned after that leaves no exchange open.
+type commandNotStartedFailure struct{ err error }
+
+func (f commandNotStartedFailure) Error() string { return f.err.Error() }
+func (f commandNotStartedFailure) Unwrap() error { return f.err }
+
+// governedChannelsError is the error RunGovernedChannels returns for its two loop results.
+func governedChannelsError(serveErr, bridgeErr error) error {
+	if serveErr == nil && errors.Is(bridgeErr, providerbridge.ErrProviderTurnFailed) {
+		return providerTurnFailure{err: bridgeErr}
+	}
+	if errors.Is(serveErr, protocol.ErrCommandNotStarted) {
+		return commandNotStartedFailure{err: errors.Join(serveErr, bridgeErr)}
+	}
 	return errors.Join(serveErr, bridgeErr)
 }
 

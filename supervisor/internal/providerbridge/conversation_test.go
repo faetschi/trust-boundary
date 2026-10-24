@@ -58,6 +58,10 @@ type fixtureResponse struct {
 	tool       string
 	arguments  json.RawMessage
 	text       string
+	// failStatus, when set, answers that HTTP status with failBody instead of a completion.
+	failStatus int
+	failBody   string
+	retryAfter string
 }
 
 type fixtureDoer struct {
@@ -100,6 +104,14 @@ func (d *fixtureDoer) Do(request *http.Request) (*http.Response, error) {
 	response := d.responses[d.call]
 	d.call++
 	d.mu.Unlock()
+	if response.failStatus != 0 {
+		header := make(http.Header)
+		if response.retryAfter != "" {
+			header.Set("Retry-After", response.retryAfter)
+		}
+		return &http.Response{StatusCode: response.failStatus, Header: header,
+			Body: io.NopCloser(strings.NewReader(response.failBody)), Request: request}, nil
+	}
 	var raw []byte
 	if response.tool != "" {
 		raw = toolResponse(response)
@@ -669,7 +681,11 @@ func assertRequestResultExact(t *testing.T, raw []byte, expected resultEvidence)
 	}
 	last := request.Messages[len(request.Messages)-1]
 	content, ok := last.Content.(string)
-	if !ok || last.Role != "tool" || last.ToolCallID != expected.ToolCallID || content != string(expected.Result) {
+	decoded, err := protocol.DecodeResult(expected.Result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok || last.Role != "tool" || last.ToolCallID != expected.ToolCallID || content != modelResultText(expected.Result, decoded) {
 		t.Fatalf("provider tool result differs from Go-owned durable result: role=%q call=%q content=%q want-call=%q want=%q", last.Role, last.ToolCallID, content, expected.ToolCallID, expected.Result)
 	}
 }

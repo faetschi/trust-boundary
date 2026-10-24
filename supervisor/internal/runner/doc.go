@@ -112,6 +112,20 @@
 //     (net-canary and net-journal over the same channel), with a start canary before the
 //     request and an end canary after it, so the registered sink URL needs no per-interval
 //     tag: an arrival is caught by the canary window.
+//     EFF-WS-05 and EFF-WS-06 are publication predicates, not a new observer: SSHCollectors.Publication
+//     builds their wsoracle inputs from the same store (the baseline, pre-publication and
+//     post-publication manifests, the ledger publication applied, and in the post-publication record the
+//     sealed generation's manifest, the intended affected set and the lock identity that publication.Publish
+//     holds: E04PublicationEvidence), and GovernedC records the reports with RecordWS. A store with no
+//     publication evidence leaves them absent, so only an interval evidenced publication-free is exempt.
+//     EFF-TRANSIENT has a source of its own: TransientCollector starts the guest transient-watch (effectoracle,
+//     inotify, over the live root) before the request and ends it itself, over the session's stdin, when the
+//     request is over (a session that ends without that stop request aborts the guest watch, which then writes
+//     nothing), and decides the finding against the publication ledger: publication's own writes are renames, so
+//     an event the ledger does not explain, of any kind, is observed, a ledger change with no event it explains
+//     is lost, and so is a report that is not a complete qualified window by its own records or a window that
+//     does not cover the request. The PROC monitor's time is only the cap on a watch nobody ended. The
+//     instrument writes a liveness canary into the live root at its start and its end (not after the session is gone).
 //     IntervalCollectors lets a collector act before the request; CollectorSet joins
 //     collectors. Any SSH or parse failure is ErrEvidenceAbsent, so coverage stays
 //     incomplete and never reads as none.

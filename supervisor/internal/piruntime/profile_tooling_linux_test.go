@@ -228,3 +228,60 @@ func TestResolveLinuxHostProfileDataSources(t *testing.T) {
 		t.Fatalf("directory path did not use the fixed file names: %+v", dir)
 	}
 }
+
+// measuredProfile is a profile whose host-measured identities are not placeholders.
+func measuredProfile() HostProfile {
+	p := DefaultLinuxHostProfileTemplate()
+	p.ID = "pi-host-profile-test"
+	p.ExecutableDigest = DigestBytes([]byte("node"))
+	p.CgroupRootDigest = DigestBytes([]byte("cgroup root"))
+	p.PiRuntimeBundleDigest = DigestBytes([]byte("bundle"))
+	p.SourceProvenanceDigest = DigestBytes([]byte("source"))
+	p.OfflineVerifierDigest = DigestBytes([]byte("verifier"))
+	p.ProviderProfileDigest = DigestBytes([]byte("provider route"))
+	return p
+}
+
+// The template holds placeholders for every identity the operator measures. A profile that still holds one is
+// not a profile of a frozen source, verifier or route and must not be signed or admitted.
+func TestHostProfilePlaceholderFieldsAreNamed(t *testing.T) {
+	template := DefaultLinuxHostProfileTemplate()
+	want := []string{"ID", "ExecutableDigest", "CgroupRootDigest", "PiRuntimeBundleDigest", "SourceProvenanceDigest", "OfflineVerifierDigest", "ProviderProfileDigest"}
+	if got := template.PlaceholderFields(); !equalStrings(got, want) {
+		t.Fatalf("placeholder fields of the template = %v, want %v", got, want)
+	}
+	if got := measuredProfile().PlaceholderFields(); len(got) != 0 {
+		t.Fatalf("a measured profile has placeholder fields %v", got)
+	}
+	for _, field := range want[1:] {
+		p := measuredProfile()
+		switch field {
+		case "ExecutableDigest":
+			p.ExecutableDigest = placeholderDigest("node-executable")
+		case "CgroupRootDigest":
+			p.CgroupRootDigest = placeholderDigest("cgroup-root")
+		case "PiRuntimeBundleDigest":
+			p.PiRuntimeBundleDigest = placeholderDigest("pi-runtime-bundle")
+		case "SourceProvenanceDigest":
+			p.SourceProvenanceDigest = placeholderDigest("source-provenance")
+		case "OfflineVerifierDigest":
+			p.OfflineVerifierDigest = placeholderDigest("cosign-offline")
+		case "ProviderProfileDigest":
+			p.ProviderProfileDigest = placeholderDigest("go-providerbridge")
+		}
+		if got := p.PlaceholderFields(); !equalStrings(got, []string{field}) {
+			t.Errorf("%s: placeholder fields = %v", field, got)
+		}
+	}
+}
+
+// The offline verifier is the pinned cosign binary together with the public key it verifies under: changing
+// either changes the digest the profile pins.
+func TestOfflineVerifierDigestBindsTheBinaryAndTheKey(t *testing.T) {
+	cosign, pub := DigestBytes([]byte("cosign")), DigestBytes([]byte("cosign.pub"))
+	d := OfflineVerifierDigest(cosign, pub)
+	if d == OfflineVerifierDigest(DigestBytes([]byte("another cosign")), pub) || d == OfflineVerifierDigest(cosign, DigestBytes([]byte("another key"))) ||
+		d == OfflineVerifierDigest(pub, cosign) || !validDigest(d) || d == placeholderDigest("cosign-offline") {
+		t.Fatalf("offline verifier digest %s does not bind both inputs in order", d)
+	}
+}

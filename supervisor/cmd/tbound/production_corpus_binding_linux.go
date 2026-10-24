@@ -9,6 +9,8 @@ import (
 	"strings"
 
 	"tbound/supervisor/internal/audit"
+	"tbound/supervisor/internal/broker/protocol"
+	"tbound/supervisor/internal/corpusadmit"
 	"tbound/supervisor/internal/evalcorpus"
 	"tbound/supervisor/internal/gate"
 	"tbound/supervisor/internal/providerbridge"
@@ -86,8 +88,11 @@ func corpusAdmissionParts(admissionID, caseID string) (string, int, bool) {
 // the pinned manifest: where the provider turns come from, the registered delta, and the admission
 // rule. Nothing in it comes from a client.
 type corpusBinding struct {
-	caseID string
-	role   string
+	hintProvider       providerbridge.HintProvider
+	hintChooser        string
+	hintManifestDigest string
+	caseID             string
+	role               string
 	// delta is the registered targeted configuration delta of the run: the case's p_delta for a P role,
 	// admit-all/v1 for a B role (its admission rule), none for every C role.
 	delta string
@@ -115,6 +120,11 @@ func (c *productionCorpus) bindingFor(caseID, role string, options ...providerbr
 	trial := c.trials[caseID]
 	binding := corpusBinding{caseID: caseID, role: role, delta: evalcorpus.PDeltaNone,
 		scope: sessionrepo.AdmissionScope{ProtectedPaths: append([]string(nil), trial.ProtectedPaths...)}}
+	if model, _, ok := corpusadmit.CDHRoleParts(role); ok {
+		binding.hintChooser = model
+		binding.hintProvider = c.hintProviders[binding.hintChooser]
+		binding.hintManifestDigest, _ = c.cdh.Manifest.Digest()
+	}
 	if pCorpusRole(role) {
 		binding.delta = trial.EffectivePDelta()
 		if binding.delta == evalcorpus.PDeltaAdmitAll {
@@ -258,6 +268,7 @@ func (a *SessionOperationAuthority) BindCorpusBinding(binding corpusBinding) err
 		return errors.New("corpus binding must be applied before the Store and the provider conversation exist")
 	}
 	a.admissionScope = binding.scope
+	a.hintProvider = binding.hintProvider
 	if factory := binding.scriptedFactory(); factory != nil {
 		a.providerFactory = factory
 	}
@@ -269,6 +280,7 @@ type productionProposalFact struct {
 	Tool       string `json:"tool"`
 	Verdict    string `json:"verdict"`
 	ReasonCode string `json:"reason_code"`
+	Status     string `json:"status,omitempty"`
 }
 
 // maxReceiptProposals bounds the proposal list so that the receipt stays within its size bound.
@@ -277,10 +289,22 @@ const maxReceiptProposals = 64
 // receiptProposals lists the gate decisions of the provider journal in order. A decision that cannot
 // be decoded fails the list: an attempt must not be dropped silently. An ALLOWed proposal whose settled
 // change delta admission refused is listed as DENY with the admission reason code: the agent received a
-// deny Result for it.
+// deny Result for it. Settled command_failed status is retained separately from the gate verdict.
 func receiptProposals(trace audit.Trace) ([]productionProposalFact, error) {
 	admissionDenials := make(map[string]string)
+	statuses := make(map[string]string)
 	for _, record := range trace.Records {
+		if record.Event.Kind == "provider_tool_result" {
+			var evidence providerResultEvidence
+			if err := unmarshalGovernedJSON(record.Event.Data, &evidence); err != nil {
+				return nil, fmt.Errorf("decode provider result %d for the receipt: %w", record.Sequence, err)
+			}
+			result, err := protocol.DecodeResult(evidence.Result)
+			if err != nil {
+				return nil, fmt.Errorf("decode protocol result %d for the receipt: %w", record.Sequence, err)
+			}
+			statuses[evidence.ToolCallID] = string(result.Status)
+		}
 		if record.Event.Kind != "provider_admission_denied" {
 			continue
 		}
@@ -303,6 +327,7 @@ func receiptProposals(trace audit.Trace) ([]productionProposalFact, error) {
 			return nil, fmt.Errorf("the run has more than %d proposals; the receipt cannot list them", maxReceiptProposals)
 		}
 		fact := productionProposalFact{Tool: decision.Tool, Verdict: string(decision.Verdict), ReasonCode: decision.ReasonCode}
+		fact.Status = statuses[decision.ToolCallID]
 		if reason, denied := admissionDenials[decision.ToolCallID]; denied && decision.Verdict == gate.Allow {
 			fact.Verdict, fact.ReasonCode = string(gate.Deny), reason
 		}
@@ -336,5 +361,8 @@ func applyCorpusReceipt(receipt *productionPiReceipt, binding *corpusBinding, pr
 	}
 	proposals, err := receiptProposals(providerTrace)
 	receipt.Proposals = proposals
+	if err == nil {
+		err = cdhReceipt(receipt, binding, providerTrace)
+	}
 	return err
 }

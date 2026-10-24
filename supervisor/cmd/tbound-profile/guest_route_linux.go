@@ -42,13 +42,16 @@ type routeProbeOptions struct {
 	target                  string
 	controlPath             string
 	controlFile             string
-	// direct-runtime only: the pins of the run (the run produced no completed response; they come from
-	// run.json), the probe and production cell templates and the signed host profile files the probe run used.
-	profileHash, frozenSource, containmentDigest string
-	probeTemplate, productionTemplate            string
-	hostProfile, hostProfileSig, hostProfileKey  string
-	// adminPubkeyDigest is run.json pins.admin_pubkey_digest: hostProfileKey must hash to it.
-	adminPubkeyDigest string
+	// pins are what the run shares with the pilot (run.json): the run's own signed profile and template are bound to them.
+	pins guestevidence.RunBinding
+	// template is the cell template of the run (bash-view); hostProfile, hostProfileSig and hostProfileKey are the signed
+	// host profile files of the run, the key hashing to pins.AdminPubkeyDigest.
+	template                                    string
+	hostProfile, hostProfileSig, hostProfileKey string
+	// registration and registrationSig are the signed managed live root registration of the run (verified under the same key).
+	registration, registrationSig string
+	// direct-runtime only: the probe and production cell templates (the run produced no completed response).
+	probeTemplate, productionTemplate string
 }
 
 // routeProbeEnv holds the seams of the probe: how the journal is read and how a receipt is checked.
@@ -113,6 +116,10 @@ func probeRouteDenied(o routeProbeOptions, env routeProbeEnv) (guestevidence.Rou
 	if identity.RunID != o.runID {
 		return d, "", fmt.Errorf("the response is for run %q, not %q", identity.RunID, o.runID)
 	}
+	binding, err := bindRunFromFiles(env, o.profileFiles(), o.pins, identity.ProfileHash)
+	if err != nil {
+		return d, "", err
+	}
 	controlBytes, err := os.ReadFile(o.controlFile)
 	if err != nil || len(controlBytes) == 0 {
 		return d, "", fmt.Errorf("--control-file: %v", err)
@@ -129,7 +136,7 @@ func probeRouteDenied(o routeProbeOptions, env routeProbeEnv) (guestevidence.Rou
 	if len(trace.Records) == 0 {
 		return d, "", errors.New("the command audit journal is empty")
 	}
-	d = guestevidence.RouteDenied{RunID: identity.RunID, ProfileHash: identity.ProfileHash, FrozenSourceDigest: identity.FrozenSourceDigest, Target: o.target,
+	d = guestevidence.RouteDenied{RunID: identity.RunID, ProfileHash: identity.ProfileHash, FrozenSourceDigest: identity.FrozenSourceDigest, Target: o.target, Binding: binding,
 		Journal: guestevidence.RouteJournal{Records: uint64(len(trace.Records)), HeadHash: trace.Records[len(trace.Records)-1].Hash}}
 
 	commands := guestevidence.RouteProbeCommands(o.target, o.controlPath)
@@ -244,4 +251,10 @@ func decodeStrictAllowUnknown(data []byte, v any) error {
 		return errors.New("trailing data")
 	}
 	return nil
+}
+
+// profileFiles names the signed profile, registration and template files of the run.
+func (o routeProbeOptions) profileFiles() runProfileFiles {
+	return runProfileFiles{template: o.template, hostProfile: o.hostProfile, hostProfileSig: o.hostProfileSig, hostProfileKey: o.hostProfileKey,
+		registration: o.registration, registrationSig: o.registrationSig}
 }

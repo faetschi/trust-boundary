@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 
+	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/delta"
 	"tbound/supervisor/internal/piruntime"
 	"tbound/supervisor/internal/sessionrepo"
@@ -113,6 +114,12 @@ func (r *productionCommandRunner) Run(ctx context.Context, view *sessionrepo.Com
 	r.mu.Unlock()
 	result, settlement, err := lease.runner.Run(ctx, view, spec)
 	if err != nil {
+		if errors.Is(err, protocol.ErrCommandNotStarted) {
+			// The cell is gone and its command never ran: the one-use lease is spent with no writer left.
+			r.mu.Lock()
+			delete(r.leases, view.ID())
+			r.mu.Unlock()
+		}
 		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, err
 	}
 	r.mu.Lock()
@@ -169,7 +176,7 @@ func (r *productionCommandRunner) VerifySettlement(candidate sessionrepo.Command
 func (r *productionCommandRunner) BindProductionBashEvidence(ctx context.Context, providerCall delta.OperationIdentity,
 	bundle sessionrepo.EvidenceBundle, transition delta.Transition, operation sessionrepo.OperationEvidence) error {
 	if r == nil || ctx == nil || operation.ViewID == "" || operation.Operation.Kind != delta.OperationLease {
-		return ErrProductionCommandEvidence
+		return commandEvidenceRefused("lease-bind-precondition")
 	}
 	r.mu.Lock()
 	lease, leaseExists := r.leases[operation.ViewID]
@@ -178,15 +185,15 @@ func (r *productionCommandRunner) BindProductionBashEvidence(ctx context.Context
 	if !leaseExists || !settlementExists || signed == nil || lease.leaseID != operation.Operation.LeaseID ||
 		settlement.LeaseID != lease.leaseID || settlement.ViewID != operation.ViewID {
 		r.mu.Unlock()
-		return ErrProductionCommandEvidence
+		return commandEvidenceRefused("lease-bind-registration")
 	}
 	r.mu.Unlock()
 	binder, ok := signed.(productionBashEvidenceBinder)
 	if !ok {
-		return ErrProductionCommandEvidence
+		return commandEvidenceRefused("lease-bind-not-binder")
 	}
 	if err := binder.BindProductionBashEvidence(ctx, providerCall, bundle, transition, operation); err != nil {
-		return errors.Join(ErrProductionCommandEvidence, err)
+		return commandEvidenceRefused("lease-bind", err)
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -194,7 +201,7 @@ func (r *productionCommandRunner) BindProductionBashEvidence(ctx context.Context
 	currentSettlement, settlementStillExists := r.settledReceipts[operation.ViewID]
 	if !leaseStillExists || !settlementStillExists || currentLease.leaseID != lease.leaseID ||
 		!settlementMatches(currentSettlement, settlement) || r.evidenceRunners[operation.ViewID] != signed {
-		return ErrProductionCommandEvidence
+		return commandEvidenceRefused("lease-bind-raced")
 	}
 	delete(r.leases, operation.ViewID)
 	delete(r.settledReceipts, operation.ViewID)
@@ -211,7 +218,7 @@ func (r *productionCommandRunner) VerifyProductionBashEvidence(ctx context.Conte
 		operation.Operation.LeaseID == "" || operation.ViewID == "" || operation.ExitCode == nil ||
 		operation.CommandContainmentStatus != "not-established" ||
 		operation.CommandRunnerProfile != piruntime.D09CommandRunnerProfile {
-		return ErrProductionCommandEvidence
+		return commandEvidenceRefused("lease-verify-precondition")
 	}
 	if err := ctx.Err(); err != nil {
 		return err
@@ -220,14 +227,14 @@ func (r *productionCommandRunner) VerifyProductionBashEvidence(ctx context.Conte
 	signed := r.evidenceRunners[operation.ViewID]
 	r.mu.Unlock()
 	if signed == nil {
-		return ErrProductionCommandEvidence
+		return commandEvidenceRefused("lease-verify-no-runner")
 	}
 	verifier, ok := signed.(productionBashEvidenceVerifier)
 	if !ok {
-		return ErrProductionCommandEvidence
+		return commandEvidenceRefused("lease-verify-not-verifier")
 	}
 	if err := verifier.VerifyProductionBashEvidence(ctx, operation); err != nil {
-		return errors.Join(ErrProductionCommandEvidence, err)
+		return commandEvidenceRefused("lease-verify", err)
 	}
 	return nil
 }
@@ -246,10 +253,10 @@ func (r *productionCommandRunner) VerifyProductionBashEvidenceWithOrigin(ctx con
 			delta.Transition, sessionrepo.OperationEvidence) error
 	})
 	if !ok {
-		return ErrProductionCommandEvidence
+		return commandEvidenceRefused("lease-verify-origin-not-verifier")
 	}
 	if err := verifier.VerifyProductionBashEvidenceWithOrigin(ctx, bundle, providerCall, transition, operation); err != nil {
-		return errors.Join(ErrProductionCommandEvidence, err)
+		return commandEvidenceRefused("lease-verify-origin", err)
 	}
 	return nil
 }

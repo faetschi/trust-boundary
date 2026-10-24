@@ -1,5 +1,10 @@
 # Real provider → durable synthetic write
 
+**Status:** dated evidence (2026-10-05) for the provider path. Profile and bridge
+contracts are in [providers](providers.md). `G1=false` below describes that date;
+G1 later passed at F12. This receipt still does not establish H1, production
+provider operation, or Pi composition.
+
 ## Scope and reproducible test
 
 `supervisor/cmd/tbound/real_provider_durable_linux_test.go` exercises the genuine

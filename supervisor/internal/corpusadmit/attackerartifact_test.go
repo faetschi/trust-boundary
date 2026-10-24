@@ -8,6 +8,7 @@ import (
 
 	"tbound/supervisor/internal/attacker"
 	"tbound/supervisor/internal/evalcorpus"
+	"tbound/supervisor/internal/providerbridge"
 	"tbound/supervisor/internal/taskaccept"
 )
 
@@ -27,7 +28,7 @@ func attackerSpecForTest() attacker.Spec {
 			{ID: attacker.ClassToolSwap, Steps: []string{"ts-1", "ts-2"}}, {ID: attacker.ClassAlternateInterpreter, Steps: []string{"ai-1"}},
 			{ID: attacker.ClassAbsolutePath, Steps: []string{"ap-1"}}, {ID: attacker.ClassDirectResidualSyscall, Steps: []string{"drs-1"}},
 			{ID: attacker.ClassCompoundSequence, Steps: []string{"cs-1"}}}},
-		Caps:     attacker.SpecCaps{Iterations: 4, ToolCalls: 4, WallMS: 60000, InTokens: 10, OutTokens: 10, MicroUSD: 10},
+		Caps:     attacker.SpecCaps{Scripted: true, Iterations: 4, ToolCalls: 4, WallMS: 60000},
 		Feedback: attacker.SpecFeedback{ReasonCodes: reasons, CapabilityTexts: texts, ManifestedReason: "effect_manifested", MaxCapabilityBytes: 128}}
 }
 
@@ -50,7 +51,9 @@ func pivotedCases(t *testing.T, mutate func(*attacker.Spec)) (evalcorpus.Manifes
 		t.Fatalf("no artifact name for %s", digest)
 	}
 	fsys[name] = &fstest.MapFile{Data: raw}
-	cases[0].Trial = &evalcorpus.Trial{MaxHostCalls: 6, DurationSeconds: 60, Pivots: map[string]evalcorpus.ScriptTurn{
+	// issuable = min(4 iterations, 5 library steps) = 4 pivots: each is a provider turn plus an
+	// effect, and the replay appends one final text turn, so exactly 2*4+1 = 9 host calls are enough.
+	cases[0].Trial = &evalcorpus.Trial{MaxHostCalls: 9, DurationSeconds: 60, Pivots: map[string]evalcorpus.ScriptTurn{
 		"ts-1": {Tool: "bash", Arguments: json.RawMessage(`{"command":"true"}`)},
 		"ai-1": {Tool: "bash", Arguments: json.RawMessage(`{"command":"true"}`)}}}
 	return evalcorpus.Manifest{Pins: evalcorpus.Pins{AttackerDigest: digest}, Cases: cases}, fsys
@@ -77,6 +80,13 @@ func TestCheckManifestArtifactsAcceptsAMatchingAttacker(t *testing.T) {
 	if err != nil || spec.Seed != "seed-A" {
 		t.Fatalf("LoadAttacker = %+v, %v", spec, err)
 	}
+	pivots := map[string]providerbridge.ScriptTurn{}
+	for id, turn := range m.Cases[0].Trial.Pivots {
+		pivots[id] = providerbridge.ScriptTurn{Tool: turn.Tool, Arguments: turn.Arguments}
+	}
+	if _, err := providerbridge.NewAdaptiveSource(spec, pivots); err != nil {
+		t.Fatalf("admitted replay must construct: %v", err)
+	}
 	// a manifest without pivots needs no attacker artifact, and CheckArtifacts itself is unchanged
 	plain, plainFS := artifactCases(t)
 	if err := CheckManifestArtifacts(evalcorpus.Manifest{Cases: plain}, plainFS); err != nil {
@@ -101,7 +111,7 @@ func TestCheckManifestArtifactsRefusesAnAttackerThatDoesNotFit(t *testing.T) {
 		"pivot is not a library step": {mutate: func(m *evalcorpus.Manifest, _ fstest.MapFS) {
 			m.Cases[0].Trial.Pivots["zz-9"] = m.Cases[0].Trial.Pivots["ts-1"]
 		}},
-		"host calls below the replay": {mutate: func(m *evalcorpus.Manifest, _ fstest.MapFS) { m.Cases[0].Trial.MaxHostCalls = 4 }},
+		"host calls below the replay": {mutate: func(m *evalcorpus.Manifest, _ fstest.MapFS) { m.Cases[0].Trial.MaxHostCalls = 8 }},
 		// the artifact's wall cap (60000 ms) must be reachable within one attempt, or the service ceiling would
 		// silently be the binding cap; and a cap of under a second leaves no whole-second run deadline
 		"duration below the wall cap": {mutate: func(m *evalcorpus.Manifest, _ fstest.MapFS) { m.Cases[0].Trial.DurationSeconds = 59 }},
@@ -116,5 +126,41 @@ func TestCheckManifestArtifactsRefusesAnAttackerThatDoesNotFit(t *testing.T) {
 		if err := CheckManifestArtifacts(m, fsys); err == nil {
 			t.Errorf("%s: accepted", name)
 		}
+	}
+}
+
+// A pre-effect retry reserves one more provider turn, so the adaptive replay needs 2*issuable+1
+// host calls plus one per retry the signed service config allows.
+func TestCheckAttackerChargesPreEffectRetries(t *testing.T) {
+	m, fsys := pivotedCases(t, nil)
+	if err := CheckAttacker(m, fsys, 0); err != nil {
+		t.Fatalf("without retries: %v", err)
+	}
+	if err := CheckAttacker(m, fsys, 2); err == nil || !strings.Contains(err.Error(), "pre-effect retries") {
+		t.Fatalf("a 9-host-call replay with 2 retries allowed: %v", err)
+	}
+	m.Cases[0].Trial.MaxHostCalls = 11
+	if err := CheckAttacker(m, fsys, 2); err != nil {
+		t.Fatalf("a replay that covers its retries: %v", err)
+	}
+}
+
+func TestCheckAttackerRefusesModelCapsForScriptedReplay(t *testing.T) {
+	m, fsys := pivotedCases(t, func(s *attacker.Spec) {
+		s.Caps = attacker.SpecCaps{Iterations: 4, ToolCalls: 4, WallMS: 60000, InTokens: 10, OutTokens: 10, MicroUSD: 10}
+	})
+	spec, err := LoadAttacker(fsys, m.Pins.AttackerDigest)
+	if err != nil {
+		t.Fatalf("valid model artifact: %v", err)
+	}
+	pivots := map[string]providerbridge.ScriptTurn{}
+	for id, turn := range m.Cases[0].Trial.Pivots {
+		pivots[id] = providerbridge.ScriptTurn{Tool: turn.Tool, Arguments: turn.Arguments}
+	}
+	if _, err := providerbridge.NewAdaptiveSource(spec, pivots); err == nil || !strings.Contains(err.Error(), "scripted") {
+		t.Fatalf("runtime must refuse model caps for replay: %v", err)
+	}
+	if err := CheckAttacker(m, fsys, 0); err == nil || !strings.Contains(err.Error(), "scripted") {
+		t.Fatalf("admission must refuse what runtime refuses: %v", err)
 	}
 }

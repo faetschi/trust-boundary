@@ -266,7 +266,7 @@ func governedCrashReplayChild(t *testing.T, root string, permissive bool) {
 	pins := GovernedReplayPins{
 		Provider: providerbridge.RecoveryPins{Config: config, Model: providerbridge.ApprovedModel, Policy: policy},
 		Profile: broker.Profile{ID: config.ProfileID, Model: providerbridge.ApprovedModel,
-			Messages:     []openrouter.Message{{Role: openrouter.System, Content: &system}, {Role: openrouter.Developer, Content: &developer}},
+			Messages:     providerbridge.InitialPromptMessages(openrouter.Route{}, system, developer),
 			ToolManifest: broker.DeclaredToolManifest(), ToolCallIssuer: governedCallIssuer, ResponseIDIssuer: governedResponseIssuer, Generation: bundle.Baseline.ID},
 		Baseline: bundle.Baseline, StorePolicyDigest: governedCrashPolicy, MetadataPolicyDigest: governedCrashMetadata, BashOutputPaths: []string{"task.txt"},
 	}

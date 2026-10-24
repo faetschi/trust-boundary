@@ -3,6 +3,7 @@ package corpusadmit
 import (
 	"fmt"
 	"io/fs"
+	"tbound/supervisor/internal/taskaccept"
 
 	"tbound/supervisor/internal/attacker"
 	"tbound/supervisor/internal/evalcorpus"
@@ -14,7 +15,7 @@ func AttackerArtifactName(digest string) (string, bool) { return artifactName("a
 
 // LoadAttacker reads the attacker artifact of digest from fsys and returns it only if its bytes digest to
 // exactly digest, parse strictly (attacker.ParseSpec) and validate (attacker.Spec.Validate): five classes,
-// positive caps, and a feedback policy that covers the whole public projection.
+// valid source-specific caps, and a feedback policy that covers the whole public projection.
 func LoadAttacker(fsys fs.FS, digest string) (attacker.Spec, error) {
 	name, ok := AttackerArtifactName(digest)
 	if !ok {
@@ -41,7 +42,8 @@ func LoadAttacker(fsys fs.FS, digest string) (attacker.Spec, error) {
 // replay, one host call per pivot the machine can issue (the smaller of its iteration cap and the
 // library size) and one for the final text turn. Its duration must reach the attacker's wall cap, and the cap
 // must be at least a second, so that the service run deadline min(duration, wall cap left) is the pinned cap.
-func CheckAttacker(m evalcorpus.Manifest, fsys fs.FS) error {
+// Pivot replays require scripted caps, matching providerbridge.NewAdaptiveSource.
+func CheckAttacker(m evalcorpus.Manifest, fsys fs.FS, maxPreEffectRetries uint64) error {
 	pivoted := false
 	for _, c := range m.Cases {
 		if c.Trial != nil && c.Trial.Pivots != nil {
@@ -62,6 +64,9 @@ func CheckAttacker(m evalcorpus.Manifest, fsys fs.FS) error {
 	}
 	issuable := uint64(len(steps))
 	caps := spec.CapsValue()
+	if !caps.Scripted {
+		return fmt.Errorf("adaptive replay requires scripted caps with zero token and money dimensions")
+	}
 	if caps.Iterations > 0 && uint64(caps.Iterations) < issuable {
 		issuable = uint64(caps.Iterations)
 	}
@@ -82,8 +87,12 @@ func CheckAttacker(m evalcorpus.Manifest, fsys fs.FS) error {
 				return fmt.Errorf("case %q: pivot %q is not a step of the pinned attacker library", c.CaseID, id)
 			}
 		}
-		if c.Trial.MaxHostCalls < issuable+1 {
-			return fmt.Errorf("case %q: max_host_calls %d is below the %d host calls of the adaptive replay", c.CaseID, c.Trial.MaxHostCalls, issuable+1)
+		// Each pivot is a provider turn and its governed effect, and the replay appends one final text
+		// turn: issuable pivots need 2*issuable+1 host calls. A pre-effect provider retry the signed
+		// service config allows re-dispatches the turn, so it needs one more host call per retry.
+		if needed := 2*issuable + 1 + maxPreEffectRetries; c.Trial.MaxHostCalls < needed {
+			return fmt.Errorf("case %q: max_host_calls %d is below the %d host calls of the adaptive replay and the %d pre-effect retries",
+				c.CaseID, c.Trial.MaxHostCalls, 2*issuable+1, maxPreEffectRetries)
 		}
 		if c.Trial.DurationSeconds < wallSeconds {
 			return fmt.Errorf("case %q: duration_seconds %d is below the %d s wall cap of the pinned attacker", c.CaseID, c.Trial.DurationSeconds, wallSeconds)
@@ -93,10 +102,19 @@ func CheckAttacker(m evalcorpus.Manifest, fsys fs.FS) error {
 }
 
 // CheckManifestArtifacts is CheckArtifacts plus CheckAttacker: every artifact the manifest pins, per
-// case and manifest-wide. It is what `tbound-profile corpus-digest --artifacts` applies.
+// case and manifest-wide. It is what `tbound-profile corpus-digest --artifacts` applies. It has no
+// signed service config, so it checks the replay's own 2N+1 host calls without a pre-effect retry
+// margin; the service (and any caller that has the config) calls CheckAttacker with the config's
+// max_pre_effect_retries.
 func CheckManifestArtifacts(m evalcorpus.Manifest, fsys fs.FS) error {
-	if err := CheckArtifacts(m.Cases, fsys); err != nil {
+	return CheckManifestArtifactsWith(m, fsys, nil)
+}
+
+// CheckManifestArtifactsWith is CheckManifestArtifacts with the node runner of the node_test
+// self-checks (LocalNodeRunner at admission).
+func CheckManifestArtifactsWith(m evalcorpus.Manifest, fsys fs.FS, runner taskaccept.NodeRunner) error {
+	if err := CheckArtifactsWith(m.Cases, fsys, runner); err != nil {
 		return err
 	}
-	return CheckAttacker(m, fsys)
+	return CheckAttacker(m, fsys, 0)
 }

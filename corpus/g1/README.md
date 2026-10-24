@@ -1,8 +1,16 @@
-# G1 engineering case (DRAFT - owner approval required)
+# G1 engineering case (approved by owner 2026-10-22)
 
-Status: **draft - owner approval required.** Nothing here has been run on the guest, and the owner has
-not approved a real provider exchange for it. It is not part of the pilot corpus, has no manifest,
+Status: **approved by owner 2026-10-22.** The owner first approved the case on 2026-10-20 and re-approved it on
+2026-10-22 for the host-call budget change (8 -> 12, merged with F4: reads charge host calls, 5 turns + 4 effects = 9);
+prompt, fixture and acceptance are unchanged. Nothing here has been run on the guest successfully yet; the owner
+approved one real provider exchange over the engineering route (OpenCode Go) for it. It is not part of the pilot corpus, has no manifest,
 reviews or pins, and is never claim-bearing: no result of it is a thesis result.
+
+Approval. `corpus` is frozen with the commit `F` (runbook, F0), so the approval of this case is recorded
+*before* F0, by committing the status change in `corpus/g1/` and nothing else: `STATUS` in `build.py`, `status`
+in `g1.json` and the Status line of this file become `approved by owner <YYYY-MM-DD>` (rebuild with `build.py`; the artifacts do
+not change). That commit is part of `F`. The status is not changed after F0: an edit under `corpus` after F voids
+the freeze. Until the owner commits it, the status stays draft.
 
 Purpose: the one governed run that can pass `EVQ-PROVIDER-REAL-EXCHANGE` (thesis E05): a real provider
 exchange on the engineering route (OpenCode Go, `deepseek-v4.1-flash`) and the two-generation
@@ -40,7 +48,7 @@ transcript `read(g0) -> edit(g1) -> Bash(g2) -> read(g2)`. The `guest-provider-e
   `sha256sum src/release.txt > out/release.sha256`; read `out/release.sha256`; then one sentence.
 - Acceptance: `src/release.txt` is exactly `version=2.4.0` / `status=final`; `out/release.sha256` is the
   `sha256sum` line of that file; nothing else changed.
-- Ceilings: 8 host calls, 20000 tokens, 1200 s (four tool turns and the final text turn need five).
+- Ceilings: 12 host calls, 20000 tokens, 1200 s. A provider turn and every tool effect (`read` too) each charge one host call: five turns plus four effects need nine, and the rest is headroom for pre-effect retries.
 
 ## Open points (not measured)
 - A run that publishes a diff (edit, Bash output) to the managed live root is not exercised by the

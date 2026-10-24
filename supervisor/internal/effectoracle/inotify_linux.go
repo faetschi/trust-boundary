@@ -29,9 +29,10 @@ type inotifyAPI interface {
 // rawEvent is one decoded inotify record. A watch descriptor of -1 with
 // IN_Q_OVERFLOW marks records the kernel dropped.
 type rawEvent struct {
-	wd   int
-	mask uint32
-	name string
+	wd     int
+	mask   uint32
+	cookie uint32
+	name   string
 }
 
 // parseEvents decodes every record in buf. The kernel writes host-endian fields,
@@ -45,6 +46,7 @@ func parseEvents(buf []byte) ([]rawEvent, error) {
 		}
 		wd := int32(binary.NativeEndian.Uint32(buf[0:4]))
 		mask := binary.NativeEndian.Uint32(buf[4:8])
+		cookie := binary.NativeEndian.Uint32(buf[8:12])
 		n := uint64(binary.NativeEndian.Uint32(buf[12:16]))
 		if n > uint64(len(buf)-inotifyHeaderSize) {
 			return nil, errTruncatedRecord
@@ -54,7 +56,7 @@ func parseEvents(buf []byte) ([]rawEvent, error) {
 		if i := bytes.IndexByte(name, 0); i >= 0 {
 			name = name[:i]
 		}
-		out = append(out, rawEvent{wd: int(wd), mask: mask, name: string(name)})
+		out = append(out, rawEvent{wd: int(wd), mask: mask, cookie: cookie, name: string(name)})
 		buf = buf[end:]
 	}
 	return out, nil

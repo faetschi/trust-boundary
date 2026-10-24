@@ -76,6 +76,30 @@ type E04PointRecord struct {
 	// Ledger is the ledger the record's prefix is of. It is present only for E04LedgerPublication,
 	// and then holds exactly the LedgerApplied entries the prefix digest names.
 	Ledger []wsoracle.LedgerEntry `json:"ledger,omitempty"`
+	// Publication is the publication-side evidence of EFF-WS-05 and EFF-WS-06. Only the post-publication record
+	// of a run that reached Finalize carries it.
+	Publication *E04PublicationEvidence `json:"publication,omitempty"`
+}
+
+// E04PublicationEvidence is what the service knows of one publication transaction besides the live-root
+// manifests and the ledger (publication.OracleEvidence, taken by publication.Publish under the live-root lock): the
+// sealed generation's manifest (SealedIdentityDigest is its IdentityDigest), the intended affected-object set and the
+// lock identity. Status is the publication status the service saw (SUCCEEDED, FAILED, UNKNOWN). It rides in the
+// post-publication record, so the receipt's binding of the store (head and count) binds it too.
+type E04PublicationEvidence struct {
+	TransactionID        string            `json:"transaction_id"`
+	PublicationID        string            `json:"publication_id"`
+	Status               string            `json:"status"`
+	LockIdentity         string            `json:"lock_identity"`
+	AffectedPaths        []string          `json:"affected_paths"`
+	Sealed               wsoracle.Manifest `json:"sealed"`
+	SealedIdentityDigest string            `json:"sealed_identity_digest"`
+	// FenceDir and FenceBursts are how the transaction bracketed its writes to the live root for the inotify observer
+	// (publication.OracleEvidence): the fence directory opened and read (effectoracle.FenceRoot) before the first object was
+	// applied and after the last. FenceBursts, the number of fences, is 2 when both were made; the transient-mutation
+	// judge places the observer's events between the two fences in its queue.
+	FenceDir    string `json:"fence_dir"`
+	FenceBursts int    `json:"fence_bursts"`
 }
 
 // E04PointsDoc is the output of `tbound evidence e04-points`. JournalB64 is the first Count
@@ -139,7 +163,9 @@ func DecodeE04PointJournal(journal []byte, head string, count int, workflowID, r
 			p.Manifest != nil && p.Manifest.IdentityDigest() != p.ManifestIdentityDigest,
 			p.LedgerBasis == E04LedgerPublication && (len(p.Ledger) == 0 || p.LedgerApplied != len(p.Ledger) ||
 				p.LedgerPrefixDigest != wsoracle.LedgerPrefixDigest(p.Ledger, p.LedgerApplied)),
-			p.LedgerBasis != E04LedgerPublication && len(p.Ledger) != 0:
+			p.LedgerBasis != E04LedgerPublication && len(p.Ledger) != 0,
+			p.Publication != nil && (p.Point != wsoracle.PointPostPublication || p.Publication.TransactionID == "" ||
+				p.Publication.Sealed.IdentityDigest() != p.Publication.SealedIdentityDigest):
 			return nil, e04PointsAbsent("record %d is not a valid point record of workflow %s", record.Sequence, workflowID)
 		}
 		if p.RunID == runID {
@@ -160,21 +186,7 @@ func DecodeE04PointJournal(journal []byte, head string, count int, workflowID, r
 // or gapped baseline is an ErrEvidenceAbsent error: nothing is returned, and the evidence
 // stays absent.
 func E04PointsInput(doc E04PointsDoc, interval, receiptHead string, receiptCount int) (wsoracle.EvaluateE04Input, error) {
-	if doc.Schema != EvidenceSchema || doc.Kind != EvidenceE04Points || doc.IntervalRef != interval || interval == "" ||
-		doc.WorkflowID == "" || doc.RunID == "" {
-		return wsoracle.EvaluateE04Input{}, e04PointsAbsent("the document is not for %s", interval)
-	}
-	if receiptHead == "" || receiptCount <= 0 {
-		return wsoracle.EvaluateE04Input{}, e04PointsAbsent("the receipt carries no E04 evidence binding")
-	}
-	if doc.Head != receiptHead || doc.Count != receiptCount {
-		return wsoracle.EvaluateE04Input{}, e04PointsAbsent("the document's head and count are not the receipt's")
-	}
-	journal, err := base64.StdEncoding.DecodeString(doc.JournalB64)
-	if err != nil {
-		return wsoracle.EvaluateE04Input{}, e04PointsAbsent("the journal is not base64")
-	}
-	records, err := DecodeE04PointJournal(journal, receiptHead, receiptCount, doc.WorkflowID, doc.RunID)
+	records, err := e04DocRecords(doc, interval, receiptHead, receiptCount)
 	if err != nil {
 		return wsoracle.EvaluateE04Input{}, err
 	}
@@ -211,4 +223,123 @@ func E04PointsInput(doc E04PointsDoc, interval, receiptHead string, receiptCount
 		return wsoracle.EvaluateE04Input{}, e04PointsAbsent("the baseline point is missing or a gap")
 	}
 	return in, nil
+}
+
+// e04DocRecords checks doc against the interval and the receipt's binding of the store and returns the records
+// of the doc's run (DecodeE04PointJournal).
+func e04DocRecords(doc E04PointsDoc, interval, receiptHead string, receiptCount int) ([]E04PointRecord, error) {
+	if doc.Schema != EvidenceSchema || doc.Kind != EvidenceE04Points || doc.IntervalRef != interval || interval == "" ||
+		doc.WorkflowID == "" || doc.RunID == "" {
+		return nil, e04PointsAbsent("the document is not for %s", interval)
+	}
+	if receiptHead == "" || receiptCount <= 0 {
+		return nil, e04PointsAbsent("the receipt carries no E04 evidence binding")
+	}
+	if doc.Head != receiptHead || doc.Count != receiptCount {
+		return nil, e04PointsAbsent("the document's head and count are not the receipt's")
+	}
+	journal, err := base64.StdEncoding.DecodeString(doc.JournalB64)
+	if err != nil {
+		return nil, e04PointsAbsent("the journal is not base64")
+	}
+	return DecodeE04PointJournal(journal, receiptHead, receiptCount, doc.WorkflowID, doc.RunID)
+}
+
+// PublicationInputs are the EFF-WS-05 and EFF-WS-06 inputs of one published interval, taken from the service's own
+// store. A nil input is a predicate the store cannot judge (WS05 when the ledger basis of the publication is
+// unavailable). The manifests are the store's baseline, pre-publication and post-publication points: a point that
+// is a gap or has no record is an empty manifest, which the oracle reports as lost evidence, never as no effect.
+type PublicationInputs struct {
+	WS05 *wsoracle.WS05Input
+	WS06 *wsoracle.WS06Input
+	// TransactionID and PublicationID are the publication transaction the store recorded (E04PublicationEvidence). The
+	// collector checks them against the anchored publication journal (bindPublicationTransaction).
+	TransactionID, PublicationID string
+}
+
+// E04PublicationInputs verifies doc against the receipt binding (E04PointsInput) and builds the publication
+// inputs from the run's post-publication record. It is an ErrEvidenceAbsent error when the run has no such record
+// or the record carries no publication evidence: the service did not publish, or could not say what it published,
+// and the predicates are then neither judged nor exempt (the interval's publication journal decides that).
+func E04PublicationInputs(doc E04PointsDoc, interval, receiptHead string, receiptCount int) (PublicationInputs, error) {
+	records, err := e04DocRecords(doc, interval, receiptHead, receiptCount)
+	if err != nil {
+		return PublicationInputs{}, err
+	}
+	return publicationInputsOf(records)
+}
+
+func publicationInputsOf(records []E04PointRecord) (PublicationInputs, error) {
+	var post *E04PointRecord
+	manifests := map[string]wsoracle.Manifest{}
+	seen := map[string]bool{}
+	for i := range records {
+		p := &records[i]
+		// A repeated point is refused for every point, as E04PointsInput does: a last-wins read would let a second
+		// record replace the baseline or the pre-publication manifest.
+		if seen[p.Point] {
+			return PublicationInputs{}, e04PointsAbsent("point %s is recorded twice for the run", p.Point)
+		}
+		seen[p.Point] = true
+		if p.Point == wsoracle.PointPostPublication {
+			post = p
+		}
+		if p.Status == E04StatusSnapshot && p.Manifest != nil {
+			m := *p.Manifest
+			m.Label = p.Point
+			manifests[p.Point] = m
+		}
+	}
+	if post == nil || post.Publication == nil {
+		return PublicationInputs{}, e04PointsAbsent("the run has no publication evidence")
+	}
+	pub := post.Publication
+	manifest := func(point string) wsoracle.Manifest {
+		if m, ok := manifests[point]; ok {
+			return m
+		}
+		return wsoracle.Manifest{Label: point}
+	}
+	sealed := pub.Sealed
+	sealed.Label = "sealed"
+	baseline, pre, after := manifest(wsoracle.PointBaseline), manifest(wsoracle.PointPrePublication), manifest(wsoracle.PointPostPublication)
+	in := PublicationInputs{WS06: &wsoracle.WS06Input{AffectedPaths: slices.Clone(pub.AffectedPaths), Baseline: baseline, PrePublication: pre,
+		PostPublication: after, LockIdentity: pub.LockIdentity, PublicationResult: pub.Status},
+		TransactionID: pub.TransactionID, PublicationID: pub.PublicationID}
+	switch post.LedgerBasis {
+	case E04LedgerPublication:
+		in.WS05 = &wsoracle.WS05Input{Baseline: baseline, Ledger: slices.Clone(post.Ledger), Sealed: sealed, PrePublication: pre, PostPublication: after}
+	case E04LedgerNone:
+		in.WS05 = &wsoracle.WS05Input{Baseline: baseline, Sealed: sealed, PrePublication: pre, PostPublication: after}
+	}
+	return in, nil
+}
+
+// bindPublicationTransaction checks the publication transaction the E04 store recorded against the publication
+// journal the receipt anchors. The journal must verify as an audit chain that ends on head (the receipt's
+// publication_journal_head), and one of its publication_prepare records must be the transaction and publication the
+// store names: a store of another transaction, or one that names a transaction the service never prepared, is
+// absent evidence, never a publication that happened.
+func bindPublicationTransaction(journal []byte, head string, in PublicationInputs) error {
+	if in.TransactionID == "" {
+		return e04PointsAbsent("the store names no publication transaction")
+	}
+	trace, err := audit.Verify(bytes.NewReader(journal))
+	if err != nil || len(trace.Records) == 0 || trace.Records[len(trace.Records)-1].Hash != head {
+		return e04PointsAbsent("the publication journal does not end on the receipt's anchor head")
+	}
+	for _, record := range trace.Records {
+		if record.Event.Kind != "publication_prepare" {
+			continue
+		}
+		var prepare struct {
+			TransactionID string `json:"transaction_id"`
+			PublicationID string `json:"publication_id"`
+		}
+		if json.Unmarshal(record.Event.Data, &prepare) == nil &&
+			prepare.TransactionID == in.TransactionID && prepare.PublicationID == in.PublicationID {
+			return nil
+		}
+	}
+	return e04PointsAbsent("the anchored publication journal holds no transaction %s of publication %s", in.TransactionID, in.PublicationID)
 }

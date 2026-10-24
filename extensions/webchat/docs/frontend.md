@@ -842,7 +842,7 @@ to a different local port, or a reverse proxy that rewrites Host, is rejected (4
 This tunnel path was reasoned from the Host pin and an earlier proxy experiment; it has NOT
 been run over a real SSH connection. Binding the gateway to a public interface is not
 supported and would need the authenticated, origin-protected design that
-docs/modular-architecture-vision.md lists as future work.
+docs/archive/modular-architecture-vision.md lists as future work.
 
 ## Phase 3 review fixes: the claim boundary (2026-10-14)
 

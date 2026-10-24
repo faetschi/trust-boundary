@@ -72,7 +72,7 @@ const (
 	// landlockRestrictSelfTSYNC makes the ruleset cover every thread in the
 	// thread group, so the multi-threaded Go runtime is fully confined. It
 	// requires the registered TSYNC ABI.
-	landlockRestrictSelfTSYNC = 1
+	landlockRestrictSelfTSYNC = 1 << 3 // uapi LANDLOCK_RESTRICT_SELF_TSYNC; 1 << 0 is LOG_SAME_EXEC_OFF
 	landlockTSYNCABI          = 8
 	landlockAccessAllABI8     = piruntime.D09LandlockHandledFS
 	landlockAccessAllNet      = piruntime.D09LandlockHandledNet
@@ -342,7 +342,22 @@ func requireNoExternalRoutes() error {
 	if err != nil {
 		return err
 	}
-	for index, line := range strings.Split(strings.TrimSpace(string(ipv4)), "\n") {
+	ipv6, err := os.ReadFile("/proc/net/ipv6_route")
+	if err != nil {
+		return err
+	}
+	return externalRouteIn(string(ipv4), string(ipv6))
+}
+
+// rtfReject is RTF_REJECT: the route fails lookups (unreachable, prohibit, blackhole).
+const rtfReject = 0x0200
+
+// externalRouteIn refuses any route that could leave the namespace. Every route must be on lo,
+// and no default IPv4 route is accepted. The kernel puts its own ::/0 entries on lo of every
+// namespace, flagged RTF_REJECT (unreachable, e.g. flags 00200200); only such a reject default is
+// accepted. A ::/0 route that is not a reject route, or is on another interface, still refuses.
+func externalRouteIn(ipv4, ipv6 string) error {
+	for index, line := range strings.Split(strings.TrimSpace(ipv4), "\n") {
 		if index == 0 || strings.TrimSpace(line) == "" {
 			continue
 		}
@@ -354,11 +369,7 @@ func requireNoExternalRoutes() error {
 			return fmt.Errorf("default IPv4 route is present")
 		}
 	}
-	ipv6, err := os.ReadFile("/proc/net/ipv6_route")
-	if err != nil {
-		return err
-	}
-	for _, line := range strings.Split(strings.TrimSpace(string(ipv6)), "\n") {
+	for _, line := range strings.Split(strings.TrimSpace(ipv6), "\n") {
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
@@ -367,7 +378,10 @@ func requireNoExternalRoutes() error {
 			return fmt.Errorf("unexpected IPv6 route %q", line)
 		}
 		if fields[0] == strings.Repeat("0", 32) && fields[1] == "00" {
-			return fmt.Errorf("default IPv6 route is present")
+			flags, err := strconv.ParseUint(fields[8], 16, 32)
+			if err != nil || flags&rtfReject == 0 {
+				return fmt.Errorf("default IPv6 route is present")
+			}
 		}
 	}
 	return nil
@@ -433,7 +447,11 @@ func runCommandCell(commandPath string, args []string, base map[string]any, delt
 	if !validDigest(expectedCommandDigest) {
 		fatal("command mode requires the signed command executable digest")
 	}
-	observedCommandDigest, err := digestCommandExecutable(commandPath)
+	measuredUIDMap, ok := base["uid_map"].(string)
+	if !ok || strings.TrimSpace(measuredUIDMap) == "" {
+		fatal("command mode requires the measured user-namespace uid_map")
+	}
+	observedCommandDigest, err := digestCommandExecutable(commandPath, measuredUIDMap)
 	if err != nil || observedCommandDigest != expectedCommandDigest {
 		fatal("command executable digest mismatch: observed %s expected %s (%v)", observedCommandDigest, expectedCommandDigest, err)
 	}
@@ -537,30 +555,113 @@ func runCommandCell(commandPath string, args []string, base map[string]any, delt
 	os.Exit(exitCode)
 }
 
-func digestCommandExecutable(path string) (string, error) {
+// userNamespaceIDSpace is 2^32, the size of a user namespace's id space.
+const userNamespaceIDSpace = uint64(1) << 32
+
+// parseUIDMapRootUID returns the inside-namespace uid that a /proc/self/uid_map
+// maps to outside uid 0: the uid the frozen image's root has as this cell sees
+// it. A rootless cell with a single own-uid mapping ("1000 0 1") yields 1000,
+// because the image root is uid 0 of the podman namespace the cell is nested
+// in; a rootful or initial namespace ("0 0 4294967295") yields 0, so rootful
+// behaviour is unchanged. It fails closed when outside uid 0 is unmapped or
+// claimed twice, and on any line it cannot read exactly: a map this function
+// cannot read exactly never names a root.
+func parseUIDMapRootUID(raw string) (uint32, error) {
+	if strings.TrimSpace(raw) == "" {
+		return 0, errors.New("uid_map is empty")
+	}
+	var root uint32
+	found := false
+	for index, line := range strings.Split(strings.TrimSpace(raw), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) != 3 {
+			return 0, fmt.Errorf("uid_map line %d does not have exactly three fields", index+1)
+		}
+		var values [3]uint64
+		for field, text := range fields {
+			value, err := strconv.ParseUint(text, 10, 32)
+			if err != nil {
+				return 0, fmt.Errorf("uid_map line %d is not three decimal 32-bit ids", index+1)
+			}
+			values[field] = value
+		}
+		inside, outside, length := values[0], values[1], values[2]
+		if length == 0 || inside+length > userNamespaceIDSpace || outside+length > userNamespaceIDSpace {
+			return 0, fmt.Errorf("uid_map line %d is an empty or overflowing range", index+1)
+		}
+		if outside != 0 {
+			continue
+		}
+		if found {
+			return 0, errors.New("uid_map maps outside uid 0 more than once")
+		}
+		found, root = true, uint32(inside)
+	}
+	if !found {
+		return 0, errors.New("uid_map does not map outside uid 0, so the cell cannot name an image root")
+	}
+	return root, nil
+}
+
+// requireImageRootOwned accepts owner only when it is the inside uid that the measured,
+// registered uid_map maps to outside uid 0, i.e. when the file belongs to the frozen image's root.
+// The map is the one measureD09UserNamespaceMaps read at start and compared with the registered
+// digest; nothing reads /proc/self/uid_map a second time. The owner is compared with the mapped id
+// and not with a literal 0 because a rootless single-uid podman namespace shows image-root files
+// owned by the cell uid inside the cell. Nothing else is relaxed: the read-only mount, the absent
+// group/world write bits and the signed digest remain the immutability and content proofs. This
+// check refuses a file owned by any other identity in the image, and it refuses whenever the map
+// cannot name the root unambiguously.
+func requireImageRootOwned(owner uint32, measuredUIDMap string) error {
+	if strings.TrimSpace(measuredUIDMap) == "" {
+		return errors.New("no measured uid_map to identify the image root")
+	}
+	root, err := parseUIDMapRootUID(measuredUIDMap)
+	if err != nil {
+		return err
+	}
+	if owner != root {
+		return fmt.Errorf("file is owned by uid %d, not by the image root uid %d (the inside uid mapped to outside uid 0)", owner, root)
+	}
+	return nil
+}
+
+func digestCommandExecutable(path, measuredUIDMap string) (string, error) {
 	before, err := os.Lstat(path)
 	if err != nil || !before.Mode().IsRegular() || before.Mode()&os.ModeSymlink != 0 || before.Mode().Perm()&0o022 != 0 || before.Size() <= 0 || before.Size() > 128<<20 {
 		return "", fmt.Errorf("command executable must be a non-symlink immutable regular image file")
 	}
 	owner, ok := before.Sys().(*syscall.Stat_t)
-	if !ok || owner.Uid != 0 || before.Mode().Perm()&0o111 == 0 {
-		return "", fmt.Errorf("command executable must be root-owned and executable")
+	if !ok {
+		return "", errors.New("command executable has no stable in-image ownership")
 	}
-	if err := requireReadOnlyMount(path); err != nil {
-		return "", err
+	if err := requireImageRootOwned(owner.Uid, measuredUIDMap); err != nil {
+		return "", fmt.Errorf("command executable must be root-owned: %w", err)
+	}
+	if before.Mode().Perm()&0o111 == 0 {
+		return "", errors.New("command executable must be executable")
 	}
 	file, err := os.Open(path)
 	if err != nil {
 		return "", err
 	}
 	defer file.Close()
+	if err := requireReadOnlyFile(file); err != nil {
+		return "", err
+	}
 	info, err := file.Stat()
 	if err != nil || !info.Mode().IsRegular() || !os.SameFile(before, info) || info.Mode().Perm()&0o022 != 0 {
 		return "", fmt.Errorf("command executable is not a regular immutable image file")
 	}
 	stat, ok := info.Sys().(*syscall.Stat_t)
-	if !ok || stat.Uid != 0 || info.Mode().Perm()&0o111 == 0 {
-		return "", fmt.Errorf("command executable must be root-owned and executable in the frozen image")
+	if !ok {
+		return "", errors.New("command executable lost its ownership identity in the frozen image")
+	}
+	if err := requireImageRootOwned(stat.Uid, measuredUIDMap); err != nil {
+		return "", fmt.Errorf("command executable must be root-owned in the frozen image: %w", err)
+	}
+	if info.Mode().Perm()&0o111 == 0 {
+		return "", errors.New("command executable must be executable in the frozen image")
 	}
 	hash := sha256.New()
 	n, err := io.Copy(hash, io.LimitReader(file, before.Size()+1))
@@ -573,36 +674,20 @@ func digestCommandExecutable(path string) (string, error) {
 	return "sha256:" + hex.EncodeToString(hash.Sum(nil)), nil
 }
 
-func requireReadOnlyMount(path string) error {
-	data, err := os.ReadFile("/proc/self/mountinfo")
-	if err != nil {
-		return err
+// requireReadOnlyFile asks the kernel about the mount the opened file is actually on (ST_RDONLY in
+// f_flags reflects the mount and superblock flags), so symlinked parents and shadowed mounts cannot mislead it.
+func requireReadOnlyFile(f *os.File) error {
+	var st syscall.Statfs_t
+	if err := syscall.Fstatfs(int(f.Fd()), &st); err != nil {
+		return fmt.Errorf("statfs command executable: %w", err)
 	}
-	clean := filepath.Clean(path)
-	best, ro := -1, false
-	for _, line := range strings.Split(string(data), "\n") {
-		parts := strings.SplitN(line, " - ", 2)
-		if len(parts) != 2 {
-			continue
-		}
-		fields := strings.Fields(parts[0])
-		if len(fields) < 6 {
-			continue
-		}
-		mount := filepath.Clean(unescapeMountPoint(fields[4]))
-		if clean != mount && !strings.HasPrefix(clean, mount+string(os.PathSeparator)) {
-			continue
-		}
-		if len(mount) > best {
-			best = len(mount)
-			ro = strings.Contains(","+fields[5]+",", ",ro,")
-		}
-	}
-	if best < 0 || !ro {
-		return fmt.Errorf("command executable is not on a read-only mount")
+	if st.Flags&stRdonly == 0 {
+		return errors.New("command executable is not on a read-only mount")
 	}
 	return nil
 }
+
+const stRdonly = 0x1 // ST_RDONLY from statvfs.h
 
 func validDigest(value string) bool {
 	if len(value) != len("sha256:")+64 || !strings.HasPrefix(value, "sha256:") || value != strings.ToLower(value) {
@@ -869,6 +954,19 @@ func applyLandlockFor(requiredABI int, delta piruntime.D09CellDelta) (int, strin
 		_ = parent.Close()
 		if errno != 0 {
 			return 0, "", fmt.Errorf("add landlock rule %q: %w", rule.path, errno)
+		}
+	}
+	// Execute and read on the held Node binary itself (fd3), added before the ruleset is enforced.
+	for _, rule := range plan.heldFDRules {
+		if err := checkHeldFDRule(rule); err != nil {
+			return 0, "", err
+		}
+		attr := struct {
+			AllowedAccess uint64
+			ParentFd      int32
+		}{rule.access, int32(rule.fd)}
+		if _, _, errno := syscall.Syscall6(uintptr(sysLandlockAddRule), fd, landlockRulePathBeneath, uintptr(unsafe.Pointer(&attr)), 0, 0, 0); errno != 0 {
+			return 0, "", fmt.Errorf("add landlock rule for held descriptor %d: %w", rule.fd, errno)
 		}
 	}
 	// The only network right ever allowed: connect to a TCP port of the delta (net-sink/v1: 8080).

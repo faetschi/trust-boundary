@@ -368,3 +368,55 @@ func TestProductionLaunchProofRejectsMissingInvalidAndWrongRunReferences(t *test
 		t.Fatalf("proof from a different run was accepted: %v", err)
 	}
 }
+
+// A route-probe cell (the dr run) reports its probe in the launch proof and never starts Pi, so its launch
+// yields no worker. The run still fails, but only after that proof is the run's one production_tcb_proof
+// record: the guest-route-direct-runtime producer reads nothing else.
+func TestRouteProbeLaunchJournalsItsProofAndStillFails(t *testing.T) {
+	root := privateGovernedTestRoot(t)
+	journal, err := audit.Open(filepath.Join(root, "route-probe-launch-proof.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer journal.Close()
+	profile, template, proof := productionProofFixture()
+	template.RouteProbe = &piruntime.D09RouteProbe{Name: piruntime.D09RouteProbeName, Target: "/home/node/.profile", Control: piruntime.PiWorkerCellDefaultWorkingDirectory + "/src/release.txt"}
+	digest, err := template.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile.ContainmentProfileDigest, proof.TemplateDigest = digest, digest
+	proof.RouteProbe = &piruntime.D09RouteProbeResult{Name: template.RouteProbe.Name, Target: template.RouteProbe.Target, Control: template.RouteProbe.Control}
+	evidence := &productionLifecycleEvidence{}
+	journalLaunchProof := func(launcherPID int, p piruntime.D09TCBProof) error {
+		return journalProductionLaunchProof(journal, evidence, "run-dr", "session-dr", "workflow-dr", "conversation-dr", "g0",
+			"sha256:"+strings.Repeat("a", 64), profile, template, launcherPID, p)
+	}
+	settled := piruntime.Settlement{State: piruntime.SettlementStopped, ExitObserved: true, DescendantsSettled: true}
+
+	other := &piruntime.PiWorkerLaunchError{Cause: errors.New("wait for Pi worker readiness: deadline exceeded"), Settlement: settled}
+	if err := productionLaunchFailure(other, journalLaunchProof); err == nil {
+		t.Fatal("a failed launch did not fail the run")
+	}
+	probeLaunch := &piruntime.PiWorkerLaunchError{Cause: piruntime.ErrD09RouteProbeLaunched, Settlement: settled,
+		RouteProbe: &piruntime.D09RouteProbeLaunch{LauncherPID: proof.LauncherProcessPID, Proof: proof}}
+	if err := productionLaunchFailure(probeLaunch, journalLaunchProof); !errors.Is(err, piruntime.ErrD09RouteProbeLaunched) {
+		t.Fatalf("route-probe launch ended the run with %v, want a failure caused by ErrD09RouteProbeLaunched", err)
+	}
+
+	trace, err := journal.Trace()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(trace.Records) != 1 || trace.Records[0].Event.Kind != "production_tcb_proof" {
+		t.Fatalf("journal holds %d records, want only the route-probe launch proof", len(trace.Records))
+	}
+	var event productionLaunchTCBProofEvent
+	if err := json.Unmarshal(trace.Records[0].Event.Data, &event); err != nil {
+		t.Fatal(err)
+	}
+	if event.RunID != "run-dr" || event.ProfileDigest != profile.Digest || event.Proof.RouteProbe == nil ||
+		event.Proof.RouteProbe.Target != template.RouteProbe.Target || evidence.snapshot().proofSeq != trace.Records[0].Sequence {
+		t.Fatalf("journaled launch proof is not the route-probe cell's proof of this run: %+v", event)
+	}
+}

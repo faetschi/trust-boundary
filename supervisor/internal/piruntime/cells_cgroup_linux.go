@@ -85,6 +85,7 @@ func ensureCellsCgroup(parent *os.File, serviceUID int) error {
 	if mkdirErr != nil && !errors.Is(mkdirErr, syscall.EEXIST) {
 		return fmt.Errorf("create %s cgroup: %w", D09ManagedPiCellCgroupLeaf, mkdirErr)
 	}
+	created := mkdirErr == nil
 	fd, err := syscall.Openat(int(parent.Fd()), D09ManagedPiCellCgroupLeaf,
 		syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0)
 	if err != nil {
@@ -92,6 +93,14 @@ func ensureCellsCgroup(parent *os.File, serviceUID int) error {
 	}
 	cells := os.NewFile(uintptr(fd), "tbound-cells-cgroup")
 	defer cells.Close()
+	if created {
+		// The service unit runs with UMask=0077, which masks the mkdirat mode.
+		// Set the exact mode on the directory this call created, through the
+		// descriptor; an existing cells directory is validated as found.
+		if err := syscall.Fchmod(int(cells.Fd()), d09CellsCgroupMode); err != nil {
+			return errors.Join(ErrCgroupScopeRefused, fmt.Errorf("set %s cgroup mode: %w", D09ManagedPiCellCgroupLeaf, err))
+		}
+	}
 	cellsInfo, err := cells.Stat()
 	if err != nil {
 		return errors.Join(ErrCgroupScopeRefused, err)

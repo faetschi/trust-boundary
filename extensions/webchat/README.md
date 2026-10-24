@@ -1,5 +1,9 @@
 # Optional web chat extension (`tbound/webchat`)
 
+> **Status: frozen for the thesis.** CLI-only support for the thesis; no new
+> features. The web chat will be moved to its own repository after the thesis.
+> It is not part of the thesis claims.
+
 This directory is an **optional, standalone** Go module and browser client for
 the tbound web chat. tbound core does not need it: the core builds, tests,
 installs and runs without this directory, and the core's build and test gate need

@@ -255,7 +255,7 @@ func CreateFreshProtectedRoot(path, ownerStoreRoot string, boundary HostBoundary
 	if err != nil {
 		return nil, err
 	}
-	rootIdentity, err := protectedRootIdentity(cleanPath, cleanStoreRoot)
+	rootIdentity, err := measureProtectedRootIdentity(cleanPath, cleanStoreRoot)
 	if err != nil {
 		_ = releaseProtectedRootLock(lockFile)
 		return nil, err
@@ -304,7 +304,7 @@ func OpenExistingProtectedRoot(path, ownerStoreRoot string, boundary HostBoundar
 	if err != nil {
 		return nil, err
 	}
-	rootIdentity, err := protectedRootIdentity(cleanPath, cleanStoreRoot)
+	rootIdentity, err := measureProtectedRootIdentity(cleanPath, cleanStoreRoot)
 	if err != nil {
 		_ = releaseProtectedRootLock(lockFile)
 		return nil, err
@@ -1276,7 +1276,7 @@ func (r *ProtectedTrustedRoot) verifyRootPathLocked() error {
 	if err != nil {
 		return err
 	}
-	identity, err := protectedRootIdentity(r.path, r.ownerStoreRoot)
+	identity, err := measureProtectedRootIdentity(r.path, r.ownerStoreRoot)
 	if err != nil {
 		return err
 	}
@@ -1653,6 +1653,13 @@ func pathsOverlap(left, right string) bool {
 	separator := string(filepath.Separator)
 	return left == right || strings.HasPrefix(left, right+separator) || strings.HasPrefix(right, left+separator)
 }
+
+// The device- and inode-bound identities of the protected root and of an owner store. Only a replay
+// build (tag tboundreplay), which verifies exported state on another host, replaces them.
+var (
+	measureProtectedRootIdentity = protectedRootIdentity
+	measureSQLiteStorageIdentity = computeSQLiteStorageIdentity
+)
 
 func protectedRootIdentity(path, ownerStoreRoot string) (string, error) {
 	clean, storageDigest, err := inspectSQLitePath(path, false)

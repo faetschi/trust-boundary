@@ -186,11 +186,13 @@ func (a *app) routeReportCmd(args []string) error {
 	if err != nil {
 		return err
 	}
+	if err := requireFrozenSource(binding.FrozenSourceDigest, rec); err != nil {
+		return err
+	}
 	if err := rec.requirePinnedInput(evqPinnedInputs[1], mdata); err != nil {
 		return fmt.Errorf("route matrix: %w", err)
 	}
-	guest, err := loadGuestRouteArtifacts(m, artifacts, guestevidence.Expect{Commit: commit, BinarySHA256: *guestBinary, ContainmentProfileDigest: binding.ContainmentProfileDigest,
-		ProfileHash: binding.ProfileHash, FrozenSourceDigest: binding.FrozenSourceDigest, AdminPubkeyDigest: binding.AdminPubkeyDigest})
+	guest, err := loadGuestRouteArtifacts(m, artifacts, guestExpect(commit, *guestBinary, binding))
 	if err != nil {
 		return err
 	}

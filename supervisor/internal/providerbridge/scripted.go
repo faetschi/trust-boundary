@@ -7,10 +7,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"sync"
 
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/broker/openrouter"
+	"tbound/supervisor/internal/broker/protocol"
 )
 
 // ScriptTurn is one scripted provider response: a tool call (Tool and its JSON-object Arguments)
@@ -22,6 +24,10 @@ type ScriptTurn struct {
 	Tool       string          `json:"tool,omitempty"`
 	Arguments  json.RawMessage `json:"arguments,omitempty"`
 	Text       string          `json:"text,omitempty"`
+	// FailStatus, when set, makes the scripted transport answer that HTTP status with FailBody
+	// instead of a completion: failure injection for the offline provider (retry tests).
+	FailStatus int    `json:"fail_status,omitempty"`
+	FailBody   string `json:"fail_body,omitempty"`
 }
 
 // ScriptMessage is the part of one request message that a ScriptSource may read: the role, the text
@@ -145,6 +151,10 @@ func (d *scriptedDoer) Do(request *http.Request) (*http.Response, error) {
 	if err != nil {
 		return nil, fmt.Errorf("scripted provider: %w", err)
 	}
+	if turn.FailStatus != 0 {
+		return &http.Response{StatusCode: turn.FailStatus, Header: make(http.Header),
+			Body: io.NopCloser(strings.NewReader(turn.FailBody)), Request: request}, nil
+	}
 	if turn.ResponseID == "" {
 		turn.ResponseID = fmt.Sprintf("scripted-response-%d", n)
 	}
@@ -187,6 +197,26 @@ func scriptHistory(request *http.Request) ([]ScriptMessage, error) {
 		history[i] = ScriptMessage{Role: message.Role, ToolCallID: message.ToolCallID}
 		if message.Content != nil {
 			history[i].Content = *message.Content
+			// Scripted D32 sources retain their Result-only public projection.
+			if message.Role == "tool" {
+				raw, suffix, hinted := strings.Cut(*message.Content, "\nhint: ")
+				if hinted {
+					result, err := protocol.DecodeResult([]byte(raw))
+					valid := false
+					if err == nil {
+						for _, candidate := range HintCandidates(hintReason(result)) {
+							if suffix == candidate {
+								valid = true
+								break
+							}
+						}
+					}
+					if !valid {
+						return nil, errors.New("scripted provider tool hint differs from the frozen Result candidates")
+					}
+					history[i].Content = raw
+				}
+			}
 		}
 	}
 	return history, nil

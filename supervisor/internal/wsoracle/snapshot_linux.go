@@ -39,10 +39,41 @@ func Snapshot(root, label string) Manifest {
 		return m.seal()
 	}
 	defer syscall.Close(rfd)
+	return snapshotFD(rfd, label)
+}
 
+// SnapshotDir is Snapshot of an open directory: the descriptor is the root, so a caller that holds a directory
+// (a generation root, for example) needs no path to it. The descriptor is not closed. Snapshot refuses a root
+// that is a symlink; a descriptor is whatever the caller opened, and a non-directory is a root_not_directory gap.
+func SnapshotDir(dir *os.File, label string) Manifest {
+	if dir == nil {
+		m := Manifest{Label: label, Gaps: []Gap{{Manifest: label, Kind: GapRootUnavailable}}}
+		return m.seal()
+	}
+	// A new open file description of the same directory: the caller's own has a read offset that a listing it
+	// already made left at the end.
+	fd, err := syscall.Openat(int(dir.Fd()), ".", syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0)
+	if err != nil {
+		kind := GapRootUnavailable
+		if errors.Is(err, syscall.ENOTDIR) {
+			kind = GapRootNotDirectory
+		}
+		m := Manifest{Label: label, Gaps: []Gap{{Manifest: label, Kind: kind, Detail: errClass(err)}}}
+		return m.seal()
+	}
+	defer syscall.Close(fd)
+	return snapshotFD(fd, label)
+}
+
+func snapshotFD(rfd int, label string) Manifest {
+	m := Manifest{Label: label}
 	var st syscall.Stat_t
 	if err := syscall.Fstat(rfd, &st); err != nil {
 		m.Gaps = append(m.Gaps, Gap{Manifest: label, Kind: GapRootUnavailable, Detail: errClass(err)})
+		return m.seal()
+	}
+	if st.Mode&syscall.S_IFMT != syscall.S_IFDIR {
+		m.Gaps = append(m.Gaps, Gap{Manifest: label, Kind: GapRootNotDirectory})
 		return m.seal()
 	}
 	// The root's own metadata is part of the protected state. It is read from the

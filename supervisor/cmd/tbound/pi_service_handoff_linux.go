@@ -27,6 +27,7 @@ import (
 	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/piruntime"
 	"tbound/supervisor/internal/researchroute"
+	"tbound/supervisor/internal/runner"
 	"tbound/supervisor/internal/sessionrepo"
 )
 
@@ -148,6 +149,8 @@ type piServiceConfig struct {
 	ContainersConfigDigest      string   `json:"containers_conf_digest"`
 	StorageConfigPath           string   `json:"storage_conf_path"`
 	StorageConfigDigest         string   `json:"storage_conf_digest"`
+
+	CDH *runner.CDHConfig `json:"cdh,omitempty"`
 }
 
 type piServiceSocketFDIdentity struct {
@@ -215,7 +218,7 @@ func (activated *piServiceActivatedListener) Revalidate() error {
 	if err != nil || !ok || unixAddress.Name != activated.Policy.SocketPath {
 		return errors.Join(ErrPiServiceUnavailable, err)
 	}
-	return activated.Identity.revalidate(activated.Policy)
+	return activated.Identity.revalidate(activated.Policy, true)
 }
 
 type piServiceSocketRuntimeIdentity struct {
@@ -806,6 +809,9 @@ func readProductionPiServiceConfig(path, expectedDigest string) (piServiceConfig
 // fixed path and digest and carries no inline task, prompt or admission id. In both
 // shapes the workflow_max_* members are the host ceilings of a workflow.
 func validateProductionPiServiceConfig(config piServiceConfig) error {
+	if err := validateServiceCDH(config); err != nil {
+		return err
+	}
 	if (config.SchemaVersion != piServiceConfigSchema && config.SchemaVersion != piServiceConfigSchemaV3) ||
 		config.SourcePolicy != piServiceSourcePolicy ||
 		(config.ProviderRoute != piruntime.D09ManagedPiProviderRouteEngineering && config.ProviderRoute != piruntime.D09ManagedPiProviderRouteResearch) ||
@@ -980,7 +986,7 @@ func systemdActivatedPiListener(socket piServiceSocketRegistration) (*piServiceA
 		_ = file.Close()
 		return nil, errors.Join(ErrPiServiceUnavailable, err)
 	}
-	identity, err := measurePiServiceSocketPath(socket)
+	identity, err := measurePiServiceSocketPath(socket, true)
 	if err != nil {
 		_ = file.Close()
 		return nil, err
@@ -1032,10 +1038,10 @@ func verifyActivatedPiListenerFile(fd *os.File, socket piServiceSocketRegistrati
 	}
 	// FD/socketfs identity and filesystem pathname identity are intentionally
 	// checked separately. They are not required to be os.SameFile/inode-equal.
-	return identity.revalidate(socket)
+	return identity.revalidate(socket, true)
 }
 
-func measurePiServiceSocketPath(socket piServiceSocketRegistration) (piServiceSocketRuntimeIdentity, error) {
+func measurePiServiceSocketPath(socket piServiceSocketRegistration, serviceNamespace bool) (piServiceSocketRuntimeIdentity, error) {
 	var identity piServiceSocketRuntimeIdentity
 	if !filepath.IsAbs(socket.SocketPath) || filepath.Clean(socket.SocketPath) != socket.SocketPath ||
 		socket.ParentPath != filepath.Dir(socket.SocketPath) {
@@ -1064,8 +1070,7 @@ func measurePiServiceSocketPath(socket piServiceSocketRegistration) (piServiceSo
 		return identity, errors.Join(ErrPiServiceUnavailable, err)
 	}
 	mountOptions, err := piServiceMountOptions(parentMountID)
-	if err != nil || !containsMountOption(mountOptions, "rw") || !containsMountOption(mountOptions, "nodev") ||
-		!containsMountOption(mountOptions, "nosuid") || containsMountOption(mountOptions, "ro") {
+	if err != nil || !piServiceSocketParentMountAcceptable(mountOptions, serviceNamespace) {
 		return identity, errors.Join(ErrPiServiceUnavailable, err)
 	}
 	if socket.ParentMountPolicy != "tmpfs-rw-nodev-nosuid/v1" {
@@ -1126,19 +1131,8 @@ func piServiceMountOptions(mountID uint64) (string, error) {
 	return "", errors.New("socket parent mount ID is absent from mountinfo")
 }
 
-func containsMountOption(joined, expected string) bool {
-	for _, field := range strings.Split(joined, "\x00") {
-		for _, option := range strings.Split(field, ",") {
-			if option == expected {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-func (identity piServiceSocketRuntimeIdentity) revalidate(socket piServiceSocketRegistration) error {
-	current, err := measurePiServiceSocketPath(socket)
+func (identity piServiceSocketRuntimeIdentity) revalidate(socket piServiceSocketRegistration, serviceNamespace bool) error {
+	current, err := measurePiServiceSocketPath(socket, serviceNamespace)
 	if err != nil {
 		return err
 	}
@@ -1177,8 +1171,21 @@ func piServicePeerAllowed(socket piServiceSocketRegistration, peer piServicePeer
 	return index < len(socket.AllowedClientUIDs) && socket.AllowedClientUIDs[index] == peer.UID
 }
 
+// piServiceServerAllowed decides whether the SO_PEERCRED of a connected client socket
+// identifies the registered server. tbound-pi.socket is socket-activated (Accept=no),
+// so systemd creates the listener and the kernel reports the listener creator, pid 1
+// uid 0 gid 0, not the service process. That identity is accepted only because the
+// socket path is bound to the registered root-owned socket file in a root-owned tmpfs
+// directory (measured and revalidated before and after the connect), where only root
+// can have bound it. uid 0 with any other pid, and every other uid or gid, are refused.
 func piServiceServerAllowed(peer piServicePeerCredentials, serviceUID, serviceGID int) bool {
-	return peer.PID > 0 && serviceUID > 0 && serviceGID > 0 && peer.UID == serviceUID && peer.GID == serviceGID
+	if serviceUID <= 0 || serviceGID <= 0 {
+		return false
+	}
+	if peer.PID == 1 && peer.UID == 0 && peer.GID == 0 {
+		return true
+	}
+	return peer.PID > 0 && peer.UID == serviceUID && peer.GID == serviceGID
 }
 
 func newPiServiceRequestJournal(journal *audit.Journal) (*piServiceRequestJournal, error) {
@@ -1321,7 +1328,7 @@ func (j *piServiceRequestJournal) begin(ctx context.Context, peer piServicePeerC
 			continue
 		}
 		if prior.terminal == nil || prior.terminal.Status != "completed" || j.settlementVerifier == nil {
-			return audit.Record{}, ErrPiServiceUnresolvedPrior
+			return audit.Record{}, fmt.Errorf("%w: request %q has no completed terminal", ErrPiServiceUnresolvedPrior, prior.accepted.RequestID)
 		}
 		mark := piServiceVerifiedSettlement{acceptedHash: prior.acceptedRecord.Hash,
 			acceptedSequence: prior.acceptedRecord.Sequence, terminal: prior.terminal}
@@ -1336,7 +1343,7 @@ func (j *piServiceRequestJournal) begin(ctx context.Context, peer piServicePeerC
 		}
 		if err := j.settlementVerifier(ctx, prior); err != nil {
 			delete(j.verified, key)
-			return audit.Record{}, fmt.Errorf("%w: %v", ErrPiServiceUnresolvedPrior, err)
+			return audit.Record{}, fmt.Errorf("%w: request %q: %v", ErrPiServiceUnresolvedPrior, prior.accepted.RequestID, err)
 		}
 		if j.verified == nil {
 			j.verified = make(map[string]piServiceVerifiedSettlement)
@@ -1670,6 +1677,8 @@ func servePiServiceRequests(ctx context.Context, listener net.Listener, socket p
 				errorCode := "request-journal-unavailable"
 				if errors.Is(err, ErrPiServiceUnresolvedPrior) {
 					errorCode = "prior-workflow-unsettled"
+					// The response carries only the stable code; the cause belongs in the service log.
+					fmt.Fprintf(os.Stderr, "prior Pi workflow is not settled: %v\n", err)
 				}
 				_ = writePiServiceFrame(unixConn, piServiceResponse{SchemaVersion: piServiceResponseSchema,
 					RequestID: request.RequestID, Status: "refused", ErrorCode: errorCode})
@@ -1711,6 +1720,8 @@ func servePiServiceRequests(ctx context.Context, listener net.Listener, socket p
 			status, errorCode := "completed", ""
 			if len(receipt) == 0 || runErr != nil {
 				status, errorCode = "unknown", "task-outcome-unknown"
+				// The response carries only the stable code; the cause belongs in the service log.
+				fmt.Fprintf(os.Stderr, "request %s outcome unknown: %v\n", request.RequestID, runErr)
 			}
 			response := piServiceResponse{SchemaVersion: piServiceResponseSchema, RequestID: request.RequestID,
 				Status: status, ErrorCode: errorCode, Receipt: append(json.RawMessage(nil), receipt...)}
@@ -1740,7 +1751,7 @@ func callProductionPiService(ctx context.Context, socket piServiceSocketRegistra
 	if !piServicePeerAllowed(socket, allowed) {
 		return ErrPiServiceRefused
 	}
-	socketIdentity, err := measurePiServiceSocketPath(socket)
+	socketIdentity, err := measurePiServiceSocketPath(socket, false)
 	if err != nil {
 		return err
 	}
@@ -1761,7 +1772,7 @@ func callProductionPiService(ctx context.Context, socket piServiceSocketRegistra
 	if err != nil || !piServiceServerAllowed(serverPeer, serviceUID, serviceGID) {
 		return errors.Join(ErrPiServiceRefused, err)
 	}
-	if err := socketIdentity.revalidate(socket); err != nil {
+	if err := socketIdentity.revalidate(socket, false); err != nil {
 		return errors.Join(ErrPiServiceRefused, err)
 	}
 	response, err := callPiServiceConn(unixConn, request)
@@ -1779,7 +1790,7 @@ func callProductionPiService(ctx context.Context, socket piServiceSocketRegistra
 		return err
 	}
 	if response.Status != "completed" {
-		return fmt.Errorf("local Pi service %s: %s", response.Status, response.ErrorCode)
+		return errors.New(piServiceRefusalMessage(response.Status, response.ErrorCode))
 	}
 	if len(response.Receipt) == 0 {
 		return ErrPiServiceRefused
@@ -1960,6 +1971,9 @@ func runProductionPiService(ctx context.Context, output io.Writer) error {
 	if err := verifyPiServiceEnvironment(serviceConfig, registration); err != nil {
 		return err
 	}
+	if err := ensurePiServiceScratchDirectories(serviceConfig, registration.ServiceUID); err != nil {
+		return errors.Join(ErrPiServiceUnavailable, err)
+	}
 	// A corpus-mode service admits only trials of its frozen manifest. The manifest is
 	// read through the strict root-owned walk, must match the signed digest and pass
 	// evalcorpus.Validate, or the service refuses to start before it listens.
@@ -1977,6 +1991,11 @@ func runProductionPiService(ctx context.Context, output io.Writer) error {
 		return errors.Join(ErrPiServiceUnavailable, err)
 	}
 	defer providerRoute.Close()
+	if corpus != nil {
+		if err := corpus.prepareCDH(serviceConfig.CDH, providerRoute); err != nil {
+			return err
+		}
+	}
 	activated, err := systemdActivatedPiListener(socket)
 	if err != nil {
 		return err
@@ -2009,14 +2028,13 @@ func runProductionPiService(ctx context.Context, output io.Writer) error {
 	requests.settlementVerifier = func(settlementCtx context.Context, prior piServiceRequestState) error {
 		template, _, err := piruntime.LoadD09CellTemplate(settlementCtx)
 		if err != nil {
-			return errors.Join(ErrPiServiceUnresolvedPrior, err)
+			return settlementRefusal("current-template-load", errors.Join(ErrPiServiceUnresolvedPrior, err))
 		}
 		profile, err := piruntime.LoadLinuxSignedHostProfile("")
 		if err != nil {
-			return errors.Join(ErrPiServiceUnresolvedPrior, err)
+			return settlementRefusal("current-profile-load", errors.Join(ErrPiServiceUnresolvedPrior, err))
 		}
-		return workflowCatalog.verifyCompletedServiceRequest(settlementCtx, prior, contract.ServiceConfigDigest,
-			registrationID, verified, template, profile)
+		return workflowCatalog.verifyCompletedServiceRequest(settlementCtx, prior, verifiedSettlementLiveRoot{verified}, template, profile)
 	}
 	// A cached settlement is tied to the per-request evidence files it read, and an abandoned
 	// unknown request is skipped only while its workflow re-reconciles to the bound evidence.
@@ -2091,4 +2109,83 @@ func evidenceFingerprint(paths []string) string {
 		}
 	}
 	return "sha256:" + hex.EncodeToString(hash.Sum(nil))
+}
+
+// piServiceSocketParentMountAcceptable checks the per-mount flags of the socket
+// parent from the joined piServiceMountOptions string. nosuid and nodev are
+// always required. The client, in the host mount namespace, also requires rw;
+// the service's ProtectSystem=strict namespace remounts the parent read-only,
+// which only narrows access to a directory the service never writes (systemd
+// creates the socket), so there ro is accepted and rw is too.
+func piServiceSocketParentMountAcceptable(joined string, serviceNamespace bool) bool {
+	fields := strings.Split(joined, "\x00")
+	if len(fields) != 6 {
+		return false
+	}
+	flags := make(map[string]bool)
+	for _, flag := range strings.Split(fields[2], ",") {
+		flags[flag] = true
+	}
+	if !flags["nosuid"] || !flags["nodev"] || flags["ro"] == flags["rw"] {
+		return false
+	}
+	return serviceNamespace || flags["rw"]
+}
+
+// ensurePiServiceScratchDirectories creates the per-start scratch directories the
+// signed config names. The unit's RuntimeDirectory= makes only the runtime dir,
+// afresh at every start, so TMPDIR and XDG_CACHE_HOME below it must be made here.
+func ensurePiServiceScratchDirectories(config piServiceConfig, serviceUID int) error {
+	for _, directory := range []string{config.TMPDir, config.XDGCacheHome} {
+		if filepath.Dir(directory) != config.XDGRuntimeDir {
+			return fmt.Errorf("scratch directory %s is not a direct child of %s", directory, config.XDGRuntimeDir)
+		}
+	}
+	runtime, err := openServiceDirectoryNoSymlinks(config.XDGRuntimeDir)
+	if err != nil {
+		return fmt.Errorf("open service runtime directory: %w", err)
+	}
+	defer runtime.Close()
+	return ensureScratchDirectoriesIn(runtime, serviceUID, filepath.Base(config.TMPDir), filepath.Base(config.XDGCacheHome))
+}
+
+// ensureScratchDirectoriesIn makes each name a service-owned 0700 directory
+// below the open runtime directory, descriptor-relative and without following
+// links. A directory it created is chmod'ed through its descriptor; an existing
+// one must already be exactly right.
+func ensureScratchDirectoriesIn(runtime *os.File, serviceUID int, names ...string) error {
+	for _, name := range names {
+		if name == "" || name == "." || name == ".." || strings.ContainsRune(name, '/') {
+			return fmt.Errorf("invalid scratch directory name %q", name)
+		}
+		mkdirErr := syscall.Mkdirat(int(runtime.Fd()), name, 0o700)
+		if mkdirErr != nil && !errors.Is(mkdirErr, syscall.EEXIST) {
+			return fmt.Errorf("create scratch directory %s: %w", name, mkdirErr)
+		}
+		fd, err := syscall.Openat(int(runtime.Fd()), name, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0)
+		if err != nil {
+			return fmt.Errorf("open scratch directory %s without following links: %w", name, err)
+		}
+		directory := os.NewFile(uintptr(fd), name)
+		err = func() error {
+			defer directory.Close()
+			if mkdirErr == nil {
+				if err := syscall.Fchmod(int(directory.Fd()), 0o700); err != nil {
+					return err
+				}
+			}
+			var stat syscall.Stat_t
+			if err := syscall.Fstat(int(directory.Fd()), &stat); err != nil {
+				return err
+			}
+			if int(stat.Uid) != serviceUID || stat.Mode&0o7777 != 0o700 {
+				return fmt.Errorf("scratch directory %s must be owned by uid %d with mode 0700", name, serviceUID)
+			}
+			return nil
+		}()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }

@@ -116,6 +116,11 @@ func (c Check) validate() error {
 		}
 	case OpAbsent:
 		uses["path"] = true
+	case OpNodeTest:
+		uses["path"], uses["text"] = true, true
+		if c.Text == "" || len(c.Text) > MaxTextBytes || !utf8.ValidString(c.Text) {
+			return fmt.Errorf("text must be 1 to %d bytes of UTF-8", MaxTextBytes)
+		}
 	case OpUnchangedExcept:
 		uses["paths"] = true
 		if len(c.Paths) > MaxExceptPaths {

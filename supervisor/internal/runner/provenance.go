@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"tbound/supervisor/internal/audit"
+	"tbound/supervisor/internal/effectoracle"
 	"tbound/supervisor/internal/wsoracle"
 )
 
@@ -66,7 +67,7 @@ const (
 )
 
 // oracleVersionFor is the oracle version a finding under key must be bound to. It is
-// false for a key with no provenance requirement (EFF-TRANSIENT).
+// false for a key with no provenance requirement.
 func oracleVersionFor(key string) (string, bool) {
 	switch {
 	case slices.Contains(oracleKeys, key):
@@ -75,6 +76,8 @@ func oracleVersionFor(key string) (string, bool) {
 		return NetOracleVersion, true
 	case key == OracleProc01 || key == OracleProc02 || key == OracleProc03:
 		return ProcOracleVersion, true
+	case key == OracleTransient:
+		return effectoracle.OracleVersion, true
 	}
 	return "", false
 }
@@ -102,8 +105,10 @@ func (o *Outcome) refValid(key string) bool {
 	return ref.Report != "" && ref.Version == want
 }
 
-// observerKeys are the NET and PROC keys, supplied by netoracle and procoracle.
-var observerKeys = []string{OracleNet01, OracleNet02, OracleProc01, OracleProc02, OracleProc03}
+// observerKeys are the keys of the observers other than wsoracle: NET and PROC, supplied by netoracle and
+// procoracle, and the transient-mutation observer, supplied by effectoracle (through TransientCollector). Each finding
+// needs a report reference of the version its key requires, and a "none" without one is not a result.
+var observerKeys = []string{OracleNet01, OracleNet02, OracleProc01, OracleProc02, OracleProc03, OracleTransient}
 
 // observerRefsOK is false when a NET or PROC finding lacks a valid reference of its
 // own (refValid). Each such oracle carries its own version; none of them touches

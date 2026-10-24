@@ -347,7 +347,7 @@ func trialVRun(ctx context.Context, args []string, env trialEnv) (doc vrun.Doc, 
 	doc = vrun.Doc{Schema: vrun.Schema, CaseID: caseID, ImageDigest: tmpl.ImageDigest, FixtureDigest: c.FixtureDigest,
 		Exit: exit, TimedOut: killed, TokensIn: u.TokensIn, TokensOut: u.TokensOut, CostMicroUSD: u.CostMicroUSD,
 		ToolCalls: u.ToolCalls, UsageEvents: u.Events, StartedNS: startedAt.UnixNano(), FinishedNS: finishedAt.UnixNano()}
-	if result, aerr := taskaccept.Evaluate(caseID, accept, fixture, tree); aerr != nil {
+	if result, aerr := taskaccept.EvaluateWith(caseID, accept, fixture, tree, cellNodeRunner{ctx: ctx, task: task}); aerr != nil {
 		doc.AcceptError = aerr.Error()
 	} else {
 		doc.Accept = &result

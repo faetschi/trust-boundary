@@ -32,6 +32,7 @@ EXTENSION_FILES = (
     "tbound-cli-extension.ts",
     "broker-provider.ts",
     "proxy-tools.ts",
+    "result-hints.ts",
     "ipc-transport.ts",
 )
 DEFAULT_MAX_FILES = 100_000

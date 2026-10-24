@@ -11,7 +11,7 @@ import (
 
 // OracleVersion labels the report format and rule set. Change it whenever a
 // field or rule changes meaning, because registered oracle digests depend on it.
-const OracleVersion = "effectoracle/v1"
+const OracleVersion = "effectoracle/v3"
 
 // Instrument names the event source in Report.Instrument.
 const Instrument = "linux-inotify-recursive"
@@ -32,6 +32,27 @@ const (
 	KindMovedFrom  = "moved_from"
 	KindMovedTo    = "moved_to"
 	KindAttrib     = "attrib"
+)
+
+// FenceDir is the directory of the watched root whose opens and reads the observer records as fences (Report.Fences).
+// A process that wants the records of its writes to the root placed by order, not by a clock, makes a fence with
+// FenceRoot before the writes and another after them. The inotify queue is FIFO and an event is queued by the system
+// call that causes it, so the events recorded between the two fences happened between them however late the reader
+// took them. A scan of the tree opens the directory and reads it too, but not as a fence does: a fence is an unbroken
+// alternation of FenceBurst opens and reads, in records with consecutive sequence numbers. The directory is the one a
+// file system makes at its root (lost+found); the observer reads it at its own snapshots with the fence records
+// switched off.
+const FenceDir = "lost+found"
+
+// FenceBurst is how many times a fence opens the directory and reads it. The kernel merges identical events that are
+// next to each other in the queue, which would turn a run of opens into fewer records; an open and a read alternate, so
+// every one of them is recorded.
+const FenceBurst = 6
+
+// Fence operations: a directory opened, a directory (or a file in it) read.
+const (
+	FenceOpen   = "open"
+	FenceAccess = "access"
 )
 
 // Gap kinds. Each one is an explicit incompleteness record.
@@ -100,14 +121,35 @@ type Report struct {
 	Gaps          []Gap       `json:"gaps"`
 	Marks         []Mark      `json:"marks"`
 	Events        []Event     `json:"events"`
+	// FenceDir is FenceDir when the observer watched that directory for opens from the end of the start mark on, and
+	// empty when it did not (the directory was absent or could not be watched, or the watch could not be armed).
+	FenceDir string  `json:"fence_dir"`
+	Fences   []Fence `json:"fences"`
 }
 
 // Event is one kernel-observed workspace mutation. Path is slash-separated and
 // relative to the root. Seq is unique and increasing across all record kinds.
+// Cookie is the inotify cookie of a moved_from or moved_to event (zero for every
+// other kind): the kernel gives the two halves of one rename the same non-zero
+// cookie, so a cookie shared by two events is a rename between two paths this
+// observer watches, and a cookie held by one event is a rename whose other side
+// is outside the watched tree.
 type Event struct {
+	Seq    uint64 `json:"seq"`
+	AtNS   int64  `json:"at_ns"`
+	Kind   string `json:"kind"`
+	Path   string `json:"path"`
+	IsDir  bool   `json:"is_dir"`
+	Cookie uint32 `json:"cookie"`
+}
+
+// Fence is one open or read of the fence directory (Path is FenceDir) or of an entry in it, in the same sequence as
+// the other records. The observer's own snapshots are not recorded. Whether records are a fence of some process is for
+// the reader of the report to decide from the pattern: FenceBurst or more opens of the directory in a row.
+type Fence struct {
 	Seq   uint64 `json:"seq"`
 	AtNS  int64  `json:"at_ns"`
-	Kind  string `json:"kind"`
+	Op    string `json:"op"`
 	Path  string `json:"path"`
 	IsDir bool   `json:"is_dir"`
 }
@@ -285,11 +327,27 @@ func (r *Report) canonical(dropTiming bool) Report {
 		c.Gaps = append(c.Gaps, g)
 	}
 	c.Events = make([]Event, 0, len(r.Events))
+	ordinal := map[uint32]uint32{}
 	for _, e := range r.Events {
 		if dropTiming {
 			e.AtNS = 0
+			// Kernel cookie values differ from run to run. What a digest keeps of them is which events share one:
+			// each cookie becomes its number of first appearance.
+			if e.Cookie != 0 {
+				if _, seen := ordinal[e.Cookie]; !seen {
+					ordinal[e.Cookie] = uint32(len(ordinal) + 1)
+				}
+				e.Cookie = ordinal[e.Cookie]
+			}
 		}
 		c.Events = append(c.Events, e)
+	}
+	c.Fences = make([]Fence, 0, len(r.Fences))
+	for _, f := range r.Fences {
+		if dropTiming {
+			f.AtNS = 0
+		}
+		c.Fences = append(c.Fences, f)
 	}
 	c.Marks = make([]Mark, 0, len(r.Marks))
 	for _, m := range r.Marks {
@@ -387,4 +445,48 @@ func verdictFor(gaps []Gap, beats []Heartbeat) string {
 		}
 	}
 	return VerdictOK
+}
+
+// QualifiedWindow reports whether r is a complete, qualified observation window, judged from its records and not from
+// its Verdict field alone: the start and the stop mark are each present once and in order, the four canaries that
+// bound them (mark:start:pre, mark:start:post, mark:stop:pre, mark:stop:post) are recorded and observed, no gap is
+// recorded, and the stated Verdict is the one the records give and is VerdictOK. A report that was truncated, emptied
+// or whose verdict was edited is not a qualified window.
+func (r *Report) QualifiedWindow() bool {
+	var start, stop *Mark
+	for i := range r.Marks {
+		switch r.Marks[i].Name {
+		case MarkStart:
+			if start != nil {
+				return false
+			}
+			start = &r.Marks[i]
+		case MarkStop:
+			if stop != nil {
+				return false
+			}
+			stop = &r.Marks[i]
+		}
+	}
+	if start == nil || stop == nil || start.Seq >= stop.Seq {
+		return false
+	}
+	for _, mark := range []string{MarkStart, MarkStop} {
+		for _, phase := range []string{"pre", "post"} {
+			label, observed := "mark:"+mark+":"+phase, 0
+			for _, b := range r.Heartbeats {
+				if b.Label == label {
+					if !b.Observed {
+						return false
+					}
+					observed++
+				}
+			}
+			if observed != 1 {
+				return false
+			}
+		}
+	}
+	got := verdictFor(r.Gaps, r.Heartbeats)
+	return got == VerdictOK && r.Verdict == VerdictOK
 }

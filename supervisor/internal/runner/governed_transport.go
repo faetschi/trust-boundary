@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"os"
 	"os/exec"
 	"regexp"
 	"strings"
@@ -225,6 +227,12 @@ func (w *firstLineWriter) Write(p []byte) (int, error) {
 // RunReady implements ReadyTransport: Run, plus a call to ready with the first stdout line
 // while the remote command is still running.
 func (c SSHTransport) RunReady(ctx context.Context, argv []string, ready func([]byte)) ([]byte, []byte, int, error) {
+	return c.RunReadyStdin(ctx, argv, nil, ready)
+}
+
+// RunReadyStdin implements StdinTransport: RunReady with stdin as the remote command's standard input (nil: no input,
+// the end of file at once). The remote side sees the end of its stdin when stdin ends or when this ssh process is gone.
+func (c SSHTransport) RunReadyStdin(ctx context.Context, argv []string, stdin io.Reader, ready func([]byte)) ([]byte, []byte, int, error) {
 	args, err := c.sshArgs(argv)
 	if err != nil {
 		return nil, nil, 0, err
@@ -232,6 +240,21 @@ func (c SSHTransport) RunReady(ctx context.Context, argv []string, ready func([]
 	stdout := &firstLineWriter{ready: ready}
 	var stderr bytes.Buffer
 	cmd := exec.CommandContext(ctx, c.SSHPath, args...)
+	if stdin != nil {
+		// The child gets the read end of an OS pipe directly, so it never waits on a copying goroutine after ssh has
+		// exited. The goroutine ends when stdin ends or, if stdin is still open then, on its next read once the caller
+		// closes it (the caller owns stdin's lifetime).
+		pr, pw, perr := os.Pipe()
+		if perr != nil {
+			return nil, nil, 0, perr
+		}
+		defer pr.Close()
+		cmd.Stdin = pr
+		go func() {
+			defer pw.Close()
+			_, _ = io.Copy(pw, stdin)
+		}()
+	}
 	cmd.Stdout, cmd.Stderr = stdout, &stderr
 	cmd.WaitDelay = 5 * time.Second
 	runErr := cmd.Run()

@@ -104,9 +104,49 @@ type Case struct {
 	Adversarial  *Adversarial  `json:"adversarial,omitempty"`
 	Compliant    *Compliant    `json:"compliant,omitempty"`
 	Ambiguous    *Ambiguous    `json:"ambiguous,omitempty"`
+	// MeaningRecord is the D37 benchmark-adaptation record. It is present on every case
+	// adapted from an established benchmark item (case_origin "established") or authored
+	// from a pinned taxonomy ("derived"), and absent on legacy authored cases. When
+	// present, Validate requires its fields (rule meaning.*).
+	MeaningRecord *MeaningRecord `json:"meaning_record,omitempty"`
 	// Trial is the host-approved governed-run input of the case. It is optional in the
 	// schema and required by the governed service (cmd/tbound corpus admission).
 	Trial *Trial `json:"trial,omitempty"`
+}
+
+// CaseOrigin records how a case was sourced under D37.
+type CaseOrigin string
+
+const (
+	// OriginEstablished is a case adapted from a pinned, established benchmark item.
+	OriginEstablished CaseOrigin = "established"
+	// OriginDerived is a case authored from one distinct mechanism of a pinned taxonomy
+	// (OWASP Agentic Top 10, MITRE ATT&CK). Not used by the established-only pilot.
+	OriginDerived CaseOrigin = "derived"
+)
+
+// MeaningRecord is the D37 meaning record kept for every benchmark-adapted case, across
+// all three kinds. It names the pinned upstream item and the transformations applied so a
+// reviewer can check that intent was preserved. For adversarial cases several fields echo
+// Adversarial/Adaptation; the record is the one self-contained provenance home that
+// compliant and ambiguous cases also have.
+type MeaningRecord struct {
+	CaseOrigin         CaseOrigin  `json:"case_origin"`
+	BenchmarkKey       string      `json:"benchmark_key"`
+	BenchmarkRevision  string      `json:"benchmark_revision"`
+	BenchmarkDigest    string      `json:"benchmark_digest"`
+	SourceItemID       string      `json:"source_item_id"`
+	RootID             string      `json:"root_id"`
+	License            string      `json:"license"`
+	Redistribution     string      `json:"redistribution"`
+	PreservedIntent    string      `json:"preserved_intent"`
+	TaskUnit           string      `json:"task_unit"`
+	AuthorizationClass string      `json:"authorization_class"`
+	Transformations    []string    `json:"transformations"`
+	LostDistinctions   []string    `json:"lost_distinctions"`
+	ToolMapping        string      `json:"tool_mapping"`
+	OracleMapping      string      `json:"oracle_mapping"`
+	LabelOrigin        LabelOrigin `json:"label_origin"`
 }
 
 // Trial is what the governed service runs for a case: the host-approved prompt and the
@@ -143,8 +183,16 @@ type ScriptTurn struct {
 	Text      string          `json:"text,omitempty"`
 }
 
+// The only review and adjudication decisions. Validate refuses any other value, and a
+// case whose standing decision is DecisionReject makes the manifest non-admissible.
+const (
+	DecisionAccept = "accept"
+	DecisionReject = "reject"
+)
+
 // Review is one construct-validity review. Every case has exactly two, from different
-// roles and different reviewers, both human and blinded.
+// roles and different reviewers, both human and blinded. Decision is exactly "accept" or
+// "reject"; role and reviewer must not be TODO placeholders.
 type Review struct {
 	Role     string `json:"role"`
 	Reviewer string `json:"reviewer"`
@@ -154,7 +202,8 @@ type Review struct {
 }
 
 // Adjudication is required exactly when the two reviews disagree. The adjudicator is a
-// third reviewer: human and blinded, and not either of the two reviewers.
+// third reviewer: human and blinded, and not either of the two reviewers. Its decision is
+// the standing decision of the case.
 type Adjudication struct {
 	Adjudicator string `json:"adjudicator"`
 	Human       bool   `json:"human"`
