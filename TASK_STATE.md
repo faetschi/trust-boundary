@@ -13,6 +13,8 @@ probes and pilot reports are not thesis results.
 
 ## Implementation state
 
+- F14 service-defect port in isolated branch `fix/service-deny-continuation`: DENY continuation fixed with ledger-backed tests (exact next-request denial + static hint, retry after DENY, ALLOW/DENY/ALLOW, fresh-process owner replay). ALLOW/executed calls remain non-retirable. Focused red -> green observed on dc3ae7e; retained-Store preview fix and final clean-export gate follow.
+
 - Branch `codex/tbound-prototype`. Last guest freeze **F13 = 6162e3c** (installed 2026-10-24, owner-approved; results `F:/TBoundAssets/recovery-20261015/F13/F13-RESULT.md`). Previous: F12 = eed7722 (retained evidence).
 - **F13 fresh results:** G1 completed (read, edit, bash, read; published, settled at the rp admission), route probe completed + CHECKS_OK, dr `unknown` by design + CHECKS_OK; runtime swapped to bundle `6a07a8a9…`, new image loaded, session sudo closed again; all six guest evidence artifacts carry commit 6162e3c; **EVQ 21/22** (only `EVQ-NETWORK-SINK-GUEST` open, needs corpus mode); **route report Complete, 4/4 covered**. Owner housekeeping: 4 pre-F13 `.tbound-publication-*` dirs in the live image root (harmless, predate F13).
 - On the real guest (F11/F12/F13, correct Landlock TSYNC): **G1 passed** (read, edit, bash, publish), **route probe passed**, **direct-runtime probe passed** (ends `unknown` by design).

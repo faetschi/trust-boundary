@@ -271,6 +271,10 @@ type workflowVerticalFixture struct {
 	providerJournalPath string
 	limits              workflowrecovery.Limits
 	ownerStoreIdentity  workflowrecovery.OwnerStoreIdentity
+
+	owner                              *workflowrecovery.SQLiteOwner
+	protectedRoot                      *workflowrecovery.ProtectedTrustedRoot
+	ownerPath, rootPath, ownerStoreDir string
 }
 
 func runWorkflowVertical(t *testing.T, launchProof bool, retries int) {
@@ -686,7 +690,9 @@ func newWorkflowVerticalFixture(t *testing.T, launchProof bool, retries int,
 	}
 	return &workflowVerticalFixture{ctx: ctx, authority: authority, ledger: ledger, conversation: conversation,
 		durable: durable, policy: policy, store: store, storeJournal: storeJournal, providerJournal: providerJournal,
-		providerJournalPath: providerJournalPath, limits: limits, ownerStoreIdentity: ownerStoreIdentity}
+		providerJournalPath: providerJournalPath, limits: limits, ownerStoreIdentity: ownerStoreIdentity,
+		owner: owner, protectedRoot: protectedRoot, ownerPath: filepath.Join(ownerStoreDir, "workflow.sqlite"),
+		rootPath: workflowRootPath, ownerStoreDir: ownerStoreDir}
 }
 
 func TestWorkflowDigestDomainsFailClosed(t *testing.T) {

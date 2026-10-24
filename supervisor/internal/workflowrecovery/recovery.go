@@ -1187,10 +1187,44 @@ func validateHostCallReservationAdmission(cp Checkpoint, now time.Time) error {
 	} else if !errors.Is(err, ErrPendingUnknown) {
 		return err
 	}
-	if !isPostResultProviderExchangeReady(cp) && !isRetryableFailureProviderExchangeReady(cp) {
+	if !isPostResultProviderExchangeReady(cp) && !isRetryableFailureProviderExchangeReady(cp) &&
+		!isDeniedResultProviderExchangeReady(cp) {
 		return ErrPendingUnknown
 	}
 	return nil
+}
+
+// deniedCallAwaitsProviderAnswer is the state a released DENY leaves: the active conversation awaits
+// the model's answer to the DENY result, and the denied call, captured in that conversation under the
+// current fence, is retired with a commitment to its journaled DENY decision and result. A retired
+// call can never be consumed: effect admission requires an available capture.
+func deniedCallAwaitsProviderAnswer(p Pins) bool {
+	if p.ProviderDisposition != DispositionAwaitingProviderExchange || p.PendingCallDisposition != PendingCallRetired ||
+		len(p.ProviderTranscripts) == 0 || p.HostCallReservation == nil ||
+		p.HostCallReservation.Disposition != HostCallTerminal || p.HostCallReservation.CapturedCall == nil {
+		return false
+	}
+	active := p.ProviderTranscripts[len(p.ProviderTranscripts)-1]
+	captured := p.HostCallReservation.CapturedCall
+	return active.Disposition == DispositionAwaitingProviderExchange && captured.Disposition == CapturedCallRetired &&
+		validDigest(captured.RetirementDigest) && captured.ConversationID == active.ConversationID &&
+		captured.RecoveryGeneration == p.RecoveryGeneration && captured.OwnerEpoch == p.OwnerEpoch
+}
+
+// isDeniedResultProviderExchangeReady admits the provider reservation that answers a released DENY.
+// The new reservation replaces the retired capture, so its call identity cannot be charged again.
+func isDeniedResultProviderExchangeReady(cp Checkpoint) bool {
+	pins := cp.Pins
+	if !deniedCallAwaitsProviderAnswer(pins) {
+		return false
+	}
+	for _, transcript := range pins.ProviderTranscripts[:len(pins.ProviderTranscripts)-1] {
+		if transcript.Disposition != DispositionTerminal && transcript.Disposition != DispositionRetired {
+			return false
+		}
+	}
+	effect := pins.EffectReservation
+	return effect == nil || effect.Disposition == EffectReservationTerminal || effect.Disposition == EffectReservationRetired
 }
 
 // isRetryableFailureProviderExchangeReady admits one further provider reservation after a
@@ -1198,11 +1232,12 @@ func validateHostCallReservationAdmission(cp Checkpoint, now time.Time) error {
 // still awaited, the failed attempt's host call is terminal with an outcome digest and captured
 // nothing, and no effect or captured call is open. Whether the retry bound holds is enforced by the
 // provider conversation and its replay; the host-call and token ceilings charged by every
-// reservation bound the total here.
+// reservation bound the total here. The prior call may be settled by its effect or retired by a DENY.
 func isRetryableFailureProviderExchangeReady(cp Checkpoint) bool {
 	pins := cp.Pins
 	if pins.ProviderDisposition != DispositionAwaitingProviderExchange || len(pins.ProviderTranscripts) == 0 ||
-		pins.PendingCallDisposition != PendingCallNone && pins.PendingCallDisposition != PendingCallTerminal {
+		pins.PendingCallDisposition != PendingCallNone && pins.PendingCallDisposition != PendingCallTerminal &&
+			pins.PendingCallDisposition != PendingCallRetired {
 		return false
 	}
 	activeIndex := len(pins.ProviderTranscripts) - 1
@@ -1488,7 +1523,7 @@ func validateCapturedCallPin(p Pins) error {
 		return fmt.Errorf("%w: live captured call belongs to another workflow generation or owner fence", ErrOwnerFence)
 	}
 	if captured.Disposition == CapturedCallRetired {
-		foundRetiredConversation := false
+		foundRetiredConversation := deniedCallAwaitsProviderAnswer(p)
 		for index, transcript := range p.ProviderTranscripts {
 			if transcript.ConversationID == captured.ConversationID && transcript.Disposition == DispositionRetired {
 				foundRetiredConversation = true
@@ -1526,7 +1561,7 @@ func validateCapturedCallPin(p Pins) error {
 		promptState := p.ProviderDisposition == DispositionAwaitingHostPrompt &&
 			(p.PendingCallDisposition == PendingCallNone || p.PendingCallDisposition == PendingCallTerminal ||
 				p.PendingCallDisposition == PendingCallRetired)
-		if !validDigest(captured.RetirementDigest) || (!retiredState && !promptState) {
+		if !validDigest(captured.RetirementDigest) || (!retiredState && !promptState && !deniedCallAwaitsProviderAnswer(p)) {
 			return fmt.Errorf("%w: captured call retirement is not joined to a retired or restarted provider state", ErrRollback)
 		}
 	default:
@@ -1921,7 +1956,8 @@ func validateCapturedCallObservation(old, next Pins) error {
 		next.HostCallReservation.Disposition == HostCallTerminal &&
 		(next.ProviderDisposition == DispositionRetired && next.PendingCallDisposition == PendingCallRetired ||
 			next.ProviderDisposition == DispositionAwaitingHostPrompt &&
-				(next.PendingCallDisposition == PendingCallNone || next.PendingCallDisposition == PendingCallRetired)) {
+				(next.PendingCallDisposition == PendingCallNone || next.PendingCallDisposition == PendingCallRetired) ||
+			deniedCallAwaitsProviderAnswer(next)) {
 		return nil
 	}
 	if previous != nil && previous.Disposition == CapturedCallConsumed && current == nil &&

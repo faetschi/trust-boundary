@@ -550,7 +550,9 @@ func (a *SessionOperationAuthority) buildActiveProgressPins(ctx context.Context,
 			}
 			next.HostCallReservation.CapturedCall = nil
 		case workflowrecovery.CapturedCallAvailable:
-			if projection.Provider.Disposition != providerbridge.DispositionAwaitingHostPrompt ||
+			// A released DENY leaves the conversation awaiting the model's answer to the DENY result.
+			if projection.Provider.Disposition != providerbridge.DispositionAwaitingHostPrompt &&
+				projection.Provider.Disposition != providerbridge.DispositionAwaitingProviderExchange ||
 				projection.Provider.DecisionCount != projection.Provider.ResultCount {
 				return workflowrecovery.Pins{}, workflowrecovery.ErrObservation
 			}
