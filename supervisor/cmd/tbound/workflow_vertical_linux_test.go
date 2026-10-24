@@ -275,7 +275,13 @@ type workflowVerticalFixture struct {
 	config           providerbridge.Config
 	storePath        string
 	storeJournalPath string
-	closers          []func()
+	// owner, protectedRoot and their paths let a test close the workflow owner and reopen it elsewhere.
+	owner         *workflowrecovery.SQLiteOwner
+	protectedRoot *workflowrecovery.ProtectedTrustedRoot
+	ownerPath     string
+	rootPath      string
+	ownerStoreDir string
+	closers       []func()
 }
 
 // workflowVerticalOptions shapes prepareWorkflowVertical. rules replace the default read-only rule
@@ -289,6 +295,8 @@ type workflowVerticalOptions struct {
 	rules         []gate.Rule
 	predecessor   providerbridge.PredecessorContext
 	withoutLedger bool
+	// maxHostCalls and maxTokens, when nonzero, replace the retry-derived workflow limits.
+	maxHostCalls, maxTokens uint64
 }
 
 // close closes every handle the fixture opened, newest first. It runs again harmlessly at cleanup.
@@ -641,6 +649,9 @@ func prepareWorkflowVertical(t *testing.T, options workflowVerticalOptions) *wor
 	taskDigest := digestBytes([]byte("vertical task source identity"))
 	limits := workflowrecovery.Limits{MaxPreEffectRetries: 2, MaxCleanRestarts: 2,
 		MaxHostCalls: uint64(4 + 2*retries), MaxTokens: uint64(2048 + 1024*retries), Deadline: deadline}
+	if options.maxHostCalls != 0 {
+		limits.MaxHostCalls, limits.MaxTokens = options.maxHostCalls, options.maxTokens
+	}
 	pins := workflowrecovery.Pins{
 		WorkflowID: workflowVerticalID, SessionID: workflowVerticalSessionID,
 		RecoveryGeneration: 1, OwnerEpoch: 1,
@@ -724,6 +735,8 @@ func prepareWorkflowVertical(t *testing.T, options workflowVerticalOptions) *wor
 	f.storeJournal, f.providerJournal, f.providerJournalPath = storeJournal, providerJournal, providerJournalPath
 	f.storePath, f.storeJournalPath = storePath, storeJournalPath
 	f.limits, f.ownerStoreIdentity = limits, ownerStoreIdentity
+	f.owner, f.protectedRoot, f.ownerStoreDir = owner, protectedRoot, ownerStoreDir
+	f.ownerPath, f.rootPath = filepath.Join(ownerStoreDir, "workflow.sqlite"), workflowRootPath
 	return f
 }
 

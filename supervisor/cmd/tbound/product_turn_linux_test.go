@@ -41,9 +41,7 @@ type retainedProductPredecessor struct {
 
 // runProductPredecessorTurn completes one governed turn (an ALLOWed read with its result, a DENIED
 // write whose result carries the static hint, a final answer with no tool call), records what a fresh
-// process needs, and closes every fixture handle. It runs without a workflow ledger because a
-// ledger-backed conversation cannot yet checkpoint a released DENY: workflowrecovery retires an
-// available captured call only when its conversation ends.
+// process needs, and closes every fixture handle. It runs without a workflow ledger.
 func runProductPredecessorTurn(t *testing.T) retainedProductPredecessor {
 	t.Helper()
 	f := prepareWorkflowVertical(t, workflowVerticalOptions{withoutLedger: true, rules: []gate.Rule{
