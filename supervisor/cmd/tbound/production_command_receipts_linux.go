@@ -238,7 +238,7 @@ func validateProductionD09ReceiptInvocation(view *sessionrepo.CommandView, spec 
 		return commandEvidenceRefused("view-not-directory", err)
 	}
 	// The proof's mount ID is the cell's own /work mount in its private mount namespace, never this
-	// host descriptor's mount; the view binds by device/inode (docs/governed-session-composition.md).
+	// host descriptor's mount; the view binds by device/inode (docs/runtime/governed-session-composition.md).
 	stat, ok := info.Sys().(*syscall.Stat_t)
 	if !ok || uint64(stat.Dev) != receipt.Proof.WorkerDevice || stat.Ino != receipt.Proof.WorkerInode ||
 		uint64(stat.Dev) != receipt.Proof.RuntimeDevice || stat.Ino != receipt.Proof.RuntimeInode {

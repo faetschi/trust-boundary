@@ -3,7 +3,7 @@
 // separate fresh sessions: phase 1 classifies the case without any claimed label, phase 2
 // rates the checklist with the claims shown. It then reports Fleiss' kappa per checklist item
 // and per phase-1 field, the phase-1 agreement with the claimed labels, all before
-// adjudication, and the advisor's audit list. See docs/panel-run.md.
+// adjudication, and the advisor's audit list. See docs/guides/panel-run.md.
 //
 // Exactly one mode is required, so nothing spends money by accident:
 //

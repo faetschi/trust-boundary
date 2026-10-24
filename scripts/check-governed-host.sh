@@ -75,7 +75,7 @@ echo "summary: $pass pass, $warn warn, $fail fail"
 if [ "$fail" -gt 0 ]; then
   echo
   echo "operator action required:"
-  echo "  - provision the declared evaluation host/profile (see docs/governed-setup.md)"
+  echo "  - provision the declared evaluation host/profile (see docs/guides/governed-setup.md)"
   echo "  - install rootless Podman + crun and offline Cosign verification material"
   echo "  - delegate a fixed non-threaded cgroup v2 subtree with cgroup.kill"
   echo "  - generate and sign /etc/tbound/pi-host-profile.* (requires the profile tooling; Phase 2)"

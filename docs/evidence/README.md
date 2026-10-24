@@ -63,12 +63,12 @@ receipt describes the pre-CLI implementation and does not qualify the CLI migrat
   `fdc31f2`, records finalization of the exact powered-off disposable seed and its
   disk hash. The live ABI8 probe and governed-host qualification remain unrun.
 
-The dated `../evaluation-evidence-index-2026-10-07.json` is an immutable structural
+The dated `../evaluation/evaluation-evidence-index-2026-10-07.json` is an immutable structural
 ledger. Its original source references may name documents retired from active
 navigation. Do not rewrite the ledger or receipts to make historical outcomes
 look current.
 
-`evaluation-evidence-index-2026-10-07.json` is a dated snapshot (checkout efda19e). Its schema rejects extra fields, so it is not edited in place. Known stale entries: secondary-recovery-16x3 (16 scenarios/48 trials; current proposal is 17x3=51, unadopted) and g4-g5-registration-reproduction (OSF/Zenodo registration was removed by the 2026-10-14 decision). Current status is in docs/status.md.
+`../evaluation/evaluation-evidence-index-2026-10-07.json` is a dated snapshot (checkout efda19e). Its schema rejects extra fields, so it is not edited in place. Known stale entries: secondary-recovery-16x3 (16 scenarios/48 trials; current proposal is 17x3=51, unadopted) and g4-g5-registration-reproduction (OSF/Zenodo registration was removed by the 2026-10-14 decision). Current status is in docs/evaluation/status.md.
 
 [historical-sources.json](historical-sources.json) maps the retired source paths,
 generated snapshots, and removed binary to their original SHA-256, byte length,
@@ -91,6 +91,6 @@ sha256sum /tmp/tbound-historical-status.md
 ```
 
 Use byte-preserving redirection for binary artifacts and on platforms whose shell
-rewrites encodings. Active status belongs in [status.md](../status.md), not these
+rewrites encodings. Active status belongs in [status.md](../evaluation/status.md), not these
 dated snapshots. New results require their own source/profile identities and
 evidence class; missing observations must remain unsupported.

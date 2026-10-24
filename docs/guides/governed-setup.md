@@ -61,7 +61,7 @@ and preserve its current work and baseline before a separately authorized setup.
 **2026-10-14 decision:** the user authorizes disposing of the existing development VM
 and replacing it with a fresh disposable qualification guest of similar attributes
 (8 vCPUs, 16 GiB fixed RAM, 40 GiB disk). See
-[the decision record](decisions/2026-10-14-qualification-and-research-procedure.md).
+[the decision record](../decisions/2026-10-14-qualification-and-research-procedure.md).
 Inspect and preserve required artifacts before disposal. Verify the replacement's
 live ABI, filesystem, runtime closure, and service profile before qualification.
 Keep private provisioning paths distinct and credentials out of source control. The

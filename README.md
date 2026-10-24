@@ -20,17 +20,17 @@ There is no interactive Pi chat mode yet.
 - The optional [web chat](extensions/webchat/README.md) is frozen and outside the thesis.
 
 See [OVERVIEW.md](OVERVIEW.md) for the engineering checkpoint and
-[status and gates](docs/status.md) for verified scope and remaining work.
+[status and gates](docs/evaluation/status.md) for verified scope and remaining work.
 
 ## Start here
 
 - [Use TBound](USAGE.md): installation, tasks, operation, and evaluation commands.
-- [Set up TBound and Pi](docs/setup.md): native Linux or Windows with a Linux VM,
+- [Set up TBound and Pi](docs/guides/setup.md): native Linux or Windows with a Linux VM,
   installation, Doctor, and development fixtures.
-- [Reproduce TBound](docs/reproduce.md): build, gate, offline signing, governed
+- [Reproduce TBound](docs/guides/reproduce.md): build, gate, offline signing, governed
   run, and the thesis evaluation workflow.
 - [Documentation index](docs/README.md): guides and detailed references.
-- [Architecture](docs/architecture.md): components and trust boundaries.
+- [Architecture](docs/runtime/architecture.md): components and trust boundaries.
 
 ## Repository map
 
@@ -40,7 +40,7 @@ See [OVERVIEW.md](OVERVIEW.md) for the engineering checkpoint and
 - `install/`, `scripts/`, `packaging/`: local installation, build, and release assets.
 - `infra/`: host preparation, guest provisioning, operator dispatcher, and evidence mappings.
 - `corpus/`: engineering smoke fixtures and the draft benchmark-adapted pilot corpus.
-- `docs/`: setup, reproduction, runtime contracts, and engineering records.
+- `docs/`: guides, runtime contracts, evaluation records, decisions, evidence, and archive.
 - `extensions/webchat/`: the frozen optional web chat extension.
 
 ## Master thesis
@@ -57,5 +57,5 @@ H1 concerns PVR, the rate of forbidden effects in adversarial runs, and ORR,
 the rate of rejection of compliant tasks.
 Thesis claims come only from the registered evaluation, not from tests,
 fixtures, capability probes, or engineering smoke runs.
-See [reproduction](docs/reproduce.md#7-reproduce-the-evaluation-workflow) for the
+See [reproduction](docs/guides/reproduce.md#7-reproduce-the-evaluation-workflow) for the
 pilot, review, evidence, and pre-registration sequence.

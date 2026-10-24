@@ -332,7 +332,7 @@ else {
     [void]$report.AppendLine('The Landlock ABI value could not be read from this report; verify it on the host.')
 }
 [void]$report.AppendLine('Reminder: UNVERIFIED is not success; two probe items are UNVERIFIED by design (cgroup.kill-write is never written; uidmap helper behavior is not inferred from presence).')
-[void]$report.AppendLine('This report is a host capability snapshot for the thesis profile freeze. It is not containment evidence and does not establish G1 (see docs/setup.md).')
+[void]$report.AppendLine('This report is a host capability snapshot for the thesis profile freeze. It is not containment evidence and does not establish G1 (see docs/guides/setup.md).')
 
 $reportText = $report.ToString()
 Write-Output $reportText

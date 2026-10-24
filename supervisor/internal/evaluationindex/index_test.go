@@ -10,7 +10,7 @@ import (
 )
 
 func TestLedgerDocumentValidatesWithoutRuntimeDependencies(t *testing.T) {
-	path := filepath.Join("..", "..", "..", "docs", "evaluation-evidence-index-2026-10-07.json")
+	path := filepath.Join("..", "..", "..", "docs", "evaluation", "evaluation-evidence-index-2026-10-07.json")
 	b, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)

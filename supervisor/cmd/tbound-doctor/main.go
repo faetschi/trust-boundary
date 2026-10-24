@@ -206,7 +206,7 @@ func signedProfileCheckAt(directory string) check {
 	return check{
 		Name: "signed-profile", Status: warn,
 		Detail:      "missing: " + strings.Join(missing, ", "),
-		Remediation: fmt.Sprintf("A host operator must provision the root-owned signed profile and fixed public key under %s; see docs/governed-setup.md section 4. Re-run tbound-doctor. Development runs do not need these files.", directory),
+		Remediation: fmt.Sprintf("A host operator must provision the root-owned signed profile and fixed public key under %s; see docs/guides/governed-setup.md section 4. Re-run tbound-doctor. Development runs do not need these files.", directory),
 	}
 }
 

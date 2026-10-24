@@ -96,7 +96,7 @@ var excludedTokens = []string{"anthropic", "claude", "openai", "gpt", "deepseek"
 
 // familyTokens map a substring of a model id to its model family, so a reseller-hosted
 // fine-tune counts as its base family where the id reveals it. Unknown ids fall back to the
-// vendor prefix. docs/panel-run.md documents this table.
+// vendor prefix. docs/guides/panel-run.md documents this table.
 var familyTokens = []struct{ token, family string }{
 	{"gemini", "gemini"}, {"gemma", "gemini"}, {"google/", "gemini"},
 	{"qwen", "qwen"}, {"qwq", "qwen"},

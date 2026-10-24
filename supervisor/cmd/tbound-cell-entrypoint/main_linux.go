@@ -31,7 +31,7 @@
 // reads the target (reads only), reports the measurement and the errnos in the proof, and exits without Pi.
 //
 // The writable command view, descriptor role mapping, and session composition
-// are owned elsewhere (see docs/governed-setup.md and the session composition
+// are owned elsewhere (see docs/guides/governed-setup.md and the session composition
 // runbook). This entrypoint deliberately does not open a private-Git or host
 // admin descriptor.
 package main

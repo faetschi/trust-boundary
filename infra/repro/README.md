@@ -18,7 +18,7 @@ with a plain-language "what to fix" footer.
 Everything here is reproducibility infrastructure for the thesis evaluation
 profile. It is not production hardening, and a passing probe is a capability
 snapshot — not containment evidence and not G1 (see
-[../../docs/setup.md](../../docs/setup.md)).
+[../../docs/guides/setup.md](../../docs/guides/setup.md)).
 
 Bootstrap prepares a candidate host and records capability results; a zero
 exit does not register or qualify a clean guest, prove containment, or
@@ -207,4 +207,4 @@ summary rather than treating the raw exit code alone as a capability result.
 
 The full guide with step counts, expected duration, troubleshooting table, and
 the G1 profile-freeze mapping is
-[../../docs/setup.md](../../docs/setup.md).
+[../../docs/guides/setup.md](../../docs/guides/setup.md).

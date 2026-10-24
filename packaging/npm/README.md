@@ -28,8 +28,8 @@ tbound <anything>    -> tbound
 
 `tbound-profile` generates/signs/verifies the Linux host profile. It is a
 **Linux-only** tool: on macOS/Windows the forwarded binary is a stub that exits
-with a clear "Linux-only" message. See [`../../docs/setup.md`](../../docs/setup.md)
-and [`../../docs/release.md`](../../docs/release.md).
+with a clear "Linux-only" message. See [`../../docs/guides/setup.md`](../../docs/guides/setup.md)
+and [`../../docs/guides/release.md`](../../docs/guides/release.md).
 
 ## Not shipped here
 
@@ -48,4 +48,4 @@ Skeleton only. To publish you must:
 3. Publish the platform packages, then this root package.
 
 Until those are published, `@tbound/cli` cannot resolve a binary and will print a
-clear error. Build from source in the meantime (`docs/setup.md`).
+clear error. Build from source in the meantime (`docs/guides/setup.md`).

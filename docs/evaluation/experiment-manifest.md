@@ -2,7 +2,7 @@
 
 > **Status: superseded candidate (written 2026-10-08).** The live pilot manifest
 > is `corpus/pilot/manifest.draft.json`; current state is in
-> [`../TASK_STATE.md`](../TASK_STATE.md). This file is kept only because
+> [`../TASK_STATE.md`](../../TASK_STATE.md). This file is kept only because
 > `infra/repro/CLEAN-GUEST-QUALIFICATION.md` cites it. It is not a G1 manifest.
 
 > **candidate — not G1; makes no containment/provider claim**
@@ -154,7 +154,7 @@ that are now contradicted by green tests and later verified runs. Examples:
   `37405715…` host-automation pin paragraph that `TASK_STATE.md` marks
   superseded.
 
-`docs/implementation-status.md` was retired; see `docs/status.md`.
+`docs/implementation-status.md` was retired; see `docs/evaluation/status.md`.
 
 ---
 
@@ -164,7 +164,7 @@ The recovery amendment is a draft candidate only. It freezes no scenario,
 injector, VM, oracle, or analysis rule and registers no trial. The proposed
 denominator is 51 (eight lifecycle scenarios plus nine incidents, each
 repeated three times). Scenario labels and required dispositions are in
-[`2026-10-13-recovery-boundary-amendment.md`](decisions/2026-10-13-recovery-boundary-amendment.md).
+[`2026-10-13-recovery-boundary-amendment.md`](../decisions/2026-10-13-recovery-boundary-amendment.md).
 
 | Proposed hook | Current prototype status |
 |---|---|

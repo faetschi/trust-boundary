@@ -52,7 +52,7 @@ export PATH="$HOME/.local/share/tbound/bin:$PATH"
 tbound-doctor --pi "$(command -v pi)"    # advisory health check
 ```
 
-Details: [setup](docs/setup.md).
+Details: [setup](docs/guides/setup.md).
 
 ## 4. Try it without a governed host
 
@@ -67,7 +67,7 @@ cd supervisor && go build -o "$HOME/.cache/tbound-build/tbound" ./cmd/tbound
 ```
 
 The `--dev-fixture` needs a few environment variables (Pi, Node, adapter path,
-a private ext4 directory): see [docs/setup.md](docs/setup.md).
+a private ext4 directory): see [docs/guides/setup.md](docs/guides/setup.md).
 
 ## 5. Set up a governed host (one time)
 
@@ -83,7 +83,7 @@ This is the part that makes TBound a real boundary. In short:
 4. **Install** the signed files and the pins with the operator dispatcher
    (a narrow, root-owned `sudo` command), then start the socket.
 
-The full procedure, with every measured field: [docs/governed-setup.md](docs/governed-setup.md)
+The full procedure, with every measured field: [docs/guides/governed-setup.md](docs/guides/governed-setup.md)
 and the guest runbooks in [infra/guest/](infra/guest/README.md) (including
 `PROVISIONING-SIGNING.md`).
 
@@ -108,8 +108,8 @@ tbound serve --pi --task-id TASK_ID \
   stable error code and a hint), or
   `unknown` (the outcome could not be proven; see section 8).
 
-Details: [docs/setup.md](docs/setup.md), [docs/production-pi-session.md](docs/production-pi-session.md),
-[docs/publication-contract.md](docs/publication-contract.md).
+Details: [docs/guides/setup.md](docs/guides/setup.md), [docs/runtime/production-pi-session.md](docs/runtime/production-pi-session.md),
+[docs/runtime/publication-contract.md](docs/runtime/publication-contract.md).
 
 ## 7. Updating a governed host ("freeze")
 
@@ -195,11 +195,11 @@ unset OPENROUTER_API_KEY
   0.60–0.79 = revise; below 0.60 = stop; any missing case = no pass.
 - Give the reviewer `audit.md`, `audit.json`, `audit-packets/` and `stats.md`.
 
-Full guide: [docs/panel-run.md](docs/panel-run.md).
+Full guide: [docs/guides/panel-run.md](docs/guides/panel-run.md).
 
 ## 10. Where to read more
 
-- [Reproduce TBound](docs/reproduce.md): the host, signing, freeze, and evaluation sequence.
+- [Reproduce TBound](docs/guides/reproduce.md): the host, signing, freeze, and evaluation sequence.
 - [docs/README.md](docs/README.md): what each document covers.
-- [docs/architecture.md](docs/architecture.md): components and trust boundaries.
-- [docs/status.md](docs/status.md): what is verified and what is not.
+- [docs/runtime/architecture.md](docs/runtime/architecture.md): components and trust boundaries.
+- [docs/evaluation/status.md](docs/evaluation/status.md): what is verified and what is not.

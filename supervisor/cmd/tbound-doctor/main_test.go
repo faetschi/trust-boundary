@@ -19,7 +19,7 @@ func TestSignedProfileCheckReportsFullMissingPaths(t *testing.T) {
 	if got.Name != "signed-profile" || got.Status != warn || got.Detail != want {
 		t.Fatalf("signed-profile check = %+v, want missing paths %q", got, want)
 	}
-	if !strings.Contains(got.Remediation, "docs/governed-setup.md section 4") || !strings.Contains(got.Remediation, directory) {
+	if !strings.Contains(got.Remediation, "docs/guides/governed-setup.md section 4") || !strings.Contains(got.Remediation, directory) {
 		t.Fatalf("signed-profile remediation is not actionable: %q", got.Remediation)
 	}
 }

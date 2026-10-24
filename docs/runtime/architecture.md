@@ -2,7 +2,7 @@
 
 **Status (2026-10-24):** G1 passes on the real guest at F12. This page describes
 the authority boundaries and seams, not the current gate state; see
-[current status](status.md) and [OVERVIEW](../OVERVIEW.md).
+[current status](../evaluation/status.md) and [OVERVIEW](../../OVERVIEW.md).
 
 TBound is a Linux host supervisor prototype for a single Pi coding task. Its
 design keeps authorization and durable execution state outside the model
@@ -59,7 +59,7 @@ transition artifacts, not evidence for the official CLI composition.
 
 These are the current contracts that the Go composition and the native and
 adapter owners must preserve. They describe code, not qualification. The operator
-CLI routes and exit codes are in [governed host setup](governed-setup.md#cli-routes-and-exit-codes).
+CLI routes and exit codes are in [governed host setup](../guides/governed-setup.md#cli-routes-and-exit-codes).
 
 - **Child lifecycle:** `piruntime.ChildSpec` starts a child with an exact
   environment allow-list (a nil environment is empty, never the parent's) and an
@@ -88,7 +88,7 @@ CLI routes and exit codes are in [governed host setup](governed-setup.md#cli-rou
   argument digest, strictly increasing sequence, and expected generation
   (`supervisor/internal/broker/protocol/arguments.go`). Unknown, duplicate, replayed,
   out-of-order, mismatched, and malformed calls fail closed (see the
-  [protocol README](../supervisor/internal/broker/protocol/README.md)). Pi IPC cannot create
+  [protocol README](../../supervisor/internal/broker/protocol/README.md)). Pi IPC cannot create
   captures. The broker and profile owner must append real multi-turn tool results with
   exact digests and generations before each next provider turn. Captures in the current
   fixtures are synthetic.
@@ -109,7 +109,7 @@ provisioned service operation and the real signed-profile path are unqualified.
 Production Pi CLI launch, the D06 sealed-source boundary, production
 command-cell containment, runtime settlement, publication, and independent
 effect observers also remain unqualified. Gates are tracked in
-[current status](status.md). Criteria not tracked there: broker continuation is
+[current status](../evaluation/status.md). Criteria not tracked there: broker continuation is
 wired to real multi-turn history (current captures and the fixture's
 `nativeFixtureTrust` are synthetic); every effect-capable run has an admitted
 session store and durable recorder (a non-nil interface is not evidence); a

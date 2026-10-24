@@ -1,7 +1,7 @@
 # Current status
 
-Updated 2026-10-24. This page is the short gate summary. [OVERVIEW](../OVERVIEW.md)
-is the one-screen state; [TASK_STATE](../TASK_STATE.md) is the working log with
+Updated 2026-10-24. This page is the short gate summary. [OVERVIEW](../../OVERVIEW.md)
+is the one-screen state; [TASK_STATE](../../TASK_STATE.md) is the working log with
 decisions, blockers, and next steps. History before this date is in Git.
 
 ## Claim boundary
@@ -55,8 +55,8 @@ protocol decisions, and the coordinated signing session.
 
 ## Related
 
-- [Architecture](architecture.md): authority boundaries and seams.
-- [Publication contract](publication-contract.md): how changes reach the live root.
-- [Panel guide](panel-run.md): the blinded construct review.
-- [Decision records](decisions/): ADRs and their status.
-- [Working log](../TASK_STATE.md): the detailed checkpoint and owner decisions.
+- [Architecture](../runtime/architecture.md): authority boundaries and seams.
+- [Publication contract](../runtime/publication-contract.md): how changes reach the live root.
+- [Panel guide](../guides/panel-run.md): the blinded construct review.
+- [Decision records](../decisions): ADRs and their status.
+- [Working log](../../TASK_STATE.md): the detailed checkpoint and owner decisions.

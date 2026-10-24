@@ -11,7 +11,7 @@ That review was read-only; it did not implement or test the proposed chat servic
 
 Implement the **frontend product side of tbound** in this thread. The other
 thread owns the core priorities in [TASK_STATE.md](../../TASK_STATE.md) and
-[status.md](../status.md), containment/profile qualification, governed lifecycle and
+[status.md](../evaluation/status.md), containment/profile qualification, governed lifecycle and
 recovery, publication evidence and research claims. Coordinate API needs with that
 thread; do not duplicate its work.
 
@@ -111,7 +111,7 @@ uncommitted files. Reuse its contract/validation/store ideas when useful; replac
 the visual design. Its review identified unverified replay success presentation,
 SSE deadlines cleared before flush, and unbounded GET-body handling. Fix and test
 those before adopting the affected code. Do not overwrite that checkout; use the
-checked-in [task state](../../TASK_STATE.md) and [current priorities](../status.md). Preserve
+checked-in [task state](../../TASK_STATE.md) and [current priorities](../evaluation/status.md). Preserve
 historical binaries and avoid credential files.
 
 Keep changes in your new worktree. Propose a small API contract to the core thread

@@ -2,15 +2,15 @@
 
 **Status (2026-10-24):** historical embedded-SDK composition detail, still cited
 by code. It records an earlier increment; G1=false statements below describe that
-time. G1 later passed at F12. See [current status](status.md).
+time. G1 later passed at F12. See [current status](../evaluation/status.md).
 
 **Worker migration:** this document retains implementation details from the
 former embedded Pi SDK worker. The selected worker is the official Pi 0.87.1
 CLI in RPC mode with the TBound extension. The offline CLI/RPC fixture and
 isolated extension have passed development checks; SDK worker names and test
 receipts below do not qualify production.
-See the [CLI reproduction decision](decisions/2026-10-12-cli-reproduction.md)
-and [current status](status.md).
+See the [CLI reproduction decision](../decisions/2026-10-12-cli-reproduction.md)
+and [current status](../evaluation/status.md).
 
 ## Status and claim boundary
 
@@ -129,7 +129,7 @@ turns and five provider turns on the existing VM, but reports
 `provider_exchange=false`, `settlement=UNKNOWN`,
 `containment=not-established`, and `claim_bearing=false`; it does not qualify
 the production CLI profile or launcher. The separate `--native-fixture` is
-Go-only and does not start Pi; see [launch](setup.md).
+Go-only and does not start Pi; see [launch](../guides/setup.md).
 
 `SessionOperationAuthority.AdmitPrompt` verifies D06/store identity and that
 the current `DurableExecutor.Tip()` matches the verified latest Store generation

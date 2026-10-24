@@ -14,7 +14,7 @@ authority. The relationship to OpenChamber-for-OpenCode is the *product concept*
 (a better presentation layer for a harness), not a visual or backend template.
 
 Related: [web chat service contract proposal](web-chat-contract.md),
-[architecture](../../../docs/architecture.md), [status](../../../docs/status.md).
+[architecture](../../../docs/runtime/architecture.md), [status](../../../docs/evaluation/status.md).
 
 ## 1. Authority boundary
 

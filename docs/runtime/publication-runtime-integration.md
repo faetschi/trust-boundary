@@ -165,7 +165,7 @@ Post-commit exact-source comparison is recorded in `TASK_STATE.md`.
 The published unit is a logical per-object transaction, not a globally atomic
 filesystem transaction. Cooperative writers must honor the live-root lock and
 quiescent apply window. The supported object slice and type/directory-removal
-limits remain those in `docs/publication-contract.md`. This runtime increment
+limits remain those in `docs/runtime/publication-contract.md`. This runtime increment
 does not add private Git initialization, access, or verification. The missing
 private-Git invariant is the documented **D06 waiver/divergence, not
 compliance** with process-model §6.1 or D06.

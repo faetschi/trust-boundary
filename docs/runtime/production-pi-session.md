@@ -16,7 +16,7 @@ The lower-helper integration exercises bootstrap, readiness, one correlated RPC
 failure, and settled close with a simulated launcher. Public launch success,
 H1, G1, signed host admission, authentic proof capture, containment, and host
 qualification remain unverified.
-See the [CLI reproduction decision](decisions/2026-10-12-cli-reproduction.md).
+See the [CLI reproduction decision](../decisions/2026-10-12-cli-reproduction.md).
 
 ## CLI entry point
 

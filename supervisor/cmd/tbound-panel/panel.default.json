@@ -1,6 +1,6 @@
 {
   "schema": "tbound-panel-config/v1",
-  "_comment": "Copy this file, then put exactly three models from three families into models (see docs/panel-run.md). Each model rates each case twice: a blind phase without claims, then the checklist, so the estimate counts 2 calls per case and model. Claude/Anthropic, GPT/OpenAI and DeepSeek are refused. example_models is documentation only and never runs; check each id and its price on openrouter.ai/models before use.",
+  "_comment": "Copy this file, then put exactly three models from three families into models (see docs/guides/panel-run.md). Each model rates each case twice: a blind phase without claims, then the checklist, so the estimate counts 2 calls per case and model. Claude/Anthropic, GPT/OpenAI and DeepSeek are refused. example_models is documentation only and never runs; check each id and its price on openrouter.ai/models before use.",
   "example_models": [
     "google/gemini-2.5-pro",
     "qwen/qwen3-235b-a22b-2507",

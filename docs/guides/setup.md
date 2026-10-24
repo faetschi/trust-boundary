@@ -8,7 +8,7 @@ unprivileged user unless a step explicitly uses `sudo`.
 
 TBound currently runs one fixed, signed task per service configuration. Corpus
 mode selects tasks from a signed, frozen manifest. There is no interactive Pi
-chat mode yet. The [web chat](../extensions/webchat/README.md) is frozen and
+chat mode yet. The [web chat](../../extensions/webchat/README.md) is frozen and
 outside the thesis.
 
 ## Choose a host
@@ -34,13 +34,13 @@ The governed host needs:
 
 The reproducibility pins are Go **1.27.1**, Node.js **24.21.0**, and Pi CLI
 **0.87.1**. Pi's Node minimum is 22.19. Use the pinned versions when reproducing
-the evaluation. The [guest assets](../infra/guest/README.md) install the Go and
+the evaluation. The [guest assets](../../infra/guest/README.md) install the Go and
 Node toolchains and prepare dependencies. They target Ubuntu 24.04 amd64.
 
 ### Native Linux
 
 On a dedicated Ubuntu 24.04 amd64 host, review the
-[bootstrap procedure](../infra/repro/README.md) before running it. Replace
+[bootstrap procedure](../../infra/repro/README.md) before running it. Replace
 `TRIAL_USER` with the non-root trial login:
 
 ```sh
@@ -54,7 +54,7 @@ your host. Bootstrap does not provision the governed service or qualify it.
 ### Windows with a Linux VM
 
 Create a dedicated Linux amd64 VM. Follow the
-[Hyper-V setup guide](../infra/hyperv/SETUP.md) for Hyper-V, or provide the same
+[Hyper-V setup guide](../../infra/hyperv/SETUP.md) for Hyper-V, or provide the same
 Linux prerequisites with your hypervisor. Keep personal repositories, host
 shares, credentials, and redirected devices outside the guest. Prepare and
 test a clean snapshot and restore procedure before trials.
@@ -71,7 +71,7 @@ ssh -o StrictHostKeyChecking=yes -o HostKeyAlias=GUEST_ALIAS \
 ```
 
 Keep the host-key alias stable if DHCP changes the address. The
-[guest runbook](../infra/guest/README.md) separates online dependency preparation
+[guest runbook](../../infra/guest/README.md) separates online dependency preparation
 from disconnected offline verification. A governed provider exchange uses the
 separately reviewed provider route; do not confuse it with an offline test run.
 
@@ -179,7 +179,7 @@ provider turns, `worker_ready=true`, `prompt_admitted=true`, and
 `turn_completed=true`. It also has `provider_exchange=false`,
 `settlement=UNKNOWN`, `containment=not-established`,
 `publication=not-attempted`, and `claim_bearing=false`. These limits are
-intentional. See [architecture](architecture.md) for the authority boundaries.
+intentional. See [architecture](../runtime/architecture.md) for the authority boundaries.
 
 ## Managed Linux client
 
@@ -203,7 +203,7 @@ tbound serve --pi --task-id REGISTERED_TASK_ID \
 directory itself if Bash creates it. A path does not authorize a subtree.
 Use `--bash-no-outputs` when Bash may run but change no paths. Do not combine
 the two options. With neither option, Bash is disabled. Read, write, and edit
-retain their own gate checks. See [delta admission](delta-admission.md).
+retain their own gate checks. See [delta admission](../runtime/delta-admission.md).
 
 The internal `--service` route belongs to systemd socket activation. It is not
 a standalone launch command. Read [reproduction](reproduce.md) for the first

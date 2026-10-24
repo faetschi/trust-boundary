@@ -9,7 +9,7 @@ produced it.
 The governed path has engineering smoke evidence. A clean-host installation
 and the final evaluation profile still need qualification. H1 is unexecuted.
 Tests, fixtures, capability probes, G1, and pilot reports do not establish
-thesis results. See [status](status.md) for the claim boundary. The thesis
+thesis results. See [status](../evaluation/status.md) for the claim boundary. The thesis
 protocol is in the separate `MSE_MA_Thesis` repository, in
 `tbound/tbound-thesis.md` and `tbound/AH-technical/10-decision-register.md`.
 
@@ -32,7 +32,7 @@ bash infra/guest/probe-capabilities.sh
 The probes do not grant admission. An `UNVERIFIED` result is not a pass, and
 a kernel version is not an ABI measurement. Review
 [host and filesystem requirements](governed-setup.md#1-host-and-filesystem-d10)
-and the [guest preparation runbook](../infra/guest/README.md). Prepare
+and the [guest preparation runbook](../../infra/guest/README.md). Prepare
 dependencies online, then preserve a clean baseline and prove restore works.
 The guest runbook also defines a disconnected offline verification path.
 
@@ -64,7 +64,7 @@ tbound-run source-digest --repo "$TBOUND_REPO" --commit "$TBOUND_COMMIT"
 
 Record the source digest and tool hashes. Build the runtime bundle and cell
 image twice and compare their bytes before pinning them, as specified in
-[provisioning and signing](../infra/guest/PROVISIONING-SIGNING.md). Use the
+[provisioning and signing](../../infra/guest/PROVISIONING-SIGNING.md). Use the
 frozen export for build inputs. A local user-prefix install alone is not a
 governed deployment.
 
@@ -92,7 +92,7 @@ TBOUND_REQUIRE_LINUX_RELEASE=1 \
 
 The packaging check must require Linux. Diagnostic skips do not meet release
 acceptance. Follow [release checks](release.md) and the
-[guest verifier](../infra/guest/README.md) for the adapter and offline checks.
+[guest verifier](../../infra/guest/README.md) for the adapter and offline checks.
 Some host tests need a registered guest. Record every skip and obtain fresh
 guest evidence for those obligations. A green local gate is not containment
 qualification.
@@ -103,7 +103,7 @@ Provision protected binaries and runtime assets, read-only mounts, the ext4
 live root, dedicated service and client identities, cgroup delegation, and
 systemd units. The [governed setup contract](governed-setup.md) explains the
 trust chain. The detailed
-[provisioning and signing runbook](../infra/guest/PROVISIONING-SIGNING.md)
+[provisioning and signing runbook](../../infra/guest/PROVISIONING-SIGNING.md)
 defines measurements, calibrations, image signing, installation, and rollback.
 Use your own measured values. Its reference deployment values are not portable
 defaults. Bootstrap scripts do not complete these steps automatically.
@@ -149,7 +149,7 @@ bundle, and image, then sign the measured registration and profile. Archive
 the prior service state before an update. Install the reviewed artifacts and
 repeat the guest checks. Scripted freeze kits implement this sequence, but
 they are not a public one-command installer. The repository-owned interface
-is the [operator dispatcher](../infra/guest/operator/README.md).
+is the [operator dispatcher](../../infra/guest/operator/README.md).
 
 After the dispatcher, its reviewed templates, and its freeze-specific pins
 have been installed, inspect the guest:
@@ -164,15 +164,15 @@ The dispatcher has fixed verbs, paths, and deployment identities. It accepts
 no arbitrary commands or path arguments. It is not a generic host installer.
 For each configuration its cycle is `cfg-install`, `reg-measure`, offline
 signing, `reg-install`, offline profile signing, `prof-install`, then `svc
-start`. Follow its [RG cycle](../infra/guest/operator/README.md#rg-cycle-for-g1-every-step-from-the-automations-side)
+start`. Follow its [RG cycle](../../infra/guest/operator/README.md#rg-cycle-for-g1-every-step-from-the-automations-side)
 for staging names and digest arguments. Config changes invalidate the old
 registration. Binary, mount, account, and trust-anchor changes remain separate
 operator steps.
 
 ## 6. Run G1 and inspect its evidence
 
-Use the [G1 case](../corpus/g1/README.md) and
-[service template](../infra/guest/serve-pi-service.g1.json). Complete the
+Use the [G1 case](../../corpus/g1/README.md) and
+[service template](../../infra/guest/serve-pi-service.g1.json). Complete the
 dispatcher registration cycle for `g1` first. It must bind the frozen runner,
 current configuration, profile, and template. Then run on the guest:
 
@@ -206,8 +206,8 @@ that the task passed. Check `success`, `tool_sequence`, generation lineage,
 `provider_exchange`, `settlement`, `descendants_settled`, `publication_status`,
 and `disposition`. G1 needs `read, edit, bash, read`, settled descendants, and
 `disposition=PUBLISHED`. Compare the two final files with the G1 acceptance
-spec. See [production composition](production-pi-session.md) and
-[publication](publication-contract.md).
+spec. See [production composition](../runtime/production-pi-session.md) and
+[publication](../runtime/publication-contract.md).
 
 Use `receipt.run_id` to correlate the request journal, catalog, and
 `/var/lib/tbound/audit/RUN_ID-{session,provider,command}-audit.jsonl` files.
@@ -215,7 +215,7 @@ The dispatcher can export a session journal with `collect audit RUN_ID`.
 Journal event `data` is base64-encoded JSON. Decode it before interpreting
 fields. Retain the response, journals, and service log together. `unknown`
 retains recovery ownership and blocks new work until reconciliation. Use the
-documented [abandon procedure](../infra/guest/operator/README.md) only after
+documented [abandon procedure](../../infra/guest/operator/README.md) only after
 inspecting the facts. Never turn an unknown outcome into a success.
 
 ## 7. Reproduce the evaluation workflow
@@ -223,10 +223,10 @@ inspecting the facts. Never turn an unknown outcome into a success.
 ### Prepare the corpus
 
 Rebuild the draft pilot from the frozen export and compare it with the clean
-checkout of the same commit. The [pilot corpus](../corpus/pilot/README.md)
+checkout of the same commit. The [pilot corpus](../../corpus/pilot/README.md)
 adapts pinned benchmark roots and records transformations and lost distinctions.
-Preserve its [notices](../corpus/pilot/THIRD_PARTY_NOTICES.md) and
-[licenses](../corpus/pilot/licenses/), including the test-only restriction.
+Preserve its [notices](../../corpus/pilot/THIRD_PARTY_NOTICES.md) and
+[licenses](../../corpus/pilot/licenses/), including the test-only restriction.
 Pilot and confirmatory roots must be disjoint. The final corpus is not yet complete.
 
 ```sh
@@ -242,7 +242,7 @@ digests, and fixture/reference-solution self-checks. The draft refuses until
 real pins and accepted human reviews exist. Record source and license checks,
 root overlap checks, prompt-leak checks, and oracle mutation controls too.
 `corpus-digest` does not establish license permissions or semantic validity.
-See the [pilot checklist](../corpus/pilot/README.md#remaining-todo).
+See the [pilot checklist](../../corpus/pilot/README.md#remaining-todo).
 
 ```sh
 tbound-profile corpus-digest \
@@ -276,13 +276,13 @@ A non-author human reviews `audit.md`, `audit.json`, `audit-packets/`, and
 seeded unanimous sample. Record decisions and the required manifest reviews,
 then rerun the `corpus-digest` command above. There is no CLI command that
 creates a human sign-off. See [panel audit instructions](panel-run.md#7-send-the-advisor-the-audit)
-and [manifest review requirements](../corpus/pilot/README.md#remaining-todo).
+and [manifest review requirements](../../corpus/pilot/README.md#remaining-todo).
 
 ### Enter corpus mode
 
 Derive the manifest's environment, model, profile, and policy pins with the
 command below, fill its pins, and validate with `corpus-digest`. Reviews must
-cover that pinned version. Follow the [corpus-mode procedure](../infra/guest/PROVISIONING-SIGNING.md)
+cover that pinned version. Follow the [corpus-mode procedure](../../infra/guest/PROVISIONING-SIGNING.md)
 to install its digest and re-sign the registration, template, and profile.
 Corpus mode takes prompts from the manifest and refuses client `--task` text.
 Rehearse reset, net-sink capture, no-reap cleanup, acceptance, and V on the guest.
@@ -297,7 +297,7 @@ tbound-profile corpus-pins --template /absolute/path/to/d09-cell.json \
 EVQ means evidence quality. Capture the full race suite from the selected
 commit, with `run.json` already holding the measured pins. These initial
 reports have no guest artifacts and will be incomplete. Follow the
-[evidence procedure](../infra/guest/PROVISIONING-SIGNING.md) for adapter capture
+[evidence procedure](../../infra/guest/PROVISIONING-SIGNING.md) for adapter capture
 and dispatcher `guest-evidence` producers, including G1 and both route probes.
 Add repeatable `--artifact kind=file` arguments and, for guest kinds,
 `--guest-binary-sha256` with the producer digest. Require every EVQ obligation
@@ -320,9 +320,9 @@ tbound-run route-report --matrix infra/conformance/route-matrix.json \
 
 Prepare private `run.json` with pilot quotas, reviewed manifest and artifacts,
 freeze and receipt pins, report digests, run directory, pinned SSH host key,
-identities, and process collector settings. The [config schema](../supervisor/cmd/tbound-run/config.go)
+identities, and process collector settings. The [config schema](../../supervisor/cmd/tbound-run/config.go)
 is strict; no ready-to-run config exists for an arbitrary machine. Follow the
-[pilot sequence](../infra/guest/PROVISIONING-SIGNING.md). Inspect the first unit
+[pilot sequence](../../infra/guest/PROVISIONING-SIGNING.md). Inspect the first unit
 before continuing. Preserve `run_dir/journal.jsonl`; interrupted steps become
 abandoned. Reports have a synthetic empty USD ledger and `claim_bearing=false`.
 Use the pilot to calibrate caps, costs, reset behaviour, and feasibility.
@@ -342,10 +342,10 @@ tbound-run report --config /absolute/path/to/run.json --out /absolute/path/to/ne
 After pilots and independent review, freeze the full corpus, artifact,
 provider, budgets, exclusions, outage rule, analysis, and remaining gates.
 Generate the digest-bound summary below. Its runner config is the narrower
-[`runner.Config`](../supervisor/internal/runner/plan.go), not the host runner's
+[`runner.Config`](../../supervisor/internal/runner/plan.go), not the host runner's
 full `run.json`. This command records names and digests, not approval or an
 immutable registration. Register the reviewed freeze under the protocol in
-the separate `MSE_MA_Thesis` repository. See [Master thesis](../README.md#master-thesis).
+the separate `MSE_MA_Thesis` repository. See [Master thesis](../../README.md#master-thesis).
 
 ```sh
 tbound-profile preregistration-record --freeze-commit "$TBOUND_COMMIT" \
@@ -364,5 +364,5 @@ execution. H1 measures PVR, forbidden effects in adversarial runs, and ORR,
 rejection of compliant tasks, with independent effect checks. Preserve the
 registered denominators and report unsupported evidence. H1 has not run.
 The current runner's synthetic-ledger report is not a claim-bearing H1
-reporting path. See [status](status.md) and the thesis protocol referenced
-[above](../README.md#master-thesis).
+reporting path. See [status](../evaluation/status.md) and the thesis protocol referenced
+[above](../../README.md#master-thesis).

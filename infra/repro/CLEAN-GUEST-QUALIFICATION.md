@@ -2,7 +2,7 @@
 
 Preparation template only: this is not image registration, containment evidence,
 or a G1 manifest. G1 remains false and H1 remains unexecuted. Keep the related
-[candidate experiment manifest](../../docs/experiment-manifest.md) as the
+[candidate experiment manifest](../../docs/evaluation/experiment-manifest.md) as the
 existing cross-reference; this worksheet does not create registration evidence.
 
 ## Prepare and identify the candidate
@@ -204,7 +204,7 @@ During that connected maintenance phase, install the pinned toolchains before
 freezing the baseline. Use
 the existing bootstrap's pinned Go 1.27.1, Node 24.21.0 and Cosign 3.1.3,
 retaining artifact digests and checksum/signature verification records. Install
-Pi separately during maintenance using the [installation guide](../../docs/setup.md):
+Pi separately during maintenance using the [installation guide](../../docs/guides/setup.md):
 ```sh
 export PATH="/opt/tbound/toolchains/node-v24.21.0-linux-x64/bin:$HOME/.local/bin:$PATH"
 node --version

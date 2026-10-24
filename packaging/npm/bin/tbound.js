@@ -44,7 +44,7 @@ function resolveBinary(subcommand) {
   } catch {
     throw new Error(
       `the platform package ${pkg} is not installed. ` +
-        `Reinstall without --no-optional, or build from source (see docs/setup.md).`
+        `Reinstall without --no-optional, or build from source (see docs/guides/setup.md).`
     );
   }
   return path.join(pkgDir, "bin", binaryName(subcommand));

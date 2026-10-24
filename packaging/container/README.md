@@ -21,7 +21,7 @@ scripts/build-container.sh --check  # validate inputs without building
 This image is a **distribution convenience**, not the governed D09 cell. It does
 not provide the namespaces/cgroup/Landlock/seccomp containment profile, and it
 does not contain a signed host profile. Governed `serve --pi` still requires the
-host profile and containment described in [`../../docs/governed-setup.md`](../../docs/governed-setup.md).
+host profile and containment described in [`../../docs/guides/governed-setup.md`](../../docs/guides/governed-setup.md).
 
 ## Notes
 
