@@ -10,7 +10,9 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"os"
 	"strings"
+	"syscall"
 
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/corpusadmit"
@@ -62,6 +64,27 @@ type constructExpect struct {
 	BinarySHA256         string
 	PolicyDigest         string
 	MetadataPolicyDigest string
+}
+
+// Open nonblocking before fstat: opening an attacker-supplied FIFO must not wait
+// for a writer. Root.OpenFile keeps the same confinement as Root.FS().Open.
+type constructFS struct{ root *os.Root }
+
+func (s constructFS) Open(name string) (fs.File, error) {
+	return s.root.OpenFile(name, os.O_RDONLY|syscall.O_NONBLOCK, 0)
+}
+
+func readConstructConfig(path string) ([]byte, error) {
+	f, err := openRegularFile(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	raw, err := io.ReadAll(io.LimitReader(f, guestevidence.MaxBytes+1))
+	if len(raw) > guestevidence.MaxBytes {
+		return nil, errors.New("run config exceeds 1 MiB")
+	}
+	return raw, err
 }
 
 func parseConstructExpect(raw []byte, binary string) (constructExpect, error) {

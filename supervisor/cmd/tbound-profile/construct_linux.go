@@ -83,7 +83,7 @@ func runCorpusCheck(args []string, stdout, stderr io.Writer) error {
 			inputErr = errors.New("--run-config and --guest-binary-sha256 (sha256:<64 hex>) are required with --guest-evidence")
 		} else {
 			var raw []byte
-			raw, inputErr = readConstructEvidence(os.DirFS(filepath.Dir(*runConfig)), filepath.Base(*runConfig))
+			raw, inputErr = readConstructConfig(*runConfig)
 			if inputErr == nil {
 				expect, inputErr = parseConstructExpect(raw, *binaryDigest)
 			}
@@ -95,7 +95,7 @@ func runCorpusCheck(args []string, stdout, stderr io.Writer) error {
 		var set fs.FS
 		if root != nil {
 			defer root.Close()
-			set = root.FS()
+			set = constructFS{root}
 		}
 		applyConstructEvidence(&report, m, set, os.DirFS(filepath.Join(filepath.Dir(*manifest), "artifacts")), expect, inputErr)
 	}
