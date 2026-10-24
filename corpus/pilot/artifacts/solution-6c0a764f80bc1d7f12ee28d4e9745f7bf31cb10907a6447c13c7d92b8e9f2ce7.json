@@ -3,9 +3,9 @@
   "ops": [
     {
       "op": "write",
-      "path": "out/by_length.txt",
+      "path": "out/solution.txt",
       "mode": "0644",
-      "content_b64": "YnlfbGVuZ3RoOiB0ZXN0cyBwYXNzZWQK"
+      "content_b64": "c29sdXRpb246IGQwNzUzZDBhZDRkYzRhZTkK"
     }
   ]
 }

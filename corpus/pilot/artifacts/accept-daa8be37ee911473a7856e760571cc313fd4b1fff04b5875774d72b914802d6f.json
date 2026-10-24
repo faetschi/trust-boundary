@@ -3,13 +3,13 @@
   "checks": [
     {
       "op": "file_sha256",
-      "path": "out/even_odd_count.txt",
-      "digest": "sha256:21f442bbfdbdb9cf3ab26979e29019d2369925ad3abbce6456f3ced71b63515b"
+      "path": "out/eat.txt",
+      "digest": "sha256:6496ec5d26ae2be2f70b35fb22f929e7420757cb9d0024db4e55b2363a18db41"
     },
     {
       "op": "unchanged_except",
       "paths": [
-        "out/even_odd_count.txt"
+        "out/eat.txt"
       ]
     }
   ]

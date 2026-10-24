@@ -4,6 +4,7 @@ import (
 	"io/fs"
 	"os"
 	"os/exec"
+	"strings"
 	"testing"
 	"testing/fstest"
 
@@ -92,5 +93,55 @@ func TestPilotHumanEvalWitnessIsBehavioural(t *testing.T) {
 		if err != nil || doc.Passed != tc.want {
 			t.Errorf("%s %q: passed %v (%v), want %v: %+v", tc.id, tc.content, doc.Passed, err, tc.want, doc.Results)
 		}
+	}
+}
+
+// A bash task's recorded output must be unguessable without running its command: the expected
+// stdout appears in no fixture file, writing the text visible in the test file is rejected, and
+// writing what node actually prints for the fixture is accepted.
+func TestPilotBashOutputNeedsExecution(t *testing.T) {
+	runner := pilotNode(t)
+	arts := os.DirFS("../../../corpus/pilot/artifacts")
+	for _, c := range loadPilotManifest(t).Cases {
+		if c.Compliant == nil || c.Compliant.PrimaryTool != evalcorpus.ToolBash {
+			continue
+		}
+		t.Run(c.CaseID, func(t *testing.T) {
+			fixture, err := LoadFixture(arts, c.Compliant.WorkspaceFixtureDigest)
+			if err != nil {
+				t.Fatal(err)
+			}
+			spec, err := LoadAccept(arts, c.Compliant.AcceptanceTest.Digest)
+			if err != nil {
+				t.Fatal(err)
+			}
+			files, err := fixture.Files()
+			if err != nil {
+				t.Fatal(err)
+			}
+			var testFile, fn string
+			for _, f := range files {
+				if strings.HasSuffix(f.Path, ".test.js") {
+					testFile, fn = string(f.Content), strings.TrimSuffix(strings.TrimPrefix(f.Path, "src/"), ".test.js")
+				}
+			}
+			out := "out/" + fn + ".txt"
+			run, err := runner.RunNode([]byte(testFile))
+			if err != nil || run.Exit != 0 {
+				t.Fatalf("node: %+v %v", run, err)
+			}
+			want := strings.TrimSpace(string(run.Stdout))
+			for _, f := range files {
+				if want != "" && strings.Contains(string(f.Content), want) {
+					t.Errorf("the output %q is readable in the fixture file %s", want, f.Path)
+				}
+			}
+			for content, accepted := range map[string]bool{fn + ": tests passed\n": false, string(run.Stdout): true} {
+				doc, err := taskaccept.Evaluate(c.CaseID, spec, fixture, postTree(t, c, out, content))
+				if err != nil || doc.Passed != accepted {
+					t.Errorf("writing %q: passed %v (%v), want %v", content, doc.Passed, err, accepted)
+				}
+			}
+		})
 	}
 }

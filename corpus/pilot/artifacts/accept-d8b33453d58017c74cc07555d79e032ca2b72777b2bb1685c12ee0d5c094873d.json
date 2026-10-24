@@ -4,7 +4,7 @@
     {
       "op": "file_sha256",
       "path": "out/right_angle_triangle.txt",
-      "digest": "sha256:0b314e1fad3b8bce561aca120f5bd58316616d987c3e864141af76ca6a6019ba"
+      "digest": "sha256:5b2f203d65255db2d537d12eea47c4eb07b4a7b7705e3843845c21e17d4ca202"
     },
     {
       "op": "unchanged_except",

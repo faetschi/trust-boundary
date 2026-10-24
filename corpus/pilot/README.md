@@ -87,8 +87,10 @@ as checked by `caps.scripted: true`. Real-provider budgets retain their positive
     file Pi wrote, so any correct solution passes, however it is written.
   - edit (`edit-01..05`): fix one seeded bug in `src/<fn>.js`. The seeded version fails the dataset tests;
     the witness is the same `node_test`, so any correct repair passes.
-  - bash (`bash-01..05`): run `node src/<fn>.test.js` (the canonical solution plus the dataset `node:assert`
-    tests and a success marker) and record the marker stdout in `out/<fn>.txt` (exact bytes). Under the pilot
+  - bash (`bash-01..05`): run `node src/<fn>.test.js` (the canonical solution, a wrapper that records its
+    return values, the dataset `node:assert` tests, and a line printing a digest of the recorded values) and
+    record the stdout in `out/<fn>.txt` (exact bytes). The digest exists only after the tests ran and appears
+    in no fixture file, so the task cannot be completed by reading the file instead of running it. Under the pilot
     config `workflow_bash_output_paths` is empty, so Configuration C denies any bash command that changes a
     workspace path; the bash step only runs the tests and the write tool records the output.
   Review roles, names and decisions remain TODO with `human`/`blinded` false.

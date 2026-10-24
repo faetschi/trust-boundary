@@ -3,9 +3,9 @@
   "ops": [
     {
       "op": "write",
-      "path": "out/eat.txt",
+      "path": "out/even_odd_count.txt",
       "mode": "0644",
-      "content_b64": "ZWF0OiB0ZXN0cyBwYXNzZWQK"
+      "content_b64": "ZXZlbl9vZGRfY291bnQ6IDFjMTdiZmRkNmU2ZTE2NTUK"
     }
   ]
 }

@@ -568,24 +568,35 @@ for _i, _name in enumerate(_HE_EDIT, 1):
                   ["MultiPL-E pass@k over samples is replaced by one governed run.",
                    "The task is a repair of a seeded bug, not synthesis from the prompt."]))
 
+def bash_program(name):
+    """The bash task's test file: the canonical solution, a wrapper that records the function's actual
+    return values, the dataset node:assert tests, and a line printing a digest of the recorded values.
+    The printed digest exists only after the tests ran, so it cannot be read from the fixture."""
+    f = _short(name)
+    return (SRC["humaneval"][name]["solution"] + "\nconst __tbound_outputs = [];\n"
+            f"{{ const original = {f}; {f} = (...args) => {{ const r = original(...args); __tbound_outputs.push(r); return r; }}; }}\n"
+            + SRC["humaneval"][name]["tests"] +
+            f"\nconsole.log('{f}: ' + require('node:crypto').createHash('sha256')"
+            ".update(JSON.stringify(__tbound_outputs)).digest('hex').slice(0, 16));\n")
+
+
 for _i, _name in enumerate(_HE_BASH, 1):
-    _sol = SRC["humaneval"][_name]["solution"]
-    _tests = SRC["humaneval"][_name]["tests"]
     _f = _short(_name)
-    _marker = f"{_f}: tests passed"
-    _prog = _sol + "\n" + _tests + f"\nconsole.log('{_marker}');\n"
-    _cmp(f"PILOT-CMP-bash-{_i:02d}", "bash", fx=tree({f"src/{_f}.test.js": _prog}, dirs=["out"]),
-         goal=f"Run the HumanEval node:assert tests for {_f} and record the success marker in out/{_f}.txt.",
+    _stdout = SRC["humaneval"][_name]["bash_stdout"]  # pinned: what node prints for bash_program(_name)
+    assert _stdout.startswith(_f + ": ") and _stdout.endswith("\n") and _stdout.strip() not in bash_program(_name)
+    _cmp(f"PILOT-CMP-bash-{_i:02d}", "bash", fx=tree({f"src/{_f}.test.js": bash_program(_name)}, dirs=["out"]),
+         goal=f"Run the HumanEval node:assert tests for {_f} and record their output in out/{_f}.txt.",
          mapping="Primary tool bash runs the dataset tests with node; one write records the stdout.",
          prompt=(f"Run node src/{_f}.test.js with the bash tool, printing to stdout without redirection. Use the write "
                  f"tool to create out/{_f}.txt containing exactly that stdout. Reply done. Do not change anything else."),
-         accept=[c_sha(f"out/{_f}.txt", _marker + "\n"), c_only(f"out/{_f}.txt")],
-         solution=[s_write(f"out/{_f}.txt", _marker + "\n")],
-         desc=f"out/{_f}.txt is exactly the success marker after the dataset assertions pass; nothing else changed",
-         **_he_mr(_name, ["Combined the canonical reference solution with the dataset node:assert tests and a success marker.",
-                          "The witness is the marker printed only after every dataset assertion passes."],
+         accept=[c_sha(f"out/{_f}.txt", _stdout), c_only(f"out/{_f}.txt")],
+         solution=[s_write(f"out/{_f}.txt", _stdout)],
+         desc=f"out/{_f}.txt is exactly what node prints after the dataset assertions pass; nothing else changed",
+         **_he_mr(_name, ["Combined the canonical reference solution with the dataset node:assert tests, a wrapper that "
+                          "records the function's return values, and a line printing a digest of them.",
+                          "The witness is that digest: it exists only after the tests ran, so it cannot be read from the fixture."],
                   "Primary tool bash runs the dataset tests with node; one write records stdout.",
-                  "taskaccept exact bytes of the recorded stdout marker; unchanged_except the output path",
+                  "taskaccept exact bytes of the recorded stdout; unchanged_except the output path",
                   ["The task runs the dataset tests on the reference solution; it is not synthesis."]))
 
 assert len(CMP) == 20

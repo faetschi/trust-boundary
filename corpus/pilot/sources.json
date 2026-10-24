@@ -146,27 +146,32 @@
   "HumanEval_155_even_odd_count": {
    "prompt": "//Given an integer. return an array that has the number of even and odd digits respectively.\n// Example:\n// >>> even_odd_count(-12)\n// [1, 1]\n// >>> even_odd_count(123)\n// [1, 2]\nfunction even_odd_count(num){\n",
    "tests": "const assert = require('node:assert');\n\n\nfunction test() {\n  let candidate = even_odd_count;\n  assert.deepEqual(candidate(7),[0, 1]);\n  assert.deepEqual(candidate(-78),[1, 1]);\n  assert.deepEqual(candidate(3452),[2, 2]);\n  assert.deepEqual(candidate(346211),[3, 3]);\n  assert.deepEqual(candidate(-345821),[3, 3]);\n  assert.deepEqual(candidate(-2),[1, 0]);\n  assert.deepEqual(candidate(-45347),[2, 3]);\n  assert.deepEqual(candidate(0),[1, 0]);\n}\n\ntest();",
-   "solution": "function even_odd_count(num){\n  let even = 0, odd = 0;\n  for (const d of String(Math.abs(num))) {\n    if (Number(d) % 2 === 0) even++; else odd++;\n  }\n  return [even, odd];\n}\n"
+   "solution": "function even_odd_count(num){\n  let even = 0, odd = 0;\n  for (const d of String(Math.abs(num))) {\n    if (Number(d) % 2 === 0) even++; else odd++;\n  }\n  return [even, odd];\n}\n",
+   "bash_stdout": "even_odd_count: 1c17bfdd6e6e1655\n"
   },
   "HumanEval_157_right_angle_triangle": {
    "prompt": "//Given the lengths of the three sides of a triangle. Return true if the three\n// sides form a right-angled triangle, false otherwise.\n// A right-angled triangle is a triangle in which one angle is right angle or \n// 90 degree.\n// Example:\n// >>> right_angle_triangle(3, 4, 5)\n// true\n// >>> right_angle_triangle(1, 2, 3)\n// false\nfunction right_angle_triangle(a, b, c){\n",
    "tests": "const assert = require('node:assert');\n\n\nfunction test() {\n  let candidate = right_angle_triangle;\n  assert.deepEqual(candidate(3, 4, 5),true);\n  assert.deepEqual(candidate(1, 2, 3),false);\n  assert.deepEqual(candidate(10, 6, 8),true);\n  assert.deepEqual(candidate(2, 2, 2),false);\n  assert.deepEqual(candidate(7, 24, 25),true);\n  assert.deepEqual(candidate(10, 5, 7),false);\n  assert.deepEqual(candidate(5, 12, 13),true);\n  assert.deepEqual(candidate(15, 8, 17),true);\n  assert.deepEqual(candidate(48, 55, 73),true);\n  assert.deepEqual(candidate(1, 1, 1),false);\n  assert.deepEqual(candidate(2, 2, 10),false);\n}\n\ntest();",
-   "solution": "function right_angle_triangle(a, b, c){\n  const s = [a, b, c].sort((x, y) => x - y);\n  return s[0] ** 2 + s[1] ** 2 === s[2] ** 2;\n}\n"
+   "solution": "function right_angle_triangle(a, b, c){\n  const s = [a, b, c].sort((x, y) => x - y);\n  return s[0] ** 2 + s[1] ** 2 === s[2] ** 2;\n}\n",
+   "bash_stdout": "right_angle_triangle: 4dc81d70d49eae3e\n"
   },
   "HumanEval_159_eat": {
    "prompt": "//You're a hungry rabbit, and you already have eaten a certain number of carrots,\n// but now you need to eat more carrots to complete the day's meals.\n// you should return an array of [ total number of eaten carrots after your meals,\n// the number of carrots left after your meals ]\n// if there are not enough remaining carrots, you will eat all remaining carrots, but will still be hungry.\n// Example:\n// >>> eat(5, 6, 10)\n// [11, 4]\n// >>> eat(4, 8, 9)\n// [12, 1]\n// >>> eat(1, 10, 10)\n// [11, 0]\n// >>> eat(2, 11, 5)\n// [7, 0]\n// Variables:\n// @number : integer\n// the number of carrots that you have eaten.\n// @need : integer\n// the number of carrots that you need to eat.\n// @remaining : integer\n// the number of remaining carrots thet exist in stock\n// Constrain:\n// * 0 <= number <= 1000\n// * 0 <= need <= 1000\n// * 0 <= remaining <= 1000\n// Have fun :)\nfunction eat(number, need, remaining){\n",
    "tests": "const assert = require('node:assert');\n\n\nfunction test() {\n  let candidate = eat;\n  assert.deepEqual(candidate(5, 6, 10),[11, 4]);\n  assert.deepEqual(candidate(4, 8, 9),[12, 1]);\n  assert.deepEqual(candidate(1, 10, 10),[11, 0]);\n  assert.deepEqual(candidate(2, 11, 5),[7, 0]);\n  assert.deepEqual(candidate(4, 5, 7),[9, 2]);\n  assert.deepEqual(candidate(4, 5, 1),[5, 0]);\n}\n\ntest();",
-   "solution": "function eat(number, need, remaining){\n  const eaten = Math.min(need, remaining);\n  return [number + eaten, remaining - eaten];\n}\n"
+   "solution": "function eat(number, need, remaining){\n  const eaten = Math.min(need, remaining);\n  return [number + eaten, remaining - eaten];\n}\n",
+   "bash_stdout": "eat: 1723739777737682\n"
   },
   "HumanEval_121_solution": {
    "prompt": "//Given a non-empty array of integers, return the sum of all of the odd elements that are in even positions.\n// Examples\n// >>> solution([5, 8, 7, 1])\n// 12\n// >>> solution([3, 3, 3, 3, 3])\n// 9\n// >>> solution([30, 13, 24, 321])\n// 0\nfunction solution(lst){\n",
    "tests": "const assert = require('node:assert');\n\n\nfunction test() {\n  let candidate = solution;\n  assert.deepEqual(candidate([5, 8, 7, 1]),12);\n  assert.deepEqual(candidate([3, 3, 3, 3, 3]),9);\n  assert.deepEqual(candidate([30, 13, 24, 321]),0);\n  assert.deepEqual(candidate([5, 9]),5);\n  assert.deepEqual(candidate([2, 4, 8]),0);\n  assert.deepEqual(candidate([30, 13, 23, 32]),23);\n  assert.deepEqual(candidate([3, 13, 2, 9]),3);\n}\n\ntest();",
-   "solution": "function solution(lst){\n  let sum = 0;\n  for (let i = 0; i < lst.length; i += 2) {\n    if (Math.abs(lst[i]) % 2 === 1) sum += lst[i];\n  }\n  return sum;\n}\n"
+   "solution": "function solution(lst){\n  let sum = 0;\n  for (let i = 0; i < lst.length; i += 2) {\n    if (Math.abs(lst[i]) % 2 === 1) sum += lst[i];\n  }\n  return sum;\n}\n",
+   "bash_stdout": "solution: d0753d0ad4dc4ae9\n"
   },
   "HumanEval_105_by_length": {
    "prompt": "//Given an array of integers, sort the integers that are between 1 and 9 inclusive,\n// reverse the resulting array, and then replace each digit by its corresponding name from\n// \"One\", \"Two\", \"Three\", \"Four\", \"Five\", \"Six\", \"Seven\", \"Eight\", \"Nine\".\n// For example:\n// >>> by_length([2, 1, 1, 4, 5, 8, 2, 3])\n// [\"Eight\", \"Five\", \"Four\", \"Three\", \"Two\", \"Two\", \"One\", \"One\"]\n// If the array is empty, return an empty array:\n// >>> by_length([])\n// []\n// If the array has any strange number ignore it:\n// >>> by_length([1, -1, 55])\n// [\"One\"]\nfunction by_length(arr){\n",
    "tests": "const assert = require('node:assert');\n\n\nfunction test() {\n  let candidate = by_length;\n  assert.deepEqual(candidate([2, 1, 1, 4, 5, 8, 2, 3]),[\"Eight\", \"Five\", \"Four\", \"Three\", \"Two\", \"Two\", \"One\", \"One\"]);\n  assert.deepEqual(candidate([]),[]);\n  assert.deepEqual(candidate([1, -1, 55]),[\"One\"]);\n  assert.deepEqual(candidate([1, -1, 3, 2]),[\"Three\", \"Two\", \"One\"]);\n  assert.deepEqual(candidate([9, 4, 8]),[\"Nine\", \"Eight\", \"Four\"]);\n}\n\ntest();",
-   "solution": "function by_length(arr){\n  const names = [\"One\", \"Two\", \"Three\", \"Four\", \"Five\", \"Six\", \"Seven\", \"Eight\", \"Nine\"];\n  return arr.filter(n => n >= 1 && n <= 9).sort((a, b) => a - b).reverse().map(n => names[n - 1]);\n}\n"
+   "solution": "function by_length(arr){\n  const names = [\"One\", \"Two\", \"Three\", \"Four\", \"Five\", \"Six\", \"Seven\", \"Eight\", \"Nine\"];\n  return arr.filter(n => n >= 1 && n <= 9).sort((a, b) => a - b).reverse().map(n => names[n - 1]);\n}\n",
+   "bash_stdout": "by_length: cb2554f55d3340a5\n"
   }
  }
 }

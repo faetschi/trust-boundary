@@ -3,13 +3,13 @@
   "checks": [
     {
       "op": "file_sha256",
-      "path": "out/eat.txt",
-      "digest": "sha256:49cd744e4e01c3689a9caedff7ea34ce633fe57d69f474af564cb6131bd92269"
+      "path": "out/solution.txt",
+      "digest": "sha256:4784489decb8efd620fe33120cd7e4171536529d6df4565055540b42dffec487"
     },
     {
       "op": "unchanged_except",
       "paths": [
-        "out/eat.txt"
+        "out/solution.txt"
       ]
     }
   ]
