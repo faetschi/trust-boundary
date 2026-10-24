@@ -149,7 +149,9 @@ header, and never written to disk or logs.
 
 Before each call, the tool adds the recorded spend to the worst case of the
 next call. If the sum would exceed `budget_usd`, it stops with exit code 3.
-Spend is the cost that OpenRouter reports per response. A call with an unknown
+Spend is the cost that OpenRouter reports per response. If a response reports
+no cost, the tool books the call's reserved worst case as spent and stops; it
+never computes spend from the configured prices. A call with an unknown
 outcome, such as a timeout, keeps its whole worst case counted. If a reported
 cost exceeds the reserved worst case, the configured prices are too low. The run
 then stops until you fix them.

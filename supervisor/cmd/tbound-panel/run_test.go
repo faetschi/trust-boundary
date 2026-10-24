@@ -340,3 +340,44 @@ func TestEstimateCountsTwoCallsPerCaseAndModel(t *testing.T) {
 		t.Fatalf("estimate does not count two phases:\n%s", stdout.String())
 	}
 }
+
+// rewriteProvider edits the fake provider's response object before returning it.
+type rewriteProvider struct {
+	fn    func(resp map[string]any)
+	calls atomic.Int64
+}
+
+func (p *rewriteProvider) complete(ctx context.Context, m modelConfig, body []byte) ([]byte, error) {
+	p.calls.Add(1)
+	raw, err := fakeProvider{}.complete(ctx, m, body)
+	if err != nil {
+		return nil, err
+	}
+	var resp map[string]any
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		return nil, err
+	}
+	p.fn(resp)
+	return json.Marshal(resp)
+}
+
+// Without a provider-reported cost the reserved worst case is spent and the run stops.
+func TestMissingCostSpendsWorstCaseAndStops(t *testing.T) {
+	for name, fn := range map[string]func(map[string]any){
+		"usage without cost": func(r map[string]any) { delete(r["usage"].(map[string]any), "cost") },
+		"zero usage":         func(r map[string]any) { r["usage"] = map[string]any{"prompt_tokens": 0, "completion_tokens": 0} },
+	} {
+		t.Run(name, func(t *testing.T) {
+			out := t.TempDir()
+			p := &rewriteProvider{fn: fn}
+			_, err := newRunner(t, testConfig(t, 10), out, p, "fake").run(context.Background())
+			if err == nil || !strings.Contains(err.Error(), "cost") || p.calls.Load() != 1 {
+				t.Fatalf("calls %d, err %v", p.calls.Load(), err)
+			}
+			recs := lines(t, filepath.Join(out, "calls.jsonl"))
+			if len(recs) != 2 || recs[1]["cost_source"] != "reserved-worst-case" || recs[1]["cost_usd"] != recs[0]["reserved_usd"] {
+				t.Fatalf("spend records %v", recs)
+			}
+		})
+	}
+}

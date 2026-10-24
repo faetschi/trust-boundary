@@ -41,7 +41,7 @@ type spendRecord struct {
 	Phase       int     `json:"phase,omitempty"`
 	ReservedUSD float64 `json:"reserved_usd,omitempty"`
 	CostUSD     float64 `json:"cost_usd"`
-	CostSource  string  `json:"cost_source,omitempty"` // provider-reported | computed-from-usage | no-charge
+	CostSource  string  `json:"cost_source,omitempty"` // provider-reported | reserved-worst-case | no-charge
 	Note        string  `json:"note,omitempty"`
 	Time        string  `json:"time,omitempty"`
 }
@@ -433,11 +433,13 @@ func (r *runner) rateOne(ctx context.Context, phase int, m modelConfig, c evalco
 	if err := json.Unmarshal(raw, &resp); err != nil || resp.Usage == nil {
 		return fmt.Errorf("call %s: response without usage accounting (%v); reservation kept, stopping", callID, err)
 	}
-	cost, source := 0.0, "provider-reported"
-	if resp.Usage.Cost != nil {
-		cost = *resp.Usage.Cost
-	} else {
-		cost, source = (float64(resp.Usage.PromptTokens)*m.PromptUSDPerMTok+float64(resp.Usage.CompletionTokens)*m.CompletionUSDPerMTok)/1e6, "computed-from-usage"
+	// Spend is only what the provider reports. Without a cost (or with an all-zero usage),
+	// the reserved worst case is booked and the run stops after recording the answer.
+	cost, source := worst, "reserved-worst-case"
+	u := resp.Usage
+	costKnown := u.Cost != nil && (*u.Cost > 0 || u.PromptTokens > 0 || u.CompletionTokens > 0)
+	if costKnown {
+		cost, source = *u.Cost, "provider-reported"
 	}
 	if err := appendJSONL(callsPath, spendRecord{Kind: "settle", CallID: callID, CostUSD: cost, CostSource: source, Time: now()}); err != nil {
 		return err
@@ -463,6 +465,9 @@ func (r *runner) rateOne(ctx context.Context, phase int, m modelConfig, c evalco
 	}
 	if err := appendJSONL(ratingsPath, rt); err != nil {
 		return err
+	}
+	if !costKnown {
+		return fmt.Errorf("call %s: the response reports no cost; booked the reserved worst case %.6f USD as spent and stopped (check that OpenRouter usage accounting is on)", callID, worst)
 	}
 	if cost > worst {
 		return fmt.Errorf("call %s reported %.6f USD above its reserved worst case %.6f USD: the configured prices are too low; fix them before resuming", callID, cost, worst)
