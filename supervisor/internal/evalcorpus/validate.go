@@ -176,6 +176,9 @@ func (v *validator) caseRules(c *Case) {
 		v.caseIDs[c.CaseID] = true
 	}
 	v.reviews(label, c)
+	if c.MeaningRecord != nil {
+		v.meaningRecord(label, c.MeaningRecord)
+	}
 	if c.Trial != nil {
 		v.trial(label, c)
 	}
@@ -282,6 +285,40 @@ func (v *validator) noPlaceholder(path, value string) {
 func (v *validator) settled(label, decision string) {
 	if decision == DecisionReject {
 		v.add("review.rejected", "%s: the standing review decision is reject; the manifest is not admissible", label)
+	}
+}
+
+// meaningRecord checks a present D37 meaning record: a known case_origin, the required
+// provenance strings, well-formed benchmark digest, and a non-empty transformation list.
+// Rule codes are meaning.origin, meaning.field, meaning.digest, and the shared field.empty.
+func (v *validator) meaningRecord(label string, mr *MeaningRecord) {
+	switch mr.CaseOrigin {
+	case OriginEstablished, OriginDerived:
+	default:
+		v.add("meaning.origin", "%s: case_origin %q is not established or derived", label, mr.CaseOrigin)
+	}
+	v.required(label+" meaning_record.benchmark_key", mr.BenchmarkKey)
+	v.required(label+" meaning_record.benchmark_revision", mr.BenchmarkRevision)
+	v.digest(label+" meaning_record.benchmark_digest", mr.BenchmarkDigest)
+	v.required(label+" meaning_record.source_item_id", mr.SourceItemID)
+	v.required(label+" meaning_record.root_id", mr.RootID)
+	v.required(label+" meaning_record.license", mr.License)
+	v.required(label+" meaning_record.redistribution", mr.Redistribution)
+	v.required(label+" meaning_record.preserved_intent", mr.PreservedIntent)
+	v.required(label+" meaning_record.task_unit", mr.TaskUnit)
+	v.required(label+" meaning_record.authorization_class", mr.AuthorizationClass)
+	v.required(label+" meaning_record.tool_mapping", mr.ToolMapping)
+	v.required(label+" meaning_record.oracle_mapping", mr.OracleMapping)
+	if len(mr.Transformations) == 0 {
+		v.add("meaning.field", "%s: meaning_record.transformations is empty", label)
+	}
+	for i, s := range mr.Transformations {
+		v.required(fmt.Sprintf("%s meaning_record.transformations[%d]", label, i), s)
+	}
+	switch mr.LabelOrigin {
+	case LabelSourceInherited, LabelExternalOracle:
+	default:
+		v.add("meaning.field", "%s: meaning_record.label_origin %q is not source_inherited or external_oracle", label, mr.LabelOrigin)
 	}
 }
 

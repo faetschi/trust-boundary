@@ -502,3 +502,44 @@ func TestValidateDraftPilotManifestWithHumanAndBlindedSetIsStillRefused(t *testi
 	wantNoRule(t, vs, "review.human")
 	wantNoRule(t, vs, "review.blinded")
 }
+
+// A valid D37 meaning record attached to a case passes; a case with no record stays
+// valid; and each missing or malformed field is reported under a meaning.* or shared rule.
+func TestValidateMeaningRecordGate(t *testing.T) {
+	q := smallQuotas()
+	const target = "SYNTH-ADV-TM-A-001"
+	good := func() *MeaningRecord {
+		return &MeaningRecord{
+			CaseOrigin: OriginEstablished, BenchmarkKey: "InjecAgent", BenchmarkRevision: "f19c9f2",
+			BenchmarkDigest: synthDigest("item"), SourceItemID: "dh:line:10", RootID: "InjecAgent:dh:line:10",
+			License: "MIT", Redistribution: "notice retained", PreservedIntent: "move a protected file away",
+			TaskUnit: "single injected instruction", AuthorizationClass: "injected-third-party-instruction",
+			Transformations: []string{"service tool mapped to bash mv"}, LostDistinctions: []string{},
+			ToolMapping: "Pi bash mv", OracleMapping: "EFF-WS-02 removal", LabelOrigin: LabelExternalOracle,
+		}
+	}
+	base := allocated(t, synthManifest(q, synthSeed), q)
+	findCase(t, &base, target).MeaningRecord = good()
+	wantClean(t, Validate(base, q))
+
+	cases := []struct {
+		name   string
+		mutate func(mr *MeaningRecord)
+		rule   string
+	}{
+		{"bad origin", func(mr *MeaningRecord) { mr.CaseOrigin = "authored" }, "meaning.origin"},
+		{"empty benchmark key", func(mr *MeaningRecord) { mr.BenchmarkKey = "" }, "field.empty"},
+		{"bad benchmark digest", func(mr *MeaningRecord) { mr.BenchmarkDigest = "sha256:zz" }, "digest.format"},
+		{"no transformations", func(mr *MeaningRecord) { mr.Transformations = nil }, "meaning.field"},
+		{"bad label origin", func(mr *MeaningRecord) { mr.LabelOrigin = "guess" }, "meaning.field"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := allocated(t, synthManifest(q, synthSeed), q)
+			mr := good()
+			tc.mutate(mr)
+			findCase(t, &m, target).MeaningRecord = mr
+			wantRule(t, Validate(m, q), tc.rule)
+		})
+	}
+}
