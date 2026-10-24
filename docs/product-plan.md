@@ -1,6 +1,6 @@
 # TBound product implementation plan
 
-Status: proposed implementation baseline, 2026-10-24. This document plans changes; it does not announce working features. The owner requested product development in parallel with the thesis. Architecture and default behavior below are recommendations for that work, not separately approved runtime or deployment changes.
+Status: proposed implementation baseline, 2026-10-24. This document plans changes; it does not announce working features. Implementation progress on `feature/tbound-product` is tracked in [product-status.md](product-status.md). The owner requested product development in parallel with the thesis. Architecture and default behavior below are recommendations for that work, not separately approved runtime or deployment changes.
 
 Source baseline: `codex/tbound-prototype`, commit `006c3fb6b67985ea0164ae53f8ec5e1b068fc33c`. Recheck source contracts before implementation. References describe that baseline unless stated otherwise.
 
