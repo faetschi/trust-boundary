@@ -29,11 +29,7 @@ type retainedProductTurn struct {
 // openRetainedProductTurn opens existing evidence only: it creates no journal or directory, and every
 // Store operation and transition is checked against its durable authorization in the retained Store
 // journal, never against a live authority. options carries the turn's Store policy, limits, xattr
-// profile and admission scope; its journal and callbacks are replaced.
-//
-// shortcut: sessionrepo.Open rewrites a stale repository-state file of a finished Store. Switch to
-// sessionrepo.OpenRecoveryPreview, which repairs nothing, once its historical authorization index reads
-// the record kind cmd/tbound writes (governed_operation_authorized, not governed_operation_authorization).
+// profile and admission scope; its journal is replaced and its callbacks are unused.
 func openRetainedProductTurn(paths productTurnPaths, options sessionrepo.Options) (*retainedProductTurn, error) {
 	turn := &retainedProductTurn{}
 	fail := func(err error) (*retainedProductTurn, error) { return nil, errors.Join(err, turn.Close()) }
@@ -59,9 +55,8 @@ func openRetainedProductTurn(paths productTurnPaths, options sessionrepo.Options
 		return fail(fmt.Errorf("index retained Store authorizations: %w", err))
 	}
 	options.Journal, options.ExposureBinder = storeJournal, nil
-	options.AuthorizeOperation, options.VerifyDecision = historical.verifyOperation, historical.verifyDecision
-	options.VerifySettlement = historical.verifyCommandSettlement
-	store, err := sessionrepo.Open(root, options)
+	// The preview repairs nothing and checks every effect against its retained authorization record.
+	store, err := sessionrepo.OpenRecoveryPreview(root, options)
 	if closeErr := root.Close(); err == nil && closeErr != nil {
 		_ = store.Close()
 		err = closeErr
@@ -70,6 +65,13 @@ func openRetainedProductTurn(paths productTurnPaths, options sessionrepo.Options
 		return fail(fmt.Errorf("open retained Store: %w", err))
 	}
 	turn.closers = append(turn.closers, store.Close)
+	bundle, err := store.EvidenceBundle()
+	if err == nil {
+		err = historical.VerifyBundle(bundle)
+	}
+	if err != nil {
+		return fail(fmt.Errorf("verify retained Store authorizations: %w", err))
+	}
 	turn.Store, turn.StoreJournal, turn.ProviderJournal = store, storeJournal, providerJournal
 	return turn, nil
 }
