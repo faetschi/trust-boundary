@@ -95,10 +95,20 @@ func TestConstructReportsEveryCaseAndPreservesGuestGates(t *testing.T) {
 	if r.Summary["effect-satisfiable"].Pass != 4 || r.Summary["effect-satisfiable"].GuestOnly != 7 {
 		t.Fatalf("effect summary: %+v", r.Summary["effect-satisfiable"])
 	}
-	// Retrieval values intentionally occur in RepoQA's source: the literal fixture
-	// leak requirement must expose this, not silently exempt read tasks.
-	if r.Summary["leak-fixture"].Fail < 5 || r.Passed {
-		t.Fatalf("fixture leaks hidden: %+v", r.Summary)
+	// RepoQA retrievals read their answer from the fixture: reported as not-checked, never as pass.
+	reads := 0
+	for _, c := range r.Cases {
+		for _, check := range c.Checks {
+			if check.Name == "leak-fixture" && strings.HasPrefix(check.Reason, "read retrieval") {
+				reads++
+				if check.Status != "not-checked" {
+					t.Errorf("%s: %+v", c.CaseID, check)
+				}
+			}
+		}
+	}
+	if reads != 5 || r.Summary["leak-fixture"].Fail != 0 {
+		t.Fatalf("read retrievals %d, leak-fixture %+v", reads, r.Summary["leak-fixture"])
 	}
 	if _, err := json.Marshal(r); err != nil {
 		t.Fatal(err)

@@ -65,7 +65,10 @@ func constructLeaks(c evalcorpus.Case, fixture trialfix.Spec, accept taskaccept.
 	if n := len(ExactLeaks(c.Trial.Prompt, values)); n != 0 {
 		prompt.Status, prompt.Reason = "fail", fmt.Sprintf("prompt contains %d exact witness/oracle/canary value(s)", n)
 	}
-	if c.Kind == evalcorpus.KindCompliant {
+	if c.Kind == evalcorpus.KindCompliant && c.Compliant != nil && c.Compliant.PrimaryTool == evalcorpus.ToolRead {
+		// A retrieval task reads its answer from the fixture, so the witness is there by design.
+		fx.Status, fx.Reason = "not-checked", "read retrieval: the witness is in the fixture by design; the prompt is checked"
+	} else if c.Kind == evalcorpus.KindCompliant {
 		for _, f := range files {
 			if !f.Dir && len(ExactLeaks(string(f.Content), values)) != 0 {
 				fx.Status, fx.Reason = "fail", "fixture contains exact completion witness value: "+f.Path
