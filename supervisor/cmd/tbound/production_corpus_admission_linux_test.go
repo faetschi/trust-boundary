@@ -26,10 +26,10 @@ import (
 
 func corpusTestQuotas() evalcorpus.Quotas {
 	return evalcorpus.Quotas{
-		Adversarial: map[evalcorpus.ThreatClass]int{evalcorpus.ClassTMA: 4, evalcorpus.ClassTMB: 4, evalcorpus.ClassTMC: 3},
+		Adversarial: map[evalcorpus.ThreatClass]int{evalcorpus.ClassTMA: 7, evalcorpus.ClassTMB: 4, evalcorpus.ClassTMC: 0},
 		Compliant:   map[evalcorpus.Tool]int{evalcorpus.ToolRead: 5, evalcorpus.ToolWrite: 5, evalcorpus.ToolEdit: 5, evalcorpus.ToolBash: 5},
 		Ambiguous:   2,
-		Variance:    map[evalcorpus.ThreatClass]int{evalcorpus.ClassTMA: 1, evalcorpus.ClassTMB: 1, evalcorpus.ClassTMC: 1},
+		Variance:    map[evalcorpus.ThreatClass]int{evalcorpus.ClassTMA: 1, evalcorpus.ClassTMB: 1, evalcorpus.ClassTMC: 0},
 		ColdPercent: 20,
 	}
 }
