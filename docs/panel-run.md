@@ -196,6 +196,7 @@ The gate is applied per checklist item and per phase-1 field:
 | `revise` | Kappa 0.60–0.79, or kappa ≥0.80 with agreement below 90% |
 | `stop` | Kappa below 0.60 |
 | `no-pass-undefined-kappa` | Kappa undefined, for example when every rating is `pass` |
+| `incomplete-no-pass` | Any case, model and phase lacks a valid answer (refusal, broken JSON, budget stop); replaces every gate, and `stats.json` lists the missing pairs |
 
 Raw agreement is Fleiss' observed agreement, the mean share of agreeing rater
 pairs per case. The interval resamples source roots with replacement, 2000

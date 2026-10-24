@@ -193,6 +193,25 @@ func (r *runner) finish(plan blindPlan) (spend, error) {
 		}
 		agree[f.key] = ca
 	}
+	// Missing answers (refusals, broken JSON, budget stop) void every gate: no pass claim.
+	var missing []map[string]any
+	for _, phase := range phases {
+		for _, m := range r.cfg.Models {
+			for _, c := range d.cases {
+				if _, ok := d.ratings[phase][c.CaseID][m.ID]; !ok {
+					missing = append(missing, map[string]any{"phase": phase, "model": m.ID, "case_id": c.CaseID})
+				}
+			}
+		}
+	}
+	if len(missing) > 0 {
+		for _, st := range []map[string]ItemStats{items2, fields} {
+			for k, v := range st {
+				v.Gate = gateIncomplete
+				st[k] = v
+			}
+		}
+	}
 	var incomplete []string
 	for _, c := range d.cases {
 		if !d.complete(phaseBlind, c) || !d.complete(phaseChecklist, c) {
@@ -209,7 +228,7 @@ func (r *runner) finish(plan blindPlan) (spend, error) {
 		"raw_agreement_definition": agreementDefinition, "bootstrap": bootstrapMethod,
 		"bootstrap_seed": r.cfg.Seed, "bootstrap_resamples": r.cfg.BootstrapResamples, "gate_rule": gateRule,
 		"cases": len(d.cases), "complete_cases": len(d.cases) - len(incomplete), "incomplete_cases": incomplete,
-		"not_applicable": notApplicable, "items": items2,
+		"missing_pairs": missing, "not_applicable": notApplicable, "items": items2,
 		"independent_fields": fields, "effect_ids_rule": effectIDsRule,
 		"blind_agreement_with_claim": agree, "note": humanNote,
 	}
@@ -288,7 +307,7 @@ func statsMarkdown(items2, fields map[string]ItemStats, agree map[string]claimAg
 	fmt.Fprintf(&b, "\n- Raw agreement: %s.\n- Bootstrap: %s; seed %d, %d resamples.\n- Gate: %s.\n- %s; the claim rate counts every model's phase-1 answer against the manifest claim.\n- %s\n",
 		agreementDefinition, bootstrapMethod, r.cfg.Seed, r.cfg.BootstrapResamples, gateRule, effectIDsRule, humanNote)
 	if len(incomplete) > 0 {
-		fmt.Fprintf(&b, "- Incomplete cases (not every model gave a valid answer in both phases): %s.\n", strings.Join(incomplete, ", "))
+		fmt.Fprintf(&b, "- **Incomplete: every gate is `%s`.** Cases without a valid answer from every model in both phases: %s. The missing case x model x phase pairs are listed in `stats.json` (`missing_pairs`).\n", gateIncomplete, strings.Join(incomplete, ", "))
 	}
 	return b.String()
 }

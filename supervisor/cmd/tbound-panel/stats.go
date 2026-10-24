@@ -14,13 +14,15 @@ const (
 	gateRevise    = "revise"
 	gateStop      = "stop"
 	gateUndefined = "no-pass-undefined-kappa"
+	// gateIncomplete replaces every gate while any case x model x phase lacks a valid answer.
+	gateIncomplete = "incomplete-no-pass"
 )
 
 // Pinned analysis definitions, repeated verbatim in every stats report.
 const (
 	agreementDefinition = "raw agreement = Fleiss' observed agreement P-bar: the mean, over subjects, of the share of agreeing rater pairs"
 	bootstrapMethod     = "nonparametric cluster bootstrap: resample source roots with replacement (all subjects of a drawn root enter together), recompute Fleiss' kappa, percentile 95% interval (linear interpolation); resamples with undefined kappa are counted and excluded"
-	gateRule            = "kappa >= 0.80 and raw agreement >= 0.90: pass; kappa >= 0.60 (or kappa >= 0.80 with agreement < 0.90): revise/relabel; kappa < 0.60: stop; undefined kappa: no pass claim"
+	gateRule            = "kappa >= 0.80 and raw agreement >= 0.90: pass; kappa >= 0.60 (or kappa >= 0.80 with agreement < 0.90): revise/relabel; kappa < 0.60: stop; undefined kappa: no pass claim; any case x model x phase without a valid answer: every gate incomplete-no-pass"
 )
 
 // fleiss returns Fleiss' kappa, observed agreement P-bar and category prevalence for a

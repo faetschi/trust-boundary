@@ -95,6 +95,7 @@ func TestBudgetCapStopsBeforeExceedingAndResumeCompletes(t *testing.T) {
 	if got := len(lines(t, filepath.Join(out, "ratings.jsonl"))); int64(got) != first {
 		t.Fatalf("%d ratings for %d calls", got, first)
 	}
+	assertGates(t, out, true)
 
 	// Resume in a fresh runner with a larger cap: only the missing pairs are called.
 	cfg.BudgetUSD = 10
@@ -108,6 +109,7 @@ func TestBudgetCapStopsBeforeExceedingAndResumeCompletes(t *testing.T) {
 	if got := len(lines(t, filepath.Join(out, "ratings.jsonl"))); got != 198 {
 		t.Fatalf("%d ratings after resume", got)
 	}
+	assertGates(t, out, false)
 	// A third run calls nothing.
 	p3 := &countingProvider{inner: fakeProvider{}}
 	if _, err := newRunner(t, cfg, out, p3, "fake").run(context.Background()); err != nil || p3.calls.Load() != 0 {
@@ -379,5 +381,29 @@ func TestMissingCostSpendsWorstCaseAndStops(t *testing.T) {
 				t.Fatalf("spend records %v", recs)
 			}
 		})
+	}
+}
+
+// assertGates checks that an incomplete run makes no gate claim and lists the missing pairs.
+func assertGates(t *testing.T, out string, incomplete bool) {
+	t.Helper()
+	var st struct {
+		Items        map[string]ItemStats `json:"items"`
+		Fields       map[string]ItemStats `json:"independent_fields"`
+		MissingPairs []map[string]any     `json:"missing_pairs"`
+	}
+	raw, _ := os.ReadFile(filepath.Join(out, "stats.json"))
+	if err := json.Unmarshal(raw, &st); err != nil {
+		t.Fatal(err)
+	}
+	if incomplete != (len(st.MissingPairs) > 0) {
+		t.Fatalf("incomplete=%v but %d missing pairs", incomplete, len(st.MissingPairs))
+	}
+	for name, s := range map[string]map[string]ItemStats{"items": st.Items, "fields": st.Fields} {
+		for k, v := range s {
+			if (v.Gate == gateIncomplete) != incomplete {
+				t.Fatalf("%s %s gate %q with incomplete=%v", name, k, v.Gate, incomplete)
+			}
+		}
 	}
 }
