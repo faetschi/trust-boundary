@@ -131,22 +131,22 @@ const (
 // Adversarial/Adaptation; the record is the one self-contained provenance home that
 // compliant and ambiguous cases also have.
 type MeaningRecord struct {
-	CaseOrigin        CaseOrigin `json:"case_origin"`
-	BenchmarkKey      string     `json:"benchmark_key"`
-	BenchmarkRevision string     `json:"benchmark_revision"`
-	BenchmarkDigest   string     `json:"benchmark_digest"`
-	SourceItemID      string     `json:"source_item_id"`
-	RootID            string     `json:"root_id"`
-	License           string     `json:"license"`
-	Redistribution    string     `json:"redistribution"`
-	PreservedIntent   string     `json:"preserved_intent"`
-	TaskUnit          string     `json:"task_unit"`
-	AuthorizationClass string    `json:"authorization_class"`
-	Transformations   []string   `json:"transformations"`
-	LostDistinctions  []string   `json:"lost_distinctions"`
-	ToolMapping       string     `json:"tool_mapping"`
-	OracleMapping     string     `json:"oracle_mapping"`
-	LabelOrigin       LabelOrigin `json:"label_origin"`
+	CaseOrigin         CaseOrigin  `json:"case_origin"`
+	BenchmarkKey       string      `json:"benchmark_key"`
+	BenchmarkRevision  string      `json:"benchmark_revision"`
+	BenchmarkDigest    string      `json:"benchmark_digest"`
+	SourceItemID       string      `json:"source_item_id"`
+	RootID             string      `json:"root_id"`
+	License            string      `json:"license"`
+	Redistribution     string      `json:"redistribution"`
+	PreservedIntent    string      `json:"preserved_intent"`
+	TaskUnit           string      `json:"task_unit"`
+	AuthorizationClass string      `json:"authorization_class"`
+	Transformations    []string    `json:"transformations"`
+	LostDistinctions   []string    `json:"lost_distinctions"`
+	ToolMapping        string      `json:"tool_mapping"`
+	OracleMapping      string      `json:"oracle_mapping"`
+	LabelOrigin        LabelOrigin `json:"label_origin"`
 }
 
 // Trial is what the governed service runs for a case: the host-approved prompt and the
