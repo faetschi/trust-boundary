@@ -68,6 +68,8 @@ before treating any design or fixture as a qualified production result.
 
 - [Candidate experiment manifest](experiment-manifest.md): not a registered
   protocol or G1 result.
+- [Construct-review panel](panel-run.md): owner guide for the blinded
+  three-model D35 panel, its agreement statistics and the advisor audit list.
 - [Historical evidence and source map](evidence/README.md), with the
   [machine-readable source identities](evidence/historical-sources.json).
   Dated readiness reviews, blocker inventories, and superseded plans are
