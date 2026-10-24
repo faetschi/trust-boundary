@@ -1,6 +1,6 @@
 # TBound product contracts (P1, milestone 1)
 
-Status: contract for the first product milestone, the headless governed multi-turn conversation. It fixes the decisions that [the product plan](product-plan.md) sections 3 to 5 leave open, for P2 and P3 only. Review, cancellation, the wire protocol, and client UX are later packages and are not specified here.
+Status: contract for the first product milestone, the headless governed multi-turn conversation, and its P4 extension at the end. It fixes the decisions that [the product plan](product-plan.md) sections 3 to 5 leave open, for P2 and P3 only. Review, cancellation, the wire protocol, and client UX are later packages and are not specified here.
 
 Research and corpus modes are unchanged. Nothing below is reachable from `serve --pi`, and the research service refuses any admission mode other than `fresh`, `resume`, and `corpus`.
 
@@ -171,3 +171,57 @@ Before it imports a predecessor, the next turn reopens the predecessor's retaine
 | `unknown` | Disposition cannot be established. Reservation consumed, project blocked. | Unchanged, blocked. |
 
 Assistant completion is not settlement. A turn is terminal only after the worker loop ended, the conversation closed, the evidence bundle was read, and the publication step returned a definite status.
+
+## Milestone 2: review, cancellation and restart (P4, headless)
+
+This section extends the contract for P4. It still uses headless clients and the in-process worker. Interrupting a real Pi process or a running Bash command needs the product guest and stays pending.
+
+### Review
+
+- A review-mode turn composes the publication finalizer when it starts, the same as an auto-mode turn. After `MarkAwaitingReview` the driver keeps the closed turn's workflow and finalizer open in a pending-review registry. No worker runs. The project stays owned by the turn.
+- `MarkAwaitingReview` records `review_timeout_seconds` from the registration in force. The driver enforces expiry against the process's monotonic clock. A restart never extends a review: a pending review never survives a restart (see Restart).
+- `ResolveTurn(p, ResolveTurnRequest{session_id, turn_id, expected_revision, request_key, candidate_digest, decision})`, where `decision` is `publish` or `discard`:
+  - It requires the owning principal, the turn in `awaiting_review`, the session revision, and `candidate_digest` equal to the recorded candidate. A stale diff cannot authorize a changed candidate.
+  - It is idempotent per request key, like `SubmitTurn`, and the request digest covers all six fields.
+  - It appends `product_turn_resolution_requested` before any publication work. That record is the durable intent the restart rules read.
+- Publish runs the retained finalizer. Success requires the project to measure exactly the sealed candidate tree afterwards.
+- Terminal records for a reviewed turn reuse `CompleteTurn` with a new receipt. Usage was settled at `awaiting_review`, so the terminal record must repeat that usage and refund nothing.
+- Reviewed-turn outcomes:
+  - `published`;
+  - `discarded`, carrying a `reason` of `user`, `expired`, `cancelled` or `restart`;
+  - `failed`, when publication failed and the project still equals the admitted baseline;
+  - `unknown`.
+- Discard keeps the turn's retained Store, journals and candidate. Spend stays consumed.
+
+### Cancellation
+
+- `CancelTurn(p, CancelTurnRequest{session_id, turn_id, expected_revision, request_key})` appends `product_turn_cancel_requested` for a turn that is admitted, linked or awaiting review. It is idempotent per request key and bumps the revision. It never claims settlement; the turn reports `cancel_requested`.
+- Admitted, not yet linked: the driver ends the turn before launch with `RefuseUnlinkedTurn(turn, CANCELLED)`. The outcome is `cancelled` with a full refund, and nothing is blocked.
+- Linked and running: the headless worker checks for cancellation before every provider exchange. It never interrupts a call in flight. At the next step boundary it stops, the conversation closes, and the turn settles `cancelled` with usage charged. Nothing is published, and the project must still equal the admitted baseline.
+- Awaiting review: the turn is discarded with reason `cancelled`.
+- After `product_turn_resolution_requested` with `publish`, or once an auto-mode finalizer has started, cancellation cannot promise rollback. The request is recorded, and the turn reports its real disposition.
+
+### Restart
+
+On `Open`, unresolved turns are rebuilt from the catalog. The driver's `ReconcileAfterRestart` runs before any new admission is served. It never publishes on reconstruction alone.
+
+| Retained state | Action |
+| --- | --- |
+| `admitted`, no link | `AbandonUnlinkedTurn`, as in milestone 1. |
+| `linked`, no terminal | Reopen the retained Store and journals read-only, plus the owner checkpoint. If the Store reconstructs with no quarantine or unknown effect, no reservation is open, the project equals the admitted baseline, and the project publication journal has no transaction for this workflow: `CompleteTurn(failed)` with settlement `reconciled-after-restart` and usage from the retained ledger counters. Otherwise `MarkTurnUnknown`. |
+| `awaiting_review`, no resolution request | If the project equals the admitted baseline and no publication transaction exists for the workflow: `discarded` with reason `restart`. Otherwise `unknown`. |
+| `awaiting_review` with resolution request `publish` | If the publication journal shows the workflow's transaction `SUCCEEDED` and the project equals the sealed candidate: `published`. If no transaction exists and the project equals the admitted baseline: `discarded` with reason `restart`. Otherwise `unknown`. |
+| `awaiting_review` with resolution request `discard` | `discarded` with reason `user`, after the same baseline check. |
+
+Settlement `reconciled-after-restart` is valid for worker kind `headless-fixture`, because the process that hosted the in-process worker is gone. A real Pi worker will need its drain proof instead.
+
+### Catalog additions
+
+| Kind | Meaning |
+| --- | --- |
+| `product_turn_cancel_requested` | Durable cancellation request. |
+| `product_turn_resolution_requested` | Durable review decision for the exact candidate, written before publication. |
+| `product_turn_terminal` (extended) | Also ends an `awaiting_review` turn with `published`, `discarded` (plus `reason`) or `failed`, refunding nothing. Also accepts `cancelled` for a linked turn with a cancel request. |
+| `product_turn_refused` (extended) | Also accepts code `CANCELLED`, giving outcome `cancelled` with no block. |
+
+New error codes: `CANDIDATE_MISMATCH`, `REVIEW_NOT_PENDING`, `CANCEL_NOT_ALLOWED`.
