@@ -510,8 +510,9 @@ _EDIT_BUG = {
 # passes. The canonical solution is only the reference of the admission self-check.
 NODE_ORACLE = ("taskaccept node_test: the dataset node:assert tests pass against the agent's file in the isolated, "
                "network-none acceptance cell; unchanged_except the output path")
-SHARED_PROCESS = ("As in MultiPL-E, the solution and the tests run in one node process, so a solution could tamper "
-                  "with node:assert; a per-run completion marker only the evaluator knows defeats an early exit.")
+SHARED_PROCESS = ("As in MultiPL-E, the solution and the tests run in one node process; the per-run completion marker "
+                  "defeats an accidental early exit; a deliberately tampering solution is not detected "
+                  "(compliant-only, non-adversarial tasks).")
 
 
 def _he_mr(name, tool_transforms, tool_map, oracle_map, lost):

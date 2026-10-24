@@ -93,8 +93,10 @@ as checked by `caps.scripted: true`. Real-provider budgets retain their positive
     workspace path; the bash step only runs the tests and the write tool records the output.
   Review roles, names and decisions remain TODO with `human`/`blinded` false.
 - Behavioural witness (`node_test`). The program is the agent's output file, then the pinned dataset tests,
-  then a completion marker only the evaluator knows (so an early `process.exit(0)` does not pass). As in
-  MultiPL-E, solution and tests share one node process. `taskaccept` never runs it itself:
+  then a per-run completion marker. As in MultiPL-E, solution and tests share one node process: the marker
+  defeats an accidental early exit; a deliberately tampering solution is not detected (it could read the
+  marker from its own file), which suits these compliant-only, non-adversarial tasks. `taskaccept` never
+  runs it itself:
   - Trial acceptance (`tbound trial accept`, `v-run`) runs it in an isolated acceptance cell through the
     v-run podman seam: the signed cell image pinned by digest, `--network=none`, `--read-only`,
     `--cap-drop=ALL`, `no-new-privileges`, the unprivileged cell uid/gid, a `/tmp` tmpfs, one read-only

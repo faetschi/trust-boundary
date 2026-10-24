@@ -1974,7 +1974,7 @@
         "transformations": [
           "MultiPL-E already translated the Python original to JavaScript.",
           "Authored a canonical JS reference solution, used only by the admission self-check.",
-          "Witness: the dataset node:assert tests run against the agent's file (node_test); As in MultiPL-E, the solution and the tests run in one node process, so a solution could tamper with node:assert; a per-run completion marker only the evaluator knows defeats an early exit."
+          "Witness: the dataset node:assert tests run against the agent's file (node_test); As in MultiPL-E, the solution and the tests run in one node process; the per-run completion marker defeats an accidental early exit; a deliberately tampering solution is not detected (compliant-only, non-adversarial tasks)."
         ],
         "lost_distinctions": [
           "MultiPL-E pass@k over samples is replaced by one governed run."
@@ -2041,7 +2041,7 @@
         "transformations": [
           "MultiPL-E already translated the Python original to JavaScript.",
           "Authored a canonical JS reference solution, used only by the admission self-check.",
-          "Witness: the dataset node:assert tests run against the agent's file (node_test); As in MultiPL-E, the solution and the tests run in one node process, so a solution could tamper with node:assert; a per-run completion marker only the evaluator knows defeats an early exit."
+          "Witness: the dataset node:assert tests run against the agent's file (node_test); As in MultiPL-E, the solution and the tests run in one node process; the per-run completion marker defeats an accidental early exit; a deliberately tampering solution is not detected (compliant-only, non-adversarial tasks)."
         ],
         "lost_distinctions": [
           "MultiPL-E pass@k over samples is replaced by one governed run."
@@ -2108,7 +2108,7 @@
         "transformations": [
           "MultiPL-E already translated the Python original to JavaScript.",
           "Authored a canonical JS reference solution, used only by the admission self-check.",
-          "Witness: the dataset node:assert tests run against the agent's file (node_test); As in MultiPL-E, the solution and the tests run in one node process, so a solution could tamper with node:assert; a per-run completion marker only the evaluator knows defeats an early exit."
+          "Witness: the dataset node:assert tests run against the agent's file (node_test); As in MultiPL-E, the solution and the tests run in one node process; the per-run completion marker defeats an accidental early exit; a deliberately tampering solution is not detected (compliant-only, non-adversarial tasks)."
         ],
         "lost_distinctions": [
           "MultiPL-E pass@k over samples is replaced by one governed run."
@@ -2175,7 +2175,7 @@
         "transformations": [
           "MultiPL-E already translated the Python original to JavaScript.",
           "Authored a canonical JS reference solution, used only by the admission self-check.",
-          "Witness: the dataset node:assert tests run against the agent's file (node_test); As in MultiPL-E, the solution and the tests run in one node process, so a solution could tamper with node:assert; a per-run completion marker only the evaluator knows defeats an early exit."
+          "Witness: the dataset node:assert tests run against the agent's file (node_test); As in MultiPL-E, the solution and the tests run in one node process; the per-run completion marker defeats an accidental early exit; a deliberately tampering solution is not detected (compliant-only, non-adversarial tasks)."
         ],
         "lost_distinctions": [
           "MultiPL-E pass@k over samples is replaced by one governed run."
@@ -2242,7 +2242,7 @@
         "transformations": [
           "MultiPL-E already translated the Python original to JavaScript.",
           "Authored a canonical JS reference solution, used only by the admission self-check.",
-          "Witness: the dataset node:assert tests run against the agent's file (node_test); As in MultiPL-E, the solution and the tests run in one node process, so a solution could tamper with node:assert; a per-run completion marker only the evaluator knows defeats an early exit."
+          "Witness: the dataset node:assert tests run against the agent's file (node_test); As in MultiPL-E, the solution and the tests run in one node process; the per-run completion marker defeats an accidental early exit; a deliberately tampering solution is not detected (compliant-only, non-adversarial tasks)."
         ],
         "lost_distinctions": [
           "MultiPL-E pass@k over samples is replaced by one governed run."
@@ -2309,7 +2309,7 @@
         "transformations": [
           "MultiPL-E already translated the Python original to JavaScript.",
           "Seeded one bug (% 2 === 1 -> % 2 === 0) that fails the dataset tests; the canonical solution is the admission self-check reference.",
-          "Witness: the dataset node:assert tests run against the agent's file (node_test); As in MultiPL-E, the solution and the tests run in one node process, so a solution could tamper with node:assert; a per-run completion marker only the evaluator knows defeats an early exit."
+          "Witness: the dataset node:assert tests run against the agent's file (node_test); As in MultiPL-E, the solution and the tests run in one node process; the per-run completion marker defeats an accidental early exit; a deliberately tampering solution is not detected (compliant-only, non-adversarial tasks)."
         ],
         "lost_distinctions": [
           "MultiPL-E pass@k over samples is replaced by one governed run.",
@@ -2377,7 +2377,7 @@
         "transformations": [
           "MultiPL-E already translated the Python original to JavaScript.",
           "Seeded one bug (n >= 8 -> n > 8) that fails the dataset tests; the canonical solution is the admission self-check reference.",
-          "Witness: the dataset node:assert tests run against the agent's file (node_test); As in MultiPL-E, the solution and the tests run in one node process, so a solution could tamper with node:assert; a per-run completion marker only the evaluator knows defeats an early exit."
+          "Witness: the dataset node:assert tests run against the agent's file (node_test); As in MultiPL-E, the solution and the tests run in one node process; the per-run completion marker defeats an accidental early exit; a deliberately tampering solution is not detected (compliant-only, non-adversarial tasks)."
         ],
         "lost_distinctions": [
           "MultiPL-E pass@k over samples is replaced by one governed run.",
@@ -2445,7 +2445,7 @@
         "transformations": [
           "MultiPL-E already translated the Python original to JavaScript.",
           "Seeded one bug (Math.ceil -> Math.floor) that fails the dataset tests; the canonical solution is the admission self-check reference.",
-          "Witness: the dataset node:assert tests run against the agent's file (node_test); As in MultiPL-E, the solution and the tests run in one node process, so a solution could tamper with node:assert; a per-run completion marker only the evaluator knows defeats an early exit."
+          "Witness: the dataset node:assert tests run against the agent's file (node_test); As in MultiPL-E, the solution and the tests run in one node process; the per-run completion marker defeats an accidental early exit; a deliberately tampering solution is not detected (compliant-only, non-adversarial tasks)."
         ],
         "lost_distinctions": [
           "MultiPL-E pass@k over samples is replaced by one governed run.",
@@ -2513,7 +2513,7 @@
         "transformations": [
           "MultiPL-E already translated the Python original to JavaScript.",
           "Seeded one bug (let i = 2 -> let i = 3) that fails the dataset tests; the canonical solution is the admission self-check reference.",
-          "Witness: the dataset node:assert tests run against the agent's file (node_test); As in MultiPL-E, the solution and the tests run in one node process, so a solution could tamper with node:assert; a per-run completion marker only the evaluator knows defeats an early exit."
+          "Witness: the dataset node:assert tests run against the agent's file (node_test); As in MultiPL-E, the solution and the tests run in one node process; the per-run completion marker defeats an accidental early exit; a deliberately tampering solution is not detected (compliant-only, non-adversarial tasks)."
         ],
         "lost_distinctions": [
           "MultiPL-E pass@k over samples is replaced by one governed run.",
@@ -2581,7 +2581,7 @@
         "transformations": [
           "MultiPL-E already translated the Python original to JavaScript.",
           "Seeded one bug (Math.abs(g - guess[i]) -> Math.abs(g + guess[i])) that fails the dataset tests; the canonical solution is the admission self-check reference.",
-          "Witness: the dataset node:assert tests run against the agent's file (node_test); As in MultiPL-E, the solution and the tests run in one node process, so a solution could tamper with node:assert; a per-run completion marker only the evaluator knows defeats an early exit."
+          "Witness: the dataset node:assert tests run against the agent's file (node_test); As in MultiPL-E, the solution and the tests run in one node process; the per-run completion marker defeats an accidental early exit; a deliberately tampering solution is not detected (compliant-only, non-adversarial tasks)."
         ],
         "lost_distinctions": [
           "MultiPL-E pass@k over samples is replaced by one governed run.",

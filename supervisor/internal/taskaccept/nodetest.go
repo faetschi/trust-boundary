@@ -43,8 +43,10 @@ type NodeRunner interface {
 var ErrNoNodeRunner = errors.New("a node_test check needs an isolated node runner; none is available, so acceptance is refused")
 
 // checkNodeTest returns the result, or an error that refuses the whole evaluation. A missing or
-// unreadable file fails without running anything. The program ends with a marker that only the
-// evaluator knows, so a file that exits early (process.exit(0)) before the tests ran does not pass.
+// unreadable file fails without running anything. The program ends with a per-run marker, which
+// defeats an accidental early exit (process.exit(0)) before the tests ran; a deliberately tampering
+// solution is not detected (it could read the marker via fs.readFileSync(__filename)), which suits the
+// compliant-only, non-adversarial tasks this check grades.
 func checkNodeTest(after tree, c Check, runner NodeRunner) (bool, string, error) {
 	n, ok := after[c.Path]
 	if !ok {
