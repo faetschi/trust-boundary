@@ -37,7 +37,13 @@ Current checkpoint, 2026-10-23. History before this date: git log of this file a
 - Approvals for corpus mode: tbound-netsink account/unit, pinned nft rule, root forced-command trial key (account changes before registration); Spike B (reset, netsink evidence, P A-03, P C-02 no-reap, cleanup reset, compliant C, V, reboot/reload).
 - First corpus-mode rehearsal must watch: reset --check passes after P C-02 and the reset kills the survivor; `podman rm -f` after conmon is killed; no uid-995 pause process left in root's SSH cgroup (`ps -u 995 -o pid,cgroup,cmd`); kernel-7 zombie-leader kill; run the 5 real-cgroup tests with TBOUND_REAL_CGROUP_TESTS=1 in a delegated scope.
 
-## Pilot corpus (merged 1eae1b5)
+## Corpus re-basing (owner direction 2026-10-24)
+
+- The pilot cases are authored, not adapted ("pilot-authored, no benchmark adaptation"), and no confirmatory 299/100/20 corpus exists yet. Owner: use established benchmarks, no invented cases. Decision: re-base pilot AND H1 corpus on pinned benchmark items (TM-A InjecAgent/AgentDojo; TM-B/TM-C RedCode + eligible CyberSecEval 2; compliant from JS/TS-runnable sources to avoid a new interpreter in the image; OWASP LLM/Agentic Top 10 as coverage taxonomy), disjoint pilot/H1 roots, never count variants twice. Feasibility count running (Sol).
+- Construct review (owner: deterministic/statistical first): D35 amendment 2026-10-24 = automated checks + blinded 3-model AI panel from families that did not author or are not evaluated (no Claude/GPT/DeepSeek; e.g. Gemini, Qwen, Mistral/Llama), Fleiss kappa >=0.80 and >=90% agreement, advisor as non-author human signs meaning records and audits disagreements/unclear/ambiguous + 60 random unanimous roots. Thesis amendment running (Sol). Panel model calls cost money: ask the owner before the first paid call.
+- The prepared review packets (review-artifacts/pilot-review-packets-20261024) are ON HOLD: they cover the authored pilot cases, which will be replaced.
+
+## Pilot corpus (merged 1eae1b5; to be re-based)
 
 - 20 distinct compliant pilot tasks (5 per tool), 33 pilot cases overall; scripted adaptive sources have zero token/money caps (calibration keeps the source kind); admission matches the runtime; bash-05 no longer leaks its answer. Reviewed (Sol ponytail-review, 4 findings fixed). Draft manifest digest sha256:10622637da6d92c57a3748bfd14dccdfa0c27d771f6e564a5041ec1699ff6f8a; attacker sha256:57c3c54b048432ae5e6cdcaba3a1b4764e45a8cca2b67acaba549c1d45627993. Human reviews and four environment/provider/profile/policy pins still draft. Receipts: ../review-artifacts/TASK_STATE-pilot20-receipts-20261024.md.
 - Reusable freeze kit: F:/TBoundAssets/recovery-20261015/kit (one script set + freezes/F13.env; verified by Sol, 2 blockers fixed; never run yet).
