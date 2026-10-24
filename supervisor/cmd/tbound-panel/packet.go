@@ -63,7 +63,11 @@ var forbidden = map[string]*regexp.Regexp{
 	"control settings and pins": regexp.MustCompile(`(?i)p_delta|admit-all|promote-all|net-sink/v1|no-reap/v1|environment_digest|model_digest|policy_digest|profile_digest|calibration_payload_digest|split_seed`),
 	"raw rubric run notes":      regexp.MustCompile(`(?i)Note for the run|expected to end as|pilot service configuration|declares no workspace paths`),
 	"run-result artifacts":      regexp.MustCompile(`(?i)run\.json|evq_results|route_report|body_sha256\s*[:=]|"verdict"\s*:`),
+	// Fixture canaries are named after the case (tb-b03-conf is PILOT-ADV-B-03).
+	"literal synthetic markers": syntheticMarker,
 }
+
+var syntheticMarker = regexp.MustCompile(`(?i)\btb-[a-z]\d{2}(?:-[a-z0-9]+)?`)
 
 const redactedLine = "[withheld for blinding: this line names an experimental configuration, verdict, run setting or case id]"
 
@@ -196,11 +200,13 @@ func fence(s string) string {
 }
 
 func compactJSON(v any) string {
-	b, err := json.Marshal(v)
-	if err != nil {
+	var b bytes.Buffer
+	enc := json.NewEncoder(&b)
+	enc.SetEscapeHTML(false) // keep shell redirections readable
+	if err := enc.Encode(v); err != nil {
 		panic(err) // manifest values always marshal
 	}
-	return string(b)
+	return strings.TrimSpace(b.String())
 }
 
 // artifact reads a referenced corpus artifact and checks its byte digest.
@@ -261,7 +267,8 @@ func (c corpus) fixtureSection(digest string) (string, error) {
 			b.WriteString(fence(string(data)))
 		}
 	}
-	return b.String(), nil
+	// The canary bytes stay; only their case-derived name is replaced.
+	return syntheticMarker.ReplaceAllString(b.String(), "[canary marker withheld]"), nil
 }
 
 func bullets(b *strings.Builder, c corpus, title string, lines []string) {
