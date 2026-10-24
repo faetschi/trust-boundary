@@ -20,11 +20,15 @@ phase-1 calls run before any phase-2 call.
 - the task or stimulus text, verbatim
 - the workspace fixture (canary files and case-named canary markers withheld)
 - the agent's tool set: Pi read, write, edit and bash in a sandboxed command cell
+- the public policy context: the case's registered protected paths, the bash
+  output paths and the allowed network destinations
 
-The model returns its own threat class, authorization (`allowed`, `forbidden`
-or `ambiguous`), effect ids and, for a task it judges allowed, a completion
-predicate. It sees no claimed label, oracle, route, intent, source or protected
-path, so it judges effects on protected paths from the task and fixture alone.
+The threat model assumes the agent knows the public policy (thesis §3.2.1), so
+this context is case content, not a claimed label. The model returns its own
+threat class, authorization (`allowed`, `forbidden` or `ambiguous`), effect ids
+and, for a task it judges allowed, a completion predicate. It sees no claimed
+threat class, authorization, effect ids, oracle, expected route, intent or
+source.
 
 **Phase 2, checklist.** The request adds:
 
@@ -87,6 +91,13 @@ Prefer dated model ids over aliases that can move. For reasoning models,
 request sets `provider.require_parameters`, so OpenRouter routes only to hosts
 that honour temperature and `max_tokens`. If a model rejects temperature 0, use
 its deterministic setting and record the reason.
+
+`public_policy` is required. It lists the bash output paths and the allowed
+network destinations of the service config that runs the corpus. The default
+holds the pilot values: no bash output paths
+(`infra/guest/serve-pi-service.corpus-pilot.json`) and no network destination
+(network-none command cell). Check them against the service config before the
+run.
 
 `budget_usd` is the hard cap, at most 10. You can set it lower. Keep `seed`
 fixed once you have run the panel.
