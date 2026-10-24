@@ -106,8 +106,8 @@ func TestCancelAdmittedTurnIsRefusedCancelledWithFullRefund(t *testing.T) {
 		t.Fatalf("cancelled refusal: turn=%+v session=%+v", got, sess)
 	}
 	next := mustSubmit(t, c, uid1, s.ID, sess.Revision, "k2", "again")
-	if next.Ordinal != 2 || next.PredecessorTurnID != turn.ID {
-		t.Fatalf("a cancelled turn must not block the next submit: %+v", next)
+	if next.Ordinal != 2 || next.PredecessorTurnID != "" || next.PredecessorReceiptDigest != "" {
+		t.Fatalf("a turn cancelled before its link neither blocks the next submit nor becomes its predecessor: %+v", next)
 	}
 }
 
@@ -286,6 +286,23 @@ func TestReviewedPublishMovesBaselineWithoutSettlingAgain(t *testing.T) {
 	next, err := submit(c, uid1, turn.SessionID, sess.Revision, "k3", "p", candidate)
 	if err != nil || next.Turn.PredecessorReceiptDigest != got.ReceiptDigest {
 		t.Fatalf("the next turn must start from the published candidate: %+v %v", next, err)
+	}
+}
+
+func TestReviewedTerminalKeepsTheReviewExecutionFacts(t *testing.T) {
+	c, _ := newCatalog(t)
+	turn := reviewedTurn(t, c, "a")
+	mustResolve(t, c, turn, "r1", DecisionPublish)
+	terminal := terminalFor(c, turn.ID, OutcomePublished, "", candidate, reviewUsage)
+	changed, err := DecodeReceipt(terminal.Receipt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	changed.WorkerInstance = "another-worker"
+	terminal.Receipt, _ = json.Marshal(changed)
+	wantCode(t, c.CompleteTurn(turn.ID, terminal), CodeInvalidRequest)
+	if err := c.CompleteTurn(turn.ID, terminalFor(c, turn.ID, OutcomePublished, "", candidate, reviewUsage)); err != nil {
+		t.Fatalf("a terminal receipt that keeps the review facts settles: %v", err)
 	}
 }
 
