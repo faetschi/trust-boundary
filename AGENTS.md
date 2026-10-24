@@ -1,4 +1,4 @@
-# Global Claude Code Instructions
+# Global Agentic Instructions
 
 ## Atomic Commits
 
