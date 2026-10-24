@@ -225,3 +225,12 @@ Settlement `reconciled-after-restart` is valid for worker kind `headless-fixture
 | `product_turn_refused` (extended) | Also accepts code `CANCELLED`, giving outcome `cancelled` with no block. |
 
 New error codes: `CANDIDATE_MISMATCH`, `REVIEW_NOT_PENDING`, `CANCEL_NOT_ALLOWED`.
+
+### P4 catalog decisions taken during implementation
+
+- `CancelTurn` and `ResolveTurn` check the principal, the request key, that the turn belongs to the session, the turn state, and then the revision.
+- A turn records at most one cancel request. A repeat with a new key returns the turn without writing, and does not consume that key.
+- A turn records at most one resolution. A second one, with either decision, is a `REQUEST_CONFLICT`.
+- `discarded` with reason `restart` or `cancelled` is accepted even after a `publish` resolution, because the driver reports the real disposition.
+- `MarkTurnUnknown` also accepts an `awaiting_review` turn, without settling its usage again.
+- A reviewed terminal receipt replaces the awaiting-review receipt, so the next turn's predecessor commitment is the terminal one.
