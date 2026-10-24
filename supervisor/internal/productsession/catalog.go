@@ -172,15 +172,89 @@ func (c *Catalog) LinkTurn(turnID string, link TurnLink) error {
 	return c.commit(kindTurnLinked, turnID, turnLinkedRecord{header: hdr, TurnID: turnID, Link: link})
 }
 
-// CompleteTurn records the verified disposition of a linked turn.
+// CompleteTurn records the verified disposition of a linked turn, or the end
+// of a turn that awaited review. Usage of a reviewed turn was settled at
+// awaiting_review, so its terminal record repeats it and refunds nothing.
 func (c *Catalog) CompleteTurn(turnID string, t TurnTerminal) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	refund := c.reservationOf(turnID).minus(t.Usage)
+	if turn, ok := c.st.turns[turnID]; ok && turn.State == StateAwaitingReview {
+		refund = Budget{}
+	}
 	return c.commit(kindTurnTerminal, turnID, turnTerminalRecord{
 		header: hdr, TurnID: turnID, Outcome: t.Outcome, Settlement: t.Settlement, Receipt: t.Receipt,
 		ReceiptDigest: ReceiptDigest(t.Receipt), Usage: t.Usage, ResultBaselineDigest: t.ResultBaselineDigest,
-		ContextEligible: t.ContextEligible, Refund: c.reservationOf(turnID).minus(t.Usage),
+		ContextEligible: t.ContextEligible, Refund: refund, Reason: t.Reason,
 	})
+}
+
+// CancelTurn records a cancel request for an admitted, linked or awaiting-review
+// turn of p's session. It never settles the turn. A repeat of the same request
+// returns the turn with replayed set and writes nothing. A turn that already has
+// a cancel request answers a request with a new key the same way, without a
+// record or a revision bump, because the request is already in effect.
+func (c *Catalog) CancelTurn(p Principal, r CancelTurnRequest) (Turn, bool, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	sess, err := c.st.authorize(p, r.SessionID)
+	if err != nil {
+		return Turn{}, false, err
+	}
+	digest := payloadDigest(opCancelTurn, r)
+	if e, ok := c.st.keys[requestKey{p, opCancelTurn, r.SessionID, r.RequestKey}]; ok {
+		if e.digest != digest {
+			return Turn{}, false, fail(CodeRequestConflict, "request key reused with a different request")
+		}
+		return c.st.turns[e.id].clone(), true, nil
+	}
+	t, err := c.st.sessionTurn(sess, r.TurnID)
+	if err != nil {
+		return Turn{}, false, err
+	}
+	if t.unresolved() && t.CancelRequested {
+		return t.clone(), true, nil
+	}
+	err = c.commit(kindTurnCancelRequested, r.TurnID, turnCancelRequestedRecord{
+		header: hdr, TurnID: r.TurnID, SessionID: r.SessionID, Principal: p, RequestKey: r.RequestKey,
+		PayloadDigest: digest, SessionRevision: r.ExpectedRevision + 1,
+	})
+	if err != nil {
+		return Turn{}, false, err
+	}
+	return t.clone(), false, nil
+}
+
+// ResolveTurn records the review decision for the exact candidate of a turn
+// awaiting review. The turn stays awaiting review until its terminal record.
+// A turn takes one resolution: a second request with a new key fails with
+// REQUEST_CONFLICT, and once the turn is terminal it fails with REVIEW_NOT_PENDING.
+func (c *Catalog) ResolveTurn(p Principal, r ResolveTurnRequest) (Turn, bool, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	sess, err := c.st.authorize(p, r.SessionID)
+	if err != nil {
+		return Turn{}, false, err
+	}
+	digest := payloadDigest(opResolveTurn, r)
+	if e, ok := c.st.keys[requestKey{p, opResolveTurn, r.SessionID, r.RequestKey}]; ok {
+		if e.digest != digest {
+			return Turn{}, false, fail(CodeRequestConflict, "request key reused with a different request")
+		}
+		return c.st.turns[e.id].clone(), true, nil
+	}
+	t, err := c.st.sessionTurn(sess, r.TurnID)
+	if err != nil {
+		return Turn{}, false, err
+	}
+	err = c.commit(kindTurnResolutionRequested, r.TurnID, turnResolutionRequestedRecord{
+		header: hdr, TurnID: r.TurnID, SessionID: r.SessionID, Principal: p, RequestKey: r.RequestKey, PayloadDigest: digest,
+		CandidateDigest: r.CandidateDigest, Decision: r.Decision, SessionRevision: r.ExpectedRevision + 1,
+	})
+	if err != nil {
+		return Turn{}, false, err
+	}
+	return t.clone(), false, nil
 }
 
 // MarkAwaitingReview settles a changed review-mode turn. The turn stays
@@ -191,6 +265,7 @@ func (c *Catalog) MarkAwaitingReview(turnID string, r TurnReview) error {
 	return c.commit(kindTurnAwaitingReview, turnID, turnAwaitingReviewRecord{
 		header: hdr, TurnID: turnID, Settlement: r.Settlement, Receipt: r.Receipt, ReceiptDigest: ReceiptDigest(r.Receipt),
 		Usage: r.Usage, Refund: c.reservationOf(turnID).minus(r.Usage), CandidateDigest: r.CandidateDigest,
+		ReviewTimeoutSeconds: int64(c.st.reg.Limits.ReviewTimeoutSeconds),
 	})
 }
 
@@ -205,7 +280,8 @@ func (c *Catalog) AbandonUnlinkedTurn(turnID string) error {
 // RefuseUnlinkedTurn records that the composition refused to launch an
 // admitted turn before linking it: code is PREDECESSOR_EVIDENCE_INVALID, which
 // blocks the session, or STALE_BASELINE, which blocks the project. The turn
-// fails with a full refund.
+// fails with a full refund. CANCELLED, allowed only after
+// CancelTurn, ends the turn cancelled with a full refund and blocks nothing.
 func (c *Catalog) RefuseUnlinkedTurn(turnID string, code Code) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()

@@ -15,18 +15,22 @@ import (
 const (
 	catalogSchema = "tbound-product-catalog/v1"
 
-	kindOpened             = "product_catalog_opened"
-	kindSessionCreated     = "product_session_created"
-	kindTurnAdmitted       = "product_turn_admitted"
-	kindTurnLinked         = "product_turn_linked"
-	kindTurnTerminal       = "product_turn_terminal"
-	kindTurnAwaitingReview = "product_turn_awaiting_review"
-	kindTurnAbandoned      = "product_turn_abandoned"
-	kindTurnUnknown        = "product_turn_unknown"
-	kindTurnRefused        = "product_turn_refused"
+	kindOpened                  = "product_catalog_opened"
+	kindSessionCreated          = "product_session_created"
+	kindTurnAdmitted            = "product_turn_admitted"
+	kindTurnLinked              = "product_turn_linked"
+	kindTurnTerminal            = "product_turn_terminal"
+	kindTurnAwaitingReview      = "product_turn_awaiting_review"
+	kindTurnAbandoned           = "product_turn_abandoned"
+	kindTurnUnknown             = "product_turn_unknown"
+	kindTurnRefused             = "product_turn_refused"
+	kindTurnCancelRequested     = "product_turn_cancel_requested"
+	kindTurnResolutionRequested = "product_turn_resolution_requested"
 
 	opCreateSession = "create_session"
 	opSubmitTurn    = "submit_turn"
+	opCancelTurn    = "cancel_turn"
+	opResolveTurn   = "resolve_turn"
 
 	// MaxPromptBytes matches providerbridge.
 	MaxPromptBytes = 16 << 10
@@ -103,17 +107,19 @@ type turnTerminalRecord struct {
 	ResultBaselineDigest string `json:"result_baseline_digest"`
 	ContextEligible      bool   `json:"context_eligible"`
 	Refund               Budget `json:"refund"`
+	Reason               string `json:"reason,omitempty"`
 }
 
 type turnAwaitingReviewRecord struct {
 	header
-	TurnID          string `json:"turn_id"`
-	Settlement      string `json:"settlement"`
-	Receipt         []byte `json:"receipt"`
-	ReceiptDigest   string `json:"receipt_digest"`
-	Usage           Budget `json:"usage"`
-	Refund          Budget `json:"refund"`
-	CandidateDigest string `json:"candidate_digest"`
+	TurnID               string `json:"turn_id"`
+	Settlement           string `json:"settlement"`
+	Receipt              []byte `json:"receipt"`
+	ReceiptDigest        string `json:"receipt_digest"`
+	Usage                Budget `json:"usage"`
+	Refund               Budget `json:"refund"`
+	CandidateDigest      string `json:"candidate_digest"`
+	ReviewTimeoutSeconds int64  `json:"review_timeout_seconds"`
 }
 
 type turnAbandonedRecord struct {
@@ -127,6 +133,28 @@ type turnRefusedRecord struct {
 	TurnID string `json:"turn_id"`
 	Code   Code   `json:"code"`
 	Refund Budget `json:"refund"`
+}
+
+type turnCancelRequestedRecord struct {
+	header
+	TurnID          string    `json:"turn_id"`
+	SessionID       string    `json:"session_id"`
+	Principal       Principal `json:"principal"`
+	RequestKey      string    `json:"request_key"`
+	PayloadDigest   string    `json:"payload_digest"`
+	SessionRevision uint64    `json:"session_revision"`
+}
+
+type turnResolutionRequestedRecord struct {
+	header
+	TurnID          string    `json:"turn_id"`
+	SessionID       string    `json:"session_id"`
+	Principal       Principal `json:"principal"`
+	RequestKey      string    `json:"request_key"`
+	PayloadDigest   string    `json:"payload_digest"`
+	CandidateDigest string    `json:"candidate_digest"`
+	Decision        string    `json:"decision"`
+	SessionRevision uint64    `json:"session_revision"`
 }
 
 type turnUnknownRecord struct {

@@ -19,17 +19,19 @@ const ReceiptSchema = "tbound-product-turn-receipt/v1"
 // the in-process deterministic driver: it has no OS process to settle, so its
 // receipt never claims a STOPPED settlement.
 const (
-	WorkerHeadlessFixture     = "headless-fixture"
-	WorkerPi                  = "pi"
-	SettlementHeadlessClosed  = "headless-fixture-closed"
-	SettlementStopped         = "stopped"
-	receiptOutcomeAwaitReview = "awaiting_review"
-	maxReceiptListLen         = 4096
+	WorkerHeadlessFixture    = "headless-fixture"
+	WorkerPi                 = "pi"
+	SettlementHeadlessClosed = "headless-fixture-closed"
+	SettlementStopped        = "stopped"
+	// SettlementReconciledAfterRestart settles a turn whose in-process worker died with its process.
+	SettlementReconciledAfterRestart = "reconciled-after-restart"
+	receiptOutcomeAwaitReview        = "awaiting_review"
+	maxReceiptListLen                = 4096
 )
 
-var workerSettlement = map[string]string{
-	WorkerHeadlessFixture: SettlementHeadlessClosed,
-	WorkerPi:              SettlementStopped,
+var workerSettlements = map[string][]string{
+	WorkerHeadlessFixture: {SettlementHeadlessClosed, SettlementReconciledAfterRestart},
+	WorkerPi:              {SettlementStopped},
 }
 
 // TurnReceipt is the terminal evidence of one turn. It commits to the turn's
@@ -107,7 +109,7 @@ func checkReceipt(t *Turn, data []byte, outcome, settlement string, usage Budget
 		return mismatch("baseline or predecessor")
 	case r.Outcome != outcome || r.Settlement != settlement || r.Usage != usage:
 		return mismatch("outcome, settlement or usage")
-	case workerSettlement[r.WorkerKind] != r.Settlement || !validIdentity(r.WorkerInstance):
+	case !slices.Contains(workerSettlements[r.WorkerKind], r.Settlement) || !validIdentity(r.WorkerInstance):
 		return mismatch("worker settlement")
 	case !isLowerHex(r.ProviderJournalHead) || len(r.ProviderJournalHead) != 64 || r.ProviderJournalCount == 0 ||
 		!isLowerHex(r.StoreJournalHead) || len(r.StoreJournalHead) != 64 || r.StoreJournalCount == 0:

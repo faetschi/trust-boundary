@@ -24,6 +24,13 @@ const (
 	CodePredecessorEvidenceInvalid Code = "PREDECESSOR_EVIDENCE_INVALID"
 	CodeWrongTurnState             Code = "WRONG_TURN_STATE"
 	CodeCatalogCorrupt             Code = "CATALOG_CORRUPT"
+	CodeCandidateMismatch          Code = "CANDIDATE_MISMATCH"
+	CodeReviewNotPending           Code = "REVIEW_NOT_PENDING"
+	CodeCancelNotAllowed           Code = "CANCEL_NOT_ALLOWED"
+
+	// CodeCancelled is a RefuseUnlinkedTurn code, not a request error: the
+	// client cancelled an admitted turn before it launched.
+	CodeCancelled Code = "CANCELLED"
 )
 
 // Error carries a stable Code. Detail is a fixed phrase plus identifiers and

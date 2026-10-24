@@ -546,8 +546,7 @@ func TestAwaitingReviewBlocksSessionAndProject(t *testing.T) {
 	wantCode(t, err, CodePendingReview)
 	_, err = submit(c, uid2, other.ID, 0, "k", "p", b0)
 	wantCode(t, err, CodeProjectBusy)
-	wantCode(t, complete(c, turn.ID, OutcomeNoDiff, Budget{1, 1, 1}, b0), CodeWrongTurnState)
-	wantCode(t, c.MarkTurnUnknown(turn.ID, "x"), CodeWrongTurnState)
+	wantCode(t, complete(c, turn.ID, OutcomeNoDiff, Budget{2, 10, 5}, b0), CodeInvalidRequest) // a reviewed turn cannot end no_diff
 
 	autoSession := mustSession(t, c, uid1, "gamma", "auto", bigBudget, "s3")
 	at := mustSubmit(t, c, uid1, autoSession.ID, 0, "k", "p")

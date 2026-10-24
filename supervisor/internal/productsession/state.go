@@ -22,12 +22,28 @@ const (
 	StateUnknown        TurnState = "unknown"
 )
 
-// Terminal outcomes CompleteTurn accepts in milestone 1. discarded and
-// cancelled belong to P4 and are refused.
+// Terminal outcomes CompleteTurn accepts. Which ones a turn accepts depends on
+// its state: see terminalRules.
 const (
 	OutcomePublished = "published"
 	OutcomeNoDiff    = "no_diff"
 	OutcomeFailed    = "failed"
+	OutcomeDiscarded = "discarded"
+	OutcomeCancelled = "cancelled"
+)
+
+// Review decisions of ResolveTurn.
+const (
+	DecisionPublish = "publish"
+	DecisionDiscard = "discard"
+)
+
+// Reasons of a discarded outcome.
+const (
+	ReasonUser      = "user"
+	ReasonExpired   = "expired"
+	ReasonCancelled = "cancelled"
+	ReasonRestart   = "restart"
 )
 
 // CreateSessionRequest is the client-supplied part of session creation.
@@ -46,6 +62,24 @@ type SubmitTurnRequest struct {
 	RequestKey             string `json:"request_key"`
 	Prompt                 string `json:"prompt"`
 	ExpectedBaselineDigest string `json:"expected_baseline_digest,omitempty"`
+}
+
+// CancelTurnRequest is the client-supplied part of a cancellation.
+type CancelTurnRequest struct {
+	SessionID        string `json:"session_id"`
+	TurnID           string `json:"turn_id"`
+	ExpectedRevision uint64 `json:"expected_revision"`
+	RequestKey       string `json:"request_key"`
+}
+
+// ResolveTurnRequest is the client-supplied part of a review decision.
+type ResolveTurnRequest struct {
+	SessionID        string `json:"session_id"`
+	TurnID           string `json:"turn_id"`
+	ExpectedRevision uint64 `json:"expected_revision"`
+	RequestKey       string `json:"request_key"`
+	CandidateDigest  string `json:"candidate_digest"`
+	Decision         string `json:"decision"`
 }
 
 // TurnLink binds a turn to its workflow before any provider or tool work.
@@ -68,6 +102,8 @@ type TurnTerminal struct {
 	Usage                Budget
 	ResultBaselineDigest string
 	ContextEligible      bool
+	// Reason is required for, and only valid with, a discarded outcome.
+	Reason string
 }
 
 // TurnReview settles a changed review-mode turn that now awaits review.
@@ -128,6 +164,10 @@ type Turn struct {
 	CandidateDigest          string
 	UnknownReason            string
 	RefusalCode              Code
+	CancelRequested          bool
+	Resolution               string // DecisionPublish or DecisionDiscard once ResolveTurn recorded one
+	ReviewTimeoutSeconds     int64  // review expiry in force when the turn began awaiting review
+	TerminalReason           string // reason of a discarded outcome
 }
 
 // Admission is the result of SubmitTurn. Turn is the turn's current state.
@@ -301,6 +341,10 @@ func (s *state) reduce(kind string, data []byte) (commit func(), err error) {
 		return s.reduceUnknown(data)
 	case kindTurnRefused:
 		return s.reduceRefused(data)
+	case kindTurnCancelRequested:
+		return s.reduceCancelRequested(data)
+	case kindTurnResolutionRequested:
+		return s.reduceResolutionRequested(data)
 	}
 	return nil, fail(CodeInvalidRequest, "unknown record kind")
 }
@@ -511,10 +555,18 @@ func (s *state) reduceLinked(data []byte) (func(), error) {
 
 // checkSettlement validates the receipt, usage and refund shared by terminal
 // and awaiting-review records.
-func checkSettlement(t *Turn, receipt []byte, digest string, usage, refund Budget) error {
-	switch {
-	case !validReceipt(receipt) || digest != ReceiptDigest(receipt):
+func checkReceiptBytes(receipt []byte, digest string) error {
+	if !validReceipt(receipt) || digest != ReceiptDigest(receipt) {
 		return fail(CodeInvalidRequest, "receipt is not strict JSON within its bound, or its digest differs")
+	}
+	return nil
+}
+
+func checkSettlement(t *Turn, receipt []byte, digest string, usage, refund Budget) error {
+	if err := checkReceiptBytes(receipt, digest); err != nil {
+		return err
+	}
+	switch {
 	case !usage.nonNegative() || !usage.fits(t.Reservation):
 		return fail(CodeInvalidRequest, "usage exceeds the reservation")
 	case refund != t.Reservation.minus(usage):
@@ -537,44 +589,191 @@ func (s *state) resolve(t *Turn) {
 	s.project(t.ProjectID).active = ""
 }
 
+// terminalRules checks that the turn's state, resolution and cancel request
+// allow the outcome and reason, and returns the baseline the outcome must report.
+func terminalRules(t *Turn, r turnTerminalRecord) (string, error) {
+	bad := func(detail string) (string, error) { return "", fail(CodeInvalidRequest, detail) }
+	reviewed := t.State == StateAwaitingReview
+	if r.Reason != "" && r.Outcome != OutcomeDiscarded {
+		return bad("a reason belongs only to a discarded outcome")
+	}
+	switch r.Outcome {
+	case OutcomeNoDiff:
+		if reviewed {
+			return bad("a turn awaiting review cannot end no_diff")
+		}
+	case OutcomeFailed:
+		if reviewed && t.Resolution != DecisionPublish {
+			return bad("a reviewed turn fails only when a publication was requested")
+		}
+	case OutcomePublished:
+		switch {
+		case reviewed && t.Resolution != DecisionPublish:
+			return bad("a reviewed turn is published only after a publish resolution")
+		case reviewed:
+			return t.CandidateDigest, nil
+		case t.PublicationMode != PublicationAuto:
+			return bad("only an auto-publish turn can be published without review")
+		}
+		return r.ResultBaselineDigest, nil
+	case OutcomeCancelled:
+		if reviewed || !t.CancelRequested {
+			return bad("only a linked turn with a cancel request ends cancelled")
+		}
+	case OutcomeDiscarded:
+		switch {
+		case !reviewed:
+			return bad("only a turn awaiting review can be discarded")
+		case r.Reason == ReasonUser && t.Resolution != DecisionDiscard:
+			return bad("a user discard needs a discard resolution")
+		case r.Reason == ReasonCancelled && !t.CancelRequested:
+			return bad("a cancelled discard needs a cancel request")
+		case r.Reason != ReasonUser && r.Reason != ReasonCancelled && r.Reason != ReasonExpired && r.Reason != ReasonRestart:
+			return bad("discard reason is not user, expired, cancelled or restart")
+		}
+	default:
+		return bad("outcome is not supported")
+	}
+	return t.BaselineDigest, nil
+}
+
 func (s *state) reduceTerminal(data []byte) (func(), error) {
 	var r turnTerminalRecord
 	if err := decode(data, &r); err != nil {
 		return nil, err
 	}
-	t, err := s.turnInState(r.TurnID, StateLinked)
+	t, ok := s.turns[r.TurnID]
+	if !ok {
+		return nil, fail(CodeUnknownTurn, r.TurnID)
+	}
+	if t.State != StateLinked && t.State != StateAwaitingReview {
+		return nil, fail(CodeWrongTurnState, fmt.Sprintf("%s is %s, want linked or awaiting_review", t.ID, t.State))
+	}
+	reviewed := t.State == StateAwaitingReview
+	want, err := terminalRules(t, r)
 	if err != nil {
 		return nil, err
 	}
-	if r.Outcome != OutcomePublished && r.Outcome != OutcomeNoDiff && r.Outcome != OutcomeFailed {
-		return nil, fail(CodeInvalidRequest, "outcome is not supported in this milestone")
+	if !validDigest(r.ResultBaselineDigest) || r.ResultBaselineDigest != want {
+		return nil, fail(CodeInvalidRequest, "result baseline digest is invalid or not the one this outcome requires")
 	}
-	if !validDigest(r.ResultBaselineDigest) {
-		return nil, fail(CodeInvalidRequest, "result baseline digest is invalid")
-	}
-	if err := checkSettlement(t, r.Receipt, r.ReceiptDigest, r.Usage, r.Refund); err != nil {
+	if reviewed {
+		// Usage was settled at awaiting_review: the terminal record repeats it and refunds nothing.
+		if err := checkReceiptBytes(r.Receipt, r.ReceiptDigest); err != nil {
+			return nil, err
+		}
+		if r.Usage != t.Usage || r.Refund != (Budget{}) {
+			return nil, fail(CodeInvalidRequest, "a reviewed turn repeats its review usage and refunds nothing")
+		}
+	} else if err := checkSettlement(t, r.Receipt, r.ReceiptDigest, r.Usage, r.Refund); err != nil {
 		return nil, err
 	}
 	if err := checkReceipt(t, r.Receipt, r.Outcome, r.Settlement, r.Usage, r.ResultBaselineDigest); err != nil {
 		return nil, err
 	}
-	published := r.Outcome == OutcomePublished
-	if published && t.PublicationMode != PublicationAuto {
-		return nil, fail(CodeInvalidRequest, "only an auto-publish turn can be published")
-	}
-	if !published && r.ResultBaselineDigest != t.BaselineDigest {
-		return nil, fail(CodeInvalidRequest, "result baseline must equal the admitted baseline")
-	}
 	return func() {
-		s.settle(t, r.Usage)
+		if reviewed {
+			s.sessions[t.SessionID].Revision++
+		} else {
+			s.settle(t, r.Usage)
+			t.Refund = r.Refund
+		}
 		s.resolve(t)
-		if published {
+		if r.Outcome == OutcomePublished {
 			s.project(t.ProjectID).baseline = r.ResultBaselineDigest
 		}
-		t.State, t.Outcome, t.Settlement = StateTerminal, r.Outcome, r.Settlement
-		t.Receipt, t.ReceiptDigest, t.Usage, t.Refund = slices.Clone(r.Receipt), r.ReceiptDigest, r.Usage, r.Refund
+		t.State, t.Outcome, t.Settlement, t.TerminalReason = StateTerminal, r.Outcome, r.Settlement, r.Reason
+		t.Receipt, t.ReceiptDigest, t.Usage = slices.Clone(r.Receipt), r.ReceiptDigest, r.Usage
 		t.ResultBaselineDigest, t.ContextEligible = r.ResultBaselineDigest, r.ContextEligible
 	}, nil
+}
+
+// reduceCancelRequested records a durable cancel request. A turn takes one
+// record: the live operation answers a repeat without writing.
+func (s *state) reduceCancelRequested(data []byte) (func(), error) {
+	var r turnCancelRequestedRecord
+	if err := decode(data, &r); err != nil {
+		return nil, err
+	}
+	sess, err := s.authorize(r.Principal, r.SessionID)
+	if err != nil {
+		return nil, err
+	}
+	key := requestKey{r.Principal, opCancelTurn, r.SessionID, r.RequestKey}
+	if !validIdentity(r.RequestKey) {
+		return nil, fail(CodeInvalidRequest, "request key is invalid")
+	}
+	if _, dup := s.keys[key]; dup {
+		return nil, fail(CodeRequestConflict, "request key already used")
+	}
+	t, err := s.sessionTurn(sess, r.TurnID)
+	if err != nil {
+		return nil, err
+	}
+	switch {
+	case !t.unresolved() || t.CancelRequested:
+		return nil, fail(CodeCancelNotAllowed, fmt.Sprintf("%s is %s", t.ID, t.State))
+	case r.SessionRevision != sess.Revision+1:
+		return nil, fail(CodeStaleRevision, fmt.Sprintf("session revision is %d", sess.Revision))
+	case r.PayloadDigest != payloadDigest(opCancelTurn, CancelTurnRequest{SessionID: r.SessionID, TurnID: r.TurnID,
+		ExpectedRevision: sess.Revision, RequestKey: r.RequestKey}):
+		return nil, fail(CodeInvalidRequest, "payload digest does not match the request")
+	}
+	return func() {
+		t.CancelRequested = true
+		sess.Revision = r.SessionRevision
+		s.keys[key] = keyEntry{digest: r.PayloadDigest, id: t.ID}
+	}, nil
+}
+
+// reduceResolutionRequested records the review decision for the exact candidate.
+func (s *state) reduceResolutionRequested(data []byte) (func(), error) {
+	var r turnResolutionRequestedRecord
+	if err := decode(data, &r); err != nil {
+		return nil, err
+	}
+	sess, err := s.authorize(r.Principal, r.SessionID)
+	if err != nil {
+		return nil, err
+	}
+	key := requestKey{r.Principal, opResolveTurn, r.SessionID, r.RequestKey}
+	if !validIdentity(r.RequestKey) || (r.Decision != DecisionPublish && r.Decision != DecisionDiscard) {
+		return nil, fail(CodeInvalidRequest, "request key or decision is invalid")
+	}
+	if _, dup := s.keys[key]; dup {
+		return nil, fail(CodeRequestConflict, "request key already used")
+	}
+	t, err := s.sessionTurn(sess, r.TurnID)
+	if err != nil {
+		return nil, err
+	}
+	switch {
+	case t.State != StateAwaitingReview:
+		return nil, fail(CodeReviewNotPending, fmt.Sprintf("%s is %s", t.ID, t.State))
+	case t.Resolution != "":
+		return nil, fail(CodeRequestConflict, "the turn already has a resolution")
+	case r.CandidateDigest != t.CandidateDigest:
+		return nil, fail(CodeCandidateMismatch, t.ID)
+	case r.SessionRevision != sess.Revision+1:
+		return nil, fail(CodeStaleRevision, fmt.Sprintf("session revision is %d", sess.Revision))
+	case r.PayloadDigest != payloadDigest(opResolveTurn, ResolveTurnRequest{SessionID: r.SessionID, TurnID: r.TurnID,
+		ExpectedRevision: sess.Revision, RequestKey: r.RequestKey, CandidateDigest: r.CandidateDigest, Decision: r.Decision}):
+		return nil, fail(CodeInvalidRequest, "payload digest does not match the request")
+	}
+	return func() {
+		t.Resolution = r.Decision
+		sess.Revision = r.SessionRevision
+		s.keys[key] = keyEntry{digest: r.PayloadDigest, id: t.ID}
+	}, nil
+}
+
+// sessionTurn finds a turn of sess, so one session cannot name another's turn.
+func (s *state) sessionTurn(sess *Session, turnID string) (*Turn, error) {
+	t, ok := s.turns[turnID]
+	if !ok || t.SessionID != sess.ID {
+		return nil, fail(CodeUnknownTurn, turnID)
+	}
+	return t, nil
 }
 
 func (s *state) reduceAwaitingReview(data []byte) (func(), error) {
@@ -589,6 +788,10 @@ func (s *state) reduceAwaitingReview(data []byte) (func(), error) {
 	if t.PublicationMode != PublicationReview || !validDigest(r.CandidateDigest) {
 		return nil, fail(CodeInvalidRequest, "only a review-mode turn with a candidate digest can await review")
 	}
+	if r.ReviewTimeoutSeconds < 1 || r.ReviewTimeoutSeconds > maxReviewTimeout ||
+		(s.current() && r.ReviewTimeoutSeconds != int64(s.reg.Limits.ReviewTimeoutSeconds)) {
+		return nil, fail(CodeInvalidRequest, "review timeout is invalid or differs from the registration")
+	}
 	if err := checkSettlement(t, r.Receipt, r.ReceiptDigest, r.Usage, r.Refund); err != nil {
 		return nil, err
 	}
@@ -598,6 +801,7 @@ func (s *state) reduceAwaitingReview(data []byte) (func(), error) {
 	return func() {
 		s.settle(t, r.Usage)
 		t.State, t.Settlement = StateAwaitingReview, r.Settlement
+		t.ReviewTimeoutSeconds = r.ReviewTimeoutSeconds
 		t.Receipt, t.ReceiptDigest, t.Usage, t.Refund, t.CandidateDigest = slices.Clone(r.Receipt), r.ReceiptDigest, r.Usage, r.Refund, r.CandidateDigest
 	}, nil
 }
@@ -626,15 +830,22 @@ func (s *state) reduceUnknown(data []byte) (func(), error) {
 	if err := decode(data, &r); err != nil {
 		return nil, err
 	}
-	t, err := s.turnInState(r.TurnID, StateLinked)
-	if err != nil {
-		return nil, err
+	t, ok := s.turns[r.TurnID]
+	if !ok {
+		return nil, fail(CodeUnknownTurn, r.TurnID)
+	}
+	if t.State != StateLinked && t.State != StateAwaitingReview {
+		return nil, fail(CodeWrongTurnState, fmt.Sprintf("%s is %s, want linked or awaiting_review", t.ID, t.State))
 	}
 	if r.Reason == "" || len(r.Reason) > maxReasonBytes || !validPrompt(r.Reason) {
 		return nil, fail(CodeInvalidRequest, "reason is empty, too long, or not plain text")
 	}
 	return func() {
-		s.settle(t, t.Reservation)
+		if t.State == StateAwaitingReview { // usage was settled and the rest refunded at review
+			s.sessions[t.SessionID].Revision++
+		} else {
+			s.settle(t, t.Reservation)
+		}
 		s.resolve(t)
 		s.sessions[t.SessionID].Blocked = true
 		s.project(t.ProjectID).blocked = true
@@ -646,6 +857,7 @@ func (s *state) reduceUnknown(data []byte) (func(), error) {
 // before linking, so no provider or tool work happened. It is a failed turn
 // with a full refund. Tampered predecessor evidence blocks the session; a
 // project tree that no longer matches its committed baseline blocks the project.
+// A requested cancellation ends the turn cancelled and blocks nothing.
 func (s *state) reduceRefused(data []byte) (func(), error) {
 	var r turnRefusedRecord
 	if err := decode(data, &r); err != nil {
@@ -655,8 +867,11 @@ func (s *state) reduceRefused(data []byte) (func(), error) {
 	if err != nil {
 		return nil, err
 	}
-	if r.Code != CodePredecessorEvidenceInvalid && r.Code != CodeStaleBaseline {
-		return nil, fail(CodeInvalidRequest, "a launch can only be refused for predecessor evidence or a stale baseline")
+	switch {
+	case r.Code == CodePredecessorEvidenceInvalid || r.Code == CodeStaleBaseline:
+	case r.Code == CodeCancelled && t.CancelRequested:
+	default:
+		return nil, fail(CodeInvalidRequest, "a launch can only be refused for predecessor evidence, a stale baseline, or a requested cancellation")
 	}
 	if r.Refund != t.Reservation {
 		return nil, fail(CodeInvalidRequest, "a refused turn refunds its full reservation")
@@ -664,12 +879,16 @@ func (s *state) reduceRefused(data []byte) (func(), error) {
 	return func() {
 		s.settle(t, Budget{})
 		s.resolve(t)
-		if r.Code == CodePredecessorEvidenceInvalid {
+		outcome := OutcomeFailed
+		switch r.Code {
+		case CodePredecessorEvidenceInvalid:
 			s.sessions[t.SessionID].Blocked = true
-		} else {
+		case CodeStaleBaseline:
 			s.project(t.ProjectID).blocked = true
+		case CodeCancelled: // the client asked for it, so nothing is blocked
+			outcome = OutcomeCancelled
 		}
-		t.State, t.Outcome, t.Refund, t.RefusalCode = StateTerminal, OutcomeFailed, r.Refund, r.Code
+		t.State, t.Outcome, t.Refund, t.RefusalCode = StateTerminal, outcome, r.Refund, r.Code
 		t.ResultBaselineDigest = t.BaselineDigest
 	}, nil
 }
