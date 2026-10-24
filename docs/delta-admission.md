@@ -8,7 +8,7 @@ Write, edit and delete use their exact target path. Bash requires a trusted,
 canonical list of exact relative output paths: sorted, unique and bounded to
 128 entries. Nil disables Bash; an explicit empty list permits no changed paths.
 The managed service client supplies these through `--bash-output` (repeatable)
-or `--bash-no-outputs`; see [launch instructions](launch.md#managed-linux-client).
+or `--bash-no-outputs`; see [launch instructions](setup.md#managed-linux-client).
 The scope is included in the Store argument digest. D09 receipts continue to
 hash the execution-only command specification.
 

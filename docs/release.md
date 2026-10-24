@@ -4,7 +4,7 @@ This is the maintainer runbook for producing and publishing tbound artifacts. A
 release artifact does not qualify a governed run. On Linux, `tbound serve --pi`
 is a client for the local systemd socket-activated service; service provisioning,
 the live signed-profile/source path, and a positive governed launch remain
-unverified. See [launch.md](launch.md) for the current run boundary.
+unverified. See [setup.md](setup.md) for the current run boundary.
 
 ## Local build
 

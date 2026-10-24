@@ -129,7 +129,7 @@ turns and five provider turns on the existing VM, but reports
 `provider_exchange=false`, `settlement=UNKNOWN`,
 `containment=not-established`, and `claim_bearing=false`; it does not qualify
 the production CLI profile or launcher. The separate `--native-fixture` is
-Go-only and does not start Pi; see [launch](launch.md).
+Go-only and does not start Pi; see [launch](setup.md).
 
 `SessionOperationAuthority.AdmitPrompt` verifies D06/store identity and that
 the current `DurableExecutor.Tip()` matches the verified latest Store generation

@@ -1,60 +1,59 @@
 # TBound documentation
 
-## What TBound is
+Start with [USAGE](../USAGE.md) for the user workflow. TBound runs one fixed,
+signed Pi task per service configuration, or registered cases in corpus mode.
+There is no interactive Pi chat mode yet. The web chat is frozen and outside
+the thesis.
 
-TBound is a Linux supervisor that runs one Pi coding task under a fixed tool surface.
-Pi and the model are untrusted; a Go process owns policy, durable state, command isolation, publication, and evidence.
-Every tool call goes through a small Pi extension to the Go gate, which checks deterministic policy before any effect.
-The gate journals the decision and the result in a hash-chained audit log, and it fails closed when a binding is missing or stale.
-`read` is mediated; `write` and `edit` create sealed generations instead of touching the live workspace.
-`bash` runs in an isolated rootless Podman cell with filesystem, process, network, and syscall limits.
-Approved changes reach the live repository only through publication, which checks the exact delta, quiescence, and one-use authority.
-Independent oracles observe the host and the workspace to measure forbidden effects that the supervisor may have missed.
-The thesis treats H1 as two measurements: PVR (forbidden effects in adversarial runs) and ORR (friction on compliant tasks).
-The prototype has passed G1 on the real guest, but the pilot and H1 are not finished; this repository is not a qualified product.
+## Install, run, and reproduce
 
-## Map
+- [Setup](setup.md): host requirements, native Linux or Windows with a VM, Pi
+  and TBound installation, Doctor, development fixtures, and the service client.
+- [Reproduction](reproduce.md): source freeze, release gate, offline signing,
+  operator cycle, G1 evidence, corpus review, pilot, and registration.
+- [Governed host setup](governed-setup.md): host, profile, template, and
+  managed live-root contracts. This detailed reference retains older design notes.
+- [Guest assets](../infra/guest/README.md): provisioning and offline verification.
+- [Provisioning and signing](../infra/guest/PROVISIONING-SIGNING.md): detailed
+  measurement, signing, deployment, and corpus-mode procedure. Replace reference
+  deployment values with your own measurements.
+- [Operator dispatcher](../infra/guest/operator/README.md): fixed maintenance verbs.
+- [Release](release.md): package formats and release acceptance checks.
 
-Read the first two before trusting any other page. They carry the claim boundary and the current checkpoint.
+## Understand the runtime
 
-- [Current state](../OVERVIEW.md) and [working log](../TASK_STATE.md): where the thesis is, what changed, what is next.
-- [Architecture](architecture.md): authority boundaries and runtime seams.
-- [Status and gates](status.md): the short gate summary and claim boundary.
+- [Architecture](architecture.md): components and trust boundaries.
+- [Production Pi session](production-pi-session.md): service composition and receipts.
+- [Governed session composition](governed-session-composition.md): legacy embedded
+  SDK reference retained for code citations.
+- [Delta admission](delta-admission.md): the post-operation publication decision.
+- [Publication contract](publication-contract.md) and
+  [runtime integration](publication-runtime-integration.md): controlled live-root updates.
+- [Providers](providers.md) and [provider evidence](provider-durable-evidence.md):
+  provider profiles and the durable conversation bridge.
+- [Design notes](design/): denial hints and bounded storage capacity.
 
-Setup and operation:
+## Reproduce the research workflow
 
-- [Install](install.md): Pi, Go, and TBound installation.
-- [Reproducibility setup](reproducible-setup.md): native Linux and Hyper-V host paths.
-- [Governed host setup](governed-setup.md): operator prerequisites, signed profile, and CLI routes.
-- [Launch](launch.md): Go-only fixture, offline Pi fixture, and managed-service client.
-- [Doctor](doctor.md): local prerequisite checks.
-- [Release](release.md): build, package, and publish artifacts.
+- [Pilot corpus](../corpus/pilot/README.md): adapted cases, licenses, artifacts,
+  quotas, review fields, and draft limits.
+- [Panel guide](panel-run.md): blinded model review and independent human audit.
+- [G1 case](../corpus/g1/README.md): the engineering read, edit, Bash, and publish check.
+- [Status and gates](status.md): verified scope and remaining evaluation gates.
+- [Master thesis](../README.md#master-thesis): the separate protocol repository,
+  hypotheses, methods, and decision register.
 
-Runtime and security:
+G1, component tests, capability probes, fixtures, and pilot outputs are not H1
+results. The current runner reports use a synthetic empty USD ledger and are
+non-claim-bearing. Claims require the registered evaluation.
 
-- [Production Pi session](production-pi-session.md): `serve --pi` service-side composition.
-- [Governed session composition](governed-session-composition.md): legacy embedded-SDK detail, still cited by code.
-- [Delta admission](delta-admission.md): the post-operation decision that precedes publication.
-- [Publication contract](publication-contract.md) and [runtime integration](publication-runtime-integration.md): how approved changes reach the live root.
-- [Providers](providers.md) and [provider durable evidence](provider-durable-evidence.md): profiles, conversation bridge, and the dated real-exchange receipt.
-- [Design notes](design/): denial hints for H1 and the parked C-DH provider design.
+## Find engineering records
 
-Research:
-
-- [Panel guide](panel-run.md): how the owner runs the blinded three-model construct panel.
-- [Evidence receipts](evidence/README.md): bounded receipts and the historical source map.
-- [Decision records](decisions/): the three ADRs, kept as history.
-
-## History and archive
-
-Finished audits, post-thesis proposals, and one-off working notes are in
-[archive/](archive/README.md). Dated engineering receipts are in
-[evidence/](evidence/README.md); [historical-sources.json](evidence/historical-sources.json)
-maps retired documents to commit and hash. Git history is the archive for deleted
-notes. The [candidate experiment manifest](experiment-manifest.md) is an old
-candidate, not a registered protocol; it is kept because an infrastructure
-worksheet cites it.
-
-A page describes code or an intended contract, never a result. Read
-[status](status.md) and [OVERVIEW](../OVERVIEW.md) before treating a design,
-fixture, or receipt as evidence.
+- [Overview](../OVERVIEW.md) and [working log](../TASK_STATE.md): current engineering
+  checkpoint and decisions. These records include deployment history.
+- [Decision records](decisions/): retained architecture decisions.
+- [Evidence receipts](evidence/README.md) and
+  [historical source map](evidence/historical-sources.json): bounded engineering evidence.
+- [Archive](archive/README.md): finished audits and post-thesis proposals.
+- [Candidate experiment manifest](experiment-manifest.md): an older candidate,
+  not a registered protocol.

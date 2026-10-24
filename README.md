@@ -1,61 +1,61 @@
 # TBound
 
-TBound is a Linux supervisor prototype for running Pi coding tasks through a
-fixed set of four tools: `read`, `write`, `edit`, and `bash`. Go owns policy,
-durable state, command isolation, publication, and evidence; Pi and model
-output stay untrusted.
+TBound is a Linux supervisor prototype for Pi coding tasks.
+It mediates four tools: `read`, `write`, `edit`, and `bash`.
+Pi and model output remain untrusted; Go owns policy, durable state, isolation,
+publication, and evidence.
+Writes and edits create private workspace generations, while Bash runs in a
+fresh rootless Podman command cell under a measured Linux profile.
+Approved changes reach the live repository only through controlled publication.
+The managed service admits one fixed, signed task per configuration, or cases
+from a frozen manifest in corpus mode.
+There is no interactive Pi chat mode yet.
 
-## Status
+## Current status
 
-The live state is in [OVERVIEW.md](OVERVIEW.md); the detailed log is in
-[TASK_STATE.md](TASK_STATE.md). In short:
+- The governed read, edit, Bash, and publish smoke path has real-host engineering
+  evidence. Each new deployment must repeat it with fresh evidence.
+- The pilot still needs review, complete evidence, and guest qualification checks.
+- H1 is unexecuted. Tests, fixtures, probes, and pilot reports are not thesis results.
+- The optional [web chat](extensions/webchat/README.md) is frozen and outside the thesis.
 
-- Freeze **F12 = `eed7722`**. **G1 passes** on the real guest: read, edit,
-  bash, and publish, plus the route and direct-runtime probes.
-- The pilot is not ready. The EVQ dry run passed 18 of 22 items, and the rest
-  need fresh artifacts. **H1 is unexecuted**; a build, fixture receipt, or
-  capability probe is not a thesis result.
-- The engineering provider route is **OpenCode Go**.
+See [OVERVIEW.md](OVERVIEW.md) for the engineering checkpoint and
+[status and gates](docs/status.md) for verified scope and remaining work.
 
-Gates and priorities: [docs/status.md](docs/status.md). Design:
-[docs/architecture.md](docs/architecture.md).
+## Start here
 
-## Quick start
-
-Run TBound inside Linux. On Windows use the Ubuntu Hyper-V guest; native
-Windows is not the isolation boundary. For new hosts see
-[reproducible setup](docs/reproducible-setup.md); installing Pi is in
-[install](docs/install.md).
-
-The Go-only fixture exercises the native lifecycle without Pi. It is not
-claim-bearing:
-
-```sh
-cd supervisor
-go build -o /tmp/tbound ./cmd/tbound
-/tmp/tbound serve --pi --native-fixture
-```
-
-The offline Pi CLI fixture and the managed-service client are described in
-[launch](docs/launch.md#offline-pi-cli-fixture). `serve --pi` is a client for a
-registered local service and returns `service unavailable` when none exists.
-The provisioning and signing procedure for the guest is in
-[infra/guest/PROVISIONING-SIGNING.md](infra/guest/PROVISIONING-SIGNING.md).
+- [Use TBound](USAGE.md): installation, tasks, operation, and evaluation commands.
+- [Set up TBound and Pi](docs/setup.md): native Linux or Windows with a Linux VM,
+  installation, Doctor, and development fixtures.
+- [Reproduce TBound](docs/reproduce.md): build, gate, offline signing, governed
+  run, and the thesis evaluation workflow.
+- [Documentation index](docs/README.md): guides and detailed references.
+- [Architecture](docs/architecture.md): components and trust boundaries.
 
 ## Repository map
 
-- `supervisor/`: Go CLI (`cmd/tbound/`) and internals (broker, gate, session
-  repository, workflow, publication, Pi runtime, sandbox).
-- `adapter/`: Pi CLI extension sources.
-- `infra/guest/`, `infra/repro/`, `infra/hyperv/`: offline checks, capability
-  probes, and host/VM setup.
-- `corpus/`: evaluation corpus inputs.
-- `docs/`: guides; start at [docs/README.md](docs/README.md). Retired sources
-  are mapped in [docs/evidence/README.md](docs/evidence/README.md).
-- `extensions/webchat/`: optional web chat, see below.
+- `supervisor/`: Go commands, policy gate, broker, session state, Linux runtime,
+  publication, independent effect checks, and evaluation tools.
+- `adapter/`: the Pi CLI extension and broker transport.
+- `install/`, `scripts/`, `packaging/`: local installation, build, and release assets.
+- `infra/`: host preparation, guest provisioning, operator dispatcher, and evidence mappings.
+- `corpus/`: engineering smoke fixtures and the draft benchmark-adapted pilot corpus.
+- `docs/`: setup, reproduction, runtime contracts, and engineering records.
+- `extensions/webchat/`: the frozen optional web chat extension.
 
-## Web chat (frozen)
+## Master thesis
 
-`extensions/webchat/` is frozen for the thesis: CLI-only support, no new
-features, and it will move to its own repository after the thesis. It is not
-part of the thesis claims. See [its README](extensions/webchat/README.md).
+TBound is the artifact of a master thesis. The thesis text, hypotheses,
+methods, and decision register live in the separate `MSE_MA_Thesis` repository:
+
+- `tbound/tbound-thesis.md`
+- `tbound/AH-technical/10-decision-register.md`
+
+The thesis evaluates policy enforcement and usability with adapted benchmark
+cases, compliant tasks, independent effect checks, and reviewed corpus labels.
+H1 concerns PVR, the rate of forbidden effects in adversarial runs, and ORR,
+the rate of rejection of compliant tasks.
+Thesis claims come only from the registered evaluation, not from tests,
+fixtures, capability probes, or engineering smoke runs.
+See [reproduction](docs/reproduce.md#7-reproduce-the-evaluation-workflow) for the
+pilot, review, evidence, and pre-registration sequence.

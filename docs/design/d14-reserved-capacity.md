@@ -4,7 +4,7 @@
 
 ## Adopted obligation and claim boundary
 
-D14 retains SQLite WAL with `synchronous=FULL`, preallocated or reserved audit capacity, fault injection for write/fsync/disk-full/corruption, recorded filesystem assumptions, and restart-persistent `UNKNOWN`/`INVALID` outcomes ([decision register D14](../../../MSE_MA_Thesis/tbound/AH-technical/10-decision-register.md); [recovery contract](../../../MSE_MA_Thesis/tbound/AH-technical/02-1-recovery-and-continuation.md)). Storage must cover protected journal/WAL and emergency records, and first-write ENOSPC/EDQUOT must be tested.
+D14 retains SQLite WAL with `synchronous=FULL`, preallocated or reserved audit capacity, fault injection for write/fsync/disk-full/corruption, recorded filesystem assumptions, and restart-persistent `UNKNOWN`/`INVALID` outcomes (separate `MSE_MA_Thesis` repository: `tbound/AH-technical/10-decision-register.md`, D14, and `tbound/AH-technical/02-1-recovery-and-continuation.md`). Storage must cover protected journal/WAL and emergency records, and first-write ENOSPC/EDQUOT must be tested.
 
 This finish model covers one local claim-bearing service behind the CLI, one active workflow, and serialized effects. Remote/multi-user operation and malicious host administrator, kernel, or hypervisor behavior remain outside the thesis boundary. The service must not share its protected allocation budget with task output/workspace writes. If the thesis retains a claim against non-cooperating privileged host writers, this bounded model is insufficient and requires an explicit scope decision before implementation.
 

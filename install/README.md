@@ -21,5 +21,5 @@ Artifacts are `tbound-<version>-<os>-<arch>.tar.gz` plus a `SHA256SUMS` file. Th
 installer refuses to extract an artifact whose SHA-256 is missing or does not
 match.
 
-See [`../docs/install.md`](../docs/install.md) for the full user guide and the
+See [`../docs/setup.md`](../docs/setup.md) for the full user guide and the
 dev-vs-governed honesty boundary.

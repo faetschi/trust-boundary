@@ -8,7 +8,7 @@
 
 .DESCRIPTION
     Reproducibility infrastructure for the thesis evaluation profile (see
-    docs/reproducible-setup.md). Not production hardening; establishes no
+    docs/setup.md). Not production hardening; establishes no
     containment claim.
 
     Flow:
@@ -1171,4 +1171,4 @@ Write-Host "       Checkpoint-VM -Name $VmName -SnapshotName 'tbound-golden-base
 Write-Host '  3. Re-run the capability probe offline (as the trial user) and save the report:'
 Write-Host "       .\infra\repro\probe-host.ps1 -Target Ssh -HostName $guestIp -UserName $GuestUser -KeyFile $resolvedPrivateKeyPath -OutFile offline-report.txt"
 Write-Host '  4. If the measured ABI is below 8, Ubuntu 24.04 HWE may provide ABI 8; reboot and re-probe. The D09 profile requires exactly ABI 8, so reconcile a later ABI explicitly.'
-Write-Host '  5. Keep the NIC disconnected for every untrusted run; see docs/reproducible-setup.md for the claim boundary.'
+Write-Host '  5. Keep the NIC disconnected for every untrusted run; see docs/setup.md for the claim boundary.'

@@ -16,7 +16,8 @@ TBound sits between the [Pi](https://pi.dev) coding agent and your repository.
 - Pi works on a private copy. Its changes reach the real repository ("live
   root") only through a controlled publication step, and only inside the
   allowed output paths.
-- Every step is written to append-only journals with signed evidence.
+- Decisions and effects are recorded in append-only, hash-chained journals.
+  The signed host profile binds the admitted runtime.
 - Independent checkers ("oracles") measure whether anything forbidden happened:
   a protected file changed, data left the machine, a process survived or escaped.
 
@@ -29,12 +30,12 @@ boundary.
 |---|---|---|
 | **Native Linux host** | Building, tests, the development fixtures, and the governed service | Needs the host requirements below |
 | **Windows + Linux VM** (e.g. Hyper-V, VirtualBox) | The governed service runs **inside the VM** | Treat the VM as the Linux host; reach it over SSH with strict host-key checking (pin the key, the DHCP address can change) |
-| **Windows + WSL** | Building, the test suite, the development fixtures | Not a governed host: WSL lacks the required Landlock ABI and a pure cgroup v2 setup |
+| **Windows + WSL** | Building, the test suite, the development fixtures | Development environment only; use a separately qualified Linux host or VM for governed runs |
 
 Host requirements for the governed service:
 
 - Linux kernel with **Landlock ABI 8** and **cgroup v2** (unified hierarchy).
-- **systemd**, **rootless Podman** (4.9+) with **crun**.
+- **systemd**, **rootless Podman** with **crun**, at measured and pinned versions.
 - A dedicated, unprivileged service user, and an ext4 filesystem for the managed
   live root.
 - **Node.js 22.19+** and the **Pi CLI 0.87.1** (`npm install --global @earendil-works/pi-coding-agent@0.87.1`).
@@ -45,26 +46,28 @@ Host requirements for the governed service:
 ```sh
 # from a Linux checkout of this repository
 make build VERSION=dev
-bash install/install.sh --version dev --local-dist dist --no-path
+bash install/install.sh --version dev --local-dist dist \
+  --prefix "$HOME/.local/share/tbound" --no-path
 export PATH="$HOME/.local/share/tbound/bin:$PATH"
 tbound-doctor --pi "$(command -v pi)"    # advisory health check
 ```
 
-Details: [docs/install.md](docs/install.md), [docs/doctor.md](docs/doctor.md).
+Details: [setup](docs/setup.md).
 
 ## 4. Try it without a governed host
 
-Two fixtures run without any setup. Their receipts say `claim_bearing=false`:
+Two fixtures are available after installation. Their receipts say `claim_bearing=false`:
 they show the flow, not a security boundary.
 
 ```sh
+mkdir -m 700 -p "$HOME/.cache/tbound-build"
 cd supervisor && go build -o "$HOME/.cache/tbound-build/tbound" ./cmd/tbound
 "$HOME/.cache/tbound-build/tbound" serve --pi --native-fixture   # Go-only
 "$HOME/.cache/tbound-build/tbound" serve --pi --dev-fixture      # real Pi CLI, scripted provider
 ```
 
 The `--dev-fixture` needs a few environment variables (Pi, Node, adapter path,
-a private ext4 directory): see [docs/launch.md](docs/launch.md).
+a private ext4 directory): see [docs/setup.md](docs/setup.md).
 
 ## 5. Set up a governed host (one time)
 
@@ -86,23 +89,26 @@ and the guest runbooks in [infra/guest/](infra/guest/README.md) (including
 
 ## 6. Run a governed task
 
-The client sends a task to the local service. The output scope says which paths
+The client requests the fixed task admitted by the signed service configuration.
+There is no interactive Pi chat mode yet. Use the exact registered task ID,
+prompt, and output scope. The output scope says which paths
 `bash` may change; read/write/edit are checked by the policy on their own.
 
 ```sh
 tbound serve --pi --task-id TASK_ID \
   --task-request-id UNIQUE_REQUEST_ID \
   --bash-output out/result.txt \
-  --task "approved task text"
+  --task 'EXACT_REGISTERED_PROMPT'
 ```
 
 - `--bash-output PATH` (repeatable): exact relative paths `bash` may change.
   `--bash-no-outputs`: `bash` may run but change nothing. Neither: `bash` is off.
 - The answer is one of: `completed` (with a receipt: tool sequence, verdicts,
-  publication status), `refused` (with a stable error code and a hint), or
+  publication status; also check `success` and `disposition`), `refused` (with a
+  stable error code and a hint), or
   `unknown` (the outcome could not be proven; see section 8).
 
-Details: [docs/launch.md](docs/launch.md), [docs/production-pi-session.md](docs/production-pi-session.md),
+Details: [docs/setup.md](docs/setup.md), [docs/production-pi-session.md](docs/production-pi-session.md),
 [docs/publication-contract.md](docs/publication-contract.md).
 
 ## 7. Updating a governed host ("freeze")
@@ -139,7 +145,7 @@ forbidden effect) and **ORR** (how often an allowed task is wrongly blocked).
 
 1. **Corpus**: cases adapted from established benchmarks (with source, license
    and the adaptation recorded per case); a pilot set in `corpus/pilot/`
-   (rebuild deterministically with `python3 -I corpus/pilot/build.py`).
+   (rebuild with `python3 -I corpus/pilot/build.py --tbound-run /absolute/path/to/tbound-run`).
 2. **Deterministic checks** of every case (schema, sources/licenses, overlaps,
    leaks, oracle mutation controls).
 3. **AI construct-review panel**: three independent model families rate every
@@ -150,7 +156,9 @@ forbidden effect) and **ORR** (how often an allowed task is wrongly blocked).
    **pilot** and the full runs with `tbound-run plan | run | export | report`.
 6. **Evidence quality**: `tbound-run evq` and `tbound-run route-report` turn the
    host evidence into the evidence-quality result; every obligation must pass.
-7. **Pre-registration**, then the confirmatory run.
+7. **Pre-registration**, then the confirmatory run. H1 is unexecuted. The current
+   `tbound-run report` uses a synthetic empty USD ledger and marks its outputs
+   non-claim-bearing; it is not a completed H1 reporting path.
 
 ### Running the AI panel
 
@@ -175,8 +183,10 @@ needs real, non-zero prices so the spend cap has a worst case:
 ```sh
 ./tbound-panel --config ../panel.json --manifest ../corpus/pilot/manifest.draft.json --estimate
 ./tbound-panel --config ../panel.json --manifest ../corpus/pilot/manifest.draft.json --out ../panel-dry --dry-run
-export OPENROUTER_API_KEY=...        # a key with a credit limit; never stored by the tool
+read -rs OPENROUTER_API_KEY         # enter a key with a credit limit
+export OPENROUTER_API_KEY
 ./tbound-panel --config ../panel.json --manifest ../corpus/pilot/manifest.draft.json --out ../panel-run --live
+unset OPENROUTER_API_KEY
 ```
 
 - `--estimate` and `--dry-run` cost nothing. `--live` stops hard at `budget_usd`.
@@ -189,6 +199,7 @@ Full guide: [docs/panel-run.md](docs/panel-run.md).
 
 ## 10. Where to read more
 
+- [Reproduce TBound](docs/reproduce.md): the host, signing, freeze, and evaluation sequence.
 - [docs/README.md](docs/README.md): what each document covers.
 - [docs/architecture.md](docs/architecture.md): components and trust boundaries.
 - [docs/status.md](docs/status.md): what is verified and what is not.

@@ -629,7 +629,8 @@ runtime verifier — not a probe — decides admission.
 
 ## Primary sources checked
 
-- [Thesis deployment/runtime design](../../MSE_MA_Thesis/agentic-harness/tbound-thesis.md)
+- Thesis deployment/runtime design in the separate `MSE_MA_Thesis` repository
+  (`tbound/tbound-thesis.md`)
   and AH-technical D09/D10/D11, sandboxing decision and runtime-flow contracts.
 - [Canonical supported-kernel table](https://ubuntu.com/security/livepatch/docs/client/reference/platform/supported-kernels)
   and [Ubuntu 26.04 release announcement](https://canonical.com/blog/canonical-releases-ubuntu-26-04-lts-resolute-raccoon).
