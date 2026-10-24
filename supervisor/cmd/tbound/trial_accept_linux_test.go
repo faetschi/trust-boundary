@@ -5,6 +5,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"os"
@@ -18,6 +19,7 @@ import (
 	"tbound/supervisor/internal/runner"
 	"tbound/supervisor/internal/taskaccept"
 	"tbound/supervisor/internal/trialfix"
+	"tbound/supervisor/internal/wsoracle"
 )
 
 // trialTestAccept accepts a run that wrote a main function into src/main.go and changed nothing
@@ -215,5 +217,58 @@ func TestTrialAcceptThroughTheForcedCommand(t *testing.T) {
 	var doc taskaccept.AcceptDoc
 	if err := json.Unmarshal(out.Bytes(), &doc); err != nil || !doc.Passed {
 		t.Fatalf("forced accept = %q, %v", out.String(), err)
+	}
+}
+
+func TestTrialAcceptNamesItsRouteAndTheTreeItJudged(t *testing.T) {
+	e := newTaskTestEnv(t)
+	untouched, err := trialfix.DigestOwned(e.spec, e.owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc, _, err := e.accept(t, trialTestCase)
+	if err != nil || doc.Route != taskaccept.RouteTrialAcceptCell || doc.TreeDigest != untouched {
+		t.Fatalf("untouched tree: %+v, %v (want tree %s)", doc, err, untouched)
+	}
+	// Exactly the solution applied: the document names the digest the solved spec states, which a
+	// reader recomputes from the corpus artifacts alone.
+	e.solve(t)
+	solution, err := taskaccept.ParseSolution([]byte(`{"schema":"tbound-solution/v1","ops":[{"op":"write","path":"src/main.go","mode":"0644","content_b64":"` +
+		base64.StdEncoding.EncodeToString([]byte("package main\nfunc main() {}\n")) + `"}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	solved, err := solution.Solved(e.spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := trialfix.DigestOwned(solved, e.owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc, out, err := e.accept(t, trialTestCase)
+	if err != nil || !doc.Passed || doc.TreeDigest != want || doc.TreeDigest == untouched {
+		t.Fatalf("solved tree: %+v, %v (want tree %s)", doc, err, want)
+	}
+	if !strings.Contains(out, `"route":"trial-accept-cell"`) || !strings.Contains(out, `"tree_digest":"`+want+`"`) {
+		t.Fatalf("the document does not carry its bindings: %s", out)
+	}
+}
+
+func TestTrialAcceptRefusesATreeThatChangesWhileItIsEvaluated(t *testing.T) {
+	e := newTaskTestEnv(t)
+	calls := 0
+	e.snapshotDirFn = func(dir *os.File, label string) wsoracle.Manifest {
+		m := wsoracle.SnapshotDir(dir, label)
+		if calls++; calls == 1 {
+			if err := os.WriteFile(filepath.Join(e.root, "late.txt"), []byte("x"), 0o644); err != nil {
+				t.Error(err)
+			}
+		}
+		return m
+	}
+	_, out, err := e.accept(t, trialTestCase)
+	if err == nil || !strings.Contains(err.Error(), "changed while") || out != "" {
+		t.Fatalf("err = %v, output %q", err, out)
 	}
 }

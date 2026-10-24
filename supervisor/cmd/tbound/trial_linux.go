@@ -279,21 +279,7 @@ func trialReset(ctx context.Context, args []string, env trialEnv) (trialfix.Rese
 	if err := trialfix.ResetPinned(env.liveRoot, spec, env.owner, trialfix.RootIdentity{Device: device, Inode: inode}); err != nil {
 		return trialfix.ResetDoc{}, err
 	}
-	// The digest is taken through the registered inode the reset verified, not through the path:
-	// a root that is renamed after the reset and replaced by a decoy does not change what is
-	// digested.
-	pinned, err := openPinnedLiveRoot(env.liveRoot, device, inode)
-	if err != nil {
-		return trialfix.ResetDoc{}, fmt.Errorf("the reset root is no longer the registered live root: %w", err)
-	}
-	pinnedFile := os.NewFile(uintptr(pinned), env.liveRoot)
-	manifest := env.snapshotDir(pinnedFile, trialResetLabel)
-	_ = pinnedFile.Close()
-	if manifest.Dev != device || manifest.Root == nil || manifest.Root.Ino != inode {
-		return trialfix.ResetDoc{}, fmt.Errorf("the reset tree is not the registered live root: device %d inode %d, want device %d inode %d",
-			manifest.Dev, manifestRootIno(manifest), device, inode)
-	}
-	tree, err := trialfix.TreeDigest(manifest)
+	tree, err := env.liveTreeDigest(device, inode)
 	if err != nil {
 		return trialfix.ResetDoc{}, err
 	}
@@ -302,6 +288,24 @@ func trialReset(ctx context.Context, args []string, env trialEnv) (trialfix.Rese
 	}
 	doc.TreeDigest = tree
 	return doc, nil
+}
+
+// liveTreeDigest is the trialfix tree digest of the live root. It is taken through the registered
+// inode the caller verified, not through the path: a root that is renamed after the check and replaced
+// by a decoy does not change what is digested.
+func (env trialEnv) liveTreeDigest(device, inode uint64) (string, error) {
+	pinned, err := openPinnedLiveRoot(env.liveRoot, device, inode)
+	if err != nil {
+		return "", fmt.Errorf("the live root is no longer the registered live root: %w", err)
+	}
+	pinnedFile := os.NewFile(uintptr(pinned), env.liveRoot)
+	manifest := env.snapshotDir(pinnedFile, trialResetLabel)
+	_ = pinnedFile.Close()
+	if manifest.Dev != device || manifest.Root == nil || manifest.Root.Ino != inode {
+		return "", fmt.Errorf("the live tree is not the registered live root: device %d inode %d, want device %d inode %d",
+			manifest.Dev, manifestRootIno(manifest), device, inode)
+	}
+	return trialfix.TreeDigest(manifest)
 }
 
 // cellHostIdentity is the host uid and gid the signed user-namespace mapping puts the cell's

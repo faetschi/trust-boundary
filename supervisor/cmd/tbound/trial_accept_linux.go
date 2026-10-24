@@ -34,7 +34,9 @@ import (
 // by its oracles) is refused with an error and no document.
 //
 // The only tree is the live root. --tree is accepted for the runner's explicitness and must say
-// "live".
+// "live". The document also names its route (taskaccept.RouteTrialAcceptCell) and the digest of the live
+// tree it judged (trialfix.TreeDigest), which is what ties a retained result to the fixture or to the
+// fixture with the reference solution applied.
 
 // trialCase is what the task verbs take from the pinned corpus manifest for one case.
 type trialCase struct {
@@ -202,7 +204,25 @@ func trialAccept(ctx context.Context, args []string, env trialEnv) (taskaccept.A
 		return taskaccept.AcceptDoc{}, err
 	}
 	defer root.Close()
-	return taskaccept.EvaluateWith(caseID, spec, fixture, root, cellNodeRunner{ctx: ctx, task: env.task})
+	// The result is bound to the tree it judged: the digest before and after must agree, so a tree that
+	// changes while it is evaluated yields no document.
+	before, err := env.liveTreeDigest(device, inode)
+	if err != nil {
+		return taskaccept.AcceptDoc{}, err
+	}
+	doc, err := taskaccept.EvaluateWith(caseID, spec, fixture, root, cellNodeRunner{ctx: ctx, task: env.task})
+	if err != nil {
+		return taskaccept.AcceptDoc{}, err
+	}
+	after, err := env.liveTreeDigest(device, inode)
+	if err != nil {
+		return taskaccept.AcceptDoc{}, err
+	}
+	if after != before {
+		return taskaccept.AcceptDoc{}, errors.New("the live tree changed while it was evaluated")
+	}
+	doc.Route, doc.TreeDigest = taskaccept.RouteTrialAcceptCell, before
+	return doc, nil
 }
 
 // runTrialTask runs one of the task verbs and writes its document: one JSON line on stdout.
