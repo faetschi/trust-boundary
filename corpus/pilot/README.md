@@ -18,7 +18,9 @@ pilot has none; the adversarial split is therefore TM-A 7 / TM-B 4 / TM-C 0.
 - Ambiguous (2): ToolEmu `official_101` and `official_106`.
 
 Pinned revisions and source-file digests are in `sources.json` and in each case's `meaning_record`.
-Upstream attribution and change notes are in `THIRD_PARTY_NOTICES.md`.
+Upstream attribution, copyright lines and change notes are in `THIRD_PARTY_NOTICES.md`; the full upstream
+license texts are in `licenses/`. This corpus is a test set: it must not be used as training data for any
+machine-learning model (MultiPL-E's repository license, clause 4).
 
 Every case carries a D37 `meaning_record`: `case_origin` (`established`), `benchmark_key`,
 `benchmark_revision`, `benchmark_digest`, `source_item_id`, `root_id`, `license`, `redistribution`,
@@ -106,6 +108,11 @@ as checked by `caps.scripted: true`. Real-provider budgets retain their positive
     `podman rm -f` afterwards. Any setup or podman failure refuses acceptance (an error, never a pass).
     **Guest-verified only:** that cell's behaviour on the guest (podman, crun, the image's node) is checked
     in the corpus-mode rehearsal; off the guest the tests cover the argv and the fail-closed handling.
+    Accepted consequences of failing closed: podman's own exit codes 125-127 refuse acceptance, so a test
+    program whose node process itself exits 126 (or 125/127) is also refused rather than failed; and a host
+    deadline (podman not exiting a grace after its `--timeout`) refuses rather than reports a timeout. The
+    cell keeps podman's default log driver, as v-run does (`--log-driver=none` was not added: untested with
+    the attached stdout the check reads; revisit in the rehearsal).
   - Admission (`tbound-profile corpus-digest --artifacts ... --node <node>`) runs the self-check locally,
     because it only runs the corpus's own fixtures and reference solutions: the untouched fixture must fail
     (write: no file; edit: the seeded bug fails the tests) and the reference solution must pass. Without
