@@ -17,6 +17,10 @@ import (
 // worker's step bound.
 var errProductWorkerStepBound = errors.New("product turn worker reached its step bound before a final answer")
 
+// errProductTurnCancelled marks a turn that stopped at a step boundary because a cancellation was
+// requested.
+var errProductTurnCancelled = errors.New("product turn cancelled at a step boundary")
+
 // productTurnWorker is the in-process deterministic headless worker of one turn. It drives the
 // governed conversation exactly as the Pi adapter would: each provider tool call becomes a proposal
 // with the same tool call ID, name and arguments, which is correlated, gated, durably decided and,
@@ -24,6 +28,11 @@ var errProductWorkerStepBound = errors.New("product turn worker reached its step
 type productTurnWorker struct {
 	instance string
 	maxSteps int
+	// cancelled reports a durable cancel request; the worker reads it before every provider exchange
+	// and never interrupts an exchange in flight.
+	cancelled func() bool
+	// boundary is the driver's crash seam after an allowed effect settled.
+	boundary func(point string)
 }
 
 // productTurnWork is what the worker observed: the tools it proposed in order, the denials released
@@ -34,7 +43,7 @@ type productTurnWork struct {
 	finalAnswer  bool
 }
 
-func newProductTurnWorker(maxSteps int) (*productTurnWorker, error) {
+func newProductTurnWorker(maxSteps int, cancelled func() bool, boundary func(string)) (*productTurnWorker, error) {
 	if maxSteps < 1 {
 		return nil, errors.New("product turn worker needs a positive step bound")
 	}
@@ -42,7 +51,7 @@ func newProductTurnWorker(maxSteps int) (*productTurnWorker, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &productTurnWorker{instance: instance, maxSteps: maxSteps}, nil
+	return &productTurnWorker{instance: instance, maxSteps: maxSteps, cancelled: cancelled, boundary: boundary}, nil
 }
 
 func (w *productTurnWorker) run(ctx context.Context, conversation *providerbridge.Conversation, durable *DurableExecutor,
@@ -53,6 +62,9 @@ func (w *productTurnWorker) run(ctx context.Context, conversation *providerbridg
 		return work, err
 	}
 	for step := 0; step < w.maxSteps; step++ {
+		if w.cancelled() {
+			return work, errProductTurnCancelled
+		}
 		turn, err := conversation.NextTurn(ctx)
 		if err != nil {
 			return work, err
@@ -83,6 +95,7 @@ func (w *productTurnWorker) run(ctx context.Context, conversation *providerbridg
 		if _, err := executor.Execute(ctx, proposal, decision); err != nil {
 			return work, err
 		}
+		w.boundary("after-effect")
 	}
 	return work, errProductWorkerStepBound
 }

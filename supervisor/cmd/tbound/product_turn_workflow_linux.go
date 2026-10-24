@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"time"
 
 	"tbound/supervisor/internal/audit"
@@ -71,6 +72,20 @@ type productTurnEnv struct {
 	MaxWorkerSteps int
 	// publicationFaults is a trusted-host test seam for publication boundaries; production leaves it nil.
 	publicationFaults publication.FaultInjector
+	// crashAt is a trusted-host test seam called at named driver boundaries; production leaves it nil.
+	crashAt func(point string)
+
+	mu sync.Mutex
+	// running holds the turns RunTurn drives in this process. pending holds closed review turns whose
+	// workflow and finalizer stay open until a resolution, cancellation or expiry takes them.
+	running map[string]bool
+	pending map[string]*productPendingReview
+}
+
+func (e *productTurnEnv) crash(point string) {
+	if e.crashAt != nil {
+		e.crashAt(point)
+	}
 }
 
 // productTurnWorkflow is one fresh governed workflow composed for an admitted turn.

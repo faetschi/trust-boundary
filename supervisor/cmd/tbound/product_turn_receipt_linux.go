@@ -30,7 +30,8 @@ type productTurnDenial = productsession.ReceiptDenial
 
 var productTurnReceiptOutcomes = map[string]bool{
 	productsession.OutcomePublished: true, productsession.OutcomeNoDiff: true,
-	productsession.OutcomeFailed: true, "awaiting_review": true,
+	productsession.OutcomeFailed: true, productsession.OutcomeDiscarded: true, productsession.OutcomeCancelled: true,
+	"awaiting_review": true,
 }
 
 func encodeProductTurnReceipt(receipt productTurnReceipt) ([]byte, error) {
@@ -82,7 +83,8 @@ func validateProductTurnReceipt(r productTurnReceipt) error {
 		return errors.New("product turn receipt has an unknown schema")
 	case r.Ordinal < 1 || r.TurnID != fmt.Sprintf("%s/turn-%d", r.SessionID, r.Ordinal):
 		return errors.New("product turn receipt turn ID does not match its session and ordinal")
-	case r.WorkerKind != productsession.WorkerHeadlessFixture || r.Settlement != productsession.SettlementHeadlessClosed:
+	case r.WorkerKind != productsession.WorkerHeadlessFixture ||
+		r.Settlement != productsession.SettlementHeadlessClosed && r.Settlement != productsession.SettlementReconciledAfterRestart:
 		return errors.New("product turn receipt claims a worker or settlement this milestone does not run")
 	case r.ProviderJournalCount == 0 || !validBareWorkflowDigest(r.ProviderJournalHead) ||
 		r.StoreJournalCount == 0 || !validBareWorkflowDigest(r.StoreJournalHead):

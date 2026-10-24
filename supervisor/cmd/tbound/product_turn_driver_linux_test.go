@@ -97,6 +97,7 @@ func (t productDriverTrust) VerifyOrigin(_ context.Context, bundle sessionrepo.E
 
 type productDriverFixture struct {
 	env        *productTurnEnv
+	root       string
 	principal  productsession.Principal
 	projectDir string
 	session    productsession.Session
@@ -120,6 +121,21 @@ func newProductDriverFixture(t *testing.T, mode string) *productDriverFixture {
 	if err := os.Mkdir(fence, 0o755); err != nil || os.Chmod(fence, 0o755) != nil {
 		t.Fatal(err)
 	}
+	f := openProductDriverFixture(t, root)
+	session, replayed, err := f.env.Catalog.CreateSession(f.principal, productsession.CreateSessionRequest{ProjectID: productDriverProject,
+		ProviderProfile: productDriverProfile, PublicationMode: mode, Budget: f.env.Registration.Limits.Session, RequestKey: "create-1"}, f.measure(t))
+	if err != nil || replayed {
+		t.Fatalf("create session: replayed=%v err=%v", replayed, err)
+	}
+	f.session = session
+	return f
+}
+
+// openProductDriverFixture opens the registration, catalog and env over the project and state
+// directories under root, as a fresh process does after a restart.
+func openProductDriverFixture(t *testing.T, root string) *productDriverFixture {
+	t.Helper()
+	projectDir, stateRoot := filepath.Join(root, "project"), filepath.Join(root, "state")
 	policy, err := gate.NewPolicy(gate.Profile{Version: gate.ProfileVersion, Rules: []gate.Rule{
 		{Tool: "read", Effect: gate.EffectAllow}, {Tool: "write", Effect: gate.EffectAllow}, {Tool: "edit", Effect: gate.EffectDeny},
 	}})
@@ -135,7 +151,7 @@ func newProductDriverFixture(t *testing.T, mode string) *productDriverFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f := &productDriverFixture{principal: productsession.Principal(os.Getuid()), projectDir: projectDir}
+	f := &productDriverFixture{root: root, principal: productsession.Principal(os.Getuid()), projectDir: projectDir}
 	unsigned := productsession.Registration{SchemaVersion: productsession.RegistrationSchema, RegistrationID: "reg-driver",
 		ServiceIdentity: "tbound-product-test", AllowedPrincipals: []productsession.Principal{f.principal},
 		Projects: []productsession.Project{{ProjectID: productDriverProject, RootIdentityDigest: sha256DigestFromBarePin(identity),
@@ -179,13 +195,7 @@ func newProductDriverFixture(t *testing.T, mode string) *productDriverFixture {
 		},
 		MaxWorkerSteps: 8,
 	}
-	baseline := f.measure(t)
-	session, replayed, err := catalog.CreateSession(f.principal, productsession.CreateSessionRequest{ProjectID: productDriverProject,
-		ProviderProfile: productDriverProfile, PublicationMode: mode, Budget: registration.Limits.Session, RequestKey: "create-1"}, baseline)
-	if err != nil || replayed {
-		t.Fatalf("create session: replayed=%v err=%v", replayed, err)
-	}
-	f.session = session
+	t.Cleanup(func() { _ = f.env.Close() })
 	return f
 }
 

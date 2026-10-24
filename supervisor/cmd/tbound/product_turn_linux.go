@@ -4,8 +4,6 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"math"
@@ -57,9 +55,28 @@ func (e *productTurnEnv) abandon(turnID string, cause error) error {
 // composes a fresh workflow, links the turn, drives the headless worker, and settles the outcome
 // with a receipt. A launch refused before the link returns a *productTurnRefusal.
 func (e *productTurnEnv) RunTurn(ctx context.Context, admission productsession.Admission) (_ productTurnReceipt, err error) {
-	turn := admission.Turn
+	e.mu.Lock()
+	if e.running[admission.Turn.ID] {
+		e.mu.Unlock()
+		return productTurnReceipt{}, fmt.Errorf("turn %s is already running", admission.Turn.ID)
+	}
+	if e.running == nil {
+		e.running = map[string]bool{}
+	}
+	e.running[admission.Turn.ID] = true
+	e.mu.Unlock()
+	defer func() {
+		e.mu.Lock()
+		delete(e.running, admission.Turn.ID)
+		e.mu.Unlock()
+	}()
+	// The catalog state, not the admission copy: CancelTurn may have ended the turn already.
+	turn, _ := e.Catalog.Turn(admission.Turn.ID)
 	if turn.State != productsession.StateAdmitted {
-		return productTurnReceipt{}, fmt.Errorf("turn %s is %s, not admitted", turn.ID, turn.State)
+		return productTurnReceipt{}, fmt.Errorf("turn %s is %s, not admitted", admission.Turn.ID, turn.State)
+	}
+	if turn.CancelRequested {
+		return productTurnReceipt{}, e.refuse(turn.ID, productsession.CodeCancelled, errProductTurnCancelled)
 	}
 	session, err := e.Catalog.Session(turn.Principal, turn.SessionID)
 	if err != nil {
@@ -80,7 +97,7 @@ func (e *productTurnEnv) RunTurn(ctx context.Context, admission productsession.A
 		// The historical Store verifier cannot reopen a Bash turn as a predecessor yet.
 		return productTurnReceipt{}, e.abandon(turn.ID, errors.New("product turns do not compose Bash yet"))
 	}
-	worker, err := newProductTurnWorker(e.MaxWorkerSteps)
+	worker, err := newProductTurnWorker(e.MaxWorkerSteps, func() bool { return e.cancelRequested(turn.ID) }, e.crash)
 	if err != nil {
 		return productTurnReceipt{}, e.abandon(turn.ID, err)
 	}
@@ -91,13 +108,19 @@ func (e *productTurnEnv) RunTurn(ctx context.Context, admission productsession.A
 		}
 		return productTurnReceipt{}, e.abandon(turn.ID, err)
 	}
-	defer func() { err = errors.Join(err, w.close()) }()
-	var publish *PublicationRuntime
-	releasePublication := func() {}
-	if turn.PublicationMode == productsession.PublicationAuto {
-		if publish, releasePublication, err = e.beginProductPublication(ctx, turn.ProjectID, w); err != nil {
-			return productTurnReceipt{}, e.abandon(turn.ID, err)
+	heldForReview := false
+	defer func() {
+		if !heldForReview {
+			err = errors.Join(err, w.close())
 		}
+	}()
+	// Both publication modes compose the finalizer at start; a review turn keeps it for its resolution.
+	publish, releasePublication, err := e.beginProductPublication(ctx, turn.ProjectID, w)
+	if err != nil {
+		return productTurnReceipt{}, e.abandon(turn.ID, err)
+	}
+	if e.cancelRequested(turn.ID) {
+		return productTurnReceipt{}, e.refuse(turn.ID, productsession.CodeCancelled, errProductTurnCancelled)
 	}
 	if err := e.Catalog.LinkTurn(turn.ID, w.link(predecessor)); err != nil {
 		return productTurnReceipt{}, err
@@ -111,11 +134,16 @@ func (e *productTurnEnv) RunTurn(ctx context.Context, admission productsession.A
 	if err != nil {
 		return s.unknown("the turn's Store evidence could not be read", err)
 	}
-	if err := productTurnChildResolved(bundle, w.ledger); err != nil {
+	checkpoint, _ := w.ledger.Snapshot()
+	if err := productTurnChildResolved(bundle, checkpoint.Pins); err != nil {
 		return s.unknown("the turn left unresolved Store or workflow state", err)
 	}
 	sealed := sha256DigestFromBarePin(bareStoreTreeDigest(bundle.ValidatedChain.SealedTreeDigest))
 	switch {
+	// A cancel request that arrives before the finalizer starts or the review is recorded still
+	// prevents both; once the finalizer started, the turn reports its real disposition.
+	case errors.Is(s.runErr, errProductTurnCancelled), s.runErr == nil && e.cancelRequested(turn.ID):
+		s.outcome, s.runErr = productsession.OutcomeCancelled, nil
 	case s.runErr != nil:
 		s.outcome = productsession.OutcomeFailed
 	case bundleHasNoChange(bundle):
@@ -142,12 +170,39 @@ func (e *productTurnEnv) RunTurn(ctx context.Context, admission productsession.A
 	if after != s.resultBaseline {
 		return s.unknown("the project changed outside the turn", nil)
 	}
-	return s.settle()
+	if s.outcome != "awaiting_review" {
+		return s.settle()
+	}
+	// The review is recorded and held under e.mu, so a resolution or cancellation sees both or neither;
+	// a cancel recorded before this section is honoured here, one after it finds the held review.
+	e.mu.Lock()
+	receipt, err := s.settle()
+	var cancelled *productPendingReview
+	if err == nil {
+		heldForReview = true
+		review := &productPendingReview{w: w, publish: publish,
+			deadline: time.Now().Add(time.Duration(e.Registration.Limits.ReviewTimeoutSeconds) * time.Second)}
+		if e.cancelRequested(turn.ID) {
+			cancelled = review
+		} else {
+			e.holdReviewLocked(turn.ID, review)
+		}
+	}
+	e.mu.Unlock()
+	if cancelled != nil {
+		reviewed, _ := e.Catalog.Turn(turn.ID)
+		return e.discardReview(reviewed, cancelled, productsession.ReasonCancelled)
+	}
+	if heldForReview {
+		e.crash("after-awaiting-review")
+	}
+	return receipt, err
 }
 
 // productTurnChildResolved requires the child workflow to have no unresolved work: every Store
-// effect attempt succeeded without quarantine, and no provider call or effect reservation is open.
-func productTurnChildResolved(bundle sessionrepo.EvidenceBundle, ledger *workflowrecovery.Ledger) error {
+// effect attempt succeeded without quarantine, and no provider call or effect reservation is open
+// in the checkpoint pins.
+func productTurnChildResolved(bundle sessionrepo.EvidenceBundle, pins workflowrecovery.Pins) error {
 	disposition, err := sessionrepo.Reconstruct(bundle)
 	if err != nil {
 		return err
@@ -155,7 +210,6 @@ func productTurnChildResolved(bundle sessionrepo.EvidenceBundle, ledger *workflo
 	if disposition.Quarantined || disposition.Unknowns != 0 || disposition.Successes != disposition.Attempts {
 		return errors.New("Store evidence is quarantined or has an unresolved effect")
 	}
-	pins := func() workflowrecovery.Pins { checkpoint, _ := ledger.Snapshot(); return checkpoint.Pins }()
 	if effect := pins.EffectReservation; effect != nil && effect.Disposition != workflowrecovery.EffectReservationTerminal &&
 		effect.Disposition != workflowrecovery.EffectReservationRetired {
 		return errors.New("an effect reservation is unresolved")
@@ -184,6 +238,7 @@ func (e *productTurnEnv) driveProductTurn(ctx context.Context, turn productsessi
 	if err := w.authority.AdmitPrompt(conversation, w.durable, w.taskID, turn.Prompt); err != nil {
 		return productTurnWork{}, err
 	}
+	e.crash("before-first-exchange")
 	return worker.run(ctx, conversation, w.durable, w.policy)
 }
 
@@ -192,14 +247,13 @@ func (e *productTurnEnv) driveProductTurn(ctx context.Context, turn productsessi
 // admission until the returned release, which the driver calls once the worker has finished.
 func (e *productTurnEnv) beginProductPublication(ctx context.Context, projectID string, w *productTurnWorkflow) (*PublicationRuntime, func(), error) {
 	if e.PublicationTrust == nil {
-		return nil, nil, errors.New("auto-publish turn has no publication trust")
+		return nil, nil, errors.New("product turn has no publication trust")
 	}
 	trust := e.PublicationTrust(w.authority)
 	if trust == nil {
-		return nil, nil, errors.New("auto-publish turn has no publication trust")
+		return nil, nil, errors.New("product turn has no publication trust")
 	}
-	projectKey := sha256.Sum256([]byte(projectID))
-	projectDir := filepath.Join(e.StateRoot, "projects", hex.EncodeToString(projectKey[:]))
+	projectDir := e.projectPublicationDir(projectID)
 	statePath := filepath.Join(projectDir, "publication-state")
 	if err := os.MkdirAll(statePath, 0o700); err != nil {
 		return nil, nil, err
