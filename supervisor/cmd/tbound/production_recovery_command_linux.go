@@ -36,11 +36,6 @@ type productionRecoveryCommandSession struct {
 	ConversationID string
 }
 
-type productionRecoveryCommandPin struct {
-	IdentityDigest string                             `json:"identity_digest"`
-	Sessions       []productionRecoveryCommandSession `json:"sessions"`
-}
-
 type productionHistoricalBashHistory struct {
 	entries     []*productionHistoricalBashVerifier
 	byEffect    map[string]*productionHistoricalBashVerifier

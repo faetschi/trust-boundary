@@ -10,7 +10,7 @@ _tbound() {
       cols="--pi --native-fixture --native-host-profile --help"
       ;;
     "")
-      cols="serve --smoke-listen --socket-dir --help --version"
+      cols="serve --smoke-listen --socket-dir --help"
       ;;
     *)
       cols="--help"

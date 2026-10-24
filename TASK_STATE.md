@@ -7,18 +7,20 @@ git log of this file, `../review-artifacts/TASK_STATE-history-20261023.md`,
 
 ## Summary
 
-The engineering core works on a real guest; the thesis has no results yet.
-Research is at step 2 of 8 (pilot review). H1 is unexecuted; tests, fixtures,
+The engineering core works on a real guest (F13 installed 2026-10-24); the thesis has no results yet.
+Research is at step 2 of 8 (pilot review); step 3 (fresh freeze + G1) is done at F13. H1 is unexecuted; tests, fixtures,
 probes and pilot reports are not thesis results.
 
 ## Implementation state
 
-- Branch `codex/tbound-prototype`. Last guest freeze **F12 = eed7722** (kit `F:\TBoundAssets\recovery-20261015\F12`).
-- On the real guest (F11/F12, correct Landlock TSYNC): **G1 passed** (read, edit, bash, publish), **route probe passed**, **direct-runtime probe passed** (ends `unknown` by design).
-- EVQ dry run on F12: **18/22**. Not passed: 3 stale guest artifacts (kit bug, fixed), capability stale, netsink missing (needs corpus mode). Route report: 3 routes, bash-view stale. "21/22 with fresh artifacts" is a forecast.
-- Merged since F12, **not yet on the guest**: static denial hints (C-DH code default-off), retry-margin budgets, audit and reset fixes, the re-based pilot corpus, `tbound-panel`, `tbound-profile corpus-check`, panel `data_collection: deny`, the docs restructure (`docs/guides|runtime|evaluation`).
-- Gate on merged HEAD b8d1b60 (2026-10-24): gofmt, vet, full `go test ./...` pass; ~26 guest-only skips.
-- Reusable freeze kit `F:/TBoundAssets/recovery-20261015/kit` + `freezes/F13.env`: verified by Sol, never run.
+- Branch `codex/tbound-prototype`. Last guest freeze **F13 = 6162e3c** (installed 2026-10-24, owner-approved; results `F:/TBoundAssets/recovery-20261015/F13/F13-RESULT.md`). Previous: F12 = eed7722 (retained evidence).
+- **F13 fresh results:** G1 completed (read, edit, bash, read; published, settled at the rp admission), route probe completed + CHECKS_OK, dr `unknown` by design + CHECKS_OK; runtime swapped to bundle `6a07a8a9…`, new image loaded, session sudo closed again; all six guest evidence artifacts carry commit 6162e3c; **EVQ 21/22** (only `EVQ-NETWORK-SINK-GUEST` open, needs corpus mode); **route report Complete, 4/4 covered**. Owner housekeeping: 4 pre-F13 `.tbound-publication-*` dirs in the live image root (harmless, predate F13).
+- On the real guest (F11/F12/F13, correct Landlock TSYNC): **G1 passed** (read, edit, bash, publish), **route probe passed**, **direct-runtime probe passed** (ends `unknown` by design).
+- EVQ on F12 was 18/22 (stale artifacts); superseded by F13 21/22.
+- On the guest since F13: static denial hints in the adapter (C-DH off), retry-margin budgets, audit/reset fixes, `tbound-panel`, `tbound-profile corpus-check`, the cleanup.
+- Bounded cleanup before F13 (2026-10-24): 20 fixed, 7 deferred, 13 rejected, behaviour-preserving; ledger `../review-artifacts/cleanup-f13-20261024.md`.
+- **F13 candidate `6162e3c`** (cleanup + fresh admission ids `g1-eng-2026-10-24a`, `route-probe-2026-10-24a`; dr `route-probe-dr-2026-10-23c` in F13.env). Fresh local results: kit gate green (race, 4634 pass / 0 fail / 26 guest-only skips); owner-side steps 10, 20, 25-p2-rebuild, 30, session-env, 35 capture rc 0. New runtime bundle (static denial hints in the adapter) `sha256:6a07a8a9…` (F0/F12 `8e405ef0…`, two offline builds identical) and new IMGDIGEST `sha256:20403e67…`.
+- Kit changes for F13 (reviewed, 3 findings fixed): `25-p2-rebuild.sh`, guest `05-runtime-swap.sh` (runbook P11 with lock and rollback), guest-chain closes session sudo on failure. Signing and guest chain ran 2026-10-24 after owner approval (rc 0). Handoff: `F:/TBoundAssets/recovery-20261015/F13-prep/HANDOFF.md`.
 - Not supported: interactive Pi sessions (one fixed signed task per service config). Planned in the product lane only.
 
 ## Research state (8-step goal)
@@ -27,7 +29,7 @@ probes and pilot reports are not thesis results.
 |---|---|
 | 1. Scope cut (C-DH parked, TM-C narrowed), align D26 and residual-channel claim | Owner decided 2026-10-23; **advisor confirmation pending** |
 | 2. Pilot reviews and corrections; freeze pilot protocol, provider, outage rules, ceilings | **In progress** (below) |
-| 3. Freeze and pin code; install; repeat G1 and both probes with fresh evidence | F13 kit ready, not run |
+| 3. Freeze and pin code; install; repeat G1 and both probes with fresh evidence | **Done at F13 `6162e3c`** (G1, rp, dr fresh; EVQ 21/22; route report complete) |
 | 4. Corpus mode; reset, net-sink, no-reap, V; complete EVQ and route reports | Not started; needs the owner session |
 | 5. Engineering, compliant and adaptive-cap pilots; caps, costs, calendar | Not started |
 | 6. Full corpus 299/100/20 + independent review; channel witnesses; cold partition | Designed only |
@@ -55,6 +57,8 @@ Step 2 detail:
 - 2026-10-23: C-DH parked until after H1 (static permitted-alternative table only). TM-C narrowed to mediated command-cell interpreter/socket/persistence stimuli; direct Pi-runtime bypass excluded (amendment (4), advisor to confirm). Pilot before registration.
 - Pilot provider: OpenCode Go for the engineering pilot; the frozen H1 provider for the provider-dependent final pilot (paid: ask the owner first). Initial ceilings (provisional, final from complete pilots per D32): adversarial 17 calls / 20,000 tokens / 1,200 s; compliant 7 / 10,000 / 1,200; adaptive 7 iterations / 14 calls / 1,200 s. One evidenced outage rerun per case, both records kept; never rerun adverse outcomes.
 - 2026-10-24: corpus from established benchmarks first, own derived cases only to fill N, clearly marked (D37). Construct review = deterministic checks + AI panel + advisor sign-off (D35 amendment). Owner funds and runs the panel (USD 10 cap).
+- 2026-10-24 (orchestrator): `corpus-check` guest-evidence input is built AFTER the F13 install on its own branch and enters the thesis only through F14, the freeze before corpus mode; F13 is not re-frozen for it. Why: F13 exists to produce fresh G1/probe evidence; changing evidence tooling now would void the validated candidate; the 38 guest-only checks gate the corpus freeze, not F13 or the panel.
+- 2026-10-24 (orchestrator): two defects reported by the product thread, confirmed in code on ff374c9, are **blockers for the pilot and F14**, not for F13 (G1/rp/dr contain no gate DENY and no retained-Store recovery): (1) in service mode a gate DENY closes the conversation — `buildActiveProgressPins` (`cmd/tbound/governed_workflow_live_linux.go`, `CapturedCallAvailable`) retires a denied captured call only at `awaiting_host_prompt`, but after a DENY the provider is at `awaiting_provider_exchange`, so the model never receives the denial or its hint (breaks Configuration C, D26 hints and post-denial behaviour); (2) `sessionrepo` recovery indexes record kind `governed_operation_authorization` (`internal/sessionrepo/recovery_linux.go:382`) while `cmd/tbound` writes `governed_operation_authorized` (`governed_session_linux.go:37`), so recovery preview likely refuses retained Stores with an effect. Fix both on this branch with fresh-process regression tests (service-mode DENY → next provider turn carries the hint) and review before F14; reuse the product-branch fix only after review.
 - The coordinated signing/provisioning session (S3'/S4', installs, tbound-netsink, trial key, Spike B) happens after the reviews, as one signing round on the final manifest digest.
 
 ## Needs the owner or advisor
@@ -64,8 +68,8 @@ Step 2 detail:
 
 ## Next (thesis lane)
 
-1. Owner runs the panel; advisor review.
-2. F13: freeze the selected code, install, repeat G1 and both probes with fresh evidence.
+1. Fix the two service-mode defects (DENY ends the conversation; recovery record kind) and add the `corpus-check` guest-evidence input, with regression tests and review, for F14. In parallel: owner runs the panel; advisor review.
+2. Next work package (prepared, not executed): `F:/TBoundAssets/recovery-20261015/F13-prep/thesis-work-package-draft.md` — corpus-mode prerequisites, the 4 open EVQ obligations, and witnesses for 11 calibration-P, 20 acceptance-cell, 7 network-effect checks (all pending). Blocker found: `corpus-check` sets these to `guest-only` unconditionally and cannot ingest guest evidence; closing them needs a code change and therefore a later freeze (F14) before the corpus freeze. The guest `corpus-digest` runbook line also lacks `--node`.
 3. Corpus-mode rehearsal; watch: reset --check passes after P C-02 and the reset kills the survivor; `podman rm -f` after conmon is killed; no uid-995 pause process in root's SSH cgroup (`ps -u 995 -o pid,cgroup,cmd`); kernel-7 zombie-leader kill; the 5 real-cgroup tests with `TBOUND_REAL_CGROUP_TESTS=1` in a delegated scope.
 4. Complete EVQ and route reports; pilots; caps and costs; full corpus; registration; H1.
 

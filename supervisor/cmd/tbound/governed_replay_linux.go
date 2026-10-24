@@ -582,8 +582,6 @@ func validateGovernedReplayPins(pins GovernedReplayPins) error {
 	return nil
 }
 
-func stringPointer(value string) *string { copy := value; return &copy }
-
 func traceMatchesBundle(trace audit.Trace, encoded []byte, count uint64, head string) bool {
 	canonical, err := marshalGovernedAuditRecords(trace.Records)
 	return err == nil && bytes.Equal(canonical, encoded) && uint64(len(trace.Records)) == count && auditHeadHash(trace.Records) == head

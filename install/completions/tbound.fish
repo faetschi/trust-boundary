@@ -10,7 +10,5 @@ complete -c tbound -n '__fish_seen_subcommand_from serve' -l native-host-profile
 
 complete -c tbound-doctor -f
 complete -c tbound-doctor -l json -d 'JSON output'
-complete -c tbound-doctor -l install-pi -d 'Install pinned Pi packages into the prefix'
 complete -c tbound-doctor -l prefix -r -d 'tbound prefix'
-complete -c tbound-doctor -l node -r -d 'Explicit Node binary'
 complete -c tbound-doctor -l pi -r -d 'Pinned Pi CLI executable'

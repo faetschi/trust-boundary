@@ -1,16 +1,16 @@
 # tbound installer
 
-`install.sh` installs the tbound CLI (`tbound`, `tbound-doctor`) and the runtime
-bundle into a user-owned prefix, verifying the artifact checksum first. It never
+`install.sh` installs the tbound CLI (`tbound`, `tbound-doctor`, `tbound-profile`)
+and the runtime bundle into a user-owned prefix, verifying the artifact checksum first. It never
 uses `sudo` and never modifies your global Node or Pi.
 
 ```sh
 # remote (default base URL is a placeholder until a release host exists)
-curl -fsSL https://get.tbound.dev | sh
+curl -fsSL https://get.tbound.dev | bash
 
 # local build (offline)
-make build
-install/install.sh --local-dist dist --no-path
+make build VERSION=dev
+bash install/install.sh --version dev --local-dist dist --no-path
 
 # options
 install/install.sh --version <ver> --prefix <dir> --base-url <url> --local-dist <dir> --no-path
