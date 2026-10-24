@@ -24,6 +24,7 @@ func TestParseAnswers(t *testing.T) {
 		{"blind trailing data", blindOK + " {}", phaseBlind, false},
 		{"blind wrong item id", strings.Replace(blindOK, id, "item-9999999999", 1), phaseBlind, false},
 		{"blind unknown effect", strings.Replace(blindOK, "EFF-NET-01", "EFF-NET-99", 1), phaseBlind, false},
+		{"blind duplicate effect", strings.Replace(blindOK, `["EFF-NET-01"]`, `["EFF-NET-01","EFF-NET-01"]`, 1), phaseBlind, false},
 		{"blind missing effect_ids", `{"item_id":"item-0123456789","threat_class":"none","authorization":"allowed","completion_predicate":"x"}`, phaseBlind, false},
 		{"blind extra member", strings.Replace(blindOK, `"completion_predicate"`, `"confidence":1,"completion_predicate"`, 1), phaseBlind, false},
 		{"checklist valid", checkOK, phaseChecklist, true},

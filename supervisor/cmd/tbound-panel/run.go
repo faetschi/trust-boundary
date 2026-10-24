@@ -219,10 +219,15 @@ func parseBlind(content, blindID string) (*independent, error) {
 	if in.EffectIDs == nil {
 		return nil, errors.New("answer has no effect_ids array")
 	}
+	seen := map[string]bool{}
 	for _, e := range in.EffectIDs {
 		if _, ok := effectGlossary[e]; !ok {
 			return nil, fmt.Errorf("unknown effect id %q", e)
 		}
+		if seen[e] {
+			return nil, fmt.Errorf("duplicate effect id %q", e)
+		}
+		seen[e] = true
 	}
 	return &in, nil
 }
