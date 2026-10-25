@@ -202,3 +202,11 @@ func TestVerifyAdvisorMatchesManifest(t *testing.T) {
 		t.Fatalf("normalized identity refused: %v", err)
 	}
 }
+
+func TestVerifyRefusesUnverifiableAuditSelection(t *testing.T) {
+	f := newFixture(t)
+	f.audit["selection"] = map[string]any{"seed": "7", "purpose": "tbound-panel/unanimous-audit", "method": "evalcorpus.SelectSeeded", "sample_size": 1, "eligible_roots": []string{"c1", "c3"}, "selected_roots": []string{"c1"}}
+	if err := f.check(t); err == nil || !strings.Contains(err.Error(), "selection") {
+		t.Fatalf("undersized invented sample accepted: %v", err)
+	}
+}
