@@ -6,6 +6,9 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
+	"tbound/supervisor/internal/evalcorpus"
 	"testing"
 )
 
@@ -35,6 +38,44 @@ func TestConstructRejectsDuplicateProducerMembers(t *testing.T) {
 			}
 			editFile(t, file, tc.edit)
 			wantRow(t, rowOf(t, w.apply(ev, tc.id), tc.id, tc.check), "guest-only", "")
+		})
+	}
+}
+
+func TestConstructRejectsStaleAcceptanceIdentity(t *testing.T) {
+	w := buildWorld(t, worldOpts{only: []string{constructReadCase}})
+	for _, field := range []string{"commit", "binary", "image", "corpus"} {
+		t.Run(field, func(t *testing.T) {
+			e := w.expect
+			in := w.input()
+			switch field {
+			case "commit":
+				e.Commit = strings.Repeat("b", 40)
+			case "binary":
+				e.RunnerDigest = geDigest("other binary")
+			case "image":
+				e.ImageDigest = geDigest("other image")
+			case "corpus":
+				in.Manifest = w.m
+				in.Manifest.Cases = slices.Clone(w.m.Cases)
+				in.Manifest.Cases[0].CaseID += "-other"
+			}
+			if field == "corpus" {
+				// A different manifest with unchanged acceptance artifacts must still be refused.
+				ctx := &constructCtx{in: in, files: map[string]constructFile{}}
+				ctx.in.Set = os.DirFS(w.ev)
+				var cs evalcorpus.Case
+				for _, c := range w.m.Cases {
+					if c.CaseID == constructReadCase {
+						cs = c
+					}
+				}
+				if _, _, err := ctx.acceptOutcome(&constructUse{ctx: ctx}, w.mapping.Cases[constructReadCase], cs); err == nil {
+					t.Fatal("accepted another corpus")
+				}
+				return
+			}
+			wantRow(t, rowOf(t, w.applyWith(w.ev, e, constructReadCase), constructReadCase, "acceptance-cell"), "guest-only", "")
 		})
 	}
 }
