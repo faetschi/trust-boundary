@@ -36,7 +36,9 @@ var workerSettlements = map[string][]string{
 }
 
 // TurnReceipt is the terminal evidence of one turn. It commits to the turn's
-// retained provider and Store journals, which the next turn re-verifies.
+// retained provider and Store journals, which the next turn re-verifies. The
+// command journal holds the turn's Bash command settlements and is committed
+// the same way. A turn that ran no Bash has an empty one and omits both fields.
 type TurnReceipt struct {
 	SchemaVersion            string          `json:"schema_version"`
 	SessionID                string          `json:"session_id"`
@@ -51,6 +53,8 @@ type TurnReceipt struct {
 	ProviderJournalCount     uint64          `json:"provider_journal_count"`
 	StoreJournalHead         string          `json:"store_journal_head"`
 	StoreJournalCount        uint64          `json:"store_journal_count"`
+	CommandJournalHead       string          `json:"command_journal_head,omitempty"`
+	CommandJournalCount      uint64          `json:"command_journal_count,omitempty"`
 	ImportedPrefixDigest     string          `json:"imported_prefix_digest"`
 	PredecessorReceiptDigest string          `json:"predecessor_receipt_digest"`
 	BaselineDigest           string          `json:"baseline_digest"`
@@ -136,6 +140,9 @@ func checkReceipt(t *Turn, data []byte, outcome, settlement string, usage Budget
 	case !isLowerHex(r.ProviderJournalHead) || len(r.ProviderJournalHead) != 64 || r.ProviderJournalCount == 0 ||
 		!isLowerHex(r.StoreJournalHead) || len(r.StoreJournalHead) != 64 || r.StoreJournalCount == 0:
 		return mismatch("journal commitment")
+	case (r.CommandJournalCount == 0) != (r.CommandJournalHead == "") ||
+		r.CommandJournalHead != "" && (!isLowerHex(r.CommandJournalHead) || len(r.CommandJournalHead) != 64):
+		return mismatch("command journal commitment")
 	case (outcome == OutcomePublished) != (r.PublicationTransactionID != "") ||
 		r.PublicationTransactionID != "" && !validIdentity(r.PublicationTransactionID):
 		return mismatch("publication transaction")

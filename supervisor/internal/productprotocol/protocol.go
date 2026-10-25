@@ -49,6 +49,18 @@ const (
 	EventTurnTerminal        = "turn_terminal"
 )
 
+// Response statuses.
+const (
+	StatusOK    = "ok"
+	StatusError = "error"
+)
+
+// Transport-level error codes. Every other code is a catalog code from productsession.
+const (
+	CodeProtocolError      = "PROTOCOL_ERROR"
+	CodeServiceUnavailable = "SERVICE_UNAVAILABLE"
+)
+
 var ErrProtocol = errors.New("product protocol frame is invalid")
 
 type Budget struct {

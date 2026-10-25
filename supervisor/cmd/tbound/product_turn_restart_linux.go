@@ -64,7 +64,7 @@ func (e *productTurnEnv) reconcileLinkedTurn(ctx context.Context, turn productse
 	if err != nil {
 		return unknown("the retained evidence paths are invalid", err)
 	}
-	retained, err := openRetainedProductTurn(paths, e.storeOptions(turn))
+	retained, err := openRetainedProductTurn(paths, e.storeOptions(turn), e.OpenCommandHistory)
 	if err != nil {
 		return unknown("the retained Store or journals cannot be reopened", err)
 	}
@@ -95,6 +95,10 @@ func (e *productTurnEnv) reconcileLinkedTurn(ctx context.Context, turn productse
 	if err != nil {
 		return unknown("the retained Store journal cannot be read", err)
 	}
+	commandTrace, err := retained.CommandJournal.Trace()
+	if err != nil {
+		return unknown("the retained command journal cannot be read", err)
+	}
 	// The dead process's elapsed time is not retained; the reserved duration bounds it.
 	usage := productsession.Budget{HostCalls: int64(checkpoint.Counters.HostCalls), Tokens: int64(checkpoint.Counters.Tokens),
 		DurationSeconds: turn.Reservation.DurationSeconds}
@@ -107,6 +111,7 @@ func (e *productTurnEnv) reconcileLinkedTurn(ctx context.Context, turn productse
 		WorkerKind: productsession.WorkerHeadlessFixture, WorkerInstance: productTurnUnrecordedWorker,
 		ProviderJournalHead: auditHeadHash(providerTrace.Records), ProviderJournalCount: uint64(len(providerTrace.Records)),
 		StoreJournalHead: auditHeadHash(storeTrace.Records), StoreJournalCount: uint64(len(storeTrace.Records)),
+		CommandJournalHead: auditHeadHash(commandTrace.Records), CommandJournalCount: uint64(len(commandTrace.Records)),
 		ImportedPrefixDigest: link.ImportedPrefixDigest, PredecessorReceiptDigest: turn.PredecessorReceiptDigest,
 		BaselineDigest: turn.BaselineDigest, ResultBaselineDigest: turn.BaselineDigest,
 		Outcome: productsession.OutcomeFailed, Settlement: productsession.SettlementReconciledAfterRestart,

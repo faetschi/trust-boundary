@@ -98,7 +98,7 @@ Independent reviews: GPT 6.1 Sol (xhigh) ran ponytail-review over the catalog an
 - **Guest qualification.** No product guest, runtime, service, signing key or provider key exists. A real Pi worker per turn, product publication trust (tests use a fixture trust that accepts admission and quiescence), and every guest check remain unrun.
 - **Service transport.** The catalog has no wire protocol, peer-UID authentication or client. Principals are passed by the caller.
 - **Scope.** Turns use the registration's project scope. The narrower per-request scope from the plan is not implemented, and the gate policy works per tool, not per path.
-- **Bash.** Product turns refuse Bash, because a turn that used Bash cannot yet be reopened as a predecessor.
+- **Bash.** Milestone 1 refused Bash. P5 composes it when the project policy allows it, and reopens a Bash turn as a predecessor by verifying its retained command settlements. See [contracts](product-contracts.md#bash-in-product-turns). Only the development command runner is exercised locally. The D09 cell runner and its history opener need the product guest.
 - **Recovery (P4).** Linked turns that crash can only be marked unknown. A crash between a journaled DENY and its retirement checkpoint is not reconciled by recovery; it fails closed. The recovery path for a workflow's later conversations has no dedicated test.
 - **External writers.** A project edit made after the turn's final measurement but before its catalog record is not detected by that turn. It is never adopted as the committed baseline, and the next admission refuses the mismatch. Fencing protects cooperating writers only.
 - **Review and cancellation (P4).** `awaiting_review` has no resolution operation yet.

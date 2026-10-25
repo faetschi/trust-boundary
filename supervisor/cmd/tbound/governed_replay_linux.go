@@ -207,15 +207,26 @@ func ReplayGovernedTranscript(providerJournal, storeJournal *audit.Journal, stor
 // ReplayGovernedPredecessorContext runs the ReplayGovernedTranscript pipeline over a completed
 // predecessor turn and returns its history as a PredecessorContext ending in the boundary message.
 // The transcript must end at a final provider answer, and its Store evidence must be fully resolved.
+// A predecessor with Bash effects passes the verifier of its retained command settlements, which
+// must bind every provider Bash result to a retained settlement.
 func ReplayGovernedPredecessorContext(providerJournal, storeJournal *audit.Journal, store *sessionrepo.Store,
-	pins GovernedReplayPins, boundary providerbridge.TurnBoundary) (providerbridge.PredecessorContext, GovernedTranscriptProjection, error) {
+	pins GovernedReplayPins, boundary providerbridge.TurnBoundary,
+	commandVerifiers ...governedRecoveryCommandVerifier) (providerbridge.PredecessorContext, GovernedTranscriptProjection, error) {
 	var predecessor providerbridge.PredecessorContext
-	projection, _, err := runGovernedReplay(providerJournal, storeJournal, store, pins, 0, true,
+	if len(commandVerifiers) > 1 {
+		return providerbridge.PredecessorContext{}, GovernedTranscriptProjection{}, errors.New("predecessor replay accepts at most one command-settlement verifier")
+	}
+	projection, verifier, err := runGovernedReplay(providerJournal, storeJournal, store, pins, 0, true,
 		func(journal *audit.Journal, provider providerbridge.RecoveryPins, verifier providerbridge.StoreReplayVerifier) (providerbridge.TranscriptProjection, error) {
 			replayed, projection, err := providerbridge.ReplayPredecessorContext(journal, provider, verifier, boundary)
 			predecessor = replayed
 			return projection, err
 		})
+	if err == nil && len(commandVerifiers) == 1 {
+		if err = commandVerifiers[0].VerifyGovernedVerifier(verifier); err != nil {
+			err = fmt.Errorf("cross-link retained Bash settlements with the predecessor transcript: %w", err)
+		}
+	}
 	if err != nil {
 		return providerbridge.PredecessorContext{}, GovernedTranscriptProjection{}, err
 	}

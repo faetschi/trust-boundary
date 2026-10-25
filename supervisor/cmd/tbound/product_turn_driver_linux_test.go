@@ -94,6 +94,9 @@ func (t productDriverTrust) VerifyTransition(_ context.Context, decision delta.P
 func (t productDriverTrust) VerifyOrigin(_ context.Context, bundle sessionrepo.EvidenceBundle, transition delta.Transition) error {
 	return t.authority.VerifyOrigin(bundle, transition)
 }
+func (t productDriverTrust) ResolveTerminalLeaseOrigin(ctx context.Context, bundle sessionrepo.EvidenceBundle, terminal delta.Transition) (delta.OperationIdentity, error) {
+	return t.authority.ResolveTerminalLeaseOrigin(ctx, bundle, terminal)
+}
 
 type productDriverFixture struct {
 	env        *productTurnEnv
@@ -117,6 +120,14 @@ func newProductDriverFixture(t *testing.T, mode string) *productDriverFixture {
 func newScopedProductDriverFixture(t *testing.T, mode string, scope *productsession.ProductScope, readOnly bool,
 	seed func(projectDir string)) *productDriverFixture {
 	t.Helper()
+	return newBashProductDriverFixture(t, mode, scope, readOnly, nil, seed)
+}
+
+// newBashProductDriverFixture is newScopedProductDriverFixture for a project whose policy also allows
+// Bash (bashPaths non-nil), registered with those exact output paths, which a product scope ignores.
+func newBashProductDriverFixture(t *testing.T, mode string, scope *productsession.ProductScope, readOnly bool, bashPaths []string,
+	seed func(projectDir string)) *productDriverFixture {
+	t.Helper()
 	root := privateGovernedTestRoot(t)
 	projectDir, stateRoot := filepath.Join(root, "project"), filepath.Join(root, "state")
 	for _, dir := range []string{projectDir, stateRoot} {
@@ -133,7 +144,7 @@ func newScopedProductDriverFixture(t *testing.T, mode string, scope *productsess
 	if err := os.Mkdir(fence, 0o755); err != nil || os.Chmod(fence, 0o755) != nil {
 		t.Fatal(err)
 	}
-	f := openProductDriverFixtureWithScope(t, root, scope)
+	f := openBashProductDriverFixture(t, root, scope, bashPaths)
 	session, replayed, err := f.env.Catalog.CreateSession(f.principal, productsession.CreateSessionRequest{ProjectID: productDriverProject,
 		ProviderProfile: productDriverProfile, PublicationMode: mode, Budget: f.env.Registration.Limits.Session, RequestKey: "create-1",
 		ReadOnly: readOnly}, f.measure(t))
@@ -152,11 +163,22 @@ func openProductDriverFixture(t *testing.T, root string) *productDriverFixture {
 }
 
 func openProductDriverFixtureWithScope(t *testing.T, root string, scope *productsession.ProductScope) *productDriverFixture {
+	return openBashProductDriverFixture(t, root, scope, nil)
+}
+
+// openBashProductDriverFixture is openProductDriverFixtureWithScope for a policy that also allows Bash
+// when bashPaths is non-nil. The env then builds the development command runner and its history.
+func openBashProductDriverFixture(t *testing.T, root string, scope *productsession.ProductScope, bashPaths []string) *productDriverFixture {
 	t.Helper()
 	projectDir, stateRoot := filepath.Join(root, "project"), filepath.Join(root, "state")
-	policy, err := gate.NewPolicy(gate.Profile{Version: gate.ProfileVersion, Rules: []gate.Rule{
+	rules := []gate.Rule{
 		{Tool: "read", Effect: gate.EffectAllow}, {Tool: "write", Effect: gate.EffectAllow}, {Tool: "edit", Effect: gate.EffectDeny},
-	}})
+	}
+	registeredBash := []string{}
+	if bashPaths != nil {
+		rules, registeredBash = append(rules, gate.Rule{Tool: "bash", Effect: gate.EffectAllow}), bashPaths
+	}
+	policy, err := gate.NewPolicy(gate.Profile{Version: gate.ProfileVersion, Rules: rules})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,7 +195,7 @@ func openProductDriverFixtureWithScope(t *testing.T, root string, scope *product
 	unsigned := productsession.Registration{SchemaVersion: productsession.RegistrationSchema, RegistrationID: "reg-driver",
 		ServiceIdentity: "tbound-product-test", AllowedPrincipals: []productsession.Principal{f.principal},
 		Projects: []productsession.Project{{ProjectID: productDriverProject, RootIdentityDigest: sha256DigestFromBarePin(identity),
-			PolicyDigest: sha256DigestFromBarePin(barePolicyDigest(policy.Digest())), BashOutputPaths: []string{},
+			PolicyDigest: sha256DigestFromBarePin(barePolicyDigest(policy.Digest())), BashOutputPaths: registeredBash,
 			PublicationModes: []string{productsession.PublicationReview, productsession.PublicationAuto}, Scope: scope}},
 		ProviderProfiles: []string{productDriverProfile},
 		Limits: productsession.Limits{Turn: productsession.Budget{HostCalls: 20, Tokens: 20 * 1024, DurationSeconds: 600},
@@ -212,6 +234,12 @@ func openProductDriverFixtureWithScope(t *testing.T, root string, scope *product
 			return productDriverTrust{authority: authority}
 		},
 		MaxWorkerSteps: 8,
+	}
+	if bashPaths != nil {
+		f.env.NewCommandRunner = func(c productTurnCommandContext) (productTurnCommandRunner, error) {
+			return productDevCommandRunner{devFixtureRunner: newDevelopmentFixtureCommandRunner(), journal: c.Journal}, nil
+		}
+		f.env.OpenCommandHistory = openProductDevCommandHistory
 	}
 	t.Cleanup(func() { _ = f.env.Close() })
 	return f

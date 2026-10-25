@@ -11,12 +11,14 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"time"
 
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/gate"
+	"tbound/supervisor/internal/piruntime"
 	"tbound/supervisor/internal/privategit"
 	"tbound/supervisor/internal/productsession"
 	"tbound/supervisor/internal/providerbridge"
@@ -43,6 +45,42 @@ const (
 // errProductStaleBaseline marks a managed project whose tree differs from the admitted baseline.
 var errProductStaleBaseline = errors.New("managed project tree differs from the admitted baseline")
 
+// errProductBashRunnerUnavailable marks a project whose policy allows Bash on a service that has no
+// command runner, so its turns cannot launch.
+var errProductBashRunnerUnavailable = errors.New("the project policy allows Bash but the service has no command runner")
+
+// productTurnCommandRunner is the trusted command runner of one Bash turn: the Store runs commands
+// through it and the turn's authority registers each lease with it and re-verifies each settlement.
+type productTurnCommandRunner interface {
+	sessionrepo.CommandRunner
+	governedCommandRunner
+}
+
+// productTurnCommandContext names the turn a command runner is built for. Journal is the turn's
+// command journal, which a runner that retains settlement evidence appends to.
+type productTurnCommandContext struct {
+	Journal                                      *audit.Journal
+	WorkflowID, RunID, SessionID, ConversationID string
+}
+
+// productCommandHistoryOpener opens the read-only command-settlement verifier of a finished turn over
+// its held command journal. The verifier has no runner and no lease authority.
+type productCommandHistoryOpener func(journal *audit.Journal, link productsession.TurnLink) (governedRecoveryCommandVerifier, error)
+
+// productTurnBashScope is the exact output scope the Bash commands of a turn declare, or nil when the
+// turn's policy does not allow Bash. A product-scope turn declares none: its candidate is decided by
+// the turn's own writable, read-only and protected lists, which ignore the declared paths. A turn
+// under the exact-path rule keeps the registered paths.
+func productTurnBashScope(turn productsession.Turn, policy gate.Policy) []string {
+	if !slices.ContainsFunc(policy.Profile().Rules, func(r gate.Rule) bool { return r.Tool == "bash" && r.Effect == gate.EffectAllow }) {
+		return nil
+	}
+	if turn.Scope != nil {
+		return []string{}
+	}
+	return append([]string{}, turn.BashOutputPaths...)
+}
+
 // productTurnEnv holds the trusted inputs of the product turn driver. Production fills it from the
 // host profile; tests fill it from fixtures. Nothing in it comes from a client request.
 type productTurnEnv struct {
@@ -68,6 +106,13 @@ type productTurnEnv struct {
 	NewConversation func(providerbridge.Config, *audit.Journal) (*providerbridge.Conversation, error)
 	// PublicationTrust is the live-root trust of an auto-publish turn, bound to the turn's authority.
 	PublicationTrust func(*SessionOperationAuthority) workflow.Trust
+	// NewCommandRunner builds the trusted Bash command runner of one turn over its command journal.
+	// Production fills it with the D09 command-cell runner of a qualified host; tests use the
+	// development runner. A turn whose project policy allows Bash refuses to launch without it.
+	NewCommandRunner func(productTurnCommandContext) (productTurnCommandRunner, error)
+	// OpenCommandHistory opens the read-only verifier of the command settlements a finished Bash turn
+	// retained. Without it a retained Store that holds a Bash effect cannot be reopened.
+	OpenCommandHistory productCommandHistoryOpener
 	// MaxWorkerSteps bounds the provider exchanges of one turn.
 	MaxWorkerSteps int
 	// publicationFaults is a trusted-host test seam for publication boundaries; production leaves it nil.
@@ -80,6 +125,11 @@ type productTurnEnv struct {
 	// workflow and finalizer stay open until a resolution, cancellation or expiry takes them.
 	running map[string]bool
 	pending map[string]*productPendingReview
+	// liveProvider holds the open provider journal of every turn whose workflow this process still holds, so
+	// the service reads a running or pending-review turn's journal without a second writer lock. It has its
+	// own mutex because workflow close runs under mu.
+	liveMu       sync.Mutex
+	liveProvider map[string]*audit.Journal
 }
 
 func (e *productTurnEnv) crash(point string) {
@@ -105,6 +155,8 @@ type productTurnWorkflow struct {
 	baseline                                     *sessionrepo.Generation
 	storeJournal                                 *audit.Journal
 	providerJournal                              *audit.Journal
+	commandJournal                               *audit.Journal
+	bash                                         bool // the turn composed Bash, so its publication trust must resolve a Bash lease origin
 	config                                       providerbridge.Config
 	started                                      time.Time
 	closers                                      []func() error
@@ -129,11 +181,12 @@ func (w *productTurnWorkflow) link(predecessor providerbridge.PredecessorContext
 func productTurnPathsFromLink(link productsession.TurnLink) (productTurnPaths, error) {
 	dir := filepath.Dir(link.StoreJournalPath)
 	if filepath.Dir(link.ProviderJournalPath) != dir || filepath.Dir(link.CommandJournalPath) != dir ||
-		filepath.Base(link.StoreJournalPath) != productTurnStoreJournal || filepath.Base(link.ProviderJournalPath) != productTurnProviderJournal {
+		filepath.Base(link.StoreJournalPath) != productTurnStoreJournal || filepath.Base(link.ProviderJournalPath) != productTurnProviderJournal ||
+		filepath.Base(link.CommandJournalPath) != productTurnCommandJournal {
 		return productTurnPaths{}, errProductTurnEvidence
 	}
 	return productTurnPaths{StoreRoot: filepath.Join(dir, productTurnStoreDir), StoreJournalPath: link.StoreJournalPath,
-		ProviderJournalPath: link.ProviderJournalPath}, nil
+		ProviderJournalPath: link.ProviderJournalPath, CommandJournalPath: link.CommandJournalPath, Link: link}, nil
 }
 
 func randomProductIdentity(prefix string) (string, error) {
@@ -233,6 +286,11 @@ func (e *productTurnEnv) composeProductTurnWorkflow(ctx context.Context, turn pr
 		return nil, err
 	}
 	w.policy = policy
+	bashScope := productTurnBashScope(turn, policy)
+	w.bash = bashScope != nil
+	if bashScope != nil && e.NewCommandRunner == nil {
+		return nil, errProductBashRunnerUnavailable
+	}
 
 	turnsDir := filepath.Join(e.StateRoot, "turns")
 	if err := os.MkdirAll(turnsDir, 0o700); err != nil {
@@ -261,16 +319,27 @@ func (e *productTurnEnv) composeProductTurnWorkflow(ctx context.Context, turn pr
 	if w.providerJournal, w.providerJournalPath, err = openJournal(productTurnProviderJournal); err != nil {
 		return nil, err
 	}
-	if _, w.commandJournalPath, err = openJournal(productTurnCommandJournal); err != nil {
+	if w.commandJournal, w.commandJournalPath, err = openJournal(productTurnCommandJournal); err != nil {
 		return nil, err
 	}
 
+	var runner productTurnCommandRunner
+	if bashScope != nil {
+		if runner, err = e.NewCommandRunner(productTurnCommandContext{Journal: w.commandJournal, WorkflowID: w.workflowID,
+			RunID: w.runID, SessionID: w.sessionID, ConversationID: w.conversationID}); err != nil {
+			return nil, err
+		}
+		if runner == nil {
+			return nil, errProductBashRunnerUnavailable
+		}
+	}
 	authority, err := NewSessionOperationAuthority(w.storeJournal, w.providerJournal, w.workflowID, w.conversationID,
-		providerProfile, policy, e.StorePolicyDigest, e.MetadataPolicyDigest, nil)
+		providerProfile, policy, e.StorePolicyDigest, e.MetadataPolicyDigest, runner, bashScope)
 	if err != nil {
 		return nil, err
 	}
 	w.authority = authority
+	authority.requireEvidencedBashContainment = runner != nil && runner.Profile() == piruntime.D09CommandRunnerProfile
 	if err := authority.BindAdmissionScope(turn.Scope.AdmissionScope()); err != nil {
 		return nil, err
 	}
@@ -333,6 +402,7 @@ func (e *productTurnEnv) composeProductTurnWorkflow(ctx context.Context, turn pr
 	if w.durable, err = NewDurableExecutor(DurableExecutorConfig{
 		Store: w.store, Tip: baseline, CallIssuer: governedCallIssuer,
 		PolicyDigest: e.StorePolicyDigest, MetadataPolicyDigest: e.MetadataPolicyDigest,
+		BashOutputPaths: bashScope, CommandRunner: runner,
 		AfterDurableOperation: authority.SettleDurableOperation,
 	}); err != nil {
 		return nil, err
