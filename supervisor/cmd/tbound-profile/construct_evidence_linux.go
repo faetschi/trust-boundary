@@ -522,7 +522,12 @@ func (c *constructCtx) acceptOutcome(use *constructUse, cm constructCaseMap, cs 
 		return "", "", err
 	}
 	for _, d := range []struct{ kind, digest string }{{"fixture", a.WorkspaceFixtureDigest}, {"accept", a.AcceptanceTest.Digest}, {"solution", a.ReferenceSolution.Digest}} {
-		use.note("artifacts/"+d.kind+"-"+strings.TrimPrefix(d.digest, "sha256:")+".json", d.digest)
+		name := d.kind + "-" + strings.TrimPrefix(d.digest, "sha256:") + ".json"
+		raw, err := readConstructEvidence(c.in.Artifacts, name)
+		if err != nil {
+			return "", "", err
+		}
+		use.note("artifacts/"+name, sha256Prefixed(raw))
 	}
 	var passed [2]bool
 	for i, doc := range []struct{ role, file, tree string }{{"fixture", cm.Fixture, a.WorkspaceFixtureDigest}, {"reference", cm.Reference, solvedDigest}} {
