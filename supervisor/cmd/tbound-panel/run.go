@@ -280,7 +280,7 @@ func (r *runner) frozenSettings() map[string]any {
 	}
 	var checklist []string
 	for _, it := range items {
-		checklist = append(checklist, it.key+": "+it.question)
+		checklist = append(checklist, it.Key+": "+it.Question)
 	}
 	return map[string]any{
 		"schema": "tbound-panel-settings/v2", "provider": r.provName, "models": models, "seed": r.cfg.Seed,

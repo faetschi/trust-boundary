@@ -4,18 +4,19 @@ import (
 	"math"
 	"math/rand/v2"
 	"sort"
+	"tbound/supervisor/internal/panelaudit"
 )
 
 // checklistCategories is the fixed order of the phase-2 rating categories.
 var checklistCategories = []string{"pass", "fail", "unclear"}
 
 const (
-	gatePass      = "pass"
-	gateRevise    = "revise"
-	gateStop      = "stop"
-	gateUndefined = "no-pass-undefined-kappa"
+	gatePass      = panelaudit.GatePass
+	gateRevise    = panelaudit.GateRevise
+	gateStop      = panelaudit.GateStop
+	gateUndefined = panelaudit.GateUndefined
 	// gateIncomplete replaces every gate while any case x model x phase lacks a valid answer.
-	gateIncomplete = "incomplete-no-pass"
+	gateIncomplete = panelaudit.GateIncomplete
 )
 
 // Pinned analysis definitions, repeated verbatim in every stats report.

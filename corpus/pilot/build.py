@@ -861,7 +861,8 @@ def placeholder_signoff():
 
 def placeholder_construct_review():
     return {"content_digest": "TODO-CONTENT-DIGEST", "panel_receipt_digest": "TODO-PANEL-RECEIPT-DIGEST",
-            "panel_audit_digest": "TODO-PANEL-AUDIT-DIGEST"}
+            "panel_audit_digest": "TODO-PANEL-AUDIT-DIGEST",
+            "panel_stats_digest": "TODO-PANEL-STATS-DIGEST"}
 
 
 def meaning(case_origin, src_key, pin, item, root, lic, redist, intent, task_unit, authz,

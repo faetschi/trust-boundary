@@ -24,7 +24,7 @@ func goldenPinsManifest() Manifest {
 // The expected digest was computed outside this package: SHA-256 over the exact bytes of
 // the canonical string below (python3 hashlib).
 func TestCanonicalJSONGoldenEmptyManifest(t *testing.T) {
-	want := `{"cases":[],"construct_review":{"content_digest":"","panel_audit_digest":"","panel_receipt_digest":""},` +
+	want := `{"cases":[],"construct_review":{"content_digest":"","panel_audit_digest":"","panel_receipt_digest":"","panel_stats_digest":""},` +
 		`"pins":{"environment_digest":"sha256:` + strings.Repeat("0", 64) +
 		`","model_digest":"sha256:` + strings.Repeat("1", 64) +
 		`","policy_digest":"sha256:` + strings.Repeat("3", 64) +
@@ -41,7 +41,7 @@ func TestCanonicalJSONGoldenEmptyManifest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Digest: %v", err)
 	}
-	const wantDigest = "sha256:4c667423ea812aa6fe1f7d2d30dc61d25feafd58182a9863b6bcac7f1f1ae6ca"
+	const wantDigest = "sha256:b13eac38d829f8f4c0d4ffd5039c20d8834c05a1bbb43fc1dfa4bb1c535a6cb7"
 	if digest != wantDigest {
 		t.Errorf("Digest = %s; want %s", digest, wantDigest)
 	}

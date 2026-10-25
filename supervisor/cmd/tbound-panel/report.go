@@ -143,11 +143,11 @@ func (r *runner) finish(plan blindPlan) (spend, error) {
 	for _, it := range items {
 		var subs []subject
 		for _, c := range d.cases {
-			if _, na := notApplicable[c.Kind][it.key]; !na && d.complete(phaseChecklist, c) {
-				subs = append(subs, subject{root: root(c), ratings: d.checklist(c, it.key)})
+			if _, na := notApplicable[c.Kind][it.Key]; !na && d.complete(phaseChecklist, c) {
+				subs = append(subs, subject{root: root(c), ratings: d.checklist(c, it.Key)})
 			}
 		}
-		items2[it.key] = itemStats(subs, checklistCategories, r.cfg.Seed, r.cfg.BootstrapResamples)
+		items2[it.Key] = itemStats(subs, checklistCategories, r.cfg.Seed, r.cfg.BootstrapResamples)
 	}
 	fields := map[string]ItemStats{}
 	agree := map[string]claimAgreement{}
@@ -224,7 +224,7 @@ func (r *runner) finish(plan blindPlan) (spend, error) {
 		models = append(models, m.ID)
 	}
 	statsDoc := map[string]any{
-		"schema": "tbound-panel-stats/v2", "status": "pre-adjudication, rating round 1", "provider": r.provName,
+		"schema": panelaudit.StatsSchema, "content_digest": r.corpus.ContentDigest, "dry_run": r.provName == "fake", "status": "pre-adjudication, rating round 1", "provider": r.provName,
 		"manifest_digest": r.corpus.Digest, "models": models,
 		"raw_agreement_definition": agreementDefinition, "bootstrap": bootstrapMethod,
 		"bootstrap_seed": r.cfg.Seed, "bootstrap_resamples": r.cfg.BootstrapResamples, "gate_rule": gateRule,
@@ -287,7 +287,7 @@ func statsMarkdown(items2, fields map[string]ItemStats, agree map[string]claimAg
 	}
 	var keys []string
 	for _, it := range items {
-		keys = append(keys, it.key)
+		keys = append(keys, it.Key)
 	}
 	b.WriteString("## Phase 2: checklist items (claims shown)\n\n" + kappaTable(keys, items2))
 	keys = nil
@@ -348,16 +348,16 @@ func (d panelData) auditReasons(c evalcorpus.Case) []string {
 		return append(why, "incomplete panel ratings")
 	}
 	for _, it := range items {
-		if _, na := notApplicable[c.Kind][it.key]; na {
+		if _, na := notApplicable[c.Kind][it.Key]; na {
 			continue
 		}
-		rs := d.checklist(c, it.key)
+		rs := d.checklist(c, it.Key)
 		if !same(rs) {
-			why = append(why, "disagreement on "+it.key)
+			why = append(why, "disagreement on "+it.Key)
 		}
 		for _, x := range rs {
 			if x == "unclear" {
-				why = append(why, "unclear on "+it.key)
+				why = append(why, "unclear on "+it.Key)
 				break
 			}
 		}

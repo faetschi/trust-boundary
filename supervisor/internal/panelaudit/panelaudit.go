@@ -1,5 +1,5 @@
-// Package panelaudit is the reading side of the two files of a tbound-panel run that a manifest's
-// construct_review binds: receipt.json and the advisor-signed audit.json (D35 amendment
+// Package panelaudit is the reading side of the three files of a tbound-panel run that a manifest's
+// construct_review binds: receipt.json, the advisor-signed audit.json and stats.json (D35 amendment
 // 2026-10-24). tbound-panel writes them with the schema versions and advisor fields defined here,
 // and `tbound-profile corpus-digest` calls Verify before it prints a digest.
 package panelaudit
@@ -80,26 +80,64 @@ func parse(name string, raw []byte, v any) error {
 	return nil
 }
 
-// Verify checks the receipt and audit file bytes against the manifest m, which holds the advisor's
+// Verify checks the receipt, audit and stats file bytes against the manifest m, which holds the advisor's
 // sign-offs and the construct_review block. It returns nil only when:
 //   - the SHA-256 of each file's bytes is the digest in m.ConstructReview;
-//   - both files have the current schema and record the evalcorpus.ContentDigest of m, so they rate
+//   - all files have the current schema and record the evalcorpus.ContentDigest of m, so they rate
 //     the content the manifest has now;
-//   - neither file is from a dry run, and the receipt covers every case of m with a complete rating
+//   - no file is from a dry run, and the receipt covers every case of m with a complete rating
 //     (a case without every rating blocks every agreement gate);
 //   - the cases of the audit list are exactly the cases of m marked audited, each once, each with a
 //     resolution in m;
 //   - every listed case carries a complete advisor entry that accepts it.
 //
-// The receipt holds no agreement-gate verdict (the gates are in stats.json, which the manifest does
-// not bind), so Verify cannot check the gate.
-func Verify(m evalcorpus.Manifest, receiptRaw, auditRaw []byte) error {
+// Every phase-2 item must carry the panel writer's pass verdict in the pinned stats.
+func Verify(m evalcorpus.Manifest, receiptRaw, auditRaw, statsRaw []byte) error {
 	cr := m.ConstructReview
 	if got := Digest(receiptRaw); got != cr.PanelReceiptDigest {
 		return fmt.Errorf("panel receipt digest %s is not construct_review.panel_receipt_digest %s", got, cr.PanelReceiptDigest)
 	}
 	if got := Digest(auditRaw); got != cr.PanelAuditDigest {
 		return fmt.Errorf("panel audit digest %s is not construct_review.panel_audit_digest %s", got, cr.PanelAuditDigest)
+	}
+	if got := Digest(statsRaw); got != cr.PanelStatsDigest {
+		return fmt.Errorf("panel stats digest %s is not construct_review.panel_stats_digest %s", got, cr.PanelStatsDigest)
+	}
+	var stats struct {
+		Schema        string            `json:"schema"`
+		ContentDigest string            `json:"content_digest"`
+		DryRun        bool              `json:"dry_run"`
+		Cases         int               `json:"cases"`
+		CompleteCases int               `json:"complete_cases"`
+		Incomplete    []string          `json:"incomplete_cases"`
+		Missing       []json.RawMessage `json:"missing_pairs"`
+		Items         map[string]struct {
+			Gate string `json:"gate"`
+		} `json:"items"`
+	}
+	if err := parse("panel stats", statsRaw, &stats); err != nil {
+		return err
+	}
+	if stats.Schema != StatsSchema {
+		return fmt.Errorf("panel stats schema %q; want %q", stats.Schema, StatsSchema)
+	}
+	if stats.DryRun {
+		return errors.New("panel stats is a dry run")
+	}
+	contentStats, err := evalcorpus.ContentDigest(m)
+	if err != nil {
+		return err
+	}
+	if stats.ContentDigest != contentStats {
+		return errors.New("panel stats content_digest differs from manifest")
+	}
+	if stats.Cases != len(m.Cases) || stats.CompleteCases != stats.Cases || len(stats.Incomplete) != 0 || len(stats.Missing) != 0 {
+		return errors.New("panel stats has incomplete ratings; every gate is blocked")
+	}
+	for _, item := range Checklist {
+		if stats.Items[item.Key].Gate != GatePass {
+			return fmt.Errorf("panel stats item %s gate %q does not pass", item.Key, stats.Items[item.Key].Gate)
+		}
 	}
 	var receipt Receipt
 	if err := parse("panel receipt", receiptRaw, &receipt); err != nil {

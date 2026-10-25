@@ -107,7 +107,7 @@ func sealConstructReview(t *testing.T, m evalcorpus.Manifest) evalcorpus.Manifes
 		t.Fatal(err)
 	}
 	m.ConstructReview = evalcorpus.ConstructReview{ContentDigest: content,
-		PanelReceiptDigest: fixtureDigest("panel-receipt"), PanelAuditDigest: fixtureDigest("panel-audit")}
+		PanelReceiptDigest: fixtureDigest("panel-receipt"), PanelAuditDigest: fixtureDigest("panel-audit"), PanelStatsDigest: fixtureDigest("panel-stats")}
 	return m
 }
 

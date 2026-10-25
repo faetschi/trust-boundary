@@ -499,6 +499,8 @@ func TestValidateConstructReview(t *testing.T) {
 		{"panel receipt digest", func(r *ConstructReview, v string) { r.PanelReceiptDigest = v }, map[string]string{
 			"": "review.digest", "TODO-DIGEST": "review.placeholder", "sha256:XYZ": "review.digest",
 			"sha256:" + strings.Repeat("A", 64): "review.digest"}},
+		{"panel stats digest", func(r *ConstructReview, v string) { r.PanelStatsDigest = v }, map[string]string{
+			"": "review.digest", "TODO-DIGEST": "review.placeholder", "sha256:XYZ": "review.digest", "sha256:" + strings.Repeat("A", 64): "review.digest"}},
 		{"panel audit digest", func(r *ConstructReview, v string) { r.PanelAuditDigest = v }, map[string]string{
 			"": "review.digest", "TODO-DIGEST": "review.placeholder", "sha256:XYZ": "review.digest",
 			"sha256:" + strings.Repeat("A", 64): "review.digest"}},

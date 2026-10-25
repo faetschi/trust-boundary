@@ -496,10 +496,21 @@ func signAndVerify(t *testing.T, m evalcorpus.Manifest, receipt, audit []byte, o
 	}
 	m.ConstructReview = evalcorpus.ConstructReview{ContentDigest: doc["content_digest"].(string),
 		PanelReceiptDigest: sha(string(signedReceipt)), PanelAuditDigest: sha(string(signedAudit))}
-	if err := panelaudit.Verify(m, signedReceipt, signedAudit); err != nil {
-		t.Fatalf("the signed files of %s are refused: %v", out, err)
+	stats, err := os.ReadFile(filepath.Join(out, "stats.json"))
+	if err != nil {
+		t.Fatal(err)
 	}
-	if err := panelaudit.Verify(m, receipt, audit); err == nil || !strings.Contains(err.Error(), "digest") {
+	var sd map[string]any
+	if err := json.Unmarshal(stats, &sd); err != nil {
+		t.Fatal(err)
+	}
+	sd["dry_run"] = false
+	stats, _ = json.Marshal(sd)
+	m.ConstructReview.PanelStatsDigest = panelaudit.Digest(stats)
+	if err := panelaudit.Verify(m, signedReceipt, signedAudit, stats); err == nil || !strings.Contains(err.Error(), "gate") {
+		t.Fatalf("the fake ratings must not earn an agreement pass after signing: %v", err)
+	}
+	if err := panelaudit.Verify(m, receipt, audit, stats); err == nil || !strings.Contains(err.Error(), "digest") {
 		t.Fatalf("the unsigned dry-run files must not match the sealed digests: %v", err)
 	}
 }

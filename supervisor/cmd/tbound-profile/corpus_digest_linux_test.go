@@ -42,7 +42,7 @@ func sealConstructReview(t *testing.T, m evalcorpus.Manifest) evalcorpus.Manifes
 		t.Fatal(err)
 	}
 	m.ConstructReview = evalcorpus.ConstructReview{ContentDigest: content,
-		PanelReceiptDigest: fixtureDigest("panel-receipt"), PanelAuditDigest: fixtureDigest("panel-audit")}
+		PanelReceiptDigest: fixtureDigest("panel-receipt"), PanelAuditDigest: fixtureDigest("panel-audit"), PanelStatsDigest: fixtureDigest("panel-stats")}
 	return m
 }
 
@@ -104,8 +104,8 @@ func fixtureManifest(t *testing.T, q evalcorpus.Quotas, seed string) evalcorpus.
 // panelTweak changes one thing about a panel run so that a test can show the refusal it causes. A nil
 // member leaves its part as tbound-panel and the advisor wrote it.
 type panelTweak struct {
-	receipt, audit func(doc map[string]any)
-	manifest       func(m *evalcorpus.Manifest)
+	receipt, audit, stats func(doc map[string]any)
+	manifest              func(m *evalcorpus.Manifest)
 }
 
 // tweakedPanel marks the first and third case audited, writes the receipt.json and audit.json of a
@@ -131,6 +131,13 @@ func tweakedPanel(t *testing.T, dir string, m evalcorpus.Manifest, tw panelTweak
 	receipt := map[string]any{"schema": panelaudit.ReceiptSchema, "dry_run": false, "provider": "openrouter", "content_digest": content,
 		"cases": len(m.Cases), "complete_cases": len(m.Cases)}
 	audit := map[string]any{"schema": panelaudit.AuditSchema, "dry_run": false, "provider": "openrouter", "content_digest": content, "cases": listed}
+	stats := map[string]any{"schema": panelaudit.StatsSchema, "content_digest": content, "cases": len(m.Cases), "complete_cases": len(m.Cases), "items": map[string]any{}}
+	for _, item := range panelaudit.Checklist {
+		stats["items"].(map[string]any)[item.Key] = map[string]any{"gate": panelaudit.GatePass}
+	}
+	if tw.stats != nil {
+		tw.stats(stats)
+	}
 	if tw.receipt != nil {
 		tw.receipt(receipt)
 	}
@@ -154,8 +161,9 @@ func tweakedPanel(t *testing.T, dir string, m evalcorpus.Manifest, tw panelTweak
 	}
 	receiptPath, receiptDigest := write("receipt.json", receipt)
 	auditPath, auditDigest := write("audit.json", audit)
-	m.ConstructReview = evalcorpus.ConstructReview{ContentDigest: content, PanelReceiptDigest: receiptDigest, PanelAuditDigest: auditDigest}
-	return m, []string{"--panel-receipt", receiptPath, "--panel-audit", auditPath}
+	statsPath, statsDigest := write("stats.json", stats)
+	m.ConstructReview = evalcorpus.ConstructReview{ContentDigest: content, PanelReceiptDigest: receiptDigest, PanelAuditDigest: auditDigest, PanelStatsDigest: statsDigest}
+	return m, []string{"--panel-receipt", receiptPath, "--panel-audit", auditPath, "--panel-stats", statsPath}
 }
 
 func signedPanel(t *testing.T, dir string, m evalcorpus.Manifest) (evalcorpus.Manifest, []string) {
@@ -512,7 +520,7 @@ func TestCorpusDigestRefusesPanelFilesThatChangedAfterTheManifestWasSealed(t *te
 	if _, _, err := runDigest(panel, "--manifest", path, "--quota-profile", "pilot"); err != nil {
 		t.Fatalf("unchanged files: %v", err)
 	}
-	for i, name := range []string{"receipt", "audit"} {
+	for i, name := range []string{"receipt", "audit", "stats"} {
 		file := panel[2*i+1]
 		original, err := os.ReadFile(file)
 		if err != nil {
@@ -536,7 +544,7 @@ func TestCorpusDigestRefusesUnusablePanelFiles(t *testing.T) {
 	dir := t.TempDir()
 	m, panel := signedPanel(t, dir, fixtureManifest(t, evalcorpus.PilotQuotas(), "corpus-digest-seed"))
 	path := writeManifest(t, dir, "corpus.json", m)
-	for name, flag := range map[string]string{"receipt": "--panel-receipt", "audit": "--panel-audit"} {
+	for name, flag := range map[string]string{"receipt": "--panel-receipt", "audit": "--panel-audit", "stats": "--panel-stats"} {
 		for kind, setup := range map[string]func(file string){
 			"absent":    func(file string) { os.Remove(file) },
 			"directory": func(file string) { os.Remove(file); os.Mkdir(file, 0o700) },
@@ -570,11 +578,26 @@ func TestCorpusDigestRefusesUnusablePanelFiles(t *testing.T) {
 }
 
 func TestCorpusDigestRequiresStatsEvidence(t *testing.T) {
- dir := t.TempDir()
- m, panel := signedPanel(t, dir, fixtureManifest(t, evalcorpus.PilotQuotas(), "stats-gate"))
- path := writeManifest(t, dir, "corpus.json", m)
- out, _, err := runDigest(panel, "--manifest", path, "--quota-profile", "pilot")
- if err == nil || out != "" || !strings.Contains(err.Error(), "--panel-stats") {
-  t.Fatalf("without stats: out %q err %v; want --panel-stats refusal", out, err)
- }
+	dir := t.TempDir()
+	m, panel := signedPanel(t, dir, fixtureManifest(t, evalcorpus.PilotQuotas(), "stats-gate"))
+	path := writeManifest(t, dir, "corpus.json", m)
+	out, _, err := runDigest(panel[:4], "--manifest", path, "--quota-profile", "pilot")
+	if err == nil || out != "" || !strings.Contains(err.Error(), "--panel-stats") {
+		t.Fatalf("without stats: out %q err %v; want --panel-stats refusal", out, err)
+	}
+}
+
+func TestCorpusDigestRefusesStatsWithoutAllPhaseTwoPasses(t *testing.T) {
+	for _, gate := range []string{"revise", "stop", "no-pass-undefined-kappa", "incomplete-no-pass", ""} {
+		t.Run(gate, func(t *testing.T) {
+			dir := t.TempDir()
+			m, panel := tweakedPanel(t, dir, fixtureManifest(t, evalcorpus.PilotQuotas(), "stats-gate"), panelTweak{stats: func(doc map[string]any) {
+				doc["items"].(map[string]any)["intent"] = map[string]string{"gate": gate}
+			}})
+			out, _, err := runDigest(panel, "--manifest", writeManifest(t, dir, "manifest.json", m), "--quota-profile", "pilot")
+			if err == nil || out != "" || !strings.Contains(err.Error(), "intent") {
+				t.Fatalf("out %q err %v", out, err)
+			}
+		})
+	}
 }

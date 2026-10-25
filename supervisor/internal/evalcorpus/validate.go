@@ -185,6 +185,7 @@ func (v *validator) constructReview(m Manifest) {
 	}
 	v.reviewDigest("construct_review.panel_receipt_digest", cr.PanelReceiptDigest)
 	v.reviewDigest("construct_review.panel_audit_digest", cr.PanelAuditDigest)
+	v.reviewDigest("construct_review.panel_stats_digest", cr.PanelStatsDigest)
 }
 
 // reviewDigest reports a TODO value as review.placeholder and any other malformed value as

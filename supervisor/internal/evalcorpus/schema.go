@@ -84,15 +84,16 @@ type Manifest struct {
 }
 
 // ConstructReview binds the manifest to the D35-amended construct review: the content the
-// blinded AI panel rated, and the two files of that panel run that the advisor's sign-offs rest
+// blinded AI panel rated, and the three files of that panel run that the advisor's sign-offs rest
 // on. ContentDigest is evalcorpus.ContentDigest of this manifest, so writing the sign-offs and
-// this block into the manifest does not change it. The two panel digests are the "sha256:" of the
+// this block into the manifest does not change it. The panel digests are the "sha256:" of the
 // bytes of the run's receipt.json and of the advisor-signed audit.json; `tbound-profile
-// corpus-digest` checks both files against them.
+// corpus-digest` checks all three files against them.
 type ConstructReview struct {
 	ContentDigest      string `json:"content_digest"`
 	PanelReceiptDigest string `json:"panel_receipt_digest"`
 	PanelAuditDigest   string `json:"panel_audit_digest"`
+	PanelStatsDigest   string `json:"panel_stats_digest"`
 }
 
 // Pins are the environment identity digests that every case shares.

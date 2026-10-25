@@ -113,7 +113,7 @@ func readPanelFile(path string) ([]byte, error) {
 
 // checkPanel verifies the panel run that backs the manifest's construct review: the receipt and the
 // advisor-signed audit must be the files construct_review pins and must back the sign-offs.
-func checkPanel(manifest evalcorpus.Manifest, receiptPath, auditPath string) error {
+func checkPanel(manifest evalcorpus.Manifest, receiptPath, auditPath, statsPath string) error {
 	receipt, err := readPanelFile(receiptPath)
 	if err != nil {
 		return fmt.Errorf("panel receipt: %w", err)
@@ -122,7 +122,11 @@ func checkPanel(manifest evalcorpus.Manifest, receiptPath, auditPath string) err
 	if err != nil {
 		return fmt.Errorf("panel audit: %w", err)
 	}
-	if err := panelaudit.Verify(manifest, receipt, audit); err != nil {
+	stats, err := readPanelFile(statsPath)
+	if err != nil {
+		return fmt.Errorf("panel stats: %w", err)
+	}
+	if err := panelaudit.Verify(manifest, receipt, audit, stats); err != nil {
 		return fmt.Errorf("corpus manifest refused: construct review: %w", err)
 	}
 	return nil
@@ -142,6 +146,7 @@ func runCorpusDigest(args []string, stdout, stderr io.Writer) error {
 	artifacts := flags.String("artifacts", "", "directory of the artifacts (fixture-<hex>.json; for compliant cases also accept-<hex>.json and solution-<hex>.json); when given, every case's artifacts must verify")
 	panelReceipt := flags.String("panel-receipt", "", "receipt.json of the tbound-panel run; its sha256 is construct_review.panel_receipt_digest")
 	panelAudit := flags.String("panel-audit", "", "audit.json of the tbound-panel run with the advisor's sign-off; its sha256 is construct_review.panel_audit_digest")
+	panelStats := flags.String("panel-stats", "", "stats.json of the panel run, pinned by construct_review.panel_stats_digest")
 	node := flags.String("node", "", "node binary for the node_test self-checks of the artifacts (runs only the corpus's own fixtures and reference solutions); without it a node_test acceptance spec is refused")
 	if err := flags.Parse(args); err != nil {
 		return err
@@ -152,8 +157,8 @@ func runCorpusDigest(args []string, stdout, stderr io.Writer) error {
 	if *manifestPath == "" {
 		return errors.New("--manifest is required")
 	}
-	if *panelReceipt == "" || *panelAudit == "" {
-		return errors.New("--panel-receipt and --panel-audit are required: the construct review rests on the panel run")
+	if *panelReceipt == "" || *panelAudit == "" || *panelStats == "" {
+		return errors.New("--panel-receipt, --panel-audit and --panel-stats are required: the construct review rests on the panel run")
 	}
 	set := map[string]bool{}
 	flags.Visit(func(f *flag.Flag) { set[f.Name] = true })
@@ -167,7 +172,7 @@ func runCorpusDigest(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	if err := checkPanel(manifest, *panelReceipt, *panelAudit); err != nil {
+	if err := checkPanel(manifest, *panelReceipt, *panelAudit, *panelStats); err != nil {
 		return err
 	}
 	if *artifacts != "" {

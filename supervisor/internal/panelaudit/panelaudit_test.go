@@ -19,8 +19,8 @@ func sum(raw []byte) string {
 // fixture is a signed manifest of four cases, two of them on the audit list, with the panel
 // files it is bound to.
 type fixture struct {
-	m              evalcorpus.Manifest
-	receipt, audit map[string]any
+	m                     evalcorpus.Manifest
+	receipt, audit, stats map[string]any
 }
 
 func newFixture(t *testing.T) *fixture {
@@ -45,6 +45,10 @@ func newFixture(t *testing.T) *fixture {
 	for _, i := range []int{1, 3} {
 		f.m.Cases[i].Signoff.Audited, f.m.Cases[i].Signoff.Resolution = true, "defensible under the frozen rubric"
 	}
+	f.stats = map[string]any{"schema": StatsSchema, "content_digest": content, "cases": 4, "complete_cases": 4, "items": map[string]any{}}
+	for _, item := range Checklist {
+		f.stats["items"].(map[string]any)[item.Key] = map[string]any{"gate": GatePass}
+	}
 	return f
 }
 
@@ -52,8 +56,8 @@ func newFixture(t *testing.T) *fixture {
 func (f *fixture) check(t *testing.T) error {
 	t.Helper()
 	r, a := marshal(t, f.receipt), marshal(t, f.audit)
-	f.m.ConstructReview = evalcorpus.ConstructReview{ContentDigest: f.receipt["content_digest"].(string), PanelReceiptDigest: sum(r), PanelAuditDigest: sum(a)}
-	return Verify(f.m, r, a)
+	f.m.ConstructReview = evalcorpus.ConstructReview{ContentDigest: f.receipt["content_digest"].(string), PanelReceiptDigest: sum(r), PanelAuditDigest: sum(a), PanelStatsDigest: sum(marshal(t, f.stats))}
+	return Verify(f.m, r, a, marshal(t, f.stats))
 }
 
 func marshal(t *testing.T, v any) []byte {
@@ -124,17 +128,17 @@ func TestVerifyDigestsOfTheFileBytes(t *testing.T) {
 		t.Fatal(err)
 	}
 	// One byte of either file changes its digest, whatever the JSON means.
-	if err := Verify(f.m, append(r, '\n'), a); err == nil || !strings.Contains(err.Error(), "receipt") {
+	if err := Verify(f.m, append(r, '\n'), a, marshal(t, f.stats)); err == nil || !strings.Contains(err.Error(), "receipt") {
 		t.Fatalf("changed receipt bytes: %v", err)
 	}
-	if err := Verify(f.m, r, append(a, '\n')); err == nil || !strings.Contains(err.Error(), "audit") {
+	if err := Verify(f.m, r, append(a, '\n'), marshal(t, f.stats)); err == nil || !strings.Contains(err.Error(), "audit") {
 		t.Fatalf("changed audit bytes: %v", err)
 	}
 	// The files rate the content they were made from: editing a case afterwards detaches them.
 	edited := f.m
 	edited.Cases = append([]evalcorpus.Case(nil), f.m.Cases...)
 	edited.Cases[0].Ambiguous = &evalcorpus.Ambiguous{WorkspaceFixtureDigest: sum([]byte("edited"))}
-	if err := Verify(edited, r, a); err == nil || !strings.Contains(err.Error(), "content") {
+	if err := Verify(edited, r, a, marshal(t, f.stats)); err == nil || !strings.Contains(err.Error(), "content") {
 		t.Fatalf("edited case content: %v", err)
 	}
 }
@@ -151,9 +155,37 @@ func TestVerifyRefusesAmbiguousJSON(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			r := marshal(t, f.receipt)
-			f.m.ConstructReview = evalcorpus.ConstructReview{ContentDigest: f.receipt["content_digest"].(string), PanelReceiptDigest: sum(r), PanelAuditDigest: sum(bad)}
-			if err := Verify(f.m, r, bad); err == nil {
+			f.m.ConstructReview = evalcorpus.ConstructReview{ContentDigest: f.receipt["content_digest"].(string), PanelReceiptDigest: sum(r), PanelAuditDigest: sum(bad), PanelStatsDigest: sum(marshal(t, f.stats))}
+			if err := Verify(f.m, r, bad, marshal(t, f.stats)); err == nil {
 				t.Fatal("accepted")
+			}
+		})
+	}
+}
+
+func TestVerifyStatsGate(t *testing.T) {
+	for _, verdict := range []string{"revise", "stop", "no-pass-undefined-kappa", "incomplete-no-pass", "", "PASS"} {
+		t.Run(verdict, func(t *testing.T) {
+			f := newFixture(t)
+			f.stats["items"].(map[string]any)["intent"] = map[string]string{"gate": verdict}
+			if err := f.check(t); err == nil || !strings.Contains(err.Error(), "intent") {
+				t.Fatalf("gate %q: %v", verdict, err)
+			}
+		})
+	}
+	for _, field := range []string{"missing_pairs", "incomplete_cases", "content_digest", "schema", "items"} {
+		t.Run(field, func(t *testing.T) {
+			f := newFixture(t)
+			switch field {
+			case "missing_pairs":
+				f.stats[field] = []any{map[string]any{"phase": 1, "case_id": "c1", "model": "m"}}
+			case "incomplete_cases":
+				f.stats[field] = []string{"c1"}
+			default:
+				delete(f.stats, field)
+			}
+			if err := f.check(t); err == nil {
+				t.Fatal("accepted invalid stats", field)
 			}
 		})
 	}

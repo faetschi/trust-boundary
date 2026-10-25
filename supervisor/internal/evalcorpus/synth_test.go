@@ -68,7 +68,7 @@ func sealed(m Manifest) Manifest {
 		panic(err)
 	}
 	m.ConstructReview = ConstructReview{ContentDigest: content,
-		PanelReceiptDigest: synthDigest("panel-receipt"), PanelAuditDigest: synthDigest("panel-audit")}
+		PanelReceiptDigest: synthDigest("panel-receipt"), PanelAuditDigest: synthDigest("panel-audit"), PanelStatsDigest: synthDigest("panel-stats")}
 	return m
 }
 
