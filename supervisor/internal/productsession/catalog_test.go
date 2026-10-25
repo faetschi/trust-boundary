@@ -869,3 +869,22 @@ func TestRegistrationChangeRefusedWhileATurnIsUnresolved(t *testing.T) {
 		t.Fatalf("a session created under the old registration keeps working under the new one: %v", err)
 	}
 }
+
+func TestSessionsOfListsOnlyThePrincipalsOwnSessions(t *testing.T) {
+	c, _ := newCatalog(t)
+	mine := mustSession(t, c, uid1, "alpha", "review", sessionBudget, "k1")
+	_, _, err := c.CreateSession(uid2, CreateSessionRequest{ProjectID: "alpha", ProviderProfile: "p1", PublicationMode: "review",
+		Budget: sessionBudget, RequestKey: "k1"}, b0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := c.SessionsOf(uid1)
+	if err != nil || len(got) != 1 || got[0].ID != mine.ID {
+		t.Fatalf("SessionsOf(uid1) = %+v, %v", got, err)
+	}
+	got, err = c.SessionsOf(uidBad)
+	if got != nil {
+		t.Fatalf("an unregistered principal listed sessions: %+v", got)
+	}
+	wantCode(t, err, CodeUnauthorizedPrincipal)
+}

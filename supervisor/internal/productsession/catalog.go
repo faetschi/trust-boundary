@@ -311,6 +311,24 @@ func (c *Catalog) Session(p Principal, id string) (Session, error) {
 	return sess.clone(), nil
 }
 
+// SessionsOf returns copies of every session p owns, ordered by session ID. A principal that the
+// registration does not allow gets UNAUTHORIZED_PRINCIPAL, like every other operation.
+func (c *Catalog) SessionsOf(p Principal) ([]Session, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.st.principalAllowed(p) {
+		return nil, fail(CodeUnauthorizedPrincipal, "principal is not registered")
+	}
+	var sessions []Session
+	for _, s := range c.st.sessions {
+		if s.Principal == p {
+			sessions = append(sessions, s.clone())
+		}
+	}
+	slices.SortFunc(sessions, func(a, b Session) int { return strings.Compare(a.ID, b.ID) })
+	return sessions, nil
+}
+
 // Turn returns a copy of a turn. It does no principal check; the transport
 // must authorize through Session first.
 func (c *Catalog) Turn(id string) (Turn, bool) {
