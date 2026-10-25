@@ -379,3 +379,55 @@ Events are projected only from durable records: catalog records for the session,
   | 1 | anything else |
 
 - Session and turn IDs are printed for reference, but ordinary use never requires typing them, except `--session` to reconnect.
+
+## Milestone 5: product host setup, updates and diagnostics (P8)
+
+Everything here runs against a test root (`--root DIR`) and supports `--dry-run`, so it can be verified without a real host. Real qualification needs the product host and is pending.
+
+### Release trust
+
+- Release artifacts get a signed manifest, `tbound-release-manifest/v1`. It lists each artifact's name, size and SHA-256, with an Ed25519 signature over the canonical manifest bytes.
+- The publisher's public key is distributed separately from the artifacts. Users compare its fingerprint, the first 16 hex characters of the SHA-256 of the raw key, against the README and the release notes.
+- `tbound release verify --manifest F --signature F --public-key F [--artifact F...]` refuses a bad signature, an unknown artifact, or a size or digest mismatch. A same-origin checksum file alone is never accepted as authentication.
+- `install/install.sh` verifies the manifest signature before extracting anything, when it is given a public key.
+- A first install trusts a key that has not been seen before. The documentation states that limit.
+
+### Registration tooling (offline administrator)
+
+- `tbound product registration keygen --out DIR` writes an Ed25519 key pair. The private key is 0600, and the command refuses an existing file. The private key stays offline and never enters the service host.
+- `tbound product registration init --out FILE` writes an unsigned registration template from flags: projects, scope, provider profiles, limits, principals, runtime, image and extension digests.
+- `tbound product registration sign --registration FILE --key PRIVATE --out FILE` writes the signed registration and its `.sig` with the existing `SignRegistration`.
+- `tbound product registration verify --registration FILE --signature FILE --public-key FILE` prints the digest and a summary.
+- Changing a project, scope, policy or limit means signing a new registration. No per-task signing exists.
+
+### Host setup (administrator, on the product host)
+
+`tbound product setup --config FILE [--root DIR] [--dry-run]` makes the host match the plan and is idempotent:
+
+1. It checks prerequisites with the existing governed-host and doctor checks: kernel and Landlock ABI, cgroup v2 delegation, rootless Podman and crun, an ext4 managed root, and systemd. An unsupported host fails before any change, and the failure names the qualified VM option.
+2. It creates the `tbound-product` system user and group, or verifies that they exist with the same IDs.
+3. It creates the directories with exact owners and modes:
+
+   | Path | Owner | Mode |
+   | --- | --- | --- |
+   | `/etc/tbound-product` | root | 0755 |
+   | `/etc/tbound-product/credentials` | service | 0700 |
+   | `/var/lib/tbound-product` (catalog, turns, projects) | service | 0750 |
+   | runtime directory | from the unit | from the unit |
+
+4. It installs the registration, signature and public key as root-owned 0644 files. It writes the service config and the `tbound-product.service` unit: `User=tbound-product`, `RuntimeDirectory=tbound-product`, and hardening matching the research unit where it applies. Then it runs `daemon-reload`.
+5. It never creates or replaces the owner's signing key, and it never touches a `/etc/tbound`, `/var/lib/tbound` or `/run/tbound` path.
+
+Running it again changes nothing and reports "unchanged". An existing file with different content is refused unless `--replace` is given.
+
+### Update, rollback and uninstall
+
+- `tbound product update --binary NEW [--root DIR]` stages the new binary, stops the service, and opens the catalog. It refuses while any turn is unresolved, other than a pending review, which becomes `discarded` with reason `restart`. It keeps the current binary as last-known-good, swaps atomically, starts the service, and runs the self-test. If the self-test fails, it rolls back.
+- `tbound product rollback` restores last-known-good the same way.
+- Catalog schema changes need a version check and a backup before the swap. A newer schema is never read by an older binary.
+- `tbound product uninstall [--root DIR] [--purge]` stops and disables the service and removes the unit, binary and runtime access. It reports unresolved turns. It keeps `/etc/tbound-product` and `/var/lib/tbound-product` unless `--purge` is given, and `--purge` asks for confirmation unless `--yes` is also given.
+
+### Diagnostics
+
+- `tbound product doctor` is advisory. It reports prerequisites, installation owners and modes, unit state, socket reachability, registration verification, and credential status (never the key).
+- `tbound product doctor --self-test` runs an explicit runtime self-test turn on a synthetic project with the configured worker. Only that self-test, never the advisory checks, can report governed readiness.
