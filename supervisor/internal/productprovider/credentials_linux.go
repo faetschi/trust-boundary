@@ -56,10 +56,10 @@ func normalizedKey(key []byte) ([]byte, error) {
 	return []byte(strings.TrimSpace(string(key))), nil
 }
 
-// ReadSource reuses the broker's file checks: caller-owned, regular, no final
-// symlink, 0400/0600, bounded. No environment lookup occurs.
+// ReadSource requires protected root/caller-owned ancestors without symlinks,
+// then a caller-owned regular file, 0400/0600 and bounded. No environment lookup occurs.
 func ReadSource(path string) ([]byte, error) {
-	key, err := openrouter.ReadSecureCredentialFile(path)
+	key, err := openrouter.ReadCredentialSourceFile(path)
 	if err != nil {
 		return nil, ErrCredential
 	}
