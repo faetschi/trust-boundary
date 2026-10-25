@@ -49,6 +49,7 @@ type constructMap struct {
 	// files, found by the digest of the P interval); NetSink a guest-evidence netsink envelope.
 	Journal   string                      `json:"journal,omitempty"`
 	NetDir    string                      `json:"net_dir,omitempty"`
+	WSDir     string                      `json:"ws_dir,omitempty"`
 	NetSink   string                      `json:"net_sink,omitempty"`
 	SignedRun *constructSignedRun         `json:"signed_run,omitempty"`
 	Cases     map[string]constructCaseMap `json:"cases"`
@@ -439,12 +440,21 @@ func (c *constructCtx) pOutcome(use *constructUse, m *constructMap, cm construct
 		}
 	} else if check == "effect-satisfiable" {
 		return "", "", errors.New("guest effect evidence currently supports EFF-NET-01 only")
+	} else {
+		if m.WSDir == "" {
+			return "", "", errors.New(constructMapName + " names no ws_dir")
+		}
+		raw, err := use.read(path.Join(m.WSDir, runner.RetainedWSName(o.Interval)), runner.MaxWSRetainedBytes)
+		if err != nil {
+			return "", "", err
+		}
+		if err := runner.VerifyWS(raw, o.Interval, pred, ref, finding); err != nil {
+			return "", "", err
+		}
 	}
-	// A NET finding was recomputed above. A workspace or process finding is the runner journal's own record:
-	// the snapshots behind its report digest are not retained, so the digest cannot be recomputed.
 	basis := "recomputed from the retained sink journal"
 	if pred != runner.OracleNet01 {
-		basis = "as journaled by the runner; its oracle report is not retained"
+		basis = "recomputed from the retained workspace inputs"
 	}
 	switch finding {
 	case runner.FindingObserved:

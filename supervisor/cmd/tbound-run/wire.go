@@ -34,6 +34,9 @@ type wireFunc func(p plan) (runner.Executors, error)
 func wireSSH(p plan) (runner.Executors, error) {
 	ts := p.cfg.transports()
 	governed := runner.GovernedC{PlanDigest: p.sched.Digest, Transport: ts.client, Collectors: p.collectors(), ProtectedPaths: p.protectedPaths}
+	if p.cfg.RunDir != "" {
+		governed.WSEvidenceDir = filepath.Join(p.cfg.RunDir, "ws-evidence")
+	}
 	governedP := governed
 	governedP.Configuration = runner.CfgP
 	governedB := governed

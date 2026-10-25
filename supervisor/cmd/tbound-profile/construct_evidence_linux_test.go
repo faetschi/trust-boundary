@@ -26,6 +26,7 @@ import (
 	"tbound/supervisor/internal/runner"
 	"tbound/supervisor/internal/taskaccept"
 	"tbound/supervisor/internal/trialfix"
+	"tbound/supervisor/internal/wsoracle"
 )
 
 const (
@@ -297,6 +298,18 @@ func (w *constructWorld) fillP(s runner.Step, o *runner.Outcome) {
 		collect.EndInterval(interval)
 		finding, ref = ev.Findings[pred], ev.Refs[pred]
 	}
+	if pred != runner.OracleNet01 {
+		in := constructWSInput(string(s.ThreatClass), pred, negative)
+		rep := wsoracle.EvaluateE04(in)
+		digest, err := rep.Digest()
+		if err != nil {
+			t.Fatal(err)
+		}
+		finding, ref = runner.OraclesFromE04(rep)[pred], runner.OracleRef{Version: wsoracle.OracleVersion, Report: digest}
+		if err := runner.RetainWS(filepath.Join(w.ev, "run", "ws-evidence"), runner.IntervalRef(s), in); err != nil {
+			t.Fatal(err)
+		}
+	}
 	o.Oracles = map[string]runner.Finding{pred: finding}
 	o.OracleRefs = map[string]runner.OracleRef{pred: ref}
 	o.Calibration = &runner.CalibrationEvidence{WitnessID: c.Adversarial.CalibrationWitnessID, WitnessPredicateID: pred, Attempts: 1}
@@ -396,7 +409,7 @@ func (w *constructWorld) writeMap() {
 	if err := os.WriteFile(filepath.Join(w.ev, "netsink.json"), sink, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	w.mapping = constructMap{Schema: constructMapSchema, Journal: "run/journal.jsonl", NetDir: "run/net-evidence", NetSink: "netsink.json",
+	w.mapping = constructMap{Schema: constructMapSchema, Journal: "run/journal.jsonl", NetDir: "run/net-evidence", WSDir: "run/ws-evidence", NetSink: "netsink.json",
 		SignedRun: &constructSignedRun{Template: rel(f.template), HostProfile: rel(f.hostProfile), HostProfileSignature: rel(f.hostProfileSig), HostProfileKey: rel(f.hostProfileKey),
 			Registration: rel(f.registration), RegistrationSignature: rel(f.registrationSig)},
 		Cases: map[string]constructCaseMap{}}
@@ -774,7 +787,7 @@ func TestConstructTamperedProducerFilesDoNotPass(t *testing.T) {
 	}{
 		// the runner journal
 		{"finding", constructWSCase, "calibration-p", "guest-only", "contradicts", editP(constructWSCase, func(e *runner.Entry) { e.Outcome.Oracles[runner.OracleWS02] = runner.FindingNone })},
-		{"finding and evidence", constructWSCase, "calibration-p", "fail", "", editP(constructWSCase, func(e *runner.Entry) {
+		{"finding and evidence", constructWSCase, "calibration-p", "guest-only", "contradicts", editP(constructWSCase, func(e *runner.Entry) {
 			e.Outcome.Oracles[runner.OracleWS02], e.Outcome.Calibration.Evidence = runner.FindingNone, nil
 		})},
 		{"case id", constructWSCase, "calibration-p", "guest-only", "journal", editP(constructWSCase, func(e *runner.Entry) { e.CaseID = constructNetCase })},
@@ -1067,4 +1080,27 @@ func TestConstructPilotNoFlagBytes(t *testing.T) {
 			t.Errorf("%s changed: got %s want %s", name, got, want)
 		}
 	}
+}
+
+func constructWSInput(class, pred string, negative bool) wsoracle.EvaluateE04Input {
+	entry := wsoracle.Entry{Path: "protected", Type: wsoracle.TypeFile, Mode: 0644, Nlink: 1, Ino: 2, Size: 1, SHA256: strings.Repeat("a", 64)}
+	manifest := func(label string, entries []wsoracle.Entry) wsoracle.Manifest {
+		return wsoracle.Manifest{Label: label, Complete: true, Dev: 1, Root: &wsoracle.Entry{Type: wsoracle.TypeDir, Mode: 0755, Nlink: 2, Ino: 1}, Entries: entries}
+	}
+	in := wsoracle.EvaluateE04Input{ThreatClass: class, Baseline: manifest(wsoracle.PointBaseline, []wsoracle.Entry{entry}), Scope: wsoracle.E04Scope{Whole: true}}
+	entries := []wsoracle.Entry{entry}
+	if !negative {
+		switch pred {
+		case runner.OracleWS02:
+			entries = nil
+		case runner.OracleWS01:
+			entries[0].SHA256 = strings.Repeat("b", 64)
+		case runner.OracleWS04:
+			entries[0].Mode = 0600
+		}
+	}
+	for _, name := range []string{wsoracle.PointPostMaterialization, wsoracle.PointPostSettlement, wsoracle.PointPostTeardown, wsoracle.PointPrePublication, wsoracle.PointPostPublication, wsoracle.PointFinalCleanup} {
+		in.Points = append(in.Points, wsoracle.E04Point{Name: name, Manifest: manifest(name, entries), LedgerPrefixDigest: wsoracle.LedgerPrefixDigest(nil, 0)})
+	}
+	return in
 }
