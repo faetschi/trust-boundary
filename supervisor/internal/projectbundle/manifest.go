@@ -129,7 +129,7 @@ func validateManifestPath(value string) error {
 
 func isGitPath(value string) bool {
 	for _, segment := range strings.Split(value, "/") {
-		if segment == gitDir {
+		if strings.EqualFold(segment, gitDir) {
 			return true
 		}
 	}

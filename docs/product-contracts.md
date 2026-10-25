@@ -310,11 +310,16 @@ Decisions taken during implementation:
 ### Import and export decisions taken during implementation
 
 - Both streams are the format line, a 4-byte big-endian header length, a canonical JSON header, and then the raw file contents in header order. The reader re-encodes the header and refuses any byte difference, so exactly one encoding is accepted. Digests are `sha256:` over the header bytes.
-- Every parent directory must be listed in the manifest. `.git` and a root `lost+found` are always excluded. Excluded subtrees are never read.
+- Every parent directory must be listed in the manifest. Any component equal to `.git` under Unicode case folding and a root `lost+found` are always excluded. Import and export validation refuse Git administration under the same rule. Excluded subtrees are never read.
+- Scans and apply open descendants with Linux `openat2`, using `RESOLVE_BENEATH | RESOLVE_NO_SYMLINKS | RESOLVE_NO_XDEV`. This refuses same-filesystem bind mounts as well as other mount crossings, including mounted regular files. Kernels without the required resolution support fail closed.
+- Files and directories with POSIX access/default ACLs or `user.*` or `trusted.*` extended attributes are refused during scans and apply target rechecks. `security.*` labels are tolerated as host policy; bundles do not carry or restore them.
 - Only the executable bit is carried. New files are created 0644 or 0755. A change of type (file to directory) is refused.
-- Apply validates the baseline digest, the declared target digest and every content digest before the first write. It refuses changes to files Git does not track, because their original content could not be restored. The recovery record lists the pre-apply entries, and restoring relies on the clean tracked tree in Git.
+- Apply validates the baseline digest, the declared target digest and every content digest before producing a patch or writing targets. It refuses changes to existing files Git does not track, target paths marked assume-unchanged or skip-worktree, and existing targets whose raw bytes differ from their committed HEAD blob, even if Git status reports clean.
+- By default `tbound project apply` leaves the worktree unchanged and creates a new `tbound-export.patch` in `--state-dir`. An isolated Git object store and index generate a binary-safe patch with file creates, deletes and executable-bit changes. The client runs `git apply --check` and prints exact `git -C ... apply --check -- PATCH` and `git -C ... apply -- PATCH` commands. The user excludes concurrent writers before checking and applying it. Git cannot represent empty-directory changes; patch mode refuses those changes, including changes that would require retaining an empty directory.
+- Direct writes require both `--direct` and `--writer-exclusion-held`. This is the user's guarantee that no concurrent writer can alter or move the worktree for the whole apply; the client cannot establish that guarantee itself. Immediately before each rename it resolves the parent again from the worktree root fd and compares device/inode with the held parent fd. A mismatch aborts and retains the recovery record even before the first target mutation. This check does not replace writer exclusion.
+- The state directory must be caller-owned, exactly 0700, outside the worktree, with no symlink ancestors or group/other-writable non-root ancestors. An exclusive lock serializes clients using that directory. Record creation, updates, removal and patch creation use its held directory fd. The direct-mode recovery record lists pre-apply entries and the actual absolute paths changed so far; restoring relies on the clean tracked tree in Git. The client syncs executable-bit changes and retains the record on sync failure.
 - `apply` takes the same `--exclude` list as `bundle`, so both sides compute the same manifest.
-- `import` and `apply` do not check which account runs them. The separation between service and user comes from who runs each command, as the help text states.
+- `import` and `apply` do not check which account runs them. The separation between service and user comes from who runs each command, as the help text states. The service never reads or writes the original repository.
 
 ### Development environment
 
@@ -431,3 +436,57 @@ Running it again changes nothing and reports "unchanged". An existing file with 
 
 - `tbound product doctor` is advisory. It reports prerequisites, installation owners and modes, unit state, socket reachability, registration verification, and credential status (never the key).
 - `tbound product doctor --self-test` runs an explicit runtime self-test turn on a synthetic project with the configured worker. Only that self-test, never the advisory checks, can report governed readiness.
+
+## Milestone 6: live web chat (P9)
+
+The web chat stays an optional, separate Go module (`extensions/webchat`). It never imports the supervisor. It speaks `tbound-product-protocol/v1` over the product socket, with its own copy of the wire types. A parity test checks that copy against JSON fixtures the supervisor generates.
+
+### Authority
+
+- The gateway runs as the user and connects to `/run/tbound-product/product.sock`, so the service sees the user's UID as the principal. The browser gains no authority beyond that user's. The gateway holds no policy, lease, effect or publication authority. It forwards requests and renders projections.
+- Deviation from the plan: the plan describes supervisor-issued, scoped browser delegations. In this milestone the gateway's pairing secret scopes the browser instead, and the supervisor sees only the user principal. Supervisor-issued delegations with separate read, submit, cancel and resolve rights remain open work.
+
+### Pairing and sessions
+
+- `tbound-webchat --live --socket PATH [--listen 127.0.0.1:8791]` binds only a literal loopback address.
+- At start it prints a one-time pairing URL, `http://127.0.0.1:8791/pair#<token>`, to the terminal only. The token is 32 random bytes and lives at most 10 minutes. It is never written to disk or logs.
+- The pairing page posts the token to `POST /api/v1/pair`. The gateway answers with a `tbound_session` cookie (random, HttpOnly, SameSite=Strict, Path=/, 12-hour lifetime) and a CSRF token. The pairing token is spent on first use.
+- Every API request needs the session cookie.
+- Every mutation also needs the `X-TBound-CSRF` header to equal the session's CSRF token.
+- `Host` must equal the bound `127.0.0.1:PORT` or `localhost:PORT`.
+- When an `Origin` header is present, it must equal `http://` plus that host.
+- There is no CORS. Request bodies are at most 64 KiB of strict JSON.
+
+### Routes
+
+| Method and path | Maps to |
+| --- | --- |
+| `GET /api/v1/sessions` | `list_sessions` |
+| `POST /api/v1/sessions` | `create_session` |
+| `GET /api/v1/sessions/{id}` | `get_session`, rendered into the existing snapshot shape with `source: "live"` |
+| `GET /api/v1/sessions/{id}/events?cursor=N&wait=MS` | `observe` (long poll, wait at most 25 s) |
+| `POST /api/v1/sessions/{id}/turns` | `submit_turn` (the request key comes from the client; the gateway never invents a retry) |
+| `GET /api/v1/sessions/{id}/turns/{turn}/candidate` | `get_candidate` |
+| `POST /api/v1/sessions/{id}/turns/{turn}/cancel` | `cancel_turn` |
+| `POST /api/v1/sessions/{id}/turns/{turn}/resolve` | `resolve_turn` with the candidate digest the client displayed |
+
+- Errors keep the service's stable codes.
+- The fixture, replay and receipt modes stay available, labelled as demonstrations.
+
+### Browser UI
+
+The existing React app gains a live mode:
+
+- a session picker and creator showing project, provider and mode;
+- a composer that submits with a fresh request key per prompt;
+- a cancel button;
+- the event stream, with assistant text, tool calls, governance decisions and hints, and outcomes;
+- a diff review with Publish and Discard bound to the displayed candidate digest;
+- remaining budget, recovery and blocked states;
+- reconnect from the cursor after reload.
+
+Model-authored text is rendered through the existing sanitizing markdown path. Governance status stays structurally and visually separate from model output. Keyboard access and focus behaviour follow the existing components.
+
+### Windows access
+
+Use an SSH tunnel to the product host: `ssh -L 8791:127.0.0.1:8791 user@host`, with pinned host keys. Never bind a non-loopback address.

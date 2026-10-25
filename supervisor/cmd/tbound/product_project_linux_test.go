@@ -185,7 +185,7 @@ func TestProjectApplyCommand(t *testing.T) {
 	}
 	projectGit(t, tree, "checkout", "--", "main.go")
 
-	out, err := projectCLI(t, "apply", "--bundle", exported, "--worktree", tree, "--state-dir", state)
+	out, err := projectCLI(t, "apply", "--direct", "--writer-exclusion-held", "--bundle", exported, "--worktree", tree, "--state-dir", state)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,5 +202,65 @@ func TestProjectApplyCommand(t *testing.T) {
 	}
 	if entries, _ := os.ReadDir(state); len(entries) != 0 {
 		t.Errorf("recovery record left after a verified apply: %d entries", len(entries))
+	}
+}
+
+func TestProjectApplyDefaultPatchInstructions(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git required")
+	}
+	t.Setenv("GIT_CONFIG_GLOBAL", "/dev/null")
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	work := projectDir(t)
+	tree := filepath.Join(work, "tree with 'quote'")
+	projectPut(t, tree, "f", "original\x00", 0644)
+	projectGit(t, tree, "init", "-q")
+	projectGit(t, tree, "add", "-A")
+	projectGit(t, tree, "commit", "-qm", "initial")
+	bundle := filepath.Join(work, "bundle")
+	manifest := filepath.Join(work, "manifest")
+	managed := filepath.Join(work, "managed")
+	export := filepath.Join(work, "export")
+	state := filepath.Join(work, "state with 'quote'")
+	if err := os.Mkdir(state, 0700); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{
+		{"bundle", "--source", tree, "--out", bundle},
+		{"import", "--bundle", bundle, "--dest", managed, "--manifest-out", manifest},
+	} {
+		if _, err := projectCLI(t, args...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	projectPut(t, managed, "f", "changed\x00", 0700)
+	if _, err := projectCLI(t, "export", "--baseline-manifest", manifest, "--current", managed, "--out", export); err != nil {
+		t.Fatal(err)
+	}
+	out, err := projectCLI(t, "apply", "--bundle", export, "--worktree", tree, "--state-dir", state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "worktree unchanged") {
+		t.Fatalf("output: %s", out)
+	}
+	if data, _ := os.ReadFile(filepath.Join(tree, "f")); string(data) != "original\x00" {
+		t.Fatal("default apply wrote worktree")
+	}
+	commands := 0
+	for _, line := range strings.Split(out, "\n") {
+		if !strings.HasPrefix(line, "  git ") {
+			continue
+		}
+		if output, err := exec.Command("sh", "-c", strings.TrimSpace(line)).CombinedOutput(); err != nil {
+			t.Fatalf("printed command failed: %v: %s", err, output)
+		}
+		commands++
+	}
+	if commands != 2 {
+		t.Fatalf("printed %d commands", commands)
+	}
+	if data, _ := os.ReadFile(filepath.Join(tree, "f")); string(data) != "changed\x00" {
+		t.Fatal("printed git apply did not apply content")
 	}
 }

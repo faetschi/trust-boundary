@@ -81,7 +81,7 @@ func (f fixture) export(t *testing.T) ([]byte, ExportHeader) {
 }
 
 func (f fixture) apply(bundle io.ReadSeeker) ([]string, error) {
-	return ApplyExport(bundle, f.worktree, ApplyOptions{StateDir: f.state, Exclude: f.exclude, Limits: DefaultLimits()})
+	return ApplyExport(bundle, f.worktree, ApplyOptions{Mode: DirectMode, WriterExclusionHeld: true, StateDir: f.state, Exclude: f.exclude, Limits: DefaultLimits()})
 }
 
 // edit changes the managed copy the way a published agent turn would.

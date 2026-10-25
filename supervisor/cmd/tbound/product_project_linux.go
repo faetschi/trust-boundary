@@ -27,8 +27,10 @@ const projectUsage = `usage: tbound project <command> [flags]
           Compare a managed project with its baseline manifest and write a tbound-project-export/v1
           file. Run it as the service.
   apply   --bundle FILE --worktree DIR --state-dir DIR [--exclude PATH]...
-          Apply an export to a clean Git worktree. Run it as the user. Use the same --exclude paths
-          as for bundle. A failure after the first write leaves a recovery record in --state-dir.
+          Verify an export and write --state-dir/tbound-export.patch without changing the worktree.
+          Run it as the user, with the same --exclude paths as bundle. State directory must be 0700.
+          --direct --writer-exclusion-held writes directly. You must guarantee no concurrent writer;
+          a failure retains a recovery record when changes occurred or a target parent moved.
 `
 
 type pathList []string
@@ -225,20 +227,42 @@ func runProjectApply(args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("project apply", flag.ContinueOnError)
 	bundle := fs.String("bundle", "", "export file")
 	worktree := fs.String("worktree", "", "clean Git worktree")
-	stateDir := fs.String("state-dir", "", "existing directory outside the worktree for the recovery record")
+	stateDir := fs.String("state-dir", "", "existing caller-owned 0700 directory outside the worktree for the patch or recovery record")
+	direct := fs.Bool("direct", false, "write the worktree directly; requires --writer-exclusion-held")
+	exclusion := fs.Bool("writer-exclusion-held", false, "guarantee no concurrent writer can move or alter the worktree throughout direct apply")
 	var exclude pathList
 	fs.Var(&exclude, "exclude", "relative path left out of the baseline (repeatable)")
 	if err := parseProjectFlags("apply", fs, args, stderr, "bundle", "worktree", "state-dir"); err != nil {
 		return err
+	}
+	if *direct != *exclusion {
+		return errors.New("project apply: direct writes require both --direct and --writer-exclusion-held")
+	}
+	mode := projectbundle.PatchMode
+	if *direct {
+		mode = projectbundle.DirectMode
 	}
 	f, err := os.Open(*bundle)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
-	changed, err := projectbundle.ApplyExport(f, *worktree, projectbundle.ApplyOptions{StateDir: *stateDir, Exclude: exclude, Limits: projectbundle.DefaultLimits()})
+	changed, err := projectbundle.ApplyExport(f, *worktree, projectbundle.ApplyOptions{Mode: mode, WriterExclusionHeld: *exclusion, StateDir: *stateDir, Exclude: exclude, Limits: projectbundle.DefaultLimits()})
 	if err != nil {
 		return err
+	}
+	if !*direct {
+		absWorktree, err := filepath.Abs(*worktree)
+		if err != nil {
+			return err
+		}
+		patch, err := filepath.Abs(filepath.Join(*stateDir, projectbundle.PatchFileName))
+		if err != nil {
+			return err
+		}
+		quote := func(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\"'\"'") + "'" }
+		fmt.Fprintf(stdout, "verified %d changes; worktree unchanged\nwrote %s\nApply as the worktree owner after excluding concurrent writers:\n  git -C %s apply --check -- %s\n  git -C %s apply -- %s\n", len(changed), patch, quote(absWorktree), quote(patch), quote(absWorktree), quote(patch))
+		return nil
 	}
 	fmt.Fprintf(stdout, "applied %d changes to %s and verified the result\n", len(changed), *worktree)
 	for _, p := range changed {
