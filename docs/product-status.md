@@ -107,4 +107,59 @@ Independent reviews: GPT 6.1 Sol (xhigh) ran ponytail-review over the catalog an
 
 P4: review, cancellation and fresh-process recovery. That means resolving `awaiting_review` turns by exact candidate, cancellation at every point, evidence-based reconciliation of linked turns, the DENY crash window, and the crash-boundary test matrix from the plan. The product guest should be provisioned in parallel, so a real Pi worker per turn can replace the headless fixture.
 
-What this milestone does not include: review and cancellation (P4), project import and export (P5), the terminal client (P6), web chat, installation, and release qualification.
+## Milestone 2: review, cancellation and restart (P4, headless)
+
+Status: implemented and passing the local gate. The independent review is still pending, because both Codex providers were unavailable. Not qualified on a guest. The contract is in [product-contracts.md](product-contracts.md), sections "Milestone 2" and "P4 catalog decisions".
+
+### What runs today
+
+- **Review.**
+  - A review-mode turn settles as `awaiting_review` and keeps its closed workflow and publication finalizer in this process.
+  - `ResolveTurn` first records the decision for the exact candidate digest.
+  - A publish then runs the retained finalizer. It counts as `published` only if the project then measures exactly the candidate.
+  - Discard keeps the candidate and the spend.
+  - `ExpireReviews` discards reviews past their registered timeout.
+- **Cancellation.**
+  - `CancelTurn` records the request first.
+  - Before launch, the turn ends `cancelled` with a full refund.
+  - During execution, the worker stops before its next provider exchange, never mid-call. The turn ends `cancelled` with nothing published.
+  - During review, the turn is discarded with reason `cancelled`.
+  - Once publication has started, the turn reports its real outcome.
+- **Restart.**
+  - `ReconcileAfterRestart` runs before new admissions. It settles every unresolved turn from retained evidence: the Store, the journals, the owner checkpoint, a fresh project measurement, and the project publication journal.
+  - A pending review never survives a restart and is never published on reconstruction alone.
+  - Anything it cannot prove ends `unknown`, which blocks the project.
+
+### Demonstrated behaviour
+
+| Requirement | Test |
+| --- | --- |
+| Publish only the exact candidate | `TestProductTurnReviewPublishesOnlyTheExactCandidate`, `TestResolveTurnRules` |
+| Discard keeps the project unchanged and the spend consumed | `TestProductTurnReviewDiscardKeepsTheProjectAndTheSpend`, `TestReviewedDiscardReasons` |
+| Review expiry | `TestProductTurnReviewExpires` |
+| Cancel before launch, mid-turn, during review, after publication started | `TestProductTurnCancelBeforeLaunchRefundsAndBlocksNothing`, `TestProductTurnCancelMidTurnStopsBeforeTheNextExchange`, `TestProductTurnCancelDuringReviewDiscards`, `TestProductTurnCancelAfterAutoPublicationStartedReportsTheRealDisposition` |
+| Fresh-process crash at six boundaries (after admission, before the first exchange, after an effect, at pending review, after the publish decision, after publication) with no effect repeated | `TestProductTurnRestartReconcilesEveryCrashBoundary` |
+| A project changed while the service was down becomes unknown | `TestProductTurnRestartRecordsAChangedProjectAsUnknown` |
+| Catalog replay of every new record in a fresh process | `TestFreshProcessRestoresCancelAndResolutionRequests`, `TestOpenRefusesInvalidReviewRecords` |
+| Reviewed terminals settle no budget twice and keep the review evidence | `TestReviewedPublishMovesBaselineWithoutSettlingAgain`, `TestReviewedTerminalKeepsTheReviewExecutionFacts` |
+
+### Verification
+
+| Commit | Gate result |
+| --- | --- |
+| `cf045c9` (thesis branch merged in) | build, vet, gofmt clean; 4728 passed, 27 skipped, 0 failed |
+| `93c359a` (P4) | build, vet, gofmt clean; 4759 passed, 28 skipped, 0 failed |
+
+The 28th skip is `TestProductTurnCrashChild`, which runs only as the subprocess of the crash matrix.
+
+### Pending and known limits
+
+- **Independent review.** GPT 6.1 Sol has not reviewed the P4 driver (`41485e4`, `93c359a`) yet. It did review the P4 catalog, and those findings were fixed or rejected with a reason.
+- **Guest-only cancellation.** Cancelling a real Pi process, a running Bash command, or an abort acknowledged while descendants survive all need the product guest.
+- **Expiry trigger.** Nothing calls `ExpireReviews` periodically yet; the service loop will. A resolve attempt checks expiry first.
+- **Reconciled turns.** A turn reconciled after a restart is billed its full reserved duration. Its receipt has no worker instance or tool list, because the in-process worker's record died with its process.
+- **Crash between link and prompt admission.** In that window the turn ends `unknown` and blocks the project.
+- **Crash in the middle of publication.** Not tested.
+- **Restart after a failed publication.** A publish decision whose publication failed is `unknown` after restart, per the table, even though `failed` could be proven.
+
+What this milestone does not include: project import and export (P5), the terminal client (P6), web chat, installation, and release qualification.
