@@ -64,7 +64,7 @@ func (e *productTurnEnv) reconcileLinkedTurn(ctx context.Context, turn productse
 	if err != nil {
 		return unknown("the retained evidence paths are invalid", err)
 	}
-	retained, err := openRetainedProductTurn(paths, e.storeOptions())
+	retained, err := openRetainedProductTurn(paths, e.storeOptions(turn))
 	if err != nil {
 		return unknown("the retained Store or journals cannot be reopened", err)
 	}

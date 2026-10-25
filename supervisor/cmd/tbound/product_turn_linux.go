@@ -401,7 +401,7 @@ func (e *productTurnEnv) predecessorContext(turn productsession.Turn, providerPr
 	if err != nil {
 		return evidence(err)
 	}
-	retained, err := openRetainedProductTurn(paths, e.storeOptions())
+	retained, err := openRetainedProductTurn(paths, e.storeOptions(pred))
 	if err != nil {
 		return evidence(err)
 	}

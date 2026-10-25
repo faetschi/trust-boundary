@@ -93,7 +93,15 @@ func (w *productTurnWorker) run(ctx context.Context, conversation *providerbridg
 			continue
 		}
 		if _, err := executor.Execute(ctx, proposal, decision); err != nil {
-			return work, err
+			// Delta admission refused the settled change: the conversation recorded the DENY and its
+			// hint for the provider, nothing was promoted, and the turn goes on.
+			var denied *protocol.AdmissionDeniedError
+			if !errors.As(err, &denied) {
+				return work, err
+			}
+			work.denials = append(work.denials, productTurnDenial{ToolCallID: proposal.ToolCallID, Tool: proposal.Tool,
+				ReasonCode: denied.ReasonCode})
+			continue
 		}
 		w.boundary("after-effect")
 	}

@@ -117,7 +117,7 @@ func (c *Catalog) CreateSession(p Principal, r CreateSessionRequest, measuredBas
 	}
 	err = c.commit(kindSessionCreated, id, sessionCreatedRecord{
 		header: hdr, SessionID: id, Principal: p, ProjectID: r.ProjectID, ProviderProfile: r.ProviderProfile,
-		PublicationMode: r.PublicationMode, Budget: r.Budget, BaselineDigest: measuredBaseline,
+		PublicationMode: r.PublicationMode, Budget: r.Budget, ReadOnly: r.ReadOnly, BaselineDigest: measuredBaseline,
 		RequestKey: r.RequestKey, PayloadDigest: digest,
 	})
 	if err != nil {
@@ -154,7 +154,7 @@ func (c *Catalog) SubmitTurn(p Principal, r SubmitTurnRequest, measuredBaseline 
 	record := turnAdmittedRecord{
 		header: hdr, TurnID: turnID, SessionID: sess.ID, Ordinal: ordinal, Principal: p,
 		RequestKey: r.RequestKey, PayloadDigest: digest, Prompt: r.Prompt, PromptDigest: sha256Digest([]byte(r.Prompt)),
-		ProjectID: sess.ProjectID, PolicyDigest: rp.PolicyDigest, BashOutputPaths: rp.BashOutputPaths,
+		ProjectID: sess.ProjectID, PolicyDigest: rp.PolicyDigest, BashOutputPaths: rp.BashOutputPaths, Scope: effectiveScope(rp, sess.ReadOnly),
 		PublicationMode: sess.PublicationMode, BaselineDigest: measuredBaseline, ExpectedBaselineDigest: r.ExpectedBaselineDigest,
 		Reservation: c.st.reservation(sess), SessionRevision: r.ExpectedRevision + 1,
 	}

@@ -1352,6 +1352,24 @@ func governedChannelsError(serveErr, bridgeErr error) error {
 	return errors.Join(serveErr, bridgeErr)
 }
 
+// BindAdmissionScope sets the delta-admission scope of the Store a product turn creates. It is called
+// once, before the Store exists, with the scope the catalog admitted the turn under.
+func (a *SessionOperationAuthority) BindAdmissionScope(scope sessionrepo.AdmissionScope) error {
+	if a == nil {
+		return ErrGovernedSessionEvidence
+	}
+	if err := scope.Validate(); err != nil {
+		return fmt.Errorf("admission scope: %w", err)
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.store != nil {
+		return errors.New("admission scope must be bound before the Store exists")
+	}
+	a.admissionScope = scope
+	return nil
+}
+
 func (a *SessionOperationAuthority) CreateStore(root *os.File, limits workspace.Limits, xattr workspace.XattrVisibilityAttestation,
 	binder sessionrepo.Binder) (*sessionlaunch.ManagedStore, error) {
 	if a == nil || a.storeJournal == nil || !validBareSHA256(a.storePolicyDigest) || !validBareSHA256(a.metadataPolicyDigest) {

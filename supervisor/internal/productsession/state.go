@@ -53,6 +53,8 @@ type CreateSessionRequest struct {
 	PublicationMode string `json:"publication_mode"`
 	Budget          Budget `json:"budget"`
 	RequestKey      string `json:"request_key"`
+	// ReadOnly empties the writable scope of every turn: no tool can change the project.
+	ReadOnly bool `json:"read_only,omitempty"`
 }
 
 // SubmitTurnRequest is the client-supplied part of turn admission.
@@ -123,6 +125,7 @@ type Session struct {
 	ProviderProfile string
 	PublicationMode string
 	Budget          Budget
+	ReadOnly        bool
 	Consumed        Budget
 	Reserved        Budget
 	Revision        uint64
@@ -146,6 +149,7 @@ type Turn struct {
 	PolicyDigest             string
 	BashOutputPaths          []string
 	PublicationMode          string
+	Scope                    *ProductScope // admission scope in force for the turn; nil is the exact-path rule
 	BaselineDigest           string
 	PredecessorTurnID        string
 	PredecessorReceiptDigest string
@@ -183,6 +187,7 @@ func (s Session) clone() Session {
 
 func (t Turn) clone() Turn {
 	t.BashOutputPaths = slices.Clone(t.BashOutputPaths)
+	t.Scope = t.Scope.clone()
 	t.Receipt = slices.Clone(t.Receipt)
 	if t.Link != nil {
 		link := *t.Link
@@ -373,6 +378,7 @@ func (s *state) reduceCreated(data []byte) (func(), error) {
 	key := requestKey{r.Principal, opCreateSession, "", r.RequestKey}
 	if !validIdentity(r.RequestKey) || !validDigest(r.BaselineDigest) || r.PayloadDigest != payloadDigest(opCreateSession, CreateSessionRequest{
 		ProjectID: r.ProjectID, ProviderProfile: r.ProviderProfile, PublicationMode: r.PublicationMode, Budget: r.Budget, RequestKey: r.RequestKey,
+		ReadOnly: r.ReadOnly,
 	}) {
 		return nil, fail(CodeInvalidRequest, "request key is invalid or the payload digest does not match the request")
 	}
@@ -410,6 +416,7 @@ func (s *state) reduceCreated(data []byte) (func(), error) {
 		s.sessions[r.SessionID] = &Session{
 			ID: r.SessionID, Principal: r.Principal, ProjectID: r.ProjectID, ProviderProfile: r.ProviderProfile,
 			PublicationMode: r.PublicationMode, Budget: r.Budget, BaselineDigest: r.BaselineDigest,
+			ReadOnly: r.ReadOnly,
 		}
 		s.keys[key] = keyEntry{digest: r.PayloadDigest, id: r.SessionID}
 	}, nil
@@ -481,11 +488,13 @@ func (s *state) reduceAdmitted(data []byte) (func(), error) {
 		return nil, fail(CodeInvalidRequest, "prompt is not bounded plain text")
 	}
 	if cur {
-		if r.Reservation != s.reservation(sess) || r.PolicyDigest != rp.PolicyDigest || !slices.Equal(r.BashOutputPaths, rp.BashOutputPaths) {
+		if r.Reservation != s.reservation(sess) || r.PolicyDigest != rp.PolicyDigest || !slices.Equal(r.BashOutputPaths, rp.BashOutputPaths) ||
+			!sameScope(r.Scope, effectiveScope(rp, sess.ReadOnly)) {
 			return nil, fail(CodeInvalidRequest, "reservation or project pins differ from the registration")
 		}
 	} else if !r.Reservation.valid() || !r.Reservation.fits(rem) || !validDigest(r.PolicyDigest) ||
-		sessionrepo.ValidateOutputScopePaths(r.BashOutputPaths) != nil {
+		sessionrepo.ValidateOutputScopePaths(r.BashOutputPaths) != nil ||
+		(r.Scope != nil && r.Scope.AdmissionScope().Validate() != nil) {
 		return nil, fail(CodeInvalidRequest, "reservation or project pins are invalid")
 	}
 	pred := s.predecessor(sess)
@@ -504,7 +513,7 @@ func (s *state) reduceAdmitted(data []byte) (func(), error) {
 		s.turns[r.TurnID] = &Turn{
 			ID: r.TurnID, SessionID: sess.ID, Ordinal: ordinal, Principal: r.Principal, RequestKey: r.RequestKey,
 			PayloadDigest: r.PayloadDigest, Prompt: r.Prompt, PromptDigest: r.PromptDigest, ProjectID: r.ProjectID,
-			PolicyDigest: r.PolicyDigest, BashOutputPaths: slices.Clone(r.BashOutputPaths), PublicationMode: r.PublicationMode,
+			PolicyDigest: r.PolicyDigest, BashOutputPaths: slices.Clone(r.BashOutputPaths), Scope: r.Scope.clone(), PublicationMode: r.PublicationMode,
 			BaselineDigest: r.BaselineDigest, PredecessorTurnID: predID, PredecessorReceiptDigest: predReceipt,
 			Reservation: r.Reservation, AdmittedRevision: r.SessionRevision, State: StateAdmitted,
 		}

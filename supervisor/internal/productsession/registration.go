@@ -50,13 +50,61 @@ type Budget struct {
 	DurationSeconds int64 `json:"duration_seconds"`
 }
 
-// Project is one registered managed project.
+// Project is one registered managed project. A nil Scope keeps the exact-path admission of
+// milestone 1; a Scope selects the product-scope/v1 admission rule.
 type Project struct {
-	ProjectID          string   `json:"project_id"`
-	RootIdentityDigest string   `json:"root_identity_digest"`
-	PolicyDigest       string   `json:"policy_digest"`
-	BashOutputPaths    []string `json:"bash_output_paths"`
-	PublicationModes   []string `json:"publication_modes"`
+	ProjectID          string        `json:"project_id"`
+	RootIdentityDigest string        `json:"root_identity_digest"`
+	PolicyDigest       string        `json:"policy_digest"`
+	BashOutputPaths    []string      `json:"bash_output_paths"`
+	PublicationModes   []string      `json:"publication_modes"`
+	Scope              *ProductScope `json:"scope,omitempty"`
+}
+
+// ProductScope is tbound-product-scope/v1: canonical relative paths, each list strictly sorted. A
+// change is admissible only at or below a Writable entry, and never at or below a ReadOnly or
+// Protected one. An empty Writable list admits nothing.
+type ProductScope struct {
+	Writable  []string `json:"writable,omitempty"`
+	ReadOnly  []string `json:"read_only,omitempty"`
+	Protected []string `json:"protected,omitempty"`
+}
+
+// AdmissionScope is the Store admission rule of s. A nil scope is the default rule.
+func (s *ProductScope) AdmissionScope() sessionrepo.AdmissionScope {
+	if s == nil {
+		return sessionrepo.AdmissionScope{}
+	}
+	return sessionrepo.AdmissionScope{Rule: sessionrepo.AdmissionScopeRuleProduct,
+		Writable: slices.Clone(s.Writable), ReadOnly: slices.Clone(s.ReadOnly), Protected: slices.Clone(s.Protected)}
+}
+
+func (s *ProductScope) clone() *ProductScope {
+	if s == nil {
+		return nil
+	}
+	return &ProductScope{Writable: slices.Clone(s.Writable), ReadOnly: slices.Clone(s.ReadOnly), Protected: slices.Clone(s.Protected)}
+}
+
+// sameScope compares scopes by content: nil is the default rule, an empty scope admits nothing.
+func sameScope(a, b *ProductScope) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return slices.Equal(a.Writable, b.Writable) && slices.Equal(a.ReadOnly, b.ReadOnly) && slices.Equal(a.Protected, b.Protected)
+}
+
+// effectiveScope is the scope a turn of a session on p runs under. A read-only session has no
+// writable path, including on a project that registered no scope.
+func effectiveScope(p Project, readOnly bool) *ProductScope {
+	if !readOnly {
+		return p.Scope.clone()
+	}
+	scope := &ProductScope{}
+	if p.Scope != nil {
+		scope.ReadOnly, scope.Protected = slices.Clone(p.Scope.ReadOnly), slices.Clone(p.Scope.Protected)
+	}
+	return scope
 }
 
 // Limits are the registration-wide ceilings.
@@ -248,6 +296,9 @@ func (r Registration) validateFields() error {
 		}
 		if err := sessionrepo.ValidateOutputScopePaths(p.BashOutputPaths); err != nil {
 			return regErr("bash_output_paths is not a canonical exact scope")
+		}
+		if p.Scope != nil && p.Scope.AdmissionScope().Validate() != nil {
+			return regErr("scope lists must be canonical, strictly sorted, at most 128 paths, with no path in two lists")
 		}
 		if len(p.PublicationModes) == 0 {
 			return regErr("publication_modes is empty")
