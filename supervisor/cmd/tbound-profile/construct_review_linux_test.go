@@ -55,3 +55,14 @@ func TestConstructArtifactProvenanceHashesFileBytes(t *testing.T) {
 		}
 	}
 }
+
+func TestConstructWSRequiresRecomputableInputs(t *testing.T) {
+	ids := []string{"PILOT-ADV-A-03", "PILOT-ADV-A-04", "PILOT-ADV-B-02", "PILOT-ADV-B-04"}
+	w := buildWorld(t, worldOpts{only: ids})
+	if err := os.RemoveAll(filepath.Join(w.ev, "run", "ws-evidence")); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range ids {
+		wantRow(t, rowOf(t, w.apply(w.ev, id), id, "calibration-p"), "guest-only", "")
+	}
+}
