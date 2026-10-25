@@ -14,6 +14,9 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+
+	"tbound/supervisor/internal/evalcorpus"
+	"tbound/supervisor/internal/panelaudit"
 )
 
 func testConfig(t *testing.T, budget float64) panelConfig {
@@ -249,9 +252,14 @@ func TestDryRunEndToEndOnPilotCorpus(t *testing.T) {
 		t.Fatalf("claim agreement denominators %+v (effect ids are n/a for the 2 ambiguous cases)", stats.Claim)
 	}
 	var audit struct {
-		Cases []struct {
-			CaseID  string   `json:"case_id"`
-			Reasons []string `json:"reasons"`
+		Schema        string `json:"schema"`
+		DryRun        bool   `json:"dry_run"`
+		ManifestDig   string `json:"manifest_digest"`
+		ContentDigest string `json:"content_digest"`
+		Cases         []struct {
+			CaseID  string            `json:"case_id"`
+			Reasons []string          `json:"reasons"`
+			Advisor map[string]string `json:"advisor_signoff"`
 		} `json:"cases"`
 		HumanReviews int `json:"human_reviews_recorded"`
 	}
@@ -259,6 +267,32 @@ func TestDryRunEndToEndOnPilotCorpus(t *testing.T) {
 	if err := json.Unmarshal(raw, &audit); err != nil || audit.HumanReviews != 0 || len(audit.Cases) == 0 {
 		t.Fatalf("audit %v", err)
 	}
+	m := loadPilot(t)
+	content, err := evalcorpus.ContentDigest(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	whole, _ := evalcorpus.Digest(m)
+	if audit.Schema != panelaudit.AuditSchema || !audit.DryRun || audit.ContentDigest != content || audit.ManifestDig != whole || content == whole {
+		t.Fatalf("audit schema %q dry_run %v content %q manifest %q; want %s, true, %s, %s", audit.Schema, audit.DryRun, audit.ContentDigest, audit.ManifestDig, panelaudit.AuditSchema, content, whole)
+	}
+	for _, c := range audit.Cases {
+		if len(c.Advisor) != 4 || c.Advisor["decision"] != "" || c.Advisor["resolution"] != "" || c.Advisor["identity"] != "" || c.Advisor["signed_at"] != "" {
+			t.Fatalf("%s: advisor_signoff %v is not the four empty fields the advisor fills", c.CaseID, c.Advisor)
+		}
+	}
+	var receipt struct {
+		Schema        string `json:"schema"`
+		DryRun        bool   `json:"dry_run"`
+		ManifestDig   string `json:"manifest_canonical_digest"`
+		ContentDigest string `json:"content_digest"`
+	}
+	rraw, _ := os.ReadFile(filepath.Join(out, "receipt.json"))
+	if err := json.Unmarshal(rraw, &receipt); err != nil || receipt.Schema != panelaudit.ReceiptSchema || !receipt.DryRun ||
+		receipt.ContentDigest != content || receipt.ManifestDig != whole {
+		t.Fatalf("receipt %s (%v)", rraw, err)
+	}
+	signAndVerify(t, m, rraw, raw, out)
 	amb := 0
 	for _, c := range audit.Cases {
 		if strings.HasPrefix(c.CaseID, "PILOT-AMB") {
@@ -418,5 +452,54 @@ func TestResponseFromOtherFamilyStops(t *testing.T) {
 	}
 	if rs := lines(t, filepath.Join(out, "ratings.jsonl")); len(rs) != 1 || rs[0]["valid"] != false {
 		t.Fatalf("ratings %v", rs)
+	}
+}
+
+func loadPilot(t *testing.T) evalcorpus.Manifest {
+	t.Helper()
+	c, err := loadCorpus(pilotManifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return c.Manifest
+}
+
+// signAndVerify plays the advisor on a run's own files: it fills the sign-off fields of every
+// listed case, writes the sign-offs into the manifest and seals its construct review to the
+// result. panelaudit.Verify accepts that once the run is not a dry run, so what the panel writes
+// is what the corpus-digest reader needs.
+func signAndVerify(t *testing.T, m evalcorpus.Manifest, receipt, audit []byte, out string) {
+	t.Helper()
+	var doc map[string]any
+	if err := json.Unmarshal(audit, &doc); err != nil {
+		t.Fatal(err)
+	}
+	listed := map[string]bool{}
+	for _, c := range doc["cases"].([]any) {
+		c := c.(map[string]any)
+		c["advisor_signoff"] = map[string]string{"decision": "accept", "resolution": "defensible", "identity": "advisor", "signed_at": "2026-10-25T10:00:00+02:00"}
+		listed[c["case_id"].(string)] = true
+	}
+	doc["dry_run"] = false
+	var rdoc map[string]any
+	if err := json.Unmarshal(receipt, &rdoc); err != nil {
+		t.Fatal(err)
+	}
+	rdoc["dry_run"] = false
+	signedAudit, _ := json.MarshalIndent(doc, "", "  ")
+	signedReceipt, _ := json.MarshalIndent(rdoc, "", "  ")
+	for i := range m.Cases {
+		m.Cases[i].Signoff = evalcorpus.Signoff{Reviewer: "advisor", Human: true, Decision: "accept"}
+		if listed[m.Cases[i].CaseID] {
+			m.Cases[i].Signoff.Audited, m.Cases[i].Signoff.Resolution = true, "defensible"
+		}
+	}
+	m.ConstructReview = evalcorpus.ConstructReview{ContentDigest: doc["content_digest"].(string),
+		PanelReceiptDigest: sha(string(signedReceipt)), PanelAuditDigest: sha(string(signedAudit))}
+	if err := panelaudit.Verify(m, signedReceipt, signedAudit); err != nil {
+		t.Fatalf("the signed files of %s are refused: %v", out, err)
+	}
+	if err := panelaudit.Verify(m, receipt, audit); err == nil || !strings.Contains(err.Error(), "digest") {
+		t.Fatalf("the unsigned dry-run files must not match the sealed digests: %v", err)
 	}
 }

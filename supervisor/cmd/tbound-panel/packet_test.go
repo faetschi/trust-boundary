@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -125,5 +126,36 @@ func TestRenderRedactsAndFailsClosed(t *testing.T) {
 		if _, err := renderCase(corpus, c, "item-0000000000", phase); err == nil {
 			t.Fatalf("phase %d: verbatim stimulus with a verdict token rendered instead of failing closed", phase)
 		}
+	}
+}
+
+// The advisor's sign-offs are written into the manifest after the panel has rated it, so the
+// panel records the digest of the content it rated and not only that of the whole file.
+func TestLoadCorpusContentDigestIgnoresSignoffs(t *testing.T) {
+	draft, err := loadCorpus(pilotManifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := draft.Manifest
+	m.Cases = append([]evalcorpus.Case(nil), m.Cases...)
+	m.Cases[0].Signoff = evalcorpus.Signoff{Reviewer: "advisor", Human: true, Decision: "accept", Audited: true, Resolution: "r"}
+	m.ConstructReview.PanelAuditDigest = "sha256:" + strings.Repeat("a", 64)
+	raw, err := evalcorpus.CanonicalJSON(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "signed.json")
+	if err := os.WriteFile(path, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	signed, err := loadCorpus(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if signed.ContentDigest == "" || signed.ContentDigest != draft.ContentDigest {
+		t.Errorf("content digest %q after the sign-offs; want %q", signed.ContentDigest, draft.ContentDigest)
+	}
+	if signed.Digest == draft.Digest {
+		t.Error("the whole-manifest digest ignored the sign-offs")
 	}
 }
