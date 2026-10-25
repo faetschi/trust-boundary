@@ -287,6 +287,15 @@ Product turns allow Bash when the registration project allows it. Under the prod
 - The client writes a recovery record before applying, and removes it only after a verified result.
 - If writer exclusion cannot be established, the client offers the bundle for manual application and claims no race safety.
 
+### Import and export decisions taken during implementation
+
+- Both streams are the format line, a 4-byte big-endian header length, a canonical JSON header, and then the raw file contents in header order. The reader re-encodes the header and refuses any byte difference, so exactly one encoding is accepted. Digests are `sha256:` over the header bytes.
+- Every parent directory must be listed in the manifest. `.git` and a root `lost+found` are always excluded. Excluded subtrees are never read.
+- Only the executable bit is carried. New files are created 0644 or 0755. A change of type (file to directory) is refused.
+- Apply validates the baseline digest, the declared target digest and every content digest before the first write. It refuses changes to files Git does not track, because their original content could not be restored. The recovery record lists the pre-apply entries, and restoring relies on the clean tracked tree in Git.
+- `apply` takes the same `--exclude` list as `bundle`, so both sides compute the same manifest.
+- `import` and `apply` do not check which account runs them. The separation between service and user comes from who runs each command, as the help text states.
+
 ### Development environment
 
 The first supported language is Go, with a pinned toolchain image and a pre-filled module cache. Tests run with the command cell's network disabled. Building and pinning the image needs the product guest and is pending. The advertised tool schemas must match the durable executor's real read, binary and Bash-timeout behaviour.
