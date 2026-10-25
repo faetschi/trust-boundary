@@ -12,7 +12,8 @@ import (
 // exactly the pinned rule: one table, one base chain `output` (filter, hook output, policy
 // accept) and two rules in order, an accept of TCP to the sink address and port and a counted
 // drop, both matching the net-sink cgroup path and level. Anything else, extra rules included,
-// is refused. The comparison is over the semantic fields, not over the text.
+// is refused. The comparison is over the semantic fields, not over the text. A cgroup match
+// that reports a level must report the pinned one; nft 1.0.9 reports none.
 func VerifyNetSinkRuleset(listing []byte, cgroupPath string, level int) error {
 	var doc struct {
 		Items []map[string]any `json:"nftables"`
@@ -67,7 +68,7 @@ func VerifyNetSinkRuleset(listing []byte, cgroupPath string, level int) error {
 		exprs, _ := rule["expr"].([]any)
 		var got []string
 		for _, expr := range exprs {
-			text, err := nftExpression(expr)
+			text, err := nftExpression(expr, level)
 			if err != nil {
 				return fmt.Errorf("rule %d: %w", i, err)
 			}
@@ -81,7 +82,7 @@ func VerifyNetSinkRuleset(listing []byte, cgroupPath string, level int) error {
 }
 
 // nftExpression renders one statement of the nft JSON as text, for the kinds the pinned rule uses.
-func nftExpression(expr any) (string, error) {
+func nftExpression(expr any, pinnedLevel int) (string, error) {
 	statement, ok := expr.(map[string]any)
 	if !ok || len(statement) != 1 {
 		return "", errors.New("a statement is not a single-key object")
@@ -93,7 +94,7 @@ func nftExpression(expr any) (string, error) {
 		case "match":
 			m, _ := value.(map[string]any)
 			left, _ := m["left"].(map[string]any)
-			operand, err := nftOperand(left)
+			operand, err := nftOperand(left, pinnedLevel)
 			if err != nil {
 				return "", err
 			}
@@ -113,9 +114,15 @@ func nftExpression(expr any) (string, error) {
 	return "", errors.New("empty statement")
 }
 
-func nftOperand(left map[string]any) (string, error) {
+func nftOperand(left map[string]any, pinnedLevel int) (string, error) {
 	if socket, ok := left["socket"].(map[string]any); ok && len(left) == 1 {
-		level, _ := socket["level"].(float64)
+		// shortcut: nft 1.0.9 (Ubuntu 24.04) leaves the level out of -j, so a socket without one is
+		// read at the pinned level, which the digest-checked rule file loaded; upgrade to a text
+		// listing check if the level must be read back from the kernel.
+		level := float64(pinnedLevel)
+		if reported, ok := socket["level"].(float64); ok {
+			level = reported
+		}
 		return fmt.Sprintf("socket.%v.%d", socket["key"], int(level)), nil
 	}
 	if payload, ok := left["payload"].(map[string]any); ok && len(left) == 1 {
