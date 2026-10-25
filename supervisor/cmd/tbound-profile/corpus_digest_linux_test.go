@@ -27,11 +27,21 @@ func fixtureDigest(label string) string {
 	return "sha256:" + hex.EncodeToString(sum[:])
 }
 
-func fixtureReviews() []evalcorpus.Review {
-	return []evalcorpus.Review{
-		{Role: "reviewer-a", Reviewer: "synthetic-reviewer-1", Human: true, Blinded: true, Decision: "accept"},
-		{Role: "reviewer-b", Reviewer: "synthetic-reviewer-2", Human: true, Blinded: true, Decision: "accept"},
+func fixtureSignoff() evalcorpus.Signoff {
+	return evalcorpus.Signoff{Reviewer: "synthetic-advisor", Human: true, Decision: "accept"}
+}
+
+// sealConstructReview binds the construct review of m to its current content. A test that
+// changes a case after fixtureManifest seals again.
+func sealConstructReview(t *testing.T, m evalcorpus.Manifest) evalcorpus.Manifest {
+	t.Helper()
+	content, err := evalcorpus.ContentDigest(m)
+	if err != nil {
+		t.Fatal(err)
 	}
+	m.ConstructReview = evalcorpus.ConstructReview{ContentDigest: content,
+		PanelReceiptDigest: fixtureDigest("panel-receipt"), PanelAuditDigest: fixtureDigest("panel-audit")}
+	return m
 }
 
 // fixtureManifest builds an allocated manifest with a trial on every case that satisfies
@@ -48,7 +58,7 @@ func fixtureManifest(t *testing.T, q evalcorpus.Quotas, seed string) evalcorpus.
 			if i%2 == 0 {
 				tag = evalcorpus.OpportunityFeedback
 			}
-			m.Cases = append(m.Cases, evalcorpus.Case{CaseID: id, Kind: evalcorpus.KindAdversarial, Reviews: fixtureReviews(),
+			m.Cases = append(m.Cases, evalcorpus.Case{CaseID: id, Kind: evalcorpus.KindAdversarial, Signoff: fixtureSignoff(),
 				Adversarial: &evalcorpus.Adversarial{ThreatClass: class, RootScenarioID: "root-" + id, SourceKey: "src",
 					SourceItemID: "item-" + id, SelectionReason: "synthetic",
 					Adaptation: evalcorpus.Adaptation{PreservedIntent: "i", ToolMapping: "m", AdaptationSteps: []string{"s"},
@@ -62,7 +72,7 @@ func fixtureManifest(t *testing.T, q evalcorpus.Quotas, seed string) evalcorpus.
 	for _, tool := range []evalcorpus.Tool{evalcorpus.ToolRead, evalcorpus.ToolWrite, evalcorpus.ToolEdit, evalcorpus.ToolBash} {
 		for i := 1; i <= q.Compliant[tool]; i++ {
 			id := fmt.Sprintf("cmp-%s-%02d", tool, i)
-			m.Cases = append(m.Cases, evalcorpus.Case{CaseID: id, Kind: evalcorpus.KindCompliant, Reviews: fixtureReviews(),
+			m.Cases = append(m.Cases, evalcorpus.Case{CaseID: id, Kind: evalcorpus.KindCompliant, Signoff: fixtureSignoff(),
 				Compliant: &evalcorpus.Compliant{PrimaryTool: tool, TaskGoal: "goal", ToolMapping: "m", OracleID: "task-oracle",
 					OracleVersion: "0", WorkspaceFixtureDigest: fixtureDigest("cmp/" + id),
 					AcceptanceTest:    evalcorpus.Ref{Ref: "acc-" + id, Digest: fixtureDigest("acc/" + id)},
@@ -70,7 +80,7 @@ func fixtureManifest(t *testing.T, q evalcorpus.Quotas, seed string) evalcorpus.
 		}
 	}
 	for i := 1; i <= q.Ambiguous; i++ {
-		m.Cases = append(m.Cases, evalcorpus.Case{CaseID: fmt.Sprintf("amb-%02d", i), Kind: evalcorpus.KindAmbiguous, Reviews: fixtureReviews(),
+		m.Cases = append(m.Cases, evalcorpus.Case{CaseID: fmt.Sprintf("amb-%02d", i), Kind: evalcorpus.KindAmbiguous, Signoff: fixtureSignoff(),
 			Ambiguous: &evalcorpus.Ambiguous{WorkspaceFixtureDigest: fixtureDigest("amb-fixture"),
 				Rubric: evalcorpus.Ref{Ref: "rubric", Digest: fixtureDigest("rubric")}}})
 	}
@@ -82,6 +92,7 @@ func fixtureManifest(t *testing.T, q evalcorpus.Quotas, seed string) evalcorpus.
 		id := allocated.Cases[i].CaseID
 		allocated.Cases[i].Trial = &evalcorpus.Trial{Prompt: "Host-approved prompt of " + id, MaxHostCalls: 4, MaxTokens: 10000, DurationSeconds: 600}
 	}
+	allocated = sealConstructReview(t, allocated)
 	if violations := evalcorpus.Validate(allocated, q); len(violations) != 0 {
 		t.Fatalf("fixture manifest is invalid: %v", violations)
 	}
@@ -264,7 +275,7 @@ func withArtifacts(t *testing.T, m evalcorpus.Manifest) (evalcorpus.Manifest, st
 			writeTaskArtifacts(t, dir, c.Compliant, c.CaseID)
 		}
 	}
-	return m, dir
+	return sealConstructReview(t, m), dir
 }
 
 // writeTaskArtifacts pins a compliant case's acceptance test (case.txt must say "solved")
@@ -320,15 +331,13 @@ func TestCorpusDigestRefusesRejectedAndPlaceholderReviews(t *testing.T) {
 	q := evalcorpus.PilotQuotas()
 
 	rejected := fixtureManifest(t, q, "corpus-digest-seed")
-	rejected.Cases[2].Reviews[0].Decision = "reject"
-	rejected.Cases[2].Reviews[1].Decision = "reject"
+	rejected.Cases[2].Signoff.Decision = "reject"
 	rejectedID := rejected.Cases[2].CaseID
 	placeholder := fixtureManifest(t, q, "corpus-digest-seed")
-	placeholder.Cases[4].Reviews[0].Reviewer = "TODO-REVIEWER-OWNER"
-	placeholder.Cases[4].Reviews[0].Role = "TODO-ROLE-1"
+	placeholder.Cases[4].Signoff.Reviewer = "TODO-REVIEWER-ADVISOR"
 	placeholderID := placeholder.Cases[4].CaseID
 	freeText := fixtureManifest(t, q, "corpus-digest-seed")
-	freeText.Cases[5].Reviews[1].Decision = "TODO-DECISION"
+	freeText.Cases[5].Signoff.Decision = "TODO-DECISION"
 
 	for _, tc := range []struct {
 		name, id string
@@ -336,7 +345,7 @@ func TestCorpusDigestRefusesRejectedAndPlaceholderReviews(t *testing.T) {
 		rule     string
 	}{
 		{"rejected case", rejectedID, rejected, "review.rejected"},
-		{"placeholder reviewer and role", placeholderID, placeholder, "review.placeholder"},
+		{"placeholder reviewer", placeholderID, placeholder, "review.placeholder"},
 		{"free-text decision", freeText.Cases[5].CaseID, freeText, "review.decision"},
 	} {
 		path := writeManifest(t, dir, strings.ReplaceAll(tc.name, " ", "-")+".json", tc.m)

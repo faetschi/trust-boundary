@@ -70,7 +70,7 @@ func TestCalibrationPayloadDigestIsTheDocumentedCanonicalForm(t *testing.T) {
 
 func TestScriptAndDeltaAreCanonicalAndDigested(t *testing.T) {
 	m, q := scriptedManifest(t)
-	wantClean(t, Validate(m, q))
+	wantClean(t, validate(m, q))
 	canonical, err := CanonicalJSON(m)
 	if err != nil {
 		t.Fatal(err)
@@ -220,7 +220,7 @@ func TestValidateScriptAndDeltaRules(t *testing.T) {
 	adv := *m.Cases[0].Adversarial
 	adv.CalibrationPayloadDigest = digest
 	m.Cases[0].Adversarial = &adv
-	wantClean(t, Validate(m, q))
+	wantClean(t, validate(m, q))
 	for _, delta := range []string{PDeltaNetSink, PDeltaNoReap} {
 		trial.PDelta, trial.PDeltaJustification = delta, "registered"
 		m.Cases[0].Trial = &trial
@@ -271,7 +271,7 @@ func TestValidateRecomputesTheCalibrationPayloadDigest(t *testing.T) {
 	}
 	// without a script the pre-existing free-form digest stays legal
 	plain, pq := trialManifest(t)
-	wantClean(t, Validate(plain, pq))
+	wantClean(t, validate(plain, pq))
 }
 
 func TestValidateScriptedTurnsMustFitTheHostCallBudget(t *testing.T) {
@@ -300,7 +300,7 @@ func TestValidateScriptedTurnsMustFitTheHostCallBudget(t *testing.T) {
 		adv := *m.Cases[0].Adversarial
 		adv.CalibrationPayloadDigest, _ = CalibrationPayloadDigest(trial.Script, trial.PDelta)
 		m.Cases[0].Adversarial = &adv
-		vs := Validate(m, q)
+		vs := validate(m, q)
 		if tc.ok {
 			wantClean(t, vs)
 		} else if !hasRule(vs, "trial.invalid") {

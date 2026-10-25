@@ -1072,10 +1072,11 @@ func TestConstructPilotNoFlagBytes(t *testing.T) {
 	if err := runCorpusCheck([]string{"--manifest", constructPilotManifest, "--quota-profile", "pilot", "--node", node, "--out", out}, &stdout, &stderr); err != nil {
 		t.Fatal(err, stderr.String())
 	}
-	// Exact reports produced by dc3ae7e, Linux Node v24.15.0; no guest flag.
+	// Exact reports, Linux Node v24.15.0; no guest flag. Against dc3ae7e (25f913f9..., 42f3bda3...) only
+	// the manifest digest and the deferred sign-off violations changed with the D35-amended schema.
 	for name, want := range map[string]string{
-		"report.json": "25f913f94bf2fcad193dbbdddb4e38986b8c6528aa346eec6d966b78d44dfd78",
-		"report.md":   "42f3bda3968855c4be0c598603967fc7a47d91fd204e6789aa4ae3a2d7ed488f",
+		"report.json": "9100fa00c5407a51212d4abb55c87e9df0f94e62c37113a5c4e8539856f28a9d",
+		"report.md":   "bcfc98aa49a6f51c43693a36d351c9eb00bb54ca9ebbdf47fa9dd031a4d80db1",
 	} {
 		raw, err := os.ReadFile(filepath.Join(out, name))
 		if err != nil {

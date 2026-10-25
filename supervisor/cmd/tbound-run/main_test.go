@@ -40,11 +40,8 @@ func fixtureDigest(label string) string {
 	return "sha256:" + hex.EncodeToString(sum[:])
 }
 
-func fixtureReviews() []evalcorpus.Review {
-	return []evalcorpus.Review{
-		{Role: "reviewer-a", Reviewer: "synthetic-reviewer-1", Human: true, Blinded: true, Decision: "accept"},
-		{Role: "reviewer-b", Reviewer: "synthetic-reviewer-2", Human: true, Blinded: true, Decision: "accept"},
-	}
+func fixtureReviews() evalcorpus.Signoff {
+	return evalcorpus.Signoff{Reviewer: "synthetic-advisor", Human: true, Decision: "accept"}
 }
 
 // fixtureManifest builds an allocated pilot manifest with a trial on every case.
@@ -61,7 +58,7 @@ func fixtureManifest(t *testing.T, seed string) evalcorpus.Manifest {
 			if i%2 == 0 {
 				tag = evalcorpus.OpportunityFeedback
 			}
-			m.Cases = append(m.Cases, evalcorpus.Case{CaseID: id, Kind: evalcorpus.KindAdversarial, Reviews: fixtureReviews(),
+			m.Cases = append(m.Cases, evalcorpus.Case{CaseID: id, Kind: evalcorpus.KindAdversarial, Signoff: fixtureReviews(),
 				Adversarial: &evalcorpus.Adversarial{ThreatClass: class, RootScenarioID: "root-" + id, SourceKey: "src",
 					SourceItemID: "item-" + id, SelectionReason: "synthetic",
 					Adaptation: evalcorpus.Adaptation{PreservedIntent: "i", ToolMapping: "m", AdaptationSteps: []string{"s"},
@@ -75,7 +72,7 @@ func fixtureManifest(t *testing.T, seed string) evalcorpus.Manifest {
 	for _, tool := range []evalcorpus.Tool{evalcorpus.ToolRead, evalcorpus.ToolWrite, evalcorpus.ToolEdit, evalcorpus.ToolBash} {
 		for i := 1; i <= q.Compliant[tool]; i++ {
 			id := fmt.Sprintf("cmp-%s-%02d", tool, i)
-			m.Cases = append(m.Cases, evalcorpus.Case{CaseID: id, Kind: evalcorpus.KindCompliant, Reviews: fixtureReviews(),
+			m.Cases = append(m.Cases, evalcorpus.Case{CaseID: id, Kind: evalcorpus.KindCompliant, Signoff: fixtureReviews(),
 				Compliant: &evalcorpus.Compliant{PrimaryTool: tool, TaskGoal: "goal", ToolMapping: "m", OracleID: "task-oracle",
 					OracleVersion: "0", WorkspaceFixtureDigest: fixtureDigest("cmp/" + id),
 					AcceptanceTest:    evalcorpus.Ref{Ref: "acc-" + id, Digest: fixtureDigest("acc/" + id)},
@@ -83,7 +80,7 @@ func fixtureManifest(t *testing.T, seed string) evalcorpus.Manifest {
 		}
 	}
 	for i := 1; i <= q.Ambiguous; i++ {
-		m.Cases = append(m.Cases, evalcorpus.Case{CaseID: fmt.Sprintf("amb-%02d", i), Kind: evalcorpus.KindAmbiguous, Reviews: fixtureReviews(),
+		m.Cases = append(m.Cases, evalcorpus.Case{CaseID: fmt.Sprintf("amb-%02d", i), Kind: evalcorpus.KindAmbiguous, Signoff: fixtureReviews(),
 			Ambiguous: &evalcorpus.Ambiguous{WorkspaceFixtureDigest: fixtureDigest("amb/" + fmt.Sprint(i)),
 				Rubric: evalcorpus.Ref{Ref: "rubric", Digest: fixtureDigest("rubric")}}})
 	}
@@ -95,10 +92,23 @@ func fixtureManifest(t *testing.T, seed string) evalcorpus.Manifest {
 		id := allocated.Cases[i].CaseID
 		allocated.Cases[i].Trial = &evalcorpus.Trial{Prompt: "Host-approved prompt of " + id, MaxHostCalls: 4, MaxTokens: 10000, DurationSeconds: 600}
 	}
+	allocated = sealConstructReview(t, allocated)
 	if v := evalcorpus.Validate(allocated, q); len(v) != 0 {
 		t.Fatalf("fixture manifest is invalid: %v", v)
 	}
 	return allocated
+}
+
+// sealConstructReview binds the construct review of m to its current content.
+func sealConstructReview(t *testing.T, m evalcorpus.Manifest) evalcorpus.Manifest {
+	t.Helper()
+	content, err := evalcorpus.ContentDigest(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.ConstructReview = evalcorpus.ConstructReview{ContentDigest: content,
+		PanelReceiptDigest: fixtureDigest("panel-receipt"), PanelAuditDigest: fixtureDigest("panel-audit")}
+	return m
 }
 
 // env is one run directory: manifest, route report, dummy ssh files and run.json.

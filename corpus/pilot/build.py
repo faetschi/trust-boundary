@@ -16,7 +16,8 @@ This script owns, per case: the fixtures, acceptance/reference-solution specs, r
 frozen adversarial scripts and the pivot tables, the attacker artifact (and pins.attacker_digest),
 p_delta and its justification, protected_paths, trial budgets and prompts, the D37 meaning
 record, the threat classification and the seeded cold/variance partitions, and every digest
-that follows. It preserves the four environment pins, the split seed and any existing reviews.
+that follows. It preserves the four environment pins, the split seed and any existing sign-offs and
+construct_review block (a regenerated case invalidates its sign-off: rerun the panel).
 
 Fixture digests come from the repo's `tbound-run fixture digest`. The calibration payload digest
 follows evalcorpus.CalibrationPayloadDigestOf (schema v2: script, pivots, p_delta); acceptance,
@@ -854,11 +855,13 @@ def doc(obj):
     return (json.dumps(obj, indent=2) + "\n").encode()
 
 
-def placeholder_reviews():
-    return [
-        {"role": "TODO-ROLE-1", "reviewer": "TODO-REVIEWER-OWNER", "human": False, "blinded": False, "decision": "TODO-DECISION"},
-        {"role": "TODO-ROLE-2", "reviewer": "TODO-REVIEWER-ADVISOR", "human": False, "blinded": False, "decision": "TODO-DECISION"},
-    ]
+def placeholder_signoff():
+    return {"reviewer": "TODO-REVIEWER-ADVISOR", "human": False, "author": False, "decision": "TODO-DECISION", "audited": False}
+
+
+def placeholder_construct_review():
+    return {"content_digest": "TODO-CONTENT-DIGEST", "panel_receipt_digest": "TODO-PANEL-RECEIPT-DIGEST",
+            "panel_audit_digest": "TODO-PANEL-AUDIT-DIGEST"}
 
 
 def meaning(case_origin, src_key, pin, item, root, lic, redist, intent, task_unit, authz,
@@ -937,7 +940,7 @@ def build_adv(cid, art):
         trial["protected_paths"] = sorted(s["protected"])
     mr = meaning("established", s["src_key"], s["pin"], s["item"], s["root"], _lic_of(s), _redist_of(s),
                  s["intent"], s["task_unit"], s["authz"], s["transforms"], s["lost"], s["tool_map"], s["oracle_map"])
-    return {"case_id": cid, "kind": "adversarial", "reviews": placeholder_reviews(),
+    return {"case_id": cid, "kind": "adversarial", "signoff": placeholder_signoff(),
             "meaning_record": mr, "adversarial": adversarial, "trial": trial}
 
 
@@ -968,7 +971,7 @@ def build_cmp(cid, art):
     mr = meaning("established", s["src_key"], s["pin"], s["item"], s["root"], s["lic"], s["redist"],
                  s["intent"], s["task_unit"], "benign-user-task", s["transforms"], s["lost"], s["mapping"], s["oracle_map"])
     trial = {"prompt": s["prompt"], "max_host_calls": CMP_AMB[0], "max_tokens": CMP_AMB[1], "duration_seconds": CMP_AMB[2]}
-    return {"case_id": cid, "kind": "compliant", "reviews": placeholder_reviews(),
+    return {"case_id": cid, "kind": "compliant", "signoff": placeholder_signoff(),
             "meaning_record": mr, "compliant": compliant, "trial": trial}
 
 
@@ -980,12 +983,13 @@ def build_amb(cid, art):
     mr = meaning("established", s["src_key"], s["pin"], s["item"], s["root"], s["lic"], s["redist"],
                  s["intent"], s["task_unit"], s["authz"], s["transforms"], s["lost"], s["tool_map"], s["oracle_map"])
     trial = {"prompt": s["prompt"], "max_host_calls": CMP_AMB[0], "max_tokens": CMP_AMB[1], "duration_seconds": CMP_AMB[2]}
-    return {"case_id": cid, "kind": "ambiguous", "reviews": placeholder_reviews(),
+    return {"case_id": cid, "kind": "ambiguous", "signoff": placeholder_signoff(),
             "meaning_record": mr, "ambiguous": ambiguous, "trial": trial}
 
 
 def patch(manifest, art):
-    existing = {c["case_id"]: c.get("reviews") for c in manifest.get("cases", [])}
+    existing = {c["case_id"]: c.get("signoff") for c in manifest.get("cases", [])}
+    review = manifest.pop("construct_review", None) or placeholder_construct_review()
     adv_cases = [build_adv(cid, art) for cid in ADV_ORDER]
     assign_partitions(adv_cases, manifest["split_seed"])
     cmp_cases = [build_cmp(cid, art) for cid in CMP_ORDER]
@@ -993,7 +997,9 @@ def patch(manifest, art):
     cases = adv_cases + cmp_cases + amb_cases
     for c in cases:
         if existing.get(c["case_id"]):
-            c["reviews"] = existing[c["case_id"]]
+            c["signoff"] = existing[c["case_id"]]
+    manifest.pop("cases", None)
+    manifest["construct_review"] = review
     manifest["cases"] = cases
     attacker_digest, _ = art.blob("attacker", "json", doc(attacker_spec()))
     manifest["pins"]["attacker_digest"] = attacker_digest

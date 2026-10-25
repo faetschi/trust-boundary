@@ -70,16 +70,19 @@ func PilotQuotas() Quotas {
 // Rules, by code:
 //   - schema.version, seed.empty, quota.invalid: the manifest header and quotas;
 //   - case.id.empty, case.id.duplicate, case.kind, case.payload: identity and payload;
-//   - review.count, review.role, review.identity, review.human, review.blinded: two
-//     reviews from different roles and different reviewers, both human and blinded
-//     (role and reviewer comparisons use the normalized forms of sameIdentity);
+//   - review.human, review.author, review.identity: one sign-off per case, by a human who is
+//     not the case author, and the same reviewer on every case (the comparison uses the
+//     normalized form of sameIdentity), because the advisor signs the whole corpus;
 //   - review.decision, review.placeholder, review.rejected: a decision is exactly accept
-//     or reject, role, reviewer and adjudicator do not start with TODO, and the standing
-//     decision of every case (the agreed review decision, or the adjudication when the
-//     reviews disagree) is accept, so one rejected case makes the manifest non-admissible;
-//   - adjudication.missing, adjudication.unexpected, adjudication.human,
-//     adjudication.blinded, adjudication.not_third: an adjudication exactly when the
-//     reviews disagree, by a third human and blinded reviewer;
+//     or reject, the reviewer, and the resolution of an audited case, do not start with
+//     TODO, and the decision of every case is accept, so one rejected case makes the
+//     manifest non-admissible;
+//   - review.resolution, review.audited: an audited case records a resolution, and only an
+//     audited case does;
+//   - review.content_digest, review.digest: construct_review.content_digest is
+//     ContentDigest of the manifest, and the two panel digests are well-formed digests (a
+//     TODO value is review.placeholder). The files behind them are checked by
+//     `tbound-profile corpus-digest`;
 //   - adv.root.duplicate, adv.unit.duplicate, adv.variance.partition,
 //     adaptation.evidence, cmp.reference.forbidden_effect: per-case rules;
 //   - trial.invalid: a present trial has a prompt and positive budgets within the limits;
@@ -123,6 +126,7 @@ type stratum struct {
 
 type validator struct {
 	out       []Violation
+	advisor   *Signoff // the first case's sign-off: the reviewer every case must share
 	caseIDs   map[string]bool
 	roots     map[string]string // root_scenario_id -> first case that uses it
 	units     map[string]string // fixture and calibration digests -> first case that uses them
@@ -165,6 +169,32 @@ func (v *validator) manifestRules(m Manifest) {
 	v.digest("pins.profile_digest", m.Pins.ProfileDigest)
 	v.digest("pins.policy_digest", m.Pins.PolicyDigest)
 	v.pinAttacker(m)
+	v.constructReview(m)
+}
+
+// constructReview checks the manifest-level binding to the panel run. All its rules start with
+// "review." so that the deterministic construct checks, which precede review, defer them with
+// the sign-off rules.
+func (v *validator) constructReview(m Manifest) {
+	cr := m.ConstructReview
+	switch want, err := ContentDigest(m); {
+	case err != nil:
+		v.add("review.content_digest", "construct_review.content_digest cannot be checked: %v", err)
+	case cr.ContentDigest != want:
+		v.add("review.content_digest", "construct_review.content_digest is %q; ContentDigest of the manifest is %s", cr.ContentDigest, want)
+	}
+	v.reviewDigest("construct_review.panel_receipt_digest", cr.PanelReceiptDigest)
+	v.reviewDigest("construct_review.panel_audit_digest", cr.PanelAuditDigest)
+}
+
+// reviewDigest reports a TODO value as review.placeholder and any other malformed value as
+// review.digest.
+func (v *validator) reviewDigest(path, value string) {
+	if isPlaceholder(value) {
+		v.add("review.placeholder", "%s is the placeholder %q", path, value)
+	} else if !isDigest(value) {
+		v.add("review.digest", "%s is not sha256 followed by 64 lowercase hex digits", path)
+	}
 }
 
 func (v *validator) caseRules(c *Case) {
@@ -177,7 +207,7 @@ func (v *validator) caseRules(c *Case) {
 		}
 		v.caseIDs[c.CaseID] = true
 	}
-	v.reviews(label, c)
+	v.signoff(label, c)
 	if c.MeaningRecord != nil {
 		v.meaningRecord(label, c.MeaningRecord)
 	}
@@ -209,56 +239,31 @@ func (v *validator) caseRules(c *Case) {
 	}
 }
 
-func (v *validator) reviews(label string, c *Case) {
-	if len(c.Reviews) != 2 {
-		v.add("review.count", "%s has %d reviews; want 2", label, len(c.Reviews))
-		return
+func (v *validator) signoff(label string, c *Case) {
+	so := c.Signoff
+	p := label + " signoff"
+	if !so.Human {
+		v.add("review.human", "%s is not by a human reviewer", p)
 	}
-	for i, r := range c.Reviews {
-		p := fmt.Sprintf("%s review[%d]", label, i)
-		if !r.Human {
-			v.add("review.human", "%s is not by a human reviewer", p)
-		}
-		if !r.Blinded {
-			v.add("review.blinded", "%s is not blinded", p)
-		}
-		v.required(p+" role", r.Role)
-		v.required(p+" reviewer", r.Reviewer)
-		v.noPlaceholder(p+" role", r.Role)
-		v.noPlaceholder(p+" reviewer", r.Reviewer)
-		v.decision(p+" decision", r.Decision)
+	if so.Author {
+		v.add("review.author", "%s is by the case author, whose own review is not independent", p)
 	}
-	a, b := c.Reviews[0], c.Reviews[1]
-	if sameIdentity(a.Role, b.Role) {
-		v.add("review.role", "%s: both reviews have role %q", label, a.Role)
+	v.required(p+" reviewer", so.Reviewer)
+	v.noPlaceholder(p+" reviewer", so.Reviewer)
+	v.decision(p+" decision", so.Decision)
+	v.settled(label, so.Decision)
+	switch {
+	case so.Audited && strings.TrimSpace(so.Resolution) == "":
+		v.add("review.resolution", "%s: the case is audited and records no resolution", p)
+	case so.Audited:
+		v.noPlaceholder(p+" resolution", so.Resolution)
+	case so.Resolution != "":
+		v.add("review.audited", "%s: a resolution is recorded but the case is not marked audited", p)
 	}
-	if sameIdentity(a.Reviewer, b.Reviewer) {
-		v.add("review.identity", "%s: both reviews are by %q", label, a.Reviewer)
-	}
-	if a.Decision == b.Decision {
-		if c.Adjudication != nil {
-			v.add("adjudication.unexpected", "%s: the reviews agree but an adjudication is recorded", label)
-		}
-		v.settled(label, a.Decision)
-		return
-	}
-	adj := c.Adjudication
-	if adj == nil {
-		v.add("adjudication.missing", "%s: the reviews disagree and no adjudication is recorded", label)
-		return
-	}
-	v.settled(label, adj.Decision)
-	if !adj.Human {
-		v.add("adjudication.human", "%s: the adjudicator is not a human reviewer", label)
-	}
-	if !adj.Blinded {
-		v.add("adjudication.blinded", "%s: the adjudicator is not blinded", label)
-	}
-	v.decision(label+" adjudication decision", adj.Decision)
-	v.required(label+" adjudicator", adj.Adjudicator)
-	v.noPlaceholder(label+" adjudicator", adj.Adjudicator)
-	if sameIdentity(adj.Adjudicator, a.Reviewer) || sameIdentity(adj.Adjudicator, b.Reviewer) {
-		v.add("adjudication.not_third", "%s: the adjudicator is one of the two reviewers", label)
+	if v.advisor == nil {
+		v.advisor = &c.Signoff
+	} else if !sameIdentity(so.Reviewer, v.advisor.Reviewer) {
+		v.add("review.identity", "%s is by %q but the first case is signed by %q; one advisor signs every case", p, so.Reviewer, v.advisor.Reviewer)
 	}
 }
 
@@ -273,17 +278,21 @@ func (v *validator) decision(path, value string) {
 	}
 }
 
-// noPlaceholder reports a role, reviewer or adjudicator that still carries the TODO-
-// prefix of the draft manifest.
+// isPlaceholder reports a value that still carries the TODO prefix of the draft manifest.
+func isPlaceholder(value string) bool {
+	return strings.HasPrefix(strings.ToUpper(strings.TrimSpace(value)), "TODO")
+}
+
+// noPlaceholder reports a reviewer or resolution that still carries the TODO prefix of the
+// draft manifest.
 func (v *validator) noPlaceholder(path, value string) {
-	if strings.HasPrefix(strings.ToUpper(strings.TrimSpace(value)), "TODO") {
+	if isPlaceholder(value) {
 		v.add("review.placeholder", "%s is the placeholder %q", path, value)
 	}
 }
 
-// settled reports review.rejected when the decision that stands for a case, the shared
-// review decision or else the adjudication, is a reject. A decision outside the
-// enumeration is reported by decision and is not repeated here.
+// settled reports review.rejected when the sign-off decision of a case is a reject. A
+// decision outside the enumeration is reported by decision and is not repeated here.
 func (v *validator) settled(label, decision string) {
 	if decision == DecisionReject {
 		v.add("review.rejected", "%s: the standing review decision is reject; the manifest is not admissible", label)

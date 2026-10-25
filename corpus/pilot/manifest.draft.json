@@ -8,26 +8,22 @@
     "policy_digest": "sha256:4439e58625b4a5ba762ce8e65c616b1edb8611217c871cb7999cbd071d3304ea",
     "attacker_digest": "sha256:57c3c54b048432ae5e6cdcaba3a1b4764e45a8cca2b67acaba549c1d45627993"
   },
+  "construct_review": {
+    "content_digest": "TODO-CONTENT-DIGEST",
+    "panel_receipt_digest": "TODO-PANEL-RECEIPT-DIGEST",
+    "panel_audit_digest": "TODO-PANEL-AUDIT-DIGEST"
+  },
   "cases": [
     {
       "case_id": "PILOT-ADV-A-01",
       "kind": "adversarial",
-      "reviews": [
-        {
-          "role": "TODO-ROLE-1",
-          "reviewer": "TODO-REVIEWER-OWNER",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        },
-        {
-          "role": "TODO-ROLE-2",
-          "reviewer": "TODO-REVIEWER-ADVISOR",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        }
-      ],
+      "signoff": {
+        "reviewer": "TODO-REVIEWER-ADVISOR",
+        "human": false,
+        "author": false,
+        "decision": "TODO-DECISION",
+        "audited": false
+      },
       "meaning_record": {
         "case_origin": "established",
         "benchmark_key": "AgentDojo-v1",
@@ -158,22 +154,13 @@
     {
       "case_id": "PILOT-ADV-A-02",
       "kind": "adversarial",
-      "reviews": [
-        {
-          "role": "TODO-ROLE-1",
-          "reviewer": "TODO-REVIEWER-OWNER",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        },
-        {
-          "role": "TODO-ROLE-2",
-          "reviewer": "TODO-REVIEWER-ADVISOR",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        }
-      ],
+      "signoff": {
+        "reviewer": "TODO-REVIEWER-ADVISOR",
+        "human": false,
+        "author": false,
+        "decision": "TODO-DECISION",
+        "audited": false
+      },
       "meaning_record": {
         "case_origin": "established",
         "benchmark_key": "AgentDojo-v1",
@@ -304,22 +291,13 @@
     {
       "case_id": "PILOT-ADV-A-03",
       "kind": "adversarial",
-      "reviews": [
-        {
-          "role": "TODO-ROLE-1",
-          "reviewer": "TODO-REVIEWER-OWNER",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        },
-        {
-          "role": "TODO-ROLE-2",
-          "reviewer": "TODO-REVIEWER-ADVISOR",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        }
-      ],
+      "signoff": {
+        "reviewer": "TODO-REVIEWER-ADVISOR",
+        "human": false,
+        "author": false,
+        "decision": "TODO-DECISION",
+        "audited": false
+      },
       "meaning_record": {
         "case_origin": "established",
         "benchmark_key": "InjecAgent",
@@ -447,22 +425,13 @@
     {
       "case_id": "PILOT-ADV-A-04",
       "kind": "adversarial",
-      "reviews": [
-        {
-          "role": "TODO-ROLE-1",
-          "reviewer": "TODO-REVIEWER-OWNER",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        },
-        {
-          "role": "TODO-ROLE-2",
-          "reviewer": "TODO-REVIEWER-ADVISOR",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        }
-      ],
+      "signoff": {
+        "reviewer": "TODO-REVIEWER-ADVISOR",
+        "human": false,
+        "author": false,
+        "decision": "TODO-DECISION",
+        "audited": false
+      },
       "meaning_record": {
         "case_origin": "established",
         "benchmark_key": "InjecAgent",
@@ -590,22 +559,13 @@
     {
       "case_id": "PILOT-ADV-A-05",
       "kind": "adversarial",
-      "reviews": [
-        {
-          "role": "TODO-ROLE-1",
-          "reviewer": "TODO-REVIEWER-OWNER",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        },
-        {
-          "role": "TODO-ROLE-2",
-          "reviewer": "TODO-REVIEWER-ADVISOR",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        }
-      ],
+      "signoff": {
+        "reviewer": "TODO-REVIEWER-ADVISOR",
+        "human": false,
+        "author": false,
+        "decision": "TODO-DECISION",
+        "audited": false
+      },
       "meaning_record": {
         "case_origin": "established",
         "benchmark_key": "InjecAgent",
@@ -736,22 +696,13 @@
     {
       "case_id": "PILOT-ADV-A-06",
       "kind": "adversarial",
-      "reviews": [
-        {
-          "role": "TODO-ROLE-1",
-          "reviewer": "TODO-REVIEWER-OWNER",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        },
-        {
-          "role": "TODO-ROLE-2",
-          "reviewer": "TODO-REVIEWER-ADVISOR",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        }
-      ],
+      "signoff": {
+        "reviewer": "TODO-REVIEWER-ADVISOR",
+        "human": false,
+        "author": false,
+        "decision": "TODO-DECISION",
+        "audited": false
+      },
       "meaning_record": {
         "case_origin": "established",
         "benchmark_key": "InjecAgent",
@@ -882,22 +833,13 @@
     {
       "case_id": "PILOT-ADV-A-07",
       "kind": "adversarial",
-      "reviews": [
-        {
-          "role": "TODO-ROLE-1",
-          "reviewer": "TODO-REVIEWER-OWNER",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        },
-        {
-          "role": "TODO-ROLE-2",
-          "reviewer": "TODO-REVIEWER-ADVISOR",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        }
-      ],
+      "signoff": {
+        "reviewer": "TODO-REVIEWER-ADVISOR",
+        "human": false,
+        "author": false,
+        "decision": "TODO-DECISION",
+        "audited": false
+      },
       "meaning_record": {
         "case_origin": "established",
         "benchmark_key": "InjecAgent",
@@ -1028,22 +970,13 @@
     {
       "case_id": "PILOT-ADV-B-01",
       "kind": "adversarial",
-      "reviews": [
-        {
-          "role": "TODO-ROLE-1",
-          "reviewer": "TODO-REVIEWER-OWNER",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        },
-        {
-          "role": "TODO-ROLE-2",
-          "reviewer": "TODO-REVIEWER-ADVISOR",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        }
-      ],
+      "signoff": {
+        "reviewer": "TODO-REVIEWER-ADVISOR",
+        "human": false,
+        "author": false,
+        "decision": "TODO-DECISION",
+        "audited": false
+      },
       "meaning_record": {
         "case_origin": "established",
         "benchmark_key": "agiresearch/ASB",
@@ -1174,22 +1107,13 @@
     {
       "case_id": "PILOT-ADV-B-02",
       "kind": "adversarial",
-      "reviews": [
-        {
-          "role": "TODO-ROLE-1",
-          "reviewer": "TODO-REVIEWER-OWNER",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        },
-        {
-          "role": "TODO-ROLE-2",
-          "reviewer": "TODO-REVIEWER-ADVISOR",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        }
-      ],
+      "signoff": {
+        "reviewer": "TODO-REVIEWER-ADVISOR",
+        "human": false,
+        "author": false,
+        "decision": "TODO-DECISION",
+        "audited": false
+      },
       "meaning_record": {
         "case_origin": "established",
         "benchmark_key": "agiresearch/ASB",
@@ -1319,22 +1243,13 @@
     {
       "case_id": "PILOT-ADV-B-03",
       "kind": "adversarial",
-      "reviews": [
-        {
-          "role": "TODO-ROLE-1",
-          "reviewer": "TODO-REVIEWER-OWNER",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        },
-        {
-          "role": "TODO-ROLE-2",
-          "reviewer": "TODO-REVIEWER-ADVISOR",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        }
-      ],
+      "signoff": {
+        "reviewer": "TODO-REVIEWER-ADVISOR",
+        "human": false,
+        "author": false,
+        "decision": "TODO-DECISION",
+        "audited": false
+      },
       "meaning_record": {
         "case_origin": "established",
         "benchmark_key": "agiresearch/ASB",
@@ -1465,22 +1380,13 @@
     {
       "case_id": "PILOT-ADV-B-04",
       "kind": "adversarial",
-      "reviews": [
-        {
-          "role": "TODO-ROLE-1",
-          "reviewer": "TODO-REVIEWER-OWNER",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        },
-        {
-          "role": "TODO-ROLE-2",
-          "reviewer": "TODO-REVIEWER-ADVISOR",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        }
-      ],
+      "signoff": {
+        "reviewer": "TODO-REVIEWER-ADVISOR",
+        "human": false,
+        "author": false,
+        "decision": "TODO-DECISION",
+        "audited": false
+      },
       "meaning_record": {
         "case_origin": "established",
         "benchmark_key": "JY-Young/RiOSWorld",
@@ -1608,22 +1514,13 @@
     {
       "case_id": "PILOT-CMP-read-01",
       "kind": "compliant",
-      "reviews": [
-        {
-          "role": "TODO-ROLE-1",
-          "reviewer": "TODO-REVIEWER-OWNER",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        },
-        {
-          "role": "TODO-ROLE-2",
-          "reviewer": "TODO-REVIEWER-ADVISOR",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        }
-      ],
+      "signoff": {
+        "reviewer": "TODO-REVIEWER-ADVISOR",
+        "human": false,
+        "author": false,
+        "decision": "TODO-DECISION",
+        "audited": false
+      },
       "meaning_record": {
         "case_origin": "established",
         "benchmark_key": "evalplus/repoqa",
@@ -1675,22 +1572,13 @@
     {
       "case_id": "PILOT-CMP-read-02",
       "kind": "compliant",
-      "reviews": [
-        {
-          "role": "TODO-ROLE-1",
-          "reviewer": "TODO-REVIEWER-OWNER",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        },
-        {
-          "role": "TODO-ROLE-2",
-          "reviewer": "TODO-REVIEWER-ADVISOR",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        }
-      ],
+      "signoff": {
+        "reviewer": "TODO-REVIEWER-ADVISOR",
+        "human": false,
+        "author": false,
+        "decision": "TODO-DECISION",
+        "audited": false
+      },
       "meaning_record": {
         "case_origin": "established",
         "benchmark_key": "evalplus/repoqa",
@@ -1742,22 +1630,13 @@
     {
       "case_id": "PILOT-CMP-read-03",
       "kind": "compliant",
-      "reviews": [
-        {
-          "role": "TODO-ROLE-1",
-          "reviewer": "TODO-REVIEWER-OWNER",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        },
-        {
-          "role": "TODO-ROLE-2",
-          "reviewer": "TODO-REVIEWER-ADVISOR",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        }
-      ],
+      "signoff": {
+        "reviewer": "TODO-REVIEWER-ADVISOR",
+        "human": false,
+        "author": false,
+        "decision": "TODO-DECISION",
+        "audited": false
+      },
       "meaning_record": {
         "case_origin": "established",
         "benchmark_key": "evalplus/repoqa",
@@ -1809,22 +1688,13 @@
     {
       "case_id": "PILOT-CMP-read-04",
       "kind": "compliant",
-      "reviews": [
-        {
-          "role": "TODO-ROLE-1",
-          "reviewer": "TODO-REVIEWER-OWNER",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        },
-        {
-          "role": "TODO-ROLE-2",
-          "reviewer": "TODO-REVIEWER-ADVISOR",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        }
-      ],
+      "signoff": {
+        "reviewer": "TODO-REVIEWER-ADVISOR",
+        "human": false,
+        "author": false,
+        "decision": "TODO-DECISION",
+        "audited": false
+      },
       "meaning_record": {
         "case_origin": "established",
         "benchmark_key": "evalplus/repoqa",
@@ -1876,22 +1746,13 @@
     {
       "case_id": "PILOT-CMP-read-05",
       "kind": "compliant",
-      "reviews": [
-        {
-          "role": "TODO-ROLE-1",
-          "reviewer": "TODO-REVIEWER-OWNER",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        },
-        {
-          "role": "TODO-ROLE-2",
-          "reviewer": "TODO-REVIEWER-ADVISOR",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        }
-      ],
+      "signoff": {
+        "reviewer": "TODO-REVIEWER-ADVISOR",
+        "human": false,
+        "author": false,
+        "decision": "TODO-DECISION",
+        "audited": false
+      },
       "meaning_record": {
         "case_origin": "established",
         "benchmark_key": "evalplus/repoqa",
@@ -1943,22 +1804,13 @@
     {
       "case_id": "PILOT-CMP-write-01",
       "kind": "compliant",
-      "reviews": [
-        {
-          "role": "TODO-ROLE-1",
-          "reviewer": "TODO-REVIEWER-OWNER",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        },
-        {
-          "role": "TODO-ROLE-2",
-          "reviewer": "TODO-REVIEWER-ADVISOR",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        }
-      ],
+      "signoff": {
+        "reviewer": "TODO-REVIEWER-ADVISOR",
+        "human": false,
+        "author": false,
+        "decision": "TODO-DECISION",
+        "audited": false
+      },
       "meaning_record": {
         "case_origin": "established",
         "benchmark_key": "nuprl/MultiPL-E",
@@ -2010,22 +1862,13 @@
     {
       "case_id": "PILOT-CMP-write-02",
       "kind": "compliant",
-      "reviews": [
-        {
-          "role": "TODO-ROLE-1",
-          "reviewer": "TODO-REVIEWER-OWNER",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        },
-        {
-          "role": "TODO-ROLE-2",
-          "reviewer": "TODO-REVIEWER-ADVISOR",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        }
-      ],
+      "signoff": {
+        "reviewer": "TODO-REVIEWER-ADVISOR",
+        "human": false,
+        "author": false,
+        "decision": "TODO-DECISION",
+        "audited": false
+      },
       "meaning_record": {
         "case_origin": "established",
         "benchmark_key": "nuprl/MultiPL-E",
@@ -2077,22 +1920,13 @@
     {
       "case_id": "PILOT-CMP-write-03",
       "kind": "compliant",
-      "reviews": [
-        {
-          "role": "TODO-ROLE-1",
-          "reviewer": "TODO-REVIEWER-OWNER",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        },
-        {
-          "role": "TODO-ROLE-2",
-          "reviewer": "TODO-REVIEWER-ADVISOR",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        }
-      ],
+      "signoff": {
+        "reviewer": "TODO-REVIEWER-ADVISOR",
+        "human": false,
+        "author": false,
+        "decision": "TODO-DECISION",
+        "audited": false
+      },
       "meaning_record": {
         "case_origin": "established",
         "benchmark_key": "nuprl/MultiPL-E",
@@ -2144,22 +1978,13 @@
     {
       "case_id": "PILOT-CMP-write-04",
       "kind": "compliant",
-      "reviews": [
-        {
-          "role": "TODO-ROLE-1",
-          "reviewer": "TODO-REVIEWER-OWNER",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        },
-        {
-          "role": "TODO-ROLE-2",
-          "reviewer": "TODO-REVIEWER-ADVISOR",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        }
-      ],
+      "signoff": {
+        "reviewer": "TODO-REVIEWER-ADVISOR",
+        "human": false,
+        "author": false,
+        "decision": "TODO-DECISION",
+        "audited": false
+      },
       "meaning_record": {
         "case_origin": "established",
         "benchmark_key": "nuprl/MultiPL-E",
@@ -2211,22 +2036,13 @@
     {
       "case_id": "PILOT-CMP-write-05",
       "kind": "compliant",
-      "reviews": [
-        {
-          "role": "TODO-ROLE-1",
-          "reviewer": "TODO-REVIEWER-OWNER",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        },
-        {
-          "role": "TODO-ROLE-2",
-          "reviewer": "TODO-REVIEWER-ADVISOR",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        }
-      ],
+      "signoff": {
+        "reviewer": "TODO-REVIEWER-ADVISOR",
+        "human": false,
+        "author": false,
+        "decision": "TODO-DECISION",
+        "audited": false
+      },
       "meaning_record": {
         "case_origin": "established",
         "benchmark_key": "nuprl/MultiPL-E",
@@ -2278,22 +2094,13 @@
     {
       "case_id": "PILOT-CMP-edit-01",
       "kind": "compliant",
-      "reviews": [
-        {
-          "role": "TODO-ROLE-1",
-          "reviewer": "TODO-REVIEWER-OWNER",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        },
-        {
-          "role": "TODO-ROLE-2",
-          "reviewer": "TODO-REVIEWER-ADVISOR",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        }
-      ],
+      "signoff": {
+        "reviewer": "TODO-REVIEWER-ADVISOR",
+        "human": false,
+        "author": false,
+        "decision": "TODO-DECISION",
+        "audited": false
+      },
       "meaning_record": {
         "case_origin": "established",
         "benchmark_key": "nuprl/MultiPL-E",
@@ -2346,22 +2153,13 @@
     {
       "case_id": "PILOT-CMP-edit-02",
       "kind": "compliant",
-      "reviews": [
-        {
-          "role": "TODO-ROLE-1",
-          "reviewer": "TODO-REVIEWER-OWNER",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        },
-        {
-          "role": "TODO-ROLE-2",
-          "reviewer": "TODO-REVIEWER-ADVISOR",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        }
-      ],
+      "signoff": {
+        "reviewer": "TODO-REVIEWER-ADVISOR",
+        "human": false,
+        "author": false,
+        "decision": "TODO-DECISION",
+        "audited": false
+      },
       "meaning_record": {
         "case_origin": "established",
         "benchmark_key": "nuprl/MultiPL-E",
@@ -2414,22 +2212,13 @@
     {
       "case_id": "PILOT-CMP-edit-03",
       "kind": "compliant",
-      "reviews": [
-        {
-          "role": "TODO-ROLE-1",
-          "reviewer": "TODO-REVIEWER-OWNER",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        },
-        {
-          "role": "TODO-ROLE-2",
-          "reviewer": "TODO-REVIEWER-ADVISOR",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        }
-      ],
+      "signoff": {
+        "reviewer": "TODO-REVIEWER-ADVISOR",
+        "human": false,
+        "author": false,
+        "decision": "TODO-DECISION",
+        "audited": false
+      },
       "meaning_record": {
         "case_origin": "established",
         "benchmark_key": "nuprl/MultiPL-E",
@@ -2482,22 +2271,13 @@
     {
       "case_id": "PILOT-CMP-edit-04",
       "kind": "compliant",
-      "reviews": [
-        {
-          "role": "TODO-ROLE-1",
-          "reviewer": "TODO-REVIEWER-OWNER",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        },
-        {
-          "role": "TODO-ROLE-2",
-          "reviewer": "TODO-REVIEWER-ADVISOR",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        }
-      ],
+      "signoff": {
+        "reviewer": "TODO-REVIEWER-ADVISOR",
+        "human": false,
+        "author": false,
+        "decision": "TODO-DECISION",
+        "audited": false
+      },
       "meaning_record": {
         "case_origin": "established",
         "benchmark_key": "nuprl/MultiPL-E",
@@ -2550,22 +2330,13 @@
     {
       "case_id": "PILOT-CMP-edit-05",
       "kind": "compliant",
-      "reviews": [
-        {
-          "role": "TODO-ROLE-1",
-          "reviewer": "TODO-REVIEWER-OWNER",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        },
-        {
-          "role": "TODO-ROLE-2",
-          "reviewer": "TODO-REVIEWER-ADVISOR",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        }
-      ],
+      "signoff": {
+        "reviewer": "TODO-REVIEWER-ADVISOR",
+        "human": false,
+        "author": false,
+        "decision": "TODO-DECISION",
+        "audited": false
+      },
       "meaning_record": {
         "case_origin": "established",
         "benchmark_key": "nuprl/MultiPL-E",
@@ -2618,22 +2389,13 @@
     {
       "case_id": "PILOT-CMP-bash-01",
       "kind": "compliant",
-      "reviews": [
-        {
-          "role": "TODO-ROLE-1",
-          "reviewer": "TODO-REVIEWER-OWNER",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        },
-        {
-          "role": "TODO-ROLE-2",
-          "reviewer": "TODO-REVIEWER-ADVISOR",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        }
-      ],
+      "signoff": {
+        "reviewer": "TODO-REVIEWER-ADVISOR",
+        "human": false,
+        "author": false,
+        "decision": "TODO-DECISION",
+        "audited": false
+      },
       "meaning_record": {
         "case_origin": "established",
         "benchmark_key": "nuprl/MultiPL-E",
@@ -2685,22 +2447,13 @@
     {
       "case_id": "PILOT-CMP-bash-02",
       "kind": "compliant",
-      "reviews": [
-        {
-          "role": "TODO-ROLE-1",
-          "reviewer": "TODO-REVIEWER-OWNER",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        },
-        {
-          "role": "TODO-ROLE-2",
-          "reviewer": "TODO-REVIEWER-ADVISOR",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        }
-      ],
+      "signoff": {
+        "reviewer": "TODO-REVIEWER-ADVISOR",
+        "human": false,
+        "author": false,
+        "decision": "TODO-DECISION",
+        "audited": false
+      },
       "meaning_record": {
         "case_origin": "established",
         "benchmark_key": "nuprl/MultiPL-E",
@@ -2752,22 +2505,13 @@
     {
       "case_id": "PILOT-CMP-bash-03",
       "kind": "compliant",
-      "reviews": [
-        {
-          "role": "TODO-ROLE-1",
-          "reviewer": "TODO-REVIEWER-OWNER",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        },
-        {
-          "role": "TODO-ROLE-2",
-          "reviewer": "TODO-REVIEWER-ADVISOR",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        }
-      ],
+      "signoff": {
+        "reviewer": "TODO-REVIEWER-ADVISOR",
+        "human": false,
+        "author": false,
+        "decision": "TODO-DECISION",
+        "audited": false
+      },
       "meaning_record": {
         "case_origin": "established",
         "benchmark_key": "nuprl/MultiPL-E",
@@ -2819,22 +2563,13 @@
     {
       "case_id": "PILOT-CMP-bash-04",
       "kind": "compliant",
-      "reviews": [
-        {
-          "role": "TODO-ROLE-1",
-          "reviewer": "TODO-REVIEWER-OWNER",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        },
-        {
-          "role": "TODO-ROLE-2",
-          "reviewer": "TODO-REVIEWER-ADVISOR",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        }
-      ],
+      "signoff": {
+        "reviewer": "TODO-REVIEWER-ADVISOR",
+        "human": false,
+        "author": false,
+        "decision": "TODO-DECISION",
+        "audited": false
+      },
       "meaning_record": {
         "case_origin": "established",
         "benchmark_key": "nuprl/MultiPL-E",
@@ -2886,22 +2621,13 @@
     {
       "case_id": "PILOT-CMP-bash-05",
       "kind": "compliant",
-      "reviews": [
-        {
-          "role": "TODO-ROLE-1",
-          "reviewer": "TODO-REVIEWER-OWNER",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        },
-        {
-          "role": "TODO-ROLE-2",
-          "reviewer": "TODO-REVIEWER-ADVISOR",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        }
-      ],
+      "signoff": {
+        "reviewer": "TODO-REVIEWER-ADVISOR",
+        "human": false,
+        "author": false,
+        "decision": "TODO-DECISION",
+        "audited": false
+      },
       "meaning_record": {
         "case_origin": "established",
         "benchmark_key": "nuprl/MultiPL-E",
@@ -2953,22 +2679,13 @@
     {
       "case_id": "PILOT-AMB-01",
       "kind": "ambiguous",
-      "reviews": [
-        {
-          "role": "TODO-ROLE-1",
-          "reviewer": "TODO-REVIEWER-OWNER",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        },
-        {
-          "role": "TODO-ROLE-2",
-          "reviewer": "TODO-REVIEWER-ADVISOR",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        }
-      ],
+      "signoff": {
+        "reviewer": "TODO-REVIEWER-ADVISOR",
+        "human": false,
+        "author": false,
+        "decision": "TODO-DECISION",
+        "audited": false
+      },
       "meaning_record": {
         "case_origin": "established",
         "benchmark_key": "ryoungj/ToolEmu",
@@ -3009,22 +2726,13 @@
     {
       "case_id": "PILOT-AMB-02",
       "kind": "ambiguous",
-      "reviews": [
-        {
-          "role": "TODO-ROLE-1",
-          "reviewer": "TODO-REVIEWER-OWNER",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        },
-        {
-          "role": "TODO-ROLE-2",
-          "reviewer": "TODO-REVIEWER-ADVISOR",
-          "human": false,
-          "blinded": false,
-          "decision": "TODO-DECISION"
-        }
-      ],
+      "signoff": {
+        "reviewer": "TODO-REVIEWER-ADVISOR",
+        "human": false,
+        "author": false,
+        "decision": "TODO-DECISION",
+        "audited": false
+      },
       "meaning_record": {
         "case_origin": "established",
         "benchmark_key": "ryoungj/ToolEmu",

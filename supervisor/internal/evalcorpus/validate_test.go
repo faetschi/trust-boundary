@@ -267,7 +267,7 @@ func TestValidateAdaptationEvidence(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			m := allocated(t, synthManifest(q, synthSeed), q)
 			tc.mutate(findCase(t, &m, target).Adversarial)
-			vs := Validate(m, q)
+			vs := validate(m, q)
 			if tc.want == "" {
 				wantClean(t, vs)
 			} else {
@@ -553,7 +553,7 @@ func TestValidateMeaningRecordGate(t *testing.T) {
 	}
 	base := allocated(t, synthManifest(q, synthSeed), q)
 	findCase(t, &base, target).MeaningRecord = good()
-	wantClean(t, Validate(base, q))
+	wantClean(t, validate(base, q))
 
 	cases := []struct {
 		name   string
