@@ -179,16 +179,16 @@ func parseTrialAccept(args []string) (string, error) {
 }
 
 func trialBinaryDigest() (string, error) {
-	path, err := os.Executable()
+	f, err := os.Open("/proc/self/exe")
 	if err != nil {
 		return "", err
 	}
-	raw, err := os.ReadFile(path)
-	if err != nil {
+	defer f.Close()
+	hash := sha256.New()
+	if _, err := io.Copy(hash, f); err != nil {
 		return "", err
 	}
-	sum := sha256.Sum256(raw)
-	return "sha256:" + hex.EncodeToString(sum[:]), nil
+	return "sha256:" + hex.EncodeToString(hash.Sum(nil)), nil
 }
 
 func trialAccept(ctx context.Context, args []string, env trialEnv) (taskaccept.AcceptDoc, error) {
