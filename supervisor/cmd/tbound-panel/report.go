@@ -381,28 +381,15 @@ func (d panelData) auditReasons(c evalcorpus.Case) []string {
 
 func (r *runner) writeAudit(d panelData) error {
 	reasons := map[string][]string{}
-	unanimousRoots := map[string]bool{}
 	for _, c := range d.cases {
-		why := d.auditReasons(c)
-		reasons[c.CaseID] = why
-		rt := root(c)
-		if _, seen := unanimousRoots[rt]; !seen {
-			unanimousRoots[rt] = true
-		}
-		unanimousRoots[rt] = unanimousRoots[rt] && len(why) == 0
+		reasons[c.CaseID] = d.auditReasons(c)
 	}
-	var eligible []string
-	for rt, ok := range unanimousRoots {
-		if ok {
-			eligible = append(eligible, rt)
-		}
-	}
-	sort.Strings(eligible)
 	seed := strconv.FormatUint(r.cfg.Seed, 10)
-	selected, err := evalcorpus.SelectSeeded(seed, "tbound-panel/unanimous-audit", eligible, min(r.cfg.AuditSample, len(eligible)))
+	selection, err := panelaudit.SelectAudit(d.cases, reasons, seed, r.cfg.AuditSample)
 	if err != nil {
 		return err
 	}
+	selected, eligible := selection.SelectedRoots, selection.EligibleRoots
 	sel := map[string]bool{}
 	for _, s := range selected {
 		sel[s] = true
@@ -422,7 +409,7 @@ func (r *runner) writeAudit(d panelData) error {
 	for _, c := range d.cases {
 		why := reasons[c.CaseID]
 		if len(why) == 0 && sel[root(c)] {
-			why = []string{"random unanimous sample"}
+			why = []string{panelaudit.RandomSampleReason}
 		}
 		if len(why) == 0 {
 			continue
@@ -454,9 +441,8 @@ func (r *runner) writeAudit(d panelData) error {
 	doc := map[string]any{
 		"schema": panelaudit.AuditSchema, "manifest_digest": r.corpus.Digest, "content_digest": r.corpus.ContentDigest,
 		"provider": r.provName, "dry_run": r.provName == "fake",
-		"selection": map[string]any{"seed": seed, "purpose": "tbound-panel/unanimous-audit", "method": "evalcorpus.SelectSeeded",
-			"sample_size": r.cfg.AuditSample, "eligible_roots": eligible, "selected_roots": selected},
-		"cases": list, "human_reviews_recorded": 0, "note": humanNote,
+		"selection": selection,
+		"cases":     list, "human_reviews_recorded": 0, "note": humanNote,
 	}
 	if err := writeJSON(filepath.Join(r.out, "audit.json"), doc); err != nil {
 		return err

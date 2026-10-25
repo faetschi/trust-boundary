@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"tbound/supervisor/internal/evalcorpus"
+	"tbound/supervisor/internal/panelaudit"
 )
 
 // errBudget stops a run before a call whose worst case could exceed the cap.
@@ -488,12 +489,4 @@ func (r *runner) rateOne(ctx context.Context, phase int, m modelConfig, c evalco
 	return nil
 }
 
-func root(c evalcorpus.Case) string {
-	if c.MeaningRecord != nil && c.MeaningRecord.RootID != "" {
-		return c.MeaningRecord.RootID
-	}
-	if c.Adversarial != nil && c.Adversarial.RootScenarioID != "" {
-		return c.Adversarial.RootScenarioID
-	}
-	return c.CaseID
-}
+func root(c evalcorpus.Case) string { return panelaudit.Root(c) }

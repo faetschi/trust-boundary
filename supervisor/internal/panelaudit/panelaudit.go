@@ -38,6 +38,9 @@ type Advisor struct {
 
 // Receipt is the part of receipt.json that Verify reads.
 type Receipt struct {
+	Seeds struct {
+		AuditSample string `json:"audit_sample"`
+	} `json:"seeds"`
 	Schema        string `json:"schema"`
 	DryRun        bool   `json:"dry_run"`
 	ContentDigest string `json:"content_digest"`
@@ -47,6 +50,7 @@ type Receipt struct {
 
 // Audit is the part of audit.json that Verify reads.
 type Audit struct {
+	Selection     Selection   `json:"selection"`
 	Schema        string      `json:"schema"`
 	DryRun        bool        `json:"dry_run"`
 	ContentDigest string      `json:"content_digest"`
@@ -55,8 +59,9 @@ type Audit struct {
 
 // AuditCase is one case on the audit list.
 type AuditCase struct {
-	CaseID  string  `json:"case_id"`
-	Advisor Advisor `json:"advisor_signoff"`
+	Reasons []string `json:"reasons"`
+	CaseID  string   `json:"case_id"`
+	Advisor Advisor  `json:"advisor_signoff"`
 }
 
 // Digest is "sha256:" followed by the lowercase hex SHA-256 of raw.
@@ -170,7 +175,10 @@ func Verify(m evalcorpus.Manifest, receiptRaw, auditRaw, statsRaw []byte) error 
 		return fmt.Errorf("panel receipt rates %d of %d cases completely; the manifest has %d cases and a missing rating blocks every agreement gate",
 			receipt.CompleteCases, receipt.Cases, len(m.Cases))
 	}
-	return verifyAudited(m, audit)
+	if err := verifyAudited(m, audit); err != nil {
+		return err
+	}
+	return verifySelection(m, audit, receipt)
 }
 
 func verifyAudited(m evalcorpus.Manifest, audit Audit) error {

@@ -5,6 +5,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -39,9 +41,9 @@ func newFixture(t *testing.T) *fixture {
 			"decision": "accept", "resolution": "defensible under the frozen rubric", "identity": "advisor", "signed_at": "2026-10-25T10:00:00+02:00"}}
 	}
 	f := &fixture{m: m,
-		receipt: map[string]any{"schema": ReceiptSchema, "dry_run": false, "provider": "openrouter", "content_digest": content, "cases": 4, "complete_cases": 4},
+		receipt: map[string]any{"schema": ReceiptSchema, "dry_run": false, "provider": "openrouter", "content_digest": content, "cases": 4, "complete_cases": 4, "seeds": map[string]string{"audit_sample": "7"}},
 		audit: map[string]any{"schema": AuditSchema, "dry_run": false, "provider": "openrouter", "content_digest": content,
-			"cases": []any{signed("c2"), signed("c4")}}}
+			"cases": []any{signed("c2"), signed("c4")}, "selection": Selection{Seed: "7", Purpose: AuditPurpose, Method: "evalcorpus.SelectSeeded", SampleSize: AuditSampleSize, SelectedRoots: []string{}}}}
 	for _, i := range []int{1, 3} {
 		f.m.Cases[i].Signoff.Audited, f.m.Cases[i].Signoff.Resolution = true, "defensible under the frozen rubric"
 	}
@@ -208,5 +210,55 @@ func TestVerifyRefusesUnverifiableAuditSelection(t *testing.T) {
 	f.audit["selection"] = map[string]any{"seed": "7", "purpose": "tbound-panel/unanimous-audit", "method": "evalcorpus.SelectSeeded", "sample_size": 1, "eligible_roots": []string{"c1", "c3"}, "selected_roots": []string{"c1"}}
 	if err := f.check(t); err == nil || !strings.Contains(err.Error(), "selection") {
 		t.Fatalf("undersized invented sample accepted: %v", err)
+	}
+}
+
+func TestSelectAuditUsesWholeRootsAndRegisteredSample(t *testing.T) {
+	for _, n := range []int{0, 3, 80} {
+		t.Run(fmt.Sprint(n), func(t *testing.T) {
+			var cases []evalcorpus.Case
+			var roots []string
+			for i := 0; i < n; i++ {
+				id := fmt.Sprintf("root-%03d", i)
+				roots = append(roots, id)
+				cases = append(cases, evalcorpus.Case{CaseID: id, Kind: evalcorpus.KindCompliant})
+			}
+			got, err := SelectAudit(cases, nil, "7", AuditSampleSize)
+			want, _ := evalcorpus.SelectSeeded("7", AuditPurpose, roots, min(60, n))
+			if err != nil || !slices.Equal(got.SelectedRoots, want) {
+				t.Fatalf("%+v %v; want %v", got, err, want)
+			}
+		})
+	}
+	cases := []evalcorpus.Case{
+		{CaseID: "a", Kind: evalcorpus.KindCompliant, MeaningRecord: &evalcorpus.MeaningRecord{RootID: "shared"}},
+		{CaseID: "b", Kind: evalcorpus.KindCompliant, MeaningRecord: &evalcorpus.MeaningRecord{RootID: "shared"}},
+	}
+	got, err := SelectAudit(cases, map[string][]string{"b": {"unclear on intent"}}, "7", AuditSampleSize)
+	if err != nil || len(got.EligibleRoots) != 0 || len(got.SelectedRoots) != 0 {
+		t.Fatalf("non-unanimous root selected: %+v %v", got, err)
+	}
+}
+
+func TestVerifySelectionTampering(t *testing.T) {
+	for _, field := range []string{"seed", "purpose", "method", "eligible_roots", "selected_roots", "sample_size"} {
+		t.Run(field, func(t *testing.T) {
+			f := newFixture(t)
+			raw := marshal(t, f.audit["selection"])
+			var sel map[string]any
+			json.Unmarshal(raw, &sel)
+			switch field {
+			case "eligible_roots", "selected_roots":
+				sel[field] = []string{"invented"}
+			case "sample_size":
+				sel[field] = 59
+			default:
+				sel[field] = "other"
+			}
+			f.audit["selection"] = sel
+			if err := f.check(t); err == nil || !strings.Contains(err.Error(), "selection") {
+				t.Fatalf("tampered %s: %v", field, err)
+			}
+		})
 	}
 }

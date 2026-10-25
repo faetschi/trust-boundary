@@ -115,9 +115,9 @@ func tweakedPanel(t *testing.T, dir string, m evalcorpus.Manifest, tw panelTweak
 	t.Helper()
 	m.Cases = slices.Clone(m.Cases)
 	var listed []any
-	for _, i := range []int{0, 2} {
+	for i := range m.Cases {
 		m.Cases[i].Signoff.Audited, m.Cases[i].Signoff.Resolution = true, "defensible under the frozen rubric"
-		listed = append(listed, map[string]any{"case_id": m.Cases[i].CaseID, "reasons": []string{"random unanimous sample"},
+		listed = append(listed, map[string]any{"case_id": m.Cases[i].CaseID, "reasons": []string{"phase-1 disagreement on authorization"},
 			"advisor_signoff": map[string]string{"decision": "accept", "resolution": "defensible under the frozen rubric",
 				"identity": "synthetic-advisor", "signed_at": "2026-10-25T10:00:00+02:00"}})
 	}
@@ -129,8 +129,8 @@ func tweakedPanel(t *testing.T, dir string, m evalcorpus.Manifest, tw panelTweak
 		t.Fatal(err)
 	}
 	receipt := map[string]any{"schema": panelaudit.ReceiptSchema, "dry_run": false, "provider": "openrouter", "content_digest": content,
-		"cases": len(m.Cases), "complete_cases": len(m.Cases)}
-	audit := map[string]any{"schema": panelaudit.AuditSchema, "dry_run": false, "provider": "openrouter", "content_digest": content, "cases": listed}
+		"cases": len(m.Cases), "complete_cases": len(m.Cases), "seeds": map[string]string{"audit_sample": "7"}}
+	audit := map[string]any{"schema": panelaudit.AuditSchema, "dry_run": false, "provider": "openrouter", "content_digest": content, "cases": listed, "selection": panelaudit.Selection{Seed: "7", Purpose: panelaudit.AuditPurpose, Method: "evalcorpus.SelectSeeded", SampleSize: panelaudit.AuditSampleSize, SelectedRoots: []string{}}}
 	stats := map[string]any{"schema": panelaudit.StatsSchema, "content_digest": content, "cases": len(m.Cases), "complete_cases": len(m.Cases), "items": map[string]any{}}
 	for _, item := range panelaudit.Checklist {
 		stats["items"].(map[string]any)[item.Key] = map[string]any{"gate": panelaudit.GatePass}
@@ -485,8 +485,8 @@ func TestCorpusDigestRefusesPanelEvidenceThatDoesNotBackTheManifest(t *testing.T
 		{"audit entry that revises", panelTweak{audit: func(doc map[string]any) {
 			doc["cases"].([]any)[0].(map[string]any)["advisor_signoff"].(map[string]string)["decision"] = "revise"
 		}}, "revise"},
-		{"audited case missing from the audit", panelTweak{manifest: func(m *evalcorpus.Manifest) {
-			m.Cases[5].Signoff.Audited, m.Cases[5].Signoff.Resolution = true, "r"
+		{"audited case missing from the audit", panelTweak{audit: func(doc map[string]any) {
+			doc["cases"] = doc["cases"].([]any)[:len(doc["cases"].([]any))-1]
 		}}, "not on the panel audit list"},
 		{"listed case not audited in the manifest", panelTweak{manifest: func(m *evalcorpus.Manifest) {
 			m.Cases[2].Signoff.Audited, m.Cases[2].Signoff.Resolution = false, ""
