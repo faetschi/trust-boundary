@@ -538,10 +538,10 @@ func TestCorpusDigestRefusesUnusablePanelFiles(t *testing.T) {
 	path := writeManifest(t, dir, "corpus.json", m)
 	for name, flag := range map[string]string{"receipt": "--panel-receipt", "audit": "--panel-audit"} {
 		for kind, setup := range map[string]func(file string){
-			"absent":     func(file string) { os.Remove(file) },
-			"directory":  func(file string) { os.Remove(file); os.Mkdir(file, 0o700) },
-			"too large":  func(file string) { os.WriteFile(file, make([]byte, panelaudit.MaxFileBytes+1), 0o600) },
-			"empty":      func(file string) { os.WriteFile(file, nil, 0o600) },
+			"absent":    func(file string) { os.Remove(file) },
+			"directory": func(file string) { os.Remove(file); os.Mkdir(file, 0o700) },
+			"too large": func(file string) { os.WriteFile(file, make([]byte, panelaudit.MaxFileBytes+1), 0o600) },
+			"empty":     func(file string) { os.WriteFile(file, nil, 0o600) },
 		} {
 			t.Run(name+" "+kind, func(t *testing.T) {
 				copied := t.TempDir()
