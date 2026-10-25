@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
@@ -330,5 +331,74 @@ func TestGovernedCWithTheNetCollectorRecordsTheArrivalAndTheCleanWindow(t *testi
 		if _, ok := o.Oracles[runner.OracleProc01]; ok {
 			t.Errorf("%s: PROC was invented: %v", name, o.Oracles)
 		}
+	}
+}
+
+func TestCollectorRetainsTheOriginalIntervalDocuments(t *testing.T) {
+	g := newGuestNet(t)
+	c := g.collector()
+	c.RetainDir = filepath.Join(t.TempDir(), "net-evidence")
+	if err := c.BeginInterval(context.Background(), collectorRef()); err != nil {
+		t.Fatal(err)
+	}
+	do(t, "GET", "http://"+g.s.Addr()+"/exfil", "")
+	ev, err := c.Net(context.Background(), collectorRef())
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(c.RetainDir, RetainedName(collectorInterval)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	kept, err := ParseRetained(raw)
+	if err != nil || kept.Interval != collectorInterval {
+		t.Fatalf("retained = %+v, %v", kept, err)
+	}
+	// What was kept recomputes to the report the collector returned.
+	journal, err := base64.StdEncoding.DecodeString(kept.Journal.JournalB64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest, err := EvaluateNET01(NET01Input{Journal: journal, Interval: kept.Interval, Tag: kept.Journal.Interval}).Digest()
+	if err != nil || digest != ev.Refs[runner.OracleNet01].Report || kept.Start.Interval != kept.Journal.Interval || kept.End.Seq != uint64(kept.Journal.Count) {
+		t.Fatalf("the retained documents do not recompute to the journaled report: %s vs %s (%v)", digest, ev.Refs[runner.OracleNet01].Report, err)
+	}
+	if info, err := os.Stat(filepath.Join(c.RetainDir, RetainedName(collectorInterval))); err != nil || info.Mode().Perm() != 0o600 {
+		t.Fatalf("retained file mode: %v %v", info, err)
+	}
+	// A second evaluation of one interval would overwrite its evidence: it is refused, not replaced.
+	if _, err := c.Net(context.Background(), collectorRef()); !errors.Is(err, runner.ErrEvidenceAbsent) {
+		t.Fatalf("second Net = %v, want absent evidence", err)
+	}
+	if after, _ := os.ReadFile(filepath.Join(c.RetainDir, RetainedName(collectorInterval))); string(after) != string(raw) {
+		t.Fatal("the retained evidence was replaced")
+	}
+	for name, bad := range map[string][]byte{"unknown member": []byte(`{"schema":"` + RetainedSchema + `","extra":1}`), "schema": []byte(`{"schema":"x"}`), "trailing": append(raw, '{')} {
+		if _, err := ParseRetained(bad); err == nil {
+			t.Errorf("ParseRetained accepted %s", name)
+		}
+	}
+}
+
+func TestCollectorWithoutRetainDirKeepsNothingAndAnUnwritableOneIsAbsentEvidence(t *testing.T) {
+	g := newGuestNet(t)
+	c := g.collector()
+	if err := c.BeginInterval(context.Background(), collectorRef()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Net(context.Background(), collectorRef()); err != nil {
+		t.Fatal(err)
+	}
+	blocker := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(blocker, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c = g.collector()
+	c.RetainDir = filepath.Join(blocker, "net-evidence")
+	if err := c.BeginInterval(context.Background(), collectorRef()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Net(context.Background(), collectorRef()); !errors.Is(err, runner.ErrEvidenceAbsent) {
+		t.Fatalf("Net with an unwritable RetainDir = %v, want absent evidence", err)
 	}
 }

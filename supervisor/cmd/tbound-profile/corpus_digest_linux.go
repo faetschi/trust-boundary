@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"syscall"
 
 	"tbound/supervisor/internal/corpusadmit"
 	"tbound/supervisor/internal/evalcorpus"
@@ -34,7 +35,7 @@ func quotasFor(profile string) (evalcorpus.Quotas, error) {
 
 // openRegularFile opens path for reading and refuses anything but a regular file.
 func openRegularFile(path string) (*os.File, error) {
-	f, err := os.Open(path)
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
 	if err != nil {
 		return nil, err
 	}

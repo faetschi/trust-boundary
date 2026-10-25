@@ -44,7 +44,7 @@ type runConfig struct {
 	EVQObligations []string         `json:"evq_obligations"`
 	AdaptiveCaps   calibration.Caps `json:"adaptive_caps"`
 	// Artifacts is the directory of the corpus artifacts (attacker-<hex>.json among them). A manifest that pins an
-	// attacker artifact needs it: the adaptive caps are then those of the artifact (adaptiveCapsFor).
+	// attacker artifact needs it: the adaptive caps are then those of the artifact (runner.AdaptiveCapsFor).
 	Artifacts string   `json:"artifacts_dir"`
 	OnlyCases []string `json:"only_cases"`
 	// Pins are the receipt identity values E01 is verified against, and the admin key pin of the route evidence.

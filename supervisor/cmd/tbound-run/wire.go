@@ -1,6 +1,7 @@
 package main
 
 import (
+	"path/filepath"
 	"slices"
 	"time"
 
@@ -33,14 +34,17 @@ type wireFunc func(p plan) (runner.Executors, error)
 func wireSSH(p plan) (runner.Executors, error) {
 	ts := p.cfg.transports()
 	governed := runner.GovernedC{PlanDigest: p.sched.Digest, Transport: ts.client, Collectors: p.collectors(), ProtectedPaths: p.protectedPaths}
+	if p.cfg.RunDir != "" {
+		governed.WSEvidenceDir = filepath.Join(p.cfg.RunDir, "ws-evidence")
+	}
 	governedP := governed
 	governedP.Configuration = runner.CfgP
 	governedB := governed
 	governedB.Configuration = runner.CfgB
 	executors := runner.Executors{
-		C: p.attest(runner.AcceptExecutor{Inner: runner.ResetExecutor{Inner: governed, Transport: ts.trial}, Transport: ts.trial}),
+		C: p.attest(runner.AcceptExecutor{FreezeCommit: p.sched.Config.FreezeCommit, Inner: runner.ResetExecutor{Inner: governed, Transport: ts.trial}, Transport: ts.trial}),
 		P: p.attest(runner.ResetExecutor{Inner: governedP, Transport: ts.trial}),
-		B: p.attest(runner.AcceptExecutor{Inner: runner.ResetExecutor{Inner: governedB, Transport: ts.trial}, Transport: ts.trial}),
+		B: p.attest(runner.AcceptExecutor{FreezeCommit: p.sched.Config.FreezeCommit, Inner: runner.ResetExecutor{Inner: governedB, Transport: ts.trial}, Transport: ts.trial}),
 		V: p.governedV(ts.trial),
 	}
 	if p.cfg.CDH != nil {
@@ -49,7 +53,7 @@ func wireSSH(p plan) (runner.Executors, error) {
 			g := governed
 			g.Configuration = runner.CDHConfiguration(model)
 			g.CDH = p.cfg.CDH
-			executors.CDH[g.Configuration] = p.attest(runner.AcceptExecutor{Inner: runner.ResetExecutor{Inner: g, Transport: ts.trial}, Transport: ts.trial})
+			executors.CDH[g.Configuration] = p.attest(runner.AcceptExecutor{FreezeCommit: p.sched.Config.FreezeCommit, Inner: runner.ResetExecutor{Inner: g, Transport: ts.trial}, Transport: ts.trial})
 		}
 	}
 	return executors, nil
@@ -72,7 +76,12 @@ func (p plan) collectorsOver(ev runner.Transport) runner.CollectorSet {
 	}
 	// The transient observer is ended by the host when the request is over; the PROC monitor's time is only its cap.
 	transient := &runner.TransientCollector{Client: runner.EvidenceClient{Transport: ev}, Duration: time.Duration(p.cfg.Proc.MonitorSeconds) * time.Second}
-	return runner.CollectorSet{E04From: ssh, JournalFrom: ssh, PublicationFrom: ssh, NetFrom: netoracle.NewCollector(ev), ProcFrom: proc, TransientFrom: transient}
+	// The NET interval documents are kept next to the journal: their tags are drawn per interval and live nowhere else.
+	net := netoracle.NewCollector(ev)
+	if p.cfg.RunDir != "" {
+		net.RetainDir = filepath.Join(p.cfg.RunDir, "net-evidence")
+	}
+	return runner.CollectorSet{E04From: ssh, JournalFrom: ssh, PublicationFrom: ssh, NetFrom: net, ProcFrom: proc, TransientFrom: transient}
 }
 
 // attest wraps an executor with the host-side attestation of this run.

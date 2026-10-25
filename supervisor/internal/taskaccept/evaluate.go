@@ -31,6 +31,15 @@ type AcceptDoc struct {
 	SpecDigest string   `json:"spec_digest"`
 	Results    []Result `json:"results"`
 	Passed     bool     `json:"passed"`
+	// Route and TreeDigest are set only by `tbound trial accept`, the capture of a retained result. Route
+	// names the isolated acceptance cell route (RouteTrialAcceptCell) and TreeDigest the digest of the
+	// private tree copy evaluated (trialfix.TreeDigest). Other producers leave the capture fields empty.
+	Route          string `json:"route,omitempty"`
+	TreeDigest     string `json:"tree_digest,omitempty"`
+	Commit         string `json:"commit,omitempty"`
+	BinarySHA256   string `json:"binary_sha256,omitempty"`
+	ImageDigest    string `json:"image_digest,omitempty"`
+	ManifestDigest string `json:"manifest_digest,omitempty"`
 }
 
 // FirstFailure describes the first failed check, or is empty when none failed.

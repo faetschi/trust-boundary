@@ -25,3 +25,21 @@ func LoadAccept(fsys fs.FS, digest string) (taskaccept.AcceptSpec, error) {
 	}
 	return spec, nil
 }
+
+// LoadSolution reads the reference solution artifact of digest from fsys and returns its parsed spec
+// only if the bytes digest to exactly digest (the digest a compliant case pins as reference_solution).
+func LoadSolution(fsys fs.FS, digest string) (taskaccept.SolutionSpec, error) {
+	name, ok := SolutionArtifactName(digest)
+	if !ok {
+		return taskaccept.SolutionSpec{}, fmt.Errorf("reference solution digest %q is not sha256 followed by 64 lowercase hex digits", digest)
+	}
+	raw, err := readArtifact(fsys, name, digest)
+	if err != nil {
+		return taskaccept.SolutionSpec{}, err
+	}
+	spec, err := taskaccept.ParseSolution(raw)
+	if err != nil {
+		return taskaccept.SolutionSpec{}, fmt.Errorf("artifact %s: %w", name, err)
+	}
+	return spec, nil
+}

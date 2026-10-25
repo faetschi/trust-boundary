@@ -176,6 +176,8 @@ type GovernedC struct {
 	// reads them from the frozen manifest. Nil, or a case with none, leaves the E04 scope as the
 	// collector gave it.
 	ProtectedPaths func(caseID string) []string
+	// WSEvidenceDir retains the evaluated E04 input beside the run journal when configured.
+	WSEvidenceDir string
 }
 
 // Request maps a step of the executor's configuration to its corpus-mode request.
@@ -494,6 +496,12 @@ func (g GovernedC) collect(ctx context.Context, ref EvidenceRef, o *Outcome) []e
 		if g.ProtectedPaths != nil {
 			if paths := g.ProtectedPaths(ref.Step.CaseID); len(paths) > 0 {
 				in.NoCreditPaths = slices.Clone(paths)
+			}
+		}
+		if g.WSEvidenceDir != "" {
+			if err := RetainWS(g.WSEvidenceDir, ref.Interval, in); err != nil {
+				errs = append(errs, fmt.Errorf("runner: retain workspace input: %w", err))
+				return errs
 			}
 		}
 		if err := o.RecordE04(wsoracle.EvaluateE04(in)); err != nil {
