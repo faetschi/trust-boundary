@@ -156,7 +156,7 @@ func (p *productEventProjector) candidatePaths(turn productsession.Turn) ([]stri
 		if err != nil {
 			return nil, err
 		}
-		retained, err := openRetainedProductTurn(link, p.env.storeOptions(turn))
+		retained, err := openRetainedProductTurn(link, p.env.storeOptions(turn), p.env.OpenCommandHistory)
 		if err != nil {
 			return nil, err
 		}
