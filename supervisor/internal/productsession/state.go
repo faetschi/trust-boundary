@@ -535,6 +535,9 @@ func (s *state) reduceLinked(data []byte) (func(), error) {
 	if err != nil {
 		return nil, err
 	}
+	if t.CancelRequested {
+		return nil, fail(CodeCancelled, "a cancelled admission cannot link")
+	}
 	l := r.Link
 	ids := []string{"workflow:" + l.WorkflowID, "run:" + l.RunID, "session:" + l.SessionID, "conversation:" + l.ConversationID}
 	for _, id := range []string{l.WorkflowID, l.RunID, l.SessionID, l.ConversationID} {
@@ -765,6 +768,8 @@ func (s *state) reduceResolutionRequested(data []byte) (func(), error) {
 		return nil, fail(CodeReviewNotPending, fmt.Sprintf("%s is %s", t.ID, t.State))
 	case t.Resolution != "":
 		return nil, fail(CodeRequestConflict, "the turn already has a resolution")
+	case r.Decision == DecisionPublish && t.CancelRequested:
+		return nil, fail(CodeCancelled, "a cancelled review cannot authorize publication")
 	case r.CandidateDigest != t.CandidateDigest:
 		return nil, fail(CodeCandidateMismatch, t.ID)
 	case r.SessionRevision != sess.Revision+1:

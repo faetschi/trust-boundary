@@ -231,6 +231,8 @@ New error codes: `CANDIDATE_MISMATCH`, `REVIEW_NOT_PENDING`, `CANCEL_NOT_ALLOWED
 - `CancelTurn` and `ResolveTurn` check the principal, the request key, that the turn belongs to the session, the turn state, and then the revision.
 - A turn records at most one cancel request. A repeat with a new key returns the turn without writing, and does not consume that key.
 - A turn records at most one resolution. A second one, with either decision, is a `REQUEST_CONFLICT`.
+- `LinkTurn` refuses a cancelled admission with `CANCELLED`; the driver then records an unlinked `CANCELLED` refusal with a full refund. A new `publish` resolution after cancellation is also refused with `CANCELLED`; `discard` remains allowed. Both checks are reducer rules, including on replay.
+- The driver mutex orders durable cancellation, review resolution, and the auto-publication start decision. Before auto-publication starts it rechecks cancellation under that mutex, then releases it before the finalizer runs. Review deadline validation, durable resolution and removal from the pending registry share the same critical section.
 - `discarded` with reason `restart` or `cancelled` is accepted even after a `publish` resolution, because the driver reports the real disposition.
 - `MarkTurnUnknown` also accepts an `awaiting_review` turn, without settling its usage again.
 - A reviewed terminal receipt replaces the awaiting-review receipt, so the next turn's predecessor commitment is the terminal one.
@@ -295,6 +297,75 @@ Product turns allow Bash when the registration project allows it. Under the prod
 - The client writes a recovery record before applying, and removes it only after a verified result.
 - If writer exclusion cannot be established, the client offers the bundle for manual application and claims no race safety.
 
+### Import and export decisions taken during implementation
+
+- Both streams are the format line, a 4-byte big-endian header length, a canonical JSON header, and then the raw file contents in header order. The reader re-encodes the header and refuses any byte difference, so exactly one encoding is accepted. Digests are `sha256:` over the header bytes.
+- Every parent directory must be listed in the manifest. `.git` and a root `lost+found` are always excluded. Excluded subtrees are never read.
+- Only the executable bit is carried. New files are created 0644 or 0755. A change of type (file to directory) is refused.
+- Apply validates the baseline digest, the declared target digest and every content digest before the first write. It refuses changes to files Git does not track, because their original content could not be restored. The recovery record lists the pre-apply entries, and restoring relies on the clean tracked tree in Git.
+- `apply` takes the same `--exclude` list as `bundle`, so both sides compute the same manifest.
+- `import` and `apply` do not check which account runs them. The separation between service and user comes from who runs each command, as the help text states.
+
 ### Development environment
 
 The first supported language is Go, with a pinned toolchain image and a pre-filled module cache. Tests run with the command cell's network disabled. Building and pinning the image needs the product guest and is pending. The advertised tool schemas must match the durable executor's real read, binary and Bash-timeout behaviour.
+
+## Milestone 4: product service and terminal client (P6)
+
+### Service
+
+- `tbound product-serve --config /etc/tbound-product/service.json` runs the product service, owned by the product service account. Its config names:
+  - the signed registration, its signature and public key;
+  - the catalog journal and the state root;
+  - one managed directory per registered project;
+  - the provider profile;
+  - the worker mode: `pi` on a qualified host, or `headless-fixture` for tests only.
+- Every path must be a product default or below one. None may be a thesis path.
+- On start the service verifies the registration and opens the catalog. It runs `ReconcileAfterRestart` before it accepts any request. Then it listens on `/run/tbound-product/product.sock`, socket mode 0660, group-restricted.
+- The principal is the connection's `SO_PEERCRED` UID. The catalog checks it against `allowed_principals`. Payloads never carry a principal.
+- Admitted turns run in the service, not in the client. A client that disconnects leaves its accepted work running. One goroutine drives each turn. A review-expiry ticker calls `ExpireReviews`.
+- Shutdown stops new admissions, lets running turns reach their next step boundary, and closes pending reviews. A pending review then becomes `discarded` with reason `restart` on the next start.
+
+### Protocol `tbound-product-protocol/v1`
+
+Each connection carries one length-prefixed strict JSON request and one response, the same framing as the research service. Requests are at most 64 KiB and responses at most 1 MiB.
+
+| Operation | Request | Response |
+| --- | --- | --- |
+| `create_session` | project, provider profile, publication mode, budget, read_only, request key | session snapshot, replayed flag |
+| `submit_turn` | session, expected revision, request key, prompt, optional expected baseline | turn snapshot, replayed flag (the turn starts asynchronously) |
+| `get_session` | session | session snapshot with every turn's state, outcome, candidate, cancel request, resolution, and remaining budget |
+| `list_sessions` | none | the principal's sessions |
+| `observe` | session, cursor, wait_ms (at most 30000) | events after the cursor, next cursor, gap flag |
+| `get_candidate` | session, turn | the pending candidate's changed paths, each with operation and a bounded text diff |
+| `cancel_turn` | session, turn, expected revision, request key | turn snapshot |
+| `resolve_turn` | session, turn, expected revision, request key, candidate digest, decision | turn snapshot |
+
+- Errors carry the catalog's stable error codes. A request never retries on its own. A client retries only with the same request key.
+
+### Observations
+
+Events are projected only from durable records: catalog records for the session, and each turn's provider journal. The kinds are `turn_admitted`, `turn_linked`, `assistant_message`, `tool_call` (tool, verdict, reason code, hint), `tool_result` (bounded summary), `turn_cancel_requested`, `turn_awaiting_review` (candidate digest and changed paths), `turn_resolution_requested`, and `turn_terminal` (outcome and reason).
+
+- The cursor indexes the deterministic event list of the session.
+- Credentials, host paths and raw request bodies are never projected.
+- Assistant text comes only from completed provider exchanges, never from provisional output.
+
+### Terminal client `tbound chat`
+
+- `tbound chat --project P [--provider PROFILE] [--mode review|auto] [--read-only]` creates a session. `tbound chat --session ID` reconnects, replays the observations from the start, and never resubmits a prompt.
+- Each line is a prompt. The client submits it with a fresh request key and retries transport failures with the same key. It prints assistant messages, tool activity, denials with their hints, and the outcome.
+- At `awaiting_review` the client shows the candidate diff and asks Publish, Discard or Keep.
+- `/cancel`, `/publish`, `/discard`, `/status` and `/quit` are available.
+- The first Ctrl-C cancels active work. A second Ctrl-C, or `/quit`, detaches. Detaching never cancels work.
+- Exit codes:
+
+  | Code | Meaning |
+  | --- | --- |
+  | 0 | normal exit |
+  | 2 | refused |
+  | 3 | conflict or stale state |
+  | 4 | unresolved or unknown outcome |
+  | 1 | anything else |
+
+- Session and turn IDs are printed for reference, but ordinary use never requires typing them, except `--session` to reconnect.

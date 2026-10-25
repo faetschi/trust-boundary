@@ -122,7 +122,11 @@ func (e *productTurnEnv) RunTurn(ctx context.Context, admission productsession.A
 	if e.cancelRequested(turn.ID) {
 		return productTurnReceipt{}, e.refuse(turn.ID, productsession.CodeCancelled, errProductTurnCancelled)
 	}
+	e.crash("before-link")
 	if err := e.Catalog.LinkTurn(turn.ID, w.link(predecessor)); err != nil {
+		if errors.Is(err, productsession.ErrCode(productsession.CodeCancelled)) {
+			return productTurnReceipt{}, e.refuse(turn.ID, productsession.CodeCancelled, errProductTurnCancelled)
+		}
 		return productTurnReceipt{}, err
 	}
 
@@ -151,6 +155,17 @@ func (e *productTurnEnv) RunTurn(ctx context.Context, admission productsession.A
 	case turn.PublicationMode == productsession.PublicationReview:
 		s.outcome, s.candidate = "awaiting_review", sealed
 	default:
+		e.crash("before-auto-publication")
+		// This decision is the publication-start boundary, ordered with CancelTurn's durable record.
+		// The running turn owns settlement afterwards; cancellation then only records its request.
+		e.mu.Lock()
+		publicationStarted := !e.cancelRequested(turn.ID)
+		e.mu.Unlock()
+		if !publicationStarted {
+			s.outcome = productsession.OutcomeCancelled
+			break
+		}
+		e.crash("after-auto-publication-started")
 		result, finalizeErr := publish.Finalize(ctx)
 		switch {
 		case finalizeErr == nil && result.Status == publication.StatusSucceeded && len(result.Objects) != 0:

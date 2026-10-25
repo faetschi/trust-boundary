@@ -167,7 +167,8 @@ func (c *Catalog) SubmitTurn(p Principal, r SubmitTurnRequest, measuredBaseline 
 	return Admission{Turn: c.st.turns[turnID].clone()}, nil
 }
 
-// LinkTurn records the workflow binding. It must precede any provider or tool work.
+// LinkTurn records the workflow binding before any provider or tool work.
+// A cancelled admission is refused with CANCELLED and must be refused unlinked for a full refund.
 func (c *Catalog) LinkTurn(turnID string, link TurnLink) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -231,6 +232,7 @@ func (c *Catalog) CancelTurn(p Principal, r CancelTurnRequest) (Turn, bool, erro
 // awaiting review. The turn stays awaiting review until its terminal record.
 // A turn takes one resolution: a second request with a new key fails with
 // REQUEST_CONFLICT, and once the turn is terminal it fails with REVIEW_NOT_PENDING.
+// Cancellation refuses a new publish decision with CANCELLED; discard remains allowed.
 func (c *Catalog) ResolveTurn(p Principal, r ResolveTurnRequest) (Turn, bool, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()

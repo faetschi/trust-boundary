@@ -188,8 +188,7 @@ func TestCancelRules(t *testing.T) {
 		t.Fatalf("a second cancel with a new key is already in effect: %+v replayed=%v err=%v", next, replayed, err)
 	}
 
-	mustLink(t, c, turn.ID)
-	if err := c.CompleteTurn(turn.ID, terminalFor(c, turn.ID, OutcomeCancelled, "", b0, Budget{1, 1, 1})); err != nil {
+	if err := c.RefuseUnlinkedTurn(turn.ID, CodeCancelled); err != nil {
 		t.Fatal(err)
 	}
 	_, _, err = c.CancelTurn(uid1, CancelTurnRequest{SessionID: s.ID, TurnID: turn.ID, ExpectedRevision: revisionOf(t, c, uid1, s.ID), RequestKey: "c3"})
@@ -558,8 +557,8 @@ func TestOpenReplaysReviewAndCancelRecordsIdentically(t *testing.T) {
 	reg := signedRegistration(t, nil)
 	c := openAt(t, path, reg)
 	published := reviewedTurn(t, c, "a")
-	mustCancel(t, c, published, "c1")
 	mustResolve(t, c, published, "r1", DecisionPublish)
+	mustCancel(t, c, published, "c1")
 	if err := c.CompleteTurn(published.ID, terminalFor(c, published.ID, OutcomePublished, "", candidate, reviewUsage)); err != nil {
 		t.Fatal(err)
 	}
