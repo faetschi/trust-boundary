@@ -1,6 +1,6 @@
 # TBound thesis task state
 
-Thesis lane only. Checkpoint 2026-10-24. Product work is tracked in
+Thesis lane only. Checkpoint 2026-10-25. Product work is tracked in
 [docs/product-plan.md](docs/product-plan.md) (section 10), not here. History:
 git log of this file, `../review-artifacts/TASK_STATE-history-20261023.md`,
 `../review-artifacts/TASK_STATE-pilot20-receipts-20261024.md`.
@@ -13,7 +13,8 @@ probes and pilot reports are not thesis results.
 
 ## Implementation state
 
-- F14 service-defect ports in isolated branch `fix/service-deny-continuation`: DENY continuation fixed with ledger-backed tests (exact next-request denial + static hint, retry after DENY, ALLOW/DENY/ALLOW, fresh-process owner replay); ALLOW/executed calls remain non-retirable. Retained-Store preview now indexes exactly `governed_operation_authorized` and the profiled gate-policy digest, with fresh-process effect recovery and negative evidence tests. No old-kind compatibility: source history and archived review artifacts show only `authorized` writers; `authorization` appears in draft prose/comments and the broken reader. Both failures reproduced before their fixes; final clean-export gate recorded in the implementation handoff.
+- F14 content so far (not frozen): service-defect fixes **merged** at 892cc00 (gate 4654 pass / 0 fail / 26 skip); `corpus-check` guest-evidence input on branch `feat/corpus-check-guest-evidence` (2bf12cd, gate 4717 pass / 0 fail / 26 skip, no-flag pilot report byte-identical), **independent review running, not merged**.
+- Service-defect details: DENY continuation fixed with ledger-backed tests (exact next-request denial + static hint, retry after DENY, ALLOW/DENY/ALLOW, fresh-process owner replay); ALLOW/executed calls remain non-retirable. Retained-Store preview now indexes exactly `governed_operation_authorized` and the profiled gate-policy digest, with fresh-process effect recovery and negative evidence tests. No old-kind compatibility: source history and archived review artifacts show only `authorized` writers; `authorization` appears in draft prose/comments and the broken reader. Both failures reproduced before their fixes; final clean-export gate recorded in the implementation handoff.
 
 - Branch `codex/tbound-prototype`. Last guest freeze **F13 = 6162e3c** (installed 2026-10-24, owner-approved; results `F:/TBoundAssets/recovery-20261015/F13/F13-RESULT.md`). Previous: F12 = eed7722 (retained evidence).
 - **F13 fresh results:** G1 completed (read, edit, bash, read; published, settled at the rp admission), route probe completed + CHECKS_OK, dr `unknown` by design + CHECKS_OK; runtime swapped to bundle `6a07a8a9…`, new image loaded, session sudo closed again; all six guest evidence artifacts carry commit 6162e3c; **EVQ 21/22** (only `EVQ-NETWORK-SINK-GUEST` open, needs corpus mode); **route report Complete, 4/4 covered**. Owner housekeeping: 4 pre-F13 `.tbound-publication-*` dirs in the live image root (harmless, predate F13).
@@ -70,8 +71,8 @@ Step 2 detail:
 
 ## Next (thesis lane)
 
-1. Fix the two service-mode defects (DENY ends the conversation; recovery record kind) and add the `corpus-check` guest-evidence input, with regression tests and review, for F14. In parallel: owner runs the panel; advisor review.
-2. Next work package (prepared, not executed): `F:/TBoundAssets/recovery-20261015/F13-prep/thesis-work-package-draft.md` — corpus-mode prerequisites, the 4 open EVQ obligations, and witnesses for 11 calibration-P, 20 acceptance-cell, 7 network-effect checks (all pending). Blocker found: `corpus-check` sets these to `guest-only` unconditionally and cannot ingest guest evidence; closing them needs a code change and therefore a later freeze (F14) before the corpus freeze. The guest `corpus-digest` runbook line also lacks `--node`.
+1. Review and merge the `corpus-check` guest-evidence input (it also fixes the runbook's missing `--node`); then prepare F14 (survey in `F:/TBoundAssets/recovery-20261015/F14-prep/`). In parallel: owner runs the panel; advisor review. Offline de-risk of BL-2 (real `nft -j` shape vs `VerifyNetSinkRuleset`) on branch `test/netsink-nft-shape`.
+2. Next work package (prepared, not executed): `F:/TBoundAssets/recovery-20261015/F13-prep/thesis-work-package-draft.md` — corpus-mode prerequisites, EVQ-NETWORK-SINK-GUEST, and witnesses for 11 calibration-P, 20 acceptance-cell, 7 network-effect checks (all pending). Re-measure post-denial/hint behaviour on F14: earlier service-mode DENY runs stopped at the denial.
 3. Corpus-mode rehearsal; watch: reset --check passes after P C-02 and the reset kills the survivor; `podman rm -f` after conmon is killed; no uid-995 pause process in root's SSH cgroup (`ps -u 995 -o pid,cgroup,cmd`); kernel-7 zombie-leader kill; the 5 real-cgroup tests with `TBOUND_REAL_CGROUP_TESTS=1` in a delegated scope.
 4. Complete EVQ and route reports; pilots; caps and costs; full corpus; registration; H1.
 
