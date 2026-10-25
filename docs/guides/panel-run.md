@@ -203,7 +203,7 @@ manifest), the tool refuses the old directory. Use a new `--out`.
 | `requests/p1`, `requests/p2`, `responses/` | Every raw request body (without the key) and raw response, per phase |
 | `calls.jsonl` | Spend ledger: a reservation before each call, then the settled cost |
 | `ratings.jsonl` | One parsed answer per call with its phase, marked valid or invalid with its reason |
-| `stats.md`, `stats.json` | Before adjudication: Fleiss' kappa, raw agreement, prevalence and a 95% root-bootstrap interval per phase-2 checklist item and per phase-1 field, plus the phase-1 agreement with the claimed label per field |
+| `stats.md`, `stats.json` | JSON schema `tbound-panel-stats/v3`, `content_digest`, and `dry_run`. Before adjudication: Fleiss' kappa, raw agreement, prevalence and a 95% root-bootstrap interval per phase-2 checklist item and per phase-1 field, plus the phase-1 agreement with the claimed label per field |
 | `audit.md`, `audit.json` | The advisor's audit list and sign-off fields. `audit.json` (schema `tbound-panel-audit/v3`) records `manifest_digest`, `content_digest` and `dry_run` |
 | `audit-packets/` | The blinded packet of each audited case |
 
@@ -281,24 +281,29 @@ In the manifest:
    resolution on an unlisted case, or a listed case without one, is refused.
 2. Set `construct_review.content_digest` to `content_digest` of the receipt.
 3. Set `construct_review.panel_receipt_digest` and
-   `construct_review.panel_audit_digest` to the `sha256:` of the bytes of
-   `receipt.json` and of the signed `audit.json`, for example with
-   `sha256sum receipt.json audit.json`. Do not reformat either file afterwards.
+   `construct_review.panel_audit_digest` and `construct_review.panel_stats_digest`
+   to the `sha256:` of the bytes of `receipt.json`, the signed `audit.json`, and
+   `stats.json`, for example with `sha256sum receipt.json audit.json stats.json`.
+   Do not reformat these files afterwards.
 
-Then pass both files to the admission command:
+Then pass all three files to the admission command:
 
 ```sh
 tbound-profile corpus-digest --manifest corpus/pilot/manifest.json --quota-profile pilot \
-  --panel-receipt <run>/receipt.json --panel-audit <run>/audit.json \
+  --panel-receipt <run>/receipt.json --panel-audit <run>/audit.json --panel-stats <run>/stats.json \
   --artifacts corpus/pilot/artifacts --node "$(command -v node)" \
   --max-host-calls 17 --max-tokens 20000 --duration-seconds 1200
 ```
 
-It prints the digest only if the file hashes match `construct_review`, both
-files record the manifest's content digest, neither is a dry run, the receipt
+It prints the digest only if the file hashes match `construct_review`, all three
+files record the manifest's content digest, none is a dry run, the receipt
 rates every case completely, the audit list and the cases marked `audited` are
 the same set, and every audit entry carries a decision `accept`, a resolution, an
-identity and a time. A dry-run directory is never accepted. The receipt holds no
-agreement-gate verdict, so `corpus-digest` does not check the gate: read the
-`gate` of every item in `stats.json` before the advisor signs, and keep a
-revised round as a new run directory.
+identity matching the manifest advisor and a time. It replays audit selection
+with the panel's own seeded selection function and requires 60 unanimous roots,
+or all if fewer are eligible. A dry-run directory is never accepted.
+`stats.json` uses schema `tbound-panel-stats/v3`, records `content_digest`, and
+must give every phase-2 checklist item the panel's `pass` gate. Missing ratings
+in either phase block admission. Phase-1 agreement and its gates remain reported;
+phase-1 gate values do not determine admission. Keep revised rounds separately.
+`preregistration-record` requires and verifies the same three panel files.

@@ -266,14 +266,15 @@ tbound-profile corpus-check \
 `corpus-digest` is the stricter admission check. The draft refuses until real
 pins, the advisor's sign-offs and a panel run that backs them exist, and it does
 not establish license permissions or semantic validity. It needs `--panel-receipt`
-and `--panel-audit`, the `receipt.json` and the advisor-signed `audit.json` of the
+along with `--panel-audit` and `--panel-stats`, the `receipt.json`, advisor-signed
+`audit.json`, and `stats.json` of the
 panel run (see [Obtain human sign-off](#obtain-human-sign-off)). See the
 [pilot checklist](../../corpus/pilot/README.md#remaining-todo).
 
 ```sh
 tbound-profile corpus-digest \
   --manifest "$TBOUND_REPO/corpus/pilot/manifest.draft.json" --quota-profile pilot \
-  --panel-receipt "$PANEL_RUN/receipt.json" --panel-audit "$PANEL_RUN/audit.json" \
+  --panel-receipt "$PANEL_RUN/receipt.json" --panel-audit "$PANEL_RUN/audit.json" --panel-stats "$PANEL_RUN/stats.json" \
   --artifacts "$TBOUND_REPO/corpus/pilot/artifacts" --node "$(command -v node)" \
   --max-host-calls 17 --max-tokens 20000 --duration-seconds 1200
 ```
@@ -382,6 +383,7 @@ the separate `MSE_MA_Thesis` repository. See [Master thesis](../../README.md#mas
 ```sh
 tbound-profile preregistration-record --freeze-commit "$TBOUND_COMMIT" \
   --corpus-manifest /absolute/path/to/manifest.json --quota-profile thesis \
+  --panel-receipt "$PANEL_RUN/receipt.json" --panel-audit "$PANEL_RUN/audit.json" --panel-stats "$PANEL_RUN/stats.json" \
   --runner-config /absolute/path/to/runner-config.json \
   --research-profile /absolute/path/to/research-profile.json \
   --research-ledger-config /absolute/path/to/research-ledger.json \

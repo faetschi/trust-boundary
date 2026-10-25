@@ -152,8 +152,8 @@ as checked by `caps.scripted: true`. Real-provider budgets retain their positive
    3. In the manifest, set every case's `signoff` to the advisor's `reviewer` name, `human: true`, `author: false` and
       `decision: "accept"`, and for each case on the audit list also `audited: true` and a `resolution`. The same
       `reviewer` name goes on every case. Do not copy sign-offs from another case.
-   4. Set `construct_review.content_digest` to the receipt's `content_digest` and the two panel digests to the `sha256:`
-      of the bytes of `receipt.json` and of the signed `audit.json`. Any later edit of either file, or of a case, makes
+   4. Set `construct_review.content_digest` to the receipt's `content_digest` and the three panel digests to the `sha256:`
+      of the bytes of `receipt.json`, the signed `audit.json`, and `stats.json`. Any later edit of either file, or of a case, makes
       `corpus-digest` refuse. `build.py` keeps existing sign-offs and the `construct_review` block, but a regenerated case
       needs a new panel run.
 3. `evq_results` and `route_report` (the other two `run.json` inputs besides the manifest) are generated, not authored,
@@ -211,10 +211,10 @@ as checked by `caps.scripted: true`. Real-provider budgets retain their positive
 ## Digest
 On Linux, with the service ceilings the scripted trials need:
 
-    tbound-profile corpus-digest --manifest corpus/pilot/manifest.draft.json --quota-profile pilot       --panel-receipt <run>/receipt.json --panel-audit <run>/audit.json       --artifacts corpus/pilot/artifacts --node "$(command -v node)"       --max-host-calls 17 --max-tokens 20000 --duration-seconds 1200
+    tbound-profile corpus-digest --manifest corpus/pilot/manifest.draft.json --quota-profile pilot       --panel-receipt <run>/receipt.json --panel-audit <run>/audit.json --panel-stats <run>/stats.json       --artifacts corpus/pilot/artifacts --node "$(command -v node)"       --max-host-calls 17 --max-tokens 20000 --duration-seconds 1200
 
 It prints `sha256:...` only if the strict loader, `Validate`, the trial checks, the panel evidence and the artifact
-checks pass. `--panel-receipt` and `--panel-audit` are required. Until the advisor signs, it refuses on
+checks pass. `--panel-receipt`, `--panel-audit` and `--panel-stats` are required. Until the advisor signs, it refuses on
 `review.human`, on `review.placeholder` (a reviewer, resolution or panel digest still starting with `TODO`), on
 `review.decision` (a decision other than exactly `accept` or `reject`) and on `review.content_digest`. A case signed
 `reject` refuses with `review.rejected`. Further refusals: `review.author` (the signer is the case author),
@@ -223,6 +223,8 @@ without a resolution, or a resolution on a case that is not audited), and `revie
 The panel files are refused when their sha256 is not the one in `construct_review`, when their `content_digest` is not
 that of the manifest, when either is a dry run, when the receipt does not cover every case with a complete rating,
 when the audit list and the cases marked `audited` differ, or when an audit entry lacks a decision, resolution,
-identity or time, or does not accept the case. The receipt carries no agreement-gate verdict (`stats.json` does), so
-`corpus-digest` does not check the gate; read `stats.md` before the advisor signs. Any edit changes the digest;
+identity or time, or does not accept the case. The advisor identity must match the manifest reviewer. Admission
+checks every phase-2 `gate` in the pinned `stats.json` (schema v3 with the same `content_digest`) is `pass`,
+rejects any missing rating, and replays the audit's eligible roots, seed and 60-root sample with the panel's own
+selection function. Phase-1 agreement is reported; its gate values are not admission gates. Any edit changes the digest;
 re-pin it in the service config. Save the final file as `corpus/pilot/manifest.json`.

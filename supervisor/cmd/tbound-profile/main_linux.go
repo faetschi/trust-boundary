@@ -62,7 +62,7 @@ usage:
                                     --out-sig <signature> [--out-registration <signed.json>]
   tbound-profile managed-root-verify --registration <json> --sig <signature> --pub <public-key> [--runner-digest <sha256:..>]
   tbound-profile research-ledger-genesis [--profile <abs>] [--ledger-config <abs>] [--ledger <abs>]
-  tbound-profile corpus-digest --manifest <path> --panel-receipt <receipt.json> --panel-audit <audit.json>
+  tbound-profile corpus-digest --manifest <path> --panel-receipt <receipt.json> --panel-audit <audit.json> --panel-stats <stats.json>
                                 [--quota-profile thesis|pilot] [--artifacts <dir>]
                                 [--max-host-calls <n> --max-tokens <n> --duration-seconds <n>]
   tbound-profile corpus-check  --manifest <path> --out <new-report-directory> [--quota-profile thesis|pilot]
@@ -71,6 +71,7 @@ usage:
   tbound-profile corpus-pins    --template <d09-cell.json> --runtime-bundle-digest <sha256> --node-digest <sha256>
                                 [--provider-route engineering|research --research-profile <path>] [--manifest <path>]
 ` + guestEvidenceUsage + `  tbound-profile preregistration-record --freeze-commit <40-hex> --corpus-manifest <path>
+    --panel-receipt <receipt.json> --panel-audit <audit.json> --panel-stats <stats.json>
                                 --quota-profile thesis|pilot --runner-config <path>
                                 [--research-profile <path>] [--research-ledger-config <path>]
                                 [--evalscore-schema <name>] --reviewers owner,advisor
@@ -87,9 +88,12 @@ the ledger. The service never creates a ledger: a missing one is refused.
 corpus-digest admits a corpus manifest the way the corpus-mode service does (strict loader,
 evalcorpus.Validate under the quota profile, a bounded trial on every case) and prints the digest
 to pin as corpus_manifest_digest. It also requires the construct review (D35 amendment 2026-10-24) to rest on
-the blinded panel run: --panel-receipt and --panel-audit must be the files whose sha256 the manifest pins in
+the blinded panel run: --panel-receipt, --panel-audit and --panel-stats must be the files whose sha256 the manifest pins in
 construct_review, must record the manifest's content digest, and the audit must carry the advisor's complete
-sign-off for exactly the cases the manifest marks audited. The optional host ceilings add the service config
+sign-off for exactly the cases the manifest marks audited, with the same reviewer identity. Every phase-2
+checklist gate in stats.json must pass; any missing rating blocks admission. Audit sampling is replayed
+with the panel's selection function. preregistration-record verifies the same three files.
+The optional host ceilings add the service config
 comparison, and --artifacts <dir> requires every case's fixture-<hex>.json to recompute to its
 workspace_fixture_digest. It prints nothing and exits non-zero when the manifest is refused.
 
