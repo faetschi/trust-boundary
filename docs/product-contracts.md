@@ -237,3 +237,54 @@ New error codes: `CANDIDATE_MISMATCH`, `REVIEW_NOT_PENDING`, `CANCEL_NOT_ALLOWED
 - A reviewed terminal receipt must keep every execution fact of the awaiting-review receipt. Only the outcome, result baseline, publication transaction and settlement may change.
 - A turn refused with `CANCELLED` before its link is never a predecessor, the same as an abandoned turn. It did no work and has no evidence to import.
 - The awaiting-review record requires `review_timeout_seconds`. Earlier test-only journals without it are not migrated, because no product catalog has been deployed.
+
+## Milestone 3: project policy, import and export (P5)
+
+### Product scope
+
+`tbound-product-scope/v1` is a new admission rule, `product-scope/v1`, next to the research rules. Research exact-path and promote-all behaviour and their digests are unchanged.
+
+| Field | Meaning |
+| --- | --- |
+| `writable` | Canonical relative paths. Each one is an exact file or a subtree root. A change is admissible only at or below one of them. |
+| `read_only` | Canonical relative paths. Changes at or below them are refused, even inside a writable subtree. |
+| `protected` | Canonical relative paths. Changes at or below them are refused first. These are also the private paths excluded from import. |
+
+- Each list is strictly sorted and holds at most 128 entries. No entry may appear in two lists. Nesting is allowed and resolved by precedence: protected, then read-only, then writable.
+- Matching is by whole path components: `src` covers `src` and `src/a`, never `srcx`. Paths are the Store's canonical relative paths, so there is no string-prefix relaxation and no symlink following.
+- Every changed path of a candidate is checked: creates, modifies, deletes, both ends of a rename, directory creation, and metadata changes. Any refusal denies the whole candidate.
+  - A protected or read-only path gives `scope_protected_path`.
+  - A path outside every writable entry gives `scope_path_not_covered`.
+  - These are the existing reason codes and hints, so no adapter change is needed.
+- The same `Decide` applies to typed `write`/`edit` and to Bash candidate deltas.
+- The admission policy digest commits to the rule and all three lists.
+- A registration project carries `scope`. A project without one keeps the milestone 1 behaviour.
+- A session may be created `read_only`. That empties `writable` for its turns, so no tool can change the project. A read-only command can still run.
+
+### Bash in product turns
+
+Product turns allow Bash when the registration project allows it. Under the product rule, the command's output collection is decided by the effective product scope, not by an operator list of exact paths. A Bash turn must also be reopenable as a predecessor, so its retained command settlements are verified by the historical verifier. Real cell execution needs the product guest. Local tests use the existing development command runner.
+
+### Import
+
+- `tbound-project-bundle/v1` is a bounded manifest plus content stream that the user's own client builds from the original project. The service account never reads the original repository.
+- The bundle covers regular files and directories only. It records each path's type, mode bits (executable or not), size and SHA-256.
+- It excludes `.git` administration, the registration's protected paths, and operator-configured private paths. Those are listed as excluded.
+- Symlinks, hard links, devices, sockets, FIFOs, special metadata, files over the size limit, and totals over the limit are refused with the path and reason.
+- The client prints the included and excluded sets before sending.
+- The service validates every path, type, size and digest against the manifest before it creates the managed project directory. A mismatch refuses the whole import and writes nothing.
+- Import creates a new managed project and returns its measured baseline. Registering that project in a signed registration remains the administrative step.
+
+### Export
+
+- `tbound-project-export/v1` is a service-produced, digest-bound bundle. It holds the original baseline digest, the published or candidate tree digest, and for each changed path its operation, type, mode and content digest, plus the content itself.
+- The user's client applies it only to a clean Git worktree whose tracked tree matches the bundle's original baseline. It then rechecks every target path before writing.
+- It refuses dirty trees, conflicts, untracked files at target paths, symlinks, and mode changes other than the executable bit.
+- Deletions and new files are supported. Untracked files elsewhere are left alone.
+- If any check fails, nothing is written and the original content is kept.
+- The client writes a recovery record before applying, and removes it only after a verified result.
+- If writer exclusion cannot be established, the client offers the bundle for manual application and claims no race safety.
+
+### Development environment
+
+The first supported language is Go, with a pinned toolchain image and a pre-filled module cache. Tests run with the command cell's network disabled. Building and pinning the image needs the product guest and is pending. The advertised tool schemas must match the durable executor's real read, binary and Bash-timeout behaviour.
