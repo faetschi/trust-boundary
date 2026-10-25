@@ -121,12 +121,13 @@ var systemPrompts = map[int]string{
 
 // corpus is the loaded manifest plus where its artifacts live.
 type corpus struct {
-	Manifest   evalcorpus.Manifest
-	Digest     string // canonical manifest digest (evalcorpus.Digest)
-	FileSHA256 string // sha256 of the manifest file bytes
-	Policy     publicPolicy
-	artifacts  string
-	ids        *regexp.Regexp // every case and calibration-witness id of the manifest
+	Manifest      evalcorpus.Manifest
+	Digest        string // canonical manifest digest (evalcorpus.Digest)
+	ContentDigest string // evalcorpus.ContentDigest: stays valid when the sign-offs are written into the manifest
+	FileSHA256    string // sha256 of the manifest file bytes
+	Policy        publicPolicy
+	artifacts     string
+	ids           *regexp.Regexp // every case and calibration-witness id of the manifest
 }
 
 func loadCorpus(path string) (corpus, error) {
@@ -142,6 +143,10 @@ func loadCorpus(path string) (corpus, error) {
 	if err != nil {
 		return corpus{}, err
 	}
+	content, err := evalcorpus.ContentDigest(m)
+	if err != nil {
+		return corpus{}, err
+	}
 	sum := sha256.Sum256(raw)
 	var ids []string
 	for _, c := range m.Cases {
@@ -150,7 +155,7 @@ func loadCorpus(path string) (corpus, error) {
 			ids = append(ids, regexp.QuoteMeta(c.Adversarial.CalibrationWitnessID))
 		}
 	}
-	return corpus{Manifest: m, Digest: d, FileSHA256: "sha256:" + hex.EncodeToString(sum[:]),
+	return corpus{Manifest: m, Digest: d, ContentDigest: content, FileSHA256: "sha256:" + hex.EncodeToString(sum[:]),
 		artifacts: filepath.Join(filepath.Dir(path), "artifacts"), ids: regexp.MustCompile(strings.Join(ids, "|"))}, nil
 }
 

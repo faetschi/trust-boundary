@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"tbound/supervisor/internal/evalcorpus"
+	"tbound/supervisor/internal/panelaudit"
 )
 
 const humanNote = "AI panel ratings are not human reviews and never count as one; only the advisor's signed audit entries (audit.json) are human review."
@@ -261,9 +262,9 @@ func (r *runner) finish(plan blindPlan) (spend, error) {
 			"observed_response_models": observed})
 	}
 	receipt := map[string]any{
-		"schema": "tbound-panel-receipt/v2", "tool": "supervisor/cmd/tbound-panel", "provider": r.provName,
+		"schema": panelaudit.ReceiptSchema, "tool": "supervisor/cmd/tbound-panel", "provider": r.provName,
 		"dry_run": r.provName == "fake", "finished_at": time.Now().UTC().Format(time.RFC3339),
-		"manifest_canonical_digest": r.corpus.Digest, "manifest_file_sha256": r.corpus.FileSHA256,
+		"manifest_canonical_digest": r.corpus.Digest, "content_digest": r.corpus.ContentDigest, "manifest_file_sha256": r.corpus.FileSHA256,
 		"models": modelReceipts, "excluded_families": excludedTokens, "public_policy": r.cfg.PublicPolicy,
 		"phases":               "1 blind classification without claims, 2 checklist with claims; separate fresh sessions",
 		"seeds":                map[string]any{"blind_ids_and_order": r.cfg.Seed, "bootstrap": r.cfg.Seed, "audit_sample": strconv.FormatUint(r.cfg.Seed, 10)},
@@ -436,7 +437,7 @@ func (r *runner) writeAudit(d panelData) error {
 		}
 		ac := auditCase{CaseID: c.CaseID, Kind: c.Kind, Root: root(c), Reasons: why, Packet: pkt, Claims: map[string]string{},
 			Blind: map[string]*independent{}, Checklist: map[string]map[string]itemRating{},
-			Advisor: map[string]string{"decision (accept|reject|revise)": "", "resolution and reason": "", "advisor identity": "", "signed at (with timezone)": ""}}
+			Advisor: advisorTemplate()}
 		for _, f := range blindFields {
 			if v, ok := claim(c, f.key); ok {
 				ac.Claims[f.key] = v
@@ -451,7 +452,8 @@ func (r *runner) writeAudit(d panelData) error {
 		list = append(list, ac)
 	}
 	doc := map[string]any{
-		"schema": "tbound-panel-audit/v2", "manifest_digest": r.corpus.Digest, "provider": r.provName,
+		"schema": panelaudit.AuditSchema, "manifest_digest": r.corpus.Digest, "content_digest": r.corpus.ContentDigest,
+		"provider": r.provName, "dry_run": r.provName == "fake",
 		"selection": map[string]any{"seed": seed, "purpose": "tbound-panel/unanimous-audit", "method": "evalcorpus.SelectSeeded",
 			"sample_size": r.cfg.AuditSample, "eligible_roots": eligible, "selected_roots": selected},
 		"cases": list, "human_reviews_recorded": 0, "note": humanNote,
@@ -464,14 +466,23 @@ func (r *runner) writeAudit(d panelData) error {
 	if r.provName == "fake" {
 		b.WriteString("**Dry run: the panel ratings are canned fake data. Do not sign.**\n\n")
 	}
-	fmt.Fprintf(&b, "%s\n\nManifest `%s`. This list holds every checklist disagreement, every `unclear`, every phase-1 disagreement between models or with the claimed label, every ambiguous case, incomplete ratings, and %d of %d eligible unanimous roots drawn with seed `%s` (evalcorpus.SelectSeeded, purpose `tbound-panel/unanimous-audit`). Statistics before adjudication are in `stats.md`.\n\n",
-		humanNote, r.corpus.Digest, len(selected), len(eligible), seed)
-	b.WriteString("For each case: read its packet and the AI answers of both phases in `audit.json`, decide, and fill the sign-off fields in `audit.json`. Any audit error expands review across the case's source/tool stratum.\n\n| Case | Kind | Reasons | Packet |\n|---|---|---|---|\n")
+	fmt.Fprintf(&b, "%s\n\nManifest `%s`, content digest `%s`. This list holds every checklist disagreement, every `unclear`, every phase-1 disagreement between models or with the claimed label, every ambiguous case, incomplete ratings, and %d of %d eligible unanimous roots drawn with seed `%s` (evalcorpus.SelectSeeded, purpose `tbound-panel/unanimous-audit`). Statistics before adjudication are in `stats.md`.\n\n",
+		humanNote, r.corpus.Digest, r.corpus.ContentDigest, len(selected), len(eligible), seed)
+	b.WriteString("For each case: read its packet and the AI answers of both phases in `audit.json`, decide, and fill the four `advisor_signoff` fields in `audit.json` (decision `accept`, `reject` or `revise`; resolution and reason; identity; signed_at with timezone). Any audit error expands review across the case's source/tool stratum.\n\n| Case | Kind | Reasons | Packet |\n|---|---|---|---|\n")
 	for _, ac := range list {
 		fmt.Fprintf(&b, "| %s | %s | %s | `%s` |\n", ac.CaseID, ac.Kind, strings.Join(ac.Reasons, "; "), ac.Packet)
 	}
 	b.WriteString("\nAdvisor signature (name, date, timezone): ______________________\n")
 	return writeFile(filepath.Join(r.out, "audit.md"), []byte(b.String()))
+}
+
+// advisorTemplate is the empty advisor_signoff of a listed case: one empty string per field.
+func advisorTemplate() map[string]string {
+	t := map[string]string{}
+	for _, f := range panelaudit.AdvisorFields {
+		t[f] = ""
+	}
+	return t
 }
 
 func same(xs []string) bool {
