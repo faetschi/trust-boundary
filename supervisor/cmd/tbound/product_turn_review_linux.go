@@ -67,7 +67,18 @@ func (e *productTurnEnv) ResolveTurn(ctx context.Context, p productsession.Princ
 	// An expired review ends before its resolution can publish; expiry failures are already recorded
 	// in the catalog as unknown turns.
 	_ = e.ExpireReviews(time.Now())
+	e.crash("before-review-resolution")
 	e.mu.Lock()
+	// The preflight scan may precede lock acquisition by arbitrarily long. Recheck the target
+	// while holding the same mutex as its durable resolution and removal from pending.
+	if review := e.pending[r.TurnID]; review != nil && !time.Now().Before(review.deadline) {
+		turn, _ := e.Catalog.Turn(r.TurnID)
+		_, err := e.discardReview(turn, e.takeReviewLocked(r.TurnID), productsession.ReasonExpired)
+		if err != nil {
+			e.mu.Unlock()
+			return productTurnReceipt{}, err
+		}
+	}
 	turn, replayed, err := e.Catalog.ResolveTurn(p, r)
 	var review *productPendingReview
 	if err == nil {
@@ -141,18 +152,13 @@ func (e *productTurnEnv) completeReviewed(turn productsession.Turn, outcome, rea
 // and that has no resolution. now should come from time.Now so the comparison is monotonic.
 func (e *productTurnEnv) ExpireReviews(now time.Time) error {
 	e.mu.Lock()
-	due := map[string]*productPendingReview{}
+	defer e.mu.Unlock()
+	var errs []error
 	for id, review := range e.pending {
 		if turn, _ := e.Catalog.Turn(id); !now.Before(review.deadline) && turn.Resolution == "" {
-			due[id] = e.takeReviewLocked(id)
+			_, err := e.discardReview(turn, e.takeReviewLocked(id), productsession.ReasonExpired)
+			errs = append(errs, err)
 		}
-	}
-	e.mu.Unlock()
-	var errs []error
-	for id, review := range due {
-		turn, _ := e.Catalog.Turn(id)
-		_, err := e.discardReview(turn, review, productsession.ReasonExpired)
-		errs = append(errs, err)
 	}
 	return errors.Join(errs...)
 }
@@ -163,10 +169,12 @@ func (e *productTurnEnv) ExpireReviews(now time.Time) error {
 // exchange. Any other turn keeps the request for its real disposition or restart reconciliation.
 func (e *productTurnEnv) CancelTurn(_ context.Context, p productsession.Principal,
 	r productsession.CancelTurnRequest) (productsession.Turn, error) {
+	e.mu.Lock()
 	if _, _, err := e.Catalog.CancelTurn(p, r); err != nil {
+		e.mu.Unlock()
 		return productsession.Turn{}, err
 	}
-	e.mu.Lock()
+	e.crash("after-cancel-recorded")
 	turn, _ := e.Catalog.Turn(r.TurnID)
 	var err error
 	var review *productPendingReview

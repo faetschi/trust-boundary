@@ -4,12 +4,15 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"os/exec"
+	"strings"
 	"testing"
 
 	"tbound/supervisor/internal/productsession"
+	"tbound/supervisor/internal/providerbridge"
 	"tbound/supervisor/internal/sessionrepo"
 )
 
@@ -35,11 +38,24 @@ func TestProductTurnCrashChild(t *testing.T) {
 			os.Exit(productCrashExit)
 		}
 	}
+	f.env.publicationFaults = func(at string, index int) error {
+		if at != "after-object-checkpoint" || index == 0 {
+			f.env.crash("publication-" + at)
+		}
+		return nil
+	}
 	admission := f.submit(t, "turn-1", productDriverPromptA)
 	if point == "after-admission" {
 		os.Exit(productCrashExit)
 	}
-	_, turn, err := f.run(t, admission, productDriverTurnOne(false))
+	script := productDriverTurnOne(false)
+	if strings.HasPrefix(point, "publication-") {
+		// Two changed objects distinguish a partial application from the complete candidate.
+		script.turns = []providerbridge.ScriptTurn{script.turns[0],
+			{ResponseID: "t1-response-write-task", CallID: "t1-call-write-task", Tool: "write",
+				Arguments: json.RawMessage(`{"path":"task.txt","content":"updated task\n"}`)}, script.turns[1]}
+	}
+	_, turn, err := f.run(t, admission, script)
 	if err != nil || turn.State != productsession.StateAwaitingReview {
 		t.Fatalf("turn 1 before the crash point %s: %+v %v", point, turn, err)
 	}
@@ -98,8 +114,9 @@ func TestProductTurnRestartReconcilesEveryCrashBoundary(t *testing.T) {
 				t.Fatalf("after restart: turn=%+v session=%+v", turn, session)
 			}
 			if c.published {
-				if f.measure(t) != turn.CandidateDigest {
-					t.Fatal("the published project is not the candidate")
+				_, succeeded, err := f.env.workflowPublication(turn.ProjectID, turn.Link.WorkflowID)
+				if err != nil || succeeded == "" || f.measure(t) != turn.CandidateDigest {
+					t.Fatalf("publication requires a SUCCEEDED lifecycle and the exact candidate: transaction=%s err=%v", succeeded, err)
 				}
 			} else if f.measure(t) != baseline {
 				t.Fatal("the project changed")
@@ -147,8 +164,10 @@ func TestProductTurnRestartRecordsAChangedProjectAsUnknown(t *testing.T) {
 	child := exec.Command(os.Args[0], "-test.run=^TestProductTurnCrashChild$", "-test.count=1")
 	child.Env = append(os.Environ(), productCrashRootEnv+"="+created.root, productCrashPointEnv+"=after-effect",
 		productCrashSessionEnv+"="+created.session.ID)
-	if output, err := child.CombinedOutput(); err == nil {
-		t.Fatalf("child did not crash:\n%s", output)
+	output, err := child.CombinedOutput()
+	var exit *exec.ExitError
+	if !errors.As(err, &exit) || exit.ExitCode() != productCrashExit {
+		t.Fatalf("child did not reach the exact crash sentinel: %v\n%s", err, output)
 	}
 	writeProductDriverFile(t, created.projectDir, "outside.txt", "written while the service was down\n")
 	f := openProductDriverFixture(t, created.root)
@@ -164,5 +183,88 @@ func TestProductTurnRestartRecordsAChangedProjectAsUnknown(t *testing.T) {
 		ExpectedRevision: session.Revision, RequestKey: "turn-2", Prompt: productDriverPromptB}, f.measure(t)); !errors.Is(err,
 		productsession.ErrCode(productsession.CodePredecessorUnresolved)) {
 		t.Fatalf("submit after an unknown turn: %v", err)
+	}
+}
+
+func TestProductTurnRestartPublicationFaultBoundaries(t *testing.T) {
+	for _, mode := range []string{productsession.PublicationAuto, productsession.PublicationReview} {
+		for _, point := range []string{"after-prepare-checkpoint", "after-object-checkpoint", "after-terminal-checkpoint"} {
+			t.Run(mode+"/"+point, func(t *testing.T) {
+				created := newProductDriverFixture(t, mode)
+				baseline := created.measure(t)
+				if err := created.env.Catalog.Close(); err != nil {
+					t.Fatal(err)
+				}
+				child := exec.Command(os.Args[0], "-test.run=^TestProductTurnCrashChild$", "-test.count=1")
+				child.Env = append(os.Environ(), productCrashRootEnv+"="+created.root, productCrashPointEnv+"=publication-"+point,
+					productCrashSessionEnv+"="+created.session.ID)
+				output, err := child.CombinedOutput()
+				var exit *exec.ExitError
+				if !errors.As(err, &exit) || exit.ExitCode() != productCrashExit {
+					t.Fatalf("child did not reach %s: %v\n%s", point, err, output)
+				}
+				f := openProductDriverFixture(t, created.root)
+				f.session = created.session
+				before := f.turn(t, f.session.ID+"/turn-1")
+				wantState := productsession.StateLinked
+				if mode == productsession.PublicationReview {
+					wantState = productsession.StateAwaitingReview
+				}
+				if before.State != wantState {
+					t.Fatalf("child settled before crashing: state=%s want=%s", before.State, wantState)
+				}
+				paths, err := productTurnPathsFromLink(*before.Link)
+				if err != nil {
+					t.Fatal(err)
+				}
+				retained, err := openRetainedProductTurn(paths, f.env.storeOptions())
+				if err != nil {
+					t.Fatal(err)
+				}
+				bundle, bundleErr := retained.Store.EvidenceBundle()
+				closeErr := retained.Close()
+				if err := errors.Join(bundleErr, closeErr); err != nil {
+					t.Fatal(err)
+				}
+				candidate := sha256DigestFromBarePin(bareStoreTreeDigest(bundle.ValidatedChain.SealedTreeDigest))
+				measured := f.measure(t)
+				switch point {
+				case "after-prepare-checkpoint":
+					if measured != baseline || f.notesPublished(t) {
+						t.Fatal("durable prepare changed the project")
+					}
+				case "after-object-checkpoint":
+					if measured == baseline || measured == candidate || !f.notesPublished(t) {
+						t.Fatal("first applied object must leave a partial candidate")
+					}
+				case "after-terminal-checkpoint":
+					if measured != candidate || !f.notesPublished(t) {
+						t.Fatal("terminal publication checkpoint must leave the candidate")
+					}
+				}
+				// A repository terminal checkpoint alone does not prove lifecycle resolution.
+				if named, succeeded, err := f.env.workflowPublication(before.ProjectID, before.Link.WorkflowID); err != nil || !named || succeeded != "" {
+					t.Fatalf("pre-resolution lifecycle: named=%v succeeded=%s err=%v", named, succeeded, err)
+				}
+				if err := f.env.ReconcileAfterRestart(context.Background()); err == nil {
+					t.Fatal("an incomplete publication lifecycle reconciled without an error")
+				}
+				turn, session := f.turn(t, before.ID), f.currentSession(t)
+				consumed := before.Reservation
+				if mode == productsession.PublicationReview {
+					// Review already settled execution usage and refunded the rest; unknown never settles twice.
+					consumed = before.Usage
+				}
+				if turn.State != productsession.StateUnknown || !session.Blocked || session.Reserved != (productsession.Budget{}) ||
+					session.Consumed != consumed || f.measure(t) != measured {
+					t.Fatalf("restart at %s: state=%s blocked=%v consumed=%+v want=%+v", point, turn.State, session.Blocked, session.Consumed, consumed)
+				}
+				_, _, err = f.env.Catalog.CreateSession(f.principal, productsession.CreateSessionRequest{ProjectID: productDriverProject,
+					ProviderProfile: productDriverProfile, PublicationMode: mode, Budget: f.env.Registration.Limits.Session, RequestKey: "other-session"}, measured)
+				if !errors.Is(err, productsession.ErrCode(productsession.CodeProjectBlocked)) {
+					t.Fatalf("unknown publication did not block the project: %v", err)
+				}
+			})
+		}
 	}
 }

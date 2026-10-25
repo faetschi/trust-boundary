@@ -231,6 +231,8 @@ New error codes: `CANDIDATE_MISMATCH`, `REVIEW_NOT_PENDING`, `CANCEL_NOT_ALLOWED
 - `CancelTurn` and `ResolveTurn` check the principal, the request key, that the turn belongs to the session, the turn state, and then the revision.
 - A turn records at most one cancel request. A repeat with a new key returns the turn without writing, and does not consume that key.
 - A turn records at most one resolution. A second one, with either decision, is a `REQUEST_CONFLICT`.
+- `LinkTurn` refuses a cancelled admission with `CANCELLED`; the driver then records an unlinked `CANCELLED` refusal with a full refund. A new `publish` resolution after cancellation is also refused with `CANCELLED`; `discard` remains allowed. Both checks are reducer rules, including on replay.
+- The driver mutex orders durable cancellation, review resolution, and the auto-publication start decision. Before auto-publication starts it rechecks cancellation under that mutex, then releases it before the finalizer runs. Review deadline validation, durable resolution and removal from the pending registry share the same critical section.
 - `discarded` with reason `restart` or `cancelled` is accepted even after a `publish` resolution, because the driver reports the real disposition.
 - `MarkTurnUnknown` also accepts an `awaiting_review` turn, without settling its usage again.
 - A reviewed terminal receipt replaces the awaiting-review receipt, so the next turn's predecessor commitment is the terminal one.
