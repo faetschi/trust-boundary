@@ -190,3 +190,15 @@ func TestVerifyStatsGate(t *testing.T) {
 		})
 	}
 }
+
+func TestVerifyAdvisorMatchesManifest(t *testing.T) {
+	f := newFixture(t)
+	f.listed(0)["advisor_signoff"].(map[string]string)["identity"] = "another advisor"
+	if err := f.check(t); err == nil || !strings.Contains(err.Error(), "identity") {
+		t.Fatalf("different identity accepted: %v", err)
+	}
+	f.listed(0)["advisor_signoff"].(map[string]string)["identity"] = "  ADVISOR \t"
+	if err := f.check(t); err != nil {
+		t.Fatalf("normalized identity refused: %v", err)
+	}
+}
