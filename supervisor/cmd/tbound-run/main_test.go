@@ -40,7 +40,7 @@ func fixtureDigest(label string) string {
 	return "sha256:" + hex.EncodeToString(sum[:])
 }
 
-func fixtureReviews() evalcorpus.Signoff {
+func fixtureSignoff() evalcorpus.Signoff {
 	return evalcorpus.Signoff{Reviewer: "synthetic-advisor", Human: true, Decision: "accept"}
 }
 
@@ -58,7 +58,7 @@ func fixtureManifest(t *testing.T, seed string) evalcorpus.Manifest {
 			if i%2 == 0 {
 				tag = evalcorpus.OpportunityFeedback
 			}
-			m.Cases = append(m.Cases, evalcorpus.Case{CaseID: id, Kind: evalcorpus.KindAdversarial, Signoff: fixtureReviews(),
+			m.Cases = append(m.Cases, evalcorpus.Case{CaseID: id, Kind: evalcorpus.KindAdversarial, Signoff: fixtureSignoff(),
 				Adversarial: &evalcorpus.Adversarial{ThreatClass: class, RootScenarioID: "root-" + id, SourceKey: "src",
 					SourceItemID: "item-" + id, SelectionReason: "synthetic",
 					Adaptation: evalcorpus.Adaptation{PreservedIntent: "i", ToolMapping: "m", AdaptationSteps: []string{"s"},
@@ -72,7 +72,7 @@ func fixtureManifest(t *testing.T, seed string) evalcorpus.Manifest {
 	for _, tool := range []evalcorpus.Tool{evalcorpus.ToolRead, evalcorpus.ToolWrite, evalcorpus.ToolEdit, evalcorpus.ToolBash} {
 		for i := 1; i <= q.Compliant[tool]; i++ {
 			id := fmt.Sprintf("cmp-%s-%02d", tool, i)
-			m.Cases = append(m.Cases, evalcorpus.Case{CaseID: id, Kind: evalcorpus.KindCompliant, Signoff: fixtureReviews(),
+			m.Cases = append(m.Cases, evalcorpus.Case{CaseID: id, Kind: evalcorpus.KindCompliant, Signoff: fixtureSignoff(),
 				Compliant: &evalcorpus.Compliant{PrimaryTool: tool, TaskGoal: "goal", ToolMapping: "m", OracleID: "task-oracle",
 					OracleVersion: "0", WorkspaceFixtureDigest: fixtureDigest("cmp/" + id),
 					AcceptanceTest:    evalcorpus.Ref{Ref: "acc-" + id, Digest: fixtureDigest("acc/" + id)},
@@ -80,7 +80,7 @@ func fixtureManifest(t *testing.T, seed string) evalcorpus.Manifest {
 		}
 	}
 	for i := 1; i <= q.Ambiguous; i++ {
-		m.Cases = append(m.Cases, evalcorpus.Case{CaseID: fmt.Sprintf("amb-%02d", i), Kind: evalcorpus.KindAmbiguous, Signoff: fixtureReviews(),
+		m.Cases = append(m.Cases, evalcorpus.Case{CaseID: fmt.Sprintf("amb-%02d", i), Kind: evalcorpus.KindAmbiguous, Signoff: fixtureSignoff(),
 			Ambiguous: &evalcorpus.Ambiguous{WorkspaceFixtureDigest: fixtureDigest("amb/" + fmt.Sprint(i)),
 				Rubric: evalcorpus.Ref{Ref: "rubric", Digest: fixtureDigest("rubric")}}})
 	}
