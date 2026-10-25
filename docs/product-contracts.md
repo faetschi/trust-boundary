@@ -436,3 +436,57 @@ Running it again changes nothing and reports "unchanged". An existing file with 
 
 - `tbound product doctor` is advisory. It reports prerequisites, installation owners and modes, unit state, socket reachability, registration verification, and credential status (never the key).
 - `tbound product doctor --self-test` runs an explicit runtime self-test turn on a synthetic project with the configured worker. Only that self-test, never the advisory checks, can report governed readiness.
+
+## Milestone 6: live web chat (P9)
+
+The web chat stays an optional, separate Go module (`extensions/webchat`). It never imports the supervisor. It speaks `tbound-product-protocol/v1` over the product socket, with its own copy of the wire types. A parity test checks that copy against JSON fixtures the supervisor generates.
+
+### Authority
+
+- The gateway runs as the user and connects to `/run/tbound-product/product.sock`, so the service sees the user's UID as the principal. The browser gains no authority beyond that user's. The gateway holds no policy, lease, effect or publication authority. It forwards requests and renders projections.
+- Deviation from the plan: the plan describes supervisor-issued, scoped browser delegations. In this milestone the gateway's pairing secret scopes the browser instead, and the supervisor sees only the user principal. Supervisor-issued delegations with separate read, submit, cancel and resolve rights remain open work.
+
+### Pairing and sessions
+
+- `tbound-webchat --live --socket PATH [--listen 127.0.0.1:8791]` binds only a literal loopback address.
+- At start it prints a one-time pairing URL, `http://127.0.0.1:8791/pair#<token>`, to the terminal only. The token is 32 random bytes and lives at most 10 minutes. It is never written to disk or logs.
+- The pairing page posts the token to `POST /api/v1/pair`. The gateway answers with a `tbound_session` cookie (random, HttpOnly, SameSite=Strict, Path=/, 12-hour lifetime) and a CSRF token. The pairing token is spent on first use.
+- Every API request needs the session cookie.
+- Every mutation also needs the `X-TBound-CSRF` header to equal the session's CSRF token.
+- `Host` must equal the bound `127.0.0.1:PORT` or `localhost:PORT`.
+- When an `Origin` header is present, it must equal `http://` plus that host.
+- There is no CORS. Request bodies are at most 64 KiB of strict JSON.
+
+### Routes
+
+| Method and path | Maps to |
+| --- | --- |
+| `GET /api/v1/sessions` | `list_sessions` |
+| `POST /api/v1/sessions` | `create_session` |
+| `GET /api/v1/sessions/{id}` | `get_session`, rendered into the existing snapshot shape with `source: "live"` |
+| `GET /api/v1/sessions/{id}/events?cursor=N&wait=MS` | `observe` (long poll, wait at most 25 s) |
+| `POST /api/v1/sessions/{id}/turns` | `submit_turn` (the request key comes from the client; the gateway never invents a retry) |
+| `GET /api/v1/sessions/{id}/turns/{turn}/candidate` | `get_candidate` |
+| `POST /api/v1/sessions/{id}/turns/{turn}/cancel` | `cancel_turn` |
+| `POST /api/v1/sessions/{id}/turns/{turn}/resolve` | `resolve_turn` with the candidate digest the client displayed |
+
+- Errors keep the service's stable codes.
+- The fixture, replay and receipt modes stay available, labelled as demonstrations.
+
+### Browser UI
+
+The existing React app gains a live mode:
+
+- a session picker and creator showing project, provider and mode;
+- a composer that submits with a fresh request key per prompt;
+- a cancel button;
+- the event stream, with assistant text, tool calls, governance decisions and hints, and outcomes;
+- a diff review with Publish and Discard bound to the displayed candidate digest;
+- remaining budget, recovery and blocked states;
+- reconnect from the cursor after reload.
+
+Model-authored text is rendered through the existing sanitizing markdown path. Governance status stays structurally and visually separate from model output. Keyboard access and focus behaviour follow the existing components.
+
+### Windows access
+
+Use an SSH tunnel to the product host: `ssh -L 8791:127.0.0.1:8791 user@host`, with pinned host keys. Never bind a non-loopback address.
