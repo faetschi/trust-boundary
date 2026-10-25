@@ -80,6 +80,9 @@ func runPreregistrationRecord(args []string, stdout, stderr io.Writer) error {
 	flags.SetOutput(stderr)
 	commit := flags.String("freeze-commit", "", "40 lowercase hex digit git commit id of the freeze commit")
 	manifestPath := flags.String("corpus-manifest", "", "corpus manifest JSON")
+	panelReceipt := flags.String("panel-receipt", "", "panel receipt.json pinned by the manifest")
+	panelAudit := flags.String("panel-audit", "", "advisor-signed panel audit.json pinned by the manifest")
+	panelStats := flags.String("panel-stats", "", "panel stats.json pinned by the manifest")
 	profile := flags.String("quota-profile", "", "quota profile: thesis or pilot")
 	runnerConfigPath := flags.String("runner-config", "", "runner Config JSON (its freeze_commit must equal --freeze-commit)")
 	researchProfilePath := flags.String("research-profile", "", "optional frozen research profile JSON")
@@ -93,7 +96,7 @@ func runPreregistrationRecord(args []string, stdout, stderr io.Writer) error {
 		return errors.New("unexpected positional arguments")
 	}
 	for name, value := range map[string]string{"--freeze-commit": *commit, "--corpus-manifest": *manifestPath,
-		"--quota-profile": *profile, "--runner-config": *runnerConfigPath, "--reviewers": *reviewers} {
+		"--panel-receipt": *panelReceipt, "--panel-audit": *panelAudit, "--panel-stats": *panelStats, "--quota-profile": *profile, "--runner-config": *runnerConfigPath, "--reviewers": *reviewers} {
 		if value == "" {
 			return fmt.Errorf("%s is required", name)
 		}
@@ -118,6 +121,9 @@ func runPreregistrationRecord(args []string, stdout, stderr io.Writer) error {
 
 	manifest, manifestDigest, err := admitCorpus(*manifestPath, *profile, nil)
 	if err != nil {
+		return err
+	}
+	if err := checkPanel(manifest, *panelReceipt, *panelAudit, *panelStats); err != nil {
 		return err
 	}
 	quotas, err := quotasFor(*profile)
