@@ -366,6 +366,11 @@ func (w *constructWorld) writeAccept(c evalcorpus.Case) {
 			t.Fatal(err)
 		}
 		doc.Route = taskaccept.RouteTrialAcceptCell
+		doc.Commit, doc.BinarySHA256, doc.ImageDigest = w.expect.Commit, w.expect.RunnerDigest, w.expect.ImageDigest
+		doc.ManifestDigest, err = evalcorpus.Digest(w.m)
+		if err != nil {
+			t.Fatal(err)
+		}
 		if doc.TreeDigest, err = trialfix.Digest(tree); err != nil {
 			t.Fatal(err)
 		}

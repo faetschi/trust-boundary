@@ -49,11 +49,13 @@ func newTaskTestEnv(t *testing.T) *taskTestEnv {
 	e.acceptDigest = taskaccept.DigestOf([]byte(trialTestAccept))
 	name, _ := corpusadmit.AcceptArtifactName(e.acceptDigest)
 	base.files[name] = &fstest.MapFile{Data: []byte(trialTestAccept)}
+	base.trialEnv.task.binaryDigest = func() (string, error) { return vTestImageDigest, nil }
+	base.trialEnv.task.template = func(context.Context) (vTemplate, error) { return vTemplate{ImageDigest: vTestImageDigest}, nil }
 	base.trialEnv.task.pinnedCase = func(_ context.Context, id string) (trialCase, error) {
 		if id != trialTestCase {
 			return trialCase{}, errors.New("not a case of the pinned corpus manifest")
 		}
-		c := trialCase{ID: id, Kind: e.kind, FixtureDigest: e.digest, Prompt: e.prompt, DurationSeconds: e.duration}
+		c := trialCase{ID: id, Kind: e.kind, FixtureDigest: e.digest, ManifestDigest: vTestImageDigest, Prompt: e.prompt, DurationSeconds: e.duration}
 		if e.kind == evalcorpus.KindCompliant {
 			c.AcceptDigest = e.acceptDigest
 		}
@@ -252,6 +254,18 @@ func TestTrialAcceptNamesItsRouteAndTheTreeItJudged(t *testing.T) {
 	}
 	if !strings.Contains(out, `"route":"trial-accept-cell"`) || !strings.Contains(out, `"tree_digest":"`+want+`"`) {
 		t.Fatalf("the document does not carry its bindings: %s", out)
+	}
+}
+
+func TestTrialAcceptRecordsProducerIdentity(t *testing.T) {
+	e := newTaskTestEnv(t)
+	commit := strings.Repeat("a", 40)
+	doc, _, err := e.accept(t, trialTestCase, "--tree", "live", "--commit", commit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if doc.Commit != commit || doc.BinarySHA256 != vTestImageDigest || doc.ImageDigest != vTestImageDigest || doc.ManifestDigest != vTestImageDigest {
+		t.Fatalf("missing producer identity: %+v", doc)
 	}
 }
 

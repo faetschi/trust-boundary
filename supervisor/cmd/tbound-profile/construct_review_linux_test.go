@@ -4,6 +4,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"slices"
@@ -76,6 +77,32 @@ func TestConstructRejectsStaleAcceptanceIdentity(t *testing.T) {
 				return
 			}
 			wantRow(t, rowOf(t, w.applyWith(w.ev, e, constructReadCase), constructReadCase, "acceptance-cell"), "guest-only", "")
+		})
+	}
+}
+
+func TestConstructRejectsMissingAcceptanceIdentityAndInconsistentAggregate(t *testing.T) {
+	w := buildWorld(t, worldOpts{only: []string{constructReadCase}})
+	for _, field := range []string{"commit", "binary_sha256", "image_digest", "manifest_digest", "passed"} {
+		t.Run(field, func(t *testing.T) {
+			ev := w.copyEvidence()
+			editFile(t, filepath.Join(ev, w.mapping.Cases[constructReadCase].Reference), func(b []byte) []byte {
+				var doc map[string]any
+				if err := json.Unmarshal(b, &doc); err != nil {
+					t.Fatal(err)
+				}
+				if field == "passed" {
+					doc[field] = false
+				} else {
+					delete(doc, field)
+				}
+				raw, err := json.Marshal(doc)
+				if err != nil {
+					t.Fatal(err)
+				}
+				return raw
+			})
+			wantRow(t, rowOf(t, w.apply(ev, constructReadCase), constructReadCase, "acceptance-cell"), "guest-only", "")
 		})
 	}
 }

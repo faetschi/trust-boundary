@@ -42,9 +42,9 @@ func wireSSH(p plan) (runner.Executors, error) {
 	governedB := governed
 	governedB.Configuration = runner.CfgB
 	executors := runner.Executors{
-		C: p.attest(runner.AcceptExecutor{Inner: runner.ResetExecutor{Inner: governed, Transport: ts.trial}, Transport: ts.trial}),
+		C: p.attest(runner.AcceptExecutor{FreezeCommit: p.sched.Config.FreezeCommit, Inner: runner.ResetExecutor{Inner: governed, Transport: ts.trial}, Transport: ts.trial}),
 		P: p.attest(runner.ResetExecutor{Inner: governedP, Transport: ts.trial}),
-		B: p.attest(runner.AcceptExecutor{Inner: runner.ResetExecutor{Inner: governedB, Transport: ts.trial}, Transport: ts.trial}),
+		B: p.attest(runner.AcceptExecutor{FreezeCommit: p.sched.Config.FreezeCommit, Inner: runner.ResetExecutor{Inner: governedB, Transport: ts.trial}, Transport: ts.trial}),
 		V: p.governedV(ts.trial),
 	}
 	if p.cfg.CDH != nil {
@@ -53,7 +53,7 @@ func wireSSH(p plan) (runner.Executors, error) {
 			g := governed
 			g.Configuration = runner.CDHConfiguration(model)
 			g.CDH = p.cfg.CDH
-			executors.CDH[g.Configuration] = p.attest(runner.AcceptExecutor{Inner: runner.ResetExecutor{Inner: g, Transport: ts.trial}, Transport: ts.trial})
+			executors.CDH[g.Configuration] = p.attest(runner.AcceptExecutor{FreezeCommit: p.sched.Config.FreezeCommit, Inner: runner.ResetExecutor{Inner: g, Transport: ts.trial}, Transport: ts.trial})
 		}
 	}
 	return executors, nil

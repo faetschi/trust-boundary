@@ -34,8 +34,9 @@ import (
 // governed run, accept: AcceptExecutor{Inner: ResetExecutor{Inner: governed, ...}, ...}. The
 // Transport is the trial transport (DefaultTrialCommand).
 type AcceptExecutor struct {
-	Inner     Executor
-	Transport Transport
+	FreezeCommit string
+	Inner        Executor
+	Transport    Transport
 }
 
 // applies reports whether the step has an acceptance artifact to evaluate.
@@ -74,7 +75,11 @@ func (a AcceptExecutor) Execute(ctx context.Context, s Step) (Outcome, error) {
 }
 
 func (a AcceptExecutor) judge(ctx context.Context, s Step) TaskResult {
-	stdout, _, exit, err := a.Transport.Run(ctx, []string{"accept", s.CaseID, "--tree", "live"})
+	args := []string{"accept", s.CaseID, "--tree", "live"}
+	if a.FreezeCommit != "" {
+		args = append(args, "--commit", a.FreezeCommit)
+	}
+	stdout, _, exit, err := a.Transport.Run(ctx, args)
 	if err != nil || exit != 0 {
 		return TaskLost
 	}

@@ -564,6 +564,12 @@ func (c *constructCtx) acceptOutcome(use *constructUse, cm constructCaseMap, cs 
 		if result.TreeDigest != doc.tree {
 			return "", "", fmt.Errorf("%s result %s judged tree %q, not the %s tree %s (recomputed from the corpus artifacts)", doc.role, doc.file, result.TreeDigest, doc.role, doc.tree)
 		}
+		manifestDigest, err := evalcorpus.Digest(c.in.Manifest)
+		e := c.in.Expect
+		if err != nil || !guestevidence.IsCommit(e.Commit) || !guestevidence.IsDigest(e.RunnerDigest) || !guestevidence.IsDigest(e.ImageDigest) ||
+			result.Commit != e.Commit || result.BinarySHA256 != e.RunnerDigest || result.ImageDigest != e.ImageDigest || result.ManifestDigest != manifestDigest {
+			return "", "", errors.New("acceptance producer identity missing or differs from frozen commit, tbound binary, image or manifest")
+		}
 		passed[i] = result.Passed
 	}
 	if passed[0] || !passed[1] {
