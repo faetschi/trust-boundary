@@ -264,13 +264,16 @@ tbound-profile corpus-check \
 ```
 
 `corpus-digest` is the stricter admission check. The draft refuses until real
-pins and accepted human reviews exist, and it does not establish license
-permissions or semantic validity. See the
+pins, the advisor's sign-offs and a panel run that backs them exist, and it does
+not establish license permissions or semantic validity. It needs `--panel-receipt`
+and `--panel-audit`, the `receipt.json` and the advisor-signed `audit.json` of the
+panel run (see [Obtain human sign-off](#obtain-human-sign-off)). See the
 [pilot checklist](../../corpus/pilot/README.md#remaining-todo).
 
 ```sh
 tbound-profile corpus-digest \
   --manifest "$TBOUND_REPO/corpus/pilot/manifest.draft.json" --quota-profile pilot \
+  --panel-receipt "$PANEL_RUN/receipt.json" --panel-audit "$PANEL_RUN/audit.json" \
   --artifacts "$TBOUND_REPO/corpus/pilot/artifacts" --node "$(command -v node)" \
   --max-host-calls 17 --max-tokens 20000 --duration-seconds 1200
 ```
@@ -297,16 +300,19 @@ tbound-panel --config "$TBOUND_WORK/panel.json" \
 
 A non-author human reviews `audit.md`, `audit.json`, `audit-packets/`, and
 `stats.md`, including disagreements, unclear and ambiguous items, and the
-seeded unanimous sample. Record decisions and the required manifest reviews,
-then rerun the `corpus-digest` command above. There is no CLI command that
-creates a human sign-off. See [panel audit instructions](panel-run.md#7-send-the-advisor-the-audit)
+seeded unanimous sample. The advisor fills the sign-off fields of `audit.json`;
+the owner records the advisor's `signoff` on every case and the `construct_review`
+digests in the manifest, then reruns the `corpus-digest` command above with the
+panel run's `receipt.json` and the signed `audit.json`. There is no CLI command
+that creates a human sign-off. See [panel audit instructions](panel-run.md#7-send-the-advisor-the-audit),
+[binding the signed audit to the manifest](panel-run.md#8-bind-the-signed-audit-to-the-manifest)
 and [manifest review requirements](../../corpus/pilot/README.md#remaining-todo).
 
 ### Enter corpus mode
 
 Derive the manifest's environment, model, profile, and policy pins with the
-command below, fill its pins, and validate with `corpus-digest`. Reviews must
-cover that pinned version. Follow the [corpus-mode procedure](../../infra/guest/PROVISIONING-SIGNING.md)
+command below, fill its pins, and validate with `corpus-digest`. The sign-offs
+must cover that pinned version: a changed case needs a new panel run. Follow the [corpus-mode procedure](../../infra/guest/PROVISIONING-SIGNING.md)
 to install its digest and re-sign the registration, template, and profile.
 Corpus mode takes prompts from the manifest and refuses client `--task` text.
 Rehearse reset, net-sink capture, no-reap cleanup, acceptance, and V on the guest.

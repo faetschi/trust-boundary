@@ -3,7 +3,9 @@
 This guide is for the owner. It runs step 2 of the D35 amendment (2026-10-24):
 three AI models from three families rate every corpus case against the thesis
 §7.3 construct-validity checklist. The tool then reports agreement before
-adjudication and writes the audit list for the advisor.
+adjudication and writes the audit list for the advisor. The advisor's signed
+`audit.json` and the run's `receipt.json` then feed `tbound-profile corpus-digest`
+(step 8).
 
 `tbound-panel` does not run the deterministic checks of D35 step 1, does not
 edit `manifest.draft.json`, and records no human review. AI ratings never count
@@ -195,14 +197,14 @@ manifest), the tool refuses the old directory. Use a new `--out`.
 
 | File | Content |
 |---|---|
-| `receipt.json` | Models, families, observed response models and hosts, settings, seeds, manifest digests, spend and cap |
+| `receipt.json` | Models, families, observed response models and hosts, settings, seeds, the manifest digests (`manifest_canonical_digest`, `manifest_file_sha256`) and `content_digest`, spend and cap. Schema `tbound-panel-receipt/v3` |
 | `settings.json` | The frozen settings a resume must match |
 | `blinding.json` | Seed, random item ids and call order per model and phase |
 | `requests/p1`, `requests/p2`, `responses/` | Every raw request body (without the key) and raw response, per phase |
 | `calls.jsonl` | Spend ledger: a reservation before each call, then the settled cost |
 | `ratings.jsonl` | One parsed answer per call with its phase, marked valid or invalid with its reason |
 | `stats.md`, `stats.json` | Before adjudication: Fleiss' kappa, raw agreement, prevalence and a 95% root-bootstrap interval per phase-2 checklist item and per phase-1 field, plus the phase-1 agreement with the claimed label per field |
-| `audit.md`, `audit.json` | The advisor's audit list and sign-off fields |
+| `audit.md`, `audit.json` | The advisor's audit list and sign-off fields. `audit.json` (schema `tbound-panel-audit/v3`) records `manifest_digest`, `content_digest` and `dry_run` |
 | `audit-packets/` | The blinded packet of each audited case |
 
 Phase-1 effect ids are compared as a set: two answers agree only when they name
@@ -240,8 +242,63 @@ contains:
   listed with the eligible roots
 
 `audit.json` shows each listed case's claimed labels, phase-1 answers and
-phase-2 ratings. The advisor reviews each listed case and fills the sign-off fields in
-`audit.json`: decision, resolution, identity and time with timezone. The
-advisor then signs `audit.md`. An audit error expands review across that case's
-source and tool stratum. Keep this round's ratings and statistics unchanged. A
-revised case needs a new run directory.
+phase-2 ratings. The advisor reviews each listed case and fills the four
+`advisor_signoff` fields of its entry in `audit.json`:
+
+| Field | Value |
+|---|---|
+| `decision` | `accept`, `reject` or `revise` |
+| `resolution` | The resolution and its reason under the frozen panel rubric |
+| `identity` | The advisor's name |
+| `signed_at` | Date and time with timezone |
+
+The advisor then signs `audit.md`. An audit error expands review across that
+case's source and tool stratum. Keep this round's ratings and statistics
+unchanged. A revised case needs a new run directory. Only `accept` can back an
+accepted manifest; a case the advisor rejects or revises needs a corrected
+manifest and a new panel run.
+
+The advisor is a non-author human and signs every case of the corpus, not only
+the listed ones: the listed cases get the deep review, the others the meaning
+record check of thesis §7.3. AI ratings never count as that review, and the case
+author's own review is not independent.
+
+## 8. Bind the signed audit to the manifest
+
+The panel rated the draft before any sign-off existed. The manifest then gains
+the advisor's sign-offs, which must not detach it from the run. `receipt.json`
+and `audit.json` therefore record `content_digest`, the digest of the manifest
+with every `signoff` and the `construct_review` cleared
+(`evalcorpus.ContentDigest`). Writing the sign-offs does not change it;
+changing a case does. `manifest_digest` keeps the digest of the whole file the
+panel read.
+
+In the manifest:
+
+1. Set every case's `signoff` to the advisor's name as `reviewer`, `human: true`,
+   `author: false`, `decision: "accept"`. For each case on the audit list also
+   set `audited: true` and `resolution` to the advisor's resolution. A
+   resolution on an unlisted case, or a listed case without one, is refused.
+2. Set `construct_review.content_digest` to `content_digest` of the receipt.
+3. Set `construct_review.panel_receipt_digest` and
+   `construct_review.panel_audit_digest` to the `sha256:` of the bytes of
+   `receipt.json` and of the signed `audit.json`, for example with
+   `sha256sum receipt.json audit.json`. Do not reformat either file afterwards.
+
+Then pass both files to the admission command:
+
+```sh
+tbound-profile corpus-digest --manifest corpus/pilot/manifest.json --quota-profile pilot \
+  --panel-receipt <run>/receipt.json --panel-audit <run>/audit.json \
+  --artifacts corpus/pilot/artifacts --node "$(command -v node)" \
+  --max-host-calls 17 --max-tokens 20000 --duration-seconds 1200
+```
+
+It prints the digest only if the file hashes match `construct_review`, both
+files record the manifest's content digest, neither is a dry run, the receipt
+rates every case completely, the audit list and the cases marked `audited` are
+the same set, and every audit entry carries a decision `accept`, a resolution, an
+identity and a time. A dry-run directory is never accepted. The receipt holds no
+agreement-gate verdict, so `corpus-digest` does not check the gate: read the
+`gate` of every item in `stats.json` before the advisor signs, and keep a
+revised round as a new run directory.
