@@ -8,6 +8,8 @@ import (
 	"sort"
 	"syscall"
 	"unsafe"
+
+	"golang.org/x/sys/unix"
 )
 
 // readChunk is the buffer size used to hash regular files.
@@ -22,7 +24,7 @@ var errTargetTooLong = errors.New("link target too long")
 // Snapshot walks root and returns its manifest. The walk opens each component
 // beneath a directory descriptor with O_NOFOLLOW, and checks each object with
 // fstat against its O_PATH descriptor. It never follows a symlink, never
-// descends across a device boundary, and never blocks on a FIFO. Any entry that
+// crosses a mount point, and never blocks on a FIFO. Any entry that
 // cannot be read in full is recorded as a gap and as an unreadable entry, and
 // the walk continues with its siblings. A root that is missing, is not a
 // directory, or is a symlink is recorded as a gap, and the manifest has no
@@ -99,11 +101,16 @@ func (m *Manifest) seal() Manifest {
 	return *m
 }
 
-// walker holds the state of one walk. rootDev is the device of the root, and an
-// entry on another device is not descended.
+// walker holds the state of one walk.
 type walker struct {
 	m       *Manifest
 	rootDev uint64
+}
+
+func openEntry(dirfd int, name string, flags int) (int, error) {
+	return unix.Openat2(dirfd, name, &unix.OpenHow{
+		Flags: uint64(flags), Resolve: unix.RESOLVE_NO_XDEV | unix.RESOLVE_NO_SYMLINKS,
+	})
 }
 
 // walkDir records the entries of the directory open at dirfd. rel is the
@@ -121,7 +128,7 @@ func (w *walker) walkDir(dirfd int, rel string) {
 
 // walkEntry classifies one child by an O_PATH descriptor and then records it.
 func (w *walker) walkEntry(dirfd int, name, rel string) {
-	pfd, err := syscall.Openat(dirfd, name, oPath|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0)
+	pfd, err := openEntry(dirfd, name, oPath|syscall.O_NOFOLLOW|syscall.O_CLOEXEC)
 	if err != nil {
 		w.failEntry(rel, err)
 		return
@@ -151,7 +158,7 @@ func (w *walker) walkEntry(dirfd int, name, rel string) {
 }
 
 func (w *walker) walkDirEntry(dirfd int, name, rel string, st *syscall.Stat_t) {
-	dfd, err := syscall.Openat(dirfd, name, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0)
+	dfd, err := openEntry(dirfd, name, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW|syscall.O_CLOEXEC)
 	if err != nil {
 		w.failEntry(rel, err)
 		return
@@ -169,7 +176,7 @@ func (w *walker) walkDirEntry(dirfd int, name, rel string, st *syscall.Stat_t) {
 func (w *walker) walkFileEntry(dirfd int, name, rel string, st *syscall.Stat_t) {
 	// O_NONBLOCK keeps a FIFO swapped in after the O_PATH check from blocking
 	// the open. fstat on the opened descriptor then rejects it.
-	rfd, err := syscall.Openat(dirfd, name, syscall.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK|syscall.O_CLOEXEC, 0)
+	rfd, err := openEntry(dirfd, name, syscall.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK|syscall.O_CLOEXEC)
 	if err != nil {
 		w.failEntry(rel, err)
 		return
@@ -207,7 +214,7 @@ func (w *walker) walkLinkEntry(dirfd int, name, rel string, st *syscall.Stat_t) 
 		return
 	}
 	// The link must still be the object that was statted before the readlink.
-	chk, err := syscall.Openat(dirfd, name, oPath|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0)
+	chk, err := openEntry(dirfd, name, oPath|syscall.O_NOFOLLOW|syscall.O_CLOEXEC)
 	if err != nil {
 		w.failEntry(rel, err)
 		return
@@ -240,6 +247,11 @@ func (w *walker) record(rel, typ string, st *syscall.Stat_t, size int64, sum, ta
 
 // failEntry records an entry that could not be read in full.
 func (w *walker) failEntry(rel string, err error) {
+	if errors.Is(err, syscall.EXDEV) {
+		w.gap(rel, GapMountBoundary, "")
+		w.unreadable(rel)
+		return
+	}
 	kind := GapUnreadable
 	if errors.Is(err, syscall.ENOENT) {
 		kind = GapVanished
