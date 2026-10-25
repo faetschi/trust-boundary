@@ -89,7 +89,11 @@ Step 2 detail:
 - Freeze loop: gate -> freeze -> archive previous guest state (option A) -> install -> guest chain. No commits in the main checkout during a freeze.
 - Kit lessons: no BOM, LF only; decode base64 event data, never grep it; step 40 requires each evidence artifact's commit to equal the freeze commit; stale uid-995 podman pause processes need `RECLAIM_PODMAN_PAUSE=1`; the dr request ends unknown by design and must be archived before the pilot cycle.
 - Product changes reach the thesis only through a separate review and freeze; they never change a frozen experiment.
-- Thesis limitations to record: kernel 7.0 CLONE_INTO_CGROUP bug; on a single-uid rootless host cell ownership cannot tell image root from the cell user; the audit chain has no external anchor; every guest run before F11 had thread-only Landlock (flag bug) and is not evidence.
+- Thesis limitations to record: kernel 7.0 CLONE_INTO_CGROUP bug; on a single-uid rootless host cell ownership cannot tell image root from the cell user; the audit chain has no external anchor; every guest run before F11 had thread-only Landlock (flag bug) and is not evidence. From the 2026-10-25 cross-check of product findings, none of which the governed agent can trigger:
+  - Publication assumes it is the only writer on the host; a concurrent host-side directory move can redirect a write.
+  - The WS oracle does not measure ACLs or xattrs; publication refuses them.
+  - Release and verifier clean-checks can be blinded by git `assume-unchanged`/`skip-worktree`; the freeze kit archives committed bytes.
+  - Development and V-run credential paths check only the final component; the production reader checks every ancestor.
 - Parked until after the thesis: C-DH / decision-model hints (`docs/design/denial-hints.md` stage 2, `docs/design/denial-hint-providers.md`).
 
 Constraints: explicit `git add`; never push; no secret/key/vm_start.txt reads; Go 1.27.1 at /home/jeli2k/opt/go1.27.1; clean-room gate via the kit's `tools/gate.sh`; logs on F:; C: >= 5 GiB; no `wsl --shutdown`; every privileged guest write, signing, or VM state change needs explicit approval; sign only with the owner's keys.
