@@ -10,7 +10,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -292,7 +294,7 @@ func TestDryRunEndToEndOnPilotCorpus(t *testing.T) {
 		receipt.ContentDigest != content || receipt.ManifestDig != whole {
 		t.Fatalf("receipt %s (%v)", rraw, err)
 	}
-	signAndVerify(t, m, rraw, raw, out)
+	signAndVerify(t, m, rraw, raw, out, false)
 	amb := 0
 	for _, c := range audit.Cases {
 		if strings.HasPrefix(c.CaseID, "PILOT-AMB") {
@@ -466,9 +468,8 @@ func loadPilot(t *testing.T) evalcorpus.Manifest {
 
 // signAndVerify plays the advisor on a run's own files: it fills the sign-off fields of every
 // listed case, writes the sign-offs into the manifest and seals its construct review to the
-// result. panelaudit.Verify accepts that once the run is not a dry run, so what the panel writes
-// is what the corpus-digest reader needs.
-func signAndVerify(t *testing.T, m evalcorpus.Manifest, receipt, audit []byte, out string) {
+// result. Admission still requires every agreement gate to pass.
+func signAndVerify(t *testing.T, m evalcorpus.Manifest, receipt, audit []byte, out string, wantPass bool) (evalcorpus.Manifest, []byte, []byte, []byte) {
 	t.Helper()
 	var doc map[string]any
 	if err := json.Unmarshal(audit, &doc); err != nil {
@@ -507,10 +508,88 @@ func signAndVerify(t *testing.T, m evalcorpus.Manifest, receipt, audit []byte, o
 	sd["dry_run"] = false
 	stats, _ = json.Marshal(sd)
 	m.ConstructReview.PanelStatsDigest = panelaudit.Digest(stats)
-	if err := panelaudit.Verify(m, signedReceipt, signedAudit, stats); err == nil || !strings.Contains(err.Error(), "gate") {
-		t.Fatalf("the fake ratings must not earn an agreement pass after signing: %v", err)
+	err = panelaudit.Verify(m, signedReceipt, signedAudit, stats)
+	if wantPass && err != nil {
+		t.Fatalf("signed real-shaped report refused: %v", err)
+	}
+	if !wantPass && (err == nil || !strings.Contains(err.Error(), "gate")) {
+		t.Fatalf("fake ratings earned a pass: %v", err)
 	}
 	if err := panelaudit.Verify(m, receipt, audit, stats); err == nil || !strings.Contains(err.Error(), "digest") {
-		t.Fatalf("the unsigned dry-run files must not match the sealed digests: %v", err)
+		t.Fatalf("the unsigned files must not match the sealed digests: %v", err)
 	}
+	return m, signedReceipt, signedAudit, stats
+}
+
+func TestPanelReportFeedsCorpusDigest(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("corpus-digest is Linux-only")
+	}
+	out := t.TempDir()
+	r := newRunner(t, testConfig(t, 10), out, nil, "openrouter")
+	m := r.corpus.Manifest
+	m.Pins.EnvironmentDigest, m.Pins.ModelDigest = sha("environment"), sha("model")
+	m.Pins.ProfileDigest, m.Pins.PolicyDigest = sha("profile"), sha("policy")
+	r.corpus.Manifest = m
+	r.corpus.Digest, _ = evalcorpus.Digest(m)
+	r.corpus.ContentDigest, _ = evalcorpus.ContentDigest(m)
+	first := m.Cases[0].CaseID
+	for _, c := range m.Cases {
+		for _, model := range r.cfg.Models {
+			threat, _ := claim(c, "threat_class")
+			auth, _ := claim(c, "authorization")
+			effects := []string{}
+			if c.Adversarial != nil {
+				effects = c.Adversarial.ForbiddenEffects
+			}
+			blind := rating{Phase: phaseBlind, CaseID: c.CaseID, Model: model.ID, Valid: true,
+				Independent: &independent{ThreatClass: threat, Authorization: auth, EffectIDs: effects}}
+			if err := appendJSONL(filepath.Join(out, "ratings.jsonl"), blind); err != nil {
+				t.Fatal(err)
+			}
+			checklist := map[string]itemRating{}
+			for _, it := range items {
+				if _, na := notApplicable[c.Kind][it.Key]; na {
+					continue
+				}
+				verdict := "pass"
+				if c.CaseID == first {
+					verdict = "fail"
+				}
+				checklist[it.Key] = itemRating{Rating: verdict, Reason: "synthetic unanimous rating"}
+			}
+			if err := appendJSONL(filepath.Join(out, "ratings.jsonl"), rating{Phase: phaseChecklist, CaseID: c.CaseID, Model: model.ID, Valid: true, Checklist: checklist}); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if _, err := r.finish(blindPlan{}); err != nil {
+		t.Fatal(err)
+	}
+	receipt, err := os.ReadFile(filepath.Join(out, "receipt.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	audit, err := os.ReadFile(filepath.Join(out, "audit.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, receipt, audit, stats := signAndVerify(t, m, receipt, audit, out, true)
+	manifest, err := evalcorpus.CanonicalJSON(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, raw := range map[string][]byte{"manifest.json": manifest, "receipt.json": receipt, "audit.json": audit, "stats.json": stats} {
+		if err := os.WriteFile(filepath.Join(out, name), raw, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cmd := exec.Command("go", "run", "../tbound-profile", "corpus-digest", "--manifest", filepath.Join(out, "manifest.json"), "--quota-profile", "pilot",
+		"--panel-receipt", filepath.Join(out, "receipt.json"), "--panel-audit", filepath.Join(out, "audit.json"), "--panel-stats", filepath.Join(out, "stats.json"))
+	got, err := cmd.CombinedOutput()
+	want, _ := evalcorpus.Digest(m)
+	if err != nil || string(got) != want+"\n" {
+		t.Fatalf("corpus-digest from panel-written files: %s %v; want %s", got, err, want)
+	}
+	t.Logf("real-run-shaped receipt/audit/stats accepted by corpus-digest: %s", want)
 }
