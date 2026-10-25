@@ -333,3 +333,11 @@ func TestPreregistrationRecordThesisPlanIsTheRegisteredUnits(t *testing.T) {
 		t.Fatal("a thesis-sized manifest was recorded under the pilot quotas")
 	}
 }
+
+func TestPreregistrationRefusesMissingPanelEvidence(t *testing.T) {
+	p := basePrereg(t, t.TempDir())
+	out, _, err := runCLI(p.args()...)
+	if err == nil || out != "" || !strings.Contains(err.Error(), "--panel-") {
+		t.Fatalf("missing panel evidence accepted: out %q err %v", out, err)
+	}
+}
