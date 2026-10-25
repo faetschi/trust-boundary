@@ -20,6 +20,7 @@ duplicate members and trailing data are refused. Every file is a regular file
   "schema": "tbound-construct-map/v1",
   "journal": "run/journal.jsonl",
   "net_dir": "run/net-evidence",
+  "ws_dir": "run/ws-evidence",
   "net_sink": "netsink.json",
   "signed_run": {
     "template": "signed/cell-template.json",
@@ -51,24 +52,43 @@ A case that is not in `cases` stays `guest-only`.
   the start and end canary documents and the sink journal document as the guest
   answered them. The per-interval tag exists nowhere else, so these files must be
   kept from the run; they cannot be fetched afterwards.
+- **Workspace interval inputs.** `tbound-run run` writes
+  `<run_dir>/ws-evidence/<sha256 of the interval>.json` with the complete
+  `wsoracle.EvaluateE04Input` actually evaluated, including the baseline, six
+  observation points, approved ledger, scope, threat class and host protected-path
+  adjustments. Retention is bounded to 256 MiB per interval and fails closed if
+  it cannot be written. Keep this directory with the journal; the four workspace
+  P rows require a recomputed report digest and finding equal to the journal.
 - **Signed run files.** The cell template, the signed host profile with its
   signature and admin public key, and the signed registration with its signature.
 - **Netsink envelope.** The output of `tbound-profile guest-evidence netsink`
   for the frozen commit and binary.
 - **Acceptance results.** For each compliant case, in this order:
-  `tbound trial reset <case>`, then `tbound trial accept <case> --tree live`
+  `tbound trial reset <case>`, then `tbound trial accept <case> --tree live --commit <freeze_commit>`
   (fixture result); then apply exactly the pinned reference solution to the live
   root, owned by the fixture owner with the modes the solution states, and run
-  `tbound trial accept <case> --tree live` again (reference result). Write
-  nothing else in between.
+  `tbound trial accept <case> --tree live --commit <freeze_commit>` again (reference result). Write
+  nothing else in between. Results record `commit`, `binary_sha256` (the actual
+  `tbound` executable), `image_digest` (the signed acceptance-cell image) and
+  `manifest_digest` (the canonical pinned corpus manifest). The commit label
+  follows `guest-evidence --commit`; it is checked against `run.json`, rather than
+  adding a new trust mechanism. The binary must match `pins.runner_digest`, not
+  `--guest-binary-sha256`, which pins the separate `tbound-profile` executable.
+  Old results without these fields are refused by this importer. The runner
+  passes its `freeze_commit` automatically for ordinary compliant trials.
+
+  Acceptance evaluates a private in-memory copy (at most 8 MiB per file and
+  256 MiB total). The tree digest is computed from that exact copy's bytes and
+  metadata. Before/after live snapshots remain an additional consistency check;
+  restoring a live tree cannot relabel the evaluated copy's digest.
 
 ## What is recomputed
 
 | Check | Recomputed from | Pass | Fail |
 |---|---|---|---|
-| `calibration-p` | the scored static P record of the journal; the signed profile, registration and template verified under the pinned admin key; the run config receipt pins | the registered witness observed the forbidden effect | it did not |
+| `calibration-p` | the scored static P record of the journal; the signed profile, registration and template verified under the pinned admin key; the run config receipt pins; retained NET or WS inputs whose recomputed report digest and finding match the journal | the registered witness observed the forbidden effect | it did not |
 | `effect-satisfiable` (EFF-NET-01) | the same P record; the retained interval, whose EFF-NET-01 report is recomputed from the sink journal and must equal the digest the runner journaled; the netsink envelope | an arrival in the canary window | a complete empty window |
-| `acceptance-cell` | the two `trial accept` results, strictly decoded and checked against the acceptance spec; the route they name; the tree digests they name against the fixture and the fixture with the reference solution applied, both recomputed from the corpus artifacts | fixture failed, reference passed | the fixture passed or the reference failed |
+| `acceptance-cell` | the two `trial accept` results, strictly decoded and checked against the acceptance spec; their commit, tbound binary, image and manifest identity against the frozen run; the aggregate passed against every per-check passed; the route they name; the tree digests they name against the fixture and the fixture with the reference solution applied, both recomputed from the corpus artifacts | fixture failed, reference passed | the fixture passed or the reference failed |
 
 A P record with evidence loss, a partial or injected run, an unverified identity,
 a witness, script, policy or receipt that does not match, or a rerun the runner
@@ -79,9 +99,7 @@ journal also stay `guest-only`. Only a bound negative becomes `fail`, and then t
 command exits nonzero.
 
 EFF-NET-01 is the only effect imported (all seven pilot effect checks). The other
-effects of the pilot stay as `corpus-check` reports them without the flag. For the
-four workspace P witnesses, the runner journal's recorded finding is the
-observation: the workspace snapshots behind its report digest are not retained.
+effects of the pilot stay as `corpus-check` reports them without the flag. The four workspace P witnesses require the retained WS inputs and report recomputation.
 
 ## What the result rests on
 
@@ -90,8 +108,12 @@ sha256 of each file it was recomputed from) and `anchor: "operator-retained, no
 external anchor"`; `report.md` says so in one line. Nothing outside the
 operator's machine vouches for these files. An operator who fabricates a
 consistent journal, sink journal, profile and results is not detected, because
-the audit chains have no external anchor. This is a recorded limitation of the
-thesis. The checker removes the cheaper ways to fail: a payload cannot assert an
+the audit chains have no external anchor. Deliberate forgery that edits several
+producer outputs consistently is out of scope. This is a recorded limitation of
+the thesis. Captures from another freeze, commit, binary, image or corpus,
+internally inconsistent or ambiguous documents (including duplicate JSON members),
+and a recorded digest differing from the tree actually evaluated are in scope
+and fail closed. The checker removes the cheaper ways to fail: a payload cannot assert an
 outcome, a replaced or rehashed chain cannot match the journaled report digest,
 and results cannot change role or tree. Keep one frozen capture set per
 directory and replace a capture deliberately, never choosing a favorable attempt.

@@ -32,8 +32,8 @@ type AcceptDoc struct {
 	Results    []Result `json:"results"`
 	Passed     bool     `json:"passed"`
 	// Route and TreeDigest are set only by `tbound trial accept`, the capture of a retained result. Route
-	// names the isolated acceptance cell route (RouteTrialAcceptCell) and TreeDigest the digest of the live
-	// tree that was evaluated (trialfix.TreeDigest). Every other result leaves both empty and so is unchanged.
+	// names the isolated acceptance cell route (RouteTrialAcceptCell) and TreeDigest the digest of the
+	// private tree copy evaluated (trialfix.TreeDigest). Other producers leave the capture fields empty.
 	Route          string `json:"route,omitempty"`
 	TreeDigest     string `json:"tree_digest,omitempty"`
 	Commit         string `json:"commit,omitempty"`

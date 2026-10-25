@@ -38,9 +38,9 @@ import (
 // by its oracles) is refused with an error and no document.
 //
 // The only tree is the live root. --tree is accepted for the runner's explicitness and must say
-// "live". The document also names its route (taskaccept.RouteTrialAcceptCell) and the digest of the live
-// tree it judged (trialfix.TreeDigest), which is what ties a retained result to the fixture or to the
-// fixture with the reference solution applied.
+// "live". The document names its route (taskaccept.RouteTrialAcceptCell) and the digest of the private
+// copy it judged (trialfix.TreeDigest), tying it to the fixture or its reference solution. Captures also
+// take --commit F, the same operator-supplied freeze label as guest-evidence; import verifies it.
 
 // trialCase is what the task verbs take from the pinned corpus manifest for one case.
 type trialCase struct {
@@ -159,7 +159,7 @@ func checkTrialCaseID(caseID string) error {
 	return nil
 }
 
-// parseTrialAccept accepts "<case_id>" or "<case_id> --tree live".
+// parseTrialAccept accepts "<case_id>" or "<case_id> --tree live" after the capture label is removed.
 func parseTrialAccept(args []string) (string, error) {
 	if len(args) != 1 && len(args) != 3 {
 		return "", errors.New("accept takes a case id and optionally --tree live")
@@ -236,8 +236,7 @@ func trialAccept(ctx context.Context, args []string, env trialEnv) (taskaccept.A
 		return taskaccept.AcceptDoc{}, err
 	}
 	defer root.Close()
-	// The result is bound to the tree it judged: the digest before and after must agree, so a tree that
-	// changes while it is evaluated yields no document.
+	// Live snapshots remain a consistency check. The result's digest comes from the private copy below.
 	before, err := env.liveTreeDigest(device, inode)
 	if err != nil {
 		return taskaccept.AcceptDoc{}, err

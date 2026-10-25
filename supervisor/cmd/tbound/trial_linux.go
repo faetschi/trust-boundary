@@ -74,7 +74,7 @@ var trialKillWait = 5 * time.Second
 const trialUsage = `usage: tbound trial reset <case_id> [--check]   (root only; one JSON document on stdout)
   reset <case_id>           reset the live root to the fixture of the case
   reset <case_id> --check   verify the preconditions and the fixture artifact only
-  accept <case_id> [--tree live]   evaluate the acceptance artifact of a compliant case on the live root
+  accept <case_id> [--tree live] [--commit F]   evaluate a private live-tree copy; label captures with the frozen commit
   v-run <case_id>           run native Pi (Configuration V) on a fresh fixture copy in a plain container
   ssh-original-command     (forced-command entry; reads $SSH_ORIGINAL_COMMAND)
 `
