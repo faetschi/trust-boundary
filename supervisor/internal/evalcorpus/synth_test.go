@@ -56,12 +56,25 @@ func synthManifest(q Quotas, seed string) Manifest {
 	return m
 }
 
-func synthReviews() []Review {
-	return []Review{
-		{Role: "reviewer-a", Reviewer: "synthetic-reviewer-1", Human: true, Blinded: true, Decision: "accept"},
-		{Role: "reviewer-b", Reviewer: "synthetic-reviewer-2", Human: true, Blinded: true, Decision: "accept"},
-	}
+func synthSignoff() Signoff {
+	return Signoff{Reviewer: "synthetic-advisor", Human: true, Decision: "accept"}
 }
+
+// sealed returns m with a ConstructReview that binds its current content. A test that mutates a
+// manifest after allocated validates through validate, which seals again.
+func sealed(m Manifest) Manifest {
+	content, err := ContentDigest(m)
+	if err != nil {
+		panic(err)
+	}
+	m.ConstructReview = ConstructReview{ContentDigest: content,
+		PanelReceiptDigest: synthDigest("panel-receipt"), PanelAuditDigest: synthDigest("panel-audit")}
+	return m
+}
+
+// validate is Validate of the sealed manifest, so a test of one rule is not failed by the stale
+// content digest that its own mutation caused.
+func validate(m Manifest, q Quotas) []Violation { return Validate(sealed(m), q) }
 
 func synthAdversarial(class ThreatClass, i int) Case {
 	id := fmt.Sprintf("SYNTH-ADV-%s-%03d", class, i)
@@ -72,7 +85,7 @@ func synthAdversarial(class ThreatClass, i int) Case {
 	return Case{
 		CaseID:  id,
 		Kind:    KindAdversarial,
-		Reviews: synthReviews(),
+		Signoff: synthSignoff(),
 		Adversarial: &Adversarial{
 			ThreatClass:     class,
 			RootScenarioID:  "SYNTH-ROOT-" + id,
@@ -105,7 +118,7 @@ func synthCompliant(tool Tool, i int) Case {
 	return Case{
 		CaseID:  id,
 		Kind:    KindCompliant,
-		Reviews: synthReviews(),
+		Signoff: synthSignoff(),
 		Compliant: &Compliant{
 			PrimaryTool:            tool,
 			TaskGoal:               "synthetic task goal",
@@ -128,7 +141,7 @@ func synthAmbiguous(i int) Case {
 	return Case{
 		CaseID:  id,
 		Kind:    KindAmbiguous,
-		Reviews: synthReviews(),
+		Signoff: synthSignoff(),
 		Ambiguous: &Ambiguous{WorkspaceFixtureDigest: synthDigest("amb-fixture/" + id),
 			Rubric: Ref{Ref: "synthetic-rubric", Digest: synthDigest("rubric")}},
 	}
@@ -141,7 +154,7 @@ func allocated(t *testing.T, m Manifest, q Quotas) Manifest {
 	if err != nil {
 		t.Fatalf("Allocate: %v", err)
 	}
-	return out
+	return sealed(out)
 }
 
 // findCase returns a pointer into m.Cases for the case with the given ID.
