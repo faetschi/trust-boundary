@@ -200,9 +200,11 @@ func (e *productTurnEnv) gatePolicy(projectID, policyDigest string) (gate.Policy
 	return policy, nil
 }
 
-func (e *productTurnEnv) storeOptions() sessionrepo.Options {
+// storeOptions are the options a turn's Store was created under. The admission scope is the one the catalog
+// recorded when it admitted that turn, not the registration now in force.
+func (e *productTurnEnv) storeOptions(turn productsession.Turn) sessionrepo.Options {
 	return sessionrepo.Options{PolicyDigest: e.StorePolicyDigest, MetadataPolicyDigest: e.MetadataPolicyDigest,
-		Limits: workspace.DefaultLimits(), XattrVisibility: e.Xattr}
+		Limits: workspace.DefaultLimits(), XattrVisibility: e.Xattr, AdmissionScope: turn.Scope.AdmissionScope()}
 }
 
 // composeProductTurnWorkflow builds one fresh governed workflow for an admitted turn, up to but not
@@ -269,6 +271,9 @@ func (e *productTurnEnv) composeProductTurnWorkflow(ctx context.Context, turn pr
 		return nil, err
 	}
 	w.authority = authority
+	if err := authority.BindAdmissionScope(turn.Scope.AdmissionScope()); err != nil {
+		return nil, err
+	}
 	storeRoot, err := os.Open(storePath)
 	if err != nil {
 		return nil, err

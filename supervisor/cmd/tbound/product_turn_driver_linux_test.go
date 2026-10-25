@@ -108,6 +108,15 @@ type productDriverFixture struct {
 // opens a real catalog, and creates a session in mode over a project holding task.txt.
 func newProductDriverFixture(t *testing.T, mode string) *productDriverFixture {
 	t.Helper()
+	return newScopedProductDriverFixture(t, mode, nil, false, nil)
+}
+
+// newScopedProductDriverFixture is newProductDriverFixture for a project registered with scope (nil
+// registers none). seed adds files to the project before the first measurement, and readOnly creates
+// the session read-only.
+func newScopedProductDriverFixture(t *testing.T, mode string, scope *productsession.ProductScope, readOnly bool,
+	seed func(projectDir string)) *productDriverFixture {
+	t.Helper()
 	root := privateGovernedTestRoot(t)
 	projectDir, stateRoot := filepath.Join(root, "project"), filepath.Join(root, "state")
 	for _, dir := range []string{projectDir, stateRoot} {
@@ -116,14 +125,18 @@ func newProductDriverFixture(t *testing.T, mode string) *productDriverFixture {
 		}
 	}
 	writeProductDriverFile(t, projectDir, "task.txt", "turn fixture\n")
+	if seed != nil {
+		seed(projectDir)
+	}
 	// Publication applies only to a managed root holding the effect oracle's fence directory.
 	fence := filepath.Join(projectDir, "lost+found")
 	if err := os.Mkdir(fence, 0o755); err != nil || os.Chmod(fence, 0o755) != nil {
 		t.Fatal(err)
 	}
-	f := openProductDriverFixture(t, root)
+	f := openProductDriverFixtureWithScope(t, root, scope)
 	session, replayed, err := f.env.Catalog.CreateSession(f.principal, productsession.CreateSessionRequest{ProjectID: productDriverProject,
-		ProviderProfile: productDriverProfile, PublicationMode: mode, Budget: f.env.Registration.Limits.Session, RequestKey: "create-1"}, f.measure(t))
+		ProviderProfile: productDriverProfile, PublicationMode: mode, Budget: f.env.Registration.Limits.Session, RequestKey: "create-1",
+		ReadOnly: readOnly}, f.measure(t))
 	if err != nil || replayed {
 		t.Fatalf("create session: replayed=%v err=%v", replayed, err)
 	}
@@ -134,6 +147,11 @@ func newProductDriverFixture(t *testing.T, mode string) *productDriverFixture {
 // openProductDriverFixture opens the registration, catalog and env over the project and state
 // directories under root, as a fresh process does after a restart.
 func openProductDriverFixture(t *testing.T, root string) *productDriverFixture {
+	t.Helper()
+	return openProductDriverFixtureWithScope(t, root, nil)
+}
+
+func openProductDriverFixtureWithScope(t *testing.T, root string, scope *productsession.ProductScope) *productDriverFixture {
 	t.Helper()
 	projectDir, stateRoot := filepath.Join(root, "project"), filepath.Join(root, "state")
 	policy, err := gate.NewPolicy(gate.Profile{Version: gate.ProfileVersion, Rules: []gate.Rule{
@@ -156,7 +174,7 @@ func openProductDriverFixture(t *testing.T, root string) *productDriverFixture {
 		ServiceIdentity: "tbound-product-test", AllowedPrincipals: []productsession.Principal{f.principal},
 		Projects: []productsession.Project{{ProjectID: productDriverProject, RootIdentityDigest: sha256DigestFromBarePin(identity),
 			PolicyDigest: sha256DigestFromBarePin(barePolicyDigest(policy.Digest())), BashOutputPaths: []string{},
-			PublicationModes: []string{productsession.PublicationReview, productsession.PublicationAuto}}},
+			PublicationModes: []string{productsession.PublicationReview, productsession.PublicationAuto}, Scope: scope}},
 		ProviderProfiles: []string{productDriverProfile},
 		Limits: productsession.Limits{Turn: productsession.Budget{HostCalls: 20, Tokens: 20 * 1024, DurationSeconds: 600},
 			Session: productsession.Budget{HostCalls: 60, Tokens: 60 * 1024, DurationSeconds: 1800}, MaxTurnsPerSession: 10,

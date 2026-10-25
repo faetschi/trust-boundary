@@ -263,6 +263,16 @@ New error codes: `CANDIDATE_MISMATCH`, `REVIEW_NOT_PENDING`, `CANCEL_NOT_ALLOWED
 - A registration project carries `scope`. A project without one keeps the milestone 1 behaviour.
 - A session may be created `read_only`. That empties `writable` for its turns, so no tool can change the project. A read-only command can still run.
 
+Decisions taken during implementation:
+
+- `read_only` is a `create_session` request field and a session field. Both omit it when false, so existing digests and records are unchanged. The request payload digest covers it, and replay recomputes that digest from the record.
+- A turn's effective scope is decided once, at admission: the project's `scope`, with `writable` emptied for a read-only session. A read-only session on a project without `scope` runs under the product rule with all three lists empty, so it denies every change. A project without `scope` and a normal session keeps the exact-path rule.
+- `product_turn_admitted` records the effective scope as `scope` (absent for the exact-path rule). The reducer requires it to equal what the loaded registration and the session produce, like `policy_digest`. The turn's Store is created under it, and a retained Store reopens under the turn's own recorded scope, never under the registration in force later. A new registration may therefore change a project's scope between turns without invalidating a predecessor.
+- A typed `write`, `edit` or `delete` still declares its own path as its operation's output scope, and that field is still validated. Under `product-scope/v1` `Decide` ignores it, so it can neither widen nor narrow the rule.
+- A change list holds one entry per path whose state differs. A rename is two entries (the old path removed, the new path created) and each is checked, so the two ends of a rename may sit on different sides of a scope boundary and any refusal denies the candidate.
+- A candidate refused by delta admission is a normal DENY for the provider, with the reason code and hint. The turn records it in the receipt's `denials` and continues. If nothing else changed the turn is `no_diff`.
+- Registration validation uses the Store's own list validator: canonical relative paths, strictly sorted, at most 128 per list, no path in two lists. An empty `scope` object is a valid scope that admits nothing, and it is not the same as no `scope`.
+
 ### Bash in product turns
 
 Product turns allow Bash when the registration project allows it. Under the product rule, the command's output collection is decided by the effective product scope, not by an operator list of exact paths. A Bash turn must also be reopenable as a predecessor, so its retained command settlements are verified by the historical verifier. Real cell execution needs the product guest. Local tests use the existing development command runner.
@@ -286,6 +296,15 @@ Product turns allow Bash when the registration project allows it. Under the prod
 - If any check fails, nothing is written and the original content is kept.
 - The client writes a recovery record before applying, and removes it only after a verified result.
 - If writer exclusion cannot be established, the client offers the bundle for manual application and claims no race safety.
+
+### Import and export decisions taken during implementation
+
+- Both streams are the format line, a 4-byte big-endian header length, a canonical JSON header, and then the raw file contents in header order. The reader re-encodes the header and refuses any byte difference, so exactly one encoding is accepted. Digests are `sha256:` over the header bytes.
+- Every parent directory must be listed in the manifest. `.git` and a root `lost+found` are always excluded. Excluded subtrees are never read.
+- Only the executable bit is carried. New files are created 0644 or 0755. A change of type (file to directory) is refused.
+- Apply validates the baseline digest, the declared target digest and every content digest before the first write. It refuses changes to files Git does not track, because their original content could not be restored. The recovery record lists the pre-apply entries, and restoring relies on the clean tracked tree in Git.
+- `apply` takes the same `--exclude` list as `bundle`, so both sides compute the same manifest.
+- `import` and `apply` do not check which account runs them. The separation between service and user comes from who runs each command, as the help text states.
 
 ### Development environment
 

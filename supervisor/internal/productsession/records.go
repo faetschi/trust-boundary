@@ -63,6 +63,7 @@ type sessionCreatedRecord struct {
 	ProviderProfile string    `json:"provider_profile"`
 	PublicationMode string    `json:"publication_mode"`
 	Budget          Budget    `json:"budget"`
+	ReadOnly        bool      `json:"read_only,omitempty"`
 	BaselineDigest  string    `json:"baseline_digest"`
 	RequestKey      string    `json:"request_key"`
 	PayloadDigest   string    `json:"payload_digest"`
@@ -88,6 +89,8 @@ type turnAdmittedRecord struct {
 	PredecessorReceiptDigest string    `json:"predecessor_receipt_digest"`
 	Reservation              Budget    `json:"reservation"`
 	SessionRevision          uint64    `json:"session_revision"`
+	// Scope is the admission scope in force for the turn; absent is the exact-path rule.
+	Scope *ProductScope `json:"scope,omitempty"`
 }
 
 type turnLinkedRecord struct {
