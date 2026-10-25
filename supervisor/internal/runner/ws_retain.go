@@ -51,7 +51,7 @@ func VerifyWS(raw []byte, interval, pred string, ref OracleRef, finding Finding)
 	if len(raw) > MaxWSRetainedBytes {
 		return errors.New("workspace evidence exceeds retention limit")
 	}
-	if err := protocol.ValidateStrictJSON(raw); err != nil {
+	if err := protocol.ValidateEvidenceJSON(raw); err != nil {
 		return err
 	}
 	var r RetainedWS

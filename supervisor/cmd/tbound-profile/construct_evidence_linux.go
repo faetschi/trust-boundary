@@ -323,7 +323,7 @@ func (c *constructCtx) loadJournal(use *constructUse, m *constructMap) (*runner.
 	if c.journal == nil && c.journalErr == nil {
 		// Import is stricter than recovery/report replay: every complete record must be unambiguous.
 		for _, record := range bytes.Split(bytes.TrimSpace(data), []byte{'\n'}) {
-			if err := protocol.ValidateStrictJSON(record); err != nil {
+			if err := protocol.ValidateEvidenceJSON(record); err != nil {
 				c.journalErr = fmt.Errorf("runner journal %s: %w", m.Journal, err)
 				return nil, c.journalErr
 			}
@@ -545,7 +545,7 @@ func (c *constructCtx) acceptOutcome(use *constructUse, cm constructCaseMap, cs 
 		if err != nil {
 			return "", "", err
 		}
-		if err := protocol.ValidateStrictJSON(raw); err != nil {
+		if err := protocol.ValidateEvidenceJSON(raw); err != nil {
 			return "", "", err
 		}
 		result, err := runner.ParseAcceptDoc(raw)

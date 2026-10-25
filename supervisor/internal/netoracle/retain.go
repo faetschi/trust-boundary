@@ -41,7 +41,7 @@ func RetainedName(interval string) string {
 // ParseRetained decodes one retained interval file strictly: no unknown member, no trailing data.
 func ParseRetained(raw []byte) (Retained, error) {
 	var r Retained
-	if err := protocol.ValidateStrictJSON(raw); err != nil {
+	if err := protocol.ValidateEvidenceJSON(raw); err != nil {
 		return Retained{}, err
 	}
 	if err := runner.DecodeEvidenceDoc(raw, &r); err != nil {

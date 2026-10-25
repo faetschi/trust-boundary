@@ -312,6 +312,13 @@ func ValidateStrictJSON(raw []byte) error {
 	return checkStrictJSON(raw)
 }
 
+// ValidateEvidenceJSON applies the strict JSON checks and rejects member names
+// equal under encoding/json's case folding. The importer must bound raw's size.
+// Protocol frames retain their case-sensitive keys and MaxFrameBytes limit.
+func ValidateEvidenceJSON(raw []byte) error {
+	return checkJSON(raw, true)
+}
+
 // DecodeResult validates a supervisor result before it is released to the
 // adapter. Unknown fields and duplicate JSON keys are rejected.
 func DecodeResult(raw []byte) (Result, error) {
@@ -415,6 +422,10 @@ func checkExactProposalKeys(raw []byte) error {
 }
 
 func checkStrictJSON(raw []byte) error {
+	return checkJSON(raw, false)
+}
+
+func checkJSON(raw []byte, foldKeys bool) error {
 	if !utf8.Valid(raw) {
 		return errors.New("JSON is not valid UTF-8")
 	}
@@ -423,7 +434,7 @@ func checkStrictJSON(raw []byte) error {
 	}
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.UseNumber()
-	if err := scanJSONValue(decoder, 0); err != nil {
+	if err := scanJSONValue(decoder, 0, foldKeys); err != nil {
 		return err
 	}
 	if _, err := decoder.Token(); err != io.EOF {
@@ -435,7 +446,7 @@ func checkStrictJSON(raw []byte) error {
 	return nil
 }
 
-func scanJSONValue(decoder *json.Decoder, depth int) error {
+func scanJSONValue(decoder *json.Decoder, depth int, foldKeys bool) error {
 	token, err := decoder.Token()
 	if err != nil {
 		return err
@@ -470,11 +481,15 @@ func scanJSONValue(decoder *json.Decoder, depth int) error {
 			if !ok {
 				return errors.New("JSON object key is not a string")
 			}
-			if _, duplicate := seen[key]; duplicate {
+			identity := key
+			if foldKeys {
+				identity = foldJSONKey(key)
+			}
+			if _, duplicate := seen[identity]; duplicate {
 				return fmt.Errorf("duplicate JSON object key %q", key)
 			}
-			seen[key] = struct{}{}
-			if err := scanJSONValue(decoder, depth+1); err != nil {
+			seen[identity] = struct{}{}
+			if err := scanJSONValue(decoder, depth+1, foldKeys); err != nil {
 				return err
 			}
 		}
@@ -484,7 +499,7 @@ func scanJSONValue(decoder *json.Decoder, depth int) error {
 		}
 	case '[':
 		for decoder.More() {
-			if err := scanJSONValue(decoder, depth+1); err != nil {
+			if err := scanJSONValue(decoder, depth+1, foldKeys); err != nil {
 				return err
 			}
 		}
@@ -496,6 +511,20 @@ func scanJSONValue(decoder *json.Decoder, depth int) error {
 		return errors.New("unexpected JSON delimiter")
 	}
 	return nil
+}
+
+// The smallest rune of each SimpleFold cycle gives the same equivalence classes
+// as strings.EqualFold and encoding/json's foldName, including long s and Kelvin K.
+func foldJSONKey(key string) string {
+	return strings.Map(func(r rune) rune {
+		for {
+			next := unicode.SimpleFold(r)
+			if next <= r {
+				return next
+			}
+			r = next
+		}
+	}, key)
 }
 
 // Escaped UTF-16 surrogate pairs are accepted as Unicode scalar values, while
