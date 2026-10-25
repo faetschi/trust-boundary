@@ -11,11 +11,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	"tbound/supervisor/internal/corpusadmit"
 	"tbound/supervisor/internal/evalcorpus"
+	"tbound/supervisor/internal/panelaudit"
 	"tbound/supervisor/internal/taskaccept"
 	"tbound/supervisor/internal/trialfix"
 )
@@ -99,6 +101,68 @@ func fixtureManifest(t *testing.T, q evalcorpus.Quotas, seed string) evalcorpus.
 	return allocated
 }
 
+// panelTweak changes one thing about a panel run so that a test can show the refusal it causes. A nil
+// member leaves its part as tbound-panel and the advisor wrote it.
+type panelTweak struct {
+	receipt, audit func(doc map[string]any)
+	manifest       func(m *evalcorpus.Manifest)
+}
+
+// tweakedPanel marks the first and third case audited, writes the receipt.json and audit.json of a
+// complete panel run over the content of m, signed by the advisor, to a new directory under dir, and
+// returns m sealed to the bytes of those files with the two corpus-digest flags.
+func tweakedPanel(t *testing.T, dir string, m evalcorpus.Manifest, tw panelTweak) (evalcorpus.Manifest, []string) {
+	t.Helper()
+	m.Cases = slices.Clone(m.Cases)
+	var listed []any
+	for _, i := range []int{0, 2} {
+		m.Cases[i].Signoff.Audited, m.Cases[i].Signoff.Resolution = true, "defensible under the frozen rubric"
+		listed = append(listed, map[string]any{"case_id": m.Cases[i].CaseID, "reasons": []string{"random unanimous sample"},
+			"advisor_signoff": map[string]string{"decision": "accept", "resolution": "defensible under the frozen rubric",
+				"identity": "synthetic-advisor", "signed_at": "2026-10-25T10:00:00+02:00"}})
+	}
+	if tw.manifest != nil {
+		tw.manifest(&m)
+	}
+	content, err := evalcorpus.ContentDigest(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipt := map[string]any{"schema": panelaudit.ReceiptSchema, "dry_run": false, "provider": "openrouter", "content_digest": content,
+		"cases": len(m.Cases), "complete_cases": len(m.Cases)}
+	audit := map[string]any{"schema": panelaudit.AuditSchema, "dry_run": false, "provider": "openrouter", "content_digest": content, "cases": listed}
+	if tw.receipt != nil {
+		tw.receipt(receipt)
+	}
+	if tw.audit != nil {
+		tw.audit(audit)
+	}
+	sub, err := os.MkdirTemp(dir, "panel-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	write := func(name string, doc map[string]any) (string, string) {
+		raw, err := json.MarshalIndent(doc, "", "  ")
+		if err != nil {
+			t.Fatal(err)
+		}
+		path := filepath.Join(sub, name)
+		if err := os.WriteFile(path, raw, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return path, panelaudit.Digest(raw)
+	}
+	receiptPath, receiptDigest := write("receipt.json", receipt)
+	auditPath, auditDigest := write("audit.json", audit)
+	m.ConstructReview = evalcorpus.ConstructReview{ContentDigest: content, PanelReceiptDigest: receiptDigest, PanelAuditDigest: auditDigest}
+	return m, []string{"--panel-receipt", receiptPath, "--panel-audit", auditPath}
+}
+
+func signedPanel(t *testing.T, dir string, m evalcorpus.Manifest) (evalcorpus.Manifest, []string) {
+	t.Helper()
+	return tweakedPanel(t, dir, m, panelTweak{})
+}
+
 // writeManifest writes the canonical encoding of m, the form the service stores.
 func writeManifest(t *testing.T, dir, name string, m evalcorpus.Manifest) string {
 	t.Helper()
@@ -119,14 +183,19 @@ func runCLI(args ...string) (string, string, error) {
 	return out.String(), errOut.String(), err
 }
 
+// runDigest runs corpus-digest with the panel flags of the test's signed manifest.
+func runDigest(panel []string, args ...string) (string, string, error) {
+	return runCLI(append(append([]string{"corpus-digest"}, panel...), args...)...)
+}
+
 func TestCorpusDigestPrintsTheDigestTheServiceAccepts(t *testing.T) {
-	m := fixtureManifest(t, evalcorpus.PilotQuotas(), "corpus-digest-seed")
+	m, panel := signedPanel(t, t.TempDir(), fixtureManifest(t, evalcorpus.PilotQuotas(), "corpus-digest-seed"))
 	path := writeManifest(t, t.TempDir(), "corpus.json", m)
 	want, err := evalcorpus.Digest(m)
 	if err != nil {
 		t.Fatal(err)
 	}
-	out, _, err := runCLI("corpus-digest", "--manifest", path, "--quota-profile", "pilot")
+	out, _, err := runDigest(panel, "--manifest", path, "--quota-profile", "pilot")
 	if err != nil {
 		t.Fatalf("corpus-digest: %v", err)
 	}
@@ -153,7 +222,7 @@ func TestCorpusDigestPrintsTheDigestTheServiceAccepts(t *testing.T) {
 	if v := evalcorpus.Validate(loaded, evalcorpus.PilotQuotas()); len(v) != 0 {
 		t.Fatalf("service-side validation: %v", v)
 	}
-	again, _, err := runCLI("corpus-digest", "--manifest", path, "--quota-profile", "pilot")
+	again, _, err := runDigest(panel, "--manifest", path, "--quota-profile", "pilot")
 	if err != nil || again != out {
 		t.Fatalf("second run %q %v", again, err)
 	}
@@ -162,7 +231,7 @@ func TestCorpusDigestPrintsTheDigestTheServiceAccepts(t *testing.T) {
 func TestCorpusDigestRefusesInvalidManifests(t *testing.T) {
 	dir := t.TempDir()
 	q := evalcorpus.PilotQuotas()
-	good := fixtureManifest(t, q, "corpus-digest-seed")
+	good, goodPanel := signedPanel(t, dir, fixtureManifest(t, q, "corpus-digest-seed"))
 
 	duplicate := fixtureManifest(t, q, "corpus-digest-seed")
 	duplicate.Cases[1].CaseID = duplicate.Cases[0].CaseID
@@ -186,16 +255,24 @@ func TestCorpusDigestRefusesInvalidManifests(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for name, path := range map[string]string{
-		"duplicate case id":  writeManifest(t, dir, "dup.json", duplicate),
-		"case without trial": writeManifest(t, dir, "notrial.json", noTrial),
-		"blank prompt":       writeManifest(t, dir, "blank.json", blankPrompt),
-		"wrong pilot counts": writeManifest(t, dir, "short.json", short),
-		"not json":           notJSON,
-		"unknown field":      unknownField,
-		"missing file":       filepath.Join(dir, "absent.json"),
+	type input struct {
+		path  string
+		panel []string
+	}
+	signed := func(name string, m evalcorpus.Manifest) input {
+		m, panel := signedPanel(t, dir, m)
+		return input{writeManifest(t, dir, name, m), panel}
+	}
+	for name, in := range map[string]input{
+		"duplicate case id":  signed("dup.json", duplicate),
+		"case without trial": signed("notrial.json", noTrial),
+		"blank prompt":       signed("blank.json", blankPrompt),
+		"wrong pilot counts": signed("short.json", short),
+		"not json":           {notJSON, goodPanel},
+		"unknown field":      {unknownField, goodPanel},
+		"missing file":       {filepath.Join(dir, "absent.json"), goodPanel},
 	} {
-		out, _, err := runCLI("corpus-digest", "--manifest", path, "--quota-profile", "pilot")
+		out, _, err := runDigest(in.panel, "--manifest", in.path, "--quota-profile", "pilot")
 		if err == nil {
 			t.Errorf("%s: accepted", name)
 		}
@@ -206,38 +283,38 @@ func TestCorpusDigestRefusesInvalidManifests(t *testing.T) {
 }
 
 func TestCorpusDigestPilotManifestIsRefusedUnderThesisQuotas(t *testing.T) {
-	m := fixtureManifest(t, evalcorpus.PilotQuotas(), "corpus-digest-seed")
+	m, panel := signedPanel(t, t.TempDir(), fixtureManifest(t, evalcorpus.PilotQuotas(), "corpus-digest-seed"))
 	path := writeManifest(t, t.TempDir(), "corpus.json", m)
 	for _, args := range [][]string{
-		{"corpus-digest", "--manifest", path},
-		{"corpus-digest", "--manifest", path, "--quota-profile", "thesis"},
+		{"--manifest", path},
+		{"--manifest", path, "--quota-profile", "thesis"},
 	} {
-		out, _, err := runCLI(args...)
+		out, _, err := runDigest(panel, args...)
 		if err == nil || !strings.Contains(err.Error(), "count.") || out != "" {
 			t.Fatalf("%v: out %q err %v, want a count.* refusal", args, out, err)
 		}
 	}
-	if _, _, err := runCLI("corpus-digest", "--manifest", path, "--quota-profile", "bogus"); err == nil {
+	if _, _, err := runDigest(panel, "--manifest", path, "--quota-profile", "bogus"); err == nil {
 		t.Fatal("unknown quota profile accepted")
 	}
-	if _, _, err := runCLI("corpus-digest", "--quota-profile", "pilot"); err == nil {
+	if _, _, err := runDigest(panel, "--quota-profile", "pilot"); err == nil {
 		t.Fatal("missing --manifest accepted")
 	}
 }
 
 func TestCorpusDigestHostCeilings(t *testing.T) {
-	m := fixtureManifest(t, evalcorpus.PilotQuotas(), "corpus-digest-seed") // budgets 4 / 10000 / 600
+	m, panel := signedPanel(t, t.TempDir(), fixtureManifest(t, evalcorpus.PilotQuotas(), "corpus-digest-seed")) // budgets 4 / 10000 / 600
 	path := writeManifest(t, t.TempDir(), "corpus.json", m)
-	if _, _, err := runCLI("corpus-digest", "--manifest", path, "--quota-profile", "pilot",
+	if _, _, err := runDigest(panel, "--manifest", path, "--quota-profile", "pilot",
 		"--max-host-calls", "4", "--max-tokens", "10000", "--duration-seconds", "600"); err != nil {
 		t.Fatalf("ceilings equal to the budgets: %v", err)
 	}
-	if _, _, err := runCLI("corpus-digest", "--manifest", path, "--quota-profile", "pilot",
+	if _, _, err := runDigest(panel, "--manifest", path, "--quota-profile", "pilot",
 		"--max-host-calls", "3", "--max-tokens", "10000", "--duration-seconds", "600"); err == nil ||
 		!strings.Contains(err.Error(), "host ceilings") {
 		t.Fatalf("a budget over the ceiling was accepted: %v", err)
 	}
-	if _, _, err := runCLI("corpus-digest", "--manifest", path, "--quota-profile", "pilot", "--max-host-calls", "4"); err == nil {
+	if _, _, err := runDigest(panel, "--manifest", path, "--quota-profile", "pilot", "--max-host-calls", "4"); err == nil {
 		t.Fatal("a partial ceiling set was accepted")
 	}
 }
@@ -275,7 +352,7 @@ func withArtifacts(t *testing.T, m evalcorpus.Manifest) (evalcorpus.Manifest, st
 			writeTaskArtifacts(t, dir, c.Compliant, c.CaseID)
 		}
 	}
-	return sealConstructReview(t, m), dir
+	return m, dir
 }
 
 // writeTaskArtifacts pins a compliant case's acceptance test (case.txt must say "solved")
@@ -297,12 +374,13 @@ func writeTaskArtifacts(t *testing.T, dir string, c *evalcorpus.Compliant, caseI
 
 func TestCorpusDigestArtifactsMustVerify(t *testing.T) {
 	m, artifacts := withArtifacts(t, fixtureManifest(t, evalcorpus.PilotQuotas(), "corpus-digest-seed"))
+	m, panel := signedPanel(t, t.TempDir(), m)
 	path := writeManifest(t, t.TempDir(), "corpus.json", m)
 	want, err := evalcorpus.Digest(m)
 	if err != nil {
 		t.Fatal(err)
 	}
-	out, _, err := runCLI("corpus-digest", "--manifest", path, "--quota-profile", "pilot", "--artifacts", artifacts)
+	out, _, err := runDigest(panel, "--manifest", path, "--quota-profile", "pilot", "--artifacts", artifacts)
 	if err != nil || out != want+"\n" {
 		t.Fatalf("with matching artifacts: out %q err %v, want %q", out, err, want)
 	}
@@ -312,16 +390,16 @@ func TestCorpusDigestArtifactsMustVerify(t *testing.T) {
 	if err := os.Remove(filepath.Join(artifacts, name)); err != nil {
 		t.Fatal(err)
 	}
-	out, _, err = runCLI("corpus-digest", "--manifest", path, "--quota-profile", "pilot", "--artifacts", artifacts)
+	out, _, err = runDigest(panel, "--manifest", path, "--quota-profile", "pilot", "--artifacts", artifacts)
 	if err == nil || out != "" || !strings.Contains(err.Error(), m.Cases[0].CaseID) {
 		t.Fatalf("with a missing artifact: out %q err %v, want a refusal naming %s", out, err, m.Cases[0].CaseID)
 	}
 
 	// Without the flag the artifacts are not looked at.
-	if _, _, err := runCLI("corpus-digest", "--manifest", path, "--quota-profile", "pilot"); err != nil {
+	if _, _, err := runDigest(panel, "--manifest", path, "--quota-profile", "pilot"); err != nil {
 		t.Fatalf("without --artifacts: %v", err)
 	}
-	if _, _, err := runCLI("corpus-digest", "--manifest", path, "--quota-profile", "pilot", "--artifacts", filepath.Join(artifacts, "absent")); err == nil {
+	if _, _, err := runDigest(panel, "--manifest", path, "--quota-profile", "pilot", "--artifacts", filepath.Join(artifacts, "absent")); err == nil {
 		t.Fatal("an artifact directory that does not exist was accepted")
 	}
 }
@@ -348,8 +426,9 @@ func TestCorpusDigestRefusesRejectedAndPlaceholderReviews(t *testing.T) {
 		{"placeholder reviewer", placeholderID, placeholder, "review.placeholder"},
 		{"free-text decision", freeText.Cases[5].CaseID, freeText, "review.decision"},
 	} {
-		path := writeManifest(t, dir, strings.ReplaceAll(tc.name, " ", "-")+".json", tc.m)
-		out, _, err := runCLI("corpus-digest", "--manifest", path, "--quota-profile", "pilot")
+		m, panel := signedPanel(t, dir, tc.m)
+		path := writeManifest(t, dir, strings.ReplaceAll(tc.name, " ", "-")+".json", m)
+		out, _, err := runDigest(panel, "--manifest", path, "--quota-profile", "pilot")
 		if err == nil {
 			t.Errorf("%s: accepted", tc.name)
 			continue
@@ -359,6 +438,133 @@ func TestCorpusDigestRefusesRejectedAndPlaceholderReviews(t *testing.T) {
 		}
 		if !strings.Contains(err.Error(), tc.rule) || !strings.Contains(err.Error(), tc.id) {
 			t.Errorf("%s: error %q does not name rule %s and case %s", tc.name, err, tc.rule, tc.id)
+		}
+	}
+}
+
+func TestCorpusDigestRequiresBothPanelFiles(t *testing.T) {
+	m, panel := signedPanel(t, t.TempDir(), fixtureManifest(t, evalcorpus.PilotQuotas(), "corpus-digest-seed"))
+	path := writeManifest(t, t.TempDir(), "corpus.json", m)
+	for name, args := range map[string][]string{
+		"no panel flags": {},
+		"receipt only":   panel[:2],
+		"audit only":     panel[2:],
+	} {
+		out, _, err := runCLI(append([]string{"corpus-digest", "--manifest", path, "--quota-profile", "pilot"}, args...)...)
+		if err == nil || out != "" || !strings.Contains(err.Error(), "--panel-") {
+			t.Errorf("%s: out %q err %v, want a refusal naming the panel flags", name, out, err)
+		}
+	}
+}
+
+// Every refusal below leaves the manifest otherwise valid, so the panel evidence is the only fault.
+func TestCorpusDigestRefusesPanelEvidenceThatDoesNotBackTheManifest(t *testing.T) {
+	q := evalcorpus.PilotQuotas()
+	blankAdvisor := func(field string) func(doc map[string]any) {
+		return func(doc map[string]any) {
+			doc["cases"].([]any)[1].(map[string]any)["advisor_signoff"].(map[string]string)[field] = ""
+		}
+	}
+	for _, tc := range []struct {
+		name string
+		tw   panelTweak
+		want string
+	}{
+		{"audit entry without a decision", panelTweak{audit: blankAdvisor("decision")}, "decision"},
+		{"audit entry without a resolution", panelTweak{audit: blankAdvisor("resolution")}, "resolution"},
+		{"audit entry without an identity", panelTweak{audit: blankAdvisor("identity")}, "identity"},
+		{"audit entry without a time", panelTweak{audit: blankAdvisor("signed_at")}, "signed_at"},
+		{"audit entry that revises", panelTweak{audit: func(doc map[string]any) {
+			doc["cases"].([]any)[0].(map[string]any)["advisor_signoff"].(map[string]string)["decision"] = "revise"
+		}}, "revise"},
+		{"audited case missing from the audit", panelTweak{manifest: func(m *evalcorpus.Manifest) {
+			m.Cases[5].Signoff.Audited, m.Cases[5].Signoff.Resolution = true, "r"
+		}}, "not on the panel audit list"},
+		{"listed case not audited in the manifest", panelTweak{manifest: func(m *evalcorpus.Manifest) {
+			m.Cases[2].Signoff.Audited, m.Cases[2].Signoff.Resolution = false, ""
+		}}, "not audited"},
+		{"audit lists an unknown case", panelTweak{audit: func(doc map[string]any) {
+			doc["cases"].([]any)[0].(map[string]any)["case_id"] = "no-such-case"
+		}}, "no-such-case"},
+		{"receipt of other content", panelTweak{receipt: func(doc map[string]any) { doc["content_digest"] = fixtureDigest("other content") }}, "content"},
+		{"audit of other content", panelTweak{audit: func(doc map[string]any) { doc["content_digest"] = fixtureDigest("other content") }}, "content"},
+		{"dry-run receipt", panelTweak{receipt: func(doc map[string]any) { doc["dry_run"] = true }}, "dry run"},
+		{"dry-run audit", panelTweak{audit: func(doc map[string]any) { doc["dry_run"] = true }}, "dry run"},
+		{"incomplete ratings", panelTweak{receipt: func(doc map[string]any) { doc["complete_cases"] = 30 }}, "complete"},
+		{"retired schema", panelTweak{audit: func(doc map[string]any) { doc["schema"] = "tbound-panel-audit/v2" }}, "schema"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			m, panel := tweakedPanel(t, dir, fixtureManifest(t, q, "corpus-digest-seed"), tc.tw)
+			path := writeManifest(t, dir, "corpus.json", m)
+			out, _, err := runDigest(panel, "--manifest", path, "--quota-profile", "pilot")
+			if err == nil || out != "" || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("out %q err %v, want a refusal naming %q", out, err, tc.want)
+			}
+		})
+	}
+}
+
+func TestCorpusDigestRefusesPanelFilesThatChangedAfterTheManifestWasSealed(t *testing.T) {
+	dir := t.TempDir()
+	m, panel := signedPanel(t, dir, fixtureManifest(t, evalcorpus.PilotQuotas(), "corpus-digest-seed"))
+	path := writeManifest(t, dir, "corpus.json", m)
+	if _, _, err := runDigest(panel, "--manifest", path, "--quota-profile", "pilot"); err != nil {
+		t.Fatalf("unchanged files: %v", err)
+	}
+	for i, name := range []string{"receipt", "audit"} {
+		file := panel[2*i+1]
+		original, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// One whitespace byte keeps the JSON meaning and changes the digest.
+		if err := os.WriteFile(file, append(append([]byte(nil), original...), '\n'), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		out, _, err := runDigest(panel, "--manifest", path, "--quota-profile", "pilot")
+		if err == nil || out != "" || !strings.Contains(err.Error(), name) {
+			t.Errorf("%s with an extra byte: out %q err %v", name, out, err)
+		}
+		if err := os.WriteFile(file, original, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestCorpusDigestRefusesUnusablePanelFiles(t *testing.T) {
+	dir := t.TempDir()
+	m, panel := signedPanel(t, dir, fixtureManifest(t, evalcorpus.PilotQuotas(), "corpus-digest-seed"))
+	path := writeManifest(t, dir, "corpus.json", m)
+	for name, flag := range map[string]string{"receipt": "--panel-receipt", "audit": "--panel-audit"} {
+		for kind, setup := range map[string]func(file string){
+			"absent":     func(file string) { os.Remove(file) },
+			"directory":  func(file string) { os.Remove(file); os.Mkdir(file, 0o700) },
+			"too large":  func(file string) { os.WriteFile(file, make([]byte, panelaudit.MaxFileBytes+1), 0o600) },
+			"empty":      func(file string) { os.WriteFile(file, nil, 0o600) },
+		} {
+			t.Run(name+" "+kind, func(t *testing.T) {
+				copied := t.TempDir()
+				args := slices.Clone(panel)
+				for i := 0; i < len(args); i += 2 {
+					raw, err := os.ReadFile(args[i+1])
+					if err != nil {
+						t.Fatal(err)
+					}
+					target := filepath.Join(copied, filepath.Base(args[i+1]))
+					if err := os.WriteFile(target, raw, 0o600); err != nil {
+						t.Fatal(err)
+					}
+					args[i+1] = target
+					if args[i] == flag {
+						setup(target)
+					}
+				}
+				out, _, err := runDigest(args, "--manifest", path, "--quota-profile", "pilot")
+				if err == nil || out != "" {
+					t.Fatalf("out %q err %v, want a refusal", out, err)
+				}
+			})
 		}
 	}
 }
