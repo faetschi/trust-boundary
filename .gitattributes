@@ -10,3 +10,4 @@ corpus/** text eol=lf
 supervisor/internal/piruntime/testdata/ubuntu-24.04-accounts/* text eol=lf
 supervisor/cmd/tbound/testdata/** -text
 supervisor/internal/broker/openrouter/testdata/** -text
+supervisor/internal/piruntime/testdata/nft/* text eol=lf

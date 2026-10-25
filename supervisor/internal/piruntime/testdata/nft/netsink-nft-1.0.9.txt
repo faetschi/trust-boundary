@@ -1,0 +1,7 @@
+table inet tbound_net_sink {
+	chain output {
+		type filter hook output priority filter; policy accept;
+		socket cgroupv2 level 4 "system.slice/tbound-pi.service/cells/net-sink" ip daddr 127.0.33.1 tcp dport 8080 accept
+		socket cgroupv2 level 4 "system.slice/tbound-pi.service/cells/net-sink" counter packets 0 bytes 0 drop
+	}
+}
