@@ -252,7 +252,7 @@ func trialAccept(ctx context.Context, args []string, env trialEnv) (taskaccept.A
 	}
 	// Resolve once: every cell check uses exactly the image named in the result.
 	env.task.template = func(context.Context) (vTemplate, error) { return tmpl, nil }
-	doc, err := taskaccept.EvaluateWith(caseID, spec, fixture, root, cellNodeRunner{ctx: ctx, task: env.task})
+	doc, err := taskaccept.EvaluateCapturedRootWith(caseID, spec, fixture, root, cellNodeRunner{ctx: ctx, task: env.task})
 	if err != nil {
 		return taskaccept.AcceptDoc{}, err
 	}
@@ -263,7 +263,7 @@ func trialAccept(ctx context.Context, args []string, env trialEnv) (taskaccept.A
 	if after != before {
 		return taskaccept.AcceptDoc{}, errors.New("the live tree changed while it was evaluated")
 	}
-	doc.Route, doc.TreeDigest = taskaccept.RouteTrialAcceptCell, before
+	doc.Route = taskaccept.RouteTrialAcceptCell
 	doc.Commit, doc.BinarySHA256, doc.ImageDigest, doc.ManifestDigest = commit, binary, tmpl.ImageDigest, c.ManifestDigest
 	return doc, nil
 }
