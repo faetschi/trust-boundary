@@ -245,5 +245,96 @@ ARGS=(l4)
                 self.assertIn(field, got.stdout)
 
 
+class ManifestInstallTests(unittest.TestCase):
+    def run_install(self, corrupt=None, extra_args=None, active=False):
+        tmp = tempfile.TemporaryDirectory(prefix="tbound-op-manifest-")
+        self.addCleanup(tmp.cleanup)
+        base = Path(tmp.name)
+        for name in ("stage", "work", "etc/corpus", "prev/pilot/corpus", "ga/state"):
+            (base / name).mkdir(parents=True)
+        import hashlib
+        files = ("manifest.json", "receipt.json", "audit.json", "stats.json")
+        pins = []
+        for name in files:
+            raw = (name + "\n").encode()
+            pins.append(hashlib.sha256(raw).hexdigest())
+            (base / "stage" / name).write_bytes(raw)
+            (base / "etc/corpus" / name).write_text("previous " + name)
+        if corrupt:
+            (base / "stage" / corrupt).write_text("changed")
+        tbp = base / "tbp"
+        tbp.write_text('''#!/bin/bash
+printf '%s\n' "$*" >>"$BASE/calls"
+for file in receipt audit stats; do
+ found=0
+ for ((i=1; i<=$#; i++)); do
+  if [[ ${!i} == --panel-$file ]]; then ((i+=1)); [[ -f ${!i} ]] || exit 1; found=1; fi
+ done
+ [[ $found == 1 ]] || { echo "missing --panel-$file"; exit 1; }
+done
+printf 'sha256:%064d\n' 1
+''')
+        tbp.chmod(0o700)
+        staging = source[source.index("stage_hashed() {"):source.index("# -------------------------------------------------------------------------------------------------------- state")]
+        helpers = source[source.index("backup_once() {"):source.index("svc_inactive() {")]
+        verb = source[source.index("v_manifest_install() {"):source.index("v_svc() {")]
+        script = '''set -euo pipefail
+BASE=$1; export BASE
+shift
+WORK=$BASE/work; ETC=$BASE/etc; PREV=$BASE/prev; GA=$BASE/ga; TBP=$BASE/tbp
+ARGS=("$@")
+die() { echo "$*" >&2; exit 1; }
+usage() { echo "$*" >&2; exit 2; }
+say() { echo "$*"; }
+need_argc() { ((${#ARGS[@]} >= $1 && ${#ARGS[@]} <= $2)) || usage 'wrong number of arguments'; }
+need_sha() { [[ $1 =~ ^(sha256:)?[0-9a-f]{64}$ ]] || usage 'bad SHA'; }
+norm_sha() { printf 'sha256:%s' "${1#sha256:}"; }
+sha() { local h; h=$(sha256sum -- "$1"); printf 'sha256:%s' "${h%% *}"; }
+check_tools() { :; }; mkwork() { :; }; prep_ga() { :; }
+need_inactive() { ''' + ('die active' if active else ':') + '''; }
+stage_copy() { cp -- "$BASE/stage/$2" "$3"; }
+install() {
+ printf '%s\n' "$*" >>"$BASE/installs"
+ local a args=()
+ while (($#)); do case $1 in -o|-g) shift 2;; *) args+=("$1"); shift;; esac; done
+ command install "${args[@]}"
+}
+''' + staging + helpers + verb + "\nv_manifest_install\n"
+        args = extra_args if extra_args is not None else [pins[0], "1".zfill(64), *pins[1:]]
+        got = subprocess.run(["bash", "-c", script, "manifest-test", str(base), *args], capture_output=True, text=True)
+        return got, base, files
+
+    def test_installs_and_checks_all_three_pinned_panel_files(self):
+        got, base, files = self.run_install()
+        self.assertEqual(got.returncode, 0, got.stdout + got.stderr)
+        calls = (base / "calls").read_text().splitlines()
+        self.assertEqual(len(calls), 2)
+        for name in files:
+            self.assertEqual((base / "etc/corpus" / name).read_bytes(), (base / "stage" / name).read_bytes())
+            self.assertEqual((base / "prev/pilot/corpus" / name).read_text(), "previous " + name)
+            self.assertEqual(stat.S_IMODE((base / "etc/corpus" / name).stat().st_mode), 0o644)
+        self.assertIn("-o root -g root", (base / "installs").read_text())
+
+    def test_changed_panel_files_refused_before_install(self):
+        for name in ("receipt.json", "audit.json", "stats.json"):
+            with self.subTest(name=name):
+                got, base, files = self.run_install(corrupt=name)
+                self.assertNotEqual(got.returncode, 0)
+                self.assertIn("given SHA", got.stderr)
+                for file in files:
+                    self.assertEqual((base / "etc/corpus" / file).read_text(), "previous " + file)
+
+    def test_missing_or_malformed_panel_pins_refused(self):
+        for args in (["1" * 64, "2" * 64], ["1" * 64, "2" * 64, "bad", "3" * 64, "4" * 64]):
+            got, base, files = self.run_install(extra_args=args)
+            self.assertEqual(got.returncode, 2, got.stdout + got.stderr)
+            self.assertFalse((base / "calls").exists())
+
+    def test_active_service_refused_without_install(self):
+        got, base, files = self.run_install(active=True)
+        self.assertNotEqual(got.returncode, 0)
+        for file in files:
+            self.assertEqual((base / "etc/corpus" / file).read_text(), "previous " + file)
+
 unittest.main(verbosity=2)
 PY
