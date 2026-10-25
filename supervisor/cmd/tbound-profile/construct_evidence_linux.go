@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -16,6 +17,7 @@ import (
 	"strings"
 	"syscall"
 
+	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/calibration"
 	"tbound/supervisor/internal/corpusadmit"
 	"tbound/supervisor/internal/evalcorpus"
@@ -318,6 +320,13 @@ func (c *constructCtx) loadJournal(use *constructUse, m *constructMap) (*runner.
 	}
 	use.note(c.in.Expect.ConfigPath, c.in.Expect.ConfigSHA256)
 	if c.journal == nil && c.journalErr == nil {
+		// Import is stricter than recovery/report replay: every complete record must be unambiguous.
+		for _, record := range bytes.Split(bytes.TrimSpace(data), []byte{'\n'}) {
+			if err := protocol.ValidateStrictJSON(record); err != nil {
+				c.journalErr = fmt.Errorf("runner journal %s: %w", m.Journal, err)
+				return nil, c.journalErr
+			}
+		}
 		sched, err := constructSchedule(c.in)
 		if err == nil {
 			c.journal, err = runner.ReadJournal(data, sched)
@@ -519,6 +528,9 @@ func (c *constructCtx) acceptOutcome(use *constructUse, cm constructCaseMap, cs 
 	for i, doc := range []struct{ role, file, tree string }{{"fixture", cm.Fixture, a.WorkspaceFixtureDigest}, {"reference", cm.Reference, solvedDigest}} {
 		raw, err := use.read(doc.file, guestevidence.MaxBytes)
 		if err != nil {
+			return "", "", err
+		}
+		if err := protocol.ValidateStrictJSON(raw); err != nil {
 			return "", "", err
 		}
 		result, err := runner.ParseAcceptDoc(raw)

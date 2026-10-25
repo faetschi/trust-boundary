@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 
 	"tbound/supervisor/internal/audit"
+	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/runner"
 )
 
@@ -40,6 +41,9 @@ func RetainedName(interval string) string {
 // ParseRetained decodes one retained interval file strictly: no unknown member, no trailing data.
 func ParseRetained(raw []byte) (Retained, error) {
 	var r Retained
+	if err := protocol.ValidateStrictJSON(raw); err != nil {
+		return Retained{}, err
+	}
 	if err := runner.DecodeEvidenceDoc(raw, &r); err != nil {
 		return Retained{}, err
 	}
