@@ -277,6 +277,16 @@ Decisions taken during implementation:
 
 Product turns allow Bash when the registration project allows it. Under the product rule, the command's output collection is decided by the effective product scope, not by an operator list of exact paths. A Bash turn must also be reopenable as a predecessor, so its retained command settlements are verified by the historical verifier. Real cell execution needs the product guest. Local tests use the existing development command runner.
 
+Decisions taken during implementation:
+
+- A project allows Bash when its installed gate policy, whose digest the signed registration commits to, has an `allow` rule for `bash`. `bash_output_paths` is not the switch. The registration still requires it, but it only has a role under the exact-path rule.
+- A turn under `product-scope/v1` declares an empty output scope for every Bash command. `Decide` ignores it. A project without a scope keeps the exact-path rule, so its registered `bash_output_paths` are the declared scope and the research behaviour is unchanged.
+- The Store already imports the whole settled command view and computes every changed path, so the product rule needs no new collection mechanism. A denied candidate promotes nothing, and the provider gets the DENY with its reason code and hint. A read-only session has an empty `writable` list, so a command that writes is denied while a command that only reads runs and leaves the turn `no_diff`.
+- A publication trust for a Bash turn must implement `workflow.TerminalOriginResolver`, because the terminal transition of a Bash candidate is a command lease. A turn whose trust lacks it is abandoned before any work.
+- The service gives the turn driver a command runner factory. A turn whose policy allows Bash on a service without one is abandoned before any work, with no budget consumed. Production fills the factory with the D09 cell runner of a qualified host.
+- The receipt commits the turn's command journal by head and record count, next to the provider and Store journals, with `command_journal_head` and `command_journal_count`. A turn that ran no Bash omits both. The next turn checks them before importing history.
+- Reopening a turn replays its retained Bash effects against the retained command settlements through a read-only opener. For D09 the opener is the research recovery verifier over the command journal. Without an opener a retained Store that holds a Bash effect is refused. Restart reconciliation of a linked turn reopens the Store the same way, and a turn it cannot verify ends `unknown`.
+
 ### Import
 
 - `tbound-project-bundle/v1` is a bounded manifest plus content stream that the user's own client builds from the original project. The service account never reads the original repository.

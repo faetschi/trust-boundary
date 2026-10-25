@@ -138,7 +138,7 @@ func runProductPredecessorTurn(t *testing.T) retainedProductPredecessor {
 
 // replayRetainedPredecessor reopens the retained turn as a fresh process does and replays its history.
 func replayRetainedPredecessor(r retainedProductPredecessor) (providerbridge.PredecessorContext, GovernedTranscriptProjection, error) {
-	turn, err := openRetainedProductTurn(r.paths, r.options)
+	turn, err := openRetainedProductTurn(r.paths, r.options, nil)
 	if err != nil {
 		return providerbridge.PredecessorContext{}, GovernedTranscriptProjection{}, err
 	}
@@ -224,11 +224,11 @@ func TestProductTurnPredecessorFromRetainedEvidenceReachesTheNextTurn(t *testing
 	retained := runProductPredecessorTurn(t)
 	retainedFiles := retainedTurnFiles(t, retained.paths)
 
-	turn, err := openRetainedProductTurn(retained.paths, retained.options)
+	turn, err := openRetainedProductTurn(retained.paths, retained.options, nil)
 	if err != nil {
 		t.Fatalf("reopen the retained turn: %v", err)
 	}
-	if err := verifyProductTurnReceiptJournals(retained.receipt, turn.ProviderJournal, turn.StoreJournal); err != nil {
+	if err := verifyProductTurnReceiptJournals(retained.receipt, turn.ProviderJournal, turn.StoreJournal, nil); err != nil {
 		t.Fatalf("receipt does not match the retained journals: %v", err)
 	}
 	for name, mutate := range map[string]func(*productTurnReceipt){
@@ -239,7 +239,7 @@ func TestProductTurnPredecessorFromRetainedEvidenceReachesTheNextTurn(t *testing
 	} {
 		changed := retained.receipt
 		mutate(&changed)
-		if err := verifyProductTurnReceiptJournals(changed, turn.ProviderJournal, turn.StoreJournal); !errors.Is(err, errProductTurnEvidence) {
+		if err := verifyProductTurnReceiptJournals(changed, turn.ProviderJournal, turn.StoreJournal, nil); !errors.Is(err, errProductTurnEvidence) {
 			t.Errorf("receipt with a different %s was accepted: %v", name, err)
 		}
 	}

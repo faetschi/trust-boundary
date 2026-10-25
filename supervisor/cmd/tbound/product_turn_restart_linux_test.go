@@ -126,7 +126,7 @@ func TestProductTurnRestartReconcilesEveryCrashBoundary(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				retained, err := openRetainedProductTurn(paths, f.env.storeOptions(turn))
+				retained, err := openRetainedProductTurn(paths, f.env.storeOptions(turn), f.env.OpenCommandHistory)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -217,7 +217,7 @@ func TestProductTurnRestartPublicationFaultBoundaries(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				retained, err := openRetainedProductTurn(paths, f.env.storeOptions(before))
+				retained, err := openRetainedProductTurn(paths, f.env.storeOptions(before), f.env.OpenCommandHistory)
 				if err != nil {
 					t.Fatal(err)
 				}

@@ -93,10 +93,6 @@ func (e *productTurnEnv) RunTurn(ctx context.Context, admission productsession.A
 	if measured != turn.BaselineDigest {
 		return productTurnReceipt{}, e.refuse(turn.ID, productsession.CodeStaleBaseline, errProductStaleBaseline)
 	}
-	if len(turn.BashOutputPaths) != 0 {
-		// The historical Store verifier cannot reopen a Bash turn as a predecessor yet.
-		return productTurnReceipt{}, e.abandon(turn.ID, errors.New("product turns do not compose Bash yet"))
-	}
 	worker, err := newProductTurnWorker(e.MaxWorkerSteps, func() bool { return e.cancelRequested(turn.ID) }, e.crash)
 	if err != nil {
 		return productTurnReceipt{}, e.abandon(turn.ID, err)
@@ -268,6 +264,9 @@ func (e *productTurnEnv) beginProductPublication(ctx context.Context, projectID 
 	if trust == nil {
 		return nil, nil, errors.New("product turn has no publication trust")
 	}
+	if _, ok := trust.(workflow.TerminalOriginResolver); w.bash && !ok {
+		return nil, nil, errors.New("product turn publication trust cannot resolve the origin of a Bash lease")
+	}
 	projectDir := e.projectPublicationDir(projectID)
 	statePath := filepath.Join(projectDir, "publication-state")
 	if err := os.MkdirAll(statePath, 0o700); err != nil {
@@ -351,6 +350,10 @@ func (s *productTurnSettlement) settle() (productTurnReceipt, error) {
 	if err != nil {
 		return s.unknown("the Store journal could not be read", err)
 	}
+	commandTrace, err := s.w.commandJournal.Trace()
+	if err != nil {
+		return s.unknown("the command journal could not be read", err)
+	}
 	checkpoint, _ := s.w.ledger.Snapshot()
 	reservation := s.turn.Reservation
 	// shortcut: elapsed time after the ledger deadline (settlement, publication) is not billed beyond
@@ -364,6 +367,7 @@ func (s *productTurnSettlement) settle() (productTurnReceipt, error) {
 		WorkerKind: productsession.WorkerHeadlessFixture, WorkerInstance: s.worker.instance,
 		ProviderJournalHead: auditHeadHash(providerTrace.Records), ProviderJournalCount: uint64(len(providerTrace.Records)),
 		StoreJournalHead: auditHeadHash(storeTrace.Records), StoreJournalCount: uint64(len(storeTrace.Records)),
+		CommandJournalHead: auditHeadHash(commandTrace.Records), CommandJournalCount: uint64(len(commandTrace.Records)),
 		ImportedPrefixDigest: s.predecessor.Digest(), PredecessorReceiptDigest: s.predecessor.PredecessorReceiptDigest(),
 		BaselineDigest: s.turn.BaselineDigest, ResultBaselineDigest: s.resultBaseline,
 		Outcome: s.outcome, Settlement: productsession.SettlementHeadlessClosed,
@@ -416,12 +420,12 @@ func (e *productTurnEnv) predecessorContext(turn productsession.Turn, providerPr
 	if err != nil {
 		return evidence(err)
 	}
-	retained, err := openRetainedProductTurn(paths, e.storeOptions(pred))
+	retained, err := openRetainedProductTurn(paths, e.storeOptions(pred), e.OpenCommandHistory)
 	if err != nil {
 		return evidence(err)
 	}
 	defer retained.Close()
-	if err := verifyProductTurnReceiptJournals(receipt, retained.ProviderJournal, retained.StoreJournal); err != nil {
+	if err := verifyProductTurnReceiptJournals(receipt, retained.ProviderJournal, retained.StoreJournal, retained.CommandJournal); err != nil {
 		return evidence(err)
 	}
 	boundary := providerbridge.TurnBoundary{PredecessorReceiptDigest: pred.ReceiptDigest, Outcome: pred.Outcome,
@@ -463,8 +467,16 @@ func (e *productTurnEnv) predecessorContext(turn productsession.Turn, providerPr
 			ToolManifest: broker.DeclaredToolManifest(), ToolCallIssuer: governedCallIssuer,
 			ResponseIDIssuer: governedResponseIssuer, Generation: bundle.Baseline.ID},
 		Baseline: bundle.Baseline, StorePolicyDigest: e.StorePolicyDigest, MetadataPolicyDigest: e.MetadataPolicyDigest,
+		BashOutputPaths: productTurnBashScope(pred, policy),
 	}
-	replayed, _, err := ReplayGovernedPredecessorContext(retained.ProviderJournal, retained.StoreJournal, retained.Store, pins, boundary)
+	var commands []governedRecoveryCommandVerifier
+	if retained.Commands != nil {
+		commands = append(commands, retained.Commands)
+	}
+	replayed, _, err := ReplayGovernedPredecessorContext(retained.ProviderJournal, retained.StoreJournal, retained.Store, pins, boundary, commands...)
+	if err == nil && retained.Commands != nil {
+		err = retained.Commands.VerifyUnchanged()
+	}
 	if err != nil {
 		return evidence(err)
 	}

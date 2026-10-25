@@ -89,6 +89,9 @@ func validateProductTurnReceipt(r productTurnReceipt) error {
 	case r.ProviderJournalCount == 0 || !validBareWorkflowDigest(r.ProviderJournalHead) ||
 		r.StoreJournalCount == 0 || !validBareWorkflowDigest(r.StoreJournalHead):
 		return errors.New("product turn receipt does not commit both child journals")
+	case (r.CommandJournalCount == 0) != (r.CommandJournalHead == "") ||
+		r.CommandJournalHead != "" && !validBareWorkflowDigest(r.CommandJournalHead):
+		return errors.New("product turn receipt has an incomplete or invalid command journal commitment")
 	case (r.ImportedPrefixDigest == "") != (r.PredecessorReceiptDigest == "") ||
 		r.ImportedPrefixDigest != "" && (!validDigestText(r.ImportedPrefixDigest) || !validDigestText(r.PredecessorReceiptDigest)):
 		return errors.New("product turn receipt has an incomplete or invalid predecessor commitment")
@@ -104,21 +107,29 @@ func validateProductTurnReceipt(r productTurnReceipt) error {
 	return nil
 }
 
-// verifyProductTurnReceiptJournals checks that the retained provider and Store journals verify to
-// exactly the heads and record counts the receipt commits.
-func verifyProductTurnReceiptJournals(receipt productTurnReceipt, providerJournal, storeJournal *audit.Journal) error {
+// verifyProductTurnReceiptJournals checks that the retained provider, Store and command journals
+// verify to exactly the heads and record counts the receipt commits. A nil command journal commits
+// nothing, so it matches only a receipt that commits no command journal.
+func verifyProductTurnReceiptJournals(receipt productTurnReceipt, providerJournal, storeJournal, commandJournal *audit.Journal) error {
 	if providerJournal == nil || storeJournal == nil {
 		return errProductTurnEvidence
 	}
-	for _, journal := range []struct {
+	type committed struct {
 		name    string
 		held    *audit.Journal
 		head    string
 		records uint64
-	}{
+	}
+	journals := []committed{
 		{"provider", providerJournal, receipt.ProviderJournalHead, receipt.ProviderJournalCount},
 		{"Store", storeJournal, receipt.StoreJournalHead, receipt.StoreJournalCount},
-	} {
+	}
+	if commandJournal != nil {
+		journals = append(journals, committed{"command", commandJournal, receipt.CommandJournalHead, receipt.CommandJournalCount})
+	} else if receipt.CommandJournalCount != 0 {
+		return fmt.Errorf("%w: command journal is not retained", errProductTurnEvidence)
+	}
+	for _, journal := range journals {
 		trace, err := journal.held.Trace()
 		if err != nil {
 			return errors.Join(errProductTurnEvidence, err)
