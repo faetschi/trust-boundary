@@ -568,3 +568,13 @@ func TestCorpusDigestRefusesUnusablePanelFiles(t *testing.T) {
 		}
 	}
 }
+
+func TestCorpusDigestRequiresStatsEvidence(t *testing.T) {
+ dir := t.TempDir()
+ m, panel := signedPanel(t, dir, fixtureManifest(t, evalcorpus.PilotQuotas(), "stats-gate"))
+ path := writeManifest(t, dir, "corpus.json", m)
+ out, _, err := runDigest(panel, "--manifest", path, "--quota-profile", "pilot")
+ if err == nil || out != "" || !strings.Contains(err.Error(), "--panel-stats") {
+  t.Fatalf("without stats: out %q err %v; want --panel-stats refusal", out, err)
+ }
+}
