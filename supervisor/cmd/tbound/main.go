@@ -42,11 +42,18 @@ type transcriptEntry struct {
 func main() {
 	if err := run(os.Args[1:], os.Stdout, os.Stderr); err != nil {
 		fmt.Fprintln(os.Stderr, err)
+		var exit interface{ ExitCode() int }
+		if errors.As(err, &exit) {
+			os.Exit(exit.ExitCode())
+		}
 		os.Exit(2)
 	}
 }
 
 func run(args []string, transcript io.Writer, stderr io.Writer) error {
+	if len(args) > 0 && args[0] == "provider" {
+		return runProvider(args[1:], transcript, stderr)
+	}
 	if len(args) > 0 && args[0] == "serve" {
 		return runServe(args[1:], transcript, stderr)
 	}
@@ -61,6 +68,9 @@ func run(args []string, transcript io.Writer, stderr io.Writer) error {
 	}
 	if len(args) > 0 && args[0] == "project" {
 		return runProject(args[1:], transcript, stderr)
+	}
+	if len(args) > 0 && args[0] == "chat" {
+		return runChat(args[1:], transcript, stderr)
 	}
 	flags := flag.NewFlagSet("tbound", flag.ContinueOnError)
 	flags.SetOutput(stderr)
