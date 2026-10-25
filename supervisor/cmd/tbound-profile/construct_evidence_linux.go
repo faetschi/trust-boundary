@@ -533,7 +533,7 @@ func (c *constructCtx) acceptOutcome(use *constructUse, cm constructCaseMap, cs 
 	}
 	for _, d := range []struct{ kind, digest string }{{"fixture", a.WorkspaceFixtureDigest}, {"accept", a.AcceptanceTest.Digest}, {"solution", a.ReferenceSolution.Digest}} {
 		name := d.kind + "-" + strings.TrimPrefix(d.digest, "sha256:") + ".json"
-		raw, err := readConstructEvidence(c.in.Artifacts, name)
+		raw, err := readConstructFile(c.in.Artifacts, name, trialfix.MaxSpecBytes)
 		if err != nil {
 			return "", "", err
 		}
