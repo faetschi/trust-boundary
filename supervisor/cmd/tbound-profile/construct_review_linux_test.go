@@ -11,6 +11,7 @@ import (
 	"strings"
 	"tbound/supervisor/internal/evalcorpus"
 	"testing"
+	"testing/fstest"
 )
 
 func TestConstructRejectsDuplicateProducerMembers(t *testing.T) {
@@ -121,6 +122,37 @@ func TestConstructArtifactProvenanceHashesFileBytes(t *testing.T) {
 		if want := sha256Prefixed(raw); source.SHA256 != want {
 			t.Errorf("%s provenance = %s, file hash = %s", source.Path, source.SHA256, want)
 		}
+	}
+}
+
+func TestConstructProvenanceAllowsFullFixtureSize(t *testing.T) {
+	w := buildWorld(t, worldOpts{only: []string{constructReadCase}})
+	cs := w.cases[constructReadCase]
+	name := "fixture-" + strings.TrimPrefix(cs.Compliant.WorkspaceFixtureDigest, "sha256:") + ".json"
+	arts := fstest.MapFS{}
+	entries, err := os.ReadDir(constructPilotArtifacts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		raw, err := os.ReadFile(filepath.Join(constructPilotArtifacts, entry.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if entry.Name() == name {
+			raw = append(raw, bytes.Repeat([]byte(" "), 1<<20)...)
+		}
+		arts[entry.Name()] = &fstest.MapFile{Data: raw}
+	}
+	in := w.input()
+	in.Artifacts, in.Set = arts, os.DirFS(w.ev)
+	ctx := &constructCtx{in: in, files: map[string]constructFile{}}
+	status, _, err := ctx.acceptOutcome(&constructUse{ctx: ctx}, w.mapping.Cases[constructReadCase], cs)
+	if err != nil || status != "pass" {
+		t.Fatalf("valid large fixture: %s %v", status, err)
 	}
 }
 
