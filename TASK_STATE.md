@@ -13,7 +13,14 @@ probes and pilot reports are not thesis results.
 
 ## Implementation state
 
-- F14 content so far (not frozen): service-defect fixes **merged** at 892cc00 (gate 4654 pass / 0 fail / 26 skip); `corpus-check` guest-evidence input on branch `feat/corpus-check-guest-evidence` (2bf12cd, gate 4717 pass / 0 fail / 26 skip, no-flag pilot report byte-identical), **independent review running, not merged**.
+- F14 content (merged, not frozen; full gate on f1d5b75: 4776 pass / 0 fail / 26 guest-only skips):
+  - The service-defect fixes (892cc00).
+  - The BL-2 fix (c7ceb84): nft 1.0.9 omits the socket level from `-j`; measured offline with the guest's exact nft packages, the fixture is in `piruntime/testdata/nft/`.
+  - `corpus-check --guest-evidence` (f1d5b75), after 3 review rounds (Sol xhigh) and 1 orchestrator review. PASS needs recomputation from producer outputs:
+    - the runner journal and retained NET and WS inputs (workspace oracle inputs are now retained);
+    - `trial accept` docs bound to commit, `/proc/self/exe` digest, cell image and corpus, with the tree digested from the private evaluated copy;
+    - imported JSON that is free of duplicates and case-fold collisions.
+    The no-flag pilot report is byte-identical. Stated limit: the evidence is operator-retained with no external anchor, so a deliberate consistent forgery is out of scope.
 - Service-defect details: DENY continuation fixed with ledger-backed tests (exact next-request denial + static hint, retry after DENY, ALLOW/DENY/ALLOW, fresh-process owner replay); ALLOW/executed calls remain non-retirable. Retained-Store preview now indexes exactly `governed_operation_authorized` and the profiled gate-policy digest, with fresh-process effect recovery and negative evidence tests. No old-kind compatibility: source history and archived review artifacts show only `authorized` writers; `authorization` appears in draft prose/comments and the broken reader. Both failures reproduced before their fixes; final clean-export gate recorded in the implementation handoff.
 
 - Branch `codex/tbound-prototype`. Last guest freeze **F13 = 6162e3c** (installed 2026-10-24, owner-approved; results `F:/TBoundAssets/recovery-20261015/F13/F13-RESULT.md`). Previous: F12 = eed7722 (retained evidence).
@@ -72,7 +79,7 @@ Step 2 detail:
 
 ## Next (thesis lane)
 
-1. Review and merge the `corpus-check` guest-evidence input (it also fixes the runbook's missing `--node`); then prepare F14 (survey in `F:/TBoundAssets/recovery-20261015/F14-prep/`). In parallel: owner runs the panel; advisor review. Offline de-risk of BL-2 (real `nft -j` shape vs `VerifyNetSinkRuleset`) on branch `test/netsink-nft-shape`.
+1. F14 freeze. Prep: `F:/TBoundAssets/recovery-20261015/F14-prep/` has F14.env.draft (ids `*-2026-10-25a`), the kit changes and the repo edits. Known kit edit: `guest/05-runtime-swap.sh:33-34` must accept the measurer pair 6162e3c→F14 (audited unchanged so far). P2 falls back to rebuild, and the new IMGDIGEST means a podman store reload. Owner approval for signing and the guest chain. In parallel: the owner runs the panel; advisor review.
 2. Next work package (prepared, not executed): `F:/TBoundAssets/recovery-20261015/F13-prep/thesis-work-package-draft.md` — corpus-mode prerequisites, EVQ-NETWORK-SINK-GUEST, and witnesses for 11 calibration-P, 20 acceptance-cell, 7 network-effect checks (all pending). Re-measure post-denial/hint behaviour on F14: earlier service-mode DENY runs stopped at the denial.
 3. Corpus-mode rehearsal; watch: reset --check passes after P C-02 and the reset kills the survivor; `podman rm -f` after conmon is killed; no uid-995 pause process in root's SSH cgroup (`ps -u 995 -o pid,cgroup,cmd`); kernel-7 zombie-leader kill; the 5 real-cgroup tests with `TBOUND_REAL_CGROUP_TESTS=1` in a delegated scope.
 4. Complete EVQ and route reports; pilots; caps and costs; full corpus; registration; H1.
