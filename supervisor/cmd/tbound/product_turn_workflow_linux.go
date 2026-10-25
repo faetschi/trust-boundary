@@ -125,6 +125,11 @@ type productTurnEnv struct {
 	// workflow and finalizer stay open until a resolution, cancellation or expiry takes them.
 	running map[string]bool
 	pending map[string]*productPendingReview
+	// liveProvider holds the open provider journal of every turn whose workflow this process still holds, so
+	// the service reads a running or pending-review turn's journal without a second writer lock. It has its
+	// own mutex because workflow close runs under mu.
+	liveMu       sync.Mutex
+	liveProvider map[string]*audit.Journal
 }
 
 func (e *productTurnEnv) crash(point string) {

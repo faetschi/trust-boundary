@@ -63,6 +63,9 @@ func run(args []string, transcript io.Writer, stderr io.Writer) error {
 	if len(args) > 0 && args[0] == "workflow-root-init" {
 		return runWorkflowRootInit(args[1:], transcript, stderr)
 	}
+	if len(args) > 0 && args[0] == "product-serve" {
+		return runProductServe(args[1:], transcript, stderr)
+	}
 	if len(args) > 0 && args[0] == "project" {
 		return runProject(args[1:], transcript, stderr)
 	}

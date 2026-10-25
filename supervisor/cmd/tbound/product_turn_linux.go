@@ -104,6 +104,8 @@ func (e *productTurnEnv) RunTurn(ctx context.Context, admission productsession.A
 		}
 		return productTurnReceipt{}, e.abandon(turn.ID, err)
 	}
+	// The release goes first in the list, so it runs after the journals are closed.
+	w.closers = append([]func() error{e.holdLiveProviderJournal(turn.ID, w.providerJournal)}, w.closers...)
 	heldForReview := false
 	defer func() {
 		if !heldForReview {
