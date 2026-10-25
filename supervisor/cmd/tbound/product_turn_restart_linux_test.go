@@ -217,7 +217,7 @@ func TestProductTurnRestartPublicationFaultBoundaries(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				retained, err := openRetainedProductTurn(paths, f.env.storeOptions())
+				retained, err := openRetainedProductTurn(paths, f.env.storeOptions(before))
 				if err != nil {
 					t.Fatal(err)
 				}
