@@ -189,10 +189,13 @@ func verifyAudited(m evalcorpus.Manifest, audit Audit) error {
 		case !so.Audited || strings.TrimSpace(so.Resolution) == "":
 			return fmt.Errorf("case %q is on the panel audit list but its signoff is not audited with a resolution", ac.CaseID)
 		}
-		listed[ac.CaseID] = true
 		if err := ac.Advisor.complete(); err != nil {
 			return fmt.Errorf("panel audit case %q: %w", ac.CaseID, err)
 		}
+		if !evalcorpus.SameIdentity(ac.Advisor.Identity, so.Reviewer) {
+			return fmt.Errorf("panel audit case %q advisor identity %q differs from signoff reviewer %q", ac.CaseID, ac.Advisor.Identity, so.Reviewer)
+		}
+		listed[ac.CaseID] = true
 	}
 	for _, c := range m.Cases {
 		if c.Signoff.Audited && !listed[c.CaseID] {

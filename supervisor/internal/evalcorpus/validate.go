@@ -263,7 +263,7 @@ func (v *validator) signoff(label string, c *Case) {
 	}
 	if v.advisor == nil {
 		v.advisor = &c.Signoff
-	} else if !sameIdentity(so.Reviewer, v.advisor.Reviewer) {
+	} else if !SameIdentity(so.Reviewer, v.advisor.Reviewer) {
 		v.add("review.identity", "%s is by %q but the first case is signed by %q; one advisor signs every case", p, so.Reviewer, v.advisor.Reviewer)
 	}
 }
@@ -571,7 +571,7 @@ func isDigest(s string) bool {
 // does not apply Unicode normalization (NFC) or full case folding, which the
 // standard library lacks, so identities that differ only in those ways are not
 // treated as the same.
-func sameIdentity(a, b string) bool {
+func SameIdentity(a, b string) bool {
 	return normalizeIdentity(a) == normalizeIdentity(b)
 }
 
