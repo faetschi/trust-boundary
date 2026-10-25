@@ -5,6 +5,12 @@
 # Never launches the smoke: client-run smoke and negative n6/n7 are only called in their refusal states.
 # Usage (Git Bash): bash run-tests.sh
 set -u
+if [[ ${1:-} == --local ]]; then
+  shift
+  exec bash "$(dirname -- "$(realpath -- "$0")")/test-local.sh" "$@"
+fi
+(($# == 0)) || { echo 'Usage: run-tests.sh [--local [test names...]]' >&2; exit 2; }
+REPO=$(cd -- "$(dirname -- "$0")/../../.." && pwd)
 export GUEST_IP=${GUEST_IP:-172.29.201.195} MSYS_NO_PATHCONV=1
 GSH=/f/TBoundAssets/recovery-20261015/F0-c7f9e9c/gssh.sh
 OUT=/f/TBoundAssets/recovery-20261015/F1/guest/operator/TESTS.md
@@ -166,9 +172,13 @@ t 4.seed-live-smoke-reseed 0 'SMOKE-README.txt' seed-live smoke
 t 4.seed-live-smoke-noop-again 0 'already is the smoke fixture' seed-live smoke
 r 4.inspect-live-root-exact 0 '^d 755 995:986 lost\+found'$'\n''f 644 995:986 SMOKE-README.txt' 'sudo -n find /var/lib/tbound/live/root -mindepth 1 -printf "%y %m %U:%G %P\n" | sort; sudo -n stat -c "%s %U:%G %a" /var/lib/tbound/live/root/SMOKE-README.txt'
 r 4.setup-draft-manifest 0 - 'true'
-cat /c/Users/Admin/AppData/Local/Temp/tb-integ/corpus/pilot/manifest.draft.json | sh "$GSH" 'install -d -m 0700 ~/stage-pilot && cat > ~/stage-pilot/manifest.json'
+cat "$REPO/corpus/pilot/manifest.draft.json" | sh "$GSH" 'install -d -m 0700 ~/stage-pilot && cat > ~/stage-pilot/manifest.json'
 MS=$(sha '~/stage-pilot/manifest.json')
-t 4.manifest-install-draft-refused 1 'corpus-digest refused the manifest' manifest-install "$MS" 1111111111111111111111111111111111111111111111111111111111111111
+r 4.setup-panel-files 0 - 'for f in receipt audit stats; do printf "{}\n" > ~/stage-pilot/$f.json; done'
+PS=$(sha '~/stage-pilot/receipt.json')
+t 4.manifest-install-missing-panel-pins 2 'wrong number of arguments' manifest-install "$MS" 1111111111111111111111111111111111111111111111111111111111111111
+t 4.manifest-install-bad-panel-pin 2 'bad SHA' manifest-install "$MS" 1111111111111111111111111111111111111111111111111111111111111111 bad "$PS" "$PS"
+t 4.manifest-install-draft-refused 1 'corpus-digest refused the manifest' manifest-install "$MS" 1111111111111111111111111111111111111111111111111111111111111111 "$PS" "$PS" "$PS"
 r 4.inspect-no-manifest 0 'no-corpus-dir' 'test ! -e /etc/tbound/corpus && echo no-corpus-dir; rm -rf ~/stage-pilot'
 t 4.svc-start 0 'svc start ok for smoke' svc start
 r 4.inspect-active 0 '^active'$'\n''active' 'systemctl is-active tbound-pi.service tbound-pi.socket'

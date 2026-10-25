@@ -246,7 +246,7 @@ ARGS=(l4)
 
 
 class ManifestInstallTests(unittest.TestCase):
-    def run_install(self, corrupt=None, extra_args=None, active=False):
+    def run_install(self, corrupt=None, extra_args=None, active=False, rollback=False, missing_backup=False):
         tmp = tempfile.TemporaryDirectory(prefix="tbound-op-manifest-")
         self.addCleanup(tmp.cleanup)
         base = Path(tmp.name)
@@ -300,6 +300,12 @@ install() {
  command install "${args[@]}"
 }
 ''' + staging + helpers + verb + "\nv_manifest_install\n"
+        if rollback:
+            rollback_verb = source[source.index("v_rollback() {"):source.index("v_manifest_install() {")]
+            script += "\nneed_name() { [[ $1 == pilot ]]; }\nst_reset() { :; }\nre_dig='^sha256:[0-9a-f]{64}$'\n" + rollback_verb
+            if missing_backup:
+                script += '\nrm -- "$PREV/pilot/corpus/audit.json"\n'
+            script += "\nARGS=(pilot corpus)\nv_rollback\n"
         args = extra_args if extra_args is not None else [pins[0], "1".zfill(64), *pins[1:]]
         got = subprocess.run(["bash", "-c", script, "manifest-test", str(base), *args], capture_output=True, text=True)
         return got, base, files
@@ -314,6 +320,20 @@ install() {
             self.assertEqual((base / "prev/pilot/corpus" / name).read_text(), "previous " + name)
             self.assertEqual(stat.S_IMODE((base / "etc/corpus" / name).stat().st_mode), 0o644)
         self.assertIn("-o root -g root", (base / "installs").read_text())
+
+    def test_corpus_rollback_restores_all_four_backups(self):
+        got, base, files = self.run_install(rollback=True)
+        self.assertEqual(got.returncode, 0, got.stdout + got.stderr)
+        for file in files:
+            self.assertEqual((base / "etc/corpus" / file).read_text(), "previous " + file)
+        self.assertEqual(len((base / "calls").read_text().splitlines()), 3)
+
+    def test_incomplete_corpus_backup_refuses_rollback_without_changes(self):
+        got, base, files = self.run_install(rollback=True, missing_backup=True)
+        self.assertNotEqual(got.returncode, 0)
+        self.assertIn("no backup", got.stderr)
+        for file in files:
+            self.assertEqual((base / "etc/corpus" / file).read_bytes(), (base / "stage" / file).read_bytes())
 
     def test_changed_panel_files_refused_before_install(self):
         for name in ("receipt.json", "audit.json", "stats.json"):
