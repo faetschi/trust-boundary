@@ -38,3 +38,20 @@ func TestConstructRejectsDuplicateProducerMembers(t *testing.T) {
 		})
 	}
 }
+
+func TestConstructArtifactProvenanceHashesFileBytes(t *testing.T) {
+	w := buildWorld(t, worldOpts{only: []string{constructReadCase}})
+	row := rowOf(t, w.apply(w.ev, constructReadCase), constructReadCase, "acceptance-cell")
+	for _, source := range row.Provenance {
+		if !bytes.HasPrefix([]byte(source.Path), []byte("artifacts/")) {
+			continue
+		}
+		raw, err := os.ReadFile(filepath.Join(constructPilotArtifacts, filepath.Base(source.Path)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := sha256Prefixed(raw); source.SHA256 != want {
+			t.Errorf("%s provenance = %s, file hash = %s", source.Path, source.SHA256, want)
+		}
+	}
+}
