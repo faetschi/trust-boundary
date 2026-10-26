@@ -84,7 +84,7 @@ func newFixture(t *testing.T) *fixture {
 	c := m.Cases
 	f := &fixture{m: m,
 		receipt: map[string]any{"schema": ReceiptSchema, "dry_run": false, "live_run": true, "provider": "openrouter", "content_digest": content, "cases": 8, "complete_cases": 8,
-			"models": slices.Clone(fixtureModels), "calls_recorded": 48, "rating_outcomes": outcomes, "seeds": map[string]any{"audit_sample": "7", "blind_ids_and_order": 7, "bootstrap": 7}},
+			"models": slices.Clone(fixtureModels), "public_policy": map[string]any{"bash_output_paths": []string{}, "network_destinations": []string{}}, "calls_recorded": 48, "rating_outcomes": outcomes, "seeds": map[string]any{"audit_sample": "7", "blind_ids_and_order": 7, "bootstrap": 7}},
 		audit: map[string]any{"schema": AuditSchema, "dry_run": false, "live_run": true, "provider": "openrouter", "content_digest": content,
 			"cases":     []any{signed(c[1]), signed(c[3]), signed(c[0]), signed(c[2]), signed(c[4]), signed(c[5]), signed(c[6]), signed(c[7])},
 			"selection": Selection{Seed: "7", Purpose: AuditPurpose, Method: "evalcorpus.SelectSeeded", SampleSize: AuditSampleSize, SelectedRoots: []string{}}},
@@ -763,5 +763,24 @@ func TestVerifySignedAtIsRFC3339WithTimezone(t *testing.T) {
 	f.listed(2)["advisor_signoff"].(map[string]string)["signed_at"] = "2026-10-25T08:00:00Z"
 	if err := f.check(t); err != nil {
 		t.Fatalf("UTC signed_at refused: %v", err)
+	}
+}
+
+// The policy context the panel showed its raters is part of the pinned evidence, so a receipt
+// without it, or with a policy that lacks either list, is refused.
+func TestVerifyRequiresThePublicPolicyOfTheRun(t *testing.T) {
+	for name, mutate := range map[string]func(r map[string]any){
+		"absent":               func(r map[string]any) { delete(r, "public_policy") },
+		"null":                 func(r map[string]any) { r["public_policy"] = nil },
+		"no bash output paths": func(r map[string]any) { r["public_policy"] = map[string]any{"network_destinations": []string{}} },
+		"no destinations":      func(r map[string]any) { r["public_policy"] = map[string]any{"bash_output_paths": []string{}} },
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newFixture(t)
+			mutate(f.receipt)
+			if err := f.check(t); err == nil || !strings.Contains(err.Error(), "public_policy") {
+				t.Fatalf("receipt with public_policy %s accepted: %v", name, err)
+			}
+		})
 	}
 }

@@ -136,6 +136,7 @@ func tweakedPanel(t *testing.T, dir string, m evalcorpus.Manifest, tw panelTweak
 	audit["live_run"] = true
 	models := []panelaudit.Model{{ID: "google/gemini-2.5-pro", MaxTokens: 4000, PromptUSDPerMTok: 1, CompletionUSDPerMTok: 1}, {ID: "qwen/qwen3-235b-a22b-2507", MaxTokens: 4000, PromptUSDPerMTok: 1, CompletionUSDPerMTok: 1}, {ID: "mistralai/mistral-large-2411", MaxTokens: 4000, PromptUSDPerMTok: 1, CompletionUSDPerMTok: 1}}
 	receipt["models"] = models
+	receipt["public_policy"] = map[string]any{"bash_output_paths": []string{}, "network_destinations": []string{}}
 	receipt["calls_recorded"] = len(m.Cases) * 6
 	var outcomes []panelaudit.Outcome
 	for _, c := range m.Cases {
