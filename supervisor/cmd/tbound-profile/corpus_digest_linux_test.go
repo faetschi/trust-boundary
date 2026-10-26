@@ -633,7 +633,9 @@ func TestCorpusDigestRefusesStatsWithoutAllPhaseTwoPasses(t *testing.T) {
 		t.Run(gate, func(t *testing.T) {
 			dir := t.TempDir()
 			m, panel := tweakedPanel(t, dir, fixtureManifest(t, evalcorpus.PilotQuotas(), "stats-gate"), panelTweak{stats: func(doc map[string]any) {
-				doc["items"].(map[string]any)["intent"] = map[string]string{"gate": gate}
+				st := doc["items"].(map[string]any)["intent"].(panelaudit.ItemStats)
+				st.Gate = gate
+				doc["items"].(map[string]any)["intent"] = st
 			}})
 			out, _, err := runDigest(panel, "--manifest", writeManifest(t, dir, "manifest.json", m), "--quota-profile", "pilot")
 			if err == nil || out != "" || !strings.Contains(err.Error(), "intent") {

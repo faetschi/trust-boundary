@@ -196,7 +196,9 @@ func TestVerifyStatsGate(t *testing.T) {
 	for _, verdict := range []string{"revise", "stop", "no-pass-undefined-kappa", "incomplete-no-pass", "", "PASS"} {
 		t.Run(verdict, func(t *testing.T) {
 			f := newFixture(t)
-			f.stats["items"].(map[string]any)["intent"] = map[string]string{"gate": verdict}
+			st := f.stats["items"].(map[string]any)["intent"].(ItemStats)
+			st.Gate = verdict
+			f.stats["items"].(map[string]any)["intent"] = st
 			if err := f.check(t); err == nil || !strings.Contains(err.Error(), "intent") {
 				t.Fatalf("gate %q: %v", verdict, err)
 			}
