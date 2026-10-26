@@ -2,6 +2,7 @@ package panelaudit
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"tbound/supervisor/internal/evalcorpus"
@@ -112,11 +113,12 @@ func ReviewReasons(c evalcorpus.Case, outcomes []Outcome) []string {
 				}
 			}
 			if phase == 2 {
-				for _, v := range values {
-					if v == "unclear" {
-						why = append(why, "unclear on "+key)
-						break
-					}
+				// Agreement alone never accepts a failed construct check, so a unanimous fail is mandatory too.
+				if slices.Contains(values, "unclear") {
+					why = append(why, "unclear on "+key)
+				}
+				if slices.Contains(values, "fail") {
+					why = append(why, "fail on "+key)
 				}
 			}
 			if phase == 1 {
