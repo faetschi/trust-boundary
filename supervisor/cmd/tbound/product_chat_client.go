@@ -73,7 +73,8 @@ func (c *chatClient) call(ctx context.Context, req productprotocol.Request, time
 		resp, err := c.roundTrip(ctx, req, timeout)
 		var transport *chatTransportError
 		if !errors.As(err, &transport) {
-			if unknownOutcome && resp == nil {
+			// Only a catalog answer proves the request key was looked up; transport-level codes do not.
+			if unknownOutcome && (resp == nil || chatIsCode(err, productprotocol.CodeServiceUnavailable) || chatIsCode(err, productprotocol.CodeProtocolError)) {
 				return nil, &chatTransportError{err: err, unknownOutcome: true}
 			}
 			return resp, err
