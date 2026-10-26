@@ -20,11 +20,8 @@ import (
 //	go test ./internal/productprotocol -run Fixtures -update
 var updateFixtures = flag.Bool("update", false, "rewrite the web chat protocol fixtures")
 
-// fixtureDir is where the module reads the fixtures. It is joined from segments
-// because the core never carries the module's location as an import or a literal path.
-func fixtureDir() string {
-	return filepath.Join("..", "..", "..", "extensions", "webchat", "internal", "webchat", "testdata", "protocol")
-}
+// fixtureDir holds the canonical messages. The web chat module reads them from here; the core never names the module.
+func fixtureDir() string { return "testdata" }
 
 const (
 	fixtureSession = "psess-0123456789abcdef0123456789abcdef"
@@ -49,7 +46,7 @@ func fixtureExamples() map[string]any {
 	session := SessionView{ID: fixtureSession, ProjectID: "demo-project", ProviderProfile: "openrouter-default",
 		PublicationMode: "review", ReadOnly: true, Revision: 7, Blocked: true,
 		Budget: fixtureBudget(), Consumed: Budget{HostCalls: 12, Tokens: 4096, DurationSeconds: 61},
-		Reserved: Budget{HostCalls: 1, Tokens: 512, DurationSeconds: 30}, Turns: turns}
+		Reserved: Budget{HostCalls: 1, Tokens: 512, DurationSeconds: 30}, TotalTurns: 70, TurnsTruncated: true, Turns: turns}
 	listed := session
 	listed.Turns = nil
 	events := []Event{
@@ -108,16 +105,9 @@ func encodeFixture(t *testing.T, value any) []byte {
 }
 
 // TestFixturesMatchTheCommittedFiles compares each canonical message with the file
-// the web chat module reads, byte for byte. When the module is absent the check is
-// skipped: the core builds and tests without it.
+// the web chat module reads, byte for byte.
 func TestFixturesMatchTheCommittedFiles(t *testing.T) {
 	dir := fixtureDir()
-	if _, err := os.Stat(filepath.Join(dir, "..", "..", "..", "..", "go.mod")); err != nil {
-		if *updateFixtures {
-			t.Fatalf("cannot update: the web chat module is not at %s", dir)
-		}
-		t.Skip("the optional web chat module is not in this tree; its protocol fixtures are not checked")
-	}
 	examples := fixtureExamples()
 	if *updateFixtures {
 		if err := os.MkdirAll(dir, 0o755); err != nil {

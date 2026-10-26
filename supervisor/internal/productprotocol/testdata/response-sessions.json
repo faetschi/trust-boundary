@@ -24,7 +24,9 @@
         "host_calls": 1,
         "tokens": 512,
         "duration_seconds": 30
-      }
+      },
+      "total_turns": 70,
+      "turns_truncated": true
     }
   ]
 }

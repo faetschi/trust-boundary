@@ -24,6 +24,8 @@
       "tokens": 512,
       "duration_seconds": 30
     },
+    "total_turns": 70,
+    "turns_truncated": true,
     "turns": [
       {
         "id": "psess-0123456789abcdef0123456789abcdef/turn-1",

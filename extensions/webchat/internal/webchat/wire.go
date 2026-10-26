@@ -168,6 +168,8 @@ type ProductSession struct {
 	Budget          ProductBudget `json:"budget"`
 	Consumed        ProductBudget `json:"consumed"`
 	Reserved        ProductBudget `json:"reserved"`
+	TotalTurns      int           `json:"total_turns"`
+	TurnsTruncated  bool          `json:"turns_truncated,omitempty"`
 	Turns           []ProductTurn `json:"turns,omitempty"`
 }
 

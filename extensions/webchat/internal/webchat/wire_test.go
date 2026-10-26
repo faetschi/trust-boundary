@@ -17,7 +17,7 @@ import (
 // (supervisor/internal/productprotocol/fixtures_test.go). Each must decode strictly
 // into this module's copy of the wire types and encode back to the same bytes.
 
-const protocolFixtures = "testdata/protocol"
+const protocolFixtures = "../../../../supervisor/internal/productprotocol/testdata"
 
 func fixtureNames(t *testing.T) []string {
 	t.Helper()
