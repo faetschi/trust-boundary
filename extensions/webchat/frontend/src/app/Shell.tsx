@@ -262,6 +262,11 @@ export function Shell({ version }: { readonly version: string }) {
               <span className={styles.badge} data-source={model.source}>
                 {sourceText(model)}
               </span>
+              {model.source === "fixture" || model.source === "replay" ? (
+                <span className={styles.badge} data-demonstration="">
+                  demonstration · not a live session
+                </span>
+              ) : null}
               <span className={styles.badge} data-connection={model.status.state}>
                 {connectionText(model.status)}
               </span>

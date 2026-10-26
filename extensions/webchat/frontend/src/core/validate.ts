@@ -19,6 +19,9 @@
 //     protocol is refused.
 //   - Sequences: a served snapshot has sequence 1..N in order and a cursor that ends
 //     at the last one. A document may leave sequence unset (0) for every item.
+//   - `live` (the product service's session view) is admitted only in a served snapshot
+//     whose source is live, as validate.go ValidateSnapshot allows it. Its id must be the
+//     snapshot's epoch.
 //
 // Deliberate differences from Go, each reported in phase2-parity.md:
 //   - null is refused where Go decodes it as the zero value.
@@ -52,6 +55,7 @@ import {
   type Item,
   type ItemEvent,
   type ItemType,
+  type LiveSessionView,
   type Panels,
   type ReplayGap,
   type SessionEvent,
@@ -487,6 +491,118 @@ function assertGap(path: string, value: unknown): void {
   optionalText(path, record, "detail", MAX_TEXT_BYTES);
 }
 
+const BUDGET_FIELDS = ["host_calls", "tokens", "duration_seconds"] as const;
+const LIVE_VIEW_KEYS = [
+  "id",
+  "project_id",
+  "provider_profile",
+  "publication_mode",
+  "read_only",
+  "revision",
+  "blocked",
+  "budget",
+  "consumed",
+  "reserved",
+  "total_turns",
+  "turns_truncated",
+  "turns",
+] as const;
+const LIVE_TURN_KEYS = [
+  "id",
+  "ordinal",
+  "state",
+  "prompt",
+  "outcome",
+  "terminal_reason",
+  "cancel_requested",
+  "resolution",
+  "candidate_digest",
+  "review_timeout_seconds",
+] as const;
+// The service's own bounds: a prompt is repeated up to 1 KiB, and the view lists at most the recent turns. The prompt and
+// the reason are user and service text that the UI draws as plain text, so only their size is checked here.
+const MAX_LIVE_TEXT_BYTES = 16 * 1024;
+const MAX_LIVE_TURNS = 10000;
+
+function assertBudget(path: string, value: unknown): void {
+  const record = asRecord(path, value);
+  closedKeys(path, record, BUDGET_FIELDS);
+  for (const key of BUDGET_FIELDS) countValue(`${path}.${key}`, required(path, record, key));
+}
+
+export function assertLiveTurn(path: string, value: unknown): void {
+  const record = asRecord(path, value);
+  closedKeys(path, record, LIVE_TURN_KEYS);
+  referenceValue(`${path}.id`, required(path, record, "id"), false);
+  countValue(`${path}.ordinal`, required(path, record, "ordinal"));
+  reasonCodeValue(`${path}.state`, required(path, record, "state"));
+  boundedString(`${path}.prompt`, required(path, record, "prompt"));
+  for (const key of ["outcome", "resolution"] as const) {
+    const text = optional(path, record, key);
+    if (text !== undefined) reasonCodeValue(`${path}.${key}`, text);
+  }
+  const reason = optional(path, record, "terminal_reason");
+  if (reason !== undefined) boundedString(`${path}.terminal_reason`, reason);
+  const cancel = optional(path, record, "cancel_requested");
+  if (cancel !== undefined) boolValue(`${path}.cancel_requested`, cancel);
+  const digest = optional(path, record, "candidate_digest");
+  if (digest !== undefined) referenceValue(`${path}.candidate_digest`, digest, false);
+  const timeout = optional(path, record, "review_timeout_seconds");
+  if (timeout !== undefined) countValue(`${path}.review_timeout_seconds`, timeout);
+}
+
+function boundedString(path: string, value: unknown, limit: number = MAX_LIVE_TEXT_BYTES): string {
+  const text = stringValue(path, value);
+  if (utf8Length(text) > limit) fail(path, `exceeds ${limit} bytes`);
+  return text;
+}
+
+// The service's session view, closed and bounded. The identifiers keep their patterns; prose is size-bounded only.
+export function assertLiveView(path: string, value: unknown): asserts value is LiveSessionView {
+  const record = asRecord(path, value);
+  closedKeys(path, record, LIVE_VIEW_KEYS);
+  for (const key of ["id", "project_id", "provider_profile"] as const) {
+    boundedIdentity(`${path}.${key}`, required(path, record, key));
+  }
+  reasonCodeValue(`${path}.publication_mode`, required(path, record, "publication_mode"));
+  countValue(`${path}.revision`, required(path, record, "revision"));
+  countValue(`${path}.total_turns`, required(path, record, "total_turns"));
+  for (const key of ["read_only", "blocked", "turns_truncated"] as const) {
+    const flag = optional(path, record, key);
+    if (flag !== undefined) boolValue(`${path}.${key}`, flag);
+  }
+  for (const key of ["budget", "consumed", "reserved"] as const) assertBudget(`${path}.${key}`, required(path, record, key));
+  const turns = optional(path, record, "turns");
+  if (turns !== undefined) {
+    arrayValue(`${path}.turns`, turns, MAX_LIVE_TURNS).forEach((turn, index) => assertLiveTurn(`${path}.turns[${index}]`, turn));
+  }
+}
+
+// A project or provider name is printable ASCII without spaces, as the service requires (validIdentity).
+function boundedIdentity(path: string, value: unknown): string {
+  const text = stringValue(path, value);
+  if (!/^[\x21-\x7e]{1,128}$/.test(text)) fail(path, "is not a bounded identity");
+  return text;
+}
+
+// The primitives the live gateway's answers are checked with (live/wire.ts), so that boundary uses these same rules.
+export const kit = {
+  fail,
+  asRecord,
+  closedKeys,
+  optional,
+  required,
+  stringValue,
+  boolValue,
+  countValue,
+  identifierValue,
+  referenceValue,
+  reasonCodeValue,
+  arrayValue,
+  boundedString,
+  boundedIdentity,
+} as const;
+
 function cursorParts(cursor: string): { epoch: string; sequence: number } | null {
   const parts = cursor.split(":");
   if (parts.length !== 2) return null;
@@ -520,9 +636,14 @@ export function assertSnapshot(
     "items",
     "gaps",
     "warnings",
+    "live",
   ]);
   if (record.schema_version !== CONTRACT_VERSION) fail(path, "unsupported snapshot schema version");
   const source = oneOf(`${path}.source`, SOURCE_CLASSES, required(path, record, "source"));
+  const live = optional(path, record, "live");
+  if (live !== undefined && (form !== "served" || source !== "live")) {
+    fail(`${path}.live`, "only a live projection may carry a live session view");
+  }
   const scope = oneOf(
     `${path}.verification_scope`,
     VERIFICATION_SCOPES,
@@ -536,6 +657,10 @@ export function assertSnapshot(
   const cursor = stringValue(`${path}.cursor`, required(path, record, "cursor"));
   const parsed = cursorParts(cursor);
   if (parsed === null || parsed.epoch !== epoch) fail(`${path}.cursor`, "is invalid");
+  if (live !== undefined) {
+    assertLiveView(`${path}.live`, live);
+    if (live.id !== epoch) fail(`${path}.live.id`, "does not match the snapshot epoch");
+  }
   nonZeroTime(`${path}.generated_at`, required(path, record, "generated_at"));
   assertSession(`${path}.session`, required(path, record, "session"));
   assertPanels(`${path}.panels`, required(path, record, "panels"));

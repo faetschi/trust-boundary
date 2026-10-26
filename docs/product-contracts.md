@@ -493,6 +493,15 @@ The existing React app gains a live mode:
 
 Model-authored text is rendered through the existing sanitizing markdown path. Governance status stays structurally and visually separate from model output. Keyboard access and focus behaviour follow the existing components.
 
+Implemented as follows (detail in `extensions/webchat/docs/web-chat-contract.md` section 9.7):
+
+- The app detects live mode from `GET /api/v1/contract` (`"mode": "live"`). A `401` shows pairing instructions. Any other gateway keeps the read-only demonstration path, labelled as a demonstration.
+- The page recovers the CSRF token from `GET /api/v1/pair` and sends it on every `POST`.
+- A request key belongs to one user action. A retry sends the same body under the same key. An unknown outcome is shown, blocks a new prompt, and offers a retry under the same key.
+- `expected_revision` is the revision of the last session view the page read, and the view is read again after every lifecycle event.
+- The event stream is a long poll that starts from the snapshot's cursor. The cursor is stored per session in the tab, and a gap refetches the snapshot.
+- Publish and Discard send the digest of the candidate that is displayed.
+
 ### Windows access
 
 Use an SSH tunnel to the product host: `ssh -L 8791:127.0.0.1:8791 user@host`, with pinned host keys. Never bind a non-loopback address.

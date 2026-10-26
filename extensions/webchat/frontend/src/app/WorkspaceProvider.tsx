@@ -8,16 +8,23 @@ const WorkspaceContext = createContext<WorkspaceStore | null>(null);
 interface WorkspaceProviderProps {
   // Injected facilities. Omitted in the app, where the browser versions are used.
   readonly deps?: WorkspaceDeps;
+  // A store the caller owns and replaces (live mode swaps it when another session opens). The children stay mounted, so a
+  // swap keeps focus and layout state, and the provider stops the old store and starts the new one.
+  readonly store?: WorkspaceStore;
+  // False until the page knows which gateway it talks to (App.tsx). The store then stays unstarted and reads "loading".
+  readonly autoStart?: boolean;
   readonly children: ReactNode;
 }
 
-// Owns one workspace store for the life of the page. The stream opens in an effect (snapshot
+// Owns one workspace store for the life of the page, or runs the one it is given. The stream opens in an effect (snapshot
 // first), closes on unmount, and reopens on a StrictMode remount, because start and stop
 // are both repeatable.
-export function WorkspaceProvider({ deps, children }: WorkspaceProviderProps) {
-  const [store] = useState(() => createWorkspaceStore(deps ?? browserDeps()));
+export function WorkspaceProvider({ deps, store: given, autoStart = true, children }: WorkspaceProviderProps) {
+  const [owned] = useState(() => (given ? null : createWorkspaceStore(deps ?? browserDeps())));
+  const store = given ?? owned;
+  if (store === null) throw new Error("WorkspaceProvider: the store prop was removed after it was given");
   useEffect(() => {
-    store.start();
+    if (autoStart) store.start();
     const online = () => store.goOnline();
     const offline = () => store.goOffline();
     window.addEventListener("online", online);
@@ -27,7 +34,7 @@ export function WorkspaceProvider({ deps, children }: WorkspaceProviderProps) {
       window.removeEventListener("offline", offline);
       store.stop();
     };
-  }, [store]);
+  }, [store, autoStart]);
   return (
     <WorkspaceContext.Provider value={store}>
       <AnnouncerContext.Provider value={store.announcer}>{children}</AnnouncerContext.Provider>
