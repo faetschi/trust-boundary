@@ -54,8 +54,8 @@ func SelectAudit(cases []evalcorpus.Case, reasons map[string][]string, seed stri
 
 func verifySelection(m evalcorpus.Manifest, audit Audit, receipt Receipt) error {
 	sel := audit.Selection
-	if _, err := strconv.ParseUint(sel.Seed, 10, 64); err != nil || sel.Seed == "0" || sel.Seed != receipt.Seeds.AuditSample {
-		return fmt.Errorf("panel audit selection seed %q differs from receipt or is invalid", sel.Seed)
+	if _, err := strconv.ParseUint(sel.Seed, 10, 64); err != nil || sel.Seed == "0" || sel.Seed != receipt.Seeds.AuditSample || sel.Seed != strconv.FormatUint(receipt.Seeds.BlindIDsAndOrder, 10) {
+		return fmt.Errorf("panel audit selection seed %q differs from the receipt audit_sample or run seed, or is invalid", sel.Seed)
 	}
 	if sel.SampleSize != AuditSampleSize || sel.Purpose != AuditPurpose || sel.Method != "evalcorpus.SelectSeeded" {
 		return fmt.Errorf("panel audit selection must use %s and sample size %d", AuditPurpose, AuditSampleSize)

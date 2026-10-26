@@ -15,6 +15,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"time"
 
 	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/evalcorpus"
@@ -108,7 +109,9 @@ func parse(name string, raw []byte, v any) error {
 //     receipt's own ratings, and that recomputed gate is pass;
 //   - the cases of the audit list are exactly the cases of m marked audited, each once, each with a
 //     resolution in m;
-//   - every listed case carries a complete advisor entry that accepts it.
+//   - every listed case carries a complete advisor entry that accepts it, signed at an RFC 3339 time
+//     with a timezone, with the same resolution as the manifest sign-off, and the audit seed is the
+//     run seed of the receipt.
 func Verify(m evalcorpus.Manifest, receiptRaw, auditRaw, statsRaw []byte) error {
 	cr := m.ConstructReview
 	if got := Digest(receiptRaw); got != cr.PanelReceiptDigest {
@@ -243,6 +246,9 @@ func verifyAudited(m evalcorpus.Manifest, audit Audit) error {
 		if err := ac.Advisor.complete(); err != nil {
 			return fmt.Errorf("panel audit case %q: %w", ac.CaseID, err)
 		}
+		if strings.TrimSpace(ac.Advisor.Resolution) != strings.TrimSpace(so.Resolution) {
+			return fmt.Errorf("panel audit case %q advisor resolution differs from the manifest signoff resolution", ac.CaseID)
+		}
 		if !evalcorpus.SameIdentity(ac.Advisor.Identity, so.Reviewer) {
 			return fmt.Errorf("panel audit case %q advisor identity %q differs from signoff reviewer %q", ac.CaseID, ac.Advisor.Identity, so.Reviewer)
 		}
@@ -264,6 +270,9 @@ func (a Advisor) complete() error {
 		if v := strings.TrimSpace(f.value); v == "" || strings.HasPrefix(strings.ToUpper(v), "TODO") {
 			return fmt.Errorf("advisor_signoff.%s is blank or a placeholder", f.name)
 		}
+	}
+	if _, err := time.Parse(time.RFC3339, strings.TrimSpace(a.SignedAt)); err != nil {
+		return fmt.Errorf("advisor_signoff.signed_at %q is not an RFC 3339 time with a timezone", a.SignedAt)
 	}
 	if a.Decision != evalcorpus.DecisionAccept {
 		return fmt.Errorf("advisor_signoff.decision is %q; only %q can back an accepted manifest (a rejected or revised case needs a revised manifest and a new panel run)", a.Decision, evalcorpus.DecisionAccept)

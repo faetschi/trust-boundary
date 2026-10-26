@@ -516,7 +516,7 @@ func TestVerifySelectionRejectsEmptyUnselectedAudit(t *testing.T) {
 	}
 	models := []string{"m1", "m2", "m3"}
 	var receipt Receipt
-	receipt.Seeds.AuditSample = "7"
+	receipt.Seeds.AuditSample, receipt.Seeds.BlindIDsAndOrder = "7", 7
 	for _, c := range m.Cases {
 		for _, model := range models {
 			receipt.Outcomes = append(receipt.Outcomes, Outcome{1, c.CaseID, model, map[string]string{"threat_class": "none", "authorization": "allowed", "effect_ids": "none"}}, Outcome{2, c.CaseID, model, map[string]string{"intent": "pass", "class_or_difficulty": "pass", "tool_mapping": "pass", "effect_label": "pass", "expected_route": "pass", "sensitivity": "pass"}})
