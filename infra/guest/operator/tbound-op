@@ -213,6 +213,28 @@ del a["route_probe"]
 if a != b:
     sys.exit("production template differs from the probe template by more than route_probe")
 EOF
+read -r -d '' PY_CFGPOLICY <<'EOF' || true
+import json, sys
+def bad(m):
+    sys.stderr.write("policycheck: %s\n" % m)
+    sys.exit(1)
+try:
+    cfg = json.load(open(sys.argv[1], encoding="utf-8"))
+    rec = json.load(open(sys.argv[2], encoding="utf-8"))
+except (OSError, ValueError) as e:
+    bad("cannot read a file: %s" % e)
+pol = rec.get("public_policy") if isinstance(rec, dict) else None
+if not isinstance(pol, dict):
+    bad("the installed panel receipt has no public_policy object")
+paths = cfg.get("workflow_bash_output_paths") if isinstance(cfg, dict) else None
+if not isinstance(paths, list):
+    bad("the service config has no workflow_bash_output_paths list")
+if pol.get("bash_output_paths") != paths:
+    bad("bash output paths: the receipt policy has %r, the service config %r" % (pol.get("bash_output_paths"), paths))
+# Cells run network-none and the service config names no destination, so the raters must have seen none.
+if pol.get("network_destinations") != []:
+    bad("network destinations: the receipt policy has %r, the service config allows none" % (pol.get("network_destinations"),))
+EOF
 jget() { py "$PY_JGET" "$1" "$2"; }
 jhas() { py "$PY_JGET" "$1" "$2" >/dev/null 2>&1; }
 
@@ -430,6 +452,7 @@ v_cfg_install() {
   fi
   if [[ $n == pilot ]]; then
     [[ -f $GA/state/corpus-digest && $(cat "$GA/state/corpus-digest") == "$CFG_EXTRA" ]] || die "config corpus digest is not the digest of the installed manifest (manifest-install first)"
+    py "$PY_CFGPOLICY" "$WORK/cfg" "$ETC/corpus/receipt.json" || die "service config does not match the public policy recorded in the installed panel receipt"
   fi
   if [[ $(sha "$ETC/serve-pi-service.json") == "$want" ]]; then say "config already installed"
   else backup_once "$n" serve-pi-service.json; install_atomic "$WORK/cfg" "$ETC/serve-pi-service.json" 0644; fi
@@ -549,6 +572,7 @@ v_rollback() {
     dig=$(printf '%s\n' "$out" | grep -Eo 'sha256:[0-9a-f]{64}' | sort -u)
     [[ $dig =~ $re_dig ]] || die "backup corpus has no unique digest"
   fi
+  [[ $part != corpus ]] || rm -f -- "$GA/state/corpus-digest"
   for f in "${files[@]}"; do install_atomic "$PREV/$n/$f" "$ETC/$f" 0644; [[ $(sha "$ETC/$f") == "$(sha "$PREV/$n/$f")" ]] || die "restore of $f failed"; done
   case $part in
     reg|all) "$TBP" managed-root-verify --registration "$ETC/managed-live-root.json" --sig "$ETC/managed-live-root.ed25519" --pub "$ETC/pi-host-profile.pub" --runner-digest "${PIN[TBOUND_DIGEST]}" >/dev/null || die "restored registration does not verify";;
