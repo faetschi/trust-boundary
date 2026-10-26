@@ -76,6 +76,7 @@ func newFixture(t *testing.T) *fixture {
 		f.stats["items"].(map[string]any)[it.Key] = ItemStats{Subjects: 4, Roots: 4, Kappa: 1, KappaDefined: true, Agreement: 1, Gate: GatePass}
 	}
 
+	f.stats["models"] = []string{models[0].ID, models[1].ID, models[2].ID}
 	return f
 }
 

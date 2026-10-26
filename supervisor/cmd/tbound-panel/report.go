@@ -190,7 +190,7 @@ func (r *runner) finish(plan blindPlan) (spend, error) {
 		"independent_fields": fields, "effect_ids_rule": effectIDsRule,
 		"blind_agreement_with_claim": agree, "note": humanNote,
 	}
-	if err := writeReport(filepath.Join(r.out, "stats.json"), panelaudit.Stats{Schema: panelaudit.StatsSchema, ContentDigest: r.corpus.ContentDigest, DryRun: r.provName == "fake", LiveRun: r.provName == "openrouter", Provider: r.provName, Cases: len(d.cases), CompleteCases: len(d.cases) - len(incomplete), Incomplete: incomplete, Missing: missing, Items: items2}, statsDoc); err != nil {
+	if err := writeReport(filepath.Join(r.out, "stats.json"), panelaudit.Stats{Models: models, Schema: panelaudit.StatsSchema, ContentDigest: r.corpus.ContentDigest, DryRun: r.provName == "fake", LiveRun: r.provName == "openrouter", Provider: r.provName, Cases: len(d.cases), CompleteCases: len(d.cases) - len(incomplete), Incomplete: incomplete, Missing: missing, Items: items2}, statsDoc); err != nil {
 		return spent, err
 	}
 	if err := writeFile(filepath.Join(r.out, "stats.md"), []byte(statsMarkdown(items2, fields, agree, len(d.cases), incomplete, r))); err != nil {

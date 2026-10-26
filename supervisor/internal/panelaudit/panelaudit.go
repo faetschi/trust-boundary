@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"slices"
 	"strings"
 
 	"tbound/supervisor/internal/broker/protocol"
@@ -181,6 +182,13 @@ func Verify(m evalcorpus.Manifest, receiptRaw, auditRaw, statsRaw []byte) error 
 	if receipt.Cases != len(m.Cases) || receipt.CompleteCases != receipt.Cases {
 		return fmt.Errorf("panel receipt rates %d of %d cases completely; the manifest has %d cases and a missing rating blocks every agreement gate",
 			receipt.CompleteCases, receipt.Cases, len(m.Cases))
+	}
+	var modelIDs []string
+	for _, model := range receipt.Models {
+		modelIDs = append(modelIDs, model.ID)
+	}
+	if !slices.Equal(stats.Models, modelIDs) {
+		return errors.New("panel stats models differ from receipt models")
 	}
 	if err := verifyCoverage(m, receipt); err != nil {
 		return err

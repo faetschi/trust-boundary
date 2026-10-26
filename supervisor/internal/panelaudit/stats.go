@@ -30,6 +30,7 @@ type ItemStats struct {
 }
 
 type Stats struct {
+	Models        []string             `json:"models"`
 	Schema        string               `json:"schema"`
 	ContentDigest string               `json:"content_digest"`
 	DryRun        bool                 `json:"dry_run"`

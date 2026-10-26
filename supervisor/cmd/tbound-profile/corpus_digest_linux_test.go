@@ -176,6 +176,7 @@ func tweakedPanel(t *testing.T, dir string, m evalcorpus.Manifest, tw panelTweak
 		stats["items"].(map[string]any)[it.Key] = panelaudit.ItemStats{Subjects: len(m.Cases), Roots: len(m.Cases), Kappa: 1, KappaDefined: true, Agreement: 1, Gate: panelaudit.GatePass}
 	}
 
+	stats["models"] = []string{models[0].ID, models[1].ID, models[2].ID}
 	if tw.stats != nil {
 		tw.stats(stats)
 	}
