@@ -57,6 +57,27 @@ func TestChatRetryConclusiveResponseClearsUnknownOutcome(t *testing.T) {
 	}
 }
 
+func TestChatRetryTransportCodeKeepsUnknownOutcome(t *testing.T) {
+	for _, code := range []string{pp.CodeServiceUnavailable, pp.CodeProtocolError} {
+		t.Run(code, func(t *testing.T) {
+			f := newChatFake(t)
+			attempt := 0
+			f.hooks[pp.OpSubmitTurn] = func(pp.Request) (*pp.Response, bool) {
+				attempt++
+				if attempt == 1 {
+					return nil, true
+				}
+				return chatErrResp(code, ""), false
+			}
+			client := &chatClient{socket: f.sock, attempts: 3}
+			_, err := client.call(context.Background(), pp.Request{Op: pp.OpSubmitTurn, SubmitTurn: &pp.SubmitTurn{RequestKey: "same"}}, time.Second)
+			if exit, _ := chatDescribe(err); exit != chatExitUnknown {
+				t.Fatalf("%s after a lost accepted reply: exit=%d err=%v, want unknown", code, exit, err)
+			}
+		})
+	}
+}
+
 func TestChatRetryMalformedResponseKeepsUnknownOutcome(t *testing.T) {
 	f := newChatFake(t)
 	attempt := 0
