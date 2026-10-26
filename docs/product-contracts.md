@@ -405,7 +405,7 @@ Events are projected only from durable records: catalog records for the session,
 
 ## Milestone 5: product host setup, updates and diagnostics (P8)
 
-Everything here runs against a test root (`--root DIR`) and supports `--dry-run`, so it can be verified without a real host. The root must be an existing absolute directory outside the thesis paths (`/etc/tbound`, `/var/lib/tbound`, `/run/tbound`, `/run/tbound-pi`). Roots and destination parents containing symlinks are refused. Destination changes use pinned directory handles so a parent symlink cannot redirect a privileged write or removal. Real qualification needs the product host and is pending.
+Everything here runs against a test root (`--root DIR`) and supports `--dry-run`, so it can be verified without a real host. The root must be an existing absolute directory outside the thesis paths (`/etc/tbound`, `/var/lib/tbound`, `/run/tbound`, `/run/tbound-pi`). Roots and destination parents containing symlinks are refused. Destination changes use pinned directory handles so a parent symlink cannot redirect a privileged write or removal. In-place writes and metadata changes reject multiply-linked regular files and validate and mutate the same open file. Real qualification needs the product host and is pending.
 
 ### Release trust
 
@@ -447,8 +447,10 @@ Running it again changes nothing and reports "unchanged". An existing file with 
 
 - `tbound product update --binary NEW [--root DIR]` stages the new binary, stops the service, and opens the catalog. It refuses while any turn is unresolved, other than a pending review, which becomes `discarded` with reason `restart`. It keeps the current binary as last-known-good, swaps atomically, starts the service, and runs the self-test. If the self-test fails, it rolls back. Retrying when the requested binary is already installed still starts the service and runs the self-test, preserving the existing last-known-good for recovery.
 - `tbound product rollback` restores last-known-good the same way.
+- Binary and catalog sources are opened through pinned parents without following leaf symlinks. The opened file must be regular and single-linked; managed sources must have their expected owner on a live host, binaries must be 0755, and catalog backups accept 0600 or 0640 sources. Digests and copies use the same descriptor. A retry validates any retained last-known-good before starting the service, and recovery validates it again before copying.
 - Catalog schema changes need a version check and a backup before the swap. A newer schema is never read by an older binary.
 - `tbound product uninstall [--root DIR] [--purge]` stops and disables the service and removes the unit, binary and runtime access. On a live host it verifies the service is inactive before removing files. Stop or disable failures abort removal unless systemd confirms the unit is absent and inactive. It reports unresolved turns. It keeps `/etc/tbound-product` and `/var/lib/tbound-product` unless `--purge` is given, and `--purge` asks for confirmation unless `--yes` is also given. A purge refuses an unreadable or locked catalog before removing files. Deletion errors are returned, and only successful deletions are reported as removed.
+- Live catalog checks run the currently executing administrative binary as the service account, so purge also works after an ordinary uninstall removed the installed binary. The internal `product turns` command permits non-root callers while retaining the catalog's ownership and permission checks.
 
 ### Diagnostics
 

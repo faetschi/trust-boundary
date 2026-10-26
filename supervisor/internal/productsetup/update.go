@@ -11,14 +11,12 @@ import (
 	"strings"
 )
 
-// copyAtomic copies src to dst through a synced temporary file in dst's directory and a rename, so dst
+// copyAtomic copies in to dst through a synced temporary file in dst's directory and a rename, so dst
 // is always either its old or its new content.
-func copyAtomic(src, dst string, mode os.FileMode) error {
-	in, err := os.Open(src)
-	if err != nil {
+func copyAtomic(in *os.File, dst string, mode os.FileMode) error {
+	if _, err := in.Seek(0, io.SeekStart); err != nil {
 		return err
 	}
-	defer in.Close()
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 		return err
 	}
@@ -41,12 +39,10 @@ func copyAtomic(src, dst string, mode os.FileMode) error {
 	return os.Rename(tmp.Name(), dst)
 }
 
-func fileDigest(file string) (string, error) {
-	f, err := os.Open(file)
-	if err != nil {
+func fileDigest(f *os.File) (string, error) {
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
 		return "", err
 	}
-	defer f.Close()
 	h := sha256.New()
 	if _, err := io.Copy(h, f); err != nil {
 		return "", err
@@ -54,12 +50,34 @@ func fileDigest(file string) (string, error) {
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
-func regularFile(file string) (os.FileInfo, error) {
-	info, err := os.Lstat(file)
-	if err != nil || !info.Mode().IsRegular() {
-		return nil, refuse("%s is not a regular non-symlink file", file)
+func regularFile(file *os.File) (os.FileInfo, error) {
+	info, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, refuse("%s is not a regular file", file.Name())
 	}
 	return info, nil
+}
+
+func (h *host) managedSource(logical string, o owner, mode os.FileMode) (*os.File, error) {
+	f, err := h.openFile(logical, os.O_RDONLY, 0)
+	if err != nil {
+		return nil, err
+	}
+	info, err := regularFile(f)
+	if err == nil && o == ownService && h.env.Live && !h.haveIDs {
+		h.uid, h.gid, h.haveIDs, err = h.lookupUser(ServiceUser)
+	}
+	if err == nil && (!h.ownerMatches(info, o) || (mode == 0 && modeBits(info)&^0o040 != 0o600) || (mode != 0 && modeBits(info) != mode)) {
+		err = refuse("%s has an unexpected owner or mode", logical)
+	}
+	if err != nil {
+		f.Close()
+		return nil, err
+	}
+	return f, nil
 }
 
 // Update installs newBinary as the service binary. See replaceBinary for the flow.
@@ -69,14 +87,19 @@ func Update(env Env, newBinary string) (Report, error) {
 		return *h.rep, err
 	}
 	defer h.dir.Close()
-	info, err := regularFile(newBinary)
+	source, err := openSource(newBinary)
+	if err != nil {
+		return *h.rep, err
+	}
+	defer source.Close()
+	info, err := regularFile(source)
 	if err != nil {
 		return *h.rep, err
 	}
 	if info.Size() == 0 || info.Size() > maxBinaryBytes {
 		return *h.rep, refuse("%s is empty or too large to be the tbound binary", newBinary)
 	}
-	return h.replaceBinary(newBinary, "update")
+	return h.replaceBinary(source, "update")
 }
 
 // Rollback restores the last-known-good binary the same way Update installs a new one. The binary it
@@ -87,7 +110,12 @@ func Rollback(env Env) (Report, error) {
 		return *h.rep, err
 	}
 	defer h.dir.Close()
-	return h.replaceBinary(h.real(LastKnownGoodPath), "rollback")
+	source, err := h.managedSource(LastKnownGoodPath, ownRoot, 0o755)
+	if err != nil {
+		return *h.rep, refuse("there is no last-known-good binary at %s safe to roll back to: %v", LastKnownGoodPath, err)
+	}
+	defer source.Close()
+	return h.replaceBinary(source, "rollback")
 }
 
 // replaceBinary swaps source in as the service binary:
@@ -100,17 +128,12 @@ func Rollback(env Env) (Report, error) {
 //
 // An interruption leaves the binary either old or new, and the last-known-good beside it. Rerunning the
 // command converges, and the service is started again when it was left stopped.
-func (h *host) replaceBinary(source, what string) (Report, error) {
-	current, staged := h.real(BinaryPath), h.real(stagedBinaryPath)
-	if _, err := regularFile(current); err != nil {
-		return *h.rep, refuse("no tbound binary is installed at %s; run `tbound product setup` first", BinaryPath)
+func (h *host) replaceBinary(source *os.File, what string) (Report, error) {
+	current, err := h.managedSource(BinaryPath, ownRoot, 0o755)
+	if err != nil {
+		return *h.rep, refuse("no safe tbound binary is installed at %s; run `tbound product setup` first: %v", BinaryPath, err)
 	}
-	if _, err := regularFile(source); err != nil {
-		if what == "rollback" {
-			return *h.rep, refuse("there is no last-known-good binary at %s to roll back to", LastKnownGoodPath)
-		}
-		return *h.rep, err
-	}
+	defer current.Close()
 	want, err := fileDigest(source)
 	if err != nil {
 		return *h.rep, err
@@ -118,6 +141,12 @@ func (h *host) replaceBinary(source, what string) (Report, error) {
 	if have, err := fileDigest(current); err != nil {
 		return *h.rep, err
 	} else if have == want {
+		fallback, err := h.managedSource(LastKnownGoodPath, ownRoot, 0o755)
+		if err == nil {
+			fallback.Close()
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return *h.rep, err
+		}
 		h.step("binary", BinaryPath, "unchanged", "already sha256:"+want[:16])
 		return *h.rep, h.startAndTest("kept from the interrupted update")
 	}
@@ -176,7 +205,7 @@ func (h *host) replaceBinary(source, what string) (Report, error) {
 		return *h.rep, abort(err)
 	}
 	if err := h.withPath(BinaryPath, false, func(path string) error {
-		return os.Rename(filepath.Join(filepath.Dir(path), filepath.Base(staged)), path)
+		return os.Rename(filepath.Join(filepath.Dir(path), filepath.Base(stagedBinaryPath)), path)
 	}); err != nil {
 		return *h.rep, abort(fmt.Errorf("swap the binary: %w", err))
 	}
@@ -215,8 +244,13 @@ func (h *host) selfTest() error {
 
 // restore puts the last-known-good binary back after a failed start or self-test, then starts it.
 func (h *host) restore(cause error, backup string) error {
-	err := errors.Join(cause, h.command("systemctl", "stop", UnitName),
-		h.copyAtomic(h.real(LastKnownGoodPath), BinaryPath, 0o755), h.command("systemctl", "start", UnitName))
+	source, err := h.managedSource(LastKnownGoodPath, ownRoot, 0o755)
+	if err != nil {
+		return errors.Join(cause, fmt.Errorf("cannot restore the last-known-good binary: %w", err))
+	}
+	defer source.Close()
+	err = errors.Join(cause, h.command("systemctl", "stop", UnitName),
+		h.copyAtomic(source, BinaryPath, 0o755), h.command("systemctl", "start", UnitName))
 	h.step("swap", BinaryPath, "updated", "rolled back to "+LastKnownGoodPath)
 	return fmt.Errorf("%w; rolled back to the last-known-good binary (catalog backup: %s)", err, backup)
 }
@@ -224,10 +258,14 @@ func (h *host) restore(cause error, backup string) error {
 // backupCatalog copies the catalog journal to BackupsDir under a name that carries its digest, and
 // returns the logical backup path, or "none" when no catalog exists yet.
 func (h *host) backupCatalog() (string, error) {
-	catalog := h.real(CatalogPath)
-	if _, err := os.Lstat(catalog); errors.Is(err, os.ErrNotExist) {
+	catalog, err := h.managedSource(CatalogPath, ownService, 0)
+	if errors.Is(err, os.ErrNotExist) {
 		return "none", nil
 	}
+	if err != nil {
+		return "", err
+	}
+	defer catalog.Close()
 	sum, err := fileDigest(catalog)
 	if err != nil {
 		return "", err
@@ -358,7 +396,7 @@ func (h *host) removeEmptyDir(logical string) error {
 	return nil
 }
 
-func (h *host) copyAtomic(source, logical string, mode os.FileMode) error {
+func (h *host) copyAtomic(source *os.File, logical string, mode os.FileMode) error {
 	return h.withPath(logical, true, func(path string) error { return copyAtomic(source, path, mode) })
 }
 
