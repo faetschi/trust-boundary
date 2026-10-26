@@ -75,6 +75,7 @@ Step 2 detail:
   - The panel binds `ContentDigest`, which excludes the review fields.
   - `corpus-digest` requires the signed panel audit and receipt.
   - There is no separate two-human pilot review any more; the packets `review-artifacts/pilot-review-packets-20261024|20261025` are obsolete. Branch `feat/construct-review-signoff`.
+- 2026-10-26 (owner): the D35 panel agreement gate uses **Gwet's AC1**: ≥0.80 with ≥90% raw agreement passes, 0.60–0.79 means revise, <0.60 means stop. Fleiss' kappa is reported, not gated. Reason: kappa collapses at high prevalence (410/419 unanimous gives kappa ≈ −0.007). Cases the panel fails unanimously join the advisor's mandatory list. Recorded as a dated amendment in MSE_MA_Thesis `cd629ce` (decision register + thesis §7.3); the advisor confirms it. The content digest the panel binds also excludes the manifest `pins`, so the panel run does not depend on F14.
 - The coordinated signing/provisioning session (S3'/S4', installs, tbound-netsink, trial key, Spike B) happens after the reviews, as one signing round on the final manifest digest.
 
 ## Needs the owner or advisor
