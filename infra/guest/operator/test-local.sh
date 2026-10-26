@@ -315,6 +315,8 @@ install() {
             script += "\nneed_name() { [[ $1 == pilot ]]; }\nst_reset() { :; }\nre_dig='^sha256:[0-9a-f]{64}$'\n" + rollback_verb
             if invalid_backup:
                 script += "\nexport REFUSE_ROLLBACK=1\n"
+            if fail_install:
+                script += "\nexport FAIL_INSTALL=" + fail_install + "\n"
             if missing_backup:
                 script += '\nrm -- "$PREV/pilot/corpus/audit.json"\n'
             script += "\nARGS=(pilot corpus)\nv_rollback\n"
