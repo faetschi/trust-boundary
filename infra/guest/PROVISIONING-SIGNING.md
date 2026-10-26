@@ -955,8 +955,12 @@ filled before `corpus-digest`. The full corpus digest includes the pins. Bind
 `receipt.json`, the signed `audit.json`, and `stats.json` by their byte digests in
 `construct_review.panel_receipt_digest`, `panel_audit_digest`, and
 `panel_stats_digest`. All three must record the same content digest. The receipt
-embeds per-call `rating_outcomes`, so its byte digest also binds these ratings;
-retain `ratings.jsonl` as the raw-round record.
+embeds per-call `rating_outcomes`, so its byte digest also binds these ratings, and the
+`public_policy` (bash output paths and network destinations) the raters saw. `corpus-digest` recomputes every
+phase-2 statistic of `stats.json` from those ratings and requires AC1 >= 0.80 with raw agreement >= 0.90 per item;
+`tbound-op cfg-install pilot` refuses a service config whose `workflow_bash_output_paths` differ from the receipt's
+`public_policy.bash_output_paths`, or when the receipt records any network destination. Retain `ratings.jsonl` as the
+raw-round record.
 
 - D1 [READ-ONLY, owner machine, WSL] after the construct review (D35 amendment 2026-10-24: the blinded `tbound-panel` run on the draft, then the advisor's `audit.json` sign-off and one `signoff` per case with `human: true`, `author: false`, `decision` and the same `reviewer` throughout; `construct_review` holding the panel's `content_digest` and the sha256 of its `receipt.json` and signed `audit.json`; see `docs/guides/panel-run.md` step 8), set the four `pins.*` members of the draft to PINS (R5-1b; `pins.attacker_digest` stays), save the final manifest as `corpus/pilot/manifest.json` and check it: `TBP corpus-pins --template $H/d09-cell.json --runtime-bundle-digest $BUNDLE_DIGEST --node-digest <Node digest> --manifest corpus/pilot/manifest.json` must exit 0 (it names the members that differ). Compute the digest with the frozen tool:
   ```

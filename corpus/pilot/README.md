@@ -158,7 +158,10 @@ as checked by `caps.scripted: true`. Real-provider budgets retain their positive
       needs a new panel run. The content digest excludes every case's `signoff`, `construct_review`, and
       all manifest `pins`. Fill the environment, model, profile and policy pins with `corpus-pins` after
       the panel run if needed, but before `corpus-digest`. The full corpus digest still includes pins.
-      The receipt's pinned bytes also bind its per-call `rating_outcomes`; keep `ratings.jsonl` as the raw record.
+      The receipt's pinned bytes also bind its per-call `rating_outcomes` and the `public_policy` the raters saw; keep
+      `ratings.jsonl` as the raw record. `tbound-op cfg-install pilot` later refuses the corpus service config unless
+      its `workflow_bash_output_paths` equal the receipt's `public_policy.bash_output_paths` and the receipt's
+      `network_destinations` are empty. A `fail` rating, even a unanimous one, puts the case on the audit list.
 3. `evq_results` and `route_report` (the other two `run.json` inputs besides the manifest) are generated, not authored,
    from one capture of the frozen commit on Linux or WSL:
    `tbound-run evq-capture --repo <repo> --commit <freeze_commit> --out <new dir>`, then
@@ -227,7 +230,10 @@ The panel files are refused when their sha256 is not the one in `construct_revie
 that of the manifest, when either is a dry run, when the receipt does not cover every case with a complete rating,
 when the audit list and the cases marked `audited` differ, or when an audit entry lacks a decision, resolution,
 identity or time, or does not accept the case. The advisor identity must match the manifest reviewer. Admission
-checks every phase-2 `gate` in the pinned `stats.json` (schema v3 with the same `content_digest`) is `pass`,
-rejects any missing rating, and replays the audit's eligible roots, seed and 60-root sample with the panel's own
+checks that every phase-2 item of the pinned `stats.json` (schema v4 with the same `content_digest`) matches, within 1e-9,
+the Gwet AC1, raw agreement, Fleiss kappa and prevalence recomputed from the receipt's own ratings and that the recomputed
+gate is `pass` (AC1 at least 0.80 and raw agreement at least 0.90; kappa is reported, not gated),
+rejects any missing rating, requires the audit seed to equal the receipt's run seed, requires each advisor
+`resolution` to equal the manifest's and `signed_at` to be RFC 3339 with a timezone, and replays the audit's eligible roots, seed and 60-root sample with the panel's own
 selection function. Phase-1 agreement is reported; its gate values are not admission gates. Any edit changes the digest;
 re-pin it in the service config. Save the final file as `corpus/pilot/manifest.json`.

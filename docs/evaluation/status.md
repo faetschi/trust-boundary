@@ -30,7 +30,7 @@ decisions, blockers, and next steps. History before this date is in Git.
 | Governed path | G1 and both probes pass; each new freeze must repeat them with fresh evidence |
 | Measurement | F13: EVQ 21/22 (net-sink open until corpus mode); route report complete |
 | Pilot corpus | Re-based on established benchmark items; 11 adversarial, 20 compliant, 2 ambiguous; manifest still has sign-off TODOs |
-| Panel | `tbound-panel` is ready; the owner runs it after funding and model choice |
+| Panel | `tbound-panel` is ready; the owner runs it after funding and model choice. Gate per checklist item: Gwet's AC1 ≥ 0.80 with raw agreement ≥ 0.90 (Fleiss' kappa is reported, not gated); `corpus-digest` recomputes every statistic from the pinned receipt ratings |
 | Provider | OpenCode Go for engineering; the frozen OpenRouter route for the provider-dependent H1 pilot |
 | Denial hints | Static table (H1 treatment) merged; in service mode a DENY still ends the conversation (fix before the pilot); generated hints are post-thesis |
 
