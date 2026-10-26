@@ -578,6 +578,8 @@ func (s *Store) recoverAdmissionLocked(admissions *admissionRecovery, effect aud
 	}
 	requestJSON, _ := json.Marshal(request)
 	recordRequestJSON, _ := json.Marshal(record.Request)
+	// Admission recording clones changes onto a nil slice, so an empty delta is null there, not [].
+	transition.Changes = append([]delta.ObjectChange(nil), transition.Changes...)
 	transitionJSON, _ := json.Marshal(transition)
 	candidateJSON, _ := json.Marshal(record.Candidate)
 	if appended.Sequence != reference.Sequence ||
