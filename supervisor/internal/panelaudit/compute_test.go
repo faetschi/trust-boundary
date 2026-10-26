@@ -5,6 +5,8 @@ import (
 	"math"
 	"reflect"
 	"testing"
+
+	"tbound/supervisor/internal/evalcorpus"
 )
 
 // Fleiss (1971) worked example as reproduced in most textbooks: 10 subjects, 14 raters,
@@ -186,5 +188,32 @@ func TestAC1BootstrapIsSeededAndGroupsRoots(t *testing.T) {
 	a, b := ComputeItem(subjects, cats, 7, 500), ComputeItem(subjects, cats, 7, 500)
 	if !reflect.DeepEqual(a, b) || !a.AC1CIDefined || a.AC1CILow >= a.AC1CIHigh || a.AC1CILow > a.AC1 || a.AC1CIHigh < a.AC1 {
 		t.Fatalf("AC1 interval not seeded or not bracketing: %+v vs %+v", a, b)
+	}
+}
+
+func TestSubjectsAndChecklistStatsFollowTheReceiptOutcomes(t *testing.T) {
+	models := []string{"m1", "m2", "m3"}
+	cases := []evalcorpus.Case{
+		{CaseID: "b", Kind: evalcorpus.KindCompliant, MeaningRecord: &evalcorpus.MeaningRecord{RootID: "shared"}},
+		{CaseID: "a", Kind: evalcorpus.KindAmbiguous},
+		{CaseID: "c", Kind: evalcorpus.KindCompliant, MeaningRecord: &evalcorpus.MeaningRecord{RootID: "shared"}},
+	}
+	outcomes := compliantOutcomes("b", map[string][3]string{"intent": {"pass", "fail", "pass"}})
+	outcomes = append(outcomes, compliantOutcomes("a", nil)...)
+	outcomes = append(outcomes, compliantOutcomes("c", nil)[:5]...) // the third model's phase-2 rating is missing
+	got := Subjects(cases, outcomes, models, 2, "intent")
+	want := []Subject{{Root: "a", Ratings: []string{"pass", "pass", "pass"}}, {Root: "shared", Ratings: []string{"pass", "fail", "pass"}}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("intent subjects %+v; want %+v (case order, receipt model order, incomplete case c skipped)", got, want)
+	}
+	if got := Subjects(cases, outcomes, models, 2, "sensitivity"); len(got) != 1 || got[0].Root != "shared" {
+		t.Fatalf("sensitivity subjects %+v; want only the compliant case b (ambiguous skips it, c is incomplete)", got)
+	}
+	if got := Subjects(cases, outcomes, models, 1, "authorization"); len(got) != 3 {
+		t.Fatalf("phase-1 subjects %+v; want all three cases", got)
+	}
+	stats := ChecklistStats(cases, outcomes, models, 7, 0)
+	if len(stats) != len(Checklist) || stats["intent"].Subjects != 2 || stats["intent"].AC1CIDefined {
+		t.Fatalf("checklist stats %+v; want every item, intent over 2 subjects, no interval without resamples", stats)
 	}
 }

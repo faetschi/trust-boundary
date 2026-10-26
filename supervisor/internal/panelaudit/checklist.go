@@ -17,3 +17,10 @@ const (
 	GateUndefined  = "no-pass-undefined-ac1"
 	GateIncomplete = "incomplete-no-pass"
 )
+
+// The closed rating categories, in the fixed order of the statistics.
+var (
+	ThreatClasses    = []string{"TM-A", "TM-B", "TM-C", "none"}
+	Authorizations   = []string{"allowed", "forbidden", "ambiguous"}
+	ChecklistRatings = []string{"pass", "fail", "unclear"}
+)

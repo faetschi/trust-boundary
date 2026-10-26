@@ -3,7 +3,11 @@ package panelaudit
 import (
 	"math"
 	"math/rand/v2"
+	"slices"
 	"sort"
+	"strings"
+
+	"tbound/supervisor/internal/evalcorpus"
 )
 
 // Subject is one case rated on one item by every panel model.
@@ -184,4 +188,49 @@ func Quantile(sorted []float64, q float64) float64 {
 		return sorted[lo]
 	}
 	return sorted[lo] + (pos-float64(lo))*(sorted[lo+1]-sorted[lo])
+}
+
+type ratingKey struct {
+	phase         int
+	caseID, model string
+}
+
+// Subjects lists, in case id order, the cases that every model rated on key in the phase. A
+// checklist item skips the case kinds it does not apply to. The writer and the verifier both
+// build their subjects here, from the receipt's rating outcomes and the receipt's model order.
+func Subjects(cases []evalcorpus.Case, outcomes []Outcome, models []string, phase int, key string) []Subject {
+	rated := make(map[ratingKey]map[string]string, len(outcomes))
+	for _, o := range outcomes {
+		rated[ratingKey{o.Phase, o.CaseID, o.Model}] = o.Values
+	}
+	sorted := slices.Clone(cases)
+	slices.SortFunc(sorted, func(a, b evalcorpus.Case) int { return strings.Compare(a.CaseID, b.CaseID) })
+	var out []Subject
+	for _, c := range sorted {
+		if _, na := NotApplicable[c.Kind][key]; na && phase == 2 {
+			continue
+		}
+		ratings := make([]string, 0, len(models))
+		for _, m := range models {
+			v, ok := rated[ratingKey{phase, c.CaseID, m}][key]
+			if !ok {
+				break
+			}
+			ratings = append(ratings, v)
+		}
+		if len(ratings) == len(models) {
+			out = append(out, Subject{Root: Root(c), Ratings: ratings})
+		}
+	}
+	return out
+}
+
+// ChecklistStats computes the phase-2 statistics of every checklist item from the rating outcomes.
+// resamples = 0 leaves the bootstrap intervals empty, as the verifier needs only the point values.
+func ChecklistStats(cases []evalcorpus.Case, outcomes []Outcome, models []string, seed uint64, resamples int) map[string]ItemStats {
+	out := make(map[string]ItemStats, len(Checklist))
+	for _, it := range Checklist {
+		out[it.Key] = ComputeItem(Subjects(cases, outcomes, models, 2, it.Key), ChecklistRatings, seed, resamples)
+	}
+	return out
 }
