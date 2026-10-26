@@ -150,7 +150,7 @@ Go owns the history. Each turn's provider journal is self-contained.
 
 ## Product turn receipt
 
-`tbound-product-turn-receipt/v1` (`productsession.TurnReceipt`), strict JSON, at most 64 KiB, written by `cmd/tbound` and stored in `product_turn_terminal` or `product_turn_awaiting_review`. The catalog decodes it strictly and refuses to settle unless its identity, workflow link, imported prefix, predecessor, baselines, outcome, settlement and usage match the turn and the record. Settlement is `headless-fixture-closed` for worker kind `headless-fixture` and `stopped` for worker kind `pi`; no other pairing is accepted. A published receipt names its publication transaction:
+`tbound-product-turn-receipt/v1` (`productsession.TurnReceipt`), strict JSON, at most 64 KiB, written by `cmd/tbound` and stored in `product_turn_terminal` or `product_turn_awaiting_review`. The catalog decodes it strictly and refuses to settle unless its identity, workflow link, imported prefix, predecessor, baselines, outcome, settlement and usage match the turn and the record. Settlement is `supervisor-loop-closed` for worker kind `supervisor-loop` and `stopped` for worker kind `pi`; no other pairing is accepted. A published receipt names its publication transaction:
 
 `session_id`, `turn_id`, `ordinal`, `workflow_id`, `run_id`, `conversation_id`, `worker_kind`, `worker_instance`, `provider_journal_head`, `provider_journal_count`, `store_journal_head`, `store_journal_count`, `imported_prefix_digest`, `predecessor_receipt_digest`, `baseline_digest`, `result_baseline_digest`, `outcome`, `settlement`, `publication_transaction_id`, `usage`, `tool_sequence`, `denials`.
 
@@ -158,7 +158,7 @@ Before it imports a predecessor, the next turn reopens the predecessor's retaine
 
 Transient journal lock contention or resource exhaustion abandons the unlinked launch with a full refund and leaves the session open for a new request key. It is not invalid predecessor evidence.
 
-`worker_kind` is `headless-fixture` in milestone 1, because the worker is the in-process deterministic driver. Receipts never claim an OS process settlement that did not happen. A real Pi worker per turn needs the product guest and is pending.
+`worker_kind` is `supervisor-loop`, because the worker is the supervisor's own in-process agent loop. Only its provider conversation is scripted in tests. Receipts never claim an OS process settlement that did not happen. A real Pi worker per turn needs the product guest and is pending.
 
 ## Outcomes
 
@@ -199,7 +199,7 @@ This section extends the contract for P4. It still uses headless clients and the
 
 - `CancelTurn(p, CancelTurnRequest{session_id, turn_id, expected_revision, request_key})` appends `product_turn_cancel_requested` for a turn that is admitted, linked or awaiting review. It is idempotent per request key and bumps the revision. It never claims settlement; the turn reports `cancel_requested`.
 - Admitted, not yet linked: the driver ends the turn before launch with `RefuseUnlinkedTurn(turn, CANCELLED)`. The outcome is `cancelled` with a full refund, and nothing is blocked.
-- Linked and running: the headless worker checks for cancellation before every provider exchange. It never interrupts a call in flight. At the next step boundary it stops, the conversation closes, and the turn settles `cancelled` with usage charged. Nothing is published, and the project must still equal the admitted baseline.
+- Linked and running: the supervisor loop checks for cancellation before every provider exchange. It never interrupts a call in flight. At the next step boundary it stops, the conversation closes, and the turn settles `cancelled` with usage charged. Nothing is published, and the project must still equal the admitted baseline.
 - Awaiting review: the turn is discarded with reason `cancelled`.
 - After `product_turn_resolution_requested` with `publish`, or once an auto-mode finalizer has started, cancellation cannot promise rollback. The request is recorded, and the turn reports its real disposition.
 
@@ -215,7 +215,7 @@ On `Open`, unresolved turns are rebuilt from the catalog. The driver's `Reconcil
 | `awaiting_review` with resolution request `publish` | If the publication journal shows the workflow's transaction `SUCCEEDED` and the project equals the sealed candidate: `published`. If no transaction exists and the project equals the admitted baseline: `discarded` with reason `restart`. Otherwise `unknown`. |
 | `awaiting_review` with resolution request `discard` | `discarded` with reason `user`, after the same baseline check. |
 
-Settlement `reconciled-after-restart` is valid for worker kind `headless-fixture`, because the process that hosted the in-process worker is gone. A real Pi worker will need its drain proof instead.
+Settlement `reconciled-after-restart` is valid for worker kind `supervisor-loop`, because the process that hosted the in-process worker is gone. A real Pi worker will need its drain proof instead.
 
 ### Catalog additions
 
@@ -285,7 +285,7 @@ Decisions taken during implementation:
 - A turn under `product-scope/v1` declares an empty output scope for every Bash command. `Decide` ignores it. A project without a scope keeps the exact-path rule, so its registered `bash_output_paths` are the declared scope and the research behaviour is unchanged.
 - The Store already imports the whole settled command view and computes every changed path, so the product rule needs no new collection mechanism. A denied candidate promotes nothing, and the provider gets the DENY with its reason code and hint. A read-only session has an empty `writable` list, so a command that writes is denied while a command that only reads runs and leaves the turn `no_diff`.
 - A publication trust for a Bash turn must implement `workflow.TerminalOriginResolver`, because the terminal transition of a Bash candidate is a command lease. A turn whose trust lacks it is abandoned before any work.
-- The service gives the turn driver a command runner factory. A turn whose policy allows Bash on a service without one is abandoned before any work, with no budget consumed. Production fills the factory with the D09 cell runner of a qualified host.
+- The service gives the turn driver a command runner factory. A turn whose policy allows Bash on a service without one is abandoned before any work, with no budget consumed. Production will fill the factory with the D09 cell runner of a qualified host. No such runner exists yet, so the production host profile refuses at startup any installed gate policy that allows Bash (see [Host profile](#host-profile)). The development runner is never wired into production.
 - The receipt commits the turn's command journal by head and record count, next to the provider and Store journals, with `command_journal_head` and `command_journal_count`. A turn that ran no Bash omits both. The next turn checks them before importing history.
 - Reopening a turn replays its retained Bash effects against the retained command settlements through a read-only opener. For D09 the opener is the research recovery verifier over the command journal. Without an opener a retained Store that holds a Bash effect is refused. Restart reconciliation of a linked turn reopens the Store the same way, and a turn it cannot verify ends `unknown`.
 
@@ -335,14 +335,38 @@ The first supported language is Go, with a pinned toolchain image and a pre-fill
   - the signed registration, its signature and public key;
   - the catalog journal and the state root;
   - one managed directory per registered project;
-  - the provider profile;
-  - the worker mode: `pi` on a qualified host, or `headless-fixture` for tests only.
-- Every path must be a product default or below one. None may be a thesis path.
+  - the host profile's installed inputs (see [Host profile](#host-profile)): one gate policy file per project, the private Git executable with its pinned digest, and the signed xattr calibration;
+  - the worker mode: `supervisor-loop`, the supervisor's own in-process agent loop. `pi` is refused with its own error until a real Pi worker per turn exists on a qualified host.
+- Every path must be a product default or below one. None may be a thesis path. The Git executable must sit below `/usr/local/lib/tbound-product`. The other paths sit below the registration, catalog or socket directories.
 - On start the service verifies the registration and opens the catalog. It runs `ReconcileAfterRestart` before it accepts any request. Then it listens on `/run/tbound-product/product.sock`, socket mode 0660, group-restricted.
 - Before replacing a stale socket it acquires an exclusive nonblocking flock on `<socket>.lock` and holds it for the service lifetime, independently of the catalog lock. A held socket lock refuses startup.
 - The principal is the connection's `SO_PEERCRED` UID. The catalog checks it against `allowed_principals`. Payloads never carry a principal.
 - Admitted turns run in the service, not in the client. A client that disconnects leaves its accepted work running. One goroutine drives each turn. A review-expiry ticker calls `ExpireReviews`.
 - Shutdown stops new admissions, lets running turns reach their next step boundary, and closes pending reviews. A pending review then becomes `discarded` with reason `restart` on the next start.
+
+### Host profile
+
+`tbound product-serve` fills every trusted piece of a turn from installed inputs, and refuses to start, before it opens the socket, when one is missing or differs from what the signed registration commits to. The service config adds these fields:
+
+| Field | Meaning |
+| --- | --- |
+| `gate_policy_paths` | project ID to its installed gate policy file, one per registered project |
+| `git_path`, `git_digest` | the private Git executable and its pinned `sha256:` digest |
+| `xattr_calibration_path` | the signed xattr calibration. Its base64 signature sits at the same path plus `.sig` |
+
+What the host profile does with them:
+
+- **Input files.** Each is opened without following a symlink. It must be a regular file owned by root or by the service, writable by neither group nor others, and within its size bound. The service config is read the same way.
+- **Gate policies.** Each file is parsed and its digest compared with the registration's `policy_digest` for that project. A mismatch refuses the start.
+- **Bash.** No contained command runner exists, so a policy with an allow rule for `bash` refuses the start with an error that names the project. The per-turn refusal described under [Bash in product turns](#bash-in-product-turns) stays as a second line. Nothing wires the development runner into production.
+- **Provider.** Every profile the registration lists must be in the compiled table, which holds `opencode-go-engineering` only. A turn's conversation is built for its session's profile and refused when that profile is not in the registration. The endpoint, model and request shape are compiled in. No config field or environment variable changes them. The key is read per turn from `/etc/tbound-product/credentials/<profile>.key` under the provider credential rules (service-owned 0700 directory, 0600 file, protected ancestors), so a rotated key needs no restart.
+- **Prompts.** The system and developer prompts are compiled in and name no tool, because the policy decides the tools. They are part of every turn's retained evidence, so changing either text breaks the replay of turns recorded under the old one.
+- **Git.** The executable's bytes and mode are checked against `git_digest` at start and again when each turn pins it. Its execution boundary is labelled `product-supervisor-private-git-admin/v1`: Git runs in the supervisor's own process, not in a command cell.
+- **Xattr.** The calibration must verify under the registration public key and cover the managed-writable source profile. At start, and again before each publication, the filesystem, mount options and scanner identity (non-root UID and GID, no capabilities, no new privileges, initial user namespace) of the state root and of every managed project root must equal the calibration. The attestation carries the calibration's bounded authority only: the administrator's signed statement that this filesystem, mount and scanner hide no `trusted.*` attribute. It is not proof that the unprivileged scanner enumerates every attribute, and no managed live-root lease backs it.
+- **Worker steps.** The step bound of a turn is the registration's per-turn host-call limit, because one step is one provider exchange.
+- **Publication trust.** A publication needs the turn's authority to be bound and the provider profile to be registered. It needs the supervisor loop's conversation to be closed and no unresolved effect, host call or Store quarantine. It re-verifies the xattr identity and needs the managed project to still equal the turn's baseline. It refuses any command effect. The turn's own authority verifies every transition and origin. The trust does not exclude a writer outside the catalog, the publication ledger and the Store. An outside edit made before publication fails the baseline check, and one made later is caught by the next baseline measurement. The trust has no Bash lease resolver, so it cannot publish a Bash turn.
+
+Setup requires the same fields and writes them into the service config. It does not install the policy files, the Git executable or the calibration. The administrator places them first, and the service verifies them at start. No product command produces the calibration yet. The research `tbound-profile xattr-calibration-measure` and `xattr-calibration-sign` commands write the same artifact, but they read a raw private key and write a raw signature, while product keys and signatures are base64. Using them for the product is untested.
 
 ### Protocol `tbound-product-protocol/v1`
 
@@ -426,6 +450,8 @@ Everything here runs against a test root (`--root DIR`) and supports `--dry-run`
 
 4. It installs the registration, signature and public key as root-owned 0644 files. It writes the service config and the `tbound-product.service` unit: `User=tbound-product`, `RuntimeDirectory=tbound-product`, and hardening matching the research unit where it applies. Then it runs `daemon-reload`.
 5. It never creates or replaces the owner's signing key, and it never touches a `/etc/tbound`, `/var/lib/tbound` or `/run/tbound` path.
+
+The setup config must name the host profile inputs: `gate_policy_paths` with a file below `/etc/tbound-product` for every project, `git_path` below `/usr/local/lib/tbound-product` with its `git_digest`, and `xattr_calibration_path` below `/etc/tbound-product`. Setup refuses a config without them or with a thesis path, and records them in the service config. It does not install those files (see [Host profile](#host-profile)).
 
 Running it again changes nothing and reports "unchanged". An existing file with different content is refused unless `--replace` is given.
 

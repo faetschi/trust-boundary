@@ -15,7 +15,7 @@ func validProductServiceConfig() productServiceConfig {
 	return productServiceConfig{SchemaVersion: productServiceConfigSchema,
 		RegistrationPath: productsession.DefaultRegistrationPath, RegistrationSignaturePath: productsession.DefaultRegistrationSignaturePath,
 		RegistrationPublicKeyPath: productsession.DefaultRegistrationPublicKeyPath, CatalogPath: productsession.DefaultCatalogPath,
-		StateRoot: "/var/lib/tbound-product", SocketPath: productsession.DefaultServiceSocketPath, WorkerMode: productServiceWorkerFixture,
+		StateRoot: "/var/lib/tbound-product", SocketPath: productsession.DefaultServiceSocketPath, WorkerMode: productServiceWorkerSupervisorLoop,
 		Projects: map[string]string{"alpha": "/var/lib/tbound-product/projects/alpha"}}
 }
 
@@ -75,6 +75,44 @@ func TestProductServiceConfigRefusesPathsOutsideTheProductDirectories(t *testing
 	}
 }
 
+func TestProductServiceConfigHostInputsStayInsideTheProductDirectories(t *testing.T) {
+	valid := func() productServiceConfig {
+		cfg := validProductServiceConfig()
+		cfg.GatePolicyPaths = map[string]string{"alpha": "/etc/tbound-product/policy-alpha.json"}
+		cfg.GitPath, cfg.GitDigest = "/usr/local/lib/tbound-product/git", digestBytes([]byte("git"))
+		cfg.XattrCalibrationPath = "/etc/tbound-product/xattr-calibration.json"
+		return cfg
+	}
+	if err := valid().validate(nil); err != nil {
+		t.Fatalf("the host inputs at their product locations were refused: %v", err)
+	}
+	for name, mutate := range map[string]func(*productServiceConfig){
+		"git outside the binary directory": func(c *productServiceConfig) { c.GitPath = "/usr/bin/git" },
+		"git in the config directory":      func(c *productServiceConfig) { c.GitPath = "/etc/tbound-product/git" },
+		"git at a thesis path":             func(c *productServiceConfig) { c.GitPath = "/var/lib/tbound/git" },
+		"git digest not canonical":         func(c *productServiceConfig) { c.GitDigest = "sha256:ABC" },
+		"calibration outside":              func(c *productServiceConfig) { c.XattrCalibrationPath = "/tmp/xattr.json" },
+		"calibration at a thesis path":     func(c *productServiceConfig) { c.XattrCalibrationPath = "/etc/tbound/xattr.json" },
+		"policy for an unknown project":    func(c *productServiceConfig) { c.GatePolicyPaths["beta"] = "/etc/tbound-product/policy-beta.json" },
+		"policy outside":                   func(c *productServiceConfig) { c.GatePolicyPaths["alpha"] = "/tmp/policy.json" },
+		"policy at a thesis path":          func(c *productServiceConfig) { c.GatePolicyPaths["alpha"] = "/etc/tbound/policy.json" },
+		"unclean policy path":              func(c *productServiceConfig) { c.GatePolicyPaths["alpha"] = "/etc/tbound-product/../tbound/p.json" },
+	} {
+		cfg := valid()
+		mutate(&cfg)
+		if err := cfg.validate(nil); err == nil {
+			t.Errorf("%s was accepted", name)
+		}
+	}
+	// A test root may hold every input, including Git.
+	cfg := valid()
+	cfg.GitPath, cfg.XattrCalibrationPath = "/tmp/x/git", "/tmp/x/xattr.json"
+	cfg.GatePolicyPaths["alpha"] = "/tmp/x/policy.json"
+	if err := cfg.validate([]string{"/tmp/x"}); err != nil {
+		t.Errorf("an explicit test root was refused: %v", err)
+	}
+}
+
 func TestProductServiceConfigWorkerModeAndShape(t *testing.T) {
 	cfg := validProductServiceConfig()
 	cfg.WorkerMode = productsession.WorkerPi
@@ -115,7 +153,7 @@ func TestProductServiceConfigFileIsStrict(t *testing.T) {
 	good := `{"schema_version":"tbound-product-service-config/v1","registration_path":"/etc/tbound-product/registration.json",` +
 		`"registration_signature_path":"/etc/tbound-product/registration.json.sig","registration_public_key_path":"/etc/tbound-product/registration.pub",` +
 		`"catalog_path":"/var/lib/tbound-product/catalog.jsonl","state_root":"/var/lib/tbound-product",` +
-		`"socket_path":"/run/tbound-product/product.sock","worker_mode":"headless-fixture",` +
+		`"socket_path":"/run/tbound-product/product.sock","worker_mode":"supervisor-loop",` +
 		`"projects":{"alpha":"/var/lib/tbound-product/projects/alpha"}}`
 	cfg, err := loadProductServiceConfig(write("good.json", good))
 	if err != nil || cfg.validate(nil) != nil || cfg.Projects["alpha"] == "" {
@@ -123,7 +161,7 @@ func TestProductServiceConfigFileIsStrict(t *testing.T) {
 	}
 	for name, content := range map[string]string{
 		"unknown field": strings.Replace(good, `"worker_mode"`, `"principal":0,"worker_mode"`, 1),
-		"duplicate key": strings.Replace(good, `"worker_mode":"headless-fixture"`, `"worker_mode":"headless-fixture","worker_mode":"pi"`, 1),
+		"duplicate key": strings.Replace(good, `"worker_mode":"supervisor-loop"`, `"worker_mode":"supervisor-loop","worker_mode":"pi"`, 1),
 		"trailing data": good + `{}`,
 		"not JSON":      "worker_mode: pi",
 		"wrong type":    strings.Replace(good, `"projects":{"alpha":"/var/lib/tbound-product/projects/alpha"}`, `"projects":["alpha"]`, 1),

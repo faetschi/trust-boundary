@@ -108,7 +108,7 @@ func (e *productTurnEnv) reconcileLinkedTurn(ctx context.Context, turn productse
 	receipt := productTurnReceipt{SchemaVersion: productTurnReceiptSchema,
 		SessionID: turn.SessionID, TurnID: turn.ID, Ordinal: turn.Ordinal,
 		WorkflowID: link.WorkflowID, RunID: link.RunID, ConversationID: link.ConversationID,
-		WorkerKind: productsession.WorkerHeadlessFixture, WorkerInstance: productTurnUnrecordedWorker,
+		WorkerKind: productsession.WorkerSupervisorLoop, WorkerInstance: productTurnUnrecordedWorker,
 		ProviderJournalHead: auditHeadHash(providerTrace.Records), ProviderJournalCount: uint64(len(providerTrace.Records)),
 		StoreJournalHead: auditHeadHash(storeTrace.Records), StoreJournalCount: uint64(len(storeTrace.Records)),
 		CommandJournalHead: auditHeadHash(commandTrace.Records), CommandJournalCount: uint64(len(commandTrace.Records)),

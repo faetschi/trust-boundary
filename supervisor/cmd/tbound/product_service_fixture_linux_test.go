@@ -154,7 +154,7 @@ func newProductServiceFixtureWithReviewTimeout(t *testing.T, reviewTimeoutSecond
 	f.cfg = productServiceConfig{SchemaVersion: productServiceConfigSchema, RegistrationPath: filepath.Join(reg, "registration.json"),
 		RegistrationSignaturePath: filepath.Join(reg, "registration.json.sig"), RegistrationPublicKeyPath: filepath.Join(reg, "registration.pub"),
 		CatalogPath: filepath.Join(f.stateRoot, "catalog.jsonl"), StateRoot: f.stateRoot, SocketPath: f.socketPath,
-		WorkerMode: productServiceWorkerFixture, Projects: map[string]string{productDriverProject: f.projectDir}, ShutdownGraceSeconds: 20}
+		WorkerMode: productServiceWorkerSupervisorLoop, Projects: map[string]string{productDriverProject: f.projectDir}, ShutdownGraceSeconds: 20}
 	return f
 }
 

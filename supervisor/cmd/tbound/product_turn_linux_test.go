@@ -116,12 +116,12 @@ func runProductPredecessorTurn(t *testing.T) retainedProductPredecessor {
 		},
 		receipt: productTurnReceipt{SchemaVersion: productTurnReceiptSchema,
 			SessionID: "psess-" + strings.Repeat("ab", 16), Ordinal: 1, WorkflowID: config.WorkflowID, RunID: "vertical-run",
-			ConversationID: config.ConversationID, WorkerKind: productsession.WorkerHeadlessFixture, WorkerInstance: "fixture-1",
+			ConversationID: config.ConversationID, WorkerKind: productsession.WorkerSupervisorLoop, WorkerInstance: "fixture-1",
 			ProviderJournalHead: auditHeadHash(providerTrace.Records), ProviderJournalCount: uint64(len(providerTrace.Records)),
 			StoreJournalHead: auditHeadHash(storeTrace.Records), StoreJournalCount: uint64(len(storeTrace.Records)),
 			BaselineDigest:       "sha256:" + bareStoreTreeDigest(bundle.Baseline.TreeDigest),
 			ResultBaselineDigest: "sha256:" + bareStoreTreeDigest(bundle.Baseline.TreeDigest),
-			Outcome:              productsession.OutcomeNoDiff, Settlement: productsession.SettlementHeadlessClosed, Usage: productsession.Budget{HostCalls: 4, Tokens: 3072, DurationSeconds: 1},
+			Outcome:              productsession.OutcomeNoDiff, Settlement: productsession.SettlementSupervisorLoopClosed, Usage: productsession.Budget{HostCalls: 4, Tokens: 3072, DurationSeconds: 1},
 			ToolSequence: []string{"read", "write"},
 			Denials:      []productTurnDenial{{ToolCallID: productDeniedCallID, Tool: "write", ReasonCode: "policy_rule_deny"}}},
 	}
@@ -378,11 +378,11 @@ func TestProductProviderConversationRequiresTheCheckpointedPredecessor(t *testin
 
 func TestProductTurnReceiptIsStrict(t *testing.T) {
 	receipt := productTurnReceipt{SchemaVersion: productTurnReceiptSchema, SessionID: "psess-1", TurnID: "psess-1/turn-2",
-		Ordinal: 2, WorkflowID: "w", RunID: "r", ConversationID: "c", WorkerKind: productsession.WorkerHeadlessFixture, WorkerInstance: "i",
+		Ordinal: 2, WorkflowID: "w", RunID: "r", ConversationID: "c", WorkerKind: productsession.WorkerSupervisorLoop, WorkerInstance: "i",
 		ProviderJournalHead: strings.Repeat("a", 64), ProviderJournalCount: 3, StoreJournalHead: strings.Repeat("b", 64), StoreJournalCount: 4,
 		ImportedPrefixDigest: digestBytes([]byte("prefix")), PredecessorReceiptDigest: digestBytes([]byte("receipt")),
 		BaselineDigest: digestBytes([]byte("base")), ResultBaselineDigest: digestBytes([]byte("base")),
-		Outcome: productsession.OutcomeNoDiff, Settlement: productsession.SettlementHeadlessClosed, ToolSequence: []string{}, Denials: []productTurnDenial{}}
+		Outcome: productsession.OutcomeNoDiff, Settlement: productsession.SettlementSupervisorLoopClosed, ToolSequence: []string{}, Denials: []productTurnDenial{}}
 	encoded, err := encodeProductTurnReceipt(receipt)
 	if err != nil {
 		t.Fatal(err)

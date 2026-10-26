@@ -67,12 +67,17 @@ type productTurnCommandContext struct {
 // its held command journal. The verifier has no runner and no lease authority.
 type productCommandHistoryOpener func(journal *audit.Journal, link productsession.TurnLink) (governedRecoveryCommandVerifier, error)
 
+// productPolicyAllowsBash reports whether the policy has an allow rule for bash.
+func productPolicyAllowsBash(policy gate.Policy) bool {
+	return slices.ContainsFunc(policy.Profile().Rules, func(r gate.Rule) bool { return r.Tool == "bash" && r.Effect == gate.EffectAllow })
+}
+
 // productTurnBashScope is the exact output scope the Bash commands of a turn declare, or nil when the
 // turn's policy does not allow Bash. A product-scope turn declares none: its candidate is decided by
 // the turn's own writable, read-only and protected lists, which ignore the declared paths. A turn
 // under the exact-path rule keeps the registered paths.
 func productTurnBashScope(turn productsession.Turn, policy gate.Policy) []string {
-	if !slices.ContainsFunc(policy.Profile().Rules, func(r gate.Rule) bool { return r.Tool == "bash" && r.Effect == gate.EffectAllow }) {
+	if !productPolicyAllowsBash(policy) {
 		return nil
 	}
 	if turn.Scope != nil {

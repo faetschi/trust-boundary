@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"testing"
 
 	"golang.org/x/sys/unix"
 	"tbound/supervisor/internal/audit"
@@ -30,7 +31,7 @@ var (
 const maxKeyBytes = 4096
 
 // Store has no environment-derived paths. The unexported override exists only
-// for in-package tests on a normal-user Linux filesystem.
+// for tests on a normal-user Linux filesystem (see ConversationFactoryForTest).
 type Store struct{ directory, exemptThrough string }
 
 func NewStore() *Store { return &Store{directory: CredentialDirectory} }
@@ -321,12 +322,30 @@ func (s *Store) credentials(id string) (openrouter.Credentials, error) {
 // ConversationFactory is the service integration point. The path must name
 // this profile's key, with the same strict ancestor and ownership contract.
 func ConversationFactory(id, credentialPath string) (func(providerbridge.Config, *audit.Journal) (*providerbridge.Conversation, error), error) {
+	return newConversationFactory(id, credentialPath, "")
+}
+
+// testBinary is a variable only so that this package's test can prove the refusal below.
+var testBinary = testing.Testing
+
+// ConversationFactoryForTest is ConversationFactory for an in-process test whose credential directory
+// sits below exemptRoot, a temporary directory whose ancestors the root-owned ancestor rule cannot hold.
+// The credential directory and key file keep their strict owner and mode rules. A binary that is not a
+// Go test binary always refuses, and no flag, file or wire field reaches it.
+func ConversationFactoryForTest(id, credentialPath, exemptRoot string) (func(providerbridge.Config, *audit.Journal) (*providerbridge.Conversation, error), error) {
+	if !testBinary() || !filepath.IsAbs(exemptRoot) || filepath.Clean(exemptRoot) != exemptRoot ||
+		!strings.HasPrefix(credentialPath, exemptRoot+"/") {
+		return nil, ErrCredential
+	}
+	return newConversationFactory(id, credentialPath, exemptRoot)
+}
+
+func newConversationFactory(id, credentialPath, exemptThrough string) (func(providerbridge.Config, *audit.Journal) (*providerbridge.Conversation, error), error) {
 	name, err := profileKeyName(id)
 	if err != nil || filepath.Base(credentialPath) != name || !filepath.IsAbs(credentialPath) || filepath.Clean(credentialPath) != credentialPath {
 		return nil, ErrCredential
 	}
-	s := &Store{directory: filepath.Dir(credentialPath)}
-	return s.conversationFactory(id), nil
+	return (&Store{directory: filepath.Dir(credentialPath), exemptThrough: exemptThrough}).conversationFactory(id), nil
 }
 
 func (s *Store) conversationFactory(id string) func(providerbridge.Config, *audit.Journal) (*providerbridge.Conversation, error) {

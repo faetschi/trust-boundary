@@ -457,10 +457,6 @@ func TestProductServiceRefusesStartWithoutAHostOrConversationFactory(t *testing.
 	if _, err := startProductService(f.cfg, options); !errors.Is(err, errProductServiceNoConversation) {
 		t.Fatalf("no conversation factory: %v", err)
 	}
-	// The real command has no host profile yet, so it refuses with the same explicit error.
-	if productServiceHostProfile != nil {
-		t.Skip("a host profile is wired in")
-	}
 	writeConfig := func(cfg productServiceConfig) string {
 		encoded, err := json.Marshal(cfg)
 		if err != nil {
@@ -476,14 +472,6 @@ func TestProductServiceRefusesStartWithoutAHostOrConversationFactory(t *testing.
 	if err := run([]string{"product-serve", "--config", writeConfig(f.cfg)}, os.Stdout, os.Stderr); err == nil ||
 		!strings.Contains(err.Error(), "not below a product default directory") {
 		t.Fatalf("the real command accepted a config outside the product directories: %v", err)
-	}
-	defaults := productServiceConfig{SchemaVersion: productServiceConfigSchema,
-		RegistrationPath: productsession.DefaultRegistrationPath, RegistrationSignaturePath: productsession.DefaultRegistrationSignaturePath,
-		RegistrationPublicKeyPath: productsession.DefaultRegistrationPublicKeyPath, CatalogPath: productsession.DefaultCatalogPath,
-		StateRoot: "/var/lib/tbound-product", SocketPath: productsession.DefaultServiceSocketPath, WorkerMode: productServiceWorkerFixture,
-		Projects: map[string]string{"project-alpha": "/var/lib/tbound-product/projects/alpha"}}
-	if err := run([]string{"product-serve", "--config", writeConfig(defaults)}, os.Stdout, os.Stderr); !errors.Is(err, errProductServiceNoHost) {
-		t.Fatalf("the real command with default paths and no host profile: %v", err)
 	}
 	if err := run([]string{"product-serve"}, os.Stdout, os.Stderr); err == nil {
 		t.Fatal("product-serve without --config succeeded")

@@ -16,14 +16,14 @@ import (
 // catalog checks before it settles a turn.
 const ReceiptSchema = "tbound-product-turn-receipt/v1"
 
-// Worker kinds and the settlement each one can report. A headless fixture is
-// the in-process deterministic driver: it has no OS process to settle, so its
-// receipt never claims a STOPPED settlement.
+// Worker kinds and the settlement each one can report. The supervisor loop is
+// the supervisor's own in-process agent loop: it has no OS process to settle, so
+// its receipt never claims a STOPPED settlement.
 const (
-	WorkerHeadlessFixture    = "headless-fixture"
-	WorkerPi                 = "pi"
-	SettlementHeadlessClosed = "headless-fixture-closed"
-	SettlementStopped        = "stopped"
+	WorkerSupervisorLoop           = "supervisor-loop"
+	WorkerPi                       = "pi"
+	SettlementSupervisorLoopClosed = "supervisor-loop-closed"
+	SettlementStopped              = "stopped"
 	// SettlementReconciledAfterRestart settles a turn whose in-process worker died with its process.
 	SettlementReconciledAfterRestart = "reconciled-after-restart"
 	receiptOutcomeAwaitReview        = "awaiting_review"
@@ -31,8 +31,8 @@ const (
 )
 
 var workerSettlements = map[string][]string{
-	WorkerHeadlessFixture: {SettlementHeadlessClosed, SettlementReconciledAfterRestart},
-	WorkerPi:              {SettlementStopped},
+	WorkerSupervisorLoop: {SettlementSupervisorLoopClosed, SettlementReconciledAfterRestart},
+	WorkerPi:             {SettlementStopped},
 }
 
 // TurnReceipt is the terminal evidence of one turn. It commits to the turn's

@@ -83,8 +83,8 @@ func validateProductTurnReceipt(r productTurnReceipt) error {
 		return errors.New("product turn receipt has an unknown schema")
 	case r.Ordinal < 1 || r.TurnID != fmt.Sprintf("%s/turn-%d", r.SessionID, r.Ordinal):
 		return errors.New("product turn receipt turn ID does not match its session and ordinal")
-	case r.WorkerKind != productsession.WorkerHeadlessFixture ||
-		r.Settlement != productsession.SettlementHeadlessClosed && r.Settlement != productsession.SettlementReconciledAfterRestart:
+	case r.WorkerKind != productsession.WorkerSupervisorLoop ||
+		r.Settlement != productsession.SettlementSupervisorLoopClosed && r.Settlement != productsession.SettlementReconciledAfterRestart:
 		return errors.New("product turn receipt claims a worker or settlement this milestone does not run")
 	case r.ProviderJournalCount == 0 || !validBareWorkflowDigest(r.ProviderJournalHead) ||
 		r.StoreJournalCount == 0 || !validBareWorkflowDigest(r.StoreJournalHead):

@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"net/http"
 	"reflect"
 	"strings"
 	"sync"
@@ -57,6 +58,9 @@ type eventJournal interface {
 }
 
 type Config struct {
+	// HTTPTransport is an offline test seam for the engineering route. Production leaves it nil, and a
+	// binary that is not a Go test binary refuses it (openrouter.HTTPDoer.WithTestTransport).
+	HTTPTransport http.RoundTripper
 	// HintProvider is host-owned and nil selects the frozen static treatment.
 	HintProvider HintProvider
 
@@ -327,6 +331,9 @@ func NewFromCredentials(cfg Config, credentials openrouter.Credentials, journal 
 		return nil, errors.New("provider conversation requires the protected audit journal")
 	}
 	doer, err := credentials.NewHTTPDoer(openrouter.DefaultHTTPTimeout)
+	if err == nil && cfg.HTTPTransport != nil {
+		doer, err = doer.WithTestTransport(cfg.HTTPTransport)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("configure secure OpenCode Go transport: %w", err)
 	}
@@ -975,6 +982,16 @@ func (c *Conversation) recordUnknownExecutionLocked(proposal protocol.Proposal, 
 		}
 	}
 	return c.failLocked(errors.Join(ErrResultWithheld, cause))
+}
+
+// Closed reports whether this conversation can issue any further provider or tool work.
+func (c *Conversation) Closed() bool {
+	if c == nil {
+		return false
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.closed && c.state == stateClosed
 }
 
 // Close poisons the current transcript and forbids later provider or tool turns.

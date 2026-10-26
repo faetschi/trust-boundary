@@ -21,10 +21,11 @@ var errProductWorkerStepBound = errors.New("product turn worker reached its step
 // requested.
 var errProductTurnCancelled = errors.New("product turn cancelled at a step boundary")
 
-// productTurnWorker is the in-process deterministic headless worker of one turn. It drives the
-// governed conversation exactly as the Pi adapter would: each provider tool call becomes a proposal
-// with the same tool call ID, name and arguments, which is correlated, gated, durably decided and,
-// when allowed, executed through the durable executor.
+// productTurnWorker is the in-process supervisor-loop worker of one turn. It is the supervisor's own agent
+// loop, and only its provider conversation is scripted in tests. It drives the governed conversation
+// exactly as the Pi adapter would: each provider tool call becomes a proposal with the same tool call ID,
+// name and arguments, which is correlated, gated, durably decided and, when allowed, executed through the
+// durable executor.
 type productTurnWorker struct {
 	instance string
 	maxSteps int

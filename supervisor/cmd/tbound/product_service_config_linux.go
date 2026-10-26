@@ -12,6 +12,7 @@ import (
 
 	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/productsession"
+	"tbound/supervisor/internal/productsetup"
 )
 
 const (
@@ -20,7 +21,7 @@ const (
 	productServiceMaxGraceSecond = 600
 	productServiceDefaultGrace   = 30
 
-	productServiceWorkerFixture = productsession.WorkerHeadlessFixture
+	productServiceWorkerSupervisorLoop = productsession.WorkerSupervisorLoop
 )
 
 // productServiceThesisRoots are the thesis service's paths. A product path may never equal or sit
@@ -44,6 +45,14 @@ type productServiceConfig struct {
 	WorkerMode string `json:"worker_mode"`
 	// Projects maps each registered project ID to its managed directory.
 	Projects map[string]string `json:"projects"`
+	// The host profile's installed inputs. GatePolicyPaths names one gate policy file per project, whose
+	// digest the signed registration commits to. GitPath is the private Git executable and GitDigest its
+	// pinned SHA-256. XattrCalibrationPath is the signed xattr calibration; its signature sits at the same
+	// path plus ".sig". Provider credentials need no field: they live at the product credential default.
+	GatePolicyPaths      map[string]string `json:"gate_policy_paths,omitempty"`
+	GitPath              string            `json:"git_path,omitempty"`
+	GitDigest            string            `json:"git_digest,omitempty"`
+	XattrCalibrationPath string            `json:"xattr_calibration_path,omitempty"`
 	// ShutdownGraceSeconds bounds how long a graceful stop waits for running turns; zero means 30.
 	ShutdownGraceSeconds int `json:"shutdown_grace_seconds,omitempty"`
 }
@@ -55,7 +64,7 @@ func loadProductServiceConfig(file string) (productServiceConfig, error) {
 	if err != nil || !info.Mode().IsRegular() || info.Size() > productServiceMaxConfigBytes {
 		return cfg, errors.New("product service config must be a regular non-symlink file of at most 64 KiB")
 	}
-	raw, err := os.ReadFile(file)
+	raw, err := readProductHostFile(file, productServiceMaxConfigBytes)
 	if err != nil {
 		return cfg, fmt.Errorf("read product service config: %w", err)
 	}
@@ -87,7 +96,7 @@ func (c productServiceConfig) validate(extraRoots []string) error {
 		return fmt.Errorf("product service config schema_version must be %q", productServiceConfigSchema)
 	}
 	switch c.WorkerMode {
-	case productServiceWorkerFixture:
+	case productServiceWorkerSupervisorLoop:
 	case productsession.WorkerPi:
 		return errProductServicePi
 	default:
@@ -100,7 +109,7 @@ func (c productServiceConfig) validate(extraRoots []string) error {
 		return errors.New("product service config names no project")
 	}
 	roots := productServiceRoots(extraRoots)
-	check := func(field, p string) error {
+	checkIn := func(field, p string, roots []string) error {
 		if !path.IsAbs(p) || path.Clean(p) != p {
 			return fmt.Errorf("%s must be an absolute clean path", field)
 		}
@@ -114,6 +123,7 @@ func (c productServiceConfig) validate(extraRoots []string) error {
 		}
 		return nil
 	}
+	check := func(field, p string) error { return checkIn(field, p, roots) }
 	seen := map[string]string{}
 	for id, dir := range c.Projects {
 		if id == "" {
@@ -135,6 +145,28 @@ func (c productServiceConfig) validate(extraRoots []string) error {
 	}
 	for id, dir := range c.Projects {
 		if err := check(fmt.Sprintf("projects[%q]", id), dir); err != nil {
+			return err
+		}
+	}
+	if c.XattrCalibrationPath != "" {
+		if err := check("xattr_calibration_path", c.XattrCalibrationPath); err != nil {
+			return err
+		}
+	}
+	// The private Git executable lives with the product binary, not with the configuration.
+	if c.GitPath != "" {
+		if err := checkIn("git_path", c.GitPath, append([]string{productsetup.BinaryDir}, extraRoots...)); err != nil {
+			return err
+		}
+	}
+	if c.GitDigest != "" && !validDigestText(c.GitDigest) {
+		return errors.New("git_digest must be a canonical SHA-256 digest")
+	}
+	for id, file := range c.GatePolicyPaths {
+		if _, ok := c.Projects[id]; !ok {
+			return fmt.Errorf("gate_policy_paths names unknown project %q", id)
+		}
+		if err := check("gate_policy_paths", file); err != nil {
 			return err
 		}
 	}

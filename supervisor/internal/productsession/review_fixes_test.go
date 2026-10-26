@@ -27,14 +27,14 @@ func TestSettlementRequiresAReceiptForThisTurn(t *testing.T) {
 		return data
 	}
 	for name, terminal := range map[string]TurnTerminal{
-		"null receipt":         {Outcome: OutcomeNoDiff, Settlement: SettlementHeadlessClosed, Receipt: []byte("null"), Usage: usage, ResultBaselineDigest: b0},
-		"unknown settlement":   {Outcome: OutcomeNoDiff, Settlement: "UNKNOWN", Receipt: mutated(func(r *TurnReceipt) { r.Settlement = "UNKNOWN" }), Usage: usage, ResultBaselineDigest: b0},
-		"other workflow":       {Outcome: OutcomeNoDiff, Settlement: SettlementHeadlessClosed, Receipt: mutated(func(r *TurnReceipt) { r.WorkflowID = "wf-other" }), Usage: usage, ResultBaselineDigest: b0},
-		"usage differs":        {Outcome: OutcomeNoDiff, Settlement: SettlementHeadlessClosed, Receipt: mutated(func(r *TurnReceipt) { r.Usage = Budget{} }), Usage: usage, ResultBaselineDigest: b0},
-		"pi claims headless":   {Outcome: OutcomeNoDiff, Settlement: SettlementHeadlessClosed, Receipt: mutated(func(r *TurnReceipt) { r.WorkerKind = WorkerPi }), Usage: usage, ResultBaselineDigest: b0},
-		"outcome differs":      {Outcome: OutcomeFailed, Settlement: SettlementHeadlessClosed, Receipt: mutated(func(*TurnReceipt) {}), Usage: usage, ResultBaselineDigest: b0},
-		"no journal commit":    {Outcome: OutcomeNoDiff, Settlement: SettlementHeadlessClosed, Receipt: mutated(func(r *TurnReceipt) { r.ProviderJournalCount = 0 }), Usage: usage, ResultBaselineDigest: b0},
-		"published without tx": {Outcome: OutcomePublished, Settlement: SettlementHeadlessClosed, Receipt: mutated(func(r *TurnReceipt) { r.Outcome = OutcomePublished; r.ResultBaselineDigest = b1 }), Usage: usage, ResultBaselineDigest: b1},
+		"null receipt":              {Outcome: OutcomeNoDiff, Settlement: SettlementSupervisorLoopClosed, Receipt: []byte("null"), Usage: usage, ResultBaselineDigest: b0},
+		"unknown settlement":        {Outcome: OutcomeNoDiff, Settlement: "UNKNOWN", Receipt: mutated(func(r *TurnReceipt) { r.Settlement = "UNKNOWN" }), Usage: usage, ResultBaselineDigest: b0},
+		"other workflow":            {Outcome: OutcomeNoDiff, Settlement: SettlementSupervisorLoopClosed, Receipt: mutated(func(r *TurnReceipt) { r.WorkflowID = "wf-other" }), Usage: usage, ResultBaselineDigest: b0},
+		"usage differs":             {Outcome: OutcomeNoDiff, Settlement: SettlementSupervisorLoopClosed, Receipt: mutated(func(r *TurnReceipt) { r.Usage = Budget{} }), Usage: usage, ResultBaselineDigest: b0},
+		"pi claims supervisor-loop": {Outcome: OutcomeNoDiff, Settlement: SettlementSupervisorLoopClosed, Receipt: mutated(func(r *TurnReceipt) { r.WorkerKind = WorkerPi }), Usage: usage, ResultBaselineDigest: b0},
+		"outcome differs":           {Outcome: OutcomeFailed, Settlement: SettlementSupervisorLoopClosed, Receipt: mutated(func(*TurnReceipt) {}), Usage: usage, ResultBaselineDigest: b0},
+		"no journal commit":         {Outcome: OutcomeNoDiff, Settlement: SettlementSupervisorLoopClosed, Receipt: mutated(func(r *TurnReceipt) { r.ProviderJournalCount = 0 }), Usage: usage, ResultBaselineDigest: b0},
+		"published without tx":      {Outcome: OutcomePublished, Settlement: SettlementSupervisorLoopClosed, Receipt: mutated(func(r *TurnReceipt) { r.Outcome = OutcomePublished; r.ResultBaselineDigest = b1 }), Usage: usage, ResultBaselineDigest: b1},
 	} {
 		if err := c.CompleteTurn(turn.ID, terminal); !isCode(err, CodeInvalidRequest) {
 			t.Errorf("%s: CompleteTurn err=%v, want INVALID_REQUEST", name, err)

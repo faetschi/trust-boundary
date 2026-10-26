@@ -53,7 +53,7 @@ func (e *productTurnEnv) abandon(turnID string, cause error) error {
 
 // RunTurn runs one admitted turn to a settled catalog disposition: it rebuilds the predecessor
 // context from retained evidence, checks the managed project against the admitted baseline,
-// composes a fresh workflow, links the turn, drives the headless worker, and settles the outcome
+// composes a fresh workflow, links the turn, drives the supervisor loop, and settles the outcome
 // with a receipt. A launch refused before the link returns a *productTurnRefusal.
 func (e *productTurnEnv) RunTurn(ctx context.Context, admission productsession.Admission) (_ productTurnReceipt, err error) {
 	e.mu.Lock()
@@ -371,13 +371,13 @@ func (s *productTurnSettlement) settle() (productTurnReceipt, error) {
 	receipt := productTurnReceipt{SchemaVersion: productTurnReceiptSchema,
 		SessionID: s.turn.SessionID, TurnID: s.turn.ID, Ordinal: s.turn.Ordinal,
 		WorkflowID: s.w.workflowID, RunID: s.w.runID, ConversationID: s.w.conversationID,
-		WorkerKind: productsession.WorkerHeadlessFixture, WorkerInstance: s.worker.instance,
+		WorkerKind: productsession.WorkerSupervisorLoop, WorkerInstance: s.worker.instance,
 		ProviderJournalHead: auditHeadHash(providerTrace.Records), ProviderJournalCount: uint64(len(providerTrace.Records)),
 		StoreJournalHead: auditHeadHash(storeTrace.Records), StoreJournalCount: uint64(len(storeTrace.Records)),
 		CommandJournalHead: auditHeadHash(commandTrace.Records), CommandJournalCount: uint64(len(commandTrace.Records)),
 		ImportedPrefixDigest: s.predecessor.Digest(), PredecessorReceiptDigest: s.predecessor.PredecessorReceiptDigest(),
 		BaselineDigest: s.turn.BaselineDigest, ResultBaselineDigest: s.resultBaseline,
-		Outcome: s.outcome, Settlement: productsession.SettlementHeadlessClosed,
+		Outcome: s.outcome, Settlement: productsession.SettlementSupervisorLoopClosed,
 		PublicationTransactionID: s.transactionID, Usage: usage,
 		ToolSequence: s.work.toolSequence, Denials: s.work.denials}
 	if receipt.ToolSequence == nil {

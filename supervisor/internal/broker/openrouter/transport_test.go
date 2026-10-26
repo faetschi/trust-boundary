@@ -306,3 +306,42 @@ func mustJSON(t *testing.T, value any) []byte {
 	}
 	return encoded
 }
+
+type failingTransport struct{ t *testing.T }
+
+func (f failingTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	f.t.Error("the test transport saw a request that the doer should have refused")
+	return nil, fmt.Errorf("unexpected request")
+}
+
+func TestWithTestTransportIsRefusedOutsideATestBinaryAndKeepsTheEndpointChecks(t *testing.T) {
+	newDoer := func() *HTTPDoer {
+		doer, err := newHTTPDoer(func() (string, error) { return "test-key-123", nil }, time.Second, Endpoint)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return doer
+	}
+	original := testBinary
+	defer func() { testBinary = original }()
+	testBinary = func() bool { return false }
+	if _, err := newDoer().WithTestTransport(failingTransport{t}); err == nil {
+		t.Fatal("a test transport was accepted outside a test binary")
+	}
+	testBinary = original
+	if _, err := newDoer().WithTestTransport(nil); err == nil {
+		t.Fatal("a nil test transport was accepted")
+	}
+	doer, err := newDoer().WithTestTransport(failingTransport{t})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request, err := http.NewRequest(http.MethodPost, "http://127.0.0.1:1/other", strings.NewReader("{}"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("Content-Type", "application/json")
+	if _, err := doer.Do(request); err == nil {
+		t.Fatal("a request for another URL was sent through the test transport")
+	}
+}

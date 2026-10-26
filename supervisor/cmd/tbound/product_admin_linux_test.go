@@ -89,13 +89,21 @@ func newAdminHost(t *testing.T, root string) *adminHost {
 	return h
 }
 
+func (h *adminHost) setupConfig() productsetup.Config {
+	return productsetup.Config{
+		SchemaVersion: productsetup.ConfigSchema, Registration: h.reg, RegistrationSignature: h.sig, RegistrationPublicKey: h.pub,
+		WorkerMode: productsession.WorkerSupervisorLoop,
+		Projects:   map[string]string{"alpha": productsetup.ProjectsDir + "/alpha", "beta": productsetup.ProjectsDir + "/beta"},
+		GatePolicyPaths: map[string]string{"alpha": productsetup.ConfigDir + "/policy-alpha.json",
+			"beta": productsetup.ConfigDir + "/policy-beta.json"},
+		GitPath: productsetup.BinaryDir + "/git", GitDigest: "sha256:" + strings.Repeat("a", 64),
+		XattrCalibrationPath: productsetup.ConfigDir + "/xattr-calibration.json",
+	}
+}
+
 func (h *adminHost) config(selfTest bool) string {
 	h.t.Helper()
-	cfg := productsetup.Config{
-		SchemaVersion: productsetup.ConfigSchema, Registration: h.reg, RegistrationSignature: h.sig, RegistrationPublicKey: h.pub,
-		WorkerMode: productsession.WorkerHeadlessFixture,
-		Projects:   map[string]string{"alpha": productsetup.ProjectsDir + "/alpha", "beta": productsetup.ProjectsDir + "/beta"},
-	}
+	cfg := h.setupConfig()
 	if selfTest {
 		cfg.SelfTest = &productsetup.SelfTest{ProjectID: "alpha", ProviderProfile: "opencode-go-engineering", TimeoutSeconds: 10}
 	}
@@ -209,6 +217,10 @@ func TestProductAdminSetupWritesTheTreeAndARerunIsUnchanged(t *testing.T) {
 	if cfg.RegistrationPath != productsession.DefaultRegistrationPath || cfg.SocketPath != productsession.DefaultServiceSocketPath {
 		t.Fatalf("service config does not use the product defaults: %+v", cfg)
 	}
+	if cfg.GitPath != productsetup.BinaryDir+"/git" || cfg.GitDigest != "sha256:"+strings.Repeat("a", 64) || len(cfg.GatePolicyPaths) != 2 ||
+		cfg.XattrCalibrationPath != productsetup.ConfigDir+"/xattr-calibration.json" {
+		t.Fatalf("service config lost the host profile inputs: %+v", cfg)
+	}
 	unit, _ := os.ReadFile(h.path(productsetup.UnitPath))
 	if err := productsetup.ValidateUnit(unit); err != nil {
 		t.Fatal(err)
@@ -222,10 +234,8 @@ func TestProductAdminSetupWritesTheTreeAndARerunIsUnchanged(t *testing.T) {
 func TestProductAdminSetupRefusesThesisPathsConflictsAndWritesNothingOnDryRun(t *testing.T) {
 	root := t.TempDir()
 	h := newAdminHost(t, root)
-	thesis := productsetup.Config{
-		SchemaVersion: productsetup.ConfigSchema, Registration: h.reg, RegistrationSignature: h.sig, RegistrationPublicKey: h.pub,
-		WorkerMode: productsession.WorkerHeadlessFixture, Projects: map[string]string{"alpha": "/var/lib/tbound/live/alpha", "beta": "/var/lib/tbound-product/projects/beta"},
-	}
+	thesis := h.setupConfig()
+	thesis.Projects = map[string]string{"alpha": "/var/lib/tbound/live/alpha", "beta": "/var/lib/tbound-product/projects/beta"}
 	data, _ := json.Marshal(thesis)
 	file := filepath.Join(h.dir, "thesis.json")
 	if err := os.WriteFile(file, data, 0o600); err != nil {

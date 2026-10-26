@@ -435,3 +435,44 @@ func TestReadSourceRefusesSymlinkAndWritableAncestors(t *testing.T) {
 		t.Fatalf("group-writable ancestor accepted: %v", err)
 	}
 }
+
+func TestConversationFactoryForTestIsRefusedOutsideATestBinaryAndKeepsTheCredentialRules(t *testing.T) {
+	base, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(base, "credentials")
+	if err := os.Mkdir(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	key := filepath.Join(dir, OpenCodeGo+".key")
+	if err := os.WriteFile(key, []byte(sentinelKey), 0600); err != nil {
+		t.Fatal(err)
+	}
+	original := testBinary
+	defer func() { testBinary = original }()
+	testBinary = func() bool { return false }
+	if _, err := ConversationFactoryForTest(OpenCodeGo, key, base); !errors.Is(err, ErrCredential) {
+		t.Fatalf("a test factory was built outside a test binary: %v", err)
+	}
+	testBinary = original
+	for name, root := range map[string]string{"root above the key": "/nonexistent", "relative root": "x", "root equals the key": key} {
+		if _, err := ConversationFactoryForTest(OpenCodeGo, key, root); !errors.Is(err, ErrCredential) {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	if _, err := ConversationFactoryForTest(OpenCodeGo, key, base); err != nil {
+		t.Fatalf("a credential below the exempt root was refused: %v", err)
+	}
+	// Only the ancestors are exempt: a group-readable key is still refused when the factory runs.
+	if err := os.Chmod(key, 0640); err != nil {
+		t.Fatal(err)
+	}
+	factory, err := ConversationFactoryForTest(OpenCodeGo, key, base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := factory(providerbridge.Config{ProfileID: OpenCodeGo}, nil); !errors.Is(err, ErrCredential) {
+		t.Fatalf("a key with a weak mode was used: %v", err)
+	}
+}

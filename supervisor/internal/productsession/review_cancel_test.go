@@ -83,7 +83,7 @@ func mustResolve(t *testing.T, c *Catalog, turn Turn, key, decision string) Turn
 
 // terminalFor builds the terminal of a reviewed or linked turn with a receipt that matches it.
 func terminalFor(c *Catalog, turnID, outcome, reason, result string, usage Budget) TurnTerminal {
-	return TurnTerminal{Outcome: outcome, Settlement: SettlementHeadlessClosed, Receipt: receiptFor(c, turnID, outcome, usage, result),
+	return TurnTerminal{Outcome: outcome, Settlement: SettlementSupervisorLoopClosed, Receipt: receiptFor(c, turnID, outcome, usage, result),
 		Usage: usage, ResultBaselineDigest: result, ContextEligible: true, Reason: reason}
 }
 
@@ -380,7 +380,7 @@ func TestReconciledAfterRestartSettlement(t *testing.T) {
 	}
 	wantCode(t, c.CompleteTurn(turn.ID, with(func(r *TurnReceipt) { r.WorkerKind = WorkerPi })), CodeInvalidRequest)
 	if err := c.CompleteTurn(turn.ID, with(func(*TurnReceipt) {})); err != nil {
-		t.Fatalf("a headless fixture turn settles reconciled-after-restart: %v", err)
+		t.Fatalf("a supervisor-loop turn settles reconciled-after-restart: %v", err)
 	}
 }
 
@@ -464,7 +464,7 @@ func TestOpenRefusesInvalidReviewRecords(t *testing.T) {
 	}
 	terminal := func(t *testing.T, c *Catalog, turn Turn, outcome, reason, result string, usage, refund Budget) audit.Event {
 		receipt := receiptFor(c, turn.ID, outcome, usage, result)
-		return event(t, kindTurnTerminal, turnTerminalRecord{header: hdr, TurnID: turn.ID, Outcome: outcome, Settlement: SettlementHeadlessClosed,
+		return event(t, kindTurnTerminal, turnTerminalRecord{header: hdr, TurnID: turn.ID, Outcome: outcome, Settlement: SettlementSupervisorLoopClosed,
 			Receipt: receipt, ReceiptDigest: ReceiptDigest(receipt), Usage: usage, ResultBaselineDigest: result, Refund: refund, Reason: reason})
 	}
 	cases := map[string]forged{

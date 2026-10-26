@@ -37,7 +37,7 @@ Status: implemented and verified locally with headless clients and deterministic
 | P0 baseline | Done locally. Product runtime, guest and signing registration pending. |
 | P1 contracts | [product-contracts.md](product-contracts.md), including decisions taken during implementation. |
 | P2 product admission and accounting | `internal/productsession`: signed registration, durable catalog, request keys, budgets, project ownership, restart reconciliation of unlinked turns. Not wired to a service transport. |
-| P3 isolated multi-turn turns | `cmd/tbound/product_turn_*`: one fresh governed workflow per turn, verified predecessor history, headless worker, settlement and auto-publication. |
+| P3 isolated multi-turn turns | `cmd/tbound/product_turn_*`: one fresh governed workflow per turn, verified predecessor history, supervisor-loop worker, settlement and auto-publication. |
 
 ### What runs today
 
@@ -47,7 +47,7 @@ Status: implemented and verified locally with headless clients and deterministic
 2. It measures the managed project and compares it with the admitted baseline.
 3. It composes a fresh workflow: new workflow, run, session and conversation IDs, a Store seeded from the project, a protected owner, and a ledger limited by the turn's reservation.
 4. It links the turn in the catalog before any provider work.
-5. The headless worker runs the governed loop. It correlates each call, evaluates the gate, records the decision, and executes the ALLOWed calls.
+5. The supervisor loop runs the governed loop. It correlates each call, evaluates the gate, records the decision, and executes the ALLOWed calls.
 6. It settles the turn:
    - no change gives `no_diff`;
    - auto mode publishes the sealed tree through the existing publication finalizer, giving `published`;
@@ -55,7 +55,7 @@ Status: implemented and verified locally with headless clients and deterministic
    - a known failure with no applied effect gives `failed`;
    - anything uncertain gives `unknown`, which keeps the reservation and blocks the project.
 
-The worker is the in-process deterministic driver (`worker_kind` `headless-fixture`). It stands in for the Pi process and makes the same broker calls the Pi adapter makes. No real Pi process runs per turn yet, and receipts never claim an OS process settlement.
+The worker is the supervisor's own in-process agent loop (`worker_kind` `supervisor-loop`). It makes the same broker calls the Pi adapter would make, and only its provider conversation is scripted in tests. No real Pi process runs per turn yet, and receipts never claim an OS process settlement.
 
 ### Demonstrated behaviour
 
@@ -105,7 +105,7 @@ Independent reviews: GPT 6.1 Sol (xhigh) ran ponytail-review over the catalog an
 
 ### Next milestone
 
-P4: review, cancellation and fresh-process recovery. That means resolving `awaiting_review` turns by exact candidate, cancellation at every point, evidence-based reconciliation of linked turns, the DENY crash window, and the crash-boundary test matrix from the plan. The product guest should be provisioned in parallel, so a real Pi worker per turn can replace the headless fixture.
+P4: review, cancellation and fresh-process recovery. That means resolving `awaiting_review` turns by exact candidate, cancellation at every point, evidence-based reconciliation of linked turns, the DENY crash window, and the crash-boundary test matrix from the plan. The product guest should be provisioned in parallel, so a real Pi worker per turn can run beside the supervisor loop.
 
 ## Milestone 2: review, cancellation and restart (P4, headless)
 
@@ -163,3 +163,49 @@ The 28th skip is `TestProductTurnCrashChild`, which runs only as the subprocess 
 - **Restart after a failed publication.** A publish decision whose publication failed is `unknown` after restart, per the table, even though `failed` could be proven.
 
 What this milestone does not include: project import and export (P5), the terminal client (P6), web chat, installation, and release qualification.
+
+## Milestone 7: production host profile (supervisor-loop worker)
+
+Status: implemented and verified locally against a loopback fake provider. Not qualified on a host. No real provider key was read and no paid provider was called. The contract is in [product-contracts.md](product-contracts.md#host-profile).
+
+### What runs today
+
+- `tbound product-serve` starts. Its host profile (`cmd/tbound/product_service_host_linux.go`) fills every trusted piece of a turn from installed, verified inputs: the gate policies, the pinned Git executable, the xattr attestation, the provider conversation factory, the prompts, the publication trust and the worker step bound. It refuses to start when an input is missing or differs from the signed registration.
+- The worker kind is `supervisor-loop`, and its settlement is `supervisor-loop-closed`. These replace `headless-fixture` and `headless-fixture-closed` everywhere. No product catalog is deployed, so there is no compatibility alias.
+- A project policy that allows Bash refuses the start, because no contained command runner exists.
+- The service setup requires the host inputs and writes them into the service config. It does not install the policy files, the Git executable or the calibration.
+
+### Demonstrated behaviour
+
+| Requirement | Test |
+| --- | --- |
+| Service started through the real host profile and the real conversation factory. Turn 1 writes a file and is published after review. Turn 2 reads and edits it. The fake provider receives turn 1's verified messages in turn 2's first request | `TestProductServiceHostRunsTwoGovernedTurnsThroughTheRealFactory` |
+| A write to a protected path is denied, and the provider and the client get the reason code and its hint | same test |
+| An edit from outside the service while a review is pending is not published over | `TestProductServiceHostTrustRefusesPublicationOverAnExternalEdit` |
+| A policy that allows Bash refuses the start, and nothing listens | `TestProductServiceHostRefusesAPolicyThatAllowsBashAtStartup` |
+| Unverified inputs refuse the start with the named reason: policy digest, group-writable or symlinked policy, Git digest or mode, calibration signature or bytes, scanner identity, missing config fields | `TestProductServiceHostRefusesUnverifiedInputsBeforeListening` |
+| Credential mode and presence rules apply through the host profile | `TestProductServiceHostEnforcesTheCredentialRules` |
+| The offline test seams refuse to run outside a test binary and no other non-test source names them | `TestWithTestTransportIsRefusedOutsideATestBinaryAndKeepsTheEndpointChecks`, `TestConversationFactoryForTestIsRefusedOutsideATestBinaryAndKeepsTheCredentialRules`, `TestOfflineProviderSeamsAreNamedOnlyByTheirOwnPackages` |
+| Config fields stay inside the product directories, and setup and serve agree on them | `TestProductServiceConfigHostInputsStayInsideTheProductDirectories`, `TestSetupRequiresAndRecordsTheHostProfileInputs`, `TestProductAdminSetupWritesTheTreeAndARerunIsUnchanged` |
+
+### Verification
+
+Linux, Go 1.27.1, `-race -count=1`, gofmt and vet clean.
+
+| Command | Result |
+| --- | --- |
+| `./cmd/tbound/ ./internal/productsession/... ./internal/productprovider/... ./internal/productsetup/... ./internal/broker/... ./internal/providerbridge/...` | every package ok (`cmd/tbound` in 509 s) except `productsetup`, where one existing test failed because its fixture lacked the new required policy paths |
+| `./internal/productsetup/... ./internal/productprovider/... ./internal/broker/openrouter/...` after that fix | ok |
+
+Source hash of `supervisor/` for the second run: SHA-256 of the sorted per-file SHA-256 list, `ba358feeba5fe4fe9ba83bd2e3ea6d3f2cc89f5e2063908d75133b6125485976`.
+
+### Pending and known limits
+
+- **No qualified host.** The tests replace only the scanner measurement with a described one. The calibration signature, the mount comparison logic, the file protection checks and the Git pin run as written. The scanner identity, the calibration and the service account have never run on a real host.
+- **No real provider.** The real transport, the credential rules and the endpoint check ran against a loopback server that serves the fixed endpoint. No real key was used. Provider behaviour that a fake does not show is untested.
+- **Bash.** Refused until D09 command cells exist on a qualified host.
+- **Pi worker.** Still refused with its own error.
+- **Calibration.** No product command measures or signs the xattr calibration. The research `tbound-profile` commands write the same artifact in raw key and signature form, and their use for the product is untested.
+- **Setup and doctor.** Setup does not install or check the policy files, the Git executable or the calibration. `product doctor` does not report them. The service verifies them at start.
+- **External writers.** The publication trust does not exclude a writer outside the catalog, the publication ledger and the Store. It detects an outside edit that happens before publication, and the next baseline measurement detects a later one.
+- **Prompts.** The compiled-in prompts are part of each turn's retained evidence. Changing them breaks the replay of earlier turns.

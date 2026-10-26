@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"testing"
 	"time"
 )
 
@@ -35,6 +36,21 @@ type HTTPDoer struct {
 
 func NewHTTPDoer(key APIKeySource, timeout time.Duration) (*HTTPDoer, error) {
 	return newHTTPDoer(key, timeout, Endpoint)
+}
+
+// testBinary is a variable only so that this package's test can prove the refusal below.
+var testBinary = testing.Testing
+
+// WithTestTransport replaces the dialing layer so an offline test can serve the fixed endpoint from a
+// loopback fixture. Every request still passes the endpoint, method, header and redirect checks, and the
+// key is attached as usual. A binary that is not a Go test binary always refuses: no flag, file, environment
+// variable or wire field reaches this method, and no code path of the product service calls it.
+func (d *HTTPDoer) WithTestTransport(transport http.RoundTripper) (*HTTPDoer, error) {
+	if !testBinary() || d == nil || d.client == nil || transport == nil {
+		return nil, errors.New("a test transport is only permitted inside a Go test binary")
+	}
+	d.client.Transport = transport
+	return d, nil
 }
 
 // NewHTTPDoerForEndpoint is the transport of a research route. It is the same

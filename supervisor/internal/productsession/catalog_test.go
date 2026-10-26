@@ -141,11 +141,11 @@ func receiptFor(c *Catalog, turnID, outcome string, usage Budget, result string)
 	turn, _ := c.Turn(turnID)
 	r := TurnReceipt{
 		SchemaVersion: ReceiptSchema, SessionID: turn.SessionID, TurnID: turn.ID, Ordinal: turn.Ordinal,
-		WorkerKind: WorkerHeadlessFixture, WorkerInstance: "worker-" + strings.ReplaceAll(turnID, "/", "-"),
+		WorkerKind: WorkerSupervisorLoop, WorkerInstance: "worker-" + strings.ReplaceAll(turnID, "/", "-"),
 		ProviderJournalHead: strings.Repeat("a", 64), ProviderJournalCount: 3,
 		StoreJournalHead: strings.Repeat("b", 64), StoreJournalCount: 2,
 		PredecessorReceiptDigest: turn.PredecessorReceiptDigest, BaselineDigest: turn.BaselineDigest,
-		ResultBaselineDigest: result, Outcome: outcome, Settlement: SettlementHeadlessClosed, Usage: usage,
+		ResultBaselineDigest: result, Outcome: outcome, Settlement: SettlementSupervisorLoopClosed, Usage: usage,
 		ToolSequence: []string{"read"}, Denials: []ReceiptDenial{{ToolCallID: "call-1", Tool: "write", ReasonCode: "policy_rule_deny"}},
 	}
 	if turn.Link != nil {
@@ -164,13 +164,13 @@ func receiptFor(c *Catalog, turnID, outcome string, usage Budget, result string)
 
 func reviewFor(c *Catalog, turnID string, usage Budget, candidate string) TurnReview {
 	turn, _ := c.Turn(turnID)
-	return TurnReview{Settlement: SettlementHeadlessClosed, Usage: usage, CandidateDigest: candidate,
+	return TurnReview{Settlement: SettlementSupervisorLoopClosed, Usage: usage, CandidateDigest: candidate,
 		Receipt: receiptFor(c, turnID, receiptOutcomeAwaitReview, usage, turn.BaselineDigest)}
 }
 
 func complete(c *Catalog, turnID, outcome string, usage Budget, result string) error {
 	return c.CompleteTurn(turnID, TurnTerminal{
-		Outcome: outcome, Settlement: SettlementHeadlessClosed, Receipt: receiptFor(c, turnID, outcome, usage, result), Usage: usage,
+		Outcome: outcome, Settlement: SettlementSupervisorLoopClosed, Receipt: receiptFor(c, turnID, outcome, usage, result), Usage: usage,
 		ResultBaselineDigest: result, ContextEligible: true,
 	})
 }
@@ -523,7 +523,7 @@ func TestAwaitingReviewBlocksSessionAndProject(t *testing.T) {
 	s := mustSession(t, c, uid1, "beta", "review", bigBudget, "s")
 	other := mustSession(t, c, uid2, "beta", "review", bigBudget, "s2")
 	turn := mustSubmit(t, c, uid1, s.ID, 0, "k1", "p")
-	unlinked := TurnReview{Settlement: SettlementHeadlessClosed, Receipt: rawReceipt(turn.ID), Usage: Budget{2, 10, 5}, CandidateDigest: dg("candidate")}
+	unlinked := TurnReview{Settlement: SettlementSupervisorLoopClosed, Receipt: rawReceipt(turn.ID), Usage: Budget{2, 10, 5}, CandidateDigest: dg("candidate")}
 	wantCode(t, c.MarkAwaitingReview(turn.ID, unlinked), CodeWrongTurnState) // not linked yet
 	mustLink(t, c, turn.ID)
 	review := reviewFor(c, turn.ID, Budget{2, 10, 5}, dg("candidate"))

@@ -44,13 +44,9 @@ var (
 // productServiceHost fills the trusted pieces of a product turn that no config file can name: the
 // provider conversation factory (it receives each session's profile ID in its providerbridge.Config),
 // the publication trust, the private Git pin, the installed gate policies with their digests, the Xattr
-// attestation, the prompts and the worker step bound. The host profile of a qualified product host
-// provides it; tests inject a fixture.
+// attestation, the prompts and the worker step bound. The command uses newProductServiceHostProfile;
+// tests may inject a fixture.
 type productServiceHost func(env *productTurnEnv) error
-
-// productServiceHostProfile is the host of the real command. It stays nil until a qualified product
-// host and the provider profile table are wired in, and the real command then refuses to start.
-var productServiceHostProfile productServiceHost
 
 // productServiceOptions are the injected parts of the service. Production sets Host and Log only.
 type productServiceOptions struct {
@@ -654,7 +650,7 @@ func runProductServe(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	service, err := startProductService(cfg, productServiceOptions{Host: productServiceHostProfile, Log: stderr})
+	service, err := startProductService(cfg, productServiceOptions{Host: newProductServiceHostProfile(cfg), Log: stderr})
 	if err != nil {
 		return err
 	}

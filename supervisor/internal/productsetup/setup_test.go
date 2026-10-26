@@ -35,10 +35,13 @@ func newFixture(t *testing.T) *fixture {
 	}
 	f.binary = write("tbound-v1", "binary v1")
 	f.cfg = Config{
-		SchemaVersion: ConfigSchema, WorkerMode: "headless-fixture",
+		SchemaVersion: ConfigSchema, WorkerMode: "supervisor-loop",
 		Registration: write("registration.json", "projects: alpha,beta"), RegistrationSignature: write("registration.json.sig", "sig\n"),
 		RegistrationPublicKey: write("registration.pub", "pub\n"),
 		Projects:              map[string]string{"alpha": ProjectsDir + "/alpha", "beta": ProjectsDir + "/beta"},
+		GatePolicyPaths:       map[string]string{"alpha": ConfigDir + "/policy-alpha.json", "beta": ConfigDir + "/policy-beta.json"},
+		GitPath:               BinaryDir + "/git", GitDigest: "sha256:" + strings.Repeat("a", 64),
+		XattrCalibrationPath: ConfigDir + "/xattr-calibration.json",
 	}
 	f.env = Env{
 		Root: f.root, RequirePrereqs: true,
@@ -200,6 +203,40 @@ func TestSetupRefusesThesisPathsAndChangesNothing(t *testing.T) {
 	})
 }
 
+func TestSetupRequiresAndRecordsTheHostProfileInputs(t *testing.T) {
+	for name, mutate := range map[string]func(*Config){
+		"no git":                 func(c *Config) { c.GitPath = "" },
+		"no git digest":          func(c *Config) { c.GitDigest = "" },
+		"no calibration":         func(c *Config) { c.XattrCalibrationPath = "" },
+		"git outside the binary": func(c *Config) { c.GitPath = "/usr/bin/git" },
+		"thesis calibration":     func(c *Config) { c.XattrCalibrationPath = "/etc/tbound/xattr.json" },
+		"calibration elsewhere":  func(c *Config) { c.XattrCalibrationPath = StateDir + "/xattr.json" },
+		"uppercase digest":       func(c *Config) { c.GitDigest = "sha256:" + strings.Repeat("A", 64) },
+		"policy missing":         func(c *Config) { delete(c.GatePolicyPaths, "beta") },
+		"policy for no project":  func(c *Config) { c.GatePolicyPaths["gamma"] = ConfigDir + "/policy-gamma.json" },
+		"policy outside config":  func(c *Config) { c.GatePolicyPaths["alpha"] = StateDir + "/policy.json" },
+		"thesis policy":          func(c *Config) { c.GatePolicyPaths["alpha"] = "/etc/tbound/policy.json" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newFixture(t)
+			mutate(&f.cfg)
+			if _, err := f.setup(); !errors.Is(err, ErrRefused) {
+				t.Fatalf("not refused: %v", err)
+			}
+		})
+	}
+	f := newFixture(t)
+	if _, err := f.setup(); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"git_path": "` + BinaryDir + `/git"`, `"git_digest": "sha256:` + strings.Repeat("a", 64) + `"`,
+		`"xattr_calibration_path": "` + ConfigDir + `/xattr-calibration.json"`, `"alpha": "` + ConfigDir + `/policy-alpha.json"`} {
+		if !strings.Contains(f.read(ServiceConfigPath), want) {
+			t.Errorf("service config lacks %s:\n%s", want, f.read(ServiceConfigPath))
+		}
+	}
+}
+
 func TestSetupDryRunWritesNothing(t *testing.T) {
 	f := newFixture(t)
 	f.env.DryRun = true
@@ -293,6 +330,7 @@ func TestSetupTightensAWeakenedModeAndRefusesSymlinks(t *testing.T) {
 func TestSetupRefusesAnUnverifiedOrMismatchedRegistration(t *testing.T) {
 	f := newFixture(t)
 	f.cfg.Projects = map[string]string{"alpha": ProjectsDir + "/alpha"}
+	f.cfg.GatePolicyPaths = map[string]string{"alpha": ConfigDir + "/policy-alpha.json"}
 	if _, err := f.setup(); !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "exactly the registered projects") {
 		t.Fatalf("a project set that differs from the registration was accepted: %v", err)
 	}

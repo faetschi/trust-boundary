@@ -58,13 +58,25 @@ type Config struct {
 	WorkerMode            string `json:"worker_mode"`
 	// Projects maps each registered project ID to its managed directory below ProjectsDir.
 	Projects map[string]string `json:"projects"`
+	// The installed inputs of the service's host profile. Setup records their paths in the service config
+	// and does not install them: the administrator places them first, and the service verifies them at
+	// start. GatePolicyPaths names a policy file under ConfigDir for every project, GitPath the private Git
+	// executable under BinaryDir with its pinned GitDigest, and XattrCalibrationPath the signed calibration
+	// under ConfigDir (its signature sits at the same path plus ".sig").
+	GatePolicyPaths      map[string]string `json:"gate_policy_paths"`
+	GitPath              string            `json:"git_path"`
+	GitDigest            string            `json:"git_digest"`
+	XattrCalibrationPath string            `json:"xattr_calibration_path"`
 	// ServiceUID and ServiceGID pin the account IDs. Zero lets the system choose.
 	ServiceUID int       `json:"service_uid,omitempty"`
 	ServiceGID int       `json:"service_gid,omitempty"`
 	SelfTest   *SelfTest `json:"self_test,omitempty"`
 }
 
-var identity = regexp.MustCompile(`^[\x21-\x7e]{1,128}$`)
+var (
+	identity     = regexp.MustCompile(`^[\x21-\x7e]{1,128}$`)
+	sha256Digest = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
+)
 
 // LoadConfig reads and strictly decodes a setup configuration file.
 func LoadConfig(file string) (Config, error) {
@@ -108,6 +120,9 @@ func (c Config) validate() error {
 	if c.WorkerMode == "" {
 		return refuse("worker_mode is required")
 	}
+	if err := c.validateHostInputs(); err != nil {
+		return err
+	}
 	if c.ServiceUID < 0 || c.ServiceGID < 0 || (c.ServiceUID == 0) != (c.ServiceGID == 0) {
 		return refuse("service_uid and service_gid are both unset or both positive")
 	}
@@ -141,6 +156,36 @@ func (c Config) validate() error {
 		}
 		if t.TimeoutSeconds < 0 || t.TimeoutSeconds > maxSelfTestSecs {
 			return refuse("self_test.timeout_seconds must be at most %d", maxSelfTestSecs)
+		}
+	}
+	return nil
+}
+
+// validateHostInputs requires the host profile's inputs, so setup never installs a service that
+// refuses to start for want of them. The policy map is checked against the projects in both directions.
+func (c Config) validateHostInputs() error {
+	if c.GitPath == "" || c.GitDigest == "" || c.XattrCalibrationPath == "" {
+		return refuse("git_path, git_digest and xattr_calibration_path are required")
+	}
+	if err := checkProductPath("git_path", c.GitPath, BinaryDir); err != nil {
+		return err
+	}
+	if err := checkProductPath("xattr_calibration_path", c.XattrCalibrationPath, ConfigDir); err != nil {
+		return err
+	}
+	if !sha256Digest.MatchString(c.GitDigest) {
+		return refuse("git_digest must be a canonical SHA-256 digest")
+	}
+	if len(c.GatePolicyPaths) != len(c.Projects) {
+		return refuse("gate_policy_paths needs exactly one policy file for every project")
+	}
+	for id := range c.Projects {
+		file, ok := c.GatePolicyPaths[id]
+		if !ok {
+			return refuse("gate_policy_paths has no policy file for project %q", id)
+		}
+		if err := checkProductPath(fmt.Sprintf("gate_policy_paths[%q]", id), file, ConfigDir); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -187,6 +232,10 @@ type ServiceConfig struct {
 	SocketPath                string            `json:"socket_path"`
 	WorkerMode                string            `json:"worker_mode"`
 	Projects                  map[string]string `json:"projects"`
+	GatePolicyPaths           map[string]string `json:"gate_policy_paths"`
+	GitPath                   string            `json:"git_path"`
+	GitDigest                 string            `json:"git_digest"`
+	XattrCalibrationPath      string            `json:"xattr_calibration_path"`
 }
 
 func (c Config) serviceConfigJSON() ([]byte, error) {
@@ -194,6 +243,7 @@ func (c Config) serviceConfigJSON() ([]byte, error) {
 		SchemaVersion: ServiceConfigSchema, RegistrationPath: RegistrationPath,
 		RegistrationSignaturePath: RegistrationSignaturePath, RegistrationPublicKeyPath: RegistrationPublicKeyPath,
 		CatalogPath: CatalogPath, StateRoot: TurnsDir, SocketPath: SocketPath, WorkerMode: c.WorkerMode, Projects: c.Projects,
+		GatePolicyPaths: c.GatePolicyPaths, GitPath: c.GitPath, GitDigest: c.GitDigest, XattrCalibrationPath: c.XattrCalibrationPath,
 	})
 }
 
