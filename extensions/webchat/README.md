@@ -92,8 +92,49 @@ publication authority, never retries, and never invents a request key.
   `ssh -L 8791:127.0.0.1:8791 user@host`. Never bind a non-loopback address.
 
 The gateway does not claim containment, `G1` or `H1`. Its qualification panel is fixed.
-The React app does not use the live routes yet. Against a live gateway it shows an
-error state until its live mode is wired, which is separate work.
+
+### The browser UI in live mode
+
+The React app asks `GET /api/v1/contract` first. `"mode": "live"` gives the live shell. A
+`401` means a live gateway that has not paired this browser, and the app shows how to
+pair. Any other answer, or none, gives the read-only demonstration path as before. The
+demonstration modes are labelled as such: `source: fixture` or `replay` sits beside a
+`demonstration · not a live session` badge.
+
+- **Sessions.** The rail lists `GET /api/v1/sessions` with project, provider profile and
+  mode (and `read-only` or `blocked`). Choosing one opens its snapshot, then its event
+  stream. A creator takes project, provider profile, publication mode, budget and
+  `read_only`, and sends `POST /api/v1/sessions`. The open session is kept per tab
+  (`sessionStorage`) and reopens after a reload.
+- **Requests.** Every request is same-origin with credentials. Every `POST` carries
+  `X-TBound-CSRF`. The token is read from `GET /api/v1/pair` on the first mutation, so a
+  reloaded page recovers it from its cookie. Each user action (a prompt, a cancel, a
+  decision, a new session) builds one request key. A transport failure repeats the same
+  body under the same key (twice, after 0.4 s and 1.2 s). If that fails too, or the gateway
+  marks the outcome unknown, the page says "Outcome unknown", keeps the draft, blocks a new
+  prompt, and offers **Retry with the same request key**. A refusal such as
+  `409 STALE_REVISION` is shown with its code, and the prompt is not sent again.
+- **Composer.** `POST .../turns` with `expected_revision` from the `live` view of the last
+  snapshot. The page reads the view again after every lifecycle event (a turn admitted,
+  linked, awaiting review, resolved, finished), so the revision it sends is the one it
+  shows. Send and Cancel stay in the tab order when they cannot act, and the reason is
+  written beside them.
+- **Event stream.** A long poll of `GET .../events?cursor=N&wait=MS`, driven by the stream
+  controller the demonstration path already uses. Every connection is snapshot first and
+  continues from the snapshot's cursor. A `gap` flag or an invalid item closes the stream
+  and refetches the snapshot, and retries follow the existing backoff. The cursor is
+  stored per session, and a reload says how many events arrived while the page was closed.
+- **Review.** When a turn awaits review the page reads `GET .../candidate` and shows the
+  digest and a diff per path as plain text. Publish and Discard send `POST .../resolve`
+  with the digest of the candidate that is displayed. If the service has moved on it
+  answers `409 CANDIDATE_MISMATCH`, and the page shows the new candidate.
+- **State.** Remaining budget is budget less consumed less reserved. The state of the open
+  turn, a blocked session and unknown outcomes have their own notices. The workspace's
+  header and panels (Publication, Recovery, decision counts) are refreshed from the same
+  read.
+- **Safety.** Assistant text goes through the sanitizing markdown path and every other
+  value is a text node. The panel, the review and the governance chips are separate
+  regions, never part of a turn's text. No unsafe DOM sink is used (`npm run check:sinks`).
 
 ## Test
 
@@ -118,7 +159,11 @@ The wire-type parity test reads `internal/webchat/testdata/protocol/*.json`, whi
 supervisor generates. After a protocol change, regenerate them from `supervisor/` with
 `go test ./internal/productprotocol -run Fixtures -update` and update `wire.go`.
 
-The React frontend has its own gate. It needs Node 24.15.0 (`frontend/.nvmrc`):
+The React frontend has its own gate. It needs Node 24.15.0 (`frontend/.nvmrc`). The live UI
+is tested with a fake gateway behind `fetch` (`frontend/src/live/*.test.ts*`,
+`frontend/src/test-support/liveGateway.ts`), not with a browser. On a checkout whose path has
+a space, `src/core/differential.test.ts` needs
+`VITE_WEBCHAT_LEGACY_ASSETS=file:///<checkout>/extensions/webchat/internal/webchat/assets`:
 
 ```sh
 make extension-webchat-frontend-verify       # npm ci --ignore-scripts, verify, dist reproducibility
@@ -182,7 +227,8 @@ the manifest-derived `/app/` allowlist, the CSP smoke and its exit codes.
     fixtures.
   - `dist/`: the committed React build (generated; do not edit by hand).
 - `extensions/webchat/frontend/`: the React + TypeScript source (`src/`, with
-  `src/core/` and `src/markdown/` from Phase 2), its scripts (`scripts/`), the
+  `src/core/` and `src/markdown/` from Phase 2, and `src/live/`, the live client, event
+  stream, controller and components), its scripts (`scripts/`), the
   pinned `package.json` and lockfile, and `DEPENDENCIES.md`. Build output goes to
   `internal/webchat/dist/`.
 - `extensions/webchat/cmd/tbound-webchat/`: loopback-only gateway entrypoint (the

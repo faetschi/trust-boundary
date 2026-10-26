@@ -279,6 +279,44 @@ export interface ReplayGap {
   readonly latest?: number;
 }
 
+// The product service's session view, carried as is by a live snapshot (`Snapshot.live`, web-chat-contract.md 9.5). The
+// client echoes `revision` as `expected_revision`. A turn `state` is the service's own word (admitted, linked,
+// awaiting_review, terminal, abandoned, unknown), so it is a string here and the presentation reads it conservatively.
+export interface LiveBudget {
+  readonly host_calls: number;
+  readonly tokens: number;
+  readonly duration_seconds: number;
+}
+
+export interface LiveTurn {
+  readonly id: string;
+  readonly ordinal: number;
+  readonly state: string;
+  readonly prompt: string;
+  readonly outcome?: string;
+  readonly terminal_reason?: string;
+  readonly cancel_requested?: boolean;
+  readonly resolution?: string;
+  readonly candidate_digest?: string;
+  readonly review_timeout_seconds?: number;
+}
+
+export interface LiveSessionView {
+  readonly id: string;
+  readonly project_id: string;
+  readonly provider_profile: string;
+  readonly publication_mode: string;
+  readonly read_only?: boolean;
+  readonly revision: number;
+  readonly blocked?: boolean;
+  readonly budget: LiveBudget;
+  readonly consumed: LiveBudget;
+  readonly reserved: LiveBudget;
+  readonly total_turns: number;
+  readonly turns_truncated?: boolean;
+  readonly turns?: readonly LiveTurn[];
+}
+
 export interface Snapshot {
   readonly schema_version: typeof CONTRACT_VERSION;
   readonly epoch: string;
@@ -292,6 +330,8 @@ export interface Snapshot {
   readonly items: readonly Item[];
   readonly gaps?: readonly GapRecord[];
   readonly warnings?: readonly string[];
+  // Only a live projection carries it (validate.ts refuses it anywhere else).
+  readonly live?: LiveSessionView;
 }
 
 // A fixture or replay envelope. The snapshot inside is caller input and is always

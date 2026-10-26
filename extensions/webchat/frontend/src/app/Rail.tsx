@@ -3,6 +3,8 @@ import { humanize } from "../core/format";
 import type { ChipTone } from "../ui/Chip";
 import { Chip } from "../ui/Chip";
 import { StateDot } from "../ui/StateDot";
+import { useLive } from "../live/context";
+import { LiveSessions } from "../live/LiveSessions";
 import { VisuallyHidden } from "../ui/VisuallyHidden";
 import { countValue, NO_PROJECTION, sessionReading, unavailableWords } from "./panels";
 import type { WorkspaceModel } from "./workspaceStore";
@@ -104,7 +106,12 @@ export function RailToggle({ expanded, onToggle }: { readonly expanded: boolean;
   );
 }
 
+// In live mode the footnote says what the controls are. They are requests, and the product service decides.
+const LIVE_FOOTNOTE =
+  "Live session. Cancel, Publish and Discard are requests to the product service, which decides. This page holds no policy, effect or publication authority.";
+
 export function Rail({ model, phone, expanded, onToggle, inert = false }: RailProps) {
+  const live = useLive() !== null;
   const { session } = model;
   const reading = sessionReading(session, false);
   const sessionTitle = session ? session.title || UNTITLED : "no session projection";
@@ -146,7 +153,9 @@ export function Rail({ model, phone, expanded, onToggle, inert = false }: RailPr
               <h2 id="rail-sessions-title" className={styles.heading}>
                 Sessions
               </h2>
-              {session ? (
+              {live ? (
+                <LiveSessions />
+              ) : session ? (
                 <ul aria-label="Sessions" className={styles.sessionList}>
                   <SessionRow session={session} />
                 </ul>
@@ -174,13 +183,19 @@ export function Rail({ model, phone, expanded, onToggle, inert = false }: RailPr
               )}
             </section>
             <div className={styles.footnote}>
-              <p role="note" className={styles.otherNote}>
-                {OTHER_SESSIONS_NOTE}
-              </p>
-              <p className={styles.note}>
-                Read-only projection. No launch, cancel, approve, fork or execute control exists in this client; those are
-                supervisor authority.
-              </p>
+              {live ? (
+                <p className={styles.note}>{LIVE_FOOTNOTE}</p>
+              ) : (
+                <>
+                  <p role="note" className={styles.otherNote}>
+                    {OTHER_SESSIONS_NOTE}
+                  </p>
+                  <p className={styles.note}>
+                    Read-only projection. No launch, cancel, approve, fork or execute control exists in this client; those are
+                    supervisor authority.
+                  </p>
+                </>
+              )}
             </div>
           </>
         ) : null}

@@ -1,0 +1,343 @@
+/*
+ * Live mode: the session picker and creator in the rail, the status and review panel above the transcript, and the
+ * composer. Colour comes from the alias tier only, and state colour comes from the Chip primitive. The panel is drawn as a
+ * bordered region of its own, so governance state (budget, review, blocked) never reads as part of the model's text.
+ */
+
+/* ── Rail: sessions and the creator ── */
+.sessions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.session {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  width: 100%;
+  min-height: var(--row-h-button);
+  padding: var(--space-2) var(--space-2h);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--sidebar-foreground);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.session:hover {
+  background: var(--sidebar-accent);
+}
+
+.session[aria-current="true"] {
+  border-color: var(--input);
+  background: var(--sidebar-accent);
+}
+
+.session:focus-visible,
+.input:focus-visible,
+.select:focus-visible,
+.check:focus-visible,
+.button:focus-visible,
+.diff:focus-visible {
+  outline: var(--focus-width) solid var(--ring);
+  outline-offset: 2px;
+}
+
+.sessionTitle {
+  font: 600 var(--text-sm) / var(--lh-sm) var(--font-sans);
+  overflow-wrap: anywhere;
+}
+
+.sessionMeta {
+  font: var(--text-2xs) / var(--lh-2xs) var(--font-mono);
+  color: var(--muted-foreground);
+  overflow-wrap: anywhere;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.fieldRow {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.label {
+  font: 500 var(--text-xs) / var(--lh-xs) var(--font-sans);
+  color: var(--muted-foreground);
+}
+
+.input,
+.select {
+  min-height: var(--row-h-input);
+  min-width: 0;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--input);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  color: var(--card-foreground);
+  font: var(--text-sm) / var(--lh-sm) var(--font-sans);
+}
+
+.checkRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font: var(--text-sm) / var(--lh-sm) var(--font-sans);
+}
+
+.check {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+}
+
+.hint {
+  margin: 0;
+  font: var(--text-xs) / var(--lh-xs) var(--font-sans);
+  color: var(--muted-foreground);
+}
+
+/* ── Buttons ── */
+.button {
+  min-height: var(--row-h-button);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--input);
+  border-radius: var(--radius-sm);
+  background: var(--secondary);
+  color: var(--secondary-foreground);
+  font: 600 var(--text-sm) / var(--lh-sm) var(--font-sans);
+  cursor: pointer;
+}
+
+.button:hover {
+  background: var(--accent);
+}
+
+.primary {
+  border-color: transparent;
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.primary:hover {
+  background: var(--primary);
+}
+
+/* A control that cannot act now stays in the tab order, so its reason can be read. It is drawn dashed and muted. */
+.button[aria-disabled="true"] {
+  border-style: dashed;
+  background: var(--muted);
+  color: var(--muted-foreground);
+  cursor: not-allowed;
+}
+
+@media (pointer: coarse) {
+  .button,
+  .session {
+    min-height: 44px;
+  }
+}
+
+/* ── Panel above the transcript: remaining budget, turn state, blocked, review ── */
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  flex: none;
+  min-width: 0;
+  max-height: 30vh;
+  overflow: auto;
+}
+
+.status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  min-width: 0;
+}
+
+.muted {
+  font: var(--text-2xs) / var(--lh-2xs) var(--font-mono);
+  color: var(--muted-foreground);
+}
+
+.noticeText {
+  margin: 0;
+  font: var(--text-sm) / var(--lh-sm) var(--font-sans);
+  overflow-wrap: anywhere;
+}
+
+.noticeActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.review {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--input);
+  border-radius: var(--radius-md);
+  background: var(--card);
+  color: var(--card-foreground);
+}
+
+.reviewHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+}
+
+.reviewTitle {
+  margin: 0;
+  font: 600 var(--text-body) / var(--lh-body) var(--font-sans);
+}
+
+.digest {
+  font: var(--text-2xs) / var(--lh-2xs) var(--font-mono);
+  color: var(--muted-foreground);
+  overflow-wrap: anywhere;
+}
+
+.files {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.fileHead {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  font: var(--text-sm) / var(--lh-sm) var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+/* The diff is plain text in a pre. Added and removed lines are tinted, and their first character stays, so colour is never alone. */
+.diff {
+  margin: 0;
+  max-height: 40vh;
+  overflow: auto;
+  padding: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--background);
+  font: var(--text-xs) / var(--lh-xs) var(--font-mono);
+  white-space: pre;
+}
+
+.add {
+  display: block;
+  background: color-mix(in oklch, var(--state-ok) 12%, transparent);
+  color: var(--state-ok-ink);
+}
+
+.del {
+  display: block;
+  background: color-mix(in oklch, var(--state-deny) 12%, transparent);
+  color: var(--state-deny-ink);
+}
+
+.ctx {
+  display: block;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* ── Composer: one card under the transcript ── */
+.composer {
+  flex: none;
+  min-width: 0;
+  margin: 0;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1h);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  background: color-mix(in oklch, var(--card) 70%, transparent);
+  color: var(--card-foreground);
+}
+
+.row {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.prompt {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: calc(var(--row-h-input) * 2);
+  padding: var(--space-1) 0;
+  border: 0;
+  background: transparent;
+  color: var(--card-foreground);
+  font: inherit;
+  resize: none;
+}
+
+.prompt:focus-visible {
+  outline: var(--focus-width) solid var(--ring);
+  outline-offset: 2px;
+}
+
+.prompt::placeholder {
+  color: var(--muted-foreground);
+  opacity: 1;
+}
+
+/* ── Unpaired page ── */
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: var(--space-5) var(--space-4);
+}
+
+.pageTitle {
+  margin: 0;
+  font: 600 var(--text-body) / var(--lh-body) var(--font-sans);
+}

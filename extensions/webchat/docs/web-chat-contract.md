@@ -399,8 +399,53 @@ Not mapped, and how the gateway handles each:
   JSON string and the content type is `application/json`. Rendering safety is the
   frontend's job.
 
-### 9.7 Not covered
+### 9.7 The browser client
+
+The React app (`frontend/src/live/`) is the client of these routes. What it does with them:
+
+- **Mode.** `GET /api/v1/contract` with `"mode": "live"` selects the live shell. A `401` is a
+  live gateway that has not paired this browser, and the app shows the pairing instructions.
+  Anything else (a descriptor with no `mode`, an error, no answer) selects the read-only
+  demonstration path. That path labels itself `source: fixture` or `replay` and a
+  `demonstration · not a live session` badge.
+- **Transport.** Same-origin, credentialed, uncached requests with relative URLs. Every
+  `POST` carries `X-TBound-CSRF`, read from `GET /api/v1/pair` on the first mutation (so a
+  reload recovers it) and read again after a `403`. Every answer is parsed by the strict
+  validator before use. The snapshot's `live` field is checked there: closed keys,
+  bounded identifiers and counts, only in a served snapshot whose source is `live`, with
+  `live.id` equal to the epoch.
+- **Request keys.** One key per user action, built when the action is built (a prompt, a
+  cancel, a decision, a session). The key is never rebuilt for a retry. A transport
+  failure, a `503` or a marked unknown outcome repeats the same body under the same key,
+  twice (after 0.4 s and 1.2 s). Then the page shows "Outcome unknown", keeps the draft,
+  refuses a new prompt, and offers Retry with the same key and Dismiss. A refusal (any
+  `4xx`) is shown with its code and not repeated. The page treats a `5xx` other than a clean
+  `503 SERVICE_UNAVAILABLE` as unknown for a mutation, because the service may have run it.
+  The service answers a repeated key with `replayed` before it checks the revision, so a
+  repeat must carry the original `expected_revision`, and it does.
+- **Revision.** `expected_revision` is `live.revision` of the last view the page read. The
+  session list carries no turns, so the page reads the view again through
+  `GET /api/v1/sessions/{id}` after every window with a lifecycle event
+  (`turn_admitted`, `turn_linked`, `turn_cancel_requested`, `turn_awaiting_review`,
+  `turn_resolution_requested`, `turn_terminal`). A `STALE_REVISION` also triggers a read.
+  The prompt is not sent again.
+- **Events.** A long poll of `.../events`: the first poll has `wait=0`, later ones
+  `wait=25000`. Each `items[i]` is validated as a streamed item in the projection of the
+  snapshot the stream opened after. A `gap` window is not applied: the stream closes and the
+  stream controller fetches a snapshot and records the gap. Each window's `next_cursor` is
+  stored in `sessionStorage` per session. A reload fetches the snapshot, continues from its
+  cursor, and says how many events arrived since the stored one.
+- **Review.** The candidate is read when the view shows a turn in `awaiting_review` with a
+  digest and no resolution or cancel. The page shows the candidate's own digest and paths,
+  the diff as plain text. Publish and Discard send the digest of the candidate object that
+  is displayed, not the digest in the latest view.
+- **Limit.** Reading the view uses the snapshot route, which replays up to 2048 events per
+  read. A route that returns the session view alone would be cheaper for long sessions.
+
+### 9.8 Not covered
 
 Supervisor-issued, scoped browser delegations (the pairing secret scopes the browser
 instead, as the milestone's authority note says), a second paired browser, remote
-access beyond the SSH tunnel, and a test against a real browser.
+access beyond the SSH tunnel, and an automated test in a real browser. The client was
+exercised by hand in a browser against a scripted fake product service, and its logic is
+tested with a fake `fetch`.

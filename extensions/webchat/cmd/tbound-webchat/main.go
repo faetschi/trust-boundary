@@ -178,7 +178,13 @@ func run(args []string, stdout, stderr *os.File) error {
 	case <-stop:
 		shutdownContext, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		return server.Shutdown(shutdownContext)
+		// Open long polls and never-used speculative connections outlive the grace period. The gateway holds
+		// no state, so dropping them is safe.
+		err := server.Shutdown(shutdownContext)
+		if errors.Is(err, context.DeadlineExceeded) {
+			return server.Close()
+		}
+		return err
 	}
 }
 
