@@ -51,14 +51,6 @@ func (d panelData) complete(phase int, c evalcorpus.Case) bool {
 	return len(d.ratings[phase][c.CaseID]) == len(d.r.cfg.Models)
 }
 
-func (d panelData) checklist(c evalcorpus.Case, item string) []string {
-	var out []string
-	for _, m := range d.r.cfg.Models {
-		out = append(out, d.ratings[phaseChecklist][c.CaseID][m.ID].Checklist[item].Rating)
-	}
-	return out
-}
-
 func (d panelData) blindValues(c evalcorpus.Case, field string) []string {
 	var out []string
 	for _, m := range d.r.cfg.Models {
@@ -96,33 +88,26 @@ func (r *runner) finish(plan blindPlan) (spend, error) {
 	d.cases = append([]evalcorpus.Case(nil), r.corpus.Manifest.Cases...)
 	sort.Slice(d.cases, func(i, j int) bool { return d.cases[i].CaseID < d.cases[j].CaseID })
 
-	items2 := map[string]ItemStats{}
-	for _, it := range items {
-		var subs []panelaudit.Subject
-		for _, c := range d.cases {
-			if _, na := notApplicable[c.Kind][it.Key]; !na && d.complete(phaseChecklist, c) {
-				subs = append(subs, panelaudit.Subject{Root: root(c), Ratings: d.checklist(c, it.Key)})
-			}
-		}
-		items2[it.Key] = panelaudit.ComputeItem(subs, checklistCategories, r.cfg.Seed, r.cfg.BootstrapResamples)
+	var models []string
+	for _, m := range r.cfg.Models {
+		models = append(models, m.ID)
 	}
+	outcomes := d.outcomes()
+	items2 := panelaudit.ChecklistStats(d.cases, outcomes, models, r.cfg.Seed, r.cfg.BootstrapResamples)
 	fields := map[string]ItemStats{}
 	agree := map[string]claimAgreement{}
 	for _, f := range blindFields {
-		var subs []panelaudit.Subject
+		subs := panelaudit.Subjects(d.cases, outcomes, models, phaseBlind, f.key)
 		seen := map[string]bool{}
-		ca := claimAgreement{}
-		for _, c := range d.cases {
-			if !d.complete(phaseBlind, c) {
-				continue
-			}
-			vals := d.blindValues(c, f.key)
-			subs = append(subs, panelaudit.Subject{Root: root(c), Ratings: vals})
-			for _, v := range vals {
+		for _, s := range subs {
+			for _, v := range s.Ratings {
 				seen[v] = true
 			}
-			if want, ok := claim(c, f.key); ok {
-				for _, v := range vals {
+		}
+		ca := claimAgreement{}
+		for _, c := range d.cases {
+			if want, ok := claim(c, f.key); ok && d.complete(phaseBlind, c) {
+				for _, v := range d.blindValues(c, f.key) {
 					ca.Total++
 					if v == want {
 						ca.Agreeing++
@@ -175,10 +160,6 @@ func (r *runner) finish(plan blindPlan) (spend, error) {
 		if !d.complete(phaseBlind, c) || !d.complete(phaseChecklist, c) {
 			incomplete = append(incomplete, c.CaseID)
 		}
-	}
-	var models []string
-	for _, m := range r.cfg.Models {
-		models = append(models, m.ID)
 	}
 	statsDoc := map[string]any{
 		"schema": panelaudit.StatsSchema, "content_digest": r.corpus.ContentDigest, "dry_run": r.provName == "fake", "status": "pre-adjudication, rating round 1", "provider": r.provName,

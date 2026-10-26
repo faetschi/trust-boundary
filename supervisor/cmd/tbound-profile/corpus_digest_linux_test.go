@@ -172,8 +172,8 @@ func tweakedPanel(t *testing.T, dir string, m evalcorpus.Manifest, tw panelTweak
 		}
 	}
 	stats := map[string]any{"schema": panelaudit.StatsSchema, "content_digest": content, "dry_run": false, "live_run": true, "provider": "openrouter", "cases": len(m.Cases), "complete_cases": len(m.Cases), "incomplete_cases": []string{}, "missing_pairs": []any{}, "items": map[string]any{}}
-	for _, it := range panelaudit.Checklist {
-		stats["items"].(map[string]any)[it.Key] = panelaudit.ItemStats{Subjects: len(m.Cases), Roots: len(m.Cases), AC1: 1, AC1Defined: true, Kappa: 1, KappaDefined: true, Agreement: 1, Gate: panelaudit.GatePass}
+	for key, st := range panelaudit.ChecklistStats(m.Cases, outcomes, []string{models[0].ID, models[1].ID, models[2].ID}, 7, 20) {
+		stats["items"].(map[string]any)[key] = st
 	}
 
 	stats["models"] = []string{models[0].ID, models[1].ID, models[2].ID}

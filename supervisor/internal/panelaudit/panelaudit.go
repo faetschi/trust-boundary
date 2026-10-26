@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"reflect"
 	"slices"
 	"strings"
@@ -103,11 +104,11 @@ func parse(name string, raw []byte, v any) error {
 //     the content the manifest has now;
 //   - no file is from a dry run, and the receipt covers every case of m with a complete rating
 //     (a case without every rating blocks every agreement gate);
+//   - every phase-2 item of stats.json matches, within 1e-9, the statistics recomputed from the
+//     receipt's own ratings, and that recomputed gate is pass;
 //   - the cases of the audit list are exactly the cases of m marked audited, each once, each with a
 //     resolution in m;
 //   - every listed case carries a complete advisor entry that accepts it.
-//
-// Every phase-2 item must carry the panel writer's pass verdict in the pinned stats.
 func Verify(m evalcorpus.Manifest, receiptRaw, auditRaw, statsRaw []byte) error {
 	cr := m.ConstructReview
 	if got := Digest(receiptRaw); got != cr.PanelReceiptDigest {
@@ -119,6 +120,10 @@ func Verify(m evalcorpus.Manifest, receiptRaw, auditRaw, statsRaw []byte) error 
 	if got := Digest(statsRaw); got != cr.PanelStatsDigest {
 		return fmt.Errorf("panel stats digest %s is not construct_review.panel_stats_digest %s", got, cr.PanelStatsDigest)
 	}
+	content, err := evalcorpus.ContentDigest(m)
+	if err != nil {
+		return err
+	}
 	var stats Stats
 	if err := parse("panel stats", statsRaw, &stats); err != nil {
 		return err
@@ -129,28 +134,11 @@ func Verify(m evalcorpus.Manifest, receiptRaw, auditRaw, statsRaw []byte) error 
 	if stats.DryRun || !stats.LiveRun || stats.Provider != "openrouter" {
 		return errors.New("panel stats is a dry run")
 	}
-	contentStats, err := evalcorpus.ContentDigest(m)
-	if err != nil {
-		return err
-	}
-	if stats.ContentDigest != contentStats {
+	if stats.ContentDigest != content {
 		return errors.New("panel stats content_digest differs from manifest")
 	}
 	if stats.Cases != len(m.Cases) || stats.CompleteCases != stats.Cases || len(stats.Incomplete) != 0 || len(stats.Missing) != 0 {
 		return errors.New("panel stats has incomplete ratings; every gate is blocked")
-	}
-	for _, item := range Checklist {
-		st := stats.Items[item.Key]
-		expected := Gate(st.AC1, st.Agreement, st.AC1Defined)
-		if st.Kappa < -1 || st.Kappa > 1 || st.Agreement < 0 || st.Agreement > 1 || st.Subjects <= 0 || st.Roots <= 0 {
-			return fmt.Errorf("panel stats item %s invalid numeric fields", item.Key)
-		}
-		if st.Gate != expected {
-			return fmt.Errorf("panel stats item %s gate %q contradicts computed gate %q", item.Key, st.Gate, expected)
-		}
-		if st.Gate != GatePass {
-			return fmt.Errorf("panel stats item %s gate %q does not pass", item.Key, stats.Items[item.Key].Gate)
-		}
 	}
 	var receipt Receipt
 	if err := parse("panel receipt", receiptRaw, &receipt); err != nil {
@@ -168,10 +156,6 @@ func Verify(m evalcorpus.Manifest, receiptRaw, auditRaw, statsRaw []byte) error 
 	}
 	if receipt.DryRun || audit.DryRun || !receipt.LiveRun || !audit.LiveRun || receipt.Provider != "openrouter" || audit.Provider != "openrouter" {
 		return errors.New("the panel run is a dry run: its ratings are canned fake data")
-	}
-	content, err := evalcorpus.ContentDigest(m)
-	if err != nil {
-		return err
 	}
 	if receipt.ContentDigest != content {
 		return fmt.Errorf("panel receipt content_digest %s is not the content digest %s of the manifest", receipt.ContentDigest, content)
@@ -193,10 +177,51 @@ func Verify(m evalcorpus.Manifest, receiptRaw, auditRaw, statsRaw []byte) error 
 	if err := verifyCoverage(m, receipt); err != nil {
 		return err
 	}
+	if err := verifyStats(stats, ChecklistStats(m.Cases, receipt.Outcomes, modelIDs, 0, 0)); err != nil {
+		return err
+	}
 	if err := verifyAudited(m, audit); err != nil {
 		return err
 	}
 	return verifySelection(m, audit, receipt)
+}
+
+// verifyStats refuses stats.json unless each checklist item matches the statistics recomputed
+// from the pinned ratings and that recomputed gate passes; the numbers are never taken on trust.
+func verifyStats(stats Stats, want map[string]ItemStats) error {
+	const tolerance = 1e-9
+	near := func(a, b float64) bool { return math.Abs(a-b) <= tolerance }
+	for _, item := range Checklist {
+		got, w := stats.Items[item.Key], want[item.Key]
+		var diffs []string
+		differ := func(name string, got, want any, same bool) {
+			if !same {
+				diffs = append(diffs, fmt.Sprintf("%s is %v but the receipt ratings give %v", name, got, want))
+			}
+		}
+		differ("subjects", got.Subjects, w.Subjects, got.Subjects == w.Subjects)
+		differ("roots", got.Roots, w.Roots, got.Roots == w.Roots)
+		differ("ac1", got.AC1, w.AC1, got.AC1Defined == w.AC1Defined && near(got.AC1, w.AC1))
+		differ("kappa", got.Kappa, w.Kappa, got.KappaDefined == w.KappaDefined && near(got.Kappa, w.Kappa))
+		differ("raw_agreement", got.Agreement, w.Agreement, near(got.Agreement, w.Agreement))
+		differ("unanimous_share", got.Unanimous, w.Unanimous, near(got.Unanimous, w.Unanimous))
+		samePrevalence := len(got.Prevalence) == len(w.Prevalence)
+		for cat, p := range w.Prevalence {
+			g, ok := got.Prevalence[cat]
+			samePrevalence = samePrevalence && ok && near(g, p)
+		}
+		differ("prevalence", got.Prevalence, w.Prevalence, samePrevalence)
+		if len(diffs) > 0 {
+			return fmt.Errorf("panel stats item %s numeric field %s", item.Key, diffs[0])
+		}
+		if got.Gate != w.Gate {
+			return fmt.Errorf("panel stats item %s gate %q contradicts the gate %q recomputed from the receipt ratings", item.Key, got.Gate, w.Gate)
+		}
+		if w.Gate != GatePass {
+			return fmt.Errorf("panel stats item %s gate %q does not pass", item.Key, w.Gate)
+		}
+	}
+	return nil
 }
 
 func verifyAudited(m evalcorpus.Manifest, audit Audit) error {

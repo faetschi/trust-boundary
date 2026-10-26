@@ -463,6 +463,7 @@ func TestVerifyCannotDropChecklistReview(t *testing.T) {
 			f.receipt["content_digest"] = content
 			f.audit["content_digest"] = content
 			f.stats["content_digest"] = content
+			f.restat()
 			for _, ac := range f.audit["cases"].([]any) {
 				a := ac.(map[string]any)
 				if a["case_id"] == "c1" {
