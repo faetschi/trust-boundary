@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"unicode/utf8"
@@ -13,6 +14,7 @@ import (
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/broker/openrouter"
 	"tbound/supervisor/internal/broker/protocol"
+	"tbound/supervisor/internal/delta"
 	"tbound/supervisor/internal/gate"
 	"tbound/supervisor/internal/productprotocol"
 	"tbound/supervisor/internal/productsession"
@@ -36,9 +38,8 @@ const (
 //
 // The list only ever grows at its end. A turn contributes, in this order: turn_admitted, turn_linked,
 // the provider events in journal order, turn_awaiting_review, turn_resolution_requested,
-// turn_cancel_requested, then turn_terminal. A cancel request of a turn that is still running is
-// withheld until the turn leaves that state, because its position among the provider events that are
-// still being written is not recorded anywhere.
+// turn_cancel_requested, then turn_terminal. Resolution and cancellation are withheld until finality,
+// because their position relative to concurrent provider work and review mutations is not recorded.
 type productEventProjector struct {
 	env *productTurnEnv
 
@@ -94,10 +95,11 @@ func (p *productEventProjector) turn(turn productsession.Turn) ([]productprotoco
 		}
 		events = append(events, provider...)
 	}
-	complete := true
 	if turn.CandidateDigest != "" {
 		paths, err := p.candidatePaths(turn)
-		complete = err == nil
+		if err != nil {
+			return nil, err
+		}
 		review := productprotocol.Event{Kind: productprotocol.EventTurnAwaitingReview, TurnID: turn.ID,
 			CandidateDigest: turn.CandidateDigest, Paths: paths[:min(len(paths), productEventMaxPaths)]}
 		if len(paths) != 0 {
@@ -105,17 +107,17 @@ func (p *productEventProjector) turn(turn productsession.Turn) ([]productprotoco
 		}
 		events = append(events, review)
 	}
-	if turn.Resolution != "" {
+	if final && turn.Resolution != "" {
 		events = append(events, productprotocol.Event{Kind: productprotocol.EventTurnResolution, TurnID: turn.ID,
 			CandidateDigest: turn.CandidateDigest, Reason: turn.Resolution})
 	}
-	if turn.CancelRequested && turn.State != productsession.StateLinked {
+	if final && turn.CancelRequested {
 		events = append(events, productprotocol.Event{Kind: productprotocol.EventTurnCancelRequested, TurnID: turn.ID})
 	}
 	if terminal, ok := terminalEvent(turn); ok {
 		events = append(events, terminal)
 	}
-	if final && complete {
+	if final {
 		p.mu.Lock()
 		p.settled[turn.ID] = events
 		p.mu.Unlock()
@@ -141,8 +143,8 @@ func terminalEvent(turn productsession.Turn) (productprotocol.Event, bool) {
 	return event, true
 }
 
-// candidatePaths are the changed paths of a review turn's candidate: from the Store this process
-// holds for the review, else from the retained Store. The result of a turn never changes, so it is cached.
+// candidatePaths projects net changes from the successful Store effects committed by the receipt.
+// It never opens a writer or reconstructs a mutable Store. The sealed candidate never changes.
 func (p *productEventProjector) candidatePaths(turn productsession.Turn) ([]string, error) {
 	p.mu.Lock()
 	cached, ok := p.paths[turn.ID]
@@ -150,27 +152,63 @@ func (p *productEventProjector) candidatePaths(turn productsession.Turn) ([]stri
 	if ok {
 		return cached, nil
 	}
-	store, held := p.env.pendingReviewStore(turn.ID)
-	if !held {
-		link, err := productTurnPathsFromLink(*turn.Link)
-		if err != nil {
-			return nil, err
-		}
-		retained, err := openRetainedProductTurn(link, p.env.storeOptions(turn), p.env.OpenCommandHistory)
-		if err != nil {
-			return nil, err
-		}
-		defer retained.Close()
-		store = retained.Store
-	}
-	_, _, changes, err := storeCandidateChanges(store)
+	trace, err := readProductJournalTrace(turn.Link.StoreJournalPath)
 	if err != nil {
 		return nil, err
 	}
-	paths := make([]string, len(changes))
-	for i, change := range changes {
-		paths[i] = change.path
+	receipt, err := decodeProductTurnReceipt(turn.Receipt)
+	if err != nil {
+		return nil, err
 	}
+	if uint64(len(trace.Records)) != receipt.StoreJournalCount || auditHeadHash(trace.Records) != receipt.StoreJournalHead {
+		return nil, errProductTurnEvidence
+	}
+	changes := map[string]delta.ObjectChange{}
+	for _, effect := range trace.Effects {
+		if !strings.HasPrefix(effect.ID, "sessionrepo-effect-") {
+			continue
+		}
+		if effect.Unresolved || effect.Outcome != "success" {
+			return nil, errProductTurnEvidence
+		}
+		var intent struct {
+			Request struct{ Tool string } `json:"request"`
+		}
+		if err := json.Unmarshal(effect.Intent, &intent); err != nil {
+			return nil, err
+		}
+		switch intent.Request.Tool {
+		case "write", "edit", "delete", "bash":
+		default:
+			continue
+		}
+		var result struct {
+			Transition delta.Transition         `json:"transition"`
+			Admission  struct{ Outcome string } `json:"admission"`
+		}
+		if err := json.Unmarshal(effect.Result, &result); err != nil {
+			return nil, err
+		}
+		if result.Admission.Outcome == "deny" {
+			continue
+		}
+		if result.Admission.Outcome != "allow" {
+			return nil, errProductTurnEvidence
+		}
+		for _, change := range result.Transition.Changes {
+			if previous, ok := changes[change.Path]; ok {
+				change.Before = previous.Before
+			}
+			changes[change.Path] = change
+		}
+	}
+	paths := make([]string, 0, len(changes))
+	for path, change := range changes {
+		if change.Before != change.After {
+			paths = append(paths, path)
+		}
+	}
+	sort.Strings(paths)
 	p.mu.Lock()
 	p.paths[turn.ID] = paths
 	p.mu.Unlock()

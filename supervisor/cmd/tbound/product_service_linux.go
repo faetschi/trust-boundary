@@ -29,6 +29,7 @@ const (
 	productServiceObservePoll     = 100 * time.Millisecond
 	productServiceExpiryInterval  = time.Second
 	productServiceMaxListSessions = 2000
+	productServiceRecentTurns     = 64
 	productServiceSocketMode      = 0o660
 	productServiceSocketDirMode   = 0o750
 )
@@ -68,13 +69,14 @@ type productServiceOptions struct {
 // productService is the product service: it admits turns for authenticated principals, runs them in
 // its own goroutines, and projects their durable records.
 type productService struct {
-	cfg       productServiceConfig
-	catalog   *productsession.Catalog
-	env       *productTurnEnv
-	events    *productEventProjector
-	listener  *net.UnixListener
-	principal func(*net.UnixConn) (productsession.Principal, error)
-	log       *log.Logger
+	cfg        productServiceConfig
+	catalog    *productsession.Catalog
+	env        *productTurnEnv
+	events     *productEventProjector
+	listener   *net.UnixListener
+	socketLock *os.File
+	principal  func(*net.UnixConn) (productsession.Principal, error)
+	log        *log.Logger
 
 	ctx    context.Context // ends at shutdown: stops new admissions, long polls and the expiry ticker
 	cancel context.CancelFunc
@@ -141,12 +143,12 @@ func startProductService(cfg productServiceConfig, opts productServiceOptions) (
 	if opts.beforeListen != nil {
 		opts.beforeListen(env)
 	}
-	listener, err := listenProductSocket(cfg.SocketPath)
+	listener, socketLock, err := listenProductSocket(cfg.SocketPath)
 	if err != nil {
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	s := &productService{cfg: cfg, catalog: catalog, env: env, events: newProductEventProjector(env), listener: listener,
+	s := &productService{cfg: cfg, catalog: catalog, env: env, events: newProductEventProjector(env), listener: listener, socketLock: socketLock,
 		principal: opts.Principal, log: logger, ctx: ctx, cancel: cancel, slots: make(chan struct{}, productServiceMaxConnections)}
 	if s.principal == nil {
 		s.principal = productPeerPrincipal
@@ -161,37 +163,48 @@ func startProductService(cfg productServiceConfig, opts productServiceOptions) (
 	return s, nil
 }
 
-// listenProductSocket binds the Unix socket: its directory is created or checked at most 0750, a stale
-// socket is replaced (the catalog's writer lock proves no other service owns it), any other kind of
-// file is refused, and the socket is mode 0660.
-func listenProductSocket(socketPath string) (*net.UnixListener, error) {
+// listenProductSocket holds the socket's writer lock before replacing a stale socket. The caller
+// keeps the lock file open for the service lifetime and never unlinks it.
+func listenProductSocket(socketPath string) (_ *net.UnixListener, lock *os.File, err error) {
 	dir := filepath.Dir(socketPath)
 	if err := os.MkdirAll(dir, productServiceSocketDirMode); err != nil {
-		return nil, fmt.Errorf("create the socket directory: %w", err)
+		return nil, nil, fmt.Errorf("create the socket directory: %w", err)
 	}
 	info, err := os.Lstat(dir)
 	if err != nil || !info.IsDir() || info.Mode().Perm()&^productServiceSocketDirMode != 0 {
-		return nil, errors.New("the socket directory must be a directory of mode 0750 or stricter")
+		return nil, nil, errors.New("the socket directory must be a directory of mode 0750 or stricter")
+	}
+	lock, err = os.OpenFile(socketPath+".lock", os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0o600)
+	if err != nil {
+		return nil, nil, fmt.Errorf("open the socket lock: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			err = errors.Join(err, lock.Close())
+		}
+	}()
+	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		return nil, lock, fmt.Errorf("lock the product socket: %w", err)
 	}
 	if existing, err := os.Lstat(socketPath); err == nil {
 		if existing.Mode().Type() != os.ModeSocket {
-			return nil, errors.New("the socket path exists and is not a socket")
+			return nil, lock, errors.New("the socket path exists and is not a socket")
 		}
 		if err := os.Remove(socketPath); err != nil {
-			return nil, fmt.Errorf("remove the stale socket: %w", err)
+			return nil, lock, fmt.Errorf("remove the stale socket: %w", err)
 		}
 	} else if !errors.Is(err, os.ErrNotExist) {
-		return nil, err
+		return nil, lock, err
 	}
 	listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: socketPath, Net: "unix"})
 	if err != nil {
-		return nil, fmt.Errorf("listen on the product socket: %w", err)
+		return nil, lock, fmt.Errorf("listen on the product socket: %w", err)
 	}
 	if err := os.Chmod(socketPath, productServiceSocketMode); err != nil {
 		_ = listener.Close()
-		return nil, fmt.Errorf("set the socket mode: %w", err)
+		return nil, lock, fmt.Errorf("set the socket mode: %w", err)
 	}
-	return listener, nil
+	return listener, lock, nil
 }
 
 // productPeerPrincipal is the connection's SO_PEERCRED UID. A payload never carries it.
@@ -574,14 +587,18 @@ func (s *productService) sessionView(session productsession.Session, withTurns b
 	view := &productprotocol.SessionView{ID: session.ID, ProjectID: session.ProjectID, ProviderProfile: session.ProviderProfile,
 		PublicationMode: session.PublicationMode, ReadOnly: session.ReadOnly, Revision: session.Revision, Blocked: session.Blocked,
 		Budget: productprotocol.Budget(session.Budget), Consumed: productprotocol.Budget(session.Consumed),
-		Reserved: productprotocol.Budget(session.Reserved)}
+		Reserved: productprotocol.Budget(session.Reserved), TotalTurns: len(session.Turns)}
 	if withTurns {
-		for _, id := range session.Turns {
+		for i, id := range session.Turns {
 			if turn, ok := s.catalog.Turn(id); ok {
-				view.Turns = append(view.Turns, turnView(turn))
+				if i >= len(session.Turns)-productServiceRecentTurns || turn.State == productsession.StateAdmitted ||
+					turn.State == productsession.StateLinked || turn.State == productsession.StateAwaitingReview || turn.State == productsession.StateUnknown {
+					view.Turns = append(view.Turns, turnView(turn))
+				}
 			}
 		}
 	}
+	view.TurnsTruncated = len(view.Turns) < view.TotalTurns
 	return view
 }
 
@@ -606,7 +623,7 @@ func (s *productService) Shutdown() error {
 			s.result = errors.Join(s.result, errProductServiceTurnsRunning)
 			return
 		}
-		s.result = errors.Join(s.result, s.env.Close(), s.catalog.Close())
+		s.result = errors.Join(s.result, s.env.Close(), s.catalog.Close(), s.socketLock.Close())
 	})
 	return s.result
 }

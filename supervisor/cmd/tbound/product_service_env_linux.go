@@ -3,7 +3,9 @@
 package main
 
 import (
+	"bytes"
 	"errors"
+	"os"
 
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/productsession"
@@ -43,13 +45,24 @@ func (e *productTurnEnv) providerTrace(turn productsession.Turn) (audit.Trace, e
 			return trace, err
 		}
 	}
-	// The handle closed before its release ran, so the file lock is free.
-	journal, err := openExistingRecoveryJournal(turn.Link.ProviderJournalPath)
+	// Observers never acquire a writer lock, including while a successor verifies this journal.
+	return readProductJournalTrace(turn.Link.ProviderJournalPath)
+}
+
+func readProductJournalTrace(path string) (audit.Trace, error) {
+	want, err := recoveryFileIdentityDigest(path, false)
 	if err != nil {
 		return audit.Trace{}, err
 	}
-	trace, err := journal.Trace()
-	return trace, errors.Join(err, journal.Close())
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return audit.Trace{}, err
+	}
+	actual, err := recoveryFileIdentityDigest(path, false)
+	if err != nil || actual != want {
+		return audit.Trace{}, errors.Join(ErrGovernedRecoveryUnavailable, err)
+	}
+	return audit.Verify(bytes.NewReader(data))
 }
 
 // pendingReviewStore is the Store of a review turn this process holds open for its resolution.

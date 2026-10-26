@@ -156,6 +156,8 @@ Go owns the history. Each turn's provider journal is self-contained.
 
 Before it imports a predecessor, the next turn reopens the predecessor's retained journals read-only and checks their verified heads and counts against this receipt. A mismatch refuses the launch with `RefuseUnlinkedTurn(turn, PREDECESSOR_EVIDENCE_INVALID)`: the new turn is `failed` with a full refund, and the session is blocked.
 
+Transient journal lock contention or resource exhaustion abandons the unlinked launch with a full refund and leaves the session open for a new request key. It is not invalid predecessor evidence.
+
 `worker_kind` is `headless-fixture` in milestone 1, because the worker is the in-process deterministic driver. Receipts never claim an OS process settlement that did not happen. A real Pi worker per turn needs the product guest and is pending.
 
 ## Outcomes
@@ -337,6 +339,7 @@ The first supported language is Go, with a pinned toolchain image and a pre-fill
   - the worker mode: `pi` on a qualified host, or `headless-fixture` for tests only.
 - Every path must be a product default or below one. None may be a thesis path.
 - On start the service verifies the registration and opens the catalog. It runs `ReconcileAfterRestart` before it accepts any request. Then it listens on `/run/tbound-product/product.sock`, socket mode 0660, group-restricted.
+- Before replacing a stale socket it acquires an exclusive nonblocking flock on `<socket>.lock` and holds it for the service lifetime, independently of the catalog lock. A held socket lock refuses startup.
 - The principal is the connection's `SO_PEERCRED` UID. The catalog checks it against `allowed_principals`. Payloads never carry a principal.
 - Admitted turns run in the service, not in the client. A client that disconnects leaves its accepted work running. One goroutine drives each turn. A review-expiry ticker calls `ExpireReviews`.
 - Shutdown stops new admissions, lets running turns reach their next step boundary, and closes pending reviews. A pending review then becomes `discarded` with reason `restart` on the next start.
@@ -349,7 +352,7 @@ Each connection carries one length-prefixed strict JSON request and one response
 | --- | --- | --- |
 | `create_session` | project, provider profile, publication mode, budget, read_only, request key | session snapshot, replayed flag |
 | `submit_turn` | session, expected revision, request key, prompt, optional expected baseline | turn snapshot, replayed flag (the turn starts asynchronously) |
-| `get_session` | session | session snapshot with every turn's state, outcome, candidate, cancel request, resolution, and remaining budget |
+| `get_session` | session | session snapshot with the latest 64 turns plus every unresolved turn, total_turns, turns_truncated, and remaining budget; each included turn carries its state, outcome, candidate, cancel request and resolution |
 | `list_sessions` | none | the principal's sessions |
 | `observe` | session, cursor, wait_ms (at most 30000) | events after the cursor, next cursor, gap flag |
 | `get_candidate` | session, turn | the pending candidate's changed paths, each with operation and a bounded text diff |
@@ -363,6 +366,7 @@ Each connection carries one length-prefixed strict JSON request and one response
 Events are projected only from durable records: catalog records for the session, and each turn's provider journal. The kinds are `turn_admitted`, `turn_linked`, `assistant_message`, `tool_call` (tool, verdict, reason code, hint), `tool_result` (bounded summary), `turn_cancel_requested`, `turn_awaiting_review` (candidate digest and changed paths), `turn_resolution_requested`, and `turn_terminal` (outcome and reason).
 
 - The cursor indexes the deterministic event list of the session.
+- Cancellation and resolution events are withheld until the turn is final, so concurrent review mutations cannot move events behind an issued cursor. Full turn history comes from observations, not session snapshots.
 - Credentials, host paths and raw request bodies are never projected.
 - Assistant text comes only from completed provider exchanges, never from provisional output.
 
