@@ -246,7 +246,7 @@ ARGS=(l4)
 
 
 class ManifestInstallTests(unittest.TestCase):
-    def run_install(self, corrupt=None, extra_args=None, active=False, rollback=False, missing_backup=False):
+    def run_install(self, corrupt=None, extra_args=None, active=False, rollback=False, missing_backup=False, invalid_backup=False):
         tmp = tempfile.TemporaryDirectory(prefix="tbound-op-manifest-")
         self.addCleanup(tmp.cleanup)
         base = Path(tmp.name)
@@ -265,6 +265,7 @@ class ManifestInstallTests(unittest.TestCase):
         tbp = base / "tbp"
         tbp.write_text('''#!/bin/bash
 printf '%s\n' "$*" >>"$BASE/calls"
+[[ ${REFUSE_ROLLBACK:-} != 1 ]] || { echo "bad backup" >&2; exit 1; }
 for file in receipt audit stats; do
  found=0
  for ((i=1; i<=$#; i++)); do
@@ -303,6 +304,8 @@ install() {
         if rollback:
             rollback_verb = source[source.index("v_rollback() {"):source.index("v_manifest_install() {")]
             script += "\nneed_name() { [[ $1 == pilot ]]; }\nst_reset() { :; }\nre_dig='^sha256:[0-9a-f]{64}$'\n" + rollback_verb
+            if invalid_backup:
+                script += "\nexport REFUSE_ROLLBACK=1\n"
             if missing_backup:
                 script += '\nrm -- "$PREV/pilot/corpus/audit.json"\n'
             script += "\nARGS=(pilot corpus)\nv_rollback\n"
@@ -327,6 +330,14 @@ install() {
         for file in files:
             self.assertEqual((base / "etc/corpus" / file).read_text(), "previous " + file)
         self.assertEqual(len((base / "calls").read_text().splitlines()), 3)
+
+    def test_invalid_corpus_backup_preserves_files_and_digest_state(self):
+        got, base, files = self.run_install(rollback=True, invalid_backup=True)
+        self.assertNotEqual(got.returncode, 0)
+        self.assertIn("does not verify", got.stderr)
+        for file in files:
+            self.assertEqual((base / "etc/corpus" / file).read_bytes(), (base / "stage" / file).read_bytes())
+        self.assertTrue((base / "ga/state/corpus-digest").is_file())
 
     def test_incomplete_corpus_backup_refuses_rollback_without_changes(self):
         got, base, files = self.run_install(rollback=True, missing_backup=True)
