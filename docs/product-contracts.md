@@ -421,7 +421,7 @@ Everything here runs against a test root (`--root DIR`) and supports `--dry-run`
    | --- | --- | --- |
    | `/etc/tbound-product` | root | 0755 |
    | `/etc/tbound-product/credentials` | service | 0700 |
-   | `/var/lib/tbound-product` (catalog, turns, projects) | service | 0750 |
+   | `/var/lib/tbound-product` (catalog, turns, projects) | service | 0700 (the audit journal requires an exact 0700 parent) |
    | runtime directory | from the unit | from the unit |
 
 4. It installs the registration, signature and public key as root-owned 0644 files. It writes the service config and the `tbound-product.service` unit: `User=tbound-product`, `RuntimeDirectory=tbound-product`, and hardening matching the research unit where it applies. Then it runs `daemon-reload`.
