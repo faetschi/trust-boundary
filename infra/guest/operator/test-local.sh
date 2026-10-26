@@ -15,7 +15,8 @@ import sys
 import tempfile
 import unittest
 
-source = Path(sys.argv.pop(1)).read_text(encoding="utf-8")
+operator_path = Path(sys.argv.pop(1))
+source = operator_path.read_text(encoding="utf-8")
 fixture = source[source.index("live_listing() {"):source.index("declare -A TASK_OF=")]
 # Keep production permission checks, substituting only the test user's identity.
 fixture = fixture.replace("995", str(os.getuid())).replace("986", str(os.getgid()))
@@ -246,6 +247,13 @@ ARGS=(l4)
 
 
 class ManifestInstallTests(unittest.TestCase):
+    def test_real_pilot_node_checks_with_dispatcher_arguments(self):
+        got = subprocess.run(
+            ["go", "test", "./cmd/tbound-profile", "-run", "^TestOperatorCorpusDigestArgumentsRunPilotNodeChecks$", "-count=1"],
+            cwd=operator_path.parents[3] / "supervisor", capture_output=True, text=True)
+        self.assertEqual(got.returncode, 0, got.stdout + got.stderr)
+
+
     def run_install(self, corrupt=None, extra_args=None, active=False, rollback=False, missing_backup=False, invalid_backup=False):
         tmp = tempfile.TemporaryDirectory(prefix="tbound-op-manifest-")
         self.addCleanup(tmp.cleanup)

@@ -543,7 +543,12 @@ v_rollback() {
     all) files=(serve-pi-service.json managed-live-root.json managed-live-root.ed25519 pi-host-profile.json pi-host-profile.ed25519 d09-cell.json);;
   esac
   for f in "${files[@]}"; do [[ -f $PREV/$n/$f ]] || die "no backup $PREV/$n/$f: rollback refused"; done
-  [[ $part != corpus ]] || rm -f -- "$GA/state/corpus-digest"
+  if [[ $part == corpus ]]; then
+    local out dig
+    out=$("$TBP" corpus-digest --manifest "$PREV/$n/corpus/manifest.json" --panel-receipt "$PREV/$n/corpus/receipt.json" --panel-audit "$PREV/$n/corpus/audit.json" --panel-stats "$PREV/$n/corpus/stats.json" --quota-profile pilot --artifacts /opt/tbound/corpus/artifacts --node /usr/local/bin/node --max-host-calls 17 --max-tokens 20000 --duration-seconds 1200) || die "backup corpus does not verify"
+    dig=$(printf '%s\n' "$out" | grep -Eo 'sha256:[0-9a-f]{64}' | sort -u)
+    [[ $dig =~ $re_dig ]] || die "backup corpus has no unique digest"
+  fi
   for f in "${files[@]}"; do install_atomic "$PREV/$n/$f" "$ETC/$f" 0644; [[ $(sha "$ETC/$f") == "$(sha "$PREV/$n/$f")" ]] || die "restore of $f failed"; done
   case $part in
     reg|all) "$TBP" managed-root-verify --registration "$ETC/managed-live-root.json" --sig "$ETC/managed-live-root.ed25519" --pub "$ETC/pi-host-profile.pub" --runner-digest "${PIN[TBOUND_DIGEST]}" >/dev/null || die "restored registration does not verify";;
@@ -552,11 +557,6 @@ v_rollback() {
     prof|all) "$TBP" verify --profile "$ETC/pi-host-profile.json" --sig "$ETC/pi-host-profile.ed25519" --pub "$ETC/pi-host-profile.pub" --runtime-bundle-digest "${PIN[BUNDLE_DIGEST]}" >/dev/null || die "restored profile does not verify";;
   esac
   if [[ $part == corpus ]]; then
-    local out dig
-    rm -f -- "$GA/state/corpus-digest"
-    out=$("$TBP" corpus-digest --manifest "$ETC/corpus/manifest.json" --panel-receipt "$ETC/corpus/receipt.json" --panel-audit "$ETC/corpus/audit.json" --panel-stats "$ETC/corpus/stats.json" --quota-profile pilot --artifacts /opt/tbound/corpus/artifacts --max-host-calls 17 --max-tokens 20000 --duration-seconds 1200) || die "restored corpus does not verify"
-    dig=$(printf '%s\n' "$out" | grep -Eo 'sha256:[0-9a-f]{64}' | sort -u)
-    [[ $dig =~ $re_dig ]] || die "restored corpus has no unique digest"
     printf '%s\n' "$dig" >"$GA/state/corpus-digest"
   fi
   st_reset "$n"
@@ -575,7 +575,7 @@ v_manifest_install() {
     stage_hashed pilot "$f" "$WORK/$f" $((16 * 1024 * 1024)) "${ARGS[$i]}"
     i=$((i + 1))
   done
-  out=$("$TBP" corpus-digest --panel-receipt "$WORK/receipt.json" --panel-audit "$WORK/audit.json" --panel-stats "$WORK/stats.json" --manifest "$WORK/manifest.json" --quota-profile pilot --artifacts /opt/tbound/corpus/artifacts --max-host-calls 17 --max-tokens 20000 --duration-seconds 1200 2>&1) || die "corpus-digest refused the manifest: ${out:0:600}"
+  out=$("$TBP" corpus-digest --panel-receipt "$WORK/receipt.json" --panel-audit "$WORK/audit.json" --panel-stats "$WORK/stats.json" --manifest "$WORK/manifest.json" --quota-profile pilot --artifacts /opt/tbound/corpus/artifacts --node /usr/local/bin/node --max-host-calls 17 --max-tokens 20000 --duration-seconds 1200 2>&1) || die "corpus-digest refused the manifest: ${out:0:600}"
   dig=$(printf '%s\n' "$out" | grep -Eo 'sha256:[0-9a-f]{64}' | sort -u)
   [[ $dig == "$want" ]] || die "corpus digest of the staged manifest is not the given CORPUS_DIGEST"
   need_inactive
@@ -583,7 +583,7 @@ v_manifest_install() {
   for f in manifest.json receipt.json audit.json stats.json; do backup_once pilot "corpus/$f"; done
   rm -f -- "$GA/state/corpus-digest"
   for f in manifest.json receipt.json audit.json stats.json; do install_atomic "$WORK/$f" "$ETC/corpus/$f" 0644; done
-  out=$("$TBP" corpus-digest --panel-receipt "$ETC/corpus/receipt.json" --panel-audit "$ETC/corpus/audit.json" --panel-stats "$ETC/corpus/stats.json" --manifest "$ETC/corpus/manifest.json" --quota-profile pilot --artifacts /opt/tbound/corpus/artifacts --max-host-calls 17 --max-tokens 20000 --duration-seconds 1200 2>&1) || die "installed manifest does not verify"
+  out=$("$TBP" corpus-digest --panel-receipt "$ETC/corpus/receipt.json" --panel-audit "$ETC/corpus/audit.json" --panel-stats "$ETC/corpus/stats.json" --manifest "$ETC/corpus/manifest.json" --quota-profile pilot --artifacts /opt/tbound/corpus/artifacts --node /usr/local/bin/node --max-host-calls 17 --max-tokens 20000 --duration-seconds 1200 2>&1) || die "installed manifest does not verify"
   [[ $(printf '%s\n' "$out" | grep -Eo 'sha256:[0-9a-f]{64}' | sort -u) == "$want" ]] || die "installed manifest digest differs"
   printf '%s\n' "$want" >"$GA/state/corpus-digest"
   say "manifest-install ok: $want"
