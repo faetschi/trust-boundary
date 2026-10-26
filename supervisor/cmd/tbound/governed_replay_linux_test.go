@@ -43,7 +43,7 @@ type governedReplayFixture struct {
 	pins            GovernedReplayPins
 }
 
-func newGovernedReplayFixture(t *testing.T, turns []providerbridge.DevelopmentProviderTurn, admitPrompt bool) *governedReplayFixture {
+func governedReplayAllowAllPolicy(t *testing.T) gate.Policy {
 	t.Helper()
 	policy, err := gate.NewPolicy(gate.Profile{Version: gate.ProfileVersion, Rules: []gate.Rule{
 		{Tool: "read", Effect: gate.EffectAllow},
@@ -54,10 +54,22 @@ func newGovernedReplayFixture(t *testing.T, turns []providerbridge.DevelopmentPr
 	if err != nil {
 		t.Fatal(err)
 	}
-	return newGovernedReplayFixtureWithPolicy(t, turns, admitPrompt, policy)
+	return policy
+}
+
+func newGovernedReplayFixture(t *testing.T, turns []providerbridge.DevelopmentProviderTurn, admitPrompt bool) *governedReplayFixture {
+	t.Helper()
+	return newGovernedReplayFixtureWithPolicy(t, turns, admitPrompt, governedReplayAllowAllPolicy(t))
 }
 
 func newGovernedReplayFixtureWithPolicy(t *testing.T, turns []providerbridge.DevelopmentProviderTurn, admitPrompt bool, policy gate.Policy) *governedReplayFixture {
+	t.Helper()
+	return newGovernedReplayFixtureWithOutput(t, turns, admitPrompt, policy, 0)
+}
+
+// newGovernedReplayFixtureWithOutput is the fixture of a Store whose executor shows the provider at most
+// commandOutputBytes of each Bash stream, and whose replay pins the same bound. Zero is the research summary.
+func newGovernedReplayFixtureWithOutput(t *testing.T, turns []providerbridge.DevelopmentProviderTurn, admitPrompt bool, policy gate.Policy, commandOutputBytes int) *governedReplayFixture {
 	t.Helper()
 	root := privateGovernedTestRoot(t)
 	sourcePath := filepath.Join(root, "source")
@@ -141,6 +153,7 @@ func newGovernedReplayFixtureWithPolicy(t *testing.T, turns []providerbridge.Dev
 		Store: store, Tip: g0, CallIssuer: governedCallIssuer,
 		PolicyDigest: governedReplayStorePolicy, MetadataPolicyDigest: governedReplayMetaPolicy,
 		BashOutputPaths: []string{"task.txt"}, CommandRunner: runner,
+		CommandOutputBytes: commandOutputBytes,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -182,7 +195,8 @@ func newGovernedReplayFixtureWithPolicy(t *testing.T, turns []providerbridge.Dev
 		Provider: providerbridge.RecoveryPins{Config: config, Model: providerbridge.ApprovedModel, Policy: policy},
 		Profile:  profile, Baseline: bundle.Baseline,
 		StorePolicyDigest: governedReplayStorePolicy, MetadataPolicyDigest: governedReplayMetaPolicy,
-		BashOutputPaths: []string{"task.txt"},
+		BashOutputPaths:    []string{"task.txt"},
+		CommandOutputBytes: commandOutputBytes,
 	}
 	return &governedReplayFixture{
 		store: store, storeJournal: storeJournal, providerJournal: providerJournal,

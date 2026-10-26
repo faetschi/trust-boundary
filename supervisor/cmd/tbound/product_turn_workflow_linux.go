@@ -40,6 +40,12 @@ const (
 	// productStoreSeedGeneration is the generation sessionrepo.Store.Seed always creates. A project
 	// baseline is the tree digest under this label, so it equals the next turn's Store baseline.
 	productStoreSeedGeneration = "g0"
+	// productCommandOutputBytes is the most of each Bash stream (stdout and stderr) a product turn shows the
+	// model: its tail, as valid UTF-8. The text is the workspace command's own output, passed through as model
+	// context, and it stays in the Store's retained command result in full, up to the Store's own bound.
+	// Replay rebuilds the model-visible summary with the same bound, so changing it makes earlier Bash turns
+	// unverifiable as predecessors: it is a format change.
+	productCommandOutputBytes = 16 << 10
 )
 
 // errProductStaleBaseline marks a managed project whose tree differs from the admitted baseline.
@@ -340,6 +346,7 @@ func (e *productTurnEnv) composeProductTurnWorkflow(ctx context.Context, turn pr
 	}
 	w.authority = authority
 	authority.requireEvidencedBashContainment = runner != nil && runner.Profile() == piruntime.D09CommandRunnerProfile
+	authority.commandOutputBytes = productCommandOutputBytes
 	if err := authority.BindAdmissionScope(turn.Scope.AdmissionScope()); err != nil {
 		return nil, err
 	}
@@ -403,6 +410,7 @@ func (e *productTurnEnv) composeProductTurnWorkflow(ctx context.Context, turn pr
 		Store: w.store, Tip: baseline, CallIssuer: governedCallIssuer,
 		PolicyDigest: e.StorePolicyDigest, MetadataPolicyDigest: e.MetadataPolicyDigest,
 		BashOutputPaths: bashScope, CommandRunner: runner,
+		CommandOutputBytes:    productCommandOutputBytes,
 		AfterDurableOperation: authority.SettleDurableOperation,
 	}); err != nil {
 		return nil, err

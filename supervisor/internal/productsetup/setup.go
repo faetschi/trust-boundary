@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"slices"
@@ -107,11 +108,20 @@ func Setup(env Env, cfg Config, binary string) (Report, error) {
 func readSource(file string) ([]byte, error) { return readBounded(file, maxSourceBytes) }
 
 func readBounded(file string, limit int64) ([]byte, error) {
-	info, err := os.Lstat(file)
-	if err != nil || !info.Mode().IsRegular() || info.Size() > limit {
+	f, err := openSource(file)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	info, err := regularFile(f)
+	if err != nil || info.Size() > limit {
 		return nil, refuse("%s must be a regular non-symlink file within its size bound", file)
 	}
-	return os.ReadFile(file)
+	data, err := io.ReadAll(io.LimitReader(f, limit+1))
+	if int64(len(data)) > limit {
+		return nil, refuse("%s exceeds its size bound", file)
+	}
+	return data, err
 }
 
 // desiredFiles builds the exact content of every installed file, verifying the registration first.

@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"golang.org/x/sys/unix"
 )
@@ -87,24 +88,79 @@ func (h *host) withPath(logical string, create bool, apply func(string) error) e
 }
 
 func (h *host) chmod(logical string, mode os.FileMode) error {
-	return h.withPath(logical, false, func(path string) error {
-		fd, err := unix.Open(path, unix.O_RDONLY|unix.O_NOFOLLOW|unix.O_CLOEXEC|unix.O_NONBLOCK, 0)
-		if err != nil {
-			return err
-		}
-		f := os.NewFile(uintptr(fd), path)
-		defer f.Close()
-		return f.Chmod(mode)
-	})
+	f, err := h.openFile(logical, unix.O_RDONLY, 0)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	return f.Chmod(mode)
 }
 
 func (h *host) appendLine(logical, line string) error {
-	return h.withPath(logical, true, func(path string) error {
-		f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY|unix.O_NOFOLLOW, 0o644)
-		if err != nil {
-			return err
-		}
-		_, err = f.WriteString(line + "\n")
+	f, err := h.openFile(logical, unix.O_APPEND|unix.O_CREAT|unix.O_WRONLY, 0o644)
+	if err != nil {
+		return err
+	}
+	info, err := f.Stat()
+	if err != nil {
 		return errors.Join(err, f.Close())
+	}
+	if !info.Mode().IsRegular() {
+		return errors.Join(refuse("%s is not a regular file", logical), f.Close())
+	}
+	_, err = f.WriteString(line + "\n")
+	return errors.Join(err, f.Close())
+}
+
+// openFile validates the inode that reads, writes and metadata changes will use.
+func openFile(path string, flags int, mode os.FileMode) (*os.File, error) {
+	fd, err := unix.Open(path, flags|unix.O_NOFOLLOW|unix.O_CLOEXEC|unix.O_NONBLOCK, uint32(mode.Perm()))
+	if errors.Is(err, unix.ELOOP) {
+		return nil, refuse("%s is a symlink", path)
+	}
+	if err != nil {
+		return nil, &os.PathError{Op: "open", Path: path, Err: err}
+	}
+	f := os.NewFile(uintptr(fd), path)
+	info, err := f.Stat()
+	if err == nil {
+		st, ok := info.Sys().(*syscall.Stat_t)
+		if !ok || (!info.IsDir() && !info.Mode().IsRegular()) || (info.Mode().IsRegular() && st.Nlink != 1) {
+			err = refuse("%s must be a directory or a single-link regular file", path)
+		}
+	}
+	if err != nil {
+		f.Close()
+		return nil, err
+	}
+	return f, nil
+}
+
+func (h *host) openFile(logical string, flags int, mode os.FileMode) (*os.File, error) {
+	var f *os.File
+	err := h.withPath(logical, flags&unix.O_CREAT != 0, func(path string) error {
+		var err error
+		f, err = openFile(path, flags, mode)
+		return err
 	})
+	return f, err
+}
+
+// openSource also pins external administrator-supplied sources before opening their leaf.
+func openSource(path string) (*os.File, error) {
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return nil, err
+	}
+	base, err := os.Open("/")
+	if err != nil {
+		return nil, err
+	}
+	defer base.Close()
+	parent, err := openDirectory(base, filepath.Dir(absolute), false)
+	if err != nil {
+		return nil, err
+	}
+	defer parent.Close()
+	return openFile(fmt.Sprintf("/proc/self/fd/%d/%s", parent.Fd(), filepath.Base(absolute)), unix.O_RDONLY, 0)
 }

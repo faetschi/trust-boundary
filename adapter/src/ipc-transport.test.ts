@@ -212,10 +212,10 @@ test("proxy tools each round-trip one proposal and return its correlated result"
   assert.deepEqual(tools.map((tool) => tool.name), [...declaredToolNames]);
 
   const args: Record<(typeof declaredToolNames)[number], Record<string, unknown>> = {
-    read: { path: "input.txt", offset: 1, limit: 2 },
+    read: { path: "input.txt" },
     write: { path: "output.txt", content: "hello" },
     edit: { path: "input.txt", edits: [{ oldText: "before", newText: "after" }] },
-    bash: { command: "echo ok", timeout: 1 },
+    bash: { command: "echo ok" },
   };
   const serverWork = (async () => {
     const proposals: IpcProposal[] = [];

@@ -43,8 +43,14 @@ not established); update and rollback: the self-test failed and the previous bin
 
 // Seams for tests: the host prerequisite checks and the confirmation prompt's input.
 var (
-	productAdminPrereqs           = hostPrerequisites
-	productAdminStdin   io.Reader = os.Stdin
+	productAdminPrereqs                = hostPrerequisites
+	productAdminStdin        io.Reader = os.Stdin
+	productAdminLookupUser             = user.Lookup
+	productAdminTurnsCommand           = func(executable string, uid, gid uint32) *exec.Cmd {
+		cmd := exec.Command(executable, "product", "turns")
+		cmd.SysProcAttr = &syscall.SysProcAttr{Credential: &syscall.Credential{Uid: uid, Gid: gid}}
+		return cmd
+	}
 )
 
 func runProductAdmin(args []string, out, stderr io.Writer) error {
@@ -92,7 +98,7 @@ func runProductAdmin(args []string, out, stderr io.Writer) error {
 		return err
 	}
 	live := root == "/" && !dryRun
-	if live && args[0] != "doctor" && os.Geteuid() != 0 {
+	if live && args[0] != "doctor" && args[0] != "turns" && os.Geteuid() != 0 {
 		return adminRefusal("`tbound product %s` changes the host and must run as root (or use --dry-run, or --root DIR)", args[0])
 	}
 	env := productAdminEnv(root, dryRun, replace, yes, out, stderr)
@@ -260,14 +266,14 @@ func productAdminSelfTestHook() error {
 }
 
 // productAdminTurnsFor picks how the catalog is opened. A journal must be opened by its owner (the
-// audit package refuses any other effective UID), so on the real root the installed binary lists the
+// audit package refuses any other effective UID), so on the real root the administrative binary lists the
 // turns as the service account. A test root is owned by the test process, which opens it directly.
 func productAdminTurnsFor(root string) func() ([]productsetup.OpenTurn, error) {
 	if root != "/" {
 		return productAdminTurns(root)
 	}
 	return func() ([]productsetup.OpenTurn, error) {
-		account, err := user.Lookup(productsetup.ServiceUser)
+		account, err := productAdminLookupUser(productsetup.ServiceUser)
 		if err != nil {
 			return nil, fmt.Errorf("the %s account does not exist: %w", productsetup.ServiceUser, err)
 		}
@@ -276,8 +282,11 @@ func productAdminTurnsFor(root string) func() ([]productsetup.OpenTurn, error) {
 		if uidErr != nil || gidErr != nil {
 			return nil, errors.New("the service account has non-numeric IDs")
 		}
-		cmd := exec.Command(productsetup.BinaryPath, "product", "turns")
-		cmd.SysProcAttr = &syscall.SysProcAttr{Credential: &syscall.Credential{Uid: uint32(uid), Gid: uint32(gid)}}
+		executable, err := os.Executable()
+		if err != nil {
+			return nil, fmt.Errorf("locate the administrative binary: %w", err)
+		}
+		cmd := productAdminTurnsCommand(executable, uint32(uid), uint32(gid))
 		var stderr strings.Builder
 		cmd.Stderr = &stderr
 		out, err := cmd.Output()

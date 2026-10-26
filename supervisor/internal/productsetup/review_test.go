@@ -213,3 +213,129 @@ func TestReviewDoctorDryRunPlansSelfTest(t *testing.T) {
 		t.Fatalf("dry-run result: %s", text)
 	}
 }
+
+func TestReviewUpdateRejectsUnsafeManagedSources(t *testing.T) {
+	if root := os.Getenv("TB_PRODUCT_UNSAFE_RETRY_ROOT"); root != "" {
+		env := Env{Root: root, SelfTestHook: func() error { return errors.New("bad turn") }}
+		if _, err := Update(env, os.Getenv("TB_PRODUCT_UNSAFE_RETRY_BINARY")); !errors.Is(err, ErrRefused) {
+			t.Fatalf("unsafe retry fallback accepted: %v", err)
+		}
+		return
+	}
+	for _, source := range []string{"retry fallback", "catalog symlink", "catalog hardlink", "catalog writable", "fallback mode"} {
+		t.Run(source, func(t *testing.T) {
+			f := newFixture(t)
+			f.installed()
+			outside := filepath.Join(f.inputs, "outside")
+			if err := os.WriteFile(outside, []byte("outside secret"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			next := f.newBinary("binary v2")
+			f.env.Turns = func() ([]OpenTurn, error) { return nil, nil }
+			if strings.Contains(source, "fallback") {
+				if _, err := Update(f.env, next); err != nil {
+					t.Fatal(err)
+				}
+				if source == "retry fallback" {
+					if err := os.Remove(f.path(LastKnownGoodPath)); err != nil {
+						t.Fatal(err)
+					}
+					if err := os.Symlink(outside, f.path(LastKnownGoodPath)); err != nil {
+						t.Fatal(err)
+					}
+				} else if err := os.Chmod(f.path(LastKnownGoodPath), 0o777); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				f.env.Turns = func() ([]OpenTurn, error) {
+					var err error
+					switch source {
+					case "catalog symlink":
+						err = os.Symlink(outside, f.path(CatalogPath))
+					case "catalog hardlink":
+						err = os.Link(outside, f.path(CatalogPath))
+					default:
+						err = os.WriteFile(f.path(CatalogPath), []byte("catalog"), 0o666)
+						if err == nil {
+							err = os.Chmod(f.path(CatalogPath), 0o666)
+						}
+					}
+					return nil, err
+				}
+			}
+			if strings.Contains(source, "fallback") {
+				child := exec.Command(os.Args[0], "-test.run=^TestReviewUpdateRejectsUnsafeManagedSources$", "-test.v")
+				child.Env = append(os.Environ(), "TB_PRODUCT_UNSAFE_RETRY_ROOT="+f.root, "TB_PRODUCT_UNSAFE_RETRY_BINARY="+next)
+				if out, err := child.CombinedOutput(); err != nil {
+					t.Fatalf("fresh-process retry: %v\n%s", err, out)
+				}
+			} else if _, err := Update(f.env, next); !errors.Is(err, ErrRefused) {
+				t.Fatalf("unsafe source accepted: %v; installed %q", err, f.read(BinaryPath))
+			}
+			want := "binary v1"
+			if strings.Contains(source, "fallback") {
+				want = "binary v2"
+			}
+			if got := f.read(BinaryPath); got != want {
+				t.Fatalf("installed %q, want %q", got, want)
+			}
+			if backups, _ := filepath.Glob(f.path(BackupsDir + "/catalog-*.jsonl")); len(backups) != 0 {
+				t.Fatalf("unsafe catalog copied into %v", backups)
+			}
+		})
+	}
+}
+
+func TestReviewSetupRejectsHardlinkedMutations(t *testing.T) {
+	for _, effect := range []string{"group", "passwd", "chmod", "chown"} {
+		t.Run(effect, func(t *testing.T) {
+			f := newFixture(t)
+			logical, content, mode := "/etc/group", "root:x:0:\n", os.FileMode(0o644)
+			if effect == "passwd" {
+				logical, content = "/etc/passwd", "root:x:0:0::/root:/bin/sh\n"
+			}
+			if effect == "chmod" || effect == "chown" {
+				f.installed()
+				logical, content, mode = BinaryPath, "binary v1", 0o600
+				if err := os.Remove(f.path(logical)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			outside := filepath.Join(f.inputs, "outside")
+			if err := os.WriteFile(outside, []byte(content), mode); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chmod(outside, mode); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.MkdirAll(filepath.Dir(f.path(logical)), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Link(outside, f.path(logical)); err != nil {
+				t.Fatal(err)
+			}
+			var err error
+			if effect == "chown" {
+				h := newHost(Env{Root: f.root, Live: true, Chown: func(string, int, int) error {
+					t.Fatal("hardlink reached chown")
+					return nil
+				}})
+				if err = h.openRoot(); err != nil {
+					t.Fatal(err)
+				}
+				defer h.dir.Close()
+				err = h.chown(logical, ownRoot)
+			} else {
+				_, err = f.setup()
+			}
+			if !errors.Is(err, ErrRefused) {
+				t.Errorf("hardlinked %s accepted: %v", effect, err)
+			}
+			data, readErr := os.ReadFile(outside)
+			info, statErr := os.Stat(outside)
+			if readErr != nil || statErr != nil || string(data) != content || modeBits(info) != mode {
+				t.Fatalf("outside file changed: %q %v %v %v", data, info, readErr, statErr)
+			}
+		})
+	}
+}
