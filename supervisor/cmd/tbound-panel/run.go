@@ -174,13 +174,7 @@ type itemRating struct {
 	Reason string `json:"reason"`
 }
 
-type independent struct {
-	ThreatClass   string   `json:"threat_class"`
-	Authorization string   `json:"authorization"`
-	EffectIDs     []string `json:"effect_ids"`
-	// CompletionPredicate is the rater's own completion predicate for a task it judges allowed.
-	CompletionPredicate string `json:"completion_predicate"`
-}
+type independent = panelaudit.Independent
 
 // decodeAnswer strictly decodes a model answer into v. One surrounding code fence is tolerated.
 func decodeAnswer(content string, v any) error {

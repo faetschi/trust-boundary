@@ -5,11 +5,13 @@
 package panelaudit
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 
 	"tbound/supervisor/internal/broker/protocol"
@@ -38,8 +40,15 @@ type Advisor struct {
 
 // Receipt is the part of receipt.json that Verify reads.
 type Receipt struct {
-	Seeds struct {
-		AuditSample string `json:"audit_sample"`
+	Provider      string    `json:"provider"`
+	LiveRun       bool      `json:"live_run"`
+	Models        []Model   `json:"models"`
+	CallsRecorded int       `json:"calls_recorded"`
+	Outcomes      []Outcome `json:"rating_outcomes"`
+	Seeds         struct {
+		AuditSample      string `json:"audit_sample"`
+		BlindIDsAndOrder uint64 `json:"blind_ids_and_order"`
+		Bootstrap        uint64 `json:"bootstrap"`
 	} `json:"seeds"`
 	Schema        string `json:"schema"`
 	DryRun        bool   `json:"dry_run"`
@@ -50,6 +59,8 @@ type Receipt struct {
 
 // Audit is the part of audit.json that Verify reads.
 type Audit struct {
+	Provider      string      `json:"provider"`
+	LiveRun       bool        `json:"live_run"`
 	Selection     Selection   `json:"selection"`
 	Schema        string      `json:"schema"`
 	DryRun        bool        `json:"dry_run"`
@@ -78,6 +89,9 @@ func parse(name string, raw []byte, v any) error {
 	}
 	if err := protocol.ValidateEvidenceJSON(raw); err != nil {
 		return fmt.Errorf("%s: %w", name, err)
+	}
+	if err := required(raw, reflect.TypeOf(v).Elem(), name); err != nil {
+		return err
 	}
 	if err := json.Unmarshal(raw, v); err != nil {
 		return fmt.Errorf("%s: %w", name, err)
@@ -108,25 +122,14 @@ func Verify(m evalcorpus.Manifest, receiptRaw, auditRaw, statsRaw []byte) error 
 	if got := Digest(statsRaw); got != cr.PanelStatsDigest {
 		return fmt.Errorf("panel stats digest %s is not construct_review.panel_stats_digest %s", got, cr.PanelStatsDigest)
 	}
-	var stats struct {
-		Schema        string            `json:"schema"`
-		ContentDigest string            `json:"content_digest"`
-		DryRun        bool              `json:"dry_run"`
-		Cases         int               `json:"cases"`
-		CompleteCases int               `json:"complete_cases"`
-		Incomplete    []string          `json:"incomplete_cases"`
-		Missing       []json.RawMessage `json:"missing_pairs"`
-		Items         map[string]struct {
-			Gate string `json:"gate"`
-		} `json:"items"`
-	}
+	var stats Stats
 	if err := parse("panel stats", statsRaw, &stats); err != nil {
 		return err
 	}
 	if stats.Schema != StatsSchema {
 		return fmt.Errorf("panel stats schema %q; want %q", stats.Schema, StatsSchema)
 	}
-	if stats.DryRun {
+	if stats.DryRun || !stats.LiveRun || stats.Provider != "openrouter" {
 		return errors.New("panel stats is a dry run")
 	}
 	contentStats, err := evalcorpus.ContentDigest(m)
@@ -140,7 +143,15 @@ func Verify(m evalcorpus.Manifest, receiptRaw, auditRaw, statsRaw []byte) error 
 		return errors.New("panel stats has incomplete ratings; every gate is blocked")
 	}
 	for _, item := range Checklist {
-		if stats.Items[item.Key].Gate != GatePass {
+		st := stats.Items[item.Key]
+		expected := Gate(st.Kappa, st.Agreement, st.KappaDefined)
+		if st.Kappa < -1 || st.Kappa > 1 || st.Agreement < 0 || st.Agreement > 1 || st.Subjects <= 0 || st.Roots <= 0 {
+			return fmt.Errorf("panel stats item %s invalid numeric fields", item.Key)
+		}
+		if st.Gate != expected {
+			return fmt.Errorf("panel stats item %s gate %q contradicts computed gate %q", item.Key, st.Gate, expected)
+		}
+		if st.Gate != GatePass {
 			return fmt.Errorf("panel stats item %s gate %q does not pass", item.Key, stats.Items[item.Key].Gate)
 		}
 	}
@@ -158,7 +169,7 @@ func Verify(m evalcorpus.Manifest, receiptRaw, auditRaw, statsRaw []byte) error 
 	if audit.Schema != AuditSchema {
 		return fmt.Errorf("panel audit schema is %q; want %q", audit.Schema, AuditSchema)
 	}
-	if receipt.DryRun || audit.DryRun {
+	if receipt.DryRun || audit.DryRun || !receipt.LiveRun || !audit.LiveRun || receipt.Provider != "openrouter" || audit.Provider != "openrouter" {
 		return errors.New("the panel run is a dry run: its ratings are canned fake data")
 	}
 	content, err := evalcorpus.ContentDigest(m)
@@ -174,6 +185,9 @@ func Verify(m evalcorpus.Manifest, receiptRaw, auditRaw, statsRaw []byte) error 
 	if receipt.Cases != len(m.Cases) || receipt.CompleteCases != receipt.Cases {
 		return fmt.Errorf("panel receipt rates %d of %d cases completely; the manifest has %d cases and a missing rating blocks every agreement gate",
 			receipt.CompleteCases, receipt.Cases, len(m.Cases))
+	}
+	if err := verifyCoverage(m, receipt); err != nil {
+		return err
 	}
 	if err := verifyAudited(m, audit); err != nil {
 		return err
@@ -224,6 +238,55 @@ func (a Advisor) complete() error {
 	}
 	if a.Decision != evalcorpus.DecisionAccept {
 		return fmt.Errorf("advisor_signoff.decision is %q; only %q can back an accepted manifest (a rejected or revised case needs a revised manifest and a new panel run)", a.Decision, evalcorpus.DecisionAccept)
+	}
+	return nil
+}
+
+// required checks presence separately from values, so false and zero cannot impersonate omissions.
+func required(raw []byte, typ reflect.Type, path string) error {
+	if typ.Kind() == reflect.Struct {
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &fields); err != nil {
+			return err
+		}
+		for i := 0; i < typ.NumField(); i++ {
+			f := typ.Field(i)
+			tag := f.Tag.Get("json")
+			name, opts, _ := strings.Cut(tag, ",")
+			if name == "" || name == "-" {
+				continue
+			}
+			v, ok := fields[name]
+			if !ok || bytes.Equal(v, []byte("null")) && f.Type.Kind() != reflect.Slice && f.Type.Kind() != reflect.Map {
+				if opts == "omitempty" {
+					continue
+				}
+				return fmt.Errorf("%s.%s is required", path, name)
+			}
+			if err := required(v, f.Type, path+"."+name); err != nil {
+				return err
+			}
+		}
+	} else if typ.Kind() == reflect.Map && typ.Elem().Kind() == reflect.Struct {
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &fields); err != nil {
+			return err
+		}
+		for k, v := range fields {
+			if err := required(v, typ.Elem(), path+"."+k); err != nil {
+				return err
+			}
+		}
+	} else if typ.Kind() == reflect.Slice && typ.Elem().Kind() == reflect.Struct {
+		var values []json.RawMessage
+		if err := json.Unmarshal(raw, &values); err != nil {
+			return err
+		}
+		for i, v := range values {
+			if err := required(v, typ.Elem(), fmt.Sprintf("%s[%d]", path, i)); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }

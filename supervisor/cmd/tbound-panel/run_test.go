@@ -482,11 +482,15 @@ func signAndVerify(t *testing.T, m evalcorpus.Manifest, receipt, audit []byte, o
 		listed[c["case_id"].(string)] = true
 	}
 	doc["dry_run"] = false
+	doc["live_run"] = true
+	doc["provider"] = "openrouter"
 	var rdoc map[string]any
 	if err := json.Unmarshal(receipt, &rdoc); err != nil {
 		t.Fatal(err)
 	}
 	rdoc["dry_run"] = false
+	rdoc["live_run"] = true
+	rdoc["provider"] = "openrouter"
 	signedAudit, _ := json.MarshalIndent(doc, "", "  ")
 	signedReceipt, _ := json.MarshalIndent(rdoc, "", "  ")
 	for i := range m.Cases {
@@ -506,6 +510,8 @@ func signAndVerify(t *testing.T, m evalcorpus.Manifest, receipt, audit []byte, o
 		t.Fatal(err)
 	}
 	sd["dry_run"] = false
+	sd["live_run"] = true
+	sd["provider"] = "openrouter"
 	stats, _ = json.Marshal(sd)
 	m.ConstructReview.PanelStatsDigest = panelaudit.Digest(stats)
 	err = panelaudit.Verify(m, signedReceipt, signedAudit, stats)

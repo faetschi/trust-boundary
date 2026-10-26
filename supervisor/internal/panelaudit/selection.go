@@ -61,17 +61,25 @@ func verifySelection(m evalcorpus.Manifest, audit Audit, receipt Receipt) error 
 		return fmt.Errorf("panel audit selection must use %s and sample size %d", AuditPurpose, AuditSampleSize)
 	}
 	reasons := map[string][]string{}
+	for _, c := range m.Cases {
+		reasons[c.CaseID] = ReviewReasons(c, receipt.Outcomes)
+	}
+	listed := map[string]bool{}
 	sampled := map[string]bool{}
 	for _, c := range audit.Cases {
+		listed[c.CaseID] = true
 		if len(c.Reasons) == 1 && c.Reasons[0] == RandomSampleReason {
 			sampled[c.CaseID] = true
-		} else {
-			if len(c.Reasons) == 0 {
-				return fmt.Errorf("panel audit selection case %q has no reasons", c.CaseID)
-			}
-			reasons[c.CaseID] = c.Reasons
+		} else if !slices.Equal(c.Reasons, reasons[c.CaseID]) {
+			return fmt.Errorf("panel audit selection reasons differ from ratings for case %q", c.CaseID)
 		}
 	}
+	for _, c := range m.Cases {
+		if len(reasons[c.CaseID]) > 0 && !listed[c.CaseID] {
+			return fmt.Errorf("panel audit mandatory case %q is missing", c.CaseID)
+		}
+	}
+
 	expected, err := SelectAudit(m.Cases, reasons, sel.Seed, AuditSampleSize)
 	if err != nil {
 		return fmt.Errorf("panel audit selection: %w", err)

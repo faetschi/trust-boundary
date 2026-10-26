@@ -129,12 +129,53 @@ func tweakedPanel(t *testing.T, dir string, m evalcorpus.Manifest, tw panelTweak
 		t.Fatal(err)
 	}
 	receipt := map[string]any{"schema": panelaudit.ReceiptSchema, "dry_run": false, "provider": "openrouter", "content_digest": content,
-		"cases": len(m.Cases), "complete_cases": len(m.Cases), "seeds": map[string]string{"audit_sample": "7"}}
+		"cases": len(m.Cases), "complete_cases": len(m.Cases), "seeds": map[string]any{"audit_sample": "7", "blind_ids_and_order": 7, "bootstrap": 7}}
 	audit := map[string]any{"schema": panelaudit.AuditSchema, "dry_run": false, "provider": "openrouter", "content_digest": content, "cases": listed, "selection": panelaudit.Selection{Seed: "7", Purpose: panelaudit.AuditPurpose, Method: "evalcorpus.SelectSeeded", SampleSize: panelaudit.AuditSampleSize, SelectedRoots: []string{}}}
-	stats := map[string]any{"schema": panelaudit.StatsSchema, "content_digest": content, "cases": len(m.Cases), "complete_cases": len(m.Cases), "items": map[string]any{}}
-	for _, item := range panelaudit.Checklist {
-		stats["items"].(map[string]any)[item.Key] = map[string]any{"gate": panelaudit.GatePass}
+
+	receipt["live_run"] = true
+	audit["live_run"] = true
+	models := []panelaudit.Model{{ID: "google/gemini-2.5-pro", MaxTokens: 4000, PromptUSDPerMTok: 1, CompletionUSDPerMTok: 1}, {ID: "qwen/qwen3-235b-a22b-2507", MaxTokens: 4000, PromptUSDPerMTok: 1, CompletionUSDPerMTok: 1}, {ID: "mistralai/mistral-large-2411", MaxTokens: 4000, PromptUSDPerMTok: 1, CompletionUSDPerMTok: 1}}
+	receipt["models"] = models
+	receipt["calls_recorded"] = len(m.Cases) * 6
+	var outcomes []panelaudit.Outcome
+	for _, c := range m.Cases {
+		for i, model := range models {
+			for _, phase := range []int{1, 2} {
+				values := map[string]string{}
+				if phase == 1 {
+					for _, field := range panelaudit.BlindFields {
+						v, ok := panelaudit.Claim(c, field)
+						if !ok {
+							v = "none"
+						}
+						values[field] = v
+					}
+					values["authorization"] = []string{"allowed", "forbidden", "ambiguous"}[i]
+				} else {
+					for _, it := range panelaudit.Checklist {
+						if _, na := panelaudit.NotApplicable[c.Kind][it.Key]; !na {
+							values[it.Key] = "pass"
+						}
+					}
+				}
+				outcomes = append(outcomes, panelaudit.Outcome{CaseID: c.CaseID, Model: model.ID, Phase: phase, Values: values})
+			}
+		}
 	}
+	receipt["rating_outcomes"] = outcomes
+	for _, ac := range listed {
+		entry := ac.(map[string]any)
+		for _, c := range m.Cases {
+			if c.CaseID == entry["case_id"] {
+				entry["reasons"] = panelaudit.ReviewReasons(c, outcomes)
+			}
+		}
+	}
+	stats := map[string]any{"schema": panelaudit.StatsSchema, "content_digest": content, "dry_run": false, "live_run": true, "provider": "openrouter", "cases": len(m.Cases), "complete_cases": len(m.Cases), "incomplete_cases": []string{}, "missing_pairs": []any{}, "items": map[string]any{}}
+	for _, it := range panelaudit.Checklist {
+		stats["items"].(map[string]any)[it.Key] = panelaudit.ItemStats{Subjects: len(m.Cases), Roots: len(m.Cases), Kappa: 1, KappaDefined: true, Agreement: 1, Gate: panelaudit.GatePass}
+	}
+
 	if tw.stats != nil {
 		tw.stats(stats)
 	}

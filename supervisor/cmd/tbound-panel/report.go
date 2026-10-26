@@ -27,53 +27,10 @@ var blindFields = []struct {
 
 const effectIDsRule = "effect_ids compared as a set: exact multi-label match of the sorted ids, \"none\" for the empty set"
 
-// fieldValue is one phase-1 answer field as a category.
-func fieldValue(in *independent, field string) string {
-	switch field {
-	case "threat_class":
-		return in.ThreatClass
-	case "authorization":
-		return in.Authorization
-	}
-	return effectSet(in.EffectIDs)
-}
-
-func effectSet(ids []string) string {
-	if len(ids) == 0 {
-		return "none"
-	}
-	s := append([]string(nil), ids...)
-	sort.Strings(s)
-	return strings.Join(s, "+")
-}
-
-// claimNA predeclares the phase-1 fields that have no claimed value for a case kind.
-var claimNA = map[evalcorpus.Kind]map[string]string{
-	evalcorpus.KindAmbiguous: {"effect_ids": "ambiguous cases register no forbidden effect; the rubric scores them"},
-}
-
-// claim is the manifest's claimed value of a phase-1 field; ok is false when n/a.
-func claim(c evalcorpus.Case, field string) (string, bool) {
-	if _, na := claimNA[c.Kind][field]; na {
-		return "", false
-	}
-	switch field {
-	case "threat_class":
-		if c.Adversarial != nil {
-			return string(c.Adversarial.ThreatClass), true
-		}
-		return "none", true
-	case "authorization":
-		return map[evalcorpus.Kind]string{evalcorpus.KindAdversarial: "forbidden", evalcorpus.KindCompliant: "allowed", evalcorpus.KindAmbiguous: "ambiguous"}[c.Kind], true
-	}
-	switch {
-	case c.Adversarial != nil:
-		return effectSet(c.Adversarial.ForbiddenEffects), true
-	case c.Compliant != nil:
-		return effectSet(c.Compliant.ReferenceSolution.ForbiddenEffects), true
-	}
-	return "", false
-}
+var fieldValue = panelaudit.FieldValue
+var effectSet = panelaudit.EffectSet
+var claim = panelaudit.Claim
+var claimNA = panelaudit.ClaimNA
 
 // claimAgreement is the share of phase-1 answers (case x model) equal to the claimed value.
 type claimAgreement struct {
@@ -233,7 +190,7 @@ func (r *runner) finish(plan blindPlan) (spend, error) {
 		"independent_fields": fields, "effect_ids_rule": effectIDsRule,
 		"blind_agreement_with_claim": agree, "note": humanNote,
 	}
-	if err := writeJSON(filepath.Join(r.out, "stats.json"), statsDoc); err != nil {
+	if err := writeReport(filepath.Join(r.out, "stats.json"), panelaudit.Stats{Schema: panelaudit.StatsSchema, ContentDigest: r.corpus.ContentDigest, DryRun: r.provName == "fake", LiveRun: r.provName == "openrouter", Provider: r.provName, Cases: len(d.cases), CompleteCases: len(d.cases) - len(incomplete), Incomplete: incomplete, Missing: missing, Items: items2}, statsDoc); err != nil {
 		return spent, err
 	}
 	if err := writeFile(filepath.Join(r.out, "stats.md"), []byte(statsMarkdown(items2, fields, agree, len(d.cases), incomplete, r))); err != nil {
@@ -275,7 +232,16 @@ func (r *runner) finish(plan blindPlan) (spend, error) {
 		"key_handling": "OPENROUTER_API_KEY read from the environment at run time, sent only as the HTTP Authorization header, never written",
 		"note":         humanNote,
 	}
-	return spent, writeJSON(filepath.Join(r.out, "receipt.json"), receipt)
+	core := panelaudit.Receipt{Schema: panelaudit.ReceiptSchema, ContentDigest: r.corpus.ContentDigest, DryRun: r.provName == "fake", LiveRun: r.provName == "openrouter", Provider: r.provName, Models: r.cfg.Models, CallsRecorded: calls, Cases: len(d.cases), CompleteCases: len(d.cases) - len(incomplete), Outcomes: d.outcomes()}
+	core.Seeds.AuditSample = strconv.FormatUint(r.cfg.Seed, 10)
+	core.Seeds.BlindIDsAndOrder = r.cfg.Seed
+	core.Seeds.Bootstrap = r.cfg.Seed
+	// Keep the observed model metadata alongside the shared model config.
+	for i := range core.Models {
+		core.Models[i].Family = family(core.Models[i].ID)
+		core.Models[i].ObservedResponseModels = modelReceipts[i]["observed_response_models"].([]string)
+	}
+	return spent, writeReport(filepath.Join(r.out, "receipt.json"), core, receipt)
 }
 
 func statsMarkdown(items2, fields map[string]ItemStats, agree map[string]claimAgreement, cases int, incomplete []string, r *runner) string {
@@ -339,44 +305,33 @@ func kappaTable(keys []string, stats map[string]ItemStats) string {
 }
 
 // auditReasons lists why a case needs the advisor's deep review; empty means unanimous.
-func (d panelData) auditReasons(c evalcorpus.Case) []string {
-	var why []string
-	if c.Kind == evalcorpus.KindAmbiguous {
-		why = append(why, "ambiguous case")
-	}
-	if !d.complete(phaseBlind, c) || !d.complete(phaseChecklist, c) {
-		return append(why, "incomplete panel ratings")
-	}
-	for _, it := range items {
-		if _, na := notApplicable[c.Kind][it.Key]; na {
-			continue
-		}
-		rs := d.checklist(c, it.Key)
-		if !same(rs) {
-			why = append(why, "disagreement on "+it.Key)
-		}
-		for _, x := range rs {
-			if x == "unclear" {
-				why = append(why, "unclear on "+it.Key)
-				break
-			}
-		}
-	}
-	for _, f := range blindFields {
-		vals := d.blindValues(c, f.key)
-		if !same(vals) {
-			why = append(why, "phase-1 disagreement on "+f.key)
-		}
-		if want, ok := claim(c, f.key); ok {
-			for _, v := range vals {
-				if v != want {
-					why = append(why, "phase-1 "+f.key+" differs from claim "+want)
-					break
+func (d panelData) outcomes() []panelaudit.Outcome {
+	var out []panelaudit.Outcome
+	for _, phase := range phases {
+		for _, c := range d.cases {
+			for _, m := range d.r.cfg.Models {
+				rt, ok := d.ratings[phase][c.CaseID][m.ID]
+				if !ok {
+					continue
 				}
+				o := panelaudit.Outcome{Phase: phase, CaseID: c.CaseID, Model: m.ID, Values: map[string]string{}}
+				if phase == phaseBlind {
+					for _, key := range panelaudit.BlindFields {
+						o.Values[key] = fieldValue(rt.Independent, key)
+					}
+				} else {
+					for key, it := range rt.Checklist {
+						o.Values[key] = it.Rating
+					}
+				}
+				out = append(out, o)
 			}
 		}
 	}
-	return why
+	return out
+}
+func (d panelData) auditReasons(c evalcorpus.Case) []string {
+	return panelaudit.ReviewReasons(c, d.outcomes())
 }
 
 func (r *runner) writeAudit(d panelData) error {
@@ -395,15 +350,13 @@ func (r *runner) writeAudit(d panelData) error {
 		sel[s] = true
 	}
 	type auditCase struct {
-		CaseID    string                           `json:"case_id"`
+		panelaudit.AuditCase
 		Kind      evalcorpus.Kind                  `json:"kind"`
 		Root      string                           `json:"root"`
-		Reasons   []string                         `json:"reasons"`
 		Packet    string                           `json:"packet"`
 		Claims    map[string]string                `json:"claimed_labels"`
 		Blind     map[string]*independent          `json:"ai_panel_phase1_blind"`
 		Checklist map[string]map[string]itemRating `json:"ai_panel_phase2_checklist"`
-		Advisor   map[string]string                `json:"advisor_signoff"`
 	}
 	var list []auditCase
 	for _, c := range d.cases {
@@ -422,9 +375,8 @@ func (r *runner) writeAudit(d panelData) error {
 		if err := writeFile(filepath.Join(r.out, pkt), []byte("# "+c.CaseID+"\n\n"+p.User)); err != nil {
 			return err
 		}
-		ac := auditCase{CaseID: c.CaseID, Kind: c.Kind, Root: root(c), Reasons: why, Packet: pkt, Claims: map[string]string{},
-			Blind: map[string]*independent{}, Checklist: map[string]map[string]itemRating{},
-			Advisor: advisorTemplate()}
+		ac := auditCase{AuditCase: panelaudit.AuditCase{CaseID: c.CaseID, Reasons: why}, Kind: c.Kind, Root: root(c), Packet: pkt, Claims: map[string]string{},
+			Blind: map[string]*independent{}, Checklist: map[string]map[string]itemRating{}}
 		for _, f := range blindFields {
 			if v, ok := claim(c, f.key); ok {
 				ac.Claims[f.key] = v
@@ -444,7 +396,12 @@ func (r *runner) writeAudit(d panelData) error {
 		"selection": selection,
 		"cases":     list, "human_reviews_recorded": 0, "note": humanNote,
 	}
-	if err := writeJSON(filepath.Join(r.out, "audit.json"), doc); err != nil {
+	core := panelaudit.Audit{Schema: panelaudit.AuditSchema, ContentDigest: r.corpus.ContentDigest, DryRun: r.provName == "fake", LiveRun: r.provName == "openrouter", Provider: r.provName, Selection: selection}
+
+	if err := writeReport(filepath.Join(r.out, "audit.json"), struct {
+		panelaudit.Audit
+		Cases []auditCase `json:"cases"`
+	}{core, list}, doc); err != nil {
 		return err
 	}
 	var b strings.Builder
@@ -478,4 +435,19 @@ func same(xs []string) bool {
 		}
 	}
 	return true
+}
+
+func writeReport(path string, evidence any, details map[string]any) error {
+	raw, err := json.Marshal(evidence)
+	if err != nil {
+		return err
+	}
+	var fields map[string]any
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		return err
+	}
+	for key, value := range fields {
+		details[key] = value
+	}
+	return writeJSON(path, details)
 }

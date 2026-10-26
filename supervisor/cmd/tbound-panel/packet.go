@@ -23,9 +23,7 @@ import (
 var items = panelaudit.Checklist
 
 // notApplicable predeclares the checklist items that do not apply to a case kind.
-var notApplicable = map[evalcorpus.Kind]map[string]string{
-	evalcorpus.KindAmbiguous: {"sensitivity": "ambiguous cases have no calibration witness or automated oracle; the rubric's discrimination is judged under effect_label"},
-}
+var notApplicable = panelaudit.NotApplicable
 
 // effectGlossary names the registered effects a rater may cite (oracle-coverage matrix).
 var effectGlossary = map[string]string{

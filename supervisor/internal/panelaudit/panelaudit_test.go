@@ -41,16 +41,41 @@ func newFixture(t *testing.T) *fixture {
 			"decision": "accept", "resolution": "defensible under the frozen rubric", "identity": "advisor", "signed_at": "2026-10-25T10:00:00+02:00"}}
 	}
 	f := &fixture{m: m,
-		receipt: map[string]any{"schema": ReceiptSchema, "dry_run": false, "provider": "openrouter", "content_digest": content, "cases": 4, "complete_cases": 4, "seeds": map[string]string{"audit_sample": "7"}},
+		receipt: map[string]any{"schema": ReceiptSchema, "dry_run": false, "provider": "openrouter", "content_digest": content, "cases": 4, "complete_cases": 4, "seeds": map[string]any{"audit_sample": "7", "blind_ids_and_order": 7, "bootstrap": 7}},
 		audit: map[string]any{"schema": AuditSchema, "dry_run": false, "provider": "openrouter", "content_digest": content,
-			"cases": []any{signed("c2"), signed("c4")}, "selection": Selection{Seed: "7", Purpose: AuditPurpose, Method: "evalcorpus.SelectSeeded", SampleSize: AuditSampleSize, SelectedRoots: []string{}}}}
-	for _, i := range []int{1, 3} {
+			"cases": []any{signed("c2"), signed("c4"), signed("c1"), signed("c3")}, "selection": Selection{Seed: "7", Purpose: AuditPurpose, Method: "evalcorpus.SelectSeeded", SampleSize: AuditSampleSize, SelectedRoots: []string{}}}}
+	for _, i := range []int{0, 1, 2, 3} {
 		f.m.Cases[i].Signoff.Audited, f.m.Cases[i].Signoff.Resolution = true, "defensible under the frozen rubric"
 	}
-	f.stats = map[string]any{"schema": StatsSchema, "content_digest": content, "cases": 4, "complete_cases": 4, "items": map[string]any{}}
-	for _, item := range Checklist {
-		f.stats["items"].(map[string]any)[item.Key] = map[string]any{"gate": GatePass}
+
+	f.receipt["live_run"] = true
+	models := []Model{{ID: "google/gemini-2.5-pro", MaxTokens: 4000, PromptUSDPerMTok: 1, CompletionUSDPerMTok: 1}, {ID: "qwen/qwen3-235b-a22b-2507", MaxTokens: 4000, PromptUSDPerMTok: 1, CompletionUSDPerMTok: 1}, {ID: "mistralai/mistral-large-2411", MaxTokens: 4000, PromptUSDPerMTok: 1, CompletionUSDPerMTok: 1}}
+	f.receipt["models"] = models
+	f.receipt["calls_recorded"] = 24
+	var outcomes []Outcome
+	for _, c := range f.m.Cases {
+		for _, model := range models {
+			for _, phase := range []int{1, 2} {
+				values := map[string]string{"threat_class": "none", "authorization": "ambiguous", "effect_ids": "none"}
+				if phase == 2 {
+					values = map[string]string{}
+					for _, it := range Checklist {
+						if _, na := NotApplicable[c.Kind][it.Key]; !na {
+							values[it.Key] = "pass"
+						}
+					}
+				}
+				outcomes = append(outcomes, Outcome{CaseID: c.CaseID, Model: model.ID, Phase: phase, Values: values})
+			}
+		}
 	}
+	f.receipt["rating_outcomes"] = outcomes
+	f.audit["live_run"] = true
+	f.stats = map[string]any{"schema": StatsSchema, "content_digest": content, "dry_run": false, "live_run": true, "provider": "openrouter", "cases": 4, "complete_cases": 4, "incomplete_cases": []string{}, "missing_pairs": []any{}, "items": map[string]any{}}
+	for _, it := range Checklist {
+		f.stats["items"].(map[string]any)[it.Key] = ItemStats{Subjects: 4, Roots: 4, Kappa: 1, KappaDefined: true, Agreement: 1, Gate: GatePass}
+	}
+
 	return f
 }
 
@@ -58,7 +83,8 @@ func newFixture(t *testing.T) *fixture {
 func (f *fixture) check(t *testing.T) error {
 	t.Helper()
 	r, a := marshal(t, f.receipt), marshal(t, f.audit)
-	f.m.ConstructReview = evalcorpus.ConstructReview{ContentDigest: f.receipt["content_digest"].(string), PanelReceiptDigest: sum(r), PanelAuditDigest: sum(a), PanelStatsDigest: sum(marshal(t, f.stats))}
+	content, _ := evalcorpus.ContentDigest(f.m)
+	f.m.ConstructReview = evalcorpus.ConstructReview{ContentDigest: content, PanelReceiptDigest: sum(r), PanelAuditDigest: sum(a), PanelStatsDigest: sum(marshal(t, f.stats))}
 	return Verify(f.m, r, a, marshal(t, f.stats))
 }
 
@@ -89,11 +115,11 @@ func TestVerifyRefusals(t *testing.T) {
 			f.m.Cases[1].Signoff.Audited, f.m.Cases[1].Signoff.Resolution = false, ""
 		}, "c2"},
 		{"an audited case the audit does not list", func(f *fixture) {
-			f.m.Cases[2].Signoff.Audited, f.m.Cases[2].Signoff.Resolution = true, "r"
+			f.audit["cases"] = f.audit["cases"].([]any)[:3]
 		}, "c3"},
 		{"an audited case without a resolution", func(f *fixture) { f.m.Cases[1].Signoff.Resolution = " " }, "c2"},
 		{"the audit lists a case the manifest lacks", func(f *fixture) {
-			f.audit["cases"] = append(f.audit["cases"].([]any), map[string]any{"case_id": "c9", "advisor_signoff": f.listed(0)["advisor_signoff"]})
+			f.audit["cases"] = append(f.audit["cases"].([]any), map[string]any{"case_id": "c9", "reasons": []string{"ambiguous case"}, "advisor_signoff": f.listed(0)["advisor_signoff"]})
 		}, "c9"},
 		{"the audit lists a case twice", func(f *fixture) { f.audit["cases"] = append(f.audit["cases"].([]any), f.listed(0)) }, "twice"},
 		{"blank decision", func(f *fixture) { f.listed(0)["advisor_signoff"].(map[string]string)["decision"] = "" }, "decision"},
@@ -157,7 +183,8 @@ func TestVerifyRefusesAmbiguousJSON(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			r := marshal(t, f.receipt)
-			f.m.ConstructReview = evalcorpus.ConstructReview{ContentDigest: f.receipt["content_digest"].(string), PanelReceiptDigest: sum(r), PanelAuditDigest: sum(bad), PanelStatsDigest: sum(marshal(t, f.stats))}
+			content, _ := evalcorpus.ContentDigest(f.m)
+			f.m.ConstructReview = evalcorpus.ConstructReview{ContentDigest: content, PanelReceiptDigest: sum(r), PanelAuditDigest: sum(bad), PanelStatsDigest: sum(marshal(t, f.stats))}
 			if err := Verify(f.m, r, bad, marshal(t, f.stats)); err == nil {
 				t.Fatal("accepted")
 			}
@@ -264,16 +291,162 @@ func TestVerifySelectionTampering(t *testing.T) {
 }
 
 func TestVerifyRejectsForgedCompletion(t *testing.T) {
- for _, tc := range []struct{name string; change func(*fixture)}{
-  {"zero statistics declared pass", func(f *fixture) { f.stats["items"].(map[string]any)["intent"] = map[string]any{"gate": GatePass, "kappa": 0, "raw_agreement": 0, "kappa_defined": true} }},
-  {"undefined kappa declared pass", func(f *fixture) { f.stats["items"].(map[string]any)["intent"] = map[string]any{"gate": GatePass, "kappa": 1, "raw_agreement": 1, "kappa_defined": false} }},
-  {"missing statistic", func(f *fixture) { f.stats["items"].(map[string]any)["intent"] = map[string]any{"gate": GatePass} }},
-  {"dropped mandatory ambiguous case", func(f *fixture) { f.audit["cases"] = f.audit["cases"].([]any)[1:]; f.m.Cases[1].Signoff.Audited = false; f.m.Cases[1].Signoff.Resolution = "" }},
-  {"empty model panel", func(f *fixture) { f.receipt["models"] = []any{}; f.receipt["calls_recorded"] = 0 }},
-  {"fake provider", func(f *fixture) { f.receipt["provider"] = "fake" }},
-  {"missing dry run marker", func(f *fixture) { delete(f.receipt, "dry_run") }},
-  {"missing live run marker", func(f *fixture) { delete(f.receipt, "live_run") }},
- } {
-  t.Run(tc.name, func(t *testing.T) { f:=newFixture(t); tc.change(f); if err:=f.check(t); err==nil { t.Fatal("accepted forged completion") } })
- }
+	for _, tc := range []struct {
+		name   string
+		change func(*fixture)
+	}{
+		{"zero statistics declared pass", func(f *fixture) {
+			f.stats["items"].(map[string]any)["intent"] = ItemStats{Subjects: 4, Roots: 4, Gate: GatePass, Kappa: 0, Agreement: 0, KappaDefined: true}
+		}},
+		{"undefined kappa declared pass", func(f *fixture) {
+			f.stats["items"].(map[string]any)["intent"] = ItemStats{Subjects: 4, Roots: 4, Gate: GatePass, Kappa: 1, Agreement: 1, KappaDefined: false}
+		}},
+		{"missing statistic", func(f *fixture) { f.stats["items"].(map[string]any)["intent"] = map[string]any{"gate": GatePass} }},
+		{"dropped mandatory ambiguous case", func(f *fixture) {
+			f.audit["cases"] = f.audit["cases"].([]any)[1:]
+			f.m.Cases[1].Signoff.Audited = false
+			f.m.Cases[1].Signoff.Resolution = ""
+		}},
+		{"empty model panel", func(f *fixture) { f.receipt["models"] = []any{}; f.receipt["calls_recorded"] = 0 }},
+		{"fake provider", func(f *fixture) { f.receipt["provider"] = "fake" }},
+		{"missing dry run marker", func(f *fixture) { delete(f.receipt, "dry_run") }},
+		{"missing live run marker", func(f *fixture) { delete(f.receipt, "live_run") }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newFixture(t)
+			tc.change(f)
+			if err := f.check(t); err == nil {
+				t.Fatal("accepted forged completion")
+			}
+		})
+	}
+}
+
+func TestVerifyRequiresEveryEvidenceMember(t *testing.T) {
+	for _, doc := range []string{"receipt", "audit", "stats", "item"} {
+		f := newFixture(t)
+		var fields map[string]any
+		switch doc {
+		case "receipt":
+			fields = f.receipt
+		case "audit":
+			fields = f.audit
+		case "stats":
+			fields = f.stats
+		case "item":
+			json.Unmarshal(marshal(t, f.stats["items"].(map[string]any)["intent"]), &fields)
+		}
+		for field := range fields {
+			t.Run(doc+"/"+field, func(t *testing.T) {
+				fresh := newFixture(t)
+				switch doc {
+				case "receipt":
+					delete(fresh.receipt, field)
+				case "audit":
+					delete(fresh.audit, field)
+				case "stats":
+					delete(fresh.stats, field)
+				case "item":
+					var item map[string]any
+					json.Unmarshal(marshal(t, fresh.stats["items"].(map[string]any)["intent"]), &item)
+					delete(item, field)
+					fresh.stats["items"].(map[string]any)["intent"] = item
+				}
+				if err := fresh.check(t); err == nil {
+					t.Fatal("accepted missing", doc, field)
+				}
+			})
+		}
+	}
+}
+func TestVerifyCoverageAndFamilies(t *testing.T) {
+	for _, name := range []string{"missing outcome", "duplicate outcome", "wrong case", "wrong model", "wrong phase", "missing checklist", "missing blind value", "too few calls", "same family", "excluded family", "moving alias", "low agreement", "fake stats", "fake audit", "not live"} {
+		t.Run(name, func(t *testing.T) {
+			f := newFixture(t)
+			out := f.receipt["rating_outcomes"].([]Outcome)
+			models := f.receipt["models"].([]Model)
+			switch name {
+			case "missing outcome":
+				f.receipt["rating_outcomes"] = out[1:]
+			case "duplicate outcome":
+				out[1] = out[0]
+			case "wrong case":
+				out[0].CaseID = "unknown"
+			case "wrong model":
+				out[0].Model = "unknown"
+			case "wrong phase":
+				out[0].Phase = 3
+			case "missing checklist":
+				delete(out[1].Values, "intent")
+			case "missing blind value":
+				delete(out[0].Values, "authorization")
+			case "too few calls":
+				f.receipt["calls_recorded"] = 0
+			case "same family":
+				models[1].ID = "google/gemma-3-27b-it"
+			case "excluded family":
+				models[1].ID = "openai/gpt-4.1"
+			case "moving alias":
+				models[1].ID = "qwen/qwen-latest"
+			case "low agreement":
+				f.stats["items"].(map[string]any)["intent"] = ItemStats{Subjects: 4, Roots: 4, Kappa: 0.9, KappaDefined: true, Agreement: 0.89, Gate: GatePass}
+			case "fake stats":
+				f.stats["provider"] = "fake"
+			case "fake audit":
+				f.audit["provider"] = "fake"
+			case "not live":
+				f.receipt["live_run"] = false
+			}
+			if err := f.check(t); err == nil {
+				t.Fatal("accepted", name)
+			}
+		})
+	}
+}
+
+func TestVerifyCannotDropChecklistReview(t *testing.T) {
+	for _, verdict := range []string{"fail", "unclear"} {
+		t.Run(verdict, func(t *testing.T) {
+			f := newFixture(t)
+			// A mandatory sibling keeps this root out of the random pool even if c1 is dropped.
+			f.m.Cases[0].Kind = evalcorpus.KindCompliant
+			for _, i := range []int{0, 1} {
+				f.m.Cases[i].MeaningRecord = &evalcorpus.MeaningRecord{RootID: "shared"}
+			}
+			out := f.receipt["rating_outcomes"].([]Outcome)
+			first := true
+			for i := range out {
+				if out[i].CaseID == "c1" {
+					if out[i].Phase == 1 {
+						out[i].Values["authorization"] = "allowed"
+					} else {
+						out[i].Values["sensitivity"] = "pass"
+						if first {
+							out[i].Values["intent"] = verdict
+							first = false
+						}
+					}
+				}
+			}
+			content, _ := evalcorpus.ContentDigest(f.m)
+			f.receipt["content_digest"] = content
+			f.audit["content_digest"] = content
+			f.stats["content_digest"] = content
+			for _, ac := range f.audit["cases"].([]any) {
+				a := ac.(map[string]any)
+				if a["case_id"] == "c1" {
+					a["reasons"] = ReviewReasons(f.m.Cases[0], out)
+				}
+			}
+			if err := f.check(t); err != nil {
+				t.Fatal("complete mandatory audit refused", err)
+			}
+			f.audit["cases"] = append(f.audit["cases"].([]any)[:2], f.audit["cases"].([]any)[3:]...)
+			f.m.Cases[0].Signoff.Audited = false
+			f.m.Cases[0].Signoff.Resolution = ""
+			if err := f.check(t); err == nil || !strings.Contains(err.Error(), "mandatory") {
+				t.Fatal("dropped checklist audit", err)
+			}
+		})
+	}
 }

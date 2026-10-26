@@ -63,40 +63,15 @@ func fleiss(counts [][]int) (kappa, agreement float64, prevalence []float64, ok 
 	return (pbar - pe) / (1 - pe), pbar, prevalence, true
 }
 
-// gate applies the D35 agreement gate.
-func gate(kappa, agreement float64, defined bool) string {
-	switch {
-	case !defined:
-		return gateUndefined
-	case kappa >= 0.80 && agreement >= 0.90:
-		return gatePass
-	case kappa >= 0.60:
-		return gateRevise
-	}
-	return gateStop
-}
-
 // subject is one case rated on one checklist item by every panel model.
 type subject struct {
 	root    string
 	ratings []string
 }
 
-// ItemStats is the pre-adjudication agreement record of one checklist item.
-type ItemStats struct {
-	Subjects           int                `json:"subjects"`
-	Roots              int                `json:"roots"`
-	Kappa              float64            `json:"kappa"`
-	KappaDefined       bool               `json:"kappa_defined"`
-	Agreement          float64            `json:"raw_agreement"`
-	Unanimous          float64            `json:"unanimous_share"`
-	Prevalence         map[string]float64 `json:"prevalence"`
-	CILow              float64            `json:"ci95_low"`
-	CIHigh             float64            `json:"ci95_high"`
-	CIDefined          bool               `json:"ci_defined"`
-	UndefinedResamples int                `json:"undefined_resamples"`
-	Gate               string             `json:"gate"`
-}
+type ItemStats = panelaudit.ItemStats
+
+var gate = panelaudit.Gate
 
 func countMatrix(subjects []subject, cats []string) [][]int {
 	m := make([][]int, len(subjects))
