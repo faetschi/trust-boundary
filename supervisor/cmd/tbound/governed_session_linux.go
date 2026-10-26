@@ -245,6 +245,7 @@ type SessionOperationAuthority struct {
 	storePolicyDigest                  string
 	metadataPolicyDigest               string
 	bashOutputPaths                    []string
+	commandOutputBytes                 int // per-stream Bash output bound shown to the provider; zero is the research summary
 	store                              *sessionrepo.Store
 	managedStore                       *sessionlaunch.ManagedStore
 	baseline                           *sessionrepo.Generation
@@ -1270,11 +1271,12 @@ func NewGovernedSupervisor(server *ipc.Server, broker *providerbridge.Conversati
 	authority.mu.Lock()
 	store, baseline, gateDigest, ownedConversation := authority.store, authority.baseline, authority.gatePolicyDigest, authority.conversation
 	bashOutputPaths := cloneDurableOutputScopePaths(authority.bashOutputPaths)
+	commandOutputBytes := authority.commandOutputBytes
 	authority.mu.Unlock()
 	tip := durable.Tip()
 	if broker != ownedConversation || policy.Digest() != gateDigest || durable.store != store || baseline == nil || tip == nil ||
 		tip.ID() != baseline.ID() || tip.TreeDigest() != baseline.TreeDigest() ||
-		!sameDurableOutputScopePaths(durable.bashOutputPaths, bashOutputPaths) {
+		!sameDurableOutputScopePaths(durable.bashOutputPaths, bashOutputPaths) || durable.commandOutputBytes != commandOutputBytes {
 		return nil, errors.New("governed supervisor policy or durable executor tip differs from admitted session profile")
 	}
 	resultingExecutor, err := providerbridge.NewExecutor(broker, durable)

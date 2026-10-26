@@ -469,7 +469,8 @@ func (e *productTurnEnv) predecessorContext(turn productsession.Turn, providerPr
 			ToolManifest: broker.DeclaredToolManifest(), ToolCallIssuer: governedCallIssuer,
 			ResponseIDIssuer: governedResponseIssuer, Generation: bundle.Baseline.ID},
 		Baseline: bundle.Baseline, StorePolicyDigest: e.StorePolicyDigest, MetadataPolicyDigest: e.MetadataPolicyDigest,
-		BashOutputPaths: productTurnBashScope(pred, policy),
+		BashOutputPaths:    productTurnBashScope(pred, policy),
+		CommandOutputBytes: productCommandOutputBytes,
 	}
 	var commands []governedRecoveryCommandVerifier
 	if retained.Commands != nil {

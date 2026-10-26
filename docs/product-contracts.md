@@ -285,6 +285,10 @@ Decisions taken during implementation:
 - A publication trust for a Bash turn must implement `workflow.TerminalOriginResolver`, because the terminal transition of a Bash candidate is a command lease. A turn whose trust lacks it is abandoned before any work.
 - The service gives the turn driver a command runner factory. A turn whose policy allows Bash on a service without one is abandoned before any work, with no budget consumed. Production fills the factory with the D09 cell runner of a qualified host.
 - The receipt commits the turn's command journal by head and record count, next to the provider and Store journals, with `command_journal_head` and `command_journal_count`. A turn that ran no Bash omits both. The next turn checks them before importing history.
+- The model sees what a command printed. A product turn's Bash summary carries `stdout`, `stderr`, `stdout_truncated` and `stderr_truncated` next to the exit code, containment status and runner profile. Each stream is valid UTF-8, with every invalid byte run replaced by U+FFFD, and at most 16 KiB (`productCommandOutputBytes`). A longer stream keeps its tail, because the end of a build or test run holds the failure, and its truncated flag is true. The cut never splits a character. The four members are always present, so an empty stream is an empty string. The research summary is unchanged and carries no output.
+- A failed command (a non-zero or unobserved exit) keeps the `command_failed` status and hint, and its output is shown with it.
+- The output is passed through as model context. It is the workspace command's own output and is never filtered, so a command can print any file it can read in its workspace. The supervisor adds no credential or host path to it. The service's `tool_result` observation still carries no tool output.
+- The output is durable and replay-verified. The Store keeps each command's full stdout and stderr (up to 1 MiB per stream) in the command's effect result. Replay rebuilds the summary the model saw from that retained result with the turn's pinned bound, and requires it to equal the recorded provider result byte for byte. A forged output, or a replay under another bound, fails the predecessor check. The bound is part of the evidence format, so changing it makes earlier Bash turns unverifiable as predecessors.
 - Reopening a turn replays its retained Bash effects against the retained command settlements through a read-only opener. For D09 the opener is the research recovery verifier over the command journal. Without an opener a retained Store that holds a Bash effect is refused. Restart reconciliation of a linked turn reopens the Store the same way, and a turn it cannot verify ends `unknown`.
 
 ### Import
@@ -318,7 +322,17 @@ Decisions taken during implementation:
 
 ### Development environment
 
-The first supported language is Go, with a pinned toolchain image and a pre-filled module cache. Tests run with the command cell's network disabled. Building and pinning the image needs the product guest and is pending. The advertised tool schemas must match the durable executor's real read, binary and Bash-timeout behaviour.
+The first supported language is Go, with a pinned toolchain image and a pre-filled module cache. Tests run with the command cell's network disabled. Building and pinning the image needs the product guest and is pending.
+
+The tool schemas a product turn advertises match the durable executor's behaviour. A research route keeps its frozen schemas, which promise more than the executor does, because its provider-request digests were measured with them.
+
+| Tool | Advertised to the model | What the executor does |
+| --- | --- | --- |
+| `read` | The whole contents of an existing UTF-8 text file at a workspace-relative path. No `offset` or `limit`. A missing file, an absolute path, a file of about 1 MiB or more, or a file that is not valid UTF-8 ends the turn. | Reads the whole file. It refuses an `offset` or `limit`. The Store fails closed on a missing, over-bound or non-regular target and quarantines. A file that is not valid UTF-8 cannot be released as a read result. Any of these ends the provider conversation as unknown. Images are not supported. |
+| `write`, `edit` | A workspace-relative path. An absolute path ends the turn. | An absolute path is invalid, and the invalid call ends the provider conversation as unknown. |
+| `bash` | No `timeout`. The last 16 KiB of each stream. A command that runs longer than 10 minutes, or prints more than 1 MiB on one stream, is stopped and returns no result. | It ignores a `timeout` argument. The command cell stops a command after 10 minutes, and the development runner after 30 seconds. A stream over 1 MiB withholds the result. |
+
+Go still parses `offset`, `limit` and `timeout` when a call carries them, because research calls and retained provider evidence do. The adapter registers the same text and `adapter/profile.json` pins the digest of each schema. `TestAdvertisedToolSurfaceEqualsTheAdapterTextAndItsPins` and the adapter's `proxy-schema.test.ts` hold the broker, the adapter and the pins together, and `TestResearchToolSurfaceIsFrozen` holds the research surface. Changing a schema changes the adapter bytes, so it needs the adapter runtime bundle to be rebuilt and re-pinned.
 
 ## Milestone 4: product service and terminal client (P6)
 

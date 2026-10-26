@@ -1,14 +1,19 @@
 package broker
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
+	"tbound/supervisor/internal/broker/openrouter"
 	"tbound/supervisor/internal/broker/protocol"
 )
 
@@ -80,10 +85,10 @@ func TestGoProjectionEqualsTheAdapterToolSurfaceForEveryTool(t *testing.T) {
 		value              map[string]any
 	}
 	shapes := map[string]shape{
-		"read":  {[]string{"path"}, []string{"limit", "offset"}, map[string]any{"path": "a", "offset": 1, "limit": 2}},
+		"read":  {[]string{"path"}, nil, map[string]any{"path": "a"}},
 		"write": {[]string{"content", "path"}, nil, map[string]any{"path": "a", "content": "b"}},
 		"edit":  {[]string{"edits", "path"}, nil, map[string]any{"path": "a", "edits": []any{map[string]any{"oldText": "x", "newText": "y"}}}},
-		"bash":  {[]string{"command"}, []string{"timeout"}, map[string]any{"command": "true", "timeout": 1}},
+		"bash":  {[]string{"command"}, nil, map[string]any{"command": "true"}},
 	}
 	for _, tool := range want {
 		sh, ok := shapes[tool]
@@ -130,5 +135,120 @@ func TestGoProjectionEqualsTheAdapterToolSurfaceForEveryTool(t *testing.T) {
 	}
 	if _, err := protocol.CanonicalArguments("write2", json.RawMessage(`{}`)); err == nil {
 		t.Error("Go accepts a tool the adapter does not register")
+	}
+}
+
+// The corrected surface no longer lists a read offset or limit or a bash timeout, but Go keeps parsing
+// them: research calls and retained provider evidence carry them, and the durable executor refuses an
+// offset or limit and ignores a timeout. Dropping this tolerance is a research behaviour change.
+func TestGoStillParsesTheArgumentsTheCorrectedSurfaceRetired(t *testing.T) {
+	for tool, value := range map[string]map[string]any{
+		"read": {"path": "a", "offset": 1, "limit": 2},
+		"bash": {"command": "true", "timeout": 1},
+	} {
+		raw, err := json.Marshal(value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := protocol.CanonicalArguments(tool, raw); err != nil {
+			t.Errorf("%s: Go refuses the retired arguments of recorded calls: %v", tool, err)
+		}
+	}
+}
+
+type advertisedTool struct {
+	Function struct {
+		Name        string          `json:"name"`
+		Description string          `json:"description"`
+		Parameters  json.RawMessage `json:"parameters"`
+	} `json:"function"`
+}
+
+// advertisedTools is what a provider is told on the engineering route, which product turns use.
+func advertisedTools(t *testing.T) []advertisedTool {
+	t.Helper()
+	prompt := "hello"
+	built, err := openrouter.BuildRequest(openrouter.ApprovedModel, []openrouter.Message{{Role: openrouter.User, Content: &prompt}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body struct {
+		Tools []advertisedTool `json:"tools"`
+	}
+	if err := json.Unmarshal(built.Body(), &body); err != nil {
+		t.Fatal(err)
+	}
+	return body.Tools
+}
+
+func descriptionsIn(value any, found *[]string) {
+	switch v := value.(type) {
+	case map[string]any:
+		for key, child := range v {
+			if text, ok := child.(string); ok && key == "description" {
+				*found = append(*found, text)
+			}
+			descriptionsIn(child, found)
+		}
+	case []any:
+		for _, child := range v {
+			descriptionsIn(child, found)
+		}
+	}
+}
+
+// What a provider is told on the engineering route is what the adapter registers, word for word, and
+// each schema hashes to the digest adapter/profile.json pins. (The adapter's own test holds its schema to
+// the same pins, and piruntime holds the worker's copy to them, so the three cannot drift apart.)
+func TestAdvertisedToolSurfaceEqualsTheAdapterTextAndItsPins(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "..", "adapter", "src", "proxy-tools.ts"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	adapter := string(data)
+	registered := map[string]string{}
+	for _, m := range regexp.MustCompile(`makeProxyTool\(\s*"(\w+)",\s*[\w.]+,\s*"([^"]*)"`).FindAllStringSubmatch(adapter, -1) {
+		registered[m[1]] = m[2]
+	}
+	pinned, err := os.ReadFile(filepath.Join("..", "..", "..", "adapter", "profile.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var profile struct {
+		Digests map[string]string `json:"schema_sha256"`
+	}
+	if err := json.Unmarshal(pinned, &profile); err != nil {
+		t.Fatal(err)
+	}
+	tools := advertisedTools(t)
+	if len(tools) != len(DeclaredToolManifest()) {
+		t.Fatalf("the provider is told %d tools, want %d", len(tools), len(DeclaredToolManifest()))
+	}
+	for _, tool := range tools {
+		name := tool.Function.Name
+		if registered[name] != tool.Function.Description {
+			t.Errorf("%s: the adapter registers the description %q, the provider is told %q", name, registered[name], tool.Function.Description)
+		}
+		var schema any
+		if err := json.Unmarshal(tool.Function.Parameters, &schema); err != nil {
+			t.Fatal(err)
+		}
+		var texts []string
+		descriptionsIn(schema, &texts)
+		for _, text := range texts {
+			if !strings.Contains(adapter, strconv.Quote(text)) {
+				t.Errorf("%s: the adapter source lacks the parameter description %q", name, text)
+			}
+		}
+		var canonical bytes.Buffer
+		encoder := json.NewEncoder(&canonical)
+		encoder.SetEscapeHTML(false)
+		if err := encoder.Encode(schema); err != nil {
+			t.Fatal(err)
+		}
+		sum := sha256.Sum256(bytes.TrimSuffix(canonical.Bytes(), []byte("\n")))
+		if got := hex.EncodeToString(sum[:]); got != profile.Digests[name] {
+			t.Errorf("%s: the advertised schema hashes to %s, adapter/profile.json pins %s", name, got, profile.Digests[name])
+		}
 	}
 }

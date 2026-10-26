@@ -35,6 +35,9 @@ type GovernedReplayPins struct {
 	StorePolicyDigest    string
 	MetadataPolicyDigest string
 	BashOutputPaths      []string
+	// CommandOutputBytes is the per-stream output bound the executor of a product turn released to the
+	// provider. Zero is the research summary, which carries no command output.
+	CommandOutputBytes int
 }
 
 // GovernedRecoveryTranscript binds one retained provider conversation to the
@@ -589,6 +592,9 @@ func validateGovernedReplayPins(pins GovernedReplayPins) error {
 		if err := sessionrepo.ValidateOutputScopePaths(pins.BashOutputPaths); err != nil {
 			return err
 		}
+	}
+	if pins.CommandOutputBytes < 0 || pins.CommandOutputBytes > durableCommandOutputMaxBytes {
+		return errors.New("governed replay command output bound is outside its permitted range")
 	}
 	return nil
 }
@@ -1155,8 +1161,7 @@ func (v *governedStoreReplayVerifier) expectedDurableOutput(verified *governedRe
 			operation.ExitCode == nil || *operation.ExitCode != result.Command.ExitCode || operation.CommandContainmentStatus != "not-established" {
 			return nil, "", "", "", 0, "", errors.New("Bash operation evidence differs from exact command specification or observed exit")
 		}
-		summary.Command = &durableCommandSummary{ExitCode: result.Command.ExitCode, ExitObserved: true,
-			CommandContainmentStatus: "not-established", CommandRunnerProfile: result.RunnerProfile}
+		summary.Command = newDurableCommandSummary(result.Command, result.RunnerProfile, v.pins.CommandOutputBytes)
 	} else {
 		return nil, "", "", "", 0, "", errors.New("unsupported Store tool in governed provider result")
 	}
