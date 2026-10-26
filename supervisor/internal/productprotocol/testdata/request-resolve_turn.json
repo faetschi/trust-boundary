@@ -1,0 +1,12 @@
+{
+  "version": "tbound-product-protocol/v1",
+  "op": "resolve_turn",
+  "resolve_turn": {
+    "session_id": "psess-0123456789abcdef0123456789abcdef",
+    "turn_id": "psess-0123456789abcdef0123456789abcdef/turn-1",
+    "expected_revision": 7,
+    "request_key": "ck-fedcba9876543210fedcba9876543210",
+    "candidate_digest": "sha256:3b1c0f5e9a7d2c4b6e8f0a1b2c3d4e5f60718293a4b5c6d7e8f9012a3b4c5d6e",
+    "decision": "publish"
+  }
+}

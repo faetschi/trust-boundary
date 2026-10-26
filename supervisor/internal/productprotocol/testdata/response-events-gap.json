@@ -1,0 +1,15 @@
+{
+  "version": "tbound-product-protocol/v1",
+  "status": "ok",
+  "events": [
+    {
+      "seq": 8,
+      "kind": "turn_terminal",
+      "turn_id": "psess-0123456789abcdef0123456789abcdef/turn-1",
+      "outcome": "published",
+      "reason": "user"
+    }
+  ],
+  "next_cursor": 9,
+  "gap": true
+}

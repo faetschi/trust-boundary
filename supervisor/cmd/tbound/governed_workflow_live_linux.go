@@ -397,6 +397,7 @@ func (a *SessionOperationAuthority) buildActiveProgressPins(ctx context.Context,
 	storePolicy, metadataPolicy := a.storePolicyDigest, a.metadataPolicyDigest
 	policy, config := a.gatePolicy, a.providerConfig
 	outputPaths := cloneDurableOutputScopePaths(a.bashOutputPaths)
+	commandOutputBytes := a.commandOutputBytes
 	priorAuthorizationSequence := a.workflowPriorAuthorizationSequence
 	a.mu.Unlock()
 	if ledger == nil || store == nil || baseline == nil || storeJournal == nil || providerJournal == nil ||
@@ -442,7 +443,8 @@ func (a *SessionOperationAuthority) buildActiveProgressPins(ctx context.Context,
 	replayPins := GovernedReplayPins{
 		Provider: providerPins, Profile: profile, Baseline: storeBundle.Baseline,
 		StorePolicyDigest: storePolicy, MetadataPolicyDigest: metadataPolicy,
-		BashOutputPaths: outputPaths,
+		BashOutputPaths:    outputPaths,
+		CommandOutputBytes: commandOutputBytes,
 	}
 	priorStoreTrace, err := storeJournal.Trace()
 	if err != nil || uint64(len(priorStoreTrace.Records)) < checkpoint.Pins.StoreJournalCount ||

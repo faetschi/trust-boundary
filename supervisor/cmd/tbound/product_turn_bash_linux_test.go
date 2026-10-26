@@ -14,6 +14,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/productsession"
@@ -243,6 +244,38 @@ func TestProductTurnBashIsAdmittedByTheProductScopeAndReopensAsPredecessor(t *te
 	}
 }
 
+func TestProductTurnBashWithNoWorkspaceChangesReopensAsPredecessor(t *testing.T) {
+	f := newBashProductDriverFixture(t, productsession.PublicationAuto, productScopeNotes(), false, []string{}, seedBashProject(t))
+	baseline := f.measure(t)
+	script := &productDriverScript{turns: []providerbridge.ScriptTurn{
+		bashCall("tests", `printf 'tests passed\n'`), scopeDriverFinal("t1", "The tests passed.")}}
+	receipt, turn, err := f.run(t, f.submit(t, "turn-1", "Run the tests."), script)
+	if err != nil || turn.Outcome != productsession.OutcomeNoDiff || turn.ResultBaselineDigest != baseline ||
+		f.measure(t) != baseline || receipt.CommandJournalCount != 1 || script.requests() != 2 {
+		t.Fatalf("turn 1 with no workspace changes: turn=%+v receipt=%+v err=%v", turn, receipt, err)
+	}
+	result := toolMessage(t, lastProviderRequestMessages(t, turn.Link.ProviderJournalPath), "call-tests")
+	if !strings.Contains(result, `"exit_code":0`) || !strings.Contains(result, `tests passed\n`) {
+		t.Fatalf("the no-change command did not return its output: %q", result)
+	}
+
+	script2 := &productDriverScript{
+		turns: []providerbridge.ScriptTurn{scopeDriverFinal("t2", "The tests passed.")},
+		check: func(history []providerbridge.ScriptMessage) error {
+			at := messageIndex(history, 0, func(m providerbridge.ScriptMessage) bool { return m.Role == "tool" && m.ToolCallID == "call-tests" })
+			if at < 0 || history[at].Content != result {
+				return errors.New("the imported history lost the no-change command result")
+			}
+			return nil
+		},
+	}
+	receipt2, turn2, err := f.run(t, f.submit(t, "turn-2", "What was the test result?"), script2)
+	if err != nil || turn2.Outcome != productsession.OutcomeNoDiff || script2.requests() != 1 ||
+		receipt2.PredecessorReceiptDigest != turn.ReceiptDigest || f.measure(t) != baseline {
+		t.Fatalf("turn 2 over a no-change Bash predecessor: turn=%+v receipt=%+v err=%v", turn2, receipt2, err)
+	}
+}
+
 // Retained command settlements are verified when the next turn reopens a Bash turn. A command journal that
 // differs from the receipt's commitment, or a service that cannot verify settlements, refuses the next
 // turn before any provider work.
@@ -456,5 +489,73 @@ func TestProductTurnBashRefusesAPublicationTrustWithoutALeaseOriginResolver(t *t
 	_, turn, err := f.run(t, f.submit(t, "turn-1", scopeDriverPrompt), script)
 	if err == nil || script.requests() != 0 || turn.State != productsession.StateAbandoned || turn.Link != nil {
 		t.Fatalf("trust without a lease origin resolver: turn=%+v err=%v", turn, err)
+	}
+}
+
+// bashResultOf decodes the Bash result the provider received for a call: the settled command summary,
+// the public status, and the text after the result JSON, which holds the hint.
+func bashResultOf(t *testing.T, message string) (command durableCommandSummary, status, suffix string) {
+	t.Helper()
+	body, suffix, _ := strings.Cut(message, "\nhint: ")
+	var result struct {
+		Status string          `json:"status"`
+		Output json.RawMessage `json:"output"`
+	}
+	var summary durableMutationSummaryPayload
+	if err := json.Unmarshal([]byte(body), &result); err != nil || json.Unmarshal(result.Output, &summary) != nil || summary.Command == nil {
+		t.Fatalf("the provider got no settled Bash result: %q (%v)", message, err)
+	}
+	return *summary.Command, result.Status, suffix
+}
+
+// The model sees what its Bash command printed: stdout and stderr as bounded valid UTF-8, the tail of a long
+// stream with its truncated flag, and a failed command with its output and the command_failed hint. The next
+// turn reopens the Bash turn as a predecessor, so replay rebuilds the same output from the Store.
+func TestProductTurnBashShowsTheModelItsCommandOutput(t *testing.T) {
+	f := newBashProductDriverFixture(t, productsession.PublicationAuto, productScopeNotes(), false, []string{}, seedBashProject(t))
+	f.env.MaxWorkerSteps = 8
+	script := &productDriverScript{turns: []providerbridge.ScriptTurn{
+		bashCall("fail", `printf 'out\n'; printf 'FAIL: boom\n' >&2; printf 'ran\n' > notes/run.log; exit 3`),
+		bashCall("long", `i=0; while [ $i -lt 3000 ]; do printf 'line %04d\n' $i; i=$((i+1)); done; printf 'ran\n' > notes/long.log`),
+		bashCall("binary", `printf 'a\377b\n'; printf 'ran\n' > notes/binary.log`),
+		scopeDriverFinal("t1", scopeDriverAnswer)}}
+	_, turn, err := f.run(t, f.submit(t, "turn-1", scopeDriverPrompt), script)
+	if err != nil || turn.Outcome != productsession.OutcomePublished {
+		t.Fatalf("turn 1: %+v %v", turn, err)
+	}
+	messages := lastProviderRequestMessages(t, turn.Link.ProviderJournalPath)
+
+	failed, status, hint := bashResultOf(t, toolMessage(t, messages, "call-fail"))
+	if failed.ExitCode != 3 || failed.Stdout == nil || *failed.Stdout != "out\n" || *failed.StdoutTruncated ||
+		*failed.Stderr != "FAIL: boom\n" || *failed.StderrTruncated || status != "command_failed" ||
+		hint != providerbridge.HintCandidates("command_failed")["0"] {
+		t.Errorf("the failed command did not reach the model with its output and hint: %+v status=%q hint=%q", failed, status, hint)
+	}
+
+	long, status, _ := bashResultOf(t, toolMessage(t, messages, "call-long"))
+	if status != "" || long.Stdout == nil || !*long.StdoutTruncated || len(*long.Stdout) > productCommandOutputBytes ||
+		len(*long.Stdout) < productCommandOutputBytes-16 || !strings.HasSuffix(*long.Stdout, "line 2999\n") ||
+		strings.Contains(*long.Stdout, "line 0000") || *long.Stderr != "" || *long.StderrTruncated {
+		t.Errorf("a long stdout must keep its bounded tail with the flag: truncated=%v len=%d", *long.StdoutTruncated, len(*long.Stdout))
+	}
+
+	binary, _, _ := bashResultOf(t, toolMessage(t, messages, "call-binary"))
+	if binary.Stdout == nil || *binary.Stdout != "a\xef\xbf\xbdb\n" || !utf8.ValidString(*binary.Stdout) {
+		t.Errorf("invalid UTF-8 must be replaced: %q", *binary.Stdout)
+	}
+
+	script2 := &productDriverScript{
+		turns: []providerbridge.ScriptTurn{scopeDriverFinal("t2", "Done.")},
+		check: func(history []providerbridge.ScriptMessage) error {
+			at := messageIndex(history, 0, func(m providerbridge.ScriptMessage) bool { return m.Role == "tool" && m.ToolCallID == "call-fail" })
+			if at < 0 || !strings.Contains(history[at].Content, "FAIL: boom") {
+				return errors.New("the imported history lost the command output of turn 1")
+			}
+			return nil
+		},
+	}
+	if _, turn2, err := f.run(t, f.submit(t, "turn-2", "What failed?"), script2); err != nil || turn2.Outcome != productsession.OutcomeNoDiff ||
+		script2.requests() != 1 {
+		t.Fatalf("turn 2 over a predecessor whose Bash output is replayed: %+v %v", turn2, err)
 	}
 }

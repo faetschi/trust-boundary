@@ -1294,6 +1294,11 @@ type mutationSummary struct {
 		ExitObserved             bool   `json:"exit_observed"`
 		CommandContainmentStatus string `json:"command_containment_status"`
 		CommandRunnerProfile     string `json:"command_runner_profile"`
+		// The output members exist only in a product turn's summary, which bounds and flags each stream.
+		Stdout          *string `json:"stdout,omitempty"`
+		StdoutTruncated *bool   `json:"stdout_truncated,omitempty"`
+		Stderr          *string `json:"stderr,omitempty"`
+		StderrTruncated *bool   `json:"stderr_truncated,omitempty"`
 	} `json:"command,omitempty"`
 }
 

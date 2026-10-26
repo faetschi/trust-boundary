@@ -5,8 +5,6 @@ import (
 	"os"
 	"strings"
 	"testing"
-
-	"tbound/webchat/internal/webchat"
 )
 
 func TestStartupBannerPrintsTheReactUrlFirst(t *testing.T) {
@@ -48,13 +46,26 @@ func TestSourceFlagsAreMutuallyExclusive(t *testing.T) {
 	}
 }
 
-func TestLiveSourceIsRefused(t *testing.T) {
-	err := run([]string{"--live"}, os.Stdout, os.Stderr)
-	if err == nil {
-		t.Fatal("--live should be refused until the supervisor service exists")
+func TestLiveNeedsASocketAndSocketNeedsLive(t *testing.T) {
+	for _, args := range [][]string{
+		{"--live"},
+		{"--socket", "/tmp/product.sock"},
+		{"--demo", "--socket", "/tmp/product.sock"},
+		{"--addr", "127.0.0.1:0", "--listen", "127.0.0.1:0"},
+		{"--live", "--socket", "/tmp/product.sock", "--listen", "0.0.0.0:8791"},
+	} {
+		if err := run(args, os.Stdout, os.Stderr); err == nil {
+			t.Errorf("args %v should be refused before anything is bound", args)
+		}
 	}
-	if !errors.Is(err, webchat.ErrLiveUnavailable) {
-		t.Fatalf("live refusal should wrap ErrLiveUnavailable, got %v", err)
+}
+
+func TestLiveBannerCarriesThePairingUrlWithTheTokenInTheFragment(t *testing.T) {
+	lines := strings.Join(liveBanner("127.0.0.1:8791", "/run/tbound-product/product.sock", "TOKEN"), " | ")
+	for _, want := range []string{"http://127.0.0.1:8791/pair#TOKEN", "within 10 minutes", "/run/tbound-product/product.sock", "works once"} {
+		if !strings.Contains(lines, want) {
+			t.Errorf("live banner lacks %q in %s", want, lines)
+		}
 	}
 }
 

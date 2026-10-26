@@ -382,10 +382,10 @@ func (c *PiWorkerChannels) BindingToken() string {
 
 func piWorkerToolSchemaDigests() map[string]string {
 	return map[string]string{
-		"read":  "5fad0fa7493528bc4284f5c447781325f67099f5fc018206efdc461d33962e85",
-		"write": "7e51d1de0f2ccb5fe8de82d51ee3a1d9065e3c4f7c53497ce12f283d6f2f5aa0",
-		"edit":  "394741d0cb4c9a6fe96d3275897405c8b13a1c7ff712426a942c10d484993fa1",
-		"bash":  "854beb37435894c8f97dcad8d4610c0ea1458b57a6a8d4bb5b0ea435cdaa5893",
+		"read":  "26c3f02a4f951a21b617ceff8b62afa46ff0d9057167704892abe55958fdd52a",
+		"write": "76c984b0e1e931a557039182d3e1af618ba9baf280594232b0cbe8fca274554d",
+		"edit":  "99bb7745bb97f8c842f14c785870271d7fa3bba0b12d64be4dd5e481b1baa8bf",
+		"bash":  "4a9cd3d690c6bc974325530add2c213d9240a4db2e027f898d0eac40c653f4c9",
 	}
 }
 
@@ -445,14 +445,7 @@ func (c *PiWorkerChannels) writeBootstrap(profile HostProfile, input PiWorkerBoo
 	return err
 }
 
-func cloneToolSchemaDigests() map[string]string {
-	return map[string]string{
-		"read":  "5fad0fa7493528bc4284f5c447781325f67099f5fc018206efdc461d33962e85",
-		"write": "7e51d1de0f2ccb5fe8de82d51ee3a1d9065e3c4f7c53497ce12f283d6f2f5aa0",
-		"edit":  "394741d0cb4c9a6fe96d3275897405c8b13a1c7ff712426a942c10d484993fa1",
-		"bash":  "854beb37435894c8f97dcad8d4610c0ea1458b57a6a8d4bb5b0ea435cdaa5893",
-	}
-}
+func cloneToolSchemaDigests() map[string]string { return piWorkerToolSchemaDigests() }
 
 func writePiFrame(writer io.Writer, body []byte) error {
 	if len(body) == 0 || len(body) > PiWorkerMaxFrameBytes {

@@ -1,0 +1,20 @@
+{
+  "version": "tbound-product-protocol/v1",
+  "status": "ok",
+  "candidate": {
+    "turn_id": "psess-0123456789abcdef0123456789abcdef/turn-1",
+    "candidate_digest": "sha256:3b1c0f5e9a7d2c4b6e8f0a1b2c3d4e5f60718293a4b5c6d7e8f9012a3b4c5d6e",
+    "changes": [
+      {
+        "path": "src/compare.go",
+        "op": "modify",
+        "diff": "--- a/src/compare.go\n+++ b/src/compare.go\n@@ -1 +1 @@\n-return a \u003e b\n+return a \u003c b\n",
+        "truncated": true
+      },
+      {
+        "path": "src/new.go",
+        "op": "create"
+      }
+    ]
+  }
+}

@@ -60,7 +60,7 @@ type Env struct {
 	ValidateServiceConfig func(data []byte) error
 	// Exec runs a system command and returns its stdout. Nil runs the real command.
 	Exec func(name string, args ...string) ([]byte, error)
-	// Chown changes an owner when Live. Nil uses os.Lchown.
+	// Chown changes an owner when Live, using the validated file's /proc/self/fd path. Nil uses fchown.
 	Chown func(path string, uid, gid int) error
 	// Turns lists the catalog's non-terminal turns, opened after the service stopped. Required by
 	// Update, Rollback and Uninstall.
@@ -219,13 +219,15 @@ func (h *host) chown(logical string, o owner) error {
 		}
 		uid, gid = h.uid, h.gid
 	}
-	chown := h.env.Chown
-	if chown == nil {
-		chown = os.Lchown
+	f, err := h.openFile(logical, os.O_RDONLY, 0)
+	if err != nil {
+		return err
 	}
-	return h.withPath(logical, false, func(path string) error {
-		return chown(path, uid, gid)
-	})
+	defer f.Close()
+	if h.env.Chown != nil {
+		return h.env.Chown(fmt.Sprintf("/proc/self/fd/%d", f.Fd()), uid, gid)
+	}
+	return f.Chown(uid, gid)
 }
 
 // wantIDs returns the numeric IDs an owner has on a live host, if known.

@@ -1,0 +1,15 @@
+{
+  "version": "tbound-product-protocol/v1",
+  "status": "ok",
+  "replayed": true,
+  "turn": {
+    "id": "psess-0123456789abcdef0123456789abcdef/turn-1",
+    "ordinal": 1,
+    "state": "terminal",
+    "prompt": "fix the failing test",
+    "outcome": "published",
+    "resolution": "publish",
+    "candidate_digest": "sha256:3b1c0f5e9a7d2c4b6e8f0a1b2c3d4e5f60718293a4b5c6d7e8f9012a3b4c5d6e",
+    "review_timeout_seconds": 600
+  }
+}
