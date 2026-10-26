@@ -81,3 +81,25 @@ func TestLoadConfigDefaultsAndCap(t *testing.T) {
 		t.Fatal("unknown member (a key in the config) accepted")
 	}
 }
+
+// The advisor's audit sample is registered as 60 unanimous roots, and the verifier replays exactly
+// that selection, so a config cannot ask for another size.
+func TestLoadConfigRefusesAnotherAuditSampleSize(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "panel.json")
+	for _, n := range []string{"30", "61", "-1"} {
+		body := `{"schema":"tbound-panel-config/v1","models":[],"public_policy":{"bash_output_paths":[],"network_destinations":[]},"audit_sample":` + n + `}`
+		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := loadConfig(path); err == nil || !strings.Contains(err.Error(), "audit_sample") {
+			t.Fatalf("audit_sample %s accepted: %v", n, err)
+		}
+	}
+	body := `{"schema":"tbound-panel-config/v1","models":[],"public_policy":{"bash_output_paths":[],"network_destinations":[]},"audit_sample":60}`
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := loadConfig(path); err != nil {
+		t.Fatalf("audit_sample 60 refused: %v", err)
+	}
+}
