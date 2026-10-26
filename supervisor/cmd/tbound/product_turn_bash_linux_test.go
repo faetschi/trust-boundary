@@ -244,6 +244,38 @@ func TestProductTurnBashIsAdmittedByTheProductScopeAndReopensAsPredecessor(t *te
 	}
 }
 
+func TestProductTurnBashWithNoWorkspaceChangesReopensAsPredecessor(t *testing.T) {
+	f := newBashProductDriverFixture(t, productsession.PublicationAuto, productScopeNotes(), false, []string{}, seedBashProject(t))
+	baseline := f.measure(t)
+	script := &productDriverScript{turns: []providerbridge.ScriptTurn{
+		bashCall("tests", `printf 'tests passed\n'`), scopeDriverFinal("t1", "The tests passed.")}}
+	receipt, turn, err := f.run(t, f.submit(t, "turn-1", "Run the tests."), script)
+	if err != nil || turn.Outcome != productsession.OutcomeNoDiff || turn.ResultBaselineDigest != baseline ||
+		f.measure(t) != baseline || receipt.CommandJournalCount != 1 || script.requests() != 2 {
+		t.Fatalf("turn 1 with no workspace changes: turn=%+v receipt=%+v err=%v", turn, receipt, err)
+	}
+	result := toolMessage(t, lastProviderRequestMessages(t, turn.Link.ProviderJournalPath), "call-tests")
+	if !strings.Contains(result, `"exit_code":0`) || !strings.Contains(result, `tests passed\n`) {
+		t.Fatalf("the no-change command did not return its output: %q", result)
+	}
+
+	script2 := &productDriverScript{
+		turns: []providerbridge.ScriptTurn{scopeDriverFinal("t2", "The tests passed.")},
+		check: func(history []providerbridge.ScriptMessage) error {
+			at := messageIndex(history, 0, func(m providerbridge.ScriptMessage) bool { return m.Role == "tool" && m.ToolCallID == "call-tests" })
+			if at < 0 || history[at].Content != result {
+				return errors.New("the imported history lost the no-change command result")
+			}
+			return nil
+		},
+	}
+	receipt2, turn2, err := f.run(t, f.submit(t, "turn-2", "What was the test result?"), script2)
+	if err != nil || turn2.Outcome != productsession.OutcomeNoDiff || script2.requests() != 1 ||
+		receipt2.PredecessorReceiptDigest != turn.ReceiptDigest || f.measure(t) != baseline {
+		t.Fatalf("turn 2 over a no-change Bash predecessor: turn=%+v receipt=%+v err=%v", turn2, receipt2, err)
+	}
+}
+
 // Retained command settlements are verified when the next turn reopens a Bash turn. A command journal that
 // differs from the receipt's commitment, or a service that cannot verify settlements, refuses the next
 // turn before any provider work.
@@ -478,9 +510,7 @@ func bashResultOf(t *testing.T, message string) (command durableCommandSummary, 
 
 // The model sees what its Bash command printed: stdout and stderr as bounded valid UTF-8, the tail of a long
 // stream with its truncated flag, and a failed command with its output and the command_failed hint. The next
-// turn reopens the Bash turn as a predecessor, so replay rebuilds the same output from the Store. Every command
-// also writes a file: a Bash command that changes nothing cannot be reopened as a predecessor yet, which is a
-// defect of the retained Store recovery that this test does not cover.
+// turn reopens the Bash turn as a predecessor, so replay rebuilds the same output from the Store.
 func TestProductTurnBashShowsTheModelItsCommandOutput(t *testing.T) {
 	f := newBashProductDriverFixture(t, productsession.PublicationAuto, productScopeNotes(), false, []string{}, seedBashProject(t))
 	f.env.MaxWorkerSteps = 8
