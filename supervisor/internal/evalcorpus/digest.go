@@ -41,7 +41,7 @@ func Digest(m Manifest) (string, error) {
 }
 
 // ContentDigest is the Digest of m with every case's Signoff and the manifest's ConstructReview
-// cleared. The blinded panel rates this content and records this digest, so the advisor's
+// and freeze Pins cleared. The blinded panel rates this content and records this digest, so the advisor's
 // sign-offs can be written into the manifest afterwards without detaching it from the panel run.
 // It leaves m unchanged.
 func ContentDigest(m Manifest) (string, error) {
@@ -50,6 +50,7 @@ func ContentDigest(m Manifest) (string, error) {
 		m.Cases[i].Signoff = Signoff{}
 	}
 	m.ConstructReview = ConstructReview{}
+	m.Pins = Pins{}
 	return Digest(m)
 }
 

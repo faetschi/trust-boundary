@@ -153,9 +153,12 @@ as checked by `caps.scripted: true`. Real-provider budgets retain their positive
       `decision: "accept"`, and for each case on the audit list also `audited: true` and a `resolution`. The same
       `reviewer` name goes on every case. Do not copy sign-offs from another case.
    4. Set `construct_review.content_digest` to the receipt's `content_digest` and the three panel digests to the `sha256:`
-      of the bytes of `receipt.json`, the signed `audit.json`, and `stats.json`. Any later edit of either file, or of a case, makes
+      of the bytes of `receipt.json`, the signed `audit.json`, and `stats.json`. Any later edit of these files, or of a case, makes
       `corpus-digest` refuse. `build.py` keeps existing sign-offs and the `construct_review` block, but a regenerated case
-      needs a new panel run.
+      needs a new panel run. The content digest excludes every case's `signoff`, `construct_review`, and
+      all manifest `pins`. Fill the environment, model, profile and policy pins with `corpus-pins` after
+      the panel run if needed, but before `corpus-digest`. The full corpus digest still includes pins.
+      The receipt's pinned bytes also bind its per-call `rating_outcomes`; keep `ratings.jsonl` as the raw record.
 3. `evq_results` and `route_report` (the other two `run.json` inputs besides the manifest) are generated, not authored,
    from one capture of the frozen commit on Linux or WSL:
    `tbound-run evq-capture --repo <repo> --commit <freeze_commit> --out <new dir>`, then

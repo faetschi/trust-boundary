@@ -947,6 +947,17 @@ Every file of a cycle goes to its own directory `$H/<NAME>/` (rule 4), and the r
 
 State from the smoke and from the evidence runs (catalog, journals, consumed admission ids) survives the re-registration; settled runs do not block (`managedLiveRootPriorRunsFromTrace` is keyed by the run's own registration digest). An `unknown` request must be settled first. Everything below is after Z1 and follows the RG cycle with `NAME=pilot` (`ROOTCON`, files staged by `GSSH` into a directory of `tboundadmin` and installed with `install -o root -g root` from the console, sha256 compared on both sides (BL-6)); the service is stopped for D3 to D7. No new binary, image, bundle or calibration is involved: `F` is unchanged. Signatures in this part: S3' and S4' only.
 
+
+The panel's `content_digest` excludes every case's `signoff`, the manifest's
+`construct_review`, and all `pins`. Environment, model, profile and policy pins
+may be measured with `corpus-pins` and filled after the panel run, but must be
+filled before `corpus-digest`. The full corpus digest includes the pins. Bind
+`receipt.json`, the signed `audit.json`, and `stats.json` by their byte digests in
+`construct_review.panel_receipt_digest`, `panel_audit_digest`, and
+`panel_stats_digest`. All three must record the same content digest. The receipt
+embeds per-call `rating_outcomes`, so its byte digest also binds these ratings;
+retain `ratings.jsonl` as the raw-round record.
+
 - D1 [READ-ONLY, owner machine, WSL] after the construct review (D35 amendment 2026-10-24: the blinded `tbound-panel` run on the draft, then the advisor's `audit.json` sign-off and one `signoff` per case with `human: true`, `author: false`, `decision` and the same `reviewer` throughout; `construct_review` holding the panel's `content_digest` and the sha256 of its `receipt.json` and signed `audit.json`; see `docs/guides/panel-run.md` step 8), set the four `pins.*` members of the draft to PINS (R5-1b; `pins.attacker_digest` stays), save the final manifest as `corpus/pilot/manifest.json` and check it: `TBP corpus-pins --template $H/d09-cell.json --runtime-bundle-digest $BUNDLE_DIGEST --node-digest <Node digest> --manifest corpus/pilot/manifest.json` must exit 0 (it names the members that differ). Compute the digest with the frozen tool:
   ```
   TBP corpus-digest --manifest corpus/pilot/manifest.json --quota-profile pilot --panel-receipt $PANEL/receipt.json --panel-audit $PANEL/audit.json --panel-stats $PANEL/stats.json --artifacts $W/src/corpus/pilot/artifacts --max-host-calls 17 --max-tokens 20000 --duration-seconds 1200      # prints CORPUS_DIGEST; nothing and non-zero if refused

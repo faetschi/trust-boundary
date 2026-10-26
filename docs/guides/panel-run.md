@@ -266,12 +266,17 @@ author's own review is not independent.
 ## 8. Bind the signed audit to the manifest
 
 The panel rated the draft before any sign-off existed. The manifest then gains
-the advisor's sign-offs, which must not detach it from the run. `receipt.json`
-and `audit.json` therefore record `content_digest`, the digest of the manifest
-with every `signoff` and the `construct_review` cleared
-(`evalcorpus.ContentDigest`). Writing the sign-offs does not change it;
+the advisor's sign-offs, which must not detach it from the run. `receipt.json`,
+`audit.json` and `stats.json` therefore record `content_digest`, the digest of the manifest
+with every `signoff`, `construct_review` and `pins` cleared
+(`evalcorpus.ContentDigest`). Writing the sign-offs or freeze pins does not change it;
 changing a case does. `manifest_digest` keeps the digest of the whole file the
-panel read.
+panel read. The environment, model, profile and policy pins may be filled from
+`corpus-pins` after the panel run, but must be filled before `corpus-digest`.
+The full corpus `Digest` still includes every pin. The receipt embeds per-call
+`rating_outcomes` for every case, model and phase. Its pinned byte digest binds
+these ratings without an additional ratings file. Keep `ratings.jsonl` as the
+raw-round record.
 
 In the manifest:
 
@@ -296,14 +301,18 @@ tbound-profile corpus-digest --manifest corpus/pilot/manifest.json --quota-profi
 ```
 
 It prints the digest only if the file hashes match `construct_review`, all three
-files record the manifest's content digest, none is a dry run, the receipt
+files record the manifest's content digest, all explicitly mark a live OpenRouter run, none is a dry run, the receipt
 rates every case completely, the audit list and the cases marked `audited` are
 the same set, and every audit entry carries a decision `accept`, a resolution, an
 identity matching the manifest advisor and a time. It replays audit selection
 with the panel's own seeded selection function and requires 60 unanimous roots,
 or all if fewer are eligible. A dry-run directory is never accepted.
 `stats.json` uses schema `tbound-panel-stats/v3`, records `content_digest`, and
-must give every phase-2 checklist item the panel's `pass` gate. Missing ratings
+must give every phase-2 checklist item a `pass` gate consistent with its numeric
+kappa and raw agreement (at least 0.80 and 0.90, with defined kappa). The reader
+checks every required statistics field, the three distinct permitted model
+families, and complete case x model x phase outcomes. It derives mandatory audit
+cases from those pinned outcomes and from the manifest's ambiguous cases. Missing ratings
 in either phase block admission. Phase-1 agreement and its gates remain reported;
 phase-1 gate values do not determine admission. Keep revised rounds separately.
 `preregistration-record` requires and verifies the same three panel files.
