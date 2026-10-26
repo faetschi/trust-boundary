@@ -3,6 +3,10 @@
 > **Status: frozen for the thesis.** CLI-only support for the thesis; no new
 > features. The web chat will be moved to its own repository after the thesis.
 > It is not part of the thesis claims.
+>
+> The product branch adds an optional **live mode** (`--live`, milestone P9, see
+> "Live mode" below). It is product work with no thesis claim, and the fixture,
+> replay and receipt modes stay labelled demonstrations.
 
 This directory is an **optional, standalone** Go module and browser client for
 the tbound web chat. tbound core does not need it: the core builds, tests,
@@ -24,16 +28,19 @@ no Node. Nothing under `supervisor/` imports it.
   app cannot be loaded. It will be removed after sign-off. The Go gateway
   (`internal/webchat/`, entrypoint `cmd/tbound-webchat/`) serves both. The module
   has no third-party Go dependencies.
-- **Read-only today.** It serves embedded fixtures, retained replay documents
-  and imported post-run receipts. `--live` fails closed. There is no turn
-  submission, cancellation or browser authentication yet.
+- **Demonstrations are read-only.** `--demo`, `--fixture`, `--replay`, `--receipt` and
+  `--receipt-demo` serve embedded fixtures, retained replay documents and imported
+  post-run receipts. They have no turn submission, cancellation or browser
+  authentication. `--live --socket PATH` is the live mode: it pairs one browser and
+  forwards chat requests to the product service (see "Live mode").
 - An **untrusted client of the supervisor.** Admission, policy, leases, effects,
   journals and publication stay in `supervisor/`. The browser and this gateway
   hold no effect authority. Success is shown only where verification exists.
 - **Loopback-only.** The gateway binds a literal loopback address (default
-  `127.0.0.1:8791`). It answers GET and HEAD on `/` (a redirect to `/app/`) and on
-  `/favicon.ico` (`204`); every other route is GET-only. Other methods get `405` with
-  an `Allow` header, and request bodies are rejected.
+  `127.0.0.1:8791`). In the demonstration modes it answers GET and HEAD on `/` (a
+  redirect to `/app/`) and on `/favicon.ico` (`204`); every other route is GET-only.
+  Other methods get `405` with an `Allow` header, and request bodies are rejected.
+  Live mode adds the `POST` routes of its contract and keeps the loopback bind.
 
 ## Run the demo
 
@@ -44,13 +51,49 @@ go run ./cmd/tbound-webchat --demo        # embedded non-claim-bearing fixture
 go run ./cmd/tbound-webchat --receipt-demo
 go run ./cmd/tbound-webchat --replay path.json
 go run ./cmd/tbound-webchat --receipt path.json
-go run ./cmd/tbound-webchat --live        # refused: supervisor service absent
+go run ./cmd/tbound-webchat --live --socket /run/tbound-product/product.sock   # live mode, below
 ```
 
 The flags `--demo`, `--fixture`, `--replay`, `--receipt`, `--receipt-demo` and
-`--live` are mutually exclusive. The startup banner states the source class and
+`--live` are mutually exclusive. `--socket` goes only with `--live`, and `--live` needs
+it. `--listen` is the new name of `--addr`. The startup banner states the source class and
 the claim boundary. Open `http://127.0.0.1:<port>/` — React UI (it redirects to
 `/app/`); `/legacy/` is deprecated and will be removed after sign-off.
+
+## Live mode (P9)
+
+```sh
+go run ./cmd/tbound-webchat --live --socket /run/tbound-product/product.sock [--listen 127.0.0.1:8791]
+```
+
+The gateway runs as your user and speaks `tbound-product-protocol/v1` to the product
+service over its Unix socket, one request frame and one response frame per call. The
+service sees your UID as the principal. The gateway holds no policy, lease, effect or
+publication authority, never retries, and never invents a request key.
+
+- **Pairing.** At start the gateway prints `http://127.0.0.1:PORT/pair#TOKEN` to stdout.
+  The token is 32 random bytes, valid for 10 minutes, kept only as a hash, and spent by
+  its first correct use. Do not keep a redirect of stdout. The pairing page posts it to
+  `POST /api/v1/pair` and receives an HttpOnly, SameSite=Strict `tbound_session` cookie
+  (12 hours) and a CSRF token. One gateway process pairs one browser; restart it to pair
+  again.
+- **Every request.** The `Host` must be the bound `127.0.0.1:PORT` or `localhost:PORT`.
+  An `Origin` header, when present, must equal `http://` plus that host. Every `/api/`
+  request needs the cookie, and every mutation also needs `X-TBound-CSRF`. Bodies are
+  at most 64 KiB of strict JSON. No CORS header is sent. The existing security headers
+  and CSP stay.
+- **Routes, errors and the snapshot mapping** are in
+  [`docs/web-chat-contract.md`](docs/web-chat-contract.md) section 9, with the fields the
+  product protocol cannot supply (event times, for example). `GET /api/v1/sessions/{id}`
+  returns the existing snapshot shape with `source: "live"` and
+  `verification_scope: "structural-audit-only"`, plus a `live` field with the service's
+  session view (its revision, and each turn's state).
+- **Windows.** Use an SSH tunnel to the product host, with pinned host keys:
+  `ssh -L 8791:127.0.0.1:8791 user@host`. Never bind a non-loopback address.
+
+The gateway does not claim containment, `G1` or `H1`. Its qualification panel is fixed.
+The React app does not use the live routes yet. Against a live gateway it shows an
+error state until its live mode is wired, which is separate work.
 
 ## Test
 
@@ -68,6 +111,12 @@ Node is needed only for the last one and for `make extension-webchat`. The core
 `make test` target does not run them. The CI workflow
 `.github/workflows/webchat-extension.yml` runs them for changes under
 `extensions/webchat/**`.
+
+Live mode is tested against a fake product service on a temporary Unix socket (the
+`live*_test.go`, `socket_test.go` and `cmd/tbound-webchat/main_live_unix_test.go` files).
+The wire-type parity test reads `internal/webchat/testdata/protocol/*.json`, which the
+supervisor generates. After a protocol change, regenerate them from `supervisor/` with
+`go test ./internal/productprotocol -run Fixtures -update` and update `wire.go`.
 
 The React frontend has its own gate. It needs Node 24.15.0 (`frontend/.nvmrc`):
 
@@ -91,15 +140,21 @@ the manifest-derived `/app/` allowlist, the CSP smoke and its exit codes.
 - `G1=false`. Containment is `not-established`. `H1` is unexecuted.
 - Fixtures, replay documents and receipt imports are **non-claim-bearing** and
   are labelled FIXTURE, REPLAY or UNAVAILABLE in the UI.
+- Live mode labels its items `structural-audit-only`. That says the product service
+  observed them structurally. It is not a policy, effect, containment or publication
+  claim, and the qualification panel stays `G1=false`, `H1` unexecuted.
 - Green tests here verify code and UI behaviour only. They establish no policy,
   effect, containment, publication, `G1` or `H1` result.
 
 ## Dependency rule
 
 - The extension depends on the **core's service contract** only: the projection
-  schema `tbound-webchat-observation/v1` today, and an authenticated supervisor
-  API later (see `extensions/webchat/docs/web-chat-contract.md`). It imports no `tbound/supervisor`
-  package and must not gain a dependency on one.
+  schema `tbound-webchat-observation/v1`, and the product protocol
+  `tbound-product-protocol/v1` over the product socket (see
+  `extensions/webchat/docs/web-chat-contract.md`). It keeps its own copy of the wire
+  types (`internal/webchat/wire.go`), checked against JSON fixtures the supervisor
+  generates. It imports no `tbound/supervisor` package and must not gain a dependency
+  on one.
 - The core must **never** import this extension.
   `scripts/check-extension-boundary.sh` enforces this. It is pure sh and grep,
   it runs in `make test`, and it runs in CI on every push
@@ -120,18 +175,25 @@ the manifest-derived `/app/` allowlist, the CSP smoke and its exit codes.
   - `handler.go`: the document routes (`/` redirect or legacy fallback,
     `/legacy/`), the legacy `/static/` assets and the read-only API.
   - `app.go`: the `/app/` route table, derived from the Vite manifest.
+  - `live.go`, `live_render.go`: live mode: pairing, cookie, CSRF, Host and Origin
+    checks, the `/api/v1/` routes, and the snapshot and item rendering.
+  - `wire.go`, `socket.go`: the copy of the product wire types, strict decoding, and the
+    one-frame-per-connection socket client. `testdata/protocol/` holds the parity
+    fixtures.
   - `dist/`: the committed React build (generated; do not edit by hand).
 - `extensions/webchat/frontend/`: the React + TypeScript source (`src/`, with
   `src/core/` and `src/markdown/` from Phase 2), its scripts (`scripts/`), the
   pinned `package.json` and lockfile, and `DEPENDENCIES.md`. Build output goes to
   `internal/webchat/dist/`.
-- `extensions/webchat/cmd/tbound-webchat/`: loopback-only gateway entrypoint.
+- `extensions/webchat/cmd/tbound-webchat/`: loopback-only gateway entrypoint (the
+  demonstration modes and `--live`).
 - `extensions/webchat/scripts/csp-smoke.mjs`: opt-in headless-browser CSP check.
 - `extensions/webchat/docs/`:
   - `frontend.md`: the React client: status, pins, committed build, the `/app/`
     allowlist, the CSP smoke, the phase plan and receipts.
   - `web-chat.md`: design, authority and claim boundary, verification log.
-  - `web-chat-contract.md`: proposed supervisor-owned service contract.
+  - `web-chat-contract.md`: the service contract. Its section 9 is what live mode
+    implements.
   - `web-chat-ui-plan.md`: design analysis and the harness survey (Appendix A
     and B).
   - `adr-0001-optional-extension.md`: decision record for the extension boundary

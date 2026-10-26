@@ -467,6 +467,8 @@ The web chat stays an optional, separate Go module (`extensions/webchat`). It ne
 
 | Method and path | Maps to |
 | --- | --- |
+| `POST /api/v1/pair` | spends the pairing token; sets the session cookie and returns the CSRF token |
+| `GET /api/v1/pair` | returns the paired session's CSRF token again, so a reloaded page recovers it |
 | `GET /api/v1/sessions` | `list_sessions` |
 | `POST /api/v1/sessions` | `create_session` |
 | `GET /api/v1/sessions/{id}` | `get_session`, rendered into the existing snapshot shape with `source: "live"` |

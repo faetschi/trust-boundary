@@ -490,6 +490,9 @@ func ValidateSnapshot(snapshot Snapshot) error {
 	if snapshot.Source == SourceUnavailable && scope != VerificationUnavailable {
 		return errors.New("unavailable snapshot must use unavailable verification scope")
 	}
+	if snapshot.Live != nil && snapshot.Source != SourceLive {
+		return errors.New("only a live projection may carry a live session view")
+	}
 	if !epochPattern.MatchString(snapshot.Epoch) {
 		return errors.New("snapshot epoch is invalid")
 	}
@@ -675,6 +678,9 @@ func decodeDocument(raw []byte, expected SourceClass) (Snapshot, error) {
 	}
 	if document.Snapshot.Source != expected {
 		return Snapshot{}, fmt.Errorf("observation document source %q does not match requested %q", document.Snapshot.Source, expected)
+	}
+	if document.Snapshot.Live != nil {
+		return Snapshot{}, errors.New("a document cannot carry a live session view")
 	}
 	if document.Snapshot.Panels.Qualification.Containment != "not-established" && document.Snapshot.Panels.Qualification.Containment != "unavailable" {
 		return Snapshot{}, errors.New("a document cannot claim containment qualification")
