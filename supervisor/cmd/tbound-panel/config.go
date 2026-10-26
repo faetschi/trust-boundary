@@ -66,7 +66,10 @@ func loadConfig(path string) (panelConfig, error) {
 		cfg.BootstrapResamples = 2000
 	}
 	if cfg.AuditSample == 0 {
-		cfg.AuditSample = 60
+		cfg.AuditSample = panelaudit.AuditSampleSize
+	}
+	if cfg.AuditSample != panelaudit.AuditSampleSize {
+		return panelConfig{}, fmt.Errorf("config %s: audit_sample must be %d, the registered size of the unanimous audit sample", path, panelaudit.AuditSampleSize)
 	}
 	if cfg.TimeoutSeconds == 0 {
 		cfg.TimeoutSeconds = 300
