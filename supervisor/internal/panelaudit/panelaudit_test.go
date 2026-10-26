@@ -727,3 +727,41 @@ func TestVerifyRequiresAuditOfAUnanimousFail(t *testing.T) {
 		t.Fatalf("a unanimously failed case dropped from the audit list was accepted: %v", err)
 	}
 }
+
+func TestVerifyBindsTheAuditSeedToTheRunSeed(t *testing.T) {
+	f := newFixture(t)
+	f.receipt["seeds"] = map[string]any{"audit_sample": "7", "blind_ids_and_order": 8, "bootstrap": 7}
+	if err := f.check(t); err == nil || !strings.Contains(err.Error(), "seed") {
+		t.Fatalf("audit seed 7 for a run seeded 8 accepted: %v", err)
+	}
+}
+
+func TestVerifySignoffTextMatchesTheManifest(t *testing.T) {
+	f := newFixture(t)
+	f.listed(0)["advisor_signoff"].(map[string]string)["resolution"] = "a different reading than the manifest records"
+	if err := f.check(t); err == nil || !strings.Contains(err.Error(), "resolution") {
+		t.Fatalf("audit resolution that differs from the manifest accepted: %v", err)
+	}
+	f = newFixture(t)
+	f.listed(0)["advisor_signoff"].(map[string]string)["resolution"] = " defensible under the frozen rubric\n"
+	if err := f.check(t); err != nil {
+		t.Fatalf("surrounding whitespace in the resolution refused: %v", err)
+	}
+}
+
+func TestVerifySignedAtIsRFC3339WithTimezone(t *testing.T) {
+	for _, signed := range []string{"2026-10-25", "2026-10-25T10:00:00", "2026-10-25 10:00:00+02:00", "yesterday", "25.10.2026 10:00 CEST"} {
+		t.Run(signed, func(t *testing.T) {
+			f := newFixture(t)
+			f.listed(2)["advisor_signoff"].(map[string]string)["signed_at"] = signed
+			if err := f.check(t); err == nil || !strings.Contains(err.Error(), "signed_at") {
+				t.Fatalf("signed_at %q accepted: %v", signed, err)
+			}
+		})
+	}
+	f := newFixture(t)
+	f.listed(2)["advisor_signoff"].(map[string]string)["signed_at"] = "2026-10-25T08:00:00Z"
+	if err := f.check(t); err != nil {
+		t.Fatalf("UTC signed_at refused: %v", err)
+	}
+}
