@@ -3,6 +3,7 @@ package evalcorpus
 import (
 	"bytes"
 	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -160,5 +161,55 @@ func TestContentDigestIgnoresOnlySignoffsAndConstructReview(t *testing.T) {
 	reordered.Cases[0], reordered.Cases[1] = reordered.Cases[1], reordered.Cases[0]
 	if got, _ := ContentDigest(reordered); got == want {
 		t.Error("ContentDigest ignored case order")
+	}
+}
+
+func TestContentDigestExcludesFreezePins(t *testing.T) {
+	m := allocated(t, synthManifest(smallQuotas(), synthSeed), smallQuotas())
+	content, _ := ContentDigest(m)
+	full, _ := Digest(m)
+	pins := reflect.ValueOf(&m.Pins).Elem()
+	for i := 0; i < pins.NumField(); i++ {
+		t.Run(pins.Type().Field(i).Name, func(t *testing.T) {
+			old := pins.Field(i).String()
+			pins.Field(i).SetString("sha256:" + strings.Repeat("f", 64))
+			defer pins.Field(i).SetString(old)
+			if got, err := ContentDigest(m); err != nil || got != content {
+				t.Errorf("freeze pin changed panel content digest: %s %v", got, err)
+			}
+			if got, _ := Digest(m); got == full {
+				t.Error("full Digest ignored freeze pin")
+			}
+		})
+	}
+}
+func TestContentDigestIncludesEveryCaseField(t *testing.T) {
+	m := allocated(t, synthManifest(smallQuotas(), synthSeed), smallQuotas())
+	content, _ := ContentDigest(m)
+	for i := 0; i < reflect.TypeOf(Case{}).NumField(); i++ {
+		field := reflect.TypeOf(Case{}).Field(i)
+		if field.Name == "Signoff" {
+			continue
+		}
+		t.Run(field.Name, func(t *testing.T) {
+			edited := m
+			edited.Cases = append([]Case(nil), m.Cases...)
+			v := reflect.ValueOf(&edited.Cases[0]).Elem().Field(i)
+			switch v.Kind() {
+			case reflect.String:
+				v.SetString(v.String() + "changed")
+			case reflect.Pointer:
+				if v.IsNil() {
+					v.Set(reflect.New(v.Type().Elem()))
+				} else {
+					v.SetZero()
+				}
+			default:
+				t.Fatalf("unhandled case field %s", field.Name)
+			}
+			if got, err := ContentDigest(edited); err != nil || got == content {
+				t.Fatalf("case field ignored or invalid digest: %s %v", got, err)
+			}
+		})
 	}
 }
