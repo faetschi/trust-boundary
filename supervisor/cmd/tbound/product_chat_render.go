@@ -126,6 +126,9 @@ func printSession(w io.Writer, v *productprotocol.SessionView, turns bool) {
 	if !turns {
 		return
 	}
+	if v.TurnsTruncated {
+		fmt.Fprintf(w, "showing %d of %d turns; earlier history is replayed on reconnect\n", len(v.Turns), v.TotalTurns)
+	}
 	for _, t := range v.Turns {
 		state := chatLine(t.State)
 		if t.Outcome != "" {

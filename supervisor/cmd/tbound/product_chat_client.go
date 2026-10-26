@@ -58,20 +58,29 @@ func (c *chatClient) call(ctx context.Context, req productprotocol.Request, time
 		return nil, err
 	}
 	var last error
+	unknownOutcome := false
 	for attempt := 0; attempt < max(c.attempts, 1); attempt++ {
 		if attempt > 0 {
 			select {
 			case <-time.After(c.backoff * time.Duration(attempt)):
 			case <-ctx.Done():
+				if unknownOutcome {
+					return nil, &chatTransportError{err: ctx.Err(), unknownOutcome: true}
+				}
 				return nil, ctx.Err()
 			}
 		}
 		resp, err := c.roundTrip(ctx, req, timeout)
 		var transport *chatTransportError
 		if !errors.As(err, &transport) {
+			// Only a catalog answer proves the request key was looked up; transport-level codes do not.
+			if unknownOutcome && (resp == nil || chatIsCode(err, productprotocol.CodeServiceUnavailable) || chatIsCode(err, productprotocol.CodeProtocolError)) {
+				return nil, &chatTransportError{err: err, unknownOutcome: true}
+			}
 			return resp, err
 		}
-		transport.unknownOutcome = chatMutating[req.Op] && transport.sent
+		unknownOutcome = unknownOutcome || (chatMutating[req.Op] && transport.sent)
+		transport.unknownOutcome = unknownOutcome
 		last = transport
 	}
 	return nil, last
@@ -113,7 +122,7 @@ func (c *chatClient) roundTrip(ctx context.Context, req productprotocol.Request,
 	case resp.Version != productprotocol.Version:
 		return nil, &chatServiceError{Code: "PROTOCOL_ERROR", Detail: "unsupported response version"}
 	case resp.Status == "error" && resp.Error != nil:
-		return nil, &chatServiceError{Code: resp.Error.Code, Detail: resp.Error.Detail}
+		return &resp, &chatServiceError{Code: resp.Error.Code, Detail: resp.Error.Detail}
 	case resp.Status != "ok":
 		return nil, &chatServiceError{Code: "PROTOCOL_ERROR", Detail: fmt.Sprintf("unexpected status %q", resp.Status)}
 	}

@@ -22,6 +22,7 @@ const credentialOPath = 0x200000
 // symlinks and non-directories on every component.
 type credentialAncestorPolicy struct {
 	trustedUID    uint32
+	allowRoot     bool
 	exemptThrough string
 }
 
@@ -116,7 +117,7 @@ func checkCredentialAncestor(fd int, path string, policy credentialAncestorPolic
 	if credentialAncestorExempt(path, policy.exemptThrough) {
 		return nil
 	}
-	if stat.Uid != policy.trustedUID || stat.Mode&0o022 != 0 {
+	if (stat.Uid != policy.trustedUID && !(policy.allowRoot && stat.Uid == 0)) || stat.Mode&0o022 != 0 {
 		return os.ErrPermission
 	}
 	return nil
@@ -156,4 +157,14 @@ func readCredentialDescriptor(fd int) ([]byte, error) {
 		return nil, os.ErrInvalid
 	}
 	return content, nil
+}
+
+// ReadCredentialSourceFile pins every ancestor without following symlinks. Source
+// ancestors must belong to root or the caller, with no group or other write access.
+func ReadCredentialSourceFile(path string) ([]byte, error) {
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return nil, err
+	}
+	return readServiceCredentialFile(absolute, credentialAncestorPolicy{trustedUID: uint32(os.Geteuid()), allowRoot: true})
 }

@@ -33,14 +33,29 @@ var (
 	ErrRecoveryRecordExists = errors.New("projectbundle: an unresolved recovery record exists")
 )
 
+// ApplyMode selects patch generation or writing under caller-guaranteed writer exclusion.
+type ApplyMode uint8
+
+const (
+	PatchMode ApplyMode = iota
+	DirectMode
+	PatchFileName = "tbound-export.patch"
+)
+
+var ErrParentChanged = errors.New("projectbundle: target parent moved or changed; recovery record retained")
+
 // ApplyOptions configure ApplyExport.
 type ApplyOptions struct {
+	Mode ApplyMode
+	// WriterExclusionHeld is the caller's guarantee that no other writer can move or alter the tree.
+	WriterExclusionHeld bool
 	// StateDir is an existing directory outside the worktree that holds the recovery record.
 	StateDir string
 	// Exclude is the exclude list the baseline was built with. The worktree manifest ignores these
 	// paths, and no change may touch them.
-	Exclude []string
-	Limits  Limits
+	Exclude  []string
+	Limits   Limits
+	syncFile func(*os.File) error
 }
 
 // ApplyError reports a failure after the first write. Changed lists every path the apply changed or
@@ -71,6 +86,7 @@ type recoveryRecord struct {
 	BaselineDigest string         `json:"baseline_digest"`
 	TargetDigest   string         `json:"target_digest"`
 	Paths          []recoveryPath `json:"paths"`
+	Changed        []string       `json:"changed_actual_paths"`
 }
 
 // recoveryPath is the pre-apply state of one path; Before is nil when the path did not exist.
@@ -80,16 +96,16 @@ type recoveryPath struct {
 	Before *Entry   `json:"before"`
 }
 
-// ApplyExport applies a tbound-project-export/v1 stream to a clean Git worktree. It runs as the
-// user. Before the first write it validates the stream, the Git state, the worktree manifest against
-// the baseline digest and the manifest the changes produce against the target digest, and writes a
-// recovery record to opts.StateDir. Each target is rechecked immediately before it is written, files
-// are replaced through a temporary file and a rename, and the result must equal the target manifest.
-// It returns the changed paths. An error before the first write changes nothing. After the first
-// write an *ApplyError names the changed paths and the recovery record stays.
-//
-// It does not exclude concurrent writers; the per-target recheck narrows the window, nothing more.
+// ApplyExport verifies the export, clean Git baseline and targets. By default it writes
+// PatchFileName in StateDir, leaving the worktree untouched. DirectMode requires the
+// caller to exclude all concurrent writers. Failures after a mutation retain recovery data.
 func ApplyExport(bundle io.ReadSeeker, worktree string, opts ApplyOptions) ([]string, error) {
+	if opts.Mode != PatchMode && opts.Mode != DirectMode {
+		return nil, errors.New("projectbundle: unknown apply mode")
+	}
+	if opts.Mode == DirectMode && !opts.WriterExclusionHeld {
+		return nil, errors.New("projectbundle: direct apply requires caller-guaranteed writer exclusion")
+	}
 	header, exportDigest, offsets, err := readExport(bundle, opts.Limits)
 	if err != nil {
 		return nil, err
@@ -113,10 +129,12 @@ func ApplyExport(bundle io.ReadSeeker, worktree string, opts ApplyOptions) ([]st
 	if err != nil {
 		return nil, err
 	}
-	recordPath, err := recoveryRecordPath(opts.StateDir, absWorktree)
+	store, err := openApplyState(opts.StateDir, absWorktree)
 	if err != nil {
 		return nil, err
 	}
+	defer store.dir.Close()
+	recordPath := filepath.Join(store.dir.Name(), recoveryRecordName)
 	if err := checkGit(absWorktree, header.Changes); err != nil {
 		return nil, err
 	}
@@ -141,11 +159,26 @@ func ApplyExport(bundle io.ReadSeeker, worktree string, opts ApplyOptions) ([]st
 	for _, e := range before.Entries {
 		states[e.Path] = e
 	}
-	if err := writeRecoveryRecord(recordPath, absWorktree, exportDigest, header, states); err != nil {
+	if opts.Mode == PatchMode {
+		return writePatch(bundle, offsets, root, absWorktree, store, before, target, header)
+	}
+	record := recoveryRecord{Format: recoveryFormat, Worktree: absWorktree, ExportDigest: exportDigest, BaselineDigest: header.BaselineDigest, TargetDigest: header.TargetDigest}
+	for _, c := range header.Changes {
+		p := recoveryPath{Path: c.Path, Op: c.Op}
+		if e, ok := states[c.Path]; ok {
+			p.Before = &e
+		}
+		record.Paths = append(record.Paths, p)
+	}
+	if err := store.writeRecord(record, true); err != nil {
 		return nil, err
 	}
 
-	a := &applier{root: root, bundle: bundle, offsets: offsets, states: states}
+	if _, err := os.Readlink(fmt.Sprintf("/proc/self/fd/%d", root.Fd())); err != nil {
+		return nil, fmt.Errorf("projectbundle: direct recovery needs /proc/self/fd: %w", err)
+	}
+	a := &applier{root: root, bundle: bundle, offsets: offsets, states: states, syncFile: opts.syncFile}
+	defer a.closeLocations()
 	var changed []string
 	for _, i := range applyOrder(header.Changes) {
 		c := header.Changes[i]
@@ -153,10 +186,16 @@ func ApplyExport(bundle io.ReadSeeker, worktree string, opts ApplyOptions) ([]st
 		if didChange {
 			changed = append(changed, c.Path)
 		}
+		if didChange || len(changed) > 0 && err != nil {
+			actual, locationErr := a.actualPaths()
+			record.Changed = actual
+			err = errors.Join(err, locationErr, store.writeRecord(record, false))
+		}
 		if err != nil {
-			if len(changed) == 0 {
-				os.Remove(recordPath)
-				syncDir(opts.StateDir)
+			if len(changed) == 0 && !errors.Is(err, ErrParentChanged) {
+				if cleanupErr := store.removeRecord(); cleanupErr != nil {
+					return nil, &ApplyError{Failed: c.Path, Record: recordPath, Err: errors.Join(err, cleanupErr)}
+				}
 				return nil, fmt.Errorf("projectbundle: %s: %w (nothing was changed)", c.Path, err)
 			}
 			return nil, &ApplyError{Failed: c.Path, Changed: changed, Record: recordPath, Err: err}
@@ -170,12 +209,15 @@ func ApplyExport(bundle io.ReadSeeker, worktree string, opts ApplyOptions) ([]st
 		}
 	}
 	if err != nil {
+		actual, locationErr := a.actualPaths()
+		record.Changed = actual
+		err = errors.Join(err, locationErr, store.writeRecord(record, false))
 		return nil, &ApplyError{Changed: changed, Record: recordPath, Err: err}
 	}
-	if err := os.Remove(recordPath); err != nil {
+	if err := store.removeRecord(); err != nil {
 		return changed, fmt.Errorf("projectbundle: applied, but the recovery record could not be removed: %w", err)
 	}
-	return changed, syncDir(opts.StateDir)
+	return changed, nil
 }
 
 func excluded(path string, exclude []string) bool {
@@ -207,76 +249,118 @@ func applyOrder(changes []Change) []int {
 	return order
 }
 
-func recoveryRecordPath(stateDir, worktree string) (string, error) {
+type applyState struct{ dir *os.File }
+
+func openApplyState(stateDir, worktree string) (*applyState, error) {
 	if stateDir == "" {
-		return "", errors.New("projectbundle: a state directory is required")
+		return nil, errors.New("projectbundle: a state directory is required")
 	}
-	state, err := filepath.EvalSymlinks(stateDir)
+	state, err := filepath.Abs(stateDir)
 	if err != nil {
-		return "", fmt.Errorf("projectbundle: state directory: %w", err)
-	}
-	if info, err := os.Stat(state); err != nil || !info.IsDir() {
-		return "", fmt.Errorf("projectbundle: state directory %s is not a directory", stateDir)
+		return nil, err
 	}
 	real, err := filepath.EvalSymlinks(worktree)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	if rel, err := filepath.Rel(real, state); err == nil && rel != ".." && !strings.HasPrefix(rel, "../") {
-		return "", errors.New("projectbundle: the state directory must be outside the worktree")
+		return nil, errors.New("projectbundle: the state directory must be outside the worktree")
 	}
-	path := filepath.Join(state, recoveryRecordName)
-	if _, err := os.Lstat(path); err == nil {
-		return "", fmt.Errorf("%w: %s", ErrRecoveryRecordExists, path)
+	fd, err := unix.Open("/", unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return nil, err
 	}
-	return path, nil
+	parts := strings.Split(strings.TrimPrefix(state, "/"), "/")
+	for i := -1; i < len(parts); i++ {
+		if i >= 0 {
+			next, e := unix.Openat(fd, parts[i], unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+			unix.Close(fd)
+			if e != nil {
+				return nil, e
+			}
+			fd = next
+		}
+		var st unix.Stat_t
+		err = unix.Fstat(fd, &st)
+		last := i == len(parts)-1
+		valid := (st.Uid == 0 || st.Mode&0022 == 0)
+		if last {
+			valid = st.Uid == uint32(os.Geteuid()) && st.Mode&07777 == 0700
+		}
+		if err != nil || !valid {
+			unix.Close(fd)
+			return nil, errors.New("projectbundle: state directory must be caller-owned 0700 with protected ancestors")
+		}
+	}
+	dir := os.NewFile(uintptr(fd), state)
+	if err := unix.Flock(fd, unix.LOCK_EX|unix.LOCK_NB); err != nil {
+		dir.Close()
+		return nil, err
+	}
+	var st unix.Stat_t
+	err = unix.Fstatat(fd, recoveryRecordName, &st, unix.AT_SYMLINK_NOFOLLOW)
+	if err == nil {
+		dir.Close()
+		return nil, fmt.Errorf("%w: %s", ErrRecoveryRecordExists, filepath.Join(state, recoveryRecordName))
+	}
+	if !errors.Is(err, unix.ENOENT) {
+		dir.Close()
+		return nil, err
+	}
+	return &applyState{dir: dir}, nil
 }
 
-func writeRecoveryRecord(path, worktree, exportDigest string, header ExportHeader, states map[string]Entry) error {
-	record := recoveryRecord{Format: recoveryFormat, Worktree: worktree, ExportDigest: exportDigest,
-		BaselineDigest: header.BaselineDigest, TargetDigest: header.TargetDigest}
-	for _, c := range header.Changes {
-		p := recoveryPath{Path: c.Path, Op: c.Op}
-		if e, ok := states[c.Path]; ok {
-			p.Before = &e
-		}
-		record.Paths = append(record.Paths, p)
+func (s *applyState) removeRecord() error {
+	if err := unix.Unlinkat(int(s.dir.Fd()), recoveryRecordName, 0); err != nil {
+		return err
 	}
+	return s.dir.Sync()
+}
+
+func (s *applyState) writeRecord(record recoveryRecord, create bool) error {
 	data, err := json.MarshalIndent(record, "", "  ")
 	if err != nil {
 		return err
 	}
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	name := recoveryRecordName
+	if !create {
+		name += ".next"
+	}
+	fd, err := resolveAt(int(s.dir.Fd()), name, unix.O_WRONLY|unix.O_CREAT|unix.O_EXCL, 0600)
 	if err != nil {
-		if errors.Is(err, os.ErrExist) {
-			return fmt.Errorf("%w: %s", ErrRecoveryRecordExists, path)
-		}
 		return err
 	}
+	f := os.NewFile(uintptr(fd), name)
 	_, err = f.Write(append(data, '\n'))
 	if err == nil {
 		err = f.Sync()
 	}
-	if cerr := f.Close(); err == nil {
-		err = cerr
+	err = errors.Join(err, f.Close())
+	if err == nil && !create {
+		err = unix.Renameat(int(s.dir.Fd()), name, int(s.dir.Fd()), recoveryRecordName)
 	}
 	if err == nil {
-		err = syncDir(filepath.Dir(path))
+		err = s.dir.Sync()
 	}
-	if err != nil {
-		os.Remove(path)
-		return fmt.Errorf("projectbundle: write recovery record: %w", err)
+	if !create && err != nil {
+		unix.Unlinkat(int(s.dir.Fd()), name, 0)
 	}
-	return nil
+	return err
 }
 
 // checkGit requires the worktree to be the top level of a Git work tree, to have no modified tracked
 // file and no untracked file at a target path, and every file to modify or delete to be tracked so
 // Git still holds its original content.
 func checkGit(worktree string, changes []Change) error {
-	git := func(args ...string) ([]byte, error) {
+	root, err := openRoot(worktree)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	gitInput := func(input io.Reader, args ...string) ([]byte, error) {
 		cmd := exec.Command("git", append([]string{"-C", worktree, "-c", "core.fsmonitor=false"}, args...)...)
-		cmd.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0", "LC_ALL=C")
+		cmd.Env = patchGitEnv()
+		cmd.Stdin = input
 		var stderr bytes.Buffer
 		cmd.Stderr = &stderr
 		out, err := cmd.Output()
@@ -285,6 +369,7 @@ func checkGit(worktree string, changes []Change) error {
 		}
 		return out, nil
 	}
+	git := func(args ...string) ([]byte, error) { return gitInput(nil, args...) }
 	top, err := git("rev-parse", "--is-inside-work-tree", "--show-prefix")
 	if err != nil {
 		return err
@@ -310,15 +395,55 @@ func checkGit(worktree string, changes []Change) error {
 			}
 		}
 	}
-	listing, err := git("ls-files", "-z")
+	listing, err := git("ls-files", "-v", "-z")
 	if err != nil {
 		return err
 	}
 	tracked := make(map[string]bool)
 	for _, p := range bytes.Split(listing, []byte{0}) {
-		tracked[string(p)] = true
+		if len(p) < 3 {
+			continue
+		}
+		path := string(p[2:])
+		tracked[path] = true
+		for _, c := range changes {
+			if (path == c.Path || strings.HasPrefix(path, c.Path+"/")) && (p[0] == 'S' || p[0] >= 'a' && p[0] <= 'z') {
+				return fmt.Errorf("%w: target %s has assume-unchanged or skip-worktree set", ErrDirtyWorktree, path)
+			}
+		}
 	}
 	for _, c := range changes {
+		if c.Type == TypeFile && c.Op != OpCreate && tracked[c.Path] {
+			tree, err := git("ls-tree", "-z", "HEAD", "--", ":(literal)"+c.Path)
+			if err != nil {
+				return err
+			}
+			fields := bytes.SplitN(tree, []byte{'\t'}, 2)
+			var blob string
+			if len(fields) == 2 {
+				meta := strings.Fields(string(fields[0]))
+				if len(meta) == 3 && meta[1] == "blob" {
+					blob = meta[2]
+				}
+			}
+			f, err := openBeneath(root, c.Path, unix.O_RDONLY|unix.O_NONBLOCK)
+			if err != nil {
+				return err
+			}
+			info, err := f.Stat()
+			if err != nil || !info.Mode().IsRegular() {
+				f.Close()
+				return fmt.Errorf("%w: target %s is not a regular file", ErrDirtyWorktree, c.Path)
+			}
+			hash, err := gitInput(f, "hash-object", "--no-filters", "--stdin")
+			f.Close()
+			if err != nil {
+				return err
+			}
+			if blob == "" || strings.TrimSpace(string(hash)) != blob {
+				return fmt.Errorf("%w: target %s differs from its committed HEAD blob", ErrDirtyWorktree, c.Path)
+			}
+		}
 		if c.Type == TypeFile && c.Op != OpCreate && !tracked[c.Path] {
 			return fmt.Errorf("%w: %s is not tracked by Git, so its original content could not be restored", ErrDirtyWorktree, c.Path)
 		}
@@ -358,10 +483,12 @@ func checkDeletedDirectories(root *os.File, changes []Change) error {
 }
 
 type applier struct {
-	root    *os.File
-	bundle  io.ReadSeeker
-	offsets []int64
-	states  map[string]Entry
+	root      *os.File
+	bundle    io.ReadSeeker
+	offsets   []int64
+	states    map[string]Entry
+	locations []applyLocation
+	syncFile  func(*os.File) error
 }
 
 // apply performs one change. changed reports that the target may differ from before, even on error.
@@ -373,6 +500,9 @@ func (a *applier) apply(i int, c Change) (bool, error) {
 	}
 	defer parent.Close()
 	pfd := int(parent.Fd())
+	if err := a.checkParent(parent, c.Path); err != nil {
+		return false, err
+	}
 	old := a.states[c.Path]
 	switch {
 	case c.Op == OpCreate && c.Type == TypeDir:
@@ -402,10 +532,31 @@ func (a *applier) apply(i int, c Change) (bool, error) {
 			return false, err
 		}
 		defer f.Close()
+		if err := a.checkParent(parent, c.Path); err != nil {
+			return false, err
+		}
 		if err := f.Chmod(os.FileMode(withExecutable(perm, c.Executable))); err != nil {
 			return false, err
 		}
+		if err := a.noteChange(parent, name); err != nil {
+			return true, err
+		}
+		syncFile := a.syncFile
+		if syncFile == nil {
+			syncFile = (*os.File).Sync
+		}
+		if err := syncFile(f); err != nil {
+			return true, err
+		}
 	case c.Op == OpDelete && c.Type == TypeDir:
+		target, err := openBeneath(a.root, c.Path, unix.O_RDONLY|unix.O_DIRECTORY)
+		if err != nil {
+			return false, err
+		}
+		target.Close()
+		if err := a.checkParent(parent, c.Path); err != nil {
+			return false, err
+		}
 		if err := unix.Unlinkat(pfd, name, unix.AT_REMOVEDIR); err != nil {
 			return false, err
 		}
@@ -415,8 +566,16 @@ func (a *applier) apply(i int, c Change) (bool, error) {
 			return false, err
 		}
 		f.Close()
+		if err := a.checkParent(parent, c.Path); err != nil {
+			return false, err
+		}
 		if err := unix.Unlinkat(pfd, name, 0); err != nil {
 			return false, err
+		}
+	}
+	if c.Op != OpChmod {
+		if err := a.noteChange(parent, name); err != nil {
+			return true, err
 		}
 	}
 	return true, parent.Sync()
@@ -432,11 +591,15 @@ func withExecutable(perm uint32, executable bool) uint32 {
 // openChecked opens the regular file at name below parent and verifies it still has the state the
 // baseline manifest recorded. It returns the open file and its permission bits.
 func openChecked(pfd int, name string, want Entry) (*os.File, uint32, error) {
-	fd, err := unix.Openat(pfd, name, unix.O_RDONLY|unix.O_NOFOLLOW|unix.O_NONBLOCK|unix.O_CLOEXEC, 0)
+	fd, err := resolveAt(pfd, name, unix.O_RDONLY|unix.O_NONBLOCK, 0)
 	if err != nil {
 		return nil, 0, fmt.Errorf("target changed since the baseline check: %w", err)
 	}
 	f := os.NewFile(uintptr(fd), name)
+	if err := checkMetadata(fd); err != nil {
+		f.Close()
+		return nil, 0, err
+	}
 	var st unix.Stat_t
 	if err := unix.Fstat(fd, &st); err != nil {
 		f.Close()
@@ -461,7 +624,7 @@ func (a *applier) install(i int, c Change, pfd int, name string, mode uint32, re
 		return err
 	}
 	tmpName := ".tbound-apply-" + hex.EncodeToString(suffix[:])
-	fd, err := unix.Openat(pfd, tmpName, unix.O_WRONLY|unix.O_CREAT|unix.O_EXCL|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0o600)
+	fd, err := resolveAt(pfd, tmpName, unix.O_WRONLY|unix.O_CREAT|unix.O_EXCL, 0o600)
 	if err != nil {
 		return err
 	}
@@ -490,6 +653,9 @@ func (a *applier) install(i int, c Change, pfd int, name string, mode uint32, re
 	if err := tmp.Sync(); err != nil {
 		return err
 	}
+	if err := a.checkParentFD(pfd, c.Path); err != nil {
+		return err
+	}
 	if !replace {
 		err = unix.Renameat2(pfd, tmpName, pfd, name, unix.RENAME_NOREPLACE)
 		renamed = err == nil
@@ -500,7 +666,82 @@ func (a *applier) install(i int, c Change, pfd int, name string, mode uint32, re
 		return err
 	}
 	current.Close()
+	if err := a.checkParentFD(pfd, c.Path); err != nil {
+		return err
+	}
 	err = unix.Renameat(pfd, tmpName, pfd, name)
 	renamed = err == nil
 	return err
+}
+
+func (a *applier) checkParent(parent *os.File, path string) error {
+	return a.checkParentFD(int(parent.Fd()), path)
+}
+
+func (a *applier) checkParentFD(fd int, path string) error {
+	parentPath := filepath.Dir(path)
+	current, err := openBeneath(a.root, parentPath, unix.O_RDONLY|unix.O_DIRECTORY)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrParentChanged, err)
+	}
+	defer current.Close()
+	var held, now unix.Stat_t
+	if unix.Fstat(fd, &held) != nil || unix.Fstat(int(current.Fd()), &now) != nil || held.Dev != now.Dev || held.Ino != now.Ino {
+		return ErrParentChanged
+	}
+	return checkMetadata(fd)
+}
+
+type applyLocation struct {
+	parent   *os.File
+	name     string
+	fallback string
+}
+
+func (a *applier) noteChange(parent *os.File, name string) error {
+	path, err := os.Readlink(fmt.Sprintf("/proc/self/fd/%d", parent.Fd()))
+	if err != nil {
+		return err
+	}
+	location := applyLocation{name: name, fallback: filepath.Join(path, name)}
+	fd, err := unix.FcntlInt(parent.Fd(), unix.F_DUPFD_CLOEXEC, 0)
+	if err == nil {
+		location.parent = os.NewFile(uintptr(fd), path)
+	}
+	a.locations = append(a.locations, location)
+	return err
+}
+
+func (a *applier) actualPaths() ([]string, error) {
+	var paths []string
+	var errs error
+	for _, l := range a.locations {
+		path := l.fallback
+		if l.parent != nil {
+			var st unix.Stat_t
+			if err := unix.Fstat(int(l.parent.Fd()), &st); err != nil {
+				errs = errors.Join(errs, err)
+			}
+			if st.Nlink == 0 {
+				paths = append(paths, path)
+				continue
+			}
+			dir, err := os.Readlink(fmt.Sprintf("/proc/self/fd/%d", l.parent.Fd()))
+			if err != nil {
+				errs = errors.Join(errs, err)
+			} else {
+				path = filepath.Join(dir, l.name)
+			}
+		}
+		paths = append(paths, path)
+	}
+	return paths, errs
+}
+
+func (a *applier) closeLocations() {
+	for _, l := range a.locations {
+		if l.parent != nil {
+			l.parent.Close()
+		}
+	}
 }

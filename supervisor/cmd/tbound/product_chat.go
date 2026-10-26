@@ -585,8 +585,14 @@ func (s *chatSession) review(ctx context.Context, turnID, preset string) error {
 	}
 	decision := preset
 	if preset == "" || (preset == chatDecisionPublish && !seen) {
-		if decision, err = s.ask(); err != nil {
+		if decision, err = s.ask(ctx); err != nil {
 			return err
+		}
+		if decision == "/cancel" {
+			if sent, err := s.cancelTurn(ctx, turnID); !sent {
+				return err
+			}
+			return s.settle(ctx, turnID, false)
 		}
 		if decision == "" {
 			fmt.Fprintln(s.stdout, "kept: the turn stays awaiting review (/publish or /discard later)")
@@ -606,8 +612,8 @@ func (s *chatSession) review(ctx context.Context, turnID, preset string) error {
 	return s.settle(ctx, turnID, false)
 }
 
-// ask returns publish, discard, or "" for keep. A detach (interrupt or end of input) keeps too.
-func (s *chatSession) ask() (string, error) {
+// ask returns publish, discard, /cancel, or "" for keep. A detach leaves the review pending.
+func (s *chatSession) ask(ctx context.Context) (string, error) {
 	for {
 		fmt.Fprint(s.stdout, "[p]ublish / [d]iscard / [k]eep? ")
 		line, err := s.readLine()
@@ -616,10 +622,18 @@ func (s *chatSession) ask() (string, error) {
 			return "", err
 		}
 		switch strings.ToLower(strings.TrimSpace(line)) {
-		case "p", "publish":
+		case "p", "publish", "/publish":
 			return chatDecisionPublish, nil
-		case "d", "discard":
+		case "d", "discard", "/discard":
 			return chatDecisionDiscard, nil
+		case "/cancel":
+			return "/cancel", nil
+		case "/quit":
+			return "", errChatDetach
+		case "/status":
+			if err := s.showStatus(ctx); err != nil {
+				return "", err
+			}
 		case "k", "keep", "":
 			return "", nil
 		}

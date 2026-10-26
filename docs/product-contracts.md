@@ -156,6 +156,8 @@ Go owns the history. Each turn's provider journal is self-contained.
 
 Before it imports a predecessor, the next turn reopens the predecessor's retained journals read-only and checks their verified heads and counts against this receipt. A mismatch refuses the launch with `RefuseUnlinkedTurn(turn, PREDECESSOR_EVIDENCE_INVALID)`: the new turn is `failed` with a full refund, and the session is blocked.
 
+Transient journal lock contention or resource exhaustion abandons the unlinked launch with a full refund and leaves the session open for a new request key. It is not invalid predecessor evidence.
+
 `worker_kind` is `headless-fixture` in milestone 1, because the worker is the in-process deterministic driver. Receipts never claim an OS process settlement that did not happen. A real Pi worker per turn needs the product guest and is pending.
 
 ## Outcomes
@@ -314,11 +316,16 @@ Decisions taken during implementation:
 ### Import and export decisions taken during implementation
 
 - Both streams are the format line, a 4-byte big-endian header length, a canonical JSON header, and then the raw file contents in header order. The reader re-encodes the header and refuses any byte difference, so exactly one encoding is accepted. Digests are `sha256:` over the header bytes.
-- Every parent directory must be listed in the manifest. `.git` and a root `lost+found` are always excluded. Excluded subtrees are never read.
+- Every parent directory must be listed in the manifest. Any component equal to `.git` under Unicode case folding and a root `lost+found` are always excluded. Import and export validation refuse Git administration under the same rule. Excluded subtrees are never read.
+- Scans and apply open descendants with Linux `openat2`, using `RESOLVE_BENEATH | RESOLVE_NO_SYMLINKS | RESOLVE_NO_XDEV`. This refuses same-filesystem bind mounts as well as other mount crossings, including mounted regular files. Kernels without the required resolution support fail closed.
+- Files and directories with POSIX access/default ACLs or `user.*` or `trusted.*` extended attributes are refused during scans and apply target rechecks. `security.*` labels are tolerated as host policy; bundles do not carry or restore them.
 - Only the executable bit is carried. New files are created 0644 or 0755. A change of type (file to directory) is refused.
-- Apply validates the baseline digest, the declared target digest and every content digest before the first write. It refuses changes to files Git does not track, because their original content could not be restored. The recovery record lists the pre-apply entries, and restoring relies on the clean tracked tree in Git.
+- Apply validates the baseline digest, the declared target digest and every content digest before producing a patch or writing targets. It refuses changes to existing files Git does not track, target paths marked assume-unchanged or skip-worktree, and existing targets whose raw bytes differ from their committed HEAD blob, even if Git status reports clean.
+- By default `tbound project apply` leaves the worktree unchanged and creates a new `tbound-export.patch` in `--state-dir`. An isolated Git object store and index generate a binary-safe patch with file creates, deletes and executable-bit changes. The client runs `git apply --check` and prints exact `git -C ... apply --check -- PATCH` and `git -C ... apply -- PATCH` commands. The user excludes concurrent writers before checking and applying it. Git cannot represent empty-directory changes; patch mode refuses those changes, including changes that would require retaining an empty directory.
+- Direct writes require both `--direct` and `--writer-exclusion-held`. This is the user's guarantee that no concurrent writer can alter or move the worktree for the whole apply; the client cannot establish that guarantee itself. Immediately before each rename it resolves the parent again from the worktree root fd and compares device/inode with the held parent fd. A mismatch aborts and retains the recovery record even before the first target mutation. This check does not replace writer exclusion.
+- The state directory must be caller-owned, exactly 0700, outside the worktree, with no symlink ancestors or group/other-writable non-root ancestors. An exclusive lock serializes clients using that directory. Record creation, updates, removal and patch creation use its held directory fd. The direct-mode recovery record lists pre-apply entries and the actual absolute paths changed so far; restoring relies on the clean tracked tree in Git. The client syncs executable-bit changes and retains the record on sync failure.
 - `apply` takes the same `--exclude` list as `bundle`, so both sides compute the same manifest.
-- `import` and `apply` do not check which account runs them. The separation between service and user comes from who runs each command, as the help text states.
+- `import` and `apply` do not check which account runs them. The separation between service and user comes from who runs each command, as the help text states. The service never reads or writes the original repository.
 
 ### Development environment
 
@@ -346,6 +353,7 @@ Go still parses `offset`, `limit` and `timeout` when a call carries them, becaus
   - the worker mode: `pi` on a qualified host, or `headless-fixture` for tests only.
 - Every path must be a product default or below one. None may be a thesis path.
 - On start the service verifies the registration and opens the catalog. It runs `ReconcileAfterRestart` before it accepts any request. Then it listens on `/run/tbound-product/product.sock`, socket mode 0660, group-restricted.
+- Before replacing a stale socket it acquires an exclusive nonblocking flock on `<socket>.lock` and holds it for the service lifetime, independently of the catalog lock. A held socket lock refuses startup.
 - The principal is the connection's `SO_PEERCRED` UID. The catalog checks it against `allowed_principals`. Payloads never carry a principal.
 - Admitted turns run in the service, not in the client. A client that disconnects leaves its accepted work running. One goroutine drives each turn. A review-expiry ticker calls `ExpireReviews`.
 - Shutdown stops new admissions, lets running turns reach their next step boundary, and closes pending reviews. A pending review then becomes `discarded` with reason `restart` on the next start.
@@ -358,7 +366,7 @@ Each connection carries one length-prefixed strict JSON request and one response
 | --- | --- | --- |
 | `create_session` | project, provider profile, publication mode, budget, read_only, request key | session snapshot, replayed flag |
 | `submit_turn` | session, expected revision, request key, prompt, optional expected baseline | turn snapshot, replayed flag (the turn starts asynchronously) |
-| `get_session` | session | session snapshot with every turn's state, outcome, candidate, cancel request, resolution, and remaining budget |
+| `get_session` | session | session snapshot with the latest 64 turns plus every unresolved turn, total_turns, turns_truncated, and remaining budget; each included turn carries its state, outcome, candidate, cancel request and resolution |
 | `list_sessions` | none | the principal's sessions |
 | `observe` | session, cursor, wait_ms (at most 30000) | events after the cursor, next cursor, gap flag |
 | `get_candidate` | session, turn | the pending candidate's changed paths, each with operation and a bounded text diff |
@@ -372,6 +380,7 @@ Each connection carries one length-prefixed strict JSON request and one response
 Events are projected only from durable records: catalog records for the session, and each turn's provider journal. The kinds are `turn_admitted`, `turn_linked`, `assistant_message`, `tool_call` (tool, verdict, reason code, hint), `tool_result` (bounded summary), `turn_cancel_requested`, `turn_awaiting_review` (candidate digest and changed paths), `turn_resolution_requested`, and `turn_terminal` (outcome and reason).
 
 - The cursor indexes the deterministic event list of the session.
+- Cancellation and resolution events are withheld until the turn is final, so concurrent review mutations cannot move events behind an issued cursor. Full turn history comes from observations, not session snapshots.
 - Credentials, host paths and raw request bodies are never projected.
 - Assistant text comes only from completed provider exchanges, never from provisional output.
 
@@ -393,3 +402,109 @@ Events are projected only from durable records: catalog records for the session,
   | 1 | anything else |
 
 - Session and turn IDs are printed for reference, but ordinary use never requires typing them, except `--session` to reconnect.
+
+## Milestone 5: product host setup, updates and diagnostics (P8)
+
+Everything here runs against a test root (`--root DIR`) and supports `--dry-run`, so it can be verified without a real host. Real qualification needs the product host and is pending.
+
+### Release trust
+
+- Release artifacts get a signed manifest, `tbound-release-manifest/v1`. It lists each artifact's name, size and SHA-256, with an Ed25519 signature over the canonical manifest bytes.
+- The publisher's public key is distributed separately from the artifacts. Users compare its fingerprint, the first 16 hex characters of the SHA-256 of the raw key, against the README and the release notes.
+- `tbound release verify --manifest F --signature F --public-key F [--artifact F...]` refuses a bad signature, an unknown artifact, or a size or digest mismatch. A same-origin checksum file alone is never accepted as authentication.
+- `install/install.sh` verifies the manifest signature before extracting anything, when it is given a public key.
+- A first install trusts a key that has not been seen before. The documentation states that limit.
+
+### Registration tooling (offline administrator)
+
+- `tbound product registration keygen --out DIR` writes an Ed25519 key pair. The private key is 0600, and the command refuses an existing file. The private key stays offline and never enters the service host.
+- `tbound product registration init --out FILE` writes an unsigned registration template from flags: projects, scope, provider profiles, limits, principals, runtime, image and extension digests.
+- `tbound product registration sign --registration FILE --key PRIVATE --out FILE` writes the signed registration and its `.sig` with the existing `SignRegistration`.
+- `tbound product registration verify --registration FILE --signature FILE --public-key FILE` prints the digest and a summary.
+- Changing a project, scope, policy or limit means signing a new registration. No per-task signing exists.
+
+### Host setup (administrator, on the product host)
+
+`tbound product setup --config FILE [--root DIR] [--dry-run]` makes the host match the plan and is idempotent:
+
+1. It checks prerequisites with the existing governed-host and doctor checks: kernel and Landlock ABI, cgroup v2 delegation, rootless Podman and crun, an ext4 managed root, and systemd. An unsupported host fails before any change, and the failure names the qualified VM option.
+2. It creates the `tbound-product` system user and group, or verifies that they exist with the same IDs.
+3. It creates the directories with exact owners and modes:
+
+   | Path | Owner | Mode |
+   | --- | --- | --- |
+   | `/etc/tbound-product` | root | 0755 |
+   | `/etc/tbound-product/credentials` | service | 0700 |
+   | `/var/lib/tbound-product` (catalog, turns, projects) | service | 0700 (the audit journal requires an exact 0700 parent) |
+   | runtime directory | from the unit | from the unit |
+
+4. It installs the registration, signature and public key as root-owned 0644 files. It writes the service config and the `tbound-product.service` unit: `User=tbound-product`, `RuntimeDirectory=tbound-product`, and hardening matching the research unit where it applies. Then it runs `daemon-reload`.
+5. It never creates or replaces the owner's signing key, and it never touches a `/etc/tbound`, `/var/lib/tbound` or `/run/tbound` path.
+
+Running it again changes nothing and reports "unchanged". An existing file with different content is refused unless `--replace` is given.
+
+### Update, rollback and uninstall
+
+- `tbound product update --binary NEW [--root DIR]` stages the new binary, stops the service, and opens the catalog. It refuses while any turn is unresolved, other than a pending review, which becomes `discarded` with reason `restart`. It keeps the current binary as last-known-good, swaps atomically, starts the service, and runs the self-test. If the self-test fails, it rolls back.
+- `tbound product rollback` restores last-known-good the same way.
+- Catalog schema changes need a version check and a backup before the swap. A newer schema is never read by an older binary.
+- `tbound product uninstall [--root DIR] [--purge]` stops and disables the service and removes the unit, binary and runtime access. It reports unresolved turns. It keeps `/etc/tbound-product` and `/var/lib/tbound-product` unless `--purge` is given, and `--purge` asks for confirmation unless `--yes` is also given.
+
+### Diagnostics
+
+- `tbound product doctor` is advisory. It reports prerequisites, installation owners and modes, unit state, socket reachability, registration verification, and credential status (never the key).
+- `tbound product doctor --self-test` runs an explicit runtime self-test turn on a synthetic project with the configured worker. Only that self-test, never the advisory checks, can report governed readiness.
+
+## Milestone 6: live web chat (P9)
+
+The web chat stays an optional, separate Go module (`extensions/webchat`). It never imports the supervisor. It speaks `tbound-product-protocol/v1` over the product socket, with its own copy of the wire types. A parity test checks that copy against JSON fixtures the supervisor generates.
+
+### Authority
+
+- The gateway runs as the user and connects to `/run/tbound-product/product.sock`, so the service sees the user's UID as the principal. The browser gains no authority beyond that user's. The gateway holds no policy, lease, effect or publication authority. It forwards requests and renders projections.
+- Deviation from the plan: the plan describes supervisor-issued, scoped browser delegations. In this milestone the gateway's pairing secret scopes the browser instead, and the supervisor sees only the user principal. Supervisor-issued delegations with separate read, submit, cancel and resolve rights remain open work.
+
+### Pairing and sessions
+
+- `tbound-webchat --live --socket PATH [--listen 127.0.0.1:8791]` binds only a literal loopback address.
+- At start it prints a one-time pairing URL, `http://127.0.0.1:8791/pair#<token>`, to the terminal only. The token is 32 random bytes and lives at most 10 minutes. It is never written to disk or logs.
+- The pairing page posts the token to `POST /api/v1/pair`. The gateway answers with a `tbound_session` cookie (random, HttpOnly, SameSite=Strict, Path=/, 12-hour lifetime) and a CSRF token. The pairing token is spent on first use.
+- Every API request needs the session cookie.
+- Every mutation also needs the `X-TBound-CSRF` header to equal the session's CSRF token.
+- `Host` must equal the bound `127.0.0.1:PORT` or `localhost:PORT`.
+- When an `Origin` header is present, it must equal `http://` plus that host.
+- There is no CORS. Request bodies are at most 64 KiB of strict JSON.
+
+### Routes
+
+| Method and path | Maps to |
+| --- | --- |
+| `GET /api/v1/sessions` | `list_sessions` |
+| `POST /api/v1/sessions` | `create_session` |
+| `GET /api/v1/sessions/{id}` | `get_session`, rendered into the existing snapshot shape with `source: "live"` |
+| `GET /api/v1/sessions/{id}/events?cursor=N&wait=MS` | `observe` (long poll, wait at most 25 s) |
+| `POST /api/v1/sessions/{id}/turns` | `submit_turn` (the request key comes from the client; the gateway never invents a retry) |
+| `GET /api/v1/sessions/{id}/turns/{turn}/candidate` | `get_candidate` |
+| `POST /api/v1/sessions/{id}/turns/{turn}/cancel` | `cancel_turn` |
+| `POST /api/v1/sessions/{id}/turns/{turn}/resolve` | `resolve_turn` with the candidate digest the client displayed |
+
+- Errors keep the service's stable codes.
+- The fixture, replay and receipt modes stay available, labelled as demonstrations.
+
+### Browser UI
+
+The existing React app gains a live mode:
+
+- a session picker and creator showing project, provider and mode;
+- a composer that submits with a fresh request key per prompt;
+- a cancel button;
+- the event stream, with assistant text, tool calls, governance decisions and hints, and outcomes;
+- a diff review with Publish and Discard bound to the displayed candidate digest;
+- remaining budget, recovery and blocked states;
+- reconnect from the cursor after reload.
+
+Model-authored text is rendered through the existing sanitizing markdown path. Governance status stays structurally and visually separate from model output. Keyboard access and focus behaviour follow the existing components.
+
+### Windows access
+
+Use an SSH tunnel to the product host: `ssh -L 8791:127.0.0.1:8791 user@host`, with pinned host keys. Never bind a non-loopback address.

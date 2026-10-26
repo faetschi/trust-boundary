@@ -5,6 +5,7 @@ package projectbundle
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -109,7 +110,7 @@ func (s *scanner) refuse(path, reason string) {
 }
 
 func (s *scanner) isExcluded(rel, name string) bool {
-	return name == gitDir || (rel == name && name == fenceDir) || s.exclude[rel]
+	return strings.EqualFold(name, gitDir) || (rel == name && name == fenceDir) || s.exclude[rel]
 }
 
 func (s *scanner) walk(dir *os.File, rel string) error {
@@ -190,7 +191,7 @@ func (s *scanner) directory(parent *os.File, name, path string, st *unix.Stat_t)
 		s.refuse(path, "mount point or other filesystem")
 		return nil
 	}
-	fd, err := unix.Openat(int(parent.Fd()), name, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+	fd, err := resolveAt(int(parent.Fd()), name, unix.O_RDONLY|unix.O_DIRECTORY, 0)
 	if err != nil {
 		s.refuse(path, fmt.Sprintf("cannot open directory: %v", err))
 		return nil
@@ -200,6 +201,10 @@ func (s *scanner) directory(parent *os.File, name, path string, st *unix.Stat_t)
 	var opened unix.Stat_t
 	if err := unix.Fstat(fd, &opened); err != nil || !sameNode(st, &opened) {
 		s.refuse(path, "changed while being scanned")
+		return nil
+	}
+	if err := checkMetadata(fd); err != nil {
+		s.refuse(path, err.Error())
 		return nil
 	}
 	s.entries = append(s.entries, Entry{Path: path, Type: TypeDir})
@@ -219,7 +224,7 @@ func (s *scanner) file(parent *os.File, name, path string, st *unix.Stat_t) {
 		s.stop = true
 		return
 	}
-	fd, err := unix.Openat(int(parent.Fd()), name, unix.O_RDONLY|unix.O_NOFOLLOW|unix.O_NONBLOCK|unix.O_CLOEXEC, 0)
+	fd, err := resolveAt(int(parent.Fd()), name, unix.O_RDONLY|unix.O_NONBLOCK, 0)
 	if err != nil {
 		s.refuse(path, fmt.Sprintf("cannot open: %v", err))
 		return
@@ -229,6 +234,10 @@ func (s *scanner) file(parent *os.File, name, path string, st *unix.Stat_t) {
 	var opened unix.Stat_t
 	if err := unix.Fstat(fd, &opened); err != nil || !sameNode(st, &opened) || opened.Size != st.Size {
 		s.refuse(path, "changed while being scanned")
+		return
+	}
+	if err := checkMetadata(fd); err != nil {
+		s.refuse(path, err.Error())
 		return
 	}
 	sum, err := hashFile(f, st.Size)
@@ -262,32 +271,84 @@ func openRoot(path string) (*os.File, error) {
 	if err != nil {
 		return nil, &os.PathError{Op: "open", Path: path, Err: err}
 	}
-	return os.NewFile(uintptr(fd), path), nil
+	f := os.NewFile(uintptr(fd), path)
+	if err := checkMetadata(fd); err != nil {
+		f.Close()
+		return nil, err
+	}
+	return f, nil
 }
 
-// openBeneath opens rel below root one component at a time with O_NOFOLLOW, so a symlink anywhere in
-// the path fails the open. flags apply to the last component; an empty rel opens root itself.
+// resolveAt refuses symlinks and mount crossings, including same-device bind mounts.
+func resolveAt(dirfd int, path string, flags int, mode uint32) (int, error) {
+	return resolveWith(unix.Openat2, dirfd, path, flags, mode)
+}
+
+func resolveWith(open func(int, string, *unix.OpenHow) (int, error), dirfd int, path string, flags int, mode uint32) (int, error) {
+	fd, err := open(dirfd, path, &unix.OpenHow{Flags: uint64(flags | unix.O_NOFOLLOW | unix.O_CLOEXEC), Mode: uint64(mode), Resolve: unix.RESOLVE_BENEATH | unix.RESOLVE_NO_SYMLINKS | unix.RESOLVE_NO_XDEV})
+	if errors.Is(err, unix.EXDEV) {
+		return -1, fmt.Errorf("projectbundle: mount point or filesystem crossing refused at %s: %w", path, err)
+	}
+	return fd, err
+}
+
 func openBeneath(root *os.File, rel string, flags int) (*os.File, error) {
-	parts := []string{"."}
-	if rel != "" {
-		parts = strings.Split(rel, "/")
+	if rel == "" {
+		rel = "."
 	}
-	dirfd, owned := int(root.Fd()), false
-	for i, part := range parts {
-		f := unix.O_RDONLY | unix.O_DIRECTORY
-		if i == len(parts)-1 {
-			f = flags
-		}
-		fd, err := unix.Openat(dirfd, part, f|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
-		if owned {
-			unix.Close(dirfd)
-		}
+	fd, err := resolveAt(int(root.Fd()), rel, flags, 0)
+	if err != nil {
+		return nil, &os.PathError{Op: "openat2", Path: rel, Err: err}
+	}
+	f := os.NewFile(uintptr(fd), rel)
+	if err := checkMetadata(int(root.Fd())); err != nil {
+		f.Close()
+		return nil, err
+	}
+	parts := strings.Split(rel, "/")
+	for i := 1; i < len(parts); i++ {
+		ancestor, err := resolveAt(int(root.Fd()), strings.Join(parts[:i], "/"), unix.O_RDONLY|unix.O_DIRECTORY, 0)
 		if err != nil {
-			return nil, &os.PathError{Op: "openat", Path: rel, Err: err}
+			f.Close()
+			return nil, err
 		}
-		dirfd, owned = fd, true
+		err = checkMetadata(ancestor)
+		unix.Close(ancestor)
+		if err != nil {
+			f.Close()
+			return nil, err
+		}
 	}
-	return os.NewFile(uintptr(dirfd), rel), nil
+	if err := checkMetadata(fd); err != nil {
+		f.Close()
+		return nil, err
+	}
+	return f, nil
+}
+
+// Security labels are host policy; ACLs and user/trusted attributes cannot be carried by a bundle.
+func checkMetadata(fd int) error {
+	n, err := unix.Flistxattr(fd, nil)
+	if errors.Is(err, unix.ENOTSUP) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("cannot list extended attributes: %w", err)
+	}
+	names := make([]byte, n)
+	n, err = unix.Flistxattr(fd, names)
+	if err != nil {
+		return fmt.Errorf("cannot list extended attributes: %w", err)
+	}
+	if n > len(names) {
+		return errors.New("extended attributes changed while being checked")
+	}
+	for _, name := range strings.Split(string(names[:n]), "\x00") {
+		if name == "system.posix_acl_access" || name == "system.posix_acl_default" || strings.HasPrefix(name, "user.") || strings.HasPrefix(name, "trusted.") {
+			return fmt.Errorf("unsupported ACL or extended attribute %s", name)
+		}
+	}
+	return nil
 }
 
 // copyFile streams the content of the file at e.Path below root to w and verifies it against e.
@@ -303,6 +364,9 @@ func copyFile(root *os.File, e Entry, w io.Writer) error {
 	}
 	if st.Mode&unix.S_IFMT != unix.S_IFREG || st.Nlink > 1 || st.Size != e.Size {
 		return fmt.Errorf("projectbundle: %s changed while the bundle was written", e.Path)
+	}
+	if err := checkMetadata(int(f.Fd())); err != nil {
+		return err
 	}
 	h := sha256.New()
 	n, err := io.Copy(io.MultiWriter(w, h), io.LimitReader(f, e.Size+1))

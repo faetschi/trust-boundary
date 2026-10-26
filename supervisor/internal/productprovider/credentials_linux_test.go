@@ -407,3 +407,31 @@ func TestProviderSetupCreatesServiceDirectory(t *testing.T) {
 		t.Fatalf("service ownership: %+v %v", status, err)
 	}
 }
+
+func TestReadSourceRefusesSymlinkAndWritableAncestors(t *testing.T) {
+	base := t.TempDir()
+	real := filepath.Join(base, "real")
+	if err := os.Mkdir(real, 0700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(real, "key")
+	if err := os.WriteFile(path, []byte(sentinelKey), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ReadSource(path); err != nil {
+		t.Fatalf("secure source refused: %v", err)
+	}
+	link := filepath.Join(base, "link")
+	if err := os.Symlink(real, link); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ReadSource(filepath.Join(link, "key")); !errors.Is(err, ErrCredential) {
+		t.Fatalf("symlink ancestor accepted: %v", err)
+	}
+	if err := os.Chmod(real, 0770); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ReadSource(path); !errors.Is(err, ErrCredential) {
+		t.Fatalf("group-writable ancestor accepted: %v", err)
+	}
+}

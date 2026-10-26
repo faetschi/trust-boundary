@@ -3,23 +3,59 @@
 #
 #   curl -fsSL https://get.tbound.dev | bash
 #   bash install.sh --version <ver> [--prefix <dir>] [--base-url <url> | --local-dist <dir>] [--no-path] [--no-completions]
+#                   [--public-key <file> [--key-fingerprint <hex16>] [--verifier <tbound>]]
 #   bash install.sh update  [--version <ver> ...]
 #   bash install.sh uninstall [--prefix <dir>]
 #
 # Installs the tbound and tbound-doctor binaries plus the runtime bundle into a
 # user-owned prefix. It never uses sudo and never touches the user's global Node
-# or Pi install. Artifacts are checksum-verified before extraction, the prefix is
+# or Pi install. Artifacts are verified before extraction (see TRUST below), the prefix is
 # marker-owned so uninstall cannot delete unrelated data, and updates are staged
 # before being swapped into place.
+#
+# TRUST. Without --public-key the installer only compares the artifact with SHA256SUMS from the
+# same origin: that detects corruption, not a replaced download, and is not publisher
+# authentication. With --public-key FILE it requires tbound-release-manifest.json and
+# tbound-release-manifest.json.sig next to the artifacts and runs `tbound release verify`
+# (signature, then the artifact's size and SHA-256) BEFORE extracting anything; a checksum file is
+# then not used at all. The verifier is --verifier PATH, $TBOUND_VERIFIER, or `tbound` on PATH. It
+# must come from somewhere you trust independently of the download (a build from source, or an
+# earlier verified install). A verifier taken from the archive being checked proves nothing.
+# FIRST-INSTALL LIMIT: the first time, nothing proves the public key is the publisher's. Compare its
+# fingerprint (`tbound release fingerprint --public-key FILE`, printed on success) with the value in
+# the README and release notes, obtained separately, or pass it as --key-fingerprint HEX16. Later
+# installs and updates are checked against the key you already trust.
 set -euo pipefail
 
 DEFAULT_VERSION="latest"
 NODE_MIN="22.19"
 MARKER=".tbound-install"
+MANIFEST_NAME="tbound-release-manifest.json"
 
 log()  { printf 'tbound-install: %s\n' "$*"; }
 die()  { printf 'tbound-install: error: %s\n' "$*" >&2; exit 1; }
 have() { command -v "$1" >/dev/null 2>&1; }
+
+usage() {
+  local self="${BASH_SOURCE[0]:-}"
+  if [ -r "$self" ]; then
+    sed -n '2,/^set -euo pipefail/{/^set -euo/d;s/^# \{0,1\}//;p;}' "$self"
+  else
+    printf 'see the header of install.sh (download it first to read the TRUST notes)\n'
+  fi
+}
+
+# verify_signature runs the verifier on the signed manifest and the artifact. It dies before anything
+# is extracted. A checksum file is not an input.
+verify_signature() {
+  local dir="$1" artifact="$2" key="$3" fingerprint="$4" verifier="$5"
+  [ -f "$key" ] || die "public key file not found: $key"
+  [ -n "$verifier" ] || verifier="$(command -v tbound || true)"
+  { [ -n "$verifier" ] && [ -x "$verifier" ]; } || die "no verifier: pass --verifier PATH to a tbound binary you trust independently of this download"
+  local args=(release verify --manifest "$dir/$MANIFEST_NAME" --signature "$dir/$MANIFEST_NAME.sig" --public-key "$key" --artifact "$dir/$artifact")
+  [ -z "$fingerprint" ] || args+=(--fingerprint "$fingerprint")
+  "$verifier" "${args[@]}" || die "release signature verification failed; nothing was extracted"
+}
 
 default_prefix() {
   if [ -n "${TBOUND_PREFIX:-}" ]; then printf '%s' "$TBOUND_PREFIX"; return; fi
@@ -153,14 +189,17 @@ uninstall() {
 }
 
 install_at() {
-  # install a verified artifact; requires $1 artifact path, $2 verified sums file, $3 version, $4 prefix
+  # install a verified artifact; requires $1 artifact path, $2 sums file (empty when the signed
+  # manifest was already verified), $3 version, $4 prefix
   local artifact="$1" sums="$2" version="$3" prefix="$4"
   local want got
-  want="$(awk -v a="$(basename "$artifact")" '$2==a || $2=="./"a {print $1}' "$sums" | head -n1)"
-  [ -n "$want" ] || die "no checksum entry for $(basename "$artifact")"
-  got="$(sha256_file "$artifact")"
-  [ "$want" = "$got" ] || die "checksum mismatch for $(basename "$artifact") (want $want got $got)"
-  log "checksum ok"
+  if [ -n "$sums" ]; then
+    want="$(awk -v a="$(basename "$artifact")" '$2==a || $2=="./"a {print $1}' "$sums" | head -n1)"
+    [ -n "$want" ] || die "no checksum entry for $(basename "$artifact")"
+    got="$(sha256_file "$artifact")"
+    [ "$want" = "$got" ] || die "checksum mismatch for $(basename "$artifact") (want $want got $got)"
+    log "checksum ok (integrity only: not publisher authentication; use --public-key for a signed install)"
+  fi
 
   if [ -e "$prefix" ] && [ -n "$(ls -A "$prefix" 2>/dev/null || true)" ] && ! is_owned_prefix "$prefix"; then
     die "refusing to install into non-empty, non-tbound prefix $prefix (remove it or choose another --prefix)"
@@ -234,6 +273,7 @@ trap cleanup EXIT
 
 main() {
   case "${1:-}" in
+    -h|--help) usage; return ;;
     uninstall) shift; uninstall "$@"; return ;;
     update)    shift; set -- update "$@" ;;
   esac
@@ -242,6 +282,7 @@ main() {
 
   local version="${TBOUND_VERSION:-$DEFAULT_VERSION}"
   local prefix base_url local_dist="" add_path=1 no_completions=0
+  local public_key="" key_fingerprint="" verifier="${TBOUND_VERIFIER:-}"
   prefix="$(default_prefix)"
   base_url="${TBOUND_BASE_URL:-https://get.tbound.dev/releases}"
   local_dist="${TBOUND_LOCAL_DIST:-}"
@@ -254,6 +295,10 @@ main() {
       --local-dist) local_dist="${2:?}"; shift 2 ;;
       --no-path)    add_path=0; shift ;;
       --no-completions) no_completions=1; shift ;;
+      --public-key) public_key="${2:?}"; shift 2 ;;
+      --key-fingerprint) key_fingerprint="${2:?}"; shift 2 ;;
+      --verifier)   verifier="${2:?}"; shift 2 ;;
+      -h|--help)    usage; return ;;
       *) die "unexpected argument: $1" ;;
     esac
   done
@@ -273,16 +318,34 @@ main() {
   if [ -n "$local_dist" ]; then
     [ -f "$local_dist/$artifact" ] || die "local dist missing $artifact"
     cp "$local_dist/$artifact" "$STAGE/$artifact"
-    if [ -f "$local_dist/SHA256SUMS" ]; then cp "$local_dist/SHA256SUMS" "$STAGE/SHA256SUMS"; else : > "$STAGE/SHA256SUMS"; fi
+    if [ -n "$public_key" ]; then
+      local f
+      for f in "$MANIFEST_NAME" "$MANIFEST_NAME.sig"; do
+        [ -f "$local_dist/$f" ] || die "local dist missing $f (required with --public-key)"
+        cp "$local_dist/$f" "$STAGE/$f"
+      done
+    elif [ -f "$local_dist/SHA256SUMS" ]; then cp "$local_dist/SHA256SUMS" "$STAGE/SHA256SUMS"; else : > "$STAGE/SHA256SUMS"; fi
   else
     have curl || die "curl is required for remote install (or pass --local-dist)"
     log "downloading $base_url/$artifact"
     curl -fsSL "$base_url/$artifact" -o "$STAGE/$artifact" || die "download failed"
-    curl -fsSL "$base_url/SHA256SUMS" -o "$STAGE/SHA256SUMS" || die "checksum download failed"
+    if [ -n "$public_key" ]; then
+      curl -fsSL "$base_url/$MANIFEST_NAME" -o "$STAGE/$MANIFEST_NAME" || die "manifest download failed"
+      curl -fsSL "$base_url/$MANIFEST_NAME.sig" -o "$STAGE/$MANIFEST_NAME.sig" || die "manifest signature download failed"
+    else
+      curl -fsSL "$base_url/SHA256SUMS" -o "$STAGE/SHA256SUMS" || die "checksum download failed"
+    fi
   fi
-  [ -s "$STAGE/SHA256SUMS" ] || die "no SHA256SUMS available; refusing to install unverified artifacts"
+  local sums=""
+  if [ -n "$public_key" ]; then
+    verify_signature "$STAGE" "$artifact" "$public_key" "$key_fingerprint" "$verifier"
+  else
+    [ -s "$STAGE/SHA256SUMS" ] || die "no SHA256SUMS available; refusing to install unverified artifacts"
+    log "warning: no --public-key given; the checksum file only detects corruption and is not publisher authentication"
+    sums="$STAGE/SHA256SUMS"
+  fi
 
-  install_at "$STAGE/$artifact" "$STAGE/SHA256SUMS" "$version" "$prefix"
+  install_at "$STAGE/$artifact" "$sums" "$version" "$prefix"
   write_config "$version" "$prefix"
 
   [ "$no_completions" = 0 ] && install_completions "$prefix" || true

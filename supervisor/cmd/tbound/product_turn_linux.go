@@ -9,6 +9,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"tbound/supervisor/internal/audit"
@@ -84,6 +85,10 @@ func (e *productTurnEnv) RunTurn(ctx context.Context, admission productsession.A
 	}
 	predecessor, err := e.predecessorContext(turn, session.ProviderProfile)
 	if err != nil {
+		if errors.Is(err, audit.ErrAlreadyOpen) || errors.Is(err, syscall.EAGAIN) || errors.Is(err, syscall.EBUSY) ||
+			errors.Is(err, syscall.EINTR) || errors.Is(err, syscall.EMFILE) || errors.Is(err, syscall.ENFILE) {
+			return productTurnReceipt{}, e.abandon(turn.ID, err)
+		}
 		return productTurnReceipt{}, e.refuse(turn.ID, productsession.CodePredecessorEvidenceInvalid, err)
 	}
 	measured, err := e.MeasureProjectBaseline(turn.ProjectID)
