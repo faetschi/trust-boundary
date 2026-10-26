@@ -88,8 +88,8 @@ func TestUpdateKeepsLastKnownGoodAndAPendingReviewDoesNotBlock(t *testing.T) {
 		}
 	}
 	again, err := Update(f.env, f.newBinary("binary v2"))
-	if err != nil || again.Changed() || len(again.Commands) != 0 {
-		t.Fatalf("updating to the installed binary must change nothing: %v %v", err, again.Commands)
+	if err != nil || again.Changed() || !slices.Contains(again.Commands, "systemctl start "+UnitName) {
+		t.Fatalf("updating to the installed binary must restart without a swap: %v %v", err, again.Commands)
 	}
 }
 

@@ -60,6 +60,8 @@ func chatDescribe(err error) (int, string) {
 	var service *chatServiceError
 	var transport *chatTransportError
 	switch {
+	case errors.As(err, &transport) && transport.unknownOutcome:
+		return chatExitUnknown, chatLine(err.Error()) + "\n  the request may have been applied; reconnect with --session to check"
 	case errors.As(err, &service):
 		info, known := chatCodes[service.Code]
 		text := chatLine(service.Code)
@@ -73,8 +75,6 @@ func chatDescribe(err error) (int, string) {
 			return chatExitOther, text
 		}
 		return info.exit, text
-	case errors.As(err, &transport) && transport.unknownOutcome:
-		return chatExitUnknown, chatLine(err.Error()) + "\n  the request may have been applied; reconnect with --session to check"
 	}
 	return chatExitOther, chatLine(err.Error())
 }

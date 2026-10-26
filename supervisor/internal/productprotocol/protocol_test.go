@@ -4,8 +4,22 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"reflect"
 	"testing"
 )
+
+func TestProductServiceBoundedSnapshotRoundTrip(t *testing.T) {
+	in := Response{Version: Version, Status: StatusOK, Session: &SessionView{ID: "psess-x", Revision: 1234,
+		TotalTurns: 1000, TurnsTruncated: true, Turns: []TurnView{{ID: "psess-x/turn-1000", Ordinal: 1000, State: "awaiting_review"}}}}
+	var frame bytes.Buffer
+	if err := WriteFrame(&frame, in, MaxResponseBytes); err != nil {
+		t.Fatal(err)
+	}
+	var out Response
+	if err := ReadFrame(&frame, MaxResponseBytes, &out); err != nil || !reflect.DeepEqual(in, out) {
+		t.Fatalf("bounded snapshot round trip: got=%+v err=%v", out.Session, err)
+	}
+}
 
 func TestRequestNeedsExactlyItsPayload(t *testing.T) {
 	good := Request{Version: Version, Op: OpGetSession, GetSession: &SessionRef{SessionID: "psess-x"}}

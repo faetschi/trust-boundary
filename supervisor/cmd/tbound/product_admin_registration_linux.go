@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 
+	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/productsession"
 	"tbound/supervisor/internal/productsetup"
 	"tbound/supervisor/internal/releasetrust"
@@ -236,10 +237,16 @@ func registrationSign(out io.Writer, regFile, keyFile, outFile string) error {
 		return adminRefusal("cannot read the registration template")
 	}
 	var reg productsession.Registration
+	if err := protocol.ValidateStrictJSON(raw); err != nil {
+		return adminRefusal("the registration template is not strict JSON: %v", err)
+	}
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&reg); err != nil {
 		return adminRefusal("the registration template does not match its schema: %v", err)
+	}
+	if err := decoder.Decode(new(any)); err != io.EOF {
+		return adminRefusal("the registration template contains trailing data")
 	}
 	key, err := releasetrust.ReadPrivateKey(keyFile)
 	if err != nil {

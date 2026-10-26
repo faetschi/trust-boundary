@@ -156,6 +156,8 @@ Go owns the history. Each turn's provider journal is self-contained.
 
 Before it imports a predecessor, the next turn reopens the predecessor's retained journals read-only and checks their verified heads and counts against this receipt. A mismatch refuses the launch with `RefuseUnlinkedTurn(turn, PREDECESSOR_EVIDENCE_INVALID)`: the new turn is `failed` with a full refund, and the session is blocked.
 
+Transient journal lock contention or resource exhaustion abandons the unlinked launch with a full refund and leaves the session open for a new request key. It is not invalid predecessor evidence.
+
 `worker_kind` is `headless-fixture` in milestone 1, because the worker is the in-process deterministic driver. Receipts never claim an OS process settlement that did not happen. A real Pi worker per turn needs the product guest and is pending.
 
 ## Outcomes
@@ -337,6 +339,7 @@ The first supported language is Go, with a pinned toolchain image and a pre-fill
   - the worker mode: `pi` on a qualified host, or `headless-fixture` for tests only.
 - Every path must be a product default or below one. None may be a thesis path.
 - On start the service verifies the registration and opens the catalog. It runs `ReconcileAfterRestart` before it accepts any request. Then it listens on `/run/tbound-product/product.sock`, socket mode 0660, group-restricted.
+- Before replacing a stale socket it acquires an exclusive nonblocking flock on `<socket>.lock` and holds it for the service lifetime, independently of the catalog lock. A held socket lock refuses startup.
 - The principal is the connection's `SO_PEERCRED` UID. The catalog checks it against `allowed_principals`. Payloads never carry a principal.
 - Admitted turns run in the service, not in the client. A client that disconnects leaves its accepted work running. One goroutine drives each turn. A review-expiry ticker calls `ExpireReviews`.
 - Shutdown stops new admissions, lets running turns reach their next step boundary, and closes pending reviews. A pending review then becomes `discarded` with reason `restart` on the next start.
@@ -349,7 +352,7 @@ Each connection carries one length-prefixed strict JSON request and one response
 | --- | --- | --- |
 | `create_session` | project, provider profile, publication mode, budget, read_only, request key | session snapshot, replayed flag |
 | `submit_turn` | session, expected revision, request key, prompt, optional expected baseline | turn snapshot, replayed flag (the turn starts asynchronously) |
-| `get_session` | session | session snapshot with every turn's state, outcome, candidate, cancel request, resolution, and remaining budget |
+| `get_session` | session | session snapshot with the latest 64 turns plus every unresolved turn, total_turns, turns_truncated, and remaining budget; each included turn carries its state, outcome, candidate, cancel request and resolution |
 | `list_sessions` | none | the principal's sessions |
 | `observe` | session, cursor, wait_ms (at most 30000) | events after the cursor, next cursor, gap flag |
 | `get_candidate` | session, turn | the pending candidate's changed paths, each with operation and a bounded text diff |
@@ -363,6 +366,7 @@ Each connection carries one length-prefixed strict JSON request and one response
 Events are projected only from durable records: catalog records for the session, and each turn's provider journal. The kinds are `turn_admitted`, `turn_linked`, `assistant_message`, `tool_call` (tool, verdict, reason code, hint), `tool_result` (bounded summary), `turn_cancel_requested`, `turn_awaiting_review` (candidate digest and changed paths), `turn_resolution_requested`, and `turn_terminal` (outcome and reason).
 
 - The cursor indexes the deterministic event list of the session.
+- Cancellation and resolution events are withheld until the turn is final, so concurrent review mutations cannot move events behind an issued cursor. Full turn history comes from observations, not session snapshots.
 - Credentials, host paths and raw request bodies are never projected.
 - Assistant text comes only from completed provider exchanges, never from provisional output.
 
@@ -387,7 +391,7 @@ Events are projected only from durable records: catalog records for the session,
 
 ## Milestone 5: product host setup, updates and diagnostics (P8)
 
-Everything here runs against a test root (`--root DIR`) and supports `--dry-run`, so it can be verified without a real host. Real qualification needs the product host and is pending.
+Everything here runs against a test root (`--root DIR`) and supports `--dry-run`, so it can be verified without a real host. The root must be an existing absolute directory outside the thesis paths (`/etc/tbound`, `/var/lib/tbound`, `/run/tbound`, `/run/tbound-pi`). Roots and destination parents containing symlinks are refused. Destination changes use pinned directory handles so a parent symlink cannot redirect a privileged write or removal. Real qualification needs the product host and is pending.
 
 ### Release trust
 
@@ -401,7 +405,7 @@ Everything here runs against a test root (`--root DIR`) and supports `--dry-run`
 
 - `tbound product registration keygen --out DIR` writes an Ed25519 key pair. The private key is 0600, and the command refuses an existing file. The private key stays offline and never enters the service host.
 - `tbound product registration init --out FILE` writes an unsigned registration template from flags: projects, scope, provider profiles, limits, principals, runtime, image and extension digests.
-- `tbound product registration sign --registration FILE --key PRIVATE --out FILE` writes the signed registration and its `.sig` with the existing `SignRegistration`.
+- `tbound product registration sign --registration FILE --key PRIVATE --out FILE` writes the signed registration and its `.sig` with the existing `SignRegistration`. It refuses duplicate JSON keys and trailing data before signing.
 - `tbound product registration verify --registration FILE --signature FILE --public-key FILE` prints the digest and a summary.
 - Changing a project, scope, policy or limit means signing a new registration. No per-task signing exists.
 
@@ -427,15 +431,15 @@ Running it again changes nothing and reports "unchanged". An existing file with 
 
 ### Update, rollback and uninstall
 
-- `tbound product update --binary NEW [--root DIR]` stages the new binary, stops the service, and opens the catalog. It refuses while any turn is unresolved, other than a pending review, which becomes `discarded` with reason `restart`. It keeps the current binary as last-known-good, swaps atomically, starts the service, and runs the self-test. If the self-test fails, it rolls back.
+- `tbound product update --binary NEW [--root DIR]` stages the new binary, stops the service, and opens the catalog. It refuses while any turn is unresolved, other than a pending review, which becomes `discarded` with reason `restart`. It keeps the current binary as last-known-good, swaps atomically, starts the service, and runs the self-test. If the self-test fails, it rolls back. Retrying when the requested binary is already installed still starts the service and runs the self-test, preserving the existing last-known-good for recovery.
 - `tbound product rollback` restores last-known-good the same way.
 - Catalog schema changes need a version check and a backup before the swap. A newer schema is never read by an older binary.
-- `tbound product uninstall [--root DIR] [--purge]` stops and disables the service and removes the unit, binary and runtime access. It reports unresolved turns. It keeps `/etc/tbound-product` and `/var/lib/tbound-product` unless `--purge` is given, and `--purge` asks for confirmation unless `--yes` is also given.
+- `tbound product uninstall [--root DIR] [--purge]` stops and disables the service and removes the unit, binary and runtime access. On a live host it verifies the service is inactive before removing files. Stop or disable failures abort removal unless systemd confirms the unit is absent and inactive. It reports unresolved turns. It keeps `/etc/tbound-product` and `/var/lib/tbound-product` unless `--purge` is given, and `--purge` asks for confirmation unless `--yes` is also given. A purge refuses an unreadable or locked catalog before removing files. Deletion errors are returned, and only successful deletions are reported as removed.
 
 ### Diagnostics
 
 - `tbound product doctor` is advisory. It reports prerequisites, installation owners and modes, unit state, socket reachability, registration verification, and credential status (never the key).
-- `tbound product doctor --self-test` runs an explicit runtime self-test turn on a synthetic project with the configured worker. Only that self-test, never the advisory checks, can report governed readiness.
+- `tbound product doctor --self-test` runs an explicit runtime self-test turn on a synthetic project with the configured worker. With `--dry-run` it reports the planned self-test without submitting a turn or establishing readiness. Only a passed self-test, never the advisory checks, can report governed readiness.
 
 ## Milestone 6: live web chat (P9)
 

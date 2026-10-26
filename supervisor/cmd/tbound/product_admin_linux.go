@@ -88,6 +88,9 @@ func runProductAdmin(args []string, out, stderr io.Writer) error {
 		return usage()
 	}
 	root = filepath.Clean(root)
+	if err := productsetup.ValidateRoot(root); err != nil {
+		return err
+	}
 	live := root == "/" && !dryRun
 	if live && args[0] != "doctor" && os.Geteuid() != 0 {
 		return adminRefusal("`tbound product %s` changes the host and must run as root (or use --dry-run, or --root DIR)", args[0])

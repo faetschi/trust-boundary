@@ -162,6 +162,8 @@ type SessionView struct {
 	Budget          Budget     `json:"budget"`
 	Consumed        Budget     `json:"consumed"`
 	Reserved        Budget     `json:"reserved"`
+	TotalTurns      int        `json:"total_turns"`
+	TurnsTruncated  bool       `json:"turns_truncated,omitempty"`
 	Turns           []TurnView `json:"turns,omitempty"`
 }
 

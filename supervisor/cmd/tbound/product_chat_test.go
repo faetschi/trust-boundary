@@ -24,6 +24,7 @@ import (
 type chatFake struct {
 	t         *testing.T
 	sock      string
+	listener  net.Listener
 	mu        sync.Mutex
 	reqs      []pp.Request
 	view      pp.SessionView
@@ -47,6 +48,7 @@ func newChatFake(t *testing.T) *chatFake {
 	if err != nil {
 		t.Skipf("unix sockets unavailable: %v", err)
 	}
+	f.listener = ln
 	t.Cleanup(func() { ln.Close() })
 	go func() {
 		for {
