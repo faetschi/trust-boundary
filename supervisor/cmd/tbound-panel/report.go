@@ -442,7 +442,7 @@ func writeReport(path string, evidence any, details map[string]any) error {
 	if err != nil {
 		return err
 	}
-	var fields map[string]any
+	var fields map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &fields); err != nil {
 		return err
 	}
