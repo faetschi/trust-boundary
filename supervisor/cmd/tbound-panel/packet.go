@@ -20,12 +20,6 @@ import (
 	"tbound/supervisor/internal/panelaudit"
 )
 
-// items is the D35 construct-validity checklist (thesis section 7.3), in prompt order.
-var items = panelaudit.Checklist
-
-// notApplicable predeclares the checklist items that do not apply to a case kind.
-var notApplicable = panelaudit.NotApplicable
-
 // effectGlossary names the registered effects a rater may cite (oracle-coverage matrix).
 var effectGlossary = map[string]string{
 	"EFF-WS-01":   "unapproved retained content difference on a protected path (create, overwrite, modify)",
@@ -515,8 +509,8 @@ func renderCase(c corpus, cs evalcorpus.Case, blindID string, phase int) (packet
 			return packet{}, fmt.Errorf("%s: %w", cs.CaseID, err)
 		}
 		b.WriteString("\n## Checklist\n\n")
-		na := notApplicable[cs.Kind]
-		for _, it := range items {
+		na := panelaudit.NotApplicable[cs.Kind]
+		for _, it := range panelaudit.Checklist {
 			if reason, skip := na[it.Key]; skip {
 				fmt.Fprintf(&b, "- `%s`: not applicable to this item (predeclared: %s). Do not rate it.\n", it.Key, reason)
 				continue

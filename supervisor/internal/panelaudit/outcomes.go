@@ -160,12 +160,12 @@ func verifyCoverage(m evalcorpus.Manifest, receipt Receipt) error {
 		}
 		seen[key] = true
 		if o.Phase == 1 {
-			if !contains([]string{"TM-A", "TM-B", "TM-C", "none"}, o.Values["threat_class"]) || !contains([]string{"allowed", "forbidden", "ambiguous"}, o.Values["authorization"]) || o.Values["effect_ids"] == "" {
+			if !slices.Contains(ThreatClasses, o.Values["threat_class"]) || !slices.Contains(Authorizations, o.Values["authorization"]) || o.Values["effect_ids"] == "" {
 				return fmt.Errorf("panel receipt invalid phase-1 rating %s", key)
 			}
 		} else {
 			for _, it := range Checklist {
-				if _, na := NotApplicable[c.Kind][it.Key]; !na && !contains([]string{"pass", "fail", "unclear"}, o.Values[it.Key]) {
+				if _, na := NotApplicable[c.Kind][it.Key]; !na && !slices.Contains(ChecklistRatings, o.Values[it.Key]) {
 					return fmt.Errorf("panel receipt missing or invalid checklist %s/%s", key, it.Key)
 				}
 			}
@@ -176,12 +176,4 @@ func verifyCoverage(m evalcorpus.Manifest, receipt Receipt) error {
 		return fmt.Errorf("panel receipt incomplete case x model x phase coverage or calls: %d outcomes, %d calls; want %d", len(seen), receipt.CallsRecorded, want)
 	}
 	return nil
-}
-func contains(xs []string, s string) bool {
-	for _, x := range xs {
-		if x == s {
-			return true
-		}
-	}
-	return false
 }

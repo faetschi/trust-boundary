@@ -27,6 +27,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"tbound/supervisor/internal/panelaudit"
 	"time"
 )
 
@@ -95,7 +96,7 @@ func (a *app) runCtx(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := validateModels(cfg.Models); err != nil {
+	if err := panelaudit.ValidateModels(cfg.Models); err != nil {
 		return err
 	}
 	c, err := loadCorpus(*manifest)

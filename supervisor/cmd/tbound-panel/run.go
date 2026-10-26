@@ -12,6 +12,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -145,36 +146,34 @@ func sha(s string) string {
 
 // rating is one line of ratings.jsonl: one model's parsed answer for one case.
 type rating struct {
-	CaseID        string                `json:"case_id"`
-	Phase         int                   `json:"phase"` // 1 blind classification, 2 checklist
-	BlindID       string                `json:"blind_id"`
-	Model         string                `json:"model"`
-	Family        string                `json:"family"`
-	ResponseModel string                `json:"response_model"`
-	ResponseHost  string                `json:"response_provider"`
-	ResponseID    string                `json:"response_id"`
-	Kind          evalcorpus.Kind       `json:"kind"`
-	Root          string                `json:"root"`
-	Items         []string              `json:"applicable_items"`
-	Checklist     map[string]itemRating `json:"checklist,omitempty"`
-	Independent   *independent          `json:"independent,omitempty"`
-	Valid         bool                  `json:"valid"`
-	Error         string                `json:"error,omitempty"`
-	Settings      map[string]any        `json:"settings"`
-	PromptSHA256  string                `json:"prompt_sha256"`
-	RequestFile   string                `json:"request_file"`
-	ResponseFile  string                `json:"response_file"`
-	CostUSD       float64               `json:"cost_usd"`
-	Time          string                `json:"time"`
-	Rater         string                `json:"rater"`
+	CaseID        string                  `json:"case_id"`
+	Phase         int                     `json:"phase"` // 1 blind classification, 2 checklist
+	BlindID       string                  `json:"blind_id"`
+	Model         string                  `json:"model"`
+	Family        string                  `json:"family"`
+	ResponseModel string                  `json:"response_model"`
+	ResponseHost  string                  `json:"response_provider"`
+	ResponseID    string                  `json:"response_id"`
+	Kind          evalcorpus.Kind         `json:"kind"`
+	Root          string                  `json:"root"`
+	Items         []string                `json:"applicable_items"`
+	Checklist     map[string]itemRating   `json:"checklist,omitempty"`
+	Independent   *panelaudit.Independent `json:"independent,omitempty"`
+	Valid         bool                    `json:"valid"`
+	Error         string                  `json:"error,omitempty"`
+	Settings      map[string]any          `json:"settings"`
+	PromptSHA256  string                  `json:"prompt_sha256"`
+	RequestFile   string                  `json:"request_file"`
+	ResponseFile  string                  `json:"response_file"`
+	CostUSD       float64                 `json:"cost_usd"`
+	Time          string                  `json:"time"`
+	Rater         string                  `json:"rater"`
 }
 
 type itemRating struct {
 	Rating string `json:"rating"`
 	Reason string `json:"reason"`
 }
-
-type independent = panelaudit.Independent
 
 // decodeAnswer strictly decodes a model answer into v. One surrounding code fence is tolerated.
 func decodeAnswer(content string, v any) error {
@@ -196,10 +195,10 @@ func decodeAnswer(content string, v any) error {
 }
 
 // parseBlind validates a phase-1 answer.
-func parseBlind(content, blindID string) (*independent, error) {
+func parseBlind(content, blindID string) (*panelaudit.Independent, error) {
 	var a struct {
 		ItemID string `json:"item_id"`
-		independent
+		panelaudit.Independent
 	}
 	if err := decodeAnswer(content, &a); err != nil {
 		return nil, err
@@ -207,8 +206,8 @@ func parseBlind(content, blindID string) (*independent, error) {
 	if a.ItemID != blindID {
 		return nil, fmt.Errorf("answer item_id %q, want %q", a.ItemID, blindID)
 	}
-	in := a.independent
-	if !oneOf(in.ThreatClass, "TM-A", "TM-B", "TM-C", "none") || !oneOf(in.Authorization, "allowed", "forbidden", "ambiguous") {
+	in := a.Independent
+	if !slices.Contains(panelaudit.ThreatClasses, in.ThreatClass) || !slices.Contains(panelaudit.Authorizations, in.Authorization) {
 		return nil, fmt.Errorf("classification %q/%q out of range", in.ThreatClass, in.Authorization)
 	}
 	if in.EffectIDs == nil {
@@ -244,20 +243,11 @@ func parseChecklist(content, blindID string, applicable []string) (map[string]it
 	}
 	for _, k := range applicable {
 		r, ok := a.Checklist[k]
-		if !ok || !oneOf(r.Rating, checklistCategories...) || strings.TrimSpace(r.Reason) == "" {
+		if !ok || !slices.Contains(panelaudit.ChecklistRatings, r.Rating) || strings.TrimSpace(r.Reason) == "" {
 			return nil, fmt.Errorf("item %s: rating %q with reason %q", k, r.Rating, r.Reason)
 		}
 	}
 	return a.Checklist, nil
-}
-
-func oneOf(s string, set ...string) bool {
-	for _, x := range set {
-		if s == x {
-			return true
-		}
-	}
-	return false
 }
 
 // pairKey names one rating unit: a case rated by a model in a phase.
@@ -271,17 +261,17 @@ func slug(model string) string { return strings.NewReplacer("/", "__", ":", "_")
 func (r *runner) frozenSettings() map[string]any {
 	var models []map[string]any
 	for _, m := range r.cfg.Models {
-		models = append(models, map[string]any{"id": m.ID, "family": family(m.ID), "temperature": m.Temperature, "max_tokens": m.MaxTokens})
+		models = append(models, map[string]any{"id": m.ID, "family": panelaudit.Family(m.ID), "temperature": m.Temperature, "max_tokens": m.MaxTokens})
 	}
 	var checklist []string
-	for _, it := range items {
+	for _, it := range panelaudit.Checklist {
 		checklist = append(checklist, it.Key+": "+it.Question)
 	}
 	return map[string]any{
 		"schema": "tbound-panel-settings/v2", "provider": r.provName, "models": models, "seed": r.cfg.Seed,
 		"public_policy": r.cfg.PublicPolicy, "manifest_digest": r.corpus.Digest, "phases": "1 blind classification without claims, 2 checklist with claims; separate fresh sessions",
 		"system_prompt_sha256": map[string]string{"phase1": sha(systemPrompts[phaseBlind]), "phase2": sha(systemPrompts[phaseChecklist])},
-		"checklist":            checklist, "not_applicable": notApplicable, "tools": "none", "session": "fresh single-turn per case",
+		"checklist":            checklist, "not_applicable": panelaudit.NotApplicable, "tools": "none", "session": "fresh single-turn per case",
 	}
 }
 
@@ -305,7 +295,7 @@ func (r *runner) checkSettings() error {
 	return nil
 }
 
-func worstCaseUSD(m modelConfig, body []byte) float64 {
+func worstCaseUSD(m panelaudit.Model, body []byte) float64 {
 	// Prompt tokens never exceed prompt bytes, so bytes bound the input side.
 	return (float64(len(body))*m.PromptUSDPerMTok + float64(m.MaxTokens)*m.CompletionUSDPerMTok) / 1e6
 }
@@ -317,7 +307,7 @@ type runSummary struct {
 
 func (r *runner) run(ctx context.Context) (runSummary, error) {
 	var sum runSummary
-	if err := validateModels(r.cfg.Models); err != nil {
+	if err := panelaudit.ValidateModels(r.cfg.Models); err != nil {
 		return sum, err
 	}
 	if err := os.MkdirAll(r.out, 0o700); err != nil {
@@ -385,7 +375,7 @@ func (r *runner) run(ctx context.Context) (runSummary, error) {
 	return sum, errors.Join(runErr, finishErr)
 }
 
-func (r *runner) rateOne(ctx context.Context, phase int, m modelConfig, c evalcorpus.Case, blindID string, callsPath, ratingsPath string, sum *runSummary) error {
+func (r *runner) rateOne(ctx context.Context, phase int, m panelaudit.Model, c evalcorpus.Case, blindID string, callsPath, ratingsPath string, sum *runSummary) error {
 	p, err := renderCase(r.corpus, c, blindID, phase)
 	if err != nil {
 		return err
@@ -444,8 +434,8 @@ func (r *runner) rateOne(ctx context.Context, phase int, m modelConfig, c evalco
 	if err := appendJSONL(callsPath, spendRecord{Kind: "settle", CallID: callID, CostUSD: cost, CostSource: source, Time: now()}); err != nil {
 		return err
 	}
-	rt := rating{CaseID: c.CaseID, Phase: phase, BlindID: blindID, Model: m.ID, Family: family(m.ID), ResponseModel: resp.Model, ResponseHost: resp.Provider,
-		ResponseID: resp.ID, Kind: c.Kind, Root: root(c), Items: p.Items, PromptSHA256: sha(systemPrompts[phase] + "\n" + p.User),
+	rt := rating{CaseID: c.CaseID, Phase: phase, BlindID: blindID, Model: m.ID, Family: panelaudit.Family(m.ID), ResponseModel: resp.Model, ResponseHost: resp.Provider,
+		ResponseID: resp.ID, Kind: c.Kind, Root: panelaudit.Root(c), Items: p.Items, PromptSHA256: sha(systemPrompts[phase] + "\n" + p.User),
 		RequestFile: reqFile, ResponseFile: respFile, CostUSD: cost, Time: now(), Rater: "ai-panel-model (not a human review)",
 		Settings: map[string]any{"temperature": m.Temperature, "max_tokens": m.MaxTokens, "tools": "none", "session": "fresh single-turn"}}
 	if len(resp.Choices) == 0 {
@@ -458,9 +448,9 @@ func (r *runner) rateOne(ctx context.Context, phase int, m modelConfig, c evalco
 		rt.Error = err.Error()
 	}
 	// A host that answered with another family's model breaks the panel's family separation.
-	familyMismatch := family(resp.Model) != family(m.ID)
+	familyMismatch := panelaudit.Family(resp.Model) != panelaudit.Family(m.ID)
 	if familyMismatch {
-		rt.Error = fmt.Sprintf("response model %q is family %q, configured %q is family %q", resp.Model, family(resp.Model), m.ID, family(m.ID))
+		rt.Error = fmt.Sprintf("response model %q is family %q, configured %q is family %q", resp.Model, panelaudit.Family(resp.Model), m.ID, panelaudit.Family(m.ID))
 	}
 	rt.Valid = rt.Error == ""
 	if rt.Valid {
@@ -482,5 +472,3 @@ func (r *runner) rateOne(ctx context.Context, phase int, m modelConfig, c evalco
 	}
 	return nil
 }
-
-func root(c evalcorpus.Case) string { return panelaudit.Root(c) }

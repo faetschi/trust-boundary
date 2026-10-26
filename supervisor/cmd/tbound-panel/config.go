@@ -15,8 +15,8 @@ const hardCapUSD = 10.0
 
 // panelConfig is the owner-chosen panel. Models are configuration, never defaults.
 type panelConfig struct {
-	Schema string        `json:"schema"`
-	Models []modelConfig `json:"models"`
+	Schema string             `json:"schema"`
+	Models []panelaudit.Model `json:"models"`
 	// ExampleModels documents candidate ids for the owner; it is never used to run.
 	ExampleModels []string `json:"example_models,omitempty"`
 	// PublicPolicy is the policy the agent is assumed to know (thesis 3.2.1); both phases show it.
@@ -28,10 +28,6 @@ type panelConfig struct {
 	AuditSample        int                      `json:"audit_sample,omitempty"`
 	TimeoutSeconds     int                      `json:"timeout_seconds,omitempty"`
 }
-
-// modelConfig is one panel member. Prices are USD per million tokens, copied by the owner
-// from the OpenRouter model page; they bound the worst case of the next call.
-type modelConfig = panelaudit.Model
 
 func loadConfig(path string) (panelConfig, error) {
 	raw, err := os.ReadFile(path)
@@ -82,7 +78,3 @@ func loadConfig(path string) (panelConfig, error) {
 	}
 	return cfg, nil
 }
-
-var excludedTokens = panelaudit.ExcludedTokens
-var family = panelaudit.Family
-var validateModels = panelaudit.ValidateModels

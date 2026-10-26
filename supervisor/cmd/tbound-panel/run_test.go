@@ -35,7 +35,7 @@ type countingProvider struct {
 	failFromPhase2 bool // transport error on every phase-2 call
 }
 
-func (c *countingProvider) complete(ctx context.Context, m modelConfig, body []byte) ([]byte, error) {
+func (c *countingProvider) complete(ctx context.Context, m panelaudit.Model, body []byte) ([]byte, error) {
 	c.calls.Add(1)
 	if bytes.Contains(body, []byte("completion_predicate")) {
 		c.phase1.Add(1)
@@ -150,7 +150,7 @@ func TestUnsettledReservationCountsAsSpent(t *testing.T) {
 
 type failingProvider struct{}
 
-func (failingProvider) complete(context.Context, modelConfig, []byte) ([]byte, error) {
+func (failingProvider) complete(context.Context, panelaudit.Model, []byte) ([]byte, error) {
 	return nil, errors.New("connection reset")
 }
 
@@ -186,7 +186,7 @@ func TestOpenRouterClientKeepsKeyOutOfOutputs(t *testing.T) {
 			http.Error(w, "bad request shape", 400)
 			return
 		}
-		m := modelConfig{ID: req["model"].(string), PromptUSDPerMTok: 1, CompletionUSDPerMTok: 4, MaxTokens: 2000}
+		m := panelaudit.Model{ID: req["model"].(string), PromptUSDPerMTok: 1, CompletionUSDPerMTok: 4, MaxTokens: 2000}
 		resp, _ := fakeProvider{}.complete(r.Context(), m, body)
 		w.Write(resp)
 	}))
@@ -235,8 +235,8 @@ func TestDryRunEndToEndOnPilotCorpus(t *testing.T) {
 		t.Fatalf("%d ratings", n)
 	}
 	var stats struct {
-		Items       map[string]ItemStats `json:"items"`
-		Independent map[string]ItemStats `json:"independent_fields"`
+		Items       map[string]panelaudit.ItemStats `json:"items"`
+		Independent map[string]panelaudit.ItemStats `json:"independent_fields"`
 		Claim       map[string]struct {
 			Agreeing, Total int
 		} `json:"blind_agreement_with_claim"`
@@ -385,7 +385,7 @@ type rewriteProvider struct {
 	calls atomic.Int64
 }
 
-func (p *rewriteProvider) complete(ctx context.Context, m modelConfig, body []byte) ([]byte, error) {
+func (p *rewriteProvider) complete(ctx context.Context, m panelaudit.Model, body []byte) ([]byte, error) {
 	p.calls.Add(1)
 	raw, err := fakeProvider{}.complete(ctx, m, body)
 	if err != nil {
@@ -424,9 +424,9 @@ func TestMissingCostSpendsWorstCaseAndStops(t *testing.T) {
 func assertGates(t *testing.T, out string, incomplete bool) {
 	t.Helper()
 	var st struct {
-		Items        map[string]ItemStats `json:"items"`
-		Fields       map[string]ItemStats `json:"independent_fields"`
-		MissingPairs []map[string]any     `json:"missing_pairs"`
+		Items        map[string]panelaudit.ItemStats `json:"items"`
+		Fields       map[string]panelaudit.ItemStats `json:"independent_fields"`
+		MissingPairs []map[string]any                `json:"missing_pairs"`
 	}
 	raw, _ := os.ReadFile(filepath.Join(out, "stats.json"))
 	if err := json.Unmarshal(raw, &st); err != nil {
@@ -435,9 +435,9 @@ func assertGates(t *testing.T, out string, incomplete bool) {
 	if incomplete != (len(st.MissingPairs) > 0) {
 		t.Fatalf("incomplete=%v but %d missing pairs", incomplete, len(st.MissingPairs))
 	}
-	for name, s := range map[string]map[string]ItemStats{"items": st.Items, "fields": st.Fields} {
+	for name, s := range map[string]map[string]panelaudit.ItemStats{"items": st.Items, "fields": st.Fields} {
 		for k, v := range s {
-			if (v.Gate == gateIncomplete) != incomplete {
+			if (v.Gate == panelaudit.GateIncomplete) != incomplete {
 				t.Fatalf("%s %s gate %q with incomplete=%v", name, k, v.Gate, incomplete)
 			}
 		}
@@ -542,20 +542,20 @@ func TestPanelReportFeedsCorpusDigest(t *testing.T) {
 	first := m.Cases[0].CaseID
 	for _, c := range m.Cases {
 		for _, model := range r.cfg.Models {
-			threat, _ := claim(c, "threat_class")
-			auth, _ := claim(c, "authorization")
+			threat, _ := panelaudit.Claim(c, "threat_class")
+			auth, _ := panelaudit.Claim(c, "authorization")
 			effects := []string{}
 			if c.Adversarial != nil {
 				effects = c.Adversarial.ForbiddenEffects
 			}
 			blind := rating{Phase: phaseBlind, CaseID: c.CaseID, Model: model.ID, Valid: true,
-				Independent: &independent{ThreatClass: threat, Authorization: auth, EffectIDs: effects}}
+				Independent: &panelaudit.Independent{ThreatClass: threat, Authorization: auth, EffectIDs: effects}}
 			if err := appendJSONL(filepath.Join(out, "ratings.jsonl"), blind); err != nil {
 				t.Fatal(err)
 			}
 			checklist := map[string]itemRating{}
-			for _, it := range items {
-				if _, na := notApplicable[c.Kind][it.Key]; na {
+			for _, it := range panelaudit.Checklist {
+				if _, na := panelaudit.NotApplicable[c.Kind][it.Key]; na {
 					continue
 				}
 				verdict := "pass"
