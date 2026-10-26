@@ -453,6 +453,62 @@ func TestProductAdminDoctorFailsWithoutAnInstallation(t *testing.T) {
 	}
 }
 
+func TestProductAdminReviewRegistrationSignRefusesAmbiguousJSON(t *testing.T) {
+	dir := t.TempDir()
+	keys := filepath.Join(dir, "keys")
+	mustAdmin(t, "product", "registration", "keygen", "--out", keys)
+	template := filepath.Join(dir, "template.json")
+	mustAdmin(t, adminInitArgs(template)...)
+	raw, err := os.ReadFile(template)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, data := range map[string][]byte{
+		"concatenated": append(append([]byte{}, raw...), []byte(`{}`)...),
+		"trailing":     append(append([]byte{}, raw...), []byte(`garbage`)...),
+		"duplicate":    []byte(strings.Replace(string(raw), `"registration_id": "reg-1"`, `"registration_id": "discarded", "registration_id": "reg-1"`, 1)),
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := os.WriteFile(template, data, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			out := filepath.Join(dir, name+".json")
+			if _, err := adminRun("product", "registration", "sign", "--registration", template, "--key", filepath.Join(keys, "registration.key"), "--out", out); adminExit(err) != 2 {
+				t.Fatalf("ambiguous JSON signed: %v", err)
+			}
+			for _, path := range []string{out, out + ".sig"} {
+				if _, err := os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
+					t.Fatalf("refused signing wrote %s: %v", path, err)
+				}
+			}
+		})
+	}
+}
+
+func TestProductAdminUninstallRefusesLockedCatalog(t *testing.T) {
+	h := newAdminHost(t, t.TempDir())
+	if out, err := h.setup(); err != nil {
+		t.Fatalf("setup: %v\n%s", err, out)
+	}
+	reg, err := productsession.LoadRegistration(h.reg, h.sig, h.pub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	catalog, err := productsession.Open(h.path(productsetup.CatalogPath), reg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer catalog.Close()
+	if out, err := adminRun("product", "uninstall", "--root", h.root, "--purge", "--yes"); err == nil || !strings.Contains(err.Error(), "refusing purge") {
+		t.Fatalf("locked catalog did not refuse purge: %v\n%s", err, out)
+	}
+	for _, kept := range []string{productsetup.UnitPath, productsetup.BinaryPath, productsetup.RegistrationPath, productsetup.CatalogPath} {
+		if _, err := os.Stat(h.path(kept)); err != nil {
+			t.Fatalf("removed %s: %v", kept, err)
+		}
+	}
+}
+
 func TestProductAdminUsageErrors(t *testing.T) {
 	for _, args := range [][]string{{"product"}, {"product", "bogus"}, {"product", "setup"}, {"product", "update"}, {"product", "setup", "--config", "x", "--root", "relative"},
 		{"release"}, {"release", "verify"}, {"release", "sign", "--manifest", "m"}} {

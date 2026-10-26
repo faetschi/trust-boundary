@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -28,6 +27,10 @@ func modeBits(info fs.FileInfo) os.FileMode {
 // leave the binary to `product update`.
 func Setup(env Env, cfg Config, binary string) (Report, error) {
 	h := newHost(env)
+	if err := h.openRoot(); err != nil {
+		return *h.rep, err
+	}
+	defer h.dir.Close()
 	if err := cfg.validate(); err != nil {
 		return *h.rep, err
 	}
@@ -173,13 +176,10 @@ func (h *host) planDir(n node) (planned, error) {
 	case errors.Is(err, fs.ErrNotExist):
 		return planned{Step{"dir", n.Path, "created", detail}, func() error {
 			if h.writes() {
-				if err := os.MkdirAll(filepath.Dir(real), 0o755); err != nil {
+				if err := h.withPath(n.Path, true, func(path string) error { return os.Mkdir(path, n.Mode) }); err != nil {
 					return err
 				}
-				if err := os.Mkdir(real, n.Mode); err != nil {
-					return err
-				}
-				if err := os.Chmod(real, n.Mode); err != nil { // the umask must not decide the mode
+				if err := h.chmod(n.Path, n.Mode); err != nil { // the umask must not decide the mode
 					return err
 				}
 			}
@@ -196,7 +196,7 @@ func (h *host) planDir(n node) (planned, error) {
 	}
 	return planned{Step{"dir", n.Path, "updated", detail}, func() error {
 		if h.writes() && !modeOK {
-			if err := os.Chmod(real, n.Mode); err != nil {
+			if err := h.chmod(n.Path, n.Mode); err != nil {
 				return err
 			}
 		}
@@ -224,7 +224,7 @@ func (h *host) planFile(n node, data []byte) (planned, error) {
 	detail := fmt.Sprintf("%04o %s", n.Mode, n.Owner)
 	write := func() error {
 		if h.writes() {
-			if err := writeFile(real, data, n.Mode); err != nil {
+			if err := h.withPath(n.Path, true, func(path string) error { return writeFile(path, data, n.Mode) }); err != nil {
 				return err
 			}
 		}
@@ -258,7 +258,7 @@ func (h *host) planFile(n node, data []byte) (planned, error) {
 	}
 	return planned{Step{"file", n.Path, "updated", detail}, func() error {
 		if h.writes() && !modeOK {
-			if err := os.Chmod(real, n.Mode); err != nil {
+			if err := h.chmod(n.Path, n.Mode); err != nil {
 				return err
 			}
 		}

@@ -94,21 +94,6 @@ func (h *host) usedIDs() map[int]bool {
 	return used
 }
 
-func appendLine(file, line string) error {
-	if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
-		return err
-	}
-	f, err := os.OpenFile(file, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
-	if err != nil {
-		return err
-	}
-	_, err = f.WriteString(line + "\n")
-	if closeErr := f.Close(); err == nil {
-		err = closeErr
-	}
-	return err
-}
-
 // recordGroup learns the GID groupadd chose. On a live host it asks the system again. On a test root
 // it plays groupadd: it appends the entry to the root's group file with the requested or the lowest
 // free ID from 900. A dry run learns nothing.
@@ -124,7 +109,7 @@ func (h *host) recordGroup(want int) (int, error) {
 		return gid, err
 	}
 	gid := freeID(h.usedIDs(), want)
-	return gid, appendLine(filepath.Join(h.root, "etc", "group"), fmt.Sprintf("%s:x:%d:", ServiceGroup, gid))
+	return gid, h.appendLine("/etc/group", fmt.Sprintf("%s:x:%d:", ServiceGroup, gid))
 }
 
 // recordUser is recordGroup for the user, whose primary group is gid.
@@ -142,7 +127,7 @@ func (h *host) recordUser(want, gid int) error {
 	}
 	uid := freeID(h.usedIDs(), want)
 	h.uid, h.gid, h.haveIDs = uid, gid, true
-	return appendLine(filepath.Join(h.root, "etc", "passwd"),
+	return h.appendLine("/etc/passwd",
 		fmt.Sprintf("%s:x:%d:%d::%s:/usr/sbin/nologin", ServiceUser, uid, gid, StateDir))
 }
 

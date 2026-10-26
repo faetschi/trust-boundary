@@ -391,7 +391,7 @@ Events are projected only from durable records: catalog records for the session,
 
 ## Milestone 5: product host setup, updates and diagnostics (P8)
 
-Everything here runs against a test root (`--root DIR`) and supports `--dry-run`, so it can be verified without a real host. Real qualification needs the product host and is pending.
+Everything here runs against a test root (`--root DIR`) and supports `--dry-run`, so it can be verified without a real host. The root must be an existing absolute directory outside the thesis paths (`/etc/tbound`, `/var/lib/tbound`, `/run/tbound`, `/run/tbound-pi`). Roots and destination parents containing symlinks are refused. Destination changes use pinned directory handles so a parent symlink cannot redirect a privileged write or removal. Real qualification needs the product host and is pending.
 
 ### Release trust
 
@@ -405,7 +405,7 @@ Everything here runs against a test root (`--root DIR`) and supports `--dry-run`
 
 - `tbound product registration keygen --out DIR` writes an Ed25519 key pair. The private key is 0600, and the command refuses an existing file. The private key stays offline and never enters the service host.
 - `tbound product registration init --out FILE` writes an unsigned registration template from flags: projects, scope, provider profiles, limits, principals, runtime, image and extension digests.
-- `tbound product registration sign --registration FILE --key PRIVATE --out FILE` writes the signed registration and its `.sig` with the existing `SignRegistration`.
+- `tbound product registration sign --registration FILE --key PRIVATE --out FILE` writes the signed registration and its `.sig` with the existing `SignRegistration`. It refuses duplicate JSON keys and trailing data before signing.
 - `tbound product registration verify --registration FILE --signature FILE --public-key FILE` prints the digest and a summary.
 - Changing a project, scope, policy or limit means signing a new registration. No per-task signing exists.
 
@@ -431,15 +431,15 @@ Running it again changes nothing and reports "unchanged". An existing file with 
 
 ### Update, rollback and uninstall
 
-- `tbound product update --binary NEW [--root DIR]` stages the new binary, stops the service, and opens the catalog. It refuses while any turn is unresolved, other than a pending review, which becomes `discarded` with reason `restart`. It keeps the current binary as last-known-good, swaps atomically, starts the service, and runs the self-test. If the self-test fails, it rolls back.
+- `tbound product update --binary NEW [--root DIR]` stages the new binary, stops the service, and opens the catalog. It refuses while any turn is unresolved, other than a pending review, which becomes `discarded` with reason `restart`. It keeps the current binary as last-known-good, swaps atomically, starts the service, and runs the self-test. If the self-test fails, it rolls back. Retrying when the requested binary is already installed still starts the service and runs the self-test, preserving the existing last-known-good for recovery.
 - `tbound product rollback` restores last-known-good the same way.
 - Catalog schema changes need a version check and a backup before the swap. A newer schema is never read by an older binary.
-- `tbound product uninstall [--root DIR] [--purge]` stops and disables the service and removes the unit, binary and runtime access. It reports unresolved turns. It keeps `/etc/tbound-product` and `/var/lib/tbound-product` unless `--purge` is given, and `--purge` asks for confirmation unless `--yes` is also given.
+- `tbound product uninstall [--root DIR] [--purge]` stops and disables the service and removes the unit, binary and runtime access. On a live host it verifies the service is inactive before removing files. Stop or disable failures abort removal unless systemd confirms the unit is absent and inactive. It reports unresolved turns. It keeps `/etc/tbound-product` and `/var/lib/tbound-product` unless `--purge` is given, and `--purge` asks for confirmation unless `--yes` is also given. A purge refuses an unreadable or locked catalog before removing files. Deletion errors are returned, and only successful deletions are reported as removed.
 
 ### Diagnostics
 
 - `tbound product doctor` is advisory. It reports prerequisites, installation owners and modes, unit state, socket reachability, registration verification, and credential status (never the key).
-- `tbound product doctor --self-test` runs an explicit runtime self-test turn on a synthetic project with the configured worker. Only that self-test, never the advisory checks, can report governed readiness.
+- `tbound product doctor --self-test` runs an explicit runtime self-test turn on a synthetic project with the configured worker. With `--dry-run` it reports the planned self-test without submitting a turn or establishing readiness. Only a passed self-test, never the advisory checks, can report governed readiness.
 
 ## Milestone 6: live web chat (P9)
 
