@@ -70,7 +70,7 @@ func TestItemStatsBootstrapIsSeededAndGroupsRoots(t *testing.T) {
 	if !reflect.DeepEqual(a, b) {
 		t.Fatalf("bootstrap not deterministic: %+v vs %+v", a, b)
 	}
-	if a.Subjects != 6 || a.Roots != 4 || !a.KappaDefined || a.CILow > a.Kappa || a.CIHigh < a.Kappa || a.CILow >= a.CIHigh {
+	if a.Subjects != 6 || a.Roots != 4 || !a.KappaDefined || a.KappaCILow > a.Kappa || a.KappaCIHigh < a.Kappa || a.KappaCILow >= a.KappaCIHigh {
 		t.Fatalf("unexpected stats %+v", a)
 	}
 	if math.Abs(a.Unanimous-4.0/6) > 1e-9 {

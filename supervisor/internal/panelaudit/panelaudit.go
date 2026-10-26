@@ -141,7 +141,7 @@ func Verify(m evalcorpus.Manifest, receiptRaw, auditRaw, statsRaw []byte) error 
 	}
 	for _, item := range Checklist {
 		st := stats.Items[item.Key]
-		expected := Gate(st.Kappa, st.Agreement, st.KappaDefined)
+		expected := Gate(st.AC1, st.Agreement, st.AC1Defined)
 		if st.Kappa < -1 || st.Kappa > 1 || st.Agreement < 0 || st.Agreement > 1 || st.Subjects <= 0 || st.Roots <= 0 {
 			return fmt.Errorf("panel stats item %s invalid numeric fields", item.Key)
 		}

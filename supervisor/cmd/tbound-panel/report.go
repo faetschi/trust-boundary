@@ -255,12 +255,12 @@ func statsMarkdown(items2, fields map[string]ItemStats, agree map[string]claimAg
 	for _, it := range items {
 		keys = append(keys, it.Key)
 	}
-	b.WriteString("## Phase 2: checklist items (claims shown)\n\n" + kappaTable(keys, items2))
+	b.WriteString("## Phase 2: checklist items (claims shown)\n\n" + agreementTable(keys, items2))
 	keys = nil
 	for _, f := range blindFields {
 		keys = append(keys, f.key)
 	}
-	b.WriteString("\n## Phase 1: blind classification (no claims shown)\n\n" + kappaTable(keys, fields))
+	b.WriteString("\n## Phase 1: blind classification (no claims shown)\n\n" + agreementTable(keys, fields))
 	b.WriteString("\n## Phase 1: blind agreement with the claimed label\n\n| Field | Agreeing | Answers | Rate | Not applicable |\n|---|---|---|---|---|\n")
 	for _, k := range keys {
 		a := agree[k]
@@ -279,17 +279,23 @@ func statsMarkdown(items2, fields map[string]ItemStats, agree map[string]claimAg
 	return b.String()
 }
 
-func kappaTable(keys []string, stats map[string]ItemStats) string {
+func agreementTable(keys []string, stats map[string]ItemStats) string {
 	var b strings.Builder
-	b.WriteString("| Item | Subjects | Roots | Kappa | 95% CI | Raw agreement | Unanimous | Prevalence | Gate |\n|---|---|---|---|---|---|---|---|---|\n")
+	b.WriteString("| Item | Subjects | Roots | AC1 | AC1 95% CI | Raw agreement | Kappa (reported) | Kappa 95% CI | Unanimous | Prevalence | Gate |\n|---|---|---|---|---|---|---|---|---|---|---|\n")
 	for _, key := range keys {
 		s := stats[key]
-		k, ci := "undefined", "n/a"
+		a, aci, k, kci := "undefined", "n/a", "undefined", "n/a"
+		if s.AC1Defined {
+			a = fmt.Sprintf("%.3f", s.AC1)
+		}
+		if s.AC1CIDefined {
+			aci = fmt.Sprintf("%.3f to %.3f", s.AC1CILow, s.AC1CIHigh)
+		}
 		if s.KappaDefined {
 			k = fmt.Sprintf("%.3f", s.Kappa)
 		}
-		if s.CIDefined {
-			ci = fmt.Sprintf("%.3f to %.3f", s.CILow, s.CIHigh)
+		if s.KappaCIDefined {
+			kci = fmt.Sprintf("%.3f to %.3f", s.KappaCILow, s.KappaCIHigh)
 		}
 		var prev []string
 		for c, p := range s.Prevalence {
@@ -298,8 +304,8 @@ func kappaTable(keys []string, stats map[string]ItemStats) string {
 			}
 		}
 		sort.Strings(prev)
-		fmt.Fprintf(&b, "| %s | %d | %d | %s | %s | %.3f | %.3f | %s | %s |\n", key, s.Subjects, s.Roots, k, ci,
-			s.Agreement, s.Unanimous, strings.Join(prev, ", "), s.Gate)
+		fmt.Fprintf(&b, "| %s | %d | %d | %s | %s | %.3f | %s | %s | %.3f | %s | %s |\n", key, s.Subjects, s.Roots, a, aci,
+			s.Agreement, k, kci, s.Unanimous, strings.Join(prev, ", "), s.Gate)
 	}
 	return b.String()
 }

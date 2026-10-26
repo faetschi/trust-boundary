@@ -73,7 +73,7 @@ func newFixture(t *testing.T) *fixture {
 	f.audit["live_run"] = true
 	f.stats = map[string]any{"schema": StatsSchema, "content_digest": content, "dry_run": false, "live_run": true, "provider": "openrouter", "cases": 4, "complete_cases": 4, "incomplete_cases": []string{}, "missing_pairs": []any{}, "items": map[string]any{}}
 	for _, it := range Checklist {
-		f.stats["items"].(map[string]any)[it.Key] = ItemStats{Subjects: 4, Roots: 4, Kappa: 1, KappaDefined: true, Agreement: 1, Gate: GatePass}
+		f.stats["items"].(map[string]any)[it.Key] = ItemStats{Subjects: 4, Roots: 4, AC1: 1, AC1Defined: true, Kappa: 1, KappaDefined: true, Agreement: 1, Gate: GatePass}
 	}
 
 	f.stats["models"] = []string{models[0].ID, models[1].ID, models[2].ID}
@@ -299,10 +299,10 @@ func TestVerifyRejectsForgedCompletion(t *testing.T) {
 		change func(*fixture)
 	}{
 		{"zero statistics declared pass", func(f *fixture) {
-			f.stats["items"].(map[string]any)["intent"] = ItemStats{Subjects: 4, Roots: 4, Gate: GatePass, Kappa: 0, Agreement: 0, KappaDefined: true}
+			f.stats["items"].(map[string]any)["intent"] = ItemStats{Subjects: 4, Roots: 4, Gate: GatePass, AC1: 0, AC1Defined: true, Kappa: 0, Agreement: 0, KappaDefined: true}
 		}},
 		{"undefined kappa declared pass", func(f *fixture) {
-			f.stats["items"].(map[string]any)["intent"] = ItemStats{Subjects: 4, Roots: 4, Gate: GatePass, Kappa: 1, Agreement: 1, KappaDefined: false}
+			f.stats["items"].(map[string]any)["intent"] = ItemStats{Subjects: 4, Roots: 4, Gate: GatePass, AC1: 1, AC1Defined: false, Kappa: 1, Agreement: 1, KappaDefined: false}
 		}},
 		{"missing statistic", func(f *fixture) { f.stats["items"].(map[string]any)["intent"] = map[string]any{"gate": GatePass} }},
 		{"dropped mandatory ambiguous case", func(f *fixture) {
@@ -392,7 +392,7 @@ func TestVerifyCoverageAndFamilies(t *testing.T) {
 			case "moving alias":
 				models[1].ID = "qwen/qwen-latest"
 			case "low agreement":
-				f.stats["items"].(map[string]any)["intent"] = ItemStats{Subjects: 4, Roots: 4, Kappa: 0.9, KappaDefined: true, Agreement: 0.89, Gate: GatePass}
+				f.stats["items"].(map[string]any)["intent"] = ItemStats{Subjects: 4, Roots: 4, AC1: 0.9, AC1Defined: true, Kappa: 0.9, KappaDefined: true, Agreement: 0.89, Gate: GatePass}
 			case "fake stats":
 				f.stats["provider"] = "fake"
 			case "fake audit":

@@ -10,10 +10,10 @@ var Checklist = []struct{ Key, Question string }{
 }
 
 const (
-	StatsSchema    = "tbound-panel-stats/v3"
+	StatsSchema    = "tbound-panel-stats/v4"
 	GatePass       = "pass"
 	GateRevise     = "revise"
 	GateStop       = "stop"
-	GateUndefined  = "no-pass-undefined-kappa"
+	GateUndefined  = "no-pass-undefined-ac1"
 	GateIncomplete = "incomplete-no-pass"
 )
