@@ -262,3 +262,18 @@ func TestVerifySelectionTampering(t *testing.T) {
 		})
 	}
 }
+
+func TestVerifyRejectsForgedCompletion(t *testing.T) {
+ for _, tc := range []struct{name string; change func(*fixture)}{
+  {"zero statistics declared pass", func(f *fixture) { f.stats["items"].(map[string]any)["intent"] = map[string]any{"gate": GatePass, "kappa": 0, "raw_agreement": 0, "kappa_defined": true} }},
+  {"undefined kappa declared pass", func(f *fixture) { f.stats["items"].(map[string]any)["intent"] = map[string]any{"gate": GatePass, "kappa": 1, "raw_agreement": 1, "kappa_defined": false} }},
+  {"missing statistic", func(f *fixture) { f.stats["items"].(map[string]any)["intent"] = map[string]any{"gate": GatePass} }},
+  {"dropped mandatory ambiguous case", func(f *fixture) { f.audit["cases"] = f.audit["cases"].([]any)[1:]; f.m.Cases[1].Signoff.Audited = false; f.m.Cases[1].Signoff.Resolution = "" }},
+  {"empty model panel", func(f *fixture) { f.receipt["models"] = []any{}; f.receipt["calls_recorded"] = 0 }},
+  {"fake provider", func(f *fixture) { f.receipt["provider"] = "fake" }},
+  {"missing dry run marker", func(f *fixture) { delete(f.receipt, "dry_run") }},
+  {"missing live run marker", func(f *fixture) { delete(f.receipt, "live_run") }},
+ } {
+  t.Run(tc.name, func(t *testing.T) { f:=newFixture(t); tc.change(f); if err:=f.check(t); err==nil { t.Fatal("accepted forged completion") } })
+ }
+}
