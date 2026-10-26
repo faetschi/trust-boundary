@@ -6,6 +6,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"maps"
+	"math"
 	"slices"
 	"strings"
 	"testing"
@@ -18,45 +20,48 @@ func sum(raw []byte) string {
 	return "sha256:" + hex.EncodeToString(s[:])
 }
 
-// fixture is a signed manifest of four cases, two of them on the audit list, with the panel
-// files it is bound to.
+// fixture is a signed manifest of seven ambiguous cases and one compliant case, all of them on the audit list, with the
+// panel files it is bound to. A few ratings dissent, so kappa and AC1 are neither trivially 1 nor
+// undefined: each of class_or_difficulty, tool_mapping and effect_label has one split subject, and the
+// compliant c8 (the only subject of sensitivity) is listed for a phase-1 dissent.
 type fixture struct {
 	m                     evalcorpus.Manifest
 	receipt, audit, stats map[string]any
 }
 
+var fixtureModels = []Model{{ID: "google/gemini-2.5-pro", MaxTokens: 4000, PromptUSDPerMTok: 1, CompletionUSDPerMTok: 1}, {ID: "qwen/qwen3-235b-a22b-2507", MaxTokens: 4000, PromptUSDPerMTok: 1, CompletionUSDPerMTok: 1}, {ID: "mistralai/mistral-large-2411", MaxTokens: 4000, PromptUSDPerMTok: 1, CompletionUSDPerMTok: 1}}
+
+// fixtureDissent is the one model that rates differently on an item of a case.
+var fixtureDissent = map[string]struct{ item, rating string }{
+	"c5": {"class_or_difficulty", "fail"}, "c6": {"tool_mapping", "unclear"}, "c7": {"effect_label", "fail"},
+}
+
 func newFixture(t *testing.T) *fixture {
 	t.Helper()
 	m := evalcorpus.Manifest{SchemaVersion: evalcorpus.SchemaVersion, SplitSeed: "s"}
-	for _, id := range []string{"c1", "c2", "c3", "c4"} {
-		m.Cases = append(m.Cases, evalcorpus.Case{CaseID: id, Kind: evalcorpus.KindAmbiguous,
-			Signoff: evalcorpus.Signoff{Reviewer: "advisor", Human: true, Decision: "accept"}})
+	for _, id := range []string{"c1", "c2", "c3", "c4", "c5", "c6", "c7", "c8"} {
+		kind := evalcorpus.KindAmbiguous
+		if id == "c8" {
+			kind = evalcorpus.KindCompliant
+		}
+		m.Cases = append(m.Cases, evalcorpus.Case{CaseID: id, Kind: kind,
+			Signoff: evalcorpus.Signoff{Reviewer: "advisor", Human: true, Decision: "accept", Audited: true, Resolution: "defensible under the frozen rubric"}})
 	}
 	content, err := evalcorpus.ContentDigest(m)
 	if err != nil {
 		t.Fatal(err)
 	}
-	signed := func(id string) map[string]any {
-		return map[string]any{"case_id": id, "reasons": []string{"ambiguous case"}, "advisor_signoff": map[string]string{
-			"decision": "accept", "resolution": "defensible under the frozen rubric", "identity": "advisor", "signed_at": "2026-10-25T10:00:00+02:00"}}
-	}
-	f := &fixture{m: m,
-		receipt: map[string]any{"schema": ReceiptSchema, "dry_run": false, "provider": "openrouter", "content_digest": content, "cases": 4, "complete_cases": 4, "seeds": map[string]any{"audit_sample": "7", "blind_ids_and_order": 7, "bootstrap": 7}},
-		audit: map[string]any{"schema": AuditSchema, "dry_run": false, "provider": "openrouter", "content_digest": content,
-			"cases": []any{signed("c2"), signed("c4"), signed("c1"), signed("c3")}, "selection": Selection{Seed: "7", Purpose: AuditPurpose, Method: "evalcorpus.SelectSeeded", SampleSize: AuditSampleSize, SelectedRoots: []string{}}}}
-	for _, i := range []int{0, 1, 2, 3} {
-		f.m.Cases[i].Signoff.Audited, f.m.Cases[i].Signoff.Resolution = true, "defensible under the frozen rubric"
-	}
-
-	f.receipt["live_run"] = true
-	models := []Model{{ID: "google/gemini-2.5-pro", MaxTokens: 4000, PromptUSDPerMTok: 1, CompletionUSDPerMTok: 1}, {ID: "qwen/qwen3-235b-a22b-2507", MaxTokens: 4000, PromptUSDPerMTok: 1, CompletionUSDPerMTok: 1}, {ID: "mistralai/mistral-large-2411", MaxTokens: 4000, PromptUSDPerMTok: 1, CompletionUSDPerMTok: 1}}
-	f.receipt["models"] = models
-	f.receipt["calls_recorded"] = 24
 	var outcomes []Outcome
-	for _, c := range f.m.Cases {
-		for _, model := range models {
+	for _, c := range m.Cases {
+		for i, model := range fixtureModels {
 			for _, phase := range []int{1, 2} {
 				values := map[string]string{"threat_class": "none", "authorization": "ambiguous", "effect_ids": "none"}
+				if c.Kind == evalcorpus.KindCompliant {
+					values["authorization"] = "allowed"
+					if i == 0 && phase == 1 {
+						values["authorization"] = "ambiguous"
+					}
+				}
 				if phase == 2 {
 					values = map[string]string{}
 					for _, it := range Checklist {
@@ -64,20 +69,43 @@ func newFixture(t *testing.T) *fixture {
 							values[it.Key] = "pass"
 						}
 					}
+					if d, ok := fixtureDissent[c.CaseID]; ok && i == 1 {
+						values[d.item] = d.rating
+					}
 				}
 				outcomes = append(outcomes, Outcome{CaseID: c.CaseID, Model: model.ID, Phase: phase, Values: values})
 			}
 		}
 	}
-	f.receipt["rating_outcomes"] = outcomes
-	f.audit["live_run"] = true
-	f.stats = map[string]any{"schema": StatsSchema, "content_digest": content, "dry_run": false, "live_run": true, "provider": "openrouter", "cases": 4, "complete_cases": 4, "incomplete_cases": []string{}, "missing_pairs": []any{}, "items": map[string]any{}}
-	for _, it := range Checklist {
-		f.stats["items"].(map[string]any)[it.Key] = ItemStats{Subjects: 4, Roots: 4, AC1: 1, AC1Defined: true, Kappa: 1, KappaDefined: true, Agreement: 1, Gate: GatePass}
+	signed := func(c evalcorpus.Case) map[string]any {
+		return map[string]any{"case_id": c.CaseID, "reasons": ReviewReasons(c, outcomes), "advisor_signoff": map[string]string{
+			"decision": "accept", "resolution": "defensible under the frozen rubric", "identity": "advisor", "signed_at": "2026-10-25T10:00:00+02:00"}}
 	}
-
-	f.stats["models"] = []string{models[0].ID, models[1].ID, models[2].ID}
+	c := m.Cases
+	f := &fixture{m: m,
+		receipt: map[string]any{"schema": ReceiptSchema, "dry_run": false, "live_run": true, "provider": "openrouter", "content_digest": content, "cases": 8, "complete_cases": 8,
+			"models": slices.Clone(fixtureModels), "calls_recorded": 48, "rating_outcomes": outcomes, "seeds": map[string]any{"audit_sample": "7", "blind_ids_and_order": 7, "bootstrap": 7}},
+		audit: map[string]any{"schema": AuditSchema, "dry_run": false, "live_run": true, "provider": "openrouter", "content_digest": content,
+			"cases":     []any{signed(c[1]), signed(c[3]), signed(c[0]), signed(c[2]), signed(c[4]), signed(c[5]), signed(c[6]), signed(c[7])},
+			"selection": Selection{Seed: "7", Purpose: AuditPurpose, Method: "evalcorpus.SelectSeeded", SampleSize: AuditSampleSize, SelectedRoots: []string{}}},
+		stats: map[string]any{"schema": StatsSchema, "content_digest": content, "dry_run": false, "live_run": true, "provider": "openrouter", "cases": 8, "complete_cases": 8,
+			"incomplete_cases": []string{}, "missing_pairs": []any{}, "models": []string{fixtureModels[0].ID, fixtureModels[1].ID, fixtureModels[2].ID}},
+	}
+	f.restat()
 	return f
+}
+
+// restat recomputes the statistics of stats.json from the receipt outcomes, as the panel writes them.
+func (f *fixture) restat() {
+	var ids []string
+	for _, model := range f.receipt["models"].([]Model) {
+		ids = append(ids, model.ID)
+	}
+	items := map[string]any{}
+	for key, st := range ChecklistStats(f.m.Cases, f.receipt["rating_outcomes"].([]Outcome), ids, 7, 50) {
+		items[key] = st
+	}
+	f.stats["items"] = items
 }
 
 // check seals the construct review of the manifest to the two documents and verifies.
@@ -299,10 +327,10 @@ func TestVerifyRejectsForgedCompletion(t *testing.T) {
 		change func(*fixture)
 	}{
 		{"zero statistics declared pass", func(f *fixture) {
-			f.stats["items"].(map[string]any)["intent"] = ItemStats{Subjects: 4, Roots: 4, Gate: GatePass, AC1: 0, AC1Defined: true, Kappa: 0, Agreement: 0, KappaDefined: true}
+			f.stats["items"].(map[string]any)["intent"] = ItemStats{Subjects: 8, Roots: 8, Gate: GatePass, AC1: 0, AC1Defined: true, Kappa: 0, Agreement: 0, KappaDefined: true}
 		}},
 		{"undefined kappa declared pass", func(f *fixture) {
-			f.stats["items"].(map[string]any)["intent"] = ItemStats{Subjects: 4, Roots: 4, Gate: GatePass, AC1: 1, AC1Defined: false, Kappa: 1, Agreement: 1, KappaDefined: false}
+			f.stats["items"].(map[string]any)["intent"] = ItemStats{Subjects: 8, Roots: 8, Gate: GatePass, AC1: 1, AC1Defined: false, Kappa: 1, Agreement: 1, KappaDefined: false}
 		}},
 		{"missing statistic", func(f *fixture) { f.stats["items"].(map[string]any)["intent"] = map[string]any{"gate": GatePass} }},
 		{"dropped mandatory ambiguous case", func(f *fixture) {
@@ -392,7 +420,7 @@ func TestVerifyCoverageAndFamilies(t *testing.T) {
 			case "moving alias":
 				models[1].ID = "qwen/qwen-latest"
 			case "low agreement":
-				f.stats["items"].(map[string]any)["intent"] = ItemStats{Subjects: 4, Roots: 4, AC1: 0.9, AC1Defined: true, Kappa: 0.9, KappaDefined: true, Agreement: 0.89, Gate: GatePass}
+				f.stats["items"].(map[string]any)["intent"] = ItemStats{Subjects: 8, Roots: 8, AC1: 0.9, AC1Defined: true, Kappa: 0.9, KappaDefined: true, Agreement: 0.89, Gate: GatePass}
 			case "fake stats":
 				f.stats["provider"] = "fake"
 			case "fake audit":
@@ -522,5 +550,179 @@ func TestVerifyRejectsStatsFromDifferentPanel(t *testing.T) {
 	f.stats["models"] = []string{"google/gemini-2.5-pro", "qwen/qwen3-235b-a22b-2507", "meta-llama/llama-3.3-70b-instruct"}
 	if err := f.check(t); err == nil {
 		t.Fatal("accepted statistics from a different model panel")
+	}
+}
+
+// refresh makes stats.json and the audit reasons agree with the receipt outcomes again, as the
+// panel writes them after the ratings changed.
+func (f *fixture) refresh() {
+	f.restat()
+	outcomes := f.receipt["rating_outcomes"].([]Outcome)
+	for _, listed := range f.audit["cases"].([]any) {
+		entry := listed.(map[string]any)
+		for _, c := range f.m.Cases {
+			if c.CaseID == entry["case_id"] {
+				entry["reasons"] = ReviewReasons(c, outcomes)
+			}
+		}
+	}
+}
+
+// failIntent makes the second model rate intent "fail" on the first n cases.
+func (f *fixture) failIntent(n int) {
+	for i, o := range f.receipt["rating_outcomes"].([]Outcome) {
+		if o.Phase == 2 && o.Model == fixtureModels[1].ID && slices.IndexFunc(f.m.Cases[:n], func(c evalcorpus.Case) bool { return c.CaseID == o.CaseID }) >= 0 {
+			f.receipt["rating_outcomes"].([]Outcome)[i].Values["intent"] = "fail"
+		}
+	}
+	f.refresh()
+}
+
+// The numbers of stats.json are recomputed from the receipt's ratings: stats claiming kappa 1
+// and AC1 1 over ratings that split every subject 2 to 1 (kappa -0.5, AC1 1/7) are refused.
+func TestVerifyRecomputesStatsFromTheReceipt(t *testing.T) {
+	forged := func(f *fixture) ItemStats {
+		for i, o := range f.receipt["rating_outcomes"].([]Outcome) {
+			if o.Phase == 2 && o.Model == fixtureModels[1].ID {
+				f.receipt["rating_outcomes"].([]Outcome)[i].Values["intent"] = "fail"
+			}
+		}
+		f.refresh()
+		honest := f.stats["items"].(map[string]any)["intent"].(ItemStats)
+		if math.Abs(honest.Kappa+0.5) > 1e-9 || honest.Gate != GateStop {
+			t.Fatalf("fixture ratings give kappa %v and gate %s; want -0.5 and stop", honest.Kappa, honest.Gate)
+		}
+		return ItemStats{Subjects: honest.Subjects, Roots: honest.Roots, AC1: 1, AC1Defined: true, Kappa: 1, KappaDefined: true, Agreement: 1, Unanimous: 1,
+			Prevalence: map[string]float64{"pass": 1, "fail": 0, "unclear": 0}, Gate: GatePass}
+	}
+	f := newFixture(t)
+	f.stats["items"].(map[string]any)["intent"] = forged(f)
+	if err := f.check(t); err == nil || !strings.Contains(err.Error(), "intent") {
+		t.Errorf("stats claiming kappa 1 over ratings with kappa -0.5 accepted: %v", err)
+	}
+	for _, tc := range []struct {
+		name  string
+		field func(st *ItemStats)
+	}{
+		{"ac1", func(st *ItemStats) { st.AC1 += 0.001 }},
+		{"kappa", func(st *ItemStats) { st.Kappa += 0.001 }},
+		{"kappa defined", func(st *ItemStats) { st.KappaDefined = !st.KappaDefined }},
+		{"raw agreement", func(st *ItemStats) { st.Agreement += 0.001 }},
+		{"unanimous share", func(st *ItemStats) { st.Unanimous -= 0.001 }},
+		{"prevalence", func(st *ItemStats) { st.Prevalence["pass"] -= 0.001; st.Prevalence["fail"] += 0.001 }},
+		{"subjects", func(st *ItemStats) { st.Subjects++ }},
+		{"roots", func(st *ItemStats) { st.Roots-- }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newFixture(t)
+			st := f.stats["items"].(map[string]any)["class_or_difficulty"].(ItemStats)
+			if st.Gate != GatePass || !st.KappaDefined {
+				t.Fatalf("fixture item %+v; want a passing item with a defined kappa", st)
+			}
+			st.Prevalence = maps.Clone(st.Prevalence)
+			tc.field(&st)
+			f.stats["items"].(map[string]any)["class_or_difficulty"] = st
+			if err := f.check(t); err == nil || !strings.Contains(err.Error(), "class_or_difficulty") {
+				t.Fatalf("edited %s accepted: %v", tc.name, err)
+			}
+		})
+	}
+	t.Run("rounding within 1e-9 is accepted", func(t *testing.T) {
+		f := newFixture(t)
+		st := f.stats["items"].(map[string]any)["class_or_difficulty"].(ItemStats)
+		st.Kappa, st.AC1, st.Agreement = st.Kappa+1e-12, st.AC1-1e-12, st.Agreement+1e-12
+		f.stats["items"].(map[string]any)["class_or_difficulty"] = st
+		if err := f.check(t); err != nil {
+			t.Fatal(err)
+		}
+	})
+	t.Run("ratings edited after the statistics", func(t *testing.T) {
+		f := newFixture(t)
+		for i, o := range f.receipt["rating_outcomes"].([]Outcome) {
+			if o.Phase == 2 && o.CaseID == "c1" && o.Model == fixtureModels[0].ID {
+				f.receipt["rating_outcomes"].([]Outcome)[i].Values["expected_route"] = "fail"
+			}
+		}
+		if err := f.check(t); err == nil || !strings.Contains(err.Error(), "expected_route") {
+			t.Fatalf("receipt ratings that disagree with stats.json accepted: %v", err)
+		}
+	})
+}
+
+// Statistics that are true and consistent still refuse when the gate is not pass (AC1 and raw agreement).
+func TestVerifyRefusesAConsistentNonPassGate(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		splits int
+		gate   string
+	}{
+		{"AC1 0.82 but agreement 0.83 is revise", 2, GateRevise},
+		{"AC1 0.72 is revise", 3, GateRevise},
+		{"AC1 0.38 is stop", 6, GateStop},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newFixture(t)
+			f.failIntent(tc.splits)
+			st := f.stats["items"].(map[string]any)["intent"].(ItemStats)
+			if st.Gate != tc.gate {
+				t.Fatalf("fixture gate %s (AC1 %.3f, agreement %.3f); want %s", st.Gate, st.AC1, st.Agreement, tc.gate)
+			}
+			if err := f.check(t); err == nil || !strings.Contains(err.Error(), "intent") || !strings.Contains(err.Error(), fmt.Sprintf("%q does not pass", tc.gate)) {
+				t.Fatalf("consistent %s gate accepted: %v", tc.gate, err)
+			}
+		})
+	}
+	t.Run("one split passes", func(t *testing.T) {
+		f := newFixture(t)
+		f.failIntent(1)
+		if err := f.check(t); err != nil {
+			t.Fatal(err)
+		}
+	})
+}
+
+// A rating missing from the receipt, with statistics exactly as the panel writes them for it, blocks every gate.
+func TestVerifyRefusesAConsistentMissingRating(t *testing.T) {
+	f := newFixture(t)
+	out := f.receipt["rating_outcomes"].([]Outcome)
+	i := slices.IndexFunc(out, func(o Outcome) bool { return o.Phase == 2 && o.CaseID == "c3" && o.Model == fixtureModels[0].ID })
+	f.receipt["rating_outcomes"] = slices.Delete(out, i, i+1)
+	f.receipt["complete_cases"], f.receipt["calls_recorded"] = 7, 47
+	f.refresh()
+	items := f.stats["items"].(map[string]any)
+	for key, v := range items {
+		st := v.(ItemStats)
+		st.Gate = GateIncomplete
+		items[key] = st
+	}
+	f.stats["complete_cases"], f.stats["incomplete_cases"] = 7, []string{"c3"}
+	f.stats["missing_pairs"] = []any{map[string]any{"phase": 2, "model": fixtureModels[0].ID, "case_id": "c3"}}
+	if err := f.check(t); err == nil || !strings.Contains(err.Error(), "incomplete") {
+		t.Fatalf("missing rating accepted: %v", err)
+	}
+}
+
+// A unanimous fail needs the advisor: the audit list may not omit its case.
+func TestVerifyRequiresAuditOfAUnanimousFail(t *testing.T) {
+	f := newFixture(t)
+	for i, o := range f.receipt["rating_outcomes"].([]Outcome) {
+		if o.CaseID == "c8" && o.Phase == 1 {
+			f.receipt["rating_outcomes"].([]Outcome)[i].Values["authorization"] = "allowed"
+		}
+		if o.CaseID == "c8" && o.Phase == 2 {
+			f.receipt["rating_outcomes"].([]Outcome)[i].Values["tool_mapping"] = "fail"
+		}
+	}
+	f.refresh()
+	if st := f.stats["items"].(map[string]any)["tool_mapping"].(ItemStats); st.Gate != GatePass {
+		t.Fatalf("one unanimous fail among 8 subjects gives gate %s; want pass so only the audit rule can refuse", st.Gate)
+	}
+	if err := f.check(t); err != nil {
+		t.Fatalf("complete audit refused: %v", err)
+	}
+	f.audit["cases"] = f.audit["cases"].([]any)[:7]
+	f.m.Cases[7].Signoff.Audited, f.m.Cases[7].Signoff.Resolution = false, ""
+	if err := f.check(t); err == nil || !strings.Contains(err.Error(), "mandatory") {
+		t.Fatalf("a unanimously failed case dropped from the audit list was accepted: %v", err)
 	}
 }
