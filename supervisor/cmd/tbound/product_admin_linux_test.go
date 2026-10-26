@@ -6,10 +6,14 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"io"
 	"net"
 	"os"
+	"os/exec"
+	"os/user"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -505,6 +509,77 @@ func TestProductAdminUninstallRefusesLockedCatalog(t *testing.T) {
 	for _, kept := range []string{productsetup.UnitPath, productsetup.BinaryPath, productsetup.RegistrationPath, productsetup.CatalogPath} {
 		if _, err := os.Stat(h.path(kept)); err != nil {
 			t.Fatalf("removed %s: %v", kept, err)
+		}
+	}
+}
+
+func TestProductAdminTurnsDoesNotRequireRoot(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("requires a non-root caller")
+	}
+	out, err := adminRun("product", "turns")
+	if err != nil && strings.Contains(err.Error(), "must run as root") {
+		t.Fatalf("catalog owner cannot list turns: %v\n%s", err, out)
+	}
+	for _, command := range []string{"setup", "update", "rollback", "uninstall"} {
+		if _, err := adminRun("product", command); err == nil || !strings.Contains(err.Error(), "must run as root") {
+			t.Fatalf("%s no longer requires root: %v", command, err)
+		}
+	}
+	h := newAdminHost(t, t.TempDir())
+	if _, err := h.setup(); err != nil {
+		t.Fatal(err)
+	}
+	adminCatalog(t, h, false)
+	if err := os.Chmod(h.path(productsetup.CatalogPath), 0o666); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := adminRun("product", "turns", "--root", h.root); err == nil {
+		t.Fatal("turn listing bypassed catalog permission checks")
+	}
+}
+
+func TestProductAdminPurgeAfterOrdinaryUninstallUsesAdministrativeBinary(t *testing.T) {
+	h := newAdminHost(t, t.TempDir())
+	if _, err := h.setup(); err != nil {
+		t.Fatal(err)
+	}
+	adminCatalog(t, h, false)
+	if _, err := adminRun("product", "uninstall", "--root", h.root); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(h.path(productsetup.BinaryPath)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("installed binary survived uninstall: %v", err)
+	}
+	oldLookup, oldCommand := productAdminLookupUser, productAdminTurnsCommand
+	t.Cleanup(func() { productAdminLookupUser, productAdminTurnsCommand = oldLookup, oldCommand })
+	productAdminLookupUser = func(string) (*user.User, error) {
+		return &user.User{Uid: strconv.Itoa(os.Geteuid()), Gid: strconv.Itoa(os.Getegid())}, nil
+	}
+	called := false
+	productAdminTurnsCommand = func(name string, uid, gid uint32) *exec.Cmd {
+		called = true
+		cmd := oldCommand(name, uid, gid)
+		if credential := cmd.SysProcAttr.Credential; credential.Uid != uint32(os.Geteuid()) || credential.Gid != uint32(os.Getegid()) {
+			t.Fatalf("catalog check did not select the service account: %+v", credential)
+		}
+		cmd.SysProcAttr = nil // The test root's catalog is owned by this test process.
+		cmd.Args = append([]string{name, "-test.run=^TestProductAdminHelperProcess$", "--"}, cmd.Args[1:]...)
+		cmd.Args = append(cmd.Args, "--root", h.root)
+		cmd.Env = append(os.Environ(), "TBOUND_ADMIN_HELPER=1")
+		return cmd
+	}
+	env := productAdminEnv(h.root, false, false, true, io.Discard, io.Discard)
+	env.Turns = productAdminTurnsFor("/")
+	if rep, err := productsetup.Uninstall(env, true); err != nil {
+		t.Fatalf("purge after uninstall: %v\n%s", err, rep)
+	}
+	if !called {
+		t.Fatal("purge did not run the catalog child")
+	}
+	for _, path := range []string{productsetup.ConfigDir, productsetup.StateDir} {
+		if _, err := os.Stat(h.path(path)); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("purge kept %s: %v", path, err)
 		}
 	}
 }
