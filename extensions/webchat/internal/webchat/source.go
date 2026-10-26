@@ -2,14 +2,8 @@ package webchat
 
 import (
 	_ "embed"
-	"errors"
 	"time"
 )
-
-// ErrLiveUnavailable is returned when a live projection is requested. A live
-// projection requires the supervisor-owned session/history/stream service, which
-// does not exist yet. The gateway refuses rather than fabricating a live source.
-var ErrLiveUnavailable = errors.New("live projection requires the supervisor-owned session/stream service; not implemented in this build")
 
 //go:embed fixtures/demo-workspace.json
 var demoFixture []byte
@@ -76,9 +70,4 @@ func NewReceiptDemoStore() (*Store, error) {
 		return nil, err
 	}
 	return NewStore(snapshot, DefaultItemCapacity)
-}
-
-// NewLiveStore refuses live projection until the authority-owned service exists.
-func NewLiveStore() (*Store, error) {
-	return nil, ErrLiveUnavailable
 }

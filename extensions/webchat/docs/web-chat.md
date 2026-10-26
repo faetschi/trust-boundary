@@ -60,10 +60,10 @@ require the authenticated supervisor session service.
 | Tail window: records that arrive while scrolled away are counted on a `Jump to latest` control (§4.5) | Implemented, client-only |
 | Diff viewer | **Deferred** (§12) |
 | Two-press cancel state machine (legacy `stop-sequence.mjs`; typed port in `frontend/src/core/stop-sequence.ts`) | Written and ported, **not wired** into either UI (§4.7) |
-| Live projection from the supervisor | **Not implemented** (`--live` fails closed) |
+| Live projection from the product service | **Implemented for v1 live mode** (`--live --socket PATH`, [contract §9](web-chat-contract.md#9-implemented-for-v1-live-mode-p9)); the React app does not use it yet |
 | Persistent multi-turn sessions and history | **Not implemented** (supervisor-owned) |
-| Turn submission / cancellation | **Not implemented** (composer read-only) |
-| Browser authentication, session ownership, CSRF/origin protection for remote use | **Not implemented** (loopback-only gateway; see §6) |
+| Turn submission / cancellation | Gateway routes **implemented** in live mode; the composer in the UI is still read-only |
+| Browser authentication, session ownership, CSRF/origin protection | Live mode: one-time pairing, session cookie, CSRF header, Host and Origin checks, loopback only. Remote use is an SSH tunnel; the other modes have none (see §6) |
 | Per-tool approval, policy override, gateway-side tool execution | **Deliberately absent** |
 
 The current attested supervisor service is one prompt / one terminal receipt over
@@ -550,11 +550,11 @@ go run ./cmd/tbound-webchat                         # unavailable projection
 go run ./cmd/tbound-webchat --replay path.json      # retained observations
 go run ./cmd/tbound-webchat --receipt path.json     # import a real run receipt
 go run ./cmd/tbound-webchat --receipt-demo          # embedded example receipt
-go run ./cmd/tbound-webchat --live                  # refused: supervisor service absent
+go run ./cmd/tbound-webchat --live --socket /run/tbound-product/product.sock   # live mode: pairing URL on stdout
 ```
 
 `--demo`, `--fixture <path>`, `--replay <path>`, `--receipt <path>`,
-`--receipt-demo` and `--live` are mutually exclusive. The startup banner prints
+`--receipt-demo` and `--live` are mutually exclusive (`--live` also needs `--socket`). The startup banner prints
 the source class and the claim boundary; it never prints fixture paths, controls,
 or secrets.
 

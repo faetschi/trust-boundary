@@ -1,0 +1,30 @@
+{
+  "version": "tbound-product-protocol/v1",
+  "status": "ok",
+  "sessions": [
+    {
+      "id": "psess-0123456789abcdef0123456789abcdef",
+      "project_id": "demo-project",
+      "provider_profile": "openrouter-default",
+      "publication_mode": "review",
+      "read_only": true,
+      "revision": 7,
+      "blocked": true,
+      "budget": {
+        "host_calls": 200,
+        "tokens": 100000,
+        "duration_seconds": 900
+      },
+      "consumed": {
+        "host_calls": 12,
+        "tokens": 4096,
+        "duration_seconds": 61
+      },
+      "reserved": {
+        "host_calls": 1,
+        "tokens": 512,
+        "duration_seconds": 30
+      }
+    }
+  ]
+}

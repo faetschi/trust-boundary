@@ -28,6 +28,10 @@ const responseWriteTimeout = 5 * time.Second
 type HandlerOptions struct {
 	AllowedHost   string
 	AllowedOrigin string
+	// Live, when set, replaces the read-only API with the live gateway. It owns the
+	// Host and Origin checks, the /api/ routes and the pairing page; the document and
+	// asset routes still use this handler.
+	Live *LiveGateway
 }
 
 type staticRoute struct {
@@ -79,7 +83,18 @@ func newHandler(store *Store, options HandlerOptions, app *appBundle) http.Handl
 	}
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		setSecurityHeadersBase(writer)
-		if !authorizeRequest(writer, request, options) {
+		if options.Live != nil {
+			if !options.Live.authorizeHostOrigin(writer, request) {
+				return
+			}
+			if options.Live.handles(request) {
+				options.Live.serve(writer, request)
+				return
+			}
+			if !authorizeMethodAndBody(writer, request) {
+				return
+			}
+		} else if !authorizeRequest(writer, request, options) {
 			return
 		}
 		path := request.URL.Path
@@ -266,6 +281,12 @@ func authorizeRequest(writer http.ResponseWriter, request *http.Request, options
 			return false
 		}
 	}
+	return authorizeMethodAndBody(writer, request)
+}
+
+// authorizeMethodAndBody applies the read-only gateway's method policy and refuses
+// any request body.
+func authorizeMethodAndBody(writer http.ResponseWriter, request *http.Request) bool {
 	if methods := allowedMethods(request.URL.EscapedPath()); !slices.Contains(methods, request.Method) {
 		methodNotAllowed(writer, methods)
 		return false

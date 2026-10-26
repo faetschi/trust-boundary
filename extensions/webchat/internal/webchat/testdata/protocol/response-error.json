@@ -1,0 +1,8 @@
+{
+  "version": "tbound-product-protocol/v1",
+  "status": "error",
+  "error": {
+    "code": "STALE_REVISION",
+    "detail": "the session is at revision 8"
+  }
+}

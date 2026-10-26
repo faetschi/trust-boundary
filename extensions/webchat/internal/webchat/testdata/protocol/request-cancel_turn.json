@@ -1,0 +1,10 @@
+{
+  "version": "tbound-product-protocol/v1",
+  "op": "cancel_turn",
+  "cancel_turn": {
+    "session_id": "psess-0123456789abcdef0123456789abcdef",
+    "turn_id": "psess-0123456789abcdef0123456789abcdef/turn-1",
+    "expected_revision": 7,
+    "request_key": "ck-0123456789abcdef0123456789abcdef"
+  }
+}
