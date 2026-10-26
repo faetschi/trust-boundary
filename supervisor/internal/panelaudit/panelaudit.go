@@ -25,10 +25,6 @@ const (
 	MaxFileBytes = 16 << 20
 )
 
-// AdvisorFields are the members of "advisor_signoff" that tbound-panel writes empty on every listed
-// case and the advisor fills in.
-var AdvisorFields = []string{"decision", "resolution", "identity", "signed_at"}
-
 // Advisor is the advisor's entry for one case of the audit list. Decision is accept, reject or
 // revise; only accept can back an accepted manifest.
 type Advisor struct {

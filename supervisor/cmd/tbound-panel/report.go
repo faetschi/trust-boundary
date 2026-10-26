@@ -419,24 +419,6 @@ func (r *runner) writeAudit(d panelData) error {
 	return writeFile(filepath.Join(r.out, "audit.md"), []byte(b.String()))
 }
 
-// advisorTemplate is the empty advisor_signoff of a listed case: one empty string per field.
-func advisorTemplate() map[string]string {
-	t := map[string]string{}
-	for _, f := range panelaudit.AdvisorFields {
-		t[f] = ""
-	}
-	return t
-}
-
-func same(xs []string) bool {
-	for _, x := range xs {
-		if x != xs[0] {
-			return false
-		}
-	}
-	return true
-}
-
 func writeReport(path string, evidence any, details map[string]any) error {
 	raw, err := json.Marshal(evidence)
 	if err != nil {
