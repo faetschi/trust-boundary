@@ -515,3 +515,11 @@ func TestVerifySelectionRejectsEmptyUnselectedAudit(t *testing.T) {
 		t.Fatal("accepted an extra audit with no rating-derived reason or sample membership")
 	}
 }
+
+func TestVerifyRejectsStatsFromDifferentPanel(t *testing.T) {
+	f := newFixture(t)
+	f.stats["models"] = []string{"google/gemini-2.5-pro", "qwen/qwen3-235b-a22b-2507", "meta-llama/llama-3.3-70b-instruct"}
+	if err := f.check(t); err == nil {
+		t.Fatal("accepted statistics from a different model panel")
+	}
+}
