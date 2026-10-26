@@ -88,6 +88,13 @@ type productionBashEvidenceBinder interface {
 		delta.Transition, sessionrepo.OperationEvidence) error
 }
 
+// productionDeniedBashEvidenceBinder is the binder of a command that ran and whose change delta admission
+// then refused. It takes the refused candidate where productionBashEvidenceBinder takes the approved transition.
+type productionDeniedBashEvidenceBinder interface {
+	BindProductionDeniedBashEvidence(context.Context, delta.OperationIdentity, sessionrepo.EvidenceBundle,
+		delta.Transition, sessionrepo.OperationEvidence) error
+}
+
 // NewDurableExecutor validates and constructs a DurableExecutor. The caller
 // retains ownership of the store, the journal, and the tip generation.
 func cloneDurableOutputScopePaths(paths []string) []string {
@@ -268,23 +275,9 @@ func (e *DurableExecutor) bindProductionBashEvidence(ctx context.Context, propos
 		proposal.Tool != "bash" || proposal.ToolCallID == "" {
 		return errors.New("registered D09 command runner has no durable evidence-binding API")
 	}
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	bundle, err := e.store.EvidenceBundle()
+	bundle, operation, providerCall, err := e.committedBashEvidence(ctx, proposal, decision, mutation)
 	if err != nil {
-		return fmt.Errorf("read committed Bash operation evidence: %w", err)
-	}
-	var operation *sessionrepo.OperationEvidence
-	for index := range bundle.Operations {
-		candidate := &bundle.Operations[index]
-		if candidate.EffectID != mutation.EffectID {
-			continue
-		}
-		if operation != nil {
-			return errors.New("committed store evidence repeats the Bash effect ID")
-		}
-		operation = candidate
+		return err
 	}
 	var transition *delta.Transition
 	for index := range bundle.ApprovedDeltaLedger {
@@ -297,13 +290,10 @@ func (e *DurableExecutor) bindProductionBashEvidence(ctx context.Context, propos
 		}
 		transition = candidate
 	}
-	if operation == nil || transition == nil {
+	if transition == nil {
 		return errors.New("committed operation evidence and approved Bash delta do not match the actual Store mutation")
 	}
-	if operation.Operation.Kind != delta.OperationLease || operation.Operation.LeaseID == "" ||
-		operation.Tool != "bash" || operation.EffectID != mutation.EffectID ||
-		operation.InputGeneration != mutation.Transition.InputGeneration || operation.InputTreeDigest != mutation.Transition.InputTreeDigest ||
-		operation.OutputGeneration != mutation.Transition.OutputGeneration || operation.OutputTreeDigest != mutation.Transition.OutputTreeDigest ||
+	if operation.OutputGeneration != mutation.Transition.OutputGeneration || operation.OutputTreeDigest != mutation.Transition.OutputTreeDigest ||
 		operation.Operation != mutation.Transition.Operation {
 		return errors.New("committed Bash OperationEvidence differs from the Store MutationResult transition")
 	}
@@ -313,21 +303,77 @@ func (e *DurableExecutor) bindProductionBashEvidence(ctx context.Context, propos
 	if mutation.Generation.ID() != transition.OutputGeneration || mutation.Generation.TreeDigest() != transition.OutputTreeDigest {
 		return errors.New("committed Bash generation differs from the approved transition output")
 	}
+	return binder.BindProductionBashEvidence(ctx, providerCall, bundle, *transition, operation)
+}
+
+// bindProductionDeniedBashEvidence settles the D09 lease of a Bash command that ran and whose settled
+// change delta admission refused (ErrDeltaDenied). The Store holds a denied_after_effect operation and no
+// transition, so the receipt binds to that operation and the refused candidate.
+func (e *DurableExecutor) bindProductionDeniedBashEvidence(ctx context.Context, proposal protocol.Proposal, decision gate.Decision, mutation sessionrepo.MutationResult) error {
+	binder, ok := e.commandRunner.(productionDeniedBashEvidenceBinder)
+	if !ok || ctx == nil || mutation.Generation != nil || mutation.EffectID == "" || mutation.Transition.ID == "" ||
+		proposal.Tool != "bash" || proposal.ToolCallID == "" {
+		return errors.New("registered D09 command runner has no durable evidence-binding API")
+	}
+	bundle, operation, providerCall, err := e.committedBashEvidence(ctx, proposal, decision, mutation)
+	if err != nil {
+		return err
+	}
+	if !deniedAfterEffect(operation) || operation.Operation != mutation.Transition.Operation {
+		return errors.New("committed Bash OperationEvidence is not the denied operation of the Store MutationResult")
+	}
+	return binder.BindProductionDeniedBashEvidence(ctx, providerCall, bundle, mutation.Transition, operation)
+}
+
+// committedBashEvidence reads the Store evidence of the Bash effect that mutation names and derives the
+// provider-call identity of its lease. It checks what promoted and refused commands share: the operation
+// is the lease of this provider response/call and its input matches the Store's transition.
+func (e *DurableExecutor) committedBashEvidence(ctx context.Context, proposal protocol.Proposal, decision gate.Decision,
+	mutation sessionrepo.MutationResult) (sessionrepo.EvidenceBundle, sessionrepo.OperationEvidence, delta.OperationIdentity, error) {
+	if err := ctx.Err(); err != nil {
+		return sessionrepo.EvidenceBundle{}, sessionrepo.OperationEvidence{}, delta.OperationIdentity{}, err
+	}
+	bundle, err := e.store.EvidenceBundle()
+	if err != nil {
+		return sessionrepo.EvidenceBundle{}, sessionrepo.OperationEvidence{}, delta.OperationIdentity{}, fmt.Errorf("read committed Bash operation evidence: %w", err)
+	}
+	var operation *sessionrepo.OperationEvidence
+	for index := range bundle.Operations {
+		candidate := &bundle.Operations[index]
+		if candidate.EffectID != mutation.EffectID {
+			continue
+		}
+		if operation != nil {
+			return sessionrepo.EvidenceBundle{}, sessionrepo.OperationEvidence{}, delta.OperationIdentity{}, errors.New("committed store evidence repeats the Bash effect ID")
+		}
+		operation = candidate
+	}
+	fail := func(err error) (sessionrepo.EvidenceBundle, sessionrepo.OperationEvidence, delta.OperationIdentity, error) {
+		return sessionrepo.EvidenceBundle{}, sessionrepo.OperationEvidence{}, delta.OperationIdentity{}, err
+	}
+	if operation == nil {
+		return fail(errors.New("committed operation evidence and approved Bash delta do not match the actual Store mutation"))
+	}
+	if operation.Operation.Kind != delta.OperationLease || operation.Operation.LeaseID == "" ||
+		operation.Tool != "bash" || operation.EffectID != mutation.EffectID ||
+		operation.InputGeneration != mutation.Transition.InputGeneration || operation.InputTreeDigest != mutation.Transition.InputTreeDigest {
+		return fail(errors.New("committed Bash OperationEvidence differs from the Store MutationResult transition"))
+	}
 	expectedLeaseID, err := durableTrustedIdentity("lease", proposal, decision)
 	if err != nil || operation.Operation.LeaseID != expectedLeaseID {
-		return errors.Join(errors.New("committed Bash lease does not derive from the current provider response/call tuple"), err)
+		return fail(errors.Join(errors.New("committed Bash lease does not derive from the current provider response/call tuple"), err))
 	}
 	proposalID, err := durableTrustedIdentity("proposal", proposal, decision)
 	if err != nil {
-		return err
+		return fail(err)
 	}
 	providerCall := delta.OperationIdentity{Kind: delta.OperationProposalCall, ProposalID: proposalID,
 		CallIssuer: e.callIssuer, CallID: proposal.ToolCallID}
 	if providerCall.CallIssuer != e.callIssuer || !validIdentityText(providerCall.CallIssuer) || !validIdentityText(providerCall.CallID) ||
 		providerCall.CallID != proposal.ToolCallID {
-		return errors.New("durable Bash provider-call identity is invalid")
+		return fail(errors.New("durable Bash provider-call identity is invalid"))
 	}
-	return binder.BindProductionBashEvidence(ctx, providerCall, bundle, *transition, *operation)
+	return bundle, *operation, providerCall, nil
 }
 
 // sameDurableTransition is field-exact but treats nil and empty Changes alike: a no-change
@@ -698,6 +744,14 @@ func (e *DurableExecutor) admissionDenied(ctx context.Context, proposal protocol
 	mutation sessionrepo.MutationResult, err error) error {
 	if !errors.Is(err, sessionrepo.ErrDeltaDenied) {
 		return err
+	}
+	// A refused Bash command still ran on its D09 cell: settle its lease before the owner records the
+	// denial, so the run keeps a record that the command executed and settled.
+	if proposal.Tool == "bash" && durableCommandRunnerProfile(e.commandRunner) == piruntime.D09CommandRunnerProfile {
+		if bindErr := e.bindProductionDeniedBashEvidence(ctx, proposal, decision, mutation); bindErr != nil {
+			e.quarantined = true
+			return fmt.Errorf("bind and reverify D09 proof with denied durable Bash operation before result release: %w", bindErr)
+		}
 	}
 	if e.afterDurableOperation != nil {
 		if settleErr := e.afterDurableOperation(ctx, proposal, decision); settleErr != nil {
