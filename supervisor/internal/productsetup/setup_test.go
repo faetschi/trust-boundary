@@ -337,6 +337,10 @@ func TestSetupLiveRunsAccountsOwnersAndReloadInOrder(t *testing.T) {
 		return nil, nil
 	}
 	f.env.Chown = func(path string, uid, gid int) error {
+		path, err := filepath.EvalSymlinks(path)
+		if err != nil {
+			return err
+		}
 		chowns = append(chowns, fmt.Sprintf("%s %d:%d", strings.TrimPrefix(path, f.root), uid, gid))
 		return nil
 	}

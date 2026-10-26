@@ -150,6 +150,7 @@ func (r Report) String() string {
 type host struct {
 	env  Env
 	root string
+	dir  *os.File
 	rep  *Report
 	// ids of the service account, known once it exists.
 	uid, gid int
@@ -162,6 +163,14 @@ func newHost(env Env) *host {
 		root = "/"
 	}
 	return &host{env: env, root: filepath.Clean(root), rep: &Report{DryRun: env.DryRun, Live: env.Live}}
+}
+
+// ValidateRoot refuses a root inside a thesis installation before any host effect.
+func ValidateRoot(root string) error {
+	if !filepath.IsAbs(root) || IsThesisPath(filepath.ToSlash(filepath.Clean(root))) {
+		return refuse("root %s must be absolute and outside the thesis paths", root)
+	}
+	return nil
 }
 
 // real maps a host path below the root.
@@ -214,7 +223,9 @@ func (h *host) chown(logical string, o owner) error {
 	if chown == nil {
 		chown = os.Lchown
 	}
-	return chown(h.real(logical), uid, gid)
+	return h.withPath(logical, false, func(path string) error {
+		return chown(path, uid, gid)
+	})
 }
 
 // wantIDs returns the numeric IDs an owner has on a live host, if known.

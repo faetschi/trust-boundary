@@ -1,0 +1,8 @@
+{
+  "version": "tbound-product-protocol/v1",
+  "op": "get_candidate",
+  "get_candidate": {
+    "session_id": "psess-0123456789abcdef0123456789abcdef",
+    "turn_id": "psess-0123456789abcdef0123456789abcdef/turn-1"
+  }
+}

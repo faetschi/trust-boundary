@@ -12,9 +12,10 @@ import (
 // DoctorReport is the advisory report. Only a passed self-test establishes governed readiness.
 type DoctorReport struct {
 	Checks []Check
+	DryRun bool
 	// SelfTestRequested is set for `doctor --self-test`.
 	SelfTestRequested bool
-	// SelfTestErr is nil for a passed self-test, ErrSelfTestNotConfigured when the installation names no
+	// SelfTestErr is nil for a passed or planned self-test, ErrSelfTestNotConfigured when the installation names no
 	// self-test project, and otherwise the failure wrapped in ErrSelfTest.
 	SelfTestErr    error
 	SelfTestDetail string
@@ -41,6 +42,8 @@ func (r DoctorReport) String() string {
 		}
 	}
 	switch {
+	case r.DryRun && r.SelfTestRequested:
+		b.WriteString("dry run: would run the configured self-test; no turn was submitted.\ngoverned readiness: NOT established.\n")
 	case !r.SelfTestRequested:
 		b.WriteString("governed readiness: NOT established. Only `tbound product doctor --self-test` can establish it.\n")
 	case r.SelfTestErr == nil:
@@ -57,7 +60,15 @@ func (r DoctorReport) String() string {
 // reads only: it never changes the host and never reads a provider key.
 func Doctor(env Env, selfTest bool) DoctorReport {
 	h := newHost(env)
-	rep := DoctorReport{SelfTestRequested: selfTest}
+	rep := DoctorReport{SelfTestRequested: selfTest, DryRun: env.DryRun}
+	if err := h.openRoot(); err != nil {
+		rep.Checks = append(rep.Checks, Check{Name: "root", Status: Fail, Detail: err.Error()})
+		if selfTest {
+			rep.SelfTestErr = fmt.Errorf("%w: %v", ErrSelfTest, err)
+		}
+		return rep
+	}
+	defer h.dir.Close()
 	add := func(name, status, detail, fix string) {
 		rep.Checks = append(rep.Checks, Check{Name: name, Status: status, Detail: detail, Fix: fix})
 	}
@@ -103,7 +114,7 @@ func Doctor(env Env, selfTest bool) DoctorReport {
 	} else if ok {
 		add("credentials", Warn, "not checked on this root", "")
 	}
-	if selfTest {
+	if selfTest && !env.DryRun {
 		rep.SelfTestDetail, rep.SelfTestErr = h.runSelfTest()
 	}
 	return rep

@@ -1,0 +1,16 @@
+{
+  "version": "tbound-product-protocol/v1",
+  "op": "create_session",
+  "create_session": {
+    "project_id": "demo-project",
+    "provider_profile": "openrouter-default",
+    "publication_mode": "review",
+    "budget": {
+      "host_calls": 200,
+      "tokens": 100000,
+      "duration_seconds": 900
+    },
+    "read_only": true,
+    "request_key": "ck-00112233445566778899aabbccddeeff"
+  }
+}

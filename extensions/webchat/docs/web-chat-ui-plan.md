@@ -145,7 +145,7 @@ This is the part that decides the design. Evidence, not opinion:
 | **Turn boundaries are partial** | `providerExchangeEvidence.turn` is a monotonic counter with no start/end record and no turn id; the live `turn_end` is never journalled. | Turn grouping is approximate; "Step" does not exist at all. |
 | **Usage is untyped** | Token counts live only inside raw `provider_exchange.response` bytes. | Token/cache metrics cannot be shown as values. |
 | **Raw payloads are unbounded and sensitive** | The journal durably holds full request bodies, response bodies and tool result bytes; the webchat contract bounds display text to 4096/8192 B and our docs already record that prose is bounded but **not** content-redacted. | The browser must show **bounded previews + digests**, not raw payloads. |
-| **No live source** | `NewLiveStore()` returns `ErrLiveUnavailable`; `--live` fails closed. | Everything is fixture / replay / receipt. |
+| **No live source** | Written before P9: the gateway had no service to read. Since P9, `--live --socket` forwards to the product service ([contract §9](web-chat-contract.md#9-implemented-for-v1-live-mode-p9)). | The Pi-RPC limits in the rows above still describe the supervisor's own Pi session service, not the product service. |
 
 What *is* durable and therefore projectable: per-tool **identity** (tool name, `tool_call_id`,
 sequence), **argument digest** and raw arguments, **result** bytes and digest, the **gate
