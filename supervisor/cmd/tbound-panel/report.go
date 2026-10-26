@@ -98,18 +98,18 @@ func (r *runner) finish(plan blindPlan) (spend, error) {
 
 	items2 := map[string]ItemStats{}
 	for _, it := range items {
-		var subs []subject
+		var subs []panelaudit.Subject
 		for _, c := range d.cases {
 			if _, na := notApplicable[c.Kind][it.Key]; !na && d.complete(phaseChecklist, c) {
-				subs = append(subs, subject{root: root(c), ratings: d.checklist(c, it.Key)})
+				subs = append(subs, panelaudit.Subject{Root: root(c), Ratings: d.checklist(c, it.Key)})
 			}
 		}
-		items2[it.Key] = itemStats(subs, checklistCategories, r.cfg.Seed, r.cfg.BootstrapResamples)
+		items2[it.Key] = panelaudit.ComputeItem(subs, checklistCategories, r.cfg.Seed, r.cfg.BootstrapResamples)
 	}
 	fields := map[string]ItemStats{}
 	agree := map[string]claimAgreement{}
 	for _, f := range blindFields {
-		var subs []subject
+		var subs []panelaudit.Subject
 		seen := map[string]bool{}
 		ca := claimAgreement{}
 		for _, c := range d.cases {
@@ -117,7 +117,7 @@ func (r *runner) finish(plan blindPlan) (spend, error) {
 				continue
 			}
 			vals := d.blindValues(c, f.key)
-			subs = append(subs, subject{root: root(c), ratings: vals})
+			subs = append(subs, panelaudit.Subject{Root: root(c), Ratings: vals})
 			for _, v := range vals {
 				seen[v] = true
 			}
@@ -137,7 +137,7 @@ func (r *runner) finish(plan blindPlan) (spend, error) {
 			}
 			sort.Strings(cats)
 		}
-		fields[f.key] = itemStats(subs, cats, r.cfg.Seed, r.cfg.BootstrapResamples)
+		fields[f.key] = panelaudit.ComputeItem(subs, cats, r.cfg.Seed, r.cfg.BootstrapResamples)
 		if ca.Total > 0 {
 			ca.Rate = float64(ca.Agreeing) / float64(ca.Total)
 		}

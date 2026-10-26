@@ -1,4 +1,4 @@
-package main
+package panelaudit
 
 import (
 	"math"
@@ -13,7 +13,7 @@ func TestFleissKappaTextbook(t *testing.T) {
 		{0, 0, 0, 0, 14}, {0, 2, 6, 4, 2}, {0, 0, 3, 5, 6}, {0, 3, 9, 2, 0}, {2, 2, 8, 1, 1},
 		{7, 7, 0, 0, 0}, {3, 2, 6, 3, 0}, {2, 5, 3, 2, 2}, {6, 5, 2, 1, 0}, {0, 2, 2, 3, 7},
 	}
-	k, agree, prev, ok := fleiss(counts)
+	k, agree, prev, ok := Fleiss(counts)
 	if !ok {
 		t.Fatal("kappa undefined")
 	}
@@ -26,11 +26,11 @@ func TestFleissKappaTextbook(t *testing.T) {
 }
 
 func TestFleissKappaPerfectAndUndefined(t *testing.T) {
-	if k, a, _, ok := fleiss([][]int{{3, 0, 0}, {0, 3, 0}, {0, 0, 3}}); !ok || k != 1 || a != 1 {
+	if k, a, _, ok := Fleiss([][]int{{3, 0, 0}, {0, 3, 0}, {0, 0, 3}}); !ok || k != 1 || a != 1 {
 		t.Fatalf("perfect: %v %v %v", k, a, ok)
 	}
 	// Every rating in one category: expected agreement is 1, kappa is undefined.
-	if _, a, _, ok := fleiss([][]int{{3, 0, 0}, {3, 0, 0}}); ok || a != 1 {
+	if _, a, _, ok := Fleiss([][]int{{3, 0, 0}, {3, 0, 0}}); ok || a != 1 {
 		t.Fatalf("all-pass must be undefined with agreement 1, got ok=%v a=%v", ok, a)
 	}
 }
@@ -41,31 +41,31 @@ func TestGate(t *testing.T) {
 		defined bool
 		want    string
 	}{
-		{0.85, 0.95, true, gatePass},
-		{0.85, 0.85, true, gateRevise}, // agreement below 90% cannot pass
-		{0.70, 0.95, true, gateRevise},
-		{0.59, 0.95, true, gateStop},
-		{0, 1, false, gateUndefined},
+		{0.85, 0.95, true, GatePass},
+		{0.85, 0.85, true, GateRevise}, // agreement below 90% cannot pass
+		{0.70, 0.95, true, GateRevise},
+		{0.59, 0.95, true, GateStop},
+		{0, 1, false, GateUndefined},
 	}
 	for _, c := range cases {
-		if got := gate(c.k, c.a, c.defined); got != c.want {
-			t.Errorf("gate(%v,%v,%v)=%s want %s", c.k, c.a, c.defined, got, c.want)
+		if got := Gate(c.k, c.a, c.defined); got != c.want {
+			t.Errorf("Gate(%v,%v,%v)=%s want %s", c.k, c.a, c.defined, got, c.want)
 		}
 	}
 }
 
 func TestItemStatsBootstrapIsSeededAndGroupsRoots(t *testing.T) {
 	// Six subjects over four roots; rater disagreement on two subjects.
-	subjects := []subject{
-		{root: "r1", ratings: []string{"pass", "pass", "pass"}},
-		{root: "r1", ratings: []string{"fail", "fail", "fail"}},
-		{root: "r2", ratings: []string{"pass", "fail", "pass"}},
-		{root: "r3", ratings: []string{"unclear", "pass", "pass"}},
-		{root: "r4", ratings: []string{"fail", "fail", "fail"}},
-		{root: "r4", ratings: []string{"pass", "pass", "pass"}},
+	subjects := []Subject{
+		{Root: "r1", Ratings: []string{"pass", "pass", "pass"}},
+		{Root: "r1", Ratings: []string{"fail", "fail", "fail"}},
+		{Root: "r2", Ratings: []string{"pass", "fail", "pass"}},
+		{Root: "r3", Ratings: []string{"unclear", "pass", "pass"}},
+		{Root: "r4", Ratings: []string{"fail", "fail", "fail"}},
+		{Root: "r4", Ratings: []string{"pass", "pass", "pass"}},
 	}
-	a := itemStats(subjects, checklistCategories, 7, 500)
-	b := itemStats(subjects, checklistCategories, 7, 500)
+	a := ComputeItem(subjects, []string{"pass", "fail", "unclear"}, 7, 500)
+	b := ComputeItem(subjects, []string{"pass", "fail", "unclear"}, 7, 500)
 	if !reflect.DeepEqual(a, b) {
 		t.Fatalf("bootstrap not deterministic: %+v vs %+v", a, b)
 	}
