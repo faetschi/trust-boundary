@@ -1,12 +1,15 @@
 package main
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
 
+	"tbound/supervisor/internal/corpusadmit"
 	"tbound/supervisor/internal/evalcorpus"
 	"tbound/supervisor/internal/panelaudit"
 )
@@ -158,5 +161,55 @@ func TestLoadCorpusContentDigestIgnoresSignoffs(t *testing.T) {
 	}
 	if signed.Digest == draft.Digest {
 		t.Error("the whole-manifest digest ignored the sign-offs")
+	}
+}
+
+// The panel shows fixture files to the raters, so it loads them through the digest-checked
+// loader: an artifact edited after the manifest was drafted must be refused, not rendered.
+func TestRenderRefusesAFixtureThatDoesNotMatchItsDigest(t *testing.T) {
+	corpus, err := loadCorpus(pilotManifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := corpus.Manifest.Cases[0]
+	digest, _ := corpusadmit.FixtureDigest(c)
+	name, ok := corpusadmit.FixtureArtifactName(digest)
+	if !ok {
+		t.Fatalf("case %s has no fixture digest", c.CaseID)
+	}
+	raw, err := os.ReadFile(filepath.Join(corpus.artifacts, name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	arts := t.TempDir()
+	corpus.artifacts = arts
+	if err := os.WriteFile(filepath.Join(arts, name), raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := renderCase(corpus, c, "item-0000000000", phaseBlind); err != nil {
+		t.Fatalf("the unedited fixture was refused: %v", err)
+	}
+	var spec map[string]any
+	if err := json.Unmarshal(raw, &spec); err != nil {
+		t.Fatal(err)
+	}
+	edited := false
+	for _, e := range spec["entries"].([]any) {
+		if entry := e.(map[string]any); entry["type"] == "file" && !edited {
+			entry["content_b64"] = base64.StdEncoding.EncodeToString([]byte("content added after the digest was computed"))
+			edited = true
+		}
+	}
+	if !edited {
+		t.Fatal("fixture has no file entry to edit")
+	}
+	raw, _ = json.Marshal(spec)
+	if err := os.WriteFile(filepath.Join(arts, name), raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, phase := range phases {
+		if _, err := renderCase(corpus, c, "item-0000000000", phase); err == nil || !strings.Contains(err.Error(), "digest") {
+			t.Fatalf("phase %d: a fixture that no longer matches its digest was rendered: %v", phase, err)
+		}
 	}
 }
