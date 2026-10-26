@@ -599,3 +599,24 @@ func TestPanelReportFeedsCorpusDigest(t *testing.T) {
 	}
 	t.Logf("real-run-shaped receipt/audit/stats accepted by corpus-digest: %s", want)
 }
+
+func TestReportKeepsLargeSeeds(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "receipt.json")
+	var receipt panelaudit.Receipt
+	receipt.Seeds.Bootstrap = 18446744073709551615
+	receipt.Seeds.BlindIDsAndOrder = 18446744073709551615
+	if err := writeReport(out, receipt, map[string]any{"note": "retained"}); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got panelaudit.Receipt
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Seeds != receipt.Seeds || !bytes.Contains(raw, []byte(`"note": "retained"`)) {
+		t.Fatalf("report changed seed or dropped metadata: %s", raw)
+	}
+}
