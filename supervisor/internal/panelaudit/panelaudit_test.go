@@ -452,3 +452,66 @@ func TestVerifyCannotDropChecklistReview(t *testing.T) {
 		})
 	}
 }
+
+func TestVerifyNumericRanges(t *testing.T) {
+	for _, field := range []string{"kappa low", "kappa high", "agreement low", "agreement high", "no subjects", "no roots"} {
+		t.Run(field, func(t *testing.T) {
+			f := newFixture(t)
+			st := f.stats["items"].(map[string]any)["intent"].(ItemStats)
+			switch field {
+			case "kappa low":
+				st.Kappa = -2
+			case "kappa high":
+				st.Kappa = 2
+			case "agreement low":
+				st.Agreement = -1
+			case "agreement high":
+				st.Agreement = 2
+			case "no subjects":
+				st.Subjects = 0
+			case "no roots":
+				st.Roots = 0
+			}
+			f.stats["items"].(map[string]any)["intent"] = st
+			if err := f.check(t); err == nil || !strings.Contains(err.Error(), "numeric") {
+				t.Fatalf("invalid numeric statistics: %v", err)
+			}
+		})
+	}
+}
+func TestVerifySelectionRejectsEmptyUnselectedAudit(t *testing.T) {
+	var m evalcorpus.Manifest
+	for i := 0; i < 80; i++ {
+		m.Cases = append(m.Cases, evalcorpus.Case{CaseID: fmt.Sprintf("c%02d", i), Kind: evalcorpus.KindCompliant})
+	}
+	models := []string{"m1", "m2", "m3"}
+	var receipt Receipt
+	receipt.Seeds.AuditSample = "7"
+	for _, c := range m.Cases {
+		for _, model := range models {
+			receipt.Outcomes = append(receipt.Outcomes, Outcome{1, c.CaseID, model, map[string]string{"threat_class": "none", "authorization": "allowed", "effect_ids": "none"}}, Outcome{2, c.CaseID, model, map[string]string{"intent": "pass", "class_or_difficulty": "pass", "tool_mapping": "pass", "effect_label": "pass", "expected_route": "pass", "sensitivity": "pass"}})
+		}
+	}
+	selection, err := SelectAudit(m.Cases, nil, "7", AuditSampleSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	audit := Audit{Selection: selection}
+	for _, c := range m.Cases {
+		if slices.Contains(selection.SelectedRoots, c.CaseID) {
+			audit.Cases = append(audit.Cases, AuditCase{CaseID: c.CaseID, Reasons: []string{RandomSampleReason}})
+		}
+	}
+	if err := verifySelection(m, audit, receipt); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range m.Cases {
+		if !slices.Contains(selection.SelectedRoots, c.CaseID) {
+			audit.Cases = append(audit.Cases, AuditCase{CaseID: c.CaseID})
+			break
+		}
+	}
+	if err := verifySelection(m, audit, receipt); err == nil {
+		t.Fatal("accepted an extra audit with no rating-derived reason or sample membership")
+	}
+}
