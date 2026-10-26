@@ -254,7 +254,7 @@ class ManifestInstallTests(unittest.TestCase):
         self.assertEqual(got.returncode, 0, got.stdout + got.stderr)
 
 
-    def run_install(self, corrupt=None, extra_args=None, active=False, rollback=False, missing_backup=False, invalid_backup=False):
+    def run_install(self, corrupt=None, extra_args=None, active=False, rollback=False, missing_backup=False, invalid_backup=False, fail_install=None):
         tmp = tempfile.TemporaryDirectory(prefix="tbound-op-manifest-")
         self.addCleanup(tmp.cleanup)
         base = Path(tmp.name)
@@ -304,6 +304,7 @@ need_inactive() { ''' + ('die active' if active else ':') + '''; }
 stage_copy() { cp -- "$BASE/stage/$2" "$3"; }
 install() {
  printf '%s\n' "$*" >>"$BASE/installs"
+ if [[ -n ${FAIL_INSTALL:-} && $* == *"$FAIL_INSTALL"* ]]; then return 1; fi
  local a args=()
  while (($#)); do case $1 in -o|-g) shift 2;; *) args+=("$1"); shift;; esac; done
  command install "${args[@]}"
@@ -347,6 +348,11 @@ install() {
             self.assertEqual((base / "etc/corpus" / file).read_bytes(), (base / "stage" / file).read_bytes())
         self.assertTrue((base / "ga/state/corpus-digest").is_file())
 
+    def test_failed_restore_leaves_no_stale_digest_token(self):
+        got, base, files = self.run_install(rollback=True, fail_install="audit.json")
+        self.assertNotEqual(got.returncode, 0, got.stdout)
+        self.assertFalse((base / "ga/state/corpus-digest").exists(), "a half-restored corpus must not keep the digest of the installed manifest")
+
     def test_incomplete_corpus_backup_refuses_rollback_without_changes(self):
         got, base, files = self.run_install(rollback=True, missing_backup=True)
         self.assertNotEqual(got.returncode, 0)
@@ -374,6 +380,88 @@ install() {
         self.assertNotEqual(got.returncode, 0)
         for file in files:
             self.assertEqual((base / "etc/corpus" / file).read_text(), "previous " + file)
+
+class ConfigInstallTests(unittest.TestCase):
+    """cfg-install for the corpus config holds it against the policy the panel receipt recorded."""
+
+    digest = "sha256:" + "1" * 64
+
+    def run_cfg(self, config_paths=(), policy="absent", receipt=True):
+        import hashlib
+        tmp = tempfile.TemporaryDirectory(prefix="tbound-op-cfg-")
+        self.addCleanup(tmp.cleanup)
+        base = Path(tmp.name)
+        for name in ("stage", "work", "etc/corpus", "prev", "ga/state"):
+            (base / name).mkdir(parents=True)
+        cfg = json.dumps({"schema_version": "tbound-pi-service-config/v4", "corpus_manifest_digest": self.digest,
+                          "workflow_bash_output_paths": list(config_paths)}, indent=2).encode()
+        (base / "stage" / "serve-pi-service.json").write_bytes(cfg)
+        (base / "ga/state/corpus-digest").write_text(self.digest + "\n")
+        if receipt:
+            doc = {"schema": "tbound-panel-receipt/v3"}
+            if policy != "absent":
+                doc["public_policy"] = policy
+            (base / "etc/corpus/receipt.json").write_text(json.dumps(doc))
+        staging = source[source.index("stage_hashed() {"):source.index("# -------------------------------------------------------------------------------------------------------- state")]
+        helpers = source[source.index("backup_once() {"):source.index("svc_inactive() {")]
+        pycheck = ""
+        if "PY_CFGPOLICY" in source:
+            pycheck = source[source.index("read -r -d '' PY_CFGPOLICY"):source.index("jget() {")]
+        verb = source[source.index("v_cfg_install() {"):source.index("v_reg_measure() {")]
+        script = '''set -euo pipefail
+BASE=$1; shift
+WORK=$BASE/work; ETC=$BASE/etc; PREV=$BASE/prev; GA=$BASE/ga; STATE=$GA/state; CFGTPL=$BASE/tpl
+ARGS=("$@")
+die() { echo "$*" >&2; exit 1; }
+usage() { echo "$*" >&2; exit 2; }
+say() { echo "$*"; }
+need_argc() { :; }
+need_name() { [[ $1 == pilot ]]; }
+need_sha() { :; }
+norm_sha() { printf 'sha256:%s' "${1#sha256:}"; }
+sha() { local h; h=$(sha256sum -- "$1") || return 1; printf 'sha256:%s' "${h%% *}"; }
+st_get() { return 0; }; st_put() { :; }; st_reset() { :; }; st_rank() { echo 0; }
+check_tools() { :; }; mkwork() { :; }; prep_ga() { :; }; need_inactive() { :; }
+stage_copy() { cp -- "$BASE/stage/$2" "$3"; }
+cfg_structural() { CFG_EXTRA=$(grep -Eo 'sha256:[0-9a-f]{64}' "$2" | head -1); }
+py() { python3 -I -c "$@"; }
+install() {
+ local args=()
+ while (($#)); do case $1 in -o|-g) shift 2;; *) args+=("$1"); shift;; esac; done
+ command install "${args[@]}"
+}
+''' + staging + helpers + pycheck + verb + "\nv_cfg_install\n"
+        want = "sha256:" + hashlib.sha256(cfg).hexdigest()
+        got = subprocess.run(["bash", "-c", script, "cfg-test", str(base), "pilot", want], capture_output=True, text=True)
+        return got, base / "etc/serve-pi-service.json"
+
+    def test_matching_policy_installs_the_config(self):
+        for paths in ((), ("out/report.txt",)):
+            with self.subTest(paths=paths):
+                got, installed = self.run_cfg(config_paths=paths, policy={"bash_output_paths": list(paths), "network_destinations": []})
+                self.assertEqual(got.returncode, 0, got.stdout + got.stderr)
+                self.assertTrue(installed.is_file())
+
+    def test_a_different_policy_refuses_before_install(self):
+        for name, paths, policy in (
+                ("bash paths the raters did not see", ("out/report.txt",), {"bash_output_paths": [], "network_destinations": []}),
+                ("bash paths the config does not allow", (), {"bash_output_paths": ["out/report.txt"], "network_destinations": []}),
+                ("a different order", ("a/", "b/"), {"bash_output_paths": ["b/", "a/"], "network_destinations": []}),
+                ("a network destination the cell cannot reach", (), {"bash_output_paths": [], "network_destinations": ["127.0.0.9"]}),
+                ("no network destination list", (), {"bash_output_paths": []}),
+                ("no policy in the receipt", (), "absent"),
+                ("a policy that is not an object", (), ["out/"])):
+            with self.subTest(name):
+                got, installed = self.run_cfg(config_paths=paths, policy=policy)
+                self.assertNotEqual(got.returncode, 0, got.stdout)
+                self.assertIn("public policy", got.stderr)
+                self.assertFalse(installed.exists())
+
+    def test_missing_installed_receipt_refuses(self):
+        got, installed = self.run_cfg(receipt=False)
+        self.assertNotEqual(got.returncode, 0, got.stdout)
+        self.assertFalse(installed.exists())
+
 
 unittest.main(verbosity=2)
 PY
