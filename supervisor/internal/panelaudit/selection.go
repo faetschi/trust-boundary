@@ -67,6 +67,9 @@ func verifySelection(m evalcorpus.Manifest, audit Audit, receipt Receipt) error 
 	listed := map[string]bool{}
 	sampled := map[string]bool{}
 	for _, c := range audit.Cases {
+		if len(c.Reasons) == 0 {
+			return fmt.Errorf("panel audit selection case %q has no reasons", c.CaseID)
+		}
 		listed[c.CaseID] = true
 		if len(c.Reasons) == 1 && c.Reasons[0] == RandomSampleReason {
 			sampled[c.CaseID] = true
