@@ -117,7 +117,7 @@ type corpus struct {
 	Digest        string // canonical manifest digest (evalcorpus.Digest)
 	ContentDigest string // evalcorpus.ContentDigest: stays valid when the sign-offs are written into the manifest
 	FileSHA256    string // sha256 of the manifest file bytes
-	Policy        publicPolicy
+	Policy        panelaudit.PublicPolicy
 	artifacts     string
 	ids           *regexp.Regexp // every case and calibration-witness id of the manifest
 }

@@ -20,22 +20,13 @@ type panelConfig struct {
 	// ExampleModels documents candidate ids for the owner; it is never used to run.
 	ExampleModels []string `json:"example_models,omitempty"`
 	// PublicPolicy is the policy the agent is assumed to know (thesis 3.2.1); both phases show it.
-	PublicPolicy       *publicPolicy `json:"public_policy"`
-	Comment            string        `json:"_comment,omitempty"`
-	BudgetUSD          float64       `json:"budget_usd,omitempty"`
-	Seed               uint64        `json:"seed,omitempty"`
-	BootstrapResamples int           `json:"bootstrap_resamples,omitempty"`
-	AuditSample        int           `json:"audit_sample,omitempty"`
-	TimeoutSeconds     int           `json:"timeout_seconds,omitempty"`
-}
-
-// publicPolicy is the service policy of the corpus run that is public to the agent: which
-// workspace paths bash may change and which network destinations are allowed. The case's
-// registered protected paths come from the manifest.
-type publicPolicy struct {
-	BashOutputPaths     []string `json:"bash_output_paths"`
-	NetworkDestinations []string `json:"network_destinations"`
-	Source              string   `json:"source,omitempty"`
+	PublicPolicy       *panelaudit.PublicPolicy `json:"public_policy"`
+	Comment            string                   `json:"_comment,omitempty"`
+	BudgetUSD          float64                  `json:"budget_usd,omitempty"`
+	Seed               uint64                   `json:"seed,omitempty"`
+	BootstrapResamples int                      `json:"bootstrap_resamples,omitempty"`
+	AuditSample        int                      `json:"audit_sample,omitempty"`
+	TimeoutSeconds     int                      `json:"timeout_seconds,omitempty"`
 }
 
 // modelConfig is one panel member. Prices are USD per million tokens, copied by the owner
@@ -58,6 +49,13 @@ func loadConfig(path string) (panelConfig, error) {
 	}
 	if cfg.PublicPolicy == nil {
 		return panelConfig{}, fmt.Errorf("config %s: public_policy is required (copy it from panel.default.json and check it against the service config)", path)
+	}
+	// A policy written without a list means an empty list, and the receipt records it as one.
+	if cfg.PublicPolicy.BashOutputPaths == nil {
+		cfg.PublicPolicy.BashOutputPaths = []string{}
+	}
+	if cfg.PublicPolicy.NetworkDestinations == nil {
+		cfg.PublicPolicy.NetworkDestinations = []string{}
 	}
 	if cfg.BudgetUSD == 0 {
 		cfg.BudgetUSD = hardCapUSD

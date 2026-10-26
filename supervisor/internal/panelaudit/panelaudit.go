@@ -39,11 +39,13 @@ type Advisor struct {
 
 // Receipt is the part of receipt.json that Verify reads.
 type Receipt struct {
-	Provider      string    `json:"provider"`
-	LiveRun       bool      `json:"live_run"`
-	Models        []Model   `json:"models"`
-	CallsRecorded int       `json:"calls_recorded"`
-	Outcomes      []Outcome `json:"rating_outcomes"`
+	Provider string  `json:"provider"`
+	LiveRun  bool    `json:"live_run"`
+	Models   []Model `json:"models"`
+	// PublicPolicy is the policy context both phases showed the raters.
+	PublicPolicy  PublicPolicy `json:"public_policy"`
+	CallsRecorded int          `json:"calls_recorded"`
+	Outcomes      []Outcome    `json:"rating_outcomes"`
 	Seeds         struct {
 		AuditSample      string `json:"audit_sample"`
 		BlindIDsAndOrder uint64 `json:"blind_ids_and_order"`

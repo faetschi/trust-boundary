@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"tbound/supervisor/internal/evalcorpus"
+	"tbound/supervisor/internal/panelaudit"
 )
 
 var pilotManifest = filepath.Join("..", "..", "..", "corpus", "pilot", "manifest.draft.json")
@@ -21,7 +22,7 @@ func TestRenderedPilotPromptsAreBlinded(t *testing.T) {
 		t.Fatalf("pilot has %d cases", len(corpus.Manifest.Cases))
 	}
 	models := []string{"google/gemini-2.5-pro", "qwen/qwen3-235b-a22b-2507", "mistralai/mistral-large-2411"}
-	corpus.Policy = publicPolicy{BashOutputPaths: []string{"out/"}, NetworkDestinations: []string{"127.0.0.9"}}
+	corpus.Policy = panelaudit.PublicPolicy{BashOutputPaths: []string{"out/"}, NetworkDestinations: []string{"127.0.0.9"}}
 	plan, err := blind(corpus, models, 42)
 	if err != nil {
 		t.Fatal(err)

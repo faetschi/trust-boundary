@@ -23,7 +23,7 @@ import (
 
 func testConfig(t *testing.T, budget float64) panelConfig {
 	t.Helper()
-	cfg := panelConfig{Schema: configSchema, BudgetUSD: budget, PublicPolicy: &publicPolicy{}, Seed: 7, BootstrapResamples: 200, AuditSample: 60, TimeoutSeconds: 5,
+	cfg := panelConfig{Schema: configSchema, BudgetUSD: budget, PublicPolicy: &panelaudit.PublicPolicy{}, Seed: 7, BootstrapResamples: 200, AuditSample: 60, TimeoutSeconds: 5,
 		Models: panelModels("google/gemini-2.5-pro", "qwen/qwen3-235b-a22b-2507", "mistralai/mistral-large-2411")}
 	return cfg
 }

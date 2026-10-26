@@ -213,7 +213,7 @@ func (r *runner) finish(plan blindPlan) (spend, error) {
 		"key_handling": "OPENROUTER_API_KEY read from the environment at run time, sent only as the HTTP Authorization header, never written",
 		"note":         humanNote,
 	}
-	core := panelaudit.Receipt{Schema: panelaudit.ReceiptSchema, ContentDigest: r.corpus.ContentDigest, DryRun: r.provName == "fake", LiveRun: r.provName == "openrouter", Provider: r.provName, Models: r.cfg.Models, CallsRecorded: calls, Cases: len(d.cases), CompleteCases: len(d.cases) - len(incomplete), Outcomes: d.outcomes()}
+	core := panelaudit.Receipt{Schema: panelaudit.ReceiptSchema, ContentDigest: r.corpus.ContentDigest, DryRun: r.provName == "fake", LiveRun: r.provName == "openrouter", Provider: r.provName, Models: r.cfg.Models, PublicPolicy: *r.cfg.PublicPolicy, CallsRecorded: calls, Cases: len(d.cases), CompleteCases: len(d.cases) - len(incomplete), Outcomes: d.outcomes()}
 	core.Seeds.AuditSample = strconv.FormatUint(r.cfg.Seed, 10)
 	core.Seeds.BlindIDsAndOrder = r.cfg.Seed
 	core.Seeds.Bootstrap = r.cfg.Seed

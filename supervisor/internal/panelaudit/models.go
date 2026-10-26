@@ -74,3 +74,13 @@ func ValidateModels(models []Model) error {
 	}
 	return nil
 }
+
+// PublicPolicy is the service policy of the corpus run that is public to the agent: which
+// workspace paths bash may change and which network destinations are allowed. The panel shows
+// it to every rater and records it in the receipt, so the installed service config can be held
+// against what the raters saw. The case's registered protected paths come from the manifest.
+type PublicPolicy struct {
+	BashOutputPaths     []string `json:"bash_output_paths"`
+	NetworkDestinations []string `json:"network_destinations"`
+	Source              string   `json:"source,omitempty"`
+}
