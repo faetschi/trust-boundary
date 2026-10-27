@@ -443,7 +443,6 @@ func TestSetupRefusesHostInputsThatCollideWithPathsItOrAnUpdateWrites(t *testing
 func TestSetupRefusesHostInputsWhosePathHasASymlinkComponent(t *testing.T) {
 	for name, mutate := range map[string]func(*Config){
 		"calibration below an alias of the config directory": func(c *Config) { c.XattrCalibrationPath = ConfigDir + "/alias/service.json" },
-		"calibration signature is a symlink":                 func(c *Config) { c.XattrCalibrationPath = ConfigDir + "/calibration.json" },
 		"policy below an alias of the config directory":      func(c *Config) { c.GatePolicyPaths["alpha"] = ConfigDir + "/alias/setup.json" },
 		"git below an alias of the binary directory":         func(c *Config) { c.GitPath = BinaryDir + "/alias/tbound" },
 	} {
@@ -456,9 +455,6 @@ func TestSetupRefusesHostInputsWhosePathHasASymlinkComponent(t *testing.T) {
 				if err := os.Symlink(".", f.path(dir+"/alias")); err != nil {
 					t.Fatal(err)
 				}
-			}
-			if err := os.Symlink("alias", f.path(ConfigDir+"/calibration.json.sig")); err != nil {
-				t.Fatal(err)
 			}
 			mutate(&f.cfg)
 			if _, err := f.setup(); !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "symlink") {

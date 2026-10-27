@@ -38,19 +38,14 @@ func (h *host) hostInputs(cfg Config, summary RegistrationSummary, key []byte, k
 		XattrCalibrationPath: h.real(cfg.XattrCalibrationPath), PublicKey: key, PublicKeyPath: keyPath, Owners: owners}
 }
 
-// refuseSymlinkedHostInputs refuses a host input with a symlink in any component of its path, walked without
+// refuseSymlinkedHostInputs refuses a host input with a symlink in a directory of its path, walked without
 // following one from the root. The readers reject a symlink leaf but follow one in an ancestor, which would
 // put an input behind an alias of a path setup writes and make checkNotWritten's lexical comparison unsound.
-// A missing input is left to the host-input check.
+// A missing input and a symlink leaf are left to the host-input check.
 func (h *host) refuseSymlinkedHostInputs(cfg Config) error {
 	paths := append([]string{cfg.GitPath, cfg.XattrCalibrationPath, cfg.XattrCalibrationPath + ".sig"}, slices.Collect(maps.Values(cfg.GatePolicyPaths))...)
 	for _, p := range paths {
-		err := h.withPath(p, false, func(real string) error {
-			if info, err := os.Lstat(real); err == nil && info.Mode()&os.ModeSymlink != 0 {
-				return refuse("the final component is a symlink")
-			}
-			return nil
-		})
+		err := h.withPath(p, false, func(string) error { return nil })
 		if err != nil && !errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf("host input %s: %w; nothing was changed", p, err)
 		}
