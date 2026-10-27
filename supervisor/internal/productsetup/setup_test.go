@@ -3,6 +3,9 @@
 package productsetup
 
 import (
+	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"os"
@@ -20,7 +23,9 @@ type fixture struct {
 	inputs string
 	cfg    Config
 	binary string
-	env    Env
+	// releaseKey signs the release manifests of candidate binaries; its public half is the config's release_public_key.
+	releaseKey ed25519.PrivateKey
+	env        Env
 }
 
 func newFixture(t *testing.T) *fixture {
@@ -34,10 +39,16 @@ func newFixture(t *testing.T) *fixture {
 		return p
 	}
 	f.binary = write("tbound-v1", "binary v1")
+	releasePublic, releaseKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.releaseKey = releaseKey
 	f.cfg = Config{
 		SchemaVersion: ConfigSchema, WorkerMode: "supervisor-loop",
 		Registration: write("registration.json", "projects: alpha,beta"), RegistrationSignature: write("registration.json.sig", "sig\n"),
 		RegistrationPublicKey: write("registration.pub", "pub\n"),
+		ReleasePublicKey:      write("release.pub", base64.StdEncoding.EncodeToString(releasePublic)+"\n"),
 		Projects:              map[string]string{"alpha": ProjectsDir + "/alpha", "beta": ProjectsDir + "/beta"},
 		GatePolicyPaths:       map[string]string{"alpha": ConfigDir + "/policy-alpha.json", "beta": ConfigDir + "/policy-beta.json"},
 		GitPath:               BinaryDir + "/git", GitDigest: "sha256:" + strings.Repeat("a", 64),

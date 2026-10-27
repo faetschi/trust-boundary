@@ -68,7 +68,11 @@ type Config struct {
 	Registration          string `json:"registration,omitempty"`
 	RegistrationSignature string `json:"registration_signature,omitempty"`
 	RegistrationPublicKey string `json:"registration_public_key,omitempty"`
-	WorkerMode            string `json:"worker_mode"`
+	// ReleasePublicKey is the source file of the publisher's Ed25519 public key (base64). Setup installs it root-owned
+	// at ReleasePublicKeyPath, and `product update` authenticates every candidate binary against it. Without it
+	// an update is refused.
+	ReleasePublicKey string `json:"release_public_key,omitempty"`
+	WorkerMode       string `json:"worker_mode"`
 	// Projects maps each registered project ID to its managed directory below ProjectsDir.
 	Projects map[string]string `json:"projects"`
 	// The installed inputs of the service's host profile. Setup records their paths in the service config
@@ -165,6 +169,9 @@ func (c Config) validate() error {
 		if source == "" || !path.IsAbs(source) || IsThesisPath(source) {
 			return refuse("registration, registration_signature and registration_public_key are required absolute paths outside every thesis path")
 		}
+	}
+	if c.ReleasePublicKey != "" && (!path.IsAbs(c.ReleasePublicKey) || IsThesisPath(c.ReleasePublicKey)) {
+		return refuse("release_public_key must be an absolute path outside every thesis path")
 	}
 	if t := c.SelfTest; t != nil {
 		if _, ok := c.Projects[t.ProjectID]; !ok || !identity.MatchString(t.ProviderProfile) {
@@ -309,7 +316,7 @@ func (c Config) serviceConfigJSON() ([]byte, error) {
 
 // installedJSON is the configuration without its source paths: the record doctor and update read.
 func (c Config) installedJSON() ([]byte, error) {
-	c.Registration, c.RegistrationSignature, c.RegistrationPublicKey = "", "", ""
+	c.Registration, c.RegistrationSignature, c.RegistrationPublicKey, c.ReleasePublicKey = "", "", "", ""
 	c.InstallationFormat = InstallationFormat
 	return indented(c)
 }

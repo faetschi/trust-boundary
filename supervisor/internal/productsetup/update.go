@@ -93,14 +93,17 @@ func interrupt(step string) {
 	}
 }
 
-// Update installs newBinary as the service binary. See replaceBinary for the flow.
-func Update(env Env, newBinary string) (Report, error) {
+// Candidate is the binary an update installs and the signed release manifest that must list it.
+type Candidate struct{ Binary, Manifest, Signature string }
+
+// Update installs the candidate as the service binary. See replaceBinary for the flow.
+func Update(env Env, candidate Candidate) (Report, error) {
 	h := newHost(env)
 	if err := h.openRoot(); err != nil {
 		return *h.rep, err
 	}
 	defer h.dir.Close()
-	source, err := openSource(newBinary)
+	source, err := openSource(candidate.Binary)
 	if err != nil {
 		return *h.rep, err
 	}
@@ -110,9 +113,9 @@ func Update(env Env, newBinary string) (Report, error) {
 		return *h.rep, err
 	}
 	if info.Size() == 0 || info.Size() > maxBinaryBytes {
-		return *h.rep, refuse("%s is empty or too large to be the tbound binary", newBinary)
+		return *h.rep, refuse("%s is empty or too large to be the tbound binary", candidate.Binary)
 	}
-	if err := h.checkBinaryFormat(source, newBinary); err != nil {
+	if err := h.checkBinaryFormat(source, candidate.Binary); err != nil {
 		return *h.rep, err
 	}
 	if err := h.checkInstalledSelfTestClient(); err != nil {

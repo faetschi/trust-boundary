@@ -31,7 +31,9 @@ const (
 	BinaryDir         = "/usr/local/lib/tbound-product"
 	BinaryPath        = BinaryDir + "/tbound"
 	LastKnownGoodPath = BinaryPath + ".last-known-good"
-	stagedBinaryPath  = BinaryPath + ".new"
+	// ReleasePublicKeyPath holds the pinned publisher key that update authenticates a candidate against.
+	ReleasePublicKeyPath = ConfigDir + "/release-public-key.pub"
+	stagedBinaryPath     = BinaryPath + ".new"
 	// rollbackIntentPath records a rollback in progress: the digests of the binary being restored and of the
 	// binary being rolled back from.
 	rollbackIntentPath = BinaryPath + ".rollback"

@@ -25,7 +25,7 @@ const productAdminUsage = `Usage (run setup, update, rollback and uninstall as r
   tbound product registration keygen|init|sign|verify ...     (offline; see: tbound product registration help)
   tbound product calibration sign|measure ...                 (host input; see: tbound product calibration help)
   tbound product setup --config FILE [--root DIR] [--dry-run] [--replace] [--binary PATH]
-  tbound product update --binary NEW [--root DIR] [--dry-run]
+  tbound product update --binary NEW --manifest FILE --signature FILE [--root DIR] [--dry-run]
   tbound product rollback [--root DIR] [--dry-run]
   tbound product uninstall [--root DIR] [--dry-run] [--purge] [--yes]
   tbound product doctor [--self-test] [--root DIR]
@@ -79,7 +79,7 @@ func runProductAdmin(args []string, out, stderr io.Writer) error {
 	}
 	flags := flag.NewFlagSet("product "+args[0], flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	var configFile, binary, root string
+	var configFile, binary, manifest, signature, root string
 	var dryRun, replace, purge, yes, selfTest bool
 	flags.StringVar(&root, "root", "/", "")
 	flags.BoolVar(&dryRun, "dry-run", false, "")
@@ -90,6 +90,8 @@ func runProductAdmin(args []string, out, stderr io.Writer) error {
 		flags.BoolVar(&replace, "replace", false, "")
 	case "update":
 		flags.StringVar(&binary, "binary", "", "")
+		flags.StringVar(&manifest, "manifest", "", "")
+		flags.StringVar(&signature, "signature", "", "")
 	case "uninstall":
 		flags.BoolVar(&purge, "purge", false, "")
 		flags.BoolVar(&yes, "yes", false, "")
@@ -115,10 +117,10 @@ func runProductAdmin(args []string, out, stderr io.Writer) error {
 		}
 		return productAdminSetup(env, configFile, binary, out)
 	case "update":
-		if binary == "" {
+		if binary == "" || manifest == "" || signature == "" {
 			return usage()
 		}
-		rep, err := productsetup.Update(env, binary)
+		rep, err := productsetup.Update(env, productsetup.Candidate{Binary: binary, Manifest: manifest, Signature: signature})
 		return productAdminFinish(out, rep, err, "updated")
 	case "rollback":
 		rep, err := productsetup.Rollback(env)

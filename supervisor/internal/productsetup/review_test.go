@@ -165,7 +165,7 @@ func TestReviewUpdateRetryStartsAndTestsWithoutReplacingLastKnownGood(t *testing
 			}
 			return nil
 		}}
-		rep, err := Update(env, os.Getenv("TB_PRODUCT_RETRY_BINARY"))
+		rep, err := Update(env, candidateNextTo(os.Getenv("TB_PRODUCT_RETRY_BINARY")))
 		if calls != 1 || !strings.Contains(strings.Join(rep.Commands, "\n"), "systemctl start "+UnitName) {
 			t.Fatalf("retry did not recover service: %v %v", calls, rep.Commands)
 		}
@@ -184,7 +184,7 @@ func TestReviewUpdateRetryStartsAndTestsWithoutReplacingLastKnownGood(t *testing
 				t.Fatal(err)
 			}
 			child := exec.Command(os.Args[0], "-test.run=^TestReviewUpdateRetryStartsAndTestsWithoutReplacingLastKnownGood$", "-test.v")
-			child.Env = append(os.Environ(), "TB_PRODUCT_RETRY_ROOT="+f.root, "TB_PRODUCT_RETRY_BINARY="+next, "TB_PRODUCT_RETRY_FAIL="+map[bool]string{false: "false", true: "true"}[fail])
+			child.Env = append(os.Environ(), "TB_PRODUCT_RETRY_ROOT="+f.root, "TB_PRODUCT_RETRY_BINARY="+next.Binary, "TB_PRODUCT_RETRY_FAIL="+map[bool]string{false: "false", true: "true"}[fail])
 			if out, err := child.CombinedOutput(); err != nil {
 				t.Fatalf("fresh-process retry: %v\n%s", err, out)
 			}
@@ -217,7 +217,7 @@ func TestReviewDoctorDryRunPlansSelfTest(t *testing.T) {
 func TestReviewUpdateRejectsUnsafeManagedSources(t *testing.T) {
 	if root := os.Getenv("TB_PRODUCT_UNSAFE_RETRY_ROOT"); root != "" {
 		env := Env{Root: root, SelfTestHook: func() error { return errors.New("bad turn") }}
-		if _, err := Update(env, os.Getenv("TB_PRODUCT_UNSAFE_RETRY_BINARY")); !errors.Is(err, ErrRefused) {
+		if _, err := Update(env, candidateNextTo(os.Getenv("TB_PRODUCT_UNSAFE_RETRY_BINARY"))); !errors.Is(err, ErrRefused) {
 			t.Fatalf("unsafe retry fallback accepted: %v", err)
 		}
 		return
@@ -265,7 +265,7 @@ func TestReviewUpdateRejectsUnsafeManagedSources(t *testing.T) {
 			}
 			if strings.Contains(source, "fallback") {
 				child := exec.Command(os.Args[0], "-test.run=^TestReviewUpdateRejectsUnsafeManagedSources$", "-test.v")
-				child.Env = append(os.Environ(), "TB_PRODUCT_UNSAFE_RETRY_ROOT="+f.root, "TB_PRODUCT_UNSAFE_RETRY_BINARY="+next)
+				child.Env = append(os.Environ(), "TB_PRODUCT_UNSAFE_RETRY_ROOT="+f.root, "TB_PRODUCT_UNSAFE_RETRY_BINARY="+next.Binary)
 				if out, err := child.CombinedOutput(); err != nil {
 					t.Fatalf("fresh-process retry: %v\n%s", err, out)
 				}
