@@ -66,7 +66,7 @@ func TestRoutesSendTheirOwnToolSurface(t *testing.T) {
 		t.Fatal(err)
 	}
 	frozen, _ := json.Marshal(researchTools())
-	corrected, _ := json.Marshal(tools())
+	corrected, _ := json.Marshal(tools(false))
 	if !bytes.Contains(research.Body(), frozen) || bytes.Contains(research.Body(), corrected) {
 		t.Error("the research request does not carry exactly the frozen tool surface")
 	}
@@ -118,6 +118,59 @@ func TestEngineeringRouteAdvertisesTheExitOnlyBashDescription(t *testing.T) {
 		}
 		if got := bashDescriptionOf(t, built); got != bashExitOnlyDescription {
 			t.Errorf("%s advertises the bash description %q, want %q", name, got, bashExitOnlyDescription)
+		}
+	}
+}
+
+// A product turn's route says its executor releases bounded output, and then only the bash description
+// differs: every name, every other description and every parameter schema, so every pinned digest, is the same.
+func TestCommandOutputOnlyChangesTheBashDescription(t *testing.T) {
+	product := EngineeringRoute().WithCommandOutput(true)
+	if err := product.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	built, err := BuildRequestForRoute(product, []Message{{Role: User, Content: strptr("hello")}}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := bashDescriptionOf(t, built); got == bashExitOnlyDescription ||
+		!strings.Contains(got, "stdout and stderr") || !strings.Contains(got, "last 16 KiB") {
+		t.Errorf("the product route advertises the bash description %q", got)
+	}
+	exitOnly, withOutput := tools(false), tools(true)
+	if len(exitOnly) != len(withOutput) {
+		t.Fatalf("the two engineering surfaces list %d and %d tools", len(exitOnly), len(withOutput))
+	}
+	for i, tool := range exitOnly {
+		other := withOutput[i]
+		if tool.Function.Name != other.Function.Name ||
+			sortedSchemaDigest(t, tool.Function.Parameters) != sortedSchemaDigest(t, other.Function.Parameters) {
+			t.Errorf("%s: the schema or the name depends on the command output mode", tool.Function.Name)
+		}
+		if differs := tool.Function.Description != other.Function.Description; differs != (tool.Function.Name == "bash") {
+			t.Errorf("%s: the description differs between the output modes = %t", tool.Function.Name, differs)
+		}
+	}
+}
+
+// The mark belongs to the engineering route alone: a research route keeps its frozen surface, and a route
+// assembled by hand does not become valid by carrying it.
+func TestCommandOutputMarkOnlyBelongsToTheEngineeringRoute(t *testing.T) {
+	if (Route{}).Resolved() != EngineeringRoute() || EngineeringRoute().CommandOutput {
+		t.Fatal("the unmarked engineering route changed")
+	}
+	if marked := (Route{}).WithCommandOutput(true); marked.Model != ApprovedModel || marked.Endpoint != Endpoint ||
+		!marked.CommandOutput || marked.WithCommandOutput(false) != EngineeringRoute() {
+		t.Errorf("the marked route is not the engineering route with the mark: %+v", marked)
+	}
+	research := researchTestRoute(t)
+	research.CommandOutput = true
+	for name, route := range map[string]Route{"research route": research, "route without a model": {CommandOutput: true}} {
+		if err := route.Validate(); err == nil {
+			t.Errorf("%s with the command output mark was accepted", name)
+		}
+		if _, err := BuildRequestForRoute(route, []Message{{Role: User, Content: strptr("hello")}}, 0); err == nil {
+			t.Errorf("%s with the command output mark built a request", name)
 		}
 	}
 }

@@ -164,11 +164,11 @@ type advertisedTool struct {
 	} `json:"function"`
 }
 
-// advertisedTools is what a provider is told on the engineering route, which product turns use.
-func advertisedTools(t *testing.T) []advertisedTool {
+// advertisedTools is what a provider is told on an engineering route.
+func advertisedTools(t *testing.T, route openrouter.Route) []advertisedTool {
 	t.Helper()
 	prompt := "hello"
-	built, err := openrouter.BuildRequest(openrouter.ApprovedModel, []openrouter.Message{{Role: openrouter.User, Content: &prompt}})
+	built, err := openrouter.BuildRequestForRoute(route, []openrouter.Message{{Role: openrouter.User, Content: &prompt}}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,9 +197,11 @@ func descriptionsIn(value any, found *[]string) {
 	}
 }
 
-// What a provider is told on the engineering route is what the adapter registers, word for word, and
-// each schema hashes to the digest adapter/profile.json pins. (The adapter's own test holds its schema to
-// the same pins, and piruntime holds the worker's copy to them, so the three cannot drift apart.)
+// What a provider is told on the engineering route of a session whose executor returns the exit code alone
+// (serve --pi) is what the adapter registers, word for word, and each schema hashes to the digest
+// adapter/profile.json pins. A product turn, whose executor releases command output, is told the same
+// except for the bash description, and its schemas hash to the same pins. (The adapter's own test holds its
+// schema to the same pins, and piruntime holds the worker's copy to them, so the three cannot drift apart.)
 func TestAdvertisedToolSurfaceEqualsTheAdapterTextAndItsPins(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join("..", "..", "..", "adapter", "src", "proxy-tools.ts"))
 	if err != nil {
@@ -220,14 +222,34 @@ func TestAdvertisedToolSurfaceEqualsTheAdapterTextAndItsPins(t *testing.T) {
 	if err := json.Unmarshal(pinned, &profile); err != nil {
 		t.Fatal(err)
 	}
-	tools := advertisedTools(t)
+	for _, c := range []struct {
+		name       string
+		route      openrouter.Route
+		bashOutput bool
+	}{
+		{"serve --pi, exit code only", openrouter.Route{}, false},
+		{"product turn, bounded output", openrouter.EngineeringRoute().WithCommandOutput(true), true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			checkAdvertisedSurface(t, adapter, registered, profile.Digests, c.route, c.bashOutput)
+		})
+	}
+}
+
+func checkAdvertisedSurface(t *testing.T, adapter string, registered, digests map[string]string, route openrouter.Route, bashOutput bool) {
+	t.Helper()
+	tools := advertisedTools(t, route)
 	if len(tools) != len(DeclaredToolManifest()) {
 		t.Fatalf("the provider is told %d tools, want %d", len(tools), len(DeclaredToolManifest()))
 	}
 	for _, tool := range tools {
 		name := tool.Function.Name
-		if registered[name] != tool.Function.Description {
-			t.Errorf("%s: the adapter registers the description %q, the provider is told %q", name, registered[name], tool.Function.Description)
+		if told := tool.Function.Description; name == "bash" && bashOutput {
+			if told == registered[name] || !strings.Contains(told, "stdout and stderr") {
+				t.Errorf("bash: the provider is told %q on a route whose executor releases output, the adapter registers %q", told, registered[name])
+			}
+		} else if registered[name] != told {
+			t.Errorf("%s: the adapter registers the description %q, the provider is told %q", name, registered[name], told)
 		}
 		var schema any
 		if err := json.Unmarshal(tool.Function.Parameters, &schema); err != nil {
@@ -247,8 +269,8 @@ func TestAdvertisedToolSurfaceEqualsTheAdapterTextAndItsPins(t *testing.T) {
 			t.Fatal(err)
 		}
 		sum := sha256.Sum256(bytes.TrimSuffix(canonical.Bytes(), []byte("\n")))
-		if got := hex.EncodeToString(sum[:]); got != profile.Digests[name] {
-			t.Errorf("%s: the advertised schema hashes to %s, adapter/profile.json pins %s", name, got, profile.Digests[name])
+		if got := hex.EncodeToString(sum[:]); got != digests[name] {
+			t.Errorf("%s: the advertised schema hashes to %s, adapter/profile.json pins %s", name, got, digests[name])
 		}
 	}
 }

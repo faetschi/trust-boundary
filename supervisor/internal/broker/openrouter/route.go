@@ -41,7 +41,11 @@ type Route struct {
 	ProfileDigest string
 	// Timeout is the HTTP timeout of the research profile.
 	Timeout time.Duration
-	members string
+	// CommandOutput marks a route whose executor releases bounded Bash stdout and stderr to the provider
+	// (a product turn). Its Bash tool description says so. The zero value is an executor that returns the
+	// exit code alone (serve --pi), so its description promises no output.
+	CommandOutput bool
+	members       string
 	// responseModels is the newline-joined exact list of response-model strings the
 	// route accepts (a string, so that Route stays comparable). The zero route
 	// accepts only Model.
@@ -70,6 +74,13 @@ func (r Route) Resolved() Route {
 	if r == (Route{}) {
 		return EngineeringRoute()
 	}
+	return r
+}
+
+// WithCommandOutput returns the resolved route with its CommandOutput mark set to on.
+func (r Route) WithCommandOutput(on bool) Route {
+	r = r.Resolved()
+	r.CommandOutput = on
 	return r
 }
 
@@ -117,7 +128,7 @@ func NewResearchRoute(spec ResearchSpec) (Route, error) {
 func (r Route) Validate() error {
 	r = r.Resolved()
 	if !r.IsResearch() {
-		if r != EngineeringRoute() {
+		if r.WithCommandOutput(false) != EngineeringRoute() {
 			return errors.New("provider route is outside the fixed OpenCode Go profile")
 		}
 		return nil

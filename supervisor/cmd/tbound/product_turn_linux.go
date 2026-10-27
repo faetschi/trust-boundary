@@ -465,6 +465,7 @@ func (e *productTurnEnv) predecessorContext(turn productsession.Turn, providerPr
 	config := providerbridge.Config{WorkflowID: pred.Link.WorkflowID, ConversationID: pred.Link.ConversationID,
 		ProfileID: providerProfile, InitialGenerationID: bundle.Baseline.ID, InitialTreeDigest: bundle.Baseline.TreeDigest,
 		SystemPrompt: e.SystemPrompt, DeveloperPrompt: e.DeveloperPrompt}
+	config.Route = config.Route.WithCommandOutput(true) // a product turn's executor releases bounded Bash output
 	route := config.Route.Resolved()
 	pins := GovernedReplayPins{
 		Provider: providerbridge.RecoveryPins{Config: config, Model: route.Model, Policy: policy, RequireHostCallReservations: true,

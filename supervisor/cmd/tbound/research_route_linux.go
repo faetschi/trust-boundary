@@ -132,11 +132,15 @@ func (a *SessionOperationAuthority) BindProviderRoute(route productionProviderRo
 
 // applyProviderRoute overwrites any caller-supplied route and spend hook with the
 // host-bound ones, as the authority already does for the workflow-ledger
-// callbacks.
+// callbacks. An authority whose executor releases command output (a product turn)
+// marks the route, so the request tells the provider what the executor returns.
 func (a *SessionOperationAuthority) applyProviderRoute(config providerbridge.Config) providerbridge.Config {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	config.Route, config.Spend = a.providerRoute, a.providerSpend
+	if a.commandOutputBytes > 0 {
+		config.Route = config.Route.WithCommandOutput(true)
+	}
 	config.HintProvider = a.hintProvider
 	return config
 }

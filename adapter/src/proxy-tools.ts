@@ -136,7 +136,7 @@ export function createProxyTools(sender: ProposalSender, Type: TypeboxBuilder): 
     makeProxyTool(
       "bash",
       proxyParameters.bash,
-      "Execute a bash command in the workspace and return its exit code, stdout and stderr. Each stream is cut to its last 16 KiB. There is no timeout parameter: a command that runs longer than 10 minutes, or prints more than 1 MiB on one stream, is stopped and returns no result. Requests are forwarded to tbound.",
+      "Execute a bash command. Requests are forwarded to tbound.",
       sender,
     ),
   ];
