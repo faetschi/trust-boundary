@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"flag"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -33,6 +34,20 @@ const (
 func fixtureBudget() Budget { return Budget{HostCalls: 200, Tokens: 100000, DurationSeconds: 900} }
 
 func okResponse(r Response) Response { r.Version, r.Status = Version, StatusOK; return r }
+
+func candidateAtFrameLimit() Response {
+	changes := make([]CandidateChange, 3200)
+	for i := range changes {
+		changes[i] = CandidateChange{Path: fmt.Sprintf("%04d-%s/%s", i, strings.Repeat("x", 145), strings.Repeat("x", 149)), Op: "modify"}
+	}
+	response := okResponse(Response{Candidate: &CandidateView{TurnID: fixtureTurn1, CandidateDigest: fixtureDigest, Changes: changes}})
+	encoded, err := json.Marshal(response)
+	if err != nil {
+		panic(err)
+	}
+	changes[0].Diff = strings.Repeat("x", MaxResponseBytes-len(encoded)-len(`,"diff":""`))
+	return response
+}
 
 // fixtureExamples are the canonical messages: every request kind, and the responses
 // a client sees, with every field of every wire type set in at least one of them.
@@ -64,6 +79,9 @@ func fixtureExamples() map[string]any {
 		{Seq: 8, Kind: EventTurnTerminal, TurnID: fixtureTurn1, Outcome: "published", Reason: "user"},
 	}
 	return map[string]any{
+		"response-candidate-at-frame-limit": candidateAtFrameLimit(),
+		"response-candidate-too-large": Response{Version: Version, Status: StatusError,
+			Error: &Error{Code: "CANDIDATE_TOO_LARGE"}},
 		"request-create_session": Request{Version: Version, Op: OpCreateSession, CreateSession: &CreateSession{
 			ProjectID: "demo-project", ProviderProfile: "openrouter-default", PublicationMode: "review",
 			Budget: fixtureBudget(), ReadOnly: true, RequestKey: "ck-00112233445566778899aabbccddeeff"}},

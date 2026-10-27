@@ -514,6 +514,7 @@ func TestServiceErrorsKeepTheirStableCodesWithAStatusMapping(t *testing.T) {
 		{"WRONG_TURN_STATE", 409}, {"CANDIDATE_MISMATCH", 409}, {"REVIEW_NOT_PENDING", 409}, {"CANCEL_NOT_ALLOWED", 409},
 		{"BUDGET_EXHAUSTED", 409}, {"CANCELLED", 409},
 		{"CATALOG_CORRUPT", 500},
+		{"CANDIDATE_TOO_LARGE", 413},
 		{"SERVICE_UNAVAILABLE", 503},
 		{"A_FUTURE_CODE", 502}, // unknown, well formed: kept, as a bad gateway
 	}
