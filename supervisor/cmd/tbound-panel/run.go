@@ -317,6 +317,10 @@ func (r *runner) run(ctx context.Context) (runSummary, error) {
 	if err := r.checkSettings(); err != nil {
 		return sum, err
 	}
+	// Refuse before any paid call too: finish would refuse anyway, after spending.
+	if err := r.refuseToEraseSignoffs(); err != nil {
+		return sum, err
+	}
 	var modelIDs []string
 	for _, m := range r.cfg.Models {
 		modelIDs = append(modelIDs, m.ID)
