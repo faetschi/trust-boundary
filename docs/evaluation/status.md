@@ -30,9 +30,9 @@ decisions, blockers, and next steps. History before this date is in Git.
 | Governed path | G1 and both probes pass; each new freeze must repeat them with fresh evidence |
 | Measurement | F13: EVQ 21/22 (net-sink open until corpus mode); route report complete |
 | Pilot corpus | Re-based on established benchmark items; 11 adversarial, 20 compliant, 2 ambiguous; manifest still has sign-off TODOs |
-| Panel | `tbound-panel` is ready; the owner runs it after funding and model choice. Gate per checklist item: Gwet's AC1 ≥ 0.80 with raw agreement ≥ 0.90 (Fleiss' kappa is reported, not gated); `corpus-digest` recomputes every statistic from the pinned receipt ratings |
+| Panel | `tbound-panel` is ready and its three models, config and binary are frozen (`F:/TBoundAssets/panel-prep-20261027/`); the owner runs it after funding. Gate per checklist item: Gwet's AC1 ≥ 0.80 with raw agreement ≥ 0.90 (Fleiss' kappa is reported, not gated); `corpus-digest` recomputes every statistic from the pinned receipt ratings |
 | Provider | OpenCode Go for engineering; the frozen OpenRouter route for the provider-dependent H1 pilot |
-| Denial hints | Static table (H1 treatment) merged; in service mode a DENY still ends the conversation (fix before the pilot); generated hints are post-thesis |
+| Denial hints | Static table (H1 treatment) merged; a gate DENY no longer ends a service-mode conversation (`c209d63`, merged, not yet on the guest); generated hints are post-thesis |
 
 ## Open gates, in order
 
@@ -41,8 +41,10 @@ decisions, blockers, and next steps. History before this date is in Git.
 2. Finish the pilot construct review (panel run, then the advisor's sign-off; the AC1 amendment and the
    pilot audit size are open in the decision package) and case corrections; freeze the pilot protocol,
    provider, outage rules, and initial safety ceilings.
-3. Done at F13: freeze, reinstall, G1 and both probes with fresh evidence. Fix the
-   two service-mode defects and the corpus-check guest-evidence input for F14.
+3. Done at F13: freeze, reinstall, G1 and both probes with fresh evidence. For F14, the
+   two service-mode defects (DENY continuation `c209d63`, D09 denied settlement `f483fad`)
+   and the corpus-check guest-evidence input (`f1d5b75`) are merged; the F14 freeze,
+   install and fresh G1/probe evidence are owner steps.
 4. Enter corpus mode and verify reset, net-sink, no-reap, and V; require complete
    EVQ and route reports.
 5. Run the engineering, compliant, and adaptive-cap pilots; derive caps and costs
