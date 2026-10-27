@@ -331,6 +331,77 @@ describe("live controller: sending a prompt", () => {
   });
 });
 
+describe("live controller: unresolved intent recovery", () => {
+  async function lostSubmit(): Promise<Rig> {
+    const setup = rig();
+    await open(setup);
+    setup.gateway.inject((call) => call.method === "POST" && call.url.endsWith("/turns"), { lose: "lost answer" }, 3);
+    expect(await setup.controller.submit("exact prompt\n")).toBe(false);
+    setup.stores.forEach((store) => store.stop());
+    return setup;
+  }
+
+  it("reloads an unknown submit and settles a replay with the original key and body", async () => {
+    const first = await lostSubmit();
+    const original = posts(first.gateway, "/turns")[0]?.body;
+    const reloaded = rig({ gateway: first.gateway, storage: first.storage });
+    await open(reloaded);
+    expect(reloaded.controller.getSnapshot().action.status).toBe("unknown");
+    expect(await reloaded.controller.retry()).toBe(true);
+    expect(posts(first.gateway, "/turns").at(-1)?.body).toEqual(original);
+    expect(first.gateway.state.turns).toHaveLength(1);
+    expect(reloaded.controller.getSnapshot().action.done?.replayed).toBe(true);
+    reloaded.stores.forEach((store) => store.stop());
+    const settled = rig({ gateway: first.gateway, storage: first.storage });
+    await settled.controller.start();
+    expect(settled.controller.getSnapshot().action.status).toBe("idle");
+    expect(await settled.controller.retry()).toBe(false);
+  });
+
+  it("keeps the unknown intent when switching away and back", async () => {
+    const setup = await lostSubmit();
+    const intent = setup.controller.getSnapshot().action.intent;
+    setup.controller.select("psess-other");
+    setup.controller.select(SESSION_ID);
+    expect(setup.controller.getSnapshot().action).toMatchObject({ status: "unknown", intent });
+    expect(await setup.controller.retry()).toBe(true);
+    expect(posts(setup.gateway, "/turns").at(-1)?.body).toEqual(intent?.body);
+  });
+
+  it("does not erase an unknown intent on dismiss", async () => {
+    const setup = await lostSubmit();
+    const intent = setup.controller.getSnapshot().action.intent;
+    setup.controller.dismiss();
+    expect(setup.controller.getSnapshot().action).toMatchObject({ status: "unknown", intent });
+    expect(await setup.controller.retry()).toBe(true);
+    expect(setup.gateway.state.turns).toHaveLength(1);
+  });
+
+  it("keeps unknown sticky after a later clean 503, including within automatic retries", async () => {
+    const setup = rig();
+    await open(setup);
+    setup.gateway.inject((call) => call.method === "POST", { lose: "lost answer" });
+    setup.gateway.inject((call) => call.method === "POST", { status: 503, body: { error: { code: "SERVICE_UNAVAILABLE" } } }, 5);
+    expect(await setup.controller.submit("fix it")).toBe(false);
+    expect(setup.controller.getSnapshot().action.status).toBe("unknown");
+    expect(await setup.controller.retry()).toBe(false);
+    expect(setup.controller.getSnapshot().action.status).toBe("unknown");
+    expect(await setup.controller.submit("another prompt")).toBe(false);
+    setup.stores.forEach((store) => store.stop());
+  });
+
+  it.each(["{broken", "null", "{}", '[{"sessionId":"psess-t1","intent":{"path":"https://evil.test","kind":"submit","key":"ck-x","body":{"csrf_token":"bad"}}}]', " ".repeat(1024 * 1024 + 1)])(
+    "ignores corrupt or oversized stored intents safely (%#)", async (value) => {
+      const setup = rig({ storage: memoryStorage({ "tbound.live.pending": value }) });
+      await open(setup);
+      expect(setup.controller.getSnapshot().action.status).toBe("idle");
+      expect(await setup.controller.retry()).toBe(false);
+      expect(posts(setup.gateway, "/turns")).toHaveLength(0);
+      setup.stores.forEach((store) => store.stop());
+    },
+  );
+});
+
 describe("live controller: cancel", () => {
   it("cancels the open turn on its path, with the displayed revision and a fresh key", async () => {
     const setup = rig({ gateway: createFakeGateway({ turns: [RUNNING] }) });
