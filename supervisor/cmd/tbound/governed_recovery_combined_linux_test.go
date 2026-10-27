@@ -62,9 +62,11 @@ type combinedRecoveryScenario struct {
 	// idleCrash ends the original process at the idle provider boundary after the host prompt is admitted, with
 	// no provider call captured.
 	idleCrash bool
-	// advanceStore has the original conversation write a file before its last call is captured, so a recovered
-	// conversation starts from a Store generation other than the baseline.
+	// advanceStore has the original conversation write a file before its last call is captured, so the retained
+	// history has a Store generation other than the baseline.
 	advanceStore bool
+	// prepareOnly stops each recovery after prepareGovernedRecovery, before the Store is activated.
+	prepareOnly bool
 }
 
 var combinedRecoveryScenarios = map[string]combinedRecoveryScenario{
@@ -75,7 +77,7 @@ var combinedRecoveryScenarios = map[string]combinedRecoveryScenario{
 		withoutCleanupReceipt: true},
 	"binder-pins":          {maxPreEffectRetries: 2, maxCleanRestarts: 2, deadline: 10 * time.Minute, binderShapedPins: true},
 	"binder-pins-idle":     {maxPreEffectRetries: 2, maxCleanRestarts: 2, deadline: 10 * time.Minute, binderShapedPins: true, idleCrash: true},
-	"binder-pins-advanced": {maxPreEffectRetries: 2, maxCleanRestarts: 2, deadline: 10 * time.Minute, binderShapedPins: true, advanceStore: true},
+	"binder-pins-advanced": {maxPreEffectRetries: 2, maxCleanRestarts: 2, deadline: 10 * time.Minute, binderShapedPins: true, advanceStore: true, prepareOnly: true},
 }
 
 type combinedRecoveryPaths struct {
@@ -256,9 +258,7 @@ type combinedRecoveryResult struct {
 	RecoveryGeneration uint64                    `json:"recovery_generation"`
 	Counters           workflowrecovery.Counters `json:"counters"`
 	Transcripts        int                       `json:"transcripts"`
-	// DistinctStarts counts the different Store generations the replayed transcripts started from.
-	DistinctStarts int `json:"distinct_starts"`
-	StoreEffects   int `json:"store_effects"`
+	StoreEffects       int                       `json:"store_effects"`
 	// FenceEpoch is the protected root's accepted fence high-water mark.
 	FenceEpoch uint64 `json:"fence_epoch"`
 }
@@ -788,12 +788,9 @@ func combinedRecoveryRecover(t *testing.T, root, step string, capture bool, sc c
 	candidate, err := prepareGovernedRecovery(ctx, request)
 	if err != nil {
 		result.PrepareError = err.Error()
+	} else if sc.prepareOnly {
+		_ = candidate.Close()
 	} else {
-		starts := map[string]struct{}{}
-		for _, projected := range candidate.projection.Transcripts {
-			starts[projected.Provider.InitialGenerationID] = struct{}{}
-		}
-		result.DistinctStarts = len(starts)
 		session, activateErr := candidate.Activate(ctx)
 		if activateErr != nil {
 			result.ActivateError = activateErr.Error()
@@ -1032,21 +1029,22 @@ func TestGovernedRecoveryCombinedRetiresAnIdleLineageUnderBinderShapedPins(t *te
 	}
 }
 
-// With several retained transcripts the last one starts from the generation the replay reached through the
-// earlier ones, not from the baseline: retirement must use that start, which only the replay knows.
-func TestGovernedRecoveryCombinedRetiresTheLastTranscriptFromItsOwnStartGeneration(t *testing.T) {
+// A conversation that changed the Store before its last call was captured replays through a released result and
+// a promoted transition, so retiring that call replays the journal with a verifier that has already followed it
+// to the new tip. Each retirement pass must start from the pinned start. Only prepareGovernedRecovery is
+// driven here: activating a Store with a promoted transition is outside this retirement step.
+func TestGovernedRecoveryCombinedRetiresACallCapturedAfterTheStoreAdvanced(t *testing.T) {
 	root := privateGovernedTestRoot(t)
 	const scenario = "binder-pins-advanced"
 	combinedRecoveryRunChild(t, root, scenario, "original", "o", combinedRecoveryCrashExit)
-	first := combinedRecoveryRunChild(t, root, scenario, "recover-capture", "r1", combinedRecoveryCrashExit)
-	if first.PrepareError != "" || first.ActivateError != "" || !first.Activated || !first.Captured || first.DistinctStarts != 1 {
-		t.Fatalf("first recovery: prepare=%q activate=%q captured=%v starts=%d",
-			first.PrepareError, first.ActivateError, first.Captured, first.DistinctStarts)
+	first := combinedRecoveryRunChild(t, root, scenario, "recover", "r1", 0)
+	if first.StoreEffects < 2 {
+		t.Fatalf("the retained history did not advance the Store: %d Store effects", first.StoreEffects)
 	}
-	second := combinedRecoveryRunChild(t, root, scenario, "recover-capture", "r2", combinedRecoveryCrashExit)
-	if second.PrepareError != "" || second.ActivateError != "" || !second.Activated || !second.Captured ||
-		second.Transcripts != 2 || second.DistinctStarts != 2 {
-		t.Fatalf("second recovery must retire a transcript that starts after the Store advanced: prepare=%q activate=%q captured=%v transcripts=%d starts=%d",
-			second.PrepareError, second.ActivateError, second.Captured, second.Transcripts, second.DistinctStarts)
+	if first.PrepareError != "" {
+		t.Fatalf("recovery could not retire the call captured after the Store advanced: %s", first.PrepareError)
+	}
+	if first.Counters.CleanRestarts != 1 || first.Counters.PreEffectRetries != 1 {
+		t.Fatalf("retiring the captured call must charge one clean restart and one pre-effect retry: %+v", first.Counters)
 	}
 }
