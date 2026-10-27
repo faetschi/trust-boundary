@@ -493,10 +493,16 @@ Source hash of `supervisor/` for the second run: SHA-256 of the sorted per-file 
 - **Combined gate on `b6493b9`:** build, vet and gofmt clean; 5646 passed, 30 skipped, 0 failed. The extension boundary guard passes.
   - The 30th skip is the new crash helper `TestProductTurnSoftRefusalUnsettledEffectChild`.
   - The webchat module was last gated on `44f0438`: Go race tests ok, frontend 1429 passed. Nothing after it changes `extensions/`.
-- **Open, P8 round 4** on `product/p8-r4-fixes`:
-  - update must authenticate the candidate against a signed release manifest under the pinned publisher key before it stages or runs the binary;
-  - `install.sh` must not follow an archive-supplied marker symlink or user-controlled completion and config destinations when it runs as root;
-  - setup must refuse a `--binary` of another installation format.
+- **P8 rounds 4 to 6**, merged in `4f9fc76`. The work was reviewed again after every round. The round-6 verdict was "shippable for a local qualified host" under the stated threat model.
+  - `tbound product update --binary --manifest --signature` and `setup --binary` verify the binary against a signed release manifest, under the publisher key that setup pins (`release_public_key`).
+  - Only the verified staged inode is installed or run.
+  - The binary and key directories must be root-owned and not writable by group or others.
+  - Staging and the dry-run measurement read at most the declared size plus one byte.
+  - A root `install.sh` run requires publisher authentication. It stages below the checked prefix parent, extracts without the archive's owners or modes, and never writes per-user paths.
+  - Without a key, setup installs only its own executable, so the first binary must come from an authenticated install.
+  - Gate on `48499af`: 5730 passed, 30 skipped, 0 failed. `4f9fc76` differs from it only in this document.
+  - Known LOW: a dry-run update hashes the candidate a second time without a bound. A local writer who grows the file can waste CPU and I/O, but nothing is installed or run.
+  - Debian's `/usr/local` (2775, group `staff`) is refused until `chmod g-w`. Ubuntu's default passes.
 - **Still blocked:**
   - P9 acceptance needs a real Pi worker per turn, and `product-serve` refuses `worker_mode: pi`.
   - Publication does not swap the old object back when it detects a mismatch after `RENAME_EXCHANGE`. This is shared code in `supervisor/internal/publication`. The product now limits writers to root and the service account; the thesis thread owns the shared fix.
