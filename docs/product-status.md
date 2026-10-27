@@ -511,3 +511,9 @@ Source hash of `supervisor/` for the second run: SHA-256 of the sorted per-file 
 - Two risks to track from the 2026-10-26 priorities review:
   - **Shared code diverges.** The product and thesis branches carry ports of the same security fixes. Keep a short ledger of each shared fix: the commit on each branch and the test that covers it. Reconcile before every freeze.
   - **Prompt versioning.** Changing the compiled-in prompts breaks the replay of earlier turns. Define prompt and evidence versioning before the first catalog is deployed.
+- **Next:**
+  1. Sync the thesis branch again. `codex/tbound-prototype` is now at `3040061`, 106 commits ahead of the F14 sync point. It brings the D09 denied-after-effect settlement and its recovery verification, the amended D35 construct review, and `verify-retained`. Gate the product on the merge.
+  2. P10: rewrite README and USAGE.
+  3. P11.
+
+  Open product blockers: the real Pi worker per turn, which P9 acceptance needs; and qualification on a real host.
