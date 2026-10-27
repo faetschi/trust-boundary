@@ -23,7 +23,7 @@ import (
 
 const (
 	ReceiptSchema = "tbound-panel-receipt/v3"
-	AuditSchema   = "tbound-panel-audit/v3"
+	AuditSchema   = "tbound-panel-audit/v4"
 	// MaxFileBytes bounds each file; the importer reads at most this much.
 	MaxFileBytes = 16 << 20
 )
@@ -58,10 +58,12 @@ type Receipt struct {
 	CompleteCases int    `json:"complete_cases"`
 }
 
-// Audit is the part of audit.json that Verify reads.
+// Audit is the part of audit.json that Verify reads. ReceiptDigest is the Digest of the exact receipt.json
+// the audit was written with.
 type Audit struct {
 	Provider      string      `json:"provider"`
 	LiveRun       bool        `json:"live_run"`
+	ReceiptDigest string      `json:"receipt_digest"`
 	Selection     Selection   `json:"selection"`
 	Schema        string      `json:"schema"`
 	DryRun        bool        `json:"dry_run"`
@@ -103,6 +105,7 @@ func parse(name string, raw []byte, v any) error {
 // Verify checks the receipt, audit and stats file bytes against the manifest m, which holds the advisor's
 // sign-offs and the construct_review block. It returns nil only when:
 //   - the SHA-256 of each file's bytes is the digest in m.ConstructReview;
+//   - the audit names the receipt by its receipt_digest, so a signed audit cannot back another run's receipt;
 //   - all files have the current schema and record the evalcorpus.ContentDigest of m, so they rate
 //     the content the manifest has now;
 //   - no file is from a dry run, and the receipt covers every case of m with a complete rating
@@ -158,6 +161,9 @@ func Verify(m evalcorpus.Manifest, receiptRaw, auditRaw, statsRaw []byte) error 
 	}
 	if audit.Schema != AuditSchema {
 		return fmt.Errorf("panel audit schema is %q; want %q", audit.Schema, AuditSchema)
+	}
+	if audit.ReceiptDigest != Digest(receiptRaw) {
+		return fmt.Errorf("panel audit receipt_digest %q is not the digest %s of the panel receipt", audit.ReceiptDigest, Digest(receiptRaw))
 	}
 	if receipt.DryRun || audit.DryRun || !receipt.LiveRun || !audit.LiveRun || receipt.Provider != "openrouter" || audit.Provider != "openrouter" {
 		return errors.New("the panel run is a dry run: its ratings are canned fake data")
