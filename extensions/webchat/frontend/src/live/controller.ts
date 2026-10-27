@@ -16,7 +16,7 @@ import type { StreamEventHandlers } from "../core/stream";
 import type { WorkspaceDeps } from "../app/workspaceStore";
 import { LiveError, type CreateParams, type Decision, type Intent, type LiveClient } from "./client";
 import { cursorCount, openLongPoll } from "./poller";
-import { cancelGate, openTurnOf, retryable, reviewableTurn, sendGate } from "./readings";
+import { cancelGate, failureText, openTurnOf, retryable, reviewableTurn, sendGate } from "./readings";
 import type { Candidate, LiveEvent } from "./wire";
 import { utf8Length } from "../core/validate";
 import { MAX_PENDING_ACTIONS, MAX_PENDING_BYTES, PENDING_ACTIONS_KEY, readStoredIntents } from "./storedIntent";
@@ -117,6 +117,7 @@ function asLiveError(error: unknown): LiveError {
 
 function describeFault(error: unknown): string {
   const failure = asLiveError(error);
+  if (failure.code === "CANDIDATE_TOO_LARGE") return failureText(failure);
   return failure.detail ? `${failure.code}: ${failure.detail}` : failure.code;
 }
 
