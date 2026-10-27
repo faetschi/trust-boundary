@@ -31,7 +31,6 @@ const productAdminUsage = `Usage (run setup, update, rollback and uninstall as r
   tbound product doctor [--self-test] [--root DIR]
   tbound product turns [--root DIR]                        (plumbing: JSON list of unsettled catalog turns)
   tbound product self-test [--root DIR]                    (plumbing: the self-test turn as the calling UID, request on stdin)
-  tbound product installation-format                       (plumbing: the installation format this binary writes and reads)
 --root DIR runs against a test root: files are written below DIR, but users, owners and systemctl
 calls are only recorded, never executed. --dry-run writes and executes nothing and prints the plan.
 setup is idempotent ("unchanged" on a rerun), refuses any thesis path, and fails before any change
@@ -74,7 +73,7 @@ func runProductAdmin(args []string, out, stderr io.Writer) error {
 		return runProductRegistration(args[1:], out, stderr)
 	case "calibration":
 		return runProductCalibration(args[1:], out, stderr)
-	case "setup", "update", "rollback", "uninstall", "doctor", "turns", "self-test", "installation-format":
+	case "setup", "update", "rollback", "uninstall", "doctor", "turns", "self-test":
 	default:
 		return usage()
 	}
@@ -105,7 +104,7 @@ func runProductAdmin(args []string, out, stderr io.Writer) error {
 		return err
 	}
 	live := root == "/" && !dryRun
-	if live && args[0] != "doctor" && args[0] != "turns" && args[0] != "self-test" && args[0] != "installation-format" && os.Geteuid() != 0 {
+	if live && args[0] != "doctor" && args[0] != "turns" && args[0] != "self-test" && os.Geteuid() != 0 {
 		return adminRefusal("`tbound product %s` changes the host and must run as root (or use --dry-run, or --root DIR)", args[0])
 	}
 	env := productAdminEnv(root, dryRun, replace, yes, out, stderr)
@@ -129,9 +128,6 @@ func runProductAdmin(args []string, out, stderr io.Writer) error {
 		return productAdminFinish(out, rep, err, "uninstalled")
 	case "self-test":
 		return productAdminSelfTestChild(root, productAdminStdin, out)
-	case "installation-format":
-		_, err := fmt.Fprintln(out, productsetup.InstallationFormat)
-		return err
 	case "turns":
 		turns, err := productAdminTurns(root)()
 		if err != nil {
@@ -158,8 +154,8 @@ func productAdminEnv(root string, dryRun, replace, yes bool, out, stderr io.Writ
 	if live {
 		env.SelfTestHook = productAdminSelfTestHook
 	}
-	if root == "/" { // a test root holds fixture binaries that cannot run
-		env.BinaryFormat = productAdminBinaryFormat
+	if root == "/" { // a test root holds fixture binaries without the marker
+		env.BinaryFormat = productsetup.ScanInstallationFormat
 		env.CredentialStatus = productAdminCredentialStatus
 	}
 	if yes {

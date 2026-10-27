@@ -276,7 +276,7 @@ func (h *host) checkBinaryFormat(candidate *os.File, what string) error {
 		return refuse("the installed setup record cannot be read by this binary, so the installation format cannot be checked (%v); "+way, err, InstallationFormat)
 	}
 	installed := cmp.Or(record.InstallationFormat, LegacyInstallationFormat)
-	got, err := h.env.BinaryFormat(fmt.Sprintf("/proc/self/fd/%d", candidate.Fd()))
+	got, err := h.env.BinaryFormat(candidate)
 	if err != nil {
 		return refuse("cannot tell the installation format of %s: %v", what, err)
 	}
