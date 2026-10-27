@@ -118,6 +118,16 @@ func TestProductTurnSoftRefusalReplayRecomputesWithoutCheckpoint(t *testing.T) {
 			if _, err := ReplayGovernedTranscript(journal, f.storeJournal, f.store, pins); err == nil || !strings.Contains(err.Error(), "soft refusal differs from recomputed sealed-generation preflight") {
 				t.Fatalf("want recomputed preflight rejection, got %v", err)
 			}
+			trace, err := journal.Trace()
+			if err != nil {
+				t.Fatal(err)
+			}
+			checkpointed := pins
+			checkpointed.Provider.CheckpointRecordCount = uint64(len(trace.Records))
+			checkpointed.Provider.CheckpointRecordHead = auditHeadHash(trace.Records)
+			if _, err := ReplayGovernedTranscript(journal, f.storeJournal, f.store, checkpointed); err == nil || !strings.Contains(err.Error(), "soft refusal differs from recomputed sealed-generation preflight") {
+				t.Fatalf("restart replay skipped checkpointed refusal recompute: %v", err)
+			}
 		})
 	}
 }

@@ -176,6 +176,7 @@ type ProviderDecisionBindingAlias struct {
 
 type governedStoreReplayVerifier struct {
 	store                                     *sessionrepo.Store
+	softRefusalPrefixCount                    uint64
 	pins                                      GovernedReplayPins
 	providerTrace, storeTrace, admissionTrace audit.Trace
 	bundle                                    sessionrepo.EvidenceBundle
