@@ -33,7 +33,7 @@ Current combined gate, 2026-10-27, on `610577b` (code `5311409`). Linux, Go 1.27
 | Production host profile (milestone 7) | partial | `7656a69`, [Milestone 7](#milestone-7-production-host-profile-supervisor-loop-worker) | Independent review, qualified host, contained command runner. |
 | P10 README and USAGE | not started | none | Whole package. |
 | P11 qualification and release | not started | none | Whole package. Needs the guest, host and provider key. |
-| Host inputs and soft refusals | not started | none | Calibration measure and sign, setup checks and doctor reporting for host inputs, and soft refusals are not implemented. Both branches have no commits. |
+| Host inputs and soft refusals | done locally | `c6fbd5f`, `b43cce7`, [Resumed 2026-10-27](#resumed-2026-10-27-on-fabian) | Real-host calibration measurement. Soft-refusal review follow-ups (replay recompute test, per-step rehash). |
 
 ## Baseline (P0)
 
@@ -457,7 +457,23 @@ Source hash of `supervisor/` for the second run: SHA-256 of the sorted per-file 
 
 - The machine move was cancelled. Work continues on FABIAN, which keeps the qualified host, the guest and the keys.
 - Step 1 is done: `610577b` passed the combined gate (see [Status by package](#status-by-package-p0-p11)). Step 2 is this document.
-- Next: sync F14 from thesis `5f2d0a6`, then host inputs, then soft refusals, then the four reviews.
+- **F14 sync**, `7ceeff6`: thesis `5f2d0a6` was merged, leaving the product 81 ahead and 0 behind. Only test files conflicted:
+  - `governed_ledger_deny_linux_test.go`, `governed_recovery_preview_linux_test.go` and `workflowrecovery/denied_call_exchange_linux_test.go`: the thesis version was taken.
+  - `workflow_vertical_linux_test.go`: the product version was kept, because it holds `prepareWorkflowVertical`.
+  - `governed_workflow_live_linux.go`, `sessionrepo/recovery_linux.go` and `workflowrecovery/recovery.go` merged cleanly. Their thesis changes are byte-identical ports of the product fixes, and the product's restart-reconciliation pins are kept.
+  - Gate: focused tests ok; full gate 5370 passed, 29 skipped, 0 failed. The skip count fell by one because the thesis turned `TestGovernedLedgerDenyReopenChild` into a helper.
+- **Host inputs**, `7d903a0` to `c6fbd5f`. These commands were added: `tbound product calibration measure` and `sign`. Static host-input validators with an explicit owner set are shared by serve, setup (before any write) and doctor. The Git pin now applies the same owner list to the file and to every parent directory. An Opus review found 4 issues, and all are fixed. Gate on `c6fbd5f`: 5459 passed, 29 skipped, 0 failed.
+- **Soft refusals**, merged in `b43cce7`. In product turns, a tool call is refused softly only when a check before authorization proves it cannot have an effect: a missing read path, a non-regular target, or edit text that is absent or ambiguous. The refusal returns an error and a hint to the model, and the conversation continues. Each refusal is recorded as `provider_proven_unexecuted`, a binding distinct from a DENY retirement, and replay recomputes it. Research mode is unchanged. An Opus review found no hole in authority, effects or counting; its follow-ups are open. Gate on `4ca3fa4`: 5420 passed, 29 skipped, 0 failed.
+- **Combined gate** on `b43cce7`: build, vet and gofmt clean; 5509 passed, 29 skipped, 0 failed.
+- **The four owed reviews** were done on 2026-10-27, by Sol xhigh with ponytail-review:
+  - P9: two P1 fixes, the request identity across reload and a candidate bound. Round 2 is in progress on `product/p9-review-fixes`.
+  - Bash output: the description must follow the executor's output mode. The fix is on `product/bash-description-mode`.
+  - P8 round 3: six findings. The fixes are on `product/p8-r3-fixes`.
+  - Host profile: four findings (the publication fence, credentials and root identity checked before listening, registration binding, managed-root exclusivity). The fixes are on `product/host-profile-fixes`.
+- **Still blocked:**
+  - P9 acceptance needs a real Pi worker per turn, and `product-serve` refuses `worker_mode: pi`.
+  - Publication does not swap the old object back when it detects a mismatch after `RENAME_EXCHANGE` (shared code). This is recorded for the thesis thread.
+- **Dev dependency:** `npm audit` reports a high finding in the dev-only test DOM `happy-dom`. There are 0 production findings, and the shipped `dist/` is not affected.
 - Two risks to track from the 2026-10-26 priorities review:
   - **Shared code diverges.** The product and thesis branches carry ports of the same security fixes. Keep a short ledger of each shared fix: the commit on each branch and the test that covers it. Reconcile before every freeze.
   - **Prompt versioning.** Changing the compiled-in prompts breaks the replay of earlier turns. Define prompt and evidence versioning before the first catalog is deployed.
