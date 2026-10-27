@@ -117,3 +117,54 @@ func TestRollbackWhoseSelfTestFailsRestoresAndAnInterruptedRestoreIsNotUndone(t 
 		t.Fatalf("a retry after an interrupted restore must refuse and change nothing (exit %d, installed %q):\n%s", code, f.read(BinaryPath), out)
 	}
 }
+
+func TestRollbackRefusesWhenThereIsNothingToRollBackToOrTheRecordIsBad(t *testing.T) {
+	if os.Getenv("TB_ROLLBACK_ROOT") != "" {
+		t.Skip("only the parent runs this test")
+	}
+	f := newFixture(t)
+	f.installed()
+	f.env.Turns = func() ([]OpenTurn, error) { return nil, nil }
+	if err := os.WriteFile(f.path(LastKnownGoodPath), []byte("binary v1"), 0o755); err != nil || os.Chmod(f.path(LastKnownGoodPath), 0o755) != nil {
+		t.Fatal("write the last-known-good", err)
+	}
+	if _, err := Rollback(f.env); !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "nothing to roll back to") {
+		t.Fatalf("a last-known-good equal to the installed binary must refuse: %v", err)
+	}
+	if _, err := Update(f.env, f.newBinary("binary v2")); err != nil {
+		t.Fatal(err)
+	}
+	for name, content := range map[string]string{
+		"not json":       "garbage",
+		"unknown field":  `{"target":"sha256:` + strings.Repeat("a", 64) + `","previous":"sha256:` + strings.Repeat("b", 64) + `","extra":1}`,
+		"short digest":   `{"target":"sha256:aa","previous":"sha256:bb"}`,
+		"digest no hash": `{"target":"` + strings.Repeat("a", 64) + `","previous":"` + strings.Repeat("b", 64) + `"}`,
+	} {
+		if err := os.WriteFile(f.path(rollbackIntentPath), []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Rollback(f.env); !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "rollback record") {
+			t.Fatalf("%s: a bad rollback record was not refused: %v", name, err)
+		}
+		if f.read(BinaryPath) != "binary v2" || f.read(LastKnownGoodPath) != "binary v1" {
+			t.Fatalf("%s: a refused rollback changed the binaries", name)
+		}
+	}
+	if err := os.WriteFile(f.path(rollbackIntentPath), []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Rollback(f.env); !errors.Is(err, ErrRefused) {
+		t.Fatalf("a rollback record with a wrong mode must be refused: %v", err)
+	}
+	if err := os.Remove(f.path(rollbackIntentPath)); err != nil {
+		t.Fatal(err)
+	}
+	f.env.DryRun = true
+	rep, err := Rollback(f.env)
+	if err != nil || !strings.Contains(rep.String(), "exchanged with") || f.read(BinaryPath) != "binary v2" {
+		t.Fatalf("dry run: %v\n%s", err, rep)
+	}
+	if _, err := os.Lstat(f.path(rollbackIntentPath)); err == nil {
+		t.Fatal("a dry run wrote the rollback record")
+	}
+}

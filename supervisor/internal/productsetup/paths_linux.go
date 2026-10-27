@@ -63,7 +63,7 @@ func (h *host) openRoot() error {
 		return err
 	}
 	// Refuse an existing unsafe parent before accounts or service commands can change anything.
-	paths := []string{"/etc/passwd", "/etc/group", CatalogPath, SocketPath, LastKnownGoodPath, stagedBinaryPath}
+	paths := []string{"/etc/passwd", "/etc/group", CatalogPath, SocketPath, LastKnownGoodPath, stagedBinaryPath, rollbackIntentPath}
 	for _, n := range append(append([]node{}, directories...), installedFiles...) {
 		paths = append(paths, n.Path)
 	}
@@ -163,4 +163,29 @@ func openSource(path string) (*os.File, error) {
 	}
 	defer parent.Close()
 	return openFile(fmt.Sprintf("/proc/self/fd/%d/%s", parent.Fd(), filepath.Base(absolute)), unix.O_RDONLY, 0)
+}
+
+// exchange swaps two entries of one directory with a single RENAME_EXCHANGE: both names exist before
+// and after, and an interruption leaves them in the old or the new order, never a copy over a copy.
+func (h *host) exchange(first, second string) error {
+	if filepath.Dir(first) != filepath.Dir(second) {
+		return refuse("%s and %s are not in one directory", first, second)
+	}
+	return h.withPath(first, false, func(path string) error {
+		other := filepath.Join(filepath.Dir(path), filepath.Base(second))
+		if err := unix.Renameat2(unix.AT_FDCWD, path, unix.AT_FDCWD, other, unix.RENAME_EXCHANGE); err != nil {
+			return &os.LinkError{Op: "exchange", Old: first, New: second, Err: err}
+		}
+		return nil
+	})
+}
+
+// syncDir makes the directory's entries (a rename or a removal) durable.
+func (h *host) syncDir(logical string) error {
+	dir, err := openDirectory(h.dir, logical, false)
+	if err != nil {
+		return err
+	}
+	defer dir.Close()
+	return dir.Sync()
 }
