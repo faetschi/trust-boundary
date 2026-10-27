@@ -220,8 +220,8 @@ install_at() {
   if [ ! -x "$stage/bin/tbound-doctor" ]; then die "extracted archive has no bin/tbound-doctor"; fi
   if [ ! -x "$stage/bin/tbound-profile" ]; then die "extracted archive has no bin/tbound-profile"; fi
   printf 'name=tbound\nversion=%s\nprefix=%s\n' "$(json_escape "$version")" "$(json_escape "$prefix")" > "$stage/$MARKER"
-  if [ -n "$pin_key" ]; then # after extraction, so an archive cannot supply the pin
-    rm -f -- "$stage/$PUBLISHER_KEY"
+  rm -rf -- "$stage/$PUBLISHER_KEY" # the pin comes only from the verified key below, never from the archive
+  if [ -n "$pin_key" ]; then
     cp -- "$pin_key" "$stage/$PUBLISHER_KEY" && chmod 0644 "$stage/$PUBLISHER_KEY" || die "cannot pin the publisher key"
   fi
 
