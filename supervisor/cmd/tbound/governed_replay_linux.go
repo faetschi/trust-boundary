@@ -865,7 +865,7 @@ func (v *governedStoreReplayVerifier) bindStoreOperation(binding providerbridge.
 		return sessionrepo.OperationRequest{}, audit.EffectTrace{}, sessionrepo.OperationEvidence{}, errors.New("Store OperationEvidence does not bind the authorized successful effect")
 	}
 	if request.Tool == "read" {
-		path, pathErr := durableReadArguments(binding.Proposal.Arguments)
+		path, _, pathErr := durableReadArguments(binding.Proposal.Arguments)
 		if pathErr != nil || intent.Path != path || intent.MaxBytes != durableReadMaxBytes || entry.OutputGeneration != request.InputGeneration ||
 			entry.OutputTreeDigest != request.InputTreeDigest || entry.Admission != nil || entry.ExitCode != nil {
 			return sessionrepo.OperationRequest{}, audit.EffectTrace{}, sessionrepo.OperationEvidence{}, errors.New("read intent or Store evidence differs from the exact bounded read")
@@ -1052,17 +1052,12 @@ func (v *governedStoreReplayVerifier) expectedDurableOutput(verified *governedRe
 		return nil, "", "", "", 0, "", errors.New("Store result mapping is incomplete")
 	}
 	if request.Tool == "read" {
-		path, err := durableReadArguments(decisionBinding.Proposal.Arguments)
+		path, window, err := durableReadArguments(decisionBinding.Proposal.Arguments)
 		if err != nil {
 			return nil, "", "", "", 0, "", err
 		}
-		payload := durableReadSummaryPayload{Tool: "read", Path: path,
-			Generation: durableGenerationSummary{ID: request.InputGeneration, TreeDigest: request.InputTreeDigest},
-			Size:       len(effect.Result), ContentDigest: durableContentDigest(effect.Result), Content: string(effect.Result), Outcome: "success"}
-		encoded, err := json.Marshal(payload)
-		if err == nil && len(encoded) > protocol.MaxFrameBytes {
-			err = errors.New("reconstructed read summary exceeds the DurableExecutor frame bound")
-		}
+		encoded, err := durableReadSummary(path, window,
+			durableGenerationSummary{ID: request.InputGeneration, TreeDigest: request.InputTreeDigest}, effect.Result)
 		return encoded, request.InputGeneration, request.InputTreeDigest, "", 0, "", err
 	}
 	transition, found := v.transitionForOperation(operation)

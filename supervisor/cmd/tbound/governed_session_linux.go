@@ -1171,7 +1171,7 @@ func sessionrepoArgumentDigest(proposal protocol.Proposal, bashOutputPaths []str
 	var value any
 	switch proposal.Tool {
 	case "read":
-		path, err := durableReadArguments(proposal.Arguments)
+		path, _, err := durableReadArguments(proposal.Arguments)
 		if err != nil {
 			return "", err
 		}
