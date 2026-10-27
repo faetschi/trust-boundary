@@ -14,7 +14,7 @@ func TestProductAdminInstallScriptAsRootNeverFollowsUserControlledCompletionAndC
 	f := newReleaseFixture(t)
 	f.extra = map[string]string{"share/completions/tbound.bash": "# completion\n", "share/completions/_tbound": "#compdef tbound\n", "share/completions/tbound.fish": "# fish\n"}
 	f.writeArchive("genuine")
-	f.publishSums()
+	f.resign(f.keys)
 	f.asRoot, f.shellSetup, f.completions = true, everythingIsRootOwned, true
 
 	// The user redirects the XDG config directory and the bash completion leaf at files root must not touch.
@@ -38,7 +38,7 @@ func TestProductAdminInstallScriptAsRootNeverFollowsUserControlledCompletionAndC
 		t.Fatal(err)
 	}
 
-	out, prefix, err := f.install()
+	out, prefix, err := f.install("--public-key", f.pub, "--verifier", f.verifier())
 	if err != nil {
 		t.Fatalf("a root install must succeed without the per-user files: %v\n%s", err, out)
 	}

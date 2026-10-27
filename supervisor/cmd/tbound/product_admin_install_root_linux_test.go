@@ -34,12 +34,12 @@ func TestProductAdminInstallScriptAsRootNeverWritesThroughAnArchiveSuppliedMarke
 	writeFileOrFatal(t, victim, "precious\n")
 	f.symlinks = map[string]string{".tbound-install": victim}
 	f.writeArchive("malicious")
-	f.publishSums()
+	f.resign(f.keys)
 	f.asRoot, f.shellSetup = true, everythingIsRootOwned
 
-	out, prefix, err := f.install()
+	out, prefix, err := f.install("--public-key", f.pub, "--verifier", f.verifier())
 	if got, _ := os.ReadFile(victim); string(got) != "precious\n" {
-		t.Fatalf("a checksum-only root install wrote through the archive's marker link: %q\n%s", got, out)
+		t.Fatalf("a root install wrote through the archive's marker link: %q\n%s", got, out)
 	}
 	if err != nil {
 		t.Fatalf("the install must discard the archive's marker and go on: %v\n%s", err, out)

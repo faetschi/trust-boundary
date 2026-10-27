@@ -5,6 +5,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -43,5 +44,54 @@ func TestProductAdminInstallScriptAsRootKeepsItsStageOutOfTMPDIRAndConsumesNothi
 	}
 	if entries, _ := os.ReadDir(userTmp); len(entries) != 0 {
 		t.Fatalf("a root install put its stage below TMPDIR: %v", entries)
+	}
+}
+
+func TestProductAdminInstallScriptAsRootRequiresPublisherAuthentication(t *testing.T) {
+	skipUnlessInstallScriptRuns(t)
+	f := newReleaseFixture(t)
+	// The artifact and its same-origin checksum file are replaced together.
+	f.writeArchive("malicious")
+	f.publishSums()
+	f.asRoot, f.shellSetup = true, everythingIsRootOwned
+
+	out, prefix, err := f.install()
+	if err == nil || !strings.Contains(out, "requires publisher authentication") {
+		t.Fatalf("a root install accepted a checksum-only artifact: %v\n%s", err, out)
+	}
+	if entries, _ := os.ReadDir(filepath.Dir(prefix)); len(entries) != 0 {
+		t.Fatalf("a refused root install left %v below the prefix parent", entries)
+	}
+
+	f.writeArchive("genuine")
+	f.resign(f.keys)
+	if out, _, err := f.install("--public-key", f.pub, "--verifier", f.verifier()); err != nil || installedMarker(t, prefix) != "genuine" {
+		t.Fatalf("a signed root install failed: %v\n%s", err, out)
+	}
+	// The pinned key authenticates a later update, with no --public-key.
+	f.writeArchive("updated")
+	f.resign(f.keys)
+	if out, _, err := f.installCommand("update", "--verifier", f.verifier()); err != nil || installedMarker(t, prefix) != "updated" {
+		t.Fatalf("a root update under the pinned key failed: %v\n%s", err, out)
+	}
+}
+
+func TestProductAdminInstallScriptAsRootRefusesToUpdateAPrefixThatPinsNoKey(t *testing.T) {
+	skipUnlessInstallScriptRuns(t)
+	f := newReleaseFixture(t)
+	f.publishSums()
+	if out, _, err := f.install(); err != nil || !strings.Contains(out, "not publisher authentication") {
+		t.Fatalf("a checksum-only install into a prefix of the user failed: %v\n%s", err, out)
+	}
+	f.writeArchive("malicious")
+	f.publishSums()
+	f.asRoot, f.shellSetup = true, everythingIsRootOwned
+
+	out, prefix, err := f.installCommand("update")
+	if err == nil || !strings.Contains(out, "requires publisher authentication") {
+		t.Fatalf("a root update of a prefix without a pinned key accepted a checksum-only artifact: %v\n%s", err, out)
+	}
+	if got := installedMarker(t, prefix); got != "genuine" {
+		t.Fatalf("a refused root update replaced the installation: %q", got)
 	}
 }

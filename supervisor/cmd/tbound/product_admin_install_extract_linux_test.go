@@ -20,12 +20,12 @@ func TestProductAdminInstallScriptAsRootTakesNoOwnerOrModeFromTheArchive(t *test
 	f := newReleaseFixture(t)
 	f.loose = true
 	f.writeArchive("loose")
-	f.publishSums()
+	f.resign(f.keys)
 	tarLog := filepath.Join(f.dir, "tar.log")
 	// The umask is open, so only the installer's own handling keeps the archive's 0666 and 0777 out of the prefix.
 	f.asRoot, f.shellSetup = true, everythingIsRootOwned+"; umask 000; "+recordCalls("tar", tarLog)
 
-	out, prefix, err := f.install()
+	out, prefix, err := f.install("--public-key", f.pub, "--verifier", f.verifier())
 	if err != nil {
 		t.Fatalf("a root install of an archive with loose headers failed: %v\n%s", err, out)
 	}
