@@ -12,6 +12,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"tbound/supervisor/internal/releasetrust"
 )
 
 // copyAtomic copies in to dst through a synced temporary file in dst's directory and a rename, so dst
@@ -97,12 +99,23 @@ func interrupt(step string) {
 type Candidate struct{ Binary, Manifest, Signature string }
 
 // Update installs the candidate as the service binary. See replaceBinary for the flow.
+//
+// The candidate is authenticated before anything else happens, because the self-test runs the installed
+// binary as root. The signed manifest must verify under the publisher key that setup pinned, and must
+// list the candidate by name with its size and SHA-256. The digest is taken from a copy that only root can
+// write, so a file swapped after the check changes nothing, and only that copy is installed or executed. A
+// dry run measures the candidate in place and installs and executes nothing. Without a pinned key an
+// update is refused.
 func Update(env Env, candidate Candidate) (Report, error) {
 	h := newHost(env)
 	if err := h.openRoot(); err != nil {
 		return *h.rep, err
 	}
 	defer h.dir.Close()
+	manifest, err := h.publisherManifest(candidate)
+	if err != nil {
+		return *h.rep, err
+	}
 	source, err := openSource(candidate.Binary)
 	if err != nil {
 		return *h.rep, err
@@ -115,17 +128,91 @@ func Update(env Env, candidate Candidate) (Report, error) {
 	if info.Size() == 0 || info.Size() > maxBinaryBytes {
 		return *h.rep, refuse("%s is empty or too large to be the tbound binary", candidate.Binary)
 	}
-	if err := h.checkBinaryFormat(source, candidate.Binary); err != nil {
+	verified := source
+	if !env.DryRun {
+		defer h.discardStaged()
+		if err := h.copyAtomic(source, stagedBinaryPath, 0o755); err != nil {
+			return *h.rep, fmt.Errorf("stage the binary: %w", err)
+		}
+		if verified, err = h.managedSource(stagedBinaryPath, ownRoot, 0o755); err != nil {
+			return *h.rep, err
+		}
+		defer verified.Close()
+	}
+	if err := h.authenticate(manifest, filepath.Base(candidate.Binary), verified); err != nil {
+		return *h.rep, err
+	}
+	interrupt("verified")
+	if err := h.checkBinaryFormat(verified, candidate.Binary); err != nil {
 		return *h.rep, err
 	}
 	if err := h.checkInstalledSelfTestClient(); err != nil {
 		return *h.rep, err
 	}
-	return h.replaceBinary(source)
+	return h.replaceBinary(verified)
 }
 
-// replaceBinary swaps source in as the service binary:
-//  1. stage a copy next to the binary;
+// publisherManifest verifies the candidate's manifest and signature under the pinned publisher key.
+func (h *host) publisherManifest(candidate Candidate) (releasetrust.Manifest, error) {
+	keyFile, err := h.managedSource(ReleasePublicKeyPath, ownRoot, 0o644)
+	if errors.Is(err, os.ErrNotExist) {
+		return releasetrust.Manifest{}, refuse("no publisher key is pinned (%s is missing), so no candidate binary can be authenticated; set release_public_key in the setup config and rerun `tbound product setup --replace`", ReleasePublicKeyPath)
+	} else if err != nil {
+		return releasetrust.Manifest{}, refuse("the pinned publisher key %s cannot be used: %v", ReleasePublicKeyPath, err)
+	}
+	defer keyFile.Close()
+	content, err := io.ReadAll(io.LimitReader(keyFile, 1<<10))
+	if err != nil {
+		return releasetrust.Manifest{}, err
+	}
+	key, err := releasetrust.ParsePublicKey(content)
+	if err != nil {
+		return releasetrust.Manifest{}, refuse("the pinned publisher key %s is malformed: %v", ReleasePublicKeyPath, err)
+	}
+	manifest, err := readSource(candidate.Manifest)
+	if err != nil {
+		return releasetrust.Manifest{}, refuse("cannot read the release manifest: %v", err)
+	}
+	signatureText, err := readBounded(candidate.Signature, 1<<10)
+	if err != nil {
+		return releasetrust.Manifest{}, refuse("cannot read the manifest signature: %v", err)
+	}
+	signature, err := releasetrust.ParseSignature(signatureText)
+	if err != nil {
+		return releasetrust.Manifest{}, refuse("%v", err)
+	}
+	verified, err := releasetrust.Verify(manifest, signature, key)
+	if err != nil {
+		return releasetrust.Manifest{}, refuse("the release manifest is not signed by the pinned publisher key %s: %v", releasetrust.Fingerprint(key), err)
+	}
+	h.note("the release manifest verifies under the pinned publisher key %s", releasetrust.Fingerprint(key))
+	return verified, nil
+}
+
+// authenticate refuses a binary that the signed manifest does not list under its name with this size and
+// SHA-256. It measures the file it is given, which for a live run is the private staged copy.
+func (h *host) authenticate(manifest releasetrust.Manifest, name string, binary *os.File) error {
+	info, err := binary.Stat()
+	if err != nil {
+		return err
+	}
+	digest, err := fileDigest(binary)
+	if err != nil {
+		return err
+	}
+	if err := manifest.CheckArtifact(name, info.Size(), digest); err != nil {
+		return refuse("the candidate is refused: %v", err)
+	}
+	h.note("%s (sha256:%s) is listed in the verified manifest", name, digest[:16])
+	return nil
+}
+
+// discardStaged removes the staged copy, if any, and does not report it.
+func (h *host) discardStaged() { _ = h.withPath(stagedBinaryPath, false, os.Remove) }
+
+// replaceBinary swaps source, the authenticated staged copy (a dry run's candidate in place), in as the service
+// binary:
+//  1. the copy was staged next to the binary by Update;
 //  2. stop the service and open the catalog: any turn that is not awaiting review refuses the swap and
 //     the service starts again, whose restart reconciliation settles the turn;
 //  3. back the catalog up, keep the current binary as last-known-good, and rename the staged copy over
@@ -167,9 +254,6 @@ func (h *host) replaceBinary(source *os.File) (Report, error) {
 		_ = h.command("systemctl", "start", UnitName)
 		h.rep.Commands = append(h.rep.Commands, BinaryPath+" product doctor --self-test")
 		return *h.rep, nil
-	}
-	if err := h.copyAtomic(source, stagedBinaryPath, 0o755); err != nil {
-		return *h.rep, fmt.Errorf("stage the binary: %w", err)
 	}
 	h.step("stage", stagedBinaryPath, "created", "sha256:"+want[:16])
 	abort, err := h.stopForSwap("update", func() { _, _ = h.remove(stagedBinaryPath, false) })
@@ -241,7 +325,10 @@ func (h *host) stopForSwap(what string, discard func()) (abort func(error) error
 }
 
 // Rollback restores the last-known-good binary. The binary it replaces becomes the new last-known-good,
-// so a second rollback returns to it. An interrupted rollback is finished by running it again.
+// so a second rollback returns to it. An interrupted rollback is finished by running it again. Rollback
+// takes no candidate: it only ever runs the last-known-good binary, a root-owned file that is the binary an
+// earlier authenticated update (or the setup run by the administrator) installed, so it needs no
+// signature of its own.
 func Rollback(env Env) (Report, error) {
 	h := newHost(env)
 	if err := h.openRoot(); err != nil {

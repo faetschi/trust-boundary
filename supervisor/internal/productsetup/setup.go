@@ -10,6 +10,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+
+	"tbound/supervisor/internal/releasetrust"
 )
 
 // planned is one step with the effect that applies it.
@@ -188,6 +190,16 @@ func (h *host) desiredFiles(cfg Config, binary string) (map[string][]byte, Regis
 	files := map[string][]byte{
 		RegistrationPath: registration, RegistrationSignaturePath: signature, RegistrationPublicKeyPath: key,
 		ServiceConfigPath: serviceConfig, SetupConfigPath: installed, UnitPath: unit,
+	}
+	if cfg.ReleasePublicKey != "" {
+		publisher, err := readSource(cfg.ReleasePublicKey)
+		if err == nil {
+			_, err = releasetrust.ParsePublicKey(publisher)
+		}
+		if err != nil {
+			return nil, RegistrationSummary{}, refuse("release_public_key is not a readable base64 Ed25519 publisher key: %v", err)
+		}
+		files[ReleasePublicKeyPath] = publisher
 	}
 	if binary != "" {
 		if files[BinaryPath], err = readBounded(binary, maxBinaryBytes); err != nil {

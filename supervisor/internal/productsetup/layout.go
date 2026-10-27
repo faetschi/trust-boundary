@@ -116,6 +116,7 @@ var installedFiles = []node{
 	{SetupConfigPath, false, ownRoot, 0o644},
 	{UnitPath, false, ownRoot, 0o644},
 	{BinaryPath, false, ownRoot, 0o755},
+	{ReleasePublicKeyPath, false, ownRoot, 0o644}, // optional: absent when the config names no release_public_key
 }
 
 // writtenPaths are the single paths that setup, update, rollback, uninstall and the service write or

@@ -35,6 +35,11 @@ const productAdminUsage = `Usage (run setup, update, rollback and uninstall as r
 calls are only recorded, never executed. --dry-run writes and executes nothing and prints the plan.
 setup is idempotent ("unchanged" on a rerun), refuses any thesis path, and fails before any change
 on a host that does not meet the prerequisites (use the qualified VM option).
+update installs only a binary that a signed release manifest lists (its file name, size and SHA-256), under
+the publisher key that setup pinned from release_public_key. --manifest and --signature are the files
+` + "`tbound release manifest` and `tbound release sign`" + ` made. The candidate is copied to a root-owned staging file,
+measured there, and only that copy is installed or run; a dry run checks the same and runs nothing. Without
+a pinned key update refuses. rollback needs no signature: it only restores the last-known-good binary.
 uninstall keeps /etc/tbound-product and /var/lib/tbound-product unless --purge is given; --purge
 asks for confirmation unless --yes is also given.
 doctor is advisory. Only --self-test (a synthetic turn on the project named by self_test in the
