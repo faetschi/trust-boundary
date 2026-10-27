@@ -268,3 +268,17 @@ func TestSetupTakesTheBinaryFormatFromItsBytesAndRefusesAnotherFormatBeforeChang
 		}
 	}
 }
+
+func TestScanInstallationFormatFindsAMarkerAtEveryPositionAroundTheMebibyteChunk(t *testing.T) {
+	marker := fmt.Sprintf(markerLine, InstallationFormat)
+	const mebibyte = 1 << 20
+	// The window starts before the 1 MiB offset and ends past the point where the first read ends (1 MiB plus
+	// the carried bytes), so every cut of the marker by a chunk boundary is covered, and no second copy helps.
+	for at := mebibyte - len(marker); at <= mebibyte+64; at++ {
+		content := make([]byte, mebibyte+mebibyte/2)
+		copy(content[at:], marker)
+		if got, err := scanBytes(t, content); err != nil || got != InstallationFormat {
+			t.Fatalf("a marker at %d (the 1 MiB offset is %d): format %d, %v", at, mebibyte, got, err)
+		}
+	}
+}
