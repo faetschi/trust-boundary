@@ -272,3 +272,74 @@ func TestBashOutputReplayRejectsAForgedOutput(t *testing.T) {
 		})
 	}
 }
+
+// firstRequestBashDescription is the description of the bash tool in the first request the provider
+// journal holds: the bytes the provider was really told.
+func firstRequestBashDescription(t *testing.T, journal *audit.Journal) string {
+	t.Helper()
+	trace, err := journal.Trace()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, record := range trace.Records {
+		if record.Event.Kind != "provider_exchange" {
+			continue
+		}
+		var exchange struct {
+			Request struct {
+				Body []byte `json:"body"`
+			} `json:"request"`
+		}
+		var body struct {
+			Tools []struct {
+				Function struct {
+					Name        string `json:"name"`
+					Description string `json:"description"`
+				} `json:"function"`
+			} `json:"tools"`
+		}
+		if err := json.Unmarshal(record.Event.Data, &exchange); err != nil {
+			t.Fatal(err)
+		}
+		if err := json.Unmarshal(exchange.Request.Body, &body); err != nil {
+			t.Fatal(err)
+		}
+		for _, tool := range body.Tools {
+			if tool.Function.Name == "bash" {
+				return tool.Function.Description
+			}
+		}
+	}
+	t.Fatal("the provider journal holds no request that advertises bash")
+	return ""
+}
+
+// The bash description a provider is told must match what the executor then releases: a session whose
+// executor returns only the exit code (serve --pi) must not be told it gets stdout and stderr, and a
+// product turn, whose executor releases bounded output, must be.
+func TestBashOutputAdvertisedDescriptionMatchesTheExecutorResult(t *testing.T) {
+	for _, c := range []struct {
+		name   string
+		bound  int
+		output bool
+	}{
+		{"serve --pi executor, exit code only", 0, false},
+		{"product turn executor, bounded output", productCommandOutputBytes, true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			fixture := boundedBashReplayFixture(t, c.bound)
+			command := releasedBashSummary(t, fixture.providerJournal).Command
+			if command == nil {
+				t.Fatal("the released summary has no command result")
+			}
+			released := command.Stdout != nil && command.Stderr != nil
+			description := firstRequestBashDescription(t, fixture.providerJournal)
+			if released != c.output {
+				t.Fatalf("the executor released output = %t, want %t", released, c.output)
+			}
+			if advertised := strings.Contains(description, "stdout"); advertised != released {
+				t.Errorf("the provider is told %q, but the executor released output = %t", description, released)
+			}
+		})
+	}
+}

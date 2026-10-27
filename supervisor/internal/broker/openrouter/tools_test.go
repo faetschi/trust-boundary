@@ -79,3 +79,45 @@ func TestRoutesSendTheirOwnToolSurface(t *testing.T) {
 		}
 	}
 }
+
+// bashDescriptionOf is the description of the bash tool in a built request.
+func bashDescriptionOf(t *testing.T, built BuiltRequest) string {
+	t.Helper()
+	var body struct {
+		Tools []struct {
+			Function struct {
+				Name        string `json:"name"`
+				Description string `json:"description"`
+			} `json:"function"`
+		} `json:"tools"`
+	}
+	if err := json.Unmarshal(built.Body(), &body); err != nil {
+		t.Fatal(err)
+	}
+	for _, tool := range body.Tools {
+		if tool.Function.Name == "bash" {
+			return tool.Function.Description
+		}
+	}
+	t.Fatal("the request advertises no bash tool")
+	return ""
+}
+
+// bashExitOnlyDescription is the bash description of every engineering request before a product turn
+// could show the model command output. A session whose executor returns only the exit code still sends it.
+const bashExitOnlyDescription = "Execute a bash command. Requests are forwarded to tbound."
+
+// The zero route is a session that was never given a command output bound (serve --pi). Its executor
+// returns the exit code alone, so its request must not promise stdout and stderr.
+func TestEngineeringRouteAdvertisesTheExitOnlyBashDescription(t *testing.T) {
+	messages := []Message{{Role: User, Content: strptr("hello")}}
+	for name, route := range map[string]Route{"zero route": {}, "engineering route": EngineeringRoute()} {
+		built, err := BuildRequestForRoute(route, messages, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := bashDescriptionOf(t, built); got != bashExitOnlyDescription {
+			t.Errorf("%s advertises the bash description %q, want %q", name, got, bashExitOnlyDescription)
+		}
+	}
+}
