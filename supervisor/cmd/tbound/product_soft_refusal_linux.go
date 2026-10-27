@@ -161,6 +161,7 @@ func (e *productTurnEnv) verifyRetainedSoftRefusals(turn productsession.Turn, re
 		return err
 	}
 	config := providerbridge.Config{ProductSoftRefusals: true, WorkflowID: turn.Link.WorkflowID, ConversationID: turn.Link.ConversationID, ProfileID: session.ProviderProfile, InitialGenerationID: bundle.Baseline.ID, InitialTreeDigest: bundle.Baseline.TreeDigest, SystemPrompt: e.SystemPrompt, DeveloperPrompt: e.DeveloperPrompt}
+	config.Route = config.Route.WithCommandOutput(true) // replay the request bytes a product turn sent
 	route := config.Route.Resolved()
 	replayPins := GovernedReplayPins{
 		Provider: providerbridge.RecoveryPins{Config: config, Model: route.Model, Policy: policy, RequireHostCallReservations: true, ImportedPrefixDigest: importedPrefixReplayPin(turn.Link.ImportedPrefixDigest, len(trace.Records))},
