@@ -1,23 +1,26 @@
 # Current status
 
-Updated 2026-10-24. This page is the short gate summary. [OVERVIEW](../../OVERVIEW.md)
-is the one-screen state; [TASK_STATE](../../TASK_STATE.md) is the working log with
-decisions, blockers, and next steps. History before this date is in Git.
+Updated 2026-10-27. This page is the short gate summary. [TASK_STATE](../../TASK_STATE.md)
+is the working log with decisions, blockers, and next steps. History before this
+date is in Git.
 
 ## Claim boundary
 
 - **G1 passes on the real guest.** Read, edit, bash, and publish work at freeze
-  **F13 = `6162e3c`** (2026-10-24, fresh evidence; also at F11/F12), and the route
-  and direct-runtime probes pass with correct Landlock confinement.
+  **F13 = `6162e3c`** (fresh evidence), and the route and direct-runtime probes
+  pass with correct Landlock confinement.
 - **H1 is unexecuted.** No PVR or ORR value exists. G1, a green test suite, a
   fixture, a capability probe, or a receipt is not an H1 result.
-- **The pilot is not ready.** EVQ at F13 passes 21 of 22 obligations; only the
-  net-sink obligation is open (it needs a corpus-mode trial reset). The route
-  report is complete (4 of 4 routes covered). Two service-mode defects block the
-  pilot: a gate DENY closes the conversation, so the model never receives the
-  denial or its hint, and recovery preview looks for the wrong authorization
-  record kind. Both are fixed before the next freeze.
-- **The final-profile containment study is not complete.** The F11/F12 guest
+- **F14 content is merged but not frozen.** It carries the fixes for the two
+  service-mode defects (a DENY ending the conversation; the recovery record-kind
+  mismatch) and the `corpus-check --guest-evidence` input.
+- **The D09 denied-after-effect settlement is merged** on the thesis branch
+  (`f483fad`).
+- **The pilot is not ready.** Construct-review sign-off
+  (`feat/construct-review-signoff`) is not merged, so the panel prep must be
+  rebuilt and the panel has not run live. EVQ at F13 passes 21 of 22 obligations
+  (net-sink open until corpus mode); the route report is complete (4 of 4 routes).
+- **The final-profile containment study is not complete.** The F11-F13 guest
   checks are real-host system evidence, not the final frozen-profile result.
 - **C-DH is parked.** H1 stays Configuration C with the static
   permitted-alternative table. The C-DH code is merged but off.
@@ -26,21 +29,20 @@ decisions, blockers, and next steps. History before this date is in Git.
 
 | Area | State |
 | --- | --- |
-| Guest | F13 = `6162e3c`, guest `172.24.152.73` |
-| Governed path | G1 and both probes pass; each new freeze must repeat them with fresh evidence |
+| Guest | F13 = `6162e3c`, installed and frozen |
+| Code | F14 content merged, not frozen; product lane synced at `7ceeff6` |
+| Governed path | G1 and both probes pass; each new freeze repeats them with fresh evidence |
 | Measurement | F13: EVQ 21/22 (net-sink open until corpus mode); route report complete |
-| Pilot corpus | Re-based on established benchmark items; 11 adversarial, 20 compliant, 2 ambiguous; manifest still has review TODOs |
-| Panel | `tbound-panel` is ready; the owner runs it after funding and model choice |
-| Provider | OpenCode Go for engineering; the frozen OpenRouter route for the provider-dependent H1 pilot |
-| Denial hints | Static table (H1 treatment) merged; in service mode a DENY still ends the conversation (fix before the pilot); generated hints are post-thesis |
+| Construct review | Sign-off tooling not merged; panel prep stale, so the panel has not run live |
 
 ## Open gates, in order
 
 1. Confirm the D26 scope cut and the residual-channel claim with the advisor.
 2. Finish the pilot reviews and case corrections; freeze the pilot protocol,
    provider, outage rules, and initial safety ceilings.
-3. Done at F13: freeze, reinstall, G1 and both probes with fresh evidence. Fix the
-   two service-mode defects and the corpus-check guest-evidence input for F14.
+3. Done at F13: freeze, reinstall, G1 and both probes with fresh evidence. The
+   service-defect fixes and the corpus-check guest-evidence input sit in F14
+   content; the F14 freeze is pending.
 4. Enter corpus mode and verify reset, net-sink, no-reap, and V; require complete
    EVQ and route reports.
 5. Run the engineering, compliant, and adaptive-cap pilots; derive caps and costs
@@ -53,8 +55,9 @@ decisions, blockers, and next steps. History before this date is in Git.
    denominators.
 
 The owner must approve privileged guest writes, signing, provisioning, and any
-paid provider call. The next human actions are the advisor review, the pilot
-protocol decisions, and the coordinated signing session.
+paid provider call. The next human actions are the advisor review, the panel run
+after its prep is rebuilt, the pilot protocol decisions, and the coordinated
+signing session.
 
 ## Related
 
