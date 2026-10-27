@@ -59,7 +59,7 @@ Step 2 detail:
   - Content-digest rule: the panel binds `evalcorpus.ContentDigest`, the manifest digest with every case `signoff`, `construct_review` and the freeze `pins` cleared. Sign-offs and F14 pins can be written after the run without detaching it.
   - Gate per phase-2 checklist item: Gwet AC1 >= 0.80 and >= 90% raw agreement; Fleiss kappa and AC1 intervals are reported.
   - `corpus-digest` and `preregistration-record` require `--panel-receipt --panel-audit --panel-stats` (the files the manifest pins). They recompute the statistics from the receipt ratings and replay the audit selection.
-  - The audit seed is bound to the run seed; unanimous fails are mandatory audits; `audit_sample` must be 60. The receipt records `public_policy`, and `tbound-op cfg-install` refuses a corpus service config that differs from it.
+  - The audit seed is bound to the run seed; unanimous fails are mandatory audits; `audit_sample` must be 60 (the tool then audits all eligible roots when fewer than 60 exist; see the OPEN item under "Needs the owner or advisor"). The receipt records `public_policy`, and `tbound-op cfg-install` refuses a corpus service config that differs from it.
 - Obsolete: the two-human review packets `review-artifacts/pilot-review-packets-20261024` and `-20261025`.
 
 ## Confirmatory corpus plan (D37)
@@ -95,6 +95,10 @@ Step 2 detail:
 
 - Owner: AI panel run; the corpus-mode session (S3'/S4' signing with owner keys, tbound-netsink account/unit, pinned nft rule, root forced-command trial key, Spike B); approval of every privileged guest write.
 - Advisor: D26 scope cut and residual-channel claim; panel audit and meaning-record sign-off.
+- **OPEN (owner/advisor, before the pilot audit is signed):** `audit_sample=60` is registered, but the pilot dry run had 1 eligible unanimous root. The owner/advisor must confirm whether all-eligible is acceptable or an amendment is required.
+  - The tool audits all eligible roots when fewer than 60 exist: `supervisor/internal/panelaudit/selection.go:51` (`min(size, len(eligible))`), `docs/guides/panel-run.md:259` ("up to 60") and `:330` ("or all if fewer are eligible").
+  - The thesis protocol registers "a random audit sample of 60 unanimous confirmatory roots" with a 95%-detection rationale and states no fewer-than-60 or pilot rule: MSE_MA_Thesis `tbound/tbound-thesis.md:922-925` and `tbound/AH-technical/10-decision-register.md:380-383`.
+  - So all-eligible is tool behaviour, not an adopted protocol decision. The live run's eligible count may differ from the dry run's.
 
 ## Next (thesis lane)
 
