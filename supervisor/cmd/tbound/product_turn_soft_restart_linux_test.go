@@ -52,6 +52,14 @@ func TestProductTurnSoftRefusalRestartNeverResumes(t *testing.T) {
 }
 
 func TestProductTurnSoftRefusalRestartRejectsRechainedEvidence(t *testing.T) {
+	testProductTurnSoftRefusalRechainedEvidence(t, false)
+}
+
+func TestProductTurnSoftRefusalRestartRejectsChangedEnvelope(t *testing.T) {
+	testProductTurnSoftRefusalRechainedEvidence(t, true)
+}
+
+func testProductTurnSoftRefusalRechainedEvidence(t *testing.T, tamperEnvelope bool) {
 	f, id := crashProductSoftRefusal(t, "after-soft-refusal-retirement")
 	turn := f.turn(t, id)
 	paths, err := productTurnPathsFromLink(*turn.Link)
@@ -81,7 +89,11 @@ func TestProductTurnSoftRefusalRestartRejectsRechainedEvidence(t *testing.T) {
 			if err := json.Unmarshal(record.Event.Data, &e); err != nil {
 				t.Fatal(err)
 			}
-			e.Code = "edit_old_text_absent"
+			if !tamperEnvelope {
+				e.Code = "edit_old_text_absent"
+			} else {
+				record.Event.Outcome = "tampered"
+			}
 			e.Result = providerbridge.SoftRefusalText(e.Code, e.Hint)
 			record.Event.Data, err = json.Marshal(e)
 			if err != nil {
