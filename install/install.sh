@@ -15,8 +15,9 @@
 #
 # TRUST. Without --public-key the installer only compares the artifact with SHA256SUMS from the
 # same origin: that detects corruption, not a replaced download, and is not publisher
-# authentication. With --public-key FILE it requires tbound-release-manifest.json and
-# tbound-release-manifest.json.sig next to the artifacts and runs `tbound release verify`
+# authentication, so only a run that is not root may use it: a run as root requires --public-key or the
+# key its prefix pins, and refuses a checksum-only artifact. With --public-key FILE it requires
+# tbound-release-manifest.json and tbound-release-manifest.json.sig next to the artifacts and runs `tbound release verify`
 # (signature, then the artifact's size and SHA-256) BEFORE extracting anything; a checksum file is
 # then not used at all. The verifier is --verifier PATH, $TBOUND_VERIFIER, or `tbound` on PATH. It
 # must come from somewhere you trust independently of the download (a build from source, or an
@@ -390,6 +391,13 @@ main() {
   os="$(detect_os)"; arch="$(detect_arch)"
   artifact="tbound-${version}-${os}-${arch}.tar.gz"
 
+  # Root gains privilege from what it installs, so it needs the publisher's signature: a checksum file from the same origin
+  # is replaced together with the artifact. A run that is not root only changes what its user can already change.
+  local pinned="$prefix/$PUBLISHER_KEY"
+  if [ "$(id -u)" = 0 ] && [ -z "$public_key" ] && ! { is_owned_prefix "$prefix" && [ -f "$pinned" ]; }; then
+    die "a root run requires publisher authentication: pass --public-key, or update a prefix that pins a publisher key (a checksum file is not authentication; only a run that is not root may use it)"
+  fi
+
   # A root run stages below the prefix's parent, which the checks above found root-owned and closed to others: whoever
   # owns a directory above TMPDIR could rename a stage there and put their own at its path after the signature was verified.
   local stage_root="${TMPDIR:-/tmp}"
@@ -401,7 +409,6 @@ main() {
   log "${updating:+updating }installing tbound ${version} (${os}/${arch}) into ${prefix}"
 
   # Key pin: work from a private copy of the key, so the key that is verified is the key that is stored.
-  local pinned="$prefix/$PUBLISHER_KEY"
   if [ -n "$public_key" ]; then
     [ -f "$public_key" ] || die "public key file not found: $public_key"
     cp -- "$public_key" "$STAGE/$PUBLISHER_KEY" || die "cannot read the public key: $public_key"
