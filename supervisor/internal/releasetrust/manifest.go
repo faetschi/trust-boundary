@@ -158,18 +158,27 @@ func Verify(manifest, signature []byte, key ed25519.PublicKey) (Manifest, error)
 // manifest does not list is refused.
 func VerifyArtifacts(m Manifest, files []string) error {
 	for _, file := range files {
-		name := filepath.Base(file)
-		i := slices.IndexFunc(m.Artifacts, func(a Artifact) bool { return a.Name == name })
-		if i < 0 {
-			return refuse("%s is not listed in the signed manifest", name)
-		}
 		size, sum, err := hashFile(file)
 		if err != nil {
 			return err
 		}
-		if want := m.Artifacts[i]; size != want.Size || sum != want.SHA256 {
-			return refuse("%s does not match the signed manifest (size or SHA-256 differs)", name)
+		if err := m.CheckArtifact(filepath.Base(file), size, sum); err != nil {
+			return err
 		}
+	}
+	return nil
+}
+
+// CheckArtifact checks one file the caller has already measured: its name, size and SHA-256 must be an
+// entry of the manifest. A caller that must not read the file twice stages a copy and passes its
+// measurements here.
+func (m Manifest) CheckArtifact(name string, size int64, sha256Hex string) error {
+	i := slices.IndexFunc(m.Artifacts, func(a Artifact) bool { return a.Name == name })
+	if i < 0 {
+		return refuse("%s is not listed in the signed manifest", name)
+	}
+	if want := m.Artifacts[i]; size != want.Size || sha256Hex != want.SHA256 {
+		return refuse("%s does not match the signed manifest (size or SHA-256 differs)", name)
 	}
 	return nil
 }
@@ -202,11 +211,29 @@ func hashFile(file string) (int64, string, error) {
 // ReadSignature reads a base64 signature file.
 func ReadSignature(file string) ([]byte, error) { return readBase64(file) }
 
+// ParseSignature decodes the content of a base64 signature file the caller has read itself.
+func ParseSignature(content []byte) ([]byte, error) {
+	signature, err := decodeBase64(content)
+	if err != nil {
+		return nil, refuse("the signature is not standard base64")
+	}
+	return signature, nil
+}
+
 // ReadPublicKey reads a base64 Ed25519 public key file, the format productsession registrations use.
 func ReadPublicKey(file string) (ed25519.PublicKey, error) {
 	raw, err := readBase64(file)
 	if err != nil || len(raw) != ed25519.PublicKeySize {
 		return nil, refuse("%s is not a base64 Ed25519 public key", filepath.Base(file))
+	}
+	return raw, nil
+}
+
+// ParsePublicKey decodes the content of a base64 Ed25519 public key file the caller has read itself.
+func ParsePublicKey(content []byte) (ed25519.PublicKey, error) {
+	raw, err := decodeBase64(content)
+	if err != nil || len(raw) != ed25519.PublicKeySize {
+		return nil, refuse("the key is not a base64 Ed25519 public key")
 	}
 	return raw, nil
 }
@@ -233,11 +260,15 @@ func readBase64(file string) ([]byte, error) {
 	if err != nil {
 		return nil, refuse("cannot read %s", filepath.Base(file))
 	}
-	decoded, err := base64.StdEncoding.DecodeString(strings.TrimSuffix(string(raw), "\n"))
+	decoded, err := decodeBase64(raw)
 	if err != nil {
 		return nil, refuse("%s is not standard base64", filepath.Base(file))
 	}
 	return decoded, nil
+}
+
+func decodeBase64(raw []byte) ([]byte, error) {
+	return base64.StdEncoding.DecodeString(strings.TrimSuffix(string(raw), "\n"))
 }
 
 // WriteNew writes data to a file that must not exist yet, as base64 when asBase64 is set.

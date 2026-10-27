@@ -133,3 +133,51 @@ func TestWriteKeyPairModesAndNoOverwrite(t *testing.T) {
 		t.Fatal("an existing key pair was overwritten")
 	}
 }
+
+func TestCheckArtifactMatchesOneEntryByNameSizeAndDigest(t *testing.T) {
+	_, artifact, manifest, sig, pub := signedRelease(t)
+	m, err := Verify(manifest, sig, pub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	size, sum, err := hashFile(artifact)
+	if err != nil {
+		t.Fatal(err)
+	}
+	name := filepath.Base(artifact)
+	if err := m.CheckArtifact(name, size, sum); err != nil {
+		t.Fatalf("the genuine measurements were refused: %v", err)
+	}
+	for what, check := range map[string]error{
+		"another name": m.CheckArtifact("other.tar.gz", size, sum),
+		"another size": m.CheckArtifact(name, size+1, sum),
+		"another sum":  m.CheckArtifact(name, size, strings.Repeat("0", 64)),
+	} {
+		if !errors.Is(check, ErrRefused) {
+			t.Errorf("%s was accepted: %v", what, check)
+		}
+	}
+}
+
+func TestParseKeyAndSignatureFromBytesMatchTheFileReaders(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "keys")
+	pub, err := WriteKeyPair(dir, "release")
+	if err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(filepath.Join(dir, "release.pub"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed, err := ParsePublicKey(content); err != nil || !pub.Equal(parsed) {
+		t.Fatalf("a public key did not parse from its bytes: %v", err)
+	}
+	for _, bad := range []string{"", "not base64!", "AAAA\n"} {
+		if _, err := ParsePublicKey([]byte(bad)); !errors.Is(err, ErrRefused) {
+			t.Errorf("%q parsed as a public key: %v", bad, err)
+		}
+	}
+	if _, err := ParseSignature([]byte("not base64!")); !errors.Is(err, ErrRefused) {
+		t.Fatalf("a malformed signature parsed: %v", err)
+	}
+}
