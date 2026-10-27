@@ -88,7 +88,7 @@ Step 2 detail:
      - ab14196 binds a denied settlement (`tbound-production-d09-command-settled-denied/v1`) to the Store's `denied_after_effect` record; the validator accepts exactly the promoted and denied shapes. 64de3d2 verifies it in recovery, session close and publication.
      - Review (Sol xhigh, 2 rounds) found that 64de3d2's own tests failed on a pre-existing recovery bug: `CommandSpec.DeclaredOutputPaths` is `json:"-"` and only the result side got the request scope back, so recovery refused every historical D09 receipt with a recorded scope, promoted or denied. Fixed in b102670. The product branch has the same line (`production_recovery_command_linux.go:393` at 499fb9f); port owed. ee70a76 makes the active denied branch fail closed.
      - Tests: `TestProductionBashDeniedAfterEffectRetainsItsSettlement`; `TestProductionD09{DeniedBashRetainsASettlementAndReleasesItsLease, PromotedBashSettlementKeepsItsShape, OperationValidatorAcceptsExactlyTwoShapes, DeniedSettlementRecoversInAFreshInstance, RecoveryRefusesUnsettledAndTamperedBashSettlements, SettlementsRecoverInFreshProcess (child process: controls + missing/receipt-tampered/duplicate refusals), DeniedBashCheckpointsAndClosesCleanly}`; `TestActiveRecoveryRefusesADeniedD09EffectItCannotVerify` (red without ee70a76).
-     - Follow-ups, not F14 blockers per the review: full `ReplayGovernedHistoryForRecovery` with a denied Bash (needs a real provider-transcript fixture); a direct `CheckPublicationPrerequisites` denied-branch test.
+     - Follow-ups, not F14 blockers per the review: full `ReplayGovernedHistoryForRecovery` with a denied Bash (needs a real provider-transcript fixture). The direct `CheckPublicationPrerequisites` denied-branch test is done (8654e2d).
 - The coordinated signing/provisioning session (S3'/S4', installs, tbound-netsink, trial key, Spike B) happens after the reviews, as one signing round on the final manifest digest.
 
 ## Needs the owner or advisor
@@ -116,6 +116,7 @@ Step 2 detail:
   - f483fad (D09 merge): 4786 pass / 26 guest-only skips / 0 fail; the same skip set.
   - 5c1c835 (signoff merge, includes 385584c): 5047 pass / 26 guest-only skips / 0 fail; the same skip set.
   - 66a3dea (panel audit-binding merge): 5062 pass / 26 guest-only skips / 0 fail; the same skip set.
+  - 8654e2d (F14 admission ids ade72cc + the `CheckPublicationPrerequisites` denied-Bash test): 5063 pass / 26 skips / 0 fail; the same skip set. The new test is red under both mutations of the denied branch (branch disabled; settlement check removed): `focused-d09pub-35e6fdb.txt`.
 - D09 merged (f483fad, regression test 385584c). `fix/recovery-empty-bash-delta` (e7e9d33) stays unmerged.
 - `feat/construct-review-signoff` merged as 5c1c835. On the merge: the panelaudit/tbound-panel/evalcorpus/corpusadmit and tbound-profile/tbound/tbound-run tests pass, the 24 local `tbound-op` tests pass, and the full gate is 5047 pass / 26 guest-only skips / 0 fail (same skip set).
 - Pre-run review of the merge (Sol xhigh):
@@ -132,7 +133,7 @@ Step 2 detail:
 - Next: the owner runs the live panel; the advisor signs; then the F14 freeze on FABIAN (owner step; `corpus-digest` needs the F14 pins).
 - Shared-fix ledger (thesis ↔ product):
   - Product → thesis, done: the empty-delta recovery fix (product ba6f59e → ed395f0/3a4ff0c); the DENY continuation and the recovery record kind (892cc00).
-  - Thesis → product, owed: the product synced F14 up to 5f2d0a6 (product 7ceeff6). It still lacks the D09 denied settlement and its recovery (f483fad: ab14196, 64de3d2, b102670, ee70a76, tests).
+  - Thesis → product, owed: the product synced F14 up to 5f2d0a6 (product 7ceeff6). It still lacks the D09 denied settlement and its recovery (f483fad: ab14196, 64de3d2, b102670, ee70a76, tests; plus the 8654e2d test), checked at product b6493b9 on 2026-10-27.
     - b102670 alone also fixes a live product bug: recovery refuses any historical promoted D09 receipt with a recorded output scope (`production_recovery_command_linux.go:393`).
   - The panel/corpus tooling (5c1c835, 66a3dea) is thesis-only.
 - The F14 freeze, signing, guest install and evidence are owner steps on FABIAN after the merges and the panel prep.
