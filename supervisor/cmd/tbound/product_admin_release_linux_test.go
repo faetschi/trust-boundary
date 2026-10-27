@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -45,6 +46,8 @@ type releaseFixture struct {
 	tarGz string
 	// extra are additional archive entries (path to content), written by writeArchive.
 	extra map[string]string
+	// asRoot runs install.sh as if `id -u` printed 0, so its root-run checks apply to this unprivileged test.
+	asRoot bool
 }
 
 func releaseArtifactName() string {
@@ -121,6 +124,9 @@ func (f *releaseFixture) install(extra ...string) (out, prefix string, err error
 	return f.installCommand("", extra...)
 }
 
+// asRootShell sources install.sh ($1) and runs its main with `id -u` answering 0.
+const asRootShell = `. "$1"; shift; id() { if [ "${1:-}" = -u ]; then echo 0; else command id "$@"; fi; }; main "$@"`
+
 // installCommand is install with an optional install.sh subcommand such as "update".
 func (f *releaseFixture) installCommand(subcommand string, extra ...string) (out, prefix string, err error) {
 	f.t.Helper()
@@ -138,6 +144,9 @@ func (f *releaseFixture) installCommand(subcommand string, extra ...string) (out
 		args = append(args, subcommand)
 	}
 	args = append(append(args, "--version", "t1", "--prefix", prefix, "--local-dist", f.dist, "--no-path", "--no-completions"), extra...)
+	if f.asRoot {
+		args = append([]string{"-c", asRootShell, "tbound-test"}, args...)
+	}
 	cmd := exec.Command(bash, args...)
 	cmd.Env = []string{"HOME=" + home, "TMPDIR=" + f.dir, "PATH=/usr/bin:/bin", "XDG_CONFIG_HOME=" + filepath.Join(home, "cfg")}
 	combined, err := cmd.CombinedOutput()
@@ -399,5 +408,107 @@ func TestProductAdminReleaseInstallScriptNeverTakesAPublisherPinFromTheArchive(t
 	}
 	if out, _, err := f.installCommand("update"); err != nil || !strings.Contains(out, "installed without a publisher key") {
 		t.Fatalf("the prefix must stay unkeyed after a checksum-only install: %v\n%s", err, out)
+	}
+}
+
+func TestProductAdminReleaseInstallScriptAsRootRefusesAPrefixBelowADirectoryAnotherUserOwns(t *testing.T) {
+	if runtime.GOARCH != "amd64" && runtime.GOARCH != "arm64" {
+		t.Skip("install.sh supports amd64 and arm64")
+	}
+	if os.Geteuid() == 0 {
+		t.Skip("the prefix below this test's directory would be root-owned")
+	}
+	f := newReleaseFixture(t)
+	fingerprint := strings.TrimSpace(mustAdmin(t, "release", "fingerprint", "--public-key", f.pub))
+	if out, _, err := f.install("--public-key", f.pub, "--verifier", f.verifier(), "--key-fingerprint", fingerprint); err != nil {
+		t.Fatalf("signed first install: %v\n%s", err, out)
+	}
+
+	// The owner of the directories above the prefix replaces the prefix with a marker and their own pin, and
+	// signs a malicious release with their own key.
+	attacker := filepath.Join(f.dir, "attacker")
+	mustAdmin(t, "release", "keygen", "--out", attacker)
+	f.writeArchive("malicious")
+	f.resign(attacker)
+	attackerKey, err := os.ReadFile(filepath.Join(attacker, "release-signing.pub"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.asRoot = true
+	prefix := filepath.Join(f.dir, "home", "prefix")
+	if err := os.WriteFile(filepath.Join(prefix, ".tbound-publisher.pub"), attackerKey, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, _, err := f.installCommand("update", "--verifier", f.verifier())
+	if err == nil || !strings.Contains(out, "refusing to act as root") || !strings.Contains(out, "owned by uid") {
+		t.Fatalf("a root update accepted a prefix whose ancestors another user owns: %v\n%s", err, out)
+	}
+	if got := installedMarker(t, prefix); got != "genuine" {
+		t.Fatalf("a refused root update replaced the installation: %q", got)
+	}
+
+	if err := os.RemoveAll(prefix); err != nil {
+		t.Fatal(err)
+	}
+	if out, _, err := f.install("--public-key", f.pub, "--verifier", f.verifier()); err == nil || !strings.Contains(out, "refusing to act as root") {
+		t.Fatalf("a fresh root install below a directory another user owns was accepted: %v\n%s", err, out)
+	}
+	if _, statErr := os.Lstat(prefix); statErr == nil {
+		t.Fatal("a refused root install created the prefix")
+	}
+}
+
+// installShellFunction runs one install.sh function with arguments in a shell that sourced the script.
+func installShellFunction(t *testing.T, function string, args ...string) (string, error) {
+	t.Helper()
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("bash is not available")
+	}
+	cmd := exec.Command(bash, append([]string{"-c", `. "$1"; shift; "$@"`, "tbound-test", "../../../install/install.sh", function}, args...)...)
+	cmd.Env = []string{"PATH=/usr/bin:/bin"}
+	out, err := cmd.CombinedOutput()
+	return string(out), err
+}
+
+func TestProductAdminReleaseInstallScriptRootTrustChecksRefuseSymlinksForeignOwnersAndWritablePaths(t *testing.T) {
+	uid := strconv.Itoa(os.Geteuid())
+	dir := t.TempDir()
+	write := func(name string, mode os.FileMode) string {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte("key\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(p, mode); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	good := write("good", 0o644)
+	if out, err := installShellFunction(t, "trusted_entry", good, uid); err != nil {
+		t.Fatalf("a file of the trusted owner that only the owner writes was refused: %v\n%s", err, out)
+	}
+	link := filepath.Join(dir, "link")
+	if err := os.Symlink(good, link); err != nil {
+		t.Fatal(err)
+	}
+	cases := map[string]struct{ path, uid, want string }{
+		"symlink to a trusted file": {link, uid, "is a symlink"},
+		"group writable":            {write("group", 0o664), uid, "writable by group or others"},
+		"other writable":            {write("other", 0o646), uid, "writable by group or others"},
+	}
+	if os.Geteuid() != 0 {
+		cases["owned by someone else"] = struct{ path, uid, want string }{good, "0", "owned by uid " + uid}
+	}
+	for name, c := range cases {
+		out, err := installShellFunction(t, "trusted_entry", c.path, c.uid)
+		if err == nil || !strings.Contains(out, "refusing to act as root") || !strings.Contains(out, c.want) {
+			t.Errorf("%s: want a refusal naming %q: %v\n%s", name, c.want, err, out)
+		}
+	}
+	for _, p := range []string{"/usr", "/usr/tbound-no-such-dir/prefix"} {
+		if out, err := installShellFunction(t, "require_trusted_path", p, "0"); err != nil {
+			t.Errorf("%s: a chain of root-owned, non-writable directories was refused: %v\n%s", p, err, out)
+		}
 	}
 }
