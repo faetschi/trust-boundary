@@ -551,6 +551,43 @@ func replayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 				state = replayAwaitPrompt
 			}
 
+		case SoftRefusalEvent:
+			if !cfg.ProductSoftRefusals || state != replayAwaitDecision || pending == nil || decisionCount == math.MaxUint64 || resultCount == math.MaxUint64 {
+				return TranscriptProjection{}, replayError("proven-unexecuted result has no unique product call")
+			}
+			var evidence SoftRefusalEvidence
+			if unmarshalCanonicalEvent(record.Event.Data, &evidence) != nil || verifyReplayEventID(record, cfg.ConversationID, "soft-refusal", ordinal) != nil ||
+				evidence.WorkflowID != cfg.WorkflowID || evidence.ConversationID != cfg.ConversationID || evidence.ToolCallID != pending.call.ID || evidence.Tool != pending.call.Name ||
+				evidence.ArgumentsDigest != pending.call.CanonicalArgumentsDigest || evidence.Generation != currentGeneration || evidence.TreeDigest != currentTree ||
+				evidence.Result != SoftRefusalText(evidence.Code, evidence.Hint) {
+				return TranscriptProjection{}, replayError("proven-unexecuted evidence differs from the captured call or result")
+			}
+			proposal := protocol.Proposal{SchemaVersion: protocol.ProposalSchemaVersion, ToolCallID: pending.call.ID, Tool: pending.call.Name, Arguments: append(json.RawMessage(nil), pending.call.RawArguments...)}
+			encoded, err := protocol.MarshalProposal(proposal)
+			if err != nil {
+				return TranscriptProjection{}, errors.Join(ErrTranscriptReplay, err)
+			}
+			matched := stream.Propose(encoded)
+			if !matched.Accepted || matched.StreamClosed || gate.Evaluate(proposal, matched, policy).Verdict != gate.Allow {
+				return TranscriptProjection{}, replayError("soft refusal does not match an eligible correlated call")
+			}
+			check, ok := verifier.(SoftRefusalVerifier)
+			if !ok || reflectNil(check) {
+				return TranscriptProjection{}, replayError("soft refusal requires a concrete Store preflight verifier")
+			}
+			if err := check.VerifySoftRefusal(SoftRefusalBinding{Evidence: evidence, Proposal: proposal, Record: record}); err != nil {
+				return TranscriptProjection{}, errors.Join(ErrTranscriptReplay, err)
+			}
+			if err := appendReplayHistory(&history, route, openrouter.Message{Role: openrouter.Tool, ToolCallID: evidence.ToolCallID, Content: &evidence.Result}); err != nil {
+				return TranscriptProjection{}, errors.Join(ErrTranscriptReplay, err)
+			}
+			// DecisionCount counts resolved call dispositions, including a precondition refusal.
+			decisionCount++
+			resultCount++
+			storeDecisionChecks++
+			pending = nil
+			state = replayAwaitExchange
+
 		case "provider_gate_decision":
 			if state != replayAwaitDecision || pending == nil || decisionCount == math.MaxUint64 {
 				return TranscriptProjection{}, replayError("gate decision has no unique preceding provider call")

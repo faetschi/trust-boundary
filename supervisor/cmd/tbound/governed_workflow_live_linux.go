@@ -564,7 +564,7 @@ func (a *SessionOperationAuthority) buildActiveProgressPins(ctx context.Context,
 				projection.Provider.DecisionCount != projection.Provider.ResultCount {
 				return workflowrecovery.Pins{}, workflowrecovery.ErrObservation
 			}
-			retirementDigest, err := activeDeniedCaptureDigest(providerJournal, captured.ToolCallID)
+			retirementDigest, err := activeUnexecutedCaptureDigest(providerJournal, captured.ToolCallID)
 			if err != nil {
 				return workflowrecovery.Pins{}, err
 			}

@@ -51,12 +51,18 @@ func TestProductTurnSoftRefusalContinuesWithoutAnEffect(t *testing.T) {
 			defer retained.Close()
 			bundle, err := retained.Store.EvidenceBundle()
 			disposition, reconstructErr := sessionrepo.Reconstruct(bundle)
-			if err != nil || reconstructErr != nil || disposition.Quarantined || disposition.Attempts != 0 {
+			if err != nil || reconstructErr != nil || disposition.Quarantined || len(disposition.Operations) != 0 {
 				t.Fatalf("refusal affected Store: %+v %v %v", disposition, err, reconstructErr)
+			}
+			if err := retained.Close(); err != nil {
+				t.Fatal(err)
 			}
 			host, tokens := productDriverExpectedUsage(t, paths.ProviderJournalPath, 0)
 			if receipt.Usage.HostCalls != host || receipt.Usage.Tokens != tokens {
 				t.Fatalf("refusal charged an effect: %+v want %d/%d", receipt.Usage, host, tokens)
+			}
+			if err := retained.Close(); err != nil {
+				t.Fatal(err)
 			}
 			f.followUp(t, "after-soft", productsession.OutcomeNoDiff)
 		})

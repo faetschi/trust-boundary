@@ -175,6 +175,7 @@ type ProviderDecisionBindingAlias struct {
 }
 
 type governedStoreReplayVerifier struct {
+	store                                     *sessionrepo.Store
 	pins                                      GovernedReplayPins
 	providerTrace, storeTrace, admissionTrace audit.Trace
 	bundle                                    sessionrepo.EvidenceBundle
@@ -293,6 +294,7 @@ func runGovernedReplay(providerJournal, storeJournal *audit.Journal, store *sess
 		return GovernedTranscriptProjection{}, nil, err
 	}
 	verifier.lastAuthSequence = priorAuthorizationSequence
+	verifier.store = store
 	verifier.initialAuthorizationSequence = priorAuthorizationSequence
 	projection, err := replayProvider(providerJournal, pins.Provider, verifier)
 	if err != nil {

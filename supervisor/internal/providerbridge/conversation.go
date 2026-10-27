@@ -58,6 +58,8 @@ type eventJournal interface {
 }
 
 type Config struct {
+	// ProductSoftRefusals enables product-only precondition evidence and replay.
+	ProductSoftRefusals bool
 	// HTTPTransport is an offline test seam for the engineering route. Production leaves it nil, and a
 	// binary that is not a Go test binary refuses it (openrouter.HTTPDoer.WithTestTransport).
 	HTTPTransport http.RoundTripper
