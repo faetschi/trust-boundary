@@ -404,3 +404,38 @@ func TestSetupLiveRunsAccountsOwnersAndReloadInOrder(t *testing.T) {
 		t.Fatalf("the report must say the commands were executed:\n%s", rep)
 	}
 }
+
+func TestSetupRefusesHostInputsThatCollideWithPathsItOrAnUpdateWrites(t *testing.T) {
+	for name, mutate := range map[string]func(*Config){
+		"git is the installed binary":          func(c *Config) { c.GitPath = BinaryPath },
+		"git is the last-known-good":           func(c *Config) { c.GitPath = LastKnownGoodPath },
+		"git is the staged binary":             func(c *Config) { c.GitPath = stagedBinaryPath },
+		"git is the rollback record":           func(c *Config) { c.GitPath = rollbackIntentPath },
+		"git is the binary directory":          func(c *Config) { c.GitPath = BinaryDir },
+		"calibration is the registration":      func(c *Config) { c.XattrCalibrationPath = RegistrationPath },
+		"calibration is the service config":    func(c *Config) { c.XattrCalibrationPath = ServiceConfigPath },
+		"calibration is the setup record":      func(c *Config) { c.XattrCalibrationPath = SetupConfigPath },
+		"calibration is the registration key":  func(c *Config) { c.XattrCalibrationPath = RegistrationPublicKeyPath },
+		"calibration is the config directory":  func(c *Config) { c.XattrCalibrationPath = ConfigDir },
+		"calibration is a credential":          func(c *Config) { c.XattrCalibrationPath = CredentialsDir + "/opencode-go-engineering.key" },
+		"policy is the registration signature": func(c *Config) { c.GatePolicyPaths["alpha"] = RegistrationSignaturePath },
+		"policy is the setup record":           func(c *Config) { c.GatePolicyPaths["beta"] = SetupConfigPath },
+		"policy is the credentials directory":  func(c *Config) { c.GatePolicyPaths["alpha"] = CredentialsDir },
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newFixture(t)
+			mutate(&f.cfg)
+			if _, err := f.setup(); !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "collides") {
+				t.Fatalf("a host input on a managed path was not refused as a collision: %v", err)
+			}
+			if entries, _ := os.ReadDir(f.root); len(entries) != 0 {
+				t.Fatalf("a refused setup changed the root: %v", entries)
+			}
+		})
+	}
+	f := newFixture(t)
+	f.cfg.GatePolicyPaths["beta"] = f.cfg.GatePolicyPaths["alpha"]
+	if _, err := f.setup(); err != nil {
+		t.Fatalf("two projects sharing one policy file are fine: %v", err)
+	}
+}
