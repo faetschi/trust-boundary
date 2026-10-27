@@ -465,8 +465,11 @@ func (h *host) restore(cause error, backup string) error {
 	}
 	// The restoration is recorded first. A process that ends below leaves both binaries equal and the service
 	// stopped, and the next update or rollback finishes it (finishRestoration) before it compares anything.
-	failed := errors.Join(h.writeRollbackIntent(rollbackIntent{Target: "sha256:" + digest, Restoring: true}),
-		h.command("systemctl", "stop", UnitName), h.copyAtomic(source, BinaryPath, 0o755))
+	// Without the record nothing below may run, so the new binary stays installed and `rollback` is the way out.
+	if err := h.writeRollbackIntent(rollbackIntent{Target: "sha256:" + digest, Restoring: true}); err != nil {
+		return errors.Join(cause, fmt.Errorf("the restoration of %s could not be recorded, so nothing was stopped or replaced and the new binary is still installed; run `tbound product rollback`: %w", LastKnownGoodPath, err))
+	}
+	failed := errors.Join(h.command("systemctl", "stop", UnitName), h.copyAtomic(source, BinaryPath, 0o755))
 	interrupt("restored")
 	failed = errors.Join(failed, h.command("systemctl", "start", UnitName))
 	if failed == nil {
