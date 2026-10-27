@@ -255,3 +255,58 @@ func TestProductTurnSoftRefusalCanPrecedeAnAuthorizedEffect(t *testing.T) {
 	}
 	f.followUp(t, "after-effect", productsession.OutcomePublished)
 }
+
+func TestProductTurnSoftRefusalAfterAnEffectBindsTheAdvancedTip(t *testing.T) {
+	f := newProductDriverFixture(t, productsession.PublicationAuto)
+	script := productDriverTurnOne(false)
+	script.turns = []providerbridge.ScriptTurn{script.turns[0],
+		{ResponseID: "soft-response", CallID: "soft-call", Tool: "read", Arguments: json.RawMessage(`{"path":"missing.txt"}`)},
+		script.turns[1]}
+	receipt, turn, err := f.run(t, f.submit(t, "effect-then-soft", productDriverPromptA), script)
+	if err != nil || turn.Outcome != productsession.OutcomePublished || !f.notesPublished(t) {
+		t.Fatalf("refusal after an effect: %+v %v", turn, err)
+	}
+	paths, err := productTurnPathsFromLink(*turn.Link)
+	if err != nil {
+		t.Fatal(err)
+	}
+	retained, err := openRetainedProductTurn(paths, f.env.storeOptions(turn), f.env.OpenCommandHistory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer retained.Close()
+	bundle, err := retained.Store.EvidenceBundle()
+	if err != nil || len(bundle.Generations) != 2 {
+		t.Fatalf("want baseline and one effect generation: %d %v", len(bundle.Generations), err)
+	}
+	trace, err := retained.ProviderJournal.Trace()
+	if err != nil {
+		t.Fatal(err)
+	}
+	refusals := 0
+	for _, record := range trace.Records {
+		if record.Event.Kind != providerbridge.SoftRefusalEvent {
+			continue
+		}
+		var evidence providerbridge.SoftRefusalEvidence
+		if err := json.Unmarshal(record.Event.Data, &evidence); err != nil {
+			t.Fatal(err)
+		}
+		tip := bundle.Generations[1]
+		if evidence.Code != "read_missing" || evidence.Generation != tip.ID || evidence.TreeDigest != tip.TreeDigest || evidence.TreeDigest == bundle.Baseline.TreeDigest {
+			t.Fatalf("refusal is not bound to the advanced tip: %+v", evidence)
+		}
+		refusals++
+	}
+	if refusals != 1 {
+		t.Fatalf("refusal count %d", refusals)
+	}
+	if err := retained.Close(); err != nil {
+		t.Fatal(err)
+	}
+	host, tokens := productDriverExpectedUsage(t, paths.ProviderJournalPath, 1)
+	if receipt.Usage.HostCalls != host || receipt.Usage.Tokens != tokens {
+		t.Fatalf("refusal charged an effect: %+v want %d/%d", receipt.Usage, host, tokens)
+	}
+	f.followUp(t, "after-effect-soft", productsession.OutcomePublished)
+}
