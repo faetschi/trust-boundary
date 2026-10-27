@@ -741,6 +741,25 @@ func TestRerunRefusesToEraseAdvisorSignoffs(t *testing.T) {
 			t.Fatal("rerun called a provider before refusing to erase the sign-offs")
 		}
 	})
+	t.Run("duplicate cases member hides a sign-off", func(t *testing.T) {
+		var doc map[string]any
+		if err := json.Unmarshal(unsigned, &doc); err != nil {
+			t.Fatal(err)
+		}
+		doc["cases"].([]any)[0].(map[string]any)["advisor_signoff"].(map[string]any)["decision"] = "accept"
+		signed, _ := json.Marshal(doc)
+		// A later "cases" member replaces the signed one in encoding/json.
+		ambiguous := append(bytes.TrimSuffix(signed, []byte("}")), []byte(`,"cases":[]}`)...)
+		if err := os.WriteFile(filepath.Join(out, "audit.json"), ambiguous, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := rerun(); err == nil || !strings.Contains(err.Error(), "audit.json") {
+			t.Fatalf("rerun over an audit with a duplicate cases member: %v", err)
+		}
+		if !bytes.Equal(read("audit.json"), ambiguous) {
+			t.Fatal("audit.json changed although the rerun was refused")
+		}
+	})
 	t.Run("unreadable audit", func(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(out, "audit.json"), []byte("{\"cases\": ["), 0o600); err != nil {
 			t.Fatal(err)
