@@ -30,9 +30,9 @@ func TestVerifyRetainedVerbInFreshProcess(t *testing.T) {
 				restore := openRetainedRun
 				t.Cleanup(func() { openRetainedRun = restore })
 				var openedRunID string
-				openRetainedRun = func(runID string) (retainedRun, error) {
+				openRetainedRun = func(runID string) (retainedRun, func() error, error) {
 					openedRunID = runID
-					return fixtureRetainedRun(inputs.Profile, inputs.Template, test), nil
+					return fixtureRetainedRun(inputs.Profile, inputs.Template, test), func() error { return nil }, nil
 				}
 				var stdout, stderr bytes.Buffer
 				err := run([]string{"verify-retained", "--run-id", bashRunRunID}, &stdout, &stderr)
@@ -168,6 +168,50 @@ func TestVerifyRetainedRefusesWhileAJournalIsHeld(t *testing.T) {
 	}
 	if report, err := verifyRetainedRun(fixtureRetainedRun(profile, template, test)); err != nil || !report.Verified {
 		t.Fatalf("the run does not verify once the journals are free: %+v %v", report, err)
+	}
+}
+
+// The catalog lock is what keeps a service started meanwhile from admitting another workflow while the
+// evidence is read. The command keeps the catalog through the verification, whatever the verdict, and
+// drops it only afterwards.
+func TestVerifyRetainedHoldsTheCatalogThroughVerification(t *testing.T) {
+	restoreOpen, restoreVerify := openRetainedRun, verifyRetained
+	t.Cleanup(func() { openRetainedRun, verifyRetained = restoreOpen, restoreVerify })
+	for name, verdict := range map[string]error{"verified": nil, "refused": errors.New("a settlement is missing")} {
+		t.Run(name, func(t *testing.T) {
+			catalogPath := filepath.Join(privateGovernedTestRoot(t), "workflow-catalog.jsonl")
+			journal, err := audit.Open(catalogPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			catalog, err := loadPiServiceWorkflowCatalog(journal)
+			if err != nil {
+				t.Fatal(err)
+			}
+			openRetainedRun = func(string) (retainedRun, func() error, error) { return retainedRun{}, catalog.Close, nil }
+			var duringVerification error
+			verifyRetained = func(retainedRun) (retainedRunReport, error) {
+				competing, err := audit.Open(catalogPath)
+				if err == nil {
+					_ = competing.Close()
+				}
+				duringVerification = err
+				return retainedRunReport{RunID: "production-run-0123456789ab", Verified: true}, verdict
+			}
+			var stdout, stderr bytes.Buffer
+			err = run([]string{"verify-retained", "--run-id", "production-run-0123456789ab"}, &stdout, &stderr)
+			if !errors.Is(duringVerification, audit.ErrAlreadyOpen) {
+				t.Fatalf("a competing catalog opener during the verification got %v, want it refused as already open", duringVerification)
+			}
+			if (verdict == nil) != (err == nil) || (verdict != nil && stdout.Len() != 0) {
+				t.Fatalf("verdict %v surfaced as err=%v stdout=%q", verdict, err, stdout.String())
+			}
+			released, err := audit.Open(catalogPath)
+			if err != nil {
+				t.Fatalf("the catalog is still held after the command returned: %v", err)
+			}
+			_ = released.Close()
+		})
 	}
 }
 

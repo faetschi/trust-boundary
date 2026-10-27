@@ -141,8 +141,13 @@ func verifyRetainedRun(run retainedRun) (retainedRunReport, error) {
 	return report, nil
 }
 
-// openRetainedRun is a test seam for the host sources of the command.
-var openRetainedRun = openProductionRetainedRun
+// openRetainedRun and verifyRetained are test seams for the host sources and for the verification. The
+// release func that openRetainedRun returns drops the exclusion those sources hold (the catalog lock),
+// so the command calls it only after the verification.
+var (
+	openRetainedRun = openProductionRetainedRun
+	verifyRetained  = verifyRetainedRun
+)
 
 // runVerifyRetained is `tbound verify-retained --run-id ID`, the root-only operator check that a
 // completed run's retained evidence still verifies in a fresh process. Stop tbound-pi.service first:
@@ -161,12 +166,12 @@ func runVerifyRetained(args []string, stdout, stderr io.Writer) error {
 	if flags.NArg() != 0 || !boundedProductionIdentity(*runID, productionTaskIDMaxBytes) {
 		return errors.New("verify-retained needs --run-id and takes no other arguments")
 	}
-	run, err := openRetainedRun(*runID)
+	run, release, err := openRetainedRun(*runID)
 	if err != nil {
 		return err
 	}
-	report, err := verifyRetainedRun(run)
-	if err != nil {
+	report, err := verifyRetained(run)
+	if err := errors.Join(err, release()); err != nil {
 		return err
 	}
 	encoded, err := json.Marshal(report)
@@ -179,57 +184,69 @@ func runVerifyRetained(args []string, stdout, stderr io.Writer) error {
 
 // openProductionRetainedRun resolves the run from the same sources the service uses: the signed
 // registration, host profile and cell template, the signed xattr calibration, the signed service
-// config and the workflow catalog. The journal and Store paths come from the run's catalog entry,
-// and the Store's admission scope from the corpus binding of that entry. The signed inputs are read
-// as root; then the command takes the service identity that owns the journals, as abandon-unknown does.
-func openProductionRetainedRun(runID string) (retainedRun, error) {
+// config and the workflow catalog. The signed inputs are read as root; then the command takes the
+// service identity that owns the journals, as abandon-unknown does. The catalog stays open, and so
+// locked, until the returned release func runs: a service started meanwhile cannot take it and
+// admit another workflow while the retained evidence is read.
+func openProductionRetainedRun(runID string) (retainedRun, func() error, error) {
 	if operatorEffectiveUID() != 0 {
-		return retainedRun{}, errors.New("verify-retained is root-only: run it as root with tbound-pi.service stopped")
+		return retainedRun{}, nil, errors.New("verify-retained is root-only: run it as root with tbound-pi.service stopped")
 	}
 	ctx := context.Background()
 	registration, err := piruntime.LoadVerifiedD09ManagedLiveRootPolicy(ctx)
 	if err != nil {
-		return retainedRun{}, errors.Join(ErrPiServiceUnavailable, err)
+		return retainedRun{}, nil, errors.Join(ErrPiServiceUnavailable, err)
 	}
 	profile, err := piruntime.LoadLinuxSignedHostProfile("")
 	if err != nil {
-		return retainedRun{}, fmt.Errorf("load the signed host profile: %w", err)
+		return retainedRun{}, nil, fmt.Errorf("load the signed host profile: %w", err)
 	}
 	template, _, err := piruntime.LoadD09CellTemplate(ctx)
 	if err != nil {
-		return retainedRun{}, fmt.Errorf("load the D09 cell template: %w", err)
+		return retainedRun{}, nil, fmt.Errorf("load the D09 cell template: %w", err)
 	}
 	calibration, err := piruntime.LoadVerifiedD09ManagedRWXattrCalibrationForRegistration(ctx, registration)
 	if err != nil {
-		return retainedRun{}, errors.Join(ErrProductionXattrVisibilityUnavailable, err)
+		return retainedRun{}, nil, errors.Join(ErrProductionXattrVisibilityUnavailable, err)
 	}
 	xattrVisibility, err := piruntime.WorkspaceXattrAttestation(calibration.Digest, calibration.Authority)
 	if err != nil {
-		return retainedRun{}, errors.Join(ErrProductionXattrVisibilityUnavailable, err)
+		return retainedRun{}, nil, errors.Join(ErrProductionXattrVisibilityUnavailable, err)
 	}
 	if err := dropToServiceIdentity(registration); err != nil {
-		return retainedRun{}, err
+		return retainedRun{}, nil, err
 	}
 	_, contract, err := serviceSocketRegistrationFromSignedRegistration(registration)
 	if err != nil {
-		return retainedRun{}, err
+		return retainedRun{}, nil, err
 	}
 	config, err := readProductionPiServiceConfig(contract.ServiceConfigPath, contract.ServiceConfigDigest)
 	if err != nil {
-		return retainedRun{}, err
+		return retainedRun{}, nil, err
 	}
 	catalog, err := openPiServiceWorkflowCatalog(config.WorkflowCatalogPath)
 	if err != nil {
-		return retainedRun{}, fmt.Errorf("open the workflow catalog (is tbound-pi.service stopped?): %w", err)
+		return retainedRun{}, nil, fmt.Errorf("open the workflow catalog (is tbound-pi.service stopped?): %w", err)
 	}
-	defer catalog.Close()
 	if config.WorkflowAdmissionMode == piServiceAdmissionCorpus {
 		if catalog.corpus, err = loadProductionCorpus(config); err != nil {
-			return retainedRun{}, err
+			return retainedRun{}, nil, errors.Join(err, catalog.Close())
 		}
 		// The binding reads the C-DH manifest digest; the provider clients prepareCDH builds are not needed for the Store scope.
 		catalog.corpus.cdh = config.CDH
 	}
+	run, err := retainedRunFromCatalog(catalog, config, runID)
+	if err != nil {
+		return retainedRun{}, nil, errors.Join(err, catalog.Close())
+	}
+	run.Profile, run.Template, run.StoreOptions.XattrVisibility = profile, template, xattrVisibility
+	return run, catalog.Close, nil
+}
+
+// retainedRunFromCatalog is what the catalog entry of the run says: the Store and journal paths, the
+// session identity, and the Store's policies and admission scope, the last from the corpus binding of
+// the entry. The host profile, template and xattr attestation come from the signed files.
+func retainedRunFromCatalog(catalog *piServiceWorkflowCatalog, config piServiceConfig, runID string) (retainedRun, error) {
 	entry, ok := catalog.workflowEntryByRunID(runID)
 	if !ok {
 		return retainedRun{}, fmt.Errorf("%w: no workflow admission has run id %q", ErrPiWorkflowCatalog, runID)
@@ -239,7 +256,7 @@ func openProductionRetainedRun(runID string) (retainedRun, error) {
 	}
 	options := sessionrepo.Options{PolicyDigest: digestBytes([]byte(gate.ProductionSessionPolicyLabel)),
 		MetadataPolicyDigest: digestBytes([]byte(gate.ProductionMetadataPolicyLabel)),
-		Limits:               workspace.DefaultLimits(), XattrVisibility: xattrVisibility}
+		Limits:               workspace.DefaultLimits()}
 	binding, err := catalog.bindingForEntry(entry)
 	if err != nil {
 		return retainedRun{}, err
@@ -248,7 +265,7 @@ func openProductionRetainedRun(runID string) (retainedRun, error) {
 		options.AdmissionScope = binding.scope
 	}
 	return retainedRun{StoreRootPath: entry.StoreRootPath, StoreJournalPath: entry.StoreJournalPath,
-		CommandJournalPath: entry.CommandJournalPath, StoreOptions: options, Profile: profile, Template: template,
+		CommandJournalPath: entry.CommandJournalPath, StoreOptions: options,
 		WorkflowID: entry.WorkflowID, Session: productionRecoveryCommandSession{RunID: entry.RunID,
 			SessionID: entry.SessionID, ConversationID: entry.ConversationID}}, nil
 }
