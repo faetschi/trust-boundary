@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 
+	"tbound/supervisor/internal/corpusadmit"
 	"tbound/supervisor/internal/gate"
 	"tbound/supervisor/internal/piruntime"
 	"tbound/supervisor/internal/sessionlaunch"
@@ -232,8 +233,6 @@ func openProductionRetainedRun(runID string) (retainedRun, func() error, error) 
 		if catalog.corpus, err = loadProductionCorpus(config); err != nil {
 			return retainedRun{}, nil, errors.Join(err, catalog.Close())
 		}
-		// The binding reads the C-DH manifest digest; the provider clients prepareCDH builds are not needed for the Store scope.
-		catalog.corpus.cdh = config.CDH
 	}
 	run, err := retainedRunFromCatalog(catalog, config, runID)
 	if err != nil {
@@ -245,11 +244,17 @@ func openProductionRetainedRun(runID string) (retainedRun, func() error, error) 
 
 // retainedRunFromCatalog is what the catalog entry of the run says: the Store and journal paths, the
 // session identity, and the Store's policies and admission scope, the last from the corpus binding of
-// the entry. The host profile, template and xattr attestation come from the signed files.
+// the entry. The host profile, template and xattr attestation come from the signed files. A C-DH run is
+// refused: its binding needs the hint providers a stopped service does not have, and C-DH is out of scope.
 func retainedRunFromCatalog(catalog *piServiceWorkflowCatalog, config piServiceConfig, runID string) (retainedRun, error) {
 	entry, ok := catalog.workflowEntryByRunID(runID)
 	if !ok {
 		return retainedRun{}, fmt.Errorf("%w: no workflow admission has run id %q", ErrPiWorkflowCatalog, runID)
+	}
+	if role, _, ok := corpusAdmissionParts(entry.HostAdmissionID, entry.TaskID); ok {
+		if _, _, cdh := corpusadmit.CDHRoleParts(role); cdh {
+			return retainedRun{}, errors.New("C-DH runs are outside thesis scope; verify-retained does not support them")
+		}
 	}
 	if err := requireWorkflowCatalogPath(entry, config); err != nil {
 		return retainedRun{}, err

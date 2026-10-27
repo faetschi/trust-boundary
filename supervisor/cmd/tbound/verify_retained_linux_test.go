@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"tbound/supervisor/internal/audit"
+	"tbound/supervisor/internal/corpusadmit"
 )
 
 const verifyRetainedMainEnv = "TBOUND_TEST_VERIFY_RETAINED_MAIN"
@@ -215,15 +216,65 @@ func TestVerifyRetainedHoldsTheCatalogThroughVerification(t *testing.T) {
 	}
 }
 
-// Without root the verb refuses before it touches any host source, and with a missing or extra
-// argument it refuses before it resolves the run. A refusal exits the process with status 2 and writes
+// retainedCatalogWithRole is a catalog whose one admission ran role of case "case-1".
+func retainedCatalogWithRole(t *testing.T, role string) *piServiceWorkflowCatalog {
+	t.Helper()
+	root := privateGovernedTestRoot(t)
+	ownerRoot := filepath.Join(root, "owner-store")
+	if err := os.Mkdir(ownerRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	journal, err := audit.Open(filepath.Join(root, "workflow-catalog.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	admissionHash := bareWorkflowDigest(digestBytes([]byte("retained-role-admission")))
+	entry := catalogReplayEntry(root, ownerRoot, admissionHash)
+	entry.TaskID, entry.HostAdmissionID = "case-1", "case-1/"+role+"/1"
+	reserved, err := json.Marshal(piServiceWorkflowEvent{SchemaVersion: workflowCatalogSchema, AdmissionHash: admissionHash, Entry: entry})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := journal.Append(audit.Event{Kind: "pi_workflow_admission_reserved",
+		ID: workflowCatalogEventID("reserved", admissionHash), Data: reserved}); err != nil {
+		t.Fatal(err)
+	}
+	catalog := reopenCatalogReplayJournal(t, journal, ownerRoot)
+	t.Cleanup(func() { _ = catalog.Close() })
+	return catalog
+}
+
+// C-DH is outside the thesis scope and off by default, so its runs are refused up front, by name, rather
+// than by whatever the missing hint provider happens to trip over later.
+func TestRetainedRunRefusesCDHRunsExplicitly(t *testing.T) {
+	const want = "C-DH runs are outside thesis scope; verify-retained does not support them"
+	cdh := retainedCatalogWithRole(t, corpusadmit.CDHRole("model-a", "compliant"))
+	if _, err := retainedRunFromCatalog(cdh, piServiceConfig{}, catalogReplayRunID); err == nil || !strings.Contains(err.Error(), want) {
+		t.Fatalf("a C-DH run was not refused by name: %v", err)
+	}
+	other := retainedCatalogWithRole(t, corpusRoleCompliant)
+	if _, err := retainedRunFromCatalog(other, piServiceConfig{}, catalogReplayRunID); err == nil || strings.Contains(err.Error(), "C-DH") {
+		t.Fatalf("a run of another role must reach the later checks, got %v", err)
+	}
+}
+
+// Without root the verb refuses before it touches any host source, with a missing or extra argument
+// before it resolves the run, and a C-DH run by name. A refusal exits the process with status 2 and writes
 // only to stderr (main's convention), which also shows the verb is registered in main.
 func TestVerifyRetainedRefusalsExitTwo(t *testing.T) {
 	if mode := os.Getenv(verifyRetainedMainEnv); mode != "" {
 		operatorEffectiveUID = func() int { return 1000 }
 		args := []string{"tbound", "verify-retained"}
-		if mode == "non-root" {
+		switch mode {
+		case "non-root":
 			args = append(args, "--run-id", "production-run-0123456789ab")
+		case "cdh":
+			catalog := retainedCatalogWithRole(t, corpusadmit.CDHRole("model-a", "compliant"))
+			openRetainedRun = func(runID string) (retainedRun, func() error, error) {
+				run, err := retainedRunFromCatalog(catalog, piServiceConfig{}, runID)
+				return run, func() error { return nil }, err
+			}
+			args = append(args, "--run-id", catalogReplayRunID)
 		}
 		os.Args = args
 		main()
@@ -234,10 +285,11 @@ func TestVerifyRetainedRefusalsExitTwo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for mode, want := range map[string]string{"non-root": "verify-retained is root-only", "no-run-id": "needs --run-id"} {
+	for mode, want := range map[string]string{"non-root": "verify-retained is root-only", "no-run-id": "needs --run-id",
+		"cdh": "C-DH runs are outside thesis scope"} {
 		t.Run(mode, func(t *testing.T) {
 			child := exec.Command(executable, "-test.run=^TestVerifyRetainedRefusalsExitTwo$")
-			child.Env = []string{verifyRetainedMainEnv + "=" + mode, "TMPDIR=" + os.TempDir()}
+			child.Env = []string{verifyRetainedMainEnv + "=" + mode, "TMPDIR=" + os.TempDir(), "HOME=" + os.Getenv("HOME")}
 			var stdout, stderr bytes.Buffer
 			child.Stdout, child.Stderr = &stdout, &stderr
 			err := child.Run()
