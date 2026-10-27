@@ -384,6 +384,7 @@ describe("live UI: reviewing a candidate", () => {
     const notice = q("[role='note'][aria-label='Review decision request']");
     expect(notice.textContent).toContain("Outcome unknown");
     expect(notice.textContent).toContain("same request key");
+    expect(notice.textContent).toContain("even if the turn has finished");
     expect(q("#live-composer-reason").textContent).toContain("unknown outcome");
     click(button("Retry with the same request key"));
     await settle();

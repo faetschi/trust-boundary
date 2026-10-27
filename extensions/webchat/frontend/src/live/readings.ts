@@ -174,7 +174,7 @@ export function actionText(action: ActionState): string | null {
     case "unknown":
       return action.error === null
         ? null
-        : `Outcome unknown. This page cannot tell whether the request ran. Retrying sends the same request key, so it cannot run twice. ${failureText(action.error)}`;
+        : `Outcome unknown. This page cannot tell whether the request ran. ${action.intent?.kind === "resolve" ? "The review decision request still needs confirmation, even if the turn has finished. Retry to confirm its result before starting new work. " : ""}Retrying sends the same request key, so it cannot run twice. ${failureText(action.error)}`;
     case "idle":
       return action.done?.replayed === true ? "The service had already recorded this request." : null;
   }
