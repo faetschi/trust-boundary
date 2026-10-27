@@ -7,7 +7,9 @@ import (
 	"reflect"
 
 	"tbound/supervisor/internal/audit"
+	"tbound/supervisor/internal/broker"
 	"tbound/supervisor/internal/broker/protocol"
+	"tbound/supervisor/internal/productsession"
 	"tbound/supervisor/internal/providerbridge"
 	"tbound/supervisor/internal/sessionrepo"
 	"tbound/supervisor/internal/workflowrecovery"
@@ -107,4 +109,42 @@ func activeUnexecutedCaptureDigest(journal *audit.Journal, toolCallID string) (s
 		return providerbridge.SoftRefusalRetirementDigest(*refusal)
 	}
 	return activeDeniedCaptureDigest(journal, toolCallID)
+}
+
+func (e *productTurnEnv) verifyRetainedSoftRefusals(turn productsession.Turn, retained *retainedProductTurn) error {
+	trace, err := retained.ProviderJournal.Trace()
+	if err != nil {
+		return err
+	}
+	hasRefusal := false
+	for _, record := range trace.Records {
+		if record.Event.Kind == providerbridge.SoftRefusalEvent {
+			hasRefusal = true
+			break
+		}
+	}
+	if !hasRefusal {
+		return nil
+	}
+	session, err := e.Catalog.Session(turn.Principal, turn.SessionID)
+	if err != nil {
+		return err
+	}
+	policy, err := e.gatePolicy(turn.ProjectID, turn.PolicyDigest)
+	if err != nil {
+		return err
+	}
+	bundle, err := retained.Store.EvidenceBundle()
+	if err != nil {
+		return err
+	}
+	config := providerbridge.Config{ProductSoftRefusals: true, WorkflowID: turn.Link.WorkflowID, ConversationID: turn.Link.ConversationID, ProfileID: session.ProviderProfile, InitialGenerationID: bundle.Baseline.ID, InitialTreeDigest: bundle.Baseline.TreeDigest, SystemPrompt: e.SystemPrompt, DeveloperPrompt: e.DeveloperPrompt}
+	route := config.Route.Resolved()
+	pins := GovernedReplayPins{
+		Provider: providerbridge.RecoveryPins{Config: config, Model: route.Model, Policy: policy, RequireHostCallReservations: true, ImportedPrefixDigest: importedPrefixReplayPin(turn.Link.ImportedPrefixDigest, len(trace.Records))},
+		Profile:  broker.Profile{ID: session.ProviderProfile, Model: route.Model, Route: config.Route, Messages: providerbridge.InitialPromptMessages(route, e.SystemPrompt, e.DeveloperPrompt), ToolManifest: broker.DeclaredToolManifest(), ToolCallIssuer: governedCallIssuer, ResponseIDIssuer: governedResponseIssuer, Generation: bundle.Baseline.ID},
+		Baseline: bundle.Baseline, StorePolicyDigest: e.StorePolicyDigest, MetadataPolicyDigest: e.MetadataPolicyDigest, BashOutputPaths: productTurnBashScope(turn, policy), CommandOutputBytes: productCommandOutputBytes,
+	}
+	_, err = ReplayGovernedTranscript(retained.ProviderJournal, retained.StoreJournal, retained.Store, pins)
+	return err
 }

@@ -69,6 +69,9 @@ func (e *productTurnEnv) reconcileLinkedTurn(ctx context.Context, turn productse
 		return unknown("the retained Store or journals cannot be reopened", err)
 	}
 	defer retained.Close()
+	if err := e.verifyRetainedSoftRefusals(turn, retained); err != nil {
+		return unknown("the retained soft refusal cannot be reproduced", err)
+	}
 	bundle, err := retained.Store.EvidenceBundle()
 	if err != nil {
 		return unknown("the retained Store evidence cannot be read", err)
