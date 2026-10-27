@@ -559,3 +559,34 @@ func TestProductTurnBashShowsTheModelItsCommandOutput(t *testing.T) {
 		t.Fatalf("turn 2 over a predecessor whose Bash output is replayed: %+v %v", turn2, err)
 	}
 }
+
+// A product turn's request tells the provider that Bash returns bounded output, and the result the turn
+// then releases carries it. The same composition reopens the turn as a predecessor under the same request
+// bytes, which would fail if the predecessor replay rebuilt a different tool surface.
+func TestProductTurnBashRequestAdvertisesTheOutputItReleases(t *testing.T) {
+	f := newBashProductDriverFixture(t, productsession.PublicationAuto, productScopeNotes(), false, []string{}, seedBashProject(t))
+	script := &productDriverScript{turns: []providerbridge.ScriptTurn{
+		bashCall("tests", `printf 'tests passed\n'`), scopeDriverFinal("t1", "The tests passed.")}}
+	_, turn, err := f.run(t, f.submit(t, "turn-1", "Run the tests."), script)
+	if err != nil {
+		t.Fatalf("turn 1: %v", err)
+	}
+	journal, err := audit.Open(turn.Link.ProviderJournalPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	description := firstRequestBashDescription(t, journal)
+	if err := journal.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(description, "stdout and stderr") {
+		t.Errorf("the product turn tells the provider %q", description)
+	}
+	if result := toolMessage(t, lastProviderRequestMessages(t, turn.Link.ProviderJournalPath), "call-tests"); !strings.Contains(result, `"stdout"`) {
+		t.Errorf("the product turn released no output: %q", result)
+	}
+	script2 := &productDriverScript{turns: []providerbridge.ScriptTurn{scopeDriverFinal("t2", "Still passing.")}}
+	if _, turn2, err := f.run(t, f.submit(t, "turn-2", "Did they pass?"), script2); err != nil || script2.requests() != 1 {
+		t.Fatalf("turn 2 over the Bash predecessor: %+v %v", turn2, err)
+	}
+}

@@ -341,7 +341,7 @@ Decisions taken during implementation:
 
 The first supported language is Go, with a pinned toolchain image and a pre-filled module cache. Tests run with the command cell's network disabled. Building and pinning the image needs the product guest and is pending.
 
-The tool schemas a product turn advertises match the durable executor's behaviour. A research route keeps its frozen schemas, which promise more than the executor does, because its provider-request digests were measured with them.
+The tool schemas a product turn advertises match the durable executor's behaviour. A research route keeps its frozen schemas, which promise more than the executor does, because its provider-request digests were measured with them. The bash row below is the product turn's. Its route carries `Route.CommandOutput`, which the authority sets when its executor has a command output bound. A `serve --pi` session's executor returns the exit code alone, so its route is unmarked and its bash description is the short one every engineering request carried before product turns showed output ("Execute a bash command. Requests are forwarded to tbound."). The schemas, and so the pinned digests, are the same in both modes.
 
 | Tool | Advertised to the model | What the executor does |
 | --- | --- | --- |
@@ -349,7 +349,7 @@ The tool schemas a product turn advertises match the durable executor's behaviou
 | `write`, `edit` | A workspace-relative path. An absolute path ends the turn. | An absolute path is invalid, and the invalid call ends the provider conversation as unknown. A target that is a directory, and an edit whose old text is absent or ambiguous, are soft refusals. A missing edit target, a missing write parent and overlapping edits keep the fail-closed behavior. |
 | `bash` | No `timeout`. The last 16 KiB of each stream. A command that runs longer than 10 minutes, or prints more than 1 MiB on one stream, is stopped and returns no result. | It ignores a `timeout` argument. The command cell stops a command after 10 minutes, and the development runner after 30 seconds. A stream over 1 MiB withholds the result. |
 
-Go still parses `offset`, `limit` and `timeout` when a call carries them, because research calls and retained provider evidence do. The adapter registers the same text and `adapter/profile.json` pins the digest of each schema. `TestAdvertisedToolSurfaceEqualsTheAdapterTextAndItsPins` and the adapter's `proxy-schema.test.ts` hold the broker, the adapter and the pins together, and `TestResearchToolSurfaceIsFrozen` holds the research surface. Changing a schema changes the adapter bytes, so it needs the adapter runtime bundle to be rebuilt and re-pinned.
+Go still parses `offset`, `limit` and `timeout` when a call carries them, because research calls and retained provider evidence do. The adapter registers the same text, except that its bash description is the short `serve --pi` one, and `adapter/profile.json` pins the digest of each schema. `TestAdvertisedToolSurfaceEqualsTheAdapterTextAndItsPins` and the adapter's `proxy-schema.test.ts` hold the broker, the adapter and the pins together, and `TestResearchToolSurfaceIsFrozen` holds the research surface. Changing a schema changes the adapter bytes, so it needs the adapter runtime bundle to be rebuilt and re-pinned.
 
 ## Milestone 4: product service and terminal client (P6)
 

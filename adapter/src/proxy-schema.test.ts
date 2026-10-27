@@ -35,8 +35,9 @@ test("the tool schemas advertise only what the durable executor does", () => {
   assert.deepEqual(properties("bash"), ["command"]);
   const tools = createProxyTools({ send: () => Promise.reject(new Error("unused")) }, Type);
   const bash = tools.find((tool) => tool.name === "bash");
-  assert.match(bash?.description ?? "", /last 16 KiB/);
-  assert.match(bash?.description ?? "", /no timeout parameter/);
+  // The adapter serves serve --pi, whose executor returns the exit code alone, so it promises no output.
+  // A product turn's request, built by the broker, adds the output text (supervisor/internal/broker).
+  assert.equal(bash?.description, "Execute a bash command. Requests are forwarded to tbound.");
   const read = tools.find((tool) => tool.name === "read");
   assert.match(read?.description ?? "", /UTF-8 text file/);
   assert.doesNotMatch(read?.description ?? "", /Supports text files and images/);

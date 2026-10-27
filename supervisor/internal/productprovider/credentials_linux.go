@@ -350,14 +350,14 @@ func newConversationFactory(id, credentialPath, exemptThrough string) (func(prov
 
 func (s *Store) conversationFactory(id string) func(providerbridge.Config, *audit.Journal) (*providerbridge.Conversation, error) {
 	return func(cfg providerbridge.Config, journal *audit.Journal) (*providerbridge.Conversation, error) {
-		if cfg.ProfileID != id || (cfg.Route != (openrouter.Route{}) && cfg.Route != openrouter.EngineeringRoute()) || cfg.Spend != nil {
+		if cfg.ProfileID != id || cfg.Route.WithCommandOutput(false) != openrouter.EngineeringRoute() || cfg.Spend != nil {
 			return nil, errors.New("conversation does not match the product provider profile; monetary ceilings unsupported")
 		}
 		credentials, err := s.credentials(id)
 		if err != nil {
 			return nil, err
 		}
-		cfg.Route = openrouter.EngineeringRoute()
+		cfg.Route = openrouter.EngineeringRoute().WithCommandOutput(cfg.Route.CommandOutput)
 		selectLimit := cfg.SelectCompletionTokenLimit
 		cfg.SelectCompletionTokenLimit = func(ctx context.Context) (uint64, error) {
 			if selectLimit == nil {

@@ -476,3 +476,63 @@ func TestConversationFactoryForTestIsRefusedOutsideATestBinaryAndKeepsTheCredent
 		t.Fatalf("a key with a weak mode was used: %v", err)
 	}
 }
+
+// The factory keeps the command output mark of a product turn's route, so the request it sends tells the
+// provider what the executor releases, and still refuses a route that is not the engineering route.
+func TestProviderFactoryKeepsTheCommandOutputMarkOfTheRoute(t *testing.T) {
+	s := testStore(t)
+	if _, err := installKey(t, s, sentinelKey, false, false); err != nil {
+		t.Fatal(err)
+	}
+	journal, err := audit.Open(filepath.Join(t.TempDir(), "provider.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer journal.Close()
+	factory := s.conversationFactory(OpenCodeGo)
+	for _, c := range []struct {
+		name   string
+		route  openrouter.Route
+		output bool
+	}{
+		{"unmarked zero route", openrouter.Route{}, false},
+		{"unmarked engineering route", openrouter.EngineeringRoute(), false},
+		{"marked route", openrouter.EngineeringRoute().WithCommandOutput(true), true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			var body []byte
+			conversation, err := factory(providerbridge.Config{
+				ProfileID: OpenCodeGo, ConversationID: "mark-" + strings.ReplaceAll(c.name, " ", "-"), WorkflowID: "mark-workflow",
+				InitialGenerationID: "initial", InitialTreeDigest: strings.Repeat("a", 64), Route: c.route,
+				SystemPrompt: "You are a governed coding assistant.", DeveloperPrompt: "Use only authorized tools.",
+				SelectCompletionTokenLimit: func(context.Context) (uint64, error) { return 16, nil },
+				ReserveHostCall: func(_ context.Context, request broker.RequestRecord, _ uint64) (providerbridge.HostCallBinding, error) {
+					body = request.Body()
+					return providerbridge.HostCallBinding{}, errors.New("stop before dispatch")
+				},
+				CompleteHostCall: func(context.Context, providerbridge.HostCallCompletion) error { return nil },
+			}, journal)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer conversation.Close()
+			if err := conversation.AdmitPrompt("mark-task", "Say OK."); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := conversation.NextTurn(context.Background()); err == nil {
+				t.Fatal("the stub reservation did not stop the exchange")
+			}
+			if told := strings.Contains(string(body), "stdout and stderr"); told != c.output {
+				t.Errorf("the request tells the provider about command output = %t, want %t", told, c.output)
+			}
+		})
+	}
+	for name, route := range map[string]openrouter.Route{
+		"marked route outside the engineering profile": {Model: "wrong", Endpoint: "http://localhost", CommandOutput: true},
+		"mark without a route":                         {CommandOutput: true},
+	} {
+		if _, err := factory(providerbridge.Config{ProfileID: OpenCodeGo, Route: route}, nil); err == nil {
+			t.Errorf("the factory accepted a %s", name)
+		}
+	}
+}

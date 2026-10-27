@@ -12,7 +12,6 @@ import (
 
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/broker"
-	"tbound/supervisor/internal/broker/openrouter"
 	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/gate"
 	"tbound/supervisor/internal/providerbridge"
@@ -163,6 +162,10 @@ func newGovernedReplayFixtureWithOutput(t *testing.T, turns []providerbridge.Dev
 		InitialGenerationID: g0.ID(), InitialTreeDigest: g0.TreeDigest(),
 		SystemPrompt: governedReplaySystem, DeveloperPrompt: governedReplayDeveloper,
 	}
+	// The route comes from the authority exactly as it does for a live conversation: an executor that
+	// releases command output marks it, and the request then says so.
+	authority.commandOutputBytes = commandOutputBytes
+	config.Route = authority.applyProviderRoute(config).Route
 	conversation, err := providerbridge.NewDevelopmentOfflineConversation(config, providerJournal, turns)
 	if err != nil {
 		t.Fatal(err)
@@ -186,8 +189,8 @@ func newGovernedReplayFixtureWithOutput(t *testing.T, turns []providerbridge.Dev
 	}
 	systemCopy, developerCopy := config.SystemPrompt, config.DeveloperPrompt
 	profile := broker.Profile{
-		ID: config.ProfileID, Model: providerbridge.ApprovedModel,
-		Messages:     providerbridge.InitialPromptMessages(openrouter.Route{}, systemCopy, developerCopy),
+		ID: config.ProfileID, Model: providerbridge.ApprovedModel, Route: config.Route,
+		Messages:     providerbridge.InitialPromptMessages(config.Route, systemCopy, developerCopy),
 		ToolManifest: broker.DeclaredToolManifest(), ToolCallIssuer: governedCallIssuer,
 		ResponseIDIssuer: governedResponseIssuer, Generation: g0.ID(),
 	}
