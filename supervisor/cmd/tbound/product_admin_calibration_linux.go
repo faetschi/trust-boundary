@@ -31,6 +31,10 @@ Exit codes: 0 success, 2 refused or invalid usage, 1 other.
 
 const maxProductCalibrationBytes = 64 << 10
 
+// productCalibrationMeasure measures the operator's probe corpus. Only a test replaces it, to describe the
+// scanner offline; no other non-test source may name it (TestProductCalibrationSeamIsNamedOnlyByItsOwnFile).
+var productCalibrationMeasure = piruntime.MeasureD09XattrEnumerationCalibration
+
 func runProductCalibration(args []string, out, stderr io.Writer) error {
 	usage := func() error {
 		_, _ = io.WriteString(stderr, calibrationUsage)
