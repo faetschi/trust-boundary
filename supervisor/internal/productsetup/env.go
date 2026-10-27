@@ -32,7 +32,9 @@ type RegistrationSummary struct {
 	Digest   string
 	Projects []string
 	Profiles []string
-	Text     string
+	// PolicyDigests maps each project to the gate-policy digest the registration commits to.
+	PolicyDigests map[string]string
+	Text          string
 }
 
 // OpenTurn is a catalog turn that is not terminal.
@@ -58,6 +60,9 @@ type Env struct {
 	VerifyRegistration func(registration, signature, publicKey []byte) (RegistrationSummary, error)
 	// ValidateServiceConfig is the service's own check of the config Setup writes. Nil skips it.
 	ValidateServiceConfig func(data []byte) error
+	// CheckHostInputs statically checks the installed inputs of the service's host profile the way the service
+	// does at start, and returns one check per input. Nil skips it.
+	CheckHostInputs func(HostInputs) []Check
 	// Exec runs a system command and returns its stdout. Nil runs the real command.
 	Exec func(name string, args ...string) ([]byte, error)
 	// Chown changes an owner when Live, using the validated file's /proc/self/fd path. Nil uses fchown.
@@ -265,4 +270,18 @@ func writeFile(real string, data []byte, mode os.FileMode) error {
 func atoi(s string) (int, bool) {
 	n, err := strconv.Atoi(s)
 	return n, err == nil && n >= 0
+}
+
+// HostInputs is what the static host-input check needs. Paths are real paths below the root. Owners are the
+// UIDs that may own a protected input: root, the service account when it exists, and on a test root the
+// test process, whose files setup cannot chown.
+type HostInputs struct {
+	// PolicyDigests is the registered gate-policy digest per project, GatePolicyPaths the installed file.
+	PolicyDigests, GatePolicyPaths map[string]string
+	GitPath, GitDigest             string
+	XattrCalibrationPath           string
+	// PublicKey is the registration public key as file content, PublicKeyPath where it was read from.
+	PublicKey     []byte
+	PublicKeyPath string
+	Owners        []uint32
 }

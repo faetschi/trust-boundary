@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"os"
@@ -18,6 +19,8 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"tbound/supervisor/internal/gate"
+	"tbound/supervisor/internal/piruntime"
 	"tbound/supervisor/internal/productprotocol"
 	"tbound/supervisor/internal/productsession"
 	"tbound/supervisor/internal/productsetup"
@@ -51,24 +54,52 @@ func mustAdmin(t *testing.T, args ...string) string {
 
 var adminDigest = "sha256:" + strings.Repeat("a", 64)
 
-func adminInitArgs(out string) []string {
+// adminGatePolicy is the gate policy the admin test projects are registered with, and its file content.
+func adminGatePolicy(allowBash bool) (gate.Policy, []byte) {
+	rules := []gate.Rule{{Tool: "read", Effect: gate.EffectAllow}}
+	if allowBash {
+		rules = append(rules, gate.Rule{Tool: "bash", Effect: gate.EffectAllow})
+	}
+	policy, err := gate.NewPolicy(gate.Profile{Version: gate.ProfileVersion, Rules: rules})
+	if err != nil {
+		panic(err)
+	}
+	encoded, err := json.Marshal(policy.Profile())
+	if err != nil {
+		panic(err)
+	}
+	return policy, encoded
+}
+
+func adminPolicyDigest(allowBash bool) string {
+	policy, _ := adminGatePolicy(allowBash)
+	return productRegisteredPolicyDigest(policy)
+}
+
+func adminInitArgs(out string) []string { return adminInitArgsFor(out, adminPolicyDigest(false)) }
+
+func adminInitArgsFor(out, policyDigest string) []string {
 	return []string{"product", "registration", "init", "--out", out,
 		"--registration-id", "reg-1", "--service-identity", "svc-1", "--principal", "1000", "--principal", "0",
 		"--provider", "opencode-go-engineering",
-		"--project", "id=alpha,root=" + adminDigest + ",policy=" + adminDigest + ",modes=review+auto,writable=src",
-		"--project", "id=beta,root=" + adminDigest + ",policy=" + adminDigest + ",modes=review",
+		"--project", "id=alpha,root=" + adminDigest + ",policy=" + policyDigest + ",modes=review+auto,writable=src",
+		"--project", "id=beta,root=" + adminDigest + ",policy=" + policyDigest + ",modes=review",
 		"--max-turns", "10", "--review-timeout", "600", "--turn-limit", "10,1000,60", "--session-limit", "100,10000,600",
 		"--runtime-digest", adminDigest, "--image-digest", adminDigest, "--extension-digest", adminDigest}
 }
 
-// adminHost is a test root plus the administrator's signed registration, made with the CLI itself.
+// adminHost is a test root plus the administrator's signed registration, made with the CLI itself, and the
+// host inputs the administrator places before setup: gate policies, a digest-pinned Git and a signed
+// xattr calibration.
 type adminHost struct {
-	t        *testing.T
-	root     string
-	dir      string
-	reg, sig string
-	pub      string
-	binary   string
+	t         *testing.T
+	root      string
+	dir       string
+	keys      string
+	reg, sig  string
+	pub       string
+	binary    string
+	gitDigest string
 }
 
 func newAdminHost(t *testing.T, root string) *adminHost {
@@ -79,18 +110,59 @@ func newAdminHost(t *testing.T, root string) *adminHost {
 	}
 	t.Cleanup(func() { productAdminPrereqs = old })
 	h := &adminHost{t: t, root: root, dir: t.TempDir()}
-	keys := filepath.Join(h.dir, "keys")
-	mustAdmin(t, "product", "registration", "keygen", "--out", keys)
+	h.keys = filepath.Join(h.dir, "keys")
+	mustAdmin(t, "product", "registration", "keygen", "--out", h.keys)
 	template := filepath.Join(h.dir, "template.json")
 	mustAdmin(t, adminInitArgs(template)...)
 	h.reg = filepath.Join(h.dir, "registration.json")
-	mustAdmin(t, "product", "registration", "sign", "--registration", template, "--key", filepath.Join(keys, "registration.key"), "--out", h.reg)
-	h.sig, h.pub = h.reg+".sig", filepath.Join(keys, "registration.pub")
+	mustAdmin(t, "product", "registration", "sign", "--registration", template, "--key", filepath.Join(h.keys, "registration.key"), "--out", h.reg)
+	h.sig, h.pub = h.reg+".sig", filepath.Join(h.keys, "registration.pub")
 	h.binary = filepath.Join(h.dir, "tbound-v1")
 	if err := os.WriteFile(h.binary, []byte("binary v1"), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	h.placeHostInputs()
 	return h
+}
+
+func (h *adminHost) writeInput(logical string, data []byte, mode os.FileMode) {
+	h.t.Helper()
+	if err := os.MkdirAll(filepath.Dir(h.path(logical)), 0o755); err != nil {
+		h.t.Fatal(err)
+	}
+	if err := os.WriteFile(h.path(logical), data, mode); err != nil {
+		h.t.Fatal(err)
+	}
+	if err := os.Chmod(h.path(logical), mode); err != nil {
+		h.t.Fatal(err)
+	}
+}
+
+func (h *adminHost) placeHostInputs() {
+	h.t.Helper()
+	_, policy := adminGatePolicy(false)
+	h.writeInput(productsetup.ConfigDir+"/policy-alpha.json", policy, 0o644)
+	h.writeInput(productsetup.ConfigDir+"/policy-beta.json", policy, 0o644)
+	gitPath, err := exec.LookPath("git")
+	if err != nil {
+		h.t.Skipf("installed Git is unavailable: %v", err)
+	}
+	git, err := os.ReadFile(gitPath)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	h.gitDigest = digestBytes(git)
+	h.writeInput(productsetup.BinaryDir+"/git", git, 0o755)
+	unsigned, err := json.MarshalIndent(unsignedProductCalibration(piruntime.D09XattrManagedRWSourceProfile), "", "  ")
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	in := filepath.Join(h.dir, "calibration-unsigned.json")
+	if err := os.WriteFile(in, unsigned, 0o600); err != nil {
+		h.t.Fatal(err)
+	}
+	mustAdmin(h.t, "product", "calibration", "sign", "--key", filepath.Join(h.keys, "registration.key"), "--public-key", h.pub,
+		"--in", in, "--out", h.path(productsetup.ConfigDir+"/xattr-calibration.json"))
 }
 
 func (h *adminHost) setupConfig() productsetup.Config {
@@ -100,7 +172,7 @@ func (h *adminHost) setupConfig() productsetup.Config {
 		Projects:   map[string]string{"alpha": productsetup.ProjectsDir + "/alpha", "beta": productsetup.ProjectsDir + "/beta"},
 		GatePolicyPaths: map[string]string{"alpha": productsetup.ConfigDir + "/policy-alpha.json",
 			"beta": productsetup.ConfigDir + "/policy-beta.json"},
-		GitPath: productsetup.BinaryDir + "/git", GitDigest: "sha256:" + strings.Repeat("a", 64),
+		GitPath: productsetup.BinaryDir + "/git", GitDigest: h.gitDigest,
 		XattrCalibrationPath: productsetup.ConfigDir + "/xattr-calibration.json",
 	}
 }
@@ -201,13 +273,13 @@ func TestProductAdminRegistrationInitAndSignRefuseWhatTheRegistrationRefuses(t *
 }
 
 func TestProductAdminSetupWritesTheTreeAndARerunIsUnchanged(t *testing.T) {
-	root := t.TempDir()
+	root := privateGovernedTestRoot(t)
 	h := newAdminHost(t, root)
 	out, err := h.setup()
 	if err != nil {
 		t.Fatalf("setup: %v\n%s", err, out)
 	}
-	for _, want := range []string{productsetup.CredentialsDir + " (0700 " + productsetup.ServiceUser + ":" + productsetup.ServiceGroup + ")", "chown root:root " + productsetup.ConfigDir,
+	for _, want := range []string{productsetup.CredentialsDir + " (0700 " + productsetup.ServiceUser + ":" + productsetup.ServiceGroup + ")", "chown root:root " + productsetup.ServiceConfigPath,
 		"useradd --system", "systemctl daemon-reload", "recorded, not executed"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("setup output lacks %q:\n%s", want, out)
@@ -221,7 +293,7 @@ func TestProductAdminSetupWritesTheTreeAndARerunIsUnchanged(t *testing.T) {
 	if cfg.RegistrationPath != productsession.DefaultRegistrationPath || cfg.SocketPath != productsession.DefaultServiceSocketPath {
 		t.Fatalf("service config does not use the product defaults: %+v", cfg)
 	}
-	if cfg.GitPath != productsetup.BinaryDir+"/git" || cfg.GitDigest != "sha256:"+strings.Repeat("a", 64) || len(cfg.GatePolicyPaths) != 2 ||
+	if cfg.GitPath != productsetup.BinaryDir+"/git" || cfg.GitDigest != h.gitDigest || len(cfg.GatePolicyPaths) != 2 ||
 		cfg.XattrCalibrationPath != productsetup.ConfigDir+"/xattr-calibration.json" {
 		t.Fatalf("service config lost the host profile inputs: %+v", cfg)
 	}
@@ -236,7 +308,7 @@ func TestProductAdminSetupWritesTheTreeAndARerunIsUnchanged(t *testing.T) {
 }
 
 func TestProductAdminSetupRefusesThesisPathsConflictsAndWritesNothingOnDryRun(t *testing.T) {
-	root := t.TempDir()
+	root := privateGovernedTestRoot(t)
 	h := newAdminHost(t, root)
 	thesis := h.setupConfig()
 	thesis.Projects = map[string]string{"alpha": "/var/lib/tbound/live/alpha", "beta": "/var/lib/tbound-product/projects/beta"}
@@ -245,14 +317,15 @@ func TestProductAdminSetupRefusesThesisPathsConflictsAndWritesNothingOnDryRun(t 
 	if err := os.WriteFile(file, data, 0o600); err != nil {
 		t.Fatal(err)
 	}
+	before := adminTree(t, root)
 	if out, err := adminRun("product", "setup", "--config", file, "--root", root, "--binary", h.binary); adminExit(err) != 2 || !strings.Contains(err.Error(), "thesis service path") {
 		t.Fatalf("a thesis path was not refused with exit 2: %v\n%s", err, out)
 	}
 	if out, err := h.setup("--dry-run"); err != nil || !strings.Contains(out, "dry run: nothing was changed") {
 		t.Fatalf("dry run: %v\n%s", err, out)
 	}
-	if entries, _ := os.ReadDir(root); len(entries) != 0 {
-		t.Fatalf("refusal and dry run wrote %v", entries)
+	if after := adminTree(t, root); after != before {
+		t.Fatalf("refusal and dry run changed the root:\nbefore:\n%s\nafter:\n%s", before, after)
 	}
 	if _, err := h.setup(); err != nil {
 		t.Fatal(err)
@@ -296,7 +369,7 @@ func adminCatalog(t *testing.T, h *adminHost, withTurn bool) {
 }
 
 func TestProductAdminUpdateRefusesAnUnresolvedTurnThenUpdatesAndRollsBack(t *testing.T) {
-	root := t.TempDir()
+	root := privateGovernedTestRoot(t)
 	h := newAdminHost(t, root)
 	if out, err := h.setup(); err != nil {
 		t.Fatalf("setup: %v\n%s", err, out)
@@ -314,7 +387,7 @@ func TestProductAdminUpdateRefusesAnUnresolvedTurnThenUpdatesAndRollsBack(t *tes
 		t.Fatal("the binary changed despite the refusal")
 	}
 
-	other := t.TempDir()
+	other := privateGovernedTestRoot(t)
 	h2 := newAdminHost(t, other)
 	if out, err := h2.setup(); err != nil {
 		t.Fatalf("setup: %v\n%s", err, out)
@@ -340,7 +413,7 @@ func TestProductAdminUpdateRefusesAnUnresolvedTurnThenUpdatesAndRollsBack(t *tes
 }
 
 func TestProductAdminUninstallKeepsDataAndPurgeAsksForConfirmation(t *testing.T) {
-	root := t.TempDir()
+	root := privateGovernedTestRoot(t)
 	h := newAdminHost(t, root)
 	if out, err := h.setup(); err != nil {
 		t.Fatalf("setup: %v\n%s", err, out)
@@ -420,11 +493,7 @@ func fakeProductService(t *testing.T, socket string, outcome *atomic.Value) {
 }
 
 func TestProductAdminDoctorSelfTestThroughTheServiceSocket(t *testing.T) {
-	root, err := os.MkdirTemp("/tmp", "tbd")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { os.RemoveAll(root) })
+	root := privateGovernedTestRoot(t) // Git must sit below ancestors the pin accepts, so not under /tmp
 	h := newAdminHost(t, root)
 	if out, err := adminRun("product", "setup", "--config", h.config(false), "--root", root, "--binary", h.binary); err != nil {
 		t.Fatalf("setup: %v\n%s", err, out)
@@ -500,7 +569,7 @@ func TestProductAdminReviewRegistrationSignRefusesAmbiguousJSON(t *testing.T) {
 }
 
 func TestProductAdminUninstallRefusesLockedCatalog(t *testing.T) {
-	h := newAdminHost(t, t.TempDir())
+	h := newAdminHost(t, privateGovernedTestRoot(t))
 	if out, err := h.setup(); err != nil {
 		t.Fatalf("setup: %v\n%s", err, out)
 	}
@@ -536,7 +605,7 @@ func TestProductAdminTurnsDoesNotRequireRoot(t *testing.T) {
 			t.Fatalf("%s no longer requires root: %v", command, err)
 		}
 	}
-	h := newAdminHost(t, t.TempDir())
+	h := newAdminHost(t, privateGovernedTestRoot(t))
 	if _, err := h.setup(); err != nil {
 		t.Fatal(err)
 	}
@@ -550,7 +619,7 @@ func TestProductAdminTurnsDoesNotRequireRoot(t *testing.T) {
 }
 
 func TestProductAdminPurgeAfterOrdinaryUninstallUsesAdministrativeBinary(t *testing.T) {
-	h := newAdminHost(t, t.TempDir())
+	h := newAdminHost(t, privateGovernedTestRoot(t))
 	if _, err := h.setup(); err != nil {
 		t.Fatal(err)
 	}
@@ -601,4 +670,26 @@ func TestProductAdminUsageErrors(t *testing.T) {
 			t.Errorf("%v: exit %d (%v), want 2", args, adminExit(err), err)
 		}
 	}
+}
+
+// adminTree lists every path below root with its type, mode and size: the state a refused or dry run must
+// leave unchanged. The host inputs the administrator placed first are part of it.
+func adminTree(t *testing.T, root string) string {
+	t.Helper()
+	var b strings.Builder
+	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(&b, "%s %s %d\n", path, info.Mode(), info.Size())
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b.String()
 }
