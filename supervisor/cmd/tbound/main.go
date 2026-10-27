@@ -53,6 +53,9 @@ func run(args []string, transcript io.Writer, stderr io.Writer) error {
 	if len(args) > 0 && args[0] == "abandon-unknown" {
 		return runAbandonUnknown(args[1:], transcript, stderr)
 	}
+	if len(args) > 0 && args[0] == "verify-retained" {
+		return runVerifyRetained(args[1:], transcript, stderr)
+	}
 	if len(args) > 0 && args[0] == "workflow-root-init" {
 		return runWorkflowRootInit(args[1:], transcript, stderr)
 	}

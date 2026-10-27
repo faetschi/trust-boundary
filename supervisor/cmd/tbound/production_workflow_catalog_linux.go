@@ -1719,6 +1719,21 @@ func (c *piServiceWorkflowCatalog) workflowEntry(workflow string) (piServiceWork
 	return piServiceWorkflowEntry{}, false
 }
 
+// workflowEntryByRunID is the admission that minted the run (the first run of its workflow).
+func (c *piServiceWorkflowCatalog) workflowEntryByRunID(runID string) (piServiceWorkflowEntry, bool) {
+	if c == nil {
+		return piServiceWorkflowEntry{}, false
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, entry := range c.entries {
+		if entry.RunID == runID {
+			return clonePiServiceWorkflowEntry(entry), true
+		}
+	}
+	return piServiceWorkflowEntry{}, false
+}
+
 func (c *piServiceWorkflowCatalog) ownerScope(workflow string, epoch uint64) (piServiceWorkflowOwnerScope, bool) {
 	if c == nil {
 		return piServiceWorkflowOwnerScope{}, false

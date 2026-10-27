@@ -12,7 +12,6 @@ import (
 
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/piruntime"
-	"tbound/supervisor/internal/sessionlaunch"
 	"tbound/supervisor/internal/sessionrepo"
 	"tbound/supervisor/internal/workspace"
 )
@@ -20,12 +19,12 @@ import (
 const d09RecoveryProcessInputsEnv = "TBOUND_TEST_D09_RECOVERY_INPUTS"
 
 type d09RecoveryProcessCase struct {
-	Name        string
-	Root        string
-	CommandPath string
-	CommandPin  productionHistoricalCommandPin
-	Outcome     string
-	Refusal     string
+	Name            string
+	Root            string
+	CommandPath     string
+	CommandIdentity string
+	Outcome         string
+	Refusal         string
 }
 
 type d09RecoveryProcessInputs struct {
@@ -34,34 +33,53 @@ type d09RecoveryProcessInputs struct {
 	Cases    []d09RecoveryProcessCase
 }
 
-func TestProductionD09SettlementsRecoverInFreshProcess(t *testing.T) {
-	if inputPath := os.Getenv(d09RecoveryProcessInputsEnv); inputPath != "" {
-		data, err := os.ReadFile(inputPath)
-		if err != nil {
-			t.Fatal(err)
-		}
-		var inputs d09RecoveryProcessInputs
-		if err := json.Unmarshal(data, &inputs); err != nil {
-			t.Fatal(err)
-		}
-		if len(inputs.Cases) != 5 {
-			t.Fatalf("fresh process received %d cases, want both controls and three refusals", len(inputs.Cases))
-		}
-		for _, test := range inputs.Cases {
-			t.Run(test.Name, func(t *testing.T) {
-				err := verifyD09PersistedRecovery(t, inputs.Profile, inputs.Template, test)
-				if test.Refusal == "" {
-					if err != nil {
-						t.Fatalf("untouched %s run refused: %v", test.Outcome, err)
-					}
-				} else if err == nil || !strings.Contains(err.Error(), test.Refusal) {
-					t.Fatalf("want settlement refusal containing %q, got %v", test.Refusal, err)
-				}
-			})
-		}
-		return
+// d09RecoveryChildInputs returns the inputs the parent test handed to this fresh process, and whether
+// this is that process.
+func d09RecoveryChildInputs(t *testing.T) (d09RecoveryProcessInputs, bool) {
+	t.Helper()
+	inputPath := os.Getenv(d09RecoveryProcessInputsEnv)
+	if inputPath == "" {
+		return d09RecoveryProcessInputs{}, false
 	}
+	data, err := os.ReadFile(inputPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var inputs d09RecoveryProcessInputs
+	if err := json.Unmarshal(data, &inputs); err != nil {
+		t.Fatal(err)
+	}
+	if len(inputs.Cases) != 6 {
+		t.Fatalf("fresh process received %d cases, want both controls and four refusals", len(inputs.Cases))
+	}
+	return inputs, true
+}
 
+// runD09RecoveryChild runs test again as a fresh process over inputs and fails if that process fails.
+func runD09RecoveryChild(t *testing.T, inputs d09RecoveryProcessInputs, test string) {
+	t.Helper()
+	inputPath := filepath.Join(privateGovernedTestRoot(t), "recovery-inputs.json")
+	if err := os.WriteFile(inputPath, mustJSON(inputs), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	child := exec.Command(executable, "-test.run=^"+test+"$", "-test.v")
+	child.Env = []string{d09RecoveryProcessInputsEnv + "=" + inputPath, "TMPDIR=" + os.TempDir()}
+	output, err := child.CombinedOutput()
+	if err != nil {
+		t.Fatalf("fresh-process recovery: %v\n%s", err, output)
+	}
+	t.Logf("fresh-process recovery:\n%s", output)
+}
+
+// buildD09RecoveryProcessInputs persists a denied and a promoted Bash run and, from the denied run's
+// command journal, four refusals: the settlement removed, its receipt tampered, the settlement
+// duplicated, and a promoted-shape settlement for the denied operation.
+func buildD09RecoveryProcessInputs(t *testing.T) d09RecoveryProcessInputs {
+	t.Helper()
 	denied, promoted := deniedBashRun(t), promotedBashRun(t)
 	inputs := d09RecoveryProcessInputs{Profile: denied.profile, Template: denied.template}
 	addCase := func(name string, run *productionBashRun, journal *audit.Journal, refusal string) {
@@ -86,9 +104,7 @@ func TestProductionD09SettlementsRecoverInFreshProcess(t *testing.T) {
 			t.Fatal(err)
 		}
 		inputs.Cases = append(inputs.Cases, d09RecoveryProcessCase{Name: name, Root: run.root,
-			CommandPath: commandPath, Outcome: run.operation.Outcome, Refusal: refusal,
-			CommandPin: productionHistoricalCommandPin{IdentityDigest: identity,
-				Head: auditHeadHash(trace.Records), RecordCount: uint64(len(trace.Records))}})
+			CommandPath: commandPath, Outcome: run.operation.Outcome, Refusal: refusal, CommandIdentity: identity})
 	}
 	addCase("untouched_denied", denied, denied.journals[2], "")
 	addCase("untouched_promoted", promoted, promoted.journals[2], "")
@@ -125,87 +141,81 @@ func TestProductionD09SettlementsRecoverInFreshProcess(t *testing.T) {
 		t.Fatal(err)
 	}
 	addCase("duplicated_settlement", denied, duplicate, "repeats one Store effect")
-	for _, journal := range []*audit.Journal{missing, tampered, duplicate} {
+	promotedShape := derivedJournal(t, trace, func(_ int, event audit.Event) (audit.Event, bool) {
+		if event.Kind == productionD09SettledKind {
+			var payload productionD09DeniedCommandSettledEvent
+			if err := json.Unmarshal(event.Data, &payload); err != nil {
+				t.Fatal(err)
+			}
+			payload.Operation.Outcome = "success"
+			event.Data = mustJSON(productionD09CommandSettledEvent{SchemaVersion: productionD09SettledSchemaSuccess,
+				RunID: payload.RunID, SessionID: payload.SessionID, WorkflowID: payload.WorkflowID,
+				ConversationID: payload.ConversationID, ProfileID: payload.ProfileID, ProfileDigest: payload.ProfileDigest,
+				ProviderCall: payload.ProviderCall, Operation: payload.Operation, Transition: payload.DeniedCandidate,
+				ReceiptDigest: payload.ReceiptDigest, Receipt: payload.Receipt})
+		}
+		return event, true
+	})
+	addCase("promoted_shape_for_denied", denied, promotedShape, "differs from Store evidence")
+	for _, journal := range []*audit.Journal{missing, tampered, duplicate, promotedShape} {
 		if err := journal.Close(); err != nil {
 			t.Fatal(err)
 		}
 	}
 	denied.release()
 	promoted.release()
-	inputPath := filepath.Join(privateGovernedTestRoot(t), "recovery-inputs.json")
-	if err := os.WriteFile(inputPath, mustJSON(inputs), 0o600); err != nil {
-		t.Fatal(err)
+	return inputs
+}
+
+func TestProductionD09SettlementsRecoverInFreshProcess(t *testing.T) {
+	if inputs, child := d09RecoveryChildInputs(t); child {
+		for _, test := range inputs.Cases {
+			t.Run(test.Name, func(t *testing.T) {
+				err := verifyD09PersistedRecovery(t, inputs.Profile, inputs.Template, test)
+				if test.Refusal == "" {
+					if err != nil {
+						t.Fatalf("untouched %s run refused: %v", test.Outcome, err)
+					}
+				} else if err == nil || !strings.Contains(err.Error(), test.Refusal) {
+					t.Fatalf("want settlement refusal containing %q, got %v", test.Refusal, err)
+				}
+			})
+		}
+		return
 	}
-	executable, err := os.Executable()
-	if err != nil {
-		t.Fatal(err)
-	}
-	child := exec.Command(executable, "-test.run=^TestProductionD09SettlementsRecoverInFreshProcess$", "-test.v")
-	child.Env = []string{d09RecoveryProcessInputsEnv + "=" + inputPath, "TMPDIR=" + os.TempDir()}
-	output, err := child.CombinedOutput()
-	if err != nil {
-		t.Fatalf("fresh-process recovery: %v\n%s", err, output)
-	}
-	t.Logf("fresh-process recovery:\n%s", output)
+	runD09RecoveryChild(t, buildD09RecoveryProcessInputs(t), "TestProductionD09SettlementsRecoverInFreshProcess")
+}
+
+// fixtureRetainedRun is the retainedRun of a persisted bash-run fixture case, under the fixture's policies.
+func fixtureRetainedRun(profile piruntime.HostProfile, template piruntime.D09CellTemplate, test d09RecoveryProcessCase) retainedRun {
+	return retainedRun{StoreRootPath: filepath.Join(test.Root, "store"), StoreJournalPath: filepath.Join(test.Root, "store.jsonl"),
+		CommandJournalPath: test.CommandPath,
+		StoreOptions: sessionrepo.Options{PolicyDigest: bashRunStorePolicy, MetadataPolicyDigest: bashRunMetadataPolicy,
+			Limits: workspace.DefaultLimits(), XattrVisibility: workspace.XattrVisibilityAttestation{
+				ProfileDigest: bashRunXattrPolicy, Authority: workspace.XattrAuthorityBoundedNoHiddenTrusted}},
+		Profile: profile, Template: template, WorkflowID: bashRunWorkflowID,
+		Session: productionRecoveryCommandSession{RunID: bashRunRunID, SessionID: bashRunSessionID,
+			ConversationID: bashRunConversationID}}
 }
 
 func verifyD09PersistedRecovery(t *testing.T, profile piruntime.HostProfile, template piruntime.D09CellTemplate,
 	test d09RecoveryProcessCase) error {
 	t.Helper()
-	storeJournal, err := openExistingRecoveryJournal(filepath.Join(test.Root, "store.jsonl"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer storeJournal.Close()
-	root, err := openExistingPrivateRecoveryDirectory(filepath.Join(test.Root, "store"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer root.Close()
-	managed, err := sessionlaunch.OpenRecoveryPreview(root, sessionrepo.Options{Journal: storeJournal,
-		PolicyDigest: bashRunStorePolicy, MetadataPolicyDigest: bashRunMetadataPolicy, Limits: workspace.DefaultLimits(),
-		XattrVisibility: workspace.XattrVisibilityAttestation{ProfileDigest: bashRunXattrPolicy,
-			Authority: workspace.XattrAuthorityBoundedNoHiddenTrusted}})
-	if err != nil {
-		t.Fatalf("persisted Store preview: %v", err)
-	}
-	defer managed.Close()
-	bundle, err := managed.Store().EvidenceBundle()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(bundle.Operations) != 1 || bundle.Operations[0].Outcome != test.Outcome {
-		t.Fatalf("persisted Store operation differs from the parent run: %+v", bundle.Operations)
-	}
-	commandJournal, err := openExistingRecoveryJournal(test.CommandPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer commandJournal.Close()
 	identity, err := recoveryFileIdentityDigest(test.CommandPath, false)
-	if err != nil || identity != test.CommandPin.IdentityDigest {
+	if err != nil || identity != test.CommandIdentity {
 		t.Fatalf("persisted command journal identity changed: %v", err)
 	}
-	history, err := newProductionHistoricalBashHistory([]productionRecoveryCommandJournal{{Journal: commandJournal,
-		Path: test.CommandPath, Pin: test.CommandPin,
-		Sessions: []productionRecoveryCommandSession{{RunID: bashRunRunID, SessionID: bashRunSessionID,
-			ConversationID: bashRunConversationID}}}}, profile, template, bashRunWorkflowID,
-		map[string]struct{}{bashRunConversationID: {}})
+	report, err := verifyRetainedRun(fixtureRetainedRun(profile, template, test))
 	if err != nil {
 		return err
 	}
-	historical, err := newGovernedHistoricalStoreVerifier(storeJournal, bashRunStorePolicy, bashRunMetadataPolicy, history.VerifySettlement)
-	if err != nil {
-		return err
+	want := retainedRunReport{RunID: bashRunRunID, Verified: true, Operations: 1, PromotedBash: 1}
+	if test.Outcome != "success" {
+		want.PromotedBash, want.DeniedBash = 0, 1
 	}
-	if err := historical.VerifyBundle(bundle); err != nil {
-		return err
+	report.StoreAuditRecords, report.StoreAuditHead = 0, ""
+	if report != want {
+		t.Fatalf("persisted Store operation differs from the parent run: %+v, want %+v", report, want)
 	}
-	if err := history.VerifyStoreBundle(bundle); err != nil {
-		return err
-	}
-	if err := historical.VerifyUnchanged(); err != nil {
-		return err
-	}
-	return history.VerifyUnchanged()
+	return nil
 }
