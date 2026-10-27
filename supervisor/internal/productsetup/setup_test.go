@@ -51,7 +51,7 @@ func newFixture(t *testing.T) *fixture {
 			if !ok {
 				return RegistrationSummary{}, errors.New("bad registration")
 			}
-			return RegistrationSummary{ID: "reg-1", Digest: "sha256:abc", Projects: strings.Split(list, ","), Profiles: []string{"opencode-go-engineering"}}, nil
+			return RegistrationSummary{ID: "reg-1", Digest: "sha256:abc", Projects: strings.Split(list, ","), Profiles: []string{"opencode-go-engineering"}, Principals: []int64{1000}}, nil
 		},
 	}
 	return f
