@@ -84,7 +84,7 @@ describe("live readings: what may be sent", () => {
     expect(sendGate(view([turn({ state: "unknown" })]), IDLE).reason).toContain("unknown outcome");
     expect(sendGate(view([], { blocked: true }), IDLE).reason).toContain("blocked");
     expect(sendGate(view([]), { status: "sending" }).allowed).toBe(false);
-    expect(sendGate(view([]), { status: "unknown" }).reason).toContain("Retry it or dismiss it");
+    expect(sendGate(view([]), { status: "unknown" }).reason).toContain("Retry it with the same request key");
     expect(sendGate(view([]), { status: "failed" }).allowed).toBe(true);
   });
 

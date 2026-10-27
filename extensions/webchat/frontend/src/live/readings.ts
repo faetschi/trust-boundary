@@ -78,11 +78,11 @@ export interface ActionBasis {
 }
 
 // Whether a prompt may be sent now. One mutation is in flight at a time, an unknown outcome must be settled first (retried
-// under its own key, or dismissed), and the service allows one open turn per session.
+// under its own key), and the service allows one open turn per session.
 export function sendGate(view: LiveSessionView | null, action: ActionBasis): Gate {
   if (view === null) return closed("The session is loading.");
   if (action.status === "sending") return closed("A request is being sent.");
-  if (action.status === "unknown") return closed("A request has an unknown outcome. Retry it or dismiss it before sending another prompt.");
+  if (action.status === "unknown") return closed("A request has an unknown outcome. Retry it with the same request key before sending another prompt.");
   if (view.blocked === true) return closed("This session is blocked. An earlier turn has an unknown outcome, and an operator must reconcile it.");
   const open = openTurnOf(view);
   if (open === null) return OPEN;

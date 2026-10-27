@@ -39,8 +39,7 @@ export interface LiveBrowser {
   readonly sleep: (ms: number) => Promise<void>;
 }
 
-// The browser facilities of live mode. The cursor and the open session are kept per tab (sessionStorage), so a reload
-// resumes them and another tab does not share them. A browser that refuses storage loses only that convenience.
+// The cursor, open session and unresolved requests live in sessionStorage, scoped to this tab.
 export function browserLiveDeps(win: Window & typeof globalThis = window): LiveBrowser {
   return {
     fetch: (url, init) => win.fetch(url, { ...init, signal: init.signal as AbortSignal | undefined }),
@@ -59,7 +58,7 @@ export function browserLiveDeps(win: Window & typeof globalThis = window): LiveB
         try {
           win.sessionStorage.setItem(key, value);
         } catch {
-          // storage is unavailable: the stored cursor is a convenience, never state the page depends on
+          // The controller reads back the recovery record and refuses to send if it was not saved.
         }
       },
     },
