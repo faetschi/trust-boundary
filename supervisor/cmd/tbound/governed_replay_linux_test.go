@@ -367,16 +367,17 @@ func (acceptingProviderReplayVerifier) VerifyAdmissionDenial(providerbridge.Prov
 	return nil
 }
 
-func TestReplayGovernedTranscriptRejectsSelfConsistentForgedProviderOutput(t *testing.T) {
-	fixture := newGovernedReplayFixture(t, []providerbridge.DevelopmentProviderTurn{
-		{ResponseID: "replay-response-tamper", CallID: "replay-call-tamper", Tool: "read", Arguments: json.RawMessage(`{"path":"task.txt"}`)},
-	}, true)
-	executeGovernedReplayTurn(t, fixture, true)
+// forgeFinalProviderReadOutput rebuilds the provider journal with the last provider_tool_result's read
+// summary rewritten by forge and every digest above it re-derived, so the forgery is internally valid
+// provider evidence that only the Store cross-link can refute.
+func forgeFinalProviderReadOutput(t *testing.T, fixture *governedReplayFixture, journalName string,
+	forge func(*durableReadSummaryPayload)) *audit.Journal {
+	t.Helper()
 	original, err := fixture.providerJournal.Trace()
 	if err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(privateGovernedTestRoot(t), "self-consistent-tamper.audit")
+	path := filepath.Join(privateGovernedTestRoot(t), journalName)
 	tamperedJournal, err := audit.Open(path)
 	if err != nil {
 		t.Fatal(err)
@@ -398,7 +399,7 @@ func TestReplayGovernedTranscriptRejectsSelfConsistentForgedProviderOutput(t *te
 			if err := decodeGovernedResult(result.Output, &summary); err != nil {
 				t.Fatal(err)
 			}
-			summary.Content = "forged-but-well-formed\n"
+			forge(&summary)
 			summary.Size = len(summary.Content)
 			summary.ContentDigest = durableContentDigest([]byte(summary.Content))
 			result.Output, err = json.Marshal(summary)
@@ -423,6 +424,17 @@ func TestReplayGovernedTranscriptRejectsSelfConsistentForgedProviderOutput(t *te
 	if !tamperedResult {
 		t.Fatal("fixture did not end at a provider_tool_result to tamper")
 	}
+	return tamperedJournal
+}
+
+func TestReplayGovernedTranscriptRejectsSelfConsistentForgedProviderOutput(t *testing.T) {
+	fixture := newGovernedReplayFixture(t, []providerbridge.DevelopmentProviderTurn{
+		{ResponseID: "replay-response-tamper", CallID: "replay-call-tamper", Tool: "read", Arguments: json.RawMessage(`{"path":"task.txt"}`)},
+	}, true)
+	executeGovernedReplayTurn(t, fixture, true)
+	tamperedJournal := forgeFinalProviderReadOutput(t, fixture, "self-consistent-tamper.audit", func(summary *durableReadSummaryPayload) {
+		summary.Content = "forged-but-well-formed\n"
+	})
 	if _, err := providerbridge.ReplayTranscript(tamperedJournal, fixture.pins.Provider, acceptingProviderReplayVerifier{}); err != nil {
 		t.Fatalf("tampered output is not internally self-consistent provider evidence: %v", err)
 	}

@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"hash"
 	"io"
+	"math"
 	"reflect"
 	"strconv"
 	"strings"
@@ -189,8 +190,10 @@ func (e *DurableExecutor) Execute(ctx context.Context, proposal protocol.Proposa
 	case "read":
 		// A read is not a mutation: it resolves the path against the current
 		// sealed tip, journals the correlated intent before releasing bytes,
-		// and returns a bounded summary without advancing the tip.
-		path, err := durableReadArguments(proposal.Arguments)
+		// and returns a bounded summary without advancing the tip. The Store
+		// reads and commits the whole file; the requested line window is
+		// applied only to the released bytes.
+		path, window, err := durableReadArguments(proposal.Arguments)
 		if err != nil {
 			return nil, err
 		}
@@ -203,7 +206,7 @@ func (e *DurableExecutor) Execute(ctx context.Context, proposal protocol.Proposa
 				return nil, fmt.Errorf("settle durable read against workflow owner before result release: %w", err)
 			}
 		}
-		return durableReadSummary(path, e.tip, content)
+		return durableReadSummary(path, window, durableGenerationSummary{ID: e.tip.ID(), TreeDigest: e.tip.TreeDigest()}, content)
 	case "write":
 		path, content, err := durableWriteArguments(proposal.Arguments)
 		if err != nil {
@@ -645,17 +648,19 @@ type durableReadSummaryPayload struct {
 }
 
 // durableReadSummary encodes a completed read and fails closed when the encoded
-// strict-JSON result would exceed the protocol's frame bound.
-func durableReadSummary(path string, generation *sessionrepo.Generation, content []byte) (json.RawMessage, error) {
-	if generation == nil {
-		return nil, errors.New("durable read returned no generation")
-	}
+// strict-JSON result would exceed the protocol's frame bound. It is the one
+// place that applies the requested line window: content is the whole file the
+// Store returned, and Size, ContentDigest and Content describe only the
+// released window. The executor and the replay verifier both call it, so a
+// replay reconstructs exactly the bytes the executor released.
+func durableReadSummary(path string, window durableReadWindow, generation durableGenerationSummary, content []byte) (json.RawMessage, error) {
+	released := window.apply(content)
 	payload := durableReadSummaryPayload{
 		Tool: "read", Path: path,
-		Generation:    durableGenerationSummary{ID: generation.ID(), TreeDigest: generation.TreeDigest()},
-		Size:          len(content),
-		ContentDigest: durableContentDigest(content),
-		Content:       string(content),
+		Generation:    generation,
+		Size:          len(released),
+		ContentDigest: durableContentDigest(released),
+		Content:       string(released),
 		Outcome:       "success",
 	}
 	encoded, err := json.Marshal(payload)
@@ -669,36 +674,87 @@ func durableReadSummary(path string, generation *sessionrepo.Generation, content
 }
 
 // durableReadArgumentsPayload mirrors the adapter's read tool schema: a
-// required path and optional numeric offset/limit. The offset/limit fields are
-// parsed so the trusted decoder rejects a malformed value, but the durable read
-// path reads the whole bounded file and fails closed on a paginated request
-// rather than inventing line semantics the session repository does not own.
+// required path and optional numeric offset/limit. The Store always reads the
+// whole bounded file; offset/limit only select the lines released to the model
+// (see durableReadWindow).
 type durableReadArgumentsPayload struct {
 	Path   string   `json:"path"`
 	Offset *float64 `json:"offset,omitempty"`
 	Limit  *float64 `json:"limit,omitempty"`
 }
 
+// durableReadWindow is the line window of a read: offset is the 1-indexed
+// first line and limit the maximum number of lines. Zero means absent, which is
+// unambiguous because a request carrying 0 is refused before a window exists.
+type durableReadWindow struct{ offset, limit int }
+
+// durableReadLineCount validates one offset/limit: absent (0) or a positive
+// integer. Stock Pi also tolerates 0, negative and fractional values; the
+// durable path refuses them as malformed arguments rather than guess what the
+// model meant.
+func durableReadLineCount(name string, value *float64) (int, error) {
+	if value == nil {
+		return 0, nil
+	}
+	if *value < 1 || *value != math.Trunc(*value) {
+		return 0, fmt.Errorf("read %s must be a positive integer", name)
+	}
+	// A file is bounded by durableReadMaxBytes, so any larger count reads to its end.
+	return int(min(*value, math.MaxInt32)), nil
+}
+
+// apply returns the released bytes of content under the window. It mirrors
+// stock Pi's read tool (pi-coding-agent 0.87.1, dist/core/tools/read.js): the
+// file is split on LF only, so a trailing newline yields a final empty line and
+// CRLF keeps its CR; the window is lines[offset-1 : offset-1+limit] joined with
+// LF, so it carries a trailing newline only when it reaches the final empty
+// line. Unlike Pi, an offset past the last line is an empty success rather than
+// an error, so a model that overshoots does not lose its trial. Pi's own 2000
+// line / 50KB truncation and its continuation notices (including the one Pi adds
+// to an ordinary limited read) are not applied: the file is already bounded and
+// the released bytes stay pure file content. Configurations B and C both read
+// through this path, so these differences from stock Pi are the same in both.
+func (window durableReadWindow) apply(content []byte) []byte {
+	if window == (durableReadWindow{}) {
+		return content
+	}
+	lines := bytes.Split(content, []byte("\n"))
+	start := max(window.offset-1, 0)
+	if start >= len(lines) {
+		return []byte{}
+	}
+	end := len(lines)
+	if window.limit > 0 {
+		end = min(start+window.limit, end)
+	}
+	return bytes.Join(lines[start:end], []byte("\n"))
+}
+
 // durableReadArguments strictly decodes the adapter read arguments. Unknown
 // fields and trailing JSON are rejected so the trusted supervisor never reads a
 // path that differs from what the adapter signed.
-func durableReadArguments(raw json.RawMessage) (string, error) {
+func durableReadArguments(raw json.RawMessage) (string, durableReadWindow, error) {
 	var arguments durableReadArgumentsPayload
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&arguments); err != nil {
-		return "", fmt.Errorf("read arguments: %w", err)
+		return "", durableReadWindow{}, fmt.Errorf("read arguments: %w", err)
 	}
 	if err := durableNoTrailingJSON(decoder); err != nil {
-		return "", fmt.Errorf("read arguments: %w", err)
+		return "", durableReadWindow{}, fmt.Errorf("read arguments: %w", err)
 	}
 	if arguments.Path == "" {
-		return "", errors.New("read arguments require a path")
+		return "", durableReadWindow{}, errors.New("read arguments require a path")
 	}
-	if arguments.Offset != nil || arguments.Limit != nil {
-		return "", errors.New("read offset/limit are not supported by the durable read path")
+	offset, err := durableReadLineCount("offset", arguments.Offset)
+	if err != nil {
+		return "", durableReadWindow{}, fmt.Errorf("read arguments: %w", err)
 	}
-	return arguments.Path, nil
+	limit, err := durableReadLineCount("limit", arguments.Limit)
+	if err != nil {
+		return "", durableReadWindow{}, fmt.Errorf("read arguments: %w", err)
+	}
+	return arguments.Path, durableReadWindow{offset: offset, limit: limit}, nil
 }
 
 // durableContentDigest is the bare sha256 commitment the session repository

@@ -594,8 +594,8 @@ func TestDurableE05CancellationStopsSession(t *testing.T) {
 
 // TestDurableReadRejectsInvalidRequests proves the durable read path fails
 // closed on a non-ALLOW verdict, empty/absolute/escaping/unknown paths,
-// unsupported pagination, malformed arguments, and content that cannot fit the
-// protocol bound.
+// offset/limit that are not positive integers, malformed arguments, and
+// content that cannot fit the protocol bound.
 func TestDurableReadRejectsInvalidRequests(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("durable read path runs only on Linux")
@@ -622,8 +622,13 @@ func TestDurableReadRejectsInvalidRequests(t *testing.T) {
 		{"absolute path", `{"path":"/etc/passwd"}`},
 		{"escaping path", `{"path":"../secret"}`},
 		{"nested traversal", `{"path":"build/../task.txt"}`},
-		{"offset unsupported", `{"path":"task.txt","offset":1}`},
-		{"limit unsupported", `{"path":"task.txt","limit":2}`},
+		{"offset zero", `{"path":"task.txt","offset":0}`},
+		{"offset negative", `{"path":"task.txt","offset":-1}`},
+		{"offset fractional", `{"path":"task.txt","offset":1.5}`},
+		{"offset not a number", `{"path":"task.txt","offset":"2"}`},
+		{"limit zero", `{"path":"task.txt","limit":0}`},
+		{"limit negative", `{"path":"task.txt","limit":-3}`},
+		{"limit fractional", `{"path":"task.txt","limit":0.5}`},
 		{"unknown field", `{"path":"task.txt","extra":1}`},
 		{"trailing json", `{"path":"task.txt"}{"path":"x"}`},
 		{"missing path", `{}`},
@@ -698,6 +703,83 @@ func TestDurableReadRejectsInvalidRequests(t *testing.T) {
 			t.Fatalf("over-protocol-bound read disturbed the store: chain=%+v err=%v", chain, err)
 		}
 	})
+}
+
+// TestDurableReadHonoursLineWindow proves the optional offset/limit that the
+// read schema advertises select a 1-indexed line window of the released bytes
+// with stock Pi's split-on-LF semantics, while the Store still reads and
+// commits the whole file: size and digest describe the released window, the
+// Store's own result digest describes the file.
+func TestDurableReadHonoursLineWindow(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("durable read path runs only on Linux")
+	}
+	const lines = "one\ntwo\nthree\n"
+	cases := []struct {
+		name, content, args, want string
+	}{
+		{"no window", lines, `{"path":"task.txt"}`, lines},
+		{"offset only", lines, `{"path":"task.txt","offset":2}`, "two\nthree\n"},
+		{"limit only", lines, `{"path":"task.txt","limit":2}`, "one\ntwo"},
+		{"offset and limit", lines, `{"path":"task.txt","offset":2,"limit":1}`, "two"},
+		{"limit past the end", lines, `{"path":"task.txt","offset":3,"limit":50}`, "three\n"},
+		{"trailing empty line is line four", lines, `{"path":"task.txt","offset":4}`, ""},
+		{"offset beyond end of file is empty", lines, `{"path":"task.txt","offset":99}`, ""},
+		{"offset far beyond any file is empty", lines, `{"path":"task.txt","offset":9007199254740992,"limit":9007199254740992}`, ""},
+		{"integral float form", lines, `{"path":"task.txt","offset":2.0,"limit":1e0}`, "two"},
+		{"null means absent to the executor decoder (the protocol argument validator refuses null first)", lines, `{"path":"task.txt","offset":null,"limit":null}`, lines},
+		{"no trailing newline last line", "one\ntwo", `{"path":"task.txt","offset":2}`, "two"},
+		{"no trailing newline whole file", "one\ntwo", `{"path":"task.txt","offset":1,"limit":2}`, "one\ntwo"},
+		{"CRLF keeps the carriage return", "a\r\nb\r\nc", `{"path":"task.txt","limit":1}`, "a\r"},
+		{"CRLF window to end", "a\r\nb\r\nc\r\n", `{"path":"task.txt","offset":2}`, "b\r\nc\r\n"},
+		{"multibyte lines", "café\nüber\n", `{"path":"task.txt","offset":2,"limit":1}`, "über"},
+		{"empty file", "", `{"path":"task.txt","offset":1}`, ""},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			store, _, _, g0 := e05Store(t, testCase.content)
+			executor, err := NewDurableExecutor(DurableExecutorConfig{
+				Store: store, Tip: g0, CallIssuer: durableCallIssuer,
+				PolicyDigest: durablePolicyDigest, MetadataPolicyDigest: durableMetadataDigest,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			decision := e05ReadDecision("call-e05-window", "response-e05-window", 1)
+			output, err := executor.Execute(context.Background(), e05Proposal("call-e05-window", "read", json.RawMessage(testCase.args)), decision)
+			if err != nil {
+				t.Fatalf("windowed read %s was refused: %v", testCase.args, err)
+			}
+			if err := protocol.ValidateStrictJSON(output); err != nil {
+				t.Fatalf("windowed read output is not strict JSON: %v", err)
+			}
+			var summary durableReadSummaryPayload
+			if err := json.Unmarshal(output, &summary); err != nil {
+				t.Fatalf("decode windowed read summary %q: %v", output, err)
+			}
+			if summary.Tool != "read" || summary.Path != e05TaskPath || summary.Outcome != "success" ||
+				summary.Generation.ID != "g0" || summary.Generation.TreeDigest != g0.TreeDigest() {
+				t.Fatalf("windowed read summary lost its path or generation evidence: %+v", summary)
+			}
+			if summary.Content != testCase.want || summary.Size != len(testCase.want) ||
+				summary.ContentDigest != durableContentDigest([]byte(testCase.want)) {
+				t.Fatalf("windowed read %s released content=%q size=%d digest=%s; want content=%q",
+					testCase.args, summary.Content, summary.Size, summary.ContentDigest, testCase.want)
+			}
+			if tip := executor.Tip(); tip == nil || tip.ID() != "g0" || tip.TreeDigest() != g0.TreeDigest() {
+				t.Fatalf("windowed read advanced the generation: %+v", tip)
+			}
+			chain, err := store.Verify()
+			if err != nil || chain.TransitionCount != 0 || chain.SealedGeneration != "g0" {
+				t.Fatalf("windowed read disturbed the store: chain=%+v err=%v", chain, err)
+			}
+			bundle, err := store.EvidenceBundle()
+			if err != nil || len(bundle.Operations) != 1 ||
+				bundle.Operations[0].ResultDigest != durableContentDigest([]byte(testCase.content)) {
+				t.Fatalf("Store read evidence does not commit to the whole file: operations=%+v err=%v", bundle.Operations, err)
+			}
+		})
+	}
 }
 
 // e05RecordingExecutor wraps a real executor and counts invocations so a test
