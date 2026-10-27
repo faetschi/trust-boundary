@@ -33,7 +33,9 @@
 # prefix (or its nearest existing ancestor) and every directory above it are root-owned and not writable
 # by group or others, and it refuses a symlinked or group/other-writable marker or pin. Uninstall applies the
 # same checks, and again immediately before it removes the prefix. Every run creates the marker itself and
-# discards any archive-supplied one. A root run never installs or removes the per-user shell completions
+# discards any archive-supplied one. A root run extracts under umask 077 with tar --no-same-owner
+# --no-same-permissions, so no owner or mode in the archive reaches the prefix, and it creates the marker
+# and the pin with their final mode. A root run never installs or removes the per-user shell completions
 # or writes the per-user config, because HOME and XDG directories are user-controlled: it prints what the
 # user runs unprivileged instead.
 set -euo pipefail
@@ -268,17 +270,22 @@ install_at() {
   # Stage next to the prefix so the final swap is a same-filesystem rename.
   local stage; stage="$(mktemp -d "$parent/.tbound-stage.XXXXXX")" || die "cannot stage next to $parent"
   STAGE_INSTALL="$stage"
-  if ! tar -xzf "$artifact" -C "$stage"; then die "extraction failed"; fi
+  if [ "$(id -u)" = 0 ]; then
+    # A root run takes nothing from the archive's headers. The stage is a private directory root just created,
+    # and an owner or mode on the archive's "." entry would hand it to whoever the archive names.
+    (umask 077; tar --no-same-owner --no-same-permissions -xzf "$artifact" -C "$stage") || die "extraction failed"
+  elif ! tar -xzf "$artifact" -C "$stage"; then die "extraction failed"; fi
   if [ ! -x "$stage/bin/tbound" ]; then die "extracted archive has no bin/tbound"; fi
   if [ ! -x "$stage/bin/tbound-doctor" ]; then die "extracted archive has no bin/tbound-doctor"; fi
   if [ ! -x "$stage/bin/tbound-profile" ]; then die "extracted archive has no bin/tbound-profile"; fi
   # The marker is never the archive's: an archive may carry a link under this name, and a root run must not write through it.
   rm -rf -- "$stage/$MARKER"
-  (set -o noclobber; printf 'name=tbound\nversion=%s\nprefix=%s\n' "$(json_escape "$version")" "$(json_escape "$prefix")" > "$stage/$MARKER") || die "cannot create the install marker"
-  chmod 0644 "$stage/$MARKER" # a root run refuses a marker that group or others can write, whatever the umask
+  # Created with its final mode, whatever the umask: a root run refuses a marker that group or others can write,
+  # and a chmod by pathname afterwards would follow a link swapped in after the creation.
+  (umask 022; set -o noclobber; printf 'name=tbound\nversion=%s\nprefix=%s\n' "$(json_escape "$version")" "$(json_escape "$prefix")" > "$stage/$MARKER") || die "cannot create the install marker"
   rm -rf -- "$stage/$PUBLISHER_KEY" # the pin comes only from the verified key below, never from the archive
   if [ -n "$pin_key" ]; then
-    cp -- "$pin_key" "$stage/$PUBLISHER_KEY" && chmod 0644 "$stage/$PUBLISHER_KEY" || die "cannot pin the publisher key"
+    (umask 022; set -o noclobber; cat -- "$pin_key" > "$stage/$PUBLISHER_KEY") || die "cannot pin the publisher key"
   fi
 
   # Move any existing install into an exclusively created hold directory so a
