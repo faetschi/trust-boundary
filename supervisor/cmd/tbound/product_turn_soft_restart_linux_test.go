@@ -53,14 +53,18 @@ func TestProductTurnSoftRefusalRestartNeverResumes(t *testing.T) {
 }
 
 func TestProductTurnSoftRefusalRestartRejectsRechainedEvidence(t *testing.T) {
-	testProductTurnSoftRefusalRechainedEvidence(t, false)
+	testProductTurnSoftRefusalRechainedEvidence(t, "code")
 }
 
 func TestProductTurnSoftRefusalRestartRejectsChangedEnvelope(t *testing.T) {
-	testProductTurnSoftRefusalRechainedEvidence(t, true)
+	testProductTurnSoftRefusalRechainedEvidence(t, "envelope")
 }
 
-func testProductTurnSoftRefusalRechainedEvidence(t *testing.T, tamperEnvelope bool) {
+func TestProductTurnSoftRefusalRestartRejectsChangedKind(t *testing.T) {
+	testProductTurnSoftRefusalRechainedEvidence(t, "kind")
+}
+
+func testProductTurnSoftRefusalRechainedEvidence(t *testing.T, mutation string) {
 	f, id := crashProductSoftRefusal(t, "after-soft-refusal-retirement")
 	turn := f.turn(t, id)
 	paths, err := productTurnPathsFromLink(*turn.Link)
@@ -85,7 +89,7 @@ func testProductTurnSoftRefusalRechainedEvidence(t *testing.T, tamperEnvelope bo
 	defer rewritten.Close()
 	changed := false
 	for _, record := range trace.Records {
-		if tamperEnvelope && record.Event.Kind == "provider_exchange" {
+		if mutation == "envelope" && record.Event.Kind == "provider_exchange" {
 			var exchange providerExchangeEvidence
 			if err := json.Unmarshal(record.Event.Data, &exchange); err != nil {
 				t.Fatal(err)
@@ -102,8 +106,11 @@ func testProductTurnSoftRefusalRechainedEvidence(t *testing.T, tamperEnvelope bo
 			if err := json.Unmarshal(record.Event.Data, &e); err != nil {
 				t.Fatal(err)
 			}
-			if !tamperEnvelope {
+			if mutation == "code" {
 				e.Code = "edit_old_text_absent"
+			}
+			if mutation == "kind" {
+				record.Event.Kind = "provider_changed_kind"
 			}
 			e.Result = providerbridge.SoftRefusalText(e.Code, e.Hint)
 			record.Event.Data, err = json.Marshal(e)
