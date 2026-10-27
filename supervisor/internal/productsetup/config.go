@@ -22,6 +22,13 @@ const (
 	// and a test there decodes what Setup writes.
 	ServiceConfigSchema = "tbound-product-service-config/v1"
 
+	// InstallationFormat is the format of the installed unit and setup record that this binary writes and
+	// reads: 2 added [Install] to the unit and client_uid to the self-test. A record without the field is
+	// the format of c6fbd5f. Nothing converts one format into the other: `tbound product setup --replace`
+	// with a binary of the wanted format is the only way across, and update and rollback refuse to cross.
+	InstallationFormat       = 2
+	LegacyInstallationFormat = 1
+
 	maxConfigBytes   = 64 << 10
 	maxSourceBytes   = 1 << 20
 	maxBinaryBytes   = 512 << 20
@@ -55,6 +62,8 @@ type SelfTest struct {
 // Config is tbound-product-setup-config/v1, written by the administrator.
 type Config struct {
 	SchemaVersion string `json:"schema_version"`
+	// InstallationFormat is written by setup into the installed record. The administrator never sets it.
+	InstallationFormat int `json:"installation_format,omitempty"`
 	// Source files of the signed registration, read from any path and installed root-owned.
 	Registration          string `json:"registration,omitempty"`
 	RegistrationSignature string `json:"registration_signature,omitempty"`
@@ -120,6 +129,9 @@ func decodeConfig(raw []byte) (Config, error) {
 func (c Config) validate() error {
 	if c.SchemaVersion != ConfigSchema {
 		return refuse("schema_version must be %q", ConfigSchema)
+	}
+	if c.InstallationFormat != 0 {
+		return refuse("installation_format is written by setup; remove it from the config")
 	}
 	if c.WorkerMode == "" {
 		return refuse("worker_mode is required")
@@ -298,6 +310,7 @@ func (c Config) serviceConfigJSON() ([]byte, error) {
 // installedJSON is the configuration without its source paths: the record doctor and update read.
 func (c Config) installedJSON() ([]byte, error) {
 	c.Registration, c.RegistrationSignature, c.RegistrationPublicKey = "", "", ""
+	c.InstallationFormat = InstallationFormat
 	return indented(c)
 }
 

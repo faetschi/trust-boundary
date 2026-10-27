@@ -81,6 +81,10 @@ type Env struct {
 	// SelfTestHook runs the installed binary's self-test after a swap. Nil records it and treats it as
 	// not run. ErrSelfTestNotConfigured is not a failure.
 	SelfTestHook func() error
+	// BinaryFormat returns the installation format a candidate binary (given by the path of its open file)
+	// writes and reads. Update and rollback compare it with the installation's before they change anything.
+	// Nil skips the check, which a test root needs because its binaries cannot run.
+	BinaryFormat func(path string) (int, error)
 	// RunSelfTest runs the synthetic turn for Doctor. Nil reports the self-test as unavailable.
 	RunSelfTest func(SelfTest) (string, error)
 	// CredentialStatus summarizes a provider profile's credential without its key. Nil skips it.

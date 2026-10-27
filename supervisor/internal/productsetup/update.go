@@ -2,6 +2,7 @@ package productsetup
 
 import (
 	"bytes"
+	"cmp"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -99,9 +100,6 @@ func Update(env Env, newBinary string) (Report, error) {
 		return *h.rep, err
 	}
 	defer h.dir.Close()
-	if err := h.checkInstalledSelfTestClient(); err != nil {
-		return *h.rep, err
-	}
 	source, err := openSource(newBinary)
 	if err != nil {
 		return *h.rep, err
@@ -113,6 +111,12 @@ func Update(env Env, newBinary string) (Report, error) {
 	}
 	if info.Size() == 0 || info.Size() > maxBinaryBytes {
 		return *h.rep, refuse("%s is empty or too large to be the tbound binary", newBinary)
+	}
+	if err := h.checkBinaryFormat(source, newBinary); err != nil {
+		return *h.rep, err
+	}
+	if err := h.checkInstalledSelfTestClient(); err != nil {
+		return *h.rep, err
 	}
 	return h.replaceBinary(source)
 }
@@ -241,10 +245,45 @@ func Rollback(env Env) (Report, error) {
 		return *h.rep, err
 	}
 	defer h.dir.Close()
+	if fallback, err := h.managedSource(LastKnownGoodPath, ownRoot, 0o755); err == nil { // a missing one is refused by rollback
+		err = h.checkBinaryFormat(fallback, LastKnownGoodPath)
+		fallback.Close()
+		if err != nil {
+			return *h.rep, err
+		}
+	}
 	if err := h.checkInstalledSelfTestClient(); err != nil {
 		return *h.rep, err
 	}
 	return h.rollback()
+}
+
+// checkBinaryFormat refuses, before anything changes, a candidate binary of another installation format than
+// the installed unit and setup record. A binary reads only its own format (a new doctor rejects the old
+// unit, an old binary rejects the new [Install] section and client_uid), so crossing would fail its
+// self-test and restore, and nothing converts one format into the other.
+func (h *host) checkBinaryFormat(candidate *os.File, what string) error {
+	if h.env.BinaryFormat == nil {
+		return nil
+	}
+	const way = "run `tbound product setup --replace` with a tbound binary of format %d, which rewrites the unit and the setup record"
+	data, err := readSource(h.real(SetupConfigPath))
+	if err != nil {
+		return refuse("the installed setup record is unreadable, so the installation format cannot be checked: %v", err)
+	}
+	record, err := parseInstalled(data)
+	if err != nil {
+		return refuse("the installed setup record cannot be read by this binary, so the installation format cannot be checked (%v); "+way, err, InstallationFormat)
+	}
+	installed := cmp.Or(record.InstallationFormat, LegacyInstallationFormat)
+	got, err := h.env.BinaryFormat(fmt.Sprintf("/proc/self/fd/%d", candidate.Fd()))
+	if err != nil {
+		return refuse("cannot tell the installation format of %s: %v", what, err)
+	}
+	if got != installed {
+		return refuse("%s is installation format %d but this installation is format %d; nothing was changed. The formats do not convert: "+way, what, got, installed, got)
+	}
+	return nil
 }
 
 // rollback exchanges the installed binary and the last-known-good binary with one RENAME_EXCHANGE, so
