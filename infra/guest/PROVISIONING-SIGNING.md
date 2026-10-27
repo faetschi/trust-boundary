@@ -921,6 +921,20 @@ systemctl start tbound-pi.socket
 
 It appends one `pi_service_request_abandoned` v3 record (reconciliation evidence bound, `ProviderSettlement` `terminal` or `bounded-retained-liability`), prints one JSON line, and lifts only the one-prior-at-a-time block; it never retries, replays or claims remote quiescence. If the reconciliation cannot prove the workflow settled it writes nothing and the request stays quarantined. Rollback: none (append-only).
 
+### Evidence check: `tbound-op verify-retained RUNID` [READ-ONLY, service stopped]
+
+Shows that a completed run's retained Store and D09 command journal still account for every Bash command the Store ran, promoted or denied after the effect (the "recovery verifies" claim), in a fresh process.
+
+```
+tbound-op svc stop
+tbound-op verify-retained production-run-<token>        # RUNID from the run's receipt or the catalog; one JSON line, also in /var/tmp/tbound-op/_/verify-retained-<RUNID>.json
+tbound-op svc start
+```
+
+It verifies each settlement by re-deriving it from the retained command journal under the installed host profile and cell template, and by checking it against the Store's own audit journal and delta ledger, as recovery does before a clean restart. The JSON line gives `run_id`, `verified`, `operations`, `promoted_bash`, `denied_bash`, `store_audit_records` and `store_audit_head`; any refusal prints its cause on stderr, exits non-zero and exports nothing.
+
+It appends, repairs and deletes nothing, starts no cell and contacts no provider. The audit journals have no read-only open, so it holds the same exclusive lock as the service and is refused while the service runs. It does not replay the provider transcript, does not check the owner checkpoint or publication, and does not settle the request in the catalog. It checks the first session of the workflow only (the catalog entry's run id), so a workflow resumed after a clean restart, whose command journal also holds later `-session-gN` events, is refused. The profile and template are the installed ones, so run it before the next re-registration cycle replaces them (RG-7 keeps the previous ones, but this verb does not read them).
+
 ## RG: re-registration cycle of a run with a config of its own (after Z1)
 
 The G1 run, the route-probe run, the direct-runtime probe run and the pilot each need their own service config (another admission id, prompt or mode). The registration pins the config digest, the template pins the registration, the profile pins the template, so each of them is one pass of this cycle: **two owner signatures (the registration, then the host profile), five privileged installs at `ROOTCON`, one config**. Part D's D3 to D7 are the cycle for `NAME=pilot`. Everything below is after Z1: no `sudo`, the service is stopped (`systemctl stop tbound-pi.service tbound-pi.socket`), files reach the guest by `GSSH` into a staging directory of `tboundadmin` and are installed from `ROOTCON` with `install -o root -g root`, and the sha256 is compared on both sides (BL-6). The unknown request of the smoke (N7) is settled first (operator recovery above); an unsettled one blocks every later request.

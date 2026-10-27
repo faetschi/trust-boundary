@@ -465,5 +465,76 @@ install() {
         self.assertFalse(installed.exists())
 
 
+class VerifyRetainedTests(unittest.TestCase):
+    """verify-retained runs the offline verifier once, only with the service stopped, and exports its one JSON line."""
+
+    runid = "production-run-0123456789ab"
+    report = '{"run_id":"production-run-0123456789ab","verified":true,"operations":1,"promoted_bash":0,"denied_bash":1}'
+
+    def run_verb(self, *args, active=False, session_audit=True, tb_exit=0):
+        tmp = tempfile.TemporaryDirectory(prefix="tbound-op-verify-retained-")
+        self.addCleanup(tmp.cleanup)
+        base = Path(tmp.name)
+        for name in ("audit", "work", "out"):
+            (base / name).mkdir()
+        if session_audit:
+            (base / "audit" / (self.runid + "-session-audit.jsonl")).touch()
+        fake = ["#!/bin/bash", 'printf "%s\\n" "$*" >>"$(dirname "$0")/tb-calls"']
+        fake += ["echo 'refused: the settlement is missing' >&2", "exit %d" % tb_exit] if tb_exit else ["echo '%s'" % self.report]
+        (base / "tb").write_text("\n".join(fake) + "\n")
+        (base / "tb").chmod(0o700)
+        lines = source.splitlines()
+        grammar = [next(l for l in lines if l.startswith(prefix)) for prefix in ("re_runid=", "need_argc() {", "need_inactive() {")]
+        verb = source[source.index("v_verify_retained() {"):source.index("GE_OUT=$GA/out")]
+        script = """set -euo pipefail
+BASE=$1; shift
+VERB=verify-retained
+WORK=$BASE/work; AUDIT=$BASE/audit; OUTROOT=$BASE/out; TB=$BASE/tb
+ARGS=("$@")
+die() { echo "$*" >&2; exit 1; }
+usage() { echo "$*" >&2; exit 2; }
+say() { echo "$*"; }
+check_tools() { :; }
+mkwork() { :; }
+put_out() { mkdir -p "$OUTROOT/$1"; cp -- "$2" "$OUTROOT/$1/$3"; }
+svc_inactive() { return $ACTIVE; }
+ACTIVE=%d
+""" % (1 if active else 0) + "\n".join(grammar) + "\n" + verb + "\nv_verify_retained\n"
+        got = subprocess.run(["bash", "-c", script, "verify-test", str(base), *args], capture_output=True, text=True)
+        calls = (base / "tb-calls").read_text().splitlines() if (base / "tb-calls").exists() else []
+        exported = base / "out" / "_" / ("verify-retained-" + self.runid + ".json")
+        return got, calls, exported
+
+    def test_verified_run_is_exported_and_printed(self):
+        got, calls, exported = self.run_verb(self.runid)
+        self.assertEqual(got.returncode, 0, got.stdout + got.stderr)
+        self.assertEqual(calls, ["verify-retained --run-id " + self.runid])
+        self.assertEqual(exported.read_text(), self.report + "\n")
+        self.assertIn(self.report, got.stdout)
+        self.assertIn("verify-retained " + self.runid + " ok", got.stdout)
+
+    def test_refused_before_the_verifier_runs(self):
+        for name, args, kwargs, code, message in (
+                ("bad RUNID", ("short",), {}, 2, "bad RUNID"),
+                ("no RUNID", (), {}, 2, "wrong number"),
+                ("extra argument", (self.runid, "extra"), {}, 2, "wrong number"),
+                ("active service", (self.runid,), {"active": True}, 1, "must be inactive"),
+                ("no such run", (self.runid,), {"session_audit": False}, 1, "session-audit.jsonl")):
+            with self.subTest(name):
+                got, calls, exported = self.run_verb(*args, **kwargs)
+                self.assertEqual(got.returncode, code, got.stdout + got.stderr)
+                self.assertIn(message, got.stderr)
+                self.assertEqual(calls, [])
+                self.assertFalse(exported.exists())
+
+    def test_a_refusal_of_the_verifier_exports_nothing(self):
+        got, calls, exported = self.run_verb(self.runid, tb_exit=2)
+        self.assertEqual(got.returncode, 1, got.stdout + got.stderr)
+        self.assertIn("refused", got.stderr)
+        self.assertNotIn("verified", got.stdout)
+        self.assertEqual(calls, ["verify-retained --run-id " + self.runid])
+        self.assertFalse(exported.exists())
+
+
 unittest.main(verbosity=2)
 PY

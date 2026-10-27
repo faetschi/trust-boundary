@@ -888,6 +888,18 @@ v_abandon() {
   say "abandon $rid ok; socket started (service starts on demand; use svc start for a run)"
 }
 
+v_verify_retained() {   # RUNID : offline, read-only re-verification of a completed run's retained Store and D09 command settlements
+  local runid=${ARGS[0]:-}
+  need_argc 1 1
+  [[ $runid =~ $re_runid ]] || usage "bad RUNID"
+  need_inactive; check_tools; mkwork
+  [[ -f $AUDIT/$runid-session-audit.jsonl ]] || die "no $AUDIT/$runid-session-audit.jsonl"
+  "$TB" verify-retained --run-id "$runid" >"$WORK/verify-retained.json" || die "verify-retained refused $runid (it changes nothing)"
+  put_out _ "$WORK/verify-retained.json" "verify-retained-$runid.json"
+  cat "$WORK/verify-retained.json"
+  say "verify-retained $runid ok -> $OUTROOT/_/verify-retained-$runid.json"
+}
+
 GE_OUT=$GA/out
 v_stage_ga() {
   local k=${ARGS[0]:-} dst fn mode pin="" want
@@ -1104,6 +1116,7 @@ case $VERB in
   client-run) v_client_run;;
   negative) v_negative;;
   abandon) v_abandon;;
+  verify-retained) v_verify_retained;;
   guest-evidence) v_guest_evidence;;
   stage-ga) v_stage_ga;;
   netsink-rotate) v_netsink_rotate;;
