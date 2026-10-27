@@ -184,9 +184,6 @@ func tweakedPanel(t *testing.T, dir string, m evalcorpus.Manifest, tw panelTweak
 	if tw.receipt != nil {
 		tw.receipt(receipt)
 	}
-	if tw.audit != nil {
-		tw.audit(audit)
-	}
 	sub, err := os.MkdirTemp(dir, "panel-")
 	if err != nil {
 		t.Fatal(err)
@@ -203,6 +200,10 @@ func tweakedPanel(t *testing.T, dir string, m evalcorpus.Manifest, tw panelTweak
 		return path, panelaudit.Digest(raw)
 	}
 	receiptPath, receiptDigest := write("receipt.json", receipt)
+	audit["receipt_digest"] = receiptDigest
+	if tw.audit != nil {
+		tw.audit(audit)
+	}
 	auditPath, auditDigest := write("audit.json", audit)
 	statsPath, statsDigest := write("stats.json", stats)
 	m.ConstructReview = evalcorpus.ConstructReview{ContentDigest: content, PanelReceiptDigest: receiptDigest, PanelAuditDigest: auditDigest, PanelStatsDigest: statsDigest}
@@ -543,6 +544,8 @@ func TestCorpusDigestRefusesPanelEvidenceThatDoesNotBackTheManifest(t *testing.T
 		{"dry-run audit", panelTweak{audit: func(doc map[string]any) { doc["dry_run"] = true }}, "dry run"},
 		{"incomplete ratings", panelTweak{receipt: func(doc map[string]any) { doc["complete_cases"] = 30 }}, "complete"},
 		{"retired schema", panelTweak{audit: func(doc map[string]any) { doc["schema"] = "tbound-panel-audit/v2" }}, "schema"},
+		{"audit schema without the receipt binding", panelTweak{audit: func(doc map[string]any) { doc["schema"] = "tbound-panel-audit/v3" }}, "schema"},
+		{"audit bound to another receipt", panelTweak{audit: func(doc map[string]any) { doc["receipt_digest"] = fixtureDigest("other receipt") }}, "receipt_digest"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()

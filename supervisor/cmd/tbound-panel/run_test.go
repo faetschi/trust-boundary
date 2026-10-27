@@ -491,8 +491,10 @@ func signAndVerify(t *testing.T, m evalcorpus.Manifest, receipt, audit []byte, o
 	rdoc["dry_run"] = false
 	rdoc["live_run"] = true
 	rdoc["provider"] = "openrouter"
-	signedAudit, _ := json.MarshalIndent(doc, "", "  ")
 	signedReceipt, _ := json.MarshalIndent(rdoc, "", "  ")
+	// The dry run is turned into a live-shaped one by editing the receipt, so the audit must name the edited bytes.
+	doc["receipt_digest"] = panelaudit.Digest(signedReceipt)
+	signedAudit, _ := json.MarshalIndent(doc, "", "  ")
 	for i := range m.Cases {
 		m.Cases[i].Signoff = evalcorpus.Signoff{Reviewer: "advisor", Human: true, Decision: "accept"}
 		if listed[m.Cases[i].CaseID] {
@@ -619,4 +621,50 @@ func TestReportKeepsLargeSeeds(t *testing.T) {
 	if got.Seeds != receipt.Seeds || !bytes.Contains(raw, []byte(`"note": "retained"`)) {
 		t.Fatalf("report changed seed or dropped metadata: %s", raw)
 	}
+}
+
+// completedDryRun runs the fake provider over the pilot corpus into a new directory.
+func completedDryRun(t *testing.T) (out string, rerun func() error) {
+	t.Helper()
+	out = t.TempDir()
+	rerun = func() error {
+		_, err := newRunner(t, testConfig(t, 10), out, fakeProvider{}, "fake").run(context.Background())
+		return err
+	}
+	if err := rerun(); err != nil {
+		t.Fatal(err)
+	}
+	return out, rerun
+}
+
+// assertAuditNamesReceipt checks that audit.json records the digest of the receipt.json on disk.
+func assertAuditNamesReceipt(t *testing.T, out string) {
+	t.Helper()
+	receipt, err := os.ReadFile(filepath.Join(out, "receipt.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(out, "audit.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var audit struct {
+		ReceiptDigest string `json:"receipt_digest"`
+	}
+	if err := json.Unmarshal(raw, &audit); err != nil {
+		t.Fatal(err)
+	}
+	if want := panelaudit.Digest(receipt); audit.ReceiptDigest != want {
+		t.Fatalf("audit.json receipt_digest %q; want the digest %s of the receipt.json written", audit.ReceiptDigest, want)
+	}
+}
+
+func TestAuditNamesTheReceiptWrittenWithIt(t *testing.T) {
+	out, rerun := completedDryRun(t)
+	assertAuditNamesReceipt(t, out)
+	// A rerun writes a new receipt (new finished_at), and the rebuilt audit names that one.
+	if err := rerun(); err != nil {
+		t.Fatal(err)
+	}
+	assertAuditNamesReceipt(t, out)
 }
