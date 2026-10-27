@@ -4,8 +4,10 @@ package main
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 
 	"tbound/supervisor/internal/productsession"
@@ -46,6 +48,39 @@ func TestProductHostInputOwnerRulesTakeTheAllowedUIDs(t *testing.T) {
 	}
 	if _, err := readProtectedHostFile(link, 64, []uint32{self}); err == nil {
 		t.Error("a symlink was followed")
+	}
+}
+
+// The Git pin holds the executable and every directory above it to the owner set, the same rule at start,
+// in setup and in doctor, and reports the owner and mode of the descriptor it pinned.
+func TestProductHostInputGitOwnerSetCoversTheFileAndItsParents(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root owns the files in the owner set {root}")
+	}
+	h := newAdminHost(t, privateGovernedTestRoot(t))
+	self := uint32(os.Geteuid())
+	git, err := verifyProductGit(h.gitFile(), h.gitDigest, []uint32{0, self})
+	if err != nil || git.UID != self || git.Mode != 0o755 {
+		t.Fatalf("a Git owned by the service account: %+v %v", git, err)
+	}
+	for name, owners := range map[string][]uint32{"root alone": {0}, "the caller alone, root-owned parents": {self}} {
+		if _, err := verifyProductGit(h.gitFile(), h.gitDigest, owners); err == nil || !strings.Contains(err.Error(), "pin approved Git executable") {
+			t.Errorf("%s: the Git was accepted: %v", name, err)
+		}
+	}
+	system, err := exec.LookPath("git")
+	if err != nil {
+		return
+	}
+	if info, err := os.Stat(system); err != nil || info.Sys().(*syscall.Stat_t).Uid != 0 {
+		return
+	}
+	raw, err := os.ReadFile(system)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if git, err := verifyProductGit(system, digestBytes(raw), []uint32{0}); err != nil || git.UID != 0 {
+		t.Errorf("a root-owned Git under root-owned directories with owner set {root}: %+v %v", git, err)
 	}
 }
 
