@@ -134,25 +134,9 @@ func OpenJournal(path string, s Schedule) (*Journal, error) {
 	}
 	j := &Journal{path: path, sched: s, state: map[stepKey]*keyState{}, rerun: map[string]stepKey{}}
 
-	keep, needNL := 0, false // bytes of valid prefix; whether its last record lacks a newline
-	for off := 0; off < len(data); {
-		line, next, complete := data[off:], len(data), true
-		if nl := bytes.IndexByte(data[off:], '\n'); nl >= 0 {
-			line, next = data[off:off+nl], off+nl+1
-		} else {
-			complete = false
-		}
-		var e Entry
-		if err := json.Unmarshal(line, &e); err != nil {
-			if !complete { // a torn tail: nothing follows it
-				break
-			}
-			return nil, fmt.Errorf("%w: record %d: %v", ErrJournalCorrupt, len(j.entries), err)
-		}
-		if err := j.apply(e); err != nil {
-			return nil, err
-		}
-		off, keep, needNL = next, next, !complete
+	keep, needNL, err := j.replay(data)
+	if err != nil {
+		return nil, err
 	}
 
 	j.f = f
@@ -182,6 +166,71 @@ func OpenJournal(path string, s Schedule) (*Journal, error) {
 	}
 	keepOpen = true
 	return j, nil
+}
+
+// replay applies the complete records of data. It returns the length of the valid prefix and
+// whether its last record lacks a newline; a final line cut short by a crash is not applied.
+func (j *Journal) replay(data []byte) (keep int, needNL bool, err error) {
+	for off := 0; off < len(data); {
+		line, next, complete := data[off:], len(data), true
+		if nl := bytes.IndexByte(data[off:], '\n'); nl >= 0 {
+			line, next = data[off:off+nl], off+nl+1
+		} else {
+			complete = false
+		}
+		var e Entry
+		if err := json.Unmarshal(line, &e); err != nil {
+			if !complete { // a torn tail: nothing follows it
+				break
+			}
+			return 0, false, fmt.Errorf("%w: record %d: %v", ErrJournalCorrupt, len(j.entries), err)
+		}
+		if err := j.apply(e); err != nil {
+			return 0, false, err
+		}
+		off, keep, needNL = next, next, !complete
+	}
+	return keep, needNL, nil
+}
+
+// ReadJournal replays the bytes of a finished journal for s with the validation OpenJournal applies
+// (so a reader gets the runner's own step identities and rerun rules), but opens, locks and repairs
+// no file. A torn or unterminated tail is refused. The header's run binding is adopted: it commits
+// to host inputs outside the plan (route report, EVQ results, PROC settings) that a reader may lack.
+func ReadJournal(data []byte, s Schedule) (*Journal, error) {
+	if s.Digest == "" {
+		return nil, errors.New("runner: schedule has no digest")
+	}
+	first, _, _ := bytes.Cut(data, []byte{'\n'})
+	var header Entry
+	if json.Unmarshal(first, &header) == nil && header.Kind == EntryHeader {
+		s.RunBinding = header.RunBinding
+	}
+	j := &Journal{sched: s, state: map[stepKey]*keyState{}, rerun: map[string]stepKey{}}
+	keep, needNL, err := j.replay(data)
+	if err != nil {
+		return nil, err
+	}
+	if len(j.entries) == 0 || keep != len(data) || needNL {
+		return nil, fmt.Errorf("%w: empty journal or unterminated final record", ErrJournalCorrupt)
+	}
+	return j, nil
+}
+
+// Final returns the terminal record that scores a step: the rerun's when the step has one, the
+// original otherwise, as Export selects it (outcomeAt). It reports false when the step has no
+// terminal record, or its rerun has begun and not ended, because the scored attempt then does not exist.
+func (j *Journal) Final(stepID string) (Entry, bool) {
+	if j.begunOf(stepID, 2) {
+		if t := j.terminalOf(stepID, 2); t != nil {
+			return *t, true
+		}
+		return Entry{}, false
+	}
+	if t := j.terminalOf(stepID, 1); t != nil {
+		return *t, true
+	}
+	return Entry{}, false
 }
 
 // syncDir makes the creation of the journal file durable where the platform

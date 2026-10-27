@@ -20,6 +20,10 @@ const (
 	ResultSchema   = "tbound-accept-result/v1"
 )
 
+// RouteTrialAcceptCell is the Route of a result captured by `tbound trial accept`: the case acceptance
+// spec evaluated on the live root, node_test checks in the isolated acceptance cell.
+const RouteTrialAcceptCell = "trial-accept-cell"
+
 // Operations of a check.
 const (
 	OpFileSHA256      = "file_sha256"
@@ -72,6 +76,29 @@ type AcceptSpec struct {
 
 // Digest is "sha256:" and the SHA-256 of the bytes ParseAccept read.
 func (s AcceptSpec) Digest() string { return s.digest }
+
+// ValidateResult binds a retained result to every check of this parsed spec.
+func (s AcceptSpec) ValidateResult(doc AcceptDoc, caseID string) error {
+	if s.digest == "" || doc.Schema != ResultSchema || doc.CaseID != caseID || doc.SpecDigest != s.digest || len(doc.Results) != len(s.checks) {
+		return errors.New("acceptance schema/case_id/spec_digest/result count mismatch")
+	}
+	all := true
+	for i, check := range s.checks {
+		path := check.Path
+		if check.Op == OpUnchangedExcept {
+			path = "."
+		}
+		result := doc.Results[i]
+		if result.Op != check.Op || result.Path != path {
+			return fmt.Errorf("acceptance result %d operation/path mismatch", i)
+		}
+		all = all && result.Passed
+	}
+	if doc.Passed != all {
+		return errors.New("acceptance passed disagrees with results")
+	}
+	return nil
+}
 
 // DigestOf is the digest an artifact of these bytes carries: "sha256:" and the SHA-256 of raw.
 func DigestOf(raw []byte) string {

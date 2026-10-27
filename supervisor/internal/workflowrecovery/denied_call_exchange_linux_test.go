@@ -4,6 +4,7 @@ package workflowrecovery
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 )
 
@@ -29,7 +30,7 @@ func deniedCallAwaitingProvider(captured Checkpoint) Pins {
 
 func TestDeniedCallRetiresWhileItsConversationAwaitsTheProvider(t *testing.T) {
 	ctx := context.Background()
-	owner, root, ledger, _, _ := newWorkflowHarness(t, "workflow-denied-exchange", testLimits())
+	_, _, ledger, _, _ := newWorkflowHarness(t, "workflow-denied-exchange", testLimits())
 	binding, captured := prepareCapturedCallForEffect(t, ledger, "operation-denied", "provider-tool-call-denied")
 	denied := deniedCallAwaitingProvider(captured)
 
@@ -39,6 +40,7 @@ func TestDeniedCallRetiresWhileItsConversationAwaitsTheProvider(t *testing.T) {
 		"call still available":          func(p *Pins) { p.HostCallReservation.CapturedCall.Disposition = CapturedCallAvailable },
 		"other conversation":            func(p *Pins) { p.HostCallReservation.CapturedCall.ConversationID = "conversation-other" },
 		"transcript awaits gate":        func(p *Pins) { p.ProviderTranscripts[0].Disposition = DispositionAwaitingGateDecision },
+		"other owner epoch":             func(p *Pins) { p.HostCallReservation.CapturedCall.OwnerEpoch++ },
 		"other recovery generation":     func(p *Pins) { p.HostCallReservation.CapturedCall.RecoveryGeneration++ },
 		"provider awaits gate decision": func(p *Pins) { p.ProviderDisposition = DispositionAwaitingGateDecision },
 	} {
@@ -97,17 +99,58 @@ func TestDeniedCallRetiresWhileItsConversationAwaitsTheProvider(t *testing.T) {
 	if _, err := ledger.AdvanceCheckpoint(ctx, allowProgress{}, second); err != nil {
 		t.Fatalf("capture a different call after the DENY: %v", err)
 	}
-	_, head := ledger.Snapshot()
+}
 
-	if err := owner.Close(); err != nil {
-		t.Fatal(err)
-	}
-	reopened, err := OpenExistingSQLiteOwner(owner.path, root)
-	if err != nil {
-		t.Fatalf("reopen the owner and replay the denied-call retirement: %v", err)
-	}
-	defer reopened.Close()
-	if _, digest, exists, err := reopened.LoadCheckpoint(ctx, retired.Pins.WorkflowID); err != nil || !exists || digest != head {
-		t.Fatalf("replayed head differs: digest=%s exists=%v err=%v", digest, exists, err)
+func TestAllowedOrExecutedCallCannotRetireAsDenied(t *testing.T) {
+	for _, executed := range []bool{false, true} {
+		name := "allowed"
+		if executed {
+			name = "executed"
+		}
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			workflow := "workflow-no-retire-" + name
+			rootPath, ownerStoreRoot, _ := newProtectedRootTestDirs(t)
+			_, root := createProtectedRoot(t, rootPath, ownerStoreRoot, workflow)
+			t.Cleanup(func() { _ = root.Close() })
+			owner, err := CreateFreshSQLiteOwner(filepath.Join(ownerStoreRoot, "workflow.sqlite"), root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = owner.Close() })
+			pins := testPins(root.TrustedRootIdentityDigest(), owner.OwnerIncarnationDigest(), workflow, "session-no-retire", 1, 1)
+			limits := testLimits()
+			if _, err := InitializeFresh(ctx, owner, pins, limits); err != nil {
+				t.Fatal(err)
+			}
+			ledger, err := Open(ctx, owner, OpenOptions{WorkflowID: workflow, OwnerEpoch: 1, RetainedPins: pins, Limits: limits})
+			if err != nil {
+				t.Fatal(err)
+			}
+			binding, _ := prepareCapturedCallForEffect(t, ledger, "operation-"+name, "tool-call-"+name)
+			receipt, err := ledger.ReserveEffect(ctx, binding, exactCapturedOperationVerifier{expected: binding})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if executed {
+				terminal, _ := ledger.Snapshot()
+				pins := clonePins(terminal.Pins)
+				pins.StoreJournalCount++
+				pins.StoreJournalHead = testDigest("executed Store outcome")
+				pins.EffectReservation.Disposition = EffectReservationTerminal
+				pins.EffectReservation.OutcomeDigest = testDigest("executed effect")
+				if _, err := ledger.RecordTerminalEffectOutcome(ctx, receipt, acceptBoundTerminalEffect{}, pins); err != nil {
+					t.Fatal(err)
+				}
+			}
+			before, digest := ledger.Snapshot()
+			if _, err := ledger.AdvanceCheckpoint(ctx, allowProgress{}, deniedCallAwaitingProvider(before)); err == nil {
+				t.Fatal("consumed allowed/executed call retired as DENY")
+			}
+			after, afterDigest := ledger.Snapshot()
+			if digest != afterDigest || before.Counters != after.Counters {
+				t.Fatal("refused retirement changed checkpoint")
+			}
+		})
 	}
 }

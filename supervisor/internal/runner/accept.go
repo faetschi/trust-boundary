@@ -34,8 +34,9 @@ import (
 // governed run, accept: AcceptExecutor{Inner: ResetExecutor{Inner: governed, ...}, ...}. The
 // Transport is the trial transport (DefaultTrialCommand).
 type AcceptExecutor struct {
-	Inner     Executor
-	Transport Transport
+	FreezeCommit string
+	Inner        Executor
+	Transport    Transport
 }
 
 // applies reports whether the step has an acceptance artifact to evaluate.
@@ -74,20 +75,24 @@ func (a AcceptExecutor) Execute(ctx context.Context, s Step) (Outcome, error) {
 }
 
 func (a AcceptExecutor) judge(ctx context.Context, s Step) TaskResult {
-	stdout, _, exit, err := a.Transport.Run(ctx, []string{"accept", s.CaseID, "--tree", "live"})
+	args := []string{"accept", s.CaseID, "--tree", "live"}
+	if a.FreezeCommit != "" {
+		args = append(args, "--commit", a.FreezeCommit)
+	}
+	stdout, _, exit, err := a.Transport.Run(ctx, args)
 	if err != nil || exit != 0 {
 		return TaskLost
 	}
-	doc, err := parseAcceptDoc(stdout)
+	doc, err := ParseAcceptDoc(stdout)
 	if err != nil {
 		return TaskLost
 	}
 	return taskOfAccept(&doc, s.CaseID)
 }
 
-// parseAcceptDoc reads exactly one result document and requires end of input:
+// ParseAcceptDoc reads exactly one result document and requires end of input:
 // trailing whitespace is fine, anything else is data after the document.
-func parseAcceptDoc(raw []byte) (taskaccept.AcceptDoc, error) {
+func ParseAcceptDoc(raw []byte) (taskaccept.AcceptDoc, error) {
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
 	var doc taskaccept.AcceptDoc

@@ -54,8 +54,8 @@ func ResetPinned(root string, spec Spec, owner Owner, want RootIdentity) error {
 
 // Wipe removes everything under root and makes the fence directory canonical. Every step is
 // relative to a directory descriptor opened with O_NOFOLLOW: a symlink is unlinked and never
-// followed, and a directory on another device is refused rather than entered. The root itself
-// is not touched.
+// followed. A read-only preflight refuses every nested mount before anything is removed.
+// Directory opens during deletion also refuse mount crossings. The root itself is not touched.
 func Wipe(root string, owner Owner) error {
 	rfd, err := unix.Open(root, openDirFlags, 0)
 	if err != nil {
@@ -74,6 +74,11 @@ func Wipe(root string, owner Owner) error {
 // the empty 0755 directory of the fixture owner: the cell may write the fence, and what it
 // leaves there is not carried into the next trial.
 func wipeDir(dirfd int, dev uint64, top bool, fence *Owner) error {
+	if top {
+		if err := checkMountBoundaries(dirfd); err != nil {
+			return err
+		}
+	}
 	names, err := listNames(dirfd)
 	if err != nil {
 		return fmt.Errorf("list a directory: %w", err)
@@ -92,8 +97,34 @@ func wipeDir(dirfd int, dev uint64, top bool, fence *Owner) error {
 	return nil
 }
 
+func checkMountBoundaries(dirfd int) error {
+	names, err := listNames(dirfd)
+	if err != nil {
+		return fmt.Errorf("list a directory before wiping: %w", err)
+	}
+	for _, name := range names {
+		fd, err := unix.Openat2(dirfd, name, &unix.OpenHow{
+			Flags:   unix.O_PATH | unix.O_NOFOLLOW | unix.O_CLOEXEC,
+			Resolve: unix.RESOLVE_NO_XDEV | unix.RESOLVE_NO_SYMLINKS,
+		})
+		if err != nil {
+			return fmt.Errorf("check mount boundary at %q before wiping: %w", name, err)
+		}
+		var st unix.Stat_t
+		err = unix.Fstat(fd, &st)
+		if err == nil && st.Mode&unix.S_IFMT == unix.S_IFDIR {
+			err = checkMountBoundaries(fd)
+		}
+		unix.Close(fd)
+		if err != nil {
+			return fmt.Errorf("check %q before wiping: %w", name, err)
+		}
+	}
+	return nil
+}
+
 // removeEntry unlinks name from the directory open at dirfd, wiping a directory first. A
-// directory on another device is refused rather than entered.
+// mounted directory is refused rather than entered.
 func removeEntry(dirfd int, name string, dev uint64) error {
 	var st unix.Stat_t
 	if err := unix.Fstatat(dirfd, name, &st, unix.AT_SYMLINK_NOFOLLOW); err != nil {
@@ -128,7 +159,9 @@ func canonicalFence(dirfd int, dev uint64, owner Owner) error {
 	case err == nil:
 		if st.Mode&unix.S_IFMT == unix.S_IFDIR && uint64(st.Dev) == dev && st.Uid == owner.UID &&
 			st.Gid == owner.GID && st.Mode&0o7777 == FenceMode {
-			fd, err := unix.Openat(dirfd, LostFound, openDirFlags, 0)
+			fd, err := unix.Openat2(dirfd, LostFound, &unix.OpenHow{
+				Flags: openDirFlags, Resolve: unix.RESOLVE_NO_XDEV | unix.RESOLVE_NO_SYMLINKS,
+			})
 			if err != nil {
 				return fmt.Errorf("open %q: %w", LostFound, err)
 			}
@@ -155,7 +188,9 @@ func canonicalFence(dirfd int, dev uint64, owner Owner) error {
 	if err := unix.Mkdirat(dirfd, LostFound, 0o700); err != nil {
 		return fmt.Errorf("create %q: %w", LostFound, err)
 	}
-	fd, err := unix.Openat(dirfd, LostFound, openDirFlags, 0)
+	fd, err := unix.Openat2(dirfd, LostFound, &unix.OpenHow{
+		Flags: openDirFlags, Resolve: unix.RESOLVE_NO_XDEV | unix.RESOLVE_NO_SYMLINKS,
+	})
 	if err != nil {
 		return fmt.Errorf("open %q: %w", LostFound, err)
 	}
@@ -177,7 +212,9 @@ func canonicalFence(dirfd int, dev uint64, owner Owner) error {
 }
 
 func wipeChild(dirfd int, name string, st *unix.Stat_t, dev uint64) error {
-	fd, err := unix.Openat(dirfd, name, openDirFlags, 0)
+	fd, err := unix.Openat2(dirfd, name, &unix.OpenHow{
+		Flags: openDirFlags, Resolve: unix.RESOLVE_NO_XDEV | unix.RESOLVE_NO_SYMLINKS,
+	})
 	if err != nil {
 		return fmt.Errorf("open directory %q: %w", name, err)
 	}
@@ -189,10 +226,9 @@ func wipeChild(dirfd int, name string, st *unix.Stat_t, dev uint64) error {
 	return wipeDir(fd, dev, false, nil)
 }
 
-// listNames returns the names in the directory open at dirfd, read through a duplicate
-// descriptor so that dirfd stays usable for openat.
+// listNames uses a fresh open file description so preflight and deletion each see all names.
 func listNames(dirfd int) ([]string, error) {
-	fd, err := unix.Dup(dirfd)
+	fd, err := unix.Openat(dirfd, ".", openDirFlags, 0)
 	if err != nil {
 		return nil, err
 	}

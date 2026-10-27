@@ -17,6 +17,8 @@ import (
 	"strings"
 	"syscall"
 
+	"golang.org/x/sys/unix"
+
 	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/workspace"
 )
@@ -778,8 +780,10 @@ func MeasureD09XattrEnumeration(source *os.File) (D09XattrEnumerationObservation
 					}
 					return D09XattrEnumerationObservation{}, fmt.Errorf("invalid directory entry in D09 xattr enumeration")
 				}
-				fd, openErr := syscall.Openat(int(item.file.Fd()), name,
-					syscall.O_RDONLY|syscall.O_CLOEXEC|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+				fd, openErr := unix.Openat2(int(item.file.Fd()), name, &unix.OpenHow{
+					Flags:   unix.O_RDONLY | unix.O_CLOEXEC | unix.O_NOFOLLOW | unix.O_NONBLOCK,
+					Resolve: unix.RESOLVE_NO_XDEV | unix.RESOLVE_NO_SYMLINKS,
+				})
 				if openErr != nil {
 					if item.file != root {
 						_ = item.file.Close()

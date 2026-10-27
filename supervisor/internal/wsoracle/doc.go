@@ -161,9 +161,10 @@
 //     a directory is not compared, because it follows from its subdirectories.
 //   - Ancestors of the root path. Only the final root component is O_NOFOLLOW.
 //     A swap of a parent directory of the root is not detected.
-//   - Mount boundaries. An entry on a different device than the root is recorded
-//     as a mount_boundary gap and is not descended. A bind mount that aliases the
-//     root's content at another path is not detected.
+//   - Mount boundaries. Descriptor-relative openat2 with RESOLVE_NO_XDEV and
+//     RESOLVE_NO_SYMLINKS refuses nested mounts, including same-device bind mounts.
+//     A refused mount or an entry on a different device than the root is recorded
+//     as a mount_boundary gap and is not descended.
 //   - Path aliasing. Paths are compared byte-exactly, so case or Unicode
 //     collisions are not detected.
 //   - Path encoding. Comparisons use raw bytes. encoding/json replaces invalid
@@ -174,9 +175,9 @@
 //     link count change of the object, not as a path.
 //   - Resource limits. Snapshot does not bound tree size or file size. The caller
 //     bounds its input.
-//   - Filesystem coverage. Snapshot uses openat, fstat, and readlinkat, not
-//     openat2 or statx. The Go standard library does not expose either. This is a
-//     declared deviation from E04's wording.
+//   - Filesystem coverage. Snapshot requires openat2 for child entry opens and
+//     uses fstat and readlinkat for metadata and symlink targets. If openat2 is
+//     unavailable, child entries are unreadable gaps.
 //   - Platforms. Snapshot is built only for Linux on amd64 and arm64, which share
 //     the O_PATH value that oflags_linux.go defines. Other Linux architectures
 //     fail to compile, by design. Other operating systems get Snapshot from
@@ -185,8 +186,9 @@
 //
 // # Imports
 //
-// This package imports only the Go standard library. It does not import the
-// TBound store, gate, delta, publication, or audit packages, so the observer does
-// not depend on the code it checks. That independence is structural. It is not
+// This package imports the Go standard library and golang.org/x/sys/unix for
+// Linux syscalls. It does not import the TBound store, gate, delta, publication,
+// or audit packages, so the observer does not depend on the code it checks.
+// That independence is structural. It is not
 // proved by these tests.
 package wsoracle

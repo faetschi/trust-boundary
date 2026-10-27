@@ -10,6 +10,7 @@ import (
 	"tbound/supervisor/internal/calibration"
 	"tbound/supervisor/internal/corpusadmit"
 	"tbound/supervisor/internal/evalcorpus"
+	"tbound/supervisor/internal/runner"
 	"tbound/supervisor/internal/taskaccept"
 )
 
@@ -52,31 +53,31 @@ func TestAdaptiveCapsComeFromThePinnedAttackerArtifact(t *testing.T) {
 			"ts-1": {Tool: "bash", Arguments: json.RawMessage(`{"command":"true"}`)}}}}}}
 	want := calibration.Caps{Scripted: true, Iterations: 5, ToolCalls: 7, WallMS: 90000}
 
-	if got, err := adaptiveCapsFor(manifest, dir, calibration.Caps{}); err != nil || got != want {
+	if got, err := runner.AdaptiveCapsFor(manifest, dir, calibration.Caps{}); err != nil || got != want {
 		t.Fatalf("left out: %+v, %v", got, err)
 	}
-	if got, err := adaptiveCapsFor(manifest, dir, want); err != nil || got != want {
+	if got, err := runner.AdaptiveCapsFor(manifest, dir, want); err != nil || got != want {
 		t.Fatalf("equal: %+v, %v", got, err)
 	}
 	other := want
 	other.WallMS = 3600000
-	if _, err := adaptiveCapsFor(manifest, dir, other); err == nil {
+	if _, err := runner.AdaptiveCapsFor(manifest, dir, other); err == nil {
 		t.Error("run.json caps that differ from the artifact's were accepted")
 	}
-	if _, err := adaptiveCapsFor(manifest, "", calibration.Caps{}); err == nil {
+	if _, err := runner.AdaptiveCapsFor(manifest, "", calibration.Caps{}); err == nil {
 		t.Error("a pinned attacker without artifacts_dir was accepted")
 	}
-	if _, err := adaptiveCapsFor(manifest, t.TempDir(), calibration.Caps{}); err == nil {
+	if _, err := runner.AdaptiveCapsFor(manifest, t.TempDir(), calibration.Caps{}); err == nil {
 		t.Error("a pinned attacker whose artifact is missing was accepted")
 	}
 	short := manifest
 	short.Cases = []evalcorpus.Case{{CaseID: "adv-1", Trial: &evalcorpus.Trial{MaxHostCalls: 11, DurationSeconds: 60, Pivots: manifest.Cases[0].Trial.Pivots}}}
-	if _, err := adaptiveCapsFor(short, dir, calibration.Caps{}); err == nil {
+	if _, err := runner.AdaptiveCapsFor(short, dir, calibration.Caps{}); err == nil {
 		t.Error("a trial duration below the artifact's wall cap was accepted")
 	}
 	// no attacker pin: the configured caps stay
 	plain := evalcorpus.Manifest{}
-	if got, err := adaptiveCapsFor(plain, "", other); err != nil || got != other {
+	if got, err := runner.AdaptiveCapsFor(plain, "", other); err != nil || got != other {
 		t.Fatalf("no pin: %+v, %v", got, err)
 	}
 }
@@ -91,7 +92,7 @@ func TestPinnedPilotScriptedPairsCanCalibrate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	caps, err := adaptiveCapsFor(m, "../../../corpus/pilot/artifacts", calibration.Caps{})
+	caps, err := runner.AdaptiveCapsFor(m, "../../../corpus/pilot/artifacts", calibration.Caps{})
 	if err != nil {
 		t.Fatal(err)
 	}

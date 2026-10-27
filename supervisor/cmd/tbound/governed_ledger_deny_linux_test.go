@@ -9,7 +9,6 @@ import (
 	"os/exec"
 	"testing"
 
-	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/gate"
 	"tbound/supervisor/internal/providerbridge"
@@ -116,7 +115,7 @@ func reopenLedgerInFreshProcess(t *testing.T, f *workflowVerticalFixture) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(executable, "-test.run=^TestGovernedLedgerDenyReopenChild$")
+	cmd := exec.Command(executable, "-test.run=^TestGovernedLedgerDenyRetiresTheCallAndTheConversationContinues$")
 	cmd.Env = []string{ledgerDenyReopenOwnerEnv + "=" + f.ownerPath, ledgerDenyReopenRootEnv + "=" + f.rootPath,
 		ledgerDenyReopenStoreEnv + "=" + f.ownerStoreDir, ledgerDenyReopenDigestEnv + "=" + digest,
 		"TMPDIR=" + os.TempDir()}
@@ -126,6 +125,10 @@ func reopenLedgerInFreshProcess(t *testing.T, f *workflowVerticalFixture) {
 }
 
 func TestGovernedLedgerDenyRetiresTheCallAndTheConversationContinues(t *testing.T) {
+	if os.Getenv(ledgerDenyReopenOwnerEnv) != "" {
+		reopenLedgerDenyChild(t)
+		return
+	}
 	f := newWorkflowVerticalFixture(t, false, 0, []providerbridge.DevelopmentProviderTurn{
 		{ResponseID: "r-write", CallID: "c-write", Tool: "write", Arguments: json.RawMessage(`{"path":"task.txt","content":"x\n"}`)},
 		{ResponseID: "r-final", Text: "done"},
@@ -133,17 +136,26 @@ func TestGovernedLedgerDenyRetiresTheCallAndTheConversationContinues(t *testing.
 	ledgerDenyTurn(t, f, "c-write", gate.Deny)
 	requireRetiredDeny(t, f, "c-write", 1, 1024)
 	requireFinalAnswer(t, f, "done", 2, 2048)
+	requireNextRequestCarriesDenyHint(t, f)
+	reopenLedgerInFreshProcess(t, f)
+}
+
+// A crash right after the DENY: the retired call, awaiting the next provider exchange, must replay in a fresh process.
+func TestGovernedLedgerDenyCheckpointReopensBeforeTheNextExchange(t *testing.T) {
+	f := newWorkflowVerticalFixture(t, false, 0, []providerbridge.DevelopmentProviderTurn{
+		{ResponseID: "r-write", CallID: "c-write", Tool: "write", Arguments: json.RawMessage(`{"path":"task.txt","content":"x\n"}`)},
+		{ResponseID: "r-final", Text: "done"},
+	})
+	ledgerDenyTurn(t, f, "c-write", gate.Deny)
+	requireRetiredDeny(t, f, "c-write", 1, 1024)
 	reopenLedgerInFreshProcess(t, f)
 }
 
 func TestGovernedLedgerDenyThenARetryableProviderFailureContinues(t *testing.T) {
-	f := prepareWorkflowVertical(t, workflowVerticalOptions{maxHostCalls: 4, maxTokens: 3072})
-	f.startConversation(t, func(config providerbridge.Config, journal *audit.Journal) (*providerbridge.Conversation, error) {
-		return providerbridge.NewDevelopmentOfflineConversation(config, journal, []providerbridge.DevelopmentProviderTurn{
-			{ResponseID: "r-write", CallID: "c-write", Tool: "write", Arguments: json.RawMessage(`{"path":"task.txt","content":"x\n"}`)},
-			{FailStatus: 503, FailBody: `{"error":{"type":"server_error","message":"Upstream request failed: Endpoint is unavailable."}}`},
-			{ResponseID: "r-final", Text: "done"},
-		})
+	f := newWorkflowVerticalFixture(t, false, 1, []providerbridge.DevelopmentProviderTurn{
+		{ResponseID: "r-write", CallID: "c-write", Tool: "write", Arguments: json.RawMessage(`{"path":"task.txt","content":"x\n"}`)},
+		{FailStatus: 503, FailBody: `{"error":{"type":"server_error","message":"Upstream request failed: Endpoint is unavailable."}}`},
+		{ResponseID: "r-final", Text: "done"},
 	})
 	ledgerDenyTurn(t, f, "c-write", gate.Deny)
 	requireRetiredDeny(t, f, "c-write", 1, 1024)
@@ -152,14 +164,11 @@ func TestGovernedLedgerDenyThenARetryableProviderFailureContinues(t *testing.T) 
 }
 
 func TestGovernedLedgerAllowDenyAllowCheckpointsEveryCall(t *testing.T) {
-	f := prepareWorkflowVertical(t, workflowVerticalOptions{maxHostCalls: 6, maxTokens: 4096})
-	f.startConversation(t, func(config providerbridge.Config, journal *audit.Journal) (*providerbridge.Conversation, error) {
-		return providerbridge.NewDevelopmentOfflineConversation(config, journal, []providerbridge.DevelopmentProviderTurn{
-			{ResponseID: "r-read-1", CallID: "c-read-1", Tool: "read", Arguments: json.RawMessage(`{"path":"task.txt"}`)},
-			{ResponseID: "r-write", CallID: "c-write", Tool: "write", Arguments: json.RawMessage(`{"path":"task.txt","content":"x\n"}`)},
-			{ResponseID: "r-read-2", CallID: "c-read-2", Tool: "read", Arguments: json.RawMessage(`{"path":"task.txt"}`)},
-			{ResponseID: "r-final", Text: "done"},
-		})
+	f := newWorkflowVerticalFixture(t, false, 2, []providerbridge.DevelopmentProviderTurn{
+		{ResponseID: "r-read-1", CallID: "c-read-1", Tool: "read", Arguments: json.RawMessage(`{"path":"task.txt"}`)},
+		{ResponseID: "r-write", CallID: "c-write", Tool: "write", Arguments: json.RawMessage(`{"path":"task.txt","content":"x\n"}`)},
+		{ResponseID: "r-read-2", CallID: "c-read-2", Tool: "read", Arguments: json.RawMessage(`{"path":"task.txt"}`)},
+		{ResponseID: "r-final", Text: "done"},
 	})
 	executor, err := providerbridge.NewExecutor(f.conversation, f.durable)
 	if err != nil {
@@ -168,8 +177,14 @@ func TestGovernedLedgerAllowDenyAllowCheckpointsEveryCall(t *testing.T) {
 	allow := func(toolCallID string, hostCalls, tokens uint64) {
 		t.Helper()
 		proposal, decision := ledgerDenyTurn(t, f, toolCallID, gate.Allow)
+		if _, err := activeDeniedCaptureDigest(f.providerJournal, toolCallID); err == nil {
+			t.Fatal("journaled ALLOW was accepted as DENY retirement evidence")
+		}
 		if _, err := executor.Execute(f.ctx, proposal, decision); err != nil {
 			t.Fatalf("execute allowed %s: %v", toolCallID, err)
+		}
+		if _, err := activeDeniedCaptureDigest(f.providerJournal, toolCallID); err == nil {
+			t.Fatal("executed ALLOW result was accepted as DENY retirement evidence")
 		}
 		checkpoint, _ := f.ledger.Snapshot()
 		effect := checkpoint.Pins.EffectReservation
@@ -188,12 +203,9 @@ func TestGovernedLedgerAllowDenyAllowCheckpointsEveryCall(t *testing.T) {
 	reopenLedgerInFreshProcess(t, f)
 }
 
-// TestGovernedLedgerDenyReopenChild runs only as the fresh process reopenLedgerInFreshProcess starts.
-func TestGovernedLedgerDenyReopenChild(t *testing.T) {
+// reopenLedgerDenyChild runs in the fresh process started by reopenLedgerInFreshProcess.
+func reopenLedgerDenyChild(t *testing.T) {
 	ownerPath := os.Getenv(ledgerDenyReopenOwnerEnv)
-	if ownerPath == "" {
-		t.Skip("fresh-process reopen helper")
-	}
 	ctx := context.Background()
 	boundary, err := workflowrecovery.NewLinuxHostBoundary(os.Getenv(ledgerDenyReopenStoreEnv), uint32(os.Geteuid()),
 		verticalNoPriorOwnerDrain{}, &verticalFreshWorkflowPolicy{})
@@ -217,5 +229,55 @@ func TestGovernedLedgerDenyReopenChild(t *testing.T) {
 	if _, err := workflowrecovery.Open(ctx, owner, workflowrecovery.OpenOptions{WorkflowID: workflowVerticalID,
 		OwnerEpoch: checkpoint.Pins.OwnerEpoch, RetainedPins: checkpoint.Pins, Limits: checkpoint.Limits}); err != nil {
 		t.Fatalf("open the persisted checkpoint: %v", err)
+	}
+}
+
+// Inspect the actual second request, including the exact Go-owned tool Result and static hint.
+func requireNextRequestCarriesDenyHint(t *testing.T, f *workflowVerticalFixture) {
+	t.Helper()
+	trace, err := f.providerJournal.Trace()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var result providerResultEvidence
+	var next providerExchangeEvidence
+	exchanges := 0
+	for _, record := range trace.Records {
+		switch record.Event.Kind {
+		case "provider_tool_result":
+			if err := unmarshalGovernedJSON(record.Event.Data, &result); err != nil {
+				t.Fatal(err)
+			}
+		case "provider_exchange":
+			exchanges++
+			if exchanges == 2 {
+				if err := unmarshalGovernedJSON(record.Event.Data, &next); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+	}
+	decoded, err := protocol.DecodeResult(result.Result)
+	if err != nil || decoded.Verdict != string(gate.Deny) || decoded.Tool != "write" || decoded.ReasonCode != "policy_default_deny" ||
+		result.EffectID != "" || result.TransitionID != "" {
+		t.Fatalf("missing effect-free write denial: %+v err=%v", result, err)
+	}
+	var request struct {
+		Messages []struct {
+			Role       string `json:"role"`
+			Content    string `json:"content"`
+			ToolCallID string `json:"tool_call_id"`
+		} `json:"messages"`
+	}
+	if err := json.Unmarshal(next.Request.Body, &request); err != nil {
+		t.Fatal(err)
+	}
+	want := string(result.Result) + "\nhint: The policy does not allow this tool or action. Use another available tool on the task's files."
+	if exchanges != 2 || len(request.Messages) == 0 {
+		t.Fatalf("provider exchanges=%d, missing continuation request", exchanges)
+	}
+	got := request.Messages[len(request.Messages)-1]
+	if got.Role != "tool" || got.ToolCallID != "c-write" || got.Content != want {
+		t.Fatalf("next provider request tool message=%+v, want exact denial and hint %q", got, want)
 	}
 }

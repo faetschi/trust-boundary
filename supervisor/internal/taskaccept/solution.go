@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io/fs"
+	"sort"
 	"strings"
 
 	"tbound/supervisor/internal/trialfix"
@@ -156,4 +157,35 @@ func (s SolutionSpec) apply(base tree) (tree, error) {
 		return nil, fmt.Errorf("the result has %d bytes of content, at most %d", total, trialfix.MaxTotalBytes)
 	}
 	return t, nil
+}
+
+// Solved is the fixture with the solution applied, as a fixture spec: trialfix.Digest of it is the
+// digest of the live tree that holds exactly the reference solution's result (owner, modes and
+// content as the solution states them), so a retained result can be tied to that tree.
+func (s SolutionSpec) Solved(fixture trialfix.Spec) (trialfix.Spec, error) {
+	base, err := treeOfFixture(fixture)
+	if err != nil {
+		return trialfix.Spec{}, err
+	}
+	t, err := s.apply(base)
+	if err != nil {
+		return trialfix.Spec{}, fmt.Errorf("the reference solution does not apply to the fixture: %w", err)
+	}
+	out := trialfix.Spec{Schema: fixture.Schema}
+	for p, n := range t {
+		if p == rootPath {
+			continue
+		}
+		e := trialfix.Entry{Path: p, Type: trialfix.TypeFile, Mode: fmt.Sprintf("%04o", n.mode.Perm()),
+			ContentB64: base64.StdEncoding.EncodeToString(n.content)}
+		if n.mode.IsDir() {
+			e.Type, e.ContentB64 = trialfix.TypeDir, ""
+		}
+		out.Entries = append(out.Entries, e)
+	}
+	sort.Slice(out.Entries, func(i, j int) bool { return out.Entries[i].Path < out.Entries[j].Path })
+	if _, err := out.Files(); err != nil {
+		return trialfix.Spec{}, err
+	}
+	return out, nil
 }
