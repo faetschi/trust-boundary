@@ -438,6 +438,7 @@ Everything here runs against a test root (`--root DIR`) and supports `--dry-run`
 - `tbound release verify --manifest F --signature F --public-key F [--artifact F...]` refuses a bad signature, an unknown artifact, or a size or digest mismatch. A same-origin checksum file alone is never accepted as authentication.
 - `install/install.sh` verifies the manifest signature before extracting anything, when it is given a public key.
 - A first install trusts a key that has not been seen before. The documentation states that limit.
+- The first signed install pins the public key it verified in the install prefix (`.tbound-publisher.pub`, 0644, a copy made before verification). Every later install or update into that prefix is verified against the pinned key and is refused without a valid signature: it never falls back to `SHA256SUMS`, and a different `--public-key` is refused until the prefix is uninstalled. A prefix installed without a key keeps the checksum-only behavior and the installer says so; its first signed update pins a key.
 
 ### Registration tooling (offline administrator)
 
@@ -462,12 +463,16 @@ Everything here runs against a test root (`--root DIR`) and supports `--dry-run`
    | `/var/lib/tbound-product` (catalog, turns, projects) | service | 0700 (the audit journal requires an exact 0700 parent) |
    | runtime directory | from the unit | from the unit |
 
-4. It installs the registration, signature and public key as root-owned 0644 files. It writes the service config and the `tbound-product.service` unit: `User=tbound-product`, `RuntimeDirectory=tbound-product`, and hardening matching the research unit where it applies. Then it runs `daemon-reload`.
+4. It installs the registration, signature and public key as root-owned 0644 files. It writes the service config and the `tbound-product.service` unit: `User=tbound-product`, `RuntimeDirectory=tbound-product`, hardening matching the research unit where it applies, and `[Install] WantedBy=multi-user.target` (the service opens its own socket, so there is no socket unit). The unit validator pins that section exactly. Then it runs `daemon-reload` and `systemctl enable` for the unit, so it starts at boot. Setup does not start the service. A rerun on an enabled unit changes nothing, `--dry-run` plans the enable, and the doctor reports a unit that is not enabled.
 5. It never creates or replaces the owner's signing key, and it never touches a `/etc/tbound`, `/var/lib/tbound` or `/run/tbound` path.
 
 The setup config must name the host profile inputs: `gate_policy_paths` with a file below `/etc/tbound-product` for every project, `git_path` below `/usr/local/lib/tbound-product` with its `git_digest`, and `xattr_calibration_path` below `/etc/tbound-product`. Setup refuses a config without them or with a thesis path, and records them in the service config. It does not install those files, and it refuses to run until each passes the static checks (see [Host inputs](#host-inputs)).
 
 Running it again changes nothing and reports "unchanged". An existing file with different content is refused unless `--replace` is given.
+
+- A host input path (`git_path`, `xattr_calibration_path` and its `.sig`, each `gate_policy_paths` entry) is refused when it equals a path that setup, update, rollback or uninstall writes (the installed files, the binary, last-known-good, the staged binary, the rollback record, the catalog, the socket, the boot link, a directory setup creates) or lies inside the credentials, state or runtime tree. Two projects may share one policy file.
+- `--replace` with a registration of another digest first reads the catalog under the installed registration, with the service stopped, and refuses while any turn is unresolved or has an unknown outcome, naming each turn. The service refuses to start on a changed digest in that case, and its restart reconciliation runs only after that check, so nothing could settle those turns afterwards. `--dry-run` reports the same refusal, and the read appends nothing. A replacement that keeps the digest is not checked. A catalog that cannot be opened (the service holds it) also refuses, so stop the service first. A turn with an unknown outcome stays blocked, because no start settles it.
+- `self_test`, when present, needs `client_uid`: a registered client UID, never 0. Setup refuses a missing UID, or one that is not an allowed principal of the verified registration, before it writes anything. Without `self_test` no self-test runs and update says so.
 
 ### Host inputs
 
@@ -487,7 +492,8 @@ The probe install, census and cleanup stay an operator procedure: place the prob
 ### Update, rollback and uninstall
 
 - `tbound product update --binary NEW [--root DIR]` stages the new binary, stops the service, and opens the catalog. It refuses while any turn is unresolved, other than a pending review, which becomes `discarded` with reason `restart`. It keeps the current binary as last-known-good, swaps atomically, starts the service, and runs the self-test. If the self-test fails, it rolls back. Retrying when the requested binary is already installed still starts the service and runs the self-test, preserving the existing last-known-good for recovery.
-- `tbound product rollback` restores last-known-good the same way.
+- `tbound product rollback` restores last-known-good. It exchanges the installed binary and last-known-good with one `RENAME_EXCHANGE`, so both exist whichever way an interruption falls. The binary it replaces becomes the new last-known-good, so a second rollback returns to it. Before the exchange it records both digests in `/usr/local/lib/tbound-product/tbound.rollback` (0600, made durable). A retry in a fresh process reads the record. An installed binary that already is the target means the exchange happened, so the retry only starts the service and runs the self-test, and never exchanges back. The old pair still in place means it carries on. Any other pair means the record is stale, and it is dropped. The record is removed once the restored binary started and passed, or was restored. A last-known-good equal to the installed binary is refused, and so is a filesystem without `RENAME_EXCHANGE`, before any change.
+- Update and rollback check the installed self-test client UID against the installed registration before they stop the service or stage anything, and refuse as setup does.
 - Binary and catalog sources are opened through pinned parents without following leaf symlinks. The opened file must be regular and single-linked; managed sources must have their expected owner on a live host, binaries must be 0755, and catalog backups accept 0600 or 0640 sources. Digests and copies use the same descriptor. A retry validates any retained last-known-good before starting the service, and recovery validates it again before copying.
 - Catalog schema changes need a version check and a backup before the swap. A newer schema is never read by an older binary.
 - `tbound product uninstall [--root DIR] [--purge]` stops and disables the service and removes the unit, binary and runtime access. On a live host it verifies the service is inactive before removing files. Stop or disable failures abort removal unless systemd confirms the unit is absent and inactive. It reports unresolved turns. It keeps `/etc/tbound-product` and `/var/lib/tbound-product` unless `--purge` is given, and `--purge` asks for confirmation unless `--yes` is also given. A purge refuses an unreadable or locked catalog before removing files. Deletion errors are returned, and only successful deletions are reported as removed.
@@ -496,7 +502,18 @@ The probe install, census and cleanup stay an operator procedure: place the prob
 ### Diagnostics
 
 - `tbound product doctor` is advisory. It reports prerequisites, installation owners and modes, unit state, socket reachability, registration verification, one line per host input (see [Host inputs](#host-inputs)), and credential status (never the key).
-- `tbound product doctor --self-test` runs an explicit runtime self-test turn on a synthetic project with the configured worker. With `--dry-run` it reports the planned self-test without submitting a turn or establishing readiness. Only a passed self-test, never the advisory checks, can report governed readiness.
+- `tbound product doctor --self-test` runs an explicit runtime self-test turn on a synthetic project with the configured worker. The service authorizes a caller by its peer UID and root is not a registered principal, so a root caller runs the turn in a child process (`tbound product self-test`, from the installed binary, request on stdin, minimal environment) that drops to `self_test.client_uid` with that account's primary and supplementary groups. The privileged process never connects to the service, and a UID without an account is refused. A non-root caller runs the turn as itself. With `--dry-run` it reports the planned self-test without submitting a turn or establishing readiness. Only a passed self-test, never the advisory checks, can report governed readiness.
+
+### Open acceptance items and decisions (P8)
+
+Not yet tested, and so not claimed:
+
+- a clean qualified host, and a Windows-to-VM run of the whole sequence (setup, start, self-test, update, rollback, uninstall);
+- a reboot with the unit enabled, and client reconnect after it;
+- an update or backup recovery across a catalog schema change (the version check and the backup exist, but no test crosses a schema change);
+- `RENAME_EXCHANGE` and the boot link on the qualified host's filesystem (the tests ran on ext4 under WSL).
+
+Decision: a registration has no expiry field in v1. Changing principals, projects or limits means signing a new registration and replacing the old one (`setup --replace`, fenced by unsettled turns). An expiry would need a trusted clock and a schema change, and this milestone does not take either on.
 
 ## Milestone 6: live web chat (P9)
 
