@@ -56,6 +56,12 @@ type combinedRecoveryScenario struct {
 	// withoutCleanupReceipt models a superseded owner whose cleanup scope is
 	// absent and has no durable cleanup receipt. Every other scenario seeds one.
 	withoutCleanupReceipt bool
+	// binderShapedPins pins every retained transcript the way the production recovery binder does: no start
+	// generation or tree in the provider config or the profile; the replay derives them.
+	binderShapedPins bool
+	// idleCrash ends the original process at the idle provider boundary after the host prompt is admitted, with
+	// no provider call captured.
+	idleCrash bool
 }
 
 var combinedRecoveryScenarios = map[string]combinedRecoveryScenario{
@@ -64,6 +70,8 @@ var combinedRecoveryScenarios = map[string]combinedRecoveryScenario{
 	"deadline":        {maxPreEffectRetries: 2, maxCleanRestarts: 2, deadline: 8 * time.Second},
 	"absent-scope-no-receipt": {maxPreEffectRetries: 2, maxCleanRestarts: 2, deadline: 10 * time.Minute,
 		withoutCleanupReceipt: true},
+	"binder-pins":      {maxPreEffectRetries: 2, maxCleanRestarts: 2, deadline: 10 * time.Minute, binderShapedPins: true},
+	"binder-pins-idle": {maxPreEffectRetries: 2, maxCleanRestarts: 2, deadline: 10 * time.Minute, binderShapedPins: true, idleCrash: true},
 }
 
 type combinedRecoveryPaths struct {
@@ -591,9 +599,11 @@ func combinedRecoveryOriginal(t *testing.T, root, step string, sc combinedRecove
 	if err := authority.AdmitPrompt(conversation, durable, combinedRecoveryTaskID, combinedRecoveryPrompt); err != nil {
 		t.Fatal(err)
 	}
-	turn, err := conversation.NextTurn(ctx)
-	if err != nil || turn.ToolCall == nil || turn.ToolCall.Name != "read" {
-		t.Fatalf("original provider turn did not capture its read: turn=%+v err=%v", turn, err)
+	if !sc.idleCrash {
+		turn, err := conversation.NextTurn(ctx)
+		if err != nil || turn.ToolCall == nil || turn.ToolCall.Name != "read" {
+			t.Fatalf("original provider turn did not capture its read: turn=%+v err=%v", turn, err)
+		}
 	}
 	// The crash marker is the byte-level state that must survive every recovery.
 	evidence := map[string]combinedRecoveryFileEvidence{}
@@ -612,7 +622,7 @@ func combinedRecoveryOriginal(t *testing.T, root, step string, sc combinedRecove
 	combinedRecoveryWriteJSON(t, p.evidence, evidence)
 	combinedRecoverySeedScope(t, root, 1, !sc.withoutCleanupReceipt)
 	combinedRecoveryWriteJSON(t, filepath.Join(root, "result-"+step+".json"), combinedRecoveryResult{
-		Step: step, Deadline: deadline, OwnerEpoch: 1, RecoveryGeneration: 1, Captured: true,
+		Step: step, Deadline: deadline, OwnerEpoch: 1, RecoveryGeneration: 1, Captured: !sc.idleCrash,
 		Counters: checkpoint.Counters, Transcripts: 1, StoreEffects: len(storeTrace.Effects),
 	})
 	os.Exit(combinedRecoveryCrashExit)
@@ -696,10 +706,14 @@ func combinedRecoveryRecover(t *testing.T, root, step string, capture bool, sc c
 		if err != nil {
 			t.Fatal(err)
 		}
+		providerConfig, replayProfile := combinedRecoveryProviderConfig(pin.ConversationID, g0ID, g0Tree), combinedRecoveryProviderProfile(g0ID)
+		if sc.binderShapedPins {
+			providerConfig.InitialGenerationID, providerConfig.InitialTreeDigest, replayProfile.Generation = "", "", ""
+		}
 		replay := GovernedReplayPins{
-			Provider: providerbridge.RecoveryPins{Config: combinedRecoveryProviderConfig(pin.ConversationID, g0ID, g0Tree),
+			Provider: providerbridge.RecoveryPins{Config: providerConfig,
 				Model: providerbridge.ApprovedModel, Policy: policy},
-			Profile:           combinedRecoveryProviderProfile(g0ID),
+			Profile:           replayProfile,
 			StorePolicyDigest: governedReplayStorePolicy, MetadataPolicyDigest: governedReplayMetaPolicy,
 			BashOutputPaths: []string{"task.txt"},
 		}
@@ -945,5 +959,44 @@ func TestGovernedRecoveryCombinedDeadlineChargesNothing(t *testing.T) {
 	}
 	if result.RetainedError != "" {
 		t.Fatalf("deadline refusal changed retained crash evidence: %s", result.RetainedError)
+	}
+}
+
+// The production recovery binder pins each retained transcript without its start generation and tree (see
+// production_recovery_binder_linux.go); the replay derives them. Retiring the last transcript's lineage must
+// use the pins the replay validated, so a resume that needs retirement is not refused for the binder's own pins.
+func TestGovernedRecoveryCombinedRetiresACapturedCallUnderBinderShapedPins(t *testing.T) {
+	root := privateGovernedTestRoot(t)
+	const scenario = "binder-pins"
+	combinedRecoveryRunChild(t, root, scenario, "original", "o", combinedRecoveryCrashExit)
+	first := combinedRecoveryRunChild(t, root, scenario, "recover-capture", "r1", combinedRecoveryCrashExit)
+	if first.PrepareError != "" || first.ActivateError != "" || !first.Activated || !first.Captured {
+		t.Fatalf("recovery under binder-shaped pins did not retire the captured call: prepare=%q activate=%q captured=%v",
+			first.PrepareError, first.ActivateError, first.Captured)
+	}
+	combinedRecoveryRequireCounters(t, first, workflowrecovery.Counters{PreEffectRetries: 1, CleanRestarts: 1,
+		HostCalls: 2, Tokens: 2 * combinedRecoveryTokens})
+	// Two retained transcripts now: the last one is the recovered conversation.
+	second := combinedRecoveryRunChild(t, root, scenario, "recover-capture", "r2", combinedRecoveryCrashExit)
+	if second.PrepareError != "" || second.ActivateError != "" || !second.Activated || !second.Captured || second.Transcripts != 2 {
+		t.Fatalf("second recovery under binder-shaped pins: prepare=%q activate=%q captured=%v transcripts=%d",
+			second.PrepareError, second.ActivateError, second.Captured, second.Transcripts)
+	}
+	combinedRecoveryRequireCounters(t, second, workflowrecovery.Counters{PreEffectRetries: 2, CleanRestarts: 2,
+		HostCalls: 3, Tokens: 3 * combinedRecoveryTokens})
+}
+
+// The same for a crash at the idle provider boundary, which retires the lineage without a captured call.
+func TestGovernedRecoveryCombinedRetiresAnIdleLineageUnderBinderShapedPins(t *testing.T) {
+	root := privateGovernedTestRoot(t)
+	const scenario = "binder-pins-idle"
+	combinedRecoveryRunChild(t, root, scenario, "original", "o", combinedRecoveryCrashExit)
+	first := combinedRecoveryRunChild(t, root, scenario, "recover-capture", "r1", combinedRecoveryCrashExit)
+	if first.PrepareError != "" || first.ActivateError != "" || !first.Activated || !first.Captured {
+		t.Fatalf("recovery under binder-shaped pins did not retire the idle lineage: prepare=%q activate=%q captured=%v",
+			first.PrepareError, first.ActivateError, first.Captured)
+	}
+	if first.Counters.CleanRestarts != 1 || first.Counters.PreEffectRetries != 0 {
+		t.Fatalf("idle retirement must charge one clean restart and no pre-effect retry: %+v", first.Counters)
 	}
 }
