@@ -1,8 +1,11 @@
 package productsetup
 
 import (
+	"bytes"
+	"cmp"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -80,6 +83,16 @@ func (h *host) managedSource(logical string, o owner, mode os.FileMode) (*os.Fil
 	return f, nil
 }
 
+// interruptHook lets a test end the process at a step boundary of an update or rollback, to prove a
+// fresh process recovers. It is nil in production.
+var interruptHook func(step string)
+
+func interrupt(step string) {
+	if interruptHook != nil {
+		interruptHook(step)
+	}
+}
+
 // Update installs newBinary as the service binary. See replaceBinary for the flow.
 func Update(env Env, newBinary string) (Report, error) {
 	h := newHost(env)
@@ -99,23 +112,13 @@ func Update(env Env, newBinary string) (Report, error) {
 	if info.Size() == 0 || info.Size() > maxBinaryBytes {
 		return *h.rep, refuse("%s is empty or too large to be the tbound binary", newBinary)
 	}
-	return h.replaceBinary(source, "update")
-}
-
-// Rollback restores the last-known-good binary the same way Update installs a new one. The binary it
-// replaces becomes the new last-known-good, so a second rollback returns to it.
-func Rollback(env Env) (Report, error) {
-	h := newHost(env)
-	if err := h.openRoot(); err != nil {
+	if err := h.checkBinaryFormat(source, newBinary); err != nil {
 		return *h.rep, err
 	}
-	defer h.dir.Close()
-	source, err := h.managedSource(LastKnownGoodPath, ownRoot, 0o755)
-	if err != nil {
-		return *h.rep, refuse("there is no last-known-good binary at %s safe to roll back to: %v", LastKnownGoodPath, err)
+	if err := h.checkInstalledSelfTestClient(); err != nil {
+		return *h.rep, err
 	}
-	defer source.Close()
-	return h.replaceBinary(source, "rollback")
+	return h.replaceBinary(source)
 }
 
 // replaceBinary swaps source in as the service binary:
@@ -128,7 +131,10 @@ func Rollback(env Env) (Report, error) {
 //
 // An interruption leaves the binary either old or new, and the last-known-good beside it. Rerunning the
 // command converges, and the service is started again when it was left stopped.
-func (h *host) replaceBinary(source *os.File, what string) (Report, error) {
+func (h *host) replaceBinary(source *os.File) (Report, error) {
+	if err := h.finishRestoration(); err != nil {
+		return *h.rep, err
+	}
 	current, err := h.managedSource(BinaryPath, ownRoot, 0o755)
 	if err != nil {
 		return *h.rep, refuse("no safe tbound binary is installed at %s; run `tbound product setup` first: %v", BinaryPath, err)
@@ -163,73 +169,277 @@ func (h *host) replaceBinary(source *os.File, what string) (Report, error) {
 		return *h.rep, fmt.Errorf("stage the binary: %w", err)
 	}
 	h.step("stage", stagedBinaryPath, "created", "sha256:"+want[:16])
-	if err := h.command("systemctl", "stop", UnitName); err != nil {
-		_, _ = h.remove(stagedBinaryPath, false)
+	abort, err := h.stopForSwap("update", func() { _, _ = h.remove(stagedBinaryPath, false) })
+	if err != nil {
 		return *h.rep, err
 	}
-	abort := func(err error) error {
-		_, _ = h.remove(stagedBinaryPath, false)
-		return errors.Join(err, h.command("systemctl", "start", UnitName))
-	}
-	if h.env.Turns == nil {
-		return *h.rep, abort(errors.New("no catalog check configured"))
-	}
-	turns, err := h.env.Turns()
-	if err != nil {
-		return *h.rep, abort(fmt.Errorf("the catalog cannot be opened by this binary (a newer schema is never read by an older one): %w", err))
-	}
-	var unresolved []string
-	pending := 0
-	for _, t := range turns {
-		if t.State == StateAwaitingReview {
-			pending++
-		} else {
-			unresolved = append(unresolved, t.ID+" ("+t.State+")")
-		}
-	}
-	if len(unresolved) > 0 {
-		return *h.rep, abort(refuse("unresolved turns: %s. The service was started again so its restart reconciliation can settle them; retry the %s once they are terminal",
-			strings.Join(unresolved, ", "), what))
-	}
-	if pending > 0 {
-		h.note("%d pending review(s) will be discarded with reason restart when the service starts", pending)
-	}
+	interrupt("stopped")
 	backup, err := h.backupCatalog()
 	if err != nil {
 		return *h.rep, abort(fmt.Errorf("back up the catalog: %w", err))
 	}
+	interrupt("backed-up")
 	if err := h.copyAtomic(current, LastKnownGoodPath, 0o755); err != nil {
 		return *h.rep, abort(fmt.Errorf("keep the last-known-good binary: %w", err))
 	}
 	if err := h.chown(LastKnownGoodPath, ownRoot); err != nil {
 		return *h.rep, abort(err)
 	}
+	interrupt("prepared")
 	if err := h.withPath(BinaryPath, false, func(path string) error {
 		return os.Rename(filepath.Join(filepath.Dir(path), filepath.Base(stagedBinaryPath)), path)
 	}); err != nil {
 		return *h.rep, abort(fmt.Errorf("swap the binary: %w", err))
 	}
 	h.step("swap", BinaryPath, "updated", "sha256:"+want[:16]+"; previous binary kept as "+LastKnownGoodPath)
+	interrupt("swapped")
 	return *h.rep, h.startAndTest(backup)
+}
+
+// stopForSwap stops the service and opens the catalog. A turn that is not awaiting review refuses the
+// swap, because the service must start again to reconcile it. A refusal runs discard and starts the
+// service again, which the returned abort does for any later failure. On success the service stays
+// stopped.
+func (h *host) stopForSwap(what string, discard func()) (abort func(error) error, err error) {
+	if err := h.command("systemctl", "stop", UnitName); err != nil {
+		discard()
+		return nil, err
+	}
+	abort = func(err error) error {
+		discard()
+		return errors.Join(err, h.command("systemctl", "start", UnitName))
+	}
+	if h.env.Turns == nil {
+		return nil, abort(errors.New("no catalog check configured"))
+	}
+	turns, err := h.env.Turns()
+	if err != nil {
+		return nil, abort(fmt.Errorf("the catalog cannot be opened by this binary (a newer schema is never read by an older one): %w", err))
+	}
+	var unresolved []string
+	pending := 0
+	for _, t := range turns {
+		switch t.State {
+		case StateAwaitingReview:
+			pending++
+		case StateUnknown: // no start settles it, and a swap leaves the registration alone
+		default:
+			unresolved = append(unresolved, t.ID+" ("+t.State+")")
+		}
+	}
+	if len(unresolved) > 0 {
+		return nil, abort(refuse("unresolved turns: %s. The service was started again so its restart reconciliation can settle them; retry the %s once they are terminal",
+			strings.Join(unresolved, ", "), what))
+	}
+	if pending > 0 {
+		h.note("%d pending review(s) will be discarded with reason restart when the service starts", pending)
+	}
+	return abort, nil
+}
+
+// Rollback restores the last-known-good binary. The binary it replaces becomes the new last-known-good,
+// so a second rollback returns to it. An interrupted rollback is finished by running it again.
+func Rollback(env Env) (Report, error) {
+	h := newHost(env)
+	if err := h.openRoot(); err != nil {
+		return *h.rep, err
+	}
+	defer h.dir.Close()
+	if fallback, err := h.managedSource(LastKnownGoodPath, ownRoot, 0o755); err == nil { // a missing one is refused by rollback
+		err = h.checkBinaryFormat(fallback, LastKnownGoodPath)
+		fallback.Close()
+		if err != nil {
+			return *h.rep, err
+		}
+	}
+	if err := h.checkInstalledSelfTestClient(); err != nil {
+		return *h.rep, err
+	}
+	return h.rollback()
+}
+
+// checkBinaryFormat refuses, before anything changes, a candidate binary of another installation format than
+// the installed unit and setup record. A binary reads only its own format (a new doctor rejects the old
+// unit, an old binary rejects the new [Install] section and client_uid), so crossing would fail its
+// self-test and restore, and nothing converts one format into the other.
+func (h *host) checkBinaryFormat(candidate *os.File, what string) error {
+	if h.env.BinaryFormat == nil {
+		return nil
+	}
+	const way = "run `tbound product setup --replace` with a tbound binary of format %d, which rewrites the unit and the setup record"
+	data, err := readSource(h.real(SetupConfigPath))
+	if err != nil {
+		return refuse("the installed setup record is unreadable, so the installation format cannot be checked: %v", err)
+	}
+	record, err := parseInstalled(data)
+	if err != nil {
+		return refuse("the installed setup record cannot be read by this binary, so the installation format cannot be checked (%v); "+way, err, InstallationFormat)
+	}
+	installed := cmp.Or(record.InstallationFormat, LegacyInstallationFormat)
+	got, err := h.env.BinaryFormat(candidate)
+	if err != nil {
+		return refuse("cannot tell the installation format of %s: %v", what, err)
+	}
+	if got != installed {
+		return refuse("%s is installation format %d but this installation is format %d; nothing was changed. The formats do not convert: "+way, what, got, installed, got)
+	}
+	return nil
+}
+
+// rollback exchanges the installed binary and the last-known-good binary with one RENAME_EXCHANGE, so
+// both exist whichever way an interruption falls and neither is overwritten. Before the exchange it
+// records the digests of both in rollbackIntentPath. A retry in a fresh process reads them. An installed
+// binary that already is the target means the exchange happened, so the retry only starts the service
+// and runs the self-test, and never exchanges back. The old pair still in place means it carries on.
+// Any other pair means the record is stale, and it is dropped. The record is removed once the restored
+// binary started and passed, or was restored.
+func (h *host) rollback() (Report, error) {
+	if err := h.finishRestoration(); err != nil {
+		return *h.rep, err
+	}
+	current, err := h.managedSource(BinaryPath, ownRoot, 0o755)
+	if err != nil {
+		return *h.rep, refuse("no safe tbound binary is installed at %s; run `tbound product setup` first: %v", BinaryPath, err)
+	}
+	defer current.Close()
+	fallback, err := h.managedSource(LastKnownGoodPath, ownRoot, 0o755)
+	if err != nil {
+		return *h.rep, refuse("there is no last-known-good binary at %s safe to roll back to: %v", LastKnownGoodPath, err)
+	}
+	defer fallback.Close()
+	installed, err := fileDigest(current)
+	if err != nil {
+		return *h.rep, err
+	}
+	kept, err := fileDigest(fallback)
+	if err != nil {
+		return *h.rep, err
+	}
+	installed, kept = "sha256:"+installed, "sha256:"+kept
+	record, found, err := h.readRollbackIntent()
+	if err != nil {
+		return *h.rep, err
+	}
+	switch {
+	case found && installed == record.Target:
+		h.note("resuming the interrupted rollback: %s is already installed", installed[:23])
+		return *h.rep, h.startAndTest("kept from the interrupted rollback")
+	case found && (installed != record.Previous || kept != record.Target):
+		if err := h.dropRollbackIntent(); err != nil {
+			return *h.rep, err
+		}
+	}
+	if installed == kept {
+		return *h.rep, refuse("the last-known-good binary is the installed binary (%s); there is nothing to roll back to", installed[:23])
+	}
+	detail := "exchanged with " + LastKnownGoodPath + ": " + kept[:23] + " installed, " + installed[:23] + " kept as last-known-good"
+	if h.env.DryRun {
+		_ = h.command("systemctl", "stop", UnitName)
+		h.step("catalog", CatalogPath, "unchanged", "would open after the stop and refuse on an unresolved turn")
+		h.step("swap", BinaryPath, "updated", detail)
+		_ = h.command("systemctl", "start", UnitName)
+		h.rep.Commands = append(h.rep.Commands, BinaryPath+" product doctor --self-test")
+		return *h.rep, nil
+	}
+	abort, err := h.stopForSwap("rollback", func() {})
+	if err != nil {
+		return *h.rep, err
+	}
+	interrupt("stopped")
+	backup, err := h.backupCatalog()
+	if err != nil {
+		return *h.rep, abort(fmt.Errorf("back up the catalog: %w", err))
+	}
+	interrupt("backed-up")
+	if err := h.writeRollbackIntent(rollbackIntent{Target: kept, Previous: installed}); err != nil {
+		return *h.rep, abort(errors.Join(fmt.Errorf("record the rollback: %w", err), h.dropRollbackIntent()))
+	}
+	interrupt("prepared")
+	if err := h.exchange(BinaryPath, LastKnownGoodPath); err != nil {
+		return *h.rep, abort(errors.Join(fmt.Errorf("exchange the binaries: %w", err), h.dropRollbackIntent()))
+	}
+	h.step("swap", BinaryPath, "updated", detail)
+	interrupt("swapped")
+	return *h.rep, h.startAndTest(backup)
+}
+
+// rollbackIntent is the persisted state of a rollback or restoration in progress. A rollback records the
+// digests (sha256:HEX) of the binary being restored and of the binary being rolled back from. A restoration
+// (after a failed start or self-test) records only Target, the last-known-good binary being put back.
+type rollbackIntent struct {
+	Target    string `json:"target"`
+	Previous  string `json:"previous,omitempty"`
+	Restoring bool   `json:"restoring,omitempty"`
+}
+
+func (h *host) readRollbackIntent() (rollbackIntent, bool, error) {
+	f, err := h.managedSource(rollbackIntentPath, ownRoot, 0o600)
+	if errors.Is(err, os.ErrNotExist) {
+		return rollbackIntent{}, false, nil
+	}
+	if err != nil {
+		return rollbackIntent{}, false, refuse("the rollback record %s is unsafe (%v); check which binary is installed, then remove it", rollbackIntentPath, err)
+	}
+	defer f.Close()
+	data, err := io.ReadAll(io.LimitReader(f, 1<<10))
+	var record rollbackIntent
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err != nil || decoder.Decode(&record) != nil || !sha256Digest.MatchString(record.Target) || (!record.Restoring && !sha256Digest.MatchString(record.Previous)) {
+		return rollbackIntent{}, false, refuse("the rollback record %s is unreadable; check which binary is installed, then remove it", rollbackIntentPath)
+	}
+	return record, true, nil
+}
+
+// writeRollbackIntent makes the record durable before the exchange.
+func (h *host) writeRollbackIntent(record rollbackIntent) error {
+	data, err := json.Marshal(record)
+	if err != nil {
+		return err
+	}
+	if err := h.withPath(rollbackIntentPath, true, func(path string) error { return writeFile(path, append(data, '\n'), 0o600) }); err != nil {
+		return err
+	}
+	if err := h.chown(rollbackIntentPath, ownRoot); err != nil {
+		return err
+	}
+	return h.syncDir(BinaryDir)
+}
+
+// dropRollbackIntent removes the record, if any, and makes the removal durable.
+func (h *host) dropRollbackIntent() error {
+	if !h.writes() {
+		return nil
+	}
+	err := h.withPath(rollbackIntentPath, false, os.Remove)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("remove the rollback record: %w", err)
+	}
+	return h.syncDir(BinaryDir)
 }
 
 func (h *host) startAndTest(backup string) error {
 	if err := h.command("systemctl", "start", UnitName); err != nil {
 		return h.restore(err, backup)
 	}
+	interrupt("started")
 	if h.env.DryRun {
 		h.rep.Commands = append(h.rep.Commands, BinaryPath+" product doctor --self-test")
 		return nil
 	}
 	switch err := h.selfTest(); {
 	case err == nil:
+		interrupt("tested")
 		h.step("self-test", BinaryPath, "created", "passed")
 	case errors.Is(err, ErrSelfTestNotConfigured):
 		h.note("no self-test ran (not configured, or not run on this root): no runtime turn exercised the new binary, so governed readiness is not established")
 	default:
 		return h.restore(fmt.Errorf("%w: %v", ErrSelfTest, err), backup)
 	}
-	return nil
+	return h.dropRollbackIntent()
 }
 
 // selfTest runs the hook, or records it where nothing can run (a test root).
@@ -249,10 +459,66 @@ func (h *host) restore(cause error, backup string) error {
 		return errors.Join(cause, fmt.Errorf("cannot restore the last-known-good binary: %w", err))
 	}
 	defer source.Close()
-	err = errors.Join(cause, h.command("systemctl", "stop", UnitName),
-		h.copyAtomic(source, BinaryPath, 0o755), h.command("systemctl", "start", UnitName))
+	digest, err := fileDigest(source)
+	if err != nil {
+		return errors.Join(cause, err)
+	}
+	// The restoration is recorded first. A process that ends below leaves both binaries equal and the service
+	// stopped, and the next update or rollback finishes it (finishRestoration) before it compares anything.
+	// Without the record nothing below may run, so the new binary stays installed and `rollback` is the way out.
+	if err := h.writeRollbackIntent(rollbackIntent{Target: "sha256:" + digest, Restoring: true}); err != nil {
+		return errors.Join(cause, fmt.Errorf("the restoration of %s could not be recorded, so nothing was stopped or replaced and the new binary is still installed; run `tbound product rollback`: %w", LastKnownGoodPath, err))
+	}
+	failed := errors.Join(h.command("systemctl", "stop", UnitName), h.copyAtomic(source, BinaryPath, 0o755))
+	interrupt("restored")
+	failed = errors.Join(failed, h.command("systemctl", "start", UnitName))
+	if failed == nil {
+		failed = h.dropRollbackIntent()
+	}
 	h.step("swap", BinaryPath, "updated", "rolled back to "+LastKnownGoodPath)
-	return fmt.Errorf("%w; rolled back to the last-known-good binary (catalog backup: %s)", err, backup)
+	return fmt.Errorf("%w; rolled back to the last-known-good binary (catalog backup: %s)", errors.Join(cause, failed), backup)
+}
+
+// finishRestoration finishes a restoration that an interrupted update or rollback recorded: it puts the
+// last-known-good binary back when the copy had not completed, starts the service, runs the self-test and
+// clears the record. Without such a record it does nothing. A restoration leaves the installed binary equal
+// to the last-known-good one, so an update or rollback must call this before it compares the two.
+func (h *host) finishRestoration() error {
+	record, found, err := h.readRollbackIntent()
+	if err != nil || !found || !record.Restoring {
+		return err
+	}
+	if h.env.DryRun {
+		return refuse("an interrupted restoration of %s is recorded in %s; a dry run cannot plan past it: rerun without --dry-run to finish it", record.Target[:23], rollbackIntentPath)
+	}
+	fallback, err := h.managedSource(LastKnownGoodPath, ownRoot, 0o755)
+	if err != nil {
+		return refuse("an interrupted restoration is recorded but the last-known-good binary is unusable: %v", err)
+	}
+	defer fallback.Close()
+	kept, err := fileDigest(fallback)
+	if err != nil {
+		return err
+	}
+	if "sha256:"+kept != record.Target {
+		return refuse("the restoration record names %s but the last-known-good binary is sha256:%s; check which binary is installed, then remove %s", record.Target, kept, rollbackIntentPath)
+	}
+	h.note("finishing the interrupted restoration of %s first", record.Target[:23])
+	current, err := h.managedSource(BinaryPath, ownRoot, 0o755)
+	if err != nil {
+		return refuse("no safe tbound binary is installed at %s; run `tbound product setup` first: %v", BinaryPath, err)
+	}
+	defer current.Close()
+	installed, err := fileDigest(current)
+	if err != nil {
+		return err
+	}
+	if "sha256:"+installed != record.Target {
+		if err := errors.Join(h.command("systemctl", "stop", UnitName), h.copyAtomic(fallback, BinaryPath, 0o755)); err != nil {
+			return fmt.Errorf("finish the restoration: %w", err)
+		}
+	}
+	return h.startAndTest("kept from the interrupted restoration")
 }
 
 // backupCatalog copies the catalog journal to BackupsDir under a name that carries its digest, and
@@ -320,19 +586,28 @@ func Uninstall(env Env, purge bool) (Report, error) {
 				return *h.rep, fmt.Errorf("the catalog could not be read; refusing purge: %w", err)
 			}
 			h.note("the catalog could not be read: %v", err)
-		} else if len(turns) > 0 {
-			ids := make([]string, len(turns))
-			for i, t := range turns {
-				ids[i] = t.ID + " (" + t.State + ")"
+		} else {
+			var ids, blocked []string
+			for _, t := range turns {
+				if name := t.ID + " (" + t.State + ")"; t.State == StateUnknown {
+					blocked = append(blocked, name)
+				} else {
+					ids = append(ids, name)
+				}
 			}
-			h.note("%d unresolved turn(s) stay in the catalog: %s. Start the service again to reconcile them before relying on the evidence", len(turns), strings.Join(ids, ", "))
+			if len(ids) > 0 {
+				h.note("%d unresolved turn(s) stay in the catalog: %s. Start the service again to reconcile them before relying on the evidence", len(ids), strings.Join(ids, ", "))
+			}
+			if len(blocked) > 0 {
+				h.note("%d turn(s) with an unknown outcome stay in the catalog and stay blocked: %s", len(blocked), strings.Join(blocked, ", "))
+			}
 		}
 	}
 	unitGone, err := h.remove(UnitPath, false)
 	if err != nil {
 		return *h.rep, err
 	}
-	for _, p := range []string{BinaryPath, LastKnownGoodPath, stagedBinaryPath} {
+	for _, p := range []string{BinaryPath, LastKnownGoodPath, stagedBinaryPath, rollbackIntentPath} {
 		if _, err := h.remove(p, false); err != nil {
 			return *h.rep, err
 		}
@@ -342,6 +617,11 @@ func Uninstall(env Env, purge bool) (Report, error) {
 	}
 	if _, err := h.remove(RuntimeDir, true); err != nil {
 		return *h.rep, err
+	}
+	if !env.Live { // `systemctl disable` removed the link on a live host; a test root only recorded it
+		if _, err := h.remove(enableLinkPath, false); err != nil {
+			return *h.rep, err
+		}
 	}
 	if unitGone {
 		if err := h.command("systemctl", "daemon-reload"); err != nil {

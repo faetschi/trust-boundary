@@ -32,6 +32,8 @@ type RegistrationSummary struct {
 	Digest   string
 	Projects []string
 	Profiles []string
+	// Principals are the registration's allowed principals: the UIDs it authorizes to use the service.
+	Principals []int64
 	// PolicyDigests maps each project to the gate-policy digest the registration commits to.
 	PolicyDigests map[string]string
 	Text          string
@@ -43,8 +45,13 @@ type RegistrationSummary struct {
 // OpenTurn is a catalog turn that is not terminal.
 type OpenTurn struct{ ID, State string }
 
-// StateAwaitingReview is the one open state an update may leave: the next start discards it.
-const StateAwaitingReview = "awaiting_review"
+// StateAwaitingReview is the one open state an update may leave: the next start discards it. StateUnknown
+// is a turn whose outcome cannot be established: no start settles it, an update ignores it, and it still
+// blocks any registration change.
+const (
+	StateAwaitingReview = "awaiting_review"
+	StateUnknown        = "unknown"
+)
 
 // Env is the target and every seam. Root prefixes each host path: "" or "/" is the live host and any
 // other value is a test root. Live applies owners and runs system commands for real; without it the
@@ -70,12 +77,17 @@ type Env struct {
 	Exec func(name string, args ...string) ([]byte, error)
 	// Chown changes an owner when Live, using the validated file's /proc/self/fd path. Nil uses fchown.
 	Chown func(path string, uid, gid int) error
-	// Turns lists the catalog's non-terminal turns, opened after the service stopped. Required by
-	// Update, Rollback and Uninstall.
+	// Turns lists the turns of the catalog that fence a registration change: the unresolved ones and the ones
+	// with an unknown outcome. The catalog is read under the installed registration with the service stopped.
+	// Required by Update, Rollback, Uninstall, and Setup when it replaces a registration.
 	Turns func() ([]OpenTurn, error)
 	// SelfTestHook runs the installed binary's self-test after a swap. Nil records it and treats it as
 	// not run. ErrSelfTestNotConfigured is not a failure.
 	SelfTestHook func() error
+	// BinaryFormat returns the installation format a candidate binary (its open file) writes and reads,
+	// without running it. Update and rollback compare it with the installation's before they change anything.
+	// Nil skips the check, which a test root needs because its fixture binaries carry no marker.
+	BinaryFormat func(candidate *os.File) (int, error)
 	// RunSelfTest runs the synthetic turn for Doctor. Nil reports the self-test as unavailable.
 	RunSelfTest func(SelfTest) (string, error)
 	// CredentialStatus summarizes a provider profile's credential without its key. Nil skips it.

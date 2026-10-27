@@ -5,10 +5,13 @@ package main
 import (
 	"archive/tar"
 	"compress/gzip"
+	"crypto/sha256"
+	"encoding/hex"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -41,6 +44,10 @@ type releaseFixture struct {
 	pub   string
 	name  string
 	tarGz string
+	// extra are additional archive entries (path to content), written by writeArchive.
+	extra map[string]string
+	// asRoot runs install.sh as if `id -u` printed 0, so its root-run checks apply to this unprivileged test.
+	asRoot bool
 }
 
 func releaseArtifactName() string {
@@ -85,6 +92,14 @@ func (f *releaseFixture) writeArchive(marker string) {
 			f.t.Fatal(err)
 		}
 	}
+	for name, body := range f.extra {
+		if err := tw.WriteHeader(&tar.Header{Name: name, Mode: 0o644, Size: int64(len(body)), Typeflag: tar.TypeReg}); err != nil {
+			f.t.Fatal(err)
+		}
+		if _, err := tw.Write([]byte(body)); err != nil {
+			f.t.Fatal(err)
+		}
+	}
 	if err := tw.Close(); err != nil {
 		f.t.Fatal(err)
 	}
@@ -106,6 +121,15 @@ func (f *releaseFixture) verifier() string {
 // install runs install.sh against the local dist and returns its output, the exit error and the prefix.
 func (f *releaseFixture) install(extra ...string) (out, prefix string, err error) {
 	f.t.Helper()
+	return f.installCommand("", extra...)
+}
+
+// asRootShell sources install.sh ($1) and runs its main with `id -u` answering 0.
+const asRootShell = `. "$1"; shift; id() { if [ "${1:-}" = -u ]; then echo 0; else command id "$@"; fi; }; main "$@"`
+
+// installCommand is install with an optional install.sh subcommand such as "update".
+func (f *releaseFixture) installCommand(subcommand string, extra ...string) (out, prefix string, err error) {
+	f.t.Helper()
 	bash, err := exec.LookPath("bash")
 	if err != nil {
 		f.t.Skip("bash is not available")
@@ -115,7 +139,14 @@ func (f *releaseFixture) install(extra ...string) (out, prefix string, err error
 		f.t.Fatal(err)
 	}
 	prefix = filepath.Join(home, "prefix")
-	args := append([]string{"../../../install/install.sh", "--version", "t1", "--prefix", prefix, "--local-dist", f.dist, "--no-path", "--no-completions"}, extra...)
+	args := []string{"../../../install/install.sh"}
+	if subcommand != "" {
+		args = append(args, subcommand)
+	}
+	args = append(append(args, "--version", "t1", "--prefix", prefix, "--local-dist", f.dist, "--no-path", "--no-completions"), extra...)
+	if f.asRoot {
+		args = append([]string{"-c", asRootShell, "tbound-test"}, args...)
+	}
 	cmd := exec.Command(bash, args...)
 	cmd.Env = []string{"HOME=" + home, "TMPDIR=" + f.dir, "PATH=/usr/bin:/bin", "XDG_CONFIG_HOME=" + filepath.Join(home, "cfg")}
 	combined, err := cmd.CombinedOutput()
@@ -240,5 +271,244 @@ func TestProductAdminReleaseInstallScriptChecksumOnlyPathStillWorksAndSaysItIsNo
 	}
 	if help, err := exec.Command("bash", "../../../install/install.sh", "--help").CombinedOutput(); err != nil || !strings.Contains(string(help), "FIRST-INSTALL LIMIT") {
 		t.Fatalf("the help text must state the first-install trust limit: %v\n%s", err, help)
+	}
+}
+
+// publishSums replaces the checksum file the way a same-origin attacker who also replaced the artifact would.
+func (f *releaseFixture) publishSums() {
+	f.t.Helper()
+	data, err := os.ReadFile(f.tarGz)
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	sum := sha256.Sum256(data)
+	if err := os.WriteFile(filepath.Join(f.dist, "SHA256SUMS"), []byte(hex.EncodeToString(sum[:])+"  "+f.name+"\n"), 0o644); err != nil {
+		f.t.Fatal(err)
+	}
+}
+
+func installedMarker(t *testing.T, prefix string) string {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(prefix, "bin", "tbound"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.TrimSpace(strings.TrimPrefix(string(data), "#!/bin/sh\necho "))
+}
+
+// resign replaces the manifest and its signature with a fresh signature by the key in keyDir over the
+// archive as it is now.
+func (f *releaseFixture) resign(keyDir string) {
+	f.t.Helper()
+	manifest := filepath.Join(f.dist, "tbound-release-manifest.json")
+	for _, stale := range []string{manifest, manifest + ".sig"} {
+		if err := os.Remove(stale); err != nil {
+			f.t.Fatal(err)
+		}
+	}
+	mustAdmin(f.t, "release", "manifest", "--out", manifest, f.tarGz)
+	mustAdmin(f.t, "release", "sign", "--manifest", manifest, "--key", filepath.Join(keyDir, "release-signing.key"), "--out", manifest+".sig")
+}
+
+func TestProductAdminReleaseInstallScriptPinsThePublisherKeyForEveryLaterInstall(t *testing.T) {
+	if runtime.GOARCH != "amd64" && runtime.GOARCH != "arm64" {
+		t.Skip("install.sh supports amd64 and arm64")
+	}
+	f := newReleaseFixture(t)
+	fingerprint := strings.TrimSpace(mustAdmin(t, "release", "fingerprint", "--public-key", f.pub))
+	out, prefix, err := f.install("--public-key", f.pub, "--verifier", f.verifier(), "--key-fingerprint", fingerprint)
+	if err != nil {
+		t.Fatalf("signed first install: %v\n%s", err, out)
+	}
+	pinned := filepath.Join(prefix, ".tbound-publisher.pub")
+	info, err := os.Stat(pinned)
+	if err != nil || info.Mode().Perm() != 0o644 {
+		t.Fatalf("the first authenticated install must pin the publisher key as a 0644 file in the prefix: %v %v", err, info)
+	}
+	want, _ := os.ReadFile(f.pub)
+	if got, _ := os.ReadFile(pinned); string(got) != string(want) {
+		t.Fatal("the pinned key is not the key the install verified")
+	}
+
+	// The artifact and the same-origin checksum file are both replaced, and no --public-key is given.
+	f.writeArchive("malicious")
+	f.publishSums()
+	out, _, err = f.installCommand("update", "--verifier", f.verifier())
+	if err == nil || !strings.Contains(out, "pinned publisher key") || !strings.Contains(out, "nothing was extracted") {
+		t.Fatalf("an update without a signature was accepted for a keyed prefix: %v\n%s", err, out)
+	}
+
+	// The attacker also re-signs a manifest with their own key: the pinned key still decides.
+	attacker := filepath.Join(f.dir, "attacker")
+	mustAdmin(t, "release", "keygen", "--out", attacker)
+	f.resign(attacker)
+	if out, _, err := f.installCommand("update", "--verifier", f.verifier()); err == nil || !strings.Contains(out, "nothing was extracted") {
+		t.Fatalf("a manifest signed by another key was accepted for a keyed prefix: %v\n%s", err, out)
+	}
+	if out, _, err := f.installCommand("update", "--verifier", f.verifier(), "--public-key", filepath.Join(attacker, "release-signing.pub")); err == nil || !strings.Contains(out, "differs from the pinned publisher key") {
+		t.Fatalf("a different --public-key replaced the pinned key: %v\n%s", err, out)
+	}
+	if got := installedMarker(t, prefix); got != "genuine" {
+		t.Fatalf("a refused update replaced the installation: %q", got)
+	}
+
+	// The genuine signed release still updates, from the pinned key alone.
+	f.writeArchive("genuine")
+	f.resign(f.keys)
+	if out, _, err := f.installCommand("update", "--verifier", f.verifier()); err != nil || !strings.Contains(out, "pinned publisher key") {
+		t.Fatalf("a genuine signed update failed under the pinned key: %v\n%s", err, out)
+	}
+}
+
+func TestProductAdminReleaseInstallScriptSaysWhenAPrefixHasNoPinnedKey(t *testing.T) {
+	if runtime.GOARCH != "amd64" && runtime.GOARCH != "arm64" {
+		t.Skip("install.sh supports amd64 and arm64")
+	}
+	f := newReleaseFixture(t)
+	f.publishSums()
+	if out, _, err := f.install(); err != nil {
+		t.Fatalf("checksum-only install: %v\n%s", err, out)
+	}
+	out, prefix, err := f.installCommand("update")
+	if err != nil || !strings.Contains(out, "installed without a publisher key") {
+		t.Fatalf("an update of an unkeyed prefix must proceed and say so: %v\n%s", err, out)
+	}
+	if _, statErr := os.Stat(filepath.Join(prefix, ".tbound-publisher.pub")); statErr == nil {
+		t.Fatal("an unauthenticated install pinned a key")
+	}
+	fingerprint := strings.TrimSpace(mustAdmin(t, "release", "fingerprint", "--public-key", f.pub))
+	if out, _, err := f.installCommand("update", "--public-key", f.pub, "--verifier", f.verifier(), "--key-fingerprint", fingerprint); err != nil {
+		t.Fatalf("the first authenticated update of an unkeyed prefix failed: %v\n%s", err, out)
+	}
+	if _, statErr := os.Stat(filepath.Join(prefix, ".tbound-publisher.pub")); statErr != nil {
+		t.Fatalf("the first authenticated update did not pin the key: %v", statErr)
+	}
+}
+
+func TestProductAdminReleaseInstallScriptNeverTakesAPublisherPinFromTheArchive(t *testing.T) {
+	if runtime.GOARCH != "amd64" && runtime.GOARCH != "arm64" {
+		t.Skip("install.sh supports amd64 and arm64")
+	}
+	f := newReleaseFixture(t)
+	attacker := filepath.Join(f.dir, "attacker")
+	mustAdmin(t, "release", "keygen", "--out", attacker)
+	attackerKey, err := os.ReadFile(filepath.Join(attacker, "release-signing.pub"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.extra = map[string]string{".tbound-publisher.pub": string(attackerKey)}
+	f.writeArchive("malicious")
+	f.publishSums()
+	out, prefix, err := f.install()
+	if err != nil {
+		t.Fatalf("checksum-only install: %v\n%s", err, out)
+	}
+	if _, statErr := os.Lstat(filepath.Join(prefix, ".tbound-publisher.pub")); statErr == nil {
+		t.Fatal("a checksum-only archive planted the publisher pin of the prefix")
+	}
+	if out, _, err := f.installCommand("update"); err != nil || !strings.Contains(out, "installed without a publisher key") {
+		t.Fatalf("the prefix must stay unkeyed after a checksum-only install: %v\n%s", err, out)
+	}
+}
+
+func TestProductAdminReleaseInstallScriptAsRootRefusesAPrefixBelowADirectoryAnotherUserOwns(t *testing.T) {
+	if runtime.GOARCH != "amd64" && runtime.GOARCH != "arm64" {
+		t.Skip("install.sh supports amd64 and arm64")
+	}
+	if os.Geteuid() == 0 {
+		t.Skip("the prefix below this test's directory would be root-owned")
+	}
+	f := newReleaseFixture(t)
+	fingerprint := strings.TrimSpace(mustAdmin(t, "release", "fingerprint", "--public-key", f.pub))
+	if out, _, err := f.install("--public-key", f.pub, "--verifier", f.verifier(), "--key-fingerprint", fingerprint); err != nil {
+		t.Fatalf("signed first install: %v\n%s", err, out)
+	}
+
+	// The owner of the directories above the prefix replaces the prefix with a marker and their own pin, and
+	// signs a malicious release with their own key.
+	attacker := filepath.Join(f.dir, "attacker")
+	mustAdmin(t, "release", "keygen", "--out", attacker)
+	f.writeArchive("malicious")
+	f.resign(attacker)
+	attackerKey, err := os.ReadFile(filepath.Join(attacker, "release-signing.pub"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.asRoot = true
+	prefix := filepath.Join(f.dir, "home", "prefix")
+	if err := os.WriteFile(filepath.Join(prefix, ".tbound-publisher.pub"), attackerKey, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, _, err := f.installCommand("update", "--verifier", f.verifier())
+	if err == nil || !strings.Contains(out, "refusing to act as root") || !strings.Contains(out, "owned by uid") {
+		t.Fatalf("a root update accepted a prefix whose ancestors another user owns: %v\n%s", err, out)
+	}
+	if got := installedMarker(t, prefix); got != "genuine" {
+		t.Fatalf("a refused root update replaced the installation: %q", got)
+	}
+
+	if err := os.RemoveAll(prefix); err != nil {
+		t.Fatal(err)
+	}
+	if out, _, err := f.install("--public-key", f.pub, "--verifier", f.verifier()); err == nil || !strings.Contains(out, "refusing to act as root") {
+		t.Fatalf("a fresh root install below a directory another user owns was accepted: %v\n%s", err, out)
+	}
+	if _, statErr := os.Lstat(prefix); statErr == nil {
+		t.Fatal("a refused root install created the prefix")
+	}
+}
+
+// installShellFunction runs one install.sh function with arguments in a shell that sourced the script.
+func installShellFunction(t *testing.T, function string, args ...string) (string, error) {
+	t.Helper()
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("bash is not available")
+	}
+	cmd := exec.Command(bash, append([]string{"-c", `. "$1"; shift; "$@"`, "tbound-test", "../../../install/install.sh", function}, args...)...)
+	cmd.Env = []string{"PATH=/usr/bin:/bin"}
+	out, err := cmd.CombinedOutput()
+	return string(out), err
+}
+
+func TestProductAdminReleaseInstallScriptRootTrustChecksRefuseSymlinksForeignOwnersAndWritablePaths(t *testing.T) {
+	uid := strconv.Itoa(os.Geteuid())
+	dir := t.TempDir()
+	write := func(name string, mode os.FileMode) string {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte("key\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(p, mode); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	good := write("good", 0o644)
+	if out, err := installShellFunction(t, "trusted_entry", good, uid); err != nil {
+		t.Fatalf("a file of the trusted owner that only the owner writes was refused: %v\n%s", err, out)
+	}
+	link := filepath.Join(dir, "link")
+	if err := os.Symlink(good, link); err != nil {
+		t.Fatal(err)
+	}
+	cases := map[string]struct{ path, uid, want string }{
+		"symlink to a trusted file": {link, uid, "is a symlink"},
+		"group writable":            {write("group", 0o664), uid, "writable by group or others"},
+		"other writable":            {write("other", 0o646), uid, "writable by group or others"},
+	}
+	if os.Geteuid() != 0 {
+		cases["owned by someone else"] = struct{ path, uid, want string }{good, "0", "owned by uid " + uid}
+	}
+	for name, c := range cases {
+		out, err := installShellFunction(t, "trusted_entry", c.path, c.uid)
+		if err == nil || !strings.Contains(out, "refusing to act as root") || !strings.Contains(out, c.want) {
+			t.Errorf("%s: want a refusal naming %q: %v\n%s", name, c.want, err, out)
+		}
+	}
+	for _, p := range []string{"/usr", "/usr/tbound-no-such-dir/prefix"} {
+		if out, err := installShellFunction(t, "require_trusted_path", p, "0"); err != nil {
+			t.Errorf("%s: a chain of root-owned, non-writable directories was refused: %v\n%s", p, err, out)
+		}
 	}
 }

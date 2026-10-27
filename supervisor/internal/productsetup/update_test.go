@@ -276,7 +276,7 @@ func TestDoctorReportsAdvisoryChecksNeverKeysAndOnlyASelfTestEstablishesReadines
 		t.Fatalf("an unconfigured self-test must be reported as such:\n%s", notConfigured)
 	}
 
-	f.cfg.SelfTest = &SelfTest{ProjectID: "alpha", ProviderProfile: "opencode-go-engineering"}
+	f.cfg.SelfTest = &SelfTest{ProjectID: "alpha", ProviderProfile: "opencode-go-engineering", ClientUID: 1000}
 	f.env.Replace = true
 	if _, err := f.setup(); err != nil {
 		t.Fatal(err)
@@ -313,10 +313,35 @@ func TestDoctorFlagsAWeakenedModeAndABadUnit(t *testing.T) {
 
 func TestInstalledSetupRecordCarriesNoSourcePaths(t *testing.T) {
 	f := newFixture(t)
-	f.cfg.SelfTest = &SelfTest{ProjectID: "alpha", ProviderProfile: "p"}
+	f.cfg.SelfTest = &SelfTest{ProjectID: "alpha", ProviderProfile: "p", ClientUID: 1000}
 	f.installed()
 	cfg, err := parseInstalled([]byte(f.read(SetupConfigPath)))
 	if err != nil || cfg.SelfTest == nil || cfg.SelfTest.ProjectID != "alpha" || cfg.Registration != "" {
 		t.Fatalf("installed record: %+v %v", cfg, err)
+	}
+}
+
+func TestAFailedRestorationRecordStopsBeforeTheServiceIsStoppedOrTheBinaryReplaced(t *testing.T) {
+	f := newFixture(t)
+	f.installed()
+	f.env.Turns = func() ([]OpenTurn, error) { return nil, nil }
+	f.env.SelfTestHook = func() error { return errors.New("the synthetic turn failed") }
+	interruptHook = func(step string) {
+		if step == "started" { // a directory where the record goes makes writing the record fail
+			if err := os.Mkdir(f.path(rollbackIntentPath), 0o755); err != nil {
+				t.Error(err)
+			}
+		}
+	}
+	t.Cleanup(func() { interruptHook = nil })
+	rep, err := Update(f.env, f.newBinary("binary v2"))
+	if !errors.Is(err, ErrSelfTest) || !strings.Contains(err.Error(), "restoration") || !strings.Contains(err.Error(), "product rollback") {
+		t.Fatalf("a restoration that could not be recorded must say so, with the way out: %v", err)
+	}
+	if stops := slices.DeleteFunc(slices.Clone(rep.Commands), func(c string) bool { return c != "systemctl stop "+UnitName }); len(stops) != 1 {
+		t.Fatalf("the service was stopped again for a restoration that was not recorded: %v", rep.Commands)
+	}
+	if f.read(BinaryPath) != "binary v2" {
+		t.Fatalf("the binary was replaced for a restoration that was not recorded: %q", f.read(BinaryPath))
 	}
 }

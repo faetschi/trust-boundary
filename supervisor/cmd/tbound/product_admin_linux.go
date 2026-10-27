@@ -29,7 +29,8 @@ const productAdminUsage = `Usage (run setup, update, rollback and uninstall as r
   tbound product rollback [--root DIR] [--dry-run]
   tbound product uninstall [--root DIR] [--dry-run] [--purge] [--yes]
   tbound product doctor [--self-test] [--root DIR]
-  tbound product turns [--root DIR]                        (plumbing: JSON list of unresolved catalog turns)
+  tbound product turns [--root DIR]                        (plumbing: JSON list of unsettled catalog turns)
+  tbound product self-test [--root DIR]                    (plumbing: the self-test turn as the calling UID, request on stdin)
 --root DIR runs against a test root: files are written below DIR, but users, owners and systemctl
 calls are only recorded, never executed. --dry-run writes and executes nothing and prints the plan.
 setup is idempotent ("unchanged" on a rerun), refuses any thesis path, and fails before any change
@@ -37,7 +38,9 @@ on a host that does not meet the prerequisites (use the qualified VM option).
 uninstall keeps /etc/tbound-product and /var/lib/tbound-product unless --purge is given; --purge
 asks for confirmation unless --yes is also given.
 doctor is advisory. Only --self-test (a synthetic turn on the project named by self_test in the
-setup config) can report governed readiness.
+setup config) can report governed readiness. The turn runs as self_test.client_uid, a registered
+client UID (never root): a root caller drops to it in a child process. Setup and update refuse a
+self_test whose client_uid is missing or not an allowed principal of the registration.
 Exit codes: 0 success, 2 refused or invalid usage, 1 other, 3 doctor --self-test: not configured (readiness
 not established); update and rollback: the self-test failed and the previous binary was restored.
 `
@@ -70,7 +73,7 @@ func runProductAdmin(args []string, out, stderr io.Writer) error {
 		return runProductRegistration(args[1:], out, stderr)
 	case "calibration":
 		return runProductCalibration(args[1:], out, stderr)
-	case "setup", "update", "rollback", "uninstall", "doctor", "turns":
+	case "setup", "update", "rollback", "uninstall", "doctor", "turns", "self-test":
 	default:
 		return usage()
 	}
@@ -101,7 +104,7 @@ func runProductAdmin(args []string, out, stderr io.Writer) error {
 		return err
 	}
 	live := root == "/" && !dryRun
-	if live && args[0] != "doctor" && args[0] != "turns" && os.Geteuid() != 0 {
+	if live && args[0] != "doctor" && args[0] != "turns" && args[0] != "self-test" && os.Geteuid() != 0 {
 		return adminRefusal("`tbound product %s` changes the host and must run as root (or use --dry-run, or --root DIR)", args[0])
 	}
 	env := productAdminEnv(root, dryRun, replace, yes, out, stderr)
@@ -123,6 +126,8 @@ func runProductAdmin(args []string, out, stderr io.Writer) error {
 	case "uninstall":
 		rep, err := productsetup.Uninstall(env, purge)
 		return productAdminFinish(out, rep, err, "uninstalled")
+	case "self-test":
+		return productAdminSelfTestChild(root, productAdminStdin, out)
 	case "turns":
 		turns, err := productAdminTurns(root)()
 		if err != nil {
@@ -149,7 +154,8 @@ func productAdminEnv(root string, dryRun, replace, yes bool, out, stderr io.Writ
 	if live {
 		env.SelfTestHook = productAdminSelfTestHook
 	}
-	if root == "/" {
+	if root == "/" { // a test root holds fixture binaries without the marker
+		env.BinaryFormat = productsetup.ScanInstallationFormat
 		env.CredentialStatus = productAdminCredentialStatus
 	}
 	if yes {
@@ -228,8 +234,8 @@ func validateServiceConfigBytes(data []byte) error {
 	return cfg.validate(nil)
 }
 
-// productAdminTurns opens the installed catalog, which needs the service stopped, and lists the turns
-// that are not terminal. A host that never ran the service has no catalog and no turns.
+// productAdminTurns reads the installed catalog, which needs the service stopped, without appending to it, and lists the turns
+// that fence a registration change (unresolved or unknown). A host that never ran the service has no catalog and no turns.
 func productAdminTurns(root string) func() ([]productsetup.OpenTurn, error) {
 	return func() ([]productsetup.OpenTurn, error) {
 		real := func(p string) string { return filepath.Join(root, p) }
@@ -241,13 +247,12 @@ func productAdminTurns(root string) func() ([]productsetup.OpenTurn, error) {
 		if err != nil {
 			return nil, err
 		}
-		catalog, err := productsession.Open(real(productsetup.CatalogPath), registration)
+		unsettled, err := productsession.UnsettledTurns(real(productsetup.CatalogPath), registration)
 		if err != nil {
 			return nil, err
 		}
-		defer catalog.Close()
 		var turns []productsetup.OpenTurn
-		for _, t := range catalog.UnresolvedTurns() {
+		for _, t := range unsettled {
 			turns = append(turns, productsetup.OpenTurn{ID: t.ID, State: string(t.State)})
 		}
 		return turns, nil

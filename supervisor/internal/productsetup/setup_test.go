@@ -51,7 +51,7 @@ func newFixture(t *testing.T) *fixture {
 			if !ok {
 				return RegistrationSummary{}, errors.New("bad registration")
 			}
-			return RegistrationSummary{ID: "reg-1", Digest: "sha256:abc", Projects: strings.Split(list, ","), Profiles: []string{"opencode-go-engineering"}}, nil
+			return RegistrationSummary{ID: "reg-1", Digest: "sha256:abc", Projects: strings.Split(list, ","), Profiles: []string{"opencode-go-engineering"}, Principals: []int64{1000}}, nil
 		},
 	}
 	return f
@@ -392,7 +392,7 @@ func TestSetupLiveRunsAccountsOwnersAndReloadInOrder(t *testing.T) {
 			order = append(order, strings.Fields(c)[0])
 		}
 	}
-	if strings.Join(order, " ") != "groupadd useradd systemctl" || calls[len(calls)-1] != "systemctl daemon-reload" {
+	if strings.Join(order, " ") != "groupadd useradd systemctl systemctl" || calls[len(calls)-2] != "systemctl daemon-reload" || calls[len(calls)-1] != "systemctl enable "+UnitName {
 		t.Fatalf("live commands out of order: %v", calls)
 	}
 	for _, want := range []string{ConfigDir + " 0:0", CredentialsDir + " 888:777", StateDir + " 888:777", BinaryPath + " 0:0"} {
@@ -402,5 +402,69 @@ func TestSetupLiveRunsAccountsOwnersAndReloadInOrder(t *testing.T) {
 	}
 	if !strings.Contains(rep.String(), "commands (executed)") {
 		t.Fatalf("the report must say the commands were executed:\n%s", rep)
+	}
+}
+
+func TestSetupRefusesHostInputsThatCollideWithPathsItOrAnUpdateWrites(t *testing.T) {
+	for name, mutate := range map[string]func(*Config){
+		"git is the installed binary":          func(c *Config) { c.GitPath = BinaryPath },
+		"git is the last-known-good":           func(c *Config) { c.GitPath = LastKnownGoodPath },
+		"git is the staged binary":             func(c *Config) { c.GitPath = stagedBinaryPath },
+		"git is the rollback record":           func(c *Config) { c.GitPath = rollbackIntentPath },
+		"git is the binary directory":          func(c *Config) { c.GitPath = BinaryDir },
+		"calibration is the registration":      func(c *Config) { c.XattrCalibrationPath = RegistrationPath },
+		"calibration is the service config":    func(c *Config) { c.XattrCalibrationPath = ServiceConfigPath },
+		"calibration is the setup record":      func(c *Config) { c.XattrCalibrationPath = SetupConfigPath },
+		"calibration is the registration key":  func(c *Config) { c.XattrCalibrationPath = RegistrationPublicKeyPath },
+		"calibration is the config directory":  func(c *Config) { c.XattrCalibrationPath = ConfigDir },
+		"calibration is a credential":          func(c *Config) { c.XattrCalibrationPath = CredentialsDir + "/opencode-go-engineering.key" },
+		"policy is the registration signature": func(c *Config) { c.GatePolicyPaths["alpha"] = RegistrationSignaturePath },
+		"policy is the setup record":           func(c *Config) { c.GatePolicyPaths["beta"] = SetupConfigPath },
+		"policy is the credentials directory":  func(c *Config) { c.GatePolicyPaths["alpha"] = CredentialsDir },
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newFixture(t)
+			mutate(&f.cfg)
+			if _, err := f.setup(); !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "collides") {
+				t.Fatalf("a host input on a managed path was not refused as a collision: %v", err)
+			}
+			if entries, _ := os.ReadDir(f.root); len(entries) != 0 {
+				t.Fatalf("a refused setup changed the root: %v", entries)
+			}
+		})
+	}
+	f := newFixture(t)
+	f.cfg.GatePolicyPaths["beta"] = f.cfg.GatePolicyPaths["alpha"]
+	if _, err := f.setup(); err != nil {
+		t.Fatalf("two projects sharing one policy file are fine: %v", err)
+	}
+}
+
+func TestSetupRefusesHostInputsWhosePathHasASymlinkComponent(t *testing.T) {
+	for name, mutate := range map[string]func(*Config){
+		"calibration below an alias of the config directory": func(c *Config) { c.XattrCalibrationPath = ConfigDir + "/alias/service.json" },
+		"policy below an alias of the config directory":      func(c *Config) { c.GatePolicyPaths["alpha"] = ConfigDir + "/alias/setup.json" },
+		"git below an alias of the binary directory":         func(c *Config) { c.GitPath = BinaryDir + "/alias/tbound" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newFixture(t)
+			for _, dir := range []string{ConfigDir, BinaryDir} {
+				if err := os.MkdirAll(f.path(dir), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Symlink(".", f.path(dir+"/alias")); err != nil {
+					t.Fatal(err)
+				}
+			}
+			mutate(&f.cfg)
+			if _, err := f.setup(); !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "symlink") {
+				t.Fatalf("a host input path through a symlink was not refused: %v", err)
+			}
+			for _, written := range []string{ServiceConfigPath, SetupConfigPath, BinaryPath} {
+				if _, err := os.Lstat(f.path(written)); err == nil {
+					t.Fatalf("a refused setup wrote %s", written)
+				}
+			}
+		})
 	}
 }

@@ -7,6 +7,10 @@ import (
 
 const unitExecStart = BinaryPath + " product-serve --config " + ServiceConfigPath
 
+// unitWantedBy is the boot activation: the service listens on its own socket (no socket unit), so
+// multi-user.target pulls the service itself in.
+const unitWantedBy = "multi-user.target"
+
 // unitDirectives is the closed set of directives and the exact value each must have, in the order the
 // unit lists them. The hardening matches the research unit (infra/guest/systemd/tbound-pi.service)
 // where it applies: the product service has no Podman home, no DelegateSubgroup and no fixed
@@ -38,6 +42,7 @@ func RenderUnit() []byte {
 	for _, d := range unitDirectives {
 		fmt.Fprintf(&b, "%s=%s\n", d.key, d.value)
 	}
+	b.WriteString("\n[Install]\nWantedBy=" + unitWantedBy + "\n")
 	return []byte(b.String())
 }
 
@@ -69,8 +74,11 @@ func ValidateUnit(data []byte) error {
 			sections[section][key] = strings.TrimSpace(value)
 		}
 	}
-	if len(sections) != 2 || len(sections["Unit"]) != 1 || sections["Unit"]["Description"] == "" {
-		return refuse("the unit must be exactly [Unit] with Description and [Service]")
+	if len(sections) != 3 || len(sections["Unit"]) != 1 || sections["Unit"]["Description"] == "" {
+		return refuse("the unit must be exactly [Unit] with Description, [Service] and [Install]")
+	}
+	if install := sections["Install"]; len(install) != 1 || install["WantedBy"] != unitWantedBy {
+		return refuse("[Install] must be exactly WantedBy=%s", unitWantedBy)
 	}
 	service := sections["Service"]
 	if len(service) != len(unitDirectives) {

@@ -98,27 +98,15 @@ func productAdminCredentialStatus(profile string) (string, error) {
 	return fmt.Sprintf("present, owner %d:%d, mode %s, fingerprint %s", status.UID, status.GID, status.Mode, status.Fingerprint), nil
 }
 
-// productAdminRunSelfTest runs the synthetic turn: a read-only session on the self-test project, one
-// turn, and a wait for it to settle. It passes only when the service settled the turn with no
-// diff, so no stub or an unreachable worker can pass it.
-func productAdminRunSelfTest(root string) func(productsetup.SelfTest) (string, error) {
-	return func(st productsetup.SelfTest) (string, error) {
-		real := func(p string) string { return filepath.Join(root, p) }
-		registration, err := productsession.LoadRegistration(real(productsetup.RegistrationPath),
-			real(productsetup.RegistrationSignaturePath), real(productsetup.RegistrationPublicKeyPath))
-		if err != nil {
-			return "", err
-		}
-		return productSelfTestTurn(real(productsetup.SocketPath), registration, st)
-	}
-}
-
 func selfTestKey(label string) string {
 	var b [8]byte
 	_, _ = rand.Read(b[:])
 	return "selftest-" + hex.EncodeToString(b[:]) + "-" + label
 }
 
+// productSelfTestTurn runs the synthetic turn: a read-only session on the self-test project, one turn, and a
+// wait for it to settle. It passes only when the service settled the turn with no diff, so no stub or an
+// unreachable worker can pass it. It runs as the calling process's UID.
 func productSelfTestTurn(socket string, registration productsession.Registration, st productsetup.SelfTest) (string, error) {
 	var mode string
 	found := false

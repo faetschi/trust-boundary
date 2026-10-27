@@ -204,7 +204,7 @@ func TestReviewUpdateRetryStartsAndTestsWithoutReplacingLastKnownGood(t *testing
 
 func TestReviewDoctorDryRunPlansSelfTest(t *testing.T) {
 	f := newFixture(t)
-	f.cfg.SelfTest = &SelfTest{ProjectID: "alpha", ProviderProfile: "opencode-go-engineering"}
+	f.cfg.SelfTest = &SelfTest{ProjectID: "alpha", ProviderProfile: "opencode-go-engineering", ClientUID: 1000}
 	f.installed()
 	f.env.DryRun = true
 	f.env.RunSelfTest = func(SelfTest) (string, error) { t.Fatal("dry run invoked self-test"); return "", nil }

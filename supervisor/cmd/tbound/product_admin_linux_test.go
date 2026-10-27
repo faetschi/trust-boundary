@@ -176,7 +176,7 @@ func (h *adminHost) config(selfTest bool) string {
 	h.t.Helper()
 	cfg := h.setupConfig()
 	if selfTest {
-		cfg.SelfTest = &productsetup.SelfTest{ProjectID: "alpha", ProviderProfile: "opencode-go-engineering", TimeoutSeconds: 10}
+		cfg.SelfTest = &productsetup.SelfTest{ProjectID: "alpha", ProviderProfile: "opencode-go-engineering", ClientUID: 1000, TimeoutSeconds: 10}
 	}
 	data, _ := json.Marshal(cfg)
 	file := filepath.Join(h.dir, "setup.json")

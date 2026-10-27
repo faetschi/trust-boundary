@@ -9,6 +9,7 @@ import (
 	"os"
 	"path"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -20,6 +21,13 @@ const (
 	// ServiceConfigSchema is the product service configuration's schema. cmd/tbound owns its validator,
 	// and a test there decodes what Setup writes.
 	ServiceConfigSchema = "tbound-product-service-config/v1"
+
+	// InstallationFormat is the format of the installed unit and setup record that this binary writes and
+	// reads: 2 added [Install] to the unit and client_uid to the self-test. A record without the field is
+	// the format of c6fbd5f. Nothing converts one format into the other: `tbound product setup --replace`
+	// with a binary of the wanted format is the only way across, and update and rollback refuse to cross.
+	InstallationFormat       = 2
+	LegacyInstallationFormat = 1
 
 	maxConfigBytes   = 64 << 10
 	maxSourceBytes   = 1 << 20
@@ -44,13 +52,18 @@ func refuse(format string, args ...any) error {
 type SelfTest struct {
 	ProjectID       string `json:"project_id"`
 	ProviderProfile string `json:"provider_profile"`
-	Prompt          string `json:"prompt,omitempty"`
-	TimeoutSeconds  int    `json:"timeout_seconds,omitempty"`
+	// ClientUID is the registered client the self-test turn runs as. The service authorizes a caller by its
+	// UID, and root is not a registered principal, so the self-test never runs as root.
+	ClientUID      int    `json:"client_uid"`
+	Prompt         string `json:"prompt,omitempty"`
+	TimeoutSeconds int    `json:"timeout_seconds,omitempty"`
 }
 
 // Config is tbound-product-setup-config/v1, written by the administrator.
 type Config struct {
 	SchemaVersion string `json:"schema_version"`
+	// InstallationFormat is written by setup into the installed record. The administrator never sets it.
+	InstallationFormat int `json:"installation_format,omitempty"`
 	// Source files of the signed registration, read from any path and installed root-owned.
 	Registration          string `json:"registration,omitempty"`
 	RegistrationSignature string `json:"registration_signature,omitempty"`
@@ -117,6 +130,9 @@ func (c Config) validate() error {
 	if c.SchemaVersion != ConfigSchema {
 		return refuse("schema_version must be %q", ConfigSchema)
 	}
+	if c.InstallationFormat != 0 {
+		return refuse("installation_format is written by setup; remove it from the config")
+	}
 	if c.WorkerMode == "" {
 		return refuse("worker_mode is required")
 	}
@@ -157,6 +173,9 @@ func (c Config) validate() error {
 		if t.TimeoutSeconds < 0 || t.TimeoutSeconds > maxSelfTestSecs {
 			return refuse("self_test.timeout_seconds must be at most %d", maxSelfTestSecs)
 		}
+		if err := t.validateClient(); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -170,8 +189,16 @@ func (c Config) validateHostInputs() error {
 	if err := checkProductPath("git_path", c.GitPath, BinaryDir); err != nil {
 		return err
 	}
+	if err := checkNotWritten("git_path", c.GitPath); err != nil {
+		return err
+	}
 	if err := checkProductPath("xattr_calibration_path", c.XattrCalibrationPath, ConfigDir); err != nil {
 		return err
+	}
+	for _, p := range []string{c.XattrCalibrationPath, c.XattrCalibrationPath + ".sig"} {
+		if err := checkNotWritten("xattr_calibration_path", p); err != nil {
+			return err
+		}
 	}
 	if !sha256Digest.MatchString(c.GitDigest) {
 		return refuse("git_digest must be a canonical SHA-256 digest")
@@ -187,6 +214,19 @@ func (c Config) validateHostInputs() error {
 		if err := checkProductPath(fmt.Sprintf("gate_policy_paths[%q]", id), file, ConfigDir); err != nil {
 			return err
 		}
+		if err := checkNotWritten(fmt.Sprintf("gate_policy_paths[%q]", id), file); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// checkNotWritten refuses a host input on a path the product writes: the input would be overwritten by a
+// setup or an update, or deleted by an uninstall, and the check that pinned it would pass against the new
+// content.
+func checkNotWritten(field, p string) error {
+	if slices.Contains(writtenPaths(), p) || slices.ContainsFunc(writtenTrees, func(tree string) bool { return PathInside(p, tree) }) {
+		return refuse("%s %s collides with a path setup, update, rollback or uninstall writes", field, p)
 	}
 	return nil
 }
@@ -201,6 +241,26 @@ func checkProductPath(field, p, root string) error {
 	}
 	if !PathInside(p, root) {
 		return refuse("%s must be at or below %s", field, root)
+	}
+	return nil
+}
+
+// validateClient requires an explicit client UID. Zero is root, which is not a registered principal, and is
+// also what an unset field decodes to.
+func (t SelfTest) validateClient() error {
+	if t.ClientUID <= 0 {
+		return refuse("self_test.client_uid is required: the registered client UID the self-test runs as (not 0, which is root)")
+	}
+	return nil
+}
+
+// checkRegistered also requires the UID to be an allowed principal of the registration.
+func (t SelfTest) checkRegistered(principals []int64) error {
+	if err := t.validateClient(); err != nil {
+		return err
+	}
+	if !slices.Contains(principals, int64(t.ClientUID)) {
+		return refuse("self_test.client_uid %d is not an allowed principal of the registration (allowed: %v)", t.ClientUID, principals)
 	}
 	return nil
 }
@@ -250,6 +310,7 @@ func (c Config) serviceConfigJSON() ([]byte, error) {
 // installedJSON is the configuration without its source paths: the record doctor and update read.
 func (c Config) installedJSON() ([]byte, error) {
 	c.Registration, c.RegistrationSignature, c.RegistrationPublicKey = "", "", ""
+	c.InstallationFormat = InstallationFormat
 	return indented(c)
 }
 

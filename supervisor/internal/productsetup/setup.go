@@ -54,6 +54,11 @@ func Setup(env Env, cfg Config, binary string) (Report, error) {
 	if err != nil {
 		return *h.rep, err
 	}
+	if cfg.SelfTest != nil {
+		if err := cfg.SelfTest.checkRegistered(summary.Principals); err != nil {
+			return *h.rep, err
+		}
+	}
 	accounts, err := h.planAccounts(cfg)
 	if err != nil {
 		return *h.rep, err
@@ -89,8 +94,13 @@ func Setup(env Env, cfg Config, binary string) (Report, error) {
 			refused = append(refused, p.Path+": "+p.Detail)
 		}
 	}
+	enable := h.planEnable() // applied after the reload, so it is not part of plan
+	h.rep.Steps = append(h.rep.Steps, enable.Step)
 	if len(refused) > 0 {
 		return *h.rep, refuse("%s; nothing was changed", strings.Join(refused, "; "))
+	}
+	if err := h.refuseRegistrationChangeWhileTurnsAreUnsettled(summary); err != nil {
+		return *h.rep, err
 	}
 	for _, p := range plan {
 		if p.apply == nil || p.Status == "unchanged" {
@@ -105,6 +115,11 @@ func Setup(env Env, cfg Config, binary string) (Report, error) {
 			if err := h.command("systemctl", "daemon-reload"); err != nil {
 				return *h.rep, err
 			}
+		}
+	}
+	if enable.apply != nil {
+		if err := enable.apply(); err != nil {
+			return *h.rep, fmt.Errorf("apply %s %s: %w", enable.Kind, enable.Path, err)
 		}
 	}
 	return *h.rep, nil
@@ -339,4 +354,54 @@ func (h *host) planAccounts(cfg Config) ([]planned, error) {
 		}
 		return h.recordUser(cfg.ServiceUID, id)
 	}}), nil
+}
+
+// refuseRegistrationChangeWhileTurnsAreUnsettled opens the catalog under the installed registration and
+// refuses a registration with another digest while any turn is unresolved or unknown. The service refuses
+// to start on a changed digest in that case (PREDECESSOR_UNRESOLVED) before its restart reconciliation
+// runs, so nothing could settle those turns afterwards. It runs before the first write, in a dry run too,
+// and only when an installed registration and a catalog exist.
+func (h *host) refuseRegistrationChangeWhileTurnsAreUnsettled(next RegistrationSummary) error {
+	if _, err := os.Lstat(h.real(RegistrationPath)); errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if installed, err := h.installedRegistration(); err == nil && installed.Digest == next.Digest {
+		return nil
+	}
+	if _, err := os.Lstat(h.real(CatalogPath)); errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if h.env.Turns == nil {
+		return refuse("no catalog check configured; refusing to replace the registration; nothing was changed")
+	}
+	turns, err := h.env.Turns()
+	if err != nil {
+		return refuse("the catalog cannot be opened under the installed registration, so its turns cannot be checked before the replacement (stop the service first): %v; nothing was changed", err)
+	}
+	if len(turns) == 0 {
+		h.step("catalog", CatalogPath, "unchanged", "no unsettled turn under the installed registration")
+		return nil
+	}
+	names := make([]string, len(turns))
+	for i, t := range turns {
+		names[i] = t.ID + " (" + t.State + ")"
+	}
+	return refuse("the replacement registration would be refused at the next start while these turns are unsettled under the installed one: %s. Start the service under the installed registration so its restart reconciliation settles them, stop it, and retry (a turn with an unknown outcome stays blocked); nothing was changed",
+		strings.Join(names, ", "))
+}
+
+// installedRegistration verifies the installed registration like the service does.
+func (h *host) installedRegistration() (RegistrationSummary, error) {
+	if h.env.VerifyRegistration == nil {
+		return RegistrationSummary{}, errors.New("no registration verifier configured")
+	}
+	var parts [3][]byte
+	for i, logical := range []string{RegistrationPath, RegistrationSignaturePath, RegistrationPublicKeyPath} {
+		data, err := readSource(h.real(logical))
+		if err != nil {
+			return RegistrationSummary{}, err
+		}
+		parts[i] = data
+	}
+	return h.env.VerifyRegistration(parts[0], parts[1], parts[2])
 }
