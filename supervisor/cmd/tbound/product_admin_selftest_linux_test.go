@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"os/user"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"sync/atomic"
@@ -116,5 +117,44 @@ func TestProductAdminSetupRefusesASelfTestWithoutARegisteredClientUID(t *testing
 	}
 	if after := adminTree(t, root); after != before {
 		t.Fatalf("a refused setup changed the root:\n%s\n%s", before, after)
+	}
+}
+
+// TestProductAdminSelfTestChildIsBuiltWithExactlyTheClientsIdentityAndAMinimalEnvironment checks the command as
+// the installed code builds it, which the test above replaces before it runs, so it needs no root.
+func TestProductAdminSelfTestChildIsBuiltWithExactlyTheClientsIdentityAndAMinimalEnvironment(t *testing.T) {
+	oldLookup, oldGroups, oldCommand := productAdminLookupUserID, productAdminUserGroups, productAdminSelfTestCommand
+	t.Cleanup(func() {
+		productAdminLookupUserID, productAdminUserGroups, productAdminSelfTestCommand = oldLookup, oldGroups, oldCommand
+	})
+	productAdminLookupUserID = func(id string) (*user.User, error) { return &user.User{Uid: id, Gid: "2000"}, nil }
+	productAdminUserGroups = func(*user.User) ([]string, error) { return []string{"2000", "3000", "3001"}, nil }
+	var built, run *exec.Cmd
+	productAdminSelfTestCommand = func(ctx context.Context, credential *syscall.Credential) *exec.Cmd {
+		built = oldCommand(ctx, credential)
+		run = exec.CommandContext(ctx, "/bin/sh", "-c", "cat >/dev/null; echo done")
+		return run
+	}
+	detail, err := productAdminSelfTestAsClient(productsetup.SelfTest{ProjectID: "alpha", ProviderProfile: "p", ClientUID: 1234, TimeoutSeconds: 5})
+	if err != nil || !strings.HasPrefix(detail, "done") {
+		t.Fatalf("self-test as the client: %q %v", detail, err)
+	}
+	wantCredential := &syscall.Credential{Uid: 1234, Gid: 2000, Groups: []uint32{2000, 3000, 3001}}
+	if built == nil || !reflect.DeepEqual(built.SysProcAttr, &syscall.SysProcAttr{Credential: wantCredential}) {
+		t.Fatalf("the child's process attributes are not exactly the client's UID, GID and groups: %+v", built.SysProcAttr)
+	}
+	if built.Path != productsetup.BinaryPath || !slices.Equal(built.Args, []string{productsetup.BinaryPath, "product", "self-test"}) || built.Dir != "/" {
+		t.Fatalf("the child must be the installed binary's `product self-test` from /: path %q args %q dir %q", built.Path, built.Args, built.Dir)
+	}
+	if !slices.Equal(built.Env, []string{"PATH=/usr/bin:/bin"}) {
+		t.Fatalf("the child's environment must be the one fixed PATH, not the administrator's: %q", built.Env)
+	}
+	if len(built.ExtraFiles) != 0 {
+		t.Fatalf("the child inherits extra descriptors: %v", built.ExtraFiles)
+	}
+	for name, stream := range map[string]any{"stdin": run.Stdin, "stdout": run.Stdout, "stderr": run.Stderr} {
+		if _, isFile := stream.(*os.File); isFile || stream == nil {
+			t.Errorf("the child's %s must be a private pipe, not an inherited descriptor: %T", name, stream)
+		}
 	}
 }
