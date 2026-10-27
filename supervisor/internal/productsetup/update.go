@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -46,14 +47,21 @@ func copyAtomic(in io.ReadSeeker, dst string, mode os.FileMode) error {
 }
 
 func fileDigest(f *os.File) (string, error) {
+	digest, _, err := boundedDigest(f, math.MaxInt64)
+	return digest, err
+}
+
+// boundedDigest hashes at most limit bytes of f from its start and reports how many it read.
+func boundedDigest(f *os.File, limit int64) (string, int64, error) {
 	if _, err := f.Seek(0, io.SeekStart); err != nil {
-		return "", err
+		return "", 0, err
 	}
 	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
-		return "", err
+	n, err := io.Copy(h, io.LimitReader(f, limit))
+	if err != nil {
+		return "", 0, err
 	}
-	return hex.EncodeToString(h.Sum(nil)), nil
+	return hex.EncodeToString(h.Sum(nil)), n, nil
 }
 
 func regularFile(file *os.File) (os.FileInfo, error) {
@@ -233,15 +241,16 @@ func (h *host) verifiedManifest(candidate Candidate, key ed25519.PublicKey) (rel
 // authenticate refuses a binary that the signed manifest does not list under its name with this size and
 // SHA-256. It measures the file it is given, which for a live run is the private staged copy.
 func (h *host) authenticate(manifest releasetrust.Manifest, name string, binary *os.File) error {
-	info, err := binary.Stat()
+	listed, err := manifest.Artifact(name)
+	if err != nil {
+		return refuse("the candidate is refused: %v", err)
+	}
+	// One byte past the declared size is enough for the size comparison to refuse a source that grew.
+	digest, size, err := boundedDigest(binary, listed.Size+1)
 	if err != nil {
 		return err
 	}
-	digest, err := fileDigest(binary)
-	if err != nil {
-		return err
-	}
-	if err := manifest.CheckArtifact(name, info.Size(), digest); err != nil {
+	if err := manifest.CheckArtifact(name, size, digest); err != nil {
 		return refuse("the candidate is refused: %v", err)
 	}
 	h.note("%s (sha256:%s) is listed in the verified manifest", name, digest[:16])
