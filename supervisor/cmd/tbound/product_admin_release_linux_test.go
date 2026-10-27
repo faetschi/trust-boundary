@@ -54,6 +54,9 @@ type releaseFixture struct {
 	shellSetup string
 	// completions leaves --no-completions off.
 	completions bool
+	// loose gives the archive a root entry and a directory that another user owns with mode 0777, and a file that
+	// group and others can write: what an attacker who controls the archive's headers supplies.
+	loose bool
 }
 
 func releaseArtifactName() string {
@@ -89,6 +92,23 @@ func (f *releaseFixture) writeArchive(marker string) {
 	defer file.Close()
 	gz := gzip.NewWriter(file)
 	tw := tar.NewWriter(gz)
+	if f.loose {
+		const body = "loose\n"
+		for _, header := range []tar.Header{
+			{Name: "./", Typeflag: tar.TypeDir, Mode: 0o777, Uid: 12345, Gid: 12345},
+			{Name: "share/", Typeflag: tar.TypeDir, Mode: 0o777, Uid: 12345, Gid: 12345},
+			{Name: "share/loose", Typeflag: tar.TypeReg, Mode: 0o666, Uid: 12345, Gid: 12345, Size: int64(len(body))},
+		} {
+			if err := tw.WriteHeader(&header); err != nil {
+				f.t.Fatal(err)
+			}
+			if header.Size > 0 {
+				if _, err := tw.Write([]byte(body)); err != nil {
+					f.t.Fatal(err)
+				}
+			}
+		}
+	}
 	for _, name := range []string{"bin/tbound", "bin/tbound-doctor", "bin/tbound-profile"} {
 		body := "#!/bin/sh\necho " + marker + "\n"
 		if err := tw.WriteHeader(&tar.Header{Name: name, Mode: 0o755, Size: int64(len(body)), Typeflag: tar.TypeReg}); err != nil {
