@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"path/filepath"
@@ -89,5 +90,46 @@ func TestProductionD09DeniedBashCheckpointsAndClosesCleanly(t *testing.T) {
 		if err := closers[index](); err != nil {
 			t.Fatalf("close settled session handle %d: %v", index, err)
 		}
+	}
+}
+
+type plainCommandRunner struct{}
+
+func (plainCommandRunner) Profile() string                    { return "" }
+func (plainCommandRunner) RegisterLease(string, string) error { return nil }
+func (plainCommandRunner) VerifySettlement(sessionrepo.CommandSettlement, string, string) error {
+	return nil
+}
+
+type settlementCheckingRunner struct {
+	plainCommandRunner
+	err error
+}
+
+func (r settlementCheckingRunner) VerifyProductionBashEvidence(context.Context, sessionrepo.OperationEvidence) error {
+	return r.err
+}
+
+// Under evidenced containment the active verifier checks a denied Bash decision only through the runner's
+// settlement verifier: a runner without one is refused, never skipped.
+func TestActiveRecoveryRefusesADeniedD09EffectItCannotVerify(t *testing.T) {
+	decision := &governedReplayDecisionEvidence{denied: true,
+		binding: ProviderDecisionBindingAlias{ConversationID: "denied-conversation"},
+		entry:   sessionrepo.OperationEvidence{Tool: "bash", ViewID: "denied-view"}}
+	verify := func(runner governedCommandRunner) error {
+		authority := &SessionOperationAuthority{runner: runner, conversationID: "denied-conversation",
+			requireEvidencedBashContainment: true}
+		replay := &governedStoreReplayVerifier{decisions: map[governedReplayDecisionKey]*governedReplayDecisionEvidence{
+			{Sequence: 1, Hash: "denied-decision"}: decision}}
+		return activeWorkflowCommandVerifier{authority: authority, ctx: context.Background()}.VerifyGovernedVerifier(replay)
+	}
+	if err := verify(plainCommandRunner{}); !errors.Is(err, workflowrecovery.ErrObservation) {
+		t.Fatalf("runner without a settlement verifier: got %v, want ErrObservation", err)
+	}
+	if err := verify(settlementCheckingRunner{err: errors.New("no settlement")}); !errors.Is(err, ErrGovernedSessionEvidence) {
+		t.Fatalf("unsettled denied command: got %v, want ErrGovernedSessionEvidence", err)
+	}
+	if err := verify(settlementCheckingRunner{}); err != nil {
+		t.Fatalf("settled denied command refused: %v", err)
 	}
 }
