@@ -112,6 +112,9 @@ func Update(env Env, candidate Candidate) (Report, error) {
 		return *h.rep, err
 	}
 	defer h.dir.Close()
+	if err := h.protectedBinaryDirectory(); err != nil {
+		return *h.rep, err
+	}
 	manifest, err := h.publisherManifest(candidate)
 	if err != nil {
 		return *h.rep, err
@@ -158,9 +161,23 @@ func Update(env Env, candidate Candidate) (Report, error) {
 	return h.replaceBinary(verified)
 }
 
+// protectedBinaryDirectory refuses an update or rollback below a binary directory that another user could write
+// to, because the staged copy and the last-known-good binary are checked by descriptor and then swapped in by name.
+func (h *host) protectedBinaryDirectory() error {
+	err := h.protectedDirectory(BinaryDir)
+	if errors.Is(err, os.ErrNotExist) {
+		return refuse("no safe tbound binary is installed at %s; run `tbound product setup` first: %v", BinaryPath, err)
+	}
+	return err
+}
+
 // publisherManifest verifies the candidate's manifest and signature under the pinned publisher key.
 func (h *host) publisherManifest(candidate Candidate) (releasetrust.Manifest, error) {
-	keyFile, err := h.managedSource(ReleasePublicKeyPath, ownRoot, 0o644)
+	var keyFile *os.File
+	err := h.protectedDirectory(filepath.Dir(ReleasePublicKeyPath))
+	if err == nil {
+		keyFile, err = h.managedSource(ReleasePublicKeyPath, ownRoot, 0o644)
+	}
 	if errors.Is(err, os.ErrNotExist) {
 		return releasetrust.Manifest{}, refuse("no publisher key is pinned (%s is missing), so no candidate binary can be authenticated; set release_public_key in the setup config and rerun `tbound product setup --replace`", ReleasePublicKeyPath)
 	} else if err != nil {
@@ -279,8 +296,16 @@ func (h *host) replaceBinary(source *os.File) (Report, error) {
 		return *h.rep, abort(err)
 	}
 	interrupt("prepared")
+	verified, err := source.Stat()
+	if err != nil {
+		return *h.rep, abort(err)
+	}
 	if err := h.withPath(BinaryPath, false, func(path string) error {
-		return os.Rename(filepath.Join(filepath.Dir(path), filepath.Base(stagedBinaryPath)), path)
+		staged := filepath.Join(filepath.Dir(path), filepath.Base(stagedBinaryPath))
+		if info, err := os.Lstat(staged); err != nil || !os.SameFile(info, verified) {
+			return refuse("%s was replaced after it was authenticated; nothing was installed", stagedBinaryPath)
+		}
+		return os.Rename(staged, path)
 	}); err != nil {
 		return *h.rep, abort(fmt.Errorf("swap the binary: %w", err))
 	}
@@ -341,6 +366,9 @@ func Rollback(env Env) (Report, error) {
 		return *h.rep, err
 	}
 	defer h.dir.Close()
+	if err := h.protectedBinaryDirectory(); err != nil {
+		return *h.rep, err
+	}
 	if fallback, err := h.managedSource(LastKnownGoodPath, ownRoot, 0o755); err == nil { // a missing one is refused by rollback
 		err = h.checkBinaryFormat(fallback, LastKnownGoodPath)
 		fallback.Close()

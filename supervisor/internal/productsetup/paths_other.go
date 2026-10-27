@@ -14,3 +14,4 @@ func (h *host) openFile(string, int, os.FileMode) (*os.File, error) { return nil
 func openSource(string) (*os.File, error)                           { return nil, refuse("product host setup requires Linux") }
 func (h *host) exchange(string, string) error                       { return h.openRoot() }
 func (h *host) syncDir(string) error                                { return h.openRoot() }
+func (h *host) protectedDirectory(string) error                     { return h.openRoot() }

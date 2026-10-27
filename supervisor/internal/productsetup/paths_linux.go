@@ -3,6 +3,7 @@
 package productsetup
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"os"
@@ -47,6 +48,41 @@ func openDirectory(base *os.File, path string, create bool) (*os.File, error) {
 		fd = next
 	}
 	return os.NewFile(uintptr(fd), path), nil
+}
+
+// protectedDirectory refuses a directory, or any directory above it up to the root, that group or others can
+// write or (on a live host) that root does not own. Whoever can write there can replace a file after root checked
+// it and before root installs or runs it. Each component is opened without following a symlink.
+func (h *host) protectedDirectory(logical string) error {
+	const flags = unix.O_RDONLY | unix.O_DIRECTORY | unix.O_NOFOLLOW | unix.O_CLOEXEC
+	fd, err := unix.Openat(int(h.dir.Fd()), ".", flags, 0)
+	if err != nil {
+		return err
+	}
+	defer func() { unix.Close(fd) }()
+	walked := ""
+	for _, part := range append([]string{""}, strings.Split(strings.Trim(logical, "/"), "/")...) {
+		if part != "" {
+			next, err := unix.Openat(fd, part, flags, 0)
+			if err != nil {
+				return &os.PathError{Op: "open directory", Path: logical, Err: err}
+			}
+			unix.Close(fd)
+			fd = next
+			walked += "/" + part
+		}
+		var st unix.Stat_t
+		if err := unix.Fstat(fd, &st); err != nil {
+			return err
+		}
+		if st.Mode&0o022 != 0 {
+			return refuse("%s is writable by group or others (mode %04o), so a local user could replace a file after it was checked; run chmod go-w on it", cmp.Or(walked, "/"), st.Mode&0o7777)
+		}
+		if h.env.Live && st.Uid != 0 {
+			return refuse("%s is not owned by root (uid %d), so its owner could replace a file after it was checked", cmp.Or(walked, "/"), st.Uid)
+		}
+	}
+	return nil
 }
 
 func (h *host) openRoot() error {
