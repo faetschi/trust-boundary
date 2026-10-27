@@ -39,7 +39,7 @@ func fixtureUnsigned() Registration {
 			Turn: Budget{10, 1000, 60}, Session: Budget{30, 3000, 180},
 			MaxTurnsPerSession: 5, ReviewTimeoutSeconds: 600,
 		},
-		RuntimeDigest: dg("runtime"), ImageDigest: dg("image"), ExtensionDigest: dg("extension"),
+		GitDigest: dg("git"), HostIdentityDigest: dg("host"), RuntimeDigest: dg("runtime"), ImageDigest: dg("image"), ExtensionDigest: dg("extension"),
 	}
 }
 
@@ -76,7 +76,7 @@ func TestRegistrationSignVerifyRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.HasPrefix(signing, []byte("tbound-product-registration/v1\n")) || got.Digest != sha256Digest(signing) {
+	if !bytes.HasPrefix(signing, []byte("tbound-product-registration/v2\n")) || got.Digest != sha256Digest(signing) {
 		t.Fatalf("digest %q does not cover the domain-prefixed signing bytes", got.Digest)
 	}
 	r.Digest = got.Digest
@@ -145,6 +145,8 @@ func TestRegistrationValidationRefusals(t *testing.T) {
 		"long identity":          func(r *Registration) { r.RegistrationID = strings.Repeat("x", 129) },
 		"identity with space":    func(r *Registration) { r.ServiceIdentity = "a b" },
 		"duplicate profile":      func(r *Registration) { r.ProviderProfiles = []string{"p", "p"} },
+		"missing git":            func(r *Registration) { r.GitDigest = "" },
+		"missing host":           func(r *Registration) { r.HostIdentityDigest = "" },
 		"wrong schema":           func(r *Registration) { r.SchemaVersion = "v0" },
 	}
 	for name, mutate := range cases {

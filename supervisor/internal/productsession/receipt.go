@@ -40,6 +40,7 @@ var workerSettlements = map[string][]string{
 // command journal holds the turn's Bash command settlements and is committed
 // the same way. A turn that ran no Bash has an empty one and omits both fields.
 type TurnReceipt struct {
+	UnverifiedInputs         []string        `json:"unverified_inputs,omitempty"`
 	SchemaVersion            string          `json:"schema_version"`
 	SessionID                string          `json:"session_id"`
 	TurnID                   string          `json:"turn_id"`
@@ -135,6 +136,8 @@ func checkReceipt(t *Turn, data []byte, outcome, settlement string, usage Budget
 		return mismatch("baseline or predecessor")
 	case r.Outcome != outcome || r.Settlement != settlement || r.Usage != usage:
 		return mismatch("outcome, settlement or usage")
+	case r.WorkerKind == WorkerSupervisorLoop && !slices.Equal(r.UnverifiedInputs, []string{"runtime_digest", "image_digest", "extension_digest"}):
+		return mismatch("unverified registration inputs")
 	case !slices.Contains(workerSettlements[r.WorkerKind], r.Settlement) || !validIdentity(r.WorkerInstance):
 		return mismatch("worker settlement")
 	case !isLowerHex(r.ProviderJournalHead) || len(r.ProviderJournalHead) != 64 || r.ProviderJournalCount == 0 ||

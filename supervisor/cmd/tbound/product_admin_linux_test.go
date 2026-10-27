@@ -85,7 +85,7 @@ func adminInitArgsFor(out, policyDigest string) []string {
 		"--project", "id=alpha,root=" + adminDigest + ",policy=" + policyDigest + ",modes=review+auto,writable=src",
 		"--project", "id=beta,root=" + adminDigest + ",policy=" + policyDigest + ",modes=review",
 		"--max-turns", "10", "--review-timeout", "600", "--turn-limit", "10,1000,60", "--session-limit", "100,10000,600",
-		"--runtime-digest", adminDigest, "--image-digest", adminDigest, "--extension-digest", adminDigest}
+		"--git-digest", adminDigest, "--runtime-digest", adminDigest, "--image-digest", adminDigest, "--extension-digest", adminDigest}
 }
 
 // adminHost is a test root plus the administrator's signed registration, made with the CLI itself, and the
@@ -233,6 +233,10 @@ func TestProductAdminRegistrationToolingRoundTrip(t *testing.T) {
 	reg, err := productsession.LoadRegistration(signed, signed+".sig", pub)
 	if err != nil {
 		t.Fatalf("the service's own loader refused the signed registration: %v", err)
+	}
+	identity, err := productHostIdentity(reg.ProviderProfiles)
+	if err != nil || reg.HostIdentityDigest != identity || reg.GitDigest != adminDigest || reg.SchemaVersion != productsession.RegistrationSchema {
+		t.Fatalf("init did not bind the host profile: %+v %v", reg, err)
 	}
 	for _, want := range []string{reg.Digest, "project alpha", "project beta", "principals (UIDs): [1000 0]", "opencode-go-engineering"} {
 		if !strings.Contains(verify, want) {

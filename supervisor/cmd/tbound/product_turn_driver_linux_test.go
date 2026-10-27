@@ -201,7 +201,7 @@ func openBashProductDriverFixture(t *testing.T, root string, scope *productsessi
 		Limits: productsession.Limits{Turn: productsession.Budget{HostCalls: 20, Tokens: 20 * 1024, DurationSeconds: 600},
 			Session: productsession.Budget{HostCalls: 60, Tokens: 60 * 1024, DurationSeconds: 1800}, MaxTurnsPerSession: 10,
 			ReviewTimeoutSeconds: 600},
-		RuntimeDigest: digestBytes([]byte("runtime")), ImageDigest: digestBytes([]byte("image")),
+		GitDigest: digestBytes([]byte("git")), HostIdentityDigest: digestBytes([]byte("host")), RuntimeDigest: digestBytes([]byte("runtime")), ImageDigest: digestBytes([]byte("image")),
 		ExtensionDigest: digestBytes([]byte("extension"))}
 	key := ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize))
 	data, signature, err := productsession.SignRegistration(unsigned, key)

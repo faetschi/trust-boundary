@@ -499,6 +499,7 @@ func (e *productTurnEnv) composeProductTurnWorkflow(ctx context.Context, turn pr
 		ImportedPrefixDigest:         bareWorkflowDigest(predecessor.Digest()),
 		PredecessorTurnReceiptDigest: bareWorkflowDigest(predecessor.PredecessorReceiptDigest()),
 		PolicyDigest:                 barePolicyDigest(policy.Digest()), ProfileDigest: bareWorkflowDigest(digestBytes([]byte(providerProfile))),
+		// These are registration declarations, not measurements; every product receipt labels them unverified.
 		ImageDigest: bareWorkflowDigest(e.Registration.ImageDigest), RuntimeDigest: bareWorkflowDigest(e.Registration.RuntimeDigest),
 		D06ProvenanceDigest: bareWorkflowDigest(d06Digest), PrivateGitIdentityDigest: bareWorkflowDigest(gitIdentityDigest),
 		StoreBaselineGenerationID: baseline.ID(), StoreBaselineTreeDigest: bareStoreTreeDigest(baseline.TreeDigest()),

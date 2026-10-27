@@ -116,7 +116,8 @@ func runProductPredecessorTurn(t *testing.T) retainedProductPredecessor {
 		},
 		receipt: productTurnReceipt{SchemaVersion: productTurnReceiptSchema,
 			SessionID: "psess-" + strings.Repeat("ab", 16), Ordinal: 1, WorkflowID: config.WorkflowID, RunID: "vertical-run",
-			ConversationID: config.ConversationID, WorkerKind: productsession.WorkerSupervisorLoop, WorkerInstance: "fixture-1",
+			ConversationID: config.ConversationID, UnverifiedInputs: []string{"runtime_digest", "image_digest", "extension_digest"},
+			WorkerKind: productsession.WorkerSupervisorLoop, WorkerInstance: "fixture-1",
 			ProviderJournalHead: auditHeadHash(providerTrace.Records), ProviderJournalCount: uint64(len(providerTrace.Records)),
 			StoreJournalHead: auditHeadHash(storeTrace.Records), StoreJournalCount: uint64(len(storeTrace.Records)),
 			BaselineDigest:       "sha256:" + bareStoreTreeDigest(bundle.Baseline.TreeDigest),
@@ -378,7 +379,8 @@ func TestProductProviderConversationRequiresTheCheckpointedPredecessor(t *testin
 
 func TestProductTurnReceiptIsStrict(t *testing.T) {
 	receipt := productTurnReceipt{SchemaVersion: productTurnReceiptSchema, SessionID: "psess-1", TurnID: "psess-1/turn-2",
-		Ordinal: 2, WorkflowID: "w", RunID: "r", ConversationID: "c", WorkerKind: productsession.WorkerSupervisorLoop, WorkerInstance: "i",
+		Ordinal: 2, WorkflowID: "w", RunID: "r", ConversationID: "c", UnverifiedInputs: []string{"runtime_digest", "image_digest", "extension_digest"},
+		WorkerKind: productsession.WorkerSupervisorLoop, WorkerInstance: "i",
 		ProviderJournalHead: strings.Repeat("a", 64), ProviderJournalCount: 3, StoreJournalHead: strings.Repeat("b", 64), StoreJournalCount: 4,
 		ImportedPrefixDigest: digestBytes([]byte("prefix")), PredecessorReceiptDigest: digestBytes([]byte("receipt")),
 		BaselineDigest: digestBytes([]byte("base")), ResultBaselineDigest: digestBytes([]byte("base")),
@@ -402,12 +404,14 @@ func TestProductTurnReceiptIsStrict(t *testing.T) {
 		}
 	}
 	for name, mutate := range map[string]func(*productTurnReceipt){
-		"other worker":         func(r *productTurnReceipt) { r.WorkerKind = "pi-process" },
-		"turn ID mismatch":     func(r *productTurnReceipt) { r.TurnID = "psess-1/turn-3" },
-		"half predecessor":     func(r *productTurnReceipt) { r.PredecessorReceiptDigest = "" },
-		"no journal head":      func(r *productTurnReceipt) { r.StoreJournalHead = "" },
-		"unknown outcome":      func(r *productTurnReceipt) { r.Outcome = "unknown" },
-		"missing denials list": func(r *productTurnReceipt) { r.Denials = nil },
+		"missing unverified inputs": func(r *productTurnReceipt) { r.UnverifiedInputs = nil },
+		"claims verified runtime":   func(r *productTurnReceipt) { r.UnverifiedInputs = []string{"image_digest", "extension_digest"} },
+		"other worker":              func(r *productTurnReceipt) { r.WorkerKind = "pi-process" },
+		"turn ID mismatch":          func(r *productTurnReceipt) { r.TurnID = "psess-1/turn-3" },
+		"half predecessor":          func(r *productTurnReceipt) { r.PredecessorReceiptDigest = "" },
+		"no journal head":           func(r *productTurnReceipt) { r.StoreJournalHead = "" },
+		"unknown outcome":           func(r *productTurnReceipt) { r.Outcome = "unknown" },
+		"missing denials list":      func(r *productTurnReceipt) { r.Denials = nil },
 	} {
 		changed := receipt
 		mutate(&changed)

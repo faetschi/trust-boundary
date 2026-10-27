@@ -32,11 +32,10 @@ func createSession(t *testing.T, c *Catalog, project, key string, readOnly bool)
 	return s
 }
 
-// Digests of registrations and requests that carry no scope and no read-only flag were computed before
-// either existed. They must not move.
+// The v2 registration and existing request digests omit absent scope and read-only fields.
 func TestScopeFieldsLeaveExistingDigestsUnchanged(t *testing.T) {
 	request := CreateSessionRequest{ProjectID: "alpha", ProviderProfile: "p1", PublicationMode: "auto", Budget: Budget{10, 1000, 60}, RequestKey: "create-1"}
-	if got := signedRegistration(t, nil).Digest; got != "sha256:4a2f020b0f3dfe1d2aff4c5554216c64901e530c55177c6dda8b7c9cf2925159" {
+	if got := signedRegistration(t, nil).Digest; got != "sha256:347f1c10cc494b1871fe314e0620b08f66576d004d067195fb96786962ef8bb4" {
 		t.Errorf("registration digest without a scope moved: %s", got)
 	}
 	if got := payloadDigest(opCreateSession, request); got != "sha256:1a17fc1aa5ed68b8248b26a919c2eaf19414420143dce6c77d56fdfdee5b715c" {

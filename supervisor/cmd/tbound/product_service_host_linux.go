@@ -4,6 +4,7 @@ package main
 
 import (
 	"crypto/ed25519"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -19,6 +20,7 @@ import (
 	"tbound/supervisor/internal/piruntime"
 	"tbound/supervisor/internal/privategit"
 	"tbound/supervisor/internal/productprovider"
+	"tbound/supervisor/internal/productsession"
 	"tbound/supervisor/internal/providerbridge"
 	"tbound/supervisor/internal/sessionlaunch"
 	"tbound/supervisor/internal/workflow"
@@ -51,6 +53,13 @@ func newProductServiceHostProfile(cfg productServiceConfig) productServiceHost {
 	return func(env *productTurnEnv) error {
 		if cfg.GitPath == "" || cfg.GitDigest == "" || cfg.XattrCalibrationPath == "" || len(cfg.GatePolicyPaths) != len(env.Registration.Projects) {
 			return errors.New("the product host needs git_path, git_digest, xattr_calibration_path and one gate_policy_paths entry per project in the service config")
+		}
+		identity, err := productHostIdentity(env.Registration.ProviderProfiles)
+		if err != nil {
+			return err
+		}
+		if cfg.GitDigest != env.Registration.GitDigest || identity != env.Registration.HostIdentityDigest {
+			return errors.New("the executing inputs differ from the registered host profile")
 		}
 		if err := installProductGatePolicies(env, cfg.GatePolicyPaths); err != nil {
 			return err
@@ -97,7 +106,6 @@ func newProductServiceHostProfile(cfg productServiceConfig) productServiceHost {
 		if _, err := verifyProductGit(cfg.GitPath, cfg.GitDigest, productServiceOwners()); err != nil {
 			return err
 		}
-		var err error
 		xattr := func() (workspace.XattrVisibilityAttestation, error) { return productHostXattr(cfg, env) }
 		if env.Xattr, err = xattr(); err != nil {
 			return err
@@ -191,4 +199,29 @@ func validateProductPublicationFence(root *os.File) error {
 		return errors.New("publication fence must be empty and readable")
 	}
 	return nil
+}
+
+func productHostIdentity(profileIDs []string) (string, error) {
+	identity := struct {
+		Schema          string                    `json:"schema"`
+		SystemPrompt    string                    `json:"system_prompt"`
+		DeveloperPrompt string                    `json:"developer_prompt"`
+		Providers       []productprovider.Profile `json:"providers"`
+		WorkerKind      string                    `json:"worker_kind"`
+	}{Schema: "tbound-product-host-identity/v1", SystemPrompt: productSystemPrompt,
+		DeveloperPrompt: productDeveloperPrompt, WorkerKind: productsession.WorkerSupervisorLoop}
+	ids := slices.Clone(profileIDs)
+	slices.Sort(ids)
+	for _, id := range ids {
+		profile, ok := productprovider.Lookup(id)
+		if !ok {
+			return "", fmt.Errorf("the registration names provider profile %q, which this build does not support", id)
+		}
+		identity.Providers = append(identity.Providers, profile)
+	}
+	encoded, err := json.Marshal(identity)
+	if err != nil {
+		return "", err
+	}
+	return digestBytes(encoded), nil
 }

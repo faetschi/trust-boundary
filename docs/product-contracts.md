@@ -24,7 +24,7 @@ Research and corpus modes are unchanged. Nothing below is reachable from `serve 
 
 ## Product registration
 
-`tbound-product-registration/v1`, a strict JSON document with an Ed25519 signature over `"tbound-product-registration/v1\n"` followed by the JSON encoding of the registration with `digest` empty. `digest` is `sha256:` plus the hex SHA-256 of those signed bytes. Unknown fields, a wrong digest, a bad signature, or invalid values refuse the registration.
+`tbound-product-registration/v2`, a strict JSON document with an Ed25519 signature over `"tbound-product-registration/v2\n"` followed by the JSON encoding of the registration with `digest` empty. `digest` is `sha256:` plus the hex SHA-256 of those signed bytes. Unknown fields, a wrong digest, a bad signature, or invalid values refuse the registration.
 
 | Field | Meaning |
 | --- | --- |
@@ -37,7 +37,9 @@ Research and corpus modes are unchanged. Nothing below is reachable from `serve 
 | `limits.session` | Upper bound a session may request, same fields. |
 | `limits.max_turns_per_session` | Hard cap on turns. |
 | `limits.review_timeout_seconds` | Default review expiry. P4 enforces it; P2 records it. |
-| `runtime_digest`, `image_digest`, `extension_digest` | Pins of the runtime the registration authorizes. |
+| `git_digest` | Digest of the approved private Git executable. The service config must match it. |
+| `host_identity_digest` | Compiled prompts, named provider table entries in ID order, and supervisor-loop worker kind, under `tbound-product-host-identity/v1`. `registration init` computes it. |
+| `runtime_digest`, `image_digest`, `extension_digest` | Administrator declarations, unmeasured by the supervisor-loop worker. Receipts list these in `unverified_inputs`. |
 
 A turn selects a registered `project_id`, never a path. Registering a project is an administrative signing operation. Changing a project, policy, or limit means a new signed registration.
 
@@ -152,7 +154,7 @@ Go owns the history. Each turn's provider journal is self-contained.
 
 `tbound-product-turn-receipt/v1` (`productsession.TurnReceipt`), strict JSON, at most 64 KiB, written by `cmd/tbound` and stored in `product_turn_terminal` or `product_turn_awaiting_review`. The catalog decodes it strictly and refuses to settle unless its identity, workflow link, imported prefix, predecessor, baselines, outcome, settlement and usage match the turn and the record. Settlement is `supervisor-loop-closed` for worker kind `supervisor-loop` and `stopped` for worker kind `pi`; no other pairing is accepted. A published receipt names its publication transaction:
 
-`session_id`, `turn_id`, `ordinal`, `workflow_id`, `run_id`, `conversation_id`, `worker_kind`, `worker_instance`, `provider_journal_head`, `provider_journal_count`, `store_journal_head`, `store_journal_count`, `imported_prefix_digest`, `predecessor_receipt_digest`, `baseline_digest`, `result_baseline_digest`, `outcome`, `settlement`, `publication_transaction_id`, `usage`, `tool_sequence`, `denials`.
+`unverified_inputs`, `session_id`, `turn_id`, `ordinal`, `workflow_id`, `run_id`, `conversation_id`, `worker_kind`, `worker_instance`, `provider_journal_head`, `provider_journal_count`, `store_journal_head`, `store_journal_count`, `imported_prefix_digest`, `predecessor_receipt_digest`, `baseline_digest`, `result_baseline_digest`, `outcome`, `settlement`, `publication_transaction_id`, `usage`, `tool_sequence`, `denials`.
 
 Before it imports a predecessor, the next turn reopens the predecessor's retained journals read-only and checks their verified heads and counts against this receipt. A mismatch refuses the launch with `RefuseUnlinkedTurn(turn, PREDECESSOR_EVIDENCE_INVALID)`: the new turn is `failed` with a full refund, and the session is blocked.
 
@@ -376,7 +378,7 @@ What the host profile does with them:
 - **Bash.** No contained command runner exists, so a policy with an allow rule for `bash` refuses the start with an error that names the project. The per-turn refusal described under [Bash in product turns](#bash-in-product-turns) stays as a second line. Nothing wires the development runner into production.
 - **Provider.** Every profile the registration lists must be in the compiled table, which holds `opencode-go-engineering` only. A turn's conversation is built for its session's profile and refused when that profile is not in the registration. The endpoint, model and request shape are compiled in. No config field or environment variable changes them. The key is checked before listening and read again per turn from `/etc/tbound-product/credentials/<profile>.key` under the provider credential rules (service-owned 0700 directory, 0600 file, protected ancestors), so a rotated key needs no restart.
 - **Prompts.** The system and developer prompts are compiled in and name no tool, because the policy decides the tools. They are part of every turn's retained evidence, so changing either text breaks the replay of turns recorded under the old one.
-- **Git.** The executable's bytes and mode are checked against `git_digest` at start and again when each turn pins it. Its execution boundary is labelled `product-supervisor-private-git-admin/v1`: Git runs in the supervisor's own process, not in a command cell.
+- **Git.** The config's `git_digest` must equal the signed registration. The compiled host identity must also match the registration before listening. The executable's bytes and mode are checked against `git_digest` at start and again when each turn pins it. Its execution boundary is labelled `product-supervisor-private-git-admin/v1`: Git runs in the supervisor's own process, not in a command cell.
 - **Xattr.** The calibration must verify under the registration public key and cover the managed-writable source profile. At start, and again before each publication, the filesystem, mount options and scanner identity (non-root UID and GID, no capabilities, no new privileges, initial user namespace) of the state root and of every managed project root must equal the calibration. Each managed project is opened through its registered root identity check. The attestation carries the calibration's bounded authority only: the administrator's signed statement that this filesystem, mount and scanner hide no `trusted.*` attribute. It is not proof that the unprivileged scanner enumerates every attribute, and no managed live-root lease backs it.
 - **Worker steps.** The step bound of a turn is the registration's per-turn host-call limit, because one step is one provider exchange.
 - **Publication trust.** A publication needs the turn's authority to be bound and the provider profile to be registered. It needs the supervisor loop's conversation to be closed and no unresolved effect, host call or Store quarantine. It re-verifies the xattr identity and needs the managed project to still equal the turn's baseline. It refuses any command effect. The turn's own authority verifies every transition and origin. The trust does not exclude a writer outside the catalog, the publication ledger and the Store. An outside edit made before publication fails the baseline check, and one made later is caught by the next baseline measurement. The trust has no Bash lease resolver, so it cannot publish a Bash turn.
@@ -443,7 +445,7 @@ Everything here runs against a test root (`--root DIR`) and supports `--dry-run`
 ### Registration tooling (offline administrator)
 
 - `tbound product registration keygen --out DIR` writes an Ed25519 key pair. The private key is 0600, and the command refuses an existing file. The private key stays offline and never enters the service host.
-- `tbound product registration init --out FILE` writes an unsigned registration template from flags: projects, scope, provider profiles, limits, principals, runtime, image and extension digests.
+- `tbound product registration init --out FILE` writes an unsigned registration template from flags: projects, scope, provider profiles, limits, principals, `--git-digest`, runtime, image and extension digests. It computes `host_identity_digest` from this build's prompts, registered provider table entries and supervisor-loop worker kind.
 - `tbound product registration sign --registration FILE --key PRIVATE --out FILE` writes the signed registration and its `.sig` with the existing `SignRegistration`. It refuses duplicate JSON keys and trailing data before signing.
 - `tbound product registration verify --registration FILE --signature FILE --public-key FILE` prints the digest and a summary.
 - Changing a project, scope, policy or limit means signing a new registration. No per-task signing exists.
