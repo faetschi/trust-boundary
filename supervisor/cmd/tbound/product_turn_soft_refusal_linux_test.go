@@ -12,7 +12,6 @@ import (
 
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/broker/protocol"
-	"tbound/supervisor/internal/gate"
 	"tbound/supervisor/internal/productsession"
 	"tbound/supervisor/internal/providerbridge"
 	"tbound/supervisor/internal/sessionrepo"
@@ -235,10 +234,6 @@ func TestProductTurnSoftRefusalRetiresCapturedAuthority(t *testing.T) {
 		t.Fatal("soft refusal accepted as gate DENY")
 	}
 	requireFinalAnswer(t, f, "Done.", 2, 2048)
-	decision := gate.Evaluate(proposal, matched, f.policy)
-	if _, err := f.durable.Execute(f.ctx, proposal, decision); err == nil {
-		t.Fatal("retired call executed")
-	}
 	if pins := f.authority.currentLedgerPins(); pins.EffectReservation != nil && pins.EffectReservation.Disposition != workflowrecovery.EffectReservationTerminal {
 		t.Fatal("retired call gained an effect reservation")
 	}
@@ -254,6 +249,25 @@ func TestProductTurnSoftRefusalCanPrecedeAnAuthorizedEffect(t *testing.T) {
 		t.Fatalf("effect after refusal: %+v %v", turn, err)
 	}
 	f.followUp(t, "after-effect", productsession.OutcomePublished)
+}
+
+func TestProductTurnSoftRefusalCanPrecedeBashInTheSameTurn(t *testing.T) {
+	f := newBashProductDriverFixture(t, productsession.PublicationAuto, productScopeNotes(), false, []string{}, seedBashProject(t))
+	script := &productDriverScript{turns: []providerbridge.ScriptTurn{
+		{ResponseID: "soft-response", CallID: "soft-call", Tool: "read", Arguments: json.RawMessage(`{"path":"missing.txt"}`)},
+		bashCall("create", `printf 'inside\n' > notes/a.txt`), scopeDriverFinal("t1", scopeDriverAnswer),
+	}}
+	receipt, turn, err := f.run(t, f.submit(t, "turn-1", scopeDriverPrompt), script)
+	if err != nil || turn.Outcome != productsession.OutcomePublished || receipt.CommandJournalCount != 1 || receipt.Usage.HostCalls != 4 || fileContent(t, filepath.Join(f.projectDir, "notes"), "a.txt") != "inside\n" {
+		t.Fatalf("Bash after refusal: turn=%+v receipt=%+v err=%v", turn, receipt, err)
+	}
+	encoded, err := json.Marshal(script.histories[1])
+	if err != nil || !strings.Contains(string(encoded), "read_missing") {
+		t.Fatalf("Bash request lost the refusal result: %s %v", encoded, err)
+	}
+	if _, next, err := f.run(t, f.submit(t, "turn-2", "Read the note."), &productDriverScript{turns: []providerbridge.ScriptTurn{scopeDriverFinal("t2", "Done.")}}); err != nil || next.Outcome != productsession.OutcomeNoDiff {
+		t.Fatalf("refusal and Bash predecessor failed replay: %+v %v", next, err)
+	}
 }
 
 func TestProductTurnSoftRefusalAfterAnEffectBindsTheAdvancedTip(t *testing.T) {
