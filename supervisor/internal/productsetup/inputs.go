@@ -1,7 +1,11 @@
 package productsetup
 
 import (
+	"errors"
+	"fmt"
+	"maps"
 	"os"
+	"slices"
 	"strings"
 )
 
@@ -34,10 +38,33 @@ func (h *host) hostInputs(cfg Config, summary RegistrationSummary, key []byte, k
 		XattrCalibrationPath: h.real(cfg.XattrCalibrationPath), PublicKey: key, PublicKeyPath: keyPath, Owners: owners}
 }
 
+// refuseSymlinkedHostInputs refuses a host input with a symlink in any component of its path, walked without
+// following one from the root. The readers reject a symlink leaf but follow one in an ancestor, which would
+// put an input behind an alias of a path setup writes and make checkNotWritten's lexical comparison unsound.
+// A missing input is left to the host-input check.
+func (h *host) refuseSymlinkedHostInputs(cfg Config) error {
+	paths := append([]string{cfg.GitPath, cfg.XattrCalibrationPath, cfg.XattrCalibrationPath + ".sig"}, slices.Collect(maps.Values(cfg.GatePolicyPaths))...)
+	for _, p := range paths {
+		err := h.withPath(p, false, func(real string) error {
+			if info, err := os.Lstat(real); err == nil && info.Mode()&os.ModeSymlink != 0 {
+				return refuse("the final component is a symlink")
+			}
+			return nil
+		})
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("host input %s: %w; nothing was changed", p, err)
+		}
+	}
+	return nil
+}
+
 // refuseBadHostInputs runs the static host-input check before setup writes anything. It records every
 // check in the report and refuses, naming each failed input and its reason. The live scanner checks are
 // not part of it: `doctor --self-test` and the service start cover them.
 func (h *host) refuseBadHostInputs(cfg Config, summary RegistrationSummary, key []byte, keyPath string) error {
+	if err := h.refuseSymlinkedHostInputs(cfg); err != nil {
+		return err
+	}
 	if h.env.CheckHostInputs == nil {
 		return nil
 	}
