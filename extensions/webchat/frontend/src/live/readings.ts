@@ -118,7 +118,7 @@ const FRIENDLY: Readonly<Record<string, string>> = {
   BUDGET_EXHAUSTED: "The session budget is used up.",
   BUDGET_EXCEEDS_LIMIT: "The budget is above what this project allows.",
   CANDIDATE_MISMATCH: "The candidate changed after it was shown. Review the new changes.",
-  CANDIDATE_TOO_LARGE: "The complete candidate preview exceeds the service's 1 MiB response limit. No paths were omitted. This review needs an operator.",
+  CANDIDATE_TOO_LARGE: "The complete candidate preview exceeds the service's 1 MiB response limit. No paths were omitted. Choose Cancel turn to discard this awaiting-review turn, or ask an operator for help.",
   REVIEW_NOT_PENDING: "There is no review to decide.",
   CANCEL_NOT_ALLOWED: "This turn cannot be cancelled now.",
   CANCELLED: "The turn was cancelled.",
