@@ -547,3 +547,48 @@ func TestOfflineProviderSeamsAreNamedOnlyByTheirOwnPackages(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestProductServiceHostRefusesAnInvalidPublicationFence(t *testing.T) {
+	for _, invalid := range []string{"missing", "symlink", "mode", "nonempty"} {
+		t.Run(invalid, func(t *testing.T) {
+			f := newProductHostFixture(t, false)
+			fence := filepath.Join(f.projectDir, "lost+found")
+			switch invalid {
+			case "missing", "symlink":
+				if err := os.Remove(fence); err != nil && !os.IsNotExist(err) {
+					t.Fatal(err)
+				}
+				if invalid == "symlink" {
+					if err := os.Symlink(f.stateRoot, fence); err != nil {
+						t.Fatal(err)
+					}
+				}
+			case "mode":
+				if err := os.MkdirAll(fence, 0700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Chmod(fence, 0775); err != nil {
+					t.Fatal(err)
+				}
+			case "nonempty":
+				if err := os.MkdirAll(fence, 0700); err != nil {
+					t.Fatal(err)
+				}
+				writeHostFile(t, filepath.Join(fence, "unexpected"), "data")
+			}
+			opts := f.options()
+			opts.Host = newProductServiceHostProfile(f.cfg)
+			svc, err := startProductService(f.cfg, opts)
+			if err == nil {
+				_ = svc.Shutdown()
+				t.Fatal("an invalid publication fence was accepted")
+			}
+			if !strings.Contains(err.Error(), "publication fence") {
+				t.Fatalf("wrong refusal: %v", err)
+			}
+			if _, err := os.Stat(f.socketPath); !os.IsNotExist(err) {
+				t.Fatal("a refused service opened its socket")
+			}
+		})
+	}
+}

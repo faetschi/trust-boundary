@@ -12,12 +12,14 @@ import (
 	"path/filepath"
 
 	"golang.org/x/sys/unix"
+
+	"tbound/supervisor/internal/effectoracle"
 )
 
 // Import validates the whole bundle stream r and creates the project at dest. dest must not exist
 // and its parent must be a private directory (owned by the caller, no group or other access). The
-// project is written into a temporary sibling with modes 0600 (0700 for executables and
-// directories), fsynced, and renamed into place only after the stream, every size and every digest
+// project is written into a private temporary sibling with canonical content modes 0644
+// (0755 for executables and directories), fsynced, and renamed into place only after the stream, every size and every digest
 // were verified. Any error leaves nothing at dest. A crash can leave a ".tbound-import-*" sibling
 // that no later import reuses.
 func Import(r io.Reader, dest string, limits Limits) (Manifest, string, error) {
@@ -53,14 +55,21 @@ func Import(r io.Reader, dest string, limits Limits) (Manifest, string, error) {
 	if err != nil {
 		return Manifest{}, "", err
 	}
-	dirs := []string{staging}
+	fence := filepath.Join(staging, effectoracle.FenceDir)
+	if err := os.Mkdir(fence, 0o755); err != nil {
+		return Manifest{}, "", err
+	}
+	if err := os.Chmod(fence, 0o755); err != nil {
+		return Manifest{}, "", err
+	}
+	dirs := []string{staging, fence}
 	for _, e := range manifest.Entries {
 		full := filepath.Join(staging, filepath.FromSlash(e.Path))
 		if e.Type == TypeDir {
-			if err := os.Mkdir(full, 0o700); err != nil {
+			if err := os.Mkdir(full, 0o755); err != nil {
 				return Manifest{}, "", err
 			}
-			if err := os.Chmod(full, 0o700); err != nil {
+			if err := os.Chmod(full, 0o755); err != nil {
 				return Manifest{}, "", err
 			}
 			dirs = append(dirs, full)
@@ -89,9 +98,9 @@ func Import(r io.Reader, dest string, limits Limits) (Manifest, string, error) {
 }
 
 func importFile(r io.Reader, full string, e Entry) error {
-	mode := os.FileMode(0o600)
+	mode := os.FileMode(0o644)
 	if e.Executable {
-		mode = 0o700
+		mode = 0o755
 	}
 	f, err := os.OpenFile(full, os.O_WRONLY|os.O_CREATE|os.O_EXCL, mode)
 	if err != nil {

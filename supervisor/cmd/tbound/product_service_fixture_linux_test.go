@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/base64"
@@ -25,6 +26,7 @@ import (
 	"tbound/supervisor/internal/privategit"
 	"tbound/supervisor/internal/productprotocol"
 	"tbound/supervisor/internal/productsession"
+	"tbound/supervisor/internal/projectbundle"
 	"tbound/supervisor/internal/providerbridge"
 	"tbound/supervisor/internal/sessionlaunch"
 	"tbound/supervisor/internal/workflow"
@@ -108,14 +110,18 @@ func newProductServiceFixtureWithReviewTimeout(t *testing.T, reviewTimeoutSecond
 		socketPath: filepath.Join(root, "run", "product.sock"), principalA: productsession.Principal(os.Getuid())}
 	f.principalB, f.unregistered = f.principalA+1, f.principalA+2
 	f.uid.Store(int64(f.principalA))
-	for _, dir := range []string{f.projectDir, f.stateRoot, filepath.Join(root, "reg")} {
+	for _, dir := range []string{f.stateRoot, filepath.Join(root, "reg")} {
 		if err := os.Mkdir(dir, 0o700); err != nil {
 			t.Fatal(err)
 		}
 	}
-	writeProductDriverFile(t, f.projectDir, "task.txt", "turn fixture\n")
-	fence := filepath.Join(f.projectDir, "lost+found")
-	if err := os.Mkdir(fence, 0o755); err != nil || os.Chmod(fence, 0o755) != nil {
+	source := t.TempDir()
+	writeProductDriverFile(t, source, "task.txt", "turn fixture\n")
+	var bundle bytes.Buffer
+	if _, err := projectbundle.Build(source, projectbundle.BuildOptions{Limits: projectbundle.DefaultLimits()}, &bundle); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := projectbundle.Import(&bundle, f.projectDir, projectbundle.DefaultLimits()); err != nil {
 		t.Fatal(err)
 	}
 	projectRoot, err := os.Open(f.projectDir)

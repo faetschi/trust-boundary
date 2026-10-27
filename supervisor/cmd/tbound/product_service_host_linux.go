@@ -6,8 +6,13 @@ import (
 	"crypto/ed25519"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"slices"
+
+	"golang.org/x/sys/unix"
+
+	"tbound/supervisor/internal/effectoracle"
 
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/gate"
@@ -53,6 +58,17 @@ func newProductServiceHostProfile(cfg productServiceConfig) productServiceHost {
 		for _, id := range env.Registration.ProviderProfiles {
 			if _, ok := productprovider.Lookup(id); !ok {
 				return fmt.Errorf("the registration names provider profile %q, which this build does not support", id)
+			}
+		}
+		for _, project := range env.Registration.Projects {
+			root, err := os.Open(env.ProjectRoots[project.ProjectID])
+			if err != nil {
+				return err
+			}
+			err = validateProductPublicationFence(root)
+			closeErr := root.Close()
+			if err != nil || closeErr != nil {
+				return errors.Join(err, closeErr)
 			}
 		}
 		profiles := env.Registration.ProviderProfiles
@@ -145,4 +161,25 @@ func productHostXattr(cfg productServiceConfig, env *productTurnEnv) (workspace.
 		}
 	}
 	return piruntime.WorkspaceXattrAttestation(calibration.Digest, calibration.Authority)
+}
+
+func validateProductPublicationFence(root *os.File) error {
+	fd, err := unix.Openat(int(root.Fd()), effectoracle.FenceDir, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return fmt.Errorf("publication fence: %w", err)
+	}
+	fence := os.NewFile(uintptr(fd), effectoracle.FenceDir)
+	defer fence.Close()
+	var st unix.Stat_t
+	if err := unix.Fstat(fd, &st); err != nil {
+		return fmt.Errorf("publication fence: %w", err)
+	}
+	if st.Uid != uint32(os.Geteuid()) || st.Mode&0o7777 != 0o755 {
+		return errors.New("publication fence must be service-owned with canonical mode 0755")
+	}
+	entries, err := fence.ReadDir(1)
+	if len(entries) != 0 || !errors.Is(err, io.EOF) {
+		return errors.New("publication fence must be empty and readable")
+	}
+	return nil
 }
