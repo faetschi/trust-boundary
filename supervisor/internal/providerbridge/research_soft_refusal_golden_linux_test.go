@@ -64,7 +64,7 @@ func TestResearchSoftRefusalJournalAndResultGolden(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const want = "GOLDEN"
+	const want = "sha256:2b01f25baf437efd74f34b6511f97bef6ec225066088c69610b72f4d86594156"
 	if got := digestBytes(events); got != want {
 		t.Fatalf("research journal golden: %s", got)
 	}
