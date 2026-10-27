@@ -81,7 +81,7 @@ func fixtureExamples() map[string]any {
 	return map[string]any{
 		"response-candidate-at-frame-limit": candidateAtFrameLimit(),
 		"response-candidate-too-large": Response{Version: Version, Status: StatusError,
-			Error: &Error{Code: "CANDIDATE_TOO_LARGE"}},
+			Error: &Error{Code: CodeCandidateTooLarge}},
 		"request-create_session": Request{Version: Version, Op: OpCreateSession, CreateSession: &CreateSession{
 			ProjectID: "demo-project", ProviderProfile: "openrouter-default", PublicationMode: "review",
 			Budget: fixtureBudget(), ReadOnly: true, RequestKey: "ck-00112233445566778899aabbccddeeff"}},

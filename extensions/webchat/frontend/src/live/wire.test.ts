@@ -22,4 +22,12 @@ describe("candidate protocol frame bound", () => {
     expect(utf8Length(JSON.stringify(over))).toBe(1024 * 1024 + 1);
     expect(() => parseCandidate({ candidate: over.candidate })).toThrow(/frame/);
   });
+
+  it.each(["é", "<", ">", "&", "\u2028", "\u2029"])("counts UTF-8 bytes and Go JSON escaping at the boundary (%#)", (character) => {
+    const over = structuredClone(atLimit);
+    const first = over.candidate.changes[0];
+    if (first?.diff === undefined) throw new Error("missing boundary diff");
+    first.diff = character + first.diff.slice(1);
+    expect(() => parseCandidate({ candidate: over.candidate })).toThrow(/frame/);
+  });
 });

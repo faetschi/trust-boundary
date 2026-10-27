@@ -296,7 +296,11 @@ func (s *productService) reply(conn *net.UnixConn, response *productprotocol.Res
 	if err := productprotocol.WriteFrame(conn, response, productprotocol.MaxResponseBytes); errors.Is(err, productprotocol.ErrProtocol) {
 		// The projection outgrew its frame. Nothing was written, so answer plainly instead of cutting it short.
 		s.log.Printf("a response exceeded its frame bound")
-		_ = productprotocol.WriteFrame(conn, unavailable(), productprotocol.MaxResponseBytes)
+		refusal := unavailable()
+		if response.Candidate != nil {
+			refusal = failure(productprotocol.CodeCandidateTooLarge)
+		}
+		_ = productprotocol.WriteFrame(conn, refusal, productprotocol.MaxResponseBytes)
 	}
 }
 

@@ -3,7 +3,7 @@
 // bound is a ContractError and never a partial value. The routes and their bodies are the gateway's, unchanged.
 
 import type { LiveSessionView, LiveTurn } from "../core/contract";
-import { assertLiveTurn, assertLiveView, kit } from "../core/validate";
+import { assertLiveTurn, assertLiveView, kit, utf8Length } from "../core/validate";
 
 const { fail, asRecord, closedKeys, optional, required, stringValue, boolValue, countValue, reasonCodeValue, arrayValue } = kit;
 
@@ -43,7 +43,7 @@ export interface EventsAnswer {
 }
 
 const MAX_EVENTS = 512;
-const MAX_CHANGES = 256;
+const MAX_PRODUCT_RESPONSE_BYTES = 1 << 20;
 const MAX_ANSWER_TEXT = 64 * 1024;
 const EVENT_KEYS = [
   "seq",
@@ -112,9 +112,13 @@ export function parseCandidate(value: unknown): Candidate {
   closedKeys("candidate answer", outer, ["candidate"]);
   const record = asRecord("candidate", required("candidate answer", outer, "candidate"));
   closedKeys("candidate", record, ["turn_id", "candidate_digest", "changes"]);
+  // Count the same JSON envelope and HTML escapes as productprotocol.WriteFrame.
+  const frame = JSON.stringify({ version: "tbound-product-protocol/v1", status: "ok", candidate: record })
+    .replace(/[<>&\u2028\u2029]/gu, (character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`);
+  if (utf8Length(frame) > MAX_PRODUCT_RESPONSE_BYTES) fail("candidate", "exceeds the protocol response frame bound");
   const turnId = kit.referenceValue("candidate.turn_id", required("candidate", record, "turn_id"), false);
   const digest = kit.referenceValue("candidate.candidate_digest", required("candidate", record, "candidate_digest"), false);
-  const changes = arrayValue("candidate.changes", required("candidate", record, "changes"), MAX_CHANGES).map((entry, index) => {
+  const changes = arrayValue("candidate.changes", required("candidate", record, "changes"), MAX_PRODUCT_RESPONSE_BYTES).map((entry, index) => {
     const path = `candidate.changes[${index}]`;
     const change = asRecord(path, entry);
     closedKeys(path, change, ["path", "op", "diff", "truncated"]);

@@ -540,9 +540,11 @@ Implemented as follows (detail in `extensions/webchat/docs/web-chat-contract.md`
 - The app detects live mode from `GET /api/v1/contract` (`"mode": "live"`). A `401` shows pairing instructions. Any other gateway keeps the read-only demonstration path, labelled as a demonstration.
 - The page recovers the CSRF token from `GET /api/v1/pair` and sends it on every `POST`.
 - A request key belongs to one user action. A retry sends the same body under the same key. An unknown outcome is shown, blocks a new prompt, and offers a retry under the same key.
+- Unresolved intents are saved in per-tab sessionStorage before sending, with their operation, exact body, request key and session. Reload and session changes retain them; only a successful answer settles an unknown outcome. Storage is validated on load and bounded to 16 intents and 1 MiB. No pairing secret, cookie or CSRF token is stored there. Requests are refused locally if their recovery record cannot be saved.
 - `expected_revision` is the revision of the last session view the page read, and the view is read again after every lifecycle event.
 - The event stream is a long poll that starts from the snapshot's cursor. The cursor is stored per session in the tab, and a gap refetches the snapshot.
 - Publish and Discard send the digest of the candidate that is displayed.
+- A complete candidate preview must fit the protocol's 1 MiB encoded response frame, including its envelope and JSON escaping. The browser uses the same byte bound instead of a separate path-count limit. The service returns `CANDIDATE_TOO_LARGE` (HTTP 413) above it and never omits changed paths from a candidate preview.
 
 ### Windows access
 
