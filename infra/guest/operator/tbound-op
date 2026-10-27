@@ -897,7 +897,7 @@ v_verify_retained() {   # RUNID : offline, read-only re-verification of a comple
   "$TB" verify-retained --run-id "$runid" >"$WORK/verify-retained.json" || die "verify-retained refused $runid (it changes nothing)"
   put_out _ "$WORK/verify-retained.json" "verify-retained-$runid.json"
   cat "$WORK/verify-retained.json"
-  say "verify-retained $runid ok -> $OUTROOT/_/verify-retained-$runid.json"
+  say "verify-retained $runid ok -> $OUTROOT/_/verify-retained-$runid.json" >&2   # stdout stays the one JSON line
 }
 
 GE_OUT=$GA/out

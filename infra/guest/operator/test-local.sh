@@ -510,8 +510,8 @@ ACTIVE=%d
         self.assertEqual(got.returncode, 0, got.stdout + got.stderr)
         self.assertEqual(calls, ["verify-retained --run-id " + self.runid])
         self.assertEqual(exported.read_text(), self.report + "\n")
-        self.assertIn(self.report, got.stdout)
-        self.assertIn("verify-retained " + self.runid + " ok", got.stdout)
+        self.assertEqual(got.stdout, self.report + "\n")
+        self.assertIn("verify-retained " + self.runid + " ok", got.stderr)
 
     def test_refused_before_the_verifier_runs(self):
         for name, args, kwargs, code, message in (
@@ -524,6 +524,7 @@ ACTIVE=%d
                 got, calls, exported = self.run_verb(*args, **kwargs)
                 self.assertEqual(got.returncode, code, got.stdout + got.stderr)
                 self.assertIn(message, got.stderr)
+                self.assertEqual(got.stdout, "")
                 self.assertEqual(calls, [])
                 self.assertFalse(exported.exists())
 
@@ -531,7 +532,7 @@ ACTIVE=%d
         got, calls, exported = self.run_verb(self.runid, tb_exit=2)
         self.assertEqual(got.returncode, 1, got.stdout + got.stderr)
         self.assertIn("refused", got.stderr)
-        self.assertNotIn("verified", got.stdout)
+        self.assertEqual(got.stdout, "")
         self.assertEqual(calls, ["verify-retained --run-id " + self.runid])
         self.assertFalse(exported.exists())
 
