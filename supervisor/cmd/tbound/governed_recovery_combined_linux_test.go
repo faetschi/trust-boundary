@@ -62,6 +62,9 @@ type combinedRecoveryScenario struct {
 	// idleCrash ends the original process at the idle provider boundary after the host prompt is admitted, with
 	// no provider call captured.
 	idleCrash bool
+	// advanceStore has the original conversation write a file before its last call is captured, so a recovered
+	// conversation starts from a Store generation other than the baseline.
+	advanceStore bool
 }
 
 var combinedRecoveryScenarios = map[string]combinedRecoveryScenario{
@@ -70,8 +73,9 @@ var combinedRecoveryScenarios = map[string]combinedRecoveryScenario{
 	"deadline":        {maxPreEffectRetries: 2, maxCleanRestarts: 2, deadline: 8 * time.Second},
 	"absent-scope-no-receipt": {maxPreEffectRetries: 2, maxCleanRestarts: 2, deadline: 10 * time.Minute,
 		withoutCleanupReceipt: true},
-	"binder-pins":      {maxPreEffectRetries: 2, maxCleanRestarts: 2, deadline: 10 * time.Minute, binderShapedPins: true},
-	"binder-pins-idle": {maxPreEffectRetries: 2, maxCleanRestarts: 2, deadline: 10 * time.Minute, binderShapedPins: true, idleCrash: true},
+	"binder-pins":          {maxPreEffectRetries: 2, maxCleanRestarts: 2, deadline: 10 * time.Minute, binderShapedPins: true},
+	"binder-pins-idle":     {maxPreEffectRetries: 2, maxCleanRestarts: 2, deadline: 10 * time.Minute, binderShapedPins: true, idleCrash: true},
+	"binder-pins-advanced": {maxPreEffectRetries: 2, maxCleanRestarts: 2, deadline: 10 * time.Minute, binderShapedPins: true, advanceStore: true},
 }
 
 type combinedRecoveryPaths struct {
@@ -252,7 +256,9 @@ type combinedRecoveryResult struct {
 	RecoveryGeneration uint64                    `json:"recovery_generation"`
 	Counters           workflowrecovery.Counters `json:"counters"`
 	Transcripts        int                       `json:"transcripts"`
-	StoreEffects       int                       `json:"store_effects"`
+	// DistinctStarts counts the different Store generations the replayed transcripts started from.
+	DistinctStarts int `json:"distinct_starts"`
+	StoreEffects   int `json:"store_effects"`
 	// FenceEpoch is the protected root's accepted fence high-water mark.
 	FenceEpoch uint64 `json:"fence_epoch"`
 }
@@ -282,10 +288,13 @@ func combinedRecoveryWriteJSON(t *testing.T, path string, value any) {
 	}
 }
 
-func combinedRecoveryPolicy(t *testing.T) gate.Policy {
+func combinedRecoveryPolicy(t *testing.T, sc combinedRecoveryScenario) gate.Policy {
 	t.Helper()
-	policy, err := gate.NewPolicy(gate.Profile{Version: gate.ProfileVersion,
-		Rules: []gate.Rule{{Tool: "read", Effect: gate.EffectAllow}}})
+	rules := []gate.Rule{{Tool: "read", Effect: gate.EffectAllow}}
+	if sc.advanceStore {
+		rules = append(rules, gate.Rule{Tool: "write", Effect: gate.EffectAllow})
+	}
+	policy, err := gate.NewPolicy(gate.Profile{Version: gate.ProfileVersion, Rules: rules})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -427,7 +436,7 @@ func combinedRecoveryOriginal(t *testing.T, root, step string, sc combinedRecove
 	if err != nil {
 		t.Fatal(err)
 	}
-	policy := combinedRecoveryPolicy(t)
+	policy := combinedRecoveryPolicy(t, sc)
 	runner := newDevelopmentFixtureCommandRunner()
 	authority, err := NewSessionOperationAuthority(storeJournal, providerJournal,
 		combinedRecoveryWorkflow, "combined-recovery-conversation-g1", combinedRecoveryProfile,
@@ -591,13 +600,30 @@ func combinedRecoveryOriginal(t *testing.T, root, step string, sc combinedRecove
 	config := combinedRecoveryProviderConfig("combined-recovery-conversation-g1", g0.ID(), g0.TreeDigest())
 	conversation, err := authority.newProviderConversation(config, func(config providerbridge.Config,
 		journal *audit.Journal) (*providerbridge.Conversation, error) {
-		return providerbridge.NewDevelopmentOfflineConversation(config, journal, combinedRecoveryReadCallTurns("combined-original"))
+		turns := combinedRecoveryReadCallTurns("combined-original")
+		if sc.advanceStore {
+			write := providerbridge.DevelopmentProviderTurn{ResponseID: "combined-original-write-response", CallID: "combined-original-write-call",
+				Tool: "write", Arguments: json.RawMessage(`{"path":"task.txt","content":"advanced\n"}`)}
+			turns = append([]providerbridge.DevelopmentProviderTurn{write}, turns...)
+		}
+		return providerbridge.NewDevelopmentOfflineConversation(config, journal, turns)
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := authority.AdmitPrompt(conversation, durable, combinedRecoveryTaskID, combinedRecoveryPrompt); err != nil {
 		t.Fatal(err)
+	}
+	if sc.advanceStore {
+		step := &workflowVerticalFixture{ctx: ctx, conversation: conversation, policy: policy}
+		proposal, decision := ledgerDenyTurn(t, step, "combined-original-write-call", gate.Allow)
+		executor, err := providerbridge.NewExecutor(conversation, durable)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := executor.Execute(ctx, proposal, decision); err != nil {
+			t.Fatalf("original write did not advance the Store: %v", err)
+		}
 	}
 	if !sc.idleCrash {
 		turn, err := conversation.NextTurn(ctx)
@@ -687,7 +713,7 @@ func combinedRecoveryRecover(t *testing.T, root, step string, capture bool, sc c
 	gitPin := sessionlaunch.RecoveryGitPin{RepositoryName: gitName.RepositoryName,
 		ProvenanceDigest:         sha256DigestFromBarePin(before.Pins.D06ProvenanceDigest),
 		RepositoryIdentityDigest: sha256DigestFromBarePin(before.Pins.PrivateGitIdentityDigest)}
-	policy := combinedRecoveryPolicy(t)
+	policy := combinedRecoveryPolicy(t, sc)
 	adminRoot, err := openExistingPrivateRecoveryDirectory(p.admin)
 	if err != nil {
 		t.Fatal(err)
@@ -763,6 +789,11 @@ func combinedRecoveryRecover(t *testing.T, root, step string, capture bool, sc c
 	if err != nil {
 		result.PrepareError = err.Error()
 	} else {
+		starts := map[string]struct{}{}
+		for _, projected := range candidate.projection.Transcripts {
+			starts[projected.Provider.InitialGenerationID] = struct{}{}
+		}
+		result.DistinctStarts = len(starts)
 		session, activateErr := candidate.Activate(ctx)
 		if activateErr != nil {
 			result.ActivateError = activateErr.Error()
@@ -998,5 +1029,24 @@ func TestGovernedRecoveryCombinedRetiresAnIdleLineageUnderBinderShapedPins(t *te
 	}
 	if first.Counters.CleanRestarts != 1 || first.Counters.PreEffectRetries != 0 {
 		t.Fatalf("idle retirement must charge one clean restart and no pre-effect retry: %+v", first.Counters)
+	}
+}
+
+// With several retained transcripts the last one starts from the generation the replay reached through the
+// earlier ones, not from the baseline: retirement must use that start, which only the replay knows.
+func TestGovernedRecoveryCombinedRetiresTheLastTranscriptFromItsOwnStartGeneration(t *testing.T) {
+	root := privateGovernedTestRoot(t)
+	const scenario = "binder-pins-advanced"
+	combinedRecoveryRunChild(t, root, scenario, "original", "o", combinedRecoveryCrashExit)
+	first := combinedRecoveryRunChild(t, root, scenario, "recover-capture", "r1", combinedRecoveryCrashExit)
+	if first.PrepareError != "" || first.ActivateError != "" || !first.Activated || !first.Captured || first.DistinctStarts != 1 {
+		t.Fatalf("first recovery: prepare=%q activate=%q captured=%v starts=%d",
+			first.PrepareError, first.ActivateError, first.Captured, first.DistinctStarts)
+	}
+	second := combinedRecoveryRunChild(t, root, scenario, "recover-capture", "r2", combinedRecoveryCrashExit)
+	if second.PrepareError != "" || second.ActivateError != "" || !second.Activated || !second.Captured ||
+		second.Transcripts != 2 || second.DistinctStarts != 2 {
+		t.Fatalf("second recovery must retire a transcript that starts after the Store advanced: prepare=%q activate=%q captured=%v transcripts=%d starts=%d",
+			second.PrepareError, second.ActivateError, second.Captured, second.Transcripts, second.DistinctStarts)
 	}
 }
