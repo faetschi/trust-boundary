@@ -97,13 +97,13 @@ Step 2 detail:
 
 ## Handoff 2026-10-26
 
-- The current HEAD is 71250a2. It is NOT gated; the last full gate was 3103ccc (reported 4777 pass / 26 guest-only skips / 0 fail).
+- The current HEAD is e4a3bfd (this docs note on top of 71250a2). It is NOT gated; the last full gate was 3103ccc (reported 4777 pass / 26 guest-only skips / 0 fail).
 - `feat/construct-review-signoff` is at 3ef478c: code-complete, 56 ahead / 8 behind, not merged, no post-fix verification recorded.
-- `fix/d09-denied-settlement` is at ab14196: code-complete, 4 ahead / 3 behind, not merged, no post-fix verification recorded.
+- `fix/d09-denied-settlement` is at 64de3d2: `ab14196` writes the denied-after-effect settlement; `64de3d2` adds the recovery verification (4 modified files plus 2 new Linux test files, 780 insertions). The recovery half is WIP and untested. Not merged.
 - `fix/recovery-empty-bash-delta` at e7e9d33 is the red precursor; do not merge it.
 - Next actions in order:
   1. gate HEAD;
-  2. merge D09 and run its two focused tests;
+  2. review and merge D09 (including 64de3d2), then run the focused D09 and recovery tests;
   3. gate;
   4. merge the signoff branch and run panelaudit/panel/profile tests;
   5. gate;
