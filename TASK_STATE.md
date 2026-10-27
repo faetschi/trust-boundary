@@ -106,7 +106,7 @@ Step 2 detail:
 ## State 2026-10-27
 
 - The machine move is cancelled; work continues on FABIAN.
-- Full gates: WSL, Go 1.27.1, clean `git archive` export, the two `make boundary` commands (make is not installed in WSL), gofmt, build, vet, Windows cross-build, `go test -race -count=1 ./...`. Counts include subtests, as in the kit's `gate.sh`. Script and logs: `F:/TBoundAssets/gates-20261027/`.
+- Full gates: WSL, Go 1.27.1, clean `git archive` export, the two `make boundary` commands (make is not installed in WSL), gofmt, build, vet, Windows cross-build, `go test -race -count=1 ./...`. Counts include subtests, as in the kit's `gate.sh`. Script and logs: `F:/TBoundAssets/gates-20261027/`. Of the 26 skips, 24 need the guest, root or a real cgroup and 2 are live-provider tests (`TestRealOpenRouterExchange`, `TestRealProviderDurableLinux`) that need explicit enablement.
   - 5f2d0a6: 4776 pass / 26 guest-only skips / 2 fail. Both failures were `netoracle: canary start ... context deadline exceeded` after ~70 s while other WSL tests ran (`TestConstructRecomputesFromProducerFiles`, `TestCollectorCleanWindowIsNoneWithAReportReference`). Both tests and both packages pass under `-race` in isolation: a load flake. Run gates with nothing else on WSL.
   - f483fad (D09 merge): 4786 pass / 26 guest-only skips / 0 fail; the same skip set.
   - 5c1c835 (signoff merge, includes 385584c): 5047 pass / 26 guest-only skips / 0 fail; the same skip set.
