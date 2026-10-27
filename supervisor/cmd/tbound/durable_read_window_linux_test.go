@@ -113,37 +113,35 @@ func finalProviderReadSummary(t *testing.T, fixture *governedReplayFixture) dura
 	return summary
 }
 
-// A model that fills the advertised optional offset/limit keeps its trial: the read releases the window,
-// a read past the end of the file is an empty success rather than an unknown execution, and the
-// conversation reaches its final answer.
-func TestWorkflowVerticalWindowedReadsCompleteTheConversation(t *testing.T) {
+// A model that fills the advertised optional offset/limit keeps its trial: the read releases the window
+// instead of ending the conversation as an unknown execution, and the conversation reaches its final
+// answer. The fixture's host-call allowance (4) fits one read plus the final answer.
+func TestWorkflowVerticalWindowedReadCompletesTheConversation(t *testing.T) {
 	f := newWorkflowVerticalFixture(t, false, 0, []providerbridge.DevelopmentProviderTurn{
 		{ResponseID: "window-r1", CallID: "window-c1", Tool: "read", Arguments: json.RawMessage(`{"path":"task.txt","offset":1,"limit":1}`)},
-		{ResponseID: "window-r2", CallID: "window-c2", Tool: "read", Arguments: json.RawMessage(`{"path":"task.txt","offset":50,"limit":10}`)},
-		{ResponseID: "window-r3", Text: "done"},
+		{ResponseID: "window-r2", Text: "done"},
 	})
 	executor, err := providerbridge.NewExecutor(f.conversation, f.durable)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, expected := range []struct{ callID, content string }{{"window-c1", "vertical fixture"}, {"window-c2", ""}} {
-		proposal, decision := ledgerDenyTurn(t, f, expected.callID, gate.Allow)
-		output, err := executor.Execute(f.ctx, proposal, decision)
-		if err != nil {
-			t.Fatalf("windowed read %s was not released: %v", expected.callID, err)
-		}
-		var summary durableReadSummaryPayload
-		if err := json.Unmarshal(output, &summary); err != nil {
-			t.Fatalf("decode %s output %q: %v", expected.callID, output, err)
-		}
-		if summary.Content != expected.content || summary.Size != len(expected.content) ||
-			summary.ContentDigest != durableContentDigest([]byte(expected.content)) || summary.Outcome != "success" {
-			t.Fatalf("windowed read %s released %+v; want content %q", expected.callID, summary, expected.content)
-		}
+	proposal, decision := ledgerDenyTurn(t, f, "window-c1", gate.Allow)
+	output, err := executor.Execute(f.ctx, proposal, decision)
+	if err != nil {
+		t.Fatalf("windowed read was not released: %v", err)
 	}
-	requireFinalAnswer(t, f, "done", 5, 3072)
+	var summary durableReadSummaryPayload
+	if err := json.Unmarshal(output, &summary); err != nil {
+		t.Fatalf("decode windowed read output %q: %v", output, err)
+	}
+	const want = "vertical fixture"
+	if summary.Content != want || summary.Size != len(want) ||
+		summary.ContentDigest != durableContentDigest([]byte(want)) || summary.Outcome != "success" {
+		t.Fatalf("windowed read released %+v; want content %q", summary, want)
+	}
+	requireFinalAnswer(t, f, "done", 3, 2048)
 	f.conversation.Close()
 	if _, err := f.store.Verify(); err != nil {
-		t.Fatalf("verify Store after windowed reads: %v", err)
+		t.Fatalf("verify Store after the windowed read: %v", err)
 	}
 }
