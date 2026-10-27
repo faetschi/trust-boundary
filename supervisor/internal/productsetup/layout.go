@@ -32,6 +32,9 @@ const (
 	BinaryPath        = BinaryDir + "/tbound"
 	LastKnownGoodPath = BinaryPath + ".last-known-good"
 	stagedBinaryPath  = BinaryPath + ".new"
+	// rollbackIntentPath records a rollback in progress: the digests of the binary being restored and of the
+	// binary being rolled back from.
+	rollbackIntentPath = BinaryPath + ".rollback"
 )
 
 // Paths inherited from the product defaults, so setup and the service cannot disagree.

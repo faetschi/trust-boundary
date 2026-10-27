@@ -80,6 +80,16 @@ func (h *host) managedSource(logical string, o owner, mode os.FileMode) (*os.Fil
 	return f, nil
 }
 
+// interruptHook lets a test end the process at a step boundary of an update or rollback, to prove a
+// fresh process recovers. It is nil in production.
+var interruptHook func(step string)
+
+func interrupt(step string) {
+	if interruptHook != nil {
+		interruptHook(step)
+	}
+}
+
 // Update installs newBinary as the service binary. See replaceBinary for the flow.
 func Update(env Env, newBinary string) (Report, error) {
 	h := newHost(env)
@@ -194,22 +204,26 @@ func (h *host) replaceBinary(source *os.File, what string) (Report, error) {
 	if pending > 0 {
 		h.note("%d pending review(s) will be discarded with reason restart when the service starts", pending)
 	}
+	interrupt("stopped")
 	backup, err := h.backupCatalog()
 	if err != nil {
 		return *h.rep, abort(fmt.Errorf("back up the catalog: %w", err))
 	}
+	interrupt("backed-up")
 	if err := h.copyAtomic(current, LastKnownGoodPath, 0o755); err != nil {
 		return *h.rep, abort(fmt.Errorf("keep the last-known-good binary: %w", err))
 	}
 	if err := h.chown(LastKnownGoodPath, ownRoot); err != nil {
 		return *h.rep, abort(err)
 	}
+	interrupt("prepared")
 	if err := h.withPath(BinaryPath, false, func(path string) error {
 		return os.Rename(filepath.Join(filepath.Dir(path), filepath.Base(stagedBinaryPath)), path)
 	}); err != nil {
 		return *h.rep, abort(fmt.Errorf("swap the binary: %w", err))
 	}
 	h.step("swap", BinaryPath, "updated", "sha256:"+want[:16]+"; previous binary kept as "+LastKnownGoodPath)
+	interrupt("swapped")
 	return *h.rep, h.startAndTest(backup)
 }
 
@@ -217,12 +231,14 @@ func (h *host) startAndTest(backup string) error {
 	if err := h.command("systemctl", "start", UnitName); err != nil {
 		return h.restore(err, backup)
 	}
+	interrupt("started")
 	if h.env.DryRun {
 		h.rep.Commands = append(h.rep.Commands, BinaryPath+" product doctor --self-test")
 		return nil
 	}
 	switch err := h.selfTest(); {
 	case err == nil:
+		interrupt("tested")
 		h.step("self-test", BinaryPath, "created", "passed")
 	case errors.Is(err, ErrSelfTestNotConfigured):
 		h.note("no self-test ran (not configured, or not run on this root): no runtime turn exercised the new binary, so governed readiness is not established")
@@ -249,8 +265,9 @@ func (h *host) restore(cause error, backup string) error {
 		return errors.Join(cause, fmt.Errorf("cannot restore the last-known-good binary: %w", err))
 	}
 	defer source.Close()
-	err = errors.Join(cause, h.command("systemctl", "stop", UnitName),
-		h.copyAtomic(source, BinaryPath, 0o755), h.command("systemctl", "start", UnitName))
+	err = errors.Join(cause, h.command("systemctl", "stop", UnitName), h.copyAtomic(source, BinaryPath, 0o755))
+	interrupt("restored")
+	err = errors.Join(err, h.command("systemctl", "start", UnitName))
 	h.step("swap", BinaryPath, "updated", "rolled back to "+LastKnownGoodPath)
 	return fmt.Errorf("%w; rolled back to the last-known-good binary (catalog backup: %s)", err, backup)
 }
