@@ -327,13 +327,14 @@ func prepareGovernedRecovery(ctx context.Context, request governedRecoveryReques
 			}
 			pendingVerifier.resetForReadOnlyReplay()
 			lastIndex := len(request.Transcripts) - 1
+			retirementPins := replayedProviderPins(request.Transcripts[lastIndex].Replay.Provider, lastProjection)
 			if lastProjection.Disposition == providerbridge.DispositionAwaitingGateDecision {
 				if _, err := providerbridge.AppendUnleasedProviderCallRetirement(
-					request.Transcripts[lastIndex].Journal, request.Transcripts[lastIndex].Replay.Provider, pendingVerifier); err != nil {
+					request.Transcripts[lastIndex].Journal, retirementPins, pendingVerifier); err != nil {
 					return nil, fmt.Errorf("append externally verified retirement for the exact unleased captured call: %w", err)
 				}
 			} else if _, err := providerbridge.AppendIdleProviderLineageRetirement(
-				request.Transcripts[lastIndex].Journal, request.Transcripts[lastIndex].Replay.Provider, pendingVerifier); err != nil {
+				request.Transcripts[lastIndex].Journal, retirementPins, pendingVerifier); err != nil {
 				return nil, fmt.Errorf("append externally verified retirement for the idle provider boundary: %w", err)
 			}
 			projection, err = ReplayGovernedHistory(previewOptions.Journal, store, request.Transcripts, recoveryCommandVerifiers(commandVerifier)...)
@@ -842,6 +843,13 @@ func observedRecoveryPins(previous workflowrecovery.Pins, previousHead string,
 	}
 	_ = previousHead // The ledger observation proof binds this exact predecessor digest.
 	return observed, nil
+}
+
+// replayedProviderPins completes the request pins with the start generation and tree the replay validated for the
+// transcript: the binder pins none, and the replay fills them only into its own copy.
+func replayedProviderPins(pins providerbridge.RecoveryPins, projected providerbridge.TranscriptProjection) providerbridge.RecoveryPins {
+	pins.Config.InitialGenerationID, pins.Config.InitialTreeDigest = projected.InitialGenerationID, projected.InitialTreeDigest
+	return pins
 }
 
 func workflowTranscriptProjectionCount(transcripts []workflowrecovery.TranscriptPin) uint64 {

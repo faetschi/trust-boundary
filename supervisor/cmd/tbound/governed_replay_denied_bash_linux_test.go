@@ -440,10 +440,7 @@ func requireReplayedDeniedBash(t *testing.T, inputs replayDeniedBashInputs, reco
 
 	// Recovery next retires the idle lineage and strictly replays the whole history again before pinning it.
 	recovered.verifier.resetForReadOnlyReplay()
-	// The append replays with these pins as given, so they carry the start generation that the history replay
-	// otherwise fills into its own copy.
-	retirementPins := recovered.transcripts[0].Replay.Provider
-	retirementPins.Config.InitialGenerationID, retirementPins.Config.InitialTreeDigest = bundle.Baseline.ID, bundle.Baseline.TreeDigest
+	retirementPins := replayedProviderPins(recovered.transcripts[0].Replay.Provider, provider)
 	if _, err := providerbridge.AppendIdleProviderLineageRetirement(recovered.transcripts[0].Journal,
 		retirementPins, recovered.verifier); err != nil {
 		t.Fatalf("retire the idle lineage after the denied Bash history: %v", err)
