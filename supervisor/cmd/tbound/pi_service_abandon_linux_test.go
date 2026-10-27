@@ -210,16 +210,16 @@ func TestAbandonUnknownRecordIsBoundToTheTerminalAtServiceStart(t *testing.T) {
 // The admin command is root-only: a non-root caller is refused before the journal or
 // the service registration is touched.
 func TestAbandonUnknownCommandIsRootOnly(t *testing.T) {
-	previous := abandonUnknownEffectiveUID
-	abandonUnknownEffectiveUID = func() int { return 1000 }
-	defer func() { abandonUnknownEffectiveUID = previous }()
+	previous := operatorEffectiveUID
+	operatorEffectiveUID = func() int { return 1000 }
+	defer func() { operatorEffectiveUID = previous }()
 	var stdout, stderr bytes.Buffer
 	err := runAbandonUnknown([]string{"--request-id", "request-0001", "--reason", "outage"}, &stdout, &stderr)
 	if err == nil || !strings.Contains(err.Error(), "root") || stdout.Len() != 0 {
 		t.Fatalf("non-root caller was not refused: err=%v stdout=%q", err, stdout.String())
 	}
 	for _, args := range [][]string{{}, {"--request-id", "r"}, {"--reason", "x"}, {"--request-id", "r", "--reason", "x", "extra"}} {
-		abandonUnknownEffectiveUID = func() int { return 0 }
+		operatorEffectiveUID = func() int { return 0 }
 		if err := runAbandonUnknown(args, &stdout, &stderr); err == nil {
 			t.Fatalf("arguments %v were accepted", args)
 		}
