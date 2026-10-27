@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -280,5 +281,33 @@ func TestUpdateStagesAtMostTheDeclaredSizePlusOneByteOfASourceThatGrew(t *testin
 	}
 	if f.read(BinaryPath) != "binary v1" || *runs != 0 {
 		t.Fatalf("the refused candidate was installed or executed: %q, %d self-tests", f.read(BinaryPath), *runs)
+	}
+}
+
+func TestAuthenticateReadsAtMostTheDeclaredSizePlusOneByteOfASourceThatGrew(t *testing.T) {
+	f := newFixture(t)
+	const genuine = "#!/bin/sh\nexit 0\n"
+	candidate := f.newBinary(genuine)
+	h := newHost(f.env)
+	manifest, err := h.verifiedManifest(candidate, f.releaseKey.Public().(ed25519.PublicKey))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A dry run measures the candidate in place, and the file grew after the manifest was signed.
+	if err := os.WriteFile(candidate.Binary, []byte(genuine+strings.Repeat("# padding\n", 1<<16)), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	source, err := os.Open(candidate.Binary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer source.Close()
+	err = h.authenticate(manifest, filepath.Base(candidate.Binary), source)
+	if !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "manifest") {
+		t.Fatalf("a source larger than the manifest declares was not refused: %v", err)
+	}
+	// The descriptor's offset is the number of bytes the measurement read.
+	if read, _ := source.Seek(0, io.SeekCurrent); read != int64(len(genuine))+1 {
+		t.Fatalf("the measurement read %d bytes, want the declared %d plus one", read, len(genuine))
 	}
 }
