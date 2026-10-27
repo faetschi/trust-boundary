@@ -47,7 +47,22 @@ func checkProductHostInputs(in productsetup.HostInputs) []productsetup.Check {
 		add("policy "+id, path, file, "digest "+shortDigest(in.PolicyDigests[id]), err)
 	}
 	git, err := verifyProductGit(in.GitPath, in.GitDigest, in.Owners)
+	if err == nil && in.GitDigest != in.Registration.GitDigest {
+		err = fmt.Errorf("git_digest %s differs from the registered git_digest %s", shortDigest(in.GitDigest), shortDigest(in.Registration.GitDigest))
+	}
 	add("git", in.GitPath, git, "digest "+shortDigest(in.GitDigest), err)
+
+	// The signed registration binds the compiled host identity, which a binary update can change.
+	identity, identityErr := productHostIdentity(in.Registration.Profiles)
+	if identityErr == nil && identity != in.Registration.HostIdentityDigest {
+		identityErr = fmt.Errorf("the compiled identity %s differs from the registered host_identity_digest %s", shortDigest(identity), shortDigest(in.Registration.HostIdentityDigest))
+	}
+	identityCheck := productsetup.Check{Name: "input host identity", Status: productsetup.Pass, Detail: "compiled identity matches the registration, digest " + shortDigest(identity)}
+	if identityErr != nil {
+		identityCheck.Status, identityCheck.Detail = productsetup.Fail, identityErr.Error()
+		identityCheck.Fix = "sign a registration made by this build's `tbound product registration init`"
+	}
+	checks = append(checks, identityCheck)
 
 	key, keyErr := decodeProductPublicKey(in.PublicKey)
 	var calibration productCalibrationCheck

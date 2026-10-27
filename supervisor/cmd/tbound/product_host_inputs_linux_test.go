@@ -99,7 +99,8 @@ func TestProductHostInputChecksHoldEveryInputToTheOwnerSet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	inputs := productsetup.HostInputs{PolicyDigests: registrationSummary(registration).PolicyDigests,
+	summary := registrationSummary(registration)
+	inputs := productsetup.HostInputs{PolicyDigests: summary.PolicyDigests, Registration: summary,
 		GatePolicyPaths: map[string]string{"alpha": h.policyFile("alpha"), "beta": h.policyFile("beta")},
 		GitPath:         h.gitFile(), GitDigest: h.gitDigest, XattrCalibrationPath: h.calibrationFile(), PublicKey: key, PublicKeyPath: h.pub,
 		Owners: []uint32{0, uint32(os.Geteuid())}}

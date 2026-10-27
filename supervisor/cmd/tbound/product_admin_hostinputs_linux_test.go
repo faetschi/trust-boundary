@@ -120,7 +120,9 @@ func adminBreakages() map[string]adminBreakage {
 		}},
 		"git digest differs": {"input git", "pin approved Git executable", true, func(t *testing.T, h *adminHost) { h.gitDigest = digestBytes([]byte("another git")) }},
 		"git digest differs from the registration": {"input git", "differs from the registered git_digest", false, func(t *testing.T, h *adminHost) {
-			h.resignRegistration(func(raw string) string { return strings.Replace(raw, h.gitDigest, digestBytes([]byte("another git")), 1) })
+			h.resignRegistration(func(raw string) string {
+				return strings.Replace(raw, h.gitDigest, digestBytes([]byte("another git")), 1)
+			})
 		}},
 		"host identity differs from the registration": {adminHostIdentityName, "differs from the registered host_identity_digest", false, func(t *testing.T, h *adminHost) {
 			h.resignRegistration(func(raw string) string {

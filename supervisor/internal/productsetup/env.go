@@ -35,6 +35,9 @@ type RegistrationSummary struct {
 	// PolicyDigests maps each project to the gate-policy digest the registration commits to.
 	PolicyDigests map[string]string
 	Text          string
+	// GitDigest and HostIdentityDigest are the host profile the registration binds: the service refuses to
+	// start with another Git or another compiled identity.
+	GitDigest, HostIdentityDigest string
 }
 
 // OpenTurn is a catalog turn that is not terminal.
@@ -284,4 +287,6 @@ type HostInputs struct {
 	PublicKey     []byte
 	PublicKeyPath string
 	Owners        []uint32
+	// Registration is the verified registration the inputs must match.
+	Registration RegistrationSummary
 }
