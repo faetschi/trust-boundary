@@ -599,6 +599,10 @@ describe("live controller: reviewing a candidate", () => {
       status: "failed", message: expect.stringContaining("1 MiB response limit"),
     });
     expect(setup.controller.getSnapshot().candidate).toMatchObject({ message: expect.stringContaining("No paths were omitted") });
+    expect(setup.controller.getSnapshot().candidate).toMatchObject({ message: expect.stringContaining("Cancel turn") });
+    expect(setup.controller.getSnapshot().candidate).toMatchObject({ message: expect.stringContaining("discard") });
+    expect(await setup.controller.cancel()).toBe(true);
+    expect(posts(setup.gateway, "/cancel")[0]?.body).toMatchObject({ expected_revision: setup.gateway.state.revision - 1 });
     setup.stores.forEach((store) => store.stop());
   });
 });
