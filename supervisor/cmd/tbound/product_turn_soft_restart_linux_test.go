@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -84,6 +85,18 @@ func testProductTurnSoftRefusalRechainedEvidence(t *testing.T, tamperEnvelope bo
 	defer rewritten.Close()
 	changed := false
 	for _, record := range trace.Records {
+		if tamperEnvelope && record.Event.Kind == "provider_exchange" {
+			var exchange providerExchangeEvidence
+			if err := json.Unmarshal(record.Event.Data, &exchange); err != nil {
+				t.Fatal(err)
+			}
+			// Changing capture metadata also changes the refusal's hash-chain envelope.
+			exchange.Response = bytes.ReplaceAll(exchange.Response, []byte(`"created":1`), []byte(`"created":2`))
+			record.Event.Data, err = json.Marshal(exchange)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
 		if record.Event.Kind == providerbridge.SoftRefusalEvent {
 			var e providerbridge.SoftRefusalEvidence
 			if err := json.Unmarshal(record.Event.Data, &e); err != nil {
@@ -91,8 +104,6 @@ func testProductTurnSoftRefusalRechainedEvidence(t *testing.T, tamperEnvelope bo
 			}
 			if !tamperEnvelope {
 				e.Code = "edit_old_text_absent"
-			} else {
-				record.Event.Outcome = "tampered"
 			}
 			e.Result = providerbridge.SoftRefusalText(e.Code, e.Hint)
 			record.Event.Data, err = json.Marshal(e)

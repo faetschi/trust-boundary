@@ -528,7 +528,7 @@ func TestProductTurnDriverRecordsUnresolvedChildWorkAsUnknown(t *testing.T) {
 	f := newProductDriverFixture(t, productsession.PublicationAuto)
 	admission := f.submit(t, "turn-1", productDriverPromptA)
 	script := &productDriverScript{turns: []providerbridge.ScriptTurn{
-		{ResponseID: "u-response-read", CallID: "u-call-read", Tool: "read", Arguments: json.RawMessage(`{"path":"missing.txt"}`)},
+		{ResponseID: "u-response-write", CallID: "u-call-write", Tool: "write", Arguments: json.RawMessage(`{"path":"missing/file","content":"x"}`)},
 		{ResponseID: "u-response-final", Text: productDriverAnswerA},
 	}}
 	_, turn, err := f.run(t, admission, script)
