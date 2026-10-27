@@ -50,17 +50,19 @@ func (v *governedStoreReplayVerifier) VerifySoftRefusal(binding providerbridge.S
 	if !v.pins.Provider.Config.ProductSoftRefusals || v.store == nil || e.WorkflowID != v.pins.Provider.Config.WorkflowID || e.ConversationID != v.pins.Provider.Config.ConversationID || e.Generation != v.providerTipGeneration || e.TreeDigest != v.providerTipTree {
 		return errors.New("soft refusal is outside the product Store lineage")
 	}
-	input, err := productPreflightInput(binding.Proposal)
-	if err != nil {
-		return err
-	}
-	refusal, err := v.store.CheckProductPreflight(e.Generation, e.TreeDigest, input)
-	if err != nil {
-		return err
-	}
-	want := &sessionrepo.PreflightRefusal{ArgumentDigest: e.TypedArgumentDigest, Code: e.Code, Hint: e.Hint}
-	if refusal == nil || !reflect.DeepEqual(refusal, want) {
-		return errors.New("soft refusal differs from recomputed sealed-generation preflight")
+	if binding.Record.Sequence > v.softRefusalPrefixCount {
+		input, err := productPreflightInput(binding.Proposal)
+		if err != nil {
+			return err
+		}
+		refusal, err := v.store.CheckProductPreflight(e.Generation, e.TreeDigest, input)
+		if err != nil {
+			return err
+		}
+		want := &sessionrepo.PreflightRefusal{ArgumentDigest: e.TypedArgumentDigest, Code: e.Code, Hint: e.Hint}
+		if refusal == nil || !reflect.DeepEqual(refusal, want) {
+			return errors.New("soft refusal differs from recomputed sealed-generation preflight")
+		}
 	}
 	for _, record := range v.authByEffect {
 		var auth governedOperationAdmissionRecord

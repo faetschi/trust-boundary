@@ -461,8 +461,13 @@ func (a *SessionOperationAuthority) buildActiveProgressPins(ctx context.Context,
 		return workflowrecovery.Pins{}, errors.Join(workflowrecovery.ErrObservation, err)
 	}
 	storeCount, storeHead := uint64(len(priorStoreTrace.Records)), auditHeadHash(priorStoreTrace.Records)
-	projection, verifier, err := replayGovernedTranscript(providerJournal, storeJournal, store, replayPins,
-		priorAuthorizationSequence, true)
+	projection, verifier, err := runGovernedReplay(providerJournal, storeJournal, store, replayPins,
+		priorAuthorizationSequence, true,
+		func(journal *audit.Journal, pins providerbridge.RecoveryPins, verifier providerbridge.StoreReplayVerifier) (providerbridge.TranscriptProjection, error) {
+			// Provider replay authenticates this prefix against the protected count/head before callbacks.
+			verifier.(*governedStoreReplayVerifier).softRefusalPrefixCount = activePin.JournalCount
+			return providerbridge.ReplayTranscript(journal, pins, verifier)
+		})
 	if err != nil {
 		return workflowrecovery.Pins{}, errors.Join(workflowrecovery.ErrObservation, err)
 	}

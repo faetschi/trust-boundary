@@ -9,12 +9,62 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"strings"
 	"testing"
 
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/productsession"
 	"tbound/supervisor/internal/providerbridge"
+	"tbound/supervisor/internal/sessionrepo"
 )
+
+type softRefusalUnsettledRunner struct{ productTurnCommandRunner }
+
+func (r softRefusalUnsettledRunner) Run(context.Context, *sessionrepo.CommandView, sessionrepo.CommandSpec) (sessionrepo.CommandResult, sessionrepo.CommandSettlement, error) {
+	os.Exit(productCrashExit)
+	panic("unreachable")
+}
+
+func TestProductTurnSoftRefusalUnsettledEffectChild(t *testing.T) {
+	root := os.Getenv(productCrashRootEnv)
+	if root == "" {
+		t.Skip("fresh-process crash helper")
+	}
+	f := openBashProductDriverFixture(t, root, productScopeNotes(), []string{})
+	f.session.ID = os.Getenv(productCrashSessionEnv)
+	newRunner := f.env.NewCommandRunner
+	f.env.NewCommandRunner = func(c productTurnCommandContext) (productTurnCommandRunner, error) {
+		runner, err := newRunner(c)
+		return softRefusalUnsettledRunner{runner}, err
+	}
+	script := &productDriverScript{turns: []providerbridge.ScriptTurn{
+		{ResponseID: "soft-response", CallID: "soft-call", Tool: "read", Arguments: json.RawMessage(`{"path":"missing.txt"}`)},
+		bashCall("unsettled", `printf 'inside\n' > notes/a.txt`),
+	}}
+	_, _, err := f.run(t, f.submit(t, "turn-1", scopeDriverPrompt), script)
+	t.Fatalf("did not crash inside the unsettled effect: %v", err)
+}
+
+func TestProductTurnSoftRefusalRestartWithUnsettledEffectIsUnknown(t *testing.T) {
+	f := newBashProductDriverFixture(t, productsession.PublicationAuto, productScopeNotes(), false, []string{}, seedBashProject(t))
+	if err := f.env.Catalog.Close(); err != nil {
+		t.Fatal(err)
+	}
+	child := exec.Command(os.Args[0], "-test.run=^TestProductTurnSoftRefusalUnsettledEffectChild$", "-test.count=1")
+	child.Env = append(os.Environ(), productCrashRootEnv+"="+f.root, productCrashSessionEnv+"="+f.session.ID)
+	output, err := child.CombinedOutput()
+	var exit *exec.ExitError
+	if !errors.As(err, &exit) || exit.ExitCode() != productCrashExit {
+		t.Fatalf("child did not leave an unsettled effect: %v\n%s", err, output)
+	}
+	reopened := openBashProductDriverFixture(t, f.root, productScopeNotes(), []string{})
+	reopened.session = f.session
+	err = reopened.env.ReconcileAfterRestart(context.Background())
+	turn := reopened.turn(t, f.session.ID+"/turn-1")
+	if err == nil || !strings.Contains(err.Error(), "unresolved") || turn.State != productsession.StateUnknown || turn.UnknownReason == "" || !reopened.currentSession(t).Blocked {
+		t.Fatalf("unsettled effect after refusal needs UNKNOWN and a reason: turn=%+v err=%v", turn, err)
+	}
+}
 
 func crashProductSoftRefusal(t *testing.T, point string) (*productDriverFixture, string) {
 	t.Helper()
@@ -64,6 +114,10 @@ func TestProductTurnSoftRefusalRestartRejectsChangedKind(t *testing.T) {
 	testProductTurnSoftRefusalRechainedEvidence(t, "kind")
 }
 
+func TestProductTurnSoftRefusalRestartRejectsTruncationWithCleanStore(t *testing.T) {
+	testProductTurnSoftRefusalRechainedEvidence(t, "truncate")
+}
+
 func testProductTurnSoftRefusalRechainedEvidence(t *testing.T, mutation string) {
 	f, id := crashProductSoftRefusal(t, "after-soft-refusal-retirement")
 	turn := f.turn(t, id)
@@ -89,6 +143,10 @@ func testProductTurnSoftRefusalRechainedEvidence(t *testing.T, mutation string) 
 	defer rewritten.Close()
 	changed := false
 	for _, record := range trace.Records {
+		if mutation == "truncate" && record.Event.Kind == providerbridge.SoftRefusalEvent {
+			changed = true
+			break
+		}
 		if mutation == "envelope" && record.Event.Kind == "provider_exchange" {
 			var exchange providerExchangeEvidence
 			if err := json.Unmarshal(record.Event.Data, &exchange); err != nil {
@@ -132,8 +190,8 @@ func testProductTurnSoftRefusalRechainedEvidence(t *testing.T, mutation string) 
 	if err := os.Rename(paths.ProviderJournalPath+".tampered", paths.ProviderJournalPath); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.env.ReconcileAfterRestart(context.Background()); err == nil {
-		t.Fatal("recomputed-different refusal accepted after restart")
+	if err := f.env.ReconcileAfterRestart(context.Background()); err == nil || !strings.Contains(err.Error(), "protected checkpoint prefix") {
+		t.Fatalf("restart did not reject the changed checkpoint prefix: %v", err)
 	}
 	if got := f.turn(t, id); got.State != productsession.StateUnknown {
 		t.Fatalf("tampered refusal did not block launch: %+v", got)
