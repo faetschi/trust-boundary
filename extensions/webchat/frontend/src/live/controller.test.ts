@@ -3,7 +3,7 @@ import { createWorkspaceStore, type WorkspaceStore } from "../app/workspaceStore
 import { snapshotOf } from "../core/testing/builders";
 import { fakeWorkspace } from "../test-support/fakes";
 import { createFakeGateway, NOW_MS, SESSION_ID, TURN_1, type FakeGateway } from "../test-support/liveGateway";
-import { createLiveClient } from "./client";
+import { createLiveClient, type LiveFetch } from "./client";
 import {
   ACTIVE_SESSION_KEY,
   AUTO_RETRY_DELAYS_MS,
@@ -48,13 +48,13 @@ interface Rig {
   connect(): WorkspaceStore;
 }
 
-function rig(options: { gateway?: FakeGateway; storage?: ReturnType<typeof memoryStorage> } = {}): Rig {
+function rig(options: { gateway?: FakeGateway; storage?: ReturnType<typeof memoryStorage>; fetch?: LiveFetch } = {}): Rig {
   const gateway = options.gateway ?? createFakeGateway();
   const storage = options.storage ?? memoryStorage();
   const sleeps: number[] = [];
   const stores: WorkspaceStore[] = [];
   const controller = createLiveController({
-    client: createLiveClient({ fetch: gateway.fetch, nowMs: () => NOW_MS, randomBytes }),
+    client: createLiveClient({ fetch: options.fetch ?? gateway.fetch, nowMs: () => NOW_MS, randomBytes }),
     base: fakeWorkspace(snapshotOf()).deps,
     storage,
     sleep: async (ms) => void sleeps.push(ms),
@@ -366,6 +366,53 @@ describe("live controller: unresolved intent recovery", () => {
     expect(setup.controller.getSnapshot().action).toMatchObject({ status: "unknown", intent });
     expect(await setup.controller.retry()).toBe(true);
     expect(posts(setup.gateway, "/turns").at(-1)?.body).toEqual(intent?.body);
+  });
+
+  it("preserves an unresolved session request when creation finishes while the session list is delayed", async () => {
+    const gateway = createFakeGateway();
+    let finishCreate = () => {};
+    let finishList = () => {};
+    const createReply = new Promise<void>((resolve) => { finishCreate = resolve; });
+    const listReply = new Promise<void>((resolve) => { finishList = resolve; });
+    let holdList = false;
+    const setup = rig({ gateway, fetch: async (url, init) => {
+      if (url === "/api/v1/sessions" && init.method === "POST") {
+        await createReply;
+        holdList = true;
+      } else if (url === "/api/v1/sessions" && init.method === "GET" && holdList) {
+        await listReply;
+      }
+      return gateway.fetch(url, init);
+    } });
+    await open(setup);
+    gateway.inject((call) => call.method === "POST" && call.url.endsWith("/turns"), { lose: "lost answer" }, 3);
+    expect(await setup.controller.submit("exact prompt\n")).toBe(false);
+    const intent = setup.controller.getSnapshot().action.intent;
+    const turn = gateway.state.turns[0];
+    if (turn === undefined) throw new Error("no turn");
+    turn.state = "terminal";
+    turn.outcome = "no_diff";
+    gateway.state.revision += 1;
+    setup.controller.select("psess-other");
+    const creation = setup.controller.createSession({ projectId: "proj", providerProfile: "prof", publicationMode: "review", hostCalls: 5, tokens: 500, durationSeconds: 30, readOnly: false });
+    setup.controller.select(SESSION_ID);
+    await setup.controller.refreshView();
+    finishCreate();
+    await flush();
+    try {
+      expect(setup.controller.getSnapshot().action).toMatchObject({ status: "unknown", intent });
+      expect(await setup.controller.submit("exact prompt\n")).toBe(false);
+      expect(posts(gateway, "/turns")).toHaveLength(3);
+      expect(gateway.state.turns).toHaveLength(1);
+    } finally {
+      finishList();
+      await creation;
+      setup.stores.forEach((store) => store.stop());
+    }
+    setup.controller.select(SESSION_ID);
+    expect(await setup.controller.retry()).toBe(true);
+    expect(posts(gateway, "/turns").at(-1)?.body).toEqual(intent?.body);
+    expect(gateway.state.turns).toHaveLength(1);
   });
 
   it("does not erase an unknown intent on dismiss", async () => {
