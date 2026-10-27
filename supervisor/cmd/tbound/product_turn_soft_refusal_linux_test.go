@@ -18,16 +18,20 @@ func TestProductTurnSoftRefusalContinuesWithoutAnEffect(t *testing.T) {
 	for _, c := range []struct{ name, tool, arguments, code string }{
 		{"missing read", "read", `{"path":"missing.txt"}`, "read_missing"},
 		{"directory write", "write", `{"path":"dir","content":"x"}`, "target_not_regular"},
+		{"absent old text", "edit", `{"path":"task.txt","edits":[{"oldText":"missing","newText":"x"}]}`, "edit_old_text_absent"},
+		{"ambiguous old text", "edit", `{"path":"ambiguous.txt","edits":[{"oldText":"same","newText":"x"}]}`, "edit_old_text_ambiguous"},
+		{"directory edit", "edit", `{"path":"dir","edits":[{"oldText":"old","newText":"x"}]}`, "target_not_regular"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			f := newScopedProductDriverFixture(t, productsession.PublicationAuto, nil, false, func(root string) {
+			f := newBashProductDriverFixture(t, productsession.PublicationAuto, nil, false, nil, func(root string) {
+				writeProductDriverFile(t, root, "ambiguous.txt", "same same")
 				if err := os.Mkdir(filepath.Join(root, "dir"), 0o755); err != nil {
 					t.Fatal(err)
 				}
 				if err := os.Chmod(filepath.Join(root, "dir"), 0o755); err != nil {
 					t.Fatal(err)
 				}
-			})
+			}, true)
 			script := &productDriverScript{turns: []providerbridge.ScriptTurn{
 				{ResponseID: "soft-response", CallID: "soft-call", Tool: c.tool, Arguments: json.RawMessage(c.arguments)},
 				{ResponseID: "soft-final", Text: "Done."},
@@ -60,9 +64,6 @@ func TestProductTurnSoftRefusalContinuesWithoutAnEffect(t *testing.T) {
 			host, tokens := productDriverExpectedUsage(t, paths.ProviderJournalPath, 0)
 			if receipt.Usage.HostCalls != host || receipt.Usage.Tokens != tokens {
 				t.Fatalf("refusal charged an effect: %+v want %d/%d", receipt.Usage, host, tokens)
-			}
-			if err := retained.Close(); err != nil {
-				t.Fatal(err)
 			}
 			f.followUp(t, "after-soft", productsession.OutcomeNoDiff)
 		})

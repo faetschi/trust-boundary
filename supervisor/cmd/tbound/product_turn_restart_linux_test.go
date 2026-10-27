@@ -49,6 +49,9 @@ func TestProductTurnCrashChild(t *testing.T) {
 		os.Exit(productCrashExit)
 	}
 	script := productDriverTurnOne(false)
+	if strings.Contains(point, "soft-refusal") {
+		script = &productDriverScript{turns: []providerbridge.ScriptTurn{{ResponseID: "soft-response", CallID: "soft-call", Tool: "read", Arguments: json.RawMessage(`{"path":"missing.txt"}`)}, {ResponseID: "soft-final", Text: "Done."}}}
+	}
 	if strings.HasPrefix(point, "publication-") {
 		// Two changed objects distinguish a partial application from the complete candidate.
 		script.turns = []providerbridge.ScriptTurn{script.turns[0],
