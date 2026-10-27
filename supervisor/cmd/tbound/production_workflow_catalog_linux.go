@@ -173,7 +173,7 @@ func openPiServiceWorkflowCatalog(path string) (*piServiceWorkflowCatalog, error
 	if !ok || stat.Uid != uint32(os.Geteuid()) {
 		return nil, ErrPiWorkflowCatalog
 	}
-	journal, err := audit.Open(path)
+	journal, err := audit.OpenExisting(path)
 	if err != nil {
 		return nil, errors.Join(ErrPiWorkflowCatalog, err)
 	}

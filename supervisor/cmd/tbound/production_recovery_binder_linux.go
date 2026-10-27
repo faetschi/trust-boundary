@@ -557,7 +557,7 @@ func openExistingRecoveryJournal(path string) (*audit.Journal, error) {
 	if err != nil {
 		return nil, err
 	}
-	journal, err := audit.Open(path)
+	journal, err := audit.OpenExisting(path)
 	if err != nil {
 		return nil, err
 	}

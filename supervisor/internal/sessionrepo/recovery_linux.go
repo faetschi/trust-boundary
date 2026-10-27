@@ -145,7 +145,7 @@ func open(root *os.File, options Options, preview bool) (*Store, error) {
 		_ = store.Close()
 		return nil, err
 	}
-	store.admissionJournal, err = audit.Open(filepath.Join(store.rootPath, admissionJournalName))
+	store.admissionJournal, err = audit.OpenExisting(filepath.Join(store.rootPath, admissionJournalName))
 	if err != nil {
 		_ = store.Close()
 		return nil, fmt.Errorf("open session admission journal: %w", err)

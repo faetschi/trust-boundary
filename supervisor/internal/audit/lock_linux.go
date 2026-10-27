@@ -11,7 +11,7 @@ import (
 	"syscall"
 )
 
-func openJournalFiles(path string) (*os.File, *os.File, error) {
+func openJournalFiles(path string, create bool) (*os.File, *os.File, error) {
 	absolute, err := filepath.Abs(path)
 	if err != nil {
 		return nil, nil, fmt.Errorf("resolve audit journal path: %w", err)
@@ -26,7 +26,11 @@ func openJournalFiles(path string) (*os.File, *os.File, error) {
 		return nil, nil, err
 	}
 
-	fileFD, err := syscall.Openat(int(directory.Fd()), filepath.Base(absolute), syscall.O_RDWR|syscall.O_APPEND|syscall.O_CREAT|syscall.O_CLOEXEC|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0o600)
+	flags := syscall.O_RDWR | syscall.O_APPEND | syscall.O_CLOEXEC | syscall.O_NOFOLLOW | syscall.O_NONBLOCK
+	if create {
+		flags |= syscall.O_CREAT
+	}
+	fileFD, err := syscall.Openat(int(directory.Fd()), filepath.Base(absolute), flags, 0o600)
 	if err != nil {
 		_ = directory.Close()
 		if errors.Is(err, syscall.ELOOP) {
