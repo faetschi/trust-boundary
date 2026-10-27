@@ -31,7 +31,7 @@ func (h *host) hostInputs(cfg Config, summary RegistrationSummary, key []byte, k
 		owners = append(owners, uint32(os.Geteuid()))
 	}
 	return HostInputs{PolicyDigests: summary.PolicyDigests, GatePolicyPaths: policies, GitPath: h.real(cfg.GitPath), GitDigest: cfg.GitDigest,
-		XattrCalibrationPath: h.real(cfg.XattrCalibrationPath), PublicKey: key, PublicKeyPath: keyPath, Owners: owners}
+		XattrCalibrationPath: h.real(cfg.XattrCalibrationPath), PublicKey: key, PublicKeyPath: keyPath, Owners: owners, Registration: summary}
 }
 
 // refuseBadHostInputs runs the static host-input check before setup writes anything. It records every

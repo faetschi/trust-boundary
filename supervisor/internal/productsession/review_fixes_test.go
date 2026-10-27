@@ -34,6 +34,8 @@ func TestSettlementRequiresAReceiptForThisTurn(t *testing.T) {
 		"pi claims supervisor-loop": {Outcome: OutcomeNoDiff, Settlement: SettlementSupervisorLoopClosed, Receipt: mutated(func(r *TurnReceipt) { r.WorkerKind = WorkerPi }), Usage: usage, ResultBaselineDigest: b0},
 		"outcome differs":           {Outcome: OutcomeFailed, Settlement: SettlementSupervisorLoopClosed, Receipt: mutated(func(*TurnReceipt) {}), Usage: usage, ResultBaselineDigest: b0},
 		"no journal commit":         {Outcome: OutcomeNoDiff, Settlement: SettlementSupervisorLoopClosed, Receipt: mutated(func(r *TurnReceipt) { r.ProviderJournalCount = 0 }), Usage: usage, ResultBaselineDigest: b0},
+		"no unverified inputs":      {Outcome: OutcomeNoDiff, Settlement: SettlementSupervisorLoopClosed, Receipt: mutated(func(r *TurnReceipt) { r.UnverifiedInputs = nil }), Usage: usage, ResultBaselineDigest: b0},
+		"partial unverified inputs": {Outcome: OutcomeNoDiff, Settlement: SettlementSupervisorLoopClosed, Receipt: mutated(func(r *TurnReceipt) { r.UnverifiedInputs = r.UnverifiedInputs[:1] }), Usage: usage, ResultBaselineDigest: b0},
 		"published without tx":      {Outcome: OutcomePublished, Settlement: SettlementSupervisorLoopClosed, Receipt: mutated(func(r *TurnReceipt) { r.Outcome = OutcomePublished; r.ResultBaselineDigest = b1 }), Usage: usage, ResultBaselineDigest: b1},
 	} {
 		if err := c.CompleteTurn(turn.ID, terminal); !isCode(err, CodeInvalidRequest) {

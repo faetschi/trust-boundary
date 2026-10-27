@@ -76,16 +76,18 @@ func adminPolicyDigest(allowBash bool) string {
 	return productRegisteredPolicyDigest(policy)
 }
 
-func adminInitArgs(out string) []string { return adminInitArgsFor(out, adminPolicyDigest(false)) }
+func adminInitArgs(out string) []string {
+	return adminInitArgsFor(out, adminPolicyDigest(false), adminDigest)
+}
 
-func adminInitArgsFor(out, policyDigest string) []string {
+func adminInitArgsFor(out, policyDigest, gitDigest string) []string {
 	return []string{"product", "registration", "init", "--out", out,
 		"--registration-id", "reg-1", "--service-identity", "svc-1", "--principal", "1000", "--principal", "0",
 		"--provider", "opencode-go-engineering",
 		"--project", "id=alpha,root=" + adminDigest + ",policy=" + policyDigest + ",modes=review+auto,writable=src",
 		"--project", "id=beta,root=" + adminDigest + ",policy=" + policyDigest + ",modes=review",
 		"--max-turns", "10", "--review-timeout", "600", "--turn-limit", "10,1000,60", "--session-limit", "100,10000,600",
-		"--runtime-digest", adminDigest, "--image-digest", adminDigest, "--extension-digest", adminDigest}
+		"--git-digest", gitDigest, "--runtime-digest", adminDigest, "--image-digest", adminDigest, "--extension-digest", adminDigest}
 }
 
 // adminHost is a test root plus the administrator's signed registration, made with the CLI itself, and the
@@ -110,10 +112,11 @@ func newAdminHost(t *testing.T, root string) *adminHost {
 	}
 	t.Cleanup(func() { productAdminPrereqs = old })
 	h := &adminHost{t: t, root: root, dir: t.TempDir()}
+	h.gitDigest = digestBytes(adminGitBytes(t)) // the registration binds the Git the host installs
 	h.keys = filepath.Join(h.dir, "keys")
 	mustAdmin(t, "product", "registration", "keygen", "--out", h.keys)
 	template := filepath.Join(h.dir, "template.json")
-	mustAdmin(t, adminInitArgs(template)...)
+	mustAdmin(t, adminInitArgsFor(template, adminPolicyDigest(false), h.gitDigest)...)
 	h.reg = filepath.Join(h.dir, "registration.json")
 	mustAdmin(t, "product", "registration", "sign", "--registration", template, "--key", filepath.Join(h.keys, "registration.key"), "--out", h.reg)
 	h.sig, h.pub = h.reg+".sig", filepath.Join(h.keys, "registration.pub")
@@ -143,15 +146,7 @@ func (h *adminHost) placeHostInputs() {
 	_, policy := adminGatePolicy(false)
 	h.writeInput(productsetup.ConfigDir+"/policy-alpha.json", policy, 0o644)
 	h.writeInput(productsetup.ConfigDir+"/policy-beta.json", policy, 0o644)
-	gitPath, err := exec.LookPath("git")
-	if err != nil {
-		h.t.Skipf("installed Git is unavailable: %v", err)
-	}
-	git, err := os.ReadFile(gitPath)
-	if err != nil {
-		h.t.Fatal(err)
-	}
-	h.gitDigest = digestBytes(git)
+	git := adminGitBytes(h.t)
 	h.writeInput(productsetup.BinaryDir+"/git", git, 0o755)
 	unsigned, err := json.MarshalIndent(unsignedProductCalibration(piruntime.D09XattrManagedRWSourceProfile), "", "  ")
 	if err != nil {
@@ -233,6 +228,10 @@ func TestProductAdminRegistrationToolingRoundTrip(t *testing.T) {
 	reg, err := productsession.LoadRegistration(signed, signed+".sig", pub)
 	if err != nil {
 		t.Fatalf("the service's own loader refused the signed registration: %v", err)
+	}
+	identity, err := productHostIdentity(reg.ProviderProfiles)
+	if err != nil || reg.HostIdentityDigest != identity || reg.GitDigest != adminDigest || reg.SchemaVersion != productsession.RegistrationSchema {
+		t.Fatalf("init did not bind the host profile: %+v %v", reg, err)
 	}
 	for _, want := range []string{reg.Digest, "project alpha", "project beta", "principals (UIDs): [1000 0]", "opencode-go-engineering"} {
 		if !strings.Contains(verify, want) {
@@ -692,4 +691,18 @@ func adminTree(t *testing.T, root string) string {
 		t.Fatal(err)
 	}
 	return b.String()
+}
+
+// adminGitBytes is the installed Git the admin host places as the private Git.
+func adminGitBytes(t *testing.T) []byte {
+	t.Helper()
+	path, err := exec.LookPath("git")
+	if err != nil {
+		t.Skipf("installed Git is unavailable: %v", err)
+	}
+	git, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return git
 }

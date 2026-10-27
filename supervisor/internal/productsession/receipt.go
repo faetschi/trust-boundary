@@ -14,7 +14,7 @@ import (
 
 // ReceiptSchema is the product turn receipt the composition writes and the
 // catalog checks before it settles a turn.
-const ReceiptSchema = "tbound-product-turn-receipt/v1"
+const ReceiptSchema = "tbound-product-turn-receipt/v2"
 
 // Worker kinds and the settlement each one can report. The supervisor loop is
 // the supervisor's own in-process agent loop: it has no OS process to settle, so
@@ -40,6 +40,7 @@ var workerSettlements = map[string][]string{
 // command journal holds the turn's Bash command settlements and is committed
 // the same way. A turn that ran no Bash has an empty one and omits both fields.
 type TurnReceipt struct {
+	UnverifiedInputs         []string        `json:"unverified_inputs,omitempty"`
 	SchemaVersion            string          `json:"schema_version"`
 	SessionID                string          `json:"session_id"`
 	TurnID                   string          `json:"turn_id"`
@@ -75,7 +76,7 @@ type ReceiptDenial struct {
 }
 
 // DecodeReceipt strictly decodes a receipt: strict JSON within MaxReceiptBytes,
-// no unknown fields, the v1 schema.
+// no unknown fields, the current schema.
 func DecodeReceipt(data []byte) (TurnReceipt, error) {
 	var r TurnReceipt
 	if !validReceipt(data) {
@@ -135,6 +136,8 @@ func checkReceipt(t *Turn, data []byte, outcome, settlement string, usage Budget
 		return mismatch("baseline or predecessor")
 	case r.Outcome != outcome || r.Settlement != settlement || r.Usage != usage:
 		return mismatch("outcome, settlement or usage")
+	case r.WorkerKind == WorkerSupervisorLoop && !slices.Equal(r.UnverifiedInputs, []string{"runtime_digest", "image_digest", "extension_digest"}):
+		return mismatch("unverified registration inputs")
 	case !slices.Contains(workerSettlements[r.WorkerKind], r.Settlement) || !validIdentity(r.WorkerInstance):
 		return mismatch("worker settlement")
 	case !isLowerHex(r.ProviderJournalHead) || len(r.ProviderJournalHead) != 64 || r.ProviderJournalCount == 0 ||

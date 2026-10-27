@@ -27,13 +27,13 @@ const registrationUsage = `Usage (offline administrator; the private key never e
   tbound product registration init --out FILE --registration-id ID --service-identity ID
       --principal UID... --provider PROFILE... --project SPEC... --max-turns N --review-timeout SECONDS
       --turn-limit CALLS,TOKENS,SECONDS --session-limit CALLS,TOKENS,SECONDS
-      --runtime-digest sha256:HEX --image-digest sha256:HEX --extension-digest sha256:HEX
+      --git-digest sha256:HEX --runtime-digest sha256:HEX --image-digest sha256:HEX --extension-digest sha256:HEX
   tbound product registration sign --registration FILE --key PRIVATE --out FILE
   tbound product registration verify --registration FILE --signature FILE --public-key FILE
 --project SPEC is KEY=VALUE pairs joined by commas, list values joined by +:
   id=P,root=sha256:HEX,policy=sha256:HEX,modes=review+auto[,bash=PATH+PATH][,writable=A+B][,read-only=A+B][,protected=A+B]
 init writes an unsigned template and refuses values the registration would refuse. It has no
-placeholders: every digest and limit is an explicit flag. sign writes FILE and FILE.sig and refuses
+placeholders: limits and artifact digests are explicit flags; the compiled host identity is filled by init. sign writes FILE and FILE.sig and refuses
 to overwrite either. Changing a project, scope, policy or limit means signing a new registration.
 Exit codes: 0 success, 2 refused or invalid usage, 1 other.
 `
@@ -102,14 +102,15 @@ func runProductRegistration(args []string, out, stderr io.Writer) error {
 }
 
 type registrationInitFlags struct {
-	id, service, runtime, image, extension, turn, session string
-	principals, providers, projects                       repeatedFlag
-	maxTurns, reviewTimeout                               int
+	id, service, git, runtime, image, extension, turn, session string
+	principals, providers, projects                            repeatedFlag
+	maxTurns, reviewTimeout                                    int
 }
 
 func (f *registrationInitFlags) register(flags *flag.FlagSet) {
 	flags.StringVar(&f.id, "registration-id", "", "")
 	flags.StringVar(&f.service, "service-identity", "", "")
+	flags.StringVar(&f.git, "git-digest", "", "")
 	flags.StringVar(&f.runtime, "runtime-digest", "", "")
 	flags.StringVar(&f.image, "image-digest", "", "")
 	flags.StringVar(&f.extension, "extension-digest", "", "")
@@ -180,7 +181,7 @@ func parseProject(spec string) (productsession.Project, error) {
 func (f registrationInitFlags) registration() (productsession.Registration, error) {
 	r := productsession.Registration{
 		SchemaVersion: productsession.RegistrationSchema, RegistrationID: f.id, ServiceIdentity: f.service,
-		ProviderProfiles: f.providers, RuntimeDigest: f.runtime, ImageDigest: f.image, ExtensionDigest: f.extension,
+		GitDigest: f.git, ProviderProfiles: f.providers, RuntimeDigest: f.runtime, ImageDigest: f.image, ExtensionDigest: f.extension,
 		Limits: productsession.Limits{MaxTurnsPerSession: f.maxTurns, ReviewTimeoutSeconds: f.reviewTimeout},
 	}
 	for _, p := range f.principals {
@@ -191,6 +192,9 @@ func (f registrationInitFlags) registration() (productsession.Registration, erro
 		r.AllowedPrincipals = append(r.AllowedPrincipals, productsession.Principal(uid))
 	}
 	var err error
+	if r.HostIdentityDigest, err = productHostIdentity(r.ProviderProfiles); err != nil {
+		return r, err
+	}
 	if r.Limits.Turn, err = parseBudget(f.turn); err != nil {
 		return r, fmt.Errorf("--turn-limit: %w", err)
 	}
@@ -279,7 +283,8 @@ func registrationSign(out io.Writer, regFile, keyFile, outFile string) error {
 
 // registrationSummary describes a verified registration for people.
 func registrationSummary(r productsession.Registration) productsetup.RegistrationSummary {
-	s := productsetup.RegistrationSummary{ID: r.RegistrationID, Digest: r.Digest, Profiles: r.ProviderProfiles, PolicyDigests: map[string]string{}}
+	s := productsetup.RegistrationSummary{ID: r.RegistrationID, Digest: r.Digest, Profiles: r.ProviderProfiles, PolicyDigests: map[string]string{},
+		GitDigest: r.GitDigest, HostIdentityDigest: r.HostIdentityDigest}
 	var b strings.Builder
 	fmt.Fprintf(&b, "registration %s (service identity %s)\ndigest %s\n", r.RegistrationID, r.ServiceIdentity, r.Digest)
 	fmt.Fprintf(&b, "principals (UIDs): %v\nprovider profiles: %s\n", r.AllowedPrincipals, strings.Join(r.ProviderProfiles, ", "))
@@ -293,7 +298,8 @@ func registrationSummary(r productsession.Registration) productsetup.Registratio
 		fmt.Fprintf(&b, "project %s: modes %s; bash outputs %d; %s\n", p.ProjectID, strings.Join(p.PublicationModes, "+"), len(p.BashOutputPaths), scope)
 	}
 	fmt.Fprintf(&b, "limits: turn %+v, session %+v, max turns %d, review timeout %ds\n", r.Limits.Turn, r.Limits.Session, r.Limits.MaxTurnsPerSession, r.Limits.ReviewTimeoutSeconds)
-	fmt.Fprintf(&b, "runtime %s\nimage %s\nextension %s\n", r.RuntimeDigest, r.ImageDigest, r.ExtensionDigest)
+	fmt.Fprintf(&b, "git %s\nhost identity %s\n", r.GitDigest, r.HostIdentityDigest)
+	fmt.Fprintf(&b, "unverified runtime %s\nunverified image %s\nunverified extension %s\n", r.RuntimeDigest, r.ImageDigest, r.ExtensionDigest)
 	s.Text = b.String()
 	return s
 }

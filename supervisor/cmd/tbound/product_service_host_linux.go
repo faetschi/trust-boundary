@@ -4,16 +4,23 @@ package main
 
 import (
 	"crypto/ed25519"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"slices"
+
+	"golang.org/x/sys/unix"
+
+	"tbound/supervisor/internal/effectoracle"
 
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/gate"
 	"tbound/supervisor/internal/piruntime"
 	"tbound/supervisor/internal/privategit"
 	"tbound/supervisor/internal/productprovider"
+	"tbound/supervisor/internal/productsession"
 	"tbound/supervisor/internal/providerbridge"
 	"tbound/supervisor/internal/sessionlaunch"
 	"tbound/supervisor/internal/workflow"
@@ -47,12 +54,34 @@ func newProductServiceHostProfile(cfg productServiceConfig) productServiceHost {
 		if cfg.GitPath == "" || cfg.GitDigest == "" || cfg.XattrCalibrationPath == "" || len(cfg.GatePolicyPaths) != len(env.Registration.Projects) {
 			return errors.New("the product host needs git_path, git_digest, xattr_calibration_path and one gate_policy_paths entry per project in the service config")
 		}
+		identity, err := productHostIdentity(env.Registration.ProviderProfiles)
+		if err != nil {
+			return err
+		}
+		if cfg.GitDigest != env.Registration.GitDigest || identity != env.Registration.HostIdentityDigest {
+			return errors.New("the executing inputs differ from the registered host profile")
+		}
 		if err := installProductGatePolicies(env, cfg.GatePolicyPaths); err != nil {
 			return err
 		}
 		for _, id := range env.Registration.ProviderProfiles {
-			if _, ok := productprovider.Lookup(id); !ok {
+			path, ok := productprovider.CredentialPath(id)
+			if !ok {
 				return fmt.Errorf("the registration names provider profile %q, which this build does not support", id)
+			}
+			if _, err := productHostFactory(id, path); err != nil {
+				return fmt.Errorf("provider credential for %q: %w", id, err)
+			}
+		}
+		for _, project := range env.Registration.Projects {
+			root, err := env.openProjectRoot(project.ProjectID)
+			if err != nil {
+				return err
+			}
+			err = validateProductPublicationFence(root)
+			closeErr := root.Close()
+			if err != nil || closeErr != nil {
+				return errors.Join(err, closeErr)
 			}
 		}
 		profiles := env.Registration.ProviderProfiles
@@ -77,7 +106,6 @@ func newProductServiceHostProfile(cfg productServiceConfig) productServiceHost {
 		if _, err := verifyProductGit(cfg.GitPath, cfg.GitDigest, productServiceOwners()); err != nil {
 			return err
 		}
-		var err error
 		xattr := func() (workspace.XattrVisibilityAttestation, error) { return productHostXattr(cfg, env) }
 		if env.Xattr, err = xattr(); err != nil {
 			return err
@@ -126,14 +154,24 @@ func productHostXattr(cfg productServiceConfig, env *productTurnEnv) (workspace.
 		return none, err
 	}
 	// The private Store and Git trees under the state root and every managed project root are scanned.
-	roots := []string{env.StateRoot}
+	roots := map[string]string{env.StateRoot: ""}
 	for _, project := range env.Registration.Projects {
-		roots = append(roots, env.ProjectRoots[project.ProjectID])
+		roots[env.ProjectRoots[project.ProjectID]] = project.ProjectID
 	}
-	for _, path := range roots {
-		dir, err := os.Open(path)
+	for path, projectID := range roots {
+		var dir *os.File
+		if projectID == "" {
+			dir, err = os.Open(path)
+		} else {
+			dir, err = env.openProjectRoot(projectID)
+		}
 		if err != nil {
 			return none, err
+		}
+		if projectID != "" {
+			if err := validateProductManagedRoot(path, dir); err != nil {
+				return none, errors.Join(err, dir.Close())
+			}
 		}
 		m, measureErr := productHostMeasureXattr(dir)
 		closeErr := dir.Close()
@@ -145,4 +183,50 @@ func productHostXattr(cfg productServiceConfig, env *productTurnEnv) (workspace.
 		}
 	}
 	return piruntime.WorkspaceXattrAttestation(calibration.Digest, calibration.Authority)
+}
+
+func validateProductPublicationFence(root *os.File) error {
+	fd, err := unix.Openat(int(root.Fd()), effectoracle.FenceDir, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return fmt.Errorf("publication fence: %w", err)
+	}
+	fence := os.NewFile(uintptr(fd), effectoracle.FenceDir)
+	defer fence.Close()
+	var st unix.Stat_t
+	if err := unix.Fstat(fd, &st); err != nil {
+		return fmt.Errorf("publication fence: %w", err)
+	}
+	if st.Uid != uint32(os.Geteuid()) || st.Mode&0o7777 != 0o755 {
+		return errors.New("publication fence must be service-owned with canonical mode 0755")
+	}
+	entries, err := fence.ReadDir(1)
+	if len(entries) != 0 || !errors.Is(err, io.EOF) {
+		return errors.New("publication fence must be empty and readable")
+	}
+	return nil
+}
+
+func productHostIdentity(profileIDs []string) (string, error) {
+	identity := struct {
+		Schema          string                    `json:"schema"`
+		SystemPrompt    string                    `json:"system_prompt"`
+		DeveloperPrompt string                    `json:"developer_prompt"`
+		Providers       []productprovider.Profile `json:"providers"`
+		WorkerKind      string                    `json:"worker_kind"`
+	}{Schema: "tbound-product-host-identity/v1", SystemPrompt: productSystemPrompt,
+		DeveloperPrompt: productDeveloperPrompt, WorkerKind: productsession.WorkerSupervisorLoop}
+	ids := slices.Clone(profileIDs)
+	slices.Sort(ids)
+	for _, id := range ids {
+		profile, ok := productprovider.Lookup(id)
+		if !ok {
+			return "", fmt.Errorf("the registration names provider profile %q, which this build does not support", id)
+		}
+		identity.Providers = append(identity.Providers, profile)
+	}
+	encoded, err := json.Marshal(identity)
+	if err != nil {
+		return "", err
+	}
+	return digestBytes(encoded), nil
 }

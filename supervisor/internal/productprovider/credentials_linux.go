@@ -345,7 +345,11 @@ func newConversationFactory(id, credentialPath, exemptThrough string) (func(prov
 	if err != nil || filepath.Base(credentialPath) != name || !filepath.IsAbs(credentialPath) || filepath.Clean(credentialPath) != credentialPath {
 		return nil, ErrCredential
 	}
-	return (&Store{directory: filepath.Dir(credentialPath), exemptThrough: exemptThrough}).conversationFactory(id), nil
+	store := &Store{directory: filepath.Dir(credentialPath), exemptThrough: exemptThrough}
+	if _, err := store.credentials(id); err != nil {
+		return nil, err
+	}
+	return store.conversationFactory(id), nil
 }
 
 func (s *Store) conversationFactory(id string) func(providerbridge.Config, *audit.Journal) (*providerbridge.Conversation, error) {

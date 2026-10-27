@@ -112,7 +112,7 @@ func TestBundleRoundTrip(t *testing.T) {
 	if got := listDir(t, parent); !reflect.DeepEqual(got, []string{"managed"}) {
 		t.Fatalf("parent holds %v, want only the project", got)
 	}
-	for rel, mode := range map[string]os.FileMode{"main.go": 0o600, "bin/run.sh": 0o700, "bin": 0o700, "empty": 0o700, "secret.txt": 0o600} {
+	for rel, mode := range map[string]os.FileMode{".": 0o700, "lost+found": 0o755, "main.go": 0o644, "bin/run.sh": 0o755, "bin": 0o755, "empty": 0o755, "secret.txt": 0o644} {
 		info, err := os.Lstat(filepath.Join(dest, rel))
 		if err != nil || info.Mode().Perm() != mode {
 			t.Errorf("%s: mode %v err %v, want %v", rel, info, err, mode)

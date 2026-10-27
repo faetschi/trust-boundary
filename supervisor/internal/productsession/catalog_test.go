@@ -136,12 +136,13 @@ func mustLink(t *testing.T, c *Catalog, turnID string) {
 
 func rawReceipt(turnID string) []byte { return []byte(`{"turn_id":"` + turnID + `"}`) }
 
-// receiptFor builds the v1 receipt the catalog requires for a linked turn.
+// receiptFor builds the receipt the catalog requires for a linked turn.
 func receiptFor(c *Catalog, turnID, outcome string, usage Budget, result string) []byte {
 	turn, _ := c.Turn(turnID)
 	r := TurnReceipt{
 		SchemaVersion: ReceiptSchema, SessionID: turn.SessionID, TurnID: turn.ID, Ordinal: turn.Ordinal,
-		WorkerKind: WorkerSupervisorLoop, WorkerInstance: "worker-" + strings.ReplaceAll(turnID, "/", "-"),
+		UnverifiedInputs: []string{"runtime_digest", "image_digest", "extension_digest"},
+		WorkerKind:       WorkerSupervisorLoop, WorkerInstance: "worker-" + strings.ReplaceAll(turnID, "/", "-"),
 		ProviderJournalHead: strings.Repeat("a", 64), ProviderJournalCount: 3,
 		StoreJournalHead: strings.Repeat("b", 64), StoreJournalCount: 2,
 		PredecessorReceiptDigest: turn.PredecessorReceiptDigest, BaselineDigest: turn.BaselineDigest,

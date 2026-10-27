@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/broker/protocol"
@@ -86,6 +87,8 @@ func validateProductTurnReceipt(r productTurnReceipt) error {
 	case r.WorkerKind != productsession.WorkerSupervisorLoop ||
 		r.Settlement != productsession.SettlementSupervisorLoopClosed && r.Settlement != productsession.SettlementReconciledAfterRestart:
 		return errors.New("product turn receipt claims a worker or settlement this milestone does not run")
+	case !slices.Equal(r.UnverifiedInputs, []string{"runtime_digest", "image_digest", "extension_digest"}):
+		return errors.New("product turn receipt must label unmeasured registration inputs")
 	case r.ProviderJournalCount == 0 || !validBareWorkflowDigest(r.ProviderJournalHead) ||
 		r.StoreJournalCount == 0 || !validBareWorkflowDigest(r.StoreJournalHead):
 		return errors.New("product turn receipt does not commit both child journals")

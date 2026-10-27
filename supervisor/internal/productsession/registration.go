@@ -23,7 +23,7 @@ import (
 
 const (
 	// RegistrationSchema is the schema and signature domain of a registration.
-	RegistrationSchema = "tbound-product-registration/v1"
+	RegistrationSchema = "tbound-product-registration/v2"
 	// MaxRegistrationBytes bounds the registration file.
 	MaxRegistrationBytes = 1 << 20
 
@@ -117,17 +117,19 @@ type Limits struct {
 
 // Registration is the signed product registration document.
 type Registration struct {
-	SchemaVersion     string      `json:"schema_version"`
-	RegistrationID    string      `json:"registration_id"`
-	ServiceIdentity   string      `json:"service_identity"`
-	AllowedPrincipals []Principal `json:"allowed_principals"`
-	Projects          []Project   `json:"projects"`
-	ProviderProfiles  []string    `json:"provider_profiles"`
-	Limits            Limits      `json:"limits"`
-	RuntimeDigest     string      `json:"runtime_digest"`
-	ImageDigest       string      `json:"image_digest"`
-	ExtensionDigest   string      `json:"extension_digest"`
-	Digest            string      `json:"digest"`
+	GitDigest          string      `json:"git_digest"`
+	HostIdentityDigest string      `json:"host_identity_digest"`
+	SchemaVersion      string      `json:"schema_version"`
+	RegistrationID     string      `json:"registration_id"`
+	ServiceIdentity    string      `json:"service_identity"`
+	AllowedPrincipals  []Principal `json:"allowed_principals"`
+	Projects           []Project   `json:"projects"`
+	ProviderProfiles   []string    `json:"provider_profiles"`
+	Limits             Limits      `json:"limits"`
+	RuntimeDigest      string      `json:"runtime_digest"`
+	ImageDigest        string      `json:"image_digest"`
+	ExtensionDigest    string      `json:"extension_digest"`
+	Digest             string      `json:"digest"`
 }
 
 func (r Registration) project(id string) (Project, bool) {
@@ -326,6 +328,9 @@ func (r Registration) validateFields() error {
 	}
 	if l.ReviewTimeoutSeconds < 1 || l.ReviewTimeoutSeconds > maxReviewTimeout {
 		return regErr("review_timeout_seconds out of range")
+	}
+	if !validDigest(r.GitDigest) || !validDigest(r.HostIdentityDigest) {
+		return regErr("git_digest and host_identity_digest must be sha256: plus 64 lowercase hex")
 	}
 	if !validDigest(r.RuntimeDigest) || !validDigest(r.ImageDigest) || !validDigest(r.ExtensionDigest) {
 		return regErr("runtime, image, and extension digests must be sha256: plus 64 lowercase hex")

@@ -40,6 +40,19 @@ const productHostTestKey = "offline-product-test-key"
 func newProductHostFixture(t *testing.T, bash bool) *productServiceFixture {
 	t.Helper()
 	f := newProductServiceFixture(t)
+	gitPath, err := exec.LookPath("git")
+	if err != nil {
+		t.Skipf("installed Git is unavailable: %v", err)
+	}
+	gitBinary, err := os.ReadFile(gitPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.cfg.GitPath, f.cfg.GitDigest = filepath.Join(f.root, "git"), digestBytes(gitBinary)
+	if err := os.WriteFile(f.cfg.GitPath, gitBinary, 0o700); err != nil {
+		t.Fatal(err)
+	}
+
 	rules := []gate.Rule{{Tool: "read", Effect: gate.EffectAllow}, {Tool: "write", Effect: gate.EffectAllow}, {Tool: "edit", Effect: gate.EffectAllow}}
 	if bash {
 		rules = append(rules, gate.Rule{Tool: "bash", Effect: gate.EffectAllow})
@@ -64,6 +77,11 @@ func newProductHostFixture(t *testing.T, bash bool) *productServiceFixture {
 		t.Fatal(err)
 	}
 	registration.ProviderProfiles = []string{productprovider.OpenCodeGo}
+	registration.GitDigest = f.cfg.GitDigest
+	registration.HostIdentityDigest, err = productHostIdentity(registration.ProviderProfiles)
+	if err != nil {
+		t.Fatal(err)
+	}
 	registration.Projects[0].PolicyDigest = sha256DigestFromBarePin(barePolicyDigest(policy.Digest()))
 	registration.Projects[0].Scope = &productsession.ProductScope{Writable: []string{"notes.txt"}, Protected: []string{"protected.txt"}}
 	key := ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize))
@@ -78,19 +96,6 @@ func newProductHostFixture(t *testing.T, bash bool) *productServiceFixture {
 		}
 	}
 	writeProductDriverFile(t, f.projectDir, "protected.txt", "private project data\n")
-
-	gitPath, err := exec.LookPath("git")
-	if err != nil {
-		t.Skipf("installed Git is unavailable: %v", err)
-	}
-	gitBinary, err := os.ReadFile(gitPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	f.cfg.GitPath, f.cfg.GitDigest = filepath.Join(f.root, "git"), digestBytes(gitBinary)
-	if err := os.WriteFile(f.cfg.GitPath, gitBinary, 0o700); err != nil {
-		t.Fatal(err)
-	}
 
 	credentials := filepath.Join(f.root, "credentials")
 	if err := os.Mkdir(credentials, 0o700); err != nil {
@@ -125,6 +130,7 @@ func newProductHostFixture(t *testing.T, bash bool) *productServiceFixture {
 	original := productHostMeasureXattr
 	productHostMeasureXattr = func(*os.File) (piruntime.D09XattrVisibilityMeasurements, error) { return scanner, nil }
 	t.Cleanup(func() { productHostMeasureXattr = original })
+	routeProductProvider(t, f, nil)
 	return f
 }
 
@@ -338,7 +344,7 @@ func TestProductServiceHostRunsTwoGovernedTurnsThroughTheRealFactory(t *testing.
 		turn, _ := svc.catalog.Turn(id)
 		receipt, err := productsession.DecodeReceipt(turn.Receipt)
 		if err != nil || receipt.WorkerKind != productsession.WorkerSupervisorLoop || receipt.Settlement != productsession.SettlementSupervisorLoopClosed ||
-			receipt.PublicationTransactionID == "" {
+			receipt.PublicationTransactionID == "" || !slices.Equal(receipt.UnverifiedInputs, []string{"runtime_digest", "image_digest", "extension_digest"}) {
 			t.Fatalf("receipt of %s: %+v %v", id, receipt, err)
 		}
 	}
@@ -424,7 +430,7 @@ func TestProductServiceHostRefusesUnverifiedInputsBeforeListening(t *testing.T) 
 			}
 			f.cfg.GatePolicyPaths[productDriverProject] = link
 		}},
-		"git bytes differ from the pinned digest": {"pin approved Git executable", func(f *productServiceFixture) {
+		"git bytes differ from the pinned digest": {"registered host profile", func(f *productServiceFixture) {
 			f.cfg.GitDigest = digestBytes([]byte("another git"))
 		}},
 		"git writable by others": {"pin approved Git executable", func(f *productServiceFixture) {
@@ -545,5 +551,141 @@ func TestOfflineProviderSeamsAreNamedOnlyByTheirOwnPackages(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestProductServiceHostRefusesAnInvalidPublicationFence(t *testing.T) {
+	for _, invalid := range []string{"missing", "symlink", "mode", "nonempty"} {
+		t.Run(invalid, func(t *testing.T) {
+			f := newProductHostFixture(t, false)
+			fence := filepath.Join(f.projectDir, "lost+found")
+			switch invalid {
+			case "missing", "symlink":
+				if err := os.Remove(fence); err != nil && !os.IsNotExist(err) {
+					t.Fatal(err)
+				}
+				if invalid == "symlink" {
+					if err := os.Symlink(f.stateRoot, fence); err != nil {
+						t.Fatal(err)
+					}
+				}
+			case "mode":
+				if err := os.MkdirAll(fence, 0700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Chmod(fence, 0775); err != nil {
+					t.Fatal(err)
+				}
+			case "nonempty":
+				if err := os.MkdirAll(fence, 0700); err != nil {
+					t.Fatal(err)
+				}
+				writeHostFile(t, filepath.Join(fence, "unexpected"), "data")
+			}
+			opts := f.options()
+			opts.Host = newProductServiceHostProfile(f.cfg)
+			svc, err := startProductService(f.cfg, opts)
+			if err == nil {
+				_ = svc.Shutdown()
+				t.Fatal("an invalid publication fence was accepted")
+			}
+			if !strings.Contains(err.Error(), "publication fence") {
+				t.Fatalf("wrong refusal: %v", err)
+			}
+			if _, err := os.Stat(f.socketPath); !os.IsNotExist(err) {
+				t.Fatal("a refused service opened its socket")
+			}
+		})
+	}
+}
+
+func TestProductServiceHostRefusesCredentialsAndRootIdentityBeforeListening(t *testing.T) {
+	for _, invalid := range []string{"missing key", "insecure key", "wrong root"} {
+		t.Run(invalid, func(t *testing.T) {
+			f := newProductHostFixture(t, false)
+			routeProductProvider(t, f, newProductFakeProvider(t, nil))
+			key := filepath.Join(f.root, "credentials", productprovider.OpenCodeGo+".key")
+			want := "credential"
+			switch invalid {
+			case "missing key":
+				if err := os.Remove(key); err != nil {
+					t.Fatal(err)
+				}
+			case "insecure key":
+				if err := os.Chmod(key, 0640); err != nil {
+					t.Fatal(err)
+				}
+			case "wrong root":
+				want = "not its registered root"
+				replacement := filepath.Join(f.root, "replacement")
+				if err := os.Mkdir(replacement, 0700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Rename(filepath.Join(f.projectDir, "lost+found"), filepath.Join(replacement, "lost+found")); err != nil {
+					t.Fatal(err)
+				}
+				f.cfg.Projects[productDriverProject] = replacement
+			}
+			opts := f.options()
+			opts.Host = newProductServiceHostProfile(f.cfg)
+			svc, err := startProductService(f.cfg, opts)
+			if err == nil {
+				_ = svc.Shutdown()
+				t.Fatal("unverified credentials or root identity reached a listening socket")
+			}
+			if !strings.Contains(err.Error(), want) || strings.Contains(err.Error(), productHostTestKey) {
+				t.Fatalf("wrong or unredacted refusal: %v", err)
+			}
+			if _, err := os.Stat(f.socketPath); !os.IsNotExist(err) {
+				t.Fatal("a refused service opened its socket")
+			}
+		})
+	}
+}
+
+func TestProductServiceHostBindsGitAndCompiledIdentityToRegistration(t *testing.T) {
+	for _, changed := range []string{"git and config", "compiled identity"} {
+		t.Run(changed, func(t *testing.T) {
+			f := newProductHostFixture(t, false)
+			if changed == "git and config" {
+				binary, err := os.ReadFile(f.cfg.GitPath)
+				if err != nil {
+					t.Fatal(err)
+				}
+				binary = append(binary, []byte("changed executable bytes")...)
+				if err := os.WriteFile(f.cfg.GitPath, binary, 0700); err != nil {
+					t.Fatal(err)
+				}
+				f.cfg.GitDigest = digestBytes(binary)
+			} else {
+				registration, err := productsession.LoadRegistration(f.cfg.RegistrationPath, f.cfg.RegistrationSignaturePath, f.cfg.RegistrationPublicKeyPath)
+				if err != nil {
+					t.Fatal(err)
+				}
+				registration.HostIdentityDigest = digestBytes([]byte("different compiled host"))
+				key := ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize))
+				data, sig, err := productsession.SignRegistration(registration, key)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(f.cfg.RegistrationPath, data, 0600); err != nil {
+					t.Fatal(err)
+				}
+				writeHostFile(t, f.cfg.RegistrationSignaturePath, base64.StdEncoding.EncodeToString(sig)+"\n")
+			}
+			opts := f.options()
+			opts.Host = newProductServiceHostProfile(f.cfg)
+			svc, err := startProductService(f.cfg, opts)
+			if err == nil {
+				_ = svc.Shutdown()
+				t.Fatal("a changed executing host profile was accepted under its registration")
+			}
+			if !strings.Contains(err.Error(), "registered host profile") {
+				t.Fatalf("wrong refusal: %v", err)
+			}
+			if _, err := os.Stat(f.socketPath); !os.IsNotExist(err) {
+				t.Fatal("a refused service opened its socket")
+			}
+		})
 	}
 }

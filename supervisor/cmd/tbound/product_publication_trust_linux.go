@@ -19,9 +19,8 @@ import (
 // Every transition and origin is verified by the turn's own authority. The trust never claims what the
 // supervisor-loop worker cannot show:
 //
-//   - It does not exclude a writer outside the catalog, the publication ledger and the Store. Those
-//     serialize cooperating writers only. An outside edit made before publication fails the tree check
-//     below, and one made later is caught by the next baseline measurement.
+//   - The host checks OS permissions on each managed root's ancestry before publication. Root and
+//     the service account remain trusted writers; a racing writer with either identity is not excluded.
 //   - It does not resolve a Bash lease origin, so a turn that composes Bash cannot start under it.
 //
 // It replaces neither the research production trust, which needs a Pi worker, its D09 launch proof and a

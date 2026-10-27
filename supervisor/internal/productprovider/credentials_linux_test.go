@@ -257,8 +257,11 @@ func TestProviderFactoryPinsIdentity(t *testing.T) {
 			t.Fatal("bad path accepted")
 		}
 	}
-	path, _ := CredentialPath(OpenCodeGo)
-	factory, err := ConversationFactory(OpenCodeGo, path)
+	store := testStore(t)
+	if _, err := installKey(t, store, sentinelKey, false, false); err != nil {
+		t.Fatal(err)
+	}
+	factory, err := newConversationFactory(OpenCodeGo, filepath.Join(store.directory, OpenCodeGo+".key"), store.exemptThrough)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -464,15 +467,11 @@ func TestConversationFactoryForTestIsRefusedOutsideATestBinaryAndKeepsTheCredent
 	if _, err := ConversationFactoryForTest(OpenCodeGo, key, base); err != nil {
 		t.Fatalf("a credential below the exempt root was refused: %v", err)
 	}
-	// Only the ancestors are exempt: a group-readable key is still refused when the factory runs.
+	// Only the ancestors are exempt: factory construction still refuses a group-readable key.
 	if err := os.Chmod(key, 0640); err != nil {
 		t.Fatal(err)
 	}
-	factory, err := ConversationFactoryForTest(OpenCodeGo, key, base)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := factory(providerbridge.Config{ProfileID: OpenCodeGo}, nil); !errors.Is(err, ErrCredential) {
+	if _, err := ConversationFactoryForTest(OpenCodeGo, key, base); !errors.Is(err, ErrCredential) {
 		t.Fatalf("a key with a weak mode was used: %v", err)
 	}
 }

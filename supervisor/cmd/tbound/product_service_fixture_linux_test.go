@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/base64"
@@ -15,6 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -25,6 +27,8 @@ import (
 	"tbound/supervisor/internal/privategit"
 	"tbound/supervisor/internal/productprotocol"
 	"tbound/supervisor/internal/productsession"
+	"tbound/supervisor/internal/productsetup"
+	"tbound/supervisor/internal/projectbundle"
 	"tbound/supervisor/internal/providerbridge"
 	"tbound/supervisor/internal/sessionlaunch"
 	"tbound/supervisor/internal/workflow"
@@ -104,18 +108,23 @@ func newProductServiceFixtureWithReviewTimeout(t *testing.T, reviewTimeoutSecond
 		_ = git.Close()
 	}
 	root := privateGovernedTestRoot(t)
-	f := &productServiceFixture{t: t, root: root, projectDir: filepath.Join(root, "project"), stateRoot: filepath.Join(root, "state"),
+	state := filepath.Join(root, "state")
+	f := &productServiceFixture{t: t, root: root, projectDir: setupLayout(state, productsetup.ProjectsDir+"/"+productDriverProject), stateRoot: setupLayout(state, productsetup.TurnsDir),
 		socketPath: filepath.Join(root, "run", "product.sock"), principalA: productsession.Principal(os.Getuid())}
 	f.principalB, f.unregistered = f.principalA+1, f.principalA+2
 	f.uid.Store(int64(f.principalA))
-	for _, dir := range []string{f.projectDir, f.stateRoot, filepath.Join(root, "reg")} {
+	for _, dir := range []string{state, f.stateRoot, filepath.Dir(f.projectDir), filepath.Join(root, "reg")} {
 		if err := os.Mkdir(dir, 0o700); err != nil {
 			t.Fatal(err)
 		}
 	}
-	writeProductDriverFile(t, f.projectDir, "task.txt", "turn fixture\n")
-	fence := filepath.Join(f.projectDir, "lost+found")
-	if err := os.Mkdir(fence, 0o755); err != nil || os.Chmod(fence, 0o755) != nil {
+	source := t.TempDir()
+	writeProductDriverFile(t, source, "task.txt", "turn fixture\n")
+	var bundle bytes.Buffer
+	if _, err := projectbundle.Build(source, projectbundle.BuildOptions{Limits: projectbundle.DefaultLimits()}, &bundle); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := projectbundle.Import(&bundle, f.projectDir, projectbundle.DefaultLimits()); err != nil {
 		t.Fatal(err)
 	}
 	projectRoot, err := os.Open(f.projectDir)
@@ -136,7 +145,7 @@ func newProductServiceFixtureWithReviewTimeout(t *testing.T, reviewTimeoutSecond
 		Limits: productsession.Limits{Turn: productsession.Budget{HostCalls: 20, Tokens: 20 * 1024, DurationSeconds: 600},
 			Session: productsession.Budget{HostCalls: 60, Tokens: 60 * 1024, DurationSeconds: 1800}, MaxTurnsPerSession: 10,
 			ReviewTimeoutSeconds: reviewTimeoutSeconds},
-		RuntimeDigest: digestBytes([]byte("runtime")), ImageDigest: digestBytes([]byte("image")),
+		GitDigest: digestBytes([]byte("git")), HostIdentityDigest: digestBytes([]byte("host")), RuntimeDigest: digestBytes([]byte("runtime")), ImageDigest: digestBytes([]byte("image")),
 		ExtensionDigest: digestBytes([]byte("extension"))}
 	key := ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize))
 	data, signature, err := productsession.SignRegistration(unsigned, key)
@@ -153,7 +162,7 @@ func newProductServiceFixtureWithReviewTimeout(t *testing.T, reviewTimeoutSecond
 	}
 	f.cfg = productServiceConfig{SchemaVersion: productServiceConfigSchema, RegistrationPath: filepath.Join(reg, "registration.json"),
 		RegistrationSignaturePath: filepath.Join(reg, "registration.json.sig"), RegistrationPublicKeyPath: filepath.Join(reg, "registration.pub"),
-		CatalogPath: filepath.Join(f.stateRoot, "catalog.jsonl"), StateRoot: f.stateRoot, SocketPath: f.socketPath,
+		CatalogPath: setupLayout(state, productsession.DefaultCatalogPath), StateRoot: f.stateRoot, SocketPath: f.socketPath,
 		WorkerMode: productServiceWorkerSupervisorLoop, Projects: map[string]string{productDriverProject: f.projectDir}, ShutdownGraceSeconds: 20}
 	return f
 }
@@ -356,4 +365,10 @@ func serviceWriteScript(prefix, path, content, answer string, withDenial bool) *
 // serviceAnswerScript answers without a tool call.
 func serviceAnswerScript(prefix, answer string) *productDriverScript {
 	return &productDriverScript{turns: []providerbridge.ScriptTurn{{ResponseID: prefix + "-response-final", Text: answer}}}
+}
+
+// setupLayout places a product setup path under a test state directory, so the fixture lays out the
+// turns, the projects and the catalog the way an install does.
+func setupLayout(state, path string) string {
+	return filepath.Join(state, strings.TrimPrefix(path, productsetup.StateDir))
 }
