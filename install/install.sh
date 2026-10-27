@@ -31,7 +31,8 @@
 # without a key keeps the checksum-only behaviour and says so; its first signed update pins the key.
 # ROOT RUN: the marker and the pin are the trust anchors of a prefix, so a run as root refuses unless the
 # prefix (or its nearest existing ancestor) and every directory above it are root-owned and not writable
-# by group or others, and it refuses a symlinked or group/other-writable marker or pin.
+# by group or others, and it refuses a symlinked or group/other-writable marker or pin. Uninstall applies the
+# same checks, and again immediately before it removes the prefix.
 set -euo pipefail
 
 DEFAULT_VERSION="latest"
@@ -145,6 +146,17 @@ require_trusted_path() {
   done
 }
 
+# require_root_trust applies the root-run checks to a prefix: its ancestry, and the marker and the pin when
+# they exist. It does nothing for a run that is not root.
+require_root_trust() {
+  [ "$(id -u)" = 0 ] || return 0
+  require_trusted_path "$1" 0
+  local anchor
+  for anchor in "$1/$MARKER" "$1/$PUBLISHER_KEY"; do
+    if [ -e "$anchor" ] || [ -L "$anchor" ]; then trusted_entry "$anchor" 0; fi
+  done
+}
+
 detect_os() {
   case "$(uname -s)" in
     Linux)  printf 'linux' ;;
@@ -210,11 +222,15 @@ uninstall() {
   done
   prefix="$(canonical_prefix "$prefix")"
   if [ ! -d "$prefix" ]; then log "nothing to remove at $prefix"; return; fi
+  require_root_trust "$prefix"
   if ! is_owned_prefix "$prefix"; then
     die "refusing to remove '$prefix': not a tbound install (no $MARKER marker). Remove it manually if you are sure."
   fi
   log "removing owned tbound install at $prefix"
-  rm -rf -- "$prefix"
+  # Just before the removal, so a swapped ancestor is refused rather than followed by a root rm.
+  require_root_trust "$prefix"
+  [ "$(canon_path "$prefix")" = "$prefix" ] || die "refusing to remove '$prefix': its path changed while it was checked"
+  if rm --version >/dev/null 2>&1; then rm -rf --one-file-system -- "$prefix"; else rm -rf -- "$prefix"; fi # GNU rm stays on one filesystem
   remove_completions
   log "done"
 }
@@ -340,13 +356,7 @@ main() {
   done
 
   prefix="$(canonical_prefix "$prefix")"
-  if [ "$(id -u)" = 0 ]; then
-    require_trusted_path "$prefix" 0
-    local anchor
-    for anchor in "$prefix/$MARKER" "$prefix/$PUBLISHER_KEY"; do
-      if [ -e "$anchor" ] || [ -L "$anchor" ]; then trusted_entry "$anchor" 0; fi
-    done
-  fi
+  require_root_trust "$prefix"
   if [ "$updating" = 1 ] && ! is_owned_prefix "$prefix"; then
     die "tbound is not installed at $prefix; run install first"
   fi
