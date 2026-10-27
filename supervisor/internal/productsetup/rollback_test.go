@@ -130,7 +130,7 @@ func TestRollbackWhoseSelfTestFailsRestoresAndAFreshProcessFinishesAnInterrupted
 	if _, err := os.Lstat(f.path(rollbackIntentPath)); err == nil {
 		t.Fatal("the restoration record survived the finished restoration")
 	}
-	if out, code := runRollbackChild(t, f.root, "", "pass"); code != 0 || !strings.Contains(out, "refused=true selftests=0 starts=0") {
+	if out, code := runRollbackChild(t, f.root, "", "pass"); code != 0 || !strings.Contains(out, "refused=true selftest_failed=false selftests=0 starts=0") {
 		t.Fatalf("with the record cleared a rollback has nothing to roll back to and starts nothing (exit %d):\n%s", code, out)
 	}
 }
