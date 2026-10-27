@@ -52,7 +52,7 @@ Step 2 detail:
 - D35 step 1, deterministic construct checks: `tbound-profile corpus-check` passes locally (exit 0, byte-identical reruns). All 33 validation/source/license/root/admission/reference checks pass; all 20 compliant cases reject all four mutations; no prompt or fixture leaks (5 RepoQA read retrievals not-checked: answer in fixture by design). Guest-only, required before the corpus freeze: 11 P calibrations, 20 acceptance cells, 7 network effects. Report: `C:/Users/Admin/AppData/Local/Temp/tb-chk-evidence-20261024-r2/`.
 - F14 implementation branch `feat/corpus-check-guest-evidence`: optional `corpus-check --guest-evidence` recomputes the 38 guest checks from the producers' original outputs (runner journal replayed with its own rerun rules, `trial accept` results that now name their route and judged tree, the NET interval documents `tbound-run` now retains, the signed run files); the only operator file is a [mapping](docs/guides/construct-witnesses.md). Each imported row carries provenance and the "operator-retained, no external anchor" note (the audit chains have no external anchor, a recorded thesis limitation). Synthetic closure, the reviewer's hand-assembled attack (passes nothing), tampering and exact no-flag pilot report hashes are tested. No guest contacted or real witness validated; review, freeze and the owner's capture remain required before claiming closure.
 - 15 MultiPL-E cases carry a no-ML-training license condition; panel requests set `provider.data_collection: deny`.
-- D35 step 2, AI panel: tool ready (`docs/guides/panel-run.md`); two phases, 3 families (no Claude/GPT/DeepSeek), Gwet AC1 >= 0.80 and >= 90% agreement (Fleiss kappa reported, not gated), hard USD 10 cap (estimate ~USD 1.2). **Owner runs it** after choosing models and funding OpenRouter.
+- D35 step 2, AI panel: tool ready (`docs/guides/panel-run.md`); two phases, 3 families (no Claude/GPT/DeepSeek), Gwet AC1 >= 0.80 and >= 90% agreement (Fleiss kappa reported, not gated), hard USD 10 cap (estimate USD 1.10, worst case USD 7.32). Prep rebuilt at 66a3dea: `F:/TBoundAssets/panel-prep-20261027/PANEL-READY.md`. **Owner runs it** after funding OpenRouter.
 - D35 step 3: the advisor (non-author) signs meaning records and audits disagreements, unclear/ambiguous items and 60 random unanimous roots. Not started.
 - Amended D35 tooling merged 2026-10-27 (5c1c835, from `feat/construct-review-signoff` 3ef478c):
   - Each case carries one advisor `signoff` (human, non-author, accept/reject, audited + resolution). `construct_review` pins {content_digest, panel_receipt_digest, panel_audit_digest, panel_stats_digest}.
@@ -110,13 +110,21 @@ Step 2 detail:
   - 5f2d0a6: 4776 pass / 26 guest-only skips / 2 fail. Both failures were `netoracle: canary start ... context deadline exceeded` after ~70 s while other WSL tests ran (`TestConstructRecomputesFromProducerFiles`, `TestCollectorCleanWindowIsNoneWithAReportReference`). Both tests and both packages pass under `-race` in isolation: a load flake. Run gates with nothing else on WSL.
   - f483fad (D09 merge): 4786 pass / 26 guest-only skips / 0 fail; the same skip set.
   - 5c1c835 (signoff merge, includes 385584c): 5047 pass / 26 guest-only skips / 0 fail; the same skip set.
+  - 66a3dea (panel audit-binding merge): 5062 pass / 26 guest-only skips / 0 fail; the same skip set.
 - D09 merged (f483fad, regression test 385584c). `fix/recovery-empty-bash-delta` (e7e9d33) stays unmerged.
 - `feat/construct-review-signoff` merged as 5c1c835. On the merge: the panelaudit/tbound-panel/evalcorpus/corpusadmit and tbound-profile/tbound/tbound-run tests pass, the 24 local `tbound-op` tests pass, and the full gate is 5047 pass / 26 guest-only skips / 0 fail (same skip set).
 - Pre-run review of the merge (Sol xhigh):
-  - Fix before the paid panel run (in progress on `fix/panel-audit-receipt-binding`): (1) the audit does not bind the exact receipt, so an advisor-signed audit of run A could accompany run B's receipt when reasons and selection coincide; (2) rerunning `finish` on an out directory overwrites advisor sign-offs in `audit.json`.
+  - Fixed before the paid panel run, merged as 66a3dea (`fix/panel-audit-receipt-binding`, 2 Sol review rounds). (1) `audit.json` (schema `tbound-panel-audit/v4`) records `receipt_digest`, the digest of the exact `receipt.json` written just before it, and `panelaudit.Verify` requires it; an advisor-signed audit of run A can no longer accompany run B's receipt. (2) `tbound-panel` refuses before any provider call and before any report write when `audit.json` carries an advisor sign-off, does not parse, or has duplicate members.
   - Accepted limitation: a crash between saving a provider response and appending its rating makes resume pay for that call again. Both charges stay counted against the cap.
   - No AC1/raw-agreement formula error found; every request sets `data_collection: deny` and `require_parameters: true`.
-- The panel prep in F:\TBoundAssets\panel-prep is stale (built 2026-10-25, pre-AC1). Rebuild after the audit-binding fix is merged; do not run it live.
+- Panel prep rebuilt at 66a3dea in `F:/TBoundAssets/panel-prep-20261027/`:
+  - `tbound-panel.exe` (Go 1.27.1 cross-build of the gated archive) and the unchanged frozen `panel.json` (`FREEZE.sha256`).
+  - Model ids and prices re-checked against the public OpenRouter lists.
+  - Estimate: 198 calls, USD 1.10 expected, USD 7.32 worst case.
+  - Fresh dry run `dry-2`: 198/198 requests with `data_collection: deny`, stats v4, audit v4 bound to its receipt, deterministic apart from timestamps.
+  - `PANEL-READY.md` holds the owner's live steps.
+  - The old `F:/TBoundAssets/panel-prep/` is marked STALE; do not run it.
+- Next: the owner runs the live panel; the advisor signs; then the F14 freeze on FABIAN (owner step; `corpus-digest` needs the F14 pins).
 - The F14 freeze, signing, guest install and evidence are owner steps on FABIAN after the merges and the panel prep.
 
 ## Working rules
