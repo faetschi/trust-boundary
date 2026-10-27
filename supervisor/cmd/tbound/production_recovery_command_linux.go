@@ -441,7 +441,9 @@ func sameHistoricalTransitionForEvent(event productionHistoricalCommandEvent, op
 	if denied && verifyProductionD09DeniedRecord(bundle, effect.Intent, intent.Request, operation, event.Transition) != nil {
 		return false
 	}
+	// DeclaredOutputPaths is not serialized (json:"-"): both decoded specs take the scope the request recorded.
 	result.Spec.DeclaredOutputPaths = cloneDurableOutputScopePaths(intent.Request.OutputScopePaths)
+	intent.Command.DeclaredOutputPaths = cloneDurableOutputScopePaths(intent.Request.OutputScopePaths)
 	if !reflect.DeepEqual(result.Spec, intent.Command) || result.Command.ExitCode != *operation.ExitCode ||
 		!result.Command.ExitObserved || result.Settlement.LeaseID != operation.Operation.LeaseID ||
 		result.Settlement.ViewID != operation.ViewID || !result.Settlement.ProcessScopeEmpty ||
