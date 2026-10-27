@@ -32,6 +32,8 @@ type RegistrationSummary struct {
 	Digest   string
 	Projects []string
 	Profiles []string
+	// Principals are the registration's allowed principals: the UIDs it authorizes to use the service.
+	Principals []int64
 	// PolicyDigests maps each project to the gate-policy digest the registration commits to.
 	PolicyDigests map[string]string
 	Text          string

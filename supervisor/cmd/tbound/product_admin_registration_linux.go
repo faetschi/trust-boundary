@@ -280,6 +280,9 @@ func registrationSign(out io.Writer, regFile, keyFile, outFile string) error {
 // registrationSummary describes a verified registration for people.
 func registrationSummary(r productsession.Registration) productsetup.RegistrationSummary {
 	s := productsetup.RegistrationSummary{ID: r.RegistrationID, Digest: r.Digest, Profiles: r.ProviderProfiles, PolicyDigests: map[string]string{}}
+	for _, p := range r.AllowedPrincipals {
+		s.Principals = append(s.Principals, int64(p))
+	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "registration %s (service identity %s)\ndigest %s\n", r.RegistrationID, r.ServiceIdentity, r.Digest)
 	fmt.Fprintf(&b, "principals (UIDs): %v\nprovider profiles: %s\n", r.AllowedPrincipals, strings.Join(r.ProviderProfiles, ", "))

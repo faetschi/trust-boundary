@@ -45,8 +45,11 @@ func refuse(format string, args ...any) error {
 type SelfTest struct {
 	ProjectID       string `json:"project_id"`
 	ProviderProfile string `json:"provider_profile"`
-	Prompt          string `json:"prompt,omitempty"`
-	TimeoutSeconds  int    `json:"timeout_seconds,omitempty"`
+	// ClientUID is the registered client the self-test turn runs as. The service authorizes a caller by its
+	// UID, and root is not a registered principal, so the self-test never runs as root.
+	ClientUID      int    `json:"client_uid"`
+	Prompt         string `json:"prompt,omitempty"`
+	TimeoutSeconds int    `json:"timeout_seconds,omitempty"`
 }
 
 // Config is tbound-product-setup-config/v1, written by the administrator.
