@@ -166,7 +166,7 @@ export function createLiveController(deps: LiveControllerDeps): LiveController {
     } catch {
       // A failed write must prevent a new request from leaving without its recovery record.
     }
-    if (sessionId === null || sessionId === model.activeId) set({ action: pending.get(null) ?? action });
+    if (sessionId === null || sessionId === model.activeId) set({ action: pending.get(null) ?? pending.get(model.activeId) ?? action });
     return saved;
   }
 
@@ -295,6 +295,7 @@ export function createLiveController(deps: LiveControllerDeps): LiveController {
   async function run(intent: Intent): Promise<boolean> {
     const sessionId = intent.kind === "create" ? null : model.activeId;
     const previous = pending.get(sessionId);
+    if (previous !== undefined && previous.intent !== intent) return false;
     let unknown = previous?.status === "unknown";
     if (!setAction({ status: "sending", intent, attempt: 1, error: null, done: null }, sessionId)) {
       if (previous !== undefined) pending.set(sessionId, previous);
