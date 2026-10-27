@@ -94,11 +94,12 @@ Step 2 detail:
 ## Needs the owner or advisor
 
 - Owner: AI panel run; the corpus-mode session (S3'/S4' signing with owner keys, tbound-netsink account/unit, pinned nft rule, root forced-command trial key, Spike B); approval of every privileged guest write.
-- Advisor: D26 scope cut and residual-channel claim; panel audit and meaning-record sign-off.
+- Advisor: D26 scope cut and residual-channel claim; panel audit and meaning-record sign-off. Options for all three open questions (D35 panel/AC1 amendments, pilot audit size, D26/TM-C scope): `docs/evaluation/advisor-decisions.md`.
 - **OPEN (owner/advisor, before the pilot audit is signed):** `audit_sample=60` is registered, but the pilot dry run had 1 eligible unanimous root. The owner/advisor must confirm whether all-eligible is acceptable or an amendment is required.
   - The tool audits all eligible roots when fewer than 60 exist: `supervisor/internal/panelaudit/selection.go:51` (`min(size, len(eligible))`), `docs/guides/panel-run.md:259` ("up to 60") and `:330` ("or all if fewer are eligible").
   - The thesis protocol registers "a random audit sample of 60 unanimous confirmatory roots" with a 95%-detection rationale and states no fewer-than-60 or pilot rule: MSE_MA_Thesis `tbound/tbound-thesis.md:922-925` and `tbound/AH-technical/10-decision-register.md:380-383`.
   - So all-eligible is tool behaviour, not an adopted protocol decision. The live run's eligible count may differ from the dry run's.
+  - The pilot has 33 roots, 2 of them ambiguous, so at most 31 roots are ever eligible. The pilot audit is therefore always a census, and every pilot case reaches the advisor's deep review (the dry run listed 33/33).
 
 ## Next (thesis lane)
 

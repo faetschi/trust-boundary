@@ -36,8 +36,10 @@ decisions, blockers, and next steps. History before this date is in Git.
 
 ## Open gates, in order
 
-1. Confirm the D26 scope cut and the residual-channel claim with the advisor.
-2. Finish the pilot construct review (panel run, then the advisor's sign-off) and case corrections; freeze the pilot protocol,
+1. Confirm the D26 scope cut and the residual-channel claim with the advisor
+   (options in the [advisor decision package](advisor-decisions.md)).
+2. Finish the pilot construct review (panel run, then the advisor's sign-off; the AC1 amendment and the
+   pilot audit size are open in the decision package) and case corrections; freeze the pilot protocol,
    provider, outage rules, and initial safety ceilings.
 3. Done at F13: freeze, reinstall, G1 and both probes with fresh evidence. Fix the
    two service-mode defects and the corpus-check guest-evidence input for F14.
