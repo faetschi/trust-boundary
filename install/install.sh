@@ -37,7 +37,8 @@
 # --no-same-permissions, so no owner or mode in the archive reaches the prefix, and it creates the marker
 # and the pin with their final mode. A root run never installs or removes the per-user shell completions
 # or writes the per-user config, because HOME and XDG directories are user-controlled: it prints what the
-# user runs unprivileged instead.
+# user runs unprivileged instead. A root run downloads, verifies and extracts only inside private directories
+# it creates below the prefix's (checked) parent, never under TMPDIR, whose parents a user may own.
 set -euo pipefail
 
 DEFAULT_VERSION="latest"
@@ -389,7 +390,14 @@ main() {
   os="$(detect_os)"; arch="$(detect_arch)"
   artifact="tbound-${version}-${os}-${arch}.tar.gz"
 
-  STAGE="$(mktemp -d "${TMPDIR:-/tmp}/tbound-install.XXXXXX")"
+  # A root run stages below the prefix's parent, which the checks above found root-owned and closed to others: whoever
+  # owns a directory above TMPDIR could rename a stage there and put their own at its path after the signature was verified.
+  local stage_root="${TMPDIR:-/tmp}"
+  if [ "$(id -u)" = 0 ]; then
+    stage_root="$(dirname "$prefix")"
+    { (umask 022; mkdir -p -- "$stage_root") && require_trusted_path "$stage_root" 0; } || die "cannot prepare $stage_root"
+  fi
+  STAGE="$(mktemp -d "$stage_root/tbound-install.XXXXXX")" || die "cannot create a staging directory in $stage_root"
   log "${updating:+updating }installing tbound ${version} (${os}/${arch}) into ${prefix}"
 
   # Key pin: work from a private copy of the key, so the key that is verified is the key that is stored.
