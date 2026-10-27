@@ -465,14 +465,42 @@ Source hash of `supervisor/` for the second run: SHA-256 of the sorted per-file 
 - **Host inputs**, `7d903a0` to `c6fbd5f`. These commands were added: `tbound product calibration measure` and `sign`. Static host-input validators with an explicit owner set are shared by serve, setup (before any write) and doctor. The Git pin now applies the same owner list to the file and to every parent directory. An Opus review found 4 issues, and all are fixed. Gate on `c6fbd5f`: 5459 passed, 29 skipped, 0 failed.
 - **Soft refusals**, merged in `b43cce7`. In product turns, a tool call is refused softly only when a check before authorization proves it cannot have an effect: a missing read path, a non-regular target, or edit text that is absent or ambiguous. The refusal returns an error and a hint to the model, and the conversation continues. Each refusal is recorded as `provider_proven_unexecuted`, a binding distinct from a DENY retirement, and replay recomputes it. Research mode is unchanged. An Opus review found no hole in authority, effects or counting; its follow-ups are open. Gate on `4ca3fa4`: 5420 passed, 29 skipped, 0 failed.
 - **Combined gate** on `b43cce7`: build, vet and gofmt clean; 5509 passed, 29 skipped, 0 failed.
-- **The four owed reviews** were done on 2026-10-27, by Sol xhigh with ponytail-review:
-  - P9: two P1 fixes, the request identity across reload and a candidate bound. Round 2 is in progress on `product/p9-review-fixes`.
-  - Bash output: the description must follow the executor's output mode. The fix is on `product/bash-description-mode`.
-  - P8 round 3: six findings. The fixes are on `product/p8-r3-fixes`.
-  - Host profile: four findings (the publication fence, credentials and root identity checked before listening, registration binding, managed-root exclusivity). The fixes are on `product/host-profile-fixes`.
+- **The four owed reviews** were done on 2026-10-27, by Sol xhigh with ponytail-review. Every fix was reviewed again before it was merged. Opus stood in when both Codex accounts were limited.
+  - **P9 gateway and React:**
+    - An unresolved request now keeps its key and body in per-tab `sessionStorage`, and an unknown outcome stays sticky across reload, session switch and dismiss.
+    - The candidate bound is the 1 MiB protocol frame (`CANDIDATE_TOO_LARGE`).
+    - Round 2 fixed a create race and the resolve Retry notice.
+    - Merged in `44f0438`. The frontend now has 85 files and 1429 tests, and the rebuild equals the committed `dist`.
+  - **Bash output:** the bash description now follows the executor's output mode, so `serve --pi` gets the exit-only text. Merged in `f2d03ee`.
+    - That merge broke the soft-refusal restart replay, which was missing the route mark. The fix is `c898e1a`.
+  - **Host profile:**
+    - Import provisions the publication fence `lost+found`, and serve validates it.
+    - Credentials and root identity are checked before the socket listens.
+    - Registration v2 binds `git_digest` and `host_identity_digest`.
+    - Receipts move to v2 and list the unverified runtime, image and extension digests.
+    - Managed-root exclusivity is checked by a descriptor walk from `/`. Setup and doctor check the registered bindings.
+    - Merged in `384a6b0`.
+  - **P8 round 3** took three fix rounds:
+    - publisher-key pin in `install.sh`, with root ancestry and marker checks for install and uninstall;
+    - crash-safe rollback (`RENAME_EXCHANGE` plus a recovery record), and restoration that resumes after a crash;
+    - a `setup --replace` fence against unresolved turns;
+    - host-input path collision and symlink checks;
+    - a self-test that runs as a registered client UID with dropped privileges;
+    - boot activation;
+    - the installation format, read from a marker in the binary without executing it.
+    - Merged in `a964bf1` and `b6493b9`.
+  - **Soft-refusal follow-ups:** the replay guards are covered by mutation-checked tests. Live progress recomputes only refusals after the checkpointed prefix, which cut recomputes from 32 to 8 for four refusals; restart and predecessor replay still recompute everything. Merged in `a503308`.
+- **Combined gate on `b6493b9`:** build, vet and gofmt clean; 5646 passed, 30 skipped, 0 failed. The extension boundary guard passes.
+  - The 30th skip is the new crash helper `TestProductTurnSoftRefusalUnsettledEffectChild`.
+  - The webchat module was last gated on `44f0438`: Go race tests ok, frontend 1429 passed. Nothing after it changes `extensions/`.
+- **Open, P8 round 4** on `product/p8-r4-fixes`:
+  - update must authenticate the candidate against a signed release manifest under the pinned publisher key before it stages or runs the binary;
+  - `install.sh` must not follow an archive-supplied marker symlink or user-controlled completion and config destinations when it runs as root;
+  - setup must refuse a `--binary` of another installation format.
 - **Still blocked:**
   - P9 acceptance needs a real Pi worker per turn, and `product-serve` refuses `worker_mode: pi`.
-  - Publication does not swap the old object back when it detects a mismatch after `RENAME_EXCHANGE` (shared code). This is recorded for the thesis thread.
+  - Publication does not swap the old object back when it detects a mismatch after `RENAME_EXCHANGE`. This is shared code in `supervisor/internal/publication`. The product now limits writers to root and the service account; the thesis thread owns the shared fix.
+  - Not run on a real host: calibration measurement, the privilege drop, `systemctl enable`, `RENAME_EXCHANGE` on the qualified filesystem, a real browser against the real service, and a real provider.
 - **Dev dependency:** `npm audit` reports a high finding in the dev-only test DOM `happy-dom`. There are 0 production findings, and the shipped `dist/` is not affected.
 - Two risks to track from the 2026-10-26 priorities review:
   - **Shared code diverges.** The product and thesis branches carry ports of the same security fixes. Keep a short ledger of each shared fix: the commit on each branch and the test that covers it. Reconcile before every freeze.
