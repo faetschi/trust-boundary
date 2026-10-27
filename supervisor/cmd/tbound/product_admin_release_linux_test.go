@@ -43,6 +43,8 @@ type releaseFixture struct {
 	pub   string
 	name  string
 	tarGz string
+	// extra are additional archive entries (path to content), written by writeArchive.
+	extra map[string]string
 }
 
 func releaseArtifactName() string {
@@ -81,6 +83,14 @@ func (f *releaseFixture) writeArchive(marker string) {
 	for _, name := range []string{"bin/tbound", "bin/tbound-doctor", "bin/tbound-profile"} {
 		body := "#!/bin/sh\necho " + marker + "\n"
 		if err := tw.WriteHeader(&tar.Header{Name: name, Mode: 0o755, Size: int64(len(body)), Typeflag: tar.TypeReg}); err != nil {
+			f.t.Fatal(err)
+		}
+		if _, err := tw.Write([]byte(body)); err != nil {
+			f.t.Fatal(err)
+		}
+	}
+	for name, body := range f.extra {
+		if err := tw.WriteHeader(&tar.Header{Name: name, Mode: 0o644, Size: int64(len(body)), Typeflag: tar.TypeReg}); err != nil {
 			f.t.Fatal(err)
 		}
 		if _, err := tw.Write([]byte(body)); err != nil {
@@ -363,5 +373,31 @@ func TestProductAdminReleaseInstallScriptSaysWhenAPrefixHasNoPinnedKey(t *testin
 	}
 	if _, statErr := os.Stat(filepath.Join(prefix, ".tbound-publisher.pub")); statErr != nil {
 		t.Fatalf("the first authenticated update did not pin the key: %v", statErr)
+	}
+}
+
+func TestProductAdminReleaseInstallScriptNeverTakesAPublisherPinFromTheArchive(t *testing.T) {
+	if runtime.GOARCH != "amd64" && runtime.GOARCH != "arm64" {
+		t.Skip("install.sh supports amd64 and arm64")
+	}
+	f := newReleaseFixture(t)
+	attacker := filepath.Join(f.dir, "attacker")
+	mustAdmin(t, "release", "keygen", "--out", attacker)
+	attackerKey, err := os.ReadFile(filepath.Join(attacker, "release-signing.pub"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.extra = map[string]string{".tbound-publisher.pub": string(attackerKey)}
+	f.writeArchive("malicious")
+	f.publishSums()
+	out, prefix, err := f.install()
+	if err != nil {
+		t.Fatalf("checksum-only install: %v\n%s", err, out)
+	}
+	if _, statErr := os.Lstat(filepath.Join(prefix, ".tbound-publisher.pub")); statErr == nil {
+		t.Fatal("a checksum-only archive planted the publisher pin of the prefix")
+	}
+	if out, _, err := f.installCommand("update"); err != nil || !strings.Contains(out, "installed without a publisher key") {
+		t.Fatalf("the prefix must stay unkeyed after a checksum-only install: %v\n%s", err, out)
 	}
 }

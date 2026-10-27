@@ -390,4 +390,5 @@ main() {
   log "done"
 }
 
-main "$@"
+# Run only when executed (or piped to bash), so a test can source the functions.
+if [ "${BASH_SOURCE[0]:-$0}" = "$0" ]; then main "$@"; fi
