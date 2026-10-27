@@ -378,13 +378,13 @@ func replayGovernedHistory(storeJournal *audit.Journal, store *sessionrepo.Store
 	if len(bundle.Generations) == 0 {
 		return GovernedRecoveryProjection{}, nil, sessionrepo.ErrNoBaseline
 	}
-	hasSuccessfulBash := false
+	hasSettledBash := false
 	for _, operation := range disposition.Operations {
-		if operation.Tool == "bash" && operation.Outcome == "success" {
-			hasSuccessfulBash = true
+		if settledBashOperation(operation) {
+			hasSettledBash = true
 		}
 	}
-	if hasSuccessfulBash && len(commandVerifiers) != 1 {
+	if hasSettledBash && len(commandVerifiers) != 1 {
 		return GovernedRecoveryProjection{}, nil, errors.New("historical Bash effects require their independently held old command context")
 	}
 	if len(transcripts) == 0 {

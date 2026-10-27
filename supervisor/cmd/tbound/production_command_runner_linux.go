@@ -175,6 +175,19 @@ func (r *productionCommandRunner) VerifySettlement(candidate sessionrepo.Command
 
 func (r *productionCommandRunner) BindProductionBashEvidence(ctx context.Context, providerCall delta.OperationIdentity,
 	bundle sessionrepo.EvidenceBundle, transition delta.Transition, operation sessionrepo.OperationEvidence) error {
+	return r.bindEvidence(ctx, providerCall, bundle, transition, operation, false)
+}
+
+// BindProductionDeniedBashEvidence settles the lease of a command whose change delta admission refused
+// after it ran: the signed runner binds the receipt to the Store's denied operation and the refused
+// candidate, and the spent lease is released like a promoted one.
+func (r *productionCommandRunner) BindProductionDeniedBashEvidence(ctx context.Context, providerCall delta.OperationIdentity,
+	bundle sessionrepo.EvidenceBundle, candidate delta.Transition, operation sessionrepo.OperationEvidence) error {
+	return r.bindEvidence(ctx, providerCall, bundle, candidate, operation, true)
+}
+
+func (r *productionCommandRunner) bindEvidence(ctx context.Context, providerCall delta.OperationIdentity,
+	bundle sessionrepo.EvidenceBundle, transition delta.Transition, operation sessionrepo.OperationEvidence, denied bool) error {
 	if r == nil || ctx == nil || operation.ViewID == "" || operation.Operation.Kind != delta.OperationLease {
 		return commandEvidenceRefused("lease-bind-precondition")
 	}
@@ -188,12 +201,22 @@ func (r *productionCommandRunner) BindProductionBashEvidence(ctx context.Context
 		return commandEvidenceRefused("lease-bind-registration")
 	}
 	r.mu.Unlock()
-	binder, ok := signed.(productionBashEvidenceBinder)
-	if !ok {
-		return commandEvidenceRefused("lease-bind-not-binder")
+	var bound error
+	if denied {
+		binder, ok := signed.(productionDeniedBashEvidenceBinder)
+		if !ok {
+			return commandEvidenceRefused("lease-bind-not-binder")
+		}
+		bound = binder.BindProductionDeniedBashEvidence(ctx, providerCall, bundle, transition, operation)
+	} else {
+		binder, ok := signed.(productionBashEvidenceBinder)
+		if !ok {
+			return commandEvidenceRefused("lease-bind-not-binder")
+		}
+		bound = binder.BindProductionBashEvidence(ctx, providerCall, bundle, transition, operation)
 	}
-	if err := binder.BindProductionBashEvidence(ctx, providerCall, bundle, transition, operation); err != nil {
-		return commandEvidenceRefused("lease-bind", err)
+	if bound != nil {
+		return commandEvidenceRefused("lease-bind", bound)
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()

@@ -110,12 +110,12 @@ func (h *productionHistoricalBashHistory) VerifyStoreBundle(bundle sessionrepo.E
 	}
 	used := make(map[string]struct{}, len(h.byEffect))
 	for _, operation := range bundle.Operations {
-		if operation.Tool != "bash" || operation.Outcome != "success" {
+		if !settledBashOperation(operation) {
 			continue
 		}
 		verifier := h.byEffect[operation.EffectID]
 		if verifier == nil {
-			return fmt.Errorf("successful historical Bash effect %q has no independently retained command owner", operation.EffectID)
+			return fmt.Errorf("historical Bash effect %q ran but has no independently retained command owner", operation.EffectID)
 		}
 		event := verifier.byEffect[operation.EffectID]
 		if !reflect.DeepEqual(event.Operation, operation) || !sameHistoricalTransitionForEvent(event, operation, bundle) {
@@ -124,7 +124,7 @@ func (h *productionHistoricalBashHistory) VerifyStoreBundle(bundle sessionrepo.E
 		used[operation.EffectID] = struct{}{}
 	}
 	if len(used) != len(h.byEffect) {
-		return errors.New("a retained D09 command receipt has no unique successful Store Bash effect")
+		return errors.New("a retained D09 command receipt has no unique executed Store Bash effect")
 	}
 	return nil
 }
@@ -209,8 +209,8 @@ type productionHistoricalBashVerifier struct {
 	conversationID string
 	profileDigest  string
 	templateDigest string
-	byEffect       map[string]productionD09CommandSettledEvent
-	byLeaseView    map[string][]productionD09CommandSettledEvent
+	byEffect       map[string]productionHistoricalCommandEvent
+	byLeaseView    map[string][]productionHistoricalCommandEvent
 }
 
 func newProductionHistoricalBashVerifier(journal *audit.Journal, pin productionHistoricalCommandPin,
@@ -239,18 +239,15 @@ func newProductionHistoricalBashVerifier(journal *audit.Journal, pin productionH
 		journal: journal, initialTrace: trace, profile: profile, template: template,
 		runID: runID, sessionID: sessionID, workflowID: workflowID, conversationID: conversationID,
 		profileDigest: profileDigest, templateDigest: templateDigest,
-		byEffect:    make(map[string]productionD09CommandSettledEvent),
-		byLeaseView: make(map[string][]productionD09CommandSettledEvent),
+		byEffect:    make(map[string]productionHistoricalCommandEvent),
+		byLeaseView: make(map[string][]productionHistoricalCommandEvent),
 	}
 	for _, record := range trace.Records {
-		if record.Event.Kind != "production_d09_command_settled" {
+		if record.Event.Kind != productionD09SettledKind {
 			return nil, errors.New("retained D09 command journal contains an unsupported event")
 		}
-		var event productionD09CommandSettledEvent
-		if unmarshalGovernedJSON(record.Event.Data, &event) != nil ||
-			event.SchemaVersion != "tbound-production-d09-command-settled/v2" || event.RunID != runID ||
-			event.SessionID != sessionID || event.WorkflowID != workflowID || event.ConversationID != conversationID ||
-			event.ProfileID != profile.ID || event.ProfileDigest != profileDigest ||
+		event, ok := decodeProductionHistoricalCommandEvent(record.Event.Data, runID, sessionID, workflowID, conversationID, profile.ID, profileDigest)
+		if !ok ||
 			event.Operation.EffectID == "" || event.Operation.Tool != "bash" ||
 			event.Operation.Operation.Kind != delta.OperationLease || event.Operation.Operation.LeaseID == "" ||
 			event.Operation.ViewID == "" {
@@ -269,7 +266,57 @@ func newProductionHistoricalBashVerifier(journal *audit.Journal, pin productionH
 	return v, nil
 }
 
-func validateHistoricalD09Receipt(event productionD09CommandSettledEvent, profile piruntime.HostProfile,
+// productionHistoricalCommandEvent is a retained production_d09_command_settled record of either shape. Transition is
+// the approved transition of a promoted command, or the refused candidate of a command that delta admission
+// denied after it ran; deniedAfterEffect(Operation) tells the two apart.
+type productionHistoricalCommandEvent struct {
+	WorkflowID     string
+	ConversationID string
+	ProviderCall   delta.OperationIdentity
+	Operation      sessionrepo.OperationEvidence
+	Transition     delta.Transition
+	ReceiptDigest  string
+	Receipt        json.RawMessage
+}
+
+// decodeProductionHistoricalCommandEvent decodes exactly the two shapes the live binder writes, each
+// bound to the old run, session, workflow, conversation and host profile. A promoted event must carry a
+// success operation and a denied event a denied_after_effect one.
+func decodeProductionHistoricalCommandEvent(data []byte, runID, sessionID, workflowID, conversationID, profileID, profileDigest string) (productionHistoricalCommandEvent, bool) {
+	var header struct {
+		SchemaVersion string `json:"schema_version"`
+	}
+	if json.Unmarshal(data, &header) != nil {
+		return productionHistoricalCommandEvent{}, false
+	}
+	switch header.SchemaVersion {
+	case productionD09SettledSchemaSuccess:
+		var event productionD09CommandSettledEvent
+		if unmarshalGovernedJSON(data, &event) != nil || event.RunID != runID || event.SessionID != sessionID ||
+			event.WorkflowID != workflowID || event.ConversationID != conversationID ||
+			event.ProfileID != profileID || event.ProfileDigest != profileDigest || event.Operation.Outcome != "success" {
+			return productionHistoricalCommandEvent{}, false
+		}
+		return productionHistoricalCommandEvent{WorkflowID: event.WorkflowID, ConversationID: event.ConversationID,
+			ProviderCall: event.ProviderCall, Operation: event.Operation, Transition: event.Transition,
+			ReceiptDigest: event.ReceiptDigest, Receipt: event.Receipt}, true
+	case productionD09SettledSchemaDenied:
+		var event productionD09DeniedCommandSettledEvent
+		if unmarshalGovernedJSON(data, &event) != nil || event.Outcome != productionD09OutcomeDenied ||
+			event.RunID != runID || event.SessionID != sessionID || event.WorkflowID != workflowID ||
+			event.ConversationID != conversationID || event.ProfileID != profileID || event.ProfileDigest != profileDigest ||
+			!deniedAfterEffect(event.Operation) ||
+			event.DeniedCandidateDigest != productionD09DeniedCandidateDigest(event.DeniedCandidate) {
+			return productionHistoricalCommandEvent{}, false
+		}
+		return productionHistoricalCommandEvent{WorkflowID: event.WorkflowID, ConversationID: event.ConversationID,
+			ProviderCall: event.ProviderCall, Operation: event.Operation, Transition: event.DeniedCandidate,
+			ReceiptDigest: event.ReceiptDigest, Receipt: event.Receipt}, true
+	}
+	return productionHistoricalCommandEvent{}, false
+}
+
+func validateHistoricalD09Receipt(event productionHistoricalCommandEvent, profile piruntime.HostProfile,
 	template piruntime.D09CellTemplate, templateDigest string) error {
 	var receipt piruntime.D09CommandReceipt
 	if len(event.Receipt) == 0 || unmarshalGovernedJSON(event.Receipt, &receipt) != nil || receipt.ValidateSnapshot() != nil {
@@ -322,13 +369,13 @@ func (v *productionHistoricalBashVerifier) VerifyStoreBundle(bundle sessionrepo.
 	}
 	used := make(map[string]struct{}, len(v.byEffect))
 	for _, operation := range bundle.Operations {
-		if operation.Tool != "bash" || operation.Outcome != "success" {
+		if !settledBashOperation(operation) {
 			continue
 		}
 		event, exists := v.byEffect[operation.EffectID]
 		if !exists || !reflect.DeepEqual(event.Operation, operation) ||
 			!sameHistoricalTransitionForEvent(event, operation, bundle) {
-			return fmt.Errorf("successful historical Bash effect %q has no exact old D09 receipt", operation.EffectID)
+			return fmt.Errorf("executed historical Bash effect %q has no exact old D09 receipt", operation.EffectID)
 		}
 		if _, duplicate := used[operation.EffectID]; duplicate {
 			return errors.New("historical Store repeats a D09 command effect")
@@ -336,16 +383,17 @@ func (v *productionHistoricalBashVerifier) VerifyStoreBundle(bundle sessionrepo.
 		used[operation.EffectID] = struct{}{}
 	}
 	if len(used) != len(v.byEffect) {
-		return errors.New("retained D09 command journal contains a receipt with no successful Store Bash effect")
+		return errors.New("retained D09 command journal contains a receipt with no executed Store Bash effect")
 	}
 	return nil
 }
 
-func sameHistoricalTransitionForEvent(event productionD09CommandSettledEvent, operation sessionrepo.OperationEvidence,
+func sameHistoricalTransitionForEvent(event productionHistoricalCommandEvent, operation sessionrepo.OperationEvidence,
 	bundle sessionrepo.EvidenceBundle) bool {
+	denied := deniedAfterEffect(operation)
 	matched := 0
 	for _, transition := range bundle.ApprovedDeltaLedger {
-		if transition.ID != event.Transition.ID {
+		if denied || transition.ID != event.Transition.ID {
 			continue
 		}
 		if !reflect.DeepEqual(transition, event.Transition) || transition.Operation != operation.Operation ||
@@ -356,7 +404,7 @@ func sameHistoricalTransitionForEvent(event productionD09CommandSettledEvent, op
 		}
 		matched++
 	}
-	if matched != 1 {
+	if !denied && matched != 1 {
 		return false
 	}
 	var primary audit.Trace
@@ -390,7 +438,12 @@ func sameHistoricalTransitionForEvent(event productionD09CommandSettledEvent, op
 		intent.Request.ArgumentDigest != operation.ArgumentDigest {
 		return false
 	}
+	if denied && verifyProductionD09DeniedRecord(bundle, effect.Intent, intent.Request, operation, event.Transition) != nil {
+		return false
+	}
+	// DeclaredOutputPaths is not serialized (json:"-"): both decoded specs take the scope the request recorded.
 	result.Spec.DeclaredOutputPaths = cloneDurableOutputScopePaths(intent.Request.OutputScopePaths)
+	intent.Command.DeclaredOutputPaths = cloneDurableOutputScopePaths(intent.Request.OutputScopePaths)
 	if !reflect.DeepEqual(result.Spec, intent.Command) || result.Command.ExitCode != *operation.ExitCode ||
 		!result.Command.ExitObserved || result.Settlement.LeaseID != operation.Operation.LeaseID ||
 		result.Settlement.ViewID != operation.ViewID || !result.Settlement.ProcessScopeEmpty ||
@@ -408,7 +461,13 @@ func sameHistoricalTransitionForEvent(event productionD09CommandSettledEvent, op
 	return true
 }
 
-func mustD09Settlement(event productionD09CommandSettledEvent) sessionrepo.CommandSettlement {
+// settledBashOperation reports whether the Store ran a Bash command for operation, promoted or refused after
+// the effect: either way a D09 cell settled it and a retained settlement must account for it.
+func settledBashOperation(operation sessionrepo.OperationEvidence) bool {
+	return operation.Tool == "bash" && (operation.Outcome == "success" || deniedAfterEffect(operation))
+}
+
+func mustD09Settlement(event productionHistoricalCommandEvent) sessionrepo.CommandSettlement {
 	var receipt piruntime.D09CommandReceipt
 	_ = unmarshalGovernedJSON(event.Receipt, &receipt)
 	return receipt.Settlement

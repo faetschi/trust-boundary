@@ -460,6 +460,14 @@ func (t *productionTrust) CheckPublicationPrerequisites(ctx context.Context, req
 		if operation.Tool != "bash" {
 			continue
 		}
+		if deniedAfterEffect(operation) {
+			// A refused command promoted nothing, so no approved transition or provider-call origin binds it;
+			// its D09 settlement must still be on record.
+			if err := verifyProductionBashEvidence(ctx, t.runner, operation); err != nil {
+				return err
+			}
+			continue
+		}
 		transition, err := productionTransitionForOperation(request.Bundle, operation)
 		if err != nil {
 			return err

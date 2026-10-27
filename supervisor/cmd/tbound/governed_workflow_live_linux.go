@@ -671,8 +671,21 @@ func (v activeWorkflowCommandVerifier) VerifyGovernedVerifier(replay *governedSt
 	}
 	a.mu.Unlock()
 	for _, decision := range replay.decisions {
-		// A refused Bash candidate has no transition for D09 evidence to bind to: nothing was promoted.
-		if decision == nil || decision.binding.ConversationID != conversationID || decision.entry.Tool != "bash" || decision.denied {
+		if decision == nil || decision.binding.ConversationID != conversationID || decision.entry.Tool != "bash" {
+			continue
+		}
+		if decision.denied {
+			// A refused Bash candidate has no transition for D09 evidence to bind to: nothing was promoted. Its
+			// settlement is still on record when the runner is D09.
+			if evidenced {
+				verifier, ok := runner.(governedBashEvidenceVerifier)
+				if !ok {
+					return workflowrecovery.ErrObservation
+				}
+				if err := verifier.VerifyProductionBashEvidence(v.ctx, decision.entry); err != nil {
+					return errors.Join(ErrGovernedSessionEvidence, err)
+				}
+			}
 			continue
 		}
 		proof, ok := proofs[decision.entry.Operation]
@@ -998,6 +1011,16 @@ func (a *SessionOperationAuthority) terminalEffectPins(ctx context.Context, prev
 		if ok == denied || operationEvidence.Operation.Kind != delta.OperationLease || operationEvidence.ExitCode == nil ||
 			operationEvidence.CommandRunnerProfile == "" || operationEvidence.CommandContainmentStatus != "not-established" {
 			return fail(workflowrecovery.ErrObservation)
+		}
+		if evidencedBash && denied {
+			// The refused command's settlement was bound before the owner records its denial.
+			verifier, ok := runner.(governedBashEvidenceVerifier)
+			if !ok {
+				return workflowrecovery.Pins{}, "", workflowrecovery.ErrObservation
+			}
+			if err := verifier.VerifyProductionBashEvidence(ctx, *operationEvidence); err != nil {
+				return workflowrecovery.Pins{}, "", errors.Join(ErrGovernedSessionEvidence, err)
+			}
 		}
 		if evidencedBash && !denied {
 			verifier, ok := runner.(governedBashEvidenceOriginVerifier)
