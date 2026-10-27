@@ -2,13 +2,17 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
+	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
+	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/evalcorpus"
 	"tbound/supervisor/internal/panelaudit"
 )
@@ -54,11 +58,40 @@ func (d panelData) blindValues(c evalcorpus.Case, field string) []string {
 	return out
 }
 
-// finish writes stats, audit list and receipt from whatever ratings exist, so an interrupted
+// refuseToEraseSignoffs stops a rerun from rebuilding audit.json over the advisor's decisions.
+// An existing audit that cannot be read is refused too, because it may hold a half-edited sign-off.
+func (r *runner) refuseToEraseSignoffs() error {
+	path := filepath.Join(r.out, "audit.json")
+	raw, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	var existing struct {
+		Cases []panelaudit.AuditCase `json:"cases"`
+	}
+	// ValidateEvidenceJSON refuses duplicate members, which would let a later "cases" hide a signed one.
+	if err := errors.Join(protocol.ValidateEvidenceJSON(raw), json.Unmarshal(raw, &existing)); err != nil {
+		return fmt.Errorf("%s exists but cannot be read (%w); move it aside before regenerating", path, err)
+	}
+	for _, c := range existing.Cases {
+		if c.Advisor != (panelaudit.Advisor{}) {
+			return fmt.Errorf("%s already carries advisor sign-offs (case %s); move it aside or copy the output directory before regenerating", path, c.CaseID)
+		}
+	}
+	return nil
+}
+
+// finish writes stats, receipt and audit list from whatever ratings exist, so an interrupted
 // or budget-stopped run still reports its coverage honestly.
 func (r *runner) finish(plan blindPlan) (spend, error) {
 	spent, err := loadSpend(filepath.Join(r.out, "calls.jsonl"))
 	if err != nil {
+		return spent, err
+	}
+	if err := r.refuseToEraseSignoffs(); err != nil {
 		return spent, err
 	}
 	d := panelData{r: r, ratings: map[int]map[string]map[string]rating{phaseBlind: {}, phaseChecklist: {}}}
@@ -172,9 +205,6 @@ func (r *runner) finish(plan blindPlan) (spend, error) {
 	if err := writeFile(filepath.Join(r.out, "stats.md"), []byte(statsMarkdown(items2, fields, agree, len(d.cases), incomplete, r))); err != nil {
 		return spent, err
 	}
-	if err := r.writeAudit(d); err != nil {
-		return spent, err
-	}
 	var modelReceipts []map[string]any
 	for _, m := range r.cfg.Models {
 		seen := map[string]bool{}
@@ -217,7 +247,16 @@ func (r *runner) finish(plan blindPlan) (spend, error) {
 		core.Models[i].Family = panelaudit.Family(core.Models[i].ID)
 		core.Models[i].ObservedResponseModels = modelReceipts[i]["observed_response_models"].([]string)
 	}
-	return spent, writeReport(filepath.Join(r.out, "receipt.json"), core, receipt)
+	// The receipt goes first: the audit names the exact bytes written here, so a signed audit cannot back another run.
+	receiptPath := filepath.Join(r.out, "receipt.json")
+	if err := writeReport(receiptPath, core, receipt); err != nil {
+		return spent, err
+	}
+	written, err := os.ReadFile(receiptPath)
+	if err != nil {
+		return spent, err
+	}
+	return spent, r.writeAudit(d, panelaudit.Digest(written))
 }
 
 func statsMarkdown(items2, fields map[string]panelaudit.ItemStats, agree map[string]claimAgreement, cases int, incomplete []string, r *runner) string {
@@ -318,7 +357,7 @@ func (d panelData) auditReasons(c evalcorpus.Case) []string {
 	return panelaudit.ReviewReasons(c, d.outcomes())
 }
 
-func (r *runner) writeAudit(d panelData) error {
+func (r *runner) writeAudit(d panelData, receiptDigest string) error {
 	reasons := map[string][]string{}
 	for _, c := range d.cases {
 		reasons[c.CaseID] = d.auditReasons(c)
@@ -380,7 +419,7 @@ func (r *runner) writeAudit(d panelData) error {
 		"selection": selection,
 		"cases":     list, "human_reviews_recorded": 0, "note": humanNote,
 	}
-	core := panelaudit.Audit{Schema: panelaudit.AuditSchema, ContentDigest: r.corpus.ContentDigest, DryRun: r.provName == "fake", LiveRun: r.provName == "openrouter", Provider: r.provName, Selection: selection}
+	core := panelaudit.Audit{Schema: panelaudit.AuditSchema, ReceiptDigest: receiptDigest, ContentDigest: r.corpus.ContentDigest, DryRun: r.provName == "fake", LiveRun: r.provName == "openrouter", Provider: r.provName, Selection: selection}
 
 	if err := writeReport(filepath.Join(r.out, "audit.json"), struct {
 		panelaudit.Audit

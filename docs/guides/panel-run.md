@@ -190,6 +190,11 @@ again. Invalid answers are recorded and retried on resume. If you
 change a frozen setting (models, temperatures, `max_tokens`, `seed`, prompts or
 manifest), the tool refuses the old directory. Use a new `--out`.
 
+Once the advisor has filled any `advisor_signoff` field in `audit.json`, the same
+command refuses to run: it would rebuild the audit and write a new `receipt.json`,
+erasing the sign-offs. Copy the output directory first, or move `audit.json` aside,
+before you regenerate. An audit with every sign-off field empty is rebuilt normally.
+
 | Exit code | Meaning |
 |---|---|
 | 0 | Every pair rated, reports written |
@@ -208,7 +213,7 @@ manifest), the tool refuses the old directory. Use a new `--out`.
 | `calls.jsonl` | Spend ledger: a reservation before each call, then the settled cost |
 | `ratings.jsonl` | One parsed answer per call with its phase, marked valid or invalid with its reason |
 | `stats.md`, `stats.json` | JSON schema `tbound-panel-stats/v4`, `content_digest`, and `dry_run`. Before adjudication: Gwet's AC1 (the gate statistic), raw agreement, Fleiss' kappa, prevalence, and a 95% root-bootstrap interval of AC1 and of kappa per phase-2 checklist item and per phase-1 field, plus the phase-1 agreement with the claimed label per field |
-| `audit.md`, `audit.json` | The advisor's audit list and sign-off fields. `audit.json` (schema `tbound-panel-audit/v3`) records `manifest_digest`, `content_digest` and `dry_run` |
+| `audit.md`, `audit.json` | The advisor's audit list and sign-off fields. `audit.json` (schema `tbound-panel-audit/v4`) records `manifest_digest`, `content_digest`, `dry_run` and `receipt_digest`, the `sha256:` of the exact bytes of the `receipt.json` written just before it |
 | `audit-packets/` | The blinded packet of each audited case |
 
 Phase-1 effect ids are compared as a set: two answers agree only when they name
@@ -314,7 +319,9 @@ tbound-profile corpus-digest --manifest corpus/pilot/manifest.json --quota-profi
   --max-host-calls 17 --max-tokens 20000 --duration-seconds 1200
 ```
 
-It prints the digest only if the file hashes match `construct_review`, all three
+It prints the digest only if the file hashes match `construct_review`, the audit's
+`receipt_digest` is the digest of the receipt file (a signed audit cannot back another
+run's receipt), all three
 files record the manifest's content digest, all explicitly mark a live OpenRouter run, none is a dry run, the receipt
 rates every case completely, the audit list and the cases marked `audited` are
 the same set, and every audit entry carries a decision `accept`, a resolution, an

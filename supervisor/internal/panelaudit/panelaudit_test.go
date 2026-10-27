@@ -108,9 +108,19 @@ func (f *fixture) restat() {
 	f.stats["items"] = items
 }
 
+// bind records the digest of the receipt bytes in the audit, as the panel writes it, unless the
+// test already set receipt_digest itself.
+func (f *fixture) bind(t *testing.T) {
+	t.Helper()
+	if _, set := f.audit["receipt_digest"]; !set {
+		f.audit["receipt_digest"] = sum(marshal(t, f.receipt))
+	}
+}
+
 // check seals the construct review of the manifest to the two documents and verifies.
 func (f *fixture) check(t *testing.T) error {
 	t.Helper()
+	f.bind(t)
 	r, a := marshal(t, f.receipt), marshal(t, f.audit)
 	content, _ := evalcorpus.ContentDigest(f.m)
 	f.m.ConstructReview = evalcorpus.ConstructReview{ContentDigest: content, PanelReceiptDigest: sum(r), PanelAuditDigest: sum(a), PanelStatsDigest: sum(marshal(t, f.stats))}
@@ -166,6 +176,9 @@ func TestVerifyRefusals(t *testing.T) {
 		{"receipt for another case count", func(f *fixture) { f.receipt["cases"], f.receipt["complete_cases"] = 5, 5 }, "cases"},
 		{"receipt schema", func(f *fixture) { f.receipt["schema"] = "tbound-panel-receipt/v2" }, "schema"},
 		{"audit schema", func(f *fixture) { f.audit["schema"] = "tbound-panel-audit/v2" }, "schema"},
+		{"audit schema without the receipt binding", func(f *fixture) { f.audit["schema"] = "tbound-panel-audit/v3" }, "schema"},
+		{"audit without receipt_digest", func(f *fixture) { f.audit["receipt_digest"] = nil }, "receipt_digest"},
+		{"audit bound to another receipt", func(f *fixture) { f.audit["receipt_digest"] = sum([]byte("other receipt")) }, "receipt_digest"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newFixture(t)
@@ -178,8 +191,36 @@ func TestVerifyRefusals(t *testing.T) {
 	}
 }
 
+// Two runs over the same content and seed can list the same cases for the same reasons although a
+// rating differs (here c5 is rated 2 fail, 1 pass instead of 1 fail, 2 pass), and both gates pass.
+// Only the receipt digest in the audit keeps run A's signed audit from backing run B's receipt.
+func TestVerifyBindsTheAuditToTheExactReceipt(t *testing.T) {
+	runA, runB := newFixture(t), newFixture(t)
+	for i, o := range runB.receipt["rating_outcomes"].([]Outcome) {
+		if o.CaseID == "c5" && o.Phase == 2 && o.Model == fixtureModels[2].ID {
+			runB.receipt["rating_outcomes"].([]Outcome)[i].Values["class_or_difficulty"] = "fail"
+		}
+	}
+	reasonsA := ReviewReasons(runA.m.Cases[4], runA.receipt["rating_outcomes"].([]Outcome))
+	runB.refresh()
+	if reasonsB := ReviewReasons(runB.m.Cases[4], runB.receipt["rating_outcomes"].([]Outcome)); !slices.Equal(reasonsA, reasonsB) {
+		t.Fatalf("premise broken: the changed rating moved the reasons from %v to %v", reasonsA, reasonsB)
+	}
+	if string(marshal(t, runA.receipt)) == string(marshal(t, runB.receipt)) {
+		t.Fatal("premise broken: the two receipts are equal")
+	}
+	if err := runB.check(t); err != nil {
+		t.Fatalf("run B with the audit bound to its own receipt: %v", err)
+	}
+	runB.audit["receipt_digest"] = sum(marshal(t, runA.receipt))
+	if err := runB.check(t); err == nil || !strings.Contains(err.Error(), "receipt_digest") {
+		t.Fatalf("an audit bound to run A's receipt backed run B's receipt: %v", err)
+	}
+}
+
 func TestVerifyDigestsOfTheFileBytes(t *testing.T) {
 	f := newFixture(t)
+	f.bind(t)
 	r, a := marshal(t, f.receipt), marshal(t, f.audit)
 	if err := f.check(t); err != nil {
 		t.Fatal(err)
@@ -202,6 +243,7 @@ func TestVerifyDigestsOfTheFileBytes(t *testing.T) {
 
 func TestVerifyRefusesAmbiguousJSON(t *testing.T) {
 	f := newFixture(t)
+	f.bind(t)
 	good := marshal(t, f.audit)
 	for name, bad := range map[string][]byte{
 		"duplicate member":  bytes.Replace(good, []byte(`"provider": "openrouter",`), []byte(`"provider": "openrouter", "provider": "fake",`), 1),

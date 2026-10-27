@@ -491,8 +491,10 @@ func signAndVerify(t *testing.T, m evalcorpus.Manifest, receipt, audit []byte, o
 	rdoc["dry_run"] = false
 	rdoc["live_run"] = true
 	rdoc["provider"] = "openrouter"
-	signedAudit, _ := json.MarshalIndent(doc, "", "  ")
 	signedReceipt, _ := json.MarshalIndent(rdoc, "", "  ")
+	// The dry run is turned into a live-shaped one by editing the receipt, so the audit must name the edited bytes.
+	doc["receipt_digest"] = panelaudit.Digest(signedReceipt)
+	signedAudit, _ := json.MarshalIndent(doc, "", "  ")
 	for i := range m.Cases {
 		m.Cases[i].Signoff = evalcorpus.Signoff{Reviewer: "advisor", Human: true, Decision: "accept"}
 		if listed[m.Cases[i].CaseID] {
@@ -619,4 +621,154 @@ func TestReportKeepsLargeSeeds(t *testing.T) {
 	if got.Seeds != receipt.Seeds || !bytes.Contains(raw, []byte(`"note": "retained"`)) {
 		t.Fatalf("report changed seed or dropped metadata: %s", raw)
 	}
+}
+
+// completedDryRun runs the fake provider over the pilot corpus into a new directory.
+func completedDryRun(t *testing.T) (out string, rerun func() error) {
+	t.Helper()
+	out = t.TempDir()
+	rerun = func() error {
+		_, err := newRunner(t, testConfig(t, 10), out, fakeProvider{}, "fake").run(context.Background())
+		return err
+	}
+	if err := rerun(); err != nil {
+		t.Fatal(err)
+	}
+	return out, rerun
+}
+
+// assertAuditNamesReceipt checks that audit.json records the digest of the receipt.json on disk.
+func assertAuditNamesReceipt(t *testing.T, out string) {
+	t.Helper()
+	receipt, err := os.ReadFile(filepath.Join(out, "receipt.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(out, "audit.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var audit struct {
+		ReceiptDigest string `json:"receipt_digest"`
+	}
+	if err := json.Unmarshal(raw, &audit); err != nil {
+		t.Fatal(err)
+	}
+	if want := panelaudit.Digest(receipt); audit.ReceiptDigest != want {
+		t.Fatalf("audit.json receipt_digest %q; want the digest %s of the receipt.json written", audit.ReceiptDigest, want)
+	}
+}
+
+func TestAuditNamesTheReceiptWrittenWithIt(t *testing.T) {
+	out, rerun := completedDryRun(t)
+	assertAuditNamesReceipt(t, out)
+	// A rerun writes a new receipt (new finished_at), and the rebuilt audit names that one.
+	if err := rerun(); err != nil {
+		t.Fatal(err)
+	}
+	assertAuditNamesReceipt(t, out)
+}
+
+func TestRerunRefusesToEraseAdvisorSignoffs(t *testing.T) {
+	out, rerun := completedDryRun(t)
+	// An audit nobody has signed is rebuilt.
+	if err := rerun(); err != nil {
+		t.Fatalf("rerun over an unsigned audit: %v", err)
+	}
+	unsigned, err := os.ReadFile(filepath.Join(out, "audit.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	read := func(name string) []byte {
+		raw, err := os.ReadFile(filepath.Join(out, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return raw
+	}
+	for _, tc := range []struct {
+		name string
+		edit func(signoff map[string]any)
+	}{
+		{"decision", func(s map[string]any) { s["decision"] = "accept" }},
+		{"resolution", func(s map[string]any) { s["resolution"] = "defensible" }},
+		{"identity", func(s map[string]any) { s["identity"] = "advisor" }},
+		{"signed_at", func(s map[string]any) { s["signed_at"] = "2026-10-25T10:00:00+02:00" }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var doc map[string]any
+			if err := json.Unmarshal(unsigned, &doc); err != nil {
+				t.Fatal(err)
+			}
+			tc.edit(doc["cases"].([]any)[0].(map[string]any)["advisor_signoff"].(map[string]any))
+			signed, _ := json.MarshalIndent(doc, "", "  ")
+			if err := os.WriteFile(filepath.Join(out, "audit.json"), signed, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			before := map[string][]byte{}
+			for _, name := range []string{"audit.json", "receipt.json", "stats.json"} {
+				before[name] = read(name)
+			}
+			if err := rerun(); err == nil || !strings.Contains(err.Error(), "advisor sign-offs") {
+				t.Fatalf("rerun over a signed audit: %v", err)
+			}
+			for name, want := range before {
+				if !bytes.Equal(read(name), want) {
+					t.Errorf("%s changed although the rerun was refused", name)
+				}
+			}
+		})
+	}
+	t.Run("signed audit with a missing rating makes no call", func(t *testing.T) {
+		var doc map[string]any
+		if err := json.Unmarshal(unsigned, &doc); err != nil {
+			t.Fatal(err)
+		}
+		doc["cases"].([]any)[0].(map[string]any)["advisor_signoff"].(map[string]any)["decision"] = "accept"
+		signed, _ := json.MarshalIndent(doc, "", "  ")
+		if err := os.WriteFile(filepath.Join(out, "audit.json"), signed, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		lines := bytes.SplitAfter(bytes.TrimSuffix(read("ratings.jsonl"), []byte("\n")), []byte("\n"))
+		if err := os.WriteFile(filepath.Join(out, "ratings.jsonl"), bytes.Join(lines[:len(lines)-1], nil), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		calls := read("calls.jsonl")
+		if err := rerun(); err == nil || !strings.Contains(err.Error(), "advisor sign-offs") {
+			t.Fatalf("rerun over a signed audit with a missing rating: %v", err)
+		}
+		if !bytes.Equal(read("calls.jsonl"), calls) {
+			t.Fatal("rerun called a provider before refusing to erase the sign-offs")
+		}
+	})
+	t.Run("duplicate cases member hides a sign-off", func(t *testing.T) {
+		var doc map[string]any
+		if err := json.Unmarshal(unsigned, &doc); err != nil {
+			t.Fatal(err)
+		}
+		doc["cases"].([]any)[0].(map[string]any)["advisor_signoff"].(map[string]any)["decision"] = "accept"
+		signed, _ := json.Marshal(doc)
+		// A later "cases" member replaces the signed one in encoding/json.
+		ambiguous := append(bytes.TrimSuffix(signed, []byte("}")), []byte(`,"cases":[]}`)...)
+		if err := os.WriteFile(filepath.Join(out, "audit.json"), ambiguous, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := rerun(); err == nil || !strings.Contains(err.Error(), "audit.json") {
+			t.Fatalf("rerun over an audit with a duplicate cases member: %v", err)
+		}
+		if !bytes.Equal(read("audit.json"), ambiguous) {
+			t.Fatal("audit.json changed although the rerun was refused")
+		}
+	})
+	t.Run("unreadable audit", func(t *testing.T) {
+		if err := os.WriteFile(filepath.Join(out, "audit.json"), []byte("{\"cases\": ["), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := rerun(); err == nil || !strings.Contains(err.Error(), "audit.json") {
+			t.Fatalf("rerun over an audit that cannot be read: %v", err)
+		}
+		if got := read("audit.json"); string(got) != "{\"cases\": [" {
+			t.Fatalf("audit.json changed: %s", got)
+		}
+	})
 }
