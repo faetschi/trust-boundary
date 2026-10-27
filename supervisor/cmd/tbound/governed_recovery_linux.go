@@ -325,7 +325,6 @@ func prepareGovernedRecovery(ctx context.Context, request governedRecoveryReques
 			if pendingVerifier == nil {
 				return nil, workflowrecovery.ErrObservation
 			}
-			pendingVerifier.resetForReadOnlyReplay()
 			lastIndex := len(request.Transcripts) - 1
 			retirementPins := replayedProviderPins(request.Transcripts[lastIndex].Replay.Provider, lastProjection)
 			if lastProjection.Disposition == providerbridge.DispositionAwaitingGateDecision {

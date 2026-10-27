@@ -439,7 +439,6 @@ func requireReplayedDeniedBash(t *testing.T, inputs replayDeniedBashInputs, reco
 	}
 
 	// Recovery next retires the idle lineage and strictly replays the whole history again before pinning it.
-	recovered.verifier.resetForReadOnlyReplay()
 	retirementPins := replayedProviderPins(recovered.transcripts[0].Replay.Provider, provider)
 	if _, err := providerbridge.AppendIdleProviderLineageRetirement(recovered.transcripts[0].Journal,
 		retirementPins, recovered.verifier); err != nil {
