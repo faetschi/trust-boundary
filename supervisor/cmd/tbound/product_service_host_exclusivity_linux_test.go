@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
-	"path"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
@@ -23,9 +22,12 @@ import (
 // Product setup writes state_root = TurnsDir and keeps the projects in ProjectsDir, a sibling of TurnsDir.
 func TestProductServiceHostStartsWithProductSetupLayout(t *testing.T) {
 	f := newProductHostFixture(t, false)
-	f.cfg.StateRoot = filepath.Join(f.stateRoot, path.Base(productsetup.TurnsDir))
-	if err := os.Mkdir(f.cfg.StateRoot, 0700); err != nil {
-		t.Fatal(err)
+	state := filepath.Dir(f.cfg.StateRoot)
+	for got, want := range map[string]string{f.cfg.StateRoot: productsetup.TurnsDir, f.projectDir: productsetup.ProjectsDir + "/" + productDriverProject,
+		f.cfg.CatalogPath: productsession.DefaultCatalogPath} {
+		if got != setupLayout(state, want) {
+			t.Fatalf("the fixture puts %s where product setup puts %s", got, want)
+		}
 	}
 	opts := f.options()
 	opts.Host = newProductServiceHostProfile(f.cfg)
@@ -37,18 +39,18 @@ func TestProductServiceHostStartsWithProductSetupLayout(t *testing.T) {
 }
 
 func TestProductServiceHostRefusesWritableManagedAncestry(t *testing.T) {
-	for _, target := range []string{"root", "ancestor", "foreign root", "foreign ancestor", "symlink", "outside state"} {
+	for _, target := range []string{"root", "ancestor", "foreign root", "foreign ancestor", "symlink"} {
 		t.Run(target, func(t *testing.T) {
 			f := newProductHostFixture(t, false)
 			path := f.projectDir
 			if strings.Contains(target, "ancestor") {
-				path = filepath.Dir(filepath.Dir(path))
+				path = filepath.Dir(path)
 			}
 			switch target {
 			case "foreign root", "foreign ancestor":
 				spoofProductDirectoryOwner(t, path).Store(true)
 			case "symlink":
-				path = filepath.Dir(filepath.Dir(f.projectDir))
+				path = filepath.Dir(f.projectDir)
 				if err := os.Rename(path, path+"-real"); err != nil {
 					t.Fatal(err)
 				}
@@ -56,11 +58,6 @@ func TestProductServiceHostRefusesWritableManagedAncestry(t *testing.T) {
 					t.Fatal(err)
 				}
 				t.Cleanup(func() { _ = os.Remove(path); _ = os.Rename(path+"-real", path) })
-			case "outside state":
-				f.cfg.StateRoot = filepath.Join(f.root, "other-state")
-				if err := os.Mkdir(f.cfg.StateRoot, 0700); err != nil {
-					t.Fatal(err)
-				}
 			default:
 				if err := os.Chmod(path, 0770); err != nil {
 					t.Fatal(err)
@@ -95,7 +92,7 @@ func TestProductServiceHostRefusesPublicationWithoutExclusiveManagedAncestry(t *
 			routeProductProvider(t, f, provider)
 			var foreignOwner *atomic.Bool
 			if target == "foreign ancestor" {
-				foreignOwner = spoofProductDirectoryOwner(t, filepath.Dir(filepath.Dir(f.projectDir)))
+				foreignOwner = spoofProductDirectoryOwner(t, filepath.Dir(f.projectDir))
 			}
 			opts := f.options()
 			opts.Host = newProductServiceHostProfile(f.cfg)
@@ -108,10 +105,10 @@ func TestProductServiceHostRefusesPublicationWithoutExclusiveManagedAncestry(t *
 			events, _ := f.observeUntil(f.principalA, session.ID, 0, kindIs(productprotocol.EventTurnAwaitingReview))
 			path := f.projectDir
 			if target == "ancestor" {
-				path = filepath.Dir(filepath.Dir(path))
+				path = filepath.Dir(path)
 			}
 			if target == "state" {
-				path = f.stateRoot
+				path = filepath.Dir(f.stateRoot)
 			}
 			if foreignOwner != nil {
 				foreignOwner.Store(true)

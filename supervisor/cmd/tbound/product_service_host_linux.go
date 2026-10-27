@@ -169,7 +169,7 @@ func productHostXattr(cfg productServiceConfig, env *productTurnEnv) (workspace.
 			return none, err
 		}
 		if projectID != "" {
-			if err := validateProductManagedRoot(env.StateRoot, path, dir); err != nil {
+			if err := validateProductManagedRoot(path, dir); err != nil {
 				return none, errors.Join(err, dir.Close())
 			}
 		}

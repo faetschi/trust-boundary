@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -26,6 +27,7 @@ import (
 	"tbound/supervisor/internal/privategit"
 	"tbound/supervisor/internal/productprotocol"
 	"tbound/supervisor/internal/productsession"
+	"tbound/supervisor/internal/productsetup"
 	"tbound/supervisor/internal/projectbundle"
 	"tbound/supervisor/internal/providerbridge"
 	"tbound/supervisor/internal/sessionlaunch"
@@ -106,11 +108,12 @@ func newProductServiceFixtureWithReviewTimeout(t *testing.T, reviewTimeoutSecond
 		_ = git.Close()
 	}
 	root := privateGovernedTestRoot(t)
-	f := &productServiceFixture{t: t, root: root, projectDir: filepath.Join(root, "state", "projects", "managed", "project"), stateRoot: filepath.Join(root, "state"),
+	state := filepath.Join(root, "state")
+	f := &productServiceFixture{t: t, root: root, projectDir: setupLayout(state, productsetup.ProjectsDir+"/"+productDriverProject), stateRoot: setupLayout(state, productsetup.TurnsDir),
 		socketPath: filepath.Join(root, "run", "product.sock"), principalA: productsession.Principal(os.Getuid())}
 	f.principalB, f.unregistered = f.principalA+1, f.principalA+2
 	f.uid.Store(int64(f.principalA))
-	for _, dir := range []string{f.stateRoot, filepath.Dir(filepath.Dir(f.projectDir)), filepath.Dir(f.projectDir), filepath.Join(root, "reg")} {
+	for _, dir := range []string{state, f.stateRoot, filepath.Dir(f.projectDir), filepath.Join(root, "reg")} {
 		if err := os.Mkdir(dir, 0o700); err != nil {
 			t.Fatal(err)
 		}
@@ -159,7 +162,7 @@ func newProductServiceFixtureWithReviewTimeout(t *testing.T, reviewTimeoutSecond
 	}
 	f.cfg = productServiceConfig{SchemaVersion: productServiceConfigSchema, RegistrationPath: filepath.Join(reg, "registration.json"),
 		RegistrationSignaturePath: filepath.Join(reg, "registration.json.sig"), RegistrationPublicKeyPath: filepath.Join(reg, "registration.pub"),
-		CatalogPath: filepath.Join(f.stateRoot, "catalog.jsonl"), StateRoot: f.stateRoot, SocketPath: f.socketPath,
+		CatalogPath: setupLayout(state, productsession.DefaultCatalogPath), StateRoot: f.stateRoot, SocketPath: f.socketPath,
 		WorkerMode: productServiceWorkerSupervisorLoop, Projects: map[string]string{productDriverProject: f.projectDir}, ShutdownGraceSeconds: 20}
 	return f
 }
@@ -362,4 +365,10 @@ func serviceWriteScript(prefix, path, content, answer string, withDenial bool) *
 // serviceAnswerScript answers without a tool call.
 func serviceAnswerScript(prefix, answer string) *productDriverScript {
 	return &productDriverScript{turns: []providerbridge.ScriptTurn{{ResponseID: prefix + "-response-final", Text: answer}}}
+}
+
+// setupLayout places a product setup path under a test state directory, so the fixture lays out the
+// turns, the projects and the catalog the way an install does.
+func setupLayout(state, path string) string {
+	return filepath.Join(state, strings.TrimPrefix(path, productsetup.StateDir))
 }

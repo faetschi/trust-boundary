@@ -14,11 +14,9 @@ import (
 
 var productManagedRootStat = unix.Fstat
 
-func validateProductManagedRoot(stateRoot, projectPath string, root *os.File) error {
-	if !filepath.IsAbs(stateRoot) || filepath.Clean(stateRoot) != stateRoot ||
-		!filepath.IsAbs(projectPath) || filepath.Clean(projectPath) != projectPath ||
-		!strings.HasPrefix(projectPath, stateRoot+"/") {
-		return errors.New("managed project exclusivity requires a project beneath the product state directory")
+func validateProductManagedRoot(projectPath string, root *os.File) error {
+	if !filepath.IsAbs(projectPath) || filepath.Clean(projectPath) != projectPath {
+		return errors.New("managed project exclusivity requires an absolute clean project path")
 	}
 	const flags = unix.O_RDONLY | unix.O_DIRECTORY | unix.O_NOFOLLOW | unix.O_CLOEXEC
 	fd, err := unix.Open("/", flags, 0)
