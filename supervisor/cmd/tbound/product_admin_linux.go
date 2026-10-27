@@ -35,6 +35,9 @@ const productAdminUsage = `Usage (run setup, update, rollback and uninstall as r
 calls are only recorded, never executed. --dry-run writes and executes nothing and prints the plan.
 setup is idempotent ("unchanged" on a rerun), refuses any thesis path, and fails before any change
 on a host that does not meet the prerequisites (use the qualified VM option).
+setup installs its own executable by default. An explicit --binary is another file, so it needs --manifest and --signature
+(the same files update takes) and the release_public_key of the setup config or the key already pinned; with no key
+setup refuses any binary but its own executable.
 update installs only a binary that a signed release manifest lists (its file name, size and SHA-256), under
 the publisher key that setup pinned from release_public_key. --manifest and --signature are the files
 ` + "`tbound release manifest` and `tbound release sign`" + ` made. The candidate is copied to a root-owned staging file,

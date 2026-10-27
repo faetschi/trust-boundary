@@ -205,6 +205,10 @@ func (h *host) desiredFiles(cfg Config, binary Candidate) (map[string][]byte, Re
 		if files[BinaryPath], err = readBounded(binary.Binary, maxBinaryBytes); err != nil {
 			return nil, RegistrationSummary{}, err
 		}
+		// The bytes that were authenticated are the bytes that will be installed, so a swap of the file changes nothing.
+		if err := h.authenticateSetupBinary(binary, files[BinaryPath], files[ReleasePublicKeyPath]); err != nil {
+			return nil, RegistrationSummary{}, err
+		}
 		// The format is read from the bytes that will be installed, so a swap of the file cannot change it.
 		if err := h.checkSetupBinaryFormat(files[BinaryPath], binary.Binary); err != nil {
 			return nil, RegistrationSummary{}, err

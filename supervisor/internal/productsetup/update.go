@@ -3,6 +3,7 @@ package productsetup
 import (
 	"bytes"
 	"cmp"
+	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -173,25 +174,42 @@ func (h *host) protectedBinaryDirectory() error {
 
 // publisherManifest verifies the candidate's manifest and signature under the pinned publisher key.
 func (h *host) publisherManifest(candidate Candidate) (releasetrust.Manifest, error) {
+	key, err := h.pinnedPublisherKey()
+	if errors.Is(err, os.ErrNotExist) {
+		return releasetrust.Manifest{}, refuse("no publisher key is pinned (%s is missing), so no candidate binary can be authenticated; set release_public_key in the setup config and rerun `tbound product setup --replace`", ReleasePublicKeyPath)
+	} else if err != nil {
+		return releasetrust.Manifest{}, err
+	}
+	return h.verifiedManifest(candidate, key)
+}
+
+// pinnedPublisherKey reads the key that setup pinned, below a protected directory and through a no-follow
+// descriptor. A missing key is os.ErrNotExist.
+func (h *host) pinnedPublisherKey() (ed25519.PublicKey, error) {
 	var keyFile *os.File
 	err := h.protectedDirectory(filepath.Dir(ReleasePublicKeyPath))
 	if err == nil {
 		keyFile, err = h.managedSource(ReleasePublicKeyPath, ownRoot, 0o644)
 	}
 	if errors.Is(err, os.ErrNotExist) {
-		return releasetrust.Manifest{}, refuse("no publisher key is pinned (%s is missing), so no candidate binary can be authenticated; set release_public_key in the setup config and rerun `tbound product setup --replace`", ReleasePublicKeyPath)
+		return nil, err
 	} else if err != nil {
-		return releasetrust.Manifest{}, refuse("the pinned publisher key %s cannot be used: %v", ReleasePublicKeyPath, err)
+		return nil, refuse("the pinned publisher key %s cannot be used: %v", ReleasePublicKeyPath, err)
 	}
 	defer keyFile.Close()
 	content, err := io.ReadAll(io.LimitReader(keyFile, 1<<10))
 	if err != nil {
-		return releasetrust.Manifest{}, err
+		return nil, err
 	}
 	key, err := releasetrust.ParsePublicKey(content)
 	if err != nil {
-		return releasetrust.Manifest{}, refuse("the pinned publisher key %s is malformed: %v", ReleasePublicKeyPath, err)
+		return nil, refuse("the pinned publisher key %s is malformed: %v", ReleasePublicKeyPath, err)
 	}
+	return key, nil
+}
+
+// verifiedManifest reads the candidate's manifest and signature and verifies them under key.
+func (h *host) verifiedManifest(candidate Candidate, key ed25519.PublicKey) (releasetrust.Manifest, error) {
 	manifest, err := readSource(candidate.Manifest)
 	if err != nil {
 		return releasetrust.Manifest{}, refuse("cannot read the release manifest: %v", err)
