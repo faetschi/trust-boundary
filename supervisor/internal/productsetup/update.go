@@ -99,6 +99,9 @@ func Update(env Env, newBinary string) (Report, error) {
 		return *h.rep, err
 	}
 	defer h.dir.Close()
+	if err := h.checkInstalledSelfTestClient(); err != nil {
+		return *h.rep, err
+	}
 	source, err := openSource(newBinary)
 	if err != nil {
 		return *h.rep, err
@@ -235,6 +238,9 @@ func Rollback(env Env) (Report, error) {
 		return *h.rep, err
 	}
 	defer h.dir.Close()
+	if err := h.checkInstalledSelfTestClient(); err != nil {
+		return *h.rep, err
+	}
 	return h.rollback()
 }
 

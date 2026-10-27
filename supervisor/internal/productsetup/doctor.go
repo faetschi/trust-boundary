@@ -189,6 +189,9 @@ func (h *host) runSelfTest() (string, error) {
 	if err != nil || cfg.SelfTest == nil {
 		return "", ErrSelfTestNotConfigured
 	}
+	if err := cfg.SelfTest.validateClient(); err != nil {
+		return "", fmt.Errorf("%w: %v", ErrSelfTest, err)
+	}
 	if h.env.RunSelfTest == nil {
 		return "", fmt.Errorf("%w: no way to reach the service from this root", ErrSelfTest)
 	}
@@ -209,4 +212,31 @@ func parseInstalled(data []byte) (Config, error) {
 		return Config{}, refuse("the installed setup record is invalid")
 	}
 	return c, nil
+}
+
+// checkInstalledSelfTestClient refuses, before anything changes, an update or rollback whose self-test
+// could not authenticate: the installed record names a self-test whose client UID is missing, or is not
+// an allowed principal of the installed registration. A record without a self-test is not checked, and
+// the run says so after the swap.
+func (h *host) checkInstalledSelfTestClient() error {
+	data, err := readSource(h.real(SetupConfigPath))
+	if err != nil {
+		return nil
+	}
+	cfg, err := parseInstalled(data)
+	if err != nil || cfg.SelfTest == nil {
+		return nil
+	}
+	const fix = "; rerun `tbound product setup --replace` with a registered client UID in self_test.client_uid"
+	if err := cfg.SelfTest.validateClient(); err != nil {
+		return refuse("%v%s", err, fix)
+	}
+	installed, err := h.installedRegistration()
+	if err != nil {
+		return refuse("the installed registration cannot be verified, so the self-test client UID %d cannot be validated: %v", cfg.SelfTest.ClientUID, err)
+	}
+	if err := cfg.SelfTest.checkRegistered(installed.Principals); err != nil {
+		return refuse("%v%s", err, fix)
+	}
+	return nil
 }

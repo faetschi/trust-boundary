@@ -54,6 +54,11 @@ func Setup(env Env, cfg Config, binary string) (Report, error) {
 	if err != nil {
 		return *h.rep, err
 	}
+	if cfg.SelfTest != nil {
+		if err := cfg.SelfTest.checkRegistered(summary.Principals); err != nil {
+			return *h.rep, err
+		}
+	}
 	accounts, err := h.planAccounts(cfg)
 	if err != nil {
 		return *h.rep, err
@@ -350,17 +355,11 @@ func (h *host) planAccounts(cfg Config) ([]planned, error) {
 // runs, so nothing could settle those turns afterwards. It runs before the first write, in a dry run too,
 // and only when an installed registration and a catalog exist.
 func (h *host) refuseRegistrationChangeWhileTurnsAreUnsettled(next RegistrationSummary) error {
-	read := func(logical string) ([]byte, error) { return readSource(h.real(logical)) }
-	registration, regErr := read(RegistrationPath)
-	if errors.Is(regErr, os.ErrNotExist) {
+	if _, err := os.Lstat(h.real(RegistrationPath)); errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
-	signature, sigErr := read(RegistrationSignaturePath)
-	key, keyErr := read(RegistrationPublicKeyPath)
-	if regErr == nil && sigErr == nil && keyErr == nil {
-		if installed, err := h.env.VerifyRegistration(registration, signature, key); err == nil && installed.Digest == next.Digest {
-			return nil
-		}
+	if installed, err := h.installedRegistration(); err == nil && installed.Digest == next.Digest {
+		return nil
 	}
 	if _, err := os.Lstat(h.real(CatalogPath)); errors.Is(err, os.ErrNotExist) {
 		return nil
@@ -382,4 +381,20 @@ func (h *host) refuseRegistrationChangeWhileTurnsAreUnsettled(next RegistrationS
 	}
 	return refuse("the replacement registration would be refused at the next start while these turns are unsettled under the installed one: %s. Start the service under the installed registration so its restart reconciliation settles them, stop it, and retry (a turn with an unknown outcome stays blocked); nothing was changed",
 		strings.Join(names, ", "))
+}
+
+// installedRegistration verifies the installed registration like the service does.
+func (h *host) installedRegistration() (RegistrationSummary, error) {
+	if h.env.VerifyRegistration == nil {
+		return RegistrationSummary{}, errors.New("no registration verifier configured")
+	}
+	var parts [3][]byte
+	for i, logical := range []string{RegistrationPath, RegistrationSignaturePath, RegistrationPublicKeyPath} {
+		data, err := readSource(h.real(logical))
+		if err != nil {
+			return RegistrationSummary{}, err
+		}
+		parts[i] = data
+	}
+	return h.env.VerifyRegistration(parts[0], parts[1], parts[2])
 }

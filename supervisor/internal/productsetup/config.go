@@ -161,6 +161,9 @@ func (c Config) validate() error {
 		if t.TimeoutSeconds < 0 || t.TimeoutSeconds > maxSelfTestSecs {
 			return refuse("self_test.timeout_seconds must be at most %d", maxSelfTestSecs)
 		}
+		if err := t.validateClient(); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -226,6 +229,26 @@ func checkProductPath(field, p, root string) error {
 	}
 	if !PathInside(p, root) {
 		return refuse("%s must be at or below %s", field, root)
+	}
+	return nil
+}
+
+// validateClient requires an explicit client UID. Zero is root, which is not a registered principal, and is
+// also what an unset field decodes to.
+func (t SelfTest) validateClient() error {
+	if t.ClientUID <= 0 {
+		return refuse("self_test.client_uid is required: the registered client UID the self-test runs as (not 0, which is root)")
+	}
+	return nil
+}
+
+// checkRegistered also requires the UID to be an allowed principal of the registration.
+func (t SelfTest) checkRegistered(principals []int64) error {
+	if err := t.validateClient(); err != nil {
+		return err
+	}
+	if !slices.Contains(principals, int64(t.ClientUID)) {
+		return refuse("self_test.client_uid %d is not an allowed principal of the registration (allowed: %v)", t.ClientUID, principals)
 	}
 	return nil
 }

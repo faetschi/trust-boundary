@@ -276,7 +276,7 @@ func TestDoctorReportsAdvisoryChecksNeverKeysAndOnlyASelfTestEstablishesReadines
 		t.Fatalf("an unconfigured self-test must be reported as such:\n%s", notConfigured)
 	}
 
-	f.cfg.SelfTest = &SelfTest{ProjectID: "alpha", ProviderProfile: "opencode-go-engineering"}
+	f.cfg.SelfTest = &SelfTest{ProjectID: "alpha", ProviderProfile: "opencode-go-engineering", ClientUID: 1000}
 	f.env.Replace = true
 	if _, err := f.setup(); err != nil {
 		t.Fatal(err)
@@ -313,7 +313,7 @@ func TestDoctorFlagsAWeakenedModeAndABadUnit(t *testing.T) {
 
 func TestInstalledSetupRecordCarriesNoSourcePaths(t *testing.T) {
 	f := newFixture(t)
-	f.cfg.SelfTest = &SelfTest{ProjectID: "alpha", ProviderProfile: "p"}
+	f.cfg.SelfTest = &SelfTest{ProjectID: "alpha", ProviderProfile: "p", ClientUID: 1000}
 	f.installed()
 	cfg, err := parseInstalled([]byte(f.read(SetupConfigPath)))
 	if err != nil || cfg.SelfTest == nil || cfg.SelfTest.ProjectID != "alpha" || cfg.Registration != "" {
