@@ -128,6 +128,9 @@ func Update(env Env, newBinary string) (Report, error) {
 // An interruption leaves the binary either old or new, and the last-known-good beside it. Rerunning the
 // command converges, and the service is started again when it was left stopped.
 func (h *host) replaceBinary(source *os.File) (Report, error) {
+	if err := h.finishRestoration(); err != nil {
+		return *h.rep, err
+	}
 	current, err := h.managedSource(BinaryPath, ownRoot, 0o755)
 	if err != nil {
 		return *h.rep, refuse("no safe tbound binary is installed at %s; run `tbound product setup` first: %v", BinaryPath, err)
@@ -252,6 +255,9 @@ func Rollback(env Env) (Report, error) {
 // Any other pair means the record is stale, and it is dropped. The record is removed once the restored
 // binary started and passed, or was restored.
 func (h *host) rollback() (Report, error) {
+	if err := h.finishRestoration(); err != nil {
+		return *h.rep, err
+	}
 	current, err := h.managedSource(BinaryPath, ownRoot, 0o755)
 	if err != nil {
 		return *h.rep, refuse("no safe tbound binary is installed at %s; run `tbound product setup` first: %v", BinaryPath, err)
@@ -318,11 +324,13 @@ func (h *host) rollback() (Report, error) {
 	return *h.rep, h.startAndTest(backup)
 }
 
-// rollbackIntent is the persisted state of a rollback in progress: the digests (sha256:HEX) of the
-// binary being restored and of the binary being rolled back from.
+// rollbackIntent is the persisted state of a rollback or restoration in progress. A rollback records the
+// digests (sha256:HEX) of the binary being restored and of the binary being rolled back from. A restoration
+// (after a failed start or self-test) records only Target, the last-known-good binary being put back.
 type rollbackIntent struct {
-	Target   string `json:"target"`
-	Previous string `json:"previous"`
+	Target    string `json:"target"`
+	Previous  string `json:"previous,omitempty"`
+	Restoring bool   `json:"restoring,omitempty"`
 }
 
 func (h *host) readRollbackIntent() (rollbackIntent, bool, error) {
@@ -338,7 +346,7 @@ func (h *host) readRollbackIntent() (rollbackIntent, bool, error) {
 	var record rollbackIntent
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
-	if err != nil || decoder.Decode(&record) != nil || !sha256Digest.MatchString(record.Target) || !sha256Digest.MatchString(record.Previous) {
+	if err != nil || decoder.Decode(&record) != nil || !sha256Digest.MatchString(record.Target) || (!record.Restoring && !sha256Digest.MatchString(record.Previous)) {
 		return rollbackIntent{}, false, refuse("the rollback record %s is unreadable; check which binary is installed, then remove it", rollbackIntentPath)
 	}
 	return record, true, nil
@@ -412,11 +420,63 @@ func (h *host) restore(cause error, backup string) error {
 		return errors.Join(cause, fmt.Errorf("cannot restore the last-known-good binary: %w", err))
 	}
 	defer source.Close()
-	err = errors.Join(cause, h.command("systemctl", "stop", UnitName), h.copyAtomic(source, BinaryPath, 0o755))
+	digest, err := fileDigest(source)
+	if err != nil {
+		return errors.Join(cause, err)
+	}
+	// The restoration is recorded first. A process that ends below leaves both binaries equal and the service
+	// stopped, and the next update or rollback finishes it (finishRestoration) before it compares anything.
+	failed := errors.Join(h.writeRollbackIntent(rollbackIntent{Target: "sha256:" + digest, Restoring: true}),
+		h.command("systemctl", "stop", UnitName), h.copyAtomic(source, BinaryPath, 0o755))
 	interrupt("restored")
-	err = errors.Join(err, h.dropRollbackIntent(), h.command("systemctl", "start", UnitName))
+	failed = errors.Join(failed, h.command("systemctl", "start", UnitName))
+	if failed == nil {
+		failed = h.dropRollbackIntent()
+	}
 	h.step("swap", BinaryPath, "updated", "rolled back to "+LastKnownGoodPath)
-	return fmt.Errorf("%w; rolled back to the last-known-good binary (catalog backup: %s)", err, backup)
+	return fmt.Errorf("%w; rolled back to the last-known-good binary (catalog backup: %s)", errors.Join(cause, failed), backup)
+}
+
+// finishRestoration finishes a restoration that an interrupted update or rollback recorded: it puts the
+// last-known-good binary back when the copy had not completed, starts the service, runs the self-test and
+// clears the record. Without such a record it does nothing. A restoration leaves the installed binary equal
+// to the last-known-good one, so an update or rollback must call this before it compares the two.
+func (h *host) finishRestoration() error {
+	record, found, err := h.readRollbackIntent()
+	if err != nil || !found || !record.Restoring {
+		return err
+	}
+	if h.env.DryRun {
+		return refuse("an interrupted restoration of %s is recorded in %s; a dry run cannot plan past it: rerun without --dry-run to finish it", record.Target[:23], rollbackIntentPath)
+	}
+	fallback, err := h.managedSource(LastKnownGoodPath, ownRoot, 0o755)
+	if err != nil {
+		return refuse("an interrupted restoration is recorded but the last-known-good binary is unusable: %v", err)
+	}
+	defer fallback.Close()
+	kept, err := fileDigest(fallback)
+	if err != nil {
+		return err
+	}
+	if "sha256:"+kept != record.Target {
+		return refuse("the restoration record names %s but the last-known-good binary is sha256:%s; check which binary is installed, then remove %s", record.Target, kept, rollbackIntentPath)
+	}
+	h.note("finishing the interrupted restoration of %s first", record.Target[:23])
+	current, err := h.managedSource(BinaryPath, ownRoot, 0o755)
+	if err != nil {
+		return refuse("no safe tbound binary is installed at %s; run `tbound product setup` first: %v", BinaryPath, err)
+	}
+	defer current.Close()
+	installed, err := fileDigest(current)
+	if err != nil {
+		return err
+	}
+	if "sha256:"+installed != record.Target {
+		if err := errors.Join(h.command("systemctl", "stop", UnitName), h.copyAtomic(fallback, BinaryPath, 0o755)); err != nil {
+			return fmt.Errorf("finish the restoration: %w", err)
+		}
+	}
+	return h.startAndTest("kept from the interrupted restoration")
 }
 
 // backupCatalog copies the catalog journal to BackupsDir under a name that carries its digest, and
