@@ -439,3 +439,36 @@ func TestSetupRefusesHostInputsThatCollideWithPathsItOrAnUpdateWrites(t *testing
 		t.Fatalf("two projects sharing one policy file are fine: %v", err)
 	}
 }
+
+func TestSetupRefusesHostInputsWhosePathHasASymlinkComponent(t *testing.T) {
+	for name, mutate := range map[string]func(*Config){
+		"calibration below an alias of the config directory": func(c *Config) { c.XattrCalibrationPath = ConfigDir + "/alias/service.json" },
+		"calibration signature is a symlink":                 func(c *Config) { c.XattrCalibrationPath = ConfigDir + "/calibration.json" },
+		"policy below an alias of the config directory":      func(c *Config) { c.GatePolicyPaths["alpha"] = ConfigDir + "/alias/setup.json" },
+		"git below an alias of the binary directory":         func(c *Config) { c.GitPath = BinaryDir + "/alias/tbound" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newFixture(t)
+			for _, dir := range []string{ConfigDir, BinaryDir} {
+				if err := os.MkdirAll(f.path(dir), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Symlink(".", f.path(dir+"/alias")); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := os.Symlink("alias", f.path(ConfigDir+"/calibration.json.sig")); err != nil {
+				t.Fatal(err)
+			}
+			mutate(&f.cfg)
+			if _, err := f.setup(); !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "symlink") {
+				t.Fatalf("a host input path through a symlink was not refused: %v", err)
+			}
+			for _, written := range []string{ServiceConfigPath, SetupConfigPath, BinaryPath} {
+				if _, err := os.Lstat(f.path(written)); err == nil {
+					t.Fatalf("a refused setup wrote %s", written)
+				}
+			}
+		})
+	}
+}
