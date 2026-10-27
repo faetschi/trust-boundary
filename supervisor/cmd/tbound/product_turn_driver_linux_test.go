@@ -126,7 +126,7 @@ func newScopedProductDriverFixture(t *testing.T, mode string, scope *productsess
 // newBashProductDriverFixture is newScopedProductDriverFixture for a project whose policy also allows
 // Bash (bashPaths non-nil), registered with those exact output paths, which a product scope ignores.
 func newBashProductDriverFixture(t *testing.T, mode string, scope *productsession.ProductScope, readOnly bool, bashPaths []string,
-	seed func(projectDir string)) *productDriverFixture {
+	seed func(projectDir string), allowEdit ...bool) *productDriverFixture {
 	t.Helper()
 	root := privateGovernedTestRoot(t)
 	projectDir, stateRoot := filepath.Join(root, "project"), filepath.Join(root, "state")
@@ -144,7 +144,7 @@ func newBashProductDriverFixture(t *testing.T, mode string, scope *productsessio
 	if err := os.Mkdir(fence, 0o755); err != nil || os.Chmod(fence, 0o755) != nil {
 		t.Fatal(err)
 	}
-	f := openBashProductDriverFixture(t, root, scope, bashPaths)
+	f := openBashProductDriverFixture(t, root, scope, bashPaths, allowEdit...)
 	session, replayed, err := f.env.Catalog.CreateSession(f.principal, productsession.CreateSessionRequest{ProjectID: productDriverProject,
 		ProviderProfile: productDriverProfile, PublicationMode: mode, Budget: f.env.Registration.Limits.Session, RequestKey: "create-1",
 		ReadOnly: readOnly}, f.measure(t))
@@ -168,11 +168,14 @@ func openProductDriverFixtureWithScope(t *testing.T, root string, scope *product
 
 // openBashProductDriverFixture is openProductDriverFixtureWithScope for a policy that also allows Bash
 // when bashPaths is non-nil. The env then builds the development command runner and its history.
-func openBashProductDriverFixture(t *testing.T, root string, scope *productsession.ProductScope, bashPaths []string) *productDriverFixture {
+func openBashProductDriverFixture(t *testing.T, root string, scope *productsession.ProductScope, bashPaths []string, allowEdit ...bool) *productDriverFixture {
 	t.Helper()
 	projectDir, stateRoot := filepath.Join(root, "project"), filepath.Join(root, "state")
 	rules := []gate.Rule{
 		{Tool: "read", Effect: gate.EffectAllow}, {Tool: "write", Effect: gate.EffectAllow}, {Tool: "edit", Effect: gate.EffectDeny},
+	}
+	if len(allowEdit) > 0 && allowEdit[0] {
+		rules[2].Effect = gate.EffectAllow
 	}
 	registeredBash := []string{}
 	if bashPaths != nil {
@@ -525,7 +528,7 @@ func TestProductTurnDriverRecordsUnresolvedChildWorkAsUnknown(t *testing.T) {
 	f := newProductDriverFixture(t, productsession.PublicationAuto)
 	admission := f.submit(t, "turn-1", productDriverPromptA)
 	script := &productDriverScript{turns: []providerbridge.ScriptTurn{
-		{ResponseID: "u-response-read", CallID: "u-call-read", Tool: "read", Arguments: json.RawMessage(`{"path":"missing.txt"}`)},
+		{ResponseID: "u-response-write", CallID: "u-call-write", Tool: "write", Arguments: json.RawMessage(`{"path":"missing/file","content":"x"}`)},
 		{ResponseID: "u-response-final", Text: productDriverAnswerA},
 	}}
 	_, turn, err := f.run(t, admission, script)

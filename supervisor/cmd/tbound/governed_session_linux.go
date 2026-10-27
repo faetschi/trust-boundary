@@ -933,6 +933,18 @@ func (a *SessionOperationAuthority) resolveFromTrace(trace audit.Trace, decision
 				sequence: exchange.Turn, generation: currentGeneration, treeDigest: currentTree, exchangeSequence: record.Sequence}
 			exchangeRecords[exchange.Turn] = record
 			activeCaptureKey = key
+		case providerbridge.SoftRefusalEvent:
+			capture, ok := exchanges[activeCaptureKey]
+			_, decided := decisions[activeCaptureKey]
+			var refusal providerbridge.SoftRefusalEvidence
+			if !ok || decided || capture.generation != currentGeneration || capture.treeDigest != currentTree || decodeCanonicalGoverned(record.Event.Data, &refusal) != nil ||
+				verifyProviderEventID(record, a.conversationID, "soft-refusal", providerOrdinal) != nil {
+				return governedCapture{}, ErrGovernedSessionEvidence
+			}
+			if err := a.verifyCheckpointedSoftRefusal(trace, record, refusal, capture); err != nil {
+				return governedCapture{}, err
+			}
+			activeCaptureKey = ""
 		case "provider_gate_decision":
 			if activeCaptureKey == "" {
 				return governedCapture{}, ErrGovernedSessionEvidence

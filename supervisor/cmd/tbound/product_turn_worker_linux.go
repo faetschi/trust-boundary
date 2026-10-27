@@ -84,6 +84,19 @@ func (w *productTurnWorker) run(ctx context.Context, conversation *providerbridg
 			return work, fmt.Errorf("provider call %s did not correlate: %s", proposal.ToolCallID, matched.ReasonCode)
 		}
 		decision := gate.Evaluate(proposal, matched, policy)
+		if decision.Verdict == gate.Allow && proposal.Tool != "bash" {
+			refusal, err := durable.productPreflight(proposal)
+			if err != nil {
+				return work, err
+			}
+			if refusal != nil {
+				if err := conversation.RecordSoftRefusal(ctx, proposal, refusal.ArgumentDigest, refusal.Code, refusal.Hint, w.boundary); err != nil {
+					return work, err
+				}
+				work.toolSequence = append(work.toolSequence, proposal.Tool)
+				continue
+			}
+		}
 		if err := conversation.RecordDecision(ctx, proposal, decision); err != nil {
 			return work, err
 		}

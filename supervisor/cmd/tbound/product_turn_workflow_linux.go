@@ -533,7 +533,7 @@ func (e *productTurnEnv) composeProductTurnWorkflow(ctx context.Context, turn pr
 	if err := authority.BindInitialWorkflowPrompt(w.taskID, turn.Prompt, taskDigest); err != nil {
 		return nil, err
 	}
-	w.config = providerbridge.Config{WorkflowID: w.workflowID, ConversationID: w.conversationID, ProfileID: providerProfile,
+	w.config = providerbridge.Config{ProductSoftRefusals: true, WorkflowID: w.workflowID, ConversationID: w.conversationID, ProfileID: providerProfile,
 		InitialGenerationID: baseline.ID(), InitialTreeDigest: baseline.TreeDigest(),
 		SystemPrompt: e.SystemPrompt, DeveloperPrompt: e.DeveloperPrompt, Predecessor: predecessor}
 	return w, nil

@@ -77,6 +77,9 @@ func (e *productTurnEnv) reconcileLinkedTurn(ctx context.Context, turn productse
 	if err != nil {
 		return unknown("the retained owner checkpoint cannot be read", err)
 	}
+	if err := e.verifyRetainedSoftRefusals(turn, retained, checkpoint.Pins); err != nil {
+		return unknown("the retained soft refusal cannot be reproduced", err)
+	}
 	if err := productTurnChildResolved(bundle, checkpoint.Pins); err != nil {
 		return unknown("the retained turn has unresolved Store or workflow state", err)
 	}

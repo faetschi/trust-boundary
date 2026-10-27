@@ -167,7 +167,7 @@ func (v capturedOperationVerifier) VerifyCapturedOperation(ctx context.Context,
 		projection.HostCall.TokenUpperBound != captured.Binding.TokenUpperBound ||
 		projection.HostCallOutcomeDigest != captured.OutcomeDigest ||
 		projection.ProviderJournalRecordCount != uint64(len(providerTrace.Records)) ||
-		projection.CapturedCallCount != projection.DecisionCount || projection.DecisionCount != projection.ResultCount+1 {
+		projection.CapturedCallCount != projection.DecisionCount+projection.SoftRefusalCount || projection.DecisionCount+projection.SoftRefusalCount != projection.ResultCount+1 {
 		return errors.Join(capturedOperationObservation("pending provider projection does not match the exact host reservation and ALLOW"), err)
 	}
 	return nil
@@ -502,7 +502,7 @@ func (a *SessionOperationAuthority) buildActiveProgressPins(ctx context.Context,
 	next.ProviderProjectionCount = workflowTranscriptProjectionCount(next.ProviderTranscripts)
 	next.ProviderProjectionHead = active.ProjectionHead
 	next.ProviderDisposition = active.Disposition
-	if projection.Provider.PendingCall == nil && projection.Provider.DecisionCount == projection.Provider.ResultCount &&
+	if projection.Provider.PendingCall == nil && projection.Provider.DecisionCount+projection.Provider.SoftRefusalCount == projection.Provider.ResultCount &&
 		projection.Provider.CapturedCallCount > 0 &&
 		(next.PendingCallDisposition == workflowrecovery.PendingCallNone ||
 			next.PendingCallDisposition == workflowrecovery.PendingCallInFlight ||
@@ -558,13 +558,13 @@ func (a *SessionOperationAuthority) buildActiveProgressPins(ctx context.Context,
 			}
 			next.HostCallReservation.CapturedCall = nil
 		case workflowrecovery.CapturedCallAvailable:
-			// A released DENY leaves the conversation awaiting the model's answer to the DENY result.
+			// An unexecuted call awaits the model's next response with its capture retired.
 			if projection.Provider.Disposition != providerbridge.DispositionAwaitingHostPrompt &&
 				projection.Provider.Disposition != providerbridge.DispositionAwaitingProviderExchange ||
-				projection.Provider.DecisionCount != projection.Provider.ResultCount {
+				projection.Provider.DecisionCount+projection.Provider.SoftRefusalCount != projection.Provider.ResultCount {
 				return workflowrecovery.Pins{}, workflowrecovery.ErrObservation
 			}
-			retirementDigest, err := activeDeniedCaptureDigest(providerJournal, captured.ToolCallID)
+			retirementDigest, err := activeUnexecutedCaptureDigest(providerJournal, captured.ToolCallID)
 			if err != nil {
 				return workflowrecovery.Pins{}, err
 			}
