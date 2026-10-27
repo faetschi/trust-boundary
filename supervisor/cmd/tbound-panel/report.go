@@ -2,7 +2,9 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -55,11 +57,39 @@ func (d panelData) blindValues(c evalcorpus.Case, field string) []string {
 	return out
 }
 
+// refuseToEraseSignoffs stops a rerun from rebuilding audit.json over the advisor's decisions.
+// An existing audit that cannot be read is refused too, because it may hold a half-edited sign-off.
+func (r *runner) refuseToEraseSignoffs() error {
+	path := filepath.Join(r.out, "audit.json")
+	raw, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	var existing struct {
+		Cases []panelaudit.AuditCase `json:"cases"`
+	}
+	if err := json.Unmarshal(raw, &existing); err != nil {
+		return fmt.Errorf("%s exists but cannot be read (%w); move it aside before regenerating", path, err)
+	}
+	for _, c := range existing.Cases {
+		if c.Advisor != (panelaudit.Advisor{}) {
+			return fmt.Errorf("%s already carries advisor sign-offs (case %s); move it aside or copy the output directory before regenerating", path, c.CaseID)
+		}
+	}
+	return nil
+}
+
 // finish writes stats, receipt and audit list from whatever ratings exist, so an interrupted
 // or budget-stopped run still reports its coverage honestly.
 func (r *runner) finish(plan blindPlan) (spend, error) {
 	spent, err := loadSpend(filepath.Join(r.out, "calls.jsonl"))
 	if err != nil {
+		return spent, err
+	}
+	if err := r.refuseToEraseSignoffs(); err != nil {
 		return spent, err
 	}
 	d := panelData{r: r, ratings: map[int]map[string]map[string]rating{phaseBlind: {}, phaseChecklist: {}}}
