@@ -29,6 +29,9 @@
 # stored key and is refused without a valid signature: it never falls back to SHA256SUMS, and a
 # different --public-key is refused (uninstall first to trust another publisher). A prefix installed
 # without a key keeps the checksum-only behaviour and says so; its first signed update pins the key.
+# ROOT RUN: the marker and the pin are the trust anchors of a prefix, so a run as root refuses unless the
+# prefix (or its nearest existing ancestor) and every directory above it are root-owned and not writable
+# by group or others, and it refuses a symlinked or group/other-writable marker or pin.
 set -euo pipefail
 
 DEFAULT_VERSION="latest"
@@ -118,6 +121,29 @@ canonical_prefix() {
 }
 
 is_owned_prefix() { [ -f "$1/$MARKER" ]; }
+
+# A root run takes its trust anchors (the marker and the publisher pin) from the prefix, so the prefix
+# and every directory above it must be unwritable by anyone else. trusted_entry dies unless $1 is a real
+# (not symlinked) entry owned by root or by uid $2 (root's run passes 0) that neither group nor others write.
+trusted_entry() {
+  local p="$1" uid="$2" st owner mode
+  [ ! -L "$p" ] || die "refusing to act as root: $p is a symlink"
+  st="$(stat -c '%u %a' -- "$p" 2>/dev/null || stat -f '%u %Lp' "$p")" || die "refusing to act as root: cannot stat $p"
+  owner="${st% *}"; mode="${st#* }"
+  case " 0 $uid " in *" $owner "*) ;; *) die "refusing to act as root: $p is owned by uid $owner, not root" ;; esac
+  [ $(( 8#$mode & 022 )) -eq 0 ] || die "refusing to act as root: $p is writable by group or others (mode $mode)"
+}
+
+# require_trusted_path checks $1, or its nearest existing ancestor, and every ancestor up to / with trusted_entry.
+require_trusted_path() {
+  local p="$1" uid="$2"
+  while [ ! -e "$p" ]; do p="$(dirname "$p")"; done
+  while :; do
+    trusted_entry "$p" "$uid"
+    [ "$p" != / ] || break
+    p="$(dirname "$p")"
+  done
+}
 
 detect_os() {
   case "$(uname -s)" in
@@ -220,6 +246,7 @@ install_at() {
   if [ ! -x "$stage/bin/tbound-doctor" ]; then die "extracted archive has no bin/tbound-doctor"; fi
   if [ ! -x "$stage/bin/tbound-profile" ]; then die "extracted archive has no bin/tbound-profile"; fi
   printf 'name=tbound\nversion=%s\nprefix=%s\n' "$(json_escape "$version")" "$(json_escape "$prefix")" > "$stage/$MARKER"
+  chmod 0644 "$stage/$MARKER" # a root run refuses a marker that group or others can write, whatever the umask
   rm -rf -- "$stage/$PUBLISHER_KEY" # the pin comes only from the verified key below, never from the archive
   if [ -n "$pin_key" ]; then
     cp -- "$pin_key" "$stage/$PUBLISHER_KEY" && chmod 0644 "$stage/$PUBLISHER_KEY" || die "cannot pin the publisher key"
@@ -313,6 +340,13 @@ main() {
   done
 
   prefix="$(canonical_prefix "$prefix")"
+  if [ "$(id -u)" = 0 ]; then
+    require_trusted_path "$prefix" 0
+    local anchor
+    for anchor in "$prefix/$MARKER" "$prefix/$PUBLISHER_KEY"; do
+      if [ -e "$anchor" ] || [ -L "$anchor" ]; then trusted_entry "$anchor" 0; fi
+    done
+  fi
   if [ "$updating" = 1 ] && ! is_owned_prefix "$prefix"; then
     die "tbound is not installed at $prefix; run install first"
   fi
