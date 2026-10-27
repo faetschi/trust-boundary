@@ -79,8 +79,10 @@ func TestSetupRefusesAPublisherKeyThatIsNotAnEd25519KeyBeforeChangingAnything(t 
 
 func TestDoctorWarnsWhenNoPublisherKeyIsPinned(t *testing.T) {
 	f := newFixture(t)
-	f.cfg.ReleasePublicKey = ""
 	f.installed()
+	if err := os.Remove(f.path(ReleasePublicKeyPath)); err != nil {
+		t.Fatal(err)
+	}
 	for _, c := range Doctor(f.env, false).Checks {
 		if c.Name == "release key" {
 			if c.Status != Warn || !strings.Contains(c.Detail, "update") {
@@ -160,10 +162,12 @@ func TestUpdateAuthenticatesTheCandidateBeforeStagingInstallingOrExecutingIt(t *
 		for _, dryRun := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s, dry run %v", name, dryRun), func(t *testing.T) {
 				f := newFixture(t)
-				if !tc.pinned {
-					f.cfg.ReleasePublicKey = ""
-				}
 				f.installed()
+				if !tc.pinned {
+					if err := os.Remove(f.path(ReleasePublicKeyPath)); err != nil {
+						t.Fatal(err)
+					}
+				}
 				f.env.Turns = func() ([]OpenTurn, error) { return nil, nil }
 				runs := f.executingSelfTest()
 				f.env.DryRun = dryRun

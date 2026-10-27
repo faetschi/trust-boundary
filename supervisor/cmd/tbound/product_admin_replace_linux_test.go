@@ -73,7 +73,7 @@ func TestProductAdminSetupReplaceRefusesANewRegistrationWhileATurnIsUnresolved(t
 	before := adminTree(t, root)
 
 	for _, extra := range [][]string{{"--replace"}, {"--replace", "--dry-run"}} {
-		out, err := adminRun(append([]string{"product", "setup", "--config", config, "--root", root, "--binary", h.binary}, extra...)...)
+		out, err := h.setupAt(config, root, extra...)
 		if adminExit(err) != 2 || !strings.Contains(err.Error(), "/turn-1 (admitted)") || !strings.Contains(err.Error(), "nothing was changed") {
 			t.Fatalf("setup %v replaced the registration under an unresolved turn, or did not name it: %v\n%s", extra, err, out)
 		}
@@ -90,7 +90,7 @@ func TestProductAdminSetupReplaceRefusesANewRegistrationWhileATurnIsUnresolved(t
 	}
 
 	h.settleTurns()
-	if out, err := adminRun("product", "setup", "--config", config, "--root", root, "--binary", h.binary, "--replace"); err != nil {
+	if out, err := h.setupAt(config, root, "--replace"); err != nil {
 		t.Fatalf("the replacement was refused once no turn was unsettled: %v\n%s", err, out)
 	}
 	if now, _ := os.ReadFile(h.path(productsetup.RegistrationPath)); bytes.Equal(now, installed) {

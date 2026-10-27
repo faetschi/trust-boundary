@@ -191,7 +191,15 @@ func (h *adminHost) config(selfTest bool) string {
 }
 
 func (h *adminHost) setup(extra ...string) (string, error) {
-	return adminRun(append([]string{"product", "setup", "--config", h.config(false), "--root", h.root, "--binary", h.binary}, extra...)...)
+	return h.setupAt(h.config(false), h.root, extra...)
+}
+
+// setupAt runs `product setup` with the host's binary and a manifest and signature that authenticate it under
+// the host's release key.
+func (h *adminHost) setupAt(config, root string, extra ...string) (string, error) {
+	h.t.Helper()
+	manifest, signature := h.release(h.binary)
+	return adminRun(append([]string{"product", "setup", "--config", config, "--root", root, "--binary", h.binary, "--manifest", manifest, "--signature", signature}, extra...)...)
 }
 
 // release signs, with the host's release key, a manifest that lists the binary, and returns the manifest
@@ -338,7 +346,7 @@ func TestProductAdminSetupRefusesThesisPathsConflictsAndWritesNothingOnDryRun(t 
 		t.Fatal(err)
 	}
 	before := adminTree(t, root)
-	if out, err := adminRun("product", "setup", "--config", file, "--root", root, "--binary", h.binary); adminExit(err) != 2 || !strings.Contains(err.Error(), "thesis service path") {
+	if out, err := h.setupAt(file, root); adminExit(err) != 2 || !strings.Contains(err.Error(), "thesis service path") {
 		t.Fatalf("a thesis path was not refused with exit 2: %v\n%s", err, out)
 	}
 	if out, err := h.setup("--dry-run"); err != nil || !strings.Contains(out, "dry run: nothing was changed") {
@@ -515,7 +523,7 @@ func fakeProductService(t *testing.T, socket string, outcome *atomic.Value) {
 func TestProductAdminDoctorSelfTestThroughTheServiceSocket(t *testing.T) {
 	root := privateGovernedTestRoot(t) // Git must sit below ancestors the pin accepts, so not under /tmp
 	h := newAdminHost(t, root)
-	if out, err := adminRun("product", "setup", "--config", h.config(false), "--root", root, "--binary", h.binary); err != nil {
+	if out, err := h.setupAt(h.config(false), root); err != nil {
 		t.Fatalf("setup: %v\n%s", err, out)
 	}
 	const sentinel = "sk-SENTINEL-PROVIDER-KEY-0123456789"
@@ -535,7 +543,7 @@ func TestProductAdminDoctorSelfTestThroughTheServiceSocket(t *testing.T) {
 		t.Fatalf("an unconfigured self-test must say so and exit 3: %v\n%s", err, notConfigured)
 	}
 
-	if out, err := adminRun("product", "setup", "--config", h.config(true), "--root", root, "--binary", h.binary, "--replace"); err != nil {
+	if out, err := h.setupAt(h.config(true), root, "--replace"); err != nil {
 		t.Fatalf("setup with self-test: %v\n%s", err, out)
 	}
 	passed, err := adminRun("product", "doctor", "--self-test", "--root", root)

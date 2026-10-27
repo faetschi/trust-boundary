@@ -68,7 +68,29 @@ func newFixture(t *testing.T) *fixture {
 	return f
 }
 
-func (f *fixture) setup() (Report, error) { return Setup(f.env, f.cfg, Candidate{Binary: f.binary}) }
+func (f *fixture) setup() (Report, error) { return Setup(f.env, f.cfg, f.setupCandidate()) }
+
+// setupCandidate is f.binary with a manifest that the fixture's release key signed, when the config names that key.
+// A copy in its own directory keeps the manifest from replacing the one of a candidate in f.inputs.
+func (f *fixture) setupCandidate() Candidate {
+	f.t.Helper()
+	if f.cfg.ReleasePublicKey == "" {
+		return Candidate{Binary: f.binary}
+	}
+	dir := filepath.Join(f.inputs, "setup-release")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		f.t.Fatal(err)
+	}
+	data, err := os.ReadFile(f.binary)
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	copied := filepath.Join(dir, filepath.Base(f.binary))
+	if err := os.WriteFile(copied, data, 0o755); err != nil {
+		f.t.Fatal(err)
+	}
+	return f.sign(copied)
+}
 
 func (f *fixture) path(logical string) string { return filepath.Join(f.root, logical) }
 
