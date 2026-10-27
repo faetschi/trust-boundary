@@ -24,7 +24,7 @@ import (
 const productAdminUsage = `Usage (run setup, update, rollback and uninstall as root on the product host):
   tbound product registration keygen|init|sign|verify ...     (offline; see: tbound product registration help)
   tbound product calibration sign|measure ...                 (host input; see: tbound product calibration help)
-  tbound product setup --config FILE [--root DIR] [--dry-run] [--replace] [--binary PATH]
+  tbound product setup --config FILE [--root DIR] [--dry-run] [--replace] [--binary PATH --manifest FILE --signature FILE]
   tbound product update --binary NEW --manifest FILE --signature FILE [--root DIR] [--dry-run]
   tbound product rollback [--root DIR] [--dry-run]
   tbound product uninstall [--root DIR] [--dry-run] [--purge] [--yes]
@@ -92,6 +92,8 @@ func runProductAdmin(args []string, out, stderr io.Writer) error {
 	case "setup":
 		flags.StringVar(&configFile, "config", "", "")
 		flags.StringVar(&binary, "binary", "", "")
+		flags.StringVar(&manifest, "manifest", "", "")
+		flags.StringVar(&signature, "signature", "", "")
 		flags.BoolVar(&replace, "replace", false, "")
 	case "update":
 		flags.StringVar(&binary, "binary", "", "")
@@ -120,7 +122,7 @@ func runProductAdmin(args []string, out, stderr io.Writer) error {
 		if configFile == "" {
 			return usage()
 		}
-		return productAdminSetup(env, configFile, binary, out)
+		return productAdminSetup(env, configFile, productsetup.Candidate{Binary: binary, Manifest: manifest, Signature: signature}, out)
 	case "update":
 		if binary == "" || manifest == "" || signature == "" {
 			return usage()
@@ -207,15 +209,15 @@ func productAdminFinish(out io.Writer, rep productsetup.Report, err error, done 
 	return productAdminExit(err)
 }
 
-func productAdminSetup(env productsetup.Env, configFile, binary string, out io.Writer) error {
+func productAdminSetup(env productsetup.Env, configFile string, binary productsetup.Candidate, out io.Writer) error {
 	cfg, err := productsetup.LoadConfig(configFile)
 	if err != nil {
 		return productAdminExit(err)
 	}
-	if binary == "" {
+	if binary.Binary == "" {
 		exe, err := os.Executable()
 		if err == nil {
-			binary, err = filepath.EvalSymlinks(exe)
+			binary.Binary, err = filepath.EvalSymlinks(exe)
 		}
 		if err != nil {
 			return fmt.Errorf("locate this binary to install it (or pass --binary): %w", err)

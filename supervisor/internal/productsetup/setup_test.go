@@ -68,7 +68,7 @@ func newFixture(t *testing.T) *fixture {
 	return f
 }
 
-func (f *fixture) setup() (Report, error) { return Setup(f.env, f.cfg, f.binary) }
+func (f *fixture) setup() (Report, error) { return Setup(f.env, f.cfg, Candidate{Binary: f.binary}) }
 
 func (f *fixture) path(logical string) string { return filepath.Join(f.root, logical) }
 

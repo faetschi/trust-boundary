@@ -26,9 +26,9 @@ func modeBits(info fs.FileInfo) os.FileMode {
 
 // Setup makes the host match the plan: accounts, directories, installed files and the unit. It plans
 // everything before it changes anything, so a refusal leaves the host as it was, and a rerun on a
-// converged host reports every step unchanged. binary is the file to install at BinaryPath, or "" to
-// leave the binary to `product update`.
-func Setup(env Env, cfg Config, binary string) (Report, error) {
+// converged host reports every step unchanged. binary names the file to install at BinaryPath (with the signed
+// manifest that must list it), or is empty to leave the binary to `product update`.
+func Setup(env Env, cfg Config, binary Candidate) (Report, error) {
 	h := newHost(env)
 	if err := h.openRoot(); err != nil {
 		return *h.rep, err
@@ -147,7 +147,7 @@ func readBounded(file string, limit int64) ([]byte, error) {
 }
 
 // desiredFiles builds the exact content of every installed file, verifying the registration first.
-func (h *host) desiredFiles(cfg Config, binary string) (map[string][]byte, RegistrationSummary, error) {
+func (h *host) desiredFiles(cfg Config, binary Candidate) (map[string][]byte, RegistrationSummary, error) {
 	if h.env.VerifyRegistration == nil {
 		return nil, RegistrationSummary{}, errors.New("no registration verifier configured")
 	}
@@ -201,12 +201,12 @@ func (h *host) desiredFiles(cfg Config, binary string) (map[string][]byte, Regis
 		}
 		files[ReleasePublicKeyPath] = publisher
 	}
-	if binary != "" {
-		if files[BinaryPath], err = readBounded(binary, maxBinaryBytes); err != nil {
+	if binary.Binary != "" {
+		if files[BinaryPath], err = readBounded(binary.Binary, maxBinaryBytes); err != nil {
 			return nil, RegistrationSummary{}, err
 		}
 		// The format is read from the bytes that will be installed, so a swap of the file cannot change it.
-		if err := h.checkSetupBinaryFormat(files[BinaryPath], binary); err != nil {
+		if err := h.checkSetupBinaryFormat(files[BinaryPath], binary.Binary); err != nil {
 			return nil, RegistrationSummary{}, err
 		}
 	}
