@@ -54,7 +54,13 @@ Step 2 detail:
 - 15 MultiPL-E cases carry a no-ML-training license condition; panel requests set `provider.data_collection: deny`.
 - D35 step 2, AI panel: tool ready (`docs/guides/panel-run.md`); two phases, 3 families (no Claude/GPT/DeepSeek), Gwet AC1 >= 0.80 and >= 90% agreement (Fleiss kappa reported, not gated), hard USD 10 cap (estimate ~USD 1.2). **Owner runs it** after choosing models and funding OpenRouter.
 - D35 step 3: the advisor (non-author) signs meaning records and audits disagreements, unclear/ambiguous items and 60 random unanimous roots. Not started.
-- Old review packets `review-artifacts/pilot-review-packets-20261024` are superseded (authored cases).
+- Amended D35 tooling merged 2026-10-27 (5c1c835, from `feat/construct-review-signoff` 3ef478c):
+  - Each case carries one advisor `signoff` (human, non-author, accept/reject, audited + resolution). `construct_review` pins {content_digest, panel_receipt_digest, panel_audit_digest, panel_stats_digest}.
+  - Content-digest rule: the panel binds `evalcorpus.ContentDigest`, the manifest digest with every case `signoff`, `construct_review` and the freeze `pins` cleared. Sign-offs and F14 pins can be written after the run without detaching it.
+  - Gate per phase-2 checklist item: Gwet AC1 >= 0.80 and >= 90% raw agreement; Fleiss kappa and AC1 intervals are reported.
+  - `corpus-digest` and `preregistration-record` require `--panel-receipt --panel-audit --panel-stats` (the files the manifest pins). They recompute the statistics from the receipt ratings and replay the audit selection.
+  - The audit seed is bound to the run seed; unanimous fails are mandatory audits; `audit_sample` must be 60. The receipt records `public_policy`, and `tbound-op cfg-install` refuses a corpus service config that differs from it.
+- Obsolete: the two-human review packets `review-artifacts/pilot-review-packets-20261024` and `-20261025`.
 
 ## Confirmatory corpus plan (D37)
 
@@ -74,7 +80,7 @@ Step 2 detail:
   - Change: one advisor `signoff` per case (human, non-author, accept/reject, audited + resolution), plus `construct_review` {content_digest, panel_receipt_digest, panel_audit_digest}.
   - The panel binds `ContentDigest`, which excludes the review fields.
   - `corpus-digest` requires the signed panel audit and receipt.
-  - There is no separate two-human pilot review any more; the packets `review-artifacts/pilot-review-packets-20261024|20261025` are obsolete. Branch `feat/construct-review-signoff`.
+  - There is no separate two-human pilot review any more; the packets `review-artifacts/pilot-review-packets-20261024|20261025` are obsolete. Merged 2026-10-27 (5c1c835).
 - 2026-10-26 (owner): the D35 panel agreement gate uses **Gwet's AC1**: ≥0.80 with ≥90% raw agreement passes, 0.60–0.79 means revise, <0.60 means stop. Fleiss' kappa is reported, not gated. Reason: kappa collapses at high prevalence (410/419 unanimous gives kappa ≈ −0.007). Cases the panel fails unanimously join the advisor's mandatory list. Recorded as a dated amendment in MSE_MA_Thesis `cd629ce` (decision register + thesis §7.3); the advisor confirms it. The content digest the panel binds also excludes the manifest `pins`, so the panel run does not depend on F14.
 - 2026-10-26 (orchestrator, from the product-thread check-in): two shared-code defects.
   1. Recovery refused a retained Store after an allowed Bash command with an empty delta (`null` vs `[]`). Fixed on this branch (`ed395f0`/`3a4ff0c`, port of product `ba6f59e`).
@@ -103,9 +109,14 @@ Step 2 detail:
 - Full gates: WSL, Go 1.27.1, clean `git archive` export, the two `make boundary` commands (make is not installed in WSL), gofmt, build, vet, Windows cross-build, `go test -race -count=1 ./...`. Counts include subtests, as in the kit's `gate.sh`. Script and logs: `F:/TBoundAssets/gates-20261027/`.
   - 5f2d0a6: 4776 pass / 26 guest-only skips / 2 fail. Both failures were `netoracle: canary start ... context deadline exceeded` after ~70 s while other WSL tests ran (`TestConstructRecomputesFromProducerFiles`, `TestCollectorCleanWindowIsNoneWithAReportReference`). Both tests and both packages pass under `-race` in isolation: a load flake. Run gates with nothing else on WSL.
   - f483fad (D09 merge): 4786 pass / 26 guest-only skips / 0 fail; the same skip set.
+  - 5c1c835 (signoff merge, includes 385584c): 5047 pass / 26 guest-only skips / 0 fail; the same skip set.
 - D09 merged (f483fad, regression test 385584c). `fix/recovery-empty-bash-delta` (e7e9d33) stays unmerged.
-- `feat/construct-review-signoff` (3ef478c): a trial merge on 5f2d0a6 passes vet, gofmt, the panelaudit/panel/evalcorpus/corpusadmit tests, the tbound-profile/tbound/tbound-run tests and the 24 local `tbound-op` tests. Merge next.
-- The panel prep in F:\TBoundAssets\panel-prep is stale (built 2026-10-25, pre-AC1). Rebuild after the signoff merge; do not run it live.
+- `feat/construct-review-signoff` merged as 5c1c835. On the merge: the panelaudit/tbound-panel/evalcorpus/corpusadmit and tbound-profile/tbound/tbound-run tests pass, the 24 local `tbound-op` tests pass, and the full gate is 5047 pass / 26 guest-only skips / 0 fail (same skip set).
+- Pre-run review of the merge (Sol xhigh):
+  - Fix before the paid panel run (in progress on `fix/panel-audit-receipt-binding`): (1) the audit does not bind the exact receipt, so an advisor-signed audit of run A could accompany run B's receipt when reasons and selection coincide; (2) rerunning `finish` on an out directory overwrites advisor sign-offs in `audit.json`.
+  - Accepted limitation: a crash between saving a provider response and appending its rating makes resume pay for that call again. Both charges stay counted against the cap.
+  - No AC1/raw-agreement formula error found; every request sets `data_collection: deny` and `require_parameters: true`.
+- The panel prep in F:\TBoundAssets\panel-prep is stale (built 2026-10-25, pre-AC1). Rebuild after the audit-binding fix is merged; do not run it live.
 - The F14 freeze, signing, guest install and evidence are owner steps on FABIAN after the merges and the panel prep.
 
 ## Working rules
