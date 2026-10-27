@@ -5,6 +5,7 @@ package productsetup
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -52,7 +53,7 @@ func TestUpdateRefusesABinaryOfAnotherInstallationFormatBeforeStoppingTheService
 			if tc.legacyInstallation {
 				f.useLegacyInstallation()
 			}
-			f.env.BinaryFormat = func(*os.File) (int, error) { return tc.candidateFormat, nil }
+			f.env.BinaryFormat = func(io.ReadSeeker) (int, error) { return tc.candidateFormat, nil }
 			rep, err := Update(f.env, f.newBinary("binary v2"))
 			if !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "installation format") || !strings.Contains(err.Error(), "setup --replace") {
 				t.Fatalf("a cross-format update was not refused with the way out: %v", err)
@@ -76,11 +77,11 @@ func TestRollbackRefusesALastKnownGoodOfAnotherInstallationFormatBeforeStoppingT
 	f := newFixture(t)
 	f.installed()
 	f.env.Turns = func() ([]OpenTurn, error) { return nil, nil }
-	f.env.BinaryFormat = func(*os.File) (int, error) { return InstallationFormat, nil }
+	f.env.BinaryFormat = func(io.ReadSeeker) (int, error) { return InstallationFormat, nil }
 	if _, err := Update(f.env, f.newBinary("binary v2")); err != nil {
 		t.Fatalf("a same-format update: %v", err)
 	}
-	f.env.BinaryFormat = func(*os.File) (int, error) { return LegacyInstallationFormat, nil }
+	f.env.BinaryFormat = func(io.ReadSeeker) (int, error) { return LegacyInstallationFormat, nil }
 	rep, err := Rollback(f.env)
 	if !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "installation format") || !strings.Contains(err.Error(), "setup --replace") {
 		t.Fatalf("a cross-format rollback was not refused with the way out: %v", err)
@@ -91,7 +92,7 @@ func TestRollbackRefusesALastKnownGoodOfAnotherInstallationFormatBeforeStoppingT
 	if f.read(BinaryPath) != "binary v2" || f.read(LastKnownGoodPath) != "binary v1" {
 		t.Fatalf("a refused rollback moved the binaries: installed %q, last-known-good %q", f.read(BinaryPath), f.read(LastKnownGoodPath))
 	}
-	f.env.BinaryFormat = func(*os.File) (int, error) { return 0, errors.New("cannot read it") }
+	f.env.BinaryFormat = func(io.ReadSeeker) (int, error) { return 0, errors.New("cannot read it") }
 	if _, err := Rollback(f.env); !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "cannot read it") {
 		t.Fatalf("a binary that cannot report its format must be refused: %v", err)
 	}
@@ -228,6 +229,56 @@ func TestScanInstallationFormatFindsAMarkerAcrossReadBoundaries(t *testing.T) {
 			if got, err := scanBytes(t, content); err != nil || got != 2 {
 				t.Fatalf("a marker at %d (a read ends at %d): format %d, %v", at, end, got, err)
 			}
+		}
+	}
+}
+
+func TestSetupTakesTheBinaryFormatFromItsBytesAndRefusesAnotherFormatBeforeChangingAnything(t *testing.T) {
+	declared := func(format int) string { return "binary v1 " + fmt.Sprintf(markerLine, format) }
+	for name, tc := range map[string]struct {
+		binary  string
+		refused bool
+	}{
+		"a marker of this setup's format": {declared(InstallationFormat), false},
+		"a marker of another format":      {declared(LegacyInstallationFormat), true},
+		"no marker is the legacy format":  {"binary v1", true},
+	} {
+		for _, dryRun := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s, dry run %v", name, dryRun), func(t *testing.T) {
+				f := newFixture(t)
+				f.env.BinaryFormat = ScanInstallationFormat
+				f.env.DryRun = dryRun
+				if err := os.WriteFile(f.binary, []byte(tc.binary), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				rep, err := f.setup()
+				if !tc.refused {
+					if err != nil {
+						t.Fatalf("a binary of this setup's format was refused: %v", err)
+					}
+					return
+				}
+				if !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "installation format") {
+					t.Fatalf("a binary of another installation format was not refused: %v", err)
+				}
+				if entries, _ := os.ReadDir(f.root); len(entries) != 0 || len(rep.Commands) != 0 {
+					t.Fatalf("a refused setup changed the host: %v %v", entries, rep.Commands)
+				}
+			})
+		}
+	}
+}
+
+func TestScanInstallationFormatFindsAMarkerAtEveryPositionAroundTheMebibyteChunk(t *testing.T) {
+	marker := fmt.Sprintf(markerLine, InstallationFormat)
+	const mebibyte = 1 << 20
+	// The window starts before the 1 MiB offset and ends past the point where the first read ends (1 MiB plus
+	// the carried bytes), so every cut of the marker by a chunk boundary is covered, and no second copy helps.
+	for at := mebibyte - len(marker); at <= mebibyte+64; at++ {
+		content := make([]byte, mebibyte+mebibyte/2)
+		copy(content[at:], marker)
+		if got, err := scanBytes(t, content); err != nil || got != InstallationFormat {
+			t.Fatalf("a marker at %d (the 1 MiB offset is %d): format %d, %v", at, mebibyte, got, err)
 		}
 	}
 }

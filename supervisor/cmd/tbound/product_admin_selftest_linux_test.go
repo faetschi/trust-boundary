@@ -46,7 +46,7 @@ func TestProductAdminSelfTestCredentialIsTheClientAccountsIdentity(t *testing.T)
 func TestProductAdminSelfTestRunsInAChildProcessAsTheRegisteredClient(t *testing.T) {
 	root := privateGovernedTestRoot(t)
 	h := newAdminHost(t, root)
-	if out, err := adminRun("product", "setup", "--config", h.config(true), "--root", root, "--binary", h.binary); err != nil {
+	if out, err := h.setupAt(h.config(true), root); err != nil {
 		t.Fatalf("setup: %v\n%s", err, out)
 	}
 	var outcome atomic.Value
@@ -109,7 +109,7 @@ func TestProductAdminSetupRefusesASelfTestWithoutARegisteredClientUID(t *testing
 			t.Fatal(err)
 		}
 		for _, extra := range [][]string{nil, {"--dry-run"}} {
-			out, err := adminRun(append([]string{"product", "setup", "--config", file, "--root", root, "--binary", h.binary}, extra...)...)
+			out, err := h.setupAt(file, root, extra...)
 			if adminExit(err) != 2 || !strings.Contains(err.Error(), "client_uid") {
 				t.Fatalf("%s %v: %v\n%s", name, extra, err, out)
 			}

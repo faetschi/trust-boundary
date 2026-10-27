@@ -3,20 +3,24 @@ package productsetup
 import (
 	"bytes"
 	"cmp"
+	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"tbound/supervisor/internal/releasetrust"
 )
 
 // copyAtomic copies in to dst through a synced temporary file in dst's directory and a rename, so dst
 // is always either its old or its new content.
-func copyAtomic(in *os.File, dst string, mode os.FileMode) error {
+func copyAtomic(in io.ReadSeeker, dst string, mode os.FileMode) error {
 	if _, err := in.Seek(0, io.SeekStart); err != nil {
 		return err
 	}
@@ -43,14 +47,21 @@ func copyAtomic(in *os.File, dst string, mode os.FileMode) error {
 }
 
 func fileDigest(f *os.File) (string, error) {
+	digest, _, err := boundedDigest(f, math.MaxInt64)
+	return digest, err
+}
+
+// boundedDigest hashes at most limit bytes of f from its start and reports how many it read.
+func boundedDigest(f *os.File, limit int64) (string, int64, error) {
 	if _, err := f.Seek(0, io.SeekStart); err != nil {
-		return "", err
+		return "", 0, err
 	}
 	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
-		return "", err
+	n, err := io.Copy(h, io.LimitReader(f, limit))
+	if err != nil {
+		return "", 0, err
 	}
-	return hex.EncodeToString(h.Sum(nil)), nil
+	return hex.EncodeToString(h.Sum(nil)), n, nil
 }
 
 func regularFile(file *os.File) (os.FileInfo, error) {
@@ -93,14 +104,31 @@ func interrupt(step string) {
 	}
 }
 
-// Update installs newBinary as the service binary. See replaceBinary for the flow.
-func Update(env Env, newBinary string) (Report, error) {
+// Candidate is the binary an update installs and the signed release manifest that must list it.
+type Candidate struct{ Binary, Manifest, Signature string }
+
+// Update installs the candidate as the service binary. See replaceBinary for the flow.
+//
+// The candidate is authenticated before anything else happens, because the self-test runs the installed
+// binary as root. The signed manifest must verify under the publisher key that setup pinned, and must
+// list the candidate by name with its size and SHA-256. The digest is taken from a copy that only root can
+// write, so a file swapped after the check changes nothing, and only that copy is installed or executed. A
+// dry run measures the candidate in place and installs and executes nothing. Without a pinned key an
+// update is refused.
+func Update(env Env, candidate Candidate) (Report, error) {
 	h := newHost(env)
 	if err := h.openRoot(); err != nil {
 		return *h.rep, err
 	}
 	defer h.dir.Close()
-	source, err := openSource(newBinary)
+	if err := h.protectedBinaryDirectory(); err != nil {
+		return *h.rep, err
+	}
+	manifest, err := h.publisherManifest(candidate)
+	if err != nil {
+		return *h.rep, err
+	}
+	source, err := openSource(candidate.Binary)
 	if err != nil {
 		return *h.rep, err
 	}
@@ -110,19 +138,131 @@ func Update(env Env, newBinary string) (Report, error) {
 		return *h.rep, err
 	}
 	if info.Size() == 0 || info.Size() > maxBinaryBytes {
-		return *h.rep, refuse("%s is empty or too large to be the tbound binary", newBinary)
+		return *h.rep, refuse("%s is empty or too large to be the tbound binary", candidate.Binary)
 	}
-	if err := h.checkBinaryFormat(source, newBinary); err != nil {
+	listed, err := manifest.Artifact(filepath.Base(candidate.Binary))
+	if err != nil {
+		return *h.rep, refuse("the candidate is refused: %v", err)
+	}
+	verified := source
+	if !env.DryRun {
+		defer h.discardStaged()
+		// One byte past the declared size is enough for the size comparison to refuse a source that grew.
+		if err := h.copyAtomic(io.NewSectionReader(source, 0, listed.Size+1), stagedBinaryPath, 0o755); err != nil {
+			return *h.rep, fmt.Errorf("stage the binary: %w", err)
+		}
+		interrupt("staged")
+		if verified, err = h.managedSource(stagedBinaryPath, ownRoot, 0o755); err != nil {
+			return *h.rep, err
+		}
+		defer verified.Close()
+	}
+	if err := h.authenticate(manifest, filepath.Base(candidate.Binary), verified); err != nil {
+		return *h.rep, err
+	}
+	interrupt("verified")
+	if err := h.checkBinaryFormat(verified, candidate.Binary); err != nil {
 		return *h.rep, err
 	}
 	if err := h.checkInstalledSelfTestClient(); err != nil {
 		return *h.rep, err
 	}
-	return h.replaceBinary(source)
+	return h.replaceBinary(verified)
 }
 
-// replaceBinary swaps source in as the service binary:
-//  1. stage a copy next to the binary;
+// protectedBinaryDirectory refuses an update or rollback below a binary directory that another user could write
+// to, because the staged copy and the last-known-good binary are checked by descriptor and then swapped in by name.
+func (h *host) protectedBinaryDirectory() error {
+	err := h.protectedDirectory(BinaryDir)
+	if errors.Is(err, os.ErrNotExist) {
+		return refuse("no safe tbound binary is installed at %s; run `tbound product setup` first: %v", BinaryPath, err)
+	}
+	return err
+}
+
+// publisherManifest verifies the candidate's manifest and signature under the pinned publisher key.
+func (h *host) publisherManifest(candidate Candidate) (releasetrust.Manifest, error) {
+	key, err := h.pinnedPublisherKey()
+	if errors.Is(err, os.ErrNotExist) {
+		return releasetrust.Manifest{}, refuse("no publisher key is pinned (%s is missing), so no candidate binary can be authenticated; set release_public_key in the setup config and rerun `tbound product setup --replace`", ReleasePublicKeyPath)
+	} else if err != nil {
+		return releasetrust.Manifest{}, err
+	}
+	return h.verifiedManifest(candidate, key)
+}
+
+// pinnedPublisherKey reads the key that setup pinned, below a protected directory and through a no-follow
+// descriptor. A missing key is os.ErrNotExist.
+func (h *host) pinnedPublisherKey() (ed25519.PublicKey, error) {
+	var keyFile *os.File
+	err := h.protectedDirectory(filepath.Dir(ReleasePublicKeyPath))
+	if err == nil {
+		keyFile, err = h.managedSource(ReleasePublicKeyPath, ownRoot, 0o644)
+	}
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	} else if err != nil {
+		return nil, refuse("the pinned publisher key %s cannot be used: %v", ReleasePublicKeyPath, err)
+	}
+	defer keyFile.Close()
+	content, err := io.ReadAll(io.LimitReader(keyFile, 1<<10))
+	if err != nil {
+		return nil, err
+	}
+	key, err := releasetrust.ParsePublicKey(content)
+	if err != nil {
+		return nil, refuse("the pinned publisher key %s is malformed: %v", ReleasePublicKeyPath, err)
+	}
+	return key, nil
+}
+
+// verifiedManifest reads the candidate's manifest and signature and verifies them under key.
+func (h *host) verifiedManifest(candidate Candidate, key ed25519.PublicKey) (releasetrust.Manifest, error) {
+	manifest, err := readSource(candidate.Manifest)
+	if err != nil {
+		return releasetrust.Manifest{}, refuse("cannot read the release manifest: %v", err)
+	}
+	signatureText, err := readBounded(candidate.Signature, 1<<10)
+	if err != nil {
+		return releasetrust.Manifest{}, refuse("cannot read the manifest signature: %v", err)
+	}
+	signature, err := releasetrust.ParseSignature(signatureText)
+	if err != nil {
+		return releasetrust.Manifest{}, refuse("%v", err)
+	}
+	verified, err := releasetrust.Verify(manifest, signature, key)
+	if err != nil {
+		return releasetrust.Manifest{}, refuse("the release manifest is not signed by the pinned publisher key %s: %v", releasetrust.Fingerprint(key), err)
+	}
+	h.note("the release manifest verifies under the pinned publisher key %s", releasetrust.Fingerprint(key))
+	return verified, nil
+}
+
+// authenticate refuses a binary that the signed manifest does not list under its name with this size and
+// SHA-256. It measures the file it is given, which for a live run is the private staged copy.
+func (h *host) authenticate(manifest releasetrust.Manifest, name string, binary *os.File) error {
+	listed, err := manifest.Artifact(name)
+	if err != nil {
+		return refuse("the candidate is refused: %v", err)
+	}
+	// One byte past the declared size is enough for the size comparison to refuse a source that grew.
+	digest, size, err := boundedDigest(binary, listed.Size+1)
+	if err != nil {
+		return err
+	}
+	if err := manifest.CheckArtifact(name, size, digest); err != nil {
+		return refuse("the candidate is refused: %v", err)
+	}
+	h.note("%s (sha256:%s) is listed in the verified manifest", name, digest[:16])
+	return nil
+}
+
+// discardStaged removes the staged copy, if any, and does not report it.
+func (h *host) discardStaged() { _ = h.withPath(stagedBinaryPath, false, os.Remove) }
+
+// replaceBinary swaps source, the authenticated staged copy (a dry run's candidate in place), in as the service
+// binary:
+//  1. the copy was staged next to the binary by Update;
 //  2. stop the service and open the catalog: any turn that is not awaiting review refuses the swap and
 //     the service starts again, whose restart reconciliation settles the turn;
 //  3. back the catalog up, keep the current binary as last-known-good, and rename the staged copy over
@@ -165,9 +305,6 @@ func (h *host) replaceBinary(source *os.File) (Report, error) {
 		h.rep.Commands = append(h.rep.Commands, BinaryPath+" product doctor --self-test")
 		return *h.rep, nil
 	}
-	if err := h.copyAtomic(source, stagedBinaryPath, 0o755); err != nil {
-		return *h.rep, fmt.Errorf("stage the binary: %w", err)
-	}
 	h.step("stage", stagedBinaryPath, "created", "sha256:"+want[:16])
 	abort, err := h.stopForSwap("update", func() { _, _ = h.remove(stagedBinaryPath, false) })
 	if err != nil {
@@ -186,8 +323,16 @@ func (h *host) replaceBinary(source *os.File) (Report, error) {
 		return *h.rep, abort(err)
 	}
 	interrupt("prepared")
+	verified, err := source.Stat()
+	if err != nil {
+		return *h.rep, abort(err)
+	}
 	if err := h.withPath(BinaryPath, false, func(path string) error {
-		return os.Rename(filepath.Join(filepath.Dir(path), filepath.Base(stagedBinaryPath)), path)
+		staged := filepath.Join(filepath.Dir(path), filepath.Base(stagedBinaryPath))
+		if info, err := os.Lstat(staged); err != nil || !os.SameFile(info, verified) {
+			return refuse("%s was replaced after it was authenticated; nothing was installed", stagedBinaryPath)
+		}
+		return os.Rename(staged, path)
 	}); err != nil {
 		return *h.rep, abort(fmt.Errorf("swap the binary: %w", err))
 	}
@@ -238,13 +383,19 @@ func (h *host) stopForSwap(what string, discard func()) (abort func(error) error
 }
 
 // Rollback restores the last-known-good binary. The binary it replaces becomes the new last-known-good,
-// so a second rollback returns to it. An interrupted rollback is finished by running it again.
+// so a second rollback returns to it. An interrupted rollback is finished by running it again. Rollback
+// takes no candidate: it only ever runs the last-known-good binary, a root-owned file that is the binary an
+// earlier authenticated update (or the setup run by the administrator) installed, so it needs no
+// signature of its own.
 func Rollback(env Env) (Report, error) {
 	h := newHost(env)
 	if err := h.openRoot(); err != nil {
 		return *h.rep, err
 	}
 	defer h.dir.Close()
+	if err := h.protectedBinaryDirectory(); err != nil {
+		return *h.rep, err
+	}
 	if fallback, err := h.managedSource(LastKnownGoodPath, ownRoot, 0o755); err == nil { // a missing one is refused by rollback
 		err = h.checkBinaryFormat(fallback, LastKnownGoodPath)
 		fallback.Close()
@@ -262,7 +413,7 @@ func Rollback(env Env) (Report, error) {
 // the installed unit and setup record. A binary reads only its own format (a new doctor rejects the old
 // unit, an old binary rejects the new [Install] section and client_uid), so crossing would fail its
 // self-test and restore, and nothing converts one format into the other.
-func (h *host) checkBinaryFormat(candidate *os.File, what string) error {
+func (h *host) checkBinaryFormat(candidate io.ReadSeeker, what string) error {
 	if h.env.BinaryFormat == nil {
 		return nil
 	}
@@ -282,6 +433,23 @@ func (h *host) checkBinaryFormat(candidate *os.File, what string) error {
 	}
 	if got != installed {
 		return refuse("%s is installation format %d but this installation is format %d; nothing was changed. The formats do not convert: "+way, what, got, installed, got)
+	}
+	return nil
+}
+
+// checkSetupBinaryFormat refuses a --binary of another installation format than the one this setup writes
+// (its unit and setup record), so setup never pairs a binary with files it cannot read.
+func (h *host) checkSetupBinaryFormat(binary []byte, what string) error {
+	if h.env.BinaryFormat == nil {
+		return nil
+	}
+	got, err := h.env.BinaryFormat(bytes.NewReader(binary))
+	if err != nil {
+		return refuse("cannot tell the installation format of %s: %v", what, err)
+	}
+	if got != InstallationFormat {
+		return refuse("%s is installation format %d but this setup writes format %d; nothing was changed. Run `tbound product setup` from the tbound binary to install, or pass a --binary of format %d",
+			what, got, InstallationFormat, InstallationFormat)
 	}
 	return nil
 }
@@ -676,7 +844,7 @@ func (h *host) removeEmptyDir(logical string) error {
 	return nil
 }
 
-func (h *host) copyAtomic(source *os.File, logical string, mode os.FileMode) error {
+func (h *host) copyAtomic(source io.ReadSeeker, logical string, mode os.FileMode) error {
 	return h.withPath(logical, true, func(path string) error { return copyAtomic(source, path, mode) })
 }
 

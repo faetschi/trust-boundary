@@ -31,7 +31,9 @@ const (
 	BinaryDir         = "/usr/local/lib/tbound-product"
 	BinaryPath        = BinaryDir + "/tbound"
 	LastKnownGoodPath = BinaryPath + ".last-known-good"
-	stagedBinaryPath  = BinaryPath + ".new"
+	// ReleasePublicKeyPath holds the pinned publisher key that update authenticates a candidate against.
+	ReleasePublicKeyPath = ConfigDir + "/release-public-key.pub"
+	stagedBinaryPath     = BinaryPath + ".new"
 	// rollbackIntentPath records a rollback in progress: the digests of the binary being restored and of the
 	// binary being rolled back from.
 	rollbackIntentPath = BinaryPath + ".rollback"
@@ -114,6 +116,7 @@ var installedFiles = []node{
 	{SetupConfigPath, false, ownRoot, 0o644},
 	{UnitPath, false, ownRoot, 0o644},
 	{BinaryPath, false, ownRoot, 0o755},
+	{ReleasePublicKeyPath, false, ownRoot, 0o644}, // optional: absent when the config names no release_public_key
 }
 
 // writtenPaths are the single paths that setup, update, rollback, uninstall and the service write or

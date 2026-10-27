@@ -24,8 +24,8 @@ import (
 const productAdminUsage = `Usage (run setup, update, rollback and uninstall as root on the product host):
   tbound product registration keygen|init|sign|verify ...     (offline; see: tbound product registration help)
   tbound product calibration sign|measure ...                 (host input; see: tbound product calibration help)
-  tbound product setup --config FILE [--root DIR] [--dry-run] [--replace] [--binary PATH]
-  tbound product update --binary NEW [--root DIR] [--dry-run]
+  tbound product setup --config FILE [--root DIR] [--dry-run] [--replace] [--binary PATH --manifest FILE --signature FILE]
+  tbound product update --binary NEW --manifest FILE --signature FILE [--root DIR] [--dry-run]
   tbound product rollback [--root DIR] [--dry-run]
   tbound product uninstall [--root DIR] [--dry-run] [--purge] [--yes]
   tbound product doctor [--self-test] [--root DIR]
@@ -35,6 +35,14 @@ const productAdminUsage = `Usage (run setup, update, rollback and uninstall as r
 calls are only recorded, never executed. --dry-run writes and executes nothing and prints the plan.
 setup is idempotent ("unchanged" on a rerun), refuses any thesis path, and fails before any change
 on a host that does not meet the prerequisites (use the qualified VM option).
+setup installs its own executable by default. An explicit --binary is another file, so it needs --manifest and --signature
+(the same files update takes) and the release_public_key of the setup config or the key already pinned; with no key
+setup refuses any binary but its own executable.
+update installs only a binary that a signed release manifest lists (its file name, size and SHA-256), under
+the publisher key that setup pinned from release_public_key. --manifest and --signature are the files
+` + "`tbound release manifest` and `tbound release sign`" + ` made. The candidate is copied to a root-owned staging file,
+measured there, and only that copy is installed or run; a dry run checks the same and runs nothing. Without
+a pinned key update refuses. rollback needs no signature: it only restores the last-known-good binary.
 uninstall keeps /etc/tbound-product and /var/lib/tbound-product unless --purge is given; --purge
 asks for confirmation unless --yes is also given.
 doctor is advisory. Only --self-test (a synthetic turn on the project named by self_test in the
@@ -79,7 +87,7 @@ func runProductAdmin(args []string, out, stderr io.Writer) error {
 	}
 	flags := flag.NewFlagSet("product "+args[0], flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	var configFile, binary, root string
+	var configFile, binary, manifest, signature, root string
 	var dryRun, replace, purge, yes, selfTest bool
 	flags.StringVar(&root, "root", "/", "")
 	flags.BoolVar(&dryRun, "dry-run", false, "")
@@ -87,9 +95,13 @@ func runProductAdmin(args []string, out, stderr io.Writer) error {
 	case "setup":
 		flags.StringVar(&configFile, "config", "", "")
 		flags.StringVar(&binary, "binary", "", "")
+		flags.StringVar(&manifest, "manifest", "", "")
+		flags.StringVar(&signature, "signature", "", "")
 		flags.BoolVar(&replace, "replace", false, "")
 	case "update":
 		flags.StringVar(&binary, "binary", "", "")
+		flags.StringVar(&manifest, "manifest", "", "")
+		flags.StringVar(&signature, "signature", "", "")
 	case "uninstall":
 		flags.BoolVar(&purge, "purge", false, "")
 		flags.BoolVar(&yes, "yes", false, "")
@@ -113,12 +125,12 @@ func runProductAdmin(args []string, out, stderr io.Writer) error {
 		if configFile == "" {
 			return usage()
 		}
-		return productAdminSetup(env, configFile, binary, out)
+		return productAdminSetup(env, configFile, productsetup.Candidate{Binary: binary, Manifest: manifest, Signature: signature}, out)
 	case "update":
-		if binary == "" {
+		if binary == "" || manifest == "" || signature == "" {
 			return usage()
 		}
-		rep, err := productsetup.Update(env, binary)
+		rep, err := productsetup.Update(env, productsetup.Candidate{Binary: binary, Manifest: manifest, Signature: signature})
 		return productAdminFinish(out, rep, err, "updated")
 	case "rollback":
 		rep, err := productsetup.Rollback(env)
@@ -200,15 +212,15 @@ func productAdminFinish(out io.Writer, rep productsetup.Report, err error, done 
 	return productAdminExit(err)
 }
 
-func productAdminSetup(env productsetup.Env, configFile, binary string, out io.Writer) error {
+func productAdminSetup(env productsetup.Env, configFile string, binary productsetup.Candidate, out io.Writer) error {
 	cfg, err := productsetup.LoadConfig(configFile)
 	if err != nil {
 		return productAdminExit(err)
 	}
-	if binary == "" {
+	if binary.Binary == "" {
 		exe, err := os.Executable()
 		if err == nil {
-			binary, err = filepath.EvalSymlinks(exe)
+			binary.Binary, err = filepath.EvalSymlinks(exe)
 		}
 		if err != nil {
 			return fmt.Errorf("locate this binary to install it (or pass --binary): %w", err)

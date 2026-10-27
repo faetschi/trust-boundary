@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"io"
-	"os"
 	"strings"
 )
 
@@ -15,9 +14,9 @@ import (
 // passes the format check. The self-test and the restoration still guard a binary that does not work.
 const InstallationMarker = "tbound-product-installation-format=2;"
 
-// ScanInstallationFormat returns the format a binary declares, read through the one descriptor the caller
+// ScanInstallationFormat returns the format a binary declares, read through the one reader (or descriptor) the caller
 // validated and bounded by maxBinaryBytes. The first well-formed marker wins. None means the legacy format.
-func ScanInstallationFormat(candidate *os.File) (int, error) {
+func ScanInstallationFormat(candidate io.ReadSeeker) (int, error) {
 	if _, err := candidate.Seek(0, io.SeekStart); err != nil {
 		return 0, err
 	}
@@ -32,7 +31,7 @@ func ScanInstallationFormat(candidate *os.File) (int, error) {
 		n, err := io.ReadFull(reader, buf[len(buf):cap(buf)])
 		buf = buf[:len(buf)+n]
 		if total += int64(n); total > maxBinaryBytes {
-			return 0, refuse("%s is too large to be the tbound binary", candidate.Name())
+			return 0, refuse("the binary is too large to be the tbound binary")
 		}
 		for from := 0; ; {
 			i := bytes.Index(buf[from:], pattern)

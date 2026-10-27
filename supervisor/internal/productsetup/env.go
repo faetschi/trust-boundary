@@ -3,6 +3,7 @@ package productsetup
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -84,10 +85,10 @@ type Env struct {
 	// SelfTestHook runs the installed binary's self-test after a swap. Nil records it and treats it as
 	// not run. ErrSelfTestNotConfigured is not a failure.
 	SelfTestHook func() error
-	// BinaryFormat returns the installation format a candidate binary (its open file) writes and reads,
-	// without running it. Update and rollback compare it with the installation's before they change anything.
+	// BinaryFormat returns the installation format a candidate binary (the bytes setup installs, or the open file update or rollback uses) writes and reads,
+	// without running it. Setup compares it with InstallationFormat, update and rollback with the installation's, before they change anything.
 	// Nil skips the check, which a test root needs because its fixture binaries carry no marker.
-	BinaryFormat func(candidate *os.File) (int, error)
+	BinaryFormat func(candidate io.ReadSeeker) (int, error)
 	// RunSelfTest runs the synthetic turn for Doctor. Nil reports the self-test as unavailable.
 	RunSelfTest func(SelfTest) (string, error)
 	// CredentialStatus summarizes a provider profile's credential without its key. Nil skips it.

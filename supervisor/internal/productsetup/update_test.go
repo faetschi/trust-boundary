@@ -3,6 +3,8 @@
 package productsetup
 
 import (
+	"crypto/ed25519"
+	"encoding/base64"
 	"errors"
 	"net"
 	"os"
@@ -10,6 +12,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"tbound/supervisor/internal/releasetrust"
 )
 
 func (f *fixture) installed() {
@@ -20,13 +24,43 @@ func (f *fixture) installed() {
 	f.env.Prereqs = nil
 }
 
-func (f *fixture) newBinary(content string) string {
+func (f *fixture) newBinary(content string) Candidate {
 	f.t.Helper()
 	p := filepath.Join(f.inputs, "tbound-new")
 	if err := os.WriteFile(p, []byte(content), 0o755); err != nil {
 		f.t.Fatal(err)
 	}
-	return p
+	return f.sign(p)
+}
+
+// sign writes a manifest that lists the binary, signed by the fixture's release key, next to it.
+func (f *fixture) sign(binary string) Candidate { return f.signWith(binary, f.releaseKey) }
+
+func (f *fixture) signWith(binary string, key ed25519.PrivateKey) Candidate {
+	f.t.Helper()
+	manifest, err := releasetrust.BuildManifest([]string{binary})
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	signature, err := releasetrust.Sign(manifest, key)
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	c := candidateNextTo(binary)
+	if err := os.WriteFile(c.Manifest, append(manifest, '\n'), 0o644); err != nil {
+		f.t.Fatal(err)
+	}
+	if err := os.WriteFile(c.Signature, []byte(base64.StdEncoding.EncodeToString(signature)+"\n"), 0o644); err != nil {
+		f.t.Fatal(err)
+	}
+	return c
+}
+
+// candidateNextTo names the manifest and signature the fixture writes beside a binary, so a fresh process
+// can rebuild the candidate from the binary's path alone.
+func candidateNextTo(binary string) Candidate {
+	manifest := filepath.Join(filepath.Dir(binary), "tbound-release-manifest.json")
+	return Candidate{Binary: binary, Manifest: manifest, Signature: manifest + ".sig"}
 }
 
 func TestUpdateRefusesWhileATurnIsUnresolved(t *testing.T) {

@@ -94,14 +94,15 @@ func adminInitArgsFor(out, policyDigest, gitDigest string) []string {
 // host inputs the administrator places before setup: gate policies, a digest-pinned Git and a signed
 // xattr calibration.
 type adminHost struct {
-	t         *testing.T
-	root      string
-	dir       string
-	keys      string
-	reg, sig  string
-	pub       string
-	binary    string
-	gitDigest string
+	t           *testing.T
+	root        string
+	dir         string
+	keys        string
+	releaseKeys string
+	reg, sig    string
+	pub         string
+	binary      string
+	gitDigest   string
 }
 
 func newAdminHost(t *testing.T, root string) *adminHost {
@@ -115,6 +116,8 @@ func newAdminHost(t *testing.T, root string) *adminHost {
 	h.gitDigest = digestBytes(adminGitBytes(t)) // the registration binds the Git the host installs
 	h.keys = filepath.Join(h.dir, "keys")
 	mustAdmin(t, "product", "registration", "keygen", "--out", h.keys)
+	h.releaseKeys = filepath.Join(h.dir, "release-keys")
+	mustAdmin(t, "release", "keygen", "--out", h.releaseKeys)
 	template := filepath.Join(h.dir, "template.json")
 	mustAdmin(t, adminInitArgsFor(template, adminPolicyDigest(false), h.gitDigest)...)
 	h.reg = filepath.Join(h.dir, "registration.json")
@@ -163,8 +166,9 @@ func (h *adminHost) placeHostInputs() {
 func (h *adminHost) setupConfig() productsetup.Config {
 	return productsetup.Config{
 		SchemaVersion: productsetup.ConfigSchema, Registration: h.reg, RegistrationSignature: h.sig, RegistrationPublicKey: h.pub,
-		WorkerMode: productsession.WorkerSupervisorLoop,
-		Projects:   map[string]string{"alpha": productsetup.ProjectsDir + "/alpha", "beta": productsetup.ProjectsDir + "/beta"},
+		ReleasePublicKey: filepath.Join(h.releaseKeys, "release-signing.pub"),
+		WorkerMode:       productsession.WorkerSupervisorLoop,
+		Projects:         map[string]string{"alpha": productsetup.ProjectsDir + "/alpha", "beta": productsetup.ProjectsDir + "/beta"},
 		GatePolicyPaths: map[string]string{"alpha": productsetup.ConfigDir + "/policy-alpha.json",
 			"beta": productsetup.ConfigDir + "/policy-beta.json"},
 		GitPath: productsetup.BinaryDir + "/git", GitDigest: h.gitDigest,
@@ -187,7 +191,32 @@ func (h *adminHost) config(selfTest bool) string {
 }
 
 func (h *adminHost) setup(extra ...string) (string, error) {
-	return adminRun(append([]string{"product", "setup", "--config", h.config(false), "--root", h.root, "--binary", h.binary}, extra...)...)
+	return h.setupAt(h.config(false), h.root, extra...)
+}
+
+// setupAt runs `product setup` with the host's binary and a manifest and signature that authenticate it under
+// the host's release key.
+func (h *adminHost) setupAt(config, root string, extra ...string) (string, error) {
+	h.t.Helper()
+	manifest, signature := h.release(h.binary)
+	return adminRun(append([]string{"product", "setup", "--config", config, "--root", root, "--binary", h.binary, "--manifest", manifest, "--signature", signature}, extra...)...)
+}
+
+// release signs, with the host's release key, a manifest that lists the binary, and returns the manifest
+// and signature files that `product update` takes.
+func (h *adminHost) release(binary string) (manifest, signature string) {
+	h.t.Helper()
+	manifest = filepath.Join(h.t.TempDir(), "tbound-release-manifest.json")
+	mustAdmin(h.t, "release", "manifest", "--out", manifest, binary)
+	mustAdmin(h.t, "release", "sign", "--manifest", manifest, "--key", filepath.Join(h.releaseKeys, "release-signing.key"), "--out", manifest+".sig")
+	return manifest, manifest + ".sig"
+}
+
+// update runs `product update` with a signed manifest for the binary.
+func (h *adminHost) update(binary string, extra ...string) (string, error) {
+	h.t.Helper()
+	manifest, signature := h.release(binary)
+	return adminRun(append([]string{"product", "update", "--binary", binary, "--manifest", manifest, "--signature", signature, "--root", h.root}, extra...)...)
 }
 
 func (h *adminHost) path(logical string) string { return filepath.Join(h.root, logical) }
@@ -317,7 +346,7 @@ func TestProductAdminSetupRefusesThesisPathsConflictsAndWritesNothingOnDryRun(t 
 		t.Fatal(err)
 	}
 	before := adminTree(t, root)
-	if out, err := adminRun("product", "setup", "--config", file, "--root", root, "--binary", h.binary); adminExit(err) != 2 || !strings.Contains(err.Error(), "thesis service path") {
+	if out, err := h.setupAt(file, root); adminExit(err) != 2 || !strings.Contains(err.Error(), "thesis service path") {
 		t.Fatalf("a thesis path was not refused with exit 2: %v\n%s", err, out)
 	}
 	if out, err := h.setup("--dry-run"); err != nil || !strings.Contains(out, "dry run: nothing was changed") {
@@ -378,7 +407,7 @@ func TestProductAdminUpdateRefusesAnUnresolvedTurnThenUpdatesAndRollsBack(t *tes
 		t.Fatal(err)
 	}
 	adminCatalog(t, h, true)
-	out, err := adminRun("product", "update", "--binary", next, "--root", root)
+	out, err := h.update(next)
 	if adminExit(err) != 2 || !strings.Contains(err.Error(), "unresolved turns") {
 		t.Fatalf("an unresolved turn did not refuse the update: %v\n%s", err, out)
 	}
@@ -392,7 +421,7 @@ func TestProductAdminUpdateRefusesAnUnresolvedTurnThenUpdatesAndRollsBack(t *tes
 		t.Fatalf("setup: %v\n%s", err, out)
 	}
 	adminCatalog(t, h2, false)
-	out, err = adminRun("product", "update", "--binary", next, "--root", other)
+	out, err = h2.update(next)
 	if err != nil || !strings.Contains(out, "updated") || !strings.Contains(out, "systemctl stop "+productsetup.UnitName) {
 		t.Fatalf("update: %v\n%s", err, out)
 	}
@@ -406,7 +435,7 @@ func TestProductAdminUpdateRefusesAnUnresolvedTurnThenUpdatesAndRollsBack(t *tes
 	if _, err := adminRun("product", "rollback", "--root", other); err != nil || read(productsetup.BinaryPath) != "binary v1" {
 		t.Fatalf("rollback: %v", err)
 	}
-	if out, err := adminRun("product", "update", "--binary", next, "--root", other, "--dry-run"); err != nil || !strings.Contains(out, "dry run") || read(productsetup.BinaryPath) != "binary v1" {
+	if out, err := h2.update(next, "--dry-run"); err != nil || !strings.Contains(out, "dry run") || read(productsetup.BinaryPath) != "binary v1" {
 		t.Fatalf("update dry run: %v\n%s", err, out)
 	}
 }
@@ -494,7 +523,7 @@ func fakeProductService(t *testing.T, socket string, outcome *atomic.Value) {
 func TestProductAdminDoctorSelfTestThroughTheServiceSocket(t *testing.T) {
 	root := privateGovernedTestRoot(t) // Git must sit below ancestors the pin accepts, so not under /tmp
 	h := newAdminHost(t, root)
-	if out, err := adminRun("product", "setup", "--config", h.config(false), "--root", root, "--binary", h.binary); err != nil {
+	if out, err := h.setupAt(h.config(false), root); err != nil {
 		t.Fatalf("setup: %v\n%s", err, out)
 	}
 	const sentinel = "sk-SENTINEL-PROVIDER-KEY-0123456789"
@@ -514,7 +543,7 @@ func TestProductAdminDoctorSelfTestThroughTheServiceSocket(t *testing.T) {
 		t.Fatalf("an unconfigured self-test must say so and exit 3: %v\n%s", err, notConfigured)
 	}
 
-	if out, err := adminRun("product", "setup", "--config", h.config(true), "--root", root, "--binary", h.binary, "--replace"); err != nil {
+	if out, err := h.setupAt(h.config(true), root, "--replace"); err != nil {
 		t.Fatalf("setup with self-test: %v\n%s", err, out)
 	}
 	passed, err := adminRun("product", "doctor", "--self-test", "--root", root)

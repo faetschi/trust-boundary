@@ -15,8 +15,9 @@
 #
 # TRUST. Without --public-key the installer only compares the artifact with SHA256SUMS from the
 # same origin: that detects corruption, not a replaced download, and is not publisher
-# authentication. With --public-key FILE it requires tbound-release-manifest.json and
-# tbound-release-manifest.json.sig next to the artifacts and runs `tbound release verify`
+# authentication, so only a run that is not root may use it: a run as root requires --public-key or the
+# key its prefix pins, and refuses a checksum-only artifact. With --public-key FILE it requires
+# tbound-release-manifest.json and tbound-release-manifest.json.sig next to the artifacts and runs `tbound release verify`
 # (signature, then the artifact's size and SHA-256) BEFORE extracting anything; a checksum file is
 # then not used at all. The verifier is --verifier PATH, $TBOUND_VERIFIER, or `tbound` on PATH. It
 # must come from somewhere you trust independently of the download (a build from source, or an
@@ -32,7 +33,13 @@
 # ROOT RUN: the marker and the pin are the trust anchors of a prefix, so a run as root refuses unless the
 # prefix (or its nearest existing ancestor) and every directory above it are root-owned and not writable
 # by group or others, and it refuses a symlinked or group/other-writable marker or pin. Uninstall applies the
-# same checks, and again immediately before it removes the prefix.
+# same checks, and again immediately before it removes the prefix. Every run creates the marker itself and
+# discards any archive-supplied one. A root run extracts under umask 077 with tar --no-same-owner
+# --no-same-permissions, so no owner or mode in the archive reaches the prefix, and it creates the marker
+# and the pin with their final mode. A root run never installs or removes the per-user shell completions
+# or writes the per-user config, because HOME and XDG directories are user-controlled: it prints what the
+# user runs unprivileged instead. A root run downloads, verifies and extracts only inside private directories
+# it creates below the prefix's (checked) parent, never under TMPDIR, whose parents a user may own.
 set -euo pipefail
 
 DEFAULT_VERSION="latest"
@@ -188,6 +195,10 @@ install_completions() {
   local prefix="$1"
   local src="$prefix/share/completions"
   [ -d "$src" ] || return 0
+  if [ "$(id -u)" = 0 ]; then
+    log "running as root: skipped the shell completions, because their directories are user-controlled and a root run does not follow them; as that user, copy from $src: tbound.bash to \${XDG_DATA_HOME:-~/.local/share}/bash-completion/completions/tbound, _tbound to \${XDG_DATA_HOME:-~/.local/share}/zsh/site-functions/_tbound, tbound.fish to \${XDG_CONFIG_HOME:-~/.config}/fish/completions/tbound.fish"
+    return 0
+  fi
   local data="${XDG_DATA_HOME:-$HOME/.local/share}"
   local cfg="${XDG_CONFIG_HOME:-$HOME/.config}"
   if [ -f "$src/tbound.bash" ]; then
@@ -206,6 +217,10 @@ install_completions() {
 }
 
 remove_completions() {
+  if [ "$(id -u)" = 0 ]; then
+    log "running as root: left the shell completions of the user in place; as that user, remove \${XDG_DATA_HOME:-~/.local/share}/bash-completion/completions/tbound, \${XDG_DATA_HOME:-~/.local/share}/zsh/site-functions/_tbound and \${XDG_CONFIG_HOME:-~/.config}/fish/completions/tbound.fish"
+    return 0
+  fi
   local data="${XDG_DATA_HOME:-$HOME/.local/share}"
   local cfg="${XDG_CONFIG_HOME:-$HOME/.config}"
   rm -f "$data/bash-completion/completions/tbound" "$data/zsh/site-functions/_tbound" "$cfg/fish/completions/tbound.fish"
@@ -257,15 +272,22 @@ install_at() {
   # Stage next to the prefix so the final swap is a same-filesystem rename.
   local stage; stage="$(mktemp -d "$parent/.tbound-stage.XXXXXX")" || die "cannot stage next to $parent"
   STAGE_INSTALL="$stage"
-  if ! tar -xzf "$artifact" -C "$stage"; then die "extraction failed"; fi
+  if [ "$(id -u)" = 0 ]; then
+    # A root run takes nothing from the archive's headers. The stage is a private directory root just created,
+    # and an owner or mode on the archive's "." entry would hand it to whoever the archive names.
+    (umask 077; tar --no-same-owner --no-same-permissions -xzf "$artifact" -C "$stage") || die "extraction failed"
+  elif ! tar -xzf "$artifact" -C "$stage"; then die "extraction failed"; fi
   if [ ! -x "$stage/bin/tbound" ]; then die "extracted archive has no bin/tbound"; fi
   if [ ! -x "$stage/bin/tbound-doctor" ]; then die "extracted archive has no bin/tbound-doctor"; fi
   if [ ! -x "$stage/bin/tbound-profile" ]; then die "extracted archive has no bin/tbound-profile"; fi
-  printf 'name=tbound\nversion=%s\nprefix=%s\n' "$(json_escape "$version")" "$(json_escape "$prefix")" > "$stage/$MARKER"
-  chmod 0644 "$stage/$MARKER" # a root run refuses a marker that group or others can write, whatever the umask
+  # The marker is never the archive's: an archive may carry a link under this name, and a root run must not write through it.
+  rm -rf -- "$stage/$MARKER"
+  # Created with its final mode, whatever the umask: a root run refuses a marker that group or others can write,
+  # and a chmod by pathname afterwards would follow a link swapped in after the creation.
+  (umask 022; set -o noclobber; printf 'name=tbound\nversion=%s\nprefix=%s\n' "$(json_escape "$version")" "$(json_escape "$prefix")" > "$stage/$MARKER") || die "cannot create the install marker"
   rm -rf -- "$stage/$PUBLISHER_KEY" # the pin comes only from the verified key below, never from the archive
   if [ -n "$pin_key" ]; then
-    cp -- "$pin_key" "$stage/$PUBLISHER_KEY" && chmod 0644 "$stage/$PUBLISHER_KEY" || die "cannot pin the publisher key"
+    (umask 022; set -o noclobber; cat -- "$pin_key" > "$stage/$PUBLISHER_KEY") || die "cannot pin the publisher key"
   fi
 
   # Move any existing install into an exclusively created hold directory so a
@@ -298,6 +320,10 @@ install_at() {
 
 write_config() {
   local version="$1" prefix="$2"
+  if [ "$(id -u)" = 0 ]; then
+    log "running as root: skipped the per-user config file, whose directory is user-controlled; it is optional, and an install run as that user writes it"
+    return 0
+  fi
   local cfg; cfg="$(config_dir)"
   mkdir -p "$cfg"
   if [ ! -f "$cfg/config.json" ]; then
@@ -365,11 +391,24 @@ main() {
   os="$(detect_os)"; arch="$(detect_arch)"
   artifact="tbound-${version}-${os}-${arch}.tar.gz"
 
-  STAGE="$(mktemp -d "${TMPDIR:-/tmp}/tbound-install.XXXXXX")"
+  # Root gains privilege from what it installs, so it needs the publisher's signature: a checksum file from the same origin
+  # is replaced together with the artifact. A run that is not root only changes what its user can already change.
+  local pinned="$prefix/$PUBLISHER_KEY"
+  if [ "$(id -u)" = 0 ] && [ -z "$public_key" ] && ! { is_owned_prefix "$prefix" && [ -f "$pinned" ]; }; then
+    die "a root run requires publisher authentication: pass --public-key, or update a prefix that pins a publisher key (a checksum file is not authentication; only a run that is not root may use it)"
+  fi
+
+  # A root run stages below the prefix's parent, which the checks above found root-owned and closed to others: whoever
+  # owns a directory above TMPDIR could rename a stage there and put their own at its path after the signature was verified.
+  local stage_root="${TMPDIR:-/tmp}"
+  if [ "$(id -u)" = 0 ]; then
+    stage_root="$(dirname "$prefix")"
+    { (umask 022; mkdir -p -- "$stage_root") && require_trusted_path "$stage_root" 0; } || die "cannot prepare $stage_root"
+  fi
+  STAGE="$(mktemp -d "$stage_root/tbound-install.XXXXXX")" || die "cannot create a staging directory in $stage_root"
   log "${updating:+updating }installing tbound ${version} (${os}/${arch}) into ${prefix}"
 
   # Key pin: work from a private copy of the key, so the key that is verified is the key that is stored.
-  local pinned="$prefix/$PUBLISHER_KEY"
   if [ -n "$public_key" ]; then
     [ -f "$public_key" ] || die "public key file not found: $public_key"
     cp -- "$public_key" "$STAGE/$PUBLISHER_KEY" || die "cannot read the public key: $public_key"

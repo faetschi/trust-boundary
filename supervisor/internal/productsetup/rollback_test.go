@@ -35,7 +35,7 @@ func rollbackChild(root string) {
 	var rep Report
 	var err error
 	if update := os.Getenv("TB_ROLLBACK_UPDATE"); update != "" {
-		rep, err = Update(env, update)
+		rep, err = Update(env, candidateNextTo(update))
 	} else {
 		rep, err = Rollback(env)
 	}
@@ -142,7 +142,7 @@ func TestUpdateWhoseSelfTestFailsRestoresAndAFreshProcessFinishesAnInterruptedRe
 	f := newFixture(t)
 	f.installed()
 	f.env.Turns = func() ([]OpenTurn, error) { return nil, nil }
-	if out, code := runRollbackChild(t, f.root, "restored", "fail", f.newBinary("binary v2")); code != 77 {
+	if out, code := runRollbackChild(t, f.root, "restored", "fail", f.newBinary("binary v2").Binary); code != 77 {
 		t.Fatalf("the update child did not end after the restore (exit %d):\n%s", code, out)
 	}
 	if f.read(BinaryPath) != "binary v1" || f.read(LastKnownGoodPath) != "binary v1" {

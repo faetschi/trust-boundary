@@ -1,12 +1,15 @@
 package productsetup
 
 import (
+	"crypto/ed25519"
 	"errors"
 	"fmt"
 	"net"
 	"os"
 	"strings"
 	"time"
+
+	"tbound/supervisor/internal/releasetrust"
 )
 
 // DoctorReport is the advisory report. Only a passed self-test establishes governed readiness.
@@ -81,6 +84,7 @@ func Doctor(env Env, selfTest bool) DoctorReport {
 	for _, n := range append(append([]node{}, directories...), installedFiles...) {
 		info, err := os.Lstat(h.real(n.Path))
 		switch {
+		case err != nil && n.Path == ReleasePublicKeyPath: // optional; the release key check below reports it
 		case err != nil:
 			add(n.Path, Fail, "missing", setupFix)
 		case info.IsDir() != n.Dir || info.Mode()&os.ModeSymlink != 0:
@@ -94,6 +98,7 @@ func Doctor(env Env, selfTest bool) DoctorReport {
 		}
 	}
 	rep.Checks = append(rep.Checks, h.unitChecks()...)
+	rep.Checks = append(rep.Checks, h.releaseKeyCheck())
 	conn, err := net.DialTimeout("unix", h.real(SocketPath), 2*time.Second)
 	if err != nil {
 		add("socket", Fail, "no listener at "+SocketPath+": "+err.Error(), "start the service: systemctl start "+UnitName)
@@ -165,6 +170,24 @@ func (h *host) unitChecks() []Check {
 		return append(checks, Check{Name: "unit state", Status: Fail, Detail: UnitName + " is " + state, Fix: "systemctl start " + UnitName})
 	}
 	return append(checks, Check{Name: "unit state", Status: Pass, Detail: UnitName + " is active"})
+}
+
+// releaseKeyCheck shows the pinned publisher key's fingerprint, which the administrator compares with the one
+// the publisher distributes. Without a pinned key `product update` refuses every candidate.
+func (h *host) releaseKeyCheck() Check {
+	data, err := readSource(h.real(ReleasePublicKeyPath))
+	if errors.Is(err, os.ErrNotExist) {
+		return Check{Name: "release key", Status: Warn, Detail: "no publisher key is pinned, so `product update` refuses every candidate binary",
+			Fix: "set release_public_key in the setup config and rerun `tbound product setup`"}
+	}
+	var key ed25519.PublicKey
+	if err == nil {
+		key, err = releasetrust.ParsePublicKey(data)
+	}
+	if err != nil {
+		return Check{Name: "release key", Status: Fail, Detail: err.Error(), Fix: "rerun `tbound product setup --replace` with a valid release_public_key"}
+	}
+	return Check{Name: "release key", Status: Pass, Detail: "update accepts only binaries signed by the publisher key with fingerprint " + releasetrust.Fingerprint(key)}
 }
 
 func (h *host) registrationCheck(rep *DoctorReport) (RegistrationSummary, bool) {

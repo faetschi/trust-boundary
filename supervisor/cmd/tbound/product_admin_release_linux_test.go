@@ -46,8 +46,17 @@ type releaseFixture struct {
 	tarGz string
 	// extra are additional archive entries (path to content), written by writeArchive.
 	extra map[string]string
+	// symlinks are archive entries that are symbolic links (path to link target).
+	symlinks map[string]string
 	// asRoot runs install.sh as if `id -u` printed 0, so its root-run checks apply to this unprivileged test.
 	asRoot bool
+	// shellSetup is shell code that runs after install.sh was sourced and before main: stubs.
+	shellSetup string
+	// completions leaves --no-completions off.
+	completions bool
+	// loose gives the archive a root entry and a directory that another user owns with mode 0777, and a file that
+	// group and others can write: what an attacker who controls the archive's headers supplies.
+	loose bool
 }
 
 func releaseArtifactName() string {
@@ -83,6 +92,23 @@ func (f *releaseFixture) writeArchive(marker string) {
 	defer file.Close()
 	gz := gzip.NewWriter(file)
 	tw := tar.NewWriter(gz)
+	if f.loose {
+		const body = "loose\n"
+		for _, header := range []tar.Header{
+			{Name: "./", Typeflag: tar.TypeDir, Mode: 0o777, Uid: 12345, Gid: 12345},
+			{Name: "share/", Typeflag: tar.TypeDir, Mode: 0o777, Uid: 12345, Gid: 12345},
+			{Name: "share/loose", Typeflag: tar.TypeReg, Mode: 0o666, Uid: 12345, Gid: 12345, Size: int64(len(body))},
+		} {
+			if err := tw.WriteHeader(&header); err != nil {
+				f.t.Fatal(err)
+			}
+			if header.Size > 0 {
+				if _, err := tw.Write([]byte(body)); err != nil {
+					f.t.Fatal(err)
+				}
+			}
+		}
+	}
 	for _, name := range []string{"bin/tbound", "bin/tbound-doctor", "bin/tbound-profile"} {
 		body := "#!/bin/sh\necho " + marker + "\n"
 		if err := tw.WriteHeader(&tar.Header{Name: name, Mode: 0o755, Size: int64(len(body)), Typeflag: tar.TypeReg}); err != nil {
@@ -97,6 +123,11 @@ func (f *releaseFixture) writeArchive(marker string) {
 			f.t.Fatal(err)
 		}
 		if _, err := tw.Write([]byte(body)); err != nil {
+			f.t.Fatal(err)
+		}
+	}
+	for name, target := range f.symlinks {
+		if err := tw.WriteHeader(&tar.Header{Name: name, Mode: 0o777, Linkname: target, Typeflag: tar.TypeSymlink}); err != nil {
 			f.t.Fatal(err)
 		}
 	}
@@ -125,7 +156,7 @@ func (f *releaseFixture) install(extra ...string) (out, prefix string, err error
 }
 
 // asRootShell sources install.sh ($1) and runs its main with `id -u` answering 0.
-const asRootShell = `. "$1"; shift; id() { if [ "${1:-}" = -u ]; then echo 0; else command id "$@"; fi; }; main "$@"`
+const asRootShell = `. "$1"; shift; id() { if [ "${1:-}" = -u ]; then echo 0; else command id "$@"; fi; }; eval "$TBOUND_TEST_SETUP"; main "$@"`
 
 // installCommand is install with an optional install.sh subcommand such as "update".
 func (f *releaseFixture) installCommand(subcommand string, extra ...string) (out, prefix string, err error) {
@@ -143,12 +174,16 @@ func (f *releaseFixture) installCommand(subcommand string, extra ...string) (out
 	if subcommand != "" {
 		args = append(args, subcommand)
 	}
-	args = append(append(args, "--version", "t1", "--prefix", prefix, "--local-dist", f.dist, "--no-path", "--no-completions"), extra...)
+	args = append(args, "--version", "t1", "--prefix", prefix, "--local-dist", f.dist, "--no-path")
+	if !f.completions {
+		args = append(args, "--no-completions")
+	}
+	args = append(args, extra...)
 	if f.asRoot {
 		args = append([]string{"-c", asRootShell, "tbound-test"}, args...)
 	}
 	cmd := exec.Command(bash, args...)
-	cmd.Env = []string{"HOME=" + home, "TMPDIR=" + f.dir, "PATH=/usr/bin:/bin", "XDG_CONFIG_HOME=" + filepath.Join(home, "cfg")}
+	cmd.Env = []string{"HOME=" + home, "TMPDIR=" + f.dir, "PATH=/usr/bin:/bin", "XDG_CONFIG_HOME=" + filepath.Join(home, "cfg"), "TBOUND_TEST_SETUP=" + f.shellSetup}
 	combined, err := cmd.CombinedOutput()
 	return string(combined), prefix, err
 }

@@ -19,7 +19,9 @@ install/install.sh uninstall [--prefix <dir>]
 
 Artifacts are `tbound-<version>-<os>-<arch>.tar.gz` plus a `SHA256SUMS` file. The
 installer refuses to extract an artifact whose SHA-256 is missing or does not
-match.
+match. The checksum only detects corruption, not a replaced download. A run as
+root therefore refuses it and requires `--public-key` (or the key its prefix
+pins); see the TRUST notes in `install.sh --help`.
 
 See [`../docs/guides/setup.md`](../docs/guides/setup.md) for the full user guide and the
 dev-vs-governed honesty boundary.
