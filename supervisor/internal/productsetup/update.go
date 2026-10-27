@@ -516,6 +516,11 @@ func Uninstall(env Env, purge bool) (Report, error) {
 	if _, err := h.remove(RuntimeDir, true); err != nil {
 		return *h.rep, err
 	}
+	if !env.Live { // `systemctl disable` removed the link on a live host; a test root only recorded it
+		if _, err := h.remove(enableLinkPath, false); err != nil {
+			return *h.rep, err
+		}
+	}
 	if unitGone {
 		if err := h.command("systemctl", "daemon-reload"); err != nil {
 			return *h.rep, err

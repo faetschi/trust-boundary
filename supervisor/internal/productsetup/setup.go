@@ -94,6 +94,8 @@ func Setup(env Env, cfg Config, binary string) (Report, error) {
 			refused = append(refused, p.Path+": "+p.Detail)
 		}
 	}
+	enable := h.planEnable() // applied after the reload, so it is not part of plan
+	h.rep.Steps = append(h.rep.Steps, enable.Step)
 	if len(refused) > 0 {
 		return *h.rep, refuse("%s; nothing was changed", strings.Join(refused, "; "))
 	}
@@ -113,6 +115,11 @@ func Setup(env Env, cfg Config, binary string) (Report, error) {
 			if err := h.command("systemctl", "daemon-reload"); err != nil {
 				return *h.rep, err
 			}
+		}
+	}
+	if enable.apply != nil {
+		if err := enable.apply(); err != nil {
+			return *h.rep, fmt.Errorf("apply %s %s: %w", enable.Kind, enable.Path, err)
 		}
 	}
 	return *h.rep, nil

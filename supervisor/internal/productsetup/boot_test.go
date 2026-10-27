@@ -9,8 +9,6 @@ import (
 	"testing"
 )
 
-const bootLink = "/etc/systemd/system/multi-user.target.wants/" + UnitName
-
 func TestUnitHasABootActivationSectionAndTheValidatorPinsIt(t *testing.T) {
 	const install = "[Install]\nWantedBy=multi-user.target\n"
 	unit := string(RenderUnit())
@@ -54,7 +52,7 @@ func TestSetupEnablesTheUnitAtBootOnceAndDryRunPlansIt(t *testing.T) {
 	if reload < 0 || enable < reload {
 		t.Fatalf("the unit must be enabled after the reload: %v", rep.Commands)
 	}
-	if target, err := os.Readlink(f.path(bootLink)); err != nil || target != UnitPath {
+	if target, err := os.Readlink(f.path(enableLinkPath)); err != nil || target != UnitPath {
 		t.Fatalf("the test root does not show the enabled unit: %q %v", target, err)
 	}
 
@@ -62,7 +60,7 @@ func TestSetupEnablesTheUnitAtBootOnceAndDryRunPlansIt(t *testing.T) {
 	if err != nil || rep.Changed() || len(rep.Commands) != 0 {
 		t.Fatalf("a rerun on an enabled unit must change nothing: %v\n%s", err, rep)
 	}
-	if err := os.Remove(f.path(bootLink)); err != nil {
+	if err := os.Remove(f.path(enableLinkPath)); err != nil {
 		t.Fatal(err)
 	}
 	rep, err = f.setup()
@@ -77,7 +75,7 @@ func TestDoctorFlagsAUnitThatIsNotEnabledAtBoot(t *testing.T) {
 	if text := Doctor(f.env, false).String(); !strings.Contains(text, "[PASS] unit enabled") {
 		t.Fatalf("an enabled unit:\n%s", text)
 	}
-	if err := os.Remove(f.path(bootLink)); err != nil {
+	if err := os.Remove(f.path(enableLinkPath)); err != nil {
 		t.Fatal(err)
 	}
 	if text := Doctor(f.env, false).String(); !strings.Contains(text, "[FAIL] unit enabled") || !strings.Contains(text, "tbound product setup") {
@@ -93,7 +91,7 @@ func TestUninstallDisablesTheUnit(t *testing.T) {
 	if err != nil || !slices.Contains(rep.Commands, "systemctl disable "+UnitName) {
 		t.Fatalf("uninstall: %v %v", err, rep.Commands)
 	}
-	if _, err := os.Lstat(f.path(bootLink)); err == nil {
+	if _, err := os.Lstat(f.path(enableLinkPath)); err == nil {
 		t.Fatal("the unit is still enabled after the uninstall")
 	}
 }

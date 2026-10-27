@@ -63,7 +63,7 @@ func (h *host) openRoot() error {
 		return err
 	}
 	// Refuse an existing unsafe parent before accounts or service commands can change anything.
-	paths := []string{"/etc/passwd", "/etc/group", CatalogPath, SocketPath, LastKnownGoodPath, stagedBinaryPath, rollbackIntentPath}
+	paths := []string{"/etc/passwd", "/etc/group", CatalogPath, SocketPath, LastKnownGoodPath, stagedBinaryPath, rollbackIntentPath, enableLinkPath}
 	for _, n := range append(append([]node{}, directories...), installedFiles...) {
 		paths = append(paths, n.Path)
 	}

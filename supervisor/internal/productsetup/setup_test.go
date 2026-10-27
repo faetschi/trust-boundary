@@ -392,7 +392,7 @@ func TestSetupLiveRunsAccountsOwnersAndReloadInOrder(t *testing.T) {
 			order = append(order, strings.Fields(c)[0])
 		}
 	}
-	if strings.Join(order, " ") != "groupadd useradd systemctl" || calls[len(calls)-1] != "systemctl daemon-reload" {
+	if strings.Join(order, " ") != "groupadd useradd systemctl systemctl" || calls[len(calls)-2] != "systemctl daemon-reload" || calls[len(calls)-1] != "systemctl enable "+UnitName {
 		t.Fatalf("live commands out of order: %v", calls)
 	}
 	for _, want := range []string{ConfigDir + " 0:0", CredentialsDir + " 888:777", StateDir + " 888:777", BinaryPath + " 0:0"} {

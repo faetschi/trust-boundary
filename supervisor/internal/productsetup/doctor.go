@@ -151,6 +151,11 @@ func (h *host) unitChecks() []Check {
 	} else {
 		checks = append(checks, Check{Name: "unit content", Status: Pass, Detail: "matches the pinned product unit"})
 	}
+	if h.unitEnabled() {
+		checks = append(checks, Check{Name: "unit enabled", Status: Pass, Detail: UnitName + " starts at boot (WantedBy=" + unitWantedBy + ")"})
+	} else {
+		checks = append(checks, Check{Name: "unit enabled", Status: Fail, Detail: UnitName + " does not start at boot", Fix: "run `tbound product setup`"})
+	}
 	if !h.system() {
 		return append(checks, Check{Name: "unit state", Status: Warn, Detail: "not queried on a test root"})
 	}
