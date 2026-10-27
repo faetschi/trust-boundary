@@ -181,3 +181,32 @@ func TestParseKeyAndSignatureFromBytesMatchTheFileReaders(t *testing.T) {
 		t.Fatalf("a malformed signature parsed: %v", err)
 	}
 }
+
+func TestManifestRefusesATraversalNameAndADuplicateNameEvenWhenSigned(t *testing.T) {
+	pub, key, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const digest = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	entry := func(name string) string { return `{"name":"` + name + `","size":1,"sha256":"` + digest + `"}` }
+	manifest := func(entries ...string) []byte {
+		return []byte(`{"schema_version":"` + Schema + `","artifacts":[` + strings.Join(entries, ",") + `]}`)
+	}
+	cases := map[string][]byte{
+		"a parent traversal":       manifest(entry("../tbound")),
+		"a nested path":            manifest(entry("sub/tbound")),
+		"a parent directory alone": manifest(entry("..")),
+		"a duplicate name":         manifest(entry("tbound"), entry("tbound")),
+	}
+	for name, raw := range cases {
+		t.Run(name, func(t *testing.T) {
+			if _, _, err := Parse(raw); !errors.Is(err, ErrRefused) {
+				t.Fatalf("Parse accepted the manifest: %v", err)
+			}
+			// A publisher key cannot make it acceptable: the signature covers exactly these bytes.
+			if _, err := Verify(raw, ed25519.Sign(key, signingBytes(raw)), pub); !errors.Is(err, ErrRefused) {
+				t.Fatalf("Verify accepted a signed manifest: %v", err)
+			}
+		})
+	}
+}
