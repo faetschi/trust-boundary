@@ -4,14 +4,10 @@ package main
 
 import (
 	"crypto/ed25519"
-	"encoding/base64"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"slices"
-	"strings"
-	"syscall"
 
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/gate"
@@ -77,13 +73,11 @@ func newProductServiceHostProfile(cfg productServiceConfig) productServiceHost {
 		env.PinGit = func() (privategit.PinnedGit, sessionlaunch.GitProfile, error) {
 			return pinProductionGit(productionOperatorArtifacts{GitPath: cfg.GitPath, GitDigest: cfg.GitDigest, GitBoundary: productGitBoundary})
 		}
-		git, _, err := env.PinGit() // refuse at start, not at the first turn
-		if err != nil {
+		// Refuse at start, not at the first turn.
+		if _, err := verifyProductGit(cfg.GitPath, cfg.GitDigest, productServiceOwners()); err != nil {
 			return err
 		}
-		if err := git.Close(); err != nil {
-			return err
-		}
+		var err error
 		xattr := func() (workspace.XattrVisibilityAttestation, error) { return productHostXattr(cfg, env) }
 		if env.Xattr, err = xattr(); err != nil {
 			return err
@@ -97,9 +91,8 @@ func newProductServiceHostProfile(cfg productServiceConfig) productServiceHost {
 	}
 }
 
-// installProductGatePolicies loads each project's installed gate policy and checks it against the
-// digest the signed registration commits to. No contained command runner exists yet, so a policy that
-// allows bash is refused here, at startup.
+// installProductGatePolicies loads each project's installed gate policy through the shared static
+// validator: protected file, registered digest, and no bash policy without a contained command runner.
 func installProductGatePolicies(env *productTurnEnv, paths map[string]string) error {
 	env.GatePolicies = make(map[string]gate.Policy, len(paths))
 	for _, project := range env.Registration.Projects {
@@ -107,48 +100,13 @@ func installProductGatePolicies(env *productTurnEnv, paths map[string]string) er
 		if !ok {
 			return fmt.Errorf("gate_policy_paths has no file for project %q", project.ProjectID)
 		}
-		raw, err := readProductHostFile(file, gate.MaxPolicyBytes)
+		policy, _, err := loadProductGatePolicy(project.ProjectID, project.PolicyDigest, file, productServiceOwners(), env.NewCommandRunner != nil)
 		if err != nil {
-			return fmt.Errorf("read the gate policy of project %q: %w", project.ProjectID, err)
-		}
-		policy, err := gate.NewPolicyFromJSON(raw)
-		if err != nil {
-			return fmt.Errorf("parse the gate policy of project %q: %w", project.ProjectID, err)
-		}
-		env.GatePolicies[project.ProjectID] = policy
-		if _, err := env.gatePolicy(project.ProjectID, project.PolicyDigest); err != nil {
 			return err
 		}
-		if productPolicyAllowsBash(policy) && env.NewCommandRunner == nil {
-			return fmt.Errorf("the gate policy of project %q allows bash, but the product host has no contained command runner: "+
-				"install a policy that denies bash until D09 command cells are available", project.ProjectID)
-		}
+		env.GatePolicies[project.ProjectID] = policy
 	}
 	return nil
-}
-
-// readProductHostFile reads an installed host input: a regular file opened without following a symlink,
-// owned by root or by the service, writable by neither group nor others, and within its size bound.
-func readProductHostFile(path string, limit int64) ([]byte, error) {
-	fd, err := syscall.Open(path, syscall.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_CLOEXEC|syscall.O_NONBLOCK, 0)
-	if err != nil {
-		return nil, err
-	}
-	f := os.NewFile(uintptr(fd), path)
-	defer f.Close()
-	info, err := f.Stat()
-	if err != nil {
-		return nil, err
-	}
-	st, ok := info.Sys().(*syscall.Stat_t)
-	if !ok || !info.Mode().IsRegular() || info.Mode().Perm()&0o022 != 0 || (st.Uid != 0 && st.Uid != uint32(os.Geteuid())) || info.Size() > limit {
-		return nil, errors.New("host input must be a protected bounded regular file")
-	}
-	raw, err := io.ReadAll(io.LimitReader(f, limit+1))
-	if err != nil || int64(len(raw)) > limit {
-		return nil, errors.Join(errors.New("host input exceeds its bound"), err)
-	}
-	return raw, nil
 }
 
 // productHostXattr verifies the signed xattr calibration and that the filesystem, mount and scanner of
@@ -159,24 +117,13 @@ func readProductHostFile(path string, limit int64) ([]byte, error) {
 // the product has one offline key.
 func productHostXattr(cfg productServiceConfig, env *productTurnEnv) (workspace.XattrVisibilityAttestation, error) {
 	var none workspace.XattrVisibilityAttestation
-	raw, err := readProductHostFile(cfg.XattrCalibrationPath, 64<<10)
-	if err != nil {
-		return none, fmt.Errorf("read the xattr calibration: %w", err)
-	}
-	signature, err := readProductHostBase64(cfg.XattrCalibrationPath + ".sig")
-	if err != nil {
-		return none, fmt.Errorf("read the xattr calibration signature: %w", err)
-	}
-	key, err := readProductHostBase64(cfg.RegistrationPublicKeyPath)
+	key, err := readProductHostBase64(cfg.RegistrationPublicKeyPath, productServiceOwners())
 	if err != nil {
 		return none, fmt.Errorf("read the registration public key: %w", err)
 	}
-	calibration, err := piruntime.VerifyD09XattrEnumerationCalibration(raw, signature, ed25519.PublicKey(key))
+	calibration, _, _, err := verifyProductCalibration(cfg.XattrCalibrationPath, ed25519.PublicKey(key), productServiceOwners())
 	if err != nil {
-		return none, fmt.Errorf("verify the xattr calibration: %w", err)
-	}
-	if calibration.SourceAccessProfile != piruntime.D09XattrManagedRWSourceProfile {
-		return none, errors.New("the xattr calibration must cover managed writable roots")
+		return none, err
 	}
 	// The private Store and Git trees under the state root and every managed project root are scanned.
 	roots := []string{env.StateRoot}
@@ -193,19 +140,9 @@ func productHostXattr(cfg productServiceConfig, env *productTurnEnv) (workspace.
 		if measureErr != nil || closeErr != nil {
 			return none, errors.Join(measureErr, closeErr)
 		}
-		if m.ReadOnly || m.FilesystemMagic != calibration.FilesystemMagic || m.MountOptionsDigest != calibration.MountOptionsDigest ||
-			m.ScanUID != calibration.ScanUID || m.ScanGID != calibration.ScanGID || m.ScanPrivilegeProfile != calibration.ScanPrivilegeProfile ||
-			m.EffectiveCapabilities != "0000000000000000" || !m.NoNewPrivs || !m.InitialUserNamespace {
+		if !productScannerMatchesCalibration(m, calibration) {
 			return none, fmt.Errorf("the filesystem, mount or scanner of %s differs from the signed xattr calibration", path)
 		}
 	}
 	return piruntime.WorkspaceXattrAttestation(calibration.Digest, calibration.Authority)
-}
-
-func readProductHostBase64(path string) ([]byte, error) {
-	raw, err := readProductHostFile(path, 1024)
-	if err != nil {
-		return nil, err
-	}
-	return base64.StdEncoding.DecodeString(strings.TrimSpace(string(raw)))
 }

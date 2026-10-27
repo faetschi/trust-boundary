@@ -258,7 +258,7 @@ func (e *productTurnEnv) MeasureProjectBaseline(projectID string) (string, error
 
 func (e *productTurnEnv) gatePolicy(projectID, policyDigest string) (gate.Policy, error) {
 	policy, ok := e.GatePolicies[projectID]
-	if !ok || sha256DigestFromBarePin(barePolicyDigest(policy.Digest())) != policyDigest {
+	if !ok || productRegisteredPolicyDigest(policy) != policyDigest {
 		return gate.Policy{}, fmt.Errorf("installed gate policy of project %q differs from its registration", projectID)
 	}
 	return policy, nil

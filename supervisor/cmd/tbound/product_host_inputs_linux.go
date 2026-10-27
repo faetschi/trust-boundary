@@ -1,0 +1,174 @@
+//go:build linux
+
+package main
+
+import (
+	"crypto/ed25519"
+	"encoding/base64"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"slices"
+	"strings"
+	"syscall"
+
+	"tbound/supervisor/internal/gate"
+	"tbound/supervisor/internal/piruntime"
+)
+
+// The static host-input validators below hold no live state. product-serve runs them at start with the
+// service's own owner set, and `product setup` and `product doctor` run them with the owner set of the
+// installation (root and the service account), so all three agree. The live checks stay with the service:
+// the scanner identity of every scanned root (productHostXattr) and the publication-time revalidation.
+
+// productHostFile is an installed host input that passed the protected-file rules.
+type productHostFile struct {
+	Raw  []byte
+	UID  uint32
+	Mode os.FileMode
+}
+
+// productServiceOwners are the UIDs that may own an installed host input from the service's view: root
+// and the account the service runs as.
+func productServiceOwners() []uint32 { return []uint32{0, uint32(os.Geteuid())} }
+
+// readProtectedHostFile reads an installed host input: a regular file opened without following a symlink,
+// owned by one of owners, writable by neither group nor others, and within its size bound.
+func readProtectedHostFile(path string, limit int64, owners []uint32) (productHostFile, error) {
+	fd, err := syscall.Open(path, syscall.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_CLOEXEC|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return productHostFile{}, err
+	}
+	f := os.NewFile(uintptr(fd), path)
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return productHostFile{}, err
+	}
+	st, ok := info.Sys().(*syscall.Stat_t)
+	if !ok || !info.Mode().IsRegular() || info.Mode().Perm()&0o022 != 0 || !slices.Contains(owners, st.Uid) || info.Size() > limit {
+		return productHostFile{}, errors.New("host input must be a protected bounded regular file")
+	}
+	raw, err := io.ReadAll(io.LimitReader(f, limit+1))
+	if err != nil || int64(len(raw)) > limit {
+		return productHostFile{}, errors.Join(errors.New("host input exceeds its bound"), err)
+	}
+	return productHostFile{Raw: raw, UID: st.Uid, Mode: info.Mode().Perm()}, nil
+}
+
+// readProductHostFile is readProtectedHostFile as the service reads its inputs.
+func readProductHostFile(path string, limit int64) ([]byte, error) {
+	file, err := readProtectedHostFile(path, limit, productServiceOwners())
+	return file.Raw, err
+}
+
+func readProductHostBase64(path string, owners []uint32) ([]byte, error) {
+	file, err := readProtectedHostFile(path, 1024, owners)
+	if err != nil {
+		return nil, err
+	}
+	return base64.StdEncoding.DecodeString(strings.TrimSpace(string(file.Raw)))
+}
+
+// productRegisteredPolicyDigest is a gate policy's digest in the form the signed registration commits to.
+func productRegisteredPolicyDigest(policy gate.Policy) string {
+	return sha256DigestFromBarePin(barePolicyDigest(policy.Digest()))
+}
+
+// loadProductGatePolicy checks one project's installed gate policy: a protected file that parses, whose
+// digest equals the one the signed registration commits to. No contained command runner exists yet, so a
+// policy that allows bash is refused unless the caller has one.
+func loadProductGatePolicy(projectID, registeredDigest, path string, owners []uint32, runnerAvailable bool) (gate.Policy, productHostFile, error) {
+	file, err := readProtectedHostFile(path, gate.MaxPolicyBytes, owners)
+	if err != nil {
+		return gate.Policy{}, file, fmt.Errorf("read the gate policy of project %q: %w", projectID, err)
+	}
+	policy, err := gate.NewPolicyFromJSON(file.Raw)
+	if err != nil {
+		return gate.Policy{}, file, fmt.Errorf("parse the gate policy of project %q: %w", projectID, err)
+	}
+	if productRegisteredPolicyDigest(policy) != registeredDigest {
+		return gate.Policy{}, file, fmt.Errorf("installed gate policy of project %q differs from its registration", projectID)
+	}
+	if productPolicyAllowsBash(policy) && !runnerAvailable {
+		return gate.Policy{}, file, fmt.Errorf("the gate policy of project %q allows bash, but the product host has no contained command runner: "+
+			"install a policy that denies bash until D09 command cells are available", projectID)
+	}
+	return policy, file, nil
+}
+
+// verifyProductGit applies the production Git pin (digest, mode, trusted ancestors) and refuses an
+// executable whose owner is not in owners.
+func verifyProductGit(path, digest string, owners []uint32) (productHostFile, error) {
+	git, _, err := pinProductionGit(productionOperatorArtifacts{GitPath: path, GitDigest: digest, GitBoundary: productGitBoundary})
+	if err != nil {
+		return productHostFile{}, err
+	}
+	if err := git.Close(); err != nil {
+		return productHostFile{}, err
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return productHostFile{}, err
+	}
+	st, ok := info.Sys().(*syscall.Stat_t)
+	if !ok || !slices.Contains(owners, st.Uid) {
+		return productHostFile{}, errors.New("the pinned Git executable is not owned by root or the service account")
+	}
+	return productHostFile{UID: st.Uid, Mode: info.Mode().Perm()}, nil
+}
+
+// productInputError names which host input a refusal belongs to, so a report can attribute it.
+type productInputError struct {
+	input string
+	err   error
+}
+
+func (e productInputError) Error() string { return e.err.Error() }
+func (e productInputError) Unwrap() error { return e.err }
+
+const (
+	productInputCalibration          = "calibration"
+	productInputCalibrationSignature = "calibration signature"
+)
+
+// verifyProductCalibration checks the signed xattr calibration: both files protected, the signature
+// verifying under the registration public key over the canonical bytes, and the managed-rw source profile.
+// The signature sits at the calibration path plus ".sig". A refusal is a productInputError.
+func verifyProductCalibration(path string, publicKey ed25519.PublicKey, owners []uint32) (calibration piruntime.D09XattrEnumerationCalibration, file, signatureFile productHostFile, err error) {
+	var none piruntime.D09XattrEnumerationCalibration
+	fail := func(input, format string, args ...any) error {
+		return productInputError{input: input, err: fmt.Errorf(format, args...)}
+	}
+	if file, err = readProtectedHostFile(path, 64<<10, owners); err != nil {
+		return none, file, signatureFile, fail(productInputCalibration, "read the xattr calibration: %w", err)
+	}
+	if signatureFile, err = readProtectedHostFile(path+".sig", 1024, owners); err != nil {
+		return none, file, signatureFile, fail(productInputCalibrationSignature, "read the xattr calibration signature: %w", err)
+	}
+	signature, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(signatureFile.Raw)))
+	if err != nil {
+		return none, file, signatureFile, fail(productInputCalibrationSignature, "read the xattr calibration signature: %w", err)
+	}
+	if calibration, err = piruntime.VerifyD09XattrEnumerationCalibration(file.Raw, signature, publicKey); err != nil {
+		input := productInputCalibration
+		if errors.Is(err, piruntime.ErrD09XattrCalibrationSignature) {
+			input = productInputCalibrationSignature
+		}
+		return none, file, signatureFile, fail(input, "verify the xattr calibration: %w", err)
+	}
+	if calibration.SourceAccessProfile != piruntime.D09XattrManagedRWSourceProfile {
+		return none, file, signatureFile, fail(productInputCalibration, "the xattr calibration must cover managed writable roots")
+	}
+	return calibration, file, signatureFile, nil
+}
+
+// productScannerMatchesCalibration is the identity rule shared by the service's live scanner check and the
+// measurement command: a writable filesystem, mount and scanner identical to the calibration's, with zero
+// capabilities, NoNewPrivs and the initial user namespace.
+func productScannerMatchesCalibration(m piruntime.D09XattrVisibilityMeasurements, c piruntime.D09XattrEnumerationCalibration) bool {
+	return !m.ReadOnly && m.FilesystemMagic == c.FilesystemMagic && m.MountOptionsDigest == c.MountOptionsDigest &&
+		m.ScanUID == c.ScanUID && m.ScanGID == c.ScanGID && m.ScanPrivilegeProfile == c.ScanPrivilegeProfile &&
+		m.EffectiveCapabilities == "0000000000000000" && m.NoNewPrivs && m.InitialUserNamespace
+}
