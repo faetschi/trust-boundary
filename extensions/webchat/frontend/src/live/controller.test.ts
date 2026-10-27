@@ -13,6 +13,7 @@ import {
   type LiveStorage,
 } from "./controller";
 import { retryable } from "./readings";
+import { PENDING_ACTIONS_KEY } from "./storedIntent";
 
 const flush = async () => {
   for (let round = 0; round < 8; round++) await new Promise((resolve) => setTimeout(resolve, 0));
@@ -428,6 +429,28 @@ describe("live controller: unresolved intent recovery", () => {
     const setup = rig();
     await open(setup);
     setup.storage.set = () => { throw new Error("quota exceeded"); };
+    expect(await setup.controller.submit("fix it")).toBe(false);
+    expect(posts(setup.gateway, "/turns")).toHaveLength(0);
+    expect(setup.controller.getSnapshot().fault).toContain("No request was sent");
+    setup.stores.forEach((store) => store.stop());
+  });
+
+  it.each(["ignored write", "corrupt readback", "failed readback"])("refuses to send after a %s", async (failure) => {
+    const setup = rig();
+    await open(setup);
+    const get = setup.storage.get;
+    const set = setup.storage.set;
+    if (failure === "ignored write") setup.storage.set = () => {};
+    else {
+      setup.storage.set = (key, value) => {
+        set(key, value);
+        if (key === PENDING_ACTIONS_KEY) setup.storage.get = (name) => {
+          if (name !== PENDING_ACTIONS_KEY) return get(name);
+          if (failure === "failed readback") throw new Error("storage read failed");
+          return "[]";
+        };
+      };
+    }
     expect(await setup.controller.submit("fix it")).toBe(false);
     expect(posts(setup.gateway, "/turns")).toHaveLength(0);
     expect(setup.controller.getSnapshot().fault).toContain("No request was sent");
