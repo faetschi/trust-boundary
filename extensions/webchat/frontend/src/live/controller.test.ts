@@ -518,6 +518,19 @@ describe("live controller: reviewing a candidate", () => {
     expect(setup.controller.getSnapshot().candidate.status).toBe("ready");
     setup.stores.forEach((store) => store.stop());
   });
+
+  it("explains the service's explicit refusal of an oversized complete preview", async () => {
+    const setup = rig({ gateway: createFakeGateway({ turns: [RUNNING] }) });
+    await open(setup);
+    setup.gateway.inject((call) => call.url.endsWith("/candidate"), { status: 413, body: { error: { code: "CANDIDATE_TOO_LARGE" } } });
+    setup.gateway.awaitReview("sha256:cand1");
+    await flush();
+    expect(setup.controller.getSnapshot().candidate).toMatchObject({
+      status: "failed", message: expect.stringContaining("1 MiB response limit"),
+    });
+    expect(setup.controller.getSnapshot().candidate).toMatchObject({ message: expect.stringContaining("No paths were omitted") });
+    setup.stores.forEach((store) => store.stop());
+  });
 });
 
 describe("live controller: sessions", () => {
