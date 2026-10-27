@@ -677,7 +677,11 @@ func (v activeWorkflowCommandVerifier) VerifyGovernedVerifier(replay *governedSt
 		if decision.denied {
 			// A refused Bash candidate has no transition for D09 evidence to bind to: nothing was promoted. Its
 			// settlement is still on record when the runner is D09.
-			if verifier, ok := runner.(governedBashEvidenceVerifier); ok && evidenced {
+			if evidenced {
+				verifier, ok := runner.(governedBashEvidenceVerifier)
+				if !ok {
+					return workflowrecovery.ErrObservation
+				}
 				if err := verifier.VerifyProductionBashEvidence(v.ctx, decision.entry); err != nil {
 					return errors.Join(ErrGovernedSessionEvidence, err)
 				}
