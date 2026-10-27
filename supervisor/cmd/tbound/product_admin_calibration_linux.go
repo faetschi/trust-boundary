@@ -11,17 +11,26 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"golang.org/x/sys/unix"
 	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/piruntime"
+	"tbound/supervisor/internal/productsetup"
 	"tbound/supervisor/internal/releasetrust"
 )
 
 const calibrationUsage = `Usage (the xattr calibration is a root-attested host input; see docs/product-contracts.md, "Host inputs"):
+  tbound product calibration measure --source DIR --probe-corpus-digest sha256:HEX --out FILE [--config FILE] [--force]
   tbound product calibration sign --key PRIVATE --public-key REGISTRATION_PUBLIC_KEY --in UNSIGNED --out SIGNED
+measure runs as the service user (not root; NoNewPrivs, no capabilities) on the host. DIR is the held
+probe corpus the operator prepared and reviewed; the access profile is fixed to managed writable roots.
+It also measures the state root and every project root of the service config (default
+/etc/tbound-product/service.json) and refuses when any scanner identity differs from the corpus
+measurement. It writes the UNSIGNED measurement to FILE and refuses to replace it without --force.
 sign runs offline with the registration key pair (base64 files, the private key mode 0600). It refuses a
 private key that does not match the given public key, a calibration that is not for managed writable
 roots, and an existing SIGNED or SIGNED.sig. It writes SIGNED and SIGNED.sig (signature last) through
@@ -49,20 +58,95 @@ func runProductCalibration(args []string, out, stderr io.Writer) error {
 	}
 	flags := flag.NewFlagSet("product calibration "+args[0], flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	var keyFile, publicKeyFile, inFile, outFile string
+	var keyFile, publicKeyFile, inFile, outFile, source, probeCorpusDigest string
+	configFile := productsetup.ServiceConfigPath
+	var force bool
 	flags.StringVar(&outFile, "out", "", "")
 	switch args[0] {
 	case "sign":
 		flags.StringVar(&keyFile, "key", "", "")
 		flags.StringVar(&publicKeyFile, "public-key", "", "")
 		flags.StringVar(&inFile, "in", "", "")
+	case "measure":
+		flags.StringVar(&source, "source", "", "")
+		flags.StringVar(&probeCorpusDigest, "probe-corpus-digest", "", "")
+		flags.StringVar(&configFile, "config", configFile, "")
+		flags.BoolVar(&force, "force", false, "")
 	default:
 		return usage()
 	}
-	if err := flags.Parse(args[1:]); err != nil || flags.NArg() != 0 || keyFile == "" || publicKeyFile == "" || inFile == "" || outFile == "" {
+	if err := flags.Parse(args[1:]); err != nil || flags.NArg() != 0 || outFile == "" || configFile == "" {
+		return usage()
+	}
+	if args[0] == "measure" {
+		if source == "" || probeCorpusDigest == "" {
+			return usage()
+		}
+		return calibrationMeasure(out, source, probeCorpusDigest, configFile, outFile, force)
+	}
+	if keyFile == "" || publicKeyFile == "" || inFile == "" {
 		return usage()
 	}
 	return calibrationSign(out, keyFile, publicKeyFile, inFile, outFile)
+}
+
+// calibrationMeasure measures the operator's probe corpus as the dedicated service identity and checks
+// that the state root and every project root have that same scanner identity. The result is unsigned: the
+// authority it can later carry is root's attestation that this filesystem hides no trusted.* attribute,
+// which enumeration by an unprivileged scanner cannot prove.
+func calibrationMeasure(out io.Writer, source, probeCorpusDigest, configFile, outFile string, force bool) error {
+	if !filepath.IsAbs(source) || filepath.Clean(source) != source {
+		return adminRefusal("--source must be a canonical absolute path")
+	}
+	if !piruntime.ValidD09Digest(probeCorpusDigest) {
+		return adminRefusal("--probe-corpus-digest must be a canonical sha256 digest of the reviewed probe corpus")
+	}
+	if os.Geteuid() == 0 {
+		return adminRefusal("calibration measure must run as the service user, not root: the scanner identity it records is the unprivileged one")
+	}
+	cfg, err := loadProductServiceConfig(configFile)
+	if err != nil {
+		return adminRefusal("cannot read the service config: %v", err)
+	}
+	if cfg.StateRoot == "" || len(cfg.Projects) == 0 {
+		return adminRefusal("the service config names no state root or no project")
+	}
+	corpus, err := os.Open(source)
+	if err != nil {
+		return adminRefusal("cannot measure the probe corpus: %v", err)
+	}
+	calibration, err := productCalibrationMeasure(corpus, piruntime.D09XattrManagedRWSourceProfile, probeCorpusDigest)
+	if err = errors.Join(err, corpus.Close()); err != nil {
+		return adminRefusal("cannot measure the probe corpus: %v", err)
+	}
+	roots := []string{cfg.StateRoot}
+	for _, id := range slices.Sorted(maps.Keys(cfg.Projects)) {
+		roots = append(roots, cfg.Projects[id])
+	}
+	for _, root := range roots {
+		dir, err := os.Open(root)
+		if err != nil {
+			return adminRefusal("cannot measure %s: %v", root, err)
+		}
+		m, measureErr := productHostMeasureXattr(dir)
+		if err := errors.Join(measureErr, dir.Close()); err != nil {
+			return adminRefusal("cannot measure %s: %v", root, err)
+		}
+		if !productScannerMatchesCalibration(m, calibration) {
+			return adminRefusal("the filesystem, mount or scanner of %s differs from the probe corpus measurement", root)
+		}
+	}
+	encoded, err := json.MarshalIndent(calibration, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := publishProductFile(outFile, append(encoded, '\n'), force); err != nil {
+		return adminRefusal("%v", err)
+	}
+	_, err = fmt.Fprintf(out, "wrote the UNSIGNED measurement %s (%d probe entries, %d attribute names, scanner uid %d)\n"+
+		"review it, then sign it offline with `tbound product calibration sign`; the signature is root's attestation, not a proof of attribute visibility\n",
+		outFile, calibration.ProbeEntryCount, calibration.ProbeXattrNameCount, calibration.ScanUID)
+	return err
 }
 
 // decodeProductCalibration strictly decodes a calibration measurement or signed calibration.
