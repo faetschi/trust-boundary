@@ -2,6 +2,39 @@
 
 This is the product-branch checkpoint for [the product plan](product-plan.md). It records what is implemented and verified on `feature/tbound-product`. The thesis state lives in `TASK_STATE.md` on `codex/tbound-prototype` and is not tracked here.
 
+## Status by package (P0-P11)
+
+Current combined gate, 2026-10-27, on `610577b` (code `5311409`). Linux, Go 1.27.1, `-mod=readonly`, `GOPROXY=off`. Archive SHA-256 `4f25ad02cd1174c92856604ae1d4cf0b908a30f75ddfc502b9d1c7204a0305e7`. Receipts are in `%TEMP%\tbproduct\receipts\610577b\`.
+
+| Check | Result |
+| --- | --- |
+| Supervisor build / vet / gofmt | exit 0 / exit 0 / no unformatted files |
+| `go test -race -count=1 -timeout 40m ./...` (supervisor) | exit 0: 5238 passed, 30 skipped, 0 failed, counting subtests (2909 top-level tests; 57 packages ok, 3 without tests) |
+| `extension-webchat` (Go 1.27.1 in WSL, node on Windows) | gofmt clean, vet exit 0, `go test -race` both packages ok; `node --test` 262 passed, 0 failed |
+| `extension-webchat-frontend-verify` | `npm ci`, then `repro`: two clean rebuilds identical and equal to the committed `dist/`; then `verify`: typecheck, 83 test files and 1397 tests passed, build, sinks and dependency checks OK. This needed `499fb9f`: before it, `differential.test.ts` could not load the legacy assets from a checkout path that contains a space. |
+| `make boundary` | the guard passes; self-test 8 of 8 |
+
+`make` is not installed on this host, so the recipes of those Makefile targets were run as written. The 30 skips are the 26 guest-only checks listed under [Baseline](#baseline-p0), the restart and crash subprocess helpers (`TestGovernedLedgerDenyReopenChild`, `TestProductTurnCrashChild`, `TestProductTurnBashCrashChild`), and `TestSecurityBindMounts`, which needs root.
+
+"Done locally" means the code and its tests pass on the development Linux gate. Nothing is qualified on a real host. There is no real provider key, no real Pi worker (the supervisor loop runs the turns), and no product guest.
+
+| Package | State | Evidence | Remaining blockers |
+| --- | --- | --- | --- |
+| P0 baseline | done locally | `ff374c9`, [Baseline](#baseline-p0) | Product runtime, guest, service and signing registration. |
+| P1 contracts | done locally | [product-contracts.md](product-contracts.md), `6b4d194` | None for the headless scope. Revise on any accepted change. |
+| P2 admission and accounting | done locally | `c5eb78a`, `52b597c`, [Milestone 1](#milestone-1-headless-governed-multi-turn-conversation-p1-to-p3) | Guest qualification. |
+| P3 multi-turn turns | done locally | `26895c7`, `4ac8d2a`, [Milestone 1](#milestone-1-headless-governed-multi-turn-conversation-p1-to-p3) | Real Pi worker per turn (supervisor loop only today). |
+| P4 review, cancel, restart | done locally | `41485e4`, `93c359a`, `3f3ae9d`, [Milestone 2](#milestone-2-review-cancellation-and-restart-p4-headless) | Independent review of the driver. Crash in publication untested. Guest-only cancellation. |
+| P5 project policy, import/export, Bash | partial | `5a23797`, `cd07351`, `d735ce8`, `29759ae`, `a02f72d`, `ba6f59e`, [Milestone 3](#milestone-3-project-policy-import-export-and-bash-p5) | Pinned Go dev image, no-network real tests, D09 cell runner, service-account isolation check, Bash output review. |
+| P6 service and terminal client | partial | `a6ea38b`, `5d81346`, `ae90828`, `7cac628`, [Milestone 4](#milestone-4-product-service-and-terminal-client-p6) | Real two-turn run, SSH from Windows with pinned host keys. |
+| P7 provider profiles | partial | `09736c2`, `7656a69`, [Provider profiles](#provider-profiles-and-credentials-p7) | Authorised live exchange, real key, OpenRouter profile (optional). |
+| P8 setup, update, diagnostics | partial | `6d2c0e3`, `103f013`, `a46d1d1`, [Milestone 5](#milestone-5-host-setup-updates-and-diagnostics-p8) | Round 3 review, clean-host run, host inputs task, qualified support matrix. |
+| P9 web gateway and React live mode | partial | `989881d`, `a5133b5`, `524bdf4`, [Milestone 6](#milestone-6-live-web-chat-p9) | Independent review, real browser against the real service, supervisor-issued delegations. |
+| Production host profile (milestone 7) | partial | `7656a69`, [Milestone 7](#milestone-7-production-host-profile-supervisor-loop-worker) | Independent review, qualified host, contained command runner. |
+| P10 README and USAGE | not started | none | Whole package. |
+| P11 qualification and release | not started | none | Whole package. Needs the guest, host and provider key. |
+| Host inputs and soft refusals | not started | none | Calibration measure and sign, setup checks and doctor reporting for host inputs, and soft refusals are not implemented. Both branches have no commits. |
+
 ## Baseline (P0)
 
 | Item | Value |
@@ -156,13 +189,205 @@ The 28th skip is `TestProductTurnCrashChild`, which runs only as the subprocess 
 
 - **Independent review.** GPT 6.1 Sol has not reviewed the P4 driver (`41485e4`, `93c359a`) yet. It did review the P4 catalog, and those findings were fixed or rejected with a reason.
 - **Guest-only cancellation.** Cancelling a real Pi process, a running Bash command, or an abort acknowledged while descendants survive all need the product guest.
-- **Expiry trigger.** Nothing calls `ExpireReviews` periodically yet; the service loop will. A resolve attempt checks expiry first.
+- **Expiry trigger.** The driver has no timer of its own. `tbound product-serve` added one in P6 (`expiryLoop`, see [Milestone 4](#milestone-4-product-service-and-terminal-client-p6)). A resolve attempt also checks expiry first.
 - **Reconciled turns.** A turn reconciled after a restart is billed its full reserved duration. Its receipt has no worker instance or tool list, because the in-process worker's record died with its process.
 - **Crash between link and prompt admission.** In that window the turn ends `unknown` and blocks the project.
 - **Crash in the middle of publication.** Not tested.
 - **Restart after a failed publication.** A publish decision whose publication failed is `unknown` after restart, per the table, even though `failed` could be proven.
 
 What this milestone does not include: project import and export (P5), the terminal client (P6), web chat, installation, and release qualification.
+
+## Milestone 3: project policy, import, export and Bash (P5)
+
+Status: implemented and passing the supervisor gate on `4fe9632`. Not qualified on a host. Bash output and the P5 hardening have not had an independent review. The contract is in [product-contracts.md](product-contracts.md#milestone-3-project-policy-import-and-export-p5).
+
+### What runs today
+
+- **Product scope** (`5a23797`). Rule `product-scope/v1` has `writable`, `read_only` and `protected` lists. Matching is by whole path components, and protected beats read-only beats writable. Typed writes and edits and Bash candidate deltas go through the same `Decide`. A session can be created read-only.
+- **Import and export** (`cd07351`, `d735ce8`). `tbound project` builds a bounded bundle from the original project, lists what it includes and excludes, and imports it. Export produces a digest-bound bundle. `tbound project apply` writes a verified patch by default. Direct writes need `--direct` and `--writer-exclusion-held`. Scans refuse symlinks, mounts, ACLs, extended attributes, hidden Git index flags and case variants of `.git`.
+- **Bash in turns** (`29759ae`, `a02f72d`, `ba6f59e`). A product turn composes Bash when its installed policy allows it, under the product scope. A Bash turn reopens as a predecessor after its command settlements are verified. The model sees each command's stdout and stderr, bounded to the last 16 KiB per stream and rebuilt from the Store on replay.
+- **Tool schemas.** The advertised `read`, `write`, `edit` and `bash` schemas match the executor, and the adapter pins their digests.
+
+### Demonstrated behaviour
+
+| Requirement | Test |
+| --- | --- |
+| Scope precedence, whole-component matching, both ends of a rename | `TestProductScopeDecide`, `TestStoreProductScopeAdmitsWritableAndDeniesTheRest`, `TestStoreProductScopeChecksBothEndsOfARename` |
+| Research digests unchanged | `TestAdmissionPolicyDigestGoldenForTheResearchRules`, `TestScopeFieldsLeaveExistingDigestsUnchanged` |
+| A turn enforces the project scope, a read-only session changes nothing, a predecessor reopens under its own scope | `TestProductTurnDriverEnforcesTheProjectScope`, `TestProductTurnDriverReadOnlySessionChangesNothing`, `TestProductTurnDriverReopensAPredecessorUnderItsOwnScope` |
+| Import round trip and refusals with path and reason | `TestBundleRoundTrip`, `TestBuildRefusals`, `TestImportRefusals`, `TestProjectBundleRefusalNamesPathAndReason` |
+| Export applies to a clean worktree, bad bundles and conflicts are refused, interruption keeps a recovery record | `TestExportApplyRoundTrip`, `TestApplyRefusals`, `TestApplyRefusesBadBundles`, `TestApplyFailureAfterFirstWriteKeepsRecovery`, `TestApplyRecheckBeforeFirstWriteLeavesNothing` |
+| Apply defaults to a patch, direct mode needs writer exclusion | `TestSecurityDefaultApplyDoesNotWriteWorktree`, `TestSecurityDirectRequiresWriterExclusion`, `TestProjectApplyDefaultPatchInstructions` |
+| Extended attributes, hidden Git flags and `.git` case variants are refused | `TestSecurityRefusesXattrs`, `TestSecurityRefusesHiddenGitFlags`, `TestSecurityGitAdministrationCaseFold` |
+| Bash admitted by the product scope, reopened as a predecessor, tampered command evidence refused | `TestProductTurnBashIsAdmittedByTheProductScopeAndReopensAsPredecessor`, `TestProductTurnBashRefusesAPredecessorWithTamperedCommandEvidence` |
+| Read-only Bash session writes nothing; a turn with no command runner does not launch; a crash is reconciled | `TestProductTurnBashInAReadOnlySessionChangesNothing`, `TestProductTurnBashRefusesToLaunchWithoutACommandRunner`, `TestProductTurnBashRestartReconcilesALinkedTurn` |
+| The model sees bounded command output, replay rebuilds it, a forged output fails, research summaries are unchanged | `TestProductTurnBashShowsTheModelItsCommandOutput`, `TestBashOutputBoundedCommandText`, `TestBashOutputReplayRebuildsFromTheStore`, `TestBashOutputReplayRejectsAForgedOutput`, `TestBashOutputResearchSummaryBytesAreUnchanged` |
+| Advertised schemas equal the executor and the adapter pins | `TestReadToolDescriptionMatchesWhatTheExecutorDoes`, `TestAdvertisedToolSurfaceEqualsTheAdapterTextAndItsPins`, `TestResearchToolSurfaceIsFrozen` |
+
+### Verification
+
+`4fe9632` contains every P5 commit above. Its combined gate is recorded under [Handoff 2026-10-26](#handoff-2026-10-26): build, vet and gofmt clean, test exit 0, 5238 pass / 30 skip / 0 fail as reported (raw JSON events 5295 / 33 / 0, which include subtests). Gate results for the individual P5 commits are not recorded.
+
+The mount test `TestSecurityBindMounts` needs root and skips otherwise. It is not verified here.
+
+### Pending and known limits
+
+- **Bash in production.** `product-serve` refuses a policy that allows Bash. Only the development command runner has run Bash. The D09 cell runner and its history opener need the product guest.
+- **Output is not filtered.** A command can print any file it can read in its workspace, and the model sees it.
+- **Development environment.** The pinned Go toolchain image and module cache do not exist. Real tests with command-cell network disabled have not run.
+- **Service-account isolation.** That the service account cannot read the original repository follows from the client doing the reading. It was not checked on a host.
+- **Scope.** Only the registration's project scope applies. A narrower per-request scope is not implemented.
+- **Direct export.** The client cannot establish writer exclusion. The user guarantees it with a flag.
+- **Review.** An independent review of the Bash output work (`a02f72d`) is owed.
+
+## Milestone 4: product service and terminal client (P6)
+
+Status: implemented and passing the supervisor gate on `4fe9632`. The service and client talk to each other only in tests, through fixtures and fakes. Not qualified on a host. The contract is in [product-contracts.md](product-contracts.md#milestone-4-product-service-and-terminal-client-p6).
+
+### What runs today
+
+- **Service** (`a6ea38b`, `ae90828`). `tbound product-serve` listens on a Unix socket, takes the principal from `SO_PEERCRED`, and runs `ReconcileAfterRestart` before serving. One goroutine drives each turn. A review-expiry ticker (`expiryLoop`) calls `ExpireReviews`. Observations come from durable records and are read without writer locks. Snapshots are bounded, and the socket is locked.
+- **Protocol** (`dd4da12`). `tbound-product-protocol/v1`: length-prefixed strict JSON, eight operations, stable error codes.
+- **Client** (`5d81346`, `7cac628`). `tbound chat` creates or reopens a session, submits prompts under request keys, shows tool activity and denials with hints, and offers Publish, Discard and Keep at review. Ctrl-C cancels once and detaches the second time. Exit codes are 0, 1, 2, 3 and 4.
+
+### Demonstrated behaviour
+
+| Requirement | Test |
+| --- | --- |
+| Auto turn projects its observations; a review turn publishes its exact candidate | `TestProductServiceAutoTurnProjectsItsObservations`, `TestProductServiceReviewTurnPublishesItsExactCandidate` |
+| A second principal cannot see or act on a session | `TestProductServiceSecondPrincipalCannotSeeOrActOnASession`, `TestProductServiceReadsThePrincipalFromTheSocketPeer` |
+| Restart reconciles before serving; shutdown lets a turn finish | `TestProductServiceRestartReconcilesBeforeServing`, `TestProductServiceShutdownLetsARunningTurnFinish` |
+| The expiry ticker discards an unresolved review | `TestProductServiceExpiryTickerDiscardsAnUnresolvedReview` |
+| Cancel while running waits for the settled turn | `TestProductServiceCancelWhileRunningIsWithheldUntilTheTurnSettles` |
+| Malformed requests are refused and serving continues | `TestProductServiceRefusesMalformedRequestsAndKeepsServing`, `TestFramesRoundTripAndRefuseMalformedInput` |
+| Observation does not compete with the writer, is bounded, and only grows at its end | `TestProductServiceRegressionObservationAndPredecessorDoNotCompete`, `TestProductServiceObserveWindowIsBounded`, `TestProductServiceEventListOnlyGrowsAtItsEnd` |
+| Chat shows governance apart from model text and follows the review flow | `TestChatCreatesSessionAndPrintsTurnWithGovernanceDistinct`, `TestChatReviewShowsDiffAndPublishesTheExactCandidate` |
+| Transport retries reuse the request key; exhausted retries are an unknown outcome, never a resubmission | `TestChatRetriesTransportFailureWithTheSameRequestKey`, `TestChatExhaustedRetriesAreAnUnknownOutcomeNotAResubmission`, `TestChatRetryTransportCodeKeepsUnknownOutcome` |
+| Reconnect replays and submits nothing | `TestChatReconnectReplaysFromTheStartAndSubmitsNothing` |
+| First Ctrl-C cancels, second detaches | `TestChatFirstCtrlCCancelsAndKeepsObservingUntilSettled`, `TestChatSecondCtrlCDetachesWithoutCancellingMore` |
+| Stable exit codes | `TestChatExitCodeTable`, `TestChatUnknownTurnOutcomeLeavesExit4` |
+
+### Verification
+
+`4fe9632` contains every P6 commit. Its gate is recorded under [Handoff 2026-10-26](#handoff-2026-10-26). Gate results for the individual P6 commits are not recorded.
+
+### Pending and known limits
+
+- **No real run.** No user has completed two real turns through `tbound chat`. The client tests use a scripted fake service (`chatFake`). The service tests use scripted provider fixtures.
+- **SSH.** The client has not been run over SSH from Windows with pinned host keys.
+- **Worker.** The service runs the supervisor-loop worker. `pi` is refused.
+- **Bash.** The service refuses Bash policies (see [Milestone 7](#milestone-7-production-host-profile-supervisor-loop-worker)).
+
+## Provider profiles and credentials (P7)
+
+Status: implemented and passing the supervisor gate on `4fe9632`. No real provider key was read and no paid provider was called.
+
+### What runs today
+
+- **Profile table** (`09736c2`). One profile, `opencode-go-engineering`, with compiled-in endpoint, model and accepted response models. No URL override and no fallback.
+- **Credential commands.** `tbound provider list`, `setup`, `status`, `check`, `rotate` and `remove`. Keys come from a no-echo prompt or a caller-owned protected file, never from arguments. The service-owned credential directory is 0700 and the file is 0600.
+- **Checks.** `check --offline` uses no network. `check --live` needs `--max-tokens N` and `--yes` and sends one request. The check transport does not follow redirects.
+- The service reads the key per turn through the host profile (`7656a69`), so a rotated key needs no restart.
+
+### Demonstrated behaviour
+
+| Requirement | Test |
+| --- | --- |
+| Setup, status, rotate and remove without disclosing the key | `TestProviderCredentialLifecycle`, `TestProviderCLILifecycleAndOffline`, `TestProviderCredentialRedaction`, `TestProviderCLIExitCodesAndRedaction` |
+| Rotation and environment isolation | `TestProviderCredentialRotationAndEnvironmentIsolation` |
+| Sources and storage are protected; symlinks and writable ancestors are refused | `TestProviderSourceProtection`, `TestProviderStatusRejectsInsecureStorage`, `TestReadSourceRefusesSymlinkAndWritableAncestors`, `TestProviderCLIProtectedSource` |
+| Concurrent setup does not overwrite | `TestProviderConcurrentSetupDoesNotOverwrite` |
+| The factory pins the profile identity | `TestProviderFactoryPinsIdentity`, `TestProfileTable` |
+| Live check against offline fixtures, network errors, refusal before dispatch, no redirect | `TestProviderLiveCheckOfflineFixtures`, `TestProviderLiveCheckNetworkAndWrappedErrors`, `TestProviderCheckRefusesBeforeDispatch`, `TestProductCheckTransportDoesNotFollowRedirect` |
+| The offline test seams are refused outside a test binary | `TestConversationFactoryForTestIsRefusedOutsideATestBinaryAndKeepsTheCredentialRules` |
+
+### Verification
+
+`4fe9632` contains `09736c2` and `7656a69`. Its gate is recorded under [Handoff 2026-10-26](#handoff-2026-10-26). Gate results for `09736c2` alone are not recorded.
+
+### Pending and known limits
+
+- **No live exchange.** The P7 acceptance needs an authorised, bounded call with a real key. It has not happened. Wrong response model, missing usage, expired key and quota exhaustion are untested against a real provider.
+- **No price table.** Monetary ceilings are unsupported. Only a token cap bounds the live check.
+- **OpenRouter.** No product profile exists. It is optional follow-up work.
+- **Real host.** Ownership rules ran against test directories, not the real service account.
+
+## Milestone 5: host setup, updates and diagnostics (P8)
+
+Status: implemented and passing the supervisor gate on `4fe9632`. All of it ran against test roots (`--root`) and fakes. Round 3 of the independent review is owed. The contract is in [product-contracts.md](product-contracts.md#milestone-5-product-host-setup-updates-and-diagnostics-p8).
+
+### What runs today
+
+- **Release trust** (`6d2c0e3`). `tbound release verify` checks an Ed25519 signed manifest and its artifact digests. `install/install.sh` verifies the signature before extracting when it has a public key.
+- **Registration tooling.** `tbound product registration keygen`, `init`, `sign` and `verify`. Signing refuses duplicate JSON keys and trailing data (`103f013`).
+- **Setup.** `tbound product setup` checks the host, creates the account, directories and unit with exact owners and modes, and is idempotent. `--dry-run` writes nothing.
+- **Update, rollback, uninstall.** Update refuses unresolved turns, keeps a last-known-good binary, runs a self-test and rolls back on failure. A retry restarts and re-tests. Uninstall keeps data unless `--purge` is confirmed. Purge refuses a locked catalog.
+- **Doctor.** Advisory checks. `--self-test` runs a synthetic turn; `--dry-run` only plans it.
+- **Hardening** (`103f013`, `a46d1d1`). Parent directories are pinned, hardlinked targets are refused, managed sources are read through descriptors, purge checks turns without root.
+
+### Demonstrated behaviour
+
+| Requirement | Test |
+| --- | --- |
+| Tampered artifact refused even when the checksum file is replaced | `TestTamperedArtifactWithReplacedChecksumFileIsRefused`, `TestProductAdminReleaseRefusesTamperingEvenWithAReplacedChecksumFile` |
+| The install script verifies before extracting | `TestProductAdminReleaseInstallScriptVerifiesTheSignatureBeforeExtracting` |
+| Setup builds the tree, a rerun changes nothing | `TestSetupFreshRootBuildsTheExpectedTree`, `TestSetupRerunIsUnchanged`, `TestProductAdminSetupWritesTheTreeAndARerunIsUnchanged` |
+| An unsupported host fails before any change; thesis paths are refused | `TestSetupFailsOnAnUnsupportedHostBeforeAnyChange`, `TestSetupRefusesThesisPathsAndChangesNothing`, `TestProductAdminThesisRootsMatchTheService` |
+| Update refuses unresolved work, rolls back on a failed self-test, rolls back on request | `TestUpdateRefusesWhileATurnIsUnresolved`, `TestUpdateRollsBackWhenTheSelfTestFails`, `TestRollbackSwapsBackAndNeedsALastKnownGood` |
+| A retried update keeps last-known-good | `TestReviewUpdateRetryStartsAndTestsWithoutReplacingLastKnownGood` |
+| Uninstall keeps data, purge asks, a locked catalog blocks it | `TestUninstallKeepsDataAndPurgeNeedsConfirmation`, `TestReviewUninstallFailsClosed`, `TestProductAdminUninstallRefusesLockedCatalog` |
+| Only a self-test establishes readiness | `TestDoctorReportsAdvisoryChecksNeverKeysAndOnlyASelfTestEstablishesReadiness`, `TestProductAdminDoctorSelfTestThroughTheServiceSocket` |
+| Symlinked parents, hardlinks and unsafe sources are refused | `TestReviewParentSymlinksAndThesisRoots`, `TestReviewSetupRejectsHardlinkedMutations`, `TestReviewUpdateRejectsUnsafeManagedSources` |
+
+### Verification
+
+`4fe9632` contains `6d2c0e3`, `103f013` and `a46d1d1`. Its gate is recorded under [Handoff 2026-10-26](#handoff-2026-10-26). Gate results for the individual P8 commits are not recorded.
+
+### Pending and known limits
+
+- **No clean host.** No clean qualified Linux machine or fresh Windows-to-VM setup has run. Systemd, accounts, cgroups and Podman were never touched for real.
+- **Host inputs.** Setup does not install or check the policy files, the Git executable or the calibration. No product command measures or signs the calibration. `product doctor` does not report them. This task is not implemented.
+- **Scope of setup.** The contract's setup steps do not install a Pi bundle, an image or a network policy. The supported kernel and systemd matrix is not recorded.
+- **Interruption.** Only the update retry path is tested. Interrupted setup and interrupted rollback are not injected. No reboot test.
+- **Trust.** A first install trusts a key it has not seen before. No publisher key is distributed yet.
+- **Review.** P8 round 3 is owed.
+
+## Milestone 6: live web chat (P9)
+
+Status: implemented. The gateway and the React live mode are in the separate module `extensions/webchat`. They were tested separately from the supervisor gate. Counts are not recorded. Only fakes stand behind the gateway and behind the browser code. The contract is in [product-contracts.md](product-contracts.md#milestone-6-live-web-chat-p9).
+
+### What runs today
+
+- **Gateway** (`989881d`, `524bdf4`). `tbound-webchat --live --socket PATH` binds a loopback address and prints a one-time pairing URL. Pairing sets an HttpOnly, SameSite=Strict cookie and a CSRF token. Every mutation needs the CSRF header. Host and Origin are checked. There is no CORS. Bodies are bounded strict JSON. The gateway holds no authority of its own and forwards the user's UID to the service. On shutdown it force-closes long polls.
+- **React live mode** (`a5133b5`). A session picker and creator, a composer with a request key per prompt, cancel, an event stream with resume from a stored cursor, and a diff review whose Publish and Discard are bound to the displayed candidate digest. Fixture, replay and receipt modes stay as labelled demonstrations.
+- **Wire parity.** The gateway keeps its own copy of the wire types. The supervisor generates the JSON fixtures that check it (`5068560`).
+
+### Demonstrated behaviour
+
+| Requirement | Test |
+| --- | --- |
+| Pairing token spent once, expires after 10 minutes, session after 12 hours | `TestPairingSpendsTheTokenOnFirstUseAndSetsAHardenedCookie`, `TestPairingTokenExpiresAfterTenMinutes`, `TestBrowserSessionExpiresAfterTwelveHours` |
+| Every request needs the cookie, every mutation the CSRF header | `TestEveryAPIRequestNeedsTheSessionCookie`, `TestEveryMutationNeedsTheCSRFHeader` |
+| Host rebinding, foreign origin and CORS are refused | `TestHostRebindingIsRefusedOnEveryRoute`, `TestOriginMustEqualHttpPlusTheHost`, `TestNoCORSAndOptionsIsNotAPreflightAnswer` |
+| The gateway never invents a request key or retries; resolve forwards the displayed digest | `TestTheGatewayNeverInventsARequestKeyOrRetries`, `TestResolveForwardsTheExactCandidateDigestTheClientDisplayed` |
+| Transport failure marks mutations unknown | `TestTransportFailuresAreServiceUnavailableAndMarkUnknownMutations` |
+| An XSS-looking prompt passes as data | `TestAnXSSLookingPromptIsPassedThroughAsData` |
+| Non-loopback bind is refused; a real listener and socket pair and forward | `TestNewLiveGatewayRefusesNonLoopbackAndMissingSocket`, `TestLiveRunPairsOverTheRealListenerAndForwardsOverTheRealSocket` |
+| Wire copy matches the supervisor fixtures | `TestProtocolFixturesRoundTripThroughTheWireCopy`, `TestFixturesMatchTheCommittedFiles` |
+| Browser code (Vitest, in `frontend/src/live`): unknown outcome keeps the draft and retries under the same key | `LiveUi.test.tsx`: "shows an unknown outcome, keeps the draft, and retries under the same request key" |
+| A gap recovers from a fresh snapshot; a stale candidate is refused | `controller.test.ts`: "recovers from a gap with a fresh snapshot, and says so"; `LiveUi.test.tsx`: "refuses a stale candidate with the service" |
+| A hostile diff is drawn as text | `LiveUi.test.tsx`: "draws a hostile diff as text and builds no element from it" |
+
+### Verification
+
+`989881d` is in the `4fe9632` supervisor gate, but only through the supervisor's `productprotocol` fixtures test. The webchat Go tests and the Vitest suite are a separate module. `5311409`, `a5133b5` and `524bdf4` are not in the `4fe9632` gate. The combined gate on `610577b` covers all of them (see [Status by package](#status-by-package-p0-p11)).
+
+### Pending and known limits
+
+- **Fakes only.** The browser tests run against `liveGateway.ts`, a scripted fake. The Go gateway tests run against a fake product service. No real browser has driven a real governed turn. The P9 acceptance requires that.
+- **Authority.** The pairing secret scopes the browser. Supervisor-issued delegations with separate read, submit, cancel and resolve rights are open work.
+- **Untested cases.** Service restart in a live page, cursor expiry in a real browser, and the Windows SSH tunnel have not run.
+- **Review.** An independent review of the gateway and the React live mode is owed.
 
 ## Milestone 7: production host profile (supervisor-loop worker)
 
@@ -227,3 +452,12 @@ Source hash of `supervisor/` for the second run: SHA-256 of the sorted per-file 
   8. P11.
 - The qualified host, the provider key and the guest stay on FABIAN. The new machine is for code, reviews and docs.
 - A machine handoff is in progress. No further edits on this checkout after this commit.
+
+## Resumed 2026-10-27 on FABIAN
+
+- The machine move was cancelled. Work continues on FABIAN, which keeps the qualified host, the guest and the keys.
+- Step 1 is done: `610577b` passed the combined gate (see [Status by package](#status-by-package-p0-p11)). Step 2 is this document.
+- Next: sync F14 from thesis `5f2d0a6`, then host inputs, then soft refusals, then the four reviews.
+- Two risks to track from the 2026-10-26 priorities review:
+  - **Shared code diverges.** The product and thesis branches carry ports of the same security fixes. Keep a short ledger of each shared fix: the commit on each branch and the test that covers it. Reconcile before every freeze.
+  - **Prompt versioning.** Changing the compiled-in prompts breaks the replay of earlier turns. Define prompt and evidence versioning before the first catalog is deployed.
