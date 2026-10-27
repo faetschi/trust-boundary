@@ -76,6 +76,7 @@ func writeFile(t *testing.T, dir, name, content string) string {
 
 // preregInputs is one complete, valid set of command-line inputs.
 type preregInputs struct {
+	panel                                                               []string
 	commit, manifest, quota, config, profile, ledger, reviewers, schema string
 }
 
@@ -91,13 +92,13 @@ func (p preregInputs) args() []string {
 	if p.schema != "" {
 		args = append(args, "--evalscore-schema", p.schema)
 	}
-	return args
+	return append(args, p.panel...)
 }
 
 func basePrereg(t *testing.T, dir string) preregInputs {
 	t.Helper()
-	m := fixtureManifest(t, evalcorpus.PilotQuotas(), "prereg-seed")
-	return preregInputs{
+	m, panel := signedPanel(t, dir, fixtureManifest(t, evalcorpus.PilotQuotas(), "prereg-seed"))
+	return preregInputs{panel: panel,
 		commit: commitA, manifest: writeManifest(t, dir, "corpus.json", m), quota: "pilot",
 		config:    runnerConfigFile(t, dir, "runner.json", commitA, nil),
 		profile:   writeFile(t, dir, "profile.json", frozenResearchProfile("7")),
@@ -131,7 +132,15 @@ func TestPreregistrationRecordIsDeterministicAndBindsTheRegisteredFacts(t *testi
 	if err := dec.Decode(&rec); err != nil {
 		t.Fatal(err)
 	}
-	m, err := evalcorpus.Digest(fixtureManifest(t, evalcorpus.PilotQuotas(), "prereg-seed"))
+	raw, err := os.ReadFile(p.manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := evalcorpus.Load(strings.NewReader(string(raw)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := evalcorpus.Digest(manifest)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,13 +196,14 @@ func TestPreregistrationRecordEveryInputChangesTheDigest(t *testing.T) {
 	}
 	baseDigest := digestOf(baseOut)
 
-	otherManifest := writeManifest(t, dir, "corpus-b.json", fixtureManifest(t, evalcorpus.PilotQuotas(), "prereg-seed-b"))
+	other, otherPanel := signedPanel(t, dir, fixtureManifest(t, evalcorpus.PilotQuotas(), "prereg-seed-b"))
+	otherManifest := writeManifest(t, dir, "corpus-b.json", other)
 	for name, mutate := range map[string]func(*preregInputs){
 		"freeze commit": func(p *preregInputs) {
 			p.commit = commitB
 			p.config = runnerConfigFile(t, dir, "runner-b.json", commitB, nil)
 		},
-		"corpus manifest": func(p *preregInputs) { p.manifest = otherManifest },
+		"corpus manifest": func(p *preregInputs) { p.manifest, p.panel = otherManifest, otherPanel },
 		"runner config": func(p *preregInputs) {
 			p.config = runnerConfigFile(t, dir, "runner-c.json", commitA, func(c *runner.Config) { c.NET02Mandatory = true })
 		},
@@ -317,8 +327,8 @@ func TestPreregistrationRecordThesisPlanIsTheRegisteredUnits(t *testing.T) {
 		t.Skip("builds the 419-case thesis-sized synthetic corpus")
 	}
 	dir := t.TempDir()
-	m := fixtureManifest(t, evalcorpus.ThesisQuotas(), "prereg-thesis-seed")
-	p := preregInputs{commit: commitA, manifest: writeManifest(t, dir, "thesis.json", m), quota: "thesis",
+	m, panel := signedPanel(t, dir, fixtureManifest(t, evalcorpus.ThesisQuotas(), "prereg-thesis-seed"))
+	p := preregInputs{panel: panel, commit: commitA, manifest: writeManifest(t, dir, "thesis.json", m), quota: "thesis",
 		config: runnerConfigFile(t, dir, "runner.json", commitA, nil), reviewers: "owner,advisor"}
 	var rec preregistrationRecord
 	if err := json.Unmarshal([]byte(preregOut(t, p)), &rec); err != nil {
@@ -331,5 +341,34 @@ func TestPreregistrationRecordThesisPlanIsTheRegisteredUnits(t *testing.T) {
 	p.quota = "pilot"
 	if _, _, err := runCLI(p.args()...); err == nil {
 		t.Fatal("a thesis-sized manifest was recorded under the pilot quotas")
+	}
+}
+
+func TestPreregistrationRefusesMissingPanelEvidence(t *testing.T) {
+	p := basePrereg(t, t.TempDir())
+	p.panel = nil
+	out, _, err := runCLI(p.args()...)
+	if err == nil || out != "" || !strings.Contains(err.Error(), "--panel-") {
+		t.Fatalf("missing panel evidence accepted: out %q err %v", out, err)
+	}
+}
+
+func TestPreregistrationVerifiesAllPanelFiles(t *testing.T) {
+	for i, name := range []string{"receipt", "audit", "stats"} {
+		t.Run(name, func(t *testing.T) {
+			p := basePrereg(t, t.TempDir())
+			file := p.panel[i*2+1]
+			raw, err := os.ReadFile(file)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(file, append(raw, '\n'), 0600); err != nil {
+				t.Fatal(err)
+			}
+			out, _, err := runCLI(p.args()...)
+			if err == nil || out != "" || !strings.Contains(err.Error(), name) {
+				t.Fatalf("changed %s accepted: %q %v", name, out, err)
+			}
+		})
 	}
 }

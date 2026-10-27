@@ -12,13 +12,14 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"tbound/supervisor/internal/panelaudit"
 )
 
 const openRouterEndpoint = "https://openrouter.ai/api/v1/chat/completions"
 
 // provider sends one chat-completions request body and returns the raw response body.
 type provider interface {
-	complete(ctx context.Context, m modelConfig, body []byte) ([]byte, error)
+	complete(ctx context.Context, m panelaudit.Model, body []byte) ([]byte, error)
 }
 
 // errNoCharge marks a provider error that certainly cost nothing (an HTTP error status).
@@ -44,7 +45,7 @@ type chatRequest struct {
 	} `json:"provider"`
 }
 
-func newRequest(m modelConfig, phase int, user string) chatRequest {
+func newRequest(m panelaudit.Model, phase int, user string) chatRequest {
 	r := chatRequest{Model: m.ID, Temperature: m.Temperature, MaxTokens: m.MaxTokens,
 		Messages: []chatMessage{{"system", systemPrompts[phase]}, {"user", user}}}
 	r.Usage.Include = true
@@ -78,7 +79,7 @@ type openRouter struct {
 	client   *http.Client
 }
 
-func (o *openRouter) complete(ctx context.Context, _ modelConfig, body []byte) ([]byte, error) {
+func (o *openRouter) complete(ctx context.Context, _ panelaudit.Model, body []byte) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, o.endpoint, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
@@ -115,7 +116,7 @@ func fakeHash(parts ...string) uint64 {
 	return binary.BigEndian.Uint64(sum[:8])
 }
 
-func (fakeProvider) complete(_ context.Context, m modelConfig, body []byte) ([]byte, error) {
+func (fakeProvider) complete(_ context.Context, m panelaudit.Model, body []byte) ([]byte, error) {
 	var req chatRequest
 	if err := json.Unmarshal(body, &req); err != nil || len(req.Messages) != 2 {
 		return nil, fmt.Errorf("fake provider: bad request: %v", err)

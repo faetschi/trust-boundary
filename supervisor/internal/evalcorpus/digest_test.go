@@ -3,6 +3,7 @@ package evalcorpus
 import (
 	"bytes"
 	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -24,7 +25,8 @@ func goldenPinsManifest() Manifest {
 // The expected digest was computed outside this package: SHA-256 over the exact bytes of
 // the canonical string below (python3 hashlib).
 func TestCanonicalJSONGoldenEmptyManifest(t *testing.T) {
-	want := `{"cases":[],"pins":{"environment_digest":"sha256:` + strings.Repeat("0", 64) +
+	want := `{"cases":[],"construct_review":{"content_digest":"","panel_audit_digest":"","panel_receipt_digest":"","panel_stats_digest":""},` +
+		`"pins":{"environment_digest":"sha256:` + strings.Repeat("0", 64) +
 		`","model_digest":"sha256:` + strings.Repeat("1", 64) +
 		`","policy_digest":"sha256:` + strings.Repeat("3", 64) +
 		`","profile_digest":"sha256:` + strings.Repeat("2", 64) +
@@ -40,7 +42,7 @@ func TestCanonicalJSONGoldenEmptyManifest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Digest: %v", err)
 	}
-	const wantDigest = "sha256:c9f8b7a85ec90adfa5ff10266dfc97b3731486649ecea76842f8500d097b9114"
+	const wantDigest = "sha256:b13eac38d829f8f4c0d4ffd5039c20d8834c05a1bbb43fc1dfa4bb1c535a6cb7"
 	if digest != wantDigest {
 		t.Errorf("Digest = %s; want %s", digest, wantDigest)
 	}
@@ -118,5 +120,96 @@ func TestDigestChangesWithContent(t *testing.T) {
 	}
 	if !strings.HasPrefix(da, "sha256:") || len(da) != len("sha256:")+64 {
 		t.Errorf("digest %q is not sha256 plus 64 hex digits", da)
+	}
+}
+
+// ContentDigest is the digest the panel binds to: it ignores exactly the fields the advisor
+// writes after the panel run.
+func TestContentDigestIgnoresOnlySignoffsAndConstructReview(t *testing.T) {
+	q := smallQuotas()
+	base := allocated(t, synthManifest(q, synthSeed), q)
+	want, err := ContentDigest(base)
+	if err != nil {
+		t.Fatalf("ContentDigest: %v", err)
+	}
+	full, _ := Digest(base)
+	if want == full {
+		t.Error("ContentDigest equals Digest although signoffs and construct_review are set")
+	}
+
+	signed := base
+	signed.Cases = append([]Case(nil), base.Cases...)
+	signed.Cases[3].Signoff = Signoff{Reviewer: "someone-else", Human: false, Author: true, Decision: "reject", Audited: true, Resolution: "r"}
+	signed.ConstructReview = ConstructReview{ContentDigest: "x", PanelReceiptDigest: "y", PanelAuditDigest: "z"}
+	if got, _ := ContentDigest(signed); got != want {
+		t.Errorf("ContentDigest changed with a signoff or construct_review: %s vs %s", got, want)
+	}
+	if got, _ := Digest(signed); got == full {
+		t.Error("Digest ignored a signoff or construct_review change")
+	}
+	if signed.Cases[3].Signoff.Reviewer != "someone-else" || signed.ConstructReview.ContentDigest != "x" {
+		t.Error("ContentDigest cleared the fields of its argument")
+	}
+
+	edited := allocated(t, synthManifest(q, synthSeed), q)
+	findCase(t, &edited, "SYNTH-AMB-01").Ambiguous.Rubric.Ref = "other-rubric"
+	if got, _ := ContentDigest(edited); got == want {
+		t.Error("ContentDigest ignored a change of case content")
+	}
+	reordered := base
+	reordered.Cases = append([]Case(nil), base.Cases...)
+	reordered.Cases[0], reordered.Cases[1] = reordered.Cases[1], reordered.Cases[0]
+	if got, _ := ContentDigest(reordered); got == want {
+		t.Error("ContentDigest ignored case order")
+	}
+}
+
+func TestContentDigestExcludesFreezePins(t *testing.T) {
+	m := allocated(t, synthManifest(smallQuotas(), synthSeed), smallQuotas())
+	content, _ := ContentDigest(m)
+	full, _ := Digest(m)
+	pins := reflect.ValueOf(&m.Pins).Elem()
+	for i := 0; i < pins.NumField(); i++ {
+		t.Run(pins.Type().Field(i).Name, func(t *testing.T) {
+			old := pins.Field(i).String()
+			pins.Field(i).SetString("sha256:" + strings.Repeat("f", 64))
+			defer pins.Field(i).SetString(old)
+			if got, err := ContentDigest(m); err != nil || got != content {
+				t.Errorf("freeze pin changed panel content digest: %s %v", got, err)
+			}
+			if got, _ := Digest(m); got == full {
+				t.Error("full Digest ignored freeze pin")
+			}
+		})
+	}
+}
+func TestContentDigestIncludesEveryCaseField(t *testing.T) {
+	m := allocated(t, synthManifest(smallQuotas(), synthSeed), smallQuotas())
+	content, _ := ContentDigest(m)
+	for i := 0; i < reflect.TypeOf(Case{}).NumField(); i++ {
+		field := reflect.TypeOf(Case{}).Field(i)
+		if field.Name == "Signoff" {
+			continue
+		}
+		t.Run(field.Name, func(t *testing.T) {
+			edited := m
+			edited.Cases = append([]Case(nil), m.Cases...)
+			v := reflect.ValueOf(&edited.Cases[0]).Elem().Field(i)
+			switch v.Kind() {
+			case reflect.String:
+				v.SetString(v.String() + "changed")
+			case reflect.Pointer:
+				if v.IsNil() {
+					v.Set(reflect.New(v.Type().Elem()))
+				} else {
+					v.SetZero()
+				}
+			default:
+				t.Fatalf("unhandled case field %s", field.Name)
+			}
+			if got, err := ContentDigest(edited); err != nil || got == content {
+				t.Fatalf("case field ignored or invalid digest: %s %v", got, err)
+			}
+		})
 	}
 }

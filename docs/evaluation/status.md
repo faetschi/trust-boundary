@@ -29,15 +29,15 @@ decisions, blockers, and next steps. History before this date is in Git.
 | Guest | F13 = `6162e3c`, guest `172.24.152.73` |
 | Governed path | G1 and both probes pass; each new freeze must repeat them with fresh evidence |
 | Measurement | F13: EVQ 21/22 (net-sink open until corpus mode); route report complete |
-| Pilot corpus | Re-based on established benchmark items; 11 adversarial, 20 compliant, 2 ambiguous; manifest still has review TODOs |
-| Panel | `tbound-panel` is ready; the owner runs it after funding and model choice |
+| Pilot corpus | Re-based on established benchmark items; 11 adversarial, 20 compliant, 2 ambiguous; manifest still has sign-off TODOs |
+| Panel | `tbound-panel` is ready; the owner runs it after funding and model choice. Gate per checklist item: Gwet's AC1 ≥ 0.80 with raw agreement ≥ 0.90 (Fleiss' kappa is reported, not gated); `corpus-digest` recomputes every statistic from the pinned receipt ratings |
 | Provider | OpenCode Go for engineering; the frozen OpenRouter route for the provider-dependent H1 pilot |
 | Denial hints | Static table (H1 treatment) merged; in service mode a DENY still ends the conversation (fix before the pilot); generated hints are post-thesis |
 
 ## Open gates, in order
 
 1. Confirm the D26 scope cut and the residual-channel claim with the advisor.
-2. Finish the pilot reviews and case corrections; freeze the pilot protocol,
+2. Finish the pilot construct review (panel run, then the advisor's sign-off) and case corrections; freeze the pilot protocol,
    provider, outage rules, and initial safety ceilings.
 3. Done at F13: freeze, reinstall, G1 and both probes with fresh evidence. Fix the
    two service-mode defects and the corpus-check guest-evidence input for F14.

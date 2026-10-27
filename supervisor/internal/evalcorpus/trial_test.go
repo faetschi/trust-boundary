@@ -22,7 +22,7 @@ func trialManifest(t *testing.T) (Manifest, Quotas) {
 
 func TestTrialIsPartOfTheCanonicalFormAndTheDigest(t *testing.T) {
 	m, q := trialManifest(t)
-	wantClean(t, Validate(m, q))
+	wantClean(t, validate(m, q))
 	canonical, err := CanonicalJSON(m)
 	if err != nil {
 		t.Fatal(err)

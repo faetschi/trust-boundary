@@ -213,6 +213,28 @@ del a["route_probe"]
 if a != b:
     sys.exit("production template differs from the probe template by more than route_probe")
 EOF
+read -r -d '' PY_CFGPOLICY <<'EOF' || true
+import json, sys
+def bad(m):
+    sys.stderr.write("policycheck: %s\n" % m)
+    sys.exit(1)
+try:
+    cfg = json.load(open(sys.argv[1], encoding="utf-8"))
+    rec = json.load(open(sys.argv[2], encoding="utf-8"))
+except (OSError, ValueError) as e:
+    bad("cannot read a file: %s" % e)
+pol = rec.get("public_policy") if isinstance(rec, dict) else None
+if not isinstance(pol, dict):
+    bad("the installed panel receipt has no public_policy object")
+paths = cfg.get("workflow_bash_output_paths") if isinstance(cfg, dict) else None
+if not isinstance(paths, list):
+    bad("the service config has no workflow_bash_output_paths list")
+if pol.get("bash_output_paths") != paths:
+    bad("bash output paths: the receipt policy has %r, the service config %r" % (pol.get("bash_output_paths"), paths))
+# Cells run network-none and the service config names no destination, so the raters must have seen none.
+if pol.get("network_destinations") != []:
+    bad("network destinations: the receipt policy has %r, the service config allows none" % (pol.get("network_destinations"),))
+EOF
 jget() { py "$PY_JGET" "$1" "$2"; }
 jhas() { py "$PY_JGET" "$1" "$2" >/dev/null 2>&1; }
 
@@ -295,7 +317,7 @@ inst_name() {   # NAME of the state whose recorded cfg equals the installed conf
   printf '%s' "$found"
 }
 backup_once() {   # NAME FILE(basename under /etc/tbound)
-  install -d -o root -g root -m 0700 "$PREV/$1"
+  install -d -o root -g root -m 0700 "$PREV/$1" "$PREV/$1/$(dirname -- "$2")"
   if [[ -e $PREV/$1/$2 ]]; then return 0; fi
   [[ -e $ETC/$2 ]] || return 0
   cp -p -- "$ETC/$2" "$PREV/$1/$2.new"
@@ -430,6 +452,7 @@ v_cfg_install() {
   fi
   if [[ $n == pilot ]]; then
     [[ -f $GA/state/corpus-digest && $(cat "$GA/state/corpus-digest") == "$CFG_EXTRA" ]] || die "config corpus digest is not the digest of the installed manifest (manifest-install first)"
+    py "$PY_CFGPOLICY" "$WORK/cfg" "$ETC/corpus/receipt.json" || die "service config does not match the public policy recorded in the installed panel receipt"
   fi
   if [[ $(sha "$ETC/serve-pi-service.json") == "$want" ]]; then say "config already installed"
   else backup_once "$n" serve-pi-service.json; install_atomic "$WORK/cfg" "$ETC/serve-pi-service.json" 0644; fi
@@ -532,15 +555,24 @@ v_adopt() {
 
 v_rollback() {
   local n=${ARGS[0]:-} part=${ARGS[1]:-} f files=()
-  need_argc 2 2; need_name "$n"; [[ $part =~ ^(cfg|reg|prof|all)$ ]] || usage "bad rollback part"
+  need_argc 2 2; need_name "$n"; [[ $part =~ ^(cfg|reg|prof|corpus|all)$ ]] || usage "bad rollback part"
+  [[ $part != corpus || $n == pilot ]] || usage "corpus rollback supports pilot only"
   need_inactive; check_tools; mkwork; prep_ga
   case $part in
+    corpus) files=(corpus/manifest.json corpus/receipt.json corpus/audit.json corpus/stats.json);;
     cfg) files=(serve-pi-service.json);;
     reg) files=(managed-live-root.json managed-live-root.ed25519);;
     prof) files=(pi-host-profile.json pi-host-profile.ed25519 d09-cell.json);;
     all) files=(serve-pi-service.json managed-live-root.json managed-live-root.ed25519 pi-host-profile.json pi-host-profile.ed25519 d09-cell.json);;
   esac
   for f in "${files[@]}"; do [[ -f $PREV/$n/$f ]] || die "no backup $PREV/$n/$f: rollback refused"; done
+  if [[ $part == corpus ]]; then
+    local out dig
+    out=$("$TBP" corpus-digest --manifest "$PREV/$n/corpus/manifest.json" --panel-receipt "$PREV/$n/corpus/receipt.json" --panel-audit "$PREV/$n/corpus/audit.json" --panel-stats "$PREV/$n/corpus/stats.json" --quota-profile pilot --artifacts /opt/tbound/corpus/artifacts --node /usr/local/bin/node --max-host-calls 17 --max-tokens 20000 --duration-seconds 1200) || die "backup corpus does not verify"
+    dig=$(printf '%s\n' "$out" | grep -Eo 'sha256:[0-9a-f]{64}' | sort -u)
+    [[ $dig =~ $re_dig ]] || die "backup corpus has no unique digest"
+  fi
+  [[ $part != corpus ]] || rm -f -- "$GA/state/corpus-digest"
   for f in "${files[@]}"; do install_atomic "$PREV/$n/$f" "$ETC/$f" 0644; [[ $(sha "$ETC/$f") == "$(sha "$PREV/$n/$f")" ]] || die "restore of $f failed"; done
   case $part in
     reg|all) "$TBP" managed-root-verify --registration "$ETC/managed-live-root.json" --sig "$ETC/managed-live-root.ed25519" --pub "$ETC/pi-host-profile.pub" --runner-digest "${PIN[TBOUND_DIGEST]}" >/dev/null || die "restored registration does not verify";;
@@ -548,23 +580,34 @@ v_rollback() {
   case $part in
     prof|all) "$TBP" verify --profile "$ETC/pi-host-profile.json" --sig "$ETC/pi-host-profile.ed25519" --pub "$ETC/pi-host-profile.pub" --runtime-bundle-digest "${PIN[BUNDLE_DIGEST]}" >/dev/null || die "restored profile does not verify";;
   esac
+  if [[ $part == corpus ]]; then
+    printf '%s\n' "$dig" >"$GA/state/corpus-digest"
+  fi
   st_reset "$n"
   say "rollback $n $part ok (state of $n cleared; restored: ${files[*]}); run status to see which NAME the installed set matches"
 }
 
 v_manifest_install() {
-  local want out dig
-  need_argc 2 2; need_sha "${ARGS[0]:-}"; need_sha "${ARGS[1]:-}"
+  local want out dig f i
+  need_argc 5 5
+  for i in 0 1 2 3 4; do need_sha "${ARGS[$i]:-}"; done
   want=$(norm_sha "${ARGS[1]:-}")
   check_tools; mkwork; prep_ga
   stage_hashed pilot manifest.json "$WORK/manifest.json" $((16 * 1024 * 1024)) "${ARGS[0]:-}"
-  out=$("$TBP" corpus-digest --manifest "$WORK/manifest.json" --quota-profile pilot --artifacts /opt/tbound/corpus/artifacts --max-host-calls 17 --max-tokens 20000 --duration-seconds 1200 2>&1) || die "corpus-digest refused the manifest: ${out:0:600}"
+  i=2
+  for f in receipt.json audit.json stats.json; do
+    stage_hashed pilot "$f" "$WORK/$f" $((16 * 1024 * 1024)) "${ARGS[$i]}"
+    i=$((i + 1))
+  done
+  out=$("$TBP" corpus-digest --panel-receipt "$WORK/receipt.json" --panel-audit "$WORK/audit.json" --panel-stats "$WORK/stats.json" --manifest "$WORK/manifest.json" --quota-profile pilot --artifacts /opt/tbound/corpus/artifacts --node /usr/local/bin/node --max-host-calls 17 --max-tokens 20000 --duration-seconds 1200 2>&1) || die "corpus-digest refused the manifest: ${out:0:600}"
   dig=$(printf '%s\n' "$out" | grep -Eo 'sha256:[0-9a-f]{64}' | sort -u)
   [[ $dig == "$want" ]] || die "corpus digest of the staged manifest is not the given CORPUS_DIGEST"
   need_inactive
   install -d -o root -g root -m 0755 "$ETC/corpus"
-  install_atomic "$WORK/manifest.json" "$ETC/corpus/manifest.json" 0644
-  out=$("$TBP" corpus-digest --manifest "$ETC/corpus/manifest.json" --quota-profile pilot --artifacts /opt/tbound/corpus/artifacts --max-host-calls 17 --max-tokens 20000 --duration-seconds 1200 2>&1) || die "installed manifest does not verify"
+  for f in manifest.json receipt.json audit.json stats.json; do backup_once pilot "corpus/$f"; done
+  rm -f -- "$GA/state/corpus-digest"
+  for f in manifest.json receipt.json audit.json stats.json; do install_atomic "$WORK/$f" "$ETC/corpus/$f" 0644; done
+  out=$("$TBP" corpus-digest --panel-receipt "$ETC/corpus/receipt.json" --panel-audit "$ETC/corpus/audit.json" --panel-stats "$ETC/corpus/stats.json" --manifest "$ETC/corpus/manifest.json" --quota-profile pilot --artifacts /opt/tbound/corpus/artifacts --node /usr/local/bin/node --max-host-calls 17 --max-tokens 20000 --duration-seconds 1200 2>&1) || die "installed manifest does not verify"
   [[ $(printf '%s\n' "$out" | grep -Eo 'sha256:[0-9a-f]{64}' | sort -u) == "$want" ]] || die "installed manifest digest differs"
   printf '%s\n' "$want" >"$GA/state/corpus-digest"
   say "manifest-install ok: $want"

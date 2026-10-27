@@ -13,6 +13,7 @@ import (
 
 	"tbound/supervisor/internal/corpusadmit"
 	"tbound/supervisor/internal/evalcorpus"
+	"tbound/supervisor/internal/panelaudit"
 	"tbound/supervisor/internal/piruntime"
 	"tbound/supervisor/internal/taskaccept"
 )
@@ -93,7 +94,46 @@ func admitCorpus(path, profile string, ceilings *corpusadmit.Ceilings) (evalcorp
 	return manifest, digest, nil
 }
 
-// runCorpusDigest prints the digest of a manifest that the service would admit.
+// readPanelFile reads one panel file, a regular file of at most panelaudit.MaxFileBytes.
+func readPanelFile(path string) ([]byte, error) {
+	f, err := openRegularFile(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	raw, err := io.ReadAll(io.LimitReader(f, panelaudit.MaxFileBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(raw) > panelaudit.MaxFileBytes {
+		return nil, fmt.Errorf("%s exceeds %d bytes", path, panelaudit.MaxFileBytes)
+	}
+	return raw, nil
+}
+
+// checkPanel verifies the panel run that backs the manifest's construct review: the receipt and the
+// advisor-signed audit must be the files construct_review pins and must back the sign-offs.
+func checkPanel(manifest evalcorpus.Manifest, receiptPath, auditPath, statsPath string) error {
+	receipt, err := readPanelFile(receiptPath)
+	if err != nil {
+		return fmt.Errorf("panel receipt: %w", err)
+	}
+	audit, err := readPanelFile(auditPath)
+	if err != nil {
+		return fmt.Errorf("panel audit: %w", err)
+	}
+	stats, err := readPanelFile(statsPath)
+	if err != nil {
+		return fmt.Errorf("panel stats: %w", err)
+	}
+	if err := panelaudit.Verify(manifest, receipt, audit, stats); err != nil {
+		return fmt.Errorf("corpus manifest refused: construct review: %w", err)
+	}
+	return nil
+}
+
+// runCorpusDigest prints the digest of a manifest that the service would admit and whose construct
+// review the panel run backs.
 func runCorpusDigest(args []string, stdout, stderr io.Writer) error {
 	flags := flag.NewFlagSet("tbound-profile corpus-digest", flag.ContinueOnError)
 	flags.SetOutput(stderr)
@@ -104,6 +144,9 @@ func runCorpusDigest(args []string, stdout, stderr io.Writer) error {
 	flags.Uint64Var(&ceilings.MaxTokens, "max-tokens", 0, "service config workflow_max_tokens")
 	flags.Uint64Var(&ceilings.DurationSeconds, "duration-seconds", 0, "service config workflow_duration_seconds")
 	artifacts := flags.String("artifacts", "", "directory of the artifacts (fixture-<hex>.json; for compliant cases also accept-<hex>.json and solution-<hex>.json); when given, every case's artifacts must verify")
+	panelReceipt := flags.String("panel-receipt", "", "receipt.json of the tbound-panel run; its sha256 is construct_review.panel_receipt_digest")
+	panelAudit := flags.String("panel-audit", "", "audit.json of the tbound-panel run with the advisor's sign-off; its sha256 is construct_review.panel_audit_digest")
+	panelStats := flags.String("panel-stats", "", "stats.json of the panel run, pinned by construct_review.panel_stats_digest")
 	node := flags.String("node", "", "node binary for the node_test self-checks of the artifacts (runs only the corpus's own fixtures and reference solutions); without it a node_test acceptance spec is refused")
 	if err := flags.Parse(args); err != nil {
 		return err
@@ -113,6 +156,9 @@ func runCorpusDigest(args []string, stdout, stderr io.Writer) error {
 	}
 	if *manifestPath == "" {
 		return errors.New("--manifest is required")
+	}
+	if *panelReceipt == "" || *panelAudit == "" || *panelStats == "" {
+		return errors.New("--panel-receipt, --panel-audit and --panel-stats are required: the construct review rests on the panel run")
 	}
 	set := map[string]bool{}
 	flags.Visit(func(f *flag.Flag) { set[f.Name] = true })
@@ -124,6 +170,9 @@ func runCorpusDigest(args []string, stdout, stderr io.Writer) error {
 	}
 	manifest, digest, err := admitCorpus(*manifestPath, *profile, checked)
 	if err != nil {
+		return err
+	}
+	if err := checkPanel(manifest, *panelReceipt, *panelAudit, *panelStats); err != nil {
 		return err
 	}
 	if *artifacts != "" {

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"slices"
 	"sort"
 	"strconv"
 	"unicode/utf16"
@@ -37,6 +38,20 @@ func Digest(m Manifest) (string, error) {
 	}
 	sum := sha256.Sum256(raw)
 	return "sha256:" + hex.EncodeToString(sum[:]), nil
+}
+
+// ContentDigest is the Digest of m with every case's Signoff and the manifest's ConstructReview
+// and freeze Pins cleared. The blinded panel rates this content and records this digest, so the advisor's
+// sign-offs can be written into the manifest afterwards without detaching it from the panel run.
+// It leaves m unchanged.
+func ContentDigest(m Manifest) (string, error) {
+	m.Cases = slices.Clone(m.Cases)
+	for i := range m.Cases {
+		m.Cases[i].Signoff = Signoff{}
+	}
+	m.ConstructReview = ConstructReview{}
+	m.Pins = Pins{}
+	return Digest(m)
 }
 
 var rawMessageType = reflect.TypeOf(json.RawMessage(nil))

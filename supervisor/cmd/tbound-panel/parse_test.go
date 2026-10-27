@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"path/filepath"
 	"strings"
+	"tbound/supervisor/internal/panelaudit"
 	"testing"
 )
 
@@ -64,7 +65,7 @@ func TestCostAboveWorstCaseStops(t *testing.T) {
 }
 
 func TestRequestDeniesDataCollection(t *testing.T) {
-	b, err := json.Marshal(newRequest(modelConfig{ID: "vendor/m", MaxTokens: 10}, 1, "x"))
+	b, err := json.Marshal(newRequest(panelaudit.Model{ID: "vendor/m", MaxTokens: 10}, 1, "x"))
 	if err != nil || !strings.Contains(string(b), `"data_collection":"deny"`) {
 		t.Fatalf("%s %v", b, err)
 	}

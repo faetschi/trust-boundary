@@ -39,11 +39,8 @@ func corpusTestDigest(label string) string {
 	return "sha256:" + hex.EncodeToString(sum[:])
 }
 
-func corpusTestReviews() []evalcorpus.Review {
-	return []evalcorpus.Review{
-		{Role: "reviewer-a", Reviewer: "synthetic-reviewer-1", Human: true, Blinded: true, Decision: "accept"},
-		{Role: "reviewer-b", Reviewer: "synthetic-reviewer-2", Human: true, Blinded: true, Decision: "accept"},
-	}
+func corpusTestSignoff() evalcorpus.Signoff {
+	return evalcorpus.Signoff{Reviewer: "synthetic-advisor", Human: true, Decision: "accept"}
 }
 
 // corpusTestManifest builds a small allocated manifest that satisfies
@@ -62,7 +59,7 @@ func corpusTestManifest(t *testing.T) evalcorpus.Manifest {
 			if i%2 == 0 {
 				tag = evalcorpus.OpportunityFeedback
 			}
-			m.Cases = append(m.Cases, evalcorpus.Case{CaseID: id, Kind: evalcorpus.KindAdversarial, Reviews: corpusTestReviews(),
+			m.Cases = append(m.Cases, evalcorpus.Case{CaseID: id, Kind: evalcorpus.KindAdversarial, Signoff: corpusTestSignoff(),
 				Adversarial: &evalcorpus.Adversarial{ThreatClass: class, RootScenarioID: "root-" + id, SourceKey: "src",
 					SourceItemID: "item-" + id, SelectionReason: "synthetic",
 					Adaptation: evalcorpus.Adaptation{PreservedIntent: "i", ToolMapping: "m", AdaptationSteps: []string{"s"},
@@ -76,7 +73,7 @@ func corpusTestManifest(t *testing.T) evalcorpus.Manifest {
 	for _, tool := range []evalcorpus.Tool{evalcorpus.ToolRead, evalcorpus.ToolWrite, evalcorpus.ToolEdit, evalcorpus.ToolBash} {
 		for i := 1; i <= q.Compliant[tool]; i++ {
 			id := fmt.Sprintf("cmp-%s-%02d", tool, i)
-			m.Cases = append(m.Cases, evalcorpus.Case{CaseID: id, Kind: evalcorpus.KindCompliant, Reviews: corpusTestReviews(),
+			m.Cases = append(m.Cases, evalcorpus.Case{CaseID: id, Kind: evalcorpus.KindCompliant, Signoff: corpusTestSignoff(),
 				Compliant: &evalcorpus.Compliant{PrimaryTool: tool, TaskGoal: "goal", ToolMapping: "m", OracleID: "task-oracle",
 					OracleVersion: "0", WorkspaceFixtureDigest: corpusTestDigest("cmp/" + id),
 					AcceptanceTest:    evalcorpus.Ref{Ref: "acc-" + id, Digest: corpusTestDigest("acc/" + id)},
@@ -84,7 +81,7 @@ func corpusTestManifest(t *testing.T) evalcorpus.Manifest {
 		}
 	}
 	for i := 1; i <= q.Ambiguous; i++ {
-		m.Cases = append(m.Cases, evalcorpus.Case{CaseID: fmt.Sprintf("amb-%02d", i), Kind: evalcorpus.KindAmbiguous, Reviews: corpusTestReviews(),
+		m.Cases = append(m.Cases, evalcorpus.Case{CaseID: fmt.Sprintf("amb-%02d", i), Kind: evalcorpus.KindAmbiguous, Signoff: corpusTestSignoff(),
 			Ambiguous: &evalcorpus.Ambiguous{WorkspaceFixtureDigest: corpusTestDigest("amb-fixture"),
 				Rubric: evalcorpus.Ref{Ref: "rubric", Digest: corpusTestDigest("rubric")}}})
 	}
@@ -116,10 +113,23 @@ func corpusTestManifest(t *testing.T) evalcorpus.Manifest {
 		}
 		allocated.Cases[i].Adversarial.CalibrationPayloadDigest = digest
 	}
+	allocated = sealConstructReview(t, allocated)
 	if violations := evalcorpus.Validate(allocated, q); len(violations) != 0 {
 		t.Fatalf("test manifest is invalid: %v", violations)
 	}
 	return allocated
+}
+
+// sealConstructReview binds the construct review of m to its current content.
+func sealConstructReview(t *testing.T, m evalcorpus.Manifest) evalcorpus.Manifest {
+	t.Helper()
+	content, err := evalcorpus.ContentDigest(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.ConstructReview = evalcorpus.ConstructReview{ContentDigest: content,
+		PanelReceiptDigest: corpusTestDigest("panel-receipt"), PanelAuditDigest: corpusTestDigest("panel-audit"), PanelStatsDigest: corpusTestDigest("panel-stats")}
+	return m
 }
 
 const corpusTestCase = "cmp-read-01"
@@ -147,6 +157,7 @@ func corpusTestServiceConfig(manifestDigest string) piServiceConfig {
 // returns its digest and a service config that pins it.
 func installCorpusTestManifest(t *testing.T, manifest evalcorpus.Manifest) (piServiceConfig, string) {
 	t.Helper()
+	manifest = sealConstructReview(t, manifest) // a test may have changed a case since corpusTestManifest sealed it
 	canonical, err := evalcorpus.CanonicalJSON(manifest)
 	if err != nil {
 		t.Fatal(err)

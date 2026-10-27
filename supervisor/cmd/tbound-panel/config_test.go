@@ -4,23 +4,24 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"tbound/supervisor/internal/panelaudit"
 	"testing"
 )
 
-func panelModels(ids ...string) []modelConfig {
-	var ms []modelConfig
+func panelModels(ids ...string) []panelaudit.Model {
+	var ms []panelaudit.Model
 	for _, id := range ids {
-		ms = append(ms, modelConfig{ID: id, MaxTokens: 2000, PromptUSDPerMTok: 1, CompletionUSDPerMTok: 4})
+		ms = append(ms, panelaudit.Model{ID: id, MaxTokens: 2000, PromptUSDPerMTok: 1, CompletionUSDPerMTok: 4})
 	}
 	return ms
 }
 
 func TestValidateModelsFamilies(t *testing.T) {
 	ok := panelModels("google/gemini-2.5-pro", "qwen/qwen3-235b-a22b-2507", "mistralai/mistral-large-2411")
-	if err := validateModels(ok); err != nil {
+	if err := panelaudit.ValidateModels(ok); err != nil {
 		t.Fatalf("valid panel refused: %v", err)
 	}
-	bad := map[string][]modelConfig{
+	bad := map[string][]panelaudit.Model{
 		"fewer than three":    panelModels("google/gemini-2.5-pro", "qwen/qwen3-235b-a22b-2507"),
 		"same family":         panelModels("google/gemini-2.5-pro", "google/gemma-3-27b-it", "qwen/qwen3-235b-a22b-2507"),
 		"llama via reseller":  panelModels("meta-llama/llama-4-maverick", "nousresearch/hermes-3-llama-3.1-405b", "qwen/qwen3-235b-a22b-2507"),
@@ -38,7 +39,7 @@ func TestValidateModelsFamilies(t *testing.T) {
 		"four models":         panelModels("google/gemini-2.5-pro", "qwen/qwen3-235b-a22b-2507", "mistralai/mistral-large-2411", "x-ai/grok-4"),
 	}
 	for name, ms := range bad {
-		if err := validateModels(ms); err == nil {
+		if err := panelaudit.ValidateModels(ms); err == nil {
 			t.Errorf("%s: accepted", name)
 		}
 	}
@@ -50,7 +51,7 @@ func TestDefaultConfigNamesNoModels(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(cfg.Models) != 0 || len(cfg.ExampleModels) == 0 || validateModels(cfg.Models) == nil || cfg.PublicPolicy == nil {
+	if len(cfg.Models) != 0 || len(cfg.ExampleModels) == 0 || panelaudit.ValidateModels(cfg.Models) == nil || cfg.PublicPolicy == nil {
 		t.Fatalf("default config must list no models but examples: %+v", cfg)
 	}
 }
@@ -79,5 +80,27 @@ func TestLoadConfigDefaultsAndCap(t *testing.T) {
 	}
 	if _, err := loadConfig(write(`{"schema":"tbound-panel-config/v1","models":[],"public_policy":{},"api_key":"x"}`)); err == nil {
 		t.Fatal("unknown member (a key in the config) accepted")
+	}
+}
+
+// The advisor's audit sample is registered as 60 unanimous roots, and the verifier replays exactly
+// that selection, so a config cannot ask for another size.
+func TestLoadConfigRefusesAnotherAuditSampleSize(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "panel.json")
+	for _, n := range []string{"30", "61", "-1"} {
+		body := `{"schema":"tbound-panel-config/v1","models":[],"public_policy":{"bash_output_paths":[],"network_destinations":[]},"audit_sample":` + n + `}`
+		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := loadConfig(path); err == nil || !strings.Contains(err.Error(), "audit_sample") {
+			t.Fatalf("audit_sample %s accepted: %v", n, err)
+		}
+	}
+	body := `{"schema":"tbound-panel-config/v1","models":[],"public_policy":{"bash_output_paths":[],"network_destinations":[]},"audit_sample":60}`
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := loadConfig(path); err != nil {
+		t.Fatalf("audit_sample 60 refused: %v", err)
 	}
 }

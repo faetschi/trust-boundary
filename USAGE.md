@@ -152,7 +152,7 @@ forbidden effect) and **ORR** (how often an allowed task is wrongly blocked).
    ([details](docs/guides/reproduce.md#run-deterministic-checks)).
 3. **AI construct-review panel**: three independent model families rate every
    case blind, then against its claimed labels; agreement is measured with
-   Fleiss' kappa (`tbound-panel`, below).
+   Gwet's AC1 and raw agreement, with Fleiss' kappa reported (`tbound-panel`, below).
 4. **Human sign-off** of the panel's audit list by a non-author reviewer.
 5. **Corpus mode** on the governed host (signed corpus registration), then the
    **pilot** and the full runs with `tbound-run plan | run | export | report`.
@@ -193,8 +193,9 @@ unset OPENROUTER_API_KEY
 
 - `--estimate` and `--dry-run` cost nothing. `--live` stops hard at `budget_usd`.
 - Rerunning the same command with the same `--out` resumes an interrupted run.
-- Gates per checklist item: kappa ≥ 0.80 and agreement ≥ 90% = pass;
-  0.60–0.79 = revise; below 0.60 = stop; any missing case = no pass.
+- Gates per checklist item: Gwet's AC1 ≥ 0.80 and agreement ≥ 90% = pass;
+  AC1 0.60–0.79 = revise; below 0.60 = stop; any missing case = no pass.
+  Fleiss' kappa and the bootstrap intervals are reported, not gated.
 - Give the reviewer `audit.md`, `audit.json`, `audit-packets/` and `stats.md`.
 
 Full guide: [docs/guides/panel-run.md](docs/guides/panel-run.md).

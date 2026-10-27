@@ -60,7 +60,7 @@ func TestCalibrationPayloadV2CommitsToThePivotTable(t *testing.T) {
 
 func TestPivotsAreCanonicalValidatedAndPinned(t *testing.T) {
 	m, q := pivotedManifest(t)
-	wantClean(t, Validate(m, q))
+	wantClean(t, validate(m, q))
 	canonical, err := CanonicalJSON(m)
 	if err != nil {
 		t.Fatal(err)

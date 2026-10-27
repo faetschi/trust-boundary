@@ -1,9 +1,9 @@
 // Command tbound-panel runs the blinded three-model AI construct-review panel of the D35
 // amendment (2026-10-24) over a TBound corpus manifest. Every model rates every case in two
 // separate fresh sessions: phase 1 classifies the case without any claimed label, phase 2
-// rates the checklist with the claims shown. It then reports Fleiss' kappa per checklist item
-// and per phase-1 field, the phase-1 agreement with the claimed labels, all before
-// adjudication, and the advisor's audit list. See docs/guides/panel-run.md.
+// rates the checklist with the claims shown. It then reports Gwet's AC1 (the gate statistic), raw
+// agreement and Fleiss' kappa per checklist item and per phase-1 field, the phase-1 agreement with
+// the claimed labels, all before adjudication, and the advisor's audit list. See docs/guides/panel-run.md.
 //
 // Exactly one mode is required, so nothing spends money by accident:
 //
@@ -27,6 +27,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"tbound/supervisor/internal/panelaudit"
 	"time"
 )
 
@@ -95,7 +96,7 @@ func (a *app) runCtx(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := validateModels(cfg.Models); err != nil {
+	if err := panelaudit.ValidateModels(cfg.Models); err != nil {
 		return err
 	}
 	c, err := loadCorpus(*manifest)

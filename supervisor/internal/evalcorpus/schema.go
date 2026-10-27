@@ -76,10 +76,24 @@ const (
 // Manifest is the corpus manifest. Every digest is "sha256:" followed by 64 lowercase
 // hexadecimal digits. Case order is part of the canonical form.
 type Manifest struct {
-	SchemaVersion string `json:"schema_version"`
-	SplitSeed     string `json:"split_seed"`
-	Pins          Pins   `json:"pins"`
-	Cases         []Case `json:"cases"`
+	SchemaVersion   string          `json:"schema_version"`
+	SplitSeed       string          `json:"split_seed"`
+	Pins            Pins            `json:"pins"`
+	ConstructReview ConstructReview `json:"construct_review"`
+	Cases           []Case          `json:"cases"`
+}
+
+// ConstructReview binds the manifest to the D35-amended construct review: the content the
+// blinded AI panel rated, and the three files of that panel run that the advisor's sign-offs rest
+// on. ContentDigest is evalcorpus.ContentDigest of this manifest, so writing the sign-offs and
+// this block into the manifest does not change it. The panel digests are the "sha256:" of the
+// bytes of the run's receipt.json and of the advisor-signed audit.json; `tbound-profile
+// corpus-digest` checks all three files against them.
+type ConstructReview struct {
+	ContentDigest      string `json:"content_digest"`
+	PanelReceiptDigest string `json:"panel_receipt_digest"`
+	PanelAuditDigest   string `json:"panel_audit_digest"`
+	PanelStatsDigest   string `json:"panel_stats_digest"`
 }
 
 // Pins are the environment identity digests that every case shares.
@@ -97,13 +111,12 @@ type Pins struct {
 // Case is one registered unit. Exactly one of Adversarial, Compliant, or Ambiguous is
 // set, and it must match Kind.
 type Case struct {
-	CaseID       string        `json:"case_id"`
-	Kind         Kind          `json:"kind"`
-	Reviews      []Review      `json:"reviews"`
-	Adjudication *Adjudication `json:"adjudication,omitempty"`
-	Adversarial  *Adversarial  `json:"adversarial,omitempty"`
-	Compliant    *Compliant    `json:"compliant,omitempty"`
-	Ambiguous    *Ambiguous    `json:"ambiguous,omitempty"`
+	CaseID      string       `json:"case_id"`
+	Kind        Kind         `json:"kind"`
+	Signoff     Signoff      `json:"signoff"`
+	Adversarial *Adversarial `json:"adversarial,omitempty"`
+	Compliant   *Compliant   `json:"compliant,omitempty"`
+	Ambiguous   *Ambiguous   `json:"ambiguous,omitempty"`
 	// MeaningRecord is the D37 benchmark-adaptation record. It is present on every case
 	// adapted from an established benchmark item (case_origin "established") or authored
 	// from a pinned taxonomy ("derived"), and absent on legacy authored cases. When
@@ -183,32 +196,24 @@ type ScriptTurn struct {
 	Text      string          `json:"text,omitempty"`
 }
 
-// The only review and adjudication decisions. Validate refuses any other value, and a
-// case whose standing decision is DecisionReject makes the manifest non-admissible.
+// The only sign-off decisions. Validate refuses any other value, and a case whose standing
+// decision is DecisionReject makes the manifest non-admissible.
 const (
 	DecisionAccept = "accept"
 	DecisionReject = "reject"
 )
 
-// Review is one construct-validity review. Every case has exactly two, from different
-// roles and different reviewers, both human and blinded. Decision is exactly "accept" or
-// "reject"; role and reviewer must not be TODO placeholders.
-type Review struct {
-	Role     string `json:"role"`
-	Reviewer string `json:"reviewer"`
-	Human    bool   `json:"human"`
-	Blinded  bool   `json:"blinded"`
-	Decision string `json:"decision"`
-}
-
-// Adjudication is required exactly when the two reviews disagree. The adjudicator is a
-// third reviewer: human and blinded, and not either of the two reviewers. Its decision is
-// the standing decision of the case.
-type Adjudication struct {
-	Adjudicator string `json:"adjudicator"`
-	Human       bool   `json:"human"`
-	Blinded     bool   `json:"blinded"`
-	Decision    string `json:"decision"`
+// Signoff is the D35-amended construct review of one case (amendment 2026-10-24): the advisor,
+// a non-author human, signs the case's meaning record after the AI panel. Audited is true for every
+// case on the panel's audit list; Resolution then records the advisor's resolution under the frozen
+// panel rubric.
+type Signoff struct {
+	Reviewer   string `json:"reviewer"`
+	Human      bool   `json:"human"`
+	Author     bool   `json:"author"`
+	Decision   string `json:"decision"`
+	Audited    bool   `json:"audited"`
+	Resolution string `json:"resolution,omitempty"`
 }
 
 // Ref names a referenced artifact together with its content digest.

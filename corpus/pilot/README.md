@@ -50,7 +50,7 @@ as checked by `caps.scripted: true`. Real-provider budgets retain their positive
   ambiguous cases. `<hex>` is the digest the manifest pins.
 - `build.py`: idempotent generator that owns every case and every digest that follows from the sources.
   `python3 -I corpus/pilot/build.py --tbound-run <tbound-run built from HEAD>`. It preserves the four
-  environment pins, the split seed and any existing reviews. Fixture digests come from
+  environment pins, the split seed and any existing sign-offs and `construct_review` block. Fixture digests come from
   `tbound-run fixture digest`; the calibration payload digest follows `evalcorpus.CalibrationPayloadDigestOf`
   (schema `tbound-calibration-payload/v2`: script, pivots, p_delta); the other digests are SHA-256 of the
   file bytes. Two runs are byte-identical.
@@ -137,13 +137,31 @@ as checked by `caps.scripted: true`. Real-provider budgets retain their positive
       registration digest emptied; policy = production gate profile plus the two admission policy digests.
    2. Write those four values into `pins` of the manifest (leave `attacker_digest`; `build.py` does not touch the four pins)
       and check with `corpus-pins ... --manifest corpus/pilot/manifest.json` (exit 0).
-   3. Only then reviews, `corpus-digest`, the corpus config, S3', the new template and S4'. After D6 rerun `corpus-pins` on
+   3. Only then the construct review (item 2), `corpus-digest`, the corpus config, S3', the new template and S4'. After D6 rerun `corpus-pins` on
       the new template: the pins must be unchanged (only the registration digest moved).
    Any later change of an input (image, bundle, Node, a template field other than the registration digest) changes the pins
    and the corpus digest.
-2. Reviews: every case has two `TODO-` reviews with `human`/`blinded` false. The owner and the advisor
-   each set a distinct `role`, their `reviewer` name, `human: true`, `blinded: true` and a `decision`.
-   Different decisions need an `adjudication` by a third human, blinded reviewer. Do not copy sign-offs.
+2. Construct review (D35 amendment 2026-10-24, `docs/guides/panel-run.md`): every case has a `TODO-` `signoff` and the
+   manifest has a `TODO-` `construct_review`. One non-author human, the advisor, signs every case; the AI panel and the
+   case author never count as that review. Order of operations:
+   1. Run the deterministic checks (`corpus-check`), then the blinded panel on the draft with `tbound-panel`. Its
+      `receipt.json` and `audit.json` record `content_digest`, the `evalcorpus.ContentDigest` of the draft: the digest
+      of the manifest with every `signoff` and the `construct_review` cleared, so it survives step 3.
+   2. The advisor fills the four `advisor_signoff` fields of every case in `audit.json` (disagreement, `unclear`,
+      ambiguous and the seeded sample of unanimous roots).
+   3. In the manifest, set every case's `signoff` to the advisor's `reviewer` name, `human: true`, `author: false` and
+      `decision: "accept"`, and for each case on the audit list also `audited: true` and a `resolution`. The same
+      `reviewer` name goes on every case. Do not copy sign-offs from another case.
+   4. Set `construct_review.content_digest` to the receipt's `content_digest` and the three panel digests to the `sha256:`
+      of the bytes of `receipt.json`, the signed `audit.json`, and `stats.json`. Any later edit of these files, or of a case, makes
+      `corpus-digest` refuse. `build.py` keeps existing sign-offs and the `construct_review` block, but a regenerated case
+      needs a new panel run. The content digest excludes every case's `signoff`, `construct_review`, and
+      all manifest `pins`. Fill the environment, model, profile and policy pins with `corpus-pins` after
+      the panel run if needed, but before `corpus-digest`. The full corpus digest still includes pins.
+      The receipt's pinned bytes also bind its per-call `rating_outcomes` and the `public_policy` the raters saw; keep
+      `ratings.jsonl` as the raw record. `tbound-op cfg-install pilot` later refuses the corpus service config unless
+      its `workflow_bash_output_paths` equal the receipt's `public_policy.bash_output_paths` and the receipt's
+      `network_destinations` are empty. A `fail` rating, even a unanimous one, puts the case on the audit list.
 3. `evq_results` and `route_report` (the other two `run.json` inputs besides the manifest) are generated, not authored,
    from one capture of the frozen commit on Linux or WSL:
    `tbound-run evq-capture --repo <repo> --commit <freeze_commit> --out <new dir>`, then
@@ -199,13 +217,23 @@ as checked by `caps.scripted: true`. Real-provider budgets retain their positive
 ## Digest
 On Linux, with the service ceilings the scripted trials need:
 
-    tbound-profile corpus-digest --manifest corpus/pilot/manifest.draft.json --quota-profile pilot \
-      --artifacts corpus/pilot/artifacts --node "$(command -v node)" \
-      --max-host-calls 17 --max-tokens 20000 --duration-seconds 1200
+    tbound-profile corpus-digest --manifest corpus/pilot/manifest.draft.json --quota-profile pilot       --panel-receipt <run>/receipt.json --panel-audit <run>/audit.json --panel-stats <run>/stats.json       --artifacts corpus/pilot/artifacts --node "$(command -v node)"       --max-host-calls 17 --max-tokens 20000 --duration-seconds 1200
 
-It prints `sha256:...` only if the strict loader, `Validate`, the trial checks and the artifact
-checks pass. Until the reviews are signed it refuses on `review.human`/`review.blinded`, and on
-`review.placeholder` (a role, reviewer or adjudicator still starting with `TODO`) and
-`review.decision` (a decision other than exactly `accept` or `reject`). A case whose standing
-decision is `reject` (both reviews reject, or the adjudication rejects) refuses with `review.rejected`. Any edit
-changes the digest; re-pin it in the service config. Save the final file as `corpus/pilot/manifest.json`.
+It prints `sha256:...` only if the strict loader, `Validate`, the trial checks, the panel evidence and the artifact
+checks pass. `--panel-receipt`, `--panel-audit` and `--panel-stats` are required. Until the advisor signs, it refuses on
+`review.human`, on `review.placeholder` (a reviewer, resolution or panel digest still starting with `TODO`), on
+`review.decision` (a decision other than exactly `accept` or `reject`) and on `review.content_digest`. A case signed
+`reject` refuses with `review.rejected`. Further refusals: `review.author` (the signer is the case author),
+`review.identity` (more than one reviewer across the cases), `review.resolution` and `review.audited` (an audited case
+without a resolution, or a resolution on a case that is not audited), and `review.digest` (a malformed panel digest).
+The panel files are refused when their sha256 is not the one in `construct_review`, when their `content_digest` is not
+that of the manifest, when either is a dry run, when the receipt does not cover every case with a complete rating,
+when the audit list and the cases marked `audited` differ, or when an audit entry lacks a decision, resolution,
+identity or time, or does not accept the case. The advisor identity must match the manifest reviewer. Admission
+checks that every phase-2 item of the pinned `stats.json` (schema v4 with the same `content_digest`) matches, within 1e-9,
+the Gwet AC1, raw agreement, Fleiss kappa and prevalence recomputed from the receipt's own ratings and that the recomputed
+gate is `pass` (AC1 at least 0.80 and raw agreement at least 0.90; kappa is reported, not gated),
+rejects any missing rating, requires the audit seed to equal the receipt's run seed, requires each advisor
+`resolution` to equal the manifest's and `signed_at` to be RFC 3339 with a timezone, and replays the audit's eligible roots, seed and 60-root sample with the panel's own
+selection function. Phase-1 agreement is reported; its gate values are not admission gates. Any edit changes the digest;
+re-pin it in the service config. Save the final file as `corpus/pilot/manifest.json`.

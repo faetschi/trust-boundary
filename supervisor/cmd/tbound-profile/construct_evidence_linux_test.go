@@ -1072,10 +1072,11 @@ func TestConstructPilotNoFlagBytes(t *testing.T) {
 	if err := runCorpusCheck([]string{"--manifest", constructPilotManifest, "--quota-profile", "pilot", "--node", node, "--out", out}, &stdout, &stderr); err != nil {
 		t.Fatal(err, stderr.String())
 	}
-	// Exact reports produced by dc3ae7e, Linux Node v24.15.0; no guest flag.
+	// Exact reports, Linux Node v24.15.0; no guest flag. Generated against codex/tbound-prototype
+	// (25f913f9..., 42f3bda3...): only manifest_digest and deferred_review changed (330 to 103 entries).
 	for name, want := range map[string]string{
-		"report.json": "25f913f94bf2fcad193dbbdddb4e38986b8c6528aa346eec6d966b78d44dfd78",
-		"report.md":   "42f3bda3968855c4be0c598603967fc7a47d91fd204e6789aa4ae3a2d7ed488f",
+		"report.json": "ee532955dc1d8794404a1dc7490d6ad82a81c4e51b5433d15fae0a5e1e69504e",
+		"report.md":   "6f02ff0afb9772ba97131a26bb6a0921b298fbb143eda821366aa70f8f0eb345",
 	} {
 		raw, err := os.ReadFile(filepath.Join(out, name))
 		if err != nil {

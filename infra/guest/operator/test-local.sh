@@ -15,7 +15,8 @@ import sys
 import tempfile
 import unittest
 
-source = Path(sys.argv.pop(1)).read_text(encoding="utf-8")
+operator_path = Path(sys.argv.pop(1))
+source = operator_path.read_text(encoding="utf-8")
 fixture = source[source.index("live_listing() {"):source.index("declare -A TASK_OF=")]
 # Keep production permission checks, substituting only the test user's identity.
 fixture = fixture.replace("995", str(os.getuid())).replace("986", str(os.getgid()))
@@ -243,6 +244,225 @@ ARGS=(l4)
                 got = self.diagnostics([event], entry)
                 self.assertEqual(got.returncode, 0, got.stderr)
                 self.assertIn(field, got.stdout)
+
+
+class ManifestInstallTests(unittest.TestCase):
+    def test_real_pilot_node_checks_with_dispatcher_arguments(self):
+        got = subprocess.run(
+            ["go", "test", "./cmd/tbound-profile", "-run", "^TestOperatorCorpusDigestArgumentsRunPilotNodeChecks$", "-count=1"],
+            cwd=operator_path.parents[3] / "supervisor", capture_output=True, text=True)
+        self.assertEqual(got.returncode, 0, got.stdout + got.stderr)
+
+
+    def run_install(self, corrupt=None, extra_args=None, active=False, rollback=False, missing_backup=False, invalid_backup=False, fail_install=None):
+        tmp = tempfile.TemporaryDirectory(prefix="tbound-op-manifest-")
+        self.addCleanup(tmp.cleanup)
+        base = Path(tmp.name)
+        for name in ("stage", "work", "etc/corpus", "prev/pilot/corpus", "ga/state"):
+            (base / name).mkdir(parents=True)
+        import hashlib
+        files = ("manifest.json", "receipt.json", "audit.json", "stats.json")
+        pins = []
+        for name in files:
+            raw = (name + "\n").encode()
+            pins.append(hashlib.sha256(raw).hexdigest())
+            (base / "stage" / name).write_bytes(raw)
+            (base / "etc/corpus" / name).write_text("previous " + name)
+        if corrupt:
+            (base / "stage" / corrupt).write_text("changed")
+        tbp = base / "tbp"
+        tbp.write_text('''#!/bin/bash
+printf '%s\n' "$*" >>"$BASE/calls"
+[[ ${REFUSE_ROLLBACK:-} != 1 ]] || { echo "bad backup" >&2; exit 1; }
+for file in receipt audit stats; do
+ found=0
+ for ((i=1; i<=$#; i++)); do
+  if [[ ${!i} == --panel-$file ]]; then ((i+=1)); [[ -f ${!i} ]] || exit 1; found=1; fi
+ done
+ [[ $found == 1 ]] || { echo "missing --panel-$file"; exit 1; }
+done
+printf 'sha256:%064d\n' 1
+''')
+        tbp.chmod(0o700)
+        staging = source[source.index("stage_hashed() {"):source.index("# -------------------------------------------------------------------------------------------------------- state")]
+        helpers = source[source.index("backup_once() {"):source.index("svc_inactive() {")]
+        verb = source[source.index("v_manifest_install() {"):source.index("v_svc() {")]
+        script = '''set -euo pipefail
+BASE=$1; export BASE
+shift
+WORK=$BASE/work; ETC=$BASE/etc; PREV=$BASE/prev; GA=$BASE/ga; TBP=$BASE/tbp
+ARGS=("$@")
+die() { echo "$*" >&2; exit 1; }
+usage() { echo "$*" >&2; exit 2; }
+say() { echo "$*"; }
+need_argc() { ((${#ARGS[@]} >= $1 && ${#ARGS[@]} <= $2)) || usage 'wrong number of arguments'; }
+need_sha() { [[ $1 =~ ^(sha256:)?[0-9a-f]{64}$ ]] || usage 'bad SHA'; }
+norm_sha() { printf 'sha256:%s' "${1#sha256:}"; }
+sha() { local h; h=$(sha256sum -- "$1"); printf 'sha256:%s' "${h%% *}"; }
+check_tools() { :; }; mkwork() { :; }; prep_ga() { :; }
+need_inactive() { ''' + ('die active' if active else ':') + '''; }
+stage_copy() { cp -- "$BASE/stage/$2" "$3"; }
+install() {
+ printf '%s\n' "$*" >>"$BASE/installs"
+ if [[ -n ${FAIL_INSTALL:-} && $* == *"$FAIL_INSTALL"* ]]; then return 1; fi
+ local a args=()
+ while (($#)); do case $1 in -o|-g) shift 2;; *) args+=("$1"); shift;; esac; done
+ command install "${args[@]}"
+}
+''' + staging + helpers + verb + "\nv_manifest_install\n"
+        if rollback:
+            rollback_verb = source[source.index("v_rollback() {"):source.index("v_manifest_install() {")]
+            script += "\nneed_name() { [[ $1 == pilot ]]; }\nst_reset() { :; }\nre_dig='^sha256:[0-9a-f]{64}$'\n" + rollback_verb
+            if invalid_backup:
+                script += "\nexport REFUSE_ROLLBACK=1\n"
+            if fail_install:
+                script += "\nexport FAIL_INSTALL=" + fail_install + "\n"
+            if missing_backup:
+                script += '\nrm -- "$PREV/pilot/corpus/audit.json"\n'
+            script += "\nARGS=(pilot corpus)\nv_rollback\n"
+        args = extra_args if extra_args is not None else [pins[0], "1".zfill(64), *pins[1:]]
+        got = subprocess.run(["bash", "-c", script, "manifest-test", str(base), *args], capture_output=True, text=True)
+        return got, base, files
+
+    def test_installs_and_checks_all_three_pinned_panel_files(self):
+        got, base, files = self.run_install()
+        self.assertEqual(got.returncode, 0, got.stdout + got.stderr)
+        calls = (base / "calls").read_text().splitlines()
+        self.assertEqual(len(calls), 2)
+        for name in files:
+            self.assertEqual((base / "etc/corpus" / name).read_bytes(), (base / "stage" / name).read_bytes())
+            self.assertEqual((base / "prev/pilot/corpus" / name).read_text(), "previous " + name)
+            self.assertEqual(stat.S_IMODE((base / "etc/corpus" / name).stat().st_mode), 0o644)
+        self.assertIn("-o root -g root", (base / "installs").read_text())
+
+    def test_corpus_rollback_restores_all_four_backups(self):
+        got, base, files = self.run_install(rollback=True)
+        self.assertEqual(got.returncode, 0, got.stdout + got.stderr)
+        for file in files:
+            self.assertEqual((base / "etc/corpus" / file).read_text(), "previous " + file)
+        self.assertEqual(len((base / "calls").read_text().splitlines()), 3)
+
+    def test_invalid_corpus_backup_preserves_files_and_digest_state(self):
+        got, base, files = self.run_install(rollback=True, invalid_backup=True)
+        self.assertNotEqual(got.returncode, 0)
+        self.assertIn("does not verify", got.stderr)
+        for file in files:
+            self.assertEqual((base / "etc/corpus" / file).read_bytes(), (base / "stage" / file).read_bytes())
+        self.assertTrue((base / "ga/state/corpus-digest").is_file())
+
+    def test_failed_restore_leaves_no_stale_digest_token(self):
+        got, base, files = self.run_install(rollback=True, fail_install="audit.json")
+        self.assertNotEqual(got.returncode, 0, got.stdout)
+        self.assertFalse((base / "ga/state/corpus-digest").exists(), "a half-restored corpus must not keep the digest of the installed manifest")
+
+    def test_incomplete_corpus_backup_refuses_rollback_without_changes(self):
+        got, base, files = self.run_install(rollback=True, missing_backup=True)
+        self.assertNotEqual(got.returncode, 0)
+        self.assertIn("no backup", got.stderr)
+        for file in files:
+            self.assertEqual((base / "etc/corpus" / file).read_bytes(), (base / "stage" / file).read_bytes())
+
+    def test_changed_panel_files_refused_before_install(self):
+        for name in ("receipt.json", "audit.json", "stats.json"):
+            with self.subTest(name=name):
+                got, base, files = self.run_install(corrupt=name)
+                self.assertNotEqual(got.returncode, 0)
+                self.assertIn("given SHA", got.stderr)
+                for file in files:
+                    self.assertEqual((base / "etc/corpus" / file).read_text(), "previous " + file)
+
+    def test_missing_or_malformed_panel_pins_refused(self):
+        for args in (["1" * 64, "2" * 64], ["1" * 64, "2" * 64, "bad", "3" * 64, "4" * 64]):
+            got, base, files = self.run_install(extra_args=args)
+            self.assertEqual(got.returncode, 2, got.stdout + got.stderr)
+            self.assertFalse((base / "calls").exists())
+
+    def test_active_service_refused_without_install(self):
+        got, base, files = self.run_install(active=True)
+        self.assertNotEqual(got.returncode, 0)
+        for file in files:
+            self.assertEqual((base / "etc/corpus" / file).read_text(), "previous " + file)
+
+class ConfigInstallTests(unittest.TestCase):
+    """cfg-install for the corpus config holds it against the policy the panel receipt recorded."""
+
+    digest = "sha256:" + "1" * 64
+
+    def run_cfg(self, config_paths=(), policy="absent", receipt=True):
+        import hashlib
+        tmp = tempfile.TemporaryDirectory(prefix="tbound-op-cfg-")
+        self.addCleanup(tmp.cleanup)
+        base = Path(tmp.name)
+        for name in ("stage", "work", "etc/corpus", "prev", "ga/state"):
+            (base / name).mkdir(parents=True)
+        cfg = json.dumps({"schema_version": "tbound-pi-service-config/v4", "corpus_manifest_digest": self.digest,
+                          "workflow_bash_output_paths": list(config_paths)}, indent=2).encode()
+        (base / "stage" / "serve-pi-service.json").write_bytes(cfg)
+        (base / "ga/state/corpus-digest").write_text(self.digest + "\n")
+        if receipt:
+            doc = {"schema": "tbound-panel-receipt/v3"}
+            if policy != "absent":
+                doc["public_policy"] = policy
+            (base / "etc/corpus/receipt.json").write_text(json.dumps(doc))
+        staging = source[source.index("stage_hashed() {"):source.index("# -------------------------------------------------------------------------------------------------------- state")]
+        helpers = source[source.index("backup_once() {"):source.index("svc_inactive() {")]
+        pycheck = ""
+        if "PY_CFGPOLICY" in source:
+            pycheck = source[source.index("read -r -d '' PY_CFGPOLICY"):source.index("jget() {")]
+        verb = source[source.index("v_cfg_install() {"):source.index("v_reg_measure() {")]
+        script = '''set -euo pipefail
+BASE=$1; shift
+WORK=$BASE/work; ETC=$BASE/etc; PREV=$BASE/prev; GA=$BASE/ga; STATE=$GA/state; CFGTPL=$BASE/tpl
+ARGS=("$@")
+die() { echo "$*" >&2; exit 1; }
+usage() { echo "$*" >&2; exit 2; }
+say() { echo "$*"; }
+need_argc() { :; }
+need_name() { [[ $1 == pilot ]]; }
+need_sha() { :; }
+norm_sha() { printf 'sha256:%s' "${1#sha256:}"; }
+sha() { local h; h=$(sha256sum -- "$1") || return 1; printf 'sha256:%s' "${h%% *}"; }
+st_get() { return 0; }; st_put() { :; }; st_reset() { :; }; st_rank() { echo 0; }
+check_tools() { :; }; mkwork() { :; }; prep_ga() { :; }; need_inactive() { :; }
+stage_copy() { cp -- "$BASE/stage/$2" "$3"; }
+cfg_structural() { CFG_EXTRA=$(grep -Eo 'sha256:[0-9a-f]{64}' "$2" | head -1); }
+py() { python3 -I -c "$@"; }
+install() {
+ local args=()
+ while (($#)); do case $1 in -o|-g) shift 2;; *) args+=("$1"); shift;; esac; done
+ command install "${args[@]}"
+}
+''' + staging + helpers + pycheck + verb + "\nv_cfg_install\n"
+        want = "sha256:" + hashlib.sha256(cfg).hexdigest()
+        got = subprocess.run(["bash", "-c", script, "cfg-test", str(base), "pilot", want], capture_output=True, text=True)
+        return got, base / "etc/serve-pi-service.json"
+
+    def test_matching_policy_installs_the_config(self):
+        for paths in ((), ("out/report.txt",)):
+            with self.subTest(paths=paths):
+                got, installed = self.run_cfg(config_paths=paths, policy={"bash_output_paths": list(paths), "network_destinations": []})
+                self.assertEqual(got.returncode, 0, got.stdout + got.stderr)
+                self.assertTrue(installed.is_file())
+
+    def test_a_different_policy_refuses_before_install(self):
+        for name, paths, policy in (
+                ("bash paths the raters did not see", ("out/report.txt",), {"bash_output_paths": [], "network_destinations": []}),
+                ("bash paths the config does not allow", (), {"bash_output_paths": ["out/report.txt"], "network_destinations": []}),
+                ("a different order", ("a/", "b/"), {"bash_output_paths": ["b/", "a/"], "network_destinations": []}),
+                ("a network destination the cell cannot reach", (), {"bash_output_paths": [], "network_destinations": ["127.0.0.9"]}),
+                ("no network destination list", (), {"bash_output_paths": []}),
+                ("no policy in the receipt", (), "absent"),
+                ("a policy that is not an object", (), ["out/"])):
+            with self.subTest(name):
+                got, installed = self.run_cfg(config_paths=paths, policy=policy)
+                self.assertNotEqual(got.returncode, 0, got.stdout)
+                self.assertIn("public policy", got.stderr)
+                self.assertFalse(installed.exists())
+
+    def test_missing_installed_receipt_refuses(self):
+        got, installed = self.run_cfg(receipt=False)
+        self.assertNotEqual(got.returncode, 0, got.stdout)
+        self.assertFalse(installed.exists())
 
 
 unittest.main(verbosity=2)
