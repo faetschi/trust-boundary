@@ -149,12 +149,12 @@ func TestProductCalibrationSignRefusesBadKeysAndLeavesNoOutput(t *testing.T) {
 		"private key of another pair":       {filepath.Join(other, "registration.key"), h.pub, "does not match"},
 		"public key of another pair":        {h.key, filepath.Join(other, "registration.pub"), "does not match"},
 		"world-readable private key":        {worldReadable, h.pub, "must not be readable by group or others"},
-		"private key through a symlink":     {link, h.pub, "regular file"},
-		"research raw private key":          {rawKey, h.pub, "base64"},
-		"missing private key":               {absent + ".key", h.pub, "regular file"},
+		"private key through a symlink":     {link, h.pub, "base64 Ed25519 private key"},
+		"research raw private key":          {rawKey, h.pub, "base64 Ed25519 private key"},
+		"missing private key":               {absent + ".key", h.pub, "base64 Ed25519 private key"},
 		"public key where the private goes": {h.pub, h.pub, "must not be readable by group or others"},
 		"private key where the public goes": {h.key, h.key, "not a base64 Ed25519 public key"},
-		"missing registration public key":   {h.key, absent + ".pub", "regular file"},
+		"missing registration public key":   {h.key, absent + ".pub", "base64 Ed25519 public key"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			out, err := h.sign(c.key, c.pub)
@@ -176,15 +176,15 @@ func TestProductCalibrationSignRefusesBadMeasurements(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mutated := func(from, to string) string {
-		return writeCalibrationInput(t, h, bytes.Replace(original, []byte(from), []byte(to), 1))
+	mutated := func(name, from, to string) string {
+		return writeCalibrationInput(t, h, name, bytes.Replace(original, []byte(from), []byte(to), 1))
 	}
 	for name, c := range map[string]struct{ in, want string }{
 		"read-only access profile":       {readOnly, "managed"},
-		"unknown field":                  {mutated(`"digest": ""`, `"digest": "", "extra": 1`), "unknown field"},
-		"trailing data":                  {writeCalibrationInput(t, h, append(append([]byte{}, original...), []byte(`{}`)...)), "trailing"},
-		"duplicate key":                  {mutated(`"scan_uid": 1000,`, `"scan_uid": 1, "scan_uid": 1000,`), "strict JSON"},
-		"inconsistent visibility digest": {mutated(`"scan_uid": 1000`, `"scan_uid": 1001`), "cannot sign"},
+		"unknown field":                  {mutated("unknown", `"digest": ""`, `"digest": "", "extra": 1`), "unknown field"},
+		"trailing data":                  {writeCalibrationInput(t, h, "trailing", append(append([]byte{}, original...), []byte(`{}`)...)), "trailing"},
+		"duplicate key":                  {mutated("duplicate", `"scan_uid": 1000,`, `"scan_uid": 1, "scan_uid": 1000,`), "strict JSON"},
+		"inconsistent visibility digest": {mutated("inconsistent", `"scan_uid": 1000`, `"scan_uid": 1001`), "cannot sign"},
 		"missing input":                  {filepath.Join(h.dir, "absent.json"), "cannot read"},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -197,9 +197,9 @@ func TestProductCalibrationSignRefusesBadMeasurements(t *testing.T) {
 	}
 }
 
-func writeCalibrationInput(t *testing.T, h *calibrationSignHost, data []byte) string {
+func writeCalibrationInput(t *testing.T, h *calibrationSignHost, name string, data []byte) string {
 	t.Helper()
-	path := filepath.Join(h.dir, "mutated.json")
+	path := filepath.Join(h.dir, name+".json")
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		t.Fatal(err)
 	}
