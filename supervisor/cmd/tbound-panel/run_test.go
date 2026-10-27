@@ -719,6 +719,28 @@ func TestRerunRefusesToEraseAdvisorSignoffs(t *testing.T) {
 			}
 		})
 	}
+	t.Run("signed audit with a missing rating makes no call", func(t *testing.T) {
+		var doc map[string]any
+		if err := json.Unmarshal(unsigned, &doc); err != nil {
+			t.Fatal(err)
+		}
+		doc["cases"].([]any)[0].(map[string]any)["advisor_signoff"].(map[string]any)["decision"] = "accept"
+		signed, _ := json.MarshalIndent(doc, "", "  ")
+		if err := os.WriteFile(filepath.Join(out, "audit.json"), signed, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		lines := bytes.SplitAfter(bytes.TrimSuffix(read("ratings.jsonl"), []byte("\n")), []byte("\n"))
+		if err := os.WriteFile(filepath.Join(out, "ratings.jsonl"), bytes.Join(lines[:len(lines)-1], nil), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		calls := read("calls.jsonl")
+		if err := rerun(); err == nil || !strings.Contains(err.Error(), "advisor sign-offs") {
+			t.Fatalf("rerun over a signed audit with a missing rating: %v", err)
+		}
+		if !bytes.Equal(read("calls.jsonl"), calls) {
+			t.Fatal("rerun called a provider before refusing to erase the sign-offs")
+		}
+	})
 	t.Run("unreadable audit", func(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(out, "audit.json"), []byte("{\"cases\": ["), 0o600); err != nil {
 			t.Fatal(err)
