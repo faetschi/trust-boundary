@@ -3,14 +3,18 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strings"
 	"testing"
 
 	"tbound/supervisor/internal/audit"
+	"tbound/supervisor/internal/broker/openrouter"
 	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/providerbridge"
 )
@@ -135,20 +139,40 @@ func TestBashOutputExecutorShowsBoundedOutputWhenConfigured(t *testing.T) {
 // bound bytes of each stream: a long stdout, an stderr with invalid UTF-8, and the result released.
 func boundedBashReplayFixture(t *testing.T, bound int) *governedReplayFixture {
 	t.Helper()
-	command := `i=0; while [ $i -lt 40 ]; do printf 'out-line-%02d\n' $i; i=$((i+1)); done; ` +
-		`printf 'bad:\377\376:end\n' >&2; printf 'FINAL-LINE\n'`
+	return bashReplayFixtureFor(t, bound, `i=0; while [ $i -lt 40 ]; do printf 'out-line-%02d\n' $i; i=$((i+1)); done; `+
+		`printf 'bad:\377\376:end\n' >&2; printf 'FINAL-LINE\n'`)
+}
+
+// bashReplayFixtureFor runs command as a Bash turn, then the turns that follow it, through a Store whose
+// executor shows the provider at most bound bytes of each stream. Every result is released, so a following
+// turn's request carries the Bash result.
+func bashReplayFixtureFor(t *testing.T, bound int, command string, then ...providerbridge.DevelopmentProviderTurn) *governedReplayFixture {
+	t.Helper()
 	arguments, err := json.Marshal(map[string]string{"command": command})
 	if err != nil {
 		t.Fatal(err)
 	}
-	fixture := newGovernedReplayFixtureWithOutput(t, []providerbridge.DevelopmentProviderTurn{
+	turns := append([]providerbridge.DevelopmentProviderTurn{
 		{ResponseID: "replay-response-bash", CallID: "replay-call-bash", Tool: "bash", Arguments: arguments},
-	}, true, governedReplayAllowAllPolicy(t), bound)
-	executeGovernedReplayTurn(t, fixture, true)
+	}, then...)
+	fixture := newGovernedReplayFixtureWithOutput(t, turns, true, governedReplayAllowAllPolicy(t), bound)
+	for range turns {
+		executeGovernedReplayTurn(t, fixture, true)
+	}
 	return fixture
 }
 
 func releasedBashSummary(t *testing.T, journal *audit.Journal) durableMutationSummaryPayload {
+	t.Helper()
+	var summary durableMutationSummaryPayload
+	if err := decodeGovernedResult(releasedBashOutput(t, journal), &summary); err != nil {
+		t.Fatal(err)
+	}
+	return summary
+}
+
+// releasedBashOutput is the exact summary the provider journal released for its first tool result.
+func releasedBashOutput(t *testing.T, journal *audit.Journal) json.RawMessage {
 	t.Helper()
 	trace, err := journal.Trace()
 	if err != nil {
@@ -166,14 +190,10 @@ func releasedBashSummary(t *testing.T, journal *audit.Journal) durableMutationSu
 		if err != nil {
 			t.Fatal(err)
 		}
-		var summary durableMutationSummaryPayload
-		if err := decodeGovernedResult(result.Output, &summary); err != nil {
-			t.Fatal(err)
-		}
-		return summary
+		return result.Output
 	}
 	t.Fatal("the provider journal holds no tool result")
-	return durableMutationSummaryPayload{}
+	return nil
 }
 
 // The model-visible output is rebuilt on replay from the command result the Store retained, with the
@@ -273,14 +293,15 @@ func TestBashOutputReplayRejectsAForgedOutput(t *testing.T) {
 	}
 }
 
-// firstRequestBashDescription is the description of the bash tool in the first request the provider
-// journal holds: the bytes the provider was really told.
-func firstRequestBashDescription(t *testing.T, journal *audit.Journal) string {
+// providerRequestBodies are the bodies of the requests the provider journal holds, in order: the bytes the
+// provider was really sent.
+func providerRequestBodies(t *testing.T, journal *audit.Journal) [][]byte {
 	t.Helper()
 	trace, err := journal.Trace()
 	if err != nil {
 		t.Fatal(err)
 	}
+	var bodies [][]byte
 	for _, record := range trace.Records {
 		if record.Event.Kind != "provider_exchange" {
 			continue
@@ -290,27 +311,39 @@ func firstRequestBashDescription(t *testing.T, journal *audit.Journal) string {
 				Body []byte `json:"body"`
 			} `json:"request"`
 		}
-		var body struct {
-			Tools []struct {
-				Function struct {
-					Name        string `json:"name"`
-					Description string `json:"description"`
-				} `json:"function"`
-			} `json:"tools"`
-		}
 		if err := json.Unmarshal(record.Event.Data, &exchange); err != nil {
 			t.Fatal(err)
 		}
-		if err := json.Unmarshal(exchange.Request.Body, &body); err != nil {
-			t.Fatal(err)
-		}
-		for _, tool := range body.Tools {
-			if tool.Function.Name == "bash" {
-				return tool.Function.Description
-			}
+		bodies = append(bodies, exchange.Request.Body)
+	}
+	return bodies
+}
+
+// firstRequestBashDescription is the description of the bash tool in the first request the provider
+// journal holds.
+func firstRequestBashDescription(t *testing.T, journal *audit.Journal) string {
+	t.Helper()
+	bodies := providerRequestBodies(t, journal)
+	if len(bodies) == 0 {
+		t.Fatal("the provider journal holds no request")
+	}
+	var body struct {
+		Tools []struct {
+			Function struct {
+				Name        string `json:"name"`
+				Description string `json:"description"`
+			} `json:"function"`
+		} `json:"tools"`
+	}
+	if err := json.Unmarshal(bodies[0], &body); err != nil {
+		t.Fatal(err)
+	}
+	for _, tool := range body.Tools {
+		if tool.Function.Name == "bash" {
+			return tool.Function.Description
 		}
 	}
-	t.Fatal("the provider journal holds no request that advertises bash")
+	t.Fatal("the first request advertises no bash tool")
 	return ""
 }
 
@@ -342,4 +375,81 @@ func TestBashOutputAdvertisedDescriptionMatchesTheExecutorResult(t *testing.T) {
 			}
 		})
 	}
+}
+
+// replayTwiceEqual replays the governed transcript twice and requires the same projection both times.
+func replayTwiceEqual(t *testing.T, fixture *governedReplayFixture) {
+	t.Helper()
+	first, err := ReplayGovernedTranscript(fixture.providerJournal, fixture.storeJournal, fixture.store, fixture.pins)
+	if err != nil {
+		t.Fatalf("replay of the released Bash output: %v", err)
+	}
+	second, err := ReplayGovernedTranscript(fixture.providerJournal, fixture.storeJournal, fixture.store, fixture.pins)
+	if err != nil || !reflect.DeepEqual(first, second) {
+		t.Fatalf("a second replay of the same evidence differs: %v", err)
+	}
+}
+
+// The released tail with the widest encoding is a run of control bytes, which JSON writes in six bytes
+// each, and then again in the next request, where the summary is itself a string. A 16 KiB tail of NULs on
+// stdout and of terminal escape sequences with HTML characters on stderr must still fit the protocol frame
+// and the request bound, release exactly the tails, and replay equal.
+func TestBashOutputControlBytesStayWithinTheBoundsAndReplay(t *testing.T) {
+	const bound = productCommandOutputBytes
+	const sequence = "\x1b[31;1mERR\x1b[0m\x1b]0;title\a\x01\x02\x03\x7f<>&\n"
+	if bound%len(sequence) != 0 {
+		t.Fatalf("the escape sequence of %d bytes does not divide the %d byte bound", len(sequence), bound)
+	}
+	fixture := bashReplayFixtureFor(t, bound,
+		`printf '\0%.0s' {1..24000}; `+
+			`printf '\033[31;1mERR\033[0m\033]0;title\007\001\002\003\177<>&\n%.0s' {1..1000} >&2`,
+		providerbridge.DevelopmentProviderTurn{ResponseID: "replay-response-read", CallID: "replay-call-read",
+			Tool: "read", Arguments: json.RawMessage(`{"path":"task.txt"}`)})
+	raw := releasedBashOutput(t, fixture.providerJournal)
+	var summary durableMutationSummaryPayload
+	if err := decodeGovernedResult(raw, &summary); err != nil {
+		t.Fatal(err)
+	}
+	command := summary.Command
+	if command == nil || command.Stdout == nil || command.Stderr == nil ||
+		*command.Stdout != strings.Repeat("\x00", bound) || !*command.StdoutTruncated ||
+		*command.Stderr != strings.Repeat(sequence, bound/len(sequence)) || !*command.StderrTruncated {
+		t.Fatalf("the released streams are not the control byte tails: %+v", command)
+	}
+	if got := bytes.Count(raw, []byte(`\u0000`)); got != bound {
+		t.Errorf("the summary holds %d encoded NULs, want %d", got, bound)
+	}
+	if limit := 2*bound*6 + 1024; len(raw) > limit || len(raw) > protocol.MaxFrameBytes {
+		t.Errorf("the summary is %d bytes, over %d bytes or the %d byte frame", len(raw), limit, protocol.MaxFrameBytes)
+	}
+	bodies := providerRequestBodies(t, fixture.providerJournal)
+	if len(bodies) != 2 {
+		t.Fatalf("the provider journal holds %d requests, want 2", len(bodies))
+	}
+	if next, doubly := bodies[1], []byte(`\\u0000`); len(next) > openrouter.MaxRequestBytes || bytes.Count(next, doubly) != bound {
+		t.Errorf("the request that carries the result is %d bytes with %d doubly encoded NULs, want at most %d bytes and %d",
+			len(next), bytes.Count(next, doubly), openrouter.MaxRequestBytes, bound)
+	}
+	replayTwiceEqual(t, fixture)
+}
+
+// A command that prints exactly the 1 MiB the Store retains per stream, on both streams, releases exactly
+// the last 16 KiB of each, and the replay rebuilds the same bytes from the retained result.
+func TestBashOutputAtTheRetainedBoundaryReleasesTheTailsAndReplays(t *testing.T) {
+	const bound = productCommandOutputBytes
+	const lines = 1 << 16 // 16-byte lines, so 1 MiB on each stream
+	fixture := bashReplayFixtureFor(t, bound, `printf '%015d\n' {0..65535}; printf 'e%014d\n' {0..65535} >&2`)
+	var stdout, stderr strings.Builder
+	for line := lines - bound/16; line < lines; line++ {
+		fmt.Fprintf(&stdout, "%015d\n", line)
+		fmt.Fprintf(&stderr, "e%014d\n", line)
+	}
+	command := releasedBashSummary(t, fixture.providerJournal).Command
+	if command == nil || command.Stdout == nil || command.Stderr == nil ||
+		*command.Stdout != stdout.String() || !*command.StdoutTruncated ||
+		*command.Stderr != stderr.String() || !*command.StderrTruncated ||
+		len(*command.Stdout) != bound || len(*command.Stderr) != bound {
+		t.Fatalf("the streams at the 1 MiB boundary did not release exactly their last %d bytes: %+v", bound, command)
+	}
+	replayTwiceEqual(t, fixture)
 }
