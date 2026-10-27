@@ -5,6 +5,7 @@ package sessionrepo
 import (
 	"bytes"
 	"fmt"
+	"strings"
 	"unicode/utf8"
 
 	"tbound/supervisor/internal/delta"
@@ -94,7 +95,7 @@ func (s *Store) CheckProductPreflight(generationID, tree string, input ProductPr
 		if !target.Exists {
 			// A non-directory ancestor is a resolution error, not a proven missing path.
 			for _, object := range g.snapshot.Manifest.Objects {
-				if len(object.Path) < len(input.Path) && bytes.HasPrefix([]byte(input.Path), []byte(object.Path+"/")) && object.State.Type != delta.ObjectDirectory {
+				if strings.HasPrefix(input.Path, object.Path+"/") && object.State.Type != delta.ObjectDirectory {
 					return nil, ErrUnsupportedTarget
 				}
 			}

@@ -234,6 +234,7 @@ type TranscriptProjection struct {
 	ProviderRetries            uint64                         `json:"provider_retries,omitempty"`
 	CapturedCallCount          uint64                         `json:"captured_call_count"`
 	DecisionCount              uint64                         `json:"decision_count"`
+	SoftRefusalCount           uint64                         `json:"soft_refusal_count,omitempty"`
 	ResultCount                uint64                         `json:"result_count"`
 	ProviderJournalHead        string                         `json:"provider_journal_head"`
 	HistoryDigest              string                         `json:"history_digest"`
@@ -329,7 +330,7 @@ func replayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 	var exchangeRecord audit.Record
 	var exchangeSequence uint64
 	var retiredCall *ProviderCallRetirementBinding
-	var ordinal, providerSequence, exchangeCount, callCount, decisionCount, resultCount uint64
+	var ordinal, providerSequence, exchangeCount, callCount, decisionCount, softRefusalCount, resultCount uint64
 	var turnRetries, totalRetries uint64
 	hostCallIDs := make(map[string]struct{})
 	var storeDecisionChecks uint64
@@ -552,7 +553,7 @@ func replayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 			}
 
 		case SoftRefusalEvent:
-			if !cfg.ProductSoftRefusals || state != replayAwaitDecision || pending == nil || decisionCount == math.MaxUint64 || resultCount == math.MaxUint64 {
+			if !cfg.ProductSoftRefusals || state != replayAwaitDecision || pending == nil || softRefusalCount == math.MaxUint64 || resultCount == math.MaxUint64 {
 				return TranscriptProjection{}, replayError("proven-unexecuted result has no unique product call")
 			}
 			var evidence SoftRefusalEvidence
@@ -581,8 +582,7 @@ func replayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 			if err := appendReplayHistory(&history, route, openrouter.Message{Role: openrouter.Tool, ToolCallID: evidence.ToolCallID, Content: &evidence.Result}); err != nil {
 				return TranscriptProjection{}, errors.Join(ErrTranscriptReplay, err)
 			}
-			// DecisionCount counts resolved call dispositions, including a precondition refusal.
-			decisionCount++
+			softRefusalCount++
 			resultCount++
 			storeDecisionChecks++
 			pending = nil
@@ -821,7 +821,7 @@ func replayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 		InitialGenerationID: cfg.InitialGenerationID, InitialTreeDigest: cfg.InitialTreeDigest,
 		ProviderGenerationID: currentGeneration, ProviderTreeDigest: currentTree,
 		ProviderSequence: providerSequence, EventCount: ordinal, ProviderJournalRecordCount: uint64(len(trace.Records)), ExchangeCount: exchangeCount, ProviderRetries: totalRetries,
-		CapturedCallCount: callCount, DecisionCount: decisionCount, ResultCount: resultCount,
+		CapturedCallCount: callCount, DecisionCount: decisionCount, SoftRefusalCount: softRefusalCount, ResultCount: resultCount,
 		HistoryDigest: digestDomain("tbound/provider-history/v2", request.Body()), Disposition: dispositionForReplayState(state, retiredCall != nil),
 		HostCall: lastHostCall, HostCallOutcomeDigest: lastHostCallOutcomeDigest, HostCallRetryableFailure: lastHostCallRetryable,
 		ImportedPrefixDigest: pins.ImportedPrefixDigest,

@@ -174,6 +174,16 @@ Transient journal lock contention or resource exhaustion abandons the unlinked l
 
 Assistant completion is not settlement. A turn is terminal only after the worker loop ended, the conversation closed, the evidence bundle was read, and the publication step returned a definite status.
 
+### Soft refusals in product turns
+
+For an otherwise allowed product call, the Store checks preconditions under its lock against the verified sealed generation before authorization or effect reservation. A missing read path, absent or ambiguous edit old text, or a write or edit targeting a directory returns a short error and a static hint. The next provider request carries that result and the conversation continues. Non-regular targets are also refused if representable; current sealed-tree admission already rejects symlinks and special files. Malformed arguments, Bash, I/O failures, changed generations, and failures after authorization retain the existing fail-closed behavior. Research calls do not use this path.
+
+The distinct `provider_proven_unexecuted` record binds the workflow, conversation, captured call, tool, captured and typed argument digests, sealed generation and tree digest, refusal code, static hint, and exact result text. It is neither a gate DENY nor an ALLOW result. Before release, the protected owner checkpoint retires the captured call with the domain-separated `tbound-proven-unexecuted-call-retirement/v1` commitment to that record. A retired call cannot reserve an effect. Replay checks the capture and recomputes the precondition and exact result against the retained sealed generation; altered or different evidence fails closed.
+
+The provider exchange consumes its normal host-call and token allowance. A soft refusal reserves no tool effect and adds no tool-effect charge. Repeated refusals are bounded by the turn's host-call limit and worker step bound.
+
+Restart never resumes a refused call or its conversation. A crash before the refusal record or before its retirement leaves an unresolved capture and ends UNKNOWN. After durable retirement, clean evidence settles the turn as failed under the existing restart contract. Retained refusal evidence is replayed before restart settlement and when rebuilding an eligible predecessor. Tampered evidence blocks launch.
+
 ## Milestone 2: review, cancellation and restart (P4, headless)
 
 This section extends the contract for P4. It still uses headless clients and the in-process worker. Interrupting a real Pi process or a running Bash command needs the product guest and stays pending.

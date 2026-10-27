@@ -521,9 +521,10 @@ func replayGovernedHistory(storeJournal *audit.Journal, store *sessionrepo.Store
 		}
 		retiredUnexecuted := projection.Provider.Disposition == providerbridge.DispositionRetiredUnexecuted &&
 			projection.Provider.RetiredCall != nil && projection.Provider.PendingCall == nil
-		if projection.Provider.DecisionCount != projection.Provider.ResultCount ||
-			(!pendingLatest && !retiredUnexecuted && projection.Provider.CapturedCallCount != projection.Provider.DecisionCount) ||
-			((pendingLatest || retiredUnexecuted) && projection.Provider.CapturedCallCount != projection.Provider.DecisionCount+1) {
+		resolved := projection.Provider.DecisionCount + projection.Provider.SoftRefusalCount
+		if resolved != projection.Provider.ResultCount ||
+			(!pendingLatest && !retiredUnexecuted && projection.Provider.CapturedCallCount != resolved) ||
+			((pendingLatest || retiredUnexecuted) && projection.Provider.CapturedCallCount != resolved+1) {
 			return GovernedRecoveryProjection{}, nil, fmt.Errorf("provider transcript %d contains an unaccounted captured call", index)
 		}
 		if !VerifyGovernedTranscriptProjectionCommitment(projection) {
@@ -1309,7 +1310,7 @@ func (v *governedStoreReplayVerifier) finish(projection providerbridge.Transcrip
 		}
 	}
 	if !v.called {
-		if projection.VerificationScope != providerbridge.ProjectionScopeProviderOnly || projection.DecisionCount != 0 ||
+		if projection.VerificationScope != providerbridge.ProjectionScopeProviderOnly || projection.DecisionCount != 0 || projection.SoftRefusalCount != 0 ||
 			scopedAuthorizationCount != 0 || scopedOperationCount != 0 {
 			return errors.New("callback-free transcript contains Store authorization or operation evidence")
 		}
