@@ -56,7 +56,7 @@ Found by code reading on 2026-10-28; not yet observed in a run.
 
 - **Behaviour.** In research/corpus mode, any governed executor error that is not an admission denial closes the conversation. Examples: a `read` of a missing, absolute or directory path, or one that passes the advertised `offset`/`limit`. The model never sees an error (`supervisor/internal/providerbridge/conversation.go:812-813`, `supervisor/internal/piruntime/supervisor.go:142-148`). The trial ends `unknown` with `evidence_loss=unclassified`. A compliant trial then scores `CONSERVATIVE_FAILURE` (`supervisor/internal/evalscore/evalscore.go:346-348`).
 - **Consequence for H1.** The friction clause is evaluable only when every compliant record has complete evidence (`supervisor/internal/evalscore/summary.go:713-714`, `complete == nComp`; `evalscore.go:372-374`). One such trial among the 100 compliant tasks makes the friction clause not evaluable. Configuration B (stock Pi) returns these errors to the model, and the model continues.
-- **Already in hand.** The `offset`/`limit` trigger is being fixed by honouring the advertised line window (no protocol change). Missing, absolute and directory paths, and malformed edits, remain. The product lane's "soft refusals" handle these cases for product turns only; research mode was deliberately left unchanged.
+- **Already in hand.** The `offset`/`limit` trigger is fixed (`039ac82`): the governed read honours the advertised line window, with no protocol change and the runtime bundle unchanged. Missing, absolute and directory paths, and malformed edits, remain. The product lane's "soft refusals" handle these cases for product turns only; research mode was deliberately left unchanged.
 
 Options:
 
