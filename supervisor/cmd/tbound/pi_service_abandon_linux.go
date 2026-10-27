@@ -246,8 +246,27 @@ provider-bridge journal; its cost is retained at the reserved worst case).
 
 `
 
-// abandonUnknownEffectiveUID is a test seam for the root-only check.
-var abandonUnknownEffectiveUID = os.Geteuid
+// operatorEffectiveUID is a test seam for the root-only check of the operator verbs.
+var operatorEffectiveUID = os.Geteuid
+
+// dropToServiceIdentity gives up root for the service uid and gid of the signed registration. The
+// journals and stores of the service belong to that identity, so an operator verb that opens them
+// takes it first and keeps no supplementary groups.
+func dropToServiceIdentity(registration piruntime.D09ManagedLiveRootRegistration) error {
+	if registration.ServiceUID <= 0 || registration.ServiceGID <= 0 {
+		return ErrPiServiceUnavailable
+	}
+	if err := syscall.Setgroups([]int{}); err != nil {
+		return fmt.Errorf("drop supplementary groups: %w", err)
+	}
+	if err := syscall.Setgid(registration.ServiceGID); err != nil {
+		return fmt.Errorf("take the service gid: %w", err)
+	}
+	if err := syscall.Setuid(registration.ServiceUID); err != nil {
+		return fmt.Errorf("take the service uid: %w", err)
+	}
+	return nil
+}
 
 // runAbandonUnknown is `tbound abandon-unknown --request-id ID --reason TEXT`, the
 // root-only operator action that settles one unknown terminal of the Pi service request
@@ -279,24 +298,15 @@ func runAbandonUnknown(args []string, stdout, stderr io.Writer) error {
 	if flags.NArg() != 0 || !boundedProductionIdentity(*requestID, productionRequestMaxBytes) || !validPiServiceAbandonReason(*reason) {
 		return errors.New("abandon-unknown needs --request-id and --reason and takes no other arguments")
 	}
-	if abandonUnknownEffectiveUID() != 0 {
+	if operatorEffectiveUID() != 0 {
 		return errors.New("abandon-unknown is root-only: run it as root with tbound-pi.service stopped")
 	}
 	registration, err := piruntime.LoadVerifiedD09ManagedLiveRootPolicy(context.Background())
 	if err != nil {
 		return errors.Join(ErrPiServiceUnavailable, err)
 	}
-	if registration.ServiceUID <= 0 || registration.ServiceGID <= 0 {
-		return ErrPiServiceUnavailable
-	}
-	if err := syscall.Setgroups([]int{}); err != nil {
-		return fmt.Errorf("drop supplementary groups: %w", err)
-	}
-	if err := syscall.Setgid(registration.ServiceGID); err != nil {
-		return fmt.Errorf("take the service gid: %w", err)
-	}
-	if err := syscall.Setuid(registration.ServiceUID); err != nil {
-		return fmt.Errorf("take the service uid: %w", err)
+	if err := dropToServiceIdentity(registration); err != nil {
+		return err
 	}
 	journal, err := audit.Open(piServiceRequestJournalPath)
 	if err != nil {

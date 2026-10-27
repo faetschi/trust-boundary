@@ -162,11 +162,21 @@ func Open(path string) (*Journal, error) {
 	return OpenWithLifecycleHook(path, nil)
 }
 
+// OpenExisting is Open for a journal that must already exist. It never creates the file: a missing one
+// is an error (matching fs.ErrNotExist), even if it vanished after the caller checked, so a reader of
+// retained evidence cannot bring an empty journal into being. Locking, ownership, mode and verification
+// are those of Open.
+func OpenExisting(path string) (*Journal, error) { return openJournal(path, nil, false) }
+
 // OpenWithLifecycleHook opens a journal with an optional trusted-host-only
 // lifecycle observer. Production callers should use Open; this seam is for
 // host-controlled recovery harnesses and must never be populated from provider
 // or profile input.
 func OpenWithLifecycleHook(path string, hook LifecycleHook) (*Journal, error) {
+	return openJournal(path, hook, true)
+}
+
+func openJournal(path string, hook LifecycleHook, create bool) (*Journal, error) {
 	if strings.TrimSpace(path) == "" {
 		return nil, fmt.Errorf("%w: empty path", ErrInvalidEvent)
 	}
@@ -174,7 +184,7 @@ func OpenWithLifecycleHook(path string, hook LifecycleHook) (*Journal, error) {
 	if err != nil {
 		return nil, err
 	}
-	file, directory, err := openJournalFiles(journalPath)
+	file, directory, err := openJournalFiles(journalPath, create)
 	if err != nil {
 		return nil, fmt.Errorf("open audit journal: %w", err)
 	}

@@ -173,7 +173,7 @@ func openPiServiceWorkflowCatalog(path string) (*piServiceWorkflowCatalog, error
 	if !ok || stat.Uid != uint32(os.Geteuid()) {
 		return nil, ErrPiWorkflowCatalog
 	}
-	journal, err := audit.Open(path)
+	journal, err := audit.OpenExisting(path)
 	if err != nil {
 		return nil, errors.Join(ErrPiWorkflowCatalog, err)
 	}
@@ -1713,6 +1713,21 @@ func (c *piServiceWorkflowCatalog) workflowEntry(workflow string) (piServiceWork
 	defer c.mu.Unlock()
 	for _, entry := range c.entries {
 		if entry.WorkflowID == workflow {
+			return clonePiServiceWorkflowEntry(entry), true
+		}
+	}
+	return piServiceWorkflowEntry{}, false
+}
+
+// workflowEntryByRunID is the admission that minted the run (the first run of its workflow).
+func (c *piServiceWorkflowCatalog) workflowEntryByRunID(runID string) (piServiceWorkflowEntry, bool) {
+	if c == nil {
+		return piServiceWorkflowEntry{}, false
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, entry := range c.entries {
+		if entry.RunID == runID {
 			return clonePiServiceWorkflowEntry(entry), true
 		}
 	}

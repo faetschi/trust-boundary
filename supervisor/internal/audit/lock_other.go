@@ -4,7 +4,7 @@ package audit
 
 import "os"
 
-func openJournalFiles(string) (*os.File, *os.File, error) {
+func openJournalFiles(string, bool) (*os.File, *os.File, error) {
 	return nil, nil, ErrLockUnsupported
 }
 
