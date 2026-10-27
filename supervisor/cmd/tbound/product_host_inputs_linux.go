@@ -98,25 +98,19 @@ func loadProductGatePolicy(projectID, registeredDigest, path string, owners []ui
 	return policy, file, nil
 }
 
-// verifyProductGit applies the production Git pin (digest, mode, trusted ancestors) and refuses an
-// executable whose owner is not in owners.
+// verifyProductGit applies the production Git pin (digest, mode, trusted ancestors). The pin holds the
+// executable and every directory above it to owners, and the owner and mode reported are the pinned
+// descriptor's.
 func verifyProductGit(path, digest string, owners []uint32) (productHostFile, error) {
-	git, _, err := pinProductionGit(productionOperatorArtifacts{GitPath: path, GitDigest: digest, GitBoundary: productGitBoundary})
+	git, _, err := pinProductionGit(productionOperatorArtifacts{GitPath: path, GitDigest: digest, GitBoundary: productGitBoundary}, owners)
 	if err != nil {
 		return productHostFile{}, err
 	}
+	id := git.Identity()
 	if err := git.Close(); err != nil {
 		return productHostFile{}, err
 	}
-	info, err := os.Stat(path)
-	if err != nil {
-		return productHostFile{}, err
-	}
-	st, ok := info.Sys().(*syscall.Stat_t)
-	if !ok || !slices.Contains(owners, st.Uid) {
-		return productHostFile{}, errors.New("the pinned Git executable is not owned by root or the service account")
-	}
-	return productHostFile{UID: st.Uid, Mode: info.Mode().Perm()}, nil
+	return productHostFile{UID: id.UID, Mode: os.FileMode(id.Mode).Perm()}, nil
 }
 
 // productCalibrationCheck is the outcome of checking the signed xattr calibration. FileErr and

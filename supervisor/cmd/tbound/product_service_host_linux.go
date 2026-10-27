@@ -71,7 +71,7 @@ func newProductServiceHostProfile(cfg productServiceConfig) productServiceHost {
 		env.MetadataPolicyDigest = digestBytes([]byte(gate.ProductionMetadataPolicyLabel))
 		env.SystemPrompt, env.DeveloperPrompt = productSystemPrompt, productDeveloperPrompt
 		env.PinGit = func() (privategit.PinnedGit, sessionlaunch.GitProfile, error) {
-			return pinProductionGit(productionOperatorArtifacts{GitPath: cfg.GitPath, GitDigest: cfg.GitDigest, GitBoundary: productGitBoundary})
+			return pinProductionGit(productionOperatorArtifacts{GitPath: cfg.GitPath, GitDigest: cfg.GitDigest, GitBoundary: productGitBoundary}, nil)
 		}
 		// Refuse at start, not at the first turn.
 		if _, err := verifyProductGit(cfg.GitPath, cfg.GitDigest, productServiceOwners()); err != nil {
