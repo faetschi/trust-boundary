@@ -3,9 +3,11 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -63,5 +65,34 @@ func TestProductAdminChecksCandidateFormatsOnTheRealRootOnly(t *testing.T) {
 	}
 	if productAdminEnv(t.TempDir(), false, false, false, io.Discard, io.Discard).BinaryFormat != nil {
 		t.Fatal("a test root holds fixture binaries without the marker, so it must not check them")
+	}
+}
+
+// The release build (scripts/build-release.sh: CGO_ENABLED=0, -trimpath) must hold the marker once, whole:
+// a second copy, or a prefix without digits, could be found first by the scan and name another format.
+func TestProductAdminReleaseBuildHoldsTheInstallationMarkerExactlyOnce(t *testing.T) {
+	goTool, err := exec.LookPath("go")
+	if err != nil {
+		t.Fatalf("the go tool is needed to build the release binary: %v", err)
+	}
+	built := filepath.Join(t.TempDir(), "tbound")
+	build := exec.Command(goTool, "build", "-trimpath", "-o", built, ".")
+	build.Env = append(os.Environ(), "CGO_ENABLED=0")
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build the release binary: %v\n%s", err, out)
+	}
+	data, err := os.ReadFile(built)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prefix := markerLine[:strings.IndexByte(markerLine, '=')+1]
+	if n := bytes.Count(data, []byte(prefix)); n != 1 {
+		t.Fatalf("the release binary holds the marker's text %d times, want once", n)
+	}
+	if n := bytes.Count(data, []byte(fmt.Sprintf(markerLine, productsetup.InstallationFormat))); n != 1 {
+		t.Fatalf("the release binary holds the well-formed format %d marker %d times, want once", productsetup.InstallationFormat, n)
+	}
+	if got, err := candidateFormat(t, built); err != nil || got != productsetup.InstallationFormat {
+		t.Fatalf("the scan reads format %d from the release binary, %v, want %d", got, err, productsetup.InstallationFormat)
 	}
 }
