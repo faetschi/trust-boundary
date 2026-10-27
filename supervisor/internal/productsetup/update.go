@@ -262,7 +262,7 @@ func Rollback(env Env) (Report, error) {
 // the installed unit and setup record. A binary reads only its own format (a new doctor rejects the old
 // unit, an old binary rejects the new [Install] section and client_uid), so crossing would fail its
 // self-test and restore, and nothing converts one format into the other.
-func (h *host) checkBinaryFormat(candidate *os.File, what string) error {
+func (h *host) checkBinaryFormat(candidate io.ReadSeeker, what string) error {
 	if h.env.BinaryFormat == nil {
 		return nil
 	}
@@ -282,6 +282,23 @@ func (h *host) checkBinaryFormat(candidate *os.File, what string) error {
 	}
 	if got != installed {
 		return refuse("%s is installation format %d but this installation is format %d; nothing was changed. The formats do not convert: "+way, what, got, installed, got)
+	}
+	return nil
+}
+
+// checkSetupBinaryFormat refuses a --binary of another installation format than the one this setup writes
+// (its unit and setup record), so setup never pairs a binary with files it cannot read.
+func (h *host) checkSetupBinaryFormat(binary []byte, what string) error {
+	if h.env.BinaryFormat == nil {
+		return nil
+	}
+	got, err := h.env.BinaryFormat(bytes.NewReader(binary))
+	if err != nil {
+		return refuse("cannot tell the installation format of %s: %v", what, err)
+	}
+	if got != InstallationFormat {
+		return refuse("%s is installation format %d but this setup writes format %d; nothing was changed. Run `tbound product setup` from the tbound binary to install, or pass a --binary of format %d",
+			what, got, InstallationFormat, InstallationFormat)
 	}
 	return nil
 }

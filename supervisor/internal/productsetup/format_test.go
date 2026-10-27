@@ -5,6 +5,7 @@ package productsetup
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -52,7 +53,7 @@ func TestUpdateRefusesABinaryOfAnotherInstallationFormatBeforeStoppingTheService
 			if tc.legacyInstallation {
 				f.useLegacyInstallation()
 			}
-			f.env.BinaryFormat = func(*os.File) (int, error) { return tc.candidateFormat, nil }
+			f.env.BinaryFormat = func(io.ReadSeeker) (int, error) { return tc.candidateFormat, nil }
 			rep, err := Update(f.env, f.newBinary("binary v2"))
 			if !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "installation format") || !strings.Contains(err.Error(), "setup --replace") {
 				t.Fatalf("a cross-format update was not refused with the way out: %v", err)
@@ -76,11 +77,11 @@ func TestRollbackRefusesALastKnownGoodOfAnotherInstallationFormatBeforeStoppingT
 	f := newFixture(t)
 	f.installed()
 	f.env.Turns = func() ([]OpenTurn, error) { return nil, nil }
-	f.env.BinaryFormat = func(*os.File) (int, error) { return InstallationFormat, nil }
+	f.env.BinaryFormat = func(io.ReadSeeker) (int, error) { return InstallationFormat, nil }
 	if _, err := Update(f.env, f.newBinary("binary v2")); err != nil {
 		t.Fatalf("a same-format update: %v", err)
 	}
-	f.env.BinaryFormat = func(*os.File) (int, error) { return LegacyInstallationFormat, nil }
+	f.env.BinaryFormat = func(io.ReadSeeker) (int, error) { return LegacyInstallationFormat, nil }
 	rep, err := Rollback(f.env)
 	if !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "installation format") || !strings.Contains(err.Error(), "setup --replace") {
 		t.Fatalf("a cross-format rollback was not refused with the way out: %v", err)
@@ -91,7 +92,7 @@ func TestRollbackRefusesALastKnownGoodOfAnotherInstallationFormatBeforeStoppingT
 	if f.read(BinaryPath) != "binary v2" || f.read(LastKnownGoodPath) != "binary v1" {
 		t.Fatalf("a refused rollback moved the binaries: installed %q, last-known-good %q", f.read(BinaryPath), f.read(LastKnownGoodPath))
 	}
-	f.env.BinaryFormat = func(*os.File) (int, error) { return 0, errors.New("cannot read it") }
+	f.env.BinaryFormat = func(io.ReadSeeker) (int, error) { return 0, errors.New("cannot read it") }
 	if _, err := Rollback(f.env); !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "cannot read it") {
 		t.Fatalf("a binary that cannot report its format must be refused: %v", err)
 	}

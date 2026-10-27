@@ -193,6 +193,10 @@ func (h *host) desiredFiles(cfg Config, binary string) (map[string][]byte, Regis
 		if files[BinaryPath], err = readBounded(binary, maxBinaryBytes); err != nil {
 			return nil, RegistrationSummary{}, err
 		}
+		// The format is read from the bytes that will be installed, so a swap of the file cannot change it.
+		if err := h.checkSetupBinaryFormat(files[BinaryPath], binary); err != nil {
+			return nil, RegistrationSummary{}, err
+		}
 	}
 	return files, summary, nil
 }
