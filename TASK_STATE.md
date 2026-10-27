@@ -1,6 +1,6 @@
 # TBound thesis task state
 
-Thesis lane only. Checkpoint 2026-10-25. Product work is tracked in
+Thesis lane only. Checkpoint 2026-10-27. Product work is tracked in
 [docs/product-plan.md](docs/product-plan.md) (section 10), not here. History:
 git log of this file, `../review-artifacts/TASK_STATE-history-20261023.md`,
 `../review-artifacts/TASK_STATE-pilot20-receipts-20261024.md`.
@@ -78,9 +78,11 @@ Step 2 detail:
 - 2026-10-26 (owner): the D35 panel agreement gate uses **Gwet's AC1**: ≥0.80 with ≥90% raw agreement passes, 0.60–0.79 means revise, <0.60 means stop. Fleiss' kappa is reported, not gated. Reason: kappa collapses at high prevalence (410/419 unanimous gives kappa ≈ −0.007). Cases the panel fails unanimously join the advisor's mandatory list. Recorded as a dated amendment in MSE_MA_Thesis `cd629ce` (decision register + thesis §7.3); the advisor confirms it. The content digest the panel binds also excludes the manifest `pins`, so the panel run does not depend on F14.
 - 2026-10-26 (orchestrator, from the product-thread check-in): two shared-code defects.
   1. Recovery refused a retained Store after an allowed Bash command with an empty delta (`null` vs `[]`). Fixed on this branch (`ed395f0`/`3a4ff0c`, port of product `ba6f59e`).
-  2. **Pilot/F14 blocker:** a gate-allowed Bash command whose delta is refused after it ran (`denied_after_effect`; with the pilot's `workflow_bash_output_paths: []` that is ANY write) leaves its D09 lease unsettled. The session then quarantines on close instead of settling, and no settlement for the executed command is retained.
-     - Fix in progress on `fix/d09-denied-settlement`: a denied settlement bound to the Store's `denied_after_effect` record; the validator accepts exactly the success and denied shapes.
-     - Red test `TestProductionBashDeniedAfterEffectRetainsItsSettlement`.
+  2. **Pilot/F14 blocker, fixed and merged 2026-10-27 (f483fad, 385584c):** a gate-allowed Bash command whose delta is refused after it ran (`denied_after_effect`; with the pilot's `workflow_bash_output_paths: []` that is ANY write) left its D09 lease unsettled, so the session quarantined on close and no settlement was retained.
+     - ab14196 binds a denied settlement (`tbound-production-d09-command-settled-denied/v1`) to the Store's `denied_after_effect` record; the validator accepts exactly the promoted and denied shapes. 64de3d2 verifies it in recovery, session close and publication.
+     - Review (Sol xhigh, 2 rounds) found that 64de3d2's own tests failed on a pre-existing recovery bug: `CommandSpec.DeclaredOutputPaths` is `json:"-"` and only the result side got the request scope back, so recovery refused every historical D09 receipt with a recorded scope, promoted or denied. Fixed in b102670. The product branch has the same line (`production_recovery_command_linux.go:393` at 499fb9f); port owed. ee70a76 makes the active denied branch fail closed.
+     - Tests: `TestProductionBashDeniedAfterEffectRetainsItsSettlement`; `TestProductionD09{DeniedBashRetainsASettlementAndReleasesItsLease, PromotedBashSettlementKeepsItsShape, OperationValidatorAcceptsExactlyTwoShapes, DeniedSettlementRecoversInAFreshInstance, RecoveryRefusesUnsettledAndTamperedBashSettlements, SettlementsRecoverInFreshProcess (child process: controls + missing/receipt-tampered/duplicate refusals), DeniedBashCheckpointsAndClosesCleanly}`; `TestActiveRecoveryRefusesADeniedD09EffectItCannotVerify` (red without ee70a76).
+     - Follow-ups, not F14 blockers per the review: full `ReplayGovernedHistoryForRecovery` with a denied Bash (needs a real provider-transcript fixture); a direct `CheckPublicationPrerequisites` denied-branch test.
 - The coordinated signing/provisioning session (S3'/S4', installs, tbound-netsink, trial key, Spike B) happens after the reviews, as one signing round on the final manifest digest.
 
 ## Needs the owner or advisor
@@ -95,24 +97,16 @@ Step 2 detail:
 3. Corpus-mode rehearsal; watch: reset --check passes after P C-02 and the reset kills the survivor; `podman rm -f` after conmon is killed; no uid-995 pause process in root's SSH cgroup (`ps -u 995 -o pid,cgroup,cmd`); kernel-7 zombie-leader kill; the 5 real-cgroup tests with `TBOUND_REAL_CGROUP_TESTS=1` in a delegated scope.
 4. Complete EVQ and route reports; pilots; caps and costs; full corpus; registration; H1.
 
-## Handoff 2026-10-26
+## State 2026-10-27
 
-- The current HEAD is e4a3bfd (this docs note on top of 71250a2). It is NOT gated; the last full gate was 3103ccc (reported 4777 pass / 26 guest-only skips / 0 fail).
-- `feat/construct-review-signoff` is at 3ef478c: code-complete, 56 ahead / 8 behind, not merged, no post-fix verification recorded.
-- `fix/d09-denied-settlement` is at 64de3d2: `ab14196` writes the denied-after-effect settlement; `64de3d2` adds the recovery verification (4 modified files plus 2 new Linux test files, 780 insertions). The recovery half is WIP and untested. Not merged.
-- `fix/recovery-empty-bash-delta` at e7e9d33 is the red precursor; do not merge it.
-- Next actions in order:
-  1. gate HEAD;
-  2. review and merge D09 (including 64de3d2), then run the focused D09 and recovery tests;
-  3. gate;
-  4. merge the signoff branch and run panelaudit/panel/profile tests;
-  5. gate;
-  6. rebuild panel prep;
-  7. owner runs the live panel;
-  8. then prepare the F14 freeze on FABIAN.
-- The panel prep in F:\TBoundAssets\panel-prep is stale (built 2026-10-25, pre-AC1). Do not run it live.
-- The F14 freeze, signing, guest install and evidence stay on FABIAN; the new machine is for code, reviews and panel prep.
-- A machine handoff is in progress; no further edits on this checkout after this commit.
+- The machine move is cancelled; work continues on FABIAN.
+- Full gates: WSL, Go 1.27.1, clean `git archive` export, the two `make boundary` commands (make is not installed in WSL), gofmt, build, vet, Windows cross-build, `go test -race -count=1 ./...`. Counts include subtests, as in the kit's `gate.sh`. Script and logs: `F:/TBoundAssets/gates-20261027/`.
+  - 5f2d0a6: 4776 pass / 26 guest-only skips / 2 fail. Both failures were `netoracle: canary start ... context deadline exceeded` after ~70 s while other WSL tests ran (`TestConstructRecomputesFromProducerFiles`, `TestCollectorCleanWindowIsNoneWithAReportReference`). Both tests and both packages pass under `-race` in isolation: a load flake. Run gates with nothing else on WSL.
+  - f483fad (D09 merge): 4786 pass / 26 guest-only skips / 0 fail; the same skip set.
+- D09 merged (f483fad, regression test 385584c). `fix/recovery-empty-bash-delta` (e7e9d33) stays unmerged.
+- `feat/construct-review-signoff` (3ef478c): a trial merge on 5f2d0a6 passes vet, gofmt, the panelaudit/panel/evalcorpus/corpusadmit tests, the tbound-profile/tbound/tbound-run tests and the 24 local `tbound-op` tests. Merge next.
+- The panel prep in F:\TBoundAssets\panel-prep is stale (built 2026-10-25, pre-AC1). Rebuild after the signoff merge; do not run it live.
+- The F14 freeze, signing, guest install and evidence are owner steps on FABIAN after the merges and the panel prep.
 
 ## Working rules
 
