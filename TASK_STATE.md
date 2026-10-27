@@ -95,6 +95,25 @@ Step 2 detail:
 3. Corpus-mode rehearsal; watch: reset --check passes after P C-02 and the reset kills the survivor; `podman rm -f` after conmon is killed; no uid-995 pause process in root's SSH cgroup (`ps -u 995 -o pid,cgroup,cmd`); kernel-7 zombie-leader kill; the 5 real-cgroup tests with `TBOUND_REAL_CGROUP_TESTS=1` in a delegated scope.
 4. Complete EVQ and route reports; pilots; caps and costs; full corpus; registration; H1.
 
+## Handoff 2026-10-26
+
+- The current HEAD is 71250a2. It is NOT gated; the last full gate was 3103ccc (reported 4777 pass / 26 guest-only skips / 0 fail).
+- `feat/construct-review-signoff` is at 3ef478c: code-complete, 56 ahead / 8 behind, not merged, no post-fix verification recorded.
+- `fix/d09-denied-settlement` is at ab14196: code-complete, 4 ahead / 3 behind, not merged, no post-fix verification recorded.
+- `fix/recovery-empty-bash-delta` at e7e9d33 is the red precursor; do not merge it.
+- Next actions in order:
+  1. gate HEAD;
+  2. merge D09 and run its two focused tests;
+  3. gate;
+  4. merge the signoff branch and run panelaudit/panel/profile tests;
+  5. gate;
+  6. rebuild panel prep;
+  7. owner runs the live panel;
+  8. then prepare the F14 freeze on FABIAN.
+- The panel prep in F:\TBoundAssets\panel-prep is stale (built 2026-10-25, pre-AC1). Do not run it live.
+- The F14 freeze, signing, guest install and evidence stay on FABIAN; the new machine is for code, reviews and panel prep.
+- A machine handoff is in progress; no further edits on this checkout after this commit.
+
 ## Working rules
 
 - Freeze loop: gate -> freeze -> archive previous guest state (option A) -> install -> guest chain. No commits in the main checkout during a freeze.
