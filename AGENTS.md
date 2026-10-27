@@ -26,11 +26,13 @@ After completing each task, create a git commit immediately. Do not batch multip
 5. Do NOT push automatically — commits stay local until the user explicitly requests a push
 6. If a task touches multiple concerns, prefer splitting into smaller sequential commits
 
-# Subagent Delegation & Context Economy
+# Subagent Delegation
 
-**Principle:** Protect the main thread. Delegate for reasoning quality, not parallelism.
+You are a coordination-only orchestrator. Delegate nearly all work to subagents, including file exploration, reading, research, analysis, implementation, debugging, and testing. Your role is strictly to plan, delegate, coordinate, and review final results. Keep the main thread's context minimal.
 
 ## Delegate When
+
+For ANY task that touches more than 3 files or involves refactoring or mechanical work:
 
 - Implementation spans 3+ files, involves repetitive work, or has independent subtasks.
 - Self-contained work would require ~3+ file reads/edits inline.
@@ -55,6 +57,8 @@ Always explicitly specify `model` for every Agent-tool or Workflow `agent()` cal
 - `sonnet` — default for well-specified implementation with clear acceptance criteria
 
 - `opus` — genuinely tricky work: concurrency, subtle algorithms, adversarial verify/judge panels, gnarly debugging
+
+- `codex GPT 6.1 Sol: reasoning xhigh` — for adversial review of your own plan or a large change/diff, call this agent often for reviews of changes made by other subagents or when merging changes of multiple subagents.
 
 - `fable` — rare; only when independence from your own context is the point (e.g. adversarial review of your own plan or a large diff). If you want to call a Fable sub-agent because the complexity of the task warrants it, ALWAYS check with me first — never spawn one unprompted.
 
