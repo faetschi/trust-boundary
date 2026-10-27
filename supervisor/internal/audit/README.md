@@ -9,7 +9,9 @@ mode `0600`. This rejects `/tmp`-style ancestry. It verifies the existing JSONL
 trace and synchronizes the journal file and its parent directory before
 returning a writer. A second
 `Open` of the same file fails while the lock is held. `Close` releases it, and
-the OS releases it if the process exits. Other platforms fail `Open` closed
+the OS releases it if the process exits. `OpenExisting` is `Open` without
+creation: a missing journal is an error and no file is made, for readers of
+retained evidence. Other platforms fail `Open` closed
 because this slice has no qualified lock implementation there. `Append` writes and syncs one
 non-effect event. `RunEffect` syncs an intent before invoking its callback, then
 syncs the callback outcome before returning successful result bytes. The
