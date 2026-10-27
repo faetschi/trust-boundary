@@ -184,6 +184,8 @@ The provider exchange consumes its normal host-call and token allowance. A soft 
 
 Restart never resumes a refused call or its conversation. A crash before the refusal record or before its retirement leaves an unresolved capture and ends UNKNOWN. After durable retirement, clean evidence settles the turn as failed under the existing restart contract. Retained refusal evidence is replayed before restart settlement and when rebuilding an eligible predecessor. Tampered evidence blocks launch.
 
+Restart verifies the protected provider checkpoint prefix for every restarted turn, including turns with no retained refusal record. A truncated provider journal with a clean Store now ends UNKNOWN; previously it could settle as failed. Live progress recomputes only refusals after the verified checkpoint prefix. Restart and predecessor replay recompute every retained refusal against its sealed generation.
+
 ## Milestone 2: review, cancellation and restart (P4, headless)
 
 This section extends the contract for P4. It still uses headless clients and the in-process worker. Interrupting a real Pi process or a running Bash command needs the product guest and stays pending.
