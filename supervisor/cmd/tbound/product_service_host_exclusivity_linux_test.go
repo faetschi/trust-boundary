@@ -38,6 +38,41 @@ func TestProductServiceHostStartsWithProductSetupLayout(t *testing.T) {
 	_ = svc.Shutdown()
 }
 
+// The service tests below accept any refusal for a bad project root, because the registered-root open
+// refuses it first. These call the walk itself, so a broken walk cannot hide behind that refusal.
+func TestProductManagedRootWalkRefusesWritableAndForeignRoots(t *testing.T) {
+	const want = "without group or other write permission"
+	for _, target := range []string{"valid", "group-writable root", "foreign-owned root"} {
+		t.Run(target, func(t *testing.T) {
+			project := filepath.Join(privateGovernedTestRoot(t), "project")
+			if err := os.Mkdir(project, 0700); err != nil {
+				t.Fatal(err)
+			}
+			switch target {
+			case "group-writable root":
+				if err := os.Chmod(project, 0770); err != nil {
+					t.Fatal(err)
+				}
+			case "foreign-owned root":
+				spoofProductDirectoryOwner(t, project).Store(true)
+			}
+			root, err := os.Open(project)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer root.Close()
+			err = validateProductManagedRoot(project, root)
+			if target == "valid" {
+				if err != nil {
+					t.Fatalf("a service-owned 0700 root was refused: %v", err)
+				}
+			} else if err == nil || !strings.Contains(err.Error(), want) {
+				t.Fatalf("want the exclusivity refusal %q, got %v", want, err)
+			}
+		})
+	}
+}
+
 func TestProductServiceHostRefusesWritableManagedAncestry(t *testing.T) {
 	for _, target := range []string{"root", "ancestor", "foreign root", "foreign ancestor", "symlink"} {
 		t.Run(target, func(t *testing.T) {
