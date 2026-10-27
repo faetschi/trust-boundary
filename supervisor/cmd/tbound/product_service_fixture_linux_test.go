@@ -106,11 +106,11 @@ func newProductServiceFixtureWithReviewTimeout(t *testing.T, reviewTimeoutSecond
 		_ = git.Close()
 	}
 	root := privateGovernedTestRoot(t)
-	f := &productServiceFixture{t: t, root: root, projectDir: filepath.Join(root, "project"), stateRoot: filepath.Join(root, "state"),
+	f := &productServiceFixture{t: t, root: root, projectDir: filepath.Join(root, "state", "projects", "managed", "project"), stateRoot: filepath.Join(root, "state"),
 		socketPath: filepath.Join(root, "run", "product.sock"), principalA: productsession.Principal(os.Getuid())}
 	f.principalB, f.unregistered = f.principalA+1, f.principalA+2
 	f.uid.Store(int64(f.principalA))
-	for _, dir := range []string{f.stateRoot, filepath.Join(root, "reg")} {
+	for _, dir := range []string{f.stateRoot, filepath.Dir(filepath.Dir(f.projectDir)), filepath.Dir(f.projectDir), filepath.Join(root, "reg")} {
 		if err := os.Mkdir(dir, 0o700); err != nil {
 			t.Fatal(err)
 		}
