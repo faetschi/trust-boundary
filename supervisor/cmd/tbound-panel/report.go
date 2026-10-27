@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/evalcorpus"
 	"tbound/supervisor/internal/panelaudit"
 )
@@ -71,7 +72,8 @@ func (r *runner) refuseToEraseSignoffs() error {
 	var existing struct {
 		Cases []panelaudit.AuditCase `json:"cases"`
 	}
-	if err := json.Unmarshal(raw, &existing); err != nil {
+	// ValidateEvidenceJSON refuses duplicate members, which would let a later "cases" hide a signed one.
+	if err := errors.Join(protocol.ValidateEvidenceJSON(raw), json.Unmarshal(raw, &existing)); err != nil {
 		return fmt.Errorf("%s exists but cannot be read (%w); move it aside before regenerating", path, err)
 	}
 	for _, c := range existing.Cases {
