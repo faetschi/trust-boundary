@@ -23,14 +23,19 @@
 # earlier verified install). A verifier taken from the archive being checked proves nothing.
 # FIRST-INSTALL LIMIT: the first time, nothing proves the public key is the publisher's. Compare its
 # fingerprint (`tbound release fingerprint --public-key FILE`, printed on success) with the value in
-# the README and release notes, obtained separately, or pass it as --key-fingerprint HEX16. Later
-# installs and updates are checked against the key you already trust.
+# the README and release notes, obtained separately, or pass it as --key-fingerprint HEX16.
+# KEY PIN: the first signed install stores the public key it verified in the prefix
+# (.tbound-publisher.pub, 0644). Every later install or update into that prefix is verified against the
+# stored key and is refused without a valid signature: it never falls back to SHA256SUMS, and a
+# different --public-key is refused (uninstall first to trust another publisher). A prefix installed
+# without a key keeps the checksum-only behaviour and says so; its first signed update pins the key.
 set -euo pipefail
 
 DEFAULT_VERSION="latest"
 NODE_MIN="22.19"
 MARKER=".tbound-install"
 MANIFEST_NAME="tbound-release-manifest.json"
+PUBLISHER_KEY=".tbound-publisher.pub"
 
 log()  { printf 'tbound-install: %s\n' "$*"; }
 die()  { printf 'tbound-install: error: %s\n' "$*" >&2; exit 1; }
@@ -190,8 +195,8 @@ uninstall() {
 
 install_at() {
   # install a verified artifact; requires $1 artifact path, $2 sums file (empty when the signed
-  # manifest was already verified), $3 version, $4 prefix
-  local artifact="$1" sums="$2" version="$3" prefix="$4"
+  # manifest was already verified), $3 version, $4 prefix, $5 the verified public key to pin (or empty)
+  local artifact="$1" sums="$2" version="$3" prefix="$4" pin_key="${5:-}"
   local want got
   if [ -n "$sums" ]; then
     want="$(awk -v a="$(basename "$artifact")" '$2==a || $2=="./"a {print $1}' "$sums" | head -n1)"
@@ -215,6 +220,10 @@ install_at() {
   if [ ! -x "$stage/bin/tbound-doctor" ]; then die "extracted archive has no bin/tbound-doctor"; fi
   if [ ! -x "$stage/bin/tbound-profile" ]; then die "extracted archive has no bin/tbound-profile"; fi
   printf 'name=tbound\nversion=%s\nprefix=%s\n' "$(json_escape "$version")" "$(json_escape "$prefix")" > "$stage/$MARKER"
+  if [ -n "$pin_key" ]; then # after extraction, so an archive cannot supply the pin
+    rm -f -- "$stage/$PUBLISHER_KEY"
+    cp -- "$pin_key" "$stage/$PUBLISHER_KEY" && chmod 0644 "$stage/$PUBLISHER_KEY" || die "cannot pin the publisher key"
+  fi
 
   # Move any existing install into an exclusively created hold directory so a
   # concurrent or pre-existing path can never be nested or deleted.
@@ -315,6 +324,27 @@ main() {
   STAGE="$(mktemp -d "${TMPDIR:-/tmp}/tbound-install.XXXXXX")"
   log "${updating:+updating }installing tbound ${version} (${os}/${arch}) into ${prefix}"
 
+  # Key pin: work from a private copy of the key, so the key that is verified is the key that is stored.
+  local pinned="$prefix/$PUBLISHER_KEY"
+  if [ -n "$public_key" ]; then
+    [ -f "$public_key" ] || die "public key file not found: $public_key"
+    cp -- "$public_key" "$STAGE/$PUBLISHER_KEY" || die "cannot read the public key: $public_key"
+    public_key="$STAGE/$PUBLISHER_KEY"
+  fi
+  if is_owned_prefix "$prefix"; then
+    if [ -f "$pinned" ]; then
+      if [ -n "$public_key" ]; then
+        cmp -s -- "$public_key" "$pinned" || die "--public-key differs from the pinned publisher key of $prefix; uninstall first to trust another publisher"
+      else
+        cp -- "$pinned" "$STAGE/$PUBLISHER_KEY" || die "cannot read the pinned publisher key $pinned"
+        public_key="$STAGE/$PUBLISHER_KEY"
+      fi
+      log "this prefix pins a publisher key: the release must carry a valid signature by the pinned publisher key (no checksum fallback)"
+    elif [ -z "$public_key" ]; then
+      log "warning: this prefix was installed without a publisher key, so this install is verified by the same-origin checksum only (not publisher authentication); pass --public-key to pin one"
+    fi
+  fi
+
   if [ -n "$local_dist" ]; then
     [ -f "$local_dist/$artifact" ] || die "local dist missing $artifact"
     cp "$local_dist/$artifact" "$STAGE/$artifact"
@@ -345,7 +375,7 @@ main() {
     sums="$STAGE/SHA256SUMS"
   fi
 
-  install_at "$STAGE/$artifact" "$sums" "$version" "$prefix"
+  install_at "$STAGE/$artifact" "$sums" "$version" "$prefix" "$public_key"
   write_config "$version" "$prefix"
 
   [ "$no_completions" = 0 ] && install_completions "$prefix" || true
