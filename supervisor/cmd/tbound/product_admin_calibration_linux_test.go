@@ -179,7 +179,13 @@ func TestProductCalibrationSignRefusesBadMeasurements(t *testing.T) {
 	mutated := func(name, from, to string) string {
 		return writeCalibrationInput(t, h, name, bytes.Replace(original, []byte(from), []byte(to), 1))
 	}
+	link := filepath.Join(h.dir, "link.json")
+	if err := os.Symlink(h.unsigned, link); err != nil {
+		t.Fatal(err)
+	}
 	for name, c := range map[string]struct{ in, want string }{
+		"input through a symlink":        {link, "cannot read"},
+		"input over its size bound":      {writeCalibrationInput(t, h, "oversize", bytes.Repeat([]byte(" "), maxProductCalibrationBytes+1)), "cannot read"},
 		"read-only access profile":       {readOnly, "managed"},
 		"unknown field":                  {mutated("unknown", `"digest": ""`, `"digest": "", "extra": 1`), "unknown field"},
 		"trailing data":                  {writeCalibrationInput(t, h, "trailing", append(append([]byte{}, original...), []byte(`{}`)...)), "trailing"},

@@ -166,14 +166,29 @@ func decodeProductCalibration(raw []byte) (piruntime.D09XattrEnumerationCalibrat
 	return calibration, nil
 }
 
-func calibrationSign(out io.Writer, keyFile, publicKeyFile, inFile, outFile string) error {
-	info, err := os.Lstat(inFile)
-	if err != nil || !info.Mode().IsRegular() || info.Size() > maxProductCalibrationBytes {
-		return adminRefusal("cannot read the unsigned calibration %s: it must be a regular file of at most %d bytes", inFile, maxProductCalibrationBytes)
-	}
-	raw, err := os.ReadFile(inFile)
+// readUnsignedCalibration reads the operator's measurement through one descriptor, so the file checked is
+// the file read: a regular file opened without following a symlink, within its size bound.
+func readUnsignedCalibration(path string) ([]byte, error) {
+	f, err := os.OpenFile(path, os.O_RDONLY|unix.O_NOFOLLOW|unix.O_NONBLOCK, 0)
 	if err != nil {
-		return adminRefusal("cannot read the unsigned calibration %s", inFile)
+		return nil, err
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil || !info.Mode().IsRegular() {
+		return nil, errors.Join(errors.New("not a regular file"), err)
+	}
+	raw, err := io.ReadAll(io.LimitReader(f, maxProductCalibrationBytes+1))
+	if err == nil && len(raw) > maxProductCalibrationBytes {
+		err = errors.New("over the size bound")
+	}
+	return raw, err
+}
+
+func calibrationSign(out io.Writer, keyFile, publicKeyFile, inFile, outFile string) error {
+	raw, err := readUnsignedCalibration(inFile)
+	if err != nil {
+		return adminRefusal("cannot read the unsigned calibration %s: it must be a regular file of at most %d bytes", inFile, maxProductCalibrationBytes)
 	}
 	calibration, err := decodeProductCalibration(raw)
 	if err != nil {
