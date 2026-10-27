@@ -21,6 +21,8 @@ import (
 
 var adminHostInputNames = []string{"input policy alpha", "input policy beta", "input git", "input calibration", "input calibration signature", "input registration public key"}
 
+const adminHostIdentityName = "input host identity"
+
 func (h *adminHost) policyFile(project string) string {
 	return h.path(productsetup.ConfigDir + "/policy-" + project + ".json")
 }
@@ -33,10 +35,25 @@ func (h *adminHost) gitFile() string { return h.path(productsetup.BinaryDir + "/
 func (h *adminHost) reregister(policyDigest string) {
 	h.t.Helper()
 	template := filepath.Join(h.dir, "template-2.json")
-	mustAdmin(h.t, adminInitArgsFor(template, policyDigest)...)
+	mustAdmin(h.t, adminInitArgsFor(template, policyDigest, h.gitDigest)...)
 	h.reg = filepath.Join(h.dir, "registration-2.json")
 	mustAdmin(h.t, "product", "registration", "sign", "--registration", template, "--key", filepath.Join(h.keys, "registration.key"), "--out", h.reg)
 	h.sig = h.reg + ".sig"
+}
+
+// resignRegistration signs the original template after edit and uses it for the next setup. When setup
+// already installed a registration, that one is replaced too, so doctor reads the edit.
+func (h *adminHost) resignRegistration(edit func(template string) string) {
+	h.t.Helper()
+	template := filepath.Join(h.dir, "template-3.json")
+	writeHostFile(h.t, template, edit(readHostFile(h.t, filepath.Join(h.dir, "template.json"))))
+	h.reg = filepath.Join(h.dir, "registration-3.json")
+	mustAdmin(h.t, "product", "registration", "sign", "--registration", template, "--key", filepath.Join(h.keys, "registration.key"), "--out", h.reg)
+	h.sig = h.reg + ".sig"
+	if _, err := os.Lstat(h.path(productsetup.RegistrationPath)); err == nil {
+		writeHostFile(h.t, h.path(productsetup.RegistrationPath), readHostFile(h.t, h.reg))
+		writeHostFile(h.t, h.path(productsetup.RegistrationSignaturePath), readHostFile(h.t, h.sig))
+	}
 }
 
 // resignCalibration replaces the installed calibration pair with one signed by key.
@@ -102,6 +119,14 @@ func adminBreakages() map[string]adminBreakage {
 			h.reregister(adminPolicyDigest(true))
 		}},
 		"git digest differs": {"input git", "pin approved Git executable", true, func(t *testing.T, h *adminHost) { h.gitDigest = digestBytes([]byte("another git")) }},
+		"git digest differs from the registration": {"input git", "differs from the registered git_digest", false, func(t *testing.T, h *adminHost) {
+			h.resignRegistration(func(raw string) string { return strings.Replace(raw, h.gitDigest, digestBytes([]byte("another git")), 1) })
+		}},
+		"host identity differs from the registration": {adminHostIdentityName, "differs from the registered host_identity_digest", false, func(t *testing.T, h *adminHost) {
+			h.resignRegistration(func(raw string) string {
+				return regexp.MustCompile(`"host_identity_digest": "sha256:[0-9a-f]{64}"`).ReplaceAllString(raw, `"host_identity_digest": "`+digestBytes([]byte("an older build"))+`"`)
+			})
+		}},
 		"git bytes altered": {"input git", "pin approved Git executable", false, func(t *testing.T, h *adminHost) {
 			f, err := os.OpenFile(h.gitFile(), os.O_APPEND|os.O_WRONLY, 0)
 			if err == nil {
@@ -182,7 +207,7 @@ func TestProductAdminSetupRefusesEachBadHostInputBeforeAnyWrite(t *testing.T) {
 // inputLines are the report lines of the host inputs, keyed by check name. The longest name wins, so the
 // calibration signature is not mistaken for the calibration.
 func inputLines(out string) map[string]string {
-	names := slices.SortedFunc(slices.Values(adminHostInputNames), func(a, b string) int { return len(b) - len(a) })
+	names := slices.SortedFunc(slices.Values(append(slices.Clone(adminHostInputNames), adminHostIdentityName)), func(a, b string) int { return len(b) - len(a) })
 	lines := map[string]string{}
 	for _, line := range strings.Split(out, "\n") {
 		line = strings.TrimSpace(line)
@@ -231,6 +256,9 @@ func TestProductAdminSetupDryRunReportsEveryHostInput(t *testing.T) {
 		t.Fatalf("dry run: %v\n%s", err, out)
 	}
 	requireInputLines(t, out, nil)
+	if line := inputLines(out)[adminHostIdentityName]; !strings.Contains(line, "[PASS]") {
+		t.Fatalf("the compiled host identity is not reported as matching the registration: %q\n%s", line, out)
+	}
 	if !strings.Contains(out, h.path(productsetup.ConfigDir+"/policy-alpha.json")) || !strings.Contains(out, h.pub) {
 		t.Fatalf("the report must name the inputs by path, including the key setup will install:\n%s", out)
 	}
@@ -244,6 +272,9 @@ func TestProductAdminDoctorReportsEachHostInput(t *testing.T) {
 	}
 	healthy, _ := adminRun("product", "doctor", "--root", h.root)
 	requireInputLines(t, healthy, nil)
+	if line := inputLines(healthy)[adminHostIdentityName]; !strings.Contains(line, "[PASS]") {
+		t.Fatalf("the compiled host identity is not reported as matching the registration: %q\n%s", line, healthy)
+	}
 	if strings.Contains(healthy, strings.TrimSpace(readHostFile(t, filepath.Join(h.keys, "registration.key")))) {
 		t.Fatal("the doctor printed key material")
 	}
