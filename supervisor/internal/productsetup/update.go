@@ -18,7 +18,7 @@ import (
 
 // copyAtomic copies in to dst through a synced temporary file in dst's directory and a rename, so dst
 // is always either its old or its new content.
-func copyAtomic(in *os.File, dst string, mode os.FileMode) error {
+func copyAtomic(in io.ReadSeeker, dst string, mode os.FileMode) error {
 	if _, err := in.Seek(0, io.SeekStart); err != nil {
 		return err
 	}
@@ -128,10 +128,15 @@ func Update(env Env, candidate Candidate) (Report, error) {
 	if info.Size() == 0 || info.Size() > maxBinaryBytes {
 		return *h.rep, refuse("%s is empty or too large to be the tbound binary", candidate.Binary)
 	}
+	listed, err := manifest.Artifact(filepath.Base(candidate.Binary))
+	if err != nil {
+		return *h.rep, refuse("the candidate is refused: %v", err)
+	}
 	verified := source
 	if !env.DryRun {
 		defer h.discardStaged()
-		if err := h.copyAtomic(source, stagedBinaryPath, 0o755); err != nil {
+		// One byte past the declared size is enough for the size comparison to refuse a source that grew.
+		if err := h.copyAtomic(io.NewSectionReader(source, 0, listed.Size+1), stagedBinaryPath, 0o755); err != nil {
 			return *h.rep, fmt.Errorf("stage the binary: %w", err)
 		}
 		interrupt("staged")
@@ -784,7 +789,7 @@ func (h *host) removeEmptyDir(logical string) error {
 	return nil
 }
 
-func (h *host) copyAtomic(source *os.File, logical string, mode os.FileMode) error {
+func (h *host) copyAtomic(source io.ReadSeeker, logical string, mode os.FileMode) error {
 	return h.withPath(logical, true, func(path string) error { return copyAtomic(source, path, mode) })
 }
 

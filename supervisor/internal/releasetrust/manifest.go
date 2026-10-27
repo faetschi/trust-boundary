@@ -173,14 +173,24 @@ func VerifyArtifacts(m Manifest, files []string) error {
 // entry of the manifest. A caller that must not read the file twice stages a copy and passes its
 // measurements here.
 func (m Manifest) CheckArtifact(name string, size int64, sha256Hex string) error {
-	i := slices.IndexFunc(m.Artifacts, func(a Artifact) bool { return a.Name == name })
-	if i < 0 {
-		return refuse("%s is not listed in the signed manifest", name)
+	want, err := m.Artifact(name)
+	if err != nil {
+		return err
 	}
-	if want := m.Artifacts[i]; size != want.Size || sha256Hex != want.SHA256 {
+	if size != want.Size || sha256Hex != want.SHA256 {
 		return refuse("%s does not match the signed manifest (size or SHA-256 differs)", name)
 	}
 	return nil
+}
+
+// Artifact returns the entry the manifest lists under name, so a caller can bound what it reads before it
+// measures the file.
+func (m Manifest) Artifact(name string) (Artifact, error) {
+	i := slices.IndexFunc(m.Artifacts, func(a Artifact) bool { return a.Name == name })
+	if i < 0 {
+		return Artifact{}, refuse("%s is not listed in the signed manifest", name)
+	}
+	return m.Artifacts[i], nil
 }
 
 // Fingerprint is the first 16 hex characters of the SHA-256 of the raw public key. Users compare it
