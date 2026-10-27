@@ -14,7 +14,7 @@ import (
 
 // ReceiptSchema is the product turn receipt the composition writes and the
 // catalog checks before it settles a turn.
-const ReceiptSchema = "tbound-product-turn-receipt/v1"
+const ReceiptSchema = "tbound-product-turn-receipt/v2"
 
 // Worker kinds and the settlement each one can report. The supervisor loop is
 // the supervisor's own in-process agent loop: it has no OS process to settle, so
@@ -76,7 +76,7 @@ type ReceiptDenial struct {
 }
 
 // DecodeReceipt strictly decodes a receipt: strict JSON within MaxReceiptBytes,
-// no unknown fields, the v1 schema.
+// no unknown fields, the current schema.
 func DecodeReceipt(data []byte) (TurnReceipt, error) {
 	var r TurnReceipt
 	if !validReceipt(data) {

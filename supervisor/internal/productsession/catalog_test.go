@@ -136,7 +136,7 @@ func mustLink(t *testing.T, c *Catalog, turnID string) {
 
 func rawReceipt(turnID string) []byte { return []byte(`{"turn_id":"` + turnID + `"}`) }
 
-// receiptFor builds the v1 receipt the catalog requires for a linked turn.
+// receiptFor builds the receipt the catalog requires for a linked turn.
 func receiptFor(c *Catalog, turnID, outcome string, usage Budget, result string) []byte {
 	turn, _ := c.Turn(turnID)
 	r := TurnReceipt{
