@@ -209,3 +209,21 @@ Source hash of `supervisor/` for the second run: SHA-256 of the sorted per-file 
 - **Setup and doctor.** Setup does not install or check the policy files, the Git executable or the calibration. `product doctor` does not report them. The service verifies them at start.
 - **External writers.** The publication trust does not exclude a writer outside the catalog, the publication ledger and the Store. It detects an outside edit that happens before publication, and the next baseline measurement detects a later one.
 - **Prompts.** The compiled-in prompts are part of each turn's retained evidence. Changing them breaks the replay of earlier turns.
+
+## Handoff 2026-10-26
+
+- HEAD is `5311409`. The last full supervisor gate was on `4fe9632`: build, vet and gofmt clean, test exit 0, reported 5238 pass / 30 skip / 0 fail. `5311409` adds only the webchat module and the React live mode, which were tested separately. The merged tree has not had one combined gate run.
+- P5, P6, P8, P9 and the production host profile are merged. This status document still lacks their sections and the P0-P11 status table required by docs/product-plan.md section 10.
+- The host-inputs task (calibration measure and sign, setup checks, doctor reporting) and the soft-refusals task are NOT implemented. Both branches have zero commits beyond `5311409`; the agents were cut off before committing. Restart both from scratch.
+- Four independent reviews are owed: P9 gateway and React, Bash output, P8 round 3, and the production host profile. At the last check the second Codex account failed to open a session and needed re-login; the main account had a usage reset at 23:10. The fallback is Opus or Sonnet at xhigh. OpenRouter is paid and limited to the panel and hint experiments.
+- Next actions, in order:
+  1. Gate `5311409`.
+  2. Update this document with the missing sections and the P0-P11 table.
+  3. Sync F14 from the current thesis branch head (post-closeout). Expect conflicts in `governed_workflow_live_linux.go`, `recovery_linux.go` and `workflowrecovery`.
+  4. Redo host inputs.
+  5. Redo soft refusals.
+  6. Get the four reviews.
+  7. P10.
+  8. P11.
+- The qualified host, the provider key and the guest stay on FABIAN. The new machine is for code, reviews and docs.
+- A machine handoff is in progress. No further edits on this checkout after this commit.
