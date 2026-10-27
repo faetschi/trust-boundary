@@ -32,7 +32,10 @@
 # ROOT RUN: the marker and the pin are the trust anchors of a prefix, so a run as root refuses unless the
 # prefix (or its nearest existing ancestor) and every directory above it are root-owned and not writable
 # by group or others, and it refuses a symlinked or group/other-writable marker or pin. Uninstall applies the
-# same checks, and again immediately before it removes the prefix.
+# same checks, and again immediately before it removes the prefix. Every run creates the marker itself and
+# discards any archive-supplied one. A root run never installs or removes the per-user shell completions
+# or writes the per-user config, because HOME and XDG directories are user-controlled: it prints what the
+# user runs unprivileged instead.
 set -euo pipefail
 
 DEFAULT_VERSION="latest"
@@ -188,6 +191,10 @@ install_completions() {
   local prefix="$1"
   local src="$prefix/share/completions"
   [ -d "$src" ] || return 0
+  if [ "$(id -u)" = 0 ]; then
+    log "running as root: skipped the shell completions, because their directories are user-controlled and a root run does not follow them; as that user, copy from $src: tbound.bash to \${XDG_DATA_HOME:-~/.local/share}/bash-completion/completions/tbound, _tbound to \${XDG_DATA_HOME:-~/.local/share}/zsh/site-functions/_tbound, tbound.fish to \${XDG_CONFIG_HOME:-~/.config}/fish/completions/tbound.fish"
+    return 0
+  fi
   local data="${XDG_DATA_HOME:-$HOME/.local/share}"
   local cfg="${XDG_CONFIG_HOME:-$HOME/.config}"
   if [ -f "$src/tbound.bash" ]; then
@@ -206,6 +213,10 @@ install_completions() {
 }
 
 remove_completions() {
+  if [ "$(id -u)" = 0 ]; then
+    log "running as root: left the shell completions of the user in place; as that user, remove \${XDG_DATA_HOME:-~/.local/share}/bash-completion/completions/tbound, \${XDG_DATA_HOME:-~/.local/share}/zsh/site-functions/_tbound and \${XDG_CONFIG_HOME:-~/.config}/fish/completions/tbound.fish"
+    return 0
+  fi
   local data="${XDG_DATA_HOME:-$HOME/.local/share}"
   local cfg="${XDG_CONFIG_HOME:-$HOME/.config}"
   rm -f "$data/bash-completion/completions/tbound" "$data/zsh/site-functions/_tbound" "$cfg/fish/completions/tbound.fish"
@@ -300,6 +311,10 @@ install_at() {
 
 write_config() {
   local version="$1" prefix="$2"
+  if [ "$(id -u)" = 0 ]; then
+    log "running as root: skipped the per-user config file, whose directory is user-controlled; it is optional, and an install run as that user writes it"
+    return 0
+  fi
   local cfg; cfg="$(config_dir)"
   mkdir -p "$cfg"
   if [ ! -f "$cfg/config.json" ]; then
