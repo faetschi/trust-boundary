@@ -261,7 +261,9 @@ install_at() {
   if [ ! -x "$stage/bin/tbound" ]; then die "extracted archive has no bin/tbound"; fi
   if [ ! -x "$stage/bin/tbound-doctor" ]; then die "extracted archive has no bin/tbound-doctor"; fi
   if [ ! -x "$stage/bin/tbound-profile" ]; then die "extracted archive has no bin/tbound-profile"; fi
-  printf 'name=tbound\nversion=%s\nprefix=%s\n' "$(json_escape "$version")" "$(json_escape "$prefix")" > "$stage/$MARKER"
+  # The marker is never the archive's: an archive may carry a link under this name, and a root run must not write through it.
+  rm -rf -- "$stage/$MARKER"
+  (set -o noclobber; printf 'name=tbound\nversion=%s\nprefix=%s\n' "$(json_escape "$version")" "$(json_escape "$prefix")" > "$stage/$MARKER") || die "cannot create the install marker"
   chmod 0644 "$stage/$MARKER" # a root run refuses a marker that group or others can write, whatever the umask
   rm -rf -- "$stage/$PUBLISHER_KEY" # the pin comes only from the verified key below, never from the archive
   if [ -n "$pin_key" ]; then
