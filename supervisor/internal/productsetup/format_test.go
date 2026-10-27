@@ -231,3 +231,39 @@ func TestScanInstallationFormatFindsAMarkerAcrossReadBoundaries(t *testing.T) {
 		}
 	}
 }
+
+func TestSetupTakesTheBinaryFormatFromItsBytesAndRefusesAnotherFormatBeforeChangingAnything(t *testing.T) {
+	declared := func(format int) string { return "binary v1 " + fmt.Sprintf(markerLine, format) }
+	for name, tc := range map[string]struct {
+		binary  string
+		refused bool
+	}{
+		"a marker of this setup's format": {declared(InstallationFormat), false},
+		"a marker of another format":      {declared(LegacyInstallationFormat), true},
+		"no marker is the legacy format":  {"binary v1", true},
+	} {
+		for _, dryRun := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s, dry run %v", name, dryRun), func(t *testing.T) {
+				f := newFixture(t)
+				f.env.BinaryFormat = ScanInstallationFormat
+				f.env.DryRun = dryRun
+				if err := os.WriteFile(f.binary, []byte(tc.binary), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				rep, err := f.setup()
+				if !tc.refused {
+					if err != nil {
+						t.Fatalf("a binary of this setup's format was refused: %v", err)
+					}
+					return
+				}
+				if !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "installation format") {
+					t.Fatalf("a binary of another installation format was not refused: %v", err)
+				}
+				if entries, _ := os.ReadDir(f.root); len(entries) != 0 || len(rep.Commands) != 0 {
+					t.Fatalf("a refused setup changed the host: %v %v", entries, rep.Commands)
+				}
+			})
+		}
+	}
+}
