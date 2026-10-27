@@ -19,6 +19,16 @@ promotes the verified candidate. DENY retains its evidence, removes the candidat
 and reports `denied_after_effect` without advancing the generation or ledger.
 Uncertain execution or cleanup remains UNKNOWN and blocks publication.
 
+A denied Bash command has already run in its D09 cell. Its command journal
+records exactly one `production_d09_command_settled` event with schema
+`tbound-production-d09-command-settled-denied/v1`, which binds the denied
+candidate and names no output generation (a promoted command uses
+`tbound-production-d09-command-settled/v2`). The settled lease lets the session
+close without quarantine. Recovery re-verifies the denied record against the
+Store operation; under evidenced Bash containment it refuses a denied effect
+whose runner cannot verify the settlement. With the pilot's `workflow_bash_output_paths: []`, every Bash
+write takes this path.
+
 Opening a Store and reconstructing its evidence bundle verify both journals,
 exact intent and reference bindings, manifest changes and generation ordering.
 Admission records cannot be reused or silently ignored. Recovery does not
