@@ -32,16 +32,22 @@ func rollbackChild(root string) {
 		}
 		return nil
 	}}
-	rep, err := Rollback(env)
+	var rep Report
+	var err error
+	if update := os.Getenv("TB_ROLLBACK_UPDATE"); update != "" {
+		rep, err = Update(env, update)
+	} else {
+		rep, err = Rollback(env)
+	}
 	fmt.Printf("RESULT refused=%v selftest_failed=%v selftests=%d starts=%d\n", errors.Is(err, ErrRefused), errors.Is(err, ErrSelfTest), selfTests,
 		strings.Count(strings.Join(rep.Commands, "\n"), "systemctl start "+UnitName))
 }
 
 // runRollbackChild runs rollbackChild in a new process and returns its output and exit code.
-func runRollbackChild(t *testing.T, root, crashAt, selfTest string) (string, int) {
+func runRollbackChild(t *testing.T, root, crashAt, selfTest string, update ...string) (string, int) {
 	t.Helper()
 	child := exec.Command(os.Args[0], "-test.run=^TestRollbackIsRecoveredByAFreshProcessAfterAnInterruptionAtEveryStep$")
-	child.Env = append(os.Environ(), "TB_ROLLBACK_ROOT="+root, "TB_ROLLBACK_CRASH_AT="+crashAt, "TB_ROLLBACK_SELFTEST="+selfTest)
+	child.Env = append(os.Environ(), "TB_ROLLBACK_ROOT="+root, "TB_ROLLBACK_CRASH_AT="+crashAt, "TB_ROLLBACK_SELFTEST="+selfTest, "TB_ROLLBACK_UPDATE="+strings.Join(update, ""))
 	out, err := child.CombinedOutput()
 	var exit *exec.ExitError
 	switch {
@@ -96,7 +102,7 @@ func TestRollbackIsRecoveredByAFreshProcessAfterAnInterruptionAtEveryStep(t *tes
 	}
 }
 
-func TestRollbackWhoseSelfTestFailsRestoresAndAnInterruptedRestoreIsNotUndone(t *testing.T) {
+func TestRollbackWhoseSelfTestFailsRestoresAndAFreshProcessFinishesAnInterruptedRestore(t *testing.T) {
 	if os.Getenv("TB_ROLLBACK_ROOT") != "" {
 		t.Skip("only the parent runs this test")
 	}
@@ -112,9 +118,42 @@ func TestRollbackWhoseSelfTestFailsRestoresAndAnInterruptedRestoreIsNotUndone(t 
 	if f.read(BinaryPath) != "binary v2" || f.read(LastKnownGoodPath) != "binary v2" {
 		t.Fatalf("the restore left installed %q, last-known-good %q, want the binary rolled back from", f.read(BinaryPath), f.read(LastKnownGoodPath))
 	}
+	// Both binaries are equal now and the service is stopped. The retry must start it again before it takes the
+	// ordinary "nothing to roll back to" path.
 	out, code := runRollbackChild(t, f.root, "", "pass")
-	if code != 0 || !strings.Contains(out, "refused=true") || f.read(BinaryPath) != "binary v2" {
-		t.Fatalf("a retry after an interrupted restore must refuse and change nothing (exit %d, installed %q):\n%s", code, f.read(BinaryPath), out)
+	if code != 0 || !strings.Contains(out, "selftests=1 starts=1") {
+		t.Fatalf("a retry after an interrupted restore must start the service and run the self-test once (exit %d):\n%s", code, out)
+	}
+	if f.read(BinaryPath) != "binary v2" || f.read(LastKnownGoodPath) != "binary v2" {
+		t.Fatalf("the finished restoration changed the binaries: installed %q, last-known-good %q", f.read(BinaryPath), f.read(LastKnownGoodPath))
+	}
+	if _, err := os.Lstat(f.path(rollbackIntentPath)); err == nil {
+		t.Fatal("the restoration record survived the finished restoration")
+	}
+	if out, code := runRollbackChild(t, f.root, "", "pass"); code != 0 || !strings.Contains(out, "refused=true selftests=0 starts=0") {
+		t.Fatalf("with the record cleared a rollback has nothing to roll back to and starts nothing (exit %d):\n%s", code, out)
+	}
+}
+
+func TestUpdateWhoseSelfTestFailsRestoresAndAFreshProcessFinishesAnInterruptedRestore(t *testing.T) {
+	if os.Getenv("TB_ROLLBACK_ROOT") != "" {
+		t.Skip("only the parent runs this test")
+	}
+	f := newFixture(t)
+	f.installed()
+	f.env.Turns = func() ([]OpenTurn, error) { return nil, nil }
+	if out, code := runRollbackChild(t, f.root, "restored", "fail", f.newBinary("binary v2")); code != 77 {
+		t.Fatalf("the update child did not end after the restore (exit %d):\n%s", code, out)
+	}
+	if f.read(BinaryPath) != "binary v1" || f.read(LastKnownGoodPath) != "binary v1" {
+		t.Fatalf("the restore left installed %q, last-known-good %q", f.read(BinaryPath), f.read(LastKnownGoodPath))
+	}
+	out, code := runRollbackChild(t, f.root, "", "pass")
+	if code != 0 || !strings.Contains(out, "selftests=1 starts=1") {
+		t.Fatalf("a rollback after an interrupted restore must start the service again (exit %d):\n%s", code, out)
+	}
+	if _, err := os.Lstat(f.path(rollbackIntentPath)); err == nil {
+		t.Fatal("the restoration record survived the finished restoration")
 	}
 }
 
