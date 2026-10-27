@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
@@ -15,8 +16,25 @@ import (
 
 	"tbound/supervisor/internal/productprotocol"
 	"tbound/supervisor/internal/productsession"
+	"tbound/supervisor/internal/productsetup"
 	"tbound/supervisor/internal/providerbridge"
 )
+
+// Product setup writes state_root = TurnsDir and keeps the projects in ProjectsDir, a sibling of TurnsDir.
+func TestProductServiceHostStartsWithProductSetupLayout(t *testing.T) {
+	f := newProductHostFixture(t, false)
+	f.cfg.StateRoot = filepath.Join(f.stateRoot, path.Base(productsetup.TurnsDir))
+	if err := os.Mkdir(f.cfg.StateRoot, 0700); err != nil {
+		t.Fatal(err)
+	}
+	opts := f.options()
+	opts.Host = newProductServiceHostProfile(f.cfg)
+	svc, err := startProductService(f.cfg, opts)
+	if err != nil {
+		t.Fatalf("a service config laid out as product setup writes it was refused: %v", err)
+	}
+	_ = svc.Shutdown()
+}
 
 func TestProductServiceHostRefusesWritableManagedAncestry(t *testing.T) {
 	for _, target := range []string{"root", "ancestor", "foreign root", "foreign ancestor", "symlink", "outside state"} {
