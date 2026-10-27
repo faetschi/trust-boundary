@@ -710,8 +710,10 @@ func durableReadLineCount(name string, value *float64) (int, error) {
 // LF, so it carries a trailing newline only when it reaches the final empty
 // line. Unlike Pi, an offset past the last line is an empty success rather than
 // an error, so a model that overshoots does not lose its trial. Pi's own 2000
-// line / 50KB truncation and its continuation notices are not applied: the file
-// is already bounded and the released bytes stay pure file content.
+// line / 50KB truncation and its continuation notices (including the one Pi adds
+// to an ordinary limited read) are not applied: the file is already bounded and
+// the released bytes stay pure file content. Configurations B and C both read
+// through this path, so these differences from stock Pi are the same in both.
 func (window durableReadWindow) apply(content []byte) []byte {
 	if window == (durableReadWindow{}) {
 		return content

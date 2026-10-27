@@ -727,7 +727,7 @@ func TestDurableReadHonoursLineWindow(t *testing.T) {
 		{"offset beyond end of file is empty", lines, `{"path":"task.txt","offset":99}`, ""},
 		{"offset far beyond any file is empty", lines, `{"path":"task.txt","offset":9007199254740992,"limit":9007199254740992}`, ""},
 		{"integral float form", lines, `{"path":"task.txt","offset":2.0,"limit":1e0}`, "two"},
-		{"null means absent", lines, `{"path":"task.txt","offset":null,"limit":null}`, lines},
+		{"null means absent to the executor decoder (the protocol argument validator refuses null first)", lines, `{"path":"task.txt","offset":null,"limit":null}`, lines},
 		{"no trailing newline last line", "one\ntwo", `{"path":"task.txt","offset":2}`, "two"},
 		{"no trailing newline whole file", "one\ntwo", `{"path":"task.txt","offset":1,"limit":2}`, "one\ntwo"},
 		{"CRLF keeps the carriage return", "a\r\nb\r\nc", `{"path":"task.txt","limit":1}`, "a\r"},
