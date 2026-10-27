@@ -1,6 +1,6 @@
 # Advisor decision package: pilot construct review and scope
 
-Prepared 2026-10-27 at `codex/tbound-prototype` `dbc5858`. **All three items are OPEN.**
+Prepared 2026-10-27 at `codex/tbound-prototype` `dbc5858` (item 4 added 2026-10-28). **All four items are OPEN.**
 This page decides nothing. Where the owner has already decided, it says so; the advisor confirms or amends.
 Register paths are in the thesis repository `MSE_MA_Thesis`; code paths are in this repository.
 
@@ -10,7 +10,9 @@ Register paths are in the thesis repository `MSE_MA_Thesis`; code paths are in t
 | 2 | Audit sample when fewer than 60 roots are eligible | None recorded | The advisor's signature on the pilot audit |
 | 3 | D26 scope cut (C-DH withdrawn) and narrowed TM-C residual-channel claim | Decided, advisor confirmation pending | Claim text and H1 registration, not the pilot run |
 
-None of the three blocks the paid panel run itself: the ratings do not depend on any of them.
+| 4 | Configuration C handling of tool errors that provably had no effect (added 2026-10-28) | None recorded | Freezing the pilot protocol (step 2) |
+
+None of these blocks the paid panel run itself: the ratings do not depend on any of them.
 
 ## 1. D35 amendments: AI panel and AC1 gate
 
@@ -47,6 +49,20 @@ Options:
 - **A. Confirm both.** The residual-channel claim names only mediated witnesses; the thesis states the exclusion.
 - **B. Confirm (3), reject (4) A.** Direct-runtime bypass witnesses become mandatory: they need a witness design and guest work before registration.
 - **C. Reject (3).** C-DH returns as a secondary arm, with the costs listed above. Workload goes back above the core 1,935 execution units, and the spend accounting must cover chooser calls first.
+
+## 4. Configuration C: tool errors that provably had no effect
+
+Found by code reading on 2026-10-28; not yet observed in a run.
+
+- **Behaviour.** In research/corpus mode, any governed executor error that is not an admission denial closes the conversation. Examples: a `read` of a missing, absolute or directory path, or one that passes the advertised `offset`/`limit`. The model never sees an error (`supervisor/internal/providerbridge/conversation.go:812-813`, `supervisor/internal/piruntime/supervisor.go:142-148`). The trial ends `unknown` with `evidence_loss=unclassified`. A compliant trial then scores `CONSERVATIVE_FAILURE` (`supervisor/internal/evalscore/evalscore.go:346-348`).
+- **Consequence for H1.** The friction clause is evaluable only when every compliant record has complete evidence (`supervisor/internal/evalscore/summary.go:713-714`, `complete == nComp`; `evalscore.go:372-374`). One such trial among the 100 compliant tasks makes the friction clause not evaluable. Configuration B (stock Pi) returns these errors to the model, and the model continues.
+- **Already in hand.** The `offset`/`limit` trigger is being fixed by honouring the advertised line window (no protocol change). Missing, absolute and directory paths, and malformed edits, remain. The product lane's "soft refusals" handle these cases for product turns only; research mode was deliberately left unchanged.
+
+Options:
+
+- **A. Keep as registered.** It is conservative, because the failure counts against TBound. The risk is that one model misstep voids the H1 friction clause, not just one trial.
+- **B. Return provably no-effect failures to the model in Configuration C too**, as Configuration B does, so the trial continues and is scored on its result. This changes Configuration C behaviour before the pilot freeze. It needs a journal record, replay verification and an independent review, the same work the product lane did.
+- **C. Keep the behaviour, amend the scoring.** A trial that provably ended without effect counts as a completed C failure, not as evidence loss. The clause stays evaluable and the failure still counts against TBound. It needs an `evalscore` change and a dated register amendment before the pilot freeze.
 
 ## After the advisor answers
 
