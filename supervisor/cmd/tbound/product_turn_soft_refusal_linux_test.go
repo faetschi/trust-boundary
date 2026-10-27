@@ -221,6 +221,11 @@ func TestProductTurnSoftRefusalRetiresCapturedAuthority(t *testing.T) {
 	if err != nil || projection.DecisionCount != 0 || projection.ResultCount != 1 {
 		t.Fatalf("precondition refusal counted as a gate decision: %+v %v", projection, err)
 	}
+	research := f.config
+	research.ProductSoftRefusals = false
+	if _, err := providerbridge.ReplayTranscript(f.providerJournal, providerbridge.RecoveryPins{Config: research, Model: research.Route.Resolved().Model, Policy: f.policy, RequireHostCallReservations: true}, capturedCallProviderReplayVerifier{prefixCount: uint64(len(trace.Records))}); err == nil {
+		t.Fatal("research replay accepted a product-only refusal record")
+	}
 	checkpoint, _ := f.ledger.Snapshot()
 	digest, err := activeUnexecutedCaptureDigest(f.providerJournal, "soft-call")
 	if err != nil || checkpoint.Pins.HostCallReservation.CapturedCall.RetirementDigest != digest {
