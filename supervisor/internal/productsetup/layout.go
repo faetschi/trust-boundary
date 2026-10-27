@@ -113,3 +113,16 @@ var installedFiles = []node{
 	{UnitPath, false, ownRoot, 0o644},
 	{BinaryPath, false, ownRoot, 0o755},
 }
+
+// writtenPaths are the single paths that setup, update, rollback, uninstall and the service write or
+// replace: a host input on one of them would be overwritten or deleted. The service's data trees
+// (CredentialsDir, StateDir, RuntimeDir) are in writtenTrees.
+func writtenPaths() []string {
+	paths := []string{LastKnownGoodPath, stagedBinaryPath, rollbackIntentPath, CatalogPath, SocketPath}
+	for _, n := range append(append([]node{}, directories...), installedFiles...) {
+		paths = append(paths, n.Path)
+	}
+	return paths
+}
+
+var writtenTrees = []string{CredentialsDir, StateDir, RuntimeDir}

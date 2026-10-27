@@ -9,6 +9,7 @@ import (
 	"os"
 	"path"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -170,8 +171,16 @@ func (c Config) validateHostInputs() error {
 	if err := checkProductPath("git_path", c.GitPath, BinaryDir); err != nil {
 		return err
 	}
+	if err := checkNotWritten("git_path", c.GitPath); err != nil {
+		return err
+	}
 	if err := checkProductPath("xattr_calibration_path", c.XattrCalibrationPath, ConfigDir); err != nil {
 		return err
+	}
+	for _, p := range []string{c.XattrCalibrationPath, c.XattrCalibrationPath + ".sig"} {
+		if err := checkNotWritten("xattr_calibration_path", p); err != nil {
+			return err
+		}
 	}
 	if !sha256Digest.MatchString(c.GitDigest) {
 		return refuse("git_digest must be a canonical SHA-256 digest")
@@ -187,6 +196,19 @@ func (c Config) validateHostInputs() error {
 		if err := checkProductPath(fmt.Sprintf("gate_policy_paths[%q]", id), file, ConfigDir); err != nil {
 			return err
 		}
+		if err := checkNotWritten(fmt.Sprintf("gate_policy_paths[%q]", id), file); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// checkNotWritten refuses a host input on a path the product writes: the input would be overwritten by a
+// setup or an update, or deleted by an uninstall, and the check that pinned it would pass against the new
+// content.
+func checkNotWritten(field, p string) error {
+	if slices.Contains(writtenPaths(), p) || slices.ContainsFunc(writtenTrees, func(tree string) bool { return PathInside(p, tree) }) {
+		return refuse("%s %s collides with a path setup, update, rollback or uninstall writes", field, p)
 	}
 	return nil
 }
