@@ -357,6 +357,45 @@ describe("live UI: reviewing a candidate", () => {
     expect(gateway.callsTo("POST", "/resolve")[0]?.body).toMatchObject({ candidate_digest: "sha256:cand1", decision: "discard" });
   });
 
+  it.each([false, true])("offers same-key recovery for a restored decision without a candidate card, terminal=%s", async (terminal) => {
+    const gateway = createFakeGateway({ turns: [RUNNING] });
+    const storage = memoryStorage();
+    gateway.awaitReview("sha256:cand1");
+    const first = newController(gateway, storage);
+    await first.start();
+    first.select(SESSION_ID);
+    await first.refreshView();
+    await settle();
+    const shown = first.getSnapshot().candidate;
+    if (shown.status !== "ready") throw new Error("no candidate shown");
+    gateway.inject((call) => call.method === "POST" && call.url.endsWith("/resolve"), { lose: "lost answer" }, 3);
+    expect(await first.resolve(shown.candidate, "publish")).toBe(false);
+    const original = gateway.callsTo("POST", "/resolve")[0]?.body;
+    if (terminal) {
+      const turn = gateway.state.turns[0];
+      if (turn === undefined) throw new Error("no turn");
+      turn.state = "terminal";
+      turn.outcome = "published";
+      gateway.state.revision += 1;
+    }
+    await render(gateway, { storage, open: false });
+    expect(controller?.getSnapshot().action.status).toBe("unknown");
+    expect(all("section[aria-label='Review of turn-1']")).toHaveLength(0);
+    const notice = q("[role='note'][aria-label='Review decision request']");
+    expect(notice.textContent).toContain("Outcome unknown");
+    expect(notice.textContent).toContain("same request key");
+    expect(notice.textContent).toContain("even if the turn has finished");
+    expect(q("#live-composer-reason").textContent).toContain("unknown outcome");
+    click(button("Retry with the same request key"));
+    await settle();
+    await settle();
+    expect(gateway.callsTo("POST", "/resolve")).toHaveLength(4);
+    expect(gateway.callsTo("POST", "/resolve").at(-1)?.body).toEqual(original);
+    expect(gateway.state.turns).toHaveLength(1);
+    expect(controller?.getSnapshot().action.done).toEqual({ kind: "resolve", replayed: true });
+    expect(q("[role='note'][aria-label='Review decision request']").textContent).toContain("already recorded");
+  });
+
   it("refuses a stale candidate with the service's code, and shows the new one", async () => {
     const gateway = await review();
     gateway.state.candidate = { digest: "sha256:cand2", changes: [{ path: "b.go", op: "add", diff: "+x\n" }] };

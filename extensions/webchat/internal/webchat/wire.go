@@ -52,13 +52,14 @@ const (
 	EventTurnTerminal        = "turn_terminal"
 )
 
-// Response statuses and the two transport-level error codes. Every other code is
+// Response statuses and the projection/transport error codes. Every other code is
 // a catalog code.
 const (
 	StatusOK               = "ok"
 	StatusError            = "error"
 	CodeProtocolError      = "PROTOCOL_ERROR"
 	CodeServiceUnavailable = "SERVICE_UNAVAILABLE"
+	CodeCandidateTooLarge  = "CANDIDATE_TOO_LARGE"
 	// CodeBadServiceResponse is the gateway's own code for a response that is not
 	// valid protocol. It never comes from the service.
 	CodeBadServiceResponse = "BAD_SERVICE_RESPONSE"

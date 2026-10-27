@@ -78,11 +78,11 @@ export interface ActionBasis {
 }
 
 // Whether a prompt may be sent now. One mutation is in flight at a time, an unknown outcome must be settled first (retried
-// under its own key, or dismissed), and the service allows one open turn per session.
+// under its own key), and the service allows one open turn per session.
 export function sendGate(view: LiveSessionView | null, action: ActionBasis): Gate {
   if (view === null) return closed("The session is loading.");
   if (action.status === "sending") return closed("A request is being sent.");
-  if (action.status === "unknown") return closed("A request has an unknown outcome. Retry it or dismiss it before sending another prompt.");
+  if (action.status === "unknown") return closed("A request has an unknown outcome. Retry it with the same request key before sending another prompt.");
   if (view.blocked === true) return closed("This session is blocked. An earlier turn has an unknown outcome, and an operator must reconcile it.");
   const open = openTurnOf(view);
   if (open === null) return OPEN;
@@ -118,6 +118,7 @@ const FRIENDLY: Readonly<Record<string, string>> = {
   BUDGET_EXHAUSTED: "The session budget is used up.",
   BUDGET_EXCEEDS_LIMIT: "The budget is above what this project allows.",
   CANDIDATE_MISMATCH: "The candidate changed after it was shown. Review the new changes.",
+  CANDIDATE_TOO_LARGE: "The complete candidate preview exceeds the service's 1 MiB response limit. No paths were omitted. Choose Cancel turn to discard this awaiting-review turn, or ask an operator for help.",
   REVIEW_NOT_PENDING: "There is no review to decide.",
   CANCEL_NOT_ALLOWED: "This turn cannot be cancelled now.",
   CANCELLED: "The turn was cancelled.",
@@ -173,7 +174,7 @@ export function actionText(action: ActionState): string | null {
     case "unknown":
       return action.error === null
         ? null
-        : `Outcome unknown. This page cannot tell whether the request ran. Retrying sends the same request key, so it cannot run twice. ${failureText(action.error)}`;
+        : `Outcome unknown. This page cannot tell whether the request ran. ${action.intent?.kind === "resolve" ? "The review decision request still needs confirmation, even if the turn has finished. Retry to confirm its result before starting new work. " : ""}Retrying sends the same request key, so it cannot run twice. ${failureText(action.error)}`;
     case "idle":
       return action.done?.replayed === true ? "The service had already recorded this request." : null;
   }

@@ -27,14 +27,14 @@ export function ActionNotice({ kinds, label }: { readonly kinds: readonly Intent
       </p>
       {settled ? (
         <div className={styles.noticeActions}>
-          {action.error !== null && retryable(action.error) ? (
+          {action.status === "unknown" || (action.error !== null && retryable(action.error)) ? (
             <button type="button" className={styles.button} onClick={() => void live.controller.retry()}>
               Retry with the same request key
             </button>
           ) : null}
-          <button type="button" className={styles.button} onClick={() => live.controller.dismiss()}>
+          {action.status === "failed" ? <button type="button" className={styles.button} onClick={() => live.controller.dismiss()}>
             Dismiss
-          </button>
+          </button> : null}
         </div>
       ) : null}
     </Notice>

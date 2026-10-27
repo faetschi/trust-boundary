@@ -93,6 +93,33 @@ func TestProtocolFixturesRoundTripThroughTheWireCopy(t *testing.T) {
 	}
 }
 
+func TestCandidateFixtureUsesTheSameFrameBound(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(protocolFixtures, "response-candidate-at-frame-limit.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var response ProductResponse
+	if err := strictDecode(raw, &response); err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(response)
+	if err != nil || len(encoded) != MaxProductResponseBytes {
+		t.Fatalf("candidate fixture size %d: %v", len(encoded), err)
+	}
+	var frame bytes.Buffer
+	if err := writeProductFrame(&frame, response, MaxProductResponseBytes); err != nil {
+		t.Fatal(err)
+	}
+	var decoded ProductResponse
+	if err := readProductFrame(&frame, MaxProductResponseBytes, &decoded); err != nil || !reflect.DeepEqual(response, decoded) {
+		t.Fatalf("candidate at the frame bound did not round trip: %v", err)
+	}
+	response.Candidate.Changes[0].Diff += "x"
+	if err := writeProductFrame(&frame, response, MaxProductResponseBytes); !errors.Is(err, errProductFrame) || frame.Len() != 0 {
+		t.Fatalf("candidate at bound+1 was not refused before writing: %v", err)
+	}
+}
+
 func markSetFields(v reflect.Value, set map[string]bool) {
 	switch v.Kind() {
 	case reflect.Pointer, reflect.Interface:

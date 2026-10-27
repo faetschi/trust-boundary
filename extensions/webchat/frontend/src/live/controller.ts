@@ -16,8 +16,10 @@ import type { StreamEventHandlers } from "../core/stream";
 import type { WorkspaceDeps } from "../app/workspaceStore";
 import { LiveError, type CreateParams, type Decision, type Intent, type LiveClient } from "./client";
 import { cursorCount, openLongPoll } from "./poller";
-import { cancelGate, openTurnOf, retryable, reviewableTurn, sendGate } from "./readings";
+import { cancelGate, failureText, openTurnOf, retryable, reviewableTurn, sendGate } from "./readings";
 import type { Candidate, LiveEvent } from "./wire";
+import { utf8Length } from "../core/validate";
+import { MAX_PENDING_ACTIONS, MAX_PENDING_BYTES, PENDING_ACTIONS_KEY, readStoredIntents } from "./storedIntent";
 
 export interface LiveStorage {
   get(key: string): string | null;
@@ -115,18 +117,25 @@ function asLiveError(error: unknown): LiveError {
 
 function describeFault(error: unknown): string {
   const failure = asLiveError(error);
+  if (failure.code === "CANDIDATE_TOO_LARGE") return failureText(failure);
   return failure.detail ? `${failure.code}: ${failure.detail}` : failure.code;
 }
 
 export function createLiveController(deps: LiveControllerDeps): LiveController {
   const { client, storage } = deps;
+  const pending = new Map<string | null, ActionState>();
+  for (const { sessionId, intent } of readStoredIntents(storage.get(PENDING_ACTIONS_KEY))) {
+    pending.set(sessionId, { ...IDLE, status: "unknown", intent, error: new LiveError({
+      kind: "transport", status: 0, code: "TRANSPORT", detail: "An unresolved request was restored from this tab.", outcomeUnknown: true,
+    }) });
+  }
   let model: LiveModel = {
     sessions: null,
     activeId: null,
     view: null,
     sinceLeft: 0,
     candidate: { status: "none" },
-    action: IDLE,
+    action: pending.get(null) ?? IDLE,
     fault: null,
     authLost: false,
   };
@@ -144,8 +153,21 @@ export function createLiveController(deps: LiveControllerDeps): LiveController {
     for (const listener of listeners) listener();
   }
 
-  function setAction(action: ActionState): void {
-    set({ action });
+  function setAction(action: ActionState, sessionId: string | null): boolean {
+    if (action.status === "sending" || action.status === "unknown") pending.set(sessionId, action);
+    else pending.delete(sessionId);
+    let saved = false;
+    try {
+      const text = JSON.stringify(Array.from(pending, ([sessionId, action]) => ({ sessionId, intent: action.intent })));
+      if (pending.size <= MAX_PENDING_ACTIONS && utf8Length(text) <= MAX_PENDING_BYTES && readStoredIntents(text).length === pending.size) {
+        storage.set(PENDING_ACTIONS_KEY, text);
+        saved = storage.get(PENDING_ACTIONS_KEY) === text;
+      }
+    } catch {
+      // A failed write must prevent a new request from leaving without its recovery record.
+    }
+    if (sessionId === null || sessionId === model.activeId) set({ action: pending.get(null) ?? pending.get(model.activeId) ?? action });
+    return saved;
   }
 
   function noteFailure(error: unknown): void {
@@ -266,18 +288,25 @@ export function createLiveController(deps: LiveControllerDeps): LiveController {
     if (sessionId === model.activeId) return;
     storage.set(ACTIVE_SESSION_KEY, sessionId ?? "");
     comparedFor = null;
-    set({ activeId: sessionId, view: null, sinceLeft: 0, candidate: { status: "none" }, action: IDLE, fault: null });
+    set({ activeId: sessionId, view: null, sinceLeft: 0, candidate: { status: "none" }, action: pending.get(null) ?? pending.get(sessionId) ?? IDLE, fault: null });
   }
 
-  // Sends an intent, repeating it unchanged after a transport failure. A result for an intent that is no longer the current
-  // one (the user moved to another session) is dropped.
+  // Persist before sending, so even a reload during the exchange can only repeat the same request.
   async function run(intent: Intent): Promise<boolean> {
-    setAction({ status: "sending", intent, attempt: 1, error: null, done: null });
+    const sessionId = intent.kind === "create" ? null : model.activeId;
+    const previous = pending.get(sessionId);
+    if (previous !== undefined && previous.intent !== intent) return false;
+    let unknown = previous?.status === "unknown";
+    if (!setAction({ status: "sending", intent, attempt: 1, error: null, done: null }, sessionId)) {
+      if (previous !== undefined) pending.set(sessionId, previous);
+      else pending.delete(sessionId);
+      set({ action: previous ?? IDLE, fault: "Cannot save the request for recovery. No request was sent. Enable tab storage or settle pending requests first." });
+      return false;
+    }
     for (let attempt = 1; ; attempt++) {
       try {
         const result = await client.send(intent);
-        if (model.action.intent !== intent) return false;
-        setAction({ ...IDLE, done: { kind: intent.kind, replayed: result.replayed } });
+        setAction({ ...IDLE, done: { kind: intent.kind, replayed: result.replayed } }, sessionId);
         if (result.kind === "create") {
           await refreshSessions();
           select(result.session.id);
@@ -286,16 +315,15 @@ export function createLiveController(deps: LiveControllerDeps): LiveController {
         }
         return true;
       } catch (error) {
-        if (model.action.intent !== intent) return false;
         const failure = asLiveError(error);
+        unknown ||= failure.outcomeUnknown;
         const delay = AUTO_RETRY_DELAYS_MS[attempt - 1];
         if (retryable(failure) && delay !== undefined) {
-          setAction({ status: "sending", intent, attempt: attempt + 1, error: failure, done: null });
+          setAction({ status: "sending", intent, attempt: attempt + 1, error: failure, done: null }, sessionId);
           await deps.sleep(delay);
-          if (model.action.intent !== intent) return false;
           continue;
         }
-        setAction({ status: failure.outcomeUnknown ? "unknown" : "failed", intent, attempt, error: failure, done: null });
+        setAction({ status: unknown ? "unknown" : "failed", intent, attempt, error: failure, done: null }, sessionId);
         if (failure.status === 401) set({ authLost: true });
         if (failure.code === "STALE_REVISION") void refreshView();
         return false;
@@ -348,7 +376,7 @@ export function createLiveController(deps: LiveControllerDeps): LiveController {
       return run(intent);
     },
     dismiss() {
-      if (model.action.status === "failed" || model.action.status === "unknown") setAction(IDLE);
+      if (model.action.status === "failed") setAction(IDLE, model.action.intent?.kind === "create" ? null : model.activeId);
     },
     async loadCandidate() {
       const view = model.view;

@@ -115,7 +115,6 @@ function ReviewCard({ candidate }: { readonly candidate: Candidate }) {
           Discard
         </button>
       </div>
-      <ActionNotice kinds={["resolve"]} label="Review decision request" />
     </section>
   );
 }
@@ -170,6 +169,7 @@ export function LivePanel() {
           <p className={styles.noticeText}>{`${model.sinceLeft} ${model.sinceLeft === 1 ? "event" : "events"} arrived while this page was closed. They are in the transcript.`}</p>
         </Notice>
       ) : null}
+      <ActionNotice kinds={["resolve"]} label="Review decision request" />
       {candidate.status === "ready" ? (
         <div className={styles.noticeActions}>
           <button type="button" className={styles.button} onClick={() => document.getElementById(REVIEW_HEADING_ID)?.focus()}>

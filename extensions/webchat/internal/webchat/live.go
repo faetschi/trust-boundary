@@ -703,6 +703,7 @@ var codeStatuses = map[string]int{
 	"CANDIDATE_MISMATCH": http.StatusConflict, "REVIEW_NOT_PENDING": http.StatusConflict,
 	"CANCEL_NOT_ALLOWED": http.StatusConflict, "BUDGET_EXHAUSTED": http.StatusConflict, "CANCELLED": http.StatusConflict,
 	"CATALOG_CORRUPT":      http.StatusInternalServerError,
+	CodeCandidateTooLarge:  http.StatusRequestEntityTooLarge,
 	CodeServiceUnavailable: http.StatusServiceUnavailable,
 	CodeBadServiceResponse: http.StatusBadGateway,
 }

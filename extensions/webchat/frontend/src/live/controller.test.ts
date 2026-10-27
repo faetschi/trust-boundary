@@ -3,7 +3,7 @@ import { createWorkspaceStore, type WorkspaceStore } from "../app/workspaceStore
 import { snapshotOf } from "../core/testing/builders";
 import { fakeWorkspace } from "../test-support/fakes";
 import { createFakeGateway, NOW_MS, SESSION_ID, TURN_1, type FakeGateway } from "../test-support/liveGateway";
-import { createLiveClient } from "./client";
+import { createLiveClient, type LiveFetch } from "./client";
 import {
   ACTIVE_SESSION_KEY,
   AUTO_RETRY_DELAYS_MS,
@@ -13,6 +13,7 @@ import {
   type LiveStorage,
 } from "./controller";
 import { retryable } from "./readings";
+import { PENDING_ACTIONS_KEY } from "./storedIntent";
 
 const flush = async () => {
   for (let round = 0; round < 8; round++) await new Promise((resolve) => setTimeout(resolve, 0));
@@ -48,13 +49,13 @@ interface Rig {
   connect(): WorkspaceStore;
 }
 
-function rig(options: { gateway?: FakeGateway; storage?: ReturnType<typeof memoryStorage> } = {}): Rig {
+function rig(options: { gateway?: FakeGateway; storage?: ReturnType<typeof memoryStorage>; fetch?: LiveFetch } = {}): Rig {
   const gateway = options.gateway ?? createFakeGateway();
   const storage = options.storage ?? memoryStorage();
   const sleeps: number[] = [];
   const stores: WorkspaceStore[] = [];
   const controller = createLiveController({
-    client: createLiveClient({ fetch: gateway.fetch, nowMs: () => NOW_MS, randomBytes }),
+    client: createLiveClient({ fetch: options.fetch ?? gateway.fetch, nowMs: () => NOW_MS, randomBytes }),
     base: fakeWorkspace(snapshotOf()).deps,
     storage,
     sleep: async (ms) => void sleeps.push(ms),
@@ -331,6 +332,164 @@ describe("live controller: sending a prompt", () => {
   });
 });
 
+describe("live controller: unresolved intent recovery", () => {
+  async function lostSubmit(): Promise<Rig> {
+    const setup = rig();
+    await open(setup);
+    setup.gateway.inject((call) => call.method === "POST" && call.url.endsWith("/turns"), { lose: "lost answer" }, 3);
+    expect(await setup.controller.submit("exact prompt\n")).toBe(false);
+    setup.stores.forEach((store) => store.stop());
+    return setup;
+  }
+
+  it("reloads an unknown submit and settles a replay with the original key and body", async () => {
+    const first = await lostSubmit();
+    const original = posts(first.gateway, "/turns")[0]?.body;
+    const reloaded = rig({ gateway: first.gateway, storage: first.storage });
+    await open(reloaded);
+    expect(reloaded.controller.getSnapshot().action.status).toBe("unknown");
+    expect(await reloaded.controller.retry()).toBe(true);
+    expect(posts(first.gateway, "/turns").at(-1)?.body).toEqual(original);
+    expect(first.gateway.state.turns).toHaveLength(1);
+    expect(reloaded.controller.getSnapshot().action.done?.replayed).toBe(true);
+    reloaded.stores.forEach((store) => store.stop());
+    const settled = rig({ gateway: first.gateway, storage: first.storage });
+    await settled.controller.start();
+    expect(settled.controller.getSnapshot().action.status).toBe("idle");
+    expect(await settled.controller.retry()).toBe(false);
+  });
+
+  it("keeps the unknown intent when switching away and back", async () => {
+    const setup = await lostSubmit();
+    const intent = setup.controller.getSnapshot().action.intent;
+    setup.controller.select("psess-other");
+    setup.controller.select(SESSION_ID);
+    expect(setup.controller.getSnapshot().action).toMatchObject({ status: "unknown", intent });
+    expect(await setup.controller.retry()).toBe(true);
+    expect(posts(setup.gateway, "/turns").at(-1)?.body).toEqual(intent?.body);
+  });
+
+  it("preserves an unresolved session request when creation finishes while the session list is delayed", async () => {
+    const gateway = createFakeGateway();
+    let finishCreate = () => {};
+    let finishList = () => {};
+    const createReply = new Promise<void>((resolve) => { finishCreate = resolve; });
+    const listReply = new Promise<void>((resolve) => { finishList = resolve; });
+    let holdList = false;
+    const setup = rig({ gateway, fetch: async (url, init) => {
+      if (url === "/api/v1/sessions" && init.method === "POST") {
+        await createReply;
+        holdList = true;
+      } else if (url === "/api/v1/sessions" && init.method === "GET" && holdList) {
+        await listReply;
+      }
+      return gateway.fetch(url, init);
+    } });
+    await open(setup);
+    gateway.inject((call) => call.method === "POST" && call.url.endsWith("/turns"), { lose: "lost answer" }, 3);
+    expect(await setup.controller.submit("exact prompt\n")).toBe(false);
+    const intent = setup.controller.getSnapshot().action.intent;
+    const turn = gateway.state.turns[0];
+    if (turn === undefined) throw new Error("no turn");
+    turn.state = "terminal";
+    turn.outcome = "no_diff";
+    gateway.state.revision += 1;
+    setup.controller.select("psess-other");
+    const creation = setup.controller.createSession({ projectId: "proj", providerProfile: "prof", publicationMode: "review", hostCalls: 5, tokens: 500, durationSeconds: 30, readOnly: false });
+    setup.controller.select(SESSION_ID);
+    await setup.controller.refreshView();
+    finishCreate();
+    await flush();
+    try {
+      expect(setup.controller.getSnapshot().action).toMatchObject({ status: "unknown", intent });
+      expect(await setup.controller.submit("exact prompt\n")).toBe(false);
+      expect(posts(gateway, "/turns")).toHaveLength(3);
+      expect(gateway.state.turns).toHaveLength(1);
+    } finally {
+      finishList();
+      await creation;
+      setup.stores.forEach((store) => store.stop());
+    }
+    setup.controller.select(SESSION_ID);
+    expect(await setup.controller.retry()).toBe(true);
+    expect(posts(gateway, "/turns").at(-1)?.body).toEqual(intent?.body);
+    expect(gateway.state.turns).toHaveLength(1);
+  });
+
+  it("does not erase an unknown intent on dismiss", async () => {
+    const setup = await lostSubmit();
+    const intent = setup.controller.getSnapshot().action.intent;
+    setup.controller.dismiss();
+    expect(setup.controller.getSnapshot().action).toMatchObject({ status: "unknown", intent });
+    expect(await setup.controller.retry()).toBe(true);
+    expect(setup.gateway.state.turns).toHaveLength(1);
+  });
+
+  it("does not send if tab storage cannot retain the intent", async () => {
+    const setup = rig();
+    await open(setup);
+    setup.storage.set = () => { throw new Error("quota exceeded"); };
+    expect(await setup.controller.submit("fix it")).toBe(false);
+    expect(posts(setup.gateway, "/turns")).toHaveLength(0);
+    expect(setup.controller.getSnapshot().fault).toContain("No request was sent");
+    setup.stores.forEach((store) => store.stop());
+  });
+
+  it.each(["ignored write", "corrupt readback", "failed readback"])("refuses to send after a %s", async (failure) => {
+    const setup = rig();
+    await open(setup);
+    const get = setup.storage.get;
+    const set = setup.storage.set;
+    if (failure === "ignored write") setup.storage.set = () => {};
+    else {
+      setup.storage.set = (key, value) => {
+        set(key, value);
+        if (key === PENDING_ACTIONS_KEY) setup.storage.get = (name) => {
+          if (name !== PENDING_ACTIONS_KEY) return get(name);
+          if (failure === "failed readback") throw new Error("storage read failed");
+          return "[]";
+        };
+      };
+    }
+    expect(await setup.controller.submit("fix it")).toBe(false);
+    expect(posts(setup.gateway, "/turns")).toHaveLength(0);
+    expect(setup.controller.getSnapshot().fault).toContain("No request was sent");
+    setup.stores.forEach((store) => store.stop());
+  });
+
+  it("does not send an intent that cannot be restored within the request body bound", async () => {
+    const setup = rig();
+    await open(setup);
+    expect(await setup.controller.submit("x".repeat(64 * 1024))).toBe(false);
+    expect(posts(setup.gateway, "/turns")).toHaveLength(0);
+    setup.stores.forEach((store) => store.stop());
+  });
+
+  it("keeps unknown sticky after a later clean 503, including within automatic retries", async () => {
+    const setup = rig();
+    await open(setup);
+    setup.gateway.inject((call) => call.method === "POST", { lose: "lost answer" });
+    setup.gateway.inject((call) => call.method === "POST", { status: 503, body: { error: { code: "SERVICE_UNAVAILABLE" } } }, 5);
+    expect(await setup.controller.submit("fix it")).toBe(false);
+    expect(setup.controller.getSnapshot().action.status).toBe("unknown");
+    expect(await setup.controller.retry()).toBe(false);
+    expect(setup.controller.getSnapshot().action.status).toBe("unknown");
+    expect(await setup.controller.submit("another prompt")).toBe(false);
+    setup.stores.forEach((store) => store.stop());
+  });
+
+  it.each(["{broken", "null", "{}", '[{"sessionId":"psess-t1","intent":{"path":"https://evil.test","kind":"submit","key":"ck-x","body":{"csrf_token":"bad"}}}]', " ".repeat(1024 * 1024 + 1)])(
+    "ignores corrupt or oversized stored intents safely (%#)", async (value) => {
+      const setup = rig({ storage: memoryStorage({ "tbound.live.pending": value }) });
+      await open(setup);
+      expect(setup.controller.getSnapshot().action.status).toBe("idle");
+      expect(await setup.controller.retry()).toBe(false);
+      expect(posts(setup.gateway, "/turns")).toHaveLength(0);
+      setup.stores.forEach((store) => store.stop());
+    },
+  );
+});
+
 describe("live controller: cancel", () => {
   it("cancels the open turn on its path, with the displayed revision and a fresh key", async () => {
     const setup = rig({ gateway: createFakeGateway({ turns: [RUNNING] }) });
@@ -427,6 +586,23 @@ describe("live controller: reviewing a candidate", () => {
     expect(setup.controller.getSnapshot().candidate).toMatchObject({ status: "failed", message: "REVIEW_NOT_PENDING: closed" });
     await setup.controller.loadCandidate();
     expect(setup.controller.getSnapshot().candidate.status).toBe("ready");
+    setup.stores.forEach((store) => store.stop());
+  });
+
+  it("explains the service's explicit refusal of an oversized complete preview", async () => {
+    const setup = rig({ gateway: createFakeGateway({ turns: [RUNNING] }) });
+    await open(setup);
+    setup.gateway.inject((call) => call.url.endsWith("/candidate"), { status: 413, body: { error: { code: "CANDIDATE_TOO_LARGE" } } });
+    setup.gateway.awaitReview("sha256:cand1");
+    await flush();
+    expect(setup.controller.getSnapshot().candidate).toMatchObject({
+      status: "failed", message: expect.stringContaining("1 MiB response limit"),
+    });
+    expect(setup.controller.getSnapshot().candidate).toMatchObject({ message: expect.stringContaining("No paths were omitted") });
+    expect(setup.controller.getSnapshot().candidate).toMatchObject({ message: expect.stringContaining("Cancel turn") });
+    expect(setup.controller.getSnapshot().candidate).toMatchObject({ message: expect.stringContaining("discard") });
+    expect(await setup.controller.cancel()).toBe(true);
+    expect(posts(setup.gateway, "/cancel")[0]?.body).toMatchObject({ expected_revision: setup.gateway.state.revision - 1 });
     setup.stores.forEach((store) => store.stop());
   });
 });

@@ -55,10 +55,11 @@ const (
 	StatusError = "error"
 )
 
-// Transport-level error codes. Every other code is a catalog code from productsession.
+// Projection and transport error codes. Every other code is a catalog code from productsession.
 const (
 	CodeProtocolError      = "PROTOCOL_ERROR"
 	CodeServiceUnavailable = "SERVICE_UNAVAILABLE"
+	CodeCandidateTooLarge  = "CANDIDATE_TOO_LARGE"
 )
 
 var ErrProtocol = errors.New("product protocol frame is invalid")
@@ -145,7 +146,7 @@ type Response struct {
 	Candidate  *CandidateView `json:"candidate,omitempty"`
 }
 
-// Error codes are the catalog's stable codes, plus PROTOCOL_ERROR and SERVICE_UNAVAILABLE.
+// Error codes are the catalog's stable codes and the projection/transport codes above.
 type Error struct {
 	Code   string `json:"code"`
 	Detail string `json:"detail,omitempty"`
