@@ -125,6 +125,11 @@ Step 2 detail:
   - `PANEL-READY.md` holds the owner's live steps.
   - The old `F:/TBoundAssets/panel-prep/` is marked STALE; do not run it.
 - Next: the owner runs the live panel; the advisor signs; then the F14 freeze on FABIAN (owner step; `corpus-digest` needs the F14 pins).
+- Shared-fix ledger (thesis ↔ product):
+  - Product → thesis, done: the empty-delta recovery fix (product ba6f59e → ed395f0/3a4ff0c); the DENY continuation and the recovery record kind (892cc00).
+  - Thesis → product, owed: the product synced F14 up to 5f2d0a6 (product 7ceeff6). It still lacks the D09 denied settlement and its recovery (f483fad: ab14196, 64de3d2, b102670, ee70a76, tests).
+    - b102670 alone also fixes a live product bug: recovery refuses any historical promoted D09 receipt with a recorded output scope (`production_recovery_command_linux.go:393`).
+  - The panel/corpus tooling (5c1c835, 66a3dea) is thesis-only.
 - The F14 freeze, signing, guest install and evidence are owner steps on FABIAN after the merges and the panel prep.
 
 ## Working rules
