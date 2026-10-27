@@ -56,12 +56,16 @@ func newProductServiceHostProfile(cfg productServiceConfig) productServiceHost {
 			return err
 		}
 		for _, id := range env.Registration.ProviderProfiles {
-			if _, ok := productprovider.Lookup(id); !ok {
+			path, ok := productprovider.CredentialPath(id)
+			if !ok {
 				return fmt.Errorf("the registration names provider profile %q, which this build does not support", id)
+			}
+			if _, err := productHostFactory(id, path); err != nil {
+				return fmt.Errorf("provider credential for %q: %w", id, err)
 			}
 		}
 		for _, project := range env.Registration.Projects {
-			root, err := os.Open(env.ProjectRoots[project.ProjectID])
+			root, err := env.openProjectRoot(project.ProjectID)
 			if err != nil {
 				return err
 			}
@@ -142,12 +146,17 @@ func productHostXattr(cfg productServiceConfig, env *productTurnEnv) (workspace.
 		return none, err
 	}
 	// The private Store and Git trees under the state root and every managed project root are scanned.
-	roots := []string{env.StateRoot}
+	roots := map[string]string{env.StateRoot: ""}
 	for _, project := range env.Registration.Projects {
-		roots = append(roots, env.ProjectRoots[project.ProjectID])
+		roots[env.ProjectRoots[project.ProjectID]] = project.ProjectID
 	}
-	for _, path := range roots {
-		dir, err := os.Open(path)
+	for path, projectID := range roots {
+		var dir *os.File
+		if projectID == "" {
+			dir, err = os.Open(path)
+		} else {
+			dir, err = env.openProjectRoot(projectID)
+		}
 		if err != nil {
 			return none, err
 		}

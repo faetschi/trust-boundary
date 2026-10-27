@@ -125,6 +125,7 @@ func newProductHostFixture(t *testing.T, bash bool) *productServiceFixture {
 	original := productHostMeasureXattr
 	productHostMeasureXattr = func(*os.File) (piruntime.D09XattrVisibilityMeasurements, error) { return scanner, nil }
 	t.Cleanup(func() { productHostMeasureXattr = original })
+	routeProductProvider(t, f, nil)
 	return f
 }
 
@@ -585,6 +586,50 @@ func TestProductServiceHostRefusesAnInvalidPublicationFence(t *testing.T) {
 			}
 			if !strings.Contains(err.Error(), "publication fence") {
 				t.Fatalf("wrong refusal: %v", err)
+			}
+			if _, err := os.Stat(f.socketPath); !os.IsNotExist(err) {
+				t.Fatal("a refused service opened its socket")
+			}
+		})
+	}
+}
+
+func TestProductServiceHostRefusesCredentialsAndRootIdentityBeforeListening(t *testing.T) {
+	for _, invalid := range []string{"missing key", "insecure key", "wrong root"} {
+		t.Run(invalid, func(t *testing.T) {
+			f := newProductHostFixture(t, false)
+			routeProductProvider(t, f, newProductFakeProvider(t, nil))
+			key := filepath.Join(f.root, "credentials", productprovider.OpenCodeGo+".key")
+			want := "credential"
+			switch invalid {
+			case "missing key":
+				if err := os.Remove(key); err != nil {
+					t.Fatal(err)
+				}
+			case "insecure key":
+				if err := os.Chmod(key, 0640); err != nil {
+					t.Fatal(err)
+				}
+			case "wrong root":
+				want = "not its registered root"
+				replacement := filepath.Join(f.root, "replacement")
+				if err := os.Mkdir(replacement, 0700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Rename(filepath.Join(f.projectDir, "lost+found"), filepath.Join(replacement, "lost+found")); err != nil {
+					t.Fatal(err)
+				}
+				f.cfg.Projects[productDriverProject] = replacement
+			}
+			opts := f.options()
+			opts.Host = newProductServiceHostProfile(f.cfg)
+			svc, err := startProductService(f.cfg, opts)
+			if err == nil {
+				_ = svc.Shutdown()
+				t.Fatal("unverified credentials or root identity reached a listening socket")
+			}
+			if !strings.Contains(err.Error(), want) || strings.Contains(err.Error(), productHostTestKey) {
+				t.Fatalf("wrong or unredacted refusal: %v", err)
 			}
 			if _, err := os.Stat(f.socketPath); !os.IsNotExist(err) {
 				t.Fatal("a refused service opened its socket")
