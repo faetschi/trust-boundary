@@ -119,49 +119,60 @@ func verifyProductGit(path, digest string, owners []uint32) (productHostFile, er
 	return productHostFile{UID: st.Uid, Mode: info.Mode().Perm()}, nil
 }
 
-// productInputError names which host input a refusal belongs to, so a report can attribute it.
-type productInputError struct {
-	input string
-	err   error
+// productCalibrationCheck is the outcome of checking the signed xattr calibration. FileErr and
+// SignatureErr attribute a refusal to the calibration file or to its signature, so a report can name the
+// input that is wrong; both files are read even when one fails.
+type productCalibrationCheck struct {
+	Calibration           piruntime.D09XattrEnumerationCalibration
+	File, SignatureFile   productHostFile
+	FileErr, SignatureErr error
 }
 
-func (e productInputError) Error() string { return e.err.Error() }
-func (e productInputError) Unwrap() error { return e.err }
+// Err is the first refusal, calibration file first.
+func (c productCalibrationCheck) Err() error {
+	if c.FileErr != nil {
+		return c.FileErr
+	}
+	return c.SignatureErr
+}
 
-const (
-	productInputCalibration          = "calibration"
-	productInputCalibrationSignature = "calibration signature"
-)
-
-// verifyProductCalibration checks the signed xattr calibration: both files protected, the signature
+// checkProductCalibration checks the signed xattr calibration: both files protected, the signature
 // verifying under the registration public key over the canonical bytes, and the managed-rw source profile.
-// The signature sits at the calibration path plus ".sig". A refusal is a productInputError.
-func verifyProductCalibration(path string, publicKey ed25519.PublicKey, owners []uint32) (calibration piruntime.D09XattrEnumerationCalibration, file, signatureFile productHostFile, err error) {
-	var none piruntime.D09XattrEnumerationCalibration
-	fail := func(input, format string, args ...any) error {
-		return productInputError{input: input, err: fmt.Errorf(format, args...)}
+// The signature sits at the calibration path plus ".sig".
+func checkProductCalibration(path string, publicKey ed25519.PublicKey, owners []uint32) productCalibrationCheck {
+	var c productCalibrationCheck
+	var err error
+	if c.File, err = readProtectedHostFile(path, 64<<10, owners); err != nil {
+		c.FileErr = fmt.Errorf("read the xattr calibration: %w", err)
 	}
-	if file, err = readProtectedHostFile(path, 64<<10, owners); err != nil {
-		return none, file, signatureFile, fail(productInputCalibration, "read the xattr calibration: %w", err)
+	var signature []byte
+	if c.SignatureFile, err = readProtectedHostFile(path+".sig", 1024, owners); err == nil {
+		signature, err = base64.StdEncoding.DecodeString(strings.TrimSpace(string(c.SignatureFile.Raw)))
 	}
-	if signatureFile, err = readProtectedHostFile(path+".sig", 1024, owners); err != nil {
-		return none, file, signatureFile, fail(productInputCalibrationSignature, "read the xattr calibration signature: %w", err)
-	}
-	signature, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(signatureFile.Raw)))
 	if err != nil {
-		return none, file, signatureFile, fail(productInputCalibrationSignature, "read the xattr calibration signature: %w", err)
+		c.SignatureErr = fmt.Errorf("read the xattr calibration signature: %w", err)
 	}
-	if calibration, err = piruntime.VerifyD09XattrEnumerationCalibration(file.Raw, signature, publicKey); err != nil {
-		input := productInputCalibration
-		if errors.Is(err, piruntime.ErrD09XattrCalibrationSignature) {
-			input = productInputCalibrationSignature
-		}
-		return none, file, signatureFile, fail(input, "verify the xattr calibration: %w", err)
+	if c.Err() != nil {
+		return c
 	}
-	if calibration.SourceAccessProfile != piruntime.D09XattrManagedRWSourceProfile {
-		return none, file, signatureFile, fail(productInputCalibration, "the xattr calibration must cover managed writable roots")
+	calibration, err := piruntime.VerifyD09XattrEnumerationCalibration(c.File.Raw, signature, publicKey)
+	switch {
+	case errors.Is(err, piruntime.ErrD09XattrCalibrationSignature):
+		c.SignatureErr = fmt.Errorf("verify the xattr calibration: %w", err)
+	case err != nil:
+		c.FileErr = fmt.Errorf("verify the xattr calibration: %w", err)
+	case calibration.SourceAccessProfile != piruntime.D09XattrManagedRWSourceProfile:
+		c.FileErr = errors.New("the xattr calibration must cover managed writable roots")
+	default:
+		c.Calibration = calibration
 	}
-	return calibration, file, signatureFile, nil
+	return c
+}
+
+// verifyProductCalibration is checkProductCalibration for a caller that needs one verdict.
+func verifyProductCalibration(path string, publicKey ed25519.PublicKey, owners []uint32) (piruntime.D09XattrEnumerationCalibration, productHostFile, productHostFile, error) {
+	c := checkProductCalibration(path, publicKey, owners)
+	return c.Calibration, c.File, c.SignatureFile, c.Err()
 }
 
 // productScannerMatchesCalibration is the identity rule shared by the service's live scanner check and the

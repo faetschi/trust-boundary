@@ -50,12 +50,17 @@ func Setup(env Env, cfg Config, binary string) (Report, error) {
 				ErrUnsupportedHost, strings.Join(failed, "; "))
 		}
 	}
-	files, err := h.desiredFiles(cfg, binary)
+	files, summary, err := h.desiredFiles(cfg, binary)
 	if err != nil {
 		return *h.rep, err
 	}
 	accounts, err := h.planAccounts(cfg)
 	if err != nil {
+		return *h.rep, err
+	}
+	// Every host input is checked, with the key this run installs and the service UID if the account exists,
+	// before the first write. A dry run reports the same refusal.
+	if err := h.refuseBadHostInputs(cfg, summary, files[RegistrationPublicKeyPath], cfg.RegistrationPublicKey); err != nil {
 		return *h.rep, err
 	}
 	plan := accounts
@@ -125,45 +130,45 @@ func readBounded(file string, limit int64) ([]byte, error) {
 }
 
 // desiredFiles builds the exact content of every installed file, verifying the registration first.
-func (h *host) desiredFiles(cfg Config, binary string) (map[string][]byte, error) {
+func (h *host) desiredFiles(cfg Config, binary string) (map[string][]byte, RegistrationSummary, error) {
 	if h.env.VerifyRegistration == nil {
-		return nil, errors.New("no registration verifier configured")
+		return nil, RegistrationSummary{}, errors.New("no registration verifier configured")
 	}
 	registration, err := readSource(cfg.Registration)
 	if err != nil {
-		return nil, err
+		return nil, RegistrationSummary{}, err
 	}
 	signature, err := readSource(cfg.RegistrationSignature)
 	if err != nil {
-		return nil, err
+		return nil, RegistrationSummary{}, err
 	}
 	key, err := readSource(cfg.RegistrationPublicKey)
 	if err != nil {
-		return nil, err
+		return nil, RegistrationSummary{}, err
 	}
 	summary, err := h.env.VerifyRegistration(registration, signature, key)
 	if err != nil {
-		return nil, refuse("the registration does not verify under the given public key: %v", err)
+		return nil, RegistrationSummary{}, refuse("the registration does not verify under the given public key: %v", err)
 	}
 	if want, got := cfg.projectIDs(), slices.Sorted(slices.Values(summary.Projects)); !slices.Equal(want, got) {
-		return nil, refuse("projects [%s] must name exactly the registered projects [%s]", joinIDs(want), joinIDs(got))
+		return nil, RegistrationSummary{}, refuse("projects [%s] must name exactly the registered projects [%s]", joinIDs(want), joinIDs(got))
 	}
 	serviceConfig, err := cfg.serviceConfigJSON()
 	if err != nil {
-		return nil, err
+		return nil, RegistrationSummary{}, err
 	}
 	if h.env.ValidateServiceConfig != nil {
 		if err := h.env.ValidateServiceConfig(serviceConfig); err != nil {
-			return nil, refuse("the service would refuse this configuration: %v", err)
+			return nil, RegistrationSummary{}, refuse("the service would refuse this configuration: %v", err)
 		}
 	}
 	installed, err := cfg.installedJSON()
 	if err != nil {
-		return nil, err
+		return nil, RegistrationSummary{}, err
 	}
 	unit := RenderUnit()
 	if err := ValidateUnit(unit); err != nil {
-		return nil, err
+		return nil, RegistrationSummary{}, err
 	}
 	files := map[string][]byte{
 		RegistrationPath: registration, RegistrationSignaturePath: signature, RegistrationPublicKeyPath: key,
@@ -171,10 +176,10 @@ func (h *host) desiredFiles(cfg Config, binary string) (map[string][]byte, error
 	}
 	if binary != "" {
 		if files[BinaryPath], err = readBounded(binary, maxBinaryBytes); err != nil {
-			return nil, err
+			return nil, RegistrationSummary{}, err
 		}
 	}
-	return files, nil
+	return files, summary, nil
 }
 
 // planDir converges a directory: create it, or correct a differing mode or owner.

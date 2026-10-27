@@ -279,12 +279,13 @@ func registrationSign(out io.Writer, regFile, keyFile, outFile string) error {
 
 // registrationSummary describes a verified registration for people.
 func registrationSummary(r productsession.Registration) productsetup.RegistrationSummary {
-	s := productsetup.RegistrationSummary{ID: r.RegistrationID, Digest: r.Digest, Profiles: r.ProviderProfiles}
+	s := productsetup.RegistrationSummary{ID: r.RegistrationID, Digest: r.Digest, Profiles: r.ProviderProfiles, PolicyDigests: map[string]string{}}
 	var b strings.Builder
 	fmt.Fprintf(&b, "registration %s (service identity %s)\ndigest %s\n", r.RegistrationID, r.ServiceIdentity, r.Digest)
 	fmt.Fprintf(&b, "principals (UIDs): %v\nprovider profiles: %s\n", r.AllowedPrincipals, strings.Join(r.ProviderProfiles, ", "))
 	for _, p := range r.Projects {
 		s.Projects = append(s.Projects, p.ProjectID)
+		s.PolicyDigests[p.ProjectID] = p.PolicyDigest
 		scope := "exact-path admission"
 		if p.Scope != nil {
 			scope = fmt.Sprintf("scope: %d writable, %d read-only, %d protected", len(p.Scope.Writable), len(p.Scope.ReadOnly), len(p.Scope.Protected))

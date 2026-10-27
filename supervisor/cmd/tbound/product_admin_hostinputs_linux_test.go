@@ -162,7 +162,8 @@ func TestProductAdminSetupRefusesEachBadHostInputBeforeAnyWrite(t *testing.T) {
 					t.Fatalf("setup %v: want exit 2 refusing %q for %q, got exit %d: %v\n%s", extra, breakage.input, breakage.want, adminExit(err), err, out)
 				}
 				for _, other := range adminHostInputNames {
-					if other != breakage.input && strings.Contains(err.Error(), other+": ") && !strings.HasPrefix(breakage.input, other) {
+					bothProjectsAreBash := strings.Contains(breakage.want, "allows bash") // the registration gives both projects one policy digest
+					if !bothProjectsAreBash && other != breakage.input && strings.Contains(err.Error(), other+": ") && !strings.HasPrefix(breakage.input, other) {
 						t.Errorf("setup %v blamed %q for damage to %q: %v", extra, other, breakage.input, err)
 					}
 				}

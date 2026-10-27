@@ -143,7 +143,7 @@ func productAdminEnv(root string, dryRun, replace, yes bool, out, stderr io.Writ
 	env := productsetup.Env{
 		Root: root, Live: live, DryRun: dryRun, Replace: replace, RequirePrereqs: root == "/",
 		Prereqs: productAdminPrereqs, VerifyRegistration: verifyRegistrationBytes,
-		ValidateServiceConfig: validateServiceConfigBytes, Turns: productAdminTurnsFor(root),
+		ValidateServiceConfig: validateServiceConfigBytes, CheckHostInputs: checkProductHostInputs, Turns: productAdminTurnsFor(root),
 		RunSelfTest: productAdminRunSelfTest(root),
 	}
 	if live {

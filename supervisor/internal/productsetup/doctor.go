@@ -102,6 +102,9 @@ func Doctor(env Env, selfTest bool) DoctorReport {
 		add("socket", Pass, SocketPath+" accepts connections", "")
 	}
 	summary, ok := h.registrationCheck(&rep)
+	if ok {
+		rep.Checks = append(rep.Checks, h.installedHostInputChecks(summary)...)
+	}
 	if ok && env.CredentialStatus != nil {
 		for _, profile := range summary.Profiles {
 			status, err := env.CredentialStatus(profile)
