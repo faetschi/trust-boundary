@@ -20,7 +20,7 @@ import (
 func (h *adminHost) replacementConfig() string {
 	h.t.Helper()
 	template := filepath.Join(h.dir, "template-2.json")
-	args := adminInitArgs(template)
+	args := adminInitArgsFor(template, adminPolicyDigest(false), h.gitDigest)
 	args[slices.Index(args, "--registration-id")+1] = "reg-2"
 	mustAdmin(h.t, args...)
 	reg := filepath.Join(h.dir, "registration-2.json")
