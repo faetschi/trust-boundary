@@ -377,6 +377,24 @@ describe("live controller: unresolved intent recovery", () => {
     expect(setup.gateway.state.turns).toHaveLength(1);
   });
 
+  it("does not send if tab storage cannot retain the intent", async () => {
+    const setup = rig();
+    await open(setup);
+    setup.storage.set = () => { throw new Error("quota exceeded"); };
+    expect(await setup.controller.submit("fix it")).toBe(false);
+    expect(posts(setup.gateway, "/turns")).toHaveLength(0);
+    expect(setup.controller.getSnapshot().fault).toContain("No request was sent");
+    setup.stores.forEach((store) => store.stop());
+  });
+
+  it("does not send an intent that cannot be restored within the request body bound", async () => {
+    const setup = rig();
+    await open(setup);
+    expect(await setup.controller.submit("x".repeat(64 * 1024))).toBe(false);
+    expect(posts(setup.gateway, "/turns")).toHaveLength(0);
+    setup.stores.forEach((store) => store.stop());
+  });
+
   it("keeps unknown sticky after a later clean 503, including within automatic retries", async () => {
     const setup = rig();
     await open(setup);
