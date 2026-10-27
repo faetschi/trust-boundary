@@ -40,8 +40,13 @@ type RegistrationSummary struct {
 // OpenTurn is a catalog turn that is not terminal.
 type OpenTurn struct{ ID, State string }
 
-// StateAwaitingReview is the one open state an update may leave: the next start discards it.
-const StateAwaitingReview = "awaiting_review"
+// StateAwaitingReview is the one open state an update may leave: the next start discards it. StateUnknown
+// is a turn whose outcome cannot be established: no start settles it, an update ignores it, and it still
+// blocks any registration change.
+const (
+	StateAwaitingReview = "awaiting_review"
+	StateUnknown        = "unknown"
+)
 
 // Env is the target and every seam. Root prefixes each host path: "" or "/" is the live host and any
 // other value is a test root. Live applies owners and runs system commands for real; without it the
@@ -67,8 +72,9 @@ type Env struct {
 	Exec func(name string, args ...string) ([]byte, error)
 	// Chown changes an owner when Live, using the validated file's /proc/self/fd path. Nil uses fchown.
 	Chown func(path string, uid, gid int) error
-	// Turns lists the catalog's non-terminal turns, opened after the service stopped. Required by
-	// Update, Rollback and Uninstall.
+	// Turns lists the turns of the catalog that fence a registration change: the unresolved ones and the ones
+	// with an unknown outcome. The catalog is read under the installed registration with the service stopped.
+	// Required by Update, Rollback, Uninstall, and Setup when it replaces a registration.
 	Turns func() ([]OpenTurn, error)
 	// SelfTestHook runs the installed binary's self-test after a swap. Nil records it and treats it as
 	// not run. ErrSelfTestNotConfigured is not a failure.

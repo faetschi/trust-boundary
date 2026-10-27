@@ -92,6 +92,9 @@ func Setup(env Env, cfg Config, binary string) (Report, error) {
 	if len(refused) > 0 {
 		return *h.rep, refuse("%s; nothing was changed", strings.Join(refused, "; "))
 	}
+	if err := h.refuseRegistrationChangeWhileTurnsAreUnsettled(summary); err != nil {
+		return *h.rep, err
+	}
 	for _, p := range plan {
 		if p.apply == nil || p.Status == "unchanged" {
 			continue
@@ -339,4 +342,44 @@ func (h *host) planAccounts(cfg Config) ([]planned, error) {
 		}
 		return h.recordUser(cfg.ServiceUID, id)
 	}}), nil
+}
+
+// refuseRegistrationChangeWhileTurnsAreUnsettled opens the catalog under the installed registration and
+// refuses a registration with another digest while any turn is unresolved or unknown. The service refuses
+// to start on a changed digest in that case (PREDECESSOR_UNRESOLVED) before its restart reconciliation
+// runs, so nothing could settle those turns afterwards. It runs before the first write, in a dry run too,
+// and only when an installed registration and a catalog exist.
+func (h *host) refuseRegistrationChangeWhileTurnsAreUnsettled(next RegistrationSummary) error {
+	read := func(logical string) ([]byte, error) { return readSource(h.real(logical)) }
+	registration, regErr := read(RegistrationPath)
+	if errors.Is(regErr, os.ErrNotExist) {
+		return nil
+	}
+	signature, sigErr := read(RegistrationSignaturePath)
+	key, keyErr := read(RegistrationPublicKeyPath)
+	if regErr == nil && sigErr == nil && keyErr == nil {
+		if installed, err := h.env.VerifyRegistration(registration, signature, key); err == nil && installed.Digest == next.Digest {
+			return nil
+		}
+	}
+	if _, err := os.Lstat(h.real(CatalogPath)); errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if h.env.Turns == nil {
+		return refuse("no catalog check configured; refusing to replace the registration; nothing was changed")
+	}
+	turns, err := h.env.Turns()
+	if err != nil {
+		return refuse("the catalog cannot be opened under the installed registration, so its turns cannot be checked before the replacement (stop the service first): %v; nothing was changed", err)
+	}
+	if len(turns) == 0 {
+		h.step("catalog", CatalogPath, "unchanged", "no unsettled turn under the installed registration")
+		return nil
+	}
+	names := make([]string, len(turns))
+	for i, t := range turns {
+		names[i] = t.ID + " (" + t.State + ")"
+	}
+	return refuse("the replacement registration would be refused at the next start while these turns are unsettled under the installed one: %s. Start the service under the installed registration so its restart reconciliation settles them, stop it, and retry (a turn with an unknown outcome stays blocked); nothing was changed",
+		strings.Join(names, ", "))
 }

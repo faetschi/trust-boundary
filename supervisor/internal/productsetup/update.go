@@ -209,9 +209,11 @@ func (h *host) stopForSwap(what string, discard func()) (abort func(error) error
 	var unresolved []string
 	pending := 0
 	for _, t := range turns {
-		if t.State == StateAwaitingReview {
+		switch t.State {
+		case StateAwaitingReview:
 			pending++
-		} else {
+		case StateUnknown: // no start settles it, and a swap leaves the registration alone
+		default:
 			unresolved = append(unresolved, t.ID+" ("+t.State+")")
 		}
 	}
@@ -476,12 +478,21 @@ func Uninstall(env Env, purge bool) (Report, error) {
 				return *h.rep, fmt.Errorf("the catalog could not be read; refusing purge: %w", err)
 			}
 			h.note("the catalog could not be read: %v", err)
-		} else if len(turns) > 0 {
-			ids := make([]string, len(turns))
-			for i, t := range turns {
-				ids[i] = t.ID + " (" + t.State + ")"
+		} else {
+			var ids, blocked []string
+			for _, t := range turns {
+				if name := t.ID + " (" + t.State + ")"; t.State == StateUnknown {
+					blocked = append(blocked, name)
+				} else {
+					ids = append(ids, name)
+				}
 			}
-			h.note("%d unresolved turn(s) stay in the catalog: %s. Start the service again to reconcile them before relying on the evidence", len(turns), strings.Join(ids, ", "))
+			if len(ids) > 0 {
+				h.note("%d unresolved turn(s) stay in the catalog: %s. Start the service again to reconcile them before relying on the evidence", len(ids), strings.Join(ids, ", "))
+			}
+			if len(blocked) > 0 {
+				h.note("%d turn(s) with an unknown outcome stay in the catalog and stay blocked: %s", len(blocked), strings.Join(blocked, ", "))
+			}
 		}
 	}
 	unitGone, err := h.remove(UnitPath, false)

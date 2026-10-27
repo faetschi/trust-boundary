@@ -228,8 +228,8 @@ func validateServiceConfigBytes(data []byte) error {
 	return cfg.validate(nil)
 }
 
-// productAdminTurns opens the installed catalog, which needs the service stopped, and lists the turns
-// that are not terminal. A host that never ran the service has no catalog and no turns.
+// productAdminTurns reads the installed catalog, which needs the service stopped, without appending to it, and lists the turns
+// that fence a registration change (unresolved or unknown). A host that never ran the service has no catalog and no turns.
 func productAdminTurns(root string) func() ([]productsetup.OpenTurn, error) {
 	return func() ([]productsetup.OpenTurn, error) {
 		real := func(p string) string { return filepath.Join(root, p) }
@@ -241,13 +241,12 @@ func productAdminTurns(root string) func() ([]productsetup.OpenTurn, error) {
 		if err != nil {
 			return nil, err
 		}
-		catalog, err := productsession.Open(real(productsetup.CatalogPath), registration)
+		unsettled, err := productsession.UnsettledTurns(real(productsetup.CatalogPath), registration)
 		if err != nil {
 			return nil, err
 		}
-		defer catalog.Close()
 		var turns []productsetup.OpenTurn
-		for _, t := range catalog.UnresolvedTurns() {
+		for _, t := range unsettled {
 			turns = append(turns, productsetup.OpenTurn{ID: t.ID, State: string(t.State)})
 		}
 		return turns, nil
