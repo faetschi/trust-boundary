@@ -248,3 +248,33 @@ func TestUpdateInstallsAndExecutesOnlyTheBytesItVerified(t *testing.T) {
 		t.Fatal("the swapped file was executed")
 	}
 }
+
+func TestUpdateStagesAtMostTheDeclaredSizePlusOneByteOfASourceThatGrew(t *testing.T) {
+	f := newFixture(t)
+	f.installed()
+	f.env.Turns = func() ([]OpenTurn, error) { return nil, nil }
+	runs := f.executingSelfTest()
+	candidate := f.newBinary("#!/bin/sh\nexit 0\n")
+	declared := int64(len("#!/bin/sh\nexit 0\n"))
+	// The file keeps growing after the manifest was signed: an unbounded copy would stage all of it.
+	if err := os.WriteFile(candidate.Binary, []byte("#!/bin/sh\nexit 0\n"+strings.Repeat("# padding\n", 1<<16)), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	staged := int64(-1)
+	interruptHook = func(step string) {
+		if info, err := os.Lstat(f.path(stagedBinaryPath)); step == "staged" && err == nil {
+			staged = info.Size()
+		}
+	}
+	t.Cleanup(func() { interruptHook = nil })
+	_, err := Update(f.env, candidate)
+	if !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "manifest") {
+		t.Fatalf("a source larger than the manifest declares was not refused: %v", err)
+	}
+	if staged != declared+1 {
+		t.Fatalf("the staged copy is %d bytes, want the declared %d plus one", staged, declared)
+	}
+	if f.read(BinaryPath) != "binary v1" || *runs != 0 {
+		t.Fatalf("the refused candidate was installed or executed: %q, %d self-tests", f.read(BinaryPath), *runs)
+	}
+}

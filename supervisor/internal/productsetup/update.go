@@ -134,6 +134,7 @@ func Update(env Env, candidate Candidate) (Report, error) {
 		if err := h.copyAtomic(source, stagedBinaryPath, 0o755); err != nil {
 			return *h.rep, fmt.Errorf("stage the binary: %w", err)
 		}
+		interrupt("staged")
 		if verified, err = h.managedSource(stagedBinaryPath, ownRoot, 0o755); err != nil {
 			return *h.rep, err
 		}
