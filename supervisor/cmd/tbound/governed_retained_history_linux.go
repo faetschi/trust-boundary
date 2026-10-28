@@ -61,13 +61,21 @@ func (h *governedRetainedHistory) contains(sequence uint64) bool {
 func (h *governedRetainedHistory) verifyDecision(decision delta.PolicyDecision, binding delta.TransitionBinding,
 	live delta.DecisionVerifier) error {
 	if h.contains(binding.Sequence) {
-		retained := h.transitions[binding.Sequence-1]
-		if decision != retained.Decision || !reflect.DeepEqual(binding, governedTransitionBinding(retained)) {
-			return ErrGovernedSessionEvidence
-		}
-		return nil
+		return h.verifyRetained(decision, binding)
 	}
 	return live(decision, binding)
+}
+
+// verifyRetained accepts a frozen sequence only when its decision and every binding field are exactly the retained ones.
+func (h *governedRetainedHistory) verifyRetained(decision delta.PolicyDecision, binding delta.TransitionBinding) error {
+	if !h.contains(binding.Sequence) {
+		return ErrGovernedSessionEvidence
+	}
+	retained := h.transitions[binding.Sequence-1]
+	if decision != retained.Decision || !reflect.DeepEqual(binding, governedTransitionBinding(retained)) {
+		return ErrGovernedSessionEvidence
+	}
+	return nil
 }
 
 func (h *governedRetainedHistory) verifyOrigin(bundle sessionrepo.EvidenceBundle, transition delta.Transition,

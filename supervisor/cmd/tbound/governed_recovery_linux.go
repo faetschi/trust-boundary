@@ -463,6 +463,7 @@ func (c *governedRecoveryCandidate) Activate(ctx context.Context) (*governedReco
 	if err != nil {
 		return nil, err
 	}
+	authority.retained = history
 	liveOptions.VerifyDecision = func(decision delta.PolicyDecision, binding delta.TransitionBinding) error {
 		return history.verifyDecision(decision, binding, authority.VerifyDecision)
 	}
