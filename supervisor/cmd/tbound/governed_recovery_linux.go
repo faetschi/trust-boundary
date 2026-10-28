@@ -829,6 +829,11 @@ func observedRecoveryPins(previous workflowrecovery.Pins, previousHead string,
 				observed.PendingCallDisposition = workflowrecovery.PendingCallTerminal
 			}
 		}
+		// An earlier recovery retired this captured call; its transcript still counts it but it is no longer pending.
+		if reservation := observed.HostCallReservation; reservation != nil && reservation.CapturedCall != nil &&
+			reservation.CapturedCall.Disposition == workflowrecovery.CapturedCallRetired {
+			observed.PendingCallDisposition = workflowrecovery.PendingCallRetired
+		}
 	}
 	if unleasedCall != nil {
 		// The host has externally retired an unleased captured call. Its retirement
