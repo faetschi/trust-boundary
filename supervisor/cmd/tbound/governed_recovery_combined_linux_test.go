@@ -844,7 +844,12 @@ func combinedRecoveryRecover(t *testing.T, root, step, phase string, capture boo
 				}
 				result.Captured = true
 			}
-			defer session.Close()
+			// The captured-call crash below exits with os.Exit, which skips this close on purpose.
+			defer func() {
+				if err := session.Close(); err != nil {
+					t.Errorf("close recovered session: %v", err)
+				}
+			}()
 		}
 	}
 	// Observe the durable checkpoint and the retained crash evidence from this fresh process.
