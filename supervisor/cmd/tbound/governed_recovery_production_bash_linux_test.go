@@ -138,6 +138,7 @@ func combinedRecoveryPublish(t *testing.T, root string, session *governedRecover
 	sourceBinding := "sha256:" + strings.Repeat("d", 64)
 	_, _, proof := productionProofFixture()
 	proof.TemplateDigest, proof.LauncherProcessPID = profile.ContainmentProfileDigest, 4242
+	proof.ImageDigest, proof.ImageRef = template.ExpectedImageDigest, "registry.invalid/tbound@"+template.ExpectedImageDigest
 	lifecycle := settledWorkerLifecycle(g1SettledWorker, true, nil)
 	lifecycle.markTurnCompleted()
 	if err := journalProductionLaunchProof(proofJournal, lifecycle, sessionID, sessionID, combinedRecoveryWorkflow,
@@ -154,6 +155,24 @@ func combinedRecoveryPublish(t *testing.T, root string, session *governedRecover
 		t.Fatalf("publication Bash checks refused before the live-root permit: %v", err)
 	}
 	return combinedProductionStop
+}
+
+// combinedProductionProfile is the production profile and D09 template of the production-bash scenario. Their provider
+// profile, runtime and image pins are the combined harness's own constants, which the production profile check of
+// recovery compares against the request. The containment digest follows the template.
+func combinedProductionProfile(t *testing.T) (piruntime.HostProfile, piruntime.D09CellTemplate) {
+	t.Helper()
+	profile, template := newBashRunProfile(t)
+	profile.ProviderProfile = combinedRecoveryProfile
+	profile.ProviderProfileDigest = digestBytes([]byte("combined-recovery-provider-profile/v1"))
+	profile.PiRuntimeBundleDigest = digestBytes([]byte("combined-recovery-runtime/v1"))
+	template.ExpectedImageDigest = digestBytes([]byte("combined-recovery-image/v1"))
+	templateDigest, err := template.Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile.ContainmentProfileDigest = templateDigest
+	return profile, template
 }
 
 // combinedRecoveryTerminalOrigin resolves the terminal lease of the activated session's history. The expected origin

@@ -462,7 +462,7 @@ func combinedRecoveryOriginal(t *testing.T, root, step string, sc combinedRecove
 		if err != nil {
 			t.Fatal(err)
 		}
-		productionProfile, d09Template = newBashRunProfile(t)
+		productionProfile, d09Template = combinedProductionProfile(t)
 		production = combinedProductionRunner(t, commandJournal, productionProfile, d09Template,
 			combinedOriginalSession, combinedOriginalConversation)
 		runner = production
@@ -814,7 +814,7 @@ func combinedRecoveryRecover(t *testing.T, root, step, phase string, capture boo
 	var productionProfile piruntime.HostProfile
 	var d09Template piruntime.D09CellTemplate
 	if sc.productionBash {
-		productionProfile, d09Template = newBashRunProfile(t)
+		productionProfile, d09Template = combinedProductionProfile(t)
 		commandJournal, commandHistories = combinedRecoveryCommandHistory(t, p.commandJournal,
 			combinedOriginalSession, combinedOriginalConversation)
 		production = combinedProductionRunner(t, commandJournal, productionProfile, d09Template, newSession, newConversation)
