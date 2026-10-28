@@ -199,6 +199,11 @@ type StoreReplayVerifier interface {
 	VerifyAdmissionDenial(ProviderAdmissionDenialBinding) error
 }
 
+// ReplayRestarter is implemented by a StoreReplayVerifier that keeps state through one replay pass. ReplayTranscript
+// restarts it before every pass, so a verifier that serves a second pass over the same journal, as a retirement
+// append does, starts from the pinned start instead of the tip the first pass reached.
+type ReplayRestarter interface{ RestartReplay() }
+
 // TranscriptProjection contains only bounded status, identity and commitment
 // data. It never exposes replayable messages, prompts, provider responses,
 // proposals, arguments, or tool output. Digests can reveal equality and may be
@@ -290,6 +295,9 @@ func ReplayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 	}
 	if len(trace.Effects) != 0 {
 		return TranscriptProjection{}, replayError("provider journal unexpectedly contains effect traces")
+	}
+	if restarter, ok := verifier.(ReplayRestarter); ok && hasReplayVerifier(verifier) {
+		restarter.RestartReplay()
 	}
 
 	cfg := pins.Config

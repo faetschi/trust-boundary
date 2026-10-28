@@ -300,13 +300,16 @@ func replayGovernedTranscript(providerJournal, storeJournal *audit.Journal, stor
 	return result, verifier, nil
 }
 
-func (v *governedStoreReplayVerifier) resetForReadOnlyReplay() {
+// RestartReplay clears the state one replay pass leaves behind, so the verifier can serve another pass over the same
+// journal. providerbridge.ReplayTranscript calls it before every pass.
+func (v *governedStoreReplayVerifier) RestartReplay() {
 	if v == nil {
 		return
 	}
 	v.usedAuth = make(map[governedReplayDecisionKey]bool)
 	v.decisions = make(map[governedReplayDecisionKey]*governedReplayDecisionEvidence)
 	v.lastAuthSequence = v.initialAuthorizationSequence
+	v.providerTipGeneration, v.providerTipTree = v.pins.Provider.Config.InitialGenerationID, v.pins.Provider.Config.InitialTreeDigest
 	v.called = false
 }
 

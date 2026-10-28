@@ -635,3 +635,35 @@ func openRecoveryTestJournal(t *testing.T, path string) *audit.Journal {
 }
 
 var _ StoreReplayVerifier = (*replayVerifierFixture)(nil)
+
+type restartCountingVerifier struct {
+	replayVerifierFixture
+	restarts int
+}
+
+func (v *restartCountingVerifier) RestartReplay() { v.restarts++ }
+
+// The unleased retirement replays the journal before and after its append with one verifier, so a verifier that
+// keeps state through a pass must be restarted before each of the two passes.
+func TestRetirementRestartsAStatefulVerifierBeforeEachReplayPass(t *testing.T) {
+	cfg := recoveryTestConfig()
+	journal := openRecoveryTestJournal(t, filepath.Join(t.TempDir(), "provider-restart.audit"))
+	conversation, err := newWithDoer(cfg, ApprovedModel, &fixtureDoer{responses: []fixtureResponse{
+		{responseID: "response-restart", callID: "call-restart", tool: "write", arguments: json.RawMessage(`{"path":"a.txt","content":"x"}`)},
+	}}, journal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := conversation.AdmitPrompt("task-restart", "write a file"); err != nil {
+		t.Fatal(err)
+	}
+	if turn, err := conversation.NextTurn(context.Background()); err != nil || turn.ToolCall == nil {
+		t.Fatalf("captured call=%+v err=%v", turn, err)
+	}
+	verifier := &restartCountingVerifier{}
+	pins := RecoveryPins{Config: cfg, Model: ApprovedModel, Policy: recoveryTestPolicy(t, true),
+		PreviousOwnerEpoch: 2, RetirementOwnerEpoch: 3, RetirementVerifier: &retirementVerifierFixture{}}
+	if _, err := AppendUnleasedProviderCallRetirement(journal, pins, verifier); err != nil || verifier.restarts != 2 {
+		t.Fatalf("unleased retirement restarted the verifier %d times, want once per replay pass (2): %v", verifier.restarts, err)
+	}
+}
