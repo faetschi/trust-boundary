@@ -401,8 +401,8 @@ func sameDurableTransition(left, right delta.Transition) bool {
 // durableMutationSummary encodes a strict-JSON view of a committed mutation. It
 // deliberately contains no containment, publication, or provider claim. For a
 // Bash lease it also reports the observed command exit code and the runner's
-// descriptive profile; the containment status is a fixed, honest
-// "not-established" because the session repository never proves containment.
+// descriptive profile and the released stream projections; the containment status
+// is a fixed, honest "not-established" because the session repository never proves containment.
 type durableMutationSummaryPayload struct {
 	Tool       string                   `json:"tool"`
 	Generation durableGenerationSummary `json:"generation"`
@@ -424,12 +424,52 @@ type durableTransitionSummary struct {
 
 // durableCommandSummary reports the settled command result. CommandRunnerProfile
 // mirrors the profile the store records in its operation evidence; the
-// containment status is always "not-established".
+// containment status is always "not-established". Stdout and Stderr are the
+// released projection of the settled streams (durableCommandStreamProjection).
 type durableCommandSummary struct {
 	ExitCode                 int    `json:"exit_code"`
 	ExitObserved             bool   `json:"exit_observed"`
 	CommandContainmentStatus string `json:"command_containment_status"`
 	CommandRunnerProfile     string `json:"command_runner_profile"`
+	Stdout                   string `json:"stdout"`
+	StdoutBytes              int    `json:"stdout_bytes"`
+	StdoutTruncated          bool   `json:"stdout_truncated"`
+	Stderr                   string `json:"stderr"`
+	StderrBytes              int    `json:"stderr_bytes"`
+	StderrTruncated          bool   `json:"stderr_truncated"`
+}
+
+// durableCommandStreamReleaseBytes bounds the released tail of each settled stream. The Store keeps the whole stream
+// up to its 1 MiB capture bound. The model gets at most this many bytes per stream, which keeps the encoded result
+// far inside the protocol frame even when every byte escapes to a six-byte JSON control sequence.
+const durableCommandStreamReleaseBytes = 16 << 10
+
+// durableCommandStreamProjection releases the tail of one settled stream as text, as Pi's bash tool does: it keeps the
+// end of the output and marks truncation. A tail cut that starts inside a rune drops the partial rune, and invalid
+// UTF-8 becomes U+FFFD, so the text is a pure function of the raw bytes. rawBytes is the stream's full length.
+func durableCommandStreamProjection(stream []byte) (text string, rawBytes int, truncated bool) {
+	kept := stream
+	if len(kept) > durableCommandStreamReleaseBytes {
+		kept = kept[len(kept)-durableCommandStreamReleaseBytes:]
+		for len(kept) > 0 && !utf8.RuneStart(kept[0]) {
+			kept = kept[1:]
+		}
+		truncated = true
+	}
+	return strings.ToValidUTF8(string(kept), "�"), len(stream), truncated
+}
+
+// durableBashCommandSummary builds the model-facing view of one settled command. Governed replay calls it too, so
+// the executor and the verifier release the same bytes from the same retained command result.
+func durableBashCommandSummary(command sessionrepo.CommandResult, runnerProfile string) durableCommandSummary {
+	stdout, stdoutBytes, stdoutTruncated := durableCommandStreamProjection(command.Stdout)
+	stderr, stderrBytes, stderrTruncated := durableCommandStreamProjection(command.Stderr)
+	return durableCommandSummary{
+		ExitCode: command.ExitCode, ExitObserved: command.ExitObserved,
+		CommandContainmentStatus: "not-established", CommandRunnerProfile: runnerProfile,
+		Stdout: stdout, StdoutBytes: stdoutBytes, StdoutTruncated: stdoutTruncated,
+		Stderr: stderr, StderrBytes: stderrBytes, StderrTruncated: stderrTruncated,
+	}
 }
 
 func durableMutationSummary(tool string, mutation sessionrepo.MutationResult, runner sessionrepo.CommandRunner) (json.RawMessage, error) {
@@ -446,12 +486,8 @@ func durableMutationSummary(tool string, mutation sessionrepo.MutationResult, ru
 		if mutation.Command == nil {
 			return nil, errors.New("durable bash mutation returned no command result")
 		}
-		payload.Command = &durableCommandSummary{
-			ExitCode:                 mutation.Command.ExitCode,
-			ExitObserved:             mutation.Command.ExitObserved,
-			CommandContainmentStatus: "not-established",
-			CommandRunnerProfile:     durableCommandRunnerProfile(runner),
-		}
+		commandSummary := durableBashCommandSummary(*mutation.Command, durableCommandRunnerProfile(runner))
+		payload.Command = &commandSummary
 	}
 	encoded, err := json.Marshal(payload)
 	if err != nil {
