@@ -70,21 +70,22 @@ func newProductionHistoricalBashHistory(inputs []productionRecoveryCommandJourna
 					return nil, errors.New("old command journal names a conversation outside the pinned transcript set")
 				}
 			}
-			verifier, err := newProductionHistoricalBashVerifier(input.Journal, input.Pin, profile, template,
-				session.RunID, session.SessionID, workflowID, session.ConversationID)
-			if err != nil {
-				return nil, err
-			}
-			for effectID, event := range verifier.byEffect {
-				if _, duplicate := history.byEffect[effectID]; duplicate {
-					return nil, errors.New("old command journals repeat one Store effect")
-				}
-				history.byEffect[effectID] = verifier
-				key := event.Operation.ViewID + "\x00" + event.Operation.Operation.LeaseID
-				history.byLeaseView[key] = append(history.byLeaseView[key], verifier)
-			}
-			history.entries = append(history.entries, verifier)
 		}
+		// One verifier reads each journal once and routes every record to exactly one of its pinned owners.
+		verifier, err := newProductionHistoricalBashVerifier(input.Journal, input.Pin, profile, template,
+			input.Sessions, workflowID)
+		if err != nil {
+			return nil, err
+		}
+		for effectID, event := range verifier.byEffect {
+			if _, duplicate := history.byEffect[effectID]; duplicate {
+				return nil, errors.New("old command journals repeat one Store effect")
+			}
+			history.byEffect[effectID] = verifier
+			key := event.Operation.ViewID + "\x00" + event.Operation.Operation.LeaseID
+			history.byLeaseView[key] = append(history.byLeaseView[key], verifier)
+		}
+		history.entries = append(history.entries, verifier)
 	}
 	return history, nil
 }
@@ -199,23 +200,18 @@ func (h *productionHistoricalBashHistory) VerifyUnchanged() error {
 // view, or execution method, so a new process cannot manufacture settlement
 // evidence for a prior Bash operation.
 type productionHistoricalBashVerifier struct {
-	journal        *audit.Journal
-	initialTrace   audit.Trace
-	profile        piruntime.HostProfile
-	template       piruntime.D09CellTemplate
-	runID          string
-	sessionID      string
-	workflowID     string
-	conversationID string
-	profileDigest  string
-	templateDigest string
-	byEffect       map[string]productionHistoricalCommandEvent
-	byLeaseView    map[string][]productionHistoricalCommandEvent
+	journal      *audit.Journal
+	initialTrace audit.Trace
+	byEffect     map[string]productionHistoricalCommandEvent
+	byLeaseView  map[string][]productionHistoricalCommandEvent
 }
 
+// newProductionHistoricalBashVerifier reads one command journal whose records belong to any of sessions. Each record
+// is routed to exactly one of them; a record that none or two of them own is refused.
 func newProductionHistoricalBashVerifier(journal *audit.Journal, pin productionHistoricalCommandPin,
-	profile piruntime.HostProfile, template piruntime.D09CellTemplate, runID, sessionID, workflowID, conversationID string) (*productionHistoricalBashVerifier, error) {
-	if journal == nil || pin.IdentityDigest == "" || runID == "" || sessionID == "" || workflowID == "" || conversationID == "" ||
+	profile piruntime.HostProfile, template piruntime.D09CellTemplate, sessions []productionRecoveryCommandSession,
+	workflowID string) (*productionHistoricalBashVerifier, error) {
+	if journal == nil || pin.IdentityDigest == "" || len(sessions) == 0 || workflowID == "" ||
 		profile.Mode != piruntime.ModeProduction || profile.ContainmentProfile != piruntime.D09ContainmentProfile ||
 		profile.SettlementProfile != piruntime.D09SettlementProfile {
 		return nil, commandEvidenceRefused("historical-profile")
@@ -235,10 +231,7 @@ func newProductionHistoricalBashVerifier(journal *audit.Journal, pin productionH
 	if uint64(len(trace.Records)) != pin.RecordCount || auditHeadHash(trace.Records) != pin.Head {
 		return nil, errors.New("retained D09 command journal differs from its host-pinned identity/head")
 	}
-	v := &productionHistoricalBashVerifier{
-		journal: journal, initialTrace: trace, profile: profile, template: template,
-		runID: runID, sessionID: sessionID, workflowID: workflowID, conversationID: conversationID,
-		profileDigest: profileDigest, templateDigest: templateDigest,
+	v := &productionHistoricalBashVerifier{journal: journal, initialTrace: trace,
 		byEffect:    make(map[string]productionHistoricalCommandEvent),
 		byLeaseView: make(map[string][]productionHistoricalCommandEvent),
 	}
@@ -246,12 +239,14 @@ func newProductionHistoricalBashVerifier(journal *audit.Journal, pin productionH
 		if record.Event.Kind != productionD09SettledKind {
 			return nil, errors.New("retained D09 command journal contains an unsupported event")
 		}
-		event, ok := decodeProductionHistoricalCommandEvent(record.Event.Data, runID, sessionID, workflowID, conversationID, profile.ID, profileDigest)
-		if !ok ||
-			event.Operation.EffectID == "" || event.Operation.Tool != "bash" ||
+		event, err := routeHistoricalCommandRecord(record.Event.Data, sessions, workflowID, profile.ID, profileDigest)
+		if err != nil {
+			return nil, fmt.Errorf("retained D09 command event %d: %w", record.Sequence, err)
+		}
+		if event.Operation.EffectID == "" || event.Operation.Tool != "bash" ||
 			event.Operation.Operation.Kind != delta.OperationLease || event.Operation.Operation.LeaseID == "" ||
 			event.Operation.ViewID == "" {
-			return nil, fmt.Errorf("retained D09 command event %d is not bound to the exact old host profile/session", record.Sequence)
+			return nil, fmt.Errorf("retained D09 command event %d is not a Bash lease", record.Sequence)
 		}
 		if _, duplicate := v.byEffect[event.Operation.EffectID]; duplicate {
 			return nil, errors.New("retained D09 command journal repeats one Store effect")
@@ -314,6 +309,23 @@ func decodeProductionHistoricalCommandEvent(data []byte, runID, sessionID, workf
 			ReceiptDigest: event.ReceiptDigest, Receipt: event.Receipt}, true
 	}
 	return productionHistoricalCommandEvent{}, false
+}
+
+// routeHistoricalCommandRecord decodes a retained settled record against each pinned session and returns the event of
+// the one session that owns it. A record that no pinned session owns, or that more than one could claim, is refused.
+func routeHistoricalCommandRecord(data []byte, sessions []productionRecoveryCommandSession, workflowID, profileID,
+	profileDigest string) (productionHistoricalCommandEvent, error) {
+	var owned []productionHistoricalCommandEvent
+	for _, session := range sessions {
+		if event, ok := decodeProductionHistoricalCommandEvent(data, session.RunID, session.SessionID, workflowID,
+			session.ConversationID, profileID, profileDigest); ok {
+			owned = append(owned, event)
+		}
+	}
+	if len(owned) != 1 {
+		return productionHistoricalCommandEvent{}, errors.New("is not bound to exactly one pinned session")
+	}
+	return owned[0], nil
 }
 
 func validateHistoricalD09Receipt(event productionHistoricalCommandEvent, profile piruntime.HostProfile,
@@ -488,29 +500,6 @@ func (v *productionHistoricalBashVerifier) VerifyUnchanged() error {
 	}
 	if !reflect.DeepEqual(v.initialTrace, trace) {
 		return errors.New("retained D09 command journal changed during historical verification")
-	}
-	return nil
-}
-
-func (v *productionHistoricalBashVerifier) VerifyGovernedVerifier(verifier *governedStoreReplayVerifier) error {
-	if v == nil || verifier == nil {
-		return commandEvidenceRefused("historical-governed-verifier-unavailable")
-	}
-	for _, decision := range verifier.decisions {
-		if decision.binding.Proposal.Tool != "bash" || decision.binding.GateDecision.Verdict != gate.Allow {
-			continue
-		}
-		if !decision.resultSeen || decision.effect.ID == "" || decision.entry.EffectID != decision.effect.ID {
-			return errors.New("historical provider Bash result is not bound to a completed Store effect")
-		}
-		event, exists := v.byEffect[decision.effect.ID]
-		proposalID, err := durableTrustedIdentity("proposal", decision.binding.Proposal, decision.binding.GateDecision)
-		wantProviderCall := delta.OperationIdentity{Kind: delta.OperationProposalCall,
-			ProposalID: proposalID, CallIssuer: governedCallIssuer, CallID: decision.binding.Proposal.ToolCallID}
-		if !exists || err != nil || !reflect.DeepEqual(event.ProviderCall, wantProviderCall) ||
-			!reflect.DeepEqual(event.Operation, decision.entry) {
-			return errors.New("old D09 command receipt does not bind the exact provider proposal and Store operation")
-		}
 	}
 	return nil
 }
