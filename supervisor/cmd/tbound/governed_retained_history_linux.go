@@ -18,10 +18,12 @@ import (
 type governedRetainedHistory struct {
 	transitions   []delta.Transition
 	journalPrefix []byte
+	// bash is the historical Bash evidence frozen with the prefix. It is nil when the history has no command journal.
+	bash *frozenBashHistory
 }
 
 func newGovernedRetainedHistory(bundle sessionrepo.EvidenceBundle, pins workflowrecovery.Pins,
-	historical *governedHistoricalStoreVerifier) (*governedRetainedHistory, error) {
+	historical *governedHistoricalStoreVerifier, commands governedRecoveryCommandVerifier) (*governedRetainedHistory, error) {
 	if bundle.AuditRecordCount != pins.StoreJournalCount || bundle.AuditHeadHash != pins.StoreJournalHead ||
 		bundle.AdmissionRecordCount != pins.AdmissionJournalCount || bundle.AdmissionHeadHash != pins.AdmissionJournalHead ||
 		len(bundle.Generations) == 0 {
@@ -42,6 +44,17 @@ func newGovernedRetainedHistory(bundle sessionrepo.EvidenceBundle, pins workflow
 		transitions: append([]delta.Transition(nil), bundle.ApprovedDeltaLedger...)}
 	for i := range history.transitions {
 		history.transitions[i].Changes = append([]delta.ObjectChange(nil), history.transitions[i].Changes...)
+	}
+	if commands != nil {
+		production, ok := commands.(*productionHistoricalBashHistory)
+		if !ok || production == nil {
+			return nil, ErrGovernedSessionEvidence
+		}
+		frozen, err := production.freezeBash()
+		if err != nil {
+			return nil, err
+		}
+		history.bash = frozen
 	}
 	return history, nil
 }
@@ -91,4 +104,71 @@ func (h *governedRetainedHistory) verifyOrigin(bundle sessionrepo.EvidenceBundle
 	}
 	_, err = sessionrepo.Reconstruct(bundle)
 	return err
+}
+
+// frozenBashHistory is the historical Bash evidence of an activated history: each verified command bound to its Store
+// EffectID, the origin of each promoted one, and the command journal prefix it was read from. Only an exact match
+// reaches it, so a fresh effect or a fresh transition cannot borrow it.
+type frozenBashHistory struct {
+	commands map[string]frozenBashCommand
+	prefixes []frozenJournalPrefix
+}
+
+type frozenBashCommand struct {
+	event  productionHistoricalCommandEvent
+	denied bool
+	origin delta.OperationIdentity
+}
+
+type frozenJournalPrefix struct {
+	journal *audit.Journal
+	records []audit.Record
+}
+
+// verifyOperation checks a Bash operation whose EffectID is frozen against that exact evidence. It reports handled
+// false for any other effect, which the live runner verifies.
+func (f *frozenBashHistory) verifyOperation(operation sessionrepo.OperationEvidence) (bool, error) {
+	if f == nil {
+		return false, nil
+	}
+	command, frozen := f.commands[operation.EffectID]
+	if !frozen {
+		return false, nil
+	}
+	if err := f.verifyPrefixes(); err != nil {
+		return true, err
+	}
+	if command.denied != deniedAfterEffect(operation) || !reflect.DeepEqual(command.event.Operation, operation) {
+		return true, commandEvidenceRefused("frozen-operation-mismatch")
+	}
+	return true, nil
+}
+
+// leaseOrigin returns the origin frozen for the one promoted Bash transition that equals transition.
+func (f *frozenBashHistory) leaseOrigin(transition delta.Transition) (delta.OperationIdentity, error) {
+	if f == nil {
+		return delta.OperationIdentity{}, ErrGovernedSessionEvidence
+	}
+	if err := f.verifyPrefixes(); err != nil {
+		return delta.OperationIdentity{}, err
+	}
+	for _, command := range f.commands {
+		if !command.denied && reflect.DeepEqual(command.event.Transition, transition) {
+			return command.origin, nil
+		}
+	}
+	return delta.OperationIdentity{}, ErrGovernedSessionEvidence
+}
+
+// verifyPrefixes checks that each command journal still begins with the records the frozen evidence was read from.
+// Fresh Bash progress extends a journal, so only the frozen prefix is compared.
+func (f *frozenBashHistory) verifyPrefixes() error {
+	for _, prefix := range f.prefixes {
+		trace, err := prefix.journal.Trace()
+		if err != nil || len(trace.Records) < len(prefix.records) ||
+			!reflect.DeepEqual(trace.Records[:len(prefix.records)], prefix.records) {
+			return errors.Join(commandEvidenceRefused("frozen-prefix"), err)
+		}
+	}
+	return nil
 }

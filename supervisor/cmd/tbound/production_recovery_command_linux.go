@@ -40,6 +40,9 @@ type productionHistoricalBashHistory struct {
 	entries     []*productionHistoricalBashVerifier
 	byEffect    map[string]*productionHistoricalBashVerifier
 	byLeaseView map[string][]*productionHistoricalBashVerifier
+	// origins is the proposal-call origin each Bash effect's provider result authenticated to during replay. Replay
+	// computes it per decision; activation freezes it, since nothing else keeps it.
+	origins map[string]delta.OperationIdentity
 }
 
 func newProductionHistoricalBashHistory(inputs []productionRecoveryCommandJournal,
@@ -51,6 +54,7 @@ func newProductionHistoricalBashHistory(inputs []productionRecoveryCommandJourna
 	history := &productionHistoricalBashHistory{
 		byEffect:    make(map[string]*productionHistoricalBashVerifier),
 		byLeaseView: make(map[string][]*productionHistoricalBashVerifier),
+		origins:     make(map[string]delta.OperationIdentity),
 	}
 	seenSession := make(map[string]struct{}, len(inputs))
 	for _, input := range inputs {
@@ -179,8 +183,35 @@ func (h *productionHistoricalBashHistory) VerifyGovernedVerifier(verifier *gover
 			!reflect.DeepEqual(event.Operation, decision.entry) {
 			return errors.New("old D09 command receipt does not bind the exact provider proposal and Store operation")
 		}
+		if origin, seen := h.origins[decision.effect.ID]; seen && origin != wantProviderCall {
+			return errors.New("historical Bash origin differs between replay passes")
+		}
+		h.origins[decision.effect.ID] = wantProviderCall
 	}
 	return nil
+}
+
+// freezeBash returns the verified historical Bash evidence an activated history carries. A promoted effect must carry
+// the origin its replay authenticated. A denied effect has none, since no approved transition binds it.
+func (h *productionHistoricalBashHistory) freezeBash() (*frozenBashHistory, error) {
+	frozen := &frozenBashHistory{commands: make(map[string]frozenBashCommand, len(h.byEffect))}
+	for effectID, verifier := range h.byEffect {
+		event := verifier.byEffect[effectID]
+		command := frozenBashCommand{event: event, denied: deniedAfterEffect(event.Operation)}
+		if !command.denied {
+			origin, authenticated := h.origins[effectID]
+			if !authenticated || origin != event.ProviderCall {
+				return nil, errors.New("historical Bash effect has no authenticated provider-call origin")
+			}
+			command.origin = origin
+		}
+		frozen.commands[effectID] = command
+	}
+	for _, verifier := range h.entries {
+		frozen.prefixes = append(frozen.prefixes, frozenJournalPrefix{journal: verifier.journal,
+			records: verifier.initialTrace.Records})
+	}
+	return frozen, nil
 }
 
 func (h *productionHistoricalBashHistory) VerifyUnchanged() error {

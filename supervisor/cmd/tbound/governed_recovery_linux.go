@@ -459,9 +459,16 @@ func (c *governedRecoveryCandidate) Activate(ctx context.Context) (*governedReco
 	if err != nil {
 		return nil, err
 	}
-	history, err := newGovernedRetainedHistory(bundle, c.next, c.historical)
+	history, err := newGovernedRetainedHistory(bundle, c.next, c.historical, c.commandHistory)
 	if err != nil {
 		return nil, err
+	}
+	if history.bash != nil {
+		runner, ok := request.CommandRunner.(*productionCommandRunner)
+		if !ok {
+			return nil, ErrGovernedRecoveryUnavailable
+		}
+		runner.bindHistoricalBash(history.bash)
 	}
 	authority.retained = history
 	liveOptions.VerifyDecision = func(decision delta.PolicyDecision, binding delta.TransitionBinding) error {

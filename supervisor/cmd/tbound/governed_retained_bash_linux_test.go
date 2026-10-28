@@ -209,6 +209,7 @@ type retainedReplay struct {
 	storeJournal   *audit.Journal
 	commandJournal *audit.Journal
 	historical     *governedHistoricalStoreVerifier
+	command        *productionHistoricalBashHistory
 }
 
 // openRetainedCommandHistory opens a command journal and routes its records to owners as recovery does.
@@ -259,7 +260,7 @@ func replayRetainedBash(t *testing.T, run retainedBashRun, commandPath string,
 	if err != nil {
 		return retainedReplay{}, err
 	}
-	replayed.commandJournal = commandJournal
+	replayed.commandJournal, replayed.command = commandJournal, history
 	storeRoot, err := openExistingPrivateRecoveryDirectory(run.StoreRootPath)
 	if err != nil {
 		t.Fatal(err)
@@ -319,9 +320,13 @@ func replayRetainedBash(t *testing.T, run retainedBashRun, commandPath string,
 // a fresh provider journal for the new conversation.
 func retainedAuthority(t *testing.T, replayed retainedReplay, runner *productionCommandRunner) (*SessionOperationAuthority, error) {
 	t.Helper()
-	retained, err := newGovernedRetainedHistory(replayed.bundle, retainedBashPins(replayed.bundle), replayed.historical)
+	retained, err := newGovernedRetainedHistory(replayed.bundle, retainedBashPins(replayed.bundle), replayed.historical,
+		replayed.command)
 	if err != nil {
 		return nil, err
+	}
+	if retained.bash != nil {
+		runner.bindHistoricalBash(retained.bash)
 	}
 	fresh, err := audit.Open(filepath.Join(t.TempDir(), "fresh-provider.jsonl"))
 	if err != nil {

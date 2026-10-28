@@ -1215,24 +1215,24 @@ func combinedRecoveryCheckRetainedHistory(t *testing.T, session *governedRecover
 	prefix.ApprovedDeltaLedger = ledger
 	shorter := prefix
 	shorter.ApprovedDeltaLedger = nil
-	if _, err := newGovernedRetainedHistory(shorter, candidate.next, candidate.historical); err == nil {
+	if _, err := newGovernedRetainedHistory(shorter, candidate.next, candidate.historical, candidate.commandHistory); err == nil {
 		t.Fatal("froze an empty prefix over a journal with one approved transition")
 	}
 	extra := ledger[0]
 	extra.ID, extra.Sequence = extra.ID+"-extra", 2
 	longer := prefix
 	longer.ApprovedDeltaLedger = append(append([]delta.Transition(nil), ledger...), extra)
-	if _, err := newGovernedRetainedHistory(longer, candidate.next, candidate.historical); err == nil {
+	if _, err := newGovernedRetainedHistory(longer, candidate.next, candidate.historical, candidate.commandHistory); err == nil {
 		t.Fatal("froze a prefix longer than the verified journal")
 	}
 	for _, offset := range []int64{-1, 1} {
 		pins := candidate.next
 		pins.StoreJournalCount = uint64(int64(pins.StoreJournalCount) + offset)
-		if _, err := newGovernedRetainedHistory(prefix, pins, candidate.historical); err == nil {
+		if _, err := newGovernedRetainedHistory(prefix, pins, candidate.historical, candidate.commandHistory); err == nil {
 			t.Fatal("froze a prefix whose journal count differs from the recovery pins")
 		}
 	}
-	frozen, err := newGovernedRetainedHistory(prefix, candidate.next, candidate.historical)
+	frozen, err := newGovernedRetainedHistory(prefix, candidate.next, candidate.historical, candidate.commandHistory)
 	if err != nil {
 		t.Fatal(err)
 	}
