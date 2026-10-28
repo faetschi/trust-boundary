@@ -802,6 +802,7 @@ func combinedRecoveryRecover(t *testing.T, root, step, phase string, capture boo
 			result.Activated = true
 			if sc.advanceStore {
 				combinedRecoveryCheckRetainedHistory(t, session, candidate)
+				combinedRecoveryCheckPublicationOrigins(t, session)
 			}
 			// This process now owns the new epoch. Its scope record is written when
 			// it exits, so the next recovery can observe it.
@@ -823,6 +824,17 @@ func combinedRecoveryRecover(t *testing.T, root, step, phase string, capture boo
 				chain, err := session.Store.Verify()
 				if err != nil || chain.TransitionCount != 2 {
 					t.Fatalf("resumed chain: %+v err=%v", chain, err)
+				}
+				evidence, err := session.Store.EvidenceBundle()
+				if err != nil {
+					t.Fatal(err)
+				}
+				fresh := evidence.ApprovedDeltaLedger[len(evidence.ApprovedDeltaLedger)-1]
+				if err := session.Authority.VerifyTransition(fresh.Decision, governedTransitionBinding(fresh)); err != nil {
+					t.Fatalf("activated authority refused its new transition: %v", err)
+				}
+				if err := session.Authority.VerifyOrigin(evidence, fresh); err != nil {
+					t.Fatalf("activated authority refused the origin of its new transition: %v", err)
 				}
 			}
 			if capture {
@@ -1222,5 +1234,33 @@ func combinedRecoveryCheckRetainedHistory(t *testing.T, session *governedRecover
 	ledger[0].Changes[0].Path += "-changed"
 	if err := frozen.verifyDecision(original.Decision, binding, session.Authority.VerifyDecision); err != nil {
 		t.Fatalf("frozen history aliases its source ledger: %v", err)
+	}
+}
+
+// Recovered publication verifies each retained transition and its origin through the activated authority.
+func combinedRecoveryCheckPublicationOrigins(t *testing.T, session *governedRecoverySession) {
+	t.Helper()
+	bundle, err := session.Store.EvidenceBundle()
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := bundle.ApprovedDeltaLedger[0]
+	binding := governedTransitionBinding(original)
+	if err := session.Authority.VerifyTransition(original.Decision, binding); err != nil {
+		t.Fatalf("activated authority refused its retained transition: %v", err)
+	}
+	if err := session.Authority.VerifyOrigin(bundle, original); err != nil {
+		t.Fatalf("activated authority refused the retained origin of its transition: %v", err)
+	}
+	changed := binding
+	changed.Changes = append([]delta.ObjectChange(nil), binding.Changes...)
+	changed.Changes[0].Path += "-changed"
+	if err := session.Authority.VerifyTransition(original.Decision, changed); err == nil {
+		t.Fatal("activated authority accepted a changed retained transition")
+	}
+	borrowed := binding
+	borrowed.Sequence++
+	if err := session.Authority.VerifyTransition(original.Decision, borrowed); err == nil {
+		t.Fatal("a later sequence borrowed the retained authorization")
 	}
 }
