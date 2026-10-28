@@ -650,12 +650,5 @@ func transferCandidateClosers(closers []func() error, candidateIndex int, activa
 
 // activateProductionRecoverySession is the binder's Store/authority handoff, before D09 exposure.
 func activateProductionRecoverySession(ctx context.Context, candidate *governedRecoveryCandidate) (*governedRecoverySession, error) {
-	recovered, err := candidate.Activate(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if err := recovered.Authority.BindPreparedSession(recovered.Prepared); err != nil {
-		return nil, errors.Join(err, recovered.Close())
-	}
-	return recovered, nil
+	return candidate.Activate(ctx)
 }
