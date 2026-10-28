@@ -137,6 +137,7 @@ Step 2 detail:
   - Estimate: 198 calls, USD 1.10 expected, USD 7.32 worst case.
   - Fresh dry run `dry-2`: 198/198 requests with `data_collection: deny`, stats v4, audit v4 bound to its receipt, deterministic apart from timestamps.
   - `PANEL-READY.md` holds the owner's live steps.
+  - Still valid at f8b9b0f (checked 2026-10-28): none of `tbound-panel`'s 10 tbound packages (`go list -deps`), `corpus/pilot`, `go.mod` or `go.sum` changed since 66a3dea.
   - The old `F:/TBoundAssets/panel-prep/` is marked STALE; do not run it.
 - Next: the owner runs the live panel; the advisor signs; then the F14 freeze on FABIAN (owner step; `corpus-digest` needs the F14 pins).
 - Shared-fix ledger (thesis ↔ product):
@@ -146,6 +147,7 @@ Step 2 detail:
     - Also from 2026-10-28: the read line window (039ac82) and the recovery retirement fixes (`fix/recovery-retirement-pins`); the product shares this recovery code, so it likely has defects (1)-(5) too (unchecked).
     - Also from cc831e9: `audit.OpenExisting` and its three shared call sites (recovery journal, workflow catalog, Store admission journal); `verify-retained` itself depends on the D09 settlement code above.
   - The panel/corpus tooling (5c1c835, 66a3dea) is thesis-only.
+  - Merge forecast (2026-10-28, `git merge-tree`): product `b6493b9` into thesis `f8b9b0f` merges with no textual conflict (123 thesis-only, 224 product-only commits). Not checked: semantic duplication in files both sides changed (recovery, governed replay, durable executor), and later product commits (P8 round 4 was in flight).
 - The F14 freeze, signing, guest install and evidence are owner steps on FABIAN after the merges and the panel prep.
 
 ## Working rules
