@@ -762,10 +762,7 @@ func combinedRecoveryRecover(t *testing.T, root, step, phase string, capture boo
 		t.Fatal(err)
 	}
 	runner := newDevelopmentFixtureCommandRunner()
-	turns := []providerbridge.DevelopmentProviderTurn(nil)
-	if capture {
-		turns = combinedRecoveryReadCallTurns(fmt.Sprintf("combined-recovered-g%d", gen))
-	}
+	turns := combinedRecoveryReadCallTurns(fmt.Sprintf("combined-recovered-g%d", gen))
 	if phase == "recover-write" {
 		turns = []providerbridge.DevelopmentProviderTurn{{ResponseID: "resumed-write-response", CallID: "resumed-write-call",
 			Tool: "write", Arguments: json.RawMessage(`{"path":"task.txt","content":"resumed\n"}`)}}
@@ -1052,7 +1049,7 @@ func TestGovernedRecoveryCombinedRetiresAnIdleLineageUnderBinderShapedPins(t *te
 // A conversation that changed the Store before its last call was captured replays through a released result and
 // a promoted transition, so retiring that call replays the journal with a verifier that has already followed it
 // to the new tip. Each retirement pass must start from the pinned start. Only prepareGovernedRecovery is
-// driven here: activating a Store with a promoted transition is outside this retirement step.
+// driven here through activation.
 func TestGovernedRecoveryCombinedRetiresACallCapturedAfterTheStoreAdvanced(t *testing.T) {
 	root := privateGovernedTestRoot(t)
 	const scenario = "binder-pins-advanced"
@@ -1070,9 +1067,7 @@ func TestGovernedRecoveryCombinedRetiresACallCapturedAfterTheStoreAdvanced(t *te
 }
 
 // A recovery whose conversation starts after an earlier conversation promoted a write must retire it from that
-// start, not from the Store baseline. Activation of a Store with a promoted transition is a separate matter, so
-// the second conversation is seeded the way Activate would leave it: the fresh journal of the first recovery
-// gets the recovery prompt at the tip generation, and the second recovery is driven through prepare only.
+// start, not from the Store baseline. Both recoveries activate and admit the real clean recovery prompt.
 func TestGovernedRecoveryCombinedRetiresTheLastTranscriptFromItsOwnStartAboveTheBaseline(t *testing.T) {
 	root := privateGovernedTestRoot(t)
 	const scenario = "binder-pins-advanced-idle"
@@ -1082,7 +1077,7 @@ func TestGovernedRecoveryCombinedRetiresTheLastTranscriptFromItsOwnStartAboveThe
 	}
 	first := combinedRecoveryRunChild(t, root, scenario, "recover", "r1", 0)
 	if first.PrepareError != "" || first.ActivateError != "" || !first.Activated || first.Transcripts != 1 {
-		t.Fatalf("first recovery: prepare=%q transcripts=%d", first.PrepareError, first.Transcripts)
+		t.Fatalf("first recovery: prepare=%q activate=%q transcripts=%d", first.PrepareError, first.ActivateError, first.Transcripts)
 	}
 	second := combinedRecoveryRunChild(t, root, scenario, "recover", "r2", 0)
 	if second.PrepareError != "" || second.ActivateError != "" || !second.Activated || second.Transcripts != 2 {
