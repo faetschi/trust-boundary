@@ -122,7 +122,12 @@ func recoveryPreviewChild(t *testing.T, rootPath, variant string) {
 			}
 			head = record.Hash
 		}
-		path := filepath.Join(t.TempDir(), "modified-audit.jsonl")
+		dir := t.TempDir()
+		// The audit layer requires a 0700 parent, and t.TempDir creates its directory with the process umask.
+		if err := os.Chmod(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		path := filepath.Join(dir, "modified-audit.jsonl")
 		if err := os.WriteFile(path, encoded.Bytes(), 0o600); err != nil {
 			t.Fatal(err)
 		}
