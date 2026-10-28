@@ -65,8 +65,6 @@ type combinedRecoveryScenario struct {
 	// advanceStore has the original conversation write a file before its last call is captured, so the retained
 	// history has a Store generation other than the baseline.
 	advanceStore bool
-	// prepareOnly stops each recovery after prepareGovernedRecovery, before the Store is activated.
-	prepareOnly bool
 }
 
 var combinedRecoveryScenarios = map[string]combinedRecoveryScenario{
@@ -77,8 +75,8 @@ var combinedRecoveryScenarios = map[string]combinedRecoveryScenario{
 		withoutCleanupReceipt: true},
 	"binder-pins":               {maxPreEffectRetries: 2, maxCleanRestarts: 2, deadline: 10 * time.Minute, binderShapedPins: true},
 	"binder-pins-idle":          {maxPreEffectRetries: 2, maxCleanRestarts: 2, deadline: 10 * time.Minute, binderShapedPins: true, idleCrash: true},
-	"binder-pins-advanced":      {maxPreEffectRetries: 2, maxCleanRestarts: 2, deadline: 10 * time.Minute, binderShapedPins: true, advanceStore: true, prepareOnly: true},
-	"binder-pins-advanced-idle": {maxPreEffectRetries: 2, maxCleanRestarts: 2, deadline: 10 * time.Minute, binderShapedPins: true, advanceStore: true, idleCrash: true, prepareOnly: true},
+	"binder-pins-advanced":      {maxPreEffectRetries: 2, maxCleanRestarts: 2, deadline: 10 * time.Minute, binderShapedPins: true, advanceStore: true},
+	"binder-pins-advanced-idle": {maxPreEffectRetries: 2, maxCleanRestarts: 2, deadline: 10 * time.Minute, binderShapedPins: true, advanceStore: true, idleCrash: true},
 }
 
 type combinedRecoveryPaths struct {
@@ -409,8 +407,8 @@ func TestGovernedRecoveryCombinedChildEntry(t *testing.T) {
 	switch phase {
 	case "original":
 		combinedRecoveryOriginal(t, root, step, combinedRecoveryScenarios[scenario])
-	case "recover", "recover-capture":
-		combinedRecoveryRecover(t, root, step, phase == "recover-capture", combinedRecoveryScenarios[scenario])
+	case "recover", "recover-capture", "recover-write":
+		combinedRecoveryRecover(t, root, step, phase, phase == "recover-capture", combinedRecoveryScenarios[scenario])
 	default:
 		t.Fatalf("unknown combined recovery phase %q", phase)
 	}
@@ -662,7 +660,7 @@ func combinedRecoveryOriginal(t *testing.T, root, step string, sc combinedRecove
 // combinedRecoveryRecover runs one fresh recovery process. It verifies the
 // retained crash evidence, performs the production prepare/activate sequence,
 // and records the durable checkpoint it observes.
-func combinedRecoveryRecover(t *testing.T, root, step string, capture bool, sc combinedRecoveryScenario) {
+func combinedRecoveryRecover(t *testing.T, root, step, phase string, capture bool, sc combinedRecoveryScenario) {
 	t.Helper()
 	ctx := context.Background()
 	p := combinedRecoveryPathsFor(root)
@@ -768,6 +766,10 @@ func combinedRecoveryRecover(t *testing.T, root, step string, capture bool, sc c
 	if capture {
 		turns = combinedRecoveryReadCallTurns(fmt.Sprintf("combined-recovered-g%d", gen))
 	}
+	if phase == "recover-write" {
+		turns = []providerbridge.DevelopmentProviderTurn{{ResponseID: "resumed-write-response", CallID: "resumed-write-call",
+			Tool: "write", Arguments: json.RawMessage(`{"path":"task.txt","content":"resumed\n"}`)}}
+	}
 	providerProfile := combinedRecoveryProviderProfile("")
 	request := governedRecoveryRequest{
 		Owner: owner, WorkflowID: combinedRecoveryWorkflow, NewOwnerEpoch: before.Pins.OwnerEpoch + 1,
@@ -793,10 +795,6 @@ func combinedRecoveryRecover(t *testing.T, root, step string, capture bool, sc c
 	candidate, err := prepareGovernedRecovery(ctx, request)
 	if err != nil {
 		result.PrepareError = err.Error()
-	} else if sc.prepareOnly {
-		_ = candidate.Close()
-		// This process acquired the new epoch and ends without activating it; its scope record lets the next recovery drain it.
-		combinedRecoverySeedScope(t, root, request.NewOwnerEpoch, !sc.withoutCleanupReceipt)
 	} else {
 		session, activateErr := candidate.Activate(ctx)
 		if activateErr != nil {
@@ -807,11 +805,26 @@ func combinedRecoveryRecover(t *testing.T, root, step string, capture bool, sc c
 			// This process now owns the new epoch. Its scope record is written when
 			// it exits, so the next recovery can observe it.
 			combinedRecoverySeedScope(t, root, request.NewOwnerEpoch, !sc.withoutCleanupReceipt)
-			if capture {
-				if err := session.Authority.AdmitPrompt(session.Conversation, session.Durable,
-					session.RecoveryPromptTask, session.RecoveryPrompt); err != nil {
+			if err := session.Authority.AdmitPrompt(session.Conversation, session.Durable,
+				session.RecoveryPromptTask, session.RecoveryPrompt); err != nil {
+				t.Fatal(err)
+			}
+			if phase == "recover-write" {
+				step := &workflowVerticalFixture{ctx: ctx, conversation: session.Conversation, policy: policy}
+				proposal, decision := ledgerDenyTurn(t, step, "resumed-write-call", gate.Allow)
+				executor, err := providerbridge.NewExecutor(session.Conversation, session.Durable)
+				if err != nil {
 					t.Fatal(err)
 				}
+				if _, err := executor.Execute(ctx, proposal, decision); err != nil {
+					t.Fatalf("resumed write: %v", err)
+				}
+				chain, err := session.Store.Verify()
+				if err != nil || chain.TransitionCount != 2 {
+					t.Fatalf("resumed chain: %+v err=%v", chain, err)
+				}
+			}
+			if capture {
 				turn, err := session.Conversation.NextTurn(ctx)
 				if err != nil || turn.ToolCall == nil {
 					t.Fatalf("recovered provider turn did not capture its read: turn=%+v err=%v", turn, err)
@@ -1048,8 +1061,8 @@ func TestGovernedRecoveryCombinedRetiresACallCapturedAfterTheStoreAdvanced(t *te
 	if first.StoreEffects < 2 {
 		t.Fatalf("the retained history did not advance the Store: %d Store effects", first.StoreEffects)
 	}
-	if first.PrepareError != "" {
-		t.Fatalf("recovery could not retire the call captured after the Store advanced: %s", first.PrepareError)
+	if first.PrepareError != "" || first.ActivateError != "" || !first.Activated {
+		t.Fatalf("recovery could not activate after the Store advanced: prepare=%q activate=%q", first.PrepareError, first.ActivateError)
 	}
 	if first.Counters.CleanRestarts != 1 || first.Counters.PreEffectRetries != 1 {
 		t.Fatalf("retiring the captured call must charge one clean restart and one pre-effect retry: %+v", first.Counters)
@@ -1068,28 +1081,41 @@ func TestGovernedRecoveryCombinedRetiresTheLastTranscriptFromItsOwnStartAboveThe
 		t.Fatalf("the original process did not promote a write: baseline=%q tip=%q", original.StoreBaselineGeneration, original.StoreTipGeneration)
 	}
 	first := combinedRecoveryRunChild(t, root, scenario, "recover", "r1", 0)
-	if first.PrepareError != "" || first.Transcripts != 1 {
+	if first.PrepareError != "" || first.ActivateError != "" || !first.Activated || first.Transcripts != 1 {
 		t.Fatalf("first recovery: prepare=%q transcripts=%d", first.PrepareError, first.Transcripts)
 	}
-	conversation := fmt.Sprintf("%s-conversation-g%d", combinedRecoveryWorkflow, 2)
-	journal, err := openExistingRecoveryJournal(combinedRecoveryPathsFor(root).providerJournal(2))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := journal.Append(audit.Event{Kind: "provider_user_admitted", ID: conversation + ":user:1",
-		Data: mustJSON(providerPromptEvidence{WorkflowID: combinedRecoveryWorkflow, ConversationID: conversation,
-			TaskID: "combined-recovery-task-g2", Generation: original.StoreTipGeneration, Prompt: "Continue after the restart."})}); err != nil {
-		t.Fatal(err)
-	}
-	if err := journal.Close(); err != nil {
-		t.Fatal(err)
-	}
 	second := combinedRecoveryRunChild(t, root, scenario, "recover", "r2", 0)
-	if second.PrepareError != "" || second.Transcripts != 2 {
+	if second.PrepareError != "" || second.ActivateError != "" || !second.Activated || second.Transcripts != 2 {
 		t.Fatalf("second recovery could not retire the conversation that starts above the baseline: prepare=%q transcripts=%d",
 			second.PrepareError, second.Transcripts)
 	}
 	if second.Counters.CleanRestarts != 2 || second.Counters.PreEffectRetries != 0 {
 		t.Fatalf("second recovery counters = %+v, want two clean restarts and no pre-effect retry", second.Counters)
 	}
+}
+
+func TestGovernedRecoveryCombinedPromotesANewWriteAfterAPromotedWrite(t *testing.T) {
+	root := privateGovernedTestRoot(t)
+	const scenario = "binder-pins-advanced"
+	combinedRecoveryRunChild(t, root, scenario, "original", "o", combinedRecoveryCrashExit)
+	resumed := combinedRecoveryRunChild(t, root, scenario, "recover-write", "r1", 0)
+	if resumed.PrepareError != "" || resumed.ActivateError != "" || !resumed.Activated {
+		t.Fatalf("resume after promoted write: prepare=%q activate=%q", resumed.PrepareError, resumed.ActivateError)
+	}
+}
+
+func TestGovernedRecoveryCombinedRecoversAgainAfterRetiringACapturedCall(t *testing.T) {
+	root := privateGovernedTestRoot(t)
+	const scenario = "binder-pins"
+	combinedRecoveryRunChild(t, root, scenario, "original", "o", combinedRecoveryCrashExit)
+	first := combinedRecoveryRunChild(t, root, scenario, "recover", "r1", 0)
+	if first.PrepareError != "" || first.ActivateError != "" || !first.Activated {
+		t.Fatalf("first recovery: %+v", first)
+	}
+	second := combinedRecoveryRunChild(t, root, scenario, "recover", "r2", 0)
+	if second.PrepareError != "" || second.ActivateError != "" || !second.Activated {
+		t.Fatalf("second recovery: %+v", second)
+	}
+	combinedRecoveryRequireCounters(t, second, workflowrecovery.Counters{PreEffectRetries: 1, CleanRestarts: 2,
+		HostCalls: 1, Tokens: combinedRecoveryTokens})
 }
