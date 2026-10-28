@@ -83,6 +83,7 @@ var combinedRecoveryScenarios = map[string]combinedRecoveryScenario{
 	"binder-pins-advanced":      {maxPreEffectRetries: 2, maxCleanRestarts: 2, deadline: 10 * time.Minute, binderShapedPins: true, advanceStore: true},
 	"binder-pins-advanced-idle": {maxPreEffectRetries: 2, maxCleanRestarts: 2, deadline: 10 * time.Minute, binderShapedPins: true, advanceStore: true, idleCrash: true},
 	combinedProductionScenario:  {maxPreEffectRetries: 2, maxCleanRestarts: 2, deadline: 10 * time.Minute, productionBash: true},
+	combinedResumedScenario:     {maxPreEffectRetries: 2, maxCleanRestarts: 2, deadline: 10 * time.Minute, productionBash: true, binderShapedPins: true},
 }
 
 type combinedRecoveryPaths struct {
@@ -420,7 +421,7 @@ func TestGovernedRecoveryCombinedChildEntry(t *testing.T) {
 	switch phase {
 	case "original":
 		combinedRecoveryOriginal(t, root, step, combinedRecoveryScenarios[scenario])
-	case "recover", "recover-capture", "recover-write":
+	case "recover", "recover-capture", "recover-write", "recover-bash", "recover-again":
 		combinedRecoveryRecover(t, root, step, phase, phase == "recover-capture", combinedRecoveryScenarios[scenario])
 	default:
 		t.Fatalf("unknown combined recovery phase %q", phase)
@@ -670,7 +671,7 @@ func combinedRecoveryOriginal(t *testing.T, root, step string, sc combinedRecove
 		}
 	}
 	if sc.productionBash {
-		combinedOriginalBashCall(t, root, conversation, durable, policy)
+		combinedBashCall(t, root, combinedProductionCall, 1, conversation, durable, policy)
 	}
 	if !sc.idleCrash {
 		turn, err := conversation.NextTurn(ctx)
@@ -815,8 +816,7 @@ func combinedRecoveryRecover(t *testing.T, root, step, phase string, capture boo
 	var d09Template piruntime.D09CellTemplate
 	if sc.productionBash {
 		productionProfile, d09Template = combinedProductionProfile(t)
-		commandJournal, commandHistories = combinedRecoveryCommandHistory(t, p.commandJournal,
-			combinedOriginalSession, combinedOriginalConversation)
+		commandJournal, commandHistories = combinedRecoveryCommandHistory(t, p.commandJournal, combinedPreviousSessions(gen))
 		production = combinedProductionRunner(t, commandJournal, productionProfile, d09Template, newSession, newConversation)
 		runner = production
 	}
@@ -824,6 +824,9 @@ func combinedRecoveryRecover(t *testing.T, root, step, phase string, capture boo
 	if phase == "recover-write" {
 		turns = []providerbridge.DevelopmentProviderTurn{{ResponseID: "resumed-write-response", CallID: "resumed-write-call",
 			Tool: "write", Arguments: json.RawMessage(`{"path":"task.txt","content":"resumed\n"}`)}}
+	}
+	if phase == "recover-bash" {
+		turns = append([]providerbridge.DevelopmentProviderTurn{combinedResumedBashTurn()}, turns...)
 	}
 	providerProfile := combinedRecoveryProviderProfile("")
 	request := governedRecoveryRequest{
@@ -898,12 +901,20 @@ func combinedRecoveryRecover(t *testing.T, root, step, phase string, capture boo
 					t.Fatalf("activated authority refused the origin of its new transition: %v", err)
 				}
 			}
+			if phase == "recover-bash" {
+				combinedBashCall(t, root, combinedResumedCall, gen, session.Conversation, session.Durable, policy)
+			}
 			if sc.productionBash {
 				result.Publication = combinedRecoveryPublish(t, root, session, production, productionProfile, d09Template,
 					newSession, newConversation)
-				if phase == "recover" {
-					combinedRecoveryTerminalOrigin(t, root, session)
+				switch phase {
+				case "recover":
+					combinedRecoveryTerminalOrigin(t, root, session, 1)
 					combinedRecoveryCommandRefusals(t, root, session, production, commandJournal)
+				case "recover-bash":
+					combinedRecoveryTerminalOrigin(t, root, session, gen)
+				case "recover-again":
+					combinedRecoveryTerminalOrigin(t, root, session, gen-1)
 				}
 			}
 			if capture {

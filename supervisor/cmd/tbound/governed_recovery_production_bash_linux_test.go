@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -26,11 +27,38 @@ import (
 // sequence with that history; publication is checked against the activated session.
 const (
 	combinedProductionScenario   = "production-bash"
+	combinedResumedScenario      = "production-bash-resumed"
 	combinedProductionCall       = "combined-production-bash-call"
+	combinedResumedCall          = "combined-resumed-bash-call"
 	combinedProductionStop       = "managed-live-root"
 	combinedOriginalSession      = "combined-recovery-session-g1"
 	combinedOriginalConversation = "combined-recovery-conversation-g1"
 )
+
+// combinedSessionIdentity names the session and conversation of recovery generation gen. Generation 1 is the original
+// process; each later generation is a recovered session with its own identities.
+func combinedSessionIdentity(gen uint64) (string, string) {
+	if gen == 1 {
+		return combinedOriginalSession, combinedOriginalConversation
+	}
+	return fmt.Sprintf("%s-session-g%d", combinedRecoveryWorkflow, gen), fmt.Sprintf("%s-conversation-g%d", combinedRecoveryWorkflow, gen)
+}
+
+// combinedPreviousSessions are the sessions whose command records a recovery of generation gen finds in the journal.
+func combinedPreviousSessions(gen uint64) []productionRecoveryCommandSession {
+	sessions := make([]productionRecoveryCommandSession, 0, gen-1)
+	for previous := uint64(1); previous < gen; previous++ {
+		session, conversation := combinedSessionIdentity(previous)
+		sessions = append(sessions, productionRecoveryCommandSession{RunID: session, SessionID: session, ConversationID: conversation})
+	}
+	return sessions
+}
+
+// combinedResumedBashTurn is the scripted provider turn of a Bash call the recovered session makes after activation.
+func combinedResumedBashTurn() providerbridge.DevelopmentProviderTurn {
+	return providerbridge.DevelopmentProviderTurn{ResponseID: "combined-resumed-bash-response", CallID: combinedResumedCall,
+		Tool: "bash", Arguments: json.RawMessage(`{"command":"printf 'bash-stage\\n' >> task.txt"}`)}
+}
 
 // combinedCommandRunner is what a combined-recovery phase hands the authority and the durable executor: the
 // development runner or the production D09 runner.
@@ -62,32 +90,32 @@ func combinedProductionRunner(t *testing.T, commandJournal *audit.Journal, profi
 	})
 }
 
-// combinedOriginalBashCall runs the original process's Bash call through the production runner and records the call's
-// proposal-call origin, which the recovered process compares against its terminal origin.
-func combinedOriginalBashCall(t *testing.T, root string, conversation *providerbridge.Conversation, durable *DurableExecutor,
-	policy gate.Policy) {
+// combinedBashCall runs one scripted Bash call of generation gen through the production runner and records the call's
+// proposal-call origin in origin-g<gen>.json. A later recovery compares its terminal origin against that file.
+func combinedBashCall(t *testing.T, root, callID string, gen uint64, conversation *providerbridge.Conversation,
+	durable *DurableExecutor, policy gate.Policy) {
 	t.Helper()
 	ctx := context.Background()
 	step := &workflowVerticalFixture{ctx: ctx, conversation: conversation, policy: policy}
-	proposal, decision := ledgerDenyTurn(t, step, combinedProductionCall, gate.Allow)
+	proposal, decision := ledgerDenyTurn(t, step, callID, gate.Allow)
 	executor, err := providerbridge.NewExecutor(conversation, durable)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := executor.Execute(ctx, proposal, decision); err != nil {
-		t.Fatalf("original Bash call: %v", err)
+		t.Fatalf("generation %d Bash call %s: %v", gen, callID, err)
 	}
 	proposalID, err := durableTrustedIdentity("proposal", proposal, decision)
 	if err != nil {
 		t.Fatal(err)
 	}
-	combinedRecoveryWriteJSON(t, filepath.Join(root, "origin.json"), delta.OperationIdentity{Kind: delta.OperationProposalCall,
-		ProposalID: proposalID, CallIssuer: governedCallIssuer, CallID: combinedProductionCall})
+	combinedRecoveryWriteJSON(t, filepath.Join(root, fmt.Sprintf("origin-g%d.json", gen)), delta.OperationIdentity{
+		Kind: delta.OperationProposalCall, ProposalID: proposalID, CallIssuer: governedCallIssuer, CallID: callID})
 }
 
 // combinedRecoveryCommandHistory opens the scenario's command journal once and pins its records as recovery reads
 // them. The journal is the one the production runner appends to, and the one the frozen history reads.
-func combinedRecoveryCommandHistory(t *testing.T, path, session, conversation string) (*audit.Journal,
+func combinedRecoveryCommandHistory(t *testing.T, path string, sessions []productionRecoveryCommandSession) (*audit.Journal,
 	[]productionRecoveryCommandJournal) {
 	t.Helper()
 	journal, err := openExistingRecoveryJournal(path)
@@ -106,7 +134,7 @@ func combinedRecoveryCommandHistory(t *testing.T, path, session, conversation st
 	return journal, []productionRecoveryCommandJournal{{Journal: journal, Path: path,
 		Pin: productionHistoricalCommandPin{IdentityDigest: identity, Head: auditHeadHash(trace.Records),
 			RecordCount: uint64(len(trace.Records))},
-		Sessions: []productionRecoveryCommandSession{{RunID: session, SessionID: session, ConversationID: conversation}}}}
+		Sessions: sessions}}
 }
 
 // combinedPinnedProfileDigest is the profile digest the checkpoint pins: the production profile for a production
@@ -177,10 +205,10 @@ func combinedProductionProfile(t *testing.T) (piruntime.HostProfile, piruntime.D
 
 // combinedRecoveryTerminalOrigin resolves the terminal lease of the activated session's history. The expected origin
 // is the proposal-call identity the original process computed for the Bash call.
-func combinedRecoveryTerminalOrigin(t *testing.T, root string, session *governedRecoverySession) {
+func combinedRecoveryTerminalOrigin(t *testing.T, root string, session *governedRecoverySession, gen uint64) {
 	t.Helper()
 	var want delta.OperationIdentity
-	data, err := os.ReadFile(filepath.Join(root, "origin.json"))
+	data, err := os.ReadFile(filepath.Join(root, fmt.Sprintf("origin-g%d.json", gen)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -328,6 +356,24 @@ func TestGovernedRecoveryCombinedPublishesAHistoricalBashTerminalLease(t *testin
 	if resumed.PrepareError != "" || resumed.ActivateError != "" || !resumed.Activated || resumed.Publication != combinedProductionStop {
 		t.Fatalf("recovery of the historical Bash terminal: prepare=%q activate=%q publication=%q",
 			resumed.PrepareError, resumed.ActivateError, resumed.Publication)
+	}
+}
+
+// TestGovernedRecoveryCombinedPublishesAcrossAnotherRecovery runs a Bash call in the recovered session, which appends
+// its settled record to the same command journal and Store, and then recovers again. The second recovery must route both
+// records to their pinned sessions, and publication must check both historical Bash operations.
+func TestGovernedRecoveryCombinedPublishesAcrossAnotherRecovery(t *testing.T) {
+	root := privateGovernedTestRoot(t)
+	combinedRecoveryRunChild(t, root, combinedResumedScenario, "original", "o", combinedRecoveryCrashExit)
+	first := combinedRecoveryRunChild(t, root, combinedResumedScenario, "recover-bash", "r1", 0)
+	if first.PrepareError != "" || first.ActivateError != "" || !first.Activated || first.Publication != combinedProductionStop {
+		t.Fatalf("first recovery with a resumed Bash call: prepare=%q activate=%q publication=%q",
+			first.PrepareError, first.ActivateError, first.Publication)
+	}
+	second := combinedRecoveryRunChild(t, root, combinedResumedScenario, "recover-again", "r2", 0)
+	if second.PrepareError != "" || second.ActivateError != "" || !second.Activated || second.Publication != combinedProductionStop {
+		t.Fatalf("second recovery after the resumed Bash call: prepare=%q activate=%q publication=%q",
+			second.PrepareError, second.ActivateError, second.Publication)
 	}
 }
 
