@@ -416,3 +416,138 @@ func countBashEffects(t *testing.T, trace audit.Trace) int {
 	}
 	return count
 }
+
+// durableBashReleasedSummary is the bash mutation summary the model receives. The test declares its own
+// shape so it checks the released bytes, not the executor's private payload types.
+type durableBashReleasedSummary struct {
+	Tool       string                     `json:"tool"`
+	Generation durableGenerationSummary   `json:"generation"`
+	Transition durableTransitionSummary   `json:"transition"`
+	EffectID   string                     `json:"effect_id"`
+	Outcome    string                     `json:"outcome"`
+	Command    durableBashReleasedCommand `json:"command"`
+}
+
+type durableBashReleasedCommand struct {
+	ExitCode                 int    `json:"exit_code"`
+	ExitObserved             bool   `json:"exit_observed"`
+	CommandContainmentStatus string `json:"command_containment_status"`
+	CommandRunnerProfile     string `json:"command_runner_profile"`
+	Stdout                   string `json:"stdout"`
+	StdoutBytes              int    `json:"stdout_bytes"`
+	StdoutTruncated          bool   `json:"stdout_truncated"`
+	Stderr                   string `json:"stderr"`
+	StderrBytes              int    `json:"stderr_bytes"`
+	StderrTruncated          bool   `json:"stderr_truncated"`
+}
+
+// releaseDurableBashStreams runs one ALLOW bash proposal whose settled command prints the given streams and
+// returns the summary bytes the durable executor releases to the provider.
+func releaseDurableBashStreams(t *testing.T, stdout, stderr string) json.RawMessage {
+	t.Helper()
+	store, _, _, g0 := durableBashFixture(t)
+	proposal, decision := durableBashProposal(`{"command":"true"}`)
+	leaseID, err := durableTrustedIdentity("lease", proposal, decision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner := durableConsistentBashRunner(leaseID)
+	runner.stdout, runner.stderr = stdout, stderr
+	executor, err := NewDurableExecutor(DurableExecutorConfig{
+		Store: store, Tip: g0, CallIssuer: durableCallIssuer,
+		PolicyDigest: durablePolicyDigest, MetadataPolicyDigest: durableMetadataDigest,
+		CommandRunner: runner, BashOutputPaths: []string{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	output, err := executor.Execute(context.Background(), proposal, decision)
+	if err != nil {
+		t.Fatalf("durable bash: %v", err)
+	}
+	return output
+}
+
+func decodeDurableBashReleased(t *testing.T, output json.RawMessage) durableBashReleasedSummary {
+	t.Helper()
+	var released durableBashReleasedSummary
+	if err := json.Unmarshal(output, &released); err != nil {
+		t.Fatalf("decode released bash summary %q: %v", output, err)
+	}
+	return released
+}
+
+// TestDurableBashReleasesSettledStreamsExactly proves the model receives the settled stdout and stderr byte for
+// byte, with their byte counts, when both fit the released bound.
+func TestDurableBashReleasesSettledStreamsExactly(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("durable session-repository integration runs only on Linux")
+	}
+	released := decodeDurableBashReleased(t, releaseDurableBashStreams(t, "bash output\n", "bash error\n"))
+	if released.Command.Stdout != "bash output\n" || released.Command.StdoutBytes != len("bash output\n") || released.Command.StdoutTruncated ||
+		released.Command.Stderr != "bash error\n" || released.Command.StderrBytes != len("bash error\n") || released.Command.StderrTruncated {
+		t.Fatalf("released streams = %+v; want the settled stdout and stderr exactly", released.Command)
+	}
+}
+
+// TestDurableBashReleasesTheTailOfAnOverlongStream proves an overlong stream releases its last 16384 bytes and
+// marks the truncation with the original byte count, so the command result is not withheld.
+func TestDurableBashReleasesTheTailOfAnOverlongStream(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("durable session-repository integration runs only on Linux")
+	}
+	stdout := strings.Repeat("a", 20000) + "END\n"
+	released := decodeDurableBashReleased(t, releaseDurableBashStreams(t, stdout, ""))
+	if released.Command.Stdout != stdout[len(stdout)-16384:] || released.Command.StdoutBytes != len(stdout) || !released.Command.StdoutTruncated {
+		t.Fatalf("released stdout: bytes=%d truncated=%t text-length=%d; want the last 16384 bytes of %d with truncation marked",
+			released.Command.StdoutBytes, released.Command.StdoutTruncated, len(released.Command.Stdout), len(stdout))
+	}
+	if released.Command.Stderr != "" || released.Command.StderrBytes != 0 || released.Command.StderrTruncated {
+		t.Fatalf("empty stderr released as %+v", released.Command)
+	}
+}
+
+// TestDurableBashTailDropsARuneCutInHalf proves the tail starts on a whole rune: the 16384-byte window of an
+// 18000-byte run of three-byte runes starts inside a rune, so the released text begins at the next rune.
+func TestDurableBashTailDropsARuneCutInHalf(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("durable session-repository integration runs only on Linux")
+	}
+	stdout := strings.Repeat("€", 6000)
+	released := decodeDurableBashReleased(t, releaseDurableBashStreams(t, stdout, ""))
+	if released.Command.Stdout != strings.Repeat("€", 5461) || released.Command.StdoutBytes != 18000 || !released.Command.StdoutTruncated {
+		t.Fatalf("released stdout: %d runes, bytes=%d truncated=%t; want 5461 whole runes, bytes=18000, truncated",
+			len([]rune(released.Command.Stdout)), released.Command.StdoutBytes, released.Command.StdoutTruncated)
+	}
+}
+
+// TestDurableBashReplacesInvalidUTF8WhileCountingRawBytes proves invalid UTF-8 is released as U+FFFD and that the
+// byte count stays the raw count, so the model text is deterministic and the original size is still visible.
+func TestDurableBashReplacesInvalidUTF8WhileCountingRawBytes(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("durable session-repository integration runs only on Linux")
+	}
+	released := decodeDurableBashReleased(t, releaseDurableBashStreams(t, "ok\xff\n", ""))
+	if released.Command.Stdout != "ok\uFFFD\n" || released.Command.StdoutBytes != 4 || released.Command.StdoutTruncated {
+		t.Fatalf("released stdout = %q bytes=%d truncated=%t; want \"ok\uFFFD\n\" from 4 raw bytes",
+			released.Command.Stdout, released.Command.StdoutBytes, released.Command.StdoutTruncated)
+	}
+}
+
+// TestDurableBashReleasedSummaryKeepsWorstCaseEscapingInsideTheFrame proves maximal control-byte output on both
+// streams still encodes well inside the protocol frame, which leaves room for the result wrapper.
+func TestDurableBashReleasedSummaryKeepsWorstCaseEscapingInsideTheFrame(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("durable session-repository integration runs only on Linux")
+	}
+	control := strings.Repeat("\x01", 1<<20)
+	output := releaseDurableBashStreams(t, control, control)
+	if len(output) > protocol.MaxFrameBytes/2 {
+		t.Fatalf("released summary is %d bytes; it must leave half the protocol frame for the result wrapper", len(output))
+	}
+	released := decodeDurableBashReleased(t, output)
+	if released.Command.StdoutBytes != 1<<20 || !released.Command.StdoutTruncated || len(released.Command.Stdout) != 16384 {
+		t.Fatalf("released stdout: bytes=%d truncated=%t text-length=%d; want 1048576 bytes, truncated, 16384 released",
+			released.Command.StdoutBytes, released.Command.StdoutTruncated, len(released.Command.Stdout))
+	}
+}

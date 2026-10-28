@@ -373,6 +373,45 @@ func (acceptingProviderReplayVerifier) VerifyAdmissionDenial(providerbridge.Prov
 func forgeFinalProviderReadOutput(t *testing.T, fixture *governedReplayFixture, journalName string,
 	forge func(*durableReadSummaryPayload)) *audit.Journal {
 	t.Helper()
+	return forgeFinalProviderOutput(t, fixture, journalName, func(output json.RawMessage) json.RawMessage {
+		var summary durableReadSummaryPayload
+		if err := decodeGovernedResult(output, &summary); err != nil {
+			t.Fatal(err)
+		}
+		forge(&summary)
+		summary.Size = len(summary.Content)
+		summary.ContentDigest = durableContentDigest([]byte(summary.Content))
+		encoded, err := json.Marshal(summary)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return encoded
+	})
+}
+
+// forgeFinalProviderBashOutput rewrites the released bash summary of the final provider result and rehashes it.
+func forgeFinalProviderBashOutput(t *testing.T, fixture *governedReplayFixture, journalName string,
+	forge func(*durableBashReleasedSummary)) *audit.Journal {
+	t.Helper()
+	return forgeFinalProviderOutput(t, fixture, journalName, func(output json.RawMessage) json.RawMessage {
+		var summary durableBashReleasedSummary
+		if err := decodeGovernedResult(output, &summary); err != nil {
+			t.Fatal(err)
+		}
+		forge(&summary)
+		encoded, err := json.Marshal(summary)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return encoded
+	})
+}
+
+// forgeFinalProviderOutput copies the provider journal, rewrites the output of its final tool result, and rehashes
+// the result and its evidence, so the copy is internally consistent and only the Store cross-link can refute it.
+func forgeFinalProviderOutput(t *testing.T, fixture *governedReplayFixture, journalName string,
+	rewrite func(output json.RawMessage) json.RawMessage) *audit.Journal {
+	t.Helper()
 	original, err := fixture.providerJournal.Trace()
 	if err != nil {
 		t.Fatal(err)
@@ -395,17 +434,7 @@ func forgeFinalProviderReadOutput(t *testing.T, fixture *governedReplayFixture, 
 			if err != nil {
 				t.Fatal(err)
 			}
-			var summary durableReadSummaryPayload
-			if err := decodeGovernedResult(result.Output, &summary); err != nil {
-				t.Fatal(err)
-			}
-			forge(&summary)
-			summary.Size = len(summary.Content)
-			summary.ContentDigest = durableContentDigest([]byte(summary.Content))
-			result.Output, err = json.Marshal(summary)
-			if err != nil {
-				t.Fatal(err)
-			}
+			result.Output = rewrite(result.Output)
 			evidence.Result, err = protocol.MarshalResult(result)
 			if err != nil {
 				t.Fatal(err)
@@ -425,6 +454,91 @@ func forgeFinalProviderReadOutput(t *testing.T, fixture *governedReplayFixture, 
 		t.Fatal("fixture did not end at a provider_tool_result to tamper")
 	}
 	return tamperedJournal
+}
+
+// releasedProviderBashOutput returns the bash summary the provider journal released to the model.
+func releasedProviderBashOutput(t *testing.T, journal *audit.Journal) durableBashReleasedSummary {
+	t.Helper()
+	trace, err := journal.Trace()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, record := range trace.Records {
+		if record.Event.Kind != "provider_tool_result" {
+			continue
+		}
+		var evidence providerResultEvidence
+		if err := unmarshalGovernedJSON(record.Event.Data, &evidence); err != nil {
+			t.Fatal(err)
+		}
+		result, err := protocol.DecodeResult(evidence.Result)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if result.Tool != "bash" {
+			continue
+		}
+		var released durableBashReleasedSummary
+		if err := decodeGovernedResult(result.Output, &released); err != nil {
+			t.Fatalf("decode the bash output released to the model: %v", err)
+		}
+		return released
+	}
+	t.Fatal("provider journal holds no bash result")
+	return durableBashReleasedSummary{}
+}
+
+// TestReplayGovernedTranscriptReleasesBashStreamsAndRefusesForgedStreams proves the model receives the settled
+// stdout and stderr exactly, that governed replay reconstructs those bytes from the retained command result, and
+// that a self-consistent forgery of either stream is refused by the Store cross-link.
+func TestReplayGovernedTranscriptReleasesBashStreamsAndRefusesForgedStreams(t *testing.T) {
+	fixture := newGovernedReplayFixture(t, []providerbridge.DevelopmentProviderTurn{
+		{ResponseID: "replay-response-bash-streams", CallID: "replay-call-bash-streams", Tool: "bash",
+			Arguments: json.RawMessage(`{"command":"printf 'out line\\n'; printf 'err line\\n' >&2"}`)},
+	}, true)
+	executeGovernedReplayTurn(t, fixture, true)
+	released := releasedProviderBashOutput(t, fixture.providerJournal)
+	if released.Command.Stdout != "out line\n" || released.Command.Stderr != "err line\n" {
+		t.Fatalf("the model received stdout %q and stderr %q; want the settled streams exactly",
+			released.Command.Stdout, released.Command.Stderr)
+	}
+	if _, err := ReplayGovernedTranscript(fixture.providerJournal, fixture.storeJournal, fixture.store, fixture.pins); err != nil {
+		t.Fatalf("governed replay refused the released bash streams: %v", err)
+	}
+	forgeries := []struct {
+		journal string
+		forge   func(*durableBashReleasedSummary)
+	}{
+		{"bash-forged-stdout.audit", func(s *durableBashReleasedSummary) { s.Command.Stdout, s.Command.StdoutBytes = "forged\n", 7 }},
+		{"bash-omitted-stdout.audit", func(s *durableBashReleasedSummary) { s.Command.Stdout, s.Command.StdoutBytes = "", 0 }},
+		{"bash-flipped-truncation.audit", func(s *durableBashReleasedSummary) { s.Command.StdoutTruncated = true }},
+		{"bash-forged-stderr.audit", func(s *durableBashReleasedSummary) { s.Command.Stderr, s.Command.StderrBytes = "forged\n", 7 }},
+	}
+	for _, forgery := range forgeries {
+		tampered := forgeFinalProviderBashOutput(t, fixture, forgery.journal, forgery.forge)
+		if _, err := ReplayGovernedTranscript(tampered, fixture.storeJournal, fixture.store, fixture.pins); err == nil {
+			t.Fatalf("governed replay accepted a self-consistent forged bash result (%s)", forgery.journal)
+		}
+	}
+}
+
+// TestGovernedWorkflowVerticalWritesWhatBashPrinted runs a command whose stdout the model then writes to a file.
+// The released stdout must be the exact bytes the write carries, and the whole transcript must replay.
+func TestGovernedWorkflowVerticalWritesWhatBashPrinted(t *testing.T) {
+	fixture := newGovernedReplayFixture(t, []providerbridge.DevelopmentProviderTurn{
+		{ResponseID: "vertical-response-bash", CallID: "vertical-call-bash", Tool: "bash",
+			Arguments: json.RawMessage(`{"command":"printf 'hello\\n'"}`)},
+		{ResponseID: "vertical-response-write", CallID: "vertical-call-write", Tool: "write",
+			Arguments: json.RawMessage(`{"path":"stdout.txt","content":"hello\n"}`)},
+	}, true)
+	executeGovernedReplayTurn(t, fixture, true)
+	executeGovernedReplayTurn(t, fixture, true)
+	if released := releasedProviderBashOutput(t, fixture.providerJournal); released.Command.Stdout != "hello\n" {
+		t.Fatalf("the model received stdout %q; it cannot write what it never saw", released.Command.Stdout)
+	}
+	if _, err := ReplayGovernedTranscript(fixture.providerJournal, fixture.storeJournal, fixture.store, fixture.pins); err != nil {
+		t.Fatalf("governed replay refused the command-then-write transcript: %v", err)
+	}
 }
 
 func TestReplayGovernedTranscriptRejectsSelfConsistentForgedProviderOutput(t *testing.T) {
