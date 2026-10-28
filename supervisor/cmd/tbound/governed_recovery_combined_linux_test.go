@@ -796,7 +796,7 @@ func combinedRecoveryRecover(t *testing.T, root, step, phase string, capture boo
 	if err != nil {
 		result.PrepareError = err.Error()
 	} else {
-		session, activateErr := candidate.Activate(ctx)
+		session, activateErr := activateProductionRecoverySession(ctx, candidate)
 		if activateErr != nil {
 			result.ActivateError = activateErr.Error()
 			_ = candidate.Close()
@@ -1118,4 +1118,13 @@ func TestGovernedRecoveryCombinedRecoversAgainAfterRetiringACapturedCall(t *test
 	}
 	combinedRecoveryRequireCounters(t, second, workflowrecovery.Counters{PreEffectRetries: 1, CleanRestarts: 2,
 		HostCalls: 1, Tokens: combinedRecoveryTokens})
+}
+
+func TestProductionRecoveryBinderBindsPreparedSessionOnce(t *testing.T) {
+	root := privateGovernedTestRoot(t)
+	combinedRecoveryRunChild(t, root, "binder-pins-idle", "original", "o", combinedRecoveryCrashExit)
+	resumed := combinedRecoveryRunChild(t, root, "binder-pins-idle", "recover", "r1", 0)
+	if resumed.PrepareError != "" || resumed.ActivateError != "" || !resumed.Activated {
+		t.Fatalf("production binder handoff: prepare=%q activate=%q", resumed.PrepareError, resumed.ActivateError)
+	}
 }
