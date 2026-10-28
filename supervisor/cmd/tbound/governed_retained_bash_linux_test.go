@@ -323,7 +323,7 @@ func retainedAuthority(t *testing.T, replayed retainedReplay, runner *production
 	if err != nil {
 		return nil, err
 	}
-	fresh, err := audit.Open(filepath.Join(privateGovernedTestRoot(t), "fresh-provider.jsonl"))
+	fresh, err := audit.Open(filepath.Join(t.TempDir(), "fresh-provider.jsonl"))
 	if err != nil {
 		t.Fatal(err)
 	}
