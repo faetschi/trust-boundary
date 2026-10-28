@@ -1,6 +1,6 @@
 # Current status
 
-Updated 2026-10-24. This page is the short gate summary. [OVERVIEW](../../OVERVIEW.md)
+Updated 2026-10-28. This page is the short gate summary. [OVERVIEW](../../OVERVIEW.md)
 is the one-screen state; [TASK_STATE](../../TASK_STATE.md) is the working log with
 decisions, blockers, and next steps. History before this date is in Git.
 
@@ -13,10 +13,14 @@ decisions, blockers, and next steps. History before this date is in Git.
   fixture, a capability probe, or a receipt is not an H1 result.
 - **The pilot is not ready.** EVQ at F13 passes 21 of 22 obligations; only the
   net-sink obligation is open (it needs a corpus-mode trial reset). The route
-  report is complete (4 of 4 routes covered). Two service-mode defects block the
-  pilot: a gate DENY closes the conversation, so the model never receives the
-  denial or its hint, and recovery preview looks for the wrong authorization
-  record kind. Both are fixed before the next freeze.
+  report is complete (4 of 4 routes covered). The service-mode blockers found
+  since F13 are fixed and merged, but not yet on the guest (F14): a gate DENY no
+  longer closes the conversation (`c209d63`), recovery preview indexes the right
+  authorization record kind (`a40fbb9`), a denied-after-effect Bash command is
+  settled (`f483fad`), and a governed read honours `offset`/`limit` (`039ac82`).
+- **Production resume after a promoted write does not work yet.** It fails
+  closed. No registered run depends on it (scripted pilot roles refuse resume;
+  the recovery suite is proposed, not registered). A fix is in progress.
 - **The final-profile containment study is not complete.** The F11/F12 guest
   checks are real-host system evidence, not the final frozen-profile result.
 - **C-DH is parked.** H1 stays Configuration C with the static
@@ -42,8 +46,9 @@ decisions, blockers, and next steps. History before this date is in Git.
    pilot audit size are open in the decision package) and case corrections; freeze the pilot protocol,
    provider, outage rules, and initial safety ceilings.
 3. Done at F13: freeze, reinstall, G1 and both probes with fresh evidence. For F14, the
-   two service-mode defects (DENY continuation `c209d63`, D09 denied settlement `f483fad`)
-   and the corpus-check guest-evidence input (`f1d5b75`) are merged; the F14 freeze,
+   two service-mode defects (DENY continuation `c209d63`, recovery record kind `a40fbb9`),
+   the D09 denied settlement (`f483fad`) and the corpus-check guest-evidence input
+   (`f1d5b75`) are merged; the F14 freeze,
    install and fresh G1/probe evidence are owner steps.
 4. Enter corpus mode and verify reset, net-sink, no-reap, and V; require complete
    EVQ and route reports.
