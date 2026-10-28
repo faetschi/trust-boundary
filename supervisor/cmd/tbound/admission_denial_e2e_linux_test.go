@@ -816,3 +816,19 @@ func TestCrashAfterTheDenialRecordBeforeDeliveryReplaysTheSameDenyResult(t *test
 		t.Fatalf("replay is not deterministic: %v", err)
 	}
 }
+
+// TestAdmissionDeniesAProtectedPathReachedThroughAnAlias proves a write to the protected file under a spelling that is
+// not its canonical name is refused by admission with the protected-path reason, not by path validation.
+func TestAdmissionDeniesAProtectedPathReachedThroughAnAlias(t *testing.T) {
+	for _, alias := range []string{"./secret.txt", "/work/secret.txt", "notes/../secret.txt"} {
+		t.Run(alias, func(t *testing.T) {
+			script := []evalcorpus.ScriptTurn{writeTurn(alias, "tampered\n")}
+			w := newDenialWorkflow(t, denialBinding(t, script, corpusRoleStaticReplay, evalcorpus.PDeltaNone), nil)
+			results := w.run()
+			if len(results) != 1 || results[0].Verdict != "DENY" || results[0].ReasonCode != sessionrepo.DenyReasonProtectedPath ||
+				len(results[0].Output) != 0 {
+				t.Fatalf("results = %+v, want one output-free DENY with %s", results, sessionrepo.DenyReasonProtectedPath)
+			}
+		})
+	}
+}
