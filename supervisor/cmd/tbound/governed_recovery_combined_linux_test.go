@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -799,6 +800,9 @@ func combinedRecoveryRecover(t *testing.T, root, step, phase string, capture boo
 			_ = candidate.Close()
 		} else {
 			result.Activated = true
+			if sc.advanceStore {
+				combinedRecoveryCheckRetainedHistory(t, session, candidate)
+			}
 			// This process now owns the new epoch. Its scope record is written when
 			// it exits, so the next recovery can observe it.
 			combinedRecoverySeedScope(t, root, request.NewOwnerEpoch, !sc.withoutCleanupReceipt)
@@ -1121,5 +1125,102 @@ func TestProductionRecoveryBinderBindsPreparedSessionOnce(t *testing.T) {
 	resumed := combinedRecoveryRunChild(t, root, "binder-pins-idle", "recover", "r1", 0)
 	if resumed.PrepareError != "" || resumed.ActivateError != "" || !resumed.Activated {
 		t.Fatalf("production binder handoff: prepare=%q activate=%q", resumed.PrepareError, resumed.ActivateError)
+	}
+}
+
+// The candidate and all of its evidence were reopened by this child process.
+func combinedRecoveryCheckRetainedHistory(t *testing.T, session *governedRecoverySession, candidate *governedRecoveryCandidate) {
+	t.Helper()
+	bundle, err := session.Store.EvidenceBundle()
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := bundle.ApprovedDeltaLedger[0]
+	binding := governedTransitionBinding(original)
+	if err := session.Authority.VerifyDecision(original.Decision, binding); err == nil {
+		t.Fatal("fresh authority accepted historical decision")
+	}
+	if err := session.Historical.verifyDecision(original.Decision, binding, session.Authority.VerifyDecision); err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range []string{"ID", "Tool", "ArgumentDigest", "ViewID", "ExecutionContextDigest", "InputGeneration", "OutputGeneration", "InputTreeDigest", "OutputTreeDigest"} {
+		t.Run("retained-binding-"+field, func(t *testing.T) {
+			changed := binding
+			value := reflect.ValueOf(&changed).Elem().FieldByName(field)
+			value.SetString(value.String() + "-changed")
+			if err := session.Historical.verifyDecision(original.Decision, changed, func(delta.PolicyDecision, delta.TransitionBinding) error {
+				t.Fatal("historical mismatch reached live verifier")
+				return nil
+			}); err == nil {
+				t.Fatalf("accepted changed historical %s", field)
+			}
+		})
+	}
+	changed := binding
+	changed.Changes = append([]delta.ObjectChange(nil), binding.Changes...)
+	changed.Changes[0].Path += "-changed"
+	if err := session.Historical.verifyDecision(original.Decision, changed, session.Authority.VerifyDecision); err == nil {
+		t.Fatal("accepted changed historical change")
+	}
+	changed = binding
+	changed.Operation.CallID += "-changed"
+	if err := session.Historical.verifyDecision(original.Decision, changed, session.Authority.VerifyDecision); err == nil {
+		t.Fatal("accepted changed historical operation")
+	}
+	decision := original.Decision
+	decision.ID += "-changed"
+	if err := session.Historical.verifyDecision(decision, binding, session.Authority.VerifyDecision); err == nil {
+		t.Fatal("accepted changed historical decision")
+	}
+	changed = binding
+	changed.Sequence++
+	if err := session.Historical.verifyDecision(original.Decision, changed, session.Authority.VerifyDecision); err == nil {
+		t.Fatal("new transition borrowed historical authorization")
+	}
+	changed.Sequence = 0
+	if err := session.Historical.verifyDecision(original.Decision, changed, session.Authority.VerifyDecision); err == nil {
+		t.Fatal("zero transition borrowed historical authorization")
+	}
+	// The prefix comes from the pre-activation journal the historical verifier held, not the D06 tail activation appended.
+	trace := candidate.historical.initialTrace
+	journal, err := marshalGovernedAuditRecords(trace.Records)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ledger := make([]delta.Transition, len(bundle.ApprovedDeltaLedger))
+	for i, transition := range bundle.ApprovedDeltaLedger {
+		transition.Changes = append([]delta.ObjectChange(nil), transition.Changes...)
+		ledger[i] = transition
+	}
+	prefix := bundle
+	prefix.AuditJournal = journal
+	prefix.AuditRecordCount, prefix.AuditHeadHash = uint64(len(trace.Records)), auditHeadHash(trace.Records)
+	prefix.ApprovedDeltaLedger = ledger
+	shorter := prefix
+	shorter.ApprovedDeltaLedger = nil
+	if _, err := newGovernedRetainedHistory(shorter, candidate.next, candidate.historical); err == nil {
+		t.Fatal("froze an empty prefix over a journal with one approved transition")
+	}
+	extra := ledger[0]
+	extra.ID, extra.Sequence = extra.ID+"-extra", 2
+	longer := prefix
+	longer.ApprovedDeltaLedger = append(append([]delta.Transition(nil), ledger...), extra)
+	if _, err := newGovernedRetainedHistory(longer, candidate.next, candidate.historical); err == nil {
+		t.Fatal("froze a prefix longer than the verified journal")
+	}
+	for _, offset := range []int64{-1, 1} {
+		pins := candidate.next
+		pins.StoreJournalCount = uint64(int64(pins.StoreJournalCount) + offset)
+		if _, err := newGovernedRetainedHistory(prefix, pins, candidate.historical); err == nil {
+			t.Fatal("froze a prefix whose journal count differs from the recovery pins")
+		}
+	}
+	frozen, err := newGovernedRetainedHistory(prefix, candidate.next, candidate.historical)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ledger[0].Changes[0].Path += "-changed"
+	if err := frozen.verifyDecision(original.Decision, binding, session.Authority.VerifyDecision); err != nil {
+		t.Fatalf("frozen history aliases its source ledger: %v", err)
 	}
 }
