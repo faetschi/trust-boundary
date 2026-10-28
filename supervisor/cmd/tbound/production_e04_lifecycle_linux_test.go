@@ -248,7 +248,9 @@ func TestE04TheBinderPointsAreTakenBetweenTheirBarriers(t *testing.T) {
 		"production_binder_linux.go": {"recoverManagedLiveRootBeforeCapture", wsoracle.PointBaseline,
 			"D09ManagedLiveRootSnapshotEvidenceForSeed", "BindPreparedSession", wsoracle.PointPostMaterialization, "initializeProductionFreshWorkflow"},
 		"production_recovery_binder_linux.go": {"recoverManagedLiveRootBeforeCapture", wsoracle.PointBaseline,
-			"D09ManagedLiveRootSnapshotEvidenceForSeed", "Activate", "BindPreparedSession", wsoracle.PointPostMaterialization},
+			"D09ManagedLiveRootSnapshotEvidenceForSeed", "activateProductionRecoverySession", wsoracle.PointPostMaterialization},
+		// The recovered session is bound once, inside Activate, after its Store and Git activation.
+		"governed_recovery_linux.go": {"Activate", "BindPreparedSession"},
 	}
 	isPoint := map[string]bool{}
 	for _, p := range []string{wsoracle.PointBaseline, wsoracle.PointPostMaterialization} {
