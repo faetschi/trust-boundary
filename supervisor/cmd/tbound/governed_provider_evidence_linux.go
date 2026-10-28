@@ -20,6 +20,9 @@ import (
 )
 
 func (a *SessionOperationAuthority) VerifyOrigin(bundle sessionrepo.EvidenceBundle, transition delta.Transition) error {
+	if a.retained.contains(transition.Sequence) {
+		return a.retained.verifyOrigin(bundle, transition, a.storeJournal)
+	}
 	storeTrace, err := audit.Verify(bytes.NewReader(bundle.AuditJournal))
 	if err != nil {
 		return err
@@ -168,6 +171,9 @@ func (a *SessionOperationAuthority) VerifyOrigin(bundle sessionrepo.EvidenceBund
 }
 
 func (a *SessionOperationAuthority) VerifyTransition(decision delta.PolicyDecision, binding delta.TransitionBinding) error {
+	if a.retained.contains(binding.Sequence) {
+		return a.retained.verifyRetained(decision, binding)
+	}
 	if err := a.VerifyDecision(decision, binding); err != nil {
 		return err
 	}

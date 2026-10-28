@@ -241,64 +241,125 @@ func TestE04LifecycleAFailedPublicationStillTakesThePublicationPointsWithoutALed
 	}
 }
 
-// The two points taken by the binders cannot be driven without the guest, so their place is pinned
-// by position: each follows the step it depends on and precedes the next one.
+// The binders take their points by position, and the recovered session is bound exactly once. Each
+// assertion reads one function body, so a call elsewhere in the same file cannot satisfy it.
 func TestE04TheBinderPointsAreTakenBetweenTheirBarriers(t *testing.T) {
-	chains := map[string][]string{
-		"production_binder_linux.go": {"recoverManagedLiveRootBeforeCapture", wsoracle.PointBaseline,
-			"D09ManagedLiveRootSnapshotEvidenceForSeed", "BindPreparedSession", wsoracle.PointPostMaterialization, "initializeProductionFreshWorkflow"},
-		"production_recovery_binder_linux.go": {"recoverManagedLiveRootBeforeCapture", wsoracle.PointBaseline,
-			"D09ManagedLiveRootSnapshotEvidenceForSeed", "Activate", "BindPreparedSession", wsoracle.PointPostMaterialization},
+	requireBarrierOrder(t, "production_binder_linux.go BindProductionPiSession",
+		functionCalls(t, "production_binder_linux.go", "productionBinder", "BindProductionPiSession"),
+		[]string{"recoverManagedLiveRootBeforeCapture", wsoracle.PointBaseline,
+			"D09ManagedLiveRootSnapshotEvidenceForSeed", "BindPreparedSession", wsoracle.PointPostMaterialization, "initializeProductionFreshWorkflow"})
+	requireBarrierOrder(t, "production_recovery_binder_linux.go bindProductionPiRecoverySession",
+		functionCalls(t, "production_recovery_binder_linux.go", "", "bindProductionPiRecoverySession"),
+		[]string{"recoverManagedLiveRootBeforeCapture", wsoracle.PointBaseline,
+			"D09ManagedLiveRootSnapshotEvidenceForSeed", "activateProductionRecoverySession", wsoracle.PointPostMaterialization})
+	// The recovery binder never binds, because Activate does, so no function in its file may call BindPreparedSession.
+	if binds := allFunctionCalls(t, "production_recovery_binder_linux.go")["BindPreparedSession"]; len(binds) != 0 {
+		t.Errorf("production_recovery_binder_linux.go calls BindPreparedSession %d times, want none", len(binds))
 	}
-	isPoint := map[string]bool{}
-	for _, p := range []string{wsoracle.PointBaseline, wsoracle.PointPostMaterialization} {
-		isPoint[p] = true
-	}
-	for file, chain := range chains {
-		parsed, err := parser.ParseFile(token.NewFileSet(), file, nil, 0)
-		if err != nil {
-			t.Fatal(err)
+	// The recovered session is bound once, after the Store and Git activation that Activate performs first.
+	requireBarrierOrder(t, "governed_recovery_linux.go governedRecoveryCandidate.Activate",
+		functionCalls(t, "governed_recovery_linux.go", "governedRecoveryCandidate", "Activate"),
+		[]string{"Activate", "BindPreparedSession"})
+}
+
+// requireBarrierOrder fails unless every step of chain is called in its function body, each point and the
+// single bind are called once, and each step's calls follow every call of the step before it.
+func requireBarrierOrder(t *testing.T, label string, positions map[string][]token.Pos, chain []string) {
+	t.Helper()
+	once := map[string]bool{wsoracle.PointBaseline: true, wsoracle.PointPostMaterialization: true, "BindPreparedSession": true}
+	for i, name := range chain {
+		if len(positions[name]) == 0 {
+			t.Fatalf("%s: no call to %s", label, name)
 		}
-		positions := map[string][]token.Pos{}
-		ast.Inspect(parsed, func(n ast.Node) bool {
-			call, ok := n.(*ast.CallExpr)
-			if !ok {
-				return true
-			}
-			name := ""
-			switch fun := call.Fun.(type) {
-			case *ast.Ident:
-				name = fun.Name
-			case *ast.SelectorExpr:
-				name = fun.Sel.Name
-				if (name == "record" || name == "recordE04") && len(call.Args) == 1 {
-					if arg, ok := call.Args[0].(*ast.SelectorExpr); ok {
-						name = pointConstValue(arg.Sel.Name)
-					}
+		if once[name] && len(positions[name]) != 1 {
+			t.Fatalf("%s: %s is called %d times, want once", label, name, len(positions[name]))
+		}
+		if i == 0 {
+			continue
+		}
+		for _, earlier := range positions[chain[i-1]] {
+			for _, later := range positions[name] {
+				if earlier >= later {
+					t.Errorf("%s: %s is not after %s", label, name, chain[i-1])
 				}
 			}
-			positions[name] = append(positions[name], call.Pos())
+		}
+	}
+}
+
+// functionCalls returns the call positions of one function body, keyed by callee name. A point recorded
+// through record or recordE04 is keyed by its point value.
+func functionCalls(t *testing.T, file, receiver, name string) map[string][]token.Pos {
+	t.Helper()
+	for _, decl := range parseSource(t, file).Decls {
+		if fn, ok := decl.(*ast.FuncDecl); ok && fn.Body != nil && fn.Name.Name == name && receiverTypeName(fn) == receiver {
+			return callPositions(fn.Body)
+		}
+	}
+	t.Fatalf("%s: no function %s", file, name)
+	return nil
+}
+
+// allFunctionCalls merges the call positions of every function body in a file.
+func allFunctionCalls(t *testing.T, file string) map[string][]token.Pos {
+	t.Helper()
+	merged := map[string][]token.Pos{}
+	for _, decl := range parseSource(t, file).Decls {
+		if fn, ok := decl.(*ast.FuncDecl); ok && fn.Body != nil {
+			for callee, positions := range callPositions(fn.Body) {
+				merged[callee] = append(merged[callee], positions...)
+			}
+		}
+	}
+	return merged
+}
+
+func callPositions(body ast.Node) map[string][]token.Pos {
+	positions := map[string][]token.Pos{}
+	ast.Inspect(body, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
 			return true
-		})
-		for i, name := range chain {
-			if len(positions[name]) == 0 {
-				t.Fatalf("%s: no call to %s", file, name)
-			}
-			if isPoint[name] && len(positions[name]) != 1 {
-				t.Fatalf("%s: %s is taken %d times, want once", file, name, len(positions[name]))
-			}
-			if i == 0 {
-				continue
-			}
-			for _, earlier := range positions[chain[i-1]] {
-				for _, later := range positions[name] {
-					if earlier >= later {
-						t.Errorf("%s: %s is not after %s", file, name, chain[i-1])
-					}
+		}
+		name := ""
+		switch fun := call.Fun.(type) {
+		case *ast.Ident:
+			name = fun.Name
+		case *ast.SelectorExpr:
+			name = fun.Sel.Name
+			if (name == "record" || name == "recordE04") && len(call.Args) == 1 {
+				if arg, ok := call.Args[0].(*ast.SelectorExpr); ok {
+					name = pointConstValue(arg.Sel.Name)
 				}
 			}
 		}
+		positions[name] = append(positions[name], call.Pos())
+		return true
+	})
+	return positions
+}
+
+func receiverTypeName(fn *ast.FuncDecl) string {
+	if fn.Recv == nil || len(fn.Recv.List) == 0 {
+		return ""
 	}
+	expr := fn.Recv.List[0].Type
+	if star, ok := expr.(*ast.StarExpr); ok {
+		expr = star.X
+	}
+	if ident, ok := expr.(*ast.Ident); ok {
+		return ident.Name
+	}
+	return ""
+}
+
+func parseSource(t *testing.T, file string) *ast.File {
+	t.Helper()
+	parsed, err := parser.ParseFile(token.NewFileSet(), file, nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return parsed
 }
 
 func pointConstValue(constName string) string {

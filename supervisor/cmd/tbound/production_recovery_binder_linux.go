@@ -364,7 +364,7 @@ func bindProductionPiRecoverySession(ctx context.Context, config productionServe
 		return fail(errors.Join(ErrProductionXattrVisibilityUnavailable, err))
 	}
 
-	recovered, err := candidate.Activate(ctx)
+	recovered, err := activateProductionRecoverySession(ctx, candidate)
 	if err != nil {
 		return fail(fmt.Errorf("revalidate receipt and retained pins before managed Store/D06 activation: %w", err))
 	}
@@ -378,9 +378,6 @@ func bindProductionPiRecoverySession(ctx context.Context, config productionServe
 	baseline, tip := managed.Store().BaselineGeneration(), recovered.Generation
 	if baseline == nil || tip == nil || managed.Store().TipGeneration() != tip {
 		return fail(ErrGovernedRecoveryUnavailable)
-	}
-	if err := recovered.Authority.BindPreparedSession(prepared); err != nil {
-		return fail(err)
 	}
 	e04.record(wsoracle.PointPostMaterialization) // retained Store tip and D06 snapshot activated and bound
 	session = &productionPiSession{
@@ -649,4 +646,9 @@ func transferCandidateClosers(closers []func() error, candidateIndex int, activa
 	out = append(out, closers[:candidateIndex]...)
 	out = append(out, closers[candidateIndex+1:]...)
 	return append(out, activated...), true
+}
+
+// activateProductionRecoverySession is the binder's Store/authority handoff, before D09 exposure.
+func activateProductionRecoverySession(ctx context.Context, candidate *governedRecoveryCandidate) (*governedRecoverySession, error) {
+	return candidate.Activate(ctx)
 }

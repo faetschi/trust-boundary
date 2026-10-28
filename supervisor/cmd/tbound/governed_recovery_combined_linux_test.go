@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -65,8 +66,6 @@ type combinedRecoveryScenario struct {
 	// advanceStore has the original conversation write a file before its last call is captured, so the retained
 	// history has a Store generation other than the baseline.
 	advanceStore bool
-	// prepareOnly stops each recovery after prepareGovernedRecovery, before the Store is activated.
-	prepareOnly bool
 }
 
 var combinedRecoveryScenarios = map[string]combinedRecoveryScenario{
@@ -77,8 +76,8 @@ var combinedRecoveryScenarios = map[string]combinedRecoveryScenario{
 		withoutCleanupReceipt: true},
 	"binder-pins":               {maxPreEffectRetries: 2, maxCleanRestarts: 2, deadline: 10 * time.Minute, binderShapedPins: true},
 	"binder-pins-idle":          {maxPreEffectRetries: 2, maxCleanRestarts: 2, deadline: 10 * time.Minute, binderShapedPins: true, idleCrash: true},
-	"binder-pins-advanced":      {maxPreEffectRetries: 2, maxCleanRestarts: 2, deadline: 10 * time.Minute, binderShapedPins: true, advanceStore: true, prepareOnly: true},
-	"binder-pins-advanced-idle": {maxPreEffectRetries: 2, maxCleanRestarts: 2, deadline: 10 * time.Minute, binderShapedPins: true, advanceStore: true, idleCrash: true, prepareOnly: true},
+	"binder-pins-advanced":      {maxPreEffectRetries: 2, maxCleanRestarts: 2, deadline: 10 * time.Minute, binderShapedPins: true, advanceStore: true},
+	"binder-pins-advanced-idle": {maxPreEffectRetries: 2, maxCleanRestarts: 2, deadline: 10 * time.Minute, binderShapedPins: true, advanceStore: true, idleCrash: true},
 }
 
 type combinedRecoveryPaths struct {
@@ -409,8 +408,8 @@ func TestGovernedRecoveryCombinedChildEntry(t *testing.T) {
 	switch phase {
 	case "original":
 		combinedRecoveryOriginal(t, root, step, combinedRecoveryScenarios[scenario])
-	case "recover", "recover-capture":
-		combinedRecoveryRecover(t, root, step, phase == "recover-capture", combinedRecoveryScenarios[scenario])
+	case "recover", "recover-capture", "recover-write":
+		combinedRecoveryRecover(t, root, step, phase, phase == "recover-capture", combinedRecoveryScenarios[scenario])
 	default:
 		t.Fatalf("unknown combined recovery phase %q", phase)
 	}
@@ -662,7 +661,7 @@ func combinedRecoveryOriginal(t *testing.T, root, step string, sc combinedRecove
 // combinedRecoveryRecover runs one fresh recovery process. It verifies the
 // retained crash evidence, performs the production prepare/activate sequence,
 // and records the durable checkpoint it observes.
-func combinedRecoveryRecover(t *testing.T, root, step string, capture bool, sc combinedRecoveryScenario) {
+func combinedRecoveryRecover(t *testing.T, root, step, phase string, capture bool, sc combinedRecoveryScenario) {
 	t.Helper()
 	ctx := context.Background()
 	p := combinedRecoveryPathsFor(root)
@@ -764,9 +763,10 @@ func combinedRecoveryRecover(t *testing.T, root, step string, capture bool, sc c
 		t.Fatal(err)
 	}
 	runner := newDevelopmentFixtureCommandRunner()
-	turns := []providerbridge.DevelopmentProviderTurn(nil)
-	if capture {
-		turns = combinedRecoveryReadCallTurns(fmt.Sprintf("combined-recovered-g%d", gen))
+	turns := combinedRecoveryReadCallTurns(fmt.Sprintf("combined-recovered-g%d", gen))
+	if phase == "recover-write" {
+		turns = []providerbridge.DevelopmentProviderTurn{{ResponseID: "resumed-write-response", CallID: "resumed-write-call",
+			Tool: "write", Arguments: json.RawMessage(`{"path":"task.txt","content":"resumed\n"}`)}}
 	}
 	providerProfile := combinedRecoveryProviderProfile("")
 	request := governedRecoveryRequest{
@@ -793,32 +793,63 @@ func combinedRecoveryRecover(t *testing.T, root, step string, capture bool, sc c
 	candidate, err := prepareGovernedRecovery(ctx, request)
 	if err != nil {
 		result.PrepareError = err.Error()
-	} else if sc.prepareOnly {
-		_ = candidate.Close()
-		// This process acquired the new epoch and ends without activating it; its scope record lets the next recovery drain it.
-		combinedRecoverySeedScope(t, root, request.NewOwnerEpoch, !sc.withoutCleanupReceipt)
 	} else {
-		session, activateErr := candidate.Activate(ctx)
+		session, activateErr := activateProductionRecoverySession(ctx, candidate)
 		if activateErr != nil {
 			result.ActivateError = activateErr.Error()
 			_ = candidate.Close()
 		} else {
 			result.Activated = true
+			if sc.advanceStore {
+				combinedRecoveryCheckRetainedHistory(t, session, candidate)
+				combinedRecoveryCheckPublicationOrigins(t, session)
+			}
 			// This process now owns the new epoch. Its scope record is written when
 			// it exits, so the next recovery can observe it.
 			combinedRecoverySeedScope(t, root, request.NewOwnerEpoch, !sc.withoutCleanupReceipt)
-			if capture {
-				if err := session.Authority.AdmitPrompt(session.Conversation, session.Durable,
-					session.RecoveryPromptTask, session.RecoveryPrompt); err != nil {
+			if err := session.Authority.AdmitPrompt(session.Conversation, session.Durable,
+				session.RecoveryPromptTask, session.RecoveryPrompt); err != nil {
+				t.Fatal(err)
+			}
+			if phase == "recover-write" {
+				step := &workflowVerticalFixture{ctx: ctx, conversation: session.Conversation, policy: policy}
+				proposal, decision := ledgerDenyTurn(t, step, "resumed-write-call", gate.Allow)
+				executor, err := providerbridge.NewExecutor(session.Conversation, session.Durable)
+				if err != nil {
 					t.Fatal(err)
 				}
+				if _, err := executor.Execute(ctx, proposal, decision); err != nil {
+					t.Fatalf("resumed write: %v", err)
+				}
+				chain, err := session.Store.Verify()
+				if err != nil || chain.TransitionCount != 2 {
+					t.Fatalf("resumed chain: %+v err=%v", chain, err)
+				}
+				evidence, err := session.Store.EvidenceBundle()
+				if err != nil {
+					t.Fatal(err)
+				}
+				fresh := evidence.ApprovedDeltaLedger[len(evidence.ApprovedDeltaLedger)-1]
+				if err := session.Authority.VerifyTransition(fresh.Decision, governedTransitionBinding(fresh)); err != nil {
+					t.Fatalf("activated authority refused its new transition: %v", err)
+				}
+				if err := session.Authority.VerifyOrigin(evidence, fresh); err != nil {
+					t.Fatalf("activated authority refused the origin of its new transition: %v", err)
+				}
+			}
+			if capture {
 				turn, err := session.Conversation.NextTurn(ctx)
 				if err != nil || turn.ToolCall == nil {
 					t.Fatalf("recovered provider turn did not capture its read: turn=%+v err=%v", turn, err)
 				}
 				result.Captured = true
 			}
-			defer session.Close()
+			// The captured-call crash below exits with os.Exit, which skips this close on purpose.
+			defer func() {
+				if err := session.Close(); err != nil {
+					t.Errorf("close recovered session: %v", err)
+				}
+			}()
 		}
 	}
 	// Observe the durable checkpoint and the retained crash evidence from this fresh process.
@@ -1039,7 +1070,7 @@ func TestGovernedRecoveryCombinedRetiresAnIdleLineageUnderBinderShapedPins(t *te
 // A conversation that changed the Store before its last call was captured replays through a released result and
 // a promoted transition, so retiring that call replays the journal with a verifier that has already followed it
 // to the new tip. Each retirement pass must start from the pinned start. Only prepareGovernedRecovery is
-// driven here: activating a Store with a promoted transition is outside this retirement step.
+// driven here through activation.
 func TestGovernedRecoveryCombinedRetiresACallCapturedAfterTheStoreAdvanced(t *testing.T) {
 	root := privateGovernedTestRoot(t)
 	const scenario = "binder-pins-advanced"
@@ -1048,8 +1079,8 @@ func TestGovernedRecoveryCombinedRetiresACallCapturedAfterTheStoreAdvanced(t *te
 	if first.StoreEffects < 2 {
 		t.Fatalf("the retained history did not advance the Store: %d Store effects", first.StoreEffects)
 	}
-	if first.PrepareError != "" {
-		t.Fatalf("recovery could not retire the call captured after the Store advanced: %s", first.PrepareError)
+	if first.PrepareError != "" || first.ActivateError != "" || !first.Activated {
+		t.Fatalf("recovery could not activate after the Store advanced: prepare=%q activate=%q", first.PrepareError, first.ActivateError)
 	}
 	if first.Counters.CleanRestarts != 1 || first.Counters.PreEffectRetries != 1 {
 		t.Fatalf("retiring the captured call must charge one clean restart and one pre-effect retry: %+v", first.Counters)
@@ -1057,9 +1088,7 @@ func TestGovernedRecoveryCombinedRetiresACallCapturedAfterTheStoreAdvanced(t *te
 }
 
 // A recovery whose conversation starts after an earlier conversation promoted a write must retire it from that
-// start, not from the Store baseline. Activation of a Store with a promoted transition is a separate matter, so
-// the second conversation is seeded the way Activate would leave it: the fresh journal of the first recovery
-// gets the recovery prompt at the tip generation, and the second recovery is driven through prepare only.
+// start, not from the Store baseline. Both recoveries activate and admit the real clean recovery prompt.
 func TestGovernedRecoveryCombinedRetiresTheLastTranscriptFromItsOwnStartAboveTheBaseline(t *testing.T) {
 	root := privateGovernedTestRoot(t)
 	const scenario = "binder-pins-advanced-idle"
@@ -1068,28 +1097,175 @@ func TestGovernedRecoveryCombinedRetiresTheLastTranscriptFromItsOwnStartAboveThe
 		t.Fatalf("the original process did not promote a write: baseline=%q tip=%q", original.StoreBaselineGeneration, original.StoreTipGeneration)
 	}
 	first := combinedRecoveryRunChild(t, root, scenario, "recover", "r1", 0)
-	if first.PrepareError != "" || first.Transcripts != 1 {
-		t.Fatalf("first recovery: prepare=%q transcripts=%d", first.PrepareError, first.Transcripts)
-	}
-	conversation := fmt.Sprintf("%s-conversation-g%d", combinedRecoveryWorkflow, 2)
-	journal, err := openExistingRecoveryJournal(combinedRecoveryPathsFor(root).providerJournal(2))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := journal.Append(audit.Event{Kind: "provider_user_admitted", ID: conversation + ":user:1",
-		Data: mustJSON(providerPromptEvidence{WorkflowID: combinedRecoveryWorkflow, ConversationID: conversation,
-			TaskID: "combined-recovery-task-g2", Generation: original.StoreTipGeneration, Prompt: "Continue after the restart."})}); err != nil {
-		t.Fatal(err)
-	}
-	if err := journal.Close(); err != nil {
-		t.Fatal(err)
+	if first.PrepareError != "" || first.ActivateError != "" || !first.Activated || first.Transcripts != 1 {
+		t.Fatalf("first recovery: prepare=%q activate=%q transcripts=%d", first.PrepareError, first.ActivateError, first.Transcripts)
 	}
 	second := combinedRecoveryRunChild(t, root, scenario, "recover", "r2", 0)
-	if second.PrepareError != "" || second.Transcripts != 2 {
+	if second.PrepareError != "" || second.ActivateError != "" || !second.Activated || second.Transcripts != 2 {
 		t.Fatalf("second recovery could not retire the conversation that starts above the baseline: prepare=%q transcripts=%d",
 			second.PrepareError, second.Transcripts)
 	}
 	if second.Counters.CleanRestarts != 2 || second.Counters.PreEffectRetries != 0 {
 		t.Fatalf("second recovery counters = %+v, want two clean restarts and no pre-effect retry", second.Counters)
+	}
+}
+
+func TestGovernedRecoveryCombinedPromotesANewWriteAfterAPromotedWrite(t *testing.T) {
+	root := privateGovernedTestRoot(t)
+	const scenario = "binder-pins-advanced"
+	combinedRecoveryRunChild(t, root, scenario, "original", "o", combinedRecoveryCrashExit)
+	resumed := combinedRecoveryRunChild(t, root, scenario, "recover-write", "r1", 0)
+	if resumed.PrepareError != "" || resumed.ActivateError != "" || !resumed.Activated {
+		t.Fatalf("resume after promoted write: prepare=%q activate=%q", resumed.PrepareError, resumed.ActivateError)
+	}
+}
+
+func TestGovernedRecoveryCombinedRecoversAgainAfterRetiringACapturedCall(t *testing.T) {
+	root := privateGovernedTestRoot(t)
+	const scenario = "binder-pins"
+	combinedRecoveryRunChild(t, root, scenario, "original", "o", combinedRecoveryCrashExit)
+	first := combinedRecoveryRunChild(t, root, scenario, "recover", "r1", 0)
+	if first.PrepareError != "" || first.ActivateError != "" || !first.Activated {
+		t.Fatalf("first recovery: %+v", first)
+	}
+	second := combinedRecoveryRunChild(t, root, scenario, "recover", "r2", 0)
+	if second.PrepareError != "" || second.ActivateError != "" || !second.Activated {
+		t.Fatalf("second recovery: %+v", second)
+	}
+	combinedRecoveryRequireCounters(t, second, workflowrecovery.Counters{PreEffectRetries: 1, CleanRestarts: 2,
+		HostCalls: 1, Tokens: combinedRecoveryTokens})
+}
+
+func TestProductionRecoveryBinderBindsPreparedSessionOnce(t *testing.T) {
+	root := privateGovernedTestRoot(t)
+	combinedRecoveryRunChild(t, root, "binder-pins-idle", "original", "o", combinedRecoveryCrashExit)
+	resumed := combinedRecoveryRunChild(t, root, "binder-pins-idle", "recover", "r1", 0)
+	if resumed.PrepareError != "" || resumed.ActivateError != "" || !resumed.Activated {
+		t.Fatalf("production binder handoff: prepare=%q activate=%q", resumed.PrepareError, resumed.ActivateError)
+	}
+}
+
+// The candidate and all of its evidence were reopened by this child process.
+func combinedRecoveryCheckRetainedHistory(t *testing.T, session *governedRecoverySession, candidate *governedRecoveryCandidate) {
+	t.Helper()
+	bundle, err := session.Store.EvidenceBundle()
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := bundle.ApprovedDeltaLedger[0]
+	binding := governedTransitionBinding(original)
+	if err := session.Authority.VerifyDecision(original.Decision, binding); err == nil {
+		t.Fatal("fresh authority accepted historical decision")
+	}
+	if err := session.Historical.verifyDecision(original.Decision, binding, session.Authority.VerifyDecision); err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range []string{"ID", "Tool", "ArgumentDigest", "ViewID", "ExecutionContextDigest", "InputGeneration", "OutputGeneration", "InputTreeDigest", "OutputTreeDigest"} {
+		t.Run("retained-binding-"+field, func(t *testing.T) {
+			changed := binding
+			value := reflect.ValueOf(&changed).Elem().FieldByName(field)
+			value.SetString(value.String() + "-changed")
+			if err := session.Historical.verifyDecision(original.Decision, changed, func(delta.PolicyDecision, delta.TransitionBinding) error {
+				t.Fatal("historical mismatch reached live verifier")
+				return nil
+			}); err == nil {
+				t.Fatalf("accepted changed historical %s", field)
+			}
+		})
+	}
+	changed := binding
+	changed.Changes = append([]delta.ObjectChange(nil), binding.Changes...)
+	changed.Changes[0].Path += "-changed"
+	if err := session.Historical.verifyDecision(original.Decision, changed, session.Authority.VerifyDecision); err == nil {
+		t.Fatal("accepted changed historical change")
+	}
+	changed = binding
+	changed.Operation.CallID += "-changed"
+	if err := session.Historical.verifyDecision(original.Decision, changed, session.Authority.VerifyDecision); err == nil {
+		t.Fatal("accepted changed historical operation")
+	}
+	decision := original.Decision
+	decision.ID += "-changed"
+	if err := session.Historical.verifyDecision(decision, binding, session.Authority.VerifyDecision); err == nil {
+		t.Fatal("accepted changed historical decision")
+	}
+	changed = binding
+	changed.Sequence++
+	if err := session.Historical.verifyDecision(original.Decision, changed, session.Authority.VerifyDecision); err == nil {
+		t.Fatal("new transition borrowed historical authorization")
+	}
+	changed.Sequence = 0
+	if err := session.Historical.verifyDecision(original.Decision, changed, session.Authority.VerifyDecision); err == nil {
+		t.Fatal("zero transition borrowed historical authorization")
+	}
+	// The prefix comes from the pre-activation journal the historical verifier held, not the D06 tail activation appended.
+	trace := candidate.historical.initialTrace
+	journal, err := marshalGovernedAuditRecords(trace.Records)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ledger := make([]delta.Transition, len(bundle.ApprovedDeltaLedger))
+	for i, transition := range bundle.ApprovedDeltaLedger {
+		transition.Changes = append([]delta.ObjectChange(nil), transition.Changes...)
+		ledger[i] = transition
+	}
+	prefix := bundle
+	prefix.AuditJournal = journal
+	prefix.AuditRecordCount, prefix.AuditHeadHash = uint64(len(trace.Records)), auditHeadHash(trace.Records)
+	prefix.ApprovedDeltaLedger = ledger
+	shorter := prefix
+	shorter.ApprovedDeltaLedger = nil
+	if _, err := newGovernedRetainedHistory(shorter, candidate.next, candidate.historical); err == nil {
+		t.Fatal("froze an empty prefix over a journal with one approved transition")
+	}
+	extra := ledger[0]
+	extra.ID, extra.Sequence = extra.ID+"-extra", 2
+	longer := prefix
+	longer.ApprovedDeltaLedger = append(append([]delta.Transition(nil), ledger...), extra)
+	if _, err := newGovernedRetainedHistory(longer, candidate.next, candidate.historical); err == nil {
+		t.Fatal("froze a prefix longer than the verified journal")
+	}
+	for _, offset := range []int64{-1, 1} {
+		pins := candidate.next
+		pins.StoreJournalCount = uint64(int64(pins.StoreJournalCount) + offset)
+		if _, err := newGovernedRetainedHistory(prefix, pins, candidate.historical); err == nil {
+			t.Fatal("froze a prefix whose journal count differs from the recovery pins")
+		}
+	}
+	frozen, err := newGovernedRetainedHistory(prefix, candidate.next, candidate.historical)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ledger[0].Changes[0].Path += "-changed"
+	if err := frozen.verifyDecision(original.Decision, binding, session.Authority.VerifyDecision); err != nil {
+		t.Fatalf("frozen history aliases its source ledger: %v", err)
+	}
+}
+
+// Recovered publication verifies each retained transition and its origin through the activated authority.
+func combinedRecoveryCheckPublicationOrigins(t *testing.T, session *governedRecoverySession) {
+	t.Helper()
+	bundle, err := session.Store.EvidenceBundle()
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := bundle.ApprovedDeltaLedger[0]
+	binding := governedTransitionBinding(original)
+	if err := session.Authority.VerifyTransition(original.Decision, binding); err != nil {
+		t.Fatalf("activated authority refused its retained transition: %v", err)
+	}
+	if err := session.Authority.VerifyOrigin(bundle, original); err != nil {
+		t.Fatalf("activated authority refused the retained origin of its transition: %v", err)
+	}
+	changed := binding
+	changed.Changes = append([]delta.ObjectChange(nil), binding.Changes...)
+	changed.Changes[0].Path += "-changed"
+	if err := session.Authority.VerifyTransition(original.Decision, changed); err == nil {
+		t.Fatal("activated authority accepted a changed retained transition")
+	}
+	borrowed := binding
+	borrowed.Sequence++
+	if err := session.Authority.VerifyTransition(original.Decision, borrowed); err == nil {
+		t.Fatal("a later sequence borrowed the retained authorization")
 	}
 }

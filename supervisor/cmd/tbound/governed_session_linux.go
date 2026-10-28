@@ -255,6 +255,7 @@ type SessionOperationAuthority struct {
 	runner                             governedCommandRunner
 	conversation                       *providerbridge.Conversation
 	operationProofs                    map[delta.OperationIdentity]governedOperationProof
+	retained                           *governedRetainedHistory
 	workflowLedger                     *workflowrecovery.Ledger
 	workflowLedgerPins                 workflowrecovery.Pins
 	workflowVerifiedStorePins          workflowrecovery.Pins

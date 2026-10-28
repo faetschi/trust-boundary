@@ -110,6 +110,7 @@ type governedRecoveryCandidate struct {
 // empty proof map, its conversation uses a new empty journal, and the only
 // initial prompt is the canonical host-generated recovery envelope.
 type governedRecoverySession struct {
+	Historical            *governedRetainedHistory
 	Managed               *sessionlaunch.ManagedStore
 	Prepared              *sessionlaunch.PreparedSession
 	Admin                 *sessionlaunch.AdminParent
@@ -454,7 +455,18 @@ func (c *governedRecoveryCandidate) Activate(ctx context.Context) (*governedReco
 	authority.BindProviderRoute(request.ProviderRoute)
 	liveOptions := request.StoreOptions
 	liveOptions.AuthorizeOperation = authority.AuthorizeOperation
-	liveOptions.VerifyDecision = authority.VerifyDecision
+	bundle, err := c.managed.Store().EvidenceBundle()
+	if err != nil {
+		return nil, err
+	}
+	history, err := newGovernedRetainedHistory(bundle, c.next, c.historical)
+	if err != nil {
+		return nil, err
+	}
+	authority.retained = history
+	liveOptions.VerifyDecision = func(decision delta.PolicyDecision, binding delta.TransitionBinding) error {
+		return history.verifyDecision(decision, binding, authority.VerifyDecision)
+	}
 	liveOptions.VerifySettlement = authority.VerifySettlement
 	prepared, err := c.gitCandidate.Activate(ctx, c.ledger, c.receipt, c.next, liveOptions)
 	if err != nil {
@@ -513,7 +525,7 @@ func (c *governedRecoveryCandidate) Activate(ctx context.Context) (*governedReco
 	managed, admin := c.managed, c.admin
 	c.managed, c.admin, c.gitCandidate = nil, nil, nil
 	return &governedRecoverySession{
-		Managed: managed, Prepared: prepared, Admin: admin, Store: managed.Store(), Generation: tip,
+		Managed: managed, Prepared: prepared, Admin: admin, Store: managed.Store(), Generation: tip, Historical: history,
 		Authority: authority, Durable: durable, Conversation: conversation,
 		RecoveryPromptTask: taskID, RecoveryPromptRequest: recoveryRequestID,
 		RecoveryPrompt: recoveryPrompt, Projection: c.projection,
@@ -817,6 +829,11 @@ func observedRecoveryPins(previous workflowrecovery.Pins, previousHead string,
 			if projection.Provider.CapturedCallCount > 0 {
 				observed.PendingCallDisposition = workflowrecovery.PendingCallTerminal
 			}
+		}
+		// An earlier recovery retired this captured call; its transcript still counts it but it is no longer pending.
+		if reservation := observed.HostCallReservation; reservation != nil && reservation.CapturedCall != nil &&
+			reservation.CapturedCall.Disposition == workflowrecovery.CapturedCallRetired {
+			observed.PendingCallDisposition = workflowrecovery.PendingCallRetired
 		}
 	}
 	if unleasedCall != nil {
