@@ -75,9 +75,10 @@ var combinedRecoveryScenarios = map[string]combinedRecoveryScenario{
 	"deadline":        {maxPreEffectRetries: 2, maxCleanRestarts: 2, deadline: 8 * time.Second},
 	"absent-scope-no-receipt": {maxPreEffectRetries: 2, maxCleanRestarts: 2, deadline: 10 * time.Minute,
 		withoutCleanupReceipt: true},
-	"binder-pins":          {maxPreEffectRetries: 2, maxCleanRestarts: 2, deadline: 10 * time.Minute, binderShapedPins: true},
-	"binder-pins-idle":     {maxPreEffectRetries: 2, maxCleanRestarts: 2, deadline: 10 * time.Minute, binderShapedPins: true, idleCrash: true},
-	"binder-pins-advanced": {maxPreEffectRetries: 2, maxCleanRestarts: 2, deadline: 10 * time.Minute, binderShapedPins: true, advanceStore: true, prepareOnly: true},
+	"binder-pins":               {maxPreEffectRetries: 2, maxCleanRestarts: 2, deadline: 10 * time.Minute, binderShapedPins: true},
+	"binder-pins-idle":          {maxPreEffectRetries: 2, maxCleanRestarts: 2, deadline: 10 * time.Minute, binderShapedPins: true, idleCrash: true},
+	"binder-pins-advanced":      {maxPreEffectRetries: 2, maxCleanRestarts: 2, deadline: 10 * time.Minute, binderShapedPins: true, advanceStore: true, prepareOnly: true},
+	"binder-pins-advanced-idle": {maxPreEffectRetries: 2, maxCleanRestarts: 2, deadline: 10 * time.Minute, binderShapedPins: true, advanceStore: true, idleCrash: true, prepareOnly: true},
 }
 
 type combinedRecoveryPaths struct {
@@ -261,6 +262,9 @@ type combinedRecoveryResult struct {
 	StoreEffects       int                       `json:"store_effects"`
 	// FenceEpoch is the protected root's accepted fence high-water mark.
 	FenceEpoch uint64 `json:"fence_epoch"`
+	// StoreBaselineGeneration and StoreTipGeneration are the Store generations the original process ended on.
+	StoreBaselineGeneration string `json:"store_baseline_generation,omitempty"`
+	StoreTipGeneration      string `json:"store_tip_generation,omitempty"`
 }
 
 func combinedRecoveryFileDigest(path string, limit int64) (combinedRecoveryFileEvidence, error) {
@@ -650,6 +654,7 @@ func combinedRecoveryOriginal(t *testing.T, root, step string, sc combinedRecove
 	combinedRecoveryWriteJSON(t, filepath.Join(root, "result-"+step+".json"), combinedRecoveryResult{
 		Step: step, Deadline: deadline, OwnerEpoch: 1, RecoveryGeneration: 1, Captured: !sc.idleCrash,
 		Counters: checkpoint.Counters, Transcripts: 1, StoreEffects: len(storeTrace.Effects),
+		StoreBaselineGeneration: g0.ID(), StoreTipGeneration: store.TipGeneration().ID(),
 	})
 	os.Exit(combinedRecoveryCrashExit)
 }
@@ -790,6 +795,8 @@ func combinedRecoveryRecover(t *testing.T, root, step string, capture bool, sc c
 		result.PrepareError = err.Error()
 	} else if sc.prepareOnly {
 		_ = candidate.Close()
+		// This process acquired the new epoch and ends without activating it; its scope record lets the next recovery drain it.
+		combinedRecoverySeedScope(t, root, request.NewOwnerEpoch, !sc.withoutCleanupReceipt)
 	} else {
 		session, activateErr := candidate.Activate(ctx)
 		if activateErr != nil {
@@ -1046,5 +1053,43 @@ func TestGovernedRecoveryCombinedRetiresACallCapturedAfterTheStoreAdvanced(t *te
 	}
 	if first.Counters.CleanRestarts != 1 || first.Counters.PreEffectRetries != 1 {
 		t.Fatalf("retiring the captured call must charge one clean restart and one pre-effect retry: %+v", first.Counters)
+	}
+}
+
+// A recovery whose conversation starts after an earlier conversation promoted a write must retire it from that
+// start, not from the Store baseline. Activation of a Store with a promoted transition is a separate matter, so
+// the second conversation is seeded the way Activate would leave it: the fresh journal of the first recovery
+// gets the recovery prompt at the tip generation, and the second recovery is driven through prepare only.
+func TestGovernedRecoveryCombinedRetiresTheLastTranscriptFromItsOwnStartAboveTheBaseline(t *testing.T) {
+	root := privateGovernedTestRoot(t)
+	const scenario = "binder-pins-advanced-idle"
+	original := combinedRecoveryRunChild(t, root, scenario, "original", "o", combinedRecoveryCrashExit)
+	if original.StoreTipGeneration == "" || original.StoreTipGeneration == original.StoreBaselineGeneration {
+		t.Fatalf("the original process did not promote a write: baseline=%q tip=%q", original.StoreBaselineGeneration, original.StoreTipGeneration)
+	}
+	first := combinedRecoveryRunChild(t, root, scenario, "recover", "r1", 0)
+	if first.PrepareError != "" || first.Transcripts != 1 {
+		t.Fatalf("first recovery: prepare=%q transcripts=%d", first.PrepareError, first.Transcripts)
+	}
+	conversation := fmt.Sprintf("%s-conversation-g%d", combinedRecoveryWorkflow, 2)
+	journal, err := openExistingRecoveryJournal(combinedRecoveryPathsFor(root).providerJournal(2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := journal.Append(audit.Event{Kind: "provider_user_admitted", ID: conversation + ":user:1",
+		Data: mustJSON(providerPromptEvidence{WorkflowID: combinedRecoveryWorkflow, ConversationID: conversation,
+			TaskID: "combined-recovery-task-g2", Generation: original.StoreTipGeneration, Prompt: "Continue after the restart."})}); err != nil {
+		t.Fatal(err)
+	}
+	if err := journal.Close(); err != nil {
+		t.Fatal(err)
+	}
+	second := combinedRecoveryRunChild(t, root, scenario, "recover", "r2", 0)
+	if second.PrepareError != "" || second.Transcripts != 2 {
+		t.Fatalf("second recovery could not retire the conversation that starts above the baseline: prepare=%q transcripts=%d",
+			second.PrepareError, second.Transcripts)
+	}
+	if second.Counters.CleanRestarts != 2 || second.Counters.PreEffectRetries != 0 {
+		t.Fatalf("second recovery counters = %+v, want two clean restarts and no pre-effect retry", second.Counters)
 	}
 }
