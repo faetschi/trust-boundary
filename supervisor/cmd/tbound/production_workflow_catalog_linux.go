@@ -885,9 +885,7 @@ func (c *piServiceWorkflowCatalog) verifyCompletedServiceRequestPins(ctx context
 	}
 	expectedRunID, expectedSessionID, expectedConversationID := entry.RunID, entry.SessionID, entry.ConversationID
 	if pins.RecoveryGeneration > 1 {
-		expectedSessionID = fmt.Sprintf("%s-session-g%d", entry.WorkflowID, pins.RecoveryGeneration)
-		expectedRunID = expectedSessionID
-		expectedConversationID = fmt.Sprintf("%s-conversation-g%d", entry.WorkflowID, pins.RecoveryGeneration)
+		expectedSessionID, expectedRunID, expectedConversationID = recoveryGenerationIdentities(entry.WorkflowID, pins.RecoveryGeneration)
 	}
 	if err := validateSettledServiceDisposition(pins, expectedConversationID, false, false); err != nil {
 		return err

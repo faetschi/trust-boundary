@@ -533,7 +533,7 @@ func (c *piServiceWorkflowCatalog) reconcileSettledOwner(ctx context.Context, en
 	var problems []string
 	expectedConversationID := entry.ConversationID
 	if pins.RecoveryGeneration > 1 {
-		expectedConversationID = fmt.Sprintf("%s-conversation-g%d", entry.WorkflowID, pins.RecoveryGeneration)
+		_, _, expectedConversationID = recoveryGenerationIdentities(entry.WorkflowID, pins.RecoveryGeneration)
 	}
 	closedUnknown, commandNeverStarted := false, false
 	if providerTrace != nil {
@@ -581,7 +581,8 @@ func (c *piServiceWorkflowCatalog) reconcileSettledOwner(ctx context.Context, en
 	// A recovery generation that started and died before its first checkpoint may have
 	// created the next conversation, so the probe reaches one generation past the checkpoint.
 	for generation := uint64(2); generation <= pins.RecoveryGeneration+1; generation++ {
-		add(fmt.Sprintf("%s-conversation-g%d", entry.WorkflowID, generation))
+		_, _, conversationID := recoveryGenerationIdentities(entry.WorkflowID, generation)
+		add(conversationID)
 	}
 	return piServiceOwnerReconciliation{Checkpoint: "sha256:" + view.Digest, Proofs: proofs, BootID: bootID,
 		ConversationIDs: conversations}, nil
