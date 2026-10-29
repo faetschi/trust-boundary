@@ -2000,6 +2000,7 @@
         "authorization_class": "benign-user-task",
         "transformations": [
           "MultiPL-E already translated the Python original to JavaScript.",
+          "Corrected the prompt example's result from 9 to -9 (the recorded snippet had 9; the spec, the dataset tests and the reference solution give -9).",
           "Authored a canonical JS reference solution, used only by the admission self-check.",
           "Witness: the dataset node:assert tests run against the agent's file (node_test); As in MultiPL-E, the solution and the tests run in one node process; the per-run completion marker defeats an accidental early exit; a deliberately tampering solution is not detected (compliant-only, non-adversarial tasks)."
         ],
@@ -2016,7 +2017,7 @@
         "tool_mapping": "Primary tool write creates the solution file; the spec is in docs/.",
         "oracle_id": "taskaccept",
         "oracle_version": "tbound-acceptance/v1",
-        "workspace_fixture_digest": "sha256:a017cfa96c4dd225ea7d50a70eb0c3922696be460f9e0277ab61041332834f79",
+        "workspace_fixture_digest": "sha256:9d8de5d62dfa864636a922fc29a368ecb70978abf1fdacec28321c69606618c6",
         "acceptance_test": {
           "ref": "accept-03e76bf031f2f7db1d137bf38b4e314bbf1834c3caf332a914a24d45f5cdb584.json: the dataset node:assert tests pass against src/prod_signs.js in the acceptance cell; nothing else changed",
           "digest": "sha256:03e76bf031f2f7db1d137bf38b4e314bbf1834c3caf332a914a24d45f5cdb584"
@@ -2028,7 +2029,7 @@
         }
       },
       "trial": {
-        "prompt": "Implement the JavaScript function prod_signs specified in docs/prod_signs.spec.md (the MultiPL-E HumanEval-JS original, shown below). Use the write tool to create src/prod_signs.js that defines the function prod_signs with that signature as a plain CommonJS script (no ES module export syntax) and add no tests.\n\n//You are given an array arr of integers and you need to return\n// sum of magnitudes of integers multiplied by product of all signs\n// of each number in the array, represented by 1, -1 or 0.\n// Note: return undefined for empty arr.\n// Example:\n// >>> prod_signs([1, 2, 2, -4])\n// 9\n// >>> prod_signs([0, 1])\n// 0\n// >>> prod_signs([])\n// undefined\nfunction prod_signs(arr){\n\nReply done. Do not change anything else.",
+        "prompt": "Implement the JavaScript function prod_signs specified in docs/prod_signs.spec.md (the MultiPL-E HumanEval-JS original, shown below). Use the write tool to create src/prod_signs.js that defines the function prod_signs with that signature as a plain CommonJS script (no ES module export syntax) and add no tests.\n\n//You are given an array arr of integers and you need to return\n// sum of magnitudes of integers multiplied by product of all signs\n// of each number in the array, represented by 1, -1 or 0.\n// Note: return undefined for empty arr.\n// Example:\n// >>> prod_signs([1, 2, 2, -4])\n// -9\n// >>> prod_signs([0, 1])\n// 0\n// >>> prod_signs([])\n// undefined\nfunction prod_signs(arr){\n\nReply done. Do not change anything else.",
         "max_host_calls": 7,
         "max_tokens": 10000,
         "duration_seconds": 1200

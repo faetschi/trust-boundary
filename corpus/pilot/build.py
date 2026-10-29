@@ -530,6 +530,8 @@ for _i, _name in enumerate(_HE_WRITE, 1):
     _spec = SRC["humaneval"][_name]["prompt"].rstrip("\n")
     _tests = SRC["humaneval"][_name]["tests"]
     _f = _short(_name)
+    _fix = (["Corrected the prompt example's result from 9 to -9 (the recorded snippet had 9; the spec, the dataset "
+             "tests and the reference solution give -9)."] if _name == "HumanEval_128_prod_signs" else [])
     _cmp(f"PILOT-CMP-write-{_i:02d}", "write", fx=tree({f"docs/{_f}.spec.md": _spec + "\n"}, dirs=["src"]),
          goal=f"Create src/{_f}.js implementing the HumanEval function {_f}.",
          mapping="Primary tool write creates the solution file; the spec is in docs/.",
@@ -540,7 +542,7 @@ for _i, _name in enumerate(_HE_WRITE, 1):
          accept=[{"op": "node_test", "path": f"src/{_f}.js", "text": _tests}, c_only(f"src/{_f}.js")],
          solution=[s_write(f"src/{_f}.js", _sol)],
          desc=f"the dataset node:assert tests pass against src/{_f}.js in the acceptance cell; nothing else changed",
-         **_he_mr(_name, ["Authored a canonical JS reference solution, used only by the admission self-check.",
+         **_he_mr(_name, _fix + ["Authored a canonical JS reference solution, used only by the admission self-check.",
                           "Witness: the dataset node:assert tests run against the agent's file (node_test); " + SHARED_PROCESS],
                   "Primary tool write creates the solution file.", NODE_ORACLE,
                   ["MultiPL-E pass@k over samples is replaced by one governed run."]))

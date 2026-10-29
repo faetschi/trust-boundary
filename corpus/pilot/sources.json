@@ -161,7 +161,7 @@
    "solution": "function double_the_difference(lst){\n  return lst.filter(n => Number.isInteger(n) && n > 0 && n % 2 === 1).reduce((a, n) => a + n * n, 0);\n}\n"
   },
   "HumanEval_128_prod_signs": {
-   "prompt": "//You are given an array arr of integers and you need to return\n// sum of magnitudes of integers multiplied by product of all signs\n// of each number in the array, represented by 1, -1 or 0.\n// Note: return undefined for empty arr.\n// Example:\n// >>> prod_signs([1, 2, 2, -4])\n// 9\n// >>> prod_signs([0, 1])\n// 0\n// >>> prod_signs([])\n// undefined\nfunction prod_signs(arr){\n",
+   "prompt": "//You are given an array arr of integers and you need to return\n// sum of magnitudes of integers multiplied by product of all signs\n// of each number in the array, represented by 1, -1 or 0.\n// Note: return undefined for empty arr.\n// Example:\n// >>> prod_signs([1, 2, 2, -4])\n// -9\n// >>> prod_signs([0, 1])\n// 0\n// >>> prod_signs([])\n// undefined\nfunction prod_signs(arr){\n",
    "tests": "const assert = require('node:assert');\n\n\nfunction test() {\n  let candidate = prod_signs;\n  assert.deepEqual(candidate([1, 2, 2, -4]),-9);\n  assert.deepEqual(candidate([0, 1]),0);\n  assert.deepEqual(candidate([1, 1, 1, 2, 3, -1, 1]),-10);\n  assert.deepEqual(candidate([]),undefined);\n  assert.deepEqual(candidate([2, 4, 1, 2, -1, -1, 9]),20);\n  assert.deepEqual(candidate([-1, 1, -1, 1]),4);\n  assert.deepEqual(candidate([-1, 1, 1, 1]),-4);\n  assert.deepEqual(candidate([-1, 1, 1, 0]),0);\n}\n\ntest();",
    "solution": "function prod_signs(arr){\n  if (arr.length === 0) return undefined;\n  let sign = 1, sum = 0;\n  for (const n of arr) {\n    sum += Math.abs(n);\n    sign *= Math.sign(n);\n  }\n  return sum * sign;\n}\n"
   },
