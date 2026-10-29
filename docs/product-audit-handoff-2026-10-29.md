@@ -5,8 +5,8 @@ This handoff sums up the owner-independent work left after the [2026-10-29 audit
 ## Current state
 
 - Audit P1 to P3 are merged. `8bf704f` merged into `feature/tbound-product` as `a7f3a60`, and the merge ledger is `43dc492`.
-- Selective ports of P4 and P5 from the thesis are in progress: `5d74c0b` and `f1ee21d`. A code worker is active on them, and the ledger still lists both as deferred. The ledger's shared-fix list also names `a11cee5`, `5a3f4c5`, and `44b6f7d`, which the next sync carries.
-- P4 and P6 block the release.
+- Selective ports are implemented and independently reviewed: thesis `5d74c0b` plus `abfb6ad` to product `b7eefe3` (P4), and `f1ee21d` to `b824d0d` (P5). Focused product, recovery and providerbridge suites passed; exact delivery gate evidence is in `F:/TBoundAssets/takeover-20261029/RESULTS.md`. The ledger's shared-fix list also names `a11cee5`, `5a3f4c5`, and `44b6f7d`, which the next sync carries.
+- P4 is fixed locally. P6 still blocks release, alongside the retained qualification work below.
 - No product-to-thesis merge happens before the F14 freeze. [TASK_STATE.md](../TASK_STATE.md) lists owner approval for signing and the guest chain as part of that freeze, and it gives no date.
 - After the freeze, propose `integration/f14-product`, based on the frozen thesis SHA, and merge the then-gated product branch there. Preserve the thesis evidence semantics and product soft refusals. Run the combined gate and an independent review before merging either target.
 
