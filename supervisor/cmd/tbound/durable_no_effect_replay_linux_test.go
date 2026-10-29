@@ -102,10 +102,11 @@ func newNoEffectReplayFixture(t *testing.T) *governedReplayFixture {
 		{ResponseID: "ne-r-write", CallID: "ne-c-write", Tool: "write", Arguments: json.RawMessage(`{"path":"","content":"x\n"}`)},
 		{ResponseID: "ne-r-edit", CallID: "ne-c-edit", Tool: "edit", Arguments: json.RawMessage(`{"path":"task.txt","edits":[]}`)},
 		{ResponseID: "ne-r-bash", CallID: "ne-c-bash", Tool: "bash", Arguments: json.RawMessage(`{"command":""}`)},
+		{ResponseID: "ne-r-path", CallID: "ne-c-path", Tool: "read", Arguments: json.RawMessage(`{"path":"../outside.txt"}`)},
 		{ResponseID: "ok-r-read", CallID: "ok-c-read", Tool: "read", Arguments: json.RawMessage(`{"path":"task.txt"}`)},
 		{ResponseID: "ok-r-write", CallID: "ok-c-write", Tool: "write", Arguments: json.RawMessage(`{"path":"task.txt","content":"after\n"}`)},
 	}, true)
-	for range 4 {
+	for range 5 {
 		allowNoEffectReplayTurn(t, fixture, true)
 	}
 	executeGovernedReplayTurn(t, fixture, true)
@@ -114,7 +115,7 @@ func newNoEffectReplayFixture(t *testing.T) *governedReplayFixture {
 }
 
 // Replay re-derives each refusal from the retained arguments and the complete Store evidence, so a run with refusals
-// of all four tools and two later legitimate calls verifies, the refusals add no Store operation, and a second replay
+// of all four tools, a path refusal and two later legitimate calls verifies, the refusals add no Store operation, and a second replay
 // pass reconstructs the same projection.
 func TestNoEffectRefusalsReplayWithTheirLegitimateCalls(t *testing.T) {
 	fixture := newNoEffectReplayFixture(t)
@@ -122,16 +123,34 @@ func TestNoEffectRefusalsReplayWithTheirLegitimateCalls(t *testing.T) {
 	if err != nil {
 		t.Fatalf("replay of a run with no-effect refusals: %v", err)
 	}
-	if projection.VerificationScope != "store_crosslinked" || projection.Provider.ExchangeCount != 6 ||
-		projection.Provider.CapturedCallCount != 6 || projection.Provider.DecisionCount != 6 ||
-		projection.Provider.ResultCount != 6 || projection.StoreOperationCount != 2 ||
+	if projection.VerificationScope != "store_crosslinked" || projection.Provider.ExchangeCount != 7 ||
+		projection.Provider.CapturedCallCount != 7 || projection.Provider.DecisionCount != 7 ||
+		projection.Provider.ResultCount != 7 || projection.StoreOperationCount != 2 ||
 		projection.Provider.Disposition != providerbridge.DispositionAwaitingProviderExchange ||
 		!VerifyGovernedTranscriptProjectionCommitment(projection) {
-		t.Fatalf("replayed projection does not count six released results over two Store operations: %+v", projection)
+		t.Fatalf("replayed projection does not count seven released results over two Store operations: %+v", projection)
 	}
 	again, err := ReplayGovernedTranscript(fixture.providerJournal, fixture.storeJournal, fixture.store, fixture.pins)
 	if err != nil || !reflect.DeepEqual(again, projection) {
 		t.Fatalf("second replay pass differs: err=%v\nfirst  %+v\nsecond %+v", err, projection, again)
+	}
+}
+
+// A write refused because its path leaves the workspace is released and replays like any other refusal, and the
+// legitimate write after it still verifies against its Store operation.
+func TestNoEffectWritePathRefusalReplays(t *testing.T) {
+	fixture := newGovernedReplayFixture(t, []providerbridge.DevelopmentProviderTurn{
+		{ResponseID: "ne-r-out", CallID: "ne-c-out", Tool: "write", Arguments: json.RawMessage(`{"path":"../outside.txt","content":"x"}`)},
+		{ResponseID: "ok-r-in", CallID: "ok-c-in", Tool: "write", Arguments: json.RawMessage(`{"path":"task.txt","content":"inside"}`)},
+	}, true)
+	allowNoEffectReplayTurn(t, fixture, true)
+	executeGovernedReplayTurn(t, fixture, true)
+	projection, err := ReplayGovernedTranscript(fixture.providerJournal, fixture.storeJournal, fixture.store, fixture.pins)
+	if err != nil {
+		t.Fatalf("replay of a write path refusal: %v", err)
+	}
+	if projection.Provider.DecisionCount != 2 || projection.Provider.ResultCount != 2 || projection.StoreOperationCount != 1 {
+		t.Fatalf("write path refusal did not replay as one released refusal and one Store write: %+v", projection)
 	}
 }
 

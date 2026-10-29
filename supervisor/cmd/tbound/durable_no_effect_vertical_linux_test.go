@@ -153,6 +153,7 @@ func TestNoEffectRefusedReadIsReleasedRetiredAndContinued(t *testing.T) {
 	}{
 		{"zero offset", `{"path":"task.txt","offset":0}`},
 		{"empty path", `{"path":""}`},
+		{"absolute path under no workspace root", `{"path":"/workspace/task.txt"}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			// One retry allowance raises the fixture's token budget to three provider requests.
@@ -257,11 +258,11 @@ func TestNoEffectCheckpointReopensInAFreshProcess(t *testing.T) {
 	}
 }
 
-// A path outside the workspace is not a step-1 no-effect class: it stays an UNKNOWN execution, the result is withheld
-// without the marker, and no next provider request is issued.
-func TestNoEffectPathRefusalStaysUnknown(t *testing.T) {
+// A refusal only the Store can decide (here a missing read target) is not a no-effect class: it stays an UNKNOWN
+// execution, the result is withheld without the marker, and no next provider request is issued.
+func TestNoEffectStoreSideRefusalStaysUnknown(t *testing.T) {
 	f := newWorkflowVerticalFixture(t, false, 0, []providerbridge.DevelopmentProviderTurn{
-		{ResponseID: "r-path", CallID: "c-path", Tool: "read", Arguments: json.RawMessage(`{"path":"../outside.txt"}`)},
+		{ResponseID: "r-path", CallID: "c-path", Tool: "read", Arguments: json.RawMessage(`{"path":"missing.txt"}`)},
 		{ResponseID: "r-final", Text: "done"},
 	})
 	executor, err := providerbridge.NewExecutor(f.conversation, f.durable)
@@ -272,13 +273,13 @@ func TestNoEffectPathRefusalStaysUnknown(t *testing.T) {
 	_, err = executor.Execute(f.ctx, proposal, decision)
 	var marker *protocol.NoEffectError
 	if !errors.Is(err, providerbridge.ErrResultWithheld) || errors.As(err, &marker) {
-		t.Fatalf("path refusal was not withheld as UNKNOWN without the marker: %v", err)
+		t.Fatalf("Store-side refusal was not withheld as UNKNOWN without the marker: %v", err)
 	}
 	if _, err := f.conversation.NextTurn(f.ctx); !errors.Is(err, providerbridge.ErrClosed) {
-		t.Fatalf("conversation issued a next request after a path refusal: %v", err)
+		t.Fatalf("conversation issued a next request after a Store-side refusal: %v", err)
 	}
 	if count := providerExchangeCount(t, f); count != 1 {
-		t.Fatalf("provider exchanges=%d after a path refusal, want 1", count)
+		t.Fatalf("provider exchanges=%d after a Store-side refusal, want 1", count)
 	}
 }
 

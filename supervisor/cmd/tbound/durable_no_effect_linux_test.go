@@ -32,6 +32,10 @@ func TestNoEffectDurableArgumentRefusalTagsEachEligibleDecoderSite(t *testing.T)
 		{"read zero offset", "read", `{"path":"a.txt","offset":0}`, "read offset must be a positive integer"},
 		{"read negative offset", "read", `{"path":"a.txt","offset":-3}`, "read offset must be a positive integer"},
 		{"read fractional limit", "read", `{"path":"a.txt","limit":1.5}`, "read limit must be a positive integer"},
+		{"write path outside the workspace", "write", `{"path":"/etc/passwd","content":"x"}`, "path is outside the workspace"},
+		{"edit path outside the workspace", "edit", `{"path":"../secret","edits":[{"oldText":"a","newText":"b"}]}`, "path is outside the workspace"},
+		{"read path outside the workspace", "read", `{"path":"../secret"}`, "path is outside the workspace"},
+		{"read absolute path under no workspace root", "read", `{"path":"/workspace/a.txt"}`, "path is outside the workspace"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			refusal := durableArgumentRefusal(tc.tool, json.RawMessage(tc.arguments))
@@ -42,15 +46,15 @@ func TestNoEffectDurableArgumentRefusalTagsEachEligibleDecoderSite(t *testing.T)
 	}
 }
 
-// Path refusals and valid arguments never become a no-effect refusal: their outcome is decided by the workspace or
-// by execution, which the marker must not claim.
+// Valid arguments, workspace paths and paths only the Store refuses never become a no-effect refusal here: their
+// outcome is decided by the Store or by execution, which the marker must not claim.
 func TestNoEffectDurableArgumentRefusalLeavesPathAndValidArgumentsUntyped(t *testing.T) {
 	for _, tc := range []struct {
 		name, tool, arguments string
 	}{
-		{"write path outside the workspace", "write", `{"path":"/etc/passwd","content":"x"}`},
-		{"edit path outside the workspace", "edit", `{"path":"../secret","edits":[{"oldText":"a","newText":"b"}]}`},
-		{"read path outside the workspace", "read", `{"path":"../secret"}`},
+		{"absolute path under the command workdir", "read", `{"path":"/work/a.txt"}`},
+		{"path the Store refuses", "write", `{"path":"src\\a.txt","content":"x"}`},
+		{"empty old text the Store refuses", "edit", `{"path":"a.txt","edits":[{"oldText":"","newText":"b"}]}`},
 		{"valid write", "write", `{"path":"a.txt","content":"x"}`},
 		{"valid read window", "read", `{"path":"a.txt","offset":2,"limit":3}`},
 		{"read limit beyond the file bound", "read", `{"path":"a.txt","limit":1e300}`},

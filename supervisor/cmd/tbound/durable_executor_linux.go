@@ -605,7 +605,7 @@ var durableWorkspaceRoots = []string{piruntime.PiWorkerCellDefaultWorkingDirecto
 // resolves inside the workspace. An absolute path counts only under a workspace root at a slash boundary. Lexical
 // cleaning drops "." and empty segments and resolves ".." in place, so "build/../task.txt" names "task.txt". The
 // Store holds no symbolic links, so cleaning names the file the spelling named. A path that would leave the
-// workspace is refused here, before the Store or admission sees it.
+// workspace is refused here, before the Store or admission sees it; its callers return that refusal as a no-effect one.
 func durableWorkspaceRelativePath(modelPath string) (string, error) {
 	relative := modelPath
 	if strings.HasPrefix(modelPath, "/") {
@@ -645,7 +645,7 @@ func durableWriteArguments(raw json.RawMessage) (string, []byte, error) {
 	}
 	storePath, err := durableWorkspaceRelativePath(arguments.Path)
 	if err != nil {
-		return "", nil, err
+		return "", nil, &protocol.NoEffectError{Tool: "write", Err: err}
 	}
 	return storePath, []byte(arguments.Content), nil
 }
@@ -679,7 +679,7 @@ func durableEditArguments(raw json.RawMessage) (string, []sessionrepo.Replacemen
 	}
 	storePath, err := durableWorkspaceRelativePath(arguments.Path)
 	if err != nil {
-		return "", nil, err
+		return "", nil, &protocol.NoEffectError{Tool: "edit", Err: err}
 	}
 	edits := make([]sessionrepo.Replacement, len(arguments.Edits))
 	for index, rawEdit := range arguments.Edits {
@@ -850,7 +850,7 @@ func durableReadArguments(raw json.RawMessage) (string, durableReadWindow, error
 	}
 	storePath, err := durableWorkspaceRelativePath(arguments.Path)
 	if err != nil {
-		return "", durableReadWindow{}, fmt.Errorf("read arguments: %w", err)
+		return "", durableReadWindow{}, &protocol.NoEffectError{Tool: "read", Err: fmt.Errorf("read arguments: %w", err)}
 	}
 	return storePath, durableReadWindow{offset: offset, limit: limit}, nil
 }
