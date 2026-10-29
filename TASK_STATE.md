@@ -1,9 +1,15 @@
 # TBound thesis task state
 
-Thesis lane only. Checkpoint 2026-10-27. Product work is tracked in
+Thesis lane only. Preparation checkpoint 2026-10-29. Product work is tracked in
 [docs/product-plan.md](docs/product-plan.md) (section 10), not here. History:
 git log of this file, `../review-artifacts/TASK_STATE-history-20261023.md`,
 `../review-artifacts/TASK_STATE-pilot20-receipts-20261024.md`.
+
+Owner proposals and draft amendments are in [the advisor packet](docs/evaluation/owner-advisor-proposals-2026-10-29.md).
+Advisor confirmations remain pending; T5 and T7 are not implemented or validated.
+[The preparation plan](docs/evaluation/t5-t7-preparation-2026-10-29.md) supersedes older next-action lists: confirm decisions, implement and validate, then regenerate prep before any paid panel.
+F14 remains a draft pinned to gated `56cf99c`; any later thesis HEAD, including these documentation commits, needs its own final gate and F14 repin before freeze.
+The owner recommends the denied-after-effect probe as separate qualification; F14's G1 and route probes do not establish it.
 
 ## Summary
 

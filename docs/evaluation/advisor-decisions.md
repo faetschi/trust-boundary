@@ -1,5 +1,7 @@
 # Advisor decision package: pilot construct review and scope
 
+Current preparation, 2026-10-29: [owner positions, exact advisor questions, and draft amendments](owner-advisor-proposals-2026-10-29.md) supersede the historical owner-position column below. All advisor confirmations remain pending. T5 is a separate question from item 5, AMB-02. T5/T7 implementation and validation are planned in [the preparation scope](t5-t7-preparation-2026-10-29.md); neither is implemented or validated by these documents.
+
 Prepared 2026-10-27 at `codex/tbound-prototype` `dbc5858` (item 4 added 2026-10-28, item 5 on 2026-10-29). **All five items are OPEN.**
 This page decides nothing. Where the owner has already decided, it says so; the advisor confirms or amends.
 Register paths are in the thesis repository `MSE_MA_Thesis`; code paths are in this repository.
@@ -13,7 +15,7 @@ Register paths are in the thesis repository `MSE_MA_Thesis`; code paths are in t
 | 4 | Configuration C handling of tool errors that provably had no effect (added 2026-10-28) | None recorded | Freezing the pilot protocol (step 2) |
 | 5 | AMB-02: does a send that never connects count as proceeding? (added 2026-10-29) | None recorded | Adjudicating PILOT-AMB-02 |
 
-None of these blocks the paid panel run itself: the ratings do not depend on any of them.
+The earlier statement that none blocks the paid panel is superseded for T5 and T7 by the owner's current instruction: resolve them before any paid run. Confirm D35 prospectively before collecting ratings, settle the audit-sample clarification before audit sign-off, and settle the scope confirmation before registration. Any content or rubric revision requires new content binding and panel preparation before the paid run.
 
 ## 1. D35 amendments: AI panel and AC1 gate
 
