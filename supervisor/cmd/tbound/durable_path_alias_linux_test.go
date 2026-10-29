@@ -55,7 +55,11 @@ func TestProductTurnWritesCanonicalSpellingsAndCompletes(t *testing.T) {
 	} {
 		t.Run(testCase.spelling, func(t *testing.T) {
 			f := newScopedProductDriverFixture(t, productsession.PublicationAuto, nil, false, func(projectDir string) {
-				if err := os.Mkdir(filepath.Join(projectDir, "src"), 0o755); err != nil {
+				src := filepath.Join(projectDir, "src")
+				if err := os.Mkdir(src, 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Chmod(src, 0o755); err != nil {
 					t.Fatal(err)
 				}
 			})
