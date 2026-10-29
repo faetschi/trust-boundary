@@ -158,3 +158,68 @@ func TestProductTurnSoftRefusalReplayRejectsStoreAuthority(t *testing.T) {
 		t.Fatalf("want refused-call Store authority rejection, got %v", err)
 	}
 }
+
+func TestRefusalReplayRejectsTheOtherRefusalRecordShape(t *testing.T) {
+	thesis := newNoEffectReplayFixture(t)
+	product := startSoftRefusalWorkflow(t, []providerbridge.ScriptTurn{{ResponseID: "soft-response", CallID: "soft-call", Tool: "read", Arguments: json.RawMessage(`{"path":"missing.txt"}`)}})
+	recordSoftRefusal(t, product)
+	productPins := softRefusalReplayPins(t, product)
+	for _, check := range []struct {
+		name, kind, otherKind               string
+		journal, storeJournal, otherJournal *audit.Journal
+		pins                                GovernedReplayPins
+	}{
+		{"no_effect_as_preflight", "provider_tool_result", providerbridge.SoftRefusalEvent, thesis.providerJournal, thesis.storeJournal, product.providerJournal, thesis.pins},
+		{"preflight_as_no_effect", providerbridge.SoftRefusalEvent, "provider_tool_result", product.providerJournal, product.storeJournal, thesis.providerJournal, productPins},
+	} {
+		t.Run(check.name, func(t *testing.T) {
+			store := thesis.store
+			if check.kind == providerbridge.SoftRefusalEvent {
+				store = product.store
+			}
+			if _, err := ReplayGovernedTranscript(check.journal, check.storeJournal, store, check.pins); err != nil {
+				t.Fatalf("valid refusal: %v", err)
+			}
+			other, err := check.otherJournal.Trace()
+			if err != nil {
+				t.Fatal(err)
+			}
+			var data []byte
+			for _, record := range other.Records {
+				if record.Event.Kind == check.otherKind {
+					data = record.Event.Data
+					break
+				}
+			}
+			if len(data) == 0 {
+				t.Fatal("missing other refusal shape")
+			}
+			trace, err := check.journal.Trace()
+			if err != nil {
+				t.Fatal(err)
+			}
+			journal, err := audit.Open(filepath.Join(privateGovernedTestRoot(t), "wrong-shape.jsonl"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = journal.Close() })
+			changed := false
+			for _, record := range trace.Records {
+				event := record.Event
+				if event.Kind == check.kind && !changed {
+					event.Data = data
+					changed = true
+				}
+				if _, err := journal.Append(event); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if !changed {
+				t.Fatal("missing original refusal")
+			}
+			if _, err := ReplayGovernedTranscript(journal, check.storeJournal, store, check.pins); err == nil {
+				t.Fatal("accepted the other refusal's record shape")
+			}
+		})
+	}
+}

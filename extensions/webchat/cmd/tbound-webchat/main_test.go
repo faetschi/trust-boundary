@@ -74,3 +74,11 @@ func TestUnreadableFixtureIsRefusedBeforeListening(t *testing.T) {
 		t.Fatal("a missing fixture should fail closed")
 	}
 }
+
+func TestLiveSourceIsRefused(t *testing.T) {
+	// Live mode now exists, but an unconfigured source must still fail before listening.
+	err := run([]string{"--live"}, os.Stdout, os.Stderr)
+	if err == nil || !strings.Contains(err.Error(), "--live needs --socket") {
+		t.Fatalf("unconfigured live source was not refused: %v", err)
+	}
+}
