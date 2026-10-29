@@ -121,57 +121,63 @@ func scopeDriverFirstTurn() *productDriverScript {
 // a protected path inside one, are denied by delta admission with their stable reason codes and hints.
 // The turn still completes and the next turn rebuilds its context from the retained, scoped evidence.
 func TestProductTurnDriverEnforcesTheProjectScope(t *testing.T) {
-	f := newScopedProductDriverFixture(t, productsession.PublicationAuto, productScopeNotes(), false, seedScopedProject(t))
-	baseline := f.measure(t)
-	receipt, turn, err := f.run(t, f.submit(t, "turn-1", scopeDriverPrompt), scopeDriverFirstTurn())
-	if err != nil {
-		t.Fatalf("turn 1: %v", err)
-	}
-	if got := fileContent(t, filepath.Join(f.projectDir, "notes"), "a.txt"); got != "inside\n" {
-		t.Fatalf("the write inside the writable subtree was not published: %q", got)
-	}
-	if got := fileContent(t, f.projectDir, "other.txt"); got != "outside\n" {
-		t.Fatalf("a write outside every writable entry reached the project: %q", got)
-	}
-	if got := fileContent(t, filepath.Join(f.projectDir, "notes"), "secret.txt"); got != "private\n" {
-		t.Fatalf("a write to a protected path reached the project: %q", got)
-	}
-	wantDenials := []productTurnDenial{
-		{ToolCallID: "call-outside", Tool: "write", ReasonCode: "scope_path_not_covered"},
-		{ToolCallID: "call-protected", Tool: "write", ReasonCode: "scope_protected_path"},
-	}
-	if turn.State != productsession.StateTerminal || turn.Outcome != productsession.OutcomePublished ||
-		turn.ResultBaselineDigest == baseline || turn.ResultBaselineDigest != f.measure(t) || receipt.PublicationTransactionID == "" ||
-		fmt.Sprint(receipt.ToolSequence) != "[write write write]" || fmt.Sprint(receipt.Denials) != fmt.Sprint(wantDenials) {
-		t.Fatalf("turn 1 settlement: turn=%+v receipt=%+v", turn, receipt)
-	}
-	if turn.Scope == nil || fmt.Sprint(turn.Scope.Writable, turn.Scope.Protected) != fmt.Sprint([]string{"notes"}, []string{"notes/secret.txt"}) {
-		t.Fatalf("the turn is not pinned to the project's scope: %+v", turn.Scope)
-	}
-	if session := f.currentSession(t); session.Blocked || session.Reserved != (productsession.Budget{}) {
-		t.Fatalf("a denied write must not block the session: %+v", session)
-	}
+	for _, protectedPath := range []string{"notes/secret.txt", "/work/notes/./secret.txt"} {
+		t.Run(protectedPath, func(t *testing.T) {
+			f := newScopedProductDriverFixture(t, productsession.PublicationAuto, productScopeNotes(), false, seedScopedProject(t))
+			baseline := f.measure(t)
+			script := scopeDriverFirstTurn()
+			script.turns[2] = scopeDriverWrite("protected", protectedPath, "leaked\n")
+			receipt, turn, err := f.run(t, f.submit(t, "turn-1", scopeDriverPrompt), script)
+			if err != nil {
+				t.Fatalf("turn 1: %v", err)
+			}
+			if got := fileContent(t, filepath.Join(f.projectDir, "notes"), "a.txt"); got != "inside\n" {
+				t.Fatalf("the write inside the writable subtree was not published: %q", got)
+			}
+			if got := fileContent(t, f.projectDir, "other.txt"); got != "outside\n" {
+				t.Fatalf("a write outside every writable entry reached the project: %q", got)
+			}
+			if got := fileContent(t, filepath.Join(f.projectDir, "notes"), "secret.txt"); got != "private\n" {
+				t.Fatalf("a write to a protected path reached the project: %q", got)
+			}
+			wantDenials := []productTurnDenial{
+				{ToolCallID: "call-outside", Tool: "write", ReasonCode: "scope_path_not_covered"},
+				{ToolCallID: "call-protected", Tool: "write", ReasonCode: "scope_protected_path"},
+			}
+			if turn.State != productsession.StateTerminal || turn.Outcome != productsession.OutcomePublished ||
+				turn.ResultBaselineDigest == baseline || turn.ResultBaselineDigest != f.measure(t) || receipt.PublicationTransactionID == "" ||
+				fmt.Sprint(receipt.ToolSequence) != "[write write write]" || fmt.Sprint(receipt.Denials) != fmt.Sprint(wantDenials) {
+				t.Fatalf("turn 1 settlement: turn=%+v receipt=%+v", turn, receipt)
+			}
+			if turn.Scope == nil || fmt.Sprint(turn.Scope.Writable, turn.Scope.Protected) != fmt.Sprint([]string{"notes"}, []string{"notes/secret.txt"}) {
+				t.Fatalf("the turn is not pinned to the project's scope: %+v", turn.Scope)
+			}
+			if session := f.currentSession(t); session.Blocked || session.Reserved != (productsession.Budget{}) {
+				t.Fatalf("a denied write must not block the session: %+v", session)
+			}
 
-	messages := lastProviderRequestMessages(t, turn.Link.ProviderJournalPath)
-	for callID, reason := range map[string]string{"call-outside": "scope_path_not_covered", "call-protected": "scope_protected_path"} {
-		hint := providerbridge.HintCandidates(reason)["0"]
-		denied := toolMessage(t, messages, callID)
-		if hint == "" || !strings.Contains(denied, `"DENY"`) || !strings.Contains(denied, reason) || !strings.HasSuffix(denied, "\nhint: "+hint) {
-			t.Errorf("%s: the provider did not get the denial with its hint: %q", callID, denied)
-		}
-	}
-	if allowed := toolMessage(t, messages, "call-allowed"); strings.Contains(allowed, "DENY") || strings.Contains(allowed, "hint:") {
-		t.Errorf("the admitted write was reported as denied: %q", allowed)
-	}
+			messages := lastProviderRequestMessages(t, turn.Link.ProviderJournalPath)
+			for callID, reason := range map[string]string{"call-outside": "scope_path_not_covered", "call-protected": "scope_protected_path"} {
+				hint := providerbridge.HintCandidates(reason)["0"]
+				denied := toolMessage(t, messages, callID)
+				if hint == "" || !strings.Contains(denied, `"DENY"`) || !strings.Contains(denied, reason) || !strings.HasSuffix(denied, "\nhint: "+hint) {
+					t.Errorf("%s: the provider did not get the denial with its hint: %q", callID, denied)
+				}
+			}
+			if allowed := toolMessage(t, messages, "call-allowed"); strings.Contains(allowed, "DENY") || strings.Contains(allowed, "hint:") {
+				t.Errorf("the admitted write was reported as denied: %q", allowed)
+			}
 
-	second := f.submit(t, "turn-2", "Read notes/a.txt back to me.")
-	script2 := &productDriverScript{turns: []providerbridge.ScriptTurn{
-		{ResponseID: "t2-read", CallID: "t2-call-read", Tool: "read", Arguments: json.RawMessage(`{"path":"notes/a.txt"}`)},
-		scopeDriverFinal("t2", "It says inside."),
-	}}
-	_, turn2, err := f.run(t, second, script2)
-	if err != nil || turn2.Outcome != productsession.OutcomeNoDiff || turn2.Scope == nil {
-		t.Fatalf("turn 2 over the scoped predecessor: %+v %v", turn2, err)
+			second := f.submit(t, "turn-2", "Read notes/a.txt back to me.")
+			script2 := &productDriverScript{turns: []providerbridge.ScriptTurn{
+				{ResponseID: "t2-read", CallID: "t2-call-read", Tool: "read", Arguments: json.RawMessage(`{"path":"notes/a.txt"}`)},
+				scopeDriverFinal("t2", "It says inside."),
+			}}
+			_, turn2, err := f.run(t, second, script2)
+			if err != nil || turn2.Outcome != productsession.OutcomeNoDiff || turn2.Scope == nil {
+				t.Fatalf("turn 2 over the scoped predecessor: %+v %v", turn2, err)
+			}
+		})
 	}
 }
 

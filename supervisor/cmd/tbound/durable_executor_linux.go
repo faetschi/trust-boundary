@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"hash"
 	"io"
+	"path"
 	"reflect"
 	"strconv"
 	"strings"
@@ -554,6 +555,38 @@ type durableWriteArgumentsPayload struct {
 	Content string `json:"content"`
 }
 
+// durableWorkspaceRoots are the absolute prefixes under which the model may name a workspace file. Pi reports the
+// workspace as its working directory, which the Pi cell mounts at PiWorkerCellDefaultWorkingDirectory. The command
+// cell mounts the same workspace at PiWorkerCellWorkdir, where bash runs.
+var durableWorkspaceRoots = []string{piruntime.PiWorkerCellDefaultWorkingDirectory, piruntime.PiWorkerCellWorkdir}
+
+// durableWorkspaceRelativePath maps a path the model names to the Store-relative path it denotes. A relative path
+// resolves inside the workspace. An absolute path counts only under a workspace root at a slash boundary. Lexical
+// cleaning drops "." and empty segments and resolves ".." in place, so "build/../task.txt" names "task.txt". The
+// Store holds no symbolic links, so cleaning names the file the spelling named. A path that would leave the
+// workspace is refused here, before the Store or admission sees it.
+func durableWorkspaceRelativePath(modelPath string) (string, error) {
+	relative := modelPath
+	if strings.HasPrefix(modelPath, "/") {
+		root, found := "", false
+		for _, candidate := range durableWorkspaceRoots {
+			if modelPath == candidate || strings.HasPrefix(modelPath, candidate+"/") {
+				root, found = candidate, true
+				break
+			}
+		}
+		if !found {
+			return "", errors.New("path is outside the workspace")
+		}
+		relative = strings.TrimLeft(modelPath[len(root):], "/")
+	}
+	cleaned := path.Clean(relative)
+	if cleaned == "." || cleaned == ".." || strings.HasPrefix(cleaned, "../") {
+		return "", errors.New("path is outside the workspace")
+	}
+	return cleaned, nil
+}
+
 func durableWriteArguments(raw json.RawMessage) (string, []byte, error) {
 	var arguments durableWriteArgumentsPayload
 	decoder := json.NewDecoder(bytes.NewReader(raw))
@@ -567,7 +600,11 @@ func durableWriteArguments(raw json.RawMessage) (string, []byte, error) {
 	if arguments.Path == "" {
 		return "", nil, errors.New("write arguments require a path")
 	}
-	return arguments.Path, []byte(arguments.Content), nil
+	storePath, err := durableWorkspaceRelativePath(arguments.Path)
+	if err != nil {
+		return "", nil, err
+	}
+	return storePath, []byte(arguments.Content), nil
 }
 
 type durableEditArgumentsPayload struct {
@@ -593,11 +630,15 @@ func durableEditArguments(raw json.RawMessage) (string, []sessionrepo.Replacemen
 	if arguments.Path == "" || len(arguments.Edits) == 0 {
 		return "", nil, errors.New("edit arguments require a path and at least one replacement")
 	}
+	storePath, err := durableWorkspaceRelativePath(arguments.Path)
+	if err != nil {
+		return "", nil, err
+	}
 	edits := make([]sessionrepo.Replacement, len(arguments.Edits))
 	for index, edit := range arguments.Edits {
 		edits[index] = sessionrepo.Replacement{OldText: edit.OldText, NewText: edit.NewText}
 	}
-	return arguments.Path, edits, nil
+	return storePath, edits, nil
 }
 
 // durableBashArgumentsPayload mirrors the adapter's bash tool schema exactly:
@@ -698,7 +739,11 @@ func durableReadArguments(raw json.RawMessage) (string, error) {
 	if arguments.Offset != nil || arguments.Limit != nil {
 		return "", errors.New("read offset/limit are not supported by the durable read path")
 	}
-	return arguments.Path, nil
+	storePath, err := durableWorkspaceRelativePath(arguments.Path)
+	if err != nil {
+		return "", fmt.Errorf("read arguments: %w", err)
+	}
+	return storePath, nil
 }
 
 // durableContentDigest is the bare sha256 commitment the session repository
