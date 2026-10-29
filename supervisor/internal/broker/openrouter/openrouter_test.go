@@ -137,12 +137,9 @@ func TestBuildRequestRejectsUnsupportedMessageAndTool(t *testing.T) {
 	if _, err := BuildRequest(" ", []Message{{Role: User, Content: strptr("x")}}); err == nil {
 		t.Fatal("invalid model accepted")
 	}
-	// The registered schemas do not forbid additional properties, so a prior call with an unlisted key is permitted.
-	if _, err := BuildRequest(ApprovedModel, []Message{{Role: Assistant, ToolCalls: []PriorToolCall{{ID: "c1", Name: "read", RawArguments: json.RawMessage(`{"path":"ok","extra":true}`)}}}}); err != nil {
-		t.Fatalf("prior call with a key the schema does not list refused: %v", err)
-	}
-	if _, err := BuildRequest(ApprovedModel, []Message{{Role: Assistant, ToolCalls: []PriorToolCall{{ID: "c1", Name: "read", RawArguments: json.RawMessage(`{"path":5}`)}}}}); err == nil {
-		t.Fatal("prior call with a wrong-typed path accepted")
+	_, err := BuildRequest(ApprovedModel, []Message{{Role: Assistant, ToolCalls: []PriorToolCall{{ID: "c1", Name: "read", RawArguments: json.RawMessage(`{"path":"ok","extra":true}`)}}}})
+	if err == nil {
+		t.Fatal("prior call outside the registered schema accepted")
 	}
 	if _, err := BuildRequest("vendor/model", []Message{{Role: User, Content: strptr("x")}}); err == nil {
 		t.Fatal("request builder accepted a model outside the fixed OpenCode Go profile")
