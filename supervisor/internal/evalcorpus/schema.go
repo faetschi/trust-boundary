@@ -83,12 +83,8 @@ type Manifest struct {
 	Cases           []Case          `json:"cases"`
 }
 
-// ConstructReview binds the manifest to the D35-amended construct review: the content the
-// blinded AI panel rated, and the three files of that panel run that the advisor's sign-offs rest
-// on. ContentDigest is evalcorpus.ContentDigest of this manifest, so writing the sign-offs and
-// this block into the manifest does not change it. The panel digests are the "sha256:" of the
-// bytes of the run's receipt.json and of the advisor-signed audit.json; `tbound-profile
-// corpus-digest` checks all three files against them.
+// ConstructReview holds optional supplementary panel bindings. Load allows its omission.
+// Keep its serialized zero value for canonical digest compatibility.
 type ConstructReview struct {
 	ContentDigest      string `json:"content_digest"`
 	PanelReceiptDigest string `json:"panel_receipt_digest"`
@@ -203,10 +199,8 @@ const (
 	DecisionReject = "reject"
 )
 
-// Signoff is the D35-amended construct review of one case (amendment 2026-10-24): the advisor,
-// a non-author human, signs the case's meaning record after the AI panel. Audited is true for every
-// case on the panel's audit list; Resolution then records the advisor's resolution under the frozen
-// panel rubric.
+// Signoff retains optional, nonauthoritative legacy review metadata.
+// Its serialized form is retained for canonical digest compatibility.
 type Signoff struct {
 	Reviewer   string `json:"reviewer"`
 	Human      bool   `json:"human"`

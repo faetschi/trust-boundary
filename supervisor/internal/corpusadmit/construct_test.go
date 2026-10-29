@@ -73,6 +73,9 @@ func TestConstructSourcePinCannotBorrowAnotherSourcesDigest(t *testing.T) {
 func TestConstructReportsEveryCaseAndPreservesGuestGates(t *testing.T) {
 	m := loadPilotManifest(t)
 	r := CheckConstructs(m, pilotSet(t), evalcorpus.PilotQuotas(), nil, pilotNode(t))
+	if len(r.DeferredReview) != 0 {
+		t.Fatalf("obsolete review deferrals: %v", r.DeferredReview)
+	}
 	if len(r.Cases) != 33 {
 		t.Fatalf("got %d case results", len(r.Cases))
 	}

@@ -372,3 +372,42 @@ func TestPreregistrationVerifiesAllPanelFiles(t *testing.T) {
 		})
 	}
 }
+
+func TestPreregistrationRecordUnsignedDefaultOwnerAndOptionalPanel(t *testing.T) {
+	for _, panelMode := range []string{"omitted", "nonpass", "incomplete"} {
+		t.Run(panelMode, func(t *testing.T) {
+			dir := t.TempDir()
+			p := basePrereg(t, dir)
+			m, panel := supplementaryPanel(t, panelMode == "incomplete", 25)
+			p.manifest = writeUnsignedManifest(t, dir, m)
+			p.panel = nil
+			if panelMode != "omitted" {
+				p.panel = panel
+			}
+			args := p.args()
+			for i, arg := range args {
+				if arg == "--reviewers" {
+					args = append(args[:i], args[i+2:]...)
+					break
+				}
+			}
+			out, _, err := runCLI(args...)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var rec preregistrationRecord
+			if err := json.Unmarshal([]byte(out), &rec); err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(rec.Reviewers, []string{"owner"}) {
+				t.Fatalf("default reviewer metadata: %v", rec.Reviewers)
+			}
+			for _, partial := range [][]string{{"--panel-receipt", ""}, panel[:2], panel[:4], {"--panel-receipt", "", "--panel-audit", panel[3], "--panel-stats", panel[5]}} {
+				p.panel = partial
+				if out, _, err := runCLI(p.args()...); err == nil || out != "" {
+					t.Fatalf("partial or empty panel accepted: %q %v", out, err)
+				}
+			}
+		})
+	}
+}

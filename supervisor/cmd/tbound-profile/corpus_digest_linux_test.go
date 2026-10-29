@@ -456,51 +456,59 @@ func TestCorpusDigestArtifactsMustVerify(t *testing.T) {
 	}
 }
 
-func TestCorpusDigestRefusesRejectedAndPlaceholderReviews(t *testing.T) {
-	dir := t.TempDir()
-	q := evalcorpus.PilotQuotas()
-
-	rejected := fixtureManifest(t, q, "corpus-digest-seed")
-	rejected.Cases[2].Signoff.Decision = "reject"
-	rejectedID := rejected.Cases[2].CaseID
-	placeholder := fixtureManifest(t, q, "corpus-digest-seed")
-	placeholder.Cases[4].Signoff.Reviewer = "TODO-REVIEWER-ADVISOR"
-	placeholderID := placeholder.Cases[4].CaseID
-	freeText := fixtureManifest(t, q, "corpus-digest-seed")
-	freeText.Cases[5].Signoff.Decision = "TODO-DECISION"
-
-	for _, tc := range []struct {
-		name, id string
-		m        evalcorpus.Manifest
-		rule     string
-	}{
-		{"rejected case", rejectedID, rejected, "review.rejected"},
-		{"placeholder reviewer", placeholderID, placeholder, "review.placeholder"},
-		{"free-text decision", freeText.Cases[5].CaseID, freeText, "review.decision"},
-	} {
-		m, panel := signedPanel(t, dir, tc.m)
-		path := writeManifest(t, dir, strings.ReplaceAll(tc.name, " ", "-")+".json", m)
-		out, _, err := runDigest(panel, "--manifest", path, "--quota-profile", "pilot")
-		if err == nil {
-			t.Errorf("%s: accepted", tc.name)
-			continue
-		}
-		if out != "" {
-			t.Errorf("%s: printed %q on failure", tc.name, out)
-		}
-		if !strings.Contains(err.Error(), tc.rule) || !strings.Contains(err.Error(), tc.id) {
-			t.Errorf("%s: error %q does not name rule %s and case %s", tc.name, err, tc.rule, tc.id)
-		}
+func TestCorpusDigestAcceptsUnsignedWithoutPanel(t *testing.T) {
+	m := fixtureManifest(t, evalcorpus.PilotQuotas(), "corpus-digest-seed")
+	m.ConstructReview = evalcorpus.ConstructReview{}
+	for i := range m.Cases {
+		m.Cases[i].Signoff = evalcorpus.Signoff{}
+	}
+	path := writeUnsignedManifest(t, t.TempDir(), m)
+	want, err := evalcorpus.Digest(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, _, err := runDigest(nil, "--manifest", path, "--quota-profile", "pilot")
+	if err != nil || out != want+"\n" {
+		t.Fatalf("unsigned no-panel digest: %q, %v", out, err)
+	}
+	// Supplying legacy metadata alone does not claim panel verification.
+	m.ConstructReview.ContentDigest = "legacy"
+	path = writeManifest(t, t.TempDir(), "legacy.json", m)
+	if _, _, err := runDigest(nil, "--manifest", path, "--quota-profile", "pilot"); err != nil {
+		t.Fatal(err)
 	}
 }
 
-func TestCorpusDigestRequiresBothPanelFiles(t *testing.T) {
+func writeUnsignedManifest(t *testing.T, dir string, m evalcorpus.Manifest) string {
+	t.Helper()
+	raw, err := json.Marshal(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
+	}
+	delete(doc, "construct_review")
+	for _, c := range doc["cases"].([]any) {
+		delete(c.(map[string]any), "signoff")
+	}
+	raw, err = json.Marshal(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return writeFile(t, dir, "unsigned.json", string(raw))
+}
+
+func TestCorpusDigestRequiresAllOrNoPanelFiles(t *testing.T) {
 	m, panel := signedPanel(t, t.TempDir(), fixtureManifest(t, evalcorpus.PilotQuotas(), "corpus-digest-seed"))
 	path := writeManifest(t, t.TempDir(), "corpus.json", m)
 	for name, args := range map[string][]string{
-		"no panel flags": {},
-		"receipt only":   panel[:2],
-		"audit only":     panel[2:],
+		"explicit empty":       {"--panel-receipt", ""},
+		"all explicitly empty": {"--panel-receipt", "", "--panel-audit", "", "--panel-stats", ""},
+		"one of three empty":   {"--panel-receipt", "", "--panel-audit", panel[3], "--panel-stats", panel[5]},
+		"receipt only":         panel[:2],
+		"audit only":           panel[2:],
 	} {
 		out, _, err := runCLI(append([]string{"corpus-digest", "--manifest", path, "--quota-profile", "pilot"}, args...)...)
 		if err == nil || out != "" || !strings.Contains(err.Error(), "--panel-") {
@@ -512,29 +520,14 @@ func TestCorpusDigestRequiresBothPanelFiles(t *testing.T) {
 // Every refusal below leaves the manifest otherwise valid, so the panel evidence is the only fault.
 func TestCorpusDigestRefusesPanelEvidenceThatDoesNotBackTheManifest(t *testing.T) {
 	q := evalcorpus.PilotQuotas()
-	blankAdvisor := func(field string) func(doc map[string]any) {
-		return func(doc map[string]any) {
-			doc["cases"].([]any)[1].(map[string]any)["advisor_signoff"].(map[string]string)[field] = ""
-		}
-	}
 	for _, tc := range []struct {
 		name string
 		tw   panelTweak
 		want string
 	}{
-		{"audit entry without a decision", panelTweak{audit: blankAdvisor("decision")}, "decision"},
-		{"audit entry without a resolution", panelTweak{audit: blankAdvisor("resolution")}, "resolution"},
-		{"audit entry without an identity", panelTweak{audit: blankAdvisor("identity")}, "identity"},
-		{"audit entry without a time", panelTweak{audit: blankAdvisor("signed_at")}, "signed_at"},
-		{"audit entry that revises", panelTweak{audit: func(doc map[string]any) {
-			doc["cases"].([]any)[0].(map[string]any)["advisor_signoff"].(map[string]string)["decision"] = "revise"
-		}}, "revise"},
 		{"audited case missing from the audit", panelTweak{audit: func(doc map[string]any) {
 			doc["cases"] = doc["cases"].([]any)[:len(doc["cases"].([]any))-1]
-		}}, "not on the panel audit list"},
-		{"listed case not audited in the manifest", panelTweak{manifest: func(m *evalcorpus.Manifest) {
-			m.Cases[2].Signoff.Audited, m.Cases[2].Signoff.Resolution = false, ""
-		}}, "not audited"},
+		}}, "mandatory"},
 		{"audit lists an unknown case", panelTweak{audit: func(doc map[string]any) {
 			doc["cases"].([]any)[0].(map[string]any)["case_id"] = "no-such-case"
 		}}, "no-such-case"},
@@ -647,5 +640,116 @@ func TestCorpusDigestRefusesStatsWithoutAllPhaseTwoPasses(t *testing.T) {
 				t.Fatalf("out %q err %v", out, err)
 			}
 		})
+	}
+}
+
+// supplementaryPanel uses only synthetic retained bytes. It never calls a provider.
+func supplementaryPanel(t *testing.T, incomplete bool, splits int) (evalcorpus.Manifest, []string) {
+	t.Helper()
+	m, paths := signedPanel(t, t.TempDir(), fixtureManifest(t, evalcorpus.PilotQuotas(), "diagnostic-seed"))
+	var receipt panelaudit.Receipt
+	var audit panelaudit.Audit
+	var stats panelaudit.Stats
+	for i, target := range []any{&receipt, &audit, &stats} {
+		raw, err := os.ReadFile(paths[2*i+1])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := json.Unmarshal(raw, target); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i := range m.Cases {
+		m.Cases[i].Signoff = evalcorpus.Signoff{}
+	}
+	for i := range receipt.Outcomes {
+		o := &receipt.Outcomes[i]
+		for _, c := range m.Cases[:splits] {
+			if o.CaseID == c.CaseID && o.Phase == 2 && o.Model == receipt.Models[0].ID {
+				o.Values["intent"] = "fail"
+			}
+		}
+	}
+	if incomplete {
+		removed := receipt.Outcomes[0]
+		receipt.Outcomes = receipt.Outcomes[1:]
+		receipt.CompleteCases--
+		stats.CompleteCases--
+		stats.Incomplete = []string{removed.CaseID}
+		stats.Missing = []map[string]any{{"phase": removed.Phase, "model": removed.Model, "case_id": removed.CaseID}}
+	}
+	stats.Items = panelaudit.ChecklistStats(m.Cases, receipt.Outcomes, stats.Models, 0, 0)
+	if incomplete {
+		for key, it := range stats.Items {
+			it.Gate = panelaudit.GateIncomplete
+			stats.Items[key] = it
+		}
+	}
+	audit.Cases = nil
+	reasons := map[string][]string{}
+	for _, c := range m.Cases {
+		reasons[c.CaseID] = panelaudit.ReviewReasons(c, receipt.Outcomes)
+	}
+	var err error
+	audit.Selection, err = panelaudit.SelectAudit(m.Cases, reasons, "7", panelaudit.AuditSampleSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range m.Cases {
+		why := reasons[c.CaseID]
+		if len(why) == 0 && slices.Contains(audit.Selection.SelectedRoots, panelaudit.Root(c)) {
+			why = []string{panelaudit.RandomSampleReason}
+		}
+		if len(why) > 0 {
+			audit.Cases = append(audit.Cases, panelaudit.AuditCase{CaseID: c.CaseID, Reasons: why})
+		}
+	}
+	raw, err := json.Marshal(receipt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	audit.ReceiptDigest = panelaudit.Digest(raw)
+	for i, value := range []any{receipt, audit, stats} {
+		raw, err := json.Marshal(value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(paths[2*i+1], raw, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	m.ConstructReview = evalcorpus.ConstructReview{}
+	return m, paths
+}
+
+func TestCorpusDigestOptionalSupplementaryDiagnostics(t *testing.T) {
+	for _, incomplete := range []bool{false, true} {
+		m, panel := supplementaryPanel(t, incomplete, 25)
+		path := writeUnsignedManifest(t, t.TempDir(), m)
+		out, _, err := runDigest(panel, "--manifest", path, "--quota-profile", "pilot")
+		if err != nil || out == "" {
+			t.Fatalf("incomplete %t: %q %v", incomplete, out, err)
+		}
+		raw, err := os.ReadFile(panel[5])
+		if err != nil {
+			t.Fatal(err)
+		}
+		var stats panelaudit.Stats
+		if err := json.Unmarshal(raw, &stats); err != nil {
+			t.Fatal(err)
+		}
+		intent := stats.Items["intent"]
+		intent.AC1 = 1
+		stats.Items["intent"] = intent
+		raw, err = json.Marshal(stats)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(panel[5], raw, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if out, _, err := runDigest(panel, "--manifest", path, "--quota-profile", "pilot"); err == nil || out != "" {
+			t.Fatalf("forged unpinned stats accepted: %q %v", out, err)
+		}
 	}
 }

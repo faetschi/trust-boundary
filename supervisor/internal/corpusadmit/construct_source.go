@@ -83,7 +83,7 @@ func checkSource(c evalcorpus.Case, set fs.FS) ConstructCheck {
 	if restrictedLicense(pin.License) || restrictedLicense(mr.License) {
 		r.Conditions = append(r.Conditions, pin.License+"; "+mr.License)
 	}
-	r.Status, r.Reason = "pass", "benchmark key and revision verified, digest listed in the sources.json pin, retained license files verified; license use still needs advisor review"
+	r.Status, r.Reason = "pass", "benchmark key and revision verified, digest listed in the sources.json pin, retained license files verified; license-use interpretation is not established by this provenance check"
 	if len(r.Conditions) != 0 {
 		r.Reason += "; restricted license conditions flagged"
 	}

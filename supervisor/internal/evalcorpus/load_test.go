@@ -131,7 +131,7 @@ func TestLoadRejectsLoneSurrogateEscapes(t *testing.T) {
 
 func TestLoadAcceptsPairedSurrogatesAndEscapedBackslash(t *testing.T) {
 	base := validManifestJSON(t)
-	for _, esc := range []string{`😀`, `\\uD800`} {
+	for _, esc := range []string{`ðŸ˜€`, `\\uD800`} {
 		if _, err := Load(strings.NewReader(replaceOnce(t, base, "synthetic intent", "synthetic "+esc+" intent"))); err != nil {
 			t.Errorf("Load with %s: %v", esc, err)
 		}
@@ -146,5 +146,66 @@ func TestLoadRejectsOversizedInput(t *testing.T) {
 	_, err := Load(bytes.NewReader(make([]byte, MaxManifestBytes+1)))
 	if err == nil || !strings.Contains(err.Error(), "exceed") {
 		t.Fatalf("Load oversized input: err = %v; want a size error", err)
+	}
+}
+
+func TestLoadOptionalLegacyReviewMetadataKeepsCanonicalDigests(t *testing.T) {
+	q := smallQuotas()
+	m := allocated(t, synthManifest(q, synthSeed), q)
+	m.ConstructReview = ConstructReview{}
+	for i := range m.Cases {
+		m.Cases[i].Signoff = Signoff{}
+	}
+	raw, err := json.Marshal(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
+	}
+	delete(doc, "construct_review")
+	for _, c := range doc["cases"].([]any) {
+		delete(c.(map[string]any), "signoff")
+	}
+	omitted, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := Load(bytes.NewReader(omitted))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantClean(t, Validate(got, q))
+	for _, digest := range []func(Manifest) (string, error){Digest, ContentDigest} {
+		want, err := digest(m)
+		if err != nil {
+			t.Fatal(err)
+		}
+		actual, err := digest(got)
+		if err != nil || actual != want {
+			t.Fatalf("omission changed canonical digest: %s, want %s, err %v", actual, want, err)
+		}
+	}
+	for _, field := range []string{"construct_review", "signoff"} {
+		for _, bad := range []any{nil, "wrong type", map[string]any{}, map[string]any{"unknown": true}} {
+			if field == "construct_review" {
+				doc[field] = bad
+			} else {
+				doc["cases"].([]any)[0].(map[string]any)[field] = bad
+			}
+			broken, err := json.Marshal(doc)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := Load(bytes.NewReader(broken)); err == nil {
+				t.Fatalf("accepted malformed supplied %s: %s", field, broken)
+			}
+			if field == "construct_review" {
+				delete(doc, field)
+			} else {
+				delete(doc["cases"].([]any)[0].(map[string]any), field)
+			}
+		}
 	}
 }

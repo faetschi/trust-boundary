@@ -66,22 +66,14 @@ func errorCheck(name string, err error, unchecked ...string) ConstructCheck {
 }
 
 // CheckConstructs composes production validation, admission and self-checks.
-// Sign-off rules are retained separately: D35 step 1 precedes them.
 // Guest-only means required evidence is still pending, never a local pass.
 func CheckConstructs(m evalcorpus.Manifest, set fs.FS, quotas evalcorpus.Quotas, other *evalcorpus.Manifest, runner taskaccept.NodeRunner) ConstructReport {
 	r := ConstructReport{Schema: "tbound-construct-checks/v1", Passed: true, Summary: map[string]ConstructCounts{}}
 	digest, err := evalcorpus.Digest(m)
 	r.ManifestDigest = digest
 	r.Checks = append(r.Checks, errorCheck("manifest-digest", err))
-	var violations []evalcorpus.Violation
-	for _, v := range evalcorpus.Validate(m, quotas) {
-		if strings.HasPrefix(v.Rule, "review.") {
-			r.DeferredReview = append(r.DeferredReview, v)
-		} else {
-			violations = append(violations, v)
-		}
-	}
-	validation := ConstructCheck{Name: "manifest-validation", Status: "pass", Reason: "evalcorpus.Validate passed all step-1 rules; review rules retained separately"}
+	violations := evalcorpus.Validate(m, quotas)
+	validation := ConstructCheck{Name: "manifest-validation", Status: "pass", Reason: "evalcorpus.Validate passed all deterministic manifest rules"}
 	if len(violations) != 0 {
 		validation.Status, validation.Reason = "fail", fmt.Sprintf("evalcorpus.Validate found %d step-1 violations: %v", len(violations), violations)
 	}

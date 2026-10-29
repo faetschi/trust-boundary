@@ -150,24 +150,10 @@ func TestVerifyRefusals(t *testing.T) {
 		mutate func(f *fixture)
 		want   string // substring of the refusal
 	}{
-		{"a case the audit lists is not audited in the manifest", func(f *fixture) {
-			f.m.Cases[1].Signoff.Audited, f.m.Cases[1].Signoff.Resolution = false, ""
-		}, "c2"},
-		{"an audited case the audit does not list", func(f *fixture) {
-			f.audit["cases"] = f.audit["cases"].([]any)[:3]
-		}, "c3"},
-		{"an audited case without a resolution", func(f *fixture) { f.m.Cases[1].Signoff.Resolution = " " }, "c2"},
 		{"the audit lists a case the manifest lacks", func(f *fixture) {
 			f.audit["cases"] = append(f.audit["cases"].([]any), map[string]any{"case_id": "c9", "reasons": []string{"ambiguous case"}, "advisor_signoff": f.listed(0)["advisor_signoff"]})
 		}, "c9"},
 		{"the audit lists a case twice", func(f *fixture) { f.audit["cases"] = append(f.audit["cases"].([]any), f.listed(0)) }, "twice"},
-		{"blank decision", func(f *fixture) { f.listed(0)["advisor_signoff"].(map[string]string)["decision"] = "" }, "decision"},
-		{"blank resolution", func(f *fixture) { f.listed(1)["advisor_signoff"].(map[string]string)["resolution"] = " \t" }, "resolution"},
-		{"blank identity", func(f *fixture) { f.listed(0)["advisor_signoff"].(map[string]string)["identity"] = "" }, "identity"},
-		{"blank signed_at", func(f *fixture) { f.listed(0)["advisor_signoff"].(map[string]string)["signed_at"] = "" }, "signed_at"},
-		{"placeholder identity", func(f *fixture) { f.listed(0)["advisor_signoff"].(map[string]string)["identity"] = "TODO-ADVISOR" }, "identity"},
-		{"revise decision", func(f *fixture) { f.listed(0)["advisor_signoff"].(map[string]string)["decision"] = "revise" }, "revise"},
-		{"reject decision", func(f *fixture) { f.listed(0)["advisor_signoff"].(map[string]string)["decision"] = "reject" }, "reject"},
 		{"receipt of another content", func(f *fixture) { f.receipt["content_digest"] = sum([]byte("other")) }, "receipt"},
 		{"audit of another content", func(f *fixture) { f.audit["content_digest"] = sum([]byte("other")) }, "audit"},
 		{"dry-run receipt", func(f *fixture) { f.receipt["dry_run"] = true }, "dry run"},
@@ -293,15 +279,25 @@ func TestVerifyStatsGate(t *testing.T) {
 	}
 }
 
-func TestVerifyAdvisorMatchesManifest(t *testing.T) {
+func TestVerifyOptionalUnsignedBundleWithoutManifestMetadata(t *testing.T) {
 	f := newFixture(t)
-	f.listed(0)["advisor_signoff"].(map[string]string)["identity"] = "another advisor"
-	if err := f.check(t); err == nil || !strings.Contains(err.Error(), "identity") {
-		t.Fatalf("different identity accepted: %v", err)
+	for i := range f.m.Cases {
+		f.m.Cases[i].Signoff = evalcorpus.Signoff{}
 	}
-	f.listed(0)["advisor_signoff"].(map[string]string)["identity"] = "  ADVISOR \t"
+	for _, c := range f.audit["cases"].([]any) {
+		delete(c.(map[string]any), "advisor_signoff")
+	}
 	if err := f.check(t); err != nil {
-		t.Fatalf("normalized identity refused: %v", err)
+		t.Fatal(err)
+	}
+	f.m.ConstructReview = evalcorpus.ConstructReview{}
+	r, a, st := marshal(t, f.receipt), marshal(t, f.audit), marshal(t, f.stats)
+	if err := Verify(f.m, r, a, st); err != nil {
+		t.Fatal(err)
+	}
+	f.audit["receipt_digest"] = sum([]byte("forged receipt"))
+	if err := Verify(f.m, r, marshal(t, f.audit), st); err == nil {
+		t.Fatal("accepted unpinned bundle with forged receipt binding")
 	}
 }
 
@@ -692,8 +688,8 @@ func TestVerifyRecomputesStatsFromTheReceipt(t *testing.T) {
 	})
 }
 
-// Statistics that are true and consistent still refuse when the gate is not pass (AC1 and raw agreement).
-func TestVerifyRefusesAConsistentNonPassGate(t *testing.T) {
+// Consistent agreement diagnostics do not govern admission.
+func TestVerifyAcceptsAConsistentNonPassDiagnostic(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
 		splits int
@@ -710,8 +706,8 @@ func TestVerifyRefusesAConsistentNonPassGate(t *testing.T) {
 			if st.Gate != tc.gate {
 				t.Fatalf("fixture gate %s (AC1 %.3f, agreement %.3f); want %s", st.Gate, st.AC1, st.Agreement, tc.gate)
 			}
-			if err := f.check(t); err == nil || !strings.Contains(err.Error(), "intent") || !strings.Contains(err.Error(), fmt.Sprintf("%q does not pass", tc.gate)) {
-				t.Fatalf("consistent %s gate accepted: %v", tc.gate, err)
+			if err := f.check(t); err != nil {
+				t.Fatalf("consistent %s diagnostic refused: %v", tc.gate, err)
 			}
 		})
 	}
@@ -725,7 +721,7 @@ func TestVerifyRefusesAConsistentNonPassGate(t *testing.T) {
 }
 
 // A rating missing from the receipt, with statistics exactly as the panel writes them for it, blocks every gate.
-func TestVerifyRefusesAConsistentMissingRating(t *testing.T) {
+func TestVerifyAcceptsAConsistentMissingRating(t *testing.T) {
 	f := newFixture(t)
 	out := f.receipt["rating_outcomes"].([]Outcome)
 	i := slices.IndexFunc(out, func(o Outcome) bool { return o.Phase == 2 && o.CaseID == "c3" && o.Model == fixtureModels[0].ID })
@@ -740,12 +736,12 @@ func TestVerifyRefusesAConsistentMissingRating(t *testing.T) {
 	}
 	f.stats["complete_cases"], f.stats["incomplete_cases"] = 7, []string{"c3"}
 	f.stats["missing_pairs"] = []any{map[string]any{"phase": 2, "model": fixtureModels[0].ID, "case_id": "c3"}}
-	if err := f.check(t); err == nil || !strings.Contains(err.Error(), "incomplete") {
-		t.Fatalf("missing rating accepted: %v", err)
+	if err := f.check(t); err != nil {
+		t.Fatalf("consistent missing rating refused: %v", err)
 	}
 }
 
-// A unanimous fail needs the advisor: the audit list may not omit its case.
+// A unanimous fail belongs in the diagnostic audit even without human annotations.
 func TestVerifyRequiresAuditOfAUnanimousFail(t *testing.T) {
 	f := newFixture(t)
 	for i, o := range f.receipt["rating_outcomes"].([]Outcome) {
@@ -778,38 +774,26 @@ func TestVerifyBindsTheAuditSeedToTheRunSeed(t *testing.T) {
 	}
 }
 
-func TestVerifySignoffTextMatchesTheManifest(t *testing.T) {
-	f := newFixture(t)
-	f.listed(0)["advisor_signoff"].(map[string]string)["resolution"] = "a different reading than the manifest records"
-	if err := f.check(t); err == nil || !strings.Contains(err.Error(), "resolution") {
-		t.Fatalf("audit resolution that differs from the manifest accepted: %v", err)
-	}
-	f = newFixture(t)
-	f.listed(0)["advisor_signoff"].(map[string]string)["resolution"] = " defensible under the frozen rubric\n"
-	if err := f.check(t); err != nil {
-		t.Fatalf("surrounding whitespace in the resolution refused: %v", err)
+func TestVerifyLegacyAnnotationsAreNonAuthoritative(t *testing.T) {
+	for _, value := range []string{"", "revise", "reject", "TODO", "yesterday"} {
+		f := newFixture(t)
+		f.listed(0)["advisor_signoff"] = map[string]string{"decision": value, "resolution": value, "identity": value, "signed_at": value}
+		if err := f.check(t); err != nil {
+			t.Fatalf("legacy annotation %q gated diagnostics: %v", value, err)
+		}
 	}
 }
 
-func TestVerifySignedAtIsRFC3339WithTimezone(t *testing.T) {
-	for _, signed := range []string{"2026-10-25", "2026-10-25T10:00:00", "2026-10-25 10:00:00+02:00", "yesterday", "25.10.2026 10:00 CEST"} {
-		t.Run(signed, func(t *testing.T) {
-			f := newFixture(t)
-			f.listed(2)["advisor_signoff"].(map[string]string)["signed_at"] = signed
-			if err := f.check(t); err == nil || !strings.Contains(err.Error(), "signed_at") {
-				t.Fatalf("signed_at %q accepted: %v", signed, err)
-			}
-		})
-	}
-	f := newFixture(t)
-	f.listed(2)["advisor_signoff"].(map[string]string)["signed_at"] = "2026-10-25T08:00:00Z"
-	if err := f.check(t); err != nil {
-		t.Fatalf("UTC signed_at refused: %v", err)
+func TestVerifySuppliedLegacyAnnotationShapeRemainsStrict(t *testing.T) {
+	for _, bad := range []any{nil, "bad", map[string]string{"decision": "accept"}} {
+		f := newFixture(t)
+		f.listed(0)["advisor_signoff"] = bad
+		if err := f.check(t); err == nil {
+			t.Fatalf("accepted malformed supplied legacy annotation %v", bad)
+		}
 	}
 }
 
-// The policy context the panel showed its raters is part of the pinned evidence, so a receipt
-// without it, or with a policy that lacks either list, is refused.
 func TestVerifyRequiresThePublicPolicyOfTheRun(t *testing.T) {
 	for name, mutate := range map[string]func(r map[string]any){
 		"absent":               func(r map[string]any) { delete(r, "public_policy") },
@@ -824,5 +808,90 @@ func TestVerifyRequiresThePublicPolicyOfTheRun(t *testing.T) {
 				t.Fatalf("receipt with public_policy %s accepted: %v", name, err)
 			}
 		})
+	}
+}
+
+func TestVerifyDirectlyChecksConstructContentBinding(t *testing.T) {
+	f := newFixture(t)
+	if err := f.check(t); err != nil {
+		t.Fatal(err)
+	}
+	f.m.ConstructReview.ContentDigest = sum([]byte("other content"))
+	if err := Verify(f.m, marshal(t, f.receipt), marshal(t, f.audit), marshal(t, f.stats)); err == nil || !strings.Contains(err.Error(), "construct_review.content_digest") {
+		t.Fatalf("stale metadata accepted: %v", err)
+	}
+}
+
+func TestVerifyRejectsContradictoryIncompleteDiagnostics(t *testing.T) {
+	for _, fault := range []string{"receipt count", "stats count", "duplicate missing pair", "wrong phase", "wrong incomplete case", "false pass", "forged number"} {
+		t.Run(fault, func(t *testing.T) {
+			f := newFixture(t)
+			out := f.receipt["rating_outcomes"].([]Outcome)
+			f.receipt["rating_outcomes"] = out[2:]
+			f.receipt["complete_cases"], f.stats["complete_cases"] = 7, 7
+			f.stats["incomplete_cases"] = []string{"c1"}
+			pairs := []any{map[string]any{"phase": 1, "case_id": "c1", "model": fixtureModels[0].ID}, map[string]any{"phase": 2, "case_id": "c1", "model": fixtureModels[0].ID}}
+			f.stats["missing_pairs"] = pairs
+			f.refresh()
+			items := f.stats["items"].(map[string]any)
+			for key, v := range items {
+				it := v.(ItemStats)
+				it.Gate = GateIncomplete
+				items[key] = it
+			}
+			if err := f.check(t); err != nil {
+				t.Fatalf("consistent starting bundle: %v", err)
+			}
+			switch fault {
+			case "receipt count":
+				f.receipt["complete_cases"] = 8
+				delete(f.audit, "receipt_digest")
+			case "stats count":
+				f.stats["complete_cases"] = 8
+			case "duplicate missing pair":
+				pairs[1] = pairs[0]
+			case "wrong phase":
+				pairs[0].(map[string]any)["phase"] = 1.5
+			case "wrong incomplete case":
+				f.stats["incomplete_cases"] = []string{"c2"}
+			case "false pass":
+				it := items["intent"].(ItemStats)
+				it.Gate = GatePass
+				items["intent"] = it
+			case "forged number":
+				it := items["intent"].(ItemStats)
+				it.AC1 += 0.1
+				items["intent"] = it
+			}
+			if err := f.check(t); err == nil {
+				t.Fatal("accepted", fault)
+			}
+		})
+	}
+}
+
+func TestVerifyAcceptsUndefinedDiagnostic(t *testing.T) {
+	f := newFixture(t)
+	f.m.Cases[7].Kind = evalcorpus.KindAmbiguous
+	content, err := evalcorpus.ContentDigest(f.m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.receipt["content_digest"], f.audit["content_digest"], f.stats["content_digest"] = content, content, content
+	for i := range f.receipt["rating_outcomes"].([]Outcome) {
+		o := &f.receipt["rating_outcomes"].([]Outcome)[i]
+		if o.CaseID == "c8" && o.Phase == 1 {
+			o.Values["authorization"] = "ambiguous"
+		}
+		if o.CaseID == "c8" && o.Phase == 2 {
+			delete(o.Values, "sensitivity")
+		}
+	}
+	f.refresh()
+	if st := f.stats["items"].(map[string]any)["sensitivity"].(ItemStats); st.Gate != GateUndefined {
+		t.Fatalf("expected undefined sensitivity: %+v", st)
+	}
+	if err := f.check(t); err != nil {
+		t.Fatal(err)
 	}
 }

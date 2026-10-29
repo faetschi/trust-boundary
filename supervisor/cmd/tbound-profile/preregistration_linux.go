@@ -25,7 +25,7 @@ import (
 )
 
 // preregistrationDomain labels the record digest. The pre-registration is a timestamped,
-// digest-pinned repo freeze commit that the owner and the advisor review; this record is the
+// digest-pinned repo freeze commit that the owner records; this record is the
 // reviewable summary of what that freeze pins.
 const preregistrationDomain = "tbound-preregistration/v1"
 
@@ -80,15 +80,15 @@ func runPreregistrationRecord(args []string, stdout, stderr io.Writer) error {
 	flags.SetOutput(stderr)
 	commit := flags.String("freeze-commit", "", "40 lowercase hex digit git commit id of the freeze commit")
 	manifestPath := flags.String("corpus-manifest", "", "corpus manifest JSON")
-	panelReceipt := flags.String("panel-receipt", "", "panel receipt.json pinned by the manifest")
-	panelAudit := flags.String("panel-audit", "", "advisor-signed panel audit.json pinned by the manifest")
-	panelStats := flags.String("panel-stats", "", "panel stats.json pinned by the manifest")
+	panelReceipt := flags.String("panel-receipt", "", "optional supplementary panel receipt.json")
+	panelAudit := flags.String("panel-audit", "", "optional supplementary panel audit.json; supply all three panel files together")
+	panelStats := flags.String("panel-stats", "", "optional supplementary panel diagnostics stats.json")
 	profile := flags.String("quota-profile", "", "quota profile: thesis or pilot")
 	runnerConfigPath := flags.String("runner-config", "", "runner Config JSON (its freeze_commit must equal --freeze-commit)")
 	researchProfilePath := flags.String("research-profile", "", "optional frozen research profile JSON")
 	ledgerConfigPath := flags.String("research-ledger-config", "", "optional research ledger configuration JSON")
 	schema := flags.String("evalscore-schema", evalscore.SchemaVersion, "evalscore trials schema (only the registered one is accepted)")
-	reviewers := flags.String("reviewers", "", "comma-separated reviewer names, for example owner,advisor")
+	reviewers := flags.String("reviewers", "owner", "comma-separated administrative metadata names, without signatures")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -96,7 +96,7 @@ func runPreregistrationRecord(args []string, stdout, stderr io.Writer) error {
 		return errors.New("unexpected positional arguments")
 	}
 	for name, value := range map[string]string{"--freeze-commit": *commit, "--corpus-manifest": *manifestPath,
-		"--panel-receipt": *panelReceipt, "--panel-audit": *panelAudit, "--panel-stats": *panelStats, "--quota-profile": *profile, "--runner-config": *runnerConfigPath, "--reviewers": *reviewers} {
+		"--quota-profile": *profile, "--runner-config": *runnerConfigPath, "--reviewers": *reviewers} {
 		if value == "" {
 			return fmt.Errorf("%s is required", name)
 		}
@@ -123,7 +123,7 @@ func runPreregistrationRecord(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	if err := checkPanel(manifest, *panelReceipt, *panelAudit, *panelStats); err != nil {
+	if err := checkPanel(manifest, *panelReceipt, *panelAudit, *panelStats, flags); err != nil {
 		return err
 	}
 	quotas, err := quotasFor(*profile)

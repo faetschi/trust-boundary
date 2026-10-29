@@ -46,7 +46,7 @@ func TestOperatorCorpusDigestArgumentsRunPilotNodeChecks(t *testing.T) {
 			fields := strings.Fields(line)
 			node := ""
 			for i := 0; i < len(fields); i++ {
-				if fields[i] == "2>&1" {
+				if fields[i] == "2>&1" || fields[i] == `"${PANEL_ARGS[@]}"` {
 					continue
 				}
 				flag := fields[i]
@@ -63,6 +63,7 @@ func TestOperatorCorpusDigestArgumentsRunPilotNodeChecks(t *testing.T) {
 				}
 				args = append(args, flag, value)
 			}
+			args = append(args, panel...)
 			got, stderr, err := runCLI(append([]string{"corpus-digest"}, args...)...)
 			if err != nil {
 				t.Fatalf("operator pilot admission: %v %s", err, stderr)

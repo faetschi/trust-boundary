@@ -18,7 +18,7 @@ import (
 //   - any key that is not the exact JSON name of a field of the schema at that position.
 //     encoding/json matches names case-insensitively, so this check is what rejects
 //     variants such as "Case_Id";
-//   - a field without omitempty that is absent, and null anywhere;
+//   - a required field that is absent, and null anywhere;
 //   - data after the top-level value.
 //
 // Load also rejects an unpaired surrogate \u escape (a lone high or low surrogate).
@@ -178,7 +178,8 @@ func scanDuplicates(dec *json.Decoder) error {
 }
 
 // checkShape walks a generic JSON value against the Go type t. An object must use
-// exactly the JSON names of the struct's fields. A field without omitempty is required.
+// exactly the JSON names of the struct's fields. Legacy signoff and construct_review
+// may be omitted on input; their serialization stays unchanged for canonical digests.
 // Null is rejected at every position. Leaf types are checked by the typed decode.
 func checkShape(v any, t reflect.Type, path string) error {
 	if v == nil {
@@ -243,7 +244,8 @@ func checkShape(v any, t reflect.Type, path string) error {
 			}
 		}
 		for _, f := range fields {
-			if _, ok := obj[f.name]; !ok && !f.omitEmpty {
+			legacyMetadata := t == reflect.TypeOf(Manifest{}) && f.name == "construct_review" || t == reflect.TypeOf(Case{}) && f.name == "signoff"
+			if _, ok := obj[f.name]; !ok && !f.omitEmpty && !legacyMetadata {
 				return fmt.Errorf("%s: missing field %q", path, f.name)
 			}
 		}

@@ -760,3 +760,46 @@ func TestCorpusModeKeepsTheFixtureDigestOfEveryCase(t *testing.T) {
 		}
 	}
 }
+
+func TestCorpusModeAdmitsUnsignedWithoutPanel(t *testing.T) {
+	m := corpusTestManifest(t)
+	m.ConstructReview = evalcorpus.ConstructReview{}
+	for i := range m.Cases {
+		m.Cases[i].Signoff = evalcorpus.Signoff{}
+	}
+	digest, err := evalcorpus.Digest(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := json.Marshal(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
+	}
+	delete(doc, "construct_review")
+	for _, c := range doc["cases"].([]any) {
+		delete(c.(map[string]any), "signoff")
+	}
+	raw, err = json.Marshal(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldRead, oldQuotas := readCorpusManifest, corpusQuotas
+	readCorpusManifest = func() ([]byte, error) { return raw, nil }
+	corpusQuotas = corpusTestQuotas
+	t.Cleanup(func() { readCorpusManifest, corpusQuotas = oldRead, oldQuotas })
+	config := corpusTestServiceConfig(digest)
+	if err := validateProductionPiServiceConfig(config); err != nil {
+		t.Fatal(err)
+	}
+	corpus, err := loadProductionCorpus(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if corpus.digest != digest || len(corpus.trials) != len(m.Cases) {
+		t.Fatal("unsigned corpus admission changed trials or digest")
+	}
+}

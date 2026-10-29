@@ -254,7 +254,7 @@ class ManifestInstallTests(unittest.TestCase):
         self.assertEqual(got.returncode, 0, got.stdout + got.stderr)
 
 
-    def run_install(self, corrupt=None, extra_args=None, active=False, rollback=False, missing_backup=False, invalid_backup=False, fail_install=None):
+    def run_install(self, corrupt=None, extra_args=None, active=False, rollback=False, missing_backup=False, invalid_backup=False, fail_install=None, panel=True, previous_panel=True):
         tmp = tempfile.TemporaryDirectory(prefix="tbound-op-manifest-")
         self.addCleanup(tmp.cleanup)
         base = Path(tmp.name)
@@ -268,19 +268,23 @@ class ManifestInstallTests(unittest.TestCase):
             pins.append(hashlib.sha256(raw).hexdigest())
             (base / "stage" / name).write_bytes(raw)
             (base / "etc/corpus" / name).write_text("previous " + name)
+        if not previous_panel:
+            for name in files[1:]: (base / "etc/corpus" / name).unlink()
         if corrupt:
             (base / "stage" / corrupt).write_text("changed")
         tbp = base / "tbp"
         tbp.write_text('''#!/bin/bash
 printf '%s\n' "$*" >>"$BASE/calls"
 [[ ${REFUSE_ROLLBACK:-} != 1 ]] || { echo "bad backup" >&2; exit 1; }
+panel_count=0
 for file in receipt audit stats; do
  found=0
  for ((i=1; i<=$#; i++)); do
   if [[ ${!i} == --panel-$file ]]; then ((i+=1)); [[ -f ${!i} ]] || exit 1; found=1; fi
  done
- [[ $found == 1 ]] || { echo "missing --panel-$file"; exit 1; }
+ panel_count=$((panel_count + found))
 done
+[[ $panel_count == 0 || $panel_count == 3 ]] || exit 1
 printf 'sha256:%064d\n' 1
 ''')
         tbp.chmod(0o700)
@@ -320,7 +324,7 @@ install() {
             if missing_backup:
                 script += '\nrm -- "$PREV/pilot/corpus/audit.json"\n'
             script += "\nARGS=(pilot corpus)\nv_rollback\n"
-        args = extra_args if extra_args is not None else [pins[0], "1".zfill(64), *pins[1:]]
+        args = extra_args if extra_args is not None else [pins[0], "1".zfill(64), *(pins[1:] if panel else [])]
         got = subprocess.run(["bash", "-c", script, "manifest-test", str(base), *args], capture_output=True, text=True)
         return got, base, files
 
@@ -358,7 +362,7 @@ install() {
     def test_incomplete_corpus_backup_refuses_rollback_without_changes(self):
         got, base, files = self.run_install(rollback=True, missing_backup=True)
         self.assertNotEqual(got.returncode, 0)
-        self.assertIn("no backup", got.stderr)
+        self.assertIn("incomplete panel bundle", got.stderr)
         for file in files:
             self.assertEqual((base / "etc/corpus" / file).read_bytes(), (base / "stage" / file).read_bytes())
 
@@ -372,7 +376,7 @@ install() {
                     self.assertEqual((base / "etc/corpus" / file).read_text(), "previous " + file)
 
     def test_missing_or_malformed_panel_pins_refused(self):
-        for args in (["1" * 64, "2" * 64], ["1" * 64, "2" * 64, "bad", "3" * 64, "4" * 64]):
+        for args in (["1" * 64], ["1" * 64, "2" * 64, "3" * 64], ["1" * 64, "2" * 64, "3" * 64, "4" * 64], ["1" * 64, "2" * 64, "bad", "3" * 64, "4" * 64]):
             got, base, files = self.run_install(extra_args=args)
             self.assertEqual(got.returncode, 2, got.stdout + got.stderr)
             self.assertFalse((base / "calls").exists())
@@ -383,12 +387,41 @@ install() {
         for file in files:
             self.assertEqual((base / "etc/corpus" / file).read_text(), "previous " + file)
 
+    def test_unsigned_install_removes_stale_panel_and_preserves_backup(self):
+        got, base, files = self.run_install(panel=False)
+        self.assertEqual(got.returncode, 0, got.stdout + got.stderr)
+        self.assertTrue((base / "etc/corpus/manifest.json").is_file())
+        for file in files[1:]:
+            self.assertFalse((base / "etc/corpus" / file).exists())
+            self.assertEqual((base / "prev/pilot/corpus" / file).read_text(), "previous " + file)
+        self.assertNotIn("--panel-", (base / "calls").read_text())
+
+    def test_unsigned_install_can_restore_previous_signed_bundle(self):
+        got, base, files = self.run_install(panel=False, rollback=True)
+        self.assertEqual(got.returncode, 0, got.stdout + got.stderr)
+        for file in files:
+            self.assertEqual((base / "etc/corpus" / file).read_text(), "previous " + file)
+
+    def test_unsigned_backup_restores_without_current_panel_files(self):
+        got, base, files = self.run_install(previous_panel=False, rollback=True)
+        self.assertEqual(got.returncode, 0, got.stdout + got.stderr)
+        self.assertEqual((base / "etc/corpus/manifest.json").read_text(), "previous manifest.json")
+        for file in files[1:]: self.assertFalse((base / "etc/corpus" / file).exists())
+        calls = (base / "calls").read_text().splitlines()
+        self.assertNotIn("--panel-", calls[-1])
+
+    def test_unsigned_install_and_rollback(self):
+        got, base, files = self.run_install(panel=False, previous_panel=False, rollback=True)
+        self.assertEqual(got.returncode, 0, got.stdout + got.stderr)
+        for file in files[1:]: self.assertFalse((base / "etc/corpus" / file).exists())
+        self.assertNotIn("--panel-", (base / "calls").read_text())
+
 class ConfigInstallTests(unittest.TestCase):
     """cfg-install for the corpus config holds it against the policy the panel receipt recorded."""
 
     digest = "sha256:" + "1" * 64
 
-    def run_cfg(self, config_paths=(), policy="absent", receipt=True):
+    def run_cfg(self, config_paths=(), policy="absent", receipt=True, partial=False):
         import hashlib
         tmp = tempfile.TemporaryDirectory(prefix="tbound-op-cfg-")
         self.addCleanup(tmp.cleanup)
@@ -404,6 +437,8 @@ class ConfigInstallTests(unittest.TestCase):
             if policy != "absent":
                 doc["public_policy"] = policy
             (base / "etc/corpus/receipt.json").write_text(json.dumps(doc))
+            if not partial:
+                for name in ("audit", "stats"): (base / "etc/corpus" / (name + ".json")).write_text("{}")
         staging = source[source.index("stage_hashed() {"):source.index("# -------------------------------------------------------------------------------------------------------- state")]
         helpers = source[source.index("backup_once() {"):source.index("svc_inactive() {")]
         pycheck = ""
@@ -459,9 +494,15 @@ install() {
                 self.assertIn("public policy", got.stderr)
                 self.assertFalse(installed.exists())
 
-    def test_missing_installed_receipt_refuses(self):
+    def test_no_panel_installs_without_receipt_policy(self):
         got, installed = self.run_cfg(receipt=False)
+        self.assertEqual(got.returncode, 0, got.stdout + got.stderr)
+        self.assertTrue(installed.is_file())
+
+    def test_partial_installed_panel_refuses(self):
+        got, installed = self.run_cfg(partial=True)
         self.assertNotEqual(got.returncode, 0, got.stdout)
+        self.assertIn("incomplete panel bundle", got.stderr)
         self.assertFalse(installed.exists())
 
 

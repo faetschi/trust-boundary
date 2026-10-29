@@ -53,7 +53,6 @@ func TestValidateReportsEveryViolation(t *testing.T) {
 	// Each statement below injects one fault. Every rule code in the list must be reported.
 	findCase(t, &m, "SYNTH-ADV-TM-A-002").CaseID = "SYNTH-ADV-TM-A-001"
 	findCase(t, &m, "SYNTH-ADV-TM-B-001").Adversarial.WorkspaceFixtureDigest = "sha256:XYZ"
-	findCase(t, &m, "SYNTH-ADV-TM-C-001").Signoff.Reviewer = "another-advisor"
 	findCase(t, &m, "SYNTH-ADV-TM-A-003").Adversarial.Adaptation.PreservedIntent = ""
 	findCase(t, &m, "SYNTH-CMP-read-01").Compliant.PrimaryTool = ToolBash
 	// The last case is an ambiguous one, so this drops one ambiguous case.
@@ -61,7 +60,7 @@ func TestValidateReportsEveryViolation(t *testing.T) {
 
 	vs := Validate(m, q)
 	for _, rule := range []string{
-		"case.id.duplicate", "digest.format", "review.identity", "field.empty",
+		"case.id.duplicate", "digest.format", "field.empty",
 		"count.compliant.read", "count.compliant.bash", "count.ambiguous", "count.total",
 	} {
 		wantRule(t, vs, rule)
@@ -181,52 +180,18 @@ func TestValidateVarianceRules(t *testing.T) {
 	})
 }
 
-func TestValidateSignoffRules(t *testing.T) {
+func TestValidateLegacyReviewMetadataDoesNotGate(t *testing.T) {
 	q := smallQuotas()
-	const target = "SYNTH-ADV-TM-A-001"
-	cases := []struct {
-		name   string
-		mutate func(c *Case)
-		want   string // rule expected; empty means the manifest must be clean
-	}{
-		{"not human", func(c *Case) { c.Signoff.Human = false }, "review.human"},
-		{"signed by the case author", func(c *Case) { c.Signoff.Author = true }, "review.author"},
-		{"empty reviewer", func(c *Case) { c.Signoff.Reviewer = "" }, "field.empty"},
-		{"empty decision", func(c *Case) { c.Signoff.Decision = "" }, "field.empty"},
-		{"another reviewer signed this case", func(c *Case) { c.Signoff.Reviewer = "another-advisor" }, "review.identity"},
-		{"same reviewer after case and space normalization", func(c *Case) {
-			c.Signoff.Reviewer = "  Synthetic-ADVISOR\t"
-		}, ""},
-		{"reviewers that differ only inside a word stay distinct", func(c *Case) {
-			c.Signoff.Reviewer = "synthetic-advisor-10"
-		}, "review.identity"},
-		{"audited without a resolution", func(c *Case) { c.Signoff.Audited = true }, "review.resolution"},
-		{"audited with a blank resolution", func(c *Case) {
-			c.Signoff.Audited, c.Signoff.Resolution = true, " \t"
-		}, "review.resolution"},
-		{"audited with a placeholder resolution", func(c *Case) {
-			c.Signoff.Audited, c.Signoff.Resolution = true, "TODO-RESOLUTION"
-		}, "review.placeholder"},
-		{"resolution without audited", func(c *Case) { c.Signoff.Resolution = "synthetic resolution" }, "review.audited"},
-		{"audited with a resolution", func(c *Case) {
-			c.Signoff.Audited, c.Signoff.Resolution = true, "synthetic resolution under the frozen rubric"
-		}, ""},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			m := allocated(t, synthManifest(q, synthSeed), q)
-			tc.mutate(findCase(t, &m, target))
-			vs := validate(m, q)
-			if tc.want == "" {
-				wantClean(t, vs)
-			} else {
-				wantRule(t, vs, tc.want)
-			}
-		})
+	for _, signoff := range []Signoff{{}, {Reviewer: "owner", Author: true, Decision: "reject"}, {Reviewer: "TODO", Decision: "revise", Audited: true}, {Resolution: "legacy note"}} {
+		m := allocated(t, synthManifest(q, synthSeed), q)
+		for i := range m.Cases {
+			m.Cases[i].Signoff = signoff
+		}
+		m.ConstructReview = ConstructReview{}
+		wantClean(t, Validate(m, q))
 	}
 }
 
-// The two-review rule is gone: a manifest in that shape does not load.
 func TestLoadRefusesTheRetiredReviewFields(t *testing.T) {
 	q := smallQuotas()
 	raw, err := json.Marshal(allocated(t, synthManifest(q, synthSeed), q))
@@ -419,106 +384,16 @@ func TestPilotQuotasAreSmallExplicitAndDistinctFromThesis(t *testing.T) {
 	wantRule(t, Validate(pilotAsThesis, q), "count.total")
 }
 
-func TestValidateSignoffDecisionGate(t *testing.T) {
+func TestValidateOptionalConstructReviewDoesNotAuthorizeAdmission(t *testing.T) {
 	q := smallQuotas()
-	const target = "SYNTH-ADV-TM-B-002"
-	cases := []struct {
-		name   string
-		mutate func(c *Case)
-		want   []string // rules that must be reported
-		not    []string // rules that must not be reported
-	}{
-		{"accept", func(c *Case) {}, nil, []string{"review.rejected", "review.decision"}},
-		{"reject", func(c *Case) { c.Signoff.Decision = "reject" }, []string{"review.rejected"}, []string{"review.decision"}},
-		{"free-text decision", func(c *Case) { c.Signoff.Decision = "synthetic-label" }, []string{"review.decision"}, nil},
-		{"the audit sheet revise is not a manifest decision", func(c *Case) { c.Signoff.Decision = "revise" }, []string{"review.decision"}, nil},
-		{"decision with different case", func(c *Case) { c.Signoff.Decision = "Accept" }, []string{"review.decision"}, nil},
-		{"decision with surrounding space", func(c *Case) { c.Signoff.Decision = "accept " }, []string{"review.decision"}, nil},
-		{"placeholder decision", func(c *Case) { c.Signoff.Decision = "TODO-DECISION" }, []string{"review.decision"}, nil},
-		{"TODO reviewer", func(c *Case) { c.Signoff.Reviewer = "  todo-reviewer-advisor" }, []string{"review.placeholder"}, nil},
-		{"reviewer that merely contains todo", func(c *Case) { c.Signoff.Reviewer = "methodology-todo-lead" }, nil, []string{"review.placeholder"}},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			m := allocated(t, synthManifest(q, synthSeed), q)
-			tc.mutate(findCase(t, &m, target))
-			vs := validate(m, q)
-			for _, rule := range tc.want {
-				wantRule(t, vs, rule)
-				for _, v := range vs {
-					if v.Rule == rule && !strings.Contains(v.Detail, target) {
-						t.Errorf("violation %s does not name the case %q: %s", rule, target, v.Detail)
-					}
-				}
-			}
-			for _, rule := range tc.not {
-				wantNoRule(t, vs, rule)
-			}
-		})
-	}
+	m := allocated(t, synthManifest(q, synthSeed), q)
+	m.ConstructReview = ConstructReview{ContentDigest: "legacy", PanelReceiptDigest: "TODO"}
+	wantClean(t, Validate(m, q))
+	m.Cases[0].Adversarial.WorkspaceFixtureDigest = "bad"
+	wantRule(t, Validate(m, q), "digest.format")
 }
 
-// ConstructReview binds the manifest to the content the panel rated and to the panel files.
-func TestValidateConstructReview(t *testing.T) {
-	q := smallQuotas()
-	good := allocated(t, synthManifest(q, synthSeed), q)
-	wantClean(t, Validate(good, q))
-
-	t.Run("a mutation after sealing makes the content digest stale", func(t *testing.T) {
-		m := good
-		m.Cases = append([]Case(nil), good.Cases...)
-		adv := *good.Cases[0].Adversarial
-		adv.SelectionReason = "edited after the panel rated it"
-		m.Cases[0].Adversarial = &adv
-		want, err := ContentDigest(m)
-		if err != nil {
-			t.Fatal(err)
-		}
-		vs := Validate(m, q)
-		wantRule(t, vs, "review.content_digest")
-		for _, v := range vs {
-			if v.Rule == "review.content_digest" && !strings.Contains(v.Detail, want) {
-				t.Errorf("violation does not name the content digest %s: %s", want, v.Detail)
-			}
-		}
-	})
-	t.Run("a signoff or panel digest change keeps the content digest valid", func(t *testing.T) {
-		m := good
-		m.Cases = append([]Case(nil), good.Cases...)
-		m.Cases[0].Signoff = Signoff{Reviewer: "synthetic-advisor", Human: true, Decision: "accept", Audited: true, Resolution: "ok"}
-		m.ConstructReview.PanelAuditDigest = synthDigest("another audit")
-		wantClean(t, Validate(m, q))
-	})
-	fields := []struct {
-		name string
-		set  func(r *ConstructReview, v string)
-		want map[string]string // value -> rule
-	}{
-		{"content digest", func(r *ConstructReview, v string) { r.ContentDigest = v }, map[string]string{
-			"": "review.content_digest", "TODO-DIGEST": "review.content_digest", "sha256:XYZ": "review.content_digest"}},
-		{"panel receipt digest", func(r *ConstructReview, v string) { r.PanelReceiptDigest = v }, map[string]string{
-			"": "review.digest", "TODO-DIGEST": "review.placeholder", "sha256:XYZ": "review.digest",
-			"sha256:" + strings.Repeat("A", 64): "review.digest"}},
-		{"panel stats digest", func(r *ConstructReview, v string) { r.PanelStatsDigest = v }, map[string]string{
-			"": "review.digest", "TODO-DIGEST": "review.placeholder", "sha256:XYZ": "review.digest", "sha256:" + strings.Repeat("A", 64): "review.digest"}},
-		{"panel audit digest", func(r *ConstructReview, v string) { r.PanelAuditDigest = v }, map[string]string{
-			"": "review.digest", "TODO-DIGEST": "review.placeholder", "sha256:XYZ": "review.digest",
-			"sha256:" + strings.Repeat("A", 64): "review.digest"}},
-	}
-	for _, f := range fields {
-		for value, rule := range f.want {
-			t.Run(f.name+" "+value, func(t *testing.T) {
-				m := good
-				f.set(&m.ConstructReview, value)
-				wantRule(t, Validate(m, q), rule)
-			})
-		}
-	}
-}
-
-// A draft manifest whose sign-offs are still placeholders must stay non-admissible even
-// after someone sets human, which is the only field a hand edit flips first.
-func TestValidateDraftPilotManifestWithHumanSetIsStillRefused(t *testing.T) {
+func TestValidateDraftPilotHasNoReviewGate(t *testing.T) {
 	f, err := os.Open("../../../corpus/pilot/manifest.draft.json")
 	if err != nil {
 		t.Fatal(err)
@@ -531,11 +406,7 @@ func TestValidateDraftPilotManifestWithHumanSetIsStillRefused(t *testing.T) {
 	for i := range m.Cases {
 		m.Cases[i].Signoff.Human = true
 	}
-	vs := Validate(m, PilotQuotas())
-	wantRule(t, vs, "review.placeholder")
-	wantRule(t, vs, "review.decision")
-	wantRule(t, vs, "review.content_digest")
-	wantNoRule(t, vs, "review.human")
+	wantClean(t, Validate(m, PilotQuotas()))
 }
 
 // A valid D37 meaning record attached to a case passes; a case with no record stays

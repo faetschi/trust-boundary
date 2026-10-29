@@ -178,7 +178,7 @@ cat "$REPO/corpus/pilot/manifest.draft.json" | sh "$GSH" 'install -d -m 0700 ~/s
 MS=$(sha '~/stage-pilot/manifest.json')
 r 4.setup-panel-files 0 - 'for f in receipt audit stats; do printf "{}\n" > ~/stage-pilot/$f.json; done'
 PS=$(sha '~/stage-pilot/receipt.json')
-t 4.manifest-install-missing-panel-pins 2 'wrong number of arguments' manifest-install "$MS" 1111111111111111111111111111111111111111111111111111111111111111
+t 4.manifest-install-partial-panel-pins 2 'panel hashes must be given together' manifest-install "$MS" 1111111111111111111111111111111111111111111111111111111111111111 "$PS"
 t 4.manifest-install-bad-panel-pin 2 'bad SHA' manifest-install "$MS" 1111111111111111111111111111111111111111111111111111111111111111 bad "$PS" "$PS"
 t 4.manifest-install-draft-refused 1 'corpus-digest refused the manifest' manifest-install "$MS" 1111111111111111111111111111111111111111111111111111111111111111 "$PS" "$PS" "$PS"
 r 4.inspect-no-manifest 0 'no-corpus-dir' 'test ! -e /etc/tbound/corpus && echo no-corpus-dir; rm -rf ~/stage-pilot'

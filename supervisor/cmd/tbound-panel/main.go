@@ -1,9 +1,9 @@
 // Command tbound-panel runs the blinded three-model AI construct-review panel of the D35
 // amendment (2026-10-24) over a TBound corpus manifest. Every model rates every case in two
 // separate fresh sessions: phase 1 classifies the case without any claimed label, phase 2
-// rates the checklist with the claims shown. It then reports Gwet's AC1 (the gate statistic), raw
+// rates the checklist with the claims shown. It then reports Gwet's AC1 (a diagnostic statistic), raw
 // agreement and Fleiss' kappa per checklist item and per phase-1 field, the phase-1 agreement with
-// the claimed labels, all before adjudication, and the advisor's audit list. See docs/guides/panel-run.md.
+// the claimed labels, all before adjudication, and a supplementary diagnostic audit list. See docs/guides/panel-run.md.
 //
 // Exactly one mode is required, so nothing spends money by accident:
 //
@@ -31,7 +31,9 @@ import (
 	"time"
 )
 
-const usageText = `tbound-panel - blinded three-model construct-review panel (D35 amendment)
+const usageText = `Optional supplementary diagnostics. Panel agreement does not govern corpus admission.
+
+tbound-panel - blinded three-model construct-review panel (D35 amendment)
 
 usage:
   tbound-panel --config panel.json --manifest corpus/pilot/manifest.draft.json --estimate

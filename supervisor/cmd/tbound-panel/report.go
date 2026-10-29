@@ -17,7 +17,7 @@ import (
 	"tbound/supervisor/internal/panelaudit"
 )
 
-const humanNote = "AI panel ratings are not human reviews and never count as one; only the advisor's signed audit entries (audit.json) are human review."
+const humanNote = "AI panel ratings are optional supplementary diagnostics. Agreement classifications and audit selections do not govern admission or constitute human acceptance."
 
 // blindFields are the phase-1 fields, with fixed categories where the answer space is closed.
 var blindFields = []struct {
@@ -286,7 +286,7 @@ func statsMarkdown(items2, fields map[string]panelaudit.ItemStats, agree map[str
 		sort.Strings(na)
 		fmt.Fprintf(&b, "| %s | %d | %d | %.3f | %s |\n", k, a.Agreeing, a.Total, a.Rate, strings.Join(na, ", "))
 	}
-	fmt.Fprintf(&b, "\n- Raw agreement: %s.\n- Bootstrap: %s; seed %d, %d resamples.\n- Gate: %s.\n- %s; the claim rate counts every model's phase-1 answer against the manifest claim.\n- %s\n",
+	fmt.Fprintf(&b, "\n- Raw agreement: %s.\n- Bootstrap: %s; seed %d, %d resamples.\n- Diagnostic classification: %s.\n- %s; the claim rate counts every model's phase-1 answer against the manifest claim.\n- %s\n",
 		agreementDefinition, bootstrapMethod, r.cfg.Seed, r.cfg.BootstrapResamples, gateRule, effectIDsRule, humanNote)
 	if len(incomplete) > 0 {
 		fmt.Fprintf(&b, "- **Incomplete: every gate is `%s`.** Cases without a valid answer from every model in both phases: %s. The missing case x model x phase pairs are listed in `stats.json` (`missing_pairs`).\n", panelaudit.GateIncomplete, strings.Join(incomplete, ", "))
@@ -296,7 +296,7 @@ func statsMarkdown(items2, fields map[string]panelaudit.ItemStats, agree map[str
 
 func agreementTable(keys []string, stats map[string]panelaudit.ItemStats) string {
 	var b strings.Builder
-	b.WriteString("| Item | Subjects | Roots | AC1 | AC1 95% CI | Raw agreement | Kappa (reported) | Kappa 95% CI | Unanimous | Prevalence | Gate |\n|---|---|---|---|---|---|---|---|---|---|---|\n")
+	b.WriteString("| Item | Subjects | Roots | AC1 | AC1 95% CI | Raw agreement | Kappa (reported) | Kappa 95% CI | Unanimous | Prevalence | Diagnostic classification |\n|---|---|---|---|---|---|---|---|---|---|---|\n")
 	for _, key := range keys {
 		s := stats[key]
 		a, aci, k, kci := "undefined", "n/a", "undefined", "n/a"
@@ -352,7 +352,7 @@ func (d panelData) outcomes() []panelaudit.Outcome {
 	return out
 }
 
-// auditReasons lists why a case needs the advisor's deep review; empty means unanimous.
+// auditReasons lists why a case appears in the diagnostic audit; empty means unanimous.
 func (d panelData) auditReasons(c evalcorpus.Case) []string {
 	return panelaudit.ReviewReasons(c, d.outcomes())
 }
@@ -390,7 +390,7 @@ func (r *runner) writeAudit(d panelData, receiptDigest string) error {
 		if len(why) == 0 {
 			continue
 		}
-		p, err := renderCase(r.corpus, c, "advisor-review", phaseChecklist)
+		p, err := renderCase(r.corpus, c, "diagnostic-audit", phaseChecklist)
 		if err != nil {
 			return err
 		}
@@ -428,17 +428,16 @@ func (r *runner) writeAudit(d panelData, receiptDigest string) error {
 		return err
 	}
 	var b strings.Builder
-	b.WriteString("# Advisor audit list, construct panel\n\n")
+	b.WriteString("# Supplementary diagnostic audit, construct panel\n\n")
 	if r.provName == "fake" {
-		b.WriteString("**Dry run: the panel ratings are canned fake data. Do not sign.**\n\n")
+		b.WriteString("**Dry run: the panel ratings are canned fake data.**\n\n")
 	}
 	fmt.Fprintf(&b, "%s\n\nManifest `%s`, content digest `%s`. This list holds every checklist disagreement, every `unclear`, every phase-1 disagreement between models or with the claimed label, every ambiguous case, incomplete ratings, and %d of %d eligible unanimous roots drawn with seed `%s` (evalcorpus.SelectSeeded, purpose `tbound-panel/unanimous-audit`). Statistics before adjudication are in `stats.md`.\n\n",
 		humanNote, r.corpus.Digest, r.corpus.ContentDigest, len(selected), len(eligible), seed)
-	b.WriteString("For each case: read its packet and the AI answers of both phases in `audit.json`, decide, and fill the four `advisor_signoff` fields in `audit.json` (decision `accept`, `reject` or `revise`; resolution and reason; identity; signed_at with timezone). Any audit error expands review across the case's source/tool stratum.\n\n| Case | Kind | Reasons | Packet |\n|---|---|---|---|\n")
+	b.WriteString("The packets and AI answers of both phases in `audit.json` support diagnostic inspection. Historical `advisor_signoff` annotations are optional and do not authorize admission.\n\n| Case | Kind | Reasons | Packet |\n|---|---|---|---|\n")
 	for _, ac := range list {
 		fmt.Fprintf(&b, "| %s | %s | %s | `%s` |\n", ac.CaseID, ac.Kind, strings.Join(ac.Reasons, "; "), ac.Packet)
 	}
-	b.WriteString("\nAdvisor signature (name, date, timezone): ______________________\n")
 	return writeFile(filepath.Join(r.out, "audit.md"), []byte(b.String()))
 }
 

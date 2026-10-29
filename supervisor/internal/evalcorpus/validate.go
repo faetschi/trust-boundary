@@ -70,19 +70,6 @@ func PilotQuotas() Quotas {
 // Rules, by code:
 //   - schema.version, seed.empty, quota.invalid: the manifest header and quotas;
 //   - case.id.empty, case.id.duplicate, case.kind, case.payload: identity and payload;
-//   - review.human, review.author, review.identity: one sign-off per case, by a human who is
-//     not the case author, and the same reviewer on every case (the comparison uses the
-//     normalized form of sameIdentity), because the advisor signs the whole corpus;
-//   - review.decision, review.placeholder, review.rejected: a decision is exactly accept
-//     or reject, the reviewer, and the resolution of an audited case, do not start with
-//     TODO, and the decision of every case is accept, so one rejected case makes the
-//     manifest non-admissible;
-//   - review.resolution, review.audited: an audited case records a resolution, and only an
-//     audited case does;
-//   - review.content_digest, review.digest: construct_review.content_digest is
-//     ContentDigest of the manifest, and the two panel digests are well-formed digests (a
-//     TODO value is review.placeholder). The files behind them are checked by
-//     `tbound-profile corpus-digest`;
 //   - adv.root.duplicate, adv.unit.duplicate, adv.variance.partition,
 //     adaptation.evidence, cmp.reference.forbidden_effect: per-case rules;
 //   - trial.invalid: a present trial has a prompt and positive budgets within the limits;
@@ -126,7 +113,6 @@ type stratum struct {
 
 type validator struct {
 	out       []Violation
-	advisor   *Signoff // the first case's sign-off: the reviewer every case must share
 	caseIDs   map[string]bool
 	roots     map[string]string // root_scenario_id -> first case that uses it
 	units     map[string]string // fixture and calibration digests -> first case that uses them
@@ -169,33 +155,6 @@ func (v *validator) manifestRules(m Manifest) {
 	v.digest("pins.profile_digest", m.Pins.ProfileDigest)
 	v.digest("pins.policy_digest", m.Pins.PolicyDigest)
 	v.pinAttacker(m)
-	v.constructReview(m)
-}
-
-// constructReview checks the manifest-level binding to the panel run. All its rules start with
-// "review." so that the deterministic construct checks, which precede review, defer them with
-// the sign-off rules.
-func (v *validator) constructReview(m Manifest) {
-	cr := m.ConstructReview
-	switch want, err := ContentDigest(m); {
-	case err != nil:
-		v.add("review.content_digest", "construct_review.content_digest cannot be checked: %v", err)
-	case cr.ContentDigest != want:
-		v.add("review.content_digest", "construct_review.content_digest is %q; ContentDigest of the manifest is %s", cr.ContentDigest, want)
-	}
-	v.reviewDigest("construct_review.panel_receipt_digest", cr.PanelReceiptDigest)
-	v.reviewDigest("construct_review.panel_audit_digest", cr.PanelAuditDigest)
-	v.reviewDigest("construct_review.panel_stats_digest", cr.PanelStatsDigest)
-}
-
-// reviewDigest reports a TODO value as review.placeholder and any other malformed value as
-// review.digest.
-func (v *validator) reviewDigest(path, value string) {
-	if isPlaceholder(value) {
-		v.add("review.placeholder", "%s is the placeholder %q", path, value)
-	} else if !isDigest(value) {
-		v.add("review.digest", "%s is not sha256 followed by 64 lowercase hex digits", path)
-	}
 }
 
 func (v *validator) caseRules(c *Case) {
@@ -208,7 +167,6 @@ func (v *validator) caseRules(c *Case) {
 		}
 		v.caseIDs[c.CaseID] = true
 	}
-	v.signoff(label, c)
 	if c.MeaningRecord != nil {
 		v.meaningRecord(label, c.MeaningRecord)
 	}
@@ -237,66 +195,6 @@ func (v *validator) caseRules(c *Case) {
 		v.ambiguousCase(label, c.Ambiguous)
 	default:
 		v.add("case.kind", "%s: kind %q is not adversarial, compliant, or ambiguous", label, c.Kind)
-	}
-}
-
-func (v *validator) signoff(label string, c *Case) {
-	so := c.Signoff
-	p := label + " signoff"
-	if !so.Human {
-		v.add("review.human", "%s is not by a human reviewer", p)
-	}
-	if so.Author {
-		v.add("review.author", "%s is by the case author, whose own review is not independent", p)
-	}
-	v.required(p+" reviewer", so.Reviewer)
-	v.noPlaceholder(p+" reviewer", so.Reviewer)
-	v.decision(p+" decision", so.Decision)
-	v.settled(label, so.Decision)
-	switch {
-	case so.Audited && strings.TrimSpace(so.Resolution) == "":
-		v.add("review.resolution", "%s: the case is audited and records no resolution", p)
-	case so.Audited:
-		v.noPlaceholder(p+" resolution", so.Resolution)
-	case so.Resolution != "":
-		v.add("review.audited", "%s: a resolution is recorded but the case is not marked audited", p)
-	}
-	if v.advisor == nil {
-		v.advisor = &c.Signoff
-	} else if !SameIdentity(so.Reviewer, v.advisor.Reviewer) {
-		v.add("review.identity", "%s is by %q but the first case is signed by %q; one advisor signs every case", p, so.Reviewer, v.advisor.Reviewer)
-	}
-}
-
-// decision reports a blank value as field.empty and any value other than exactly
-// DecisionAccept or DecisionReject as review.decision.
-func (v *validator) decision(path, value string) {
-	switch {
-	case strings.TrimSpace(value) == "":
-		v.add("field.empty", "%s is empty", path)
-	case value != DecisionAccept && value != DecisionReject:
-		v.add("review.decision", "%s is %q; want exactly %q or %q", path, value, DecisionAccept, DecisionReject)
-	}
-}
-
-// isPlaceholder reports a value that still carries the TODO prefix of the draft manifest.
-func isPlaceholder(value string) bool {
-	return strings.HasPrefix(strings.ToUpper(strings.TrimSpace(value)), "TODO")
-}
-
-// noPlaceholder reports a reviewer or resolution that still carries the TODO prefix of the
-// draft manifest.
-func (v *validator) noPlaceholder(path, value string) {
-	if isPlaceholder(value) {
-		v.add("review.placeholder", "%s is the placeholder %q", path, value)
-	}
-}
-
-// settled reports review.rejected when the sign-off decision of a case is a reject. A
-// decision outside the enumeration is reported by decision and is not repeated here.
-func (v *validator) settled(label, decision string) {
-	if decision == DecisionReject {
-		v.add("review.rejected", "%s: the standing review decision is reject; the manifest is not admissible", label)
 	}
 }
 

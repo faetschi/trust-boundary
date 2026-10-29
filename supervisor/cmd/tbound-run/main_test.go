@@ -673,3 +673,31 @@ func TestCommandAndItsImportsAreNotLinuxOnly(t *testing.T) {
 		t.Fatalf("walked only %d packages", len(seen))
 	}
 }
+
+func TestLoadPlanAcceptsUnsignedCorpusWithoutPanel(t *testing.T) {
+	e := newEnv(t)
+	e.manifest.ConstructReview = evalcorpus.ConstructReview{}
+	for i := range e.manifest.Cases {
+		e.manifest.Cases[i].Signoff = evalcorpus.Signoff{}
+	}
+	raw, err := json.Marshal(e.manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
+	}
+	delete(doc, "construct_review")
+	for _, c := range doc["cases"].([]any) {
+		delete(c.(map[string]any), "signoff")
+	}
+	raw, err = json.Marshal(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.file("corpus.json", string(raw))
+	if out, err := e.cliCfg(nil, "plan"); err != nil || out == "" {
+		t.Fatalf("unsigned runner plan: %q %v", out, err)
+	}
+}

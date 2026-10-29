@@ -171,9 +171,55 @@ func verifyCoverage(m evalcorpus.Manifest, receipt Receipt) error {
 			}
 		}
 	}
-	want := len(m.Cases) * 3 * 2
-	if len(seen) != want || receipt.CallsRecorded < want {
-		return fmt.Errorf("panel receipt incomplete case x model x phase coverage or calls: %d outcomes, %d calls; want %d", len(seen), receipt.CallsRecorded, want)
+	if receipt.CallsRecorded < len(seen) {
+		return fmt.Errorf("panel receipt records %d calls for %d outcomes", receipt.CallsRecorded, len(seen))
 	}
 	return nil
+}
+
+// verifyCompletion checks reported omissions against the supplied outcomes, including duplicates.
+func verifyCompletion(m evalcorpus.Manifest, receipt Receipt, stats Stats) (bool, error) {
+	seen := map[ratingKey]bool{}
+	for _, o := range receipt.Outcomes {
+		seen[ratingKey{o.Phase, o.CaseID, o.Model}] = true
+	}
+	missing := map[ratingKey]bool{}
+	incomplete := map[string]bool{}
+	for _, c := range m.Cases {
+		for _, model := range receipt.Models {
+			for _, phase := range []int{1, 2} {
+				key := ratingKey{phase, c.CaseID, model.ID}
+				if !seen[key] {
+					missing[key], incomplete[c.CaseID] = true, true
+				}
+			}
+		}
+	}
+	complete := len(m.Cases) - len(incomplete)
+	if receipt.Cases != len(m.Cases) || stats.Cases != len(m.Cases) || receipt.CompleteCases != complete || stats.CompleteCases != complete {
+		return false, fmt.Errorf("panel completion counts contradict outcomes: want %d cases, %d complete", len(m.Cases), complete)
+	}
+	if len(stats.Incomplete) != len(incomplete) || len(stats.Missing) != len(missing) {
+		return false, fmt.Errorf("panel incomplete_cases or missing_pairs contradict outcomes")
+	}
+	for _, id := range stats.Incomplete {
+		if !incomplete[id] {
+			return false, fmt.Errorf("panel incomplete_cases has unknown or duplicate case %q", id)
+		}
+		delete(incomplete, id)
+	}
+	for _, pair := range stats.Missing {
+		phase, pOK := pair["phase"].(float64)
+		id, cOK := pair["case_id"].(string)
+		model, mOK := pair["model"].(string)
+		if !pOK || !cOK || !mOK || (phase != 1 && phase != 2) || len(pair) != 3 {
+			return false, fmt.Errorf("panel missing_pairs has invalid pair %v", pair)
+		}
+		key := ratingKey{int(phase), id, model}
+		if !missing[key] {
+			return false, fmt.Errorf("panel missing_pairs has unknown or duplicate pair %v", pair)
+		}
+		delete(missing, key)
+	}
+	return complete != len(m.Cases), nil
 }

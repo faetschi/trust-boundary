@@ -1,7 +1,4 @@
-// Package panelaudit is the reading side of the three files of a tbound-panel run that a manifest's
-// construct_review binds: receipt.json, the advisor-signed audit.json and stats.json (D35 amendment
-// 2026-10-24). tbound-panel writes them with the schema versions and advisor fields defined here,
-// and `tbound-profile corpus-digest` calls Verify before it prints a digest.
+// Package panelaudit verifies optional supplementary panel diagnostics and their evidence bindings.
 package panelaudit
 
 import (
@@ -15,7 +12,6 @@ import (
 	"reflect"
 	"slices"
 	"strings"
-	"time"
 
 	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/evalcorpus"
@@ -28,8 +24,7 @@ const (
 	MaxFileBytes = 16 << 20
 )
 
-// Advisor is the advisor's entry for one case of the audit list. Decision is accept, reject or
-// revise; only accept can back an accepted manifest.
+// Advisor retains historical annotations. They are optional and do not authorize admission.
 type Advisor struct {
 	Decision   string `json:"decision"`
 	Resolution string `json:"resolution"`
@@ -102,35 +97,27 @@ func parse(name string, raw []byte, v any) error {
 	return nil
 }
 
-// Verify checks the receipt, audit and stats file bytes against the manifest m, which holds the advisor's
-// sign-offs and the construct_review block. It returns nil only when:
-//   - the SHA-256 of each file's bytes is the digest in m.ConstructReview;
-//   - the audit names the receipt by its receipt_digest, so a signed audit cannot back another run's receipt;
-//   - all files have the current schema and record the evalcorpus.ContentDigest of m, so they rate
-//     the content the manifest has now;
-//   - no file is from a dry run, and the receipt covers every case of m with a complete rating
-//     (a case without every rating blocks every agreement gate);
-//   - every phase-2 item of stats.json matches, within 1e-9, the statistics recomputed from the
-//     receipt's own ratings, and that recomputed gate is pass;
-//   - the cases of the audit list are exactly the cases of m marked audited, each once, each with a
-//     resolution in m;
-//   - every listed case carries a complete advisor entry that accepts it, signed at an RFC 3339 time
-//     with a timezone, with the same resolution as the manifest sign-off, and the audit seed is the
-//     run seed of the receipt.
+// Verify checks supplied evidence, optional manifest pins, content and receipt bindings,
+// rating coverage, recomputed diagnostics and seeded selection. It makes no admission or human-review claim.
 func Verify(m evalcorpus.Manifest, receiptRaw, auditRaw, statsRaw []byte) error {
 	cr := m.ConstructReview
-	if got := Digest(receiptRaw); got != cr.PanelReceiptDigest {
-		return fmt.Errorf("panel receipt digest %s is not construct_review.panel_receipt_digest %s", got, cr.PanelReceiptDigest)
-	}
-	if got := Digest(auditRaw); got != cr.PanelAuditDigest {
-		return fmt.Errorf("panel audit digest %s is not construct_review.panel_audit_digest %s", got, cr.PanelAuditDigest)
-	}
-	if got := Digest(statsRaw); got != cr.PanelStatsDigest {
-		return fmt.Errorf("panel stats digest %s is not construct_review.panel_stats_digest %s", got, cr.PanelStatsDigest)
+	if cr != (evalcorpus.ConstructReview{}) {
+		if got := Digest(receiptRaw); got != cr.PanelReceiptDigest {
+			return fmt.Errorf("panel receipt digest %s is not construct_review.panel_receipt_digest %s", got, cr.PanelReceiptDigest)
+		}
+		if got := Digest(auditRaw); got != cr.PanelAuditDigest {
+			return fmt.Errorf("panel audit digest %s is not construct_review.panel_audit_digest %s", got, cr.PanelAuditDigest)
+		}
+		if got := Digest(statsRaw); got != cr.PanelStatsDigest {
+			return fmt.Errorf("panel stats digest %s is not construct_review.panel_stats_digest %s", got, cr.PanelStatsDigest)
+		}
 	}
 	content, err := evalcorpus.ContentDigest(m)
 	if err != nil {
 		return err
+	}
+	if cr != (evalcorpus.ConstructReview{}) && cr.ContentDigest != content {
+		return errors.New("construct_review.content_digest differs from manifest content")
 	}
 	var stats Stats
 	if err := parse("panel stats", statsRaw, &stats); err != nil {
@@ -144,9 +131,6 @@ func Verify(m evalcorpus.Manifest, receiptRaw, auditRaw, statsRaw []byte) error 
 	}
 	if stats.ContentDigest != content {
 		return errors.New("panel stats content_digest differs from manifest")
-	}
-	if stats.Cases != len(m.Cases) || stats.CompleteCases != stats.Cases || len(stats.Incomplete) != 0 || len(stats.Missing) != 0 {
-		return errors.New("panel stats has incomplete ratings; every gate is blocked")
 	}
 	var receipt Receipt
 	if err := parse("panel receipt", receiptRaw, &receipt); err != nil {
@@ -174,10 +158,6 @@ func Verify(m evalcorpus.Manifest, receiptRaw, auditRaw, statsRaw []byte) error 
 	if audit.ContentDigest != content {
 		return fmt.Errorf("panel audit content_digest %s is not the content digest %s of the manifest", audit.ContentDigest, content)
 	}
-	if receipt.Cases != len(m.Cases) || receipt.CompleteCases != receipt.Cases {
-		return fmt.Errorf("panel receipt rates %d of %d cases completely; the manifest has %d cases and a missing rating blocks every agreement gate",
-			receipt.CompleteCases, receipt.Cases, len(m.Cases))
-	}
 	var modelIDs []string
 	for _, model := range receipt.Models {
 		modelIDs = append(modelIDs, model.ID)
@@ -188,7 +168,18 @@ func Verify(m evalcorpus.Manifest, receiptRaw, auditRaw, statsRaw []byte) error 
 	if err := verifyCoverage(m, receipt); err != nil {
 		return err
 	}
-	if err := verifyStats(stats, ChecklistStats(m.Cases, receipt.Outcomes, modelIDs, 0, 0)); err != nil {
+	incomplete, err := verifyCompletion(m, receipt, stats)
+	if err != nil {
+		return err
+	}
+	want := ChecklistStats(m.Cases, receipt.Outcomes, modelIDs, 0, 0)
+	if incomplete {
+		for key, item := range want {
+			item.Gate = GateIncomplete
+			want[key] = item
+		}
+	}
+	if err := verifyStats(stats, want); err != nil {
 		return err
 	}
 	if err := verifyAudited(m, audit); err != nil {
@@ -198,8 +189,11 @@ func Verify(m evalcorpus.Manifest, receiptRaw, auditRaw, statsRaw []byte) error 
 }
 
 // verifyStats refuses stats.json unless each checklist item matches the statistics recomputed
-// from the pinned ratings and that recomputed gate passes; the numbers are never taken on trust.
+// from the pinned ratings; the diagnostic classification does not govern admission.
 func verifyStats(stats Stats, want map[string]ItemStats) error {
+	if len(stats.Items) != len(want) {
+		return errors.New("panel stats checklist items differ from the registered checklist")
+	}
 	const tolerance = 1e-9
 	near := func(a, b float64) bool { return math.Abs(a-b) <= tolerance }
 	for _, item := range Checklist {
@@ -228,62 +222,24 @@ func verifyStats(stats Stats, want map[string]ItemStats) error {
 		if got.Gate != w.Gate {
 			return fmt.Errorf("panel stats item %s gate %q contradicts the gate %q recomputed from the receipt ratings", item.Key, got.Gate, w.Gate)
 		}
-		if w.Gate != GatePass {
-			return fmt.Errorf("panel stats item %s gate %q does not pass", item.Key, w.Gate)
-		}
 	}
 	return nil
 }
 
 func verifyAudited(m evalcorpus.Manifest, audit Audit) error {
-	byID := make(map[string]evalcorpus.Signoff, len(m.Cases))
+	byID := make(map[string]bool, len(m.Cases))
 	for _, c := range m.Cases {
-		byID[c.CaseID] = c.Signoff
+		byID[c.CaseID] = true
 	}
 	listed := make(map[string]bool, len(audit.Cases))
 	for _, ac := range audit.Cases {
-		so, ok := byID[ac.CaseID]
-		switch {
-		case !ok:
+		if !byID[ac.CaseID] {
 			return fmt.Errorf("panel audit lists case %q, which the manifest does not have", ac.CaseID)
-		case listed[ac.CaseID]:
+		}
+		if listed[ac.CaseID] {
 			return fmt.Errorf("panel audit lists case %q twice", ac.CaseID)
-		case !so.Audited || strings.TrimSpace(so.Resolution) == "":
-			return fmt.Errorf("case %q is on the panel audit list but its signoff is not audited with a resolution", ac.CaseID)
-		}
-		if err := ac.Advisor.complete(); err != nil {
-			return fmt.Errorf("panel audit case %q: %w", ac.CaseID, err)
-		}
-		if strings.TrimSpace(ac.Advisor.Resolution) != strings.TrimSpace(so.Resolution) {
-			return fmt.Errorf("panel audit case %q advisor resolution differs from the manifest signoff resolution", ac.CaseID)
-		}
-		if !evalcorpus.SameIdentity(ac.Advisor.Identity, so.Reviewer) {
-			return fmt.Errorf("panel audit case %q advisor identity %q differs from signoff reviewer %q", ac.CaseID, ac.Advisor.Identity, so.Reviewer)
 		}
 		listed[ac.CaseID] = true
-	}
-	for _, c := range m.Cases {
-		if c.Signoff.Audited && !listed[c.CaseID] {
-			return fmt.Errorf("case %q is marked audited but is not on the panel audit list", c.CaseID)
-		}
-	}
-	return nil
-}
-
-// complete reports the first advisor field that is blank, still a TODO placeholder, or a decision
-// other than accept.
-func (a Advisor) complete() error {
-	for _, f := range []struct{ name, value string }{
-		{"decision", a.Decision}, {"resolution", a.Resolution}, {"identity", a.Identity}, {"signed_at", a.SignedAt}} {
-		if v := strings.TrimSpace(f.value); v == "" || strings.HasPrefix(strings.ToUpper(v), "TODO") {
-			return fmt.Errorf("advisor_signoff.%s is blank or a placeholder", f.name)
-		}
-	}
-	if _, err := time.Parse(time.RFC3339, strings.TrimSpace(a.SignedAt)); err != nil {
-		return fmt.Errorf("advisor_signoff.signed_at %q is not an RFC 3339 time with a timezone", a.SignedAt)
-	}
-	if a.Decision != evalcorpus.DecisionAccept {
-		return fmt.Errorf("advisor_signoff.decision is %q; only %q can back an accepted manifest (a rejected or revised case needs a revised manifest and a new panel run)", a.Decision, evalcorpus.DecisionAccept)
 	}
 	return nil
 }
@@ -303,6 +259,9 @@ func required(raw []byte, typ reflect.Type, path string) error {
 				continue
 			}
 			v, ok := fields[name]
+			if !ok && f.Type == reflect.TypeOf(Advisor{}) {
+				continue
+			}
 			if !ok || bytes.Equal(v, []byte("null")) && f.Type.Kind() != reflect.Slice && f.Type.Kind() != reflect.Map {
 				if opts == "omitempty" {
 					continue
