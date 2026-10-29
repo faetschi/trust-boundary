@@ -54,6 +54,31 @@ func TestDurableReadResolvesWorkspaceAliasesToTheCanonicalFile(t *testing.T) {
 	}
 }
 
+// TestDurableArgumentsRefuseSpellingsThatLeaveTheWorkspace pins the spellings the path mapping must refuse: a sibling
+// of a workspace root, a root itself, and dot-dot escapes. The argument decoders refuse them before the Store or
+// admission sees the path.
+func TestDurableArgumentsRefuseSpellingsThatLeaveTheWorkspace(t *testing.T) {
+	for _, spelling := range []string{
+		"/workx/a", "/work", "/work/", ".", "/work/../x",
+		"/var/lib/tbound/pi-worker/../../etc/passwd", "a/../../b",
+	} {
+		read, err := json.Marshal(map[string]string{"path": spelling})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := durableReadArguments(read); err == nil {
+			t.Errorf("read of %q: accepted", spelling)
+		}
+		write, err := json.Marshal(map[string]string{"path": spelling, "content": "x"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := durableWriteArguments(write); err == nil {
+			t.Errorf("write of %q: accepted", spelling)
+		}
+	}
+}
+
 // releasedProviderResults returns every provider result the journal released, in order, after strict decoding.
 func releasedProviderResults(t *testing.T, journal *audit.Journal) []protocol.Result {
 	t.Helper()

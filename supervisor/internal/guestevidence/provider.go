@@ -10,8 +10,6 @@ import (
 	"io"
 	"slices"
 	"strings"
-
-	"tbound/supervisor/internal/broker/protocol"
 )
 
 // G1ToolSequence is the tool sequence of the E05 G1 fixture: read(g0), edit(g1), Bash(g2), read(g2).
@@ -67,12 +65,14 @@ type receiptFacts struct {
 	ExitCode           int      `json:"exit_code"`
 	DescendantsSettled bool     `json:"descendants_settled"`
 	Success            bool     `json:"success"`
+	Disposition        string   `json:"disposition"`
+	PublicationStatus  string   `json:"publication_status"`
 }
 
 // decodeLenient decodes a document another component owns: a duplicate key and trailing data are
-// refused, members this package does not read are accepted.
+// refused, as are two member names equal under case folding; members this package does not read are accepted.
 func decodeLenient(data []byte, v any) error {
-	if err := protocol.ValidateStrictJSON(data); err != nil {
+	if err := checkEvidenceJSON(data); err != nil {
 		return err
 	}
 	dec := json.NewDecoder(bytes.NewReader(data))
@@ -119,6 +119,10 @@ func validateProviderExchange(raw []byte, e Expect) error {
 	if !f.ProviderExchange || !f.TaskAdmitted || !f.TurnCompleted || !f.Success {
 		add("the receipt does not show a completed, successful run with a provider exchange (exchange %t, admitted %t, completed %t, success %t)",
 			f.ProviderExchange, f.TaskAdmitted, f.TurnCompleted, f.Success)
+	}
+	// A G1 success publishes the edit and its Bash output, so a NO_DIFF run is not one. The status is publication.StatusSucceeded.
+	if f.Disposition != "PUBLISHED" || f.PublicationStatus != "SUCCEEDED" {
+		add("the receipt disposition %q and publication status %q, want PUBLISHED and SUCCEEDED", f.Disposition, f.PublicationStatus)
 	}
 	if f.ClaimBearing {
 		add("a claim-bearing receipt is not an engineering fixture")

@@ -80,6 +80,7 @@ func goodNetSink() NetSink {
 func goodReceipt(e Expect) map[string]any {
 	return map[string]any{"schema_version": receiptSchema, "profile_hash": g1ProfileDigest, "containment_profile_digest": g1TemplateDigest, "frozen_source_digest": e.FrozenSourceDigest,
 		"provider_exchange": true, "claim_bearing": false, "task_admitted": true, "turn_completed": true, "success": true,
+		"disposition": "PUBLISHED", "publication_status": "SUCCEEDED",
 		"tool_sequence": []string{"read", "edit", "bash", "read"}, "provider_turns": 5,
 		"source_generation": "g0", "final_generation": "g2", "generation_count": 3,
 		"settlement": "STOPPED", "exit_observed": true, "exit_code": -1, "descendants_settled": true, "some_future_member": 1} // G1 on F10: the supervisor stops the worker after the turn
@@ -308,6 +309,9 @@ func TestProviderExchangeRequiredValues(t *testing.T) {
 		"another source":       func(_, f map[string]any) { f["frozen_source_digest"] = digestOf("other") },
 		"no provider exchange": func(_, f map[string]any) { f["provider_exchange"] = false },
 		"not successful":       func(_, f map[string]any) { f["success"] = false },
+		"no diff released":     func(_, f map[string]any) { f["disposition"] = "NO_DIFF"; f["publication_status"] = "NO_DIFF" },
+		"publication failed":   func(_, f map[string]any) { f["publication_status"] = "FAILED" },
+		"no disposition":       func(_, f map[string]any) { delete(f, "disposition") },
 		"not admitted":         func(_, f map[string]any) { f["task_admitted"] = false },
 		"turn not completed":   func(_, f map[string]any) { f["turn_completed"] = false },
 		"claim bearing":        func(_, f map[string]any) { f["claim_bearing"] = true },
@@ -391,6 +395,28 @@ func TestProviderExchangeIsBoundToTheBaseTemplateNotToThePilotProfile(t *testing
 		if err := Validate(KindProviderExchange, encode(t, KindProviderExchange, p), e); err == nil {
 			t.Errorf("%s: accepted", name)
 		}
+	}
+}
+
+// Guest evidence refuses a member name equal to another under encoding/json's case folding, as the other evidence
+// importers do. Without the rule, encoding/json binds both members to one field and the document passes.
+func TestCaseFoldDuplicateMembersAreRefused(t *testing.T) {
+	e := expect()
+	netsink := encode(t, KindNetSink, goodNetSink())
+	if err := Validate(KindNetSink, netsink, e); err != nil {
+		t.Fatalf("the good netsink artifact: %v", err)
+	}
+	folded := strings.Replace(string(netsink), `"allowed_connect":`, `"ALLOWED_CONNECT": "connected", "allowed_connect":`, 1)
+	if folded == string(netsink) {
+		t.Fatal("the netsink artifact has no allowed_connect member to fold")
+	}
+	if err := Validate(KindNetSink, []byte(folded), e); err == nil {
+		t.Error("netsink with ALLOWED_CONNECT beside allowed_connect: accepted")
+	}
+	p := NewProviderExchange(goodResponse(t, e, func(_, f map[string]any) { f["Success"] = true }))
+	p.Binding = goodBinding(e, g1ProfileDigest, g1TemplateDigest)
+	if err := Validate(KindProviderExchange, encode(t, KindProviderExchange, p), e); err == nil {
+		t.Error("receipt with success beside Success: accepted")
 	}
 }
 

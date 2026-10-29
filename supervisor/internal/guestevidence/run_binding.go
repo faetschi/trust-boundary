@@ -6,8 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-
-	"tbound/supervisor/internal/broker/protocol"
 )
 
 // RunBinding is what run.json pins for the evidence: the freeze commit and the pins every artifact is
@@ -46,7 +44,7 @@ func ParseRunBinding(data []byte) (RunBinding, error) {
 			RunnerDigest       string `json:"runner_digest"`
 		} `json:"pins"`
 	}
-	if err := protocol.ValidateStrictJSON(data); err != nil {
+	if err := checkEvidenceJSON(data); err != nil {
 		return RunBinding{}, fmt.Errorf("config: %w", err)
 	}
 	dec := json.NewDecoder(bytes.NewReader(data))

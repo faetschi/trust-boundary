@@ -20,6 +20,7 @@ import (
 	"tbound/supervisor/internal/providerbridge"
 	"tbound/supervisor/internal/sessionrepo"
 	"tbound/supervisor/internal/workflow"
+	"tbound/supervisor/internal/workflowrecovery"
 )
 
 // The production-bash scenario of the combined harness. The original process runs one Bash call through the
@@ -35,21 +36,20 @@ const (
 	combinedOriginalConversation = "combined-recovery-conversation-g1"
 )
 
-// combinedSessionIdentity names the session and conversation of recovery generation gen. Generation 1 is the original
-// process; each later generation is a recovered session with its own identities.
-func combinedSessionIdentity(gen uint64) (string, string) {
-	if gen == 1 {
-		return combinedOriginalSession, combinedOriginalConversation
-	}
-	return fmt.Sprintf("%s-session-g%d", combinedRecoveryWorkflow, gen), fmt.Sprintf("%s-conversation-g%d", combinedRecoveryWorkflow, gen)
-}
-
 // combinedPreviousSessions are the sessions whose command records a recovery of generation gen finds in the journal.
+// Generation 1 is the original process. Each later generation's session comes from the production mapping of its
+// transcript pin, so the suite fails when that mapping stops naming the sessions the binder minted.
 func combinedPreviousSessions(gen uint64) []productionRecoveryCommandSession {
+	entry := piServiceWorkflowEntry{WorkflowID: combinedRecoveryWorkflow, SessionID: combinedOriginalSession,
+		RunID: combinedOriginalSession, ConversationID: combinedOriginalConversation}
 	sessions := make([]productionRecoveryCommandSession, 0, gen-1)
 	for previous := uint64(1); previous < gen; previous++ {
-		session, conversation := combinedSessionIdentity(previous)
-		sessions = append(sessions, productionRecoveryCommandSession{RunID: session, SessionID: session, ConversationID: conversation})
+		pin := workflowrecovery.TranscriptPin{ConversationID: combinedOriginalConversation}
+		if previous > 1 {
+			pin.ConversationID = fmt.Sprintf("%s-conversation-g%d", combinedRecoveryWorkflow, previous)
+		}
+		session, run := recoveryCommandSessionForPin(entry, pin)
+		sessions = append(sessions, productionRecoveryCommandSession{RunID: run, SessionID: session, ConversationID: pin.ConversationID})
 	}
 	return sessions
 }

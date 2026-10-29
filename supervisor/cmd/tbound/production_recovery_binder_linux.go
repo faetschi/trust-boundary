@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -58,9 +59,7 @@ func bindProductionPiRecoverySession(ctx context.Context, config productionServe
 		return nil, workflowrecovery.ErrRollback
 	}
 	generation := checkpoint.Pins.RecoveryGeneration + 1
-	newSessionID := fmt.Sprintf("%s-session-g%d", entry.WorkflowID, generation)
-	newConversationID := fmt.Sprintf("%s-conversation-g%d", entry.WorkflowID, generation)
-	newRunID := newSessionID
+	newSessionID, newRunID, newConversationID := recoveryGenerationIdentities(entry.WorkflowID, generation)
 	newProviderPath := productionRecoveryProviderJournalPath(artifacts.AuditRoot, entry.WorkflowID, newConversationID)
 	if !validIdentityText(newSessionID) || !validIdentityText(newConversationID) ||
 		!filepath.IsAbs(newProviderPath) || filepath.Clean(newProviderPath) != newProviderPath {
@@ -524,11 +523,29 @@ func productionRecoveryPinnedProviderJournalPath(auditRoot string, entry piServi
 	return productionRecoveryProviderJournalPath(auditRoot, entry.WorkflowID, pin.ConversationID)
 }
 
+// recoveryGenerationIdentities names the session, run and conversation of a resumed recovery generation. The binder
+// mints them and recoveryCommandSessionForPin reads them back, so the two cannot drift apart.
+func recoveryGenerationIdentities(workflowID string, generation uint64) (sessionID, runID, conversationID string) {
+	sessionID = fmt.Sprintf("%s-session-g%d", workflowID, generation)
+	return sessionID, sessionID, fmt.Sprintf("%s-conversation-g%d", workflowID, generation)
+}
+
+// recoveryCommandSessionForPin names the session and run that wrote a pinned transcript's command records. A pin
+// that is neither the entry's conversation nor a resumed generation's gets empty identities, which match no record.
 func recoveryCommandSessionForPin(entry piServiceWorkflowEntry, pin workflowrecovery.TranscriptPin) (sessionID, runID string) {
 	if pin.ConversationID == entry.ConversationID {
 		return entry.SessionID, entry.RunID
 	}
-	return pin.ConversationID, pin.ConversationID
+	// The round trip below rejects spellings such as a zero-padded generation that parse to the same number.
+	generation, err := strconv.ParseUint(strings.TrimPrefix(pin.ConversationID, entry.WorkflowID+"-conversation-g"), 10, 64)
+	if err != nil || generation < 2 {
+		return "", ""
+	}
+	sessionID, runID, conversationID := recoveryGenerationIdentities(entry.WorkflowID, generation)
+	if conversationID != pin.ConversationID {
+		return "", ""
+	}
+	return sessionID, runID
 }
 
 func openExistingPrivateRecoveryDirectory(path string) (*os.File, error) {
