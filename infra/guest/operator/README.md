@@ -85,7 +85,7 @@ Owner machine first: fill `serve-pi-service.g1.json` (the two podman-config dige
     GSSH "$OP svc stop"
 
 rp and dr follow the same pattern (`dr`: the config has a new admission id; `prof-install dr` takes both templates). Before the g1 cycle the smoke must be settled: N7 and `abandon` first (they need the smoke config), then `svc stop`.
-Rollback of a failed cycle: `svc stop`, `rollback <NAME> all` (restores the `prev/<NAME>` set, i.e. the previous NAME's files), then `adopt smoke` or the previous cycle's verbs to rebuild the state.
+Rollback of a failed cycle: `svc stop`, then `rollback <NAME> <part>` for the last part that completed (`cfg`, `reg` or `prof`). `rollback <NAME> all` restores all six files only when all six backups exist under `prev/<NAME>/` (`serve-pi-service.json`, `managed-live-root.json`, `managed-live-root.ed25519`, `pi-host-profile.json`, `pi-host-profile.ed25519`, `d09-cell.json`). Otherwise it refuses and changes nothing. A rollback clears the NAME state, so rerun the install verbs in order (`cfg-install`, `reg-install`, `prof-install`). `adopt smoke` is for the smoke chain only. `dr` is the exception: `cfg-install dr` keeps its admission id after a rollback, so a `dr` recovery needs a new admission id (runbook, recovery by stage).
 
 ## Owner-only (not verbs)
 
