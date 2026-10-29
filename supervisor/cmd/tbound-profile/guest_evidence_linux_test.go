@@ -505,6 +505,7 @@ func geResponse(t *testing.T, w bindWorld, mutate func(receipt map[string]any)) 
 	t.Helper()
 	receipt := map[string]any{"schema_version": "tbound-production-pi-receipt/v1", "run_id": "run-g1", "profile_hash": w.profileDigest, "containment_profile_digest": w.templateDigest, "frozen_source_digest": rtSource,
 		"provider_exchange": true, "claim_bearing": false, "task_admitted": true, "turn_completed": true, "success": true,
+		"disposition": "PUBLISHED", "publication_status": "SUCCEEDED",
 		"tool_sequence": []string{"read", "edit", "bash", "read"}, "provider_turns": 5, "source_generation": "g0", "final_generation": "g2", "generation_count": 3,
 		"settlement": "STOPPED", "exit_observed": true, "exit_code": 0, "descendants_settled": true}
 	if mutate != nil {
