@@ -15,9 +15,10 @@ import (
 )
 
 // durableCaseVariantCase pairs a plain argument object, which must be accepted, with the same object plus a member
-// whose name differs from a schema name only by case. Go's decoder matches member names case-insensitively, so without
-// an exact-name check the later member silently replaces the earlier one. The protocol capture refuses the variant,
-// and each durable decoder must refuse it before any effect.
+// whose name repeats a schema name, or differs from one by case or Unicode folding, written with or without JSON
+// escapes. Go's decoder matches member names case-insensitively, so without an exact-name check the later member
+// silently replaces the earlier one. The protocol capture refuses the variant, and each durable decoder must refuse
+// it before any effect.
 type durableCaseVariantCase struct {
 	name, tool, plain, variant string
 }
@@ -33,6 +34,33 @@ var durableCaseVariantCases = []durableCaseVariantCase{
 		`{"path":"task.txt","edits":[{"oldText":"baseline","newText":"edited","NewText":"unexpected"}]}`},
 	{"edit nested old text", "edit", `{"path":"task.txt","edits":[{"oldText":"baseline","newText":"edited"}]}`,
 		`{"path":"task.txt","edits":[{"oldText":"baseline","OldText":"baseline","newText":"edited"}]}`},
+	{"bash exact duplicate", "bash", `{"command":"true"}`, `{"command":"true","command":"printf unexpected"}`},
+	{"bash escaped duplicate", "bash", `{"command":"true"}`, `{"command":"true","command":"printf unexpected"}`},
+	{"bash escaped case variant", "bash", `{"command":"true"}`, `{"command":"true","Command":"printf unexpected"}`},
+	{"read exact duplicate", "read", `{"path":"task.txt"}`, `{"path":"task.txt","path":"build/result.txt"}`},
+	{"read escaped duplicate", "read", `{"path":"task.txt"}`, `{"path":"task.txt","path":"build/result.txt"}`},
+	{"read escaped case variant", "read", `{"path":"task.txt"}`, `{"path":"task.txt","Path":"build/result.txt"}`},
+	{"read folded offset", "read", `{"path":"task.txt"}`, `{"path":"task.txt","offſet":2}`},
+	{"write exact duplicate", "write", `{"path":"out.txt","content":"expected\n"}`,
+		`{"path":"out.txt","content":"expected\n","content":"unexpected\n"}`},
+	{"write escaped duplicate", "write", `{"path":"out.txt","content":"expected\n"}`,
+		`{"path":"out.txt","content":"expected\n","content":"unexpected\n"}`},
+	{"write escaped case variant", "write", `{"path":"out.txt","content":"expected\n"}`,
+		`{"path":"out.txt","content":"expected\n","Content":"unexpected\n"}`},
+	{"edit exact duplicate", "edit", `{"path":"task.txt","edits":[{"oldText":"baseline","newText":"edited"}]}`,
+		`{"path":"task.txt","edits":[{"oldText":"baseline","newText":"edited"}],"edits":[{"oldText":"baseline","newText":"unexpected"}]}`},
+	{"edit escaped duplicate", "edit", `{"path":"task.txt","edits":[{"oldText":"baseline","newText":"edited"}]}`,
+		`{"path":"task.txt","edits":[{"oldText":"baseline","newText":"edited"}],"edits":[{"oldText":"baseline","newText":"unexpected"}]}`},
+	{"edit escaped case variant", "edit", `{"path":"task.txt","edits":[{"oldText":"baseline","newText":"edited"}]}`,
+		`{"path":"task.txt","edits":[{"oldText":"baseline","newText":"edited"}],"Edits":[{"oldText":"baseline","newText":"unexpected"}]}`},
+	{"edit folded name", "edit", `{"path":"task.txt","edits":[{"oldText":"baseline","newText":"edited"}]}`,
+		`{"path":"task.txt","edits":[{"oldText":"baseline","newText":"edited"}],"editſ":[{"oldText":"baseline","newText":"unexpected"}]}`},
+	{"edit nested exact duplicate", "edit", `{"path":"task.txt","edits":[{"oldText":"baseline","newText":"edited"}]}`,
+		`{"path":"task.txt","edits":[{"oldText":"baseline","oldText":"unexpected","newText":"edited"}]}`},
+	{"edit nested escaped duplicate", "edit", `{"path":"task.txt","edits":[{"oldText":"baseline","newText":"edited"}]}`,
+		`{"path":"task.txt","edits":[{"oldText":"baseline","oldText":"unexpected","newText":"edited"}]}`},
+	{"edit nested escaped case variant", "edit", `{"path":"task.txt","edits":[{"oldText":"baseline","newText":"edited"}]}`,
+		`{"path":"task.txt","edits":[{"oldText":"baseline","OldText":"unexpected","newText":"edited"}]}`},
 }
 
 // caseVariantDecision is a synthetic trusted ALLOW decision for one call of the given tool.
@@ -89,9 +117,53 @@ func TestDurableDecodersRefuseCaseVariantMembers(t *testing.T) {
 	}
 }
 
+// durableEscapedExactCases writes exact schema names with JSON escapes. Each decodes to a schema name, so the protocol
+// capture and every durable decoder must accept the object.
+var durableEscapedExactCases = []struct{ name, tool, arguments string }{
+	{"bash command", "bash", `{"command":"true"}`},
+	{"read path", "read", `{"path":"task.txt"}`},
+	{"write path and content", "write", `{"path":"out.txt","content":"expected\n"}`},
+	{"edit path, edits and nested members", "edit",
+		`{"path":"task.txt","edits":[{"oldText":"baseline","newText":"edited"}]}`},
+}
+
+// TestDurableDecodersAcceptEscapedExactMemberNames is the positive control for the refusals above: a name written with
+// escapes that equals a schema name is the same member, so it must still decode.
+func TestDurableDecodersAcceptEscapedExactMemberNames(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("durable decoders are built for Linux only")
+	}
+	for _, tc := range durableEscapedExactCases {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := protocol.CanonicalArguments(tc.tool, json.RawMessage(tc.arguments)); err != nil {
+				t.Fatalf("the protocol capture refused the escaped exact %s object %s: %v", tc.tool, tc.arguments, err)
+			}
+			if err := durableDecoderError(t, tc.tool, tc.arguments); err != nil {
+				t.Fatalf("the durable %s decoder refused the escaped exact object %s: %v", tc.tool, tc.arguments, err)
+			}
+		})
+	}
+}
+
+// TestDurableExecutorRunsEscapedExactBashAndReadMembers proves that an escaped exact bash command reaches the runner
+// as "true", and that an escaped exact read path reads the baseline file.
+func TestDurableExecutorRunsEscapedExactBashAndReadMembers(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("durable session-repository integration runs only on Linux")
+	}
+	output, _, calls, argv, err := executeDurableBashOrReadVariant(t, "bash", `{"command":"true"}`)
+	if err != nil || len(output) == 0 || calls != 1 || len(argv) != 2 || argv[0] != "-lc" || argv[1] != "true" {
+		t.Fatalf("escaped bash command did not run as true: output=%q runner=%d argv=%q err=%v", output, calls, argv, err)
+	}
+	output, _, _, _, err = executeDurableBashOrReadVariant(t, "read", `{"path":"task.txt"}`)
+	if err != nil || !strings.Contains(string(output), "baseline") {
+		t.Fatalf("escaped read path did not read task.txt: output=%q err=%v", output, err)
+	}
+}
+
 // executeDurableBashOrReadVariant runs one argument object through a fresh durable executor and reports the released
-// output, the tip after the call, how many times the bash runner ran, and the error.
-func executeDurableBashOrReadVariant(t *testing.T, tool, arguments string) (json.RawMessage, string, int, error) {
+// output, the tip after the call, how many times the bash runner ran, the argv it received, and the error.
+func executeDurableBashOrReadVariant(t *testing.T, tool, arguments string) (json.RawMessage, string, int, []string, error) {
 	t.Helper()
 	if tool == "bash" {
 		store, _, _, g0 := durableBashFixture(t)
@@ -110,7 +182,7 @@ func executeDurableBashOrReadVariant(t *testing.T, tool, arguments string) (json
 			t.Fatal(err)
 		}
 		output, err := executor.Execute(context.Background(), proposal, decision)
-		return output, executor.Tip().ID(), runner.calls, err
+		return output, executor.Tip().ID(), runner.calls, runner.lastSpec.Args, err
 	}
 	store, _, _, g0 := e05Store(t, e05TaskBaseline)
 	executor, err := NewDurableExecutor(DurableExecutorConfig{
@@ -122,7 +194,7 @@ func executeDurableBashOrReadVariant(t *testing.T, tool, arguments string) (json
 	}
 	output, err := executor.Execute(context.Background(), e05Proposal("call-case-read", "read", json.RawMessage(arguments)),
 		caseVariantDecision("call-case-read", "read"))
-	return output, executor.Tip().ID(), 0, err
+	return output, executor.Tip().ID(), 0, nil, err
 }
 
 // TestDurableExecutorRefusesCaseVariantBashAndReadBeforeRunning proves that for bash and read the executor releases
@@ -137,11 +209,11 @@ func TestDurableExecutorRefusesCaseVariantBashAndReadBeforeRunning(t *testing.T)
 			continue
 		}
 		t.Run(tc.name, func(t *testing.T) {
-			control, _, _, err := executeDurableBashOrReadVariant(t, tc.tool, tc.plain)
+			control, _, _, _, err := executeDurableBashOrReadVariant(t, tc.tool, tc.plain)
 			if err != nil || len(control) == 0 {
 				t.Fatalf("plain %s control did not execute: output=%q err=%v", tc.tool, control, err)
 			}
-			output, tip, runnerCalls, err := executeDurableBashOrReadVariant(t, tc.tool, tc.variant)
+			output, tip, runnerCalls, _, err := executeDurableBashOrReadVariant(t, tc.tool, tc.variant)
 			if err == nil || len(output) != 0 || tip != "g0" || runnerCalls != 0 {
 				t.Fatalf("durable %s executed the case-variant member %s: output=%q err=%v tip=%s runner=%d",
 					tc.tool, tc.variant, output, err, tip, runnerCalls)
