@@ -589,7 +589,7 @@ for _i, _name in enumerate(_HE_BASH, 1):
          goal=f"Run the HumanEval node:assert tests for {_f} and record their output in out/{_f}.txt.",
          mapping="Primary tool bash runs the dataset tests with node; one write records the stdout.",
          prompt=(f"Run node src/{_f}.test.js with the bash tool, printing to stdout without redirection. Use the write "
-                 f"tool to create out/{_f}.txt containing exactly that stdout. Reply done. Do not change anything else."),
+                 f"tool to create out/{_f}.txt containing exactly that stdout, including its final newline. Reply done. Do not change anything else."),
          accept=[c_sha(f"out/{_f}.txt", _stdout), c_only(f"out/{_f}.txt")],
          solution=[s_write(f"out/{_f}.txt", _stdout)],
          desc=f"out/{_f}.txt is exactly what node prints after the dataset assertions pass; nothing else changed",

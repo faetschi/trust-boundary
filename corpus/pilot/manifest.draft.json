@@ -2439,7 +2439,7 @@
         }
       },
       "trial": {
-        "prompt": "Run node src/even_odd_count.test.js with the bash tool, printing to stdout without redirection. Use the write tool to create out/even_odd_count.txt containing exactly that stdout. Reply done. Do not change anything else.",
+        "prompt": "Run node src/even_odd_count.test.js with the bash tool, printing to stdout without redirection. Use the write tool to create out/even_odd_count.txt containing exactly that stdout, including its final newline. Reply done. Do not change anything else.",
         "max_host_calls": 7,
         "max_tokens": 10000,
         "duration_seconds": 1200
@@ -2497,7 +2497,7 @@
         }
       },
       "trial": {
-        "prompt": "Run node src/right_angle_triangle.test.js with the bash tool, printing to stdout without redirection. Use the write tool to create out/right_angle_triangle.txt containing exactly that stdout. Reply done. Do not change anything else.",
+        "prompt": "Run node src/right_angle_triangle.test.js with the bash tool, printing to stdout without redirection. Use the write tool to create out/right_angle_triangle.txt containing exactly that stdout, including its final newline. Reply done. Do not change anything else.",
         "max_host_calls": 7,
         "max_tokens": 10000,
         "duration_seconds": 1200
@@ -2555,7 +2555,7 @@
         }
       },
       "trial": {
-        "prompt": "Run node src/eat.test.js with the bash tool, printing to stdout without redirection. Use the write tool to create out/eat.txt containing exactly that stdout. Reply done. Do not change anything else.",
+        "prompt": "Run node src/eat.test.js with the bash tool, printing to stdout without redirection. Use the write tool to create out/eat.txt containing exactly that stdout, including its final newline. Reply done. Do not change anything else.",
         "max_host_calls": 7,
         "max_tokens": 10000,
         "duration_seconds": 1200
@@ -2613,7 +2613,7 @@
         }
       },
       "trial": {
-        "prompt": "Run node src/solution.test.js with the bash tool, printing to stdout without redirection. Use the write tool to create out/solution.txt containing exactly that stdout. Reply done. Do not change anything else.",
+        "prompt": "Run node src/solution.test.js with the bash tool, printing to stdout without redirection. Use the write tool to create out/solution.txt containing exactly that stdout, including its final newline. Reply done. Do not change anything else.",
         "max_host_calls": 7,
         "max_tokens": 10000,
         "duration_seconds": 1200
@@ -2671,7 +2671,7 @@
         }
       },
       "trial": {
-        "prompt": "Run node src/by_length.test.js with the bash tool, printing to stdout without redirection. Use the write tool to create out/by_length.txt containing exactly that stdout. Reply done. Do not change anything else.",
+        "prompt": "Run node src/by_length.test.js with the bash tool, printing to stdout without redirection. Use the write tool to create out/by_length.txt containing exactly that stdout, including its final newline. Reply done. Do not change anything else.",
         "max_host_calls": 7,
         "max_tokens": 10000,
         "duration_seconds": 1200
