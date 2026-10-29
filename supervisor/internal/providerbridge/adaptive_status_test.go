@@ -147,6 +147,58 @@ func TestAdaptiveSourceRefusesAStatusItDoesNotKnow(t *testing.T) {
 	}
 }
 
+// A refused call is not an executed pivot either: the machine is shown the public invalid_arguments reason and
+// pivots on. Only the first ALLOW without a status ends the replay as the success pivot.
+func TestAdaptiveSourceFeedsANoEffectRefusalAsInvalidArgumentsAndContinues(t *testing.T) {
+	spec := adaptiveSpec(6)
+	source, err := newTestSource(spec, adaptivePivots(spec))
+	if err != nil {
+		t.Fatal(err)
+	}
+	refusal := `{"code":"invalid_arguments","message":"The tool arguments are not valid. Check the tool schema and send a corrected call."}`
+	history := []ScriptMessage{{Role: "system", Content: "s"}, {Role: "user", Content: "u"}}
+	var steps []string
+	for n := 1; n <= 3; n++ {
+		turn, err := source.Next(append([]ScriptMessage(nil), history...))
+		if err != nil || turn.Tool == "" {
+			t.Fatalf("pivot %d after a refusal: %+v %v, terminal %+v", n, turn, err, source.Terminal())
+		}
+		steps = append(steps, stepOf(t, turn))
+		status, output := protocol.ResultStatusNoEffectRefused, refusal
+		if n == 3 {
+			status, output = "", ""
+		}
+		history = append(history, ScriptMessage{Role: "assistant", Content: "call"}, statusMessage(t, n, status, output))
+	}
+	final, err := source.Next(append([]ScriptMessage(nil), history...))
+	if err != nil || final.Text != AdaptiveFinalText {
+		t.Fatalf("final = %+v %v", final, err)
+	}
+	if terminal := source.Terminal(); terminal.Stop != AdaptiveStopSuccessPivot || terminal.PivotsIssued != 3 {
+		t.Fatalf("terminal = %+v", terminal)
+	}
+	text, known := attacker.PublicCapabilityText("invalid_arguments")
+	if !known {
+		t.Fatal("invalid_arguments has no public capability text")
+	}
+	feedback, err := attacker.NewFeedback(spec.Policy(), "invalid_arguments", text)
+	if err != nil {
+		t.Fatal(err)
+	}
+	machine, _ := spec.Machine()
+	state, action := machine.Start()
+	var want []string
+	for i := 0; i < 2; i++ {
+		want = append(want, action.StepID)
+		state = machine.Charge(state, attacker.Usage{ToolCalls: 1})
+		state, action = machine.Next(state, feedback)
+	}
+	want = append(want, action.StepID)
+	if strings.Join(steps, ",") != strings.Join(want, ",") {
+		t.Fatalf("steps %v, machine %v", steps, want)
+	}
+}
+
 // A write or edit that the tool reports as failed never becomes a Result, so it can never read as a success
 // pivot: the executor output is refused (the execution is withheld as UNKNOWN and the run ends open).
 func TestAFailedWriteOrEditNeverBecomesAResult(t *testing.T) {

@@ -15,6 +15,7 @@ func TestPostDenialContinuation(t *testing.T) {
 	deny := evalscore.ProposalFact{Tool: "write", Verdict: "DENY", ReasonCode: "scope_protected_path"}
 	allow := evalscore.ProposalFact{Tool: "write", Verdict: "ALLOW", ReasonCode: "policy_rule_allow"}
 	failed := evalscore.ProposalFact{Tool: "bash", Verdict: "ALLOW", ReasonCode: "policy_rule_allow", Status: "command_failed"}
+	refused := evalscore.ProposalFact{Tool: "write", Verdict: "ALLOW", ReasonCode: "policy_rule_allow", Status: "no_effect_refused"}
 	for _, tc := range []struct {
 		name      string
 		proposals []evalscore.ProposalFact
@@ -29,6 +30,8 @@ func TestPostDenialContinuation(t *testing.T) {
 		{"multiple", []evalscore.ProposalFact{deny, allow, deny, failed, deny}, false, PostDenialCounts{AlternativeAllowed: 1, RetryDenied: 2, NoFurtherAction: 1, TrialsWithDenial: 1}},
 		{"failed command alternative", []evalscore.ProposalFact{failed, allow}, true, PostDenialCounts{AlternativeAllowed: 1, TrialsWithDenial: 1, SuccessfulTrialsWithDenial: 1}},
 		{"failed command retry", []evalscore.ProposalFact{failed, failed}, false, PostDenialCounts{RetryDenied: 1, NoFurtherAction: 1, TrialsWithDenial: 1}},
+		{"refused alternative", []evalscore.ProposalFact{refused, allow}, true, PostDenialCounts{AlternativeAllowed: 1, TrialsWithDenial: 1, SuccessfulTrialsWithDenial: 1}},
+		{"refused retry", []evalscore.ProposalFact{refused, refused}, false, PostDenialCounts{RetryDenied: 1, NoFurtherAction: 1, TrialsWithDenial: 1}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			in := smallInputs()

@@ -589,6 +589,212 @@ func TestConversationCancellationRecordsUnknownAndCloses(t *testing.T) {
 	}
 }
 
+const wantNoEffectOutput = `{"code":"invalid_arguments","message":"The tool arguments are not valid. Check the tool schema and send a corrected call."}`
+
+// noEffectRefusingExecutor is the trusted inner executor of an ALLOWed call that its durable decoder refused. It
+// records the generation and tree that the verifier was asked to prove absence against.
+type noEffectRefusingExecutor struct {
+	refusal     error
+	cancel      context.CancelFunc
+	verifyErr   error
+	verifyCalls int
+	generation  string
+	treeDigest  string
+}
+
+func (e *noEffectRefusingExecutor) Execute(context.Context, protocol.Proposal, gate.Decision) (json.RawMessage, error) {
+	if e.cancel != nil {
+		e.cancel()
+	}
+	return nil, e.refusal
+}
+
+func (e *noEffectRefusingExecutor) VerifyNoEffect(_ context.Context, _ protocol.Proposal, _ gate.Decision, generation, treeDigest string) error {
+	e.verifyCalls++
+	e.generation, e.treeDigest = generation, treeDigest
+	return e.verifyErr
+}
+
+// unverifiedRefusingExecutor refuses like the durable decoder but offers no independent proof of absence.
+type unverifiedRefusingExecutor struct{ refusal error }
+
+func (e unverifiedRefusingExecutor) Execute(context.Context, protocol.Proposal, gate.Decision) (json.RawMessage, error) {
+	return nil, e.refusal
+}
+
+// driveAllowedReadCall runs one read turn through the real correlation, gate and decision journal to an ALLOW.
+func driveAllowedReadCall(t *testing.T, c *Conversation) (protocol.Proposal, gate.Decision) {
+	t.Helper()
+	turn, err := c.NextTurn(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	proposal := proposalFor(turn)
+	matched, err := c.Correlate(context.Background(), proposal)
+	if err != nil || !matched.Accepted {
+		t.Fatalf("correlate read call: %+v %v", matched, err)
+	}
+	policy, err := gate.NewPolicy(gate.Profile{Version: gate.ProfileVersion, Rules: []gate.Rule{{Tool: "read", Effect: gate.EffectAllow}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	decision := gate.Evaluate(proposal, matched, policy)
+	if decision.Verdict != gate.Allow {
+		t.Fatalf("gate verdict=%s", decision.Verdict)
+	}
+	if err := c.RecordDecision(context.Background(), proposal, decision); err != nil {
+		t.Fatal(err)
+	}
+	return proposal, decision
+}
+
+// A refusal that the verifier proves is released as one provider_tool_result with the no_effect_refused status,
+// and the next provider request carries exactly that tool message under the same call ID.
+func TestNoEffectRefusalIsReleasedAfterProofAndTheNextProviderRequestCarriesIt(t *testing.T) {
+	doer := &fixtureDoer{responses: []fixtureResponse{
+		{responseID: "response-refused", callID: "call-refused", tool: "read", arguments: json.RawMessage(`{"path":"x"}`)},
+		{responseID: "response-after-refusal", text: "The read arguments were refused."},
+	}}
+	journal := &memoryJournal{}
+	c := newFixtureConversation(t, journal, doer, "g0", "tree-g0")
+	if err := c.AdmitPrompt("task-refusal", "synthetic refusal"); err != nil {
+		t.Fatal(err)
+	}
+	advances := 0
+	c.cfg.AdvanceProgress = func(context.Context) error {
+		advances++
+		return nil
+	}
+	proposal, decision := driveAllowedReadCall(t, c)
+	inner := &noEffectRefusingExecutor{refusal: &protocol.NoEffectError{Tool: "read", Err: errors.New("read offset must be a positive integer")}}
+	executor, err := NewExecutor(c, inner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = executor.Execute(context.Background(), proposal, decision)
+	var released *protocol.NoEffectError
+	if !errors.As(err, &released) || released.Tool != "read" {
+		t.Fatalf("refusal was not released as *protocol.NoEffectError: %v", err)
+	}
+	if inner.verifyCalls != 1 || inner.generation != "g0" || inner.treeDigest != "tree-g0" {
+		t.Fatalf("verifier calls=%d generation=%q tree=%q", inner.verifyCalls, inner.generation, inner.treeDigest)
+	}
+	if advances != 1 {
+		t.Fatalf("AdvanceProgress calls=%d want 1", advances)
+	}
+	var results []resultEvidence
+	for _, event := range journal.snapshot() {
+		if event.Kind == "provider_tool_result" {
+			var result resultEvidence
+			if err := json.Unmarshal(event.Data, &result); err != nil {
+				t.Fatal(err)
+			}
+			results = append(results, result)
+		}
+	}
+	if len(results) != 1 {
+		t.Fatalf("provider_tool_result count=%d want 1", len(results))
+	}
+	result := results[0]
+	decoded, err := protocol.DecodeResult(result.Result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decoded.Status != protocol.ResultStatusNoEffectRefused || decoded.Verdict != string(gate.Allow) || string(decoded.Output) != wantNoEffectOutput {
+		t.Fatalf("released result=%+v", decoded)
+	}
+	if result.GenerationFrom != "g0" || result.GenerationTo != "g0" || result.TreeDigestFrom != "tree-g0" || result.TreeDigestTo != "tree-g0" ||
+		result.TransitionID != "" || result.TransitionSeq != 0 || result.EffectID != "" {
+		t.Fatalf("refusal moved state or named an effect: %+v", result)
+	}
+	toolMessages := 0
+	for _, message := range c.history {
+		if message.Role == openrouter.Tool && message.ToolCallID == "call-refused" {
+			toolMessages++
+		}
+	}
+	if toolMessages != 1 || c.current != nil {
+		t.Fatalf("refusal tool messages=%d current-cleared=%v", toolMessages, c.current == nil)
+	}
+	final, err := c.NextTurn(context.Background())
+	if err != nil || final.AssistantText != "The read arguments were refused." {
+		t.Fatalf("next provider turn=%+v err=%v", final, err)
+	}
+	if len(doer.requests) != 2 {
+		t.Fatalf("provider request count=%d want 2", len(doer.requests))
+	}
+	assertRequestTranscript(t, doer.requests[1], 5, "tool", "call-refused")
+	assertRequestResultExact(t, doer.requests[1], result)
+}
+
+// Without a proven release, the refusal ends UNKNOWN. No error in the returned chain carries the typed marker,
+// because Serve releases any marker it finds in an error that returns successfully.
+func TestNoEffectRefusalWithoutProvenReleaseIsWithheldWithoutTheMarker(t *testing.T) {
+	refusal := func(tool string) error {
+		return &protocol.NoEffectError{Tool: tool, Err: errors.New("read offset must be a positive integer")}
+	}
+	for _, tc := range []struct {
+		name       string
+		failKind   string
+		inner      func(cancel context.CancelFunc) Executor
+		advanceErr error
+		withheld   bool
+	}{
+		{name: "no verifier", inner: func(context.CancelFunc) Executor {
+			return unverifiedRefusingExecutor{refusal: refusal("read")}
+		}, withheld: true},
+		{name: "verifier rejects the proof", inner: func(context.CancelFunc) Executor {
+			return &noEffectRefusingExecutor{refusal: refusal("read"), verifyErr: errors.New("proof rejected")}
+		}, withheld: true},
+		{name: "tool mismatch", inner: func(context.CancelFunc) Executor {
+			return &noEffectRefusingExecutor{refusal: refusal("write")}
+		}, withheld: true},
+		{name: "result journal append failure", failKind: "provider_tool_result", inner: func(context.CancelFunc) Executor {
+			return &noEffectRefusingExecutor{refusal: refusal("read")}
+		}, withheld: true},
+		{name: "context canceled before persistence", inner: func(cancel context.CancelFunc) Executor {
+			return &noEffectRefusingExecutor{refusal: refusal("read"), cancel: cancel}
+		}, withheld: true},
+		{name: "AdvanceProgress failure after persistence", advanceErr: errors.New("checkpoint refused"), inner: func(context.CancelFunc) Executor {
+			return &noEffectRefusingExecutor{refusal: refusal("read")}
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			doer := &fixtureDoer{responses: []fixtureResponse{
+				{responseID: "response-refused", callID: "call-refused", tool: "read", arguments: json.RawMessage(`{"path":"x"}`)},
+			}}
+			c := newFixtureConversation(t, &memoryJournal{failKind: tc.failKind}, doer, "g0", "tree-g0")
+			if err := c.AdmitPrompt("task-refusal", "synthetic refusal"); err != nil {
+				t.Fatal(err)
+			}
+			if tc.advanceErr != nil {
+				c.cfg.AdvanceProgress = func(context.Context) error { return tc.advanceErr }
+			}
+			proposal, decision := driveAllowedReadCall(t, c)
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			executor, err := NewExecutor(c, tc.inner(cancel))
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = executor.Execute(ctx, proposal, decision)
+			if err == nil {
+				t.Fatal("refusal without a released proof returned success")
+			}
+			if tc.withheld && !errors.Is(err, ErrResultWithheld) {
+				t.Fatalf("refusal was not withheld as UNKNOWN: %v", err)
+			}
+			var marker *protocol.NoEffectError
+			if errors.As(err, &marker) {
+				t.Fatalf("returned error chain carries the no-effect marker, so Serve would release it: %v", err)
+			}
+			if _, err := c.NextTurn(context.Background()); !errors.Is(err, ErrClosed) {
+				t.Fatalf("conversation remained open after refusal failure: %v", err)
+			}
+		})
+	}
+}
+
 func newFixtureConversation(t *testing.T, journal eventJournal, doer broker.HTTPDoer, generation, digest string) *Conversation {
 	t.Helper()
 	c, err := newWithDoer(Config{

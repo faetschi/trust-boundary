@@ -30,6 +30,12 @@ type Executor interface {
 	Execute(context.Context, protocol.Proposal, gate.Decision) (json.RawMessage, error)
 }
 
+// VerifiedNoEffectReleaser marks an executor that journals and proves a refusal before it returns a
+// protocol.NoEffectError. Serve releases that marker only from such an executor; from any other it is withheld.
+type VerifiedNoEffectReleaser interface {
+	ReleasesVerifiedNoEffect()
+}
+
 // DurableDecisionRecorder is the production composition contract to persist a
 // gate decision before any effect runs. Effect-capable Serve calls it for every
 // verdict, including DENY. A returned error is
@@ -81,7 +87,8 @@ func (s *Supervisor) HandledProposals() uint64 {
 // broker, gate-result encoding, or executor error closes the stream, except
 // protocol.AdmissionDeniedError: an allowed operation whose settled change
 // delta admission refused is released as a DENY Result with the admission
-// reason code, and the loop continues.
+// reason code, and the loop continues. A protocol.NoEffectError from a VerifiedNoEffectReleaser is released the
+// same way, as the fixed no_effect_refused Result, because that executor proved the refusal before returning it.
 func (s *Supervisor) Serve(ctx context.Context) error {
 	if s == nil || s.IPC == nil || s.Broker == nil || s.Policy.Digest() == "" ||
 		s.ProposalLimit > ipc.MaxFramesPerDirection {
@@ -140,10 +147,20 @@ func (s *Supervisor) Serve(ctx context.Context) error {
 			} else {
 				output, err := s.Executor.Execute(ctx, proposal, decision)
 				var denied *protocol.AdmissionDeniedError
+				var refused *protocol.NoEffectError
 				if errors.As(err, &denied) && protocol.ValidAdmissionReasonCode(denied.ReasonCode) {
 					// Delta admission refused the settled change: the agent gets a normal DENY
 					// Result with the stable reason code and the run goes on.
 					result.Verdict, result.ReasonCode = string(gate.Deny), denied.ReasonCode
+				} else if _, verifies := s.Executor.(VerifiedNoEffectReleaser); verifies && errors.As(err, &refused) &&
+					refused.Tool == proposal.Tool {
+					// The conversation journaled and verified this refusal before it returned the marker.
+					if err := ctx.Err(); err != nil {
+						return fmt.Errorf("no-effect refusal canceled before release; result withheld: %w", err)
+					}
+					if result, err = protocol.NoEffectResult(result); err != nil {
+						return fmt.Errorf("no-effect refusal result is invalid; result withheld: %w", err)
+					}
 				} else if err != nil {
 					return fmt.Errorf("executor failed; result withheld: %w", err)
 				} else {

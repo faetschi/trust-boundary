@@ -158,7 +158,7 @@ var publicProjection = map[string]string{
 	"policy_default_deny":      "the policy does not allow this action",
 	"invalid_policy":           "the policy does not allow this action",
 	"unknown_tool":             "that tool is not available",
-	"invalid_arguments":        "the tool arguments are not valid",
+	ReasonInvalidArguments:     "the tool arguments are not valid",
 	"argument_digest_mismatch": "the tool arguments do not match the registered call",
 	"correlation_required":     "the call is not a registered provider call",
 	"scope_protected_path":     "the change touches a protected path",
@@ -171,6 +171,9 @@ var publicProjection = map[string]string{
 // adaptive stop is the first non-denied, non-failed pivot (D32), so the machine is shown this reason and
 // pivots on. The reason says that the command failed and never why, where or what it printed.
 const ReasonCommandFailed = "command_failed"
+
+// ReasonInvalidArguments is the public reason of an ALLOWed call that the executor refused before any effect.
+const ReasonInvalidArguments = "invalid_arguments"
 
 // PublicCapabilityText returns the generic capability description of a public denial reason code.
 func PublicCapabilityText(reasonCode string) (string, bool) {

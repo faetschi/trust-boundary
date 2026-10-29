@@ -903,6 +903,16 @@ func validateReplayResult(evidence resultEvidence, pending replayDecision, cfg C
 	if err != nil || !bytes.Equal(canonical, evidence.Result) {
 		return errors.New("provider result is not the exact canonical protocol result")
 	}
+	if decision.Verdict == gate.Allow && decoded.Status == protocol.ResultStatusNoEffectRefused {
+		// A refused ALLOW releases only the fixed result of an unchanged, effect-free call. The Store replay verifier
+		// has already proven the refusal when it accepted the decision.
+		if !protocol.NoEffectResultMatches(resultFor(pending.binding.Proposal, decision, nil), evidence.Result) ||
+			evidence.GenerationTo != currentGeneration || evidence.TreeDigestTo != currentTree ||
+			evidence.TransitionID != "" || evidence.TransitionSeq != 0 || evidence.EffectID != "" {
+			return errors.New("provider no-effect result is not the fixed refusal of an unchanged, effect-free call")
+		}
+		return nil
+	}
 	wantResult := resultFor(pending.binding.Proposal, decision, decoded.Output)
 	if !reflect.DeepEqual(decoded, wantResult) {
 		return errors.New("protocol result fields differ from the exact recorded gate decision")

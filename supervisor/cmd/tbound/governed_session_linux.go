@@ -1011,7 +1011,13 @@ func (a *SessionOperationAuthority) resolveFromTrace(trace audit.Trace, decision
 				resultEvidence.TreeDigestTo != currentTree {
 				return governedCapture{}, ErrGovernedSessionEvidence
 			}
-			if result.Verdict == string(gate.Allow) && result.Tool == "read" {
+			// A refusal has no Store summary and no Store proof: its exact fixed bytes and the unchanged tip are its whole shape.
+			noEffect := result.Status == protocol.ResultStatusNoEffectRefused
+			if noEffect && (result.Verdict != string(gate.Allow) || !protocol.NoEffectResultMatches(result, resultEvidence.Result) ||
+				resultEvidence.TransitionID != "" || resultEvidence.TransitionSeq != 0 || resultEvidence.EffectID != "") {
+				return governedCapture{}, ErrGovernedSessionEvidence
+			}
+			if result.Verdict == string(gate.Allow) && result.Tool == "read" && !noEffect {
 				var read durableReadSummaryPayload
 				if decodeGovernedResult(result.Output, &read) != nil || read.Tool != "read" || read.Generation.ID != currentGeneration ||
 					read.Generation.TreeDigest != currentTree || read.Outcome != "success" ||
@@ -1019,7 +1025,7 @@ func (a *SessionOperationAuthority) resolveFromTrace(trace audit.Trace, decision
 					return governedCapture{}, ErrGovernedSessionEvidence
 				}
 			}
-			if result.Verdict == string(gate.Allow) {
+			if result.Verdict == string(gate.Allow) && !noEffect {
 				for i := range proofs {
 					proof := &proofs[i]
 					if proof.response != resultEvidence.ResponseID || proof.call != resultEvidence.ToolCallID || proof.sequence != resultEvidence.Sequence {
@@ -1039,8 +1045,8 @@ func (a *SessionOperationAuthority) resolveFromTrace(trace audit.Trace, decision
 				if matchedProofs != 1 {
 					return governedCapture{}, ErrGovernedSessionEvidence
 				}
-			} else if result.Verdict != string(gate.Deny) || resultEvidence.TransitionID != "" || len(result.Output) != 0 ||
-				resultEvidence.TransitionSeq != 0 || resultEvidence.EffectID != "" {
+			} else if !noEffect && (result.Verdict != string(gate.Deny) || resultEvidence.TransitionID != "" || len(result.Output) != 0 ||
+				resultEvidence.TransitionSeq != 0 || resultEvidence.EffectID != "") {
 				return governedCapture{}, ErrGovernedSessionEvidence
 			}
 			currentGeneration, currentTree = resultEvidence.GenerationTo, resultEvidence.TreeDigestTo

@@ -36,6 +36,11 @@ const result: IpcResult = {
   policy_digest: "test-policy",
 };
 
+const NO_EFFECT_REFUSAL = {
+  code: "invalid_arguments",
+  message: "The tool arguments are not valid. Check the tool schema and send a corrected call.",
+};
+
 const HAND_WRITTEN_JSON = Buffer.from(
   '{"version":"tbound-ipc/v1","binding_token":"0000000000000000000000000000000000000000000000000000000000000000",' +
   '"sequence":1,"kind":"proposal","payload":{"schema_version":"tbound-proposal/v1","tool_call_id":"c",' +
@@ -272,6 +277,7 @@ test("proxy feedback appends exactly the fixed hint, and leaves successful ALLOW
     { name: "failed command", reply: { ...allowed, status: "command_failed" }, hint: permittedAlternativeHints.command_failed },
     { name: "unknown reason", reply: { ...result, reason_code: "future_reason" } },
     { name: "empty status", reply: { ...allowed, status: "" } },
+    { name: "no-effect refusal", reply: { ...allowed, status: "no_effect_refused", output: NO_EFFECT_REFUSAL } },
     { name: "object prototype name", reply: { ...result, reason_code: "__proto__" } },
     ...Object.entries(permittedAlternativeHints).filter(([reason]) => reason !== "command_failed").map(([reason, hint]) => ({
       name: reason, reply: { ...result, reason_code: reason }, hint,
@@ -309,6 +315,56 @@ test("IPC rejects command status outside allowed failed bash results", async (t)
       canonical_arguments_digest: `tbound-args-jcs-rfc8785/v1:sha256:${"a".repeat(64)}`, status: "command_failed" },
   ]) {
     await t.test(`${payload.verdict} ${payload.tool} ${payload.status}`, async () => {
+      const { client, peer } = await clientAgainstRawPeer();
+      const reading = client.receiveResult();
+      await writeRaw(peer, wireFrame(rawEnvelope({ payload })));
+      await expectCode(reading, "ERR_IPC_MALFORMED_FRAME");
+    });
+  }
+});
+
+test("IPC delivers a no-effect refusal for each allowed registered call with the fixed output", async (t) => {
+  const refused: IpcResult = {
+    ...result,
+    response_id: { issuer: "test", opaque: "response" },
+    tool: "read",
+    sequence: 1,
+    canonical_arguments_digest: `tbound-args-jcs-rfc8785/v1:sha256:${"a".repeat(64)}`,
+    verdict: "ALLOW",
+    reason_code: "policy_rule_allow",
+    status: "no_effect_refused",
+    output: NO_EFFECT_REFUSAL,
+  };
+  for (const tool of ["read", "write", "edit", "bash"]) {
+    await t.test(`ALLOW ${tool} is delivered`, async () => {
+      const { client, peer } = await clientAgainstRawPeer();
+      const reading = client.receiveResult();
+      await writeRaw(peer, wireFrame(rawEnvelope({ payload: { ...refused, tool } })));
+      assert.deepEqual(await reading, { ...refused, tool });
+    });
+  }
+});
+
+test("IPC rejects a no-effect refusal that is not the fixed output of an allowed registered call", async (t) => {
+  const refused: IpcResult = {
+    ...result,
+    response_id: { issuer: "test", opaque: "response" },
+    tool: "write",
+    sequence: 1,
+    canonical_arguments_digest: `tbound-args-jcs-rfc8785/v1:sha256:${"a".repeat(64)}`,
+    verdict: "ALLOW",
+    reason_code: "policy_rule_allow",
+    status: "no_effect_refused",
+    output: NO_EFFECT_REFUSAL,
+  };
+  for (const [name, payload] of [
+    ["denial", { ...refused, verdict: "DENY", reason_code: "policy_rule_deny", output: undefined }],
+    ["changed message", { ...refused, output: { ...NO_EFFECT_REFUSAL, message: "The path is outside the workspace." } }],
+    ["extra member", { ...refused, output: { ...NO_EFFECT_REFUSAL, path: "secret.txt" } }],
+    ["missing output", { ...refused, output: undefined }],
+    ["unregistered tool", { ...refused, tool: "grep" }],
+  ] as const) {
+    await t.test(name, async () => {
       const { client, peer } = await clientAgainstRawPeer();
       const reading = client.receiveResult();
       await writeRaw(peer, wireFrame(rawEnvelope({ payload })));

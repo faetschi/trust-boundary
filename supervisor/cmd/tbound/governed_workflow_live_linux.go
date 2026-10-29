@@ -550,13 +550,13 @@ func (a *SessionOperationAuthority) buildActiveProgressPins(ctx context.Context,
 			}
 			next.HostCallReservation.CapturedCall = nil
 		case workflowrecovery.CapturedCallAvailable:
-			// A released DENY leaves the conversation awaiting the model's answer to the DENY result.
+			// A released DENY or no-effect refusal leaves the conversation awaiting the model's answer to that result.
 			if projection.Provider.Disposition != providerbridge.DispositionAwaitingHostPrompt &&
 				projection.Provider.Disposition != providerbridge.DispositionAwaitingProviderExchange ||
 				projection.Provider.DecisionCount != projection.Provider.ResultCount {
 				return workflowrecovery.Pins{}, workflowrecovery.ErrObservation
 			}
-			retirementDigest, err := activeDeniedCaptureDigest(providerJournal, captured.ToolCallID)
+			retirementDigest, err := activeUnexecutedCaptureDigest(providerJournal, captured.ToolCallID)
 			if err != nil {
 				return workflowrecovery.Pins{}, err
 			}
@@ -570,7 +570,9 @@ func (a *SessionOperationAuthority) buildActiveProgressPins(ctx context.Context,
 	return next, nil
 }
 
-func activeDeniedCaptureDigest(providerJournal *audit.Journal, toolCallID string) (string, error) {
+// activeUnexecutedCaptureDigest digests the journaled evidence that retires an available captured call without an
+// effect: a gate DENY with its DENY result, or an ALLOW with the fixed no_effect_refused result.
+func activeUnexecutedCaptureDigest(providerJournal *audit.Journal, toolCallID string) (string, error) {
 	if providerJournal == nil || toolCallID == "" {
 		return "", workflowrecovery.ErrObservation
 	}
@@ -609,7 +611,7 @@ func activeDeniedCaptureDigest(providerJournal *audit.Journal, toolCallID string
 	}
 	var decision gate.Decision
 	var result providerResultEvidence
-	if unmarshalGovernedJSON(decisionRecord.Event.Data, &decision) != nil || decision.Verdict != gate.Deny ||
+	if unmarshalGovernedJSON(decisionRecord.Event.Data, &decision) != nil ||
 		unmarshalGovernedJSON(resultRecord.Event.Data, &result) != nil || result.ToolCallID != toolCallID ||
 		result.EffectID != "" || result.TransitionID != "" {
 		return "", workflowrecovery.ErrObservation
@@ -617,9 +619,24 @@ func activeDeniedCaptureDigest(providerJournal *audit.Journal, toolCallID string
 	protocolResult, decodeErr := protocol.DecodeResult(result.Result)
 	canonicalResult, marshalErr := protocol.MarshalResult(protocolResult)
 	if decodeErr != nil || marshalErr != nil || !bytes.Equal(canonicalResult, result.Result) ||
-		protocolResult.ToolCallID != toolCallID || protocolResult.Verdict != string(gate.Deny) ||
+		protocolResult.ToolCallID != toolCallID ||
 		protocolResult.PolicyDigest != decision.PolicyDigest || protocolResult.ReasonCode != decision.ReasonCode ||
-		protocolResult.Tool != decision.Tool || protocolResult.Sequence != decision.Sequence || len(protocolResult.Output) != 0 {
+		protocolResult.Tool != decision.Tool || protocolResult.Sequence != decision.Sequence {
+		return "", workflowrecovery.ErrObservation
+	}
+	domain := "tbound-denied-provider-call-retirement/v1\x00"
+	switch {
+	case decision.Verdict == gate.Deny && protocolResult.Verdict == string(gate.Deny) && len(protocolResult.Output) == 0:
+	case decision.Verdict == gate.Allow && protocolResult.Verdict == string(gate.Allow) &&
+		protocolResult.Status == protocol.ResultStatusNoEffectRefused &&
+		result.GenerationFrom == result.GenerationTo && result.TreeDigestFrom == result.TreeDigestTo:
+		// The conversation proves the refusal before it journals this result. The exact fixed output and the
+		// unchanged generation and tree are what this digest checks.
+		if !protocol.NoEffectResultMatches(protocolResult, result.Result) {
+			return "", workflowrecovery.ErrObservation
+		}
+		domain = "tbound-no-effect-provider-call-retirement/v1\x00"
+	default:
 		return "", workflowrecovery.ErrObservation
 	}
 	payload, err := json.Marshal(struct {
@@ -630,7 +647,7 @@ func activeDeniedCaptureDigest(providerJournal *audit.Journal, toolCallID string
 	if err != nil {
 		return "", err
 	}
-	sum := sha256.Sum256(append([]byte("tbound-denied-provider-call-retirement/v1\x00"), payload...))
+	sum := sha256.Sum256(append([]byte(domain), payload...))
 	return hex.EncodeToString(sum[:]), nil
 }
 

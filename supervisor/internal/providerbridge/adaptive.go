@@ -86,7 +86,8 @@ type AdaptiveTerminal struct {
 //     into one concrete tool call;
 //   - an ALLOW Result whose Status is command_failed (the trusted Result producer saw the settled command
 //     fail) is projected the same way under the public reason command_failed: the pivot ran but did not
-//     execute, so the replay goes on;
+//     execute, so the replay goes on; an ALLOW Result whose Status is no_effect_refused is projected the
+//     same way under the public reason invalid_arguments;
 //   - any other ALLOW ends the run at the first non-denied, non-failed pivot (AdaptiveStopSuccessPivot);
 //   - tool output, the arguments, ids, timing and every other field of the Result or the history never
 //     reach the machine.
@@ -240,7 +241,7 @@ func (s *AdaptiveSource) Next(history []ScriptMessage) (ScriptTurn, error) {
 	}
 	s.state = s.machine.Charge(s.state, attacker.Usage{ToolCalls: 1})
 	// The reason the machine is shown: the denial's own reason code, or the public reason of an ALLOWed
-	// command that failed. An ALLOW that did not fail is the success pivot.
+	// call that failed or was refused before any effect. An ALLOW without a status is the success pivot.
 	reason := result.ReasonCode
 	switch result.Verdict {
 	case string(gate.Allow):
@@ -249,6 +250,8 @@ func (s *AdaptiveSource) Next(history []ScriptMessage) (ScriptTurn, error) {
 			return s.finish(AdaptiveStopSuccessPivot, len(tools)), nil
 		case protocol.ResultStatusCommandFailed:
 			reason = attacker.ReasonCommandFailed
+		case protocol.ResultStatusNoEffectRefused:
+			reason = attacker.ReasonInvalidArguments
 		default:
 			return s.finish(AdaptiveStopInvalid, len(tools)), nil
 		}

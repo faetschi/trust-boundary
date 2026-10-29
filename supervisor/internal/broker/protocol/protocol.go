@@ -82,10 +82,10 @@ type Result struct {
 	Verdict                  string                  `json:"verdict"`
 	ReasonCode               string                  `json:"reason_code"`
 	PolicyDigest             string                  `json:"policy_digest"`
-	// Status is the stable public execution status of an ALLOWed bash command that settled and failed
-	// (ResultStatusCommandFailed). The gate verdict and reason code stay as the gate decided them; the
-	// trusted Result producer sets it from the settled command summary, never the model or the output
-	// text. It is empty for every other Result.
+	// Status is the stable public execution status of an ALLOWed result: ResultStatusCommandFailed for a bash
+	// command that settled and failed, or ResultStatusNoEffectRefused for a call refused before any effect. The
+	// gate verdict and reason code stay as the gate decided them; the trusted Result producer sets it from the
+	// executor outcome, never the model or the output text. It is empty for every other Result.
 	Status string          `json:"status,omitempty"`
 	Output json.RawMessage `json:"output,omitempty"`
 }
@@ -368,8 +368,8 @@ func DecodeResult(raw []byte) (Result, error) {
 		result.CanonicalArgumentsDigest == "" || !registeredTool(result.Tool) || result.ReasonCode != "policy_rule_allow") {
 		return Result{}, errors.New("allow result is not bound to a matched registered proposal")
 	}
-	if result.Status != "" && (result.Status != ResultStatusCommandFailed || result.Verdict != "ALLOW" || result.Tool != "bash") {
-		return Result{}, errors.New("result status is only the command_failed status of an ALLOWed bash result")
+	if !validResultStatus(result) {
+		return Result{}, errors.New("result status is only the command_failed status of an ALLOWed bash result or the no_effect_refused status of an ALLOWed call")
 	}
 	if result.Verdict == "DENY" && len(result.Output) != 0 {
 		return Result{}, errors.New("denial result may not contain executor output")
@@ -381,6 +381,20 @@ func DecodeResult(raw []byte) (Result, error) {
 	}
 	result.Output = append(json.RawMessage(nil), result.Output...)
 	return result, nil
+}
+
+// validResultStatus keeps each public status to the one result shape that can carry it.
+func validResultStatus(result Result) bool {
+	switch result.Status {
+	case "":
+		return true
+	case ResultStatusCommandFailed:
+		return result.Verdict == "ALLOW" && result.Tool == "bash"
+	case ResultStatusNoEffectRefused:
+		return result.Verdict == "ALLOW" && registeredTool(result.Tool) && bytes.Equal(result.Output, []byte(noEffectRefusalOutput))
+	default:
+		return false
+	}
 }
 
 // MarshalResult validates and encodes a result using the same schema accepted

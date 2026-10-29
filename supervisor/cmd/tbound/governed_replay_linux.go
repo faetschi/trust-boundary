@@ -153,6 +153,9 @@ type governedReplayDecisionEvidence struct {
 	// retained admission record and scope, and the only releasable result is the matching DENY.
 	denied     bool
 	denyReason string
+	// noEffect marks an ALLOWed call that the durable decoder refused. It has no Store authorization, and the
+	// complete Store evidence proved the absence of any effect.
+	noEffect bool
 }
 
 // Alias keeps helper fields explicit while avoiding accidental retention in
@@ -683,7 +686,16 @@ func (v *governedStoreReplayVerifier) VerifyDecision(binding providerbridge.Prov
 	}
 	authRecord, exists := v.authByDecision[key]
 	if !exists {
-		return errors.New("ALLOW provider decision has no unique Store authorization")
+		// A refused ALLOW has no Store authorization. Only the complete retained Store evidence can prove that
+		// the refusal left no effect, and that proof does not consume an authorization or advance its sequence.
+		if err := verifyDurableNoEffect(binding.Proposal, binding.GateDecision, governedCallIssuer,
+			binding.InputGeneration, binding.InputTreeDigest, v.bundle); err != nil {
+			return fmt.Errorf("ALLOW provider decision has no unique Store authorization and no proven refusal: %w", err)
+		}
+		v.decisions[key] = &governedReplayDecisionEvidence{binding: aliasDecision(binding), noEffect: true,
+			toGen: binding.InputGeneration, toTree: binding.InputTreeDigest}
+		v.called = true
+		return nil
 	}
 	if v.usedAuth[key] || authRecord.Sequence <= v.lastAuthSequence {
 		return errors.New("Store authorizations are duplicated or out of provider decision order")
@@ -944,6 +956,17 @@ func (v *governedStoreReplayVerifier) VerifyResult(binding providerbridge.Provid
 		binding.Result.ResponseID.Issuer != governedResponseIssuer || binding.Result.ResponseID.Opaque != binding.Decision.ResponseID ||
 		binding.Result.CanonicalArgumentsDigest != binding.Decision.GateDecision.CanonicalArgumentsDigest {
 		return errors.New("provider protocol result correlation differs from its gate decision")
+	}
+	if verified.noEffect {
+		// The released refusal must be exactly the fixed result of an unchanged, effect-free call.
+		if !protocol.NoEffectResultMatches(binding.Result, evidence.Result) ||
+			binding.GenerationTo != binding.GenerationFrom || binding.TreeDigestTo != binding.TreeDigestFrom ||
+			binding.TransitionID != "" || binding.TransitionSequence != 0 || binding.EffectID != "" {
+			return errors.New("provider no-effect result is not the fixed refusal of an unchanged, effect-free call")
+		}
+		verified.output = append([]byte(nil), binding.Result.Output...)
+		verified.resultSeen = true
+		return nil
 	}
 	expected, toGeneration, toTree, transitionID, transitionSequence, effectID, err := v.expectedDurableOutput(verified, binding.Decision)
 	if err != nil {

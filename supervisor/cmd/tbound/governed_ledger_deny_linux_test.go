@@ -177,13 +177,13 @@ func TestGovernedLedgerAllowDenyAllowCheckpointsEveryCall(t *testing.T) {
 	allow := func(toolCallID string, hostCalls, tokens uint64) {
 		t.Helper()
 		proposal, decision := ledgerDenyTurn(t, f, toolCallID, gate.Allow)
-		if _, err := activeDeniedCaptureDigest(f.providerJournal, toolCallID); err == nil {
+		if _, err := activeUnexecutedCaptureDigest(f.providerJournal, toolCallID); err == nil {
 			t.Fatal("journaled ALLOW was accepted as DENY retirement evidence")
 		}
 		if _, err := executor.Execute(f.ctx, proposal, decision); err != nil {
 			t.Fatalf("execute allowed %s: %v", toolCallID, err)
 		}
-		if _, err := activeDeniedCaptureDigest(f.providerJournal, toolCallID); err == nil {
+		if _, err := activeUnexecutedCaptureDigest(f.providerJournal, toolCallID); err == nil {
 			t.Fatal("executed ALLOW result was accepted as DENY retirement evidence")
 		}
 		checkpoint, _ := f.ledger.Snapshot()

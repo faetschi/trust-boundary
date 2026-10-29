@@ -125,6 +125,152 @@ func TestNoEffectSessionRequiresNoExecutorAndNeverCallsEffects(t *testing.T) {
 	}
 }
 
+const wantNoEffectRefusalOutput = `{"code":"invalid_arguments","message":"The tool arguments are not valid. Check the tool schema and send a corrected call."}`
+
+// allowingTestBroker correlates every proposal as an exact, successful broker capture, so the gate can ALLOW it.
+type allowingTestBroker struct{ calls uint64 }
+
+func (b *allowingTestBroker) Correlate(_ context.Context, proposal protocol.Proposal) (correlation.Decision, error) {
+	b.calls++
+	digest, err := protocol.CanonicalArgumentsDigest(proposal.Tool, proposal.Arguments)
+	if err != nil {
+		return correlation.Decision{}, err
+	}
+	response := correlation.Identifier{Issuer: "openrouter-response/v1", Opaque: "response-" + proposal.ToolCallID}
+	call := correlation.Identifier{Issuer: "openrouter-tool-call/v1", Opaque: proposal.ToolCallID}
+	return correlation.Decision{
+		Phase: correlation.PhaseProposal, Accepted: true, ReasonCode: correlation.ReasonMatched,
+		Proposal: &correlation.Proposal{ResponseID: response, ToolCallID: call, ToolName: proposal.Tool,
+			CanonicalArgumentsDigest: digest, Sequence: b.calls, Generation: "g0"},
+		BrokerCapture: &correlation.BrokerCall{ResponseID: response, ToolCallID: call, ToolName: proposal.Tool,
+			CanonicalArgumentsDigest: digest, Sequence: b.calls, Generation: "g0"},
+	}, nil
+}
+
+type acceptingTestRecorder struct{}
+
+func (acceptingTestRecorder) RecordDecision(context.Context, protocol.Proposal, gate.Decision) error {
+	return nil
+}
+
+func noEffectReadPolicy(t *testing.T) gate.Policy {
+	t.Helper()
+	policy, err := gate.NewPolicy(gate.Profile{Version: gate.ProfileVersion, Rules: []gate.Rule{{Tool: "read", Effect: gate.EffectAllow}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return policy
+}
+
+func readTestProposal(toolCallID, arguments string) protocol.Proposal {
+	return protocol.Proposal{SchemaVersion: protocol.ProposalSchemaVersion, ToolCallID: toolCallID, Tool: "read", Arguments: json.RawMessage(arguments)}
+}
+
+// The executor's proven refusal is released as the fixed no_effect_refused Result with the ALLOW verdict, and Serve
+// stays up to release the next proposal's ordinary output.
+func TestNoEffectRefusalIsReleasedAsTheFixedResultAndServeContinues(t *testing.T) {
+	client, server, err := ipc.NewPipe("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	defer server.Close()
+	calls := 0
+	supervisor := &Supervisor{
+		IPC: server, Broker: &allowingTestBroker{}, Policy: noEffectReadPolicy(t), Decisions: acceptingTestRecorder{}, ProposalLimit: 2,
+		Executor: verifyingExecutorTestFunc(func(context.Context, protocol.Proposal, gate.Decision) (json.RawMessage, error) {
+			calls++
+			if calls == 1 {
+				return nil, &protocol.NoEffectError{Tool: "read", Err: errors.New("read offset must be a positive integer")}
+			}
+			return json.RawMessage(`{"tool":"read","outcome":"success"}`), nil
+		}),
+	}
+	serveErr := make(chan error, 1)
+	go func() { serveErr <- supervisor.Serve(context.Background()) }()
+	if err := client.SendProposal(readTestProposal("refused-call", `{"path":"x"}`)); err != nil {
+		t.Fatal(err)
+	}
+	refused, err := client.ReceiveResult()
+	if err != nil {
+		t.Fatalf("refusal was withheld instead of released: %v", err)
+	}
+	if refused.Status != protocol.ResultStatusNoEffectRefused || refused.Verdict != string(gate.Allow) || string(refused.Output) != wantNoEffectRefusalOutput {
+		t.Fatalf("released refusal=%+v", refused)
+	}
+	if err := client.SendProposal(readTestProposal("valid-call", `{"path":"y"}`)); err != nil {
+		t.Fatalf("Serve stopped after the refusal: %v", err)
+	}
+	valid, err := client.ReceiveResult()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if valid.Status != "" || string(valid.Output) != `{"tool":"read","outcome":"success"}` {
+		t.Fatalf("next proposal result=%+v", valid)
+	}
+	if err := <-serveErr; err != nil {
+		t.Fatalf("Serve returned an error after both proposals: %v", err)
+	}
+	if calls != 2 {
+		t.Fatalf("executor calls=%d want 2", calls)
+	}
+}
+
+// A failure that is not a marker for this proposal's tool stays withheld, and Serve exits without a result. A marker
+// whose context was canceled before release is also withheld.
+func TestNoEffectRefusalWithoutAMatchingMarkerIsWithheldAndServeExits(t *testing.T) {
+	refusal := func(tool string) error {
+		return &protocol.NoEffectError{Tool: tool, Err: errors.New("read offset must be a positive integer")}
+	}
+	for _, tc := range []struct {
+		name     string
+		verifies bool
+		execute  func(cancel context.CancelFunc) error
+	}{
+		{"plain executor error", true, func(context.CancelFunc) error { return errors.New("executor failed") }},
+		{"marker for another tool", true, func(context.CancelFunc) error { return refusal("write") }},
+		{"marker after cancellation", true, func(cancel context.CancelFunc) error {
+			cancel()
+			return refusal("read")
+		}},
+		// A raw durable executor, as the publication runtime's admission wrapper runs it, has proven nothing.
+		{"marker from an executor that does not prove refusals", false, func(context.CancelFunc) error { return refusal("read") }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			client, server, err := ipc.NewPipe("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer client.Close()
+			defer server.Close()
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			supervisor := &Supervisor{
+				IPC: server, Broker: &allowingTestBroker{}, Policy: noEffectReadPolicy(t), Decisions: acceptingTestRecorder{},
+			}
+			execute := func(context.Context, protocol.Proposal, gate.Decision) (json.RawMessage, error) {
+				return nil, tc.execute(cancel)
+			}
+			if tc.verifies {
+				supervisor.Executor = verifyingExecutorTestFunc(execute)
+			} else {
+				supervisor.Executor = executorTestFunc(execute)
+			}
+			serveErr := make(chan error, 1)
+			go func() { serveErr <- supervisor.Serve(ctx) }()
+			if err := client.SendProposal(readTestProposal("refused-call", `{"path":"x"}`)); err != nil {
+				t.Fatal(err)
+			}
+			if err := <-serveErr; err == nil {
+				t.Fatal("Serve continued past a result it must withhold")
+			}
+			if result, err := client.ReceiveResult(); err == nil {
+				t.Fatalf("withheld result was released: %+v", result)
+			}
+		})
+	}
+}
+
 type denyTestBroker struct{}
 
 func (denyTestBroker) Correlate(context.Context, protocol.Proposal) (correlation.Decision, error) {
@@ -136,6 +282,15 @@ type executorTestFunc func(context.Context, protocol.Proposal, gate.Decision) (j
 func (f executorTestFunc) Execute(ctx context.Context, proposal protocol.Proposal, decision gate.Decision) (json.RawMessage, error) {
 	return f(ctx, proposal, decision)
 }
+
+// verifyingExecutorTestFunc stands in for the conversation wrapper, which proves a refusal before it returns the marker.
+type verifyingExecutorTestFunc func(context.Context, protocol.Proposal, gate.Decision) (json.RawMessage, error)
+
+func (f verifyingExecutorTestFunc) Execute(ctx context.Context, proposal protocol.Proposal, decision gate.Decision) (json.RawMessage, error) {
+	return f(ctx, proposal, decision)
+}
+
+func (verifyingExecutorTestFunc) ReleasesVerifiedNoEffect() {}
 
 func TestUnboundAbsoluteChildIsRefusedBeforeLauncher(t *testing.T) {
 	profile, attestation := testHostProfile()

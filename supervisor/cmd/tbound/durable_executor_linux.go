@@ -630,18 +630,18 @@ func durableWorkspaceRelativePath(modelPath string) (string, error) {
 
 func durableWriteArguments(raw json.RawMessage) (string, []byte, error) {
 	if err := durableRequireExactMembers(raw, "path", "content"); err != nil {
-		return "", nil, fmt.Errorf("write arguments: %w", err)
+		return "", nil, &protocol.NoEffectError{Tool: "write", Err: fmt.Errorf("write arguments: %w", err)}
 	}
 	var arguments durableWriteArgumentsPayload
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	if err := decoder.Decode(&arguments); err != nil {
-		return "", nil, fmt.Errorf("write arguments: %w", err)
+		return "", nil, &protocol.NoEffectError{Tool: "write", Err: fmt.Errorf("write arguments: %w", err)}
 	}
 	if err := durableNoTrailingJSON(decoder); err != nil {
-		return "", nil, fmt.Errorf("write arguments: %w", err)
+		return "", nil, &protocol.NoEffectError{Tool: "write", Err: fmt.Errorf("write arguments: %w", err)}
 	}
 	if arguments.Path == "" {
-		return "", nil, errors.New("write arguments require a path")
+		return "", nil, &protocol.NoEffectError{Tool: "write", Err: errors.New("write arguments require a path")}
 	}
 	storePath, err := durableWorkspaceRelativePath(arguments.Path)
 	if err != nil {
@@ -664,18 +664,18 @@ type durableEditReplacementPayload struct {
 
 func durableEditArguments(raw json.RawMessage) (string, []sessionrepo.Replacement, error) {
 	if err := durableRequireExactMembers(raw, "path", "edits"); err != nil {
-		return "", nil, fmt.Errorf("edit arguments: %w", err)
+		return "", nil, &protocol.NoEffectError{Tool: "edit", Err: fmt.Errorf("edit arguments: %w", err)}
 	}
 	var arguments durableEditArgumentsPayload
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	if err := decoder.Decode(&arguments); err != nil {
-		return "", nil, fmt.Errorf("edit arguments: %w", err)
+		return "", nil, &protocol.NoEffectError{Tool: "edit", Err: fmt.Errorf("edit arguments: %w", err)}
 	}
 	if err := durableNoTrailingJSON(decoder); err != nil {
-		return "", nil, fmt.Errorf("edit arguments: %w", err)
+		return "", nil, &protocol.NoEffectError{Tool: "edit", Err: fmt.Errorf("edit arguments: %w", err)}
 	}
 	if arguments.Path == "" || len(arguments.Edits) == 0 {
-		return "", nil, errors.New("edit arguments require a path and at least one replacement")
+		return "", nil, &protocol.NoEffectError{Tool: "edit", Err: errors.New("edit arguments require a path and at least one replacement")}
 	}
 	storePath, err := durableWorkspaceRelativePath(arguments.Path)
 	if err != nil {
@@ -684,11 +684,11 @@ func durableEditArguments(raw json.RawMessage) (string, []sessionrepo.Replacemen
 	edits := make([]sessionrepo.Replacement, len(arguments.Edits))
 	for index, rawEdit := range arguments.Edits {
 		if err := durableRequireExactMembers(rawEdit, "oldText", "newText"); err != nil {
-			return "", nil, fmt.Errorf("edit arguments: edits[%d]: %w", index, err)
+			return "", nil, &protocol.NoEffectError{Tool: "edit", Err: fmt.Errorf("edit arguments: edits[%d]: %w", index, err)}
 		}
 		var edit durableEditReplacementPayload
 		if err := json.Unmarshal(rawEdit, &edit); err != nil {
-			return "", nil, fmt.Errorf("edit arguments: edits[%d]: %w", index, err)
+			return "", nil, &protocol.NoEffectError{Tool: "edit", Err: fmt.Errorf("edit arguments: edits[%d]: %w", index, err)}
 		}
 		edits[index] = sessionrepo.Replacement{OldText: edit.OldText, NewText: edit.NewText}
 	}
@@ -709,18 +709,18 @@ type durableBashArgumentsPayload struct {
 // trailing JSON is rejected, so the trusted supervisor never runs a command that differs from what the adapter signed.
 func durableBashArguments(raw json.RawMessage) (string, error) {
 	if err := durableRequireExactMembers(raw, "command", "timeout"); err != nil {
-		return "", fmt.Errorf("bash arguments: %w", err)
+		return "", &protocol.NoEffectError{Tool: "bash", Err: fmt.Errorf("bash arguments: %w", err)}
 	}
 	var arguments durableBashArgumentsPayload
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	if err := decoder.Decode(&arguments); err != nil {
-		return "", fmt.Errorf("bash arguments: %w", err)
+		return "", &protocol.NoEffectError{Tool: "bash", Err: fmt.Errorf("bash arguments: %w", err)}
 	}
 	if err := durableNoTrailingJSON(decoder); err != nil {
-		return "", fmt.Errorf("bash arguments: %w", err)
+		return "", &protocol.NoEffectError{Tool: "bash", Err: fmt.Errorf("bash arguments: %w", err)}
 	}
 	if arguments.Command == "" {
-		return "", errors.New("bash arguments require a command")
+		return "", &protocol.NoEffectError{Tool: "bash", Err: errors.New("bash arguments require a command")}
 	}
 	return arguments.Command, nil
 }
@@ -790,7 +790,7 @@ func durableReadLineCount(name string, value *float64) (int, error) {
 		return 0, nil
 	}
 	if *value < 1 || *value != math.Trunc(*value) {
-		return 0, fmt.Errorf("read %s must be a positive integer", name)
+		return 0, &protocol.NoEffectError{Tool: "read", Err: fmt.Errorf("read %s must be a positive integer", name)}
 	}
 	// A file is bounded by durableReadMaxBytes, so any larger count reads to its end.
 	return int(min(*value, math.MaxInt32)), nil
@@ -827,18 +827,18 @@ func (window durableReadWindow) apply(content []byte) []byte {
 // trailing JSON is rejected, so the trusted supervisor never reads a path that differs from what the adapter signed.
 func durableReadArguments(raw json.RawMessage) (string, durableReadWindow, error) {
 	if err := durableRequireExactMembers(raw, "path", "offset", "limit"); err != nil {
-		return "", durableReadWindow{}, fmt.Errorf("read arguments: %w", err)
+		return "", durableReadWindow{}, &protocol.NoEffectError{Tool: "read", Err: fmt.Errorf("read arguments: %w", err)}
 	}
 	var arguments durableReadArgumentsPayload
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	if err := decoder.Decode(&arguments); err != nil {
-		return "", durableReadWindow{}, fmt.Errorf("read arguments: %w", err)
+		return "", durableReadWindow{}, &protocol.NoEffectError{Tool: "read", Err: fmt.Errorf("read arguments: %w", err)}
 	}
 	if err := durableNoTrailingJSON(decoder); err != nil {
-		return "", durableReadWindow{}, fmt.Errorf("read arguments: %w", err)
+		return "", durableReadWindow{}, &protocol.NoEffectError{Tool: "read", Err: fmt.Errorf("read arguments: %w", err)}
 	}
 	if arguments.Path == "" {
-		return "", durableReadWindow{}, errors.New("read arguments require a path")
+		return "", durableReadWindow{}, &protocol.NoEffectError{Tool: "read", Err: errors.New("read arguments require a path")}
 	}
 	offset, err := durableReadLineCount("offset", arguments.Offset)
 	if err != nil {

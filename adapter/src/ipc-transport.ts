@@ -36,7 +36,7 @@ export interface IpcResult {
   verdict: "ALLOW" | "DENY";
   reason_code: string;
   policy_digest: string;
-  status?: "" | "command_failed";
+  status?: "" | "command_failed" | "no_effect_refused";
   output?: unknown;
 }
 
@@ -232,6 +232,22 @@ function validateResponseId(value: unknown): asserts value is IpcResponseId {
   if (!validText(value.issuer) || !validText(value.opaque)) fail(MALFORMED, "result has invalid response identity");
 }
 
+const NO_EFFECT_REFUSAL_MESSAGE = "The tool arguments are not valid. Check the tool schema and send a corrected call.";
+
+// Keeps each public status to the one result shape that can carry it, as the supervisor's protocol does.
+function validResultStatus(value: Record<string, unknown>): boolean {
+  switch (value.status) {
+    case "command_failed":
+      return value.verdict === "ALLOW" && value.tool === "bash";
+    case "no_effect_refused":
+      return value.verdict === "ALLOW" && IPC_TOOL_NAMES.includes(value.tool as IpcToolName) &&
+        isRecord(value.output) && Object.keys(value.output).length === 2 &&
+        value.output.code === "invalid_arguments" && value.output.message === NO_EFFECT_REFUSAL_MESSAGE;
+    default:
+      return false;
+  }
+}
+
 function validateResult(value: unknown): asserts value is IpcResult {
   if (!isRecord(value)) fail(MALFORMED, "result payload must be an object");
   exactKeys(
@@ -263,9 +279,8 @@ function validateResult(value: unknown): asserts value is IpcResult {
   if (value.verdict === "DENY" && Object.hasOwn(value, "output")) {
     fail(MALFORMED, "denial result may not contain executor output");
   }
-  if (Object.hasOwn(value, "status") && value.status !== "" &&
-      (value.status !== "command_failed" || value.verdict !== "ALLOW" || value.tool !== "bash")) {
-    fail(MALFORMED, "result status is only valid for an allowed failed bash command");
+  if (Object.hasOwn(value, "status") && value.status !== "" && !validResultStatus(value)) {
+    fail(MALFORMED, "result status is only valid for an allowed failed bash command or a no-effect refusal");
   }
 }
 

@@ -769,12 +769,21 @@ type Executor interface {
 	Execute(context.Context, protocol.Proposal, gate.Decision) (json.RawMessage, error)
 }
 
+// NoEffectVerifier proves from retained evidence that a refused ALLOWed call left no Store effect. An executor
+// that cannot prove the refusal leaves the outcome UNKNOWN, so no refusal is released on the executor's word.
+type NoEffectVerifier interface {
+	VerifyNoEffect(ctx context.Context, proposal protocol.Proposal, decision gate.Decision, inputGeneration, inputTreeDigest string) error
+}
+
 // ResultingExecutor implements the piruntime.Executor method contract without
 // importing the runtime package, so the owner remains independently buildable.
 type ResultingExecutor struct {
 	conversation *Conversation
 	inner        Executor
 }
+
+// ReleasesVerifiedNoEffect marks this executor as one that journals and proves a refusal before it returns the marker.
+func (*ResultingExecutor) ReleasesVerifiedNoEffect() {}
 
 func NewExecutor(conversation *Conversation, inner Executor) (*ResultingExecutor, error) {
 	if conversation == nil || isNilExecutor(inner) {
@@ -808,6 +817,11 @@ func (e *ResultingExecutor) Execute(ctx context.Context, proposal protocol.Propo
 	var denied *protocol.AdmissionDeniedError
 	if errors.As(err, &denied) {
 		return nil, c.recordAdmissionDenied(ctx, proposal, decision, denied)
+	}
+	var refused *protocol.NoEffectError
+	if errors.As(err, &refused) {
+		verifier, _ := e.inner.(NoEffectVerifier)
+		return nil, c.recordNoEffectRefused(ctx, proposal, decision, refused, verifier)
 	}
 	if err != nil {
 		return nil, c.recordUnknownExecution(proposal, decision, fmt.Errorf("trusted executor failed; provider result withheld: %w", err))
@@ -884,6 +898,40 @@ func (c *Conversation) recordAdmissionDenied(ctx context.Context, proposal proto
 		}
 	}
 	return denied
+}
+
+// recordNoEffectRefused releases the executor's refusal of an ALLOWed call as one provider_tool_result with the
+// no_effect_refused status. The verifier proves the absence of a Store effect before anything is journaled. Every
+// failure returns an UNKNOWN error built from text only, so no NoEffectError can reach Serve through it.
+func (c *Conversation) recordNoEffectRefused(ctx context.Context, proposal protocol.Proposal, decision gate.Decision,
+	refused *protocol.NoEffectError, verifier NoEffectVerifier) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closed || c.state != stateExecuting || c.current == nil || !sameProposal(proposal, c.current.proposal) || !decisionMatches(decision, c.current) {
+		return c.recordUnknownExecutionLocked(proposal, decision, errors.New("conversation changed while executor was running"))
+	}
+	if err := ctx.Err(); err != nil {
+		return c.recordUnknownExecutionLocked(proposal, decision, fmt.Errorf("execution canceled; provider result withheld: %w", err))
+	}
+	if verifier == nil || refused.Tool != proposal.Tool {
+		return c.recordUnknownExecutionLocked(proposal, decision, errors.New("executor refusal has no independent no-effect proof for this call"))
+	}
+	if err := verifier.VerifyNoEffect(ctx, proposal, decision, c.generation, c.treeDigest); err != nil {
+		return c.recordUnknownExecutionLocked(proposal, decision, fmt.Errorf("no-effect proof failed; provider result withheld: %v", err))
+	}
+	result, err := protocol.NoEffectResult(resultFor(proposal, decision, nil))
+	if err != nil {
+		return c.recordUnknownExecutionLocked(proposal, decision, fmt.Errorf("build no-effect result: %v", err))
+	}
+	if err := c.appendResultLocked(ctx, "provider_tool_result", result, "", c.generation, c.treeDigest, 0, "", ""); err != nil {
+		return c.recordUnknownExecutionLocked(proposal, decision, fmt.Errorf("persist no-effect result; IPC result withheld: %v", err))
+	}
+	if c.cfg.AdvanceProgress != nil {
+		if err := c.cfg.AdvanceProgress(ctx); err != nil {
+			return c.failLocked(fmt.Errorf("advance workflow checkpoint after no-effect result: %v", err))
+		}
+	}
+	return &protocol.NoEffectError{Tool: proposal.Tool, Err: refused.Err}
 }
 
 func (c *Conversation) recordUnknownExecution(proposal protocol.Proposal, decision gate.Decision, cause error, output ...json.RawMessage) error {
