@@ -311,9 +311,9 @@ Decisions taken during implementation:
 
 - `tbound-project-bundle/v1` is a bounded manifest plus content stream that the user's own client builds from the original project. The service account never reads the original repository.
 - The bundle covers regular files and directories only. It records each path's type, mode bits (executable or not), size and SHA-256.
-- It excludes `.git` administration, the registration's protected paths, and operator-configured private paths. Those are listed as excluded.
+- It always excludes `.git` administration. The registration is created after import, so the bundle cannot read its protected paths. The user passes those paths, and any private paths, with `--exclude` (repeatable). Every excluded path is listed as excluded.
 - Symlinks, hard links, devices, sockets, FIFOs, special metadata, files over the size limit, and totals over the limit are refused with the path and reason.
-- The client prints the included and excluded sets before sending.
+- The client prints every included path and every excluded path, one per line, before sending.
 - The service validates every path, type, size and digest against the manifest before it creates the managed project directory. A mismatch refuses the whole import and writes nothing.
 - Import creates a new managed project and returns its measured baseline. Registering that project in a signed registration remains the administrative step.
 

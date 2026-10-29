@@ -25,6 +25,9 @@ import (
 const (
 	productEventMaxTextBytes = 16 << 10
 	productEventMaxPaths     = 256
+	// productEventPathsBudget bounds the worst-case encoded size of one review event's paths. Each byte of a
+	// path may be escaped as \u00XX, so a long path with `<` can take six bytes per byte.
+	productEventPathsBudget = 256 << 10
 	// productObserveBudget keeps one observe response well inside productprotocol.MaxResponseBytes.
 	productObserveBudget = 768 << 10
 	// productViewPromptBytes bounds the prompt a session snapshot repeats; the full prompt is the
@@ -100,12 +103,7 @@ func (p *productEventProjector) turn(turn productsession.Turn) ([]productprotoco
 		if err != nil {
 			return nil, err
 		}
-		review := productprotocol.Event{Kind: productprotocol.EventTurnAwaitingReview, TurnID: turn.ID,
-			CandidateDigest: turn.CandidateDigest, Paths: paths[:min(len(paths), productEventMaxPaths)]}
-		if len(paths) != 0 {
-			review.Text = fmt.Sprintf("%d changed paths", len(paths))
-		}
-		events = append(events, review)
+		events = append(events, reviewEvent(turn, paths))
 	}
 	if final && turn.Resolution != "" {
 		events = append(events, productprotocol.Event{Kind: productprotocol.EventTurnResolution, TurnID: turn.ID,
@@ -123,6 +121,25 @@ func (p *productEventProjector) turn(turn productsession.Turn) ([]productprotoco
 		p.mu.Unlock()
 	}
 	return events, nil
+}
+
+// reviewEvent is the awaiting-review event of a candidate. Text carries the full count; Paths is bounded.
+func reviewEvent(turn productsession.Turn, paths []string) productprotocol.Event {
+	return productprotocol.Event{Kind: productprotocol.EventTurnAwaitingReview, TurnID: turn.ID,
+		CandidateDigest: turn.CandidateDigest, Paths: boundPaths(paths), Text: fmt.Sprintf("%d changed paths", len(paths))}
+}
+
+// boundPaths keeps the leading paths, at most productEventMaxPaths, whose worst-case encoded size fits
+// productEventPathsBudget. The caller sorts the paths, so the kept set is deterministic.
+func boundPaths(paths []string) []string {
+	size := 0
+	for i, p := range paths {
+		size += 6*len(p) + 3 // each byte escaped as \u00XX, then the quotes and the comma
+		if i == productEventMaxPaths || size > productEventPathsBudget {
+			return paths[:i]
+		}
+	}
+	return paths
 }
 
 func terminalEvent(turn productsession.Turn) (productprotocol.Event, bool) {

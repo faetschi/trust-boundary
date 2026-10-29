@@ -292,7 +292,7 @@ func awaitingReview(f *chatFake) func(id string) {
 			{Path: "src/a.go", Op: "modify", Diff: "@@ -1 +1 @@\n-old\n+new\n"}}}
 		tv := f.turn(id)
 		tv.State, tv.CandidateDigest = "awaiting_review", "sha256:cand1"
-		f.emit(pp.Event{Kind: pp.EventTurnAwaitingReview, TurnID: id, CandidateDigest: "sha256:cand1", Paths: []string{"src/a.go"}})
+		f.emit(pp.Event{Kind: pp.EventTurnAwaitingReview, TurnID: id, CandidateDigest: "sha256:cand1", Text: "1 changed paths", Paths: []string{"src/a.go"}})
 	}
 }
 
@@ -318,7 +318,7 @@ func TestChatReviewShowsDiffAndPublishesTheExactCandidate(t *testing.T) {
 	if run.exit() != 0 {
 		t.Fatalf("exit %d, err %v, stderr %q", run.exit(), run.err, run.stderr)
 	}
-	inOrder(t, run.stdout, "awaiting review: 1 changed path(s), candidate sha256:cand1", "candidate sha256:cand1: 1 change(s)",
+	inOrder(t, run.stdout, "awaiting review: 1 changed paths, candidate sha256:cand1", "candidate sha256:cand1: 1 change(s)",
 		"modify src/a.go", "| +new", "[p]ublish / [d]iscard / [k]eep?", "publish requested for turn-1",
 		"review decision recorded (publish)", "[turn-1] outcome: published")
 	got := f.requests(pp.OpResolveTurn)
@@ -676,6 +676,19 @@ func TestChatCleanStripsTerminalControls(t *testing.T) {
 func (f *chatFake) turnCopy(id string) *pp.TurnView {
 	tv := *f.turn(id)
 	return &tv
+}
+
+// The service bounds Paths at 256 but Text carries the full count, so the review line must print Text.
+func TestChatReviewLineShowsTheFullCountNotTheBoundedPaths(t *testing.T) {
+	var paths []string
+	for i := 0; i < 256; i++ {
+		paths = append(paths, fmt.Sprintf("p%03d", i))
+	}
+	var out bytes.Buffer
+	printEvent(&out, pp.Event{Kind: pp.EventTurnAwaitingReview, TurnID: "turn-1", CandidateDigest: "sha256:cand", Text: "300 changed paths", Paths: paths})
+	if !strings.HasPrefix(out.String(), "[turn-1] awaiting review: 300 changed paths, candidate sha256:cand\n") {
+		t.Fatalf("review line %q does not carry the full count", strings.SplitN(out.String(), "\n", 2)[0])
+	}
 }
 
 func TestChatServiceNotRunningIsPlainErrorNotAnUnknownOutcome(t *testing.T) {
