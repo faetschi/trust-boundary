@@ -17,7 +17,9 @@ decisions, blockers, and next steps. History before this date is in Git.
   since F13 are fixed and merged, but not yet on the guest (F14): a gate DENY no
   longer closes the conversation (`c209d63`), recovery preview indexes the right
   authorization record kind (`a40fbb9`), a denied-after-effect Bash command is
-  settled (`f483fad`), and a governed read honours `offset`/`limit` (`039ac82`).
+  settled (`f483fad`), a governed read honours `offset`/`limit` (`039ac82`), and
+  governed bash now returns bounded stdout/stderr to the model, which the five
+  compliant bash pilot tasks need, plus workspace path aliases (`b0ca40a`).
 - **Production resume is fixed at component level, not proven end to end.**
   Since `46fa96a` and `8c5c24a` a resumed session re-accepts its exact pre-crash
   transitions and Bash evidence and can promote new writes; publication
