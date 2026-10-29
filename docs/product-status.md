@@ -1,5 +1,7 @@
 # TBound product status
 
+> **Takeover, 2026-10-29.** Read the [audit handoff](product-audit-handoff-2026-10-29.md) first. For this takeover it supersedes the stale next-action lists in [Handoff 2026-10-26](#handoff-2026-10-26) and [Resumed 2026-10-27](#resumed-2026-10-27-on-fabian). Selective P4 and P5 ports from the thesis are in progress. No product-to-thesis merge happens before the F14 freeze. A reviewed integration branch is proposed only after that freeze.
+
 This is the product-branch checkpoint for [the product plan](product-plan.md). It records what is implemented and verified on `feature/tbound-product`. The thesis state lives in `TASK_STATE.md` on `codex/tbound-prototype` and is not tracked here.
 
 ## Status by package (P0-P11)
