@@ -387,15 +387,26 @@ func TestKillCgroupRefuses(t *testing.T) {
 	}
 }
 
-// The wait is for the processes to leave: populated 1 at first, 0 a little later.
+// The wait is for the processes to leave: populated 1 at first, 0 a little later. The 0 is renamed
+// over the file: an in-place write can be read empty, and killCgroup refuses that.
 func TestKillCgroupWaitsForTheProcessesToLeave(t *testing.T) {
 	dir, path := fakeCgroupDir(t, true, "populated 1\n")
+	eventsPath := filepath.Join(path, "cgroup.events")
+	nextEventsPath := filepath.Join(path, "cgroup.events.next")
+	if err := os.WriteFile(nextEventsPath, []byte("populated 0\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	eventsRenamed := make(chan error, 1)
 	go func() {
 		time.Sleep(50 * time.Millisecond)
-		_ = os.WriteFile(filepath.Join(path, "cgroup.events"), []byte("populated 0\n"), 0o600)
+		eventsRenamed <- os.Rename(nextEventsPath, eventsPath)
 	}()
-	if err := killCgroup(dir, 5*time.Second); err != nil {
-		t.Fatalf("killCgroup: %v", err)
+	killErr := killCgroup(dir, 5*time.Second)
+	if err := <-eventsRenamed; err != nil {
+		t.Fatalf("rename cgroup.events: %v", err)
+	}
+	if killErr != nil {
+		t.Fatalf("killCgroup: %v", killErr)
 	}
 }
 
