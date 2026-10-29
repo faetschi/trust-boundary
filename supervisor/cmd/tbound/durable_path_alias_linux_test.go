@@ -106,8 +106,8 @@ func TestGovernedReplayAcceptsWorkspaceAliasesForEveryPathTool(t *testing.T) {
 	if err := decodeGovernedResult(results[3].Output, &last); err != nil {
 		t.Fatalf("decode the re-read: %v", err)
 	}
-	if first.Path != e05TaskPath || first.Content != e05TaskBaseline {
-		t.Fatalf("first read released path %q content %q; want %q and %q", first.Path, first.Content, e05TaskPath, e05TaskBaseline)
+	if first.Path != e05TaskPath || first.Content != "before\n" {
+		t.Fatalf("first read released path %q content %q; want %q and the replay fixture's before content", first.Path, first.Content, e05TaskPath)
 	}
 	if last.Path != "out.txt" || last.Content != "edited write\n" {
 		t.Fatalf("re-read released path %q content %q; want out.txt and the edited canonical file", last.Path, last.Content)
