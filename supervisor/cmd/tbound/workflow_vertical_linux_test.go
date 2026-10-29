@@ -21,6 +21,7 @@ import (
 	"tbound/supervisor/internal/providerbridge"
 	"tbound/supervisor/internal/sessionlaunch"
 	"tbound/supervisor/internal/sessionrepo"
+	"tbound/supervisor/internal/trialfix"
 	"tbound/supervisor/internal/workflowrecovery"
 	"tbound/supervisor/internal/workspace"
 )
@@ -415,10 +416,31 @@ func runWorkflowVertical(t *testing.T, launchProof bool, retries int) {
 	}
 }
 
+// verticalFixtureSetup is what a vertical fixture varies: the workspace it seeds, the prompt it admits
+// and the provider conversation it drives.
+type verticalFixtureSetup struct {
+	seed     []trialfix.File
+	prompt   string
+	provider func(providerbridge.Config, *audit.Journal) (*providerbridge.Conversation, error)
+}
+
 // newWorkflowVerticalFixture builds a read-only workflow; a production command runner also allows Bash
 // with the output scope workflowVerticalBashOutput.
 func newWorkflowVerticalFixture(t *testing.T, launchProof bool, retries int,
 	turns []providerbridge.DevelopmentProviderTurn, bash ...*productionCommandRunner) *workflowVerticalFixture {
+	t.Helper()
+	return newWorkflowVerticalFixtureWith(t, verticalFixtureSetup{
+		seed:   []trialfix.File{{Path: "task.txt", Content: []byte("vertical fixture\n")}},
+		prompt: workflowVerticalPrompt,
+		provider: func(config providerbridge.Config, journal *audit.Journal) (*providerbridge.Conversation, error) {
+			return providerbridge.NewDevelopmentOfflineConversation(config, journal, turns)
+		},
+	}, launchProof, retries, bash...)
+}
+
+// newWorkflowVerticalFixtureWith is newWorkflowVerticalFixture over an explicit workspace, prompt and provider.
+func newWorkflowVerticalFixtureWith(t *testing.T, setup verticalFixtureSetup, launchProof bool, retries int,
+	bash ...*productionCommandRunner) *workflowVerticalFixture {
 	t.Helper()
 	ctx := context.Background()
 	root := privateGovernedTestRoot(t)
@@ -429,8 +451,20 @@ func newWorkflowVerticalFixture(t *testing.T, launchProof bool, retries int,
 			t.Fatal(err)
 		}
 	}
-	if err := os.WriteFile(filepath.Join(sourcePath, "task.txt"), []byte("vertical fixture\n"), 0o600); err != nil {
-		t.Fatal(err)
+	for _, file := range setup.seed {
+		target := filepath.Join(sourcePath, file.Path)
+		if file.Dir {
+			if err := os.MkdirAll(target, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			continue
+		}
+		if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(target, file.Content, 0o600); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	storeJournal, err := audit.Open(filepath.Join(root, "store-audit.jsonl"))
@@ -604,7 +638,7 @@ func newWorkflowVerticalFixture(t *testing.T, launchProof bool, retries int,
 		OwnerIncarnationDigest: owner.OwnerIncarnationDigest(), RootIdentityDigest: owner.TrustedRootIdentityDigest(),
 		StoreIdentityDigest: storeIdentity, AdmissionIdentityDigest: admissionIdentity,
 		CommandIdentityDigest: commandIdentity, AdminIdentityDigest: adminIdentity,
-		TaskDigest: bareWorkflowDigest(taskDigest), PromptDigest: bareWorkflowDigest(digestBytes([]byte(workflowVerticalPrompt))),
+		TaskDigest: bareWorkflowDigest(taskDigest), PromptDigest: bareWorkflowDigest(digestBytes([]byte(setup.prompt))),
 		PolicyDigest: barePolicyDigest(policy.Digest()), ProfileDigest: bareWorkflowDigest(digestBytes([]byte(workflowVerticalProfile))),
 		ImageDigest:         bareWorkflowDigest(digestBytes([]byte("vertical-image"))),
 		RuntimeDigest:       bareWorkflowDigest(digestBytes([]byte("vertical-runtime"))),
@@ -647,10 +681,10 @@ func newWorkflowVerticalFixture(t *testing.T, launchProof bool, retries int,
 	if err := authority.BindWorkflowLedger(ledger, checkpoint.Pins, 1024); err != nil {
 		t.Fatalf("bind the mandatory actual workflow ledger: %v", err)
 	}
-	if err := authority.BindInitialWorkflowPrompt(workflowVerticalTaskID, workflowVerticalPrompt, taskDigest); err != nil {
+	if err := authority.BindInitialWorkflowPrompt(workflowVerticalTaskID, setup.prompt, taskDigest); err != nil {
 		t.Fatalf("bind the exact host-catalog task prompt: %v", err)
 	}
-	if err := authority.BindInitialWorkflowPrompt(workflowVerticalTaskID, workflowVerticalPrompt+" changed", taskDigest); err == nil {
+	if err := authority.BindInitialWorkflowPrompt(workflowVerticalTaskID, setup.prompt+" changed", taskDigest); err == nil {
 		t.Fatal("changed initial prompt replaced the exact fresh catalog prompt")
 	}
 	if launchProof {
@@ -671,21 +705,18 @@ func newWorkflowVerticalFixture(t *testing.T, launchProof bool, retries int,
 	config := providerbridge.Config{WorkflowID: workflowVerticalID, ConversationID: workflowVerticalConversation,
 		ProfileID: workflowVerticalProfile, InitialGenerationID: baseline.ID(), InitialTreeDigest: baseline.TreeDigest(),
 		SystemPrompt: governedReplaySystem, DeveloperPrompt: governedReplayDeveloper}
-	conversation, err := authority.newProviderConversation(config, func(config providerbridge.Config,
-		journal *audit.Journal) (*providerbridge.Conversation, error) {
-		return providerbridge.NewDevelopmentOfflineConversation(config, journal, turns)
-	})
+	conversation, err := authority.newProviderConversation(config, setup.provider)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { conversation.Close() })
-	if err := authority.AdmitPrompt(conversation, durable, workflowVerticalTaskID, workflowVerticalPrompt+" changed"); err == nil {
+	if err := authority.AdmitPrompt(conversation, durable, workflowVerticalTaskID, setup.prompt+" changed"); err == nil {
 		t.Fatal("changed initial prompt reached the provider conversation")
 	}
-	if err := authority.AdmitPrompt(conversation, durable, workflowVerticalTaskID, workflowVerticalPrompt); err != nil {
+	if err := authority.AdmitPrompt(conversation, durable, workflowVerticalTaskID, setup.prompt); err != nil {
 		t.Fatalf("admit the exact host-catalog prompt: %v", err)
 	}
-	if err := authority.AdmitPrompt(conversation, durable, workflowVerticalTaskID, workflowVerticalPrompt); err == nil {
+	if err := authority.AdmitPrompt(conversation, durable, workflowVerticalTaskID, setup.prompt); err == nil {
 		t.Fatal("duplicate initial prompt was admitted to the provider conversation")
 	}
 	return &workflowVerticalFixture{ctx: ctx, authority: authority, ledger: ledger, conversation: conversation,

@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"io/fs"
 	"os"
+	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -35,6 +37,101 @@ func pilotSet(t *testing.T) fstest.MapFS {
 		t.Fatal(err)
 	}
 	return result
+}
+
+// t5Set is pilotSet with the artifacts/ tree replaced by the T5 draft's artifacts.
+func t5Set(t *testing.T) fstest.MapFS {
+	t.Helper()
+	set := pilotSet(t)
+	for name := range set {
+		if strings.HasPrefix(name, "artifacts/") {
+			delete(set, name)
+		}
+	}
+	root := os.DirFS(t5DraftDir)
+	if err := fs.WalkDir(root, "artifacts", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		data, err := fs.ReadFile(root, path)
+		if err != nil {
+			return err
+		}
+		set[path] = &fstest.MapFile{Data: data}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return set
+}
+
+// TestConstructT5DraftPassesAdmission runs on the T5 draft the admission the original pilot passes.
+func TestConstructT5DraftPassesAdmission(t *testing.T) {
+	original, draft := loadT5ProvenanceManifest(t), loadT5Manifest(t)
+	originalReport := CheckConstructs(original, pilotSet(t), evalcorpus.PilotQuotas(), nil, pilotNode(t))
+	draftReport := CheckConstructs(draft, t5Set(t), evalcorpus.PilotQuotas(), nil, pilotNode(t))
+	if !reflect.DeepEqual(originalReport.Summary, draftReport.Summary) {
+		t.Fatalf("construct counts differ:\noriginal %+v\ndraft    %+v", originalReport.Summary, draftReport.Summary)
+	}
+	if err := CheckManifestArtifactsWith(draft, os.DirFS(t5DraftDir+"/artifacts"), pilotNode(t)); err != nil {
+		t.Fatal(err)
+	}
+	if err := CheckTrials(draft.Cases, nil); err != nil {
+		t.Fatal(err)
+	}
+	// Forced human sign-off, as TestValidateDraftPilotHasNoReviewGate does, leaves the structural rules.
+	signed := draft
+	signed.Cases = slices.Clone(draft.Cases)
+	for i := range signed.Cases {
+		signed.Cases[i].Signoff.Human = true
+	}
+	for _, violation := range evalcorpus.Validate(signed, evalcorpus.PilotQuotas()) {
+		t.Errorf("%+v", violation)
+	}
+	records := loadT5Records(t)
+	for _, c := range draftReport.Cases {
+		if _, ok := records[c.CaseID]; !ok {
+			continue
+		}
+		checks := 0
+		for _, check := range c.Checks {
+			if check.Name != "leak-prompt" {
+				continue
+			}
+			checks++
+			if check.Status != "pass" {
+				t.Errorf("%s: leak-prompt is %s: %s", c.CaseID, check.Status, check.Reason)
+			}
+		}
+		if checks != 1 {
+			t.Errorf("%s has %d leak-prompt checks, want 1", c.CaseID, checks)
+		}
+	}
+}
+
+// The F14 runbook installs corpus/pilot/artifacts of the frozen commit and builds the reviewed manifest from a draft
+// after the freeze, so the T5 draft must resolve against that directory without a new frozen commit.
+func TestT5DraftResolvesAgainstTheInstalledPilotArtifacts(t *testing.T) {
+	const installed = "../../../corpus/pilot/artifacts"
+	if err := CheckManifestArtifactsWith(loadT5Manifest(t), os.DirFS(installed), pilotNode(t)); err != nil {
+		t.Fatalf("T5 draft does not resolve against %s: %v", installed, err)
+	}
+	entries, err := os.ReadDir(t5DraftDir + "/artifacts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		draft, err := os.ReadFile(t5DraftDir + "/artifacts/" + entry.Name())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if copy, err := os.ReadFile(installed + "/" + entry.Name()); err != nil || string(copy) != string(draft) {
+			t.Errorf("%s in %s is not byte-identical to the T5 draft artifact: %v", entry.Name(), installed, err)
+		}
+	}
 }
 
 func TestConstructSourcesAndOverlap(t *testing.T) {

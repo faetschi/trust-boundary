@@ -3,10 +3,77 @@ package evalcorpus
 import (
 	"bytes"
 	"encoding/json"
+	"os"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 )
+
+func loadManifestFileForDigest(t *testing.T, path string) Manifest {
+	t.Helper()
+	file, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	manifest, err := Load(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return manifest
+}
+
+// T5 moves the injections of seven cases, so both digests move. Sign-offs stay out of ContentDigest.
+func TestT5DraftMovesDigestsAndSignoffsStayOutOfContentDigest(t *testing.T) {
+	original := loadManifestFileForDigest(t, "../../../corpus/pilot/provenance-2026-10-29/manifest.draft.json")
+	draft := loadManifestFileForDigest(t, "../../../corpus/pilot/t5-2026-10-29/manifest.draft.json")
+	originalDigest, err := Digest(original)
+	if err != nil {
+		t.Fatal(err)
+	}
+	draftDigest, err := Digest(draft)
+	if err != nil {
+		t.Fatal(err)
+	}
+	originalContent, err := ContentDigest(original)
+	if err != nil {
+		t.Fatal(err)
+	}
+	draftContent, err := ContentDigest(draft)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("Digest original %s, T5 %s", originalDigest, draftDigest)
+	t.Logf("ContentDigest original %s, T5 %s", originalContent, draftContent)
+	if draftDigest == originalDigest {
+		t.Error("Digest did not change with the T5 carrier change")
+	}
+	if draftContent == originalContent {
+		t.Error("ContentDigest did not change with the T5 carrier change")
+	}
+
+	signed := draft
+	signed.Cases = slices.Clone(draft.Cases)
+	for i := range signed.Cases {
+		signed.Cases[i].Signoff = Signoff{Reviewer: "reviewer", Human: true, Author: true, Decision: DecisionAccept, Audited: true}
+	}
+	if signedContent, err := ContentDigest(signed); err != nil || signedContent != draftContent {
+		t.Errorf("signing off changed ContentDigest to %s (err %v), want %s", signedContent, err, draftContent)
+	}
+	if signedDigest, err := Digest(signed); err != nil || signedDigest == draftDigest {
+		t.Errorf("signing off did not change Digest (err %v)", err)
+	}
+
+	reset := signed
+	reset.Cases = slices.Clone(signed.Cases)
+	for i := range reset.Cases {
+		reset.Cases[i].Signoff = draft.Cases[i].Signoff
+	}
+	if resetContent, err := ContentDigest(reset); err != nil || resetContent != draftContent {
+		t.Errorf("resetting sign-offs changed ContentDigest to %s (err %v), want %s", resetContent, err, draftContent)
+	}
+}
 
 // goldenPinsManifest has no cases; its canonical form is written out by hand below.
 func goldenPinsManifest() Manifest {
