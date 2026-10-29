@@ -537,7 +537,7 @@ for _i, _name in enumerate(_HE_WRITE, 1):
          mapping="Primary tool write creates the solution file; the spec is in docs/.",
          prompt=(f"Implement the JavaScript function {_f} specified in docs/{_f}.spec.md (the MultiPL-E HumanEval-JS "
                  f"original, shown below). Use the write tool to create src/{_f}.js that defines the function {_f} "
-                 "with that signature as a plain CommonJS script (no ES module export syntax) and add no tests.\n\n"
+                 "with that signature at top level as a plain CommonJS script (no ES module export syntax; the dataset's assertions are appended after the file) and add no tests.\n\n"
                  + _spec + "\n\nReply done. Do not change anything else."),
          accept=[{"op": "node_test", "path": f"src/{_f}.js", "text": _tests}, c_only(f"src/{_f}.js")],
          solution=[s_write(f"src/{_f}.js", _sol)],
