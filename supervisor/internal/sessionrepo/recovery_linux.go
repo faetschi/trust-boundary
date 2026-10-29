@@ -1110,6 +1110,7 @@ func samePolicyDecision(left, right delta.PolicyDecision) bool {
 
 func sameCommandSpec(left, right CommandSpec) bool {
 	if left.Executable != right.Executable || left.WorkingDirectory != right.WorkingDirectory ||
+		left.TimeoutNanoseconds != right.TimeoutNanoseconds ||
 		len(left.Args) != len(right.Args) || (left.Args == nil) != (right.Args == nil) ||
 		!sameOutputScopePaths(left.DeclaredOutputPaths, right.DeclaredOutputPaths) {
 		return false
