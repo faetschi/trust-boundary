@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -22,6 +23,18 @@ type planned struct {
 
 func modeBits(info fs.FileInfo) os.FileMode {
 	return info.Mode() & (os.ModePerm | os.ModeSetuid | os.ModeSetgid | os.ModeSticky)
+}
+
+// protectedExistingDirectory checks logical and its ancestors that exist. A missing directory is not checked:
+// setup creates it with a safe mode, and its existing ancestors are checked in its place.
+func (h *host) protectedExistingDirectory(logical string) error {
+	for {
+		err := h.protectedDirectory(logical)
+		if !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
+		logical = filepath.Dir(logical)
+	}
 }
 
 // Setup makes the host match the plan: accounts, directories, installed files and the unit. It plans
@@ -69,6 +82,12 @@ func Setup(env Env, cfg Config, binary Candidate) (Report, error) {
 	// before the first write. A dry run reports the same refusal.
 	if err := h.refuseBadHostInputs(cfg, summary, files[RegistrationPublicKeyPath], cfg.RegistrationPublicKey); err != nil {
 		return *h.rep, err
+	}
+	// The binary and the pinned key are installed below these directories, so update and rollback refuse the same hosts.
+	for _, dir := range []string{BinaryDir, filepath.Dir(ReleasePublicKeyPath)} {
+		if err := h.protectedExistingDirectory(dir); err != nil {
+			return *h.rep, err
+		}
 	}
 	plan := accounts
 	for _, n := range directories {

@@ -385,6 +385,9 @@ func (exitCode2) Error() string { return "exit status 2" }
 func (exitCode2) ExitCode() int { return 2 }
 
 func TestSetupLiveRunsAccountsOwnersAndReloadInOrder(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("a live run refuses a test root that the test user owns, so the directories must be root-owned")
+	}
 	f := newFixture(t)
 	var calls []string
 	var chowns []string
@@ -499,5 +502,34 @@ func TestSetupRefusesHostInputsWhosePathHasASymlinkComponent(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestSetupRefusesAnUnprotectedBinaryAncestorBeforeAnyWrite(t *testing.T) {
+	for _, tc := range []struct {
+		dir  string
+		mode os.FileMode
+	}{{"/usr/local", 0o777}, {"/usr", 0o775}, {"/etc", 0o777}} {
+		for _, dryRun := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s %04o, dry run %v", tc.dir, tc.mode, dryRun), func(t *testing.T) {
+				f := newFixture(t)
+				if err := os.MkdirAll(f.path(tc.dir), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Chmod(f.path(tc.dir), tc.mode); err != nil {
+					t.Fatal(err)
+				}
+				f.env.DryRun = dryRun
+				_, err := f.setup()
+				if !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), tc.dir+" is writable by group or others") {
+					t.Fatalf("setup below %s was not refused: %v", tc.dir, err)
+				}
+				for _, written := range []string{BinaryPath, ConfigDir, UnitPath} {
+					if _, err := os.Lstat(f.path(written)); err == nil {
+						t.Fatalf("a refused setup created %s", written)
+					}
+				}
+			})
+		}
 	}
 }
