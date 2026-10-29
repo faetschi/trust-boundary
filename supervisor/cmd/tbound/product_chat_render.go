@@ -71,7 +71,7 @@ func printEvent(w io.Writer, ev productprotocol.Event) {
 	case productprotocol.EventTurnCancelRequested:
 		fmt.Fprintf(w, "%scancel requested\n", head)
 	case productprotocol.EventTurnAwaitingReview:
-		fmt.Fprintf(w, "%sawaiting review: %d changed path(s), candidate %s\n", head, len(ev.Paths), chatLine(ev.CandidateDigest))
+		fmt.Fprintf(w, "%sawaiting review: %s, candidate %s\n", head, chatLine(ev.Text), chatLine(ev.CandidateDigest))
 		for _, p := range ev.Paths {
 			fmt.Fprintf(w, "%s  %s\n", head, chatLine(p))
 		}

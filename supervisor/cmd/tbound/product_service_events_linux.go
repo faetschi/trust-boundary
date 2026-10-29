@@ -125,12 +125,8 @@ func (p *productEventProjector) turn(turn productsession.Turn) ([]productprotoco
 
 // reviewEvent is the awaiting-review event of a candidate. Text carries the full count; Paths is bounded.
 func reviewEvent(turn productsession.Turn, paths []string) productprotocol.Event {
-	review := productprotocol.Event{Kind: productprotocol.EventTurnAwaitingReview, TurnID: turn.ID,
-		CandidateDigest: turn.CandidateDigest, Paths: boundPaths(paths)}
-	if len(paths) != 0 {
-		review.Text = fmt.Sprintf("%d changed paths", len(paths))
-	}
-	return review
+	return productprotocol.Event{Kind: productprotocol.EventTurnAwaitingReview, TurnID: turn.ID,
+		CandidateDigest: turn.CandidateDigest, Paths: boundPaths(paths), Text: fmt.Sprintf("%d changed paths", len(paths))}
 }
 
 // boundPaths keeps the leading paths, at most productEventMaxPaths, whose worst-case encoded size fits
