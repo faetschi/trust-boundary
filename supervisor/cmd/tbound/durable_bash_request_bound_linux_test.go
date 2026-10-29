@@ -54,10 +54,11 @@ func releasedBashResultText(t *testing.T, sequence uint64, callID string, argume
 	return string(encoded)
 }
 
-// TestBashCumulativeRequestFitsWithMarginAtThePilotToolResultCeiling builds the provider request of the largest pilot
-// run, in which every tool result is a settled bash command whose two streams are full of control bytes. Control bytes
-// expand the most, so this is the worst case. The request must fit the provider cap with half of it to spare, because
-// the transcript also carries prompts and the calls themselves.
+// TestBashCumulativeRequestFitsWithMarginAtThePilotToolResultCeiling measures the worst-case bash-stream contribution
+// at the signed pilot ceiling of 17 host calls and asserts the modeled request stays within half the cap. Every tool
+// result is a settled bash command whose two streams are full of control bytes, which expand the most. The modeled
+// request holds those results, a prompt allowance, and the calls. It is not a guarantee that a whole request fits.
+// Assistant text, original arguments, large reads, and write or edit arguments are not bounded by it.
 func TestBashCumulativeRequestFitsWithMarginAtThePilotToolResultCeiling(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("the durable bash summary is built for Linux only")
