@@ -120,12 +120,14 @@ func TestGoProjectionEqualsTheAdapterToolSurfaceForEveryTool(t *testing.T) {
 				t.Errorf("%s: Go accepts arguments without the required %q", tool, req)
 			}
 		}
+		// The published schemas omit additionalProperties:false, so a property they do not list is not
+		// schema-forbidden. Go permits and ignores it, and the digest still covers the whole argument object.
 		withExtra := map[string]any{"unlisted": 1}
 		for k, v := range sh.value {
 			withExtra[k] = v
 		}
-		if canonical(withExtra) == nil {
-			t.Errorf("%s: Go accepts an argument the adapter's schema does not list", tool)
+		if canonical(withExtra) != nil {
+			t.Errorf("%s: Go refuses an argument the adapter's schema does not list, though the schema does not forbid it", tool)
 		}
 	}
 	if _, err := protocol.CanonicalArguments("write2", json.RawMessage(`{}`)); err == nil {
