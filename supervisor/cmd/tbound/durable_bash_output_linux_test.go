@@ -371,16 +371,15 @@ func firstRequestBashDescription(t *testing.T, journal *audit.Journal) string {
 	return ""
 }
 
-// The bash description a provider is told must match what the executor then releases: a session whose
-// executor returns only the exit code (serve --pi) must not be told it gets stdout and stderr, and a
-// product turn, whose executor releases bounded output, must be.
+// Both modes release output. The thesis route keeps its frozen description for evidence compatibility;
+// the product route advertises its configurable stream projection.
 func TestBashOutputAdvertisedDescriptionMatchesTheExecutorResult(t *testing.T) {
 	for _, c := range []struct {
-		name   string
-		bound  int
-		output bool
+		name             string
+		bound            int
+		advertisesOutput bool
 	}{
-		{"serve --pi executor, exit code only", 0, false},
+		{"serve --pi executor, frozen description", 0, false},
 		{"product turn executor, bounded output", productCommandOutputBytes, true},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -389,13 +388,15 @@ func TestBashOutputAdvertisedDescriptionMatchesTheExecutorResult(t *testing.T) {
 			if command == nil {
 				t.Fatal("the released summary has no command result")
 			}
-			released := command.Stdout != nil && command.Stderr != nil
 			description := firstRequestBashDescription(t, fixture.providerJournal)
-			if released != c.output {
-				t.Fatalf("the executor released output = %t, want %t", released, c.output)
+			if command.Stdout == nil || command.Stderr == nil {
+				t.Fatal("the executor did not release both command streams")
 			}
-			if advertised := strings.Contains(description, "stdout"); advertised != released {
-				t.Errorf("the provider is told %q, but the executor released output = %t", description, released)
+			if advertised := strings.Contains(description, "stdout"); advertised != c.advertisesOutput {
+				t.Errorf("the provider is told %q, want advertised output = %t", description, c.advertisesOutput)
+			}
+			if c.bound == 0 && description != "Execute a bash command. Requests are forwarded to tbound." {
+				t.Errorf("the frozen thesis Bash description changed: %q", description)
 			}
 		})
 	}

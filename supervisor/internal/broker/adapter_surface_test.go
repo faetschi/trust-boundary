@@ -227,7 +227,7 @@ func TestAdvertisedToolSurfaceEqualsTheAdapterTextAndItsPins(t *testing.T) {
 		route      openrouter.Route
 		bashOutput bool
 	}{
-		{"serve --pi, exit code only", openrouter.Route{}, false},
+		{"serve --pi, frozen description", openrouter.Route{}, false},
 		{"product turn, bounded output", openrouter.EngineeringRoute().WithCommandOutput(true), true},
 	} {
 		t.Run(c.name, func(t *testing.T) {
