@@ -44,6 +44,7 @@ type sealedD09Cell struct {
 	templateDigest string
 	readOnly       bool // the command only reads the view (route probe `cat`)
 	receipt        piruntime.D09CommandReceipt
+	target         string // the view file the command appends to; task.txt when empty
 }
 
 func (c *sealedD09Cell) Run(_ context.Context, view *sessionrepo.CommandView,
@@ -58,7 +59,11 @@ func (c *sealedD09Cell) Run(_ context.Context, view *sessionrepo.CommandView,
 		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, err
 	}
 	if !c.readOnly {
-		task, err := os.OpenFile(fmt.Sprintf("/proc/self/fd/%d/task.txt", source.Fd()), os.O_WRONLY|os.O_APPEND, 0)
+		target := c.target
+		if target == "" {
+			target = "task.txt"
+		}
+		task, err := os.OpenFile(fmt.Sprintf("/proc/self/fd/%d/%s", source.Fd(), target), os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0o600)
 		if err != nil {
 			return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, err
 		}

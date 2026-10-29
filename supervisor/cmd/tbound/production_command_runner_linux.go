@@ -30,7 +30,9 @@ type productionCommandRunner struct {
 	receipts        map[string]sessionrepo.CommandSettlement
 	settledReceipts map[string]sessionrepo.CommandSettlement
 	evidenceRunners map[string]sessionrepo.CommandRunner
-	settled         int
+	// historical is the activated history's frozen Bash evidence. It answers for those effects only.
+	historical *frozenBashHistory
+	settled    int
 	// survivorsTolerated is set by the binder for a no-reap/v1 lease and only then: its command cells are
 	// left running, so their settlement must carry the tolerance flag and no other lease may carry it.
 	survivorsTolerated bool
@@ -247,8 +249,13 @@ func (r *productionCommandRunner) VerifyProductionBashEvidence(ctx context.Conte
 		return err
 	}
 	r.mu.Lock()
+	historical := r.historical
 	signed := r.evidenceRunners[operation.ViewID]
 	r.mu.Unlock()
+	// A frozen effect is verified against its frozen evidence only; it never falls back to the live runner.
+	if handled, err := historical.verifyOperation(operation); handled {
+		return err
+	}
 	if signed == nil {
 		return commandEvidenceRefused("lease-verify-no-runner")
 	}
@@ -260,6 +267,13 @@ func (r *productionCommandRunner) VerifyProductionBashEvidence(ctx context.Conte
 		return commandEvidenceRefused("lease-verify", err)
 	}
 	return nil
+}
+
+// bindHistoricalBash hands the activated history's frozen Bash evidence to the runner.
+func (r *productionCommandRunner) bindHistoricalBash(frozen *frozenBashHistory) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.historical = frozen
 }
 
 func (r *productionCommandRunner) VerifyProductionBashEvidenceWithOrigin(ctx context.Context,

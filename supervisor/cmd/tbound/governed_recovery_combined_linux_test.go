@@ -25,6 +25,7 @@ import (
 	"tbound/supervisor/internal/delta"
 	"tbound/supervisor/internal/drainproof"
 	"tbound/supervisor/internal/gate"
+	"tbound/supervisor/internal/piruntime"
 	"tbound/supervisor/internal/providerbridge"
 	"tbound/supervisor/internal/sessionlaunch"
 	"tbound/supervisor/internal/sessionrepo"
@@ -66,6 +67,9 @@ type combinedRecoveryScenario struct {
 	// advanceStore has the original conversation write a file before its last call is captured, so the retained
 	// history has a Store generation other than the baseline.
 	advanceStore bool
+	// productionBash runs one Bash call through the production D09 runner in the original process, pins the production
+	// profile and command history, and checks publication after activation (governed_recovery_production_bash_linux_test.go).
+	productionBash bool
 }
 
 var combinedRecoveryScenarios = map[string]combinedRecoveryScenario{
@@ -78,23 +82,27 @@ var combinedRecoveryScenarios = map[string]combinedRecoveryScenario{
 	"binder-pins-idle":          {maxPreEffectRetries: 2, maxCleanRestarts: 2, deadline: 10 * time.Minute, binderShapedPins: true, idleCrash: true},
 	"binder-pins-advanced":      {maxPreEffectRetries: 2, maxCleanRestarts: 2, deadline: 10 * time.Minute, binderShapedPins: true, advanceStore: true},
 	"binder-pins-advanced-idle": {maxPreEffectRetries: 2, maxCleanRestarts: 2, deadline: 10 * time.Minute, binderShapedPins: true, advanceStore: true, idleCrash: true},
+	combinedProductionScenario:  {maxPreEffectRetries: 2, maxCleanRestarts: 2, deadline: 10 * time.Minute, productionBash: true},
+	combinedResumedScenario:     {maxPreEffectRetries: 2, maxCleanRestarts: 2, deadline: 10 * time.Minute, productionBash: true, binderShapedPins: true},
 }
 
 type combinedRecoveryPaths struct {
 	root, source, store, admin, recoveryRoot, ownerStore string
 	rootDB, ownerDB, storeJournal, admission, evidence   string
+	commandJournal                                       string
 }
 
 func combinedRecoveryPathsFor(root string) combinedRecoveryPaths {
 	return combinedRecoveryPaths{
 		root: root, source: filepath.Join(root, "source"), store: filepath.Join(root, "store"),
 		admin: filepath.Join(root, "admin"), recoveryRoot: filepath.Join(root, "recovery-root"),
-		ownerStore:   filepath.Join(root, "owner-store"),
-		rootDB:       filepath.Join(root, "recovery-root", "workflow-root.sqlite"),
-		ownerDB:      filepath.Join(root, "owner-store", "workflow.sqlite"),
-		storeJournal: filepath.Join(root, "store-audit.jsonl"),
-		admission:    filepath.Join(root, "store", "delta-admission.jsonl"),
-		evidence:     filepath.Join(root, "crash-evidence.json"),
+		ownerStore:     filepath.Join(root, "owner-store"),
+		rootDB:         filepath.Join(root, "recovery-root", "workflow-root.sqlite"),
+		ownerDB:        filepath.Join(root, "owner-store", "workflow.sqlite"),
+		storeJournal:   filepath.Join(root, "store-audit.jsonl"),
+		admission:      filepath.Join(root, "store", "delta-admission.jsonl"),
+		evidence:       filepath.Join(root, "crash-evidence.json"),
+		commandJournal: filepath.Join(root, "command-audit.jsonl"),
 	}
 }
 
@@ -264,6 +272,8 @@ type combinedRecoveryResult struct {
 	// StoreBaselineGeneration and StoreTipGeneration are the Store generations the original process ended on.
 	StoreBaselineGeneration string `json:"store_baseline_generation,omitempty"`
 	StoreTipGeneration      string `json:"store_tip_generation,omitempty"`
+	// Publication names the check where the production publication path stopped after activation.
+	Publication string `json:"publication,omitempty"`
 }
 
 func combinedRecoveryFileDigest(path string, limit int64) (combinedRecoveryFileEvidence, error) {
@@ -294,8 +304,11 @@ func combinedRecoveryWriteJSON(t *testing.T, path string, value any) {
 func combinedRecoveryPolicy(t *testing.T, sc combinedRecoveryScenario) gate.Policy {
 	t.Helper()
 	rules := []gate.Rule{{Tool: "read", Effect: gate.EffectAllow}}
-	if sc.advanceStore {
+	if sc.advanceStore || sc.productionBash {
 		rules = append(rules, gate.Rule{Tool: "write", Effect: gate.EffectAllow})
+	}
+	if sc.productionBash {
+		rules = append(rules, gate.Rule{Tool: "bash", Effect: gate.EffectAllow})
 	}
 	policy, err := gate.NewPolicy(gate.Profile{Version: gate.ProfileVersion, Rules: rules})
 	if err != nil {
@@ -408,7 +421,7 @@ func TestGovernedRecoveryCombinedChildEntry(t *testing.T) {
 	switch phase {
 	case "original":
 		combinedRecoveryOriginal(t, root, step, combinedRecoveryScenarios[scenario])
-	case "recover", "recover-capture", "recover-write":
+	case "recover", "recover-capture", "recover-write", "recover-bash", "recover-again":
 		combinedRecoveryRecover(t, root, step, phase, phase == "recover-capture", combinedRecoveryScenarios[scenario])
 	default:
 		t.Fatalf("unknown combined recovery phase %q", phase)
@@ -440,13 +453,28 @@ func combinedRecoveryOriginal(t *testing.T, root, step string, sc combinedRecove
 		t.Fatal(err)
 	}
 	policy := combinedRecoveryPolicy(t, sc)
-	runner := newDevelopmentFixtureCommandRunner()
+	var runner combinedCommandRunner = newDevelopmentFixtureCommandRunner()
+	var production *productionCommandRunner
+	var commandJournal *audit.Journal
+	var productionProfile piruntime.HostProfile
+	var d09Template piruntime.D09CellTemplate
+	if sc.productionBash {
+		commandJournal, err = audit.Open(p.commandJournal)
+		if err != nil {
+			t.Fatal(err)
+		}
+		productionProfile, d09Template = combinedProductionProfile(t)
+		production = combinedProductionRunner(t, commandJournal, productionProfile, d09Template,
+			combinedOriginalSession, combinedOriginalConversation)
+		runner = production
+	}
 	authority, err := NewSessionOperationAuthority(storeJournal, providerJournal,
 		combinedRecoveryWorkflow, "combined-recovery-conversation-g1", combinedRecoveryProfile,
 		policy, governedReplayStorePolicy, governedReplayMetaPolicy, runner, []string{"task.txt"})
 	if err != nil {
 		t.Fatal(err)
 	}
+	authority.requireEvidencedBashContainment = sc.productionBash
 	storeRoot, err := os.Open(p.store)
 	if err != nil {
 		t.Fatal(err)
@@ -531,6 +559,17 @@ func combinedRecoveryOriginal(t *testing.T, root, step string, sc combinedRecove
 		ProvenanceDigest:         sha256DigestFromBarePin(bareWorkflowDigest(d06Digest)),
 		RepositoryIdentityDigest: sha256DigestFromBarePin(bareWorkflowDigest(gitIdentity))}
 	template := combinedRecoveryTemplate(t, p, owner, policy, gitPin)
+	if sc.productionBash {
+		// The checkpoint pins the empty command journal: the Bash call is appended after the checkpoint.
+		commandIdentity, identityErr := recoveryFileIdentityDigest(p.commandJournal, false)
+		if identityErr != nil {
+			t.Fatal(identityErr)
+		}
+		template.ProductionProfile, template.D09Template = productionProfile, d09Template
+		template.CommandHistories = []productionRecoveryCommandJournal{{Journal: commandJournal, Path: p.commandJournal,
+			Pin:      productionHistoricalCommandPin{IdentityDigest: commandIdentity},
+			Sessions: []productionRecoveryCommandSession{{RunID: combinedOriginalSession, SessionID: combinedOriginalSession, ConversationID: combinedOriginalConversation}}}}
+	}
 	identityPins, err := collectGovernedRecoveryIdentityPins(template)
 	if err != nil {
 		t.Fatal(err)
@@ -565,7 +604,7 @@ func combinedRecoveryOriginal(t *testing.T, root, step string, sc combinedRecove
 		StoreIdentityDigest: identityPins.StoreIdentityDigest, AdmissionIdentityDigest: identityPins.AdmissionIdentityDigest,
 		CommandIdentityDigest: identityPins.CommandIdentityDigest, AdminIdentityDigest: identityPins.AdminIdentityDigest,
 		TaskDigest: bareWorkflowDigest(taskDigest), PromptDigest: bareWorkflowDigest(digestBytes([]byte(combinedRecoveryPrompt))),
-		PolicyDigest: barePolicyDigest(policy.Digest()), ProfileDigest: bareWorkflowDigest(template.ProviderProfileDigest),
+		PolicyDigest: barePolicyDigest(policy.Digest()), ProfileDigest: bareWorkflowDigest(combinedPinnedProfileDigest(template)),
 		ImageDigest: bareWorkflowDigest(template.ImageDigest), RuntimeDigest: runtimeDigest,
 		D06ProvenanceDigest: bareWorkflowDigest(d06Digest), PrivateGitIdentityDigest: bareWorkflowDigest(gitIdentity),
 		StoreBaselineGenerationID: g0.ID(), StoreBaselineTreeDigest: strings.TrimPrefix(g0.TreeDigest(), delta.TreeDigestProfile),
@@ -604,6 +643,9 @@ func combinedRecoveryOriginal(t *testing.T, root, step string, sc combinedRecove
 	conversation, err := authority.newProviderConversation(config, func(config providerbridge.Config,
 		journal *audit.Journal) (*providerbridge.Conversation, error) {
 		turns := combinedRecoveryReadCallTurns("combined-original")
+		if sc.productionBash {
+			turns = append([]providerbridge.DevelopmentProviderTurn{combinedProductionBashTurn()}, turns...)
+		}
 		if sc.advanceStore {
 			write := providerbridge.DevelopmentProviderTurn{ResponseID: "combined-original-write-response", CallID: "combined-original-write-call",
 				Tool: "write", Arguments: json.RawMessage(`{"path":"task.txt","content":"advanced\n"}`)}
@@ -627,6 +669,9 @@ func combinedRecoveryOriginal(t *testing.T, root, step string, sc combinedRecove
 		if _, err := executor.Execute(ctx, proposal, decision); err != nil {
 			t.Fatalf("original write did not advance the Store: %v", err)
 		}
+	}
+	if sc.productionBash {
+		combinedBashCall(t, root, combinedProductionCall, 1, conversation, durable, policy)
 	}
 	if !sc.idleCrash {
 		turn, err := conversation.NextTurn(ctx)
@@ -752,6 +797,7 @@ func combinedRecoveryRecover(t *testing.T, root, step, phase string, capture boo
 	}
 	gen := before.Pins.RecoveryGeneration + 1
 	newConversation := fmt.Sprintf("%s-conversation-g%d", combinedRecoveryWorkflow, gen)
+	newSession := fmt.Sprintf("%s-session-g%d", combinedRecoveryWorkflow, gen)
 	newPath := p.providerJournal(uint64(len(before.Pins.ProviderTranscripts)) + 1)
 	freshJournal, err := openNewRecoveryJournal(newPath)
 	if err != nil {
@@ -762,11 +808,25 @@ func combinedRecoveryRecover(t *testing.T, root, step, phase string, capture boo
 	if err != nil {
 		t.Fatal(err)
 	}
-	runner := newDevelopmentFixtureCommandRunner()
+	var runner combinedCommandRunner = newDevelopmentFixtureCommandRunner()
+	var production *productionCommandRunner
+	var commandJournal *audit.Journal
+	var commandHistories []productionRecoveryCommandJournal
+	var productionProfile piruntime.HostProfile
+	var d09Template piruntime.D09CellTemplate
+	if sc.productionBash {
+		productionProfile, d09Template = combinedProductionProfile(t)
+		commandJournal, commandHistories = combinedRecoveryCommandHistory(t, p.commandJournal, combinedPreviousSessions(gen))
+		production = combinedProductionRunner(t, commandJournal, productionProfile, d09Template, newSession, newConversation)
+		runner = production
+	}
 	turns := combinedRecoveryReadCallTurns(fmt.Sprintf("combined-recovered-g%d", gen))
 	if phase == "recover-write" {
 		turns = []providerbridge.DevelopmentProviderTurn{{ResponseID: "resumed-write-response", CallID: "resumed-write-call",
 			Tool: "write", Arguments: json.RawMessage(`{"path":"task.txt","content":"resumed\n"}`)}}
+	}
+	if phase == "recover-bash" {
+		turns = append([]providerbridge.DevelopmentProviderTurn{combinedResumedBashTurn()}, turns...)
 	}
 	providerProfile := combinedRecoveryProviderProfile("")
 	request := governedRecoveryRequest{
@@ -790,6 +850,10 @@ func combinedRecoveryRecover(t *testing.T, root, step, phase string, capture boo
 	}
 	result := combinedRecoveryResult{Step: step, Deadline: before.Limits.Deadline, Transcripts: len(transcripts),
 		StoreEffects: len(storeTrace.Effects)}
+	if sc.productionBash {
+		request.ProductionProfile, request.D09Template = productionProfile, d09Template
+		request.CommandHistories, request.RequireEvidencedBash = commandHistories, true
+	}
 	candidate, err := prepareGovernedRecovery(ctx, request)
 	if err != nil {
 		result.PrepareError = err.Error()
@@ -835,6 +899,22 @@ func combinedRecoveryRecover(t *testing.T, root, step, phase string, capture boo
 				}
 				if err := session.Authority.VerifyOrigin(evidence, fresh); err != nil {
 					t.Fatalf("activated authority refused the origin of its new transition: %v", err)
+				}
+			}
+			if phase == "recover-bash" {
+				combinedBashCall(t, root, combinedResumedCall, gen, session.Conversation, session.Durable, policy)
+			}
+			if sc.productionBash {
+				result.Publication = combinedRecoveryPublish(t, root, session, production, productionProfile, d09Template,
+					newSession, newConversation)
+				switch phase {
+				case "recover":
+					combinedRecoveryTerminalOrigin(t, root, session, 1)
+					combinedRecoveryCommandRefusals(t, root, session, production, commandJournal)
+				case "recover-bash":
+					combinedRecoveryTerminalOrigin(t, root, session, gen)
+				case "recover-again":
+					combinedRecoveryTerminalOrigin(t, root, session, gen-1)
 				}
 			}
 			if capture {
@@ -1215,24 +1295,24 @@ func combinedRecoveryCheckRetainedHistory(t *testing.T, session *governedRecover
 	prefix.ApprovedDeltaLedger = ledger
 	shorter := prefix
 	shorter.ApprovedDeltaLedger = nil
-	if _, err := newGovernedRetainedHistory(shorter, candidate.next, candidate.historical); err == nil {
+	if _, err := newGovernedRetainedHistory(shorter, candidate.next, candidate.historical, candidate.commandHistory); err == nil {
 		t.Fatal("froze an empty prefix over a journal with one approved transition")
 	}
 	extra := ledger[0]
 	extra.ID, extra.Sequence = extra.ID+"-extra", 2
 	longer := prefix
 	longer.ApprovedDeltaLedger = append(append([]delta.Transition(nil), ledger...), extra)
-	if _, err := newGovernedRetainedHistory(longer, candidate.next, candidate.historical); err == nil {
+	if _, err := newGovernedRetainedHistory(longer, candidate.next, candidate.historical, candidate.commandHistory); err == nil {
 		t.Fatal("froze a prefix longer than the verified journal")
 	}
 	for _, offset := range []int64{-1, 1} {
 		pins := candidate.next
 		pins.StoreJournalCount = uint64(int64(pins.StoreJournalCount) + offset)
-		if _, err := newGovernedRetainedHistory(prefix, pins, candidate.historical); err == nil {
+		if _, err := newGovernedRetainedHistory(prefix, pins, candidate.historical, candidate.commandHistory); err == nil {
 			t.Fatal("froze a prefix whose journal count differs from the recovery pins")
 		}
 	}
-	frozen, err := newGovernedRetainedHistory(prefix, candidate.next, candidate.historical)
+	frozen, err := newGovernedRetainedHistory(prefix, candidate.next, candidate.historical, candidate.commandHistory)
 	if err != nil {
 		t.Fatal(err)
 	}

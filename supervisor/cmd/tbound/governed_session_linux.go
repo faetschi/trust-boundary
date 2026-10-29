@@ -1415,6 +1415,11 @@ func (a *SessionOperationAuthority) ResolveTerminalLeaseOrigin(ctx context.Conte
 	if err := a.VerifyOrigin(bundle, terminal); err != nil {
 		return delta.OperationIdentity{}, err
 	}
+	if a.retained.contains(terminal.Sequence) {
+		// The replay that froze this transition authenticated its origin. The new conversation's journal holds none of
+		// its provider results, so the lookup below cannot resolve it.
+		return a.retained.bash.leaseOrigin(terminal)
+	}
 	providerTrace, err := a.providerJournal.Trace()
 	if err != nil {
 		return delta.OperationIdentity{}, err

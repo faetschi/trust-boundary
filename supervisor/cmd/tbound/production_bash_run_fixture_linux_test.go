@@ -310,5 +310,6 @@ func (r *productionBashRun) historicalVerifier(journal *audit.Journal) (*product
 	}
 	return newProductionHistoricalBashVerifier(journal, productionHistoricalCommandPin{IdentityDigest: "fresh-command-journal",
 		Head: auditHeadHash(trace.Records), RecordCount: uint64(len(trace.Records))},
-		r.profile, r.template, bashRunRunID, bashRunSessionID, bashRunWorkflowID, bashRunConversationID)
+		r.profile, r.template, []productionRecoveryCommandSession{{RunID: bashRunRunID, SessionID: bashRunSessionID,
+			ConversationID: bashRunConversationID}}, bashRunWorkflowID)
 }
