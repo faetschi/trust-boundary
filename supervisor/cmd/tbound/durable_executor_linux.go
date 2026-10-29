@@ -627,9 +627,11 @@ func durableWorkspaceRelativePath(modelPath string) (string, error) {
 }
 
 func durableWriteArguments(raw json.RawMessage) (string, []byte, error) {
+	if err := durableRequireExactMembers(raw, "path", "content"); err != nil {
+		return "", nil, fmt.Errorf("write arguments: %w", err)
+	}
 	var arguments durableWriteArgumentsPayload
 	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&arguments); err != nil {
 		return "", nil, fmt.Errorf("write arguments: %w", err)
 	}
@@ -646,9 +648,11 @@ func durableWriteArguments(raw json.RawMessage) (string, []byte, error) {
 	return storePath, []byte(arguments.Content), nil
 }
 
+// durableEditArgumentsPayload keeps each replacement raw, so every edit object gets the same exact-member check
+// as the top level before it is decoded.
 type durableEditArgumentsPayload struct {
-	Path  string                          `json:"path"`
-	Edits []durableEditReplacementPayload `json:"edits"`
+	Path  string            `json:"path"`
+	Edits []json.RawMessage `json:"edits"`
 }
 
 type durableEditReplacementPayload struct {
@@ -657,9 +661,11 @@ type durableEditReplacementPayload struct {
 }
 
 func durableEditArguments(raw json.RawMessage) (string, []sessionrepo.Replacement, error) {
+	if err := durableRequireExactMembers(raw, "path", "edits"); err != nil {
+		return "", nil, fmt.Errorf("edit arguments: %w", err)
+	}
 	var arguments durableEditArgumentsPayload
 	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&arguments); err != nil {
 		return "", nil, fmt.Errorf("edit arguments: %w", err)
 	}
@@ -674,7 +680,14 @@ func durableEditArguments(raw json.RawMessage) (string, []sessionrepo.Replacemen
 		return "", nil, err
 	}
 	edits := make([]sessionrepo.Replacement, len(arguments.Edits))
-	for index, edit := range arguments.Edits {
+	for index, rawEdit := range arguments.Edits {
+		if err := durableRequireExactMembers(rawEdit, "oldText", "newText"); err != nil {
+			return "", nil, fmt.Errorf("edit arguments: edits[%d]: %w", index, err)
+		}
+		var edit durableEditReplacementPayload
+		if err := json.Unmarshal(rawEdit, &edit); err != nil {
+			return "", nil, fmt.Errorf("edit arguments: edits[%d]: %w", index, err)
+		}
 		edits[index] = sessionrepo.Replacement{OldText: edit.OldText, NewText: edit.NewText}
 	}
 	return storePath, edits, nil
@@ -690,13 +703,14 @@ type durableBashArgumentsPayload struct {
 	Timeout *float64 `json:"timeout,omitempty"`
 }
 
-// durableBashArguments strictly decodes the adapter bash arguments. Unknown
-// fields and trailing JSON are rejected so the trusted supervisor never runs a
-// command that differs from what the adapter signed.
+// durableBashArguments strictly decodes the adapter bash arguments. Member names must be exact and unique, and
+// trailing JSON is rejected, so the trusted supervisor never runs a command that differs from what the adapter signed.
 func durableBashArguments(raw json.RawMessage) (string, error) {
+	if err := durableRequireExactMembers(raw, "command", "timeout"); err != nil {
+		return "", fmt.Errorf("bash arguments: %w", err)
+	}
 	var arguments durableBashArgumentsPayload
 	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&arguments); err != nil {
 		return "", fmt.Errorf("bash arguments: %w", err)
 	}
@@ -807,13 +821,14 @@ func (window durableReadWindow) apply(content []byte) []byte {
 	return bytes.Join(lines[start:end], []byte("\n"))
 }
 
-// durableReadArguments strictly decodes the adapter read arguments. Unknown
-// fields and trailing JSON are rejected so the trusted supervisor never reads a
-// path that differs from what the adapter signed.
+// durableReadArguments strictly decodes the adapter read arguments. Member names must be exact and unique, and
+// trailing JSON is rejected, so the trusted supervisor never reads a path that differs from what the adapter signed.
 func durableReadArguments(raw json.RawMessage) (string, durableReadWindow, error) {
+	if err := durableRequireExactMembers(raw, "path", "offset", "limit"); err != nil {
+		return "", durableReadWindow{}, fmt.Errorf("read arguments: %w", err)
+	}
 	var arguments durableReadArgumentsPayload
 	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&arguments); err != nil {
 		return "", durableReadWindow{}, fmt.Errorf("read arguments: %w", err)
 	}
@@ -843,6 +858,42 @@ func durableReadArguments(raw json.RawMessage) (string, durableReadWindow, error
 func durableContentDigest(content []byte) string {
 	digest := sha256.Sum256(content)
 	return "sha256:" + hex.EncodeToString(digest[:])
+}
+
+// durableRequireExactMembers refuses an argument object unless it is a JSON object whose member names are exactly
+// the given schema names and each appears once. Go's decoder matches member names case-insensitively, so a case
+// variant would otherwise replace a schema member, and a repeated name would silently keep its last value.
+func durableRequireExactMembers(raw json.RawMessage, schemaNames ...string) error {
+	allowed := make(map[string]bool, len(schemaNames))
+	for _, name := range schemaNames {
+		allowed[name] = true
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	opening, err := decoder.Token()
+	if err != nil {
+		return err
+	}
+	if opening != json.Delim('{') {
+		return errors.New("tool arguments must be a JSON object")
+	}
+	seen := make(map[string]bool, len(schemaNames))
+	for decoder.More() {
+		token, err := decoder.Token()
+		if err != nil {
+			return err
+		}
+		name, isName := token.(string)
+		if !isName || !allowed[name] || seen[name] {
+			return fmt.Errorf("tool argument member %v is not a unique schema name", token)
+		}
+		seen[name] = true
+		var value json.RawMessage
+		if err := decoder.Decode(&value); err != nil {
+			return err
+		}
+	}
+	_, err = decoder.Token()
+	return err
 }
 
 func durableNoTrailingJSON(decoder *json.Decoder) error {
