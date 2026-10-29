@@ -1074,9 +1074,10 @@ func TestConstructPilotNoFlagBytes(t *testing.T) {
 	}
 	// Exact reports, Linux Node v24.15.0; no guest flag. Generated against codex/tbound-prototype
 	// (25f913f9..., 42f3bda3...): only manifest_digest and deferred_review changed (330 to 103 entries).
+	// Regenerated for the bash final-newline prompt clause: report.md changed only in manifest_digest; report.json also quotes the new content digest.
 	for name, want := range map[string]string{
-		"report.json": "ee532955dc1d8794404a1dc7490d6ad82a81c4e51b5433d15fae0a5e1e69504e",
-		"report.md":   "6f02ff0afb9772ba97131a26bb6a0921b298fbb143eda821366aa70f8f0eb345",
+		"report.json": "4ada2fd368b9082195816d3eab7b745cbdb8e2d2c21a620cdeb528325aa5e45c",
+		"report.md":   "6ca8a88d377d473b5c1bcbf3c9bb67385f44d727cc48c3a95ed277c344ba8786",
 	} {
 		raw, err := os.ReadFile(filepath.Join(out, name))
 		if err != nil {
