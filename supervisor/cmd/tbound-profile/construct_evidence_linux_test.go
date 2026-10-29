@@ -1076,9 +1076,10 @@ func TestConstructPilotNoFlagBytes(t *testing.T) {
 	// (25f913f9..., 42f3bda3...): only manifest_digest and deferred_review changed (330 to 103 entries).
 	// Regenerated for the bash final-newline prompt clause: report.md changed only in manifest_digest; report.json also quotes the new content digest.
 	// Regenerated for the pilot case-design fixes: the same two values moved (manifest_digest and the quoted content digest).
+	// Regenerated after review rules left evalcorpus.Validate: deferred_review is no longer populated, and the manifest-validation and source-license reasons changed; no check status changed.
 	for name, want := range map[string]string{
-		"report.json": "4c186e0af21df8e517f96bfc61b825d26e26ddb9a6032a2b4ba53f232eab520f",
-		"report.md":   "1660f70e176a79e33b73aaa0b3f377f014176f6a6f4c23c9a5a76971f9d083bc",
+		"report.json": "348fd9bb54ba7d78db7c12ee1eac3eb3db4d4c259d5efd6a224938cb99e7bbb3",
+		"report.md":   "c1aebfcb364b848c4cdb672c8e92cbf0998d8596f6a5b88340e35548cea69365",
 	} {
 		raw, err := os.ReadFile(filepath.Join(out, name))
 		if err != nil {

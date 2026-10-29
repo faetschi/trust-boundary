@@ -15,9 +15,10 @@ import (
 const runbookRepoRoot = "../../.."
 
 // runbookRequiredFlags are the flags the code refuses a subcommand without.
-// TestRunbookRequiredFlagsAreEnforced fails if the code stops refusing one.
+// TestRunbookRequiredFlagsAreEnforced fails if the code stops refusing one. corpus-digest's panel
+// flags are optional, so they are not listed; corpus_digest_linux_test.go tests their all-or-none rule.
 var runbookRequiredFlags = map[string][]string{
-	"corpus-digest":       {"manifest", "panel-receipt", "panel-audit", "panel-stats"},
+	"corpus-digest":       {"manifest"},
 	"managed-root-verify": {"registration", "sig", "pub"},
 }
 

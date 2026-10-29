@@ -344,15 +344,6 @@ func TestPreregistrationRecordThesisPlanIsTheRegisteredUnits(t *testing.T) {
 	}
 }
 
-func TestPreregistrationRefusesMissingPanelEvidence(t *testing.T) {
-	p := basePrereg(t, t.TempDir())
-	p.panel = nil
-	out, _, err := runCLI(p.args()...)
-	if err == nil || out != "" || !strings.Contains(err.Error(), "--panel-") {
-		t.Fatalf("missing panel evidence accepted: out %q err %v", out, err)
-	}
-}
-
 func TestPreregistrationVerifiesAllPanelFiles(t *testing.T) {
 	for i, name := range []string{"receipt", "audit", "stats"} {
 		t.Run(name, func(t *testing.T) {
