@@ -61,10 +61,73 @@ func runbookPilotNeedsNode(t *testing.T) bool {
 	return false
 }
 
+// runbookProfileLint holds what the tbound-profile checks read from the code. kinds are the
+// guest-evidence kinds the dispatch accepts. needNode is set when the pilot artifacts declare
+// node_test specs, which corpusadmit refuses without a node binary.
+type runbookProfileLint struct {
+	kinds    map[string]bool
+	needNode bool
+}
+
+// problems returns what is wrong with one tbound-profile command. The probes parse "--flag=x -h"
+// through the real FlagSet of the subcommand and never run it.
+func (l runbookProfileLint) problems(c runbooklint.Command) []string {
+	where := fmt.Sprintf("%s:%d", c.File, c.Line)
+	sub, ok := runbookSubcommand(c.Words)
+	if !ok {
+		return nil
+	}
+	name := strings.Join(sub, " ")
+	if sub[0] == "guest-evidence" {
+		if !l.kinds[sub[1]] {
+			return []string{fmt.Sprintf("%s: %q is not a guest-evidence kind", where, sub[1])}
+		}
+		if sub[1] == netSinkProbeVerb {
+			// Calling this kind runs its probe, so it is never probed. It takes no flags.
+			var out []string
+			for _, f := range runbooklint.Flags(c.Words) {
+				out = append(out, fmt.Sprintf("%s: %s takes no --%s flag", where, name, f))
+			}
+			return out
+		}
+	}
+	if !runbooklint.ParseReached(runbookProfileCall(append(append([]string{}, sub...), "-h")...)) {
+		return []string{fmt.Sprintf("%s: %q is not a tbound-profile subcommand", where, name)}
+	}
+	flags := runbooklint.Flags(c.Words)
+	var out []string
+	for _, f := range flags {
+		if !runbooklint.FlagDefined(runbookProfileCall(append(append([]string{}, sub...), "--"+f+"=x", "-h")...)) {
+			out = append(out, fmt.Sprintf("%s: %s has no --%s flag", where, name, f))
+		}
+	}
+	for _, need := range runbookRequiredFlags[sub[0]] {
+		if !runbookContains(flags, need) {
+			out = append(out, fmt.Sprintf("%s: %s needs --%s", where, name, need))
+		}
+	}
+	if sub[0] == "corpus-digest" && runbookContains(flags, "artifacts") && l.needNode && !runbookContains(flags, "node") {
+		out = append(out, fmt.Sprintf("%s: corpus-digest with --artifacts needs --node: the pilot artifacts declare node_test acceptance specs, which are refused without a node runner", where))
+	}
+	return out
+}
+
+// runbookProfileLintFromCode reads the guest-evidence kinds from runGuestEvidence and the node rule
+// from the pilot artifacts.
+func runbookProfileLintFromCode(t *testing.T) runbookProfileLint {
+	t.Helper()
+	kinds, err := runbooklint.CaseLabels("guest_evidence_linux.go", "runGuestEvidence")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// netsink-probe is handled before the switch, and calling it runs its probe, so it is never probed.
+	kinds[netSinkProbeVerb] = true
+	return runbookProfileLint{kinds: kinds, needNode: runbookPilotNeedsNode(t)}
+}
+
 // TestRunbookProfileCommands checks every tbound-profile command the runbooks name. The subcommand
 // must exist, each --flag must be defined by that subcommand's FlagSet, and the required flags
-// must be present. Each probe parses "--flag=x -h" through the real FlagSet and never runs the
-// command.
+// must be present.
 func TestRunbookProfileCommands(t *testing.T) {
 	cmds, err := runbooklint.Commands(runbookRepoRoot, "tbound-profile")
 	if err != nil {
@@ -73,32 +136,21 @@ func TestRunbookProfileCommands(t *testing.T) {
 	if len(cmds) == 0 {
 		t.Fatal("no tbound-profile commands found in the runbooks")
 	}
-	needNode := runbookPilotNeedsNode(t)
+	lint := runbookProfileLintFromCode(t)
 	for _, c := range cmds {
-		where := fmt.Sprintf("%s:%d", c.File, c.Line)
-		sub, ok := runbookSubcommand(c.Words)
-		if !ok {
-			continue
+		for _, p := range lint.problems(c) {
+			t.Error(p)
 		}
-		name := strings.Join(sub, " ")
-		if !runbooklint.ParseReached(runbookProfileCall(append(append([]string{}, sub...), "-h")...)) {
-			t.Errorf("%s: %q is not a tbound-profile subcommand", where, name)
-			continue
-		}
-		flags := runbooklint.Flags(c.Words)
-		for _, f := range flags {
-			if !runbooklint.FlagDefined(runbookProfileCall(append(append([]string{}, sub...), "--"+f+"=x", "-h")...)) {
-				t.Errorf("%s: %s has no --%s flag", where, name, f)
-			}
-		}
-		for _, need := range runbookRequiredFlags[sub[0]] {
-			if !runbookContains(flags, need) {
-				t.Errorf("%s: %s needs --%s", where, name, need)
-			}
-		}
-		if sub[0] == "corpus-digest" && runbookContains(flags, "artifacts") && needNode && !runbookContains(flags, "node") {
-			t.Errorf("%s: corpus-digest with --artifacts needs --node: the pilot artifacts declare node_test acceptance specs, which are refused without a node runner", where)
-		}
+	}
+}
+
+// TestRunbookLintRejectsMisspelledKind feeds the lint a guest-evidence kind that the dispatch does
+// not have. The shared FlagSet parses before the kind switch, so the flag probes alone pass it.
+func TestRunbookLintRejectsMisspelledKind(t *testing.T) {
+	lint := runbookProfileLintFromCode(t)
+	c := runbooklint.Command{File: "synthetic", Line: 1, Binary: "tbound-profile", Words: []string{"guest-evidence", "tsts", "--commit", "x"}}
+	if got := lint.problems(c); len(got) == 0 {
+		t.Fatal("a misspelled guest-evidence kind passed the lint")
 	}
 }
 

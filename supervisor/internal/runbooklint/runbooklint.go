@@ -5,10 +5,15 @@ package runbooklint
 
 import (
 	"bufio"
+	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"path"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -212,10 +217,16 @@ func ParseReached(err error) bool {
 }
 
 // FlagDefined reports whether err, from parsing "--name=x -h" through a FlagSet, shows that the
-// FlagSet defines the flag. An undefined flag fails first with "flag provided but not defined";
-// a string flag takes x and reaches -h; a bool flag rejects x. The probe never runs the command.
+// FlagSet defines the flag. Only three results do: -h was reached (ParseReached), a bool flag
+// rejected x, or a numeric or duration flag could not parse x. An undefined flag fails first, and
+// any other error, such as a route that refuses its arguments before any parse, does not show it.
 func FlagDefined(err error) bool {
-	return err != nil && !strings.Contains(err.Error(), "flag provided but not defined")
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return ParseReached(err) || strings.Contains(msg, "invalid boolean value") ||
+		(strings.Contains(msg, "invalid value") && strings.Contains(msg, "for flag -"))
 }
 
 // TboundOpVerbs returns the verbs of the tbound-op dispatcher: the labels of the last
@@ -244,3 +255,38 @@ func TboundOpVerbs(script string) []string {
 }
 
 var verbLabel = regexp.MustCompile(`^  ([a-z][a-z-]*)\)`)
+
+// CaseLabels returns the string case labels of the switch statements inside func name of the Go
+// source file. The lint reads a dispatch this way when calling it would need root or a service
+// environment, or would run a command. An empty result is an error, so a renamed function fails.
+func CaseLabels(file, name string) (map[string]bool, error) {
+	f, err := parser.ParseFile(token.NewFileSet(), file, nil, 0)
+	if err != nil {
+		return nil, err
+	}
+	labels := map[string]bool{}
+	for _, d := range f.Decls {
+		fn, ok := d.(*ast.FuncDecl)
+		if !ok || fn.Name.Name != name {
+			continue
+		}
+		ast.Inspect(fn, func(n ast.Node) bool {
+			cc, ok := n.(*ast.CaseClause)
+			if !ok {
+				return true
+			}
+			for _, e := range cc.List {
+				if lit, ok := e.(*ast.BasicLit); ok && lit.Kind == token.STRING {
+					if s, err := strconv.Unquote(lit.Value); err == nil {
+						labels[s] = true
+					}
+				}
+			}
+			return true
+		})
+	}
+	if len(labels) == 0 {
+		return nil, fmt.Errorf("no string case labels in %s of %s", name, file)
+	}
+	return labels, nil
+}

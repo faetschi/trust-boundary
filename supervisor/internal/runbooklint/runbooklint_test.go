@@ -64,6 +64,34 @@ func TestExtractJoinsContinuedLines(t *testing.T) {
 	}
 }
 
+// TestFlagDefinedAcceptsOnlyTheProbeResultsOfADefinedFlag: a probe error shows a defined flag only
+// when the flag package reached -h or the flag's own value. The refusals below come from routes and
+// subcommands that refuse before any flag is parsed, so they must not count as a defined flag.
+func TestFlagDefinedAcceptsOnlyTheProbeResultsOfADefinedFlag(t *testing.T) {
+	defined := []error{
+		flag.ErrHelp,
+		errors.New(`invalid boolean value "x" for -pi: parse error`),
+		errors.New(`invalid value "x" for flag -max-steps: parse error`),
+	}
+	refused := []error{
+		nil,
+		errors.New("flag provided but not defined: -nope"),
+		errors.New("workflow-root-init takes no arguments"),
+		errors.New("unexpected positional arguments"),
+		errors.New(`unknown guest-evidence kind "x"`),
+	}
+	for _, err := range defined {
+		if !FlagDefined(err) {
+			t.Errorf("FlagDefined(%v) = false, want true", err)
+		}
+	}
+	for _, err := range refused {
+		if FlagDefined(err) {
+			t.Errorf("FlagDefined(%v) = true, want false", err)
+		}
+	}
+}
+
 func TestFlagsAndProbeClassification(t *testing.T) {
 	// Optional groups in the runbooks write their flags as "[--c" and "--d]".
 	if got := Flags([]string{"x", "--a=1", "--", "--b", "-c", "[--c", "--d]"}); !reflect.DeepEqual(got, []string{"a", "b", "c", "d"}) {
