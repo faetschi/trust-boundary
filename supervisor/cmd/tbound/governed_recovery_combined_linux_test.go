@@ -84,6 +84,8 @@ var combinedRecoveryScenarios = map[string]combinedRecoveryScenario{
 	"binder-pins-advanced-idle": {maxPreEffectRetries: 2, maxCleanRestarts: 2, deadline: 10 * time.Minute, binderShapedPins: true, advanceStore: true, idleCrash: true},
 	combinedProductionScenario:  {maxPreEffectRetries: 2, maxCleanRestarts: 2, deadline: 10 * time.Minute, productionBash: true},
 	combinedResumedScenario:     {maxPreEffectRetries: 2, maxCleanRestarts: 2, deadline: 10 * time.Minute, productionBash: true, binderShapedPins: true},
+	"binder-production-write-bash": {maxPreEffectRetries: 2, maxCleanRestarts: 2, deadline: 10 * time.Minute,
+		binderShapedPins: true, advanceStore: true, productionBash: true},
 }
 
 type combinedRecoveryPaths struct {
@@ -423,6 +425,8 @@ func TestGovernedRecoveryCombinedChildEntry(t *testing.T) {
 		combinedRecoveryOriginal(t, root, step, combinedRecoveryScenarios[scenario])
 	case "recover", "recover-capture", "recover-write", "recover-bash", "recover-again":
 		combinedRecoveryRecover(t, root, step, phase, phase == "recover-capture", combinedRecoveryScenarios[scenario])
+	case "binder":
+		combinedRecoveryBinder(t, root, step)
 	default:
 		t.Fatalf("unknown combined recovery phase %q", phase)
 	}
@@ -864,6 +868,10 @@ func combinedRecoveryRecover(t *testing.T, root, step, phase string, capture boo
 			_ = candidate.Close()
 		} else {
 			result.Activated = true
+			// Activate binds the prepared session. The authority must hold that session, and a second bind must be refused.
+			if err := session.Authority.BindPreparedSession(session.Prepared); err == nil || session.Authority.prepared != session.Prepared {
+				t.Fatalf("activated authority allowed a second prepared-session bind: %v", err)
+			}
 			if sc.advanceStore {
 				combinedRecoveryCheckRetainedHistory(t, session, candidate)
 				combinedRecoveryCheckPublicationOrigins(t, session)
@@ -876,6 +884,10 @@ func combinedRecoveryRecover(t *testing.T, root, step, phase string, capture boo
 				t.Fatal(err)
 			}
 			if phase == "recover-write" {
+				prior, err := session.Store.EvidenceBundle()
+				if err != nil {
+					t.Fatal(err)
+				}
 				step := &workflowVerticalFixture{ctx: ctx, conversation: session.Conversation, policy: policy}
 				proposal, decision := ledgerDenyTurn(t, step, "resumed-write-call", gate.Allow)
 				executor, err := providerbridge.NewExecutor(session.Conversation, session.Durable)
@@ -886,7 +898,7 @@ func combinedRecoveryRecover(t *testing.T, root, step, phase string, capture boo
 					t.Fatalf("resumed write: %v", err)
 				}
 				chain, err := session.Store.Verify()
-				if err != nil || chain.TransitionCount != 2 {
+				if err != nil || chain.TransitionCount != uint64(len(prior.ApprovedDeltaLedger))+1 {
 					t.Fatalf("resumed chain: %+v err=%v", chain, err)
 				}
 				evidence, err := session.Store.EvidenceBundle()
