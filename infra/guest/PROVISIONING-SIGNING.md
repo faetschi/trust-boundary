@@ -1018,6 +1018,8 @@ Now `trial reset` works. Corrections to the earlier checklist, checked against `
 
 The host builds `tbound-run.exe` (P1) and uses Git Bash `ssh` with three keys and the pinned `known_hosts` (no spaces or quotes in that path). `run.json` is strict JSON (unknown members, duplicate keys and trailing data are refused; there is no member that relaxes host-key checking):
 
+Start from `infra/guest/operator/run.json.example`, which holds these members with dummy values. The paths, the host and the key files are `/REPLACE/...`, `192.0.2.1` and `tbound-guest-pin`, the digests are zeros, and the `pins` values that the decoder only requires to be present are `PLACEHOLDER-...` strings. The two admission policy digests are the production constants and stay as they are. Replace each dummy with the owner value and keep the member set. `TestRunJSONExampleDecodesStrictly` decodes the file through the strict decoder.
+
 | Field | Value |
 | --- | --- |
 | `manifest`, `quota_profile` | absolute path of `corpus/pilot/manifest.json`; `"pilot"` |
