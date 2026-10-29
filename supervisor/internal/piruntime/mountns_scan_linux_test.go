@@ -4,8 +4,9 @@ package piruntime
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"os"
+	"regexp"
 	"syscall"
 	"testing"
 )
@@ -20,19 +21,31 @@ func TestMountNamespaceScanSkipsOtherUsersProcessesItCannotInspect(t *testing.T)
 	if referenced {
 		t.Fatal("scan of an unused namespace reported a reference")
 	}
-	// A denial on one of this user's own processes (e.g. a capability-holding systemd --user on a dev host)
-	// still fails closed; any remaining error must name such a process, never another user's.
-	if err != nil {
-		var pid int
-		if _, scanErr := fmt.Sscanf(err.Error(), "inspect /proc/%d/", &pid); scanErr != nil {
-			t.Fatalf("unexpected scan error: %v", err)
-		}
-		info, statErr := os.Stat(fmt.Sprintf("/proc/%d", pid))
-		if statErr != nil || int(info.Sys().(*syscall.Stat_t).Uid) != os.Geteuid() {
-			t.Fatalf("scan failed on another user's process: %v", err)
-		}
+	if err == nil {
+		return
 	}
+	// A denial on one of this user's own processes still fails closed, so the error may remain. Host /proc is
+	// transient, so the process it names may be a zombie or may have exited. The error must name such a process.
+	match := procErrorPattern.FindStringSubmatch(err.Error())
+	if match == nil {
+		t.Fatalf("unexpected scan error shape: %v", err)
+	}
+	info, statErr := os.Stat("/proc/" + match[1])
+	if errors.Is(statErr, os.ErrNotExist) || errors.Is(statErr, syscall.ESRCH) {
+		t.Logf("tolerated: the named process exited during the scan: %v", err)
+		return
+	}
+	if statErr != nil {
+		t.Fatalf("cannot tell whose process the error names: %v", err)
+	}
+	if int(info.Sys().(*syscall.Stat_t).Uid) != os.Geteuid() {
+		t.Fatalf("scan failed on another user's process: %v", err)
+	}
+	t.Logf("tolerated: the error names this user's own process: %v", err)
 }
+
+// procErrorPattern matches the scan errors that name a process: inspect, scan, and the fd-target read.
+var procErrorPattern = regexp.MustCompile(`^(?:inspect|scan|read) /proc/([0-9]+)/`)
 
 func TestMountNamespaceScanStillFindsAReferencingProcess(t *testing.T) {
 	info, err := os.Stat("/proc/self/ns/mnt")
