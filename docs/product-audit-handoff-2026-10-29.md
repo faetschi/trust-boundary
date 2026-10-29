@@ -1,6 +1,6 @@
 # Product audit handoff, 2026-10-29
 
-This handoff sums up the owner-independent work left after the [2026-10-29 audit](audit-2026-10-29.md). It draws on that ledger and on [product contracts](product-contracts.md). It does not audit the code again. It changes no code, contract, or disposition.
+This handoff sums up the owner-independent work left after the [2026-10-29 audit](product-audit-2026-10-29.md). It draws on that ledger and on [product contracts](product-contracts.md). It does not audit the code again. It changes no code, contract, or disposition.
 
 ## Current state
 
