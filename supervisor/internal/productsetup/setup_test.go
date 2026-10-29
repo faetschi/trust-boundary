@@ -441,6 +441,39 @@ func TestSetupLiveRunsAccountsOwnersAndReloadInOrder(t *testing.T) {
 	}
 }
 
+func TestSetupLiveRefusesAUserOwnedRootAndWritesNothing(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root owns the test root, so the ownership check passes; the root live test covers that run")
+	}
+	f := newFixture(t)
+	f.env.Live = true
+	var calls []string
+	f.env.Exec = func(name string, args ...string) ([]byte, error) {
+		calls = append(calls, strings.Join(append([]string{name}, args...), " "))
+		if name == "getent" {
+			return nil, exitCode2{}
+		}
+		return nil, nil
+	}
+	f.env.Chown = func(path string, uid, gid int) error {
+		calls = append(calls, fmt.Sprintf("chown %s %d:%d", path, uid, gid))
+		return nil
+	}
+	if _, err := f.setup(); !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "not owned by root") {
+		t.Fatalf("a live setup on a user-owned root was not refused: %v", err)
+	}
+	for _, written := range []string{BinaryPath, ConfigDir, UnitPath} {
+		if _, err := os.Lstat(f.path(written)); err == nil {
+			t.Fatalf("a refused live setup created %s", written)
+		}
+	}
+	for _, c := range calls {
+		if !strings.HasPrefix(c, "getent") {
+			t.Fatalf("a refused live setup ran %q; calls: %v", c, calls)
+		}
+	}
+}
+
 func TestSetupRefusesHostInputsThatCollideWithPathsItOrAnUpdateWrites(t *testing.T) {
 	for name, mutate := range map[string]func(*Config){
 		"git is the installed binary":          func(c *Config) { c.GitPath = BinaryPath },
@@ -509,7 +542,7 @@ func TestSetupRefusesAnUnprotectedBinaryAncestorBeforeAnyWrite(t *testing.T) {
 	for _, tc := range []struct {
 		dir  string
 		mode os.FileMode
-	}{{"/usr/local", 0o777}, {"/usr", 0o775}, {"/etc", 0o777}} {
+	}{{"/usr/local", 0o777}, {"/usr", 0o775}, {"/etc", 0o777}, {BinaryDir, 0o775}, {ConfigDir, 0o775}} {
 		for _, dryRun := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s %04o, dry run %v", tc.dir, tc.mode, dryRun), func(t *testing.T) {
 				f := newFixture(t)
@@ -519,17 +552,34 @@ func TestSetupRefusesAnUnprotectedBinaryAncestorBeforeAnyWrite(t *testing.T) {
 				if err := os.Chmod(f.path(tc.dir), tc.mode); err != nil {
 					t.Fatal(err)
 				}
+				before := treeState(t, f.root)
 				f.env.DryRun = dryRun
 				_, err := f.setup()
 				if !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), tc.dir+" is writable by group or others") {
 					t.Fatalf("setup below %s was not refused: %v", tc.dir, err)
 				}
-				for _, written := range []string{BinaryPath, ConfigDir, UnitPath} {
-					if _, err := os.Lstat(f.path(written)); err == nil {
-						t.Fatalf("a refused setup created %s", written)
-					}
+				if after := treeState(t, f.root); after != before {
+					t.Fatalf("a refused setup changed the root:\nbefore:\n%safter:\n%s", before, after)
 				}
 			})
 		}
 	}
+}
+
+// treeState lists every path under root with its mode. Walk does not follow symlinks.
+func treeState(t *testing.T, root string) string {
+	t.Helper()
+	var b strings.Builder
+	err := filepath.Walk(root, func(p string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel(root, p)
+		fmt.Fprintf(&b, "%s %04o\n", rel, modeBits(info))
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b.String()
 }
