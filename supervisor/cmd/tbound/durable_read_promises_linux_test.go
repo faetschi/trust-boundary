@@ -12,9 +12,8 @@ import (
 	"tbound/supervisor/internal/providerbridge"
 )
 
-// The tool descriptions tell the model that a read returns the whole of an existing UTF-8 text file at a
-// workspace-relative path, and that anything else ends the turn. This holds the executor to that text: each
-// such read withholds its result and closes the provider conversation, and a plain read does not.
+// The pinned product description advertises whole-file reads. The shared executor also accepts thesis
+// line windows for retained calls; unsupported targets still close the conversation.
 func TestReadToolDescriptionMatchesWhatTheExecutorDoes(t *testing.T) {
 	binary, err := json.Marshal(map[string]string{"command": `printf '\377\376ab' > task.txt`})
 	if err != nil {
@@ -24,13 +23,14 @@ func TestReadToolDescriptionMatchesWhatTheExecutorDoes(t *testing.T) {
 		prepare bool
 		args    string
 		ends    bool
+		want    string
 	}{
-		"existing text file":  {false, `{"path":"task.txt"}`, false},
-		"absolute path":       {false, `{"path":"/etc/hostname"}`, true},
-		"missing file":        {false, `{"path":"nope.txt"}`, true},
-		"offset":              {false, `{"path":"task.txt","offset":1}`, true},
-		"limit":               {false, `{"path":"task.txt","limit":1}`, true},
-		"file not valid UTF8": {true, `{"path":"task.txt"}`, true},
+		"existing text file":  {false, `{"path":"task.txt"}`, false, "before\n"},
+		"absolute path":       {false, `{"path":"/etc/hostname"}`, true, ""},
+		"missing file":        {false, `{"path":"nope.txt"}`, true, ""},
+		"offset":              {false, `{"path":"task.txt","offset":1}`, false, "before\n"},
+		"limit":               {false, `{"path":"task.txt","limit":1}`, false, "before"},
+		"file not valid UTF8": {true, `{"path":"task.txt"}`, true, ""},
 	} {
 		t.Run(name, func(t *testing.T) {
 			turns := []providerbridge.DevelopmentProviderTurn{{ResponseID: "r-read", CallID: "c-read", Tool: "read", Arguments: json.RawMessage(c.args)}}
@@ -60,6 +60,13 @@ func TestReadToolDescriptionMatchesWhatTheExecutorDoes(t *testing.T) {
 			if !c.ends {
 				if err != nil || len(output) == 0 {
 					t.Fatalf("a read of an existing text file failed: %v", err)
+				}
+				var summary durableReadSummaryPayload
+				if err := json.Unmarshal(output, &summary); err != nil {
+					t.Fatal(err)
+				}
+				if summary.Content != c.want || summary.Size != len(c.want) || summary.ContentDigest != durableContentDigest([]byte(c.want)) {
+					t.Fatalf("read released %+v; want content %q with its size and digest", summary, c.want)
 				}
 				return
 			}
