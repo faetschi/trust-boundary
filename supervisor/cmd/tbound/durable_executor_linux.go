@@ -441,7 +441,10 @@ type durableCommandSummary struct {
 }
 
 // durableCommandStreamReleaseBytes bounds the released tail of each settled stream. The Store keeps the whole stream up to its 1 MiB capture bound.
-// 17 results x (2 streams x 4096 x 7 escaped bytes + 4 KiB call envelope) + 64 KiB prompts = 1,110,016 request bytes, 26% of the 4 MiB cap.
+// Under the signed pilot ceiling of 17 host calls, the bash streams contribute at most 17 x 2 x 4096 x 7 = 974,848 request
+// bytes, counting 7 bytes per escaped control byte. A 4 KiB call envelope per result and a 64 KiB prompt allowance bring the
+// modeled total to 1,110,016 bytes, 26% of the 4 MiB cap. This is the worst-case bash-stream contribution, not a guarantee that
+// a whole request fits. Assistant text, original arguments, large reads, and write or edit arguments are not bounded by it.
 const durableCommandStreamReleaseBytes = 4 << 10
 
 // durableCommandStreamProjection releases the tail of one settled stream as text, as Pi's bash tool does: it keeps the
