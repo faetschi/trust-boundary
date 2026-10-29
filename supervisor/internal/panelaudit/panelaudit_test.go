@@ -635,7 +635,9 @@ func TestVerifyRecomputesStatsFromTheReceipt(t *testing.T) {
 			Prevalence: map[string]float64{"pass": 1, "fail": 0, "unclear": 0}, Gate: GatePass}
 	}
 	f := newFixture(t)
-	f.stats["items"].(map[string]any)["intent"] = forged(f)
+	forgedIntentStats := forged(f)
+	// forged rebuilds the items map via refresh; index it after the call, or the write goes to the stale map.
+	f.stats["items"].(map[string]any)["intent"] = forgedIntentStats
 	if err := f.check(t); err == nil || !strings.Contains(err.Error(), "intent") {
 		t.Errorf("stats claiming kappa 1 over ratings with kappa -0.5 accepted: %v", err)
 	}
