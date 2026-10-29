@@ -3,6 +3,8 @@
 package main
 
 import (
+	"encoding/json"
+	"fmt"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -98,6 +100,26 @@ func TestProductServiceObserveWindowIsBounded(t *testing.T) {
 	}
 	if end := observeWindow(events, 100); len(end.Events) != 0 || end.NextCursor != 100 {
 		t.Fatalf("window at the end: %+v", end)
+	}
+}
+
+// Each byte of a path can be escaped as six bytes, so 256 long paths of `<` would alone exceed the frame.
+func TestProductServiceReviewEventFitsAFrame(t *testing.T) {
+	long := strings.Repeat("<", 1000)
+	var paths []string
+	for i := 0; i < productEventMaxPaths; i++ {
+		paths = append(paths, fmt.Sprintf("%03d%s", i, long))
+	}
+	event := reviewEvent(productsession.Turn{ID: "turn-1", CandidateDigest: "sha256:cand"}, paths)
+	encoded, err := json.Marshal(event)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(encoded) > productEventPathsBudget+1<<10 {
+		t.Fatalf("review event is %d bytes, over the %d byte path budget", len(encoded), productEventPathsBudget)
+	}
+	if event.Text != "256 changed paths" || len(event.Paths) == 0 || len(event.Paths) == len(paths) {
+		t.Fatalf("review event says %q with %d paths", event.Text, len(event.Paths))
 	}
 }
 
