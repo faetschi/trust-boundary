@@ -394,6 +394,28 @@ func TestProviderExchangeIsBoundToTheBaseTemplateNotToThePilotProfile(t *testing
 	}
 }
 
+// Guest evidence refuses a member name equal to another under encoding/json's case folding, as the other evidence
+// importers do. Without the rule, encoding/json binds both members to one field and the document passes.
+func TestCaseFoldDuplicateMembersAreRefused(t *testing.T) {
+	e := expect()
+	netsink := encode(t, KindNetSink, goodNetSink())
+	if err := Validate(KindNetSink, netsink, e); err != nil {
+		t.Fatalf("the good netsink artifact: %v", err)
+	}
+	folded := strings.Replace(string(netsink), `"allowed_connect":`, `"ALLOWED_CONNECT": "connected", "allowed_connect":`, 1)
+	if folded == string(netsink) {
+		t.Fatal("the netsink artifact has no allowed_connect member to fold")
+	}
+	if err := Validate(KindNetSink, []byte(folded), e); err == nil {
+		t.Error("netsink with ALLOWED_CONNECT beside allowed_connect: accepted")
+	}
+	p := NewProviderExchange(goodResponse(t, e, func(_, f map[string]any) { f["Success"] = true }))
+	p.Binding = goodBinding(e, g1ProfileDigest, g1TemplateDigest)
+	if err := Validate(KindProviderExchange, encode(t, KindProviderExchange, p), e); err == nil {
+		t.Error("receipt with success beside Success: accepted")
+	}
+}
+
 func TestTestRunRequiredValues(t *testing.T) {
 	e := expect()
 	for _, kind := range []string{KindProcOracleTests, KindLandlockConnectTests} {

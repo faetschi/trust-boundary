@@ -88,7 +88,7 @@ type envelope struct {
 // DecodeStrict decodes one JSON document into v: a duplicate key, an unknown member and trailing data
 // are refused.
 func DecodeStrict(data []byte, v any) error {
-	if err := protocol.ValidateStrictJSON(data); err != nil {
+	if err := checkEvidenceJSON(data); err != nil {
 		return err
 	}
 	dec := json.NewDecoder(bytes.NewReader(data))
@@ -100,6 +100,14 @@ func DecodeStrict(data []byte, v any) error {
 		return errors.New("trailing data")
 	}
 	return nil
+}
+
+// checkEvidenceJSON bounds the size, then applies the case-fold-aware member rule that the other evidence importers use.
+func checkEvidenceJSON(data []byte) error {
+	if len(data) == 0 || len(data) > MaxBytes {
+		return fmt.Errorf("JSON document size %d is outside 1..%d bytes", len(data), MaxBytes)
+	}
+	return protocol.ValidateEvidenceJSON(data)
 }
 
 // Encode renders an artifact of kind with the given data (a struct of that kind) in the envelope.

@@ -10,8 +10,6 @@ import (
 	"io"
 	"slices"
 	"strings"
-
-	"tbound/supervisor/internal/broker/protocol"
 )
 
 // G1ToolSequence is the tool sequence of the E05 G1 fixture: read(g0), edit(g1), Bash(g2), read(g2).
@@ -72,7 +70,7 @@ type receiptFacts struct {
 // decodeLenient decodes a document another component owns: a duplicate key and trailing data are
 // refused, members this package does not read are accepted.
 func decodeLenient(data []byte, v any) error {
-	if err := protocol.ValidateStrictJSON(data); err != nil {
+	if err := checkEvidenceJSON(data); err != nil {
 		return err
 	}
 	dec := json.NewDecoder(bytes.NewReader(data))
