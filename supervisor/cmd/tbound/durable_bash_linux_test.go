@@ -490,34 +490,38 @@ func TestDurableBashReleasesSettledStreamsExactly(t *testing.T) {
 	}
 }
 
-// TestDurableBashReleasesTheTailOfAnOverlongStream proves an overlong stream releases its last 16384 bytes and
-// marks the truncation with the original byte count, so the command result is not withheld.
+// TestDurableBashReleasesTheTailOfAnOverlongStream proves an overlong stream releases its last durableCommandStreamReleaseBytes
+// bytes and marks the truncation with the original byte count, so the command result is not withheld.
 func TestDurableBashReleasesTheTailOfAnOverlongStream(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("durable session-repository integration runs only on Linux")
 	}
 	stdout := strings.Repeat("a", 20000) + "END\n"
 	released := decodeDurableBashReleased(t, releaseDurableBashStreams(t, stdout, ""))
-	if released.Command.Stdout != stdout[len(stdout)-16384:] || released.Command.StdoutBytes != len(stdout) || !released.Command.StdoutTruncated {
-		t.Fatalf("released stdout: bytes=%d truncated=%t text-length=%d; want the last 16384 bytes of %d with truncation marked",
-			released.Command.StdoutBytes, released.Command.StdoutTruncated, len(released.Command.Stdout), len(stdout))
+	if released.Command.Stdout != stdout[len(stdout)-durableCommandStreamReleaseBytes:] || released.Command.StdoutBytes != len(stdout) || !released.Command.StdoutTruncated {
+		t.Fatalf("released stdout: bytes=%d truncated=%t text-length=%d; want the last %d bytes of %d with truncation marked",
+			released.Command.StdoutBytes, released.Command.StdoutTruncated, len(released.Command.Stdout), durableCommandStreamReleaseBytes, len(stdout))
 	}
 	if released.Command.Stderr != "" || released.Command.StderrBytes != 0 || released.Command.StderrTruncated {
 		t.Fatalf("empty stderr released as %+v", released.Command)
 	}
 }
 
-// TestDurableBashTailDropsARuneCutInHalf proves the tail starts on a whole rune: the 16384-byte window of an
-// 18000-byte run of three-byte runes starts inside a rune, so the released text begins at the next rune.
+// TestDurableBashTailDropsARuneCutInHalf proves the tail starts on a whole rune. The release window of an 18000-byte run of
+// three-byte runes starts inside a rune when the bound is 1 modulo 3, so the released text begins at the next rune.
 func TestDurableBashTailDropsARuneCutInHalf(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("durable session-repository integration runs only on Linux")
 	}
+	if durableCommandStreamReleaseBytes%3 != 1 {
+		t.Fatalf("the rune-cut fixture needs a release bound congruent to 1 modulo 3; got %d", durableCommandStreamReleaseBytes)
+	}
+	wholeRunes := (durableCommandStreamReleaseBytes - 1) / 3
 	stdout := strings.Repeat("€", 6000)
 	released := decodeDurableBashReleased(t, releaseDurableBashStreams(t, stdout, ""))
-	if released.Command.Stdout != strings.Repeat("€", 5461) || released.Command.StdoutBytes != 18000 || !released.Command.StdoutTruncated {
-		t.Fatalf("released stdout: %d runes, bytes=%d truncated=%t; want 5461 whole runes, bytes=18000, truncated",
-			len([]rune(released.Command.Stdout)), released.Command.StdoutBytes, released.Command.StdoutTruncated)
+	if released.Command.Stdout != strings.Repeat("€", wholeRunes) || released.Command.StdoutBytes != 18000 || !released.Command.StdoutTruncated {
+		t.Fatalf("released stdout: %d runes, bytes=%d truncated=%t; want %d whole runes, bytes=18000, truncated",
+			len([]rune(released.Command.Stdout)), released.Command.StdoutBytes, released.Command.StdoutTruncated, wholeRunes)
 	}
 }
 
@@ -546,8 +550,8 @@ func TestDurableBashReleasedSummaryKeepsWorstCaseEscapingInsideTheFrame(t *testi
 		t.Fatalf("released summary is %d bytes; it must leave half the protocol frame for the result wrapper", len(output))
 	}
 	released := decodeDurableBashReleased(t, output)
-	if released.Command.StdoutBytes != 1<<20 || !released.Command.StdoutTruncated || len(released.Command.Stdout) != 16384 {
-		t.Fatalf("released stdout: bytes=%d truncated=%t text-length=%d; want 1048576 bytes, truncated, 16384 released",
-			released.Command.StdoutBytes, released.Command.StdoutTruncated, len(released.Command.Stdout))
+	if released.Command.StdoutBytes != 1<<20 || !released.Command.StdoutTruncated || len(released.Command.Stdout) != durableCommandStreamReleaseBytes {
+		t.Fatalf("released stdout: bytes=%d truncated=%t text-length=%d; want 1048576 bytes, truncated, %d released",
+			released.Command.StdoutBytes, released.Command.StdoutTruncated, len(released.Command.Stdout), durableCommandStreamReleaseBytes)
 	}
 }
