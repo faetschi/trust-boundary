@@ -97,7 +97,7 @@ TBOUND_DIGEST, TBP_DIGEST, TBOUND_RUN_DIGEST, CFG, LOAD_TAR_DIGEST, CORPUS_DIGES
 <ADMIN_KEY_PATH>, <ADMIN_PUB_PATH>, <COSIGN_KEY_PATH>, <EVKEY>, <TRKEY>, <CLKEY> = owner-held keys, never read by an agent (rule 7); <ADMIN_KEY_PATH> = $H/admin.key, <ADMIN_PUB_PATH> = $H/admin.pub (P4), <COSIGN_KEY_PATH> = $H/cosign-gen.key (K0), <EVKEY> = $H/ev.key, <TRKEY> = $H/tr.key, <CLKEY> = $H/cl.key (SSH-1), all mode 0600
 ```
 
-PODMAN_ENV and PODMAN_SVC are shell variables: set each once, in the shell where the commands are typed, as the single-quoted string above (I1 before Z1 on the owner machine, L4 and Spike B at `ROOTCON`). `GSSH`, `KSSH`, `D`, `TBP` and `SVC` are likewise shell functions or aliases defined by the owner before the session; this text only names them.
+PODMAN_ENV and PODMAN_SVC are shell variables: set each once, in the shell where the commands are typed, as the single-quoted string above (I1 before Z1 on the owner machine, L4 and Spike B at `ROOTCON`). `GSSH`, `KSSH`, `D`, `TBP` and `SVC` are likewise shell functions or aliases defined by the owner before the session; this text only names them. Run `source infra/guest/helpers/owner-shell.sh` after setting `GUEST_IP`, `HOST_KEY_ALIAS`, `KNOWN_HOSTS`, `ADMIN_KEY_PATH` and `TBP`. The helper defines `GSSH`, `KSSH`, `D` and `TBP`, has no default for any of them, and sends its `SVC` definition to the guest with each `GSSH` command.
 
 "Measured at F0" means no expected value is recorded in this runbook; the digest measured from `F` in this session is the pin (built twice, byte-identical). Digests that do not depend on `F`'s changed code are kept. Recomputed at `2c31881` (log `F:\TBoundAssets\recovery-20261015\repin\build.log`) and unchanged at that commit (the Landlock ruleset digest `6bd3b65e...` is NOT among them any more: the new code adds a file rule on fd3, so it is measured at F0, R5-1): net-sink rule file `b2a5618f...78e4` (pinned in code, the file is never edited), helper `xattr-census-r9.py` `2daf06f5...3e4b`, `CGROUP_ROOT_DIGEST` `8c64df40...03ce`, the two admission policy digests. Fixed third-party files, not recomputed: Node, cosign, podman, crun, seccomp, and the bash of the base layers.
 
@@ -328,7 +328,7 @@ Six independent installs; none is signed. All from `$W/src` (the F archive).
    ```
    GSSH 'sudo -n install -d -o root -g root -m 0755 /opt/tbound/corpus /opt/tbound/corpus/artifacts'
    tar -C $W/src/corpus/pilot/artifacts -c . | GSSH 'sudo -n tar -x --no-same-owner --no-same-permissions -C /opt/tbound/corpus/artifacts'
-   GSSH 'sudo -n chown -R root:root /opt/tbound/corpus && sudo -n find /opt/tbound/corpus -type d -exec chmod 0755 {} + && sudo -n find /opt/tbound/corpus -type f -exec chmod 0644 {} +; ls /opt/tbound/corpus/artifacts | wc -l'        # 39 at 2c31881 (1 attacker, 20 fixture, 8 accept, 8 solution, 2 rubric); at F it must equal `ls $W/src/corpus/pilot/artifacts | wc -l`
+   GSSH 'sudo -n chown -R root:root /opt/tbound/corpus && sudo -n find /opt/tbound/corpus -type d -exec chmod 0755 {} + && sudo -n find /opt/tbound/corpus -type f -exec chmod 0644 {} +; ls /opt/tbound/corpus/artifacts | wc -l'        # 76 at 8c1c8ba (1 attacker, 33 fixture, 20 accept, 20 solution, 2 rubric); at F it must equal `ls $W/src/corpus/pilot/artifacts | wc -l`
    ```
    Rollback: `sudo rm -rf /opt/tbound/corpus`.
 4. Corpus manifest location: `/etc/tbound/corpus/manifest.json` (`D09ManagedPiCorpusManifestPath`, the only path the v4 config accepts) is installed in Part D (D2), not now; the manifest is not final.
