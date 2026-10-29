@@ -159,7 +159,8 @@ Step 2 detail:
     - Also from 2026-10-28: the read line window (039ac82) and the recovery retirement fixes (`fix/recovery-retirement-pins`); the product shares this recovery code, so it likely has defects (1)-(5) too (unchecked).
     - Also from cc831e9: `audit.OpenExisting` and its three shared call sites (recovery journal, workflow catalog, Store admission journal); `verify-retained` itself depends on the D09 settlement code above.
   - The panel/corpus tooling (5c1c835, 66a3dea) is thesis-only.
-  - Merge forecast (2026-10-28, `git merge-tree`): product `b6493b9` into thesis `f8b9b0f` merges with no textual conflict (123 thesis-only, 224 product-only commits). Not checked: semantic duplication in files both sides changed (recovery, governed replay, durable executor), and later product commits (P8 round 4 was in flight).
+  - Merge forecast refreshed 2026-10-29 (`git merge-tree`): product `c66599b` into thesis `c276e51` has 3 textual conflicts: `cmd/tbound/durable_executor_linux.go`, `cmd/tbound/governed_replay_linux.go`, `internal/providerbridge/conversation.go` (thesis: bash stdout/stderr release, exact-member decoders, read window; product: soft refusals in the same summary/replay/decoder paths). 191 thesis-only, 224 product-only commits. The product status names "the next thesis sync" as planned. Resolve so both the thesis' released-stream summary and the product's soft-refusal records survive, and re-run the replay exact-byte tests.
+  - Earlier forecast (2026-10-28): product `b6493b9` into thesis `f8b9b0f` merged with no textual conflict (123 thesis-only, 224 product-only commits). Not checked: semantic duplication in files both sides changed (recovery, governed replay, durable executor), and later product commits (P8 round 4 was in flight).
 - The F14 freeze, signing, guest install and evidence are owner steps on FABIAN after the merges and the panel prep.
 
 ## Working rules
