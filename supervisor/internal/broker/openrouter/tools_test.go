@@ -103,12 +103,10 @@ func bashDescriptionOf(t *testing.T, built BuiltRequest) string {
 	return ""
 }
 
-// bashExitOnlyDescription is the bash description of every engineering request before a product turn
-// could show the model command output. A session whose executor returns only the exit code still sends it.
+// bashExitOnlyDescription retains the short description pinned before product output was introduced.
 const bashExitOnlyDescription = "Execute a bash command. Requests are forwarded to tbound."
 
-// The zero route is a session that was never given a command output bound (serve --pi). Its executor
-// returns the exit code alone, so its request must not promise stdout and stderr.
+// The zero route keeps its frozen description even though its executor releases thesis stream tails.
 func TestEngineeringRouteAdvertisesTheExitOnlyBashDescription(t *testing.T) {
 	messages := []Message{{Role: User, Content: strptr("hello")}}
 	for name, route := range map[string]Route{"zero route": {}, "engineering route": EngineeringRoute()} {

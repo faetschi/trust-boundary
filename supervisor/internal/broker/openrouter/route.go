@@ -41,9 +41,8 @@ type Route struct {
 	ProfileDigest string
 	// Timeout is the HTTP timeout of the research profile.
 	Timeout time.Duration
-	// CommandOutput marks a route whose executor releases bounded Bash stdout and stderr to the provider
-	// (a product turn). Its Bash tool description says so. The zero value is an executor that returns the
-	// exit code alone (serve --pi), so its description promises no output.
+	// CommandOutput selects the product Bash description for configurable stream bounds. The zero value
+	// keeps the frozen serve --pi description; its executor still releases thesis 4 KiB tails and byte counts.
 	CommandOutput bool
 	members       string
 	// responseModels is the newline-joined exact list of response-model strings the

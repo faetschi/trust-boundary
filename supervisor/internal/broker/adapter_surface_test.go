@@ -197,11 +197,8 @@ func descriptionsIn(value any, found *[]string) {
 	}
 }
 
-// What a provider is told on the engineering route of a session whose executor returns the exit code alone
-// (serve --pi) is what the adapter registers, word for word, and each schema hashes to the digest
-// adapter/profile.json pins. A product turn, whose executor releases command output, is told the same
-// except for the bash description, and its schemas hash to the same pins. (The adapter's own test holds its
-// schema to the same pins, and piruntime holds the worker's copy to them, so the three cannot drift apart.)
+// The unmarked route retains the adapter's frozen description and schema pins. A product turn changes
+// only the Bash description; both executors release output with their respective stream projections.
 func TestAdvertisedToolSurfaceEqualsTheAdapterTextAndItsPins(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join("..", "..", "..", "adapter", "src", "proxy-tools.ts"))
 	if err != nil {
