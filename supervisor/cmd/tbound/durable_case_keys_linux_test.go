@@ -35,32 +35,32 @@ var durableCaseVariantCases = []durableCaseVariantCase{
 	{"edit nested old text", "edit", `{"path":"task.txt","edits":[{"oldText":"baseline","newText":"edited"}]}`,
 		`{"path":"task.txt","edits":[{"oldText":"baseline","OldText":"baseline","newText":"edited"}]}`},
 	{"bash exact duplicate", "bash", `{"command":"true"}`, `{"command":"true","command":"printf unexpected"}`},
-	{"bash escaped duplicate", "bash", `{"command":"true"}`, `{"command":"true","command":"printf unexpected"}`},
-	{"bash escaped case variant", "bash", `{"command":"true"}`, `{"command":"true","Command":"printf unexpected"}`},
+	{"bash escaped duplicate", "bash", `{"command":"true"}`, `{"command":"true","\u0063ommand":"printf unexpected"}`},
+	{"bash escaped case variant", "bash", `{"command":"true"}`, `{"command":"true","\u0043ommand":"printf unexpected"}`},
 	{"read exact duplicate", "read", `{"path":"task.txt"}`, `{"path":"task.txt","path":"build/result.txt"}`},
-	{"read escaped duplicate", "read", `{"path":"task.txt"}`, `{"path":"task.txt","path":"build/result.txt"}`},
-	{"read escaped case variant", "read", `{"path":"task.txt"}`, `{"path":"task.txt","Path":"build/result.txt"}`},
+	{"read escaped duplicate", "read", `{"path":"task.txt"}`, `{"path":"task.txt","\u0070ath":"build/result.txt"}`},
+	{"read escaped case variant", "read", `{"path":"task.txt"}`, `{"path":"task.txt","\u0050ath":"build/result.txt"}`},
 	{"read folded offset", "read", `{"path":"task.txt"}`, `{"path":"task.txt","offſet":2}`},
 	{"write exact duplicate", "write", `{"path":"out.txt","content":"expected\n"}`,
 		`{"path":"out.txt","content":"expected\n","content":"unexpected\n"}`},
 	{"write escaped duplicate", "write", `{"path":"out.txt","content":"expected\n"}`,
-		`{"path":"out.txt","content":"expected\n","content":"unexpected\n"}`},
+		`{"path":"out.txt","content":"expected\n","\u0063ontent":"unexpected\n"}`},
 	{"write escaped case variant", "write", `{"path":"out.txt","content":"expected\n"}`,
-		`{"path":"out.txt","content":"expected\n","Content":"unexpected\n"}`},
+		`{"path":"out.txt","content":"expected\n","\u0043ontent":"unexpected\n"}`},
 	{"edit exact duplicate", "edit", `{"path":"task.txt","edits":[{"oldText":"baseline","newText":"edited"}]}`,
 		`{"path":"task.txt","edits":[{"oldText":"baseline","newText":"edited"}],"edits":[{"oldText":"baseline","newText":"unexpected"}]}`},
 	{"edit escaped duplicate", "edit", `{"path":"task.txt","edits":[{"oldText":"baseline","newText":"edited"}]}`,
-		`{"path":"task.txt","edits":[{"oldText":"baseline","newText":"edited"}],"edits":[{"oldText":"baseline","newText":"unexpected"}]}`},
+		`{"path":"task.txt","edits":[{"oldText":"baseline","newText":"edited"}],"\u0065dits":[{"oldText":"baseline","newText":"unexpected"}]}`},
 	{"edit escaped case variant", "edit", `{"path":"task.txt","edits":[{"oldText":"baseline","newText":"edited"}]}`,
-		`{"path":"task.txt","edits":[{"oldText":"baseline","newText":"edited"}],"Edits":[{"oldText":"baseline","newText":"unexpected"}]}`},
+		`{"path":"task.txt","edits":[{"oldText":"baseline","newText":"edited"}],"\u0045dits":[{"oldText":"baseline","newText":"unexpected"}]}`},
 	{"edit folded name", "edit", `{"path":"task.txt","edits":[{"oldText":"baseline","newText":"edited"}]}`,
 		`{"path":"task.txt","edits":[{"oldText":"baseline","newText":"edited"}],"editſ":[{"oldText":"baseline","newText":"unexpected"}]}`},
 	{"edit nested exact duplicate", "edit", `{"path":"task.txt","edits":[{"oldText":"baseline","newText":"edited"}]}`,
 		`{"path":"task.txt","edits":[{"oldText":"baseline","oldText":"unexpected","newText":"edited"}]}`},
 	{"edit nested escaped duplicate", "edit", `{"path":"task.txt","edits":[{"oldText":"baseline","newText":"edited"}]}`,
-		`{"path":"task.txt","edits":[{"oldText":"baseline","oldText":"unexpected","newText":"edited"}]}`},
+		`{"path":"task.txt","edits":[{"oldText":"baseline","\u006fldText":"unexpected","newText":"edited"}]}`},
 	{"edit nested escaped case variant", "edit", `{"path":"task.txt","edits":[{"oldText":"baseline","newText":"edited"}]}`,
-		`{"path":"task.txt","edits":[{"oldText":"baseline","OldText":"unexpected","newText":"edited"}]}`},
+		`{"path":"task.txt","edits":[{"oldText":"baseline","\u004fldText":"unexpected","newText":"edited"}]}`},
 }
 
 // caseVariantDecision is a synthetic trusted ALLOW decision for one call of the given tool.
@@ -104,6 +104,9 @@ func TestDurableDecodersRefuseCaseVariantMembers(t *testing.T) {
 	}
 	for _, tc := range durableCaseVariantCases {
 		t.Run(tc.name, func(t *testing.T) {
+			if strings.Contains(tc.name, "escaped") && !strings.Contains(tc.variant, "\\u") {
+				t.Fatalf("fixture %q is named escaped but its variant has no JSON escape", tc.name)
+			}
 			if _, err := protocol.CanonicalArguments(tc.tool, json.RawMessage(tc.variant)); err == nil {
 				t.Fatalf("the protocol capture accepted the case-variant %s object %s", tc.tool, tc.variant)
 			}
@@ -120,11 +123,11 @@ func TestDurableDecodersRefuseCaseVariantMembers(t *testing.T) {
 // durableEscapedExactCases writes exact schema names with JSON escapes. Each decodes to a schema name, so the protocol
 // capture and every durable decoder must accept the object.
 var durableEscapedExactCases = []struct{ name, tool, arguments string }{
-	{"bash command", "bash", `{"command":"true"}`},
-	{"read path", "read", `{"path":"task.txt"}`},
-	{"write path and content", "write", `{"path":"out.txt","content":"expected\n"}`},
+	{"bash command", "bash", `{"\u0063ommand":"true"}`},
+	{"read path", "read", `{"\u0070ath":"task.txt"}`},
+	{"write path and content", "write", `{"\u0070ath":"out.txt","\u0063ontent":"expected\n"}`},
 	{"edit path, edits and nested members", "edit",
-		`{"path":"task.txt","edits":[{"oldText":"baseline","newText":"edited"}]}`},
+		`{"\u0070ath":"task.txt","\u0065dits":[{"\u006fldText":"baseline","\u006eewText":"edited"}]}`},
 }
 
 // TestDurableDecodersAcceptEscapedExactMemberNames is the positive control for the refusals above: a name written with
@@ -135,6 +138,9 @@ func TestDurableDecodersAcceptEscapedExactMemberNames(t *testing.T) {
 	}
 	for _, tc := range durableEscapedExactCases {
 		t.Run(tc.name, func(t *testing.T) {
+			if !strings.Contains(tc.arguments, "\\u") {
+				t.Fatalf("positive control %q has no JSON escape", tc.name)
+			}
 			if _, err := protocol.CanonicalArguments(tc.tool, json.RawMessage(tc.arguments)); err != nil {
 				t.Fatalf("the protocol capture refused the escaped exact %s object %s: %v", tc.tool, tc.arguments, err)
 			}
@@ -151,11 +157,11 @@ func TestDurableExecutorRunsEscapedExactBashAndReadMembers(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("durable session-repository integration runs only on Linux")
 	}
-	output, _, calls, argv, err := executeDurableBashOrReadVariant(t, "bash", `{"command":"true"}`)
+	output, _, calls, argv, err := executeDurableBashOrReadVariant(t, "bash", `{"\u0063ommand":"true"}`)
 	if err != nil || len(output) == 0 || calls != 1 || len(argv) != 2 || argv[0] != "-lc" || argv[1] != "true" {
 		t.Fatalf("escaped bash command did not run as true: output=%q runner=%d argv=%q err=%v", output, calls, argv, err)
 	}
-	output, _, _, _, err = executeDurableBashOrReadVariant(t, "read", `{"path":"task.txt"}`)
+	output, _, _, _, err = executeDurableBashOrReadVariant(t, "read", `{"\u0070ath":"task.txt"}`)
 	if err != nil || !strings.Contains(string(output), "baseline") {
 		t.Fatalf("escaped read path did not read task.txt: output=%q err=%v", output, err)
 	}
