@@ -123,6 +123,21 @@ func TestProjectBundleImportExportCommands(t *testing.T) {
 	}
 }
 
+func TestProjectBundlePrintsEveryIncludedPath(t *testing.T) {
+	work := projectDir(t)
+	src := filepath.Join(work, "src")
+	projectPut(t, src, "main.go", "package main\n", 0o644)
+	projectPut(t, src, "bin/run.sh", "#!/bin/sh\n", 0o755)
+	projectPut(t, src, "secret/token", "hunter2", 0o600)
+	out, err := projectCLI(t, "bundle", "--source", src, "--exclude", "secret", "--out", filepath.Join(work, "project.tbpb"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "\n  bin\n  bin/run.sh\n  main.go\nexcluded: 1\n") {
+		t.Errorf("bundle output does not list each included path under the included line:\n%s", out)
+	}
+}
+
 func TestProjectBundleRefusalNamesPathAndReason(t *testing.T) {
 	work := projectDir(t)
 	src := filepath.Join(work, "src")

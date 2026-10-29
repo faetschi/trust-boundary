@@ -19,7 +19,8 @@ const projectUsage = `usage: tbound project <command> [flags]
 
   bundle  --source DIR [--exclude PATH]... --out FILE
           Scan the original project and write a tbound-project-bundle/v1 file. Run it as the user
-          who owns the project. .git is always excluded; --exclude paths are relative to --source.
+          who owns the project. .git is always excluded. Pass the registration's protected paths and
+          any private paths with --exclude; --exclude paths are relative to --source.
   import  --bundle FILE --dest DIR [--manifest-out FILE]
           Validate a bundle and create the new project directory DEST (it must not exist and its
           parent must be private). Run it as the service. --manifest-out saves the baseline manifest.
@@ -108,7 +109,7 @@ func runProjectBundle(args []string, stdout, stderr io.Writer) error {
 	source := fs.String("source", "", "original project directory")
 	out := fs.String("out", "", "bundle file to create")
 	var exclude pathList
-	fs.Var(&exclude, "exclude", "relative path to leave out (repeatable)")
+	fs.Var(&exclude, "exclude", "registration protected or private path to leave out, relative to --source (repeatable)")
 	if err := parseProjectFlags("bundle", fs, args, stderr, "source", "out"); err != nil {
 		return err
 	}
@@ -124,7 +125,11 @@ func runProjectBundle(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(stdout, "included: %s\nexcluded: %d\n", summarize(built.Manifest), len(built.Excluded))
+	fmt.Fprintf(stdout, "included: %s\n", summarize(built.Manifest))
+	for _, p := range built.Included {
+		fmt.Fprintf(stdout, "  %s\n", p)
+	}
+	fmt.Fprintf(stdout, "excluded: %d\n", len(built.Excluded))
 	for _, p := range built.Excluded {
 		fmt.Fprintf(stdout, "  %s\n", p)
 	}
