@@ -54,7 +54,9 @@ training; this use is compatible with both licenses.
 Changes: RepoQA — the needle's source file is materialized as the workspace fixture at a neutral path
 (`src/needle-N.<ext>`) so the prompt does not reveal the target name; similarity grading is replaced
 by an exact function-name witness. MultiPL-E/HumanEval — the JS prompt and the `node:assert` tests are
-used verbatim; the write/edit tasks are graded by running those dataset tests against the agent's
+used verbatim, except one docstring example of HumanEval_128 (`prod_signs([1, 2, 2, -4])`), corrected
+from `9` to `-9` to agree with the dataset tests (recorded in that case's meaning-record
+transformations); the write/edit tasks are graded by running those dataset tests against the agent's
 file; a canonical JS reference solution was authored by the project (verified against the dataset
 tests) and serves as the admission self-check reference; the edit tasks seed one bug into it; the
 bash tasks wrap the function to record its return values and print a digest of them after the
