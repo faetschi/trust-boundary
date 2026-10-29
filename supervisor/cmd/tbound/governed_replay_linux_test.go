@@ -12,7 +12,6 @@ import (
 
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/broker"
-	"tbound/supervisor/internal/broker/openrouter"
 	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/gate"
 	"tbound/supervisor/internal/providerbridge"
@@ -43,7 +42,7 @@ type governedReplayFixture struct {
 	pins            GovernedReplayPins
 }
 
-func newGovernedReplayFixture(t *testing.T, turns []providerbridge.DevelopmentProviderTurn, admitPrompt bool) *governedReplayFixture {
+func governedReplayAllowAllPolicy(t *testing.T) gate.Policy {
 	t.Helper()
 	policy, err := gate.NewPolicy(gate.Profile{Version: gate.ProfileVersion, Rules: []gate.Rule{
 		{Tool: "read", Effect: gate.EffectAllow},
@@ -54,10 +53,22 @@ func newGovernedReplayFixture(t *testing.T, turns []providerbridge.DevelopmentPr
 	if err != nil {
 		t.Fatal(err)
 	}
-	return newGovernedReplayFixtureWithPolicy(t, turns, admitPrompt, policy)
+	return policy
+}
+
+func newGovernedReplayFixture(t *testing.T, turns []providerbridge.DevelopmentProviderTurn, admitPrompt bool) *governedReplayFixture {
+	t.Helper()
+	return newGovernedReplayFixtureWithPolicy(t, turns, admitPrompt, governedReplayAllowAllPolicy(t))
 }
 
 func newGovernedReplayFixtureWithPolicy(t *testing.T, turns []providerbridge.DevelopmentProviderTurn, admitPrompt bool, policy gate.Policy) *governedReplayFixture {
+	t.Helper()
+	return newGovernedReplayFixtureWithOutput(t, turns, admitPrompt, policy, 0)
+}
+
+// newGovernedReplayFixtureWithOutput is the fixture of a Store whose executor shows the provider at most
+// commandOutputBytes of each Bash stream, and whose replay pins the same bound. Zero is the research summary.
+func newGovernedReplayFixtureWithOutput(t *testing.T, turns []providerbridge.DevelopmentProviderTurn, admitPrompt bool, policy gate.Policy, commandOutputBytes int) *governedReplayFixture {
 	t.Helper()
 	root := privateGovernedTestRoot(t)
 	sourcePath := filepath.Join(root, "source")
@@ -141,6 +152,7 @@ func newGovernedReplayFixtureWithPolicy(t *testing.T, turns []providerbridge.Dev
 		Store: store, Tip: g0, CallIssuer: governedCallIssuer,
 		PolicyDigest: governedReplayStorePolicy, MetadataPolicyDigest: governedReplayMetaPolicy,
 		BashOutputPaths: []string{"task.txt"}, CommandRunner: runner,
+		CommandOutputBytes: commandOutputBytes,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -150,6 +162,10 @@ func newGovernedReplayFixtureWithPolicy(t *testing.T, turns []providerbridge.Dev
 		InitialGenerationID: g0.ID(), InitialTreeDigest: g0.TreeDigest(),
 		SystemPrompt: governedReplaySystem, DeveloperPrompt: governedReplayDeveloper,
 	}
+	// The route comes from the authority exactly as it does for a live conversation: an executor that
+	// releases command output marks it, and the request then says so.
+	authority.commandOutputBytes = commandOutputBytes
+	config.Route = authority.applyProviderRoute(config).Route
 	conversation, err := providerbridge.NewDevelopmentOfflineConversation(config, providerJournal, turns)
 	if err != nil {
 		t.Fatal(err)
@@ -173,8 +189,8 @@ func newGovernedReplayFixtureWithPolicy(t *testing.T, turns []providerbridge.Dev
 	}
 	systemCopy, developerCopy := config.SystemPrompt, config.DeveloperPrompt
 	profile := broker.Profile{
-		ID: config.ProfileID, Model: providerbridge.ApprovedModel,
-		Messages:     providerbridge.InitialPromptMessages(openrouter.Route{}, systemCopy, developerCopy),
+		ID: config.ProfileID, Model: providerbridge.ApprovedModel, Route: config.Route,
+		Messages:     providerbridge.InitialPromptMessages(config.Route, systemCopy, developerCopy),
 		ToolManifest: broker.DeclaredToolManifest(), ToolCallIssuer: governedCallIssuer,
 		ResponseIDIssuer: governedResponseIssuer, Generation: g0.ID(),
 	}
@@ -182,7 +198,8 @@ func newGovernedReplayFixtureWithPolicy(t *testing.T, turns []providerbridge.Dev
 		Provider: providerbridge.RecoveryPins{Config: config, Model: providerbridge.ApprovedModel, Policy: policy},
 		Profile:  profile, Baseline: bundle.Baseline,
 		StorePolicyDigest: governedReplayStorePolicy, MetadataPolicyDigest: governedReplayMetaPolicy,
-		BashOutputPaths: []string{"task.txt"},
+		BashOutputPaths:    []string{"task.txt"},
+		CommandOutputBytes: commandOutputBytes,
 	}
 	return &governedReplayFixture{
 		store: store, storeJournal: storeJournal, providerJournal: providerJournal,

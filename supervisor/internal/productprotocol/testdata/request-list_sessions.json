@@ -1,0 +1,4 @@
+{
+  "version": "tbound-product-protocol/v1",
+  "op": "list_sessions"
+}

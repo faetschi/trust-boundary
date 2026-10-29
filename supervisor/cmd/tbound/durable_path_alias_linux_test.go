@@ -5,11 +5,14 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"runtime"
 	"testing"
 
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/broker/protocol"
+	"tbound/supervisor/internal/productsession"
 	"tbound/supervisor/internal/providerbridge"
 )
 
@@ -76,6 +79,13 @@ func TestDurableArgumentsRefuseSpellingsThatLeaveTheWorkspace(t *testing.T) {
 		if _, _, err := durableWriteArguments(write); err == nil {
 			t.Errorf("write of %q: accepted", spelling)
 		}
+		edit, err := json.Marshal(map[string]any{"path": spelling, "edits": []map[string]string{{"oldText": "a", "newText": "b"}}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := durableEditArguments(edit); err == nil {
+			t.Errorf("edit of %q: accepted", spelling)
+		}
 	}
 }
 
@@ -139,5 +149,47 @@ func TestGovernedReplayAcceptsWorkspaceAliasesForEveryPathTool(t *testing.T) {
 	}
 	if _, err := ReplayGovernedTranscript(fixture.providerJournal, fixture.storeJournal, fixture.store, fixture.pins); err != nil {
 		t.Fatalf("governed replay refused the aliased transcript: %v", err)
+	}
+}
+
+// TestProductTurnWritesCanonicalSpellingsAndCompletes runs a product turn whose model writes through a spelling that
+// is not the canonical Store path. Preflight must see the canonical path, so the turn publishes the file instead of
+// ending on ErrInvalidPath.
+func TestProductTurnWritesCanonicalSpellingsAndCompletes(t *testing.T) {
+	for _, testCase := range []struct{ spelling, file string }{
+		{"./a.txt", "a.txt"}, {"src//a", "src/a"}, {"src/./a", "src/a"},
+	} {
+		t.Run(testCase.spelling, func(t *testing.T) {
+			f := newScopedProductDriverFixture(t, productsession.PublicationAuto, nil, false, func(projectDir string) {
+				src := filepath.Join(projectDir, "src")
+				if err := os.Mkdir(src, 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Chmod(src, 0o755); err != nil {
+					t.Fatal(err)
+				}
+			})
+			admission := f.submit(t, "turn-alias", productDriverPromptA)
+			arguments, err := json.Marshal(map[string]string{"path": testCase.spelling, "content": productDriverNotes})
+			if err != nil {
+				t.Fatal(err)
+			}
+			script := &productDriverScript{turns: []providerbridge.ScriptTurn{
+				{ResponseID: "t1-response-alias", CallID: "t1-call-alias", Tool: "write", Arguments: arguments},
+				{ResponseID: "t1-response-final", Text: productDriverAnswerA},
+			}}
+			receipt, turn, err := f.run(t, admission, script)
+			if err != nil {
+				t.Fatalf("turn writing %q did not complete: %v", testCase.spelling, err)
+			}
+			published, err := os.ReadFile(filepath.Join(f.projectDir, testCase.file))
+			if err != nil || string(published) != productDriverNotes {
+				t.Fatalf("turn writing %q did not publish %s: %q %v", testCase.spelling, testCase.file, published, err)
+			}
+			if turn.State != productsession.StateTerminal || turn.Outcome != productsession.OutcomePublished ||
+				len(receipt.ToolSequence) != 1 || receipt.ToolSequence[0] != "write" || len(receipt.Denials) != 0 {
+				t.Fatalf("turn writing %q settlement: turn=%+v receipt=%+v", testCase.spelling, turn, receipt)
+			}
+		})
 	}
 }

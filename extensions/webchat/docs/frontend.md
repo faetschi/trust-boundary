@@ -1548,3 +1548,55 @@ FX4 fixes the phone composer copy that the Redesign browser QA found clipped (de
 ## Mockup interaction layer (after 92a5927)
 
 `tbound-redesign-v3.html` gained one inline script (its own CSP hash) so that buttons on the desktop frames jump to the frame that shows the result; the governance tabs still swap in place. No frame markup changed: the desktop frames render pixel-identical (14 at 1440, 4 at 1024). `qa/v3-mockup-receipt.json` was not regenerated, so its pinned mockup sha256 and CSP policy describe the file before this layer. The frames it compares are unchanged. Phone frames were not part of this change.
+
+## Live mode (P9)
+
+The product branch adds a live mode to this client. The contract is `docs/product-contracts.md`,
+"Milestone 6", and what the client does with each route is `web-chat-contract.md` section 9.7. This
+section records the code and the checks.
+
+**Where it lives.** `src/live/` holds the client (`client.ts`, `wire.ts`), the long poll
+(`poller.ts`), the state (`controller.ts`, `readings.ts`) and the components (`LiveRoot`, `LiveSessions`,
+`LiveComposer`, `LivePanel`, `ActionNotice`, `Unpaired`). `src/App.tsx` asks `GET /api/v1/contract` and picks the
+live shell, the pairing page or the demonstration path. The existing parts changed by a few lines each:
+
+- `core/contract.ts` and `core/validate.ts` accept the optional `live` field of a served live snapshot, and refuse it
+  in any other source or in a document. They export a small `kit` of their primitives, which `live/wire.ts` uses.
+- `app/workspaceStore.ts` takes two optional deps, `loadSnapshot` and `openEventStream`, so live mode supplies the
+  session routes to the same stream controller. `WorkspaceProvider` takes an optional `store` and `autoStart`.
+- `Rail`, `ChatView` and `Shell` read the live context. Without it they are as before, and a fixture or replay
+  source gets a `demonstration · not a live session` badge.
+- `src/test-support/liveGateway.ts` is a fake gateway for the tests. It follows the service's order of checks: a
+  repeated request key is answered `replayed` before the revision is checked.
+
+**Dist.** The build is committed and embedded, so a source change is a `dist/` change. This pass rebuilt it on Windows
+(Node 24.22.1; `.nvmrc` says 24.15.0). Before any change, the same Windows build matched the committed `dist/` byte for
+byte. After the change, `npm run repro` shows two identical clean builds and a difference from HEAD, which is expected
+until the new `dist/` is committed. Tree: `index.html` `03b49576…`, `assets/index-BL1ptvjU.js` `44931fc6…`,
+`assets/index-BlHNS_Sz.css` `0b3b7e35…`, `.vite/manifest.json` `0063f244…`.
+
+**Receipts (2026-10-26, Windows, Node 24.22.1, npm 12.0.2).**
+
+| Check | Command | Result |
+|---|---|---|
+| typecheck, tests, build, sinks, deps | `npm run verify` (with `VITE_WEBCHAT_LEGACY_ASSETS`, below) | exit 0. vitest 83 files, 1397 tests, 0 skipped. `check:sinks` self-test and scan OK. `check:deps` self-test and scan OK, no dependency added |
+| determinism | `npm run repro` | the two clean builds are identical; the rebuild differs from HEAD `5068560` (uncommitted `dist/`) |
+| Go | `p9f.sh webchat -race -count=1 -skip TestLiveRunPairsOverTheRealListenerAndForwardsOverTheRealSocket` in WSL | gofmt and vet clean; `cmd/tbound-webchat` and `internal/webchat` ok |
+| Go, the skipped test | same, without `-skip` | **flaky, not caused by this change.** It failed 4 of 6 runs on an untouched `git archive HEAD` export too (`run after SIGINT: context deadline exceeded`, the server's 5 s shutdown) |
+| legacy client | `node --test internal/webchat/jstest/*.test.mjs` | 262 of 262 |
+| boundary | `sh scripts/check-extension-boundary.sh`, with `--self-test` | OK, 8 of 8 |
+
+On a checkout whose path contains a space, `src/core/differential.test.ts` cannot import the legacy modules, because
+`new URL(...).pathname` is percent-encoded. That is the case for this worktree, so the run used
+`VITE_WEBCHAT_LEGACY_ASSETS=file:///C:/.../extensions/webchat/internal/webchat/assets`. Without it that one file fails to
+load and every other test passes.
+
+**Browser check.** A scripted fake product service (a Go program, outside the repository) and `tbound-webchat --live` ran in
+WSL, and the page was driven in a browser at 1280 by 800. Checked: pairing and `/app/`; the sessions list; a prompt sent
+with Enter; the transcript with the DENY chip and its hint; the budget (`host calls 43 left of 50` for 50 less 2
+consumed less 5 reserved); the review card with a hostile diff drawn as text; Publish; Discard by keyboard (focus returned to
+the composer); Cancel after a reload mid-turn (the open session and the stream came back, and the CSRF token was read
+again from `GET /api/v1/pair`); a connection dropped after the service applied a prompt (two POSTs, one turn, "The service had
+already recorded this request"); creating a session; and the pairing instructions after the gateway restarted.
+Not checked: phone widths (the sticky dock may grow past `--dock-clearance` while a notice is shown), a screen reader, Firefox
+or Safari, a session over 512 records, and a real product service.

@@ -245,6 +245,7 @@ type SessionOperationAuthority struct {
 	storePolicyDigest                  string
 	metadataPolicyDigest               string
 	bashOutputPaths                    []string
+	commandOutputBytes                 int // per-stream Bash output bound shown to the provider; zero is the research summary
 	store                              *sessionrepo.Store
 	managedStore                       *sessionlaunch.ManagedStore
 	baseline                           *sessionrepo.Generation
@@ -841,6 +842,20 @@ func (a *SessionOperationAuthority) resolveFromTrace(trace audit.Trace, decision
 			return governedCapture{}, errors.New("provider host-call reservation was not followed immediately by its exchange")
 		}
 		switch record.Event.Kind {
+		case "provider_history_imported":
+			// A product turn journal opens with its imported predecessor history; providerbridge replay verifies
+			// its messages. Here it must be first and carry the predecessor this conversation was built with.
+			var imported struct {
+				ImportedPrefixDigest string `json:"imported_prefix_digest"`
+			}
+			a.mu.Lock()
+			predecessor := a.providerConfig.Predecessor.Digest()
+			a.mu.Unlock()
+			if recordIndex != 0 || predecessor == "" ||
+				verifyProviderEventID(record, a.conversationID, "history-imported", providerOrdinal) != nil ||
+				json.Unmarshal(record.Event.Data, &imported) != nil || imported.ImportedPrefixDigest != predecessor {
+				return governedCapture{}, ErrGovernedSessionEvidence
+			}
 		case "provider_user_admitted":
 			if activeCaptureKey != "" {
 				return governedCapture{}, ErrGovernedSessionEvidence
@@ -919,6 +934,18 @@ func (a *SessionOperationAuthority) resolveFromTrace(trace audit.Trace, decision
 				sequence: exchange.Turn, generation: currentGeneration, treeDigest: currentTree, exchangeSequence: record.Sequence}
 			exchangeRecords[exchange.Turn] = record
 			activeCaptureKey = key
+		case providerbridge.SoftRefusalEvent:
+			capture, ok := exchanges[activeCaptureKey]
+			_, decided := decisions[activeCaptureKey]
+			var refusal providerbridge.SoftRefusalEvidence
+			if !ok || decided || capture.generation != currentGeneration || capture.treeDigest != currentTree || decodeCanonicalGoverned(record.Event.Data, &refusal) != nil ||
+				verifyProviderEventID(record, a.conversationID, "soft-refusal", providerOrdinal) != nil {
+				return governedCapture{}, ErrGovernedSessionEvidence
+			}
+			if err := a.verifyCheckpointedSoftRefusal(trace, record, refusal, capture); err != nil {
+				return governedCapture{}, err
+			}
+			activeCaptureKey = ""
 		case "provider_gate_decision":
 			if activeCaptureKey == "" {
 				return governedCapture{}, ErrGovernedSessionEvidence
@@ -1263,11 +1290,12 @@ func NewGovernedSupervisor(server *ipc.Server, broker *providerbridge.Conversati
 	authority.mu.Lock()
 	store, baseline, gateDigest, ownedConversation := authority.store, authority.baseline, authority.gatePolicyDigest, authority.conversation
 	bashOutputPaths := cloneDurableOutputScopePaths(authority.bashOutputPaths)
+	commandOutputBytes := authority.commandOutputBytes
 	authority.mu.Unlock()
 	tip := durable.Tip()
 	if broker != ownedConversation || policy.Digest() != gateDigest || durable.store != store || baseline == nil || tip == nil ||
 		tip.ID() != baseline.ID() || tip.TreeDigest() != baseline.TreeDigest() ||
-		!sameDurableOutputScopePaths(durable.bashOutputPaths, bashOutputPaths) {
+		!sameDurableOutputScopePaths(durable.bashOutputPaths, bashOutputPaths) || durable.commandOutputBytes != commandOutputBytes {
 		return nil, errors.New("governed supervisor policy or durable executor tip differs from admitted session profile")
 	}
 	resultingExecutor, err := providerbridge.NewExecutor(broker, durable)
@@ -1343,6 +1371,24 @@ func governedChannelsError(serveErr, bridgeErr error) error {
 		return commandNotStartedFailure{err: errors.Join(serveErr, bridgeErr)}
 	}
 	return errors.Join(serveErr, bridgeErr)
+}
+
+// BindAdmissionScope sets the delta-admission scope of the Store a product turn creates. It is called
+// once, before the Store exists, with the scope the catalog admitted the turn under.
+func (a *SessionOperationAuthority) BindAdmissionScope(scope sessionrepo.AdmissionScope) error {
+	if a == nil {
+		return ErrGovernedSessionEvidence
+	}
+	if err := scope.Validate(); err != nil {
+		return fmt.Errorf("admission scope: %w", err)
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.store != nil {
+		return errors.New("admission scope must be bound before the Store exists")
+	}
+	a.admissionScope = scope
+	return nil
 }
 
 func (a *SessionOperationAuthority) CreateStore(root *os.File, limits workspace.Limits, xattr workspace.XattrVisibilityAttestation,

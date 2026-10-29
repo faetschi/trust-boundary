@@ -205,9 +205,19 @@ func bindProductionPiRecoverySession(ctx context.Context, config productionServe
 			ResponseIDIssuer: governedResponseIssuer}
 		providerConfig := providerbridge.Config{WorkflowID: entry.WorkflowID, ConversationID: pin.ConversationID,
 			ProfileID: profile.ProviderProfile, SystemPrompt: productionSystemPrompt, DeveloperPrompt: productionDeveloperPrompt}
+		journalTrace, traceErr := journal.Trace()
+		if traceErr != nil {
+			return fail(traceErr)
+		}
+		// Only a workflow's first conversation imports the predecessor turn's history.
+		importedPrefix := ""
+		if pin.Ordinal == 1 && checkpoint.Pins.ImportedPrefixDigest != "" {
+			importedPrefix = "sha256:" + checkpoint.Pins.ImportedPrefixDigest
+		}
 		replayPins := GovernedReplayPins{
-			Provider: providerbridge.RecoveryPins{Config: providerConfig, Model: config.providerRoute.Model(), Policy: policy},
-			Profile:  providerProfile, StorePolicyDigest: storePolicyDigest, MetadataPolicyDigest: metadataPolicyDigest,
+			Provider: providerbridge.RecoveryPins{Config: providerConfig, Model: config.providerRoute.Model(), Policy: policy,
+				ImportedPrefixDigest: importedPrefixReplayPin(importedPrefix, len(journalTrace.Records))},
+			Profile: providerProfile, StorePolicyDigest: storePolicyDigest, MetadataPolicyDigest: metadataPolicyDigest,
 			BashOutputPaths: cloneDurableOutputScopePaths(entry.BashOutputPaths),
 		}
 		transcripts = append(transcripts, GovernedRecoveryTranscript{Journal: journal, JournalPath: path,

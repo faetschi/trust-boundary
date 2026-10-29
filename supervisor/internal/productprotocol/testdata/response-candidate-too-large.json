@@ -1,0 +1,7 @@
+{
+  "version": "tbound-product-protocol/v1",
+  "status": "error",
+  "error": {
+    "code": "CANDIDATE_TOO_LARGE"
+  }
+}

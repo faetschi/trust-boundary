@@ -1,0 +1,737 @@
+//go:build linux
+
+package main
+
+import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net"
+	"os"
+	"os/exec"
+	"os/user"
+	"path/filepath"
+	"slices"
+	"strconv"
+	"strings"
+	"sync/atomic"
+	"testing"
+
+	"tbound/supervisor/internal/gate"
+	"tbound/supervisor/internal/piruntime"
+	"tbound/supervisor/internal/productprotocol"
+	"tbound/supervisor/internal/productsession"
+	"tbound/supervisor/internal/productsetup"
+)
+
+func adminRun(args ...string) (string, error) {
+	var out, errb bytes.Buffer
+	err := run(args, &out, &errb)
+	return out.String() + errb.String(), err
+}
+
+func adminExit(err error) int {
+	var coded interface{ ExitCode() int }
+	if errors.As(err, &coded) {
+		return coded.ExitCode()
+	}
+	if err == nil {
+		return 0
+	}
+	return -1
+}
+
+func mustAdmin(t *testing.T, args ...string) string {
+	t.Helper()
+	out, err := adminRun(args...)
+	if err != nil {
+		t.Fatalf("tbound %s: %v\n%s", strings.Join(args, " "), err, out)
+	}
+	return out
+}
+
+var adminDigest = "sha256:" + strings.Repeat("a", 64)
+
+// adminGatePolicy is the gate policy the admin test projects are registered with, and its file content.
+func adminGatePolicy(allowBash bool) (gate.Policy, []byte) {
+	rules := []gate.Rule{{Tool: "read", Effect: gate.EffectAllow}}
+	if allowBash {
+		rules = append(rules, gate.Rule{Tool: "bash", Effect: gate.EffectAllow})
+	}
+	policy, err := gate.NewPolicy(gate.Profile{Version: gate.ProfileVersion, Rules: rules})
+	if err != nil {
+		panic(err)
+	}
+	encoded, err := json.Marshal(policy.Profile())
+	if err != nil {
+		panic(err)
+	}
+	return policy, encoded
+}
+
+func adminPolicyDigest(allowBash bool) string {
+	policy, _ := adminGatePolicy(allowBash)
+	return productRegisteredPolicyDigest(policy)
+}
+
+func adminInitArgs(out string) []string {
+	return adminInitArgsFor(out, adminPolicyDigest(false), adminDigest)
+}
+
+func adminInitArgsFor(out, policyDigest, gitDigest string) []string {
+	return []string{"product", "registration", "init", "--out", out,
+		"--registration-id", "reg-1", "--service-identity", "svc-1", "--principal", "1000", "--principal", "0",
+		"--provider", "opencode-go-engineering",
+		"--project", "id=alpha,root=" + adminDigest + ",policy=" + policyDigest + ",modes=review+auto,writable=src",
+		"--project", "id=beta,root=" + adminDigest + ",policy=" + policyDigest + ",modes=review",
+		"--max-turns", "10", "--review-timeout", "600", "--turn-limit", "10,1000,60", "--session-limit", "100,10000,600",
+		"--git-digest", gitDigest, "--runtime-digest", adminDigest, "--image-digest", adminDigest, "--extension-digest", adminDigest}
+}
+
+// adminHost is a test root plus the administrator's signed registration, made with the CLI itself, and the
+// host inputs the administrator places before setup: gate policies, a digest-pinned Git and a signed
+// xattr calibration.
+type adminHost struct {
+	t           *testing.T
+	root        string
+	dir         string
+	keys        string
+	releaseKeys string
+	reg, sig    string
+	pub         string
+	binary      string
+	gitDigest   string
+}
+
+func newAdminHost(t *testing.T, root string) *adminHost {
+	t.Helper()
+	old := productAdminPrereqs
+	productAdminPrereqs = func() []productsetup.Check {
+		return []productsetup.Check{{Name: "systemd", Status: productsetup.Pass, Detail: "fake host"}}
+	}
+	t.Cleanup(func() { productAdminPrereqs = old })
+	h := &adminHost{t: t, root: root, dir: t.TempDir()}
+	h.gitDigest = digestBytes(adminGitBytes(t)) // the registration binds the Git the host installs
+	h.keys = filepath.Join(h.dir, "keys")
+	mustAdmin(t, "product", "registration", "keygen", "--out", h.keys)
+	h.releaseKeys = filepath.Join(h.dir, "release-keys")
+	mustAdmin(t, "release", "keygen", "--out", h.releaseKeys)
+	template := filepath.Join(h.dir, "template.json")
+	mustAdmin(t, adminInitArgsFor(template, adminPolicyDigest(false), h.gitDigest)...)
+	h.reg = filepath.Join(h.dir, "registration.json")
+	mustAdmin(t, "product", "registration", "sign", "--registration", template, "--key", filepath.Join(h.keys, "registration.key"), "--out", h.reg)
+	h.sig, h.pub = h.reg+".sig", filepath.Join(h.keys, "registration.pub")
+	h.binary = filepath.Join(h.dir, "tbound-v1")
+	if err := os.WriteFile(h.binary, []byte("binary v1"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	h.placeHostInputs()
+	return h
+}
+
+func (h *adminHost) writeInput(logical string, data []byte, mode os.FileMode) {
+	h.t.Helper()
+	if err := os.MkdirAll(filepath.Dir(h.path(logical)), 0o755); err != nil {
+		h.t.Fatal(err)
+	}
+	if err := os.WriteFile(h.path(logical), data, mode); err != nil {
+		h.t.Fatal(err)
+	}
+	if err := os.Chmod(h.path(logical), mode); err != nil {
+		h.t.Fatal(err)
+	}
+}
+
+func (h *adminHost) placeHostInputs() {
+	h.t.Helper()
+	_, policy := adminGatePolicy(false)
+	h.writeInput(productsetup.ConfigDir+"/policy-alpha.json", policy, 0o644)
+	h.writeInput(productsetup.ConfigDir+"/policy-beta.json", policy, 0o644)
+	git := adminGitBytes(h.t)
+	h.writeInput(productsetup.BinaryDir+"/git", git, 0o755)
+	unsigned, err := json.MarshalIndent(unsignedProductCalibration(piruntime.D09XattrManagedRWSourceProfile), "", "  ")
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	in := filepath.Join(h.dir, "calibration-unsigned.json")
+	if err := os.WriteFile(in, unsigned, 0o600); err != nil {
+		h.t.Fatal(err)
+	}
+	mustAdmin(h.t, "product", "calibration", "sign", "--key", filepath.Join(h.keys, "registration.key"), "--public-key", h.pub,
+		"--in", in, "--out", h.path(productsetup.ConfigDir+"/xattr-calibration.json"))
+}
+
+func (h *adminHost) setupConfig() productsetup.Config {
+	return productsetup.Config{
+		SchemaVersion: productsetup.ConfigSchema, Registration: h.reg, RegistrationSignature: h.sig, RegistrationPublicKey: h.pub,
+		ReleasePublicKey: filepath.Join(h.releaseKeys, "release-signing.pub"),
+		WorkerMode:       productsession.WorkerSupervisorLoop,
+		Projects:         map[string]string{"alpha": productsetup.ProjectsDir + "/alpha", "beta": productsetup.ProjectsDir + "/beta"},
+		GatePolicyPaths: map[string]string{"alpha": productsetup.ConfigDir + "/policy-alpha.json",
+			"beta": productsetup.ConfigDir + "/policy-beta.json"},
+		GitPath: productsetup.BinaryDir + "/git", GitDigest: h.gitDigest,
+		XattrCalibrationPath: productsetup.ConfigDir + "/xattr-calibration.json",
+	}
+}
+
+func (h *adminHost) config(selfTest bool) string {
+	h.t.Helper()
+	cfg := h.setupConfig()
+	if selfTest {
+		cfg.SelfTest = &productsetup.SelfTest{ProjectID: "alpha", ProviderProfile: "opencode-go-engineering", ClientUID: 1000, TimeoutSeconds: 10}
+	}
+	data, _ := json.Marshal(cfg)
+	file := filepath.Join(h.dir, "setup.json")
+	if err := os.WriteFile(file, data, 0o600); err != nil {
+		h.t.Fatal(err)
+	}
+	return file
+}
+
+func (h *adminHost) setup(extra ...string) (string, error) {
+	return h.setupAt(h.config(false), h.root, extra...)
+}
+
+// setupAt runs `product setup` with the host's binary and a manifest and signature that authenticate it under
+// the host's release key.
+func (h *adminHost) setupAt(config, root string, extra ...string) (string, error) {
+	h.t.Helper()
+	manifest, signature := h.release(h.binary)
+	return adminRun(append([]string{"product", "setup", "--config", config, "--root", root, "--binary", h.binary, "--manifest", manifest, "--signature", signature}, extra...)...)
+}
+
+// release signs, with the host's release key, a manifest that lists the binary, and returns the manifest
+// and signature files that `product update` takes.
+func (h *adminHost) release(binary string) (manifest, signature string) {
+	h.t.Helper()
+	manifest = filepath.Join(h.t.TempDir(), "tbound-release-manifest.json")
+	mustAdmin(h.t, "release", "manifest", "--out", manifest, binary)
+	mustAdmin(h.t, "release", "sign", "--manifest", manifest, "--key", filepath.Join(h.releaseKeys, "release-signing.key"), "--out", manifest+".sig")
+	return manifest, manifest + ".sig"
+}
+
+// update runs `product update` with a signed manifest for the binary.
+func (h *adminHost) update(binary string, extra ...string) (string, error) {
+	h.t.Helper()
+	manifest, signature := h.release(binary)
+	return adminRun(append([]string{"product", "update", "--binary", binary, "--manifest", manifest, "--signature", signature, "--root", h.root}, extra...)...)
+}
+
+func (h *adminHost) path(logical string) string { return filepath.Join(h.root, logical) }
+
+func TestProductAdminThesisRootsMatchTheService(t *testing.T) {
+	if !slices.Equal(productsetup.ThesisRoots, productServiceThesisRoots) {
+		t.Fatalf("productsetup.ThesisRoots %v differ from the service's %v", productsetup.ThesisRoots, productServiceThesisRoots)
+	}
+}
+
+func TestProductAdminRegistrationToolingRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	keys := filepath.Join(dir, "keys")
+	out := mustAdmin(t, "product", "registration", "keygen", "--out", keys)
+	if !strings.Contains(out, "fingerprint") {
+		t.Fatalf("keygen output: %s", out)
+	}
+	info, err := os.Stat(filepath.Join(keys, "registration.key"))
+	if err != nil || info.Mode().Perm() != 0o600 {
+		t.Fatalf("private key mode: %v %v", info, err)
+	}
+	if _, err := adminRun("product", "registration", "keygen", "--out", keys); adminExit(err) != 2 {
+		t.Fatalf("keygen overwrote an existing key pair: %v", err)
+	}
+
+	template := filepath.Join(dir, "template.json")
+	mustAdmin(t, adminInitArgs(template)...)
+	if _, err := adminRun(adminInitArgs(template)...); err == nil {
+		t.Fatal("init overwrote an existing template")
+	}
+	signed := filepath.Join(dir, "registration.json")
+	mustAdmin(t, "product", "registration", "sign", "--registration", template, "--key", filepath.Join(keys, "registration.key"), "--out", signed)
+	if _, err := adminRun("product", "registration", "sign", "--registration", template, "--key", filepath.Join(keys, "registration.key"), "--out", signed); adminExit(err) != 2 {
+		t.Fatalf("sign overwrote its output: %v", err)
+	}
+	pub := filepath.Join(keys, "registration.pub")
+	verify := mustAdmin(t, "product", "registration", "verify", "--registration", signed, "--signature", signed+".sig", "--public-key", pub)
+	reg, err := productsession.LoadRegistration(signed, signed+".sig", pub)
+	if err != nil {
+		t.Fatalf("the service's own loader refused the signed registration: %v", err)
+	}
+	identity, err := productHostIdentity(reg.ProviderProfiles)
+	if err != nil || reg.HostIdentityDigest != identity || reg.GitDigest != adminDigest || reg.SchemaVersion != productsession.RegistrationSchema {
+		t.Fatalf("init did not bind the host profile: %+v %v", reg, err)
+	}
+	for _, want := range []string{reg.Digest, "project alpha", "project beta", "principals (UIDs): [1000 0]", "opencode-go-engineering"} {
+		if !strings.Contains(verify, want) {
+			t.Errorf("verify output lacks %q:\n%s", want, verify)
+		}
+	}
+
+	data, _ := os.ReadFile(signed)
+	if err := os.WriteFile(signed, bytes.Replace(data, []byte(`"reg-1"`), []byte(`"reg-2"`), 1), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := adminRun("product", "registration", "verify", "--registration", signed, "--signature", signed+".sig", "--public-key", pub); adminExit(err) != 2 {
+		t.Fatalf("a tampered registration verified: %v", err)
+	}
+}
+
+func TestProductAdminRegistrationInitAndSignRefuseWhatTheRegistrationRefuses(t *testing.T) {
+	dir := t.TempDir()
+	bad := filepath.Join(dir, "bad.json")
+	args := adminInitArgs(bad)
+	args[slices.Index(args, "--runtime-digest")+1] = "sha256:short"
+	if _, err := adminRun(args...); adminExit(err) != 2 {
+		t.Fatalf("a template with an invalid digest was written: %v", err)
+	}
+	if _, err := os.Stat(bad); err == nil {
+		t.Fatal("a refused init left a file")
+	}
+	template := filepath.Join(dir, "template.json")
+	mustAdmin(t, adminInitArgs(template)...)
+	keys := filepath.Join(dir, "keys")
+	mustAdmin(t, "product", "registration", "keygen", "--out", keys)
+	if err := os.Chmod(filepath.Join(keys, "registration.key"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := adminRun("product", "registration", "sign", "--registration", template, "--key", filepath.Join(keys, "registration.key"), "--out", filepath.Join(dir, "r.json")); adminExit(err) != 2 {
+		t.Fatalf("a world-readable signing key was used: %v", err)
+	}
+}
+
+func TestProductAdminSetupWritesTheTreeAndARerunIsUnchanged(t *testing.T) {
+	root := privateGovernedTestRoot(t)
+	h := newAdminHost(t, root)
+	out, err := h.setup()
+	if err != nil {
+		t.Fatalf("setup: %v\n%s", err, out)
+	}
+	for _, want := range []string{productsetup.CredentialsDir + " (0700 " + productsetup.ServiceUser + ":" + productsetup.ServiceGroup + ")", "chown root:root " + productsetup.ServiceConfigPath,
+		"useradd --system", "systemctl daemon-reload", "recorded, not executed"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("setup output lacks %q:\n%s", want, out)
+		}
+	}
+	serviceConfig := h.path(productsetup.ServiceConfigPath)
+	cfg, err := loadProductServiceConfig(serviceConfig)
+	if err != nil || cfg.validate(nil) != nil {
+		t.Fatalf("the service refuses the config setup wrote: %v %v", err, cfg.validate(nil))
+	}
+	if cfg.RegistrationPath != productsession.DefaultRegistrationPath || cfg.SocketPath != productsession.DefaultServiceSocketPath {
+		t.Fatalf("service config does not use the product defaults: %+v", cfg)
+	}
+	if cfg.GitPath != productsetup.BinaryDir+"/git" || cfg.GitDigest != h.gitDigest || len(cfg.GatePolicyPaths) != 2 ||
+		cfg.XattrCalibrationPath != productsetup.ConfigDir+"/xattr-calibration.json" {
+		t.Fatalf("service config lost the host profile inputs: %+v", cfg)
+	}
+	unit, _ := os.ReadFile(h.path(productsetup.UnitPath))
+	if err := productsetup.ValidateUnit(unit); err != nil {
+		t.Fatal(err)
+	}
+	again, err := h.setup()
+	if err != nil || !strings.HasSuffix(strings.TrimSpace(again), "unchanged") || strings.Contains(again, "commands (") {
+		t.Fatalf("a rerun must report unchanged and issue no commands: %v\n%s", err, again)
+	}
+}
+
+func TestProductAdminSetupRefusesThesisPathsConflictsAndWritesNothingOnDryRun(t *testing.T) {
+	root := privateGovernedTestRoot(t)
+	h := newAdminHost(t, root)
+	thesis := h.setupConfig()
+	thesis.Projects = map[string]string{"alpha": "/var/lib/tbound/live/alpha", "beta": "/var/lib/tbound-product/projects/beta"}
+	data, _ := json.Marshal(thesis)
+	file := filepath.Join(h.dir, "thesis.json")
+	if err := os.WriteFile(file, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	before := adminTree(t, root)
+	if out, err := h.setupAt(file, root); adminExit(err) != 2 || !strings.Contains(err.Error(), "thesis service path") {
+		t.Fatalf("a thesis path was not refused with exit 2: %v\n%s", err, out)
+	}
+	if out, err := h.setup("--dry-run"); err != nil || !strings.Contains(out, "dry run: nothing was changed") {
+		t.Fatalf("dry run: %v\n%s", err, out)
+	}
+	if after := adminTree(t, root); after != before {
+		t.Fatalf("refusal and dry run changed the root:\nbefore:\n%s\nafter:\n%s", before, after)
+	}
+	if _, err := h.setup(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(h.path(productsetup.ServiceConfigPath), []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.setup(); adminExit(err) != 2 || !strings.Contains(err.Error(), "--replace") {
+		t.Fatalf("a conflicting file was not refused: %v", err)
+	}
+	if _, err := h.setup("--replace"); err != nil {
+		t.Fatalf("--replace: %v", err)
+	}
+}
+
+// adminCatalog opens the installed catalog like the service would, creates one turn that never
+// settles, and closes it again so the service is "stopped".
+func adminCatalog(t *testing.T, h *adminHost, withTurn bool) {
+	t.Helper()
+	reg, err := productsession.LoadRegistration(h.reg, h.sig, h.pub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	catalog, err := productsession.Open(h.path(productsetup.CatalogPath), reg)
+	if err != nil {
+		t.Skipf("the audit journal refuses this test directory: %v", err)
+	}
+	defer catalog.Close()
+	if !withTurn {
+		return
+	}
+	session, _, err := catalog.CreateSession(1000, productsession.CreateSessionRequest{ProjectID: "alpha", ProviderProfile: "opencode-go-engineering",
+		PublicationMode: "review", Budget: productsession.Budget{HostCalls: 10, Tokens: 1000, DurationSeconds: 60}, RequestKey: "k-session"}, adminDigest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := catalog.SubmitTurn(1000, productsession.SubmitTurnRequest{SessionID: session.ID, ExpectedRevision: session.Revision,
+		RequestKey: "k-turn", Prompt: "hello"}, adminDigest); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestProductAdminUpdateRefusesAnUnresolvedTurnThenUpdatesAndRollsBack(t *testing.T) {
+	root := privateGovernedTestRoot(t)
+	h := newAdminHost(t, root)
+	if out, err := h.setup(); err != nil {
+		t.Fatalf("setup: %v\n%s", err, out)
+	}
+	next := filepath.Join(h.dir, "tbound-v2")
+	if err := os.WriteFile(next, []byte("binary v2"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	adminCatalog(t, h, true)
+	out, err := h.update(next)
+	if adminExit(err) != 2 || !strings.Contains(err.Error(), "unresolved turns") {
+		t.Fatalf("an unresolved turn did not refuse the update: %v\n%s", err, out)
+	}
+	if data, _ := os.ReadFile(h.path(productsetup.BinaryPath)); string(data) != "binary v1" {
+		t.Fatal("the binary changed despite the refusal")
+	}
+
+	other := privateGovernedTestRoot(t)
+	h2 := newAdminHost(t, other)
+	if out, err := h2.setup(); err != nil {
+		t.Fatalf("setup: %v\n%s", err, out)
+	}
+	adminCatalog(t, h2, false)
+	out, err = h2.update(next)
+	if err != nil || !strings.Contains(out, "updated") || !strings.Contains(out, "systemctl stop "+productsetup.UnitName) {
+		t.Fatalf("update: %v\n%s", err, out)
+	}
+	read := func(p string) string { data, _ := os.ReadFile(h2.path(p)); return string(data) }
+	if read(productsetup.BinaryPath) != "binary v2" || read(productsetup.LastKnownGoodPath) != "binary v1" {
+		t.Fatalf("binary %q last-known-good %q", read(productsetup.BinaryPath), read(productsetup.LastKnownGoodPath))
+	}
+	if backups, _ := filepath.Glob(h2.path(productsetup.BackupsDir + "/catalog-*.jsonl")); len(backups) != 1 {
+		t.Fatalf("catalog backups: %v", backups)
+	}
+	if _, err := adminRun("product", "rollback", "--root", other); err != nil || read(productsetup.BinaryPath) != "binary v1" {
+		t.Fatalf("rollback: %v", err)
+	}
+	if out, err := h2.update(next, "--dry-run"); err != nil || !strings.Contains(out, "dry run") || read(productsetup.BinaryPath) != "binary v1" {
+		t.Fatalf("update dry run: %v\n%s", err, out)
+	}
+}
+
+func TestProductAdminUninstallKeepsDataAndPurgeAsksForConfirmation(t *testing.T) {
+	root := privateGovernedTestRoot(t)
+	h := newAdminHost(t, root)
+	if out, err := h.setup(); err != nil {
+		t.Fatalf("setup: %v\n%s", err, out)
+	}
+	if out, err := adminRun("product", "uninstall", "--root", root); err != nil || !strings.Contains(out, "uninstalled") {
+		t.Fatalf("uninstall: %v\n%s", err, out)
+	}
+	for _, kept := range []string{productsetup.ConfigDir, productsetup.StateDir, productsetup.RegistrationPath} {
+		if _, err := os.Stat(h.path(kept)); err != nil {
+			t.Errorf("%s was removed without --purge", kept)
+		}
+	}
+	for _, gone := range []string{productsetup.UnitPath, productsetup.BinaryPath} {
+		if _, err := os.Stat(h.path(gone)); err == nil {
+			t.Errorf("%s survived", gone)
+		}
+	}
+	oldStdin := productAdminStdin
+	t.Cleanup(func() { productAdminStdin = oldStdin })
+	productAdminStdin = strings.NewReader("no\n")
+	if _, err := adminRun("product", "uninstall", "--root", root, "--purge"); adminExit(err) != 2 {
+		t.Fatalf("a declined purge was not refused: %v", err)
+	}
+	if _, err := os.Stat(h.path(productsetup.ConfigDir)); err != nil {
+		t.Fatal("a declined purge removed data")
+	}
+	if out, err := adminRun("product", "uninstall", "--root", root, "--purge", "--yes"); err != nil {
+		t.Fatalf("purge --yes: %v\n%s", err, out)
+	}
+	for _, gone := range []string{productsetup.ConfigDir, productsetup.StateDir} {
+		if _, err := os.Stat(h.path(gone)); err == nil {
+			t.Errorf("%s survived the purge", gone)
+		}
+	}
+}
+
+// fakeProductService answers the self-test's three operations on the product socket.
+func fakeProductService(t *testing.T, socket string, outcome *atomic.Value) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(socket), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	listener, err := net.Listen("unix", socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { listener.Close() })
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				defer conn.Close()
+				var req productprotocol.Request
+				if productprotocol.ReadFrame(conn, productprotocol.MaxRequestBytes, &req) != nil {
+					return // a bare connect, like the reachability probe
+				}
+				resp := productprotocol.Response{Version: productprotocol.Version, Status: productprotocol.StatusOK}
+				switch req.Op {
+				case productprotocol.OpCreateSession:
+					if !req.CreateSession.ReadOnly || req.CreateSession.ProjectID != "alpha" {
+						resp = productprotocol.Response{Version: productprotocol.Version, Status: productprotocol.StatusError, Error: &productprotocol.Error{Code: "INVALID_REQUEST"}}
+					}
+					resp.Session = &productprotocol.SessionView{ID: "psess-fake", Revision: 1}
+				case productprotocol.OpSubmitTurn:
+					resp.Turn = &productprotocol.TurnView{ID: "psess-fake/turn-1", State: "admitted"}
+				case productprotocol.OpGetSession:
+					resp.Session = &productprotocol.SessionView{ID: "psess-fake", Turns: []productprotocol.TurnView{
+						{ID: "psess-fake/turn-1", State: "terminal", Outcome: outcome.Load().(string)}}}
+				}
+				_ = productprotocol.WriteFrame(conn, resp, productprotocol.MaxResponseBytes)
+			}()
+		}
+	}()
+}
+
+func TestProductAdminDoctorSelfTestThroughTheServiceSocket(t *testing.T) {
+	root := privateGovernedTestRoot(t) // Git must sit below ancestors the pin accepts, so not under /tmp
+	h := newAdminHost(t, root)
+	if out, err := h.setupAt(h.config(false), root); err != nil {
+		t.Fatalf("setup: %v\n%s", err, out)
+	}
+	const sentinel = "sk-SENTINEL-PROVIDER-KEY-0123456789"
+	if err := os.WriteFile(h.path(productsetup.CredentialsDir+"/opencode-go-engineering.key"), []byte(sentinel), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var outcome atomic.Value
+	outcome.Store("no_diff")
+	fakeProductService(t, h.path(productsetup.SocketPath), &outcome)
+
+	advisory, err := adminRun("product", "doctor", "--root", root)
+	if err != nil || !strings.Contains(advisory, "governed readiness: NOT established") || strings.Contains(advisory, sentinel) {
+		t.Fatalf("advisory doctor: %v\n%s", err, advisory)
+	}
+	notConfigured, err := adminRun("product", "doctor", "--self-test", "--root", root)
+	if adminExit(err) != 3 || !strings.Contains(notConfigured, "self-test not configured") || strings.Contains(notConfigured, "PASSED") {
+		t.Fatalf("an unconfigured self-test must say so and exit 3: %v\n%s", err, notConfigured)
+	}
+
+	if out, err := h.setupAt(h.config(true), root, "--replace"); err != nil {
+		t.Fatalf("setup with self-test: %v\n%s", err, out)
+	}
+	passed, err := adminRun("product", "doctor", "--self-test", "--root", root)
+	if err != nil || !strings.Contains(passed, "self-test: PASSED on project alpha") || strings.Contains(passed, sentinel) {
+		t.Fatalf("passing self-test: %v\n%s", err, passed)
+	}
+	outcome.Store("failed")
+	failed, err := adminRun("product", "doctor", "--self-test", "--root", root)
+	if adminExit(err) != 1 || !strings.Contains(failed, "self-test: FAILED") || strings.Contains(failed, "PASSED") {
+		t.Fatalf("failing self-test must exit 1: %v\n%s", err, failed)
+	}
+}
+
+func TestProductAdminDoctorFailsWithoutAnInstallation(t *testing.T) {
+	out, err := adminRun("product", "doctor", "--root", t.TempDir())
+	if adminExit(err) != 1 || !strings.Contains(out, "[FAIL]") || !strings.Contains(out, "governed readiness: NOT established") {
+		t.Fatalf("doctor on an empty root: %v\n%s", err, out)
+	}
+}
+
+func TestProductAdminReviewRegistrationSignRefusesAmbiguousJSON(t *testing.T) {
+	dir := t.TempDir()
+	keys := filepath.Join(dir, "keys")
+	mustAdmin(t, "product", "registration", "keygen", "--out", keys)
+	template := filepath.Join(dir, "template.json")
+	mustAdmin(t, adminInitArgs(template)...)
+	raw, err := os.ReadFile(template)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, data := range map[string][]byte{
+		"concatenated": append(append([]byte{}, raw...), []byte(`{}`)...),
+		"trailing":     append(append([]byte{}, raw...), []byte(`garbage`)...),
+		"duplicate":    []byte(strings.Replace(string(raw), `"registration_id": "reg-1"`, `"registration_id": "discarded", "registration_id": "reg-1"`, 1)),
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := os.WriteFile(template, data, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			out := filepath.Join(dir, name+".json")
+			if _, err := adminRun("product", "registration", "sign", "--registration", template, "--key", filepath.Join(keys, "registration.key"), "--out", out); adminExit(err) != 2 {
+				t.Fatalf("ambiguous JSON signed: %v", err)
+			}
+			for _, path := range []string{out, out + ".sig"} {
+				if _, err := os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
+					t.Fatalf("refused signing wrote %s: %v", path, err)
+				}
+			}
+		})
+	}
+}
+
+func TestProductAdminUninstallRefusesLockedCatalog(t *testing.T) {
+	h := newAdminHost(t, privateGovernedTestRoot(t))
+	if out, err := h.setup(); err != nil {
+		t.Fatalf("setup: %v\n%s", err, out)
+	}
+	reg, err := productsession.LoadRegistration(h.reg, h.sig, h.pub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	catalog, err := productsession.Open(h.path(productsetup.CatalogPath), reg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer catalog.Close()
+	if out, err := adminRun("product", "uninstall", "--root", h.root, "--purge", "--yes"); err == nil || !strings.Contains(err.Error(), "refusing purge") {
+		t.Fatalf("locked catalog did not refuse purge: %v\n%s", err, out)
+	}
+	for _, kept := range []string{productsetup.UnitPath, productsetup.BinaryPath, productsetup.RegistrationPath, productsetup.CatalogPath} {
+		if _, err := os.Stat(h.path(kept)); err != nil {
+			t.Fatalf("removed %s: %v", kept, err)
+		}
+	}
+}
+
+func TestProductAdminTurnsDoesNotRequireRoot(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("requires a non-root caller")
+	}
+	out, err := adminRun("product", "turns")
+	if err != nil && strings.Contains(err.Error(), "must run as root") {
+		t.Fatalf("catalog owner cannot list turns: %v\n%s", err, out)
+	}
+	for _, command := range []string{"setup", "update", "rollback", "uninstall"} {
+		if _, err := adminRun("product", command); err == nil || !strings.Contains(err.Error(), "must run as root") {
+			t.Fatalf("%s no longer requires root: %v", command, err)
+		}
+	}
+	h := newAdminHost(t, privateGovernedTestRoot(t))
+	if _, err := h.setup(); err != nil {
+		t.Fatal(err)
+	}
+	adminCatalog(t, h, false)
+	if err := os.Chmod(h.path(productsetup.CatalogPath), 0o666); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := adminRun("product", "turns", "--root", h.root); err == nil {
+		t.Fatal("turn listing bypassed catalog permission checks")
+	}
+}
+
+func TestProductAdminPurgeAfterOrdinaryUninstallUsesAdministrativeBinary(t *testing.T) {
+	h := newAdminHost(t, privateGovernedTestRoot(t))
+	if _, err := h.setup(); err != nil {
+		t.Fatal(err)
+	}
+	adminCatalog(t, h, false)
+	if _, err := adminRun("product", "uninstall", "--root", h.root); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(h.path(productsetup.BinaryPath)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("installed binary survived uninstall: %v", err)
+	}
+	oldLookup, oldCommand := productAdminLookupUser, productAdminTurnsCommand
+	t.Cleanup(func() { productAdminLookupUser, productAdminTurnsCommand = oldLookup, oldCommand })
+	productAdminLookupUser = func(string) (*user.User, error) {
+		return &user.User{Uid: strconv.Itoa(os.Geteuid()), Gid: strconv.Itoa(os.Getegid())}, nil
+	}
+	called := false
+	productAdminTurnsCommand = func(name string, uid, gid uint32) *exec.Cmd {
+		called = true
+		cmd := oldCommand(name, uid, gid)
+		if credential := cmd.SysProcAttr.Credential; credential.Uid != uint32(os.Geteuid()) || credential.Gid != uint32(os.Getegid()) {
+			t.Fatalf("catalog check did not select the service account: %+v", credential)
+		}
+		cmd.SysProcAttr = nil // The test root's catalog is owned by this test process.
+		cmd.Args = append([]string{name, "-test.run=^TestProductAdminHelperProcess$", "--"}, cmd.Args[1:]...)
+		cmd.Args = append(cmd.Args, "--root", h.root)
+		cmd.Env = append(os.Environ(), "TBOUND_ADMIN_HELPER=1")
+		return cmd
+	}
+	env := productAdminEnv(h.root, false, false, true, io.Discard, io.Discard)
+	env.Turns = productAdminTurnsFor("/")
+	if rep, err := productsetup.Uninstall(env, true); err != nil {
+		t.Fatalf("purge after uninstall: %v\n%s", err, rep)
+	}
+	if !called {
+		t.Fatal("purge did not run the catalog child")
+	}
+	for _, path := range []string{productsetup.ConfigDir, productsetup.StateDir} {
+		if _, err := os.Stat(h.path(path)); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("purge kept %s: %v", path, err)
+		}
+	}
+}
+
+func TestProductAdminUsageErrors(t *testing.T) {
+	for _, args := range [][]string{{"product"}, {"product", "bogus"}, {"product", "setup"}, {"product", "update"}, {"product", "setup", "--config", "x", "--root", "relative"},
+		{"release"}, {"release", "verify"}, {"release", "sign", "--manifest", "m"}} {
+		if _, err := adminRun(args...); adminExit(err) != 2 {
+			t.Errorf("%v: exit %d (%v), want 2", args, adminExit(err), err)
+		}
+	}
+}
+
+// adminTree lists every path below root with its type, mode and size: the state a refused or dry run must
+// leave unchanged. The host inputs the administrator placed first are part of it.
+func adminTree(t *testing.T, root string) string {
+	t.Helper()
+	var b strings.Builder
+	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(&b, "%s %s %d\n", path, info.Mode(), info.Size())
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b.String()
+}
+
+// adminGitBytes is the installed Git the admin host places as the private Git.
+func adminGitBytes(t *testing.T) []byte {
+	t.Helper()
+	path, err := exec.LookPath("git")
+	if err != nil {
+		t.Skipf("installed Git is unavailable: %v", err)
+	}
+	git, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return git
+}

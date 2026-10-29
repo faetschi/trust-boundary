@@ -1,11 +1,11 @@
 // Command tbound-webchat runs the untrusted presentation gateway for the tbound
 // Pi chat workspace.
 //
-// It is a loopback-only, GET-only, read-only projection server. It does not
-// launch Pi, execute a tool, hold policy, admit an effect, or write the live
-// workspace. It exposes no control route and accepts no request body. A live
-// projection requires the supervisor-owned session/stream service, which does
-// not exist yet; requesting it fails closed instead of fabricating a source.
+// It is a loopback-only gateway. The demonstration modes (--demo, --fixture,
+// --replay, --receipt, --receipt-demo) are GET-only, read-only projections. With
+// --live and --socket it pairs one browser and forwards requests to the product
+// service over the user's socket. In every mode it launches no Pi, executes no
+// tool, and holds no policy, effect, lease or publication authority.
 package main
 
 import (
@@ -22,6 +22,9 @@ import (
 	"tbound/webchat/internal/webchat"
 )
 
+// defaultAddress is the literal loopback address bound when neither --listen nor --addr is given.
+const defaultAddress = "127.0.0.1:8791"
+
 func main() {
 	if err := run(os.Args[1:], os.Stdout, os.Stderr); err != nil {
 		fmt.Fprintln(os.Stderr, "tbound-webchat:", err)
@@ -32,13 +35,15 @@ func main() {
 func run(args []string, stdout, stderr *os.File) error {
 	flags := flag.NewFlagSet("tbound-webchat", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	address := flags.String("addr", "127.0.0.1:8791", "literal loopback address to bind")
+	address := flags.String("addr", "", "literal loopback address to bind (alias of --listen)")
+	listen := flags.String("listen", "", "literal loopback address to bind (default 127.0.0.1:8791)")
 	demo := flags.Bool("demo", false, "serve the embedded non-claim-bearing development fixture")
 	fixture := flags.String("fixture", "", "serve a development fixture document (non-claim-bearing)")
 	replay := flags.String("replay", "", "serve retained observations from a replay document")
 	receipt := flags.String("receipt", "", "import a retained post-run Pi receipt (development or production)")
 	receiptDemo := flags.Bool("receipt-demo", false, "import the embedded synthetic example receipt")
-	live := flags.Bool("live", false, "serve a live projection (requires the supervisor session/stream service; not implemented)")
+	live := flags.Bool("live", false, "serve the live product chat: pair one browser, forward to the product service (needs --socket)")
+	socket := flags.String("socket", "", "product service Unix socket for --live (for example /run/tbound-product/product.sock)")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -56,6 +61,21 @@ func run(args []string, stdout, stderr *os.File) error {
 		return errors.New("--demo, --fixture, --replay, --receipt, --receipt-demo and --live are mutually exclusive")
 	}
 
+	if *address != "" && *listen != "" {
+		return errors.New("--addr and --listen are the same flag; pass one")
+	}
+	if *listen != "" {
+		*address = *listen
+	}
+	if *address == "" {
+		*address = defaultAddress
+	}
+	if *live != (*socket != "") {
+		if *live {
+			return errors.New("--live needs --socket PATH, the product service socket")
+		}
+		return errors.New("--socket is only used with --live")
+	}
 	if err := validateLoopbackAddress(*address); err != nil {
 		return err
 	}
@@ -70,10 +90,7 @@ func run(args []string, stdout, stderr *os.File) error {
 	)
 	switch {
 	case *live:
-		store, err = webchat.NewLiveStore()
-		if err != nil {
-			return fmt.Errorf("live projection refused: %w", err)
-		}
+		// The live gateway holds no store; it needs the bound address, so it is built after listening.
 	case *fixture != "":
 		store, err = webchat.NewFixtureStoreFromPath(*fixture)
 	case *replay != "":
@@ -97,11 +114,31 @@ func run(args []string, stdout, stderr *os.File) error {
 	}
 	bound := listener.Addr().String()
 
+	// Registered before anything is printed, so a signal sent once the banner is out is
+	// a shutdown, not the default kill.
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, shutdownSignals()...)
+	defer signal.Stop(stop)
+
+	handler := http.Handler(nil)
+	pairToken := ""
+	if *live {
+		gateway, token, err := webchat.NewLiveGateway(webchat.LiveOptions{Socket: *socket, BoundAddr: bound})
+		if err != nil {
+			listener.Close()
+			return err
+		}
+		handler, pairToken = gateway.Handler(), token
+	} else {
+		handler = webchat.NewHandler(store, webchat.HandlerOptions{AllowedHost: bound, AllowedOrigin: "http://" + bound})
+	}
+
 	server := &http.Server{
-		Handler:           webchat.NewHandler(store, webchat.HandlerOptions{AllowedHost: bound, AllowedOrigin: "http://" + bound}),
+		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
-		// A read timeout bounds a slow/stalled request even though no body is ever
-		// read; body-bearing requests are additionally closed without draining.
+		// A read timeout bounds a slow/stalled request. The demonstration modes read no
+		// body and close a body-bearing request without draining; the live gateway
+		// reads at most 64 KiB, inside this timeout.
 		ReadTimeout:    15 * time.Second,
 		IdleTimeout:    60 * time.Second,
 		MaxHeaderBytes: 16 << 10,
@@ -113,9 +150,12 @@ func run(args []string, stdout, stderr *os.File) error {
 	for _, line := range startupBanner(bound, appErr) {
 		fmt.Fprintln(stdout, line)
 	}
-	source := store.Snapshot().Source
-	fmt.Fprintf(stdout, "source: %s (read-only projection; no launch, cancel, approve, or execute controls)\n", source)
-	if source != webchat.SourceLive {
+	if *live {
+		for _, line := range liveBanner(bound, *socket, pairToken) {
+			fmt.Fprintln(stdout, line)
+		}
+	} else {
+		fmt.Fprintf(stdout, "source: %s (read-only projection; no launch, cancel, approve, or execute controls)\n", store.Snapshot().Source)
 		fmt.Fprintln(stdout, "claim boundary: G1=false; H1 unexecuted; containment not-established; claim-bearing=false")
 	}
 	if appErr != nil {
@@ -132,15 +172,30 @@ func run(args []string, stdout, stderr *os.File) error {
 		errCh <- nil
 	}()
 
-	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, shutdownSignals()...)
 	select {
 	case serveErr := <-errCh:
 		return serveErr
 	case <-stop:
 		shutdownContext, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		return server.Shutdown(shutdownContext)
+		// Open long polls and never-used speculative connections outlive the grace period. The gateway holds
+		// no state, so dropping them is safe.
+		err := server.Shutdown(shutdownContext)
+		if errors.Is(err, context.DeadlineExceeded) {
+			return server.Close()
+		}
+		return err
+	}
+}
+
+// liveBanner is what a live gateway prints. The pairing URL carries the one-time
+// token in its fragment. It goes to stdout only: nothing here writes it to a file or
+// a log, so do not keep a redirect of stdout.
+func liveBanner(bound, socket, token string) []string {
+	return []string{
+		fmt.Sprintf("source: live (product service socket %s; requests run under your user; no policy, effect or publication authority here)", socket),
+		fmt.Sprintf("pair this browser once, within %d minutes: http://%s/pair#%s", int(webchat.PairingLifetime/time.Minute), bound, token),
+		"the pairing token works once; restart tbound-webchat to pair again",
 	}
 }
 

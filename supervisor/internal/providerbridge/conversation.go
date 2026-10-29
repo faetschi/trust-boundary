@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"net/http"
 	"reflect"
 	"strings"
 	"sync"
@@ -57,6 +58,11 @@ type eventJournal interface {
 }
 
 type Config struct {
+	// ProductSoftRefusals enables product-only precondition evidence and replay.
+	ProductSoftRefusals bool
+	// HTTPTransport is an offline test seam for the engineering route. Production leaves it nil, and a
+	// binary that is not a Go test binary refuses it (openrouter.HTTPDoer.WithTestTransport).
+	HTTPTransport http.RoundTripper
 	// HintProvider is host-owned and nil selects the frozen static treatment.
 	HintProvider HintProvider
 
@@ -93,6 +99,9 @@ type Config struct {
 	// the reported usage afterwards (see SpendAccountant). It is nil on the
 	// engineering route.
 	Spend SpendAccountant
+	// Predecessor seeds the history after the system and developer prompts. The zero value starts an
+	// empty conversation.
+	Predecessor PredecessorContext
 }
 
 // SpendAccountant is the monetary (USD) side of a host call. NextTurn calls it
@@ -160,6 +169,8 @@ type Conversation struct {
 	generation         string
 	treeDigest         string
 	responseIDs        map[string]struct{}
+	reservedCallIDs    map[string]struct{}
+	importJournaled    bool
 	transitionSequence uint64
 	transitionIDs      map[string]struct{}
 	effectIDs          map[string]struct{}
@@ -322,6 +333,9 @@ func NewFromCredentials(cfg Config, credentials openrouter.Credentials, journal 
 		return nil, errors.New("provider conversation requires the protected audit journal")
 	}
 	doer, err := credentials.NewHTTPDoer(openrouter.DefaultHTTPTimeout)
+	if err == nil && cfg.HTTPTransport != nil {
+		doer, err = doer.WithTestTransport(cfg.HTTPTransport)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("configure secure OpenCode Go transport: %w", err)
 	}
@@ -367,12 +381,25 @@ func newWithDoer(cfg Config, model string, doer broker.HTTPDoer, journal eventJo
 	if _, err := openrouter.BuildRequestForRoute(route, history, 0); err != nil {
 		return nil, fmt.Errorf("validate immutable provider prompt: %w", err)
 	}
-	return &Conversation{
+	c := &Conversation{
 		cfg: cfg, model: model, route: route, doer: doer, journal: journal,
 		correlation: stream, history: history, generation: cfg.InitialGenerationID,
-		treeDigest: cfg.InitialTreeDigest, responseIDs: make(map[string]struct{}),
+		treeDigest: cfg.InitialTreeDigest, responseIDs: make(map[string]struct{}), reservedCallIDs: make(map[string]struct{}),
 		transitionIDs: make(map[string]struct{}), effectIDs: make(map[string]struct{}), state: stateNeedsPrompt,
-	}, nil
+	}
+	if predecessor := cfg.Predecessor.sealed; predecessor != nil {
+		// Imported tool calls stay out of the correlation stream; only their IDs are reserved.
+		if err := c.appendHistoryLocked(fromImportedMessages(predecessor.messages)...); err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrContextExhausted, err)
+		}
+		for _, id := range predecessor.reservedResponseIDs {
+			c.responseIDs[id] = struct{}{}
+		}
+		for _, id := range predecessor.reservedToolCallIDs {
+			c.reservedCallIDs[id] = struct{}{}
+		}
+	}
+	return c, nil
 }
 
 // AdmitPrompt accepts only trusted host/session-control input. Node never sends
@@ -392,6 +419,21 @@ func (c *Conversation) AdmitPrompt(taskID, prompt string) error {
 	if !validText(taskID, MaxTaskIDBytes) || !validPromptText(prompt, MaxPromptBytes) {
 		return errors.New("user task identity or prompt is invalid or exceeds its bound")
 	}
+	// The prompt must fit before anything is journaled, so exhaustion leaves no unreplayable record.
+	history, err := c.boundedHistoryLocked(openrouter.Message{Role: openrouter.User, Content: &prompt})
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrContextExhausted, err)
+	}
+	if predecessor := c.cfg.Predecessor.sealed; predecessor != nil && !c.importJournaled {
+		imported, err := json.Marshal(predecessor.evidence(c.cfg.WorkflowID, c.cfg.ConversationID))
+		if err != nil {
+			return c.failLocked(fmt.Errorf("encode imported provider history: %w", err))
+		}
+		if _, err := c.appendLocked(historyImportedKind, historyImportedID, imported); err != nil {
+			return c.failLocked(fmt.Errorf("persist imported provider history: %w", err))
+		}
+		c.importJournaled = true
+	}
 	data, err := json.Marshal(promptEvidence{
 		WorkflowID: c.cfg.WorkflowID, ConversationID: c.cfg.ConversationID,
 		TaskID: taskID, Generation: c.generation, Prompt: prompt,
@@ -404,9 +446,7 @@ func (c *Conversation) AdmitPrompt(taskID, prompt string) error {
 		return c.failLocked(fmt.Errorf("persist user admission: %w", err))
 	}
 	_ = record // Record is retained in the journal; the prompt itself has no Pi-issued receipt.
-	if err := c.appendHistoryLocked(openrouter.Message{Role: openrouter.User, Content: &prompt}); err != nil {
-		return c.failLocked(fmt.Errorf("append admitted user message: %w", err))
-	}
+	c.history = history
 	c.state = stateReadyToExchange
 	return nil
 }
@@ -617,6 +657,9 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 		return Turn{}, c.failLocked(errors.New("provider response ID was reused across conversation turns"))
 	}
 	if capturedCall != nil {
+		if _, reserved := c.reservedCallIDs[capturedCall.ID]; reserved {
+			return Turn{}, c.failLocked(errors.New("provider tool-call ID reuses an imported predecessor call"))
+		}
 		trusted, err := captured.TrustedCapture(callIssuer, responseIssuer, c.generation, nextSequence)
 		if err != nil {
 			return Turn{}, c.failLocked(fmt.Errorf("derive captured tool-call identity: %w", err))
@@ -991,6 +1034,16 @@ func (c *Conversation) recordUnknownExecutionLocked(proposal protocol.Proposal, 
 	return c.failLocked(errors.Join(ErrResultWithheld, cause))
 }
 
+// Closed reports whether this conversation can issue any further provider or tool work.
+func (c *Conversation) Closed() bool {
+	if c == nil {
+		return false
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.closed && c.state == stateClosed
+}
+
 // Close poisons the current transcript and forbids later provider or tool turns.
 func (c *Conversation) Close() {
 	if c == nil {
@@ -1088,20 +1141,30 @@ func (c *Conversation) appendResultLocked(ctx context.Context, kind string, resu
 	return nil
 }
 
-func (c *Conversation) appendHistoryLocked(message openrouter.Message) error {
-	proposed := append(cloneMessages(c.history), message)
-	if len(proposed) > MaxTranscriptTurns*3+2 {
-		return errors.New("provider transcript message limit exhausted")
-	}
-	request, err := openrouter.BuildRequestForRoute(c.route, proposed, 0)
+func (c *Conversation) appendHistoryLocked(messages ...openrouter.Message) error {
+	proposed, err := c.boundedHistoryLocked(messages...)
 	if err != nil {
-		return fmt.Errorf("bounded broker transcript rejected: %w", err)
-	}
-	if len(request.Body()) > openrouter.MaxRequestBytes || len(request.Body()) > MaxTranscriptBytes {
-		return errors.New("provider transcript byte budget exhausted")
+		return err
 	}
 	c.history = proposed
 	return nil
+}
+
+// boundedHistoryLocked returns the history with messages appended, or an error if it exceeds the
+// transcript bounds. It changes nothing.
+func (c *Conversation) boundedHistoryLocked(messages ...openrouter.Message) ([]openrouter.Message, error) {
+	proposed := append(cloneMessages(c.history), messages...)
+	if len(proposed) > MaxTranscriptTurns*3+2 {
+		return nil, errors.New("provider transcript message limit exhausted")
+	}
+	request, err := openrouter.BuildRequestForRoute(c.route, proposed, 0)
+	if err != nil {
+		return nil, fmt.Errorf("bounded broker transcript rejected: %w", err)
+	}
+	if len(request.Body()) > openrouter.MaxRequestBytes || len(request.Body()) > MaxTranscriptBytes {
+		return nil, errors.New("provider transcript byte budget exhausted")
+	}
+	return proposed, nil
 }
 
 func (c *Conversation) appendLocked(kind, id string, data []byte) (audit.Record, error) {
@@ -1277,16 +1340,16 @@ type mutationSummary struct {
 	EffectID string `json:"effect_id"`
 	Outcome  string `json:"outcome"`
 	Command  *struct {
-		ExitCode                 int    `json:"exit_code"`
-		ExitObserved             bool   `json:"exit_observed"`
-		CommandContainmentStatus string `json:"command_containment_status"`
-		CommandRunnerProfile     string `json:"command_runner_profile"`
-		Stdout                   string `json:"stdout"`
-		StdoutBytes              int    `json:"stdout_bytes"`
-		StdoutTruncated          bool   `json:"stdout_truncated"`
-		Stderr                   string `json:"stderr"`
-		StderrBytes              int    `json:"stderr_bytes"`
-		StderrTruncated          bool   `json:"stderr_truncated"`
+		ExitCode                 int     `json:"exit_code"`
+		ExitObserved             bool    `json:"exit_observed"`
+		CommandContainmentStatus string  `json:"command_containment_status"`
+		CommandRunnerProfile     string  `json:"command_runner_profile"`
+		Stdout                   *string `json:"stdout,omitempty"`
+		StdoutBytes              *int    `json:"stdout_bytes,omitempty"`
+		StdoutTruncated          *bool   `json:"stdout_truncated,omitempty"`
+		Stderr                   *string `json:"stderr,omitempty"`
+		StderrBytes              *int    `json:"stderr_bytes,omitempty"`
+		StderrTruncated          *bool   `json:"stderr_truncated,omitempty"`
 	} `json:"command,omitempty"`
 }
 

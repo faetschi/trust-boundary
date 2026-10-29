@@ -95,17 +95,47 @@ type thinkingConfig struct {
 	Type string `json:"type"`
 }
 
-const schemaRead = `{"type":"object","properties":{"path":{"type":"string","description":"Path to the file to read (relative or absolute)"},"offset":{"type":"number","description":"Line number to start reading from (1-indexed)"},"limit":{"type":"number","description":"Maximum number of lines to read"}},"required":["path"]}`
-const schemaWrite = `{"type":"object","properties":{"path":{"type":"string","description":"Path to the file to write (relative or absolute)"},"content":{"type":"string","description":"Content to write to the file"}},"required":["path","content"]}`
-const schemaEdit = `{"type":"object","properties":{"path":{"type":"string","description":"Path to the file to edit (relative or absolute)"},"edits":{"type":"array","description":"One or more targeted replacements. Each edit is matched against the original file, not incrementally. Do not include overlapping or nested edits. If two changes touch the same block or nearby lines, merge them into one edit instead.","items":{"type":"object","properties":{"oldText":{"type":"string","description":"Exact text for one targeted replacement. It must be unique in the original file and must not overlap with any other edits[].oldText in the same call."},"newText":{"type":"string","description":"Replacement text for this targeted edit."}},"required":["oldText","newText"]}}},"required":["path","edits"]}`
-const schemaBash = `{"type":"object","properties":{"command":{"type":"string","description":"Shell command to execute"},"timeout":{"type":"number","description":"Timeout in seconds (optional, no default timeout)"}},"required":["command"]}`
+const researchSchemaRead = `{"type":"object","properties":{"path":{"type":"string","description":"Path to the file to read (relative or absolute)"},"offset":{"type":"number","description":"Line number to start reading from (1-indexed)"},"limit":{"type":"number","description":"Maximum number of lines to read"}},"required":["path"]}`
+const researchSchemaWrite = `{"type":"object","properties":{"path":{"type":"string","description":"Path to the file to write (relative or absolute)"},"content":{"type":"string","description":"Content to write to the file"}},"required":["path","content"]}`
+const researchSchemaEdit = `{"type":"object","properties":{"path":{"type":"string","description":"Path to the file to edit (relative or absolute)"},"edits":{"type":"array","description":"One or more targeted replacements. Each edit is matched against the original file, not incrementally. Do not include overlapping or nested edits. If two changes touch the same block or nearby lines, merge them into one edit instead.","items":{"type":"object","properties":{"oldText":{"type":"string","description":"Exact text for one targeted replacement. It must be unique in the original file and must not overlap with any other edits[].oldText in the same call."},"newText":{"type":"string","description":"Replacement text for this targeted edit."}},"required":["oldText","newText"]}}},"required":["path","edits"]}`
+const researchSchemaBash = `{"type":"object","properties":{"command":{"type":"string","description":"Shell command to execute"},"timeout":{"type":"number","description":"Timeout in seconds (optional, no default timeout)"}},"required":["command"]}`
 
-func tools() []functionTool {
+// researchTools is the frozen tool surface of a research route: the schemas and descriptions its
+// provider-request digests were measured with. Several of its promises are not what the durable executor
+// does (a read offset and limit, a bash timeout, absolute paths, images), and it stays as measured.
+func researchTools() []functionTool {
 	return []functionTool{
-		{"function", fnSchema{"read", "Read the contents of a file. Supports text files and images. Requests are forwarded to tbound.", json.RawMessage(schemaRead)}},
+		{"function", fnSchema{"read", "Read the contents of a file. Supports text files and images. Requests are forwarded to tbound.", json.RawMessage(researchSchemaRead)}},
+		{"function", fnSchema{"write", "Write content to a file. Requests are forwarded to tbound.", json.RawMessage(researchSchemaWrite)}},
+		{"function", fnSchema{"edit", "Edit a single file using exact text replacements. Requests are forwarded to tbound.", json.RawMessage(researchSchemaEdit)}},
+		{"function", fnSchema{"bash", "Execute a bash command. Requests are forwarded to tbound.", json.RawMessage(researchSchemaBash)}},
+	}
+}
+
+// The engineering route advertises what the durable executor does: no read offset or limit (it reads the
+// whole file or refuses), no bash timeout (the runner owns one fixed limit), workspace-relative paths only,
+// and no images. Only the bash description depends on whether the executor releases command output: a product
+// turn's does (Route.CommandOutput), a serve --pi session's returns the exit code alone. adapter/proxy-tools.ts
+// carries the exit-only text, which TestAdvertisedToolSurfaceEqualsTheAdapterTextAndItsPins holds equal, and
+// adapter/profile.json pins the schema digests, which both modes share.
+const schemaRead = `{"type":"object","properties":{"path":{"type":"string","description":"Path to the file to read, relative to the workspace root (an absolute path ends the turn)"}},"required":["path"]}`
+const schemaWrite = `{"type":"object","properties":{"path":{"type":"string","description":"Path to the file to write, relative to the workspace root (an absolute path ends the turn)"},"content":{"type":"string","description":"Content to write to the file"}},"required":["path","content"]}`
+const schemaEdit = `{"type":"object","properties":{"path":{"type":"string","description":"Path to the file to edit, relative to the workspace root (an absolute path ends the turn)"},"edits":{"type":"array","description":"One or more targeted replacements. Each edit is matched against the original file, not incrementally. Do not include overlapping or nested edits. If two changes touch the same block or nearby lines, merge them into one edit instead.","items":{"type":"object","properties":{"oldText":{"type":"string","description":"Exact text for one targeted replacement. It must be unique in the original file and must not overlap with any other edits[].oldText in the same call."},"newText":{"type":"string","description":"Replacement text for this targeted edit."}},"required":["oldText","newText"]}}},"required":["path","edits"]}`
+const schemaBash = `{"type":"object","properties":{"command":{"type":"string","description":"Shell command to run with bash in the workspace root"}},"required":["command"]}`
+
+// tools is the engineering tool surface. commandOutput selects the bash description of an executor that
+// releases bounded stdout and stderr; without it the description is the one every engineering request carried
+// before product turns showed command output.
+func tools(commandOutput bool) []functionTool {
+	bashDescription := "Execute a bash command. Requests are forwarded to tbound."
+	if commandOutput {
+		bashDescription = "Execute a bash command in the workspace and return its exit code, stdout and stderr. Each stream is cut to its last 16 KiB. There is no timeout parameter: a command that runs longer than 10 minutes, or prints more than 1 MiB on one stream, is stopped and returns no result. Requests are forwarded to tbound."
+	}
+	return []functionTool{
+		{"function", fnSchema{"read", "Read the whole contents of an existing UTF-8 text file in the workspace. There is no offset or limit. A missing file, an absolute path, a file of about 1 MiB or more, or a file that is not valid UTF-8 (a binary or image file) cannot be read and ends the turn. Requests are forwarded to tbound.", json.RawMessage(schemaRead)}},
 		{"function", fnSchema{"write", "Write content to a file. Requests are forwarded to tbound.", json.RawMessage(schemaWrite)}},
 		{"function", fnSchema{"edit", "Edit a single file using exact text replacements. Requests are forwarded to tbound.", json.RawMessage(schemaEdit)}},
-		{"function", fnSchema{"bash", "Execute a bash command. Requests are forwarded to tbound.", json.RawMessage(schemaBash)}},
+		{"function", fnSchema{"bash", bashDescription, json.RawMessage(schemaBash)}},
 	}
 }
 
@@ -164,7 +194,10 @@ func BuildRequestForRoute(route Route, messages []Message, completionLimit uint6
 			return BuiltRequest{}, fmt.Errorf("message %d: %w", i, err)
 		}
 	}
-	fixedTools := tools()
+	fixedTools := tools(route.CommandOutput)
+	if route.IsResearch() {
+		fixedTools = researchTools()
+	}
 	toolsJSON, err := json.Marshal(fixedTools)
 	if err != nil {
 		return BuiltRequest{}, fmt.Errorf("encode fixed tool schemas: %w", err)

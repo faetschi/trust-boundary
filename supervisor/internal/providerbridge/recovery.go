@@ -68,6 +68,9 @@ type RecoveryPins struct {
 	RetirementVerifier          UnleasedProviderCallRetirementVerifier
 	IdleRetirementVerifier      IdleProviderLineageRetirementVerifier
 	RequireHostCallReservations bool
+	// ImportedPrefixDigest pins the provider_history_imported record that must open the journal. Empty
+	// means the conversation has no predecessor and the journal must not contain that record.
+	ImportedPrefixDigest string
 }
 
 // ProviderCallRetirementBinding is the content-free identity of one captured
@@ -236,6 +239,7 @@ type TranscriptProjection struct {
 	ProviderRetries            uint64                         `json:"provider_retries,omitempty"`
 	CapturedCallCount          uint64                         `json:"captured_call_count"`
 	DecisionCount              uint64                         `json:"decision_count"`
+	SoftRefusalCount           uint64                         `json:"soft_refusal_count,omitempty"`
 	ResultCount                uint64                         `json:"result_count"`
 	ProviderJournalHead        string                         `json:"provider_journal_head"`
 	HistoryDigest              string                         `json:"history_digest"`
@@ -247,6 +251,7 @@ type TranscriptProjection struct {
 	// HostCallRetryableFailure is true when HostCall was a failed attempt closed by a retryable-failure
 	// record, not by an exchange.
 	HostCallRetryableFailure bool   `json:"host_call_retryable_failure,omitempty"`
+	ImportedPrefixDigest     string `json:"imported_prefix_digest,omitempty"`
 	ProjectionDigest         string `json:"projection_digest"`
 }
 
@@ -275,6 +280,18 @@ const (
 // truncation. The Store verifier is called for each decision when supplied and
 // is mandatory for ALLOW.
 func ReplayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreReplayVerifier) (TranscriptProjection, error) {
+	return replayTranscript(journal, pins, verifier, nil)
+}
+
+// replayedHistory is what ReplayPredecessorContext keeps from a strict replay: the messages after the
+// system and developer prompts and every response and tool-call ID the transcript holds.
+type replayedHistory struct {
+	messages         []openrouter.Message
+	responses, calls map[string]struct{}
+}
+
+// replayTranscript is the one strict replay. A non-nil out receives the replayed history on success.
+func replayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreReplayVerifier, out *replayedHistory) (TranscriptProjection, error) {
 	if journal == nil {
 		return TranscriptProjection{}, replayError("provider journal is unavailable")
 	}
@@ -309,8 +326,10 @@ func ReplayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 		return TranscriptProjection{}, errors.Join(ErrTranscriptReplay, err)
 	}
 	history := InitialPromptMessages(route, cfg.SystemPrompt, cfg.DeveloperPrompt)
+	promptPrefix := len(history)
 	currentGeneration, currentTree := cfg.InitialGenerationID, cfg.InitialTreeDigest
 	state := replayAwaitPrompt
+	imported, awaitingImportedPrompt := false, false
 	var pending *replayDecision
 	var pendingHostCall *hostCallReservationEvidence
 	var lastHostCall *HostCallBinding
@@ -319,7 +338,7 @@ func ReplayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 	var exchangeRecord audit.Record
 	var exchangeSequence uint64
 	var retiredCall *ProviderCallRetirementBinding
-	var ordinal, providerSequence, exchangeCount, callCount, decisionCount, resultCount uint64
+	var ordinal, providerSequence, exchangeCount, callCount, decisionCount, softRefusalCount, resultCount uint64
 	var turnRetries, totalRetries uint64
 	hostCallIDs := make(map[string]struct{})
 	var storeDecisionChecks uint64
@@ -349,7 +368,35 @@ func ReplayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 			return TranscriptProjection{}, replayError("provider journal sequence or event outcome is invalid")
 		}
 		ordinal++
+		if awaitingImportedPrompt && record.Event.Kind != "provider_user_admitted" {
+			return TranscriptProjection{}, replayError("imported provider history is not followed by its host prompt")
+		}
+		awaitingImportedPrompt = false
 		switch record.Event.Kind {
+		case historyImportedKind:
+			if pins.ImportedPrefixDigest == "" || ordinal != 1 {
+				return TranscriptProjection{}, replayError("imported provider history is unpinned or not the first provider record")
+			}
+			var evidence historyImportedEvidence
+			if err := unmarshalCanonicalEvent(record.Event.Data, &evidence); err != nil ||
+				verifyReplayEventID(record, cfg.ConversationID, historyImportedID, ordinal) != nil {
+				return TranscriptProjection{}, replayError("imported provider history record is malformed")
+			}
+			messages, err := validateImportedHistory(evidence, cfg, pins.ImportedPrefixDigest)
+			if err != nil {
+				return TranscriptProjection{}, errors.Join(ErrTranscriptReplay, err)
+			}
+			if err := appendReplayHistory(&history, route, messages...); err != nil {
+				return TranscriptProjection{}, errors.Join(ErrTranscriptReplay, err)
+			}
+			for _, id := range evidence.ReservedResponseIDs {
+				responses[id] = struct{}{}
+			}
+			for _, id := range evidence.ReservedToolCallIDs {
+				calls[id] = struct{}{}
+			}
+			imported, awaitingImportedPrompt = true, true
+
 		case "provider_user_admitted":
 			if state != replayAwaitPrompt || pending != nil {
 				return TranscriptProjection{}, replayError("host prompt is out of order")
@@ -512,6 +559,42 @@ func ReplayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 			} else {
 				state = replayAwaitPrompt
 			}
+
+		case SoftRefusalEvent:
+			if !cfg.ProductSoftRefusals || state != replayAwaitDecision || pending == nil || softRefusalCount == math.MaxUint64 || resultCount == math.MaxUint64 {
+				return TranscriptProjection{}, replayError("proven-unexecuted result has no unique product call")
+			}
+			var evidence SoftRefusalEvidence
+			if unmarshalCanonicalEvent(record.Event.Data, &evidence) != nil || verifyReplayEventID(record, cfg.ConversationID, "soft-refusal", ordinal) != nil ||
+				evidence.WorkflowID != cfg.WorkflowID || evidence.ConversationID != cfg.ConversationID || evidence.ToolCallID != pending.call.ID || evidence.Tool != pending.call.Name ||
+				evidence.ArgumentsDigest != pending.call.CanonicalArgumentsDigest || evidence.Generation != currentGeneration || evidence.TreeDigest != currentTree ||
+				evidence.Result != SoftRefusalText(evidence.Code, evidence.Hint) {
+				return TranscriptProjection{}, replayError("proven-unexecuted evidence differs from the captured call or result")
+			}
+			proposal := protocol.Proposal{SchemaVersion: protocol.ProposalSchemaVersion, ToolCallID: pending.call.ID, Tool: pending.call.Name, Arguments: append(json.RawMessage(nil), pending.call.RawArguments...)}
+			encoded, err := protocol.MarshalProposal(proposal)
+			if err != nil {
+				return TranscriptProjection{}, errors.Join(ErrTranscriptReplay, err)
+			}
+			matched := stream.Propose(encoded)
+			if !matched.Accepted || matched.StreamClosed || gate.Evaluate(proposal, matched, policy).Verdict != gate.Allow {
+				return TranscriptProjection{}, replayError("soft refusal does not match an eligible correlated call")
+			}
+			check, ok := verifier.(SoftRefusalVerifier)
+			if !ok || reflectNil(check) {
+				return TranscriptProjection{}, replayError("soft refusal requires a concrete Store preflight verifier")
+			}
+			if err := check.VerifySoftRefusal(SoftRefusalBinding{Evidence: evidence, Proposal: proposal, Record: record}); err != nil {
+				return TranscriptProjection{}, errors.Join(ErrTranscriptReplay, err)
+			}
+			if err := appendReplayHistory(&history, route, openrouter.Message{Role: openrouter.Tool, ToolCallID: evidence.ToolCallID, Content: &evidence.Result}); err != nil {
+				return TranscriptProjection{}, errors.Join(ErrTranscriptReplay, err)
+			}
+			softRefusalCount++
+			resultCount++
+			storeDecisionChecks++
+			pending = nil
+			state = replayAwaitExchange
 
 		case "provider_gate_decision":
 			if state != replayAwaitDecision || pending == nil || decisionCount == math.MaxUint64 {
@@ -729,6 +812,9 @@ func ReplayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 	if pendingHostCall != nil {
 		return TranscriptProjection{}, replayError("provider journal ends with an unsettled host-call reservation")
 	}
+	if pins.ImportedPrefixDigest != "" && !imported {
+		return TranscriptProjection{}, replayError("pinned imported provider history is missing from the journal")
+	}
 
 	request, err := openrouter.BuildRequestForRoute(route, history, 0)
 	if err != nil {
@@ -743,9 +829,10 @@ func ReplayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 		InitialGenerationID: cfg.InitialGenerationID, InitialTreeDigest: cfg.InitialTreeDigest,
 		ProviderGenerationID: currentGeneration, ProviderTreeDigest: currentTree,
 		ProviderSequence: providerSequence, EventCount: ordinal, ProviderJournalRecordCount: uint64(len(trace.Records)), ExchangeCount: exchangeCount, ProviderRetries: totalRetries,
-		CapturedCallCount: callCount, DecisionCount: decisionCount, ResultCount: resultCount,
+		CapturedCallCount: callCount, DecisionCount: decisionCount, SoftRefusalCount: softRefusalCount, ResultCount: resultCount,
 		HistoryDigest: digestDomain("tbound/provider-history/v2", request.Body()), Disposition: dispositionForReplayState(state, retiredCall != nil),
 		HostCall: lastHostCall, HostCallOutcomeDigest: lastHostCallOutcomeDigest, HostCallRetryableFailure: lastHostCallRetryable,
+		ImportedPrefixDigest: pins.ImportedPrefixDigest,
 	}
 	if state == replayAwaitDecision && pending != nil {
 		binding, err := providerCallRetirementBinding(cfg.WorkflowID, cfg.ConversationID, cfg.ProfileID,
@@ -765,6 +852,9 @@ func ReplayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 		projection.ProviderJournalHead = trace.Records[len(trace.Records)-1].Hash
 	}
 	projection.ProjectionDigest = transcriptProjectionDigest(projection)
+	if out != nil {
+		*out = replayedHistory{messages: cloneMessages(history[promptPrefix:]), responses: responses, calls: calls}
+	}
 	return projection, nil
 }
 
@@ -775,7 +865,8 @@ func validateRecoveryPins(pins RecoveryPins) error {
 		!validText(cfg.ProfileID, MaxIdentityBytes) || !validText(cfg.InitialGenerationID, MaxIdentityBytes) ||
 		!validReplayTreeDigest(cfg.InitialTreeDigest) ||
 		!validPromptText(cfg.SystemPrompt, openrouter.MaxAssistantTextBytes) ||
-		!validPromptText(cfg.DeveloperPrompt, openrouter.MaxAssistantTextBytes) {
+		!validPromptText(cfg.DeveloperPrompt, openrouter.MaxAssistantTextBytes) ||
+		pins.ImportedPrefixDigest != "" && !validPrefixedDigest(pins.ImportedPrefixDigest) {
 		return replayError("recovery pins do not satisfy the fixed host profile")
 	}
 	return nil
@@ -973,8 +1064,8 @@ func validateReplayResultIdentity(evidence resultEvidence, pending replayDecisio
 	return nil
 }
 
-func appendReplayHistory(history *[]openrouter.Message, route openrouter.Route, message openrouter.Message) error {
-	proposed := append(cloneMessages(*history), message)
+func appendReplayHistory(history *[]openrouter.Message, route openrouter.Route, messages ...openrouter.Message) error {
+	proposed := append(cloneMessages(*history), messages...)
 	if len(proposed) > MaxTranscriptTurns*3+2 {
 		return errors.New("provider replay message budget exhausted")
 	}

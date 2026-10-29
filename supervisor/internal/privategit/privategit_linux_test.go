@@ -882,13 +882,61 @@ func TestPinRejectsSameUIDGitLikeExecutableWithoutApprovedBytes(t *testing.T) {
 	}
 }
 
+// A nil owner list keeps the original rule (root or the calling process). A given list replaces it for the
+// executable and for every directory above it.
+func TestPinGitExecutableOwnersCoverTheFileAndItsParents(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root cannot be told apart from the root owner")
+	}
+	self := uint32(os.Geteuid())
+	path := filepath.Join(privateTestDirectory(t, "git"), "git")
+	copyExecutable(t, testPinnedGit(t).path, path)
+	digest := hashPath(t, path)
+	pin := func(owners []uint32) (PinnedGit, error) {
+		return PinGitExecutable(path, GitExecutableApproval{ExpectedDigest: digest, Boundary: "test-owner-list", Owners: owners,
+			Verifier: func(GitExecutableIdentity) error { return nil }})
+	}
+	for name, c := range map[string]struct {
+		owners []uint32
+		pinned bool
+	}{
+		"nil list is root or the caller":                     {nil, true},
+		"root and the caller":                                {[]uint32{0, self}, true},
+		"root alone refuses the caller's file":               {[]uint32{0}, false},
+		"the caller alone refuses the root-owned parents":    {[]uint32{self}, false},
+		"another account refuses everything":                 {[]uint32{self + 1}, false},
+		"an empty list is not the default, it allows nobody": {[]uint32{}, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			git, err := pin(c.owners)
+			if c.pinned {
+				if err != nil {
+					t.Fatalf("PinGitExecutable: %v", err)
+				}
+				defer git.Close()
+				if id := git.Identity(); id.UID != self || id.Mode&0o777 != 0o755 {
+					t.Fatalf("identity from the descriptor = uid %d mode %o, want uid %d mode 755", id.UID, id.Mode&0o777, self)
+				}
+				return
+			}
+			if !errors.Is(err, ErrGitExecutable) {
+				_ = git.Close()
+				t.Fatalf("PinGitExecutable = %v, want ErrGitExecutable", err)
+			}
+		})
+	}
+	if err := validateTrustedPath(path, []uint32{self}); !errors.Is(err, ErrGitExecutable) {
+		t.Fatalf("the parent walk accepted root-owned directories for the owner list {caller}: %v", err)
+	}
+}
+
 func TestCreateExecutesHeldApprovedGitDescriptorAfterPathReplacement(t *testing.T) {
 	parentPath := privateTestDirectory(t, "parent")
 	sourcePath := privateTestDirectory(t, "source")
 	writePrivateFile(t, filepath.Join(sourcePath, "file"), "bytes", 0o600)
 	installed := testPinnedGit(t)
 	fixtureDir := t.TempDir()
-	if err := validateTrustedPath(fixtureDir); err != nil {
+	if err := validateTrustedPath(fixtureDir, nil); err != nil {
 		t.Skipf("private executable fixture root is unavailable: %v", err)
 	}
 	fixtureGitPath := filepath.Join(fixtureDir, "git-approved")

@@ -12,6 +12,9 @@ import { ShellContext } from "../shellContext";
 import { failureText, projectionPhase } from "../status";
 import type { WorkspaceModel } from "../workspaceStore";
 import { Composer } from "../Composer";
+import { useLive } from "../../live/context";
+import { LiveComposer } from "../../live/LiveComposer";
+import { LivePanel, LiveReview } from "../../live/LivePanel";
 import { confirmedIn, isVerifiedIn } from "../verification";
 import { filterNameOf, filterSummaryText, postureEntries } from "./chat/readings";
 import { markerFor, provenanceOf } from "./chat/provenance";
@@ -33,6 +36,7 @@ export const TRANSCRIPT_NOTICE_POINTER = "Notices for this transcript are above 
 export function ChatView({ model }: { readonly model: WorkspaceModel }) {
   const announcer = useAnnouncer();
   const shell = useContext(ShellContext);
+  const live = useLive();
   const logRef = useRef<HTMLDivElement | null>(null);
   const phase = projectionPhase(model);
   // The shared gate: a record is verified only in a live, structurally audited projection, and only with
@@ -118,6 +122,8 @@ export function ChatView({ model }: { readonly model: WorkspaceModel }) {
         <ToggleGroup label="Timeline filters" items={filters} pressed={model.filter} onPress={choose} />
       </div>
 
+      {live ? <LivePanel /> : null}
+
       <div className={styles.logWrap}>
         {/* aria-live is off: the single polite announcer lives in the shell (LiveRegion). The transcript is the scroller. */}
         <div role="log" aria-label="Transcript" aria-live="off" tabIndex={-1} ref={logRef} className={styles.log}>
@@ -125,6 +131,7 @@ export function ChatView({ model }: { readonly model: WorkspaceModel }) {
           {provenance.kind === "uniform" ? <p className={styles.note}>{provenance.text}</p> : null}
           {phase === "loaded" && model.error !== null ? <ErrorState title="Projection error">{model.error}</ErrorState> : null}
           {transcript()}
+          {live ? <LiveReview /> : null}
         </div>
       </div>
 
@@ -136,7 +143,7 @@ export function ChatView({ model }: { readonly model: WorkspaceModel }) {
             {jumpLabel(tail.pending)}
           </button>
         ) : null}
-        <Composer session={model.session} />
+        {live ? <LiveComposer /> : <Composer session={model.session} />}
       </div>
     </div>
   );
@@ -144,6 +151,11 @@ export function ChatView({ model }: { readonly model: WorkspaceModel }) {
   // Loading, failure, empty, no-match and the transcript itself. One state at a time, and each is text,
   // never colour alone. A failure before the first snapshot replaces the loading skeleton.
   function transcript(): ReactNode {
+    if (live && live.model.activeId === null) {
+      return (
+        <EmptyState title="No session open">Choose a session in the sessions panel, or create one.</EmptyState>
+      );
+    }
     if (phase === "loading") return <LoadingState label="Loading projection…" />;
     if (phase === "failed") {
       return <ErrorState title="Projection not loaded">{failureText(model.error, model.status)}</ErrorState>;
@@ -155,7 +167,7 @@ export function ChatView({ model }: { readonly model: WorkspaceModel }) {
         </EmptyState>
       ) : (
         <EmptyState title="No Pi turns observed yet.">
-          This page is a read-only view; nothing can be sent from here.
+          {live ? "Send a prompt below to start the first turn." : "This page is a read-only view; nothing can be sent from here."}
         </EmptyState>
       );
     }

@@ -7,6 +7,8 @@
 // that override to point at a copy with one function changed; the repository copy is never edited.
 import { describe, expect, test, vi } from "vitest";
 import assert from "node:assert/strict";
+import { join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 // The corpora are large by design. They take 3 to 5 seconds on their own and more when the suite runs in
 // parallel, so the default 5-second budget would fail the run without a comparison failing.
@@ -44,14 +46,14 @@ import type { FilterId } from "./filters";
 import type { CancelTarget, ContextEvent, KeyEvent, SequenceState } from "./stop-sequence";
 
 const ASSETS: string =
-  import.meta.env.VITE_WEBCHAT_LEGACY_ASSETS || new URL("../../../internal/webchat/assets", import.meta.url).pathname;
+  import.meta.env.VITE_WEBCHAT_LEGACY_ASSETS || fileURLToPath(new URL("../../../internal/webchat/assets", import.meta.url));
 
 // Loads one legacy module and checks each named export at run time. The legacy files are untyped
 // JavaScript, so the loaded namespace is typed as its TypeScript port: both sides then take the same
 // arguments. This cast is the one boundary cast in the differential suite. The check above it is the
 // reason it is safe.
 async function legacy<T extends object>(file: string, names: readonly (keyof T & string)[]): Promise<T> {
-  const mod: unknown = await import(/* @vite-ignore */ `${ASSETS}/${file}`);
+  const mod: unknown = await import(/* @vite-ignore */ pathToFileURL(join(ASSETS, file)).href);
   if (typeof mod !== "object" || mod === null) throw new Error(`legacy ${file} did not load as a module`);
   for (const name of names) {
     if (!(name in mod)) throw new Error(`legacy ${file} has no export ${name}`);

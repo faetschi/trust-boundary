@@ -333,6 +333,10 @@ type Snapshot struct {
 	Items         []Item         `json:"items"`
 	Gaps          []GapRecord    `json:"gaps,omitempty"`
 	Warnings      []string       `json:"warnings,omitempty"`
+	// Live is the product service's own session view, carried as is by a live
+	// projection only. It holds the revision a client must echo to submit, cancel
+	// or resolve, and each turn's state. No document may carry it.
+	Live *ProductSession `json:"live,omitempty"`
 }
 
 // Document is an on-disk fixture/replay envelope. It is caller-supplied input

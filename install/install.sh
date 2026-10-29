@@ -3,23 +3,75 @@
 #
 #   curl -fsSL https://get.tbound.dev | bash
 #   bash install.sh --version <ver> [--prefix <dir>] [--base-url <url> | --local-dist <dir>] [--no-path] [--no-completions]
+#                   [--public-key <file> [--key-fingerprint <hex16>] [--verifier <tbound>]]
 #   bash install.sh update  [--version <ver> ...]
 #   bash install.sh uninstall [--prefix <dir>]
 #
 # Installs the tbound and tbound-doctor binaries plus the runtime bundle into a
 # user-owned prefix. It never uses sudo and never touches the user's global Node
-# or Pi install. Artifacts are checksum-verified before extraction, the prefix is
+# or Pi install. Artifacts are verified before extraction (see TRUST below), the prefix is
 # marker-owned so uninstall cannot delete unrelated data, and updates are staged
 # before being swapped into place.
+#
+# TRUST. Without --public-key the installer only compares the artifact with SHA256SUMS from the
+# same origin: that detects corruption, not a replaced download, and is not publisher
+# authentication, so only a run that is not root may use it: a run as root requires --public-key or the
+# key its prefix pins, and refuses a checksum-only artifact. With --public-key FILE it requires
+# tbound-release-manifest.json and tbound-release-manifest.json.sig next to the artifacts and runs `tbound release verify`
+# (signature, then the artifact's size and SHA-256) BEFORE extracting anything; a checksum file is
+# then not used at all. The verifier is --verifier PATH, $TBOUND_VERIFIER, or `tbound` on PATH. It
+# must come from somewhere you trust independently of the download (a build from source, or an
+# earlier verified install). A verifier taken from the archive being checked proves nothing.
+# FIRST-INSTALL LIMIT: the first time, nothing proves the public key is the publisher's. Compare its
+# fingerprint (`tbound release fingerprint --public-key FILE`, printed on success) with the value in
+# the README and release notes, obtained separately, or pass it as --key-fingerprint HEX16.
+# KEY PIN: the first signed install stores the public key it verified in the prefix
+# (.tbound-publisher.pub, 0644). Every later install or update into that prefix is verified against the
+# stored key and is refused without a valid signature: it never falls back to SHA256SUMS, and a
+# different --public-key is refused (uninstall first to trust another publisher). A prefix installed
+# without a key keeps the checksum-only behaviour and says so; its first signed update pins the key.
+# ROOT RUN: the marker and the pin are the trust anchors of a prefix, so a run as root refuses unless the
+# prefix (or its nearest existing ancestor) and every directory above it are root-owned and not writable
+# by group or others, and it refuses a symlinked or group/other-writable marker or pin. Uninstall applies the
+# same checks, and again immediately before it removes the prefix. Every run creates the marker itself and
+# discards any archive-supplied one. A root run extracts under umask 077 with tar --no-same-owner
+# --no-same-permissions, so no owner or mode in the archive reaches the prefix, and it creates the marker
+# and the pin with their final mode. A root run never installs or removes the per-user shell completions
+# or writes the per-user config, because HOME and XDG directories are user-controlled: it prints what the
+# user runs unprivileged instead. A root run downloads, verifies and extracts only inside private directories
+# it creates below the prefix's (checked) parent, never under TMPDIR, whose parents a user may own.
 set -euo pipefail
 
 DEFAULT_VERSION="latest"
 NODE_MIN="22.19"
 MARKER=".tbound-install"
+MANIFEST_NAME="tbound-release-manifest.json"
+PUBLISHER_KEY=".tbound-publisher.pub"
 
 log()  { printf 'tbound-install: %s\n' "$*"; }
 die()  { printf 'tbound-install: error: %s\n' "$*" >&2; exit 1; }
 have() { command -v "$1" >/dev/null 2>&1; }
+
+usage() {
+  local self="${BASH_SOURCE[0]:-}"
+  if [ -r "$self" ]; then
+    sed -n '2,/^set -euo pipefail/{/^set -euo/d;s/^# \{0,1\}//;p;}' "$self"
+  else
+    printf 'see the header of install.sh (download it first to read the TRUST notes)\n'
+  fi
+}
+
+# verify_signature runs the verifier on the signed manifest and the artifact. It dies before anything
+# is extracted. A checksum file is not an input.
+verify_signature() {
+  local dir="$1" artifact="$2" key="$3" fingerprint="$4" verifier="$5"
+  [ -f "$key" ] || die "public key file not found: $key"
+  [ -n "$verifier" ] || verifier="$(command -v tbound || true)"
+  { [ -n "$verifier" ] && [ -x "$verifier" ]; } || die "no verifier: pass --verifier PATH to a tbound binary you trust independently of this download"
+  local args=(release verify --manifest "$dir/$MANIFEST_NAME" --signature "$dir/$MANIFEST_NAME.sig" --public-key "$key" --artifact "$dir/$artifact")
+  [ -z "$fingerprint" ] || args+=(--fingerprint "$fingerprint")
+  "$verifier" "${args[@]}" || die "release signature verification failed; nothing was extracted"
+}
 
 default_prefix() {
   if [ -n "${TBOUND_PREFIX:-}" ]; then printf '%s' "$TBOUND_PREFIX"; return; fi
@@ -78,6 +130,40 @@ canonical_prefix() {
 
 is_owned_prefix() { [ -f "$1/$MARKER" ]; }
 
+# A root run takes its trust anchors (the marker and the publisher pin) from the prefix, so the prefix
+# and every directory above it must be unwritable by anyone else. trusted_entry dies unless $1 is a real
+# (not symlinked) entry owned by root or by uid $2 (root's run passes 0) that neither group nor others write.
+trusted_entry() {
+  local p="$1" uid="$2" st owner mode
+  [ ! -L "$p" ] || die "refusing to act as root: $p is a symlink"
+  st="$(stat -c '%u %a' -- "$p" 2>/dev/null || stat -f '%u %Lp' "$p")" || die "refusing to act as root: cannot stat $p"
+  owner="${st% *}"; mode="${st#* }"
+  case " 0 $uid " in *" $owner "*) ;; *) die "refusing to act as root: $p is owned by uid $owner, not root" ;; esac
+  [ $(( 8#$mode & 022 )) -eq 0 ] || die "refusing to act as root: $p is writable by group or others (mode $mode)"
+}
+
+# require_trusted_path checks $1, or its nearest existing ancestor, and every ancestor up to / with trusted_entry.
+require_trusted_path() {
+  local p="$1" uid="$2"
+  while [ ! -e "$p" ]; do p="$(dirname "$p")"; done
+  while :; do
+    trusted_entry "$p" "$uid"
+    [ "$p" != / ] || break
+    p="$(dirname "$p")"
+  done
+}
+
+# require_root_trust applies the root-run checks to a prefix: its ancestry, and the marker and the pin when
+# they exist. It does nothing for a run that is not root.
+require_root_trust() {
+  [ "$(id -u)" = 0 ] || return 0
+  require_trusted_path "$1" 0
+  local anchor
+  for anchor in "$1/$MARKER" "$1/$PUBLISHER_KEY"; do
+    if [ -e "$anchor" ] || [ -L "$anchor" ]; then trusted_entry "$anchor" 0; fi
+  done
+}
+
 detect_os() {
   case "$(uname -s)" in
     Linux)  printf 'linux' ;;
@@ -109,6 +195,10 @@ install_completions() {
   local prefix="$1"
   local src="$prefix/share/completions"
   [ -d "$src" ] || return 0
+  if [ "$(id -u)" = 0 ]; then
+    log "running as root: skipped the shell completions, because their directories are user-controlled and a root run does not follow them; as that user, copy from $src: tbound.bash to \${XDG_DATA_HOME:-~/.local/share}/bash-completion/completions/tbound, _tbound to \${XDG_DATA_HOME:-~/.local/share}/zsh/site-functions/_tbound, tbound.fish to \${XDG_CONFIG_HOME:-~/.config}/fish/completions/tbound.fish"
+    return 0
+  fi
   local data="${XDG_DATA_HOME:-$HOME/.local/share}"
   local cfg="${XDG_CONFIG_HOME:-$HOME/.config}"
   if [ -f "$src/tbound.bash" ]; then
@@ -127,6 +217,10 @@ install_completions() {
 }
 
 remove_completions() {
+  if [ "$(id -u)" = 0 ]; then
+    log "running as root: left the shell completions of the user in place; as that user, remove \${XDG_DATA_HOME:-~/.local/share}/bash-completion/completions/tbound, \${XDG_DATA_HOME:-~/.local/share}/zsh/site-functions/_tbound and \${XDG_CONFIG_HOME:-~/.config}/fish/completions/tbound.fish"
+    return 0
+  fi
   local data="${XDG_DATA_HOME:-$HOME/.local/share}"
   local cfg="${XDG_CONFIG_HOME:-$HOME/.config}"
   rm -f "$data/bash-completion/completions/tbound" "$data/zsh/site-functions/_tbound" "$cfg/fish/completions/tbound.fish"
@@ -143,24 +237,31 @@ uninstall() {
   done
   prefix="$(canonical_prefix "$prefix")"
   if [ ! -d "$prefix" ]; then log "nothing to remove at $prefix"; return; fi
+  require_root_trust "$prefix"
   if ! is_owned_prefix "$prefix"; then
     die "refusing to remove '$prefix': not a tbound install (no $MARKER marker). Remove it manually if you are sure."
   fi
   log "removing owned tbound install at $prefix"
-  rm -rf -- "$prefix"
+  # Just before the removal, so a swapped ancestor is refused rather than followed by a root rm.
+  require_root_trust "$prefix"
+  [ "$(canon_path "$prefix")" = "$prefix" ] || die "refusing to remove '$prefix': its path changed while it was checked"
+  if rm --version >/dev/null 2>&1; then rm -rf --one-file-system -- "$prefix"; else rm -rf -- "$prefix"; fi # GNU rm stays on one filesystem
   remove_completions
   log "done"
 }
 
 install_at() {
-  # install a verified artifact; requires $1 artifact path, $2 verified sums file, $3 version, $4 prefix
-  local artifact="$1" sums="$2" version="$3" prefix="$4"
+  # install a verified artifact; requires $1 artifact path, $2 sums file (empty when the signed
+  # manifest was already verified), $3 version, $4 prefix, $5 the verified public key to pin (or empty)
+  local artifact="$1" sums="$2" version="$3" prefix="$4" pin_key="${5:-}"
   local want got
-  want="$(awk -v a="$(basename "$artifact")" '$2==a || $2=="./"a {print $1}' "$sums" | head -n1)"
-  [ -n "$want" ] || die "no checksum entry for $(basename "$artifact")"
-  got="$(sha256_file "$artifact")"
-  [ "$want" = "$got" ] || die "checksum mismatch for $(basename "$artifact") (want $want got $got)"
-  log "checksum ok"
+  if [ -n "$sums" ]; then
+    want="$(awk -v a="$(basename "$artifact")" '$2==a || $2=="./"a {print $1}' "$sums" | head -n1)"
+    [ -n "$want" ] || die "no checksum entry for $(basename "$artifact")"
+    got="$(sha256_file "$artifact")"
+    [ "$want" = "$got" ] || die "checksum mismatch for $(basename "$artifact") (want $want got $got)"
+    log "checksum ok (integrity only: not publisher authentication; use --public-key for a signed install)"
+  fi
 
   if [ -e "$prefix" ] && [ -n "$(ls -A "$prefix" 2>/dev/null || true)" ] && ! is_owned_prefix "$prefix"; then
     die "refusing to install into non-empty, non-tbound prefix $prefix (remove it or choose another --prefix)"
@@ -171,11 +272,23 @@ install_at() {
   # Stage next to the prefix so the final swap is a same-filesystem rename.
   local stage; stage="$(mktemp -d "$parent/.tbound-stage.XXXXXX")" || die "cannot stage next to $parent"
   STAGE_INSTALL="$stage"
-  if ! tar -xzf "$artifact" -C "$stage"; then die "extraction failed"; fi
+  if [ "$(id -u)" = 0 ]; then
+    # A root run takes nothing from the archive's headers. The stage is a private directory root just created,
+    # and an owner or mode on the archive's "." entry would hand it to whoever the archive names.
+    (umask 077; tar --no-same-owner --no-same-permissions -xzf "$artifact" -C "$stage") || die "extraction failed"
+  elif ! tar -xzf "$artifact" -C "$stage"; then die "extraction failed"; fi
   if [ ! -x "$stage/bin/tbound" ]; then die "extracted archive has no bin/tbound"; fi
   if [ ! -x "$stage/bin/tbound-doctor" ]; then die "extracted archive has no bin/tbound-doctor"; fi
   if [ ! -x "$stage/bin/tbound-profile" ]; then die "extracted archive has no bin/tbound-profile"; fi
-  printf 'name=tbound\nversion=%s\nprefix=%s\n' "$(json_escape "$version")" "$(json_escape "$prefix")" > "$stage/$MARKER"
+  # The marker is never the archive's: an archive may carry a link under this name, and a root run must not write through it.
+  rm -rf -- "$stage/$MARKER"
+  # Created with its final mode, whatever the umask: a root run refuses a marker that group or others can write,
+  # and a chmod by pathname afterwards would follow a link swapped in after the creation.
+  (umask 022; set -o noclobber; printf 'name=tbound\nversion=%s\nprefix=%s\n' "$(json_escape "$version")" "$(json_escape "$prefix")" > "$stage/$MARKER") || die "cannot create the install marker"
+  rm -rf -- "$stage/$PUBLISHER_KEY" # the pin comes only from the verified key below, never from the archive
+  if [ -n "$pin_key" ]; then
+    (umask 022; set -o noclobber; cat -- "$pin_key" > "$stage/$PUBLISHER_KEY") || die "cannot pin the publisher key"
+  fi
 
   # Move any existing install into an exclusively created hold directory so a
   # concurrent or pre-existing path can never be nested or deleted.
@@ -207,6 +320,10 @@ install_at() {
 
 write_config() {
   local version="$1" prefix="$2"
+  if [ "$(id -u)" = 0 ]; then
+    log "running as root: skipped the per-user config file, whose directory is user-controlled; it is optional, and an install run as that user writes it"
+    return 0
+  fi
   local cfg; cfg="$(config_dir)"
   mkdir -p "$cfg"
   if [ ! -f "$cfg/config.json" ]; then
@@ -234,6 +351,7 @@ trap cleanup EXIT
 
 main() {
   case "${1:-}" in
+    -h|--help) usage; return ;;
     uninstall) shift; uninstall "$@"; return ;;
     update)    shift; set -- update "$@" ;;
   esac
@@ -242,6 +360,7 @@ main() {
 
   local version="${TBOUND_VERSION:-$DEFAULT_VERSION}"
   local prefix base_url local_dist="" add_path=1 no_completions=0
+  local public_key="" key_fingerprint="" verifier="${TBOUND_VERIFIER:-}"
   prefix="$(default_prefix)"
   base_url="${TBOUND_BASE_URL:-https://get.tbound.dev/releases}"
   local_dist="${TBOUND_LOCAL_DIST:-}"
@@ -254,11 +373,16 @@ main() {
       --local-dist) local_dist="${2:?}"; shift 2 ;;
       --no-path)    add_path=0; shift ;;
       --no-completions) no_completions=1; shift ;;
+      --public-key) public_key="${2:?}"; shift 2 ;;
+      --key-fingerprint) key_fingerprint="${2:?}"; shift 2 ;;
+      --verifier)   verifier="${2:?}"; shift 2 ;;
+      -h|--help)    usage; return ;;
       *) die "unexpected argument: $1" ;;
     esac
   done
 
   prefix="$(canonical_prefix "$prefix")"
+  require_root_trust "$prefix"
   if [ "$updating" = 1 ] && ! is_owned_prefix "$prefix"; then
     die "tbound is not installed at $prefix; run install first"
   fi
@@ -267,22 +391,74 @@ main() {
   os="$(detect_os)"; arch="$(detect_arch)"
   artifact="tbound-${version}-${os}-${arch}.tar.gz"
 
-  STAGE="$(mktemp -d "${TMPDIR:-/tmp}/tbound-install.XXXXXX")"
+  # Root gains privilege from what it installs, so it needs the publisher's signature: a checksum file from the same origin
+  # is replaced together with the artifact. A run that is not root only changes what its user can already change.
+  local pinned="$prefix/$PUBLISHER_KEY"
+  if [ "$(id -u)" = 0 ] && [ -z "$public_key" ] && ! { is_owned_prefix "$prefix" && [ -f "$pinned" ]; }; then
+    die "a root run requires publisher authentication: pass --public-key, or update a prefix that pins a publisher key (a checksum file is not authentication; only a run that is not root may use it)"
+  fi
+
+  # A root run stages below the prefix's parent, which the checks above found root-owned and closed to others: whoever
+  # owns a directory above TMPDIR could rename a stage there and put their own at its path after the signature was verified.
+  local stage_root="${TMPDIR:-/tmp}"
+  if [ "$(id -u)" = 0 ]; then
+    stage_root="$(dirname "$prefix")"
+    { (umask 022; mkdir -p -- "$stage_root") && require_trusted_path "$stage_root" 0; } || die "cannot prepare $stage_root"
+  fi
+  STAGE="$(mktemp -d "$stage_root/tbound-install.XXXXXX")" || die "cannot create a staging directory in $stage_root"
   log "${updating:+updating }installing tbound ${version} (${os}/${arch}) into ${prefix}"
+
+  # Key pin: work from a private copy of the key, so the key that is verified is the key that is stored.
+  if [ -n "$public_key" ]; then
+    [ -f "$public_key" ] || die "public key file not found: $public_key"
+    cp -- "$public_key" "$STAGE/$PUBLISHER_KEY" || die "cannot read the public key: $public_key"
+    public_key="$STAGE/$PUBLISHER_KEY"
+  fi
+  if is_owned_prefix "$prefix"; then
+    if [ -f "$pinned" ]; then
+      if [ -n "$public_key" ]; then
+        cmp -s -- "$public_key" "$pinned" || die "--public-key differs from the pinned publisher key of $prefix; uninstall first to trust another publisher"
+      else
+        cp -- "$pinned" "$STAGE/$PUBLISHER_KEY" || die "cannot read the pinned publisher key $pinned"
+        public_key="$STAGE/$PUBLISHER_KEY"
+      fi
+      log "this prefix pins a publisher key: the release must carry a valid signature by the pinned publisher key (no checksum fallback)"
+    elif [ -z "$public_key" ]; then
+      log "warning: this prefix was installed without a publisher key, so this install is verified by the same-origin checksum only (not publisher authentication); pass --public-key to pin one"
+    fi
+  fi
 
   if [ -n "$local_dist" ]; then
     [ -f "$local_dist/$artifact" ] || die "local dist missing $artifact"
     cp "$local_dist/$artifact" "$STAGE/$artifact"
-    if [ -f "$local_dist/SHA256SUMS" ]; then cp "$local_dist/SHA256SUMS" "$STAGE/SHA256SUMS"; else : > "$STAGE/SHA256SUMS"; fi
+    if [ -n "$public_key" ]; then
+      local f
+      for f in "$MANIFEST_NAME" "$MANIFEST_NAME.sig"; do
+        [ -f "$local_dist/$f" ] || die "local dist missing $f (required with --public-key)"
+        cp "$local_dist/$f" "$STAGE/$f"
+      done
+    elif [ -f "$local_dist/SHA256SUMS" ]; then cp "$local_dist/SHA256SUMS" "$STAGE/SHA256SUMS"; else : > "$STAGE/SHA256SUMS"; fi
   else
     have curl || die "curl is required for remote install (or pass --local-dist)"
     log "downloading $base_url/$artifact"
     curl -fsSL "$base_url/$artifact" -o "$STAGE/$artifact" || die "download failed"
-    curl -fsSL "$base_url/SHA256SUMS" -o "$STAGE/SHA256SUMS" || die "checksum download failed"
+    if [ -n "$public_key" ]; then
+      curl -fsSL "$base_url/$MANIFEST_NAME" -o "$STAGE/$MANIFEST_NAME" || die "manifest download failed"
+      curl -fsSL "$base_url/$MANIFEST_NAME.sig" -o "$STAGE/$MANIFEST_NAME.sig" || die "manifest signature download failed"
+    else
+      curl -fsSL "$base_url/SHA256SUMS" -o "$STAGE/SHA256SUMS" || die "checksum download failed"
+    fi
   fi
-  [ -s "$STAGE/SHA256SUMS" ] || die "no SHA256SUMS available; refusing to install unverified artifacts"
+  local sums=""
+  if [ -n "$public_key" ]; then
+    verify_signature "$STAGE" "$artifact" "$public_key" "$key_fingerprint" "$verifier"
+  else
+    [ -s "$STAGE/SHA256SUMS" ] || die "no SHA256SUMS available; refusing to install unverified artifacts"
+    log "warning: no --public-key given; the checksum file only detects corruption and is not publisher authentication"
+    sums="$STAGE/SHA256SUMS"
+  fi
 
-  install_at "$STAGE/$artifact" "$STAGE/SHA256SUMS" "$version" "$prefix"
+  install_at "$STAGE/$artifact" "$sums" "$version" "$prefix" "$public_key"
   write_config "$version" "$prefix"
 
   [ "$no_completions" = 0 ] && install_completions "$prefix" || true
@@ -297,4 +473,5 @@ main() {
   log "done"
 }
 
-main "$@"
+# Run only when executed (or piped to bash), so a test can source the functions.
+if [ "${BASH_SOURCE[0]:-$0}" = "$0" ]; then main "$@"; fi

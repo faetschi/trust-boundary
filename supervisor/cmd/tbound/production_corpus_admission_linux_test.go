@@ -291,6 +291,7 @@ func TestServiceConfigValidationCoversBothAdmissionShapes(t *testing.T) {
 		"malformed digest":      func(c *piServiceConfig) { c.CorpusManifestDigest = "sha256:00" },
 		"missing digest":        func(c *piServiceConfig) { c.CorpusManifestDigest = "" },
 		"unknown mode":          func(c *piServiceConfig) { c.WorkflowAdmissionMode = "corpora" },
+		"product mode":          func(c *piServiceConfig) { c.WorkflowAdmissionMode = "product" },
 		"zero ceiling calls":    func(c *piServiceConfig) { c.WorkflowMaxHostCalls = 0 },
 		"duration over runtime": func(c *piServiceConfig) { c.WorkflowDurationSeconds = 1201 },
 	} {
@@ -313,6 +314,12 @@ func TestServiceConfigValidationCoversBothAdmissionShapes(t *testing.T) {
 		withCorpus.CorpusManifestDigest = corpusTestDigest("x")
 		if err := validateProductionPiServiceConfig(withCorpus); err == nil {
 			t.Errorf("fresh config on %s accepted corpus members", schema)
+		}
+		// Product admission is a separate signed registration; the research service never accepts it.
+		product := fresh
+		product.WorkflowAdmissionMode = "product"
+		if err := validateProductionPiServiceConfig(product); err == nil {
+			t.Errorf("research service config on %s accepted the product admission mode", schema)
 		}
 	}
 	fresh.WorkflowPrompt = ""

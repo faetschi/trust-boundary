@@ -10,11 +10,14 @@ import {
   createStream,
   type AbortControllerLike,
   type StreamController,
+  type StreamEventHandlers,
 } from "../core/stream";
 import {
   fetchValidatedSnapshot,
   openValidatedEventStream,
+  type AbortSignalLike,
   type EventSourceFactory,
+  type EventStreamHandle,
   type FetchLike,
 } from "../core/api";
 import {
@@ -33,7 +36,7 @@ import {
 } from "../core/store";
 import { pendingSince, repin } from "../core/anchor";
 import type { FilterId } from "../core/filters";
-import type { Item, Panels, SessionHeader, SourceClass, StreamStatus, VerificationScope } from "../core/contract";
+import type { Item, Panels, SessionHeader, Snapshot, SourceClass, StreamStatus, VerificationScope } from "../core/contract";
 import { createAnnouncer, type Announcer } from "../ui/announcer";
 import { announcementsBetween, connectionStatus, type ConnectionStatus } from "./status";
 
@@ -49,6 +52,10 @@ export interface WorkspaceDeps {
   readonly connectWarnMs?: number;
   readonly stableOpenMs?: number;
   readonly attemptTimeoutMs?: number;
+  // Live mode replaces the snapshot request and the event stream with the session routes (live/controller.ts). Both must
+  // return validated contract values, as the defaults do. Without them the store reads /api/v1/snapshot and /api/v1/events.
+  readonly loadSnapshot?: (signal: AbortSignalLike) => Promise<Snapshot>;
+  readonly openEventStream?: (handlers: StreamEventHandlers) => EventStreamHandle;
 }
 
 export interface WorkspaceActions {
@@ -204,12 +211,13 @@ export function createWorkspaceStore(deps: WorkspaceDeps): WorkspaceStore {
     stop();
     const controller = createStream({
       state,
-      fetchSnapshot: (signal) => fetchValidatedSnapshot(deps.fetch, deps.nowMs, signal),
+      fetchSnapshot: deps.loadSnapshot ?? ((signal) => fetchValidatedSnapshot(deps.fetch, deps.nowMs, signal)),
       // The core applies a snapshot without a change notice, and it opens the stream right after
       // the snapshot is applied. Publishing here is therefore the notice for the snapshot (and for
       // any gap noted with it), before the stream reports open.
       openEventStream: (handlers) => {
         if (isCurrent(controller)) publish();
+        if (deps.openEventStream) return deps.openEventStream(handlers);
         return openValidatedEventStream(deps.openSource, {
           cursor: handlers.cursor,
           nowMs: deps.nowMs,

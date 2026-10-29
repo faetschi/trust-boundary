@@ -150,12 +150,16 @@ func (p *PinnedGit) Close() error {
 	return err
 }
 
+// Identity is the identity measured from the held descriptor when it was pinned.
+func (p *PinnedGit) Identity() GitExecutableIdentity { return p.identity }
+
 // GitExecutableIdentity is measured from the held executable descriptor.
 // Digest is the content identity approved by the trusted host verifier.
 type GitExecutableIdentity struct {
 	Device    uint64
 	Inode     uint64
 	Size      int64
+	UID       uint32
 	Mode      uint32
 	MtimeSec  int64
 	MtimeNsec int64
@@ -169,6 +173,9 @@ type GitExecutableApproval struct {
 	ExpectedDigest string
 	Verifier       GitExecutableVerifier
 	Boundary       string
+	// Owners are the UIDs that may own the executable and every directory above it. Nil means root and
+	// the calling process's effective UID; an empty list allows nobody.
+	Owners []uint32
 }
 
 // GitExecutableVerifier authenticates the expected host executable and its

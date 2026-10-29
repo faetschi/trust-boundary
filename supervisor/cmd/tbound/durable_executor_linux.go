@@ -35,6 +35,10 @@ import (
 // any bytes are released rather than truncated.
 const durableReadMaxBytes = protocol.MaxFrameBytes
 
+// durableCommandOutputMaxBytes is the largest per-stream bound a configured executor accepts. Two streams
+// of it, at JSON's worst case of six bytes per control character, still fit one protocol frame.
+const durableCommandOutputMaxBytes = 64 << 10
+
 // DurableExecutorConfig binds the durable effect path to one seeded session
 // repository. Tip is the current sealed tip generation; Execute advances it
 // after every committed mutation. CallIssuer is the configured broker call
@@ -57,6 +61,10 @@ type DurableExecutorConfig struct {
 	// is optional: a nil runner is valid at construction and makes every bash
 	// ALLOW fail closed at Execute time rather than running uncontained.
 	CommandRunner sessionrepo.CommandRunner
+	// CommandOutputBytes, when positive, selects the product Bash stream projection: valid
+	// UTF-8, at most this many bytes, the tail when it is cut, and a truncated flag per stream. Zero keeps
+	// the research summary, which reports the exit status only and keeps its bytes.
+	CommandOutputBytes int
 	// AfterDurableOperation settles a consumed workflow effect reservation from
 	// the actual Store/admission journal tail before a provider result is released.
 	AfterDurableOperation func(context.Context, protocol.Proposal, gate.Decision) error
@@ -77,6 +85,7 @@ type DurableExecutor struct {
 	policyDigest          string
 	metadataPolicyDigest  string
 	commandRunner         sessionrepo.CommandRunner
+	commandOutputBytes    int
 	bashOutputPaths       []string
 	afterDurableOperation func(context.Context, protocol.Proposal, gate.Decision) error
 	quarantined           bool
@@ -135,10 +144,14 @@ func NewDurableExecutor(config DurableExecutorConfig) (*DurableExecutor, error) 
 			return nil, fmt.Errorf("durable executor Bash output scope: %w", err)
 		}
 	}
+	if config.CommandOutputBytes < 0 || config.CommandOutputBytes > durableCommandOutputMaxBytes {
+		return nil, errors.New("durable executor command output bound is outside its permitted range")
+	}
 	return &DurableExecutor{
 		store: config.Store, tip: config.Tip, callIssuer: config.CallIssuer,
 		policyDigest: config.PolicyDigest, metadataPolicyDigest: config.MetadataPolicyDigest,
-		commandRunner: config.CommandRunner, bashOutputPaths: cloneDurableOutputScopePaths(config.BashOutputPaths),
+		commandRunner: config.CommandRunner, commandOutputBytes: config.CommandOutputBytes,
+		bashOutputPaths:       cloneDurableOutputScopePaths(config.BashOutputPaths),
 		afterDurableOperation: config.AfterDurableOperation,
 	}, nil
 }
@@ -270,7 +283,7 @@ func (e *DurableExecutor) Execute(ctx context.Context, proposal protocol.Proposa
 			return nil, fmt.Errorf("settle durable Store operation against workflow owner before result release: %w", err)
 		}
 	}
-	return durableMutationSummary(proposal.Tool, mutation, e.commandRunner)
+	return durableMutationSummary(proposal.Tool, mutation, e.commandRunner, e.commandOutputBytes)
 }
 
 func (e *DurableExecutor) bindProductionBashEvidence(ctx context.Context, proposal protocol.Proposal, decision gate.Decision, mutation sessionrepo.MutationResult) error {
@@ -428,16 +441,16 @@ type durableTransitionSummary struct {
 // containment status is always "not-established". Stdout and Stderr are the
 // released projection of the settled streams (durableCommandStreamProjection).
 type durableCommandSummary struct {
-	ExitCode                 int    `json:"exit_code"`
-	ExitObserved             bool   `json:"exit_observed"`
-	CommandContainmentStatus string `json:"command_containment_status"`
-	CommandRunnerProfile     string `json:"command_runner_profile"`
-	Stdout                   string `json:"stdout"`
-	StdoutBytes              int    `json:"stdout_bytes"`
-	StdoutTruncated          bool   `json:"stdout_truncated"`
-	Stderr                   string `json:"stderr"`
-	StderrBytes              int    `json:"stderr_bytes"`
-	StderrTruncated          bool   `json:"stderr_truncated"`
+	ExitCode                 int     `json:"exit_code"`
+	ExitObserved             bool    `json:"exit_observed"`
+	CommandContainmentStatus string  `json:"command_containment_status"`
+	CommandRunnerProfile     string  `json:"command_runner_profile"`
+	Stdout                   *string `json:"stdout,omitempty"`
+	StdoutBytes              *int    `json:"stdout_bytes,omitempty"`
+	StdoutTruncated          *bool   `json:"stdout_truncated,omitempty"`
+	Stderr                   *string `json:"stderr,omitempty"`
+	StderrBytes              *int    `json:"stderr_bytes,omitempty"`
+	StderrTruncated          *bool   `json:"stderr_truncated,omitempty"`
 }
 
 // durableCommandStreamReleaseBytes bounds the released tail of each settled stream. The Store keeps the whole stream up to its 1 MiB capture bound.
@@ -470,12 +483,48 @@ func durableBashCommandSummary(command sessionrepo.CommandResult, runnerProfile 
 	return durableCommandSummary{
 		ExitCode: command.ExitCode, ExitObserved: command.ExitObserved,
 		CommandContainmentStatus: "not-established", CommandRunnerProfile: runnerProfile,
-		Stdout: stdout, StdoutBytes: stdoutBytes, StdoutTruncated: stdoutTruncated,
-		Stderr: stderr, StderrBytes: stderrBytes, StderrTruncated: stderrTruncated,
+		Stdout: &stdout, StdoutBytes: &stdoutBytes, StdoutTruncated: &stdoutTruncated,
+		Stderr: &stderr, StderrBytes: &stderrBytes, StderrTruncated: &stderrTruncated,
 	}
 }
 
-func durableMutationSummary(tool string, mutation sessionrepo.MutationResult, runner sessionrepo.CommandRunner) (json.RawMessage, error) {
+// newDurableCommandSummary is the one encoder of a settled command's summary. The executor builds the
+// summary the provider receives with it, and the governed replay rebuilds the expected summary from the
+// Store's retained command result with it, so the two cannot disagree.
+func newDurableCommandSummary(command sessionrepo.CommandResult, profile string, outputBytes int) *durableCommandSummary {
+	if outputBytes == 0 {
+		summary := durableBashCommandSummary(command, profile)
+		return &summary
+	}
+	summary := &durableCommandSummary{
+		ExitCode: command.ExitCode, ExitObserved: command.ExitObserved,
+		CommandContainmentStatus: "not-established", CommandRunnerProfile: profile,
+	}
+	if outputBytes > 0 {
+		stdout, stdoutCut := boundedCommandText(command.Stdout, outputBytes)
+		stderr, stderrCut := boundedCommandText(command.Stderr, outputBytes)
+		summary.Stdout, summary.StdoutTruncated = &stdout, &stdoutCut
+		summary.Stderr, summary.StderrTruncated = &stderr, &stderrCut
+	}
+	return summary
+}
+
+// boundedCommandText returns data as valid UTF-8 of at most limit bytes. Invalid byte runs become U+FFFD
+// first, so the bound holds for the text the provider sees. A longer text keeps its tail, because the end
+// of a build or test run holds the failure, and the cut never splits a rune.
+func boundedCommandText(data []byte, limit int) (string, bool) {
+	text := strings.ToValidUTF8(string(data), string(utf8.RuneError))
+	if len(text) <= limit {
+		return text, false
+	}
+	start := len(text) - limit
+	for start < len(text) && !utf8.RuneStart(text[start]) {
+		start++
+	}
+	return text[start:], true
+}
+
+func durableMutationSummary(tool string, mutation sessionrepo.MutationResult, runner sessionrepo.CommandRunner, outputBytes int) (json.RawMessage, error) {
 	payload := durableMutationSummaryPayload{
 		Tool: tool,
 		Generation: durableGenerationSummary{
@@ -489,8 +538,7 @@ func durableMutationSummary(tool string, mutation sessionrepo.MutationResult, ru
 		if mutation.Command == nil {
 			return nil, errors.New("durable bash mutation returned no command result")
 		}
-		commandSummary := durableBashCommandSummary(*mutation.Command, durableCommandRunnerProfile(runner))
-		payload.Command = &commandSummary
+		payload.Command = newDurableCommandSummary(*mutation.Command, durableCommandRunnerProfile(runner), outputBytes)
 	}
 	encoded, err := json.Marshal(payload)
 	if err != nil {

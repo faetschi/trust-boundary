@@ -492,7 +492,7 @@ func (b *productionBinder) BindProductionPiSession(ctx context.Context, config p
 	adminParentOpened = true
 	closers = append(closers, admin.Close)
 
-	git, gitProfile, err := pinProductionGit(artifacts)
+	git, gitProfile, err := pinProductionGit(artifacts, nil)
 	if err != nil {
 		return fail(err)
 	}
@@ -875,10 +875,12 @@ func readProtectedGitApproval(path string) (productionGitApproval, error) {
 	return approval, nil
 }
 
-func pinProductionGit(artifacts productionOperatorArtifacts) (privategit.PinnedGit, sessionlaunch.GitProfile, error) {
+// pinProductionGit pins the approved Git executable. owners are the UIDs that may own it and every
+// directory above it; nil is root and the calling process.
+func pinProductionGit(artifacts productionOperatorArtifacts, owners []uint32) (privategit.PinnedGit, sessionlaunch.GitProfile, error) {
 	digest, boundary := artifacts.GitDigest, artifacts.GitBoundary
 	git, err := privategit.PinGitExecutable(artifacts.GitPath, privategit.GitExecutableApproval{
-		ExpectedDigest: digest, Boundary: boundary,
+		ExpectedDigest: digest, Boundary: boundary, Owners: owners,
 		Verifier: func(actual privategit.GitExecutableIdentity) error {
 			if actual.Digest != digest || actual.Mode&0o022 != 0 {
 				return errors.New("pinned Git executable bytes or mode are not the approved identity")

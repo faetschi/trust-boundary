@@ -30,19 +30,17 @@ type TypeboxBuilder = typeof import("typebox").Type;
 
 export function createProxyParameters(Type: TypeboxBuilder) {
 const readParameters = Type.Object({
-  path: Type.String({ description: "Path to the file to read (relative or absolute)" }),
-  offset: Type.Optional(Type.Number({ description: "Line number to start reading from (1-indexed)" })),
-  limit: Type.Optional(Type.Number({ description: "Maximum number of lines to read" })),
+  path: Type.String({ description: "Path to the file to read, relative to the workspace root (an absolute path ends the turn)" }),
 });
 
 const writeParameters = Type.Object({
-  path: Type.String({ description: "Path to the file to write (relative or absolute)" }),
+  path: Type.String({ description: "Path to the file to write, relative to the workspace root (an absolute path ends the turn)" }),
   content: Type.String({ description: "Content to write to the file" }),
 });
 
 const editParameters = Type.Object(
   {
-    path: Type.String({ description: "Path to the file to edit (relative or absolute)" }),
+    path: Type.String({ description: "Path to the file to edit, relative to the workspace root (an absolute path ends the turn)" }),
     edits: Type.Array(
       Type.Object(
         {
@@ -64,8 +62,7 @@ const editParameters = Type.Object(
 );
 
 const bashParameters = Type.Object({
-  command: Type.String({ description: "Shell command to execute" }),
-  timeout: Type.Optional(Type.Number({ description: "Timeout in seconds (optional, no default timeout)" })),
+  command: Type.String({ description: "Shell command to run with bash in the workspace root" }),
 });
 
 const proxyParameters = {
@@ -121,7 +118,7 @@ export function createProxyTools(sender: ProposalSender, Type: TypeboxBuilder): 
     makeProxyTool(
       "read",
       proxyParameters.read,
-      "Read the contents of a file. Supports text files and images. Requests are forwarded to tbound.",
+      "Read the whole contents of an existing UTF-8 text file in the workspace. There is no offset or limit. A missing file, an absolute path, a file of about 1 MiB or more, or a file that is not valid UTF-8 (a binary or image file) cannot be read and ends the turn. Requests are forwarded to tbound.",
       sender,
     ),
     makeProxyTool(

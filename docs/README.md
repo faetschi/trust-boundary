@@ -7,6 +7,8 @@ the thesis.
 
 Product development: the [product implementation plan](product-plan.md) describes the
 proposed interactive Pi product. It is a plan, not a list of shipped capabilities.
+On the product branch, [product status](product-status.md) records what is implemented
+and [product contracts](product-contracts.md) fixes the first milestone's contracts.
 
 ## [Guides](guides/): install, run, reproduce
 

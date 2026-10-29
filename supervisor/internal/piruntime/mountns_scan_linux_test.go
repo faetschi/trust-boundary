@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -25,13 +26,7 @@ func TestMountNamespaceScanSkipsOtherUsersProcessesItCannotInspect(t *testing.T)
 		t.Fatalf("pid 1 is always present: %v", err)
 	}
 	pid1Foreign := int(pid1.Sys().(*syscall.Stat_t).Uid) != os.Geteuid()
-	_, nsErr := os.Stat("/proc/1/ns/mnt")
-	_, fdErr := os.ReadDir("/proc/1/fd")
-	if !pid1Foreign || (nsErr == nil && fdErr == nil) {
-		t.Log("the pid-1 assertion is vacuous here: pid 1 is not an inaccessible process of another user")
-	}
-	// A named pid that vanished, was reused, or changed owner proves nothing about ownership, so the scan is re-run.
-	// The test skips rather than passes when every attempt is inconclusive.
+	// A vanished, reused, or re-owned pid proves nothing about ownership; retry without counting it as a pass.
 	for attempt := 1; attempt <= 3; attempt++ {
 		before := processIdentities()
 		referenced, err := processMountNamespaceReferences(context.Background(), 1) // no namespace has inode 1
@@ -46,35 +41,32 @@ func TestMountNamespaceScanSkipsOtherUsersProcessesItCannotInspect(t *testing.T)
 			t.Fatalf("unexpected scan error shape: %v", err)
 		}
 		if match[1] == "1" && pid1Foreign {
-			t.Fatalf("scan named pid 1, a root-owned process of another user: %v", err)
+			t.Fatalf("scan named pid 1, a process of another user: %v", err)
 		}
 		owner, conclusive := ownerOfNamedProcess(match[1], before)
 		if !conclusive {
-			t.Logf("attempt %d is inconclusive, so the scan is re-run: %v", attempt, err)
+			t.Logf("attempt %d has inconclusive ownership, so the scan is re-run: %v", attempt, err)
 			continue
 		}
 		if int(owner) != os.Geteuid() {
 			t.Fatalf("scan failed on another user's process: %v", err)
 		}
-		t.Logf("tolerated: the error names this user's own process: %v", err)
+		t.Logf("fail-closed error names this user's own process: %v", err)
 		return
 	}
-	t.Skip("every scan attempt named a process that vanished, was reused, or changed owner, so ownership is unproven")
+	t.Fatal("every scan attempt named a process that vanished, was reused, or changed owner; ownership is unproven")
 }
 
-// procErrorPattern matches the scan errors that name a process: inspect, scan, and the fd-target read.
 var procErrorPattern = regexp.MustCompile(`^(?:inspect|scan|read) /proc/([0-9]+)/`)
 
-// processIdentity is what a pid names at one moment. A reused pid gets a new start time.
 type processIdentity struct {
 	startTime string
 	uid       uint32
 }
 
-// processIdentities records every visible process, so that a later scan error can be checked against the process it named.
 func processIdentities() map[string]processIdentity {
 	ids := make(map[string]processIdentity)
-	entries, _ := os.ReadDir("/proc") // on failure the scan fails the same way, and the test reports that error
+	entries, _ := os.ReadDir("/proc") // On failure the scan reports the same error.
 	for _, entry := range entries {
 		if id, err := readProcessIdentity(entry.Name()); err == nil {
 			ids[entry.Name()] = id
@@ -83,8 +75,6 @@ func processIdentities() map[string]processIdentity {
 	return ids
 }
 
-// ownerOfNamedProcess returns the owner of pid only if pid still names the process it named before the scan.
-// A missing, reused, or re-owned pid is inconclusive.
 func ownerOfNamedProcess(pid string, before map[string]processIdentity) (uint32, bool) {
 	was, seen := before[pid]
 	if !seen {
@@ -106,7 +96,7 @@ func readProcessIdentity(pid string) (processIdentity, error) {
 	if err != nil {
 		return processIdentity{}, err
 	}
-	// The fields after the parenthesised command name start with the state, so starttime (field 22) is index 19.
+	// Fields after the parenthesised command start with state; starttime (field 22) is index 19.
 	end := bytes.LastIndexByte(stat, ')')
 	if end < 0 {
 		return processIdentity{}, errors.New("malformed stat line")
@@ -116,6 +106,39 @@ func readProcessIdentity(pid string) (processIdentity, error) {
 		return processIdentity{}, errors.New("malformed stat line")
 	}
 	return processIdentity{startTime: fields[19], uid: dir.Sys().(*syscall.Stat_t).Uid}, nil
+}
+
+func TestMountNamespaceScanErrorOwnershipRequiresStableProcess(t *testing.T) {
+	pid := strconv.Itoa(os.Getpid())
+	before := processIdentities()
+	identity, seen := before[pid]
+	if !seen {
+		t.Fatal("snapshot missed this process")
+	}
+	owner, conclusive := ownerOfNamedProcess(pid, before)
+	if !conclusive || int(owner) != os.Geteuid() {
+		t.Fatalf("stable process owner=%d conclusive=%v", owner, conclusive)
+	}
+	for _, test := range []struct {
+		name     string
+		pid      string
+		identity processIdentity
+	}{
+		{"unobserved", pid, identity},
+		{"vanished", "2147483647", identity},
+		{"reused", pid, processIdentity{startTime: identity.startTime + "0", uid: identity.uid}},
+		{"reowned", pid, processIdentity{startTime: identity.startTime, uid: identity.uid + 1}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			snapshot := map[string]processIdentity{test.pid: test.identity}
+			if test.name == "unobserved" {
+				delete(snapshot, test.pid)
+			}
+			if _, conclusive := ownerOfNamedProcess(test.pid, snapshot); conclusive {
+				t.Fatal("ownership must be inconclusive")
+			}
+		})
+	}
 }
 
 func TestMountNamespaceScanStillFindsAReferencingProcess(t *testing.T) {

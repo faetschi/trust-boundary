@@ -203,6 +203,10 @@ type Pins struct {
 	LastDecisionDigest            string                  `json:"last_decision_digest,omitempty"`
 	LastResultDigest              string                  `json:"last_result_digest,omitempty"`
 	PendingCallDisposition        string                  `json:"pending_call_disposition"`
+	// ImportedPrefixDigest and PredecessorTurnReceiptDigest bind the predecessor conversation the
+	// workflow started from. Both are empty for a workflow without a predecessor.
+	ImportedPrefixDigest         string `json:"imported_prefix_digest,omitempty"`
+	PredecessorTurnReceiptDigest string `json:"predecessor_turn_receipt_digest,omitempty"`
 }
 
 // OwnerStoreIdentity is passed from the SQLite owner to the host boundary so
@@ -1398,7 +1402,9 @@ func validatePins(p Pins) error {
 		!validID(p.StoreTipGenerationID) || !validDigest(p.StoreTipTreeDigest) ||
 		!validDigest(p.ProviderProjectionDigest) || !validDigest(p.RecoveryLineageDigest) ||
 		!validDisposition(p.ProviderDisposition) || !validPendingCallDisposition(p.PendingCallDisposition) ||
-		len(p.ProviderTranscripts) > 10000 {
+		len(p.ProviderTranscripts) > 10000 ||
+		p.ImportedPrefixDigest != "" && !validDigest(p.ImportedPrefixDigest) ||
+		p.PredecessorTurnReceiptDigest != "" && !validDigest(p.PredecessorTurnReceiptDigest) {
 		return fmt.Errorf("%w: invalid checkpoint pins", ErrInvalid)
 	}
 	if p.StoreJournalCount == 0 && p.StoreJournalHead != "" || p.StoreJournalCount > 0 && !validDigest(p.StoreJournalHead) ||
@@ -1766,6 +1772,7 @@ func validateRestartPins(old, next Pins, previousCheckpointDigest string) error 
 		old.StoreIdentityDigest != next.StoreIdentityDigest || old.AdmissionIdentityDigest != next.AdmissionIdentityDigest ||
 		old.CommandIdentityDigest != next.CommandIdentityDigest || old.AdminIdentityDigest != next.AdminIdentityDigest ||
 		old.TaskDigest != next.TaskDigest || old.PromptDigest != next.PromptDigest ||
+		old.ImportedPrefixDigest != next.ImportedPrefixDigest || old.PredecessorTurnReceiptDigest != next.PredecessorTurnReceiptDigest ||
 		old.PolicyDigest != next.PolicyDigest || old.ProfileDigest != next.ProfileDigest || old.ImageDigest != next.ImageDigest ||
 		old.RuntimeDigest != next.RuntimeDigest || old.D06ProvenanceDigest != next.D06ProvenanceDigest ||
 		old.PrivateGitIdentityDigest != next.PrivateGitIdentityDigest ||
@@ -1829,6 +1836,7 @@ func validateObservationAdvance(old, next Pins) error {
 		old.AdmissionIdentityDigest != next.AdmissionIdentityDigest || old.CommandIdentityDigest != next.CommandIdentityDigest ||
 		old.AdminIdentityDigest != next.AdminIdentityDigest ||
 		old.TaskDigest != next.TaskDigest || old.PromptDigest != next.PromptDigest ||
+		old.ImportedPrefixDigest != next.ImportedPrefixDigest || old.PredecessorTurnReceiptDigest != next.PredecessorTurnReceiptDigest ||
 		old.PolicyDigest != next.PolicyDigest || old.ProfileDigest != next.ProfileDigest || old.ImageDigest != next.ImageDigest ||
 		old.RuntimeDigest != next.RuntimeDigest || old.D06ProvenanceDigest != next.D06ProvenanceDigest ||
 		old.PrivateGitIdentityDigest != next.PrivateGitIdentityDigest ||

@@ -16,6 +16,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -50,7 +51,7 @@ func PinGitExecutable(path string, approval GitExecutableApproval) (PinnedGit, e
 	if err != nil || !filepath.IsAbs(resolved) || filepath.Clean(resolved) != resolved {
 		return PinnedGit{}, fmt.Errorf("%w: resolve executable: %v", ErrGitExecutable, err)
 	}
-	if err := validateTrustedPath(resolved); err != nil {
+	if err := validateTrustedPath(resolved, approval.Owners); err != nil {
 		return PinnedGit{}, err
 	}
 	fd, err := syscall.Open(resolved, syscall.O_RDONLY|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0)
@@ -72,7 +73,7 @@ func PinGitExecutable(path string, approval GitExecutableApproval) (PinnedGit, e
 	if err != nil {
 		return PinnedGit{}, fmt.Errorf("%w: stat executable descriptor: %v", ErrGitExecutable, err)
 	}
-	if stat.Mode&syscall.S_IFMT != syscall.S_IFREG || stat.Uid != uint32(syscall.Geteuid()) && stat.Uid != 0 || stat.Mode&0o111 == 0 || stat.Mode&0o022 != 0 {
+	if stat.Mode&syscall.S_IFMT != syscall.S_IFREG || !trustedOwner(approval.Owners, stat.Uid) || stat.Mode&0o111 == 0 || stat.Mode&0o022 != 0 {
 		return PinnedGit{}, ErrGitExecutable
 	}
 	digest, err := hashExecutableFile(file, stat.Size)
@@ -80,7 +81,7 @@ func PinGitExecutable(path string, approval GitExecutableApproval) (PinnedGit, e
 		return PinnedGit{}, fmt.Errorf("%w: hash executable descriptor: %v", ErrGitExecutable, err)
 	}
 	identity := GitExecutableIdentity{
-		Device: uint64(stat.Dev), Inode: uint64(stat.Ino), Size: stat.Size,
+		Device: uint64(stat.Dev), Inode: uint64(stat.Ino), Size: stat.Size, UID: stat.Uid,
 		Mode: stat.Mode, MtimeSec: stat.Mtim.Sec, MtimeNsec: stat.Mtim.Nsec,
 		Digest: digest,
 	}
@@ -666,7 +667,16 @@ func procPath(file *os.File) string {
 	return fmt.Sprintf("/proc/self/fd/%d", file.Fd())
 }
 
-func validateTrustedPath(path string) error {
+// trustedOwner reports whether uid may own the Git executable or a directory above it. A nil list is
+// root and the calling process; any other list is the whole rule.
+func trustedOwner(owners []uint32, uid uint32) bool {
+	if owners == nil {
+		return uid == 0 || uid == uint32(syscall.Geteuid())
+	}
+	return slices.Contains(owners, uid)
+}
+
+func validateTrustedPath(path string, owners []uint32) error {
 	current := path
 	for {
 		info, err := os.Stat(current)
@@ -674,7 +684,7 @@ func validateTrustedPath(path string) error {
 			return fmt.Errorf("%w: stat executable parent: %v", ErrGitExecutable, err)
 		}
 		stat, ok := info.Sys().(*syscall.Stat_t)
-		if !ok || stat.Uid != 0 && stat.Uid != uint32(syscall.Geteuid()) || stat.Mode&0o022 != 0 {
+		if !ok || !trustedOwner(owners, stat.Uid) || stat.Mode&0o022 != 0 {
 			return ErrGitExecutable
 		}
 		parent := filepath.Dir(current)
@@ -718,7 +728,7 @@ func verifyPinnedGit(git PinnedGit) error {
 		return ErrGitExecutable
 	}
 	identity := GitExecutableIdentity{
-		Device: uint64(stat.Dev), Inode: uint64(stat.Ino), Size: stat.Size,
+		Device: uint64(stat.Dev), Inode: uint64(stat.Ino), Size: stat.Size, UID: stat.Uid,
 		Mode: stat.Mode, MtimeSec: stat.Mtim.Sec, MtimeNsec: stat.Mtim.Nsec,
 		Digest: digest,
 	}

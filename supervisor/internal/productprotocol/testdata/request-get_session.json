@@ -1,0 +1,7 @@
+{
+  "version": "tbound-product-protocol/v1",
+  "op": "get_session",
+  "get_session": {
+    "session_id": "psess-0123456789abcdef0123456789abcdef"
+  }
+}

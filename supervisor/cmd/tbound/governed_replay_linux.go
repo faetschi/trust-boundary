@@ -35,6 +35,9 @@ type GovernedReplayPins struct {
 	StorePolicyDigest    string
 	MetadataPolicyDigest string
 	BashOutputPaths      []string
+	// CommandOutputBytes is the per-stream output bound the executor of a product turn released to the
+	// provider. Zero is the research summary, which carries no command output.
+	CommandOutputBytes int
 }
 
 // GovernedRecoveryTranscript binds one retained provider conversation to the
@@ -175,6 +178,8 @@ type ProviderDecisionBindingAlias struct {
 }
 
 type governedStoreReplayVerifier struct {
+	store                                     *sessionrepo.Store
+	softRefusalPrefixCount                    uint64
 	pins                                      GovernedReplayPins
 	providerTrace, storeTrace, admissionTrace audit.Trace
 	bundle                                    sessionrepo.EvidenceBundle
@@ -207,8 +212,47 @@ func ReplayGovernedTranscript(providerJournal, storeJournal *audit.Journal, stor
 	return projection, err
 }
 
+// ReplayGovernedPredecessorContext runs the ReplayGovernedTranscript pipeline over a completed
+// predecessor turn and returns its history as a PredecessorContext ending in the boundary message.
+// The transcript must end at a final provider answer, and its Store evidence must be fully resolved.
+// A predecessor with Bash effects passes the verifier of its retained command settlements, which
+// must bind every provider Bash result to a retained settlement.
+func ReplayGovernedPredecessorContext(providerJournal, storeJournal *audit.Journal, store *sessionrepo.Store,
+	pins GovernedReplayPins, boundary providerbridge.TurnBoundary,
+	commandVerifiers ...governedRecoveryCommandVerifier) (providerbridge.PredecessorContext, GovernedTranscriptProjection, error) {
+	var predecessor providerbridge.PredecessorContext
+	if len(commandVerifiers) > 1 {
+		return providerbridge.PredecessorContext{}, GovernedTranscriptProjection{}, errors.New("predecessor replay accepts at most one command-settlement verifier")
+	}
+	projection, verifier, err := runGovernedReplay(providerJournal, storeJournal, store, pins, 0, true,
+		func(journal *audit.Journal, provider providerbridge.RecoveryPins, verifier providerbridge.StoreReplayVerifier) (providerbridge.TranscriptProjection, error) {
+			replayed, projection, err := providerbridge.ReplayPredecessorContext(journal, provider, verifier, boundary)
+			predecessor = replayed
+			return projection, err
+		})
+	if err == nil && len(commandVerifiers) == 1 {
+		if err = commandVerifiers[0].VerifyGovernedVerifier(verifier); err != nil {
+			err = fmt.Errorf("cross-link retained Bash settlements with the predecessor transcript: %w", err)
+		}
+	}
+	if err != nil {
+		return providerbridge.PredecessorContext{}, GovernedTranscriptProjection{}, err
+	}
+	return predecessor, projection, nil
+}
+
 func replayGovernedTranscript(providerJournal, storeJournal *audit.Journal, store *sessionrepo.Store,
 	pins GovernedReplayPins, priorAuthorizationSequence uint64, requireStoreTip bool) (GovernedTranscriptProjection, *governedStoreReplayVerifier, error) {
+	return runGovernedReplay(providerJournal, storeJournal, store, pins, priorAuthorizationSequence, requireStoreTip,
+		providerbridge.ReplayTranscript)
+}
+
+// governedProviderReplay is the strict provider replay the governed pipeline runs with its Store verifier.
+type governedProviderReplay func(*audit.Journal, providerbridge.RecoveryPins, providerbridge.StoreReplayVerifier) (providerbridge.TranscriptProjection, error)
+
+func runGovernedReplay(providerJournal, storeJournal *audit.Journal, store *sessionrepo.Store,
+	pins GovernedReplayPins, priorAuthorizationSequence uint64, requireStoreTip bool,
+	replayProvider governedProviderReplay) (GovernedTranscriptProjection, *governedStoreReplayVerifier, error) {
 	if providerJournal == nil || storeJournal == nil || store == nil {
 		return GovernedTranscriptProjection{}, nil, errors.New("governed replay requires held provider/Store journals and the concrete Store")
 	}
@@ -254,8 +298,9 @@ func replayGovernedTranscript(providerJournal, storeJournal *audit.Journal, stor
 		return GovernedTranscriptProjection{}, nil, err
 	}
 	verifier.lastAuthSequence = priorAuthorizationSequence
+	verifier.store = store
 	verifier.initialAuthorizationSequence = priorAuthorizationSequence
-	projection, err := providerbridge.ReplayTranscript(providerJournal, pins.Provider, verifier)
+	projection, err := replayProvider(providerJournal, pins.Provider, verifier)
 	if err != nil {
 		return GovernedTranscriptProjection{}, nil, err
 	}
@@ -483,9 +528,10 @@ func replayGovernedHistory(storeJournal *audit.Journal, store *sessionrepo.Store
 		}
 		retiredUnexecuted := projection.Provider.Disposition == providerbridge.DispositionRetiredUnexecuted &&
 			projection.Provider.RetiredCall != nil && projection.Provider.PendingCall == nil
-		if projection.Provider.DecisionCount != projection.Provider.ResultCount ||
-			(!pendingLatest && !retiredUnexecuted && projection.Provider.CapturedCallCount != projection.Provider.DecisionCount) ||
-			((pendingLatest || retiredUnexecuted) && projection.Provider.CapturedCallCount != projection.Provider.DecisionCount+1) {
+		resolved := projection.Provider.DecisionCount + projection.Provider.SoftRefusalCount
+		if resolved != projection.Provider.ResultCount ||
+			(!pendingLatest && !retiredUnexecuted && projection.Provider.CapturedCallCount != resolved) ||
+			((pendingLatest || retiredUnexecuted) && projection.Provider.CapturedCallCount != resolved+1) {
 			return GovernedRecoveryProjection{}, nil, fmt.Errorf("provider transcript %d contains an unaccounted captured call", index)
 		}
 		if !VerifyGovernedTranscriptProjectionCommitment(projection) {
@@ -556,6 +602,9 @@ func validateGovernedReplayPins(pins GovernedReplayPins) error {
 		if err := sessionrepo.ValidateOutputScopePaths(pins.BashOutputPaths); err != nil {
 			return err
 		}
+	}
+	if pins.CommandOutputBytes < 0 || pins.CommandOutputBytes > durableCommandOutputMaxBytes {
+		return errors.New("governed replay command output bound is outside its permitted range")
 	}
 	return nil
 }
@@ -1137,8 +1186,7 @@ func (v *governedStoreReplayVerifier) expectedDurableOutput(verified *governedRe
 			operation.ExitCode == nil || *operation.ExitCode != result.Command.ExitCode || operation.CommandContainmentStatus != "not-established" {
 			return nil, "", "", "", 0, "", errors.New("Bash operation evidence differs from exact command specification or observed exit")
 		}
-		commandSummary := durableBashCommandSummary(result.Command, result.RunnerProfile)
-		summary.Command = &commandSummary
+		summary.Command = newDurableCommandSummary(result.Command, result.RunnerProfile, v.pins.CommandOutputBytes)
 	} else {
 		return nil, "", "", "", 0, "", errors.New("unsupported Store tool in governed provider result")
 	}
@@ -1284,7 +1332,7 @@ func (v *governedStoreReplayVerifier) finish(projection providerbridge.Transcrip
 		}
 	}
 	if !v.called {
-		if projection.VerificationScope != providerbridge.ProjectionScopeProviderOnly || projection.DecisionCount != 0 ||
+		if projection.VerificationScope != providerbridge.ProjectionScopeProviderOnly || projection.DecisionCount != 0 || projection.SoftRefusalCount != 0 ||
 			scopedAuthorizationCount != 0 || scopedOperationCount != 0 {
 			return errors.New("callback-free transcript contains Store authorization or operation evidence")
 		}

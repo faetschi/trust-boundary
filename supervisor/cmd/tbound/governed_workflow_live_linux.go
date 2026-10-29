@@ -155,6 +155,7 @@ func (v capturedOperationVerifier) VerifyCapturedOperation(ctx context.Context,
 		Config: config, Model: config.Route.Resolved().Model, Policy: policy,
 		CheckpointRecordCount: activePin.JournalCount, CheckpointRecordHead: activePin.JournalHead,
 		RequireHostCallReservations: true,
+		ImportedPrefixDigest:        importedPrefixReplayPin(config.Predecessor.Digest(), len(providerTrace.Records)),
 	}
 	verifier := capturedCallProviderReplayVerifier{authority: a, prefixCount: activePin.JournalCount,
 		checkpoint: checkpoint, binding: binding, proof: proof, request: v.request,
@@ -166,7 +167,7 @@ func (v capturedOperationVerifier) VerifyCapturedOperation(ctx context.Context,
 		projection.HostCall.TokenUpperBound != captured.Binding.TokenUpperBound ||
 		projection.HostCallOutcomeDigest != captured.OutcomeDigest ||
 		projection.ProviderJournalRecordCount != uint64(len(providerTrace.Records)) ||
-		projection.CapturedCallCount != projection.DecisionCount || projection.DecisionCount != projection.ResultCount+1 {
+		projection.CapturedCallCount != projection.DecisionCount+projection.SoftRefusalCount || projection.DecisionCount+projection.SoftRefusalCount != projection.ResultCount+1 {
 		return errors.Join(capturedOperationObservation("pending provider projection does not match the exact host reservation and ALLOW"), err)
 	}
 	return nil
@@ -396,6 +397,7 @@ func (a *SessionOperationAuthority) buildActiveProgressPins(ctx context.Context,
 	storePolicy, metadataPolicy := a.storePolicyDigest, a.metadataPolicyDigest
 	policy, config := a.gatePolicy, a.providerConfig
 	outputPaths := cloneDurableOutputScopePaths(a.bashOutputPaths)
+	commandOutputBytes := a.commandOutputBytes
 	priorAuthorizationSequence := a.workflowPriorAuthorizationSequence
 	a.mu.Unlock()
 	if ledger == nil || store == nil || baseline == nil || storeJournal == nil || providerJournal == nil ||
@@ -428,15 +430,21 @@ func (a *SessionOperationAuthority) buildActiveProgressPins(ctx context.Context,
 		ToolManifest: broker.DeclaredToolManifest(), ToolCallIssuer: governedCallIssuer,
 		ResponseIDIssuer: governedResponseIssuer, Generation: config.InitialGenerationID,
 	}
+	providerTrace, err := providerJournal.Trace()
+	if err != nil {
+		return workflowrecovery.Pins{}, errors.Join(workflowrecovery.ErrObservation, err)
+	}
 	providerPins := providerbridge.RecoveryPins{
 		Config: config, Model: config.Route.Resolved().Model, Policy: policy,
 		CheckpointRecordCount: activePin.JournalCount, CheckpointRecordHead: activePin.JournalHead,
 		RequireHostCallReservations: true,
+		ImportedPrefixDigest:        importedPrefixReplayPin(config.Predecessor.Digest(), len(providerTrace.Records)),
 	}
 	replayPins := GovernedReplayPins{
 		Provider: providerPins, Profile: profile, Baseline: storeBundle.Baseline,
 		StorePolicyDigest: storePolicy, MetadataPolicyDigest: metadataPolicy,
-		BashOutputPaths: outputPaths,
+		BashOutputPaths:    outputPaths,
+		CommandOutputBytes: commandOutputBytes,
 	}
 	priorStoreTrace, err := storeJournal.Trace()
 	if err != nil || uint64(len(priorStoreTrace.Records)) < checkpoint.Pins.StoreJournalCount ||
@@ -453,8 +461,13 @@ func (a *SessionOperationAuthority) buildActiveProgressPins(ctx context.Context,
 		return workflowrecovery.Pins{}, errors.Join(workflowrecovery.ErrObservation, err)
 	}
 	storeCount, storeHead := uint64(len(priorStoreTrace.Records)), auditHeadHash(priorStoreTrace.Records)
-	projection, verifier, err := replayGovernedTranscript(providerJournal, storeJournal, store, replayPins,
-		priorAuthorizationSequence, true)
+	projection, verifier, err := runGovernedReplay(providerJournal, storeJournal, store, replayPins,
+		priorAuthorizationSequence, true,
+		func(journal *audit.Journal, pins providerbridge.RecoveryPins, verifier providerbridge.StoreReplayVerifier) (providerbridge.TranscriptProjection, error) {
+			// Provider replay authenticates this prefix against the protected count/head before callbacks.
+			verifier.(*governedStoreReplayVerifier).softRefusalPrefixCount = activePin.JournalCount
+			return providerbridge.ReplayTranscript(journal, pins, verifier)
+		})
 	if err != nil {
 		return workflowrecovery.Pins{}, errors.Join(workflowrecovery.ErrObservation, err)
 	}
@@ -494,7 +507,7 @@ func (a *SessionOperationAuthority) buildActiveProgressPins(ctx context.Context,
 	next.ProviderProjectionCount = workflowTranscriptProjectionCount(next.ProviderTranscripts)
 	next.ProviderProjectionHead = active.ProjectionHead
 	next.ProviderDisposition = active.Disposition
-	if projection.Provider.PendingCall == nil && projection.Provider.DecisionCount == projection.Provider.ResultCount &&
+	if projection.Provider.PendingCall == nil && projection.Provider.DecisionCount+projection.Provider.SoftRefusalCount == projection.Provider.ResultCount &&
 		projection.Provider.CapturedCallCount > 0 &&
 		(next.PendingCallDisposition == workflowrecovery.PendingCallNone ||
 			next.PendingCallDisposition == workflowrecovery.PendingCallInFlight ||
@@ -553,7 +566,7 @@ func (a *SessionOperationAuthority) buildActiveProgressPins(ctx context.Context,
 			// A released DENY or no-effect refusal leaves the conversation awaiting the model's answer to that result.
 			if projection.Provider.Disposition != providerbridge.DispositionAwaitingHostPrompt &&
 				projection.Provider.Disposition != providerbridge.DispositionAwaitingProviderExchange ||
-				projection.Provider.DecisionCount != projection.Provider.ResultCount {
+				projection.Provider.DecisionCount+projection.Provider.SoftRefusalCount != projection.Provider.ResultCount {
 				return workflowrecovery.Pins{}, workflowrecovery.ErrObservation
 			}
 			retirementDigest, err := activeUnexecutedCaptureDigest(providerJournal, captured.ToolCallID)
@@ -572,7 +585,7 @@ func (a *SessionOperationAuthority) buildActiveProgressPins(ctx context.Context,
 
 // activeUnexecutedCaptureDigest digests the journaled evidence that retires an available captured call without an
 // effect: a gate DENY with its DENY result, or an ALLOW with the fixed no_effect_refused result.
-func activeUnexecutedCaptureDigest(providerJournal *audit.Journal, toolCallID string) (string, error) {
+func activeDeniedCaptureDigest(providerJournal *audit.Journal, toolCallID string) (string, error) {
 	if providerJournal == nil || toolCallID == "" {
 		return "", workflowrecovery.ErrObservation
 	}
