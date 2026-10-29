@@ -21,6 +21,7 @@ import (
 func TestProductTurnSoftRefusalContinuesWithoutAnEffect(t *testing.T) {
 	for _, c := range []struct{ name, tool, arguments, code string }{
 		{"missing read", "read", `{"path":"missing.txt"}`, "read_missing"},
+		{"missing windowed read", "read", `{"path":"missing.txt","offset":1}`, "read_missing"},
 		{"directory write", "write", `{"path":"dir","content":"x"}`, "target_not_regular"},
 		{"absent old text", "edit", `{"path":"task.txt","edits":[{"oldText":"missing","newText":"x"}]}`, "edit_old_text_absent"},
 		{"ambiguous old text", "edit", `{"path":"ambiguous.txt","edits":[{"oldText":"same","newText":"x"}]}`, "edit_old_text_ambiguous"},
@@ -130,7 +131,7 @@ func TestProductTurnSoftRefusalOutOfScopeStaysUnknown(t *testing.T) {
 		{"directory read", "read", `{"path":"dir"}`},
 		{"unknown argument", "read", `{"path":"missing.txt","unknown":true}`},
 		{"malformed argument", "read", `{"path":42}`},
-		{"pagination", "read", `{"path":"missing.txt","offset":1}`},
+		{"invalid offset", "read", `{"path":"missing.txt","offset":0}`},
 		{"non-directory ancestor", "read", `{"path":"task.txt/child"}`},
 		{"overlapping edits", "edit", `{"path":"task.txt","edits":[{"oldText":"turn fixture","newText":"x"},{"oldText":"fixture","newText":"y"}]}`},
 	} {
