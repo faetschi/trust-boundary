@@ -18,12 +18,13 @@ decisions, blockers, and next steps. History before this date is in Git.
   longer closes the conversation (`c209d63`), recovery preview indexes the right
   authorization record kind (`a40fbb9`), a denied-after-effect Bash command is
   settled (`f483fad`), and a governed read honours `offset`/`limit` (`039ac82`).
-- **Production resume after a promoted write works for writes, not yet for
-  publication after historical Bash.** Since `46fa96a` a resumed session
-  re-accepts its exact pre-crash transitions and can promote new writes.
-  Publishing a resumed session whose history contains a Bash command is still
-  refused (fail-closed). No registered run depends on it: scripted pilot roles
-  refuse resume, and the recovery suite is proposed, not registered.
+- **Production resume is fixed at component level, not proven end to end.**
+  Since `46fa96a` and `8c5c24a` a resumed session re-accepts its exact pre-crash
+  transitions and Bash evidence and can promote new writes; publication
+  prerequisites pass up to the managed live-root permit in fresh-process tests.
+  The full binder, live-root permit and finalizer are not driven in a test, and
+  nothing has run on the guest. No registered run depends on resume: scripted
+  pilot roles refuse it, and the recovery suite is proposed, not registered.
 - **The final-profile containment study is not complete.** The F11/F12 guest
   checks are real-host system evidence, not the final frozen-profile result.
 - **C-DH is parked.** H1 stays Configuration C with the static
