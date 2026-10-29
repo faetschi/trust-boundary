@@ -70,7 +70,7 @@ type receiptFacts struct {
 }
 
 // decodeLenient decodes a document another component owns: a duplicate key and trailing data are
-// refused, members this package does not read are accepted.
+// refused, as are two member names equal under case folding; members this package does not read are accepted.
 func decodeLenient(data []byte, v any) error {
 	if err := checkEvidenceJSON(data); err != nil {
 		return err
