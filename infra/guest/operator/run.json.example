@@ -1,7 +1,7 @@
 {
   "manifest": "/REPLACE/corpus/pilot/manifest.json",
   "quota_profile": "pilot",
-  "freeze_commit": "0000000000000000000000000000000000000000",
+  "freeze_commit": "PLACEHOLDER-FREEZE-COMMIT",
   "evq_obligations": [
     "EVQ-IDENTITY",
     "EVQ-SURFACE-INVENTORY",
@@ -29,31 +29,31 @@
   "artifacts_dir": "/REPLACE/corpus/pilot/artifacts",
   "only_cases": [],
   "pins": {
-    "profile_hash": "PLACEHOLDER-S4-PRIME-DIGEST",
-    "containment_profile_digest": "PLACEHOLDER-TD-PRIME",
-    "frozen_source_digest": "PLACEHOLDER-SRC-DIGEST",
-    "admin_pubkey_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
-    "base_template_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
-    "runtime_bundle_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
-    "runner_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    "profile_hash": "",
+    "containment_profile_digest": "",
+    "frozen_source_digest": "",
+    "admin_pubkey_digest": "",
+    "base_template_digest": "",
+    "runtime_bundle_digest": "",
+    "runner_digest": ""
   },
   "admission_policy": {
     "policy_digest": "sha256:e6a77851e90357efcba0fdc8036493acab5f74e911f38d5f32e001477419f683",
     "metadata_policy_digest": "sha256:bf937a0d4d98f54111e82d025dc3b9aa7eeec939f71343547ba4392624e0785c"
   },
-  "v_image_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "v_image_digest": "",
   "route_report": "/REPLACE/route_report.json",
   "evq_results": {
     "path": "/REPLACE/evq_results.json",
-    "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    "sha256": ""
   },
   "ledger": "synthetic-empty",
   "run_dir": "/REPLACE/run",
   "ssh": {
-    "path": "/REPLACE/ssh.exe",
+    "path": "",
     "known_hosts": "/REPLACE/known_hosts",
-    "host": "192.0.2.1",
-    "host_key_alias": "tbound-guest-pin",
+    "host": "",
+    "host_key_alias": "",
     "client": {
       "user": "root",
       "key": "/REPLACE/keys/client_ed25519"
@@ -68,10 +68,10 @@
     }
   },
   "proc": {
-    "cell_uid": 995,
-    "cell_gid": 986,
-    "monitor_seconds": 60,
-    "teardown_grace_seconds": 5,
+    "cell_uid": 0,
+    "cell_gid": 0,
+    "monitor_seconds": 0,
+    "teardown_grace_seconds": 0,
     "authorized_sockets": []
   }
 }
