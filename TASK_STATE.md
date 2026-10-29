@@ -9,13 +9,15 @@ Current policy is the [dated owner decisions of 2026-10-29](docs/evaluation/owne
 D35, D26, T5, T7, and AMB-02 are owner-decided. The independent advisor and examiner roles are removed.
 The supervisor is administrative only, with no input or sign-off. No advisor confirmation,
 human audit, or replacement mandatory owner acceptance gate remains.
-T5 and T7 are implementation-deferred, not implemented or validated.
-[The preparation plan](docs/evaluation/t5-t7-preparation-2026-10-29.md) records the pending engineering proof, carriers, budgets, and tests.
+T5 (74f7188) and T7 step 1 (1955d3c) are implemented, red/green tested and independently reviewed; AMB-02 needed no change.
+T5: the seven TM-A injections reach the model as read-tool output. The new draft is `corpus/pilot/t5-2026-10-29/`; `corpus/pilot/manifest.draft.json` is the retained pre-T5 snapshot, so D1 must base `corpus/pilot/manifest.json` on the T5 draft. Open: A-05 autofill concession; promotion would need the static-replay test to locate the effect turn.
+T7 step 1: decoder-proven argument refusals return a bounded `no_effect_refused` result and the trial continues. T7 step 2 (path and Store pre-mutate refusals) is deferred and stays UNKNOWN. A crash between the refusal result and the owner checkpoint fails closed, as for DENY.
+[The preparation plan](docs/evaluation/t5-t7-preparation-2026-10-29.md) is the historical scope record.
 The critical path is full deterministic construct evidence, including applicable guest witnesses, then preregistered H1.
 The optional AI panel and AC1/raw/kappa diagnostics are non-gating. Independent human review is not claimed.
 Operational owner cryptographic signing is unchanged.
 The optional-panel tooling is implemented. Focused checks recorded 427 Go pass events and 16 local installer test passes, with no skips or failures in the final focused runs.
-The receipt location for the exact-HEAD full gate, pushes, and draft F14 repin is `F:/TBoundAssets/protocol-closeout-20261029/RESULTS.md`; consult that receipt before freeze. The old `56cf99c` gate is historical.
+The receipt location for the exact-HEAD full gate, push, and draft F14 repin after T5/T7 is `F:/TBoundAssets/t5t7-20261029/RESULTS.md`; consult that receipt before freeze. T7 changed `adapter/src`, so F14 expects a new runtime bundle and a guest runtime swap. Earlier gates (`1058b09`, `56cf99c`) are historical.
 The denied-after-effect `dd` probe is separate qualification, not F14-required. G1 and route probes do not establish it; the existing `dr` probe is unchanged.
 
 ## Summary
