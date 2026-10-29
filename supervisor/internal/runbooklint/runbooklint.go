@@ -46,12 +46,13 @@ var (
 )
 
 // Extract returns the command lines of the runbook at root/rel. Lines inside fenced code blocks
-// are read whole. Elsewhere only inline code spans are read, so prose that names a binary is not
-// a command. In the operator README's "## Verbs" table, the first code span of a row is a
-// tbound-op verb. A command starts at the first word whose basename is a binary or a shorthand,
-// and it ends at ';', '|', '&&', '||' or a '#' comment. A <placeholder> is one word, so <1|2> does
-// not end a command. The first word after the binary must be a lowercase name, so a definition
-// such as "TBP = ..." is not a command.
+// are read as logical lines: a line that ends in a backslash continues on the next line, and the
+// command keeps the line number of its first line. Elsewhere only inline code spans are read, so
+// prose that names a binary is not a command. In the operator README's "## Verbs" table, the first
+// code span of a row is a tbound-op verb. A command starts at the first word whose basename is a
+// binary or a shorthand, and it ends at ';', '|', '&&', '||' or a '#' comment. A <placeholder> is
+// one word, so <1|2> does not end a command. The first word after the binary must be a lowercase
+// name, so a definition such as "TBP = ..." is not a command.
 func Extract(root, rel string) ([]Command, error) {
 	f, err := os.Open(filepath.Join(root, filepath.FromSlash(rel)))
 	if err != nil {
@@ -59,38 +60,56 @@ func Extract(root, rel string) ([]Command, error) {
 	}
 	defer f.Close()
 	var cmds []Command
+	emit := func(text string, at int) {
+		for _, seg := range segments(text) {
+			if c, ok := parse(seg); ok {
+				c.File, c.Line = rel, at
+				cmds = append(cmds, c)
+			}
+		}
+	}
 	inBlock, inVerbs := false, false
+	var pending string // the joined start of a code block command that continues
+	start := 0
 	sc := bufio.NewScanner(f)
 	for n := 1; sc.Scan(); n++ {
 		line := sc.Text()
-		if strings.HasPrefix(strings.TrimSpace(line), "```") {
+		trimmed := strings.TrimRight(line, " \t")
+		switch {
+		case strings.HasPrefix(strings.TrimSpace(line), "```"):
+			if pending != "" {
+				emit(pending, start)
+				pending = ""
+			}
 			inBlock = !inBlock
 			continue
-		}
-		if strings.HasPrefix(line, "## ") {
+		case inBlock && strings.HasSuffix(trimmed, `\`):
+			if pending == "" {
+				start = n
+			}
+			pending += strings.TrimSuffix(trimmed, `\`) + " "
+			continue
+		case strings.HasPrefix(line, "## "):
 			inVerbs = line == "## Verbs"
 		}
-		var texts []string
 		switch {
+		case inBlock && pending != "":
+			emit(pending+line, start)
+			pending = ""
 		case inBlock:
-			texts = []string{line}
+			emit(line, n)
 		case inVerbs && strings.HasPrefix(line, "| `"):
 			if m := tableVerb.FindStringSubmatch(line); m != nil {
-				texts = []string{"tbound-op " + m[1]}
+				emit("tbound-op "+m[1], n)
 			}
 		default:
 			for _, m := range codeSpan.FindAllStringSubmatch(line, -1) {
-				texts = append(texts, m[1])
+				emit(m[1], n)
 			}
 		}
-		for _, text := range texts {
-			for _, seg := range segments(text) {
-				if c, ok := parse(seg); ok {
-					c.File, c.Line = rel, n
-					cmds = append(cmds, c)
-				}
-			}
-		}
+	}
+	if pending != "" {
+		emit(pending, start)
 	}
 	return cmds, sc.Err()
 }
@@ -169,10 +188,12 @@ func isSubcommand(w string) bool {
 	return subcommand.MatchString(w) && !binaries[w] && !short
 }
 
-// Flags returns the names of the --flags among words, without the dashes or any =value.
+// Flags returns the names of the --flags among words, without the dashes, any =value, or the
+// brackets of an optional group such as "[--flag".
 func Flags(words []string) []string {
 	var out []string
 	for _, w := range words {
+		w = strings.Trim(w, "[]")
 		if len(w) > 2 && strings.HasPrefix(w, "--") {
 			name := strings.TrimPrefix(w, "--")
 			if i := strings.IndexByte(name, '='); i >= 0 {

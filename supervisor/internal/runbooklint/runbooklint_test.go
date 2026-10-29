@@ -38,8 +38,35 @@ func TestExtractReadsOnlyCodeAndSpans(t *testing.T) {
 	}
 }
 
+// TestExtractJoinsContinuedLines checks that a command continued with a trailing backslash is one
+// command, with the flags of its continuation lines and the line number of its first line.
+func TestExtractJoinsContinuedLines(t *testing.T) {
+	doc := "```\n" +
+		"TBP init --out x \\\n" +
+		"  --source-digest y \\\n" +
+		"  --provider-route engineering\n" +
+		"tbound serve --pi\n" +
+		"```\n"
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "doc.md"), []byte(doc), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Extract(root, "doc.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []Command{
+		{File: "doc.md", Line: 2, Binary: "tbound-profile", Words: []string{"init", "--out", "x", "--source-digest", "y", "--provider-route", "engineering"}},
+		{File: "doc.md", Line: 5, Binary: "tbound", Words: []string{"serve", "--pi"}},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("Extract:\n got %+v\nwant %+v", got, want)
+	}
+}
+
 func TestFlagsAndProbeClassification(t *testing.T) {
-	if got := Flags([]string{"x", "--a=1", "--", "--b", "-c"}); !reflect.DeepEqual(got, []string{"a", "b"}) {
+	// Optional groups in the runbooks write their flags as "[--c" and "--d]".
+	if got := Flags([]string{"x", "--a=1", "--", "--b", "-c", "[--c", "--d]"}); !reflect.DeepEqual(got, []string{"a", "b", "c", "d"}) {
 		t.Fatalf("Flags = %v", got)
 	}
 	help := errors.New("flag: help requested")
