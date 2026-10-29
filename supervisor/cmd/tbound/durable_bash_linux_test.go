@@ -378,7 +378,6 @@ func TestDurableBashRejectsMalformedArguments(t *testing.T) {
 		name      string
 		arguments string
 	}{
-		{"unknown field", `{"command":"true","extra":1}`},
 		{"trailing json", `{"command":"true"}{"command":"false"}`},
 		{"empty command", `{"command":""}`},
 		{"missing command", `{"timeout":5}`},

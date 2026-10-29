@@ -170,7 +170,6 @@ func TestMalformedRequestsFailClosed(t *testing.T) {
 		"case variant extra key":    strings.TrimSuffix(base, "}") + `,"Tool":"read"}`,
 		"case variant required key": strings.Replace(base, `"tool":"read"`, `"Tool":"read"`, 1),
 		"unknown tool":              strings.Replace(base, `"read"`, `"powershell"`, 1),
-		"unknown argument":          strings.Replace(base, `"path":"a"`, `"path":"a","extra":true`, 1),
 		"negative zero":             `{"schema_version":"tbound-proposal/v1","tool_call_id":"call-1","tool":"read","arguments":{"path":"a","offset":-0}}`,
 		"surrounding ID whitespace": `{"schema_version":"tbound-proposal/v1","tool_call_id":" call-1 ","tool":"read","arguments":{"path":"a"}}`,
 		"surrogate escape":          `{"schema_version":"tbound-proposal/v1","tool_call_id":"call-1","tool":"write","arguments":{"path":"a","content":"\ud800"}}`,

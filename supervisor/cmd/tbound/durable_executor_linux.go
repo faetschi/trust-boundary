@@ -639,7 +639,6 @@ func durableWorkspaceRelativePath(modelPath string) (string, error) {
 func durableWriteArguments(raw json.RawMessage) (string, []byte, error) {
 	var arguments durableWriteArgumentsPayload
 	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&arguments); err != nil {
 		return "", nil, fmt.Errorf("write arguments: %w", err)
 	}
@@ -669,7 +668,6 @@ type durableEditReplacementPayload struct {
 func durableEditArguments(raw json.RawMessage) (string, []sessionrepo.Replacement, error) {
 	var arguments durableEditArgumentsPayload
 	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&arguments); err != nil {
 		return "", nil, fmt.Errorf("edit arguments: %w", err)
 	}
@@ -699,15 +697,12 @@ type durableBashArgumentsPayload struct {
 	Timeout *float64 `json:"timeout,omitempty"`
 }
 
-// durableBashArguments strictly decodes the adapter bash arguments. Unknown
-// fields and trailing JSON are rejected so the trusted supervisor never runs a
-// command that differs from what the adapter signed. It returns the requested
-// timeout as a duration, zero when none was requested. The D09 runner's own
-// safety bound still applies on top of it.
+// durableBashArguments strictly decodes the adapter bash arguments. Trailing JSON is rejected, and a key the schema
+// does not list is ignored: only the command and timeout decide what runs. It returns the command and the requested
+// timeout as a duration, zero when none was requested. The D09 runner's own safety bound still applies on top of it.
 func durableBashArguments(raw json.RawMessage) (string, time.Duration, error) {
 	var arguments durableBashArgumentsPayload
 	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&arguments); err != nil {
 		return "", 0, fmt.Errorf("bash arguments: %w", err)
 	}
@@ -825,13 +820,12 @@ func (window durableReadWindow) apply(content []byte) []byte {
 	return bytes.Join(lines[start:end], []byte("\n"))
 }
 
-// durableReadArguments strictly decodes the adapter read arguments. Unknown
-// fields and trailing JSON are rejected so the trusted supervisor never reads a
-// path that differs from what the adapter signed.
+// durableReadArguments strictly decodes the adapter read arguments. Trailing JSON is rejected, and a key the
+// schema does not list is ignored. The path is mapped to its canonical Store path, so an alias and its
+// canonical spelling read the same file.
 func durableReadArguments(raw json.RawMessage) (string, durableReadWindow, error) {
 	var arguments durableReadArgumentsPayload
 	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&arguments); err != nil {
 		return "", durableReadWindow{}, fmt.Errorf("read arguments: %w", err)
 	}

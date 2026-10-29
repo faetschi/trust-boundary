@@ -78,7 +78,7 @@ func canonicalizeValidatedJSON(raw []byte) ([]byte, error) {
 func validateArgumentSchema(tool string, object map[string]any) error {
 	switch tool {
 	case "read":
-		if err := fields(object, []string{"path"}, []string{"offset", "limit"}); err != nil {
+		if err := requireArguments(object, []string{"path"}); err != nil {
 			return err
 		}
 		if _, ok := object["path"].(string); !ok {
@@ -86,7 +86,7 @@ func validateArgumentSchema(tool string, object map[string]any) error {
 		}
 		return optionalNumbers(object, "offset", "limit")
 	case "write":
-		if err := fields(object, []string{"path", "content"}, nil); err != nil {
+		if err := requireArguments(object, []string{"path", "content"}); err != nil {
 			return err
 		}
 		if _, ok := object["path"].(string); !ok {
@@ -97,7 +97,7 @@ func validateArgumentSchema(tool string, object map[string]any) error {
 		}
 		return nil
 	case "edit":
-		if err := fields(object, []string{"path", "edits"}, nil); err != nil {
+		if err := requireArguments(object, []string{"path", "edits"}); err != nil {
 			return err
 		}
 		if _, ok := object["path"].(string); !ok {
@@ -112,7 +112,7 @@ func validateArgumentSchema(tool string, object map[string]any) error {
 			if !ok {
 				return fmt.Errorf("edit.edits[%d] must be an object", index)
 			}
-			if err := fields(edit, []string{"oldText", "newText"}, nil); err != nil {
+			if err := requireArguments(edit, []string{"oldText", "newText"}); err != nil {
 				return fmt.Errorf("edit.edits[%d]: %w", index, err)
 			}
 			if _, ok := edit["oldText"].(string); !ok {
@@ -124,7 +124,7 @@ func validateArgumentSchema(tool string, object map[string]any) error {
 		}
 		return nil
 	case "bash":
-		if err := fields(object, []string{"command"}, []string{"timeout"}); err != nil {
+		if err := requireArguments(object, []string{"command"}); err != nil {
 			return err
 		}
 		if _, ok := object["command"].(string); !ok {
@@ -139,20 +139,12 @@ func validateArgumentSchema(tool string, object map[string]any) error {
 	}
 }
 
-func fields(object map[string]any, required, optional []string) error {
-	allowed := make(map[string]struct{}, len(required)+len(optional))
+// requireArguments checks the required keys only. The published schemas do not forbid additional
+// properties, so an unlisted key is permitted here and stays in the canonical digest.
+func requireArguments(object map[string]any, required []string) error {
 	for _, name := range required {
-		allowed[name] = struct{}{}
 		if _, ok := object[name]; !ok {
 			return fmt.Errorf("missing required argument %q", name)
-		}
-	}
-	for _, name := range optional {
-		allowed[name] = struct{}{}
-	}
-	for name := range object {
-		if _, ok := allowed[name]; !ok {
-			return fmt.Errorf("unknown argument %q", name)
 		}
 	}
 	return nil
