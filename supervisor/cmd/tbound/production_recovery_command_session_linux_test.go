@@ -27,4 +27,10 @@ func TestRecoveryCommandSessionForPinNamesMintedGenerationIdentities(t *testing.
 			t.Errorf("%s: session %q run %q, want session %q run %q", tc.name, gotSession, gotRun, tc.wantSession, tc.wantRun)
 		}
 	}
+	// A workflow id that itself contains the conversation marker still names its own generations.
+	marked := piServiceWorkflowEntry{WorkflowID: "wf-conversation-g2", SessionID: "s", RunID: "r", ConversationID: "c"}
+	session, run := recoveryCommandSessionForPin(marked, workflowrecovery.TranscriptPin{ConversationID: "wf-conversation-g2-conversation-g3"})
+	if session != "wf-conversation-g2-session-g3" || run != session {
+		t.Errorf("marked workflow id: session %q run %q, want wf-conversation-g2-session-g3 twice", session, run)
+	}
 }
