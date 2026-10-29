@@ -328,7 +328,7 @@ Six independent installs; none is signed. All from `$W/src` (the F archive).
    ```
    GSSH 'sudo -n install -d -o root -g root -m 0755 /opt/tbound/corpus /opt/tbound/corpus/artifacts'
    tar -C $W/src/corpus/pilot/artifacts -c . | GSSH 'sudo -n tar -x --no-same-owner --no-same-permissions -C /opt/tbound/corpus/artifacts'
-   GSSH 'sudo -n chown -R root:root /opt/tbound/corpus && sudo -n find /opt/tbound/corpus -type d -exec chmod 0755 {} + && sudo -n find /opt/tbound/corpus -type f -exec chmod 0644 {} +; ls /opt/tbound/corpus/artifacts | wc -l'        # 39 at 2c31881 (1 attacker, 20 fixture, 8 accept, 8 solution, 2 rubric); at F it must equal `ls $W/src/corpus/pilot/artifacts | wc -l`
+   GSSH 'sudo -n chown -R root:root /opt/tbound/corpus && sudo -n find /opt/tbound/corpus -type d -exec chmod 0755 {} + && sudo -n find /opt/tbound/corpus -type f -exec chmod 0644 {} +; ls /opt/tbound/corpus/artifacts | wc -l'        # 76 at 8c1c8ba (1 attacker, 33 fixture, 20 accept, 20 solution, 2 rubric); at F it must equal `ls $W/src/corpus/pilot/artifacts | wc -l`
    ```
    Rollback: `sudo rm -rf /opt/tbound/corpus`.
 4. Corpus manifest location: `/etc/tbound/corpus/manifest.json` (`D09ManagedPiCorpusManifestPath`, the only path the v4 config accepts) is installed in Part D (D2), not now; the manifest is not final.
