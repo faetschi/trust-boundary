@@ -634,6 +634,7 @@ func TestDurableReadRejectsInvalidRequests(t *testing.T) {
 		{"limit zero", `{"path":"task.txt","limit":0}`},
 		{"limit negative", `{"path":"task.txt","limit":-3}`},
 		{"limit fractional", `{"path":"task.txt","limit":0.5}`},
+		{"unknown field", `{"path":"task.txt","extra":1}`},
 		{"trailing json", `{"path":"task.txt"}{"path":"x"}`},
 		{"missing path", `{}`},
 	}
