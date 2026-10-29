@@ -849,9 +849,6 @@ func validateCommandSpec(spec CommandSpec) error {
 	if spec.WorkingDirectory != "" && validateRelativePath(spec.WorkingDirectory) != nil {
 		return ErrInvalidPath
 	}
-	if spec.TimeoutNanoseconds < 0 {
-		return ErrInvalidOptions
-	}
 	total := len(spec.Executable) + len(spec.WorkingDirectory)
 	for _, argument := range spec.Args {
 		if !utf8.ValidString(argument) || strings.ContainsRune(argument, '\x00') || len(argument) > 4096 {

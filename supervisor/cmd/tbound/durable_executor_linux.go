@@ -19,7 +19,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 	"unicode"
 	"unicode/utf8"
 
@@ -237,7 +236,7 @@ func (e *DurableExecutor) Execute(ctx context.Context, proposal protocol.Proposa
 		if e.commandRunner == nil {
 			return nil, errors.New("durable bash has no configured command runner; result withheld")
 		}
-		command, timeout, err := durableBashArguments(proposal.Arguments)
+		command, err := durableBashArguments(proposal.Arguments)
 		if err != nil {
 			return nil, err
 		}
@@ -248,17 +247,8 @@ func (e *DurableExecutor) Execute(ctx context.Context, proposal protocol.Proposa
 		// Nothing from the proposal is interpolated into argv except the
 		// strictly decoded command, so the authorized spec is byte-stable.
 		spec := sessionrepo.CommandSpec{Executable: "/bin/bash", Args: []string{"-lc", command},
-			TimeoutNanoseconds:  int64(timeout),
 			DeclaredOutputPaths: cloneDurableOutputScopePaths(e.bashOutputPaths)}
-		// The requested timeout bounds the trusted run. The earliest of it, the caller's deadline and the
-		// runner's own safety bound applies, and the runner stops a command that outlives it.
-		runCtx := ctx
-		if timeout > 0 {
-			var cancelCommand context.CancelFunc
-			runCtx, cancelCommand = context.WithTimeout(ctx, timeout)
-			defer cancelCommand()
-		}
-		mutation, err = e.store.RunBash(runCtx, e.tip, operation, policyDecision, spec, e.commandRunner)
+		mutation, err = e.store.RunBash(ctx, e.tip, operation, policyDecision, spec, e.commandRunner)
 		if err != nil {
 			return nil, e.admissionDenied(ctx, proposal, decision, mutation, fmt.Errorf("durable bash: %w", err))
 		}
@@ -691,9 +681,10 @@ func durableEditArguments(raw json.RawMessage) (string, []sessionrepo.Replacemen
 }
 
 // durableBashArgumentsPayload mirrors the adapter's bash tool schema exactly:
-// a required command string and an optional numeric timeout in seconds. The
-// timeout is not placed in the argv. It bounds the trusted run through the
-// command's context, and the digest binds it.
+// a required command string and an optional numeric timeout. The timeout is
+// parsed for schema conformance but is not placed in the argv; the trusted
+// runner/containment layer owns termination, matching the adapter's
+// "no default timeout" contract.
 type durableBashArgumentsPayload struct {
 	Command string   `json:"command"`
 	Timeout *float64 `json:"timeout,omitempty"`
@@ -701,30 +692,21 @@ type durableBashArgumentsPayload struct {
 
 // durableBashArguments strictly decodes the adapter bash arguments. Unknown
 // fields and trailing JSON are rejected so the trusted supervisor never runs a
-// command that differs from what the adapter signed. It returns the requested
-// timeout as a duration, zero when none was requested. The D09 runner's own
-// safety bound still applies on top of it.
-func durableBashArguments(raw json.RawMessage) (string, time.Duration, error) {
+// command that differs from what the adapter signed.
+func durableBashArguments(raw json.RawMessage) (string, error) {
 	var arguments durableBashArgumentsPayload
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&arguments); err != nil {
-		return "", 0, fmt.Errorf("bash arguments: %w", err)
+		return "", fmt.Errorf("bash arguments: %w", err)
 	}
 	if err := durableNoTrailingJSON(decoder); err != nil {
-		return "", 0, fmt.Errorf("bash arguments: %w", err)
+		return "", fmt.Errorf("bash arguments: %w", err)
 	}
 	if arguments.Command == "" {
-		return "", 0, errors.New("bash arguments require a command")
+		return "", errors.New("bash arguments require a command")
 	}
-	if arguments.Timeout == nil {
-		return arguments.Command, 0, nil
-	}
-	seconds := *arguments.Timeout
-	if !(seconds > 0) || seconds > float64(math.MaxInt64)/float64(time.Second) {
-		return "", 0, errors.New("bash timeout must be a positive, representable number of seconds")
-	}
-	return arguments.Command, time.Duration(seconds * float64(time.Second)), nil
+	return arguments.Command, nil
 }
 
 // durableReadSummaryPayload is the bounded strict-JSON view of a completed

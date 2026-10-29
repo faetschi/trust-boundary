@@ -850,9 +850,9 @@ func (v *governedStoreReplayVerifier) bindStoreOperation(binding providerbridge.
 	}
 	if binding.Proposal.Tool == "bash" {
 		intent.Command.DeclaredOutputPaths = cloneDurableOutputScopePaths(request.OutputScopePaths)
-		command, timeout, commandErr := durableBashArguments(binding.Proposal.Arguments)
+		command, commandErr := durableBashArguments(binding.Proposal.Arguments)
 		wantSpec := sessionrepo.CommandSpec{Executable: "/bin/bash", Args: []string{"-lc", command},
-			TimeoutNanoseconds: int64(timeout), DeclaredOutputPaths: cloneDurableOutputScopePaths(v.pins.BashOutputPaths)}
+			DeclaredOutputPaths: cloneDurableOutputScopePaths(v.pins.BashOutputPaths)}
 		if commandErr != nil || !sameReplayCommandSpec(intent.Command, wantSpec) || intent.RunnerProfile == "" ||
 			request.ViewID == "" || request.ExecutionContextDigest != governedExecutionContextDigest(request.ViewID, request.InputTreeDigest, request.Operation.LeaseID) {
 			return sessionrepo.OperationRequest{}, audit.EffectTrace{}, sessionrepo.OperationEvidence{}, errors.New("Bash intent differs from exact pinned command, scope, or execution context")
@@ -1107,9 +1107,9 @@ func (v *governedStoreReplayVerifier) expectedDurableOutput(verified *governedRe
 			return nil, "", "", "", 0, "", errors.New("Bash effect output or settlement fields differ from Store evidence")
 		}
 		result.Spec.DeclaredOutputPaths = cloneDurableOutputScopePaths(request.OutputScopePaths)
-		command, timeout, err := durableBashArguments(decisionBinding.Proposal.Arguments)
+		command, err := durableBashArguments(decisionBinding.Proposal.Arguments)
 		wantSpec := sessionrepo.CommandSpec{Executable: "/bin/bash", Args: []string{"-lc", command},
-			TimeoutNanoseconds: int64(timeout), DeclaredOutputPaths: cloneDurableOutputScopePaths(v.pins.BashOutputPaths)}
+			DeclaredOutputPaths: cloneDurableOutputScopePaths(v.pins.BashOutputPaths)}
 		if err != nil || !sameReplayCommandSpec(result.Spec, wantSpec) || result.RunnerProfile != operation.CommandRunnerProfile ||
 			operation.ExitCode == nil || *operation.ExitCode != result.Command.ExitCode || operation.CommandContainmentStatus != "not-established" {
 			return nil, "", "", "", 0, "", errors.New("Bash operation evidence differs from exact command specification or observed exit")
@@ -1199,7 +1199,6 @@ func durableMutationPath(proposal protocol.Proposal) (string, error) {
 
 func sameReplayCommandSpec(left, right sessionrepo.CommandSpec) bool {
 	return left.Executable == right.Executable && left.WorkingDirectory == right.WorkingDirectory &&
-		left.TimeoutNanoseconds == right.TimeoutNanoseconds &&
 		reflect.DeepEqual(left.Args, right.Args) && sameDurableOutputScopePaths(left.DeclaredOutputPaths, right.DeclaredOutputPaths)
 }
 

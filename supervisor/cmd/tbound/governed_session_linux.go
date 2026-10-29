@@ -1204,12 +1204,12 @@ func sessionrepoArgumentDigest(proposal protocol.Proposal, bashOutputPaths []str
 			Edits []sessionrepo.Replacement `json:"edits"`
 		}{path, replacements}
 	case "bash":
-		command, timeout, err := durableBashArguments(proposal.Arguments)
+		command, err := durableBashArguments(proposal.Arguments)
 		if err != nil {
 			return "", err
 		}
 		return sessionrepo.CommandArgumentsDigest(sessionrepo.CommandSpec{Executable: "/bin/bash", Args: []string{"-lc", command},
-			TimeoutNanoseconds: int64(timeout), DeclaredOutputPaths: cloneDurableOutputScopePaths(bashOutputPaths)})
+			DeclaredOutputPaths: cloneDurableOutputScopePaths(bashOutputPaths)})
 	default:
 		return "", errors.New("unsupported governed session tool")
 	}

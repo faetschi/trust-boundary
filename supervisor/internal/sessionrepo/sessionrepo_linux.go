@@ -175,15 +175,12 @@ type CommandRunnerProfile interface {
 	Profile() string
 }
 
-// CommandSpec is the exact executable, argument vector, optional relative
-// working directory, and optional requested run bound authorized for one command
-// lease. TimeoutNanoseconds is zero when no bound was requested. The spec digest
-// includes it, so the authorized command and its bound are one identity.
+// CommandSpec is the exact executable, argument vector, and optional relative
+// working directory authorized for one command lease.
 type CommandSpec struct {
 	Executable          string   `json:"executable"`
 	Args                []string `json:"args"`
 	WorkingDirectory    string   `json:"working_directory,omitempty"`
-	TimeoutNanoseconds  int64    `json:"timeout_nanoseconds,omitempty"`
 	DeclaredOutputPaths []string `json:"-"`
 }
 
