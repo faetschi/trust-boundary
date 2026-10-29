@@ -1,8 +1,15 @@
 # Current status
 
-Updated 2026-10-28. This page is the short gate summary. [OVERVIEW](../../OVERVIEW.md)
+Updated 2026-10-29. This page is the short gate summary. [OVERVIEW](../../OVERVIEW.md)
 is the one-screen state; [TASK_STATE](../../TASK_STATE.md) is the working log with
 decisions, blockers, and next steps. History before this date is in Git.
+
+Current policy is the [dated owner decisions](owner-protocol-decisions-2026-10-29.md).
+The independent advisor and examiner roles are removed. The supervisor is
+administrative only, with no input or sign-off. No advisor confirmation,
+human audit, or replacement mandatory owner acceptance gate is required.
+Operational owner cryptographic signing is unchanged. Independent human review
+is not claimed.
 
 ## Claim boundary
 
@@ -29,8 +36,14 @@ decisions, blockers, and next steps. History before this date is in Git.
   pilot roles refuse it, and the recovery suite is proposed, not registered.
 - **The final-profile containment study is not complete.** The F11/F12 guest
   checks are real-host system evidence, not the final frozen-profile result.
-- **C-DH is parked.** H1 stays Configuration C with the static
-  permitted-alternative table. The C-DH code is merged but off.
+- **D26 is owner-decided.** C-DH stays outside the registered configurations.
+  Configuration C uses the static permitted-alternative table. TM-C covers
+  mediated command-cell interpreter, socket, and persistence stimuli, excluding
+  direct Pi-runtime bypass. The existing `dr` probe remains unchanged.
+- **Full construct evidence is incomplete.** Deterministic `corpus-check`,
+  including applicable guest witnesses, is required before preregistered H1.
+  A local green report, `corpus-digest`, or `preregistration-record` does not
+  establish full construct completion.
 
 ## Current checkpoint
 
@@ -39,42 +52,49 @@ decisions, blockers, and next steps. History before this date is in Git.
 | Guest | F13 = `6162e3c`, guest `172.24.152.73` |
 | Governed path | G1 and both probes pass; each new freeze must repeat them with fresh evidence |
 | Measurement | F13: EVQ 21/22 (net-sink open until corpus mode); route report complete |
-| Pilot corpus | Re-based on established benchmark items; 11 adversarial, 20 compliant, 2 ambiguous; manifest still has sign-off TODOs |
-| Panel | `tbound-panel` is ready and its three models, config and binary are frozen (`F:/TBoundAssets/panel-prep-20261027/`); the owner runs it after funding. Gate per checklist item: Gwet's AC1 ≥ 0.80 with raw agreement ≥ 0.90 (Fleiss' kappa is reported, not gated); `corpus-digest` recomputes every statistic from the pinned receipt ratings |
+| Pilot corpus | Re-based on established benchmark items; 11 adversarial, 20 compliant, 2 ambiguous; T5 delivery correction and T7 continuation proof remain implementation-deferred |
+| Panel | Optional supplementary analysis. AC1, raw agreement, kappa, and non-pass/incomplete labels are diagnostics only. Historical prep is retained; no paid run or human audit is required. |
 | Provider | OpenCode Go for engineering; the frozen OpenRouter route for the provider-dependent H1 pilot |
 | Denial hints | Static table (H1 treatment) merged; a gate DENY no longer ends a service-mode conversation (`c209d63`, merged, not yet on the guest); generated hints are post-thesis |
 
-## Open gates, in order
+## Remaining proof and operations
 
-1. Confirm the D26 scope cut and the residual-channel claim with the advisor
-   (options in the [advisor decision package](advisor-decisions.md)).
-2. Finish the pilot construct review (panel run, then the advisor's sign-off; the AC1 amendment and the
-   pilot audit size are open in the decision package) and case corrections; freeze the pilot protocol,
-   provider, outage rules, and initial safety ceilings.
-3. Done at F13: freeze, reinstall, G1 and both probes with fresh evidence. For F14, the
-   two service-mode defects (DENY continuation `c209d63`, recovery record kind `a40fbb9`),
-   the D09 denied settlement (`f483fad`) and the corpus-check guest-evidence input
-   (`f1d5b75`) are merged; the F14 freeze,
-   install and fresh G1/probe evidence are owner steps.
-4. Enter corpus mode and verify reset, net-sink, no-reap, and V; require complete
-   EVQ and route reports.
-5. Run the engineering, compliant, and adaptive-cap pilots; derive caps and costs
-   from the retained records.
-6. Build and independently review the full corpus; complete every required
-   channel witness and preserve the cold partition.
-7. Freeze the final artifact, corpus, caps, and analysis; complete immutable H1
-   registration.
-8. Run H1 under the registered rules and report the result without changing
-   denominators.
+1. Implement and test T5 and T7 under the settled owner decisions. Retain seven
+   T5 cases and provenance, with malicious material delivered by a lower-trust
+   tool result and the legitimate task in the user prompt. T7 needs retained
+   no-effect proof for explicitly eligible classes, settlement, journal, and
+   fresh-process replay. Ambiguous failures remain conservative.
+2. Parent: run the final exact-HEAD full gate, check F14 package compatibility,
+   and repin F14 before any later freeze. `56cf99c` is a historical gated pin.
+   F14 signing, installation, G1, and the existing route and `dr` probes remain
+   later owner-controlled operations. The separate denied-after-effect `dd`
+   qualification is not required for F14; G1 and route probes do not prove it.
+3. Enter corpus mode and verify reset, net-sink, no-reap, and V. Complete EVQ,
+   route evidence, and the applicable construct witnesses.
+4. Run the engineering, compliant, and adaptive-cap pilots. Derive caps and
+   costs from retained records. Complete the 299 adversarial, 100 compliant,
+   and 20 ambiguous cases, channel witnesses, and cold partition.
+5. Complete full deterministic construct evidence before H1. Freeze artifact,
+   corpus, caps, and analysis, then complete immutable H1 registration and run
+   under the registered thresholds, N, scoring, and denominators.
 
-The owner must approve privileged guest writes, signing, provisioning, and any
-paid provider call. The next human actions are the advisor review, the pilot
-protocol decisions, and the coordinated signing session.
+AMB-02 retains `EXECUTED` / `PROCEEDS`, row 1, score 0. Record containment and
+no disclosure separately. No rubric change or new execution result is claimed.
+
+`corpus-digest` and `tbound-profile preregistration-record` perform strict
+loading, validation, quotas, and `CheckTrials`, plus requested bindings and
+artifacts. Run full `CheckConstructs` through `corpus-check` separately. With
+no panel flags, panel verification is skipped. All three nonempty panel paths
+are required if supplied, and their integrity and numeric checks remain strict.
+The optional panel cannot block the critical path on diagnostic agreement.
+
+Paid calls, freeze, signing, installs, guest operations, and product merges
+remain outside this documentation task. The parent owns Git and F14 repinning.
 
 ## Related
 
 - [Architecture](../runtime/architecture.md): authority boundaries and seams.
 - [Publication contract](../runtime/publication-contract.md): how changes reach the live root.
-- [Panel guide](../guides/panel-run.md): the blinded construct review.
+- [Panel guide](../guides/panel-run.md): optional supplementary blinded model analysis.
 - [Decision records](../decisions): ADRs and their status.
 - [Working log](../../TASK_STATE.md): the detailed checkpoint and owner decisions.

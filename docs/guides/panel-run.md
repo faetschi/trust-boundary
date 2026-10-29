@@ -1,15 +1,19 @@
-# Run the blinded construct-review panel
+# Run optional supplementary AI analysis
 
-This guide is for the owner. It runs step 2 of the D35 amendment (2026-10-24):
-three AI models from three families rate every corpus case against the thesis
-§7.3 construct-validity checklist. The tool then reports agreement before
-adjudication and writes the audit list for the advisor. The advisor's signed
-`audit.json` and the run's `receipt.json` then feed `tbound-profile corpus-digest`
-(step 8).
+The [owner protocol decisions of 2026-10-29](../evaluation/owner-protocol-decisions-2026-10-29.md)
+supersede the former D35 panel and advisor-signature gates. `tbound-panel` is
+optional supplementary analysis. The critical path is full deterministic
+construct evidence, including applicable guest witnesses, followed by
+preregistered H1. The supervisor is administrative only, with no input or
+sign-off. No advisor, examiner, human audit, or replacement mandatory owner
+acceptance gate is required. Independent human review is not claimed.
 
-`tbound-panel` does not run the deterministic checks of D35 step 1, does not
-edit `manifest.draft.json`, and records no human review. AI ratings never count
-as human reviews.
+The tool rates corpus cases in two blinded phases with three model families.
+AC1, raw agreement, kappa, and the generated audit selection are diagnostics
+only. A diagnostic pass does not validate a construct. Non-pass and incomplete
+results do not block admission or preregistration. `tbound-panel` does not run
+`CheckConstructs`, edit the manifest, or create human review evidence.
+No panel or paid call is authorized by this documentation update.
 
 ## What each model sees
 
@@ -83,7 +87,7 @@ model's page on openrouter.ai/models. Prices are USD per million tokens.
 
 The values above are illustrations, not a selection or current prices.
 
-The tool refuses a panel that breaks a D35 rule:
+For this optional analysis, the tool retains these panel configuration constraints:
 
 - fewer or more than three models
 - two models of one family; a reseller fine-tune counts as its base family
@@ -116,22 +120,23 @@ that honour temperature and `max_tokens`, and `provider.data_collection: "deny"`
 so no host may store or train on the cases (MultiPL-E forbids ML-training use). If a model rejects temperature 0, use
 its deterministic setting and record the reason.
 
-`public_policy` is required. It lists the bash output paths and the allowed
+`public_policy` is required in the panel configuration. It lists the bash output paths and the allowed
 network destinations of the service config that runs the corpus. The default
 holds the pilot values: no bash output paths
 (`infra/guest/serve-pi-service.corpus-pilot.json`) and no network destination
 (network-none command cell). Check them against the service config before the
-run. The receipt records this policy as `public_policy`, and `tbound-op cfg-install`
-refuses the corpus service config unless its `workflow_bash_output_paths` equal the recorded
-`bash_output_paths` and the recorded `network_destinations` are empty (the service config names
-no destination).
+run. The receipt records this policy as `public_policy`. If a panel bundle is supplied,
+the operator checks the installed service policy against that receipt. Without
+panel evidence, the normal signed service policy still applies.
 
 `budget_usd` is the hard cap, at most 10. You can set it lower. Keep `seed`
-fixed once you have run the panel. `audit_sample` is optional and must be 60, the
-registered size of the unanimous audit sample.
+fixed once you have run the panel. `audit_sample` retains the tool
+value 60 for diagnostic selection. When fewer unanimous roots are eligible,
+the tool selects all eligible roots. This selection creates no human audit
+obligation, admission gate, or detection-probability claim.
 
-Freeze the config before the live run. D35 requires pinned model ids,
-settings, prompts and rubric before review. Keep a copy of `panel.json` with the
+Retain the config with pinned model IDs, settings, prompts, and rubric for
+any optional live run. Keep a copy of `panel.json` with the
 run, and disclose any prior exposure of the models to the corpus.
 
 ## 3. Estimate the cost
@@ -190,10 +195,9 @@ again. Invalid answers are recorded and retried on resume. If you
 change a frozen setting (models, temperatures, `max_tokens`, `seed`, prompts or
 manifest), the tool refuses the old directory. Use a new `--out`.
 
-Once the advisor has filled any `advisor_signoff` field in `audit.json`, the same
-command refuses to run: it would rebuild the audit and write a new `receipt.json`,
-erasing the sign-offs. Copy the output directory first, or move `audit.json` aside,
-before you regenerate. An audit with every sign-off field empty is rebuilt normally.
+The retained tool protects a directory with populated legacy `advisor_signoff`
+fields from regeneration. Preserve that historical directory and use a new
+output directory. No such fields need to be populated for current policy.
 
 | Exit code | Meaning |
 |---|---|
@@ -212,8 +216,8 @@ before you regenerate. An audit with every sign-off field empty is rebuilt norma
 | `requests/p1`, `requests/p2`, `responses/` | Every raw request body (without the key) and raw response, per phase |
 | `calls.jsonl` | Spend ledger: a reservation before each call, then the settled cost |
 | `ratings.jsonl` | One parsed answer per call with its phase, marked valid or invalid with its reason |
-| `stats.md`, `stats.json` | JSON schema `tbound-panel-stats/v4`, `content_digest`, and `dry_run`. Before adjudication: Gwet's AC1 (the gate statistic), raw agreement, Fleiss' kappa, prevalence, and a 95% root-bootstrap interval of AC1 and of kappa per phase-2 checklist item and per phase-1 field, plus the phase-1 agreement with the claimed label per field |
-| `audit.md`, `audit.json` | The advisor's audit list and sign-off fields. `audit.json` (schema `tbound-panel-audit/v4`) records `manifest_digest`, `content_digest`, `dry_run` and `receipt_digest`, the `sha256:` of the exact bytes of the `receipt.json` written just before it |
+| `stats.md`, `stats.json` | JSON schema `tbound-panel-stats/v4`, `content_digest`, and `dry_run`. Before adjudication: Gwet's AC1, raw agreement, Fleiss' kappa, prevalence, and a 95% root-bootstrap interval of AC1 and of kappa per phase-2 checklist item and per phase-1 field, plus the phase-1 agreement with the claimed label per field |
+| `audit.md`, `audit.json` | Diagnostic selection list and legacy optional metadata fields. `audit.json` (schema `tbound-panel-audit/v4`) records `manifest_digest`, `content_digest`, `dry_run` and `receipt_digest`, the `sha256:` of the exact bytes of the `receipt.json` written just before it |
 | `audit-packets/` | The blinded packet of each audited case |
 
 Phase-1 effect ids are compared as a set: two answers agree only when they name
@@ -221,7 +225,8 @@ exactly the same ids. The claim agreement rate counts every model's phase-1
 answer against the manifest claim. Effect ids are n/a for ambiguous cases,
 which register no forbidden effect.
 
-The gate is applied per checklist item and per phase-1 field:
+The tool retains these diagnostic labels per checklist item and per phase-1 field.
+They are not admission, preregistration, or H1 gates:
 
 | Result | Rule |
 |---|---|
@@ -229,114 +234,76 @@ The gate is applied per checklist item and per phase-1 field:
 | `revise` | AC1 0.60–0.79, or AC1 ≥0.80 with agreement below 90% |
 | `stop` | AC1 below 0.60 |
 | `no-pass-undefined-ac1` | AC1 undefined: no case has a pair of ratings |
-| `incomplete-no-pass` | Any case, model and phase lacks a valid answer (refusal, broken JSON, budget stop); replaces every gate, and `stats.json` lists the missing pairs |
+| `incomplete-no-pass` | Any case, model and phase lacks a valid answer (refusal, broken JSON, budget stop); replaces every diagnostic label, and `stats.json` lists the missing pairs |
 
 Raw agreement is Fleiss' observed agreement, the mean share of agreeing rater
-pairs per case. The gate statistic is Gwet's AC1 (Gwet 2008, Br. J. Math. Stat.
+pairs per case. The diagnostic label uses Gwet's AC1 (Gwet 2008, Br. J. Math. Stat.
 Psychol. 61, 29-48), not Fleiss' kappa: kappa collapses at high prevalence (410 unanimous
 `pass` and 9 single dissents give 98.6% agreement and kappa -0.007, and all-`pass` leaves
 kappa undefined), while AC1 stays 0.986 and 1. With 3 raters, Pa is the mean share of agreeing
 pairs, pi_k the mean share of ratings in category k, Pe = sum pi_k (1 - pi_k) / (q - 1) with q = 3
 (`pass`, `fail`, `unclear`), and AC1 = (Pa - Pe) / (1 - Pe). Fleiss' kappa (with its defined flag),
-prevalence and the kappa interval are still reported for every item and are not gated. The AC1 and
+prevalence and the kappa interval are still reported for every item. None gates the proof path. The AC1 and
 kappa intervals resample source roots with replacement, 2000 times with `seed`, on the same
 resamples, and use the percentile method. Phase-1 fields report AC1 too, over the closed category
 lists (`effect_ids` over the observed sets). Agreement alone never accepts a failed construct
-check: a `fail` rating makes a case a mandatory audit case even when all three models agree.
+check. A `fail` rating puts a case on the diagnostic selection list even when
+all three models agree. No human audit is required.
 
-## 7. Send the advisor the audit
+## 7. Retain the diagnostic selection
 
-Send `audit.md`, `audit.json`, `audit-packets/` and `stats.md`. The audit list
-contains:
+Keep `audit.md`, `audit.json`, `audit-packets/`, and `stats.md` with the run.
+The selection includes disagreements, unclear and fail ratings, phase-1
+mismatches, ambiguous cases, incomplete ratings, and up to 60 eligible unanimous
+roots drawn with the recorded seed. An all-eligible selection is a census of
+those roots, not independent human review. No signature or detection-probability
+claim follows from it.
 
-- every case with a checklist disagreement
-- every case with an `unclear` rating
-- every case with a `fail` rating, unanimous or not
-- every case where the models' phase-1 answers differ from each other or from
-  the claimed label
-- every ambiguous case
-- any case with incomplete ratings
-- a random sample of up to 60 unanimous roots, drawn with the recorded seed and
-  listed with the eligible roots
+The owner controls protocol decisions and provenance. Legacy `advisor_signoff`
+and manifest `signoff` fields are optional metadata. Do not invent names,
+quotations, resolutions, or signatures to fill them. Historical signed records
+remain evidence of their own content snapshot and policy, not new approval.
 
-`audit.json` shows each listed case's claimed labels, phase-1 answers and
-phase-2 ratings. The advisor reviews each listed case and fills the four
-`advisor_signoff` fields of its entry in `audit.json`:
+## 8. Bind optional evidence to the manifest
 
-| Field | Value |
-|---|---|
-| `decision` | `accept`, `reject` or `revise` |
-| `resolution` | The resolution and its reason under the frozen panel rubric |
-| `identity` | The advisor's name |
-| `signed_at` | RFC 3339 date and time with timezone, for example `2026-10-25T10:00:00+02:00` |
+No panel flags are required by `corpus-digest` or
+`tbound-profile preregistration-record`. With none supplied, panel verification
+is skipped. To supply a bundle, provide all three nonempty paths. Partial or
+explicitly empty paths are refused.
 
-The `resolution` text must equal the `resolution` of the case's sign-off in the manifest.
-The advisor then signs `audit.md`. An audit error expands review across that
-case's source and tool stratum. Keep this round's ratings and statistics
-unchanged. A revised case needs a new run directory. Only `accept` can back an
-accepted manifest; a case the advisor rejects or revises needs a corrected
-manifest and a new panel run.
+`ContentDigest` retains its existing canonical serialization. It excludes
+case sign-offs, `construct_review`, and freeze `pins`. Filling freeze pins does
+not change that digest. Changing case content does. The full corpus `Digest`
+still includes the pins. Preserve the original panel-input file and hashes.
 
-The advisor is a non-author human and signs every case of the corpus, not only
-the listed ones: the listed cases get the deep review, the others the meaning
-record check of thesis §7.3. AI ratings never count as that review, and the case
-author's own review is not independent.
+For a supplied bundle, bind `construct_review.content_digest` to the run's
+`content_digest` and the three panel digest members to the exact bytes of
+`receipt.json`, `audit.json`, and `stats.json`. Do not reformat them after
+hashing. Retain raw ratings, requests, and responses.
 
-## 8. Bind the signed audit to the manifest
-
-The panel rated the draft before any sign-off existed. The manifest then gains
-the advisor's sign-offs, which must not detach it from the run. `receipt.json`,
-`audit.json` and `stats.json` therefore record `content_digest`, the digest of the manifest
-with every `signoff`, `construct_review` and `pins` cleared
-(`evalcorpus.ContentDigest`). Writing the sign-offs or freeze pins does not change it;
-changing a case does. `manifest_digest` keeps the digest of the whole file the
-panel read. The environment, model, profile and policy pins may be filled from
-`corpus-pins` after the panel run, but must be filled before `corpus-digest`.
-The full corpus `Digest` still includes every pin. The receipt embeds per-call
-`rating_outcomes` for every case, model and phase. Its pinned byte digest binds
-these ratings without an additional ratings file. Keep `ratings.jsonl` as the
-raw-round record.
-
-In the manifest:
-
-1. Set every case's `signoff` to the advisor's name as `reviewer`, `human: true`,
-   `author: false`, `decision: "accept"`. For each case on the audit list also
-   set `audited: true` and `resolution` to the advisor's resolution. A
-   resolution on an unlisted case, or a listed case without one, is refused.
-2. Set `construct_review.content_digest` to `content_digest` of the receipt.
-3. Set `construct_review.panel_receipt_digest` and
-   `construct_review.panel_audit_digest` and `construct_review.panel_stats_digest`
-   to the `sha256:` of the bytes of `receipt.json`, the signed `audit.json`, and
-   `stats.json`, for example with `sha256sum receipt.json audit.json stats.json`.
-   Do not reformat these files afterwards.
-
-Then pass all three files to the admission command:
+The normal admission command needs no panel files:
 
 ```sh
 tbound-profile corpus-digest --manifest corpus/pilot/manifest.json --quota-profile pilot \
-  --panel-receipt <run>/receipt.json --panel-audit <run>/audit.json --panel-stats <run>/stats.json \
   --artifacts corpus/pilot/artifacts --node "$(command -v node)" \
   --max-host-calls 17 --max-tokens 20000 --duration-seconds 1200
 ```
 
-It prints the digest only if the file hashes match `construct_review`, the audit's
-`receipt_digest` is the digest of the receipt file (a signed audit cannot back another
-run's receipt), all three
-files record the manifest's content digest, all explicitly mark a live OpenRouter run, none is a dry run, the receipt
-rates every case completely, the audit list and the cases marked `audited` are
-the same set, and every audit entry carries a decision `accept`, a resolution, an
-identity matching the manifest advisor and a time. It replays audit selection
-with the panel's own seeded selection function and requires 60 unanimous roots,
-or all if fewer are eligible. A dry-run directory is never accepted.
-`stats.json` uses schema `tbound-panel-stats/v4`, records `content_digest`, and
-must give every phase-2 checklist item a `pass` gate. The reader does not trust its numbers: it
-rebuilds every item's subjects from the receipt's `rating_outcomes` (applicable cases, receipt
-model order) and recomputes subjects, roots, AC1, kappa, raw agreement, unanimous share and
-prevalence, refuses unless each matches within 1e-9, and refuses unless the recomputed gate is
-`pass` (AC1 at least 0.80 and raw agreement at least 0.90). The audit seed must equal the receipt's
-run seed. The reader checks every required statistics field (the receipt also requires `public_policy`), the three distinct permitted model
-families, and complete case x model x phase outcomes. It derives mandatory audit
-cases from those pinned outcomes and from the manifest's ambiguous cases. Missing ratings
-in either phase block admission. Phase-1 agreement and its gates remain reported;
-phase-1 gate values do not determine admission. Keep revised rounds separately.
-`preregistration-record` requires and verifies the same three panel files.
+To verify optional evidence, append all three paths:
+
+```sh
+  --panel-receipt <run>/receipt.json --panel-audit <run>/audit.json --panel-stats <run>/stats.json
+```
+
+Supplied evidence remains subject to bounded reads and strict integrity checks
+for file hashes, content and receipt bindings, model identities, outcomes, and
+numeric recomputation. Honest non-pass or incomplete diagnostics are allowed.
+These checks protect the optional record from inconsistent or fabricated data.
+They do not make panel agreement a protocol gate or establish full construct
+completion. Run the separate `corpus-check` path, including applicable guest
+witness imports, before H1. No human acceptance is required.
+
+The former mandatory panel, AC1/raw-agreement pass requirement, sample-60 audit,
+and advisor sign-off workflow are retained in Git history and the
+[historical advisor packet](../evaluation/advisor-decisions.md). They were
+superseded by the owner's dated decision, not confirmed by an advisor.

@@ -14,7 +14,7 @@ proposed interactive Pi product. It is a plan, not a list of shipped capabilitie
 - [Governed host setup](guides/governed-setup.md): host, profile, template, and live-root contracts; retains older design notes.
 - [Reproduction](guides/reproduce.md): source freeze, release gate, signing, operator cycle, evidence, pilot.
 - [Release](guides/release.md): package formats and release acceptance checks.
-- [Panel guide](guides/panel-run.md): blinded model review and independent human audit.
+- [Panel guide](guides/panel-run.md): optional supplementary blinded model analysis; agreement statistics are diagnostics.
 - [Private git staging](guides/private-git-staging.md): local staging repository for frozen sources.
 - [Guest assets](../infra/guest/README.md): provisioning and offline verification.
 - [Provisioning and signing](../infra/guest/PROVISIONING-SIGNING.md): measurement, signing, deployment, corpus mode; replace reference values with your own measurements.
@@ -34,12 +34,22 @@ proposed interactive Pi product. It is a plan, not a list of shipped capabilitie
 
 ## [Evaluation](evaluation/): gates and research records
 
+- [Owner protocol decisions, 2026-10-29](evaluation/owner-protocol-decisions-2026-10-29.md): current D35, D26, T5, T7, and AMB-02 policy, superseding advisor prerequisites.
+- [T5/T7 implementation plan](evaluation/t5-t7-preparation-2026-10-29.md): settled owner policy with engineering proof and tests still pending.
 - [Status and gates](evaluation/status.md): verified scope and remaining evaluation gates.
 - [Candidate experiment manifest](evaluation/experiment-manifest.md): an older candidate, not a registered protocol.
 - [Evaluation evidence index](evaluation/evaluation-evidence-index-2026-10-07.json): source-only ledger of gaps.
-- [Pilot corpus](../corpus/pilot/README.md): adapted cases, licenses, artifacts, quotas, review fields, draft limits.
+- [Pilot corpus](../corpus/pilot/README.md): adapted cases, licenses, artifacts, quotas, optional review metadata, and pending construct evidence.
 - [G1 case](../corpus/g1/README.md): the engineering read, edit, Bash, and publish check.
 - [Master thesis](../README.md#master-thesis): the separate protocol repository, hypotheses, methods, and decision register.
+
+The critical proof path is full deterministic construct checks, including
+applicable guest witnesses, then preregistered H1. The supervisor is
+administrative only, with no input or sign-off. No advisor confirmation, human
+audit, signature, or replacement mandatory owner acceptance gate is required.
+Independent human review is not claimed. Operational owner cryptographic
+signing remains unchanged. A digest or preregistration record does not run the
+full construct-check path.
 
 G1, component tests, capability probes, fixtures, and pilot outputs are not H1
 results. The current runner reports use a synthetic empty USD ledger and are

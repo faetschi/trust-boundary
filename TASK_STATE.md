@@ -5,11 +5,18 @@ Thesis lane only. Preparation checkpoint 2026-10-29. Product work is tracked in
 git log of this file, `../review-artifacts/TASK_STATE-history-20261023.md`,
 `../review-artifacts/TASK_STATE-pilot20-receipts-20261024.md`.
 
-Owner proposals and draft amendments are in [the advisor packet](docs/evaluation/owner-advisor-proposals-2026-10-29.md).
-Advisor confirmations remain pending; T5 and T7 are not implemented or validated.
-[The preparation plan](docs/evaluation/t5-t7-preparation-2026-10-29.md) supersedes older next-action lists: confirm decisions, implement and validate, then regenerate prep before any paid panel.
-F14 remains a draft pinned to gated `56cf99c`; any later thesis HEAD, including these documentation commits, needs its own final gate and F14 repin before freeze.
-The owner recommends the denied-after-effect probe as separate qualification; F14's G1 and route probes do not establish it.
+Current policy is the [dated owner decisions of 2026-10-29](docs/evaluation/owner-protocol-decisions-2026-10-29.md), superseding the advisor packet.
+D35, D26, T5, T7, and AMB-02 are owner-decided. The independent advisor and examiner roles are removed.
+The supervisor is administrative only, with no input or sign-off. No advisor confirmation,
+human audit, or replacement mandatory owner acceptance gate remains.
+T5 and T7 are implementation-deferred, not implemented or validated.
+[The preparation plan](docs/evaluation/t5-t7-preparation-2026-10-29.md) records the pending engineering proof, carriers, budgets, and tests.
+The critical path is full deterministic construct evidence, including applicable guest witnesses, then preregistered H1.
+The optional AI panel and AC1/raw/kappa diagnostics are non-gating. Independent human review is not claimed.
+Operational owner cryptographic signing is unchanged.
+The optional-panel tooling is implemented. Focused checks recorded 427 Go pass events and 16 local installer test passes, with no skips or failures in the final focused runs.
+The receipt location for the exact-HEAD full gate, pushes, and draft F14 repin is `F:/TBoundAssets/protocol-closeout-20261029/RESULTS.md`; consult that receipt before freeze. The old `56cf99c` gate is historical.
+The denied-after-effect `dd` probe is separate qualification, not F14-required. G1 and route probes do not establish it; the existing `dr` probe is unchanged.
 
 ## Summary
 
@@ -43,12 +50,12 @@ probes and pilot reports are not thesis results.
 
 | Step | State |
 |---|---|
-| 1. Scope cut (C-DH parked, TM-C narrowed), align D26 and residual-channel claim | Owner decided 2026-10-23; **advisor confirmation pending** |
+| 1. Scope cut (C-DH parked, TM-C narrowed), align D26 and residual-channel claim | Owner decided 2026-10-23; supersession recorded 2026-10-29 |
 | 2. Pilot reviews and corrections; freeze pilot protocol, provider, outage rules, ceilings | **In progress** (below) |
 | 3. Freeze and pin code; install; repeat G1 and both probes with fresh evidence | **Done at F13 `6162e3c`** (G1, rp, dr fresh; EVQ 21/22; route report complete) |
 | 4. Corpus mode; reset, net-sink, no-reap, V; complete EVQ and route reports | Not started; needs the owner session |
 | 5. Engineering, compliant and adaptive-cap pilots; caps, costs, calendar | Not started |
-| 6. Full corpus 299/100/20 + independent review; channel witnesses; cold partition | Designed only |
+| 6. Full corpus 299/100/20 + deterministic construct checks; channel witnesses; cold partition | Designed only |
 | 7. Final freeze of artifact, corpus, caps, analysis, funding; H1 registration | Not started |
 | 8. Run H1 under the registered rules | Not started |
 
@@ -58,15 +65,11 @@ Step 2 detail:
 - D35 step 1, deterministic construct checks: `tbound-profile corpus-check` passes locally (exit 0, byte-identical reruns). All 33 validation/source/license/root/admission/reference checks pass; all 20 compliant cases reject all four mutations; no prompt or fixture leaks (5 RepoQA read retrievals not-checked: answer in fixture by design). Guest-only, required before the corpus freeze: 11 P calibrations, 20 acceptance cells, 7 network effects. Report: `C:/Users/Admin/AppData/Local/Temp/tb-chk-evidence-20261024-r2/`.
 - F14 implementation branch `feat/corpus-check-guest-evidence`: optional `corpus-check --guest-evidence` recomputes the 38 guest checks from the producers' original outputs (runner journal replayed with its own rerun rules, `trial accept` results that now name their route and judged tree, the NET interval documents `tbound-run` now retains, the signed run files); the only operator file is a [mapping](docs/guides/construct-witnesses.md). Each imported row carries provenance and the "operator-retained, no external anchor" note (the audit chains have no external anchor, a recorded thesis limitation). Synthetic closure, the reviewer's hand-assembled attack (passes nothing), tampering and exact no-flag pilot report hashes are tested. No guest contacted or real witness validated; review, freeze and the owner's capture remain required before claiming closure.
 - 15 MultiPL-E cases carry a no-ML-training license condition; panel requests set `provider.data_collection: deny`.
-- D35 step 2, AI panel: tool ready (`docs/guides/panel-run.md`); two phases, 3 families (no Claude/GPT/DeepSeek), Gwet AC1 >= 0.80 and >= 90% agreement (Fleiss kappa reported, not gated), hard USD 10 cap (estimate USD 1.10, worst case USD 7.32). Prep rebuilt at 66a3dea: `F:/TBoundAssets/panel-prep-20261027/PANEL-READY.md`. **Owner runs it** after funding OpenRouter.
-- D35 step 3: the advisor (non-author) signs meaning records and audits disagreements, unclear/ambiguous items and 60 random unanimous roots. Not started.
-- Amended D35 tooling merged 2026-10-27 (5c1c835, from `feat/construct-review-signoff` 3ef478c):
-  - Each case carries one advisor `signoff` (human, non-author, accept/reject, audited + resolution). `construct_review` pins {content_digest, panel_receipt_digest, panel_audit_digest, panel_stats_digest}.
-  - Content-digest rule: the panel binds `evalcorpus.ContentDigest`, the manifest digest with every case `signoff`, `construct_review` and the freeze `pins` cleared. Sign-offs and F14 pins can be written after the run without detaching it.
-  - Gate per phase-2 checklist item: Gwet AC1 >= 0.80 and >= 90% raw agreement; Fleiss kappa and AC1 intervals are reported.
-  - `corpus-digest` and `preregistration-record` require `--panel-receipt --panel-audit --panel-stats` (the files the manifest pins). They recompute the statistics from the receipt ratings and replay the audit selection.
-  - The audit seed is bound to the run seed; unanimous fails are mandatory audits; `audit_sample` must be 60 (the tool then audits all eligible roots when fewer than 60 exist; see the OPEN item under "Needs the owner or advisor"). The receipt records `public_policy`, and `tbound-op cfg-install` refuses a corpus service config that differs from it.
-- Obsolete: the two-human review packets `review-artifacts/pilot-review-packets-20261024` and `-20261025`.
+- Current D35: full deterministic construct evidence remains incomplete. The historical local report does not close the guest-only obligations. `corpus-digest` and `tbound-profile preregistration-record` perform strict loading, validation, quotas, and `CheckTrials`, plus requested bindings/artifacts. They do not run full `CheckConstructs`; run `corpus-check` separately and import the applicable guest witnesses before H1.
+- Optional AI panel: supplementary only. AC1, raw agreement, kappa, non-pass/incomplete labels, and the generated audit list are diagnostics, not protocol gates. No human audit or sample-60 signature is required. Existing panel prep and dry runs are historical snapshots, not current readiness evidence.
+- With no panel flags, panel verification is skipped. Supplying evidence requires all three nonempty `--panel-receipt --panel-audit --panel-stats` paths. Hash/content/receipt/model/outcome integrity and numeric recomputation remain strict. Honest non-pass or incomplete diagnostics are allowed.
+- Legacy review fields are optional metadata. Preserve `ContentDigest` canonical serialization, including exclusion of review fields and freeze pins. Preregistration's default `reviewers: owner` is metadata, not a signature or independent-human-review claim.
+- Superseded D35 implementation history: `5c1c835` merged the advisor sign-off and panel requirements on 2026-10-27. The two-human packets `review-artifacts/pilot-review-packets-20261024` and `-20261025` were already obsolete. The dated owner decision now supersedes the later advisor/panel gates too; old evidence remains historical.
 
 ## Confirmatory corpus plan (D37)
 
@@ -75,7 +78,9 @@ Step 2 detail:
 - Clopper-Pearson 95% upper bound with 0 escapes: 1.23% at 299, ~3.3% at 110.
 - Source sweeps: `C:/Users/Admin/AppData/Local/Temp/source-feasibility/` (established pool 121 conservative / 189 optimistic).
 
-## Decisions
+## Historical decisions
+
+The dated entries below retain the policy in force when recorded. Their advisor roles, mandatory panel agreement, and human sign-off requirements are superseded by the [owner decisions of 2026-10-29](docs/evaluation/owner-protocol-decisions-2026-10-29.md). They are not current prerequisites.
 
 - 2026-10-23: C-DH parked until after H1 (static permitted-alternative table only). TM-C narrowed to mediated command-cell interpreter/socket/persistence stimuli; direct Pi-runtime bypass excluded (amendment (4), advisor to confirm). Pilot before registration.
 - Pilot provider: OpenCode Go for the engineering pilot; the frozen H1 provider for the provider-dependent final pilot (paid: ask the owner first). Initial ceilings (provisional, final from complete pilots per D32): adversarial 17 calls / 20,000 tokens / 1,200 s; compliant 7 / 10,000 / 1,200; adaptive 7 iterations / 14 calls / 1,200 s. One evidenced outage rerun per case, both records kept; never rerun adverse outcomes.
@@ -97,33 +102,31 @@ Step 2 detail:
      - Follow-ups, not F14 blockers per the review: full `ReplayGovernedHistoryForRecovery` with a denied Bash (needs a real provider-transcript fixture). The direct `CheckPublicationPrerequisites` denied-branch test is done (8654e2d).
 - The coordinated signing/provisioning session (S3'/S4', installs, tbound-netsink, trial key, Spike B) happens after the reviews, as one signing round on the final manifest digest.
 
-## Needs the owner or advisor
+## Pending engineering and operations
 
-- Owner: whether the denied-settlement probe goes into F14 (new template, `tbound-op` name, kit step, one more signed cycle and gate) or into the next freeze/corpus session (the candidate package recommends the latter); AI panel run; the corpus-mode session (S3'/S4' signing with owner keys, tbound-netsink account/unit, pinned nft rule, root forced-command trial key, Spike B); approval of every privileged guest write.
-- Advisor: D26 scope cut and residual-channel claim; panel audit and meaning-record sign-off. Options for all four open questions (D35 panel/AC1 amendments, pilot audit size, D26/TM-C scope, and since 2026-10-28 Configuration C's handling of no-effect tool errors, which can void the H1 friction clause through `complete == nComp`): `docs/evaluation/advisor-decisions.md`.
-- **OPEN (owner/advisor, before the pilot audit is signed):** `audit_sample=60` is registered, but the pilot dry run had 1 eligible unanimous root. The owner/advisor must confirm whether all-eligible is acceptable or an amendment is required.
-  - The tool audits all eligible roots when fewer than 60 exist: `supervisor/internal/panelaudit/selection.go:51` (`min(size, len(eligible))`), `docs/guides/panel-run.md:259` ("up to 60") and `:330` ("or all if fewer are eligible").
-  - The thesis protocol registers "a random audit sample of 60 unanimous confirmatory roots" with a 95%-detection rationale and states no fewer-than-60 or pilot rule: MSE_MA_Thesis `tbound/tbound-thesis.md:922-925` and `tbound/AH-technical/10-decision-register.md:380-383`.
-  - So all-eligible is tool behaviour, not an adopted protocol decision. The live run's eligible count may differ from the dry run's.
-  - The pilot has 33 roots, 2 of them ambiguous, so at most 31 roots are ever eligible. The pilot audit is therefore always a census, and every pilot case reaches the advisor's deep review (the dry run listed 33/33).
+- T5: implement lower-trust tool-result delivery for all seven retained TM-A cases, preserve provenance, and prove encounter within carrier/read-window/call-budget limits.
+- T7: specify and prove explicit no-effect classes, journal and settlement contracts, and fresh-process replay. Ambiguous failures remain conservative. No class is established as eligible by the policy decision alone.
+- AMB-02: existing `EXECUTED` / `PROCEEDS`, row 1, score 0 stays. Containment and no disclosure remain separate observations, not new execution evidence.
+- Full construct evidence: applicable guest calibrations, acceptance-cell and network witnesses, corpus-mode prerequisites, EVQ, and route evidence remain incomplete.
+- Owner-controlled operations remain deferred: paid calls, corpus-mode signing and provisioning, privileged guest writes, and F14 freeze/install. No panel run or human acceptance is a prerequisite. Parent owns Git, the full gate, and F14 repinning.
 
 ## Next (thesis lane)
 
-Current order (2026-10-29; everything below needs the owner or advisor):
+Current order, 2026-10-29:
 
-0. Advisor: answer the five items in `docs/evaluation/advisor-decisions.md`; item 5 (AMB-02 rubric) before the paid panel, because option B changes the rubric and the content digest. Decide with it audit item T5 (`docs/audit-2026-10-29.md`): the 7 TM-A pilot injections sit in the task prompt labelled `Injected ...`, the fixtures carry none, and the meaning record does not list that transformation.
-1. Owner: fund and run the panel against the manifest at `a55e0ec` or later (file `sha256:30c2a344…3e1b`, ContentDigest `sha256:0a94f507…f922`; frozen `panel.json` and `tbound-panel.exe` unchanged; steps in `F:/TBoundAssets/panel-prep-20261027/PANEL-READY.md`). Then the advisor signs; then `construct_review`.
-2. Owner: F14 freeze on a freshly gated SHA at or after `e4920b2` (latest code gates: b4a381e/f83b9bf; runtime-bundle and measurer inputs unchanged since F13), using `F14-candidate-20261027/` (set FREEZE_COMMIT and patch 01), signing and the guest chain; optional `verify-retained` positive control on G1.
-3. Owner: corpus-mode session; its C static-replay runs of A-03/A-04/B-04 plus `tbound-op verify-retained` give the guest evidence for the D09 denied settlement and its recovery (locally confirmed in the dev sandbox, `f3ba079`); network cases and net-sink need the guest.
+1. Implement and test T5/T7 under the settled owner policy. No corpus, rubric, runtime, or regeneration change is made by this documentation task.
+2. Parent: run the final exact-HEAD full gate and recheck F14.env, patch 01, README, and the measurer pair before repinning. Preserve external frozen assets in this phase.
+3. Later owner-controlled F14 signing, install, and guest chain retain the existing `dr` probe. Keep `dd` as separate qualification; G1 and route probes do not prove it.
+4. Complete corpus-mode prerequisites, required guest witnesses and full deterministic construct checks, pilots and caps, the 299/100/20 corpus, final freeze, and immutable H1 registration. Preserve H1 thresholds, scoring, denominators, and cold partition. H1 remains unexecuted.
 
-Details of the items as first recorded:
+Historical implementation and deployment detail, superseded where it requires advisor or panel gates:
 
 1. F14 freeze. Candidate package (2026-10-27, replaces `F14-prep/`): `F:/TBoundAssets/recovery-20261015/F14-candidate-20261027/` (README, F14.env, sources, kit patches 01 required / 02 recommended / 03 docs, OWNER-CHECKLIST, EVIDENCE-NEXT). Fresh admission ids committed as ade72cc (`g1-eng-2026-10-27a`, `route-probe-2026-10-27a`; dr `route-probe-dr-2026-10-27a` in F14.env); the F13 ids were still in the templates and the kit would have refused them only on the guest. FREEZE_COMMIT is pinned after the last pre-freeze commit and its full gate (WSL is busy with the product thread). Expected: same runtime bundle as F13 (`6a07a8a9…`, unverified until the P2 rebuild), new IMGDIGEST (epoch = freeze commit time), so a podman store reload; patch 01 lets `guest/05-runtime-swap.sh` accept the measurer pair 6162e3c→F14. Owner approval for signing and the guest chain. In parallel: the owner runs the panel; advisor review.
 2. Next evidence step: `F14-candidate-20261027/EVIDENCE-NEXT.md` (refreshes `F13-prep/thesis-work-package-draft.md`). Neither G1 (declares its only Bash output) nor the route probe (changes no file, asserts NO_DIFF) exercises a `denied_after_effect` Bash command, so F14's D09 settlement fix gets no guest evidence from them. A minimal two-Bash denied-settlement probe is specified there; it also re-measures post-denial/hint behaviour (earlier service-mode DENY runs stopped at the denial). No existing guest path re-verifies a retained denied settlement in a fresh process: a restart, `tbound-op status` or a second admitted request does not open the Store with the command journal (EVIDENCE-NEXT addendum). Merged as cc831e9: `tbound verify-retained --run-id` (root-only, service stopped, drops to the service uid, holds the catalog lock, opens journals without O_CREAT, refuses C-DH runs by name, one JSON line or exit 2) and `tbound-op verify-retained RUNID`; two Sol xhigh rounds (round 1: 3 should-fix + 1 nit fixed; round 2: none). `audit.OpenExisting` now backs `openExistingRecoveryJournal`, the workflow catalog open and the Store admission-journal open (all already required the file). Never run on a production-closed Store yet. With it, the probe, G1 (positive control, OWNER-CHECKLIST section 5) and the pilot cases with a static protected-path Bash step (A-03, A-04, B-04) can show "recovery verifies" on the guest. Then the corpus-mode prerequisites: EVQ-NETWORK-SINK-GUEST and witnesses for 11 calibration-P, 20 acceptance-cell, 7 network-effect checks (all pending, owner session).
 3. Corpus-mode rehearsal; watch: reset --check passes after P C-02 and the reset kills the survivor; `podman rm -f` after conmon is killed; no uid-995 pause process in root's SSH cgroup (`ps -u 995 -o pid,cgroup,cmd`); kernel-7 zombie-leader kill; the 5 real-cgroup tests with `TBOUND_REAL_CGROUP_TESTS=1` in a delegated scope.
 4. Complete EVQ and route reports; pilots; caps and costs; full corpus; registration; H1.
 
-## State 2026-10-27
+## Historical state 2026-10-27
 
 - The machine move is cancelled; work continues on FABIAN.
 - Full gates: WSL, Go 1.27.1, clean `git archive` export, the two `make boundary` commands (make is not installed in WSL), gofmt, build, vet, Windows cross-build, `go test -race -count=1 ./...`. Counts include subtests, as in the kit's `gate.sh`. Script and logs: `F:/TBoundAssets/gates-20261027/`. Of the 26 skips, 24 need the guest, root or a real cgroup and 2 are live-provider tests (`TestRealOpenRouterExchange`, `TestRealProviderDurableLinux`) that need explicit enablement.

@@ -143,26 +143,43 @@ The thesis evaluates TBound on a corpus of test cases (attacks, normal tasks,
 borderline cases) and two measures: **PVR** (how often an attack still causes a
 forbidden effect) and **ORR** (how often an allowed task is wrongly blocked).
 
-1. **Corpus**: cases adapted from established benchmarks (with source, license
-   and the adaptation recorded per case); a pilot set in `corpus/pilot/`
-   (rebuild with `python3 -I corpus/pilot/build.py --tbound-run /absolute/path/to/tbound-run`).
-2. **Deterministic checks** of every case (schema, sources/licenses, overlaps,
-   leaks, oracle mutation controls):
-   `tbound-profile corpus-check --manifest corpus/pilot/manifest.draft.json --quota-profile pilot --node "$(command -v node)" --out ./construct-report`
-   ([details](docs/guides/reproduce.md#run-deterministic-checks)).
-3. **AI construct-review panel**: three independent model families rate every
-   case blind, then against its claimed labels; agreement is measured with
-   Gwet's AC1 and raw agreement, with Fleiss' kappa reported (`tbound-panel`, below).
-4. **Human sign-off** of the panel's audit list by a non-author reviewer.
-5. **Corpus mode** on the governed host (signed corpus registration), then the
-   **pilot** and the full runs with `tbound-run plan | run | export | report`.
-6. **Evidence quality**: `tbound-run evq` and `tbound-run route-report` turn the
-   host evidence into the evidence-quality result; every obligation must pass.
-7. **Pre-registration**, then the confirmatory run. H1 is unexecuted. The current
-   `tbound-run report` uses a synthetic empty USD ledger and marks its outputs
-   non-claim-bearing; it is not a completed H1 reporting path.
+The [owner decisions of 2026-10-29](docs/evaluation/owner-protocol-decisions-2026-10-29.md)
+set the current proof path. The supervisor is administrative only. No advisor,
+examiner, human audit, or mandatory owner acceptance gate is required.
+Operational owner cryptographic signing is unchanged. Independent human review
+is not claimed.
 
-### Running the AI panel
+1. Prepare benchmark-adapted cases with retained source provenance, licenses,
+   transformations, and lost distinctions. The pilot is in `corpus/pilot/`.
+   T5 and T7 corrections are implementation-deferred. Do not regenerate this
+   corpus as part of the documentation update.
+2. Run deterministic construct checks with `tbound-profile corpus-check
+   --manifest corpus/pilot/manifest.draft.json --quota-profile pilot
+   --node "$(command -v node)" --out ./construct-report`.
+   Complete applicable guest witnesses through the
+   [construct-witness procedure](docs/guides/construct-witnesses.md).
+3. Enter corpus mode on the governed host using its signed operational
+   registration. Run the pilots with `tbound-run plan`, `run`, `export`, and
+   `report`. Complete evidence-quality and route reports with `tbound-run evq`
+   and `tbound-run route-report` under their existing requirements.
+4. Complete full deterministic construct evidence, final corpus and protocol
+   freeze, and immutable preregistration before H1. Preserve the registered
+   thresholds, N, scoring, and denominators. H1 is unexecuted. The current
+   `tbound-run report` uses a synthetic empty USD ledger and is non-claim-bearing.
+
+`corpus-digest` and `tbound-profile preregistration-record` perform strict
+loading, validation, quotas, and `CheckTrials`, with bindings and artifacts
+where requested. They do not run full `CheckConstructs`. A local green report,
+digest, or preregistration record does not prove full construct completion.
+Preregistration's default `reviewers: owner` is metadata, not a signature.
+
+The AI panel below is optional supplementary analysis. AC1, raw agreement,
+and kappa are diagnostics only. No panel files, sample-60 audit, or human
+sign-off is required. If supplying a panel bundle, provide all three nonempty
+paths. Partial or explicitly empty paths are refused. Integrity checks remain
+strict even when the reported diagnostics are non-pass or incomplete.
+
+### Run optional supplementary AI analysis
 
 `go build` prints nothing when it succeeds; it just creates the program.
 

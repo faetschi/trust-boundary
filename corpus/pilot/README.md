@@ -5,6 +5,14 @@ Pilot corpus for the G4 dry run and the first end-to-end pipeline test. It uses
 1/1/0, 20% cold). It is NOT the thesis corpus: nothing measured on it may be reported
 as a thesis result. It runs on the OpenCode Go engineering route only, no OpenRouter.
 
+Current policy is the [dated owner decisions](../../docs/evaluation/owner-protocol-decisions-2026-10-29.md).
+No advisor confirmation, human audit, signature, or replacement owner acceptance
+gate is required. The supervisor is administrative only. Operational owner
+cryptographic signing is unchanged. Independent human review is not claimed.
+The AI panel is optional supplementary analysis, with AC1/raw/kappa diagnostics
+only. T5 and T7 are owner-decided but implementation-deferred. This phase
+changes documentation only and does not regenerate corpus data or artifacts.
+
 ## Benchmark re-base (D37, D37 amendment 2026-10-24)
 Every case is adapted from an established, pinned benchmark item (owner rule: adapt established
 benchmarks, do not invent cases). The roots are the pilot list of `third/allocation.json`, disjoint
@@ -40,7 +48,7 @@ sources have zero input tokens, output tokens and money; these dimensions are ex
 as checked by `caps.scripted: true`. Real-provider budgets retain their positive token and money caps.
 
 ## Files
-- `manifest.draft.json`: the manifest. Not final until the review fields are signed.
+- `manifest.draft.json`: the manifest. Draft, with pending measured pins, T5/T7 work, and construct evidence. Review fields are optional metadata.
 - `sources.json`: the pinned upstream snippets this build embeds (RepoQA needles, HumanEval items and
   authored reference solutions) plus the benchmark revisions and source-file digests.
 - `THIRD_PARTY_NOTICES.md`: upstream sources, revisions, licenses and change notes.
@@ -95,7 +103,7 @@ as checked by `caps.scripted: true`. Real-provider budgets retain their positive
     in no fixture file, so the task cannot be completed by reading the file instead of running it. Under the pilot
     config `workflow_bash_output_paths` is empty, so Configuration C denies any bash command that changes a
     workspace path; the bash step only runs the tests and the write tool records the output.
-  Review roles, names and decisions remain TODO with `human`/`blinded` false.
+  Legacy review roles, names, and decisions remain draft metadata, not evidence of human review or a signing requirement.
 - Behavioural witness (`node_test`). The program is the agent's output file, then the pinned dataset tests,
   then a per-run completion marker. As in MultiPL-E, solution and tests share one node process: the marker
   defeats an accidental early exit; a deliberately tampering solution is not detected (it could read the
@@ -140,31 +148,11 @@ as checked by `caps.scripted: true`. Real-provider budgets retain their positive
       registration digest emptied; policy = production gate profile plus the two admission policy digests.
    2. Write those four values into `pins` of the manifest (leave `attacker_digest`; `build.py` does not touch the four pins)
       and check with `corpus-pins ... --manifest corpus/pilot/manifest.json` (exit 0).
-   3. Only then the construct review (item 2), `corpus-digest`, the corpus config, S3', the new template and S4'. After D6 rerun `corpus-pins` on
+   3. Only then admission (with the separate construct obligations in item 2), `corpus-digest`, the corpus config, S3', the new template and S4'. After D6 rerun `corpus-pins` on
       the new template: the pins must be unchanged (only the registration digest moved).
    Any later change of an input (image, bundle, Node, a template field other than the registration digest) changes the pins
    and the corpus digest.
-2. Construct review (D35 amendment 2026-10-24, `docs/guides/panel-run.md`): every case has a `TODO-` `signoff` and the
-   manifest has a `TODO-` `construct_review`. One non-author human, the advisor, signs every case; the AI panel and the
-   case author never count as that review. Order of operations:
-   1. Run the deterministic checks (`corpus-check`), then the blinded panel on the draft with `tbound-panel`. Its
-      `receipt.json` and `audit.json` record `content_digest`, the `evalcorpus.ContentDigest` of the draft: the digest
-      of the manifest with every `signoff` and the `construct_review` cleared, so it survives step 3.
-   2. The advisor fills the four `advisor_signoff` fields of every case in `audit.json` (disagreement, `unclear`,
-      ambiguous and the seeded sample of unanimous roots).
-   3. In the manifest, set every case's `signoff` to the advisor's `reviewer` name, `human: true`, `author: false` and
-      `decision: "accept"`, and for each case on the audit list also `audited: true` and a `resolution`. The same
-      `reviewer` name goes on every case. Do not copy sign-offs from another case.
-   4. Set `construct_review.content_digest` to the receipt's `content_digest` and the three panel digests to the `sha256:`
-      of the bytes of `receipt.json`, the signed `audit.json`, and `stats.json`. Any later edit of these files, or of a case, makes
-      `corpus-digest` refuse. `build.py` keeps existing sign-offs and the `construct_review` block, but a regenerated case
-      needs a new panel run. The content digest excludes every case's `signoff`, `construct_review`, and
-      all manifest `pins`. Fill the environment, model, profile and policy pins with `corpus-pins` after
-      the panel run if needed, but before `corpus-digest`. The full corpus digest still includes pins.
-      The receipt's pinned bytes also bind its per-call `rating_outcomes` and the `public_policy` the raters saw; keep
-      `ratings.jsonl` as the raw record. `tbound-op cfg-install pilot` later refuses the corpus service config unless
-      its `workflow_bash_output_paths` equal the receipt's `public_policy.bash_output_paths` and the receipt's
-      `network_destinations` are empty. A `fail` rating, even a unanimous one, puts the case on the audit list.
+2. D35 now requires deterministic construct evidence, including applicable guest witnesses, before H1. Run `tbound-profile corpus-check` separately and import the retained producers' evidence. The historical local report does not close guest-only checks. No advisor sign-off, human audit, or optional panel pass is required. Review fields remain optional metadata. T5 retains all seven TM-A cases and provenance but needs lower-trust tool-result delivery and encounter tests. T7 needs retained no-effect proof for explicit eligible classes, settlement, journal verification, and fresh-process replay. No class is established as eligible by the policy alone. AMB-02 keeps `EXECUTED` / `PROCEEDS`, row 1, score 0, with containment and no disclosure separate. See the [T5/T7 plan](../../docs/evaluation/t5-t7-preparation-2026-10-29.md). No corpus, rubric, or runtime correction is implemented by this documentation update.
 3. `evq_results` and `route_report` (the other two `run.json` inputs besides the manifest) are generated, not authored,
    from one capture of the frozen commit on Linux or WSL:
    `tbound-run evq-capture --repo <repo> --commit <freeze_commit> --out <new dir>`, then
@@ -218,25 +206,32 @@ as checked by `caps.scripted: true`. Real-provider budgets retain their positive
   (`net`, `fetch`, `http`). Guest execution of the pivots is pending the spike.
 
 ## Digest
-On Linux, with the service ceilings the scripted trials need:
 
-    tbound-profile corpus-digest --manifest corpus/pilot/manifest.draft.json --quota-profile pilot       --panel-receipt <run>/receipt.json --panel-audit <run>/audit.json --panel-stats <run>/stats.json       --artifacts corpus/pilot/artifacts --node "$(command -v node)"       --max-host-calls 17 --max-tokens 20000 --duration-seconds 1200
+On Linux, with a separately prepared manifest and the service ceilings:
 
-It prints `sha256:...` only if the strict loader, `Validate`, the trial checks, the panel evidence and the artifact
-checks pass. `--panel-receipt`, `--panel-audit` and `--panel-stats` are required. Until the advisor signs, it refuses on
-`review.human`, on `review.placeholder` (a reviewer, resolution or panel digest still starting with `TODO`), on
-`review.decision` (a decision other than exactly `accept` or `reject`) and on `review.content_digest`. A case signed
-`reject` refuses with `review.rejected`. Further refusals: `review.author` (the signer is the case author),
-`review.identity` (more than one reviewer across the cases), `review.resolution` and `review.audited` (an audited case
-without a resolution, or a resolution on a case that is not audited), and `review.digest` (a malformed panel digest).
-The panel files are refused when their sha256 is not the one in `construct_review`, when their `content_digest` is not
-that of the manifest, when either is a dry run, when the receipt does not cover every case with a complete rating,
-when the audit list and the cases marked `audited` differ, or when an audit entry lacks a decision, resolution,
-identity or time, or does not accept the case. The advisor identity must match the manifest reviewer. Admission
-checks that every phase-2 item of the pinned `stats.json` (schema v4 with the same `content_digest`) matches, within 1e-9,
-the Gwet AC1, raw agreement, Fleiss kappa and prevalence recomputed from the receipt's own ratings and that the recomputed
-gate is `pass` (AC1 at least 0.80 and raw agreement at least 0.90; kappa is reported, not gated),
-rejects any missing rating, requires the audit seed to equal the receipt's run seed, requires each advisor
-`resolution` to equal the manifest's and `signed_at` to be RFC 3339 with a timezone, and replays the audit's eligible roots, seed and 60-root sample with the panel's own
-selection function. Phase-1 agreement is reported; its gate values are not admission gates. Any edit changes the digest;
-re-pin it in the service config. Save the final file as `corpus/pilot/manifest.json`.
+```sh
+tbound-profile corpus-digest --manifest corpus/pilot/manifest.json --quota-profile pilot \
+  --artifacts corpus/pilot/artifacts --node "$(command -v node)" \
+  --max-host-calls 17 --max-tokens 20000 --duration-seconds 1200
+```
+
+The command performs strict loading, validation, quotas, and `CheckTrials`,
+with artifact checks where requested. It does not run full `CheckConstructs`.
+Neither a digest nor `tbound-profile preregistration-record` establishes full
+construct completion. Complete the separate construct checks and applicable
+guest witnesses before H1. H1 remains unexecuted.
+
+No panel files are required. With no panel flags, verification is skipped.
+For optional evidence, supply all three nonempty `--panel-receipt`,
+`--panel-audit`, and `--panel-stats` paths. Partial or explicitly empty paths
+are refused. The supplied bundle retains bounded-read and strict integrity
+checks for hashes, content and receipt bindings, models, outcomes, and numeric
+recomputation. Honest non-pass or incomplete diagnostics are allowed.
+AC1, raw agreement, kappa, and sample selection are not protocol gates.
+
+`ContentDigest` retains its canonical serialization and excludes review fields,
+`construct_review`, and freeze pins. Full `Digest` includes the pins. Preserve
+historical files and hashes. Do not invent human signatures for legacy fields.
+For optional bundle binding, use the [panel guide](../../docs/guides/panel-run.md).
+The mandatory advisor and panel admission workflow is superseded as of
+2026-10-29 and remains in Git history.

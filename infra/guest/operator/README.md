@@ -11,6 +11,14 @@ After Z1' the automation (tboundadmin) has no unrestricted root. Its only sudo r
 
 Call it as `sudo -n /opt/tbound/operator/tbound-op <verb> [args]`. There is no verb that takes a path or a free-form command.
 
+Current policy is the [owner decisions of 2026-10-29](../../../docs/evaluation/owner-protocol-decisions-2026-10-29.md).
+The supervisor is administrative only, with no input or sign-off. No advisor
+signature, human audit, or replacement owner acceptance gate is required.
+Operational owner cryptographic signing is unchanged. Panel evidence is optional
+and its agreement statistics are diagnostic. The parent validates the updated
+operator forms with the code worker before the final full gate and F14 repin.
+No operator command is executed by this documentation update.
+
 ## Installed files (all root:root)
 
 | path | mode | content |
@@ -45,13 +53,13 @@ Staged file names are per NAME directory `stage-<NAME>`.
 | `status [NAME]` | | anchor, tool digests, service/socket state, installed hashes, which NAME's state matches the installed config, state files, client status, log tail |
 | `diag l2\|mounts\|census-live\|podman-ps\|podman-ps-noreap\|nft-sink\|probe-capabilities\|image-probe\|live-listing\|netsink-journal-size` | | fixed read-only wrappers (podman as uid 995 with the service environment); output also in `_/diag-<kind>.txt` |
 | `collect l4\|evidence-out\|requests\|catalog\|audit RUNID` | | allow-listed copies into `_/` (audit needs the session audit file of RUNID; `l4` also writes `l4.txt`) |
-| `cfg-install NAME SHA` | `serve-pi-service.json` | service stopped; no spent admission; the copy hashes to SHA and equals the shipped template of NAME (pinned) byte for byte after substituting the two podman-config digests (= sha256 of the installed files), for `dr` also a NEW admission id (not in any template or earlier dr), for `pilot` the corpus digest of the installed manifest and the public policy of the installed panel receipt (`/etc/tbound/corpus/receipt.json`): its `public_policy.bash_output_paths` must equal the config's `workflow_bash_output_paths` exactly and its `network_destinations` must be empty, because the service config names no destination and cells run network-none; backup; install 0644; state `config` |
+| `cfg-install NAME SHA` | `serve-pi-service.json` | service stopped; no spent admission; the copy hashes to SHA and equals the shipped template of NAME (pinned) byte for byte after substituting the two podman-config digests (= sha256 of the installed files), for `dr` also a NEW admission id (not in any template or earlier dr), for `pilot` the corpus digest of the installed manifest; if an optional panel bundle is installed, its receipt's `public_policy.bash_output_paths` must equal the config's `workflow_bash_output_paths` exactly and its `network_destinations` must be empty; the signed service policy remains required without panel evidence; backup; install 0644; state `config` |
 | `reg-measure NAME` | | state `config` with the installed config; service stopped; `/root/ga/reg-<NAME>` absent; creates the parent cgroup (removed by a trap), runs `managed-root-measure` with the fixed flags, checks runner == TBOUND_DIGEST, uid 995, `service_config_digest` == installed config, account digests == files; result in `/root/ga/reg-<NAME>/` and `/var/tmp/tbound-op/<NAME>/managed-live-root.unsigned.json` |
 | `reg-install NAME SHA_JSON SHA_SIG` | `managed-live-root.json`, `managed-live-root.ed25519` | `managed-root-verify` under the anchor with `--runner-digest TBOUND_DIGEST`; registration binds the installed config digest and the current account digests; backup; install; re-verify; state `reg` (records REGDIGEST) |
 | `prof-install NAME SHA_PROFILE SHA_SIG SHA_TEMPLATE [SHA_PRODTEMPLATE]` | `pi-host-profile.json`, `pi-host-profile.ed25519`, `d09-cell.json` (for `dr`: `d09-cell.route-probe.json` = installed probe template, plus `d09-cell.json` = production template, SHA_PRODTEMPLATE required for dr only) | `tbound-profile verify --runtime-bundle-digest BUNDLE_DIGEST`; template BASE_TD == pin, TD == profile `ContainmentProfileDigest`, template names the recorded REGDIGEST and IMGDIGEST, profile source == SRC_DIGEST, bundle == BUNDLE_DIGEST, `route_probe` only in the dr probe template; dr production == probe minus `route_probe`; backup; install; re-verify the installed chain; archive to `/root/ga/<NAME>/` (RG-7 names); `archive.sha256` is exported to `/var/tmp/tbound-op/<NAME>/archive.sha256`; state `prof` |
 | `adopt smoke` | | the same chain verification on the installed smoke files, no install; archive to `/root/ga/smoke/`; state `started` if service and socket are active, else `prof` |
-| `rollback NAME cfg\|reg\|prof\|corpus\|all` | | service stopped; every needed backup must exist (else nothing changes); restore; re-verify signatures; the NAME's state is cleared (run `adopt` or the cycle again). `corpus` (pilot only) restores the four corpus files and records the restored corpus digest instead |
-| `manifest-install SHA CORPUS_DIGEST RECEIPT_SHA AUDIT_SHA STATS_SHA` | `stage-pilot/{manifest,receipt,audit,stats}.json` | `corpus-digest` (pilot quotas, fixed flags) of the copy == CORPUS_DIGEST; service stopped; back up all four files under `/root/ga/prev/pilot/corpus/`; install them root:root 0644 under `/etc/tbound/corpus/`; re-verify; records the digest |
+| `rollback NAME cfg\|reg\|prof\|corpus\|all` | | service stopped; every needed backup must exist (else nothing changes); restore; re-verify signatures; the NAME's state is cleared (run `adopt` or the cycle again). `corpus` (pilot only) restores the manifest and its optional panel files and records the restored corpus digest instead |
+| `manifest-install SHA CORPUS_DIGEST [RECEIPT_SHA AUDIT_SHA STATS_SHA]` | `stage-pilot/manifest.json`; optional complete `receipt.json`, `audit.json`, `stats.json` set | `corpus-digest` (pilot quotas, fixed flags) of the copy == CORPUS_DIGEST; service stopped; back up the manifest and optional bundle under `/root/ga/prev/pilot/corpus/`; install root:root 0644 under `/etc/tbound/corpus/`; re-verify; record the digest. No panel set is required; a supplied set must be complete and integrity-valid. |
 | `svc start\|stop` | | stop: service and socket. start: some NAME with state >= `prof` matches the installed config, every installed file equals the recorded hash, full chain re-verified; starts socket, then service; journal in `<NAME>/svc-start-journal.txt`; state `started`. The socket is never left stopped by a failing start |
 | `seed-live smoke\|g1` | | creates the live root `/var/lib/tbound/live/root` (995:986 0700) and its fence directory `lost+found` (995:986 0755) beneath the mount root if missing; smoke: contents exactly `SMOKE-README.txt` (0644 995:986), no-op if already so (any service state); g1: service stopped, `src/release.txt`, `out/`; listing (image root, live root, census) to `<NAME>/live-listing.txt` |
 | `client-run smoke\|g1\|rp\|dr` | | NAME's state `started` and its config installed, service+socket active, chain re-verified, live root matches the fixture, no earlier client-run for NAME; task id / bash flag from a fixed table cross-checked against the installed config; prompt from the config; generates the RID; runs the client (uid 994 / gid 985, no-new-privs) detached; response `/root/ga/out/{smoke-response,response,probe-response,dr-response}.txt` mirrored to `<NAME>/`; authoritative status in `/root/ga/state/<NAME>.client-status` (root-only, written by the detached client; `status NAME` reads only that), export copy in `<NAME>/client-run.status` |
@@ -97,13 +105,27 @@ Account, sudo and ssh changes; binary and mount reinstalls (runner swap, podman/
 - Verified on the real guest only for the smoke chain (identical re-install paths, tamper and signature refusals, measure == installed registration). The g1/rp/dr/pilot installs run the same code but need owner signatures; `dr`/`pilot` config rules are unit-tested against the real templates on the owner machine (`cfgcheck` cases in the build log) and not installed.
 - Logging goes to `/var/log/tbound-op.log` (adm can read); journald is persistent (`/var/log/journal`), and tboundadmin is in group adm.
 
-Stage `receipt.json`, the advisor-signed `audit.json`, and `stats.json` next to
-`~/stage-pilot/manifest.json`. Pass their byte SHA-256 values as the final three
-arguments to `manifest-install`. All four private copies are hashed before
-verification. Admission uses all three panel flags before and after installation.
-`rollback pilot corpus` verifies all four write-once backups before restoring them while the service
-and socket are stopped, removes the recorded corpus digest before the first file is restored (a restore that stops
-halfway leaves no digest for a half-restored set), verifies the result, and records the restored corpus digest.
-Run the unprivileged temporary-directory regressions with
-`bash infra/guest/operator/run-tests.sh --local`. Running without `--local`
-requires the configured pre-Z1 guest and performs the guest regression cycle.
+Stage `manifest.json` under `~/stage-pilot/`. The normal manifest-only form is:
+
+```sh
+sudo -n /opt/tbound/operator/tbound-op manifest-install MANIFEST_SHA CORPUS_DIGEST
+```
+
+For an optional panel bundle, stage all three files, `receipt.json`, `audit.json`,
+and `stats.json`, and append their byte hashes together. The optional bundle
+remains subject to bounded reads, hash/content/receipt/model/outcome checks, and
+numeric recomputation. AC1/raw/kappa results may honestly be non-pass or incomplete.
+No advisor signature or sample-60 human audit is required. Partial sets are refused.
+
+`rollback pilot corpus` verifies the write-once backup set before restoring it
+while the service and socket are stopped. It removes the recorded corpus digest
+before restoration and records a new digest only after successful verification.
+The backup includes the manifest and any optional panel files belonging to it.
+A restore that stops halfway leaves no digest for a half-restored set.
+
+`corpus-digest` checks admission, not full construct completion. Run separate
+`corpus-check` and applicable guest-witness imports before H1. The parent owns
+validation of the code worker's operator changes. Unprivileged temporary-directory
+regressions use `bash infra/guest/operator/run-tests.sh --local`. Without `--local`,
+the script requires the configured pre-Z1 guest and performs the guest regression
+cycle. Neither mode was run in this documentation task.

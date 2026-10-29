@@ -1,3 +1,21 @@
+# Historical packet, superseded 2026-10-29
+
+The [dated owner protocol decisions](owner-protocol-decisions-2026-10-29.md)
+replace this packet's pending advisor questions, review roles, and gates.
+The independent advisor and examiner roles are removed. The supervisor is
+administrative only, with no input or sign-off. D35, D26, T5, T7, and AMB-02
+are owner-decided. No advisor confirmation, human audit, or replacement owner
+acceptance gate is required. The optional panel and AC1, raw agreement, and
+kappa diagnostics do not gate the proof path. Operational cryptographic signing
+is unchanged.
+
+The text below is retained as historical wording, including its former pending
+questions and draft alternatives. It is not the current workflow and records no
+advisor answer. Use the [T5/T7 implementation plan](t5-t7-preparation-2026-10-29.md)
+for deferred engineering work. This supersession changes no corpus or rubric.
+
+---
+
 # Owner positions and draft advisor amendments
 
 Prepared 2026-10-29 from the owner's proposed positions. All six advisor confirmations are PENDING.

@@ -222,6 +222,17 @@ inspecting the facts. Never turn an unknown outcome into a success.
 
 ### Prepare the corpus
 
+Follow the [dated owner decisions](../evaluation/owner-protocol-decisions-2026-10-29.md).
+The critical path is full deterministic construct evidence, including applicable
+guest witnesses, followed by preregistered H1. No advisor, human audit, or new
+mandatory owner acceptance gate is required. The supervisor is administrative
+only, with no input or sign-off. Operational owner cryptographic signing is
+unchanged. Independent human review is not claimed.
+
+T5 and T7 policy is settled but implementation, proof, carriers, budgets, and
+tests remain pending. The commands below describe later reproduction. Do not
+regenerate the corpus during this documentation-only phase.
+
 Rebuild the draft pilot from the frozen export and compare it with the clean
 checkout of the same commit. The [pilot corpus](../../corpus/pilot/README.md)
 adapts pinned benchmark roots and records transformations and lost distinctions.
@@ -237,14 +248,14 @@ git diff --no-index "$TBOUND_REPO/corpus/pilot" "$TBOUND_WORK/src/corpus/pilot"
 
 ### Run deterministic checks
 
-`corpus-check` runs every deterministic construct check before the panel:
+`corpus-check` runs the separate deterministic `CheckConstructs` path:
 schema and quotas, source pins and retained licenses, root uniqueness, trial
 admission, reference solutions, acceptance-test mutation controls, effect
 satisfiability, and prompt/fixture leaks. It writes `report.json` and
 `report.md`, refuses an existing output directory, and exits nonzero on any
 failure. Checks that need the guest (P calibration, the acceptance cell,
 network effects) are reported as `guest-only`; they must pass before the corpus
-freeze, not before the panel. Add `--other-manifest PATH` to check root
+freeze and before H1. A local green report with guest-only rows is incomplete. Add `--other-manifest PATH` to check root
 separation from another corpus.
 
 Add `--guest-evidence DIR --run-config run.json --guest-binary-sha256 sha256:...`
@@ -263,57 +274,42 @@ tbound-profile corpus-check \
   --node "$(command -v node)" --out ./construct-report
 ```
 
-`corpus-digest` is the stricter admission check. The draft refuses until real
-pins, the advisor's sign-offs and a panel run that backs them exist, and it does
-not establish license permissions or semantic validity. It needs `--panel-receipt`
-along with `--panel-audit` and `--panel-stats`, the `receipt.json`, advisor-signed
-`audit.json`, and `stats.json` of the
-panel run (see [Obtain human sign-off](#obtain-human-sign-off)). See the
-[pilot checklist](../../corpus/pilot/README.md#remaining-todo).
+`corpus-digest` performs strict loading, validation, quotas, and `CheckTrials`,
+with artifact checks where requested. It does not run full `CheckConstructs`.
+A successful digest does not establish source-license permissions, semantic
+validity, or closure of guest-only construct obligations. Fill the measured
+pins in a separate unfrozen manifest copy before admission. No panel files or
+human sign-offs are required.
 
 ```sh
 tbound-profile corpus-digest \
-  --manifest "$TBOUND_REPO/corpus/pilot/manifest.draft.json" --quota-profile pilot \
-  --panel-receipt "$PANEL_RUN/receipt.json" --panel-audit "$PANEL_RUN/audit.json" --panel-stats "$PANEL_RUN/stats.json" \
+  --manifest /absolute/path/to/manifest.json --quota-profile pilot \
   --artifacts "$TBOUND_REPO/corpus/pilot/artifacts" --node "$(command -v node)" \
   --max-host-calls 17 --max-tokens 20000 --duration-seconds 1200
 ```
 
-### Run the AI panel
+### Add optional supplementary AI analysis
 
-Copy the default config to private storage. Select exactly three allowed
-model families with pinned IDs and prices. Estimate, then dry-run; neither
-command calls a provider. Follow the [panel guide](panel-run.md) for the funded
-`--live` run, blinded phases, agreement gates, budget, and retained outputs.
-AI ratings are not human reviews. Use fresh output directories.
+The [panel guide](panel-run.md) describes blinded model ratings, budget limits,
+and retained outputs. No panel run is needed for admission or preregistration.
+AC1, raw agreement, kappa, and generated audit selections are diagnostics only.
+No sample-60 audit or advisor signature is required. AI ratings and owner
+metadata do not establish independent human review.
 
-```sh
-cp "$TBOUND_REPO/supervisor/cmd/tbound-panel/panel.default.json" "$TBOUND_WORK/panel.json"
-# Edit models and prices in panel.json before continuing.
-tbound-panel --config "$TBOUND_WORK/panel.json" \
-  --manifest "$TBOUND_REPO/corpus/pilot/manifest.draft.json" --estimate
-tbound-panel --config "$TBOUND_WORK/panel.json" \
-  --manifest "$TBOUND_REPO/corpus/pilot/manifest.draft.json" \
-  --out "$TBOUND_WORK/panel-dry" --dry-run
-```
-
-### Obtain human sign-off
-
-A non-author human reviews `audit.md`, `audit.json`, `audit-packets/`, and
-`stats.md`, including disagreements, unclear and ambiguous items, and the
-seeded unanimous sample. The advisor fills the sign-off fields of `audit.json`;
-the owner records the advisor's `signoff` on every case and the `construct_review`
-digests in the manifest, then reruns the `corpus-digest` command above with the
-panel run's `receipt.json` and the signed `audit.json`. There is no CLI command
-that creates a human sign-off. See [panel audit instructions](panel-run.md#7-send-the-advisor-the-audit),
-[binding the signed audit to the manifest](panel-run.md#8-bind-the-signed-audit-to-the-manifest)
-and [manifest review requirements](../../corpus/pilot/README.md#remaining-todo).
+With no panel flags, verification is skipped. To attach evidence, supply all
+three nonempty paths, `--panel-receipt`, `--panel-audit`, and `--panel-stats`.
+Partial or explicitly empty paths are refused. The bundle remains subject to
+bounded reads, hashes, content and receipt bindings, model and outcome checks,
+and numeric recomputation. Honest non-pass or incomplete diagnostics are allowed.
+Legacy review fields remain optional metadata. Preserve `ContentDigest`
+serialization and retain old runs unchanged. A changed content snapshot needs
+matching evidence if a bundle is supplied.
 
 ### Enter corpus mode
 
 Derive the manifest's environment, model, profile, and policy pins with the
-command below, fill its pins, and validate with `corpus-digest`. The sign-offs
-must cover that pinned version: a changed case needs a new panel run. Follow the [corpus-mode procedure](../../infra/guest/PROVISIONING-SIGNING.md)
+command below, fill its pins, and validate with `corpus-digest`. Retain provenance
+for the pinned content and complete the separate construct checks. Follow the [corpus-mode procedure](../../infra/guest/PROVISIONING-SIGNING.md)
 to install its digest and re-sign the registration, template, and profile.
 Corpus mode takes prompts from the manifest and refuses client `--task` text.
 Rehearse reset, net-sink capture, no-reap cleanup, acceptance, and V on the guest.
@@ -349,7 +345,7 @@ tbound-run route-report --matrix infra/conformance/route-matrix.json \
 
 ### Run and report the pilot
 
-Prepare private `run.json` with pilot quotas, reviewed manifest and artifacts,
+Prepare private `run.json` with pilot quotas, the pinned manifest and artifacts,
 freeze and receipt pins, report digests, run directory, pinned SSH host key,
 identities, and process collector settings. The [config schema](../../supervisor/cmd/tbound-run/config.go)
 is strict; no ready-to-run config exists for an arbitrary machine. Follow the
@@ -372,22 +368,23 @@ tbound-run report --config /absolute/path/to/run.json --out /absolute/path/to/ne
 
 ### Pre-register
 
-After pilots and independent review, freeze the full corpus, artifact,
+After pilots and full deterministic construct checks, including applicable guest
+witnesses, freeze the full corpus, artifact,
 provider, budgets, exclusions, outage rule, analysis, and remaining gates.
 Generate the digest-bound summary below. Its runner config is the narrower
 [`runner.Config`](../../supervisor/internal/runner/plan.go), not the host runner's
 full `run.json`. This command records names and digests, not approval or an
-immutable registration. Register the reviewed freeze under the protocol in
+immutable registration. Its default `reviewers: owner` is metadata, not a signature
+or independent human review. This command does not run full `CheckConstructs`.
+Register the final freeze under the protocol in
 the separate `MSE_MA_Thesis` repository. See [Master thesis](../../README.md#master-thesis).
 
 ```sh
 tbound-profile preregistration-record --freeze-commit "$TBOUND_COMMIT" \
   --corpus-manifest /absolute/path/to/manifest.json --quota-profile thesis \
-  --panel-receipt "$PANEL_RUN/receipt.json" --panel-audit "$PANEL_RUN/audit.json" --panel-stats "$PANEL_RUN/stats.json" \
   --runner-config /absolute/path/to/runner-config.json \
   --research-profile /absolute/path/to/research-profile.json \
-  --research-ledger-config /absolute/path/to/research-ledger.json \
-  --reviewers REVIEWER_ONE,REVIEWER_TWO
+  --research-ledger-config /absolute/path/to/research-ledger.json
 ```
 
 ### Evaluate H1
