@@ -1259,11 +1259,11 @@ func processMountNamespaceInode(pid int) (uint64, error) {
 // foreignProcessDenied reports an access denial on a process another user owns. Such a process cannot have
 // joined the cell's mount namespace, which belongs to the service's own user namespace, without privilege
 // (trusted root); a denial on one of the service's own processes still fails closed.
-func foreignProcessDenied(procRoot, pid string, err error) bool {
+func foreignProcessDenied(pid string, err error) bool {
 	if !errors.Is(err, os.ErrPermission) {
 		return false
 	}
-	info, statErr := os.Stat(filepath.Join(procRoot, pid))
+	info, statErr := os.Stat(filepath.Join("/proc", pid))
 	if statErr != nil {
 		return false
 	}
@@ -1271,42 +1271,11 @@ func foreignProcessDenied(procRoot, pid string, err error) bool {
 	return ok && int(owner.Uid) != os.Geteuid()
 }
 
-// processExited reports whether every task of pid has exited, or pid is gone. Such a process holds no fd or namespace,
-// but its root-owned fd directory denies even its own user, so the owner check cannot clear it. A zombie leader can
-// still have live threads that hold the namespace, so each task is checked.
-func processExited(procRoot, pid string) bool {
-	tasks, err := os.ReadDir(filepath.Join(procRoot, pid, "task"))
-	if err != nil {
-		return errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ESRCH)
-	}
-	for _, task := range tasks {
-		stat, err := os.ReadFile(filepath.Join(procRoot, pid, "task", task.Name(), "stat"))
-		if errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ESRCH) {
-			continue
-		}
-		if err != nil || !exitedTaskStat(stat) {
-			return false
-		}
-	}
-	return true
-}
-
-// exitedTaskStat reports whether a /proc/<tid>/stat line names a zombie or dead task. The state follows the last ')',
-// because the command name may itself contain ')'.
-func exitedTaskStat(stat []byte) bool {
-	end := bytes.LastIndexByte(stat, ')')
-	return end >= 0 && end+2 < len(stat) && (stat[end+2] == 'Z' || stat[end+2] == 'X')
-}
-
 func processMountNamespaceReferences(ctx context.Context, expectedInode uint64) (bool, error) {
-	return scanMountNamespaceReferences(ctx, "/proc", expectedInode)
-}
-
-func scanMountNamespaceReferences(ctx context.Context, procRoot string, expectedInode uint64) (bool, error) {
 	if ctx == nil || expectedInode == 0 {
 		return false, errors.New("empty mount namespace identity")
 	}
-	entries, err := os.ReadDir(procRoot)
+	entries, err := os.ReadDir("/proc")
 	if err != nil {
 		return false, err
 	}
@@ -1320,23 +1289,22 @@ func scanMountNamespaceReferences(ctx context.Context, procRoot string, expected
 		if !isProcessID(pid) {
 			continue
 		}
-		namespace := filepath.Join(procRoot, pid, "ns", "mnt")
+		namespace := filepath.Join("/proc", pid, "ns", "mnt")
 		info, statErr := os.Stat(namespace)
 		if statErr == nil {
 			if stat, ok := info.Sys().(*syscall.Stat_t); ok && stat.Ino == expectedInode {
 				return true, nil
 			}
-		} else if foreignProcessDenied(procRoot, pid, statErr) {
+		} else if foreignProcessDenied(pid, statErr) {
 			continue
 		} else if !errors.Is(statErr, os.ErrNotExist) && !errors.Is(statErr, syscall.ESRCH) {
 			firstErr = cmp.Or(firstErr, fmt.Errorf("inspect %s: %w", namespace, statErr))
 			continue
 		}
-		fds := filepath.Join(procRoot, pid, "fd")
+		fds := filepath.Join("/proc", pid, "fd")
 		fdEntries, readErr := os.ReadDir(fds)
 		if readErr != nil {
-			if errors.Is(readErr, os.ErrNotExist) || errors.Is(readErr, syscall.ESRCH) ||
-				foreignProcessDenied(procRoot, pid, readErr) || processExited(procRoot, pid) {
+			if errors.Is(readErr, os.ErrNotExist) || errors.Is(readErr, syscall.ESRCH) || foreignProcessDenied(pid, readErr) {
 				continue
 			}
 			firstErr = cmp.Or(firstErr, fmt.Errorf("scan %s: %w", fds, readErr))

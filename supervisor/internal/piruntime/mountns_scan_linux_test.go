@@ -6,7 +6,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 	"syscall"
 	"testing"
 )
@@ -32,42 +31,6 @@ func TestMountNamespaceScanSkipsOtherUsersProcessesItCannotInspect(t *testing.T)
 		if statErr != nil || int(info.Sys().(*syscall.Stat_t).Uid) != os.Geteuid() {
 			t.Fatalf("scan failed on another user's process: %v", err)
 		}
-	}
-}
-
-// An exited process holds no namespace and no fd, yet its root-owned fd directory denies even its own user, so the
-// scan must not report UNKNOWN for it. A live process denied the same way still fails closed.
-func TestMountNamespaceScanSkipsExitedProcessWhoseFDDirectoryIsDenied(t *testing.T) {
-	if os.Geteuid() == 0 {
-		t.Skip("needs an unprivileged user so that a denied fd directory is refused")
-	}
-	for _, tc := range []struct {
-		state   string
-		wantErr bool
-	}{{"Z", false}, {"X", false}, {"S", true}} {
-		t.Run("state "+tc.state, func(t *testing.T) {
-			root := t.TempDir()
-			const pid = "4242"
-			task := filepath.Join(root, pid, "task", pid)
-			if err := os.MkdirAll(task, 0o755); err != nil {
-				t.Fatal(err)
-			}
-			if err := os.WriteFile(filepath.Join(task, "stat"), []byte(pid+" (fake) "+tc.state+" 1 0 0\n"), 0o644); err != nil {
-				t.Fatal(err)
-			}
-			fds := filepath.Join(root, pid, "fd")
-			if err := os.Mkdir(fds, 0); err != nil {
-				t.Fatal(err)
-			}
-			t.Cleanup(func() { _ = os.Chmod(fds, 0o755) }) // lets t.TempDir remove the tree
-			referenced, err := scanMountNamespaceReferences(context.Background(), root, 1)
-			if referenced {
-				t.Fatal("scan reported a reference from a process that holds no namespace")
-			}
-			if (err != nil) != tc.wantErr {
-				t.Fatalf("scan error = %v, want an error present: %t", err, tc.wantErr)
-			}
-		})
 	}
 }
 
