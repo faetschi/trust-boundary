@@ -17,6 +17,7 @@ import (
 	"tbound/supervisor/internal/broker/openrouter"
 	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/providerbridge"
+	"tbound/supervisor/internal/sessionrepo"
 )
 
 var durableEffectIDPattern = regexp.MustCompile(`"effect_id":"[^"]*"`)
@@ -24,9 +25,7 @@ var durableEffectIDPattern = regexp.MustCompile(`"effect_id":"[^"]*"`)
 // replacementRune is U+FFFD, which invalid UTF-8 becomes in the summary a configured executor releases.
 const replacementRune = "\xef\xbf\xbd"
 
-// The research Bash summary is part of the provider-result evidence the thesis replays, so its bytes are
-// frozen: no command output, whatever the runner returned. The golden string was computed from the
-// summary encoder before the product output option existed.
+// The thesis summary bytes are frozen at 02f9fb7, including the 4 KiB stream tails and raw byte counts.
 func TestBashOutputResearchSummaryBytesAreUnchanged(t *testing.T) {
 	store, _, _, g0 := durableBashFixture(t)
 	proposal, decision := durableBashProposal(`{"command":"printf bash-output","timeout":5}`)
@@ -52,9 +51,34 @@ func TestBashOutputResearchSummaryBytesAreUnchanged(t *testing.T) {
 	want := `{"tool":"bash","generation":{"id":"g1","tree_digest":"` + g0.TreeDigest() + `"},` +
 		`"transition":{"id":"transition-000001","sequence":1},"effect_id":"EFFECT","outcome":"success",` +
 		`"command":{"exit_code":7,"exit_observed":true,"command_containment_status":"not-established",` +
-		`"command_runner_profile":"synthetic-durable-bash-runner"}}`
+		`"command_runner_profile":"synthetic-durable-bash-runner",` +
+		`"stdout":"bash output\n","stdout_bytes":12,"stdout_truncated":false,` +
+		`"stderr":"warning on stderr\n","stderr_bytes":18,"stderr_truncated":false}}`
 	if got != want {
 		t.Fatalf("research Bash summary bytes changed:\n got %s\nwant %s", got, want)
+	}
+}
+
+func TestBashOutputThesisProjectionBytesAreUnchanged(t *testing.T) {
+	for _, c := range []struct {
+		name, stream, want string
+	}{
+		{"empty", "", `"stdout":"","stdout_bytes":0,"stdout_truncated":false`},
+		{"tail", strings.Repeat("x", 4096) + "z", `"stdout":"` + strings.Repeat("x", 4095) + `z","stdout_bytes":4097,"stdout_truncated":true`},
+		{"partial rune", "\xc3\xa9" + strings.Repeat("x", 4095), `"stdout":"` + strings.Repeat("x", 4095) + `","stdout_bytes":4097,"stdout_truncated":true`},
+		{"invalid UTF-8", "a\xff\xfeb", `"stdout":"a` + replacementRune + `b","stdout_bytes":4,"stdout_truncated":false`},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			got, err := json.Marshal(newDurableCommandSummary(sessionrepo.CommandResult{Stdout: []byte(c.stream)}, "test", 0))
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := `{"exit_code":0,"exit_observed":false,"command_containment_status":"not-established","command_runner_profile":"test",` +
+				c.want + `,"stderr":"","stderr_bytes":0,"stderr_truncated":false}`
+			if string(got) != want {
+				t.Fatalf("thesis command summary bytes changed:\n got %s\nwant %s", got, want)
+			}
+		})
 	}
 }
 

@@ -63,7 +63,7 @@ type DurableExecutorConfig struct {
 	CommandRunner sessionrepo.CommandRunner
 	// CommandOutputBytes, when positive, selects the product Bash stream projection: valid
 	// UTF-8, at most this many bytes, the tail when it is cut, and a truncated flag per stream. Zero keeps
-	// the research summary, which reports the exit status only and keeps its bytes.
+	// the thesis summary, which releases 4 KiB tails with the raw byte counts.
 	CommandOutputBytes int
 	// AfterDurableOperation settles a consumed workflow effect reservation from
 	// the actual Store/admission journal tail before a provider result is released.

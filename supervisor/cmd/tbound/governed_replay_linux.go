@@ -36,7 +36,7 @@ type GovernedReplayPins struct {
 	MetadataPolicyDigest string
 	BashOutputPaths      []string
 	// CommandOutputBytes is the per-stream output bound the executor of a product turn released to the
-	// provider. Zero is the research summary, which carries no command output.
+	// provider. Zero selects the thesis 4 KiB projection with raw byte counts.
 	CommandOutputBytes int
 }
 
