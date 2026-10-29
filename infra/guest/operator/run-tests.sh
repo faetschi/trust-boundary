@@ -11,7 +11,7 @@ if [[ ${1:-} == --local ]]; then
 fi
 (($# == 0)) || { echo 'Usage: run-tests.sh [--local [test names...]]' >&2; exit 2; }
 REPO=$(cd -- "$(dirname -- "$0")/../../.." && pwd)
-export GUEST_IP=${GUEST_IP:-172.29.201.195} MSYS_NO_PATHCONV=1
+export GUEST_IP=${GUEST_IP:?set GUEST_IP to the guest address measured this session, see the runbook section Guest address discovery} MSYS_NO_PATHCONV=1
 GSH=/f/TBoundAssets/recovery-20261015/F0-c7f9e9c/gssh.sh
 OUT=/f/TBoundAssets/recovery-20261015/F1/guest/operator/TESTS.md
 OP=/opt/tbound/operator/tbound-op
