@@ -123,6 +123,18 @@ func TestProductServiceReviewEventFitsAFrame(t *testing.T) {
 	}
 }
 
+// Past the count cap the event keeps the leading sorted paths, but its Text still counts every path.
+func TestProductServiceReviewEventCapsPathsAndCountsAll(t *testing.T) {
+	var paths []string
+	for i := 0; i < 300; i++ {
+		paths = append(paths, fmt.Sprintf("f%03d.go", i))
+	}
+	event := reviewEvent(productsession.Turn{ID: "turn-1", CandidateDigest: "sha256:cand"}, paths)
+	if len(event.Paths) != productEventMaxPaths || event.Paths[len(event.Paths)-1] != "f255.go" || event.Text != "300 changed paths" {
+		t.Fatalf("review event says %q with %d paths", event.Text, len(event.Paths))
+	}
+}
+
 // A cancel request of a turn that is still running has no recorded position among the provider
 // events, so it is withheld until the turn leaves the linked state; the list then only grows at its end.
 func TestProductServiceEventListOnlyGrowsAtItsEnd(t *testing.T) {
