@@ -440,10 +440,9 @@ type durableCommandSummary struct {
 	StderrTruncated          bool   `json:"stderr_truncated"`
 }
 
-// durableCommandStreamReleaseBytes bounds the released tail of each settled stream. The Store keeps the whole stream
-// up to its 1 MiB capture bound. The model gets at most this many bytes per stream, which keeps the encoded result
-// far inside the protocol frame even when every byte escapes to a six-byte JSON control sequence.
-const durableCommandStreamReleaseBytes = 16 << 10
+// durableCommandStreamReleaseBytes bounds the released tail of each settled stream. The Store keeps the whole stream up to its 1 MiB capture bound.
+// 17 results x (2 streams x 4096 x 7 escaped bytes + 4 KiB call envelope) + 64 KiB prompts = 1,110,016 request bytes, 26% of the 4 MiB cap.
+const durableCommandStreamReleaseBytes = 4 << 10
 
 // durableCommandStreamProjection releases the tail of one settled stream as text, as Pi's bash tool does: it keeps the
 // end of the output and marks truncation. A tail cut that starts inside a rune drops the partial rune, and invalid

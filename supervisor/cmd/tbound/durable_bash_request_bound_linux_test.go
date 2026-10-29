@@ -78,7 +78,9 @@ func TestBashCumulativeRequestFitsWithMarginAtThePilotToolResultCeiling(t *testi
 	if err != nil {
 		t.Fatalf("the request of %d worst-case bash results was refused: %v", pilotRunToolResultCeiling, err)
 	}
-	if size := len(request.Body()); size > openrouter.MaxRequestBytes/2 {
+	size := len(request.Body())
+	t.Logf("cumulative request at the pilot ceiling: %d of %d bytes", size, openrouter.MaxRequestBytes)
+	if size > openrouter.MaxRequestBytes/2 {
 		t.Fatalf("the request of %d worst-case bash results is %d bytes; want at most half of the %d byte cap",
 			pilotRunToolResultCeiling, size, openrouter.MaxRequestBytes)
 	}
