@@ -95,6 +95,18 @@ func bashTurn(command string) evalcorpus.ScriptTurn {
 
 func newDenialWorkflow(t *testing.T, binding corpusBinding, bashOutputPaths []string) *denialWorkflow {
 	t.Helper()
+	return newDenialWorkflowSeeded(t, binding, bashOutputPaths, func(sourcePath string) {
+		for name, content := range map[string]string{"task.txt": "task baseline\n", "secret.txt": "secret baseline\n", "note.txt": "note baseline\n"} {
+			if err := os.WriteFile(filepath.Join(sourcePath, name), []byte(content), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+	})
+}
+
+// newDenialWorkflowSeeded fills the live root with seed before the Store is seeded from it.
+func newDenialWorkflowSeeded(t *testing.T, binding corpusBinding, bashOutputPaths []string, seed func(sourcePath string)) *denialWorkflow {
+	t.Helper()
 	ctx := context.Background()
 	root := privateGovernedTestRoot(t)
 	w := &denialWorkflow{t: t, ctx: ctx, root: root, bashOutputPaths: bashOutputPaths}
@@ -106,11 +118,7 @@ func newDenialWorkflow(t *testing.T, binding corpusBinding, bashOutputPaths []st
 			t.Fatal(err)
 		}
 	}
-	for name, content := range map[string]string{"task.txt": "task baseline\n", "secret.txt": "secret baseline\n", "note.txt": "note baseline\n"} {
-		if err := os.WriteFile(filepath.Join(w.sourcePath, name), []byte(content), 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
+	seed(w.sourcePath)
 	var err error
 	if w.storeJournal, err = audit.Open(filepath.Join(root, "store-audit.jsonl")); err != nil {
 		t.Fatal(err)
