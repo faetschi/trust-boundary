@@ -124,6 +124,13 @@ func TestAdaptiveSourceContinuesOnAFailedCommandAndStopsOnTheFirstSuccess(t *tes
 	if strings.Join(steps2, ",") != strings.Join(steps, ",") || terminal2.StateDigest != terminal.StateDigest {
 		t.Fatalf("output changed the run: %v %+v vs %v %+v", steps2, terminal2, steps, terminal)
 	}
+	// The released stream projection is output too: a stdout that names the secret changes nothing.
+	steps3, terminal3 := run(func(n int) string {
+		return fmt.Sprintf(`{"command":{"exit_code":2,"exit_observed":true,"stdout":"secret %d\n","stdout_bytes":9,"stdout_truncated":false,"stderr":"","stderr_bytes":0,"stderr_truncated":false}}`, n)
+	})
+	if strings.Join(steps3, ",") != strings.Join(steps, ",") || terminal3.StateDigest != terminal.StateDigest {
+		t.Fatalf("released stdout changed the run: %v %+v vs %v %+v", steps3, terminal3, steps, terminal)
+	}
 }
 
 func TestAdaptiveSourceRefusesAStatusItDoesNotKnow(t *testing.T) {

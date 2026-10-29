@@ -14,6 +14,7 @@ import (
 	"hash"
 	"io"
 	"math"
+	"path"
 	"reflect"
 	"strconv"
 	"strings"
@@ -401,8 +402,8 @@ func sameDurableTransition(left, right delta.Transition) bool {
 // durableMutationSummary encodes a strict-JSON view of a committed mutation. It
 // deliberately contains no containment, publication, or provider claim. For a
 // Bash lease it also reports the observed command exit code and the runner's
-// descriptive profile; the containment status is a fixed, honest
-// "not-established" because the session repository never proves containment.
+// descriptive profile and the released stream projections; the containment status
+// is a fixed, honest "not-established" because the session repository never proves containment.
 type durableMutationSummaryPayload struct {
 	Tool       string                   `json:"tool"`
 	Generation durableGenerationSummary `json:"generation"`
@@ -424,12 +425,51 @@ type durableTransitionSummary struct {
 
 // durableCommandSummary reports the settled command result. CommandRunnerProfile
 // mirrors the profile the store records in its operation evidence; the
-// containment status is always "not-established".
+// containment status is always "not-established". Stdout and Stderr are the
+// released projection of the settled streams (durableCommandStreamProjection).
 type durableCommandSummary struct {
 	ExitCode                 int    `json:"exit_code"`
 	ExitObserved             bool   `json:"exit_observed"`
 	CommandContainmentStatus string `json:"command_containment_status"`
 	CommandRunnerProfile     string `json:"command_runner_profile"`
+	Stdout                   string `json:"stdout"`
+	StdoutBytes              int    `json:"stdout_bytes"`
+	StdoutTruncated          bool   `json:"stdout_truncated"`
+	Stderr                   string `json:"stderr"`
+	StderrBytes              int    `json:"stderr_bytes"`
+	StderrTruncated          bool   `json:"stderr_truncated"`
+}
+
+// durableCommandStreamReleaseBytes bounds the released tail of each settled stream. The Store keeps the whole stream up to its 1 MiB capture bound.
+// 17 results x (2 streams x 4096 x 7 escaped bytes + 4 KiB call envelope) + 64 KiB prompts = 1,110,016 request bytes, 26% of the 4 MiB cap.
+const durableCommandStreamReleaseBytes = 4 << 10
+
+// durableCommandStreamProjection releases the tail of one settled stream as text, as Pi's bash tool does: it keeps the
+// end of the output and marks truncation. A tail cut that starts inside a rune drops the partial rune, and invalid
+// UTF-8 becomes U+FFFD, so the text is a pure function of the raw bytes. rawBytes is the stream's full length.
+func durableCommandStreamProjection(stream []byte) (text string, rawBytes int, truncated bool) {
+	kept := stream
+	if len(kept) > durableCommandStreamReleaseBytes {
+		kept = kept[len(kept)-durableCommandStreamReleaseBytes:]
+		for len(kept) > 0 && !utf8.RuneStart(kept[0]) {
+			kept = kept[1:]
+		}
+		truncated = true
+	}
+	return strings.ToValidUTF8(string(kept), "�"), len(stream), truncated
+}
+
+// durableBashCommandSummary builds the model-facing view of one settled command. Governed replay calls it too, so
+// the executor and the verifier release the same bytes from the same retained command result.
+func durableBashCommandSummary(command sessionrepo.CommandResult, runnerProfile string) durableCommandSummary {
+	stdout, stdoutBytes, stdoutTruncated := durableCommandStreamProjection(command.Stdout)
+	stderr, stderrBytes, stderrTruncated := durableCommandStreamProjection(command.Stderr)
+	return durableCommandSummary{
+		ExitCode: command.ExitCode, ExitObserved: command.ExitObserved,
+		CommandContainmentStatus: "not-established", CommandRunnerProfile: runnerProfile,
+		Stdout: stdout, StdoutBytes: stdoutBytes, StdoutTruncated: stdoutTruncated,
+		Stderr: stderr, StderrBytes: stderrBytes, StderrTruncated: stderrTruncated,
+	}
 }
 
 func durableMutationSummary(tool string, mutation sessionrepo.MutationResult, runner sessionrepo.CommandRunner) (json.RawMessage, error) {
@@ -446,12 +486,8 @@ func durableMutationSummary(tool string, mutation sessionrepo.MutationResult, ru
 		if mutation.Command == nil {
 			return nil, errors.New("durable bash mutation returned no command result")
 		}
-		payload.Command = &durableCommandSummary{
-			ExitCode:                 mutation.Command.ExitCode,
-			ExitObserved:             mutation.Command.ExitObserved,
-			CommandContainmentStatus: "not-established",
-			CommandRunnerProfile:     durableCommandRunnerProfile(runner),
-		}
+		commandSummary := durableBashCommandSummary(*mutation.Command, durableCommandRunnerProfile(runner))
+		payload.Command = &commandSummary
 	}
 	encoded, err := json.Marshal(payload)
 	if err != nil {
@@ -557,10 +593,44 @@ type durableWriteArgumentsPayload struct {
 	Content string `json:"content"`
 }
 
+// durableWorkspaceRoots are the absolute prefixes under which the model may name a workspace file. Pi reports the
+// workspace as its working directory, which the Pi cell mounts at PiWorkerCellDefaultWorkingDirectory. The command
+// cell mounts the same workspace at PiWorkerCellWorkdir, where bash runs.
+var durableWorkspaceRoots = []string{piruntime.PiWorkerCellDefaultWorkingDirectory, piruntime.PiWorkerCellWorkdir}
+
+// durableWorkspaceRelativePath maps a path the model names to the Store-relative path it denotes. A relative path
+// resolves inside the workspace. An absolute path counts only under a workspace root at a slash boundary. Lexical
+// cleaning drops "." and empty segments and resolves ".." in place, so "build/../task.txt" names "task.txt". The
+// Store holds no symbolic links, so cleaning names the file the spelling named. A path that would leave the
+// workspace is refused here, before the Store or admission sees it.
+func durableWorkspaceRelativePath(modelPath string) (string, error) {
+	relative := modelPath
+	if strings.HasPrefix(modelPath, "/") {
+		root, found := "", false
+		for _, candidate := range durableWorkspaceRoots {
+			if modelPath == candidate || strings.HasPrefix(modelPath, candidate+"/") {
+				root, found = candidate, true
+				break
+			}
+		}
+		if !found {
+			return "", errors.New("path is outside the workspace")
+		}
+		relative = strings.TrimLeft(modelPath[len(root):], "/")
+	}
+	cleaned := path.Clean(relative)
+	if cleaned == "." || cleaned == ".." || strings.HasPrefix(cleaned, "../") {
+		return "", errors.New("path is outside the workspace")
+	}
+	return cleaned, nil
+}
+
 func durableWriteArguments(raw json.RawMessage) (string, []byte, error) {
+	if err := durableRequireExactMembers(raw, "path", "content"); err != nil {
+		return "", nil, fmt.Errorf("write arguments: %w", err)
+	}
 	var arguments durableWriteArgumentsPayload
 	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&arguments); err != nil {
 		return "", nil, fmt.Errorf("write arguments: %w", err)
 	}
@@ -570,12 +640,18 @@ func durableWriteArguments(raw json.RawMessage) (string, []byte, error) {
 	if arguments.Path == "" {
 		return "", nil, errors.New("write arguments require a path")
 	}
-	return arguments.Path, []byte(arguments.Content), nil
+	storePath, err := durableWorkspaceRelativePath(arguments.Path)
+	if err != nil {
+		return "", nil, err
+	}
+	return storePath, []byte(arguments.Content), nil
 }
 
+// durableEditArgumentsPayload keeps each replacement raw, so every edit object gets the same exact-member check
+// as the top level before it is decoded.
 type durableEditArgumentsPayload struct {
-	Path  string                          `json:"path"`
-	Edits []durableEditReplacementPayload `json:"edits"`
+	Path  string            `json:"path"`
+	Edits []json.RawMessage `json:"edits"`
 }
 
 type durableEditReplacementPayload struct {
@@ -584,9 +660,11 @@ type durableEditReplacementPayload struct {
 }
 
 func durableEditArguments(raw json.RawMessage) (string, []sessionrepo.Replacement, error) {
+	if err := durableRequireExactMembers(raw, "path", "edits"); err != nil {
+		return "", nil, fmt.Errorf("edit arguments: %w", err)
+	}
 	var arguments durableEditArgumentsPayload
 	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&arguments); err != nil {
 		return "", nil, fmt.Errorf("edit arguments: %w", err)
 	}
@@ -596,11 +674,22 @@ func durableEditArguments(raw json.RawMessage) (string, []sessionrepo.Replacemen
 	if arguments.Path == "" || len(arguments.Edits) == 0 {
 		return "", nil, errors.New("edit arguments require a path and at least one replacement")
 	}
+	storePath, err := durableWorkspaceRelativePath(arguments.Path)
+	if err != nil {
+		return "", nil, err
+	}
 	edits := make([]sessionrepo.Replacement, len(arguments.Edits))
-	for index, edit := range arguments.Edits {
+	for index, rawEdit := range arguments.Edits {
+		if err := durableRequireExactMembers(rawEdit, "oldText", "newText"); err != nil {
+			return "", nil, fmt.Errorf("edit arguments: edits[%d]: %w", index, err)
+		}
+		var edit durableEditReplacementPayload
+		if err := json.Unmarshal(rawEdit, &edit); err != nil {
+			return "", nil, fmt.Errorf("edit arguments: edits[%d]: %w", index, err)
+		}
 		edits[index] = sessionrepo.Replacement{OldText: edit.OldText, NewText: edit.NewText}
 	}
-	return arguments.Path, edits, nil
+	return storePath, edits, nil
 }
 
 // durableBashArgumentsPayload mirrors the adapter's bash tool schema exactly:
@@ -613,13 +702,14 @@ type durableBashArgumentsPayload struct {
 	Timeout *float64 `json:"timeout,omitempty"`
 }
 
-// durableBashArguments strictly decodes the adapter bash arguments. Unknown
-// fields and trailing JSON are rejected so the trusted supervisor never runs a
-// command that differs from what the adapter signed.
+// durableBashArguments strictly decodes the adapter bash arguments. Member names must be exact and unique, and
+// trailing JSON is rejected, so the trusted supervisor never runs a command that differs from what the adapter signed.
 func durableBashArguments(raw json.RawMessage) (string, error) {
+	if err := durableRequireExactMembers(raw, "command", "timeout"); err != nil {
+		return "", fmt.Errorf("bash arguments: %w", err)
+	}
 	var arguments durableBashArgumentsPayload
 	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&arguments); err != nil {
 		return "", fmt.Errorf("bash arguments: %w", err)
 	}
@@ -730,13 +820,14 @@ func (window durableReadWindow) apply(content []byte) []byte {
 	return bytes.Join(lines[start:end], []byte("\n"))
 }
 
-// durableReadArguments strictly decodes the adapter read arguments. Unknown
-// fields and trailing JSON are rejected so the trusted supervisor never reads a
-// path that differs from what the adapter signed.
+// durableReadArguments strictly decodes the adapter read arguments. Member names must be exact and unique, and
+// trailing JSON is rejected, so the trusted supervisor never reads a path that differs from what the adapter signed.
 func durableReadArguments(raw json.RawMessage) (string, durableReadWindow, error) {
+	if err := durableRequireExactMembers(raw, "path", "offset", "limit"); err != nil {
+		return "", durableReadWindow{}, fmt.Errorf("read arguments: %w", err)
+	}
 	var arguments durableReadArgumentsPayload
 	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&arguments); err != nil {
 		return "", durableReadWindow{}, fmt.Errorf("read arguments: %w", err)
 	}
@@ -754,7 +845,11 @@ func durableReadArguments(raw json.RawMessage) (string, durableReadWindow, error
 	if err != nil {
 		return "", durableReadWindow{}, fmt.Errorf("read arguments: %w", err)
 	}
-	return arguments.Path, durableReadWindow{offset: offset, limit: limit}, nil
+	storePath, err := durableWorkspaceRelativePath(arguments.Path)
+	if err != nil {
+		return "", durableReadWindow{}, fmt.Errorf("read arguments: %w", err)
+	}
+	return storePath, durableReadWindow{offset: offset, limit: limit}, nil
 }
 
 // durableContentDigest is the bare sha256 commitment the session repository
@@ -762,6 +857,42 @@ func durableReadArguments(raw json.RawMessage) (string, durableReadWindow, error
 func durableContentDigest(content []byte) string {
 	digest := sha256.Sum256(content)
 	return "sha256:" + hex.EncodeToString(digest[:])
+}
+
+// durableRequireExactMembers refuses an argument object unless it is a JSON object whose member names are exactly
+// the given schema names and each appears once. Go's decoder matches member names case-insensitively, so a case
+// variant would otherwise replace a schema member, and a repeated name would silently keep its last value.
+func durableRequireExactMembers(raw json.RawMessage, schemaNames ...string) error {
+	allowed := make(map[string]bool, len(schemaNames))
+	for _, name := range schemaNames {
+		allowed[name] = true
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	opening, err := decoder.Token()
+	if err != nil {
+		return err
+	}
+	if opening != json.Delim('{') {
+		return errors.New("tool arguments must be a JSON object")
+	}
+	seen := make(map[string]bool, len(schemaNames))
+	for decoder.More() {
+		token, err := decoder.Token()
+		if err != nil {
+			return err
+		}
+		name, isName := token.(string)
+		if !isName || !allowed[name] || seen[name] {
+			return fmt.Errorf("tool argument member %v is not a unique schema name", token)
+		}
+		seen[name] = true
+		var value json.RawMessage
+		if err := decoder.Decode(&value); err != nil {
+			return err
+		}
+	}
+	_, err = decoder.Token()
+	return err
 }
 
 func durableNoTrailingJSON(decoder *json.Decoder) error {

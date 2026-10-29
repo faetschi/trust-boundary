@@ -725,3 +725,18 @@ func mutationOutput(tool, generation, treeDigest, transition string, sequence ui
 	}
 	return encoded
 }
+
+// The durable executor releases a bash command's settled streams with their byte counts and truncation flags.
+// The provider decoder must accept exactly that shape and keep refusing fields it does not know.
+func TestValidateExecutorOutputAcceptsReleasedBashStreams(t *testing.T) {
+	released := `{"tool":"bash","generation":{"id":"g1","tree_digest":"tree-g1"},"transition":{"id":"transition-000001","sequence":1},"effect_id":"effect-1","outcome":"success","command":{"exit_code":0,"exit_observed":true,"command_containment_status":"not-established","command_runner_profile":"fixture","stdout":"out\n","stdout_bytes":4,"stdout_truncated":false,"stderr":"","stderr_bytes":0,"stderr_truncated":false}}`
+	nextGeneration, _, transitionID, transitionSequence, effectID, err := validateExecutorOutput("bash", json.RawMessage(released), "g0", "tree-g0")
+	if err != nil || nextGeneration != "g1" || transitionID != "transition-000001" || transitionSequence != 1 || effectID != "effect-1" {
+		t.Fatalf("released bash streams: generation=%q transition=%q sequence=%d effect=%q err=%v",
+			nextGeneration, transitionID, transitionSequence, effectID, err)
+	}
+	withUnknownField := strings.Replace(released, `"stderr_truncated":false`, `"stderr_truncated":false,"stdout_raw":"x"`, 1)
+	if _, _, _, _, _, err := validateExecutorOutput("bash", json.RawMessage(withUnknownField), "g0", "tree-g0"); err == nil {
+		t.Fatal("bash summary with an unknown command field was accepted")
+	}
+}

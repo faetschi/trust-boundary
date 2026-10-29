@@ -1114,8 +1114,8 @@ func (v *governedStoreReplayVerifier) expectedDurableOutput(verified *governedRe
 			operation.ExitCode == nil || *operation.ExitCode != result.Command.ExitCode || operation.CommandContainmentStatus != "not-established" {
 			return nil, "", "", "", 0, "", errors.New("Bash operation evidence differs from exact command specification or observed exit")
 		}
-		summary.Command = &durableCommandSummary{ExitCode: result.Command.ExitCode, ExitObserved: true,
-			CommandContainmentStatus: "not-established", CommandRunnerProfile: result.RunnerProfile}
+		commandSummary := durableBashCommandSummary(result.Command, result.RunnerProfile)
+		summary.Command = &commandSummary
 	} else {
 		return nil, "", "", "", 0, "", errors.New("unsupported Store tool in governed provider result")
 	}

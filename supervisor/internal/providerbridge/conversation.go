@@ -1233,6 +1233,12 @@ type mutationSummary struct {
 		ExitObserved             bool   `json:"exit_observed"`
 		CommandContainmentStatus string `json:"command_containment_status"`
 		CommandRunnerProfile     string `json:"command_runner_profile"`
+		Stdout                   string `json:"stdout"`
+		StdoutBytes              int    `json:"stdout_bytes"`
+		StdoutTruncated          bool   `json:"stdout_truncated"`
+		Stderr                   string `json:"stderr"`
+		StderrBytes              int    `json:"stderr_bytes"`
+		StderrTruncated          bool   `json:"stderr_truncated"`
 	} `json:"command,omitempty"`
 }
 
