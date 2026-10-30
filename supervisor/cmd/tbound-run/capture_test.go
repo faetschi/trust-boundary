@@ -101,22 +101,26 @@ func TestLoadEVQCaptureRefusals(t *testing.T) {
 		"no freeze commit":                     {"", capSpec{pkgs: good}},
 		"wrong schema":                         {commit, capSpec{pkgs: good, mutate: func(r *evqCapture, _ *[]byte) { r.Schema = "tbound-evq-capture/v0" }}},
 		"-run filter": {commit, capSpec{pkgs: good, mutate: func(r *evqCapture, _ *[]byte) {
-			r.Argv = []string{"go", "test", "-race", "-count=1", "-json", "-run", "TestX", "./..."}
+			r.Argv = []string{"go", "test", "-race", "-count=1", "-timeout", "40m", "-json", "-run", "TestX", "./..."}
 		}}},
 		"-skip filter": {commit, capSpec{pkgs: good, mutate: func(r *evqCapture, _ *[]byte) {
-			r.Argv = []string{"go", "test", "-race", "-count=1", "-json", "-skip", "TestY", "./..."}
+			r.Argv = []string{"go", "test", "-race", "-count=1", "-timeout", "40m", "-json", "-skip", "TestY", "./..."}
 		}}},
 		"-short": {commit, capSpec{pkgs: good, mutate: func(r *evqCapture, _ *[]byte) {
-			r.Argv = []string{"go", "test", "-race", "-count=1", "-short", "-json", "./..."}
+			r.Argv = []string{"go", "test", "-race", "-count=1", "-timeout", "40m", "-short", "-json", "./..."}
 		}}},
 		"one package only": {commit, capSpec{pkgs: good, mutate: func(r *evqCapture, _ *[]byte) {
-			r.Argv = []string{"go", "test", "-race", "-count=1", "-json", "./internal/alpha"}
+			r.Argv = []string{"go", "test", "-race", "-count=1", "-timeout", "40m", "-json", "./internal/alpha"}
 		}}},
 		"no race": {commit, capSpec{pkgs: good, mutate: func(r *evqCapture, _ *[]byte) {
-			r.Argv = []string{"go", "test", "-count=1", "-json", "./..."}
+			r.Argv = []string{"go", "test", "-count=1", "-timeout", "40m", "-json", "./..."}
 		}}},
 		"cached run": {commit, capSpec{pkgs: good, mutate: func(r *evqCapture, _ *[]byte) {
-			r.Argv = []string{"go", "test", "-race", "-json", "./..."}
+			r.Argv = []string{"go", "test", "-race", "-timeout", "40m", "-json", "./..."}
+		}}},
+		// Go's default 10-minute limit kills cmd/tbound under -race, so the run it records is not the full suite.
+		"default timeout": {commit, capSpec{pkgs: good, mutate: func(r *evqCapture, _ *[]byte) {
+			r.Argv = []string{"go", "test", "-race", "-count=1", "-json", "./..."}
 		}}},
 		"another toolchain":  {commit, capSpec{pkgs: good, mutate: func(r *evqCapture, _ *[]byte) { r.GoVersion = "go version go1.26.0 linux/amd64" }}},
 		"mod=mod":            {commit, capSpec{pkgs: good, mutate: func(r *evqCapture, _ *[]byte) { r.Env["GOFLAGS"] = "-mod=mod" }}},

@@ -26,7 +26,7 @@ import (
 )
 
 // The EVQ test evidence is one controlled capture of the frozen commit: a clean `git archive` of the
-// commit, the full filter-free `go test -race -count=1 -json ./...` of it under a pinned toolchain
+// commit, the full filter-free `go test -race -count=1 -timeout 40m -json ./...` of it under a pinned toolchain
 // environment, and a record that binds the commit, the extracted tree, the toolchain, the exact
 // invocation, the exit status and the test JSON together. `tbound-run evq` and `route-report` take
 // test evidence only from such a capture, and only for the commit run.json freezes.
@@ -45,7 +45,8 @@ const (
 )
 
 // evqCaptureArgv is the one accepted invocation. There is no -run, -skip, -short or package filter.
-var evqCaptureArgv = []string{"go", "test", "-race", "-count=1", "-json", "./..."}
+// The timeout matches the gate: the default 10 minutes kills cmd/tbound under -race.
+var evqCaptureArgv = []string{"go", "test", "-race", "-count=1", "-timeout", "40m", "-json", "./..."}
 
 // evqPinnedInputs are the files of the frozen commit that decide what the EVQ results and the route
 // report mean. The capture records their digest as extracted, so a mapping or matrix that is not the
