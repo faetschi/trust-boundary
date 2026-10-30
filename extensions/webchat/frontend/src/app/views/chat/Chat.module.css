@@ -1,0 +1,501 @@
+/*
+ * The Chat view: the conversation head, posture, filter toolbar, transcript and tool cards. The view fills its column:
+ * the transcript scrolls inside it, and the composer stays pinned under it. Colour comes from the alias tier only, and
+ * state colour comes from the Chip and StateDot primitives, never from here. Geometry and type come from the tier-3 tokens.
+ * The transcript follows the v2 mockup: a user message is a bubble on the right; assistant text is flat under a label row
+ * with a rule and the record; a tool activity is a compact card; a turn is a hairline divider, not a box.
+ */
+
+/* The column's rows are tight: the head, the toolbar and the transcript, the composer and the footer, with one gap between. */
+.view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* The conversation head: the session title, with the window's count on its right, and the Pi identity and status beneath
+   it on one line where they fit. */
+.conversation {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.headRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-1) var(--space-3);
+  min-width: 0;
+}
+
+.facts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+  min-width: 0;
+}
+
+/* The readings line: small and muted, as the v2 meta line is. */
+.identity {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--muted-foreground);
+  overflow-wrap: anywhere;
+}
+
+.status {
+  margin: 0;
+  font-size: var(--text-2xs);
+  color: var(--muted-foreground);
+}
+
+/* The posture chips and the filters share the toolbar row, and wrap onto the next line only where the column is narrow. */
+.posture {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.postureEmpty {
+  font-size: var(--text-2xs);
+  color: var(--muted-foreground);
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+
+.summary {
+  margin: 0;
+  font-size: var(--text-2xs);
+  color: var(--muted-foreground);
+}
+
+/* The transcript region fills what is left of the column, and scrolls inside it. It is positioned so the jump sits on it. The
+   labels inside the transcript are contained by the log (its own positioned box), not by this region (see .log). */
+.logWrap {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* The log is positioned: it is the containing block of the labels inside it (visually hidden text, absolutely positioned). A
+   positioned log scrolls them with its own content. Round 3 found the wrapper was the containing block instead, which does not
+   clip, so those labels grew the workspace's scroll range by about 200 px at 844 by 390 (check K). */
+.log {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* At wide widths the transcript keeps at least 260 px, whatever the window's height. Its size comes from the column, not from
+   its content (contain: size), so the column's minimum is its rows plus this 260 px, and a short window scrolls the column. */
+@media (min-width: 761px) {
+  .log {
+    min-height: 260px;
+    contain: size;
+  }
+}
+
+/* A turn keeps its natural height. The log scrolls; a turn that shrank to fit the log would clip its content. A turn has no box:
+   its heading is a divider, and its messages and cards sit on the page. */
+.turn {
+  flex: none;
+  min-width: 0;
+  color: var(--foreground);
+}
+
+/* The turn heading: a small muted label, a hairline rule, and the element count. */
+.turnHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font: 500 var(--text-2xs) / var(--lh-2xs) var(--font-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.turnLabel,
+.turnCount {
+  flex: none;
+  white-space: nowrap;
+}
+
+.turnRule {
+  flex: 1 1 auto;
+  min-width: 1rem;
+  height: 1px;
+  background: var(--border);
+}
+
+.turnBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-2) 0 0;
+}
+
+.msg {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  max-width: 72ch;
+  min-width: 0;
+}
+
+/* A user message sits on the right; an assistant message is flat, on the left. */
+.msg[data-role="user"] {
+  align-self: flex-end;
+  align-items: flex-end;
+}
+
+/* The label row: the speaker, its reading, a hairline rule, and the record it came from. */
+.msgHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  align-self: stretch;
+  min-width: 0;
+  font-size: var(--text-2xs);
+  color: var(--muted-foreground);
+}
+
+.msgRole {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+  margin: 0;
+  font: 400 var(--text-2xs) / var(--lh-2xs) var(--font-sans);
+  color: var(--muted-foreground);
+}
+
+.rule {
+  flex: 1 1 auto;
+  min-width: 1rem;
+  height: 1px;
+  background: var(--border);
+}
+
+.msgText {
+  margin: var(--space-1) 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* A user message is a bubble: the info tint over the card, a hairline edge, a 12 px radius, and at most 68% of the column. */
+.msg[data-role="user"] .msgText {
+  max-width: 68%;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--info) 16%, var(--card));
+}
+
+.msg[data-role="system"] .msgText {
+  padding-left: var(--space-2);
+  border-left: 2px solid var(--border);
+  font-size: var(--text-sm);
+  color: var(--muted-foreground);
+}
+
+.assistant {
+  margin-top: var(--space-1);
+  min-width: 0;
+}
+
+/* The meta row under each message: the time and the Copy icon. It is visible at rest on every device, as the v2 reference shows. */
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  margin-top: var(--space-1);
+  font-size: var(--text-2xs);
+}
+
+.msg[data-role="user"] .meta {
+  justify-content: flex-end;
+}
+
+.copy,
+.recordButton {
+  flex: none;
+  min-height: 24px;
+  min-width: 24px;
+  padding: 0 var(--space-1);
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--muted-foreground);
+  font: 500 var(--text-2xs) / var(--lh-2xs) var(--font-sans);
+  cursor: pointer;
+}
+
+/* The Copy control is an icon alone, centred in its box. */
+.copy {
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+}
+
+/* The record is a reference, so it reads in the mono face, as the tool card's record does. */
+.recordButton {
+  font-family: var(--font-mono);
+  font-weight: 400;
+}
+
+.copy:hover,
+.recordButton:hover {
+  background: var(--accent);
+  color: var(--foreground);
+}
+
+.copy:focus-visible,
+.recordButton:focus-visible,
+.jump:focus-visible {
+  outline: var(--focus-width) solid var(--ring);
+  outline-offset: 2px;
+}
+
+.recordRef {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--muted-foreground);
+}
+
+.note {
+  margin-top: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--muted-foreground);
+}
+
+/* A tool activity: a compact card, with its icon tile at the left, the target bold and the detail in mono. Its disclosure is the
+   card itself, so the disclosure's own hairline is dropped and its summary takes the card's padding. */
+.card {
+  min-width: 0;
+  max-width: 34rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--foreground) 3%, transparent);
+}
+
+.card details {
+  border-top: 0;
+}
+
+.card summary {
+  padding: var(--space-2) var(--space-2h);
+}
+
+/* A denied or refused record: the destructive tint, in the border and the ground, as the v2 reference shows. */
+.refused {
+  border-color: color-mix(in oklch, var(--destructive) 38%, transparent);
+  background: color-mix(in oklch, var(--destructive) 8%, transparent);
+}
+
+/* The tool card's summary row: the icon tile, the target and its detail line, and the chips, with gaps between them. At phone
+   widths the row wraps, so the chips move under the summary and never past the card edge. */
+.head {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  min-width: 0;
+}
+
+/* The icon tile: 28 px, on the muted ground. */
+.glyph {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: var(--radius-sm);
+  background: var(--muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--muted-foreground);
+}
+
+.titles {
+  display: flex;
+  flex: 1 1 10rem;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* The target: the bounded summary, in bold. It takes the spare width and ends in an ellipsis. Its full text is the title, and the
+   step beneath repeats it. */
+.summaryText {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+/* The detail line: the tool and the record, in mono. */
+.byline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--muted-foreground);
+}
+
+.name {
+  flex: none;
+}
+
+.chips {
+  display: inline-flex;
+  flex: 0 1 auto;
+  justify-content: flex-end;
+  max-width: 100%;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: 0 var(--space-2h);
+}
+
+.step {
+  display: grid;
+  grid-template-columns: 4.25rem minmax(0, 1fr);
+  gap: var(--space-2);
+  align-items: baseline;
+  font-size: var(--text-sm);
+}
+
+.stepLabel {
+  font: 500 var(--text-2xs) / var(--lh-2xs) var(--font-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.stepBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  color: var(--muted-foreground);
+}
+
+.line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+
+.digest {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.detail {
+  padding-left: var(--space-2);
+  border-left: 2px solid var(--border);
+  font-size: var(--text-xs);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--muted-foreground);
+}
+
+/* The time is at full emphasis: it is the one meta item that is never muted. */
+.time {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--foreground);
+}
+
+@media (pointer: coarse) {
+  .copy,
+  .recordButton {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+/* The composer dock: the view's last box, holding the jump and the composer. At wide widths it is in the column. */
+.dock {
+  position: relative;
+}
+
+/* Jump to latest sits on the dock's top edge, over the foot of the transcript: 12 px above the transcript's foot, across the
+   view's 8 px gap. It is drawn above the composer, so the composer never covers it. */
+.jump {
+  position: absolute;
+  bottom: calc(100% + var(--space-2) + var(--space-3));
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  min-height: var(--row-h-button);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--secondary);
+  color: var(--foreground);
+  font: 600 var(--text-xs) / var(--lh-xs) var(--font-sans);
+  cursor: pointer;
+}
+
+.jump:hover {
+  background: var(--accent);
+}
+
+/* At phone widths the page scrolls and the transcript is as tall as its content, so the composer dock sticks to the bottom
+   of the viewport and the transcript scrolls under it. Its opaque ground hides the transcript behind the dock's padding.
+   At the page's end the dock is in its natural place, after the last message, so it covers nothing of the transcript.
+   The page reserves the dock's clearance under the viewport's foot (base.css, --dock-clearance), so a focused control never scrolls under the dock.
+   z-sticky sits under the drawer's scrim (--z-scrim) and the drawer (--z-overlay), so an open drawer covers the dock. */
+@media (max-width: 760px) {
+  .dock {
+    position: sticky;
+    bottom: 0;
+    z-index: var(--z-sticky);
+    padding-bottom: var(--space-2);
+    background: var(--background);
+  }
+}

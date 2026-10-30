@@ -19,6 +19,13 @@ if [[ "$TARGET_UID" == 0 ]]; then
   printf 'The Podman trial account must be a non-root user.\n' >&2
   exit 2
 fi
+if [[ "$TARGET_USER" == tbound-pi ]]; then
+  # The managed service account must have NO /etc/subuid or /etc/subgid range: with one,
+  # rootless Podman calls the setuid newuidmap, which NoNewPrivileges forbids
+  # (infra/guest/PROVISIONING-SIGNING.md, P14). This script adds such a range below.
+  printf 'tbound-pi is the managed service account and must have no subordinate ID range; pass the provisioning login user.\n' >&2
+  exit 2
+fi
 
 . /etc/os-release
 if [[ "${ID:-}" != ubuntu || "${VERSION_CODENAME:-}" != noble || "${VERSION_ID:-}" != 24.04 ]]; then
@@ -302,6 +309,13 @@ must_remain_enabled = {'checkdate', 'checkvaliduntil'}
 true_values = {'yes', 'true', 'on', '1'}
 false_values = {'no', 'false', 'off', '0'}
 failed = False
+
+def relevant_parts(name):
+    lowered = name.lower()
+    split_parts = re.split(r'::|[._-]', lowered)
+    scoped_parts = [re.sub(r'[._-]', '', part) for part in lowered.split('::')]
+    return split_parts + scoped_parts
+
 try:
     dump = subprocess.run(['apt-config', 'dump'], check=True, text=True,
                           stdout=subprocess.PIPE, stderr=subprocess.DEVNULL).stdout
@@ -314,16 +328,24 @@ for line in dump.splitlines():
     if not stripped or stripped.startswith('#'):
         continue
     match = re.fullmatch(r'([^\s;]+)\s+"?([^";]*)"?\s*;', stripped)
-    parts = re.split(r'::|[._-]', stripped.split(None, 1)[0].lower())
-    if not any(re.sub(r'[-_]', '', part) in keys for part in parts):
+    raw_key = stripped.split(None, 1)[0]
+    if not any(re.sub(r'[-_]', '', part) in keys for part in relevant_parts(raw_key)):
         continue
     if not match:
         failed = True
         continue
-    key_parts = re.split(r'::|[._-]', match.group(1).lower())
+    key_parts = relevant_parts(match.group(1))
     if not any(re.sub(r'[-_]', '', part) in keys for part in key_parts):
         continue
-    value = match.group(2).strip().lower()
+    raw_value = match.group(2).strip()
+    value = raw_value.lower()
+    canonical_key = '::'.join(re.sub(r'[._-]', '', part)
+                              for part in match.group(1).lower().split('::'))
+    if canonical_key == 'dir::etc::trusted':
+        # APT's stock trusted keyring filename is a path, not a boolean.
+        if raw_value != 'trusted.gpg':
+            failed = True
+        continue
     key_name = next((re.sub(r'[-_]', '', part) for part in key_parts
                      if re.sub(r'[-_]', '', part) in keys), '')
     if key_name in must_remain_enabled:

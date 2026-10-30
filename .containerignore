@@ -1,0 +1,14 @@
+# Narrow the container build context to only what the image needs.
+# Applies to docker (.dockerignore) and podman (.containerignore).
+**
+!supervisor
+!supervisor/**
+!adapter
+!adapter/package.json
+!adapter/package-lock.json
+!adapter/src
+!adapter/src/**
+adapter/node_modules
+supervisor/tbound.exe
+supervisor/**/*_test.go
+**/*.exe

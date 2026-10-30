@@ -1,0 +1,83 @@
+package main
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"os"
+	"tbound/supervisor/internal/panelaudit"
+)
+
+const configSchema = "tbound-panel-config/v1"
+
+// hardCapUSD is the largest spend cap a config may set. A lower budget_usd is allowed.
+const hardCapUSD = 10.0
+
+// panelConfig is the owner-chosen panel. Models are configuration, never defaults.
+type panelConfig struct {
+	Schema string             `json:"schema"`
+	Models []panelaudit.Model `json:"models"`
+	// ExampleModels documents candidate ids for the owner; it is never used to run.
+	ExampleModels []string `json:"example_models,omitempty"`
+	// PublicPolicy is the policy the agent is assumed to know (thesis 3.2.1); both phases show it.
+	PublicPolicy       *panelaudit.PublicPolicy `json:"public_policy"`
+	Comment            string                   `json:"_comment,omitempty"`
+	BudgetUSD          float64                  `json:"budget_usd,omitempty"`
+	Seed               uint64                   `json:"seed,omitempty"`
+	BootstrapResamples int                      `json:"bootstrap_resamples,omitempty"`
+	AuditSample        int                      `json:"audit_sample,omitempty"`
+	TimeoutSeconds     int                      `json:"timeout_seconds,omitempty"`
+}
+
+func loadConfig(path string) (panelConfig, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return panelConfig{}, err
+	}
+	var cfg panelConfig
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&cfg); err != nil {
+		return panelConfig{}, fmt.Errorf("config %s: %w", path, err)
+	}
+	if cfg.Schema != configSchema {
+		return panelConfig{}, fmt.Errorf("config %s: schema must be %q", path, configSchema)
+	}
+	if cfg.PublicPolicy == nil {
+		return panelConfig{}, fmt.Errorf("config %s: public_policy is required (copy it from panel.default.json and check it against the service config)", path)
+	}
+	// A policy written without a list means an empty list, and the receipt records it as one.
+	if cfg.PublicPolicy.BashOutputPaths == nil {
+		cfg.PublicPolicy.BashOutputPaths = []string{}
+	}
+	if cfg.PublicPolicy.NetworkDestinations == nil {
+		cfg.PublicPolicy.NetworkDestinations = []string{}
+	}
+	if cfg.BudgetUSD == 0 {
+		cfg.BudgetUSD = hardCapUSD
+	}
+	if cfg.BudgetUSD < 0 || cfg.BudgetUSD > hardCapUSD {
+		return panelConfig{}, fmt.Errorf("config %s: budget_usd must be in (0, %.0f]", path, hardCapUSD)
+	}
+	if cfg.Seed == 0 {
+		cfg.Seed = 20261024
+	}
+	if cfg.BootstrapResamples == 0 {
+		cfg.BootstrapResamples = 2000
+	}
+	if cfg.AuditSample == 0 {
+		cfg.AuditSample = panelaudit.AuditSampleSize
+	}
+	if cfg.AuditSample != panelaudit.AuditSampleSize {
+		return panelConfig{}, fmt.Errorf("config %s: audit_sample must be %d, the registered size of the unanimous audit sample", path, panelaudit.AuditSampleSize)
+	}
+	if cfg.TimeoutSeconds == 0 {
+		cfg.TimeoutSeconds = 300
+	}
+	for i := range cfg.Models {
+		if cfg.Models[i].MaxTokens == 0 {
+			cfg.Models[i].MaxTokens = 4000
+		}
+	}
+	return cfg, nil
+}

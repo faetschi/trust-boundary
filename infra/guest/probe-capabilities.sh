@@ -131,24 +131,55 @@ except OSError as exc:
     else:
         report('FAIL', 'pidfd', f'pidfd_open failed: {exc}')
 
+# Classify Landlock availability independently from the registered D09 profile.
+# The generic row remains PASS for every positive ABI; D09 requires exactly 8.
+def classify_landlock_abi(value=None, error=None):
+    if value is not None and int(value) > 0:
+        abi = int(value)
+        broad = ('PASS', f'landlock_create_ruleset VERSION query returned ABI {abi}')
+        if abi == 8:
+            profile = ('PASS', 'registered D09 profile requires exactly Landlock ABI 8')
+        else:
+            profile = ('FAIL', f'registered D09 profile requires exactly Landlock ABI 8; kernel reports ABI {abi}')
+    elif error in (errno.ENOSYS, errno.EOPNOTSUPP):
+        detail = f'kernel reports Landlock unavailable: {os.strerror(error)}'
+        broad = ('FAIL', detail)
+        profile = ('FAIL', detail)
+    elif error in (errno.EPERM, errno.EACCES):
+        detail = f'policy denied the ABI query: {os.strerror(error)}'
+        broad = ('UNVERIFIED', detail)
+        profile = ('UNVERIFIED', detail)
+    elif error is None:
+        detail = f'no syscall number mapping in probe for {platform.machine()}'
+        broad = ('UNVERIFIED', detail)
+        profile = ('UNVERIFIED', detail)
+    else:
+        detail = f'ABI query failed: {os.strerror(error)}'
+        broad = ('FAIL', detail)
+        profile = ('UNVERIFIED', detail)
+    return (
+        ('landlock-abi', broad[0], broad[1]),
+        ('d09-landlock-profile', profile[0], profile[1]),
+    )
+
+def query_landlock_abi(libc, syscall_number):
+    libc.syscall.restype = ctypes.c_long
+    value = libc.syscall(
+        syscall_number, None, ctypes.c_size_t(0), ctypes.c_uint(1)
+    )
+    if value > 0:
+        return classify_landlock_abi(value=int(value))
+    return classify_landlock_abi(error=ctypes.get_errno())
+
 # Landlock ABI query only asks for the kernel ABI number; no ruleset is created.
 landlock_syscall = {'x86_64': 444, 'amd64': 444, 'aarch64': 444, 'arm64': 444, 'riscv64': 444}.get(platform.machine().lower())
 if landlock_syscall is None:
-    report('UNVERIFIED', 'landlock-abi', f'no syscall number mapping in probe for {platform.machine()}')
+    landlock_rows = classify_landlock_abi()
 else:
     libc = ctypes.CDLL(None, use_errno=True)
-    libc.syscall.restype = ctypes.c_long
-    value = libc.syscall(landlock_syscall, None, ctypes.c_size_t(0), ctypes.c_uint(1))
-    if value > 0:
-        report('PASS', 'landlock-abi', f'landlock_create_ruleset VERSION query returned ABI {value}')
-    else:
-        error = ctypes.get_errno()
-        if error in (errno.ENOSYS, errno.EOPNOTSUPP):
-            report('FAIL', 'landlock-abi', f'kernel reports Landlock unavailable: {os.strerror(error)}')
-        elif error in (errno.EPERM, errno.EACCES):
-            report('UNVERIFIED', 'landlock-abi', f'policy denied the ABI query: {os.strerror(error)}')
-        else:
-            report('FAIL', 'landlock-abi', f'ABI query failed: {os.strerror(error)}')
+    landlock_rows = query_landlock_abi(libc, landlock_syscall)
+for name, status, detail in landlock_rows:
+    report(status, name, detail)
 
 # Install an allow-all seccomp filter in a disposable child process, then check
 # that the kernel marks that child Seccomp: 2. The calling shell is untouched.

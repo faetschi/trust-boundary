@@ -23,9 +23,11 @@ PI_VERSION = "0.87.1"
 NODE_BIN = Path("/opt/tbound/toolchains/node-v24.21.0-linux-x64/bin")
 GO_BIN = Path("/opt/tbound/toolchains/go1.27.1/bin")
 EXPECTED_OWNERSHIP_SKIP = "TestOpenRejectsUntrustedOwnership"
-SCHEMA = "tbound.guest-verification/v1"
+SCHEMA = "tbound.guest-verification/v2"
 OWNERSHIP_PACKAGE = "tbound/supervisor/internal/audit"
 GCC_DRIVER_PACKAGE = "gcc-13-x86-64-linux-gnu"
+MAX_DIAGNOSTIC_BYTES = 32 * 1024
+TRUNCATED_DIAGNOSTIC_MARKER = "\n[... sanitized output truncated; omitted byte count is in metadata ...]\n"
 
 
 class GateError(Exception):
@@ -57,12 +59,74 @@ def run(
         raise GateError("runner", f"could not complete {Path(command[0]).name}: {type(exc).__name__}") from None
 
 
+def sanitize_diagnostic_text(output: str) -> str:
+    output = re.sub(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]", "", output)
+    return re.sub(r"(?i)([a-z][a-z0-9+.-]*://)[^/\s?#@]*@", r"\1[REDACTED]@", output)
+
+
+def bounded_diagnostic_excerpt(output: str) -> dict[str, Any]:
+    sanitized = sanitize_diagnostic_text(output)
+    encoded = sanitized.encode("utf-8", errors="replace")
+    source_bytes = len(output.encode("utf-8", errors="replace"))
+    truncated = len(encoded) > MAX_DIAGNOSTIC_BYTES
+    omitted = 0
+    excerpt = sanitized
+    if truncated:
+        marker_bytes = TRUNCATED_DIAGNOSTIC_MARKER.encode("utf-8")
+        excerpt_budget = MAX_DIAGNOSTIC_BYTES - len(marker_bytes)
+        head_budget = excerpt_budget // 2
+        tail_budget = excerpt_budget - head_budget
+        head = encoded[:head_budget].decode("utf-8", errors="ignore")
+        tail = encoded[-tail_budget:].decode("utf-8", errors="ignore")
+        omitted = len(encoded) - len(head.encode("utf-8")) - len(tail.encode("utf-8"))
+        excerpt = head + TRUNCATED_DIAGNOSTIC_MARKER + tail
+    return {
+        "excerpt": excerpt,
+        "source_bytes": source_bytes,
+        "sanitized_bytes": len(encoded),
+        "omitted_sanitized_bytes": omitted,
+        "excerpt_truncated": truncated,
+    }
+
+
+def process_output_diagnostics(result: subprocess.CompletedProcess[str]) -> dict[str, Any]:
+    return {
+        "stdout": bounded_diagnostic_excerpt(result.stdout),
+        "stderr": bounded_diagnostic_excerpt(result.stderr),
+    }
+
+
+
+def go_module_graph_failure_diagnostic(result: subprocess.CompletedProcess[str]) -> dict[str, Any]:
+    stderr = sanitize_diagnostic_text(result.stderr).strip()
+    encoded = stderr.encode("utf-8", errors="replace")
+    truncated = len(encoded) > 2048
+    excerpt = encoded[:2048].decode("utf-8", errors="ignore") if truncated else encoded.decode("utf-8")
+    return {
+        "command": "go list -m all",
+        "exit_code": result.returncode,
+        "stderr_excerpt": excerpt,
+        "truncated": truncated,
+    }
+
+
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as stream:
         for block in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(block)
     return digest.hexdigest()
+
+
+def parse_installed_package_manifest(manifest: str) -> list[dict[str, str]]:
+    installed_packages = []
+    for line in manifest.splitlines():
+        fields = line.split("\t")
+        # The second status character is the current state, even when the desired action is hold.
+        if len(fields) == 3 and len(fields[0]) >= 2 and fields[0][1] == "i":
+            installed_packages.append({"package": fields[1], "version": fields[2]})
+    installed_packages.sort(key=lambda row: row["package"])
+    return installed_packages
 
 
 def tree_sha256(root: Path, excluded: set[str]) -> str:
@@ -218,6 +282,8 @@ def inspect_guest_network() -> tuple[dict[str, Any], list[str]]:
 def parse_go_events(output: str) -> dict[str, Any]:
     tests: dict[tuple[str, str], dict[str, int]] = {}
     package_actions: dict[str, str] = {}
+    packages_with_test_events: set[str] = set()
+    no_test_files_packages: set[str] = set()
     malformed = 0
     for line in output.splitlines():
         try:
@@ -229,10 +295,18 @@ def parse_go_events(output: str) -> dict[str, Any]:
         action = event.get("Action")
         test_name = event.get("Test")
         if test_name:
-            identity = (package or "", test_name)
+            package_key = package or ""
+            packages_with_test_events.add(package_key)
+            identity = (package_key, test_name)
             counts = tests.setdefault(identity, {"run": 0, "pass": 0, "fail": 0, "skip": 0})
             if action in counts:
                 counts[action] += 1
+        elif package and action == "output":
+            package_output = event.get("Output")
+            if isinstance(package_output, str):
+                no_test_marker = re.compile(r"\?\s+" + re.escape(package) + r"\s+\[no test files\]")
+                if any(no_test_marker.fullmatch(output_line.strip()) for output_line in package_output.splitlines()):
+                    no_test_files_packages.add(package)
         elif package and action in {"pass", "fail", "skip"}:
             package_actions[package] = action
     run_tests = [
@@ -264,6 +338,8 @@ def parse_go_events(output: str) -> dict[str, Any]:
         "skip_event_counts": skip_event_counts,
         "failed_tests": failed_tests,
         "package_results": package_actions,
+        "packages_with_test_events": sorted(packages_with_test_events),
+        "no_test_files_packages": sorted(no_test_files_packages),
         "malformed_events": malformed,
     }
 
@@ -301,7 +377,20 @@ def summarize_go_phase(
     observed_packages = events["package_results"]
     if set(observed_packages) != expected_packages:
         failures.append("package_coverage_mismatch")
-    if any(action != "pass" for action in observed_packages.values()):
+    no_test_files_packages = set(events["no_test_files_packages"])
+    packages_with_test_events = set(events["packages_with_test_events"])
+    accepted_no_test_skips = {
+        package for package, action in observed_packages.items()
+        if action == "skip"
+        and package in no_test_files_packages
+        and package not in packages_with_test_events
+    }
+    if no_test_files_packages != accepted_no_test_skips:
+        failures.append("invalid_no_test_files_package_skip")
+    if any(
+        action != "pass" and package not in accepted_no_test_skips
+        for package, action in observed_packages.items()
+    ):
         failures.append("failed_packages")
     entry = {
         "status": "PASS" if not failures else "FAIL",
@@ -316,11 +405,119 @@ def summarize_go_phase(
         "skip_event_counts": events["skip_event_counts"],
         "deferred_known_skip": expected_skip if allow_ownership_skip and expected_skip in skips else None,
         "packages": sorted(observed_packages),
+        "package_results": observed_packages,
+        "diagnostics": process_output_diagnostics(result),
         "unexpected_skips": unexpected_skips,
         "failures": failures,
     }
     return entry, failures
 
+
+# A same-UID process must not mutate these trial-owned fixtures between preflight and the short Go test. This preflight also rejects ACLs and all xattrs; the Go test independently checks path, type, UID/GID, mode, layout, and file link count.
+def validate_ownership_fixtures(trial_uid: int, trial_gid: int) -> dict[str, Any]:
+    base = Path("/var/lib/tbound/audit-ownership-fixtures")
+    fixture_root = base / str(trial_uid)
+
+    def entry(path: Path, *, kind: str, uid: int, gid: int, mode: int, check: str) -> os.stat_result:
+        try:
+            info = path.lstat()
+            attributes = os.listxattr(path, follow_symlinks=False)
+        except OSError:
+            raise GateError(check, "ownership fixture is missing or unreadable") from None
+        if kind == "directory":
+            valid_type = stat.S_ISDIR(info.st_mode)
+        else:
+            valid_type = stat.S_ISREG(info.st_mode)
+        if (not valid_type or info.st_uid != uid or info.st_gid != gid
+                or stat.S_IMODE(info.st_mode) != mode or attributes):
+            raise GateError(check, "ownership fixture metadata does not match the fixed contract")
+        if kind == "file" and (info.st_nlink != 1 or info.st_size != 0):
+            raise GateError(check, "ownership fixture file must be empty and have one link")
+        return info
+
+    try:
+        trusted_ancestry(base, 0, "ownership_test", private_leaf=False)
+        entry(base, kind="directory", uid=0, gid=0, mode=0o755, check="ownership_test")
+        trusted_ancestry(fixture_root, trial_uid, "ownership_test", private_leaf=True)
+        entry(fixture_root, kind="directory", uid=trial_uid, gid=trial_gid, mode=0o700, check="ownership_test")
+        if {path.name for path in fixture_root.iterdir()} != {"foreign-dir", "file-parent"}:
+            raise GateError("ownership_test", "ownership fixture directory has unexpected entries")
+        foreign_dir = fixture_root / "foreign-dir"
+        file_parent = fixture_root / "file-parent"
+        entry(foreign_dir, kind="directory", uid=65534, gid=65534, mode=0o755, check="ownership_test")
+        entry(file_parent, kind="directory", uid=trial_uid, gid=trial_gid, mode=0o700, check="ownership_test")
+        if {path.name for path in file_parent.iterdir()} != {"journal.jsonl", "owned-insecure-mode.jsonl"}:
+            raise GateError("ownership_test", "ownership fixture file directory has unexpected entries")
+        entry(file_parent / "journal.jsonl", kind="file", uid=65534, gid=trial_gid, mode=0o660, check="ownership_test")
+        entry(file_parent / "owned-insecure-mode.jsonl", kind="file", uid=trial_uid, gid=trial_gid, mode=0o660, check="ownership_test")
+    except OSError:
+        raise GateError("ownership_test", "ownership fixture tree could not be inspected") from None
+    return {
+        "root": str(fixture_root),
+        "trial_uid": trial_uid,
+        "trial_gid": trial_gid,
+        "foreign_directory_mode": "0755",
+        "foreign_file_mode": "0660",
+        "owned_insecure_mode": "0660",
+        "xattrs": "none (checked by offline verifier preflight)",
+        "mutation_assumption": "no concurrent same-UID fixture mutation during this test phase",
+    }
+
+
+def summarize_ownership_test_events(result: subprocess.CompletedProcess[str]) -> tuple[dict[str, Any], list[str]]:
+    events = parse_go_events(result.stdout)
+    expected = {"package": OWNERSHIP_PACKAGE, "test": EXPECTED_OWNERSHIP_SKIP}
+    failures: list[str] = []
+    if result.returncode != 0:
+        failures.append("go_test_failed")
+    if events["malformed_events"]:
+        failures.append("invalid_go_test_json")
+    if events["run_tests"] != [expected] or events["test_run_events"] != 1:
+        failures.append("ownership_test_not_run_exactly_once")
+    if events["test_pass_events"] != 1:
+        failures.append("ownership_test_did_not_pass_exactly_once")
+    if events["skipped_tests"]:
+        failures.append("ownership_test_skipped")
+    if events["test_fail_events"] or events["failed_tests"]:
+        failures.append("ownership_test_failed")
+    if events["package_results"] != {OWNERSHIP_PACKAGE: "pass"}:
+        failures.append("ownership_package_did_not_pass")
+    entry = {
+        "status": "PASS" if not failures else "FAIL",
+        "test": EXPECTED_OWNERSHIP_SKIP,
+        "package": OWNERSHIP_PACKAGE,
+        "exit_code": result.returncode,
+        "test_run_events": events["test_run_events"],
+        "test_pass_events": events["test_pass_events"],
+        "test_fail_events": events["test_fail_events"],
+        "skipped_tests": events["skipped_tests"],
+        "package_results": events["package_results"],
+        "diagnostics": process_output_diagnostics(result),
+        "failures": failures,
+    }
+    return entry, failures
+
+
+def run_ownership_fixture_phase(
+    go: Path,
+    cwd: Path,
+    env: dict[str, str],
+    trial_uid: int,
+    trial_gid: int,
+) -> tuple[dict[str, Any], list[str]]:
+    metadata = validate_ownership_fixtures(trial_uid, trial_gid)
+    fixture_env = dict(env)
+    fixture_env["TBOUND_AUDIT_OWNERSHIP_FIXTURE_ROOT"] = metadata["root"]
+    command = [
+        str(go), "test", "-json", "-count=1", "-run",
+        f"^{EXPECTED_OWNERSHIP_SKIP}$", "./internal/audit",
+    ]
+    result = run(command, cwd=cwd, env=fixture_env)
+    entry, failures = summarize_ownership_test_events(result)
+    entry["execution_uid"] = os.geteuid()
+    entry["execution_gid"] = os.getegid()
+    entry["fixtures"] = metadata
+    return entry, failures
 
 def extract_adapter_report(output: str) -> dict[str, Any] | None:
     decoder = json.JSONDecoder()
@@ -333,118 +530,6 @@ def extract_adapter_report(output: str) -> dict[str, Any] | None:
             return parsed
     return None
 
-
-def privileged_ownership_main(arguments: list[str]) -> int:
-    """Run only the ownership integration test with a root-owned temporary HOME."""
-    result: dict[str, Any] = {
-        "schema": "tbound.guest-ownership-test/v1",
-        "status": "FAIL",
-        "test": EXPECTED_OWNERSHIP_SKIP,
-        "package": OWNERSHIP_PACKAGE,
-        "failures": [],
-        "cleanup": {"status": "NOT_RUN", "leftover_path": None},
-    }
-    root_temp: Path | None = None
-    try:
-        if os.geteuid() != 0:
-            raise GateError("privileged_test", "private helper must run as root")
-        if len(arguments) != 3:
-            raise GateError("privileged_test", "invalid fixed helper arguments")
-        staged_supervisor = Path(arguments[0]).resolve(strict=True)
-        module_cache = Path(arguments[1]).resolve(strict=True)
-        try:
-            trial_uid = int(arguments[2])
-        except ValueError:
-            raise GateError("privileged_test", "invalid trial uid") from None
-        if trial_uid <= 0:
-            raise GateError("privileged_test", "invalid trial uid")
-        if staged_supervisor.name != "supervisor" or not module_cache.is_dir():
-            raise GateError("privileged_test", "staged source or module cache is missing")
-        if not (staged_supervisor / "go.mod").is_file():
-            raise GateError("privileged_test", "staged Go module is missing")
-        root_home = Path("/root")
-        trusted_ancestry(root_home, 0, "privileged_test", private_leaf=False)
-        home_info = root_home.lstat()
-        if home_info.st_uid != 0 or stat.S_IMODE(home_info.st_mode) & 0o077:
-            raise GateError("privileged_test", "root HOME must be root-owned and private")
-
-        root_temp = Path(tempfile.mkdtemp(prefix=".tbound-guest-audit-", dir=root_home))
-        if root_temp.lstat().st_uid != 0 or stat.S_IMODE(root_temp.lstat().st_mode) != 0o700:
-            raise GateError("privileged_test", "root temporary directory is not private")
-        root_home_private = root_temp / "home"
-        root_tmp = root_temp / "tmp"
-        go_cache = root_temp / "gocache"
-        for directory in (root_home_private, root_tmp, go_cache):
-            directory.mkdir(mode=0o700)
-
-        go = GO_BIN / "go"
-        if not go.is_file():
-            raise GateError("privileged_test", "pinned Go executable is missing")
-        env = {
-            "HOME": str(root_home_private),
-            "TMPDIR": str(root_tmp),
-            "GOCACHE": str(go_cache),
-            "GOMODCACHE": str(module_cache),
-            "PATH": f"{GO_BIN}:/usr/bin:/bin",
-            "GOTOOLCHAIN": "local",
-            "GOENV": "off",
-            "GOPROXY": "off",
-            "GOSUMDB": "off",
-            "GOWORK": "off",
-            "GOFLAGS": "",
-            "CGO_ENABLED": "1",
-            "LANG": "C.UTF-8",
-        }
-        command = [
-            str(go), "test", "-json", "-count=1", "-run",
-            "^TestOpenRejectsUntrustedOwnership$", "./internal/audit",
-        ]
-        completed = run(command, cwd=staged_supervisor, env=env)
-        events = parse_go_events(completed.stdout)
-        expected = {"package": OWNERSHIP_PACKAGE, "test": EXPECTED_OWNERSHIP_SKIP}
-        failures: list[str] = []
-        if completed.returncode != 0:
-            failures.append("go_test_failed")
-        if events["malformed_events"]:
-            failures.append("invalid_go_test_json")
-        if events["skipped_tests"]:
-            failures.append("test_skipped")
-        if events["test_fail_events"] or events["failed_tests"]:
-            failures.append("test_failed")
-        if expected not in events["run_tests"]:
-            failures.append("ownership_test_not_run")
-        if events["package_results"] != {OWNERSHIP_PACKAGE: "pass"}:
-            failures.append("package_did_not_pass")
-        result.update({
-            "exit_code": completed.returncode,
-            "test_run_events": events["test_run_events"],
-            "test_pass_events": events["test_pass_events"],
-            "test_fail_events": events["test_fail_events"],
-            "skipped_tests": events["skipped_tests"],
-            "skip_event_counts": events["skip_event_counts"],
-            "package_results": events["package_results"],
-            "failures": failures,
-        })
-    except GateError as exc:
-        result["failures"].append(f"{exc.check}:{exc.detail}")
-    except Exception as exc:
-        result["failures"].append(f"helper:{type(exc).__name__}")
-    finally:
-        if root_temp is not None:
-            try:
-                shutil.rmtree(root_temp)
-                if root_temp.exists():
-                    raise OSError("temporary directory remains after removal")
-                result["cleanup"] = {"status": "PASS", "leftover_path": None}
-            except OSError as exc:
-                result["cleanup"] = {"status": "FAIL", "leftover_path": str(root_temp)}
-                result["failures"].append(f"cleanup_failed:{type(exc).__name__}")
-    if result["cleanup"]["status"] == "NOT_RUN":
-        result["cleanup"] = {"status": "FAIL", "leftover_path": None}
-        result["failures"].append("cleanup_not_run")
-    result["status"] = "PASS" if not result["failures"] else "FAIL"
-    print(json.dumps(result, sort_keys=True, separators=(",", ":")))
-    return 0 if result["status"] == "PASS" else 1
 
 
 def main() -> int:
@@ -539,7 +624,7 @@ def main() -> int:
             raise GateError("toolchains", "bundled npm version check failed")
         go_env_result = run(
             [str(go), "env", "GOOS", "GOARCH", "CGO_ENABLED"],
-            env={"GOTOOLCHAIN": "local", "GOENV": "off", "HOME": str(user_home)},
+            env={"GOTOOLCHAIN": "local", "GOENV": "off", "HOME": str(user_home), "PATH": "/usr/bin:/bin"},
             timeout=10,
         )
         if go_env_result.returncode or go_env_result.stdout.splitlines() != ["linux", "amd64", "1"]:
@@ -567,12 +652,7 @@ def main() -> int:
         )
         if package_manifest.returncode:
             raise GateError("toolchains", "installed package manifest could not be captured")
-        installed_packages = []
-        for line in package_manifest.stdout.splitlines():
-            fields = line.split("\t")
-            if len(fields) == 3 and fields[0].startswith("ii"):
-                installed_packages.append({"package": fields[1], "version": fields[2]})
-        installed_packages.sort(key=lambda row: row["package"])
+        installed_packages = parse_installed_package_manifest(package_manifest.stdout)
         canonical_manifest = "".join(f'{row["package"]}\t{row["version"]}\n' for row in installed_packages)
         gcc_manifest_entry = next(
             (row for row in installed_packages if row["package"] in accepted_owners), None
@@ -596,21 +676,6 @@ def main() -> int:
             "installed_package_manifest_sha256": hashlib.sha256(canonical_manifest.encode()).hexdigest(),
             "installed_packages": installed_packages,
         }
-
-        sudo = shutil.which("sudo", path="/usr/bin:/bin")
-        if not sudo:
-            raise GateError("ownership_test", "sudo is required for the isolated root-only ownership test")
-        sudo_check = run([sudo, "-n", "-v"], timeout=10)
-        if sudo_check.returncode:
-            raise GateError("ownership_test", "run `sudo -v` before disconnecting, then retry")
-        root_home = Path("/root")
-        try:
-            root_info = root_home.lstat()
-        except OSError:
-            raise GateError("ownership_test", "root HOME is unavailable") from None
-        if not stat.S_ISDIR(root_info.st_mode) or root_info.st_uid != 0 or stat.S_IMODE(root_info.st_mode) & 0o077:
-            raise GateError("ownership_test", "root HOME must be a root-owned private directory")
-        trusted_ancestry(root_home, 0, "ownership_test", private_leaf=False)
 
         scratch = Path(tempfile.mkdtemp(prefix="tbound-offline-verify-", dir="/tmp"))
         scratch_info = scratch.lstat()
@@ -673,6 +738,7 @@ def main() -> int:
         }
         graph = run([str(go), "list", "-m", "all"], cwd=staged_supervisor, env=user_env)
         if graph.returncode:
+            report.setdefault("diagnostics", {})["go_modules"] = go_module_graph_failure_diagnostic(graph)
             raise GateError("go_modules", "offline Go module graph resolution failed; provision go.mod dependencies first")
         modules = [line.strip() for line in graph.stdout.splitlines() if line.strip()]
         if not modules:
@@ -702,33 +768,16 @@ def main() -> int:
         }
         report["checks"]["go_modules"] = {"status": "PASS", "verified": "all cached modules", "packages": len(expected_packages)}
 
-        sudo_check = run([sudo, "-n", "-v"], timeout=10)
-        if sudo_check.returncode:
-            raise GateError("ownership_test", "sudo authorization expired; run `sudo -v` and retry")
-        root_command = [
-            sudo, "-n", "env", "-i", "HOME=/root", "PATH=/usr/bin:/bin", "LANG=C.UTF-8",
-            "/usr/bin/python3", "-I", str(runner_path), "--_privileged-ownership-test",
-            str(staged_supervisor), str(module_cache), str(os.geteuid()),
-        ]
-        root_result = run(root_command, timeout=900)
-        try:
-            ownership = json.loads(root_result.stdout)
-        except json.JSONDecodeError:
-            ownership = {"status": "FAIL", "failures": ["invalid_helper_report"]}
-        ownership_failures = list(ownership.get("failures", []))
-        if root_result.returncode != 0 and not ownership_failures:
-            ownership_failures.append("privileged_helper_failed")
-        if ownership.get("schema") != "tbound.guest-ownership-test/v1" or ownership.get("status") != "PASS":
-            ownership_failures.append("privileged_ownership_test_failed")
-        ownership["sudo_noninteractive"] = True
-        ownership["test"] = EXPECTED_OWNERSHIP_SKIP
-        ownership["failure_count"] = len(ownership_failures)
-        ownership["status"] = "PASS" if not ownership_failures else "FAIL"
-        ownership["failures"] = ownership_failures
-        report["checks"]["privileged_ownership_test"] = ownership
+        ownership, ownership_failures = run_ownership_fixture_phase(
+            go,
+            staged_supervisor,
+            user_env,
+            os.geteuid(),
+            os.getegid(),
+        )
+        report["checks"]["ownership_fixture_test"] = ownership
         if ownership_failures:
-            report["failures"].extend(f"privileged_ownership_test:{item}" for item in ownership_failures)
-
+            report["failures"].extend(f"ownership_fixture_test:{item}" for item in ownership_failures)
         full_command = [str(go), "test", "-json", "-count=1", "./..."]
         regular, regular_failures = summarize_go_phase(
             full_command,
@@ -862,6 +911,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) >= 2 and sys.argv[1] == "--_privileged-ownership-test":
-        sys.exit(privileged_ownership_main(sys.argv[2:]))
     sys.exit(main())

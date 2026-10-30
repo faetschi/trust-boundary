@@ -163,17 +163,17 @@ func TestCaptureSequenceGenerationAndDigestValidation(t *testing.T) {
 func TestMalformedRequestsFailClosed(t *testing.T) {
 	base := `{"schema_version":"tbound-proposal/v1","tool_call_id":"call-1","tool":"read","arguments":{"path":"a"}}`
 	cases := map[string]string{
-		"duplicate top-level key": strings.Replace(base, `"tool":"read"`, `"tool":"read","tool":"read"`, 1),
-		"duplicate argument key": `{"schema_version":"tbound-proposal/v1","tool_call_id":"call-1","tool":"read","arguments":{"path":"a","path":"b"}}`,
-		"trailing value": base + ` {}`,
-		"extra proposal field": strings.TrimSuffix(base, "}") + `,"sequence":1}`,
-		"case variant extra key": strings.TrimSuffix(base, "}") + `,"Tool":"read"}`,
+		"duplicate top-level key":   strings.Replace(base, `"tool":"read"`, `"tool":"read","tool":"read"`, 1),
+		"duplicate argument key":    `{"schema_version":"tbound-proposal/v1","tool_call_id":"call-1","tool":"read","arguments":{"path":"a","path":"b"}}`,
+		"trailing value":            base + ` {}`,
+		"extra proposal field":      strings.TrimSuffix(base, "}") + `,"sequence":1}`,
+		"case variant extra key":    strings.TrimSuffix(base, "}") + `,"Tool":"read"}`,
 		"case variant required key": strings.Replace(base, `"tool":"read"`, `"Tool":"read"`, 1),
-		"unknown tool": strings.Replace(base, `"read"`, `"powershell"`, 1),
-		"unknown argument": strings.Replace(base, `"path":"a"`, `"path":"a","extra":true`, 1),
-		"negative zero": `{"schema_version":"tbound-proposal/v1","tool_call_id":"call-1","tool":"read","arguments":{"path":"a","offset":-0}}`,
+		"unknown tool":              strings.Replace(base, `"read"`, `"powershell"`, 1),
+		"unknown argument":          strings.Replace(base, `"path":"a"`, `"path":"a","extra":true`, 1),
+		"negative zero":             `{"schema_version":"tbound-proposal/v1","tool_call_id":"call-1","tool":"read","arguments":{"path":"a","offset":-0}}`,
 		"surrounding ID whitespace": `{"schema_version":"tbound-proposal/v1","tool_call_id":" call-1 ","tool":"read","arguments":{"path":"a"}}`,
-		"surrogate escape": `{"schema_version":"tbound-proposal/v1","tool_call_id":"call-1","tool":"write","arguments":{"path":"a","content":"\ud800"}}`,
+		"surrogate escape":          `{"schema_version":"tbound-proposal/v1","tool_call_id":"call-1","tool":"write","arguments":{"path":"a","content":"\ud800"}}`,
 	}
 	for name, raw := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -232,7 +232,7 @@ func TestRFC8785CanonicalJSONVectors(t *testing.T) {
 	}{
 		{
 			name: "RFC 8785 primitive and number sample",
-			raw: `{"numbers":[333333333.33333329,1E30,4.50,2e-3,0.000000000000000000000000001],"string":"\u20ac$\u000F\u000aA'\u0042\u0022\u005c\\\"\/","literals":[null,true,false]}`,
+			raw:  `{"numbers":[333333333.33333329,1E30,4.50,2e-3,0.000000000000000000000000001],"string":"\u20ac$\u000F\u000aA'\u0042\u0022\u005c\\\"\/","literals":[null,true,false]}`,
 			want: `{"literals":[null,true,false],"numbers":[333333333.3333333,1e+30,4.5,0.002,1e-27],"string":"€$\u000f\nA'B\"\\\\\"/"}`,
 		},
 		{
@@ -418,14 +418,14 @@ func testCapture(t *testing.T, id, tool, args string, sequence uint64, generatio
 		t.Fatal(err)
 	}
 	return TrustedCapture{
-		ResponseID: correlation.Identifier{Issuer: testResponseIssuer, Opaque: fmt.Sprintf("response-%d", sequence)},
-		ToolCallID: correlation.Identifier{Issuer: testIssuer, Opaque: id},
-		ToolName: tool,
-		RawArguments: json.RawMessage(args),
-		CanonicalizationProfile: CanonicalizationProfile,
+		ResponseID:               correlation.Identifier{Issuer: testResponseIssuer, Opaque: fmt.Sprintf("response-%d", sequence)},
+		ToolCallID:               correlation.Identifier{Issuer: testIssuer, Opaque: id},
+		ToolName:                 tool,
+		RawArguments:             json.RawMessage(args),
+		CanonicalizationProfile:  CanonicalizationProfile,
 		CanonicalArgumentsDigest: digest,
-		Sequence: sequence,
-		Generation: generation,
+		Sequence:                 sequence,
+		Generation:               generation,
 	}
 }
 
@@ -433,9 +433,9 @@ func encodeRequest(t *testing.T, id, tool, args string) []byte {
 	t.Helper()
 	encoded, err := json.Marshal(requestFixture{
 		SchemaVersion: ProposalSchemaVersion,
-		ToolCallID: id,
-		Tool: tool,
-		Arguments: json.RawMessage(args),
+		ToolCallID:    id,
+		Tool:          tool,
+		Arguments:     json.RawMessage(args),
 	})
 	if err != nil {
 		t.Fatal(err)

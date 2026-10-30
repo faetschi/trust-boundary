@@ -1,0 +1,28 @@
+# Canonical source for /etc/systemd/system/usr-local-bin-tbound.mount (root:root 0644).
+# File bind mount of the pinned runner (/opt/tbound/tbound/tbound, a root:root 0555
+# copy of the HEAD-built /usr/local/bin/tbound) onto /usr/local/bin/tbound with
+# ro,nosuid,nodev, so that hashProtectedFile and verifyPinnedToolBinary
+# (supervisor/internal/piruntime: hashProtectedFile in d09_template_linux.go and
+# verifyPinnedToolBinary in containment_linux.go, reached from
+# MeasureD09ManagedLiveRootRegistrationWithOptions at managed-root-measure and from
+# verifyD09ManagedWriterProcess at launch, both in managed_live_root_linux.go) see
+# the runner on a read-only mount.
+# Same pattern as usr-local-bin-node.mount. tbound-profile is NOT checked by any
+# code path and needs no mount.
+# This is tamper evidence, not immutability: root can still unmount, remount rw,
+# or replace the source file. The runner digest is registered in the signed
+# managed-live-root registration and re-checked at launch.
+# Install verbatim; the unit name must equal the escaped Where= path. A new runner
+# build requires: stop the service, systemctl stop this unit, replace the copy,
+# start this unit, then re-measure and re-sign the registration.
+[Unit]
+Description=TBound pinned runner executable (read-only file bind)
+
+[Mount]
+What=/opt/tbound/tbound/tbound
+Where=/usr/local/bin/tbound
+Type=none
+Options=bind,ro,nosuid,nodev
+
+[Install]
+WantedBy=local-fs.target

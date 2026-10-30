@@ -1,0 +1,287 @@
+//go:build linux
+
+package piruntime
+
+import (
+	"bytes"
+	"crypto/ed25519"
+	cryptorand "crypto/rand"
+	"encoding/json"
+	"errors"
+	"os"
+	"path/filepath"
+	"testing"
+
+	"tbound/supervisor/internal/piinstall"
+)
+
+func TestPiWorkerCellIdentitiesAreStable(t *testing.T) {
+	cliArgs, err := piinstall.GovernedRPCArgs(PiCLIProductionExtensionPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantArguments := append([]string{PiCLIProductionEntryPath}, cliArgs...)
+	if got, want := PiWorkerCellArguments(), wantArguments; !equalStrings(got, want) {
+		t.Fatalf("in-cell argv drifted: got %#v want %#v", got, want)
+	}
+	if got, want := DigestEnvironment(PiWorkerCellEnvironment()), DigestEnvironment([]string{"HOME=" + PiWorkerCellHome, "LANG=C.UTF-8", "PI_OFFLINE=1", "TMPDIR=" + PiWorkerCellTemp}); got != want {
+		t.Fatalf("in-cell environment digest drifted: got %s want %s", got, want)
+	}
+	if PiWorkerCellNodeVersion != "v24.21.0" || PiWorkerCellExecutable != "/usr/local/bin/node" ||
+		PiWorkerCellRuntimeBundleRoot != "/var/lib/tbound/runtime" {
+		t.Fatalf("in-cell executable/runtime identity drifted: node=%s executable=%s bundle=%s",
+			PiWorkerCellNodeVersion, PiWorkerCellExecutable, PiWorkerCellRuntimeBundleRoot)
+	}
+}
+
+func TestProductionPiCLIProfileRejectsLegacyOrMalformedContracts(t *testing.T) {
+	legacySDKArguments := []string{"--experimental-strip-types", "/proc/self/fd/9/src/governed-pi-worker.ts"}
+	tests := []struct {
+		name   string
+		mutate func(*HostProfile)
+	}{
+		{"legacy-sdk-argv", func(profile *HostProfile) {
+			profile.ChildArgumentsProfile = "governed-pi-sdk-worker-argv/v1"
+			profile.ChildArgumentsDigest = DigestArguments(legacySDKArguments)
+		}},
+		{"unreviewed-cli-argv", func(profile *HostProfile) {
+			profile.ChildArgumentsDigest = DigestArguments([]string{PiCLIProductionEntryPath, "--mode", "rpc", "--approve-all"})
+		}},
+		{"legacy-node", func(profile *HostProfile) { profile.NodeVersion = "v24.15.0" }},
+		{"legacy-stdin", func(profile *HostProfile) {
+			profile.StdinProfile = "governed-session-control/fd0/v1"
+			profile.StdinDigest = DigestBytes([]byte(profile.StdinProfile))
+		}},
+		{"silent-stdout", func(profile *HostProfile) {
+			profile.StdoutProfile = "silent-worker-stdout/v1"
+			profile.StdoutProfileDigest = DigestBytes([]byte(profile.StdoutProfile))
+		}},
+		{"legacy-profile-without-stdout", func(profile *HostProfile) {
+			profile.StdoutProfile = ""
+			profile.StdoutProfileDigest = ""
+		}},
+		{"terminal-enabled", func(profile *HostProfile) {
+			profile.TerminalProfile = "pi-cli-terminal-enabled/v1"
+			profile.TerminalProfileDigest = DigestBytes([]byte(profile.TerminalProfile))
+		}},
+		{"inherited-environment", func(profile *HostProfile) {
+			profile.ChildEnvironmentDigest = DigestEnvironment(append(PiWorkerCellEnvironment(), "TBOUND_SENTINEL=1"))
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			profile := DefaultLinuxHostProfileTemplate()
+			profile.Digest = DigestBytes([]byte("synthetic signed-profile digest"))
+			test.mutate(&profile)
+			if err := profile.Validate(); !errors.Is(err, ErrHostProfileMissing) {
+				t.Fatalf("malformed production Pi contract was accepted: %v", err)
+			}
+		})
+	}
+}
+
+func TestLinuxHostProfileSignVerifyRoundTrip(t *testing.T) {
+	publicKey, privateKey, err := ed25519.GenerateKey(cryptorand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile := DefaultLinuxHostProfileTemplate()
+	signedJSON, signature, gotPublicKey, err := SignLinuxHostProfile(profile, privateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(gotPublicKey, publicKey) {
+		t.Fatalf("signer returned a public key that does not match the private key")
+	}
+	decoded, err := VerifyLinuxSignedHostProfile(signedJSON, signature, publicKey)
+	if err != nil {
+		t.Fatalf("signed template did not verify: %v", err)
+	}
+	if decoded.ContainmentProfile != D09ContainmentProfile || decoded.SettlementProfile != D09SettlementProfile {
+		t.Fatalf("verified profile does not name the D09 profile: %+v", decoded)
+	}
+	if decoded.ChildExecutable != PiCLIProductionExecutable || decoded.NodeVersion != "v24.21.0" ||
+		decoded.ChildArgumentsProfile != PiCLIProductionArgumentsProfile ||
+		decoded.ChildArgumentsDigest != DigestArguments(PiWorkerCellArguments()) ||
+		decoded.StdoutProfile != PiCLIProductionStdoutProfile || decoded.StdoutProfileDigest != DigestBytes([]byte(PiCLIProductionStdoutProfile)) ||
+		decoded.TerminalProfile != PiCLIProductionTerminalProfile {
+		t.Fatalf("signed profile does not bind the fixed Pi CLI RPC process contract: %+v", decoded)
+	}
+	if decoded.Digest != DigestBytes(mustSigningBytes(t, profile)) {
+		t.Fatalf("signed digest is not the verifier digest: %s", decoded.Digest)
+	}
+
+	// A tampered field must invalidate the signature.
+	var tampered map[string]any
+	if err := json.Unmarshal(signedJSON, &tampered); err != nil {
+		t.Fatal(err)
+	}
+	tampered["NodeVersion"] = "v99.0.0"
+	tamperedJSON, err := json.Marshal(tampered)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := VerifyLinuxSignedHostProfile(tamperedJSON, signature, publicKey); !errors.Is(err, ErrHostAttestationMissing) {
+		t.Fatalf("tampered profile retained signed authority: %v", err)
+	}
+
+	// A different public key must not verify the signature.
+	otherPublicKey, _, err := ed25519.GenerateKey(cryptorand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := VerifyLinuxSignedHostProfile(signedJSON, signature, otherPublicKey); !errors.Is(err, ErrHostAttestationMissing) {
+		t.Fatalf("signature verified under an unrelated public key: %v", err)
+	}
+}
+
+func mustSigningBytes(t *testing.T, profile HostProfile) []byte {
+	t.Helper()
+	signingBytes, err := LinuxHostProfileSigningBytes(profile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return signingBytes
+}
+
+func TestLinuxHostProfileSignRejectsWrongKeySize(t *testing.T) {
+	if _, _, _, err := SignLinuxHostProfile(DefaultLinuxHostProfileTemplate(), ed25519.PrivateKey([]byte("short"))); !errors.Is(err, ErrHostProfileMissing) {
+		t.Fatalf("short private key was accepted: %v", err)
+	}
+}
+
+func TestVerifyLinuxSignedHostProfileFilesRoundTrip(t *testing.T) {
+	publicKey, privateKey, err := ed25519.GenerateKey(cryptorand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signedJSON, signature, _, err := SignLinuxHostProfile(DefaultLinuxHostProfileTemplate(), privateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	profilePath := filepath.Join(dir, "pi-host-profile.json")
+	sigPath := filepath.Join(dir, "pi-host-profile.ed25519")
+	pubPath := filepath.Join(dir, "pi-host-profile.pub")
+	for path, data := range map[string][]byte{profilePath: signedJSON, sigPath: signature, pubPath: publicKey} {
+		if err := os.WriteFile(path, data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	loaded, err := VerifyLinuxSignedHostProfileFiles(profilePath, sigPath, pubPath)
+	if err != nil {
+		t.Fatalf("verify signed profile files: %v", err)
+	}
+	if loaded.ID != DefaultLinuxHostProfileTemplate().ID {
+		t.Fatalf("verified profile identity differs: %+v", loaded)
+	}
+	if err := os.WriteFile(pubPath, bytes.Repeat([]byte{0x00}, ed25519.PublicKeySize), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := VerifyLinuxSignedHostProfileFiles(profilePath, sigPath, pubPath); !errors.Is(err, ErrHostAttestationMissing) {
+		t.Fatalf("verification accepted an unrelated public key: %v", err)
+	}
+}
+
+// TestLoadLinuxSignedHostProfileRefusesUnprotectedPath proves the production
+// loader never treats an operator-supplied path as its own trust root: a
+// non-root-owned profile directory and the absent fixed admin key both fail
+// closed.
+func TestLoadLinuxSignedHostProfileRefusesUnprotectedPath(t *testing.T) {
+	_, privateKey, err := ed25519.GenerateKey(cryptorand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signedJSON, signature, _, err := SignLinuxHostProfile(DefaultLinuxHostProfileTemplate(), privateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, filepath.Base(linuxTrustedProfilePath)), signedJSON, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, filepath.Base(linuxTrustedProfileSigPath)), signature, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadLinuxSignedHostProfile(dir); err == nil {
+		t.Fatal("loader accepted an unprotected operator-supplied profile directory")
+	}
+}
+
+func TestResolveLinuxHostProfileDataSources(t *testing.T) {
+	fallback := resolveLinuxHostProfileDataSources(filepath.Join(t.TempDir(), "absent.json"))
+	if !fallback.rootOwned || fallback.profile != linuxTrustedProfilePath || fallback.signature != linuxTrustedProfileSigPath {
+		t.Fatalf("absent path did not resolve to the root-owned trust root: %+v", fallback)
+	}
+	fileDir := t.TempDir()
+	filePath := filepath.Join(fileDir, "pi-host-profile.json")
+	if err := os.WriteFile(filePath, []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	file := resolveLinuxHostProfileDataSources(filePath)
+	if file.rootOwned || file.profile != filePath || file.signature != filepath.Join(fileDir, "pi-host-profile.ed25519") {
+		t.Fatalf("file path did not derive the sibling signature path: %+v", file)
+	}
+	dir := resolveLinuxHostProfileDataSources(t.TempDir())
+	if dir.rootOwned || filepath.Base(dir.profile) != filepath.Base(linuxTrustedProfilePath) ||
+		filepath.Base(dir.signature) != filepath.Base(linuxTrustedProfileSigPath) {
+		t.Fatalf("directory path did not use the fixed file names: %+v", dir)
+	}
+}
+
+// measuredProfile is a profile whose host-measured identities are not placeholders.
+func measuredProfile() HostProfile {
+	p := DefaultLinuxHostProfileTemplate()
+	p.ID = "pi-host-profile-test"
+	p.ExecutableDigest = DigestBytes([]byte("node"))
+	p.CgroupRootDigest = DigestBytes([]byte("cgroup root"))
+	p.PiRuntimeBundleDigest = DigestBytes([]byte("bundle"))
+	p.SourceProvenanceDigest = DigestBytes([]byte("source"))
+	p.OfflineVerifierDigest = DigestBytes([]byte("verifier"))
+	p.ProviderProfileDigest = DigestBytes([]byte("provider route"))
+	return p
+}
+
+// The template holds placeholders for every identity the operator measures. A profile that still holds one is
+// not a profile of a frozen source, verifier or route and must not be signed or admitted.
+func TestHostProfilePlaceholderFieldsAreNamed(t *testing.T) {
+	template := DefaultLinuxHostProfileTemplate()
+	want := []string{"ID", "ExecutableDigest", "CgroupRootDigest", "PiRuntimeBundleDigest", "SourceProvenanceDigest", "OfflineVerifierDigest", "ProviderProfileDigest"}
+	if got := template.PlaceholderFields(); !equalStrings(got, want) {
+		t.Fatalf("placeholder fields of the template = %v, want %v", got, want)
+	}
+	if got := measuredProfile().PlaceholderFields(); len(got) != 0 {
+		t.Fatalf("a measured profile has placeholder fields %v", got)
+	}
+	for _, field := range want[1:] {
+		p := measuredProfile()
+		switch field {
+		case "ExecutableDigest":
+			p.ExecutableDigest = placeholderDigest("node-executable")
+		case "CgroupRootDigest":
+			p.CgroupRootDigest = placeholderDigest("cgroup-root")
+		case "PiRuntimeBundleDigest":
+			p.PiRuntimeBundleDigest = placeholderDigest("pi-runtime-bundle")
+		case "SourceProvenanceDigest":
+			p.SourceProvenanceDigest = placeholderDigest("source-provenance")
+		case "OfflineVerifierDigest":
+			p.OfflineVerifierDigest = placeholderDigest("cosign-offline")
+		case "ProviderProfileDigest":
+			p.ProviderProfileDigest = placeholderDigest("go-providerbridge")
+		}
+		if got := p.PlaceholderFields(); !equalStrings(got, []string{field}) {
+			t.Errorf("%s: placeholder fields = %v", field, got)
+		}
+	}
+}
+
+// The offline verifier is the pinned cosign binary together with the public key it verifies under: changing
+// either changes the digest the profile pins.
+func TestOfflineVerifierDigestBindsTheBinaryAndTheKey(t *testing.T) {
+	cosign, pub := DigestBytes([]byte("cosign")), DigestBytes([]byte("cosign.pub"))
+	d := OfflineVerifierDigest(cosign, pub)
+	if d == OfflineVerifierDigest(DigestBytes([]byte("another cosign")), pub) || d == OfflineVerifierDigest(cosign, DigestBytes([]byte("another key"))) ||
+		d == OfflineVerifierDigest(pub, cosign) || !validDigest(d) || d == placeholderDigest("cosign-offline") {
+		t.Fatalf("offline verifier digest %s does not bind both inputs in order", d)
+	}
+}

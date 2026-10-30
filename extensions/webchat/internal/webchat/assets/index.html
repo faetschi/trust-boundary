@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>tbound · Pi chat workspace</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <a id="skip-link" class="skip-link" href="#chat-view">Skip to transcript</a>
+
+    <main class="layout" id="layout">
+      <nav class="rail" aria-label="Sessions">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true">tb</span>
+          <span class="brand-text">
+            <strong>tbound</strong>
+            <span>Pi chat workspace</span>
+          </span>
+        </div>
+
+        <h2 class="rail-title">Session</h2>
+        <ul id="sessions" class="session-list"></ul>
+
+        <div class="rail-streams">
+          <h3 class="rail-subtitle">Observation streams</h3>
+          <ul id="streams" class="stream-list"></ul>
+        </div>
+
+        <p class="rail-foot">
+          Read-only projection. No launch, cancel, approve, fork, or execute control exists in this
+          client — those are supervisor authority.
+        </p>
+      </nav>
+
+      <div class="workspace">
+        <header class="topbar">
+          <div class="topbar-title">
+            <h1 id="session-title" class="session-title">Loading…</h1>
+            <p id="session-sub" class="session-sub"></p>
+          </div>
+          <div class="topbar-meta">
+            <span id="source-badge" class="badge badge-source" data-source="unavailable">unavailable</span>
+            <span id="connection" class="badge badge-conn" data-state="connecting" role="status" aria-live="polite">connecting…</span>
+            <span id="session-status" class="badge badge-state pending">pending</span>
+            <button id="inspector-toggle" class="ghost-button" type="button" aria-controls="inspector">
+              Governance
+            </button>
+          </div>
+        </header>
+
+        <div id="claim-strip" class="claim-strip" role="note">
+          <span class="claim-item"><em>G1</em> <b id="claim-g1">false</b></span>
+          <span class="claim-sep" aria-hidden="true">·</span>
+          <span class="claim-item"><em>H1</em> <b id="claim-h1">unexecuted</b></span>
+          <span class="claim-sep" aria-hidden="true">·</span>
+          <span class="claim-item"><em>containment</em> <b id="claim-containment">not-established</b></span>
+          <span class="claim-sep" aria-hidden="true">·</span>
+          <span class="claim-item"><em>claim-bearing</em> <b id="claim-bearing">false</b></span>
+          <span class="claim-note">Presentation only — the supervisor retains policy, effect, and publication authority.</span>
+        </div>
+
+        <div id="notices" class="notices" aria-live="off"></div>
+        <p id="status-announcer" class="sr-only" role="status" aria-live="polite"></p>
+
+        <div id="view-tabs" class="tabring" role="tablist" aria-label="View">
+          <button
+            id="tab-chat"
+            class="view-tab tab is-active"
+            type="button"
+            role="tab"
+            aria-selected="true"
+            aria-controls="chat-view"
+            data-view="chat"
+          >
+            Chat
+          </button>
+          <button
+            id="tab-trajectory"
+            class="view-tab tab"
+            type="button"
+            role="tab"
+            aria-selected="false"
+            aria-controls="trajectory-view"
+            data-view="trajectory"
+          >
+            Trajectory
+          </button>
+        </div>
+
+        <section id="chat-view" class="view chat-view" role="tabpanel" aria-labelledby="tab-chat">
+          <div class="toolbar">
+            <div id="posture" class="posture" aria-label="Observed governance posture"></div>
+            <div class="toolbar-right">
+              <span id="filter-summary" class="filter-summary"></span>
+              <div id="timeline-filters" class="toggle-group" role="toolbar" aria-label="Filter timeline"></div>
+            </div>
+          </div>
+
+          <div
+            id="timeline"
+            class="timeline"
+            tabindex="-1"
+            role="log"
+            aria-live="off"
+            aria-label="Transcript and tool activity"
+          ></div>
+
+          <form id="composer" class="composer" aria-label="Composer (read-only)">
+            <label class="sr-only" for="prompt">Prompt</label>
+            <textarea id="prompt" name="prompt" rows="3" placeholder="Submitting turns is not available in this build." disabled></textarea>
+            <div class="composer-actions">
+              <button id="send" type="button" disabled>Send</button>
+              <button id="cancel" type="button" class="ghost-button" disabled>Cancel turn</button>
+            </div>
+            <p class="composer-note">
+              Disabled: submitting a turn or requesting cancellation requires the authenticated supervisor
+              session service, which is not implemented yet. The gateway is an untrusted client.
+              Press <kbd class="kbd">Esc</kbd> to close the governance panel.
+            </p>
+          </form>
+
+          <button id="chat-jump" class="jump-latest" type="button" hidden>Jump to latest</button>
+        </section>
+
+        <section
+          id="trajectory-view"
+          class="view trajectory-view"
+          role="tabpanel"
+          aria-labelledby="tab-trajectory"
+          hidden
+        >
+          <div class="toolbar">
+            <div id="trajectory-groups" class="toggle-group" role="toolbar" aria-label="Group records by"></div>
+            <div class="toolbar-right">
+              <span id="trajectory-summary" class="filter-summary"></span>
+              <label class="search-field" for="trajectory-search">
+                <span class="sr-only">Search records</span>
+                <input
+                  id="trajectory-search"
+                  type="search"
+                  placeholder="Search records…"
+                  autocomplete="off"
+                  spellcheck="false"
+                />
+              </label>
+            </div>
+          </div>
+
+          <div id="sequence-rail" class="sequence-rail" role="group" aria-label="Record sequence rail"></div>
+
+          <div id="ledger" class="ledger" tabindex="-1"></div>
+          <button id="trajectory-jump" class="jump-latest" type="button" hidden>Jump to latest</button>
+        </section>
+
+        <div id="foot-stats" class="foot-stats" aria-label="Observed session metrics"></div>
+      </div>
+
+      <aside id="inspector" class="inspector" aria-label="Governance inspector" data-mode="governance">
+        <div id="record-inspector" class="record-inspector"></div>
+        <div class="panel-set">
+          <h2 class="inspector-title">Governance</h2>
+          <section class="panel" aria-labelledby="panel-decision">
+            <h3 id="panel-decision">Policy decisions</h3>
+            <div id="panel-decisions" class="kv"></div>
+          </section>
+          <section class="panel" aria-labelledby="panel-prov">
+            <h3 id="panel-prov">Provenance</h3>
+            <div id="panel-provenance" class="kv"></div>
+          </section>
+          <section class="panel" aria-labelledby="panel-pub">
+            <h3 id="panel-pub">Publication</h3>
+            <div id="panel-publication" class="kv"></div>
+          </section>
+          <section class="panel" aria-labelledby="panel-rec">
+            <h3 id="panel-rec">Recovery</h3>
+            <div id="panel-recovery" class="kv"></div>
+          </section>
+          <section class="panel" aria-labelledby="panel-qual">
+            <h3 id="panel-qual">Qualification</h3>
+            <div id="panel-qualification" class="kv"></div>
+          </section>
+          <section class="panel" aria-labelledby="panel-warnings">
+            <h3 id="panel-warnings">Warnings</h3>
+            <ul id="panel-warnings-list" class="warning-list"></ul>
+          </section>
+        </div>
+      </aside>
+    </main>
+
+    <script type="module" src="/static/app.mjs"></script>
+  </body>
+</html>

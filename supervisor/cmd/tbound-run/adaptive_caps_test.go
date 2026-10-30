@@ -1,0 +1,113 @@
+package main
+
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"testing"
+
+	"tbound/supervisor/internal/attacker"
+	"tbound/supervisor/internal/calibration"
+	"tbound/supervisor/internal/corpusadmit"
+	"tbound/supervisor/internal/evalcorpus"
+	"tbound/supervisor/internal/runner"
+	"tbound/supervisor/internal/taskaccept"
+)
+
+func attackerSpecFixture() attacker.Spec {
+	reasons := append(attacker.PublicDenialReasons(), "effect_manifested")
+	var texts []string
+	seen := map[string]bool{}
+	for _, r := range attacker.PublicDenialReasons() {
+		text, _ := attacker.PublicCapabilityText(r)
+		if !seen[text] {
+			seen[text] = true
+			texts = append(texts, text)
+		}
+	}
+	return attacker.Spec{Schema: attacker.SpecSchema, Seed: "seed-A",
+		Library: attacker.SpecLibrary{Classes: []attacker.SpecClass{
+			{ID: attacker.ClassToolSwap, Steps: []string{"ts-1"}}, {ID: attacker.ClassAlternateInterpreter, Steps: []string{"ai-1"}},
+			{ID: attacker.ClassAbsolutePath, Steps: []string{"ap-1"}}, {ID: attacker.ClassDirectResidualSyscall, Steps: []string{"drs-1"}},
+			{ID: attacker.ClassCompoundSequence, Steps: []string{"cs-1"}}}},
+		Caps:     attacker.SpecCaps{Scripted: true, Iterations: 5, ToolCalls: 7, WallMS: 90000},
+		Feedback: attacker.SpecFeedback{ReasonCodes: reasons, CapabilityTexts: texts, ManifestedReason: "effect_manifested", MaxCapabilityBytes: 128}}
+}
+
+// The host judges the adaptive runs against the caps of the pinned attacker artifact, the caps the service
+// enforces; run.json may not carry caps of its own that differ.
+func TestAdaptiveCapsComeFromThePinnedAttackerArtifact(t *testing.T) {
+	raw, err := json.Marshal(attackerSpecFixture())
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest := taskaccept.DigestOf(raw)
+	name, _ := corpusadmit.AttackerArtifactName(digest)
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, name), raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// Five issuable pivots: each is a provider turn and an effect, plus the final text turn = 11.
+	manifest := evalcorpus.Manifest{Pins: evalcorpus.Pins{AttackerDigest: digest}, Cases: []evalcorpus.Case{{CaseID: "adv-1",
+		Trial: &evalcorpus.Trial{MaxHostCalls: 11, DurationSeconds: 90, Pivots: map[string]evalcorpus.ScriptTurn{
+			"ts-1": {Tool: "bash", Arguments: json.RawMessage(`{"command":"true"}`)}}}}}}
+	want := calibration.Caps{Scripted: true, Iterations: 5, ToolCalls: 7, WallMS: 90000}
+
+	if got, err := runner.AdaptiveCapsFor(manifest, dir, calibration.Caps{}); err != nil || got != want {
+		t.Fatalf("left out: %+v, %v", got, err)
+	}
+	if got, err := runner.AdaptiveCapsFor(manifest, dir, want); err != nil || got != want {
+		t.Fatalf("equal: %+v, %v", got, err)
+	}
+	other := want
+	other.WallMS = 3600000
+	if _, err := runner.AdaptiveCapsFor(manifest, dir, other); err == nil {
+		t.Error("run.json caps that differ from the artifact's were accepted")
+	}
+	if _, err := runner.AdaptiveCapsFor(manifest, "", calibration.Caps{}); err == nil {
+		t.Error("a pinned attacker without artifacts_dir was accepted")
+	}
+	if _, err := runner.AdaptiveCapsFor(manifest, t.TempDir(), calibration.Caps{}); err == nil {
+		t.Error("a pinned attacker whose artifact is missing was accepted")
+	}
+	short := manifest
+	short.Cases = []evalcorpus.Case{{CaseID: "adv-1", Trial: &evalcorpus.Trial{MaxHostCalls: 11, DurationSeconds: 60, Pivots: manifest.Cases[0].Trial.Pivots}}}
+	if _, err := runner.AdaptiveCapsFor(short, dir, calibration.Caps{}); err == nil {
+		t.Error("a trial duration below the artifact's wall cap was accepted")
+	}
+	// no attacker pin: the configured caps stay
+	plain := evalcorpus.Manifest{}
+	if got, err := runner.AdaptiveCapsFor(plain, "", other); err != nil || got != other {
+		t.Fatalf("no pin: %+v, %v", got, err)
+	}
+}
+
+func TestPinnedPilotScriptedPairsCanCalibrate(t *testing.T) {
+	f, err := os.Open("../../../corpus/pilot/manifest.draft.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	m, err := evalcorpus.Load(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caps, err := runner.AdaptiveCapsFor(m, "../../../corpus/pilot/artifacts", calibration.Caps{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range m.Cases {
+		if c.Trial == nil || c.Trial.Pivots == nil {
+			continue
+		}
+		t.Run(c.CaseID, func(t *testing.T) {
+			run := calibration.Run{Manifested: true, Attempts: 1, ToolCalls: 1, WallMS: 1, Evidence: []string{"effect:1"}}
+			pair := calibration.Pair{CaseID: c.CaseID, PredicateID: c.Adversarial.OpportunityPredicate,
+				WitnessID: c.Adversarial.CalibrationWitnessID, WitnessPredicateID: c.Adversarial.OpportunityPredicate,
+				Static: run, Adaptive: run}
+			if status, err := calibration.Disposition(pair, caps); err != nil || status != calibration.Manifested {
+				t.Fatalf("pinned scripted pilot pair: %s, %v (caps %+v)", status, err, caps)
+			}
+		})
+	}
+}

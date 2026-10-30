@@ -1,0 +1,12 @@
+# Build inputs are LF on every checkout platform. With core.autocrlf=true a
+# CRLF checkout changes the bytes that Vite and esbuild read, so a rebuild would
+# no longer match the committed dist/. The binary guard keeps any binary asset
+# out of line-ending conversion.
+* text eol=lf
+*.png binary
+*.jpg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.woff binary
+*.woff2 binary

@@ -4,8 +4,8 @@ param()
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$ExpectedBranch = 'codex/tbound-prototype'
-$ExpectedTBoundAttributesBlob = '1bbd6959aa788033f8382a3e750d9fdbaf8a98d4'
+$ExpectedBranch = 'main'
+$ExpectedTBoundAttributesBlob = '9f5fb419253366bc0c09c284f750211177b3d76e'
 $AssetsRoot = 'F:\TBoundAssets'
 $VmStorageRoot = 'F:\TBoundVMs'
 $ExportRoot = Join-Path $AssetsRoot 'GuestHandoff'
@@ -232,7 +232,7 @@ try {
     if ($trackedAttributeFiles.Count -ne 1 -or $trackedAttributeFiles[0] -cne '.gitattributes') {
         throw 'Expected exactly one committed attribute file at .gitattributes; other attribute files are not allowed.'
     }
-    $attributeEntry = @(Invoke-Git @('ls-tree', '-r', '--full-tree', $commit, '--', '.gitattributes'))
+    $attributeEntry = @(Invoke-Git @('ls-tree', '-r', '-l', '--full-tree', $commit, '--', '.gitattributes'))
     $attributeMatch = [regex]::Match([string]($attributeEntry | Select-Object -First 1), '^100644 blob (?<oid>[0-9a-f]{40,64})\s+[0-9]+\t\.gitattributes$')
     if ($attributeEntry.Count -ne 1 -or -not $attributeMatch.Success -or $attributeMatch.Groups['oid'].Value -cne $ExpectedTBoundAttributesBlob) {
         throw '.gitattributes does not match the reviewed text/eol=lf rules; archive-affecting attributes are not allowed.'
@@ -254,7 +254,7 @@ try {
     $expectedArchiveDirectories = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
     [void]$expectedArchiveDirectories.Add('tbound')
     foreach ($line in $inventory) {
-        $match = [regex]::Match([string]$line, '^(?<mode>[0-9]{6}) blob [0-9a-f]{40,64} (?<size>[0-9]+)\t(?<path>.+)$')
+        $match = [regex]::Match([string]$line, '^(?<mode>[0-9]{6}) blob [0-9a-f]{40,64} +(?<size>[0-9]+)\t(?<path>.+)$')
         if (-not $match.Success) {
             throw "Unexpected Git tree entry; refusing an ambiguous source inventory: $line"
         }
@@ -358,7 +358,7 @@ try {
         throw 'An output file already exists; refusing to overwrite it.'
     }
 
-    $archiveOutput = & git -C $RepoRoot -c "safe.directory=$RepoRoot" -c 'tar.umask=0000' archive --format=tar --prefix=tbound/ --output=$archivePath $commit 2>&1
+    $archiveOutput = & git -C $RepoRoot -c "safe.directory=$RepoRoot" -c 'core.autocrlf=false' -c 'tar.umask=0000' archive --format=tar --prefix=tbound/ --output=$archivePath $commit 2>&1
     $archiveExit = $LASTEXITCODE
     if ($archiveExit -ne 0) {
         $detail = [string]::Join([Environment]::NewLine, @($archiveOutput))

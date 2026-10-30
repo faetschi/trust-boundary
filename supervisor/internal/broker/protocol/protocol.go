@@ -25,7 +25,7 @@ const (
 	// ProposalSchemaVersion matches the JSON emitted by the Pi proxy tools.
 	ProposalSchemaVersion = "tbound-proposal/v1"
 	// CanonicalizationProfile pins RFC 8785 argument digest rules at this boundary.
-	CanonicalizationProfile = "tbound-args-jcs-rfc8785/v1"
+	CanonicalizationProfile   = "tbound-args-jcs-rfc8785/v1"
 	MaxFrameBytes             = 1 << 20
 	MaxCapturesPerStream      = 1024
 	MaxProposalsPerStream     = 1024
@@ -40,16 +40,16 @@ const ReasonResourceLimit correlation.ReasonCode = "protocol_resource_limit"
 // TrustedCapture is supplied only by broker code after it has captured a
 // provider response. Pi request fields cannot populate these broker facts.
 type TrustedCapture struct {
-	ResponseID                 correlation.Identifier
-	ToolCallID                 correlation.Identifier
-	ToolName                   string
-	RawArguments               json.RawMessage
-	CanonicalizationProfile    string
+	ResponseID              correlation.Identifier
+	ToolCallID              correlation.Identifier
+	ToolName                string
+	RawArguments            json.RawMessage
+	CanonicalizationProfile string
 	// CanonicalArgumentsDigest is an asserted broker digest. Capture recomputes
 	// it from RawArguments and rejects a mismatch; digest-only evidence is invalid.
-	CanonicalArgumentsDigest   string
-	Sequence                   uint64
-	Generation                 string
+	CanonicalArgumentsDigest string
+	Sequence                 uint64
+	Generation               string
 }
 
 // proposalRequest is deliberately the small, actual Pi-side wire shape. Broker
@@ -60,6 +60,40 @@ type proposalRequest struct {
 	Tool          string          `json:"tool"`
 	Arguments     json.RawMessage `json:"arguments"`
 }
+
+// Proposal is the bounded adapter-facing request carried over session IPC.
+// Its fields contain no broker-owned response identity, sequence, or digest.
+type Proposal struct {
+	SchemaVersion string          `json:"schema_version"`
+	ToolCallID    string          `json:"tool_call_id"`
+	Tool          string          `json:"tool"`
+	Arguments     json.RawMessage `json:"arguments"`
+}
+
+// Result is the bounded supervisor reply. Correlation identifiers are copied
+// from accepted broker state when available; ToolCallID is never authority.
+type Result struct {
+	SchemaVersion            string                  `json:"schema_version"`
+	ResponseID               *correlation.Identifier `json:"response_id,omitempty"`
+	ToolCallID               string                  `json:"tool_call_id"`
+	Tool                     string                  `json:"tool"`
+	Sequence                 uint64                  `json:"sequence"`
+	CanonicalArgumentsDigest string                  `json:"canonical_arguments_digest,omitempty"`
+	Verdict                  string                  `json:"verdict"`
+	ReasonCode               string                  `json:"reason_code"`
+	PolicyDigest             string                  `json:"policy_digest"`
+	// Status is the stable public execution status of an ALLOWed result: ResultStatusCommandFailed for a bash
+	// command that settled and failed, or ResultStatusNoEffectRefused for a call refused before any effect. The
+	// gate verdict and reason code stay as the gate decided them; the trusted Result producer sets it from the
+	// executor outcome, never the model or the output text. It is empty for every other Result.
+	Status string          `json:"status,omitempty"`
+	Output json.RawMessage `json:"output,omitempty"`
+}
+
+const ResultSchemaVersion = "tbound-result/v1"
+
+// ResultStatusCommandFailed marks an ALLOWed bash command whose exit was observed nonzero or not observed.
+const ResultStatusCommandFailed = "command_failed"
 
 // Stream serializes trusted captures and untrusted Pi proposals. Its mutex
 // keeps lookup, digest comparison, and one-time consumption in a single order.
@@ -107,8 +141,8 @@ func (s *Stream) Capture(capture TrustedCapture) correlation.Decision {
 	call := correlation.BrokerCall{
 		ResponseID: capture.ResponseID,
 		ToolCallID: capture.ToolCallID,
-		ToolName: capture.ToolName,
-		Sequence: capture.Sequence,
+		ToolName:   capture.ToolName,
+		Sequence:   capture.Sequence,
 		Generation: capture.Generation,
 	}
 	if capture.CanonicalizationProfile != CanonicalizationProfile ||
@@ -118,23 +152,11 @@ func (s *Stream) Capture(capture TrustedCapture) correlation.Decision {
 		!validDigest(capture.CanonicalArgumentsDigest) ||
 		strings.TrimSpace(capture.ToolName) != capture.ToolName ||
 		!validText(capture.Generation, maxGenerationBytes) {
-		s.closed = true
-		copy := call
-		return correlation.Decision{
-			Phase: correlation.PhaseCapture, Accepted: false,
-			ReasonCode: correlation.ReasonMalformedCapture, StreamClosed: true,
-			BrokerCapture: &copy,
-		}
+		return s.rejectMalformedCapture(call)
 	}
 	digest, err := CanonicalArgumentsDigest(capture.ToolName, capture.RawArguments)
 	if err != nil || digest != capture.CanonicalArgumentsDigest {
-		s.closed = true
-		copy := call
-		return correlation.Decision{
-			Phase: correlation.PhaseCapture, Accepted: false,
-			ReasonCode: correlation.ReasonMalformedCapture, StreamClosed: true,
-			BrokerCapture: &copy,
-		}
+		return s.rejectMalformedCapture(call)
 	}
 	call.CanonicalArgumentsDigest = digest
 
@@ -181,19 +203,19 @@ func (s *Stream) Propose(raw []byte) correlation.Decision {
 	call, exists := s.captures[request.ToolCallID]
 	if !exists {
 		proposal := correlation.Proposal{
-			ToolCallID: correlation.Identifier{Issuer: s.callIssuer, Opaque: request.ToolCallID},
-			ToolName: request.Tool,
+			ToolCallID:               correlation.Identifier{Issuer: s.callIssuer, Opaque: request.ToolCallID},
+			ToolName:                 request.Tool,
 			CanonicalArgumentsDigest: digest,
 		}
 		return s.rejectProposal(correlation.ReasonUnknownCall, &proposal)
 	}
 	proposal := correlation.Proposal{
-		ResponseID: call.ResponseID,
-		ToolCallID: call.ToolCallID,
-		ToolName: request.Tool,
+		ResponseID:               call.ResponseID,
+		ToolCallID:               call.ToolCallID,
+		ToolName:                 request.Tool,
 		CanonicalArgumentsDigest: digest,
-		Sequence: call.Sequence,
-		Generation: call.Generation,
+		Sequence:                 call.Sequence,
+		Generation:               call.Generation,
 	}
 	decision := s.correlator.Validate(proposal)
 	if decision.StreamClosed {
@@ -202,14 +224,22 @@ func (s *Stream) Propose(raw []byte) correlation.Decision {
 	return decision
 }
 
+func (s *Stream) rejectMalformedCapture(call correlation.BrokerCall) correlation.Decision {
+	s.closed = true
+	return correlation.Decision{
+		Phase: correlation.PhaseCapture, ReasonCode: correlation.ReasonMalformedCapture,
+		StreamClosed: true, BrokerCapture: &call,
+	}
+}
+
 func (s *Stream) rejectProposal(reason correlation.ReasonCode, proposal *correlation.Proposal) correlation.Decision {
 	s.closed = true
 	return correlation.Decision{
-		Phase: correlation.PhaseProposal,
-		Accepted: false,
-		ReasonCode: reason,
+		Phase:        correlation.PhaseProposal,
+		Accepted:     false,
+		ReasonCode:   reason,
 		StreamClosed: true,
-		Proposal: proposal,
+		Proposal:     proposal,
 	}
 }
 
@@ -239,6 +269,156 @@ func decodeProposal(raw []byte) (proposalRequest, error) {
 	return request, nil
 }
 
+// DecodeProposal applies the same strict, exact-shape validation used by the
+// broker correlation stream and returns a defensive copy of the arguments.
+func DecodeProposal(raw []byte) (Proposal, error) {
+	request, err := decodeProposal(raw)
+	if err != nil {
+		return Proposal{}, err
+	}
+	return Proposal{
+		SchemaVersion: request.SchemaVersion,
+		ToolCallID:    request.ToolCallID,
+		Tool:          request.Tool,
+		Arguments:     append(json.RawMessage(nil), request.Arguments...),
+	}, nil
+}
+
+// MarshalProposal encodes a typed proposal after validating its exact wire
+// shape. Canonicalization and broker correlation still happen in Stream.Propose.
+func MarshalProposal(proposal Proposal) ([]byte, error) {
+	if proposal.SchemaVersion != ProposalSchemaVersion ||
+		!validText(proposal.ToolCallID, maxIdentifierBytes) ||
+		!validText(proposal.Tool, maxIdentifierBytes) || len(proposal.Arguments) == 0 || len(proposal.Arguments) > MaxFrameBytes {
+		return nil, errors.New("proposal fields exceed the protocol bounds")
+	}
+	encoded, err := json.Marshal(proposal)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := DecodeProposal(encoded); err != nil {
+		return nil, err
+	}
+	return encoded, nil
+}
+
+// ValidateStrictJSON exposes the protocol's duplicate-key, UTF-8, number, and
+// nesting checks to the session IPC framing layer. It does not validate a
+// particular message schema.
+func ValidateStrictJSON(raw []byte) error {
+	if len(raw) == 0 || len(raw) > MaxFrameBytes {
+		return errors.New("JSON message has invalid size")
+	}
+	return checkStrictJSON(raw)
+}
+
+// ValidateEvidenceJSON applies the strict JSON checks and rejects member names
+// equal under encoding/json's case folding. The importer must bound raw's size.
+// Protocol frames retain their case-sensitive keys and MaxFrameBytes limit.
+func ValidateEvidenceJSON(raw []byte) error {
+	return checkJSON(raw, true)
+}
+
+// DecodeResult validates a supervisor result before it is released to the
+// adapter. Unknown fields and duplicate JSON keys are rejected.
+func DecodeResult(raw []byte) (Result, error) {
+	var result Result
+	if err := ValidateStrictJSON(raw); err != nil {
+		return result, err
+	}
+	var object map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &object); err != nil {
+		return result, err
+	}
+	allowed := map[string]bool{
+		"schema_version": true, "response_id": true, "tool_call_id": true,
+		"tool": true, "sequence": true, "canonical_arguments_digest": true,
+		"verdict": true, "reason_code": true, "policy_digest": true, "output": true, "status": true,
+	}
+	for key := range object {
+		if !allowed[key] {
+			return result, fmt.Errorf("unknown result field %q", key)
+		}
+	}
+	for _, key := range []string{"schema_version", "tool_call_id", "tool", "sequence", "verdict", "reason_code", "policy_digest"} {
+		if _, exists := object[key]; !exists {
+			return result, fmt.Errorf("result is missing required field %q", key)
+		}
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&result); err != nil {
+		return Result{}, err
+	}
+	if result.SchemaVersion != ResultSchemaVersion ||
+		!validText(result.ToolCallID, maxIdentifierBytes) ||
+		!validText(result.Tool, maxIdentifierBytes) ||
+		(result.Verdict != "ALLOW" && result.Verdict != "DENY") ||
+		!validText(result.ReasonCode, maxIdentifierBytes) ||
+		!validText(result.PolicyDigest, maxIdentifierBytes) {
+		return Result{}, errors.New("result has invalid required values")
+	}
+	if result.ResponseID != nil && !validIdentifier(*result.ResponseID) {
+		return Result{}, errors.New("result has invalid response identity")
+	}
+	if result.CanonicalArgumentsDigest != "" && !validDigest(result.CanonicalArgumentsDigest) {
+		return Result{}, errors.New("result has invalid canonical-arguments digest")
+	}
+	if result.Verdict == "ALLOW" && (result.ResponseID == nil || result.Sequence == 0 ||
+		result.CanonicalArgumentsDigest == "" || !registeredTool(result.Tool) || result.ReasonCode != "policy_rule_allow") {
+		return Result{}, errors.New("allow result is not bound to a matched registered proposal")
+	}
+	if !validResultStatus(result) {
+		return Result{}, errors.New("result status is only the command_failed status of an ALLOWed bash result or the no_effect_refused status of an ALLOWed call")
+	}
+	if result.Verdict == "DENY" && len(result.Output) != 0 {
+		return Result{}, errors.New("denial result may not contain executor output")
+	}
+	if len(result.Output) > 0 {
+		if err := ValidateStrictJSON(result.Output); err != nil {
+			return Result{}, fmt.Errorf("result output: %w", err)
+		}
+	}
+	result.Output = append(json.RawMessage(nil), result.Output...)
+	return result, nil
+}
+
+// validResultStatus keeps each public status to the one result shape that can carry it.
+func validResultStatus(result Result) bool {
+	switch result.Status {
+	case "":
+		return true
+	case ResultStatusCommandFailed:
+		return result.Verdict == "ALLOW" && result.Tool == "bash"
+	case ResultStatusNoEffectRefused:
+		return result.Verdict == "ALLOW" && registeredTool(result.Tool) && bytes.Equal(result.Output, []byte(noEffectRefusalOutput))
+	default:
+		return false
+	}
+}
+
+// MarshalResult validates and encodes a result using the same schema accepted
+// by DecodeResult.
+func MarshalResult(result Result) ([]byte, error) {
+	if len(result.ToolCallID) > maxIdentifierBytes || len(result.Tool) > maxIdentifierBytes ||
+		len(result.ReasonCode) > maxIdentifierBytes || len(result.PolicyDigest) > maxIdentifierBytes ||
+		len(result.CanonicalArgumentsDigest) > len(CanonicalizationProfile)+len(":sha256:")+sha256.Size*2 ||
+		len(result.Output) > MaxFrameBytes {
+		return nil, errors.New("result fields exceed the protocol bounds")
+	}
+	if result.ResponseID != nil && (len(result.ResponseID.Issuer) > maxIdentifierBytes || len(result.ResponseID.Opaque) > maxIdentifierBytes) {
+		return nil, errors.New("result response identity exceeds the protocol bounds")
+	}
+	encoded, err := json.Marshal(result)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := DecodeResult(encoded); err != nil {
+		return nil, err
+	}
+	return encoded, nil
+}
+
 func checkExactProposalKeys(raw []byte) error {
 	var object map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &object); err != nil {
@@ -256,6 +436,10 @@ func checkExactProposalKeys(raw []byte) error {
 }
 
 func checkStrictJSON(raw []byte) error {
+	return checkJSON(raw, false)
+}
+
+func checkJSON(raw []byte, foldKeys bool) error {
 	if !utf8.Valid(raw) {
 		return errors.New("JSON is not valid UTF-8")
 	}
@@ -264,7 +448,7 @@ func checkStrictJSON(raw []byte) error {
 	}
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.UseNumber()
-	if err := scanJSONValue(decoder, 0); err != nil {
+	if err := scanJSONValue(decoder, 0, foldKeys); err != nil {
 		return err
 	}
 	if _, err := decoder.Token(); err != io.EOF {
@@ -276,7 +460,7 @@ func checkStrictJSON(raw []byte) error {
 	return nil
 }
 
-func scanJSONValue(decoder *json.Decoder, depth int) error {
+func scanJSONValue(decoder *json.Decoder, depth int, foldKeys bool) error {
 	token, err := decoder.Token()
 	if err != nil {
 		return err
@@ -311,11 +495,15 @@ func scanJSONValue(decoder *json.Decoder, depth int) error {
 			if !ok {
 				return errors.New("JSON object key is not a string")
 			}
-			if _, duplicate := seen[key]; duplicate {
+			identity := key
+			if foldKeys {
+				identity = foldJSONKey(key)
+			}
+			if _, duplicate := seen[identity]; duplicate {
 				return fmt.Errorf("duplicate JSON object key %q", key)
 			}
-			seen[key] = struct{}{}
-			if err := scanJSONValue(decoder, depth+1); err != nil {
+			seen[identity] = struct{}{}
+			if err := scanJSONValue(decoder, depth+1, foldKeys); err != nil {
 				return err
 			}
 		}
@@ -325,7 +513,7 @@ func scanJSONValue(decoder *json.Decoder, depth int) error {
 		}
 	case '[':
 		for decoder.More() {
-			if err := scanJSONValue(decoder, depth+1); err != nil {
+			if err := scanJSONValue(decoder, depth+1, foldKeys); err != nil {
 				return err
 			}
 		}
@@ -337,6 +525,20 @@ func scanJSONValue(decoder *json.Decoder, depth int) error {
 		return errors.New("unexpected JSON delimiter")
 	}
 	return nil
+}
+
+// The smallest rune of each SimpleFold cycle gives the same equivalence classes
+// as strings.EqualFold and encoding/json's foldName, including long s and Kelvin K.
+func foldJSONKey(key string) string {
+	return strings.Map(func(r rune) rune {
+		for {
+			next := unicode.SimpleFold(r)
+			if next <= r {
+				return next
+			}
+			r = next
+		}
+	}, key)
 }
 
 // Escaped UTF-16 surrogate pairs are accepted as Unicode scalar values, while

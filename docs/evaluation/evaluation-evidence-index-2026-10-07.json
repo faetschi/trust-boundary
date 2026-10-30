@@ -1,0 +1,725 @@
+{
+  "$schema": "tbound/evaluation-evidence-index/v1",
+  "index_version": 1,
+  "review_date": "2026-10-07",
+  "attestation_scope": "Structural ledger only; no artifact existence, commit resolution, host state, runtime, provider, signer, or containment attestation.",
+  "provenance": {
+    "review_scope": "Source and document review only; no host operation, controller invocation, task query, key access, guest run, provider request, commit, or staging.",
+    "current_checkout": {
+      "commit": "efda19e6c7b3f6d599f3b52667941c5ccf92c659",
+      "commit_date": "2026-10-07",
+      "scope": "Documentation coordination; not a new implementation freeze."
+    },
+    "accepted_component_commits": [
+      {
+        "commit": "a977766722dcfaa12060385b95ef028877d04eb6",
+        "scope": "supervisor publication/runtime integration",
+        "status": "accepted-component"
+      },
+      {
+        "commit": "1bedc0ec350edcbb2b7e3df4d877de50f5308c66",
+        "scope": "genuine provider to durable synthetic write",
+        "status": "accepted-component"
+      }
+    ],
+      "external_recorded_sources": [
+      {
+        "ref": "repo:docs/native-pi-product-blockers-2026-10-07.md",
+        "base_commit": "c08b1cf1ea1aeef19a84f13a449da12870444e43",
+        "base_blob": "fe12a97fb1c48b79052346757089fe7c0835853d",
+        "working_tree_blob": "fe12a97fb1c48b79052346757089fe7c0835853d",
+        "sha256": "524bca03c367c661715f5e8f76b1b6145f466ff07a0680739b8e3e97a0d075c6",
+        "status": "external-recorded-source-only",
+        "host_observation_revalidated": false
+      },
+      {
+        "ref": "repo:docs/native-pi-autonomous-setup-attempt-2026-10-07.md",
+        "base_commit": "7aed2a183a1bef609a8cc536498f751caa20c0d1",
+        "base_blob": "8fa82e9afbb43fee64cc6a6a35c4d02aaa18fe64",
+        "working_tree_blob": "ac29a71edf9365dc085a300aa1ae72cf7e939c5c",
+        "sha256": "5bcb600f773f25f54eb63aa44e0922cf3668717b792c206cc6b516a728560f23",
+        "status": "external-recorded-source-only-dirty",
+        "host_observation_revalidated": false
+        }
+      ],
+      "citation_count": 34
+  },
+  "status_vocabulary": [
+    "blocked",
+    "partial-component",
+    "not-evidenced",
+    "component-accepted"
+  ],
+  "entries": [
+    {
+      "id": "g0-literature-review-freeze",
+      "kind": "freeze",
+      "title": "G0 bounded literature search, screening, and independent review",
+      "claim_scope": "G0 contribution/gap statement",
+      "status": "partial-component",
+      "fulfilled": false,
+      "source_citations": [
+        {
+          "ref": "thesis:quellen/g0/prisma-flow.md",
+          "source_date": "2026-09-23",
+          "locator": "Flow table and explicit non-claims",
+          "lines": "7-45"
+        },
+        {
+          "ref": "thesis:quellen/g0/README.md",
+          "source_date": "2026-09-23",
+          "locator": "Status and pending work",
+          "lines": "18-60"
+        },
+        {
+          "ref": "thesis:AH-technical/00-roadmap.md",
+          "source_date": "2026-09-29",
+          "locator": "WP0 / Gate G0",
+          "lines": "99-112"
+        }
+      ],
+      "required_artifacts": [
+        "completed screening.csv",
+        "full-text extraction and reviewer agreement",
+        "PRISMA flow and dated contribution statement"
+      ],
+      "expected_counts": {
+        "unique_retained_window": 98,
+        "transcribed": 53,
+        "not_transcribed": 45,
+        "title_abstract_screened": 53,
+        "full_text_retrieved": 0,
+        "final_full_text_inclusions": 0,
+        "second_human_reviews": 0,
+        "snowball_rounds_executed": 0
+      },
+      "arithmetic_constraints": [],
+      "evidence_refs": [],
+      "dependencies": [],
+      "notes": "Counts are the dated 2026-09-23 partial execution, not a fresh review and not G0 completion."
+    },
+    {
+      "id": "g1-frozen-profile-and-feasibility",
+      "kind": "freeze",
+      "title": "G1 frozen Linux profile and five feasibility spikes",
+      "claim_scope": "G1 / AC-EVQ",
+      "status": "blocked",
+      "fulfilled": false,
+      "source_citations": [
+        {
+          "ref": "thesis:AH-technical/00-roadmap.md",
+          "source_date": "2026-09-29",
+          "locator": "WP1 and Gate G1",
+          "lines": "114-128"
+        },
+        {
+          "ref": "repo:docs/experiment-manifest.md",
+          "source_date": "2026-10-07",
+          "locator": "Candidate status and Must freeze before G1 gap list",
+          "lines": "1-10;89-130"
+        }
+      ],
+      "required_artifacts": [
+        "frozen VM/filesystem/kernel/runtime/profile manifest",
+        "E01 effective capability identity record",
+        "E04 temporal workspace fixtures",
+        "E05 provider/generation fixture",
+        "E06 exposure matrix"
+      ],
+      "expected_counts": {
+        "feasibility_spikes": 5,
+        "required_e04_fixture_families": 2
+      },
+      "arithmetic_constraints": [],
+      "evidence_refs": [],
+      "dependencies": ["host-current-source-verification-unlock", "containment-profile-unlock"],
+      "notes": "The candidate experiment manifest explicitly freezes nothing. No G1 pass is inferred from WSL, Podman smoke, or digest presence."
+    },
+    {
+      "id": "e01-per-run-identity",
+      "kind": "freeze",
+      "title": "Per-run identity, generation, runtime, and effective capability record",
+      "claim_scope": "E01 / G1",
+      "status": "not-evidenced",
+      "fulfilled": false,
+      "source_citations": [
+        {
+          "ref": "thesis:AH-technical/11-evidence-contract.md",
+          "source_date": "2026-09-29",
+          "locator": "E01 identity and generation",
+          "lines": "14-34"
+        }
+      ],
+      "required_artifacts": [
+        "per-run workflow/session/owner/profile identities",
+        "effective cgroup/Landlock/seccomp observations",
+        "source and generation manifests"
+      ],
+      "expected_counts": {},
+      "arithmetic_constraints": [],
+      "evidence_refs": [],
+      "dependencies": ["g1-frozen-profile-and-feasibility"],
+      "notes": "Requested settings are not evidence that the effective profile was applied."
+    },
+    {
+      "id": "e04-temporal-workspace-fixtures",
+      "kind": "study",
+      "title": "E04 retained-state and temporal workspace observation fixtures",
+      "claim_scope": "E04 / G1 and H1 oracle validity",
+      "status": "not-evidenced",
+      "fulfilled": false,
+      "source_citations": [
+        {
+          "ref": "thesis:AH-technical/11-evidence-contract.md",
+          "source_date": "2026-09-29",
+          "locator": "E04 temporal workspace predicate",
+          "lines": "138-162"
+        },
+        {
+          "ref": "thesis:AH-technical/00-roadmap.md",
+          "source_date": "2026-09-29",
+          "locator": "G1 E04/E06 requirement",
+          "lines": "124-128"
+        }
+      ],
+      "required_artifacts": [
+        "named observation-point manifests",
+        "create-delete-revert fixture",
+        "modify-revert fixture",
+        "instrument liveness and loss semantics"
+      ],
+      "expected_counts": {
+        "fixture_families": 2
+      },
+      "arithmetic_constraints": [],
+      "evidence_refs": [],
+      "dependencies": ["g1-frozen-profile-and-feasibility"],
+      "notes": "A later equal manifest does not prove that no transient mutation occurred."
+    },
+    {
+      "id": "e05-governed-pi-transcript",
+      "kind": "study",
+      "title": "Pinned Pi provider, adapter, IPC, and generation transcript",
+      "claim_scope": "E05 / G1 / AC-EVQ",
+      "status": "partial-component",
+      "fulfilled": false,
+      "source_citations": [
+        {
+          "ref": "thesis:AH-technical/11-evidence-contract.md",
+          "source_date": "2026-09-29",
+          "locator": "E05 provider/generation transcript fixture",
+          "lines": "164-174"
+        },
+        {
+          "ref": "repo:docs/provider-durable-evidence.md",
+          "source_date": "2026-10-05",
+          "locator": "Limits of genuine single-write component evidence",
+          "lines": "55-63"
+        }
+      ],
+      "required_artifacts": [
+        "real pinned Pi multi-turn transcript",
+        "broker/provider/tool-result correlation",
+        "two successive generation records",
+        "cancellation and ambient-provider negative evidence"
+      ],
+      "expected_counts": {
+        "ordered_operations": 4,
+        "successive_generation_transitions": 2
+      },
+      "arithmetic_constraints": [],
+      "evidence_refs": [
+        {
+          "kind": "accepted-commit",
+          "id": "1bedc0ec350edcbb2b7e3df4d877de50f5308c66",
+          "ref": "repo:docs/provider-durable-evidence.md",
+          "scope": "single synthetic write component",
+          "status": "component-only"
+        }
+      ],
+      "dependencies": ["g1-frozen-profile-and-feasibility"],
+      "notes": "The accepted provider receipt is not a live Pi SDK multi-turn or claim-bearing containment result."
+    },
+    {
+      "id": "e06-exposure-matrix",
+      "kind": "freeze",
+      "title": "Sensitive path/content exposure matrix across all registered routes",
+      "claim_scope": "E06 / G1 / H1 oracle validity",
+      "status": "not-evidenced",
+      "fulfilled": false,
+      "source_citations": [
+        {
+          "ref": "thesis:AH-technical/11-evidence-contract.md",
+          "source_date": "2026-09-29",
+          "locator": "E06 exposure matrix and read effects",
+          "lines": "176-193"
+        }
+      ],
+      "required_artifacts": [
+        "route-by-sensitive-class matrix",
+        "declared read denial evidence",
+        "Bash command-view denial evidence",
+        "direct runtime and provider-channel classifications"
+      ],
+      "expected_counts": {},
+      "arithmetic_constraints": [],
+      "evidence_refs": [],
+      "dependencies": ["g1-frozen-profile-and-feasibility"],
+      "notes": "Attempted reads, successful reads, and provider disclosure remain separate evidence types."
+    },
+    {
+      "id": "e07-publication-boundary-conformance",
+      "kind": "study",
+      "title": "E07 per-object publication durability-boundary conformance",
+      "claim_scope": "E07 / publication component and AC-EVQ",
+      "status": "partial-component",
+      "fulfilled": false,
+      "source_citations": [
+        {
+          "ref": "thesis:AH-technical/11-evidence-contract.md",
+          "source_date": "2026-09-29",
+          "locator": "E07 publication and recovery evidence",
+          "lines": "195-211"
+        },
+        {
+          "ref": "repo:docs/publication-runtime-integration.md",
+          "source_date": "2026-10-07",
+          "locator": "Component-test boundary and explicit non-coverage",
+          "lines": "165-193"
+        }
+      ],
+      "required_artifacts": [
+        "per-object source/stage/original identities",
+        "durability-boundary fault outcomes",
+        "external outcome observation",
+        "production workflow/CLI authority wiring"
+      ],
+      "expected_counts": {
+        "registered_operation_kinds": 6,
+        "terminal_classifications": 3
+      },
+      "arithmetic_constraints": [],
+      "evidence_refs": [
+        {
+          "kind": "accepted-commit",
+          "id": "a977766722dcfaa12060385b95ef028877d04eb6",
+          "ref": "repo:docs/publication-runtime-integration.md",
+          "scope": "publication runtime component",
+          "status": "component-only"
+        }
+      ],
+      "dependencies": ["g1-frozen-profile-and-feasibility"],
+      "notes": "E07 durability-boundary conformance is not the separate 16x3 secondary recovery study; the package tests do not fulfill either study."
+    },
+    {
+      "id": "e03-pc-calibration-freeze",
+      "kind": "freeze",
+      "title": "Channel-preserving P/C calibration and adaptive attacker freeze",
+      "claim_scope": "E03 / D32 / AC-Security",
+      "status": "not-evidenced",
+      "fulfilled": false,
+      "source_citations": [
+        {
+          "ref": "thesis:AH-technical/11-evidence-contract.md",
+          "source_date": "2026-09-29",
+          "locator": "E03 channel-preserving calibration and adaptive parameters",
+          "lines": "55-136"
+        },
+        {
+          "ref": "thesis:AH-technical/00-roadmap.md",
+          "source_date": "2026-09-29",
+          "locator": "WP4 maximum registered workload",
+          "lines": "219-258"
+        }
+      ],
+      "required_artifacts": [
+        "per-channel witnesses",
+        "disjoint adaptive pilot and final library",
+        "frozen caps/rates/seeds/failure rules",
+        "all-299 P/C calibration ledger"
+      ],
+      "expected_counts": {
+        "registered_pairs": 299,
+        "planned_calibration_executions": 1196,
+        "executions_per_pair": 4
+      },
+      "arithmetic_constraints": [
+        {
+          "name": "calibration_product",
+          "left_key": "registered_pairs",
+          "operator": "*",
+          "right_key": "executions_per_pair",
+          "result_key": "planned_calibration_executions",
+          "expected_result": 1196,
+          "status": "declared"
+        }
+      ],
+      "evidence_refs": [],
+      "dependencies": ["g1-frozen-profile-and-feasibility", "e05-governed-pi-transcript"],
+      "notes": "The 1,196 count is the roadmap's 299 x 4 execution workload, not an observed result."
+    },
+    {
+      "id": "h1-registered-workload",
+      "kind": "study",
+      "title": "Registered H1 configurations and paired corpus workload",
+      "claim_scope": "H1 / AC-Security / AC-Friction / SQ-C",
+      "status": "not-evidenced",
+      "fulfilled": false,
+      "source_citations": [
+        {
+          "ref": "thesis:AH-technical/00-roadmap.md",
+          "source_date": "2026-09-29",
+          "locator": "Confirmatory study and SQ definitions",
+          "lines": "19-28"
+        },
+        {
+          "ref": "thesis:AH-technical/00-roadmap.md",
+          "source_date": "2026-09-29",
+          "locator": "WP4 maximum workload and WP5 registered experiment",
+          "lines": "241-280"
+        },
+        {
+          "ref": "thesis:AH-technical/10-decision-register.md",
+          "source_date": "2026-09-29",
+          "locator": "D19 sampling decision",
+          "lines": "31-33"
+        }
+      ],
+      "required_artifacts": [
+        "frozen corpus/configuration/metric matrix",
+        "intention-to-test and deviation ledger",
+        "raw trial artifacts and exact analysis output"
+      ],
+      "expected_counts": {
+        "configuration_c_adversarial_trajectories": 299,
+        "pc_calibration_executions": 1196,
+        "compliant_cases": 100,
+        "compliant_bcv_runs": 300,
+        "bcv_configurations_per_case": 3,
+        "ambiguous_cases": 20,
+        "stability_cases": 50,
+        "stability_replicates": 3,
+        "additional_variance_repeats": 100,
+        "planned_units_before_external_reruns": 1983
+      },
+      "arithmetic_constraints": [
+        {
+          "name": "compliant_bcv_product",
+          "left_key": "compliant_cases",
+          "operator": "*",
+          "right_key": "bcv_configurations_per_case",
+          "result_key": "compliant_bcv_runs",
+          "expected_result": 300,
+          "status": "declared"
+        }
+      ],
+      "evidence_refs": [],
+      "dependencies": ["e03-pc-calibration-freeze", "e07-publication-boundary-conformance"],
+      "notes": "These are prospective registered units. No local component test or historical receipt fulfills an H1 run."
+    },
+    {
+      "id": "secondary-recovery-16x3",
+      "kind": "study",
+      "title": "Secondary crash/incident recovery study",
+      "claim_scope": "Secondary recovery correctness, not E07 and not H1 sample count",
+      "status": "blocked",
+      "fulfilled": false,
+      "source_citations": [
+        {
+          "ref": "thesis:AH-technical/02-1-recovery-and-continuation.md",
+          "source_date": "2026-09-28",
+          "locator": "§8 Secondary recovery evaluation",
+          "lines": "337-382"
+        },
+        {
+          "ref": "thesis:AH-technical/02-1-recovery-and-continuation.md",
+          "source_date": "2026-09-28",
+          "locator": "Publication conformance and audit-ordering distinction",
+          "lines": "392-399"
+        }
+      ],
+      "required_artifacts": [
+        "clean-VM snapshot trial ledger",
+        "fault injection and recovery action records",
+        "48-trial correctness/effect summary after source ambiguity is reconciled"
+      ],
+      "expected_counts": {
+        "declared_main_injections": 7,
+        "enumerated_main_labels": 8,
+        "incident_injections": 9,
+        "declared_scenarios": 16,
+        "enumerated_scenarios": 17,
+        "repetitions_per_scenario": 3,
+        "declared_trials": 48,
+        "trials_if_all_enumerated_main_labels_count": 51
+      },
+      "arithmetic_constraints": [
+        {
+          "name": "declared_scenario_sum",
+          "left_key": "declared_main_injections",
+          "operator": "+",
+          "right_key": "incident_injections",
+          "result_key": "declared_scenarios",
+          "expected_result": 16,
+          "status": "declared"
+        },
+        {
+          "name": "declared_trial_product",
+          "left_key": "declared_scenarios",
+          "operator": "*",
+          "right_key": "repetitions_per_scenario",
+          "result_key": "declared_trials",
+          "expected_result": 48,
+          "status": "declared"
+        },
+        {
+          "name": "enumerated_scenario_sum",
+          "left_key": "enumerated_main_labels",
+          "operator": "+",
+          "right_key": "incident_injections",
+          "result_key": "enumerated_scenarios",
+          "expected_result": 17,
+          "status": "source-ambiguity"
+        },
+        {
+          "name": "enumerated_trial_product",
+          "left_key": "enumerated_scenarios",
+          "operator": "*",
+          "right_key": "repetitions_per_scenario",
+          "result_key": "trials_if_all_enumerated_main_labels_count",
+          "expected_result": 51,
+          "status": "source-ambiguity"
+        }
+      ],
+      "evidence_refs": [],
+      "dependencies": ["g1-frozen-profile-and-feasibility", "e07-publication-boundary-conformance"],
+      "notes": "The source says seven main points but enumerates eight. Resolve the 48-versus-51 arithmetic before execution; never equate this study with E07 boundary conformance."
+    },
+    {
+      "id": "utility-and-audit-ordering-study",
+      "kind": "study",
+      "title": "Paired utility measurements and secondary audit-ordering comparison",
+      "claim_scope": "SQ-C and secondary reliability/performance only",
+      "status": "not-evidenced",
+      "fulfilled": false,
+      "source_citations": [
+        {
+          "ref": "thesis:AH-technical/00-roadmap.md",
+          "source_date": "2026-09-29",
+          "locator": "WP4 secondary utility harness",
+          "lines": "186-208"
+        },
+        {
+          "ref": "thesis:AH-technical/02-1-recovery-and-continuation.md",
+          "source_date": "2026-09-28",
+          "locator": "Audit-ordering comparison boundary",
+          "lines": "392-399"
+        }
+      ],
+      "required_artifacts": [
+        "paired governed/native-Pi task records",
+        "latency/token/cost/retry/success/audit measurements",
+        "reliable resource measurements where available",
+        "secondary async-versus-hybrid comparison"
+      ],
+      "expected_counts": {},
+      "arithmetic_constraints": [],
+      "evidence_refs": [],
+      "dependencies": ["h1-registered-workload"],
+      "notes": "Utility is descriptive and cannot rescue an unresolved security or evidence clause."
+    },
+    {
+      "id": "g4-g5-registration-reproduction",
+      "kind": "freeze",
+      "title": "Clean-machine reproduction, preregistration, and ledger reconciliation",
+      "claim_scope": "G4 / G5 / D31",
+      "status": "not-evidenced",
+      "fulfilled": false,
+      "source_citations": [
+        {
+          "ref": "thesis:AH-technical/00-roadmap.md",
+          "source_date": "2026-09-29",
+          "locator": "WP4 protocol freeze and G4; WP5/G5",
+          "lines": "194-200;260-280"
+        },
+        {
+          "ref": "thesis:AH-technical/10-decision-register.md",
+          "source_date": "2026-09-29",
+          "locator": "D31 preregistration identity",
+          "lines": "42-42"
+        }
+      ],
+      "required_artifacts": [
+        "clean-machine raw-evidence reproduction",
+        "OSF registration and cross-linked Zenodo archive",
+        "signed Git tag/commit and manifest/configuration hashes",
+        "reconciled raw trial ledger and analysis outputs"
+      ],
+      "expected_counts": {},
+      "arithmetic_constraints": [],
+      "evidence_refs": [],
+      "dependencies": ["g1-frozen-profile-and-feasibility", "h1-registered-workload", "secondary-recovery-16x3"],
+      "notes": "A local candidate manifest or mutable checklist cannot substitute for the required external immutable record."
+    },
+    {
+      "id": "native-pi-tui-surface-freeze",
+      "kind": "freeze",
+      "title": "Native Pi harness/TUI governed surface decision",
+      "claim_scope": "Product target; claim-bearing only if formally amended into the thesis profile",
+      "status": "not-evidenced",
+      "fulfilled": false,
+      "source_citations": [
+        {
+          "ref": "repo:docs/frontend-observability-plan.md",
+          "source_date": "2026-10-06",
+          "locator": "Native Pi architecture decision and stock TUI closure risks",
+          "lines": "1-36;69-85"
+        },
+        {
+          "ref": "thesis:AH-technical/10-decision-register.md",
+          "source_date": "2026-09-29",
+          "locator": "D15 CLI-first MVP and future presentation clients",
+          "lines": "27-28"
+        }
+      ],
+      "required_artifacts": [
+        "explicit CLI-first versus native-TUI scope decision",
+        "interactive-route closure/refusal contract",
+        "PTY lifecycle/resize/backpressure/cancellation evidence if evaluated"
+      ],
+      "expected_counts": {},
+      "arithmetic_constraints": [],
+      "evidence_refs": [],
+      "dependencies": ["e05-governed-pi-transcript"],
+      "notes": "The target command is not implemented or admitted. Native-TUI work must not be silently counted as the existing SDK profile."
+    },
+    {
+      "id": "d06-private-git-invariant",
+      "kind": "freeze",
+      "title": "D06 filtered snapshot and newly initialized private repository",
+      "claim_scope": "Process §6.1 / D06 / AC-EVQ",
+      "status": "blocked",
+      "fulfilled": false,
+      "source_citations": [
+        {
+          "ref": "thesis:AH-technical/10-decision-register.md",
+          "source_date": "2026-09-29",
+          "locator": "D06 and D06/D07 refinement",
+          "lines": "18-19;44-57"
+        },
+        {
+          "ref": "repo:docs/publication-runtime-integration.md",
+          "source_date": "2026-10-07",
+          "locator": "Explicit D06 waiver/divergence boundary",
+          "lines": "165-182"
+        }
+      ],
+      "required_artifacts": [
+        "filtered byte snapshot",
+        "new private Git repository",
+        "no live Git linkage/alternates/common dirs/mounts",
+        "source-swap and provenance conformance evidence"
+      ],
+      "expected_counts": {},
+      "arithmetic_constraints": [],
+      "evidence_refs": [
+        {
+          "kind": "accepted-commit",
+          "id": "a977766722dcfaa12060385b95ef028877d04eb6",
+          "ref": "repo:docs/publication-runtime-integration.md",
+          "scope": "explicit D06-divergent publication component",
+          "status": "component-only"
+        }
+      ],
+      "dependencies": ["g1-frozen-profile-and-feasibility"],
+      "notes": "Keep D06 normative; do not implement or silently waive it in this task. A permanent waiver requires a dated replacement ADR and claim re-scope."
+    },
+    {
+      "id": "host-current-source-verification-unlock",
+      "kind": "unlock",
+      "title": "Protected host automation and exact operator context",
+      "claim_scope": "Current-source offline verifier only",
+      "status": "blocked",
+      "fulfilled": false,
+      "source_citations": [
+        {
+          "ref": "repo:docs/guest-profile-prerequisites-2026-10-06.md",
+          "source_date": "2026-10-06",
+          "locator": "Unlocks requiring user/operator context",
+          "lines": "252-286"
+        },
+        {
+          "ref": "repo:infra/hyperv/TBOUND-HOST-AUTOMATION.md",
+          "source_date": "2026-10-07",
+          "locator": "One-time administrative install and operator enrollment",
+          "lines": "35-59"
+        },
+        {
+          "ref": "repo:docs/native-pi-product-blockers-2026-10-07.md",
+          "source_date": "2026-10-07",
+          "locator": "Fresh blocker report; external recorded source only",
+          "lines": "9-19;59-112"
+        }
+      ],
+      "required_artifacts": [
+        "protected helper/task/profile/hash/ACL readback",
+        "exact operator SID and public-key enrollment",
+        "fresh source-pinned verifier report and artifact manifest"
+      ],
+      "expected_counts": {
+        "fixed_tasks": 5
+      },
+      "arithmetic_constraints": [],
+      "evidence_refs": [
+        {
+          "kind": "recorded-source",
+          "id": "",
+          "ref": "repo:docs/native-pi-product-blockers-2026-10-07.md",
+          "scope": "external recorded host observation",
+          "status": "external-recorded-source-only"
+        }
+      ],
+      "dependencies": [],
+      "notes": "The cited host report was not revalidated here. This entry cannot become fulfilled from its status or from a historical report."
+    },
+    {
+      "id": "containment-profile-unlock",
+      "kind": "unlock",
+      "title": "Signed image/entrypoint and delegated containment settlement",
+      "claim_scope": "Frozen containment / G1 / AC-EVQ",
+      "status": "blocked",
+      "fulfilled": false,
+      "source_citations": [
+        {
+          "ref": "thesis:AH-technical/06-4-sandboxing-decision.md",
+          "source_date": "2026-09-29",
+          "locator": "Frozen implementation profile",
+          "lines": "36-38"
+        },
+        {
+          "ref": "repo:docs/containment-blockers-2026-10-05.md",
+          "source_date": "2026-10-05",
+          "locator": "Exact unlock and remaining implementation",
+          "lines": "41-60"
+        },
+        {
+          "ref": "repo:docs/guest-profile-prerequisites-2026-10-06.md",
+          "source_date": "2026-10-06",
+          "locator": "Safe source work versus external/freeze gate",
+          "lines": "288-311"
+        }
+      ],
+      "required_artifacts": [
+        "authorized public signer and offline-verifiable signed image",
+        "selected signed in-image entrypoint",
+        "static seccomp/Landlock identity",
+        "delegated cgroup-v2 kill/settlement and surviving observer evidence"
+      ],
+      "expected_counts": {},
+      "arithmetic_constraints": [],
+      "evidence_refs": [],
+      "dependencies": ["host-current-source-verification-unlock", "g1-frozen-profile-and-feasibility"],
+      "notes": "Historical mechanism probes and digest-only image checks do not establish this profile."
+    }
+  ]
+}

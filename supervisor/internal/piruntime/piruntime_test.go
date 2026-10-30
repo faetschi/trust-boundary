@@ -1,0 +1,1279 @@
+package piruntime
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"sync"
+	"testing"
+	"time"
+
+	"tbound/supervisor/internal/broker/correlation"
+	"tbound/supervisor/internal/broker/protocol"
+	"tbound/supervisor/internal/gate"
+	"tbound/supervisor/internal/ipc"
+)
+
+func TestProductionAdmissionRequiresHostProfileAndAttestation(t *testing.T) {
+	profile, attestation := testHostProfile()
+	if err := ValidateHostAdmission(profile, HostAttestation{}); !errors.Is(err, ErrHostAttestationMissing) {
+		t.Fatalf("missing host attestation error = %v", err)
+	}
+	if err := ValidateHostAdmission(profile, attestation); err != nil {
+		t.Fatalf("valid structural attestation rejected: %v", err)
+	}
+	if _, err := AdmitProduction(context.Background(), profile, nil); !errors.Is(err, ErrHostAttestationMissing) {
+		t.Fatalf("nil host verifier was accepted: %v", err)
+	}
+	if _, err := AdmitProduction(context.Background(), profile, staticHostAttestor{attestation: attestation}); !errors.Is(err, ErrHostBindingsMissing) {
+		t.Fatalf("synthetic receipt without trusted runtime bindings was accepted: %v", err)
+	}
+	componentMismatches := []struct {
+		name string
+		set  func(*HostAttestation)
+	}{
+		{"executable", func(a *HostAttestation) { a.ExecutableDigest = DigestBytes([]byte("different-executable")) }},
+		{"arguments", func(a *HostAttestation) { a.ChildArgumentsDigest = DigestBytes([]byte("different-arguments")) }},
+		{"working-directory", func(a *HostAttestation) { a.WorkingDirectoryDigest = DigestBytes([]byte("different-cwd")) }},
+		{"stdin", func(a *HostAttestation) { a.StdinDigest = DigestBytes([]byte("different-stdin")) }},
+		{"environment", func(a *HostAttestation) { a.ChildEnvironmentDigest = DigestBytes([]byte("different-environment")) }},
+		{"ipc", func(a *HostAttestation) { a.IPCProfileDigest = DigestBytes([]byte("different-ipc")) }},
+		{"terminal", func(a *HostAttestation) { a.TerminalDigest = DigestBytes([]byte("different-terminal")) }},
+		{"containment", func(a *HostAttestation) { a.ContainmentDigest = DigestBytes([]byte("different-containment")) }},
+		{"settlement", func(a *HostAttestation) { a.SettlementDigest = DigestBytes([]byte("different-settlement")) }},
+		{"observation", func(a *HostAttestation) { a.ObservationDigest = DigestBytes([]byte("different-observation")) }},
+		{"source", func(a *HostAttestation) { a.SourceDigest = DigestBytes([]byte("different-source")) }},
+		{"offline-verifier", func(a *HostAttestation) { a.OfflineVerifierDigest = DigestBytes([]byte("different-verifier")) }},
+		{"provider", func(a *HostAttestation) { a.ProviderProfileDigest = DigestBytes([]byte("different-provider")) }},
+	}
+	for _, mismatch := range componentMismatches {
+		t.Run(mismatch.name, func(t *testing.T) {
+			candidate := attestation
+			mismatch.set(&candidate)
+			if err := ValidateHostAdmission(profile, candidate); !errors.Is(err, ErrHostProfileMismatch) {
+				t.Fatalf("mismatched %s receipt was accepted: %v", mismatch.name, err)
+			}
+		})
+	}
+	profile.Mode = ModeFixture
+	if err := ValidateHostAdmission(profile, attestation); !errors.Is(err, ErrHostAdmissionRefused) {
+		t.Fatalf("fixture profile was admitted as production: %v", err)
+	}
+}
+
+func TestServeRefusesEffectCapableSessionWithoutDecisionRecorder(t *testing.T) {
+	policy, err := gate.NewPolicy(gate.Profile{Version: gate.ProfileVersion, Rules: []gate.Rule{{Tool: "write", Effect: gate.EffectAllow}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	client, server, err := ipc.NewPipe("cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	defer server.Close()
+	executed := false
+	supervisor := &Supervisor{
+		IPC: server, Broker: denyTestBroker{}, Policy: policy,
+		Executor: executorTestFunc(func(context.Context, protocol.Proposal, gate.Decision) (json.RawMessage, error) {
+			executed = true
+			return json.RawMessage(`{}`), nil
+		}),
+	}
+	if err := supervisor.Serve(context.Background()); err == nil {
+		t.Fatal("effect-capable supervisor without a decision recorder was admitted")
+	}
+	if executed {
+		t.Fatal("executor ran despite missing decision recorder")
+	}
+	proposal := protocol.Proposal{SchemaVersion: protocol.ProposalSchemaVersion, ToolCallID: "missing-recorder", Tool: "write", Arguments: json.RawMessage(`{"path":"x","content":"y"}`)}
+	if err := client.SendProposal(proposal); err == nil {
+		t.Fatal("supervisor released an IPC result after refusing the unrecorded session")
+	}
+}
+
+func TestNoEffectSessionRequiresNoExecutorAndNeverCallsEffects(t *testing.T) {
+	policy, err := gate.NewPolicy(gate.Profile{Version: gate.ProfileVersion, Rules: []gate.Rule{{Tool: "write", Effect: gate.EffectAllow}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	client, server, err := ipc.NewPipe("dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	defer server.Close()
+	called := false
+	supervisor := &Supervisor{
+		IPC: server, Broker: denyTestBroker{}, Policy: policy, NoEffect: &NoEffectSession{},
+		Executor: executorTestFunc(func(context.Context, protocol.Proposal, gate.Decision) (json.RawMessage, error) {
+			called = true
+			return nil, nil
+		}),
+	}
+	if err := supervisor.Serve(context.Background()); err == nil {
+		t.Fatal("no-effect fixture admitted a configured executor")
+	}
+	if called {
+		t.Fatal("no-effect fixture called an executor")
+	}
+}
+
+const wantNoEffectRefusalOutput = `{"code":"invalid_arguments","message":"The tool arguments are not valid. Check the tool schema and send a corrected call."}`
+
+// allowingTestBroker correlates every proposal as an exact, successful broker capture, so the gate can ALLOW it.
+type allowingTestBroker struct{ calls uint64 }
+
+func (b *allowingTestBroker) Correlate(_ context.Context, proposal protocol.Proposal) (correlation.Decision, error) {
+	b.calls++
+	digest, err := protocol.CanonicalArgumentsDigest(proposal.Tool, proposal.Arguments)
+	if err != nil {
+		return correlation.Decision{}, err
+	}
+	response := correlation.Identifier{Issuer: "openrouter-response/v1", Opaque: "response-" + proposal.ToolCallID}
+	call := correlation.Identifier{Issuer: "openrouter-tool-call/v1", Opaque: proposal.ToolCallID}
+	return correlation.Decision{
+		Phase: correlation.PhaseProposal, Accepted: true, ReasonCode: correlation.ReasonMatched,
+		Proposal: &correlation.Proposal{ResponseID: response, ToolCallID: call, ToolName: proposal.Tool,
+			CanonicalArgumentsDigest: digest, Sequence: b.calls, Generation: "g0"},
+		BrokerCapture: &correlation.BrokerCall{ResponseID: response, ToolCallID: call, ToolName: proposal.Tool,
+			CanonicalArgumentsDigest: digest, Sequence: b.calls, Generation: "g0"},
+	}, nil
+}
+
+type acceptingTestRecorder struct{}
+
+func (acceptingTestRecorder) RecordDecision(context.Context, protocol.Proposal, gate.Decision) error {
+	return nil
+}
+
+func noEffectReadPolicy(t *testing.T) gate.Policy {
+	t.Helper()
+	policy, err := gate.NewPolicy(gate.Profile{Version: gate.ProfileVersion, Rules: []gate.Rule{{Tool: "read", Effect: gate.EffectAllow}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return policy
+}
+
+func readTestProposal(toolCallID, arguments string) protocol.Proposal {
+	return protocol.Proposal{SchemaVersion: protocol.ProposalSchemaVersion, ToolCallID: toolCallID, Tool: "read", Arguments: json.RawMessage(arguments)}
+}
+
+// The executor's proven refusal is released as the fixed no_effect_refused Result with the ALLOW verdict, and Serve
+// stays up to release the next proposal's ordinary output.
+func TestNoEffectRefusalIsReleasedAsTheFixedResultAndServeContinues(t *testing.T) {
+	client, server, err := ipc.NewPipe("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	defer server.Close()
+	calls := 0
+	supervisor := &Supervisor{
+		IPC: server, Broker: &allowingTestBroker{}, Policy: noEffectReadPolicy(t), Decisions: acceptingTestRecorder{}, ProposalLimit: 2,
+		Executor: verifyingExecutorTestFunc(func(context.Context, protocol.Proposal, gate.Decision) (json.RawMessage, error) {
+			calls++
+			if calls == 1 {
+				return nil, &protocol.NoEffectError{Tool: "read", Err: errors.New("read offset must be a positive integer")}
+			}
+			return json.RawMessage(`{"tool":"read","outcome":"success"}`), nil
+		}),
+	}
+	serveErr := make(chan error, 1)
+	go func() { serveErr <- supervisor.Serve(context.Background()) }()
+	if err := client.SendProposal(readTestProposal("refused-call", `{"path":"x"}`)); err != nil {
+		t.Fatal(err)
+	}
+	refused, err := client.ReceiveResult()
+	if err != nil {
+		t.Fatalf("refusal was withheld instead of released: %v", err)
+	}
+	if refused.Status != protocol.ResultStatusNoEffectRefused || refused.Verdict != string(gate.Allow) || string(refused.Output) != wantNoEffectRefusalOutput {
+		t.Fatalf("released refusal=%+v", refused)
+	}
+	if err := client.SendProposal(readTestProposal("valid-call", `{"path":"y"}`)); err != nil {
+		t.Fatalf("Serve stopped after the refusal: %v", err)
+	}
+	valid, err := client.ReceiveResult()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if valid.Status != "" || string(valid.Output) != `{"tool":"read","outcome":"success"}` {
+		t.Fatalf("next proposal result=%+v", valid)
+	}
+	if err := <-serveErr; err != nil {
+		t.Fatalf("Serve returned an error after both proposals: %v", err)
+	}
+	if calls != 2 {
+		t.Fatalf("executor calls=%d want 2", calls)
+	}
+}
+
+// A failure that is not a marker for this proposal's tool stays withheld, and Serve exits without a result. A marker
+// whose context was canceled before release is also withheld.
+func TestNoEffectRefusalWithoutAMatchingMarkerIsWithheldAndServeExits(t *testing.T) {
+	refusal := func(tool string) error {
+		return &protocol.NoEffectError{Tool: tool, Err: errors.New("read offset must be a positive integer")}
+	}
+	for _, tc := range []struct {
+		name     string
+		verifies bool
+		execute  func(cancel context.CancelFunc) error
+	}{
+		{"plain executor error", true, func(context.CancelFunc) error { return errors.New("executor failed") }},
+		{"marker for another tool", true, func(context.CancelFunc) error { return refusal("write") }},
+		{"marker after cancellation", true, func(cancel context.CancelFunc) error {
+			cancel()
+			return refusal("read")
+		}},
+		// A raw durable executor, as the publication runtime's admission wrapper runs it, has proven nothing.
+		{"marker from an executor that does not prove refusals", false, func(context.CancelFunc) error { return refusal("read") }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			client, server, err := ipc.NewPipe("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer client.Close()
+			defer server.Close()
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			supervisor := &Supervisor{
+				IPC: server, Broker: &allowingTestBroker{}, Policy: noEffectReadPolicy(t), Decisions: acceptingTestRecorder{},
+			}
+			execute := func(context.Context, protocol.Proposal, gate.Decision) (json.RawMessage, error) {
+				return nil, tc.execute(cancel)
+			}
+			if tc.verifies {
+				supervisor.Executor = verifyingExecutorTestFunc(execute)
+			} else {
+				supervisor.Executor = executorTestFunc(execute)
+			}
+			serveErr := make(chan error, 1)
+			go func() { serveErr <- supervisor.Serve(ctx) }()
+			if err := client.SendProposal(readTestProposal("refused-call", `{"path":"x"}`)); err != nil {
+				t.Fatal(err)
+			}
+			if err := <-serveErr; err == nil {
+				t.Fatal("Serve continued past a result it must withhold")
+			}
+			if result, err := client.ReceiveResult(); err == nil {
+				t.Fatalf("withheld result was released: %+v", result)
+			}
+		})
+	}
+}
+
+type denyTestBroker struct{}
+
+func (denyTestBroker) Correlate(context.Context, protocol.Proposal) (correlation.Decision, error) {
+	return correlation.Decision{}, nil
+}
+
+type executorTestFunc func(context.Context, protocol.Proposal, gate.Decision) (json.RawMessage, error)
+
+func (f executorTestFunc) Execute(ctx context.Context, proposal protocol.Proposal, decision gate.Decision) (json.RawMessage, error) {
+	return f(ctx, proposal, decision)
+}
+
+// verifyingExecutorTestFunc stands in for the conversation wrapper, which proves a refusal before it returns the marker.
+type verifyingExecutorTestFunc func(context.Context, protocol.Proposal, gate.Decision) (json.RawMessage, error)
+
+func (f verifyingExecutorTestFunc) Execute(ctx context.Context, proposal protocol.Proposal, decision gate.Decision) (json.RawMessage, error) {
+	return f(ctx, proposal, decision)
+}
+
+func (verifyingExecutorTestFunc) ReleasesVerifiedNoEffect() {}
+
+func TestUnboundAbsoluteChildIsRefusedBeforeLauncher(t *testing.T) {
+	profile, attestation := testHostProfile()
+	launcher := &countingLauncher{}
+	bindings := testRuntimeBindings(profile, launcher)
+	capability, err := AdmitProduction(context.Background(), profile, staticHostAttestor{attestation: attestation, bindings: bindings})
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec := testChildSpec(profile, bindings)
+	if _, err := StartChild(context.Background(), spec); !errors.Is(err, ErrChildCapabilityMissing) {
+		t.Fatalf("unbound absolute helper was not refused: %v", err)
+	}
+	if launcher.calls != 0 || capability == nil {
+		t.Fatalf("unbound child caused launcher effects: calls=%d capability=%v", launcher.calls, capability != nil)
+	}
+}
+
+func TestAdmissionCapabilityBindsExactChildEnvironment(t *testing.T) {
+	profile, attestation := testHostProfile()
+	launcher := &countingLauncher{}
+	bindings := testRuntimeBindings(profile, launcher)
+	capability, err := AdmitProduction(context.Background(), profile, staticHostAttestor{attestation: attestation, bindings: bindings})
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec := testChildSpec(profile, bindings)
+	bound, err := capability.BindChild(spec, launcher)
+	if err != nil {
+		t.Fatalf("bind empty allow-list: %v", err)
+	}
+	if bound.capability == nil || bound.capability.bound == nil || bound.capability.bound.launcher != launcher {
+		t.Fatal("bound child did not retain the admitted launcher capability")
+	}
+	if got := bound.Env; got == nil || !equalStrings(got, productionPiCLIEnvironment()) {
+		t.Fatalf("bound child did not retain the exact Pi CLI environment: %#v", got)
+	}
+	if _, err := capability.BindChild(spec, &countingLauncher{}); !errors.Is(err, ErrChildCapabilityMissing) {
+		t.Fatalf("unadmitted launcher was accepted: %v", err)
+	}
+	spec.Env = []string{"INHERITED_SENTINEL=must-not-enter"}
+	if _, err := capability.BindChild(spec, launcher); !errors.Is(err, ErrHostProfileMismatch) {
+		t.Fatalf("unbound environment was accepted: %v", err)
+	}
+}
+
+func TestProductionProfileAndBindingsBindPiRPCStdout(t *testing.T) {
+	profile, attestation := testHostProfile()
+	if err := ValidateHostAdmission(profile, attestation); err != nil {
+		t.Fatalf("exact signed Pi RPC stdout profile did not validate: %v", err)
+	}
+
+	wrongAttestation := attestation
+	wrongAttestation.StdoutDigest = DigestBytes([]byte("silent-worker-stdout/v1"))
+	if err := ValidateHostAdmission(profile, wrongAttestation); !errors.Is(err, ErrHostProfileMismatch) {
+		t.Fatalf("silent stdout attestation matched the RPC stdout profile: %v", err)
+	}
+
+	bindings := testRuntimeBindings(profile, &countingLauncher{})
+	bindings.StdoutProfile = "silent-worker-stdout/v1"
+	if err := bindings.validate(profile); !errors.Is(err, ErrHostBindingsMissing) {
+		t.Fatalf("silent stdout binding matched the signed Pi RPC profile: %v", err)
+	}
+
+	bindings = testRuntimeBindings(profile, &countingLauncher{})
+	bindings.Arguments = []string{"--experimental-strip-types", "/proc/self/fd/9/src/governed-pi-worker.ts"}
+	if err := bindings.validate(profile); !errors.Is(err, ErrHostBindingsMissing) {
+		t.Fatalf("legacy SDK argv binding matched the signed Pi RPC profile: %v", err)
+	}
+}
+
+func TestAdmissionCapabilityCopiesExactEnvironmentVector(t *testing.T) {
+	profile, attestation := testHostProfile()
+	launcher := &countingLauncher{}
+	bindings := testRuntimeBindings(profile, launcher)
+	expectedEnvironment := append([]string{}, bindings.Environment...)
+	capability, err := AdmitProduction(context.Background(), profile, staticHostAttestor{attestation: attestation, bindings: bindings})
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec := testChildSpec(profile, bindings)
+	bindings.Environment[0] = "INHERITED_SENTINEL=must-not-enter"
+	bound, err := capability.BindChild(spec, launcher)
+	if err != nil {
+		t.Fatalf("mutating verifier-owned source slice changed admitted environment: %v", err)
+	}
+	bound.Env = []string{"post-bind-mutation=ignored"}
+	if _, err := StartChild(context.Background(), bound); err == nil {
+		t.Fatal("test launcher unexpectedly returned a process")
+	}
+	request := launcher.Request()
+	if !equalStrings(request.Env, expectedEnvironment) {
+		t.Fatalf("launcher did not receive the immutable exact environment: %#v", request.Env)
+	}
+}
+
+func TestBoundChildIgnoresPostBindAuthorityFieldSwaps(t *testing.T) {
+	profile, attestation := testHostProfile()
+	launcher := &processLauncher{}
+	bindings := testRuntimeBindings(profile, launcher)
+	spec := testChildSpec(profile, bindings)
+	expectedArguments := append([]string(nil), bindings.Arguments...)
+	trustedSettler := bindings.Descendant
+	capability, err := AdmitProduction(context.Background(), profile, staticHostAttestor{attestation: attestation, bindings: bindings})
+	if err != nil {
+		t.Fatal(err)
+	}
+	bindings.Arguments[0] = "--mutated-verifier-slice"
+	bound, err := capability.BindChild(spec, launcher)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// These fields are intentionally exported for the source-compatible builder
+	// shape. They must not be authority after BindChild has captured its private
+	// immutable snapshot.
+	bound.Executable = filepath.Join(os.TempDir(), "untrusted-after-bind")
+	bound.Args = []string{"untrusted-argument"}
+	bound.Dir = filepath.Join(os.TempDir(), "untrusted-cwd")
+	bound.Stdin = bytes.NewReader([]byte("untrusted stdin"))
+	bound.Env = []string{"INHERITED_SENTINEL=must-not-enter"}
+	bound.Mode = IOModeObservation
+	bound.TUIOutput = panicWriter{}
+	bound.Observation = channelObservationSink{events: make(chan Observation, 1)}
+	bound.ObservationMax = 1
+	bound.Descendant = NoDescendants{}
+
+	process, err := StartChild(context.Background(), bound)
+	if err != nil {
+		t.Fatalf("post-bind field mutation changed the bound launch: %v", err)
+	}
+	settlement, err := process.Settle(context.Background())
+	if err != nil || settlement.State != SettlementStopped {
+		t.Fatalf("trusted post-bind settlement was not retained: settlement=%+v err=%v", settlement, err)
+	}
+	request := launcher.Request()
+	expectedEnvironment := productionPiCLIEnvironment()
+	if request.Path != profile.ChildExecutable || request.Digest != profile.ExecutableDigest || request.Env == nil ||
+		!equalStrings(request.Env, expectedEnvironment) ||
+		!equalStrings(request.Args, expectedArguments) || request.Dir != profile.WorkingDirectory ||
+		!sameBinding(request.WorkerExposureHandle, testWorkingDirectoryHandle) || !sameBinding(request.Stdin, spec.Stdin) {
+		t.Fatalf("post-bind mutation changed trusted launch request: %+v", request)
+	}
+	if got := trustedSettler.(*countingSettler).Calls(); got != 1 {
+		t.Fatalf("post-bind NoDescendants swap bypassed trusted settlement: calls=%d", got)
+	}
+}
+
+func TestBindChildRejectsUnadmittedInitialLaunchPlan(t *testing.T) {
+	profile, attestation := testHostProfile()
+	launcher := &countingLauncher{}
+	bindings := testRuntimeBindings(profile, launcher)
+	capability, err := AdmitProduction(context.Background(), profile, staticHostAttestor{attestation: attestation, bindings: bindings})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mutations := []struct {
+		name string
+		edit func(*ChildSpec)
+	}{
+		{"arguments", func(spec *ChildSpec) { spec.Args = []string{"--unreviewed"} }},
+		{"working-directory", func(spec *ChildSpec) { spec.Dir = filepath.Join(os.TempDir(), "unreviewed-cwd") }},
+		{"stdin-endpoint", func(spec *ChildSpec) { spec.Stdin = bytes.NewReader(nil) }},
+	}
+	for _, mutation := range mutations {
+		t.Run(mutation.name, func(t *testing.T) {
+			spec := testChildSpec(profile, bindings)
+			mutation.edit(&spec)
+			if _, err := capability.BindChild(spec, launcher); !errors.Is(err, ErrHostProfileMismatch) {
+				t.Fatalf("unadmitted initial %s was accepted: %v", mutation.name, err)
+			}
+			if launcher.calls != 0 {
+				t.Fatalf("unadmitted initial %s started launcher %d times", mutation.name, launcher.calls)
+			}
+		})
+	}
+}
+
+func TestAdmissionCloseCancelsAndDrainsLeases(t *testing.T) {
+	admission := NewAdmission()
+	if err := admission.Activate(); err != nil {
+		t.Fatal(err)
+	}
+	lease, err := admission.Acquire(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	short, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	if err := admission.CloseAndWait(short); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("close unexpectedly drained a held lease: %v", err)
+	}
+	select {
+	case <-lease.Context().Done():
+	default:
+		t.Fatal("closing admission did not cancel the lease context")
+	}
+	lease.Release()
+	if err := admission.CloseAndWait(context.Background()); err != nil {
+		t.Fatalf("drained admission did not close: %v", err)
+	}
+	if _, err := admission.Acquire(context.Background()); !errors.Is(err, ErrAdmissionClosed) {
+		t.Fatalf("closed admission accepted a new lease: %v", err)
+	}
+}
+
+func TestSessionCloseDeadlineRetriesSharedCleanup(t *testing.T) {
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(executable, "-test.run=^TestPiruntimeNoopChild$")
+	cmd.Env = append(os.Environ(), "TBOUND_PIRUNTIME_BLOCK_CHILD=1")
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	settler := &blockingSettler{started: make(chan struct{}), release: make(chan struct{})}
+	process := newProcess(cmd, settler, nil, false)
+	session, err := NewSession(process)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lease, err := session.Acquire(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	short, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	settlement, err := session.Close(short)
+	cancel()
+	if !errors.Is(err, context.DeadlineExceeded) || settlement.State != SettlementUnknown {
+		t.Fatalf("first session close was not honest UNKNOWN: settlement=%+v err=%v", settlement, err)
+	}
+	lease.Release()
+	select {
+	case <-settler.started:
+	case <-time.After(time.Second):
+		t.Fatalf("shared cleanup did not reach descendant settlement: session=%s child=%+v", session.State(), process.LastSettlement())
+	}
+	secondContext, secondCancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	settlement, err = session.Close(secondContext)
+	secondCancel()
+	if !errors.Is(err, context.DeadlineExceeded) || settlement.State != SettlementUnknown {
+		t.Fatalf("second session close did not preserve caller deadline: settlement=%+v err=%v", settlement, err)
+	}
+	close(settler.release)
+	settlement, err = session.Close(context.Background())
+	if err != nil || settlement.State != SettlementStopped || !settlement.DescendantsSettled {
+		t.Fatalf("session retry did not return shared terminal settlement: settlement=%+v err=%v", settlement, err)
+	}
+}
+
+func TestSessionLeaseDrainTimeoutStopsChildAndAllowsRetry(t *testing.T) {
+	previousBudget := sessionCleanupBudget
+	sessionCleanupBudget = 20 * time.Millisecond
+	defer func() { sessionCleanupBudget = previousBudget }()
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(executable, "-test.run=^TestPiruntimeNoopChild$")
+	cmd.Env = append(os.Environ(), "TBOUND_PIRUNTIME_BLOCK_CHILD=1")
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	process := newProcess(cmd, NoDescendants{}, nil, false)
+	session, err := NewSession(process)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lease, err := session.Acquire(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	settlement, err := session.Close(context.Background())
+	if !errors.Is(err, context.DeadlineExceeded) || settlement.State != SettlementUnknown {
+		t.Fatalf("lease drain timeout did not report UNKNOWN: settlement=%+v err=%v", settlement, err)
+	}
+	select {
+	case <-process.completion:
+	case <-time.After(time.Second):
+		t.Fatal("child remained running after lease drain timeout")
+	}
+	lease.Release()
+	settlement, err = session.Close(context.Background())
+	if err != nil || settlement.State != SettlementStopped || !settlement.ExitObserved || !settlement.DescendantsSettled {
+		t.Fatalf("retry did not finish actual child settlement: settlement=%+v err=%v", settlement, err)
+	}
+}
+
+func TestSessionCleanupWorkerSaturationClosesAdmissionAndRefuses(t *testing.T) {
+	session, err := NewSession(completedProcess(nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < maxSessionCleanupWorkers; i++ {
+		sessionCleanupWorkers <- struct{}{}
+	}
+	defer func() {
+		for i := 0; i < maxSessionCleanupWorkers; i++ {
+			<-sessionCleanupWorkers
+		}
+	}()
+	settlement, err := session.Close(context.Background())
+	if !errors.Is(err, ErrSessionCleanupCapacity) || settlement.State != SettlementUnknown || !session.Admission().Closed() || session.State() != SettlementUnknown {
+		t.Fatalf("saturated session cleanup did not refuse with admission closed: settlement=%+v state=%s err=%v", settlement, session.State(), err)
+	}
+}
+
+func TestObservationWriterIsBoundedAndStructured(t *testing.T) {
+	events := make(chan Observation, 4)
+	writer, err := newObservationWriter("stdout", channelObservationSink{events: events}, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n, err := writer.Write([]byte("abcd")); err != nil || n != 4 {
+		t.Fatalf("bounded observation write = %d, %v", n, err)
+	}
+	first := receiveObservation(t, events)
+	if string(first.Data) != "abc" || !first.Truncated {
+		t.Fatalf("unexpected bounded observation: %+v", first)
+	}
+	if _, err := writer.Write([]byte("ef")); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(context.Background()); !errors.Is(err, ErrObservationCleanup) {
+		t.Fatalf("bounded truncation did not surface an observation gap: %v", err)
+	}
+	marker := receiveObservation(t, events)
+	if marker.DroppedBytes != 2 || !marker.Truncated {
+		t.Fatalf("unexpected repeated truncation observation: %+v", marker)
+	}
+}
+
+func TestBlockedObservationSinkDoesNotStallChildWriter(t *testing.T) {
+	sink := &blockingObservationSink{started: make(chan struct{}), release: make(chan struct{})}
+	writer, err := newObservationWriter("stdout", sink, MaxObservationBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := writer.Write([]byte("first")); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-sink.started:
+	case <-time.After(time.Second):
+		t.Fatal("observation worker did not start")
+	}
+	start := time.Now()
+	for i := 0; i < observationQueueSize+4; i++ {
+		if _, err := writer.Write([]byte("bounded")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if elapsed := time.Since(start); elapsed > 100*time.Millisecond {
+		t.Fatalf("blocked observer stalled child writes for %s", elapsed)
+	}
+	if writer.DroppedBytes() == 0 {
+		t.Fatal("backpressure did not expose an observation gap")
+	}
+	closeContext, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	if err := writer.Close(closeContext); !errors.Is(err, ErrObservationCleanup) {
+		t.Fatalf("stuck observer cleanup error = %v", err)
+	}
+	cancel()
+	close(sink.release)
+	if err := writer.Close(context.Background()); !errors.Is(err, ErrObservationCleanup) {
+		t.Fatalf("backpressure gap was not retained after observer release: %v", err)
+	}
+}
+
+func TestContextAwareObservationSinkReceivesCleanupCancellation(t *testing.T) {
+	sink := &cancelAwareObservationSink{started: make(chan struct{}), canceled: make(chan struct{})}
+	writer, err := newObservationWriter("stdout", sink, 32)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := writer.Write([]byte("cancel-me")); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-sink.started:
+	case <-time.After(time.Second):
+		t.Fatal("context-aware observer did not start")
+	}
+	cleanupContext, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	if err := writer.Close(cleanupContext); !errors.Is(err, ErrObservationCleanup) {
+		t.Fatalf("context-aware observer cleanup error = %v", err)
+	}
+	cancel()
+	select {
+	case <-sink.canceled:
+	case <-time.After(time.Second):
+		t.Fatal("observer did not receive cleanup cancellation")
+	}
+	if err := writer.Close(context.Background()); !errors.Is(err, ErrObservationCleanup) {
+		t.Fatalf("cancelled observer failure was not retained: %v", err)
+	}
+}
+
+func TestProcessAndSessionExposeObserverCleanupGap(t *testing.T) {
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sink := &blockingObservationSink{started: make(chan struct{}), release: make(chan struct{})}
+	released := false
+	defer func() {
+		if !released {
+			close(sink.release)
+		}
+	}()
+	writer, err := newObservationWriter("stdout", sink, 64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(executable, "-test.run=^TestPiruntimeObserveOutputChild$")
+	cmd.Env = append(os.Environ(), "TBOUND_PIRUNTIME_OBSERVE_CHILD=1")
+	cmd.Stdout = writer
+	if err := cmd.Start(); err != nil {
+		closeObservationWriters([]*observationWriter{writer})
+		t.Fatal(err)
+	}
+	process := newProcess(cmd, NoDescendants{}, []*observationWriter{writer}, false)
+	select {
+	case <-sink.started:
+	case <-time.After(time.Second):
+		t.Fatal("observer callback did not start from child output")
+	}
+	select {
+	case <-process.completion:
+	case <-time.After(2 * time.Second):
+		t.Fatal("process wait did not finish after bounded observer cleanup")
+	}
+	session, err := NewSession(process)
+	if err != nil {
+		t.Fatal(err)
+	}
+	settlement, err := session.Close(context.Background())
+	if !errors.Is(err, ErrObservationCleanup) || settlement.State != SettlementStopped || !settlement.ExitObserved ||
+		!settlement.DescendantsSettled || !settlement.ObservationGap || settlement.ObservationDetail == "" || session.State() != SettlementStopped {
+		t.Fatalf("session hid observer cleanup gap or falsified process settlement: result=%+v state=%s err=%v", settlement, session.State(), err)
+	}
+	close(sink.release)
+	released = true
+	if err := writer.Close(context.Background()); err != nil {
+		t.Fatalf("observer worker did not release after callback returned: %v", err)
+	}
+}
+
+func TestProcessAndSessionRetainObservationSinkError(t *testing.T) {
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sinkFailure := errors.New("observation sink rejected event")
+	writer, err := newObservationWriter("stdout", failingObservationSink{err: sinkFailure}, 64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(executable, "-test.run=^TestPiruntimeObserveOutputChild$")
+	cmd.Env = append(os.Environ(), "TBOUND_PIRUNTIME_OBSERVE_CHILD=1")
+	cmd.Stdout = writer
+	if err := cmd.Start(); err != nil {
+		closeObservationWriters([]*observationWriter{writer})
+		t.Fatal(err)
+	}
+	process := newProcess(cmd, NoDescendants{}, []*observationWriter{writer}, false)
+	select {
+	case <-process.completion:
+	case <-time.After(2 * time.Second):
+		t.Fatal("process wait did not complete after observer rejection")
+	}
+	session, err := NewSession(process)
+	if err != nil {
+		t.Fatal(err)
+	}
+	settlement, err := session.Close(context.Background())
+	if !errors.Is(err, ErrObservationCleanup) || !errors.Is(err, sinkFailure) || settlement.State != SettlementStopped ||
+		!settlement.ObservationGap || settlement.ObservationDroppedBytes == 0 || settlement.ObservationDetail == "" {
+		t.Fatalf("sink failure was hidden from terminal settlement: result=%+v err=%v", settlement, err)
+	}
+}
+
+func TestRepeatedObservationStartCloseReleasesBoundedWorkers(t *testing.T) {
+	for i := 0; i < maxObservationWorkers*2; i++ {
+		events := make(chan Observation, 1)
+		writer, err := newObservationWriter("stdout", channelObservationSink{events: events}, 32)
+		if err != nil {
+			t.Fatalf("observation worker %d registration: %v", i, err)
+		}
+		if _, err := writer.Write([]byte("bounded")); err != nil {
+			t.Fatal(err)
+		}
+		if err := writer.Close(context.Background()); err != nil {
+			t.Fatalf("observation worker %d cleanup: %v", i, err)
+		}
+	}
+}
+
+func TestWorkerPermitsRefuseSaturation(t *testing.T) {
+	for i := 0; i < maxObservationWorkers; i++ {
+		if !tryAcquireObservationWorker() {
+			t.Fatalf("observation worker permit %d was unavailable before saturation", i)
+		}
+	}
+	if tryAcquireObservationWorker() {
+		t.Fatal("observation worker registration exceeded the global bound")
+	}
+	for i := 0; i < maxObservationWorkers; i++ {
+		releaseObservationWorker()
+	}
+
+	for i := 0; i < maxSettlementWorkers; i++ {
+		if !tryAcquireSettlementWorker() {
+			t.Fatalf("settlement worker permit %d was unavailable before saturation", i)
+		}
+	}
+	if tryAcquireSettlementWorker() {
+		t.Fatal("settlement worker registration exceeded the global bound")
+	}
+	for i := 0; i < maxSettlementWorkers; i++ {
+		releaseSettlementWorker()
+	}
+}
+
+func TestSettlementWithoutDescendantProofStaysUnknown(t *testing.T) {
+	process := completedProcess(nil)
+	settlement, err := process.Settle(context.Background())
+	if !errors.Is(err, ErrUnknownSettlement) || settlement.State != SettlementUnknown || !settlement.ExitObserved {
+		t.Fatalf("missing descendant proof was not UNKNOWN: settlement=%+v err=%v", settlement, err)
+	}
+
+	settledProcess := completedProcess(NoDescendants{})
+	settlement, err = settledProcess.Settle(context.Background())
+	if err != nil || settlement.State != SettlementStopped || !settlement.DescendantsSettled {
+		t.Fatalf("explicit fixture descendant proof did not settle: settlement=%+v err=%v", settlement, err)
+	}
+}
+
+func TestSettlementTimeoutDoesNotPoisonRetry(t *testing.T) {
+	settler := &blockingSettler{started: make(chan struct{}), release: make(chan struct{})}
+	process := completedProcess(settler)
+	settleCtx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	settlement, err := process.Settle(settleCtx)
+	if !errors.Is(err, context.DeadlineExceeded) || settlement.State != SettlementUnknown {
+		t.Fatalf("settlement timeout was not UNKNOWN: settlement=%+v err=%v", settlement, err)
+	}
+	close(settler.release)
+	settlement, err = process.Settle(context.Background())
+	if err != nil || settlement.State != SettlementStopped || !settlement.DescendantsSettled {
+		t.Fatalf("retry did not observe eventual settlement: settlement=%+v err=%v", settlement, err)
+	}
+}
+
+func TestSettlerReceivesOwnedFiniteCleanupContext(t *testing.T) {
+	previousBudget := settlementCleanupBudget
+	settlementCleanupBudget = 20 * time.Millisecond
+	defer func() { settlementCleanupBudget = previousBudget }()
+	settler := &cancelAwareSettler{started: make(chan struct{}), canceled: make(chan struct{})}
+	process := completedProcess(settler)
+	if !tryAcquireSettlementWorker() {
+		t.Fatal("settlement worker permit unavailable")
+	}
+	process.settlementSlotHeld = true
+	settlement, err := process.Settle(context.Background())
+	if !errors.Is(err, context.DeadlineExceeded) || settlement.State != SettlementUnknown {
+		t.Fatalf("owned settler deadline was not UNKNOWN: settlement=%+v err=%v", settlement, err)
+	}
+	select {
+	case <-settler.canceled:
+	case <-time.After(time.Second):
+		t.Fatal("settler did not receive the owned cleanup deadline")
+	}
+	if !tryAcquireSettlementWorker() {
+		t.Fatal("settlement worker permit was not released after cleanup")
+	}
+	releaseSettlementWorker()
+}
+
+func TestConcurrentSettlementSharesOneDescendantObservation(t *testing.T) {
+	settler := &countingSettler{}
+	process := completedProcess(settler)
+	results := make(chan Settlement, 8)
+	errs := make(chan error, 8)
+	for i := 0; i < cap(results); i++ {
+		go func() {
+			result, err := process.Settle(context.Background())
+			results <- result
+			errs <- err
+		}()
+	}
+	for i := 0; i < cap(results); i++ {
+		if result := <-results; result.State != SettlementStopped {
+			t.Fatalf("concurrent settlement state = %s", result.State)
+		}
+		if err := <-errs; err != nil {
+			t.Fatalf("concurrent settlement error = %v", err)
+		}
+	}
+	if settler.calls != 1 {
+		t.Fatalf("descendant settler called %d times, want one", settler.calls)
+	}
+}
+
+func TestChildSpecKeepsTUIAndObservationSeparate(t *testing.T) {
+	if err := (ChildSpec{Executable: "pi", Mode: IOModeNativeTUI}).validate(); err == nil {
+		t.Fatal("relative child executable was accepted")
+	}
+	if err := (ChildSpec{Executable: testExecutablePath(), Mode: IOModeNativeTUI}).validate(); err == nil {
+		t.Fatal("native TUI without a terminal output was accepted")
+	}
+	if err := (ChildSpec{Executable: testExecutablePath(), Mode: IOModeObservation, Observation: channelObservationSink{events: make(chan Observation, 1)}, ObservationMax: 32, TUIOutput: io.Discard}).validate(); err == nil {
+		t.Fatal("observation and TUI output were allowed to share a channel")
+	}
+}
+
+func TestSilentWorkerModeDiscardsStdoutAndStderr(t *testing.T) {
+	spec := ChildSpec{Executable: testExecutablePath(), Mode: IOModeSilent}
+	if err := spec.validate(); err != nil {
+		t.Fatalf("empty silent worker output plan rejected: %v", err)
+	}
+	stdout, stderr, writers, err := childOutputs(IOModeSilent, nil, nil, 0)
+	if err != nil || len(writers) != 0 || !sameBinding(stdout, io.Discard) || !sameBinding(stderr, io.Discard) {
+		t.Fatalf("silent worker output was observable: stdout=%T stderr=%T writers=%d err=%v", stdout, stderr, len(writers), err)
+	}
+	if err := (ChildSpec{Executable: testExecutablePath(), Mode: IOModeSilent, Observation: testHostObservationSink{}}).validate(); err == nil {
+		t.Fatal("silent worker mode accepted a transcript-capable process-output observer")
+	}
+}
+
+func testHostProfile() (HostProfile, HostAttestation) {
+	childExecutable := PiCLIProductionExecutable
+	runtimeBundleRoot := PiCLIProductionRuntimeBundleRoot
+	if runtime.GOOS != "linux" {
+		// These common tests run on Windows too; the production verifier and
+		// signed Linux CLI profile checks are Linux-only.
+		childExecutable = testExecutablePath()
+		runtimeBundleRoot = testRuntimeBundleRoot
+	}
+	profile := HostProfile{
+		ID: "profile-v1", Digest: DigestBytes([]byte("profile-v1")), Mode: ModeProduction,
+		ChildExecutable: childExecutable, NodeVersion: PiCLIProductionNodeVersion,
+		ChildEnvironment: PiCLIProductionEnvironmentProfile, ChildEnvironmentDigest: DigestEnvironment(productionPiCLIEnvironment()),
+		ChildArgumentsProfile: PiCLIProductionArgumentsProfile, ChildArgumentsDigest: DigestArguments(productionPiCLIArguments()),
+		WorkingDirectory: os.TempDir(), WorkingDirectoryDigest: DigestBytes([]byte(os.TempDir())),
+		StdinProfile: PiCLIProductionStdinProfile, StdinDigest: DigestBytes([]byte(PiCLIProductionStdinProfile)),
+		StdoutProfile: PiCLIProductionStdoutProfile, StdoutProfileDigest: DigestBytes([]byte(PiCLIProductionStdoutProfile)),
+		IPCProfile: PiCLIProductionIPCProfile, TerminalProfile: PiCLIProductionTerminalProfile, ContainmentProfile: "containment-v1",
+		CgroupRootDigest:  DigestBytes([]byte("test cgroup root identity")),
+		SettlementProfile: "settlement-v1", ObservationProfile: "observation-v1", SourceProvenance: "source-v1",
+		DescriptorProfile:   PiWorkerDescriptorProfile,
+		PiRuntimeBundleRoot: runtimeBundleRoot, PiRuntimeBundleDigest: DigestBytes([]byte("test runtime bundle")),
+		OfflineVerifier: "verifier-v1", ProviderProfile: "provider-v1",
+	}
+	profile.ExecutableDigest = DigestBytes([]byte("pi"))
+	profile.IPCProfileDigest = DigestBytes([]byte(profile.IPCProfile))
+	profile.TerminalProfileDigest = DigestBytes([]byte(profile.TerminalProfile))
+	profile.ContainmentProfileDigest = DigestBytes([]byte(profile.ContainmentProfile))
+	profile.SettlementProfileDigest = DigestBytes([]byte(profile.SettlementProfile))
+	profile.ObservationProfileDigest = DigestBytes([]byte(profile.ObservationProfile))
+	profile.DescriptorProfileDigest = DigestBytes([]byte(profile.DescriptorProfile))
+	profile.SourceProvenanceDigest = DigestBytes([]byte(profile.SourceProvenance))
+	profile.OfflineVerifierDigest = DigestBytes([]byte(profile.OfflineVerifier))
+	profile.ProviderProfileDigest = DigestBytes([]byte(profile.ProviderProfile))
+	attestation := HostAttestation{
+		HostID: "host-v1", ProfileID: profile.ID, ProfileDigest: profile.Digest,
+		ExecutableDigest: profile.ExecutableDigest, NodeVersion: profile.NodeVersion, ChildArgumentsDigest: profile.ChildArgumentsDigest,
+		WorkingDirectoryDigest: profile.WorkingDirectoryDigest, StdinDigest: profile.StdinDigest,
+		StdoutDigest:           profile.StdoutProfileDigest,
+		ChildEnvironmentDigest: profile.ChildEnvironmentDigest,
+		IPCProfileDigest:       profile.IPCProfileDigest, TerminalDigest: profile.TerminalProfileDigest,
+		ContainmentDigest: profile.ContainmentProfileDigest, SettlementDigest: profile.SettlementProfileDigest,
+		CgroupRootDigest:  profile.CgroupRootDigest,
+		ObservationDigest: profile.ObservationProfileDigest, DescriptorDigest: profile.DescriptorProfileDigest,
+		PiRuntimeBundleDigest: profile.PiRuntimeBundleDigest,
+		SourceDigest:          profile.SourceProvenanceDigest,
+		OfflineVerifierDigest: profile.OfflineVerifierDigest, ProviderProfileDigest: profile.ProviderProfileDigest,
+	}
+	return profile, attestation
+}
+
+func testExecutablePath() string { return filepath.Join(os.TempDir(), "tbound-trusted-pi") }
+
+type staticHostAttestor struct {
+	attestation HostAttestation
+	bindings    HostRuntimeBindings
+}
+
+func (a staticHostAttestor) Attest(context.Context, HostProfile) (HostAttestation, error) {
+	return a.attestation, nil
+}
+
+func (a staticHostAttestor) BindRuntime(context.Context, HostProfile) (HostRuntimeBindings, error) {
+	return a.bindings, nil
+}
+
+func (staticHostAttestor) trustedHostProfileVerifier() {}
+
+func testRuntimeBindings(profile HostProfile, launcher ExecutableLauncher) HostRuntimeBindings {
+	return HostRuntimeBindings{
+		ChildExecutable: profile.ChildExecutable, NodeVersion: profile.NodeVersion, ChildArgumentsProfile: profile.ChildArgumentsProfile,
+		WorkingDirectory: profile.WorkingDirectory, WorkerExposureHandle: testWorkingDirectoryHandle,
+		WorkerExposure:         testWorkerExposure{file: testWorkingDirectoryHandle, evidence: testWorkerExposureEvidence()},
+		WorkerExposureEvidence: testWorkerExposureEvidence(),
+		PiRuntimeBundleRoot:    profile.PiRuntimeBundleRoot, PiRuntimeBundleHandle: testRuntimeBundleHandle,
+		PiRuntimeBundleDigest: profile.PiRuntimeBundleDigest,
+		WorkerRuntimeAssets:   testWorkerRuntimeAssets{file: testRuntimeBundleHandle, evidence: testWorkerRuntimeEvidence(profile)},
+		RuntimeAssetEvidence:  testWorkerRuntimeEvidence(profile),
+		StdinProfile:          profile.StdinProfile, StdoutProfile: profile.StdoutProfile,
+		Arguments: productionPiCLIArguments(), Stdin: bytes.NewReader(nil), ChildEnvironment: profile.ChildEnvironment,
+		Environment: productionPiCLIEnvironment(),
+		IPCProfile:  profile.IPCProfile, TerminalProfile: profile.TerminalProfile,
+		ContainmentProfile: profile.ContainmentProfile, SettlementProfile: profile.SettlementProfile,
+		ObservationProfile: profile.ObservationProfile, SourceProvenance: profile.SourceProvenance,
+		DescriptorProfile: profile.DescriptorProfile,
+		OfflineVerifier:   profile.OfflineVerifier, ProviderProfile: profile.ProviderProfile,
+		Launcher: launcher, Descendant: &countingSettler{}, Terminal: io.Discard,
+		Observation: testHostObservationSink{},
+		Descriptors: testInheritedDescriptors(),
+	}
+}
+
+func testInheritedDescriptors() []InheritedDescriptor {
+	descriptors := make([]InheritedDescriptor, 0, len(piWorkerDescriptorLayout()))
+	descriptors = append(descriptors, InheritedDescriptor{Role: DescriptorWorkerExposure, ChildFD: 4, File: testWorkingDirectoryHandle})
+	for _, expected := range piWorkerDescriptorLayout()[1:] {
+		if expected.role == DescriptorRuntimeBundle {
+			descriptors = append(descriptors, InheritedDescriptor{Role: expected.role, ChildFD: expected.fd, File: testRuntimeBundleHandle})
+			continue
+		}
+		file, writeEnd, err := os.Pipe()
+		if err != nil {
+			panic(err)
+		}
+		if err := writeEnd.Close(); err != nil {
+			panic(err)
+		}
+		descriptors = append(descriptors, InheritedDescriptor{Role: expected.role, ChildFD: expected.fd, File: file})
+	}
+	return descriptors
+}
+
+type testWorkerExposure struct {
+	file     *os.File
+	evidence WorkerExposureEvidence
+}
+
+func (e testWorkerExposure) ExportVerifiedWorkerExposure(context.Context) (*os.File, WorkerExposureEvidence, error) {
+	return e.file, e.evidence, nil
+}
+func (e testWorkerExposure) VerifyWorkerExposure(_ context.Context, evidence WorkerExposureEvidence) error {
+	if evidence != e.evidence {
+		return ErrHostProfileMismatch
+	}
+	return nil
+}
+
+type testWorkerRuntimeAssets struct {
+	file     *os.File
+	evidence WorkerRuntimeAssetEvidence
+}
+
+func (a testWorkerRuntimeAssets) ExportVerifiedWorkerRuntimeAssets(context.Context) (*os.File, WorkerRuntimeAssetEvidence, error) {
+	return a.file, a.evidence, nil
+}
+func (a testWorkerRuntimeAssets) VerifyWorkerRuntimeAssets(_ context.Context, evidence WorkerRuntimeAssetEvidence) error {
+	if evidence != a.evidence {
+		return ErrHostProfileMismatch
+	}
+	return nil
+}
+
+func testWorkerExposureEvidence() WorkerExposureEvidence {
+	return WorkerExposureEvidence{
+		GenerationID: "test-generation", TreeDigest: DigestBytes([]byte("test tree")),
+		ManifestDigest: DigestBytes([]byte("test manifest")), BindingDigest: DigestBytes([]byte("test binding")),
+		ProvenanceDigest: DigestBytes([]byte("test provenance")), ViewIdentity: DigestBytes([]byte("test view")),
+		Device: 1, Inode: 2, MountID: 3,
+	}
+}
+
+func testWorkerRuntimeEvidence(profile HostProfile) WorkerRuntimeAssetEvidence {
+	return WorkerRuntimeAssetEvidence{
+		BundleDigest: profile.PiRuntimeBundleDigest, ViewIdentity: DigestBytes([]byte("test asset view")),
+		NamespaceProfileDigest: profile.ContainmentProfileDigest, Device: 1, Inode: 4, MountID: 5,
+	}
+}
+
+var testWorkingDirectoryHandle = func() *os.File {
+	file, err := os.Open(os.TempDir())
+	if err != nil {
+		panic(err)
+	}
+	return file
+}()
+
+var testRuntimeBundleHandle = func() *os.File {
+	file, err := os.Open(testRuntimeBundleRoot)
+	if err != nil {
+		panic(err)
+	}
+	return file
+}()
+
+var testRuntimeBundleRoot = func() string {
+	path, err := os.MkdirTemp("", "tbound-test-runtime-bundle-")
+	if err != nil {
+		panic(err)
+	}
+	if err := os.Chmod(path, 0o700); err != nil {
+		panic(err)
+	}
+	return path
+}()
+
+type testHostObservationSink struct{}
+
+func (testHostObservationSink) Observe(context.Context, Observation) error { return nil }
+
+func testChildSpec(profile HostProfile, bindings HostRuntimeBindings) ChildSpec {
+	return ChildSpec{
+		Executable: profile.ChildExecutable, Args: append([]string(nil), bindings.Arguments...),
+		Dir: bindings.WorkingDirectory, Env: append([]string{}, bindings.Environment...), Stdin: bindings.Stdin,
+		Mode: IOModeNativeTUI, TUIOutput: bindings.Terminal, Descendant: bindings.Descendant,
+		Descriptors: cloneInheritedDescriptors(bindings.Descriptors),
+	}
+}
+
+type countingLauncher struct {
+	mu      sync.Mutex
+	calls   int
+	request ExecutableLaunchRequest
+}
+
+func (l *countingLauncher) StartVerified(_ context.Context, request ExecutableLaunchRequest) (*exec.Cmd, error) {
+	l.mu.Lock()
+	l.calls++
+	l.request = request
+	l.mu.Unlock()
+	return nil, nil
+}
+
+type processLauncher struct {
+	mu      sync.Mutex
+	request ExecutableLaunchRequest
+}
+
+func (l *processLauncher) StartVerified(_ context.Context, request ExecutableLaunchRequest) (*exec.Cmd, error) {
+	l.mu.Lock()
+	l.request = request
+	l.mu.Unlock()
+	executable, err := os.Executable()
+	if err != nil {
+		return nil, err
+	}
+	cmd := exec.Command(executable, "-test.run=^TestPiruntimeNoopChild$")
+	cmd.Env = append([]string{}, request.Env...)
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = request.Stdin, request.Stdout, request.Stderr
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+	return cmd, nil
+}
+
+func (l *processLauncher) Request() ExecutableLaunchRequest {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.request
+}
+
+func (l *countingLauncher) Request() ExecutableLaunchRequest {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.request
+}
+
+type channelObservationSink struct{ events chan Observation }
+
+func (s channelObservationSink) Observe(_ context.Context, event Observation) error {
+	s.events <- event
+	return nil
+}
+
+func receiveObservation(t *testing.T, events <-chan Observation) Observation {
+	t.Helper()
+	select {
+	case event := <-events:
+		return event
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for bounded observation")
+		return Observation{}
+	}
+}
+
+type blockingObservationSink struct {
+	started chan struct{}
+	release chan struct{}
+	once    sync.Once
+}
+
+func (s *blockingObservationSink) Observe(_ context.Context, _ Observation) error {
+	s.once.Do(func() { close(s.started) })
+	<-s.release
+	return nil
+}
+
+type cancelAwareObservationSink struct {
+	started  chan struct{}
+	canceled chan struct{}
+	once     sync.Once
+}
+
+type failingObservationSink struct{ err error }
+
+func (s failingObservationSink) Observe(context.Context, Observation) error { return s.err }
+
+func (s *cancelAwareObservationSink) Observe(ctx context.Context, _ Observation) error {
+	s.once.Do(func() { close(s.started) })
+	<-ctx.Done()
+	close(s.canceled)
+	return ctx.Err()
+}
+
+type blockingSettler struct {
+	started chan struct{}
+	release chan struct{}
+	once    sync.Once
+}
+
+func (s *blockingSettler) Settle(context.Context) (bool, error) {
+	s.once.Do(func() { close(s.started) })
+	<-s.release
+	return true, nil
+}
+
+type cancelAwareSettler struct {
+	started  chan struct{}
+	canceled chan struct{}
+}
+
+func (s *cancelAwareSettler) Settle(ctx context.Context) (bool, error) {
+	close(s.started)
+	<-ctx.Done()
+	close(s.canceled)
+	return false, ctx.Err()
+}
+
+type countingSettler struct {
+	mu    sync.Mutex
+	calls int
+}
+
+func (s *countingSettler) Settle(context.Context) (bool, error) {
+	s.mu.Lock()
+	s.calls++
+	s.mu.Unlock()
+	return true, nil
+}
+
+func (s *countingSettler) Calls() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.calls
+}
+
+type panicWriter struct{}
+
+func (panicWriter) Write([]byte) (int, error) { panic("post-bind TUI output was used") }
+
+func TestPiruntimeNoopChild(t *testing.T) {
+	if os.Getenv("TBOUND_PIRUNTIME_BLOCK_CHILD") == "1" {
+		select {}
+	}
+}
+
+func TestPiruntimeObserveOutputChild(t *testing.T) {
+	if os.Getenv("TBOUND_PIRUNTIME_OBSERVE_CHILD") == "1" {
+		_, _ = os.Stdout.Write([]byte("observer-gap-test"))
+	}
+}
+
+func completedProcess(settler DescendantSettler) *Process {
+	process := &Process{completion: make(chan struct{}), settler: settler, settlement: Settlement{State: SettlementRunning}}
+	close(process.completion)
+	return process
+}

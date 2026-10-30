@@ -11,7 +11,7 @@ import (
 	"syscall"
 )
 
-func openJournalFiles(path string) (*os.File, *os.File, error) {
+func openJournalFiles(path string, create bool) (*os.File, *os.File, error) {
 	absolute, err := filepath.Abs(path)
 	if err != nil {
 		return nil, nil, fmt.Errorf("resolve audit journal path: %w", err)
@@ -26,7 +26,11 @@ func openJournalFiles(path string) (*os.File, *os.File, error) {
 		return nil, nil, err
 	}
 
-	fileFD, err := syscall.Openat(int(directory.Fd()), filepath.Base(absolute), syscall.O_RDWR|syscall.O_APPEND|syscall.O_CREAT|syscall.O_CLOEXEC|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0o600)
+	flags := syscall.O_RDWR | syscall.O_APPEND | syscall.O_CLOEXEC | syscall.O_NOFOLLOW | syscall.O_NONBLOCK
+	if create {
+		flags |= syscall.O_CREAT
+	}
+	fileFD, err := syscall.Openat(int(directory.Fd()), filepath.Base(absolute), flags, 0o600)
 	if err != nil {
 		_ = directory.Close()
 		if errors.Is(err, syscall.ELOOP) {
@@ -76,8 +80,10 @@ func openJournalDirectory(path string) (*os.File, error) {
 		}
 		nextFD, err := syscall.Openat(int(current.Fd()), component, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0)
 		if err != nil {
+			isSymlink := errors.Is(err, syscall.ELOOP) ||
+				(errors.Is(err, syscall.ENOTDIR) && isSymlinkAt(int(current.Fd()), component))
 			_ = current.Close()
-			if errors.Is(err, syscall.ELOOP) {
+			if isSymlink {
 				return nil, ErrJournalSymlink
 			}
 			return nil, fmt.Errorf("open audit path directory %q: %w", component, err)
@@ -96,6 +102,27 @@ func openJournalDirectory(path string) (*os.File, error) {
 		}
 	}
 	return current, nil
+}
+
+// linuxOPath is O_PATH (010000000) from the verified Linux/amd64 UAPI.
+const linuxOPath = 0x200000
+
+// isSymlinkAt uses an O_PATH|O_NOFOLLOW descriptor only to classify an
+// ENOTDIR from the protected directory open. It never follows or accepts the
+// inspected entry; openJournalDirectory still fails closed on the original
+// O_DIRECTORY|O_NOFOLLOW attempt.
+func isSymlinkAt(directoryFD int, component string) bool {
+	fd, err := syscall.Openat(directoryFD, component, linuxOPath|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0)
+	if err != nil {
+		return false
+	}
+	defer syscall.Close(fd)
+
+	var info syscall.Stat_t
+	if err := syscall.Fstat(fd, &info); err != nil {
+		return false
+	}
+	return info.Mode&syscall.S_IFMT == syscall.S_IFLNK
 }
 
 func checkTrustedAncestor(info os.FileInfo) error {
@@ -133,10 +160,6 @@ func inodeOwner(info os.FileInfo) (uint32, error) {
 		return 0, fmt.Errorf("%w: inode ownership unavailable", ErrInsecureOwnership)
 	}
 	return stat.Uid, nil
-}
-
-func currentEffectiveUID() int {
-	return syscall.Geteuid()
 }
 
 func acquireJournalLock(file *os.File) error {

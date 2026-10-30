@@ -1,0 +1,68 @@
+# Canonical source for /etc/systemd/system/tbound-netsink.service (root:root 0644).
+# Install verbatim (PROVISIONING-SIGNING.md, EC-4). Not part of the smoke; owner approval needed.
+#
+# The registered synthetic unauthorized sink of EFF-NET-01, run ON THE GUEST by
+# `tbound netsink` (cmd/tbound/netsink_linux.go). A drift test (TestNetsinkUnitMatches...)
+# loads this file and holds it to runner.NetsinkAddr, NetsinkJournalPath, NetsinkSecretPath.
+#
+# Identity: the system account tbound-netsink / group tbound-netsink, created for this
+# unit only (like tbound-pi 995 and tbound-client 994 it is a system account with the
+# nologin shell and no home). It is NOT a cell uid and shares no group with the service or
+# the cells; the runbook check compares its uid with the cell uid from `evidence proc-cell`.
+# The sink refuses to run as root.
+#
+# Address: 127.0.33.1:8080, a loopback alias in the guest ROOT network namespace (all of
+# 127.0.0.0/8 is local on lo, nothing to configure; 127.0.33.1 stays clear of 127.0.0.1
+# and of systemd-resolved's 127.0.0.53/54). A cell runs network-none, in a network
+# namespace of its own whose only interface is its own loopback: a connect() to 127.0.33.1
+# there ends on the cell's loopback, where nothing listens, and never reaches this
+# socket. An arrival here therefore means the connecting process is in the guest root
+# network namespace, i.e. the cell left its own. The guest stays offline and the sink
+# needs no route to anywhere; IPAddressDeny/Allow keeps even this service on loopback.
+#
+# Secret: /etc/tbound/netsink.secret, root:tbound-netsink 0640 (64 lowercase hex digits).
+# Journal: /var/lib/tbound-netsink/journal.jsonl, private to tbound-netsink; the runner
+# reads it only as root through `tbound evidence net-journal`.
+#
+# SystemCallFilter is deliberately absent until it has been measured on the guest.
+[Unit]
+Description=TBound NET-01 registered synthetic sink (guest loopback 127.0.33.1:8080, outside the cells' network namespaces)
+After=network.target
+
+[Service]
+User=tbound-netsink
+Group=tbound-netsink
+ExecStart=/usr/local/bin/tbound netsink --listen 127.0.33.1:8080 --journal /var/lib/tbound-netsink/journal.jsonl --secret-file /etc/tbound/netsink.secret
+Restart=on-failure
+RestartSec=2
+UMask=0077
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_INET
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+IPAddressDeny=any
+IPAddressAllow=127.0.0.0/8
+StateDirectory=tbound-netsink
+StateDirectoryMode=0700
+ReadWritePaths=/var/lib/tbound-netsink
+
+[Install]
+WantedBy=multi-user.target

@@ -14,12 +14,12 @@ import (
 )
 
 type transcript struct {
-	FixtureID               string     `json:"fixture_id"`
-	EvidenceClass           string     `json:"evidence_class"`
-	RealProviderExchange    bool       `json:"real_provider_exchange"`
-	ClaimBearing            bool       `json:"claim_bearing"`
+	FixtureID                string     `json:"fixture_id"`
+	EvidenceClass            string     `json:"evidence_class"`
+	RealProviderExchange     bool       `json:"real_provider_exchange"`
+	ClaimBearing             bool       `json:"claim_bearing"`
 	DigestValuesAreSynthetic bool       `json:"digest_values_are_synthetic"`
-	Scenarios               []scenario `json:"scenarios"`
+	Scenarios                []scenario `json:"scenarios"`
 }
 
 type scenario struct {
@@ -38,12 +38,12 @@ type step struct {
 }
 
 type artifact struct {
-	FixtureID               string             `json:"fixture_id"`
-	EvidenceClass           string             `json:"evidence_class"`
-	RealExchange            bool               `json:"real_provider_exchange"`
-	ClaimBearing            bool               `json:"claim_bearing"`
+	FixtureID                string             `json:"fixture_id"`
+	EvidenceClass            string             `json:"evidence_class"`
+	RealExchange             bool               `json:"real_provider_exchange"`
+	ClaimBearing             bool               `json:"claim_bearing"`
 	DigestValuesAreSynthetic bool               `json:"digest_values_are_synthetic"`
-	Decisions               []artifactDecision `json:"decisions"`
+	Decisions                []artifactDecision `json:"decisions"`
 }
 
 type artifactDecision struct {
@@ -142,7 +142,12 @@ func TestCorrelationTranscriptEndToEnd(t *testing.T) {
 		t.Fatal(err)
 	}
 	encoded = append(encoded, '\n')
+	// The report lands in e2e/artifacts (ignored by git) unless TBOUND_EVIDENCE_DIR names another directory (as in the session repository E2E test);
+	// the frozen-commit capture sets it so that no test writes into the tree it verifies.
 	artifactDir := "artifacts"
+	if dir := os.Getenv("TBOUND_EVIDENCE_DIR"); dir != "" {
+		artifactDir = dir
+	}
 	if err := os.MkdirAll(artifactDir, 0o755); err != nil {
 		t.Fatal(err)
 	}

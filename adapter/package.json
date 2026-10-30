@@ -8,15 +8,13 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "closure": "node --experimental-strip-types src/closure-probe.ts",
-    "check": "npm run typecheck && npm run closure"
-  },
-  "dependencies": {
-    "@earendil-works/pi-coding-agent": "0.87.1",
-    "typebox": "1.3.27"
+    "test": "node scripts/test.mjs",
+    "check": "npm run typecheck && npm test"
   },
   "devDependencies": {
     "@types/node": "22.19.19",
-    "typescript": "5.9.3"
+    "typescript": "5.9.3",
+    "@earendil-works/pi-coding-agent": "0.87.1",
+    "typebox": "1.3.27"
   }
 }

@@ -1,0 +1,459 @@
+package openrouter
+
+import (
+	"bytes"
+	"encoding/json"
+	"io"
+	"os"
+	"reflect"
+	"strings"
+	"testing"
+
+	"tbound/supervisor/internal/broker/protocol"
+)
+
+func strptr(s string) *string { return &s }
+func event(data []byte) []byte {
+	out := append([]byte("data: "), data...)
+	out = append(out, 13, 10, 13, 10)
+	return out
+}
+func doneEvent() []byte { return event([]byte("[DONE]")) }
+func chunk(id string, delta any, finish any) []byte {
+	value := map[string]any{
+		"id": id, "model": "vendor/model:free", "provider": "provider-a",
+		"object": "chat.completion.chunk", "created": 123,
+		"choices": []any{map[string]any{"index": 0, "delta": delta, "finish_reason": finish}},
+	}
+	raw, err := json.Marshal(value)
+	if err != nil {
+		panic(err)
+	}
+	return event(raw)
+}
+func toolDelta(args string) map[string]any {
+	return map[string]any{"tool_calls": []any{map[string]any{"index": 0, "function": map[string]any{"arguments": args}}}}
+}
+func toolStream(responseID, callID, firstArgs, secondArgs, finish string) []byte {
+	body := chunk(responseID, map[string]any{
+		"role": "assistant", "content": "Checking. ",
+		"tool_calls": []any{map[string]any{
+			"index": 0, "id": callID, "type": "function",
+			"function": map[string]any{"name": "read", "arguments": firstArgs},
+		}},
+	}, nil)
+	body = append(body, chunk(responseID, toolDelta(secondArgs), nil)...)
+	body = append(body, chunk(responseID, map[string]any{}, finish)...)
+	return append(body, doneEvent()...)
+}
+
+type fragmentReader struct {
+	raw []byte
+	max int
+}
+
+func (r *fragmentReader) Read(out []byte) (int, error) {
+	if len(r.raw) == 0 {
+		return 0, io.EOF
+	}
+	n := len(out)
+	if n > r.max {
+		n = r.max
+	}
+	if n > len(r.raw) {
+		n = len(r.raw)
+	}
+	copy(out, r.raw[:n])
+	r.raw = r.raw[n:]
+	return n, nil
+}
+
+func TestBuildRequestFixesEndpointAndToolSchemas(t *testing.T) {
+	built, err := BuildRequest(ApprovedModel, []Message{{Role: User, Content: strptr("hello")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if built.RequestURL() != Endpoint {
+		t.Fatalf("endpoint=%q", built.RequestURL())
+	}
+	var body struct {
+		Model string `json:"model"`
+		Tools []struct {
+			Type     string `json:"type"`
+			Function struct {
+				Name       string         `json:"name"`
+				Parameters map[string]any `json:"parameters"`
+			} `json:"function"`
+		} `json:"tools"`
+		Stream     bool   `json:"stream"`
+		Parallel   *bool  `json:"parallel_tool_calls"`
+		ToolChoice string `json:"tool_choice"`
+		Thinking   struct {
+			Type string `json:"type"`
+		} `json:"thinking"`
+	}
+	original := built.Body()
+	if err := json.Unmarshal(original, &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Model != ApprovedModel || !body.Stream || body.Parallel == nil || *body.Parallel || body.ToolChoice != "auto" || body.Thinking.Type != "disabled" {
+		t.Fatalf("profile=%+v", body)
+	}
+	names := []string{"read", "write", "edit", "bash"}
+	required := [][]string{{"path"}, {"path", "content"}, {"path", "edits"}, {"command"}}
+	for i, tool := range body.Tools {
+		if tool.Type != "function" || tool.Function.Name != names[i] {
+			t.Fatalf("tool[%d]=%+v", i, tool)
+		}
+		params := tool.Function.Parameters
+		if params["type"] != "object" {
+			t.Fatalf("%s parameters=%v", tool.Function.Name, params)
+		}
+		req, ok := params["required"].([]any)
+		if !ok {
+			t.Fatalf("%s required missing", tool.Function.Name)
+		}
+		got := make([]string, len(req))
+		for j, v := range req {
+			got[j] = v.(string)
+		}
+		if !reflect.DeepEqual(got, required[i]) {
+			t.Fatalf("%s required=%v", tool.Function.Name, got)
+		}
+		if _, invented := params["additionalProperties"]; invented {
+			t.Fatalf("%s added an unregistered schema rule", tool.Function.Name)
+		}
+	}
+	copyBody := built.Body()
+	copyBody[0] ^= 0xff
+	if !bytes.Equal(built.Body(), original) {
+		t.Fatal("Body did not return a defensive copy")
+	}
+}
+func TestBuildRequestRejectsUnsupportedMessageAndTool(t *testing.T) {
+	if _, err := BuildRequest(ApprovedModel, []Message{{Role: "function", Content: strptr("x")}}); err == nil {
+		t.Fatal("unsupported role accepted")
+	}
+	if _, err := BuildRequest(" ", []Message{{Role: User, Content: strptr("x")}}); err == nil {
+		t.Fatal("invalid model accepted")
+	}
+	_, err := BuildRequest(ApprovedModel, []Message{{Role: Assistant, ToolCalls: []PriorToolCall{{ID: "c1", Name: "read", RawArguments: json.RawMessage(`{"path":"ok","extra":true}`)}}}})
+	if err == nil {
+		t.Fatal("prior call outside the registered schema accepted")
+	}
+	if _, err := BuildRequest("vendor/model", []Message{{Role: User, Content: strptr("x")}}); err == nil {
+		t.Fatal("request builder accepted a model outside the fixed OpenCode Go profile")
+	}
+}
+func TestCaptureSSEReassemblesFragmentsAndMapsTrustedCapture(t *testing.T) {
+	raw := toolStream("resp-1", "call-1", `{"path": `, `"draft.txt"}`, "tool_calls")
+	got, err := CaptureSSE(&fragmentReader{raw: raw, max: 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ResponseID() != "resp-1" || got.Model() != "vendor/model:free" || got.Provider() != "provider-a" || got.Created() != 123 || got.AssistantText() != "Checking. " || got.FinishReason() != "tool_calls" {
+		t.Fatalf("captured response fields differ")
+	}
+	if !bytes.Equal(got.RawResponse(), raw) {
+		t.Fatal("raw response bytes changed")
+	}
+	call, ok := got.ToolCall()
+	if !ok {
+		t.Fatal("missing tool call")
+	}
+	wantArgs := `{"path": "draft.txt"}`
+	if call.ID != "call-1" || call.Name != "read" || string(call.RawArguments) != wantArgs {
+		t.Fatalf("call=%+v raw=%q", call, call.RawArguments)
+	}
+	digest, err := protocol.CanonicalArgumentsDigest("read", json.RawMessage(wantArgs))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if call.CanonicalArgumentsDigest != digest {
+		t.Fatalf("digest=%s want %s", call.CanonicalArgumentsDigest, digest)
+	}
+	capture, err := got.TrustedCapture("openrouter-call", "openrouter-response", "generation-0", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if capture.ResponseID.Issuer != "openrouter-response" || capture.ResponseID.Opaque != "resp-1" || capture.ToolCallID.Issuer != "openrouter-call" || capture.ToolCallID.Opaque != "call-1" || capture.Sequence != 1 || capture.Generation != "generation-0" || capture.CanonicalArgumentsDigest != digest {
+		t.Fatalf("capture=%+v", capture)
+	}
+	copyRaw := got.RawResponse()
+	copyRaw[0] ^= 0xff
+	if !bytes.Equal(got.RawResponse(), raw) {
+		t.Fatal("RawResponse did not return a defensive copy")
+	}
+}
+func TestCaptureSSEAcceptsTextStop(t *testing.T) {
+	raw := append(chunk("resp-text", map[string]any{"role": "assistant", "content": "answer"}, "stop"), doneEvent()...)
+	got, err := CaptureSSE(bytes.NewReader(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.FinishReason() != "stop" || got.AssistantText() != "answer" {
+		t.Fatal("text completion was not preserved")
+	}
+	if _, ok := got.ToolCall(); ok {
+		t.Fatal("stop response exposed a tool call")
+	}
+	if _, err := got.TrustedCapture("calls", "responses", "generation-0", 1); err == nil {
+		t.Fatal("text response produced trusted tool capture")
+	}
+}
+
+// TestCaptureSSEIgnoresProviderReasoningDeltas proves the strict parser accepts
+// the non-claim delta fields some real models stream (reasoning,
+// reasoning_content, refusal), ignores them, and still validates and captures
+// the tool call unchanged.
+func TestCaptureSSEIgnoresProviderReasoningDeltas(t *testing.T) {
+	body := chunk("resp-reasoning", map[string]any{"role": "assistant", "reasoning_content": "thinking"}, nil)
+	body = append(body, chunk("resp-reasoning", map[string]any{"reasoning": "more", "reasoning_details": []any{}, "content": "ok"}, nil)...)
+	body = append(body, chunk("resp-reasoning", map[string]any{
+		"refusal": "ignored",
+		"tool_calls": []any{map[string]any{
+			"index": 0, "id": "call-r", "type": "function",
+			"function": map[string]any{"name": "read", "arguments": `{"path":"README.md"}`},
+		}},
+	}, nil)...)
+	body = append(body, chunk("resp-reasoning", map[string]any{}, "tool_calls")...)
+	body = append(body, doneEvent()...)
+	got, err := CaptureSSE(bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("capture with reasoning deltas: %v", err)
+	}
+	if got.AssistantText() != "ok" {
+		t.Fatalf("assistant text = %q, want ok", got.AssistantText())
+	}
+	call, ok := got.ToolCall()
+	if !ok || call.ID != "call-r" || call.Name != "read" {
+		t.Fatalf("expected the read tool call, got ok=%v call=%+v", ok, call)
+	}
+}
+
+// TestCaptureSSEAcceptsTrailingUsageChunkAfterFinish proves the parser accepts
+// the terminal usage chunk OpenRouter streams after finish_reason, captures the
+// usage metadata, and still rejects any post-completion content.
+func TestCaptureSSEAcceptsTrailingUsageChunkAfterFinish(t *testing.T) {
+	body := toolStream("resp-usage", "call-u", `{"path":"x.txt"}`, ``, "tool_calls")
+	trailer := map[string]any{
+		"id": "resp-usage", "model": "vendor/model:free", "created": 123,
+		"service_tier": "default",
+		"choices":      []any{map[string]any{"index": 0, "delta": map[string]any{}, "finish_reason": "tool_calls"}},
+		"usage":        map[string]any{"prompt_tokens": 3, "completion_tokens": 4, "total_tokens": 7},
+	}
+	raw, err := json.Marshal(trailer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body = append(bytes.TrimSuffix(body, doneEvent()), event(raw)...)
+	body = append(body, doneEvent()...)
+	got, err := CaptureSSE(bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("capture with trailing usage chunk: %v", err)
+	}
+	if call, ok := got.ToolCall(); !ok || call.ID != "call-u" {
+		t.Fatalf("expected the tool call, got ok=%v call=%+v", ok, call)
+	}
+	if len(got.Usage()) == 0 {
+		t.Fatal("trailing usage metadata was not captured")
+	}
+
+	// A trailing chunk that tries to add content must still be rejected.
+	bad := append(bytes.TrimSuffix(toolStream("resp-usage", "call-u", `{"path":"x.txt"}`, ``, "tool_calls"), doneEvent()),
+		chunk("resp-usage", map[string]any{"content": "late injection"}, nil)...)
+	bad = append(bad, doneEvent()...)
+	if _, err := CaptureSSE(bytes.NewReader(bad)); err == nil {
+		t.Fatal("content after finish_reason was accepted")
+	}
+}
+func TestCaptureSSERejectsAmbiguousStreams(t *testing.T) {
+	valid := toolStream("resp-1", "call-1", `{"path":"`, `x.txt"}`, "tool_calls")
+	noDone := bytes.TrimSuffix(valid, doneEvent())
+	duplicate := event([]byte(`{"id":"r","id":"other","model":"m","created":1,"choices":[]} `))
+	badArgs := toolStream("r", "c", `{"path":"x","path":"y"}`, "", "tool_calls")
+	stopCall := toolStream("r", "c", `{"path":"x"}`, "", "stop")
+	changed := chunk("r", map[string]any{"role": "assistant", "content": "x"}, nil)
+	changed = append(changed, chunk("r2", map[string]any{}, "stop")...)
+	changed = append(changed, doneEvent()...)
+	multipleChoice := event([]byte(`{"id":"r","model":"m","created":1,"choices":[{"index":0,"delta":{},"finish_reason":null},{"index":1,"delta":{},"finish_reason":null}]} `))
+	cases := map[string][]byte{"missing DONE": noDone, "duplicate chunk key": append(duplicate, doneEvent()...), "duplicate argument key": badArgs, "tool call with stop finish": stopCall, "response ID changes": changed, "multiple choices": append(multipleChoice, doneEvent()...)}
+	for name, raw := range cases {
+		t.Run(name, func(t *testing.T) {
+			if _, err := CaptureSSE(bytes.NewReader(raw)); err == nil {
+				t.Fatal("malformed stream accepted")
+			}
+		})
+	}
+}
+func TestCaptureSSEBoundsResponse(t *testing.T) {
+	over := strings.NewReader(strings.Repeat("x", MaxResponseBytes+1))
+	if _, err := CaptureSSE(over); err == nil {
+		t.Fatal("oversized response accepted")
+	}
+}
+
+func TestBuildRequestPreflightsBeforeMarshaling(t *testing.T) {
+	content := strings.Repeat("x", MaxAssistantTextBytes)
+	messages := make([]Message, 5)
+	for i := range messages {
+		messages[i] = Message{Role: User, Content: &content}
+	}
+	if _, err := BuildRequest(ApprovedModel, messages); err == nil {
+		t.Fatal("oversized request content was accepted")
+	}
+}
+
+func escapedUnit(hex string) []byte {
+	return append([]byte{92, 'u'}, []byte(hex)...)
+}
+
+func replaceJSONStringValue(raw []byte, marker string, value []byte) []byte {
+	needle := append([]byte{'"'}, []byte(marker)...)
+	needle = append(needle, '"')
+	replacement := append([]byte{'"'}, value...)
+	replacement = append(replacement, '"')
+	return bytes.Replace(raw, needle, replacement, 1)
+}
+
+func TestStrictJSONSurrogateIDs(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		unit string
+	}{
+		{name: "high", unit: "d800"},
+		{name: "low", unit: "dc00"},
+	} {
+		t.Run(test.name+" response ID", func(t *testing.T) {
+			raw := chunk("response-marker", map[string]any{"role": "assistant", "content": "x"}, "stop")
+			raw = replaceJSONStringValue(raw, "response-marker", escapedUnit(test.unit))
+			raw = append(raw, doneEvent()...)
+			if _, err := CaptureSSE(bytes.NewReader(raw)); err == nil {
+				t.Fatal("unpaired escaped response ID was accepted")
+			}
+		})
+		t.Run(test.name+" call ID", func(t *testing.T) {
+			raw := toolStream("response", "call-marker", `{"path":"x"}`, "", "tool_calls")
+			raw = replaceJSONStringValue(raw, "call-marker", escapedUnit(test.unit))
+			if _, err := CaptureSSE(bytes.NewReader(raw)); err == nil {
+				t.Fatal("unpaired escaped tool-call ID was accepted")
+			}
+		})
+	}
+
+	pair := append(escapedUnit("d83d"), escapedUnit("de80")...)
+	responsePair := append([]byte("resp-"), pair...)
+	callPair := append([]byte("call-"), pair...)
+	response := chunk("response-marker", map[string]any{"role": "assistant", "content": "x"}, "stop")
+	response = replaceJSONStringValue(response, "response-marker", responsePair)
+	response = append(response, doneEvent()...)
+	gotResponse, err := CaptureSSE(bytes.NewReader(response))
+	if err != nil {
+		t.Fatalf("valid surrogate pair in response ID was rejected: %v", err)
+	}
+	rocket := string(rune(0x1f680))
+	if gotResponse.ResponseID() != "resp-"+rocket {
+		t.Fatalf("response ID=%q", gotResponse.ResponseID())
+	}
+
+	call := toolStream("response", "call-marker", `{"path":"x"}`, "", "tool_calls")
+	call = replaceJSONStringValue(call, "call-marker", callPair)
+	gotCall, err := CaptureSSE(bytes.NewReader(call))
+	if err != nil {
+		t.Fatalf("valid surrogate pair in tool-call ID was rejected: %v", err)
+	}
+	captured, ok := gotCall.ToolCall()
+	if !ok || captured.ID != "call-"+rocket {
+		t.Fatalf("tool-call ID was not decoded: %+v", captured)
+	}
+}
+
+func TestCaptureSSERejectsMultipleToolCalls(t *testing.T) {
+	delta := map[string]any{"tool_calls": []any{
+		map[string]any{"index": 0},
+		map[string]any{"index": 1},
+	}}
+	raw := append(chunk("response", delta, "tool_calls"), doneEvent()...)
+	if _, err := CaptureSSE(bytes.NewReader(raw)); err == nil {
+		t.Fatal("multiple tool calls were accepted")
+	}
+}
+
+// g1Turn1 is the exact 200 response body the OpenCode Go route returned for the
+// first G1 turn on F3 (production run 7d7fa9c6619260d4888ec5e7). Its delta
+// chunks omit finish_reason instead of sending null; only the last chunk has it.
+func g1Turn1(t *testing.T) []byte {
+	t.Helper()
+	raw, err := os.ReadFile("testdata/opencode-go-g1-turn1.sse")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
+}
+
+const g1ResponseID = "0217926074272997e031431b40d2024cf18919c414bfdfa14ad95"
+
+func g1Chunk(choice string) []byte {
+	return event([]byte(`{"id":"` + g1ResponseID + `","object":"chat.completion.chunk","created":1792607427,"model":"deepseek-v4.1-flash","choices":[` + choice + `],"usage":null}`))
+}
+
+func TestCaptureSSEAcceptsChunksThatOmitFinishReason(t *testing.T) {
+	raw := g1Turn1(t)
+	got, err := CaptureSSE(bytes.NewReader(raw))
+	if err != nil {
+		t.Fatalf("capture G1 turn 1: %v", err)
+	}
+	if got.ResponseID() != g1ResponseID || got.Model() != "deepseek-v4.1-flash" || got.Created() != 1792607427 ||
+		got.FinishReason() != "tool_calls" || got.AssistantText() != "I'll start by reading the file." || len(got.Usage()) == 0 {
+		t.Fatalf("captured id=%q model=%q created=%d finish=%q text=%q usage=%s",
+			got.ResponseID(), got.Model(), got.Created(), got.FinishReason(), got.AssistantText(), got.Usage())
+	}
+	call, ok := got.ToolCall()
+	if !ok || call.ID != "call_00_fcclznj2afzx4mynrkrqjnuv" || call.Name != "read" || string(call.RawArguments) != `{"path": "src/release.txt"}` {
+		t.Fatalf("tool call ok=%v call=%+v args=%s", ok, call, call.RawArguments)
+	}
+	if !bytes.Equal(got.RawResponse(), raw) {
+		t.Fatal("raw response bytes changed")
+	}
+	replayed, err := CaptureSSE(bytes.NewReader(got.RawResponse()))
+	if err != nil || !reflect.DeepEqual(replayed, got) {
+		t.Fatalf("journaled bytes do not replay to the same capture: %v", err)
+	}
+
+	withTrailer := append(bytes.TrimSuffix(raw, []byte("data: [DONE]\n\n")), g1Chunk(`{"index":0,"delta":{}}`)...)
+	withTrailer = append(withTrailer, doneEvent()...)
+	if _, err := CaptureSSE(bytes.NewReader(withTrailer)); err != nil {
+		t.Fatalf("empty trailer chunk without finish_reason: %v", err)
+	}
+}
+
+func TestCaptureSSERejectsIncompleteStreamsThatOmitFinishReason(t *testing.T) {
+	raw := g1Turn1(t)
+	done := []byte("data: [DONE]\n\n")
+	finishAt := bytes.Index(raw, []byte(`data: {"id":"`+g1ResponseID+`","object":"chat.completion.chunk","created":1792607427,"model":"deepseek-v4.1-flash","choices":[{"index":0,"finish_reason":"tool_calls"`))
+	if finishAt < 0 || !bytes.HasSuffix(raw, done) {
+		t.Fatal("fixture no longer has its final chunk and [DONE]")
+	}
+	noFinal := append(append([]byte(nil), raw[:finishAt]...), done...)
+	noDone := bytes.TrimSuffix(raw, done)
+	cutMidEvent := raw[:finishAt+40]
+	lateContent := append(append([]byte(nil), noDone...), g1Chunk(`{"index":0,"delta":{"content":"late"}}`)...)
+	lateContent = append(lateContent, done...)
+	lateCall := append(append([]byte(nil), noDone...), g1Chunk(`{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"x"}}]}}`)...)
+	lateCall = append(lateCall, done...)
+	cases := map[string][]byte{
+		"final chunk missing":               noFinal,
+		"no [DONE]":                         noDone,
+		"cut inside the final chunk":        cutMidEvent,
+		"content after finish":              lateContent,
+		"tool-call fragment after finish":   lateCall,
+		"only deltas, no finish and no end": raw[:finishAt],
+	}
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			if _, err := CaptureSSE(bytes.NewReader(body)); err == nil {
+				t.Fatal("incomplete stream accepted")
+			}
+		})
+	}
+}

@@ -1,0 +1,45 @@
+/*
+ * The footer: the session's statistics as one centred, muted line under the composer, and the build label beside it. The line
+ * takes the page width, and wraps at narrow widths rather than stacking a list. A reading that is unavailable is drawn in the
+ * warning ink, and the separators are faint. Colour comes from the alias tier only.
+ */
+
+.footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-1) var(--space-2);
+  padding: var(--space-1h) var(--space-2);
+  font-size: var(--text-2xs);
+  line-height: var(--lh-2xs);
+  color: var(--muted-foreground);
+}
+
+.line {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+
+.sep {
+  opacity: 0.45;
+}
+
+.un {
+  color: var(--warning-foreground);
+}
+
+.build {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+}
+
+/* On a phone the footer keeps the 4 px step of the phone stack (Shell.module.css). */
+@media (max-width: 760px) {
+  .footer {
+    padding: var(--space-1) var(--space-2);
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "schema": "tbound-acceptance/v1",
+  "checks": [
+    {
+      "op": "file_sha256",
+      "path": "src/release.txt",
+      "digest": "sha256:eb09bcfc919389c48ff01116c4c9b11f5e54d0f7f955e24e0ffa610e88b61796"
+    },
+    {
+      "op": "file_sha256",
+      "path": "out/release.sha256",
+      "digest": "sha256:fea1457d87e2c9e63058b3f3d1fee5e6dc261f4b0f6cf5a06fed6e0a0bedc1fd"
+    },
+    {
+      "op": "unchanged_except",
+      "paths": [
+        "out/release.sha256",
+        "src/release.txt"
+      ]
+    }
+  ]
+}

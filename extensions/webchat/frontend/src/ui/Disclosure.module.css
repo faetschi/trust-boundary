@@ -1,0 +1,33 @@
+.disclosure {
+  min-width: 0;
+  border-top: 1px solid var(--border);
+}
+
+.summary {
+  min-height: var(--row-h-button);
+  display: flex;
+  align-items: center;
+  padding: var(--space-2) 0;
+  cursor: pointer;
+  font-weight: 600;
+  list-style-position: outside;
+}
+
+/* The affordance: a chevron at the end of the summary, which turns when the disclosure is open. A summary is a flex row
+   and draws no marker of its own, so without this a closed disclosure reads as a heading. */
+.summary::after {
+  content: "▾";
+  flex: none;
+  margin-left: auto;
+  padding-left: var(--space-2);
+  color: var(--muted-foreground);
+  font-weight: 400;
+}
+
+.disclosure[open] > .summary::after {
+  content: "▴";
+}
+
+.body {
+  padding: 0 0 var(--space-3);
+}

@@ -1,0 +1,113 @@
+/*
+ * The record inspector body, inside the shell's aside. Colours are alias tokens only
+ * (tokens.test.ts enforces it). The status colour comes from the Chip and StateDot primitives.
+ */
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  font-size: var(--text-sm);
+}
+
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.position {
+  color: var(--muted-foreground);
+  font-size: var(--text-xs);
+}
+
+.status {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+
+/* A section heading is a field label: small, uppercase and muted. */
+.title {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1h);
+  margin: 0;
+}
+
+/* The key and value rows: a fixed label column, as the mockup's key and value grid. */
+.row {
+  display: grid;
+  grid-template-columns: 6.5rem minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-1) var(--space-2h);
+  font-size: var(--text-xs);
+}
+
+.row dt {
+  color: var(--muted-foreground);
+}
+
+.row dd {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+/* A digest is a mono block: a sunken box that holds the shortened value, as the mockup's block does. */
+.digest {
+  display: inline-block;
+  max-width: 100%;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--background);
+  color: var(--muted-foreground);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+
+.text {
+  white-space: pre-wrap;
+}
+
+/* The unavailable timing: a dashed amber note, the mockup's notice. */
+.note {
+  margin: 0;
+  padding: var(--space-2) var(--space-2h);
+  border: 1px dashed color-mix(in oklab, var(--warning) 45%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklab, var(--warning) 8%, transparent);
+  color: var(--warning-foreground);
+  font-size: var(--text-xs);
+  line-height: var(--lh-xs);
+}

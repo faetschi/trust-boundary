@@ -1,0 +1,37 @@
+# Canonical source for /etc/systemd/system/opt-tbound-cell.mount (root:root 0644).
+# DIRECTORY bind (non-recursive) of /opt/tbound/cell-src onto /opt/tbound/cell with
+# ro,nosuid,nodev. One unit covers every protected artifact that the production
+# launcher requires on a read-only mount besides the runner, podman and crun:
+#   /opt/tbound/cell/cosign         pinned cosign, root:root 0555 (template cosign_path)
+#   /opt/tbound/cell/cosign.pub     offline cosign key, root:root 0444 (cosign_public_key_path)
+#   /opt/tbound/cell/seccomp.json   static seccomp profile, root:root 0444 (seccomp_profile_path)
+#   /opt/tbound/cell/pi-cell-oci/   signed OCI layout, root-owned, no group/world write (oci_layout_path)
+# Code (supervisor/internal/piruntime): verifyPinnedToolBinary (cosign, via Probe in
+# containment_linux.go); hashProtectedFile called from verifyOfflineSignature (cosign.pub)
+# and verifyD09SeccompProfile (seccomp.json), both ending in requireReadOnlyMount inside
+# hashProtectedFile (d09_template_linux.go); verifyLocalOCIIdentity (containment_linux.go,
+# requireReadOnlyMount on the layout directory).
+# A directory bind is used because the cosign path contains a dash
+# ("cosign-v3.1.3"), which makes the escaped unit name contain \x2d and cannot be
+# stored as a repository file name on the Windows development host; the three
+# /etc/tbound artifacts would otherwise need three more units. It requires the
+# registered D09 template to name these /opt/tbound/cell paths (an owner decision:
+# the defaults in DefaultD09CellTemplate in d09_template_linux.go point at /etc/tbound). The cosign
+# and OCI-layout digests are unchanged by the move.
+# Prerequisites: /opt/tbound/cell (empty mount point, root:root 0755) and
+# /opt/tbound/cell-src (the copies above) must exist. The launcher runs as the
+# service user, so pi-cell-oci must be readable by it (0755; it is 0700 root today).
+# This is tamper evidence, not immutability: root can still unmount, remount rw,
+# or replace the source files. Digest pins are checked separately at launch.
+# Install verbatim; the unit name must equal the escaped Where= path.
+[Unit]
+Description=TBound pinned cell verification artifacts (read-only directory bind)
+
+[Mount]
+What=/opt/tbound/cell-src
+Where=/opt/tbound/cell
+Type=none
+Options=bind,ro,nosuid,nodev
+
+[Install]
+WantedBy=local-fs.target

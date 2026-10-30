@@ -1,39 +1,46 @@
-import { Type, type Static } from "typebox";
+import type { Static, TSchema } from "typebox";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
+import type { IpcClient, IpcProposal, IpcResult } from "./ipc-transport.ts";
+import { permittedAlternativeHints } from "./result-hints.ts";
 
 export const declaredToolNames = ["read", "write", "edit", "bash"] as const;
 export type DeclaredToolName = (typeof declaredToolNames)[number];
 
-export interface ToolProposal {
-  schema_version: "tbound-proposal/v1";
-  tool_call_id: string;
-  tool: DeclaredToolName;
-  arguments: Record<string, unknown>;
-}
+export type ToolProposal = IpcProposal;
 
-export interface ProposalReply {
-  verdict: "DENY";
-  reason: "probe-only";
-}
+export type ProposalReply = IpcResult;
 
 export interface ProposalSender {
   send(proposal: ToolProposal, signal?: AbortSignal): Promise<ProposalReply>;
 }
 
+export class IpcProposalSender implements ProposalSender {
+  private readonly client: IpcClient;
+
+  constructor(client: IpcClient) {
+    this.client = client;
+  }
+
+  send(proposal: ToolProposal, signal?: AbortSignal): Promise<IpcResult> {
+    return this.client.request(proposal, signal);
+  }
+}
+
+type TypeboxBuilder = typeof import("typebox").Type;
+
+export function createProxyParameters(Type: TypeboxBuilder) {
 const readParameters = Type.Object({
-  path: Type.String({ description: "Path to the file to read (relative or absolute)" }),
-  offset: Type.Optional(Type.Number({ description: "Line number to start reading from (1-indexed)" })),
-  limit: Type.Optional(Type.Number({ description: "Maximum number of lines to read" })),
+  path: Type.String({ description: "Path to the file to read, relative to the workspace root (an absolute path ends the turn)" }),
 });
 
 const writeParameters = Type.Object({
-  path: Type.String({ description: "Path to the file to write (relative or absolute)" }),
+  path: Type.String({ description: "Path to the file to write, relative to the workspace root (an absolute path ends the turn)" }),
   content: Type.String({ description: "Content to write to the file" }),
 });
 
 const editParameters = Type.Object(
   {
-    path: Type.String({ description: "Path to the file to edit (relative or absolute)" }),
+    path: Type.String({ description: "Path to the file to edit, relative to the workspace root (an absolute path ends the turn)" }),
     edits: Type.Array(
       Type.Object(
         {
@@ -55,19 +62,21 @@ const editParameters = Type.Object(
 );
 
 const bashParameters = Type.Object({
-  command: Type.String({ description: "Shell command to execute" }),
-  timeout: Type.Optional(Type.Number({ description: "Timeout in seconds (optional, no default timeout)" })),
+  command: Type.String({ description: "Shell command to run with bash in the workspace root" }),
 });
 
-export const proxyParameters = {
+const proxyParameters = {
   read: readParameters,
   write: writeParameters,
   edit: editParameters,
   bash: bashParameters,
 } as const;
 
-function makeProxyTool<TName extends DeclaredToolName, TParams extends typeof proxyParameters[TName]>(
-  name: TName,
+return proxyParameters;
+}
+
+function makeProxyTool<TParams extends TSchema>(
+	name: DeclaredToolName,
   schema: TParams,
   description: string,
   sender: ProposalSender,
@@ -91,36 +100,48 @@ function makeProxyTool<TName extends DeclaredToolName, TParams extends typeof pr
         },
         signal,
       );
-      return { content: [{ type: "text", text: JSON.stringify(reply) }], details: undefined };
+      let text = JSON.stringify(reply);
+      if ("reason_code" in reply) {
+        const reason = reply.verdict === "DENY" ? reply.reason_code : reply.status;
+        if (reason && Object.hasOwn(permittedAlternativeHints, reason)) {
+          text += `\nhint: ${permittedAlternativeHints[reason]}`;
+        }
+      }
+      return { content: [{ type: "text", text }], details: undefined };
     },
   };
 }
 
-export function createProxyTools(sender: ProposalSender): ToolDefinition[] {
+export function createProxyTools(sender: ProposalSender, Type: TypeboxBuilder): ToolDefinition[] {
+  const proxyParameters = createProxyParameters(Type);
   return [
     makeProxyTool(
       "read",
-      readParameters,
-      "Read the contents of a file. Supports text files and images. Requests are forwarded to tbound.",
+      proxyParameters.read,
+      "Read the whole contents of an existing UTF-8 text file in the workspace. There is no offset or limit. A missing file, an absolute path, a file of about 1 MiB or more, or a file that is not valid UTF-8 (a binary or image file) cannot be read and ends the turn. Requests are forwarded to tbound.",
       sender,
     ),
     makeProxyTool(
       "write",
-      writeParameters,
+      proxyParameters.write,
       "Write content to a file. Requests are forwarded to tbound.",
       sender,
     ),
     makeProxyTool(
       "edit",
-      editParameters,
+      proxyParameters.edit,
       "Edit a single file using exact text replacements. Requests are forwarded to tbound.",
       sender,
     ),
     makeProxyTool(
       "bash",
-      bashParameters,
+      proxyParameters.bash,
       "Execute a bash command. Requests are forwarded to tbound.",
       sender,
     ),
   ];
+}
+
+export function createIpcProxyTools(client: IpcClient, Type: TypeboxBuilder): ToolDefinition[] {
+  return createProxyTools(new IpcProposalSender(client), Type);
 }

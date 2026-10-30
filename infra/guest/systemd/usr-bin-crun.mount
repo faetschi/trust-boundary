@@ -1,0 +1,28 @@
+# Canonical source for /etc/systemd/system/usr-bin-crun.mount (root:root 0644).
+# File bind mount of the pinned crun (/opt/tbound/crun/crun, a root:root 0555 copy
+# of /usr/bin/crun) onto /usr/bin/crun with ro,nosuid,nodev, so that
+# verifyPinnedToolBinary (supervisor/internal/piruntime/containment_linux.go, called
+# from Probe for config.CrunPath; it calls requireReadOnlyMount) sees the template's crun_path on a
+# read-only mount. The path stays /usr/bin/crun because Podman executes the
+# runtime from /etc/tbound/podman-config/containers.conf runtime_path, which names
+# /usr/bin/crun; the checked binary must be the executed binary.
+# CAVEAT: binding over a package-managed file blocks dpkg/apt from replacing
+# /usr/bin/crun ("Device or resource busy"). The package is already apt-held on
+# the ABI8 guest; to upgrade, stop this unit first and re-measure and re-sign
+# everything that binds crun_digest (D09 template, host profile).
+# conmon (/usr/bin/conmon) is not checked by any TBound code path and is not bound.
+# This is tamper evidence, not immutability: root can still unmount, remount rw,
+# or replace the source file. The digest pin is checked separately by
+# hashProtectedFile at launch.
+# Install verbatim; the unit name must equal the escaped Where= path.
+[Unit]
+Description=TBound pinned crun executable (read-only file bind)
+
+[Mount]
+What=/opt/tbound/crun/crun
+Where=/usr/bin/crun
+Type=none
+Options=bind,ro,nosuid,nodev
+
+[Install]
+WantedBy=local-fs.target

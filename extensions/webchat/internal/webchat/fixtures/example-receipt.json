@@ -1,0 +1,59 @@
+{
+  "mode": "dev-fixture",
+  "claim_bearing": false,
+  "provider_exchange": false,
+  "containment": "not-established",
+  "settlement": "UNKNOWN",
+  "publication": "not-attempted",
+  "worker_ready": true,
+  "prompt_admitted": true,
+  "turn_completed": true,
+  "proposal_count": 4,
+  "provider_turns": 5,
+  "tool_call_count": 4,
+  "tool_result_count": 4,
+  "initial_generation": "g0",
+  "final_generation": "g2",
+  "generations": ["g0", "g1", "g2"],
+  "tool_lineage": [
+    {
+      "sequence": 1,
+      "tool": "read",
+      "tool_call_id": "example-call-read-g0",
+      "generation_from": "g0",
+      "generation_to": "g0"
+    },
+    {
+      "sequence": 2,
+      "tool": "edit",
+      "tool_call_id": "example-call-edit-g0",
+      "generation_from": "g0",
+      "generation_to": "g1",
+      "transition_id": "transition-000001",
+      "effect_id": "example-effect-0001"
+    },
+    {
+      "sequence": 3,
+      "tool": "bash",
+      "tool_call_id": "example-call-bash-g1",
+      "generation_from": "g1",
+      "generation_to": "g2",
+      "transition_id": "transition-000002",
+      "effect_id": "example-effect-0002"
+    },
+    {
+      "sequence": 4,
+      "tool": "read",
+      "tool_call_id": "example-call-read-g2",
+      "generation_from": "g2",
+      "generation_to": "g2"
+    }
+  ],
+  "bash_settlement": {
+    "tool_call_id": "example-call-bash-g1",
+    "generation_to": "g2",
+    "exit_code": 0,
+    "exit_observed": true,
+    "command_containment_status": "not-established"
+  }
+}

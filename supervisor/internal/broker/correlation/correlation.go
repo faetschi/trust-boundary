@@ -52,23 +52,23 @@ const (
 type ReasonCode string
 
 const (
-	ReasonCallCaptured             ReasonCode = "call_captured"
-	ReasonMatched                  ReasonCode = "matched"
-	ReasonSessionClosed             ReasonCode = "session_closed"
-	ReasonMalformedCapture          ReasonCode = "malformed_capture"
-	ReasonMalformedProposal         ReasonCode = "malformed_proposal"
-	ReasonUnregisteredTool          ReasonCode = "unregistered_tool"
-	ReasonDuplicateCallID           ReasonCode = "duplicate_call_id"
-	ReasonNonIncreasingSequence     ReasonCode = "non_increasing_sequence"
-	ReasonReplay                    ReasonCode = "replay"
-	ReasonUnknownCall               ReasonCode = "unknown_call"
-	ReasonCallIDMismatch            ReasonCode = "call_id_mismatch"
-	ReasonOutOfOrder                ReasonCode = "out_of_order"
-	ReasonResponseIDMismatch        ReasonCode = "response_id_mismatch"
-	ReasonToolNameMismatch          ReasonCode = "tool_name_mismatch"
-	ReasonArgumentDigestMismatch    ReasonCode = "argument_digest_mismatch"
-	ReasonSequenceMismatch          ReasonCode = "sequence_mismatch"
-	ReasonGenerationMismatch        ReasonCode = "generation_mismatch"
+	ReasonCallCaptured           ReasonCode = "call_captured"
+	ReasonMatched                ReasonCode = "matched"
+	ReasonSessionClosed          ReasonCode = "session_closed"
+	ReasonMalformedCapture       ReasonCode = "malformed_capture"
+	ReasonMalformedProposal      ReasonCode = "malformed_proposal"
+	ReasonUnregisteredTool       ReasonCode = "unregistered_tool"
+	ReasonDuplicateCallID        ReasonCode = "duplicate_call_id"
+	ReasonNonIncreasingSequence  ReasonCode = "non_increasing_sequence"
+	ReasonReplay                 ReasonCode = "replay"
+	ReasonUnknownCall            ReasonCode = "unknown_call"
+	ReasonCallIDMismatch         ReasonCode = "call_id_mismatch"
+	ReasonOutOfOrder             ReasonCode = "out_of_order"
+	ReasonResponseIDMismatch     ReasonCode = "response_id_mismatch"
+	ReasonToolNameMismatch       ReasonCode = "tool_name_mismatch"
+	ReasonArgumentDigestMismatch ReasonCode = "argument_digest_mismatch"
+	ReasonSequenceMismatch       ReasonCode = "sequence_mismatch"
+	ReasonGenerationMismatch     ReasonCode = "generation_mismatch"
 )
 
 // Decision preserves the raw input evidence used for a decision. Accepted
@@ -79,9 +79,9 @@ type Decision struct {
 	Accepted       bool        `json:"accepted"`
 	ReasonCode     ReasonCode  `json:"reason_code"`
 	StreamClosed   bool        `json:"stream_closed"`
-	CaptureOrdinal uint64     `json:"capture_ordinal,omitempty"`
+	CaptureOrdinal uint64      `json:"capture_ordinal,omitempty"`
 	BrokerCapture  *BrokerCall `json:"broker_capture,omitempty"`
-	Proposal      *Proposal   `json:"proposal,omitempty"`
+	Proposal       *Proposal   `json:"proposal,omitempty"`
 }
 
 type callIdentity struct {
@@ -129,7 +129,7 @@ func (c *Correlator) Capture(envelope BrokerCall) Decision {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	evidence := copyCall(envelope)
+	evidence := envelope
 	decision := Decision{Phase: PhaseCapture, BrokerCapture: &evidence}
 	if c.closed {
 		return c.deny(decision, ReasonSessionClosed)
@@ -153,7 +153,7 @@ func (c *Correlator) Capture(envelope BrokerCall) Decision {
 
 	ordinal := uint64(len(c.calls) + 1)
 	c.byCallID[id] = len(c.calls)
-	c.calls = append(c.calls, capturedCall{evidence: copyCall(envelope)})
+	c.calls = append(c.calls, capturedCall{evidence: envelope})
 	c.lastSequence = envelope.Sequence
 	decision.Accepted = true
 	decision.ReasonCode = ReasonCallCaptured
@@ -169,7 +169,7 @@ func (c *Correlator) Validate(proposal Proposal) Decision {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	evidence := copyProposal(proposal)
+	evidence := proposal
 	decision := Decision{Phase: PhaseProposal, Proposal: &evidence}
 	// Attach the known broker record before rejecting so the decision preserves
 	// both sides of a malformed or unregistered proposal attempt.
@@ -267,7 +267,7 @@ func (c *Correlator) hasOpaqueCallID(opaque string) bool {
 	return false
 }
 func (c *Correlator) attachCapture(decision *Decision, index int) {
-	evidence := copyCall(c.calls[index].evidence)
+	evidence := c.calls[index].evidence
 	decision.BrokerCapture = &evidence
 	decision.CaptureOrdinal = uint64(index + 1)
 }
@@ -284,12 +284,4 @@ func hasDigestValue(digest string) bool {
 	// Digest algorithm and wire encoding belong to the future broker profile.
 	// This core checks presence, then preserves and compares the value exactly.
 	return strings.TrimSpace(digest) != ""
-}
-
-func copyCall(call BrokerCall) BrokerCall {
-	return call
-}
-
-func copyProposal(proposal Proposal) Proposal {
-	return proposal
 }

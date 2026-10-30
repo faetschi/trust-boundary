@@ -4,7 +4,7 @@ package audit
 
 import "os"
 
-func openJournalFiles(string) (*os.File, *os.File, error) {
+func openJournalFiles(string, bool) (*os.File, *os.File, error) {
 	return nil, nil, ErrLockUnsupported
 }
 
@@ -22,8 +22,4 @@ func checkSupervisorOwnership(os.FileInfo) error {
 
 func openJournalDirectory(string) (*os.File, error) {
 	return nil, ErrLockUnsupported
-}
-
-func currentEffectiveUID() int {
-	return -1
 }

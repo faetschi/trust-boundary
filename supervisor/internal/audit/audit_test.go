@@ -2,31 +2,36 @@ package audit
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 var errInjectedDiskFull = errors.New("ENOSPC: injected disk full")
 var errInjectedSync = errors.New("injected fsync failure")
+var errInjectedLifecycleHook = errors.New("injected lifecycle observer failure")
 
 type faultFile struct {
-	data            []byte
-	readOffset      int64
-	maxWrite        int
-	writeCalls      int
-	failWriteCall   int
-	failWrite       error
-	syncCalls       int
-	failSyncCall    int
-	failSync        error
-	closed          bool
+	data          []byte
+	readOffset    int64
+	maxWrite      int
+	writeCalls    int
+	failWriteCall int
+	failWrite     error
+	syncCalls     int
+	failSyncCall  int
+	failSync      error
+	closed        bool
 }
 
 func (f *faultFile) Read(p []byte) (int, error) {
@@ -90,6 +95,11 @@ func testJournal(file *faultFile) *Journal {
 func TestRunEffectCompletesShortWritesAndReconstructsTrace(t *testing.T) {
 	file := &faultFile{maxWrite: 5}
 	journal := testJournal(file)
+	var observed []EffectBoundary
+	journal.lifecycleHook = func(boundary EffectBoundary) error {
+		observed = append(observed, boundary)
+		return nil
+	}
 	result, err := journal.RunEffect("effect-1", []byte("intent"), func() ([]byte, error) {
 		return []byte("result"), nil
 	})
@@ -110,6 +120,273 @@ func TestRunEffectCompletesShortWritesAndReconstructsTrace(t *testing.T) {
 	if effect.ID != "effect-1" || effect.Unresolved || effect.Outcome != "success" ||
 		!bytes.Equal(effect.Intent, []byte("intent")) || !bytes.Equal(effect.Result, []byte("result")) {
 		t.Fatalf("unexpected reconstructed effect: %+v", effect)
+	}
+	if want := []EffectBoundary{
+		EffectBoundaryBeforeIntent,
+		EffectBoundaryAfterIntentSync,
+		EffectBoundaryAfterCallbackReturn,
+		EffectBoundaryAfterOutcomeSync,
+	}; !reflect.DeepEqual(observed, want) {
+		t.Fatalf("lifecycle observations = %v, want %v", observed, want)
+	}
+	journalTrace, err := journal.Trace()
+	if err != nil {
+		t.Fatalf("Journal.Trace: %v", err)
+	}
+	if !reflect.DeepEqual(journalTrace, trace) {
+		t.Fatalf("Journal.Trace differs from verified bytes: got %+v, want %+v", journalTrace, trace)
+	}
+}
+
+func TestRunEffectBeforeOutcomeHookOrdersReleaseBeforeOutcome(t *testing.T) {
+	file := &faultFile{}
+	journal := testJournal(file)
+	callbackReturned := false
+	var order []string
+	result, err := journal.RunEffectWithBeforeOutcome("effect-capacity", []byte("intent"), func() ([]byte, error) {
+		order = append(order, "callback")
+		callbackReturned = true
+		return []byte("result"), nil
+	}, func() error {
+		if !callbackReturned {
+			t.Fatal("pre-outcome hook ran before callback returned")
+		}
+		trace, verifyErr := Verify(bytes.NewReader(file.data))
+		if verifyErr != nil || len(trace.Records) != 1 || len(trace.Effects) != 1 ||
+			!trace.Effects[0].Unresolved || trace.Effects[0].OutcomeSequence != 0 || file.syncCalls != 1 {
+			t.Fatalf("inside pre-outcome hook trace=%+v verifyErr=%v syncCalls=%d; want only the synced unresolved intent", trace, verifyErr, file.syncCalls)
+		}
+		order = append(order, "release")
+		return nil
+	})
+	if err != nil || !bytes.Equal(result, []byte("result")) {
+		t.Fatalf("RunEffectWithBeforeOutcome result=%q err=%v", result, err)
+	}
+	if !reflect.DeepEqual(order, []string{"callback", "release"}) {
+		t.Fatalf("callback/release order = %v", order)
+	}
+	trace, err := Verify(bytes.NewReader(file.data))
+	if err != nil || len(trace.Records) != 2 || trace.Effects[0].Unresolved || trace.Effects[0].Outcome != "success" {
+		t.Fatalf("verified outcome trace=%+v err=%v", trace, err)
+	}
+}
+
+func TestRunEffectBeforeOutcomeFailureLeavesUnresolvedIntent(t *testing.T) {
+	file := &faultFile{}
+	journal := testJournal(file)
+	effectRan := false
+	hookErr := errors.New("reserve release failed")
+	result, err := journal.RunEffectWithBeforeOutcome("effect-release-failure", []byte("intent"), func() ([]byte, error) {
+		effectRan = true
+		return []byte("must remain withheld"), nil
+	}, func() error { return hookErr })
+	if !effectRan || result != nil || !errors.Is(err, ErrOutcomeUnknown) || !errors.Is(err, hookErr) {
+		t.Fatalf("result=%q effectRan=%t err=%v", result, effectRan, err)
+	}
+	trace, verifyErr := Verify(bytes.NewReader(file.data))
+	if verifyErr != nil || len(trace.Records) != 1 || len(trace.Effects) != 1 || !trace.Effects[0].Unresolved {
+		t.Fatalf("trace after failed pre-outcome hook=%+v verifyErr=%v", trace, verifyErr)
+	}
+	if _, err := journal.RunEffect("later", nil, func() ([]byte, error) {
+		t.Fatal("poisoned journal invoked another effect")
+		return nil, nil
+	}); !errors.Is(err, ErrPoisoned) {
+		t.Fatalf("later effect error=%v, want ErrPoisoned", err)
+	}
+}
+
+func TestRunEffectBeforeOutcomeHookRunsAfterCallbackError(t *testing.T) {
+	journal := testJournal(&faultFile{})
+	callbackErr := errors.New("callback could not verify its result")
+	hookCalled := false
+	_, err := journal.RunEffectWithBeforeOutcome("effect-callback-error", nil, func() ([]byte, error) {
+		return nil, callbackErr
+	}, func() error {
+		hookCalled = true
+		return nil
+	})
+	if !hookCalled || !errors.Is(err, ErrOutcomeUnknown) || !errors.Is(err, callbackErr) {
+		t.Fatalf("hookCalled=%t err=%v; want hook after callback error and unknown outcome", hookCalled, err)
+	}
+}
+
+func TestRunEffectBeforeOutcomeHookPanicPoisonsWithoutOutcome(t *testing.T) {
+	file := &faultFile{}
+	journal := testJournal(file)
+	called := false
+	_, err := journal.RunEffectWithBeforeOutcome("effect-hook-panic", nil, func() ([]byte, error) {
+		return []byte("withheld"), nil
+	}, func() error {
+		called = true
+		panic("simulated reserve release panic")
+	})
+	if !called || !errors.Is(err, ErrOutcomeUnknown) || !strings.Contains(err.Error(), "pre-outcome hook panic") {
+		t.Fatalf("hookCalled=%t err=%v; want hook panic to leave outcome unknown", called, err)
+	}
+	trace, verifyErr := Verify(bytes.NewReader(file.data))
+	if verifyErr != nil || len(trace.Records) != 1 || len(trace.Effects) != 1 || !trace.Effects[0].Unresolved {
+		t.Fatalf("trace after hook panic=%+v verifyErr=%v", trace, verifyErr)
+	}
+	if _, err := journal.Append(Event{Kind: "decision", ID: "must-not-append"}); !errors.Is(err, ErrPoisoned) {
+		t.Fatalf("append after pre-outcome panic error=%v, want ErrPoisoned", err)
+	}
+}
+
+func TestRunEffectBeforeOutcomeFailureSurvivesFreshProcess(t *testing.T) {
+	requireLinuxJournalOpen(t)
+	path := filepath.Join(privateJournalTestDir(t), "pre-outcome-failure.jsonl")
+	journal, err := Open(path)
+	if err != nil {
+		t.Fatalf("open journal: %v", err)
+	}
+	_, runErr := journal.RunEffectWithBeforeOutcome("effect-release-failure", []byte("intent"), func() ([]byte, error) {
+		return []byte("callback ran"), nil
+	}, func() error { return errors.New("reserve release failed") })
+	if !errors.Is(runErr, ErrOutcomeUnknown) {
+		_ = journal.Close()
+		t.Fatalf("RunEffectWithBeforeOutcome error=%v, want ErrOutcomeUnknown", runErr)
+	}
+	if err := journal.Close(); err != nil {
+		t.Fatalf("close journal: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	command := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestBeforeOutcomeRecoveryHelper$")
+	command.Env = append(os.Environ(), "TB_AUDIT_BEFORE_OUTCOME_RECOVERY_PATH="+path)
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("fresh-process unresolved recovery: %v\n%s", err, output)
+	}
+}
+
+func TestBeforeOutcomeRecoveryHelper(t *testing.T) {
+	path := os.Getenv("TB_AUDIT_BEFORE_OUTCOME_RECOVERY_PATH")
+	if path == "" {
+		return
+	}
+	journal, err := Open(path)
+	if err != nil {
+		t.Fatalf("open unresolved journal in fresh process: %v", err)
+	}
+	defer journal.Close()
+	called := false
+	if _, err := journal.RunEffect("effect-release-failure", nil, func() ([]byte, error) {
+		called = true
+		return nil, nil
+	}); !errors.Is(err, ErrUnresolvedEffect) {
+		t.Fatalf("replay old effect error=%v, want ErrUnresolvedEffect", err)
+	}
+	if called {
+		t.Fatal("fresh process replayed the unresolved effect")
+	}
+	if _, err := journal.RunEffect("later-effect", nil, func() ([]byte, error) {
+		called = true
+		return nil, nil
+	}); !errors.Is(err, ErrQuarantined) {
+		t.Fatalf("later effect error=%v, want ErrQuarantined", err)
+	}
+	if called {
+		t.Fatal("fresh process ran a later effect while the old intent is unresolved")
+	}
+}
+
+func TestLifecycleHookFailureLeavesIntentUnresolved(t *testing.T) {
+	boundaries := []EffectBoundary{
+		EffectBoundaryAfterIntentSync,
+		EffectBoundaryAfterCallbackReturn,
+	}
+	for _, boundary := range boundaries {
+		for _, panicObserver := range []bool{false, true} {
+			name := strconv.Itoa(int(boundary)) + "/error"
+			if panicObserver {
+				name = strconv.Itoa(int(boundary)) + "/panic"
+			}
+			t.Run(name, func(t *testing.T) {
+				file := &faultFile{}
+				journal := testJournal(file)
+				journal.lifecycleHook = func(observed EffectBoundary) error {
+					if observed != boundary {
+						return nil
+					}
+					if panicObserver {
+						panic("injected observer panic")
+					}
+					return errInjectedLifecycleHook
+				}
+				calls := 0
+				_, err := journal.RunEffect("hook-failure", nil, func() ([]byte, error) {
+					calls++
+					return []byte("result"), nil
+				})
+				if !errors.Is(err, ErrOutcomeUnknown) || !errors.Is(err, ErrLifecycleHook) {
+					t.Fatalf("RunEffect error = %v, want unresolved lifecycle-hook failure", err)
+				}
+				wantCalls := 0
+				if boundary == EffectBoundaryAfterCallbackReturn {
+					wantCalls = 1
+				}
+				if calls != wantCalls {
+					t.Fatalf("callback calls = %d, want %d", calls, wantCalls)
+				}
+				trace, err := Verify(bytes.NewReader(file.data))
+				if err != nil {
+					t.Fatalf("Verify: %v", err)
+				}
+				if len(trace.Records) != 1 || len(trace.Effects) != 1 ||
+					!trace.Effects[0].Unresolved || trace.Effects[0].Outcome != "" {
+					t.Fatalf("hook failure wrote an outcome or lost its intent: %+v", trace)
+				}
+				if _, err := journal.RunEffect("hook-failure", nil, func() ([]byte, error) {
+					t.Fatal("unresolved effect was replayed")
+					return nil, nil
+				}); !errors.Is(err, ErrUnresolvedEffect) {
+					t.Fatalf("retry error = %v, want ErrUnresolvedEffect", err)
+				}
+			})
+		}
+	}
+}
+
+func TestAfterCallbackHookFailurePreservesCallbackError(t *testing.T) {
+	file := &faultFile{}
+	journal := testJournal(file)
+	callbackErr := errors.New("effect may have partially completed")
+	journal.lifecycleHook = func(boundary EffectBoundary) error {
+		if boundary == EffectBoundaryAfterCallbackReturn {
+			return errInjectedLifecycleHook
+		}
+		return nil
+	}
+	calls := 0
+	result, err := journal.RunEffect("callback-error-hook-failure", nil, func() ([]byte, error) {
+		calls++
+		return []byte("withheld result"), callbackErr
+	})
+	if calls != 1 || result != nil ||
+		!errors.Is(err, ErrOutcomeUnknown) || !errors.Is(err, ErrLifecycleHook) ||
+		!errors.Is(err, errInjectedLifecycleHook) || !errors.Is(err, callbackErr) {
+		t.Fatalf("calls=%d result=%q error=%v; want unresolved hook failure retaining callback cause", calls, result, err)
+	}
+	trace, err := Verify(bytes.NewReader(file.data))
+	if err != nil {
+		t.Fatalf("Verify: %v", err)
+	}
+	if len(trace.Records) != 1 || len(trace.Effects) != 1 ||
+		!trace.Effects[0].Unresolved || trace.Effects[0].Outcome != "" {
+		t.Fatalf("hook failure wrote an outcome or lost its intent: %+v", trace)
+	}
+}
+
+func TestJournalTraceRejectsClosedAndPoisonedJournals(t *testing.T) {
+	closed := testJournal(&faultFile{})
+	closed.closed = true
+	if _, err := closed.Trace(); !errors.Is(err, ErrClosed) {
+		t.Fatalf("Trace on closed journal = %v, want ErrClosed", err)
+	}
+	poisoned := testJournal(&faultFile{})
+	poisoned.poisoned = true
+	if _, err := poisoned.Trace(); !errors.Is(err, ErrPoisoned) {
+		t.Fatalf("Trace on poisoned journal = %v, want ErrPoisoned", err)
 	}
 }
 
@@ -137,13 +414,22 @@ func TestWriteFailureBeforeEffectPoisonsJournal(t *testing.T) {
 func TestIntentSyncFailurePreventsEffect(t *testing.T) {
 	file := &faultFile{failSyncCall: 1, failSync: errInjectedSync}
 	journal := testJournal(file)
+	observerCalls := 0
+	journal.lifecycleHook = func(boundary EffectBoundary) error {
+		if boundary != EffectBoundaryBeforeIntent {
+			observerCalls++
+		}
+		return nil
+	}
 	called := false
 	_, err := journal.RunEffect("effect-1", []byte("intent"), func() ([]byte, error) {
 		called = true
 		return []byte("should not run"), nil
 	})
-	if err == nil || called || !errors.Is(err, ErrDurability) || !errors.Is(err, ErrPoisoned) || !errors.Is(err, errInjectedSync) {
-		t.Fatalf("RunEffect error=%v callbackCalled=%t; want fail-closed sync error before effect", err, called)
+	if err == nil || called || observerCalls != 0 ||
+		!errors.Is(err, ErrDurability) || !errors.Is(err, ErrPoisoned) || !errors.Is(err, errInjectedSync) {
+		t.Fatalf("RunEffect error=%v callbackCalled=%t observerCalls=%d; want fail-closed sync error before effect or observer",
+			err, called, observerCalls)
 	}
 }
 
@@ -430,31 +716,76 @@ func TestOpenRejectsBroadPermissionsAndLeafSymlink(t *testing.T) {
 	if _, err := Open(filepath.Join(parentLink, "journal.jsonl")); !errors.Is(err, ErrJournalSymlink) {
 		t.Fatalf("Open parent symlink error = %v, want ErrJournalSymlink", err)
 	}
+	regularComponent := filepath.Join(root, "regular-component")
+	if err := os.WriteFile(regularComponent, []byte("file"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Open(filepath.Join(regularComponent, "journal.jsonl")); err == nil || errors.Is(err, ErrJournalSymlink) || !strings.Contains(err.Error(), "not a directory") {
+		t.Fatalf("Open non-directory component error = %v, want a non-symlink not-directory error", err)
+	}
 }
 
-func TestProcessExitReleasesLockButIntentStillQuarantines(t *testing.T) {
-	requireLinuxJournalOpen(t)
-	path := filepath.Join(privateJournalTestDir(t), "journal.jsonl")
-	command := exec.Command(os.Args[0], "-test.run=^TestJournalCrashHelper$")
-	command.Env = append(os.Environ(), "TB_AUDIT_CRASH_HELPER_PATH="+path)
-	if output, err := command.CombinedOutput(); err != nil {
-		t.Fatalf("crash helper: %v\n%s", err, output)
-	}
+type journalCrashCut string
 
-	journal, err := Open(path)
-	if err != nil {
-		t.Fatalf("Open after child exit (flock should be released): %v", err)
-	}
-	defer journal.Close()
-	called := false
-	if _, err := journal.RunEffect("later-effect", nil, func() ([]byte, error) {
-		called = true
-		return nil, nil
-	}); !errors.Is(err, ErrQuarantined) {
-		t.Fatalf("later effect error = %v, want ErrQuarantined", err)
-	}
-	if called {
-		t.Fatal("later effect ran after crash left an unresolved intent")
+const (
+	crashCutAfterIntentSync     journalCrashCut = "after-intent-sync"
+	crashCutCallbackBodyEntry   journalCrashCut = "callback-body-entry"
+	crashCutInsideEffectVisible journalCrashCut = "inside-effect-after-visible"
+	crashCutAfterCallbackReturn journalCrashCut = "after-callback-return"
+)
+
+func TestAuditAndCallbackFixtureCrashCutsNeverReplay(t *testing.T) {
+	requireLinuxJournalOpen(t)
+	for _, cut := range []journalCrashCut{
+		crashCutAfterIntentSync, crashCutCallbackBodyEntry,
+		crashCutInsideEffectVisible, crashCutAfterCallbackReturn,
+	} {
+		t.Run(string(cut), func(t *testing.T) {
+			path := filepath.Join(privateJournalTestDir(t), "journal.jsonl")
+			markerPath := filepath.Join(filepath.Dir(path), "external-effect.txt")
+			callbackEntryMarkerPath := filepath.Join(filepath.Dir(path), "callback-entered.txt")
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			command := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestJournalCrashHelper$")
+			command.Env = append(os.Environ(),
+				"TB_AUDIT_CRASH_HELPER_PATH="+path,
+				"TB_AUDIT_CRASH_MARKER_PATH="+markerPath,
+				"TB_AUDIT_CRASH_CALLBACK_ENTRY_MARKER_PATH="+callbackEntryMarkerPath,
+				"TB_AUDIT_CRASH_CUT="+string(cut),
+			)
+			if output, err := command.CombinedOutput(); err != nil {
+				t.Fatalf("crash helper: %v\n%s", err, output)
+			}
+			assertMarker := func(path, want string, shouldExist bool) {
+				t.Helper()
+				got, err := os.ReadFile(path)
+				if !shouldExist {
+					if !os.IsNotExist(err) {
+						t.Fatalf("marker %q = %q, err=%v; want absent", path, got, err)
+					}
+					return
+				}
+				if err != nil || string(got) != want {
+					t.Fatalf("marker %q = %q, err=%v; want %q", path, got, err, want)
+				}
+			}
+			assertMarkers := func() {
+				t.Helper()
+				callbackEntered := cut != crashCutAfterIntentSync
+				effectVisible := cut == crashCutInsideEffectVisible || cut == crashCutAfterCallbackReturn
+				assertMarker(callbackEntryMarkerPath, "callback-entered\n", callbackEntered)
+				assertMarker(markerPath, "effect-visible\n", effectVisible)
+			}
+			assertMarkers()
+			recoveryCtx, recoveryCancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer recoveryCancel()
+			recovery := exec.CommandContext(recoveryCtx, os.Args[0], "-test.run=^TestJournalRecoveryHelper$")
+			recovery.Env = append(os.Environ(), "TB_AUDIT_RECOVERY_HELPER_PATH="+path)
+			if output, err := recovery.CombinedOutput(); err != nil {
+				t.Fatalf("fresh recovery helper: %v\n%s", err, output)
+			}
+			assertMarkers()
+		})
 	}
 }
 
@@ -463,15 +794,110 @@ func TestJournalCrashHelper(t *testing.T) {
 	if path == "" {
 		return
 	}
-	journal, err := Open(path)
+	markerPath := os.Getenv("TB_AUDIT_CRASH_MARKER_PATH")
+	if markerPath == "" {
+		t.Fatal("crash helper requires an external effect marker path")
+	}
+	callbackEntryMarkerPath := os.Getenv("TB_AUDIT_CRASH_CALLBACK_ENTRY_MARKER_PATH")
+	if callbackEntryMarkerPath == "" {
+		t.Fatal("crash helper requires a callback-entry marker path")
+	}
+	cut := journalCrashCut(os.Getenv("TB_AUDIT_CRASH_CUT"))
+	switch cut {
+	case crashCutAfterIntentSync, crashCutCallbackBodyEntry, crashCutInsideEffectVisible, crashCutAfterCallbackReturn:
+	default:
+		t.Fatalf("unregistered crash cut %q", cut)
+	}
+	journal, err := OpenWithLifecycleHook(path, func(observed EffectBoundary) error {
+		if (cut == crashCutAfterIntentSync && observed == EffectBoundaryAfterIntentSync) ||
+			(cut == crashCutAfterCallbackReturn && observed == EffectBoundaryAfterCallbackReturn) {
+			os.Exit(0)
+		}
+		return nil
+	})
 	if err != nil {
 		t.Fatalf("Open in crash helper: %v", err)
 	}
 	_, err = journal.RunEffect("crashed-effect", []byte("durable intent"), func() ([]byte, error) {
-		os.Exit(0) // Simulate process death after intent Sync and before outcome.
-		return nil, nil
+		if err := writeSyncedCrashMarker(callbackEntryMarkerPath, "callback-entered\n"); err != nil {
+			return nil, err
+		}
+		if cut == crashCutCallbackBodyEntry {
+			os.Exit(0)
+		}
+		if err := writeSyncedCrashMarker(markerPath, "effect-visible\n"); err != nil {
+			return nil, err
+		}
+		if cut == crashCutInsideEffectVisible {
+			os.Exit(0)
+		}
+		return []byte("result"), nil
 	})
-	t.Fatalf("RunEffect returned after os.Exit callback: %v", err)
+	t.Fatalf("RunEffect returned after crash cut %q: %v", cut, err)
+}
+
+func writeSyncedCrashMarker(path, value string) error {
+	marker, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		return err
+	}
+	n, err := marker.WriteString(value)
+	if err == nil && n != len(value) {
+		err = io.ErrShortWrite
+	}
+	if err == nil {
+		err = marker.Sync()
+	}
+	closeErr := marker.Close()
+	if err == nil {
+		err = closeErr
+	}
+	return err
+}
+
+func TestJournalRecoveryHelper(t *testing.T) {
+	path := os.Getenv("TB_AUDIT_RECOVERY_HELPER_PATH")
+	if path == "" {
+		return
+	}
+
+	journal, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open in fresh recovery helper: %v", err)
+	}
+	defer journal.Close()
+
+	trace, err := journal.Trace()
+	if err != nil {
+		t.Fatalf("Trace in fresh recovery helper: %v", err)
+	}
+	if len(trace.Effects) != 1 || trace.Effects[0].ID != "crashed-effect" ||
+		!trace.Effects[0].Unresolved || trace.Effects[0].Outcome != "" ||
+		trace.Effects[0].OutcomeSequence != 0 {
+		t.Fatalf("recovered effect = %+v, want unresolved intent without terminal outcome", trace.Effects)
+	}
+
+	oldCalled := false
+	if _, err := journal.RunEffect("crashed-effect", nil, func() ([]byte, error) {
+		oldCalled = true
+		return nil, nil
+	}); !errors.Is(err, ErrUnresolvedEffect) {
+		t.Fatalf("old effect error = %v, want ErrUnresolvedEffect", err)
+	}
+	if oldCalled {
+		t.Fatal("fresh recovery process reran an effect with unresolved outcome")
+	}
+
+	laterCalled := false
+	if _, err := journal.RunEffect("later-effect", nil, func() ([]byte, error) {
+		laterCalled = true
+		return nil, nil
+	}); !errors.Is(err, ErrQuarantined) {
+		t.Fatalf("later effect error = %v, want ErrQuarantined", err)
+	}
+	if laterCalled {
+		t.Fatal("fresh recovery process admitted a later effect while outcome was unknown")
+	}
 }
 
 func requireLinuxJournalOpen(t *testing.T) {
@@ -543,9 +969,167 @@ func TestOpenRejectsWritableAncestorsAndTmpStyleAncestry(t *testing.T) {
 	}
 }
 
+func fixtureUnixIdentity(info os.FileInfo) (uid, gid uint64, nlink uint64, ok bool) {
+	value := reflect.ValueOf(info.Sys())
+	if !value.IsValid() {
+		return 0, 0, 0, false
+	}
+	if value.Kind() == reflect.Ptr {
+		if value.IsNil() {
+			return 0, 0, 0, false
+		}
+		value = value.Elem()
+	}
+	if value.Kind() != reflect.Struct {
+		return 0, 0, 0, false
+	}
+	readUint := func(name string) (uint64, bool) {
+		field := value.FieldByName(name)
+		if !field.IsValid() {
+			return 0, false
+		}
+		switch field.Kind() {
+		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+			return field.Uint(), true
+		default:
+			return 0, false
+		}
+	}
+	uid, uidOK := readUint("Uid")
+	gid, gidOK := readUint("Gid")
+	nlink, nlinkOK := readUint("Nlink")
+	return uid, gid, nlink, uidOK && gidOK && nlinkOK
+}
+
+func requireOwnershipFixtureEntry(
+	t *testing.T,
+	path string,
+	directory bool,
+	uid, gid uint64,
+	mode os.FileMode,
+) os.FileInfo {
+	t.Helper()
+	info, err := os.Lstat(path)
+	if err != nil {
+		t.Fatalf("lstat ownership fixture %q: %v", path, err)
+	}
+	if directory {
+		if !info.IsDir() {
+			t.Fatalf("ownership fixture %q is not a directory", path)
+		}
+	} else if !info.Mode().IsRegular() {
+		t.Fatalf("ownership fixture %q is not a regular file", path)
+	}
+	if info.Mode()&(os.ModeSetuid|os.ModeSetgid|os.ModeSticky) != 0 {
+		t.Fatalf("ownership fixture %q has unexpected setuid, setgid, or sticky bits: %v", path, info.Mode())
+	}
+	if info.Mode().Perm() != mode {
+		t.Fatalf("ownership fixture %q mode=%04o, want %04o", path, info.Mode().Perm(), mode)
+	}
+	actualUID, actualGID, nlink, ok := fixtureUnixIdentity(info)
+	if !ok || actualUID != uid || actualGID != gid {
+		t.Fatalf("ownership fixture %q uid/gid=%d:%d (available=%t), want %d:%d", path, actualUID, actualGID, ok, uid, gid)
+	}
+	if !directory && (nlink != 1 || info.Size() != 0) {
+		t.Fatalf("ownership fixture %q must be empty with one link; links=%d size=%d", path, nlink, info.Size())
+	}
+	return info
+}
+
+func requireOwnershipFixtureNames(t *testing.T, directory string, expected []string) {
+	t.Helper()
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		t.Fatalf("read ownership fixture directory %q: %v", directory, err)
+	}
+	names := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		names = append(names, entry.Name())
+	}
+	if len(names) != len(expected) {
+		t.Fatalf("ownership fixture directory %q entries=%v, want %v", directory, names, expected)
+	}
+	for index, name := range names {
+		if name != expected[index] {
+			t.Fatalf("ownership fixture directory %q entries=%v, want %v", directory, names, expected)
+		}
+	}
+}
+
+func requireRootOwnedFixtureAncestor(t *testing.T, path string) {
+	t.Helper()
+	info, err := os.Lstat(path)
+	if err != nil {
+		t.Fatalf("lstat ownership fixture ancestor %q: %v", path, err)
+	}
+	if !info.IsDir() {
+		t.Fatalf("ownership fixture ancestor %q is not a directory", path)
+	}
+	uid, _, _, ok := fixtureUnixIdentity(info)
+	if !ok || uid != 0 || info.Mode().Perm()&0o022 != 0 {
+		t.Fatalf("ownership fixture ancestor %q must be root-owned and not group- or other-writable", path)
+	}
+}
+
+// These checks cover the fixed path and stat metadata. The offline verifier preflights ACLs and xattrs before invoking this test.
+func validateOwnershipFixtures(t *testing.T, fixtureRoot string) {
+	t.Helper()
+	uid := os.Geteuid()
+	gid := os.Getegid()
+	expectedRoot := filepath.Join(string(os.PathSeparator), "var", "lib", "tbound", "audit-ownership-fixtures", strconv.Itoa(uid))
+	if filepath.Clean(fixtureRoot) != expectedRoot {
+		t.Fatalf("ownership fixture root %q, want fixed path %q", fixtureRoot, expectedRoot)
+	}
+	fixtureRoot = expectedRoot
+
+	for _, ancestor := range []string{"/var", "/var/lib", "/var/lib/tbound", "/var/lib/tbound/audit-ownership-fixtures"} {
+		requireRootOwnedFixtureAncestor(t, ancestor)
+	}
+
+	directory, err := openJournalDirectory(fixtureRoot)
+	if err != nil {
+		t.Fatalf("open ownership fixture ancestry: %v", err)
+	}
+	if err := checkPrivateDirectory(directory); err != nil {
+		_ = directory.Close()
+		t.Fatalf("ownership fixture root is not private and trial-owned: %v", err)
+	}
+	if err := directory.Close(); err != nil {
+		t.Fatalf("close ownership fixture root: %v", err)
+	}
+	requireOwnershipFixtureEntry(t, fixtureRoot, true, uint64(uid), uint64(gid), 0o700)
+	requireOwnershipFixtureNames(t, fixtureRoot, []string{"file-parent", "foreign-dir"})
+
+	foreignDirectory := filepath.Join(fixtureRoot, "foreign-dir")
+	requireOwnershipFixtureEntry(t, foreignDirectory, true, 65534, 65534, 0o755)
+	requireOwnershipFixtureNames(t, foreignDirectory, []string{})
+
+	fileParent := filepath.Join(fixtureRoot, "file-parent")
+	requireOwnershipFixtureEntry(t, fileParent, true, uint64(uid), uint64(gid), 0o700)
+	requireOwnershipFixtureNames(t, fileParent, []string{"journal.jsonl", "owned-insecure-mode.jsonl"})
+	requireOwnershipFixtureEntry(t, filepath.Join(fileParent, "journal.jsonl"), false, 65534, uint64(gid), 0o660)
+	requireOwnershipFixtureEntry(t, filepath.Join(fileParent, "owned-insecure-mode.jsonl"), false, uint64(uid), uint64(gid), 0o660)
+}
+
 func TestOpenRejectsUntrustedOwnership(t *testing.T) {
 	requireLinuxJournalOpen(t)
-	if currentEffectiveUID() != 0 {
+	if fixtureRoot := os.Getenv("TBOUND_AUDIT_OWNERSHIP_FIXTURE_ROOT"); fixtureRoot != "" {
+		if os.Geteuid() <= 0 {
+			t.Fatal("ownership fixtures must be tested as the non-root trial user")
+		}
+		validateOwnershipFixtures(t, fixtureRoot)
+		if _, err := Open(filepath.Join(fixtureRoot, "foreign-dir", "journal.jsonl")); !errors.Is(err, ErrInsecureOwnership) || !strings.Contains(err.Error(), "ancestor owner uid 65534") {
+			t.Fatalf("Open through fixed foreign-owned ancestor error = %v, want ErrInsecureOwnership for uid 65534", err)
+		}
+		if _, err := Open(filepath.Join(fixtureRoot, "file-parent", "journal.jsonl")); !errors.Is(err, ErrInsecureOwnership) || !strings.Contains(err.Error(), "owner uid 65534,") {
+			t.Fatalf("Open fixed foreign-owned file error = %v, want ErrInsecureOwnership for uid 65534", err)
+		}
+		if _, err := Open(filepath.Join(fixtureRoot, "file-parent", "owned-insecure-mode.jsonl")); !errors.Is(err, ErrInsecurePermissions) {
+			t.Fatalf("Open owned mode-0660 file error = %v, want ErrInsecurePermissions", err)
+		}
+		return
+	}
+	if os.Geteuid() != 0 {
 		t.Skip("changing file ownership requires root")
 	}
 	root := privateJournalTestDir(t)
@@ -645,4 +1229,52 @@ func testFrame(t *testing.T, sequence uint64, previousHash string, event Event) 
 		t.Fatal(err)
 	}
 	return append(encoded, '\n')
+}
+
+func TestBeforeIntentHookFailureWritesNothingAndSkipsTheEffect(t *testing.T) {
+	file := &faultFile{}
+	journal := testJournal(file)
+	journal.lifecycleHook = func(boundary EffectBoundary) error {
+		if boundary == EffectBoundaryBeforeIntent {
+			return errInjectedLifecycleHook
+		}
+		return nil
+	}
+	_, err := journal.RunEffect("before-intent", []byte("intent"), func() ([]byte, error) {
+		t.Fatal("effect ran although the intent boundary failed")
+		return nil, nil
+	})
+	if !errors.Is(err, ErrLifecycleHook) || !errors.Is(err, errInjectedLifecycleHook) {
+		t.Fatalf("RunEffect error = %v, want the lifecycle hook failure", err)
+	}
+	if len(file.data) != 0 {
+		t.Fatalf("a failed before-intent boundary wrote %d journal bytes", len(file.data))
+	}
+	journal.lifecycleHook = nil
+	if _, err := journal.RunEffect("before-intent", []byte("intent"), func() ([]byte, error) { return []byte("ok"), nil }); err != nil {
+		t.Fatalf("the same effect ID was not retryable after nothing became durable: %v", err)
+	}
+}
+
+func TestAfterOutcomeSyncHookSeesDurableOutcome(t *testing.T) {
+	file := &faultFile{}
+	journal := testJournal(file)
+	journal.lifecycleHook = func(boundary EffectBoundary) error {
+		if boundary != EffectBoundaryAfterOutcomeSync {
+			return nil
+		}
+		trace, err := Verify(bytes.NewReader(file.data))
+		if err != nil || len(trace.Effects) != 1 || trace.Effects[0].Unresolved || trace.Effects[0].Outcome != "success" {
+			t.Fatalf("outcome was not durable at the boundary: %+v err=%v", trace, err)
+		}
+		return errInjectedLifecycleHook
+	}
+	result, err := journal.RunEffect("after-outcome", nil, func() ([]byte, error) { return []byte("result"), nil })
+	if result != nil || !errors.Is(err, ErrLifecycleHook) {
+		t.Fatalf("result=%q error=%v, want the result withheld by the hook failure", result, err)
+	}
+	trace, err := Verify(bytes.NewReader(file.data))
+	if err != nil || len(trace.Records) != 2 || trace.Effects[0].Unresolved {
+		t.Fatalf("hook failure changed the durable outcome: %+v err=%v", trace, err)
+	}
 }
