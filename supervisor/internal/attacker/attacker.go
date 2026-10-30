@@ -32,9 +32,6 @@ const (
 	maxCapabilityBoundCeiling = 1024
 )
 
-// CanonicalClassIDs returns the five registered class IDs in spec order.
-func CanonicalClassIDs() []string { return slices.Clone(canonicalClasses) }
-
 // validIdent accepts 1 to 64 bytes of [a-z0-9._-].
 func validIdent(s string) bool {
 	if len(s) == 0 || len(s) > maxIdentLen {
