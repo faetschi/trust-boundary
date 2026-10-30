@@ -462,21 +462,6 @@ func isDigest(s string) bool {
 	return true
 }
 
-// sameIdentity reports whether two role or reviewer fields name the same thing for
-// the independence rules. It compares normalized forms only. The stored values are
-// not changed, and the other rules still see the raw strings. The normalization
-// removes surrounding space, collapses internal white space, and lower-cases. It
-// does not apply Unicode normalization (NFC) or full case folding, which the
-// standard library lacks, so identities that differ only in those ways are not
-// treated as the same.
-func SameIdentity(a, b string) bool {
-	return normalizeIdentity(a) == normalizeIdentity(b)
-}
-
-func normalizeIdentity(s string) string {
-	return strings.ToLower(strings.Join(strings.Fields(s), " "))
-}
-
 // sameSet reports whether a and b hold the same strings, counting multiplicity.
 func sameSet(a, b []string) bool {
 	if len(a) != len(b) {
