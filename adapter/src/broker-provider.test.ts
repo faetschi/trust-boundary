@@ -3,10 +3,8 @@ import { test } from "node:test";
 import { Duplex } from "node:stream";
 import { createAssistantMessageEventStream, type JsonObject } from "@earendil-works/pi-ai";
 import {
-  BROKER_API,
   BROKER_CHANNEL_VERSION,
   BROKER_MODEL_ID,
-  BROKER_PROVIDER_ID,
   createBrokerProvider,
 } from "./broker-provider.ts";
 
