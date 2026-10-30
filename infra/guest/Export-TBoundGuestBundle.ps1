@@ -4,7 +4,7 @@ param()
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$ExpectedBranch = 'codex/tbound-prototype'
+$ExpectedBranch = 'main'
 $ExpectedTBoundAttributesBlob = '9f5fb419253366bc0c09c284f750211177b3d76e'
 $AssetsRoot = 'F:\TBoundAssets'
 $VmStorageRoot = 'F:\TBoundVMs'

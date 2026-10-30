@@ -8,8 +8,7 @@ on 2026-10-14. Branch: `codex/tbound-prototype`.
 Adjust the existing Hyper-V setup to provide the implementation's exact Landlock
 ABI 8 profile. The user authorizes disposal of the existing development VM and
 replacement with a fresh disposable qualification guest with similar attributes.
-The observed reference resources are 8 vCPUs, 16 GiB fixed RAM and a 40 GiB disk;
-see [the inventory receipt](../evidence/host-inventory-20261014.json).
+The observed reference resources are 8 vCPUs, 16 GiB fixed RAM and a 40 GiB disk.
 Inspect and preserve required artifacts before disposal. Verify the replacement's
 live ABI, filesystem, runtime closure and service profile before qualification.
 Use distinct private provisioning paths and keep credentials out of source control.

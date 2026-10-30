@@ -1,9 +1,7 @@
 # Candidate clean Linux guest qualification
 
 Preparation template only: this is not image registration, containment evidence,
-or a G1 manifest. G1 remains false and H1 remains unexecuted. Keep the related
-[candidate experiment manifest](../../docs/evaluation/experiment-manifest.md) as the
-existing cross-reference; this worksheet does not create registration evidence.
+or a G1 manifest. G1 remains false and H1 remains unexecuted. This worksheet does not create registration evidence.
 
 ## Prepare and identify the candidate
 

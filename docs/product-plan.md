@@ -27,7 +27,7 @@ Governance means deterministic tool authorization, correlated provider calls, fi
 
 ## 2. What exists and what changes
 
-The current [architecture](runtime/architecture.md) already has the four mediated tools, Go-owned provider history, sealed workspace generations, isolated Bash cells, settlement, publication, and durable journals. [Task state](../TASK_STATE.md) records successful G1 operation on F12, incomplete EVQ, and unexecuted H1. Those results do not qualify this proposed product or current HEAD deployment.
+The current [architecture](runtime/architecture.md) already has the four mediated tools, Go-owned provider history, sealed workspace generations, isolated Bash cells, settlement, publication, and durable journals. The owner-local working log records successful G1 operation on F12, incomplete EVQ, and unexecuted H1. Those results do not qualify this proposed product or current HEAD deployment.
 
 The installed task configuration pins an exact prompt, task ID, Bash output scope, and one-use admission. Changing these inputs changes trusted configuration. Corpus mode can reuse an installation for preregistered tasks, but is not an arbitrary interactive task API.
 
@@ -315,7 +315,7 @@ Rewrite `USAGE.md` as the complete supported user journey. It must contain execu
 
 USAGE is the canonical complete sequence. Detailed references may explain individual fields, but must not hide a necessary manual step behind an unqualified "see runbook" link. Include required privileges, current commands, example paths, bounded expected output, likely failures, and recovery instructions. Never require the author to prepare a freeze kit for ordinary use. Provider account pages/protocol instructions are checked against official sources at release time.
 
-Move research-only operation to a dedicated research guide linked near the end. Keep `OVERVIEW.md` and `TASK_STATE.md` as engineering checkpoints rather than onboarding prerequisites. Keep the personal owner guide outside the repository and link it to canonical instructions instead of duplicating setup. Reconcile `docs/README.md`, install/launch/providers/doctor/release/architecture pages, help output, and the optional web README. Remove dead archive links only after checking the actual concurrent documentation cleanup.
+Move research-only operation to a dedicated research guide linked near the end. Keep `OVERVIEW.md` as an engineering checkpoint rather than an onboarding prerequisite. Keep the personal owner guide outside the repository and link it to canonical instructions instead of duplicating setup. Reconcile `docs/README.md`, install/launch/providers/doctor/release/architecture pages, help output, and the optional web README. Remove dead archive links only after checking the actual concurrent documentation cleanup.
 
 Acceptance: a person or clean-room agent with no chat history follows README then USAGE to a real two-turn governed result. Every necessary command, trust input, credential step, expected state, and supported limitation is available without author-specific files. Documentation smoke checks validate examples against the shipped help/schema. Unsupported future commands and obsolete provider environment names are absent from runnable instructions.
 

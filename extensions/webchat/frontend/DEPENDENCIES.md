@@ -1,8 +1,7 @@
 # Frontend dependencies
 
 Every direct dependency is pinned to an exact version in `package.json` and
-resolved in `package-lock.json`. Nothing is installed with `^` or `~`. The
-policy and the gate that enforces it are in `../docs/frontend.md`.
+resolved in `package-lock.json`. Nothing is installed with `^` or `~`.
 
 Checked on 2026-10-14 with Node 24.15.0 on Linux (WSL) and with `npm` 11.12.1.
 The registry metadata was read with `npm view`.

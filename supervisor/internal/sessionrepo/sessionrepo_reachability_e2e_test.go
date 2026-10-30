@@ -41,7 +41,7 @@ import (
 // filtered source with workspace.Import into a private 0700 byte tree. This test
 // therefore proves the *negative* Git-reachability obligations the spec lists and
 // does not (cannot) prove the presence of the spec-required private Git
-// repository. Initializing one is an open human decision recorded in TASK_STATE.
+// repository. Initializing one is an open human decision.
 //
 // "Sealed" here means exactly: an independent private byte copy, owner-only 0700,
 // digest-verified by rescan, with no live/Git reachability. It is NOT a claim of

@@ -103,7 +103,7 @@ default at `/`, and the zero-build client is deprecated at `/legacy/` until sign
 - Zero `innerHTML` sinks, and the decision not to adopt the harness runtime
   (Appendix A.4).
 - GET-only, literal-loopback gateway until the authenticated service exists. HEAD is also
-  answered on `/` (a redirect) and `/favicon.ico` (`204`); see `frontend.md`.
+  answered on `/` (a redirect) and `/favicon.ico` (`204`).
 
 ### (v) Phase plan
 
@@ -132,7 +132,7 @@ Status (2026-10-14). Each phase is verified only by the receipts listed here.
 | P0 extraction | done, committed `18f71e6` | extension boundary, guard, CI job | `scripts/check-extension-boundary.sh` (see README) |
 | **P1 scaffold** | **implemented and committed in `263b6ca`; review fixes committed in `2583f5a`; one criterion partly met** | see below | see below |
 | P2 port pure logic | implemented and committed in `4700ca5` | `src/core` and `src/markdown` port the logic; legacy parity nets | `phase2-parity.md` §9; `phase2-markdown.md`, Receipts |
-| P3 React views | **committed**: shell and governance panels `58492c5` (3a); Chat and Trajectory views and record inspector `57bcd95` (3b/3c); polish `a2aaf30`; review fixes `60ca5b0`; React default at `/` with `/legacy/` deprecated `6d03657`; claim gate at the stream boundary and v3-check fixes `57e6406` | Replace `render.mjs` and `app.mjs` with React components; each legacy test mapped to a React test (`phase3-parity.md`); browser QA captures (Chrome 155) | `frontend.md`, Phase 3 sections and "Default UI switch"; `phase3-parity.md`; `webchat/qa/p3*-receipt.json` |
+| P3 React views | **committed**: shell and governance panels `58492c5` (3a); Chat and Trajectory views and record inspector `57bcd95` (3b/3c); polish `a2aaf30`; review fixes `60ca5b0`; React default at `/` with `/legacy/` deprecated `6d03657`; claim gate at the stream boundary and v3-check fixes `57e6406` | Replace `render.mjs` and `app.mjs` with React components; each legacy test mapped to a React test (`phase3-parity.md`); browser QA captures (Chrome 155) | `phase3-parity.md` |
 
 P1 done criteria, each with its evidence:
 
@@ -233,7 +233,7 @@ npm 11.12.1 in WSL, with Go 1.27.1 in WSL. The Windows runs use Node 24.15.0, Go
 1.27.1 and Chrome 155.0.8059.79. "Throwaway" means a copy under a temporary
 directory, outside the worktree and its git repository. The live repository was
 only read. Each row's command was run from the stated directory, with
-`GIT_DIR` and `GIT_WORK_TREE` set for WSL (see `frontend.md`, Commands).
+`GIT_DIR` and `GIT_WORK_TREE` set for WSL.
 
 | Command | Where | Exit | Result |
 |---|---|---|---|

@@ -196,7 +196,7 @@ its Windows `[no test files]` result is **not** verification of the Linux
 implementation. Go module files were unchanged; adapter untouched; scoped diff
 check exited 0. No current-source offline guest result or production integration
 is inferred from these development checks. Commit identity/byte comparison is
-recorded separately in `TASK_STATE.md` after commitment.
+recorded separately, outside this repository, after commitment.
 
 Final combined-source rerun uses committed explorer `b827199` plus publication
 only in `/home/jeli2k/tbound-coordinator-s2final.m6uvfA`. Full race suite passed

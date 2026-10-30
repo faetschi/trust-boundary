@@ -8,6 +8,3 @@ Updated 2026-10-27. Current guest freeze: **F13 = `6162e3c`**.
   host yet.
 
 H1 has not run, so there are no results.
-
-Current state, decisions, blockers, and next steps:
-[TASK_STATE.md](TASK_STATE.md).

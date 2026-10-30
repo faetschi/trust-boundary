@@ -5,7 +5,7 @@ modules of the legacy client are ported to strict TypeScript under
 `extensions/webchat/frontend/src/core/`. At that commit the legacy modules were
 unchanged and still the shipped client. No product UI changed, and `dist/` was
 byte-identical (`npm run repro`). The React client has been the default UI since
-`6d03657` (see `frontend.md`).
+`6d03657`.
 
 Claim boundary (unchanged by this port): no `G1`, containment or `H1` result is
 established. Within the client, `UNKNOWN` stays `UNKNOWN`, a policy `ALLOW` is a
@@ -348,5 +348,5 @@ Source hash. `frontend/src` has 151 files (30 under `core/`, 53 under `app/`). E
 
 Not run here:
 - `npm run build`, by instruction (the build owner rebuilds `dist/`). So `npm run repro` is expected to fail until `dist/` is rebuilt and committed, and the served `/app/` bundle is the pre-change one until then. *(Superseded by `57e6406`, which commits the rebuilt `dist/`; the Linux rebuild equals it.)*
-- Go `-race` and the WSL/Linux gates, which AGENTS.md requires for a final verification. These results are Windows only.
+- Go `-race` and the WSL/Linux gates, which the project requires for a final verification. These results are Windows only.
 - The csp-smoke browser check.

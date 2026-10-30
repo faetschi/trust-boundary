@@ -10,10 +10,8 @@ H1 unexecuted, containment not-established, claim-bearing=false.
 > to P3. What shipped first is the legacy vanilla UI (`assets/`). It was the default at `/` until
 > the React client became the default in `6d03657`; it is now deprecated at `/legacy/` until
 > sign-off. ADR-0001 P1 (scaffold, `263b6ca`, review fixes `2583f5a`), P2 (typed core port and
-> markdown AST, `4700ca5`) and P3 (React views, `58492c5` to `57e6406`) are committed. The mockup
-> `webchat/mockups/tbound-redesign-v2.html` is the earlier layout mockup, kept until sign-off; its
-> visual language is superseded by [design/design-language.md](design/design-language.md). The
-> current static design mockup is `webchat/mockups/tbound-redesign-v3.html`.
+> markdown AST, `4700ca5`) and P3 (React views, `58492c5` to `57e6406`) are committed. The current visual spec is
+> [design/design-language.md](design/design-language.md).
 > On its desktop frames, buttons with a matching frame jump to it; the governance tabs swap in place.
 
 > **Implementation status (this worktree).**

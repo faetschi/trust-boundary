@@ -1,8 +1,8 @@
 # TBound product status
 
-> **Takeover, 2026-10-29.** Read the [audit handoff](product-audit-handoff-2026-10-29.md) first. For this takeover it supersedes the stale next-action lists in [Handoff 2026-10-26](#handoff-2026-10-26) and [Resumed 2026-10-27](#resumed-2026-10-27-on-fabian). Selective P4 and P5 ports are implemented as `b7eefe3` and `b824d0d`, independently reviewed and covered by red-before-green regressions. The audit merge baseline `43dc492` passed 5745 tests / 31 skips / 0 fail. Final delivery evidence is retained in `F:/TBoundAssets/takeover-20261029/RESULTS.md`; P6 and real-host qualification remain open. No product-to-thesis merge happens before the F14 freeze. A reviewed integration branch is proposed only after that freeze.
+> **Takeover, 2026-10-29.** For this takeover it supersedes the stale next-action lists in [Handoff 2026-10-26](#handoff-2026-10-26) and [Resumed 2026-10-27](#resumed-2026-10-27-on-fabian). Selective P4 and P5 ports are implemented as `b7eefe3` and `b824d0d`, independently reviewed and covered by red-before-green regressions. The audit merge baseline `43dc492` passed 5745 tests / 31 skips / 0 fail. Final delivery evidence is retained in `F:/TBoundAssets/takeover-20261029/RESULTS.md`; P6 and real-host qualification remain open. No product-to-thesis merge happens before the F14 freeze. A reviewed integration branch is proposed only after that freeze.
 
-This is the product-branch checkpoint for [the product plan](product-plan.md). It records what is implemented and verified on `feature/tbound-product`. The thesis state lives in `TASK_STATE.md` on `codex/tbound-prototype` and is not tracked here.
+This is the product-branch checkpoint for [the product plan](product-plan.md). It records what is implemented and verified on `feature/tbound-product`. The thesis state is owner-local and is not tracked here.
 
 ## Status by package (P0-P11)
 
@@ -59,7 +59,7 @@ The 26 skips need root, a real cgroup, Landlock, a real provider key, or the pin
 
 ### Isolation
 
-- Product work happens only in the product worktree and branch. Nothing is merged into `codex/tbound-prototype`.
+- Product work happens only in the product worktree and branch. Nothing is merged into `main`.
 - The T3 thread could not be bound to the worktree with `t3_worktree_handoff`, because the T3 project root (`MA Thesis`) is not a git repository. Work uses the worktree's absolute paths instead.
 - No product runtime exists yet. There is no product guest, product service, product managed root, product signing key, or product provider credential. **P0 runtime isolation and all guest acceptance are pending.** Product code uses its own default paths (see [contracts](product-contracts.md#paths)) so it cannot address the thesis service or roots by default.
 
@@ -109,7 +109,7 @@ The worker is the supervisor's own in-process agent loop (`worker_kind` `supervi
 
 ### Pre-existing defects fixed on this branch
 
-These also exist on the thesis baseline `ff374c9`. The thesis thread was told about them. Whether to fix them on `codex/tbound-prototype` is its decision.
+These also exist on the thesis baseline `ff374c9`. The thesis thread was told about them. Whether to fix them on `main` is its decision.
 
 - A gate DENY in a ledger-backed workflow closed the conversation, so the model never saw the denial or its hint (reproduced on `ff374c9`). Fixed in `c89e763` with a new workflowrecovery state for a retired denied call whose answer is pending.
 - Recovery preview indexed the wrong authorization record kind and policy-digest form, so it could not reopen a Store with effects. Fixed in `e35a94e`.

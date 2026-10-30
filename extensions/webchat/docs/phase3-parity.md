@@ -1,8 +1,7 @@
 # Phase 3: parity table (legacy UI tests to React tests)
 
-Status: Phases 3a, 3b and 3c are in place, the polish pass is recorded in `frontend.md`
-(Phase 3 polish), and the claim-boundary review fixes are recorded there too (Phase 3 review fixes,
-2026-10-14; rows R1 to R8 at the end of this file). Each row maps one legacy test in
+Status: Phases 3a, 3b and 3c are in place. The claim-boundary review fixes of 2026-10-14 are
+rows R1 to R8 at the end of this file. Each row maps one legacy test in
 `internal/webchat/jstest/` to the React test that now asserts the same behaviour,
 or names the agent that owns it. Owners: **3a** (this phase, shell and governance
 panels), **3b** (Chat view, agent Q), **3c** (Trajectory view, agent R). A row marked
@@ -14,8 +13,7 @@ skipped. The core port (`store`, `stream`, `anchor` and the rest) is the separat
 P2 table in `phase2-parity.md`.
 
 The legacy tests run in Node with a DOM stub. The React tests run in happy-dom, which
-is also not a browser. Nothing here is a visual or layout check. Those are in the
-Phase 3a section of `frontend.md`.
+is also not a browser. Nothing here is a visual or layout check.
 
 ## render.test.mjs (37)
 
@@ -65,7 +63,7 @@ Phase 3a section of `frontend.md`.
 |---|---|---|---|
 | S1 | the timeline filter and the trajectory grouping are toolbars with a label | 3a | `ui/ToggleGroup.test.tsx` "is a labelled toolbar of buttons that state their pressed state and counts". The Chat and Trajectory toolbars are 3b and 3c, and they use this primitive. |
 | S2 | the shell declares no on/off switch: every control is a button or a tab | 3a | `ui/ToggleGroup.test.tsx` "is a button group, not a switch". `app/Shell.test.tsx` covers the theme toolbar. |
-| S3 | each view has a text-labelled jump control, hidden until records arrive below a scrolled reader | 3b + 3c | The chat view: `app/views/ChatView.test.tsx` "counts the records applied while a reader is away, and offers Jump to latest"; "counts only applied records: a duplicate or a gap never adds to the count"; "follows new records for a reader at the tail". The control is not rendered until a count exists, rather than hidden; the observable state is the same. The arithmetic is `core/anchor.ts` (P2). Partial: the scroll position on a real page is checked in the browser QA only (`frontend.md`, 3b). The ledger (3c): `app/views/TrajectoryView.test.tsx` "shows no count while at the tail, and counts live records once the reader is away"; "a duplicate of a record already applied adds nothing to the count"; "announces a settled burst of arrivals once, through the status region". The pin is kept by the store across a view switch, so the count carries into the other view: `app/Shell.views.test.tsx` "carries the count into the trajectory view and back, and clears it at the tail" (polish). |
+| S3 | each view has a text-labelled jump control, hidden until records arrive below a scrolled reader | 3b + 3c | The chat view: `app/views/ChatView.test.tsx` "counts the records applied while a reader is away, and offers Jump to latest"; "counts only applied records: a duplicate or a gap never adds to the count"; "follows new records for a reader at the tail". The control is not rendered until a count exists, rather than hidden; the observable state is the same. The arithmetic is `core/anchor.ts` (P2). Partial: the scroll position on a real page is checked in the browser QA only. The ledger (3c): `app/views/TrajectoryView.test.tsx` "shows no count while at the tail, and counts live records once the reader is away"; "a duplicate of a record already applied adds nothing to the count"; "announces a settled burst of arrivals once, through the status region". The pin is kept by the store across a view switch, so the count carries into the other view: `app/Shell.views.test.tsx` "carries the count into the trajectory view and back, and clears it at the tail" (polish). |
 | S4 | the ledger is a focus target for the jump control, as the transcript already is | 3b + 3c | The transcript: `app/views/ChatView.test.tsx` "moves the reader to the tail, and focus to the transcript, when Jump is pressed". The ledger (3c): `app/views/TrajectoryView.test.tsx` "Jump to latest scrolls to the tail and moves focus to the ledger". The ledger is a named region with `tabIndex=-1`. |
 
 ## tokens.test.mjs (2)
@@ -105,15 +103,14 @@ that the legacy code did not fully apply.
 ## Not verified by these tests
 
 - Layout, focus rings on screen, forced-colours rendering and the no-flash theme
-  start. These need a browser. See `frontend.md`, Phase 3a.
+  start. These need a browser.
 - Screen-reader output. The announcer is tested as a store and as a DOM node, not
   with a screen reader.
 
 ## Claim-boundary review fixes (2026-10-14)
 
 Rows for the eight review findings. Each names the test that reproduced the finding (RED, before the
-fix) and the file that now holds it. The GREEN run is `gate.ps1 -Task verify` (Windows), in
-`frontend.md`, "Phase 3 review fixes".
+fix) and the file that now holds it. The GREEN run is `gate.ps1 -Task verify` (Windows).
 
 | # | Finding | Owner | Test (RED before the fix) |
 |---|---|---|---|
@@ -124,7 +121,7 @@ fix) and the file that now holds it. The GREEN run is `gate.ps1 -Task verify` (W
 | R5 | loading and error are never shown together; a recovery shows the skeleton only with no data | 3a + 3b + 3c | `app/Shell.views.test.tsx` "projection states: loading, failure and recovery are never shown together" (four tests). |
 | R6 | an absent value reads unavailable with its reason, never no, zero, none, complete or ok | 3a + 3b + 3c | `app/panels.test.ts` "absent input reads unavailable, never no, zero, none, complete or ok"; `app/Footer.test.ts` "reads every retained-window count as unavailable before a projection is loaded"; `app/Shell.test.tsx` "before the first snapshot, every panel, rail and footer value reads unavailable"; `app/Shell.views.test.tsx` "before the first snapshot, no count reads as zero"; `app/inspector/RecordInspector.test.tsx` "reads absent authority and verification as unavailable". |
 | R7 | StrictMode does not announce the connection twice | 3a | `app/WorkspaceProvider.test.tsx` "speaks the connection exactly once under StrictMode" (the control without StrictMode passes before and after). |
-| R8 | docs: the stale LiveRegion note and the stale 3b and 3c statements are corrected, each dated | docs | `frontend.md`, the Phase 3c gates note, "Open" in 3b, the 3c chips paragraph and deviation 1, and the polish receipts. |
+| R8 | docs: the stale LiveRegion note and the stale 3b and 3c statements are corrected, each dated | docs | Documentation only, no test. |
 
 The LiveRegion scan that allows `role="log"` only with `aria-live="off"` was changed in commit 57bcd95,
 not in the review pass. Its self-test is in `ui/LiveRegion.test.tsx`.
@@ -147,8 +144,8 @@ Rows for the six defects the v3 fidelity check found. Each names the test that r
 - The header claim values use the drawer's labels: "Containment" and "Claim-bearing". The literal values are gone. Before the first projection, each value reads `unavailable (no projection loaded)`.
 - The open drawer is anchored to the workspace body, not the viewport, so it scrolls with the page. This is a behaviour change, and it was not checked with the page scrolled.
 - `App.test.tsx` (first paint) now asserts the unavailable reading instead of `not-established`. That file was outside the A3 list; the change follows from A3-3.
-- The favicon allowance in `extensions/webchat/scripts/csp-smoke.mjs` (`isAllowedFavicon404`) is now dead. Remove it in a later pass. *(Superseded: the allowance is gone, removed by the final browser QA pass; see `frontend.md`, "Final QA fix round".)*
-- Unchanged: the toggle's `aria-expanded`, Escape closing the drawer with focus returned to the toggle, and the focus order. The existing tests cover them. *(Superseded in part: the first Escape clears a selected record, and the next closes the drawer; see `frontend.md`, "Redesign follow-up".)*
+- The favicon allowance in `extensions/webchat/scripts/csp-smoke.mjs` (`isAllowedFavicon404`) is now dead. Remove it in a later pass. *(Superseded: the allowance is gone, removed by the final browser QA pass.)*
+- Unchanged: the toggle's `aria-expanded`, Escape closing the drawer with focus returned to the toggle, and the focus order. The existing tests cover them. *(Superseded in part: the first Escape clears a selected record, and the next closes the drawer.)*
 
 ### Receipts (2026-10-14)
 

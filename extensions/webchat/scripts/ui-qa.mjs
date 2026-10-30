@@ -45,7 +45,7 @@
 // selected check passed.
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { request as httpRequest } from 'node:http';
 import { createServer as createNetServer } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -2694,6 +2694,7 @@ async function main(argv) {
     browserBinary = binary;
     gatewayCommands.stop = options.gatewayStop;
     gatewayCommands.start = options.gatewayStart;
+    mkdirSync(QA_DIR, { recursive: true });
     const browser = await launchBrowser(binary);
     await setUpPage(browser.base);
     console.log(`ui-qa: browser ${browser.version.Browser} (${binary})`);

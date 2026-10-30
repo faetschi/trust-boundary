@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-// Behaviour that spans both views of the shell (docs/frontend.md, Phase 3 polish): one copy of each
+// Behaviour that spans both views of the shell: one copy of each
 // notice in the whole app, a new-record count that survives a view switch, a first load that starts at
 // the top, and the inspector's name while a record is open. Mounted in the real shell and store.
 

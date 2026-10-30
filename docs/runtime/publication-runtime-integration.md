@@ -160,7 +160,7 @@ Retained scratch evidence SHA-256:
 - `source-hashes.txt`: `c07016d1feb12bb7ed14cbc9b0fe21f537f5b18990daa37c57e96511ed470276`
 - `repeated-regressions.log`: `5eac6d620ac8e0c6dc6fe5b584575cbac772df8eaf5b5c8518b613a38c39b8fd`
 
-Post-commit exact-source comparison is recorded in `TASK_STATE.md`.
+Post-commit exact-source comparison is recorded outside this repository.
 
 The published unit is a logical per-object transaction, not a globally atomic
 filesystem transaction. Cooperative writers must honor the live-root lock and

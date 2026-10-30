@@ -7,7 +7,7 @@
 // decided profile in this package is a synthetic test fixture.
 //
 // It is separate from the engineering route. The OpenCode Go engineering model
-// id is deepseek-v4.1-flash (docs/evidence/opencode-go-engineering-profile-20261015.json).
+// id is deepseek-v4.1-flash.
 // The research id is deepseek/deepseek-v4.1-flash, and the two are never mapped
 // to each other.
 //

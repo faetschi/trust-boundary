@@ -3,9 +3,7 @@
 Status: dated owner decisions, effective 2026-10-29. Authority is the owner's
 instruction of that date. This is the current policy for the software
 documentation. It supersedes the review roles and gates in the
-[advisor packet](advisor-decisions.md) and the
-[earlier proposals](owner-advisor-proposals-2026-10-29.md). Those documents
-remain historical records. No advisor confirmation or quotation is supplied.
+earlier advisor packet and proposals. No advisor confirmation or quotation is supplied.
 
 The independent advisor and examiner roles are removed. The supervisor has an
 administrative role only, with no protocol input or sign-off. The owner controls
@@ -88,8 +86,7 @@ proof and ambiguous failures retain conservative handling. Score the eventual
 trial outcome under the existing rules.
 
 Policy is settled. No class is established as eligible by this decision.
-Engineering proof contracts, implementation, and tests remain pending in the
-[T5/T7 plan](t5-t7-preparation-2026-10-29.md). This is not a scoring amendment or
+Engineering proof contracts, implementation, and tests remain pending. This is not a scoring amendment or
 permission to port product behavior.
 
 ## AMB-02: preserve proceeding and containment as separate observations

@@ -269,7 +269,7 @@ Not required: `tbound-profile`, `conmon`, `/bin/bash`. Binding over podman and c
 
 Runner swap (measured 2026-10-20). `usr-local-bin-tbound.mount` cannot be restarted while `tbound-netsink.service` runs `/usr/local/bin/tbound` (the mount is busy). Around any runner reinstall: `systemctl stop tbound-netsink.service`, stop the mount, replace `/opt/tbound/tbound/tbound`, start the mount, `systemctl start tbound-netsink.service` (NS-1). On a fresh guest NS-1 comes after this step, so nothing is running yet.
 
-Node (already installed, do not reinstall). [READ-ONLY] verify: `GSSH 'findmnt -no OPTIONS /usr/local/bin/node'` contains `ro`; `GSSH 'sha256sum /usr/local/bin/node'` = `7fde7b8afa198da66257f42ee2001d874c7355631e6d1579a5fb5ef1f246df4c`. If either fails, redo the d99ced8 install as `docs/evidence/abi8-node-mount-units-20261017.json` records it (unit `systemd/usr-local-bin-node.mount`). Rollback: `sudo systemctl disable --now usr-local-bin-node.mount; sudo rm /etc/systemd/system/usr-local-bin-node.mount; sudo systemctl daemon-reload`.
+Node (already installed, do not reinstall). [READ-ONLY] verify: `GSSH 'findmnt -no OPTIONS /usr/local/bin/node'` contains `ro`; `GSSH 'sha256sum /usr/local/bin/node'` = `7fde7b8afa198da66257f42ee2001d874c7355631e6d1579a5fb5ef1f246df4c`. If either fails, redo the d99ced8 install (unit `systemd/usr-local-bin-node.mount`). Rollback: `sudo systemctl disable --now usr-local-bin-node.mount; sudo rm /etc/systemd/system/usr-local-bin-node.mount; sudo systemctl daemon-reload`.
 
 ```
 GSSH 'sudo -n install -d -o root -g root -m 0755 /opt/tbound/tbound /opt/tbound/podman /opt/tbound/crun /opt/tbound/cell /opt/tbound/cell-src /opt/tbound/bin'

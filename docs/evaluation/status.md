@@ -1,8 +1,7 @@
 # Current status
 
 Updated 2026-10-29. This page is the short gate summary. [OVERVIEW](../../OVERVIEW.md)
-is the one-screen state; [TASK_STATE](../../TASK_STATE.md) is the working log with
-decisions, blockers, and next steps. History before this date is in Git.
+is the one-screen state. Decisions, blockers, and next steps are in the owner's working log, which is not part of this repository. History before this date is in Git.
 
 Current policy is the [dated owner decisions](owner-protocol-decisions-2026-10-29.md).
 The independent advisor and examiner roles are removed. The supervisor is
@@ -97,4 +96,3 @@ remain outside this documentation task. The parent owns Git and F14 repinning.
 - [Publication contract](../runtime/publication-contract.md): how changes reach the live root.
 - [Panel guide](../guides/panel-run.md): optional supplementary blinded model analysis.
 - [Decision records](../decisions): ADRs and their status.
-- [Working log](../../TASK_STATE.md): the detailed checkpoint and owner decisions.

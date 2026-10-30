@@ -37,9 +37,7 @@ and [product contracts](product-contracts.md) fixes the first milestone's contra
 ## [Evaluation](evaluation/): gates and research records
 
 - [Owner protocol decisions, 2026-10-29](evaluation/owner-protocol-decisions-2026-10-29.md): current D35, D26, T5, T7, and AMB-02 policy, superseding advisor prerequisites.
-- [T5/T7 implementation plan](evaluation/t5-t7-preparation-2026-10-29.md): settled owner policy with engineering proof and tests still pending.
 - [Status and gates](evaluation/status.md): verified scope and remaining evaluation gates.
-- [Candidate experiment manifest](evaluation/experiment-manifest.md): an older candidate, not a registered protocol.
 - [Evaluation evidence index](evaluation/evaluation-evidence-index-2026-10-07.json): source-only ledger of gaps.
 - [Pilot corpus](../corpus/pilot/README.md): adapted cases, licenses, artifacts, quotas, optional review metadata, and pending construct evidence.
 - [G1 case](../corpus/g1/README.md): the engineering read, edit, Bash, and publish check.
@@ -59,7 +57,5 @@ non-claim-bearing. Claims require the registered evaluation.
 
 ## Engineering records
 
-- [Overview](../OVERVIEW.md) and [working log](../TASK_STATE.md): current checkpoint and decisions; includes deployment history.
+- [Overview](../OVERVIEW.md): current checkpoint and decisions; includes deployment history.
 - [Decision records](decisions/): retained architecture decisions.
-- [Evidence receipts](evidence/README.md) and [historical source map](evidence/historical-sources.json).
-- [Archive](archive/): finished audits and post-thesis proposals.

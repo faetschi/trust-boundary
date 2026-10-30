@@ -304,6 +304,5 @@ completion. Run the separate `corpus-check` path, including applicable guest
 witness imports, before H1. No human acceptance is required.
 
 The former mandatory panel, AC1/raw-agreement pass requirement, sample-60 audit,
-and advisor sign-off workflow are retained in Git history and the
-[historical advisor packet](../evaluation/advisor-decisions.md). They were
+and advisor sign-off workflow are retained in Git history. They were
 superseded by the owner's dated decision, not confirmed by an advisor.

@@ -40,8 +40,6 @@ plus this test's verified bytes (SHA-256 `e89e6569…6f7207`):
   ./cmd/tbound`: exit 0; HTTP 200/captured single write checked by the test;
   delivery, audit ordering/chain, promoted file, Store.Verify and reopen all PASS.
 - Actual response `gen-1791230451-K3yGWV65fIsMKy4gB3wt`; five journal records.
-  Full allowlisted receipt is in
-  [evidence/real-provider-durable-2026-10-05.json](../evidence/real-provider-durable-2026-10-05.json).
 - An earlier loader attempt failed explicitly (exit 1, no network exchange)
   because a temporary WSL mount had disappeared. Its failed log was retained;
   the succeeding attempt mounted and unmounted the same owner-only Windows file

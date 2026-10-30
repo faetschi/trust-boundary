@@ -86,7 +86,7 @@ Pass requires all of: `RESTORE_PASS` from the script above (UID gate, parent-dir
 
 ## Receipt template (planned)
 
-Write one JSON receipt under `docs/evidence/` after the run. Include no keys, key paths or secrets.
+Write one JSON receipt after the run. Include no keys, key paths or secrets.
 
     {
       "receipt": "abi8-checkpoint-restore-<yyyymmdd>",

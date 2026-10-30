@@ -20,7 +20,7 @@ no Node. Nothing under `supervisor/` imports it.
   (`internal/webchat/dist/`) is embedded, and the `/app/` routes are derived from
   its Vite manifest. Phase 2 added the typed DOM-free core (`frontend/src/core/`)
   and the markdown AST (`frontend/src/markdown/`), each checked against the legacy
-  client by parity tests. See `docs/frontend.md`.
+  client by parity tests.
   `docs/adr-0001-optional-extension.md` allows this frontend build, so the
   extension as a whole is not zero-build.
 - A legacy vanilla browser client (`internal/webchat/assets/`, no build step), now
@@ -177,8 +177,7 @@ make extension-webchat-csp CSP_URL=http://127.0.0.1:8793
 ```
 
 It checks `/` (which must land on `/app/`), `/app/` and `/legacy/`, and the
-header responses for each route. `docs/frontend.md` covers the build, the pins,
-the manifest-derived `/app/` allowlist, the CSP smoke and its exit codes.
+header responses for each route.
 
 ## Claim boundary
 
@@ -235,8 +234,6 @@ the manifest-derived `/app/` allowlist, the CSP smoke and its exit codes.
   demonstration modes and `--live`).
 - `extensions/webchat/scripts/csp-smoke.mjs`: opt-in headless-browser CSP check.
 - `extensions/webchat/docs/`:
-  - `frontend.md`: the React client: status, pins, committed build, the `/app/`
-    allowlist, the CSP smoke, the phase plan and receipts.
   - `web-chat.md`: design, authority and claim boundary, verification log.
   - `web-chat-contract.md`: the service contract. Its section 9 is what live mode
     implements.
@@ -248,12 +245,6 @@ the manifest-derived `/app/` allowlist, the CSP smoke and its exit codes.
   - `phase2-markdown.md`: the Phase 2b markdown AST (`frontend/src/markdown/`).
   - `design/`: `design-language.md`, the visual-language spec, with the
     `contrast.mjs` script and its output.
-  - `webchat/`: mockups and QA captures. The QA JSON receipts keep the paths and
-    hashes they were captured with, so they describe the pre-extraction tree.
-  - `webchat/mockups/tbound-redesign-v2.html`: the earlier layout mockup, kept until
-    sign-off. Its visual language is superseded by `design/design-language.md`.
-  - `webchat/mockups/tbound-redesign-v3.html`: the current static design mockup (demo
-    fixture data, offline; the running UI is `/app/`).
     Desktop frames: buttons with a matching frame jump to it; the governance tabs swap in place.
 
 Paths in these documents are repository-root-relative, for example

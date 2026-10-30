@@ -1,6 +1,6 @@
 # Hyper-V Ubuntu VM setup
 
-This directory contains a two-phase setup for an Ubuntu Server 24.04.5 AMD64 VM. The scripts create only the named VM and new files under the requested F: path. They do not download installation media or remove existing objects. The install evidence record is [INSTALLATION-RECORD.md](INSTALLATION-RECORD.md); the planned checkpoint restore runbook is [RESTORE-ACCEPTANCE.md](RESTORE-ACCEPTANCE.md).
+This directory contains a two-phase setup for an Ubuntu Server 24.04.5 AMD64 VM. The scripts create only the named VM and new files under the requested F: path. They do not download installation media or remove existing objects. The planned checkpoint restore runbook is [RESTORE-ACCEPTANCE.md](RESTORE-ACCEPTANCE.md).
 
 ## Fixed VM profile
 

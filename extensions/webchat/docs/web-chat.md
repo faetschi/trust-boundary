@@ -4,8 +4,7 @@ Status: **development increment, non-claim-bearing.** `G1=false`; containment is
 `not-established`; `H1` is `unexecuted`. No qualified public production launch has
 occurred. A green workspace, green tests, or a loaded fixture establishes none of
 these. The React client at `/app/` is the default UI, and `/` redirects there. The
-legacy workspace at `/legacy/` is deprecated until sign-off. See
-[frontend.md](frontend.md) for the client's status.
+legacy workspace at `/legacy/` is deprecated until sign-off.
 
 This document describes the first frontend product increment for tbound: a new,
 untrusted web chat workspace for the official Pi CLI/RPC harness, wrapped by
@@ -359,7 +358,7 @@ or `Origin` gets `403` on every route.
 | `GET` or `HEAD /favicon.ico` | `204`, with no body and no `Content-Type`. |
 | `GET /legacy/` | The deprecated legacy workspace, with a deprecation notice above its content. It is removed after sign-off. |
 | `GET /static/*.css`, `/static/*.mjs` | Closed allowlist of the legacy workspace's modules. |
-| `GET /app/`, `/app/*` | The React client build ([frontend.md](frontend.md)). Exact files come from the committed Vite manifest; `503` if the table cannot be derived. |
+| `GET /app/`, `/app/*` | The React client build. Exact files come from the committed Vite manifest; `503` if the table cannot be derived. |
 | `GET /api/v1/snapshot` | Bounded observation snapshot (recovery point for a gap). |
 | `GET /api/v1/contract` | Bounded contract descriptor (schemas, enums, limits, `read_only: true`, `controls: []`). |
 | `GET /api/v1/items/{id}` | One retained projected item by bounded ID. |
@@ -505,9 +504,7 @@ stable connection.
 
 ## 8. Presentation
 
-The current visual spec is [design/design-language.md](design/design-language.md). The
-current static design mockup is `webchat/mockups/tbound-redesign-v3.html` (demo data,
-offline). The running UI is `/app/`. The subsection below records the earlier token and
+The current visual spec is [design/design-language.md](design/design-language.md). The running UI is `/app/`. The subsection below records the earlier token and
 component vocabulary.
 
 ### 8.1 Presentation design system
@@ -577,20 +574,13 @@ or secrets.
 ### 9.2 Visual QA and keyboard receipts
 
 These captures were made while `/` still served the legacy workspace (before `6d03657`).
-The React client's captures and receipts (`p3-polish-*`, `p3b-*`, `p3c-*`, `v3-real-app-*`)
-are listed in [frontend.md](frontend.md). Screenshots (captured with headless Chrome against
-the running gateway) are in [`webchat/qa/`](webchat/qa/): `fixture-desktop`, `fixture-expanded-tools`,
-`fixture-denied-filter`, `replay-continuity-gap`, `receipt-real-desktop`,
-`receipt-real-expanded-tools`, `unavailable-desktop`, `mobile-conversation`,
-`mobile-inspector`. Keyboard audits driven over the DevTools protocol are in
-`webchat/qa/keyboard-audit-desktop.json` and `keyboard-audit-mobile.json`. They
+Keyboard audits were driven over the DevTools protocol. They
 were recorded before the redesign follow-up, so they describe that build. They
 verify tab order (skip link → governance toggle → session → timeline filters →
 each tool disclosure), `Enter` toggling a tool disclosure, `Enter` opening the
 governance drawer and `Escape` closing it, `Enter` selecting a timeline filter
 with focus surviving the re-render, and `ArrowRight` moving within the toggle
-group. The audits also record the live `innerWidth` and the media-query result so
-each receipt is self-describing. At narrow widths the closed drawer is `inert` +
+group. The audits also record the live `innerWidth` and the media-query result. At narrow widths the closed drawer is `inert` +
 `aria-hidden` so keyboard focus cannot reach off-canvas content, and becomes
 focusable only when opened. Rendering preserves keyboard focus on the tool
 disclosure or filter button a user was operating, and a render error cannot block
@@ -598,8 +588,8 @@ data loading.
 
 ## 10. Verification receipts
 
-Gates at 57e6406 (historical): vitest 896 in 60 files; Go 54 top-level; legacy node 258. Current (FX4, 2026-10-15): vitest 1259 in 74 files; Go 60 top-level; legacy node 262; 0 skipped. See [frontend.md](frontend.md). The 57e6406 run was on Linux and WSL (Go 1.27.1, Node 24.15.0), with 132 PASS including subtests (from the `-v` run recorded in [phase3-parity.md](phase3-parity.md)); boundary guard OK. The receipts below are the historical record of
-earlier increments. The React client's receipts are in [frontend.md](frontend.md).
+Gates at 57e6406 (historical): vitest 896 in 60 files; Go 54 top-level; legacy node 258. Current (FX4, 2026-10-15): vitest 1259 in 74 files; Go 60 top-level; legacy node 262; 0 skipped. The 57e6406 run was on Linux and WSL (Go 1.27.1, Node 24.15.0), with 132 PASS including subtests (from the `-v` run recorded in [phase3-parity.md](phase3-parity.md)); boundary guard OK. The receipts below are the historical record of
+earlier increments.
 
 Focused checks on the pinned Go 1.27.1 in Linux, run from `extensions/webchat/`
 (entries from before the extraction ran from `supervisor/`):
@@ -614,7 +604,7 @@ Focused checks on the pinned Go 1.27.1 in Linux, run from `extensions/webchat/`
   (WSL) all exit 0, with no skipped tests. `TestStaticAssetsAreClosedAndComplete`
   passes with the new `anchor.mjs` route.
 - `node --test internal/webchat/jstest/*.test.mjs` — 258 pass, 0 skipped at HEAD
-  `4700ca5` (historical; current legacy node count is 262, see [frontend.md](frontend.md)); 229 at the tail-window increment, `3146d1b`. These cover
+  `4700ca5` (historical; current legacy node count is 262); 229 at the tail-window increment, `3146d1b`. These cover
   the pure modules and the DOM-stub renderer; browser scroll, focus and keyboard
   behaviour is not covered by them.
 - The **real** development CLI fixture receipt was imported with

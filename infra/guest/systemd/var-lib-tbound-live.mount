@@ -1,7 +1,7 @@
 # Captured read-only from the ABI8 guest on 2026-10-17 (cat of /etc/systemd/system/var-lib-tbound-live.mount; copy in F:\TBoundAssets\recovery-20261015\sign-dryrun-20261017\guest-readonly\); canonical source.
 # ALREADY INSTALLED on the guest; do not reinstall or edit. Its sha256 is bound by the signed managed-live-root registration
 # (MountUnitDigest), so installing this commented copy would change the digest. The guest file is exactly the lines below that do
-# not start with "#" (sha256 9de139e34d16f78f19bfde5c6ea5dca60175aae84a334bbc90423806acbebff2, in docs/evidence/abi8-runtime-provisioning-20261015.json).
+# not start with "#" (sha256 9de139e34d16f78f19bfde5c6ea5dca60175aae84a334bbc90423806acbebff2).
 # Compare: grep -v '^#' var-lib-tbound-live.mount | sha256sum    (must print that digest)
 # Loop-mounts the 2 GiB sparse ext4 image /var/lib/tbound/live.img (label tbound-live) rw,nosuid,nodev as the managed live root.
 [Unit]
