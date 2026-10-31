@@ -106,9 +106,14 @@ jobs:
             -run '^TestRunGuestTestsRunsTheRealCgroupTestsInAFreshCgroupAndRemovesIt$' | tee "$RUNNER_TEMP/real-cgroup.txt"
           grep -q -- '^--- PASS: TestRunGuestTestsRunsTheRealCgroupTestsInAFreshCgroupAndRemovesIt ' "$RUNNER_TEMP/real-cgroup.txt"
 
+      # Verbose, so the log shows whether this runner's kernel ran the Landlock tests or skipped them.
+      - name: Landlock enforcement on this runner's kernel
+        working-directory: supervisor
+        run: umask 077; go test -mod=readonly -count=1 -v ./cmd/tbound-cell-entrypoint -run '^TestLandlock'
+
       - name: Go race suite
         working-directory: supervisor
-        run: umask 077; go test -race -mod=readonly -count=1 ./...
+        run: umask 077; go test -race -mod=readonly -count=1 -timeout 40m ./...
 
       - name: Go vet
         working-directory: supervisor
