@@ -1639,9 +1639,12 @@ func servePiServiceRequests(ctx context.Context, listener net.Listener, socket p
 				continue
 			}
 		}
+		var freeOnce sync.Once
 		free := func() {
-			release()
-			active.Store(false)
+			freeOnce.Do(func() {
+				release()
+				active.Store(false)
+			})
 		}
 		acceptedRecord := prior.acceptedRecord
 		acceptedEvent := prior.accepted
@@ -1721,6 +1724,9 @@ func servePiServiceRequests(ctx context.Context, listener net.Listener, socket p
 				response = piServiceResponse{SchemaVersion: piServiceResponseSchema, RequestID: request.RequestID,
 					Status: "unknown", ErrorCode: "terminal-journal-unavailable"}
 			}
+			// The terminal is journaled: the workflow has settled. Free the slot and the maintenance lock before
+			// the client can read the answer, or its next request races the release and is refused busy.
+			free()
 			_ = writePiServiceFrame(conn, response) // disconnect never cancels accepted work
 		}(unixConn, peer, request, payloadDigest, acceptedEvent, acceptedRecord, exists)
 	}
