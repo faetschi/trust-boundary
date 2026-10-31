@@ -2,7 +2,7 @@
 # 00 [PRIVILEGED WRITE: sudoers] open or close the $FREEZE session sudo drop-in on the guest (run in Git Bash).
 #   open  : uses tboundadmin's PASSWORD sudo (owner-authorized password in the environment variable TBA_PW) to install
 #           /etc/sudoers.d/91-tbound-$FREEZE_LC-session = "tboundadmin ALL=(ALL) NOPASSWD: ALL" (visudo -cf before it becomes active).
-#           The scripts 10-upgrade.sh, 20-r1.sh and 50-i1-i2.sh need it; 27-archive-state.sh (option A; or 28-abandon-g1.sh if abandon is possible; both run BEFORE open, on the guest that still runs $PREV_FREEZE), 29-g1-recover.sh (password sudo, G1-5 step 2) and 30-reg-g1.sh must run with it CLOSED.
+#           The scripts 10-upgrade.sh, 20-r1.sh and 50-i1-i2.sh need it; 27-archive-state.sh (option A; or a manual tbound-op abandon if abandon is possible; both run BEFORE open, on the guest that still runs $PREV_FREEZE), 29-g1-recover.sh (password sudo, G1-5 step 2) and 30-reg-g1.sh must run with it CLOSED.
 #   close : removes the drop-in and proves the narrowed state again:
 #             - `sudo -n true` fails;
 #             - `sudo -n -l` shows exactly ONE NOPASSWD entry (NOPASSWD: /opt/tbound/operator/tbound-op) and the password

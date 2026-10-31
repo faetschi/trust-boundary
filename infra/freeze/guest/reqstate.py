@@ -4,7 +4,7 @@
 # Used by 29-g1-recover.sh (gate). Read-only; prints key=value lines and ends with
 #   verdict=completed        terminal record with response.status "completed"                      -> settled
 #   verdict=abandoned        terminal "unknown" + a pi_service_request_abandoned record that names the same request, payload and journal key -> reconciled
-#   verdict=unreconciled     terminal "unknown", no abandoned record                                -> run 28-abandon-g1.sh
+#   verdict=unreconciled     terminal "unknown", no abandoned record                                -> run a manual tbound-op abandon
 #   verdict=no-terminal      accepted but no terminal record (the request may still run)
 #   verdict=terminal-other   terminal with another status (neither completed nor unknown): not covered by the abandon rule, the owner decides
 #   verdict=inconsistent     an abandoned record next to a terminal that is not "unknown", or an abandoned record that does not match the request
