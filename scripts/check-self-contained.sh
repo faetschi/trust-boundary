@@ -26,7 +26,7 @@ echo "OK: no outside paths"
 
 [ "${1:-}" = --self-test ] || exit 0
 
-for script in infra/freeze/*.sh infra/freeze/tools/*.sh infra/freeze/guest/*.sh; do bash -n "$script"; done
+for script in infra/freeze/*.sh infra/freeze/tools/*.sh infra/freeze/guest/*.sh infra/workspace/*.sh; do bash -n "$script"; done
 
 SANDBOX=$(mktemp -d)
 trap 'rm -rf -- "$SANDBOX"' EXIT
@@ -78,4 +78,14 @@ TBOUND_LOCAL=$SANDBOX/local TBOUND_EVIDENCE=$SANDBOX/ev TBOUND_WORK_VIEW=$SANDBO
 if TBOUND_LOCAL=$SANDBOX/local TBOUND_EVIDENCE=$SANDBOX/ev TBOUND_WORK_VIEW=$SANDBOX/work KIT_FREEZE=F14 bash "$PULL" >/dev/null 2>&1; then
   echo "FAIL: export overwrote evidence" >&2; exit 1
 fi
+# fetch-inputs.sh keeps only a download that matches its pin. A local copy stands in for the network.
+(
+  . "$ROOT/infra/workspace/fetch-inputs.sh"
+  download() { cp -- "$1" "$2"; }
+  dl=$SANDBOX/fetch; mkdir -p "$dl"; printf 'pinned\n' > "$SANDBOX/src"
+  right=$(sha256sum "$SANDBOX/src" | cut -d' ' -f1); wrong=$(printf other | sha256sum | cut -d' ' -f1)
+  printf 'corrupt\n' > "$dl/a.bin"
+  fetch_one "$dl" a.bin "$right" "$SANDBOX/src" >/dev/null && [ "$(cat "$dl/a.bin")" = pinned ] || { echo "FAIL: a corrupt file was not replaced" >&2; exit 1; }
+  if fetch_one "$dl" b.bin "$wrong" "$SANDBOX/src" >/dev/null 2>&1 || [ -e "$dl/b.bin" ]; then echo "FAIL: a download that misses its pin was kept" >&2; exit 1; fi
+)
 echo "OK: self-test"
