@@ -336,11 +336,6 @@ func eventKinds(events []productprotocol.Event) []string {
 	return kinds
 }
 
-func (f *productServiceFixture) candidate(as productsession.Principal, sessionID, turnID string) productprotocol.Response {
-	return f.call(as, productprotocol.Request{Op: productprotocol.OpGetCandidate,
-		GetCandidate: &productprotocol.TurnRef{SessionID: sessionID, TurnID: turnID}})
-}
-
 func (f *productServiceFixture) notesPublished(name string) bool {
 	f.t.Helper()
 	_, err := os.Stat(filepath.Join(f.projectDir, name))

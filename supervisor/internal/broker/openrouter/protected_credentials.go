@@ -15,12 +15,6 @@ func CredentialsFromKey(key []byte) (Credentials, error) {
 	return Credentials{apiKey: normalized}, nil
 }
 
-// ReadSecureCredentialFile exposes the existing no-follow, owner/mode and size
-// checks to administrative importers. It never includes file contents in errors.
-func ReadSecureCredentialFile(path string) ([]byte, error) {
-	return readSecureCredentialFile(path)
-}
-
 // NewCheckHTTPDoer uses the production transport, retaining a refused redirect
 // response so a one-shot diagnostic can distinguish it from a network failure.
 // ErrUseLastResponse never follows the redirect or sends a second request.

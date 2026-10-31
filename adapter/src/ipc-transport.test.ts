@@ -5,7 +5,6 @@ import {
   IPC_MAX_MESSAGE_BYTES,
   IPC_WIRE_VERSION,
   IpcClient,
-  IpcServer,
   IpcTransportError,
   createInMemoryDuplexPair,
   createInMemoryIpcPair,

@@ -8,7 +8,6 @@ import { randomUUID } from "node:crypto";
 import { Socket } from "node:net";
 import type { Duplex } from "node:stream";
 import type {
-  Api,
   AssistantMessage,
   AssistantMessageEventStream,
   JsonObject,
@@ -251,7 +250,6 @@ function streamFromBroker(client: BrokerChannelClient, model: Model<typeof BROKE
     } catch (caught) {
       const aborted = signal?.aborted || (caught instanceof Error && caught.name === "AbortError");
       if (aborted) client.close();
-      const error = caught instanceof Error ? caught : new Error("provider bridge failed");
       const message = makeAssistant(model, {
         content: [{ type: "text", text: "" }],
         responseId: "tbound-bridge-error",

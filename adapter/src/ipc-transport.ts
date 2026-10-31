@@ -526,10 +526,8 @@ class StreamReader {
   private chunkOffset = 0;
   private available = 0;
   private ended = false;
-  private readonly stream: Duplex;
 
   constructor(stream: Duplex) {
-    this.stream = stream;
     this.iterator = stream[Symbol.asyncIterator]() as AsyncIterator<Buffer>;
   }
 
