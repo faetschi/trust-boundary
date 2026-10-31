@@ -127,12 +127,6 @@ func routeCellKindFor(kind string) (string, bool) {
 	return "", false
 }
 
-// IsRouteKind reports whether kind is one of the route artifact kinds.
-func IsRouteKind(kind string) bool {
-	_, ok := routeCellKindFor(kind)
-	return ok
-}
-
 func validateRoute(kind string, raw []byte, e Expect) error {
 	wantCell, ok := routeCellKindFor(kind)
 	if !ok {
