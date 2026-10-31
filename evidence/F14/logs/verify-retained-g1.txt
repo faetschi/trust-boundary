@@ -1,0 +1,2 @@
+retained D09 command event 1: is not bound to exactly one pinned session
+tbound-op: verify-retained refused production-run-2520600968feccc19764de2d (it changes nothing)

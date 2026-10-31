@@ -49,7 +49,7 @@
 .NOTES
     Exit behavior: throws on any failed precondition or step; no partial-state
     cleanup is attempted (inspect Hyper-V Manager and the target directory
-    before retrying), matching the existing infra/hyperv/ scripts.
+    before retrying).
 #>
 [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'High')]
 param(
@@ -75,6 +75,8 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot '..\workspace\paths.ps1')
+$tboundLocalRoot = Get-TBoundLocalRoot
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
 
 $script:stepsDone = New-Object System.Collections.Generic.List[string]
@@ -369,7 +371,7 @@ if (@($existingVms | Where-Object { $_.Name -eq $VmName }).Count -gt 0) {
 }
 
 if (-not $VmRoot) {
-    $VmRoot = Join-Path $env:USERPROFILE ("TBoundVMs\" + $VmName)
+    $VmRoot = Join-Path $tboundLocalRoot ("vm\" + $VmName)
 }
 $fullVmRoot = [IO.Path]::GetFullPath($VmRoot)
 Assert-NoReparsePathComponents -Path $fullVmRoot
@@ -532,8 +534,7 @@ try {
     $null = Set-VMMemory -VMName $VmName -DynamicMemoryEnabled $false -StartupBytes 16GB -ErrorAction Stop
     $null = Set-VM -VMName $VmName -CheckpointType ProductionOnly -AutomaticCheckpointsEnabled $false -SnapshotFileLocation $fullVmRoot -ErrorAction Stop
 
-    # Integration service policy: the same six known service IDs as the
-    # reference creator (infra/hyperv/New-UbuntuHyperVVm.ps1). Key-Value Pair
+    # Integration service policy: six known service IDs. Key-Value Pair
     # Exchange is enabled for the provisioning phase only (guest IP reporting)
     # and disabled again at the end of this script.
     $integrationServicePolicy = [ordered]@{

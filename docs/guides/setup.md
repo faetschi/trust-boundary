@@ -54,7 +54,7 @@ your host. Bootstrap does not provision the governed service or qualify it.
 ### Windows with a Linux VM
 
 Create a dedicated Linux amd64 VM. Follow the
-[Hyper-V setup guide](../../infra/hyperv/SETUP.md) for Hyper-V, or provide the same
+[reproduction bootstrap](../../infra/repro/README.md) for Hyper-V, or provide the same
 Linux prerequisites with your hypervisor. Keep personal repositories, host
 shares, credentials, and redirected devices outside the guest. Prepare and
 test a clean snapshot and restore procedure before trials.

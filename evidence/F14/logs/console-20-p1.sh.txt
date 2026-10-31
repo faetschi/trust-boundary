@@ -1,0 +1,53 @@
+disk /mnt/c: 47 GiB free (need 10)
+disk /mnt/f: 952 GiB free (need 10)
+disk /: 785 GiB free (need 10)
+== 20-p1 start 2026-10-29T21:56:01Z as jeli2k freeze=F14
+go version go1.27.1 linux/amd64
+go: downloading modernc.org/sqlite v1.60.1
+go: downloading golang.org/x/sys v0.48.0
+go: downloading github.com/gowebpki/jcs v1.0.1
+go: downloading modernc.org/libc v1.77.1
+go: downloading modernc.org/memory v1.12.1
+go: downloading github.com/google/uuid v1.6.0
+go: downloading github.com/dustin/go-humanize v1.0.1
+go: downloading modernc.org/mathutil v1.7.1
+go: downloading github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec
+== pass 1
+sha256:3c1e68ad50e84d4f2ee90b1a034c56071914f0211f347f3d7baa45968674af1c  /home/jeli2k/tbound-w.RciFcO/bin/tbound
+sha256:3e8d1e5297c5deed4c98c68c2b3bd806ef406165d91f4671e5cee519736a1606  /home/jeli2k/tbound-w.RciFcO/bin/tbound-cell-entrypoint
+sha256:759df1d14007e37154001c3585093399e48eb8d5cb7128a3f6550402c93b3f69  /home/jeli2k/tbound-w.RciFcO/bin/tbound-profile
+sha256:04fbda16a5a2afdce466556482b2d0c31955d8035d4618618d6c1ad6d3671407  /home/jeli2k/tbound-w.RciFcO/bin/tbound-run
+sha256:9a21d9f7fb407e09aeb4abed9472d2117533eddb9e1614807c444ef6efb20581  /home/jeli2k/tbound-w.RciFcO/bin/tbound-run.exe
+== pass 2
+sha256:3c1e68ad50e84d4f2ee90b1a034c56071914f0211f347f3d7baa45968674af1c  /home/jeli2k/tbound-w.RciFcO/bin-pass2/tbound
+sha256:3e8d1e5297c5deed4c98c68c2b3bd806ef406165d91f4671e5cee519736a1606  /home/jeli2k/tbound-w.RciFcO/bin-pass2/tbound-cell-entrypoint
+sha256:759df1d14007e37154001c3585093399e48eb8d5cb7128a3f6550402c93b3f69  /home/jeli2k/tbound-w.RciFcO/bin-pass2/tbound-profile
+sha256:04fbda16a5a2afdce466556482b2d0c31955d8035d4618618d6c1ad6d3671407  /home/jeli2k/tbound-w.RciFcO/bin-pass2/tbound-run
+sha256:9a21d9f7fb407e09aeb4abed9472d2117533eddb9e1614807c444ef6efb20581  /home/jeli2k/tbound-w.RciFcO/bin-pass2/tbound-run.exe
+== compare pass1 vs pass2
+IDENTICAL tbound sha256:3c1e68ad50e84d4f2ee90b1a034c56071914f0211f347f3d7baa45968674af1c
+IDENTICAL tbound-profile sha256:759df1d14007e37154001c3585093399e48eb8d5cb7128a3f6550402c93b3f69
+IDENTICAL tbound-cell-entrypoint sha256:3e8d1e5297c5deed4c98c68c2b3bd806ef406165d91f4671e5cee519736a1606
+IDENTICAL tbound-run sha256:04fbda16a5a2afdce466556482b2d0c31955d8035d4618618d6c1ad6d3671407
+IDENTICAL tbound-run.exe sha256:9a21d9f7fb407e09aeb4abed9472d2117533eddb9e1614807c444ef6efb20581
+== source trees pass1 vs pass2
+SRC TREES IDENTICAL
+commit 02f9fb71a26aadf4eebeb0ff217fe97c374ffff8
+git_tree 6c1fb838875d2e7462f64e693a93299479be185f
+archive_files 1773
+source_digest sha256:24894e7377c4f13b0a1cdd4d7e05c86c231b806b7959715649f43f189a01a188
+SRC_DIGEST=sha256:24894e7377c4f13b0a1cdd4d7e05c86c231b806b7959715649f43f189a01a188
+cosign tool: sha256:4629c757b7618056f8ddd7e2625ae9fdd94c0372a65049520bc7d9df9efc7f71  (F0 receipt P10 shows guest cosign hash starting 4629c757)
+OK sync done; no 0-byte output under /home/jeli2k/tbound-h.zfosIW/f14 nor in: /home/jeli2k/tbound-w.RciFcO/bin /home/jeli2k/tbound-w.RciFcO/bin-pass2 /home/jeli2k/tbound-w.RciFcO/source-digest.out
+== DONE 20-p1
+TBOUND_DIGEST=sha256:3c1e68ad50e84d4f2ee90b1a034c56071914f0211f347f3d7baa45968674af1c
+TBP_DIGEST=sha256:759df1d14007e37154001c3585093399e48eb8d5cb7128a3f6550402c93b3f69
+TBOUND_RUN_DIGEST=sha256:04fbda16a5a2afdce466556482b2d0c31955d8035d4618618d6c1ad6d3671407
+ENTRYPOINT_P1_DIGEST=sha256:3e8d1e5297c5deed4c98c68c2b3bd806ef406165d91f4671e5cee519736a1606
+TBOUND_RUN_EXE_DIGEST=sha256:9a21d9f7fb407e09aeb4abed9472d2117533eddb9e1614807c444ef6efb20581
+SRC_DIGEST=sha256:24894e7377c4f13b0a1cdd4d7e05c86c231b806b7959715649f43f189a01a188
+== comparison with F13 (informational; the guest scripts install whatever differs)
+TBOUND_DIGEST: sha256:3c1e68ad50e84d4f2ee90b1a034c56071914f0211f347f3d7baa45968674af1c  (NEW; F13 was sha256:2b13b4fc96b183611467f295785997150a520a9a40ba1e84f0b25f239b782325)
+TBP_DIGEST: sha256:759df1d14007e37154001c3585093399e48eb8d5cb7128a3f6550402c93b3f69  (NEW; F13 was sha256:5182a0f857c9bd1fa415f3115ab8cceffa0cdba6a82bc25ab836c0985ed4e12c)
+ENTRYPOINT_P1_DIGEST: sha256:3e8d1e5297c5deed4c98c68c2b3bd806ef406165d91f4671e5cee519736a1606  (NEW; F13 was sha256:2108ba20adb40ece26cf0851ede5032a5da654dbf60eb7490758f3adf62d73e0)
+SRC_DIGEST: sha256:24894e7377c4f13b0a1cdd4d7e05c86c231b806b7959715649f43f189a01a188  (NEW; F13 was sha256:595ac55541f71e4e4ee0b126e65476e9de5df68e9a0b0ca9adf5740d107a826f)

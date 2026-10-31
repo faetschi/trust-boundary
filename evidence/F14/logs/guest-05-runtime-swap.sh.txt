@@ -1,0 +1,34 @@
+== 05-runtime-swap start 2026-10-30T05:19:33Z guest=172.24.140.254
+OK   env.sh commit == frozen values = 02f9fb71a26aadf4eebeb0ff217fe97c374ffff8
+OK   HF path = /home/jeli2k/tbound-h.zfosIW/f14
+OK   previous HF path = /home/jeli2k/tbound-h.zfosIW/f13
+OK   FROZEN-COMMIT = 02f9fb71a26aadf4eebeb0ff217fe97c374ffff8
+OK   P1 tbound-profile == TBP_DIGEST = sha256:759df1d14007e37154001c3585093399e48eb8d5cb7128a3f6550402c93b3f69
+OK   previous frozen commit = 6162e3c32379233c7c4f238c5547599474d373a7
+OK   previous BUNDLE_DIGEST record = sha256:6a07a8a9a38155b10382ae8de04f475a8fc9e90a1e1bfcf23db04271835b33bf
+OK   previous TBP_DIGEST record = sha256:5182a0f857c9bd1fa415f3115ab8cceffa0cdba6a82bc25ab836c0985ed4e12c
+OK   P2 tar path = /home/jeli2k/tbound-w.RciFcO/p2-rebuild/runtime-bundle-02f9fb71-lf.tar
+OK   P2 tar sha256 == HF BUNDLE_TAR_DIGEST = sha256:4e9e49750478ff6016f6463ddf33a2b78807114b26b8511fc3984f5c3c55672f
+OK   P2 tar size (bytes) = 429660160
+OK   tar members = 15541 (used to budget extraction blocks, plus 64 MiB metadata margin)
+OK   27 archive recorded: archive_dir=/root/ga/archive-f13-20261030T051903Z manifest_sha256=7b81810dafddc7a3294135e77f7eba5571ae1fac121f5bfb9d779392b263d3aa
+session sudo OPEN (sudo -n true works)
+using pinned previous-freeze tbound-profile: audited runtime digest algorithm unchanged in this freeze
+/var/lib/tbound/runtime ext4   ro,nosuid,nodev,relatime
+runtime mount unit sha256: 2bc03ead4ba478d81655029de66a46f4bcb6357c5a24e7f8a3940ed947720ea3
+runtime-src inode: 2050:432408
+Pi runtime bundle tree digest: sha256:6a07a8a9a38155b10382ae8de04f475a8fc9e90a1e1bfcf23db04271835b33bf
+Tree identity only; this command does not verify profile signature or host trust bindings.
+OK   pre-swap runtime == PREV_BUNDLE_DIGEST = sha256:6a07a8a9a38155b10382ae8de04f475a8fc9e90a1e1bfcf23db04271835b33bf
+/var/lib/tbound/runtime ext4   ro,nosuid,nodev,relatime
+Pi runtime bundle tree digest: sha256:6a07a8a9a38155b10382ae8de04f475a8fc9e90a1e1bfcf23db04271835b33bf
+Tree identity only; this command does not verify profile signature or host trust bindings.
+space: old=453931008 retained; new budget=560424960; available=24660582400 bytes (old already allocated)
+/var/lib/tbound/runtime ext4   ro,nosuid,nodev,relatime
+Pi runtime bundle tree digest: sha256:af97c541f696a3d3da8d0d0799812a1f46e57f3367f0e5dbcc18292b66ac0b25
+Tree identity only; this command does not verify profile signature or host trust bindings.
+active
+KEEP old tree: /var/lib/tbound/runtime-src.old-6a07a8a9-20261030T051935594392700Z (remove only after the signed profile is installed and verified, P11)
+NOTE kept old tree: /var/lib/tbound/runtime-src.old-6a07a8a9-20261030T051935594392700Z; remove only after the signed profile is installed and verified
+
+== DONE 05-runtime-swap.sh 2026-10-30T05:19:46Z

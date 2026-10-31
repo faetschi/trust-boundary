@@ -136,7 +136,7 @@ that missing barrier only when the host actually shares it.
 The first draft passed its full Linux race suite but was withheld after review
 identified active-owner recovery, repository/journal binding and concurrent
 finalization gaps. The corrected snapshot
-`/home/jeli2k/tbound-coordinator-publicationcorrected.N85jr8` passed the full
+`~/tbound-coordinator-publicationcorrected.N85jr8` passed the full
 supervisor `go test -race -count=1 ./...` suite on private ext4 with TMPDIR mode
 0700, plus focused `go vet` and empty gofmt output. Windows exact-copy
 `go build ./...` and internal/e2e tests passed. Linux-only publication code is

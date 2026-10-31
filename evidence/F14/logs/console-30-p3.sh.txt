@@ -1,0 +1,59 @@
+disk /mnt/c: 51 GiB free (need 10)
+disk /mnt/f: 952 GiB free (need 10)
+disk /: 779 GiB free (need 10)
+== 30-p3 start 2026-10-29T21:58:57Z as jeli2k freeze=F14
+78M	/mnt/f/TBoundAssets/recovery-20261015/cell-image-20261017/artifacts/base-cache
+EPOCH=1793309401 (commit time of 02f9fb71a26aadf4eebeb0ff217fe97c374ffff8)
+{
+ "base_index_digest": "sha256:d6aa754f16b3197301076f047b5def2f02ea1dbbc2ca920407d46d7ec7f87b20",
+ "base_manifest_digest": "sha256:51b1100cc2a83d370c6a60952e3f2989c8a43159d0e38586e090f3b3326efefd",
+ "config_digest": "sha256:8a9731c6f551b5a4e95190eb372b1265a4223f1c1bd92399d18dd8683a67be62",
+ "entrypoint_sha256": "sha256:3e8d1e5297c5deed4c98c68c2b3bd806ef406165d91f4671e5cee519736a1606",
+ "layer_digest": "sha256:dfae038e0a5767a59bdd4b615bbe329883e24f76ed90367a8ed8aba6149c3f49",
+ "layout": "/home/jeli2k/tbound-b.qA1EjD/oci",
+ "manifest_digest": "sha256:8352c9bdd77e1719f727326884a40299b381b5eb772fe899e907dfefcdf434de"
+}
+== measure pass 1
+{
+ "bash_sha256": "sha256:55b89ab22bee4792a210f493a53fb066accd5d30b69837c28d98be5ff863efcf",
+ "config_digest": "sha256:8a9731c6f551b5a4e95190eb372b1265a4223f1c1bd92399d18dd8683a67be62",
+ "entrypoint_sha256": "sha256:3e8d1e5297c5deed4c98c68c2b3bd806ef406165d91f4671e5cee519736a1606",
+ "image_manifest_digest": "sha256:8352c9bdd77e1719f727326884a40299b381b5eb772fe899e907dfefcdf434de",
+ "node_sha256": "sha256:7fde7b8afa198da66257f42ee2001d874c7355631e6d1579a5fb5ef1f246df4c"
+}
+{
+ "base_index_digest": "sha256:d6aa754f16b3197301076f047b5def2f02ea1dbbc2ca920407d46d7ec7f87b20",
+ "base_manifest_digest": "sha256:51b1100cc2a83d370c6a60952e3f2989c8a43159d0e38586e090f3b3326efefd",
+ "config_digest": "sha256:8a9731c6f551b5a4e95190eb372b1265a4223f1c1bd92399d18dd8683a67be62",
+ "entrypoint_sha256": "sha256:3e8d1e5297c5deed4c98c68c2b3bd806ef406165d91f4671e5cee519736a1606",
+ "layer_digest": "sha256:dfae038e0a5767a59bdd4b615bbe329883e24f76ed90367a8ed8aba6149c3f49",
+ "layout": "/home/jeli2k/tbound-b.qA1EjD/oci2",
+ "manifest_digest": "sha256:8352c9bdd77e1719f727326884a40299b381b5eb772fe899e907dfefcdf434de"
+}
+== measure pass 2
+{
+ "bash_sha256": "sha256:55b89ab22bee4792a210f493a53fb066accd5d30b69837c28d98be5ff863efcf",
+ "config_digest": "sha256:8a9731c6f551b5a4e95190eb372b1265a4223f1c1bd92399d18dd8683a67be62",
+ "entrypoint_sha256": "sha256:3e8d1e5297c5deed4c98c68c2b3bd806ef406165d91f4671e5cee519736a1606",
+ "image_manifest_digest": "sha256:8352c9bdd77e1719f727326884a40299b381b5eb772fe899e907dfefcdf434de",
+ "node_sha256": "sha256:7fde7b8afa198da66257f42ee2001d874c7355631e6d1579a5fb5ef1f246df4c"
+}
+OCI LAYOUTS IDENTICAL (diff -r empty)
+MEASURE OUTPUTS IDENTICAL
+OK entrypoint in image == P1 tbound-cell-entrypoint = sha256:3e8d1e5297c5deed4c98c68c2b3bd806ef406165d91f4671e5cee519736a1606
+OK entrypoint == P1 record = sha256:3e8d1e5297c5deed4c98c68c2b3bd806ef406165d91f4671e5cee519736a1606
+WARNING: packaging/ changed since F0; bash/node digests are informational only
+bash_sha256: sha256:55b89ab22bee4792a210f493a53fb066accd5d30b69837c28d98be5ff863efcf  (same as F0)
+node_sha256: sha256:7fde7b8afa198da66257f42ee2001d874c7355631e6d1579a5fb5ef1f246df4c  (same as F0)
+IMGDIGEST: sha256:8352c9bdd77e1719f727326884a40299b381b5eb772fe899e907dfefcdf434de  (NEW; F0 was sha256:d02a7543041a52d864fb097f636a591ff1d0d86bfc38fedce645c1537176bd3d)
+IMGDIGEST: sha256:8352c9bdd77e1719f727326884a40299b381b5eb772fe899e907dfefcdf434de  (NEW; F13 was sha256:20403e6720d46d54382ba15a804d5071a2712a6d3ce09ab98ecc2d35e54e3bf4)
+ENTRYPOINT_DIGEST: sha256:3e8d1e5297c5deed4c98c68c2b3bd806ef406165d91f4671e5cee519736a1606  (NEW; F13 was sha256:2108ba20adb40ece26cf0851ede5032a5da654dbf60eb7490758f3adf62d73e0)
+CFG: sha256:8a9731c6f551b5a4e95190eb372b1265a4223f1c1bd92399d18dd8683a67be62  (NEW; F13 was sha256:c140a2717efd62e4d48d346e082365aa5ae6f97aa8c9e86f72f71f13ee1f607a)
+IMGDIGEST CHANGED vs F13: 10-upgrade.sh installs the new layout, 50-i1-i2.sh must run I1
+OK sync done; no 0-byte output under /home/jeli2k/tbound-h.zfosIW/f14 nor in: /home/jeli2k/tbound-b.qA1EjD/measure1.out /home/jeli2k/tbound-b.qA1EjD/measure2.out
+== DONE 30-p3
+IMGDIGEST=sha256:8352c9bdd77e1719f727326884a40299b381b5eb772fe899e907dfefcdf434de
+CFG=sha256:8a9731c6f551b5a4e95190eb372b1265a4223f1c1bd92399d18dd8683a67be62
+ENTRYPOINT_DIGEST=sha256:3e8d1e5297c5deed4c98c68c2b3bd806ef406165d91f4671e5cee519736a1606
+BASH_DIGEST=sha256:55b89ab22bee4792a210f493a53fb066accd5d30b69837c28d98be5ff863efcf
+NODE_DIGEST=sha256:7fde7b8afa198da66257f42ee2001d874c7355631e6d1579a5fb5ef1f246df4c

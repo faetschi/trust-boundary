@@ -1,0 +1,105 @@
+disk /mnt/c: 47 GiB free (need 10)
+disk /mnt/f: 952 GiB free (need 10)
+disk /: 784 GiB free (need 10)
+== 25-p2-rebuild start 2026-10-29T21:57:21Z as jeli2k freeze=F14
+OK HEAD == frozen commit = 02f9fb71a26aadf4eebeb0ff217fe97c374ffff8
+OK PREV_* constants equal the /home/jeli2k/tbound-h.zfosIW/f13 records
+OK frozen measurer == P1 record = sha256:759df1d14007e37154001c3585093399e48eb8d5cb7128a3f6550402c93b3f69
+OK Node toolchain tar = sha256:73a5a6994009445500e9f10e843b889469b24de79470724eeeb4ba388d0199e3
+OK F0 file-hash listing = sha256:0a9ce223732dcaba4a92ad98b8b49b3a6991dbe68b3fb460ccdbfe53e2466a73
+OK P1 sources == frozen LF archive 02f9fb71a26aadf4eebeb0ff217fe97c374ffff8
+OK Node binary = sha256:7fde7b8afa198da66257f42ee2001d874c7355631e6d1579a5fb5ef1f246df4c
+OK Node version = v24.21.0
+OK npm version = 11.19.0
+346M	/home/jeli2k/tbound-w.RciFcO/p2-rebuild/cache-master
+disk /mnt/c: 47 GiB free (need 10)
+disk /mnt/f: 952 GiB free (need 10)
+disk /: 783 GiB free (need 10)
+== offline build 1 (private network namespace)
+Cache verified and compressed (/home/jeli2k/tbound-w.RciFcO/p2-rebuild/out/build1/npm-cache/_cacache)
+Content verified: 381 (348067440 bytes)
+Content garbage-collected: 15 (6611889 bytes)
+Index entries: 381
+Finished in 0.826s
+npm warn deprecated node-domexception@1.0.0: Use your platform's native DOMException instead
+
+added 144 packages in 7s
+pi-prefix@ /home/jeli2k/tbound-w.RciFcO/p2-rebuild/out/build1/pi-prefix
+`-- @earendil-works/pi-coding-agent@0.87.1
+
+node_modules/@earendil-works/pi-coding-agent/package.json: OK
+node_modules/@earendil-works/pi-coding-agent/npm-shrinkwrap.json: OK
+{
+  "bytes": 403643938,
+  "canonical_node": "/home/jeli2k/tbound-w.RciFcO/p2-rebuild/tool/node-v24.21.0-linux-x64/bin/node",
+  "canonical_pi_entry": "/home/jeli2k/tbound-w.RciFcO/p2-rebuild/out/build1/pi-prefix/node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js",
+  "canonical_pi_package_root": "/home/jeli2k/tbound-w.RciFcO/p2-rebuild/out/build1/pi-prefix/node_modules/@earendil-works/pi-coding-agent",
+  "files": 14104,
+  "manifest": "/home/jeli2k/tbound-w.RciFcO/p2-rebuild/out/build1/runtime-out/closure-manifest.json",
+  "manifest_sha256": "228eac223f7ad5040f0add7d9a94e4600572d7ae2860469deaa2af6cd6493b6c",
+  "node_version": "v24.21.0",
+  "output": "/home/jeli2k/tbound-w.RciFcO/p2-rebuild/out/build1/runtime-out",
+  "pi_version": "0.87.1",
+  "status": "prepared-user-owned-unsealed-not-admitted"
+}
+228eac223f7ad5040f0add7d9a94e4600572d7ae2860469deaa2af6cd6493b6c  /home/jeli2k/tbound-w.RciFcO/p2-rebuild/out/build1/runtime-out/closure-manifest.json
+e6f88c2836412712ea4deea8f36876cdd13ff33b9f1b844e9b0434dcbe7d86e3  /home/jeli2k/tbound-w.RciFcO/p2-rebuild/out/build1/runtime-out/closure-manifest.sha256
+  15541 /home/jeli2k/tbound-w.RciFcO/p2-rebuild/out/build1/find.txt
+  14106 /home/jeli2k/tbound-w.RciFcO/p2-rebuild/out/build1/sha256.txt
+  29647 total
+disk /mnt/c: 47 GiB free (need 10)
+disk /mnt/f: 952 GiB free (need 10)
+disk /: 782 GiB free (need 10)
+== offline build 2 (private network namespace)
+Cache verified and compressed (/home/jeli2k/tbound-w.RciFcO/p2-rebuild/out/build2/npm-cache/_cacache)
+Content verified: 381 (348067440 bytes)
+Content garbage-collected: 15 (6611889 bytes)
+Index entries: 381
+Finished in 0.859s
+npm warn deprecated node-domexception@1.0.0: Use your platform's native DOMException instead
+
+added 144 packages in 11s
+pi-prefix@ /home/jeli2k/tbound-w.RciFcO/p2-rebuild/out/build2/pi-prefix
+`-- @earendil-works/pi-coding-agent@0.87.1
+
+node_modules/@earendil-works/pi-coding-agent/package.json: OK
+node_modules/@earendil-works/pi-coding-agent/npm-shrinkwrap.json: OK
+{
+  "bytes": 403643938,
+  "canonical_node": "/home/jeli2k/tbound-w.RciFcO/p2-rebuild/tool/node-v24.21.0-linux-x64/bin/node",
+  "canonical_pi_entry": "/home/jeli2k/tbound-w.RciFcO/p2-rebuild/out/build2/pi-prefix/node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js",
+  "canonical_pi_package_root": "/home/jeli2k/tbound-w.RciFcO/p2-rebuild/out/build2/pi-prefix/node_modules/@earendil-works/pi-coding-agent",
+  "files": 14104,
+  "manifest": "/home/jeli2k/tbound-w.RciFcO/p2-rebuild/out/build2/runtime-out/closure-manifest.json",
+  "manifest_sha256": "228eac223f7ad5040f0add7d9a94e4600572d7ae2860469deaa2af6cd6493b6c",
+  "node_version": "v24.21.0",
+  "output": "/home/jeli2k/tbound-w.RciFcO/p2-rebuild/out/build2/runtime-out",
+  "pi_version": "0.87.1",
+  "status": "prepared-user-owned-unsealed-not-admitted"
+}
+228eac223f7ad5040f0add7d9a94e4600572d7ae2860469deaa2af6cd6493b6c  /home/jeli2k/tbound-w.RciFcO/p2-rebuild/out/build2/runtime-out/closure-manifest.json
+e6f88c2836412712ea4deea8f36876cdd13ff33b9f1b844e9b0434dcbe7d86e3  /home/jeli2k/tbound-w.RciFcO/p2-rebuild/out/build2/runtime-out/closure-manifest.sha256
+  15541 /home/jeli2k/tbound-w.RciFcO/p2-rebuild/out/build2/find.txt
+  14106 /home/jeli2k/tbound-w.RciFcO/p2-rebuild/out/build2/sha256.txt
+  29647 total
+OK build1 == build2: listings, hashes and bytes identical
+/home/jeli2k/tbound-w.RciFcO/p2-rebuild/mnt/runtime-1 ro,nosuid,nodev,relatime,discard,errors=remount-ro,data=ordered
+Pi runtime bundle tree digest: sha256:af97c541f696a3d3da8d0d0799812a1f46e57f3367f0e5dbcc18292b66ac0b25
+Tree identity only; this command does not verify profile signature or host trust bindings.
+/home/jeli2k/tbound-w.RciFcO/p2-rebuild/mnt/runtime-2 ro,nosuid,nodev,relatime,discard,errors=remount-ro,data=ordered
+Pi runtime bundle tree digest: sha256:af97c541f696a3d3da8d0d0799812a1f46e57f3367f0e5dbcc18292b66ac0b25
+Tree identity only; this command does not verify profile signature or host trust bindings.
+BUNDLE_DIGEST: sha256:af97c541f696a3d3da8d0d0799812a1f46e57f3367f0e5dbcc18292b66ac0b25  (NEW; F0 was sha256:8e405ef0f2a3a3ed725dba2815d71bd8e5db007fe993f4ac3979ad59016d4f48)
+BUNDLE_DIGEST: sha256:af97c541f696a3d3da8d0d0799812a1f46e57f3367f0e5dbcc18292b66ac0b25  (NEW; F13 was sha256:6a07a8a9a38155b10382ae8de04f475a8fc9e90a1e1bfcf23db04271835b33bf)
+disk /mnt/c: 51 GiB free (need 10)
+disk /mnt/f: 952 GiB free (need 10)
+disk /: 780 GiB free (need 10)
+OK TAR REPRODUCIBLE: build1 == build2 (byte-identical)
+OK extraction listing and content == build1
+OK HEAD still frozen = 02f9fb71a26aadf4eebeb0ff217fe97c374ffff8
+disk /mnt/c: 51 GiB free (need 10)
+disk /mnt/f: 952 GiB free (need 10)
+disk /: 779 GiB free (need 10)
+TAR=/home/jeli2k/tbound-w.RciFcO/p2-rebuild/runtime-bundle-02f9fb71-lf.tar sha256:4e9e49750478ff6016f6463ddf33a2b78807114b26b8511fc3984f5c3c55672f (429660160 bytes)
+== DONE 25-p2-rebuild: BUNDLE_DIGEST=sha256:af97c541f696a3d3da8d0d0799812a1f46e57f3367f0e5dbcc18292b66ac0b25 (two offline builds identical)
+OK sync done; no 0-byte output under /home/jeli2k/tbound-h.zfosIW/f14 nor in: /home/jeli2k/tbound-w.RciFcO/p2-rebuild/runtime-bundle-02f9fb71-lf.tar /home/jeli2k/tbound-w.RciFcO/p2-rebuild/runtime-bundle-02f9fb71-lf.tar.sha256 /home/jeli2k/tbound-w.RciFcO/p2-rebuild/out/build1/find.txt /home/jeli2k/tbound-w.RciFcO/p2-rebuild/out/build2/find.txt /home/jeli2k/tbound-w.RciFcO/p2-rebuild/out/build1/sha256.txt /home/jeli2k/tbound-w.RciFcO/p2-rebuild/out/build2/sha256.txt /home/jeli2k/tbound-w.RciFcO/p2-rebuild/out/build1/measure.out /home/jeli2k/tbound-w.RciFcO/p2-rebuild/out/build2/measure.out

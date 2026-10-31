@@ -1,0 +1,82 @@
+config.entrypoint ['/usr/local/bin/tbound-pi-entrypoint'] env ['PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin', 'NODE_VERSION=24.21.0', 'YARN_VERSION=1.22.22', 'TBOUND_PREFIX=/var/lib/tbound'] user None
+layer 0 sha256:7fd1ebe418b5 entries 4226
+layer 1 sha256:517d640e3283 entries 18
+layer 2 sha256:11ffcabe0f77 entries 2992
+layer 3 sha256:1a0cf4b1ffc8 entries 48
+layer 4 sha256:08489011619d entries 4
+layer 5 sha256:4bf81bb2be34 entries 18
+bash       ['/usr/bin/bash']
+sh         ['/usr/bin/sh']
+dash       ['/usr/bin/dash']
+coreutils  []
+chmod      ['/usr/bin/chmod']
+mv         ['/usr/bin/mv']
+rm         ['/usr/bin/rm']
+cp         ['/usr/bin/cp']
+wc         ['/usr/bin/wc']
+sha256sum  ['/usr/bin/sha256sum']
+git        []
+python3    []
+python     []
+curl       []
+wget       []
+perl       ['/usr/bin/perl']
+node       ['/usr/local/bin/node']
+sleep      ['/usr/bin/sleep']
+setsid     ['/usr/bin/setsid']
+nohup      ['/usr/bin/nohup']
+tar        ['/usr/bin/tar']
+gzip       ['/usr/bin/gzip']
+sed        ['/usr/bin/sed']
+grep       ['/usr/bin/grep']
+awk        ['/usr/bin/awk']
+mawk       ['/usr/bin/mawk']
+env        ['/usr/bin/env']
+cat        ['/usr/bin/cat']
+ls         ['/usr/bin/ls']
+mkdir      ['/usr/bin/mkdir']
+find       ['/usr/bin/find']
+timeout    ['/usr/bin/timeout']
+nc         []
+ncat       []
+openssl    []
+busybox    []
+total files 7229
+manifest digest sha256:177197a01e7490a4fdf93bc8414e94526ddd3ce3aa6e1087dd23c35998e1a7e1
+{'bin': (b'2', 'usr/bin', 511), 'lib': (b'2', 'usr/lib', 511), 'lib64': (b'2', 'usr/lib64', 511), 'usr/bin/nohup': (b'0', '', 493), 'usr/bin/perl': (b'0', '', 493), 'usr/bin/setsid': (b'0', '', 493), 'usr/local/bin/node': (b'0', '', 493)}
+# /etc/profile: system-wide .profile file for the Bourne shell (sh(1))
+# and Bourne compatible shells (bash(1), ksh(1), ash(1), ...).
+
+if [ "$(id -u)" -eq 0 ]; then
+  PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+else
+  PATH="/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games"
+fi
+export PATH
+
+if [ "${PS1-}" ]; then
+  if [ "${BASH-}" ] && [ "$BASH" != "/bin/sh" ]; then
+    # The file bash.bashrc already sets the default PS1.
+    # PS1='\h:\w\$ '
+    if [ -f /etc/bash.bashrc ]; then
+      . /etc/bash.bashrc
+    fi
+  else
+    if [ "$(id -u)" -eq 0 ]; then
+      PS1='# '
+    else
+      PS1='$ '
+    fi
+  fi
+fi
+
+if [ -d /etc/profile.d ]; then
+  for i in /etc/profile.d/*.sh; do
+    if [ -r $i ]; then
+      . $i
+    fi
+  done
+  unset i
+fi
+
+['root:x:0:0:root:/root:/bin/bash', 'node:x:1000:1000::/home/node:/bin/bash']

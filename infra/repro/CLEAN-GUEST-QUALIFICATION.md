@@ -57,7 +57,7 @@ For a later point release, record its exact filename and versioned release
 URL. Do not substitute a mutable series or `latest` alias.
 
 The authenticated local copy for this qualification is
-`F:\TBoundAssets\ubuntu-24.04.5\ubuntu-24.04.5-live-server-amd64.iso`.
+`.local\assets\ubuntu-24.04.5\ubuntu-24.04.5-live-server-amd64.iso`.
 Its recorded length is 4,080,486,400 bytes and SHA-256 is
 `97f3d7ffb032c3eb3b23d2c8be9cc76e60c2c1f2c0146ba5ba9fe01cafae0fd8`.
 The versioned subdirectory is part of the path.
@@ -88,60 +88,11 @@ sha256sum --check --ignore-missing SHA256SUMS
 sha256sum "$ARTIFACT"
 ```
 
-Install xorriso in the WSL Ubuntu distribution if it is not already available.
-The qualification helper fails closed when the tool is missing:
-
-~~~powershell
-wsl.exe --distribution Ubuntu --user root -- apt-get update
-wsl.exe --distribution Ubuntu --user root -- apt-get install -y xorriso
-~~~
-
-Run the unattended staging helper through the fixed source-pinned UAC launcher
-from Windows PowerShell 5.1. The launcher accepts only `WhatIf` or `Create`;
-it pins the candidate script and installed Hyper-V module before requesting
-elevation. First run the bounded read-only preflight and review its per-run
-receipt. Then request creation once:
-
-~~~powershell
-.\infra\repro\launch-reviewed-abi8-candidate-elevated.ps1 -Action WhatIf
-.\infra\repro\launch-reviewed-abi8-candidate-elevated.ps1 -Action Create
-~~~
-
-The launcher reports the UAC child's PID and unique Desktop run directory
-before waiting on that same process handle. `Create` uses the seed helper's
-120-minute installer limit plus bounded setup slack. The helper never kills
-the VM or removes partial files on timeout. Do not rerun while the child is
-active or a partial seed exists. The candidate source pin in the launcher must
-match the reviewed `new-abi8-hyperv-candidate.ps1`; a mismatch fails closed.
-
-It verifies the exact ISO length and SHA-256 above, checks the expected 24.04.5
-GRUB layout, and writes only under
-F:\TBoundAssets\abi8-qualification-2026-10-14 and
-%LOCALAPPDATA%\TBound\abi8-qualification. The private Ed25519 key is created
-with an ACL for the current Windows identity; its contents are never printed
-or placed in the repository. The NoCloud seed contains an ephemeral random
-password hash and that key's public key. SSH password authentication is
-disabled in the installed guest.
-
-The helper derives ubuntu-24.04.5-autoinstall.iso from the authenticated
-Canonical ISO, adding the autoinstall and local NoCloud arguments to both
-installer boot entries. It leaves the signed EFI boot files intact and replays
-the source ISO boot metadata with xorriso. The derived ISO is a local
-modification, so Canonical's signature does not cover it; its SHA-256,
-xorriso version, and relation to the verified source are recorded in the
-receipt. The helper creates a separate TBound-Ubuntu-ABI8-Seed installer VM
-(Generation 2, 2 vCPUs, fixed 4 GiB RAM, dynamic 40 GiB VHDX, Default Switch,
-Secure Boot with the Microsoft UEFI Certificate Authority template, no
-automatic checkpoints). Its disposable root uses the installer's `direct`
-storage layout, producing a plain ext4 root partition and avoiding LVM-volume
-activation during read-only report extraction. The installer selects the
-Ubuntu 24.04 HWE kernel and powers off automatically. The helper waits up to
-120 minutes, never forces
-poweroff, detaches the DVD after a successful poweroff, rejects checkpoints or
-a parent-linked disk, and records the standalone VHDX hash in
-F:\TBoundAssets\abi8-qualification-2026-10-14\abi8-seed-receipt.json.
-A failed run leaves its partial state for inspection; it does not clean up
-files or VMs. It does not touch TBound-Ubuntu-2404.
+The F14 seed disk is `.local\assets\abi8-qualification-2026-10-14\seed-vm`. Its hash and provenance are in
+`evidence/thesis-inputs/abi8-seed-receipt.json`. To build a new one, install from the verified ISO into a new
+Hyper-V VM by hand: Generation 2, 2 vCPUs, fixed 4 GiB RAM, dynamic 40 GiB VHDX, Secure Boot with the Microsoft
+UEFI Certificate Authority template, no automatic checkpoints, plain ext4 root without LVM, and the Ubuntu
+24.04 HWE kernel. Power off, detach the DVD, confirm the disk has no checkpoints or parent, and record its SHA-256.
 
 The HWE kernel selector follows Ubuntu's linux-generic-hwe-24.04 track. As
 of this procedure date, Ubuntu lists HWE 7.0 in Noble updates
@@ -151,7 +102,7 @@ kernel, kernel config digest, and package manifest. Neither the HWE label nor
 kernel release establishes Landlock ABI 8. The guest must be live-probed and
 the D09 contract requires exactly ABI 8.
 
-After the helper completes successfully, create the fresh final candidate by
+Create the fresh final candidate by
 cloning the recorded powered-off seed through the existing guarded bootstrap.
 The bootstrap verifies the Windows WSL, command-shell, and OpenSSH executables
 against pinned SHA-256 values, TrustedInstaller ownership, and Microsoft
@@ -163,11 +114,13 @@ This removes the guest-console fingerprint prompt while keeping strict host-key
 checking.
 
 ~~~powershell
-$SeedVhdx = 'F:\TBoundAssets\abi8-qualification-2026-10-14\seed-vm\Virtual Hard Disks\TBound-Ubuntu-ABI8-Seed.vhdx'
+. .\infra\workspace\paths.ps1
+$tboundLocalRoot = Get-TBoundLocalRoot
+$SeedVhdx = Join-Path $tboundLocalRoot 'assets\abi8-qualification-2026-10-14\seed-vm\Virtual Hard Disks\TBound-Ubuntu-ABI8-Seed.vhdx'
 $SeedSha256 = (Get-FileHash -LiteralPath $SeedVhdx -Algorithm SHA256).Hash
-$PublicKeyFile = Join-Path $env:LOCALAPPDATA 'TBound\abi8-qualification\id_ed25519.pub'
-$PrivateKeyFile = Join-Path $env:LOCALAPPDATA 'TBound\abi8-qualification\id_ed25519'
-.\infra\repro\bootstrap-hyperv-windows.ps1 -ImageKind GoldenVhdx -ImageSourcePath $SeedVhdx -ExpectedImageSha256 $SeedSha256 -PublicKeyFile $PublicKeyFile -PrivateKeyFile $PrivateKeyFile -VmName 'TBound-Ubuntu-2404-ABI8' -VmRoot 'F:\TBoundVMs\TBound-Ubuntu-2404-ABI8' -SwitchName 'Default Switch'
+$PublicKeyFile = Join-Path $tboundLocalRoot 'secrets\abi8-qualification\id_ed25519.pub'
+$PrivateKeyFile = Join-Path $tboundLocalRoot 'secrets\abi8-qualification\id_ed25519'
+.\infra\repro\bootstrap-hyperv-windows.ps1 -ImageKind GoldenVhdx -ImageSourcePath $SeedVhdx -ExpectedImageSha256 $SeedSha256 -PublicKeyFile $PublicKeyFile -PrivateKeyFile $PrivateKeyFile -VmName 'TBound-Ubuntu-2404-ABI8' -VmRoot (Join-Path $tboundLocalRoot 'vm\TBound-Ubuntu-2404-ABI8') -SwitchName 'Default Switch'
 ~~~
 
 The clone uses the existing bootstrap's final profile of Generation 2,
