@@ -6,7 +6,7 @@ Everything TBound and the thesis need lives in this repository directory. A clon
 |---|---|---|
 | `infra/freeze/` | yes | Freeze kit: gate, freeze, guest chain. |
 | `evidence/` | yes | F14 receipts and the few files the thesis cites. |
-| `.local/` | no | VM disks, seed disk, freeze inputs, owner keys, `freeze-host.env`, local history archive. |
+| `.local/` | no | VM disks, the dedicated WSL distro's disk, seed disk, freeze inputs, owner keys, `freeze-host.env`, local history archive. |
 | `thesis/` | no | Checkout of `github.com/faetschi/MSE_MA_Thesis`. |
 
 `scripts/check-self-contained.sh` fails in CI when a tracked file depends on a path outside the repo. Worktrees have no `.local/`: set `TBOUND_LOCAL` to the primary checkout's.
@@ -21,7 +21,8 @@ Everything TBound and the thesis need lives in this repository directory. A clon
 4. Copy `infra/freeze/host.env.example` to `.local/freeze-host.env` and adjust it.
 5. Prepare the host:
    - **Native Linux.** `sudo bash infra/repro/bootstrap-linux.sh <trial-user>`.
-   - **Windows.** `infra\repro\bootstrap-hyperv-windows.ps1` creates the VM under `.local\vm`. Add a WSL distro with read-only drive mounts for builds.
+   - **Windows.** `infra\repro\bootstrap-hyperv-windows.ps1` creates the VM under `.local\vm`. `infra\workspace\New-TBoundWsl.ps1 -RootfsPath <rootfs> -RootfsSha256 <hash>` creates the WSL distro `tbound-dev` under `.local\wsl`, with read-only drive mounts for builds.
+   - **Inputs.** In a Linux shell, `bash infra/workspace/fetch-inputs.sh <dest-dir>` downloads and verifies the public build inputs. Add `--iso` for the Ubuntu ISO. Then `bash infra/workspace/install-toolchains.sh <dest-dir> <prefix>` unpacks Go and Node and prints the `PATH` to use. `make build` and `make test` also need `gcc` and `make`.
 6. Run `bash scripts/check-self-contained.sh --self-test`.
 
 These steps give you a candidate host. They do not qualify it: a fresh guest still goes through [CLEAN-GUEST-QUALIFICATION](../../infra/repro/CLEAN-GUEST-QUALIFICATION.md).
