@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -845,7 +846,10 @@ func TestRunGuestTestsRunsTheRealCgroupTestsInAFreshCgroupAndRemovesIt(t *testin
 		t.Skipf("no cgroup2 pids controller on %q (hybrid hierarchy?): the fresh-cgroup run is NOT verified here", own)
 	}
 	leftover := filepath.Join(mount, own, "tbound-guest-tests-leftover")
-	if err := os.MkdirAll(filepath.Join(leftover, "procoracle-1"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(leftover, "procoracle-1"), 0o755); errors.Is(err, fs.ErrPermission) {
+		// A hosted CI runner is not root, and its service cgroup is not delegated to it.
+		t.Skipf("uid %d cannot create a cgroup below %q (not delegated): run under systemd-run -p Delegate=yes -p User=<uid>; the fresh-cgroup run is NOT verified here: %v", os.Geteuid(), own, err)
+	} else if err != nil {
 		t.Fatal(err)
 	}
 	dir := t.TempDir()
