@@ -14,6 +14,7 @@ and [product contracts](product-contracts.md) fixes the first milestone's contra
 
 - [Setup](guides/setup.md): host requirements, Pi and TBound installation, Doctor, fixtures.
 - [Governed host setup](guides/governed-setup.md): host, profile, template, and live-root contracts; retains older design notes.
+- [Self-contained workspace](guides/self-contained-workspace.md): what lives where, and continuing on another machine.
 - [Reproduction](guides/reproduce.md): source freeze, release gate, signing, operator cycle, evidence, pilot.
 - [Release](guides/release.md): package formats and release acceptance checks.
 - [Panel guide](guides/panel-run.md): optional supplementary blinded model analysis; agreement statistics are diagnostics.

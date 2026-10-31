@@ -20,3 +20,6 @@ jobs:
 
       - name: Boundary guard self-test
         run: sh scripts/check-extension-boundary.sh --self-test
+
+      - name: Self-contained workspace guard
+        run: bash scripts/check-self-contained.sh --self-test
