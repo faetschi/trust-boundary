@@ -180,7 +180,7 @@ ambiguous, the outcome stays `UNKNOWN`.
 
 ## Independent verification — 2026-10-05
 
-Coordinator snapshot `/home/jeli2k/tbound-coordinator-s2.9tscTx` contains
+Coordinator snapshot `~/tbound-coordinator-s2.9tscTx` contains
 committed `1bedc0ec350edcbb2b7e3df4d877de50f5308c66` supervisor source plus
 only `supervisor/internal/publication`, not concurrent explorer edits.
 `findmnt` confirmed `/dev/sdc ext4`; private TMPDIR mode was 0700.
@@ -199,7 +199,7 @@ is inferred from these development checks. Commit identity/byte comparison is
 recorded separately, outside this repository, after commitment.
 
 Final combined-source rerun uses committed explorer `b827199` plus publication
-only in `/home/jeli2k/tbound-coordinator-s2final.m6uvfA`. Full race suite passed
+only in `~/tbound-coordinator-s2final.m6uvfA`. Full race suite passed
 (publication 3.576s), gofmt empty, `/dev/sdc ext4`, TMPDIR 0700; Windows exact-copy
 build/internal/e2e passed (all exit 0). Final race-log SHA-256:
 `c8b4abaffafcb3f19e3fe0585a5665b3c936201c1bc9d54676fcc369ef9d4e69`;

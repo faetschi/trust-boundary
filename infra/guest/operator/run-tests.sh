@@ -12,8 +12,8 @@ fi
 (($# == 0)) || { echo 'Usage: run-tests.sh [--local [test names...]]' >&2; exit 2; }
 REPO=$(cd -- "$(dirname -- "$0")/../../.." && pwd)
 export GUEST_IP=${GUEST_IP:?set GUEST_IP to the guest address measured this session, see the runbook section Guest address discovery} MSYS_NO_PATHCONV=1
-GSH=/f/TBoundAssets/recovery-20261015/F0-c7f9e9c/gssh.sh
-OUT=/f/TBoundAssets/recovery-20261015/F1/guest/operator/TESTS.md
+GSH=$REPO/infra/freeze/tools/gssh.sh
+OUT=$REPO/infra/guest/operator/TESTS.md
 OP=/opt/tbound/operator/tbound-op
 PASS=0; FAIL=0; N=0
 g() { sh "$GSH" "$1" </dev/null 2>&1; }

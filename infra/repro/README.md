@@ -28,11 +28,6 @@ These are new setup scripts: syntax and fixture checks have passed, but neither
 path has been end-to-end qualified on a clean host. Treat them as review-needed
 prototype tooling until that qualification is completed.
 
-If you already use the reference VM `TBound-Ubuntu-2404`, resume it with the
-[Hyper-V setup guide](../hyperv/SETUP.md).
-Do not run the VM bootstrap for it: that script creates a new VM and stops if
-the default VM name already exists.
-
 ## Prerequisites
 
 - **Path A:** Ubuntu 24.04 (Noble) amd64 with root access (sudo) and network

@@ -116,4 +116,4 @@ historical evidence, not validation of a later HEAD. Frozen external assets
 remain unchanged. The matching dated amendment is recorded in the master thesis
 repository, in `tbound/AH-technical/10-decision-register.md` and
 `tbound/tbound-thesis.md`. Exact-source gate and F14 repin receipts belong in
-`F:/TBoundAssets/protocol-closeout-20261029/RESULTS.md`.
+`evidence/gate-results/protocol-closeout-RESULTS.md`.
