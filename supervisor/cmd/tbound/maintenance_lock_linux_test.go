@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -186,7 +187,7 @@ func TestServiceRefusesAdmissionWhenTheMaintenanceLockIsUnavailable(t *testing.T
 
 // The slot and the maintenance lock are released before the terminal answer is written. A client that
 // has read "completed" may send its next request at once; a release that lagged the answer refused
-// that request as busy (seen on a 2 vCPU hosted runner).
+// that request as busy (seen on a hosted runner).
 func TestServiceFreesTheSlotBeforeItWritesTheTerminalAnswer(t *testing.T) {
 	registration := piServiceSocketRegistration{AllowedClientUIDs: []int{os.Geteuid()}, AllowedClientPrimaryGID: os.Getegid()}
 	var released atomic.Bool
@@ -203,5 +204,52 @@ func TestServiceFreesTheSlotBeforeItWritesTheTerminalAnswer(t *testing.T) {
 	}
 	if !released.Load() {
 		t.Fatal("the client read the terminal answer while the slot and the maintenance lock were still held")
+	}
+	if next := roundTripPiServiceRequest(t, server.path, piServiceRequest{RequestID: "request-2", TaskID: "task-2", Prompt: "work"}); next.Status == "busy" {
+		t.Fatalf("the request after a completed answer was refused as busy: %+v", next)
+	}
+}
+
+// The terminal is visible to a retry as soon as it is journaled. A retry that read it ahead of the
+// release would send its next request into a slot that is still held, the same refusal by another path.
+func TestServiceAnswersAReplayedTerminalOnlyAfterTheSlotIsFree(t *testing.T) {
+	registration := piServiceSocketRegistration{AllowedClientUIDs: []int{os.Geteuid()}, AllowedClientPrimaryGID: os.Getegid()}
+	releasing := make(chan struct{})
+	var releasingOnce sync.Once
+	var released atomic.Bool
+	slowRelease := func() (func(), error) {
+		return func() {
+			releasingOnce.Do(func() { close(releasing) })
+			time.Sleep(300 * time.Millisecond)
+			released.Store(true)
+		}, nil
+	}
+	runTask := func(ctx context.Context, request piServiceRequest) (json.RawMessage, error) {
+		return json.RawMessage(`{"success":true,"request_id":"` + request.RequestID + `"}`), nil
+	}
+	server := newPiServiceTestServerLocked(t, registration, runTask, slowRelease)
+	request := piServiceRequest{RequestID: "request-1", TaskID: "task-1", Prompt: "work"}
+	firstDone := make(chan piServiceResponse, 1)
+	go func() { firstDone <- roundTripPiServiceRequest(t, server.path, request) }()
+	select {
+	case <-releasing:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the task never reached its release")
+	}
+	replay := roundTripPiServiceRequest(t, server.path, request)
+	if replay.Status != "completed" {
+		t.Fatalf("the retry did not return the stored terminal: %+v", replay)
+	}
+	if !released.Load() {
+		t.Fatal("the retry read the terminal while the slot and the maintenance lock were still held")
+	}
+	if next := roundTripPiServiceRequest(t, server.path, piServiceRequest{RequestID: "request-2", TaskID: "task-2", Prompt: "work"}); next.Status == "busy" {
+		t.Fatalf("the request after a replayed terminal was refused as busy: %+v", next)
+	}
+	if first := <-firstDone; first.Status != "completed" {
+		t.Fatalf("the first task did not complete: %+v", first)
+	}
+	if calls := server.calls.Load(); calls != 1 {
+		t.Fatalf("the runner ran %d times, the retry must not run it again", calls)
 	}
 }
