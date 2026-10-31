@@ -66,7 +66,7 @@ param(
     [ValidatePattern('^SHA256:[A-Za-z0-9+/]{43}$')][string]$GuestHostKeyFingerprint,
     [int]$SshPort = 22,
     [int]$BootTimeoutSeconds = 900,
-    [int]$MinimumFreeGb = 120,
+    [int]$MinimumFreeGb = 60,
     [string]$WslDistro,
     [switch]$SkipWslInjection,
     [switch]$KeepSshHostKeys,
