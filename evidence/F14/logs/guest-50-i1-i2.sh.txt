@@ -1,0 +1,115 @@
+== 50-i1-i2 start 2026-10-30T05:21:19Z guest=172.24.140.254
+OK   FROZEN-COMMIT = 02f9fb71a26aadf4eebeb0ff217fe97c374ffff8
+OK   F13 record TBOUND_DIGEST == PREV_TBOUND_DIGEST = sha256:2b13b4fc96b183611467f295785997150a520a9a40ba1e84f0b25f239b782325
+OK   F13 record TBP_DIGEST == PREV_TBP_DIGEST = sha256:5182a0f857c9bd1fa415f3115ab8cceffa0cdba6a82bc25ab836c0985ed4e12c
+OK   F13 record ENTRYPOINT_DIGEST == PREV_ENTRYPOINT_DIGEST = sha256:2108ba20adb40ece26cf0851ede5032a5da654dbf60eb7490758f3adf62d73e0
+OK   F13 record SRC_DIGEST == PREV_SRC_DIGEST = sha256:595ac55541f71e4e4ee0b126e65476e9de5df68e9a0b0ca9adf5740d107a826f
+OK   F13 record BUNDLE_DIGEST == PREV_BUNDLE_DIGEST = sha256:6a07a8a9a38155b10382ae8de04f475a8fc9e90a1e1bfcf23db04271835b33bf
+OK   F13 record IMGDIGEST == PREV_IMGDIGEST = sha256:20403e6720d46d54382ba15a804d5071a2712a6d3ce09ab98ecc2d35e54e3bf4
+OK   F13 record CFG == PREV_CFG = sha256:c140a2717efd62e4d48d346e082365aa5ae6f97aa8c9e86f72f71f13ee1f607a
+OK   F13 record BASE_TD == PREV_BASE_TD = sha256:fcf9509c141d2baa2aff46fd323a15335bcede6c3f70de3dc0c9348172052bfc
+OK   F13 record LOAD_TAR_DIGEST == PREV_LOAD_TAR_DIGEST = sha256:aed88b6ee7b5725915c8bf6e27b98baf412867d91db985d40ca0a24abaf7fda9
+OK   F13 record CAL_RO_DIGEST == PREV_CAL_RO_DIGEST = sha256:6b12c0ac0dcbf65684ea3889cfd8241f9e8e69cc7ccbcb52eb22e5ddd851188e
+OK   F13 record CAL_RW_DIGEST == PREV_CAL_RW_DIGEST = sha256:07b235cccb3fd8bcbd3be50b0816e708d7b5332fbefa78deb54d0a55497b3bf5
+OK   F13 record TEST_PROCORACLE == PREV_TEST_PROCORACLE = sha256:1bcfc2988e2cd3537e59080b7a4c05597bc5230005fc651964a1d01c78f303eb
+OK   F13 record TEST_ENTRYPOINT == PREV_TEST_ENTRYPOINT = sha256:fa59d01606e14b63c61d96e1f7ac1b17f79b4c9bc074e5f611f4092b2f60fe37
+OK   F13 FROZEN-COMMIT record == PREV_COMMIT = 6162e3c32379233c7c4f238c5547599474d373a7
+OK   F13 g1/RID record == PREV_G1_RID = g1-req-20261024T160906Z
+OK   F13 rp/RID record == PREV_RP_RID = rp-req-20261024T161147Z
+OK   F13 dr/RID record == PREV_DR_RID = dr-req-20261024T161421Z
+OK   F13 dr/RUNID record == PREV_DR_RUNID = production-run-f7791eb8b4cc4b46643cc08e
+OK   F13 dr/CHECKS_OK record == 'ok' = ok
+OK   F13 dr/ADMISSION_ID record == PREV_DR_ADMISSION_ID = route-probe-dr-2026-10-23c
+OK   IMGDIGEST (session-env == HF) = sha256:8352c9bdd77e1719f727326884a40299b381b5eb772fe899e907dfefcdf434de
+OK   frozen commit 02f9fb71a26aadf4eebeb0ff217fe97c374ffff8; HF=/home/jeli2k/tbound-h.zfosIW/f14
+
+== preflight: guest 172.24.140.254 (pinned host key, StrictHostKeyChecking=yes)
+guest address: GUEST_IP=172.24.140.254 (changes after host restarts; if a connection fails, look it up: PowerShell 'Get-NetNeighbor -LinkLayerAddress 00-15-5D-0C-40-02', then export GUEST_IP=<IPAddress>)
+OK   ssh identity = tboundadmin
+OK   sudo -n works
+guest: tbound-abi8-seed 7.0.0-38-generic 2026-10-30T05:21:25Z 
+
+== stop tbound-pi.service and tbound-pi.socket (the socket is started again when this script ends)
+tbound-pi.service/.socket is-active: inactive inactive
+OK   tbound-pi service and socket inactive
+IMG_CHANGED=1 (IMGDIGEST F14 sha256:8352c9bdd77e1719f727326884a40299b381b5eb772fe899e907dfefcdf434de, F13 sha256:20403e6720d46d54382ba15a804d5071a2712a6d3ce09ab98ecc2d35e54e3bf4; CFG F14 sha256:8a9731c6f551b5a4e95190eb372b1265a4223f1c1bd92399d18dd8683a67be62, F13 sha256:c140a2717efd62e4d48d346e082365aa5ae6f97aa8c9e86f72f71f13ee1f607a)
+
+== I1 preconditions
+OK   guest podman == pin = sha256:859cb7e29723d1ca2f6bec025405b7ed6ea3040709ed129d7fed5f8fca92d2ca
+OK   containers.conf == P15 canonical = sha256:39d4074e9443db514b09313e45d46923b84c372dea6b394dbc3056bf354c3ba0
+OK   storage.conf == P15 canonical = sha256:9ebdcc8b5ed0ec25af5bdd93ccd8328b7a8ceb0744ee140ca9e7722cb294c0c7
+OK   /run/tbound-pi = 1
+OK   subid ranges (P14 step 2) = no-range
+
+== I1 stale rootless podman pause process (uid 995, cmdline exactly /usr/bin/podman, parent pid 1, tbound-pi.service inactive)
+tbound-pi.service is-active: inactive
+OK   no stale podman pause process
+OK   owner pi-cell-load.tar == LOAD_TAR_DIGEST = sha256:cdfdf90c656f7a52c979b176c15ff790feb3bb16ffa7e3d664d48f1a35c701a6
+
+== I1 wipe graphroot and podman-home (a store made under another mapping is unusable)
+OK   entries left = 0
+OK   graphroot / podman-home owner = tbound-pi:tbound-pi
+
+== I1 stage the load tar (995:986 0600) and the run dirs
+OK   guest load tar == LOAD_TAR_DIGEST = sha256:cdfdf90c656f7a52c979b176c15ff790feb3bb16ffa7e3d664d48f1a35c701a6
+
+== I1 load and tag in the service context
+time="2026-10-30T05:21:32Z" level=error msg="cannot find UID/GID for user tbound-pi: no subuid ranges found for user \"tbound-pi\" in /etc/subuid - check rootless mode in man pages."
+time="2026-10-30T05:21:32Z" level=warning msg="Using rootless single mapping into the namespace. This might break some images. Check /etc/subuid and /etc/subgid for adding sub*ids if not using a network user"
+Getting image source signatures
+Copying blob sha256:7fd1ebe418b5079d4aa36f416af9b143d127bc75b0155d71cb5fd559b5e04d39
+Copying blob sha256:517d640e32835287653c4b15eb5d9f6bcf48e103baea4f7e29bac937002f649b
+Copying blob sha256:11ffcabe0f772f0f1a9c80b4b290b5ec0de54f11c671f0fa10e5844f9b52d17a
+Copying blob sha256:1a0cf4b1ffc8dd659bb8c6e90471bc8fec24620e4fdb68bb2b6faa56154ae146
+Copying blob sha256:08489011619dfda982191cb9cc0418dc48ea3b1341588aeef534e4db0ab4d3d0
+Copying blob sha256:dfae038e0a5767a59bdd4b615bbe329883e24f76ed90367a8ed8aba6149c3f49
+Copying config sha256:8a9731c6f551b5a4e95190eb372b1265a4223f1c1bd92399d18dd8683a67be62
+Writing manifest to image destination
+Loaded image: localhost/tbound/pi-cell:latest
+time="2026-10-30T05:21:35Z" level=warning msg="Failed to add pause process to systemd sandbox cgroup: dbus: couldn't determine address of session bus"
+
+== I1 checks (read-only, all in the service context)
+OK   image exists = exists=0
+inspect: 8a9731c6f551b5a4e95190eb372b1265a4223f1c1bd92399d18dd8683a67be62 sha256:8352c9bdd77e1719f727326884a40299b381b5eb772fe899e907dfefcdf434de application/vnd.oci.image.manifest.v1+json localhost/tbound/pi-cell@sha256:8352c9bdd77e1719f727326884a40299b381b5eb772fe899e907dfefcdf434de 
+OK   Id == CFG = 8a9731c6f551b5a4e95190eb372b1265a4223f1c1bd92399d18dd8683a67be62
+OK   Digest == IMGDIGEST = sha256:8352c9bdd77e1719f727326884a40299b381b5eb772fe899e907dfefcdf434de
+OK   ManifestType = application/vnd.oci.image.manifest.v1+json
+OK   RepoDigests contains localhost/tbound/pi-cell@sha256:8352c9bdd77e1719f727326884a40299b381b5eb772fe899e907dfefcdf434de
+images: localhost/tbound/pi-cell:latest sha256:8a9731c6f551b5a4e95190eb372b1265a4223f1c1bd92399d18dd8683a67be62
+OK   image lines = 1
+OK   image ref = localhost/tbound/pi-cell:latest
+OK   image ID (images) = 8a9731c6f551b5a4e95190eb372b1265a4223f1c1bd92399d18dd8683a67be62
+OK   C4: Digest in a fresh service-context process == IMGDIGEST = sha256:8352c9bdd77e1719f727326884a40299b381b5eb772fe899e907dfefcdf434de
+
+== I1 end of window: no process of uid 995, remove /run/tbound-pi
+OK   /run/tbound-pi removed = gone
+
+== I2 [READ-ONLY] the workflow state exists; nothing is created, truncated or initialised
+tbound-pi:tbound-pi 700 /var/lib/tbound/private-admin
+tbound-pi:tbound-pi 700 /var/lib/tbound/sessions
+tbound-pi:tbound-pi 700 /var/lib/tbound/private-admin/workflow-recovery
+tbound-pi:tbound-pi 700 /var/lib/tbound/sessions/workflow-owners
+tbound-pi:tbound-pi 600 /var/lib/tbound/private-admin/workflow-recovery/catalog.jsonl
+OK   stat /var/lib/tbound/private-admin = tbound-pi:tbound-pi 700
+OK   stat /var/lib/tbound/sessions = tbound-pi:tbound-pi 700
+OK   stat /var/lib/tbound/private-admin/workflow-recovery = tbound-pi:tbound-pi 700
+OK   stat /var/lib/tbound/sessions/workflow-owners = tbound-pi:tbound-pi 700
+OK   stat /var/lib/tbound/private-admin/workflow-recovery/catalog.jsonl = tbound-pi:tbound-pi 600
+OK   root.db count = 1
+root.db: /var/lib/tbound/private-admin/workflow-recovery/root.db
+OK   root.db is the configured one = /var/lib/tbound/private-admin/workflow-recovery/root.db
+catalog.jsonl size 0 bytes, lines 0 (before option A it holds the earlier workflows and must be non-empty; after 27 it is empty)
+27-archive-state.sh archived the F13 state (archive_dir=/root/ga/archive-f13-20261030T051903Z manifest_sha256=7b81810dafddc7a3294135e77f7eba5571ae1fac121f5bfb9d779392b263d3aa): an EMPTY catalog.jsonl and a fresh root.db are the expected state
+terminal records now: 0 (with option A the F13 g1 workflow is archived with its journal, so there is no earlier workflow to settle; without it the F14 service may write its terminal: see 30-reg-g1.sh, ALLOW_NO_NEW_TERMINAL)
+
+== live root [READ-ONLY] canonical form
+entries (live root /var/lib/tbound/live/root): lost+found|
+OK   lost+found = tbound-pi:tbound-pi 755
+OK   non-canonical entries (dirs != 0755, files != 0644/0755, not dir/file, not 995:986) = 0
+{"counts": {"dir": 2, "file": 0, "other": 0, "symlink": 0}, "cross_device_pruned": [], "entries": 2, "errors": {"getxattr": 0, "listxattr": 0, "lstat": [], "readlink": 0, "scandir": []}, "record": "summary", "root": "/var/lib/tbound/live/root", "xattr_names_by_namespace": {}}
+OK   live root: no xattr names, no errors
+
+== DONE 50-i1-i2.sh 2026-10-30T05:21:43Z
+cleanup: no uid-995 process, no /run/tbound-pi
+cleanup: tbound-pi.socket must be active again
+active

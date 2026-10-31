@@ -1,0 +1,44 @@
+{
+    "schema":  "tbound-abi8-hyperv-seed/v1",
+    "capturedAt":  "2026-10-15T11:06:18.9781660+02:00",
+    "claimStatus":  "candidate only; live Landlock ABI 8 and all host profile checks remain required",
+    "sourceMedia":  {
+                        "path":  "F:\\TBoundAssets\\ubuntu-24.04.5\\ubuntu-24.04.5-live-server-amd64.iso",
+                        "filename":  "ubuntu-24.04.5-live-server-amd64.iso",
+                        "sha256":  "97f3d7ffb032c3eb3b23d2c8be9cc76e60c2c1f2c0146ba5ba9fe01cafae0fd8"
+                    },
+    "derivedMedia":  {
+                         "path":  "F:\\TBoundAssets\\abi8-qualification-2026-10-14\\ubuntu-24.04.5-autoinstall.iso",
+                         "sha256":  "1ec771177b5c8e347ea6829f40744cc9505a79d6faf79b3f7a3eda74b2f84e76",
+                         "xorrisoVersion":  "xorriso 1.5.6",
+                         "reusedExistingMedia":  true,
+                         "canonicalSignatureCoversDerivedMedia":  false
+                     },
+    "provisioningKey":  {
+                            "publicFingerprint":  "SHA256:w4LnyVmTMBKmrcKrMe3OdEoR8yY/n/tQXxAEXojCeOw",
+                            "privateKeyPath":  "C:\\Users\\Admin\\AppData\\Local\\TBound\\abi8-qualification\\id_ed25519",
+                            "privateKeyMaterialIncluded":  false
+                        },
+    "seedVm":  {
+                   "name":  "TBound-Ubuntu-ABI8-Seed",
+                   "id":  "82ffce59-06bf-4c1b-b43a-d406489c6d7f",
+                   "state":  "Off",
+                   "generation":  2,
+                   "processorCount":  2,
+                   "fixedMemoryBytes":  4294967296,
+                   "virtualDiskBytes":  42949672960,
+                   "diskType":  "Dynamic",
+                   "diskPath":  "F:\\TBoundAssets\\abi8-qualification-2026-10-14\\seed-vm\\Virtual Hard Disks\\TBound-Ubuntu-ABI8-Seed.vhdx",
+                   "diskSha256":  "edf7ae59b39a8d80afd5b74fc0d798d16ded5fc5e32f94ccd617897a3baeec00",
+                   "parentPath":  null,
+                   "checkpointCount":  0,
+                   "switchName":  "Default Switch",
+                   "secureBoot":  "On",
+                   "secureBootTemplate":  "MicrosoftUEFICertificateAuthority"
+               },
+    "followOn":  {
+                     "vmName":  "TBound-Ubuntu-2404-ABI8",
+                     "vmRoot":  "F:\\TBoundVMs\\TBound-Ubuntu-2404-ABI8",
+                     "command":  "\u0026 .\\infra\\repro\\bootstrap-hyperv-windows.ps1 -ImageKind GoldenVhdx -ImageSourcePath \u0027F:\\TBoundAssets\\abi8-qualification-2026-10-14\\seed-vm\\Virtual Hard Disks\\TBound-Ubuntu-ABI8-Seed.vhdx\u0027 -ExpectedImageSha256 \u0027edf7ae59b39a8d80afd5b74fc0d798d16ded5fc5e32f94ccd617897a3baeec00\u0027 -PublicKeyFile \u0027C:\\Users\\Admin\\AppData\\Local\\TBound\\abi8-qualification\\id_ed25519.pub\u0027 -VmName \u0027TBound-Ubuntu-2404-ABI8\u0027 -VmRoot \u0027F:\\TBoundVMs\\TBound-Ubuntu-2404-ABI8\u0027 -SwitchName \u0027Default Switch\u0027"
+                 }
+}

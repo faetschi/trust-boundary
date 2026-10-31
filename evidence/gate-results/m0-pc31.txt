@@ -1,0 +1,15 @@
+BUILT tbound-profile
+BUILT tbound-run
+node=/home/jeli2k/.nvm/versions/node/v24.15.0/bin/node v24.15.0
+== corpus-digest in place on the T5 draft
+sha256:0b3c2d7bead5c954e98f9ee89ebea67958aa14ca30b8b1561f621cbcf0049cf6
+DIGEST_RC=0
+== corpus-check on a scratch copy
+/home/jeli2k/m0-pc31/check/report.json
+/home/jeli2k/m0-pc31/check/report.md
+CHECK_RC=0
+total 116
+drwx------ 2 jeli2k jeli2k   4096 Oct 31 10:20 .
+drwxr-xr-x 5 jeli2k jeli2k   4096 Oct 31 10:20 ..
+-rw------- 1 jeli2k jeli2k 105650 Oct 31 10:20 report.json
+-rw------- 1 jeli2k jeli2k   1372 Oct 31 10:20 report.md
