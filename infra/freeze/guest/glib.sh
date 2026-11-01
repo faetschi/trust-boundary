@@ -110,7 +110,7 @@ local_tmp() { [ -n "$LOCAL_TMP" ] || LOCAL_TMP=$(mktemp -d); }
 # --- transports -------------------------------------------------------------------------------------------------
 G()  { sh "$GSSH_SH" "$@" </dev/null; }          # guest as tboundadmin, no stdin
 GI() { sh "$GSSH_SH" "$@"; }                     # guest as tboundadmin, stdin passed through (X | GI 'sudo -n install ... /dev/stdin dest')
-if command -v wsl.exe >/dev/null 2>&1; then WXP=(wsl.exe -d "$TBOUND_WSL_DISTRO" -e); else WXP=(); fi
+case $(uname -s) in MINGW* | MSYS*) WXP=(wsl.exe -d "$TBOUND_WSL_DISTRO" -e) ;; *) WXP=() ;; esac   # as paths.sh: WSL itself is Linux
 WX()  { "${WXP[@]}" env KIT_FREEZE="$KIT_FREEZE" "$@" </dev/null; }   # WSL, direct exec (no shell), no stdin; KIT_FREEZE reaches the Python guards
 WB()  { "${WXP[@]}" bash -c "export KIT_FREEZE=$KIT_FREEZE; $1" </dev/null; }   # WSL, bash -c <one string>, no stdin
 WBI() { "${WXP[@]}" bash -c "export KIT_FREEZE=$KIT_FREEZE; $1"; }              # WSL, bash -c <one string>, stdin passed through (writers: X | WBI "cat > file")
