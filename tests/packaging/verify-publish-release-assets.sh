@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Offline regression for the manual release publisher: every checksum-covered
-# asset, including the linux/amd64 TCB sidecars, is uploaded, and a sidecar
-# without checksum coverage is refused. Synthetic files only; --dry-run never
-# invokes gh or the network.
+# asset, including the linux/amd64 TCB sidecars, is uploaded, and a linux release
+# without both sidecars, or a sidecar without checksum coverage, is refused.
+# Synthetic files only; --dry-run never invokes gh or the network.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -56,16 +56,22 @@ done
 pass "a missing checksum-listed TCB sidecar fails before publication"
 
 DIST="$BASE/unlisted"
-fixture "$DIST" "$TARBALL_LINUX"
+fixture "$DIST" "$TARBALL_LINUX" "$CHECKSUM"
 printf 'unlisted fixture\n' > "$DIST/$METADATA"
 if dry_run > "$BASE/unlisted.log" 2>&1; then die "sidecar without checksum coverage was accepted"; fi
 grep -Fq "SHA256SUMS is missing an entry for $METADATA" "$BASE/unlisted.log" || die "unlisted sidecar failed for an unexpected reason"
 pass "a sidecar without checksum coverage is refused before publication"
 
+DIST="$BASE/linux-without-sidecars"
+fixture "$DIST" "$TARBALL_LINUX"
+if dry_run > "$BASE/linux-without-sidecars.log" 2>&1; then die "linux release without its TCB sidecars was accepted"; fi
+grep -Fq "linux release is missing $METADATA" "$BASE/linux-without-sidecars.log" || die "linux release without sidecars failed for an unexpected reason"
+pass "a linux release without its TCB sidecars is refused before publication"
+
 DIST="$BASE/windows-only"
 fixture "$DIST" "$TARBALL_WINDOWS"
 dry_run > "$BASE/windows-only.log" 2>&1 || die "windows-only release was rejected"
 if grep -Fq 'tbound-cell-entrypoint-' "$BASE/windows-only.log"; then die "windows-only release lists TCB sidecars"; fi
-pass "a release without linux TCB sidecars publishes without them"
+pass "a release without a linux tarball publishes without TCB sidecars"
 
-echo "verify-publish-release-assets: 4 passed, 0 failed"
+echo "verify-publish-release-assets: 5 passed, 0 failed"

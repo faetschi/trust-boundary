@@ -24,10 +24,12 @@ ls "$DIST"/tbound-"$VERSION"-*.tar.gz >/dev/null 2>&1 || die "no artifacts for v
 [ -f "$DIST/SHA256SUMS" ] || die "missing $DIST/SHA256SUMS"
 
 files=("$DIST"/tbound-"$VERSION"-*.tar.gz)
-# The linux/amd64 TCB sidecars exist only for linux releases; the release workflow uploads them too.
+# The linux/amd64 TCB sidecars exist only for linux releases, where the build always makes both
+# and the release workflow uploads them too.
 for sidecar in "$DIST/tbound-cell-entrypoint-$VERSION-linux-amd64.metadata.json" \
                "$DIST/tbound-cell-entrypoint-$VERSION-linux-amd64.sha256"; do
-  if [ -f "$sidecar" ]; then files+=("$sidecar"); fi
+  if [ -f "$sidecar" ]; then files+=("$sidecar")
+  elif [ -f "$DIST/tbound-$VERSION-linux-amd64.tar.gz" ]; then die "linux release is missing $(basename "$sidecar")"; fi
 done
 
 # Require the checksums to actually cover the artifacts before publishing.
