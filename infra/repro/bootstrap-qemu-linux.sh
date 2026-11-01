@@ -467,7 +467,7 @@ ssh_guest 'uname -r; cat /etc/os-release | grep PRETTY_NAME'
 
 step "copy checkout into guest"
 tar -C "$ROOT" \
-  --exclude='./.git' --exclude='./dist' --exclude='node_modules' \
+  --exclude='./.git' --exclude='./.local' --exclude='./thesis' --exclude='./dist' --exclude='node_modules' \
   --exclude='*.qcow2' --exclude='*.img' --exclude='*.iso' \
   -czf - . | ssh_guest 'rm -rf "$HOME/trust-boundary" && mkdir -p "$HOME/trust-boundary" && tar -xzf - -C "$HOME/trust-boundary"'
 
