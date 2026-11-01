@@ -192,6 +192,15 @@ jobs:
           umask 077
           npm ci --ignore-scripts --no-audit --no-fund
 
+      # quick-checks has no Pi CLI, so its adapter run skips this test. It must run, and not skip, here.
+      - name: Official Pi CLI adapter integration
+        working-directory: adapter
+        run: |
+          set -o pipefail
+          umask 077
+          node --experimental-strip-types --test --test-reporter=spec src/tbound-cli-extension.test.ts | tee "$TMPDIR/pi-adapter-integration.txt"
+          grep -q 'ℹ skipped 0' "$TMPDIR/pi-adapter-integration.txt"
+
       - name: Offline official Pi CLI development fixture (non-claim-bearing)
         working-directory: supervisor
         run: |
