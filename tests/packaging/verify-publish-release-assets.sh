@@ -50,7 +50,7 @@ pass "dry-run uploads every tarball, both TCB sidecars, and SHA256SUMS"
 for asset in "$METADATA" "$CHECKSUM"; do
   mv "$DIST/$asset" "$BASE/moved"
   if dry_run > "$BASE/missing.log" 2>&1; then die "missing checksum-listed asset was accepted: $asset"; fi
-  grep -Fq 'SHA256SUMS does not verify' "$BASE/missing.log" || die "missing $asset failed for an unexpected reason"
+  grep -Fq "linux release is missing $asset" "$BASE/missing.log" || die "missing $asset failed for an unexpected reason"
   mv "$BASE/moved" "$DIST/$asset"
 done
 pass "a missing checksum-listed TCB sidecar fails before publication"
