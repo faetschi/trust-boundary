@@ -1,7 +1,9 @@
 name: linux-ci
 
 on:
+  # A PR branch runs once, through pull_request. Each run takes about 25 minutes.
   push:
+    branches: [main, codex/tbound-prototype]
   pull_request:
 
 permissions:
