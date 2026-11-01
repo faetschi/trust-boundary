@@ -37,7 +37,7 @@ GATE=$ROOT/infra/freeze/tools/gate.sh
 if HOME=$SANDBOX/home TBOUND_LOCAL=$SANDBOX/local KIT_FREEZE=F14 bash "$GATE" a.tar label >/dev/null 2>&1; then
   echo "FAIL: gate ran without a host file" >&2; exit 1
 fi
-printf 'TBOUND_WORK=/w\nOLDH=/h\nOLDW=/o\nGO=/g/bin/go\nPASSPHRASE_FILE=/p\n' > "$SANDBOX/local/freeze-host.env"
+printf 'TBOUND_WORK=/w\nOLDH=/h\nGO=/g/bin/go\nPASSPHRASE_FILE=/p\n' > "$SANDBOX/local/freeze-host.env"
 
 # A missing or unsafe label must not delete anything: this is the empty-variable failure of 2026-10-31.
 for label in '' '../..' '.' '..' '-rf' 'a/b'; do
@@ -70,7 +70,7 @@ fi
 WORK=$SANDBOX/work/receipts/F14/logs
 mkdir -p "$WORK"
 printf 'log\n' > "$WORK/a.log"; printf 'tar\n' > "$WORK/gate-x.tar"; printf 'key\n' > "$WORK/x.key"
-printf 'TBOUND_WORK=/w\nOLDH=/h\nOLDW=/o\nGO=/g/bin/go\nPASSPHRASE_FILE=/p\n' > "$SANDBOX/local/freeze-host.env"
+printf 'TBOUND_WORK=/w\nOLDH=/h\nGO=/g/bin/go\nPASSPHRASE_FILE=/p\n' > "$SANDBOX/local/freeze-host.env"
 PULL=$ROOT/infra/freeze/tools/pull-receipts.sh
 TBOUND_LOCAL=$SANDBOX/local TBOUND_EVIDENCE=$SANDBOX/ev TBOUND_WORK_VIEW=$SANDBOX/work KIT_FREEZE=F14 bash "$PULL" >/dev/null
 [ -f "$SANDBOX/ev/F14/logs/a.log" ] || { echo "FAIL: receipts were not exported" >&2; exit 1; }
