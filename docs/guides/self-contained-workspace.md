@@ -20,7 +20,7 @@ Everything TBound and the thesis need lives in this repository directory. A clon
 3. Restore `.local/secrets/freeze-home.tar.gz` on a Linux filesystem with `tar -xzpf`. Without it the kit cannot start another freeze: `10-freeze.sh` checks the previous freeze's receipts and the first freeze's image and runtime tar. The kit also needs `$HOME/go/pkg/mod/cache/download` and `$HOME/.npm/_cacache` filled for its offline builds. The restore is untested.
 4. Copy `infra/freeze/host.env.example` to `.local/freeze-host.env` and adjust it.
 5. Prepare the host:
-   - **Native Linux.** `sudo bash infra/repro/bootstrap-linux.sh <trial-user>`.
+   - **Native Linux.** `bash infra/repro/bootstrap-qemu-linux.sh` creates a VM under `.local/vm`, with its image pinned by hash. To use the host itself instead, `sudo bash infra/repro/bootstrap-linux.sh <trial-user>`.
    - **Windows.** `infra\repro\bootstrap-hyperv-windows.ps1` creates the VM under `.local\vm`. `infra\workspace\New-TBoundWsl.ps1 -RootfsPath <rootfs> -RootfsSha256 <hash>` creates the WSL distro `tbound-dev` under `.local\wsl`, with read-only drive mounts for builds.
    - **Inputs.** In a Linux shell, `bash infra/workspace/fetch-inputs.sh <dest-dir>` downloads and verifies the public build inputs. Add `--iso` for the Ubuntu ISO. Then `bash infra/workspace/install-toolchains.sh <dest-dir> <prefix>` unpacks Go and Node and prints the `PATH` to use. `make build` and `make test` also need `gcc` and `make`.
 6. Run `bash scripts/check-self-contained.sh --self-test`.
