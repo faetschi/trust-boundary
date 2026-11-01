@@ -64,6 +64,7 @@ V=$VALUES
 # shellcheck disable=SC1090
 . "$V"
 [ "$FREEZE" = "$KIT_FREEZE" ] || die "$V says FREEZE=$FREEZE but KIT_FREEZE=$KIT_FREEZE"
+[ "${PREV_FREEZE:-}" != none ] || die "$V: PREV_FREEZE=none starts a new chain, and the guest scripts do not support that yet"
 for v in FREEZE FREEZE_COMMIT PREV_FREEZE PREV_COMMIT PREV_W PREV_NAMES PREV_G1_RID PREV_RP_RID PREV_DR_RID PREV_DR_RUNID PREV_DR_CHECKS_OK PREV_DR_ADMISSION_ID DR_ADMISSION_ID DR_ADMISSION_REFUSE GUEST_IP; do
   [ -n "${!v:-}" ] || die "$V lacks $v"
 done
