@@ -18,7 +18,7 @@ trap 'rm -rf "$WORK"' EXIT
 mkdir -p "$WORK/bin"
 # Only the stubs below are on PATH while the extracted code runs, so `command -v` is deterministic.
 for tool in grep awk sort; do ln -s "$(command -v "$tool")" "$WORK/bin/$tool"; done
-for cmd in podman crun newuidmap slirp4netns fuse-overlayfs curl python3; do
+for cmd in podman crun newuidmap slirp4netns fuse-overlayfs curl python3 make; do
   printf '#!/bin/bash\nexit 0\n' > "$WORK/bin/$cmd"
   chmod +x "$WORK/bin/$cmd"
 done
@@ -108,6 +108,32 @@ if [[ "$manifest" == *$'podman\t'* && "$manifest" == *$'gcc\t'* && "$manifest" !
   pass=$((pass + 1))
 else
   printf 'FAIL  manifest lists ii and hi rows, not rc rows: got [%s] (want podman and gcc, no old)\n' "$manifest" >&2
+  fail=$((fail + 1))
+fi
+
+# make is a command check in the bootstrap loop; with no make on PATH it must be reported.
+rm -f "$WORK/bin/make"
+expect_missing "make command absent is reported" "$(rows_with '' '')" make
+printf '#!/bin/bash\nexit 0\n' > "$WORK/bin/make"
+chmod +x "$WORK/bin/make"
+
+# The provisioner must install make and hold it with the other build packages.
+declare -a APT_PACKAGES=()
+eval "$(grep '^APT_PACKAGES=' "$SETUP")"
+hold_list=$(grep '^run_apt hold ' "$SETUP")
+hold_words=${hold_list#run_apt hold apt-mark hold }
+if [[ " ${APT_PACKAGES[*]} " == *" make "* ]]; then
+  printf 'PASS  make is in the provisioner apt install list\n'
+  pass=$((pass + 1))
+else
+  printf 'FAIL  make is in the provisioner apt install list: [%s]\n' "${APT_PACKAGES[*]}" >&2
+  fail=$((fail + 1))
+fi
+if [[ " $hold_words " == *" make "* ]]; then
+  printf 'PASS  make is in the provisioner apt-mark hold list\n'
+  pass=$((pass + 1))
+else
+  printf 'FAIL  make is in the provisioner apt-mark hold list: [%s]\n' "$hold_words" >&2
   fail=$((fail + 1))
 fi
 

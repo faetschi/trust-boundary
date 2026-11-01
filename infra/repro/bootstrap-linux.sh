@@ -229,7 +229,7 @@ if [[ -d "$NODE_DEST" && -d "$GO_DEST" ]]; then
   say "Pinned toolchains verified: Node v${NODE_VERSION} at $NODE_DEST, Go ${GO_VERSION} at $GO_DEST"
 
   MISSING_PKGS=()
-  for pkg_cmd in 'podman:podman' 'crun:crun' 'uidmap:newuidmap' 'slirp4netns:slirp4netns' 'fuse-overlayfs:fuse-overlayfs' 'libseccomp2:' 'ca-certificates:' 'curl:curl' 'xz-utils:' 'gnupg:' 'python3:python3'; do
+  for pkg_cmd in 'podman:podman' 'crun:crun' 'uidmap:newuidmap' 'slirp4netns:slirp4netns' 'fuse-overlayfs:fuse-overlayfs' 'libseccomp2:' 'ca-certificates:' 'curl:curl' 'xz-utils:' 'gnupg:' 'python3:python3' 'make:make'; do
     pkg=${pkg_cmd%%:*}
     cmd=${pkg_cmd#*:}
     if [[ -n "$cmd" ]]; then

@@ -398,9 +398,9 @@ run_apt() {
   fi
 }
 run_apt update apt-get update
-APT_PACKAGES=(podman crun uidmap slirp4netns fuse-overlayfs libseccomp2 ca-certificates curl xz-utils gnupg python3 gcc gcc-13 gcc-13-x86-64-linux-gnu)
+APT_PACKAGES=(podman crun uidmap slirp4netns fuse-overlayfs libseccomp2 ca-certificates curl xz-utils gnupg python3 make gcc gcc-13 gcc-13-x86-64-linux-gnu)
 run_apt install apt-get install -y --no-install-recommends "${APT_PACKAGES[@]}"
-run_apt hold apt-mark hold podman crun uidmap slirp4netns fuse-overlayfs libseccomp2 gcc gcc-13 gcc-13-x86-64-linux-gnu
+run_apt hold apt-mark hold podman crun uidmap slirp4netns fuse-overlayfs libseccomp2 make gcc gcc-13 gcc-13-x86-64-linux-gnu
 
 # Rootless Podman needs subordinate UID and GID ranges. Reuse a sufficiently
 # large existing range for the target account; otherwise allocate a fresh range
