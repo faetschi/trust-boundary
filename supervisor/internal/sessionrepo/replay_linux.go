@@ -107,42 +107,38 @@ func (s *Store) EvidenceBundle() (EvidenceBundle, error) {
 	if err != nil {
 		return EvidenceBundle{}, err
 	}
-	trace, err := s.options.Journal.Trace()
-	if err != nil {
-		return EvidenceBundle{}, fmt.Errorf("verify evidence journal: %w", err)
-	}
-	journal, err := marshalAuditJournal(trace.Records)
+	primary, admission, err := s.traceEvidenceJournalsLocked()
 	if err != nil {
 		return EvidenceBundle{}, err
 	}
-	admissionTrace, err := s.admissionJournal.Trace()
+	return s.bundleLocked(chain, primary, admission)
+}
+
+// bundleLocked frames two verified journal traces canonically and binds them to
+// the Store's generations and ledger. The caller must hold Store.mu.
+func (s *Store) bundleLocked(chain delta.Result, primary, admission audit.Trace) (EvidenceBundle, error) {
+	journal, err := marshalAuditJournal(primary.Records)
 	if err != nil {
-		return EvidenceBundle{}, fmt.Errorf("verify evidence admission journal: %w", err)
+		return EvidenceBundle{}, err
 	}
-	admissionJournal, err := marshalAuditJournal(admissionTrace.Records)
+	admissionJournal, err := marshalAuditJournal(admission.Records)
 	if err != nil {
 		return EvidenceBundle{}, err
 	}
 	if len(journal)+len(admissionJournal) > maxEvidenceJournalBytes {
 		return EvidenceBundle{}, ErrOperationOutputLimit
 	}
-	generations := make([]GenerationEvidence, 0, len(s.generations))
-	for _, generation := range s.generations {
-		generations = append(generations, GenerationEvidence{
-			ID: generation.id, TreeDigest: generation.snapshot.TreeDigest,
-			Manifest: cloneManifest(generation.snapshot.Manifest),
-		})
-	}
-	if _, err := validateAdmissionEvidence(trace, admissionTrace, s.options.PolicyDigest, s.options.MetadataPolicyDigest, s.options.AdmissionScope, generations); err != nil {
+	generations := s.generationEvidenceLocked()
+	if _, err := validateAdmissionEvidence(primary, admission, s.options.PolicyDigest, s.options.MetadataPolicyDigest, s.options.AdmissionScope, generations); err != nil {
 		return EvidenceBundle{}, err
 	}
 	var auditHead string
-	if len(trace.Records) > 0 {
-		auditHead = trace.Records[len(trace.Records)-1].Hash
+	if len(primary.Records) > 0 {
+		auditHead = primary.Records[len(primary.Records)-1].Hash
 	}
 	var admissionHead string
-	if len(admissionTrace.Records) > 0 {
-		admissionHead = admissionTrace.Records[len(admissionTrace.Records)-1].Hash
+	if len(admission.Records) > 0 {
+		admissionHead = admission.Records[len(admission.Records)-1].Hash
 	}
 	return EvidenceBundle{
 		SchemaVersion:        bundleSchemaVersion,
@@ -150,19 +146,41 @@ func (s *Store) EvidenceBundle() (EvidenceBundle, error) {
 		CommandContainmentStatus: "not-established",
 		PolicyDigest:             s.options.PolicyDigest,
 		MetadataPolicyDigest:     s.options.MetadataPolicyDigest,
-		AdmissionScope:           s.options.AdmissionScope,
+		AdmissionScope:           cloneAdmissionScope(s.options.AdmissionScope),
 		AuditJournal:             journal,
-		AuditRecordCount:         uint64(len(trace.Records)),
+		AuditRecordCount:         uint64(len(primary.Records)),
 		AuditHeadHash:            auditHead,
 		AdmissionJournal:         admissionJournal,
-		AdmissionRecordCount:     uint64(len(admissionTrace.Records)),
+		AdmissionRecordCount:     uint64(len(admission.Records)),
 		AdmissionHeadHash:        admissionHead,
-		Baseline:                 generations[0],
+		Baseline:                 cloneGenerationEvidence(generations[0]),
 		Generations:              generations,
 		ApprovedDeltaLedger:      cloneTransitions(s.transitions),
 		Operations:               cloneOperations(s.operations),
-		ValidatedChain:           chain,
+		ValidatedChain:           cloneChainResult(chain),
 	}, nil
+}
+
+// Clone returns a bundle that shares no slice or manifest memory with b, so a
+// caller can pass it to a trust callback without changing the original.
+func (bundle EvidenceBundle) Clone() EvidenceBundle {
+	bundle.AuditJournal = cloneSliceKeepingNil(bundle.AuditJournal)
+	bundle.AdmissionJournal = cloneSliceKeepingNil(bundle.AdmissionJournal)
+	bundle.AdmissionScope = cloneAdmissionScope(bundle.AdmissionScope)
+	bundle.Baseline = cloneGenerationEvidence(bundle.Baseline)
+	bundle.Generations = cloneGenerationEvidenceList(bundle.Generations)
+	bundle.ApprovedDeltaLedger = cloneTransitions(bundle.ApprovedDeltaLedger)
+	bundle.Operations = cloneOperations(bundle.Operations)
+	bundle.ValidatedChain = cloneChainResult(bundle.ValidatedChain)
+	return bundle
+}
+
+func cloneGenerationEvidenceList(evidence []GenerationEvidence) []GenerationEvidence {
+	cloned := cloneSliceKeepingNil(evidence)
+	for index := range cloned {
+		cloned[index] = cloneGenerationEvidence(cloned[index])
+	}
+	return cloned
 }
 
 // marshalAuditJournal re-encodes verified records into the exact canonical

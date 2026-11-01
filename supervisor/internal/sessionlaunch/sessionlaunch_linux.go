@@ -826,15 +826,12 @@ func Prepare(ctx context.Context, managed *ManagedStore, generation *sessionrepo
 		}
 		admin.mu.Unlock()
 	}()
-	verified, err := store.Verify()
+	verified, err := store.VerifyEvidence()
 	if err != nil {
 		return nil, fmt.Errorf("verify session store before D06 source binding: %w", err)
 	}
-	bundle, err := store.EvidenceBundle()
-	if err != nil {
-		return nil, fmt.Errorf("obtain retained store evidence before D06 source binding: %w", err)
-	}
-	if err := validateCurrentGeneration(bundle, verified, generation); err != nil {
+	bundle := verified.Bundle
+	if err := validateCurrentGeneration(bundle, verified.Chain, generation); err != nil {
 		return nil, err
 	}
 	if err := validateJournalSnapshot(journal, bundle); err != nil {
@@ -1015,17 +1012,11 @@ func Rebind(managed *ManagedStore, admin *AdminParent, pin RecoveryGitPin) (*Rec
 		!validDigest(profile.XattrVisibility.ProfileDigest) {
 		return nil, ErrProvenanceMissing
 	}
-	verified, err := store.Verify()
+	verified, err := store.VerifyEvidence()
 	if err != nil {
 		return nil, fmt.Errorf("verify retained Store before D06 rebind: %w", err)
 	}
-	bundle, err := store.EvidenceBundle()
-	if err != nil {
-		return nil, fmt.Errorf("obtain retained Store evidence before D06 rebind: %w", err)
-	}
-	if !reflect.DeepEqual(verified, bundle.ValidatedChain) {
-		return nil, ErrSourceEvidence
-	}
+	bundle := verified.Bundle
 	if err := validateJournalSnapshot(journal, bundle); err != nil {
 		return nil, err
 	}
@@ -1172,15 +1163,12 @@ func (b *verifiedSourceBinding) VerifySource(root *os.File, generation, metadata
 	if err != nil || (nodeID{device: stat.device, inode: stat.inode}) != b.identity {
 		return errors.Join(ErrSourceChanged, err)
 	}
-	chain, err := b.store.Verify()
+	verified, err := b.store.VerifyEvidence()
 	if err != nil {
 		return fmt.Errorf("reverify durable session chain during source copy: %w", err)
 	}
-	bundle, err := b.store.EvidenceBundle()
-	if err != nil {
-		return err
-	}
-	if err := validateCurrentGeneration(bundle, chain, b.generation); err != nil {
+	bundle := verified.Bundle
+	if err := validateCurrentGeneration(bundle, verified.Chain, b.generation); err != nil {
 		return err
 	}
 	if err := verifySourceEventOnlyAppend(b.baseBundle.AuditJournal, bundle.AuditJournal, b.sourceEvent); err != nil {
@@ -1205,15 +1193,12 @@ func (p *PreparedSession) ExposeReadOnly(generation *sessionrepo.Generation, mod
 	if err := p.git.Verify(); err != nil {
 		return nil, fmt.Errorf("verify supervisor-private Git admin before exposure: %w", err)
 	}
-	verified, err := p.store.Verify()
+	verified, err := p.store.VerifyEvidence()
 	if err != nil {
 		return nil, err
 	}
-	bundle, err := p.store.EvidenceBundle()
-	if err != nil {
-		return nil, err
-	}
-	if !reflect.DeepEqual(verified, bundle.ValidatedChain) || !bundleContainsGeneration(bundle, generation) || containsGitMetadata(generation.Manifest()) {
+	bundle := verified.Bundle
+	if !bundleContainsGeneration(bundle, generation) || containsGitMetadata(generation.Manifest()) {
 		return nil, ErrWorkerExposure
 	}
 	if err := validateJournalSnapshot(p.journal, bundle); err != nil {
@@ -1366,15 +1351,12 @@ func (p *PreparedSession) VerifySourceBinding(store *sessionrepo.Store, generati
 	provenance := p.provenance
 	privateGit := p.git
 	p.mu.Unlock()
-	verified, err := store.Verify()
+	verified, err := store.VerifyEvidence()
 	if err != nil {
 		return err
 	}
-	bundle, err := store.EvidenceBundle()
-	if err != nil {
-		return err
-	}
-	if !reflect.DeepEqual(verified, bundle.ValidatedChain) || !bundleContainsGeneration(bundle, generation) ||
+	bundle := verified.Bundle
+	if !bundleContainsGeneration(bundle, generation) ||
 		bundle.PolicyDigest != provenance.PolicyDigest || bundle.MetadataPolicyDigest != provenance.MetadataPolicyDigest ||
 		generation.ID() != provenance.SourceGeneration ||
 		generation.TreeDigest() != provenance.SourceTreeDigest {
@@ -1544,7 +1526,7 @@ func verifyGenerationDescriptor(store *sessionrepo.Store, generation *sessionrep
 
 func validateCurrentGeneration(bundle sessionrepo.EvidenceBundle, chain delta.Result, generation *sessionrepo.Generation) error {
 	if generation == nil || len(bundle.Generations) == 0 || bundle.SchemaVersion == "" ||
-		!reflect.DeepEqual(chain, bundle.ValidatedChain) || chain.SealedGeneration != generation.ID() || chain.SealedTreeDigest != generation.TreeDigest() {
+		chain.SealedGeneration != generation.ID() || chain.SealedTreeDigest != generation.TreeDigest() {
 		return ErrSourceEvidence
 	}
 	last := bundle.Generations[len(bundle.Generations)-1]

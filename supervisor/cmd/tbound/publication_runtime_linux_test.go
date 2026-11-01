@@ -466,6 +466,84 @@ func TestPublicationRuntimeDeniedOriginDoesNotBeginPublication(t *testing.T) {
 	}
 }
 
+// Finalize verifies the sealed session before it touches origins, readiness, the root
+// ledger, or publication. A tampered retained generation is refused with no publication
+// records, and the sweep leaves the Store quarantined.
+func TestPublicationRuntimeTamperedSessionRefusedBeforePublication(t *testing.T) {
+	fixture := newPublicationRuntimeFixture(t, nil, &runtimeFixtureTrust{})
+	client, supervisor, proposal := fixture.supervisor(t)
+	runCh := make(chan error, 1)
+	go func() { runCh <- fixture.runtime.Serve(context.Background(), supervisor) }()
+	if err := client.SendProposal(proposal); err != nil {
+		t.Fatal(err)
+	}
+	toolResult, err := client.ReceiveResult()
+	if err != nil || toolResult.Verdict != string(gate.Allow) {
+		t.Fatalf("durable session write result=%+v err=%v", toolResult, err)
+	}
+	_ = client.Close()
+	if err := <-runCh; err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(fixture.base, "session", "generations", "g1", durableWritePath), []byte("tampered\n"), 0o644); err != nil {
+		t.Fatalf("tamper retained generation g1: %v", err)
+	}
+	result, err := fixture.runtime.Finalize(context.Background())
+	if result.TransactionID != "" || !errors.Is(err, sessionrepo.ErrGenerationModified) || !strings.Contains(err.Error(), "verify session repository before publication") {
+		t.Fatalf("tampered session was not refused before publication: result=%+v err=%v", result, err)
+	}
+	trace, err := fixture.publicationJournal.Trace()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, record := range trace.Records {
+		if record.Event.Kind == "publication_prepare" || record.Event.Kind == "workspace_commit_authorized" || record.Event.Kind == "publication_token_consumed" {
+			t.Fatalf("refused session persisted publication effects: %+v", record.Event)
+		}
+	}
+	if _, err := fixture.store.Verify(); !errors.Is(err, sessionrepo.ErrQuarantined) {
+		t.Fatalf("the sweep did not quarantine the Store: %v", err)
+	}
+	if got, err := os.ReadFile(filepath.Join(fixture.base, "live", durableWritePath)); err != nil || string(got) != "baseline\n" {
+		t.Fatalf("refused session changed the live workspace: %q err=%v", got, err)
+	}
+}
+
+// Trust callbacks that edit the arguments they receive after verifying them must not
+// change the approved transitions that the Store retains or that publication reads.
+func TestPublicationRuntimeTrustCallbackArgumentsDoNotChangeRetainedEvidence(t *testing.T) {
+	fixture := newPublicationRuntimeFixture(t, nil, &runtimeFixtureTrust{mutateChanges: true})
+	client, supervisor, proposal := fixture.supervisor(t)
+	runCh := make(chan error, 1)
+	go func() { runCh <- fixture.runtime.Serve(context.Background(), supervisor) }()
+	if err := client.SendProposal(proposal); err != nil {
+		t.Fatal(err)
+	}
+	toolResult, err := client.ReceiveResult()
+	if err != nil || toolResult.Verdict != string(gate.Allow) {
+		t.Fatalf("durable session write result=%+v err=%v", toolResult, err)
+	}
+	_ = client.Close()
+	if err := <-runCh; err != nil {
+		t.Fatal(err)
+	}
+	result, err := fixture.runtime.Finalize(context.Background())
+	if err != nil || result.Status != publication.StatusSucceeded || result.TransactionID == "" {
+		t.Fatalf("publication failed after trust callbacks edited their arguments: result=%+v err=%v", result, err)
+	}
+	evidence, err := fixture.store.EvidenceBundle()
+	if err != nil || len(evidence.ApprovedDeltaLedger) == 0 {
+		t.Fatalf("retained session evidence=%+v err=%v", evidence, err)
+	}
+	for _, transition := range evidence.ApprovedDeltaLedger {
+		for _, change := range transition.Changes {
+			if change.Path == "mutated" {
+				t.Fatalf("a trust callback changed the store-retained transition %s", transition.ID)
+			}
+		}
+	}
+}
+
 func TestPublicationRuntimeCrashQuarantinesRootAndRecoveryDoesNotReplay(t *testing.T) {
 	fixture := newPublicationRuntimeFixture(t, func(point string, _ int) error {
 		if point == "after-rename" {
@@ -1128,6 +1206,7 @@ type runtimeFixtureTrust struct {
 	denyOrigin     bool
 	denyAdmission  bool
 	leaseResolver  workflow.TerminalOriginResolver
+	mutateChanges  bool
 }
 
 func (trust *runtimeFixtureTrust) CheckAdmission(context.Context) error {
@@ -1161,7 +1240,14 @@ func (trust *runtimeFixtureTrust) VerifyTransition(_ context.Context, decision d
 	if trust.authority == nil {
 		return errors.New("no test exact-transition authority is installed")
 	}
-	return trust.authority.verifyDecision(decision, binding)
+	if err := trust.authority.verifyDecision(decision, binding); err != nil {
+		return err
+	}
+	// A callback may edit its copy after verifying it; that edit must not reach the ledger.
+	if trust.mutateChanges && len(binding.Changes) > 0 {
+		binding.Changes[0].Path = "mutated"
+	}
+	return nil
 }
 
 func (trust *runtimeFixtureTrust) VerifyOrigin(_ context.Context, bundle sessionrepo.EvidenceBundle, transition delta.Transition) error {
@@ -1201,6 +1287,9 @@ func (trust *runtimeFixtureTrust) VerifyOrigin(_ context.Context, bundle session
 		(transition.Operation.Kind == delta.OperationProposalCall && transition.Operation.ProposalID == "") ||
 		(transition.Operation.Kind == delta.OperationLease && transition.Operation.LeaseID == "") {
 		return fmt.Errorf("verified evidence bundle contains %d matching durable provider/gate origin receipts", matched)
+	}
+	if trust.mutateChanges && len(transition.Changes) > 0 {
+		transition.Changes[0].Path = "mutated"
 	}
 	return nil
 }
