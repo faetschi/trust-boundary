@@ -124,6 +124,8 @@ type perLaunchProofLauncher interface {
 var (
 	observationWorkerSlots = make(chan struct{}, maxObservationWorkers)
 	settlementWorkerSlots  = make(chan struct{}, maxSettlementWorkers)
+	// beforeWorkerPermitRelease is a test seam that runs as a worker returns its permit. It is nil in production.
+	beforeWorkerPermitRelease func()
 )
 
 func tryAcquireSettlementWorker() bool {
@@ -145,6 +147,9 @@ func tryAcquireObservationWorker() bool {
 }
 
 func releaseObservationWorker() {
+	if beforeWorkerPermitRelease != nil {
+		beforeWorkerPermitRelease()
+	}
 	select {
 	case <-observationWorkerSlots:
 	default:
@@ -153,6 +158,9 @@ func releaseObservationWorker() {
 }
 
 func releaseSettlementWorker() {
+	if beforeWorkerPermitRelease != nil {
+		beforeWorkerPermitRelease()
+	}
 	select {
 	case <-settlementWorkerSlots:
 	default:

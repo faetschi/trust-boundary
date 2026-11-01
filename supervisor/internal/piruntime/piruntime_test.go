@@ -815,91 +815,69 @@ func TestWorkerPermitsRefuseSaturation(t *testing.T) {
 	}
 }
 
-// blockingDescendantSettler keeps a completion goroutine inside Settle until the
-// test releases it, so the test decides when the completion is recorded.
-type blockingDescendantSettler struct {
-	entered chan struct{}
-	release chan struct{}
-}
-
-func (s blockingDescendantSettler) Settle(context.Context) (bool, error) {
-	close(s.entered)
-	<-s.release
-	return true, nil
-}
-
+// A waiter woken by a settlement must see the recorded state and the returned permit. The seam runs as
+// the permit is returned, so the order is checked directly and does not depend on scheduling.
 func TestSettlementCompletionReleasesPermitBeforePublishing(t *testing.T) {
-	held := 0
-	t.Cleanup(func() {
-		for ; held > 0; held-- {
-			releaseSettlementWorker()
+	process := completedProcess(NoDescendants{})
+	t.Cleanup(func() { beforeWorkerPermitRelease = nil })
+	observed := make(chan struct{})
+	var published bool
+	var recorded SettlementState
+	beforeWorkerPermitRelease = func() {
+		select {
+		case <-process.settleDone:
+			published = true
+		default:
 		}
-	})
-	for ; held < maxSettlementWorkers-1; held++ {
-		if !tryAcquireSettlementWorker() {
-			t.Fatalf("settlement worker permit %d unavailable", held)
-		}
+		recorded = process.LastSettlement().State
+		close(observed)
 	}
-	settler := blockingDescendantSettler{entered: make(chan struct{}), release: make(chan struct{})}
-	process := completedProcess(settler)
-	type outcome struct {
-		settlement Settlement
-		err        error
+	settlement, err := process.Settle(context.Background())
+	if err != nil || settlement.State != SettlementStopped {
+		t.Fatalf("completed settlement = %+v, %v; want stopped", settlement, err)
 	}
-	returned := make(chan outcome, 1)
-	go func() {
-		settlement, err := process.Settle(context.Background())
-		returned <- outcome{settlement, err}
-	}()
-	<-settler.entered
-	// Pause the completion before it records its state and releases its permit.
-	// Settle must not return until both have happened.
-	process.stateMu.Lock()
-	close(settler.release)
 	select {
-	case <-returned:
-		process.stateMu.Unlock()
-		t.Fatal("Settle returned before its completion recorded the state and released the settlement permit")
-	case <-time.After(2 * time.Second):
+	case <-observed:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the settlement worker never returned its permit")
 	}
-	process.stateMu.Unlock()
-	got := <-returned
-	if got.err != nil || got.settlement.State != SettlementStopped {
-		t.Fatalf("completed settlement = %+v, %v; want stopped", got.settlement, got.err)
+	if published {
+		t.Fatal("the settlement was published before its permit was returned")
 	}
-	if !tryAcquireSettlementWorker() {
-		t.Fatal("settlement permit still held after Settle returned")
-	}
-	releaseSettlementWorker()
-	if last := process.LastSettlement(); last != got.settlement {
-		t.Fatalf("completed settlement was published before recording: last=%+v returned=%+v", last, got.settlement)
+	if recorded != SettlementStopped {
+		t.Fatalf("the permit was returned with the settlement recorded as %v, want it recorded first", recorded)
 	}
 }
 
-func TestObservationCloseReleasesLastWorkerPermit(t *testing.T) {
-	held := 0
-	t.Cleanup(func() {
-		for ; held > 0; held-- {
-			releaseObservationWorker()
-		}
-	})
-	for ; held < maxObservationWorkers-1; held++ {
-		if !tryAcquireObservationWorker() {
-			t.Fatalf("observation worker permit %d unavailable", held)
-		}
+// A closer woken by the writer must see the returned permit. The seam runs as the permit is returned,
+// so the order is checked directly and does not depend on scheduling.
+func TestObservationCloseReleasesWorkerPermitBeforePublishing(t *testing.T) {
+	writer, err := newObservationWriter("stdout", testHostObservationSink{}, 32)
+	if err != nil {
+		t.Fatal(err)
 	}
-	for i := 0; i < maxObservationWorkers*4; i++ {
-		writer, err := newObservationWriter("stdout", testHostObservationSink{}, 32)
-		if err != nil {
-			t.Fatalf("observation writer %d registration: %v", i, err)
+	t.Cleanup(func() { beforeWorkerPermitRelease = nil })
+	observed := make(chan struct{})
+	var published bool
+	// The worker only reads the seam once Close has closed its queue, which orders this write first.
+	beforeWorkerPermitRelease = func() {
+		select {
+		case <-writer.done:
+			published = true
+		default:
 		}
-		if err := writer.Close(context.Background()); err != nil {
-			t.Fatalf("observation writer %d close: %v", i, err)
-		}
-		if !tryAcquireObservationWorker() {
-			t.Fatalf("observation writer %d close returned before releasing its permit", i)
-		}
-		releaseObservationWorker()
+		close(observed)
+	}
+	if err := writer.Close(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-observed:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the observation worker never returned its permit")
+	}
+	if published {
+		t.Fatal("the observation writer was published as done before its permit was returned")
 	}
 }
 
