@@ -18,11 +18,9 @@ TBP=$W/bin/tbound-profile
 cmp "$TBP" "$W/bin-pass2/tbound-profile" || die "tbound-profile pass1 != pass2"
 expect_same "frozen measurer == P1 record" "$(D "$TBP")" "$(cat "$HF/TBP_DIGEST")"
 
-# Pins: BR/manifest.sha256, F0 P2 setup and F0's installed Pi package/shrinkwrap listing.
-BR=$TBOUND_LOCAL/assets/bundle-rebuild-20261017
-NODE_TAR=$BR/inputs/node-v24.21.0-linux-x64.guest-copy.tar
-expect_same "Node toolchain tar" "$(D "$NODE_TAR")" sha256:73a5a6994009445500e9f10e843b889469b24de79470724eeeb4ba388d0199e3
-expect_same "F0 file-hash listing" "$(D "$A0/p2/listings/build1.sha256.txt")" sha256:0a9ce223732dcaba4a92ad98b8b49b3a6991dbe68b3fb460ccdbfe53e2466a73
+# Pins: the Node tar from fetch-inputs.sh, F0 P2 setup and the hash of the file listing of F0's installed Pi package.
+NODE_TAR=$INPUTS/node-v24.21.0-linux-x64.tar.xz
+expect_same "Node toolchain tar" "$(D "$NODE_TAR")" sha256:fd8e59d5a511510f6a298afb548f18c7d2b1be404d8b4a27d94fbe49f56cb2d6
 unshare -Ucn true || die "private user/network namespace unavailable; no network fallback"
 mkdir "$P"
 mkdir -p "$P"/{src-check,tool,cache-master,out,mnt}
@@ -77,8 +75,7 @@ find "$BUILD/runtime-src" -type d -exec chmod 0555 {} +
 wc -l "$BUILD/find.txt" "$BUILD/sha256.txt"
 BUILD
   # The external CLI closure must still be the pinned F0 one; only the frozen extension/builder may change.
-  grep '  ./cli/' "$A0/p2/listings/build1.sha256.txt" > "$BUILD/f0-cli.sha256.txt"
-  grep '  ./cli/' "$BUILD/sha256.txt" | cmp - "$BUILD/f0-cli.sha256.txt" || die "external Pi CLI closure differs from F0"
+  [ "$(grep '  ./cli/' "$BUILD/sha256.txt" | sha256sum | cut -d' ' -f1)" = 9dca5cef3e0071922a715704ac7bdf03ad19425d5f501471b5c74442bba6c9a4 ] || die "external Pi CLI closure differs from F0"
 done
 
 diff -r --no-dereference "$P/src-check" "$W/src" || die "frozen sources changed during P2"
@@ -127,14 +124,18 @@ echo "OK extraction listing and content == build1"
 # Five records, plus tar size and the explicit rebuild mode.
 # A reuse rc=6 may have left the path lists; retain those only if they are identical.
 git -C "$REPO" diff --name-only --no-ext-diff "$F0COMMIT" "$F" > "$P/out/CHANGED-PATHS-vs-F0.txt"
-git -C "$REPO" diff --name-only --no-ext-diff "$PREV_COMMIT" "$F" > "$P/out/CHANGED-PATHS-vs-$PREV_FREEZE.txt"
-for n in CHANGED-PATHS-vs-F0.txt CHANGED-PATHS-vs-$PREV_FREEZE.txt; do
+CHANGED=CHANGED-PATHS-vs-F0.txt
+if has_prev; then
+  CHANGED="$CHANGED CHANGED-PATHS-vs-$PREV_FREEZE.txt"
+  git -C "$REPO" diff --name-only --no-ext-diff "$PREV_COMMIT" "$F" > "$P/out/CHANGED-PATHS-vs-$PREV_FREEZE.txt"
+fi
+for n in $CHANGED; do
   if [ -e "$HF/$n" ]; then cmp "$P/out/$n" "$HF/$n" || die "$HF/$n differs"; fi
 done
 expect_same "HEAD still frozen" "$(git -C "$REPO" rev-parse HEAD)" "$F"
 disk_preflight
 set -C
-for n in CHANGED-PATHS-vs-F0.txt CHANGED-PATHS-vs-$PREV_FREEZE.txt; do
+for n in $CHANGED; do
   if [ ! -e "$HF/$n" ]; then cat "$P/out/$n" > "$HF/$n"; fi
 done
 printf '%s\n' "$BUNDLE_DIGEST" > "$HF/BUNDLE_DIGEST"
@@ -142,7 +143,8 @@ printf '%s\n' "$TAR" > "$HF/BUNDLE_TAR_PATH"
 printf '%s\n' "$TARSHA" > "$HF/BUNDLE_TAR_DIGEST"
 stat -c %s "$TAR" > "$HF/BUNDLE_TAR_SIZE"
 printf '%s\n' rebuild > "$HF/P2-MODE"
-chmod 600 "$HF/BUNDLE_DIGEST" "$HF/BUNDLE_TAR_PATH" "$HF/BUNDLE_TAR_DIGEST" "$HF/BUNDLE_TAR_SIZE" "$HF/P2-MODE" "$HF/CHANGED-PATHS-vs-F0.txt" "$HF/CHANGED-PATHS-vs-$PREV_FREEZE.txt"
+chmod 600 "$HF/BUNDLE_DIGEST" "$HF/BUNDLE_TAR_PATH" "$HF/BUNDLE_TAR_DIGEST" "$HF/BUNDLE_TAR_SIZE" "$HF/P2-MODE"
+for n in $CHANGED; do chmod 600 "$HF/$n"; done
 echo "TAR=$TAR $TARSHA ($(stat -c %s "$TAR") bytes)"
 echo "== DONE 25-p2-rebuild: BUNDLE_DIGEST=$BUNDLE_DIGEST (two offline builds identical)"
 finish_step "$TAR" "$TAR.sha256" "$P/out/build1/find.txt" "$P/out/build2/find.txt" "$P/out/build1/sha256.txt" "$P/out/build2/sha256.txt" "$P/out/build1/measure.out" "$P/out/build2/measure.out"

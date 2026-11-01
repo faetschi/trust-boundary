@@ -5,7 +5,6 @@ set -E
 
 . "$(dirname -- "${BASH_SOURCE[0]}")/paths.sh"
 A=$KIT_DIR
-A0=$TBOUND_LOCAL/assets/F0-c7f9e9c
 F0COMMIT=c7f9e9ce2516f0377c4ca59a84eea3c55aa18fc5
 F1COMMIT=b42b920e9ad3f70e0082aa26d26fe4a27df64e4e
 F2COMMIT=feb5c7bc26749705af80cddc82f22b65914e84b4
@@ -26,11 +25,20 @@ die() { echo "FATAL: $*" >&2; exit 1; }
 # shellcheck disable=SC1090
 . "$VALUES"
 [ "$FREEZE" = "$KIT_FREEZE" ] || die "$VALUES says FREEZE=$FREEZE but KIT_FREEZE=$KIT_FREEZE"
-for v in FREEZE FREEZE_COMMIT PREV_FREEZE PREV_COMMIT PREV_W PREV_NAMES PREV_G1_RID PREV_RP_RID PREV_DR_RID PREV_DR_RUNID PREV_DR_CHECKS_OK PREV_DR_ADMISSION_ID DR_ADMISSION_ID DR_ADMISSION_REFUSE GUEST_IP; do
+for v in FREEZE FREEZE_COMMIT PREV_FREEZE DR_ADMISSION_ID DR_ADMISSION_REFUSE GUEST_IP; do
   [ -n "${!v:-}" ] || die "$VALUES lacks $v"
 done
 [ "$PREV_FREEZE" != "$FREEZE" ] || die "$VALUES: PREV_FREEZE equals FREEZE"
-[[ $PREV_COMMIT =~ ^[0-9a-f]{40}$ ]] || die "$VALUES: PREV_COMMIT is not a 40-hex lowercase commit: '$PREV_COMMIT'"
+# PREV_FREEZE=none is the first freeze of a new chain: there is nothing to compare with, so the comparisons read empty values.
+has_prev() { [ "$PREV_FREEZE" != none ]; }
+if has_prev; then
+  for v in PREV_COMMIT PREV_W PREV_NAMES PREV_G1_RID PREV_RP_RID PREV_DR_RID PREV_DR_RUNID PREV_DR_CHECKS_OK PREV_DR_ADMISSION_ID; do
+    [ -n "${!v:-}" ] || die "$VALUES lacks $v"
+  done
+  [[ $PREV_COMMIT =~ ^[0-9a-f]{40}$ ]] || die "$VALUES: PREV_COMMIT is not a 40-hex lowercase commit: '$PREV_COMMIT'"
+else
+  PREV_COMMIT= PREV_TBOUND_DIGEST= PREV_TBP_DIGEST= PREV_ENTRYPOINT_DIGEST= PREV_SRC_DIGEST= PREV_BUNDLE_DIGEST= PREV_IMGDIGEST= PREV_CFG= PREV_LOAD_TAR_DIGEST= PREV_TEST_PROCORACLE= PREV_TEST_ENTRYPOINT=
+fi
 FREEZE_LC=$(printf '%s' "$FREEZE" | tr 'A-Z' 'a-z')
 PREV_LC=$(printf '%s' "$PREV_FREEZE" | tr 'A-Z' 'a-z')
 HF=$OLDH/$FREEZE_LC
@@ -41,8 +49,10 @@ OUTROOT=$TBOUND_WORK/receipts/$FREEZE
 LOG=$OUTROOT/logs
 F=$FREEZE_COMMIT
 
-CELL_BASE_CACHE=$TBOUND_LOCAL/assets/cell-image-20261017/artifacts/base-cache
-COSIGN_TOOL=$TBOUND_LOCAL/assets/cell-image-20261017/tools/cosign-v3.1.3
+# Public inputs from infra/workspace/fetch-inputs.sh, verified against their pins there.
+INPUTS=$TBOUND_WORK/inputs
+CELL_BASE_CACHE=$INPUTS/base-cache
+COSIGN_TOOL=$INPUTS/cosign-v3.1.3-linux-amd64
 
 # Values measured in F0 (F0-receipt.md). Used only as pins for the reuse proof and as "same as F0?" comparisons.
 F0_BUNDLE_DIGEST=sha256:8e405ef0f2a3a3ed725dba2815d71bd8e5db007fe993f4ac3979ad59016d4f48
@@ -125,6 +135,7 @@ load_env() {
 
 # check_prev_values: the PREV_* constants must equal the recorded outputs of the previous freeze ($PREV_HF/<NAME>). Names only are read: public digests.
 check_prev_values() {
+  has_prev || return 0
   local n v
   for n in $PREV_NAMES; do
     v="PREV_$n"
@@ -148,4 +159,4 @@ expect_same() { [ "$2" = "$3" ] || die "$1 mismatch: got $2 want $3"; echo "OK $
 
 # note_f0 / note_prev <label> <value> <earlier value>: informational "same as / NEW".
 note_f0() { if [ "$2" = "$3" ]; then echo "$1: $2  (same as F0)"; else echo "$1: $2  (NEW; F0 was $3)"; fi; }
-note_prev() { if [ "$2" = "$3" ]; then echo "$1: $2  (same as $PREV_FREEZE)"; else echo "$1: $2  (NEW; $PREV_FREEZE was $3)"; fi; }
+note_prev() { if ! has_prev; then echo "$1: $2  (first freeze of this chain)"; elif [ "$2" = "$3" ]; then echo "$1: $2  (same as $PREV_FREEZE)"; else echo "$1: $2  (NEW; $PREV_FREEZE was $3)"; fi; }

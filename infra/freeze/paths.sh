@@ -8,7 +8,7 @@ HOST_ENV=$TBOUND_LOCAL/freeze-host.env
 [ -f "$HOST_ENV" ] || { echo "FATAL: no $HOST_ENV (copy infra/freeze/host.env.example there)" >&2; exit 2; }
 # shellcheck disable=SC1090
 . "$HOST_ENV"
-for v in TBOUND_WORK OLDH OLDW GO PASSPHRASE_FILE; do
+for v in TBOUND_WORK OLDH GO PASSPHRASE_FILE; do
   [[ ${!v:-} == /* ]] || { echo "FATAL: $HOST_ENV must set $v to an absolute Linux path" >&2; exit 2; }
 done
 # TBOUND_WORK is on a Linux filesystem: drive mounts are read-only from WSL and lose the modes the tests check.

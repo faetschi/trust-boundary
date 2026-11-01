@@ -49,10 +49,11 @@ git -C "$REPO" merge-base --is-ancestor "$F7COMMIT" "$F" || die "F7 ($F7COMMIT) 
 git -C "$REPO" merge-base --is-ancestor "$F8COMMIT" "$F" || die "F8 ($F8COMMIT) is not an ancestor of $FREEZE"
 git -C "$REPO" merge-base --is-ancestor "$F9COMMIT" "$F" || die "F9 ($F9COMMIT) is not an ancestor of $FREEZE"
 git -C "$REPO" merge-base --is-ancestor "$F10COMMIT" "$F" || die "F10 ($F10COMMIT) is not an ancestor of $FREEZE"
-git -C "$REPO" merge-base --is-ancestor "$PREV_COMMIT" "$F" || die "$PREV_FREEZE ($PREV_COMMIT) is not an ancestor of $FREEZE"
+if has_prev; then git -C "$REPO" merge-base --is-ancestor "$PREV_COMMIT" "$F" || die "$PREV_FREEZE ($PREV_COMMIT) is not an ancestor of $FREEZE"; fi
 
 # 2. Build inputs clean. Same check as F0: WSL git lacks the Windows core.autocrlf=true, so pass it explicitly.
-ST=$(git -C "$REPO" -c core.autocrlf=true status --porcelain -- supervisor adapter scripts packaging infra corpus)
+# The values file names this very commit, so it cannot be part of it.
+ST=$(git -C "$REPO" -c core.autocrlf=true status --porcelain -- supervisor adapter scripts packaging infra corpus ':(exclude)infra/freeze/freezes')
 echo "status-porcelain-bytes=${#ST}"; echo "$ST" | head
 [ -z "$ST" ] || die "dirty build inputs"
 
@@ -61,13 +62,16 @@ H=$OLDH
 [ -d "$H" ] || die "H missing: $H"
 [ "$(stat -c %a "$H")" = 700 ] || die "H is not 0700"
 [ "$(stat -c %U "$H")" = "$(id -un)" ] || die "H not owned by $(id -un)"
-for n in admin.key admin.pub cosign-gen.key cosign-gen.pub cosign.pub ADMIN_PUB_DIGEST COSIGN_PUB_DIGEST pi-cell-oci pi-cell-load.tar FROZEN-COMMIT BUNDLE_DIGEST; do
+for n in admin.key admin.pub cosign-gen.key cosign-gen.pub cosign.pub ADMIN_PUB_DIGEST COSIGN_PUB_DIGEST; do
   [ -e "$H/$n" ] || die "H lacks $n"
 done
+if has_prev; then
 [ "$(cat "$H/FROZEN-COMMIT")" = "$F0COMMIT" ] || die "H/FROZEN-COMMIT is not F0"
 [ "$(cat "$PREV_HF/FROZEN-COMMIT")" = "$PREV_COMMIT" ] || die "H/$PREV_LC/FROZEN-COMMIT is not $PREV_FREEZE (the $PREV_FREEZE outputs are the comparison base)"
 for n in IMGDIGEST CFG TBOUND_DIGEST TBP_DIGEST ENTRYPOINT_DIGEST BASE_TD LANDLOCK_DIGEST XATTR_VIS_DIGEST XATTR_MOPT XATTR_MAGIC CONTAINERS_CONF_DIGEST STORAGE_CONF_DIGEST CGROUP_ROOT_DIGEST pi-cell-oci CAL_RO_DIGEST CAL_RW_DIGEST cal-ro.unsigned.json cal-rw.unsigned.json d09-xattr-enumeration-calibration.json d09-xattr-enumeration-calibration.ed25519 d09-xattr-enumeration-calibration-readonly.json d09-xattr-enumeration-calibration-readonly.ed25519 LOAD_TAR_DIGEST TEST_PROCORACLE TEST_ENTRYPOINT g1/serve-pi-service.json g1/RID g1/CLIENT_STATUS g1/client-run.status g1/response.txt g1/managed-live-root.unsigned.json g1/managed-live-root.json g1/pi-host-profile.signed.json rp/RID rp/serve-pi-service.json rp/response.txt rp/client-run.status rp/RUNID rp/CHECKS_OK dr/RID dr/RUNID dr/CHECKS_OK dr/serve-pi-service.json dr/response.txt dr/client-run.status dr/ADMISSION_ID dr/CLIENT_STATUS; do [ -e "$PREV_HF/$n" ] || die "H/$PREV_LC lacks $n"; done
+fi
 echo "H names:"; ls -A "$H"
+if has_prev; then
 check_prev_values
 [ "$(cat "$PREV_HF/g1/RID")" = "$PREV_G1_RID" ] || die "$PREV_HF/g1/RID is not PREV_G1_RID ($PREV_G1_RID)"
 [ "$(cat "$PREV_HF/rp/RID")" = "$PREV_RP_RID" ] || die "$PREV_HF/rp/RID is not PREV_RP_RID ($PREV_RP_RID)"
@@ -84,7 +88,7 @@ done
 [ "$DR_ADMISSION_ID" != "$PREV_DR_ADMISSION_ID" ] || die "DR_ADMISSION_ID equals the $PREV_FREEZE dr id"
 for spent in $DR_ADMISSION_REFUSE; do [ "$DR_ADMISSION_ID" != "$spent" ] || die "DR_ADMISSION_ID $spent is in DR_ADMISSION_REFUSE"; done
 echo "OK admission ids: g1 and route-probe templates differ from $PREV_FREEZE, dr id is new"
-[ -d "$OLDW" ] && [ -f "$OLDW/p2/runtime-bundle-c7f9e9c-lf.tar" ] || die "F0 runtime bundle tar missing under $OLDW/p2"
+fi
 if [ -e "$HF" ] && [ -n "$(ls -A "$HF")" ]; then die "$HF already has content (runbook rule 4: new freeze outputs go to a new, empty directory)"; fi
 
 # 4. Only now create directories (a failed check leaves nothing behind).
