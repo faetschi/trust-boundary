@@ -16,6 +16,7 @@
 #
 # Run as root:      sudo bash bootstrap-linux.sh [trial-user]
 # Unattended runs:  TBOUND_ASSUME_YES=1 sudo -E bash bootstrap-linux.sh [trial-user]
+#   Add TBOUND_APPLY_USERNS_SYSCTL=1 to allow the Step 4 user namespace policy change.
 #
 # Exit codes:
 #   0  bootstrap complete; probe passed with at most the two by-design UNVERIFIED items
@@ -337,6 +338,10 @@ else
     say 'and apply it now with sysctl -w. This is the documented Ubuntu fix for'
     say 'dedicated evaluation environments; it restores the upstream default under'
     say 'which any local user may create user namespaces. Review that trade-off for this host.'
+    # TBOUND_ASSUME_YES accepts the whole plan, so this host policy change needs its own opt-in.
+    if [[ "${TBOUND_ASSUME_YES:-0}" == "1" && "${TBOUND_APPLY_USERNS_SYSCTL:-0}" != "1" ]]; then
+      die "unattended runs change $SYSCTL_KEY only with TBOUND_APPLY_USERNS_SYSCTL=1; set it on a dedicated evaluation host, or run interactively"
+    fi
     if confirm "Write $SYSCTL_FILE and set $SYSCTL_KEY=0 now?"; then
       if [[ -e "$SYSCTL_FILE" ]]; then
         grep -Eq '^[[:space:]]*kernel\.apparmor_restrict_unprivileged_userns[[:space:]]*=[[:space:]]*0' "$SYSCTL_FILE" || \

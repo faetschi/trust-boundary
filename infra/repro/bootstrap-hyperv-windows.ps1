@@ -1091,7 +1091,7 @@ foreach ($pair in @(
 $script:stepsDone.Add('Scripts staged in the guest')
 
 Write-Host "Running bootstrap-linux.sh as '$GuestUser' via sudo (TBOUND_ASSUME_YES=1; this is the provisioning plan you confirmed with ShouldProcess)..."
-$remoteCmd = 'sudo TBOUND_ASSUME_YES=1 bash ~/tbound-infra/repro/bootstrap-linux.sh {0}' -f $GuestUser
+$remoteCmd = 'sudo TBOUND_ASSUME_YES=1 TBOUND_APPLY_USERNS_SYSCTL=1 bash ~/tbound-infra/repro/bootstrap-linux.sh {0}' -f $GuestUser
 & $script:CmdExePath /c ('"{0}" {1} "{2}" "{3}" 2>&1' -f $sshExe, ($sshBase -join ' '), $sshTarget, $remoteCmd)
 $bootstrapExit = $LASTEXITCODE
 if ($bootstrapExit -ne 0) {
