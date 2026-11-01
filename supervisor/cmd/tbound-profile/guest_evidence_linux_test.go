@@ -11,6 +11,7 @@ import (
 	"errors"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -85,7 +86,36 @@ func geCgroupTree(t *testing.T, kill bool, kind string) capabilityEnv {
 }
 
 func TestProbeCapabilityReadsTheMachine(t *testing.T) {
+	// Other capability tests may leave a filter on the wedged main thread. Start
+	// fresh so its count cannot mask a new filter on a different thread.
+	if os.Getenv("TBOUND_TEST_CAPABILITY_PROBE_CHILD") != "1" {
+		cmd := exec.Command(os.Args[0], "-test.run=^TestProbeCapabilityReadsTheMachine$", "-test.v", "-test.timeout=30s")
+		cmd.Env = append(os.Environ(), "TBOUND_TEST_CAPABILITY_PROBE_CHILD=1")
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("fresh-process capability probe: %v\n%s", err, output)
+		}
+		if bytes.Contains(output, []byte("--- SKIP: "+t.Name())) {
+			t.Skipf("fresh-process capability probe skipped:\n%s", output)
+		}
+		t.Logf("fresh-process capability probe:\n%s", output)
+		return
+	}
 	env := geCgroupTree(t, true, "domain")
+	status, err := os.ReadFile("/proc/self/status")
+	if err != nil {
+		t.Fatal(err)
+	}
+	inheritedFilters := seccompFilterCount(t, status)
+	tasks, err := os.ReadDir("/proc/self/task")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, task := range tasks {
+		if status, err := os.ReadFile("/proc/self/task/" + task.Name() + "/status"); err == nil && seccompFilterCount(t, status) != inheritedFilters {
+			t.Fatal("fresh-process threads do not have a uniform inherited seccomp filter count")
+		}
+	}
 	c, err := probeCapability(env)
 	if err != nil {
 		t.Fatal(err)
@@ -102,9 +132,9 @@ func TestProbeCapabilityReadsTheMachine(t *testing.T) {
 	}
 	// The probe thread's filter must not have leaked to any other thread of this process. /proc/self is
 	// the main thread: when the scheduler runs the probe goroutine there, the runtime wedges that thread
-	// instead of ending it, so it keeps its filter and nothing runs on it. Any other filtered thread
-	// is a leak (a thread that is still exiting is given a moment).
-	if leaked := otherFilteredThreads(t); len(leaked) > 0 {
+	// instead of ending it, so it keeps its filter and nothing runs on it. Any other thread with
+	// more filters than the inherited baseline is a leak (an exiting thread is given a moment).
+	if leaked := otherFilteredThreads(t, inheritedFilters); len(leaked) > 0 {
 		t.Fatalf("the seccomp probe filter reached threads %v of this process", leaked)
 	}
 	// The artifact is as honest as the kernel: it passes the validator only on Landlock ABI 8.
@@ -122,12 +152,13 @@ func TestProbeCapabilityReadsTheMachine(t *testing.T) {
 	}
 }
 
-// otherFilteredThreads returns the ids of the threads of this process that run under a seccomp filter,
+// otherFilteredThreads returns threads with more filters than the inherited baseline,
 // except the main thread, which the runtime wedges (and does not end) if the probe goroutine ran on it.
-func otherFilteredThreads(t *testing.T) []int {
+func otherFilteredThreads(t *testing.T, inheritedFilters int) []int {
 	t.Helper()
 	var filtered []int
-	for range 200 {
+	// The probe reports before its locked thread exits, and teardown can lag on a loaded runner.
+	for range 1000 {
 		filtered = nil
 		tasks, err := os.ReadDir("/proc/self/task")
 		if err != nil {
@@ -139,7 +170,7 @@ func otherFilteredThreads(t *testing.T) []int {
 				continue
 			}
 			// A thread that exits between the listing and the read is gone, not filtered.
-			if status, err := os.ReadFile("/proc/self/task/" + task.Name() + "/status"); err == nil && strings.Contains(string(status), "\nSeccomp:\t2") {
+			if status, err := os.ReadFile("/proc/self/task/" + task.Name() + "/status"); err == nil && seccompFilterCount(t, status) > inheritedFilters {
 				filtered = append(filtered, tid)
 			}
 		}
@@ -149,6 +180,21 @@ func otherFilteredThreads(t *testing.T) []int {
 		time.Sleep(10 * time.Millisecond)
 	}
 	return filtered
+}
+
+func seccompFilterCount(t *testing.T, status []byte) int {
+	t.Helper()
+	for _, line := range strings.Split(string(status), "\n") {
+		if value, ok := strings.CutPrefix(line, "Seccomp_filters:"); ok {
+			count, err := strconv.Atoi(strings.TrimSpace(value))
+			if err != nil || count < 0 {
+				t.Fatalf("invalid Seccomp_filters count: %q", value)
+			}
+			return count
+		}
+	}
+	t.Fatal("Seccomp_filters count is missing from /proc status")
+	return 0
 }
 
 func TestProbeCapabilityMissingFactsAreNotInvented(t *testing.T) {
