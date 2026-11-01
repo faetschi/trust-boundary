@@ -164,7 +164,12 @@ func (p *Process) releaseSettlementWorker() {
 	if p == nil || !p.settlementSlotHeld {
 		return
 	}
-	p.settlementSlotOnce.Do(releaseSettlementWorker)
+	p.settlementSlotOnce.Do(func() {
+		if p.beforePermitRelease != nil {
+			p.beforePermitRelease()
+		}
+		releaseSettlementWorker()
+	})
 }
 
 func (s ChildSpec) validateShape() error {
@@ -359,6 +364,8 @@ type Process struct {
 
 	settlementSlotHeld bool
 	settlementSlotOnce sync.Once
+	// beforePermitRelease is a test seam that runs as this process's worker returns its permit. It is nil in production.
+	beforePermitRelease func()
 }
 
 func StartChild(ctx context.Context, spec ChildSpec) (*Process, error) {
@@ -604,10 +611,11 @@ func (p *Process) Settle(ctx context.Context) (Settlement, error) {
 			}
 			p.settleMu.Lock()
 			p.settleResult, p.settleErr = result, errors.Join(err, waitResult.observationErr)
-			close(done)
-			p.settleMu.Unlock()
+			// Publish completion last: waiters must see the recorded state and the returned permit.
 			p.recordSettlement(result)
 			p.releaseSettlementWorker()
+			close(done)
+			p.settleMu.Unlock()
 		}()
 	}
 	done := p.settleDone
@@ -718,6 +726,9 @@ func DigestEnvironment(env []string) string {
 }
 
 type observationWriter struct {
+	// beforePermitRelease is a test seam that runs as this writer's worker returns its permit. It is nil in production.
+	beforePermitRelease func()
+
 	stream string
 	sink   ObservationSink
 	queue  chan Observation
@@ -743,8 +754,14 @@ func newObservationWriter(stream string, sink ObservationSink, max int) (*observ
 	ctx, cancel := context.WithCancel(context.Background())
 	w := &observationWriter{stream: stream, sink: sink, left: max, queue: make(chan Observation, observationQueueSize), ctx: ctx, cancel: cancel, done: make(chan struct{})}
 	go func() {
-		defer releaseObservationWorker()
 		defer close(w.done)
+		// Deferred calls run last-in first-out: the permit is returned before done closes.
+		defer func() {
+			if w.beforePermitRelease != nil {
+				w.beforePermitRelease()
+			}
+			releaseObservationWorker()
+		}()
 		for event := range w.queue {
 			select {
 			case <-w.ctx.Done():

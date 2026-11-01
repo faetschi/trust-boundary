@@ -815,6 +815,70 @@ func TestWorkerPermitsRefuseSaturation(t *testing.T) {
 	}
 }
 
+// A waiter woken by a settlement must see the recorded state and the returned permit. The seam runs as
+// the permit is returned, so the order is checked directly and does not depend on scheduling.
+func TestSettlementCompletionReleasesPermitBeforePublishing(t *testing.T) {
+	process := completedProcess(NoDescendants{})
+	observed := make(chan struct{})
+	var published bool
+	var recorded SettlementState
+	process.beforePermitRelease = func() {
+		select {
+		case <-process.settleDone:
+			published = true
+		default:
+		}
+		recorded = process.LastSettlement().State
+		close(observed)
+	}
+	settlement, err := process.Settle(context.Background())
+	if err != nil || settlement.State != SettlementStopped {
+		t.Fatalf("completed settlement = %+v, %v; want stopped", settlement, err)
+	}
+	select {
+	case <-observed:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the settlement worker never returned its permit")
+	}
+	if published {
+		t.Fatal("the settlement was published before its permit was returned")
+	}
+	if recorded != SettlementStopped {
+		t.Fatalf("the permit was returned with the settlement recorded as %v, want it recorded first", recorded)
+	}
+}
+
+// A closer woken by the writer must see the returned permit. The seam runs as the permit is returned,
+// so the order is checked directly and does not depend on scheduling.
+func TestObservationCloseReleasesWorkerPermitBeforePublishing(t *testing.T) {
+	writer, err := newObservationWriter("stdout", testHostObservationSink{}, 32)
+	if err != nil {
+		t.Fatal(err)
+	}
+	observed := make(chan struct{})
+	var published bool
+	// The worker only reads the seam once Close has closed its queue, which orders this write first.
+	writer.beforePermitRelease = func() {
+		select {
+		case <-writer.done:
+			published = true
+		default:
+		}
+		close(observed)
+	}
+	if err := writer.Close(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-observed:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the observation worker never returned its permit")
+	}
+	if published {
+		t.Fatal("the observation writer was published as done before its permit was returned")
+	}
+}
+
 func TestSettlementWithoutDescendantProofStaysUnknown(t *testing.T) {
 	process := completedProcess(nil)
 	settlement, err := process.Settle(context.Background())

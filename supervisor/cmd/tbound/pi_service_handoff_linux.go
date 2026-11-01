@@ -443,7 +443,7 @@ func validatePiServiceSocketRegistration(reg piServiceSocketRegistration, servic
 	}
 	previous := -1
 	for _, uid := range reg.AllowedClientUIDs {
-		if uid < 0 || uid == serviceUID || uid <= previous {
+		if uid <= 0 || uid == serviceUID || uid <= previous {
 			return ErrPiServiceUnavailable
 		}
 		previous = uid
