@@ -815,6 +815,94 @@ func TestWorkerPermitsRefuseSaturation(t *testing.T) {
 	}
 }
 
+// blockingDescendantSettler keeps a completion goroutine inside Settle until the
+// test releases it, so the test decides when the completion is recorded.
+type blockingDescendantSettler struct {
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (s blockingDescendantSettler) Settle(context.Context) (bool, error) {
+	close(s.entered)
+	<-s.release
+	return true, nil
+}
+
+func TestSettlementCompletionReleasesPermitBeforePublishing(t *testing.T) {
+	held := 0
+	t.Cleanup(func() {
+		for ; held > 0; held-- {
+			releaseSettlementWorker()
+		}
+	})
+	for ; held < maxSettlementWorkers-1; held++ {
+		if !tryAcquireSettlementWorker() {
+			t.Fatalf("settlement worker permit %d unavailable", held)
+		}
+	}
+	settler := blockingDescendantSettler{entered: make(chan struct{}), release: make(chan struct{})}
+	process := completedProcess(settler)
+	type outcome struct {
+		settlement Settlement
+		err        error
+	}
+	returned := make(chan outcome, 1)
+	go func() {
+		settlement, err := process.Settle(context.Background())
+		returned <- outcome{settlement, err}
+	}()
+	<-settler.entered
+	// Pause the completion before it records its state and releases its permit.
+	// Settle must not return until both have happened.
+	process.stateMu.Lock()
+	close(settler.release)
+	select {
+	case <-returned:
+		process.stateMu.Unlock()
+		t.Fatal("Settle returned before its completion recorded the state and released the settlement permit")
+	case <-time.After(2 * time.Second):
+	}
+	process.stateMu.Unlock()
+	got := <-returned
+	if got.err != nil || got.settlement.State != SettlementStopped {
+		t.Fatalf("completed settlement = %+v, %v; want stopped", got.settlement, got.err)
+	}
+	if !tryAcquireSettlementWorker() {
+		t.Fatal("settlement permit still held after Settle returned")
+	}
+	releaseSettlementWorker()
+	if last := process.LastSettlement(); last != got.settlement {
+		t.Fatalf("completed settlement was published before recording: last=%+v returned=%+v", last, got.settlement)
+	}
+}
+
+func TestObservationCloseReleasesLastWorkerPermit(t *testing.T) {
+	held := 0
+	t.Cleanup(func() {
+		for ; held > 0; held-- {
+			releaseObservationWorker()
+		}
+	})
+	for ; held < maxObservationWorkers-1; held++ {
+		if !tryAcquireObservationWorker() {
+			t.Fatalf("observation worker permit %d unavailable", held)
+		}
+	}
+	for i := 0; i < maxObservationWorkers*4; i++ {
+		writer, err := newObservationWriter("stdout", testHostObservationSink{}, 32)
+		if err != nil {
+			t.Fatalf("observation writer %d registration: %v", i, err)
+		}
+		if err := writer.Close(context.Background()); err != nil {
+			t.Fatalf("observation writer %d close: %v", i, err)
+		}
+		if !tryAcquireObservationWorker() {
+			t.Fatalf("observation writer %d close returned before releasing its permit", i)
+		}
+		releaseObservationWorker()
+	}
+}
+
 func TestSettlementWithoutDescendantProofStaysUnknown(t *testing.T) {
 	process := completedProcess(nil)
 	settlement, err := process.Settle(context.Background())
