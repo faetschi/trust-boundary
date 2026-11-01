@@ -22,7 +22,7 @@ Everything TBound and the thesis need lives in this repository directory, and no
 3. To continue the existing chain, restore `.local/secrets/freeze-home.tar.gz` with `tar -xzpf` on a Linux filesystem, at a short path such as `~/tbound-h`. The restore is untested. To start a new chain instead, follow [Start a new chain](../../infra/freeze/README.md#start-a-new-chain).
 4. Copy `infra/freeze/host.env.example` to `.local/freeze-host.env` and adjust it.
 5. Prepare the host:
-   - **Native Linux.** `sudo bash infra/repro/bootstrap-linux.sh <trial-user>`.
+   - **Native Linux.** `bash infra/repro/bootstrap-qemu-linux.sh` creates a VM under `.local/vm`, with its image pinned by hash. To use the host itself instead, `sudo bash infra/repro/bootstrap-linux.sh <trial-user>`.
    - **Windows.** `infra\repro\bootstrap-hyperv-windows.ps1` creates the VM under `.local\vm`. `infra\workspace\New-TBoundWsl.ps1 -RootfsPath <rootfs> -RootfsSha256 <hash>` creates the WSL distro `tbound-dev` under `.local\wsl`, with read-only drive mounts for builds.
    - **Inputs.** In a Linux shell, `bash infra/workspace/fetch-inputs.sh "$TBOUND_WORK/inputs"` downloads and verifies the public build inputs. Add `--iso` for the Ubuntu ISO. `bash infra/workspace/install-toolchains.sh "$TBOUND_WORK/inputs" <prefix>` unpacks Go and Node and prints the environment to source, then `bash infra/workspace/fill-caches.sh` fills the Go and npm caches for the offline builds. `make build` and `make test` also need `gcc` and `make`.
 6. Run `bash scripts/check-self-contained.sh --self-test`.
