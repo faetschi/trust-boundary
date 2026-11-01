@@ -74,3 +74,20 @@ func TestProductRegistrationMeasureRefusesWhatTheServiceWouldRefuse(t *testing.T
 		})
 	}
 }
+
+func TestCgroupKillIsFoundBelowTheRootWhereTheKernelCreatesIt(t *testing.T) {
+	root := t.TempDir()
+	child := filepath.Join(root, "system.slice")
+	if err := os.Mkdir(child, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if cgroupKillAvailable(root) {
+		t.Fatal("reported cgroup.kill on a host without one")
+	}
+	if err := os.WriteFile(filepath.Join(child, "cgroup.kill"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if !cgroupKillAvailable(root) {
+		t.Fatal("missed cgroup.kill in a child cgroup, the only place the kernel creates it")
+	}
+}
