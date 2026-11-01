@@ -11,10 +11,10 @@ go_version=$(pinned GO_VERSION)
 node_version=$(pinned NODE_VERSION)
 
 mkdir -p -- "$prefix/go$go_version" "$prefix/node-v$node_version"
-# The audit tests reject a world-writable /tmp as an ancestor, so tests get a private TMPDIR.
+# The audit tests reject a world-writable /tmp and 0755 parents, so tests get a private TMPDIR and umask 077 (as the gate does).
 mkdir -p -m 700 -- "$prefix/tmp"
 tar -xzf "$inputs/go$go_version.linux-amd64.tar.gz" --strip-components=1 -C "$prefix/go$go_version"
 tar -xJf "$inputs/node-v$node_version-linux-x64.tar.xz" --strip-components=1 -C "$prefix/node-v$node_version"
 "$prefix/go$go_version/bin/go" version >&2
 "$prefix/node-v$node_version/bin/node" --version >&2
-echo "export TMPDIR=$prefix/tmp GOTOOLCHAIN=local PATH=$prefix/go$go_version/bin:$prefix/node-v$node_version/bin:\$PATH"
+echo "umask 077; export TMPDIR=$prefix/tmp GOTOOLCHAIN=local PATH=$prefix/go$go_version/bin:$prefix/node-v$node_version/bin:\$PATH"
