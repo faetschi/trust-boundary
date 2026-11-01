@@ -1609,17 +1609,19 @@ func servePiServiceRequests(ctx context.Context, listener net.Listener, socket p
 			_ = unixConn.Close()
 			continue
 		}
-		if exists && prior.terminal != nil {
+		answerStoredTerminal := func(stored piServiceRequestState) {
 			// A stored terminal is returned only if it still belongs to the active
 			// manifest, config, registration and envelope. A refusal consumes nothing.
-			if code := journal.checkTerminalReplay(peer, request, prior); code != "" {
+			if code := journal.checkTerminalReplay(peer, request, stored); code != "" {
 				_ = writePiServiceFrame(unixConn, piServiceResponse{SchemaVersion: piServiceResponseSchema,
 					RequestID: request.RequestID, Status: "refused", ErrorCode: code})
-				_ = unixConn.Close()
-				continue
+			} else {
+				_ = writePiServiceFrame(unixConn, *stored.terminal)
 			}
-			_ = writePiServiceFrame(unixConn, *prior.terminal)
 			_ = unixConn.Close()
+		}
+		if exists && prior.terminal != nil {
+			answerStoredTerminal(prior)
 			continue
 		}
 		journal.runAfterScreen(request, &active)
@@ -1628,6 +1630,23 @@ func servePiServiceRequests(ctx context.Context, listener net.Listener, socket p
 				RequestID: request.RequestID, Status: "busy", ErrorCode: "one-task-at-a-time"})
 			_ = unixConn.Close()
 			continue
+		}
+		if exists {
+			// The task that held the slot may have settled this request after the lookup, and a settled
+			// workflow cannot be resumed. Nothing else can settle it now that this request holds the slot.
+			settled, _, settledErr := journal.lookup(peer, request, payloadDigest)
+			if settledErr != nil {
+				active.Store(false)
+				_ = writePiServiceFrame(unixConn, piServiceResponse{SchemaVersion: piServiceResponseSchema,
+					RequestID: request.RequestID, Status: "refused", ErrorCode: "request-id-conflict"})
+				_ = unixConn.Close()
+				continue
+			}
+			if settled.terminal != nil {
+				active.Store(false)
+				answerStoredTerminal(settled)
+				continue
+			}
 		}
 		release := func() {}
 		if maintenance != nil {
