@@ -35,6 +35,15 @@ say() { printf '%s\n' "$*"; }
 step() { printf '\n== %s ==\n' "$*"; }
 die() { printf 'ERROR: %s\n' "$*" >&2; exit 2; }
 
+# package_installed accepts both ordinary installed ("ii") and held installed
+# ("hi") dpkg states. The guarded provisioner holds its runtime/build packages,
+# so a second bootstrap run must not mistake a held package for a missing one.
+package_installed() {
+  local status
+  status=$(dpkg-query -W -f='${db:Status-Abbrev}' "$1" 2>/dev/null) || return 1
+  [[ "$status" == [ih]i* ]]
+}
+
 LOG_FILE=/var/log/tbound-repro-bootstrap.log
 PROBE_OUTPUT=
 COSIGN_TMP_CLEANUP=
@@ -226,7 +235,7 @@ if [[ -d "$NODE_DEST" && -d "$GO_DEST" ]]; then
     if [[ -n "$cmd" ]]; then
       command -v "$cmd" >/dev/null 2>&1 || MISSING_PKGS+=("$pkg")
     else
-      dpkg-query -W -f='${db:Status-Abbrev}' "$pkg" 2>/dev/null | grep -q '^ii' || MISSING_PKGS+=("$pkg")
+      package_installed "$pkg" || MISSING_PKGS+=("$pkg")
     fi
   done
   if ((${#MISSING_PKGS[@]} > 0)); then

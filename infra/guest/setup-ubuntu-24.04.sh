@@ -510,7 +510,7 @@ sha256sum "$GCC_DRIVER"
 printf '\n=== Held packages ===\n'
 apt-mark showhold
 printf '\n=== Full installed package manifest (package and version) ===\n'
-dpkg-query -W -f='${db:Status-Abbrev}\t${binary:Package}\t${Version}\n' | awk -F '\t' '$1 ~ /^ii/ { print $2 "\t" $3 }' | sort
+dpkg-query -W -f='${db:Status-Abbrev}\t${binary:Package}\t${Version}\n' | awk -F '\t' '$1 ~ /^[ih]i/ { print $2 "\t" $3 }' | sort
 printf '\n=== Runtime versions ===\n'
 "$NODE_DEST/bin/node" --version
 GOTOOLCHAIN=local "$GO_DEST/bin/go" version
