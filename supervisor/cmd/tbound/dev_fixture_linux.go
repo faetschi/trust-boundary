@@ -387,7 +387,7 @@ func setupDevelopmentFixtureStore(base string, commands devFixtureRunner) (*sess
 	durable, err := NewDurableExecutor(DurableExecutorConfig{
 		Store: store, Tip: g0, CallIssuer: devFixtureCallIssuer,
 		PolicyDigest: devFixtureStorePolicy, MetadataPolicyDigest: devFixtureMetadataPolicy,
-		CommandRunner: commands,
+		CommandRunner: commands, BashOutputPaths: []string{"task.txt"},
 	})
 	if err != nil {
 		_ = store.Close()

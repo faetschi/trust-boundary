@@ -9,7 +9,7 @@ exec ssh -T \
   -o IdentitiesOnly=yes -o IdentityAgent=none -o BatchMode=yes \
   -o PreferredAuthentications=publickey -o PasswordAuthentication=no -o KbdInteractiveAuthentication=no \
   -o StrictHostKeyChecking=yes -o HostKeyAlgorithms=ssh-ed25519 \
-  -o UserKnownHostsFile="$KNOWN_HOSTS" \
+  -o "UserKnownHostsFile=\"$KNOWN_HOSTS\"" \
   -o GlobalKnownHostsFile=/dev/null -o ConnectTimeout=20 \
   -o ControlMaster=no -o ControlPath=none -o ForwardAgent=no -o ForwardX11=no \
   -o HostKeyAlias="$HOST_ALIAS" tboundadmin@"${GUEST_IP:?set GUEST_IP}" "$@"

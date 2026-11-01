@@ -45,7 +45,7 @@ func validManagedLiveRootRegistration() D09ManagedLiveRootRegistration {
 		SocketUID: 0, SocketGID: 993, SocketMode: 0o660, DirectoryMode: 0o755,
 		ParentPath: D09ManagedPiServiceSocketParentPath, ParentUID: 0, ParentGID: 0,
 		ParentMode: 0o755, ParentFilesystemMagic: 0x01021994, ParentMountPolicy: "tmpfs-rw-nodev-nosuid/v1",
-		AllowedClientUIDs: []int{1000}, AllowedClientPrimaryGID: 994,
+		AllowedClientUIDs: []int{1000}, AllowedClientPrimaryGID: 993,
 	}
 	return D09ManagedLiveRootRegistration{
 		SchemaVersion: D09ManagedLiveRootSchema, WriterPolicy: D09ManagedLiveRootWriterPolicy,
@@ -63,6 +63,46 @@ func validManagedLiveRootRegistration() D09ManagedLiveRootRegistration {
 		ManagedRootXattrCalibrationDigest: DigestBytes([]byte("signed-managed-rw-calibration")),
 		RunnerPath:                        "/usr/local/bin/tbound", RunnerDigest: DigestBytes([]byte("runner")),
 		ServiceCgroupPath: D09ManagedPiServiceCgroupPath,
+	}
+}
+
+func TestD09ManagedPiServiceSocketRejectsRootClients(t *testing.T) {
+	registration := validManagedLiveRootRegistration()
+	socket := registration.ServiceSocket
+	if err := socket.Validate(registration.ServiceUID, registration.ServiceGID); err != nil {
+		t.Fatalf("nonroot client registration refused: %v", err)
+	}
+	for _, uids := range [][]int{{0}, {0, 1000}} {
+		socket.AllowedClientUIDs = uids
+		if err := socket.Validate(registration.ServiceUID, registration.ServiceGID); !errors.Is(err, ErrD09ManagedLiveRootRefused) {
+			t.Fatalf("root client registration %v accepted: %v", uids, err)
+		}
+	}
+}
+
+func TestD09ManagedRootMeasurementRefusesRootClientsBeforeOpeningRoot(t *testing.T) {
+	// The parent is absent under the root-owned "/", so a root client can only be
+	// refused by the UID policy before the filesystem is opened. Nothing is created.
+	absentParent := filepath.Join("/", "tbound-absent-measurement-probe")
+	if _, err := os.Lstat(absentParent); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("measurement probe parent must be absent: %v", err)
+	}
+	root := filepath.Join(absentParent, D09ManagedPiLiveRootName)
+	measure := func(uids []int) error {
+		options := D09ManagedLiveRootMeasurementOptions{
+			AllowedClientUIDs: uids, AllowedClientPrimaryGID: 994,
+			ManagedRootXattrCalibrationDigest: DigestBytes([]byte("calibration")),
+		}
+		_, err := MeasureD09ManagedLiveRootRegistrationWithOptions(root, D09ManagedPiServiceName, D09ManagedPiServiceGroup,
+			D09ManagedPiServiceUnitPath, "/etc/systemd/system/var-lib-tbound-live.mount", "/usr/local/bin/tbound",
+			D09ManagedPiServiceCgroupPath, options)
+		return err
+	}
+	if err := measure([]int{1000}); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("nonroot client did not reach the root measurement: %v", err)
+	}
+	if err := measure([]int{0}); !errors.Is(err, ErrD09ManagedLiveRootRefused) {
+		t.Fatalf("root client measurement reached the filesystem: %v", err)
 	}
 }
 

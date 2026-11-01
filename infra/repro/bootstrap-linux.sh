@@ -16,6 +16,7 @@
 #
 # Run as root:      sudo bash bootstrap-linux.sh [trial-user]
 # Unattended runs:  TBOUND_ASSUME_YES=1 sudo -E bash bootstrap-linux.sh [trial-user]
+#   Add TBOUND_APPLY_USERNS_SYSCTL=1 to allow the Step 4 user namespace policy change.
 #
 # Exit codes:
 #   0  bootstrap complete; probe passed with at most the two by-design UNVERIFIED items
@@ -34,6 +35,15 @@ umask 077
 say() { printf '%s\n' "$*"; }
 step() { printf '\n== %s ==\n' "$*"; }
 die() { printf 'ERROR: %s\n' "$*" >&2; exit 2; }
+
+# package_installed accepts both ordinary installed ("ii") and held installed
+# ("hi") dpkg states. The guarded provisioner holds its runtime/build packages,
+# so a second bootstrap run must not mistake a held package for a missing one.
+package_installed() {
+  local status
+  status=$(dpkg-query -W -f='${db:Status-Abbrev}' "$1" 2>/dev/null) || return 1
+  [[ "$status" == [ih]i* ]]
+}
 
 LOG_FILE=/var/log/tbound-repro-bootstrap.log
 PROBE_OUTPUT=
@@ -220,13 +230,13 @@ if [[ -d "$NODE_DEST" && -d "$GO_DEST" ]]; then
   say "Pinned toolchains verified: Node v${NODE_VERSION} at $NODE_DEST, Go ${GO_VERSION} at $GO_DEST"
 
   MISSING_PKGS=()
-  for pkg_cmd in 'podman:podman' 'crun:crun' 'uidmap:newuidmap' 'slirp4netns:slirp4netns' 'fuse-overlayfs:fuse-overlayfs' 'libseccomp2:' 'ca-certificates:' 'curl:curl' 'xz-utils:' 'gnupg:' 'python3:python3'; do
+  for pkg_cmd in 'podman:podman' 'crun:crun' 'uidmap:newuidmap' 'slirp4netns:slirp4netns' 'fuse-overlayfs:fuse-overlayfs' 'libseccomp2:' 'ca-certificates:' 'curl:curl' 'xz-utils:' 'gnupg:' 'python3:python3' 'make:make'; do
     pkg=${pkg_cmd%%:*}
     cmd=${pkg_cmd#*:}
     if [[ -n "$cmd" ]]; then
       command -v "$cmd" >/dev/null 2>&1 || MISSING_PKGS+=("$pkg")
     else
-      dpkg-query -W -f='${db:Status-Abbrev}' "$pkg" 2>/dev/null | grep -q '^ii' || MISSING_PKGS+=("$pkg")
+      package_installed "$pkg" || MISSING_PKGS+=("$pkg")
     fi
   done
   if ((${#MISSING_PKGS[@]} > 0)); then
@@ -328,6 +338,10 @@ else
     say 'and apply it now with sysctl -w. This is the documented Ubuntu fix for'
     say 'dedicated evaluation environments; it restores the upstream default under'
     say 'which any local user may create user namespaces. Review that trade-off for this host.'
+    # TBOUND_ASSUME_YES accepts the whole plan, so this host policy change needs its own opt-in.
+    if [[ "${TBOUND_ASSUME_YES:-0}" == "1" && "${TBOUND_APPLY_USERNS_SYSCTL:-0}" != "1" ]]; then
+      die "unattended runs change $SYSCTL_KEY only with TBOUND_APPLY_USERNS_SYSCTL=1; set it on a dedicated evaluation host, or run interactively"
+    fi
     if confirm "Write $SYSCTL_FILE and set $SYSCTL_KEY=0 now?"; then
       if [[ -e "$SYSCTL_FILE" ]]; then
         grep -Eq '^[[:space:]]*kernel\.apparmor_restrict_unprivileged_userns[[:space:]]*=[[:space:]]*0' "$SYSCTL_FILE" || \

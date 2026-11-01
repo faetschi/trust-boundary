@@ -117,6 +117,23 @@ func TestDevFixtureCommandRunnerSettlesDurableBash(t *testing.T) {
 	}
 }
 
+// The real Pi CLI drives this route only where the pinned binary is installed,
+// so the scripted Bash turn is also run here against the route's own executor.
+func TestDevelopmentFixtureExecutorRunsItsScriptedBashTurn(t *testing.T) {
+	_, durable, _, _, closeAll, err := setupDevelopmentFixtureStore(durablePrivateBase(t), newBoundedDevelopmentFixtureCommandRunner())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer closeAll()
+	proposal, decision := durableBashProposal(string(developmentFixtureTurns[2].Arguments))
+	if _, err := durable.Execute(context.Background(), proposal, decision); err != nil {
+		t.Fatalf("scripted development Bash turn: %v", err)
+	}
+	if generation := durable.Tip().ID(); generation != "g1" {
+		t.Fatalf("scripted development Bash turn left tip %q, want g1", generation)
+	}
+}
+
 // TestDevFixtureCommandRunnerRejectsUnregisteredShape proves the runner fails
 // closed on a command shape outside the registered `/bin/bash -lc` form and on a
 // view it was never authorized for.

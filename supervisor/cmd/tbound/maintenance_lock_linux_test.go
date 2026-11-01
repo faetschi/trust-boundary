@@ -214,12 +214,17 @@ func TestServiceFreesTheSlotBeforeItWritesTheTerminalAnswer(t *testing.T) {
 // release would send its next request into a slot that is still held, the same refusal by another path.
 func TestServiceAnswersAReplayedTerminalOnlyAfterTheSlotIsFree(t *testing.T) {
 	registration := piServiceSocketRegistration{AllowedClientUIDs: []int{os.Geteuid()}, AllowedClientPrimaryGID: os.Getegid()}
-	releasing := make(chan struct{})
-	var releasingOnce sync.Once
+	releasing, retryAtLookup := make(chan struct{}), make(chan struct{})
+	var releasingOnce, retryAtLookupOnce sync.Once
 	var released atomic.Bool
+	// The release outlasts the retry's arrival at the lookup, however late the retry is scheduled.
 	slowRelease := func() (func(), error) {
 		return func() {
 			releasingOnce.Do(func() { close(releasing) })
+			select {
+			case <-retryAtLookup:
+			case <-time.After(5 * time.Second):
+			}
 			time.Sleep(300 * time.Millisecond)
 			released.Store(true)
 		}, nil
@@ -228,6 +233,15 @@ func TestServiceAnswersAReplayedTerminalOnlyAfterTheSlotIsFree(t *testing.T) {
 		return json.RawMessage(`{"success":true,"request_id":"` + request.RequestID + `"}`), nil
 	}
 	server := newPiServiceTestServerLocked(t, registration, runTask, slowRelease)
+	// The screen runs immediately before the lookup, so it marks the retry's arrival there.
+	server.requests.setAdmissionScreen(func(piServicePeerCredentials, piServiceRequest) string {
+		select {
+		case <-releasing:
+			retryAtLookupOnce.Do(func() { close(retryAtLookup) })
+		default:
+		}
+		return ""
+	})
 	request := piServiceRequest{RequestID: "request-1", TaskID: "task-1", Prompt: "work"}
 	firstDone := make(chan piServiceResponse, 1)
 	go func() { firstDone <- roundTripPiServiceRequest(t, server.path, request) }()
@@ -248,6 +262,51 @@ func TestServiceAnswersAReplayedTerminalOnlyAfterTheSlotIsFree(t *testing.T) {
 	}
 	if first := <-firstDone; first.Status != "completed" {
 		t.Fatalf("the first task did not complete: %+v", first)
+	}
+	if calls := server.calls.Load(); calls != 1 {
+		t.Fatalf("the runner ran %d times, the retry must not run it again", calls)
+	}
+}
+
+// A retry can read its request as unsettled just before the running task settles it and frees the slot.
+// It must then answer with the stored terminal instead of taking the slot and running the task again.
+func TestServiceAnswersARetryThatReadItsRequestBeforeItSettled(t *testing.T) {
+	registration := piServiceSocketRegistration{AllowedClientUIDs: []int{os.Geteuid()}, AllowedClientPrimaryGID: os.Getegid()}
+	started, finish := make(chan struct{}), make(chan struct{})
+	var startedOnce sync.Once
+	runTask := func(ctx context.Context, request piServiceRequest) (json.RawMessage, error) {
+		startedOnce.Do(func() { close(started) })
+		<-finish
+		return json.RawMessage(`{"success":true,"request_id":"` + request.RequestID + `"}`), nil
+	}
+	server := newPiServiceTestServer(t, registration, runTask)
+	request := piServiceRequest{RequestID: "request-1", TaskID: "task-1", Prompt: "work"}
+	firstDone, settled := make(chan piServiceResponse, 1), make(chan struct{})
+	go func() {
+		firstDone <- roundTripPiServiceRequest(t, server.path, request)
+		close(settled)
+	}()
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the task never started")
+	}
+	retryRead := make(chan struct{})
+	server.requests.setAfterScreen(func(piServiceRequest, *atomic.Bool) {
+		close(retryRead)
+		<-settled
+	})
+	retryDone := make(chan piServiceResponse, 1)
+	go func() { retryDone <- roundTripPiServiceRequest(t, server.path, request) }()
+	select {
+	case <-retryRead:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the retry never read its request")
+	}
+	close(finish)
+	first, retry := <-firstDone, <-retryDone
+	if first.Status != "completed" || retry.Status != "completed" || string(retry.Receipt) != string(first.Receipt) {
+		t.Fatalf("the retry did not return the stored terminal: first %+v, retry %+v", first, retry)
 	}
 	if calls := server.calls.Load(); calls != 1 {
 		t.Fatalf("the runner ran %d times, the retry must not run it again", calls)

@@ -13,19 +13,14 @@ import (
 	"tbound/supervisor/internal/trialfix"
 )
 
-// pilotNode is the local node of the admission self-check tests: node on PATH, else the Windows
-// node through WSL interop (the WSL gate has no Linux node). Missing node fails the test.
+// pilotNode is the local node of the admission self-check tests. Missing node fails the test.
 func pilotNode(t *testing.T) LocalNodeRunner {
 	t.Helper()
-	if p, err := exec.LookPath("node"); err == nil {
-		return LocalNodeRunner{Path: p}
+	p, err := exec.LookPath("node")
+	if err != nil {
+		t.Fatal("no node on PATH for the behavioural acceptance tests")
 	}
-	const interop = "/mnt/c/Program Files/nodejs/node.exe"
-	if _, err := os.Stat(interop); err == nil {
-		return LocalNodeRunner{Path: interop}
-	}
-	t.Fatal("no node binary for the behavioural acceptance tests")
-	return LocalNodeRunner{}
+	return LocalNodeRunner{Path: p}
 }
 
 func pilotCase(t *testing.T, id string) evalcorpus.Case {
