@@ -819,11 +819,10 @@ func TestWorkerPermitsRefuseSaturation(t *testing.T) {
 // the permit is returned, so the order is checked directly and does not depend on scheduling.
 func TestSettlementCompletionReleasesPermitBeforePublishing(t *testing.T) {
 	process := completedProcess(NoDescendants{})
-	t.Cleanup(func() { beforeWorkerPermitRelease = nil })
 	observed := make(chan struct{})
 	var published bool
 	var recorded SettlementState
-	beforeWorkerPermitRelease = func() {
+	process.beforePermitRelease = func() {
 		select {
 		case <-process.settleDone:
 			published = true
@@ -856,11 +855,10 @@ func TestObservationCloseReleasesWorkerPermitBeforePublishing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { beforeWorkerPermitRelease = nil })
 	observed := make(chan struct{})
 	var published bool
 	// The worker only reads the seam once Close has closed its queue, which orders this write first.
-	beforeWorkerPermitRelease = func() {
+	writer.beforePermitRelease = func() {
 		select {
 		case <-writer.done:
 			published = true

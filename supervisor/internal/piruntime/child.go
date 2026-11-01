@@ -124,8 +124,6 @@ type perLaunchProofLauncher interface {
 var (
 	observationWorkerSlots = make(chan struct{}, maxObservationWorkers)
 	settlementWorkerSlots  = make(chan struct{}, maxSettlementWorkers)
-	// beforeWorkerPermitRelease is a test seam that runs as a worker returns its permit. It is nil in production.
-	beforeWorkerPermitRelease func()
 )
 
 func tryAcquireSettlementWorker() bool {
@@ -147,9 +145,6 @@ func tryAcquireObservationWorker() bool {
 }
 
 func releaseObservationWorker() {
-	if beforeWorkerPermitRelease != nil {
-		beforeWorkerPermitRelease()
-	}
 	select {
 	case <-observationWorkerSlots:
 	default:
@@ -158,9 +153,6 @@ func releaseObservationWorker() {
 }
 
 func releaseSettlementWorker() {
-	if beforeWorkerPermitRelease != nil {
-		beforeWorkerPermitRelease()
-	}
 	select {
 	case <-settlementWorkerSlots:
 	default:
@@ -172,7 +164,12 @@ func (p *Process) releaseSettlementWorker() {
 	if p == nil || !p.settlementSlotHeld {
 		return
 	}
-	p.settlementSlotOnce.Do(releaseSettlementWorker)
+	p.settlementSlotOnce.Do(func() {
+		if p.beforePermitRelease != nil {
+			p.beforePermitRelease()
+		}
+		releaseSettlementWorker()
+	})
 }
 
 func (s ChildSpec) validateShape() error {
@@ -367,6 +364,8 @@ type Process struct {
 
 	settlementSlotHeld bool
 	settlementSlotOnce sync.Once
+	// beforePermitRelease is a test seam that runs as this process's worker returns its permit. It is nil in production.
+	beforePermitRelease func()
 }
 
 func StartChild(ctx context.Context, spec ChildSpec) (*Process, error) {
@@ -727,6 +726,9 @@ func DigestEnvironment(env []string) string {
 }
 
 type observationWriter struct {
+	// beforePermitRelease is a test seam that runs as this writer's worker returns its permit. It is nil in production.
+	beforePermitRelease func()
+
 	stream string
 	sink   ObservationSink
 	queue  chan Observation
@@ -754,7 +756,12 @@ func newObservationWriter(stream string, sink ObservationSink, max int) (*observ
 	go func() {
 		defer close(w.done)
 		// Deferred calls run last-in first-out: the permit is returned before done closes.
-		defer releaseObservationWorker()
+		defer func() {
+			if w.beforePermitRelease != nil {
+				w.beforePermitRelease()
+			}
+			releaseObservationWorker()
+		}()
 		for event := range w.queue {
 			select {
 			case <-w.ctx.Done():
