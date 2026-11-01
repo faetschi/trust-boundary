@@ -77,11 +77,8 @@ pkg="$WORK/pkg"
 mkdir -p "$pkg/DEBIAN" "$pkg/usr/bin" "$pkg/usr/lib/tbound"
 cp "$WORK/bin/tbound" "$WORK/bin/tbound-doctor" "$WORK/bin/tbound-profile" "$pkg/usr/bin/"
 cp -R "$WORK/runtime" "$pkg/usr/lib/tbound/runtime"
-chmod 755 "$pkg/usr/bin/tbound" "$pkg/usr/bin/tbound-doctor" "$pkg/usr/bin/tbound-profile"
 cp "$WORK/libexec/tbound/tbound-cell-entrypoint" "$pkg/usr/lib/tbound/"
 cp "$WORK/libexec/tbound/cell-entrypoint.json" "$pkg/usr/lib/tbound/"
-chmod 755 "$pkg/usr/lib/tbound/tbound-cell-entrypoint"
-chmod 444 "$pkg/usr/lib/tbound/cell-entrypoint.json"
 
 cat > "$pkg/DEBIAN/control" <<CTRL
 Package: tbound
@@ -98,6 +95,12 @@ Description: Host-side supervisor for the Pi coding agent
  Governed runs additionally require the runtime composition/authoritative
  verifier plus a signed host profile and the Podman/crun containment stack.
 CTRL
+
+# Normalize package modes so the caller's umask (077 in CI) cannot leak in; X keeps exec bits.
+chmod -R u=rwX,go=rX "$pkg"
+chmod 755 "$pkg/usr/bin/tbound" "$pkg/usr/bin/tbound-doctor" "$pkg/usr/bin/tbound-profile" \
+  "$pkg/usr/lib/tbound/tbound-cell-entrypoint"
+chmod 444 "$pkg/usr/lib/tbound/cell-entrypoint.json"
 
 out="$DIST/tbound_${VERSION}_${ARCH}.deb"
 dpkg-deb --build --root-owner-group "$pkg" "$out"
