@@ -94,6 +94,8 @@ if [[ -n "$LOCAL_DIST" ]]; then
   LOCAL_DIST="$(cd -- "$LOCAL_DIST" && pwd)"
 fi
 
+# Later steps change directory, so the VM paths must be absolute.
+VM_DIR=$(realpath -m -- "$VM_DIR")
 KEY="$VM_DIR/id_ed25519_${VM_NAME//[^A-Za-z0-9_.-]/_}"
 KNOWN="$VM_DIR/known_hosts"
 DISK="$VM_DIR/$VM_NAME.qcow2"
@@ -137,7 +139,7 @@ load_env() {
 }
 
 ssh_guest() {
-  ssh -p "$SSH_PORT" -i "$KEY" -o UserKnownHostsFile="$KNOWN" \
+  ssh -p "$SSH_PORT" -i "$KEY" -o "UserKnownHostsFile=\"$KNOWN\"" \
     -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -o ServerAliveInterval=30 \
     "$TRIAL_USER@127.0.0.1" "$@"
 }
@@ -150,7 +152,7 @@ wait_ssh() {
   local label=$1
   say "Waiting for SSH ($label) on 127.0.0.1:$SSH_PORT ..."
   for _ in $(seq 1 240); do
-    if ssh -p "$SSH_PORT" -i "$KEY" -o UserKnownHostsFile="$KNOWN" \
+    if ssh -p "$SSH_PORT" -i "$KEY" -o "UserKnownHostsFile=\"$KNOWN\"" \
         -o StrictHostKeyChecking=accept-new -o ConnectTimeout=5 -o BatchMode=yes \
         "$TRIAL_USER@127.0.0.1" 'true' >/dev/null 2>&1; then
       ssh-keygen -lf "$KNOWN" | sed 's/^/host key: /'
@@ -355,7 +357,7 @@ print_result() {
   say
   say "TBound VM is ready."
   say "  VM directory : $VM_DIR"
-  say "  SSH          : ssh -p $SSH_PORT -i $KEY -o UserKnownHostsFile=$KNOWN $TRIAL_USER@127.0.0.1"
+  say "  SSH          : ssh -p $SSH_PORT -i $KEY -o 'UserKnownHostsFile=\"$KNOWN\"' $TRIAL_USER@127.0.0.1"
   say "  Start/stop   : $0 --vm-dir '$VM_DIR' --start | --stop"
   say "  Guest shell  : $0 --vm-dir '$VM_DIR' --ssh"
   say "  Console log  : $CONSOLE"
@@ -384,7 +386,7 @@ if [[ "$MODE" == stop ]]; then
 fi
 if [[ "$MODE" == ssh ]]; then
   load_env
-  exec ssh -p "$SSH_PORT" -i "$KEY" -o UserKnownHostsFile="$KNOWN" \
+  exec ssh -p "$SSH_PORT" -i "$KEY" -o "UserKnownHostsFile=\"$KNOWN\"" \
     -o StrictHostKeyChecking=yes "$TRIAL_USER@127.0.0.1"
 fi
 if [[ "$MODE" == start ]]; then
@@ -496,7 +498,7 @@ esac
 
 step "install Pi and tbound"
 write_guest_provisioner
-scp -q -P "$SSH_PORT" -i "$KEY" -o UserKnownHostsFile="$KNOWN" -o StrictHostKeyChecking=yes \
+scp -q -P "$SSH_PORT" -i "$KEY" -o "UserKnownHostsFile=\"$KNOWN\"" -o StrictHostKeyChecking=yes \
   "$VM_DIR/provision-guest.sh" "$TRIAL_USER@127.0.0.1:/home/$TRIAL_USER/provision-guest.sh"
 if [[ -n "$LOCAL_DIST" ]]; then
   guest_dist="\$HOME/tbound-dist"
