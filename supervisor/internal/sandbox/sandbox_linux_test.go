@@ -327,9 +327,14 @@ func TestSurvivingChildFailsClosed(t *testing.T) {
 	requireMechanisms(t)
 	work := newWorkDir(t)
 	root := openDir(t, filepath.Join(work, "cell"))
+	// The shell exits only once the child has left its session. A child that hasn't yet is still in the
+	// process group the cell kills, so it would not survive and the scope would really be empty.
+	script := `setsid sh -c ': > /tmp/escaped; exec sleep 300' >/dev/null 2>&1 &
+while [ ! -e /tmp/escaped ]; do :; done
+exit 0`
 	_, settlement, err := Launch(context.Background(), Request{
 		Root: root,
-		Argv: []string{"/bin/bash", "-c", "setsid sleep 300 >/dev/null 2>&1 & exit 0"},
+		Argv: []string{"/bin/bash", "-c", script},
 		Env:  []string{"PATH=/usr/bin:/bin", "HOME=/tmp", "TMPDIR=/tmp"},
 	})
 	if err == nil {
