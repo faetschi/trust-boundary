@@ -968,17 +968,14 @@ function Get-GuestIpAddress {
     $hostBytes = [System.Net.IPAddress]::Parse($hostIp.IPAddress).GetAddressBytes()
     [Array]::Reverse($hostBytes)
     $networkAddress = [BitConverter]::ToUInt32($hostBytes, 0) -band ([uint32]::MaxValue -shl $hostBits)
-    $pings = [System.Collections.Generic.List[System.Net.NetworkInformation.Ping]]::new()
     $pingTasks = [System.Collections.Generic.List[System.Threading.Tasks.Task]]::new()
     for ($offset = 1; $offset -lt ([uint32]1 -shl $hostBits) - 1; $offset++) {
         $probe = [BitConverter]::GetBytes([uint32]($networkAddress + $offset))
         [Array]::Reverse($probe)
-        $ping = [System.Net.NetworkInformation.Ping]::new()
-        $pings.Add($ping)
-        $pingTasks.Add($ping.SendPingAsync([System.Net.IPAddress]::new($probe), 500))
+        $pingTasks.Add([System.Net.NetworkInformation.Ping]::new().SendPingAsync([System.Net.IPAddress]::new($probe), 500))
     }
-    try { [System.Threading.Tasks.Task]::WaitAll($pingTasks.ToArray()) } catch { }
-    foreach ($ping in $pings) { $ping.Dispose() }
+    # A sweep of uncached addresses hung without a limit. Only the ARP replies matter, not the pings.
+    try { $null = [System.Threading.Tasks.Task]::WaitAll($pingTasks.ToArray(), 60000) } catch { }
     $neighbor = Get-NetNeighbor -InterfaceAlias ("vEthernet ($SwitchName)") -AddressFamily IPv4 -ErrorAction SilentlyContinue |
         Where-Object { $_.LinkLayerAddress -eq $vmMac } |
         Select-Object -First 1
