@@ -99,7 +99,7 @@ stat -c '%a %U %n' "$W" "$B" "$H" "$HF"
 stat -f -c 'fs=%T %n' "$W" "$HF"
 echo "$F" > "$HF/FROZEN-COMMIT"
 
-printf 'W=%s\nB=%s\nH=%s\nF=%s\nREPO=%q\nHF=%s\nCF=%s\nLOG=%s\nOLDW=%s\n' "$W" "$B" "$H" "$F" "$REPO" "$HF" "$CF" "$LOG" "$OLDW" > "$TBOUND_WORK/env.sh"
+printf 'W=%s\nB=%s\nH=%s\nF=%s\nREPO=%q\nHF=%s\nCF=%s\nLOG=%s\n' "$W" "$B" "$H" "$F" "$REPO" "$HF" "$CF" "$LOG" > "$TBOUND_WORK/env.sh"
 cat "$TBOUND_WORK/env.sh"
 ls -la "$HF"
 finish_step "$TBOUND_WORK/env.sh"
