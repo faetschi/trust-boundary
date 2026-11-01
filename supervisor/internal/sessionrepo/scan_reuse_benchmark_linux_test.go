@@ -3,12 +3,15 @@
 package sessionrepo
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
 	"runtime/pprof"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -23,13 +26,33 @@ type scanReuseResult struct {
 	Bundle   EvidenceBundle
 }
 
-// TestScanReuseBenchmark measures warm, serial grouped evidence requests, not
-// fixture creation. The version-specific adapter is the only changed input.
+// scanReuseProjection keeps only the fields that a fixed fixture determines. Effect, view, and
+// lease IDs are random per Store and the journals are hash-chained over them, so two Stores never
+// serialize alike. Cross-process comparison uses this projection; each run compares full reports.
+type scanReuseProjection struct {
+	Chain       delta.Result
+	Generations []GenerationEvidence
+	Transitions []scanReuseTransitionProjection
+}
+
+type scanReuseTransitionProjection struct {
+	Sequence         uint64
+	Tool             string
+	InputGeneration  string
+	OutputGeneration string
+	InputTreeDigest  string
+	OutputTreeDigest string
+	Changes          []delta.ObjectChange
+}
+
+// TestScanReuseBenchmark times only the grouped evidence call, one group per timed window.
+// Warm-up and every equality check run outside the windows. The version-specific adapter is the
+// only changed input.
 func TestScanReuseBenchmark(t *testing.T) {
 	if os.Getenv("SCAN_REUSE_BENCHMARK") != "1" {
 		t.Skip("opt-in performance harness: set SCAN_REUSE_BENCHMARK=1")
 	}
-	iterations := 3
+	iterations := 20
 	if value := os.Getenv("SCAN_REUSE_ITERATIONS"); value != "" {
 		var err error
 		iterations, err = strconv.Atoi(value)
@@ -70,7 +93,17 @@ func TestScanReuseBenchmark(t *testing.T) {
 			if disposition, err := Reconstruct(want.Bundle); err != nil || disposition.Quarantined {
 				t.Fatalf("fixture reconstruction: %+v, %v", disposition, err)
 			}
-			// A separate profile run includes only the measured loop in CPU samples.
+			projectionDigest := scanReuseProjectionDigest(t, want)
+			// Untimed warm-up group, checked like every timed group.
+			warm, err := scanReuseGrouped(store)
+			if err != nil {
+				t.Fatalf("warm-up group: %v", err)
+			}
+			if !reflect.DeepEqual(warm, want) {
+				t.Fatal("warm-up group differs from full reference")
+			}
+			// A separate profile run covers only the timed loop: it stops before the equality checks.
+			stopCPUProfile := func() {}
 			if prefix := os.Getenv("SCAN_REUSE_CPU_PROFILE"); prefix != "" {
 				file, err := os.Create(prefix + "-" + fixture.name + ".pprof")
 				if err != nil {
@@ -80,30 +113,55 @@ func TestScanReuseBenchmark(t *testing.T) {
 					file.Close()
 					t.Fatal(err)
 				}
-				defer func() { pprof.StopCPUProfile(); file.Close() }()
+				stopCPUProfile = func() { pprof.StopCPUProfile(); file.Close() }
+				defer stopCPUProfile()
 			}
-			started := time.Now()
+			groups := make([]scanReuseResult, iterations)
+			groupNanos := make([]int64, iterations)
 			for i := 0; i < iterations; i++ {
+				started := time.Now()
 				got, err := scanReuseGrouped(store)
+				groupNanos[i] = time.Since(started).Nanoseconds()
 				if err != nil {
 					t.Fatalf("group %d: %v", i, err)
 				}
-				if !reflect.DeepEqual(got, want) {
-					t.Fatalf("group %d differs from full reference", i)
+				groups[i] = got
+			}
+			stopCPUProfile()
+			// Equality is checked only after every timed window has closed.
+			mismatches := 0
+			for i := range groups {
+				if !reflect.DeepEqual(groups[i], want) {
+					mismatches++
 				}
 			}
-			elapsed := time.Since(started)
+			if mismatches != 0 {
+				t.Fatalf("%d of %d timed groups differ from full reference", mismatches, iterations)
+			}
+			sorted := append([]int64(nil), groupNanos...)
+			sort.Slice(sorted, func(i, j int) bool { return sorted[i] < sorted[j] })
+			median := sorted[len(sorted)/2]
+			if len(sorted)%2 == 0 {
+				median = (sorted[len(sorted)/2-1] + sorted[len(sorted)/2]) / 2
+			}
+			var total int64
+			for _, nanos := range groupNanos {
+				total += nanos
+			}
 			result := struct {
-				Fixture     string `json:"fixture"`
-				Files       int    `json:"files_per_generation"`
-				Bytes       int    `json:"file_bytes"`
-				Generations int    `json:"retained_generations"`
-				Iterations  int    `json:"successful_groups"`
-				Elapsed     int64  `json:"elapsed_ns"`
-				NSPerGroup  int64  `json:"ns_per_group"`
-				Errors      int    `json:"errors"`
-				Tip         string `json:"tip_tree_digest"`
-			}{fixture.name, fixture.files, fixture.bytes, fixture.generations, iterations, elapsed.Nanoseconds(), elapsed.Nanoseconds() / int64(iterations), 0, want.Chain.SealedTreeDigest}
+				Fixture          string `json:"fixture"`
+				Files            int    `json:"files_per_generation"`
+				Bytes            int    `json:"file_bytes"`
+				Generations      int    `json:"retained_generations"`
+				Iterations       int    `json:"successful_groups"`
+				TimedNS          int64  `json:"timed_ns_total"`
+				NSPerGroupMedian int64  `json:"ns_per_group_median"`
+				NSPerGroupMin    int64  `json:"ns_per_group_min"`
+				NSPerGroupMax    int64  `json:"ns_per_group_max"`
+				Mismatches       int    `json:"mismatched_groups"`
+				Projection       string `json:"projection_sha256"`
+				Tip              string `json:"tip_tree_digest"`
+			}{fixture.name, fixture.files, fixture.bytes, fixture.generations, iterations, total, median, sorted[0], sorted[len(sorted)-1], mismatches, projectionDigest, want.Chain.SealedTreeDigest}
 			encoded, err := json.Marshal(result)
 			if err != nil {
 				t.Fatal(err)
@@ -131,4 +189,28 @@ func scanReuseReference(t *testing.T, store *Store) scanReuseResult {
 		t.Fatal("reference chain disagrees with evidence")
 	}
 	return scanReuseResult{chain, artifact, bundle}
+}
+
+// scanReuseProjectionDigest hashes the fixture-determined part of a reference result, so baseline
+// and candidate processes can be compared with each other.
+func scanReuseProjectionDigest(t *testing.T, want scanReuseResult) string {
+	t.Helper()
+	projection := scanReuseProjection{Chain: want.Chain, Generations: want.Bundle.Generations}
+	for _, transition := range want.Artifact.ApprovedDeltaLedger {
+		projection.Transitions = append(projection.Transitions, scanReuseTransitionProjection{
+			Sequence:         transition.Sequence,
+			Tool:             transition.Tool,
+			InputGeneration:  transition.InputGeneration,
+			OutputGeneration: transition.OutputGeneration,
+			InputTreeDigest:  transition.InputTreeDigest,
+			OutputTreeDigest: transition.OutputTreeDigest,
+			Changes:          transition.Changes,
+		})
+	}
+	encoded, err := json.Marshal(projection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(encoded)
+	return hex.EncodeToString(sum[:])
 }
