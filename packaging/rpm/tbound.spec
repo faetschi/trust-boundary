@@ -40,6 +40,9 @@ if [ -d share/completions ]; then
   mkdir -p %{buildroot}%{_datadir}/tbound/completions
   cp share/completions/* %{buildroot}%{_datadir}/tbound/completions/
 fi
+# The tarball keeps the build's umask, which is 077 in CI; X keeps exec bits.
+chmod -R u=rwX,go=rX %{buildroot}%{_libexecdir}/tbound/runtime
+if [ -d %{buildroot}%{_datadir}/tbound ]; then chmod -R u=rwX,go=rX %{buildroot}%{_datadir}/tbound; fi
 
 %files
 %{_bindir}/tbound

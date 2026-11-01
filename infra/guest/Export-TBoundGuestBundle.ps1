@@ -3,14 +3,17 @@ param()
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot '..\workspace\paths.ps1')
+$tboundLocalRoot = Get-TBoundLocalRoot
 
 $ExpectedBranch = 'main'
 $ExpectedTBoundAttributesBlob = '9f5fb419253366bc0c09c284f750211177b3d76e'
-$AssetsRoot = 'F:\TBoundAssets'
-$VmStorageRoot = 'F:\TBoundVMs'
+$localVolume = [System.IO.Path]::GetPathRoot($tboundLocalRoot)
+$AssetsRoot = Join-Path $tboundLocalRoot 'assets'
+$VmStorageRoot = Join-Path $tboundLocalRoot 'vm'
 $ExportRoot = Join-Path $AssetsRoot 'GuestHandoff'
 $MaximumTrackedBytes = [int64]100GB
-$MinimumFreeAfterExportBytes = [int64]700GB
+$MinimumFreeAfterExportBytes = [int64]20GB
 $ManifestBudgetBytes = [int64]4096
 $MetadataReserveBytes = [int64]4MB
 $TarBlockBytes = [int64]512
@@ -104,12 +107,12 @@ function Assert-StorageBudget {
         throw ("Tracked TBound storage is {0:N2} GiB; the {1} projection would exceed the 100 GiB limit across {2} and {3}." -f ($trackedBytes / 1GB), $Phase, $AssetsRoot, $VmStorageRoot)
     }
 
-    $drive = Get-PSDrive -Name F -ErrorAction Stop
-    if ($drive.Provider.Name -ne 'FileSystem' -or $drive.Root -ine 'F:\') {
-        throw 'F: is not the expected FileSystem drive.'
+    $drive = Get-PSDrive -Name $localVolume.Substring(0, 1) -ErrorAction Stop
+    if ($drive.Provider.Name -ne 'FileSystem' -or $drive.Root -ine $localVolume) {
+        throw "The volume holding .local ($localVolume) is not the expected FileSystem drive."
     }
     if ($null -eq $drive.Free -or [int64]$drive.Free -lt ($MinimumFreeAfterExportBytes + $ProjectedAdditionalBytes)) {
-        throw "F: does not have enough free space for the $Phase projection while preserving the 700 GiB reserve."
+        throw "The volume holding .local ($localVolume) does not have enough free space for the $Phase projection while preserving the 20 GiB reserve."
     }
 
     return [pscustomobject]@{
@@ -313,10 +316,10 @@ try {
     $projectedBundleBytes = $estimatedArchiveBytes + $ManifestBudgetBytes + $MetadataReserveBytes
 
     $exportFullPath = [System.IO.Path]::GetFullPath($ExportRoot)
-    if (-not [string]::Equals([System.IO.Path]::GetPathRoot($exportFullPath), 'F:\', [System.StringComparison]::OrdinalIgnoreCase)) {
-        throw "The export destination must remain on F:; resolved path: $exportFullPath"
+    if (-not [string]::Equals([System.IO.Path]::GetPathRoot($exportFullPath), $localVolume, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "The export destination must remain on the volume holding .local ($localVolume); resolved path: $exportFullPath"
     }
-    if (-not [string]::Equals($exportFullPath, 'F:\TBoundAssets\GuestHandoff', [System.StringComparison]::OrdinalIgnoreCase)) {
+    if (-not [string]::Equals($exportFullPath, [System.IO.Path]::GetFullPath((Join-Path $tboundLocalRoot 'assets\GuestHandoff')), [System.StringComparison]::OrdinalIgnoreCase)) {
         throw "The export destination differs from the reviewed fixed path: $exportFullPath"
     }
 

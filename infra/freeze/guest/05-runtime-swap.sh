@@ -1,0 +1,265 @@
+#!/bin/bash
+# 05 [PRIVILEGED WRITE, session sudo OPEN] P11 runtime swap, after 27 archive and before 10-upgrade.
+# DRY_RUN=1 checks owner inputs and prints the guest programs; it never calls G/GI or reads key files.
+set -euo pipefail
+case "$-" in *x*) echo "FATAL: refusing to run under xtrace" >&2; exit 1;; esac
+case ":${SHELLOPTS:-}:" in *:xtrace:*) echo "FATAL: SHELLOPTS has xtrace" >&2; exit 1;; esac
+unset BASH_XTRACEFD || true
+. "$(dirname -- "${BASH_SOURCE[0]}")/glib.sh"
+logto 05-runtime-swap
+case "${DRY_RUN:=0}" in 0|1) ;; *) die "DRY_RUN must be 0 or 1";; esac
+# Unlike load_env, P11 needs only P1/P2 records, not later image/signing records.
+. "$TBOUND_WORK_VIEW/env.sh"
+for v in W H F HF; do [ -n "${!v:-}" ] || die "env.sh lacks $v"; done
+eq "env.sh commit == frozen values" "$F" "$FREEZE_COMMIT"
+eq "HF path" "$HF" "$H/$FREEZE_LC"
+eq "previous HF path" "$PREV_HF" "$H/$PREV_LC"
+eq "FROZEN-COMMIT" "$(hf_get FROZEN-COMMIT)" "$F"
+BUNDLE_DIGEST=$(hf_get BUNDLE_DIGEST); need_dig BUNDLE_DIGEST "$BUNDLE_DIGEST"
+TBP_DIGEST=$(hf_get TBP_DIGEST); need_dig TBP_DIGEST "$TBP_DIGEST"
+eq "P1 tbound-profile == TBP_DIGEST" "$(wd "$W/bin/tbound-profile")" "$TBP_DIGEST"
+eq "previous frozen commit" "$(prev_get FROZEN-COMMIT)" "$PREV_COMMIT"
+eq "previous BUNDLE_DIGEST record" "$(prev_get BUNDLE_DIGEST)" "$PREV_BUNDLE_DIGEST"
+eq "previous TBP_DIGEST record" "$(prev_get TBP_DIGEST)" "$PREV_TBP_DIGEST"
+need_dig PREV_BUNDLE_DIGEST "$PREV_BUNDLE_DIGEST"
+P2_MODE=reuse
+if hf_has P2-MODE; then P2_MODE=$(hf_get P2-MODE); fi
+SWAP=0
+if [ "$BUNDLE_DIGEST" != "$PREV_BUNDLE_DIGEST" ] && [ "$P2_MODE" = rebuild ]; then SWAP=1; fi
+
+# Read-only git diff eed7722..6162e3c and 6162e3c..02f9fb7: VerifyLinuxPiRuntimeBundle, statDevice,
+# requireReadOnlyMount, host.go limits, internal/sessionlaunch and profile_tooling_linux.go are unchanged.
+# Accept only these audited previous-measurer pairs (previous freeze commit, this freeze commit).
+ALLOW_PREV_MEASURER=0
+if [ "$PREV_COMMIT" = eed772228f9907f9c20df3177648807f5c1aa83d ] &&
+   [ "$F" = 6162e3c32379233c7c4f238c5547599474d373a7 ]; then ALLOW_PREV_MEASURER=1; fi
+if [ "$PREV_COMMIT" = 6162e3c32379233c7c4f238c5547599474d373a7 ] &&
+   [ "$F" = 02f9fb71a26aadf4eebeb0ff217fe97c374ffff8 ]; then ALLOW_PREV_MEASURER=1; fi
+UNIT_SHA=2bc03ead4ba478d81655029de66a46f4bcb6357c5a24e7f8a3940ed947720ea3
+OLD=/var/lib/tbound/runtime-src.old-${PREV_BUNDLE_DIGEST:7:8}-$(date -u +%Y%m%dT%H%M%S%NZ)
+
+if [ "$SWAP" = 1 ]; then
+  TAR=$(hf_get BUNDLE_TAR_PATH); TARSHA=$(hf_get BUNDLE_TAR_DIGEST)
+  need_dig BUNDLE_TAR_DIGEST "$TARSHA"
+  eq "P2 tar path" "$TAR" "$W/p2-rebuild/runtime-bundle-${F:0:8}-lf.tar"
+  eq "P2 tar sha256 == HF BUNDLE_TAR_DIGEST" "$(wd "$TAR")" "$TARSHA"
+  hf_has BUNDLE_TAR_SIZE || die "missing $HF/BUNDLE_TAR_SIZE: record the verified P2 tar size first"
+  TAR_SIZE=$(hf_get BUNDLE_TAR_SIZE)
+  [[ $TAR_SIZE =~ ^[1-9][0-9]{0,11}$ ]] || die "invalid tar size: $TAR_SIZE"
+  eq "P2 tar size (bytes)" "$(WX stat -c %s "$TAR" | tr -d '\r\n')" "$TAR_SIZE"
+  MEMBERS=$(WX tar -tf "$TAR" | wc -l | tr -d ' \r\n')
+  [[ $MEMBERS =~ ^[1-9][0-9]{0,8}$ ]] || die "invalid tar member count: $MEMBERS"
+  ok "tar members = $MEMBERS (used to budget extraction blocks, plus 64 MiB metadata margin)"
+  if archived_prev && WX test -s "$HF/g1-prior/archive-done.txt"; then
+    ok "27 archive recorded: $(hf_get g1-prior/archive-done.txt)"
+  elif [ "$DRY_RUN" = 1 ]; then
+    note "PENDING: 27 archive completion record absent; a live run refuses BEFORE guest contact"
+  else die "run 27-archive-state.sh archive first: no nonempty $HF/g1-prior/archive-done.txt"; fi
+fi
+
+# Quote one argument for the guest's shell; the actual programs execute under bash -c, never a scratch file.
+quote() { printf "'%s'" "${1//\'/\'\\\'\'}"; }
+BASE=$(printf 'set -euo pipefail\nSVC=%q\nTBPG=%q\nBUNDLE_DIGEST=%q\nPREV_BUNDLE_DIGEST=%q\nUNIT_SHA=%q\n' \
+  "$SVC" "$TBPG" "$BUNDLE_DIGEST" "$PREV_BUNDLE_DIGEST" "$UNIT_SHA")
+LIB=$(cat <<'GUEST'
+mount_check() {
+  local out target fs opts
+  out=$(findmnt -n -o TARGET,FSTYPE,OPTIONS /var/lib/tbound/runtime) || return 1
+  printf '%s\n' "$out"
+  read -r target fs opts <<<"$out"
+  [[ $target = /var/lib/tbound/runtime && ,$opts, = *,ro,* && ,$opts, = *,nosuid,* && ,$opts, = *,nodev,* ]]
+}
+measure_expected() {
+  local out digest
+  out=$(cd / && $SVC "$TBPG" runtime-bundle-digest --root /var/lib/tbound/runtime) || return 1
+  printf '%s\n' "$out"
+  digest=$(printf '%s\n' "$out" | sed -n 's/^Pi runtime bundle tree digest: \(sha256:[0-9a-f]\{64\}\)$/\1/p')
+  [ "$digest" = "$1" ]
+}
+GUEST
+)
+CHECK="$BASE
+$LIB
+$(printf 'TBP_DIGEST=%q\nPREV_TBP_DIGEST=%q\nALLOW_PREV_MEASURER=%q\n' "$TBP_DIGEST" "$PREV_TBP_DIGEST" "$ALLOW_PREV_MEASURER")
+"$(cat <<'GUEST'
+test "$(id -un)" = tboundadmin
+sudo -n true
+echo 'session sudo OPEN (sudo -n true works)'
+profile_sha=sha256:$(sudo -n sha256sum "$TBPG" | cut -d' ' -f1)
+case "$profile_sha" in
+  "$TBP_DIGEST") echo 'using current frozen tbound-profile';;
+  "$PREV_TBP_DIGEST") test "$ALLOW_PREV_MEASURER" = 1; echo 'using pinned previous-freeze tbound-profile: audited runtime digest algorithm unchanged in this freeze';;
+  *) echo "FATAL: unexpected tbound-profile: $profile_sha" >&2; exit 1;;
+esac
+mount_check
+unit_sha=$(sudo -n sha256sum /etc/systemd/system/var-lib-tbound-runtime.mount | cut -d' ' -f1)
+printf 'runtime mount unit sha256: %s\n' "$unit_sha"
+test "$unit_sha" = "$UNIT_SHA"
+sudo -n test -d /var/lib/tbound/runtime-src
+sudo -n test ! -L /var/lib/tbound/runtime-src
+printf 'runtime-src inode: %s\n' "$(sudo -n stat -c %d:%i /var/lib/tbound/runtime-src)"
+cd / && $SVC "$TBPG" runtime-bundle-digest --root /var/lib/tbound/runtime
+GUEST
+)
+
+if [ "$DRY_RUN" = 1 ]; then
+  note "DRY_RUN: GUEST_IP=$GUEST_IP is for printing only; no guest transport will be invoked"
+  printf '\nG %s\n' "bash -c $(quote "$CHECK")"
+  if [ "$SWAP" = 0 ]; then
+    note "verify-only: require measured digest == $BUNDLE_DIGEST, then no swap needed"
+    done_step; exit 0
+  fi
+  note "if CHECK measures $BUNDLE_DIGEST: no swap needed; exit 0 without streaming or writing"
+  note "otherwise CHECK must measure $PREV_BUNDLE_DIGEST; runtime-src inode is captured below"
+  SOURCE_INODE='<runtime-src inode from CHECK>'
+else
+  out=$(G "bash -c $(quote "$CHECK")") || die "guest read-only pre-swap checks failed: $out"
+  printf '%s\n' "$out"
+  CURRENT=$(printf '%s\n' "$out" | tr -d '\r' | sed -n 's/^Pi runtime bundle tree digest: \(sha256:[0-9a-f]\{64\}\)$/\1/p')
+  need_dig "installed runtime digest" "$CURRENT"
+  if [ "$CURRENT" = "$BUNDLE_DIGEST" ]; then note "no swap needed"; done_step; exit 0; fi
+  [ "$SWAP" = 1 ] || die "verify-only: installed runtime $CURRENT != BUNDLE_DIGEST $BUNDLE_DIGEST"
+  eq "pre-swap runtime == PREV_BUNDLE_DIGEST" "$CURRENT" "$PREV_BUNDLE_DIGEST"
+  SOURCE_INODE=$(printf '%s\n' "$out" | tr -d '\r' | sed -n 's/^runtime-src inode: //p')
+  [[ $SOURCE_INODE =~ ^[0-9]+:[0-9]+$ ]] || die "invalid runtime-src inode: $SOURCE_INODE"
+fi
+
+TX_BASE="$BASE
+$LIB
+$(printf 'OLD=%q\nSOURCE_INODE=%q\nTAR_SIZE=%q\nMEMBERS=%q\n' "$OLD" "$SOURCE_INODE" "$TAR_SIZE" "$MEMBERS")"
+# flock's child holds the root-owned lock through EXIT rollback; recovery waits, then re-checks state.
+LOCK='sudo -n flock -x -w 120 /run/tbound-runtime-swap.lock'
+ROLLBACK=$(cat <<'GUEST'
+measure_tree() {
+  local out digest
+  out=$(sudo -n unshare -m bash -euo pipefail -c '
+    mount --make-rprivate /
+    mount --bind "$1" /var/lib/tbound/runtime
+    mount -o remount,bind,ro,nosuid,nodev /var/lib/tbound/runtime
+    cd /
+    $2 "$3" runtime-bundle-digest --root /var/lib/tbound/runtime
+  ' bash "$1" "$SVC" "$TBPG") || return 1
+  printf '%s\n' "$out"
+  digest=$(printf '%s\n' "$out" | sed -n 's/^Pi runtime bundle tree digest: \(sha256:[0-9a-f]\{64\}\)$/\1/p')
+  [ "$digest" = "$2" ]
+}
+restore_old() {
+  echo "ROLLBACK: $OLD -> /var/lib/tbound/runtime-src"
+  sudo -n systemctl stop tbound-pi.service tbound-pi.socket || return 1
+  sudo -n systemctl stop var-lib-tbound-runtime.mount || return 1
+  if sudo -n test -e "$OLD" || sudo -n test -L "$OLD"; then
+    sudo -n test -d "$OLD" && sudo -n test ! -L "$OLD" || return 1
+    test "$(sudo -n stat -c %d:%i "$OLD")" = "$SOURCE_INODE" || return 1
+    measure_tree "$OLD" "$PREV_BUNDLE_DIGEST" || return 1
+    if sudo -n test -e /var/lib/tbound/runtime-src || sudo -n test -L /var/lib/tbound/runtime-src; then
+      sudo -n test -d /var/lib/tbound/runtime-src && sudo -n test ! -L /var/lib/tbound/runtime-src || return 1
+      if measure_tree /var/lib/tbound/runtime-src "$PREV_BUNDLE_DIGEST"; then
+        echo "KEEP previous runtime already restored; also preserve $OLD"
+      else
+        # Preserve an incomplete/unrecognised replacement; never delete a previous good tree.
+        sudo -n test ! -e "$OLD.failed" && sudo -n test ! -L "$OLD.failed" || return 1
+        sudo -n mv -T -n -- /var/lib/tbound/runtime-src "$OLD.failed" || return 1
+        sudo -n test ! -e /var/lib/tbound/runtime-src || return 1
+        echo "KEEP failed replacement: $OLD.failed"
+      fi
+    fi
+    if sudo -n test ! -e /var/lib/tbound/runtime-src; then
+      sudo -n mv -T -n -- "$OLD" /var/lib/tbound/runtime-src || return 1
+      sudo -n test ! -e "$OLD" || return 1
+    fi
+  else
+    # The rename failed, or the guest EXIT trap already restored it. Never delete an unrecognised tree.
+    test "$(sudo -n stat -c %d:%i /var/lib/tbound/runtime-src)" = "$SOURCE_INODE" || return 1
+  fi
+  sudo -n systemctl start var-lib-tbound-runtime.mount || return 1
+  mount_check || return 1
+  measure_expected "$PREV_BUNDLE_DIGEST" || return 1
+}
+GUEST
+)
+RECOVER="$TX_BASE
+$ROLLBACK
+restore_old || { echo 'FATAL: rollback could not be verified; leave service/socket stopped and preserve the old tree' >&2; exit 1; }
+sudo -n systemctl start tbound-pi.socket
+systemctl is-active tbound-pi.socket"
+TRANSACTION="$TX_BASE
+$ROLLBACK
+"$(cat <<'GUEST'
+QUIESCED=0; MOUNT_TOUCHED=0; SWAP_ARMED=0
+finish() {
+  local rc=$?
+  trap - EXIT HUP INT TERM
+  if [ "$SWAP_ARMED" = 1 ]; then
+    if ! restore_old; then echo "FATAL: rollback failed; preserve $OLD and leave service/socket stopped" >&2; exit 1; fi
+    [ "$rc" != 0 ] || rc=1
+  elif [ "$MOUNT_TOUCHED" = 1 ]; then
+    sudo -n systemctl start var-lib-tbound-runtime.mount && mount_check && measure_expected "$PREV_BUNDLE_DIGEST" || exit 1
+  fi
+  if [ "$QUIESCED" = 1 ]; then
+    sudo -n systemctl start tbound-pi.socket && systemctl is-active tbound-pi.socket || rc=1
+  fi
+  exit "$rc"
+}
+trap finish EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+mount_check
+test "$(sudo -n sha256sum /etc/systemd/system/var-lib-tbound-runtime.mount | cut -d' ' -f1)" = "$UNIT_SHA"
+measure_expected "$PREV_BUNDLE_DIGEST"
+test "$(sudo -n stat -c %d:%i /var/lib/tbound/runtime-src)" = "$SOURCE_INODE"
+old_bytes=$(sudo -n du -sx -B1 /var/lib/tbound/runtime-src | cut -f1)
+available=$(df -B1 --output=avail /var/lib/tbound | tail -1 | tr -d ' ')
+block=$(stat -f -c %S /var/lib/tbound)
+[[ $old_bytes =~ ^[0-9]+$ && $available =~ ^[0-9]+$ && $block =~ ^[1-9][0-9]*$ ]]
+new_budget=$((TAR_SIZE + MEMBERS * block + 64 * 1024 * 1024))
+printf 'space: old=%s retained; new budget=%s; available=%s bytes (old already allocated)\n' "$old_bytes" "$new_budget" "$available"
+test "$available" -ge "$new_budget"
+sudo -n test ! -e "$OLD"
+sudo -n test ! -L "$OLD"
+QUIESCED=1
+sudo -n systemctl stop tbound-pi.service tbound-pi.socket
+for unit in tbound-pi.service tbound-pi.socket; do
+  state=$(systemctl show -p ActiveState --value "$unit")
+  case "$state" in inactive|failed) ;; *) echo "FATAL: $unit is $state" >&2; exit 1;; esac
+done
+MOUNT_TOUCHED=1
+sudo -n systemctl stop var-lib-tbound-runtime.mount
+SWAP_ARMED=1
+sudo -n mv -T -n -- /var/lib/tbound/runtime-src "$OLD"
+sudo -n test ! -e /var/lib/tbound/runtime-src
+sudo -n install -d -o root -g root -m 0555 /var/lib/tbound/runtime-src
+sudo -n tar -x -p --numeric-owner -C /var/lib/tbound/runtime-src -f -
+sudo -n systemctl start var-lib-tbound-runtime.mount
+mount_check
+measure_expected "$BUNDLE_DIGEST"
+sudo -n systemctl start tbound-pi.socket
+systemctl is-active tbound-pi.socket
+printf 'KEEP old tree: %s (remove only after the signed profile is installed and verified, P11)\n' "$OLD"
+QUIESCED=0; MOUNT_TOUCHED=0; SWAP_ARMED=0
+GUEST
+)
+
+if [ "$DRY_RUN" = 1 ]; then
+  printf '\nWX cat %s | GI %s\n' "$(quote "$TAR")" "$LOCK bash -c $(quote "$TRANSACTION")"
+  printf '\n# On owner-side failure/uncertain SSH completion, G %s\n' "$LOCK bash -c $(quote "$RECOVER")"
+  note "planned old tree: $OLD (UTC chosen per invocation; never overwritten)"
+  done_step; exit 0
+fi
+
+owner_exit() {
+  local rc=$?
+  trap - EXIT
+  if [ "$rc" != 0 ]; then
+    echo "cleanup: automatic P11 rollback (also covers an uncertain SSH result)"
+    G "$LOCK bash -c $(quote "$RECOVER")" || echo "FATAL: rollback unverified (lock timeout or recovery failure); owner must inspect $OLD; do not continue the guest chain" >&2
+  else sleep 1; fi  # let the kit logger flush
+  exit "$rc"
+}
+trap owner_exit EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+WX cat "$TAR" | GI "$LOCK bash -c $(quote "$TRANSACTION")"
+note "kept old tree: $OLD; remove only after the signed profile is installed and verified"
+done_step

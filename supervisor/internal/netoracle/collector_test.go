@@ -142,6 +142,7 @@ func TestCollectorCleanWindowIsNoneWithAReportReference(t *testing.T) {
 
 	// An arrival before the interval, or in the next one, is not this interval's.
 	do(t, "GET", "http://"+g.s.Addr()+"/earlier", "")
+	waitClosed(t, g.s, true, 0) // the server closes the connection after the client has its answer; a close journaled after the next start canary overlaps its window
 	next := runner.EvidenceRef{Interval: "case-net|trajectory|C|0#2"}
 	if err := c.BeginInterval(context.Background(), next); err != nil {
 		t.Fatal(err)

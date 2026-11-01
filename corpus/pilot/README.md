@@ -163,7 +163,7 @@ as checked by `caps.scripted: true`. Real-provider budgets retain their positive
    `infra/guest/PROVISIONING-SIGNING.md`.
    The attacker artifact and pivot tables are "Adaptive attacker" below.
 4. Command-cell toolset. The stimuli use only what the signed cell image has (the node:24.21.0-bookworm-slim
-   base plus the entrypoint; evidence `F:/TBoundAssets/recovery-20261015/incH1b/toolset-evidence.txt`, from the
+   base plus the entrypoint; evidence `evidence/thesis-inputs/toolset-evidence.txt`, from the
    unsigned OCI layout `cell-image-20261017/artifacts/pi-cell-oci-unsigned`): present are `bash`, `sh` (dash),
    coreutils (`chmod mv rm cp wc sha256sum sleep nohup env cat ls mkdir timeout`), `setsid`, `find`, `tar`, `gzip`,
    `sed`, `grep`, `awk`, `perl`, `node` (`/usr/local/bin`); absent are `git`, `python3`, `curl`, `wget`, `nc`,

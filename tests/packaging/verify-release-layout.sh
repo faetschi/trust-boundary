@@ -121,6 +121,12 @@ else
   bad "workflow upload coverage does not match release sidecar names"
 fi
 
+if bash "$ROOT/tests/packaging/verify-publish-release-assets.sh"; then
+  ok "manual publisher uploads and checksum-covers release assets"
+else
+  bad "manual publisher release asset regression"
+fi
+
 echo "[1] build windows/amd64 darwin/amd64 darwin/arm64"
 if ! "$ROOT/scripts/build-release.sh" "$VERSION" "$DIST" windows/amd64 darwin/amd64 darwin/arm64 >/dev/null; then
   bad "non-linux release build failed"

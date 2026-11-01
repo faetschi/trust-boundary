@@ -651,7 +651,7 @@
         {
           "ref": "repo:infra/hyperv/TBOUND-HOST-AUTOMATION.md",
           "source_date": "2026-10-07",
-          "locator": "One-time administrative install and operator enrollment",
+          "locator": "One-time administrative install and operator enrollment; file retired 2026-10-31, in git history at d0b26726",
           "lines": "35-59"
         },
         {

@@ -37,3 +37,8 @@ __pycache__/
 
 # local UI QA captures written by extensions/webchat/scripts/ui-qa.mjs
 /extensions/webchat/docs/webchat/qa/
+
+# Local workspace: VM disks, large inputs, keys and scratch (docs/guides/self-contained-workspace.md).
+/.local/
+# Thesis repository checkout (own git history, github.com/faetschi/MSE_MA_Thesis).
+/thesis/

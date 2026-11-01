@@ -675,9 +675,10 @@ func TestFreshModeAdmissionIsUnchangedByCorpusSupport(t *testing.T) {
 		t.Fatal(err)
 	}
 	state, _, _ := requests.lookup(peer, request, digest)
+	// A legitimate path may contain "corpus" without adding corpus-mode members.
 	config := piServiceConfig{WorkflowAdmissionMode: "fresh", WorkflowAdmissionID: "host-task-2026-10-14",
 		WorkflowTaskID: "approved-task", WorkflowPrompt: "Read the approved host task.",
-		WorkflowOwnerStoreRoot: filepath.Join(root, "owners"), WorkflowDurationSeconds: 1200,
+		WorkflowOwnerStoreRoot: filepath.Join(root, "corpus-owners"), WorkflowDurationSeconds: 1200,
 		WorkflowMaxPreEffectRetries: 2, WorkflowMaxCleanRestarts: 2, WorkflowMaxHostCalls: 4, WorkflowMaxTokens: 10000}
 	if code := catalog.admissionScreen(config)(peer, request); code != "" {
 		t.Fatalf("fresh request screened out: %q", code)
@@ -698,9 +699,65 @@ func TestFreshModeAdmissionIsUnchangedByCorpusSupport(t *testing.T) {
 		entry.CorpusManifestDigest != "" || entry.Limits.MaxHostCalls != 4 || entry.Limits.MaxTokens != 10000 {
 		t.Fatalf("fresh admission changed: %+v", entry)
 	}
-	encoded, err := json.Marshal(entry)
-	if err != nil || strings.Contains(string(encoded), "corpus") {
-		t.Fatalf("fresh catalog entry encoding carries corpus members: %s %v", encoded, err)
+	for _, field := range []string{"fresh", "corpus_manifest_digest", "corpus_quota_profile"} {
+		t.Run(field, func(t *testing.T) {
+			candidate := entry
+			switch field {
+			case "corpus_manifest_digest":
+				candidate.CorpusManifestDigest = corpusTestDigest("manifest")
+			case "corpus_quota_profile":
+				candidate.CorpusQuotaProfile = "pilot"
+			}
+			encoded, err := json.Marshal(candidate)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var decoded any
+			if err := json.Unmarshal(encoded, &decoded); err != nil {
+				t.Fatal(err)
+			}
+			carriesCorpus := jsonHasMemberContaining(decoded, "corpus")
+			if carriesCorpus != (field != "fresh") {
+				t.Fatalf("corpus-member detection for %s: got %t in %s", field, carriesCorpus, encoded)
+			}
+		})
+	}
+}
+
+// jsonHasMemberContaining searches member names at any depth and ignores string values,
+// so a legitimate path that contains the text does not count.
+func jsonHasMemberContaining(value any, text string) bool {
+	switch typed := value.(type) {
+	case map[string]any:
+		for member, nested := range typed {
+			if strings.Contains(member, text) || jsonHasMemberContaining(nested, text) {
+				return true
+			}
+		}
+	case []any:
+		for _, nested := range typed {
+			if jsonHasMemberContaining(nested, text) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func TestJSONMemberSearchFindsNestedMembersAndIgnoresValues(t *testing.T) {
+	for encoded, want := range map[string]bool{
+		`{"corpus_quota_profile":"pilot"}`:                      true,
+		`{"limits":{"corpus_quota_profile":"pilot"}}`:           true,
+		`{"items":[{"limits":{"corpus_manifest_digest":"d"}}]}`: true,
+		`{"path":"/srv/corpus/owner.db","items":["corpus"]}`:    false,
+	} {
+		var decoded any
+		if err := json.Unmarshal([]byte(encoded), &decoded); err != nil {
+			t.Fatal(err)
+		}
+		if got := jsonHasMemberContaining(decoded, "corpus"); got != want {
+			t.Errorf("member search in %s = %t, want %t", encoded, got, want)
+		}
 	}
 }
 

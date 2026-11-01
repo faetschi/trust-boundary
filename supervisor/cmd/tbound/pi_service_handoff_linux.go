@@ -443,7 +443,7 @@ func validatePiServiceSocketRegistration(reg piServiceSocketRegistration, servic
 	}
 	previous := -1
 	for _, uid := range reg.AllowedClientUIDs {
-		if uid < 0 || uid == serviceUID || uid <= previous {
+		if uid <= 0 || uid == serviceUID || uid <= previous {
 			return ErrPiServiceUnavailable
 		}
 		previous = uid
@@ -1543,6 +1543,9 @@ func servePiServiceRequests(ctx context.Context, listener net.Listener, socket p
 	}
 	var active atomic.Bool
 	var tasks sync.WaitGroup
+	// Held while a task records its outcome and frees the slot, so no request can see a terminal ahead of
+	// that release and send its next request into a slot that is still held.
+	var settling sync.Mutex
 	listenerClosed := make(chan struct{})
 	go func() {
 		select {
@@ -1597,24 +1600,28 @@ func servePiServiceRequests(ctx context.Context, listener net.Listener, socket p
 			_ = unixConn.Close()
 			continue
 		}
+		settling.Lock()
 		prior, exists, lookupErr := journal.lookup(peer, request, payloadDigest)
+		settling.Unlock()
 		if lookupErr != nil {
 			_ = writePiServiceFrame(unixConn, piServiceResponse{SchemaVersion: piServiceResponseSchema,
 				RequestID: request.RequestID, Status: "refused", ErrorCode: "request-id-conflict"})
 			_ = unixConn.Close()
 			continue
 		}
-		if exists && prior.terminal != nil {
+		answerStoredTerminal := func(stored piServiceRequestState) {
 			// A stored terminal is returned only if it still belongs to the active
 			// manifest, config, registration and envelope. A refusal consumes nothing.
-			if code := journal.checkTerminalReplay(peer, request, prior); code != "" {
+			if code := journal.checkTerminalReplay(peer, request, stored); code != "" {
 				_ = writePiServiceFrame(unixConn, piServiceResponse{SchemaVersion: piServiceResponseSchema,
 					RequestID: request.RequestID, Status: "refused", ErrorCode: code})
-				_ = unixConn.Close()
-				continue
+			} else {
+				_ = writePiServiceFrame(unixConn, *stored.terminal)
 			}
-			_ = writePiServiceFrame(unixConn, *prior.terminal)
 			_ = unixConn.Close()
+		}
+		if exists && prior.terminal != nil {
+			answerStoredTerminal(prior)
 			continue
 		}
 		journal.runAfterScreen(request, &active)
@@ -1623,6 +1630,23 @@ func servePiServiceRequests(ctx context.Context, listener net.Listener, socket p
 				RequestID: request.RequestID, Status: "busy", ErrorCode: "one-task-at-a-time"})
 			_ = unixConn.Close()
 			continue
+		}
+		if exists {
+			// The task that held the slot may have settled this request after the lookup, and a settled
+			// workflow cannot be resumed. Nothing else can settle it now that this request holds the slot.
+			settled, _, settledErr := journal.lookup(peer, request, payloadDigest)
+			if settledErr != nil {
+				active.Store(false)
+				_ = writePiServiceFrame(unixConn, piServiceResponse{SchemaVersion: piServiceResponseSchema,
+					RequestID: request.RequestID, Status: "refused", ErrorCode: "request-id-conflict"})
+				_ = unixConn.Close()
+				continue
+			}
+			if settled.terminal != nil {
+				active.Store(false)
+				answerStoredTerminal(settled)
+				continue
+			}
 		}
 		release := func() {}
 		if maintenance != nil {
@@ -1696,7 +1720,6 @@ func servePiServiceRequests(ctx context.Context, listener net.Listener, socket p
 		go func(conn *net.UnixConn, peer piServicePeerCredentials, request piServiceRequest, payloadDigest string,
 			acceptedEvent piServiceRequestAcceptedEvent, acceptedRecord audit.Record, isReplay bool) {
 			defer tasks.Done()
-			defer free()
 			defer conn.Close()
 			taskCtx, cancel := context.WithTimeout(ctx, productionSessionMaxRuntime)
 			defer cancel()
@@ -1712,6 +1735,7 @@ func servePiServiceRequests(ctx context.Context, listener net.Listener, socket p
 			}
 			response := piServiceResponse{SchemaVersion: piServiceResponseSchema, RequestID: request.RequestID,
 				Status: status, ErrorCode: errorCode, Receipt: append(json.RawMessage(nil), receipt...)}
+			settling.Lock()
 			if isReplay && runErr != nil {
 				// A failed host recovery attempt remains unresolved. It cannot be
 				// converted to a fresh workflow or a terminal success by retrying.
@@ -1721,6 +1745,11 @@ func servePiServiceRequests(ctx context.Context, listener net.Listener, socket p
 				response = piServiceResponse{SchemaVersion: piServiceResponseSchema, RequestID: request.RequestID,
 					Status: "unknown", ErrorCode: "terminal-journal-unavailable"}
 			}
+			// The run is over. Free the slot and the maintenance lock before the client can read the answer, or
+			// its next request races the release and is refused busy. An unresolved outcome stays blocked by
+			// the journal, not by this slot.
+			free()
+			settling.Unlock()
 			_ = writePiServiceFrame(conn, response) // disconnect never cancels accepted work
 		}(unixConn, peer, request, payloadDigest, acceptedEvent, acceptedRecord, exists)
 	}

@@ -28,11 +28,6 @@ These are new setup scripts: syntax and fixture checks have passed, but neither
 path has been end-to-end qualified on a clean host. Treat them as review-needed
 prototype tooling until that qualification is completed.
 
-If you already use the reference VM `TBound-Ubuntu-2404`, resume it with the
-[Hyper-V setup guide](../hyperv/SETUP.md).
-Do not run the VM bootstrap for it: that script creates a new VM and stops if
-the default VM name already exists.
-
 ## Prerequisites
 
 - **Path A:** Ubuntu 24.04 (Noble) amd64 with root access (sudo) and network
@@ -54,12 +49,14 @@ the default VM name already exists.
 ```sh
 # from the checkout (or after copying infra/ to the host)
 sudo bash infra/repro/bootstrap-linux.sh <trial-user>       # interactive confirmations
-TBOUND_ASSUME_YES=1 sudo -E bash infra/repro/bootstrap-linux.sh <trial-user>   # unattended
+TBOUND_ASSUME_YES=1 TBOUND_APPLY_USERNS_SYSCTL=1 sudo -E bash infra/repro/bootstrap-linux.sh <trial-user>   # unattended
 ```
 
 Do not set `TBOUND_ASSUME_YES=1` on a daily-driver or shared host: it accepts
 the printed plan, including system-wide host changes. Use unattended mode only
 for a dedicated disposable evaluation machine after reviewing the script.
+Without `TBOUND_APPLY_USERNS_SYSCTL=1`, an unattended run on a host that restricts
+user namespaces stops before changing that policy.
 
 What it does, in order, and what each step verifies:
 

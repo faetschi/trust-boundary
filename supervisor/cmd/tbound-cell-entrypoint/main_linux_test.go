@@ -43,6 +43,10 @@ func landlockTSYNCChild() int {
 		return code
 	}
 	runtime.LockOSThread()
+	if err := setNoNewPrivsLikeTheLauncher(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
 	tid, start, result := make(chan int), make(chan struct{}), make(chan error)
 	go func() {
 		runtime.LockOSThread()
@@ -191,7 +195,26 @@ func landlockNetChild(name string) int {
 	return landlockNetChildWith(name, func() (uintptr, syscall.Errno) {
 		abi, _, errno := syscall.Syscall(uintptr(sysLandlockCreateRuleset), 0, 0, landlockCreateRulesetVersion)
 		return abi, errno
-	}, applyLandlockFor)
+	}, func(abi int, delta piruntime.D09CellDelta) (int, string, error) {
+		runtime.LockOSThread()
+		if err := setNoNewPrivsLikeTheLauncher(); err != nil {
+			return 0, "", err
+		}
+		return applyLandlockFor(abi, delta)
+	})
+}
+
+// setNoNewPrivsLikeTheLauncher sets no_new_privs on the calling OS thread. The launched cell has it
+// before the entrypoint runs (main refuses to continue without it), and the kernel refuses
+// landlock_restrict_self with EPERM to a thread that has neither no_new_privs nor CAP_SYS_ADMIN
+// (security/landlock/syscalls.c). A child of this test binary started by an unprivileged user,
+// such as a hosted CI runner, has neither; as root on the guest it has CAP_SYS_ADMIN. With TSYNC the
+// kernel copies the flag from the calling thread to its siblings. The caller must be locked to its thread.
+func setNoNewPrivsLikeTheLauncher() error {
+	if err := unix.Prctl(unix.PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0); err != nil {
+		return fmt.Errorf("set no_new_privs: %w", err)
+	}
+	return nil
 }
 
 func landlockNetChildWith(name string, probe func() (uintptr, syscall.Errno), apply func(int, piruntime.D09CellDelta) (int, string, error)) int {

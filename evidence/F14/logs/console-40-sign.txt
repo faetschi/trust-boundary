@@ -1,0 +1,79 @@
+disk /mnt/c: 54 GiB free (need 10)
+disk /mnt/f: 952 GiB free (need 10)
+disk /: 776 GiB free (need 10)
+== 40-sign start 2026-10-30T05:17:30Z as jeli2k freeze=F14
+
+== preconditions (names, modes and public digests only)
+OK IMGDIGEST file == session env = sha256:8352c9bdd77e1719f727326884a40299b381b5eb772fe899e907dfefcdf434de
+
+== keys are the K0 keys (public digests must equal the F0 records)
+OK ADMIN_PUB_DIGEST == F0 = sha256:be206a41ad321f29ef89e8157f69a6f0820a93fafa3096b71867ece745f9afac
+OK COSIGN_PUB_DIGEST == F0 = sha256:caf906a4ead6cd8998502333030f0602e66302e47b1539afebe5a13c39e66bcd
+
+== the layout to sign is the P3 layout
+OK measure(/home/jeli2k/tbound-b.qA1EjD/oci) == IMGDIGEST = sha256:8352c9bdd77e1719f727326884a40299b381b5eb772fe899e907dfefcdf434de
+
+== S5: sign into a partial dir (renamed to pi-cell-oci only after every check passes)
+Flag --tlog-upload has been deprecated, prefer using a --signing-config file with no transparency log services
+Using payload from: /tmp/cosign-sign-2p56s2pq/payload.json
+Signing artifact...
+Wrote bundle to file /tmp/cosign-sign-2p56s2pq/bundle.json
+{
+ "signed_manifest_digest": "sha256:8352c9bdd77e1719f727326884a40299b381b5eb772fe899e907dfefcdf434de",
+ "layout": "/home/jeli2k/tbound-h.zfosIW/f14/.pi-cell-oci.partial"
+}
+
+== load tar (deterministic, same recipe as F0, from the unsigned layout; checked by building twice)
+
+== P7: verify with cosign.pub against IMGDIGEST
+OK signed_manifest_digest == IMGDIGEST = sha256:8352c9bdd77e1719f727326884a40299b381b5eb772fe899e907dfefcdf434de
+
+== P7: a fresh throwaway key must NOT verify
+Private key written to /dev/shm/tbound-f14.Ul6tkr/throw.key
+Public key written to /dev/shm/tbound-f14.Ul6tkr/throw.pub
+OK throwaway key fails: no matching signatures (rc=1)
+throwaway key shredded
+
+== commit outputs
+total 92460
+drwx------  3 jeli2k jeli2k     4096 Oct 30 06:17 .
+drwx------ 32 jeli2k jeli2k     4096 Oct 29 23:12 ..
+-rw-------  1 jeli2k jeli2k       72 Oct 30 06:17 ADMIN_PUB_DIGEST
+-rw-------  1 jeli2k jeli2k       72 Oct 29 22:59 BASH_DIGEST
+-rw-------  1 jeli2k jeli2k       72 Oct 29 22:58 BUNDLE_DIGEST
+-rw-------  1 jeli2k jeli2k       72 Oct 29 22:58 BUNDLE_TAR_DIGEST
+-rw-------  1 jeli2k jeli2k       71 Oct 29 22:58 BUNDLE_TAR_PATH
+-rw-------  1 jeli2k jeli2k       10 Oct 29 22:58 BUNDLE_TAR_SIZE
+-rw-------  1 jeli2k jeli2k       72 Oct 29 22:59 CFG
+-rw-------  1 jeli2k jeli2k    45608 Oct 29 22:58 CHANGED-PATHS-vs-F0.txt
+-rw-------  1 jeli2k jeli2k    20841 Oct 29 22:58 CHANGED-PATHS-vs-F13.txt
+-rw-------  1 jeli2k jeli2k       72 Oct 30 06:17 COSIGN_PUB_DIGEST
+-rw-------  1 jeli2k jeli2k       72 Oct 29 22:57 COSIGN_TOOL_DIGEST
+-rw-------  1 jeli2k jeli2k       72 Oct 29 22:59 ENTRYPOINT_DIGEST
+-rw-------  1 jeli2k jeli2k       72 Oct 29 22:57 ENTRYPOINT_P1_DIGEST
+-rw-------  1 jeli2k jeli2k       72 Oct 29 23:21 EVQ_CAPTURE_FILE_DIGEST
+-rw-------  1 jeli2k jeli2k       41 Oct 29 22:56 FROZEN-COMMIT
+-rw-------  1 jeli2k jeli2k       72 Oct 29 22:59 IMGDIGEST
+-rw-------  1 jeli2k jeli2k       72 Oct 30 06:17 LOAD_TAR_DIGEST
+-rw-------  1 jeli2k jeli2k       72 Oct 29 22:59 NODE_DIGEST
+-rw-------  1 jeli2k jeli2k        8 Oct 29 22:58 P2-MODE
+-rw-------  1 jeli2k jeli2k       72 Oct 30 06:17 SIGNED_MANIFEST_DIGEST
+-rw-------  1 jeli2k jeli2k       72 Oct 29 22:57 SRC_DIGEST
+-rw-------  1 jeli2k jeli2k       72 Oct 29 22:57 TBOUND_DIGEST
+-rw-------  1 jeli2k jeli2k       72 Oct 29 22:57 TBOUND_RUN_DIGEST
+-rw-------  1 jeli2k jeli2k       72 Oct 29 22:57 TBOUND_RUN_EXE_DIGEST
+-rw-------  1 jeli2k jeli2k       72 Oct 29 22:57 TBP_DIGEST
+-rw-------  1 jeli2k jeli2k       72 Oct 29 23:21 TEST_ENTRYPOINT
+-rw-------  1 jeli2k jeli2k       72 Oct 29 23:21 TEST_PROCORACLE
+-rw-------  1 jeli2k jeli2k      476 Oct 29 22:59 p3-measure.json
+-rw-------  1 jeli2k jeli2k 94484480 Oct 30 06:17 pi-cell-load.tar
+drwx------  3 jeli2k jeli2k     4096 Oct 30 06:17 pi-cell-oci
+OK sync done; no 0-byte output under /home/jeli2k/tbound-h.zfosIW/f14
+
+== DONE: public values (safe to share)
+F14=02f9fb71a26aadf4eebeb0ff217fe97c374ffff8
+ADMIN_PUB_DIGEST=sha256:be206a41ad321f29ef89e8157f69a6f0820a93fafa3096b71867ece745f9afac
+COSIGN_PUB_DIGEST=sha256:caf906a4ead6cd8998502333030f0602e66302e47b1539afebe5a13c39e66bcd
+S5 signed_manifest_digest=sha256:8352c9bdd77e1719f727326884a40299b381b5eb772fe899e907dfefcdf434de (== IMGDIGEST)
+LOAD_TAR_DIGEST=sha256:cdfdf90c656f7a52c979b176c15ff790feb3bb16ffa7e3d664d48f1a35c701a6
+LOAD_TAR_DIGEST: sha256:cdfdf90c656f7a52c979b176c15ff790feb3bb16ffa7e3d664d48f1a35c701a6  (NEW; F13 was sha256:aed88b6ee7b5725915c8bf6e27b98baf412867d91db985d40ca0a24abaf7fda9)

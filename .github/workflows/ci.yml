@@ -1,7 +1,9 @@
 name: linux-ci
 
 on:
+  # A PR branch runs once, through pull_request. Each run takes about 25 minutes.
   push:
+    branches: [main, codex/tbound-prototype]
   pull_request:
 
 permissions:
@@ -12,7 +14,6 @@ jobs:
     runs-on: ubuntu-latest
     env:
       TBOUND_REQUIRE_PI_CLI_INTEGRATION: "1"
-      TBOUND_PI_CLI_BIN: ${{ runner.temp }}/tbound-pi-cli/bin/pi
     steps:
       - uses: actions/checkout@v4
 
@@ -47,9 +48,26 @@ jobs:
               path = os.path.dirname(path)
           PY
           printf 'TMPDIR=%s\n' "$TMPDIR" >> "$GITHUB_ENV"
+          printf 'TBOUND_PI_CLI_BIN=%s/tbound-pi-cli/bin/pi\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
+
+      - name: Offline setup regressions (mocks only)
+        run: |
+          bash infra/repro/test_bootstrap_package_status.sh
+          bash infra/repro/test_bootstrap_userns_optin.sh
+
+      - name: Hyper-V Netplan injector regression
+        run: |
+          command -v netplan >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq netplan.io; }
+          python3 infra/repro/test_hyperv_netplan_injection.py -v
 
       - name: Official Pi runtime closure regressions
         run: python3 -m unittest discover -s scripts -p 'test_prepare_official_pi_runtime.py' -v
+
+      - name: Offline package and publisher regressions
+        run: |
+          umask 077
+          bash tests/packaging/verify-package-manager-layout.sh
+          bash tests/packaging/verify-publish-release-assets.sh
 
       - name: Install and verify official Pi CLI
         run: |
@@ -62,13 +80,58 @@ jobs:
           pi_version="$("$TBOUND_PI_CLI_BIN" --version)"
           test "$pi_version" = "0.87.1"
 
+      - name: Prepare hosted namespace test prerequisites
+        working-directory: supervisor
+        run: |
+          set -euo pipefail
+          umask 077
+          uname -r
+          if test -r /proc/self/attr/current; then
+            cat /proc/self/attr/current
+          fi
+          # Boot-only setting on this disposable runner; no persistent host policy.
+          # https://documentation.ubuntu.com/release-notes/24.04/
+          if test -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns; then
+            restriction="$(sysctl -n kernel.apparmor_restrict_unprivileged_userns)"
+            printf 'AppArmor user namespace restriction: %s\n' "$restriction"
+            if test "$restriction" = 1; then
+              sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+            fi
+          fi
+          if ! go test -mod=readonly -count=1 -v ./internal/sandbox -run '^TestProbeMechanisms$'; then
+            sudo dmesg | grep -E 'apparmor=.*DENIED|userns' | tail -20 || true
+            exit 1
+          fi
+
       - name: Go unit suite
         working-directory: supervisor
         run: umask 077; go test -mod=readonly -count=1 ./...
 
+      # The real-cgroup test skips in the unit suite above: a hosted runner is not root and its service
+      # cgroup is not delegated to it. Run it once in a cgroup delegated to the runner user, and fail if it
+      # skips, so the fresh-cgroup run is verified on this runner and not silently dropped.
+      - name: Real cgroup test in a delegated cgroup
+        working-directory: supervisor
+        run: |
+          set -euo pipefail
+          umask 077
+          sudo systemd-run --pipe --wait --collect --quiet \
+            -p User="$(id -un)" -p Delegate=yes -p TasksMax=512 -p MemoryMax=2G \
+            --working-directory="$PWD" \
+            --setenv=PATH="$PATH" --setenv=HOME="$HOME" --setenv=TMPDIR="$TMPDIR" \
+            --setenv=GOCACHE="$(go env GOCACHE)" --setenv=GOMODCACHE="$(go env GOMODCACHE)" \
+            "$(command -v go)" test -mod=readonly -count=1 -v ./cmd/tbound-profile \
+            -run '^TestRunGuestTestsRunsTheRealCgroupTestsInAFreshCgroupAndRemovesIt$' | tee "$RUNNER_TEMP/real-cgroup.txt"
+          grep -q -- '^--- PASS: TestRunGuestTestsRunsTheRealCgroupTestsInAFreshCgroupAndRemovesIt ' "$RUNNER_TEMP/real-cgroup.txt"
+
+      # Verbose, so the log shows whether this runner's kernel ran the Landlock tests or skipped them.
+      - name: Landlock enforcement on this runner's kernel
+        working-directory: supervisor
+        run: umask 077; go test -mod=readonly -count=1 -v ./cmd/tbound-cell-entrypoint -run '^TestLandlock'
+
       - name: Go race suite
         working-directory: supervisor
-        run: umask 077; go test -race -mod=readonly -count=1 ./...
+        run: umask 077; go test -race -mod=readonly -count=1 -timeout 40m ./...
 
       - name: Go vet
         working-directory: supervisor

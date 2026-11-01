@@ -19,6 +19,8 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot '..\workspace\paths.ps1')
+$tboundLocalRoot = Get-TBoundLocalRoot
 
 $TrustedWindowsOwner = 'NT SERVICE\TrustedInstaller'
 $ExpectedOpenSshSha256 = @{
@@ -71,7 +73,7 @@ function Assert-TrustedOpenSshTool {
     return $actualSha256
 }
 
-$KeyFile = Join-Path $env:LOCALAPPDATA 'TBound\abi8-qualification\id_ed25519'
+$KeyFile = Join-Path $tboundLocalRoot 'secrets\abi8-qualification\id_ed25519'
 $parsedAddress = $null
 if (-not [Net.IPAddress]::TryParse($HostName, [ref]$parsedAddress) -or
     $parsedAddress.AddressFamily -ne [Net.Sockets.AddressFamily]::InterNetwork) {
