@@ -157,7 +157,8 @@ func TestProbeCapabilityReadsTheMachine(t *testing.T) {
 func otherFilteredThreads(t *testing.T, inheritedFilters int) []int {
 	t.Helper()
 	var filtered []int
-	for range 200 {
+	// The probe reports before its locked thread exits, and teardown can lag on a loaded runner.
+	for range 1000 {
 		filtered = nil
 		tasks, err := os.ReadDir("/proc/self/task")
 		if err != nil {

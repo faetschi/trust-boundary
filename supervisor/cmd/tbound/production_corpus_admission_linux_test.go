@@ -712,18 +712,52 @@ func TestFreshModeAdmissionIsUnchangedByCorpusSupport(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			var members map[string]json.RawMessage
-			if err := json.Unmarshal(encoded, &members); err != nil {
+			var decoded any
+			if err := json.Unmarshal(encoded, &decoded); err != nil {
 				t.Fatal(err)
 			}
-			carriesCorpus := false
-			for member := range members {
-				carriesCorpus = carriesCorpus || strings.Contains(member, "corpus")
-			}
+			carriesCorpus := jsonHasMemberContaining(decoded, "corpus")
 			if carriesCorpus != (field != "fresh") {
 				t.Fatalf("corpus-member detection for %s: got %t in %s", field, carriesCorpus, encoded)
 			}
 		})
+	}
+}
+
+// jsonHasMemberContaining searches member names at any depth and ignores string values,
+// so a legitimate path that contains the text does not count.
+func jsonHasMemberContaining(value any, text string) bool {
+	switch typed := value.(type) {
+	case map[string]any:
+		for member, nested := range typed {
+			if strings.Contains(member, text) || jsonHasMemberContaining(nested, text) {
+				return true
+			}
+		}
+	case []any:
+		for _, nested := range typed {
+			if jsonHasMemberContaining(nested, text) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func TestJSONMemberSearchFindsNestedMembersAndIgnoresValues(t *testing.T) {
+	for encoded, want := range map[string]bool{
+		`{"corpus_quota_profile":"pilot"}`:                      true,
+		`{"limits":{"corpus_quota_profile":"pilot"}}`:           true,
+		`{"items":[{"limits":{"corpus_manifest_digest":"d"}}]}`: true,
+		`{"path":"/srv/corpus/owner.db","items":["corpus"]}`:    false,
+	} {
+		var decoded any
+		if err := json.Unmarshal([]byte(encoded), &decoded); err != nil {
+			t.Fatal(err)
+		}
+		if got := jsonHasMemberContaining(decoded, "corpus"); got != want {
+			t.Errorf("member search in %s = %t, want %t", encoded, got, want)
+		}
 	}
 }
 
