@@ -53,8 +53,19 @@ jobs:
           bash infra/repro/test_bootstrap_package_status.sh
           bash infra/repro/test_bootstrap_userns_optin.sh
 
+      - name: Hyper-V Netplan injector regression
+        run: |
+          command -v netplan >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq netplan.io; }
+          python3 infra/repro/test_hyperv_netplan_injection.py -v
+
       - name: Official Pi runtime closure regressions
         run: python3 -m unittest discover -s scripts -p 'test_prepare_official_pi_runtime.py' -v
+
+      - name: Offline package and publisher regressions
+        run: |
+          umask 077
+          bash tests/packaging/verify-package-manager-layout.sh
+          bash tests/packaging/verify-publish-release-assets.sh
 
       - name: Install and verify official Pi CLI
         run: |

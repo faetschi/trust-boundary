@@ -5,6 +5,8 @@
 # The script never installs packages, changes rpm/dpkg databases, or writes into
 # the repository dist directory.
 set -euo pipefail
+# CI builds under umask 077; the package must still carry normal modes.
+umask 077
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 VERSION=1.2.3
@@ -25,6 +27,8 @@ for binary in tbound tbound-doctor tbound-profile; do
   chmod 755 "$STAGE/bin/$binary"
 done
 printf '{"synthetic":true}\n' > "$STAGE/runtime/package.json"
+printf '#!/bin/sh\necho synthetic\n' > "$STAGE/runtime/helper.sh"
+chmod 755 "$STAGE/runtime/helper.sh"
 printf 'unsigned test-only entrypoint\n' > "$STAGE/libexec/tbound/tbound-cell-entrypoint"
 chmod 755 "$STAGE/libexec/tbound/tbound-cell-entrypoint"
 printf '{"signed":false,"synthetic":true}\n' > "$STAGE/libexec/tbound/cell-entrypoint.json"
@@ -58,6 +62,24 @@ if command -v dpkg-deb >/dev/null 2>&1; then
     exit 1
   fi
   echo "  PASS  DEB keeps TCB entrypoint outside /usr/bin"
+  check_mode() {
+    local listing="$1" mode="$2" path="$3" actual
+    actual="$(printf '%s\n' "$listing" | awk -v path="$path" '$NF == path {print $1}')"
+    if [ "$actual" != "$mode" ]; then
+      echo "  FAIL  DEB $path mode is ${actual:-missing}, want $mode" >&2
+      exit 1
+    fi
+  }
+  for path in ./ ./usr/ ./usr/bin/ ./usr/lib/ ./usr/lib/tbound/ ./usr/lib/tbound/runtime/; do
+    check_mode "$contents" drwxr-xr-x "$path"
+  done
+  for path in ./usr/bin/tbound ./usr/bin/tbound-doctor ./usr/bin/tbound-profile ./usr/lib/tbound/tbound-cell-entrypoint ./usr/lib/tbound/runtime/helper.sh; do
+    check_mode "$contents" -rwxr-xr-x "$path"
+  done
+  check_mode "$contents" -rw-r--r-- ./usr/lib/tbound/runtime/package.json
+  check_mode "$contents" -r--r--r-- ./usr/lib/tbound/cell-entrypoint.json
+  check_mode "$(dpkg-deb --ctrl-tarfile "$DEB" | tar -tvf -)" -rw-r--r-- ./control
+  echo "  PASS  DEB file modes are normal under umask 077"
 else
   echo "  SKIP  dpkg-deb unavailable"
 fi
