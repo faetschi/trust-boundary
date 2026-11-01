@@ -467,8 +467,8 @@ func TestPublicationRuntimeDeniedOriginDoesNotBeginPublication(t *testing.T) {
 }
 
 // Finalize verifies the sealed session before it touches origins, readiness, the root
-// ledger, or publication. A tampered retained generation is refused with no publication
-// records, and the sweep leaves the Store quarantined.
+// ledger, or publication. A tampered retained generation is refused before any evidence
+// callback, root reservation, or publication record, and the sweep leaves the Store quarantined.
 func TestPublicationRuntimeTamperedSessionRefusedBeforePublication(t *testing.T) {
 	fixture := newPublicationRuntimeFixture(t, nil, &runtimeFixtureTrust{})
 	client, supervisor, proposal := fixture.supervisor(t)
@@ -488,17 +488,29 @@ func TestPublicationRuntimeTamperedSessionRefusedBeforePublication(t *testing.T)
 	if err := os.WriteFile(filepath.Join(fixture.base, "session", "generations", "g1", durableWritePath), []byte("tampered\n"), 0o644); err != nil {
 		t.Fatalf("tamper retained generation g1: %v", err)
 	}
+	beforeFinalize, err := fixture.publicationJournal.Trace()
+	if err != nil {
+		t.Fatal(err)
+	}
 	result, err := fixture.runtime.Finalize(context.Background())
 	if result.TransactionID != "" || !errors.Is(err, sessionrepo.ErrGenerationModified) || !strings.Contains(err.Error(), "verify session repository before publication") {
 		t.Fatalf("tampered session was not refused before publication: result=%+v err=%v", result, err)
 	}
-	trace, err := fixture.publicationJournal.Trace()
+	if fixture.trust.originVerifications != 0 || fixture.trust.transitionVerifications != 0 || fixture.trust.prerequisiteChecks != 0 {
+		t.Fatalf("tampered session reached evidence callbacks before refusal: origin=%d transition=%d prerequisites=%d",
+			fixture.trust.originVerifications, fixture.trust.transitionVerifications, fixture.trust.prerequisiteChecks)
+	}
+	afterFinalize, err := fixture.publicationJournal.Trace()
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, record := range trace.Records {
-		if record.Event.Kind == "publication_prepare" || record.Event.Kind == "workspace_commit_authorized" || record.Event.Kind == "publication_token_consumed" {
-			t.Fatalf("refused session persisted publication effects: %+v", record.Event)
+	if !reflect.DeepEqual(afterFinalize.Records, beforeFinalize.Records) {
+		t.Fatalf("refused session appended publication journal records: before=%d after=%d", len(beforeFinalize.Records), len(afterFinalize.Records))
+	}
+	for _, record := range afterFinalize.Records {
+		if record.Event.Kind == "workflow_publication_pending" || record.Event.Kind == "publication_prepare" ||
+			record.Event.Kind == "workspace_commit_authorized" || record.Event.Kind == "publication_token_consumed" {
+			t.Fatalf("refused session persisted root reservation or publication effects: %+v", record.Event)
 		}
 	}
 	if _, err := fixture.store.Verify(); !errors.Is(err, sessionrepo.ErrQuarantined) {
@@ -506,6 +518,71 @@ func TestPublicationRuntimeTamperedSessionRefusedBeforePublication(t *testing.T)
 	}
 	if got, err := os.ReadFile(filepath.Join(fixture.base, "live", durableWritePath)); err != nil || string(got) != "baseline\n" {
 		t.Fatalf("refused session changed the live workspace: %q err=%v", got, err)
+	}
+}
+
+// An incomplete Bash command quarantines the real Store after its intent is durable.
+// Finalize must refuse through the Store's usable-state check before any evidence
+// callback, root reservation, or publication record.
+func TestPublicationRuntimeIncompleteBashQuarantineRefusedBeforeEvidenceCallbacks(t *testing.T) {
+	fixture := newPublicationRuntimeFixture(t, nil, &runtimeFixtureTrust{})
+	fixture.runner.failWithoutSettlement = true
+	proposals, generations := runtimeFourToolProposals()
+	client, supervisor := fixture.supervisorFor(t, proposals[:4], generations[:4])
+	serveErr := make(chan error, 1)
+	go func() { serveErr <- fixture.runtime.Serve(context.Background(), supervisor) }()
+	for _, proposal := range proposals[:3] {
+		if err := client.SendProposal(proposal); err != nil {
+			t.Fatalf("send %s proposal: %v", proposal.Tool, err)
+		}
+		if result, err := client.ReceiveResult(); err != nil || result.Verdict != string(gate.Allow) {
+			t.Fatalf("durable %s result=%+v err=%v", proposal.Tool, result, err)
+		}
+	}
+	if err := client.SendProposal(proposals[3]); err != nil {
+		t.Fatalf("send incomplete bash proposal: %v", err)
+	}
+	if _, err := client.ReceiveResult(); err == nil {
+		t.Fatal("incomplete Bash command released a result")
+	}
+	_ = client.Close()
+	if err := <-serveErr; err == nil || !strings.Contains(err.Error(), "executor failed") {
+		t.Fatalf("incomplete Bash command did not stop the supervisor: %v", err)
+	}
+	if fixture.runner.calls != 1 {
+		t.Fatalf("the real Store never started the incomplete command: runner calls=%d", fixture.runner.calls)
+	}
+	if _, err := fixture.store.Verify(); !errors.Is(err, sessionrepo.ErrQuarantined) {
+		t.Fatalf("incomplete Bash command did not quarantine the Store: %v", err)
+	}
+	if fixture.executor.Tip().ID() != "g2" {
+		t.Fatalf("incomplete Bash command advanced the session generation: %s", fixture.executor.Tip().ID())
+	}
+	beforeFinalize, err := fixture.publicationJournal.Trace()
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := fixture.runtime.Finalize(context.Background())
+	if result.TransactionID != "" || !errors.Is(err, sessionrepo.ErrQuarantined) || !strings.Contains(err.Error(), "verify session repository before publication") {
+		t.Fatalf("quarantined session was not refused before publication: result=%+v err=%v", result, err)
+	}
+	if fixture.trust.originVerifications != 0 || fixture.trust.transitionVerifications != 0 || fixture.trust.prerequisiteChecks != 0 {
+		t.Fatalf("quarantined session reached evidence callbacks: origin=%d transition=%d prerequisites=%d",
+			fixture.trust.originVerifications, fixture.trust.transitionVerifications, fixture.trust.prerequisiteChecks)
+	}
+	afterFinalize, err := fixture.publicationJournal.Trace()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(afterFinalize.Records, beforeFinalize.Records) {
+		t.Fatalf("quarantine refusal appended root or publication records: before=%d after=%d", len(beforeFinalize.Records), len(afterFinalize.Records))
+	}
+	if got, err := os.ReadFile(filepath.Join(fixture.base, "live", durableWritePath)); err != nil || string(got) != "baseline\n" {
+		t.Fatalf("quarantined session changed the live workspace: %q err=%v", got, err)
+	}
+	evidence, err := fixture.store.EvidenceBundle()
+	if err != nil || len(evidence.ApprovedDeltaLedger) != 2 {
+		t.Fatalf("retained evidence must keep the two committed transitions and no Bash transition: evidence=%+v err=%v", evidence, err)
 	}
 }
 
@@ -541,6 +618,114 @@ func TestPublicationRuntimeTrustCallbackArgumentsDoNotChangeRetainedEvidence(t *
 				t.Fatalf("a trust callback changed the store-retained transition %s", transition.ID)
 			}
 		}
+	}
+}
+
+// Readiness callbacks may edit the bundle and verified-chain slices they receive after
+// verifying them. Publication must still publish the verified tip, and the retained Store
+// evidence must keep its real transition paths.
+func TestPublicationRuntimeReadinessArgumentMutationPreservesPublicationAndStoreEvidence(t *testing.T) {
+	trust := &runtimeFixtureTrust{mutatePrerequisiteArguments: true}
+	fixture := newPublicationRuntimeFixture(t, nil, trust)
+	client, supervisor, proposal := fixture.supervisor(t)
+	runCh := make(chan error, 1)
+	go func() { runCh <- fixture.runtime.Serve(context.Background(), supervisor) }()
+	if err := client.SendProposal(proposal); err != nil {
+		t.Fatal(err)
+	}
+	toolResult, err := client.ReceiveResult()
+	if err != nil || toolResult.Verdict != string(gate.Allow) {
+		t.Fatalf("durable session write result=%+v err=%v", toolResult, err)
+	}
+	_ = client.Close()
+	if err := <-runCh; err != nil {
+		t.Fatal(err)
+	}
+	// The verified-chain slices the callback edits must be non-empty, so the mutation cannot pass vacuously.
+	chain, err := fixture.store.Verify()
+	if err != nil || len(chain.ComposedChanges) == 0 || len(chain.TouchedPaths) == 0 || len(chain.FinalManifest.Objects) == 0 {
+		t.Fatalf("readiness mutation has no non-empty verified-chain slices to edit: chain=%+v err=%v", chain, err)
+	}
+	result, err := fixture.runtime.Finalize(context.Background())
+	if err != nil || result.Status != publication.StatusSucceeded || result.TransactionID == "" {
+		t.Fatalf("publication failed after readiness callbacks edited their arguments: result=%+v err=%v", result, err)
+	}
+	if trust.prerequisiteChecks == 0 || trust.prerequisiteArgumentMutations == 0 {
+		t.Fatalf("readiness mutation was not exercised: checks=%d mutations=%d", trust.prerequisiteChecks, trust.prerequisiteArgumentMutations)
+	}
+	if result.Binding.BaselineTreeDigest != fixture.baseline.TreeDigest() || result.Binding.SealedTreeDigest != fixture.executor.Tip().TreeDigest() {
+		t.Fatalf("publication bound digests that differ from the verified endpoints: %+v", result.Binding)
+	}
+	evidence, err := fixture.store.EvidenceBundle()
+	if err != nil || len(evidence.ApprovedDeltaLedger) != 1 || len(evidence.ApprovedDeltaLedger[0].Changes) == 0 {
+		t.Fatalf("retained session evidence=%+v err=%v", evidence, err)
+	}
+	for _, change := range evidence.ApprovedDeltaLedger[0].Changes {
+		if change.Path != durableWritePath {
+			t.Fatalf("a readiness callback changed the store-retained transition path to %q", change.Path)
+		}
+	}
+	if _, err := fixture.store.Verify(); err != nil {
+		t.Fatalf("store no longer verifies after the readiness mutation: %v", err)
+	}
+	if got, err := os.ReadFile(filepath.Join(fixture.base, "live", durableWritePath)); err != nil || string(got) != durableWriteContent {
+		t.Fatalf("publication did not publish the verified write after the readiness mutation: %q err=%v", got, err)
+	}
+}
+
+// A terminal lease-origin resolver may edit the bundle and terminal transition copies it
+// authenticates. Publication must still bind the exact Bash lease, and the retained Store
+// evidence must keep its real transition paths.
+func TestPublicationRuntimeLeaseResolverArgumentMutationPreservesPublicationAndStoreEvidence(t *testing.T) {
+	resolver := &fixtureLeaseOriginResolver{}
+	trust := &runtimeFixtureTrust{leaseResolver: resolver, mutateLeaseOriginArguments: true}
+	fixture := newPublicationRuntimeFixture(t, nil, trust)
+	resolver.journal = fixture.storeJournal
+	proposals, generations := runtimeFourToolProposals()
+	leaseEnding := proposals[:4] // read, write, edit, bash: the terminal ledger entry is a command lease
+	client, supervisor := fixture.supervisorFor(t, leaseEnding, generations[:4])
+	resultChannel := make(chan runtimeRunResult, 1)
+	go func() {
+		result, err := fixture.runtime.Run(context.Background(), supervisor)
+		resultChannel <- runtimeRunResult{result: result, err: err}
+	}()
+	for _, proposal := range leaseEnding {
+		if err := client.SendProposal(proposal); err != nil {
+			t.Fatalf("send %s proposal: %v", proposal.Tool, err)
+		}
+		if _, err := client.ReceiveResult(); err != nil {
+			t.Fatalf("receive %s result: %v", proposal.Tool, err)
+		}
+	}
+	if err := client.Close(); err != nil {
+		t.Fatal(err)
+	}
+	run := <-resultChannel
+	if run.err != nil || run.result.Status != publication.StatusSucceeded || run.result.TransactionID == "" || run.result.Binding.TerminalLeaseOrigin == nil {
+		t.Fatalf("terminal lease publication failed after the resolver edited its arguments: result=%+v err=%v", run.result, run.err)
+	}
+	if trust.leaseOriginResolutions == 0 || trust.leaseOriginArgumentMutations == 0 {
+		t.Fatalf("resolver mutation was not exercised: resolutions=%d mutations=%d", trust.leaseOriginResolutions, trust.leaseOriginArgumentMutations)
+	}
+	evidence, err := fixture.store.EvidenceBundle()
+	if err != nil || len(evidence.ApprovedDeltaLedger) != 3 {
+		t.Fatalf("retained session evidence=%+v err=%v", evidence, err)
+	}
+	if terminal := evidence.ApprovedDeltaLedger[len(evidence.ApprovedDeltaLedger)-1]; terminal.Operation.Kind != delta.OperationLease {
+		t.Fatalf("terminal approved-ledger entry is not a command lease: %+v", terminal.Operation)
+	}
+	for _, transition := range evidence.ApprovedDeltaLedger {
+		for _, change := range transition.Changes {
+			if change.Path == "mutated" {
+				t.Fatalf("a resolver changed the store-retained transition %s", transition.ID)
+			}
+		}
+	}
+	if got, err := os.ReadFile(filepath.Join(fixture.base, "live", durableWritePath)); err != nil || string(got) != "after-edit\n" {
+		t.Fatalf("edited write was not published after the resolver mutation: %q err=%v", got, err)
+	}
+	if got, err := os.ReadFile(filepath.Join(fixture.base, "live", "build", "result.txt")); err != nil || string(got) != "synthetic-bash-output\n" {
+		t.Fatalf("bounded fixture Bash delta was not published after the resolver mutation: %q err=%v", got, err)
 	}
 }
 
@@ -1134,10 +1319,11 @@ func (a *runtimeSessionAuthority) verifySettlement(settlement sessionrepo.Comman
 // launches /bin/bash or any host process; its settlement is test data, not
 // evidence of production containment.
 type runtimeFixtureCommandRunner struct {
-	leaseID string
-	calls   int
-	entered chan struct{}
-	release <-chan struct{}
+	leaseID               string
+	calls                 int
+	entered               chan struct{}
+	release               <-chan struct{}
+	failWithoutSettlement bool
 }
 
 func (r *runtimeFixtureCommandRunner) Profile() string {
@@ -1148,6 +1334,9 @@ func (r *runtimeFixtureCommandRunner) Run(ctx context.Context, view *sessionrepo
 	r.calls++
 	if r.calls != 1 || spec.Executable != "/bin/bash" || !reflect.DeepEqual(spec.Args, []string{"-lc", "fixture-build"}) {
 		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, errors.New("fixture runner rejected the requested command spec")
+	}
+	if r.failWithoutSettlement {
+		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, errors.New("synthetic command runner failure without settlement")
 	}
 	if r.entered != nil {
 		close(r.entered)
@@ -1207,6 +1396,15 @@ type runtimeFixtureTrust struct {
 	denyAdmission  bool
 	leaseResolver  workflow.TerminalOriginResolver
 	mutateChanges  bool
+
+	mutatePrerequisiteArguments   bool
+	mutateLeaseOriginArguments    bool
+	originVerifications           int
+	transitionVerifications       int
+	prerequisiteChecks            int
+	leaseOriginResolutions        int
+	prerequisiteArgumentMutations int
+	leaseOriginArgumentMutations  int
 }
 
 func (trust *runtimeFixtureTrust) CheckAdmission(context.Context) error {
@@ -1217,6 +1415,7 @@ func (trust *runtimeFixtureTrust) CheckAdmission(context.Context) error {
 }
 
 func (trust *runtimeFixtureTrust) CheckPublicationPrerequisites(_ context.Context, request workflow.EvidenceRequest) error {
+	trust.prerequisiteChecks++
 	if request.Bundle.RealProviderExchange || request.Bundle.PiAdapterWired || request.Bundle.CommandContainmentStatus != "not-established" || len(request.Bundle.AuditJournal) == 0 {
 		return errors.New("fixture refuses to mislabel provider, Pi, or containment evidence")
 	}
@@ -1226,7 +1425,36 @@ func (trust *runtimeFixtureTrust) CheckPublicationPrerequisites(_ context.Contex
 			return errors.New("fixture refuses to treat synthetic Bash settlement as production containment")
 		}
 	}
+	if trust.mutatePrerequisiteArguments {
+		// A readiness callback may edit the copies it receives after verifying them; none of those edits may reach the Store or publication.
+		trust.prerequisiteArgumentMutations += mutatePrerequisiteCopies(request)
+	}
 	return nil
+}
+
+// mutatePrerequisiteCopies edits every slice a readiness callback receives and counts
+// the elements it changed, so a test can show the mutation was not vacuous.
+func mutatePrerequisiteCopies(request workflow.EvidenceRequest) int {
+	changed := 0
+	for index := range request.Bundle.ApprovedDeltaLedger {
+		for changeIndex := range request.Bundle.ApprovedDeltaLedger[index].Changes {
+			request.Bundle.ApprovedDeltaLedger[index].Changes[changeIndex].Path = "mutated"
+			changed++
+		}
+	}
+	for index := range request.Verified.ComposedChanges {
+		request.Verified.ComposedChanges[index].Path = "mutated"
+		changed++
+	}
+	for index := range request.Verified.TouchedPaths {
+		request.Verified.TouchedPaths[index] = "mutated"
+		changed++
+	}
+	for index := range request.Verified.FinalManifest.Objects {
+		request.Verified.FinalManifest.Objects[index].Path = "mutated"
+		changed++
+	}
+	return changed
 }
 
 func (trust *runtimeFixtureTrust) AttestQuiescent(_ context.Context, live *os.File, baseline, tip *sessionrepo.Generation) error {
@@ -1237,6 +1465,7 @@ func (trust *runtimeFixtureTrust) AttestQuiescent(_ context.Context, live *os.Fi
 }
 
 func (trust *runtimeFixtureTrust) VerifyTransition(_ context.Context, decision delta.PolicyDecision, binding delta.TransitionBinding) error {
+	trust.transitionVerifications++
 	if trust.authority == nil {
 		return errors.New("no test exact-transition authority is installed")
 	}
@@ -1251,6 +1480,7 @@ func (trust *runtimeFixtureTrust) VerifyTransition(_ context.Context, decision d
 }
 
 func (trust *runtimeFixtureTrust) VerifyOrigin(_ context.Context, bundle sessionrepo.EvidenceBundle, transition delta.Transition) error {
+	trust.originVerifications++
 	if trust.denyOrigin {
 		return errors.New("explicit fixture origin-receipt denial")
 	}
@@ -1306,7 +1536,30 @@ func (trust *leaseOriginFixtureTrust) ResolveTerminalLeaseOrigin(ctx context.Con
 	if trust == nil || trust.resolver == nil {
 		return delta.OperationIdentity{}, errors.New("fixture has no authenticated lease-origin resolver")
 	}
-	return trust.resolver.ResolveTerminalLeaseOrigin(ctx, bundle, terminal)
+	trust.leaseOriginResolutions++
+	resolved, err := trust.resolver.ResolveTerminalLeaseOrigin(ctx, bundle, terminal)
+	if err == nil && trust.mutateLeaseOriginArguments {
+		// A resolver may edit the copies it authenticated; neither copy may reach the Store or publication.
+		trust.leaseOriginArgumentMutations += mutateLeaseOriginCopies(bundle, terminal)
+	}
+	return resolved, err
+}
+
+// mutateLeaseOriginCopies edits the bundle and terminal transition copies a
+// resolver received and counts the changed elements.
+func mutateLeaseOriginCopies(bundle sessionrepo.EvidenceBundle, terminal delta.Transition) int {
+	changed := 0
+	for index := range bundle.ApprovedDeltaLedger {
+		for changeIndex := range bundle.ApprovedDeltaLedger[index].Changes {
+			bundle.ApprovedDeltaLedger[index].Changes[changeIndex].Path = "mutated"
+			changed++
+		}
+	}
+	for changeIndex := range terminal.Changes {
+		terminal.Changes[changeIndex].Path = "mutated"
+		changed++
+	}
+	return changed
 }
 
 // fixtureLeaseOriginResolver resolves a terminal command lease to the
