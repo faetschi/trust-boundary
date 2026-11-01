@@ -1,17 +1,19 @@
 # Self-contained workspace
 
-Everything TBound and the thesis need lives in this repository directory. A clone plus `.local/` moves the project to another machine.
+Everything TBound and the thesis need lives in this repository directory, and nothing goes outside it. A clone plus `.local/` moves the project to another machine.
 
 | Path | In git | Contents |
 |---|---|---|
 | `infra/freeze/` | yes | Freeze kit: gate, freeze, guest chain. |
 | `evidence/` | yes | F14 receipts and the few files the thesis cites. |
-| `.local/` | no | VM disks, the dedicated WSL distro's disk, seed disk, freeze inputs, owner keys, `freeze-host.env`, local history archive. |
+| `.local/` | no | VM disks, the dedicated WSL distro's disk, seed disk, owner keys, `freeze-host.env`, worktrees, local history archive. |
 | `thesis/` | no | Checkout of `github.com/faetschi/MSE_MA_Thesis`. |
 
-`scripts/check-self-contained.sh` fails in CI when a tracked file depends on a path outside the repo. Worktrees have no `.local/`: set `TBOUND_LOCAL` to the primary checkout's.
+`scripts/check-self-contained.sh` fails in CI when a tracked file depends on a path outside the repo.
 
-**Linux scratch.** Builds check file modes, which Windows drive mounts don't keep. On Windows, `TBOUND_WORK` therefore points into the WSL disk, and `infra/freeze/tools/pull-receipts.sh` copies results into `evidence/`. Drive mounts must be read-only from WSL.
+**Worktrees.** Create them in `.local/worktrees/<branch-slug>`. A worktree has no `.local/` of its own: set `TBOUND_LOCAL` to the primary checkout's.
+
+**Linux scratch.** Builds check file modes, which Windows drive mounts don't keep. On Windows, name the distro in every command (`wsl.exe -d tbound-dev`), because the machine's default distro may have its disk elsewhere. `TBOUND_WORK` points into that distro's disk, and `infra/freeze/tools/pull-receipts.sh` copies results into `evidence/`. Drive mounts must be read-only from WSL.
 
 ## Move to another machine
 
