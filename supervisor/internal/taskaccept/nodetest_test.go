@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"io/fs"
-	"os"
 	"os/exec"
 	"strings"
 	"testing"
@@ -14,19 +13,14 @@ import (
 	"tbound/supervisor/internal/trialfix"
 )
 
-// testNode finds a node binary for the tests: node on PATH, else the Windows node through WSL
-// interop (the WSL gate has no Linux node). The tests fail rather than skip without one.
+// testNode finds node on PATH for the tests. The tests fail rather than skip without one.
 func testNode(t *testing.T) string {
 	t.Helper()
-	if p, err := exec.LookPath("node"); err == nil {
-		return p
+	p, err := exec.LookPath("node")
+	if err != nil {
+		t.Fatal("no node on PATH for the behavioural acceptance tests")
 	}
-	const interop = "/mnt/c/Program Files/nodejs/node.exe"
-	if _, err := os.Stat(interop); err == nil {
-		return interop
-	}
-	t.Fatal("no node binary for the behavioural acceptance tests")
-	return ""
+	return p
 }
 
 // stdinNode is a test-only runner: it runs the program with a local node read from stdin.

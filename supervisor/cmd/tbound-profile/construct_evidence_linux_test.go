@@ -52,10 +52,7 @@ func constructTestNode(t *testing.T) string {
 	t.Helper()
 	node, err := exec.LookPath("node")
 	if err != nil {
-		node = "/mnt/c/Program Files/nodejs/node.exe"
-		if _, err := os.Stat(node); err != nil {
-			t.Fatal("node is required for the pilot regression")
-		}
+		t.Fatal("node on PATH is required for the pilot regression")
 	}
 	return node
 }
