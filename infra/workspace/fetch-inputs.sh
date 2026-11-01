@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Fetches the public build inputs into <dest-dir>. A file is kept only after its SHA-256 matches its pin.
 # Usage: fetch-inputs.sh <dest-dir> [--iso]. Run it on Linux or in WSL (curl, sha256sum, python3).
-# Re-running it fetches only what is missing or fails its pin. The Go, Node and cosign versions, and the Go and
+# Re-running it downloads only what is missing or fails its pin (OCI image metadata is fetched on every run). The Go, Node and cosign versions, and the Go and
 # cosign hashes, are read from the scripts that already pin them. The Node hash is the nodejs.org SHASUMS256.txt
 # line for that release, GPG-checked against nodejs/release-keys. The ISO hash is in
 # evidence/thesis-inputs/abi8-seed-receipt.json.
