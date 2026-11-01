@@ -34,7 +34,7 @@ names its directory `archive-<prev-lowercase>-<UTC>`.
 
 Logs and outputs go to `$TBOUND_WORK/receipts/<FREEZE>/logs` (created on the first run), and `tools/pull-receipts.sh`
 copies them into `evidence/` for committing. Machine values live in `.local/freeze-host.env` (see `host.env.example`). The kit
-directory contains only code and values. Nothing here writes a password, reads a key file, or prints a secret.
+directory contains only code and values. Nothing here prints a secret. Only `05-init-chain.sh` writes a passphrase file and reads a key file, when it creates a chain's keys.
 
 P2: `25-p2-rebuild.sh` refuses a second attempt, verifies the frozen LF sources,
 Node/npm/Pi pins, builds twice with `npm --offline` in private network namespaces and cache copies under `$W/p2-rebuild`,
