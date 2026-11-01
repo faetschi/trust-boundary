@@ -41,7 +41,7 @@ Invoke-Wsl @('-d', $distro, '-u', 'root', '--', 'grep', '-q', 'VERSION_CODENAME=
 Invoke-Wsl @('-d', $distro, '-u', 'root', '--', 'useradd', '-m', '-s', '/bin/bash', $user)
 
 # Sent as base64: piping text through wsl.exe would add CRLF and mangle the quotes.
-$conf = (@('[automount]', 'enabled=true', 'mountFsTab=false', 'options="ro"', '[interop]', 'enabled=false', 'appendWindowsPath=false', '[user]', "default=$user") -join "`n") + "`n"
+$conf = (@('[automount]', 'enabled=true', 'mountFsTab=false', 'options="ro"', '[interop]', 'enabled=false', 'appendWindowsPath=false', '[boot]', 'systemd=true', '[user]', "default=$user") -join "`n") + "`n"
 $b64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($conf))
 Invoke-Wsl @('-d', $distro, '-u', 'root', '--', 'sh', '-c', "echo $b64 | base64 -d > /etc/wsl.conf")
 Invoke-Wsl @('--terminate', $distro)
