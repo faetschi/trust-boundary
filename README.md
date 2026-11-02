@@ -42,6 +42,10 @@ and try it, follow [Run a first governed product turn](docs/guides/product-first
   installation, Doctor, and development fixtures.
 - [Reproduce TBound](docs/guides/reproduce.md): build, gate, offline signing, governed
   run, and the thesis evaluation workflow.
+- [Run a first governed product turn](docs/guides/product-first-turn.md): set up the
+  product service and chat on one Linux host.
+- [Try the product demo from Windows](docs/guides/product-demo-windows.md): terminal
+  and browser chat with a product VM over SSH, from Git Bash or VS Code.
 - [Documentation index](docs/README.md): guides and detailed references.
 - [Architecture](docs/runtime/architecture.md): components and trust boundaries.
 
