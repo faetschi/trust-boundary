@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -56,6 +57,79 @@ func TestProductOperatorResolveFrontEnd(t *testing.T) {
 	}
 }
 
+func TestProductOperatorStoppedChecks(t *testing.T) {
+	procDirectory := t.TempDir()
+	for _, name := range []string{"self", "4242"} {
+		if err := os.WriteFile(filepath.Join(procDirectory, name), nil, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	procEntries, err := os.ReadDir(procDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cleanHost := func() productOperatorHostState {
+		return productOperatorHostState{
+			systemctlShow: func() ([]byte, error) {
+				return []byte("LoadState=loaded\nActiveState=inactive\nMainPID=0\nControlGroup=/system.slice/tbound-product.service\n"), nil
+			},
+			lookupServiceAccount: func(string) (*user.User, error) {
+				return &user.User{Uid: "1001", Gid: "1001", Username: "tbound-product"}, nil
+			},
+			requireCgroupV2: func() error { return nil },
+			emptyUnitCgroup: func(string) error { return nil },
+			readProcessDirectory: func(string) ([]os.DirEntry, error) {
+				return nil, nil
+			},
+			readProcessStatus: func(string) ([]byte, error) { return nil, os.ErrNotExist },
+		}
+	}
+	for _, test := range []struct {
+		name   string
+		change func(*productOperatorHostState)
+		want   string
+	}{
+		{name: "clean", change: func(*productOperatorHostState) {}},
+		{name: "active service", change: func(host *productOperatorHostState) {
+			host.systemctlShow = func() ([]byte, error) {
+				return []byte("LoadState=loaded\nActiveState=active\nMainPID=4242\nControlGroup=/system.slice/tbound-product.service\n"), nil
+			}
+		}, want: "stop tbound-product.service"},
+		{name: "live unit cgroup", change: func(host *productOperatorHostState) {
+			host.emptyUnitCgroup = func(string) error {
+				return errors.New("a worker/command scope is alive: /sys/fs/cgroup/system.slice/tbound-product.service/command.scope/cgroup.procs")
+			}
+		}, want: "alive"},
+		{name: "service account process outside unit", change: func(host *productOperatorHostState) {
+			host.readProcessDirectory = func(string) ([]os.DirEntry, error) { return procEntries, nil }
+			host.readProcessStatus = func(string) ([]byte, error) {
+				return []byte("Name:\tworker\nUid:\t1001\t1001\t1001\t1001\n"), nil
+			}
+		}, want: "service worker process 4242 is alive"},
+		{name: "unreadable process inventory", change: func(host *productOperatorHostState) {
+			host.readProcessDirectory = func(string) ([]os.DirEntry, error) { return nil, os.ErrPermission }
+		}, want: "permission denied"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			host := cleanHost()
+			test.change(&host)
+			oldHost := productOperatorHost
+			t.Cleanup(func() { productOperatorHost = oldHost })
+			productOperatorHost = host
+			err := checkProductOperatorStopped()
+			if test.want == "" {
+				if err != nil {
+					t.Fatalf("clean host refused: %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("worker exclusion: %v", err)
+			}
+		})
+	}
+}
+
 func TestProductOperatorSandboxCommand(t *testing.T) {
 	if os.Getenv("TB_OPERATOR_SANDBOX_CHILD") == "1" {
 		var request productOperatorRequest
@@ -87,8 +161,11 @@ func TestProductOperatorSandboxCommand(t *testing.T) {
 	if err := sandboxProductOperator("turn", "reason", true, &out, &stderr); err != nil {
 		t.Fatalf("sandbox: %v %s", err, stderr.String())
 	}
-	if err := runProductOperatorSandbox(strings.NewReader(`{}`), io.Discard, io.Discard); err == nil {
-		t.Fatal("non-root sandbox request accepted")
+	if os.Geteuid() == 0 {
+		t.Skip("sandbox root refusal requires an unprivileged test user")
+	}
+	if err := runProductOperatorSandbox(strings.NewReader(`{"Reason":"abandon inert work"}`), io.Discard, io.Discard); err == nil || !strings.Contains(err.Error(), "must run as root") {
+		t.Fatalf("non-root sandbox request accepted: %v", err)
 	}
 }
 
@@ -238,6 +315,43 @@ func TestProductOperatorEvidenceAndAdmission(t *testing.T) {
 				t.Fatal("unknown context imported")
 			}
 		})
+	}
+}
+
+func TestProductOperatorRefusesBaselineChangeBeforeAppend(t *testing.T) {
+	f, id := crashProductSoftRefusal(t, "after-capture-refusal-record")
+	if err := f.env.ReconcileAfterRestart(context.Background()); err == nil {
+		t.Fatal("expected unknown")
+	}
+	turn, _ := f.env.Catalog.Turn(id)
+	if turn.State != productsession.StateUnknown {
+		t.Fatalf("turn: %+v", turn)
+	}
+	path := filepath.Join(f.env.StateRoot, "catalog.jsonl")
+	f.env.Catalog.Close()
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = productsession.OperatorResolve(path, f.env.Registration, id, "provider capture failed", false,
+		func(candidate productsession.Turn) (productsession.OperatorEvidence, error) {
+			evidence, err := f.env.operatorEvidence(context.Background(), candidate)
+			if err != nil {
+				return evidence, err
+			}
+			// The first measurement succeeded; change the tree before the append.
+			writeProductDriverFile(t, f.projectDir, "task.txt", "changed before append")
+			return evidence, nil
+		})
+	if err == nil || !errors.Is(err, errProductStaleBaseline) {
+		t.Fatalf("baseline change before append: %v", err)
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(before, after) {
+		t.Fatal("refusal wrote catalog")
 	}
 }
 
