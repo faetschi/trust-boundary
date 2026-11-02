@@ -71,6 +71,10 @@ const (
 	PodmanTmpDir   = RuntimeDir + "/tmp"
 )
 
+// CommandCellPath is the PATH of every product Podman and cosign child. It is the thesis D09 host PATH, so both
+// command paths search the same directories.
+const CommandCellPath = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
 // ThesisRoots are the thesis service's paths. Setup refuses a path equal to or inside one, compared by
 // whole path component. cmd/tbound's service config validator keeps the same list, and a test there
 // keeps the two equal.
