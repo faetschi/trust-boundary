@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -115,6 +116,27 @@ func TestProductTurnCaptureRefusalRestartBoundaries(t *testing.T) {
 				t.Fatalf("restarted chat refusal: %+v %v", events, eventErr)
 			}
 			f.followUp(t, "after-refusal-restart", productsession.OutcomeFailed)
+		})
+	}
+}
+
+func TestProductTurnMalformedProviderCaptureFails(t *testing.T) {
+	for name, args := range map[string]string{
+		"unknown argument":   `{"path":"missing.txt","unknown":true}`,
+		"malformed argument": `{"path":42}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newProductDriverFixture(t, productsession.PublicationAuto)
+			baseline := f.measure(t)
+			script := &productDriverScript{turns: []providerbridge.ScriptTurn{{ResponseID: "bad-response", CallID: "bad-call", Tool: "read", Arguments: json.RawMessage(args)}, {ResponseID: "must-not-run", Text: "Wrong."}}}
+			_, turn, err := f.run(t, f.submit(t, "bad", "Try the tool."), script)
+			if err == nil || !strings.Contains(err.Error(), "invalid provider response") || turn.State != productsession.StateTerminal || turn.Outcome != productsession.OutcomeFailed || script.requests() != 1 || turn.ContextEligible {
+				t.Fatalf("capture rejection: state=%s outcome=%s requests=%d err=%v", turn.State, turn.Outcome, script.requests(), err)
+			}
+			if turn.Usage.HostCalls != 1 || turn.Usage.Tokens != 1024 || turn.Refund.HostCalls != turn.Reservation.HostCalls-1 || turn.Refund.Tokens != turn.Reservation.Tokens-1024 || f.measure(t) != baseline {
+				t.Fatalf("capture refusal accounting/project: %+v", turn)
+			}
+			f.followUp(t, "after-invalid-capture", productsession.OutcomeFailed)
 		})
 	}
 }

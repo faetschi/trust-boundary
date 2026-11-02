@@ -129,8 +129,6 @@ func TestProductTurnSoftRefusalOutOfScopeStaysUnknown(t *testing.T) {
 		{"missing edit", "edit", `{"path":"missing.txt","edits":[{"oldText":"old","newText":"new"}]}`},
 		{"missing write parent", "write", `{"path":"missing/file","content":"x"}`},
 		{"directory read", "read", `{"path":"dir"}`},
-		{"unknown argument", "read", `{"path":"missing.txt","unknown":true}`},
-		{"malformed argument", "read", `{"path":42}`},
 		{"invalid offset", "read", `{"path":"missing.txt","offset":0}`},
 		{"non-directory ancestor", "read", `{"path":"task.txt/child"}`},
 		{"overlapping edits", "edit", `{"path":"task.txt","edits":[{"oldText":"turn fixture","newText":"x"},{"oldText":"fixture","newText":"y"}]}`},
