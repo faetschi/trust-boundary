@@ -96,6 +96,14 @@ or captured call may remain unresolved: with the supervisor-loop process dead,
 no command activity and no open effect it is inert, never resumed or imported.
 There is no `--accept-current-baseline` override.
 
+The command attests the tree at append time, not only when it starts checking.
+It keeps the project directory and the retained journals open from the first
+measurement through the catalog append and measures the baseline again
+immediately before the append, refusing if the second measurement differs from
+the first or from the admitted baseline. No other process may write the project
+while `resolve` runs; there is no lock excluding root, maintenance, or other
+non-service writers.
+
 One `product_turn_operator_resolved` record commits the turn/workflow, root UID,
 nonempty plain-text reason (at most 256 UTF-8 bytes), UTC timestamp, admitted and
 measured baseline digests, and a domain-separated evidence commitment over the
