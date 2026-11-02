@@ -120,7 +120,7 @@ func (e *productTurnEnv) verifyRetainedSoftRefusals(turn productsession.Turn, re
 	}
 	hasRefusal := false
 	for _, record := range trace.Records {
-		if record.Event.Kind == providerbridge.SoftRefusalEvent {
+		if record.Event.Kind == providerbridge.SoftRefusalEvent || record.Event.Kind == providerbridge.CaptureRefusalEvent {
 			hasRefusal = true
 			break
 		}
@@ -162,7 +162,7 @@ func (e *productTurnEnv) verifyRetainedSoftRefusals(turn productsession.Turn, re
 	if err != nil {
 		return err
 	}
-	config := providerbridge.Config{ProductSoftRefusals: true, WorkflowID: turn.Link.WorkflowID, ConversationID: turn.Link.ConversationID, ProfileID: session.ProviderProfile, InitialGenerationID: bundle.Baseline.ID, InitialTreeDigest: bundle.Baseline.TreeDigest, SystemPrompt: e.SystemPrompt, DeveloperPrompt: e.DeveloperPrompt}
+	config := providerbridge.Config{ProductCaptureRefusals: true, ProductSoftRefusals: true, WorkflowID: turn.Link.WorkflowID, ConversationID: turn.Link.ConversationID, ProfileID: session.ProviderProfile, InitialGenerationID: bundle.Baseline.ID, InitialTreeDigest: bundle.Baseline.TreeDigest, SystemPrompt: e.SystemPrompt, DeveloperPrompt: e.DeveloperPrompt}
 	config.Route = config.Route.WithCommandOutput(true) // replay the request bytes a product turn sent
 	route := config.Route.Resolved()
 	replayPins := GovernedReplayPins{

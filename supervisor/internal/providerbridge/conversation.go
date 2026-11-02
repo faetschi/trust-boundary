@@ -58,6 +58,8 @@ type eventJournal interface {
 }
 
 type Config struct {
+	// ProductCaptureRefusals durably retires unusable, fully received responses in product turns only.
+	ProductCaptureRefusals bool
 	// ProductSoftRefusals enables product-only precondition evidence and replay.
 	ProductSoftRefusals bool
 	// HTTPTransport is an offline test seam for the engineering route. Production leaves it nil, and a
@@ -579,6 +581,14 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 		break
 	}
 	if exchangeErr != nil {
+		if c.cfg.ProductCaptureRefusals && c.cfg.Spend == nil && hostCallBinding != nil &&
+			len(records) == 1 && records[0].ResponseComplete() && records[0].StatusCode() == 200 {
+			if reason := captureRefusalReason(records[0].ResponseBody()); reason != "" {
+				persistErr := c.recordCaptureRefusalLocked(ctx, records[0], *hostCallBinding, reason)
+				disposed = persistErr == nil
+				return Turn{}, c.failLocked(errors.Join(fmt.Errorf("the provider returned a response TBound cannot use (%s); the turn was not applied", reason), persistErr))
+			}
+		}
 		persistErr := c.persistFailedExchangeLocked(records, exchangeErr, hostCallBinding)
 		disposed = exchangeDisposed(persistErr, records, hostCallBinding)
 		return Turn{}, c.failLocked(errors.Join(fmt.Errorf("registered provider exchange failed; response withheld: %w", exchangeErr), persistErr))
