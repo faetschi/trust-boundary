@@ -940,10 +940,92 @@ func (s *Store) Evidence() (EvidenceArtifact, error) {
 	if err != nil {
 		return EvidenceArtifact{}, fmt.Errorf("verify evidence journal: %w", err)
 	}
-	var auditHead string
-	if len(trace.Records) > 0 {
-		auditHead = trace.Records[len(trace.Records)-1].Hash
+	return s.artifactLocked(chain, trace), nil
+}
+
+// VerifiedEvidence holds the chain, artifact, and bundle reports from one
+// VerifyEvidence pass. Each report owns its slices, so mutating one cannot change
+// another report or the Store.
+type VerifiedEvidence struct {
+	Chain    delta.Result
+	Artifact EvidenceArtifact
+	Bundle   EvidenceBundle
+}
+
+// VerifyEvidence returns the chain, artifact, and bundle reports from one locked
+// verification pass. Trusted decision verifiers run before the single generation
+// sweep, so a file, content, or directory-name change they make is caught by this
+// same call. Any failure returns zero reports. A quarantined store is refused here;
+// the forensic EvidenceBundle still reconstructs it.
+func (s *Store) VerifyEvidence() (VerifiedEvidence, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.checkUsableLocked(); err != nil {
+		return VerifiedEvidence{}, err
 	}
+	if s.baseline == nil || len(s.generations) == 0 {
+		return VerifiedEvidence{}, ErrNoBaseline
+	}
+	// A chain error must not skip the sweep: a verifier may have changed a retained
+	// generation, and preexisting tampering must quarantine the Store and win the error.
+	chain, chainErr := s.validateChainLocked(s.generations[len(s.generations)-1].snapshot)
+	for _, generation := range s.generations {
+		if err := s.verifyGenerationLocked(generation); err != nil {
+			return VerifiedEvidence{}, err
+		}
+	}
+	if chainErr != nil {
+		return VerifiedEvidence{}, chainErr
+	}
+	primary, admission, err := s.traceEvidenceJournalsLocked()
+	if err != nil {
+		return VerifiedEvidence{}, err
+	}
+	bundle, err := s.bundleLocked(chain, primary, admission)
+	if err != nil {
+		return VerifiedEvidence{}, err
+	}
+	return VerifiedEvidence{Chain: cloneChainResult(chain), Artifact: s.artifactLocked(chain, primary), Bundle: bundle}, nil
+}
+
+// traceEvidenceJournalsLocked reads both retained journals once for one evidence
+// report. The caller must hold Store.mu.
+func (s *Store) traceEvidenceJournalsLocked() (audit.Trace, audit.Trace, error) {
+	primary, err := s.options.Journal.Trace()
+	if err != nil {
+		return audit.Trace{}, audit.Trace{}, fmt.Errorf("verify evidence journal: %w", err)
+	}
+	admission, err := s.admissionJournal.Trace()
+	if err != nil {
+		return audit.Trace{}, audit.Trace{}, fmt.Errorf("verify evidence admission journal: %w", err)
+	}
+	return primary, admission, nil
+}
+
+// artifactLocked builds the standalone report from an already validated chain. It
+// never serializes the journals, so it carries no bundle size limit. The caller
+// must hold Store.mu.
+func (s *Store) artifactLocked(chain delta.Result, primary audit.Trace) EvidenceArtifact {
+	generations := s.generationEvidenceLocked()
+	var auditHead string
+	if len(primary.Records) > 0 {
+		auditHead = primary.Records[len(primary.Records)-1].Hash
+	}
+	return EvidenceArtifact{
+		SchemaVersion:        "tbound-sessionrepo-evidence/v2",
+		RealProviderExchange: false, PiAdapterWired: false,
+		CommandContainmentStatus: "not-established",
+		AuditRecordCount:         uint64(len(primary.Records)), AuditHeadHash: auditHead,
+		PolicyDigest: s.options.PolicyDigest, MetadataPolicyDigest: s.options.MetadataPolicyDigest,
+		Baseline: cloneGenerationEvidence(generations[0]), Generations: generations,
+		ApprovedDeltaLedger: cloneTransitions(s.transitions), Operations: cloneOperations(s.operations),
+		ValidatedChain: cloneChainResult(chain),
+	}
+}
+
+// generationEvidenceLocked returns defensive copies of every retained generation.
+// The caller must hold Store.mu.
+func (s *Store) generationEvidenceLocked() []GenerationEvidence {
 	generations := make([]GenerationEvidence, 0, len(s.generations))
 	for _, generation := range s.generations {
 		generations = append(generations, GenerationEvidence{
@@ -951,17 +1033,23 @@ func (s *Store) Evidence() (EvidenceArtifact, error) {
 			Manifest: cloneManifest(generation.snapshot.Manifest),
 		})
 	}
-	artifact := EvidenceArtifact{
-		SchemaVersion:        "tbound-sessionrepo-evidence/v2",
-		RealProviderExchange: false, PiAdapterWired: false,
-		CommandContainmentStatus: "not-established",
-		AuditRecordCount:         uint64(len(trace.Records)), AuditHeadHash: auditHead,
-		PolicyDigest: s.options.PolicyDigest, MetadataPolicyDigest: s.options.MetadataPolicyDigest,
-		Baseline: generations[0], Generations: generations,
-		ApprovedDeltaLedger: cloneTransitions(s.transitions), Operations: cloneOperations(s.operations),
-		ValidatedChain: chain,
+	return generations
+}
+
+// cloneChainResult copies every slice-backed field. Nil and empty slices stay
+// distinct so the copy compares equal to the validated original.
+func cloneChainResult(result delta.Result) delta.Result {
+	result.FinalManifest.Objects = cloneSliceKeepingNil(result.FinalManifest.Objects)
+	result.ComposedChanges = cloneSliceKeepingNil(result.ComposedChanges)
+	result.TouchedPaths = cloneSliceKeepingNil(result.TouchedPaths)
+	return result
+}
+
+func cloneSliceKeepingNil[T any](values []T) []T {
+	if values == nil {
+		return nil
 	}
-	return artifact, nil
+	return append(make([]T, 0, len(values)), values...)
 }
 
 // Close releases the retained directory descriptors. The caller closes the

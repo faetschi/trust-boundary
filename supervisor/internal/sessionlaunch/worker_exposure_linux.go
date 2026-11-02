@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -165,22 +164,19 @@ func (p *PreparedSession) verifyD06SourceForGeneration(ctx context.Context,
 		return verifiedD09SourceAnchors{}, errors.Join(ErrD09ExposureSource,
 			fmt.Errorf("verify supervisor-private Git provenance before D09 source export: %w", err))
 	}
-	chain, err := store.Verify()
+	verified, err := store.VerifyEvidence()
 	if err != nil {
 		return verifiedD09SourceAnchors{}, errors.Join(ErrD09ExposureSource,
 			fmt.Errorf("verify sealed Store chain before D09 source export: %w", err))
 	}
-	bundle, err := store.EvidenceBundle()
-	if err != nil {
-		return verifiedD09SourceAnchors{}, errors.Join(ErrD09ExposureSource, err)
-	}
-	if !reflect.DeepEqual(chain, bundle.ValidatedChain) || !bundleContainsGeneration(bundle, generation) ||
+	bundle := verified.Bundle
+	if !bundleContainsGeneration(bundle, generation) ||
 		!bundleContainsGeneration(bundle, baseGeneration) ||
 		generation.Manifest().MetadataPolicyDigest != bundle.MetadataPolicyDigest ||
 		bundle.PolicyDigest != provenance.PolicyDigest || bundle.MetadataPolicyDigest != provenance.MetadataPolicyDigest {
 		return verifiedD09SourceAnchors{}, fmt.Errorf("%w: requested generation is not the verified current Store tip or D06 seed", ErrD09ExposureSource)
 	}
-	if requireCurrentTip && validateCurrentGeneration(bundle, chain, generation) != nil {
+	if requireCurrentTip && validateCurrentGeneration(bundle, verified.Chain, generation) != nil {
 		return verifiedD09SourceAnchors{}, fmt.Errorf("%w: source capability may only be issued for the current Store tip", ErrD09ExposureSource)
 	}
 	if err := validateJournalSnapshot(journal, bundle); err != nil {

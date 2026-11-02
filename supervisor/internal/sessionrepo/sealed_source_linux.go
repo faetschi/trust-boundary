@@ -358,16 +358,12 @@ func verifySealedSourceAnchors(ctx context.Context, store *Store, generation *Ge
 	if err := ctx.Err(); err != nil {
 		return delta.Result{}, EvidenceBundle{}, d06SourceProvenance{}, errors.Join(ErrSealedSourceUnavailable, err)
 	}
-	chain, err := store.Verify()
+	verified, err := store.VerifyEvidence()
 	if err != nil {
 		return delta.Result{}, EvidenceBundle{}, d06SourceProvenance{}, errors.Join(ErrSealedSourceUnavailable, err)
 	}
-	bundle, err := store.EvidenceBundle()
-	if err != nil {
-		return delta.Result{}, EvidenceBundle{}, d06SourceProvenance{}, errors.Join(ErrSealedSourceUnavailable, err)
-	}
-	if len(bundle.Generations) == 0 || !reflect.DeepEqual(chain, bundle.ValidatedChain) ||
-		!bundleContainsGeneration(bundle, generation) || containsReservedGitMetadata(generation.Manifest()) {
+	chain, bundle := verified.Chain, verified.Bundle
+	if len(bundle.Generations) == 0 || !bundleContainsGeneration(bundle, generation) || containsReservedGitMetadata(generation.Manifest()) {
 		return delta.Result{}, EvidenceBundle{}, d06SourceProvenance{}, ErrStaleGeneration
 	}
 	if requireCurrentTip {

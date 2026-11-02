@@ -679,27 +679,18 @@ func (f *Finalizer) Finalize(ctx context.Context) (publication.Result, error) {
 	if err := f.options.Trust.AttestQuiescent(ctx, f.options.LiveRoot, f.options.Baseline, tip); err != nil {
 		return publication.Result{}, fmt.Errorf("trusted quiescence attestation refused publication: %w", err)
 	}
-	verified, err := f.options.Store.Verify()
+	verified, err := f.options.Store.VerifyEvidence()
 	if err != nil {
 		return publication.Result{}, fmt.Errorf("verify session repository before publication: %w", err)
 	}
-	evidence, err := f.options.Store.Evidence()
-	if err != nil {
-		return publication.Result{}, fmt.Errorf("read verified session evidence: %w", err)
-	}
-	bundle, err := f.options.Store.EvidenceBundle()
-	if err != nil {
-		return publication.Result{}, fmt.Errorf("read reconstructable session evidence: %w", err)
-	}
-	if !reflect.DeepEqual(verified, evidence.ValidatedChain) || !reflect.DeepEqual(verified, bundle.ValidatedChain) ||
-		evidence.Baseline.ID != f.options.Baseline.ID() || evidence.Baseline.TreeDigest != f.options.Baseline.TreeDigest() ||
+	evidence, bundle := verified.Artifact, verified.Bundle
+	if evidence.Baseline.ID != f.options.Baseline.ID() || evidence.Baseline.TreeDigest != f.options.Baseline.TreeDigest() ||
 		len(evidence.Generations) == 0 || evidence.Generations[len(evidence.Generations)-1].ID != tip.ID() ||
 		evidence.Generations[len(evidence.Generations)-1].TreeDigest != tip.TreeDigest() ||
-		!reflect.DeepEqual(evidence.ApprovedDeltaLedger, bundle.ApprovedDeltaLedger) ||
 		evidence.PolicyDigest == "" || evidence.MetadataPolicyDigest != f.options.Workspace.MetadataPolicyDigest {
-		return publication.Result{}, errors.New("session Verify/Evidence/bundle do not identify the same baseline, approved ledger, and current tip")
+		return publication.Result{}, errors.New("session VerifyEvidence does not identify the same baseline and current tip")
 	}
-	if verified.TransitionCount == 0 || len(evidence.ApprovedDeltaLedger) == 0 {
+	if verified.Chain.TransitionCount == 0 || len(evidence.ApprovedDeltaLedger) == 0 {
 		return publication.Result{}, errors.New("publication requires at least one approved mutation and an authenticated origin")
 	}
 	origin := evidence.ApprovedDeltaLedger[len(evidence.ApprovedDeltaLedger)-1]
@@ -707,7 +698,7 @@ func (f *Finalizer) Finalize(ctx context.Context) (publication.Result, error) {
 	// any publication-origin representation. For a command lease this is the
 	// Bash lease itself, not an earlier transition that merely produced its input
 	// generation.
-	if err := f.options.Trust.VerifyOrigin(ctx, bundle, origin); err != nil {
+	if err := f.options.Trust.VerifyOrigin(ctx, bundle.Clone(), cloneTransition(origin)); err != nil {
 		return publication.Result{}, fmt.Errorf("trusted terminal operation receipt refused publication: %w", err)
 	}
 	originOperation := origin.Operation
@@ -717,7 +708,7 @@ func (f *Finalizer) Finalize(ctx context.Context) (publication.Result, error) {
 		if !ok {
 			return publication.Result{}, errors.New("terminal workflow transition has no proposal-call origin; lease-only publication fails closed")
 		}
-		resolved, resolveErr := resolver.ResolveTerminalLeaseOrigin(ctx, bundle, origin)
+		resolved, resolveErr := resolver.ResolveTerminalLeaseOrigin(ctx, bundle.Clone(), cloneTransition(origin))
 		if resolveErr != nil {
 			return publication.Result{}, fmt.Errorf("trusted terminal command-lease origin resolution refused publication: %w", resolveErr)
 		}
@@ -735,18 +726,20 @@ func (f *Finalizer) Finalize(ctx context.Context) (publication.Result, error) {
 		return publication.Result{}, errors.New("terminal workflow transition has no proposal-call origin; lease-only publication fails closed")
 	}
 	for _, transition := range evidence.ApprovedDeltaLedger {
-		if err := f.options.Trust.VerifyTransition(ctx, transition.Decision, delta.TransitionBinding{
-			ID: transition.ID, Sequence: transition.Sequence, Tool: transition.Tool,
-			ArgumentDigest: transition.ArgumentDigest, ViewID: transition.ViewID,
-			ExecutionContextDigest: transition.ExecutionContextDigest,
-			InputGeneration:        transition.InputGeneration, OutputGeneration: transition.OutputGeneration,
-			InputTreeDigest: transition.InputTreeDigest, OutputTreeDigest: transition.OutputTreeDigest,
-			Operation: transition.Operation, Changes: transition.Changes,
+		// Clone before binding: the callback must not change Changes that publication reads later.
+		callbackTransition := cloneTransition(transition)
+		if err := f.options.Trust.VerifyTransition(ctx, callbackTransition.Decision, delta.TransitionBinding{
+			ID: callbackTransition.ID, Sequence: callbackTransition.Sequence, Tool: callbackTransition.Tool,
+			ArgumentDigest: callbackTransition.ArgumentDigest, ViewID: callbackTransition.ViewID,
+			ExecutionContextDigest: callbackTransition.ExecutionContextDigest,
+			InputGeneration:        callbackTransition.InputGeneration, OutputGeneration: callbackTransition.OutputGeneration,
+			InputTreeDigest: callbackTransition.InputTreeDigest, OutputTreeDigest: callbackTransition.OutputTreeDigest,
+			Operation: callbackTransition.Operation, Changes: callbackTransition.Changes,
 		}); err != nil {
 			return publication.Result{}, fmt.Errorf("trusted approved-transition verification refused publication: %w", err)
 		}
 	}
-	readiness := EvidenceRequest{Bundle: bundle, Verified: verified, LiveRoot: f.options.LiveRoot,
+	readiness := EvidenceRequest{Bundle: bundle.Clone(), Verified: verified.Chain, LiveRoot: f.options.LiveRoot,
 		Workflow: f.options.WorkflowID, OwnerEpoch: f.options.OwnerEpoch}
 	if err := f.options.Trust.CheckPublicationPrerequisites(ctx, readiness); err != nil {
 		return publication.Result{}, fmt.Errorf("trusted production publication prerequisites are not established: %w", err)
@@ -782,11 +775,11 @@ func (f *Finalizer) Finalize(ctx context.Context) (publication.Result, error) {
 			if !reflect.DeepEqual(terminal, origin) || !reflect.DeepEqual(candidate, *terminalLeaseOrigin) {
 				return publication.ErrTerminalLeaseOriginBinding
 			}
-			resolved, err := resolver.ResolveTerminalLeaseOrigin(verifyCtx, bundle, terminal)
+			resolved, err := resolver.ResolveTerminalLeaseOrigin(verifyCtx, bundle.Clone(), cloneTransition(terminal))
 			if err != nil || !reflect.DeepEqual(resolved, candidate.ProposalCall) {
 				return errors.Join(publication.ErrTerminalLeaseOriginBinding, err)
 			}
-			return f.options.Trust.VerifyOrigin(verifyCtx, bundle, terminal)
+			return f.options.Trust.VerifyOrigin(verifyCtx, bundle.Clone(), cloneTransition(terminal))
 		}
 	}
 	request := publication.Request{
@@ -855,6 +848,15 @@ func (f *Finalizer) verifyCommitBinding(ctx context.Context, binding publication
 		return errors.New("workspace_commit binding does not match this verified session, origin, policy, and lifecycle")
 	}
 	return nil
+}
+
+// cloneTransition keeps a trust callback from changing the origin that later
+// publication steps read. Nil and empty Changes stay distinct.
+func cloneTransition(transition delta.Transition) delta.Transition {
+	if transition.Changes != nil {
+		transition.Changes = append(make([]delta.ObjectChange, 0, len(transition.Changes)), transition.Changes...)
+	}
+	return transition
 }
 
 func expectedPublicationDigests(bundle sessionrepo.EvidenceBundle, chain delta.Result) (string, string, error) {
