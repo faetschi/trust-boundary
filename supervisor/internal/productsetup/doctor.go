@@ -1,6 +1,7 @@
 package productsetup
 
 import (
+	"bytes"
 	"crypto/ed25519"
 	"errors"
 	"fmt"
@@ -97,6 +98,7 @@ func Doctor(env Env, selfTest bool) DoctorReport {
 			add(n.Path, Pass, fmt.Sprintf("%04o %s%s", n.Mode, n.Owner, h.ownerNote()), "")
 		}
 	}
+	rep.Checks = append(rep.Checks, h.podmanConfigChecks()...)
 	rep.Checks = append(rep.Checks, h.unitChecks()...)
 	rep.Checks = append(rep.Checks, h.releaseKeyCheck())
 	conn, err := net.DialTimeout("unix", h.real(SocketPath), 2*time.Second)
@@ -143,6 +145,29 @@ func (h *host) ownerNote() string {
 		return ""
 	}
 	return " (owner not checked on a test root)"
+}
+
+// podmanConfigChecks compares the Podman configurations with the bytes setup renders. The layout check sees only
+// their owner and mode, so it cannot tell a drifted configuration from the rendered one.
+func (h *host) podmanConfigChecks() []Check {
+	var checks []Check
+	for _, file := range []struct {
+		path string
+		want []byte
+	}{{ContainersConfPath, RenderProductContainersConf()}, {StorageConfPath, RenderProductStorageConf()}} {
+		name := file.path + " content"
+		data, err := readSource(h.real(file.path))
+		switch {
+		case errors.Is(err, os.ErrNotExist): // the layout check reports the missing file
+		case err != nil:
+			checks = append(checks, Check{Name: name, Status: Fail, Detail: err.Error(), Fix: "run `tbound product setup`"})
+		case !bytes.Equal(data, file.want):
+			checks = append(checks, Check{Name: name, Status: Fail, Detail: "differs from the configuration setup renders", Fix: "rerun `tbound product setup --replace`"})
+		default:
+			checks = append(checks, Check{Name: name, Status: Pass, Detail: "matches the rendered configuration"})
+		}
+	}
+	return checks
 }
 
 func (h *host) unitChecks() []Check {

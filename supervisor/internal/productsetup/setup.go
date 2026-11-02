@@ -209,6 +209,7 @@ func (h *host) desiredFiles(cfg Config, binary Candidate) (map[string][]byte, Re
 	files := map[string][]byte{
 		RegistrationPath: registration, RegistrationSignaturePath: signature, RegistrationPublicKeyPath: key,
 		ServiceConfigPath: serviceConfig, SetupConfigPath: installed, UnitPath: unit,
+		ContainersConfPath: RenderProductContainersConf(), StorageConfPath: RenderProductStorageConf(),
 	}
 	if cfg.ReleasePublicKey != "" {
 		publisher, err := readSource(cfg.ReleasePublicKey)

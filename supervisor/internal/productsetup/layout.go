@@ -63,12 +63,17 @@ const (
 	StorageConfPath                 = ConfigDir + "/podman/storage.conf"
 )
 
-// Fixed product Podman directories, which the product Podman child environment names. Each lies under a root that the
-// unit lets the service write.
+// Fixed product Podman directories. PodmanConfigDir is root-owned. The others lie under a root that the unit lets
+// the service write, and the product Podman child environment names the ones the children use. setup creates
+// PodmanConfigDir, PodmanHomeDir and the storage tree. The runtime directories are created at service start.
 const (
-	PodmanHomeDir  = StateDir + "/podman-home"
-	PodmanCacheDir = RuntimeDir + "/cache"
-	PodmanTmpDir   = RuntimeDir + "/tmp"
+	PodmanConfigDir    = ConfigDir + "/podman"
+	PodmanHomeDir      = StateDir + "/podman-home"
+	PodmanStorageDir   = StateDir + "/podman-storage"
+	PodmanGraphRootDir = PodmanStorageDir + "/graphroot"
+	PodmanCacheDir     = RuntimeDir + "/cache"
+	PodmanTmpDir       = RuntimeDir + "/tmp"
+	PodmanRunrootDir   = RuntimeDir + "/containers"
 )
 
 // CommandCellPath is the PATH of every product Podman and cosign child. It is the thesis D09 host PATH, so both
@@ -121,14 +126,19 @@ type node struct {
 // directories lists the directories parents first, with the contract's owners and modes, except that
 // the state tree is 0700, not the contract table's 0750: audit.Open refuses a journal whose parent
 // directory is not exactly 0700, and the catalog journal lives directly in StateDir. RuntimeDir is
-// created by systemd from the unit (RuntimeDirectory=, RuntimeDirectoryMode=) and is not listed.
+// created by systemd from the unit (RuntimeDirectory=, RuntimeDirectoryMode=) and is not listed, and
+// neither are the Podman runtime directories, which the service creates at start.
 var directories = []node{
 	{ConfigDir, true, ownRoot, 0o755},
+	{PodmanConfigDir, true, ownRoot, 0o755},
 	{CredentialsDir, true, ownService, 0o700},
 	{StateDir, true, ownService, 0o700},
 	{TurnsDir, true, ownService, 0o700},
 	{ProjectsDir, true, ownService, 0o700},
 	{BackupsDir, true, ownService, 0o700},
+	{PodmanHomeDir, true, ownService, 0o700},
+	{PodmanStorageDir, true, ownService, 0o700},
+	{PodmanGraphRootDir, true, ownService, 0o700},
 	{BinaryDir, true, ownRoot, 0o755},
 }
 
@@ -140,6 +150,8 @@ var installedFiles = []node{
 	{ServiceConfigPath, false, ownRoot, 0o644},
 	{SetupConfigPath, false, ownRoot, 0o644},
 	{UnitPath, false, ownRoot, 0o644},
+	{ContainersConfPath, false, ownRoot, 0o644},
+	{StorageConfPath, false, ownRoot, 0o644},
 	{BinaryPath, false, ownRoot, 0o755},
 	{ReleasePublicKeyPath, false, ownRoot, 0o644}, // optional: absent when the config names no release_public_key
 }
