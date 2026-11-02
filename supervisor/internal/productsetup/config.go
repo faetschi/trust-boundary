@@ -23,10 +23,12 @@ const (
 	ServiceConfigSchema = "tbound-product-service-config/v1"
 
 	// InstallationFormat is the format of the installed unit and setup record that this binary writes and
-	// reads: 2 added [Install] to the unit and client_uid to the self-test. A record without the field is
-	// the format of c6fbd5f. Nothing converts one format into the other: `tbound product setup --replace`
-	// with a binary of the wanted format is the only way across, and update and rollback refuse to cross.
-	InstallationFormat       = 2
+	// reads: 2 added [Install] to the unit and client_uid to the self-test. 3 added the command cell's
+	// DelegateSubgroup and Environment, and the Podman configuration and directories. A record without the
+	// field is the format of c6fbd5f. Nothing converts one format into the other: `tbound product setup
+	// --replace` with a binary of the wanted format is the only way across, and update and rollback refuse
+	// to cross.
+	InstallationFormat       = 3
 	LegacyInstallationFormat = 1
 
 	maxConfigBytes   = 64 << 10
