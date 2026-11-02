@@ -8,8 +8,12 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
+	"syscall"
 
 	"tbound/supervisor/internal/piruntime"
 	"tbound/supervisor/internal/productsession"
@@ -169,6 +173,46 @@ func loadProductCommandHost(ctx context.Context, cfg productServiceConfig, env *
 		return nil, err
 	}
 	return host, nil
+}
+
+// prepareProductCommandRuntime creates the Podman directories under the unit's runtime directory: tmp, cache and the
+// containers runroot. systemd creates the runtime directory at start, so this runs after that and before any Podman
+// child. root is "/" on a host. Each directory must be a real directory owned by the service account with mode 0700.
+// A symlink, or a directory with another owner or mode, is refused rather than repaired.
+func prepareProductCommandRuntime(root string, serviceUID, serviceGID int) error {
+	if err := requireCommandRuntimeDirectory(filepath.Join(root, productsetup.RuntimeDir), 0o750, serviceUID, serviceGID); err != nil {
+		return err
+	}
+	for _, dir := range []string{productsetup.PodmanTmpDir, productsetup.PodmanCacheDir, productsetup.PodmanRunrootDir} {
+		logical := filepath.Join(root, dir)
+		if _, err := os.Lstat(logical); errors.Is(err, fs.ErrNotExist) {
+			if err := os.Mkdir(logical, 0o700); err != nil {
+				return err
+			}
+		}
+		if err := requireCommandRuntimeDirectory(logical, 0o700, serviceUID, serviceGID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// requireCommandRuntimeDirectory refuses anything but a real directory of the wanted mode and owner. Lstat does not
+// follow a symlink, so a link is refused as not a directory.
+func requireCommandRuntimeDirectory(path string, mode fs.FileMode, uid, gid int) error {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("%s is not a directory: symlinks and files are refused", path)
+	}
+	st := info.Sys().(*syscall.Stat_t)
+	if info.Mode().Perm() != mode || int(st.Uid) != uid || int(st.Gid) != gid {
+		return fmt.Errorf("%s must be mode %04o owned by %d:%d, found mode %04o owned by %d:%d",
+			path, mode, uid, gid, info.Mode().Perm(), st.Uid, st.Gid)
+	}
+	return nil
 }
 
 func productCommandCalibrationMatches(attestation workspace.XattrVisibilityAttestation, calibration piruntime.D09XattrEnumerationCalibration, template piruntime.D09CellTemplate) bool {
