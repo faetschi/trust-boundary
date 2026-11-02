@@ -461,6 +461,7 @@ Everything here runs against a test root (`--root DIR`) and supports `--dry-run`
 ### Registration tooling (offline administrator)
 
 - `tbound product registration keygen --out DIR` writes an Ed25519 key pair. The private key is 0600, and the command refuses an existing file. The private key stays offline and never enters the service host.
+- `tbound product registration measure --project-dir DIR --gate-policy FILE` runs on the product host as the service user and prints `root=` and `policy=`: the project root's directory identity digest and the registered policy digest, computed as the service computes them. It refuses a directory the service would refuse and a policy that does not parse. It is the only registration command that runs on the host; [the first-turn guide](guides/product-first-turn.md) shows the order.
 - `tbound product registration init --out FILE` writes an unsigned registration template from flags: projects, scope, provider profiles, limits, principals, `--git-digest`, runtime, image and extension digests. It computes `host_identity_digest` from this build's prompts, registered provider table entries and supervisor-loop worker kind.
 - `tbound product registration sign --registration FILE --key PRIVATE --out FILE` writes the signed registration and its `.sig` with the existing `SignRegistration`. It refuses duplicate JSON keys and trailing data before signing.
 - `tbound product registration verify --registration FILE --signature FILE --public-key FILE` prints the digest and a summary.
