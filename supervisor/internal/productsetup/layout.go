@@ -50,6 +50,19 @@ const (
 	SocketPath                = productsession.DefaultServiceSocketPath
 )
 
+// Fixed product command-host artifacts, read only by the trusted command-host loader. Each sits under the product's
+// podman directory, outside every thesis root.
+const (
+	CommandHostProfilePath          = ConfigDir + "/podman/host-profile.json"
+	CommandHostProfileSignaturePath = CommandHostProfilePath + ".sig"
+	CommandCellTemplatePath         = ConfigDir + "/podman/d09-cell.json"
+	CommandSeccompPath              = ConfigDir + "/podman/seccomp.json"
+	CommandCosignPublicKeyPath      = ConfigDir + "/podman/cosign.pub"
+	CommandOCILayoutPath            = ConfigDir + "/podman/cell-oci"
+	ContainersConfPath              = ConfigDir + "/podman/containers.conf"
+	StorageConfPath                 = ConfigDir + "/podman/storage.conf"
+)
+
 // ThesisRoots are the thesis service's paths. Setup refuses a path equal to or inside one, compared by
 // whole path component. cmd/tbound's service config validator keeps the same list, and a test there
 // keeps the two equal.

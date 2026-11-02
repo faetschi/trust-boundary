@@ -91,6 +91,9 @@ func TestProductD09HostTrustAndBindings(t *testing.T) {
 		if placeholders := profile.PlaceholderFields(); len(placeholders) != 0 {
 			t.Errorf("verified profile still has placeholders %v", placeholders)
 		}
+		if template.Config().registeredTemplate {
+			t.Fatal("validating product inputs granted launcher admission")
+		}
 		decoded, err := DecodeProductD09CellTemplate(in.templateRaw)
 		if err != nil {
 			t.Fatalf("product template decoder refused the valid template: %v", err)
@@ -182,6 +185,9 @@ func TestProductD09HostTrustAndBindings(t *testing.T) {
 				f.profile.ContainmentProfileDigest = DigestBytes([]byte("another template"))
 				return f.inputs(t)
 			}},
+			{"profile binds another offline verifier", productD09TestProfileCase(func(profile *HostProfile) {
+				profile.OfflineVerifierDigest = DigestBytes([]byte("another offline verifier"))
+			})},
 			{"template bound to another registration", productD09TestTemplateCase(func(template *D09CellTemplate) {
 				template.ProductRegistrationDigest = DigestBytes([]byte("another registration"))
 			})},
@@ -583,6 +589,7 @@ func newProductD09TestFixture(t *testing.T) *productD09TestFixture {
 	fixture.template.ProductRegistrationDigest = productD09TestRegistrationDigest(t, fixture.registration, fixture.productKey)
 	fixture.profile = measuredProfile()
 	fixture.profile.ID = "pi-host-profile-product-test"
+	fixture.profile.OfflineVerifierDigest = OfflineVerifierDigest(fixture.template.CosignDigest, fixture.template.CosignPublicKeyDigest)
 	fixture.rebind(t)
 	return fixture
 }
@@ -761,3 +768,125 @@ func (i productD09TestInfo) Mode() fs.FileMode  { return i.mode }
 func (i productD09TestInfo) ModTime() time.Time { return time.Time{} }
 func (i productD09TestInfo) IsDir() bool        { return i.mode.IsDir() }
 func (i productD09TestInfo) Sys() any           { return &syscall.Stat_t{Uid: i.uid, Gid: i.gid} }
+
+func TestThesisD09DecoderRefusesEvenEmptyProductMember(t *testing.T) {
+	template := measuredRouteProbeTemplate(t)
+	raw, err := json.Marshal(template)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw = append(raw[:len(raw)-1], []byte(`,"product_registration_digest":""}`)...)
+	if _, err := DecodeD09CellTemplate(raw); err == nil {
+		t.Fatal("thesis decoder accepted an explicitly present product member")
+	}
+}
+
+func TestProductD09ScannerMatchesTemplateAndCalibration(t *testing.T) {
+	fixture := newProductD09TestFixture(t)
+	template := fixture.template
+	observed := D09XattrVisibilityMeasurements{
+		FilesystemMagic: template.XattrFilesystemMagic, MountOptionsDigest: template.XattrMountOptionsDigest,
+		ScanUID: fixture.serviceUID, ScanGID: fixture.serviceGID, ScanPrivilegeProfile: template.XattrScanPrivilegeProfile,
+		NoNewPrivs: true, InitialUserNamespace: true, EffectiveCapabilities: "0000000000000000",
+	}
+	calibration := D09XattrEnumerationCalibration{
+		Authority: template.XattrVisibilityAuthority, FilesystemMagic: observed.FilesystemMagic,
+		MountOptionsDigest: observed.MountOptionsDigest, ScanUID: observed.ScanUID, ScanGID: observed.ScanGID,
+		ScanPrivilegeProfile: observed.ScanPrivilegeProfile, VisibilityProfileDigest: template.XattrVisibilityProfileDigest,
+		SourceAccessProfile: D09XattrManagedRWSourceProfile,
+	}
+	if err := productD09ValidateStateScanner(observed, calibration, template, fixture.serviceUID, fixture.serviceGID); err != nil {
+		t.Fatalf("matching scanner: %v", err)
+	}
+	for _, field := range []string{"filesystem", "mount", "visibility", "uid", "gid", "privilege"} {
+		t.Run(field, func(t *testing.T) {
+			changed := template
+			switch field {
+			case "filesystem":
+				changed.XattrFilesystemMagic++
+			case "mount":
+				changed.XattrMountOptionsDigest = DigestBytes([]byte("another mount"))
+			case "visibility":
+				changed.XattrVisibilityProfileDigest = DigestBytes([]byte("another visibility profile"))
+			case "uid":
+				changed.XattrScanUID++
+			case "gid":
+				changed.XattrScanGID++
+			case "privilege":
+				changed.XattrScanPrivilegeProfile = "other"
+			}
+			if err := productD09ValidateStateScanner(observed, calibration, changed, fixture.serviceUID, fixture.serviceGID); err == nil {
+				t.Fatal("template/actual scanner mismatch accepted")
+			}
+		})
+	}
+}
+
+func TestProductD09SetupManagedRoots(t *testing.T) {
+	service := productsetup.ServiceConfig{
+		StateRoot: productsetup.TurnsDir,
+		Projects:  map[string]string{"project": productsetup.ProjectsDir + "/project"},
+	}
+	if err := productD09ValidateServiceRoots(service); err != nil {
+		t.Fatalf("setup's managed roots refused: %v", err)
+	}
+	for _, root := range []string{productsetup.StateDir, productsetup.ConfigDir, productsetup.RuntimeDir,
+		productsetup.ProjectsDir, "/var/lib/tbound/project", productsetup.ProjectsDir + "/../turns", "/tmp/project"} {
+		t.Run(root, func(t *testing.T) {
+			changed := service
+			changed.Projects = map[string]string{"project": root}
+			if err := productD09ValidateServiceRoots(changed); !errors.Is(err, ErrProductD09HostRefused) {
+				t.Fatalf("project outside the managed projects tree accepted: %v", err)
+			}
+		})
+	}
+}
+
+func TestProductD09HostZeroValueHasNoAuthority(t *testing.T) {
+	for _, host := range []*D09ProductCommandHost{nil, {}} {
+		if host.Profile() != (HostProfile{}) || !reflect.DeepEqual(host.Template(), D09CellTemplate{}) {
+			t.Fatal("unloaded host returned trusted inputs")
+		}
+		if err := host.Revalidate(context.Background()); !errors.Is(err, ErrProductD09HostRefused) {
+			t.Fatalf("unloaded host revalidated: %v", err)
+		}
+	}
+}
+
+func TestProductD09ServiceShellIsSetupNologin(t *testing.T) {
+	if !productD09IsNologinShell("/usr/sbin/nologin") {
+		t.Fatal("setup nologin shell refused")
+	}
+	for _, shell := range []string{"/var/lib/tbound-product/nologin", "nologin", "/tmp/false", "/bin/bash", ""} {
+		if productD09IsNologinShell(shell) {
+			t.Fatalf("untrusted service shell accepted: %q", shell)
+		}
+	}
+}
+
+func TestProductD09EffectiveUnitRefusesOverridesAndPendingReload(t *testing.T) {
+	properties := map[string]string{
+		"LoadState": "loaded", "NeedDaemonReload": "no", "FragmentPath": productsetup.UnitPath,
+		"DropInPaths": "", "Environment": "", "EnvironmentFiles": "",
+		"User": productsetup.ServiceUser, "Group": productsetup.ServiceGroup,
+	}
+	if err := productD09ValidateEffectiveUnit(properties); err != nil {
+		t.Fatalf("installed effective unit refused: %v", err)
+	}
+	for property := range properties {
+		t.Run(property, func(t *testing.T) {
+			changed := make(map[string]string, len(properties))
+			for key, value := range properties {
+				changed[key] = value
+			}
+			changed[property] = "unexpected"
+			if err := productD09ValidateEffectiveUnit(changed); !errors.Is(err, ErrProductD09HostRefused) {
+				t.Fatalf("effective unit drift accepted: %v", err)
+			}
+			delete(changed, property)
+			if err := productD09ValidateEffectiveUnit(changed); !errors.Is(err, ErrProductD09HostRefused) {
+				t.Fatalf("missing effective unit property accepted: %v", err)
+			}
+		})
+	}
+}
