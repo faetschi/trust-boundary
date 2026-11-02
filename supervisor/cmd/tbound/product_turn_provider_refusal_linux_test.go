@@ -49,6 +49,13 @@ func TestProductTurnProviderRefusalFailsAndAllowsNextTurn(t *testing.T) {
 	if f.measure(t) != baseline || f.notesPublished(t) {
 		t.Fatal("a refused response changed the project")
 	}
+	events, err := newProductEventProjector(f.env).turn(turn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if last := events[len(events)-1]; last.Outcome != productsession.OutcomeFailed || !strings.Contains(last.Reason, "multiple or malformed tool calls") || !strings.Contains(last.Reason, "the turn was not applied") {
+		t.Fatalf("chat terminal event: %+v", last)
+	}
 	f.followUp(t, "after-parallel", productsession.OutcomeFailed)
 }
 
@@ -63,7 +70,7 @@ data: [DONE]
 }
 
 func TestProductTurnCaptureRefusalRestartBoundaries(t *testing.T) {
-	for _, point := range []string{"after-capture-refusal-record", "after-capture-refusal-checkpoint"} {
+	for _, point := range []string{"after-capture-refusal-record", "after-capture-refusal-checkpoint", "after-capture-refusal-checkpoint-unsupported-fields"} {
 		t.Run(point, func(t *testing.T) {
 			created := newProductDriverFixture(t, productsession.PublicationAuto)
 			baseline := created.measure(t)
@@ -102,6 +109,10 @@ func TestProductTurnCaptureRefusalRestartBoundaries(t *testing.T) {
 			}
 			if turn.Usage.HostCalls != 1 || turn.Usage.Tokens != 1024 || turn.Refund.HostCalls != turn.Reservation.HostCalls-1 || turn.Refund.Tokens != turn.Reservation.Tokens-1024 || session.Reserved != (productsession.Budget{}) || session.Consumed != turn.Usage {
 				t.Fatalf("refusal accounting: turn=%+v session=%+v", turn, session)
+			}
+			events, eventErr := newProductEventProjector(f.env).turn(turn)
+			if eventErr != nil || len(events) == 0 || !strings.Contains(events[len(events)-1].Reason, "the turn was not applied") {
+				t.Fatalf("restarted chat refusal: %+v %v", events, eventErr)
 			}
 			f.followUp(t, "after-refusal-restart", productsession.OutcomeFailed)
 		})

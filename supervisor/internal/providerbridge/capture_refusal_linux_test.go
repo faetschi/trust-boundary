@@ -97,6 +97,9 @@ func TestCaptureRefusalProductGateAndReplay(t *testing.T) {
 					case "valid response":
 						evidence.Response = []byte(`data: {"id":"valid","model":"minimax/minimax-m2.5","created":1,"choices":[{"index":0,"delta":{"content":"valid"},"finish_reason":"stop"}]}` + "\n\ndata: [DONE]\n\n")
 						evidence.ResponseDigest = digestBytes(evidence.Response)
+						if reason := captureRefusalReason(evidence.Response); reason != "" {
+							t.Fatalf("usable response fixture was rejected: %s", reason)
+						}
 					case "host call":
 						evidence.HostCall.CallID = "other-call"
 					case "request":
@@ -175,5 +178,30 @@ func TestProductCaptureRefusalRequiresCompleteTransport(t *testing.T) {
 	kinds := journalKinds(t, journal)
 	if kinds[len(kinds)-1] != "provider_exchange_unknown" || len(hooks.completions) != 0 {
 		t.Fatalf("incomplete transport retired: %v", kinds)
+	}
+}
+
+func TestProductCaptureRefusalReasonIsDeterministic(t *testing.T) {
+	body := strings.Replace(rejectedCaptureBody, `"created":1`, `"extra_a":true,"extra_b":true,"created":1`, 1)
+	cfg := recoveryTestConfig()
+	cfg.ProductCaptureRefusals = true
+	hooks := &retryHooks{}
+	hooks.apply(&cfg)
+	journal := openRecoveryTestJournal(t, filepath.Join(t.TempDir(), "unsupported.audit"))
+	c, err := newWithDoer(cfg, ApprovedModel, &fixtureDoer{responses: []fixtureResponse{{failStatus: 200, failBody: body}}}, journal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.AdmitPrompt("task", "prompt"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.NextTurn(context.Background()); err == nil || !strings.Contains(err.Error(), "invalid provider response") {
+		t.Fatalf("normalized refusal: %v", err)
+	}
+	pins := RecoveryPins{Config: cfg, Model: ApprovedModel, Policy: recoveryTestPolicy(t, true), RequireHostCallReservations: true}
+	for i := 0; i < 100; i++ {
+		if _, err := ReplayTranscript(journal, pins, nil); err != nil {
+			t.Fatalf("replay %d: %v", i, err)
+		}
 	}
 }

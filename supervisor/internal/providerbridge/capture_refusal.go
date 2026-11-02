@@ -28,7 +28,11 @@ type captureRefusalEvidence struct {
 
 func captureRefusalReason(response []byte) string {
 	if _, err := openrouter.CaptureSSE(bytes.NewReader(response)); err != nil {
-		return safeFailure(err)
+		// Unsupported-field errors can depend on Go map iteration; never persist that text.
+		if err.Error() == "multiple or malformed tool calls" {
+			return "multiple or malformed tool calls"
+		}
+		return "invalid provider response"
 	}
 	return ""
 }

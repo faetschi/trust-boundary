@@ -35,7 +35,7 @@ func TestProductTurnCrashChild(t *testing.T) {
 	f := openProductDriverFixture(t, root)
 	f.session.ID = os.Getenv(productCrashSessionEnv)
 	f.env.crashAt = func(at string) {
-		if at == point {
+		if at == point || at+"-unsupported-fields" == point {
 			os.Exit(productCrashExit)
 		}
 	}
@@ -55,6 +55,9 @@ func TestProductTurnCrashChild(t *testing.T) {
 	}
 	if strings.Contains(point, "capture-refusal") {
 		script = &productDriverScript{turns: []providerbridge.ScriptTurn{{FailStatus: 200, FailBody: productRejectedCaptureBody()}}}
+		if strings.HasSuffix(point, "-unsupported-fields") {
+			script.turns[0].FailBody = strings.Replace(productRejectedCaptureBody(), `"created":1`, `"extra_a":true,"extra_b":true,"created":1`, 1)
+		}
 		factory := f.env.NewConversation
 		f.env.NewConversation = func(config providerbridge.Config, journal *audit.Journal) (*providerbridge.Conversation, error) {
 			complete := config.CompleteHostCall
