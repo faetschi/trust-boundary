@@ -72,6 +72,7 @@ The catalog is one protected `audit.Journal` (hash chain, fsync per record, excl
 | `product_turn_abandoned` | Reconciling an admitted turn with no link | Admission withdrawn with a full refund. No provider or tool work can precede the link record. |
 | `product_turn_refused` | The composition refused to launch an admitted, unlinked turn | Outcome `failed` with a full refund. `PREDECESSOR_EVIDENCE_INVALID` blocks the session; `STALE_BASELINE` blocks the project. |
 | `product_turn_unknown` | Reconciling a linked turn that has no verifiable disposition | Reservation stays consumed; project is blocked. |
+| `product_turn_operator_resolved` | Root reconciles inert unknown work with the service stopped | Terminal `abandoned`, full reservation charged, unchanged baseline, operator/evidence attestation; session and project unblocked. |
 
 ### Operator resolution of an unknown turn
 
@@ -168,7 +169,7 @@ Each is a `*productsession.Error` with a stable `Code`. `errors.Is(err, products
 | --- | --- |
 | Request never journaled | Nothing happened. The client resubmits with the same key. |
 | `admitted`, no `linked` | No provider or tool work happened, because the link is written first. `AbandonUnlinkedTurn` refunds; the client resubmits with a new key. |
-| `linked`, no `terminal` | Unresolved. The session and project stay blocked. Milestone 1 can only record `MarkTurnUnknown`. Evidence-based reconciliation through `workflowrecovery` is P4. |
+| `linked`, no `terminal` | Unresolved. The session and project stay blocked. Restart reconciliation through `workflowrecovery` is P4. If it still ends unknown, the operator resolution command below can abandon provably inert work. |
 | `terminal` | Final. Its receipt commits the child journals that the next turn verifies. |
 
 ## Conversation prefix
@@ -211,6 +212,7 @@ Transient journal lock contention or resource exhaustion abandons the unlinked l
 | `failed` | Known failure with no applied effect, including a refused launch. | Unchanged. |
 | `cancelled` | P4 only. | Unchanged. |
 | `unknown` | Disposition cannot be established. Reservation consumed, project blocked. | Unchanged, blocked. |
+| `abandoned` (terminal) | Operator resolved inert unknown work; never context. Full reservation consumed. | Unchanged, unblocked. |
 
 Assistant completion is not settlement. A turn is terminal only after the worker loop ended, the conversation closed, the evidence bundle was read, and the publication step returned a definite status.
 

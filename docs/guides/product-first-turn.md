@@ -305,6 +305,7 @@ under the diff. A session whose earlier turn ended `unknown` is marked
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
+| `PROJECT_BLOCKED` / `PREDECESSOR_UNRESOLVED` after an unknown turn | Restart could not establish the outcome | Stop the service (`sudo systemctl stop tbound-product.service`), find the ID with `sudo -u tbound-product tbound product turns`, run `sudo tbound product turns resolve --turn ID --reason "provider failed; abandon inert turn" --dry-run`, then the same command without `--dry-run`, and start it (`sudo systemctl start tbound-product.service`). Resolution requires the unchanged admitted baseline, inert Store/workflow, no command activity and no publication record; it charges the full turn reservation and excludes its context. If any evidence check refuses, retain state for investigation. |
 | Setup or doctor fails `cgroup-v2` on a host with cgroup v2 | Older builds looked for `cgroup.kill` at the cgroup root, where the kernel never creates it | Use a current build |
 | Service exits with `publication fence: no such file or directory` | The project was not made by `project import` | Remove it, import it (step 3), measure and sign again (step 4) |
 | Service exits with `… differs from the signed xattr calibration` | The calibration was measured outside the unit's sandbox | Measure again with `systemd-run` (step 5) and sign again |
