@@ -73,6 +73,44 @@ The catalog is one protected `audit.Journal` (hash chain, fsync per record, excl
 | `product_turn_refused` | The composition refused to launch an admitted, unlinked turn | Outcome `failed` with a full refund. `PREDECESSOR_EVIDENCE_INVALID` blocks the session; `STALE_BASELINE` blocks the project. |
 | `product_turn_unknown` | Reconciling a linked turn that has no verifiable disposition | Reservation stays consumed; project is blocked. |
 
+### Operator resolution of an unknown turn
+
+`tbound product turns resolve --turn ID --reason TEXT [--dry-run]` runs as root with
+`tbound-product.service` stopped. The root front end verifies the unit is inactive
+with no remaining cgroup processes, then delegates catalog access to the service
+account over a root-authenticated inherited socket. The catalog writer lock is
+held throughout evidence checks and append, excluding another service writer.
+Only `unknown` turns are accepted; a linked turn must first undergo restart
+reconciliation. Missing evidence refuses resolution with its failing check.
+
+Resolution reuses the registered managed-root baseline scan and existing-only
+Store/journal/checkpoint readers. The measured tree must equal the admitted
+baseline. Store reconstruction must have no quarantine or unknown effect, and
+any effect reservation must already be terminal or retired. The command journal
+must be empty and no publication record may name the workflow. This deliberately
+excludes Bash/command recovery and publication ambiguity. A provider reservation
+or captured call may remain unresolved: with the supervisor-loop process dead,
+no command activity and no open effect it is inert, never resumed or imported.
+There is no `--accept-current-baseline` override.
+
+One `product_turn_operator_resolved` record commits the turn/workflow, root UID,
+nonempty plain-text reason (at most 256 UTF-8 bytes), UTC timestamp, admitted and
+measured baseline digests, and a domain-separated evidence commitment over the
+retained Store/provider/command journal heads and protected checkpoint digest.
+The reducer verifies record shape, turn/workflow/baseline bindings and evidence
+commitment on both append and replay; duplicates and malformed/forged bindings
+fail catalog replay. The protected journal supplies integrity, not a signature
+against its own privileged owner. Dry-run holds the same lock and checks the
+same evidence but appends nothing, including no owner epoch.
+
+The outcome is terminal `abandoned`, reason `operator_resolved`, with no execution
+receipt and `context_eligible=false`. It is never selected as a predecessor.
+The full original reservation remains charged, with no refund; if review already
+settled usage, its earlier refund is charged back. Session revision advances,
+session and project blocks clear, and their baseline stays unchanged. New turns
+and sessions are admitted subject to the ordinary remaining budget and turn cap.
+This is administrative abandonment of inert work, not successful execution or
+workflow repair; retained evidence is preserved for inspection.
 ### Operations
 
 ```go
