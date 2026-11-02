@@ -65,7 +65,7 @@ const (
 
 // Fixed product Podman directories. PodmanConfigDir is root-owned. The others lie under a root that the unit lets
 // the service write, and the product Podman child environment names the ones the children use. setup creates
-// PodmanConfigDir, PodmanHomeDir and the storage tree. The runtime directories are created at service start.
+// PodmanConfigDir, PodmanHomeDir and the storage tree. The runtime directories are not created by setup.
 const (
 	PodmanConfigDir    = ConfigDir + "/podman"
 	PodmanHomeDir      = StateDir + "/podman-home"
@@ -127,7 +127,7 @@ type node struct {
 // the state tree is 0700, not the contract table's 0750: audit.Open refuses a journal whose parent
 // directory is not exactly 0700, and the catalog journal lives directly in StateDir. RuntimeDir is
 // created by systemd from the unit (RuntimeDirectory=, RuntimeDirectoryMode=) and is not listed, and
-// neither are the Podman runtime directories, which the service creates at start.
+// neither are the Podman runtime directories, which setup does not create.
 var directories = []node{
 	{ConfigDir, true, ownRoot, 0o755},
 	{PodmanConfigDir, true, ownRoot, 0o755},

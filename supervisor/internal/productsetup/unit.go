@@ -13,8 +13,8 @@ const unitWantedBy = "multi-user.target"
 
 // unitDirectives is the closed set of directives and the exact value each must have, in the order the
 // unit lists them. The hardening matches the research unit (infra/guest/systemd/tbound-pi.service)
-// where it applies. DelegateSubgroup and the one Environment line make the service the supervisor of the
-// command cells: the cells run in a sibling of the service's own runner subgroup.
+// where it applies. DelegateSubgroup keeps the service process in its runner subgroup, so the command cells can run
+// beside it in the delegated tree. The one Environment line matches the environment of the product Podman children.
 var unitDirectives = []struct{ key, value string }{
 	{"User", ServiceUser},
 	{"Group", ServiceGroup},

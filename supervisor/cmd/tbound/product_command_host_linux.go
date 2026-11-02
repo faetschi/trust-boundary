@@ -176,8 +176,8 @@ func loadProductCommandHost(ctx context.Context, cfg productServiceConfig, env *
 }
 
 // prepareProductCommandRuntime creates the Podman directories under the unit's runtime directory: tmp, cache and the
-// containers runroot. systemd creates the runtime directory at start, so this runs after that and before any Podman
-// child. root is "/" on a host. Each directory must be a real directory owned by the service account with mode 0700.
+// containers runroot. systemd creates the runtime directory at start, so callers run this after that and before any
+// Podman child starts. root is "/" on a host. Each directory must be a real directory owned by the service account with mode 0700.
 // A symlink, or a directory with another owner or mode, is refused rather than repaired.
 func prepareProductCommandRuntime(root string, serviceUID, serviceGID int) error {
 	if err := requireCommandRuntimeDirectory(filepath.Join(root, productsetup.RuntimeDir), 0o750, serviceUID, serviceGID); err != nil {
