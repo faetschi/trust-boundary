@@ -132,9 +132,9 @@ export function LivePanel() {
   return (
     <div className={styles.panel} role="group" aria-label="Session state">
       <div className={styles.status} role="group" aria-label="Remaining budget">
-        <Chip tone={budgetExhausted(left) ? "deny" : "idle"}>{`host calls ${left.host_calls} left of ${view.budget.host_calls}`}</Chip>
-        <Chip tone={budgetExhausted(left) ? "deny" : "idle"}>{`tokens ${left.tokens} left of ${view.budget.tokens}`}</Chip>
-        <Chip tone={budgetExhausted(left) ? "deny" : "idle"}>{`seconds ${left.duration_seconds} left of ${view.budget.duration_seconds}`}</Chip>
+        <Chip tone={budgetUsedUp(view) ? "deny" : "idle"}>{`host calls ${left.host_calls} left of ${view.budget.host_calls}`}</Chip>
+        <Chip tone={budgetUsedUp(view) ? "deny" : "idle"}>{`tokens ${left.tokens} left of ${view.budget.tokens}`}</Chip>
+        <Chip tone={budgetUsedUp(view) ? "deny" : "idle"}>{`seconds ${left.duration_seconds} left of ${view.budget.duration_seconds}`}</Chip>
         {budgetUsedUp(view) ? <Chip tone="deny">budget used up</Chip> : null}
         {budgetExhausted(left) && !budgetUsedUp(view) ? <Chip tone="idle">budget reserved by the running turn</Chip> : null}
         {view.read_only === true ? <Chip tone="idle">read-only session</Chip> : null}
