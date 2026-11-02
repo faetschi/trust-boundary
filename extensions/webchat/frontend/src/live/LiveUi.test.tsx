@@ -204,6 +204,24 @@ describe("live UI: opening a session", () => {
   });
 });
 
+describe("live UI: with no session selected", () => {
+  it("says to choose a session, instead of loading or connecting", async () => {
+    await render(createFakeGateway({ events: TRANSCRIPT, turns: [DONE] }), { open: false });
+    expect(q("[data-connection]").textContent).toBe("no session selected");
+    expect(q("#live-composer-reason").textContent).toBe("Choose a session on the left, or create one under New session.");
+    expect(button("Send").getAttribute("aria-disabled")).toBe("true");
+    expect(mounted?.container.textContent).not.toContain("connecting…");
+    expect(mounted?.container.textContent).not.toContain("The session is loading.");
+  });
+
+  it("still says the session is loading once one is chosen and its projection is not in yet", async () => {
+    await render(createFakeGateway({ events: TRANSCRIPT, turns: [DONE] }), { open: false });
+    act(() => controller?.select(SESSION_ID));
+    expect(q("[data-connection]").textContent).toBe("connecting…");
+    expect(q("#live-composer-reason").textContent).toBe("The session is loading.");
+  });
+});
+
 describe("live UI: the composer", () => {
   it("sends the prompt on Enter under the displayed revision, and clears the draft once it was accepted", async () => {
     const gateway = createFakeGateway({ events: TRANSCRIPT, turns: [DONE] });
