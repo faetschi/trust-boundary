@@ -194,7 +194,10 @@ func (t Turn) clone() Turn {
 		link := *t.Link
 		t.Link = &link
 	}
-	if t.OperatorResolution != nil { resolution := *t.OperatorResolution; t.OperatorResolution = &resolution }
+	if t.OperatorResolution != nil {
+		resolution := *t.OperatorResolution
+		t.OperatorResolution = &resolution
+	}
 	return t
 }
 
