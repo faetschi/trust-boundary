@@ -8,6 +8,17 @@ validate `KIT_FREEZE` against `^F[0-9]+$`, require its values file, require `FRE
 a 40-character lowercase hex `FREEZE_COMMIT`, then refuse freeze numbers <= 12 (including leading zeros).
 Python entry points apply the same checks. F12 and older freezes are historical and read-only.
 
+## Start a new chain
+
+A new chain needs no earlier freeze. Its owner keys are its own, so its signatures and digests don't verify against the shared chain's.
+
+1. Run `infra/workspace/fetch-inputs.sh "$TBOUND_WORK/inputs"`, `install-toolchains.sh` and `fill-caches.sh`.
+2. Copy `freezes/first-freeze.env.example` to `freezes/F100.env`. Set `FREEZE_COMMIT` to HEAD. Keep the file uncommitted.
+3. Run `KIT_FREEZE=F100 bash 05-init-chain.sh`, once. It creates `$OLDH` with the keys and the passphrase file. Back both up.
+4. Run `KIT_FREEZE=F100 bash tools/freeze.sh`.
+
+The guest scripts stop on `PREV_FREEZE=none`.
+
 ## Start a new freeze
 
 1. Copy the last values file: `cp freezes/F14.env freezes/F15.env`.
@@ -23,7 +34,7 @@ names its directory `archive-<prev-lowercase>-<UTC>`.
 
 Logs and outputs go to `$TBOUND_WORK/receipts/<FREEZE>/logs` (created on the first run), and `tools/pull-receipts.sh`
 copies them into `evidence/` for committing. Machine values live in `.local/freeze-host.env` (see `host.env.example`). The kit
-directory contains only code and values. Nothing here writes a password, reads a key file, or prints a secret.
+directory contains only code and values. Nothing here prints a secret. Only `05-init-chain.sh` writes a passphrase file and reads a key file, when it creates a chain's keys.
 
 P2: `25-p2-rebuild.sh` refuses a second attempt, verifies the frozen LF sources,
 Node/npm/Pi pins, builds twice with `npm --offline` in private network namespaces and cache copies under `$W/p2-rebuild`,

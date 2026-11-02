@@ -65,6 +65,16 @@ func (s AdmissionScope) IsZero() bool {
 	return s.rule() == AdmissionScopeRuleExactPath && len(s.ProtectedPaths)+len(s.Writable)+len(s.ReadOnly)+len(s.Protected) == 0
 }
 
+// cloneAdmissionScope copies all four path lists, so a bundle or its clone cannot change the
+// Store's admission policy. Nil and empty lists stay distinct so the copy DeepEquals the original.
+func cloneAdmissionScope(scope AdmissionScope) AdmissionScope {
+	scope.ProtectedPaths = cloneSliceKeepingNil(scope.ProtectedPaths)
+	scope.Writable = cloneSliceKeepingNil(scope.Writable)
+	scope.ReadOnly = cloneSliceKeepingNil(scope.ReadOnly)
+	scope.Protected = cloneSliceKeepingNil(scope.Protected)
+	return scope
+}
+
 // Validate refuses an unknown rule, protected paths with promote-all, and protected paths that are
 // not canonical relative paths in strictly increasing order. Under product-scope/v1 it also refuses
 // ProtectedPaths and any path that appears in two of the three lists.

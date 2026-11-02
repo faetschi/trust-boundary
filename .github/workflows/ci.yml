@@ -1,7 +1,7 @@
 name: linux-ci
 
 on:
-  # A PR branch runs once, through pull_request. Each run takes about 25 minutes.
+  # PR branches run through pull_request; merged trees are checked on push.
   push:
     branches: [main, codex/tbound-prototype]
   pull_request:
@@ -9,7 +9,79 @@ on:
 permissions:
   contents: read
 
+# Cancel superseded PR runs; push runs remain independent.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
+  quick-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.1"
+          cache-dependency-path: supervisor/go.sum
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.21.0"
+          cache: npm
+          cache-dependency-path: adapter/package-lock.json
+
+      - name: Prepare private temporary directory
+        run: |
+          umask 077
+          TMPDIR="$(mktemp -d "$HOME/tb-ci.XXXXXXXX")"
+          chmod 700 "$TMPDIR"
+          test "$(stat -c '%a' "$TMPDIR")" = 700
+          python3 - "$TMPDIR" <<'PY'
+          import os
+          import stat
+          import sys
+
+          path = os.path.realpath(sys.argv[1])
+          while True:
+              mode = os.stat(path).st_mode
+              assert not mode & (stat.S_IWGRP | stat.S_IWOTH), path
+              if path == "/":
+                  break
+              path = os.path.dirname(path)
+          PY
+          printf 'TMPDIR=%s\n' "$TMPDIR" >> "$GITHUB_ENV"
+
+      - name: Offline setup regressions (mocks only)
+        run: |
+          bash infra/repro/test_bootstrap_package_status.sh
+          bash infra/repro/test_bootstrap_userns_optin.sh
+
+      - name: Hyper-V Netplan injector regression
+        run: |
+          command -v netplan >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq netplan.io; }
+          python3 infra/repro/test_hyperv_netplan_injection.py -v
+
+      - name: Official Pi runtime closure regressions
+        run: python3 -m unittest discover -s scripts -p 'test_prepare_official_pi_runtime.py' -v
+
+      - name: Offline package and publisher regressions
+        run: |
+          umask 077
+          bash tests/packaging/verify-package-manager-layout.sh
+          bash tests/packaging/verify-publish-release-assets.sh
+
+      - name: Go vet
+        working-directory: supervisor
+        run: umask 077; go vet -mod=readonly ./...
+
+      - name: Adapter checks
+        working-directory: adapter
+        run: |
+          umask 077
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run check
+
   runtime:
     runs-on: ubuntu-latest
     env:
@@ -49,25 +121,6 @@ jobs:
           PY
           printf 'TMPDIR=%s\n' "$TMPDIR" >> "$GITHUB_ENV"
           printf 'TBOUND_PI_CLI_BIN=%s/tbound-pi-cli/bin/pi\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
-
-      - name: Offline setup regressions (mocks only)
-        run: |
-          bash infra/repro/test_bootstrap_package_status.sh
-          bash infra/repro/test_bootstrap_userns_optin.sh
-
-      - name: Hyper-V Netplan injector regression
-        run: |
-          command -v netplan >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq netplan.io; }
-          python3 infra/repro/test_hyperv_netplan_injection.py -v
-
-      - name: Official Pi runtime closure regressions
-        run: python3 -m unittest discover -s scripts -p 'test_prepare_official_pi_runtime.py' -v
-
-      - name: Offline package and publisher regressions
-        run: |
-          umask 077
-          bash tests/packaging/verify-package-manager-layout.sh
-          bash tests/packaging/verify-publish-release-assets.sh
 
       - name: Install and verify official Pi CLI
         run: |
@@ -133,16 +186,20 @@ jobs:
         working-directory: supervisor
         run: umask 077; go test -race -mod=readonly -count=1 -timeout 40m ./...
 
-      - name: Go vet
-        working-directory: supervisor
-        run: umask 077; go vet -mod=readonly ./...
-
-      - name: Adapter checks
+      - name: Install adapter dependencies for the Pi fixture
         working-directory: adapter
         run: |
           umask 077
           npm ci --ignore-scripts --no-audit --no-fund
-          npm run check
+
+      # quick-checks has no Pi CLI, so its adapter run skips this test. It must run, and not skip, here.
+      - name: Official Pi CLI adapter integration
+        working-directory: adapter
+        run: |
+          set -o pipefail
+          umask 077
+          node --experimental-strip-types --test --test-reporter=spec src/tbound-cli-extension.test.ts | tee "$TMPDIR/pi-adapter-integration.txt"
+          grep -q 'ℹ skipped 0' "$TMPDIR/pi-adapter-integration.txt"
 
       - name: Offline official Pi CLI development fixture (non-claim-bearing)
         working-directory: supervisor

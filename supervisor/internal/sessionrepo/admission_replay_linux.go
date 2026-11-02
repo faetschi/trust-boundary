@@ -138,13 +138,7 @@ func (s *Store) validateAdmissionReferencesLocked() error {
 	if err != nil {
 		return fmt.Errorf("verify admission journal: %w", err)
 	}
-	generations := make([]GenerationEvidence, 0, len(s.generations))
-	for _, generation := range s.generations {
-		generations = append(generations, GenerationEvidence{
-			ID: generation.id, TreeDigest: generation.snapshot.TreeDigest,
-			Manifest: cloneManifest(generation.snapshot.Manifest),
-		})
-	}
+	generations := s.generationEvidenceLocked()
 	if _, err := validateAdmissionEvidence(primary, admission, s.options.PolicyDigest, s.options.MetadataPolicyDigest, s.options.AdmissionScope, generations); err != nil {
 		return fmt.Errorf("validate durable admission references: %w", err)
 	}
