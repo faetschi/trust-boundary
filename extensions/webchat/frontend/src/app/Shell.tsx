@@ -7,6 +7,7 @@ import { useTheme } from "../theme/useTheme";
 import { parseTheme } from "../theme/theme";
 import { isVerifiedProjection } from "../core/format";
 import type { ViewId } from "../core/store";
+import { useLive } from "../live/context";
 import { usePhone, useNarrow } from "./layout";
 import { useWorkspace } from "./WorkspaceProvider";
 import { ShellContext, type ShellControls } from "./shellContext";
@@ -50,6 +51,9 @@ function connectionText(status: ConnectionStatus): string {
   return status.warning ? `${status.label} · ${status.warning}` : status.label;
 }
 
+// With no session chosen nothing connects, so the header does not say "connecting…", which reads as a hang.
+const NO_SESSION_TEXT = "no session selected";
+
 // The application shell: a skip link to the visible view, the header (title, source and connection badges, the claim
 // boundary, the theme and Governance controls), the sessions rail, the workspace with its two views and its footer, and
 // the governance inspector. The rail and the inspector collapse to icon columns at wide widths, and the inspector is a
@@ -57,6 +61,8 @@ function connectionText(status: ConnectionStatus): string {
 export function Shell({ version }: { readonly version: string }) {
   const model = useWorkspace();
   const { actions } = model;
+  const live = useLive();
+  const noSession = live !== null && live.model.activeId === null;
   const narrow = useNarrow();
   const phone = usePhone();
   const [prefs, updatePrefs] = useUiPrefs();
@@ -267,8 +273,8 @@ export function Shell({ version }: { readonly version: string }) {
                   demonstration · not a live session
                 </span>
               ) : null}
-              <span className={styles.badge} data-connection={model.status.state}>
-                {connectionText(model.status)}
+              <span className={styles.badge} data-connection={noSession ? "idle" : model.status.state}>
+                {noSession ? NO_SESSION_TEXT : connectionText(model.status)}
               </span>
             </div>
             <div className={styles.controls}>
