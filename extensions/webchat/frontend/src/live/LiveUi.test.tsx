@@ -105,6 +105,13 @@ function composer(): HTMLTextAreaElement {
   return q<HTMLTextAreaElement>(`#${COMPOSER_INPUT_ID}`);
 }
 
+// The tone of each budget counter ("host calls 3 left of 10") in the remaining-budget group, in display order.
+function counterTones(): Array<string | null> {
+  return all("[role='group'][aria-label='Remaining budget'] [data-tone]")
+    .filter((chip) => chip.textContent?.includes(" left of ") === true)
+    .map((chip) => chip.getAttribute("data-tone"));
+}
+
 beforeEach(() => {
   document.body.innerHTML = "";
 });
@@ -181,6 +188,7 @@ describe("live UI: opening a session", () => {
     gateway.state.consumed = { host_calls: 10, tokens: 0, duration_seconds: 0 };
     await render(gateway);
     expect(q("[role='group'][aria-label='Remaining budget']").textContent).toContain("budget used up");
+    expect(counterTones()).toEqual(["deny", "deny", "deny"]);
   });
 
   it("says a running turn holds the budget in reserve, not that it is used up", async () => {
@@ -193,6 +201,13 @@ describe("live UI: opening a session", () => {
       (chip) => chip.textContent === "budget reserved by the running turn",
     );
     expect(held?.getAttribute("data-tone")).toBe("idle");
+  });
+
+  it("draws the budget counters neutral while a running turn holds the whole budget", async () => {
+    const gateway = createFakeGateway({ events: TRANSCRIPT.slice(0, 3), turns: [RUNNING] });
+    gateway.state.reserved = { host_calls: 10, tokens: 1000, duration_seconds: 60 };
+    await render(gateway);
+    expect(counterTones()).toEqual(["idle", "idle", "idle"]);
   });
 
   it("restores the open session after a reload and says how many events arrived meanwhile", async () => {
