@@ -12,7 +12,7 @@ import { ActionNotice } from "./ActionNotice";
 import type { Decision } from "./client";
 import { COMPOSER_INPUT_ID } from "./LiveComposer";
 import { useLive } from "./context";
-import { budgetExhausted, openTurnOf, phaseWords, remainingBudget } from "./readings";
+import { budgetExhausted, budgetUsedUp, openTurnOf, phaseWords, remainingBudget } from "./readings";
 import type { Candidate } from "./wire";
 import styles from "./Live.module.css";
 
@@ -135,7 +135,8 @@ export function LivePanel() {
         <Chip tone={budgetExhausted(left) ? "deny" : "idle"}>{`host calls ${left.host_calls} left of ${view.budget.host_calls}`}</Chip>
         <Chip tone={budgetExhausted(left) ? "deny" : "idle"}>{`tokens ${left.tokens} left of ${view.budget.tokens}`}</Chip>
         <Chip tone={budgetExhausted(left) ? "deny" : "idle"}>{`seconds ${left.duration_seconds} left of ${view.budget.duration_seconds}`}</Chip>
-        {budgetExhausted(left) ? <Chip tone="deny">budget used up</Chip> : null}
+        {budgetUsedUp(view) ? <Chip tone="deny">budget used up</Chip> : null}
+        {budgetExhausted(left) && !budgetUsedUp(view) ? <Chip tone="idle">budget reserved by the running turn</Chip> : null}
         {view.read_only === true ? <Chip tone="idle">read-only session</Chip> : null}
         {open !== null ? (
           <Chip tone={open.phase === "unknown" ? "unknown" : "pending"}>{`${turnLabel(open.turn.id)} ${phaseWords(open.phase)}`}</Chip>

@@ -64,6 +64,15 @@ export function budgetExhausted(left: LiveBudget): boolean {
   return left.host_calls === 0 || left.tokens === 0 || left.duration_seconds === 0;
 }
 
+// Whether consumption alone has used up a dimension. A running turn's reservation is held, not spent, so it does not count here.
+export function budgetUsedUp(view: LiveSessionView): boolean {
+  return (
+    view.consumed.host_calls >= view.budget.host_calls ||
+    view.consumed.tokens >= view.budget.tokens ||
+    view.consumed.duration_seconds >= view.budget.duration_seconds
+  );
+}
+
 export interface Gate {
   readonly allowed: boolean;
   // Why not, in words. Null when allowed.
