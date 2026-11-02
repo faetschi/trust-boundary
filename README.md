@@ -22,6 +22,19 @@ There is no interactive Pi chat mode yet.
 See [OVERVIEW.md](OVERVIEW.md) for the engineering checkpoint and
 [status and gates](docs/evaluation/status.md) for verified scope and remaining work.
 
+## Product demo: governed chat
+
+The TBound product service runs interactive, governed chat turns on one Linux
+host, from the terminal (`tbound chat`) or a browser (`tbound-webchat --live`).
+The model works through the same gate: reads run, a write waits for your
+Publish or Discard, and Bash is denied until a contained command runner exists.
+Its worker is the supervisor's own agent loop, not Pi, and nothing it produces
+is thesis evidence.
+
+This ran end to end on 2026-11-02 on a disposable Hyper-V VM, driven from a
+Windows workstation over SSH, with a real OpenCode Go provider. To set it up
+and try it, follow [Run a first governed product turn](docs/guides/product-first-turn.md).
+
 ## Start here
 
 - [Use TBound](USAGE.md): installation, tasks, operation, and evaluation commands.

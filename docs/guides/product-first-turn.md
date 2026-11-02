@@ -287,8 +287,19 @@ there:
 ssh -N -L 127.0.0.1:8791:127.0.0.1:8791 admin@GUEST_HOST
 ```
 
+From a Windows workstation, one Git Bash command starts the gateway on the VM
+and forwards the port. Ctrl+click the printed link; Ctrl+C stops both:
+
+```sh
+ssh -t -L 127.0.0.1:8791:127.0.0.1:8791 admin@GUEST_HOST \
+  '~/bin/tbound-webchat --live --socket /run/tbound-product/product.sock'
+```
+
 Create a session with project `demo` and profile `opencode-go-engineering`,
-then try the same three prompts. Publish and Discard appear under the diff.
+or click an existing session in the left panel; the chat stays empty until
+one is selected. Then try the same three prompts. Publish and Discard appear
+under the diff. A session whose earlier turn ended `unknown` is marked
+`blocked` and refuses new prompts; start a new session.
 
 ## Troubleshooting
 
