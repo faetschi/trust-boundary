@@ -34,7 +34,7 @@ func validateProductCommandInputs(cfg productServiceConfig, registration product
 	if err := cfg.validate(extraRoots); err != nil {
 		return refuse(err)
 	}
-	if len(in.PublicKey) > 1024 || len(in.ProfileSignature) > 1024 || len(in.RegistrationSignature) > 1024 || len(in.Template) > 1<<20 || len(in.Unit) > 1<<20 {
+	if len(in.PublicKey) > 1024 || len(in.ProfileSignature) > 1024 || len(in.RegistrationSignature) > 1024 || len(in.Template) > 1<<20 || len(in.Unit) > productServiceMaxConfigBytes {
 		return refuse(errors.New("public command artifact exceeds its installed size bound"))
 	}
 	key, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(in.PublicKey)))
@@ -74,7 +74,8 @@ func validateProductCommandInputs(cfg productServiceConfig, registration product
 	if profile.Mode != piruntime.ModeProduction || profile.ContainmentProfile != piruntime.D09ContainmentProfile ||
 		profile.SettlementProfile != piruntime.D09SettlementProfile || len(profile.PlaceholderFields()) != 0 ||
 		profile.ContainmentProfileDigest != templateDigest || template.ProductRegistrationDigest != verified.Digest ||
-		template.ExpectedImageDigest != verified.ImageDigest {
+		template.ExpectedImageDigest != verified.ImageDigest ||
+		profile.OfflineVerifierDigest != piruntime.OfflineVerifierDigest(template.CosignDigest, template.CosignPublicKeyDigest) {
 		return refuse(errors.New("profile, product template and registration bindings differ"))
 	}
 	if template.CosignPublicKeyPath != productsetup.CommandCosignPublicKeyPath || template.OCILayoutPath != productsetup.CommandOCILayoutPath ||

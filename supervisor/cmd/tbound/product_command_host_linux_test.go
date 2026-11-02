@@ -61,10 +61,23 @@ func TestProductCommandHostStaticSignedInputs(t *testing.T) {
 	if template.ProductRegistrationDigest != registration.Digest || profile.ContainmentProfileDigest == "" {
 		t.Fatal("static bindings missing")
 	}
-	for _, name := range []string{"wrong key", "profile signature", "registration signature", "seccomp bytes", "cosign key bytes", "unit override", "config identity", "proposed registration", "thesis state", "relative project", "duplicate projects", "oversized key", "oversized profile signature", "oversized registration signature"} {
+	for _, name := range []string{"wrong key", "profile signature", "registration signature", "offline verifier binding", "seccomp bytes", "cosign key bytes", "unit override", "config identity", "proposed registration", "thesis state", "relative project", "duplicate projects", "oversized key", "oversized profile signature", "oversized registration signature", "oversized unit"} {
 		t.Run(name, func(t *testing.T) {
 			changed, candidate, config := inputs, registration, cfg
 			switch name {
+			case "offline verifier binding":
+				var profile piruntime.HostProfile
+				if err := json.Unmarshal(inputs.Profile, &profile); err != nil {
+					t.Fatal(err)
+				}
+				profile.OfflineVerifierDigest = piruntime.DigestBytes([]byte("another offline verifier"))
+				raw, signature, _, err := piruntime.SignLinuxHostProfile(profile, ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize)))
+				if err != nil {
+					t.Fatal(err)
+				}
+				changed.Profile, changed.ProfileSignature = raw, []byte(base64.StdEncoding.EncodeToString(signature))
+			case "oversized unit":
+				changed.Unit = append(append([]byte(nil), inputs.Unit...), []byte("\n#"+strings.Repeat("x", productServiceMaxConfigBytes))...)
 			case "thesis state":
 				config.StateRoot = "/var/lib/tbound"
 			case "relative project":
