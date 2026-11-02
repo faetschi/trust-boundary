@@ -16,14 +16,19 @@ const ReasonOperatorResolved = "operator_resolved"
 
 // OperatorEvidence commits the existing-only evidence checked by the composition.
 // Empty journals use SHA-256 of the empty bytes as their head commitment.
+// Confirm and Close are transient: the composition uses them to keep the evidence
+// handles open and to re-attest the project tree at append time, and they are never
+// part of the record.
 type OperatorEvidence struct {
-	WorkflowID       string `json:"workflow_id"`
-	BaselineDigest   string `json:"baseline_digest"`
-	ScanDigest       string `json:"scan_digest"`
-	StoreHead        string `json:"store_head"`
-	ProviderHead     string `json:"provider_head"`
-	CommandHead      string `json:"command_head"`
-	CheckpointDigest string `json:"checkpoint_digest"`
+	WorkflowID       string       `json:"workflow_id"`
+	BaselineDigest   string       `json:"baseline_digest"`
+	ScanDigest       string       `json:"scan_digest"`
+	StoreHead        string       `json:"store_head"`
+	ProviderHead     string       `json:"provider_head"`
+	CommandHead      string       `json:"command_head"`
+	CheckpointDigest string       `json:"checkpoint_digest"`
+	Confirm          func() error `json:"-"`
+	Close            func() error `json:"-"`
 }
 
 type OperatorResolution struct {
@@ -92,11 +97,23 @@ func OperatorResolve(path string, registration Registration, turnID, reason stri
 	if err != nil {
 		return Turn{}, err
 	}
+	if evidence.Close != nil {
+		// The composition keeps its journals and project directory open until
+		// the durable append below, so its evidence cannot go stale in between.
+		defer evidence.Close()
+	}
 	r := operatorResolvedRecord{header: hdr, TurnID: turnID, OperatorResolution: OperatorResolution{OperatorEvidence: evidence, Reason: reason, ResolvedAt: time.Now().UTC().Format(time.RFC3339Nano)}}
 	r.EvidenceDigest = r.digest()
 	data, _ := json.Marshal(r)
 	if _, err := c.st.reduce(kindTurnOperatorResolved, data); err != nil {
 		return Turn{}, err
+	}
+	if evidence.Confirm != nil {
+		// Re-measure the project inside the still-open evidence window, directly
+		// before the record becomes durable.
+		if err := evidence.Confirm(); err != nil {
+			return Turn{}, err
+		}
 	}
 	if dryRun {
 		return turn.clone(), nil

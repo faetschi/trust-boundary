@@ -249,7 +249,13 @@ func (e *productTurnEnv) MeasureProjectBaseline(projectID string) (string, error
 		return "", err
 	}
 	defer root.Close()
-	snapshot, err := workspace.Scan(root, e.projectWorkspace())
+	return measureProductBaseline(projectID, root, e.projectWorkspace())
+}
+
+// measureProductBaseline scans through an already-open managed root so the caller
+// can hold that directory identity across later checks and the durable append.
+func measureProductBaseline(projectID string, root *os.File, options workspace.Options) (string, error) {
+	snapshot, err := workspace.Scan(root, options)
 	if err != nil {
 		return "", fmt.Errorf("scan managed project %q: %w", projectID, err)
 	}
