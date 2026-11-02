@@ -183,6 +183,18 @@ describe("live UI: opening a session", () => {
     expect(q("[role='group'][aria-label='Remaining budget']").textContent).toContain("budget used up");
   });
 
+  it("says a running turn holds the budget in reserve, not that it is used up", async () => {
+    const gateway = createFakeGateway({ events: TRANSCRIPT.slice(0, 3), turns: [RUNNING] });
+    gateway.state.reserved = { host_calls: 10, tokens: 1000, duration_seconds: 60 };
+    await render(gateway);
+    const group = q("[role='group'][aria-label='Remaining budget']");
+    expect(group.textContent).not.toContain("budget used up");
+    const held = Array.from(group.querySelectorAll<HTMLElement>("[data-tone]")).find(
+      (chip) => chip.textContent === "budget reserved by the running turn",
+    );
+    expect(held?.getAttribute("data-tone")).toBe("idle");
+  });
+
   it("restores the open session after a reload and says how many events arrived meanwhile", async () => {
     const gateway = createFakeGateway({ events: TRANSCRIPT, turns: [DONE] });
     const storage = memoryStorage({ [ACTIVE_SESSION_KEY]: SESSION_ID, [cursorKey(SESSION_ID)]: "4" });
