@@ -108,7 +108,7 @@ func (p *productEventProjector) turn(turn productsession.Turn) ([]productprotoco
 		}
 		events = append(events, provider...)
 	}
-	if turn.CandidateDigest != "" && turn.OperatorResolution == nil {
+	if turn.CandidateDigest != "" {
 		paths, err := p.candidatePaths(turn)
 		if err != nil {
 			return nil, err
@@ -121,6 +121,11 @@ func (p *productEventProjector) turn(turn productsession.Turn) ([]productprotoco
 	}
 	if final && turn.CancelRequested {
 		events = append(events, productprotocol.Event{Kind: productprotocol.EventTurnCancelRequested, TurnID: turn.ID})
+	}
+	if turn.OperatorResolution != nil {
+		// Existing cursors include the unknown terminal; abandonment appends to it.
+		events = append(events, productprotocol.Event{Kind: productprotocol.EventTurnTerminal, TurnID: turn.ID,
+			Outcome: string(productsession.StateUnknown), Reason: turn.UnknownReason})
 	}
 	if terminal, ok := terminalEvent(turn); ok {
 		if terminal.Outcome == productsession.OutcomeFailed && captureRefusalReason != "" {

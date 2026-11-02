@@ -106,8 +106,10 @@ fail catalog replay. The protected journal supplies integrity, not a signature
 against its own privileged owner. Dry-run holds the same lock and checks the
 same evidence but appends nothing, including no owner epoch.
 
-The outcome is terminal `abandoned`, reason `operator_resolved`, with no execution
-receipt and `context_eligible=false`. It is never selected as a predecessor.
+The outcome is terminal `abandoned`, reason `operator_resolved`, with no new execution
+receipt and `context_eligible=false`. A previous review receipt stays available
+for historical review events. Observation preserves the unknown terminal and
+appends the operator terminal, so issued cursors remain valid. It is never selected as a predecessor.
 The full original reservation remains charged, with no refund; if review already
 settled usage, its earlier refund is charged back. Session revision advances,
 session and project blocks clear, and their baseline stays unchanged. New turns

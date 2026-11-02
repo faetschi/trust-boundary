@@ -141,7 +141,8 @@ func (s *state) reduceOperatorResolved(data []byte) (func(), error) {
 		s.project(t.ProjectID).blocked = false
 		t.State, t.Outcome, t.TerminalReason = StateTerminal, OutcomeAbandoned, ReasonOperatorResolved
 		t.Usage, t.Refund = t.Reservation, Budget{}
-		t.Receipt, t.ReceiptDigest, t.ContextEligible = nil, "", false
+		// Retain a prior review receipt for the append-only observation history.
+		t.ContextEligible = false
 		t.ResultBaselineDigest = t.BaselineDigest
 		resolution := r.OperatorResolution
 		t.OperatorResolution = &resolution

@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -97,10 +98,18 @@ func TestProductOperatorResolvedReviewRemainsObservable(t *testing.T) {
 	if err != nil || turn.State != productsession.StateAwaitingReview {
 		t.Fatalf("review: %v %+v", err, turn)
 	}
+	reviewEvents, err := newProductEventProjector(f.env).session(f.currentSession(t))
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := f.env.Close(); err != nil {
 		t.Fatal(err)
 	}
 	if err := f.env.Catalog.MarkTurnUnknown(turn.ID, "review disposition unknown"); err != nil {
+		t.Fatal(err)
+	}
+	unknownEvents, err := newProductEventProjector(f.env).session(f.currentSession(t))
+	if err != nil {
 		t.Fatal(err)
 	}
 	f.env.Catalog.Close()
@@ -115,6 +124,16 @@ func TestProductOperatorResolvedReviewRemainsObservable(t *testing.T) {
 	events, err := newProductEventProjector(reopened.env).session(reopened.currentSession(t))
 	if err != nil {
 		t.Fatalf("observe after resolution: %v", err)
+	}
+	if len(events) != len(unknownEvents)+1 || !reflect.DeepEqual(events[:len(unknownEvents)], unknownEvents) {
+		t.Fatal("operator resolution rewrote the issued event prefix")
+	}
+	for _, cursor := range []uint64{uint64(len(reviewEvents)), uint64(len(unknownEvents))} {
+		response := observeWindow(events, cursor)
+		last := response.Events[len(response.Events)-1]
+		if response.NextCursor <= cursor || last.Outcome != productsession.OutcomeAbandoned {
+			t.Fatalf("resume from %d: %+v", cursor, response)
+		}
 	}
 	last := events[len(events)-1]
 	if last.Kind != productprotocol.EventTurnTerminal || last.Outcome != productsession.OutcomeAbandoned {
