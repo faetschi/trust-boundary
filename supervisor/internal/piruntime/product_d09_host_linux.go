@@ -60,7 +60,7 @@ ignore_chown_errors = "true"
 `
 
 // productD09CommandEnvironment is the environment of every product Podman and cosign child, built fresh on each call. It
-// inherits nothing: the product's own roots, the C locale that the thesis unit sets, and the shared D09 PATH.
+// inherits nothing. It holds the product's own roots, the C locale that the thesis unit sets, and the shared D09 PATH.
 func productD09CommandEnvironment() []string {
 	return []string{
 		"CONTAINERS_CONF=" + productsetup.ContainersConfPath,
