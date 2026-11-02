@@ -78,8 +78,10 @@ The catalog is one protected `audit.Journal` (hash chain, fsync per record, excl
 
 `tbound product turns resolve --turn ID --reason TEXT [--dry-run]` runs as root with
 `tbound-product.service` stopped. The root front end verifies the unit is inactive
-with no remaining cgroup processes, then delegates catalog access to the service
-account over a root-authenticated inherited socket. The catalog writer lock is
+with no remaining cgroup processes, then starts a temporary systemd sandbox with
+the same filesystem and no-new-privileges settings used for the signed scanner
+calibration. Its root helper rechecks exclusion and delegates catalog access to
+the service account over a root-authenticated inherited socket. The catalog writer lock is
 held throughout evidence checks and append, excluding another service writer.
 Only `unknown` turns are accepted; a linked turn must first undergo restart
 reconciliation. Missing evidence refuses resolution with its failing check.
@@ -169,7 +171,7 @@ Each is a `*productsession.Error` with a stable `Code`. `errors.Is(err, products
 | --- | --- |
 | Request never journaled | Nothing happened. The client resubmits with the same key. |
 | `admitted`, no `linked` | No provider or tool work happened, because the link is written first. `AbandonUnlinkedTurn` refunds; the client resubmits with a new key. |
-| `linked`, no `terminal` | Unresolved. The session and project stay blocked. Restart reconciliation through `workflowrecovery` is P4. If it still ends unknown, the operator resolution command below can abandon provably inert work. |
+| `linked`, no `terminal` | Unresolved. The session and project stay blocked. Restart reconciliation through `workflowrecovery` is P4. If it still ends unknown, the operator resolution command can abandon provably inert work. |
 | `terminal` | Final. Its receipt commits the child journals that the next turn verifies. |
 
 ## Conversation prefix

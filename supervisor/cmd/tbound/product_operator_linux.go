@@ -28,7 +28,48 @@ import (
 
 var productOperatorEUID = os.Geteuid
 var productOperatorStopped = checkProductOperatorStopped
-var productOperatorDelegate = delegateProductOperator
+var productOperatorDelegate = sandboxProductOperator
+var productOperatorSandboxCommand = exec.Command
+
+// The signed scanner calibration is measured inside this filesystem sandbox.
+// Start as root to authenticate the socket, then drop to the journal's owner.
+func sandboxProductOperator(turn, reason string, dry bool, out, stderr io.Writer) error {
+	executable, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	cmd := productOperatorSandboxCommand("systemd-run", "--wait", "--collect", "--pipe", "--quiet",
+		"-p", "NoNewPrivileges=yes", "-p", "ProtectSystem=strict", "-p", "ProtectHome=yes", "-p", "PrivateTmp=yes",
+		"-p", "UMask=0077", "-p", "ReadWritePaths="+productsetup.StateDir,
+		"--", executable, "product", "turns", "resolve-sandbox")
+	data, err := json.Marshal(productOperatorRequest{turn, reason, dry})
+	if err != nil {
+		return err
+	}
+	cmd.Stdin = strings.NewReader(string(data))
+	cmd.Stdout, cmd.Stderr = out, stderr
+	if err := cmd.Run(); err != nil {
+		return adminRefusal("operator sandbox refused (see diagnostic above): %v", err)
+	}
+	return nil
+}
+
+func runProductOperatorSandbox(in io.Reader, out, stderr io.Writer) error {
+	if os.Geteuid() != 0 {
+		return adminRefusal("operator sandbox must run as root")
+	}
+	var request productOperatorRequest
+	if err := json.NewDecoder(io.LimitReader(in, 4096)).Decode(&request); err != nil {
+		return adminRefusal("invalid operator request: %v", err)
+	}
+	if err := productsession.ValidateOperatorReason(request.Reason); err != nil {
+		return err
+	}
+	if err := productOperatorStopped(); err != nil {
+		return adminRefusal("worker exclusion: %v", err)
+	}
+	return delegateProductOperator(request.Turn, request.Reason, request.DryRun, out, stderr)
+}
 
 func runProductOperator(args []string, out, stderr io.Writer) error {
 	flags := flag.NewFlagSet("product turns resolve", flag.ContinueOnError)
@@ -354,6 +395,13 @@ func productOperatorCheckpointBindings(turn productsession.Turn, paths productTu
 		return errors.New("protected checkpoint does not name exactly this provider conversation")
 	}
 	transcript := pins.ProviderTranscripts[0]
+	providerTrace, err := retained.ProviderJournal.Trace()
+	if err != nil {
+		return err
+	}
+	if len(providerTrace.Records) == 0 {
+		return errors.New("retained provider journal is empty; turn evidence cannot be established")
+	}
 	providerIdentity, err := recoveryFileIdentityDigest(paths.ProviderJournalPath, false)
 	if err != nil || providerIdentity != transcript.JournalIdentityDigest {
 		return errors.Join(errors.New("provider journal identity differs from protected checkpoint"), err)

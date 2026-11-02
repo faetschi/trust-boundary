@@ -16,6 +16,7 @@ import (
 
 	"golang.org/x/sys/unix"
 	"tbound/supervisor/internal/audit"
+	"tbound/supervisor/internal/productprotocol"
 	"tbound/supervisor/internal/productsession"
 	"tbound/supervisor/internal/providerbridge"
 )
@@ -51,6 +52,73 @@ func TestProductOperatorResolveFrontEnd(t *testing.T) {
 				t.Fatalf("root: %v, calls=%d", err, calls)
 			}
 		})
+	}
+}
+
+func TestProductOperatorSandboxCommand(t *testing.T) {
+	if os.Getenv("TB_OPERATOR_SANDBOX_CHILD") == "1" {
+		var request productOperatorRequest
+		if err := json.NewDecoder(os.Stdin).Decode(&request); err != nil {
+			t.Fatal(err)
+		}
+		if request.Turn != "turn" || request.Reason != "reason" || !request.DryRun {
+			t.Fatalf("request: %+v", request)
+		}
+		return
+	}
+	old := productOperatorSandboxCommand
+	t.Cleanup(func() { productOperatorSandboxCommand = old })
+	productOperatorSandboxCommand = func(name string, args ...string) *exec.Cmd {
+		if name != "systemd-run" {
+			t.Fatal(name)
+		}
+		joined := strings.Join(args, " ")
+		for _, required := range []string{"--wait --collect --pipe --quiet", "NoNewPrivileges=yes", "ProtectSystem=strict", "ProtectHome=yes", "PrivateTmp=yes", "UMask=0077", "ReadWritePaths=/var/lib/tbound-product", "product turns resolve-sandbox"} {
+			if !strings.Contains(joined, required) {
+				t.Fatalf("missing sandbox setting %s: %s", required, joined)
+			}
+		}
+		cmd := exec.Command(os.Args[0], "-test.run=^TestProductOperatorSandboxCommand$")
+		cmd.Env = append(os.Environ(), "TB_OPERATOR_SANDBOX_CHILD=1")
+		return cmd
+	}
+	var out, stderr bytes.Buffer
+	if err := sandboxProductOperator("turn", "reason", true, &out, &stderr); err != nil {
+		t.Fatalf("sandbox: %v %s", err, stderr.String())
+	}
+	if err := runProductOperatorSandbox(strings.NewReader(`{}`), io.Discard, io.Discard); err == nil {
+		t.Fatal("non-root sandbox request accepted")
+	}
+}
+
+func TestProductOperatorResolvedReviewRemainsObservable(t *testing.T) {
+	f := newProductDriverFixture(t, productsession.PublicationReview)
+	_, turn, err := f.run(t, f.submit(t, "review", productDriverPromptA), productDriverTurnOne(false))
+	if err != nil || turn.State != productsession.StateAwaitingReview {
+		t.Fatalf("review: %v %+v", err, turn)
+	}
+	if err := f.env.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.env.Catalog.MarkTurnUnknown(turn.ID, "review disposition unknown"); err != nil {
+		t.Fatal(err)
+	}
+	f.env.Catalog.Close()
+	path := filepath.Join(f.env.StateRoot, "catalog.jsonl")
+	if _, err := productsession.OperatorResolve(path, f.env.Registration, turn.ID, "discard inert review", false, func(turn productsession.Turn) (productsession.OperatorEvidence, error) {
+		return f.env.operatorEvidence(context.Background(), turn)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	reopened := openProductDriverFixture(t, f.root)
+	reopened.session = f.session
+	events, err := newProductEventProjector(reopened.env).session(reopened.currentSession(t))
+	if err != nil {
+		t.Fatalf("observe after resolution: %v", err)
+	}
+	last := events[len(events)-1]
+	if last.Kind != productprotocol.EventTurnTerminal || last.Outcome != productsession.OutcomeAbandoned {
+		t.Fatalf("terminal: %+v", last)
 	}
 }
 

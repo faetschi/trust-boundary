@@ -108,7 +108,7 @@ func (p *productEventProjector) turn(turn productsession.Turn) ([]productprotoco
 		}
 		events = append(events, provider...)
 	}
-	if turn.CandidateDigest != "" {
+	if turn.CandidateDigest != "" && turn.OperatorResolution == nil {
 		paths, err := p.candidatePaths(turn)
 		if err != nil {
 			return nil, err
