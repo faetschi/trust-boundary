@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/productsession"
 	"tbound/supervisor/internal/providerbridge"
 	"tbound/supervisor/internal/sessionrepo"
@@ -51,6 +52,22 @@ func TestProductTurnCrashChild(t *testing.T) {
 	script := productDriverTurnOne(false)
 	if strings.Contains(point, "soft-refusal") {
 		script = &productDriverScript{turns: []providerbridge.ScriptTurn{{ResponseID: "soft-response", CallID: "soft-call", Tool: "read", Arguments: json.RawMessage(`{"path":"missing.txt"}`)}, {ResponseID: "soft-final", Text: "Done."}}}
+	}
+	if strings.Contains(point, "capture-refusal") {
+		script = &productDriverScript{turns: []providerbridge.ScriptTurn{{FailStatus: 200, FailBody: productRejectedCaptureBody()}}}
+		factory := f.env.NewConversation
+		f.env.NewConversation = func(config providerbridge.Config, journal *audit.Journal) (*providerbridge.Conversation, error) {
+			complete := config.CompleteHostCall
+			config.CompleteHostCall = func(ctx context.Context, completion providerbridge.HostCallCompletion) error {
+				f.env.crash("after-capture-refusal-record")
+				if err := complete(ctx, completion); err != nil {
+					return err
+				}
+				f.env.crash("after-capture-refusal-checkpoint")
+				return nil
+			}
+			return factory(config, journal)
+		}
 	}
 	if strings.HasPrefix(point, "publication-") {
 		// Two changed objects distinguish a partial application from the complete candidate.
