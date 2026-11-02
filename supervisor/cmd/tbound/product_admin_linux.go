@@ -30,6 +30,7 @@ const productAdminUsage = `Usage (run setup, update, rollback and uninstall as r
   tbound product uninstall [--root DIR] [--dry-run] [--purge] [--yes]
   tbound product doctor [--self-test] [--root DIR]
   tbound product turns [--root DIR]                        (plumbing: JSON list of unsettled catalog turns)
+  tbound product turns resolve --turn ID --reason TEXT [--dry-run] (root; service stopped; unchanged baseline only)
   tbound product self-test [--root DIR]                    (plumbing: the self-test turn as the calling UID, request on stdin)
 --root DIR runs against a test root: files are written below DIR, but users, owners and systemctl
 calls are only recorded, never executed. --dry-run writes and executes nothing and prints the plan.
@@ -66,6 +67,10 @@ var (
 )
 
 func runProductAdmin(args []string, out, stderr io.Writer) error {
+	if len(args) >= 2 && args[0] == "turns" {
+		if args[1] == "resolve" { return runProductOperator(args[2:], out, stderr) }
+		if args[1] == "resolve-worker" && len(args) == 2 { return runProductOperatorWorker(out) }
+	}
 	usage := func() error {
 		_, _ = io.WriteString(stderr, productAdminUsage)
 		return adminRefusal("invalid product command or flags")
