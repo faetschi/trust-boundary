@@ -103,13 +103,25 @@ type D09ProbeRunner interface {
 	Run(ctx context.Context, name string, args ...string) D09CommandResult
 }
 
-type execD09CommandRunner struct{}
+// execD09CommandRunner runs the probe and cosign commands. A product runner carries the fixed product environment. The
+// thesis runner is the zero value, which keeps d09ProbeEnv.
+type execD09CommandRunner struct {
+	environment []string
+}
 
 func newExecD09CommandRunner() D09ProbeRunner { return execD09CommandRunner{} }
 
 func (execD09CommandRunner) LookPath(name string) (string, error) { return exec.LookPath(name) }
 
-func (execD09CommandRunner) Run(ctx context.Context, name string, args ...string) D09CommandResult {
+// commandEnvironment is the environment of one host command this runner starts.
+func (r execD09CommandRunner) commandEnvironment() []string {
+	if r.environment != nil {
+		return r.environment
+	}
+	return d09ProbeEnv()
+}
+
+func (r execD09CommandRunner) Run(ctx context.Context, name string, args ...string) D09CommandResult {
 	if ctx == nil {
 		return D09CommandResult{ExitCode: -1, Err: errors.New("nil context")}
 	}
@@ -117,7 +129,7 @@ func (execD09CommandRunner) Run(ctx context.Context, name string, args ...string
 	var stdout, stderr bytes.Buffer
 	command.Stdout = &stdout
 	command.Stderr = &stderr
-	command.Env = d09ProbeEnv()
+	command.Env = r.commandEnvironment()
 	if filepath.Base(name) == "cosign" && len(args) >= 1 && args[0] == "verify" {
 		// Cosign local-image signature verification receives a private network
 		// namespace, independently preventing egress/transparency-log/registry
@@ -394,6 +406,9 @@ type D09PodmanCrunLauncher struct {
 	profileAdmitted bool
 	managedRootMu   sync.Mutex
 	managedRoot     *VerifiedD09ManagedLiveRoot
+
+	// productHost is the verified product command host of a product launcher. It is nil for the thesis launcher.
+	productHost *D09ProductCommandHost
 }
 
 func (l *D09PodmanCrunLauncher) productionRunner() bool {
@@ -402,6 +417,15 @@ func (l *D09PodmanCrunLauncher) productionRunner() bool {
 	}
 	_, ok := l.runner.(execD09CommandRunner)
 	return ok
+}
+
+// commandEnvironment is the environment of every Podman child this launcher starts. A product launcher holds only a
+// verified host, so its children get the fixed product environment and nothing inherited.
+func (l *D09PodmanCrunLauncher) commandEnvironment() []string {
+	if l != nil && l.productHost != nil {
+		return productD09CommandEnvironment()
+	}
+	return d09ProbeEnv()
 }
 
 func (l *D09PodmanCrunLauncher) isClosed() bool {
@@ -1776,7 +1800,7 @@ func (l *D09PodmanCrunLauncher) StartVerifiedWithProof(ctx context.Context, requ
 	invocation := d09ContainerArgumentsAtWithEnv(config, name, report.ImageRef, PiWorkerCellEnvironment(), extraEnv, entrypointArgs, profile.WorkingDirectory, mounts, cidPath)
 	command := exec.CommandContext(ctx, report.PodmanPath, invocation...)
 	launchCmd, launchName, launchPodman = command, name, report.PodmanPath
-	command.Env = d09ProbeEnv()
+	command.Env = l.commandEnvironment()
 	command.Stdin = request.Stdin
 	command.Stderr = request.Stderr
 	command.ExtraFiles = extraFiles
@@ -1808,7 +1832,7 @@ func (l *D09PodmanCrunLauncher) StartVerifiedWithProof(ctx context.Context, requ
 		return nil, D09TCBProof{}, fmt.Errorf("observe D09 worker container id: %w", errors.Join(err, context.Cause(watchCtx)))
 	}
 	inspectCtx, cancelInspect := context.WithTimeout(watchCtx, d09WorkerProofTimeout)
-	containerState, err := inspectContainer(inspectCtx, report.PodmanPath, cid)
+	containerState, err := inspectContainer(inspectCtx, report.PodmanPath, cid, l.commandEnvironment())
 	cancelInspect()
 	if err != nil || containerState.State.Status != "running" || containerState.State.PID <= 0 ||
 		strings.TrimPrefix(containerState.Name, "/") != name {
@@ -2397,7 +2421,7 @@ func (l *D09PodmanCrunLauncher) cleanupContainer(podmanPath, name string) {
 	ctx, cancel := context.WithTimeout(context.Background(), d09CleanupTimeout)
 	defer cancel()
 	command := exec.CommandContext(ctx, podmanPath, "rm", "-f", name)
-	command.Env = d09ProbeEnv()
+	command.Env = l.commandEnvironment()
 	command.Stdout, command.Stderr = io.Discard, io.Discard
 	_ = command.Run()
 }
@@ -2547,6 +2571,9 @@ func verifyPinnedToolBinary(path, digest string) error {
 	return nil
 }
 
+// d09FixedPath is the PATH of every D09 host command, thesis and product alike.
+const d09FixedPath = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
 // d09ProbeEnv is a sanitized, proxy-free environment for host tooling: no
 // provider credentials, no live-workspace paths, and no proxy variables that
 // could redirect an offline verification at the network.
@@ -2555,7 +2582,7 @@ func d09ProbeEnv() []string {
 		"HOME", "USER", "LOGNAME", "XDG_RUNTIME_DIR", "XDG_CONFIG_HOME",
 		"XDG_DATA_HOME", "TMPDIR", "LANG", "LC_ALL", "DBUS_SESSION_BUS_ADDRESS",
 	}
-	env := []string{"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"}
+	env := []string{"PATH=" + d09FixedPath}
 	for _, key := range allow {
 		if value, ok := os.LookupEnv(key); ok {
 			env = append(env, key+"="+value)

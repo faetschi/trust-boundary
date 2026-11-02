@@ -59,6 +59,22 @@ runroot = "/run/tbound-product/containers"
 ignore_chown_errors = "true"
 `
 
+// productD09CommandEnvironment is the environment of every product Podman and cosign child, built fresh on each call. It
+// inherits nothing: the product's own roots, the C locale that the thesis unit sets, and the shared D09 PATH.
+func productD09CommandEnvironment() []string {
+	return []string{
+		"CONTAINERS_CONF=" + productsetup.ContainersConfPath,
+		"CONTAINERS_STORAGE_CONF=" + productsetup.StorageConfPath,
+		"HOME=" + productsetup.PodmanHomeDir,
+		"LANG=C",
+		"LC_ALL=C",
+		"PATH=" + d09FixedPath,
+		"TMPDIR=" + productsetup.PodmanTmpDir,
+		"XDG_CACHE_HOME=" + productsetup.PodmanCacheDir,
+		"XDG_RUNTIME_DIR=" + productsetup.RuntimeDir,
+	}
+}
+
 // productD09EffectiveUnitProperties are the systemd properties that decide the daemon's effective unit and environment.
 var productD09EffectiveUnitProperties = []string{"LoadState", "NeedDaemonReload", "FragmentPath", "DropInPaths", "Environment", "EnvironmentFiles", "User", "Group"}
 
@@ -461,7 +477,7 @@ func productD09VerifyArtifacts(ctx context.Context, inputs productD09Inputs, tem
 			return err
 		}
 	}
-	launcher := &D09PodmanCrunLauncher{runner: execD09CommandRunner{}}
+	launcher := &D09PodmanCrunLauncher{runner: execD09CommandRunner{environment: productD09CommandEnvironment()}}
 	if err := launcher.verifyOfflineSignature(ctx, template.Config(), template.CosignPath, true); err != nil {
 		return productD09Refused(err, "offline cosign verification of the product image failed")
 	}

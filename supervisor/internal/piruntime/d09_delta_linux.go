@@ -278,7 +278,7 @@ func (r *D09CommandRunner) settleNoReap(ctx context.Context, n d09NoReapSettle) 
 	if n.stdout.Overflowed() || n.stderr.Overflowed() {
 		return fail(errors.New("D09 command output exceeded the bounded result size"))
 	}
-	state, err := inspectContainer(ctx, n.podmanPath, n.cid)
+	state, err := inspectContainer(ctx, n.podmanPath, n.cid, d09ProbeEnv())
 	if err != nil || state.State.Status != "running" || state.State.PID != n.containerPID {
 		return fail(errors.Join(errors.New("D09 no-reap command container is not left running"), err))
 	}

@@ -63,6 +63,14 @@ const (
 	StorageConfPath                 = ConfigDir + "/podman/storage.conf"
 )
 
+// Fixed product Podman directories, which the product Podman child environment names. Each lies under a root that the
+// unit lets the service write.
+const (
+	PodmanHomeDir  = StateDir + "/podman-home"
+	PodmanCacheDir = RuntimeDir + "/cache"
+	PodmanTmpDir   = RuntimeDir + "/tmp"
+)
+
 // ThesisRoots are the thesis service's paths. Setup refuses a path equal to or inside one, compared by
 // whole path component. cmd/tbound's service config validator keeps the same list, and a test there
 // keeps the two equal.
