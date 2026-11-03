@@ -548,9 +548,10 @@ func productImageProvision(env productsetup.Env, archive, layout string, out io.
 			if _, err := productOCIIdentity(retainedFiles, string(previous)); err != nil {
 				return refuse(err)
 			}
-			if err := unix.Renameat2(unix.AT_FDCWD, stagedLayout, unix.AT_FDCWD, destination, unix.RENAME_EXCHANGE); err != nil {
-				return refuse(fmt.Errorf("atomic OCI layout replacement: %w", err))
-			}
+		}
+		// A matching manifest does not prove the installed signatures still verify.
+		if err := unix.Renameat2(unix.AT_FDCWD, stagedLayout, unix.AT_FDCWD, destination, unix.RENAME_EXCHANGE); err != nil {
+			return refuse(fmt.Errorf("atomic OCI layout replacement: %w", err))
 		}
 	} else if errors.Is(err, os.ErrNotExist) {
 		if err := os.Rename(stagedLayout, destination); err != nil {
