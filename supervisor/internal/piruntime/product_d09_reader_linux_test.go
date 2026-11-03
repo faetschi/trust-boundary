@@ -72,7 +72,7 @@ func TestProductD09ReaderKeepsVerifiedParentDuringReplacement(t *testing.T) {
 		if err := check(dir, info); err != nil {
 			return err
 		}
-		if dir == nested {
+		if dir == parent {
 			if err := os.Rename(parent, filepath.Join(base, "retained")); err != nil {
 				t.Fatal(err)
 			}
