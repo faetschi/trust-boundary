@@ -127,7 +127,8 @@ func TestProductD09FactoryAndRetainedHistoryComposition(t *testing.T) {
 		case "reused":
 			broken = append(append([]byte{}, raw...), raw...)
 		case "altered":
-			broken = []byte(strings.Replace(string(raw), "ok", "no", 1))
+			broken = append([]byte{}, raw...)
+			broken[len(broken)/2] ^= 1
 		}
 		if err := os.WriteFile(turn.Link.CommandJournalPath, broken, 0600); err != nil {
 			t.Fatal(err)
