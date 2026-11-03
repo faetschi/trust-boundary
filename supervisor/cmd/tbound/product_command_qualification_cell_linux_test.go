@@ -74,6 +74,9 @@ func TestProductQualificationRunsEveryPhaseInTheSignedCellAndRetainsEvidence(t *
 	if evidence.Status != "passed" || evidence.Failure != "" || evidence.ProfileDigest != h.profile.Digest || evidence.ImageDigest != h.template.ExpectedImageDigest {
 		t.Fatalf("evidence %+v", evidence)
 	}
+	if evidence.Limits == nil || evidence.Limits.PidsMax != "128" || evidence.Limits.MemoryMax != "1073741824" {
+		t.Fatalf("supervisor limit evidence: %+v", evidence.Limits)
+	}
 	for _, phase := range productQualificationPhases {
 		if phaseStatuses(evidence)[phase] != "passed" {
 			t.Fatalf("phase %s is %q in the retained evidence", phase, phaseStatuses(evidence)[phase])

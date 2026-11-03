@@ -13,10 +13,10 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"tbound/supervisor/internal/productprovider"
 	"time"
 
 	"tbound/supervisor/internal/piruntime"
+	"tbound/supervisor/internal/productprovider"
 )
 
 const (
@@ -66,13 +66,11 @@ var productCommandQualification = productCommandQualificationSteps{
 		return reconcileProductCommandScopes(ctx, host, retainedRoots...)
 	},
 	openCell: func(ctx context.Context, host *piruntime.D09ProductCommandHost, env *productTurnEnv, newRunner productCommandRunnerFactory) (productQualificationCell, error) {
-		return func() (productQualificationCell, error) {
-			hostname, err := productQualificationProviderHostname(env)
-			if err != nil {
-				return nil, err
-			}
-			return openProductQualificationCell(ctx, productQualificationTarget{Profile: host.Profile(), Template: host.Template(), ProviderHostname: hostname}, env, newRunner)
-		}()
+		hostname, err := productQualificationProviderHostname(env)
+		if err != nil {
+			return nil, err
+		}
+		return openProductQualificationCell(ctx, productQualificationTarget{Profile: host.Profile(), Template: host.Template(), ProviderHostname: hostname}, env, newRunner)
 	},
 	newRunner: func(ctx context.Context, host *piruntime.D09ProductCommandHost, c productTurnCommandContext) (productTurnCommandRunner, error) {
 		runner, err := newProductD09CommandRunner(ctx, host, c)

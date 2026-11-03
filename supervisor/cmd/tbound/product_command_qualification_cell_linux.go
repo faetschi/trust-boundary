@@ -138,6 +138,7 @@ type productQualificationEvidence struct {
 	ImageDigest   string                              `json:"image_digest"`
 	Phases        []productQualificationPhaseResult   `json:"phases"`
 	Commands      []productQualificationCommandRecord `json:"commands"`
+	Limits        *piruntime.D09ProductCommandLimits  `json:"limits,omitempty"`
 	Network       *productNetworkReport               `json:"network,omitempty"`
 }
 
@@ -515,6 +516,7 @@ func (r *productQualificationRun) limitsMapping(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	r.evidence.Limits = &limits
 	for key, pair := range map[string][2]string{"pids.max": {limits.PidsMax, strconv.Itoa(template.PidsMax)}, "memory.max": {limits.MemoryMax, strconv.FormatInt(int64(template.MemoryMB)<<20, 10)}} {
 		if pair[0] != pair[1] {
 			return fmt.Errorf("live cgroup %s=%q, signed template sets %q", key, pair[0], pair[1])
@@ -741,6 +743,9 @@ func productErrnoName(err error) string {
 
 // pruneProductQualifications removes only completed, durably drained disposable runs, keeping the newest five.
 func pruneProductQualifications(ctx context.Context, base string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	entries, err := os.ReadDir(base)
 	if err != nil {
 		return err
@@ -782,7 +787,7 @@ func pruneProductQualifications(ctx context.Context, base string) error {
 			continue
 		}
 		drained.State = "opened"
-		if drained != opened || opened.State != "opened" || first.ID != opened.ScopeIdentity || last.ID != opened.ScopeIdentity {
+		if drained != opened || opened.CommandOwnershipVersion != 1 || opened.State != "opened" || first.ID != opened.ScopeIdentity || last.ID != opened.ScopeIdentity {
 			continue
 		}
 		info, err := entry.Info()

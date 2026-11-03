@@ -74,7 +74,7 @@ func openProductCommandCgroup(scope *LinuxCgroupScope, pid int) (*os.File, error
 	if err != nil || !strings.HasPrefix(path, parent+"/") {
 		return nil, errors.Join(ErrCgroupScopeRefused, err)
 	}
-	fd, err := syscall.Dup(int(scope.file.Fd()))
+	fd, err := syscall.Openat(int(scope.file.Fd()), ".", syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0)
 	if err != nil {
 		return nil, err
 	}
