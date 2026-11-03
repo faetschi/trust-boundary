@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -19,6 +20,20 @@ import (
 )
 
 func TestProductD09HistoryHandlesEmptyAndMixedProfileJournals(t *testing.T) {
+	if root := os.Getenv("TB_PRODUCT_D09_HISTORY_ROOT"); root != "" {
+		f := openBashProductDriverFixture(t, root, nil, []string{"task.txt"})
+		f.env.OpenCommandHistory = func(j *audit.Journal, link productsession.TurnLink) (governedRecoveryCommandVerifier, error) {
+			return openProductD09CommandHistoryAt(os.Getenv("TB_PRODUCT_D09_ARTIFACT_ROOT"), j, link)
+		}
+		turn, ok := f.env.Catalog.Turn(os.Getenv("TB_PRODUCT_D09_NEXT_TURN"))
+		if !ok {
+			t.Fatal("missing retained successor")
+		}
+		if _, err := f.env.predecessorContext(turn, productDriverProfile); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
 	t.Run("empty without installed artifacts", func(t *testing.T) {
 		journal, err := audit.Open(filepath.Join(privateGovernedTestRoot(t), "commands.jsonl"))
 		if err != nil {
@@ -102,8 +117,12 @@ func TestProductD09HistoryHandlesEmptyAndMixedProfileJournals(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer w.close()
+		if err := f.env.Catalog.LinkTurn(admission.Turn.ID, w.link(providerbridge.PredecessorContext{})); err != nil {
+			t.Fatal(err)
+		}
 		worker, _ := newProductTurnWorker(8, func() bool { return false }, func(string) {})
-		if _, err := f.env.driveProductTurn(context.Background(), admission.Turn, w, worker); err != nil {
+		work, err := f.env.driveProductTurn(context.Background(), admission.Turn, w, worker)
+		if err != nil {
 			t.Fatal(err)
 		}
 		bundle, err := w.store.EvidenceBundle()
@@ -137,6 +156,47 @@ func TestProductD09HistoryHandlesEmptyAndMixedProfileJournals(t *testing.T) {
 		}
 		if err := check(); err != nil {
 			t.Fatal(err)
+		}
+		s := productTurnSettlement{env: f.env, turn: admission.Turn, w: w, worker: worker, work: work,
+			outcome: productsession.OutcomeFailed, resultBaseline: admission.Turn.BaselineDigest}
+		if _, err := s.settle(); err != nil {
+			t.Fatal(err)
+		}
+		if err := w.close(); err != nil {
+			t.Fatal(err)
+		}
+		paths, err := productTurnPathsFromLink(link)
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw, err := os.ReadFile(paths.CommandJournalPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(paths.CommandJournalPath, nil, 0600); err != nil {
+			t.Fatal(err)
+		}
+		retained, err := openRetainedProductTurn(paths, f.env.storeOptions(admission.Turn), func(j *audit.Journal, link productsession.TurnLink) (governedRecoveryCommandVerifier, error) {
+			return openProductD09CommandHistoryAt(image.root, j, link)
+		})
+		if err == nil {
+			retained.Close()
+			t.Fatal("empty command history authorized retained Bash effects")
+		}
+		if err := os.WriteFile(paths.CommandJournalPath, raw, 0600); err != nil {
+			t.Fatal(err)
+		}
+		next := f.submit(t, "next", "read task")
+		if err := f.env.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if err := f.env.Catalog.Close(); err != nil {
+			t.Fatal(err)
+		}
+		command := exec.Command(os.Args[0], "-test.run=^TestProductD09HistoryHandlesEmptyAndMixedProfileJournals$", "-test.v")
+		command.Env = append(os.Environ(), "TB_PRODUCT_D09_HISTORY_ROOT="+f.root, "TB_PRODUCT_D09_ARTIFACT_ROOT="+image.root, "TB_PRODUCT_D09_NEXT_TURN="+next.Turn.ID)
+		if output, err := command.CombinedOutput(); err != nil {
+			t.Fatalf("fresh process predecessor replay: %v\n%s", err, output)
 		}
 	})
 }
