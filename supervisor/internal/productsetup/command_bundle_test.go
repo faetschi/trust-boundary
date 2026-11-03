@@ -293,6 +293,9 @@ func TestCommandBundleReplacementRefusesKeyRotationAcrossRetainedHistory(t *test
 				if err := os.WriteFile(filepath.Join(history, "registration.pub"), []byte("pub\n"), 0644); err != nil {
 					t.Fatal(err)
 				}
+				if _, err := f.setup(); err != nil {
+					t.Fatalf("retained history with the unchanged key: %v", err)
+				}
 				before := treeState(t, f.root)
 				if err := os.WriteFile(f.cfg.RegistrationPublicKey, []byte("replacement pub\n"), 0600); err != nil {
 					t.Fatal(err)

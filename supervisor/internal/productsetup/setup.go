@@ -211,6 +211,16 @@ func (h *host) desiredFiles(cfg Config, binary Candidate) (map[string][]byte, Re
 		ServiceConfigPath: serviceConfig, SetupConfigPath: installed, UnitPath: unit,
 		ContainersConfPath: RenderProductContainersConf(), StorageConfPath: RenderProductStorageConf(),
 	}
+	// Retained profiles must remain verifiable under the installed key; trust transitions are not supported.
+	if _, err := os.Lstat(h.real(PodmanConfigDir + "/hosts")); !errors.Is(err, os.ErrNotExist) {
+		if err != nil {
+			return nil, RegistrationSummary{}, refuse("cannot check retained command history: %v; nothing was changed", err)
+		}
+		installedKey, err := readSource(h.real(RegistrationPublicKeyPath))
+		if err != nil || !bytes.Equal(installedKey, key) {
+			return nil, RegistrationSummary{}, refuse("signing-key rotation across retained command history is unsupported; keep the installed registration public key; nothing was changed")
+		}
+	}
 	if err := h.commandBundleFiles(cfg.CommandBundle, files); err != nil {
 		return nil, RegistrationSummary{}, err
 	}
