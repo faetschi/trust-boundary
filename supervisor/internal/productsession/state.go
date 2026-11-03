@@ -172,6 +172,7 @@ type Turn struct {
 	Resolution               string // DecisionPublish or DecisionDiscard once ResolveTurn recorded one
 	ReviewTimeoutSeconds     int64  // review expiry in force when the turn began awaiting review
 	TerminalReason           string // reason of a discarded outcome
+	OperatorResolution       *OperatorResolution
 }
 
 // Admission is the result of SubmitTurn. Turn is the turn's current state.
@@ -192,6 +193,10 @@ func (t Turn) clone() Turn {
 	if t.Link != nil {
 		link := *t.Link
 		t.Link = &link
+	}
+	if t.OperatorResolution != nil {
+		resolution := *t.OperatorResolution
+		t.OperatorResolution = &resolution
 	}
 	return t
 }
@@ -288,7 +293,7 @@ func (s *state) activeTurns(sess *Session) int {
 func (s *state) predecessor(sess *Session) *Turn {
 	for i := len(sess.Turns) - 1; i >= 0; i-- {
 		// A turn withdrawn or cancelled before its link did no work and has no evidence to import.
-		if t := s.turns[sess.Turns[i]]; t.State != StateAbandoned && t.RefusalCode != CodeCancelled {
+		if t := s.turns[sess.Turns[i]]; t.State != StateAbandoned && t.RefusalCode != CodeCancelled && t.OperatorResolution == nil {
 			return t
 		}
 	}
@@ -345,6 +350,8 @@ func (s *state) reduce(kind string, data []byte) (commit func(), err error) {
 		return s.reduceAbandoned(data)
 	case kindTurnUnknown:
 		return s.reduceUnknown(data)
+	case kindTurnOperatorResolved:
+		return s.reduceOperatorResolved(data)
 	case kindTurnRefused:
 		return s.reduceRefused(data)
 	case kindTurnCancelRequested:

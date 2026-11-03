@@ -49,8 +49,7 @@ func hostPrerequisites() []productsetup.Check {
 		add("landlock-abi", abi == piruntime.D09LandlockABI, fmt.Sprintf("kernel reports ABI %d, the qualified profile needs exactly ABI %d", abi, piruntime.D09LandlockABI))
 	}
 	controllers, err := os.ReadFile("/sys/fs/cgroup/cgroup.controllers")
-	_, killErr := os.Stat("/sys/fs/cgroup/cgroup.kill")
-	add("cgroup-v2", err == nil && len(controllers) > 1 && killErr == nil, "cgroup v2 with delegated controllers and cgroup.kill")
+	add("cgroup-v2", err == nil && len(controllers) > 1 && cgroupKillAvailable("/sys/fs/cgroup"), "cgroup v2 with delegated controllers and cgroup.kill")
 	for _, bin := range []string{"podman", "crun"} {
 		path, err := exec.LookPath(bin)
 		add(bin, err == nil, "rootless containment needs "+bin+" on PATH "+path)
@@ -67,6 +66,12 @@ func hostPrerequisites() []productsetup.Check {
 	info, err := os.Stat("/run/systemd/system")
 	add("systemd", err == nil && info.IsDir(), "systemd is the service manager")
 	return checks
+}
+
+// cgroupKillAvailable looks below the root because the kernel creates cgroup.kill only in non-root cgroups.
+func cgroupKillAvailable(root string) bool {
+	found, err := filepath.Glob(filepath.Join(root, "*", "cgroup.kill"))
+	return err == nil && len(found) > 0
 }
 
 func productAdminDoctor(env productsetup.Env, selfTest bool, out io.Writer) error {

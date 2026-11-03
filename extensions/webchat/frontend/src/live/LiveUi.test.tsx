@@ -105,6 +105,13 @@ function composer(): HTMLTextAreaElement {
   return q<HTMLTextAreaElement>(`#${COMPOSER_INPUT_ID}`);
 }
 
+// The tone of each budget counter ("host calls 3 left of 10") in the remaining-budget group, in display order.
+function counterTones(): Array<string | null> {
+  return all("[role='group'][aria-label='Remaining budget'] [data-tone]")
+    .filter((chip) => chip.textContent?.includes(" left of ") === true)
+    .map((chip) => chip.getAttribute("data-tone"));
+}
+
 beforeEach(() => {
   document.body.innerHTML = "";
 });
@@ -181,6 +188,26 @@ describe("live UI: opening a session", () => {
     gateway.state.consumed = { host_calls: 10, tokens: 0, duration_seconds: 0 };
     await render(gateway);
     expect(q("[role='group'][aria-label='Remaining budget']").textContent).toContain("budget used up");
+    expect(counterTones()).toEqual(["deny", "deny", "deny"]);
+  });
+
+  it("says a running turn holds the budget in reserve, not that it is used up", async () => {
+    const gateway = createFakeGateway({ events: TRANSCRIPT.slice(0, 3), turns: [RUNNING] });
+    gateway.state.reserved = { host_calls: 10, tokens: 1000, duration_seconds: 60 };
+    await render(gateway);
+    const group = q("[role='group'][aria-label='Remaining budget']");
+    expect(group.textContent).not.toContain("budget used up");
+    const held = Array.from(group.querySelectorAll<HTMLElement>("[data-tone]")).find(
+      (chip) => chip.textContent === "budget reserved by the running turn",
+    );
+    expect(held?.getAttribute("data-tone")).toBe("idle");
+  });
+
+  it("draws the budget counters neutral while a running turn holds the whole budget", async () => {
+    const gateway = createFakeGateway({ events: TRANSCRIPT.slice(0, 3), turns: [RUNNING] });
+    gateway.state.reserved = { host_calls: 10, tokens: 1000, duration_seconds: 60 };
+    await render(gateway);
+    expect(counterTones()).toEqual(["idle", "idle", "idle"]);
   });
 
   it("restores the open session after a reload and says how many events arrived meanwhile", async () => {
@@ -201,6 +228,24 @@ describe("live UI: opening a session", () => {
     expect(note.textContent).toContain("blocked");
     expect(note.textContent).toContain("turn-1");
     expect(q("#live-composer-reason").textContent).toContain("blocked");
+  });
+});
+
+describe("live UI: with no session selected", () => {
+  it("says to choose a session, instead of loading or connecting", async () => {
+    await render(createFakeGateway({ events: TRANSCRIPT, turns: [DONE] }), { open: false });
+    expect(q("[data-connection]").textContent).toBe("no session selected");
+    expect(q("#live-composer-reason").textContent).toBe("Choose a session on the left, or create one under New session.");
+    expect(button("Send").getAttribute("aria-disabled")).toBe("true");
+    expect(mounted?.container.textContent).not.toContain("connecting…");
+    expect(mounted?.container.textContent).not.toContain("The session is loading.");
+  });
+
+  it("still says the session is loading once one is chosen and its projection is not in yet", async () => {
+    await render(createFakeGateway({ events: TRANSCRIPT, turns: [DONE] }), { open: false });
+    act(() => controller?.select(SESSION_ID));
+    expect(q("[data-connection]").textContent).toBe("connecting…");
+    expect(q("#live-composer-reason").textContent).toBe("The session is loading.");
   });
 });
 

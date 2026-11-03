@@ -72,7 +72,58 @@ The catalog is one protected `audit.Journal` (hash chain, fsync per record, excl
 | `product_turn_abandoned` | Reconciling an admitted turn with no link | Admission withdrawn with a full refund. No provider or tool work can precede the link record. |
 | `product_turn_refused` | The composition refused to launch an admitted, unlinked turn | Outcome `failed` with a full refund. `PREDECESSOR_EVIDENCE_INVALID` blocks the session; `STALE_BASELINE` blocks the project. |
 | `product_turn_unknown` | Reconciling a linked turn that has no verifiable disposition | Reservation stays consumed; project is blocked. |
+| `product_turn_operator_resolved` | Root reconciles inert unknown work with the service stopped | Terminal `abandoned`, full reservation charged, unchanged baseline, operator/evidence attestation; session and project unblocked. |
 
+### Operator resolution of an unknown turn
+
+`tbound product turns resolve --turn ID --reason TEXT [--dry-run]` runs as root with
+`tbound-product.service` stopped. The root front end verifies the unit is inactive
+with no remaining cgroup processes, then starts a temporary systemd sandbox with
+the same filesystem and no-new-privileges settings used for the signed scanner
+calibration. Its root helper rechecks exclusion and delegates catalog access to
+the service account over a root-authenticated inherited socket. The catalog writer lock is
+held throughout evidence checks and append, excluding another service writer.
+Only `unknown` turns are accepted; a linked turn must first undergo restart
+reconciliation. Missing evidence refuses resolution with its failing check.
+
+Resolution reuses the registered managed-root baseline scan and existing-only
+Store/journal/checkpoint readers. The measured tree must equal the admitted
+baseline. Store reconstruction must have no quarantine or unknown effect, and
+any effect reservation must already be terminal or retired. The command journal
+must be empty and no publication record may name the workflow. This deliberately
+excludes Bash/command recovery and publication ambiguity. A provider reservation
+or captured call may remain unresolved: with the supervisor-loop process dead,
+no command activity and no open effect it is inert, never resumed or imported.
+There is no `--accept-current-baseline` override.
+
+The command attests the tree at append time, not only when it starts checking.
+It keeps the project directory and the retained journals open from the first
+measurement through the catalog append and measures the baseline again
+immediately before the append, refusing if the second measurement differs from
+the first or from the admitted baseline. No other process may write the project
+while `resolve` runs; there is no lock excluding root, maintenance, or other
+non-service writers.
+
+One `product_turn_operator_resolved` record commits the turn/workflow, root UID,
+nonempty plain-text reason (at most 256 UTF-8 bytes), UTC timestamp, admitted and
+measured baseline digests, and a domain-separated evidence commitment over the
+retained Store/provider/command journal heads and protected checkpoint digest.
+The reducer verifies record shape, turn/workflow/baseline bindings and evidence
+commitment on both append and replay; duplicates and malformed/forged bindings
+fail catalog replay. The protected journal supplies integrity, not a signature
+against its own privileged owner. Dry-run holds the same lock and checks the
+same evidence but appends nothing, including no owner epoch.
+
+The outcome is terminal `abandoned`, reason `operator_resolved`, with no new execution
+receipt and `context_eligible=false`. A previous review receipt stays available
+for historical review events. Observation preserves the unknown terminal and
+appends the operator terminal, so issued cursors remain valid. It is never selected as a predecessor.
+The full original reservation remains charged, with no refund; if review already
+settled usage, its earlier refund is charged back. Session revision advances,
+session and project blocks clear, and their baseline stays unchanged. New turns
+and sessions are admitted subject to the ordinary remaining budget and turn cap.
+This is administrative abandonment of inert work, not successful execution or
+workflow repair; retained evidence is preserved for inspection.
 ### Operations
 
 ```go
@@ -130,7 +181,7 @@ Each is a `*productsession.Error` with a stable `Code`. `errors.Is(err, products
 | --- | --- |
 | Request never journaled | Nothing happened. The client resubmits with the same key. |
 | `admitted`, no `linked` | No provider or tool work happened, because the link is written first. `AbandonUnlinkedTurn` refunds; the client resubmits with a new key. |
-| `linked`, no `terminal` | Unresolved. The session and project stay blocked. Milestone 1 can only record `MarkTurnUnknown`. Evidence-based reconciliation through `workflowrecovery` is P4. |
+| `linked`, no `terminal` | Unresolved. The session and project stay blocked. Restart reconciliation through `workflowrecovery` is P4. If it still ends unknown, the operator resolution command can abandon provably inert work. |
 | `terminal` | Final. Its receipt commits the child journals that the next turn verifies. |
 
 ## Conversation prefix
@@ -173,20 +224,31 @@ Transient journal lock contention or resource exhaustion abandons the unlinked l
 | `failed` | Known failure with no applied effect, including a refused launch. | Unchanged. |
 | `cancelled` | P4 only. | Unchanged. |
 | `unknown` | Disposition cannot be established. Reservation consumed, project blocked. | Unchanged, blocked. |
+| `abandoned` (terminal) | Operator resolved inert unknown work; never context. Full reservation consumed. | Unchanged, unblocked. |
 
 Assistant completion is not settlement. A turn is terminal only after the worker loop ended, the conversation closed, the evidence bundle was read, and the publication step returned a definite status.
 
+### Provider capture refusals in product turns
+
+Product turn construction explicitly enables `providerbridge.Config.ProductCaptureRefusals`; its default is false. A fully received HTTP 200 response that the strict capture parser rejects (for example, multiple or malformed tool calls) ends the turn as `failed` once its host-call reservation is durably completed. The returned error and the terminal event shown by `tbound chat` say `the provider returned a response TBound cannot use (<reason>); the turn was not applied`. No rejected assistant text or tool call enters conversation history or reaches the worker. The managed project stays at its admitted baseline, and the next turn in the session is admitted.
+
+The product-only provider journal record `provider_capture_refused` binds the workflow, turn, exact reserved request and host-call identity, HTTP status, rejected response bytes, response digest and normalized parser refusal reason. Multiple or malformed calls retain that specific reason; other parser failures use `invalid provider response` so map iteration cannot change replay and parser errors cannot expose rejected field names. As with the existing `provider_exchange_unknown` record, raw response bytes remain in the host journal for verification; they are withheld from the worker. Replay requires the explicit product option, verifies the request against the admitted history and reservation, recomputes the digest and parser rejection, and requires the refusal to end the journal at the pending exchange. A changed reason, usable response, unmatched reservation or out-of-order record fails closed. The governed checkpoint completion path performs this replay before marking the host call terminal and committing the refusal record hash.
+
+The refused exchange consumes one normal host-call and its reserved token allowance, with no tool-effect charge for rejected calls. Only after checkpoint completion and turn settlement is the unused turn reservation refunded. A crash before the refusal record or between that record and checkpoint completion leaves the host call unresolved: restart records `unknown`, consumes the reservation and blocks the session. After completion, restart verifies retained refusal evidence and the protected checkpoint prefix and settles `failed` with settlement `reconciled-after-restart`, subject to the same clean Store, unchanged baseline and absent publication checks as other interrupted turns. Restart never resumes the refused response or conversation.
+
+Transport errors, incomplete responses and other unclassified exchange failures keep the existing UNKNOWN behavior. Thesis/research conversations, governed research recovery and corpus runs do not enable this option: the same rejected capture still writes `provider_exchange_unknown`, with its existing evidence format and unresolved reservation behavior.
+
 ### Soft refusals in product turns
 
-For an otherwise allowed product call, the Store checks preconditions under its lock against the verified sealed generation before authorization or effect reservation. A missing read path, absent or ambiguous edit old text, or a write or edit targeting a directory returns a short error and a static hint. The codes are `read_missing`, `target_not_regular`, `edit_old_text_absent` and `edit_old_text_ambiguous`. The result text is `Error: <code>. No tool effect occurred.` followed by `Hint: <static hint>`. The next provider request carries that result and the conversation continues. A missing edit target, a missing write parent, a read of a directory, a non-directory ancestor and overlapping edits are outside the soft-refusal scope and keep today's fail-closed behavior. Non-regular targets are also refused if representable; current sealed-tree admission already rejects symlinks and special files. Malformed arguments, Bash, I/O failures, changed generations, and failures after authorization retain the existing fail-closed behavior. Research calls do not use this path.
+For an otherwise allowed product call, the Store checks preconditions under its lock against the verified sealed generation before authorization or effect reservation. A missing read path, absent or ambiguous edit old text, or a write or edit targeting a directory returns a short error and a static hint. The codes are `read_missing`, `target_not_regular`, `edit_old_text_absent` and `edit_old_text_ambiguous`. The result text is `Error: <code>. No tool effect occurred.` followed by `Hint: <static hint>`. The next provider request carries that result and the conversation continues. A missing edit target, a missing write parent, a read of a directory, a non-directory ancestor and overlapping edits are outside the soft-refusal scope and keep today's fail-closed behavior. Non-regular targets are also refused if representable; current sealed-tree admission already rejects symlinks and special files. Unknown or malformed tool arguments rejected by provider capture end the product turn through the capture-refusal disposition above; they never continue as soft refusals. Argument errors discovered after capture (such as an invalid read offset), Bash, I/O failures, changed generations, and failures after authorization retain the existing fail-closed behavior. Research calls do not use this path.
 
 The distinct `provider_proven_unexecuted` record binds the workflow, conversation, captured call, tool, captured and typed argument digests, sealed generation and tree digest, refusal code, static hint, and exact result text. It is neither a gate DENY nor an ALLOW result. Before release, the protected owner checkpoint retires the captured call with the domain-separated `tbound-proven-unexecuted-call-retirement/v1` commitment to that record. A retired call cannot reserve an effect. Replay checks the capture and recomputes the precondition and exact result against the retained sealed generation; altered or different evidence fails closed.
 
 The provider exchange consumes its normal host-call and token allowance. A soft refusal reserves no tool effect and adds no tool-effect charge. Repeated refusals are bounded by the turn's host-call limit and worker step bound.
 
-Restart never resumes a refused call or its conversation. A crash before the refusal record or before its retirement leaves an unresolved capture and ends UNKNOWN. After durable retirement, clean evidence settles the turn as failed under the existing restart contract. Retained refusal evidence is replayed before restart settlement and when rebuilding an eligible predecessor. Tampered evidence blocks launch.
+Restart never resumes a refused call or its conversation. For a soft refusal, a crash before `provider_proven_unexecuted` or before its captured-call retirement leaves an unresolved capture and ends UNKNOWN. After durable retirement, clean evidence settles the turn as failed under the existing restart contract. Retained refusal evidence is replayed before restart settlement and when rebuilding an eligible predecessor. Tampered evidence blocks launch.
 
-Restart verifies the protected provider checkpoint prefix for every restarted turn, including turns with no retained refusal record. A truncated provider journal with a clean Store now ends UNKNOWN; previously it could settle as failed. Live progress recomputes only refusals after the verified checkpoint prefix. Restart and predecessor replay recompute every retained refusal against its sealed generation.
+Restart verifies the protected provider checkpoint prefix for every restarted turn, including turns with no retained refusal record. Product capture refusals (`provider_capture_refused`) are also replayed before restart settlement. A truncated provider journal with a clean Store now ends UNKNOWN; previously it could settle as failed. Live progress recomputes only refusals after the verified checkpoint prefix. Restart and predecessor replay recompute every retained refusal against its sealed generation.
 
 ## Milestone 2: review, cancellation and restart (P4, headless)
 
@@ -224,7 +286,7 @@ On `Open`, unresolved turns are rebuilt from the catalog. The driver's `Reconcil
 | Retained state | Action |
 | --- | --- |
 | `admitted`, no link | `AbandonUnlinkedTurn`, as in milestone 1. |
-| `linked`, no terminal | Reopen the retained Store and journals read-only, plus the owner checkpoint. If the Store reconstructs with no quarantine or unknown effect, no reservation is open, the project equals the admitted baseline, and the project publication journal has no transaction for this workflow: `CompleteTurn(failed)` with settlement `reconciled-after-restart` and usage from the retained ledger counters. Otherwise `MarkTurnUnknown`. |
+| `linked`, no terminal | Reopen the retained Store and journals read-only, plus the owner checkpoint. Verify any product capture refusal (`provider_capture_refused`) by strict replay under the explicit product option. If the Store reconstructs with no quarantine or unknown effect, no reservation is open, the project equals the admitted baseline, and the project publication journal has no transaction for this workflow: `CompleteTurn(failed)` with settlement `reconciled-after-restart` and usage from the retained ledger counters. Otherwise `MarkTurnUnknown`. |
 | `awaiting_review`, no resolution request | If the project equals the admitted baseline and no publication transaction exists for the workflow: `discarded` with reason `restart`. Otherwise `unknown`. |
 | `awaiting_review` with resolution request `publish` | If the publication journal shows the workflow's transaction `SUCCEEDED` and the project equals the sealed candidate: `published`. If no transaction exists and the project equals the admitted baseline: `discarded` with reason `restart`. Otherwise `unknown`. |
 | `awaiting_review` with resolution request `discard` | `discarded` with reason `user`, after the same baseline check. |
@@ -461,6 +523,7 @@ Everything here runs against a test root (`--root DIR`) and supports `--dry-run`
 ### Registration tooling (offline administrator)
 
 - `tbound product registration keygen --out DIR` writes an Ed25519 key pair. The private key is 0600, and the command refuses an existing file. The private key stays offline and never enters the service host.
+- `tbound product registration measure --project-dir DIR --gate-policy FILE` runs on the product host as the service user and prints `root=` and `policy=`: the project root's directory identity digest and the registered policy digest, computed as the service computes them. It refuses a directory the service would refuse and a policy that does not parse. It is the only registration command that runs on the host; [the first-turn guide](guides/product-first-turn.md) shows the order.
 - `tbound product registration init --out FILE` writes an unsigned registration template from flags: projects, scope, provider profiles, limits, principals, `--git-digest`, runtime, image and extension digests. It computes `host_identity_digest` from this build's prompts, registered provider table entries and supervisor-loop worker kind.
 - `tbound product registration sign --registration FILE --key PRIVATE --out FILE` writes the signed registration and its `.sig` with the existing `SignRegistration`. It refuses duplicate JSON keys and trailing data before signing.
 - `tbound product registration verify --registration FILE --signature FILE --public-key FILE` prints the digest and a summary.

@@ -17,6 +17,7 @@ import (
 	"strings"
 
 	"tbound/supervisor/internal/broker/protocol"
+	"tbound/supervisor/internal/gate"
 	"tbound/supervisor/internal/productsession"
 	"tbound/supervisor/internal/productsetup"
 	"tbound/supervisor/internal/releasetrust"
@@ -30,6 +31,8 @@ const registrationUsage = `Usage (offline administrator; the private key never e
       --git-digest sha256:HEX --runtime-digest sha256:HEX --image-digest sha256:HEX --extension-digest sha256:HEX
   tbound product registration sign --registration FILE --key PRIVATE --out FILE
   tbound product registration verify --registration FILE --signature FILE --public-key FILE
+  tbound product registration measure --project-dir DIR --gate-policy FILE
+measure prints the root= and policy= digests for --project; run it as the service user, on the product host.
 --project SPEC is KEY=VALUE pairs joined by commas, list values joined by +:
   id=P,root=sha256:HEX,policy=sha256:HEX,modes=review+auto[,bash=PATH+PATH][,writable=A+B][,read-only=A+B][,protected=A+B]
 init writes an unsigned template and refuses values the registration would refuse. It has no
@@ -52,12 +55,14 @@ func runProductRegistration(args []string, out, stderr io.Writer) error {
 	}
 	flags := flag.NewFlagSet("product registration "+args[0], flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	var outFile, regFile, keyFile, sigFile, pubFile string
+	var outFile, regFile, keyFile, sigFile, pubFile, projectDir, gatePolicy string
 	flags.StringVar(&outFile, "out", "", "")
 	flags.StringVar(&regFile, "registration", "", "")
 	flags.StringVar(&keyFile, "key", "", "")
 	flags.StringVar(&sigFile, "signature", "", "")
 	flags.StringVar(&pubFile, "public-key", "", "")
+	flags.StringVar(&projectDir, "project-dir", "", "")
+	flags.StringVar(&gatePolicy, "gate-policy", "", "")
 	var initFlags registrationInitFlags
 	if args[0] == "init" {
 		initFlags.register(flags)
@@ -97,6 +102,11 @@ func runProductRegistration(args []string, out, stderr io.Writer) error {
 		}
 		_, err = io.WriteString(out, registrationSummary(reg).Text)
 		return err
+	case "measure":
+		if projectDir == "" || gatePolicy == "" {
+			return usage()
+		}
+		return registrationMeasure(out, projectDir, gatePolicy)
 	}
 	return usage()
 }
@@ -278,6 +288,30 @@ func registrationSign(out io.Writer, regFile, keyFile, outFile string) error {
 		return adminRefusal("%v", err)
 	}
 	_, err = fmt.Fprintf(out, "wrote %s and %s.sig\ndigest %s\nsigned with the key whose fingerprint is %s\n", outFile, outFile, signed.Digest, releasetrust.Fingerprint(pub))
+	return err
+}
+
+// registrationMeasure prints the two project digests only the product host can produce. The root
+// identity covers the directory's inode and owner, so it refuses unless the service user runs it.
+func registrationMeasure(out io.Writer, projectDir, gatePolicy string) error {
+	raw, err := os.ReadFile(gatePolicy)
+	if err != nil {
+		return adminRefusal("cannot read the gate policy: %v", err)
+	}
+	policy, err := gate.NewPolicyFromJSON(raw)
+	if err != nil {
+		return adminRefusal("%v", err)
+	}
+	root, err := os.Open(projectDir)
+	if err != nil {
+		return adminRefusal("cannot open the project directory: %v", err)
+	}
+	defer root.Close()
+	identity, err := recoveryDirectoryIdentityDigest(root)
+	if err != nil {
+		return adminRefusal("the project directory cannot be registered: %v", err)
+	}
+	_, err = fmt.Fprintf(out, "root=%s\npolicy=%s\n", sha256DigestFromBarePin(identity), productRegisteredPolicyDigest(policy))
 	return err
 }
 
