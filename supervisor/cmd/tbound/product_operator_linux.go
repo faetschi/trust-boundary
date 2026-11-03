@@ -295,7 +295,7 @@ func runProductOperatorWorker(out io.Writer) error {
 	}
 	env := &productTurnEnv{Registration: registration, StateRoot: cfg.StateRoot, ProjectRoots: cfg.Projects,
 		StorePolicyDigest: digestBytes([]byte(gate.ProductionSessionPolicyLabel)), MetadataPolicyDigest: digestBytes([]byte(gate.ProductionMetadataPolicyLabel))}
-	if err := installProductGatePolicies(env, cfg.GatePolicyPaths); err != nil {
+	if _, err := installProductGatePolicies(env, cfg); err != nil {
 		return err
 	}
 	if env.Xattr, err = productHostXattr(cfg, env); err != nil {
