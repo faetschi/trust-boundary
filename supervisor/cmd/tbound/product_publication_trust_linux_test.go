@@ -67,20 +67,21 @@ func TestProductTrustResolvesOnlyTheTerminalBashLease(t *testing.T) {
 				t.Fatal(err)
 			}
 			worker, _ := newProductTurnWorker(8, func() bool { return false }, func(string) {})
-			if name == "provider still open" {
-				f.script.onRequest = func(n int) {
-					if n != 2 {
-						return
-					}
-
-					if err := trust.AttestQuiescent(context.Background(), w.projectRoot, w.baseline, w.durable.Tip()); err == nil {
-						t.Error("accepted open provider")
-					}
-
-				}
-			}
 			if _, err := f.env.driveProductTurn(context.Background(), admission.Turn, w, worker); err != nil {
 				t.Fatal(err)
+			}
+			if name == "provider still open" {
+				open, err := providerbridge.NewScriptedConversation(w.config, w.providerJournal, f.script)
+				if err != nil {
+					t.Fatal(err)
+				}
+				closed := w.authority.conversation
+				w.authority.conversation = open
+				if err := trust.AttestQuiescent(context.Background(), w.projectRoot, w.baseline, w.durable.Tip()); err == nil {
+					t.Error("accepted open provider")
+				}
+				w.authority.conversation = closed
+				open.Close()
 			}
 			bundle, err := w.store.EvidenceBundle()
 			if err != nil {
@@ -95,6 +96,11 @@ func TestProductTrustResolvesOnlyTheTerminalBashLease(t *testing.T) {
 			origin, err := trust.ResolveTerminalLeaseOrigin(context.Background(), bundle, terminal)
 			if err != nil || origin.Kind != delta.OperationProposalCall || origin.CallID != "call-last" {
 				t.Fatalf("terminal origin: %+v %v", origin, err)
+			}
+			if len(bundle.ApprovedDeltaLedger) > 1 {
+				if _, err := trust.ResolveTerminalLeaseOrigin(context.Background(), bundle, bundle.ApprovedDeltaLedger[0]); err == nil {
+					t.Error("resolved an earlier operation as the terminal Bash origin")
+				}
 			}
 			request := workflow.EvidenceRequest{Workflow: w.workflowID, OwnerEpoch: 1, Bundle: bundle.Clone()}
 			switch name {
@@ -116,6 +122,89 @@ func TestProductTrustResolvesOnlyTheTerminalBashLease(t *testing.T) {
 			err = trust.AttestQuiescent(context.Background(), w.projectRoot, w.baseline, w.durable.Tip())
 			if (err != nil) != (name == "pending settlement" || name == "changed baseline") {
 				t.Fatalf("quiescence: %v", err)
+			}
+		})
+	}
+}
+
+func TestProductTrustPublishesReviewAndRetainsScopeDeniedBash(t *testing.T) {
+	for _, mode := range []string{productsession.PublicationAuto, productsession.PublicationReview} {
+		t.Run(mode, func(t *testing.T) {
+			f := newBashProductDriverFixture(t, mode, nil, false, []string{"task.txt"}, func(dir string) {
+				writeProductDriverFile(t, dir, "outside.txt", "protected\n")
+			})
+			n := 0
+			installProductTrustCell(f, func(lease string, template piruntime.D09CellTemplate, digest string) productionD09CommandInvoker {
+				n++
+				cell := &sealedD09Cell{leaseID: lease, template: template, templateDigest: digest}
+				if n == 2 {
+					cell.target = "outside.txt"
+				}
+				return cell
+			})
+			receipt, turn, err := f.run(t, f.submit(t, "command", "append task"), &productDriverScript{turns: []providerbridge.ScriptTurn{
+				bashCall("allowed", "append task"), bashCall("denied", "append outside"), scopeDriverFinal("done", scopeDriverAnswer)}})
+			if err != nil || receipt.CommandJournalCount != 2 || len(receipt.Denials) != 1 {
+				t.Fatalf("turn: %+v %+v %v", turn, receipt, err)
+			}
+			if mode == productsession.PublicationReview {
+				if turn.State != productsession.StateAwaitingReview {
+					t.Fatalf("not awaiting review: %+v", turn)
+				}
+				if _, err := f.resolve(t, turn.ID, "accept", turn.CandidateDigest, productsession.DecisionPublish); err != nil {
+					t.Fatal(err)
+				}
+				turn, _ = f.env.Catalog.Turn(turn.ID)
+			}
+			if turn.Outcome != productsession.OutcomePublished || fileContent(t, f.projectDir, "task.txt") != "turn fixture\nbash-stage\n" || fileContent(t, f.projectDir, "outside.txt") != "protected\n" {
+				t.Fatalf("publication: %+v", turn)
+			}
+			next := f.submit(t, "next", "read task")
+			if _, err := f.env.predecessorContext(next.Turn, productDriverProfile); err != nil {
+				t.Fatalf("retained denied receipt: %v", err)
+			}
+		})
+	}
+}
+
+type productBadReceiptCell struct {
+	*sealedD09Cell
+	mode     string
+	previous *piruntime.D09CommandReceipt
+}
+
+func (c *productBadReceiptCell) TakeCommandReceipt(view *sessionrepo.CommandView, spec sessionrepo.CommandSpec, result sessionrepo.CommandResult, settlement sessionrepo.CommandSettlement) (piruntime.D09CommandReceipt, error) {
+	receipt, err := c.sealedD09Cell.TakeCommandReceipt(view, spec, result, settlement)
+	switch c.mode {
+	case "missing":
+		return piruntime.D09CommandReceipt{}, nil
+	case "altered":
+		receipt.ViewID = "altered"
+	case "reused":
+		if c.previous.ViewID != "" {
+			return *c.previous, nil
+		}
+		*c.previous = receipt
+	}
+	return receipt, err
+}
+
+func TestProductTrustWithholdsMissingReusedAndAlteredBashReceipts(t *testing.T) {
+	for _, mode := range []string{"missing", "reused", "altered"} {
+		t.Run(mode, func(t *testing.T) {
+			f := newBashProductDriverFixture(t, productsession.PublicationAuto, nil, false, []string{"task.txt"}, nil)
+			var previous piruntime.D09CommandReceipt
+			installProductTrustCell(f, func(lease string, template piruntime.D09CellTemplate, digest string) productionD09CommandInvoker {
+				return &productBadReceiptCell{sealedD09Cell: &sealedD09Cell{leaseID: lease, template: template, templateDigest: digest}, mode: mode, previous: &previous}
+			})
+			script := &productDriverScript{turns: []providerbridge.ScriptTurn{bashCall("first", "append task"), bashCall("last", "append task"), scopeDriverFinal("done", scopeDriverAnswer)}}
+			_, turn, err := f.run(t, f.submit(t, "command", "append task"), script)
+			wantRequests := 1
+			if mode == "reused" {
+				wantRequests = 2
+			}
+			if err == nil || turn.Outcome == productsession.OutcomePublished || script.requests() != wantRequests || fileContent(t, f.projectDir, "task.txt") != "turn fixture\n" {
+				t.Fatalf("bad receipt released a result: %+v requests=%d err=%v", turn, script.requests(), err)
 			}
 		})
 	}
