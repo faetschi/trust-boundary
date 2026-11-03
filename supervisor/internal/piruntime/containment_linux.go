@@ -347,6 +347,10 @@ func validateD09CellIdentity(config D09Config) error {
 	if !config.registeredTemplate || !validDigest(config.TemplateDigest) || !validDigest(config.ManagedLiveRootRegistrationDigest) {
 		return errors.New("D09 launcher config is not bound to the registered root-owned template")
 	}
+	return validateD09CellIdentityMeasurements(config)
+}
+
+func validateD09CellIdentityMeasurements(config D09Config) error {
 	if config.UserNamespaceMappingProfile != D09UserNamespaceMappingProfile || config.UserNamespaceHostUID <= 0 ||
 		config.UserNamespaceHostGID <= 0 || config.UserNamespaceHostUID == config.CellUID ||
 		config.UserNamespaceHostGID == config.CellGID || config.UserNamespaceMappingDigest != DigestD09UserNamespaceMapping(
@@ -422,7 +426,7 @@ func (l *D09PodmanCrunLauncher) productionRunner() bool {
 // commandEnvironment is the environment of every Podman child this launcher starts. A product launcher holds only a
 // verified host, so its children get the fixed product environment and nothing inherited.
 func (l *D09PodmanCrunLauncher) commandEnvironment() []string {
-	if l != nil && l.productHost != nil {
+	if l != nil && l.productHost.verified() {
 		return productD09CommandEnvironment()
 	}
 	return d09ProbeEnv()
@@ -960,7 +964,7 @@ func (s *d09OwnedCommandScope) Remove() error {
 // containment/settlement profile (and is not an unedited template), a verified
 // cgroup scope is bound, and every host prerequisite is measured.
 func (l *D09PodmanCrunLauncher) admitsFrozenLinuxProfile(profile HostProfile) error {
-	if l == nil || profile.Mode != ModeProduction {
+	if l == nil || l.productHost != nil || profile.Mode != ModeProduction {
 		return ErrProductionLauncherUnavailable
 	}
 	if profile.ID == LinuxHostProfileTemplateID {
@@ -1049,18 +1053,29 @@ func (l *D09PodmanCrunLauncher) Probe(ctx context.Context) (D09Report, error) {
 	report := D09Report{}
 	var missing []D09Prerequisite
 	var managedRootErr error
-	if l.productionRunner() {
-		// The template config carries no service uid/gid; they come from the signed
-		// registration the managed root verifies against, so resolve it before the
-		// identity check instead of waiting for BindManagedLiveRoot.
-		registration, err := l.ensureManagedLiveRoot(ctx)
-		managedRootErr = err
-		if err == nil {
-			config = withRegisteredServiceIdentity(config, registration)
+	var identityErr error
+	if l.productHost != nil {
+		var err error
+		config, err = l.productD09ProbeConfig(ctx)
+		if err != nil {
+			return report, &D09PrerequisiteError{Missing: []D09Prerequisite{{Name: "product-command-host", Detail: err.Error()}}}
 		}
+		identityErr = validateD09CellIdentityMeasurements(config)
+	} else {
+		if l.productionRunner() {
+			// The template config carries no service uid/gid; they come from the signed
+			// registration the managed root verifies against, so resolve it before the
+			// identity check instead of waiting for BindManagedLiveRoot.
+			registration, err := l.ensureManagedLiveRoot(ctx)
+			managedRootErr = err
+			if err == nil {
+				config = withRegisteredServiceIdentity(config, registration)
+			}
+		}
+		identityErr = validateD09CellIdentity(config)
 	}
-	if err := validateD09CellIdentity(config); err != nil {
-		missing = append(missing, D09Prerequisite{Name: "cell-identity", Detail: err.Error()})
+	if identityErr != nil {
+		missing = append(missing, D09Prerequisite{Name: "cell-identity", Detail: identityErr.Error()})
 	}
 	if l.productionRunner() {
 		if managedRootErr != nil {
@@ -1652,7 +1667,7 @@ type D09TCBProof struct {
 // unless the entrypoint proved every measured postcondition on the dedicated
 // proof pipe.
 func (l *D09PodmanCrunLauncher) StartVerifiedWithProof(ctx context.Context, request ExecutableLaunchRequest) (returnedCommand *exec.Cmd, returnedProof D09TCBProof, returnedErr error) {
-	if ctx == nil || l == nil || l.runner == nil || l.scope == nil {
+	if ctx == nil || l == nil || l.productHost != nil || l.runner == nil || l.scope == nil {
 		return nil, D09TCBProof{}, ErrProductionLauncherUnavailable
 	}
 	if err := l.beginOperation(); err != nil {
