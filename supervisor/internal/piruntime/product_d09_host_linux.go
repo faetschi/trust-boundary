@@ -436,8 +436,11 @@ func LookupProductServiceAccount(passwd, groupFile []byte) (int, int, string, bo
 	uid, gid, shell, users := 0, 0, "", 0
 	for _, line := range strings.Split(strings.TrimSpace(string(passwd)), "\n") {
 		fields := strings.Split(line, ":")
-		if len(fields) < 7 || fields[0] != productsetup.ServiceUser {
+		if fields[0] != productsetup.ServiceUser {
 			continue
+		}
+		if len(fields) != 7 {
+			return 0, 0, "", false
 		}
 		var errUID, errGID error
 		uid, errUID = strconv.Atoi(fields[2])
@@ -450,8 +453,11 @@ func LookupProductServiceAccount(passwd, groupFile []byte) (int, int, string, bo
 	groups := 0
 	for _, line := range strings.Split(strings.TrimSpace(string(groupFile)), "\n") {
 		fields := strings.Split(line, ":")
-		if len(fields) != 4 || fields[0] != productsetup.ServiceGroup {
+		if fields[0] != productsetup.ServiceGroup {
 			continue
+		}
+		if len(fields) != 4 {
+			return 0, 0, "", false
 		}
 		if observed, err := strconv.Atoi(fields[2]); err != nil || observed != gid {
 			return 0, 0, "", false
