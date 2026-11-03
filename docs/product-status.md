@@ -399,7 +399,7 @@ Status: implemented and verified locally against a loopback fake provider. Not q
 
 - `tbound product-serve` starts. Its host profile (`cmd/tbound/product_service_host_linux.go`) fills every trusted piece of a turn from installed, verified inputs: the gate policies, the pinned Git executable, the xattr attestation, the provider conversation factory, the prompts, the publication trust and the worker step bound. It refuses to start when an input is missing or differs from the signed registration.
 - The worker kind is `supervisor-loop`, and its settlement is `supervisor-loop-closed`. These replace `headless-fixture` and `headless-fixture-closed` everywhere. No product catalog is deployed, so there is no compatibility alias.
-- A project policy that allows Bash refuses the start, because no contained command runner exists.
+- A project policy that allows Bash starts only after the command qualification of this process passed in a disposable signed cell (see `docs/product-contracts.md`, Command qualification at start). The real cell run is untested until unit H on the demo VM, so no deployed start admits Bash yet.
 - The service setup requires the host inputs and writes them into the service config. It does not install the policy files, the Git executable or the calibration.
 
 ### Demonstrated behaviour
