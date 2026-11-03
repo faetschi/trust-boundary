@@ -104,6 +104,9 @@ func (e *productTurnEnv) RunTurn(ctx context.Context, admission productsession.A
 	}
 	w, err := e.composeProductTurnWorkflow(ctx, turn, session.ProviderProfile, predecessor)
 	if err != nil {
+		if errors.Is(err, errProductCommandUnsettled) {
+			return productTurnReceipt{}, err
+		}
 		if errors.Is(err, errProductStaleBaseline) {
 			return productTurnReceipt{}, e.refuse(turn.ID, productsession.CodeStaleBaseline, err)
 		}
@@ -120,13 +123,22 @@ func (e *productTurnEnv) RunTurn(ctx context.Context, admission productsession.A
 	// Both publication modes compose the finalizer at start; a review turn keeps it for its resolution.
 	publish, releasePublication, err := e.beginProductPublication(ctx, turn.ProjectID, w)
 	if err != nil {
+		if cleanupErr := w.close(); cleanupErr != nil {
+			return productTurnReceipt{}, errors.Join(err, errProductCommandUnsettled, cleanupErr)
+		}
 		return productTurnReceipt{}, e.abandon(turn.ID, err)
 	}
 	if e.cancelRequested(turn.ID) {
+		if err := w.close(); err != nil {
+			return productTurnReceipt{}, errors.Join(errProductCommandUnsettled, err)
+		}
 		return productTurnReceipt{}, e.refuse(turn.ID, productsession.CodeCancelled, errProductTurnCancelled)
 	}
 	e.crash("before-link")
 	if err := e.Catalog.LinkTurn(turn.ID, w.link(predecessor)); err != nil {
+		if cleanupErr := w.close(); cleanupErr != nil {
+			return productTurnReceipt{}, errors.Join(err, errProductCommandUnsettled, cleanupErr)
+		}
 		if errors.Is(err, productsession.ErrCode(productsession.CodeCancelled)) {
 			return productTurnReceipt{}, e.refuse(turn.ID, productsession.CodeCancelled, errProductTurnCancelled)
 		}
@@ -137,6 +149,9 @@ func (e *productTurnEnv) RunTurn(ctx context.Context, admission productsession.A
 		resultBaseline: turn.BaselineDigest}
 	s.work, s.runErr = e.driveProductTurn(ctx, turn, w, worker)
 	releasePublication()
+	if err := w.settleCommands(); err != nil {
+		return s.unknown("command ownership did not settle", err)
+	}
 	bundle, err := w.store.EvidenceBundle()
 	if err != nil {
 		return s.unknown("the turn's Store evidence could not be read", err)
@@ -349,6 +364,9 @@ func (s *productTurnSettlement) unknown(reason string, cause error) (productTurn
 
 // settle writes the receipt of the closed turn and records its disposition in the catalog.
 func (s *productTurnSettlement) settle() (productTurnReceipt, error) {
+	if err := s.w.settleCommands(); err != nil {
+		return s.unknown("command ownership did not settle", err)
+	}
 	providerTrace, err := s.w.providerJournal.Trace()
 	if err != nil {
 		return s.unknown("the provider journal could not be read", err)
