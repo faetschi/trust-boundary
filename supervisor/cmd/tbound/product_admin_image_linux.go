@@ -331,31 +331,8 @@ func productImageAccount(root string) (int, int, error) {
 	if err != nil {
 		return 0, 0, err
 	}
-	uid, gid := 0, 0
-	found := false
-	for _, line := range strings.Split(string(passwd), "\n") {
-		f := strings.Split(line, ":")
-		if len(f) == 7 && f[0] == productsetup.ServiceUser {
-			if found || f[6] != "/usr/sbin/nologin" {
-				return 0, 0, errors.New("invalid product account")
-			}
-			uid, _ = strconv.Atoi(f[2])
-			gid, _ = strconv.Atoi(f[3])
-			found = true
-		}
-	}
-	groupOK := false
-	for _, line := range strings.Split(string(groups), "\n") {
-		f := strings.Split(line, ":")
-		if len(f) == 4 && f[0] == productsetup.ServiceGroup {
-			n, _ := strconv.Atoi(f[2])
-			if groupOK || n != gid {
-				return 0, 0, errors.New("product group must match the service account GID")
-			}
-			groupOK = true
-		}
-	}
-	if !found || !groupOK || uid <= 0 || gid <= 0 {
+	uid, gid, shell, found := piruntime.LookupProductServiceAccount(passwd, groups)
+	if !found || uid <= 0 || gid <= 0 || shell != "/usr/sbin/nologin" {
 		return 0, 0, errors.New("non-root nologin product account is required")
 	}
 	for _, p := range []string{"/etc/subuid", "/etc/subgid"} {

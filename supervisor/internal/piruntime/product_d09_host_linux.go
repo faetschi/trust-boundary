@@ -390,7 +390,7 @@ func productD09ReadBase64(inputs productD09Inputs, path string) ([]byte, error) 
 }
 
 // productD09ReadServiceIdentity derives the non-root service account from the installed passwd and group files. The
-// account must be a nologin shell with a single-member group, and it must hold no subordinate ID range.
+// account must be a nologin shell with its own primary group, and it must hold no subordinate ID range.
 func productD09ReadServiceIdentity(inputs productD09Inputs) (int, int, error) {
 	passwd, err := inputs.read("/etc/passwd", productD09MaxIdentityBytes)
 	if err != nil {
@@ -400,7 +400,7 @@ func productD09ReadServiceIdentity(inputs productD09Inputs) (int, int, error) {
 	if err != nil {
 		return 0, 0, err
 	}
-	uid, gid, shell, found := lookupProductServiceAccount(passwd, group)
+	uid, gid, shell, found := LookupProductServiceAccount(passwd, group)
 	if !found || uid <= 0 || gid <= 0 || !productD09IsNologinShell(shell) {
 		return 0, 0, productD09Refused(nil, "service account is not a single non-root nologin account with its own primary group")
 	}
@@ -429,10 +429,10 @@ func productD09IsNologinShell(shell string) bool {
 	return shell == "/usr/sbin/nologin"
 }
 
-// lookupProductServiceAccount is lookupLocalServiceAccount for the product, which admits other members of the service
+// LookupProductServiceAccount is lookupLocalServiceAccount for the product, which admits other members of the service
 // group: clients join it for socket access, and that grants nothing on the service's 0700 state. Exactly one passwd
 // entry and one group entry must exist, and the group must be the account's primary group.
-func lookupProductServiceAccount(passwd, groupFile []byte) (int, int, string, bool) {
+func LookupProductServiceAccount(passwd, groupFile []byte) (int, int, string, bool) {
 	uid, gid, shell, users := 0, 0, "", 0
 	for _, line := range strings.Split(strings.TrimSpace(string(passwd)), "\n") {
 		fields := strings.Split(line, ":")
