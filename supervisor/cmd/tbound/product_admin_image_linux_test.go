@@ -141,6 +141,21 @@ func TestProductImageProvisionDryRunAndTemplateDigest(t *testing.T) {
 	}
 }
 
+// systemctl show leaves out an empty EnvironmentFiles property, as on the demo VM; that is not an override.
+func TestProductImageProvisionAcceptsAnOmittedEmptyUnitProperty(t *testing.T) {
+	f := newProductImageFixture(t)
+	f.env.DryRun = true
+	var out bytes.Buffer
+	f.fault = "systemd omits empty EnvironmentFiles"
+	if err := productImageProvision(f.env, f.archive, f.layout, &out); err != nil {
+		t.Fatal(err)
+	}
+	f.fault = "systemd omits FragmentPath"
+	if err := productImageProvision(f.env, f.archive, f.layout, &out); err == nil {
+		t.Fatal("accepted a unit whose FragmentPath is missing")
+	}
+}
+
 func TestProductImageProvisionRejectsEffectiveUnitOverrides(t *testing.T) {
 	for _, fault := range []string{"NeedDaemonReload=yes", "DropInPaths=/etc/systemd/system/service.d/global.conf", "EnvironmentFiles=/etc/environment", "FragmentPath=/run/systemd/generator/tbound-product.service", "User=root", "Group=root", "environment tab", "environment double space", "environment duplicate"} {
 		t.Run(fault, func(t *testing.T) {
@@ -366,7 +381,14 @@ func newProductImageFixtureWithConfig(t *testing.T, config []byte) *productImage
 			if f.fault == "effective environment" {
 				environment = "HOME=/tmp"
 			}
-			return []byte("LoadState=loaded\nActiveState=inactive\nNeedDaemonReload=no\nFragmentPath=" + productsetup.UnitPath + "\nDropInPaths=\nEnvironmentFiles=\nUser=tbound-product\nGroup=tbound-product\nEnvironment=" + environment + "\n"), nil
+			show := "LoadState=loaded\nActiveState=inactive\nNeedDaemonReload=no\nFragmentPath=" + productsetup.UnitPath + "\nDropInPaths=\nEnvironmentFiles=\nUser=tbound-product\nGroup=tbound-product\nEnvironment=" + environment + "\n"
+			switch f.fault {
+			case "systemd omits empty EnvironmentFiles":
+				show = strings.Replace(show, "EnvironmentFiles=\n", "", 1)
+			case "systemd omits FragmentPath":
+				show = strings.Replace(show, "FragmentPath="+productsetup.UnitPath+"\n", "", 1)
+			}
+			return []byte(show), nil
 		}
 		if strings.Contains(call, " verify ") {
 			if f.fault == "cosign" {
