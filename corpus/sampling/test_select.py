@@ -147,9 +147,12 @@ VECTOR_DECISIONS["inj.a.1"] = (False, "meaning not preserved")
 VECTOR_DECISIONS["tool.e.2"] = (False, "not runnable in the cell")
 VECTOR_DECISIONS["inj.c.3"] = (False, "overlaps a pilot scenario")
 
-# Pinned after an independent hashlib-only reference agreed with every membership list. The digest
-# covers this script's own bytes (script_sha256), so any edit to select.py requires re-pinning.
-PINNED_VECTOR_SHA256 = "f915af895966850e507578f865458217556bc27ea896fe233a02e7f10fc6d13c"
+# Pinned after an independent hashlib-only reference agreed with every membership list. Re-pinned for the
+# pilot change: the output gained the commitment kind fields, `development` and `attacks`; the memberships
+# did not change. The digest covers this script's own bytes (script_sha256), so any edit to select.py
+# requires re-pinning both digests.
+PINNED_VECTOR_SHA256 = "5e776a2466facf44895689ae172765d0a408d94620c1b4cf5f398c4561d2e5f5"
+PINNED_PILOT_SHA256 = "460559df3b768e2ff0dcc133234f41c73a62c5f9ed4ad958ad2cadc070d720b2"
 PINNED_VECTOR_MEMBERS = {
     "main": {"TM-A": ["inj.a.3", "inj.b.3", "inj.b.1"], "TM-B": ["tool.e.3", "tool.f.3", "tool.d.2"]},
     "cold": {"TM-A": ["inj.b.1"], "TM-B": ["tool.e.3"]},
@@ -869,6 +872,9 @@ class PilotVectorTests(unittest.TestCase):
         self.assertEqual(out["memberships"], {"pilot": PINNED_PILOT_MEMBERS})
         self.assertEqual(out["allocation"]["places"], {"TM-A": 5, "TM-B": 6})
         self.assertEqual(out["allocation"]["detail"]["extra_place"], "TM-B")
+
+    def test_fixed_pilot_vector_output_is_pinned(self):
+        self.assertEqual(sha(sel.serialize(run_pilot_vector()[1])), PINNED_PILOT_SHA256)
 
     def test_pilot_output_is_deterministic_and_canonical(self):
         first = sel.serialize(run_pilot_vector()[1])

@@ -1,14 +1,17 @@
-"""D48 confirmatory selection: the registered draw of thesis/tbound/h1-path/16-sampling-design.md
-sections 4 to 6 (decision D48). Stdlib only; Python 3.12 compatible.
+"""D48 confirmatory selection: the registered draws of thesis/tbound/h1-path/16-sampling-design.md
+sections 4 to 6, and the pilot of section 5 step 0 (decision D48). Stdlib only; Python 3.12 compatible.
 
+    py -3 -I corpus/sampling/select.py pilot --ledger L.jsonl --commitment P.json \
+        --beacon B.json --adaptation A.jsonl --out OUT.json
     py -3 -I corpus/sampling/select.py draw --ledger L.jsonl --commitment C.json \
         --beacon B.json --adaptation A.jsonl --out OUT.json
     py -3 -I corpus/sampling/select.py allocate --ledger L.jsonl --commitment C.json
     py -3 -I corpus/sampling/select.py verify-beacon --commitment C.json --beacon B.json
     py -3 -I corpus/sampling/select.py certify --NA 1000000 --NB 5000 --nA 298 --nB 1
 
-draw exits 0 when complete, 3 when it needs an adaptation decision (the output is still
-written), and 1 when blocked or refused. A blocked draw still writes its audit output.
+pilot takes a pilot commitment (kind "pilot"); draw and allocate take a main commitment (kind "main").
+pilot and draw exit 0 when complete, 3 when they need an adaptation decision (the output is still
+written), and 1 when blocked or refused. A blocked run still writes its audit output.
 Verifying the drand BLS signature is not done here: it needs an independent drand verifier.
 """
 
@@ -24,8 +27,11 @@ from fractions import Fraction
 from math import comb
 
 SCHEMA = "tbound-d48-draw/v1"
+PILOT_SCHEMA = "tbound-d48-pilot/v1"
 TOTAL = 299  # main-sample size (16 section 5 step 1); --total overrides it for tests only
 VARIANCE_TOTAL = 50  # variance subset size (16 section 5 step 6)
+PILOT_SIZE = 11  # pilot adversarial places (16 section 5 step 0, as D47 registers); the API may override
+KINDS = ("pilot", "main")  # commitment kinds (16 section 3 item 5)
 ROUND_DELAY = 86400  # the first round at least 24 hours after T (16 section 4)
 STRATA = ("TM-A", "TM-B")
 DOMAIN = "tbound-d48|"
@@ -134,8 +140,9 @@ def _digest(obj, field):
 
 
 def parse_ledger(data):
-    """Candidate rows (sorted by case_id), excluded case ids, and the number of lines read."""
-    rows, excluded, seen = [], [], set()
+    """Candidate rows (sorted by case_id), excluded case ids, the stratum of each candidate attack, the
+    attack of every row (excluded ones too, so a development case is found), and the number of lines."""
+    rows, excluded, seen, attack_of = [], [], set(), {}
     lines = _lines(data, "ledger")
     for number, line in lines:
         where = f"ledger line {number}"
@@ -152,6 +159,7 @@ def parse_ledger(data):
         if case_id in seen:
             raise Refused(f"{where}: duplicate case_id {case_id}")
         seen.add(case_id)
+        attack_of[case_id] = attack_id
         if flag:
             excluded.append(case_id)
         else:
@@ -162,7 +170,8 @@ def parse_ledger(data):
         if owner.setdefault(item["attack_id"], item["stratum"]) != item["stratum"]:
             raise Refused(f"attack_id {item['attack_id']} appears in both strata")
     rows.sort(key=lambda item: item["case_id"].encode("ascii"))
-    return {"rows": rows, "excluded": sorted(excluded), "row_count": len(lines)}
+    return {"rows": rows, "excluded": sorted(excluded), "row_count": len(lines), "attacks": owner,
+            "attack_of": attack_of}
 
 
 def parse_decisions(data, ledger):
@@ -201,8 +210,24 @@ def parse_utc(text):
     return (moment - EPOCH) // timedelta(seconds=1)
 
 
+def _id_list(obj, field):
+    value = obj.get(field)
+    if not isinstance(value, list):
+        raise Refused(f"commitment: {field} must be a list of case ids")
+    for item in value:
+        if not isinstance(item, str) or ID_RE.fullmatch(item) is None:
+            raise Refused(f"commitment: {field} entries must match [A-Za-z0-9._:-]+")
+    if len(set(value)) != len(value):
+        raise Refused(f"commitment: {field} repeats a case id")
+    return sorted(value)
+
+
 def parse_commitment(data):
+    """A pilot or a main commitment (16 section 3 item 5). Each command then requires its own kind."""
     obj = _object(_text(data, "commitment"), "commitment")
+    kind = obj.get("kind")
+    if kind not in KINDS:
+        raise Refused('commitment: kind must be "pilot" or "main"')
     chain = obj.get("chain")
     if not isinstance(chain, dict):
         raise Refused("commitment: chain must be an object")
@@ -212,7 +237,8 @@ def parse_commitment(data):
     for field in ("hash", "public_key"):
         if not isinstance(chain.get(field), str) or HEX_RE.fullmatch(chain[field]) is None:
             raise Refused(f"commitment: chain.{field} must be a hex string")
-    return {
+    commit = {
+        "kind": kind,
         "ledger_sha256": _digest(obj, "ledger_sha256"),
         "script_sha256": _digest(obj, "script_sha256"),
         "T": obj.get("T"),
@@ -225,6 +251,13 @@ def parse_commitment(data):
             "period": _positive_int(chain, "period", "commitment chain"),
         },
     }
+    if kind == "pilot":
+        commit["pilot_size"] = _positive_int(obj, "pilot_size", "commitment")
+    else:
+        commit["policy_sha256"] = _digest(obj, "policy_sha256")
+        commit["adaptation_rule_sha256"] = _digest(obj, "adaptation_rule_sha256")
+        commit["development_case_ids"] = _id_list(obj, "development_case_ids")
+    return commit
 
 
 def check_digests(commit, ledger_data):
@@ -234,6 +267,30 @@ def check_digests(commit, ledger_data):
     own = script_sha256()
     if own != commit["script_sha256"]:
         raise Refused(f"script sha256 {own} does not match the commitment script_sha256")
+
+
+def require_kind(commit, kind):
+    if commit["kind"] != kind:
+        raise Refused(f"this command needs a {kind} commitment, not a {commit['kind']} commitment")
+
+
+def remove_development(ledger, case_ids):
+    """Drops the development cases (16 section 2) from the candidates before any cap. Every id must be a
+    ledger case, excluded ones included, so a typo is refused rather than silently ignored."""
+    unknown = sorted(set(case_ids) - set(ledger["attack_of"]))
+    if unknown:
+        raise Refused(f"development case ids are not in the ledger (typo?): {', '.join(unknown)}")
+    listed = set(case_ids)
+    removed = Counter(item["stratum"] for item in ledger["rows"] if item["case_id"] in listed)
+    rows = [item for item in ledger["rows"] if item["case_id"] not in listed]
+    return {**ledger, "rows": rows}, {"case_ids": sorted(listed), "removed": {h: removed[h] for h in STRATA}}
+
+
+def _attack_marks(ledger, case_ids):
+    """Each candidate attack, marked by whether any development case has it (a reporting aid, section 6)."""
+    seen = {ledger["attack_of"][case_id] for case_id in case_ids}
+    return {attack: {"seen_in_development": attack in seen, "stratum": stratum}
+            for attack, stratum in ledger["attacks"].items()}
 
 
 def round_for(genesis, period, t_epoch):
@@ -365,8 +422,11 @@ def cap_order(seed, rows, k):
 # ------------------------------------------------------- adaptation walks (sections 5.2, 5.4)
 
 def walk(ordered, decisions, target):
-    """Take cases in order until `target` pass. A case without a decision stops the walk."""
+    """Take cases in order until `target` pass. A case without a decision stops the walk; a zero target
+    needs no decisions (a pilot stratum can get no places)."""
     selected, examined = [], []
+    if target == 0:
+        return {"status": "complete", "pending": None, "selected": selected, "examined": examined}
     for case_id in ordered:
         if case_id not in decisions:
             examined.append((case_id, "pending", None))
@@ -483,7 +543,7 @@ def _select(out, ledger, seed, decision_map, total, variance):
 
     # Step 4: top-up, after the final main sample, for each attack with no main case.
     main_attacks = {attack_of[case_id] for h in STRATA for case_id in selected[h]}
-    topup, untested, pending_topup = {}, [], []
+    topup, pending_topup = {}, []
     for attack in kept_by_attack:
         if attack in main_attacks:
             continue
@@ -495,49 +555,40 @@ def _select(out, ledger, seed, decision_map, total, variance):
             out["examined"].append(_record("topup", attack, case_id, keys[case_id], decision, reason))
         if result["status"] == "complete":
             topup[attack] = result["selected"][0]
-        elif result["status"] == "exhausted":
-            untested.append(attack)
-        else:
+        elif result["status"] == "pending":
             pending_topup.append(_pending("topup", attack, stratum_of[attack], result["pending"],
                                           attack_of, mechanism_of))
     if pending_topup:
         out["needs_adaptation_next"] = pending_topup
         return "needs-adaptation", None
+    # Every known attack without a main or top-up case is untested, including one whose cases are all
+    # development cases and so has no candidate left (section 5 step 4).
+    untested = sorted(set(ledger["attacks"]) - main_attacks - set(topup))
     return "complete", {"main": selected, "cold": cold_sel, "variance": variance_sel,
-                        "topup": topup, "untested": sorted(untested)}
+                        "topup": topup, "untested": untested}
 
 
-def run_draw(ledger_data, commitment_data, beacon_data, adaptation_data, total=TOTAL, variance=VARIANCE_TOTAL):
-    """Returns (status, output). Refused raises for bad inputs; Blocked is returned as status blocked."""
-    if total < 2:
-        raise Refused("total must be at least 2 (one place per stratum)")
-    ledger = parse_ledger(ledger_data)
-    commit = parse_commitment(commitment_data)
-    check_digests(commit, ledger_data)
-    round_no, scheduled = _round_of(commit)
-    beacon = parse_beacon(beacon_data)
-    seed = check_beacon(beacon, round_no)
-    decision_map = parse_decisions(adaptation_data, ledger)
+def _audit_header(schema, raw, full, commit, beacon, decision_map, round_no, scheduled, seed):
+    """The verification record shared by the draw and pilot outputs (section 4)."""
     period = commit["chain"]["period"]
-    out = {
-        "schema": SCHEMA,
+    return {
+        "schema": schema,
         "status": None,
         "blocked_reason": None,
         "needs_adaptation_next": [],
         "memberships": None,
         "script": {"sha256": script_sha256(), "commitment_sha256": commit["script_sha256"], "matches": True},
         "inputs": {
-            "ledger": {"sha256": sha256_hex(ledger_data), "bytes": len(ledger_data),
-                       "lines": ledger["row_count"], "candidates": len(ledger["rows"]),
-                       "excluded": ledger["excluded"]},
-            "commitment": {"sha256": sha256_hex(commitment_data), "bytes": len(commitment_data),
-                           "ledger_sha256": commit["ledger_sha256"], "script_sha256": commit["script_sha256"],
-                           "T": commit["T"], "chain": commit["chain"]},
-            "beacon": {"sha256": sha256_hex(beacon_data), "bytes": len(beacon_data), "round": beacon["round"],
+            "ledger": {"sha256": sha256_hex(raw["ledger"]), "bytes": len(raw["ledger"]),
+                       "lines": full["row_count"], "candidates": len(full["rows"]), "excluded": full["excluded"]},
+            # The parsed commitment, as published: every field except the derived epoch of T.
+            "commitment": {"sha256": sha256_hex(raw["commitment"]), "bytes": len(raw["commitment"]),
+                           **{k: v for k, v in commit.items() if k != "T_epoch"}},
+            "beacon": {"sha256": sha256_hex(raw["beacon"]), "bytes": len(raw["beacon"]), "round": beacon["round"],
                        "randomness": beacon["randomness"].hex(), "signature": beacon["signature"].hex(),
                        "previous_signature": beacon["previous_signature"], "response": beacon["response"],
                        "bls_signature_verified": False, "bls_note": BLS_NOTE},
-            "adaptation": {"sha256": sha256_hex(adaptation_data), "bytes": len(adaptation_data),
+            "adaptation": {"sha256": sha256_hex(raw["adaptation"]), "bytes": len(raw["adaptation"]),
                            "decisions": len(decision_map), "not_consulted": []},
         },
         "round": {"R": round_no, "scheduled_utc": _iso(scheduled),
@@ -545,14 +596,36 @@ def run_draw(ledger_data, commitment_data, beacon_data, adaptation_data, total=T
                   "T_utc": commit["T"], "T_epoch": commit["T_epoch"],
                   "threshold_epoch": commit["T_epoch"] + ROUND_DELAY},
         "seed_hex": seed.hex(),
+    }
+
+
+def run_draw(ledger_data, commitment_data, beacon_data, adaptation_data, total=TOTAL, variance=VARIANCE_TOTAL):
+    """Returns (status, output). Refused raises for bad inputs; Blocked is returned as status blocked."""
+    if total < 2:
+        raise Refused("total must be at least 2 (one place per stratum)")
+    full = parse_ledger(ledger_data)
+    commit = parse_commitment(commitment_data)
+    require_kind(commit, "main")
+    check_digests(commit, ledger_data)
+    ledger, development = remove_development(full, commit["development_case_ids"])
+    round_no, scheduled = _round_of(commit)
+    beacon = parse_beacon(beacon_data)
+    seed = check_beacon(beacon, round_no)
+    decision_map = parse_decisions(adaptation_data, full)
+    raw = {"ledger": ledger_data, "commitment": commitment_data, "beacon": beacon_data,
+           "adaptation": adaptation_data}
+    out = _audit_header(SCHEMA, raw, full, commit, beacon, decision_map, round_no, scheduled, seed)
+    out.update({
         "total": total,
         "variance_places": variance,
         "registered_parameters": total == TOTAL and variance == VARIANCE_TOTAL,
+        "development": development,
+        "attacks": _attack_marks(full, commit["development_case_ids"]),
         "cap": None,
         "variance": None,
         "main": {},
         "examined": [],
-    }
+    })
     try:
         status, memberships = _select(out, ledger, seed, decision_map, total, variance)
     except Blocked as exc:
@@ -566,18 +639,90 @@ def run_draw(ledger_data, commitment_data, beacon_data, adaptation_data, total=T
     return status, out
 
 
-def allocate(ledger_data, commitment_data, total=TOTAL):
-    """Cap and allocation from the ledger and commitment only (no beacon, no decisions)."""
-    ledger = parse_ledger(ledger_data)
+def _pilot_select(out, ledger, seed, decision_map, pilot_size):
+    """Section 5 step 0: split the places by largest remainder over the uncapped counts, then walk each
+    stratum in purpose `pilot` order, consulting the adaptation decisions as the main walk does."""
+    rows = ledger["rows"]
+    if not rows:
+        raise Blocked("infeasible: no eligible candidates")
+    ids = {h: [item["case_id"] for item in rows if item["stratum"] == h] for h in STRATA}
+    n_a, n_b, detail = largest_remainder(pilot_size, len(ids["TM-A"]), len(ids["TM-B"]))
+    places = {"TM-A": n_a, "TM-B": n_b}
+    out["allocation"] = {"candidates": {h: len(ids[h]) for h in STRATA}, "places": places, "detail": detail}
+    attack_of = {item["case_id"]: item["attack_id"] for item in rows}
+    mechanism_of = {item["case_id"]: item["mechanism_id"] for item in rows}
+    pending = []
+    for h in STRATA:
+        ordered = ranked(seed, "pilot", h, ids[h])
+        keys = {case_id: key for key, case_id in ordered}
+        result = walk([case_id for _, case_id in ordered], decision_map, places[h])
+        for case_id, decision, reason in result["examined"]:
+            out["examined"].append(_record("pilot", h, case_id, keys[case_id], decision, reason))
+        if result["pending"] is not None:
+            pending.append(_pending("pilot", h, h, result["pending"], attack_of, mechanism_of))
+        out["pilot"][h] = {"n": places[h], "selected": result["selected"], "status": result["status"]}
+    exhausted = [h for h in STRATA if out["pilot"][h]["status"] == "exhausted"]
+    if exhausted:
+        h = exhausted[0]
+        raise Blocked(f"pilot exhausted in {h}: {len(out['pilot'][h]['selected'])} of {places[h]} places filled; "
+                      "exhaustion never permits a new seed or a larger pilot")
+    if pending:
+        out["needs_adaptation_next"] = pending
+        return "needs-adaptation", None
+    return "complete", {"pilot": {h: out["pilot"][h]["selected"] for h in STRATA}}
+
+
+def run_pilot(ledger_data, commitment_data, beacon_data, adaptation_data, pilot_size=PILOT_SIZE):
+    """Returns (status, output) for the pilot. Refused raises for bad inputs; Blocked is status blocked."""
+    if pilot_size < 1:
+        raise Refused("pilot_size must be at least 1")
+    full = parse_ledger(ledger_data)
     commit = parse_commitment(commitment_data)
+    require_kind(commit, "pilot")
+    if commit["pilot_size"] != pilot_size:
+        raise Refused(f"pilot_size {pilot_size} is not the commitment's pilot_size {commit['pilot_size']}")
+    check_digests(commit, ledger_data)
+    round_no, scheduled = _round_of(commit)
+    beacon = parse_beacon(beacon_data)
+    seed = check_beacon(beacon, round_no)
+    decision_map = parse_decisions(adaptation_data, full)
+    raw = {"ledger": ledger_data, "commitment": commitment_data, "beacon": beacon_data,
+           "adaptation": adaptation_data}
+    out = _audit_header(PILOT_SCHEMA, raw, full, commit, beacon, decision_map, round_no, scheduled, seed)
+    out.update({
+        "pilot_size": pilot_size,
+        "registered_parameters": pilot_size == PILOT_SIZE,
+        "allocation": None,
+        "pilot": {},
+        "examined": [],
+    })
+    try:
+        status, memberships = _pilot_select(out, full, seed, decision_map, pilot_size)
+    except Blocked as exc:
+        status, memberships = "blocked", None
+        out["blocked_reason"] = str(exc)
+    out["status"] = status
+    out["memberships"] = memberships
+    considered = {record["case_id"] for record in out["examined"]}
+    out["inputs"]["adaptation"]["not_consulted"] = sorted(set(decision_map) - considered)
+    return status, out
+
+
+def allocate(ledger_data, commitment_data, total=TOTAL):
+    """Cap and allocation from the ledger and a main commitment only (no beacon, no decisions)."""
+    full = parse_ledger(ledger_data)
+    commit = parse_commitment(commitment_data)
+    require_kind(commit, "main")
     check_digests(commit, ledger_data)
     if total < 2:
         raise Refused("total must be at least 2 (one place per stratum)")
+    ledger, development = remove_development(full, commit["development_case_ids"])
     cap = choose_cap(ledger["rows"], total)
     return {"schema": SCHEMA, "ledger_sha256": sha256_hex(ledger_data),
             "commitment_sha256": sha256_hex(commitment_data), "script_sha256": script_sha256(),
-            "total": total, "cap": {"k": cap["k"], "M": cap["M"], "n": cap["n"],
-                                    "allocation": cap["detail"], "trace": cap["trace"]}}
+            "total": total, "development": development,
+            "cap": {"k": cap["k"], "M": cap["M"], "n": cap["n"], "allocation": cap["detail"],
+                    "trace": cap["trace"]}}
 
 
 # ---------------------------------------------------- certification (section 6)
@@ -646,15 +791,14 @@ def _range(text):
     return lo, hi
 
 
-def cmd_draw(args):
-    status, out = run_draw(_read(args.ledger), _read(args.commitment), _read(args.beacon),
-                           _read(args.adaptation), total=args.total)
+def _emit(path, status, out):
+    """Writes the audit output without overwriting, prints the status, and returns the exit code."""
     data = serialize(out)
     try:
-        with open(args.out, "xb") as handle:
+        with open(path, "xb") as handle:
             handle.write(data)
     except FileExistsError:
-        raise Refused(f"refusing to overwrite: the output file {args.out} already exists") from None
+        raise Refused(f"refusing to overwrite: the output file {path} already exists") from None
     print(f"status: {status}; output sha256 {sha256_hex(data)}")
     for item in out["needs_adaptation_next"]:
         print(f"needs adaptation decision next: {item['stratum']} {item['purpose']} {item['case_id']} "
@@ -664,6 +808,17 @@ def cmd_draw(args):
     print("note: the drand BLS signature was not verified by this script; verify it with an independent "
           "drand verifier and record the result", file=sys.stderr)
     return {"complete": 0, "needs-adaptation": 3, "blocked": 1}[status]
+
+
+def cmd_draw(args):
+    status, out = run_draw(_read(args.ledger), _read(args.commitment), _read(args.beacon),
+                           _read(args.adaptation), total=args.total)
+    return _emit(args.out, status, out)
+
+
+def cmd_pilot(args):
+    status, out = run_pilot(_read(args.ledger), _read(args.commitment), _read(args.beacon), _read(args.adaptation))
+    return _emit(args.out, status, out)
 
 
 def cmd_allocate(args):
@@ -689,6 +844,14 @@ def cmd_certify(args):
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="select.py", description="D48 confirmatory selection (16 sections 4-6).")
     commands = parser.add_subparsers(dest="command", required=True)
+
+    pilot = commands.add_parser("pilot", help="run the pilot draw (section 5 step 0) and write the audit output")
+    pilot.add_argument("--ledger", required=True)
+    pilot.add_argument("--commitment", required=True)
+    pilot.add_argument("--beacon", required=True)
+    pilot.add_argument("--adaptation", required=True)
+    pilot.add_argument("--out", required=True)
+    pilot.set_defaults(handler=cmd_pilot)
 
     draw = commands.add_parser("draw", help="run the registered draw and write the audit output")
     draw.add_argument("--ledger", required=True)
