@@ -716,24 +716,20 @@ func productD09ReadIdentifiedFile(path string, limit int64) ([]byte, productD09F
 }
 
 func productD09ReadFileWithPolicy(path string, limit int64, policy productD09ReadPolicy) ([]byte, productD09FileIdentity, error) {
-	if err := productD09ValidateAncestorsWithPolicy(path, policy); err != nil {
-		return nil, productD09FileIdentity{}, err
-	}
-	info, err := os.Lstat(path)
+	parent, err := productD09OpenParent(path, policy)
 	if err != nil {
-		return nil, productD09FileIdentity{}, productD09Refused(err, "protected input is missing: "+path)
-	}
-	if err := policy.checkFile(info, limit); err != nil {
 		return nil, productD09FileIdentity{}, err
 	}
-	file, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0)
+	defer parent.Close()
+	fd, err := syscall.Openat(int(parent.Fd()), filepath.Base(path), syscall.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_CLOEXEC|syscall.O_NONBLOCK, 0)
 	if err != nil {
 		return nil, productD09FileIdentity{}, productD09Refused(err, "protected input cannot be opened without following links: "+path)
 	}
+	file := os.NewFile(uintptr(fd), path)
 	defer file.Close()
 	opened, err := file.Stat()
-	if err != nil || !os.SameFile(info, opened) {
-		return nil, productD09FileIdentity{}, productD09Refused(err, "protected input changed while it was opened: "+path)
+	if err != nil {
+		return nil, productD09FileIdentity{}, productD09Refused(err, "protected input cannot be measured: "+path)
 	}
 	if err := policy.checkFile(opened, limit); err != nil {
 		return nil, productD09FileIdentity{}, err
@@ -852,29 +848,45 @@ func productD09OwnerUID(info fs.FileInfo) (uint32, bool) {
 	return stat.Uid, true
 }
 
-// productD09ValidateAncestors requires every directory above path to be a protected directory, and opens each one
-// without following links to confirm it is the directory its metadata named.
+// productD09ValidateAncestors walks the protected chain descriptor-relatively, refusing symlinks at every component.
 func productD09ValidateAncestors(path string) error {
-	return productD09ValidateAncestorsWithPolicy(path, productD09ProtectedReadPolicy)
+	parent, err := productD09OpenParent(path, productD09ProtectedReadPolicy)
+	if err == nil {
+		parent.Close()
+	}
+	return err
 }
 
-func productD09ValidateAncestorsWithPolicy(path string, policy productD09ReadPolicy) error {
+// productD09OpenParent retains the verified directory for the leaf lookup. Replacing any pathname already walked cannot
+// redirect subsequent opens: each component is opened relative to its verified parent, then checked by descriptor.
+func productD09OpenParent(path string, policy productD09ReadPolicy) (*os.File, error) {
 	if !productD09IsCleanAbsolute(path) {
-		return productD09Refused(nil, "protected path must be absolute and clean: "+path)
+		return nil, productD09Refused(nil, "protected path must be absolute and clean: "+path)
 	}
+	var current *os.File
 	for _, dir := range productD09AncestorDirectories(path) {
-		info, err := os.Lstat(dir)
+		var fd int
+		var err error
+		if current == nil {
+			fd, err = syscall.Open("/", corpusOPath|syscall.O_DIRECTORY|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0)
+		} else {
+			fd, err = syscall.Openat(int(current.Fd()), filepath.Base(dir), corpusOPath|syscall.O_DIRECTORY|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0)
+			current.Close()
+		}
 		if err != nil {
-			return productD09Refused(err, "protected ancestor is missing: "+dir)
+			return nil, productD09Refused(err, "protected ancestor cannot be opened without following links: "+dir)
 		}
-		if err := policy.checkDirectory(dir, info); err != nil {
-			return productD09Refused(err, "protected ancestor "+dir)
+		current = os.NewFile(uintptr(fd), dir)
+		info, err := current.Stat()
+		if err == nil {
+			err = policy.checkDirectory(dir, info)
 		}
-		if err := productD09RequireSameDirectory(dir, info); err != nil {
-			return err
+		if err != nil {
+			current.Close()
+			return nil, productD09Refused(err, "protected ancestor "+dir)
 		}
 	}
-	return nil
+	return current, nil
 }
 
 // productD09AncestorDirectories lists the directories above path, from / down to the parent of path.
@@ -890,19 +902,6 @@ func productD09AncestorDirectories(path string) []string {
 
 func productD09IsCleanAbsolute(path string) bool {
 	return filepath.IsAbs(path) && filepath.Clean(path) == path
-}
-
-func productD09RequireSameDirectory(dir string, info fs.FileInfo) error {
-	file, err := os.OpenFile(dir, os.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0)
-	if err != nil {
-		return productD09Refused(err, "protected ancestor cannot be opened as a directory without following links: "+dir)
-	}
-	defer file.Close()
-	opened, err := file.Stat()
-	if err != nil || !os.SameFile(info, opened) {
-		return productD09Refused(err, "protected ancestor changed while it was opened: "+dir)
-	}
-	return nil
 }
 
 // productD09RequireNoUnitOverrides refuses any drop-in that applies to the product unit or to every service, and any unit
