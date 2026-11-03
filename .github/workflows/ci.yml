@@ -65,6 +65,9 @@ jobs:
       - name: Official Pi runtime closure regressions
         run: python3 -m unittest discover -s scripts -p 'test_prepare_official_pi_runtime.py' -v
 
+      - name: Corpus sampling (D48) regressions
+        run: python3 -m unittest discover -s corpus/sampling -p 'test_*.py' -v
+
       - name: Offline package and publisher regressions
         run: |
           umask 077
