@@ -12,7 +12,7 @@ import (
 	"tbound/supervisor/internal/productsetup"
 )
 
-func TestProductAdminStaticBashInputsAreNotReadiness(t *testing.T) {
+func TestProductSetupValidatesSignedBundleBeforeAccountOrImage(t *testing.T) {
 	f := newProductImageFixture(t)
 	var service productsetup.ServiceConfig
 	raw, err := os.ReadFile(f.path(productsetup.ServiceConfigPath))

@@ -44,7 +44,7 @@ func (h *host) commandBundleFiles(source string, files map[string][]byte) error 
 		return err
 	}
 	if err := check.protectedDirectory(logical); err != nil {
-		return err
+		return refuse("command bundle directory must be protected and non-symlink: %v", err)
 	}
 	for _, n := range installedFiles {
 		if !isCommandArtifact(n.Path) {
