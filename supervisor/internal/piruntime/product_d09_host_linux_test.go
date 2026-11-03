@@ -712,9 +712,12 @@ func TestThesisD09DecoderRefusesEvenEmptyProductMember(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw = append(raw[:len(raw)-1], []byte(`,"product_registration_digest":""}`)...)
-	if _, err := DecodeD09CellTemplate(raw); err == nil {
-		t.Fatal("thesis decoder accepted an explicitly present product member")
+	// encoding/json matches keys case-insensitively, so every case alias must be refused too.
+	for _, member := range []string{`"product_registration_digest":""`, `"PRODUCT_REGISTRATION_DIGEST":""`, `"Product_Registration_Digest":null`} {
+		withMember := append(append([]byte{}, raw[:len(raw)-1]...), []byte(","+member+"}")...)
+		if _, err := DecodeD09CellTemplate(withMember); err == nil {
+			t.Fatalf("thesis decoder accepted the product member %s", member)
+		}
 	}
 }
 
@@ -816,6 +819,8 @@ func TestProductD09EffectiveUnitRefusesOverridesAndPendingReload(t *testing.T) {
 		"extra":     properties["Environment"] + " USER=attacker",
 		"duplicate": properties["Environment"] + " LANG=C",
 		"changed":   strings.Replace(properties["Environment"], "LANG=C", "LANG=C.UTF-8", 1),
+		// systemd keeps a non-breaking space in a value; a Unicode-aware split would drop it.
+		"unicode space": strings.Replace(properties["Environment"], "LANG=C", "LANG=C ", 1),
 	} {
 		t.Run("environment/"+name, func(t *testing.T) {
 			changed := make(map[string]string, len(properties))
