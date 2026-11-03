@@ -62,10 +62,9 @@ POLICY_SHA = "11" * 32
 RULE_SHA = "22" * 32
 
 
-def _commitment_fields(ledger, ledger_sha, script_sha, round_no, period, shift, T):
+def _commitment_fields(ledger, ledger_sha, script_sha, round_no, period, shift):
     genesis = T_EPOCH + DAY - (round_no - 1) * period + shift
     return {
-        "T": T,
         "chain": {
             "hash": DRAND_MAINNET_CHAIN,
             "public_key": "ab" * 48,
@@ -78,21 +77,34 @@ def _commitment_fields(ledger, ledger_sha, script_sha, round_no, period, shift, 
     }
 
 
-def commitment(ledger, *, ledger_sha=None, script_sha=SCRIPT_SHA, round_no=12, period=3, shift=1, T=T_TEXT,
-               development=()):
+def commitment(ledger, *, ledger_sha=None, script_sha=SCRIPT_SHA, round_no=12, period=3, shift=1, development=()):
     """Main commitment whose round `round_no` is the first round at or after T+24h (scheduled one second late)."""
-    obj = _commitment_fields(ledger, ledger_sha, script_sha, round_no, period, shift, T)
+    obj = _commitment_fields(ledger, ledger_sha, script_sha, round_no, period, shift)
     obj.update(kind="main", policy_sha256=POLICY_SHA, adaptation_rule_sha256=RULE_SHA,
                development_case_ids=list(development))
     return json.dumps(obj, sort_keys=True).encode("utf-8")
 
 
-def pilot_commitment(ledger, *, ledger_sha=None, script_sha=SCRIPT_SHA, round_no=12, period=3, shift=1, T=T_TEXT,
-                     pilot_size=11):
+def pilot_commitment(ledger, *, ledger_sha=None, script_sha=SCRIPT_SHA, round_no=12, period=3, shift=1, pilot_size=11):
     """Pilot commitment: the same chain and round rule, binding the pilot size instead of the main fields."""
-    obj = _commitment_fields(ledger, ledger_sha, script_sha, round_no, period, shift, T)
+    obj = _commitment_fields(ledger, ledger_sha, script_sha, round_no, period, shift)
     obj.update(kind="pilot", pilot_size=pilot_size)
     return json.dumps(obj, sort_keys=True).encode("utf-8")
+
+
+BLS_BY = "drand-client 2.1.0 (independent BLS check)"
+
+
+def pilot_output(members=None):
+    """The pilot run's output as `draw` reads it: a complete pilot with these members per stratum."""
+    members = {"TM-A": [], "TM-B": []} if members is None else members
+    return json.dumps({"schema": "tbound-d48-pilot/v1", "status": "complete",
+                       "memberships": {"pilot": members}}, sort_keys=True).encode("utf-8")
+
+
+NO_PILOT = pilot_output()
+DRAW_ARGS = dict(published_utc=T_TEXT, pilot_output=NO_PILOT, bls_verified_by=BLS_BY)
+PILOT_ARGS = dict(published_utc=T_TEXT, bls_verified_by=BLS_BY)
 
 
 def beacon(round_no=12, signature=FAKE_SIGNATURE, previous=None):
@@ -175,6 +187,7 @@ def run_vector(decision_map=None, rows=None, total=VECTOR_TOTAL, variance=VECTOR
         decisions(VECTOR_DECISIONS if decision_map is None else decision_map),
         total=total,
         variance=variance,
+        **DRAW_ARGS,
     )
 
 
@@ -187,6 +200,7 @@ def run_pilot_vector(decision_map=None, rows=None, pilot_size=11):
         beacon(),
         decisions(VECTOR_DECISIONS if decision_map is None else decision_map),
         pilot_size=pilot_size,
+        **PILOT_ARGS,
     )
 
 
@@ -306,19 +320,20 @@ class CommitmentAndTimeTests(unittest.TestCase):
     def test_ledger_digest_must_match_the_ledger_bytes(self):
         ledger = jsonl(VECTOR_ROWS)
         with self.assertRaisesRegex(sel.Refused, "ledger"):
-            sel.run_draw(ledger, commitment(ledger, ledger_sha="0" * 64), beacon(), decisions({}), total=6)
+            sel.run_draw(ledger, commitment(ledger, ledger_sha="0" * 64), beacon(), decisions({}), total=6, **DRAW_ARGS)
 
     def test_script_digest_must_match_the_running_script(self):
         ledger = jsonl(VECTOR_ROWS)
         with self.assertRaisesRegex(sel.Refused, "script"):
-            sel.run_draw(ledger, commitment(ledger, script_sha="1" * 64), beacon(), decisions({}), total=6)
+            sel.run_draw(ledger, commitment(ledger, script_sha="1" * 64), beacon(), decisions({}), total=6, **DRAW_ARGS)
 
     def test_digests_accept_uppercase_hex_from_get_filehash(self):
         ledger = jsonl(VECTOR_ROWS)
         obj = json.loads(commitment(ledger))
         obj["ledger_sha256"] = obj["ledger_sha256"].upper()
         obj["script_sha256"] = obj["script_sha256"].upper()
-        status, _ = sel.run_draw(ledger, json.dumps(obj).encode(), beacon(), decisions({}), total=6, variance=2)
+        status, _ = sel.run_draw(ledger, json.dumps(obj).encode(), beacon(), decisions({}), total=6, variance=2,
+                                   **DRAW_ARGS)
         self.assertEqual(status, "needs-adaptation")
 
     def test_commitment_shape_is_checked(self):
@@ -390,7 +405,7 @@ class BeaconTests(unittest.TestCase):
 
     def test_verify_beacon_says_bls_signature_was_not_verified(self):
         ledger = jsonl(VECTOR_ROWS)
-        result = sel.verify_beacon(commitment(ledger), beacon(12))
+        result = sel.verify_beacon(commitment(ledger), beacon(12), T_TEXT)
         self.assertEqual(result["round"], 12)
         self.assertFalse(result["bls_signature_verified"])
         self.assertIn("independent drand verifier", result["bls_note"])
@@ -619,11 +634,13 @@ class DrawTests(unittest.TestCase):
     def test_decisions_for_unknown_or_excluded_cases_are_refused(self):
         ledger = jsonl(VECTOR_ROWS)
         with self.assertRaises(sel.Refused):
-            sel.run_draw(ledger, commitment(ledger), beacon(), decisions({"ghost.1": (True, "x")}), total=6)
+            sel.run_draw(ledger, commitment(ledger), beacon(), decisions({"ghost.1": (True, "x")}), total=6,
+                         **DRAW_ARGS)
         rows = VECTOR_ROWS + [row("pilot.1", "TM-A", "inj.a", excluded=True)]
         ledger = jsonl(rows)
         with self.assertRaises(sel.Refused):
-            sel.run_draw(ledger, commitment(ledger), beacon(), decisions({"pilot.1": (True, "x")}), total=6)
+            sel.run_draw(ledger, commitment(ledger), beacon(), decisions({"pilot.1": (True, "x")}), total=6,
+                         **DRAW_ARGS)
 
     def test_identical_inputs_give_byte_identical_output(self):
         first = sel.serialize(run_vector()[1])
@@ -660,7 +677,7 @@ class PilotAllocationTests(unittest.TestCase):
         rows += [row(f"small.{i}", "TM-B", f"s{i}") for i in range(20)]
         ledger = jsonl(rows)
         status, out = sel.run_pilot(ledger, pilot_commitment(ledger), beacon(),
-                                    decisions({r["case_id"]: (True, "ok") for r in rows}))
+                                    decisions({r["case_id"]: (True, "ok") for r in rows}), **PILOT_ARGS)
         self.assertEqual(status, "complete")
         self.assertEqual(out["allocation"]["candidates"], {"TM-A": 20, "TM-B": 20})
         self.assertEqual(out["allocation"]["places"], {"TM-A": 5, "TM-B": 6})
@@ -679,7 +696,7 @@ class PilotAllocationTests(unittest.TestCase):
         rows = [row("a.1", "TM-A", "a1")] + [row(f"b.{i}", "TM-B", f"b{i}") for i in range(1000)]
         ledger = jsonl(rows)
         passes = {r["case_id"]: (True, "ok") for r in rows if r["stratum"] == "TM-B"}
-        status, out = sel.run_pilot(ledger, pilot_commitment(ledger), beacon(), decisions(passes))
+        status, out = sel.run_pilot(ledger, pilot_commitment(ledger), beacon(), decisions(passes), **PILOT_ARGS)
         self.assertEqual(out["allocation"]["places"], {"TM-A": 0, "TM-B": 11})
         self.assertEqual(status, "complete")
         self.assertEqual(out["memberships"]["pilot"]["TM-A"], [])
@@ -687,13 +704,14 @@ class PilotAllocationTests(unittest.TestCase):
     def test_pilot_size_comes_from_the_commitment_and_must_match_the_run(self):
         ledger = jsonl(VECTOR_ROWS)
         status, out = sel.run_pilot(ledger, pilot_commitment(ledger, pilot_size=5), beacon(),
-                                    decisions(VECTOR_DECISIONS), pilot_size=5)
+                                    decisions(VECTOR_DECISIONS), pilot_size=5, **PILOT_ARGS)
         self.assertEqual(status, "complete")
         self.assertEqual(out["pilot_size"], 5)
         self.assertEqual(out["allocation"]["places"], {"TM-A": 2, "TM-B": 3})
         self.assertFalse(out["registered_parameters"])
         with self.assertRaisesRegex(sel.Refused, "pilot_size"):
-            sel.run_pilot(ledger, pilot_commitment(ledger, pilot_size=5), beacon(), decisions(VECTOR_DECISIONS))
+            sel.run_pilot(ledger, pilot_commitment(ledger, pilot_size=5), beacon(), decisions(VECTOR_DECISIONS),
+                          **PILOT_ARGS)
 
     def test_pilot_commitment_parses_with_its_own_fields(self):
         commit = sel.parse_commitment(pilot_commitment(jsonl(VECTOR_ROWS)))
@@ -746,11 +764,12 @@ class CommitmentKindTests(unittest.TestCase):
 
     def test_draw_refuses_a_pilot_commitment(self):
         with self.assertRaisesRegex(sel.Refused, "main commitment"):
-            sel.run_draw(self.ledger, pilot_commitment(self.ledger), beacon(), decisions({}), total=6)
+            sel.run_draw(self.ledger, pilot_commitment(self.ledger), beacon(), decisions({}), total=6,
+                         **DRAW_ARGS)
 
     def test_pilot_refuses_a_main_commitment(self):
         with self.assertRaisesRegex(sel.Refused, "pilot commitment"):
-            sel.run_pilot(self.ledger, commitment(self.ledger), beacon(), decisions({}))
+            sel.run_pilot(self.ledger, commitment(self.ledger), beacon(), decisions({}), **PILOT_ARGS)
 
     def test_allocate_needs_a_main_commitment(self):
         with self.assertRaisesRegex(sel.Refused, "main commitment"):
@@ -798,7 +817,7 @@ class CommitmentKindTests(unittest.TestCase):
 
     def test_verify_beacon_accepts_either_kind(self):
         for data in (commitment(self.ledger), pilot_commitment(self.ledger)):
-            self.assertEqual(sel.verify_beacon(data, beacon(12))["round"], 12)
+            self.assertEqual(sel.verify_beacon(data, beacon(12), T_TEXT)["round"], 12)
 
 
 class DevelopmentCaseTests(unittest.TestCase):
@@ -806,7 +825,7 @@ class DevelopmentCaseTests(unittest.TestCase):
         ledger = jsonl(VECTOR_ROWS)
         dev = ["inj.a.2", "inj.a.3", "tool.d.1"]
         status, out = sel.run_draw(ledger, commitment(ledger, development=dev), beacon(), decisions(VECTOR_DECISIONS),
-                                   total=VECTOR_TOTAL, variance=VECTOR_VARIANCE)
+                                   total=VECTOR_TOTAL, variance=VECTOR_VARIANCE, **DRAW_ARGS)
         self.assertEqual(status, "complete")
         expected = sel.choose_cap([r for r in VECTOR_ROWS if r["case_id"] not in dev], VECTOR_TOTAL)
         self.assertEqual(out["cap"]["M"], expected["M"])
@@ -827,10 +846,20 @@ class DevelopmentCaseTests(unittest.TestCase):
         self.assertEqual(obj["cap"]["k"], expected["k"])
         self.assertEqual(obj["development"]["removed"], {"TM-A": 10, "TM-B": 0})
 
-    def test_unknown_or_malformed_development_ids_are_refused(self):
+    def test_development_ids_outside_the_ledger_are_reported_and_remove_nothing(self):
         ledger = jsonl(VECTOR_ROWS)
-        with self.assertRaisesRegex(sel.Refused, "not in the ledger"):
-            sel.run_draw(ledger, commitment(ledger, development=["inj.a.9"]), beacon(), decisions({}), total=6)
+        dev = ["inj.a.9", "t5.rehearsal.1", "inj.a.2"]
+        status, out = sel.run_draw(ledger, commitment(ledger, development=dev), beacon(),
+                                   decisions(VECTOR_DECISIONS), total=VECTOR_TOTAL, variance=VECTOR_VARIANCE,
+                                   **DRAW_ARGS)
+        self.assertEqual(status, "complete")
+        self.assertEqual(out["development_not_in_ledger"], ["inj.a.9", "t5.rehearsal.1"])
+        self.assertEqual(out["development"], {"case_ids": sorted(dev), "removed": {"TM-A": 1, "TM-B": 0}})
+        self.assertEqual(sel.allocate(ledger, commitment(ledger, development=dev), total=6)["development_not_in_ledger"],
+                         ["inj.a.9", "t5.rehearsal.1"])
+
+    def test_malformed_development_ids_are_still_refused(self):
+        ledger = jsonl(VECTOR_ROWS)
         with self.assertRaises(sel.Refused):
             sel.allocate(ledger, commitment(ledger, development=["inj a.1"]), total=6)
 
@@ -838,21 +867,21 @@ class DevelopmentCaseTests(unittest.TestCase):
         rows = VECTOR_ROWS + [row("pilot.x", "TM-A", "inj.a", excluded=True)]
         ledger = jsonl(rows)
         status, out = sel.run_draw(ledger, commitment(ledger, development=["pilot.x"]), beacon(),
-                                   decisions(VECTOR_DECISIONS), total=VECTOR_TOTAL, variance=VECTOR_VARIANCE)
+                                   decisions(VECTOR_DECISIONS), total=VECTOR_TOTAL, variance=VECTOR_VARIANCE, **DRAW_ARGS)
         self.assertEqual(status, "complete")
         self.assertEqual(out["development"], {"case_ids": ["pilot.x"], "removed": {"TM-A": 0, "TM-B": 0}})
 
     def test_decisions_for_development_cases_are_reported_as_not_consulted(self):
         ledger = jsonl(VECTOR_ROWS)
         status, out = sel.run_draw(ledger, commitment(ledger, development=["inj.b.1"]), beacon(),
-                                   decisions(VECTOR_DECISIONS), total=VECTOR_TOTAL, variance=VECTOR_VARIANCE)
+                                   decisions(VECTOR_DECISIONS), total=VECTOR_TOTAL, variance=VECTOR_VARIANCE, **DRAW_ARGS)
         self.assertEqual(status, "complete")
         self.assertIn("inj.b.1", out["inputs"]["adaptation"]["not_consulted"])
 
     def test_attack_whose_only_cases_are_development_is_untested_not_topped_up(self):
         ledger = jsonl(VECTOR_ROWS)
         status, out = sel.run_draw(ledger, commitment(ledger, development=["tool.f.1", "tool.f.2", "tool.f.3"]),
-                                   beacon(), decisions(VECTOR_DECISIONS), total=VECTOR_TOTAL, variance=VECTOR_VARIANCE)
+                                   beacon(), decisions(VECTOR_DECISIONS), total=VECTOR_TOTAL, variance=VECTOR_VARIANCE, **DRAW_ARGS)
         self.assertEqual(status, "complete")
         self.assertIn("TM-B:tool.f", out["memberships"]["untested"])
         self.assertNotIn("TM-B:tool.f", {r["group"] for r in out["examined"]})
@@ -863,17 +892,144 @@ class SeenInDevelopmentTests(unittest.TestCase):
     def test_each_attack_is_marked_by_whether_a_development_case_has_it(self):
         ledger = jsonl(VECTOR_ROWS)
         status, out = sel.run_draw(ledger, commitment(ledger, development=["inj.b.1"]), beacon(),
-                                   decisions(VECTOR_DECISIONS), total=VECTOR_TOTAL, variance=VECTOR_VARIANCE)
+                                   decisions(VECTOR_DECISIONS), total=VECTOR_TOTAL, variance=VECTOR_VARIANCE, **DRAW_ARGS)
         self.assertEqual(status, "complete")
         self.assertEqual(out["attacks"], {group: {"seen_in_development": group == "TM-A:inj.b", "stratum": STRATUM_OF_ATTACK[group]}
                                           for group in VECTOR_GROUPS})
 
+    def test_a_scenario_seen_in_either_stratum_counts_as_seen_in_both_groups(self):
+        rows = VECTOR_ROWS + [row(f"B.inj.a.{i}", "TM-B", "inj.a", "mech.tool") for i in (1, 2, 3)]
+        ledger = jsonl(rows)
+        status, out = sel.run_draw(ledger, commitment(ledger, development=["inj.a.1"]), beacon(),
+                                   decisions(VECTOR_DECISIONS), total=VECTOR_TOTAL, variance=VECTOR_VARIANCE,
+                                   **DRAW_ARGS)
+        seen = {group for group, mark in out["attacks"].items() if mark["seen_in_development"]}
+        self.assertEqual(seen, {"TM-A:inj.a", "TM-B:inj.a"})
+        self.assertEqual(len(out["attacks"]), len(VECTOR_GROUPS) + 1)
+
+    def test_each_mechanism_is_marked_by_whether_a_development_case_has_it(self):
+        ledger = jsonl(VECTOR_ROWS)
+        status, out = sel.run_draw(ledger, commitment(ledger, development=["inj.b.1"]), beacon(),
+                                   decisions(VECTOR_DECISIONS), total=VECTOR_TOTAL, variance=VECTOR_VARIANCE,
+                                   **DRAW_ARGS)
+        self.assertEqual(out["mechanisms"], {"mech.inj": {"seen_in_development": True},
+                                             "mech.tool": {"seen_in_development": False}})
+
+    def test_an_excluded_development_case_still_marks_its_scenario_and_mechanism(self):
+        rows = VECTOR_ROWS + [row("pilot.x", "TM-A", "inj.a", "mech.pilot", excluded=True)]
+        ledger = jsonl(rows)
+        status, out = sel.run_draw(ledger, commitment(ledger, development=["pilot.x"]), beacon(),
+                                   decisions(VECTOR_DECISIONS), total=VECTOR_TOTAL, variance=VECTOR_VARIANCE,
+                                   **DRAW_ARGS)
+        self.assertTrue(out["attacks"]["TM-A:inj.a"]["seen_in_development"])
+        self.assertFalse(out["attacks"]["TM-A:inj.b"]["seen_in_development"])
+        self.assertNotIn("mech.pilot", out["mechanisms"])  # no candidate has it, so nothing to split
+
     def test_without_development_cases_no_attack_is_marked(self):
         ledger = jsonl(VECTOR_ROWS)
         status, out = sel.run_draw(ledger, commitment(ledger), beacon(), decisions(VECTOR_DECISIONS),
-                                   total=VECTOR_TOTAL, variance=VECTOR_VARIANCE)
+                                   total=VECTOR_TOTAL, variance=VECTOR_VARIANCE, **DRAW_ARGS)
         self.assertEqual(len(out["attacks"]), len(VECTOR_GROUPS))
         self.assertFalse(any(v["seen_in_development"] for v in out["attacks"].values()))
+
+
+class PublishedTimeTests(unittest.TestCase):
+    def setUp(self):
+        self.ledger = jsonl(VECTOR_ROWS)
+
+    def test_the_round_comes_from_published_utc_and_the_output_records_it(self):
+        status, out = run_vector()
+        self.assertEqual(out["round"]["R"], 12)
+        self.assertEqual(out["round"]["published_utc"], T_TEXT)
+        self.assertEqual(out["round"]["T_epoch"], T_EPOCH)
+        self.assertNotIn("T", out["inputs"]["commitment"])
+
+    def test_a_later_publication_time_gives_a_later_round(self):
+        # period 3 s: two seconds later moves T+24h past the scheduled time of round 12 (one second late),
+        # so the round-12 beacon no longer matches.
+        with self.assertRaisesRegex(sel.Refused, "round"):
+            sel.run_draw(self.ledger, commitment(self.ledger), beacon(), decisions({}), total=6,
+                         **{**DRAW_ARGS, "published_utc": "2026-11-03T12:00:02Z"})
+
+    def test_published_utc_is_whole_second_utc_with_z(self):
+        for bad in ["2026-11-03T12:00:00.5Z", "2026-11-03T12:00:00+00:00", "2026-11-03 12:00:00Z", "", None]:
+            with self.subTest(published_utc=bad), self.assertRaises(sel.Refused):
+                sel.run_draw(self.ledger, commitment(self.ledger), beacon(), decisions({}), total=6,
+                             **{**DRAW_ARGS, "published_utc": bad})
+            with self.subTest(pilot=bad), self.assertRaises(sel.Refused):
+                sel.run_pilot(self.ledger, pilot_commitment(self.ledger), beacon(), decisions({}),
+                              **{**PILOT_ARGS, "published_utc": bad})
+
+    def test_a_commitment_that_carries_its_own_time_is_refused(self):
+        obj = json.loads(commitment(self.ledger))
+        obj["T"] = T_TEXT
+        with self.assertRaisesRegex(sel.Refused, "published"):
+            sel.parse_commitment(json.dumps(obj).encode())
+
+
+class PilotCoverageTests(unittest.TestCase):
+    def setUp(self):
+        self.ledger = jsonl(VECTOR_ROWS)
+
+    def draw(self, pilot, development):
+        return sel.run_draw(self.ledger, commitment(self.ledger, development=development), beacon(),
+                            decisions(VECTOR_DECISIONS), total=VECTOR_TOTAL, variance=VECTOR_VARIANCE,
+                            **{**DRAW_ARGS, "pilot_output": pilot})
+
+    def test_every_pilot_member_must_be_in_development_case_ids(self):
+        pilot = pilot_output({"TM-A": ["inj.a.2"], "TM-B": ["tool.d.1"]})
+        with self.assertRaisesRegex(sel.Refused, "tool.d.1"):
+            self.draw(pilot, ["inj.a.2"])
+        status, out = self.draw(pilot, ["inj.a.2", "tool.d.1", "inj.b.1"])
+        self.assertEqual(status, "complete")
+        self.assertEqual(out["inputs"]["pilot_output"]["sha256"], sha(pilot))
+
+    def test_a_pilot_output_that_is_not_a_complete_pilot_is_refused(self):
+        unfinished = json.dumps({"schema": "tbound-d48-pilot/v1", "status": "needs-adaptation",
+                                 "memberships": None}).encode()
+        wrong_schema = json.dumps({"schema": "tbound-d48-draw/v1", "memberships": {"pilot": {}}}).encode()
+        for bad in (unfinished, b"[]", b"not json", wrong_schema):
+            with self.subTest(bad=bad[:20]), self.assertRaises(sel.Refused):
+                self.draw(bad, [])
+
+    def test_the_real_pilot_output_feeds_the_draw(self):
+        status, pilot = run_pilot_vector()
+        members = [c for group in pilot["memberships"]["pilot"].values() for c in group]
+        data = sel.serialize(pilot)
+        with self.assertRaises(sel.Refused):
+            self.draw(data, members[1:])
+        self.assertEqual(self.draw(data, members)[1]["development"]["case_ids"], sorted(members))
+
+
+class AttestationAndChainTests(unittest.TestCase):
+    def setUp(self):
+        self.ledger = jsonl(VECTOR_ROWS)
+
+    def test_bls_verified_by_is_recorded_in_the_output(self):
+        out = run_vector()[1]
+        self.assertEqual(out["inputs"]["beacon"]["bls_verified_by"], BLS_BY)
+        self.assertEqual(run_pilot_vector()[1]["inputs"]["beacon"]["bls_verified_by"], BLS_BY)
+
+    def test_an_empty_bls_attestation_is_refused(self):
+        for bad in ("", "   ", None):
+            with self.subTest(bad=bad), self.assertRaises(sel.Refused):
+                sel.run_draw(self.ledger, commitment(self.ledger), beacon(), decisions({}), total=6,
+                             **{**DRAW_ARGS, "bls_verified_by": bad})
+            with self.subTest(pilot=bad), self.assertRaises(sel.Refused):
+                sel.run_pilot(self.ledger, pilot_commitment(self.ledger), beacon(), decisions({}),
+                              **{**PILOT_ARGS, "bls_verified_by": bad})
+
+    def test_a_commitment_for_another_chain_is_refused(self):
+        for maker in (commitment, pilot_commitment):
+            obj = json.loads(maker(self.ledger))
+            obj["chain"]["hash"] = "00" * 32
+            with self.subTest(maker=maker.__name__), self.assertRaisesRegex(sel.Refused, "chain"):
+                sel.parse_commitment(json.dumps(obj).encode())
+
+    def test_the_pinned_chain_hash_is_accepted_in_either_case(self):
+        obj = json.loads(commitment(self.ledger))
+        obj["chain"]["hash"] = DRAND_MAINNET_CHAIN.upper()
+        self.assertEqual(sel.parse_commitment(json.dumps(obj).encode())["chain"]["hash"], DRAND_MAINNET_CHAIN)
 
 
 class PilotVectorTests(unittest.TestCase):
@@ -965,10 +1121,44 @@ class CommandLineTests(unittest.TestCase):
                 "--commitment", self.write("c.json", commitment(ledger)),
                 "--beacon", self.write("b.json", beacon()),
                 "--adaptation", self.write("a.jsonl", decision_bytes),
+                "--pilot-output", self.write("po.json", NO_PILOT), "--published-utc", T_TEXT,
+                "--bls-verified-by", BLS_BY,
                 "--out", os.path.join(self.dir, out_name)]
         if total is not None:
             args += ["--total", str(total)]
         return self.cli(*args)
+
+    def test_draw_and_pilot_require_the_new_arguments(self):
+        ledger = jsonl(VECTOR_ROWS)
+        base = ["--ledger", self.write("rl.jsonl", ledger), "--beacon", self.write("rb.json", beacon()),
+                "--adaptation", self.write("ra.jsonl", b""), "--out", os.path.join(self.dir, "r.json")]
+        draw = base + ["--commitment", self.write("rc.json", commitment(ledger)),
+                       "--pilot-output", self.write("rp.json", NO_PILOT), "--published-utc", T_TEXT,
+                       "--bls-verified-by", BLS_BY]
+        pilot = base + ["--commitment", self.write("rq.json", pilot_commitment(ledger)),
+                        "--published-utc", T_TEXT, "--bls-verified-by", BLS_BY]
+        for command, args, flags in (("draw", draw, ("--pilot-output", "--published-utc", "--bls-verified-by")),
+                                     ("pilot", pilot, ("--published-utc", "--bls-verified-by"))):
+            for flag in flags:
+                cut = args.index(flag)
+                with self.subTest(command=command, missing=flag):
+                    result = self.cli(command, *(args[:cut] + args[cut + 2:]))
+                    self.assertEqual(result.returncode, 2)
+                    self.assertIn(flag, result.stderr)
+        self.assertFalse(os.path.exists(os.path.join(self.dir, "r.json")))
+
+    def test_json_on_stdout_has_lf_line_endings_on_every_platform(self):
+        rows = pool("TM-A", 60, 10, "x") + pool("TM-B", 60, 10, "y")
+        ledger = jsonl(rows)
+        raw = subprocess.run([sys.executable, "-I", SCRIPT, "allocate", "--ledger", self.write("cl.jsonl", ledger),
+                              "--commitment", self.write("cc.json", commitment(ledger))],
+                             capture_output=True, timeout=600)
+        self.assertEqual(raw.returncode, 0, raw.stderr)
+        self.assertNotIn(b"\r", raw.stdout)
+        self.assertTrue(raw.stdout.endswith(b"}\n"))
+        raw = subprocess.run([sys.executable, "-I", SCRIPT, "certify", "--NA", "1000", "--NB", "500",
+                              "--nA", "199", "--nB", "100"], capture_output=True, timeout=600)
+        self.assertNotIn(b"\r", raw.stdout)
 
     def test_draw_writes_needs_adaptation_and_exits_3(self):
         result = self.draw_cli(VECTOR_ROWS, b"", "out1.json", total=VECTOR_TOTAL)
@@ -999,10 +1189,12 @@ class CommandLineTests(unittest.TestCase):
 
     def test_verify_beacon_reports_bls_not_verified_and_fails_on_mismatch(self):
         commit = self.write("vc.json", commitment(jsonl(VECTOR_ROWS)))
-        ok = self.cli("verify-beacon", "--commitment", commit, "--beacon", self.write("vb.json", beacon(12)))
+        ok = self.cli("verify-beacon", "--commitment", commit, "--beacon", self.write("vb.json", beacon(12)),
+                      "--published-utc", T_TEXT)
         self.assertEqual(ok.returncode, 0, ok.stderr)
         self.assertIn("NOT VERIFIED", ok.stdout)
-        bad = self.cli("verify-beacon", "--commitment", commit, "--beacon", self.write("vb2.json", beacon(11)))
+        bad = self.cli("verify-beacon", "--commitment", commit, "--beacon", self.write("vb2.json", beacon(11)),
+                       "--published-utc", T_TEXT)
         self.assertEqual(bad.returncode, 1)
 
     def pilot_cli(self, rows, decision_bytes, out_name, commit=None):
@@ -1012,6 +1204,7 @@ class CommandLineTests(unittest.TestCase):
                         "--commitment", self.write("pc.json", commit_bytes),
                         "--beacon", self.write("pb.json", beacon()),
                         "--adaptation", self.write("pa.jsonl", decision_bytes),
+                        "--published-utc", T_TEXT, "--bls-verified-by", BLS_BY,
                         "--out", os.path.join(self.dir, out_name))
 
     def test_pilot_exit_codes_follow_the_walk(self):
@@ -1044,20 +1237,24 @@ class CommandLineTests(unittest.TestCase):
                           "--commitment", self.write("kc.json", pilot_commitment(ledger)),
                           "--beacon", self.write("kb.json", beacon()),
                           "--adaptation", self.write("ka.jsonl", b""),
+                          "--pilot-output", self.write("kp.json", NO_PILOT), "--published-utc", T_TEXT,
+                          "--bls-verified-by", BLS_BY,
                           "--out", os.path.join(self.dir, "k1.json"), "--total", str(VECTOR_TOTAL))
         self.assertEqual(result.returncode, 1)
         self.assertIn("main commitment", result.stderr)
         self.assertFalse(os.path.exists(os.path.join(self.dir, "k1.json")))
 
-    def test_draw_refuses_an_unknown_development_id_and_writes_nothing(self):
+    def test_draw_refuses_a_malformed_development_id_and_writes_nothing(self):
         ledger = jsonl(VECTOR_ROWS)
         result = self.cli("draw", "--ledger", self.write("ul.jsonl", ledger),
-                          "--commitment", self.write("uc.json", commitment(ledger, development=["inj.a.9"])),
+                          "--commitment", self.write("uc.json", commitment(ledger, development=["inj a.1"])),
                           "--beacon", self.write("ub.json", beacon()),
                           "--adaptation", self.write("ua.jsonl", b""),
+                          "--pilot-output", self.write("up.json", NO_PILOT), "--published-utc", T_TEXT,
+                          "--bls-verified-by", BLS_BY,
                           "--out", os.path.join(self.dir, "u1.json"), "--total", str(VECTOR_TOTAL))
         self.assertEqual(result.returncode, 1)
-        self.assertIn("not in the ledger", result.stderr)
+        self.assertIn("development_case_ids", result.stderr)
         self.assertFalse(os.path.exists(os.path.join(self.dir, "u1.json")))
 
     def test_certify_exit_code_follows_the_certification(self):
