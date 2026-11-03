@@ -76,10 +76,20 @@ func productRegisteredPolicyDigest(policy gate.Policy) string {
 	return sha256DigestFromBarePin(barePolicyDigest(policy.Digest()))
 }
 
+// productBashPolicyMode says what a policy read decides about a policy that allows bash.
+type productBashPolicyMode int
+
+const (
+	// productBashRefused rejects such a policy: the caller has no command host to admit it.
+	productBashRefused productBashPolicyMode = iota
+	// productBashStructural reads such a policy without admitting it. The reader reports only that the policy is
+	// configured. Admission belongs to the qualification a service start runs, and no static reader may imply it.
+	productBashStructural
+)
+
 // loadProductGatePolicy checks one project's installed gate policy: a protected file that parses, whose
-// digest equals the one the signed registration commits to. No contained command runner exists yet, so a
-// policy that allows bash is refused unless the caller has one.
-func loadProductGatePolicy(projectID, registeredDigest, path string, owners []uint32, runnerAvailable bool) (gate.Policy, productHostFile, error) {
+// digest equals the one the signed registration commits to. mode decides what happens to a policy that allows bash.
+func loadProductGatePolicy(projectID, registeredDigest, path string, owners []uint32, mode productBashPolicyMode) (gate.Policy, productHostFile, error) {
 	file, err := readProtectedHostFile(path, gate.MaxPolicyBytes, owners)
 	if err != nil {
 		return gate.Policy{}, file, fmt.Errorf("read the gate policy of project %q: %w", projectID, err)
@@ -91,7 +101,7 @@ func loadProductGatePolicy(projectID, registeredDigest, path string, owners []ui
 	if productRegisteredPolicyDigest(policy) != registeredDigest {
 		return gate.Policy{}, file, fmt.Errorf("installed gate policy of project %q differs from its registration", projectID)
 	}
-	if productPolicyAllowsBash(policy) && !runnerAvailable {
+	if productPolicyAllowsBash(policy) && mode == productBashRefused {
 		return gate.Policy{}, file, fmt.Errorf("the gate policy of project %q allows bash, but the product host has no contained command runner: "+
 			"install a policy that denies bash until D09 command cells are available", projectID)
 	}

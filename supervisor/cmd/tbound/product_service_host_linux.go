@@ -62,7 +62,8 @@ func newProductServiceHostProfile(cfg productServiceConfig) productServiceHost {
 		if cfg.GitDigest != env.Registration.GitDigest || identity != env.Registration.HostIdentityDigest {
 			return errors.New("the executing inputs differ from the registered host profile")
 		}
-		if err := installProductGatePolicies(env, cfg); err != nil {
+		bashAllowed, err := installProductGatePolicies(env, cfg)
+		if err != nil {
 			return err
 		}
 		for _, id := range env.Registration.ProviderProfiles {
@@ -116,30 +117,34 @@ func newProductServiceHostProfile(cfg productServiceConfig) productServiceHost {
 		}
 		// One worker step is one provider exchange, which is one host call, so the registered turn limit bounds it.
 		env.MaxWorkerSteps = int(env.Registration.Limits.Turn.HostCalls)
-		return nil
+		// Last, so qualification runs on the host inputs every turn will use. The socket opens only after this returns.
+		return installProductCommandHooks(env, cfg, bashAllowed)
 	}
 }
 
 // installProductGatePolicies loads each project's installed gate policy through the shared static validator:
-// protected file and registered digest. The Bash hooks come only from qualifyProductCommandHost, so a policy that
-// allows bash starts only after every qualification phase passed in this process. A deny-only host reconciles any
-// retained command journal before it listens.
-func installProductGatePolicies(env *productTurnEnv, cfg productServiceConfig) error {
+// protected file and registered digest. The read is structural: a policy that allows bash is admitted only by
+// installProductCommandHooks, after every qualification phase passed in this process. It reports whether any does.
+func installProductGatePolicies(env *productTurnEnv, cfg productServiceConfig) (bashAllowed bool, err error) {
 	env.GatePolicies = make(map[string]gate.Policy, len(cfg.GatePolicyPaths))
-	bashAllowed := false
 	for _, project := range env.Registration.Projects {
 		file, ok := cfg.GatePolicyPaths[project.ProjectID]
 		if !ok {
-			return fmt.Errorf("gate_policy_paths has no file for project %q", project.ProjectID)
+			return false, fmt.Errorf("gate_policy_paths has no file for project %q", project.ProjectID)
 		}
-		// The read is structural only: bash is admitted below, after qualification.
-		policy, _, err := loadProductGatePolicy(project.ProjectID, project.PolicyDigest, file, productServiceOwners(), true)
+		policy, _, err := loadProductGatePolicy(project.ProjectID, project.PolicyDigest, file, productServiceOwners(), productBashStructural)
 		if err != nil {
-			return err
+			return false, err
 		}
 		env.GatePolicies[project.ProjectID] = policy
 		bashAllowed = bashAllowed || productPolicyAllowsBash(policy)
 	}
+	return bashAllowed, nil
+}
+
+// installProductCommandHooks installs the Bash hooks the qualification returns. The Bash hooks come only from
+// qualifyProductCommandHost. A deny-only host reconciles any retained command journal before it listens.
+func installProductCommandHooks(env *productTurnEnv, cfg productServiceConfig, bashAllowed bool) error {
 	ctx, cancel := context.WithTimeout(context.Background(), productCommandQualificationTimeout)
 	defer cancel()
 	hooks, err := qualifyProductCommandHost(ctx, cfg, env, bashAllowed)

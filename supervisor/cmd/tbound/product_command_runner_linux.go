@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -295,16 +296,78 @@ func reconcileProductCommandScope(ctx context.Context, root *os.File, journal *a
 		return piruntime.ErrUnknownSettlement
 	}
 	owners[name] = struct{}{}
-	scope, err := piruntime.OpenLinuxCgroupScopeForDrain(root, name, piruntime.D09ContainmentProfile, piruntime.D09SettlementProfile, opened.ScopeIdentity)
-	if err != nil {
+	// The drain revokes the scope and removes it. It never writes a command receipt: a killed command has no result
+	// to certify, so a linked turn that depended on it stays UNKNOWN.
+	scope, err := openProductScopeForDrain(root, name, opened.ScopeIdentity)
+	switch {
+	case errors.Is(err, os.ErrNotExist):
+		// A systemd unit stop removes its cgroups. A cgroup holds no process when it is removed, so a gone scope
+		// leaves no writer unless a process still reports the recorded path.
+		writers, countErr := productProcessesInScope(opened.ScopePath)
+		if countErr != nil || writers != 0 {
+			return errors.Join(piruntime.ErrUnknownSettlement, countErr, fmt.Errorf("%d processes still report the absent scope %s", writers, opened.ScopePath))
+		}
+	case err != nil:
 		return err
+	default:
+		if scope.RootDigest() != opened.RootDigest {
+			_ = scope.Close()
+			return piruntime.ErrCgroupScopeRefused
+		}
+		if err := scope.Remove(ctx); err != nil {
+			_ = scope.Close()
+			return errors.Join(piruntime.ErrUnknownSettlement, err)
+		}
 	}
-	if scope.RootDigest() != opened.RootDigest {
-		_ = scope.Close()
-		return piruntime.ErrCgroupScopeRefused
+	opened.State = "drained"
+	return persistProductCommandScopeOwner(journal, opened)
+}
+
+// productDrainableScope is the exact orphan scope a restart reopens from its owner record.
+type productDrainableScope interface {
+	RootDigest() string
+	Remove(context.Context) error
+	Close() error
+}
+
+// openProductScopeForDrain reopens the direct child the owner record names, with its recorded identity. A test of the
+// restart protocol replaces it, since an unprivileged test host has no delegated cgroup.
+var openProductScopeForDrain = func(root *os.File, name, identity string) (productDrainableScope, error) {
+	scope, err := piruntime.OpenLinuxCgroupScopeForDrain(root, name, piruntime.D09ContainmentProfile, piruntime.D09SettlementProfile, identity)
+	if err != nil {
+		return nil, err
 	}
-	// Only a process that still owns the launcher can prove container, pidfd and
-	// mount cleanup. G must reconcile those before marking an orphan drained.
-	_ = scope.Close()
-	return piruntime.ErrUnknownSettlement
+	return scope, nil
+}
+
+// productProcessesInScope counts the processes whose unified cgroup is the recorded scope or below it.
+var productProcessesInScope = func(scopePath string) (int, error) {
+	const mount = "/sys/fs/cgroup"
+	if !strings.HasPrefix(scopePath, mount+"/") {
+		return 0, fmt.Errorf("scope %s is not below %s", scopePath, mount)
+	}
+	scope := strings.TrimPrefix(scopePath, mount)
+	entries, err := os.ReadDir("/proc")
+	if err != nil {
+		return 0, err
+	}
+	writers := 0
+	for _, entry := range entries {
+		if _, numeric := strconv.Atoi(entry.Name()); numeric != nil {
+			continue
+		}
+		raw, err := os.ReadFile(filepath.Join("/proc", entry.Name(), "cgroup"))
+		if errors.Is(err, os.ErrNotExist) {
+			continue // the process exited
+		}
+		if err != nil {
+			return 0, err
+		}
+		for _, line := range strings.Split(string(raw), "\n") {
+			if member, found := strings.CutPrefix(line, "0::"); found && (member == scope || strings.HasPrefix(member, scope+"/")) {
+				writers++
+			}
+		}
+	}
+	return writers, nil
 }

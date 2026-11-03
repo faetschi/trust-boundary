@@ -38,13 +38,12 @@ const (
 	productPhaseNetworkProbe  productQualificationPhase = "network-probe"
 )
 
-// productQualificationPhases is the order a start runs the phases in. The first failure ends the start.
+// productQualificationPhases is the order a start runs the phases in. The first failure ends the start. Settlement is
+// last because it drains the cell that every earlier phase ran in.
 var productQualificationPhases = []productQualificationPhase{productPhaseProofAck, productPhaseListing, productPhaseScopedWrite,
-	productPhaseRootfsDenial, productPhaseLimitsMapping, productPhaseSettlement, productPhaseNetworkProbe}
+	productPhaseRootfsDenial, productPhaseLimitsMapping, productPhaseNetworkProbe, productPhaseSettlement}
 
-// errProductQualificationNotWired names the prerequisites of a Bash host that this build cannot yet prove.
-var errProductQualificationNotWired = errors.New("the disposable command-cell qualification is not wired in this build; " +
-	"a Bash host needs delegated cgroup v2, rootless Podman and the signed product command host")
+type productCommandRunnerFactory func(productTurnCommandContext) (productTurnCommandRunner, error)
 
 // productCommandQualificationSteps are the host operations a start performs before it admits Bash. Production binds
 // the real ones in productCommandQualification. A test replaces one step to fail the start at that step.
@@ -52,8 +51,9 @@ type productCommandQualificationSteps struct {
 	loadHost        func(ctx context.Context, cfg productServiceConfig, env *productTurnEnv) (*piruntime.D09ProductCommandHost, error)
 	prepareRuntime  func() error
 	reconcileScopes func(ctx context.Context, host *piruntime.D09ProductCommandHost, retainedRoots []string) error
-	runPhase        func(ctx context.Context, host *piruntime.D09ProductCommandHost, phase productQualificationPhase) error
-	newRunner       func(ctx context.Context, host *piruntime.D09ProductCommandHost, c productTurnCommandContext) (productTurnCommandRunner, error)
+	// openCell builds the disposable cell over newRunner, the factory the turns will use after qualification.
+	openCell  func(ctx context.Context, host *piruntime.D09ProductCommandHost, env *productTurnEnv, newRunner productCommandRunnerFactory) (productQualificationCell, error)
+	newRunner func(ctx context.Context, host *piruntime.D09ProductCommandHost, c productTurnCommandContext) (productTurnCommandRunner, error)
 }
 
 var productCommandQualification = productCommandQualificationSteps{
@@ -62,13 +62,16 @@ var productCommandQualification = productCommandQualificationSteps{
 	reconcileScopes: func(ctx context.Context, host *piruntime.D09ProductCommandHost, retainedRoots []string) error {
 		return reconcileProductCommandScopes(ctx, host, retainedRoots...)
 	},
-	runPhase: runProductQualificationPhase,
+	openCell: func(ctx context.Context, host *piruntime.D09ProductCommandHost, env *productTurnEnv, newRunner productCommandRunnerFactory) (productQualificationCell, error) {
+		return openProductQualificationCell(ctx, productQualificationTarget{Profile: host.Profile(), Template: host.Template()}, env, newRunner)
+	},
 	newRunner: func(ctx context.Context, host *piruntime.D09ProductCommandHost, c productTurnCommandContext) (productTurnCommandRunner, error) {
 		runner, err := newProductD09CommandRunner(ctx, host, c)
-		if err != nil {
+		if runner == nil {
 			return nil, err
 		}
-		return runner, nil
+		// A runner that already owns a scope comes back with its error, so its caller can settle and drain it.
+		return runner, err
 	},
 }
 
@@ -109,15 +112,24 @@ func qualifyProductCommandHost(ctx context.Context, cfg productServiceConfig, en
 	if !bashAllowed {
 		return hooks, nil
 	}
-	for _, phase := range productQualificationPhases {
-		if err := steps.runPhase(ctx, host, phase); err != nil {
-			return productCommandHooks{}, fmt.Errorf("command qualification: phase %s: %w", phase, err)
-		}
-	}
 	// The factory serves turns after startup, so it does not hold the start's context.
-	hooks.NewCommandRunner = func(c productTurnCommandContext) (productTurnCommandRunner, error) {
+	factory := func(c productTurnCommandContext) (productTurnCommandRunner, error) {
 		return steps.newRunner(context.Background(), host, c)
 	}
+	cell, err := steps.openCell(ctx, host, env, factory)
+	if err != nil {
+		return productCommandHooks{}, fmt.Errorf("command qualification: open the disposable command cell: %w", err)
+	}
+	for _, phase := range productQualificationPhases {
+		if err := cell.runPhase(ctx, phase); err != nil {
+			failure := fmt.Errorf("command qualification: phase %s: %w", phase, err)
+			return productCommandHooks{}, errors.Join(failure, cell.finish(ctx, failure))
+		}
+	}
+	if err := cell.finish(ctx, nil); err != nil {
+		return productCommandHooks{}, fmt.Errorf("command qualification: close the disposable command cell: %w", err)
+	}
+	hooks.NewCommandRunner = factory
 	return hooks, nil
 }
 
@@ -148,14 +160,6 @@ func productCommandOwnerJournalsPresent(roots []string) (bool, error) {
 	return false, nil
 }
 
-// runProductQualificationPhase runs one phase in a fresh disposable cell. It is not wired in this build, so every
-// phase refuses and no factory exists.
-// shortcut: the disposable Store, view and cell run is not built, so no phase can pass; upgrade when the demo VM
-// qualifies the real D09 host (unit H).
-func runProductQualificationPhase(context.Context, *piruntime.D09ProductCommandHost, productQualificationPhase) error {
-	return errProductQualificationNotWired
-}
-
 // productNetworkRoute is one routing-table row the probe read inside the cell.
 type productNetworkRoute struct {
 	Family string `json:"family"`
@@ -172,11 +176,21 @@ type productNetworkCheck struct {
 
 // productNetworkReport is the structured result of one probe run. Policy is the expectation it was checked against.
 type productNetworkReport struct {
-	Policy string                `json:"-"`
+	Policy string                `json:"policy,omitempty"`
 	Node   string                `json:"node"`
 	Routes []productNetworkRoute `json:"routes"`
 	Checks []productNetworkCheck `json:"checks"`
+	// Controls are the service-side positive controls. The service fills them and discards whatever the cell prints.
+	Controls []productNetworkCheck `json:"controls,omitempty"`
 }
+
+const (
+	productNetworkIPv4Destination = "192.0.2.1:443"
+	productNetworkIPv6Destination = "[2001:db8::1]:443"
+)
+
+// productNetworkRoutable asks, from the service context, whether the kernel has a route to a destination.
+type productNetworkRoutable func(ctx context.Context, network, address string) error
 
 // productNetworkCellRun runs one fixed program through the signed image's Node in the base cell and returns its stdout.
 type productNetworkCellRun func(ctx context.Context, program string) ([]byte, error)
@@ -194,23 +208,47 @@ var productDenyAllNetworkErrnos = map[string][]string{
 
 // productNetworkProbe proves the cell's network policy from inside the cell, against an outside control. The control
 // dials the host listener first, so a dead network cannot pass as containment. Only deny-all exists in this step.
-func productNetworkProbe(ctx context.Context, policy, listener string, run productNetworkCellRun, control productNetworkControl) (productNetworkReport, error) {
+func productNetworkProbe(ctx context.Context, policy, listener string, run productNetworkCellRun, control productNetworkControl,
+	routable productNetworkRoutable) (productNetworkReport, error) {
 	if policy != productNetworkPolicyDenyAll {
 		return productNetworkReport{}, fmt.Errorf("the network probe has no expectation for policy %q", policy)
 	}
-	if err := control(ctx, listener); err != nil {
-		return productNetworkReport{}, fmt.Errorf("positive control: the host listener %s is not reachable from the service context: %w", listener, err)
+	controls, err := productNetworkControls(ctx, listener, control, routable)
+	if err != nil {
+		return productNetworkReport{Policy: policy, Controls: controls}, err
 	}
 	output, err := run(ctx, productNetworkProgram(listener))
 	if err != nil {
-		return productNetworkReport{}, fmt.Errorf("the cell did not run the network probe: %w", err)
+		return productNetworkReport{Policy: policy, Controls: controls}, fmt.Errorf("the cell did not run the network probe: %w", err)
 	}
 	var report productNetworkReport
 	if err := json.Unmarshal(output, &report); err != nil {
-		return productNetworkReport{}, fmt.Errorf("the network probe printed no structured result: %w", err)
+		return productNetworkReport{Policy: policy, Controls: controls}, fmt.Errorf("the network probe printed no structured result: %w", err)
 	}
-	report.Policy = policy
+	report.Policy, report.Controls = policy, controls
 	return report, verifyProductDenyAllNetwork(report)
+}
+
+// productNetworkControls are the positive controls, taken from the service context outside the cell. A documentation-range
+// destination is never reachable, so it cannot be a TCP control. The control is that the service host has a route to each
+// numeric destination, which the cell lacks, and that the host listener accepts a connection. A host without the listener
+// or an IPv4 route cannot tell containment from a dead network, so the probe refuses. A host without an IPv6 route is
+// recorded and not refused. No external endpoint is configured, and the record says so.
+func productNetworkControls(ctx context.Context, listener string, control productNetworkControl, routable productNetworkRoutable) ([]productNetworkCheck, error) {
+	controls := []productNetworkCheck{{ID: "external-endpoint", Outcome: "none-configured"}}
+	if err := control(ctx, listener); err != nil {
+		return controls, fmt.Errorf("positive control: the host listener %s is not reachable from the service context: %w", listener, err)
+	}
+	controls = append(controls, productNetworkCheck{ID: "host-listener", Destination: listener, Outcome: "reachable"})
+	if err := routable(ctx, "udp4", productNetworkIPv4Destination); err != nil {
+		return controls, fmt.Errorf("positive control: the service host has no route to %s, so the cell's denial cannot be told from a dead network: %w", productNetworkIPv4Destination, err)
+	}
+	controls = append(controls, productNetworkCheck{ID: "ipv4-route", Destination: productNetworkIPv4Destination, Outcome: "routable"})
+	v6 := productNetworkCheck{ID: "ipv6-route", Destination: productNetworkIPv6Destination, Outcome: "routable"}
+	if err := routable(ctx, "udp6", productNetworkIPv6Destination); err != nil {
+		v6.Outcome, v6.Errno = "unroutable", productErrnoName(err)
+	}
+	return append(controls, v6), nil
 }
 
 func verifyProductDenyAllNetwork(report productNetworkReport) error {

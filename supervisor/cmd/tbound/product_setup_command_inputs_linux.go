@@ -20,7 +20,7 @@ func validateProductSetupCommandInputs(in productsetup.HostInputs) error {
 	// Even a bundle-less candidate is checked, so allowing Bash cannot bypass the static verifier.
 	if in.CommandBundlePath == "" {
 		for _, id := range slices.Sorted(maps.Keys(in.PolicyDigests)) {
-			if _, _, err := loadProductGatePolicy(id, in.PolicyDigests[id], in.GatePolicyPaths[id], in.Owners, false); err != nil {
+			if _, _, err := loadProductGatePolicy(id, in.PolicyDigests[id], in.GatePolicyPaths[id], in.Owners, productBashRefused); err != nil {
 				return fmt.Errorf("input policy %s: %w", id, err)
 			}
 		}

@@ -279,8 +279,9 @@ func TestProductQualificationRefusesEachFailingPhase(t *testing.T) {
 			h.exitProcess()
 			kinds := ownerJournalKinds(t, filepath.Join(qualificationRunDirs(t, env.StateRoot)[0], productCommandOwnerJournal))
 			entries, _ := os.ReadDir(h.cells)
-			if tc.phase == productPhaseSettlement {
-				// An unproved cleanup keeps its owner: the scope stays recorded as opened for the next start to drain.
+			// A command the cell never settled, and a scope that cannot be drained, keep their owner: the scope stays recorded as
+			// opened for the next start to drain.
+			if tc.phase == productPhaseSettlement || tc.phase == productPhaseProofAck {
 				if len(entries) != 1 || !slices.Equal(kinds, []string{"product_command_scope_opened"}) {
 					t.Fatalf("an undrained scope lost its owner: cells %v journal %v", entries, kinds)
 				}
