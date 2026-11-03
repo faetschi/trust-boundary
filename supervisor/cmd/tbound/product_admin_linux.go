@@ -24,6 +24,7 @@ import (
 const productAdminUsage = `Usage (run setup, update, rollback and uninstall as root on the product host):
   tbound product registration keygen|init|sign|verify ...     (offline; see: tbound product registration help)
   tbound product calibration sign|measure ...                 (host input; see: tbound product calibration help)
+  tbound product image template-digest|provision ...           (offline; see: tbound product image help)
   tbound product setup --config FILE [--root DIR] [--dry-run] [--replace] [--binary PATH --manifest FILE --signature FILE]
   tbound product update --binary NEW --manifest FILE --signature FILE [--root DIR] [--dry-run]
   tbound product rollback [--root DIR] [--dry-run]
@@ -81,6 +82,8 @@ func runProductAdmin(args []string, out, stderr io.Writer) error {
 		return runProductRegistration(args[1:], out, stderr)
 	case "calibration":
 		return runProductCalibration(args[1:], out, stderr)
+	case "image":
+		return runProductImage(args[1:], out, stderr)
 	case "setup", "update", "rollback", "uninstall", "doctor", "turns", "self-test":
 	default:
 		return usage()
