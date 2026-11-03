@@ -113,10 +113,10 @@ func ReconcileProductD09CommandResidue(ctx context.Context, host *D09ProductComm
 	if err != nil {
 		return err
 	}
-	return reconcileProductD09CommandResidue(ctx, config.PodmanPath, productD09CommandEnvironment(), owner)
+	return reconcileProductD09CommandResidue(ctx, config.PodmanPath, productD09CommandEnvironment(), owner, processMountNamespaceReferences)
 }
 
-func reconcileProductD09CommandResidue(ctx context.Context, podman string, environment []string, owner D09ProductCommandOwnership) error {
+func reconcileProductD09CommandResidue(ctx context.Context, podman string, environment []string, owner D09ProductCommandOwnership, mountReferences func(context.Context, uint64) (bool, error)) error {
 	if ctx == nil || !strings.HasPrefix(owner.ContainerName, d09CellNamePrefix+"cmd-") || !validIdentity(owner.ContainerName) ||
 		!validIdentity(owner.LeaseID) || !validIdentity(owner.ViewID) || owner.ViewInode == 0 {
 		return ErrUnknownSettlement
@@ -147,7 +147,7 @@ func reconcileProductD09CommandResidue(ctx context.Context, podman string, envir
 	if owner.MountNSInode == 0 {
 		return ErrUnknownSettlement
 	}
-	if held, err := processMountNamespaceReferences(ctx, owner.MountNSInode); err != nil || held {
+	if held, err := mountReferences(ctx, owner.MountNSInode); err != nil || held {
 		return errors.Join(ErrUnknownSettlement, err)
 	}
 	return nil

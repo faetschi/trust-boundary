@@ -95,7 +95,16 @@ func TestProductD09ResidueRequiresRemovalAndNamespaceProof(t *testing.T) {
 				t.Fatal(err)
 			}
 			owner := D09ProductCommandOwnership{ContainerName: name, LeaseID: "lease", ViewID: "view", ViewInode: 1, MountNSInode: tc.inode}
-			err := reconcileProductD09CommandResidue(context.Background(), podman, productD09CommandEnvironment(), owner)
+			scan := processMountNamespaceReferences
+			if !tc.wantError {
+				scan = func(_ context.Context, inode uint64) (bool, error) {
+					if inode != 1 {
+						t.Fatalf("lost namespace identity: %d", inode)
+					}
+					return false, nil
+				}
+			}
+			err := reconcileProductD09CommandResidue(context.Background(), podman, productD09CommandEnvironment(), owner, scan)
 			if (err != nil) != tc.wantError {
 				t.Fatalf("cleanup error=%v, wantError=%v", err, tc.wantError)
 			}
