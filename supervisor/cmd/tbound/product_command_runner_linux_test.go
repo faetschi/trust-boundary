@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"tbound/supervisor/internal/audit"
+	"tbound/supervisor/internal/piruntime"
 	"tbound/supervisor/internal/productsession"
 	"tbound/supervisor/internal/providerbridge"
 	"tbound/supervisor/internal/sessionrepo"
@@ -183,6 +184,54 @@ func TestProductD09ScopeOwnerJournal(t *testing.T) {
 	if err := persistProductCommandScopeOwner(journal, owner); err == nil {
 		t.Fatal("accepted scope outside product cells")
 	}
+}
+
+// A scope allocation that fails after its owner journal exists leaves an empty journal and no child:
+// startup proceeds. A child left behind without an owner record still blocks it.
+func TestProductD09EmptyScopeOwnerJournalDoesNotBlockStartup(t *testing.T) {
+	retained := privateGovernedTestRoot(t)
+	createEmptyProductScopeOwnerJournal(t, retained, "turn-allocation-failed")
+	if err := reconcileProductCommandScopesUnder(context.Background(), openProductCellsRoot(t, t.TempDir()), retained); err != nil {
+		t.Fatalf("empty owner journal blocked startup: %v", err)
+	}
+}
+
+func TestProductD09EmptyScopeOwnerJournalStillBlocksAnUnrecordedChild(t *testing.T) {
+	retained := privateGovernedTestRoot(t)
+	createEmptyProductScopeOwnerJournal(t, retained, "turn-allocation-failed")
+	cells := t.TempDir()
+	if err := os.Mkdir(filepath.Join(cells, "turn-unrecorded"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	err := reconcileProductCommandScopesUnder(context.Background(), openProductCellsRoot(t, cells), retained)
+	if !errors.Is(err, piruntime.ErrUnknownSettlement) || !strings.Contains(err.Error(), "turn-unrecorded") {
+		t.Fatalf("unrecorded child did not block startup: %v", err)
+	}
+}
+
+func createEmptyProductScopeOwnerJournal(t *testing.T, retained, turn string) {
+	t.Helper()
+	dir := filepath.Join(retained, turn)
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	journal, err := audit.Open(filepath.Join(dir, productCommandOwnerJournal))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := journal.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func openProductCellsRoot(t *testing.T, dir string) *os.File {
+	t.Helper()
+	root, err := os.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = root.Close() })
+	return root
 }
 
 type unqualifiedProductRunner struct{ *productD09TurnRunner }
