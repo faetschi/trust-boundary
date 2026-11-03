@@ -178,7 +178,8 @@ func productImageStopped(env productsetup.Env) error {
 		}
 	}
 	for key, want := range map[string]string{"NeedDaemonReload": "no", "FragmentPath": productsetup.UnitPath, "DropInPaths": "", "EnvironmentFiles": "", "User": productsetup.ServiceUser, "Group": productsetup.ServiceGroup} {
-		if got, ok := properties[key]; !ok || got != want {
+		// systemctl show leaves out some empty list properties, such as EnvironmentFiles; absent then means empty.
+		if got, ok := properties[key]; (!ok && want != "") || got != want {
 			return fmt.Errorf("effective product unit differs at %s", key)
 		}
 	}
