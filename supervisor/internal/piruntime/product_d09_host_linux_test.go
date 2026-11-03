@@ -715,9 +715,12 @@ func TestProductServiceAccountAdmitsSocketAccessGroupMembers(t *testing.T) {
 		t.Fatalf("got %d %d %q %v, want the service account with socket-access members admitted", uid, gid, shell, ok)
 	}
 	for name, file := range map[string]string{
-		"wrong group id":  "tbound-product:x:987:tboundadmin\n",
-		"no group":        "root:x:0:\n",
-		"duplicate group": "tbound-product:x:988:\ntbound-product:x:988:\n",
+		"wrong group id":    "tbound-product:x:987:tboundadmin\n",
+		"no group":          "root:x:0:\n",
+		"duplicate group":   "tbound-product:x:988:\ntbound-product:x:988:\n",
+		"short named group": string(group) + "tbound-product:x:0\n",
+		"long named group":  string(group) + "tbound-product:x:988::extra\n",
+		"name-only group":   string(group) + "tbound-product\n",
 	} {
 		if _, _, _, ok := LookupProductServiceAccount(passwd, []byte(file)); ok {
 			t.Errorf("%s: admitted", name)
@@ -725,6 +728,15 @@ func TestProductServiceAccountAdmitsSocketAccessGroupMembers(t *testing.T) {
 	}
 	if _, _, _, ok := LookupProductServiceAccount(append(passwd, []byte("tbound-product:x:0:0::/root:/bin/bash\n")...), group); ok {
 		t.Error("admitted a second passwd entry for the service account")
+	}
+	for name, file := range map[string]string{
+		"short named passwd": string(passwd) + "tbound-product:x:0:0\n",
+		"name-only passwd":   string(passwd) + "tbound-product\n",
+		"long named passwd":  "tbound-product:x:999:988::/var/lib/tbound-product:/usr/sbin/nologin:extra\n",
+	} {
+		if _, _, _, ok := LookupProductServiceAccount([]byte(file), group); ok {
+			t.Errorf("%s: admitted", name)
+		}
 	}
 	// The thesis lookup keeps refusing extra members.
 	if _, _, _, ok := lookupLocalServiceAccount(passwd, group, "tbound-product", "tbound-product"); ok {

@@ -177,6 +177,46 @@ func TestProductImageProvisionRejectsEffectiveUnitOverrides(t *testing.T) {
 	}
 }
 
+func TestProductImageProvisionReplacesSameManifestWithStaleSignatures(t *testing.T) {
+	for _, fault := range []string{"missing signature", "wrong signing key"} {
+		t.Run(fault, func(t *testing.T) {
+			f := newProductImageFixture(t)
+			signature := []byte("signature under the pinned cosign key")
+			signatureName := "blobs/sha256/" + strings.TrimPrefix(piruntime.DigestBytes(signature), "sha256:")
+			f.write("/incoming/signed/"+signatureName, signature)
+			exec := f.env.Exec
+			f.env.Exec = func(name string, args ...string) ([]byte, error) {
+				for i, arg := range args {
+					if arg == "--local-image" && i+1 < len(args) {
+						raw, err := os.ReadFile(filepath.Join(args[i+1], signatureName))
+						if err != nil || !bytes.Equal(raw, signature) {
+							return nil, errors.New("layout does not verify under the pinned cosign key")
+						}
+					}
+				}
+				return exec(name, args...)
+			}
+			if err := productImageProvision(f.env, f.archive, f.layout, &bytes.Buffer{}); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Remove(f.path(productsetup.CommandOCILayoutPath + "/" + signatureName)); err != nil {
+				t.Fatal(err)
+			}
+			if fault == "wrong signing key" {
+				stale := []byte("signature under a different cosign key")
+				f.write(productsetup.CommandOCILayoutPath+"/blobs/sha256/"+strings.TrimPrefix(piruntime.DigestBytes(stale), "sha256:"), stale)
+			}
+			if err := productImageProvision(f.env, f.archive, f.layout, &bytes.Buffer{}); err != nil {
+				t.Fatalf("correct source bundle must repair stale installed signatures: %v", err)
+			}
+			raw, err := os.ReadFile(f.path(productsetup.CommandOCILayoutPath + "/" + signatureName))
+			if err != nil || !bytes.Equal(raw, signature) {
+				t.Fatalf("successful provision kept an unverifiable same-manifest layout: %q, %v", raw, err)
+			}
+		})
+	}
+}
+
 func TestProductImageReplacementRetainsSignedHistory(t *testing.T) {
 	f := newProductImageFixture(t)
 	if err := productImageProvision(f.env, f.archive, f.layout, &bytes.Buffer{}); err != nil {

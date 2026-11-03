@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -270,6 +271,49 @@ func TestCommandBundleInstallsOnlyItsFivePublicArtifactsAtFixedPaths(t *testing.
 	for _, s := range rep.Steps {
 		if _, ok := bundleArtifacts[s.Path]; ok && s.Status != "unchanged" {
 			t.Fatalf("a rerun reports %s %s, want unchanged", s.Status, s.Path)
+		}
+	}
+}
+
+func TestCommandBundleReplacementRefusesKeyRotationAcrossRetainedHistory(t *testing.T) {
+	for _, dryRun := range []bool{false, true} {
+		for _, changeRegistration := range []bool{false, true} {
+			t.Run(fmt.Sprintf("dry=%v/changed-registration=%v", dryRun, changeRegistration), func(t *testing.T) {
+				f := newFixture(t)
+				f.bundleRegistration()
+				f.cfg.CommandBundle = f.writeBundleAt(filepath.Join(f.inputs, "bundle"))
+				f.env.ValidateCommandInputs = (&commandInputSpy{}).seam(f)
+				if _, err := f.setup(); err != nil {
+					t.Fatal(err)
+				}
+				history := f.path(PodmanConfigDir + "/hosts/old-profile")
+				if err := os.MkdirAll(history, 0755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(history, "registration.pub"), []byte("pub\n"), 0644); err != nil {
+					t.Fatal(err)
+				}
+				before := treeState(t, f.root)
+				if err := os.WriteFile(f.cfg.RegistrationPublicKey, []byte("replacement pub\n"), 0600); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(f.cfg.RegistrationSignature, []byte("replacement sig\n"), 0600); err != nil {
+					t.Fatal(err)
+				}
+				if changeRegistration {
+					if err := os.WriteFile(f.cfg.Registration, []byte("projects: alpha,beta\nrevision: 2\n"), 0600); err != nil {
+						t.Fatal(err)
+					}
+				}
+				f.env.Replace, f.env.DryRun = true, dryRun
+				rep, err := f.setup()
+				if !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "signing-key rotation") || !strings.Contains(err.Error(), "nothing was changed") {
+					t.Fatalf("retained history must refuse key rotation before setup: %v", err)
+				}
+				if after := treeState(t, f.root); after != before || len(rep.Commands) != 0 {
+					t.Fatalf("refused replacement changed the installation or ran commands: %v", rep.Commands)
+				}
+			})
 		}
 	}
 }
