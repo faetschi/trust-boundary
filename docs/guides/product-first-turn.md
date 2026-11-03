@@ -10,6 +10,14 @@ project files through the gate. It has no contained runner, so a policy that
 allows `bash` is refused and the model's bash calls are denied. Nothing here is
 thesis evidence.
 
+Offline image administration is available with `tbound product image template-digest --template FILE`
+and `sudo tbound product image provision --archive FILE --signed-layout DIR [--dry-run]`.
+The signed command bundle is installed with setup's optional `command_bundle` field. Follow the
+[offline image and bootstrap contract](../product-contracts.md#offline-command-image-and-public-command-bundle):
+deny-only setup, measure, owner signs offline, install public artifacts, `setup --replace`, offline
+provision, then start. This guide continues to use a deny-only policy: Bash startup qualification
+and a real product Bash turn remain unverified and are not enabled by provisioning.
+
 ## Before you start
 
 You need:
