@@ -36,7 +36,7 @@ func TestProductSetupValidatesSignedBundleBeforeAccountOrImage(t *testing.T) {
 			t.Fatalf("fresh static setup (dry=%v): %v", dry, err)
 		}
 		for _, call := range rep.Commands {
-			if strings.Contains(call, "podman") || strings.Contains(call, "systemctl start") {
+			if strings.HasPrefix(call, "podman ") || strings.HasPrefix(call, "systemd-run ") || strings.Contains(call, "systemctl start") {
 				t.Fatalf("static setup ran %s", call)
 			}
 		}
