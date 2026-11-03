@@ -213,8 +213,9 @@ func TestProductD09RestartFindsPreReceiptAndQualificationOrphans(t *testing.T) {
 			t.Fatal("an unproved orphan scope opened the socket")
 		}
 	})
-	t.Run("an unrecorded command cell blocks startup", func(t *testing.T) {
-		f := newProductHostFixture(t, false)
+	t.Run("an unrecorded command cell blocks a bash-enabled startup", func(t *testing.T) {
+		// A deny-only start without any journal never opens the cells root: it has no verified host to do so.
+		f := newProductHostFixture(t, true)
 		cells := t.TempDir()
 		if err := os.Mkdir(filepath.Join(cells, "turn-stray"), 0o700); err != nil {
 			t.Fatal(err)
