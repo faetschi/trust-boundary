@@ -26,6 +26,14 @@ func TestProductSetupInstallsTheConfigsAndEnvironmentTheLoaderPins(t *testing.T)
 			unitEnvironment = append(unitEnvironment, strings.Fields(value)...)
 		}
 	}
+	properties := map[string]string{
+		"LoadState": "loaded", "NeedDaemonReload": "no", "FragmentPath": productsetup.UnitPath,
+		"DropInPaths": "", "Environment": strings.Join(unitEnvironment, " "), "EnvironmentFiles": "",
+		"User": productsetup.ServiceUser, "Group": productsetup.ServiceGroup,
+	}
+	if err := productD09ValidateEffectiveUnit(properties); err != nil {
+		t.Fatalf("loader refuses setup's effective environment: %v", err)
+	}
 	if want := productD09CommandEnvironment(); !slices.Equal(unitEnvironment, want) {
 		t.Fatalf("the unit gives the service %v, but the product Podman children inherit %v", unitEnvironment, want)
 	}

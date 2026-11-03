@@ -867,11 +867,38 @@ func TestProductD09ServiceShellIsSetupNologin(t *testing.T) {
 func TestProductD09EffectiveUnitRefusesOverridesAndPendingReload(t *testing.T) {
 	properties := map[string]string{
 		"LoadState": "loaded", "NeedDaemonReload": "no", "FragmentPath": productsetup.UnitPath,
-		"DropInPaths": "", "Environment": "", "EnvironmentFiles": "",
+		"DropInPaths": "", "Environment": strings.Join(productD09PinnedEnvironment(), " "), "EnvironmentFiles": "",
 		"User": productsetup.ServiceUser, "Group": productsetup.ServiceGroup,
 	}
 	if err := productD09ValidateEffectiveUnit(properties); err != nil {
 		t.Fatalf("installed effective unit refused: %v", err)
+	}
+	for name, environment := range map[string]string{
+		"empty":     "",
+		"missing":   strings.Join(productD09PinnedEnvironment()[1:], " "),
+		"extra":     properties["Environment"] + " USER=attacker",
+		"duplicate": properties["Environment"] + " LANG=C",
+		"changed":   strings.Replace(properties["Environment"], "LANG=C", "LANG=C.UTF-8", 1),
+	} {
+		t.Run("environment/"+name, func(t *testing.T) {
+			changed := make(map[string]string, len(properties))
+			for key, value := range properties {
+				changed[key] = value
+			}
+			changed["Environment"] = environment
+			if err := productD09ValidateEffectiveUnit(changed); !errors.Is(err, ErrProductD09HostRefused) {
+				t.Fatalf("effective environment drift accepted: %v", err)
+			}
+		})
+	}
+	// systemd's property ordering does not grant authority.
+	environment := productD09PinnedEnvironment()
+	for i, j := 0, len(environment)-1; i < j; i, j = i+1, j-1 {
+		environment[i], environment[j] = environment[j], environment[i]
+	}
+	properties["Environment"] = strings.Join(environment, " ")
+	if err := productD09ValidateEffectiveUnit(properties); err != nil {
+		t.Fatalf("reordered fixed assignments refused: %v", err)
 	}
 	for property := range properties {
 		t.Run(property, func(t *testing.T) {
