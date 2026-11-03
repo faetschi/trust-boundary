@@ -706,6 +706,32 @@ func (i productD09TestInfo) ModTime() time.Time { return time.Time{} }
 func (i productD09TestInfo) IsDir() bool        { return i.mode.IsDir() }
 func (i productD09TestInfo) Sys() any           { return &syscall.Stat_t{Uid: i.uid, Gid: i.gid} }
 
+func TestProductServiceAccountAdmitsSocketAccessGroupMembers(t *testing.T) {
+	passwd := []byte("root:x:0:0:root:/root:/bin/bash\ntbound-product:x:999:988::/var/lib/tbound-product:/usr/sbin/nologin\ntboundadmin:x:1000:1000::/home/tboundadmin:/bin/bash\n")
+	// Clients join the service group for socket access; that grants no file access to the 0700 service state.
+	group := []byte("root:x:0:\ntbound-product:x:988:tboundadmin,tbound-product\n")
+	uid, gid, shell, ok := lookupProductServiceAccount(passwd, group)
+	if !ok || uid != 999 || gid != 988 || shell != "/usr/sbin/nologin" {
+		t.Fatalf("got %d %d %q %v, want the service account with socket-access members admitted", uid, gid, shell, ok)
+	}
+	for name, file := range map[string]string{
+		"wrong group id":  "tbound-product:x:987:tboundadmin\n",
+		"no group":        "root:x:0:\n",
+		"duplicate group": "tbound-product:x:988:\ntbound-product:x:988:\n",
+	} {
+		if _, _, _, ok := lookupProductServiceAccount(passwd, []byte(file)); ok {
+			t.Errorf("%s: admitted", name)
+		}
+	}
+	if _, _, _, ok := lookupProductServiceAccount(append(passwd, []byte("tbound-product:x:0:0::/root:/bin/bash\n")...), group); ok {
+		t.Error("admitted a second passwd entry for the service account")
+	}
+	// The thesis lookup keeps refusing extra members.
+	if _, _, _, ok := lookupLocalServiceAccount(passwd, group, "tbound-product", "tbound-product"); ok {
+		t.Error("thesis service-account lookup admitted extra group members")
+	}
+}
+
 func TestThesisD09DecoderRefusesEvenEmptyProductMember(t *testing.T) {
 	template := measuredRouteProbeTemplate(t)
 	raw, err := json.Marshal(template)
