@@ -35,7 +35,14 @@ func validateProductCommandInputs(cfg productServiceConfig, registration product
 	refuse := func(err error) (piruntime.HostProfile, piruntime.D09CellTemplate, error) {
 		return piruntime.HostProfile{}, piruntime.D09CellTemplate{}, fmt.Errorf("%w: static product command inputs: %v", piruntime.ErrProductD09HostRefused, err)
 	}
-	if err := cfg.validate(extraRoots); err != nil {
+	// The live root is not a test override: admitting / would permit every non-thesis host path.
+	var testRoots []string
+	for _, root := range extraRoots {
+		if root != "" && root != "/" {
+			testRoots = append(testRoots, root)
+		}
+	}
+	if err := cfg.validate(testRoots); err != nil {
 		return refuse(err)
 	}
 	if len(in.PublicKey) > 1024 || len(in.ProfileSignature) > 1024 || len(in.RegistrationSignature) > 1024 || len(in.Template) > 1<<20 || len(in.Unit) > productServiceMaxConfigBytes {

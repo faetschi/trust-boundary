@@ -61,7 +61,7 @@ func TestProductCommandHostStaticSignedInputs(t *testing.T) {
 	if template.ProductRegistrationDigest != registration.Digest || profile.ContainmentProfileDigest == "" {
 		t.Fatal("static bindings missing")
 	}
-	for _, name := range []string{"wrong key", "profile signature", "registration signature", "offline verifier binding", "seccomp bytes", "cosign key bytes", "unit override", "config identity", "proposed registration", "thesis state", "relative project", "duplicate projects", "oversized key", "oversized profile signature", "oversized registration signature", "oversized unit"} {
+	for _, name := range []string{"wrong key", "profile signature", "registration signature", "offline verifier binding", "seccomp bytes", "cosign key bytes", "unit override", "config identity", "proposed registration", "thesis state", "outside product state", "relative project", "duplicate projects", "oversized key", "oversized profile signature", "oversized registration signature", "oversized unit"} {
 		t.Run(name, func(t *testing.T) {
 			changed, candidate, config := inputs, registration, cfg
 			switch name {
@@ -80,6 +80,8 @@ func TestProductCommandHostStaticSignedInputs(t *testing.T) {
 				changed.Unit = append(append([]byte(nil), inputs.Unit...), []byte("\n#"+strings.Repeat("x", productServiceMaxConfigBytes))...)
 			case "thesis state":
 				config.StateRoot = "/var/lib/tbound"
+			case "outside product state":
+				config.StateRoot = "/var/lib/unrelated"
 			case "relative project":
 				config.Projects = map[string]string{registration.Projects[0].ProjectID: "relative"}
 			case "duplicate projects":
@@ -107,7 +109,7 @@ func TestProductCommandHostStaticSignedInputs(t *testing.T) {
 			case "proposed registration":
 				candidate.RegistrationID += "-other"
 			}
-			if _, _, err := validateProductCommandInputs(config, candidate, changed, filepath.Dir(filepath.Dir(cfg.RegistrationPath))); err == nil {
+			if _, _, err := validateProductCommandInputs(config, candidate, changed, filepath.Dir(filepath.Dir(cfg.RegistrationPath)), "/"); err == nil {
 				t.Fatal("invalid prospective inputs accepted")
 			}
 		})
