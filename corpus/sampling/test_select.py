@@ -127,9 +127,16 @@ VECTOR_DECISIONS["inj.a.1"] = (False, "meaning not preserved")
 VECTOR_DECISIONS["tool.e.2"] = (False, "not runnable in the cell")
 VECTOR_DECISIONS["inj.c.3"] = (False, "overlaps a pilot scenario")
 
-# Pinned by the reviewed implementation; see test_fixed_vector_output_is_pinned.
-PINNED_VECTOR_SHA256 = "0" * 64
-PINNED_VECTOR_MEMBERS = {}
+# Pinned after an independent hashlib-only reference agreed with every membership list. The digest
+# covers this script's own bytes (script_sha256), so any edit to select.py requires re-pinning.
+PINNED_VECTOR_SHA256 = "f915af895966850e507578f865458217556bc27ea896fe233a02e7f10fc6d13c"
+PINNED_VECTOR_MEMBERS = {
+    "main": {"TM-A": ["inj.a.3", "inj.b.3", "inj.b.1"], "TM-B": ["tool.e.3", "tool.f.3", "tool.d.2"]},
+    "cold": {"TM-A": ["inj.b.1"], "TM-B": ["tool.e.3"]},
+    "variance": {"TM-A": ["inj.b.3"], "TM-B": ["tool.f.3"]},
+    "topup": {"inj.c": "inj.c.1"},
+    "untested": [],
+}
 
 
 def run_vector(decision_map=None, rows=None, total=VECTOR_TOTAL, variance=VECTOR_VARIANCE):
@@ -477,6 +484,18 @@ class DrawTests(unittest.TestCase):
                     break
             self.assertEqual(out["memberships"]["main"][stratum], expected)
 
+    def test_population_range_runs_from_passes_observed_to_not_yet_failed(self):
+        status, out = run_vector()
+        self.assertEqual(status, "complete")
+        for stratum in ("TM-A", "TM-B"):
+            capped = [r["case_id"] for r in out["examined"]
+                      if r["purpose"] == "cap" and r["decision"] == "kept" and STRATUM_OF_ATTACK[r["group"]] == stratum]
+            bounds = out["population"][stratum]
+            self.assertEqual(bounds["capped"], len(capped))
+            self.assertEqual(bounds["low"], sum(VECTOR_DECISIONS[c][0] for c in capped))
+            self.assertEqual(bounds["high"], len(capped) - sum(not VECTOR_DECISIONS[c][0] for c in capped))
+            self.assertGreaterEqual(bounds["low"], out["cap"]["n"][stratum])
+
     def test_cold_and_variance_are_disjoint_subsets_of_main(self):
         status, out = run_vector()
         self.assertEqual(status, "complete")
@@ -499,12 +518,13 @@ class DrawTests(unittest.TestCase):
         assert_selection_invariants(self, out, VECTOR_DECISIONS)
 
     def test_attack_with_only_failing_cases_is_reported_untested(self):
+        # tool.f fails everywhere; TM-B keeps enough passing cases for its main sample.
         decision_map = dict(VECTOR_DECISIONS)
         for i in (1, 2, 3):
-            decision_map[f"inj.b.{i}"] = (False, "no passing variant")
+            decision_map[f"tool.f.{i}"] = (False, "no passing variant")
         status, out = run_vector(decision_map)
         self.assertEqual(status, "complete")
-        self.assertIn("inj.b", out["memberships"]["untested"])
+        self.assertIn("tool.f", out["memberships"]["untested"])
         assert_selection_invariants(self, out, decision_map)
 
     def test_replacing_a_main_case_recomputes_top_up_from_the_new_main_sample(self):
@@ -608,7 +628,7 @@ class CertificationTests(unittest.TestCase):
     def test_small_pool_is_certified(self):
         result = sel.certify((1000, 1000), (500, 500), 199, 100)
         self.assertTrue(result["certified"])
-        self.assertEqual(result["K0"], 15)
+        self.assertEqual(result["worst_case"]["K0"], 15)
         self.assertEqual(Fraction(result["max_P0_fraction"]), self.brute_worst(1000, 500, 199, 100))
 
     def test_range_reports_the_worst_case_over_every_size_pair(self):
