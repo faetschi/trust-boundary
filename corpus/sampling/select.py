@@ -159,16 +159,17 @@ def parse_ledger(data):
         if case_id in seen:
             raise Refused(f"{where}: duplicate case_id {case_id}")
         seen.add(case_id)
+        scenario_id = attack_id
+        # D47: delivery class does not separate scenarios, so one scenario may sit in both strata;
+        # cap and top-up groups are therefore the scenario qualified by stratum.
+        attack_id = f"{stratum}:{scenario_id}"
         attack_of[case_id] = attack_id
         if flag:
             excluded.append(case_id)
         else:
             rows.append({"case_id": case_id, "stratum": stratum, "attack_id": attack_id,
-                         "mechanism_id": mechanism_id})
-    owner = {}
-    for item in rows:
-        if owner.setdefault(item["attack_id"], item["stratum"]) != item["stratum"]:
-            raise Refused(f"attack_id {item['attack_id']} appears in both strata")
+                         "scenario_id": scenario_id, "mechanism_id": mechanism_id})
+    owner = {item["attack_id"]: item["stratum"] for item in rows}
     rows.sort(key=lambda item: item["case_id"].encode("ascii"))
     return {"rows": rows, "excluded": sorted(excluded), "row_count": len(lines), "attacks": owner,
             "attack_of": attack_of}

@@ -140,8 +140,10 @@ VECTOR_ROWS = [
 ]
 VECTOR_TOTAL = 6
 VECTOR_VARIANCE = 2
-ATTACK_OF = {r["case_id"]: r["attack_id"] for r in VECTOR_ROWS}
-STRATUM_OF_ATTACK = {attack: stratum for stratum, attack in VECTOR_ATTACKS}
+# D47: the cap and top-up group is "<stratum>:<attack_id>", so the expected attack names are qualified.
+VECTOR_GROUPS = [f"{stratum}:{attack}" for stratum, attack in VECTOR_ATTACKS]
+ATTACK_OF = {r["case_id"]: f"{r['stratum']}:{r['attack_id']}" for r in VECTOR_ROWS}
+STRATUM_OF_ATTACK = {f"{stratum}:{attack}": stratum for stratum, attack in VECTOR_ATTACKS}
 VECTOR_DECISIONS = {r["case_id"]: (True, "meaning preserved") for r in VECTOR_ROWS}
 VECTOR_DECISIONS["inj.a.1"] = (False, "meaning not preserved")
 VECTOR_DECISIONS["tool.e.2"] = (False, "not runnable in the cell")
@@ -149,15 +151,16 @@ VECTOR_DECISIONS["inj.c.3"] = (False, "overlaps a pilot scenario")
 
 # Pinned after an independent hashlib-only reference agreed with every membership list. Re-pinned for the
 # pilot change: the output gained the commitment kind fields, `development` and `attacks`; the memberships
-# did not change. The digest covers this script's own bytes (script_sha256), so any edit to select.py
+# did not change. Re-pinned for D47: the group is "<stratum>:<attack_id>", which changes the cap and top-up
+# keys, so the draw memberships changed; the pilot memberships did not (only script_sha256 moved). The digest covers this script's own bytes (script_sha256), so any edit to select.py
 # requires re-pinning both digests.
-PINNED_VECTOR_SHA256 = "5e776a2466facf44895689ae172765d0a408d94620c1b4cf5f398c4561d2e5f5"
-PINNED_PILOT_SHA256 = "460559df3b768e2ff0dcc133234f41c73a62c5f9ed4ad958ad2cadc070d720b2"
+PINNED_VECTOR_SHA256 = "1f042c0ee6ef1d1f8ec5d7e0bc30c955d24019592b81874a1db4f857d2889b05"
+PINNED_PILOT_SHA256 = "0515c4da36418c53f0248c27d4225af0e1208b61c2e93c9f31ad43c8aa186575"
 PINNED_VECTOR_MEMBERS = {
-    "main": {"TM-A": ["inj.a.3", "inj.b.3", "inj.b.1"], "TM-B": ["tool.e.3", "tool.f.3", "tool.d.2"]},
-    "cold": {"TM-A": ["inj.b.1"], "TM-B": ["tool.e.3"]},
-    "variance": {"TM-A": ["inj.b.3"], "TM-B": ["tool.f.3"]},
-    "topup": {"inj.c": "inj.c.1"},
+    "main": {"TM-A": ["inj.a.3", "inj.b.1", "inj.c.1"], "TM-B": ["tool.e.3", "tool.d.1", "tool.e.1"]},
+    "cold": {"TM-A": ["inj.b.1"], "TM-B": ["tool.d.1"]},
+    "variance": {"TM-A": ["inj.a.3"], "TM-B": ["tool.e.1"]},
+    "topup": {"TM-B:tool.f": "tool.f.1"},
     "untested": [],
 }
 
@@ -206,7 +209,7 @@ def assert_selection_invariants(tc, out, decision_map):
     tc.assertFalse(set(topup.values()) & set(main), "top-up must be disjoint from the main sample")
     main_attacks = {ATTACK_OF[c] for c in main}
     untested = set(members["untested"])
-    for _, attack in VECTOR_ATTACKS:
+    for attack in VECTOR_GROUPS:
         if attack in main_attacks:
             tc.assertNotIn(attack, topup)
             tc.assertNotIn(attack, untested)
@@ -266,9 +269,17 @@ class IdentifierAndLedgerTests(unittest.TestCase):
         with self.assertRaises(sel.Refused):
             sel.parse_ledger(jsonl([row("c1", "TM-A", "a1", excluded="true")]))
 
-    def test_rejects_one_attack_spanning_both_strata(self):
-        with self.assertRaises(sel.Refused):
-            sel.parse_ledger(jsonl([row("c1", "TM-A", "shared"), row("c2", "TM-B", "shared")]))
+    def test_accepts_one_scenario_in_both_strata_as_two_groups_capped_separately(self):
+        rows = [row(f"{s}.{i}", s, "shared") for s in ("TM-A", "TM-B") for i in range(5)]
+        ledger = sel.parse_ledger(jsonl(rows))
+        self.assertEqual(ledger["attacks"], {"TM-A:shared": "TM-A", "TM-B:shared": "TM-B"})
+        self.assertEqual({r["scenario_id"] for r in ledger["rows"]}, {"shared"})
+        order = sel.cap_order(FAKE_SEED, ledger["rows"], 2)
+        self.assertEqual(set(order), {"TM-A:shared", "TM-B:shared"})
+        for group, stratum in (("TM-A:shared", "TM-A"), ("TM-B:shared", "TM-B")):
+            ids = [r["case_id"] for r in rows if r["stratum"] == stratum]
+            self.assertEqual([cid for _, cid, _ in order[group]], ref_order("cap", group, ids))
+            self.assertEqual([kept for _, _, kept in order[group]], [True, True, False, False, False])
 
     def test_rejects_blank_non_object_and_duplicate_key_lines(self):
         good = jsonl([row("c1", "TM-A", "a1")]).decode("utf-8")
@@ -567,7 +578,7 @@ class DrawTests(unittest.TestCase):
             decision_map[f"tool.f.{i}"] = (False, "no passing variant")
         status, out = run_vector(decision_map)
         self.assertEqual(status, "complete")
-        self.assertIn("tool.f", out["memberships"]["untested"])
+        self.assertIn("TM-B:tool.f", out["memberships"]["untested"])
         assert_selection_invariants(self, out, decision_map)
 
     def test_replacing_a_main_case_recomputes_top_up_from_the_new_main_sample(self):
@@ -843,8 +854,8 @@ class DevelopmentCaseTests(unittest.TestCase):
         status, out = sel.run_draw(ledger, commitment(ledger, development=["tool.f.1", "tool.f.2", "tool.f.3"]),
                                    beacon(), decisions(VECTOR_DECISIONS), total=VECTOR_TOTAL, variance=VECTOR_VARIANCE)
         self.assertEqual(status, "complete")
-        self.assertIn("tool.f", out["memberships"]["untested"])
-        self.assertNotIn("tool.f", {r["group"] for r in out["examined"]})
+        self.assertIn("TM-B:tool.f", out["memberships"]["untested"])
+        self.assertNotIn("TM-B:tool.f", {r["group"] for r in out["examined"]})
         assert_selection_invariants(self, out, VECTOR_DECISIONS)
 
 
@@ -854,14 +865,14 @@ class SeenInDevelopmentTests(unittest.TestCase):
         status, out = sel.run_draw(ledger, commitment(ledger, development=["inj.b.1"]), beacon(),
                                    decisions(VECTOR_DECISIONS), total=VECTOR_TOTAL, variance=VECTOR_VARIANCE)
         self.assertEqual(status, "complete")
-        self.assertEqual(out["attacks"], {attack: {"seen_in_development": attack == "inj.b", "stratum": stratum}
-                                          for stratum, attack in VECTOR_ATTACKS})
+        self.assertEqual(out["attacks"], {group: {"seen_in_development": group == "TM-A:inj.b", "stratum": STRATUM_OF_ATTACK[group]}
+                                          for group in VECTOR_GROUPS})
 
     def test_without_development_cases_no_attack_is_marked(self):
         ledger = jsonl(VECTOR_ROWS)
         status, out = sel.run_draw(ledger, commitment(ledger), beacon(), decisions(VECTOR_DECISIONS),
                                    total=VECTOR_TOTAL, variance=VECTOR_VARIANCE)
-        self.assertEqual(len(out["attacks"]), len(VECTOR_ATTACKS))
+        self.assertEqual(len(out["attacks"]), len(VECTOR_GROUPS))
         self.assertFalse(any(v["seen_in_development"] for v in out["attacks"].values()))
 
 

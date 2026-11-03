@@ -41,7 +41,7 @@ Python standard library only, Python 3.12 compatible. Run from the repository ro
 
 ## Inputs
 
-- **Ledger** (JSONL): one candidate per line with `case_id`, `stratum` (`TM-A` or `TM-B`), `attack_id` and `mechanism_id`. Ids match `[A-Za-z0-9._:-]+`. A line with `"excluded": true` is skipped and listed. Duplicate case ids, other strata, and an attack id in both strata are refused.
+- **Ledger** (JSONL): one candidate per line with `case_id`, `stratum` (`TM-A` or `TM-B`), `attack_id` and `mechanism_id`. Ids match `[A-Za-z0-9._:-]+`. A line with `"excluded": true` is skipped and listed. Duplicate case ids and other strata are refused. The group for the cap and the top-up is `"<stratum>:<attack_id>"`, because one scenario may appear in both strata (D47).
 - **Commitment** (JSON). Both kinds have `kind`, `ledger_sha256`, `script_sha256`, `chain` (`hash`, `public_key`, `scheme`, `genesis_time`, `period`) and `T` (UTC, whole seconds, `Z` suffix). The ledger bytes and this script's bytes must match the digests.
   - `pilot` also has `pilot_size`, a positive integer. It must equal the size the run uses, which is 11 from the command line.
   - `main` also has `policy_sha256` and `adaptation_rule_sha256` (64-character SHA-256 hex digests) and `development_case_ids` (a list of ledger case ids without repeats; it may be empty).
