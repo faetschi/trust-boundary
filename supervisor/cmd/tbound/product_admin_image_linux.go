@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -117,7 +118,11 @@ func productImageExec(env productsetup.Env, name string, args ...string) ([]byte
 	}
 	// Bound output from tools and systemd-run: diagnostics must not exhaust root's memory.
 	var stdout, stderr productImageOutput
+	if name == "systemctl" || name == "systemd-run" {
+		name = "/usr/bin/" + name
+	}
 	cmd := exec.Command(name, args...)
+	cmd.Env = []string{"PATH=/usr/bin:/bin", "LC_ALL=C"}
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	err := cmd.Run()
@@ -146,7 +151,11 @@ func (b *productImageOutput) Write(p []byte) (int, error) {
 }
 
 func productImageStopped(env productsetup.Env) error {
-	raw, err := productImageExec(env, "systemctl", "show", productsetup.UnitName, "--property=LoadState", "--property=ActiveState")
+	args := []string{"show", productsetup.UnitName, "--no-pager"}
+	for _, property := range []string{"LoadState", "ActiveState", "NeedDaemonReload", "FragmentPath", "DropInPaths", "EnvironmentFiles", "Environment", "User", "Group"} {
+		args = append(args, "--property="+property)
+	}
+	raw, err := productImageExec(env, "systemctl", args...)
 	if err != nil {
 		return fmt.Errorf("cannot establish stopped product service: %w", err)
 	}
@@ -161,6 +170,24 @@ func productImageStopped(env productsetup.Env) error {
 	}
 	if load != "loaded" || active != "inactive" {
 		return errors.New("product service must be installed and stopped before image provision")
+	}
+	properties := map[string]string{}
+	for _, line := range strings.Split(string(raw), "\n") {
+		if key, value, ok := strings.Cut(line, "="); ok {
+			properties[key] = value
+		}
+	}
+	for key, want := range map[string]string{"NeedDaemonReload": "no", "FragmentPath": productsetup.UnitPath, "DropInPaths": "", "EnvironmentFiles": "", "User": productsetup.ServiceUser, "Group": productsetup.ServiceGroup} {
+		if got, ok := properties[key]; !ok || got != want {
+			return fmt.Errorf("effective product unit differs at %s", key)
+		}
+	}
+	environment := strings.Split(properties["Environment"], " ")
+	slices.Sort(environment)
+	wantEnvironment := productImageEnvironment()
+	slices.Sort(wantEnvironment)
+	if !slices.Equal(environment, wantEnvironment) {
+		return errors.New("effective product environment differs from execution")
 	}
 	if env.Turns == nil {
 		return errors.New("unresolved-turn check is unavailable")
@@ -224,14 +251,8 @@ func productImageLoadPlan(env productsetup.Env, archive, layout string) (product
 			return p, fmt.Errorf("%s differs from execution config; do not reset the store", name)
 		}
 	}
-	for _, name := range []string{"/etc/systemd/system/" + productsetup.UnitName + ".d", "/run/systemd/system/" + productsetup.UnitName + ".d", "/usr/lib/systemd/system/" + productsetup.UnitName + ".d"} {
-		entries, err := os.ReadDir(real(name))
-		if err != nil && !errors.Is(err, os.ErrNotExist) {
-			return p, err
-		}
-		if len(entries) > 0 {
-			return p, errors.New("product unit drop-ins are refused")
-		}
+	if err := productImageNoUnitOverrides(p.root); err != nil {
+		return p, err
 	}
 	p.uid, p.gid, err = productImageAccount(p.root)
 	if err != nil {
@@ -328,8 +349,8 @@ func productImageAccount(root string) (int, int, error) {
 		f := strings.Split(line, ":")
 		if len(f) == 4 && f[0] == productsetup.ServiceGroup {
 			n, _ := strconv.Atoi(f[2])
-			if groupOK || n != gid || (f[3] != "" && f[3] != productsetup.ServiceUser) {
-				return 0, 0, errors.New("product group must contain only its service account")
+			if groupOK || n != gid {
+				return 0, 0, errors.New("product group must match the service account GID")
 			}
 			groupOK = true
 		}
@@ -359,6 +380,15 @@ const productImageStoreRecord = productsetup.PodmanConfigDir + "/store.json"
 const productImageStoreRecovery = "stop the service, preserve retained evidence, explicitly relocate the incompatible Podman home and graphroot, recreate the empty setup-owned directories, then provision again; no store was reset"
 
 func (p productImagePlan) checkStore() error {
+	for _, dir := range []string{productsetup.PodmanHomeDir, productsetup.PodmanStorageDir, productsetup.PodmanGraphRootDir} {
+		uid, gid := p.uid, p.gid
+		if p.root != "/" {
+			uid, gid = os.Geteuid(), os.Getegid()
+		}
+		if err := requireCommandRuntimeDirectory(filepath.Join(p.root, dir), 0700, uid, gid); err != nil {
+			return err
+		}
+	}
 	name := filepath.Join(p.root, productImageStoreRecord)
 	raw, err := productImageRead(p.root, name, 64<<10)
 	if err == nil {
@@ -415,11 +445,7 @@ func productImageContextArgs(binary string, args ...string) []string {
 	}
 	result = append(result, "--property=PrivateNetwork=yes", "--property=ExecStartPre=/usr/bin/mkdir -p -m 0700 "+productsetup.PodmanTmpDir+" "+productsetup.PodmanCacheDir+" "+productsetup.PodmanRunrootDir)
 	result = append(result, "--", "/usr/bin/env", "-i")
-	for _, line := range strings.Split(string(productsetup.RenderUnit()), "\n") {
-		if value, ok := strings.CutPrefix(line, "Environment="); ok {
-			result = append(result, strings.Fields(value)...)
-		}
-	}
+	result = append(result, productImageEnvironment()...)
 	result = append(result, binary)
 	return append(result, args...)
 }
@@ -520,13 +546,43 @@ func productImageProvision(env productsetup.Env, archive, layout string, out io.
 			return refuse(err)
 		}
 		if _, err := productOCIIdentity(old, p.template.ExpectedImageDigest); err != nil {
-			return refuse(errors.New("installed OCI layout differs; retain it with its signed historical host before replacing it explicitly"))
+			previous, err := productImageRead(p.root, real(productsetup.PodmanConfigDir+"/current-image"), 128)
+			if err != nil || !piruntime.ValidD09Digest(string(previous)) {
+				return refuse(errors.New("installed layout has no protected previous manifest record; retain and relocate it explicitly"))
+			}
+			if _, err := productOCIIdentity(old, string(previous)); err != nil {
+				return refuse(err)
+			}
+			retained := real(productsetup.PodmanConfigDir + "/images/" + strings.TrimPrefix(string(previous), "sha256:"))
+			if err := productImageMkdir(p.root, filepath.Dir(retained)); err != nil {
+				return refuse(err)
+			}
+			if _, err := os.Lstat(retained); errors.Is(err, os.ErrNotExist) {
+				if err := productImageCopyLayout(destination, retained, old); err != nil {
+					return refuse(err)
+				}
+			} else if err != nil {
+				return refuse(err)
+			}
+			retainedFiles, err := productOCILayout(p.root, retained)
+			if err != nil {
+				return refuse(err)
+			}
+			if _, err := productOCIIdentity(retainedFiles, string(previous)); err != nil {
+				return refuse(err)
+			}
+			if err := unix.Renameat2(unix.AT_FDCWD, stagedLayout, unix.AT_FDCWD, destination, unix.RENAME_EXCHANGE); err != nil {
+				return refuse(fmt.Errorf("atomic OCI layout replacement: %w", err))
+			}
 		}
 	} else if errors.Is(err, os.ErrNotExist) {
 		if err := os.Rename(stagedLayout, destination); err != nil {
 			return refuse(err)
 		}
 	} else {
+		return refuse(err)
+	}
+	if err := productImageReplaceRecord(real(productsetup.PodmanConfigDir+"/current-image"), []byte(p.template.ExpectedImageDigest)); err != nil {
 		return refuse(err)
 	}
 	fmt.Fprintf(out, "provisioned %s; registration == template == signed OCI manifest == imported Digest/RepoDigest; service remains stopped\n", p.template.ExpectedImageDigest)
@@ -601,11 +657,17 @@ func productImageCopy(source, dest string, limit int64) error {
 	if err == nil && n > limit {
 		err = errors.New("image copy exceeds bound")
 	}
-	return errors.Join(err, out.Sync(), out.Close())
+	return errors.Join(err, out.Chmod(0644), out.Sync(), out.Close())
 }
 func productImageCopyLayout(source, dest string, files map[string]productOCIFile) error {
-	if err := os.MkdirAll(filepath.Join(dest, "blobs", "sha256"), 0755); err != nil {
-		return err
+	for _, dir := range []string{dest, filepath.Join(dest, "blobs"), filepath.Join(dest, "blobs", "sha256")} {
+		if err := os.Mkdir(dir, 0755); err == nil {
+			if err := os.Chmod(dir, 0755); err != nil {
+				return err
+			}
+		} else if !errors.Is(err, os.ErrExist) {
+			return err
+		}
 	}
 	for name := range files {
 		if err := productImageCopy(filepath.Join(source, name), filepath.Join(dest, name), productImageMaxBytes); err != nil {
@@ -630,16 +692,10 @@ func productImageWriteOnce(name string, data []byte) error {
 		return err
 	}
 	_, err = f.Write(data)
-	return errors.Join(err, f.Sync(), f.Close())
+	return errors.Join(err, f.Chmod(0644), f.Sync(), f.Close())
 }
 func productImageHistory(p productImagePlan, dir string) error {
-	if _, err := os.Lstat(dir); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return err
-	}
-	if err := productImageProtectedPath(p.root, dir, true); err != nil {
+	if err := productImageMkdir(p.root, dir); err != nil {
 		return err
 	}
 	for name, raw := range map[string][]byte{"host-profile.json": p.inputs.Profile, "host-profile.json.sig": p.inputs.ProfileSignature, "d09-cell.json": p.inputs.Template, "registration.json": p.inputs.Registration, "registration.json.sig": p.inputs.RegistrationSignature, "registration.pub": p.inputs.PublicKey, "seccomp.json": p.inputs.Seccomp, "cosign.pub": p.inputs.CosignPublicKey} {
@@ -654,4 +710,85 @@ func productImageHistory(p productImagePlan, dir string) error {
 		}
 	}
 	return nil
+}
+
+func productImageMkdir(root, dir string) error {
+	if _, err := os.Lstat(dir); errors.Is(err, os.ErrNotExist) {
+		if err := productImageMkdir(root, filepath.Dir(dir)); err != nil {
+			return err
+		}
+		if err := os.Mkdir(dir, 0755); err != nil {
+			return err
+		}
+		if err := os.Chmod(dir, 0755); err != nil {
+			return err
+		}
+	} else if err != nil {
+		return err
+	}
+	return productImageProtectedPath(root, dir, true)
+}
+
+func productImageEnvironment() []string {
+	for _, line := range strings.Split(string(productsetup.RenderUnit()), "\n") {
+		if value, ok := strings.CutPrefix(line, "Environment="); ok {
+			return strings.Fields(value)
+		}
+	}
+	return nil
+}
+
+// This mirrors the product loader's closed override locations without invoking
+// its live admission (which requires the image this command is installing).
+func productImageNoUnitOverrides(root string) error {
+	for _, base := range []string{"/etc/systemd/system", "/run/systemd/system", "/usr/local/lib/systemd/system", "/usr/lib/systemd/system", "/lib/systemd/system", "/etc/systemd/system.control", "/run/systemd/system.control", "/run/systemd/transient"} {
+		for _, suffix := range []string{productsetup.UnitName + ".d", "service.d"} {
+			name := filepath.Join(root, base, suffix)
+			info, err := os.Lstat(name)
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			if err != nil {
+				return err
+			}
+			if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+				return errors.New("product unit drop-in directory is symlinked or not a directory")
+			}
+			entries, err := os.ReadDir(name)
+			if err != nil {
+				return err
+			}
+			if len(entries) > 0 {
+				return fmt.Errorf("product unit drop-ins are refused: %s", name)
+			}
+		}
+	}
+	for _, base := range []string{"/run/systemd/system", "/run/systemd/system.control", "/run/systemd/transient", "/run/systemd/generator", "/run/systemd/generator.early", "/run/systemd/generator.late"} {
+		if _, err := os.Lstat(filepath.Join(root, base, productsetup.UnitName)); !errors.Is(err, os.ErrNotExist) {
+			return errors.New("a shadow unit overrides the installed product unit")
+		}
+	}
+	return nil
+}
+
+func productImageReplaceRecord(name string, raw []byte) error {
+	f, err := os.CreateTemp(filepath.Dir(name), ".image-record-")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(f.Name())
+	_, err = f.Write(raw)
+	err = errors.Join(err, f.Chmod(0644), f.Sync(), f.Close())
+	if err != nil {
+		return err
+	}
+	if err := os.Rename(f.Name(), name); err != nil {
+		return err
+	}
+	dir, err := os.Open(filepath.Dir(name))
+	if err != nil {
+		return err
+	}
+	defer dir.Close()
+	return dir.Sync()
 }
