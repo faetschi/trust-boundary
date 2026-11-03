@@ -181,13 +181,46 @@ type productTurnWorkflow struct {
 	closeMu                                      sync.Mutex
 }
 
+// settleCommands settles the command owner. A failed settlement retains the workflow, so no deferred
+// teardown can release its handles before an explicit retained-owner cleanup.
 func (w *productTurnWorkflow) settleCommands() error {
 	if w.commandLifecycle == nil {
 		return nil
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	return w.commandLifecycle.Settle(ctx)
+	if err := w.commandLifecycle.Settle(ctx); err != nil {
+		w.retainUnsettled()
+		return err
+	}
+	return nil
+}
+
+// retainUnsettled holds a workflow whose command ownership is unresolved, with its handles, in the
+// environment's retained collection. Only an explicit retained-owner cleanup closes it.
+func (w *productTurnWorkflow) retainUnsettled() {
+	if w.env == nil {
+		return
+	}
+	w.env.retainedMu.Lock()
+	defer w.env.retainedMu.Unlock()
+	if w.env.retainedCommands == nil {
+		w.env.retainedCommands = map[*productTurnWorkflow]struct{}{}
+	}
+	w.env.retainedCommands[w] = struct{}{}
+}
+
+// closeUnlessRetained is the deferred teardown: a workflow retained after a failed settlement keeps its handles.
+func (w *productTurnWorkflow) closeUnlessRetained() error {
+	if w.env != nil {
+		w.env.retainedMu.Lock()
+		_, retained := w.env.retainedCommands[w]
+		w.env.retainedMu.Unlock()
+		if retained {
+			return nil
+		}
+	}
+	return w.close()
 }
 
 func (w *productTurnWorkflow) close() error {
@@ -195,14 +228,7 @@ func (w *productTurnWorkflow) close() error {
 	defer w.closeMu.Unlock()
 	if w.commandLifecycle != nil {
 		if err := w.commandLifecycle.Close(); err != nil {
-			if w.env != nil {
-				w.env.retainedMu.Lock()
-				if w.env.retainedCommands == nil {
-					w.env.retainedCommands = map[*productTurnWorkflow]struct{}{}
-				}
-				w.env.retainedCommands[w] = struct{}{}
-				w.env.retainedMu.Unlock()
-			}
+			w.retainUnsettled()
 			return err
 		}
 	}

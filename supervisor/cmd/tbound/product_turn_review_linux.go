@@ -108,7 +108,7 @@ func (e *productTurnEnv) ResolveTurn(ctx context.Context, p productsession.Princ
 	if turn.Resolution == productsession.DecisionDiscard {
 		return e.discardReview(turn, review, productsession.ReasonUser)
 	}
-	defer func() { _ = review.w.close() }()
+	defer func() { _ = review.w.closeUnlessRetained() }()
 	if err := review.w.settleCommands(); err != nil {
 		return productTurnReceipt{}, errors.Join(err, e.Catalog.MarkTurnUnknown(turn.ID, "command ownership did not settle before review publication"))
 	}
@@ -130,7 +130,7 @@ func (e *productTurnEnv) ResolveTurn(ctx context.Context, p productsession.Princ
 // discardReview ends a pending review discarded after checking the project still holds the admitted
 // baseline, and closes its retained handles.
 func (e *productTurnEnv) discardReview(turn productsession.Turn, review *productPendingReview, reason string) (productTurnReceipt, error) {
-	defer func() { _ = review.w.close() }()
+	defer func() { _ = review.w.closeUnlessRetained() }()
 	if err := review.w.settleCommands(); err != nil {
 		return productTurnReceipt{}, errors.Join(err, e.Catalog.MarkTurnUnknown(turn.ID, "command ownership did not settle before review discard"))
 	}

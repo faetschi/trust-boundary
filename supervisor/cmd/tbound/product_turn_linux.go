@@ -120,7 +120,7 @@ func (e *productTurnEnv) RunTurn(ctx context.Context, admission productsession.A
 	heldForReview := false
 	defer func() {
 		if !heldForReview {
-			err = errors.Join(err, w.close())
+			err = errors.Join(err, w.closeUnlessRetained())
 		}
 	}()
 	// Both publication modes compose the finalizer at start; a review turn keeps it for its resolution.
