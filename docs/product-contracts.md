@@ -428,9 +428,9 @@ Before the cell runs the probe, the service resolves that hostname and completes
 
 The program prints structured results for these checks:
 
-- `name-resolution`: `dns.Resolver.resolve4` queries the same provider hostname. Only `ECONNREFUSED`, `ENETUNREACH` or `EHOSTUNREACH` counts as resolver transport denial. Negative answers such as `ENOTFOUND` and `EAI_NONAME` can come from a working resolver. `EAI_AGAIN` is also ambiguous, so it fails the check.
-- `ipv4-connect`: TCP to the exact IPv4 address that passed the service control must fail with `ENETUNREACH` or `EHOSTUNREACH`.
-- `ipv6-connect`: when a service-side-reachable AAAA exists, TCP to that exact address must fail with the same network-unreachable errors. Otherwise this attempt is omitted and its host availability is recorded.
+- `name-resolution`: `dns.Resolver.resolve4` queries the same provider hostname. Only `ECONNREFUSED` counts: it is what c-ares reports when no resolver is reachable. Negative answers such as `ENOTFOUND` and `EAI_NONAME` can come from a working resolver. `EAI_AGAIN` and timeouts are also ambiguous, so they fail the check.
+- `ipv4-connect`: TCP to the exact IPv4 address that passed the service control must fail with `ENETUNREACH`, `EHOSTUNREACH` or `EACCES`. `EACCES` is what the cell's Landlock rule returns: it handles TCP connect with no allowed port, and the kernel applies it before any route lookup.
+- `ipv6-connect`: when a service-side-reachable AAAA exists, TCP to that exact address must fail with the same errors. Otherwise this attempt is omitted and its host availability is recorded.
 - `host-listener`: TCP to the service's loopback listener must fail with `ENETUNREACH`, `EHOSTUNREACH`, `ECONNREFUSED`, `EPERM` or `EACCES`.
 - Interfaces from `/proc/net/dev` must contain exactly `lo`. Every IPv4 and IPv6 routing row must also use `lo`.
 
