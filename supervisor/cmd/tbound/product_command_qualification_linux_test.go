@@ -277,6 +277,14 @@ func TestProductNetworkProbeFailsOnTimeoutMissingNodeOrDeadControl(t *testing.T)
 		want    string
 	}{
 		"a denied probe passes":     {cellOutput(denied), live, ""},
+		// The cell's Landlock ruleset handles TCP connect with no allowed port, so the kernel returns EACCES before any route lookup.
+		"landlock connect denial passes": {cellOutput(productDeniedNetworkOutput(t, listener, func(r *productNetworkReport) {
+			r.Checks[1].Errno, r.Checks[2].Errno = "EACCES", "EACCES"
+		})), live, ""},
+		// resolve4 (c-ares) reports a resolver it cannot reach as ECONNREFUSED; other codes are not that proof.
+		"a resolver error other than refusal": {cellOutput(productDeniedNetworkOutput(t, listener, func(r *productNetworkReport) {
+			r.Checks[0].Errno = "ENETUNREACH"
+		})), live, "name-resolution"},
 		"a cell that never answers": {func(ctx context.Context, _ string) ([]byte, error) { <-ctx.Done(); return nil, ctx.Err() }, live, "did not run"},
 		"a missing node executable": {func(context.Context, string) ([]byte, error) {
 			return nil, errors.New(`exec: "node": executable file not found`)
