@@ -164,7 +164,8 @@ func productAdminEnv(root string, dryRun, replace, yes bool, out, stderr io.Writ
 		Root: root, Live: live, DryRun: dryRun, Replace: replace, RequirePrereqs: root == "/",
 		Prereqs: productAdminPrereqs, VerifyRegistration: verifyRegistrationBytes,
 		ValidateServiceConfig: validateServiceConfigBytes, CheckHostInputs: checkProductHostInputs, Turns: productAdminTurnsFor(root),
-		RunSelfTest: productAdminRunSelfTest(root),
+		ValidateCommandInputs: validateProductSetupCommandInputs,
+		RunSelfTest:           productAdminRunSelfTest(root),
 	}
 	if live {
 		env.SelfTestHook = productAdminSelfTestHook

@@ -86,6 +86,7 @@ func Doctor(env Env, selfTest bool) DoctorReport {
 		info, err := os.Lstat(h.real(n.Path))
 		switch {
 		case err != nil && n.Path == ReleasePublicKeyPath: // optional; the release key check below reports it
+		case errors.Is(err, os.ErrNotExist) && isCommandArtifact(n.Path): // static command check reports missing bundles when required
 		case err != nil:
 			add(n.Path, Fail, "missing", setupFix)
 		case info.IsDir() != n.Dir || info.Mode()&os.ModeSymlink != 0:

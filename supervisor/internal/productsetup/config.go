@@ -74,7 +74,9 @@ type Config struct {
 	// at ReleasePublicKeyPath, and `product update` authenticates every candidate binary against it. Without it
 	// an update is refused.
 	ReleasePublicKey string `json:"release_public_key,omitempty"`
-	WorkerMode       string `json:"worker_mode"`
+	// CommandBundle is a source directory of public signed command artifacts, omitted from the installed record.
+	CommandBundle string `json:"command_bundle,omitempty"`
+	WorkerMode    string `json:"worker_mode"`
 	// Projects maps each registered project ID to its managed directory below ProjectsDir.
 	Projects map[string]string `json:"projects"`
 	// The installed inputs of the service's host profile. Setup records their paths in the service config
@@ -174,6 +176,14 @@ func (c Config) validate() error {
 	}
 	if c.ReleasePublicKey != "" && (!path.IsAbs(c.ReleasePublicKey) || IsThesisPath(c.ReleasePublicKey)) {
 		return refuse("release_public_key must be an absolute path outside every thesis path")
+	}
+	if c.CommandBundle != "" {
+		if !path.IsAbs(c.CommandBundle) || path.Clean(c.CommandBundle) != c.CommandBundle || IsThesisPath(c.CommandBundle) || PathInside(c.CommandBundle, PodmanConfigDir) {
+			return refuse("command_bundle must be an absolute clean source directory outside thesis and installed command paths")
+		}
+		if err := checkNotWritten("command_bundle", c.CommandBundle); err != nil {
+			return err
+		}
 	}
 	if t := c.SelfTest; t != nil {
 		if _, ok := c.Projects[t.ProjectID]; !ok || !identity.MatchString(t.ProviderProfile) {
@@ -319,6 +329,7 @@ func (c Config) serviceConfigJSON() ([]byte, error) {
 // installedJSON is the configuration without its source paths: the record doctor and update read.
 func (c Config) installedJSON() ([]byte, error) {
 	c.Registration, c.RegistrationSignature, c.RegistrationPublicKey, c.ReleasePublicKey = "", "", "", ""
+	c.CommandBundle = ""
 	c.InstallationFormat = InstallationFormat
 	return indented(c)
 }

@@ -40,7 +40,8 @@ func checkProductHostInputs(in productsetup.HostInputs) []productsetup.Check {
 		var file productHostFile
 		var err error
 		if ok {
-			_, file, err = loadProductGatePolicy(id, in.PolicyDigests[id], path, in.Owners, false)
+			// A verified bundle establishes static configuration only. Startup still requires a qualified runner.
+			_, file, err = loadProductGatePolicy(id, in.PolicyDigests[id], path, in.Owners, in.CommandInputsValid)
 		} else {
 			err = fmt.Errorf("gate_policy_paths has no file for project %q", id)
 		}

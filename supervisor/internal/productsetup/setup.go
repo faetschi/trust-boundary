@@ -211,6 +211,15 @@ func (h *host) desiredFiles(cfg Config, binary Candidate) (map[string][]byte, Re
 		ServiceConfigPath: serviceConfig, SetupConfigPath: installed, UnitPath: unit,
 		ContainersConfPath: RenderProductContainersConf(), StorageConfPath: RenderProductStorageConf(),
 	}
+	if err := h.commandBundleFiles(cfg.CommandBundle, files); err != nil {
+		return nil, RegistrationSummary{}, err
+	}
+	if h.env.ValidateCommandInputs != nil {
+		in := h.commandInputs(cfg, summary, files)
+		if err := h.env.ValidateCommandInputs(in); err != nil {
+			return nil, RegistrationSummary{}, refuse("command bundle: %v; nothing was changed", err)
+		}
+	}
 	if cfg.ReleasePublicKey != "" {
 		publisher, err := readSource(cfg.ReleasePublicKey)
 		if err == nil {

@@ -154,6 +154,15 @@ var installedFiles = []node{
 	{StorageConfPath, false, ownRoot, 0o644},
 	{BinaryPath, false, ownRoot, 0o755},
 	{ReleasePublicKeyPath, false, ownRoot, 0o644}, // optional: absent when the config names no release_public_key
+	{CommandHostProfilePath, false, ownRoot, 0o644},
+	{CommandHostProfileSignaturePath, false, ownRoot, 0o644},
+	{CommandCellTemplatePath, false, ownRoot, 0o644},
+	{CommandSeccompPath, false, ownRoot, 0o644},
+	{CommandCosignPublicKeyPath, false, ownRoot, 0o644},
+}
+
+func isCommandArtifact(p string) bool {
+	return p == CommandHostProfilePath || p == CommandHostProfileSignaturePath || p == CommandCellTemplatePath || p == CommandSeccompPath || p == CommandCosignPublicKeyPath
 }
 
 // writtenPaths are the single paths that setup, update, rollback, uninstall and the service write or

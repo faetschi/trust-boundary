@@ -41,6 +41,7 @@ type RegistrationSummary struct {
 	// GitDigest and HostIdentityDigest are the host profile the registration binds: the service refuses to
 	// start with another Git or another compiled identity.
 	GitDigest, HostIdentityDigest string
+	ImageDigest                   string
 }
 
 // OpenTurn is a catalog turn that is not terminal.
@@ -74,6 +75,9 @@ type Env struct {
 	// CheckHostInputs statically checks the installed inputs of the service's host profile the way the service
 	// does at start, and returns one check per input. Nil skips it.
 	CheckHostInputs func(HostInputs) []Check
+	// ValidateCommandInputs checks prospective public command inputs, including deny-only policy when no bundle is present.
+	// Nil skips the check on test roots; the product command always supplies it.
+	ValidateCommandInputs func(HostInputs) error
 	// Exec runs a system command and returns its stdout. Nil runs the real command.
 	Exec func(name string, args ...string) ([]byte, error)
 	// Chown changes an owner when Live, using the validated file's /proc/self/fd path. Nil uses fchown.
@@ -292,6 +296,13 @@ func atoi(s string) (int, bool) {
 // UIDs that may own a protected input: root, the service account when it exists, and on a test root the
 // test process, whose files setup cannot chown.
 type HostInputs struct {
+	// CommandInputsValid means the injected static verifier accepted this candidate; it grants no live readiness.
+	CommandInputsValid                                   bool
+	Root, CommandBundlePath                              string
+	RegistrationData, RegistrationSignature              []byte
+	ServiceConfig, Unit, ContainersConfig, StorageConfig []byte
+	// CommandFiles are the bounded source bytes setup will install, keyed by fixed installed path.
+	CommandFiles map[string][]byte
 	// PolicyDigests is the registered gate-policy digest per project, GatePolicyPaths the installed file.
 	PolicyDigests, GatePolicyPaths map[string]string
 	GitPath, GitDigest             string

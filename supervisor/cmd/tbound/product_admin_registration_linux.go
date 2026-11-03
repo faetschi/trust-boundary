@@ -318,7 +318,7 @@ func registrationMeasure(out io.Writer, projectDir, gatePolicy string) error {
 // registrationSummary describes a verified registration for people.
 func registrationSummary(r productsession.Registration) productsetup.RegistrationSummary {
 	s := productsetup.RegistrationSummary{ID: r.RegistrationID, Digest: r.Digest, Profiles: r.ProviderProfiles, PolicyDigests: map[string]string{},
-		GitDigest: r.GitDigest, HostIdentityDigest: r.HostIdentityDigest}
+		GitDigest: r.GitDigest, HostIdentityDigest: r.HostIdentityDigest, ImageDigest: r.ImageDigest}
 	for _, p := range r.AllowedPrincipals {
 		s.Principals = append(s.Principals, int64(p))
 	}
