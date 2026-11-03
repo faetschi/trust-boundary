@@ -608,6 +608,12 @@ func (r *D09CommandRunner) Run(ctx context.Context, view *sessionrepo.CommandVie
 	command.Env = r.launcher.commandEnvironment()
 	command.ExtraFiles = []*os.File{viewSource, proofWrite, ackRead} // child fds3=readonly-view-source,4=proof,5=start-ack.
 	command.Stdout, command.Stderr = stdout, stderr
+	productOwner := D09ProductCommandOwnership{ContainerName: name, LeaseID: r.leaseID, ViewID: viewID, ViewDevice: uint64(viewStat.Dev), ViewInode: viewStat.Ino}
+	if err := r.launcher.reportProductCommand(productOwner, nil, 0); err != nil {
+		_ = proofWrite.Close()
+		_ = ackRead.Close()
+		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, err
+	}
 	if err := command.Start(); err != nil {
 		_ = proofWrite.Close()
 		_ = ackRead.Close()
@@ -685,6 +691,13 @@ func (r *D09CommandRunner) Run(ctx context.Context, view *sessionrepo.CommandVie
 		_ = command.Process.Kill()
 		_ = waitD09PodmanShutdown(waitResult, d09CommandCleanupLimit)
 		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, errors.Join(fmt.Errorf("read command mount-namespace identity"), err)
+	}
+	productOwner.MountNSInode = mountNSInode
+	if err := r.launcher.reportProductCommand(productOwner, scope.scope, startProof.LeaderPID); err != nil {
+		r.cleanupCommand(scope, report.PodmanPath, name)
+		_ = command.Process.Kill()
+		_ = waitD09PodmanShutdown(waitResult, d09CommandCleanupLimit)
+		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, err
 	}
 	var ack [1]byte
 	ack[0] = 1

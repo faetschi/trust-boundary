@@ -132,21 +132,20 @@ func TestProductQualificationProbeUsesThePinnedNodeAndServiceSideControls(t *tes
 		t.Fatalf("the probe did not run through the signed profile's Node: %q", probe)
 	}
 	evidence := readQualificationEvidence(t, qualificationRunDirs(t, env.StateRoot)[0])
-	if evidence.Network == nil || evidence.Network.Policy != productNetworkPolicyDenyAll || !strings.HasPrefix(evidence.Network.Node, "v") || len(evidence.Network.Checks) != 4 {
+	if evidence.Network == nil || evidence.Network.Policy != productNetworkPolicyDenyAll || !strings.HasPrefix(evidence.Network.Node, "v") || len(evidence.Network.Checks) != 3 {
 		t.Fatalf("network evidence %+v", evidence.Network)
 	}
 	controls := map[string]productNetworkCheck{}
 	for _, control := range evidence.Network.Controls {
 		controls[control.ID] = control
 	}
-	if controls["host-listener"].Outcome != "reachable" || controls["ipv4-route"].Outcome != "routable" || controls["ipv6-route"].Outcome != "unroutable" ||
-		controls["ipv6-route"].Errno != "ENETUNREACH" || controls["external-endpoint"].Outcome != "none-configured" {
+	if controls["host-listener"].Outcome != "reachable" || controls["ipv4-connect"].Outcome != "reachable" || controls["ipv6-connect"].Outcome != "not available on host" || controls["name-resolution"].Outcome != "resolved" {
 		t.Fatalf("controls %+v", controls)
 	}
 	if !strings.Contains(probe, `"`+controls["host-listener"].Destination+`"`) {
 		t.Fatal("the probe was not given the listener the service opened")
 	}
-	if !slices.Equal(h.routes, []string{"udp4 192.0.2.1:443", "udp6 [2001:db8::1]:443"}) {
+	if !slices.Equal(h.routes, []string{"tcp4 192.0.2.1:443", "tcp6 [2001:db8::1]:443"}) {
 		t.Fatalf("route controls %v", h.routes)
 	}
 }
@@ -197,14 +196,7 @@ func TestProductQualificationRefusesEachFailingPhase(t *testing.T) {
 				return stdout, exit
 			}
 		}, "rootfs exited 3"},
-		{"a limit the cell cannot read", productPhaseLimitsMapping, func(h *qualificationHarness) {
-			h.override = func(name, stdout string, exit int) (string, int) {
-				if name == "limits" {
-					return strings.Replace(stdout, "pids.max=128", "pids.max=UNREADABLE", 1), exit
-				}
-				return stdout, exit
-			}
-		}, "pids.max"},
+		{"a limit the supervisor cannot read", productPhaseLimitsMapping, func(h *qualificationHarness) { h.limitsErr = true }, "pids.max"},
 		{"a proof mapping other than the signed one", productPhaseLimitsMapping, func(h *qualificationHarness) {
 			h.editProof = func(name string, p *piruntime.D09CommandProof) {
 				if name == "limits" {
@@ -238,7 +230,7 @@ func TestProductQualificationRefusesEachFailingPhase(t *testing.T) {
 		}, "host-listener"},
 		{"a service host without an IPv4 route", productPhaseNetworkProbe, func(h *qualificationHarness) {
 			h.routable = func(network, _ string) error {
-				if network == "udp4" {
+				if network == "tcp4" {
 					return errors.New("network is unreachable")
 				}
 				return nil
@@ -427,7 +419,7 @@ func (h *qualificationHarness) plantOpenedOrphan(t *testing.T, stateRoot, workfl
 	name := "turn-" + workflow
 	owner := productD09ScopeOwner{Schema: "tbound-product-d09-scope-owner/v1", State: "opened", WorkflowID: workflow, RunID: "run-" + workflow,
 		RegistrationDigest: digestBytes([]byte("registration")), ProfileDigest: digestBytes([]byte("profile")), RootDigest: h.rootDigest,
-		ScopePath: qualificationCellsPath + "/" + name, ScopeIdentity: h.scopeIdentity(name)}
+		ScopePath: qualificationCellsPath + "/" + name, ScopeIdentity: h.scopeIdentity(name), CommandOwnershipVersion: 1}
 	plantOwnerJournal(t, stateRoot, workflow, owner)
 	if present {
 		if err := os.Mkdir(filepath.Join(h.cells, name), 0o700); err != nil {

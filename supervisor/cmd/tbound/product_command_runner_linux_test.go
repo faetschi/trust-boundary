@@ -257,7 +257,7 @@ func TestProductD09ScopeOwnerJournal(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer journal.Close()
-	if err := reconcileProductCommandScope(context.Background(), nil, journal, map[string]struct{}{}); err != nil {
+	if err := reconcileProductCommandScope(context.Background(), nil, journal, map[string]struct{}{}, nil); err != nil {
 		t.Fatalf("durable drained owner: %v", err)
 	}
 	owner.ScopePath = "/sys/fs/cgroup/other/turn-owned"

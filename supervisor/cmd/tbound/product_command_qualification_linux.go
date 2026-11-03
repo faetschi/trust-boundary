@@ -7,10 +7,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+	"tbound/supervisor/internal/productprovider"
 	"time"
 
 	"tbound/supervisor/internal/piruntime"
@@ -63,7 +66,13 @@ var productCommandQualification = productCommandQualificationSteps{
 		return reconcileProductCommandScopes(ctx, host, retainedRoots...)
 	},
 	openCell: func(ctx context.Context, host *piruntime.D09ProductCommandHost, env *productTurnEnv, newRunner productCommandRunnerFactory) (productQualificationCell, error) {
-		return openProductQualificationCell(ctx, productQualificationTarget{Profile: host.Profile(), Template: host.Template()}, env, newRunner)
+		return func() (productQualificationCell, error) {
+			hostname, err := productQualificationProviderHostname(env)
+			if err != nil {
+				return nil, err
+			}
+			return openProductQualificationCell(ctx, productQualificationTarget{Profile: host.Profile(), Template: host.Template(), ProviderHostname: hostname}, env, newRunner)
+		}()
 	},
 	newRunner: func(ctx context.Context, host *piruntime.D09ProductCommandHost, c productTurnCommandContext) (productTurnCommandRunner, error) {
 		runner, err := newProductD09CommandRunner(ctx, host, c)
@@ -181,16 +190,26 @@ type productNetworkReport struct {
 	Routes []productNetworkRoute `json:"routes"`
 	Checks []productNetworkCheck `json:"checks"`
 	// Controls are the service-side positive controls. The service fills them and discards whatever the cell prints.
-	Controls []productNetworkCheck `json:"controls,omitempty"`
+	Controls   []productNetworkCheck `json:"controls,omitempty"`
+	Interfaces []string              `json:"interfaces"`
+	IPv6       string                `json:"ipv6"`
 }
 
-const (
-	productNetworkIPv4Destination = "192.0.2.1:443"
-	productNetworkIPv6Destination = "[2001:db8::1]:443"
-)
-
-// productNetworkRoutable asks, from the service context, whether the kernel has a route to a destination.
+type productNetworkDestination struct{ Hostname, IPv4, IPv6 string }
 type productNetworkRoutable func(ctx context.Context, network, address string) error
+type productNetworkResolve func(context.Context, string) ([]net.IPAddr, error)
+
+func productQualificationProviderHostname(env *productTurnEnv) (string, error) {
+	if env == nil || len(env.Registration.ProviderProfiles) == 0 {
+		return "", errors.New("qualification needs a registered provider endpoint")
+	}
+	profile, ok := productprovider.Lookup(env.Registration.ProviderProfiles[0])
+	endpoint, err := url.Parse(profile.Endpoint)
+	if !ok || err != nil || endpoint.Scheme != "https" || endpoint.Hostname() == "" || endpoint.Port() != "" && endpoint.Port() != "443" {
+		return "", errors.New("registered provider needs an HTTPS endpoint on port 443")
+	}
+	return endpoint.Hostname(), nil
+}
 
 // productNetworkCellRun runs one fixed program through the signed image's Node in the base cell and returns its stdout.
 type productNetworkCellRun func(ctx context.Context, program string) ([]byte, error)
@@ -200,24 +219,24 @@ type productNetworkControl func(ctx context.Context, address string) error
 
 // productDenyAllNetworkErrnos names, per check, the errnos a denied connection may record. A timeout is never a denial.
 var productDenyAllNetworkErrnos = map[string][]string{
-	"name-resolution": {"EAI_AGAIN", "ENOTFOUND", "EAI_NONAME"},
-	"ipv4-connect":    {"ENETUNREACH", "EHOSTUNREACH", "EPERM", "EACCES"},
-	"ipv6-connect":    {"ENETUNREACH", "EHOSTUNREACH", "EPERM", "EACCES"},
+	"name-resolution": {"ECONNREFUSED", "ENETUNREACH", "EHOSTUNREACH"},
+	"ipv4-connect":    {"ENETUNREACH", "EHOSTUNREACH"},
+	"ipv6-connect":    {"ENETUNREACH", "EHOSTUNREACH"},
 	"host-listener":   {"ENETUNREACH", "EHOSTUNREACH", "ECONNREFUSED", "EPERM", "EACCES"},
 }
 
 // productNetworkProbe proves the cell's network policy from inside the cell, against an outside control. The control
 // dials the host listener first, so a dead network cannot pass as containment. Only deny-all exists in this step.
-func productNetworkProbe(ctx context.Context, policy, listener string, run productNetworkCellRun, control productNetworkControl,
-	routable productNetworkRoutable) (productNetworkReport, error) {
+func productNetworkProbe(ctx context.Context, policy, listener, hostname string, run productNetworkCellRun, control productNetworkControl,
+	routable productNetworkRoutable, resolve productNetworkResolve) (productNetworkReport, error) {
 	if policy != productNetworkPolicyDenyAll {
 		return productNetworkReport{}, fmt.Errorf("the network probe has no expectation for policy %q", policy)
 	}
-	controls, err := productNetworkControls(ctx, listener, control, routable)
+	controls, destination, err := productNetworkControls(ctx, listener, hostname, control, routable, resolve)
 	if err != nil {
 		return productNetworkReport{Policy: policy, Controls: controls}, err
 	}
-	output, err := run(ctx, productNetworkProgram(listener))
+	output, err := run(ctx, productNetworkProgram(listener, destination))
 	if err != nil {
 		return productNetworkReport{Policy: policy, Controls: controls}, fmt.Errorf("the cell did not run the network probe: %w", err)
 	}
@@ -226,34 +245,76 @@ func productNetworkProbe(ctx context.Context, policy, listener string, run produ
 		return productNetworkReport{Policy: policy, Controls: controls}, fmt.Errorf("the network probe printed no structured result: %w", err)
 	}
 	report.Policy, report.Controls = policy, controls
+	report.IPv6 = "reachable on host"
+	if destination.IPv6 == "" {
+		report.IPv6 = "not available on host"
+	}
 	return report, verifyProductDenyAllNetwork(report)
 }
 
-// productNetworkControls are the positive controls, taken from the service context outside the cell. A documentation-range
-// destination is never reachable, so it cannot be a TCP control. The control is that the service host has a route to each
-// numeric destination, which the cell lacks, and that the host listener accepts a connection. A host without the listener
-// or an IPv4 route cannot tell containment from a dead network, so the probe refuses. A host without an IPv6 route is
-// recorded and not refused. No external endpoint is configured, and the record says so.
-func productNetworkControls(ctx context.Context, listener string, control productNetworkControl, routable productNetworkRoutable) ([]productNetworkCheck, error) {
-	controls := []productNetworkCheck{{ID: "external-endpoint", Outcome: "none-configured"}}
+// productNetworkControls resolves the registered provider and proves actual TCP reachability to the same numeric destinations.
+func productNetworkControls(ctx context.Context, listener, hostname string, control productNetworkControl, connect productNetworkRoutable, resolve productNetworkResolve) ([]productNetworkCheck, productNetworkDestination, error) {
+	destination := productNetworkDestination{Hostname: hostname}
+	var controls []productNetworkCheck
 	if err := control(ctx, listener); err != nil {
-		return controls, fmt.Errorf("positive control: the host listener %s is not reachable from the service context: %w", listener, err)
+		return controls, destination, fmt.Errorf("positive control: host listener: %w", err)
 	}
 	controls = append(controls, productNetworkCheck{ID: "host-listener", Destination: listener, Outcome: "reachable"})
-	if err := routable(ctx, "udp4", productNetworkIPv4Destination); err != nil {
-		return controls, fmt.Errorf("positive control: the service host has no route to %s, so the cell's denial cannot be told from a dead network: %w", productNetworkIPv4Destination, err)
+	addresses, err := resolve(ctx, hostname)
+	if err != nil || len(addresses) == 0 {
+		return controls, destination, fmt.Errorf("positive control: registered provider DNS failed: %w", err)
 	}
-	controls = append(controls, productNetworkCheck{ID: "ipv4-route", Destination: productNetworkIPv4Destination, Outcome: "routable"})
-	v6 := productNetworkCheck{ID: "ipv6-route", Destination: productNetworkIPv6Destination, Outcome: "routable"}
-	if err := routable(ctx, "udp6", productNetworkIPv6Destination); err != nil {
-		v6.Outcome, v6.Errno = "unroutable", productErrnoName(err)
+	controls = append(controls, productNetworkCheck{ID: "name-resolution", Destination: hostname, Outcome: "resolved"})
+	for _, address := range addresses {
+		if err := ctx.Err(); err != nil {
+			return controls, destination, err
+		}
+		network := "tcp6"
+		if address.IP.To4() != nil {
+			network = "tcp4"
+		}
+		if network == "tcp4" && destination.IPv4 != "" || network == "tcp6" && destination.IPv6 != "" {
+			continue
+		}
+		attemptCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		err := connect(attemptCtx, network, net.JoinHostPort(address.IP.String(), "443"))
+		cancel()
+		if err != nil {
+			continue
+		}
+		if network == "tcp4" {
+			destination.IPv4 = address.IP.String()
+		} else {
+			destination.IPv6 = address.IP.String()
+		}
 	}
-	return append(controls, v6), nil
+	if destination.IPv4 == "" {
+		return controls, destination, errors.New("positive control: provider IPv4 TCP is unreachable; cannot distinguish containment from a dead network")
+	}
+	controls = append(controls, productNetworkCheck{ID: "ipv4-connect", Destination: net.JoinHostPort(destination.IPv4, "443"), Outcome: "reachable"})
+	if destination.IPv6 == "" {
+		controls = append(controls, productNetworkCheck{ID: "ipv6-connect", Outcome: "not available on host"})
+	} else {
+		controls = append(controls, productNetworkCheck{ID: "ipv6-connect", Destination: net.JoinHostPort(destination.IPv6, "443"), Outcome: "reachable"})
+	}
+	return controls, destination, nil
 }
 
 func verifyProductDenyAllNetwork(report productNetworkReport) error {
 	if !strings.HasPrefix(report.Node, "v") {
 		return errors.New("the network probe did not report a Node version, so Node did not run in the cell")
+	}
+	if !slices.Equal(report.Interfaces, []string{"lo"}) {
+		return fmt.Errorf("cell interfaces %v, want exactly loopback", report.Interfaces)
+	}
+	expected := map[string]string{}
+	for _, control := range report.Controls {
+		if control.Outcome == "reachable" || control.Outcome == "resolved" {
+			expected[control.ID] = control.Destination
+		}
+	}
+	if expected["name-resolution"] == "" || expected["ipv4-connect"] == "" || expected["host-listener"] == "" {
+		return errors.New("missing service-side positive controls")
 	}
 	for _, route := range report.Routes {
 		if route.Iface != "lo" {
@@ -263,7 +324,7 @@ func verifyProductDenyAllNetwork(report productNetworkReport) error {
 	seen := map[string]bool{}
 	for _, check := range report.Checks {
 		allowed, known := productDenyAllNetworkErrnos[check.ID]
-		if !known || seen[check.ID] {
+		if !known || seen[check.ID] || expected[check.ID] == "" || expected[check.ID] != check.Destination {
 			return fmt.Errorf("the network probe recorded an unexpected or repeated check %q", check.ID)
 		}
 		seen[check.ID] = true
@@ -272,27 +333,29 @@ func verifyProductDenyAllNetwork(report productNetworkReport) error {
 				check.ID, check.Destination, check.Outcome, check.Errno)
 		}
 	}
-	if len(seen) != len(productDenyAllNetworkErrnos) {
-		return fmt.Errorf("the network probe recorded %d checks, want %d", len(seen), len(productDenyAllNetworkErrnos))
+	if len(seen) != len(expected) {
+		return fmt.Errorf("the network probe recorded %d checks, want %d", len(seen), len(expected))
 	}
 	return nil
 }
 
 // productNetworkProgram is the fixed program the cell runs through the image's Node. It prints one JSON object: the
 // Node version, the routing rows and one check per destination. Each check is bounded, so a hang becomes a timeout.
-func productNetworkProgram(listener string) string {
+func productNetworkProgram(listener string, destination productNetworkDestination) string {
 	quoted, err := json.Marshal(listener)
 	if err != nil {
 		panic(err)
 	}
-	return strings.Replace(productNetworkScript, "__LISTENER__", string(quoted), 1)
+	destinationJSON, _ := json.Marshal(destination)
+	return strings.NewReplacer("__LISTENER__", string(quoted), "__DESTINATION__", string(destinationJSON)).Replace(productNetworkScript)
 }
 
 const productNetworkScript = `"use strict";
 const fs = require("node:fs");
-const dns = require("node:dns").promises;
+const dns = new (require("node:dns").promises.Resolver)();
 const net = require("node:net");
 const listener = __LISTENER__;
+const destination = __DESTINATION__;
 const limitMilliseconds = 3000;
 
 function routes() {
@@ -322,7 +385,7 @@ function bounded(attempt) {
 }
 
 function lookup(name) {
-  return bounded(dns.lookup(name).then(
+  return bounded(dns.resolve4(name).then(
     () => ({ outcome: "resolved", errno: "" }),
     (error) => ({ outcome: "error", errno: error.code || "" })));
 }
@@ -338,12 +401,12 @@ function connect(host, port, family) {
 (async () => {
   const cut = listener.lastIndexOf(":");
   const checks = [
-    { id: "name-resolution", destination: "probe.invalid", ...(await lookup("probe.invalid")) },
-    { id: "ipv4-connect", destination: "192.0.2.1:443", ...(await connect("192.0.2.1", 443, 4)) },
-    { id: "ipv6-connect", destination: "[2001:db8::1]:443", ...(await connect("2001:db8::1", 443, 6)) },
+    { id: "name-resolution", destination: destination.Hostname, ...(await lookup(destination.Hostname)) },
+    { id: "ipv4-connect", destination: destination.IPv4+":443", ...(await connect(destination.IPv4, 443, 4)) },
+    ...(destination.IPv6 ? [{ id: "ipv6-connect", destination: "["+destination.IPv6+"]:443", ...(await connect(destination.IPv6, 443, 6)) }] : []),
     { id: "host-listener", destination: listener, ...(await connect(listener.slice(0, cut), Number(listener.slice(cut + 1)), 4)) },
   ];
-  process.stdout.write(JSON.stringify({ node: process.version, routes: routes(), checks }) + "\n");
+  process.stdout.write(JSON.stringify({ node: process.version, interfaces: fs.readFileSync("/proc/net/dev", "utf8").trim().split("\n").slice(2).map(line => line.split(":")[0].trim()).sort(), routes: routes(), checks }) + "\n");
   process.exit(0);
 })().catch((error) => {
   process.stderr.write(String(error && error.stack ? error.stack : error) + "\n");

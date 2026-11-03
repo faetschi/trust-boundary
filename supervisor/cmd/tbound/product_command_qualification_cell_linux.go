@@ -55,10 +55,7 @@ const (
   if [ -e "$target" ]; then printf 'rootfs-file-appeared %s\n' "$target"; exit 4; fi
 done
 printf 'rootfs-write-denied\n'`
-	productQualificationLimitsScript = `read_value() { if [ -r "$1" ]; then tr -d '\n' < "$1"; else printf 'UNREADABLE'; fi; }
-printf 'pids.max=%s\n' "$(read_value /sys/fs/cgroup/pids.max)"
-printf 'memory.max=%s\n' "$(read_value /sys/fs/cgroup/memory.max)"
-printf 'uid_map=%s\n' "$(cat /proc/self/uid_map)"
+	productQualificationLimitsScript = `printf 'uid_map=%s\n' "$(cat /proc/self/uid_map)"
 printf 'gid_map=%s\n' "$(cat /proc/self/gid_map)"
 printf 'id=%s:%s\n' "$(id -u)" "$(id -g)"`
 )
@@ -78,15 +75,17 @@ func productShellQuote(value string) string {
 
 // productQualificationTarget is what a qualification run needs from the verified command host.
 type productQualificationTarget struct {
-	Profile  piruntime.HostProfile
-	Template piruntime.D09CellTemplate
+	Profile          piruntime.HostProfile
+	Template         piruntime.D09CellTemplate
+	ProviderHostname string
 }
 
 // productQualificationNetwork holds the service-side controls of the network probe. Tests replace them to run offline.
 var productQualificationNetwork = struct {
 	listener productNetworkControl
 	routable productNetworkRoutable
-}{dialProductListener, productDestinationRoutable}
+	resolve  productNetworkResolve
+}{dialProductListener, productDestinationRoutable, net.DefaultResolver.LookupIPAddr}
 
 func dialProductListener(ctx context.Context, address string) error {
 	var dialer net.Dialer
@@ -97,8 +96,7 @@ func dialProductListener(ctx context.Context, address string) error {
 	return conn.Close()
 }
 
-// productDestinationRoutable asks the kernel for a route. A UDP connect sends nothing, so a documentation-range
-// destination can be checked without reaching anyone.
+// productDestinationRoutable performs the provider TCP positive control from the service context.
 func productDestinationRoutable(ctx context.Context, network, address string) error {
 	var dialer net.Dialer
 	conn, err := dialer.DialContext(ctx, network, address)
@@ -162,6 +160,7 @@ type productQualificationRun struct {
 	target          productQualificationTarget
 	env             *productTurnEnv
 	runner          productQualificationRunner
+	owner           *productTurnWorkflow
 	store           *sessionrepo.Store
 	tip             *sessionrepo.Generation
 	dir, runID      string
@@ -214,7 +213,7 @@ func openProductQualificationCell(ctx context.Context, target productQualificati
 	}
 	defer func() {
 		if err != nil {
-			err = errors.Join(err, r.release())
+			err = errors.Join(err, r.finish(context.Background(), err))
 		}
 	}()
 	if err := os.WriteFile(filepath.Join(sourceDir, productQualificationSeedFile), []byte("tbound product qualification seed\n"), 0o600); err != nil {
@@ -228,17 +227,15 @@ func openProductQualificationCell(ctx context.Context, target productQualificati
 	}
 	runner, runnerErr := newRunner(productTurnCommandContext{Journal: r.commandJournal, TurnDir: r.dir, WorkflowID: "qualification-workflow-" + runID,
 		RunID: "qualification-run-" + runID, SessionID: "qualification-session-" + runID, ConversationID: "qualification-conversation-" + runID})
+	if lifecycle, ok := runner.(productCommandLifecycle); ok && lifecycle != nil {
+		r.owner = &productTurnWorkflow{env: env, taskID: runID, commandLifecycle: lifecycle, closers: []func() error{r.release}}
+	}
 	qualified, ok := runner.(productQualificationRunner)
 	if ok && qualified != nil {
 		r.runner = qualified
 	}
 	if runnerErr != nil {
-		// The runner is returned with its error when it already owns a scope; settle it so the owner is drained.
-		if r.runner != nil {
-			settleCtx, cancel := context.WithTimeout(context.Background(), productQualificationSettleTimeout)
-			runnerErr = errors.Join(runnerErr, r.runner.Settle(settleCtx))
-			cancel()
-		}
+
 		return nil, runnerErr
 	}
 	if r.runner == nil {
@@ -486,7 +483,7 @@ func (r *productQualificationRun) rootfsDenial(ctx context.Context) error {
 }
 
 // limitsMapping holds the cell to the signed template's one-ID mapping (from its proof and from inside) and to the
-// pids and memory limits the template sets. A limit the cell cannot read is a failed check, not a skipped one.
+// live limits observed by the supervisor through its held cgroup descriptor; Landlock denies in-cell cgroup reads.
 func (r *productQualificationRun) limitsMapping(ctx context.Context) error {
 	command, err := r.exec(ctx, productPhaseLimitsMapping, "limits", productQualificationLimitsScript, []string{})
 	if err != nil {
@@ -507,8 +504,22 @@ func (r *productQualificationRun) limitsMapping(ctx context.Context) error {
 			observed[key] = value
 		}
 	}
-	want := map[string]string{"pids.max": strconv.Itoa(template.PidsMax), "memory.max": strconv.FormatInt(int64(template.MemoryMB)<<20, 10),
-		"id": fmt.Sprintf("%d:%d", template.CellUID, template.CellGID)}
+	observer, ok := r.runner.(interface {
+		productCommandLimits(string) (piruntime.D09ProductCommandLimits, error)
+	})
+	if !ok {
+		return errors.New("no supervisor cgroup observer")
+	}
+	limits, err := observer.productCommandLimits(command.record.LeaseID)
+	if err != nil {
+		return err
+	}
+	for key, pair := range map[string][2]string{"pids.max": {limits.PidsMax, strconv.Itoa(template.PidsMax)}, "memory.max": {limits.MemoryMax, strconv.FormatInt(int64(template.MemoryMB)<<20, 10)}} {
+		if pair[0] != pair[1] {
+			return fmt.Errorf("live cgroup %s=%q, signed template sets %q", key, pair[0], pair[1])
+		}
+	}
+	want := map[string]string{"id": fmt.Sprintf("%d:%d", template.CellUID, template.CellGID)}
 	for key, value := range want {
 		if observed[key] != value {
 			return fmt.Errorf("the cell reports %s=%q, the signed template sets %q", key, observed[key], value)
@@ -550,8 +561,8 @@ func (r *productQualificationRun) networkProbe(ctx context.Context) error {
 		}
 		return command.stdout, nil
 	}
-	report, err := productNetworkProbe(ctx, productNetworkPolicyDenyAll, listener.Addr().String(), run,
-		productQualificationNetwork.listener, productQualificationNetwork.routable)
+	report, err := productNetworkProbe(ctx, productNetworkPolicyDenyAll, listener.Addr().String(), r.target.ProviderHostname, run,
+		productQualificationNetwork.listener, productQualificationNetwork.routable, productQualificationNetwork.resolve)
 	r.evidence.Network = &report
 	return err
 }
@@ -592,8 +603,8 @@ func (r *productQualificationRun) finish(ctx context.Context, cause error) error
 		defer cancel()
 	}
 	var failures []error
-	if !r.settled {
-		if err := r.runner.Settle(ctx); err != nil {
+	if !r.settled && r.owner != nil {
+		if err := r.owner.settleCommands(); err != nil {
 			failures = append(failures, fmt.Errorf("settle the qualification cell: %w", err))
 		} else {
 			r.settled = true
@@ -610,7 +621,16 @@ func (r *productQualificationRun) finish(ctx context.Context, cause error) error
 	if err := r.writeEvidence(); err != nil {
 		failures = append(failures, fmt.Errorf("retain the qualification evidence: %w", err))
 	}
-	return errors.Join(append(failures, r.release())...)
+	var closeErr error
+	if r.owner != nil {
+		closeErr = r.owner.closeUnlessRetained()
+	} else {
+		closeErr = r.release()
+	}
+	if cause == nil && len(failures) == 0 && closeErr == nil {
+		closeErr = pruneProductQualifications(ctx, filepath.Dir(r.dir))
+	}
+	return errors.Join(append(failures, closeErr)...)
 }
 
 // release closes the handles this run opened. The runner closes the owner journal, scope and launcher itself, and only
@@ -712,4 +732,68 @@ func productErrnoName(err error) string {
 		}
 	}
 	return ""
+}
+
+// pruneProductQualifications removes only completed, durably drained disposable runs, keeping the newest five.
+func pruneProductQualifications(ctx context.Context, base string) error {
+	entries, err := os.ReadDir(base)
+	if err != nil {
+		return err
+	}
+	type completed struct {
+		path     string
+		modified time.Time
+	}
+	var runs []completed
+	for _, entry := range entries {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if !entry.IsDir() {
+			continue
+		}
+		path := filepath.Join(base, entry.Name())
+		raw, err := os.ReadFile(filepath.Join(path, productQualificationEvidenceFile))
+		if err != nil {
+			continue
+		}
+		var evidence productQualificationEvidence
+		if json.Unmarshal(raw, &evidence) != nil || evidence.Schema != productQualificationEvidenceSchema || evidence.FinishedAt == "" {
+			continue
+		}
+		journal, err := openExistingRecoveryJournal(filepath.Join(path, productCommandOwnerJournal))
+		if err != nil {
+			continue
+		}
+		trace, readErr := journal.Trace()
+		closeErr := journal.Close()
+		if readErr != nil || closeErr != nil || len(trace.Records) < 2 {
+			continue
+		}
+		last := trace.Records[len(trace.Records)-1].Event
+		first := trace.Records[0].Event
+		var opened, drained productD09ScopeOwner
+		if first.Kind != "product_command_scope_opened" || last.Kind != "product_command_scope_drained" || json.Unmarshal(first.Data, &opened) != nil || json.Unmarshal(last.Data, &drained) != nil {
+			continue
+		}
+		drained.State = "opened"
+		if drained != opened || opened.State != "opened" || first.ID != opened.ScopeIdentity || last.ID != opened.ScopeIdentity {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		runs = append(runs, completed{path, info.ModTime()})
+	}
+	slices.SortFunc(runs, func(a, b completed) int { return b.modified.Compare(a.modified) })
+	for i := 5; i < len(runs); i++ {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := os.RemoveAll(runs[i].path); err != nil {
+			return err
+		}
+	}
+	return nil
 }

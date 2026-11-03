@@ -6,9 +6,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -48,6 +50,7 @@ type qualificationHarness struct {
 	specs         []sessionrepo.CommandSpec
 	routes        []string
 	runners       []*productD09TurnRunner
+	limitsErr     bool
 	ownerJournals []*audit.Journal
 }
 
@@ -70,7 +73,7 @@ func newQualificationHarness(t *testing.T) *qualificationHarness {
 	profile.ChildExecutable, profile.ExecutableDigest = "/usr/local/bin/node", digestBytes([]byte("node"))
 	return &qualificationHarness{t: t, profile: profile, template: template, cells: t.TempDir(), rootDigest: digestBytes([]byte("cells-root")),
 		routable: func(network, address string) error {
-			if network == "udp6" {
+			if network == "tcp6" {
 				return syscall.ENETUNREACH
 			}
 			return nil
@@ -78,7 +81,7 @@ func newQualificationHarness(t *testing.T) *qualificationHarness {
 }
 
 func (h *qualificationHarness) target() productQualificationTarget {
-	return productQualificationTarget{Profile: h.profile, Template: h.template}
+	return productQualificationTarget{Profile: h.profile, Template: h.template, ProviderHostname: "provider.test"}
 }
 
 // newEnv is the environment a qualification run reads: a private state root and the xattr attestation of a start.
@@ -119,6 +122,9 @@ func (h *qualificationHarness) install(t *testing.T, steps productCommandQualifi
 	withProductCommandQualification(t, steps)
 	original := productQualificationNetwork
 	productQualificationNetwork.listener = dialProductListener
+	productQualificationNetwork.resolve = func(context.Context, string) ([]net.IPAddr, error) {
+		return productTestResolve(context.Background(), "provider.test")
+	}
 	productQualificationNetwork.routable = func(_ context.Context, network, address string) error {
 		h.mu.Lock()
 		h.routes = append(h.routes, network+" "+address)
@@ -176,12 +182,23 @@ func (h *qualificationHarness) newRunner(c productTurnCommandContext) (productTu
 	h.crash("scope-created")
 	owner := productD09ScopeOwner{Schema: "tbound-product-d09-scope-owner/v1", State: "opened", WorkflowID: c.WorkflowID, RunID: c.RunID,
 		RegistrationDigest: digestBytes([]byte("registration")), ProfileDigest: h.profile.Digest, RootDigest: h.rootDigest,
-		ScopePath: qualificationCellsPath + "/" + name, ScopeIdentity: h.scopeIdentity(name)}
+		ScopePath: qualificationCellsPath + "/" + name, ScopeIdentity: h.scopeIdentity(name), CommandOwnershipVersion: 1}
 	if err := persistProductCommandScopeOwner(journal, owner); err != nil {
 		return nil, errors.Join(err, journal.Close())
 	}
 	h.crash("owner-recorded")
-	runner := newProductD09CommandRunnerWithFactory(func(lease string) (sessionrepo.CommandRunner, error) {
+	var runner *productD09TurnRunner
+	runner = newProductD09CommandRunnerWithFactory(func(lease string) (sessionrepo.CommandRunner, error) {
+		runner.limitsMu.Lock()
+		if runner.limits == nil {
+			runner.limits = map[string]piruntime.D09ProductCommandLimits{}
+		}
+		pids := strconv.Itoa(h.template.PidsMax)
+		if h.limitsErr {
+			pids = "unreadable"
+		}
+		runner.limits[lease] = piruntime.D09ProductCommandLimits{PidsMax: pids, MemoryMax: strconv.FormatInt(int64(h.template.MemoryMB)<<20, 10)}
+		runner.limitsMu.Unlock()
 		cell := &qualificationScriptedCell{h: h, leaseID: lease}
 		return newProductionD09BashRunnerWithInvoker(lease, cell, c.Journal, c.RunID, c.SessionID, c.WorkflowID, c.ConversationID, h.profile, h.template), nil
 	}, func(context.Context) error {
@@ -260,12 +277,13 @@ func (h *qualificationHarness) respond(name, viewDir, script string) (string, in
 	case "rootfs":
 		return "rootfs-write-denied\n", 0
 	case "limits":
-		return fmt.Sprintf("pids.max=%d\nmemory.max=%d\nuid_map=%s\ngid_map=%s\nid=%d:%d\n", h.template.PidsMax, int64(h.template.MemoryMB)<<20,
-			fmt.Sprintf("%10d %10d %10d", h.template.CellUID, 0, 1), fmt.Sprintf("%10d %10d %10d", h.template.CellGID, 0, 1),
-			h.template.CellUID, h.template.CellGID), 0
+		if strings.Contains(script, "/sys/fs/cgroup") {
+			h.t.Fatal("frozen Landlock denies cgroup reads")
+		}
+		return fmt.Sprintf("uid_map=%s\ngid_map=%s\nid=%d:%d\n", fmt.Sprintf("%10d %10d %10d", h.template.CellUID, 0, 1), fmt.Sprintf("%10d %10d %10d", h.template.CellGID, 0, 1), h.template.CellUID, h.template.CellGID), 0
 	case "network-probe":
 		listener := qualificationListenerLiteral.FindStringSubmatch(script)[1]
-		return string(productDeniedNetworkOutput(h.t, listener, nil)), 0
+		return string(productTestNetworkOutputForProgram(h.t, listener, script)), 0
 	}
 	h.t.Fatalf("no answer for %s", name)
 	return "", 0

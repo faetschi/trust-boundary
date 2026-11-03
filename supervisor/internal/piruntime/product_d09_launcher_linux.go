@@ -155,7 +155,7 @@ func productD09LauncherConfig(host *D09ProductCommandHost) (D09Config, error) {
 
 // NewProductD09PodmanCrunLauncher admits the revalidated signed product host for
 // command mode only. Failure leaves scope ownership with the caller.
-func NewProductD09PodmanCrunLauncher(ctx context.Context, host *D09ProductCommandHost, scope *LinuxCgroupScope) (*D09PodmanCrunLauncher, error) {
+func NewProductD09PodmanCrunLauncher(ctx context.Context, host *D09ProductCommandHost, scope *LinuxCgroupScope, ownership ...func(D09ProductCommandOwnership) error) (*D09PodmanCrunLauncher, error) {
 	if err := host.Revalidate(ctx); err != nil {
 		return nil, err
 	}
@@ -173,6 +173,12 @@ func NewProductD09PodmanCrunLauncher(ctx context.Context, host *D09ProductComman
 	launcher.config.CgroupsPath, err = scope.Path()
 	if err != nil {
 		return nil, err
+	}
+	if len(ownership) > 1 {
+		return nil, ErrProductD09HostRefused
+	}
+	if len(ownership) == 1 {
+		launcher.productCommandOwner = ownership[0]
 	}
 	launcher.productHost = host
 	if _, err := launcher.Probe(ctx); err != nil {

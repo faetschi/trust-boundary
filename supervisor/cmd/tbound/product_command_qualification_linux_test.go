@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -176,7 +177,7 @@ func TestProductD09RestartFindsPreReceiptAndQualificationOrphans(t *testing.T) {
 	orphan := productD09ScopeOwner{Schema: "tbound-product-d09-scope-owner/v1", State: "opened", WorkflowID: "pwf-orphan", RunID: "prun-orphan",
 		RegistrationDigest: digestBytes([]byte("registration")), ProfileDigest: digestBytes([]byte("profile")),
 		RootDigest: digestBytes([]byte("root")), ScopePath: "/sys/fs/cgroup/system.slice/tbound-product.service/cells/turn-orphan",
-		ScopeIdentity: digestBytes([]byte("scope"))}
+		ScopeIdentity: digestBytes([]byte("scope")), CommandOwnershipVersion: 1}
 	// startWithCells starts a deny-only service whose cells root is cells, with the real retained-scope reconciler.
 	startWithCells := func(t *testing.T, f *productServiceFixture, cells string) (*productService, *productTurnEnv, error) {
 		var ran []productQualificationPhase
@@ -301,7 +302,7 @@ func TestProductNetworkProbeFailsOnTimeoutMissingNodeOrDeadControl(t *testing.T)
 		t.Run(name, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 			defer cancel()
-			report, err := productNetworkProbe(ctx, "deny-all", listener, tc.run, tc.control, routed)
+			report, err := productNetworkProbe(ctx, "deny-all", listener, "provider.test", tc.run, tc.control, routed, productTestResolve)
 			if tc.want == "" {
 				if err != nil || len(report.Checks) != 4 {
 					t.Fatalf("a denied probe failed: %v (%d checks)", err, len(report.Checks))
@@ -321,15 +322,12 @@ func TestProductNetworkProbeControlsAreServiceSideAndRecorded(t *testing.T) {
 	const listener = "127.0.0.1:41234"
 	ctx := context.Background()
 	live := func(context.Context, string) error { return nil }
-	denied := func(context.Context, string) ([]byte, error) {
-		return productDeniedNetworkOutput(t, listener, nil), nil
-	}
 	t.Run("a cell cannot supply its own controls", func(t *testing.T) {
 		forged := productDeniedNetworkOutput(t, listener, func(r *productNetworkReport) {
 			r.Controls = []productNetworkCheck{{ID: "ipv4-route", Destination: "forged", Outcome: "routable"}}
 		})
-		report, err := productNetworkProbe(ctx, "deny-all", listener, func(context.Context, string) ([]byte, error) { return forged, nil }, live,
-			func(context.Context, string, string) error { return nil })
+		report, err := productNetworkProbe(ctx, "deny-all", listener, "provider.test", func(context.Context, string) ([]byte, error) { return forged, nil }, live,
+			func(context.Context, string, string) error { return nil }, productTestResolve)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -341,25 +339,27 @@ func TestProductNetworkProbeControlsAreServiceSideAndRecorded(t *testing.T) {
 	})
 	t.Run("no IPv4 route refuses before the cell runs", func(t *testing.T) {
 		ran := false
-		_, err := productNetworkProbe(ctx, "deny-all", listener, func(context.Context, string) ([]byte, error) { ran = true; return nil, nil }, live,
+		_, err := productNetworkProbe(ctx, "deny-all", listener, "provider.test", func(context.Context, string) ([]byte, error) { ran = true; return nil, nil }, live,
 			func(_ context.Context, network, _ string) error {
-				if network == "udp4" {
+				if network == "tcp4" {
 					return syscall.ENETUNREACH
 				}
 				return nil
-			})
+			}, productTestResolve)
 		if err == nil || !strings.Contains(err.Error(), "dead network") || ran {
 			t.Fatalf("a host without a route passed: %v (cell ran %v)", err, ran)
 		}
 	})
 	t.Run("no IPv6 route is recorded and does not refuse", func(t *testing.T) {
-		report, err := productNetworkProbe(ctx, "deny-all", listener, denied, live, func(_ context.Context, network, _ string) error {
-			if network == "udp6" {
+		report, err := productNetworkProbe(ctx, "deny-all", listener, "provider.test", func(ctx context.Context, program string) ([]byte, error) {
+			return productTestNetworkOutputForProgram(t, listener, program), nil
+		}, live, func(_ context.Context, network, _ string) error {
+			if network == "tcp6" {
 				return syscall.ENETUNREACH
 			}
 			return nil
-		})
-		if err != nil || report.Controls[len(report.Controls)-1].Outcome != "unroutable" || report.Controls[len(report.Controls)-1].Errno != "ENETUNREACH" {
+		}, productTestResolve)
+		if err != nil || report.Controls[len(report.Controls)-1].Outcome != "not available on host" {
 			t.Fatalf("%v %+v", err, report.Controls)
 		}
 	})
@@ -369,9 +369,9 @@ func TestProductNetworkProbeControlsAreServiceSideAndRecorded(t *testing.T) {
 // host, as the probe program prints it. mutate changes one field so a test can break exactly one check.
 func productDeniedNetworkOutput(t *testing.T, listener string, mutate func(*productNetworkReport)) []byte {
 	t.Helper()
-	report := productNetworkReport{Node: "v22.12.0", Routes: []productNetworkRoute{{Family: "ipv4", Iface: "lo"}},
+	report := productNetworkReport{Node: "v22.12.0", Interfaces: []string{"lo"}, Controls: productTestNetworkControls(listener), Routes: []productNetworkRoute{{Family: "ipv4", Iface: "lo"}},
 		Checks: []productNetworkCheck{
-			{ID: "name-resolution", Destination: "probe.invalid", Outcome: "error", Errno: "EAI_AGAIN"},
+			{ID: "name-resolution", Destination: "provider.test", Outcome: "error", Errno: "ECONNREFUSED"},
 			{ID: "ipv4-connect", Destination: "192.0.2.1:443", Outcome: "error", Errno: "ENETUNREACH"},
 			{ID: "ipv6-connect", Destination: "[2001:db8::1]:443", Outcome: "error", Errno: "ENETUNREACH"},
 			{ID: "host-listener", Destination: listener, Outcome: "error", Errno: "ECONNREFUSED"},
@@ -384,4 +384,23 @@ func productDeniedNetworkOutput(t *testing.T, listener string, mutate func(*prod
 		t.Fatal(err)
 	}
 	return encoded
+}
+
+func productTestResolve(context.Context, string) ([]net.IPAddr, error) {
+	return []net.IPAddr{{IP: net.ParseIP("192.0.2.1")}, {IP: net.ParseIP("2001:db8::1")}}, nil
+}
+func productTestNetworkControls(listener string) []productNetworkCheck {
+	return []productNetworkCheck{
+		{ID: "host-listener", Destination: listener, Outcome: "reachable"},
+		{ID: "name-resolution", Destination: "provider.test", Outcome: "resolved"},
+		{ID: "ipv4-connect", Destination: "192.0.2.1:443", Outcome: "reachable"},
+		{ID: "ipv6-connect", Destination: "[2001:db8::1]:443", Outcome: "reachable"},
+	}
+}
+func productTestNetworkOutputForProgram(t *testing.T, listener, program string) []byte {
+	return productDeniedNetworkOutput(t, listener, func(report *productNetworkReport) {
+		if strings.Contains(program, `"IPv6":""`) {
+			report.Checks = append(report.Checks[:2], report.Checks[3:]...)
+		}
+	})
 }

@@ -391,9 +391,10 @@ func DefaultD09Config(cosignPublicKeyPath string) D09Config {
 // D09PodmanCrunLauncher is the concrete rootless Podman/crun cell launcher. The
 // runner field is unexported so no external caller can substitute a fake host.
 type D09PodmanCrunLauncher struct {
-	runner D09ProbeRunner
-	config D09Config
-	scope  *LinuxCgroupScope
+	productCommandOwner func(D09ProductCommandOwnership) error
+	runner              D09ProbeRunner
+	config              D09Config
+	scope               *LinuxCgroupScope
 
 	stateMu                sync.Mutex
 	activeOps              int

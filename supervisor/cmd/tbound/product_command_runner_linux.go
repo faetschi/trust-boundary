@@ -31,9 +31,11 @@ type productCommandLifecycle interface {
 // and physical cleanup succeed. A failed cleanup remains retryable by the host.
 type productD09TurnRunner struct {
 	*productionCommandRunner
-	ownerMu sync.Mutex
-	cleanup func(context.Context) error
-	closed  bool
+	ownerMu  sync.Mutex
+	cleanup  func(context.Context) error
+	closed   bool
+	limitsMu sync.Mutex
+	limits   map[string]piruntime.D09ProductCommandLimits
 }
 
 func newProductD09CommandRunnerWithFactory(factory productionCommandRunnerFactory, cleanup func(context.Context) error) *productD09TurnRunner {
@@ -104,15 +106,16 @@ func (e *productTurnEnv) settleRetainedProductCommands(turnID string) error {
 }
 
 type productD09ScopeOwner struct {
-	Schema             string `json:"schema"`
-	State              string `json:"state"`
-	WorkflowID         string `json:"workflow_id"`
-	RunID              string `json:"run_id"`
-	RegistrationDigest string `json:"registration_digest"`
-	ProfileDigest      string `json:"profile_digest"`
-	RootDigest         string `json:"root_digest"`
-	ScopePath          string `json:"scope_path"`
-	ScopeIdentity      string `json:"scope_identity"`
+	Schema                  string `json:"schema"`
+	State                   string `json:"state"`
+	WorkflowID              string `json:"workflow_id"`
+	RunID                   string `json:"run_id"`
+	RegistrationDigest      string `json:"registration_digest"`
+	ProfileDigest           string `json:"profile_digest"`
+	RootDigest              string `json:"root_digest"`
+	ScopePath               string `json:"scope_path"`
+	ScopeIdentity           string `json:"scope_identity"`
+	CommandOwnershipVersion int    `json:"command_ownership_version,omitempty"`
 }
 
 func persistProductCommandScopeOwner(journal *audit.Journal, owner productD09ScopeOwner) error {
@@ -157,7 +160,7 @@ func newProductD09CommandRunner(ctx context.Context, host *piruntime.D09ProductC
 	}
 	path, pathErr := scope.Path()
 	owner := productD09ScopeOwner{Schema: "tbound-product-d09-scope-owner/v1", State: "opened", WorkflowID: c.WorkflowID, RunID: c.RunID,
-		RegistrationDigest: host.Template().ProductRegistrationDigest, ProfileDigest: host.Profile().Digest, RootDigest: scope.RootDigest(), ScopePath: path, ScopeIdentity: scope.IdentityDigest()}
+		RegistrationDigest: host.Template().ProductRegistrationDigest, ProfileDigest: host.Profile().Digest, RootDigest: scope.RootDigest(), ScopePath: path, ScopeIdentity: scope.IdentityDigest(), CommandOwnershipVersion: 1}
 	var launcher *piruntime.D09PodmanCrunLauncher
 	removed, recorded, drained := false, false, false
 	runner := newProductD09CommandRunnerWithFactory(func(lease string) (sessionrepo.CommandRunner, error) {
@@ -197,7 +200,32 @@ func newProductD09CommandRunner(ctx context.Context, host *piruntime.D09ProductC
 		return runner, err
 	}
 	recorded = true
-	launcher, err = piruntime.NewProductD09PodmanCrunLauncher(ctx, host, scope)
+	launcher, err = piruntime.NewProductD09PodmanCrunLauncher(ctx, host, scope, func(command piruntime.D09ProductCommandOwnership) error {
+		data, err := json.Marshal(command)
+		if err != nil {
+			return err
+		}
+		state := "intent"
+		if command.MountNSInode != 0 {
+			state = "started"
+		}
+		if _, err := journal.Append(audit.Event{Kind: "product_command_" + state, ID: command.ContainerName, Data: data}); err != nil {
+			return err
+		}
+		if command.MountNSInode != 0 {
+			limits, err := command.ReadLimits()
+			if err != nil {
+				return err
+			}
+			runner.limitsMu.Lock()
+			defer runner.limitsMu.Unlock()
+			if runner.limits == nil {
+				runner.limits = map[string]piruntime.D09ProductCommandLimits{}
+			}
+			runner.limits[command.LeaseID] = limits
+		}
+		return nil
+	})
 	return runner, err
 }
 
@@ -209,14 +237,23 @@ func reconcileProductCommandScopes(ctx context.Context, host *piruntime.D09Produ
 		return err
 	}
 	defer root.Close()
-	return reconcileProductCommandScopesUnder(ctx, root, retainedRoots...)
+	return reconcileProductCommandScopesWithRecovery(ctx, root, func(ctx context.Context, command piruntime.D09ProductCommandOwnership) error {
+		return piruntime.ReconcileProductD09CommandResidue(ctx, host, command)
+	}, retainedRoots...)
 }
 
 // reconcileProductCommandScopesUnder is reconcileProductCommandScopes over a cells root that is already
 // prepared, so the journal and direct-child checks need no host.
 func reconcileProductCommandScopesUnder(ctx context.Context, root *os.File, retainedRoots ...string) error {
+	return reconcileProductCommandScopesWithRecovery(ctx, root, nil, retainedRoots...)
+}
+
+func reconcileProductCommandScopesWithRecovery(ctx context.Context, root *os.File, recoverCommand func(context.Context, piruntime.D09ProductCommandOwnership) error, retainedRoots ...string) error {
 	owners := map[string]struct{}{}
 	for _, retained := range retainedRoots {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		entries, err := os.ReadDir(retained)
 		if errors.Is(err, os.ErrNotExist) {
 			continue
@@ -225,6 +262,9 @@ func reconcileProductCommandScopesUnder(ctx context.Context, root *os.File, reta
 			return err
 		}
 		for _, entry := range entries {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
 			if !entry.IsDir() {
 				continue
 			}
@@ -236,7 +276,7 @@ func reconcileProductCommandScopesUnder(ctx context.Context, root *os.File, reta
 			if err != nil {
 				return err
 			}
-			err = reconcileProductCommandScope(ctx, root, journal, owners)
+			err = reconcileProductCommandScope(ctx, root, journal, owners, recoverCommand)
 			closeErr := journal.Close()
 			if err != nil || closeErr != nil {
 				return errors.Join(err, closeErr)
@@ -257,7 +297,7 @@ func reconcileProductCommandScopesUnder(ctx context.Context, root *os.File, reta
 	return nil
 }
 
-func reconcileProductCommandScope(ctx context.Context, root *os.File, journal *audit.Journal, owners map[string]struct{}) error {
+func reconcileProductCommandScope(ctx context.Context, root *os.File, journal *audit.Journal, owners map[string]struct{}, recoverCommand func(context.Context, piruntime.D09ProductCommandOwnership) error) error {
 	trace, err := journal.Trace()
 	if err != nil {
 		return errors.Join(piruntime.ErrUnknownSettlement, err)
@@ -267,11 +307,36 @@ func reconcileProductCommandScope(ctx context.Context, root *os.File, journal *a
 	if len(trace.Records) == 0 {
 		return nil
 	}
-	if len(trace.Records) > 2 {
-		return piruntime.ErrUnknownSettlement
-	}
+	commands := map[string]piruntime.D09ProductCommandOwnership{}
+	drained := false
 	var opened productD09ScopeOwner
 	for i, record := range trace.Records {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if i > 0 && (record.Event.Kind == "product_command_intent" || record.Event.Kind == "product_command_started") {
+			if drained {
+				return piruntime.ErrUnknownSettlement
+			}
+			var command piruntime.D09ProductCommandOwnership
+			if json.Unmarshal(record.Event.Data, &command) != nil || command.ContainerName != record.Event.ID || command.ViewInode == 0 || command.LeaseID == "" || command.ViewID == "" {
+				return piruntime.ErrUnknownSettlement
+			}
+			prior, exists := commands[command.ContainerName]
+			if record.Event.Kind == "product_command_intent" {
+				if exists || command.MountNSInode != 0 {
+					return piruntime.ErrUnknownSettlement
+				}
+			} else {
+				started := command
+				started.MountNSInode = 0
+				if !exists || prior.MountNSInode != 0 || started != prior || command.MountNSInode == 0 {
+					return piruntime.ErrUnknownSettlement
+				}
+			}
+			commands[command.ContainerName] = command
+			continue
+		}
 		var owner productD09ScopeOwner
 		if json.Unmarshal(record.Event.Data, &owner) != nil || owner.Schema != "tbound-product-d09-scope-owner/v1" || record.Event.ID != owner.ScopeIdentity ||
 			!validDigestText(owner.RegistrationDigest) || !validDigestText(owner.ProfileDigest) || !validDigestText(owner.RootDigest) || !validDigestText(owner.ScopeIdentity) || owner.WorkflowID == "" || owner.RunID == "" ||
@@ -288,14 +353,28 @@ func reconcileProductCommandScope(ctx context.Context, root *os.File, journal *a
 			if owner != opened || !strings.HasSuffix(record.Event.Kind, "drained") {
 				return piruntime.ErrUnknownSettlement
 			}
-			return nil
+			drained = true
 		}
+	}
+	if drained {
+		return nil
+	}
+	if opened.CommandOwnershipVersion != 1 {
+		return piruntime.ErrUnknownSettlement
 	}
 	name := filepath.Base(opened.ScopePath)
 	if _, duplicate := owners[name]; duplicate {
 		return piruntime.ErrUnknownSettlement
 	}
 	owners[name] = struct{}{}
+	for _, command := range commands {
+		if recoverCommand == nil {
+			return piruntime.ErrUnknownSettlement
+		}
+		if err := recoverCommand(ctx, command); err != nil {
+			return err
+		}
+	}
 	// The drain revokes the scope and removes it. It never writes a command receipt: a killed command has no result
 	// to certify, so a linked turn that depended on it stays UNKNOWN.
 	scope, err := openProductScopeForDrain(root, name, opened.ScopeIdentity)
@@ -370,4 +449,14 @@ var productProcessesInScope = func(scopePath string) (int, error) {
 		}
 	}
 	return writers, nil
+}
+
+func (r *productD09TurnRunner) productCommandLimits(lease string) (piruntime.D09ProductCommandLimits, error) {
+	r.limitsMu.Lock()
+	defer r.limitsMu.Unlock()
+	limits, ok := r.limits[lease]
+	if !ok {
+		return limits, errors.New("no supervisor observation of the live command cgroup")
+	}
+	return limits, nil
 }
