@@ -1,0 +1,1 @@
+{"error":"command cell failed before its command started; cell settled\nfixed pre-start cause","result":{"exit_code":0,"exit_observed":false},"settlement":{"lease_id":"","view_id":"","process_scope_empty":false,"writers_stopped":false,"mount_detached":false,"exit_observed":false,"exit_code":0,"evidence_class":""}}
