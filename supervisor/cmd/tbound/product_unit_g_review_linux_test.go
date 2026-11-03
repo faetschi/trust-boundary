@@ -170,7 +170,7 @@ func TestProductReviewPruningKeepsUnresolvedAndHonorsCancellation(t *testing.T) 
 }
 
 func TestProductReviewDNSNegativeAnswerIsNotIsolation(t *testing.T) {
-	for _, errno := range []string{"ENOTFOUND", "EAI_NONAME"} {
+	for _, errno := range []string{"ENOTFOUND", "EAI_NONAME", "EAI_AGAIN", "ESERVFAIL", "ETIMEOUT"} {
 		var report productNetworkReport
 		json.Unmarshal(productDeniedNetworkOutput(t, "127.0.0.1:41234", nil), &report)
 		report.Checks[0].Errno = errno
