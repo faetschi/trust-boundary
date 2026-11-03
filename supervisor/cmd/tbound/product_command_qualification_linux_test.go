@@ -324,7 +324,7 @@ func TestProductNetworkProbeControlsAreServiceSideAndRecorded(t *testing.T) {
 	live := func(context.Context, string) error { return nil }
 	t.Run("a cell cannot supply its own controls", func(t *testing.T) {
 		forged := productDeniedNetworkOutput(t, listener, func(r *productNetworkReport) {
-			r.Controls = []productNetworkCheck{{ID: "ipv4-route", Destination: "forged", Outcome: "routable"}}
+			r.Controls = []productNetworkCheck{{ID: "ipv4-route", Destination: "forged", Outcome: "connect"}}
 		})
 		report, err := productNetworkProbe(ctx, "deny-all", listener, "provider.test", func(context.Context, string) ([]byte, error) { return forged, nil }, live,
 			func(context.Context, string, string) error { return nil }, productTestResolve)

@@ -44,7 +44,7 @@ type qualificationHarness struct {
 	override   func(name, stdout string, exit int) (string, int)
 	editProof  func(name string, proof *piruntime.D09CommandProof)
 	skipWrite  bool
-	routable   func(network, address string) error
+	connect    func(network, address string) error
 
 	mu              sync.Mutex
 	specs           []sessionrepo.CommandSpec
@@ -74,7 +74,7 @@ func newQualificationHarness(t *testing.T) *qualificationHarness {
 	profile.ContainmentProfileDigest = digest
 	profile.ChildExecutable, profile.ExecutableDigest = "/usr/local/bin/node", digestBytes([]byte("node"))
 	return &qualificationHarness{t: t, profile: profile, template: template, cells: t.TempDir(), rootDigest: digestBytes([]byte("cells-root")),
-		routable: func(network, address string) error {
+		connect: func(network, address string) error {
 			if network == "tcp6" {
 				return syscall.ENETUNREACH
 			}
@@ -127,11 +127,11 @@ func (h *qualificationHarness) install(t *testing.T, steps productCommandQualifi
 	productQualificationNetwork.resolve = func(context.Context, string) ([]net.IPAddr, error) {
 		return productTestResolve(context.Background(), "provider.test")
 	}
-	productQualificationNetwork.routable = func(_ context.Context, network, address string) error {
+	productQualificationNetwork.connect = func(_ context.Context, network, address string) error {
 		h.mu.Lock()
 		h.routes = append(h.routes, network+" "+address)
 		h.mu.Unlock()
-		return h.routable(network, address)
+		return h.connect(network, address)
 	}
 	t.Cleanup(func() { productQualificationNetwork = original })
 }

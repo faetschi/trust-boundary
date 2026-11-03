@@ -237,7 +237,7 @@ func TestProductQualificationRefusesEachFailingPhase(t *testing.T) {
 			}
 		}, "host-listener"},
 		{"a service host without an IPv4 route", productPhaseNetworkProbe, func(h *qualificationHarness) {
-			h.routable = func(network, _ string) error {
+			h.connect = func(network, _ string) error {
 				if network == "tcp4" {
 					return errors.New("network is unreachable")
 				}

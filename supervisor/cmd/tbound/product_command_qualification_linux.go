@@ -202,7 +202,7 @@ type productNetworkReport struct {
 }
 
 type productNetworkDestination struct{ Hostname, IPv4, IPv6 string }
-type productNetworkRoutable func(ctx context.Context, network, address string) error
+type productNetworkConnect func(ctx context.Context, network, address string) error
 type productNetworkResolve func(context.Context, string) ([]net.IPAddr, error)
 
 func productQualificationProviderHostname(env *productTurnEnv) (string, error) {
@@ -235,11 +235,11 @@ var productDenyAllNetworkErrnos = map[string][]string{
 // productNetworkProbe proves the cell's network policy from inside the cell, against an outside control. The control
 // dials the host listener first, so a dead network cannot pass as containment. Only deny-all exists in this step.
 func productNetworkProbe(ctx context.Context, policy, listener, hostname string, run productNetworkCellRun, control productNetworkControl,
-	routable productNetworkRoutable, resolve productNetworkResolve) (productNetworkReport, error) {
+	connect productNetworkConnect, resolve productNetworkResolve) (productNetworkReport, error) {
 	if policy != productNetworkPolicyDenyAll {
 		return productNetworkReport{}, fmt.Errorf("the network probe has no expectation for policy %q", policy)
 	}
-	controls, destination, err := productNetworkControls(ctx, listener, hostname, control, routable, resolve)
+	controls, destination, err := productNetworkControls(ctx, listener, hostname, control, connect, resolve)
 	if err != nil {
 		return productNetworkReport{Policy: policy, Controls: controls}, err
 	}
@@ -260,7 +260,7 @@ func productNetworkProbe(ctx context.Context, policy, listener, hostname string,
 }
 
 // productNetworkControls resolves the registered provider and proves actual TCP reachability to the same numeric destinations.
-func productNetworkControls(ctx context.Context, listener, hostname string, control productNetworkControl, connect productNetworkRoutable, resolve productNetworkResolve) ([]productNetworkCheck, productNetworkDestination, error) {
+func productNetworkControls(ctx context.Context, listener, hostname string, control productNetworkControl, connect productNetworkConnect, resolve productNetworkResolve) ([]productNetworkCheck, productNetworkDestination, error) {
 	destination := productNetworkDestination{Hostname: hostname}
 	var controls []productNetworkCheck
 	if err := control(ctx, listener); err != nil {

@@ -83,9 +83,9 @@ type productQualificationTarget struct {
 // productQualificationNetwork holds the service-side controls of the network probe. Tests replace them to run offline.
 var productQualificationNetwork = struct {
 	listener productNetworkControl
-	routable productNetworkRoutable
+	connect  productNetworkConnect
 	resolve  productNetworkResolve
-}{dialProductListener, productDestinationRoutable, net.DefaultResolver.LookupIPAddr}
+}{dialProductListener, connectProductDestination, net.DefaultResolver.LookupIPAddr}
 
 func dialProductListener(ctx context.Context, address string) error {
 	var dialer net.Dialer
@@ -96,8 +96,8 @@ func dialProductListener(ctx context.Context, address string) error {
 	return conn.Close()
 }
 
-// productDestinationRoutable performs the provider TCP positive control from the service context.
-func productDestinationRoutable(ctx context.Context, network, address string) error {
+// connectProductDestination performs the provider TCP positive control from the service context.
+func connectProductDestination(ctx context.Context, network, address string) error {
 	var dialer net.Dialer
 	conn, err := dialer.DialContext(ctx, network, address)
 	if err != nil {
@@ -563,7 +563,7 @@ func (r *productQualificationRun) networkProbe(ctx context.Context) error {
 		return command.stdout, nil
 	}
 	report, err := productNetworkProbe(ctx, productNetworkPolicyDenyAll, listener.Addr().String(), r.target.ProviderHostname, run,
-		productQualificationNetwork.listener, productQualificationNetwork.routable, productQualificationNetwork.resolve)
+		productQualificationNetwork.listener, productQualificationNetwork.connect, productQualificationNetwork.resolve)
 	r.evidence.Network = &report
 	return err
 }
