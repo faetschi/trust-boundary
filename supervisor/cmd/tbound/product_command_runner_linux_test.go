@@ -4,9 +4,11 @@ package main
 
 import (
 	"context"
-	"encoding/json"
+
 	"errors"
 	"fmt"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -74,94 +76,81 @@ func TestProductD09CleanupFailureRetainsOwnersAndBlocksDisposition(t *testing.T)
 }
 
 func TestProductD09FactoryAndRetainedHistoryComposition(t *testing.T) {
+	if root := os.Getenv("TB_PRODUCT_F_ROOT"); root != "" {
+		f := openBashProductDriverFixture(t, root, nil, []string{"task.txt"})
+		installProductTrustCell(f, productTrustCell)
+		turn, ok := f.env.Catalog.Turn(os.Getenv("TB_PRODUCT_F_NEXT"))
+		if !ok {
+			t.Fatal("missing successor")
+		}
+		script := &productDriverScript{turns: []providerbridge.ScriptTurn{scopeDriverFinal("next", "Read it.")}, check: func(history []providerbridge.ScriptMessage) error {
+			at := messageIndex(history, 0, func(m providerbridge.ScriptMessage) bool { return m.Role == "tool" && m.ToolCallID == "call-append" })
+			if at < 0 || !strings.Contains(history[at].Content, `ok\n`) {
+				return errors.New("published Bash output missing")
+			}
+			return nil
+		}}
+		receipt, next, err := f.run(t, productsession.Admission{Turn: turn}, script)
+		if err != nil || next.Outcome != productsession.OutcomeNoDiff || receipt.PredecessorReceiptDigest == "" || script.requests() != 1 {
+			t.Fatalf("fresh next turn: %+v %v", next, err)
+		}
+		return
+	}
 	f := newBashProductDriverFixture(t, productsession.PublicationAuto, nil, false, []string{"task.txt"}, nil)
-	profile, template, _ := productionProofFixture()
-	template.CommandExecutable = "/bin/bash"
-	template.CommandExecutableDigest = "sha256:" + strings.Repeat("6", 64)
-	templateDigest, _ := template.Digest()
-	profile.ContainmentProfileDigest = templateDigest
-	var runner *productD09TurnRunner
-	f.env.NewCommandRunner = func(c productTurnCommandContext) (productTurnCommandRunner, error) {
-		runner = newProductD09CommandRunnerWithFactory(func(lease string) (sessionrepo.CommandRunner, error) {
-			return newProductionD09BashRunnerWithInvoker(lease, &sealedD09Cell{leaseID: lease, template: template, templateDigest: templateDigest}, c.Journal,
-				c.RunID, c.SessionID, c.WorkflowID, c.ConversationID, profile, template), nil
-		}, func(context.Context) error { return nil })
-		return runner, nil
+	installProductTrustCell(f, productTrustCell)
+	receipt, turn, err := f.run(t, f.submit(t, "command", "append task"), &productDriverScript{turns: []providerbridge.ScriptTurn{bashCall("append", "append task"), scopeDriverFinal("done", scopeDriverAnswer)}})
+	if err != nil || turn.Outcome != productsession.OutcomePublished || receipt.PublicationTransactionID == "" || fileContent(t, f.projectDir, "task.txt") != "turn fixture\nbash-stage\n" {
+		t.Fatalf("real trust publication: %+v %+v %v", turn, receipt, err)
 	}
-	admission := f.submit(t, "command", "append task")
-	f.script = &productDriverScript{turns: []providerbridge.ScriptTurn{bashCall("append", `printf 'bash-stage\n' >> task.txt`), scopeDriverFinal("done", scopeDriverAnswer)}}
-	w, err := f.env.composeProductTurnWorkflow(context.Background(), admission.Turn, productDriverProfile, providerbridge.PredecessorContext{})
+	journal, err := audit.OpenExisting(turn.Link.CommandJournalPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer w.close()
-	if err := f.env.Catalog.LinkTurn(admission.Turn.ID, w.link(providerbridge.PredecessorContext{})); err != nil {
-		t.Fatal(err)
-	}
-	worker, _ := newProductTurnWorker(8, func() bool { return false }, func(string) {})
-	work, err := f.env.driveProductTurn(context.Background(), admission.Turn, w, worker)
-	if err != nil || !work.finalAnswer {
-		t.Fatalf("command chain: %+v %v", work, err)
-	}
-	if runner.Settlements() != 1 || runner.productionCommandRunner.Pending() != 0 {
-		t.Fatalf("settlement not bound: %+v", runner)
-	}
-	if err := w.settleCommands(); err != nil || runner.Pending() != 0 {
-		t.Fatalf("settle: %v", err)
-	}
-	trace, err := w.commandJournal.Trace()
-	if err != nil || len(trace.Records) != 1 || !validBareWorkflowDigest(auditHeadHash(trace.Records)) {
-		t.Fatalf("command commitment: %+v %v", trace, err)
-	}
-	var event productionD09CommandSettledEvent
-	if err := json.Unmarshal(trace.Records[0].Event.Data, &event); err != nil || event.WorkflowID != w.workflowID || event.RunID != w.runID || event.SessionID != w.sessionID || event.ConversationID != w.conversationID || event.ProfileDigest != profile.Digest {
-		t.Fatalf("wrong command binding: %+v %v", event, err)
-	}
-	s := productTurnSettlement{env: f.env, turn: admission.Turn, w: w, worker: worker, work: work,
-		outcome: productsession.OutcomeFailed, resultBaseline: admission.Turn.BaselineDigest, runErr: errProductTrust}
-	receipt, err := s.settle()
-	if !errors.Is(err, errProductTrust) || receipt.CommandJournalCount != 1 || receipt.CommandJournalHead != auditHeadHash(trace.Records) {
-		t.Fatalf("receipt commitment: %+v %v", receipt, err)
-	}
-	bundle, err := w.store.EvidenceBundle()
+	trace, err := journal.Trace()
 	if err != nil {
-		t.Fatal(err)
-	}
-	link := w.link(providerbridge.PredecessorContext{})
-	history, err := productD09CommandHistory(profile, template)(w.commandJournal, link)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := history.VerifyStoreBundle(bundle); err != nil {
-		t.Fatal(err)
-	}
-	// Reopen from disk after releasing the writer; no live runner or lease is replay authority.
-	path := filepath.Join(w.turnDir, productTurnCommandJournal)
-	if err := w.close(); err != nil {
-		t.Fatal(err)
-	}
-	journal, err := audit.OpenExisting(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer journal.Close()
-	replayed, err := productD09CommandHistory(profile, template)(journal, link)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := replayed.VerifyStoreBundle(bundle); err != nil {
 		t.Fatal(err)
 	}
 	if err := journal.Close(); err != nil {
 		t.Fatal(err)
 	}
-	f.env.OpenCommandHistory = productD09CommandHistory(profile, template)
+	if receipt.CommandJournalCount != 1 || receipt.CommandJournalHead != auditHeadHash(trace.Records) {
+		t.Fatalf("command commitment: %+v", receipt)
+	}
 	next := f.submit(t, "next", "read task")
-	if _, err := f.env.predecessorContext(next.Turn, productDriverProfile); err != nil {
-		t.Fatalf("predecessor command replay: %v", err)
+	raw, err := os.ReadFile(turn.Link.CommandJournalPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"missing", "reused", "altered"} {
+		broken := []byte{}
+		switch name {
+		case "reused":
+			broken = append(append([]byte{}, raw...), raw...)
+		case "altered":
+			broken = []byte(strings.Replace(string(raw), "ok", "no", 1))
+		}
+		if err := os.WriteFile(turn.Link.CommandJournalPath, broken, 0600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := f.env.predecessorContext(next.Turn, productDriverProfile); err == nil {
+			t.Fatalf("accepted %s command receipt", name)
+		}
+	}
+	if err := os.WriteFile(turn.Link.CommandJournalPath, raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.env.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.env.Catalog.Close(); err != nil {
+		t.Fatal(err)
+	}
+	command := exec.Command(os.Args[0], "-test.run=^TestProductD09FactoryAndRetainedHistoryComposition$", "-test.v")
+	command.Env = append(os.Environ(), "TB_PRODUCT_F_ROOT="+f.root, "TB_PRODUCT_F_NEXT="+next.Turn.ID)
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("fresh published predecessor replay: %v\n%s", err, output)
 	}
 }
-
 func TestProductD09ScopeOwnerJournal(t *testing.T) {
 	path := filepath.Join(privateGovernedTestRoot(t), productCommandOwnerJournal)
 	journal, err := audit.Open(path)
@@ -195,7 +184,9 @@ func TestProductD09ScopeOwnerJournal(t *testing.T) {
 	}
 }
 
-func TestProductD09CurrentTrustRefusalSettlesBeforeAbandon(t *testing.T) {
+type unqualifiedProductRunner struct{ *productD09TurnRunner }
+
+func TestProductD09UnqualifiedTrustRefusalSettlesBeforeAbandon(t *testing.T) {
 	for _, fail := range []bool{false, true} {
 		t.Run(fmt.Sprint(fail), func(t *testing.T) {
 			f := newBashProductDriverFixture(t, productsession.PublicationAuto, nil, false, []string{"task.txt"}, nil)
@@ -204,7 +195,7 @@ func TestProductD09CurrentTrustRefusalSettlesBeforeAbandon(t *testing.T) {
 			factories := 0
 			f.env.NewCommandRunner = func(productTurnCommandContext) (productTurnCommandRunner, error) {
 				factories++
-				return newProductD09CommandRunnerWithFactory(func(string) (sessionrepo.CommandRunner, error) {
+				return unqualifiedProductRunner{newProductD09CommandRunnerWithFactory(func(string) (sessionrepo.CommandRunner, error) {
 					t.Fatal("refused turn launched a command")
 					return nil, nil
 				}, func(context.Context) error {
@@ -213,7 +204,7 @@ func TestProductD09CurrentTrustRefusalSettlesBeforeAbandon(t *testing.T) {
 					}
 					cleaned = true
 					return nil
-				}), nil
+				})}, nil
 			}
 			f.env.PublicationTrust = func(a *SessionOperationAuthority) workflow.Trust {
 				return &productPublicationTrust{env: f.env, authority: a, xattr: func() (workspace.XattrVisibilityAttestation, error) { return f.env.Xattr, nil }}

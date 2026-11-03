@@ -46,7 +46,7 @@ func TestProductTrustResolvesOnlyTheTerminalBashLease(t *testing.T) {
 			admission := f.submit(t, "command", "append task")
 			calls := []providerbridge.ScriptTurn{bashCall("last", "append task")}
 			if name == "Bash after edit" || name == "no-diff Bash" {
-				calls = append([]providerbridge.ScriptTurn{{ResponseID: "edit", CallID: "call-edit", Tool: "edit", Arguments: []byte(`{"path":"task.txt","oldText":"turn fixture","newText":"edited"}`)}}, calls...)
+				calls = append([]providerbridge.ScriptTurn{{ResponseID: "edit", CallID: "call-edit", Tool: "edit", Arguments: []byte(`{"path":"task.txt","edits":[{"oldText":"turn fixture","newText":"edited"}]}`)}}, calls...)
 			}
 			if name == "consecutive Bash" {
 				calls = append([]providerbridge.ScriptTurn{bashCall("first", "append task")}, calls...)
@@ -58,43 +58,65 @@ func TestProductTrustResolvesOnlyTheTerminalBashLease(t *testing.T) {
 			}
 			f.script = &productDriverScript{turns: append(calls, scopeDriverFinal("done", scopeDriverAnswer))}
 			w, err := f.env.composeProductTurnWorkflow(context.Background(), admission.Turn, productDriverProfile, providerbridge.PredecessorContext{})
-			if err != nil { t.Fatal(err) }
+			if err != nil {
+				t.Fatal(err)
+			}
 			defer w.close()
 			trust := f.env.PublicationTrust(w.authority).(*productPublicationTrust)
-			if err := trust.CheckAdmission(context.Background()); err != nil { t.Fatal(err) }
+			if err := trust.CheckAdmission(context.Background()); err != nil {
+				t.Fatal(err)
+			}
 			worker, _ := newProductTurnWorker(8, func() bool { return false }, func(string) {})
 			if name == "provider still open" {
 				f.script.onRequest = func(n int) {
-					if n != 2 { return }
-					
-					if err := trust.AttestQuiescent(context.Background(), w.projectRoot, w.baseline, w.durable.Tip()); err == nil { t.Error("accepted open provider") }
-					
+					if n != 2 {
+						return
+					}
+
+					if err := trust.AttestQuiescent(context.Background(), w.projectRoot, w.baseline, w.durable.Tip()); err == nil {
+						t.Error("accepted open provider")
+					}
+
 				}
 			}
-			if _, err := f.env.driveProductTurn(context.Background(), admission.Turn, w, worker); err != nil { t.Fatal(err) }
+			if _, err := f.env.driveProductTurn(context.Background(), admission.Turn, w, worker); err != nil {
+				t.Fatal(err)
+			}
 			bundle, err := w.store.EvidenceBundle()
-			if err != nil { t.Fatal(err) }
+			if err != nil {
+				t.Fatal(err)
+			}
 			terminal := bundle.ApprovedDeltaLedger[len(bundle.ApprovedDeltaLedger)-1]
 			if name != "pending settlement" {
-				if err := w.settleCommands(); err != nil { t.Fatal(err) }
+				if err := w.settleCommands(); err != nil {
+					t.Fatal(err)
+				}
 			}
 			origin, err := trust.ResolveTerminalLeaseOrigin(context.Background(), bundle, terminal)
-			if err != nil || origin.Kind != delta.OperationProposalCall || origin.CallID != "call-last" { t.Fatalf("terminal origin: %+v %v", origin, err) }
+			if err != nil || origin.Kind != delta.OperationProposalCall || origin.CallID != "call-last" {
+				t.Fatalf("terminal origin: %+v %v", origin, err)
+			}
 			request := workflow.EvidenceRequest{Workflow: w.workflowID, OwnerEpoch: 1, Bundle: bundle.Clone()}
 			switch name {
 			case "tampered receipt":
 				request.Bundle.Operations[len(bundle.Operations)-1].CommandRunnerProfile = "altered"
 			case "missing origin":
 				request.Bundle.ApprovedDeltaLedger[len(bundle.ApprovedDeltaLedger)-1].Operation.LeaseID = "missing"
-				if _, err := trust.ResolveTerminalLeaseOrigin(context.Background(), request.Bundle, request.Bundle.ApprovedDeltaLedger[len(bundle.ApprovedDeltaLedger)-1]); err == nil { t.Error("resolved missing origin") }
+				if _, err := trust.ResolveTerminalLeaseOrigin(context.Background(), request.Bundle, request.Bundle.ApprovedDeltaLedger[len(bundle.ApprovedDeltaLedger)-1]); err == nil {
+					t.Error("resolved missing origin")
+				}
 			case "changed baseline":
 				writeProductDriverFile(t, f.projectDir, "task.txt", "external writer\n")
 			}
 			err = trust.CheckPublicationPrerequisites(context.Background(), request)
 			negative := name == "tampered receipt" || name == "missing origin" || name == "pending settlement"
-			if (err != nil) != negative { t.Fatalf("prerequisites: %v, want refusal=%v", err, negative) }
+			if (err != nil) != negative {
+				t.Fatalf("prerequisites: %v, want refusal=%v", err, negative)
+			}
 			err = trust.AttestQuiescent(context.Background(), w.projectRoot, w.baseline, w.durable.Tip())
-			if (err != nil) != (name == "pending settlement" || name == "changed baseline") { t.Fatalf("quiescence: %v", err) }
+			if (err != nil) != (name == "pending settlement" || name == "changed baseline") {
+				t.Fatalf("quiescence: %v", err)
+			}
 		})
 	}
 }
