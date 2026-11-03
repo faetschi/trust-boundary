@@ -802,6 +802,26 @@ func replayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 				return TranscriptProjection{}, replayError("provider lineage retirement uses an unsupported disposition")
 			}
 
+		case CaptureRefusalEvent:
+			if !cfg.ProductCaptureRefusals || state != replayAwaitExchange || pendingHostCall == nil || ordinal != uint64(len(trace.Records)) {
+				return TranscriptProjection{}, replayError("product provider capture refusal is unpinned or out of order")
+			}
+			var evidence captureRefusalEvidence
+			if err := unmarshalCanonicalEvent(record.Event.Data, &evidence); err != nil ||
+				evidence.WorkflowID != cfg.WorkflowID || evidence.Turn != providerSequence+1 ||
+				evidence.HostCall != pendingHostCall.Binding || !reflect.DeepEqual(evidence.Request, pendingHostCall.Request) ||
+				evidence.StatusCode != 200 || evidence.ResponseDigest != digestBytes(evidence.Response) ||
+				len(evidence.Request.Body) > broker.MaxDurableExchangeBytes ||
+				len(evidence.Response) > broker.MaxDurableExchangeBytes-len(evidence.Request.Body) ||
+				evidence.Reason == "" || evidence.Reason != captureRefusalReason(evidence.Response) ||
+				verifyReplayEventID(record, cfg.ConversationID, captureRefusalID, ordinal) != nil {
+				return TranscriptProjection{}, replayError("product provider capture refusal differs from its reserved request or rejected response")
+			}
+			binding := pendingHostCall.Binding
+			lastHostCall, lastHostCallOutcomeDigest, lastHostCallRetryable = &binding, record.Hash, false
+			pendingHostCall = nil
+			state = replayRetired
+
 		case "provider_tool_result_unknown", "provider_exchange_unknown":
 			return TranscriptProjection{}, replayError("provider journal contains an unresolved UNKNOWN provider exchange or effect result")
 

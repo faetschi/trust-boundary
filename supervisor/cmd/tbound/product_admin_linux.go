@@ -31,9 +31,13 @@ const productAdminUsage = `Usage (run setup, update, rollback and uninstall as r
   tbound product uninstall [--root DIR] [--dry-run] [--purge] [--yes]
   tbound product doctor [--self-test] [--root DIR]
   tbound product turns [--root DIR]                        (plumbing: JSON list of unsettled catalog turns)
+  tbound product turns resolve --turn ID --reason TEXT [--dry-run] (root; service stopped; unchanged baseline only)
   tbound product self-test [--root DIR]                    (plumbing: the self-test turn as the calling UID, request on stdin)
 --root DIR runs against a test root: files are written below DIR, but users, owners and systemctl
 calls are only recorded, never executed. --dry-run writes and executes nothing and prints the plan.
+turns resolve requires root even for --dry-run, a stopped service with no live worker/command scope, and an
+unchanged admitted baseline. It abandons only unknown, inert turns, charges the full reservation, and excludes
+their context. Missing evidence refuses resolution; --dry-run checks evidence without writing catalog records.
 setup is idempotent ("unchanged" on a rerun), refuses any thesis path, and fails before any change
 on a host that does not meet the prerequisites (use the qualified VM option).
 setup installs its own executable by default. An explicit --binary is another file, so it needs --manifest and --signature
@@ -67,6 +71,17 @@ var (
 )
 
 func runProductAdmin(args []string, out, stderr io.Writer) error {
+	if len(args) >= 2 && args[0] == "turns" {
+		if args[1] == "resolve" {
+			return runProductOperator(args[2:], out, stderr)
+		}
+		if args[1] == "resolve-worker" && len(args) == 2 {
+			return runProductOperatorWorker(out)
+		}
+		if args[1] == "resolve-sandbox" && len(args) == 2 {
+			return runProductOperatorSandbox(os.Stdin, out, stderr)
+		}
+	}
 	usage := func() error {
 		_, _ = io.WriteString(stderr, productAdminUsage)
 		return adminRefusal("invalid product command or flags")
