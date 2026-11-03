@@ -76,6 +76,9 @@ func (e *productTurnEnv) RunTurn(ctx context.Context, admission productsession.A
 	if turn.State != productsession.StateAdmitted {
 		return productTurnReceipt{}, fmt.Errorf("turn %s is %s, not admitted", admission.Turn.ID, turn.State)
 	}
+	if err := e.settleRetainedProductCommands(turn.ID); err != nil {
+		return productTurnReceipt{}, err
+	}
 	if turn.CancelRequested {
 		return productTurnReceipt{}, e.refuse(turn.ID, productsession.CodeCancelled, errProductTurnCancelled)
 	}

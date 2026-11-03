@@ -200,7 +200,9 @@ func (e *productTurnEnv) CancelTurn(_ context.Context, p productsession.Principa
 		review = e.takeReviewLocked(turn.ID)
 	case e.running[turn.ID]:
 	case turn.State == productsession.StateAdmitted:
-		err = e.Catalog.RefuseUnlinkedTurn(turn.ID, productsession.CodeCancelled)
+		if err = e.settleRetainedProductCommands(turn.ID); err == nil {
+			err = e.Catalog.RefuseUnlinkedTurn(turn.ID, productsession.CodeCancelled)
+		}
 	}
 	e.mu.Unlock()
 	if review != nil {

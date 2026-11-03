@@ -178,6 +178,7 @@ type productTurnWorkflow struct {
 	closers                                      []func() error
 	commandLifecycle                             productCommandLifecycle
 	env                                          *productTurnEnv
+	closeMu                                      sync.Mutex
 }
 
 func (w *productTurnWorkflow) settleCommands() error {
@@ -190,6 +191,8 @@ func (w *productTurnWorkflow) settleCommands() error {
 }
 
 func (w *productTurnWorkflow) close() error {
+	w.closeMu.Lock()
+	defer w.closeMu.Unlock()
 	if w.commandLifecycle != nil {
 		if err := w.commandLifecycle.Close(); err != nil {
 			if w.env != nil {

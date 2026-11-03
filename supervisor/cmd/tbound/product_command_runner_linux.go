@@ -83,6 +83,25 @@ func (r *productD09TurnRunner) Close() error {
 	return r.Settle(ctx)
 }
 
+// An unlinked turn cannot become UNKNOWN in the catalog. Its admitted reservation
+// stays held across retries and cancellation until cleanup succeeds.
+func (e *productTurnEnv) settleRetainedProductCommands(turnID string) error {
+	e.retainedMu.Lock()
+	var retained []*productTurnWorkflow
+	for w := range e.retainedCommands {
+		if w.taskID == turnID {
+			retained = append(retained, w)
+		}
+	}
+	e.retainedMu.Unlock()
+	for _, w := range retained {
+		if err := w.close(); err != nil {
+			return errors.Join(errProductCommandUnsettled, err)
+		}
+	}
+	return nil
+}
+
 type productD09ScopeOwner struct {
 	Schema             string `json:"schema"`
 	State              string `json:"state"`
