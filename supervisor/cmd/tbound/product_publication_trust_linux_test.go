@@ -39,7 +39,7 @@ func productTrustCell(lease string, template piruntime.D09CellTemplate, digest s
 }
 
 func TestProductTrustResolvesOnlyTheTerminalBashLease(t *testing.T) {
-	for _, name := range []string{"Bash after edit", "consecutive Bash", "no-diff Bash", "tampered receipt", "missing origin", "pending settlement", "changed baseline", "provider still open"} {
+	for _, name := range []string{"Bash after edit", "consecutive Bash", "no-diff Bash", "tampered receipt", "missing origin", "pending settlement", "changed baseline", "provider still open", "receipt lost before quiescence"} {
 		t.Run(name, func(t *testing.T) {
 			f := newBashProductDriverFixture(t, productsession.PublicationAuto, nil, false, []string{"task.txt"}, nil, true)
 			installProductTrustCell(f, productTrustCell)
@@ -119,8 +119,14 @@ func TestProductTrustResolvesOnlyTheTerminalBashLease(t *testing.T) {
 			if (err != nil) != negative {
 				t.Fatalf("prerequisites: %v, want refusal=%v", err, negative)
 			}
+			if name == "receipt lost before quiescence" {
+				runner := w.authority.runner.(*productD09TurnRunner).productionCommandRunner
+				runner.mu.Lock()
+				delete(runner.evidenceRunners, bundle.Operations[len(bundle.Operations)-1].ViewID)
+				runner.mu.Unlock()
+			}
 			err = trust.AttestQuiescent(context.Background(), w.projectRoot, w.baseline, w.durable.Tip())
-			if (err != nil) != (name == "pending settlement" || name == "changed baseline") {
+			if (err != nil) != (name == "pending settlement" || name == "changed baseline" || name == "receipt lost before quiescence") {
 				t.Fatalf("quiescence: %v", err)
 			}
 		})
