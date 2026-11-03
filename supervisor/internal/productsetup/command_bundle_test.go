@@ -424,3 +424,28 @@ func TestDoctorDoesNotFailADenyOnlyInstallForTheAbsentCommandArtifacts(t *testin
 		}
 	}
 }
+
+func TestMissingCommandBundleCannotHideRetainedObligations(t *testing.T) {
+	for _, path := range []string{PodmanConfigDir + "/store.json", PodmanConfigDir + "/hosts/old-profile", CommandOCILayoutPath + "/index.json"} {
+		t.Run(path, func(t *testing.T) {
+			f := newFixture(t)
+			f.env.ValidateCommandInputs = (&commandInputSpy{}).seam(f)
+			if _, err := f.setup(); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.MkdirAll(filepath.Dir(f.path(path)), 0755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(f.path(path), []byte("retained"), 0644); err != nil {
+				t.Fatal(err)
+			}
+			rep := Doctor(f.env, false)
+			if check, ok := findNamedCheck(rep.Checks, "command bundle"); !ok || check.Status != Fail || !strings.Contains(check.Detail, "retained command obligations") {
+				t.Fatalf("doctor ignored retained command obligations: %s", rep)
+			}
+			if _, err := f.setup(); !errors.Is(err, ErrRefused) {
+				t.Fatalf("setup ignored retained command obligations: %v", err)
+			}
+		})
+	}
+}

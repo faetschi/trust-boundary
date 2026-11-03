@@ -116,10 +116,8 @@ func (h *host) installedCommandInputChecks(summary RegistrationSummary) []Check 
 				}
 			}
 		}
-		if cfg.CommandBundle != "" {
-			if err := h.commandBundleFiles(cfg.CommandBundle, files); err != nil {
-				return err
-			}
+		if err := h.commandBundleFiles(cfg.CommandBundle, files); err != nil {
+			return err
 		}
 		return h.env.ValidateCommandInputs(h.commandInputs(cfg, summary, files))
 	}
