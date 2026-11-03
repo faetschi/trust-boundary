@@ -221,12 +221,13 @@ type productNetworkCellRun func(ctx context.Context, program string) ([]byte, er
 // productNetworkControl dials a listener that qualification opened on the service host, from the service context.
 type productNetworkControl func(ctx context.Context, address string) error
 
-// DNS accepts only transport refusal/unreachability from resolve4: negative answers and temporary/timeout failures
-// can also come from a working resolver. Numeric provider TCP must fail with network/host unreachability.
+// DNS accepts only the refusal resolve4 (c-ares) reports when no resolver is reachable: negative answers and
+// temporary/timeout failures can also come from a working resolver. Numeric provider TCP must fail with network/host
+// unreachability or with EACCES, which the cell's Landlock connect rule returns before any route lookup.
 var productDenyAllNetworkErrnos = map[string][]string{
-	"name-resolution": {"ECONNREFUSED", "ENETUNREACH", "EHOSTUNREACH"},
-	"ipv4-connect":    {"ENETUNREACH", "EHOSTUNREACH"},
-	"ipv6-connect":    {"ENETUNREACH", "EHOSTUNREACH"},
+	"name-resolution": {"ECONNREFUSED"},
+	"ipv4-connect":    {"ENETUNREACH", "EHOSTUNREACH", "EACCES"},
+	"ipv6-connect":    {"ENETUNREACH", "EHOSTUNREACH", "EACCES"},
 	"host-listener":   {"ENETUNREACH", "EHOSTUNREACH", "ECONNREFUSED", "EPERM", "EACCES"},
 }
 

@@ -276,7 +276,7 @@ func TestProductNetworkProbeFailsOnTimeoutMissingNodeOrDeadControl(t *testing.T)
 		control productNetworkControl
 		want    string
 	}{
-		"a denied probe passes":     {cellOutput(denied), live, ""},
+		"a denied probe passes": {cellOutput(denied), live, ""},
 		// The cell's Landlock ruleset handles TCP connect with no allowed port, so the kernel returns EACCES before any route lookup.
 		"landlock connect denial passes": {cellOutput(productDeniedNetworkOutput(t, listener, func(r *productNetworkReport) {
 			r.Checks[1].Errno, r.Checks[2].Errno = "EACCES", "EACCES"
