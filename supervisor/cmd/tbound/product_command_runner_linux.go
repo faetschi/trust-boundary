@@ -258,8 +258,16 @@ func reconcileProductCommandScopesUnder(ctx context.Context, root *os.File, reta
 
 func reconcileProductCommandScope(ctx context.Context, root *os.File, journal *audit.Journal, owners map[string]struct{}) error {
 	trace, err := journal.Trace()
-	if err != nil || len(trace.Records) < 1 || len(trace.Records) > 2 {
+	if err != nil {
 		return errors.Join(piruntime.ErrUnknownSettlement, err)
+	}
+	// An empty journal is a scope allocation that failed before its owner record. A child it left
+	// behind has no owner, and reconcileProductCommandScopesUnder's direct-child scan still rejects it.
+	if len(trace.Records) == 0 {
+		return nil
+	}
+	if len(trace.Records) > 2 {
+		return piruntime.ErrUnknownSettlement
 	}
 	var opened productD09ScopeOwner
 	for i, record := range trace.Records {
