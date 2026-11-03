@@ -208,6 +208,12 @@ func reconcileProductCommandScopes(ctx context.Context, host *piruntime.D09Produ
 		return err
 	}
 	defer root.Close()
+	return reconcileProductCommandScopesUnder(ctx, root, retainedRoots...)
+}
+
+// reconcileProductCommandScopesUnder is reconcileProductCommandScopes over a cells root that is already
+// prepared, so the journal and direct-child checks need no host.
+func reconcileProductCommandScopesUnder(ctx context.Context, root *os.File, retainedRoots ...string) error {
 	owners := map[string]struct{}{}
 	for _, retained := range retainedRoots {
 		entries, err := os.ReadDir(retained)
