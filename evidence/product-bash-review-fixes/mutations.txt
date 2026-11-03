@@ -1,0 +1,86 @@
+MUTATION 5 leaf owner exit= 1
+--- FAIL: TestProductD09ReaderRefusesUnsafeLeaves (0.00s)
+    --- FAIL: TestProductD09ReaderRefusesUnsafeLeaves/foreign_owner (0.00s)
+MUTATION 5 leaf mode exit= 1
+--- FAIL: TestProductD09ReaderRefusesUnsafeLeaves (0.00s)
+    --- FAIL: TestProductD09ReaderRefusesUnsafeLeaves/world_writable (0.00s)
+MUTATION 5 ancestor owner exit= 1
+--- FAIL: TestProductD09ReaderRefusesUnsafeAncestors (0.00s)
+    --- FAIL: TestProductD09ReaderRefusesUnsafeAncestors/foreign_owner (0.00s)
+MUTATION 5 ancestor mode exit= 1
+--- FAIL: TestProductD09ReaderRefusesUnsafeAncestors (0.00s)
+    --- FAIL: TestProductD09ReaderRefusesUnsafeAncestors/world_writable (0.00s)
+MUTATION 5 leaf symlink exit= 1
+--- FAIL: TestProductD09ReaderRefusesUnsafeLeaves (0.00s)
+    --- FAIL: TestProductD09ReaderRefusesUnsafeLeaves/symlink (0.00s)
+MUTATION 5 ancestor symlink exit= 1
+--- FAIL: TestProductD09ReaderRefusesUnsafeAncestors (0.00s)
+    --- FAIL: TestProductD09ReaderRefusesUnsafeAncestors/symlink (0.00s)
+MUTATION 2 absolute ancestor open exit= 1
+--- FAIL: TestProductD09ReaderKeepsVerifiedParentDuringReplacement (0.00s)
+MUTATION 2 absolute leaf open exit= 1
+--- FAIL: TestProductD09ReaderKeepsVerifiedParentDuringReplacement (0.00s)
+MUTATION 4 containment_linux.go r.commandEnvironment() 0 exit= 1
+--- FAIL: TestProductD09EnvironmentCallSitesCarryTheProductEnvironment (0.02s)
+MUTATION 4 containment_linux.go l.commandEnvironment() 0 exit= 1
+--- FAIL: TestProductD09EnvironmentCallSitesCarryTheProductEnvironment (0.02s)
+MUTATION 4 containment_linux.go l.commandEnvironment() 1 exit= 1
+--- FAIL: TestProductD09EnvironmentCallSitesCarryTheProductEnvironment (0.02s)
+MUTATION 4 containment_linux.go l.commandEnvironment() 2 exit= 1
+--- FAIL: TestProductD09EnvironmentCallSitesCarryTheProductEnvironment (0.02s)
+MUTATION 4 d09_command_runner_linux.go r.launcher.commandEnvironment() 0 exit= 1
+--- FAIL: TestProductD09EnvironmentCallSitesCarryTheProductEnvironment (0.02s)
+MUTATION 4 d09_command_runner_linux.go r.launcher.commandEnvironment() 1 exit= 1
+--- FAIL: TestProductD09EnvironmentCallSitesCarryTheProductEnvironment (0.02s)
+MUTATION 4 d09_command_runner_linux.go r.launcher.commandEnvironment() 2 exit= 1
+--- FAIL: TestProductD09EnvironmentCallSitesCarryTheProductEnvironment (0.02s)
+MUTATION 4 d09_command_runner_linux.go r.launcher.commandEnvironment() 3 exit= 1
+--- FAIL: TestProductD09EnvironmentCallSitesCarryTheProductEnvironment (0.02s)
+MUTATION 4 d09_command_runner_linux.go r.launcher.commandEnvironment() 4 exit= 1
+--- FAIL: TestProductD09EnvironmentCallSitesCarryTheProductEnvironment (0.02s)
+MUTATION 4 d09_command_runner_linux.go r.launcher.commandEnvironment() 5 exit= 1
+--- FAIL: TestProductD09EnvironmentCallSitesCarryTheProductEnvironment (0.02s)
+MUTATION 4 d09_command_runner_linux.go r.launcher.commandEnvironment() 6 exit= 1
+--- FAIL: TestProductD09EnvironmentCallSitesCarryTheProductEnvironment (0.02s)
+MUTATION 4 product selector exit= 1
+--- FAIL: TestProductD09EnvironmentCallSitesCarryTheProductEnvironment (0.02s)
+--- FAIL: TestProductD09EnvironmentReachesEveryPodmanPhase (0.00s)
+MUTATION 4 probe environment exit= 1
+--- FAIL: TestProductD09EnvironmentCallSitesCarryTheProductEnvironment (0.02s)
+--- FAIL: TestProductD09EnvironmentReachesEveryPodmanPhase (0.01s)
+    --- FAIL: TestProductD09EnvironmentReachesEveryPodmanPhase/probe_reads_podman_info_through_the_product_runner (0.00s)
+    --- FAIL: TestProductD09EnvironmentReachesEveryPodmanPhase/offline_cosign_verification_runs_with_the_product_environment (0.00s)
+MUTATION 4 loader cosign environment exit= 1
+--- FAIL: TestProductD09EnvironmentCallSitesCarryTheProductEnvironment (0.02s)
+MUTATION 3 poison before fixture exit= 1
+--- FAIL: TestProductD09EnvironmentReachesEveryPodmanPhase (0.00s)
+MUTATION 6 proof JSON field exit= 1
+--- FAIL: TestThesisD09SupplementaryRecordGoldensAreUnchanged (0.00s)
+    --- FAIL: TestThesisD09SupplementaryRecordGoldensAreUnchanged/proof-snapshot.json (0.00s)
+    --- FAIL: TestThesisD09SupplementaryRecordGoldensAreUnchanged/receipt-snapshot.json (0.00s)
+MUTATION 6 receipt schema exit= 1
+--- FAIL: TestThesisD09SupplementaryRecordGoldensAreUnchanged (0.00s)
+    --- FAIL: TestThesisD09SupplementaryRecordGoldensAreUnchanged/receipt-snapshot.json (0.00s)
+MUTATION 6 managed root signature domain exit= 1
+--- FAIL: TestThesisD09SupplementaryRecordGoldensAreUnchanged (0.05s)
+    --- FAIL: TestThesisD09SupplementaryRecordGoldensAreUnchanged/managed-root-signing-bytes.bin (0.01s)
+MUTATION 6 success event schema exit= 1
+--- FAIL: TestProductThesisCommandEventBytesUnchanged (0.00s)
+    --- FAIL: TestProductThesisCommandEventBytesUnchanged/command-settled-success.json (0.00s)
+MUTATION 6 denied event schema exit= 1
+--- FAIL: TestProductThesisCommandEventBytesUnchanged (0.00s)
+    --- FAIL: TestProductThesisCommandEventBytesUnchanged/command-settled-denied.json (0.00s)
+MUTATION 6 typed prestart denial exit= 1
+--- FAIL: TestThesisD09SupplementaryRecordGoldensAreUnchanged (0.00s)
+MUTATION 4 helper environment 0 exit= 1
+--- FAIL: TestProductD09EnvironmentCallSitesCarryTheProductEnvironment (0.02s)
+--- FAIL: TestProductD09EnvironmentReachesEveryPodmanPhase (0.04s)
+    --- FAIL: TestProductD09EnvironmentReachesEveryPodmanPhase/container_helpers_receive_the_product_environment (0.00s)
+MUTATION 4 helper environment 1 exit= 1
+--- FAIL: TestProductD09EnvironmentCallSitesCarryTheProductEnvironment (0.02s)
+--- FAIL: TestProductD09EnvironmentReachesEveryPodmanPhase (0.01s)
+    --- FAIL: TestProductD09EnvironmentReachesEveryPodmanPhase/container_helpers_receive_the_product_environment (0.00s)
+MUTATION 4 helper environment 2 exit= 1
+--- FAIL: TestProductD09EnvironmentCallSitesCarryTheProductEnvironment (0.02s)
+--- FAIL: TestProductD09EnvironmentReachesEveryPodmanPhase (0.01s)
+    --- FAIL: TestProductD09EnvironmentReachesEveryPodmanPhase/container_helpers_receive_the_product_environment (0.00s)
