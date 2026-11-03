@@ -257,8 +257,11 @@ func DecodeD09CellTemplate(raw []byte) (D09CellTemplate, error) {
 	if err := json.Unmarshal(raw, &members); err != nil {
 		return D09CellTemplate{}, fmt.Errorf("%w: template is not a JSON object: %v", ErrD09TemplateInvalid, err)
 	}
-	if _, present := members["product_registration_digest"]; present {
-		return D09CellTemplate{}, fmt.Errorf("%w: product_registration_digest is not admissible in a thesis D09 template", ErrD09TemplateInvalid)
+	// encoding/json matches keys case-insensitively, so refuse every case alias of the product member.
+	for key := range members {
+		if strings.EqualFold(key, "product_registration_digest") {
+			return D09CellTemplate{}, fmt.Errorf("%w: product_registration_digest is not admissible in a thesis D09 template", ErrD09TemplateInvalid)
+		}
 	}
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()

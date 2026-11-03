@@ -682,7 +682,8 @@ func productD09ValidateEffectiveUnit(properties map[string]string) error {
 		properties["User"] != productsetup.ServiceUser || properties["Group"] != productsetup.ServiceGroup {
 		return productD09Refused(nil, "effective product unit differs from the installed unit")
 	}
-	environment := strings.Fields(properties["Environment"])
+	// systemctl separates assignments with one ASCII space; strings.Fields would also strip Unicode spaces inside values.
+	environment := strings.Split(properties["Environment"], " ")
 	slices.Sort(environment)
 	if !slices.Equal(environment, productD09CommandEnvironment()) {
 		return productD09Refused(nil, "effective product environment differs from the fixed assignments")
