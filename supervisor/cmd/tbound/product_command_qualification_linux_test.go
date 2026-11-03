@@ -11,6 +11,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -27,18 +28,30 @@ func passingQualificationSteps(ran *[]productQualificationPhase, failAt productQ
 		},
 		prepareRuntime:  func() error { return nil },
 		reconcileScopes: func(context.Context, *piruntime.D09ProductCommandHost, []string) error { return nil },
-		runPhase: func(_ context.Context, _ *piruntime.D09ProductCommandHost, phase productQualificationPhase) error {
-			*ran = append(*ran, phase)
-			if phase == failAt {
-				return errors.New("injected failure")
-			}
-			return nil
+		openCell: func(context.Context, *piruntime.D09ProductCommandHost, *productTurnEnv, productCommandRunnerFactory) (productQualificationCell, error) {
+			return fakeQualificationCell{ran: ran, failAt: failAt}, nil
 		},
 		newRunner: func(context.Context, *piruntime.D09ProductCommandHost, productTurnCommandContext) (productTurnCommandRunner, error) {
 			return nil, errProductBashRunnerUnavailable
 		},
 	}
 }
+
+// fakeQualificationCell passes every phase, records each one it ran, and fails at failAt.
+type fakeQualificationCell struct {
+	ran    *[]productQualificationPhase
+	failAt productQualificationPhase
+}
+
+func (c fakeQualificationCell) runPhase(_ context.Context, phase productQualificationPhase) error {
+	*c.ran = append(*c.ran, phase)
+	if phase == c.failAt {
+		return errors.New("injected failure")
+	}
+	return nil
+}
+
+func (fakeQualificationCell) finish(context.Context, error) error { return nil }
 
 func withProductCommandQualification(t *testing.T, steps productCommandQualificationSteps) {
 	t.Helper()
@@ -199,9 +212,15 @@ func TestProductD09RestartFindsPreReceiptAndQualificationOrphans(t *testing.T) {
 		}
 		_ = svc.Shutdown()
 	})
-	t.Run("an opened owner record without its scope blocks startup before listening", func(t *testing.T) {
+	withProcessesInScope := func(t *testing.T, writers int) {
+		original := productProcessesInScope
+		productProcessesInScope = func(string) (int, error) { return writers, nil }
+		t.Cleanup(func() { productProcessesInScope = original })
+	}
+	t.Run("an opened owner record whose scope a process still reports blocks startup before listening", func(t *testing.T) {
 		f := newProductHostFixture(t, false)
 		plantOwnerJournal(t, f.stateRoot, "pwf-orphan", orphan)
+		withProcessesInScope(t, 1)
 		svc, _, err := startWithCells(t, f, t.TempDir())
 		if svc != nil {
 			_ = svc.Shutdown()
@@ -211,6 +230,19 @@ func TestProductD09RestartFindsPreReceiptAndQualificationOrphans(t *testing.T) {
 		}
 		if _, statErr := os.Stat(f.socketPath); !os.IsNotExist(statErr) {
 			t.Fatal("an unproved orphan scope opened the socket")
+		}
+	})
+	t.Run("an opened owner record whose scope is gone with no process left is drained before listening", func(t *testing.T) {
+		f := newProductHostFixture(t, false)
+		plantOwnerJournal(t, f.stateRoot, "pwf-orphan", orphan)
+		withProcessesInScope(t, 0)
+		svc, _, err := startWithCells(t, f, t.TempDir())
+		if err != nil {
+			t.Fatalf("a gone scope with no writer blocked startup: %v", err)
+		}
+		_ = svc.Shutdown()
+		if kinds := ownerJournalKinds(t, filepath.Join(f.stateRoot, "turns", "pwf-orphan", productCommandOwnerJournal)); !slices.Equal(kinds, []string{"product_command_scope_opened", "product_command_scope_drained"}) {
+			t.Fatalf("owner journal %v", kinds)
 		}
 	})
 	t.Run("an unrecorded command cell blocks a bash-enabled startup", func(t *testing.T) {
@@ -234,6 +266,7 @@ func TestProductNetworkProbeFailsOnTimeoutMissingNodeOrDeadControl(t *testing.T)
 	const listener = "127.0.0.1:41234"
 	denied := productDeniedNetworkOutput(t, listener, nil)
 	live := func(context.Context, string) error { return nil }
+	routed := func(context.Context, string, string) error { return nil }
 	cellOutput := func(output []byte) productNetworkCellRun {
 		return func(context.Context, string) ([]byte, error) { return output, nil }
 	}
@@ -268,7 +301,7 @@ func TestProductNetworkProbeFailsOnTimeoutMissingNodeOrDeadControl(t *testing.T)
 		t.Run(name, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 			defer cancel()
-			report, err := productNetworkProbe(ctx, "deny-all", listener, tc.run, tc.control)
+			report, err := productNetworkProbe(ctx, "deny-all", listener, tc.run, tc.control, routed)
 			if tc.want == "" {
 				if err != nil || len(report.Checks) != 4 {
 					t.Fatalf("a denied probe failed: %v (%d checks)", err, len(report.Checks))
@@ -280,6 +313,56 @@ func TestProductNetworkProbeFailsOnTimeoutMissingNodeOrDeadControl(t *testing.T)
 			}
 		})
 	}
+}
+
+// The positive controls come from the service context, never from the cell. A host with no IPv4 route to the numeric
+// destination cannot tell containment from a dead network; one with no IPv6 route is recorded and does not refuse.
+func TestProductNetworkProbeControlsAreServiceSideAndRecorded(t *testing.T) {
+	const listener = "127.0.0.1:41234"
+	ctx := context.Background()
+	live := func(context.Context, string) error { return nil }
+	denied := func(context.Context, string) ([]byte, error) {
+		return productDeniedNetworkOutput(t, listener, nil), nil
+	}
+	t.Run("a cell cannot supply its own controls", func(t *testing.T) {
+		forged := productDeniedNetworkOutput(t, listener, func(r *productNetworkReport) {
+			r.Controls = []productNetworkCheck{{ID: "ipv4-route", Destination: "forged", Outcome: "routable"}}
+		})
+		report, err := productNetworkProbe(ctx, "deny-all", listener, func(context.Context, string) ([]byte, error) { return forged, nil }, live,
+			func(context.Context, string, string) error { return nil })
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, control := range report.Controls {
+			if control.Destination == "forged" {
+				t.Fatalf("the cell's controls were kept: %+v", report.Controls)
+			}
+		}
+	})
+	t.Run("no IPv4 route refuses before the cell runs", func(t *testing.T) {
+		ran := false
+		_, err := productNetworkProbe(ctx, "deny-all", listener, func(context.Context, string) ([]byte, error) { ran = true; return nil, nil }, live,
+			func(_ context.Context, network, _ string) error {
+				if network == "udp4" {
+					return syscall.ENETUNREACH
+				}
+				return nil
+			})
+		if err == nil || !strings.Contains(err.Error(), "dead network") || ran {
+			t.Fatalf("a host without a route passed: %v (cell ran %v)", err, ran)
+		}
+	})
+	t.Run("no IPv6 route is recorded and does not refuse", func(t *testing.T) {
+		report, err := productNetworkProbe(ctx, "deny-all", listener, denied, live, func(_ context.Context, network, _ string) error {
+			if network == "udp6" {
+				return syscall.ENETUNREACH
+			}
+			return nil
+		})
+		if err != nil || report.Controls[len(report.Controls)-1].Outcome != "unroutable" || report.Controls[len(report.Controls)-1].Errno != "ENETUNREACH" {
+			t.Fatalf("%v %+v", err, report.Controls)
+		}
+	})
 }
 
 // productDeniedNetworkOutput is the structured result of a cell with no route, no resolver and no reachable
