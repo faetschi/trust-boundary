@@ -241,7 +241,7 @@ func TestProductD09ScopeOwnerJournal(t *testing.T) {
 	}
 	owner := productD09ScopeOwner{Schema: "tbound-product-d09-scope-owner/v1", State: "opened", WorkflowID: "workflow", RunID: "run",
 		RegistrationDigest: digestBytes([]byte("registration")), ProfileDigest: digestBytes([]byte("profile")), RootDigest: digestBytes([]byte("root")),
-		ScopeIdentity: digestBytes([]byte("scope")), ScopePath: "/sys/fs/cgroup/system.slice/tbound-product.service/cells/turn-owned"}
+		CommandOwnershipVersion: 1, ScopeIdentity: digestBytes([]byte("scope")), ScopePath: "/sys/fs/cgroup/system.slice/tbound-product.service/cells/turn-owned"}
 	if err := persistProductCommandScopeOwner(journal, owner); err != nil {
 		t.Fatal(err)
 	}

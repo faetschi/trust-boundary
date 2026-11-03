@@ -97,7 +97,7 @@ func qualifyProductCommandHost(ctx context.Context, cfg productServiceConfig, en
 	retainedRoots := []string{filepath.Join(env.StateRoot, "turns"), filepath.Join(env.StateRoot, productQualificationDir)}
 	hooks := productCommandHooks{OpenCommandHistory: openProductD09CommandHistory}
 	if !bashAllowed {
-		present, err := productCommandOwnerJournalsPresent(retainedRoots)
+		present, err := productCommandOwnerJournalsPresent(ctx, retainedRoots)
 		if err != nil {
 			return productCommandHooks{}, fmt.Errorf("command qualification: %w", err)
 		}
@@ -144,8 +144,11 @@ func qualifyProductCommandHost(ctx context.Context, cfg productServiceConfig, en
 
 // productCommandOwnerJournalsPresent reports whether a retained root holds any command owner journal, empty or not.
 // A journal is created before its cell, so an empty one can mark a cell that a crash left behind.
-func productCommandOwnerJournalsPresent(roots []string) (bool, error) {
+func productCommandOwnerJournalsPresent(ctx context.Context, roots []string) (bool, error) {
 	for _, root := range roots {
+		if err := ctx.Err(); err != nil {
+			return false, err
+		}
 		entries, err := os.ReadDir(root)
 		if errors.Is(err, os.ErrNotExist) {
 			continue
@@ -154,6 +157,9 @@ func productCommandOwnerJournalsPresent(roots []string) (bool, error) {
 			return false, err
 		}
 		for _, entry := range entries {
+			if err := ctx.Err(); err != nil {
+				return false, err
+			}
 			if !entry.IsDir() {
 				continue
 			}
@@ -217,7 +223,8 @@ type productNetworkCellRun func(ctx context.Context, program string) ([]byte, er
 // productNetworkControl dials a listener that qualification opened on the service host, from the service context.
 type productNetworkControl func(ctx context.Context, address string) error
 
-// productDenyAllNetworkErrnos names, per check, the errnos a denied connection may record. A timeout is never a denial.
+// DNS accepts only transport refusal/unreachability from resolve4: negative answers and temporary/timeout failures
+// can also come from a working resolver. Numeric provider TCP must fail with network/host unreachability.
 var productDenyAllNetworkErrnos = map[string][]string{
 	"name-resolution": {"ECONNREFUSED", "ENETUNREACH", "EHOSTUNREACH"},
 	"ipv4-connect":    {"ENETUNREACH", "EHOSTUNREACH"},

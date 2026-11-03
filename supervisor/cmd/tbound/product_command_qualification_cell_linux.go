@@ -157,21 +157,22 @@ type productQualificationRunner interface {
 }
 
 type productQualificationRun struct {
-	target          productQualificationTarget
-	env             *productTurnEnv
-	runner          productQualificationRunner
-	owner           *productTurnWorkflow
-	store           *sessionrepo.Store
-	tip             *sessionrepo.Generation
-	dir, runID      string
-	storeJournal    *audit.Journal
-	commandJournal  *audit.Journal
-	next            int
-	expectLease     string
-	expectDecision  string
-	expectScope     []string
-	evidence        productQualificationEvidence
-	settled, closed bool
+	target           productQualificationTarget
+	env              *productTurnEnv
+	runner           productQualificationRunner
+	owner            *productTurnWorkflow
+	store            *sessionrepo.Store
+	tip              *sessionrepo.Generation
+	dir, runID       string
+	storeJournal     *audit.Journal
+	commandJournal   *audit.Journal
+	next             int
+	expectLease      string
+	expectDecision   string
+	expectScope      []string
+	evidence         productQualificationEvidence
+	settled, closed  bool
+	settlementFailed bool
 }
 
 type productQualificationCommand struct {
@@ -586,7 +587,8 @@ func (r *productQualificationRun) settle(ctx context.Context) error {
 	if _, err := r.store.Verify(); err != nil {
 		return fmt.Errorf("the qualification Store does not verify: %w", err)
 	}
-	if err := r.runner.Settle(ctx); err != nil {
+	if err := r.owner.settleCommands(); err != nil {
+		r.settlementFailed = true
 		return fmt.Errorf("settle the command scope: %w", err)
 	}
 	r.settled = true
@@ -603,8 +605,11 @@ func (r *productQualificationRun) finish(ctx context.Context, cause error) error
 		defer cancel()
 	}
 	var failures []error
-	if !r.settled && r.owner != nil {
+	if r.settlementFailed {
+		failures = append(failures, piruntime.ErrUnknownSettlement)
+	} else if !r.settled && r.owner != nil {
 		if err := r.owner.settleCommands(); err != nil {
+			r.settlementFailed = true
 			failures = append(failures, fmt.Errorf("settle the qualification cell: %w", err))
 		} else {
 			r.settled = true

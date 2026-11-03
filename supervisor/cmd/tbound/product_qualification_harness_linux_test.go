@@ -46,12 +46,14 @@ type qualificationHarness struct {
 	skipWrite  bool
 	routable   func(network, address string) error
 
-	mu            sync.Mutex
-	specs         []sessionrepo.CommandSpec
-	routes        []string
-	runners       []*productD09TurnRunner
-	limitsErr     bool
-	ownerJournals []*audit.Journal
+	mu              sync.Mutex
+	specs           []sessionrepo.CommandSpec
+	routes          []string
+	runners         []*productD09TurnRunner
+	limitsErr       bool
+	cleanupAttempts int
+	cleanupFailOnce bool
+	ownerJournals   []*audit.Journal
 }
 
 func newQualificationHarness(t *testing.T) *qualificationHarness {
@@ -148,7 +150,7 @@ func (h *qualificationHarness) installScopeDrain(t *testing.T, writers int) {
 		}
 		return &qualificationFakeScope{h: h, dir: dir}, nil
 	}
-	productProcessesInScope = func(string) (int, error) { return writers, nil }
+	productProcessesInScope = func(context.Context, string) (int, error) { return writers, nil }
 	t.Cleanup(func() { openProductScopeForDrain, productProcessesInScope = originalOpen, originalWriters })
 }
 
@@ -202,6 +204,10 @@ func (h *qualificationHarness) newRunner(c productTurnCommandContext) (productTu
 		cell := &qualificationScriptedCell{h: h, leaseID: lease}
 		return newProductionD09BashRunnerWithInvoker(lease, cell, c.Journal, c.RunID, c.SessionID, c.WorkflowID, c.ConversationID, h.profile, h.template), nil
 	}, func(context.Context) error {
+		h.cleanupAttempts++
+		if h.cleanupFailOnce && h.cleanupAttempts == 1 {
+			return errors.New("first cleanup failed")
+		}
 		if h.cleanupErr != nil {
 			return h.cleanupErr
 		}

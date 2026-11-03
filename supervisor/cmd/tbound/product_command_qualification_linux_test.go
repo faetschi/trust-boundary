@@ -215,7 +215,7 @@ func TestProductD09RestartFindsPreReceiptAndQualificationOrphans(t *testing.T) {
 	})
 	withProcessesInScope := func(t *testing.T, writers int) {
 		original := productProcessesInScope
-		productProcessesInScope = func(string) (int, error) { return writers, nil }
+		productProcessesInScope = func(context.Context, string) (int, error) { return writers, nil }
 		t.Cleanup(func() { productProcessesInScope = original })
 	}
 	t.Run("an opened owner record whose scope a process still reports blocks startup before listening", func(t *testing.T) {

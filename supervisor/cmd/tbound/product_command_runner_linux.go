@@ -288,6 +288,9 @@ func reconcileProductCommandScopesWithRecovery(ctx context.Context, root *os.Fil
 		return err
 	}
 	for _, entry := range entries {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if entry.IsDir() {
 			if _, known := owners[entry.Name()]; !known {
 				return fmt.Errorf("unrecorded product command scope %s: %w", entry.Name(), piruntime.ErrUnknownSettlement)
@@ -350,17 +353,17 @@ func reconcileProductCommandScope(ctx context.Context, root *os.File, journal *a
 			opened = owner
 		} else {
 			owner.State = "opened"
-			if owner != opened || !strings.HasSuffix(record.Event.Kind, "drained") {
+			if drained || owner != opened || !strings.HasSuffix(record.Event.Kind, "drained") {
 				return piruntime.ErrUnknownSettlement
 			}
 			drained = true
 		}
 	}
-	if drained {
-		return nil
-	}
 	if opened.CommandOwnershipVersion != 1 {
 		return piruntime.ErrUnknownSettlement
+	}
+	if drained {
+		return nil
 	}
 	name := filepath.Base(opened.ScopePath)
 	if _, duplicate := owners[name]; duplicate {
@@ -382,7 +385,7 @@ func reconcileProductCommandScope(ctx context.Context, root *os.File, journal *a
 	case errors.Is(err, os.ErrNotExist):
 		// A systemd unit stop removes its cgroups. A cgroup holds no process when it is removed, so a gone scope
 		// leaves no writer unless a process still reports the recorded path.
-		writers, countErr := productProcessesInScope(opened.ScopePath)
+		writers, countErr := productProcessesInScope(ctx, opened.ScopePath)
 		if countErr != nil || writers != 0 {
 			return errors.Join(piruntime.ErrUnknownSettlement, countErr, fmt.Errorf("%d processes still report the absent scope %s", writers, opened.ScopePath))
 		}
@@ -420,7 +423,7 @@ var openProductScopeForDrain = func(root *os.File, name, identity string) (produ
 }
 
 // productProcessesInScope counts the processes whose unified cgroup is the recorded scope or below it.
-var productProcessesInScope = func(scopePath string) (int, error) {
+var productProcessesInScope = func(ctx context.Context, scopePath string) (int, error) {
 	const mount = "/sys/fs/cgroup"
 	if !strings.HasPrefix(scopePath, mount+"/") {
 		return 0, fmt.Errorf("scope %s is not below %s", scopePath, mount)
@@ -432,6 +435,9 @@ var productProcessesInScope = func(scopePath string) (int, error) {
 	}
 	writers := 0
 	for _, entry := range entries {
+		if err := ctx.Err(); err != nil {
+			return 0, err
+		}
 		if _, numeric := strconv.Atoi(entry.Name()); numeric != nil {
 			continue
 		}

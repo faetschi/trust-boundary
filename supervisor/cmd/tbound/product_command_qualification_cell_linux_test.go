@@ -223,7 +223,15 @@ func TestProductQualificationRefusesEachFailingPhase(t *testing.T) {
 		{"a host the cell reached", productPhaseNetworkProbe, func(h *qualificationHarness) {
 			h.override = func(name, stdout string, exit int) (string, int) {
 				if name == "network-probe" {
-					return strings.Replace(stdout, `"outcome":"error","errno":"ECONNREFUSED"`, `"outcome":"reachable"`, 1), exit
+					var report productNetworkReport
+					json.Unmarshal([]byte(stdout), &report)
+					for i := range report.Checks {
+						if report.Checks[i].ID == "host-listener" {
+							report.Checks[i].Outcome, report.Checks[i].Errno = "reachable", ""
+						}
+					}
+					raw, _ := json.Marshal(report)
+					return string(raw), exit
 				}
 				return stdout, exit
 			}
