@@ -7,6 +7,7 @@ import (
 	"crypto/ed25519"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"strings"
 
 	"tbound/supervisor/internal/productsession"
@@ -18,7 +19,7 @@ func validateProductSetupCommandInputs(in productsetup.HostInputs) error {
 	if in.CommandBundlePath == "" {
 		for id, digest := range in.PolicyDigests {
 			if _, _, err := loadProductGatePolicy(id, digest, in.GatePolicyPaths[id], in.Owners, false); err != nil {
-				return err
+				return fmt.Errorf("input policy %s: %w", id, err)
 			}
 		}
 		return nil

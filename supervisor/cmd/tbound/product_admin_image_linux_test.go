@@ -285,8 +285,11 @@ func newProductImageFixtureWithConfig(t *testing.T, config []byte) *productImage
 	cfg.StateRoot = productsetup.TurnsDir
 	cfg.CatalogPath = productsetup.CatalogPath
 	cfg.SocketPath = productsetup.SocketPath
+	cfg.GitPath = productsetup.BinaryDir + "/git"
+	cfg.XattrCalibrationPath = productsetup.ConfigDir + "/calibration.json"
 	for id := range cfg.Projects {
 		cfg.Projects[id] = productsetup.ProjectsDir + "/" + id
+		cfg.GatePolicyPaths[id] = productsetup.ConfigDir + "/policy-" + id + ".json"
 	}
 	raw, _ := json.Marshal(cfg)
 	f.write(productsetup.ServiceConfigPath, raw)
