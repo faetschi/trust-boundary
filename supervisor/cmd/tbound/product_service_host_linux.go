@@ -86,6 +86,19 @@ func newProductServiceHostProfile(cfg productServiceConfig) productServiceHost {
 				return errors.Join(err, closeErr)
 			}
 		}
+		// Refuse at start, not at the first turn.
+		if _, err := verifyProductGit(cfg.GitPath, cfg.GitDigest, productServiceOwners()); err != nil {
+			return err
+		}
+		xattr := func() (workspace.XattrVisibilityAttestation, error) { return productHostXattr(cfg, env) }
+		if env.Xattr, err = xattr(); err != nil {
+			return err
+		}
+		// Qualification runs before any provider, trust or publication hook is installed, so a refused start leaves none.
+		// It runs on the host inputs every turn will use, and the socket opens only after this function returns.
+		if err := installProductCommandHooks(env, cfg, bashAllowed); err != nil {
+			return err
+		}
 		profiles := env.Registration.ProviderProfiles
 		env.NewConversation = func(c providerbridge.Config, journal *audit.Journal) (*providerbridge.Conversation, error) {
 			path, supported := productprovider.CredentialPath(c.ProfileID)
@@ -104,21 +117,12 @@ func newProductServiceHostProfile(cfg productServiceConfig) productServiceHost {
 		env.PinGit = func() (privategit.PinnedGit, sessionlaunch.GitProfile, error) {
 			return pinProductionGit(productionOperatorArtifacts{GitPath: cfg.GitPath, GitDigest: cfg.GitDigest, GitBoundary: productGitBoundary}, nil)
 		}
-		// Refuse at start, not at the first turn.
-		if _, err := verifyProductGit(cfg.GitPath, cfg.GitDigest, productServiceOwners()); err != nil {
-			return err
-		}
-		xattr := func() (workspace.XattrVisibilityAttestation, error) { return productHostXattr(cfg, env) }
-		if env.Xattr, err = xattr(); err != nil {
-			return err
-		}
 		env.PublicationTrust = func(a *SessionOperationAuthority) workflow.Trust {
 			return &productPublicationTrust{env: env, authority: a, xattr: xattr}
 		}
 		// One worker step is one provider exchange, which is one host call, so the registered turn limit bounds it.
 		env.MaxWorkerSteps = int(env.Registration.Limits.Turn.HostCalls)
-		// Last, so qualification runs on the host inputs every turn will use. The socket opens only after this returns.
-		return installProductCommandHooks(env, cfg, bashAllowed)
+		return nil
 	}
 }
 
