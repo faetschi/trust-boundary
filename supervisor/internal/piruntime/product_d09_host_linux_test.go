@@ -391,69 +391,6 @@ func TestProductD09HostTrustAndBindings(t *testing.T) {
 		}
 	})
 
-	t.Run("protected reader refuses symlinks, writable files and non-root owners", func(t *testing.T) {
-		dir := t.TempDir()
-		target := filepath.Join(dir, "target.json")
-		productD09TestWriteFile(t, target, 0o644)
-		link := filepath.Join(dir, "link.json")
-		if err := os.Symlink(target, link); err != nil {
-			t.Fatal(err)
-		}
-		worldWritable := filepath.Join(dir, "world-writable.json")
-		productD09TestWriteFile(t, worldWritable, 0o666)
-		groupWritable := filepath.Join(dir, "group-writable.json")
-		productD09TestWriteFile(t, groupWritable, 0o664)
-		nonRoot := filepath.Join(dir, "non-root.json")
-		productD09TestWriteFile(t, nonRoot, 0o644)
-		if os.Geteuid() == 0 {
-			if err := os.Chown(nonRoot, 65534, 65534); err != nil {
-				t.Fatal(err)
-			}
-		}
-		for _, c := range []struct{ name, path string }{
-			{"symlink", link},
-			{"world-writable file", worldWritable},
-			{"group-writable file", groupWritable},
-			{"file owned by a non-root account", nonRoot},
-			{"missing file", filepath.Join(dir, "missing.json")},
-		} {
-			t.Run(c.name, func(t *testing.T) {
-				if _, err := productD09ReadFile(c.path, 4096); !errors.Is(err, ErrProductD09HostRefused) {
-					t.Fatalf("productD09ReadFile(%s) error = %v, want ErrProductD09HostRefused", c.path, err)
-				}
-			})
-		}
-	})
-
-	t.Run("protected ancestors refuse symlinked and writable directories", func(t *testing.T) {
-		dir := t.TempDir()
-		realDir := filepath.Join(dir, "real")
-		if err := os.Mkdir(realDir, 0o755); err != nil {
-			t.Fatal(err)
-		}
-		linkDir := filepath.Join(dir, "linked")
-		if err := os.Symlink(realDir, linkDir); err != nil {
-			t.Fatal(err)
-		}
-		writableDir := filepath.Join(dir, "writable")
-		if err := os.Mkdir(writableDir, 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.Chmod(writableDir, 0o777); err != nil {
-			t.Fatal(err)
-		}
-		for _, c := range []struct{ name, path string }{
-			{"symlinked directory", filepath.Join(linkDir, "host-profile.json")},
-			{"world-writable directory", filepath.Join(writableDir, "host-profile.json")},
-		} {
-			t.Run(c.name, func(t *testing.T) {
-				if err := productD09ValidateAncestors(c.path); !errors.Is(err, ErrProductD09HostRefused) {
-					t.Fatalf("productD09ValidateAncestors(%s) error = %v, want ErrProductD09HostRefused", c.path, err)
-				}
-			})
-		}
-	})
-
 	t.Run("file metadata decides protected inputs without root", func(t *testing.T) {
 		for _, c := range []struct {
 			name    string

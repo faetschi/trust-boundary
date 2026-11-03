@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"testing"
 )
@@ -90,5 +91,107 @@ func TestProductD09ReaderKeepsVerifiedParentDuringReplacement(t *testing.T) {
 	policy.checkDirectory = check
 	if _, _, err := productD09ReadFileWithPolicy(path, 100, policy); !errors.Is(err, ErrProductD09HostRefused) {
 		t.Fatalf("fresh lookup followed replaced ancestor: %v", err)
+	}
+}
+
+func TestProductD09ReaderRefusesUnsafeLeaves(t *testing.T) {
+	for _, name := range []string{"symlink", "world writable", "group writable", "foreign owner", "missing", "oversized", "directory", "fifo"} {
+		t.Run(name, func(t *testing.T) {
+			base := t.TempDir()
+			dir := filepath.Join(base, "protected")
+			if err := os.Mkdir(dir, 0755); err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(dir, "input")
+			if err := os.WriteFile(path, []byte("trusted"), 0644); err != nil {
+				t.Fatal(err)
+			}
+			policy := productD09ReaderTestPolicy(base, uint32(os.Geteuid()))
+			data, _, err := productD09ReadFileWithPolicy(path, 7, policy)
+			if err != nil || string(data) != "trusted" {
+				t.Fatalf("control read = %q, %v", data, err)
+			}
+			switch name {
+			case "world writable", "group writable":
+				mode := fs.FileMode(0666)
+				if name == "group writable" {
+					mode = 0664
+				}
+				if err := os.Chmod(path, mode); err != nil {
+					t.Fatal(err)
+				}
+			case "foreign owner":
+				// Change only the trusted account to exercise the owner predicate without chown privileges.
+				policy.checkFile = productD09ReaderTestPolicy(base, uint32(os.Geteuid())+1).checkFile
+			case "oversized":
+				if err := os.WriteFile(path, []byte("too large"), 0644); err != nil {
+					t.Fatal(err)
+				}
+			default:
+				if err := os.Rename(path, path+".original"); err != nil {
+					t.Fatal(err)
+				}
+				switch name {
+				case "symlink":
+					if err := os.Symlink(path+".original", path); err != nil {
+						t.Fatal(err)
+					}
+				case "directory":
+					if err := os.Mkdir(path, 0755); err != nil {
+						t.Fatal(err)
+					}
+				case "fifo":
+					if err := syscall.Mkfifo(path, 0600); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			if _, _, err := productD09ReadFileWithPolicy(path, 7, policy); !errors.Is(err, ErrProductD09HostRefused) {
+				t.Fatalf("unsafe leaf accepted: %v", err)
+			}
+		})
+	}
+}
+
+func TestProductD09ReaderRefusesUnsafeAncestors(t *testing.T) {
+	for _, name := range []string{"symlink", "world writable", "group writable", "foreign owner"} {
+		t.Run(name, func(t *testing.T) {
+			base := t.TempDir()
+			dir := filepath.Join(base, "protected")
+			if err := os.Mkdir(dir, 0755); err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(dir, "input")
+			if err := os.WriteFile(path, []byte("trusted"), 0644); err != nil {
+				t.Fatal(err)
+			}
+			policy := productD09ReaderTestPolicy(base, uint32(os.Geteuid()))
+			data, _, err := productD09ReadFileWithPolicy(path, 7, policy)
+			if err != nil || string(data) != "trusted" {
+				t.Fatalf("control read = %q, %v", data, err)
+			}
+			switch name {
+			case "world writable", "group writable":
+				mode := fs.FileMode(0777)
+				if name == "group writable" {
+					mode = 0775
+				}
+				if err := os.Chmod(dir, mode); err != nil {
+					t.Fatal(err)
+				}
+			case "foreign owner":
+				policy.checkDirectory = productD09ReaderTestPolicy(base, uint32(os.Geteuid())+1).checkDirectory
+			case "symlink":
+				if err := os.Rename(dir, dir+".original"); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Symlink(dir+".original", dir); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if _, _, err := productD09ReadFileWithPolicy(path, 7, policy); !errors.Is(err, ErrProductD09HostRefused) || !strings.Contains(err.Error(), "protected ancestor") {
+				t.Fatalf("unsafe ancestor was not refused at the ancestor: %v", err)
+			}
+		})
 	}
 }
