@@ -70,6 +70,16 @@ func TestProductTrustResolvesOnlyTheTerminalBashLease(t *testing.T) {
 			if _, err := f.env.driveProductTurn(context.Background(), admission.Turn, w, worker); err != nil {
 				t.Fatal(err)
 			}
+			bundle, err := w.store.EvidenceBundle()
+			if err != nil {
+				t.Fatal(err)
+			}
+			terminal := bundle.ApprovedDeltaLedger[len(bundle.ApprovedDeltaLedger)-1]
+			if name != "pending settlement" {
+				if err := w.settleCommands(); err != nil {
+					t.Fatal(err)
+				}
+			}
 			if name == "provider still open" {
 				open, err := providerbridge.NewScriptedConversation(w.config, w.providerJournal, f.script)
 				if err != nil {
@@ -82,16 +92,6 @@ func TestProductTrustResolvesOnlyTheTerminalBashLease(t *testing.T) {
 				}
 				w.authority.conversation = closed
 				open.Close()
-			}
-			bundle, err := w.store.EvidenceBundle()
-			if err != nil {
-				t.Fatal(err)
-			}
-			terminal := bundle.ApprovedDeltaLedger[len(bundle.ApprovedDeltaLedger)-1]
-			if name != "pending settlement" {
-				if err := w.settleCommands(); err != nil {
-					t.Fatal(err)
-				}
 			}
 			origin, err := trust.ResolveTerminalLeaseOrigin(context.Background(), bundle, terminal)
 			if err != nil || origin.Kind != delta.OperationProposalCall || origin.CallID != "call-last" {
