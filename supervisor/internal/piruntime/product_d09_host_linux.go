@@ -16,6 +16,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -634,7 +635,7 @@ func productD09ValidateStateScanner(observed D09XattrVisibilityMeasurements, cal
 
 // productD09RequireEffectiveUnit asks systemd for the product unit's effective fragment, drop-ins, environment, and identity.
 // It refuses unless the unit is loaded from the installed path, has no drop-in or environment file, no environment
-// assignment, and runs as the product service account.
+// beyond the fixed product assignments, and runs as the product service account.
 func productD09RequireEffectiveUnit(ctx context.Context) (map[string]string, error) {
 	if err := productD09ValidateAncestors(productD09SystemctlPath); err != nil {
 		return nil, err
@@ -677,9 +678,14 @@ func productD09ValidateEffectiveUnit(properties map[string]string) error {
 	}
 	if properties["LoadState"] != "loaded" || properties["NeedDaemonReload"] != "no" ||
 		properties["FragmentPath"] != productsetup.UnitPath || properties["DropInPaths"] != "" ||
-		properties["Environment"] != "" || properties["EnvironmentFiles"] != "" ||
+		properties["EnvironmentFiles"] != "" ||
 		properties["User"] != productsetup.ServiceUser || properties["Group"] != productsetup.ServiceGroup {
 		return productD09Refused(nil, "effective product unit differs from the installed unit")
+	}
+	environment := strings.Fields(properties["Environment"])
+	slices.Sort(environment)
+	if !slices.Equal(environment, productD09CommandEnvironment()) {
+		return productD09Refused(nil, "effective product environment differs from the fixed assignments")
 	}
 	return nil
 }
