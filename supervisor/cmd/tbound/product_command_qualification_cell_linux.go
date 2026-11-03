@@ -776,18 +776,12 @@ func pruneProductQualifications(ctx context.Context, base string) error {
 			continue
 		}
 		trace, readErr := journal.Trace()
+		provenDrained := readErr == nil && len(trace.Records) >= 2 && trace.Records[len(trace.Records)-1].Event.Kind == "product_command_scope_drained"
+		if provenDrained {
+			provenDrained = reconcileProductCommandScope(ctx, nil, journal, map[string]struct{}{}, nil) == nil
+		}
 		closeErr := journal.Close()
-		if readErr != nil || closeErr != nil || len(trace.Records) < 2 {
-			continue
-		}
-		last := trace.Records[len(trace.Records)-1].Event
-		first := trace.Records[0].Event
-		var opened, drained productD09ScopeOwner
-		if first.Kind != "product_command_scope_opened" || last.Kind != "product_command_scope_drained" || json.Unmarshal(first.Data, &opened) != nil || json.Unmarshal(last.Data, &drained) != nil {
-			continue
-		}
-		drained.State = "opened"
-		if drained != opened || opened.CommandOwnershipVersion != 1 || opened.State != "opened" || first.ID != opened.ScopeIdentity || last.ID != opened.ScopeIdentity {
+		if !provenDrained || closeErr != nil {
 			continue
 		}
 		info, err := entry.Info()
