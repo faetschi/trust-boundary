@@ -201,7 +201,9 @@ func TestProductD09CurrentTrustRefusalSettlesBeforeAbandon(t *testing.T) {
 			f := newBashProductDriverFixture(t, productsession.PublicationAuto, nil, false, []string{"task.txt"}, nil)
 			cleanupFailed := fail
 			cleaned := false
+			factories := 0
 			f.env.NewCommandRunner = func(productTurnCommandContext) (productTurnCommandRunner, error) {
+				factories++
 				return newProductD09CommandRunnerWithFactory(func(string) (sessionrepo.CommandRunner, error) {
 					t.Fatal("refused turn launched a command")
 					return nil, nil
@@ -216,13 +218,21 @@ func TestProductD09CurrentTrustRefusalSettlesBeforeAbandon(t *testing.T) {
 			f.env.PublicationTrust = func(a *SessionOperationAuthority) workflow.Trust {
 				return &productPublicationTrust{env: f.env, authority: a, xattr: func() (workspace.XattrVisibilityAttestation, error) { return f.env.Xattr, nil }}
 			}
-			_, turn, err := f.run(t, f.submit(t, "refusal", "bash task"), &productDriverScript{})
+			admission := f.submit(t, "refusal", "bash task")
+			_, turn, err := f.run(t, admission, &productDriverScript{})
 			if err == nil {
 				t.Fatal("current trust accepted Bash")
 			}
 			if fail {
 				if turn.State != productsession.StateAdmitted || len(f.env.retainedCommands) != 1 || cleaned || f.currentSession(t).Reserved == (productsession.Budget{}) {
 					t.Fatalf("failed cleanup refunded/forgot owner: %+v", turn)
+				}
+				if _, err := f.env.RunTurn(context.Background(), admission); err == nil || factories != 1 {
+					t.Fatalf("retry bypassed retained owner: factories=%d err=%v", factories, err)
+				}
+				cancelled, err := f.cancel(t, turn.ID, "cancel-retained")
+				if err == nil || cancelled.State != productsession.StateAdmitted || f.currentSession(t).Reserved == (productsession.Budget{}) {
+					t.Fatalf("cancellation refunded retained owner: %+v %v", cancelled, err)
 				}
 			} else if turn.State != productsession.StateAbandoned || !cleaned {
 				t.Fatalf("refusal was not cleaned before abandon: %+v", turn)
