@@ -190,10 +190,32 @@ func productE4CommandKillPath(dir string) (string, error) {
 		return "", errors.New("run has no cgroup parent")
 	}
 	parent := run.Args[index+1]
-	if !filepath.IsAbs(parent) || filepath.Clean(parent) != parent || !strings.HasPrefix(parent, "/system.slice/tbound-product.service/cells/turn-") || !strings.HasPrefix(filepath.Base(parent), "tbound-cmd-") {
+	if !filepath.IsAbs(parent) || filepath.Clean(parent) != parent || filepath.Dir(filepath.Dir(parent)) != "/system.slice/tbound-product.service/cells" || !strings.HasPrefix(filepath.Base(filepath.Dir(parent)), "turn-") || !strings.HasPrefix(filepath.Base(parent), "tbound-cmd-") {
 		return "", fmt.Errorf("refuse E4 cgroup permission fault outside exact command child: %s", parent)
 	}
 	return "/sys/fs/cgroup" + parent + "/cgroup.kill", nil
+}
+
+func TestProductD09IntegrationFaultIsConfinedToACommandChild(t *testing.T) {
+	dir := t.TempDir()
+	for _, parent := range []string{
+		"/system.slice/tbound-product.service/cells/turn-owned/tbound-cmd-owned",
+		"/system.slice/tbound-product.service/cells/turn-owned",
+		"/system.slice/tbound-product.service/runner/tbound-cmd-owned",
+		"/system.slice/tbound-product.service/cells/turn-owned/extra/tbound-cmd-owned",
+		"/system.slice/tbound-product.service/cells/turn-owned/../tbound-cmd-owned",
+		"relative/tbound-cmd-owned",
+	} {
+		raw, _ := json.Marshal(productE4ChildRecord{Args: []string{"run", "--cgroup-parent", parent}})
+		if err := os.WriteFile(dir+"/run.json", raw, 0600); err != nil {
+			t.Fatal(err)
+		}
+		path, err := productE4CommandKillPath(dir)
+		valid := parent == "/system.slice/tbound-product.service/cells/turn-owned/tbound-cmd-owned"
+		if (err == nil) != valid || (valid && path != "/sys/fs/cgroup"+parent+"/cgroup.kill") {
+			t.Fatalf("fault path %q: %q %v", parent, path, err)
+		}
+	}
 }
 
 // This is deliberately not an unprivileged fixture: the loader's installed inputs,
@@ -220,6 +242,12 @@ func TestProductD09PrivilegedRuntimeEnvironmentIntegration(t *testing.T) {
 				t.Fatal(err)
 			}
 			f := newBashProductDriverFixture(t, productsession.PublicationAuto, nil, false, []string{"task.txt"}, nil)
+			if filepath.Dir(f.root) != "/var/lib/tbound-product" {
+				t.Fatal("prepare HOME=/var/lib/tbound-product before starting the test")
+			}
+			if _, err := exec.LookPath("git"); err != nil {
+				t.Fatal("prepared integration host requires Git")
+			}
 			git, gitProfile := pinGovernedTestGit(t)
 			f.env.PinGit = func() (privategit.PinnedGit, sessionlaunch.GitProfile, error) { return git, gitProfile, nil }
 			poison := dir + "/poison"
@@ -306,10 +334,10 @@ func TestProductD09PrivilegedRuntimeEnvironmentIntegration(t *testing.T) {
 					t.Fatalf("runtime Close forgot its owned command cell: %v", err)
 				}
 				// Preserve the full Store and owner journal for the orchestrator's reconciliation.
-				if err := os.Rename(f.root, dir+"/retained-turn"); err != nil {
+				if err := os.Rename(f.root, "/var/lib/tbound-product/e4-retained-"+scenario); err != nil {
 					t.Fatal(err)
 				}
-				t.Log("Close refused and retained runtime ownership; retained-turn preserves the owner journal")
+				t.Log("Close refused and retained runtime ownership; /var/lib/tbound-product/e4-retained-" + scenario + " preserves the turn")
 			}
 			productE4CheckRecords(t, dir, scenario)
 			t.Log("E4 loaded host -> revalidated constructor -> admitted Probe; child environments verified:", scenario)
