@@ -65,6 +65,7 @@ func (t *productPublicationTrust) CheckPublicationPrerequisites(ctx context.Cont
 		r.Bundle.MetadataPolicyDigest != a.metadataPolicyDigest {
 		return errProductTrust
 	}
+	commandRunner, _ := a.runner.(sessionrepo.CommandRunner)
 	for _, operation := range r.Bundle.Operations {
 		if operation.Tool != "bash" {
 			continue
@@ -79,7 +80,7 @@ func (t *productPublicationTrust) CheckPublicationPrerequisites(ctx context.Cont
 			}
 		}
 		// A scope-denied effect has no approved delta, but still needs its settled receipt.
-		if err := verifyProductionBashEvidence(ctx, a.runner, operation); err != nil {
+		if err := verifyProductionBashEvidence(ctx, commandRunner, operation); err != nil {
 			return err
 		}
 	}
