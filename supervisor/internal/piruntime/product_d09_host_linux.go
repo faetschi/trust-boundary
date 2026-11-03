@@ -400,9 +400,9 @@ func productD09ReadServiceIdentity(inputs productD09Inputs) (int, int, error) {
 	if err != nil {
 		return 0, 0, err
 	}
-	uid, gid, shell, found := lookupLocalServiceAccount(passwd, group, productsetup.ServiceUser, productsetup.ServiceGroup)
+	uid, gid, shell, found := lookupProductServiceAccount(passwd, group)
 	if !found || uid <= 0 || gid <= 0 || !productD09IsNologinShell(shell) {
-		return 0, 0, productD09Refused(nil, "service account is not a non-root nologin account with a single-member group")
+		return 0, 0, productD09Refused(nil, "service account is not a single non-root nologin account with its own primary group")
 	}
 	ids := []string{productsetup.ServiceUser, productsetup.ServiceGroup, strconv.Itoa(uid), strconv.Itoa(gid)}
 	for _, subIDFile := range []string{"/etc/subuid", "/etc/subgid"} {
@@ -427,6 +427,38 @@ func productD09ReadServiceIdentity(inputs productD09Inputs) (int, int, error) {
 
 func productD09IsNologinShell(shell string) bool {
 	return shell == "/usr/sbin/nologin"
+}
+
+// lookupProductServiceAccount is lookupLocalServiceAccount for the product, which admits other members of the service
+// group: clients join it for socket access, and that grants nothing on the service's 0700 state. Exactly one passwd
+// entry and one group entry must exist, and the group must be the account's primary group.
+func lookupProductServiceAccount(passwd, groupFile []byte) (int, int, string, bool) {
+	uid, gid, shell, users := 0, 0, "", 0
+	for _, line := range strings.Split(strings.TrimSpace(string(passwd)), "\n") {
+		fields := strings.Split(line, ":")
+		if len(fields) < 7 || fields[0] != productsetup.ServiceUser {
+			continue
+		}
+		var errUID, errGID error
+		uid, errUID = strconv.Atoi(fields[2])
+		gid, errGID = strconv.Atoi(fields[3])
+		if errUID != nil || errGID != nil {
+			return 0, 0, "", false
+		}
+		shell, users = fields[6], users+1
+	}
+	groups := 0
+	for _, line := range strings.Split(strings.TrimSpace(string(groupFile)), "\n") {
+		fields := strings.Split(line, ":")
+		if len(fields) != 4 || fields[0] != productsetup.ServiceGroup {
+			continue
+		}
+		if observed, err := strconv.Atoi(fields[2]); err != nil || observed != gid {
+			return 0, 0, "", false
+		}
+		groups++
+	}
+	return uid, gid, shell, users == 1 && groups == 1
 }
 
 // productD09VerifyArtifacts checks the fixed product artifacts. The seccomp profile and cosign key are checked by digest on
@@ -682,7 +714,8 @@ func productD09ValidateEffectiveUnit(properties map[string]string) error {
 		properties["User"] != productsetup.ServiceUser || properties["Group"] != productsetup.ServiceGroup {
 		return productD09Refused(nil, "effective product unit differs from the installed unit")
 	}
-	environment := strings.Fields(properties["Environment"])
+	// systemctl separates assignments with one ASCII space; strings.Fields would also strip Unicode spaces inside values.
+	environment := strings.Split(properties["Environment"], " ")
 	slices.Sort(environment)
 	if !slices.Equal(environment, productD09CommandEnvironment()) {
 		return productD09Refused(nil, "effective product environment differs from the fixed assignments")

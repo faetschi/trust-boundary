@@ -706,15 +706,44 @@ func (i productD09TestInfo) ModTime() time.Time { return time.Time{} }
 func (i productD09TestInfo) IsDir() bool        { return i.mode.IsDir() }
 func (i productD09TestInfo) Sys() any           { return &syscall.Stat_t{Uid: i.uid, Gid: i.gid} }
 
+func TestProductServiceAccountAdmitsSocketAccessGroupMembers(t *testing.T) {
+	passwd := []byte("root:x:0:0:root:/root:/bin/bash\ntbound-product:x:999:988::/var/lib/tbound-product:/usr/sbin/nologin\ntboundadmin:x:1000:1000::/home/tboundadmin:/bin/bash\n")
+	// Clients join the service group for socket access; that grants no file access to the 0700 service state.
+	group := []byte("root:x:0:\ntbound-product:x:988:tboundadmin,tbound-product\n")
+	uid, gid, shell, ok := lookupProductServiceAccount(passwd, group)
+	if !ok || uid != 999 || gid != 988 || shell != "/usr/sbin/nologin" {
+		t.Fatalf("got %d %d %q %v, want the service account with socket-access members admitted", uid, gid, shell, ok)
+	}
+	for name, file := range map[string]string{
+		"wrong group id":  "tbound-product:x:987:tboundadmin\n",
+		"no group":        "root:x:0:\n",
+		"duplicate group": "tbound-product:x:988:\ntbound-product:x:988:\n",
+	} {
+		if _, _, _, ok := lookupProductServiceAccount(passwd, []byte(file)); ok {
+			t.Errorf("%s: admitted", name)
+		}
+	}
+	if _, _, _, ok := lookupProductServiceAccount(append(passwd, []byte("tbound-product:x:0:0::/root:/bin/bash\n")...), group); ok {
+		t.Error("admitted a second passwd entry for the service account")
+	}
+	// The thesis lookup keeps refusing extra members.
+	if _, _, _, ok := lookupLocalServiceAccount(passwd, group, "tbound-product", "tbound-product"); ok {
+		t.Error("thesis service-account lookup admitted extra group members")
+	}
+}
+
 func TestThesisD09DecoderRefusesEvenEmptyProductMember(t *testing.T) {
 	template := measuredRouteProbeTemplate(t)
 	raw, err := json.Marshal(template)
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw = append(raw[:len(raw)-1], []byte(`,"product_registration_digest":""}`)...)
-	if _, err := DecodeD09CellTemplate(raw); err == nil {
-		t.Fatal("thesis decoder accepted an explicitly present product member")
+	// encoding/json matches keys case-insensitively, so every case alias must be refused too.
+	for _, member := range []string{`"product_registration_digest":""`, `"PRODUCT_REGISTRATION_DIGEST":""`, `"Product_Registration_Digest":null`} {
+		withMember := append(append([]byte{}, raw[:len(raw)-1]...), []byte(","+member+"}")...)
+		if _, err := DecodeD09CellTemplate(withMember); err == nil {
+			t.Fatalf("thesis decoder accepted the product member %s", member)
+		}
 	}
 }
 
@@ -816,6 +845,8 @@ func TestProductD09EffectiveUnitRefusesOverridesAndPendingReload(t *testing.T) {
 		"extra":     properties["Environment"] + " USER=attacker",
 		"duplicate": properties["Environment"] + " LANG=C",
 		"changed":   strings.Replace(properties["Environment"], "LANG=C", "LANG=C.UTF-8", 1),
+		// systemd keeps a non-breaking space in a value; a Unicode-aware split would drop it.
+		"unicode space": strings.Replace(properties["Environment"], "LANG=C", "LANG=C ", 1),
 	} {
 		t.Run("environment/"+name, func(t *testing.T) {
 			changed := make(map[string]string, len(properties))
