@@ -76,6 +76,86 @@ func TestProductD09CleanupFailureRetainsOwnersAndBlocksDisposition(t *testing.T)
 	}
 }
 
+// A failed command settlement keeps the owner and its handles. The first cleanup attempt fails and the
+// retry would succeed, so a deferred teardown that retried it would release a retained owner.
+func TestProductD09FailedTurnSettlementKeepsOwnerAgainstDeferredTeardown(t *testing.T) {
+	failure := errors.New("retained cell owner")
+	attempts, cleaned := 0, false
+	f := newBashProductDriverFixture(t, productsession.PublicationAuto, nil, false, []string{"task.txt"}, nil)
+	f.env.NewCommandRunner = func(productTurnCommandContext) (productTurnCommandRunner, error) {
+		return newProductD09CommandRunnerWithFactory(func(string) (sessionrepo.CommandRunner, error) {
+			return nil, errors.New("unused")
+		}, func(context.Context) error {
+			attempts++
+			if attempts == 1 {
+				return failure
+			}
+			cleaned = true
+			return nil
+		}), nil
+	}
+	admission := f.submit(t, "settle", "read the task")
+	_, turn, err := f.run(t, admission, &productDriverScript{turns: []providerbridge.ScriptTurn{scopeDriverFinal("done", scopeDriverAnswer)}})
+	if !errors.Is(err, failure) || turn.State != productsession.StateUnknown {
+		t.Fatalf("failed settlement: state=%s err=%v", turn.State, err)
+	}
+	if attempts != 1 || cleaned || len(f.env.retainedCommands) != 1 {
+		t.Fatalf("deferred teardown retried the owner: attempts=%d cleaned=%v retained=%d", attempts, cleaned, len(f.env.retainedCommands))
+	}
+	for w := range f.env.retainedCommands {
+		if len(w.closers) == 0 {
+			t.Fatal("retained workflow released its handles")
+		}
+	}
+	if err := f.env.Close(); err != nil || !cleaned || len(f.env.retainedCommands) != 0 {
+		t.Fatalf("explicit retained cleanup: cleaned=%v err=%v retained=%d", cleaned, err, len(f.env.retainedCommands))
+	}
+	if got := f.turn(t, admission.Turn.ID); got.State != productsession.StateUnknown {
+		t.Fatalf("retained cleanup changed the disposition: %s", got.State)
+	}
+}
+
+// A review decision whose settlement fails keeps its owner the same way, on accept and on discard.
+func TestProductD09FailedReviewSettlementKeepsOwnerAgainstDeferredTeardown(t *testing.T) {
+	for _, path := range []string{"accept", "discard"} {
+		t.Run(path, func(t *testing.T) {
+			f := newProductDriverFixture(t, productsession.PublicationReview)
+			_, turn, err := f.run(t, f.submit(t, "review", "write task"), &productDriverScript{turns: []providerbridge.ScriptTurn{
+				{ResponseID: "write-response", CallID: "write-call", Tool: "write", Arguments: []byte(`{"path":"task.txt","content":"new\n"}`)},
+				scopeDriverFinal("review", scopeDriverAnswer)}})
+			if err != nil || turn.State != productsession.StateAwaitingReview {
+				t.Fatalf("review: %+v %v", turn, err)
+			}
+			review := f.env.pending[turn.ID]
+			failure := errors.New("retained cell owner")
+			attempts, closed := 0, false
+			review.w.commandLifecycle = newProductD09CommandRunnerWithFactory(func(string) (sessionrepo.CommandRunner, error) {
+				return nil, errors.New("unused")
+			}, func(context.Context) error {
+				attempts++
+				if attempts == 1 {
+					return failure
+				}
+				return nil
+			})
+			review.w.closers = append(review.w.closers, func() error { closed = true; return nil })
+			decision := productsession.DecisionPublish
+			if path == "discard" {
+				decision = productsession.DecisionDiscard
+			}
+			if _, err := f.resolve(t, turn.ID, "resolve", turn.CandidateDigest, decision); !errors.Is(err, failure) {
+				t.Fatalf("failed settlement not reported: %v", err)
+			}
+			if got := f.turn(t, turn.ID); got.State != productsession.StateUnknown || attempts != 1 || closed || len(f.env.retainedCommands) != 1 {
+				t.Fatalf("deferred teardown retried the owner: state=%s attempts=%d closed=%v retained=%d", got.State, attempts, closed, len(f.env.retainedCommands))
+			}
+			if err := f.env.Close(); err != nil || !closed || len(f.env.retainedCommands) != 0 {
+				t.Fatalf("explicit retained cleanup: closed=%v err=%v retained=%d", closed, err, len(f.env.retainedCommands))
+			}
+		})
+	}
+}
+
 func TestProductD09FactoryAndRetainedHistoryComposition(t *testing.T) {
 	if root := os.Getenv("TB_PRODUCT_F_ROOT"); root != "" {
 		f := openBashProductDriverFixture(t, root, nil, []string{"task.txt"})
