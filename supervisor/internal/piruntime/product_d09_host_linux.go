@@ -699,15 +699,31 @@ func productD09ReadFile(path string, limit int64) ([]byte, error) {
 
 // productD09ReadIdentifiedFile is productD09ReadFile that also returns the descriptor identity of the bytes it measured. The
 // metadata is taken before and after the read, and the read fails if the file changed in between.
+// productD09ReadPolicy keeps the production root policy separate from unprivileged filesystem fixtures.
+// Tests can validate a descriptor and replace its pathname before the next lookup.
+type productD09ReadPolicy struct {
+	checkDirectory func(string, fs.FileInfo) error
+	checkFile      func(fs.FileInfo, int64) error
+}
+
+var productD09ProtectedReadPolicy = productD09ReadPolicy{
+	checkDirectory: func(_ string, info fs.FileInfo) error { return productD09ValidateDirectoryInfo(info) },
+	checkFile:      productD09ValidateFileInfo,
+}
+
 func productD09ReadIdentifiedFile(path string, limit int64) ([]byte, productD09FileIdentity, error) {
-	if err := productD09ValidateAncestors(path); err != nil {
+	return productD09ReadFileWithPolicy(path, limit, productD09ProtectedReadPolicy)
+}
+
+func productD09ReadFileWithPolicy(path string, limit int64, policy productD09ReadPolicy) ([]byte, productD09FileIdentity, error) {
+	if err := productD09ValidateAncestorsWithPolicy(path, policy); err != nil {
 		return nil, productD09FileIdentity{}, err
 	}
 	info, err := os.Lstat(path)
 	if err != nil {
 		return nil, productD09FileIdentity{}, productD09Refused(err, "protected input is missing: "+path)
 	}
-	if err := productD09ValidateFileInfo(info, limit); err != nil {
+	if err := policy.checkFile(info, limit); err != nil {
 		return nil, productD09FileIdentity{}, err
 	}
 	file, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0)
@@ -719,7 +735,7 @@ func productD09ReadIdentifiedFile(path string, limit int64) ([]byte, productD09F
 	if err != nil || !os.SameFile(info, opened) {
 		return nil, productD09FileIdentity{}, productD09Refused(err, "protected input changed while it was opened: "+path)
 	}
-	if err := productD09ValidateFileInfo(opened, limit); err != nil {
+	if err := policy.checkFile(opened, limit); err != nil {
 		return nil, productD09FileIdentity{}, err
 	}
 	before, err := productD09FileIdentityOf(opened, "")
@@ -839,6 +855,10 @@ func productD09OwnerUID(info fs.FileInfo) (uint32, bool) {
 // productD09ValidateAncestors requires every directory above path to be a protected directory, and opens each one
 // without following links to confirm it is the directory its metadata named.
 func productD09ValidateAncestors(path string) error {
+	return productD09ValidateAncestorsWithPolicy(path, productD09ProtectedReadPolicy)
+}
+
+func productD09ValidateAncestorsWithPolicy(path string, policy productD09ReadPolicy) error {
 	if !productD09IsCleanAbsolute(path) {
 		return productD09Refused(nil, "protected path must be absolute and clean: "+path)
 	}
@@ -847,7 +867,7 @@ func productD09ValidateAncestors(path string) error {
 		if err != nil {
 			return productD09Refused(err, "protected ancestor is missing: "+dir)
 		}
-		if err := productD09ValidateDirectoryInfo(info); err != nil {
+		if err := policy.checkDirectory(dir, info); err != nil {
 			return productD09Refused(err, "protected ancestor "+dir)
 		}
 		if err := productD09RequireSameDirectory(dir, info); err != nil {
