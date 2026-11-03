@@ -61,6 +61,7 @@ func productD09RecordedEnvironment(t *testing.T, dir, operation string, step fun
 }
 
 func TestProductD09EnvironmentReachesEveryPodmanPhase(t *testing.T) {
+	dir := t.TempDir() // Allocate before poisoning TMPDIR; keep the poison during child execution.
 	// Every override a product child must not inherit is set in the parent, so only the product environment can reach a child.
 	for key, value := range map[string]string{
 		"CONTAINERS_CONF":          "/tmp/attacker/containers.conf",
@@ -76,7 +77,6 @@ func TestProductD09EnvironmentReachesEveryPodmanPhase(t *testing.T) {
 	} {
 		t.Setenv(key, value)
 	}
-	dir := t.TempDir()
 	podman := productD09EnvironmentFake(t, dir, "podman")
 	cosign := productD09EnvironmentFake(t, dir, "cosign")
 	want := productD09PinnedEnvironment()
