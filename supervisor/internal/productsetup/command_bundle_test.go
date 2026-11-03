@@ -163,6 +163,15 @@ func TestProductBashFirstInstallAndImageReplacementHaveNoBootstrapCycle(t *testi
 		}
 		installedRegistration := f.read(RegistrationPath)
 		proposedRegistration := "projects: alpha,beta\nrevision: 2\n"
+		verify := f.env.VerifyRegistration
+		proposedImage := "sha256:" + strings.Repeat("d", 64)
+		f.env.VerifyRegistration = func(reg, sig, key []byte) (RegistrationSummary, error) {
+			summary, err := verify(reg, sig, key)
+			if string(reg) == proposedRegistration {
+				summary.ImageDigest = proposedImage
+			}
+			return summary, err
+		}
 		if err := os.WriteFile(f.cfg.Registration, []byte(proposedRegistration), 0o600); err != nil {
 			t.Fatal(err)
 		}
@@ -181,6 +190,9 @@ func TestProductBashFirstInstallAndImageReplacementHaveNoBootstrapCycle(t *testi
 			t.Fatalf("the hook ran %d times through the install and the dry run, want 2", len(spy.calls))
 		}
 		dry := spy.calls[1]
+		if dry.Registration.ImageDigest != proposedImage || dry.Registration.ImageDigest == spy.calls[0].Registration.ImageDigest {
+			t.Fatal("replacement validated the previous image pin instead of the proposed image")
+		}
 		if string(dry.RegistrationData) != proposedRegistration || string(dry.RegistrationData) == installedRegistration || dry.CommandBundlePath != f.cfg.CommandBundle {
 			t.Fatalf("the dry run must validate the proposed registration and bundle, not the installed ones: %q %q", dry.RegistrationData, dry.CommandBundlePath)
 		}
