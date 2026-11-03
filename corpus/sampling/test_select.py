@@ -164,10 +164,14 @@ VECTOR_DECISIONS["inj.c.3"] = (False, "overlaps a pilot scenario")
 # Pinned after an independent hashlib-only reference agreed with every membership list. Re-pinned for the
 # pilot change: the output gained the commitment kind fields, `development` and `attacks`; the memberships
 # did not change. Re-pinned for D47: the group is "<stratum>:<attack_id>", which changes the cap and top-up
-# keys, so the draw memberships changed; the pilot memberships did not (only script_sha256 moved). The digest covers this script's own bytes (script_sha256), so any edit to select.py
-# requires re-pinning both digests.
-PINNED_VECTOR_SHA256 = "1f042c0ee6ef1d1f8ec5d7e0bc30c955d24019592b81874a1db4f857d2889b05"
-PINNED_PILOT_SHA256 = "0515c4da36418c53f0248c27d4225af0e1208b61c2e93c9f31ad43c8aa186575"
+# keys, so the draw memberships changed; the pilot memberships did not (only script_sha256 moved).
+# Re-pinned for the review fixes: no membership moved (the member lists are asserted unchanged above). Only the
+# output bytes moved: `published_utc` replaces the commitment's T, the commitment echo loses T and T_epoch,
+# `bls_verified_by` joins inputs.beacon, the draw gains inputs.pilot_output, development_not_in_ledger and
+# mechanisms, attacks are marked by scenario, and script_sha256 changed. The digest covers this script's own
+# bytes (script_sha256), so any edit to select.py requires re-pinning both digests.
+PINNED_VECTOR_SHA256 = "96a05bcb61170625e958f64ac8c858ac5fb8d2e4cb6dd6933406f67f0b21e923"
+PINNED_PILOT_SHA256 = "98417371b6ed2b256b6947fc507de0a00920e50e1fbff5c698476b14dedfc555"
 PINNED_VECTOR_MEMBERS = {
     "main": {"TM-A": ["inj.a.3", "inj.b.1", "inj.c.1"], "TM-B": ["tool.e.3", "tool.d.1", "tool.e.1"]},
     "cold": {"TM-A": ["inj.b.1"], "TM-B": ["tool.d.1"]},

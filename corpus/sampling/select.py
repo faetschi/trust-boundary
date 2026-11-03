@@ -1,18 +1,20 @@
 """D48 confirmatory selection: the registered draws of thesis/tbound/h1-path/16-sampling-design.md
 sections 4 to 6, and the pilot of section 5 step 0 (decision D48). Stdlib only; Python 3.12 compatible.
 
-    py -3 -I corpus/sampling/select.py pilot --ledger L.jsonl --commitment P.json \
-        --beacon B.json --adaptation A.jsonl --out OUT.json
-    py -3 -I corpus/sampling/select.py draw --ledger L.jsonl --commitment C.json \
-        --beacon B.json --adaptation A.jsonl --out OUT.json
+    py -3 -I corpus/sampling/select.py pilot --ledger L.jsonl --commitment P.json --published-utc T \
+        --beacon B.json --bls-verified-by "TOOL VERSION" --adaptation A.jsonl --out OUT.json
+    py -3 -I corpus/sampling/select.py draw --ledger L.jsonl --commitment C.json --published-utc T \
+        --pilot-output PILOT.json --beacon B.json --bls-verified-by "TOOL VERSION" \
+        --adaptation A.jsonl --out OUT.json
     py -3 -I corpus/sampling/select.py allocate --ledger L.jsonl --commitment C.json
-    py -3 -I corpus/sampling/select.py verify-beacon --commitment C.json --beacon B.json
+    py -3 -I corpus/sampling/select.py verify-beacon --commitment C.json --published-utc T --beacon B.json
     py -3 -I corpus/sampling/select.py certify --NA 1000000 --NB 5000 --nA 298 --nB 1
 
 pilot takes a pilot commitment (kind "pilot"); draw and allocate take a main commitment (kind "main").
 pilot and draw exit 0 when complete, 3 when they need an adaptation decision (the output is still
 written), and 1 when blocked or refused. A blocked run still writes its audit output.
-Verifying the drand BLS signature is not done here: it needs an independent drand verifier.
+Verifying the drand BLS signature is not done here: it needs an independent drand verifier, and the
+operator names the tool and version that did it with --bls-verified-by.
 """
 
 import argparse
@@ -32,6 +34,7 @@ TOTAL = 299  # main-sample size (16 section 5 step 1); --total overrides it for 
 VARIANCE_TOTAL = 50  # variance subset size (16 section 5 step 6)
 PILOT_SIZE = 11  # pilot adversarial places (16 section 5 step 0, as D47 registers); the API may override
 KINDS = ("pilot", "main")  # commitment kinds (16 section 3 item 5)
+DRAND_CHAIN_HASH = "8990e7a9aaed2ffed73dbd7092123d6f289930540d7651336225dc172e51b2ce"  # mainnet default chain (D48)
 ROUND_DELAY = 86400  # the first round at least 24 hours after T (16 section 4)
 STRATA = ("TM-A", "TM-B")
 DOMAIN = "tbound-d48|"
@@ -141,8 +144,9 @@ def _digest(obj, field):
 
 def parse_ledger(data):
     """Candidate rows (sorted by case_id), excluded case ids, the stratum of each candidate attack, the
-    attack of every row (excluded ones too, so a development case is found), and the number of lines."""
-    rows, excluded, seen, attack_of = [], [], set(), {}
+    attack, scenario and mechanism of every row (excluded ones too, so a development case is found), and
+    the number of lines."""
+    rows, excluded, seen, attack_of, scenario_of, mechanism_of = [], [], set(), {}, {}, {}
     lines = _lines(data, "ledger")
     for number, line in lines:
         where = f"ledger line {number}"
@@ -164,6 +168,8 @@ def parse_ledger(data):
         # cap and top-up groups are therefore the scenario qualified by stratum.
         attack_id = f"{stratum}:{scenario_id}"
         attack_of[case_id] = attack_id
+        scenario_of[case_id] = scenario_id
+        mechanism_of[case_id] = mechanism_id
         if flag:
             excluded.append(case_id)
         else:
@@ -172,7 +178,7 @@ def parse_ledger(data):
     owner = {item["attack_id"]: item["stratum"] for item in rows}
     rows.sort(key=lambda item: item["case_id"].encode("ascii"))
     return {"rows": rows, "excluded": sorted(excluded), "row_count": len(lines), "attacks": owner,
-            "attack_of": attack_of}
+            "attack_of": attack_of, "scenario_of": scenario_of, "mechanism_of": mechanism_of}
 
 
 def parse_decisions(data, ledger):
@@ -203,11 +209,12 @@ def parse_decisions(data, ledger):
 def parse_utc(text):
     """Whole-second UTC ISO-8601 time as epoch seconds; fractions and offsets are refused."""
     if not isinstance(text, str) or UTC_RE.fullmatch(text) is None:
-        raise Refused("T must be UTC ISO-8601 with whole seconds and a Z suffix, e.g. 2026-11-03T12:00:00Z")
+        raise Refused("--published-utc must be UTC ISO-8601 with whole seconds and a Z suffix, "
+                      "e.g. 2026-11-03T12:00:00Z; round an OSF time with fractions up to the next second")
     try:
         moment = datetime.strptime(text, "%Y-%m-%dT%H:%M:%SZ")
     except ValueError:
-        raise Refused(f"T is not a valid date: {text}") from None
+        raise Refused(f"--published-utc is not a valid date: {text}") from None
     return (moment - EPOCH) // timedelta(seconds=1)
 
 
@@ -229,6 +236,9 @@ def parse_commitment(data):
     kind = obj.get("kind")
     if kind not in KINDS:
         raise Refused('commitment: kind must be "pilot" or "main"')
+    if "T" in obj:
+        raise Refused("commitment: a file cannot hold its own publication time; "
+                      "pass the OSF first-publication time as --published-utc")
     chain = obj.get("chain")
     if not isinstance(chain, dict):
         raise Refused("commitment: chain must be an object")
@@ -238,12 +248,12 @@ def parse_commitment(data):
     for field in ("hash", "public_key"):
         if not isinstance(chain.get(field), str) or HEX_RE.fullmatch(chain[field]) is None:
             raise Refused(f"commitment: chain.{field} must be a hex string")
+    if chain["hash"].lower() != DRAND_CHAIN_HASH:
+        raise Refused(f"commitment: chain.hash must be the registered drand chain {DRAND_CHAIN_HASH}")
     commit = {
         "kind": kind,
         "ledger_sha256": _digest(obj, "ledger_sha256"),
         "script_sha256": _digest(obj, "script_sha256"),
-        "T": obj.get("T"),
-        "T_epoch": parse_utc(obj.get("T")),
         "chain": {
             "hash": chain["hash"].lower(),
             "public_key": chain["public_key"].lower(),
@@ -276,22 +286,26 @@ def require_kind(commit, kind):
 
 
 def remove_development(ledger, case_ids):
-    """Drops the development cases (16 section 2) from the candidates before any cap. Every id must be a
-    ledger case, excluded ones included, so a typo is refused rather than silently ignored."""
-    unknown = sorted(set(case_ids) - set(ledger["attack_of"]))
-    if unknown:
-        raise Refused(f"development case ids are not in the ledger (typo?): {', '.join(unknown)}")
+    """Drops the development cases (16 section 2) from the candidates before any cap. Ids that are not
+    ledger rows (a T5 rehearsal item, say) stay on the list and are returned apart, never refused."""
     listed = set(case_ids)
+    unknown = sorted(listed - set(ledger["attack_of"]))
     removed = Counter(item["stratum"] for item in ledger["rows"] if item["case_id"] in listed)
     rows = [item for item in ledger["rows"] if item["case_id"] not in listed]
-    return {**ledger, "rows": rows}, {"case_ids": sorted(listed), "removed": {h: removed[h] for h in STRATA}}
+    return ({**ledger, "rows": rows}, {"case_ids": sorted(listed), "removed": {h: removed[h] for h in STRATA}},
+            unknown)
 
 
-def _attack_marks(ledger, case_ids):
-    """Each candidate attack, marked by whether any development case has it (a reporting aid, section 6)."""
-    seen = {ledger["attack_of"][case_id] for case_id in case_ids}
-    return {attack: {"seen_in_development": attack in seen, "stratum": stratum}
-            for attack, stratum in ledger["attacks"].items()}
+def _marks(ledger, case_ids):
+    """Each candidate attack and mechanism, marked by whether a development case has its scenario or
+    mechanism (a reporting aid, section 6). A scenario seen in either stratum is seen in both groups."""
+    known = [case_id for case_id in case_ids if case_id in ledger["attack_of"]]
+    scenarios = {ledger["scenario_of"][case_id] for case_id in known}
+    mechanisms = {ledger["mechanism_of"][case_id] for case_id in known}
+    attacks = {attack: {"seen_in_development": attack.split(":", 1)[1] in scenarios, "stratum": stratum}
+               for attack, stratum in ledger["attacks"].items()}
+    return attacks, {m: {"seen_in_development": m in mechanisms}
+                     for m in sorted({item["mechanism_id"] for item in ledger["rows"]})}
 
 
 def round_for(genesis, period, t_epoch):
@@ -329,19 +343,36 @@ def check_beacon(beacon, round_no):
     return beacon["randomness"]
 
 
-def _round_of(commit):
+def _round_of(commit, t_epoch):
     chain = commit["chain"]
-    round_no = round_for(chain["genesis_time"], chain["period"], commit["T_epoch"])
+    round_no = round_for(chain["genesis_time"], chain["period"], t_epoch)
     return round_no, chain["genesis_time"] + (round_no - 1) * chain["period"]
 
 
-def verify_beacon(commitment_data, beacon_data):
+def verify_beacon(commitment_data, beacon_data, published_utc):
     commit = parse_commitment(commitment_data)
-    round_no, scheduled = _round_of(commit)
+    round_no, scheduled = _round_of(commit, parse_utc(published_utc))
     beacon = parse_beacon(beacon_data)
     check_beacon(beacon, round_no)
     return {"round": round_no, "scheduled_utc": _iso(scheduled), "randomness": beacon["randomness"].hex(),
             "bls_signature_verified": False, "bls_note": BLS_NOTE}
+
+
+def _attestation(text):
+    if not isinstance(text, str) or not text.strip():
+        raise Refused("--bls-verified-by must name the independent BLS verifier, tool and version")
+    return text.strip()
+
+
+def parse_pilot_output(data):
+    """The members of a complete pilot run: its memberships.pilot lists, from this script's pilot output."""
+    obj = _object(_text(data, "pilot output"), "pilot output")
+    memberships = obj.get("memberships")
+    groups = memberships.get("pilot") if isinstance(memberships, dict) else None
+    if obj.get("schema") != PILOT_SCHEMA or not isinstance(groups, dict) \
+            or not all(isinstance(group, list) for group in groups.values()):
+        raise Refused("pilot output: not the output of a complete pilot run (schema and memberships.pilot)")
+    return {case_id for group in groups.values() for case_id in group}
 
 
 # ------------------------------------------------------------- order rule (section 4)
@@ -569,7 +600,8 @@ def _select(out, ledger, seed, decision_map, total, variance):
                         "topup": topup, "untested": untested}
 
 
-def _audit_header(schema, raw, full, commit, beacon, decision_map, round_no, scheduled, seed):
+def _audit_header(schema, raw, full, commit, beacon, decision_map, round_no, scheduled, seed, t_epoch,
+                  published_utc, bls_verified_by):
     """The verification record shared by the draw and pilot outputs (section 4)."""
     period = commit["chain"]["period"]
     return {
@@ -582,25 +614,24 @@ def _audit_header(schema, raw, full, commit, beacon, decision_map, round_no, sch
         "inputs": {
             "ledger": {"sha256": sha256_hex(raw["ledger"]), "bytes": len(raw["ledger"]),
                        "lines": full["row_count"], "candidates": len(full["rows"]), "excluded": full["excluded"]},
-            # The parsed commitment, as published: every field except the derived epoch of T.
-            "commitment": {"sha256": sha256_hex(raw["commitment"]), "bytes": len(raw["commitment"]),
-                           **{k: v for k, v in commit.items() if k != "T_epoch"}},
+            "commitment": {"sha256": sha256_hex(raw["commitment"]), "bytes": len(raw["commitment"]), **commit},
             "beacon": {"sha256": sha256_hex(raw["beacon"]), "bytes": len(raw["beacon"]), "round": beacon["round"],
                        "randomness": beacon["randomness"].hex(), "signature": beacon["signature"].hex(),
                        "previous_signature": beacon["previous_signature"], "response": beacon["response"],
-                       "bls_signature_verified": False, "bls_note": BLS_NOTE},
+                       "bls_signature_verified": False, "bls_verified_by": bls_verified_by,
+                       "bls_note": BLS_NOTE},
             "adaptation": {"sha256": sha256_hex(raw["adaptation"]), "bytes": len(raw["adaptation"]),
                            "decisions": len(decision_map), "not_consulted": []},
         },
         "round": {"R": round_no, "scheduled_utc": _iso(scheduled),
                   "previous_scheduled_utc": _iso(scheduled - period) if round_no > 1 else None,
-                  "T_utc": commit["T"], "T_epoch": commit["T_epoch"],
-                  "threshold_epoch": commit["T_epoch"] + ROUND_DELAY},
+                  "published_utc": published_utc, "T_epoch": t_epoch, "threshold_epoch": t_epoch + ROUND_DELAY},
         "seed_hex": seed.hex(),
     }
 
 
-def run_draw(ledger_data, commitment_data, beacon_data, adaptation_data, total=TOTAL, variance=VARIANCE_TOTAL):
+def run_draw(ledger_data, commitment_data, beacon_data, adaptation_data, *, published_utc, pilot_output,
+             bls_verified_by, total=TOTAL, variance=VARIANCE_TOTAL):
     """Returns (status, output). Refused raises for bad inputs; Blocked is returned as status blocked."""
     if total < 2:
         raise Refused("total must be at least 2 (one place per stratum)")
@@ -608,20 +639,32 @@ def run_draw(ledger_data, commitment_data, beacon_data, adaptation_data, total=T
     commit = parse_commitment(commitment_data)
     require_kind(commit, "main")
     check_digests(commit, ledger_data)
-    ledger, development = remove_development(full, commit["development_case_ids"])
-    round_no, scheduled = _round_of(commit)
+    t_epoch = parse_utc(published_utc)
+    bls_verified_by = _attestation(bls_verified_by)
+    pilot_members = parse_pilot_output(pilot_output)
+    missing = sorted(pilot_members - set(commit["development_case_ids"]))
+    if missing:
+        raise Refused(f"pilot members missing from development_case_ids: {', '.join(missing)}")
+    ledger, development, not_in_ledger = remove_development(full, commit["development_case_ids"])
+    round_no, scheduled = _round_of(commit, t_epoch)
     beacon = parse_beacon(beacon_data)
     seed = check_beacon(beacon, round_no)
     decision_map = parse_decisions(adaptation_data, full)
     raw = {"ledger": ledger_data, "commitment": commitment_data, "beacon": beacon_data,
            "adaptation": adaptation_data}
-    out = _audit_header(SCHEMA, raw, full, commit, beacon, decision_map, round_no, scheduled, seed)
+    out = _audit_header(SCHEMA, raw, full, commit, beacon, decision_map, round_no, scheduled, seed, t_epoch,
+                        published_utc, bls_verified_by)
+    out["inputs"]["pilot_output"] = {"sha256": sha256_hex(pilot_output), "bytes": len(pilot_output),
+                                     "members": sorted(pilot_members)}
+    attacks, mechanisms = _marks(full, commit["development_case_ids"])
     out.update({
         "total": total,
         "variance_places": variance,
         "registered_parameters": total == TOTAL and variance == VARIANCE_TOTAL,
         "development": development,
-        "attacks": _attack_marks(full, commit["development_case_ids"]),
+        "development_not_in_ledger": not_in_ledger,
+        "attacks": attacks,
+        "mechanisms": mechanisms,
         "cap": None,
         "variance": None,
         "main": {},
@@ -673,7 +716,8 @@ def _pilot_select(out, ledger, seed, decision_map, pilot_size):
     return "complete", {"pilot": {h: out["pilot"][h]["selected"] for h in STRATA}}
 
 
-def run_pilot(ledger_data, commitment_data, beacon_data, adaptation_data, pilot_size=PILOT_SIZE):
+def run_pilot(ledger_data, commitment_data, beacon_data, adaptation_data, *, published_utc, bls_verified_by,
+              pilot_size=PILOT_SIZE):
     """Returns (status, output) for the pilot. Refused raises for bad inputs; Blocked is status blocked."""
     if pilot_size < 1:
         raise Refused("pilot_size must be at least 1")
@@ -683,13 +727,16 @@ def run_pilot(ledger_data, commitment_data, beacon_data, adaptation_data, pilot_
     if commit["pilot_size"] != pilot_size:
         raise Refused(f"pilot_size {pilot_size} is not the commitment's pilot_size {commit['pilot_size']}")
     check_digests(commit, ledger_data)
-    round_no, scheduled = _round_of(commit)
+    t_epoch = parse_utc(published_utc)
+    bls_verified_by = _attestation(bls_verified_by)
+    round_no, scheduled = _round_of(commit, t_epoch)
     beacon = parse_beacon(beacon_data)
     seed = check_beacon(beacon, round_no)
     decision_map = parse_decisions(adaptation_data, full)
     raw = {"ledger": ledger_data, "commitment": commitment_data, "beacon": beacon_data,
            "adaptation": adaptation_data}
-    out = _audit_header(PILOT_SCHEMA, raw, full, commit, beacon, decision_map, round_no, scheduled, seed)
+    out = _audit_header(PILOT_SCHEMA, raw, full, commit, beacon, decision_map, round_no, scheduled, seed, t_epoch,
+                        published_utc, bls_verified_by)
     out.update({
         "pilot_size": pilot_size,
         "registered_parameters": pilot_size == PILOT_SIZE,
@@ -717,11 +764,11 @@ def allocate(ledger_data, commitment_data, total=TOTAL):
     check_digests(commit, ledger_data)
     if total < 2:
         raise Refused("total must be at least 2 (one place per stratum)")
-    ledger, development = remove_development(full, commit["development_case_ids"])
+    ledger, development, not_in_ledger = remove_development(full, commit["development_case_ids"])
     cap = choose_cap(ledger["rows"], total)
     return {"schema": SCHEMA, "ledger_sha256": sha256_hex(ledger_data),
             "commitment_sha256": sha256_hex(commitment_data), "script_sha256": script_sha256(),
-            "total": total, "development": development,
+            "total": total, "development": development, "development_not_in_ledger": not_in_ledger,
             "cap": {"k": cap["k"], "M": cap["M"], "n": cap["n"], "allocation": cap["detail"],
                     "trace": cap["trace"]}}
 
@@ -813,22 +860,25 @@ def _emit(path, status, out):
 
 def cmd_draw(args):
     status, out = run_draw(_read(args.ledger), _read(args.commitment), _read(args.beacon),
-                           _read(args.adaptation), total=args.total)
+                           _read(args.adaptation), published_utc=args.published_utc,
+                           pilot_output=_read(args.pilot_output), bls_verified_by=args.bls_verified_by,
+                           total=args.total)
     return _emit(args.out, status, out)
 
 
 def cmd_pilot(args):
-    status, out = run_pilot(_read(args.ledger), _read(args.commitment), _read(args.beacon), _read(args.adaptation))
+    status, out = run_pilot(_read(args.ledger), _read(args.commitment), _read(args.beacon), _read(args.adaptation),
+                            published_utc=args.published_utc, bls_verified_by=args.bls_verified_by)
     return _emit(args.out, status, out)
 
 
 def cmd_allocate(args):
-    sys.stdout.write(serialize(allocate(_read(args.ledger), _read(args.commitment), args.total)).decode("ascii"))
+    sys.stdout.buffer.write(serialize(allocate(_read(args.ledger), _read(args.commitment), args.total)))
     return 0
 
 
 def cmd_verify_beacon(args):
-    result = verify_beacon(_read(args.commitment), _read(args.beacon))
+    result = verify_beacon(_read(args.commitment), _read(args.beacon), args.published_utc)
     print(f"round {result['round']} matches the commitment (scheduled {result['scheduled_utc']})")
     print(f"randomness {result['randomness']} equals SHA-256 of the signature")
     print("BLS signature: NOT VERIFIED by select.py. Verify it with an independent drand verifier against "
@@ -838,8 +888,13 @@ def cmd_verify_beacon(args):
 
 def cmd_certify(args):
     result = certify(_range(args.NA), _range(args.NB), args.nA, args.nB)
-    sys.stdout.write(serialize(result).decode("ascii"))
+    sys.stdout.buffer.write(serialize(result))
     return 0 if result["certified"] else 1
+
+
+PUBLISHED_HELP = ("OSF first-publication time of the commitment file version: whole-second UTC ending in Z; "
+                  "if the OSF time has fractions, round up to the next second")
+BLS_HELP = "tool and version that verified the drand BLS signature (this script does not verify it)"
 
 
 def main(argv=None):
@@ -850,6 +905,8 @@ def main(argv=None):
     pilot.add_argument("--ledger", required=True)
     pilot.add_argument("--commitment", required=True)
     pilot.add_argument("--beacon", required=True)
+    pilot.add_argument("--published-utc", required=True, help=PUBLISHED_HELP)
+    pilot.add_argument("--bls-verified-by", required=True, help=BLS_HELP)
     pilot.add_argument("--adaptation", required=True)
     pilot.add_argument("--out", required=True)
     pilot.set_defaults(handler=cmd_pilot)
@@ -858,6 +915,10 @@ def main(argv=None):
     draw.add_argument("--ledger", required=True)
     draw.add_argument("--commitment", required=True)
     draw.add_argument("--beacon", required=True)
+    draw.add_argument("--published-utc", required=True, help=PUBLISHED_HELP)
+    draw.add_argument("--pilot-output", required=True,
+                      help="the pilot run's output JSON; every pilot member must be in development_case_ids")
+    draw.add_argument("--bls-verified-by", required=True, help=BLS_HELP)
     draw.add_argument("--adaptation", required=True)
     draw.add_argument("--out", required=True)
     draw.add_argument("--total", type=int, default=TOTAL, help="tests only; the registered value is 299")
@@ -872,6 +933,7 @@ def main(argv=None):
     verify = commands.add_parser("verify-beacon", help="check round and randomness (BLS is not checked)")
     verify.add_argument("--commitment", required=True)
     verify.add_argument("--beacon", required=True)
+    verify.add_argument("--published-utc", required=True, help=PUBLISHED_HELP)
     verify.set_defaults(handler=cmd_verify_beacon)
 
     cert = commands.add_parser("certify", help="zero-event certification (section 6); ranges as LOW:HIGH")
