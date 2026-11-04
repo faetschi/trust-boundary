@@ -966,3 +966,52 @@ func TestMarkdown(t *testing.T) {
 		t.Error("Markdown does not name the missing case")
 	}
 }
+
+func TestAttributionDigestsAreBoundAndChangeTheReport(t *testing.T) {
+	attributions, rubric := "sha256:"+strings.Repeat("a", 64), "sha256:"+strings.Repeat("b", 64)
+	base := mustBuild(t, smallInputs())
+	if base.Bindings.AttributionsDigest != "" || base.Bindings.AttributionRubricDigest != "" {
+		t.Fatalf("no attribution input must bind empty digests: %+v", base.Bindings)
+	}
+	in := smallInputs()
+	in.AttributionsDigest, in.AttributionRubricDigest = attributions, rubric
+	r := mustBuild(t, in)
+	if r.Bindings.AttributionsDigest != attributions || r.Bindings.AttributionRubricDigest != rubric || r.Digest == base.Digest {
+		t.Fatalf("bindings %+v, digest %s (base %s)", r.Bindings, r.Digest, base.Digest)
+	}
+	if got := mustJSON(t, r.Bindings); !strings.Contains(got, `"attributions_digest":"`+attributions+`"`) ||
+		!strings.Contains(got, `"attribution_rubric_digest":"`+rubric+`"`) {
+		t.Fatalf("bindings JSON %s", got)
+	}
+	other := smallInputs()
+	other.AttributionsDigest, other.AttributionRubricDigest = attributions, "sha256:"+strings.Repeat("c", 64)
+	if mustBuild(t, other).Digest == r.Digest {
+		t.Fatal("the rubric digest is not part of the report digest")
+	}
+	for name, pair := range map[string][2]string{
+		"only the file digest": {attributions, ""}, "only the rubric digest": {"", rubric},
+		"not a digest": {"abc", rubric}, "uppercase hex": {"sha256:" + strings.Repeat("A", 64), rubric},
+	} {
+		bad := smallInputs()
+		bad.AttributionsDigest, bad.AttributionRubricDigest = pair[0], pair[1]
+		if _, err := Build(bad); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+}
+
+// An unresolved candidate obstruction keeps the friction clause from being
+// evaluable; the same candidate with a supported attribution does not.
+func TestFrictionIsEvaluableOnceTheCandidateIsAttributed(t *testing.T) {
+	candidate := func(a evalscore.Attribution) Inputs {
+		in := fullInputs()
+		in.Trials.Compliant[0].CSuccess, in.Trials.Compliant[0].Attribution = false, a
+		return in
+	}
+	if r := mustBuild(t, candidate(evalscore.AttributionUnresolved)); r.Clauses.Friction.Evaluable {
+		t.Fatalf("friction evaluable with an unresolved candidate: %+v", r.Clauses.Friction)
+	}
+	if r := mustBuild(t, candidate(evalscore.AttributionSupported)); !r.Clauses.Friction.Evaluable {
+		t.Fatalf("friction not evaluable with a supported candidate: %+v", r.Clauses.Friction)
+	}
+}
