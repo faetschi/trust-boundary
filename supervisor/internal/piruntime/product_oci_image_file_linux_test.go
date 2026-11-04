@@ -7,10 +7,70 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestProductOCIImageFileRefusesRedirectedLayerEntries(t *testing.T) {
+	link := func(name, target string) ociTestEntry {
+		return ociTestEntry{name: name, typeflag: tar.TypeSymlink, link: target}
+	}
+	dir := func(name string) ociTestEntry {
+		return ociTestEntry{name: name, typeflag: tar.TypeDir, mode: 0o755}
+	}
+	for _, imagePath := range []string{"/bin/bash", d09EntrypointPath} {
+		t.Run(imagePath, func(t *testing.T) {
+			realPath := strings.TrimPrefix(imagePath, "/")
+			if imagePath == "/bin/bash" {
+				realPath = "usr/bin/bash"
+			}
+			realDir, base := path.Dir(realPath), path.Base(realPath)
+			lower := []ociTestEntry{link("bin", "usr/bin"), regEntry(realPath, "A", 0o555)}
+			for _, tc := range []struct {
+				name   string
+				layers [][]ociTestEntry
+				want   string
+			}{
+				{"reviewer case", [][]ociTestEntry{lower, {dir("usr/"), dir(realDir + "/"), link("alias", realDir), regEntry("alias/"+base, "B", 0o555)}}, ""},
+				{"lower layer alias", [][]ociTestEntry{append(append([]ociTestEntry{}, lower...), link("alias", realDir)), {regEntry("alias/"+base, "B", 0o555)}}, ""},
+				{"same layer alias", [][]ociTestEntry{append(append([]ociTestEntry{}, lower...), link("alias", realDir), regEntry("alias/"+base, "B", 0o555))}, ""},
+				{"normalized names", [][]ociTestEntry{lower, {link("././alias/", realDir), regEntry("././alias/"+base, "B", 0o555)}}, ""},
+				{"directory replaces alias", [][]ociTestEntry{append(append([]ociTestEntry{}, lower...), link("alias", realDir)), {dir("./alias/"), regEntry("./alias/"+base, "B", 0o555)}}, "A"},
+				{"same layer directory replaces alias", [][]ociTestEntry{lower, {link("alias", realDir), dir("alias/"), regEntry("alias/"+base, "B", 0o555)}}, "A"},
+				{"normal merged usr", [][]ociTestEntry{lower, {dir("usr/"), dir(realDir + "/"), regEntry("./"+realPath, "B", 0o555)}}, "B"},
+				{"whiteout through alias", [][]ociTestEntry{lower, {link("alias", realDir), whiteout("./alias/.wh." + base)}}, ""},
+				{"opaque whiteout through alias", [][]ociTestEntry{lower, {link("alias", realDir), whiteout("alias/.wh..wh..opq")}}, ""},
+				{"hardlink source through alias", [][]ociTestEntry{lower, {link("alias", realDir), {name: "copy", typeflag: tar.TypeLink, link: "./alias/" + base}}}, ""},
+				{"hardlink destination through alias", [][]ociTestEntry{lower, {link("alias", realDir), {name: "alias/copy", typeflag: tar.TypeLink, link: realPath}}}, ""},
+				{"hardlink copies symlink", [][]ociTestEntry{lower, {link("alias", realDir), {name: "copy", typeflag: tar.TypeLink, link: "alias"}, regEntry("copy/"+base, "B", 0o555)}}, ""},
+				{"hardlink regular source", [][]ociTestEntry{lower, {{name: "copy", typeflag: tar.TypeLink, link: realPath}}}, "A"},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					var layers [][]byte
+					for i, entries := range tc.layers {
+						layers = append(layers, ociTestLayer(t, i%2 == 0, entries...))
+					}
+					layout, manifest := ociTestLayout(t, layers...)
+					got, err := readProductOCIImageFile(context.Background(), layout, manifest, imagePath, false)
+					if tc.want == "" {
+						if err == nil {
+							t.Fatalf("redirected layer entry accepted: verified %+v instead of refusing the image", got)
+						}
+						if !strings.Contains(err.Error(), "symlink") {
+							t.Fatalf("expected redirected-entry refusal, got %v", err)
+						}
+						return
+					}
+					if err != nil || got.digest != DigestBytes([]byte(tc.want)) || got.size != int64(len(tc.want)) || got.mode != 0o555 {
+						t.Fatalf("file = %+v, %v; want bytes %q, mode 0555", got, err, tc.want)
+					}
+				})
+			}
+		})
+	}
+}
 
 func TestProductOCIImageFileResolvesOnlyMergedAncestorSymlinks(t *testing.T) {
 	link := func(name, target string) ociTestEntry {

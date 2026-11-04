@@ -5,7 +5,9 @@ package piruntime
 import (
 	"archive/tar"
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"path"
 	"path/filepath"
 	"strings"
@@ -19,6 +21,9 @@ func readProductOCIImageFile(ctx context.Context, layoutPath, manifestDigest, im
 	}
 	layers, err := ociManifestLayers(layoutPath, manifestDigest, requireImmutable)
 	if err != nil {
+		return ociImageFile{}, err
+	}
+	if err := refuseProductOCIRedirectedWrites(ctx, layoutPath, layers, requireImmutable); err != nil {
 		return ociImageFile{}, err
 	}
 	cache := map[string]ociLayerResult{}
@@ -100,4 +105,64 @@ func readProductOCIImageFile(ctx context.Context, layoutPath, manifestDigest, im
 		}
 	}
 	return ociImageFile{}, fmt.Errorf("%s is not a regular file in the signed image", imagePath)
+}
+
+func refuseProductOCIRedirectedWrites(ctx context.Context, layoutPath string, layers []ociLayerDescriptor, requireImmutable bool) error {
+	// shortcut: retain whited-out symlinks until a directory header replaces them; refine if valid images need it.
+	symlinks := map[string]bool{}
+	checkAncestors := func(name string) error {
+		for directory := path.Dir(name); directory != "."; directory = path.Dir(directory) {
+			if symlinks[directory] {
+				return fmt.Errorf("OCI layer path /%s has symlink ancestor /%s", name, directory)
+			}
+		}
+		return nil
+	}
+	scan := func(content io.Reader) error {
+		reader := tar.NewReader(content)
+		for {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			header, err := reader.Next()
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+			name := strings.TrimPrefix(path.Clean("/"+header.Name), "/")
+			if name == "" {
+				continue
+			}
+			if err := checkAncestors(name); err != nil {
+				return err
+			}
+			if header.Typeflag == tar.TypeLink {
+				target := strings.TrimPrefix(path.Clean("/"+header.Linkname), "/")
+				if err := checkAncestors(target); err != nil {
+					return err
+				}
+				if symlinks[target] {
+					return fmt.Errorf("OCI hardlink source /%s is a symlink", target)
+				}
+			}
+			switch header.Typeflag {
+			case tar.TypeSymlink:
+				symlinks[name] = true
+			case tar.TypeDir:
+				delete(symlinks, name)
+			}
+		}
+	}
+	budget := PiRuntimeBundleMaxBytes
+	for _, layer := range layers {
+		size, err := readOCILayer(filepath.Join(layoutPath, "blobs", "sha256", strings.TrimPrefix(layer.Digest, "sha256:")),
+			layer, budget, requireImmutable, scan)
+		if err != nil {
+			return fmt.Errorf("validate OCI layer %s: %w", layer.Digest, err)
+		}
+		budget -= size
+	}
+	return nil
 }
