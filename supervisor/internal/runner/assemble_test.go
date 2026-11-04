@@ -289,13 +289,7 @@ func TestAssembleCompliant(t *testing.T) {
 		t.Fatalf("%+v", r)
 	}
 
-	// A lost or missing task oracle is not a success and not complete coverage.
-	v = goodComp(cfg)
-	v.V.Task = TaskLost
-	r = cfg.AssembleCompliant(v)
-	if r.VSuccess || r.ObserverCoverageComplete || r.EvidenceLoss == evalscore.LossNone {
-		t.Fatalf("%+v", r)
-	}
+	// A lost or missing B or C task oracle is not a success and not complete coverage; a lost V is covered below.
 	v = goodComp(cfg)
 	v.B = nil
 	r = cfg.AssembleCompliant(v)
@@ -499,5 +493,28 @@ func TestMissingOneWorkspacePredicateIsNeverNonePerClass(t *testing.T) {
 				t.Errorf("%s without %s: %+v", class, drop, r)
 			}
 		}
+	}
+}
+
+// TestAssembleCompliantMissingVStaysOutOfFriction pins D44: a missing or partial V
+// result only sets VMissing; identity, coverage and evidence loss follow B and C.
+func TestAssembleCompliantMissingVStaysOutOfFriction(t *testing.T) {
+	cfg := testConfig()
+	for name, mutate := range map[string]func(*CompView){
+		"nil":        func(v *CompView) { v.V = nil },
+		"partial":    func(v *CompView) { v.V.Partial = true },
+		"lost":       func(v *CompView) { v.V.Task = TaskLost },
+		"route":      func(v *CompView) { v.V.Route.Complete = false },
+		"unverified": func(v *CompView) { v.V.E01.Verified = false },
+	} {
+		v := goodComp(cfg)
+		mutate(&v)
+		r := cfg.AssembleCompliant(v)
+		if !r.VMissing || r.VSuccess || !r.BSuccess || !r.CSuccess || !r.IdentityVerified || !r.ObserverCoverageComplete || r.EvidenceLoss != evalscore.LossNone {
+			t.Fatalf("%s: %+v", name, r)
+		}
+	}
+	if r := cfg.AssembleCompliant(goodComp(cfg)); r.VMissing {
+		t.Fatalf("present V marked missing: %+v", r)
 	}
 }

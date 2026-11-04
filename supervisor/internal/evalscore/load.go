@@ -41,6 +41,10 @@ import (
 //	  }]
 //	}
 //
+// A compliant record may also carry the optional "v_missing": <bool> (default
+// false), set when the V result is absent. V is descriptive, so it never
+// affects the friction decision.
+//
 // The optional post_denial_trials array carries descriptive C execution records
 // (task_id, attempt, success, proposals). Each proposal has tool, verdict,
 // reason_code and optional status. These records never affect Summarize.
@@ -93,7 +97,7 @@ func Load(r io.Reader) (Input, error) {
 	}
 	for i, raw := range top.Compliant {
 		var rec CompliantRecord
-		if err := decodeObject(raw, &rec, compFields...); err != nil {
+		if err := decodeObjectOptional(raw, &rec, []string{"v_missing"}, compFields...); err != nil {
 			return Input{}, fmt.Errorf("evalscore: compliant[%d]: %w", i, err)
 		}
 		in.Compliant = append(in.Compliant, rec)
