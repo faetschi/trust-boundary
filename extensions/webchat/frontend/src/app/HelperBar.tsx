@@ -10,6 +10,7 @@ import { Disclosure } from "../ui/Disclosure";
 import { StateDot } from "../ui/StateDot";
 import { governanceCounts } from "../core/filters";
 import { useLive } from "../live/context";
+import { COMPOSER_REASON } from "./Composer";
 import { statsParts } from "./Footer";
 import { confirmedIn } from "./verification";
 import { NO_PROJECTION, unavailableWords } from "./panels";
@@ -121,6 +122,7 @@ export function HelperBar({ model, open, version }: { readonly model: WorkspaceM
               {OTHER_SESSIONS_NOTE}
             </p>
             <p className={styles.note}>{READ_ONLY_NOTE}</p>
+            <p className={styles.note}>{COMPOSER_REASON}</p>
           </>
         )}
       </Section>

@@ -45,7 +45,7 @@ function spoken(): string {
 }
 
 function chipTexts(): string[] {
-  return Array.from(mounted?.container.querySelectorAll("[data-tone]") ?? []).map((chip) => chip.textContent?.trim() ?? "");
+  return Array.from(mounted?.container.querySelectorAll("[data-fact]") ?? []).map((fact) => fact.textContent?.trim() ?? "");
 }
 
 afterEach(() => {
@@ -75,7 +75,7 @@ describe("the composer's semantics", () => {
     );
   });
 
-  it("keeps the reason line visible: it is in the card, with its full text, and never hidden", () => {
+  it("keeps the reason in the card, with its full text, for assistive technology, and never in a hidden element", () => {
     render();
     const reason = q("#composer-reason");
     expect(reason.closest("section[data-testid='composer']")).toBe(q("section[data-testid='composer']"));
@@ -86,13 +86,17 @@ describe("the composer's semantics", () => {
     expect(reason.closest("[hidden]")).toBeNull();
   });
 
-  it("has no button at all: nothing here acts, so nothing is drawn as a control to press", () => {
+  it("has one button, the grey send mark: aria-disabled, named for what it is, and nothing else is a control", () => {
     render();
-    expect(mounted?.container.querySelectorAll("button")).toHaveLength(0);
+    const buttons = Array.from(mounted?.container.querySelectorAll("button") ?? []);
+    expect(buttons).toHaveLength(1);
+    expect(buttons[0]?.getAttribute("aria-disabled")).toBe("true");
+    expect(buttons[0]?.getAttribute("aria-label")).toBe("Send: not available in this build");
+    expect(buttons[0]?.hasAttribute("disabled")).toBe(false);
     expect(mounted?.container.querySelector("[aria-haspopup], [role='menu'], [role='menuitem'], [role='listbox']")).toBeNull();
   });
 
-  it("draws no send arrow and no '+' attach mark", () => {
+  it("draws no '+' attach mark, and no text arrow (the send mark is an icon)", () => {
     render("0.87.1");
     const marks = Array.from(mounted?.container.querySelectorAll("[aria-hidden='true']") ?? []).map((element) => element.textContent);
     expect(marks).not.toContain("+");
@@ -163,7 +167,7 @@ describe("the composer does not submit", () => {
   });
 });
 
-describe("the chips: non-interactive text with exact words", () => {
+describe("the facts: non-interactive text with exact words", () => {
   it("reads 'Observed only · no approvals' and the Pi version, with tools unavailable", () => {
     render("0.87.1");
     expect(chipTexts()).toEqual(["Observed only · no approvals", "Pi 0.87.1 · tools unavailable"]);
@@ -174,10 +178,11 @@ describe("the chips: non-interactive text with exact words", () => {
     expect(chipTexts()).toEqual(["Observed only · no approvals", "Pi version unavailable · tools unavailable"]);
   });
 
-  it("explains the first chip in its title, and draws both chips as text, never as buttons", () => {
+  it("explains the first fact in its title, and draws both facts as text, never as buttons", () => {
     render("0.87.1");
     expect(q("span[title='This page observes the Pi session. It cannot approve, submit or cancel.']")).toBeTruthy();
-    const chips = Array.from(mounted?.container.querySelectorAll("[data-tone]") ?? []);
-    expect(chips.every((chip) => chip.tagName === "SPAN" && chip.closest("button") === null)).toBe(true);
+    const facts = Array.from(mounted?.container.querySelectorAll("[data-fact]") ?? []);
+    expect(facts).toHaveLength(2);
+    expect(facts.every((fact) => fact.tagName === "SPAN" && fact.closest("button") === null)).toBe(true);
   });
 });

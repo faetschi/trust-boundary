@@ -20,8 +20,9 @@ describe("composer contrast: the placeholder, and a card that does not read as a
     expect(placeholder).toMatch(/opacity:\s*1;/);
   });
 
-  it("draws the card dashed, and the field with a not-allowed cursor, so the notice does not read as a working field", () => {
-    expect(declarationsOf(".card")).toMatch(/border:\s*1px dashed var\(--input\);/);
+  it("draws the field and the send mark with a not-allowed cursor, and the send mark in the neutral tone, so neither reads as working", () => {
     expect(declarationsOf(".input")).toMatch(/cursor:\s*not-allowed;/);
+    expect(declarationsOf(".send")).toMatch(/cursor:\s*not-allowed;/);
+    expect(declarationsOf(".send")).toMatch(/background:\s*var\(--muted\);/);
   });
 });

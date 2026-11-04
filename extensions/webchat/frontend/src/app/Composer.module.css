@@ -1,6 +1,6 @@
 /*
- * The composer of the Chat view: a read-only notice, pinned under the transcript. Nothing in it acts, so nothing here may read
- * as a working control: the box is dashed and flat, there is no send and no attach, and there is no focus animation and no
+ * The composer of the Chat view: a read-only notice, pinned under the transcript, drawn as a quiet rounded card. Nothing in it acts:
+ * the field is read-only, the two facts are text, and the one round mark is grey and aria-disabled. No focus animation and no
  * transition. Colour comes from the alias tier only.
  */
 
@@ -10,15 +10,14 @@
   margin: 0;
 }
 
-/* A dashed, flat box on the muted ground: it reads as a notice about the page, not as a field to type in. */
 .card {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
-  padding: var(--space-2) var(--space-3);
-  border: 1px dashed var(--input);
-  border-radius: var(--radius-md);
-  background: color-mix(in oklab, var(--muted) 45%, transparent);
+  padding: var(--space-2h) var(--space-3) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  background: var(--card);
   color: var(--card-foreground);
 }
 
@@ -27,7 +26,7 @@
   width: 100%;
   min-width: 0;
   min-height: var(--row-h-input);
-  padding: var(--space-1) 0;
+  padding: var(--space-1) var(--space-1);
   border: 0;
   background: transparent;
   color: var(--muted-foreground);
@@ -47,16 +46,43 @@
   outline-offset: 2px;
 }
 
-/* The reason and the status chips share one row where they fit, and the chips wrap under the reason where they do not. */
-.info {
+/* The row under the field: what this session is, as text, and the grey send mark at the end. */
+.controls {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
   gap: var(--space-1) var(--space-3);
 }
 
-.reason,
+.fact {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1h);
+  color: var(--muted-foreground);
+  font-size: var(--text-xs);
+  line-height: var(--lh-xs);
+}
+
+/* A round mark in the neutral tone: it is not the accent, so it does not read as something to press. */
+.send {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--muted);
+  color: var(--muted-foreground);
+  cursor: not-allowed;
+}
+
+.send:focus-visible {
+  outline: var(--focus-width) solid var(--ring);
+  outline-offset: 2px;
+}
+
 .status {
   margin: 0;
   font-size: var(--text-xs);
@@ -64,26 +90,15 @@
   color: var(--muted-foreground);
 }
 
-.reason {
-  flex: 1 1 24rem;
-}
-
 /* The polite status line is empty until the control is pressed. An empty line takes no room in the card. */
 .status:empty {
   display: none;
 }
 
-/* On a phone the reason wraps onto as many lines as it needs, and the field is two lines tall, so the placeholder's wrapped
-   text shows in full: at 360 px it runs to two lines, and where it wraps depends on the platform font. The reason is never
-   cut off, so the dock grows to hold it, and the page's clearance follows (tokens.css, --dock-clearance). */
+/* On a phone the field is two lines tall, so the placeholder's wrapped text shows in full: at 360 px it runs to two lines, and
+   where it wraps depends on the platform font. */
 @media (max-width: 760px) {
   .input {
     min-height: calc(2 * var(--lh-body) + 2 * var(--space-1));
   }
-}
-
-.chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-1);
 }
