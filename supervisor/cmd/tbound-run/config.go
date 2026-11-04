@@ -36,6 +36,8 @@ const (
 type runConfig struct {
 	CDH         *runner.CDHConfig `json:"cdh,omitempty"`
 	CDHBaseline pinnedFile        `json:"cdh_baseline,omitempty"`
+	// Attributions pins the attribution file of the friction candidates. Absent: every candidate stays unresolved.
+	Attributions pinnedFile `json:"attributions,omitempty"`
 	// Manifest is the corpus manifest. QuotaProfile is thesis or pilot.
 	Manifest     string `json:"manifest"`
 	QuotaProfile string `json:"quota_profile"`
@@ -168,6 +170,9 @@ func (c runConfig) validate() error {
 	}
 	if c.CDH != nil && (!filepath.IsAbs(c.CDHBaseline.Path) || !digestRE.MatchString(c.CDHBaseline.SHA256)) {
 		return errors.New("C-DH requires a pinned cdh_baseline")
+	}
+	if (c.Attributions != pinnedFile{}) && (!filepath.IsAbs(c.Attributions.Path) || !digestRE.MatchString(c.Attributions.SHA256)) {
+		return errors.New("attributions needs an absolute path and a sha256:<64 hex> digest")
 	}
 	switch c.QuotaProfile {
 	case quotaThesis, quotaPilot:

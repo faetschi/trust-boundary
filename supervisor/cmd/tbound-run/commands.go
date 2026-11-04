@@ -188,14 +188,18 @@ func (a *app) exportJournal(p plan) (runner.ExportResult, error) {
 		return runner.ExportResult{}, err
 	}
 	defer j.Close()
-	opt := runner.ExportOptions{}
+	opt := runner.ExportOptions{Attributions: p.attributions.byTask}
 	if p.cfg.CDH != nil {
 		opt.CDHBaseline, err = loadCDHBaseline(p.cfg.CDHBaseline)
 		if err != nil {
 			return runner.ExportResult{}, err
 		}
 	}
-	return runner.Export(p.sched, j, opt)
+	res, err := runner.Export(p.sched, j, opt)
+	if err != nil {
+		return res, err
+	}
+	return res, p.attributions.checkCandidates(res)
 }
 
 func (a *app) printExport(res runner.ExportResult) {
@@ -271,7 +275,8 @@ func (a *app) reportCmd(args []string) error {
 		if p.cfg.Ledger.file != nil {
 			note = fmt.Sprintf(realLedgerNote, ledger.LedgerID, ledger.Records, ledger.HeadSHA256)
 		}
-		rep, err := evalreport.Build(evalreport.Inputs{Manifest: p.manifest, Trials: res.Input, Ledger: ledger})
+		rep, err := evalreport.Build(evalreport.Inputs{Manifest: p.manifest, Trials: res.Input, Ledger: ledger,
+			AttributionsDigest: p.attributions.digest, AttributionRubricDigest: p.attributions.rubricDigest})
 		if err != nil {
 			return err
 		}
