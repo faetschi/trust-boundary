@@ -574,13 +574,14 @@ describe("a run of tool activity", () => {
   it("is one closed group line that counts each outcome in words and is never calmer than its worst record", async () => {
     await renderLive(verifiedSnapshot(run.map((item) => observed(item))));
     const group = q("[data-group]");
-    const outer = group.querySelector("details") as HTMLDetailsElement;
-    expect(outer.open).toBe(false);
-    expect(outer.getAttribute("data-tone")).toBe("deny");
-    const line = (outer.querySelector("summary") as HTMLElement).textContent ?? "";
+    const toggle = group.querySelector("button") as HTMLButtonElement;
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(group.getAttribute("data-tone")).toBe("deny");
+    const line = toggle.textContent ?? "";
     expect(line).toContain("3 tool actions");
     expect(line).toContain("read · bash ×2");
     expect(line).toContain("1 denied");
+    expect(line).toContain("1 DENY");
     // The request with no result is a request, not a success and not running.
     expect(line).toContain("1 pending");
     expect(line).toContain("1 succeeded");

@@ -70,8 +70,19 @@
   color: var(--muted-foreground);
 }
 
-.trace[open] > .line::after {
+.trace[open] > .line::after,
+.trace[data-open="true"] > .line::after {
   content: "▴";
+}
+
+/* The line as a button (TraceToggle): the browser's button look is reset, so it reads as the summary does. */
+button.line {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
 }
 
 .lineContent {

@@ -1,64 +1,56 @@
 import { describe, expect, it } from "vitest";
-import { activityItem, decisionItem, messageItem, resultItem } from "../../../core/testing/builders";
-import type { Item, ItemView, ResultState, Tool, Verdict } from "../../../core/contract";
+import { messageItem } from "../../../core/testing/builders";
+import type { Item, ItemView } from "../../../core/contract";
 import { groupTurn, type ToolBlock } from "../../../core/store";
-import { GROUP_MIN, groupRuns, summariseToolGroup, toolOutcome, traceToneOf } from "./toolGroups";
+import { blocksOf, itemsOf, type ToolCallSpec } from "../../../test-support/toolBlocks";
+import { GROUP_MIN, groupRuns, summariseToolGroup, toolFindings, traceToneOf } from "./toolGroups";
 
 const unverified = (_item: ItemView): boolean => false;
 const verified = (_item: ItemView): boolean => true;
 
-interface Spec {
-  readonly call: string;
-  readonly tool?: Tool;
-  readonly verdict?: Verdict;
-  readonly result?: ResultState;
-  readonly request?: ResultState;
-}
+const only = (specs: ToolCallSpec): ToolBlock => blocksOf(specs)[0] as ToolBlock;
+const words = (block: ToolBlock, verifiedOf = verified): string[] => toolFindings(block, verifiedOf).map((finding) => `${finding.tone}:${finding.label}`);
 
-// The items of one tool call: its request, then a policy decision and a result when the spec has them.
-function itemsOf(spec: Spec, at: number): Item[] {
-  const tool = spec.tool ?? "bash";
-  const items: Item[] = [activityItem({ id: `a-${spec.call}`, sequence: at, tool, tool_call_id: spec.call, state: spec.request ?? "pending" })];
-  if (spec.verdict) {
-    items.push(decisionItem({ id: `d-${spec.call}`, sequence: at + 1, tool, tool_call_id: spec.call, verdict: spec.verdict }));
-  }
-  if (spec.result) {
-    items.push(resultItem({ id: `r-${spec.call}`, sequence: at + 2, tool, tool_call_id: spec.call, state: spec.result }));
-  }
-  return items;
-}
-
-function blocksOf(...specs: Spec[]): ToolBlock[] {
-  const items = specs.flatMap((spec, index) => itemsOf(spec, index * 10 + 1));
-  return groupTurn(items).filter((block): block is ToolBlock => block.kind === "tool");
-}
-
-describe("the outcome of one tool block", () => {
-  it("never draws a success for a request with no result, even when the request itself says succeeded", () => {
-    const [block] = blocksOf({ call: "c1", request: "succeeded" });
-    expect(toolOutcome(block as ToolBlock, verified)).toEqual({ tone: "idle", label: "no result" });
-    expect(traceToneOf(block as ToolBlock, verified)).toBe("idle");
+describe("the findings of one tool block", () => {
+  it("never reads a request with no result as a success or as reported, verified or not, even when the request says succeeded", () => {
+    const block = only({ call: "c1", request: "succeeded" });
+    expect(words(block, verified)).toEqual(["idle:no result"]);
+    expect(words(block, unverified)).toEqual(["idle:no result"]);
+    expect(traceToneOf(block, verified)).toBe("idle");
   });
 
-  it("draws a policy ALLOW with no result as the permission tone, never the success tone", () => {
-    const [block] = blocksOf({ call: "c1", verdict: "ALLOW" });
-    expect(traceToneOf(block as ToolBlock, verified)).not.toBe("ok");
+  it("draws a policy ALLOW with no outcome as the permission tone, never the success tone", () => {
+    const block = blocksOf({ call: "c1", verdict: "ALLOW" })[0] as ToolBlock;
+    expect(traceToneOf(block, verified)).not.toBe("ok");
+    expect(words(block).join()).toContain("pending");
   });
 
-  it("draws a DENY verdict as deny even when a later result claims success", () => {
-    const [block] = blocksOf({ call: "c1", verdict: "DENY", result: "succeeded" });
-    expect(traceToneOf(block as ToolBlock, verified)).toBe("deny");
+  it("keeps a DENY verdict beside a later success, so the line is deny and the success is still counted", () => {
+    const block = only({ call: "c1", verdict: "DENY", result: "succeeded" });
+    expect(words(block)).toEqual(["ok:succeeded", "deny:DENY"]);
+    expect(traceToneOf(block, verified)).toBe("deny");
+  });
+
+  it("keeps an UNKNOWN verdict beside a verified success: the line is unknown, never the success tone", () => {
+    const block = only({ call: "c1", verdict: "UNKNOWN", result: "succeeded" });
+    expect(words(block)).toEqual(["ok:succeeded", "unknown:UNKNOWN"]);
+    expect(traceToneOf(block, verified)).toBe("unknown");
+  });
+
+  it("keeps a lost result beside a DENY verdict, so LOST is not hidden behind the refusal", () => {
+    const block = only({ call: "c1", verdict: "DENY", result: "lost" });
+    expect(words(block).sort()).toEqual(["deny:DENY", "lost:lost"]);
   });
 
   it("draws a success as ok only when it is verified, and as reported when it is not", () => {
-    const [block] = blocksOf({ call: "c1", verdict: "ALLOW", result: "succeeded" });
-    expect(traceToneOf(block as ToolBlock, verified)).toBe("ok");
-    expect(traceToneOf(block as ToolBlock, unverified)).toBe("reported");
+    const block = only({ call: "c1", verdict: "ALLOW", result: "succeeded" });
+    expect(traceToneOf(block, verified)).toBe("ok");
+    expect(traceToneOf(block, unverified)).toBe("reported");
   });
 });
 
 describe("a group's summary", () => {
-  it("takes the worst tone of its records, and counts each outcome in words, worst first", () => {
+  it("takes the worst tone of its findings, and counts each kind in words, worst first", () => {
     const blocks = blocksOf(
       { call: "c1", tool: "read", verdict: "ALLOW", result: "succeeded" },
       { call: "c2", tool: "edit", verdict: "ALLOW", result: "succeeded" },
@@ -66,7 +58,7 @@ describe("a group's summary", () => {
     );
     const summary = summariseToolGroup(blocks, unverified);
     expect(summary.tone).toBe("deny");
-    expect(summary.outcomes.map((entry) => `${entry.count} ${entry.label}`)).toEqual(["1 denied", "2 reported"]);
+    expect(summary.findings.map((entry) => `${entry.count} ${entry.label}`)).toEqual(["1 denied", "1 DENY", "2 reported"]);
     expect(summary.tools).toEqual([
       { name: "read", count: 1 },
       { name: "edit", count: 1 },
@@ -74,7 +66,25 @@ describe("a group's summary", () => {
     ]);
   });
 
-  it("is the success tone only when every record is a verified success", () => {
+  it("is not green when three UNKNOWN decisions each have a verified success", () => {
+    const blocks = blocksOf(
+      { call: "c1", verdict: "UNKNOWN", result: "succeeded" },
+      { call: "c2", verdict: "UNKNOWN", result: "succeeded" },
+      { call: "c3", verdict: "UNKNOWN", result: "succeeded" },
+    );
+    const summary = summariseToolGroup(blocks, verified);
+    expect(summary.tone).toBe("unknown");
+    expect(summary.findings.map((entry) => `${entry.count} ${entry.label}`)).toEqual(["3 UNKNOWN", "3 succeeded"]);
+  });
+
+  it("does not count three request-only blocks as reported successes", () => {
+    const blocks = blocksOf({ call: "c1", request: "succeeded" }, { call: "c2", request: "succeeded" }, { call: "c3", request: "succeeded" });
+    const summary = summariseToolGroup(blocks, unverified);
+    expect(summary.findings.map((entry) => `${entry.count} ${entry.label}`)).toEqual(["3 no result"]);
+    expect(summary.tone).toBe("idle");
+  });
+
+  it("is the success tone only when every finding is a verified success", () => {
     const allOk = blocksOf(
       { call: "c1", verdict: "ALLOW", result: "succeeded" },
       { call: "c2", verdict: "ALLOW", result: "succeeded" },
@@ -98,28 +108,24 @@ describe("a group's summary", () => {
   });
 });
 
-describe("which runs are grouped", () => {
+describe("runs of tool blocks", () => {
   const tool = (call: string): Item[] => itemsOf({ call }, Number(call.slice(1)) * 10);
   const message = (id: string, sequence: number): Item => messageItem({ id, sequence, role: "assistant" });
+  const lengths = (items: Item[]): Array<number | string> =>
+    groupRuns(groupTurn(items)).map((block) => (block.kind === "run" ? block.blocks.length : block.kind));
 
-  it(`leaves fewer than ${GROUP_MIN} consecutive tool blocks as they are`, () => {
-    const drawn = groupRuns(groupTurn([...tool("c1"), ...tool("c2")]));
-    expect(drawn.map((block) => block.kind)).toEqual(["tool", "tool"]);
+  it("gathers every consecutive tool block into one run, grouped or not by its length", () => {
+    expect(lengths([...tool("c1"), ...tool("c2")])).toEqual([2]);
+    expect(lengths([...tool("c1"), ...tool("c2"), ...tool("c3")])).toEqual([GROUP_MIN]);
   });
 
-  it(`gathers ${GROUP_MIN} or more consecutive tool blocks into one group`, () => {
-    const drawn = groupRuns(groupTurn([...tool("c1"), ...tool("c2"), ...tool("c3")]));
-    expect(drawn.map((block) => block.kind)).toEqual(["group"]);
-    expect(drawn[0]?.kind === "group" ? drawn[0].blocks.length : 0).toBe(3);
+  it("ends a run at a message, so a message is never inside a run", () => {
+    expect(lengths([...tool("c1"), ...tool("c2"), message("m1", 100), ...tool("c3"), ...tool("c4"), ...tool("c5")])).toEqual([2, "message", 3]);
   });
 
-  it("ends a run at a message, so a message is never inside a group", () => {
-    const drawn = groupRuns(groupTurn([...tool("c1"), ...tool("c2"), message("m1", 100), ...tool("c3"), ...tool("c4"), ...tool("c5")]));
-    expect(drawn.map((block) => block.kind)).toEqual(["tool", "tool", "message", "group"]);
-  });
-
-  it("keeps a stable key for a group, from its first block", () => {
-    const drawn = groupRuns(groupTurn([...tool("c1"), ...tool("c2"), ...tool("c3")]));
-    expect(drawn[0]?.kind === "group" ? drawn[0].key : "").toBe("group-c1");
+  it("keeps a run's key from its first block, so a run that grows keeps its key", () => {
+    const keyOf = (items: Item[]): string => groupRuns(groupTurn(items))[0]?.kind === "run" ? (groupRuns(groupTurn(items))[0] as { key: string }).key : "";
+    expect(keyOf([...tool("c1"), ...tool("c2")])).toBe("run-c1");
+    expect(keyOf([...tool("c1"), ...tool("c2"), ...tool("c3")])).toBe("run-c1");
   });
 });
