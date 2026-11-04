@@ -494,7 +494,6 @@
 
   .badges {
     flex: 1 1 auto;
-    justify-content: flex-end;
     min-width: 0;
   }
 
