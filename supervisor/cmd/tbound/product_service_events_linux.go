@@ -84,6 +84,7 @@ func (p *productEventProjector) turn(turn productsession.Turn) ([]productprotoco
 	if ok {
 		return cached, nil
 	}
+	var captureRefusalReason string
 	events := []productprotocol.Event{{Kind: productprotocol.EventTurnAdmitted, TurnID: turn.ID,
 		Text: boundText(turn.Prompt, productEventMaxTextBytes)}}
 	if turn.Link != nil {
@@ -91,6 +92,15 @@ func (p *productEventProjector) turn(turn productsession.Turn) ([]productprotoco
 		trace, err := p.env.providerTrace(turn)
 		if err != nil {
 			return nil, fmt.Errorf("read the provider journal of %s: %w", turn.ID, err)
+		}
+		if len(trace.Records) > 0 && trace.Records[len(trace.Records)-1].Event.Kind == providerbridge.CaptureRefusalEvent {
+			var refusal struct {
+				Reason string `json:"reason"`
+			}
+			if err := json.Unmarshal(trace.Records[len(trace.Records)-1].Event.Data, &refusal); err != nil {
+				return nil, err
+			}
+			captureRefusalReason = refusal.Reason
 		}
 		provider, err := projectProviderEvents(turn.ID, trace.Records)
 		if err != nil {
@@ -112,7 +122,15 @@ func (p *productEventProjector) turn(turn productsession.Turn) ([]productprotoco
 	if final && turn.CancelRequested {
 		events = append(events, productprotocol.Event{Kind: productprotocol.EventTurnCancelRequested, TurnID: turn.ID})
 	}
+	if turn.OperatorResolution != nil {
+		// Existing cursors include the unknown terminal; abandonment appends to it.
+		events = append(events, productprotocol.Event{Kind: productprotocol.EventTurnTerminal, TurnID: turn.ID,
+			Outcome: string(productsession.StateUnknown), Reason: turn.UnknownReason})
+	}
 	if terminal, ok := terminalEvent(turn); ok {
+		if terminal.Outcome == productsession.OutcomeFailed && captureRefusalReason != "" {
+			terminal.Reason = fmt.Sprintf("the provider returned a response TBound cannot use (%s); the turn was not applied", captureRefusalReason)
+		}
 		events = append(events, terminal)
 	}
 	if final {

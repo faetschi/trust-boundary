@@ -831,6 +831,10 @@ NETPLAN
   else
     say 'Kept existing SSH host keys (-KeepSshHostKeys).'
   fi
+  # Cloud-init otherwise replaces these keys on first boot, and the fingerprint below no longer matches.
+  if [[ -d "$MNT/etc/cloud/cloud.cfg.d" ]]; then
+    printf 'ssh_deletekeys: false\n' > "$MNT/etc/cloud/cloud.cfg.d/99-tbound-keep-host-keys.cfg"
+  fi
   if [[ "$MODE" == "golden" ]]; then
     HOST_FP=$(chroot "$MNT" ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub -E sha256 | awk 'NR == 1 { print $2 }')
     [[ "$HOST_FP" =~ ^SHA256:[A-Za-z0-9+/]{43}$ ]] || die 'could not establish one ED25519 host-key fingerprint from the offline-injected copy'
@@ -850,8 +854,8 @@ say 'Offline injection complete; disk released.'
 '@
     $normalizedInject = $injectScript -replace "`r`n", "`n"
     $normalizedList = $listDevicesScript -replace "`r`n", "`n"
-    $keepKeysFlag = '1'
-    if ($KeepSshHostKeys) { $keepKeysFlag = '' }
+    $keepKeysFlag = ''
+    if ($KeepSshHostKeys) { $keepKeysFlag = '1' }
     $workDir = Join-Path ([IO.Path]::GetTempPath()) ('tbound-inject-' + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $workDir -ErrorAction Stop | Out-Null
     $injectPath = Join-Path $workDir 'inject.sh'
@@ -956,18 +960,24 @@ function Get-GuestIpAddress {
     if (-not $hostIp) {
         throw "Could not determine the '$SwitchName' host subnet for the ARP sweep; pass -GuestIpAddress."
     }
-    $subnetBytes = [System.Net.IPAddress]::Parse($hostIp.IPAddress).GetAddressBytes()
-    for ($octet = 1; $octet -le 254; $octet++) {
-        $probe = [byte[]]::new(4)
-        $subnetBytes.CopyTo($probe, 0)
-        $probe[3] = $octet
-        $target = [System.Net.IPAddress]::new($probe)
-        $ping = [System.Net.NetworkInformation.Ping]::new()
-        try { $null = $ping.Send($target, 120) } catch { }
-        $ping.Dispose()
+    # The Default Switch is usually a /20, and a guest can be anywhere in it. Refuse anything larger.
+    $hostBits = 32 - $hostIp.PrefixLength
+    if ($hostBits -gt 12) {
+        throw "The '$SwitchName' subnet is too large for an ARP sweep; pass -GuestIpAddress."
     }
+    $hostBytes = [System.Net.IPAddress]::Parse($hostIp.IPAddress).GetAddressBytes()
+    [Array]::Reverse($hostBytes)
+    $networkAddress = [BitConverter]::ToUInt32($hostBytes, 0) -band ([uint32]::MaxValue -shl $hostBits)
+    $pingTasks = [System.Collections.Generic.List[System.Threading.Tasks.Task]]::new()
+    for ($offset = 1; $offset -lt ([uint32]1 -shl $hostBits) - 1; $offset++) {
+        $probe = [BitConverter]::GetBytes([uint32]($networkAddress + $offset))
+        [Array]::Reverse($probe)
+        $pingTasks.Add([System.Net.NetworkInformation.Ping]::new().SendPingAsync([System.Net.IPAddress]::new($probe), 500))
+    }
+    # A sweep of uncached addresses hung without a limit. Only the ARP replies matter, not the pings.
+    try { $null = [System.Threading.Tasks.Task]::WaitAll($pingTasks.ToArray(), 60000) } catch { }
     $neighbor = Get-NetNeighbor -InterfaceAlias ("vEthernet ($SwitchName)") -AddressFamily IPv4 -ErrorAction SilentlyContinue |
-        Where-Object { $_.PhysicalAddress -eq $vmMac } |
+        Where-Object { $_.LinkLayerAddress -eq $vmMac } |
         Select-Object -First 1
     if ($neighbor) { return $neighbor.IPAddress }
     throw ("Could not resolve the guest IP address. Pass -GuestIpAddress (read it from the VMConnect console with: ip -4 addr show) " +

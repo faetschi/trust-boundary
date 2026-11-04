@@ -32,8 +32,9 @@ export function LiveComposer() {
   }, [done, announcer]);
   if (live === null) return null;
   const { model, controller } = live;
-  const send = sendGate(model.view, model.action);
-  const cancel = cancelGate(model.view, model.action);
+  const sessionSelected = model.activeId !== null;
+  const send = sendGate(model.view, model.action, sessionSelected);
+  const cancel = cancelGate(model.view, model.action, sessionSelected);
   const ready = send.allowed && draft.trim() !== "";
 
   async function submit(): Promise<void> {

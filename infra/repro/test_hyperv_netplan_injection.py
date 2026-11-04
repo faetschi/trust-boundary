@@ -29,8 +29,54 @@ block_end = injector.index(
 )
 NETPLAN_BLOCK = injector[block_start:block_end]
 
+host_keys_start = injector.index('  if [[ -z "$KEEP_HOST_KEYS" ]]; then')
+host_keys_end = injector.index('  if [[ "$MODE" == "golden" ]]; then', host_keys_start)
+HOST_KEYS_BLOCK = injector[host_keys_start:host_keys_end]
+
 BASH = shutil.which("bash")
 NETPLAN = shutil.which("netplan")
+
+
+class HyperVHostKeyInjectionTests(unittest.TestCase):
+    def run_block(self, root, keep_host_keys):
+        script = (
+            'set -Eeuo pipefail\nsay() { :; }\nchroot() { touch "$MNT/etc/ssh/ssh_host_ed25519_key"; }\n'
+            + HOST_KEYS_BLOCK
+        )
+        return subprocess.run(
+            [BASH, "-c", script],
+            env={"PATH": os.environ["PATH"], "MNT": str(root), "KEEP_HOST_KEYS": keep_host_keys},
+            text=True,
+            capture_output=True,
+            timeout=10,
+            check=False,
+        )
+
+    def injected_key(self, keep_host_keys):
+        with tempfile.TemporaryDirectory(prefix="tbound-host-keys-") as temp:
+            root = Path(temp)
+            key = root / "etc" / "ssh" / "ssh_host_ed25519_key"
+            key.parent.mkdir(parents=True)
+            key.write_text("seed key\n", encoding="utf-8")
+            cloud = root / "etc" / "cloud" / "cloud.cfg.d"
+            cloud.mkdir(parents=True)
+            result = self.run_block(root, keep_host_keys)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(
+                (cloud / "99-tbound-keep-host-keys.cfg").read_text(encoding="utf-8"),
+                "ssh_deletekeys: false\n",
+            )
+            return key.read_text(encoding="utf-8")
+
+    def test_a_clone_gets_fresh_keys_unless_told_to_keep_them(self):
+        self.assertEqual(self.injected_key(""), "")
+        self.assertEqual(self.injected_key("1"), "seed key\n")
+
+    def test_the_switch_sets_the_flag_only_when_keeping_keys(self):
+        self.assertIn(
+            "$keepKeysFlag = ''\n    if ($KeepSshHostKeys) { $keepKeysFlag = '1' }",
+            source,
+        )
 
 
 class HyperVNetplanInjectionTests(unittest.TestCase):

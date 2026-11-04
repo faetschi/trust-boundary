@@ -463,7 +463,7 @@ func (e *productTurnEnv) predecessorContext(turn productsession.Turn, providerPr
 	if err != nil {
 		return evidence(err)
 	}
-	config := providerbridge.Config{ProductSoftRefusals: true, WorkflowID: pred.Link.WorkflowID, ConversationID: pred.Link.ConversationID,
+	config := providerbridge.Config{ProductCaptureRefusals: true, ProductSoftRefusals: true, WorkflowID: pred.Link.WorkflowID, ConversationID: pred.Link.ConversationID,
 		ProfileID: providerProfile, InitialGenerationID: bundle.Baseline.ID, InitialTreeDigest: bundle.Baseline.TreeDigest,
 		SystemPrompt: e.SystemPrompt, DeveloperPrompt: e.DeveloperPrompt}
 	config.Route = config.Route.WithCommandOutput(true) // a product turn's executor releases bounded Bash output

@@ -64,6 +64,15 @@ export function budgetExhausted(left: LiveBudget): boolean {
   return left.host_calls === 0 || left.tokens === 0 || left.duration_seconds === 0;
 }
 
+// Whether consumption alone has used up a dimension. A running turn's reservation is held, not spent, so it does not count here.
+export function budgetUsedUp(view: LiveSessionView): boolean {
+  return (
+    view.consumed.host_calls >= view.budget.host_calls ||
+    view.consumed.tokens >= view.budget.tokens ||
+    view.consumed.duration_seconds >= view.budget.duration_seconds
+  );
+}
+
 export interface Gate {
   readonly allowed: boolean;
   // Why not, in words. Null when allowed.
@@ -77,10 +86,13 @@ export interface ActionBasis {
   readonly status: "idle" | "sending" | "failed" | "unknown";
 }
 
+// A null view means loading only when a session is chosen. With none chosen nothing is loading, so the reason says what to do.
+const NO_SESSION_REASON = "Choose a session on the left, or create one under New session.";
+
 // Whether a prompt may be sent now. One mutation is in flight at a time, an unknown outcome must be settled first (retried
 // under its own key), and the service allows one open turn per session.
-export function sendGate(view: LiveSessionView | null, action: ActionBasis): Gate {
-  if (view === null) return closed("The session is loading.");
+export function sendGate(view: LiveSessionView | null, action: ActionBasis, sessionSelected = true): Gate {
+  if (view === null) return closed(sessionSelected ? "The session is loading." : NO_SESSION_REASON);
   if (action.status === "sending") return closed("A request is being sent.");
   if (action.status === "unknown") return closed("A request has an unknown outcome. Retry it with the same request key before sending another prompt.");
   if (view.blocked === true) return closed("This session is blocked. An earlier turn has an unknown outcome, and an operator must reconcile it.");
@@ -97,8 +109,8 @@ export function sendGate(view: LiveSessionView | null, action: ActionBasis): Gat
 }
 
 // Whether the open turn can be cancelled: running, or waiting for review.
-export function cancelGate(view: LiveSessionView | null, action: ActionBasis): Gate {
-  if (view === null) return closed("The session is loading.");
+export function cancelGate(view: LiveSessionView | null, action: ActionBasis, sessionSelected = true): Gate {
+  if (view === null) return closed(sessionSelected ? "The session is loading." : NO_SESSION_REASON);
   if (action.status === "sending" || action.status === "unknown") return closed("A request is pending.");
   const open = openTurnOf(view);
   if (open === null) return closed("No turn is running.");
