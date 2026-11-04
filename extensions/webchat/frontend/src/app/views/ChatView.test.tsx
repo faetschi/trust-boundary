@@ -561,6 +561,38 @@ describe("honesty rules on the transcript (web-chat.md sections 4.1 and 4.3)", (
   });
 });
 
+describe("a run of tool activity", () => {
+  const run = [
+    activityItem({ id: "a1", sequence: 1, tool: "read", tool_call_id: "c1", state: "pending", summary: "read: a.go" }),
+    resultItem({ id: "r1", sequence: 2, tool: "read", tool_call_id: "c1", state: "succeeded", summary: "ok" }),
+    activityItem({ id: "a2", sequence: 3, tool: "bash", tool_call_id: "c2", state: "pending", summary: "bash: curl x" }),
+    decisionItem({ id: "d2", sequence: 4, tool: "bash", tool_call_id: "c2", verdict: "DENY" }),
+    resultItem({ id: "r2", sequence: 5, tool: "bash", tool_call_id: "c2", state: "denied", summary: "denied" }),
+    activityItem({ id: "a3", sequence: 6, tool: "bash", tool_call_id: "c3", state: "pending", summary: "bash: go test" }),
+  ];
+
+  it("is one closed group line that counts each outcome in words and is never calmer than its worst record", async () => {
+    await renderLive(verifiedSnapshot(run.map((item) => observed(item))));
+    const group = q("[data-group]");
+    const outer = group.querySelector("details") as HTMLDetailsElement;
+    expect(outer.open).toBe(false);
+    expect(outer.getAttribute("data-tone")).toBe("deny");
+    const line = (outer.querySelector("summary") as HTMLElement).textContent ?? "";
+    expect(line).toContain("3 tool actions");
+    expect(line).toContain("read · bash ×2");
+    expect(line).toContain("1 denied");
+    // The request with no result is a request, not a success and not running.
+    expect(line).toContain("1 pending");
+    expect(line).toContain("1 succeeded");
+  });
+
+  it("keeps every tool card inside the group, in order, for the reader who opens it", async () => {
+    await renderLive(verifiedSnapshot(run.map((item) => observed(item))));
+    const cards = Array.from(document.querySelectorAll("[data-group] [data-anchor]")).map((card) => card.getAttribute("data-anchor"));
+    expect(cards).toEqual(["c1", "c2", "c3"]);
+  });
+});
+
 describe("tool disclosures", () => {
   it("is a native details element that starts closed and names the tool", async () => {
     await renderLive(fixtureSnapshot());

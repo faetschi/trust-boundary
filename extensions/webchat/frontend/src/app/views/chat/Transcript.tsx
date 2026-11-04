@@ -17,6 +17,8 @@ import { clockHm, COPIED_ANNOUNCEMENT, COPIED_LABEL, COPIED_MS, COPY_LABEL, COPY
 import type { Marker } from "./provenance";
 import { messageReading, turnLabel, type ChipReading } from "./readings";
 import { ToolCard, type Verifier } from "./ToolCard";
+import { ToolGroup } from "./ToolGroup";
+import { groupRuns } from "./toolGroups";
 import styles from "./Chat.module.css";
 
 // Opens a record in the inspector, from the control that asked. The shell moves focus back to that control on close.
@@ -40,7 +42,7 @@ export function TurnView({ turn, verifiedOf, markOf, onRecord }: TurnViewProps) 
         <span className={styles.turnCount}>{turn.items.length} element(s)</span>
       </div>
       <div className={styles.turnBody}>
-        {groupTurn(turn.items).map((block) =>
+        {groupRuns(groupTurn(turn.items)).map((block) =>
           block.kind === "message" ? (
             <MessageView
               key={block.item.id}
@@ -48,6 +50,8 @@ export function TurnView({ turn, verifiedOf, markOf, onRecord }: TurnViewProps) 
               reading={messageReading(block.item.verification_scope, verifiedOf(block.item))}
               onRecord={onRecord}
             />
+          ) : block.kind === "group" ? (
+            <ToolGroup key={block.key} run={block} verifiedOf={verifiedOf} markOf={markOf} />
           ) : (
             <ToolCard key={block.key} block={block} verifiedOf={verifiedOf} markOf={markOf} />
           ),

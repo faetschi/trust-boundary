@@ -259,6 +259,14 @@
   flex: none;
 }
 
+/* An opened group lists its tool cards, indented under the group's line. */
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding-left: var(--space-3);
+}
+
 .steps {
   display: flex;
   flex-direction: column;
