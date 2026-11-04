@@ -5,7 +5,14 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const css = readFileSync(resolve(process.cwd(), "src/app/views/chat/Chat.module.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+function stripped(path: string): string {
+  return readFileSync(resolve(process.cwd(), path), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+}
+
+const css = stripped("src/app/views/chat/Chat.module.css");
+// The tool card is a Trace (ui/Trace.module.css); Copy and the record label are Buttons (ui/Button.module.css).
+const traceCss = stripped("src/ui/Trace.module.css");
+const buttonCss = stripped("src/ui/Button.module.css");
 
 // The declarations of the first rule, in `fragment`, whose selector list starts with `selector`, or "" when there is none.
 function declarationsIn(fragment: string, selector: string): string {
@@ -57,14 +64,14 @@ describe("the transcript is the scroller at wide widths", () => {
 
 describe("the tool card header is a row of parts with gaps", () => {
   it("lays the glyph, name, summary, record label and chips out as a wrapping flex row", () => {
-    const head = declarationsOf(".head");
+    const head = declarationsIn(traceCss, ".lineContent");
     expect(head).toMatch(/display:\s*flex;/);
     expect(head).toMatch(/gap:/);
     expect(head).toMatch(/min-width:\s*0;/);
   });
 
   it("ends the summary in an ellipsis rather than running into the record label", () => {
-    const summary = declarationsOf(".summaryText");
+    const summary = declarationsIn(traceCss, ".title");
     expect(summary).toMatch(/overflow:\s*hidden;/);
     expect(summary).toMatch(/text-overflow:\s*ellipsis;/);
     expect(summary).toMatch(/white-space:\s*nowrap;/);
@@ -82,7 +89,7 @@ describe("the message meta is visible at rest on every device", () => {
   });
 
   it("keeps Copy and the record label readable in the muted ink", () => {
-    expect(declarationsOf(".copy,\n.recordButton")).toMatch(/color:\s*var\(--muted-foreground\);/);
+    expect(declarationsIn(buttonCss, '.button[data-variant="ghost"]')).toMatch(/color:\s*var\(--muted-foreground\);/);
   });
 });
 
@@ -97,8 +104,10 @@ describe("the transcript reads as a flow of quiet parts, not boxes", () => {
     expect(declarationsOf('.msg[data-role="user"] .msgText')).toMatch(/max-width:\s*68%;/);
   });
 
-  it("gives a refused card the destructive tint, in its border and its ground", () => {
-    expect(declarationsOf(".refused")).toMatch(/var\(--destructive\)/);
+  it("gives a refused trace the destructive tint, in its rule and its ground", () => {
+    const refused = declarationsIn(traceCss, '.trace[data-tone="deny"]');
+    expect(refused).toMatch(/var\(--state-deny\)/);
+    expect(refused).toMatch(/var\(--destructive\)/);
   });
 });
 
@@ -124,7 +133,7 @@ describe("the composer dock: pinned on a phone, and the jump sits above it", () 
   });
 
   it("keeps the jump on one line on a phone, where its half-width containing block would otherwise wrap its label", () => {
-    expect(declarationsOf(".jump")).toMatch(/white-space:\s*nowrap;/);
+    expect(declarationsIn(buttonCss, ".button")).toMatch(/white-space:\s*nowrap;/);
   });
 
   it("does not make the jump sticky on a phone: it rides with the dock", () => {
