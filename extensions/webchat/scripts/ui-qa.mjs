@@ -1660,7 +1660,7 @@ async function checkF(ctx) {
     const LOG = `document.querySelector('[role="log"][aria-label="Transcript"]')`;
     // Contract change (design pass): a run of three or more tool actions is one closed group line, so the demo transcript is
     // short. Open the group, so the transcript is long enough to scroll away from.
-    await clickSelector('[data-group] details > summary');
+    await clickSelector('[data-group] > button');
     await sleep(200);
     await evaluate(`(() => { const l = ${LOG}; l.scrollTop = l.scrollHeight; return true; })()`);
     await sleep(300);

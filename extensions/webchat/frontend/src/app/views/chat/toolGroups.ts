@@ -1,6 +1,7 @@
-// Grouping consecutive tool blocks into one summary line, and the tone rules that line and a single tool card share. Pure: no
-// DOM, no React. The honesty rules of readings.ts carry through: a group is never calmer than its worst record, an ALLOW is
-// never the success tone, and a request with no result is never a success.
+// Grouping consecutive tool blocks into runs, and the findings and tone rules that a tool card and a group line share. Pure: no
+// DOM, no React. The honesty rules of readings.ts carry through: a block keeps every finding it has (its policy verdict and its
+// outcome are counted separately), a group is never calmer than its worst finding, an ALLOW is never the success tone, and a
+// request with no result is never a success.
 
 import type { ChipTone } from "../../../ui/Chip";
 import type { ItemView } from "../../../core/contract";
@@ -13,83 +14,88 @@ type Verifier = (item: ItemView) => boolean;
 // A run of this many consecutive tool blocks, or more, is drawn as one group. Two tool cards read fine as they are.
 export const GROUP_MIN = 3;
 
-// The outcome of one tool block, in words and tone. The result's state when there is one, else the request's, else the policy
-// verdict. A refused record (a DENY verdict, or a result in the deny tone) is deny, whatever else it says.
-export interface ToolOutcome {
+export interface Finding {
   readonly tone: ChipTone;
   readonly label: string;
 }
 
-export function toolOutcome(block: ToolBlock, verifiedOf: Verifier): ToolOutcome {
+// What a block says, as findings. Its outcome comes first: the result's state, else the request's. An activity that says
+// "succeeded" with no result after it is a request, so it is "no result" whether or not the projection is verified. Its policy
+// verdict follows when it is not an ALLOW, so a DENY or an UNKNOWN is never lost behind a success; an ALLOW is a finding only
+// when it is all the block has.
+export function toolFindings(block: ToolBlock, verifiedOf: Verifier): Finding[] {
   const { activity, decision, result } = block;
   const stateItem = result ?? activity;
-  const state = stateItem
-    ? stateReading(stateItem.state, verifiedOf(stateItem), stateItem.type === "result" && stateItem.lossy === true)
-    : null;
-  const verdict = decision ? verdictReading(decision.verdict) : null;
-  if (verdict?.tone === "deny" || state?.tone === "deny") {
-    return { tone: "deny", label: state?.tone === "deny" ? state.label : (verdict?.label ?? "DENY") };
+  const findings: Finding[] = [];
+  if (stateItem) {
+    if (result === null && stateItem.state === "succeeded") {
+      findings.push({ tone: "idle", label: "no result" });
+    } else {
+      const reading = stateReading(stateItem.state, verifiedOf(stateItem), stateItem.type === "result" && stateItem.lossy === true);
+      findings.push({ tone: reading.tone, label: reading.label });
+    }
   }
-  const read = state ?? verdict;
-  if (read === null) return { tone: "idle", label: "no outcome" };
-  // Only a terminal result may draw the success tone: an activity that reports "succeeded" with no result after it is a request.
-  if (read.tone === "ok" && result === null) return { tone: "idle", label: "no result" };
-  return { tone: read.tone, label: read.label };
+  const verdict = decision ? verdictReading(decision.verdict) : null;
+  if (verdict && (verdict.tone !== "allow" || findings.length === 0)) findings.push({ tone: verdict.tone, label: verdict.label });
+  if (findings.length === 0) findings.push({ tone: "idle", label: "no outcome" });
+  return findings;
+}
+
+// Worst first. The success tone is last, so a block or a group draws it only when every finding in it is a verified success.
+const SEVERITY: readonly ChipTone[] = ["deny", "lost", "unknown", "reported", "pending", "allow", "idle", "ok"];
+
+export function worstTone(findings: readonly Finding[]): ChipTone {
+  return SEVERITY.find((candidate) => findings.some((finding) => finding.tone === candidate)) ?? "idle";
 }
 
 // The tone of a block's trace line.
 export function traceToneOf(block: ToolBlock, verifiedOf: Verifier): ChipTone {
-  return toolOutcome(block, verifiedOf).tone;
+  return worstTone(toolFindings(block, verifiedOf));
 }
 
-// Worst first. The success tone is last, so a group draws it only when every record in it is a verified success.
-const SEVERITY: readonly ChipTone[] = ["deny", "lost", "unknown", "reported", "pending", "allow", "idle", "ok"];
-
-export interface OutcomeCount {
-  readonly tone: ChipTone;
-  readonly label: string;
+export interface FindingCount extends Finding {
   readonly count: number;
 }
 
 export interface ToolGroupSummary {
-  // The group's tone: the worst of its records.
+  // The group's tone: the worst of its findings.
   readonly tone: ChipTone;
   // The distinct tools, in the order they first appear, with how many times each ran.
   readonly tools: ReadonlyArray<{ readonly name: string; readonly count: number }>;
-  // How many records ended in each outcome, worst first.
-  readonly outcomes: readonly OutcomeCount[];
+  // How many findings there are of each kind, worst first. A block with a verdict and an outcome adds to two kinds.
+  readonly findings: readonly FindingCount[];
 }
 
 export function summariseToolGroup(blocks: readonly ToolBlock[], verifiedOf: Verifier): ToolGroupSummary {
   const tools = new Map<string, number>();
-  const outcomes = new Map<string, OutcomeCount>();
+  const counted = new Map<string, FindingCount>();
   for (const block of blocks) {
     const name = (block.result ?? block.activity ?? block.decision)?.tool ?? "tool";
     tools.set(name, (tools.get(name) ?? 0) + 1);
-    const outcome = toolOutcome(block, verifiedOf);
-    const key = `${outcome.tone}|${outcome.label}`;
-    outcomes.set(key, { ...outcome, count: (outcomes.get(key)?.count ?? 0) + 1 });
+    for (const finding of toolFindings(block, verifiedOf)) {
+      const key = `${finding.tone}|${finding.label}`;
+      counted.set(key, { ...finding, count: (counted.get(key)?.count ?? 0) + 1 });
+    }
   }
-  const ordered = [...outcomes.values()].sort((a, b) => SEVERITY.indexOf(a.tone) - SEVERITY.indexOf(b.tone) || b.count - a.count);
-  const tone = SEVERITY.find((candidate) => ordered.some((entry) => entry.tone === candidate)) ?? "idle";
-  return { tone, tools: [...tools].map(([name, count]) => ({ name, count })), outcomes: ordered };
+  const findings = [...counted.values()].sort((a, b) => SEVERITY.indexOf(a.tone) - SEVERITY.indexOf(b.tone) || b.count - a.count);
+  return { tone: worstTone(findings), tools: [...tools].map(([name, count]) => ({ name, count })), findings };
 }
 
-// A turn's blocks, with each run of GROUP_MIN or more consecutive tool blocks gathered into one group. A message ends a run.
+// A turn's blocks, with each run of consecutive tool blocks gathered into one run. A message ends a run. Whether a run is
+// drawn as a group is its length (GROUP_MIN); a run keeps its key when it grows, so what it holds is never remounted.
 export interface ToolRun {
-  readonly kind: "group";
+  readonly kind: "run";
   readonly key: string;
   readonly blocks: readonly ToolBlock[];
 }
 
-export type DrawnBlock = TurnBlock | ToolRun;
+export type DrawnBlock = Exclude<TurnBlock, ToolBlock> | ToolRun;
 
 export function groupRuns(blocks: readonly TurnBlock[]): DrawnBlock[] {
   const drawn: DrawnBlock[] = [];
   let run: ToolBlock[] = [];
   const flush = (): void => {
-    if (run.length >= GROUP_MIN) drawn.push({ kind: "group", key: `group-${run[0]?.key ?? ""}`, blocks: run });
-    else drawn.push(...run);
+    if (run.length > 0) drawn.push({ kind: "run", key: `run-${run[0]?.key ?? ""}`, blocks: run });
     run = [];
   };
   for (const block of blocks) {

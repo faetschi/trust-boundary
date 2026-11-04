@@ -16,8 +16,8 @@ import { groupTurn, type Turn } from "../../../core/store";
 import { clockHm, COPIED_ANNOUNCEMENT, COPIED_LABEL, COPIED_MS, COPY_LABEL, COPY_TRUNCATED_LABEL, COPY_UNAVAILABLE_ANNOUNCEMENT, COPY_UNAVAILABLE_LABEL, copyMessage, copyName, roleLabel } from "./chrome";
 import type { Marker } from "./provenance";
 import { messageReading, turnLabel, type ChipReading } from "./readings";
-import { ToolCard, type Verifier } from "./ToolCard";
-import { ToolGroup } from "./ToolGroup";
+import type { Verifier } from "./ToolCard";
+import { ToolRun } from "./ToolGroup";
 import { groupRuns } from "./toolGroups";
 import styles from "./Chat.module.css";
 
@@ -50,10 +50,8 @@ export function TurnView({ turn, verifiedOf, markOf, onRecord }: TurnViewProps) 
               reading={messageReading(block.item.verification_scope, verifiedOf(block.item))}
               onRecord={onRecord}
             />
-          ) : block.kind === "group" ? (
-            <ToolGroup key={block.key} run={block} verifiedOf={verifiedOf} markOf={markOf} />
           ) : (
-            <ToolCard key={block.key} block={block} verifiedOf={verifiedOf} markOf={markOf} />
+            <ToolRun key={block.key} run={block} verifiedOf={verifiedOf} markOf={markOf} />
           ),
         )}
       </div>
