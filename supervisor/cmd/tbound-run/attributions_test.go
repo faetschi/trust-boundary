@@ -14,7 +14,7 @@ import (
 
 // attributionDoc is a valid attribution file holding the given entries.
 func attributionDoc(mutate func(doc map[string]any), entries ...map[string]any) map[string]any {
-	doc := map[string]any{"schema": attributionsSchema, "rubric_digest": fixtureDigest("rubric"), "entries": entries}
+	doc := map[string]any{"schema": attributionsSchema, "rubric_digest": fixtureDigest("rubric"), "entries": append([]map[string]any{}, entries...)}
 	if mutate != nil {
 		mutate(doc)
 	}
@@ -59,6 +59,12 @@ func TestLoadAttributionsIsStrict(t *testing.T) {
 			"evidence_digests": []string{"nope"}, "note": ""}), "evidence digest"},
 		"duplicate task": {attributionDoc(nil, attributionOf("t1", "supported", "ev"), attributionOf("t1", "unresolved")), "duplicate"},
 		"no task id":     {attributionDoc(nil, attributionOf("", "unresolved")), "task_id"},
+		"case-variant member": {attributionDoc(nil, map[string]any{"task_id": "t1", "attribution": "unresolved", "Attribution": "supported",
+			"evidence_digests": []string{fixtureDigest("ev")}, "note": ""}), "Attribution"},
+		"missing entries": {attributionDoc(func(d map[string]any) { delete(d, "entries") }), "entries"},
+		"null note":       {attributionDoc(nil, map[string]any{"task_id": "t1", "attribution": "unresolved", "evidence_digests": []string{}, "note": nil}), "note"},
+		"missing note":    {attributionDoc(nil, map[string]any{"task_id": "t1", "attribution": "unresolved", "evidence_digests": []string{}}), "note"},
+		"null evidence":   {attributionDoc(nil, map[string]any{"task_id": "t1", "attribution": "unresolved", "evidence_digests": nil, "note": ""}), "evidence_digests"},
 	} {
 		e := newEnv(t)
 		if _, err := loadAttributions(e.pinAttributions(tc.doc)); err == nil || !strings.Contains(err.Error(), tc.want) {

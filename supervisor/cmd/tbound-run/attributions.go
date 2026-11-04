@@ -68,13 +68,17 @@ func loadAttributions(pin pinnedFile) (attributionSet, error) {
 		return attributionSet{}, fmt.Errorf("attributions: %w", err)
 	}
 	var file attributionFile
-	dec := json.NewDecoder(bytes.NewReader(data))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&file); err != nil {
+	if err := decodeExact(data, &file, "schema", "rubric_digest", "entries"); err != nil {
 		return attributionSet{}, fmt.Errorf("attributions: %w", err)
 	}
-	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
-		return attributionSet{}, errors.New("attributions: trailing data")
+	var raw struct{ Entries []json.RawMessage }
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return attributionSet{}, fmt.Errorf("attributions: %w", err)
+	}
+	for i, e := range raw.Entries {
+		if err := decodeExact(e, &attributionEntry{}, "task_id", "attribution", "evidence_digests", "note"); err != nil {
+			return attributionSet{}, fmt.Errorf("attributions: entry %d: %w", i, err)
+		}
 	}
 	if file.Schema != attributionsSchema {
 		return attributionSet{}, fmt.Errorf("attributions: schema %q, want %q", file.Schema, attributionsSchema)
@@ -122,6 +126,38 @@ func (s attributionSet) checkCandidates(res runner.ExportResult) error {
 		if !candidate[id] {
 			return fmt.Errorf("attributions: %q is not a candidate obstruction in any exported attempt", id)
 		}
+	}
+	return nil
+}
+
+// decodeExact decodes one JSON object into dst after checking that its members
+// are exactly keys (case-sensitive, none missing, none null), since
+// encoding/json alone matches member names case-insensitively.
+func decodeExact(data []byte, dst any, keys ...string) error {
+	var members map[string]json.RawMessage
+	if err := json.Unmarshal(data, &members); err != nil {
+		return err
+	}
+	for _, k := range keys {
+		v, ok := members[k]
+		if !ok || bytes.Equal(bytes.TrimSpace(v), []byte("null")) {
+			return fmt.Errorf("member %q is missing or null", k)
+		}
+	}
+	if len(members) != len(keys) {
+		for k := range members {
+			if !slices.Contains(keys, k) {
+				return fmt.Errorf("unknown member %q", k)
+			}
+		}
+	}
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(dst); err != nil {
+		return err
+	}
+	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
+		return errors.New("trailing data")
 	}
 	return nil
 }
