@@ -186,6 +186,15 @@
   color: var(--muted-foreground);
 }
 
+/* The reading beside the speaker is the same words on every message of an unverified view, and the view states it once above
+   the transcript. So here it is the chip's text alone, without the box: the words and their ink stay, the border and ground go. */
+.msgRole [data-tone] {
+  min-height: 0;
+  padding: 0;
+  border-color: transparent;
+  background: transparent;
+}
+
 .rule {
   flex: 1 1 auto;
   min-width: 1rem;
