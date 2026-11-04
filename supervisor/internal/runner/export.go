@@ -127,10 +127,11 @@ func compView(j *Journal, steps []Step, attempt int, attr evalscore.Attribution)
 }
 
 // complete is true when every step of the case has a terminal record, and so
-// has the rerun, if the case has one.
+// has the rerun, if the case has one. Descriptive V (D44) is not required: an
+// unfinished V is exported as VMissing.
 func complete(j *Journal, steps []Step) (rerun bool, ok bool) {
 	for _, st := range steps {
-		if j.terminalOf(st.ID(), 1) == nil {
+		if st.Configuration != CfgV && j.terminalOf(st.ID(), 1) == nil {
 			return false, false
 		}
 	}
@@ -285,7 +286,7 @@ func Export(s Schedule, j *Journal, opt ExportOptions) (ExportResult, error) {
 		res.Input.Compliant = append(res.Input.Compliant, recs...)
 	}
 	res.Variance = varianceVectors(s, j, primary)
-	res.Input.EVQPassed = evqPassed(s.Config, j)
+	res.Input.EVQPassed = evqPassed(s, j)
 	return res, nil
 }
 
@@ -343,17 +344,23 @@ func (c Config) effectOf(class evalcorpus.ThreatClass, predicate string, o *Outc
 // obligation is not reported by a step, or, with no registered list, if a step
 // reported none. A terminal step with no outcome at all (a setup failure or a
 // bare abandoned step) has no obligation results, which is missing evidence, so
-// it keeps evq_passed false. Voided begins are not terminal and are not read.
-func evqPassed(cfg Config, j *Journal) bool {
+// it keeps evq_passed false, except for descriptive V (D44): a V step with no
+// outcome is a missing V result, not missing evidence. An obligation a V step
+// did report still counts. Voided begins are not terminal and are not read.
+func evqPassed(s Schedule, j *Journal) bool {
+	cfg := s.Config
 	n := 0
 	for _, e := range j.Entries() {
 		if e.Kind != EntryDone && e.Kind != EntryAbandoned {
 			continue
 		}
-		n++
 		if e.Outcome == nil {
+			if st, ok := s.Lookup(e.StepID); ok && st.Configuration == CfgV {
+				continue
+			}
 			return false
 		}
+		n++
 		got := map[string]bool{}
 		for _, ob := range e.Outcome.EVQ {
 			if !ob.Passed {
