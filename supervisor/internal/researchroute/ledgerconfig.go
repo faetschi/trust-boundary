@@ -131,3 +131,44 @@ func (c LedgerConfig) Digest() (string, error) {
 	sum := sha256.Sum256(canonical)
 	return hex.EncodeToString(sum[:]), nil
 }
+
+const maxCheckpointBytes = 1 << 10
+
+// ErrCheckpoint reports a missing or malformed research ledger checkpoint.
+var ErrCheckpoint = errors.New("research ledger checkpoint is invalid")
+
+// Checkpoint is the operator-held anchor of the research ledger: the head hash
+// after the first Records records (genesis counts as record 1, like
+// usdledger.Snapshot.Records). The ledger may grow past it.
+type Checkpoint struct {
+	Records    uint64 `json:"records"`
+	HeadSHA256 string `json:"head_sha256"`
+}
+
+// parseCheckpoint strictly decodes a checkpoint: unknown, duplicate and missing
+// members, trailing data, zero records and a head that is not 64 lowercase hex
+// digits are refused.
+func parseCheckpoint(data []byte) (Checkpoint, error) {
+	if err := protocol.ValidateStrictJSON(data); err != nil {
+		return Checkpoint{}, fmt.Errorf("%w: %w", ErrCheckpoint, err)
+	}
+	var raw struct {
+		Records *uint64 `json:"records"`
+		Head    *string `json:"head_sha256"`
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&raw); err != nil {
+		return Checkpoint{}, fmt.Errorf("%w: %w", ErrCheckpoint, err)
+	}
+	if _, err := decoder.Token(); !errors.Is(err, io.EOF) {
+		return Checkpoint{}, fmt.Errorf("%w: trailing data", ErrCheckpoint)
+	}
+	if raw.Records == nil || raw.Head == nil || *raw.Records == 0 {
+		return Checkpoint{}, fmt.Errorf("%w: records (at least 1) and head_sha256 are required", ErrCheckpoint)
+	}
+	if _, err := hex.DecodeString(*raw.Head); err != nil || len(*raw.Head) != sha256.Size*2 || strings.ToLower(*raw.Head) != *raw.Head {
+		return Checkpoint{}, fmt.Errorf("%w: head_sha256 must be 64 lowercase hex digits", ErrCheckpoint)
+	}
+	return Checkpoint{Records: *raw.Records, HeadSHA256: *raw.Head}, nil
+}
