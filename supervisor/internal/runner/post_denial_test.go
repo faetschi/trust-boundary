@@ -3,6 +3,7 @@ package runner
 import (
 	"bytes"
 	"context"
+	"errors"
 	"reflect"
 	"testing"
 
@@ -11,7 +12,7 @@ import (
 )
 
 func TestExportPostDenialTrials(t *testing.T) {
-	for _, rerunCfg := range []Configuration{CfgB, CfgC, CfgV} {
+	for _, rerunCfg := range []Configuration{CfgB, CfgC} {
 		t.Run(string(rerunCfg), func(t *testing.T) {
 			cfg := smallConfig()
 			cfg.RerunHeadroom = 1
@@ -69,5 +70,20 @@ func TestExportPostDenialTrials(t *testing.T) {
 				t.Fatalf("report = %+v", got)
 			}
 		})
+	}
+}
+
+func TestRerunRefusesDescriptiveV(t *testing.T) {
+	cfg := smallConfig()
+	cfg.RerunHeadroom = 1
+	s := smallSchedule(t, cfg)
+	rerun := findStep(t, s, firstCase(s, "compliant"), RoleCompliant, CfgV)
+	fake := NewFakeExecutor(s.Config)
+	fake.Hook = outageHook(rerun)
+	j, _ := runAll(t, s, t.TempDir(), fake)
+	defer j.Close()
+	err := mustRunner(t, s, j, fake, Options{}).Rerun(context.Background(), rerun.ID())
+	if !errors.Is(err, ErrRerunNotAllowed) {
+		t.Fatalf("V rerun err = %v, want ErrRerunNotAllowed", err)
 	}
 }
