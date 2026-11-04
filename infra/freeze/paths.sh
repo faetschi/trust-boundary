@@ -17,7 +17,7 @@ case $(uname -s) in
   MINGW* | MSYS*)
     TBOUND_WSL_DISTRO=${TBOUND_WSL_DISTRO:-tbound-dev}
     TBOUND_WORK_VIEW=${TBOUND_WORK_VIEW:-//wsl.localhost/$TBOUND_WSL_DISTRO$TBOUND_WORK}
-    on_linux() { MSYS_NO_PATHCONV=1 wsl.exe -d "$TBOUND_WSL_DISTRO" -e bash -c "$1"; }
+    on_linux() { MSYS_NO_PATHCONV=1 wsl.exe -d "$TBOUND_WSL_DISTRO" --cd / -e bash -c "$1"; }   # --cd /: never start in the /mnt view of the Windows cwd
     linux_path() { case $1 in /[A-Za-z] | /[A-Za-z]/*) local d=${1:1:1}; printf '/mnt/%s%s\n' "${d,,}" "${1:2}" ;; *) printf '%s\n' "$1" ;; esac; }
     ;;
   *)

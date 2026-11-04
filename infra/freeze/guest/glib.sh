@@ -11,7 +11,7 @@ export MSYS_NO_PATHCONV=1
 . "$(dirname -- "${BASH_SOURCE[0]}")/../paths.sh"
 A=$KIT_DIR
 GA=$A/guest
-WGA=$(linux_path "$GA")      # same dir, as Linux sees it
+WGA=${TBOUND_WGA:-$(linux_path "$GA")}      # same dir, as Linux sees it; TBOUND_WGA: a Linux-side copy, so WSL never reads the kit through /mnt
 GSSH_SH=$A/tools/gssh.sh
 
 SCR=/var/tmp/tbound-cal-20261017                        # guest scratch (995:986 0700)
@@ -111,7 +111,7 @@ local_tmp() { [ -n "$LOCAL_TMP" ] || LOCAL_TMP=$(mktemp -d); }
 # --- transports -------------------------------------------------------------------------------------------------
 G()  { sh "$GSSH_SH" "$@" </dev/null; }          # guest as tboundadmin, no stdin
 GI() { sh "$GSSH_SH" "$@"; }                     # guest as tboundadmin, stdin passed through (X | GI 'sudo -n install ... /dev/stdin dest')
-case $(uname -s) in MINGW* | MSYS*) WXP=(wsl.exe -d "$TBOUND_WSL_DISTRO" -e) ;; *) WXP=() ;; esac   # as paths.sh: WSL itself is Linux
+case $(uname -s) in MINGW* | MSYS*) WXP=(wsl.exe -d "$TBOUND_WSL_DISTRO" --cd / -e) ;; *) WXP=() ;; esac   # as paths.sh: WSL itself is Linux
 WX()  { "${WXP[@]}" env KIT_FREEZE="$KIT_FREEZE" "$@" </dev/null; }   # WSL, direct exec (no shell), no stdin; KIT_FREEZE reaches the Python guards
 WB()  { "${WXP[@]}" bash -c "export KIT_FREEZE=$KIT_FREEZE; $1" </dev/null; }   # WSL, bash -c <one string>, no stdin
 WBI() { "${WXP[@]}" bash -c "export KIT_FREEZE=$KIT_FREEZE; $1"; }              # WSL, bash -c <one string>, stdin passed through (writers: X | WBI "cat > file")
