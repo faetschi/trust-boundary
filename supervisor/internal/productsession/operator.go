@@ -25,6 +25,7 @@ type OperatorEvidence struct {
 	ScanDigest       string       `json:"scan_digest"`
 	StoreHead        string       `json:"store_head"`
 	ProviderHead     string       `json:"provider_head"`
+	CommandOwnerHead string       `json:"command_owner_head,omitempty"`
 	CommandHead      string       `json:"command_head"`
 	CheckpointDigest string       `json:"checkpoint_digest"`
 	Confirm          func() error `json:"-"`
@@ -141,7 +142,10 @@ func (s *state) reduceOperatorResolved(data []byte) (func(), error) {
 		r.BaselineDigest != t.BaselineDigest || r.ScanDigest != t.BaselineDigest || s.project(t.ProjectID).baseline != t.BaselineDigest || r.EvidenceDigest != r.digest() {
 		return nil, fail(CodeInvalidRequest, "operator resolution identity, timestamp, baseline or evidence commitment is invalid")
 	}
-	if r.CommandHead != sha256Digest(nil) {
+	if r.CommandOwnerHead != "" && !validDigest(r.CommandOwnerHead) {
+		return nil, fail(CodeInvalidRequest, "invalid drained command owner head")
+	}
+	if r.CommandHead != sha256Digest(nil) && r.CommandOwnerHead == "" {
 		return nil, fail(CodeInvalidRequest, "operator resolution requires an empty command journal")
 	}
 	for _, digest := range []string{r.BaselineDigest, r.ScanDigest, r.StoreHead, r.ProviderHead, r.CommandHead, r.CheckpointDigest} {

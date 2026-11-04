@@ -24,6 +24,7 @@ import (
 	"tbound/supervisor/internal/gate"
 	"tbound/supervisor/internal/productsession"
 	"tbound/supervisor/internal/productsetup"
+	"tbound/supervisor/internal/sessionrepo"
 	"tbound/supervisor/internal/workflowrecovery"
 )
 
@@ -294,7 +295,7 @@ func runProductOperatorWorker(out io.Writer) error {
 		return err
 	}
 	env := &productTurnEnv{Registration: registration, StateRoot: cfg.StateRoot, ProjectRoots: cfg.Projects,
-		StorePolicyDigest: digestBytes([]byte(gate.ProductionSessionPolicyLabel)), MetadataPolicyDigest: digestBytes([]byte(gate.ProductionMetadataPolicyLabel))}
+		OpenCommandHistory: openProductD09CommandHistory, StorePolicyDigest: digestBytes([]byte(gate.ProductionSessionPolicyLabel)), MetadataPolicyDigest: digestBytes([]byte(gate.ProductionMetadataPolicyLabel))}
 	if _, err := installProductGatePolicies(env, cfg); err != nil {
 		return err
 	}
@@ -327,7 +328,11 @@ func (e *productTurnEnv) operatorEvidence(ctx context.Context, turn productsessi
 	if filepath.Dir(paths.StoreJournalPath) != filepath.Join(e.StateRoot, "turns", turn.Link.WorkflowID) {
 		return evidence, errors.New("turn journals are outside the registered state root")
 	}
-	retained, err := openRetainedProductTurn(paths, e.storeOptions(turn), nil)
+	retained, err := openRetainedProductTurn(paths, e.storeOptions(turn), e.OpenCommandHistory)
+	ownerHead := ""
+	if err != nil {
+		retained, ownerHead, err = openInterruptedProductBash(ctx, paths, e.Registration.Digest)
+	}
 	if err != nil {
 		return evidence, fmt.Errorf("retained Store/journals: %w", err)
 	}
@@ -342,7 +347,10 @@ func (e *productTurnEnv) operatorEvidence(ctx context.Context, turn productsessi
 			err = errors.Join(err, closeEvidence())
 		}
 	}()
-	bundle, err := retained.Store.EvidenceBundle()
+	var bundle sessionrepo.EvidenceBundle
+	if retained.Store != nil {
+		bundle, err = retained.Store.EvidenceBundle()
+	}
 	if err != nil {
 		return evidence, err
 	}
@@ -358,14 +366,16 @@ func (e *productTurnEnv) operatorEvidence(ctx context.Context, turn productsessi
 	pins := checkpoint.Pins
 	pins.HostCallReservation = nil
 	pins.PendingCallDisposition = ""
-	if err := productTurnChildResolved(bundle, pins); err != nil {
-		return evidence, fmt.Errorf("Store/workflow is not inert: %w", err)
+	if retained.Store != nil {
+		if err := productTurnChildResolved(bundle, pins); err != nil {
+			return evidence, fmt.Errorf("Store/workflow is not inert: %w", err)
+		}
 	}
 	command, err := retained.CommandJournal.Trace()
 	if err != nil {
 		return evidence, err
 	}
-	if len(command.Records) != 0 {
+	if len(command.Records) != 0 && ownerHead == "" {
 		return evidence, errors.New("command activity exists; command-scope recovery is not supported")
 	}
 	if named, _, err := e.workflowPublication(turn.ProjectID, turn.Link.WorkflowID); err != nil || named {
@@ -408,7 +418,10 @@ func (e *productTurnEnv) operatorEvidence(ctx context.Context, turn productsessi
 	if evidence.ProviderHead, err = head(retained.ProviderJournal); err != nil {
 		return evidence, err
 	}
-	evidence.CommandHead = digestBytes(nil)
+	evidence.CommandOwnerHead = ownerHead
+	if evidence.CommandHead, err = head(retained.CommandJournal); err != nil {
+		return evidence, err
+	}
 	return evidence, nil
 }
 

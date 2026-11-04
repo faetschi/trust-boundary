@@ -66,6 +66,9 @@ func (e *productTurnEnv) reconcileLinkedTurn(ctx context.Context, turn productse
 	}
 	retained, err := openRetainedProductTurn(paths, e.storeOptions(turn), e.OpenCommandHistory)
 	if err != nil {
+		if interrupted, _, proofErr := openInterruptedProductBash(ctx, paths, e.Registration.Digest); proofErr == nil {
+			return unknown("the interrupted Bash scope is drained; run tbound product turns resolve to abandon the retained candidate", interrupted.Close())
+		}
 		return unknown("the retained Store or journals cannot be reopened", err)
 	}
 	defer retained.Close()
