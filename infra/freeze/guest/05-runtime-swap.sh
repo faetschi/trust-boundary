@@ -29,12 +29,16 @@ if [ "$BUNDLE_DIGEST" != "$PREV_BUNDLE_DIGEST" ] && [ "$P2_MODE" = rebuild ]; th
 
 # Read-only git diff eed7722..6162e3c and 6162e3c..02f9fb7: VerifyLinuxPiRuntimeBundle, statDevice,
 # requireReadOnlyMount, host.go limits, internal/sessionlaunch and profile_tooling_linux.go are unchanged.
+# 02f9fb7..2a6492d (F15): launcher_linux.go, host.go and profile_tooling_linux.go are unchanged; internal/sessionlaunch
+# changed (#39) but is outside tbound-profile's import closure (GOOS=linux go list -deps ./cmd/tbound-profile).
 # Accept only these audited previous-measurer pairs (previous freeze commit, this freeze commit).
 ALLOW_PREV_MEASURER=0
 if [ "$PREV_COMMIT" = eed772228f9907f9c20df3177648807f5c1aa83d ] &&
    [ "$F" = 6162e3c32379233c7c4f238c5547599474d373a7 ]; then ALLOW_PREV_MEASURER=1; fi
 if [ "$PREV_COMMIT" = 6162e3c32379233c7c4f238c5547599474d373a7 ] &&
    [ "$F" = 02f9fb71a26aadf4eebeb0ff217fe97c374ffff8 ]; then ALLOW_PREV_MEASURER=1; fi
+if [ "$PREV_COMMIT" = 02f9fb71a26aadf4eebeb0ff217fe97c374ffff8 ] &&
+   [ "$F" = 2a6492dda21e5af9eab8e92e81f56725b3f8e9c5 ]; then ALLOW_PREV_MEASURER=1; fi
 UNIT_SHA=2bc03ead4ba478d81655029de66a46f4bcb6357c5a24e7f8a3940ed947720ea3
 OLD=/var/lib/tbound/runtime-src.old-${PREV_BUNDLE_DIGEST:7:8}-$(date -u +%Y%m%dT%H%M%S%NZ)
 
