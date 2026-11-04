@@ -20,6 +20,7 @@ import {
   stateReading,
   verdictReading,
 } from "./readings";
+import { traceToneOf } from "./toolGroups";
 import styles from "./Chat.module.css";
 
 // Whether an item is verified in its projection: the shared gate (app verification.ts isVerifiedIn). Only a
@@ -50,12 +51,9 @@ export function ToolCard({ block, verifiedOf, markOf }: ToolCardProps) {
   // A uniform view states "unverified" once, above the transcript, so the card carries the word for
   // screen-reader users only. A mixed view draws the chip, which the name already includes.
   const unverifiedWord = primary !== null && !verifiedOf(primary) && marker !== "unverified";
-  // The trace takes the state the record is in: a refused record (a DENY verdict, or a result in the deny tone) is deny, else the
-  // result's tone, else the request's, else the verdict's. A request with no result is never drawn as running or as success.
-  const refused = verdict?.tone === "deny" || stateReadingOf?.tone === "deny";
-  const readTone = refused ? "deny" : (stateReadingOf?.tone ?? verdict?.tone ?? "idle");
-  // Only a terminal result may draw the success tone: an activity that reports "succeeded" with no result after it is a request.
-  const tone = readTone === "ok" && result === null ? "idle" : readTone;
+  // The trace takes the state the record is in (toolGroups.ts): a refused record is deny, else the result's tone, else the
+  // request's, else the verdict's. A request with no result is never drawn as running or as success.
+  const tone = traceToneOf(block, verifiedOf);
 
   // One wrapping line: at narrow widths the chips move under the summary, not past the line's edge. The headline is the
   // target, bold; the tool and the record are the detail line beneath it, in mono.
