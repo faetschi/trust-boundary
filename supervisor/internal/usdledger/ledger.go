@@ -25,7 +25,8 @@
 // Config.ExpectedHeadSHA256, a head hash stored outside the file. With
 // Config.AnchorRecords the anchor is a checkpoint: the head after the first N
 // records, so the file may grow past it and only rollback below it is refused.
-// Verify checks a quiescent ledger read-only under a shared lock.
+// Verify checks a quiescent ledger read-only (shared lock on Linux; elsewhere it
+// reads a copy, since the writer is Linux-only).
 //
 // Passing tests verify this code only. They do not establish budget feasibility,
 // G1, or H1.
