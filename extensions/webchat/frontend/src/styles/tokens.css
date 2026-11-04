@@ -238,6 +238,8 @@
   --rail-width: 18.75rem;
   --rail-collapsed-width: 3.5rem;
   --inspector-width: 24.25rem;
+  /* The reading column of the chat: the toolbar, the turns and the composer share it. */
+  --column-width: 46rem;
   --row-h-turn: 33px;
   --row-h-cell: 38px;
   --row-h-toolbar: 32px;

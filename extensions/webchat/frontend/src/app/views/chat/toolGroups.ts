@@ -17,6 +17,9 @@ export const GROUP_MIN = 3;
 export interface Finding {
   readonly tone: ChipTone;
   readonly label: string;
+  // A policy verdict (DENY, UNKNOWN) is not a result (denied, unresolved): the group line names the kind, so "1 DENY verdict" and
+  // "1 denied" are never read as one count.
+  readonly kind?: "verdict";
 }
 
 // A request with no result after it: whatever state the request itself reports, nothing terminal has been recorded. It is not a
@@ -46,7 +49,7 @@ export function toolFindings(block: ToolBlock, verifiedOf: Verifier): Finding[] 
   const outcome = outcomeReading(block, verifiedOf);
   const findings: Finding[] = outcome ? [{ tone: outcome.tone, label: outcome.label }] : [];
   const verdict = decision ? verdictReading(decision.verdict) : null;
-  if (verdict && (verdict.tone !== "allow" || findings.length === 0)) findings.push({ tone: verdict.tone, label: verdict.label });
+  if (verdict && (verdict.tone !== "allow" || findings.length === 0)) findings.push({ tone: verdict.tone, label: verdict.label, kind: "verdict" });
   if (findings.length === 0) findings.push({ tone: "idle", label: "no outcome" });
   return findings;
 }

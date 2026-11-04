@@ -83,8 +83,8 @@ function GroupLine({ run, verifiedOf, markOf }: ToolRunProps): ReactNode {
       {unverified.length > 0 && marked.length === 0 ? <VisuallyHidden>{UNVERIFIED_READING.label}</VisuallyHidden> : null}
       <TraceMeta>
         {summary.findings.map((finding) => (
-          <Chip key={`${finding.tone}|${finding.label}`} tone={finding.tone}>
-            {`${finding.count} ${finding.label}`}
+          <Chip key={`${finding.tone}|${finding.label}|${finding.kind ?? ""}`} tone={finding.tone}>
+            {`${finding.count} ${finding.label}${finding.kind === "verdict" ? " verdict" : ""}`}
           </Chip>
         ))}
         {marked.length > 0 ? <Chip tone={UNVERIFIED_READING.tone}>{`${marked.length} ${UNVERIFIED_READING.label}`}</Chip> : null}

@@ -79,8 +79,9 @@ describe("the tool card header is a row of parts with gaps", () => {
 });
 
 describe("the message meta is visible at rest on every device", () => {
-  it("is never hidden with opacity or visibility", () => {
-    expect(css).not.toMatch(/opacity:\s*0\b/);
+  it("is never hidden with opacity or visibility, except the Copy icon and the element count, which fade only where a pointer can hover", () => {
+    const withoutHoverOnly = css.replace(/@media \(hover: hover\) \{[\s\S]*?\n\}\n/g, "");
+    expect(withoutHoverOnly).not.toMatch(/opacity:\s*0\b/);
     expect(css).not.toMatch(/visibility:\s*hidden/);
   });
 
@@ -100,8 +101,8 @@ describe("the transcript reads as a flow of quiet parts, not boxes", () => {
     expect(turn).not.toMatch(/\bbackground\s*:/);
   });
 
-  it("right-aligns the user bubble, capped at 68% of the message column", () => {
-    expect(declarationsOf('.msg[data-role="user"] .msgText')).toMatch(/max-width:\s*68%;/);
+  it("right-aligns the user bubble, capped at 80% of the message column", () => {
+    expect(declarationsOf('.msg[data-role="user"] .msgText')).toMatch(/max-width:\s*80%;/);
   });
 
   it("gives a refused trace the destructive tint, in its rule and its ground", () => {

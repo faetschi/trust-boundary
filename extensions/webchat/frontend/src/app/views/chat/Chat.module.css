@@ -16,60 +16,19 @@
   min-height: 0;
 }
 
-/* The conversation head is one quiet line: the Pi identity and status, with the window's count at its end. */
-.conversation {
-  min-width: 0;
-}
-
-.facts {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: var(--space-1) var(--space-3);
-  min-width: 0;
-}
-
-.facts .summary {
-  margin-left: auto;
-}
-
-/* The readings line: small and muted, as the v2 meta line is. */
-.identity {
-  margin: 0;
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
-  color: var(--muted-foreground);
-  overflow-wrap: anywhere;
-}
-
-.status {
-  margin: 0;
-  font-size: var(--text-2xs);
-  color: var(--muted-foreground);
-}
-
-/* The filters and the posture chips share the toolbar row: the filters at its start, the posture counts at its end. They wrap
-   onto the next line only where the column is narrow. */
-.posture {
-  display: flex;
-  flex: 1 1 auto;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-  gap: var(--space-1);
-  min-width: 0;
-}
-
-.postureEmpty {
-  font-size: var(--text-2xs);
-  color: var(--muted-foreground);
-}
-
+/* The toolbar and the composer share the transcript's column: one centred reading width, as the turns have. */
 .toolbar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2) var(--space-3);
+  width: 100%;
+  max-width: var(--column-width);
+  margin-inline: auto;
+}
+
+.toolbar .summary {
+  margin-left: auto;
 }
 
 .summary {
@@ -96,6 +55,7 @@
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
+  align-items: center;
   gap: var(--space-3);
   min-width: 0;
   min-height: 0;
@@ -113,6 +73,13 @@
 
 /* A turn keeps its natural height. The log scrolls; a turn that shrank to fit the log would clip its content. A turn has no box:
    its heading is a divider, and its messages and cards sit on the page. */
+/* The turn and the notes above it sit in the reading column, centred in the scroller. */
+.turn,
+.log > .note {
+  width: 100%;
+  max-width: var(--column-width);
+}
+
 .turn {
   flex: none;
   min-width: 0;
@@ -124,9 +91,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  font: 500 var(--text-2xs) / var(--lh-2xs) var(--font-mono);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font: 400 var(--text-2xs) / var(--lh-2xs) var(--font-sans);
   color: var(--muted-foreground);
 }
 
@@ -141,6 +106,18 @@
   min-width: 1rem;
   height: 1px;
   background: var(--border);
+}
+
+/* The element count is a secondary reading: where a pointer can hover, it shows on the turn's hover or focus. */
+@media (hover: hover) {
+  .turnCount {
+    opacity: 0;
+  }
+
+  .turn:hover .turnCount,
+  .turn:focus-within .turnCount {
+    opacity: 1;
+  }
 }
 
 .turnBody {
@@ -164,12 +141,16 @@
   align-items: flex-end;
 }
 
+.msg[data-role="user"] .msgHead {
+  align-self: flex-end;
+}
+
 /* The label row: the speaker, its reading, a hairline rule, and the record it came from. */
 .msgHead {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  align-self: stretch;
+  align-self: flex-start;
   min-width: 0;
   font-size: var(--text-2xs);
   color: var(--muted-foreground);
@@ -196,10 +177,7 @@
 }
 
 .rule {
-  flex: 1 1 auto;
-  min-width: 1rem;
-  height: 1px;
-  background: var(--border);
+  display: none;
 }
 
 .msgText {
@@ -208,13 +186,12 @@
   overflow-wrap: anywhere;
 }
 
-/* A user message is a bubble: the info tint over the card, a hairline edge, a 12 px radius, and at most 68% of the column. */
+/* A user message is a quiet bubble: the muted surface, no edge, a 16 px radius, and at most 80% of the column. */
 .msg[data-role="user"] .msgText {
-  max-width: 68%;
+  max-width: 80%;
   padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: color-mix(in oklch, var(--info) 16%, var(--card));
+  border-radius: var(--radius-lg);
+  background: var(--muted);
 }
 
 .msg[data-role="system"] .msgText {
@@ -241,6 +218,20 @@
 
 .msg[data-role="user"] .meta {
   justify-content: flex-end;
+}
+
+/* The Copy icon is a secondary action: where a pointer can hover it shows on the message's hover or focus, and on a touch device it is
+   always drawn. It is in the tab order and in the accessible tree either way. */
+@media (hover: hover) {
+  .meta button {
+    opacity: 0;
+  }
+
+  .msg:hover .meta button,
+  .msg:focus-within .meta button,
+  .meta button:focus-visible {
+    opacity: 1;
+  }
 }
 
 /* The record is a reference, so its button reads in the mono face, as the tool card's record does. */
@@ -351,6 +342,9 @@
 /* The composer dock: the view's last box, holding the jump and the composer. At wide widths it is in the column. */
 .dock {
   position: relative;
+  width: 100%;
+  max-width: var(--column-width);
+  margin-inline: auto;
 }
 
 /* Jump to latest sits on the dock's top edge, over the foot of the transcript: 12 px above the transcript's foot, across the
@@ -368,11 +362,6 @@
    The page reserves the dock's clearance under the viewport's foot (base.css, --dock-clearance), so a focused control never scrolls under the dock.
    z-sticky sits under the drawer's scrim (--z-scrim) and the drawer (--z-overlay), so an open drawer covers the dock. */
 @media (max-width: 760px) {
-  /* The posture counts read from the start of the line on a phone, under the filters. */
-  .posture {
-    justify-content: flex-start;
-  }
-
   .dock {
     position: sticky;
     bottom: 0;
