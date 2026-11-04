@@ -62,8 +62,8 @@ type runConfig struct {
 	// evidence_ref}]}) by path and sha256. The results are established outside the trial
 	// executor; Attest takes every EVQ pass from them and from nowhere else.
 	EVQResults pinnedFile `json:"evq_results"`
-	// Ledger must be "synthetic-empty".
-	Ledger string `json:"ledger"`
+	// Ledger is "synthetic-empty" or a ledgerFile object that binds a real usdledger file.
+	Ledger ledgerSetting `json:"ledger"`
 	// RunDir holds journal.jsonl.
 	RunDir string     `json:"run_dir"`
 	SSH    sshConfig  `json:"ssh"`
@@ -174,8 +174,8 @@ func (c runConfig) validate() error {
 	default:
 		return fmt.Errorf("quota_profile %q: use %q or %q", c.QuotaProfile, quotaThesis, quotaPilot)
 	}
-	if c.Ledger != ledgerSyntheticEmpty {
-		return fmt.Errorf("ledger %q: only %q is implemented", c.Ledger, ledgerSyntheticEmpty)
+	if err := c.Ledger.validate(); err != nil {
+		return err
 	}
 	for name, p := range map[string]string{
 		"manifest": c.Manifest, "route_report": c.RouteReport, "run_dir": c.RunDir,
