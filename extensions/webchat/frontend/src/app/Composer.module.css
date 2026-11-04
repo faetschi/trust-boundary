@@ -1,7 +1,7 @@
 /*
- * The composer of the Chat view: one card, pinned under the transcript. Every control in it is inert, so nothing here may
- * read as a working affordance: the send is muted, and there is no focus animation and no transition. Colour comes from the
- * alias tier only.
+ * The composer of the Chat view: a read-only notice, pinned under the transcript. Nothing in it acts, so nothing here may read
+ * as a working control: the box is dashed and flat, there is no send and no attach, and there is no focus animation and no
+ * transition. Colour comes from the alias tier only.
  */
 
 .composer {
@@ -10,28 +10,21 @@
   margin: 0;
 }
 
-/* The rounded box of the v2 mockup: a 1 px input edge, and the card tone at 70%, so it reads as a control on any ground. */
+/* A dashed, flat box on the muted ground: it reads as a notice about the page, not as a field to type in. */
 .card {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1h);
-  min-height: 88px;
+  gap: var(--space-1);
   padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--input);
-  border-radius: var(--radius-lg);
-  background: color-mix(in oklab, var(--card) 70%, transparent);
+  border: 1px dashed var(--input);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklab, var(--muted) 45%, transparent);
   color: var(--card-foreground);
 }
 
-.field {
-  display: flex;
-  align-items: flex-end;
-  gap: var(--space-2);
-  min-width: 0;
-}
-
 .input {
-  flex: 1 1 auto;
+  display: block;
+  width: 100%;
   min-width: 0;
   min-height: var(--row-h-input);
   padding: var(--space-1) 0;
@@ -49,32 +42,18 @@
   opacity: 1;
 }
 
-.input:focus-visible,
-.send:focus-visible {
+.input:focus-visible {
   outline: var(--focus-width) solid var(--ring);
   outline-offset: 2px;
 }
 
-/* The send target is at least 44 px square at every width. Its glyph is muted, at 70% opacity: 3.6:1 on the light fill and
-   5.0:1 on the dark one, so it is still a visible control. The dashed outline and the not-allowed cursor mark it as disabled. */
-.send {
-  flex: none;
-  display: inline-flex;
+/* The reason and the status chips share one row where they fit, and the chips wrap under the reason where they do not. */
+.info {
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  justify-content: center;
-  width: 44px;
-  height: 44px;
-  padding: 0;
-  border: 1px dashed var(--border);
-  border-radius: 50%;
-  background: var(--muted);
-  color: var(--muted-foreground);
-  font: 600 var(--text-body) / 1 var(--font-sans);
-  cursor: not-allowed;
-}
-
-.send > span {
-  opacity: 0.7;
+  justify-content: space-between;
+  gap: var(--space-1) var(--space-3);
 }
 
 .reason,
@@ -83,6 +62,10 @@
   font-size: var(--text-xs);
   line-height: var(--lh-xs);
   color: var(--muted-foreground);
+}
+
+.reason {
+  flex: 1 1 24rem;
 }
 
 /* The polite status line is empty until the control is pressed. An empty line takes no room in the card. */
@@ -97,22 +80,6 @@
   .input {
     min-height: calc(2 * var(--lh-body) + 2 * var(--space-1));
   }
-}
-
-/* The "+" attaches nothing in this build. It is decoration, hidden from assistive tech, and drawn dashed and muted like the
-   disabled send, so it does not read as a working control. It sits in the prompt row, so the status chips keep one row of
-   their own and the dock does not grow. */
-.attach {
-  flex: none;
-  display: inline-grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-  border: 1px dashed var(--border);
-  border-radius: 50%;
-  background: var(--muted);
-  color: var(--muted-foreground);
-  font: 500 var(--text-body) / 1 var(--font-sans);
 }
 
 .chips {
