@@ -17,10 +17,9 @@ import {
   LOSSY_READING,
   UNVERIFIED_READING,
   VERIFIED_READING,
-  stateReading,
   verdictReading,
 } from "./readings";
-import { traceToneOf } from "./toolGroups";
+import { outcomeReading, traceToneOf } from "./toolGroups";
 import styles from "./Chat.module.css";
 
 // Whether an item is verified in its projection: the shared gate (app verification.ts isVerifiedIn). Only a
@@ -37,11 +36,9 @@ interface ToolCardProps {
 export function ToolCard({ block, verifiedOf, markOf }: ToolCardProps) {
   const { activity, decision, result } = block;
   const primary = result ?? activity ?? decision;
-  const stateItem = result ?? activity;
   const tool = primary?.tool ?? "tool";
-  const stateReadingOf = stateItem
-    ? stateReading(stateItem.state, verifiedOf(stateItem), stateItem.type === "result" && stateItem.lossy === true)
-    : null;
+  // The outcome's reading (toolGroups.ts): a request that reports "succeeded" with no result after it is "no result", not a success.
+  const stateReadingOf = outcomeReading(block, verifiedOf);
   const verdict = decision ? verdictReading(decision.verdict) : null;
   const marker = primary ? markOf(primary) : null;
   // A verified lossy result keeps its evidence marker, neutral: the output is not confirmed, so it is never green.

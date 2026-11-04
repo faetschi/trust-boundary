@@ -6,7 +6,7 @@
 import type { ChipTone } from "../../../ui/Chip";
 import type { ItemView } from "../../../core/contract";
 import type { ToolBlock, TurnBlock } from "../../../core/store";
-import { stateReading, verdictReading } from "./readings";
+import { stateReading, verdictReading, type ChipReading } from "./readings";
 
 // Whether an item is verified in its projection (app verification.ts isVerifiedIn).
 type Verifier = (item: ItemView) => boolean;
@@ -19,22 +19,32 @@ export interface Finding {
   readonly label: string;
 }
 
+// A request with no result after it: whatever state the request itself reports, nothing terminal has been recorded. It is not a
+// success (verified or not) and it is not running.
+export const NO_RESULT_READING: ChipReading = {
+  label: "no result",
+  tone: "idle",
+  note: "a request with no result recorded after it: not a success, and not running.",
+};
+
+// The reading of a block's outcome, for its chip and for its findings: the result's state, else the request's, else nothing. An
+// activity that says "succeeded" with no result after it reads as NO_RESULT_READING, so the card and the group agree.
+export function outcomeReading(block: ToolBlock, verifiedOf: Verifier): ChipReading | null {
+  const { activity, result } = block;
+  const stateItem = result ?? activity;
+  if (!stateItem) return null;
+  if (result === null && stateItem.state === "succeeded") return NO_RESULT_READING;
+  return stateReading(stateItem.state, verifiedOf(stateItem), stateItem.type === "result" && stateItem.lossy === true);
+}
+
 // What a block says, as findings. Its outcome comes first: the result's state, else the request's. An activity that says
 // "succeeded" with no result after it is a request, so it is "no result" whether or not the projection is verified. Its policy
 // verdict follows when it is not an ALLOW, so a DENY or an UNKNOWN is never lost behind a success; an ALLOW is a finding only
 // when it is all the block has.
 export function toolFindings(block: ToolBlock, verifiedOf: Verifier): Finding[] {
-  const { activity, decision, result } = block;
-  const stateItem = result ?? activity;
-  const findings: Finding[] = [];
-  if (stateItem) {
-    if (result === null && stateItem.state === "succeeded") {
-      findings.push({ tone: "idle", label: "no result" });
-    } else {
-      const reading = stateReading(stateItem.state, verifiedOf(stateItem), stateItem.type === "result" && stateItem.lossy === true);
-      findings.push({ tone: reading.tone, label: reading.label });
-    }
-  }
+  const { decision } = block;
+  const outcome = outcomeReading(block, verifiedOf);
+  const findings: Finding[] = outcome ? [{ tone: outcome.tone, label: outcome.label }] : [];
   const verdict = decision ? verdictReading(decision.verdict) : null;
   if (verdict && (verdict.tone !== "allow" || findings.length === 0)) findings.push({ tone: verdict.tone, label: verdict.label });
   if (findings.length === 0) findings.push({ tone: "idle", label: "no outcome" });
@@ -82,7 +92,8 @@ export function summariseToolGroup(blocks: readonly ToolBlock[], verifiedOf: Ver
 }
 
 // A turn's blocks, with each run of consecutive tool blocks gathered into one run. A message ends a run. Whether a run is
-// drawn as a group is its length (GROUP_MIN); a run keeps its key when it grows, so what it holds is never remounted.
+// drawn as a group is its length (GROUP_MIN). A run is keyed by its place among the turn's runs, not by its first block: a run
+// that grows, or that loses its first block to a filter, keeps its key, so the cards it holds are never remounted.
 export interface ToolRun {
   readonly kind: "run";
   readonly key: string;
@@ -94,8 +105,9 @@ export type DrawnBlock = Exclude<TurnBlock, ToolBlock> | ToolRun;
 export function groupRuns(blocks: readonly TurnBlock[]): DrawnBlock[] {
   const drawn: DrawnBlock[] = [];
   let run: ToolBlock[] = [];
+  let runs = 0;
   const flush = (): void => {
-    if (run.length > 0) drawn.push({ kind: "run", key: `run-${run[0]?.key ?? ""}`, blocks: run });
+    if (run.length > 0) drawn.push({ kind: "run", key: `run-${runs++}`, blocks: run });
     run = [];
   };
   for (const block of blocks) {
