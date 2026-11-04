@@ -3,7 +3,7 @@ import { messageItem } from "../../../core/testing/builders";
 import type { Item, ItemView } from "../../../core/contract";
 import { groupTurn, type ToolBlock } from "../../../core/store";
 import { blocksOf, itemsOf, type ToolCallSpec } from "../../../test-support/toolBlocks";
-import { GROUP_MIN, groupRuns, summariseToolGroup, toolFindings, traceToneOf } from "./toolGroups";
+import { GROUP_MIN, groupRuns, outcomeReading, summariseToolGroup, toolFindings, traceToneOf } from "./toolGroups";
 
 const unverified = (_item: ItemView): boolean => false;
 const verified = (_item: ItemView): boolean => true;
@@ -17,6 +17,13 @@ describe("the findings of one tool block", () => {
     expect(words(block, verified)).toEqual(["idle:no result"]);
     expect(words(block, unverified)).toEqual(["idle:no result"]);
     expect(traceToneOf(block, verified)).toBe("idle");
+  });
+
+  it("reads a request that says succeeded, with no result, as 'no result' on the card's own reading too", () => {
+    const block = only({ call: "c1", request: "succeeded" });
+    expect(outcomeReading(block, verified)?.label).toBe("no result");
+    expect(outcomeReading(block, unverified)?.label).toBe("no result");
+    expect(outcomeReading(only({ call: "c2", request: "pending" }), verified)?.label).toBe("pending");
   });
 
   it("draws a policy ALLOW with no outcome as the permission tone, never the success tone", () => {
@@ -123,9 +130,12 @@ describe("runs of tool blocks", () => {
     expect(lengths([...tool("c1"), ...tool("c2"), message("m1", 100), ...tool("c3"), ...tool("c4"), ...tool("c5")])).toEqual([2, "message", 3]);
   });
 
-  it("keeps a run's key from its first block, so a run that grows keeps its key", () => {
-    const keyOf = (items: Item[]): string => groupRuns(groupTurn(items))[0]?.kind === "run" ? (groupRuns(groupTurn(items))[0] as { key: string }).key : "";
-    expect(keyOf([...tool("c1"), ...tool("c2")])).toBe("run-c1");
-    expect(keyOf([...tool("c1"), ...tool("c2"), ...tool("c3")])).toBe("run-c1");
+  it("keys a run by its place among the turn's runs, so it keeps its key when it grows or loses its first block", () => {
+    const keysOf = (items: Item[]): string[] => groupRuns(groupTurn(items)).flatMap((block) => (block.kind === "run" ? [block.key] : []));
+    expect(keysOf([...tool("c1"), ...tool("c2")])).toEqual(["run-0"]);
+    expect(keysOf([...tool("c1"), ...tool("c2"), ...tool("c3")])).toEqual(["run-0"]);
+    // A filter that drops the first block leaves the run where it was.
+    expect(keysOf([...tool("c2")])).toEqual(["run-0"]);
+    expect(keysOf([...tool("c1"), message("m1", 100), ...tool("c2")])).toEqual(["run-0", "run-1"]);
   });
 });

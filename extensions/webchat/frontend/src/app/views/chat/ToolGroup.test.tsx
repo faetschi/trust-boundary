@@ -77,7 +77,41 @@ describe("a group of three or more", () => {
   });
 });
 
+describe("a card in an opened group says what the group line says", () => {
+  it("reads three requests that say succeeded, with no results, as 'no result' on every card chip", () => {
+    const specs: ToolCallSpec[] = [
+      { call: "c1", request: "succeeded" },
+      { call: "c2", request: "succeeded" },
+      { call: "c3", request: "succeeded" },
+    ];
+    const view = mount(draw(runOf(3, specs), verified));
+    expect(view.container.querySelector("[data-group] button")?.textContent).toContain("3 no result");
+    const chips = Array.from(view.container.querySelectorAll("details > summary [data-tone]")).map((chip) => chip.textContent);
+    expect(chips).toEqual(["no result", "no result", "no result"]);
+    view.unmount();
+  });
+});
+
 describe("a run that changes size does not remount its cards", () => {
+  it("keeps an open card when a filter removes the run's first block", () => {
+    const specs: ToolCallSpec[] = [
+      { call: "c1", verdict: "ALLOW", result: "succeeded" },
+      { call: "c2", verdict: "DENY", result: "denied" },
+    ];
+    const view = mount(draw({ kind: "run", key: "run-0", blocks: blocksOf(...specs) }));
+    const second = view.container.querySelectorAll("details")[1] as HTMLDetailsElement;
+    act(() => {
+      second.open = true;
+      second.dispatchEvent(new Event("toggle"));
+    });
+    const survivor = blocksOf(...specs).filter((block) => block.key === "c2");
+    act(() => view.root.render(draw({ kind: "run", key: "run-0", blocks: survivor })));
+    const only = view.container.querySelector("details") as HTMLDetailsElement;
+    expect(only).toBe(second);
+    expect(only.open).toBe(true);
+    view.unmount();
+  });
+
   it("keeps an open card, and the group opens, when a third tool arrives", () => {
     const view = mount(draw(runOf(2)));
     const first = view.container.querySelector("details") as HTMLDetailsElement;
