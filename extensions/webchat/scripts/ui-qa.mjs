@@ -849,7 +849,8 @@ async function checkC(ctx) {
   const allAt = chatStops.findIndex((s) => s.pressed === 'true' && /^All/.test(s.text ?? ''));
   // Contract change (round 3): the header's disclosure is a summary too. A tool card is a summary that is not the disclosure.
   // Contract change (design pass): the claim strip and the rail footnotes are disclosures too, so a tool card is a summary that is none of those.
-  const firstCard = chatStops.findIndex((s) => s.tag === 'summary' && s.label !== 'More options' && !/^(Presentation only|Read-only view)/.test(s.text ?? ''));
+  // A run of three or more tool actions is one closed group line, a button, and its cards are hidden until it opens.
+  const firstCard = chatStops.findIndex((s) => (s.tag === 'summary' && s.label !== 'More options' && !/^(Presentation only|Read-only view)/.test(s.text ?? '')) || (s.tag === 'button' && /tool actions/.test(s.text ?? '')));
   ctx.note('chatStopIndexes', { theme: themeAt, chatTab: chatTabAt, allFilter: allAt, firstToolCard: firstCard });
   ctx.expect(themeAt > 0 && chatStops[themeAt]?.tabindex === '0', "the theme toolbar's stop is " + shortStop(chatStops[themeAt] ?? {}) + ", expected the pressed theme option with tabindex 0");
   ctx.expect(chatTabAt > themeAt, `the Chat tab (stop ${chatTabAt}) does not follow the theme toolbar (stop ${themeAt})`);
