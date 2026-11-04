@@ -35,10 +35,6 @@ function field(): HTMLTextAreaElement {
   return q<HTMLTextAreaElement>("textarea");
 }
 
-function send(): HTMLButtonElement {
-  return q<HTMLButtonElement>("button");
-}
-
 // The line the composer draws, and what the shell's announcer last said.
 function drawn(): string {
   return q("#composer-status").textContent ?? "";
@@ -90,31 +86,17 @@ describe("the composer's semantics", () => {
     expect(reason.closest("[hidden]")).toBeNull();
   });
 
-  it("has one button: a type=button send, marked aria-disabled and named, and no form ancestor", () => {
+  it("has no button at all: nothing here acts, so nothing is drawn as a control to press", () => {
     render();
-    expect(mounted?.container.querySelectorAll("button")).toHaveLength(1);
-    expect(send().type).toBe("button");
-    expect(send().getAttribute("aria-disabled")).toBe("true");
-    expect(send().getAttribute("aria-label")).toBe("Send: not available in this build");
-    expect(send().closest("form")).toBeNull();
-  });
-
-  it("exposes no Stop, Cancel, attach or menu control", () => {
-    render("0.87.1");
-    const labels = Array.from(mounted?.container.querySelectorAll("button") ?? []).map(
-      (button) => `${button.textContent ?? ""} ${button.getAttribute("aria-label") ?? ""}`,
-    );
-    for (const label of labels) expect(label).not.toMatch(/Stop|Cancel|Attach|\+|Mode|Model/);
+    expect(mounted?.container.querySelectorAll("button")).toHaveLength(0);
     expect(mounted?.container.querySelector("[aria-haspopup], [role='menu'], [role='menuitem'], [role='listbox']")).toBeNull();
   });
 
-  it("draws the '+' as aria-hidden decoration, never as a button", () => {
+  it("draws no send arrow and no '+' attach mark", () => {
     render("0.87.1");
-    const plus = Array.from(mounted?.container.querySelectorAll("span[aria-hidden='true']") ?? []).filter(
-      (element) => element.textContent === "+",
-    );
-    expect(plus).toHaveLength(1);
-    expect(plus[0]?.closest("button")).toBeNull();
+    const marks = Array.from(mounted?.container.querySelectorAll("[aria-hidden='true']") ?? []).map((element) => element.textContent);
+    expect(marks).not.toContain("+");
+    expect(marks).not.toContain("↑");
   });
 
   it("never names the closed tool vocabulary as this session's tools", () => {
@@ -139,14 +121,14 @@ describe("the composer does not submit", () => {
     document.removeEventListener("submit", submitted);
   });
 
-  it("makes no network request on Send, and says politely that it is not available", () => {
+  it("makes no network request when the field is pressed, and says politely that it is not available", () => {
     const fetchSpy = vi.fn();
     const requestSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);
     vi.stubGlobal("XMLHttpRequest", requestSpy);
     render();
     expect(drawn()).toBe("");
-    click(send());
+    click(field());
     expect(fetchSpy).toHaveBeenCalledTimes(0);
     expect(requestSpy).toHaveBeenCalledTimes(0);
     expect(submitted).toHaveBeenCalledTimes(0);
