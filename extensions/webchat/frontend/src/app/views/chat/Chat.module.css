@@ -343,6 +343,11 @@
    The page reserves the dock's clearance under the viewport's foot (base.css, --dock-clearance), so a focused control never scrolls under the dock.
    z-sticky sits under the drawer's scrim (--z-scrim) and the drawer (--z-overlay), so an open drawer covers the dock. */
 @media (max-width: 760px) {
+  /* The posture counts read from the start of the line on a phone, under the filters. */
+  .posture {
+    justify-content: flex-start;
+  }
+
   .dock {
     position: sticky;
     bottom: 0;
