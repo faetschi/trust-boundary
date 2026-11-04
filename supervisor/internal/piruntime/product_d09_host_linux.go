@@ -535,7 +535,7 @@ func productD09VerifyArtifacts(ctx context.Context, inputs productD09Inputs, tem
 // productD09VerifyImageFile resolves imagePath through the signed OCI layout without extracting it, and compares the digest
 // of the regular file it names with the expected one.
 func productD09VerifyImageFile(ctx context.Context, template D09CellTemplate, imagePath, expectedDigest, what string) error {
-	file, err := readOCIImageFile(ctx, template.OCILayoutPath, template.ExpectedImageDigest, filepath.Clean(imagePath), true)
+	file, err := readProductOCIImageFile(ctx, template.OCILayoutPath, template.ExpectedImageDigest, filepath.Clean(imagePath), true)
 	if err != nil {
 		return productD09Refused(err, what+" is not in the pinned product image")
 	}

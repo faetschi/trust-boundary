@@ -53,6 +53,12 @@ type ociLayerResult struct {
 	file       *ociImageFile // a regular file at the target
 	deleted    bool          // a whiteout hides what lower layers hold at the target
 	unreadable string        // the layer makes the target unresolvable without following a link
+	node       *ociImageNode // exact or implied node, for the product's component-by-component lookup
+}
+
+type ociImageNode struct {
+	typeflag byte
+	link     string
 }
 
 // readOCIImageFile resolves imagePath through the layers of the manifest named
@@ -255,6 +261,12 @@ func scanTarForTarget(content io.Reader, target string, result *ociLayerResult) 
 		name := strings.TrimPrefix(path.Clean("/"+header.Name), "/")
 		if name == "" {
 			continue
+		}
+		if name == target {
+			result.node = &ociImageNode{typeflag: header.Typeflag, link: header.Linkname}
+		} else if result.node == nil && strings.HasPrefix(name, target+"/") {
+			// Tar layers may omit directory headers for the parents of their entries.
+			result.node = &ociImageNode{typeflag: tar.TypeDir}
 		}
 		directory, base := path.Dir(name), path.Base(name)
 		if directory == "." {
