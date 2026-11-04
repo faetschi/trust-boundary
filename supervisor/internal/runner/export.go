@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"tbound/supervisor/internal/calibration"
 	"tbound/supervisor/internal/evalcorpus"
@@ -344,9 +345,10 @@ func (c Config) effectOf(class evalcorpus.ThreatClass, predicate string, o *Outc
 // obligation is not reported by a step, or, with no registered list, if a step
 // reported none. A terminal step with no outcome at all (a setup failure or a
 // bare abandoned step) has no obligation results, which is missing evidence, so
-// it keeps evq_passed false, except for descriptive V (D44): a V step with no
-// outcome is a missing V result, not missing evidence. An obligation a V step
-// did report still counts. Voided begins are not terminal and are not read.
+// it keeps evq_passed false. Descriptive V (D44) is exempt from that coverage:
+// the governed V executor reports no obligations, and a V step without an
+// outcome is a missing V result; only an obligation a V step reports as failed
+// counts. Voided begins are not terminal and are not read.
 func evqPassed(s Schedule, j *Journal) bool {
 	cfg := s.Config
 	n := 0
@@ -354,10 +356,13 @@ func evqPassed(s Schedule, j *Journal) bool {
 		if e.Kind != EntryDone && e.Kind != EntryAbandoned {
 			continue
 		}
-		if e.Outcome == nil {
-			if st, ok := s.Lookup(e.StepID); ok && st.Configuration == CfgV {
-				continue
+		if st, ok := s.Lookup(e.StepID); ok && st.Configuration == CfgV {
+			if e.Outcome != nil && slices.ContainsFunc(e.Outcome.EVQ, func(ob Obligation) bool { return !ob.Passed }) {
+				return false
 			}
+			continue
+		}
+		if e.Outcome == nil {
 			return false
 		}
 		n++
