@@ -851,6 +851,15 @@ func TestProductD09EffectiveUnitRefusesOverridesAndPendingReload(t *testing.T) {
 	if err := productD09ValidateEffectiveUnit(properties); err != nil {
 		t.Fatalf("installed effective unit refused: %v", err)
 	}
+	// systemd 255 leaves out an empty EnvironmentFiles list (seen on the demo VM).
+	omitted := make(map[string]string, len(properties))
+	for key, value := range properties {
+		omitted[key] = value
+	}
+	delete(omitted, "EnvironmentFiles")
+	if err := productD09ValidateEffectiveUnit(omitted); err != nil {
+		t.Fatalf("omitted empty EnvironmentFiles refused: %v", err)
+	}
 	for name, environment := range map[string]string{
 		"empty":     "",
 		"missing":   strings.Join(productD09PinnedEnvironment()[1:], " "),
@@ -889,6 +898,9 @@ func TestProductD09EffectiveUnitRefusesOverridesAndPendingReload(t *testing.T) {
 			changed[property] = "unexpected"
 			if err := productD09ValidateEffectiveUnit(changed); !errors.Is(err, ErrProductD09HostRefused) {
 				t.Fatalf("effective unit drift accepted: %v", err)
+			}
+			if property == "EnvironmentFiles" {
+				return
 			}
 			delete(changed, property)
 			if err := productD09ValidateEffectiveUnit(changed); !errors.Is(err, ErrProductD09HostRefused) {

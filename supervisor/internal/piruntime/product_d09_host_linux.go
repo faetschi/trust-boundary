@@ -710,7 +710,8 @@ func productD09RequireEffectiveUnit(ctx context.Context) (map[string]string, err
 
 func productD09ValidateEffectiveUnit(properties map[string]string) error {
 	for _, property := range productD09EffectiveUnitProperties {
-		if _, ok := properties[property]; !ok {
+		// systemctl show leaves out an empty EnvironmentFiles list; absent then means empty, checked below.
+		if _, ok := properties[property]; !ok && property != "EnvironmentFiles" {
 			return productD09Refused(nil, "systemctl did not report the effective property "+property)
 		}
 	}
