@@ -370,14 +370,6 @@ func reconcileProductCommandScope(ctx context.Context, root *os.File, journal *a
 		return piruntime.ErrUnknownSettlement
 	}
 	owners[name] = struct{}{}
-	for _, command := range commands {
-		if recoverCommand == nil {
-			return piruntime.ErrUnknownSettlement
-		}
-		if err := recoverCommand(ctx, command); err != nil {
-			return err
-		}
-	}
 	// The drain revokes the scope and removes it. It never writes a command receipt: a killed command has no result
 	// to certify, so a linked turn that depended on it stays UNKNOWN.
 	scope, err := openProductScopeForDrain(root, name, opened.ScopeIdentity)
@@ -399,6 +391,14 @@ func reconcileProductCommandScope(ctx context.Context, root *os.File, journal *a
 		if err := scope.Remove(ctx); err != nil {
 			_ = scope.Close()
 			return errors.Join(piruntime.ErrUnknownSettlement, err)
+		}
+	}
+	for _, command := range commands {
+		if recoverCommand == nil {
+			return piruntime.ErrUnknownSettlement
+		}
+		if err := recoverCommand(ctx, command); err != nil {
+			return err
 		}
 	}
 	opened.State = "drained"

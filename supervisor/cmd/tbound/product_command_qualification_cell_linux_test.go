@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/gate"
 	"tbound/supervisor/internal/piruntime"
 	"tbound/supervisor/internal/productsetup"
@@ -438,6 +439,53 @@ func (h *qualificationHarness) plantOpenedOrphan(t *testing.T, stateRoot, workfl
 		}
 	}
 	return owner
+}
+
+func TestProductD09UnstartedCommandScopeRecovery(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		present   bool
+		writers   int
+		removeErr error
+		wantError bool
+	}{
+		{"absent", false, 0, nil, false},
+		{"present and drainable", true, 0, nil, false},
+		{"present and stuck", true, 0, errors.New("still populated"), true},
+		{"absent with writer", false, 1, nil, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newQualificationHarness(t)
+			state := privateGovernedTestRoot(t)
+			owner := h.plantOpenedOrphan(t, state, "pwf-unstarted", tc.present)
+			j, err := audit.OpenExisting(filepath.Join(state, "turns", owner.WorkflowID, productCommandOwnerJournal))
+			if err != nil {
+				t.Fatal(err)
+			}
+			command := piruntime.D09ProductCommandOwnership{ContainerName: "tbound-pi-cell-cmd-unstarted", LeaseID: "lease", ViewID: "view", ViewInode: 1}
+			raw, _ := json.Marshal(command)
+			if _, err := j.Append(audit.Event{Kind: "product_command_intent", ID: command.ContainerName, Data: raw}); err != nil {
+				t.Fatal(err)
+			}
+			_ = j.Close()
+			h.removeErr = tc.removeErr
+			h.installScopeDrain(t, tc.writers)
+			called := false
+			err = reconcileProductCommandScopesWithRecovery(context.Background(), openProductCellsRoot(t, h.cells), func(_ context.Context, got piruntime.D09ProductCommandOwnership) error {
+				called = true
+				if got != command {
+					t.Fatal("lost allocated owner")
+				}
+				if left, _ := os.ReadDir(h.cells); len(left) != 0 {
+					t.Fatal("residue reconciled before scope drain")
+				}
+				return nil
+			}, filepath.Join(state, "turns"))
+			if (err != nil) != tc.wantError || called == tc.wantError {
+				t.Fatalf("reconcile: called=%v err=%v", called, err)
+			}
+		})
+	}
 }
 
 func TestProductD09OrphanScopeIsDrainedOrBlocksStartup(t *testing.T) {

@@ -72,7 +72,7 @@ func TestProductD09ResidueRequiresRemovalAndNamespaceProof(t *testing.T) {
 	}{
 		{"removed and namespace released", 1, true, false, false},
 		{"already removed with namespace proof", 1, false, false, false},
-		{"no started identity even though absent", 0, false, false, true},
+		{"no started identity and absent after scope drain", 0, false, false, false},
 		{"container removal failed", 1, true, true, true},
 		{"namespace still referenced", 0, true, false, true},
 	} {

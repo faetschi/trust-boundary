@@ -104,7 +104,7 @@ func openProductCommandCgroup(scope *LinuxCgroupScope, pid int) (*os.File, error
 	return file, nil
 }
 
-// ReconcileProductD09CommandResidue proves container removal and namespace release using the revalidated product environment.
+// ReconcileProductD09CommandResidue proves container removal and namespace release after the caller drains the recorded cgroup scope.
 func ReconcileProductD09CommandResidue(ctx context.Context, host *D09ProductCommandHost, owner D09ProductCommandOwnership) error {
 	if err := host.Revalidate(ctx); err != nil {
 		return err
@@ -143,9 +143,9 @@ func reconcileProductD09CommandResidue(ctx context.Context, podman string, envir
 	if exists, err := containerExists(ctx, podman, owner.ContainerName, environment); err != nil || exists {
 		return errors.Join(ErrUnknownSettlement, err)
 	}
-	// A missing namespace record cannot prove detach, even when Podman and systemd have forgotten the container.
+	// Before started, there is no authenticated namespace. The caller has already proved the scope has no writer; Podman is absent too.
 	if owner.MountNSInode == 0 {
-		return ErrUnknownSettlement
+		return nil
 	}
 	if held, err := mountReferences(ctx, owner.MountNSInode); err != nil || held {
 		return errors.Join(ErrUnknownSettlement, err)
