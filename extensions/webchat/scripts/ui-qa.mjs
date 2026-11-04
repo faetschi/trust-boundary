@@ -848,7 +848,8 @@ async function checkC(ctx) {
   const chatTabAt = chatStops.findIndex((s) => s.id === 'view-tab-chat');
   const allAt = chatStops.findIndex((s) => s.pressed === 'true' && /^All/.test(s.text ?? ''));
   // Contract change (round 3): the header's disclosure is a summary too. A tool card is a summary that is not the disclosure.
-  const firstCard = chatStops.findIndex((s) => s.tag === 'summary' && s.label !== 'More options');
+  // Contract change (design pass): the claim strip and the rail footnotes are disclosures too, so a tool card is a summary that is none of those.
+  const firstCard = chatStops.findIndex((s) => s.tag === 'summary' && s.label !== 'More options' && !/^(Presentation only|Read-only view)/.test(s.text ?? ''));
   ctx.note('chatStopIndexes', { theme: themeAt, chatTab: chatTabAt, allFilter: allAt, firstToolCard: firstCard });
   ctx.expect(themeAt > 0 && chatStops[themeAt]?.tabindex === '0', "the theme toolbar's stop is " + shortStop(chatStops[themeAt] ?? {}) + ", expected the pressed theme option with tabindex 0");
   ctx.expect(chatTabAt > themeAt, `the Chat tab (stop ${chatTabAt}) does not follow the theme toolbar (stop ${themeAt})`);
@@ -2031,7 +2032,8 @@ async function checkJ(ctx) {
       ctx.expect(c.section === COMPOSER_SECTION && c.inForm === false && c.forms === 0, `${p}: composer section "${c.section}", inside a form ${c.inForm}, ${c.forms} form(s) on the page`);
       ctx.expect(c.textarea !== null && c.textarea.readOnly && c.textarea.ariaDisabled === 'true' && c.textarea.placeholder === PLACEHOLDER && c.textarea.value === '', `${p}: the prompt field is not read-only and aria-disabled with the exact placeholder (${JSON.stringify(c.textarea)})`);
       ctx.expect(JSON.stringify(c.chips) === JSON.stringify(expectedChips), `${p}: the chips read ${JSON.stringify(c.chips)}, expected ${JSON.stringify(expectedChips)}`);
-      ctx.expect(c.send !== null && c.send.ariaDisabled === 'true' && c.send.type === 'button', `${p}: the send control is ${JSON.stringify(c.send)}`);
+      // Contract change (design pass): the read-only composer is a notice with no button, so there is no send control to find.
+      ctx.expect(c.send === null, `${p}: the read-only composer still has a button (${JSON.stringify(c.send)})`);
       ctx.expect(st.forbidden.length === 0 && !st.readWriteEditBash && !st.newSession, `${p}: forbidden controls ${JSON.stringify(st.forbidden)}, "read, write, edit, bash" present ${st.readWriteEditBash}, "New session" present ${st.newSession}`);
       ctx.expect(st.footer === expectedFooter, `${p}: the footer reads "${st.footer}", expected "${expectedFooter}"`);
       ctx.expect(st.overflow.scrollWidth <= st.overflow.clientWidth, `${p}: horizontal overflow (${JSON.stringify(st.overflow)})`);
@@ -2230,9 +2232,9 @@ async function checkJ(ctx) {
   await cdp.send('Input.insertText', { text: 'a stray draft' }).catch(() => {});
   await press('Enter');
   await pressCtrlEnter();
-  const sendAt = await evaluate(`(() => { const r = document.querySelector('[data-testid="composer"] button').getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }; })()`);
+  const sendAt = await evaluate(`(() => { const r = document.querySelector('[data-testid="composer"] textarea').getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }; })()`);
   await pointerPress(sendAt.x, sendAt.y);
-  await evaluate(`document.querySelector('[data-testid="composer"] button').focus()`);
+  await evaluate(`document.querySelector('[data-testid="composer"] textarea').focus()`);
   await press('Enter');
   await press(' ');
   await sleep(300);
@@ -2242,15 +2244,13 @@ async function checkJ(ctx) {
   ctx.expect(composerRequests.length === 0, `${composerRequests.length} request(s) after typing, Enter, Ctrl+Enter, a click and Enter/Space on Send: ${composerRequests.map((r) => r.url.replace(ORIGIN, '')).join(', ')}`);
   ctx.expect(after.composer.textarea?.value === '', `the read-only prompt field took the typed text: "${after.composer.textarea?.value}"`);
   const statusText = await evaluate(`(() => { const c = document.querySelector('[data-testid="composer"]'); return c ? c.textContent : ''; })()`);
-  ctx.expect(/Not available/.test(statusText), 'pressing Send did not show the "Not available" explanation');
+  ctx.expect(/Not available/.test(statusText), 'pressing the read-only field did not show the "Not available" explanation');
 
   await evaluate(`document.querySelector('[data-testid="composer"] textarea').focus()`);
+  // Contract change (design pass): the composer has no Send button, so Tab from its field leaves the composer.
   await press('Tab');
   const afterTa = await describe();
-  await press('Tab');
-  const afterSend = await describe();
-  ctx.expect(afterTa.tag === 'button' && afterTa.label === 'Send: not available in this build', `Tab from the composer field went to ${shortStop(afterTa)}, expected Send`);
-  ctx.expect(afterSend.tag !== 'textarea' && afterSend.tag !== 'BODY', `Tab from Send did not leave the composer (went to ${shortStop(afterSend)})`);
+  ctx.expect(afterTa.tag !== 'textarea', `Tab from the composer field did not leave it (went to ${shortStop(afterTa)})`);
 
   const clipText = snapshot.items[0].text;
   await evaluate(`(() => { const b = document.querySelector('[role="log"] button[aria-label^="Copy message"]'); b.click(); return true; })()`);
