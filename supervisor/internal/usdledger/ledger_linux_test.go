@@ -1026,3 +1026,138 @@ func TestUnitReportsEachReservationState(t *testing.T) {
 		t.Fatalf("a closed ledger answered: %v", err)
 	}
 }
+
+// spendFiveRecords leaves genesis + reserve a + settle a + reserve b + settle b.
+func spendFiveRecords(t *testing.T, path string) (heads []string) {
+	t.Helper()
+	l := openTest(t, path, testConfig())
+	heads = append(heads, snapshotOf(t, l).HeadSHA256)
+	for _, op := range []func() error{
+		func() error { return l.Reserve("a", 300) },
+		func() error { return l.Settle("a", 100) },
+		func() error { return l.Reserve("b", 300) },
+		func() error { return l.Settle("b", 100) },
+	} {
+		must(t, op())
+		heads = append(heads, snapshotOf(t, l).HeadSHA256)
+	}
+	must(t, l.Close())
+	return heads
+}
+
+func anchoredAt(records uint64, head string) Config {
+	cfg := testConfig()
+	cfg.AllowGenesis = false
+	cfg.ExpectedHeadSHA256, cfg.AnchorRecords = head, records
+	return cfg
+}
+
+func TestCheckpointAnchorSurvivesLaterRecords(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "research.jsonl")
+	heads := spendFiveRecords(t, path)
+	for _, records := range []uint64{1, 3, 5} {
+		l, err := Open(path, anchoredAt(records, heads[records-1]))
+		if err != nil {
+			t.Fatalf("anchor at record %d: %v", records, err)
+		}
+		if s := snapshotOf(t, l); s.Records != 5 || s.HeadSHA256 != heads[4] {
+			t.Fatalf("anchor at %d: snapshot %+v", records, s)
+		}
+		must(t, l.Close())
+	}
+	if _, err := Open(path, anchoredAt(3, heads[1])); !errors.Is(err, ErrHeadMismatch) {
+		t.Fatalf("wrong head at record 3: %v", err)
+	}
+}
+
+func TestCheckpointAnchorRefusesRollbackBelowAnchor(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "research.jsonl")
+	heads := spendFiveRecords(t, path)
+	writeLedger(t, path, lineList(readLedger(t, path))[:2])
+	if _, err := Open(path, anchoredAt(3, heads[2])); !errors.Is(err, ErrHeadMismatch) {
+		t.Fatalf("rollback below anchor: %v", err)
+	}
+	if _, err := Verify(path, anchoredAt(3, heads[2])); !errors.Is(err, ErrHeadMismatch) {
+		t.Fatalf("Verify rollback below anchor: %v", err)
+	}
+}
+
+func TestCheckpointAnchorRefusesEditInsideAnchoredPrefix(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "research.jsonl")
+	heads := spendFiveRecords(t, path)
+	lines := lineList(readLedger(t, path))
+	lines[1] = strings.Replace(lines[1], `"micro":300`, `"micro":200`, 1)
+	writeLedger(t, path, lines)
+	if _, err := Open(path, anchoredAt(3, heads[2])); err == nil {
+		t.Fatal("Open accepted an edit inside the anchored prefix")
+	}
+	if _, err := Verify(path, anchoredAt(3, heads[2])); err == nil {
+		t.Fatal("Verify accepted an edit inside the anchored prefix")
+	}
+}
+
+func TestAnchorRecordsWithoutHeadIsInvalidConfig(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "research.jsonl")
+	cfg := testConfig()
+	cfg.AnchorRecords = 1
+	if _, err := Open(path, cfg); !errors.Is(err, ErrInvalidConfig) {
+		t.Fatalf("Open: %v", err)
+	}
+	if _, err := Verify(path, cfg); !errors.Is(err, ErrInvalidConfig) {
+		t.Fatalf("Verify: %v", err)
+	}
+	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("refused config left a file behind (stat: %v)", err)
+	}
+}
+
+func TestCheckpointAnchorRefusesMissingLedger(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "research.jsonl")
+	cfg := anchoredAt(1, zeroHash)
+	cfg.AllowGenesis = true
+	if _, err := Open(path, cfg); !errors.Is(err, ErrHeadMismatch) {
+		t.Fatalf("Open: %v", err)
+	}
+	if _, err := Verify(path, cfg); !errors.Is(err, ErrHeadMismatch) {
+		t.Fatalf("Verify: %v", err)
+	}
+	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("refused call created a file (stat: %v)", err)
+	}
+}
+
+func TestVerifyReportsSnapshotAndWritesNothing(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "research.jsonl")
+	heads := spendFiveRecords(t, path)
+	// A reservation left open, as after a crash.
+	l := openTest(t, path, testConfig())
+	must(t, l.Reserve("crashed", 200))
+	must(t, l.Close())
+	before := readLedger(t, path)
+	infoBefore, err := os.Stat(path)
+	must(t, err)
+
+	s, err := Verify(path, anchoredAt(3, heads[2]))
+	must(t, err)
+	if s.Records != 6 || s.UncertainUnits != 1 || s.OpenUnits != 0 || s.SettledUnits != 2 {
+		t.Fatalf("Verify snapshot = %+v", s)
+	}
+	wantTotals(t, s, 0, 200, 200)
+
+	infoAfter, err := os.Stat(path)
+	must(t, err)
+	if !bytes.Equal(before, readLedger(t, path)) || !infoAfter.ModTime().Equal(infoBefore.ModTime()) {
+		t.Fatal("Verify changed the ledger file or its mtime")
+	}
+	if _, err := Verify(filepath.Join(t.TempDir(), "absent.jsonl"), testConfig()); !errors.Is(err, ErrMissingLedger) {
+		t.Fatalf("Verify on absent file: %v", err)
+	}
+}
+
+func TestVerifyRefusesLedgerHeldByWriter(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "research.jsonl")
+	openTest(t, path, testConfig())
+	if _, err := Verify(path, testConfig()); !errors.Is(err, ErrLocked) {
+		t.Fatalf("Verify on a held ledger: %v", err)
+	}
+}
