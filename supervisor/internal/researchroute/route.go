@@ -63,7 +63,7 @@ import (
 // Fixed host paths. The key is read with the same rules as the engineering key
 // (a regular file owned by the service uid, mode 0400 or 0600, no symlink, the
 // environment ignored). The profile and the ledger configuration must be owned
-// by root. The ledger lives under the service StateDirectory
+// by root, and so must the ledger checkpoint. The ledger lives under the service StateDirectory
 // /var/lib/tbound/sessions, which the unchanged unit template already makes
 // writable.
 const (
@@ -71,6 +71,7 @@ const (
 	ProfilePath      = "/etc/tbound/provider/research-profile.json"
 	LedgerConfigPath = "/etc/tbound/provider/research-ledger.json"
 	LedgerPath       = "/var/lib/tbound/sessions/usd-ledger"
+	CheckpointPath   = "/etc/tbound/provider/research-ledger-checkpoint.json"
 
 	maxProfileFileBytes = 64 << 10
 )
@@ -96,13 +97,14 @@ type Paths struct {
 	Profile      string
 	LedgerConfig string
 	Ledger       string
+	Checkpoint   string
 	Key          string
 	OwnerUID     uint32
 }
 
 // DefaultPaths returns the fixed production paths.
 func DefaultPaths() Paths {
-	return Paths{Profile: ProfilePath, LedgerConfig: LedgerConfigPath, Ledger: LedgerPath, Key: KeyPath}
+	return Paths{Profile: ProfilePath, LedgerConfig: LedgerConfigPath, Ledger: LedgerPath, Checkpoint: CheckpointPath, Key: KeyPath}
 }
 
 // Bundle is an opened research route. It holds the ledger lock until Close and
@@ -131,8 +133,11 @@ type inputs struct {
 }
 
 // Open loads the frozen profile and the ledger configuration, checks the key, and
-// opens the existing ledger. It never creates the ledger: a missing ledger is
-// refused with usdledger.ErrMissingLedger unless Genesis was run.
+// opens the existing ledger against the operator-held checkpoint. It never
+// creates the ledger. A missing or malformed checkpoint is refused with
+// ErrCheckpoint or ErrConfigFile, and a ledger that is missing, shorter than the
+// checkpoint or whose checkpoint record differs is refused with
+// usdledger.ErrHeadMismatch.
 func Open(paths Paths) (*Bundle, error) { return open(paths, "") }
 
 // open is Open with an optional endpoint override that only tests use, to point
@@ -145,7 +150,15 @@ func open(paths Paths, endpoint string) (*Bundle, error) {
 	if _, err := loadKey(paths.Key); err != nil {
 		return nil, err
 	}
-	ledger, err := usdledger.Open(paths.Ledger, ledgerOptions(in.ledgerConfig, false))
+	checkpointBytes, err := readOwnedFile(paths.Checkpoint, maxCheckpointBytes, paths.OwnerUID)
+	if err != nil {
+		return nil, err
+	}
+	checkpoint, err := parseCheckpoint(checkpointBytes)
+	if err != nil {
+		return nil, err
+	}
+	ledger, err := usdledger.Open(paths.Ledger, ledgerOptions(in.ledgerConfig, false, checkpoint))
 	if err != nil {
 		return nil, fmt.Errorf("open research USD ledger: %w", err)
 	}
@@ -157,7 +170,8 @@ func open(paths Paths, endpoint string) (*Bundle, error) {
 // new ledger file, so a deleted ledger is refused at Open rather than reset to an
 // empty budget. It refuses an unfrozen profile, an invalid ledger configuration
 // and an existing ledger, and it creates nothing in those cases. It returns the
-// genesis snapshot, whose HeadSHA256 the operator should store outside the ledger.
+// genesis snapshot. Genesis does not read the checkpoint: the operator writes
+// the checkpoint file from the returned Records and HeadSHA256 before Open.
 func Genesis(paths Paths) (usdledger.Snapshot, error) {
 	in, err := load(paths, "")
 	if err != nil {
@@ -168,7 +182,7 @@ func Genesis(paths Paths) (usdledger.Snapshot, error) {
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return usdledger.Snapshot{}, err
 	}
-	ledger, err := usdledger.Open(paths.Ledger, ledgerOptions(in.ledgerConfig, true))
+	ledger, err := usdledger.Open(paths.Ledger, ledgerOptions(in.ledgerConfig, true, Checkpoint{}))
 	if err != nil {
 		return usdledger.Snapshot{}, fmt.Errorf("create research USD ledger: %w", err)
 	}
@@ -176,24 +190,17 @@ func Genesis(paths Paths) (usdledger.Snapshot, error) {
 	return snapshot, errors.Join(snapshotErr, ledger.Close())
 }
 
-// ledgerOptions deliberately leaves usdledger.Config.ExpectedHeadSHA256 unset.
-// That check compares the ledger's CURRENT head hash, which changes with every
-// appended record, so an anchor written once at genesis would match only a ledger
-// that has not yet recorded a reservation, and the service would refuse to reopen
-// its own ledger after the first request. Detecting rollback to an older copy,
-// truncation at a record boundary or a tail edit needs an anchor that is updated
-// as the ledger grows, and nothing in the current API or file layout provides one
-// that the service cannot also rewrite. What this route does catch: a deleted
-// ledger (Open refuses a missing file without Genesis), a foreign cap or ledger
-// ID, a broken hash chain and a torn record.
-//
-// TODO(owner-decision): who owns the head-hash anchor (an operator-held copy of
-// Snapshot.HeadSHA256 compared before each run, an append-only or remote log, or
-// a root-owned file updated by a separate privileged process) is open. Until it
-// is decided, rollback of the ledger to an earlier valid state is NOT detected.
-func ledgerOptions(config LedgerConfig, genesis bool) usdledger.Config {
-	return usdledger.Config{LedgerID: config.LedgerID, CapMicroUSD: config.CapMicroUSD,
+// ledgerOptions anchors Open to the operator-held checkpoint. The operator
+// updates the checkpoint between runs; the service runs as a non-root uid and
+// cannot rewrite it. Rollback within the records after the newest checkpoint
+// stays undetected and is bounded by what the service spent since then.
+func ledgerOptions(config LedgerConfig, genesis bool, checkpoint Checkpoint) usdledger.Config {
+	cfg := usdledger.Config{LedgerID: config.LedgerID, CapMicroUSD: config.CapMicroUSD,
 		MinPerUnitWorstCaseMicroUSD: config.MinPerUnitWorstCaseMicroUSD, AllowGenesis: genesis}
+	if !genesis {
+		cfg.ExpectedHeadSHA256, cfg.AnchorRecords = checkpoint.HeadSHA256, checkpoint.Records
+	}
+	return cfg
 }
 
 func load(paths Paths, endpoint string) (inputs, error) {
