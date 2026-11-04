@@ -110,6 +110,11 @@ func Setup(env Env, cfg Config, binary Candidate) (Report, error) {
 	}
 	var refused []string
 	for _, p := range plan {
+		if p.Path == CommandHostProfilePath && p.Status == "updated" {
+			h.rep.Notes = append(h.rep.Notes, "command host profile replaced: run tbound product image provision before starting the service")
+		}
+	}
+	for _, p := range plan {
 		h.rep.Steps = append(h.rep.Steps, p.Step)
 		if p.Status == "refused" {
 			refused = append(refused, p.Path+": "+p.Detail)

@@ -27,6 +27,54 @@ var bundleArtifacts = map[string]string{
 	CommandCosignPublicKeyPath:      "cosign\n",
 }
 
+func TestDoctorRequiresProvisionedInstalledCommandProfile(t *testing.T) {
+	f := newFixture(t)
+	f.cfg.CommandBundle = f.writeBundleAt(filepath.Join(f.inputs, "bundle"))
+	digest := "sha256:" + strings.Repeat("a", 64)
+	profile := []byte(`{"Digest":"` + digest + `"}`)
+	if err := os.WriteFile(filepath.Join(f.cfg.CommandBundle, "host-profile.json"), profile, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.setup(); err != nil {
+		t.Fatal(err)
+	}
+	check := func(want string) {
+		t.Helper()
+		c, ok := findNamedCheck(Doctor(f.env, false).Checks, "command profile provision")
+		if !ok || c.Status != want || want == Fail && !strings.Contains(c.Fix, "run tbound product image provision") {
+			t.Fatalf("provision check: %+v", c)
+		}
+	}
+	check(Fail)
+	dir := f.path(PodmanConfigDir + "/hosts/" + strings.TrimPrefix(digest, "sha256:"))
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{CommandHostProfilePath, CommandHostProfileSignaturePath, CommandCellTemplatePath, CommandSeccompPath, CommandCosignPublicKeyPath, RegistrationPath, RegistrationSignaturePath, RegistrationPublicKeyPath} {
+		raw, err := os.ReadFile(f.path(path))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, filepath.Base(path)), raw, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	check(Pass)
+	if err := os.WriteFile(filepath.Join(dir, "registration.pub"), []byte("wrong key"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	check(Fail)
+	f.env.Replace = true
+	if err := os.WriteFile(filepath.Join(f.cfg.CommandBundle, "host-profile.json"), []byte(`{"Digest":"sha256:`+strings.Repeat("b", 64)+`"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	rep, err := f.setup()
+	if err != nil || !strings.Contains(rep.String(), "run tbound product image provision") {
+		t.Fatalf("profile replacement reminder: %v\n%s", err, rep.String())
+	}
+	check(Fail)
+}
+
 // writeBundleAt writes the five public artifacts into dir, creating it, and returns dir.
 func (f *fixture) writeBundleAt(dir string) string {
 	f.t.Helper()

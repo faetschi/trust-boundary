@@ -1,11 +1,40 @@
 package productsetup
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 )
+
+// commandProvisionChecks checks the public replay artifacts provision retains for the installed profile.
+func (h *host) commandProvisionChecks() []Check {
+	raw, err := readSource(h.real(CommandHostProfilePath))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	c := Check{Name: "command profile provision", Status: Fail, Fix: "run tbound product image provision"}
+	var profile struct{ Digest string }
+	if err != nil || json.Unmarshal(raw, &profile) != nil || !sha256Digest.MatchString(profile.Digest) {
+		c.Detail = "installed command profile is unreadable or has no valid digest"
+		return []Check{c}
+	}
+	base := filepath.Join(PodmanConfigDir, "hosts", strings.TrimPrefix(profile.Digest, "sha256:"))
+	for _, path := range []string{CommandHostProfilePath, CommandHostProfileSignaturePath, CommandCellTemplatePath, CommandSeccompPath, CommandCosignPublicKeyPath, RegistrationPath, RegistrationSignaturePath, RegistrationPublicKeyPath} {
+		retained := filepath.Join(base, filepath.Base(path))
+		got, err := readSource(h.real(retained))
+		want, installedErr := readSource(h.real(path))
+		if err != nil || installedErr != nil || !bytes.Equal(got, want) {
+			c.Detail = retained + " is missing, unreadable or differs from the installed public input"
+			return []Check{c}
+		}
+	}
+	c.Status, c.Detail, c.Fix = Pass, "installed profile has matching retained public inputs", ""
+	return []Check{c}
+}
 
 // commandBundleFiles reads only the public files setup owns. The same bytes reach validation and installation.
 func (h *host) commandBundleFiles(source string, files map[string][]byte) error {

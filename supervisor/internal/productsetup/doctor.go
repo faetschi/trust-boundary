@@ -100,6 +100,7 @@ func Doctor(env Env, selfTest bool) DoctorReport {
 		}
 	}
 	rep.Checks = append(rep.Checks, h.podmanConfigChecks()...)
+	rep.Checks = append(rep.Checks, h.commandProvisionChecks()...)
 	rep.Checks = append(rep.Checks, h.unitChecks()...)
 	rep.Checks = append(rep.Checks, h.releaseKeyCheck())
 	conn, err := net.DialTimeout("unix", h.real(SocketPath), 2*time.Second)
