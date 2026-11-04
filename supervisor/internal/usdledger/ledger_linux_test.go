@@ -1161,3 +1161,23 @@ func TestVerifyRefusesLedgerHeldByWriter(t *testing.T) {
 		t.Fatalf("Verify on a held ledger: %v", err)
 	}
 }
+
+func TestVerifyRefusesAFIFOWithoutHanging(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "usd-ledger")
+	if err := syscall.Mkfifo(path, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() {
+		_, err := Verify(path, Config{LedgerID: "fifo", CapMicroUSD: 1000, MinPerUnitWorstCaseMicroUSD: 1})
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if !errors.Is(err, ErrInvalidLedgerFile) {
+			t.Fatalf("Verify on a FIFO: %v, want ErrInvalidLedgerFile", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Verify blocked on a FIFO")
+	}
+}

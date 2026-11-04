@@ -80,11 +80,12 @@ func openLedgerFile(path string, create bool) (*os.File, bool, error) {
 	return file, created, nil
 }
 
-// openLedgerFileShared opens the ledger read-only with a shared nonblocking
+// openLedgerFileShared opens the ledger read-only (O_NONBLOCK, so a FIFO cannot
+// hang the open before the regular-file check) with a shared nonblocking
 // flock, so an active writer yields ErrLocked and nothing is created or written.
 // The symlink and replacement checks match openLedgerFile.
 func openLedgerFileShared(path string) (*os.File, error) {
-	file, err := os.OpenFile(path, os.O_RDONLY|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0)
+	file, err := os.OpenFile(path, os.O_RDONLY|syscall.O_CLOEXEC|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
 	if err != nil {
 		switch {
 		case errors.Is(err, syscall.ELOOP):
