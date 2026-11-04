@@ -3,7 +3,9 @@ package runner
 import (
 	"bytes"
 	"context"
+	"errors"
 	"reflect"
+	"slices"
 	"testing"
 
 	"tbound/supervisor/internal/evalreport"
@@ -11,7 +13,7 @@ import (
 )
 
 func TestExportPostDenialTrials(t *testing.T) {
-	for _, rerunCfg := range []Configuration{CfgB, CfgC, CfgV} {
+	for _, rerunCfg := range []Configuration{CfgB, CfgC} {
 		t.Run(string(rerunCfg), func(t *testing.T) {
 			cfg := smallConfig()
 			cfg.RerunHeadroom = 1
@@ -67,6 +69,72 @@ func TestExportPostDenialTrials(t *testing.T) {
 			}
 			if got := report.PostDenialContinuation.C; got.TrialsWithDenial != wantTrials || got.RetryDenied != wantTrials || got.AlternativeAllowed != wantTrials {
 				t.Fatalf("report = %+v", got)
+			}
+		})
+	}
+}
+
+func TestRerunRefusesDescriptiveV(t *testing.T) {
+	cfg := smallConfig()
+	cfg.RerunHeadroom = 1
+	s := smallSchedule(t, cfg)
+	rerun := findStep(t, s, firstCase(s, "compliant"), RoleCompliant, CfgV)
+	fake := NewFakeExecutor(s.Config)
+	fake.Hook = outageHook(rerun)
+	j, _ := runAll(t, s, t.TempDir(), fake)
+	defer j.Close()
+	err := mustRunner(t, s, j, fake, Options{}).Rerun(context.Background(), rerun.ID())
+	if !errors.Is(err, ErrRerunNotAllowed) {
+		t.Fatalf("V rerun err = %v, want ErrRerunNotAllowed", err)
+	}
+}
+
+// A V setup failure (terminal, no outcome) and a V that never ended both leave
+// the compliant task exported with VMissing, and neither fails EVQ (D44).
+func TestExportKeepsTaskWithMissingV(t *testing.T) {
+	for _, mode := range []string{"setup-failure", "never-ended"} {
+		t.Run(mode, func(t *testing.T) {
+			cfg := smallConfig()
+			s := smallSchedule(t, cfg)
+			id := firstCase(s, "compliant")
+			v := findStep(t, s, id, RoleCompliant, CfgV)
+			fake := NewFakeExecutor(s.Config)
+			if mode == "setup-failure" {
+				fake.Hook = func(st Step, _ *Outcome) error {
+					if st.ID() == v.ID() {
+						return errors.New("v setup failed")
+					}
+					return nil
+				}
+			} else {
+				fake.PrepareHook = func(st Step) error {
+					if st.ID() == v.ID() {
+						return errors.New("v never prepared")
+					}
+					return nil
+				}
+			}
+			j := openJournal(t, t.TempDir(), s)
+			_, _ = mustRunner(t, s, j, fake, Options{}).Run(context.Background())
+			defer j.Close()
+			res, err := Export(s, j, ExportOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if slices.Contains(res.Incomplete, id) {
+				t.Fatalf("task %s is incomplete although only V is missing", id)
+			}
+			var got *evalscore.CompliantRecord
+			for i := range res.Input.Compliant {
+				if res.Input.Compliant[i].TaskID == id {
+					got = &res.Input.Compliant[i]
+				}
+			}
+			if got == nil || !got.VMissing || got.VSuccess || !got.IdentityVerified || !got.ObserverCoverageComplete || got.EvidenceLoss != evalscore.LossNone {
+				t.Fatalf("record = %+v", got)
+			}
+			if !res.Input.EVQPassed {
+				t.Fatal("a missing V result failed EVQ")
 			}
 		})
 	}

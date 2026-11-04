@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"tbound/supervisor/internal/calibration"
 	"tbound/supervisor/internal/evalcorpus"
@@ -127,10 +128,11 @@ func compView(j *Journal, steps []Step, attempt int, attr evalscore.Attribution)
 }
 
 // complete is true when every step of the case has a terminal record, and so
-// has the rerun, if the case has one.
+// has the rerun, if the case has one. Descriptive V (D44) is not required: an
+// unfinished V is exported as VMissing.
 func complete(j *Journal, steps []Step) (rerun bool, ok bool) {
 	for _, st := range steps {
-		if j.terminalOf(st.ID(), 1) == nil {
+		if st.Configuration != CfgV && j.terminalOf(st.ID(), 1) == nil {
 			return false, false
 		}
 	}
@@ -285,7 +287,7 @@ func Export(s Schedule, j *Journal, opt ExportOptions) (ExportResult, error) {
 		res.Input.Compliant = append(res.Input.Compliant, recs...)
 	}
 	res.Variance = varianceVectors(s, j, primary)
-	res.Input.EVQPassed = evqPassed(s.Config, j)
+	res.Input.EVQPassed = evqPassed(s, j)
 	return res, nil
 }
 
@@ -343,17 +345,27 @@ func (c Config) effectOf(class evalcorpus.ThreatClass, predicate string, o *Outc
 // obligation is not reported by a step, or, with no registered list, if a step
 // reported none. A terminal step with no outcome at all (a setup failure or a
 // bare abandoned step) has no obligation results, which is missing evidence, so
-// it keeps evq_passed false. Voided begins are not terminal and are not read.
-func evqPassed(cfg Config, j *Journal) bool {
+// it keeps evq_passed false. Descriptive V (D44) is exempt from that coverage:
+// the governed V executor reports no obligations, and a V step without an
+// outcome is a missing V result; only an obligation a V step reports as failed
+// counts. Voided begins are not terminal and are not read.
+func evqPassed(s Schedule, j *Journal) bool {
+	cfg := s.Config
 	n := 0
 	for _, e := range j.Entries() {
 		if e.Kind != EntryDone && e.Kind != EntryAbandoned {
 			continue
 		}
-		n++
+		if st, ok := s.Lookup(e.StepID); ok && st.Configuration == CfgV {
+			if e.Outcome != nil && slices.ContainsFunc(e.Outcome.EVQ, func(ob Obligation) bool { return !ob.Passed }) {
+				return false
+			}
+			continue
+		}
 		if e.Outcome == nil {
 			return false
 		}
+		n++
 		got := map[string]bool{}
 		for _, ob := range e.Outcome.EVQ {
 			if !ob.Passed {

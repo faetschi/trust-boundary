@@ -1154,3 +1154,20 @@ func TestRoundedOutputIsStable(t *testing.T) {
 		t.Fatal("summary contains NaN")
 	}
 }
+
+// TestMissingVIsDescriptiveOnly pins D44: tasks without a V result are counted
+// under V.Missing, not as V failures, and never change the friction decision.
+func TestMissingVIsDescriptiveOnly(t *testing.T) {
+	in := cleanInput()
+	for i := 0; i < 7; i++ {
+		in.Compliant[i].VSuccess, in.Compliant[i].VMissing = false, true
+	}
+	in.Compliant[7].VSuccess = false // a real V failure stays a failure
+	s := mustSummarize(t, in)
+	if v := s.Configurations.V; v.Tasks != 100 || v.Missing != 7 || v.Failure != 1 || v.Success != 92 {
+		t.Fatalf("V = %+v", v)
+	}
+	if !s.Clauses.Friction.Evaluable || !s.Clauses.Friction.Passed {
+		t.Fatalf("friction = %+v, want evaluable and passed with V missing", s.Clauses.Friction)
+	}
+}

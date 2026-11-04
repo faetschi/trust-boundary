@@ -141,6 +141,10 @@ func (r *Runner) Rerun(ctx context.Context, stepID string) error {
 	if !ok {
 		return fmt.Errorf("runner: unknown step %q", stepID)
 	}
+	// V is descriptive (D44): a lost V result is reported as missing, never rerun.
+	if st.Configuration == CfgV {
+		return fmt.Errorf("%w: %s is descriptive Configuration V", ErrRerunNotAllowed, stepID)
+	}
 	orig := r.j.terminalOf(stepID, 1)
 	if orig == nil || orig.Kind != EntryDone || !outageEvidenced(orig.Outcome) {
 		return fmt.Errorf("%w: %s", ErrRerunNotAllowed, stepID)

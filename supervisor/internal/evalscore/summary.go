@@ -106,11 +106,13 @@ type BConfig struct {
 	Failure int `json:"failure"`
 }
 
-// VConfig counts vanilla-utility outcomes.
+// VConfig counts vanilla-utility outcomes. A task without a V result counts as
+// missing, not as a failure.
 type VConfig struct {
 	Tasks   int `json:"tasks"`
 	Success int `json:"success"`
 	Failure int `json:"failure"`
+	Missing int `json:"missing"`
 }
 
 // ChannelSummary aggregates the P/C calibration pairs of one channel. A pair
@@ -641,9 +643,12 @@ func Summarize(in Input) (Summary, error) {
 		} else {
 			c.Failure++
 		}
-		if r.VSuccess {
+		switch {
+		case r.VMissing:
+			v.Missing++
+		case r.VSuccess:
 			v.Success++
-		} else {
+		default:
 			v.Failure++
 		}
 		switch {
