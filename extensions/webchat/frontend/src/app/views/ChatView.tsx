@@ -92,21 +92,21 @@ export function ChatView({ model }: { readonly model: WorkspaceModel }) {
   return (
     <div className={styles.view}>
       <div className={styles.conversation}>
-        {/* The session title is the header's heading (Shell.tsx), beside its chips; the chat head keeps the window's summary. */}
-        <div className={styles.headRow}>
-          <p className={styles.summary} data-summary="">
-            {summary}
-          </p>
-        </div>
+        {/* The session title is the header's heading (Shell.tsx), beside its chips; the chat head is one quiet line: the Pi
+            identity and status, and the window's summary at its end. */}
         <div className={styles.facts}>
           <p className={styles.identity}>
             Pi <span>{head.piVersion}</span> · {head.sessionId} · {head.workflowId}
           </p>
           <p className={styles.status}>{head.status}</p>
+          <p className={styles.summary} data-summary="">
+            {summary}
+          </p>
         </div>
       </div>
 
       <div className={styles.toolbar}>
+        <ToggleGroup label="Timeline filters" items={filters} pressed={model.filter} onPress={choose} />
         <div className={styles.posture} role="group" aria-label="Observed posture">
           {!model.loaded ? (
             <span className={styles.postureEmpty}>{unavailableWords(NO_PROJECTION)}</span>
@@ -120,7 +120,6 @@ export function ChatView({ model }: { readonly model: WorkspaceModel }) {
             <span className={styles.postureEmpty}>no decisions or results projected</span>
           )}
         </div>
-        <ToggleGroup label="Timeline filters" items={filters} pressed={model.filter} onPress={choose} />
       </div>
 
       {live ? <LivePanel /> : null}
