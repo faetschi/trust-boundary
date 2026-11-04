@@ -53,7 +53,9 @@ export function ToolCard({ block, verifiedOf, markOf }: ToolCardProps) {
   // The trace takes the state the record is in: a refused record (a DENY verdict, or a result in the deny tone) is deny, else the
   // result's tone, else the request's, else the verdict's. A request with no result is never drawn as running or as success.
   const refused = verdict?.tone === "deny" || stateReadingOf?.tone === "deny";
-  const tone = refused ? "deny" : (stateReadingOf?.tone ?? verdict?.tone ?? "idle");
+  const readTone = refused ? "deny" : (stateReadingOf?.tone ?? verdict?.tone ?? "idle");
+  // Only a terminal result may draw the success tone: an activity that reports "succeeded" with no result after it is a request.
+  const tone = readTone === "ok" && result === null ? "idle" : readTone;
 
   // One wrapping line: at narrow widths the chips move under the summary, not past the line's edge. The headline is the
   // target, bold; the tool and the record are the detail line beneath it, in mono.
