@@ -95,17 +95,15 @@ afterEach(() => {
   shim = null;
 });
 
-describe("the claim boundary folds its explanation at every width, and keeps every value", () => {
+describe("the claim boundary keeps its two sentences beside its values", () => {
   for (const width of [390, 1440]) {
-    it(`at ${width} px, the two sentences are a closed disclosure, and every claim value stays outside it`, async () => {
+    it(`at ${width} px, the values and both sentences are in the popover body, with nothing folded`, async () => {
       shim = installMatchMedia(width);
       const view = show(await loaded(snapshotOf({ panels: panelsDefault() })));
-      const details = view.container.querySelector("details");
-      expect(details?.querySelector("summary")?.textContent).toBe("Presentation only · display only");
-      expect(details?.hasAttribute("open")).toBe(false);
-      expect(details?.textContent).toContain(DISPLAY_ONLY_TEXT);
+      expect(view.container.querySelector("details")).toBeNull();
+      expect(view.container.textContent).toContain("Presentation only: the supervisor retains policy, effect and publication authority.");
+      expect(view.container.textContent).toContain(DISPLAY_ONLY_TEXT);
       const claims = view.container.querySelector("dl");
-      expect(claims?.closest("details")).toBeNull();
       expect(claims?.textContent).toContain("G1");
       expect(claims?.textContent).toContain("Claim-bearing");
       view.unmount();

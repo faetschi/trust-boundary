@@ -5,28 +5,21 @@ import { ToggleGroup, type ToggleItem } from "../ui/ToggleGroup";
 import { LiveRegion } from "../ui/LiveRegion";
 import { useTheme } from "../theme/useTheme";
 import { parseTheme } from "../theme/theme";
-import { isVerifiedProjection } from "../core/format";
 import type { ViewId } from "../core/store";
 import { useLive } from "../live/context";
 import { usePhone, useNarrow } from "./layout";
 import { useWorkspace } from "./WorkspaceProvider";
 import { ShellContext, type ShellControls } from "./shellContext";
-import { Rail, RailToggle } from "./Rail";
+import { Rail, RailToggle, bindingName } from "./Rail";
 import { Footer } from "./Footer";
 import { INSPECTOR_ID, Inspector } from "./Inspector";
-import { ClaimBoundary } from "./ClaimBoundary";
+import { StatusPill } from "./StatusPill";
+import { panelBadge, type BadgeTone } from "./inspector/panelBadge";
 import { focusableIn, trapTarget } from "./focusTrap";
 import { ChatView } from "./views/ChatView";
 import { conversationHead } from "./views/chat/identity";
 import { TrajectoryView } from "./views/TrajectoryView";
-import {
-  EVICTED_LABEL,
-  evictedText,
-  gapText,
-  WINDOW_GAP_LABEL,
-  WINDOW_GAP_TEXT,
-  type ConnectionStatus,
-} from "./status";
+import { EVICTED_LABEL, evictedText, gapText, WINDOW_GAP_LABEL, WINDOW_GAP_TEXT } from "./status";
 import { useUiPrefs, type PanelKey } from "./uiPrefs";
 import type { WorkspaceModel } from "./workspaceStore";
 import styles from "./Shell.module.css";
@@ -42,20 +35,13 @@ const THEME_ITEMS: readonly ToggleItem[] = [
   { value: "dark", label: "Dark" },
 ];
 
-function sourceText(model: WorkspaceModel): string {
-  const scope = isVerifiedProjection(model) ? "" : " · unverified";
-  return `source: ${model.source}${scope}`;
+// The Governance control's badge: the decisions reading, in words, so a closed panel still says "1 deny verdict".
+function governanceBadgeOf(model: WorkspaceModel): { readonly text: string; readonly tone: BadgeTone } {
+  return panelBadge("decisions", model);
 }
 
-function connectionText(status: ConnectionStatus): string {
-  return status.warning ? `${status.label} · ${status.warning}` : status.label;
-}
-
-// With no session chosen nothing connects, so the header does not say "connecting…", which reads as a hang.
-const NO_SESSION_TEXT = "no session selected";
-
-// The application shell: a skip link to the visible view, the header (title, source and connection badges, the claim
-// boundary, the theme and Governance controls), the sessions rail, the workspace with its two views and its footer, and
+// The application shell: a skip link to the visible view, the header (the session breadcrumb, the status pill that opens the
+// claim boundary, the Governance control with its badge, the overflow menu), the sessions rail, the workspace with its two views and its footer, and
 // the governance inspector. The rail and the inspector collapse to icon columns at wide widths, and the inspector is a
 // drawer below the drawer breakpoint. Their choices, and the selected governance panel, are persisted (uiPrefs.ts).
 export function Shell({ version }: { readonly version: string }) {
@@ -226,6 +212,7 @@ export function Shell({ version }: { readonly version: string }) {
     [narrow, drawerOpen, openInspector, closeInspector, selectRecord],
   );
 
+  const governance = governanceBadgeOf(model);
   const view = model.view;
   const skipLabel = view === "chat" ? "Skip to the chat transcript" : "Skip to the trajectory ledger";
   const hasNotice =
@@ -262,32 +249,27 @@ export function Shell({ version }: { readonly version: string }) {
             {phone ? null : <RailToggle expanded={railExpanded} onToggle={toggleRail} />}
           </div>
           <div className={styles.titleRow}>
-            {/* The session title is the workspace heading, on the row with its source and connection chips. */}
+            {/* The session title is the workspace heading: a breadcrumb (the source it is read from, then the session). */}
+            <p className={styles.crumb}>{bindingName(model.source)} /</p>
             <h2 className={styles.sessionTitle}>{conversationHead(model.session, model.loaded).title}</h2>
-            <div className={styles.badges}>
-              <span className={styles.badge} data-source={model.source}>
-                {sourceText(model)}
-              </span>
-              {model.source === "fixture" || model.source === "replay" ? (
-                <span className={styles.badge} data-demonstration="">
-                  demonstration · not a live session
-                </span>
-              ) : null}
-              <span className={styles.badge} data-connection={noSession ? "idle" : model.status.state}>
-                {noSession ? NO_SESSION_TEXT : connectionText(model.status)}
-              </span>
-            </div>
             <div className={styles.controls}>
-              <button
-                ref={toggleRef}
-                type="button"
-                className={styles.drawerToggle}
-                aria-controls={INSPECTOR_ID}
-                aria-expanded={narrow ? drawerOpen : !inspectorCollapsed}
-                onClick={toggleInspector}
-              >
-                Governance
-              </button>
+              <StatusPill model={model} noSession={noSession} />
+              <span className={styles.governanceControl}>
+                <button
+                  ref={toggleRef}
+                  type="button"
+                  className={styles.drawerToggle}
+                  aria-controls={INSPECTOR_ID}
+                  aria-expanded={narrow ? drawerOpen : !inspectorCollapsed}
+                  aria-describedby="governance-badge"
+                  onClick={toggleInspector}
+                >
+                  Governance
+                </button>
+                <span id="governance-badge" className={styles.governanceBadge} data-tone={governance.tone}>
+                  {governance.text}
+                </span>
+              </span>
               {/* The theme switch is an overflow item: a native disclosure, so it is one Tab stop and opens with Enter or Space. */}
               <details className={styles.more}>
                 <summary className={styles.moreSummary} aria-label="More options">
@@ -303,9 +285,6 @@ export function Shell({ version }: { readonly version: string }) {
                 </div>
               </details>
             </div>
-          </div>
-          <div className={styles.claimRow}>
-            <ClaimBoundary model={model} />
           </div>
         </header>
         <div

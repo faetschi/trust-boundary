@@ -54,7 +54,7 @@ function turnsWords(value: unknown): string {
 }
 
 // The name of the source the page is bound to. The fixture is named as such; any other source is named by its class.
-function bindingName(source: string): string {
+export function bindingName(source: string): string {
   return source === "fixture" ? "Fixture workspace" : `Workspace (${source})`;
 }
 
