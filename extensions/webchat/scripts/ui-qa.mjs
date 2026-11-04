@@ -1657,6 +1657,10 @@ async function checkF(ctx) {
     // does not scroll; the transcript is its own scroll container. The reader goes to the tail, then away from it, and the
     // count is measured from that point (a reader who never reached the tail would count every record since load).
     const LOG = `document.querySelector('[role="log"][aria-label="Transcript"]')`;
+    // Contract change (design pass): a run of three or more tool actions is one closed group line, so the demo transcript is
+    // short. Open the group, so the transcript is long enough to scroll away from.
+    await clickSelector('[data-group] details > summary');
+    await sleep(200);
     await evaluate(`(() => { const l = ${LOG}; l.scrollTop = l.scrollHeight; return true; })()`);
     await sleep(300);
     await evaluate(`(() => { const l = ${LOG}; l.scrollTop = 0; return true; })()`);
