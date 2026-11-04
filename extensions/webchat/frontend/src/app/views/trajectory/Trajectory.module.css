@@ -74,11 +74,10 @@
 .rail {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1h);
-  padding: var(--space-2h) var(--space-3);
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  background: color-mix(in oklch, var(--foreground) 2%, transparent);
 }
 
 .lane {
@@ -225,12 +224,10 @@
 
 /* The axis note sits inside the panel, under a dashed rule. It states what the axis is, and it stays visible. */
 .axis {
-  margin: var(--space-1h) 0 0;
-  padding-top: var(--space-2);
-  border-top: 1px dashed var(--border);
-  color: var(--warning-foreground);
-  font-size: var(--text-xs);
-  line-height: var(--lh-xs);
+  margin: var(--space-1) 0 0;
+  color: var(--muted-foreground);
+  font-size: var(--text-2xs);
+  line-height: var(--lh-2xs);
 }
 
 .railNote {
@@ -274,19 +271,13 @@
 
 .groupTitle {
   order: 0;
-  display: inline-grid;
-  place-items: center;
   flex: 0 1 auto;
-  min-width: 1.5rem;
-  height: 1.125rem;
-  padding: 0 var(--space-1);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-xs);
-  background: var(--muted);
   color: var(--foreground);
+  font-family: var(--font-mono);
   font-size: var(--text-2xs);
-  font-weight: 700;
-  letter-spacing: 0.04em;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -295,7 +286,7 @@
 .groupMeta {
   order: 2;
   color: var(--muted-foreground);
-  font-size: var(--text-xs);
+  font-size: var(--text-2xs);
   white-space: nowrap;
 }
 
@@ -313,8 +304,8 @@
   align-items: center;
   gap: var(--space-1h) var(--space-2h);
   width: 100%;
-  min-height: var(--row-h-cell);
-  padding: var(--space-1h) var(--row-pad-x);
+  min-height: var(--row-h-toolbar);
+  padding: var(--space-1) var(--row-pad-x);
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   background: transparent;
@@ -345,10 +336,7 @@
 .label {
   min-width: 0;
   max-width: 100%;
-  padding: 1px 5px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-xs);
-  background: color-mix(in oklch, var(--foreground) 3%, transparent);
+  font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -384,15 +372,14 @@
   max-width: 100%;
 }
 
+/* The unverified mark is quiet text, not a chip: it is the same word on every row of an unverified projection, so it reads as
+   a texture of the ledger and does not compete with the state chip. The words stay. */
 .unverified {
   display: inline-flex;
   align-items: center;
-  min-height: 20px;
-  padding: 0 var(--space-1h);
-  border: 1px dotted var(--muted-foreground);
-  border-radius: var(--radius-xs);
   color: var(--muted-foreground);
-  font-size: var(--text-xs);
+  font-size: var(--text-2xs);
+  font-style: italic;
 }
 
 /* The tail control sits over the foot of the ledger, where the reader is looking. At phone widths the page scrolls,
