@@ -84,6 +84,11 @@ type Inputs struct {
 	Manifest evalcorpus.Manifest
 	Trials   evalscore.Input
 	Ledger   usdledger.Snapshot
+	// AttributionsDigest is the digest of the pinned attribution file and
+	// AttributionRubricDigest the rubric that file names. Both are empty when
+	// the trials carry no attribution input, and neither is empty otherwise.
+	AttributionsDigest      string
+	AttributionRubricDigest string
 }
 
 // Bindings tie the report to its inputs.
@@ -97,6 +102,11 @@ type Bindings struct {
 	// LedgerSnapshotDigest is the domain-separated digest of the canonical JSON of
 	// the entire usdledger.Snapshot.
 	LedgerSnapshotDigest string `json:"ledger_snapshot_digest"`
+
+	// AttributionsDigest and AttributionRubricDigest bind the attribution input
+	// of the friction candidates (empty when there is none).
+	AttributionsDigest      string `json:"attributions_digest"`
+	AttributionRubricDigest string `json:"attribution_rubric_digest"`
 }
 
 // KindCoverage compares one kind of manifest case with its trial records.

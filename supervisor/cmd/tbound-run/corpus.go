@@ -21,6 +21,8 @@ type plan struct {
 	sched    runner.Schedule
 	route    runner.RouteCoverage
 	evq      runner.EVQResults // the pinned conformance results
+	// attributions is the pinned attribution file, zero when run.json names none.
+	attributions attributionSet
 }
 
 func quotasFor(profile string) (evalcorpus.Quotas, error) {
@@ -109,5 +111,9 @@ func loadPlan(cfg runConfig) (plan, error) {
 	if sched.RunBinding, err = cfg.runBinding(route, evqDigest); err != nil {
 		return plan{}, err
 	}
-	return plan{cfg: cfg, manifest: allocation, digest: digest, sched: sched, route: route, evq: evq}, nil
+	attributions, err := loadAttributions(cfg.Attributions)
+	if err != nil {
+		return plan{}, err
+	}
+	return plan{cfg: cfg, manifest: allocation, digest: digest, sched: sched, route: route, evq: evq, attributions: attributions}, nil
 }
