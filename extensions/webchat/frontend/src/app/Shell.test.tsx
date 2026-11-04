@@ -110,6 +110,9 @@ afterEach(() => {
 
 beforeEach(() => {
   document.body.innerHTML = "";
+  // The governance column starts collapsed (uiPrefs.ts). Most cases below read its panels, so they start from an opened column; the
+  // "starts collapsed" case clears this.
+  window.localStorage.setItem(UI_PREFS_KEY, JSON.stringify({ railCollapsed: false, inspectorCollapsed: false, panel: "decisions" }));
 });
 
 describe("Shell: landmarks and headings", () => {
@@ -217,6 +220,18 @@ describe("Shell: the claim boundary and the source are always visible", () => {
     act(() => fake.sources[0]?.open());
     expect(q("[data-connection]").textContent).toBe("connected");
     expect(mounted?.container.querySelector("[role='status']")?.textContent?.trim()).toBe("Stream connected.");
+  });
+});
+
+describe("Shell: the governance column starts collapsed", () => {
+  it("starts as its icon column, with the header control and its badge saying what is there, and opens with one press", async () => {
+    window.localStorage.removeItem(UI_PREFS_KEY);
+    renderShell(1440);
+    await settle();
+    expect(byLabel("Governance").getAttribute("aria-expanded")).toBe("false");
+    expect(q("#governance-badge").textContent).toMatch(/verdict/);
+    click(byLabel("Governance"));
+    expect(byLabel("Governance").getAttribute("aria-expanded")).toBe("true");
   });
 });
 
@@ -450,6 +465,7 @@ describe("Shell: the sessions rail", () => {
   });
 
   it("is a disclosure strip on a phone, collapsed by default, and its state is not persisted", async () => {
+    window.localStorage.removeItem(UI_PREFS_KEY);
     renderShell(390);
     await settle();
     const strip = q("nav h2 button");
