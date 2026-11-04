@@ -32,6 +32,8 @@ var unitDirectives = []struct{ key, value string }{
 	{"RuntimeDirectory", "tbound-product"},
 	{"RuntimeDirectoryMode", "0750"},
 	{"ReadWritePaths", RuntimeDir + " " + StateDir},
+	// Missing command inputs must not prevent a Bash-deny installation from starting.
+	{"BindReadOnlyPaths", "-/usr/bin/podman -/usr/bin/crun -/usr/local/bin/cosign -" + PodmanConfigDir},
 	{"UnsetEnvironment", "DBUS_SESSION_BUS_ADDRESS"},
 	{"Environment", strings.Join(commandCellEnvironment(), " ")},
 }

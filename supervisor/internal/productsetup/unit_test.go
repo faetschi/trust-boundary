@@ -34,7 +34,8 @@ func TestProductUnitPinsCommandCellEnvironment(t *testing.T) {
 	if err := ValidateUnit(RenderUnit()); err != nil {
 		t.Fatalf("the rendered unit is refused: %v", err)
 	}
-	for _, want := range []string{"DelegateSubgroup=runner", environment} {
+	for _, want := range []string{"DelegateSubgroup=runner", environment,
+		"BindReadOnlyPaths=-/usr/bin/podman -/usr/bin/crun -/usr/local/bin/cosign -/etc/tbound-product/podman"} {
 		if !strings.Contains(unit, "\n"+want+"\n") {
 			t.Fatalf("the unit does not carry %q as its own line:\n%s", want, unit)
 		}
@@ -61,6 +62,22 @@ func TestProductUnitPinsCommandCellEnvironment(t *testing.T) {
 		mutated := strings.Replace(unit, "[Service]\n", "[Service]\n"+extra+"\n", 1)
 		if err := ValidateUnit([]byte(mutated)); !errors.Is(err, ErrRefused) {
 			t.Errorf("%s: the validator accepted the unit: %v", name, err)
+		}
+	}
+}
+
+func TestProductUnitReadOnlyInputsKeepRuntimeStorageWritable(t *testing.T) {
+	for _, artifact := range []string{CommandSeccompPath, CommandCosignPublicKeyPath, CommandOCILayoutPath} {
+		if !PathInside(artifact, PodmanConfigDir) {
+			t.Errorf("command input %s is outside the read-only Podman bind", artifact)
+		}
+	}
+	if !PathInside(CommandOCILayoutPath, PodmanConfigDir) || CommandOCILayoutPath == PodmanConfigDir {
+		t.Fatal("the OCI layout must be strictly below the bind, without a nested mount")
+	}
+	for _, writable := range []string{PodmanHomeDir, PodmanGraphRootDir, PodmanRunrootDir, PodmanCacheDir, PodmanTmpDir} {
+		if PathInside(writable, PodmanConfigDir) || (!PathInside(writable, StateDir) && !PathInside(writable, RuntimeDir)) {
+			t.Errorf("Podman writable path %s is outside the unit's write exceptions", writable)
 		}
 	}
 }

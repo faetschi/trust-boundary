@@ -27,7 +27,7 @@ func (f *fixture) useFormatTwoInstallation() {
 	f.t.Helper()
 	var lines []string
 	for _, line := range strings.Split(string(RenderUnit()), "\n") {
-		if !strings.HasPrefix(line, "DelegateSubgroup=") && !strings.HasPrefix(line, "Environment=") {
+		if !strings.HasPrefix(line, "DelegateSubgroup=") && !strings.HasPrefix(line, "Environment=") && !strings.HasPrefix(line, "BindReadOnlyPaths=") {
 			lines = append(lines, line)
 		}
 	}
