@@ -404,17 +404,6 @@
   left: 50%;
   transform: translateX(-50%);
   z-index: var(--z-sticky);
-  min-height: var(--row-h-button);
-  padding: 0 var(--space-4);
-  border: 1px solid var(--primary);
-  border-radius: var(--radius-sm);
-  background: var(--primary);
-  color: var(--primary-foreground);
-  box-shadow: var(--shadow-panel);
-  font: inherit;
-  font-size: var(--text-sm);
-  font-weight: 600;
-  cursor: pointer;
 }
 
 @media (max-width: 760px) {

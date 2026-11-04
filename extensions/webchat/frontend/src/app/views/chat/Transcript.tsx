@@ -6,6 +6,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createIncrementalParser } from "../../../markdown/incremental";
 import { Markdown } from "../../../markdown/react";
+import { Button } from "../../../ui/Button";
 import { Chip } from "../../../ui/Chip";
 import { cx } from "../../../ui/cx";
 import { useAnnouncer } from "../../../ui/LiveRegion";
@@ -74,9 +75,9 @@ function MessageView({ item, reading, onRecord }: MessageViewProps) {
           <Chip tone={reading.tone}>{reading.label}</Chip>
         </p>
         <span className={styles.rule} aria-hidden="true" />
-        <button type="button" className={styles.recordButton} onClick={(event) => onRecord(item.id, event.currentTarget)}>
+        <Button variant="ghost" size="sm" className={styles.recordButton} onClick={(event) => onRecord(item.id, event.currentTarget)}>
           {`record ${item.sequence}`}
-        </button>
+        </Button>
       </div>
       <MessageText item={item} />
       {truncated ? <p className={styles.note}>Transcript text truncated by the projection.</p> : null}
@@ -154,9 +155,9 @@ function CopyButton({ text, truncated, role, sequence }: CopyButtonProps) {
           : COPY_LABEL;
   const name = copyName(label, role, sequence);
   return (
-    <button type="button" className={styles.copy} aria-label={name} title={name} onClick={() => void copy()}>
+    <Button variant="ghost" size="icon" aria-label={name} title={name} onClick={() => void copy()}>
       <CopyGlyph state={outcome.state} />
-    </button>
+    </Button>
   );
 }
 

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { jumpLabel } from "../../core/anchor";
 import { visibleRecords } from "../../core/trajectory";
+import { Button } from "../../ui/Button";
 import { failureText, projectionPhase } from "../status";
 import { useShell } from "../shellContext";
 import type { WorkspaceModel } from "../workspaceStore";
@@ -70,9 +71,9 @@ export function TrajectoryView({ model }: { readonly model: WorkspaceModel }) {
         projection={model}
       />
       {tail.pending > 0 ? (
-        <button type="button" className={styles.jump} onClick={tail.jump}>
+        <Button className={styles.jump} onClick={tail.jump}>
           {jumpLabel(tail.pending)}
-        </button>
+        </Button>
       ) : null}
     </div>
   );

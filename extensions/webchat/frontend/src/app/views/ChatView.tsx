@@ -3,6 +3,7 @@ import { jumpLabel } from "../../core/anchor";
 import type { ItemView } from "../../core/contract";
 import { FILTERS, countFilter, filterItems, governanceCounts } from "../../core/filters";
 import { turnsOf } from "../../core/store";
+import { Button } from "../../ui/Button";
 import { Chip } from "../../ui/Chip";
 import { useAnnouncer } from "../../ui/LiveRegion";
 import { ToggleGroup, type ToggleItem } from "../../ui/ToggleGroup";
@@ -139,9 +140,9 @@ export function ChatView({ model }: { readonly model: WorkspaceModel }) {
           on its top edge, so the composer never covers the jump. */}
       <div className={styles.dock}>
         {tail.pending > 0 ? (
-          <button type="button" className={styles.jump} onClick={tail.jump}>
+          <Button variant="outline" className={styles.jump} onClick={tail.jump}>
             {jumpLabel(tail.pending)}
-          </button>
+          </Button>
         ) : null}
         {live ? <LiveComposer /> : <Composer session={model.session} />}
       </div>
