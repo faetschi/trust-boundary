@@ -311,7 +311,7 @@ func (a *app) reportCmd(args []string) error {
 				return err
 			}
 		}
-		fmt.Fprintf(a.out, "report_digest %s\nclaim_bearing false\nledger %s\n", rep.Digest, ledgerSyntheticEmpty)
+		fmt.Fprintf(a.out, "report_digest %s\nclaim_bearing false\nledger %s\n", rep.Digest, ledger.LedgerID)
 		a.printExport(res)
 		return nil
 	})
