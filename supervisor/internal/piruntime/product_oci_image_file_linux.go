@@ -23,7 +23,8 @@ func readProductOCIImageFile(ctx context.Context, layoutPath, manifestDigest, im
 	if err != nil {
 		return ociImageFile{}, err
 	}
-	if err := refuseProductOCIRedirectedWrites(ctx, layoutPath, layers, requireImmutable); err != nil {
+	hardlinkTargets, err := refuseProductOCIRedirectedWrites(ctx, layoutPath, layers, requireImmutable)
+	if err != nil {
 		return ociImageFile{}, err
 	}
 	cache := map[string]ociLayerResult{}
@@ -82,6 +83,10 @@ func readProductOCIImageFile(ctx context.Context, layoutPath, manifestDigest, im
 			if result.node.typeflag != tar.TypeReg || result.file == nil {
 				return ociImageFile{}, fmt.Errorf("/%s is not a regular file in the signed image", target)
 			}
+			// Hardlink headers can chmod/chown the shared inode during extraction.
+			if hardlinkTargets[target] {
+				return ociImageFile{}, fmt.Errorf("/%s is a hardlink source in the signed image", target)
+			}
 			return *result.file, nil
 		}
 		switch result.node.typeflag {
@@ -107,9 +112,10 @@ func readProductOCIImageFile(ctx context.Context, layoutPath, manifestDigest, im
 	return ociImageFile{}, fmt.Errorf("%s is not a regular file in the signed image", imagePath)
 }
 
-func refuseProductOCIRedirectedWrites(ctx context.Context, layoutPath string, layers []ociLayerDescriptor, requireImmutable bool) error {
+func refuseProductOCIRedirectedWrites(ctx context.Context, layoutPath string, layers []ociLayerDescriptor, requireImmutable bool) (map[string]bool, error) {
 	// shortcut: retain whited-out symlinks until a directory header replaces them; refine if valid images need it.
 	symlinks := map[string]bool{}
+	hardlinkTargets := map[string]bool{}
 	checkAncestors := func(name string) error {
 		for directory := path.Dir(name); directory != "."; directory = path.Dir(directory) {
 			if symlinks[directory] {
@@ -146,6 +152,7 @@ func refuseProductOCIRedirectedWrites(ctx context.Context, layoutPath string, la
 				if symlinks[target] {
 					return fmt.Errorf("OCI hardlink source /%s is a symlink", target)
 				}
+				hardlinkTargets[target] = true
 			}
 			switch header.Typeflag {
 			case tar.TypeSymlink:
@@ -160,9 +167,9 @@ func refuseProductOCIRedirectedWrites(ctx context.Context, layoutPath string, la
 		size, err := readOCILayer(filepath.Join(layoutPath, "blobs", "sha256", strings.TrimPrefix(layer.Digest, "sha256:")),
 			layer, budget, requireImmutable, scan)
 		if err != nil {
-			return fmt.Errorf("validate OCI layer %s: %w", layer.Digest, err)
+			return nil, fmt.Errorf("validate OCI layer %s: %w", layer.Digest, err)
 		}
 		budget -= size
 	}
-	return nil
+	return hardlinkTargets, nil
 }

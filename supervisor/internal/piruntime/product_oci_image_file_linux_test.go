@@ -36,6 +36,9 @@ func TestProductOCIImageFileRefusesRedirectedLayerEntries(t *testing.T) {
 				{"reviewer case", [][]ociTestEntry{lower, {dir("usr/"), dir(realDir + "/"), link("alias", realDir), regEntry("alias/"+base, "B", 0o555)}}, ""},
 				{"lower layer alias", [][]ociTestEntry{append(append([]ociTestEntry{}, lower...), link("alias", realDir)), {regEntry("alias/"+base, "B", 0o555)}}, ""},
 				{"same layer alias", [][]ociTestEntry{append(append([]ociTestEntry{}, lower...), link("alias", realDir), regEntry("alias/"+base, "B", 0o555))}, ""},
+				{"alias defined after write", [][]ociTestEntry{lower, {regEntry("alias/"+base, "B", 0o555), link("alias", realDir)}}, "A"},
+				{"PAX path through alias", [][]ociTestEntry{lower, {link("alias", realDir), regEntry("alias/"+strings.Repeat("p", 300), "B", 0o555)}}, ""},
+				{"regular file replaces alias", [][]ociTestEntry{append(append([]ociTestEntry{}, lower...), link("alias", realDir)), {regEntry("alias", "file", 0o555), regEntry("alias/"+base, "B", 0o555)}}, ""},
 				{"normalized names", [][]ociTestEntry{lower, {link("././alias/", realDir), regEntry("././alias/"+base, "B", 0o555)}}, ""},
 				{"directory replaces alias", [][]ociTestEntry{append(append([]ociTestEntry{}, lower...), link("alias", realDir)), {dir("./alias/"), regEntry("./alias/"+base, "B", 0o555)}}, "A"},
 				{"same layer directory replaces alias", [][]ociTestEntry{lower, {link("alias", realDir), dir("alias/"), regEntry("alias/"+base, "B", 0o555)}}, "A"},
@@ -45,7 +48,9 @@ func TestProductOCIImageFileRefusesRedirectedLayerEntries(t *testing.T) {
 				{"hardlink source through alias", [][]ociTestEntry{lower, {link("alias", realDir), {name: "copy", typeflag: tar.TypeLink, link: "./alias/" + base}}}, ""},
 				{"hardlink destination through alias", [][]ociTestEntry{lower, {link("alias", realDir), {name: "alias/copy", typeflag: tar.TypeLink, link: realPath}}}, ""},
 				{"hardlink copies symlink", [][]ociTestEntry{lower, {link("alias", realDir), {name: "copy", typeflag: tar.TypeLink, link: "alias"}, regEntry("copy/"+base, "B", 0o555)}}, ""},
-				{"hardlink regular source", [][]ociTestEntry{lower, {{name: "copy", typeflag: tar.TypeLink, link: realPath}}}, "A"},
+				{"same layer hardlink metadata", [][]ociTestEntry{append(append([]ociTestEntry{}, lower...), ociTestEntry{name: "copy", typeflag: tar.TypeLink, link: realPath, mode: 0o777})}, ""},
+				{"upper layer hardlink metadata", [][]ociTestEntry{lower, {{name: "copy", typeflag: tar.TypeLink, link: "./" + realPath, mode: 0o4777}}}, ""},
+				{"unrelated hardlink", [][]ociTestEntry{lower, {regEntry("unrelated", "other", 0o555), {name: "copy", typeflag: tar.TypeLink, link: "unrelated", mode: 0o777}}}, "A"},
 			} {
 				t.Run(tc.name, func(t *testing.T) {
 					var layers [][]byte
@@ -58,7 +63,7 @@ func TestProductOCIImageFileRefusesRedirectedLayerEntries(t *testing.T) {
 						if err == nil {
 							t.Fatalf("redirected layer entry accepted: verified %+v instead of refusing the image", got)
 						}
-						if !strings.Contains(err.Error(), "symlink") {
+						if !strings.Contains(err.Error(), "symlink") && !strings.Contains(err.Error(), "hardlink") {
 							t.Fatalf("expected redirected-entry refusal, got %v", err)
 						}
 						return
