@@ -424,6 +424,20 @@ func TestProductQualificationEvidenceCheckSummarizesTheLatestRunAsAdvisory(t *te
 	}
 }
 
+func TestProductDoctorReadsQualificationFromServiceStateRoot(t *testing.T) {
+	// Guard the production caller too: a correct reader still misses every run under StateDir.
+	source, err := os.ReadFile("product_admin_doctor_linux.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(source), "productQualificationEvidenceCheck(productsetup.TurnsDir)") {
+		t.Fatal("doctor must use the service StateRoot (TurnsDir)")
+	}
+	if got := productQualificationRoot(productsetup.TurnsDir); got != "/var/lib/tbound-product/turns/qualification" {
+		t.Fatalf("installed qualification evidence: %s", got)
+	}
+}
+
 // plantOpenedOrphan records one command scope as a killed process leaves it: an fsynced opened record, and a scope
 // directory when present is true.
 func (h *qualificationHarness) plantOpenedOrphan(t *testing.T, stateRoot, workflow string, present bool) productD09ScopeOwner {

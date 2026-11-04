@@ -197,7 +197,7 @@ func openProductQualificationCell(ctx context.Context, target productQualificati
 		return nil, err
 	}
 	runID := "q-" + time.Now().UTC().Format("20060102T150405Z") + "-" + hex.EncodeToString(random[:])
-	base := filepath.Join(env.StateRoot, productQualificationDir)
+	base := productQualificationRoot(env.StateRoot)
 	if err := os.MkdirAll(base, 0o700); err != nil {
 		return nil, err
 	}
@@ -675,9 +675,13 @@ func (r *productQualificationRun) writeEvidence() error {
 
 // productQualificationEvidenceCheck is the doctor's advisory summary of the latest retained qualification. It reports
 // what the last start recorded and never that Bash is available now: every start qualifies again.
+func productQualificationRoot(stateRoot string) string {
+	return filepath.Join(stateRoot, productQualificationDir)
+}
+
 func productQualificationEvidenceCheck(stateDir string) productsetup.Check {
 	check := productsetup.Check{Name: "command qualification", Status: productsetup.Warn}
-	base := filepath.Join(stateDir, productQualificationDir)
+	base := productQualificationRoot(stateDir)
 	entries, err := os.ReadDir(base)
 	if errors.Is(err, os.ErrNotExist) {
 		check.Detail = "no qualification evidence: no Bash-enabled start has run on this host"

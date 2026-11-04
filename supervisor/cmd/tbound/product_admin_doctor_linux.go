@@ -65,7 +65,7 @@ func hostPrerequisites() []productsetup.Check {
 	add("ext4-managed-root", unix.Statfs(probe, &fs) == nil && fs.Type == extSuperMagic, "the managed root at "+productsetup.StateDir+" must be on ext4")
 	info, err := os.Stat("/run/systemd/system")
 	add("systemd", err == nil && info.IsDir(), "systemd is the service manager")
-	return append(checks, productQualificationEvidenceCheck(productsetup.StateDir))
+	return append(checks, productQualificationEvidenceCheck(productsetup.TurnsDir))
 }
 
 // cgroupKillAvailable looks below the root because the kernel creates cgroup.kill only in non-root cgroups.
