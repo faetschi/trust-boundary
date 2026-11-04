@@ -2,6 +2,7 @@ import type { SessionHeader, StreamHealth, StreamStatus } from "../core/contract
 import { humanize } from "../core/format";
 import type { ChipTone } from "../ui/Chip";
 import { Chip } from "../ui/Chip";
+import { Disclosure } from "../ui/Disclosure";
 import { StateDot } from "../ui/StateDot";
 import { useLive } from "../live/context";
 import { LiveSessions } from "../live/LiveSessions";
@@ -30,6 +31,9 @@ const HEALTH_WORDS: Readonly<Record<StreamHealth, string>> = {
 // says the same, render.mjs). The note states it, and it offers no control for it.
 const OTHER_SESSIONS_NOTE =
   "Other Pi sessions are not listed. This page receives one session from the supervisor. A session list needs the supervisor session service, which is not available in this build.";
+
+// The two read-only footnotes fold under this summary: they are said once, in full, and do not compete with the session list.
+const READ_ONLY_NOTES_SUMMARY = "Read-only view · other sessions";
 
 const UNTITLED = "Untitled session unavailable";
 const NO_VERSION = "Pi version unavailable";
@@ -186,7 +190,7 @@ export function Rail({ model, phone, expanded, onToggle, inert = false }: RailPr
               {live ? (
                 <p className={styles.note}>{LIVE_FOOTNOTE}</p>
               ) : (
-                <>
+                <Disclosure summary={READ_ONLY_NOTES_SUMMARY}>
                   <p role="note" className={styles.otherNote}>
                     {OTHER_SESSIONS_NOTE}
                   </p>
@@ -194,7 +198,7 @@ export function Rail({ model, phone, expanded, onToggle, inert = false }: RailPr
                     Read-only projection. No launch, cancel, approve, fork or execute control exists in this client; those are
                     supervisor authority.
                   </p>
-                </>
+                </Disclosure>
               )}
             </div>
           </>
