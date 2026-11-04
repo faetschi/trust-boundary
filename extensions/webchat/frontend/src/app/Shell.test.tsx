@@ -182,7 +182,7 @@ describe("Shell: the claim boundary and the source are always visible", () => {
   it("shows no session and no rows before a projection is loaded", () => {
     renderShell(1440);
     expect(q("nav").textContent).toContain("No session projection");
-    expect(q("nav").textContent).toContain("unavailable (no projection loaded)");
+    expect(q("#helper-bar").textContent).toContain("unavailable (no projection loaded)");
     click(governanceTab("Qualification"));
     expect(q("aside").textContent).toContain("unavailable (no projection loaded)");
     expect(q("aside").textContent).not.toContain("No warnings projected.");
@@ -197,7 +197,7 @@ describe("Shell: the claim boundary and the source are always visible", () => {
     }
     expect(values.length).toBeGreaterThan(10);
     for (const value of values) expect(value, value).toMatch(/^unavailable/);
-    expect(q("nav").textContent).not.toMatch(/No streams projected/);
+    expect(q("#helper-bar").textContent).not.toMatch(/No streams projected/);
     expect(q("[role='group'][aria-label='Observed posture']").textContent).not.toContain("no decisions or results projected");
   });
 
@@ -681,16 +681,18 @@ describe("Shell: the header control and the workspace column", () => {
     }
   });
 
-  it("holds the footer inside the workspace column, after the views, as the column's last box", async () => {
+  it("keeps the details card closed until the Details control opens it, and the retention statistics stay in the page", async () => {
     renderShell(1440);
     await settle();
-    const main = q("main[aria-label='Workspace']");
-    const footer = q("main [role='group'][aria-label='Session statistics']").parentElement;
-    expect(footer?.parentElement).toBe(main);
-    expect(main.lastElementChild).toBe(footer);
-    expect(q("[data-view]").compareDocumentPosition(footer as HTMLElement) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const card = q("#helper-bar");
+    const toggle = q("button[aria-controls='helper-bar']");
+    expect(card.hidden).toBe(true);
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(card.querySelector("[role='group'][aria-label='Session statistics']")).not.toBeNull();
+    click(toggle);
+    expect(card.hidden).toBe(false);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
   });
-
   it("keeps the governance tab strip in its own scroll box, so the page never scrolls sideways", () => {
     const css = readFileSync(resolve(process.cwd(), "src/app/inspector/PanelTabs.module.css"), "utf8");
     expect(declarationsOf(css, ".strip")).toMatch(/overflow-x:\s*auto;/);

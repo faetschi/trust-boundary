@@ -23,6 +23,7 @@ import { WorkspaceProvider, useWorkspace } from "../WorkspaceProvider";
 import { createWorkspaceStore, type WorkspaceModel } from "../workspaceStore";
 import { WINDOW_GAP_LABEL, WINDOW_GAP_TEXT } from "../status";
 import { ChatView, TRANSCRIPT_NOTICE_POINTER } from "./ChatView";
+import { HelperBar } from "../HelperBar";
 import { TAIL_ANNOUNCE_DELAY_MS } from "./chat/tail";
 import { COPIED_MS } from "./chat/chrome";
 
@@ -34,7 +35,13 @@ function Probe() {
   const model = useWorkspace();
   latest = model;
   liveAnnouncer = useAnnouncer();
-  return <ChatView model={model} />;
+  // The identity and the posture counts live in the details card (HelperBar.tsx), so the probe draws it beside the view.
+  return (
+    <>
+      <ChatView model={model} />
+      <HelperBar model={model} open version="test" />
+    </>
+  );
 }
 
 let mounted: Mounted | null = null;
@@ -255,7 +262,7 @@ describe("the transcript: legacy cases from render.test.mjs", () => {
 
   it("keeps the unverified wording in each tool card's accessible name, though no chip is drawn", async () => {
     await renderLive(fixtureSnapshot());
-    const summaries = qa("summary");
+    const summaries = qa("[role='log'] summary");
     expect(summaries.length).toBeGreaterThan(0);
     for (const summary of summaries) expect(summary.textContent).toContain("unverified");
   });

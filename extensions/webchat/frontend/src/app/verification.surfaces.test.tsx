@@ -110,10 +110,6 @@ function required<T extends Element>(element: T | null | undefined, what: string
   return element;
 }
 
-function workspace(): HTMLElement {
-  return required(root().querySelector("main[aria-label='Workspace']"), "workspace");
-}
-
 beforeEach(() => {
   document.body.innerHTML = "";
 });
@@ -214,9 +210,9 @@ describe("the conversation head and the message marks: reported, not verified un
     expect(root().querySelector("[role='log'] div[data-role='user'] p")?.textContent).toBe("User reported, not verified");
     expect(chatChips()).toContainEqual(["reported, not verified", "reported"]);
     expect(chatChips().some(([text, tone]) => tone === "ok" || text === "verified")).toBe(false);
-    // The head: the session status, read in the view's own status line, as reported, not verified.
+    // The head: the session status, read in the details card's session section, as reported, not verified.
     const head = required(
-      Array.from(workspace().querySelectorAll("p")).find((p) => p.textContent === "completed · reported, not verified"),
+      Array.from(root().querySelectorAll("#helper-bar p")).find((p) => p.textContent === "completed · reported, not verified"),
       "conversation head status",
     );
     expect(head.textContent).toBe("completed · reported, not verified");
@@ -252,12 +248,14 @@ describe("the conversation head and the message marks: reported, not verified un
     expect(chatChips()).toContainEqual(["verified", "ok"]);
   });
 
-  it("the footer reads the statistics as one line, and no statistic is drawn in a success tone", async () => {
+  it("the retention section reads the statistics, and no statistic is drawn in a success tone", async () => {
     // No governance counts are stated, so the verdicts read unavailable. A stated zero would read "0 allow / 0 deny / 0 unknown".
     await open(snapshotOf({ source: "fixture", session, items: [], panels: { ...snapshotOf().panels, governance: {} } }), []);
     const line = root().querySelector("[role='group'][aria-label='Session statistics']");
-    expect(line?.textContent).toMatch(/ · tokens unavailable · timing unavailable$/);
-    expect(line?.textContent).toContain(" · policy verdicts unavailable · ");
+    const parts = Array.from(line?.children ?? []).map((part) => part.textContent);
+    expect(parts).toContain("tokens unavailable");
+    expect(parts).toContain("timing unavailable");
+    expect(parts).toContain("policy verdicts unavailable");
     expect(line?.querySelector("[data-tone='ok']")).toBeNull();
   });
 });

@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { SessionHeader, SourceClass, StreamStatus } from "../core/contract";
-import { snapshotOf, streamDefault } from "../core/testing/builders";
+import { snapshotOf } from "../core/testing/builders";
 import { click, mount } from "../test-support/dom";
 import { fakeWorkspace, flush } from "../test-support/fakes";
 import { Rail, RailToggle } from "./Rail";
@@ -38,9 +38,6 @@ const DEMO_SESSION: SessionHeader = {
   pi_version: "0.87.1",
 };
 
-const NOTE =
-  "Other Pi sessions are not listed. This page receives one session from the supervisor. A session list needs the supervisor session service, which is not available in this build.";
-
 // The desktop collapse toggle on its own: the shell draws it in the header's brand row (Shell.test.tsx checks that).
 function renderToggle(expanded: boolean, onToggle: () => void = () => undefined) {
   return mount(<RailToggle expanded={expanded} onToggle={onToggle} />);
@@ -57,22 +54,9 @@ function renderRail(model: WorkspaceModel, props: { expanded?: boolean; phone?: 
   );
 }
 
-// The text of the stream row and the tone of its dot.
-function streamRow(container: HTMLElement): { readonly text: string; readonly tone: string | null } {
-  const row = container.querySelector("[aria-labelledby='rail-streams'] li");
-  return { text: row?.textContent ?? "", tone: row?.querySelector("[data-tone]")?.getAttribute("data-tone") ?? null };
-}
-
 function sessionRows(container: HTMLElement): HTMLElement[] {
   return Array.from(container.querySelectorAll<HTMLElement>("ul[aria-label='Sessions'] > li"));
 }
-
-const RECEIPT = streamDefault({
-  id: "receipt",
-  label: "retained run receipt",
-  health: "complete",
-  reason: "terminal post-run receipt import",
-});
 
 describe("the sessions rail: one current session, honestly labelled", () => {
   it("is headed Sessions and lists exactly one session row, marked current and not interactive", async () => {
@@ -92,12 +76,6 @@ describe("the sessions rail: one current session, honestly labelled", () => {
     expect(text).toContain("Demo session");
     expect(text).toContain("Pi 0.87.1 · 1 turn");
     expect(text).toContain("completed · reported, not verified");
-    view.unmount();
-  });
-
-  it("states that other sessions are not listed, in these exact words, as a note", async () => {
-    const view = renderRail(await loadedFrom("fixture"));
-    expect(view.container.querySelector("[role='note']")?.textContent).toBe(NOTE);
     view.unmount();
   });
 
@@ -148,11 +126,10 @@ describe("the sessions rail: one current session, honestly labelled", () => {
     view.unmount();
   });
 
-  it("reads before a projection as no session projection, with the same note", () => {
+  it("reads before a projection as no session projection", () => {
     const store = createWorkspaceStore(fakeWorkspace(snapshotOf()).deps);
     const view = renderRail(store.getSnapshot());
     expect(view.container.textContent).toContain("No session projection");
-    expect(view.container.querySelector("[role='note']")?.textContent).toBe(NOTE);
     view.unmount();
   });
 });
@@ -203,32 +180,6 @@ describe("the rail collapses and expands", () => {
     expect(expandedStrip.getAttribute("aria-expanded")).toBe("true");
     expect(sessionRows(open.container)).toHaveLength(1);
     open.unmount();
-  });
-});
-
-describe("the rail's stream health: a finished stream is not a verified outcome", () => {
-  // A stream that completes says only that it ended. The source did not claim completeness, so the row
-  // is neutral in words and in its dot, and it never takes the success tone, from any source.
-  for (const source of ["fixture", "replay", "live"] as const) {
-    it(`reads a complete stream as complete (source did not claim completeness), on the neutral tone, from a ${source} projection`, async () => {
-      const view = renderRail(await loadedFrom(source, [RECEIPT]));
-      const row = streamRow(view.container);
-      expect(row.text).toContain("retained run receipt: complete (source did not claim completeness)");
-      expect(row.tone).toBe("idle");
-      expect(view.container.querySelector("[data-tone='ok']")).toBeNull();
-      view.unmount();
-    });
-  }
-
-  it("reads an unavailable stream in words, on the neutral tone, never the success tone", async () => {
-    const view = renderRail(
-      await loadedFrom("fixture", [streamDefault({ id: "tap", label: "process tap", health: "unavailable", available: false })]),
-    );
-    const row = streamRow(view.container);
-    expect(row.text).toContain("process tap: unavailable, not available");
-    expect(row.tone).toBe("idle");
-    expect(view.container.querySelector("[data-tone='ok']")).toBeNull();
-    view.unmount();
   });
 });
 

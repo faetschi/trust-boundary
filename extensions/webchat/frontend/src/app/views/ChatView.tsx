@@ -1,10 +1,9 @@
 import { useContext, useRef, type ReactNode } from "react";
 import { jumpLabel } from "../../core/anchor";
 import type { ItemView } from "../../core/contract";
-import { FILTERS, countFilter, filterItems, governanceCounts } from "../../core/filters";
+import { FILTERS, countFilter, filterItems } from "../../core/filters";
 import { turnsOf } from "../../core/store";
 import { Button } from "../../ui/Button";
-import { Chip } from "../../ui/Chip";
 import { useAnnouncer } from "../../ui/LiveRegion";
 import { ToggleGroup, type ToggleItem } from "../../ui/ToggleGroup";
 import { EmptyState, ErrorState, LoadingState } from "../../ui/StateMessage";
@@ -16,10 +15,9 @@ import { Composer } from "../Composer";
 import { useLive } from "../../live/context";
 import { LiveComposer } from "../../live/LiveComposer";
 import { LivePanel, LiveReview } from "../../live/LivePanel";
-import { confirmedIn, isVerifiedIn } from "../verification";
-import { filterNameOf, filterSummaryText, postureEntries } from "./chat/readings";
+import { isVerifiedIn } from "../verification";
+import { filterNameOf, filterSummaryText } from "./chat/readings";
 import { markerFor, provenanceOf } from "./chat/provenance";
-import { conversationHead } from "./chat/identity";
 import { TurnView, type RecordOpener } from "./chat/Transcript";
 import type { Verifier } from "./chat/ToolCard";
 import { useTailWindow } from "./chat/tail";
@@ -43,7 +41,6 @@ export function ChatView({ model }: { readonly model: WorkspaceModel }) {
   // The shared gate: a record is verified only in a live, structurally audited projection, and only with
   // its own observed evidence. The posture counts a success as confirmed only when it is verified and not lossy.
   const verifiedOf: Verifier = (item) => isVerifiedIn(model, item);
-  const confirmedOf = (item: ItemView) => confirmedIn(model, item);
   const tail = useTailWindow({
     region: logRef,
     actions: model.actions,
@@ -58,7 +55,6 @@ export function ChatView({ model }: { readonly model: WorkspaceModel }) {
   const markOf = (item: ItemView) => markerFor(provenance, verifiedOf(item));
   const activeFilter = FILTERS.find((entry) => entry.id === model.filter);
   const filterLabel = activeFilter ? filterNameOf(activeFilter.id).label : model.filter;
-  const posture = postureEntries(governanceCounts(model.items, confirmedOf));
   const filters: ToggleItem[] = FILTERS.map((entry) => {
     const name = filterNameOf(entry.id);
     return { value: entry.id, label: name.label, count: countFilter(model.items, entry.id), hint: name.hint };
@@ -73,7 +69,6 @@ export function ChatView({ model }: { readonly model: WorkspaceModel }) {
         evicted: model.evicted,
       })
     : unavailableWords(NO_PROJECTION);
-  const head = conversationHead(model.session, model.loaded);
 
   // A record opens through the shell, so the inspector opens where it belongs at each width. A view mounted without
   // the shell (a test, or a host that renders the view alone) selects the record in the store.
@@ -91,37 +86,14 @@ export function ChatView({ model }: { readonly model: WorkspaceModel }) {
 
   return (
     <div className={styles.view}>
-      <div className={styles.conversation}>
-        {/* The session title is the header's heading (Shell.tsx), beside its chips; the chat head is one quiet line: the Pi
-            identity and status, and the window's summary at its end. */}
-        <div className={styles.facts}>
-          <p className={styles.identity}>
-            Pi <span>{head.piVersion}</span> · {head.sessionId} · {head.workflowId}
-          </p>
-          <p className={styles.status}>{head.status}</p>
-          <p className={styles.summary} data-summary="">
-            {summary}
-          </p>
-        </div>
-      </div>
-
+      {/* One quiet toolbar: the finding filters, and the retained window's summary at its end. The Pi identity, the session
+          status and the posture counts are in the details card (HelperBar.tsx). */}
       <div className={styles.toolbar}>
         <ToggleGroup label="Timeline filters" items={filters} pressed={model.filter} onPress={choose} />
-        <div className={styles.posture} role="group" aria-label="Observed posture">
-          {!model.loaded ? (
-            <span className={styles.postureEmpty}>{unavailableWords(NO_PROJECTION)}</span>
-          ) : posture.length > 0 ? (
-            posture.map((entry) => (
-              <span key={entry.key} title={entry.hint}>
-                <Chip tone={entry.tone}>{entry.text}</Chip>
-              </span>
-            ))
-          ) : (
-            <span className={styles.postureEmpty}>no decisions or results projected</span>
-          )}
-        </div>
+        <p className={styles.summary} data-summary="">
+          {summary}
+        </p>
       </div>
-
       {live ? <LivePanel /> : null}
 
       <div className={styles.logWrap}>

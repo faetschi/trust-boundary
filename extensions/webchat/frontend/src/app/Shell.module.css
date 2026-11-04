@@ -337,6 +337,26 @@
   color: var(--state-reported-ink);
 }
 
+/* An icon-only control of the header (the details card). */
+.iconToggle {
+  display: grid;
+  place-items: center;
+  width: var(--row-h-toolbar);
+  height: var(--row-h-toolbar);
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+
+.iconToggle:hover,
+.iconToggle[aria-expanded="true"] {
+  background: var(--accent);
+  color: var(--foreground);
+}
+
 /* The overflow item: a native disclosure that holds the theme switch. */
 .more {
   position: relative;
@@ -419,6 +439,7 @@
 
 /* The workspace body: the rail, the workspace (which takes the rest) and the inspector. */
 .body {
+  position: relative;
   flex: 1 1 auto;
   min-height: 0;
 }

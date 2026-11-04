@@ -11,9 +11,10 @@ import { usePhone, useNarrow } from "./layout";
 import { useWorkspace } from "./WorkspaceProvider";
 import { ShellContext, type ShellControls } from "./shellContext";
 import { Rail, RailToggle, bindingName } from "./Rail";
-import { Footer } from "./Footer";
 import { INSPECTOR_ID, Inspector } from "./Inspector";
 import { StatusPill } from "./StatusPill";
+import { HELPER_ID, HelperBar } from "./HelperBar";
+import { DetailsIcon } from "../ui/Icon";
 import { panelBadge, type BadgeTone } from "./inspector/panelBadge";
 import { focusableIn, trapTarget } from "./focusTrap";
 import { ChatView } from "./views/ChatView";
@@ -53,6 +54,8 @@ export function Shell({ version }: { readonly version: string }) {
   const phone = usePhone();
   const [prefs, updatePrefs] = useUiPrefs();
   const [drawerRequested, setDrawerRequested] = useState(false);
+  // The details card is shown on request and for this session only. It is presentation, not a stored preference.
+  const [helperOpen, setHelperOpen] = useState(false);
   // The phone rail is a disclosure. Its state is for this session only, so it is not persisted.
   const [phoneRailOpen, setPhoneRailOpen] = useState(false);
   // The record is shown in the inspector's panel body while a record is selected. A new selection sets it, and a governance
@@ -254,6 +257,17 @@ export function Shell({ version }: { readonly version: string }) {
             <h2 className={styles.sessionTitle}>{conversationHead(model.session, model.loaded).title}</h2>
             <div className={styles.controls}>
               <StatusPill model={model} noSession={noSession} />
+              <button
+                type="button"
+                className={styles.iconToggle}
+                aria-label="Session details"
+                title="Session details"
+                aria-controls={HELPER_ID}
+                aria-expanded={helperOpen}
+                onClick={() => setHelperOpen((open) => !open)}
+              >
+                <DetailsIcon />
+              </button>
               <span className={styles.governanceControl}>
                 <button
                   ref={toggleRef}
@@ -336,10 +350,8 @@ export function Shell({ version }: { readonly version: string }) {
                 <TrajectoryView model={model} />
               </TabPanel>
             </div>
-            {/* The footer closes the column, under the composer, at every width. The DOM order is the drawn order, so no CSS order
-                property moves it (Shell.test.tsx). */}
-            <Footer model={model} version={version} />
           </main>
+          <HelperBar model={model} open={helperOpen} version={version} />
           <Inspector
             model={model}
             narrow={narrow}
