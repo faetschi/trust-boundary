@@ -98,6 +98,90 @@
   gap: var(--space-2h);
 }
 
+/* The lane's colour mark, in the colour of the record kind the lane draws (the same colour as that kind's chip in the ledger). */
+.laneLabel::before {
+  content: "";
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-right: var(--space-1h);
+  border-radius: 2px;
+  background: var(--local-lane, var(--muted-foreground));
+}
+
+.laneLabel[data-kind="model"] {
+  --local-lane: var(--source-assistant);
+}
+
+.laneLabel[data-kind="policy"] {
+  --local-lane: var(--source-decision);
+}
+
+.laneLabel[data-kind="tools"] {
+  --local-lane: var(--source-tool);
+}
+
+/* The key under the lanes: what each colour and each shape means. Colour is the kind of record; shape is its state. */
+.legend {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: var(--space-1) 0 0;
+  color: var(--muted-foreground);
+  font-size: var(--text-xs);
+}
+
+.legendRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.legendTitle {
+  flex: none;
+  min-width: 3.25rem;
+  color: var(--foreground);
+  font-weight: 500;
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1h);
+}
+
+/* A key swatch is a small rail segment (the same shapes), or a solid square in a lane's colour. */
+.swatch {
+  --local-lane: var(--muted-foreground);
+  width: 1.5rem;
+  height: 0.5rem;
+  border-radius: 2px;
+}
+
+.seg.swatch {
+  flex: none;
+  width: 1.5rem;
+}
+
+.swatch[data-kind="model"] {
+  --local-lane: var(--source-assistant);
+  background: var(--local-lane);
+}
+
+.swatch[data-kind="policy"] {
+  --local-lane: var(--source-decision);
+  background: var(--local-lane);
+}
+
+.swatch[data-kind="tools"] {
+  --local-lane: var(--source-tool);
+  background: var(--local-lane);
+}
+
 .laneLabel {
   color: var(--muted-foreground);
   font-size: var(--text-xs);
@@ -336,20 +420,14 @@
   border-left: 2px solid var(--foreground);
 }
 
-/* The kind, and the state chips at the end, are words, not boxes: the text and its ink stay, the border and ground go. */
-.kind [data-source],
+/* The state chips at the end are words in their tone, not boxes. The kind (User, Assistant, Tool, Decision, Result) keeps its chip, in
+   its record kind's colour: the same colour as that kind's lane in the rail above, so the ledger and the rail read as one scheme. */
 .chips [data-tone] {
   min-height: 0;
   padding: 0;
   border-color: transparent;
   background: transparent;
 }
-
-.kind [data-source] {
-  color: var(--muted-foreground);
-  font-weight: 400;
-}
-
 .kind {
   display: inline-flex;
   justify-self: start;
