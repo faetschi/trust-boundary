@@ -11,7 +11,7 @@ export MSYS_NO_PATHCONV=1
 . "$(dirname -- "${BASH_SOURCE[0]}")/../paths.sh"
 A=$KIT_DIR
 GA=$A/guest
-WGA=${TBOUND_WGA:-$(linux_path "$GA")}      # same dir, as Linux sees it; TBOUND_WGA: a Linux-side copy, so WSL never reads the kit through /mnt
+WGA=$GA                       # helpers WSL runs; from Git Bash they come from TBOUND_WGA (a Linux checkout), never through /mnt
 GSSH_SH=$A/tools/gssh.sh
 
 SCR=/var/tmp/tbound-cal-20261017                        # guest scratch (995:986 0700)
@@ -115,6 +115,15 @@ case $(uname -s) in MINGW* | MSYS*) WXP=(wsl.exe -d "$TBOUND_WSL_DISTRO" --cd / 
 WX()  { "${WXP[@]}" env KIT_FREEZE="$KIT_FREEZE" "$@" </dev/null; }   # WSL, direct exec (no shell), no stdin; KIT_FREEZE reaches the Python guards
 WB()  { "${WXP[@]}" bash -c "export KIT_FREEZE=$KIT_FREEZE; $1" </dev/null; }   # WSL, bash -c <one string>, no stdin
 WBI() { "${WXP[@]}" bash -c "export KIT_FREEZE=$KIT_FREEZE; $1"; }              # WSL, bash -c <one string>, stdin passed through (writers: X | WBI "cat > file")
+# From Git Bash, WSL runs the helpers of TBOUND_WGA, which must be byte-identical to this kit's (helpers, lib, values file).
+if [ ${#WXP[@]} -gt 0 ]; then
+  [[ ${TBOUND_WGA:-} == /* && $TBOUND_WGA != /mnt/* ]] || die "set TBOUND_WGA to the guest/ dir of a Linux checkout of this kit (absolute, outside /mnt)"
+  WGA=$TBOUND_WGA
+  WGA_FILES=(guest/jget.py guest/reqstate.py guest/fill-template.py guest/mk-svc-config.py guest/mk-dr-config.py guest/sign-g1.sh guest/sign-run.sh
+    lib.sh paths.sh freeze-guard.sh "freezes/$KIT_FREEZE.env")
+  [ "$(cd "$A" && sha256sum "${WGA_FILES[@]}")" = "$(WX bash -c 'cd "$1/.." && shift && sha256sum "$@"' _ "$WGA" "${WGA_FILES[@]}")" ] ||
+    die "TBOUND_WGA=$WGA differs from this kit (helpers, lib or freezes/$KIT_FREEZE.env): refresh the Linux checkout"
+fi
 svc()    { G "cd / && $SVC $1"; }                # command in the service context (uid 995, no-new-privs, empty caps)
 podsvc() { G "cd / && $PODMAN_SVC $1"; }
 

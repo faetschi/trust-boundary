@@ -9,7 +9,7 @@ HOST_ENV=$TBOUND_LOCAL/freeze-host.env
 # shellcheck disable=SC1090
 . "$HOST_ENV"
 for v in TBOUND_WORK OLDH GO PASSPHRASE_FILE; do
-  [[ ${!v:-} == /* ]] || { echo "FATAL: $HOST_ENV must set $v to an absolute Linux path" >&2; exit 2; }
+  [[ ${!v:-} == /* && ${!v} != /mnt/* ]] || { echo "FATAL: $HOST_ENV must set $v to an absolute Linux path outside /mnt" >&2; exit 2; }
 done
 # TBOUND_WORK is on a Linux filesystem: drive mounts are read-only from WSL and lose the modes the tests check.
 # Select by uname, not wsl.exe: WSL with interop has wsl.exe too, and there TBOUND_WORK is already a Linux path.
@@ -18,12 +18,10 @@ case $(uname -s) in
     TBOUND_WSL_DISTRO=${TBOUND_WSL_DISTRO:-tbound-dev}
     TBOUND_WORK_VIEW=${TBOUND_WORK_VIEW:-//wsl.localhost/$TBOUND_WSL_DISTRO$TBOUND_WORK}
     on_linux() { MSYS_NO_PATHCONV=1 wsl.exe -d "$TBOUND_WSL_DISTRO" --cd / -e bash -c "$1"; }   # --cd /: never start in the /mnt view of the Windows cwd
-    linux_path() { case $1 in /[A-Za-z] | /[A-Za-z]/*) local d=${1:1:1}; printf '/mnt/%s%s\n' "${d,,}" "${1:2}" ;; *) printf '%s\n' "$1" ;; esac; }
     ;;
   *)
     TBOUND_WORK_VIEW=${TBOUND_WORK_VIEW:-$TBOUND_WORK}
     on_linux() { bash -c "$1"; }
-    linux_path() { printf '%s\n' "$1"; }
     ;;
 esac
 # Git Bash cannot mkdir -p through //wsl.localhost, so the Linux side creates it.
