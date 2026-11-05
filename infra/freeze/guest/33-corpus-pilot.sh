@@ -1,0 +1,241 @@
+#!/bin/bash
+# 33 Corpus mode on the guest (Part D, NAME=pilot) at $FREEZE: PREPARED, NOT RUN. Automates report 01 section 3 (steps 1-12) and PROVISIONING-SIGNING.md Part D / Spike B.
+# Every guest write is a tbound-op verb (narrowed sudo, the session drop-in CLOSED when the script starts), except the artifact install, which has no verb
+# (runbook P13.3) and runs inside the session sudo window (00-session-sudo.sh open ... close; TBA_PW; closed again even on failure).
+#   1 abandon    settle the unsettled dr request with tbound-op's two-step `abandon <rid>` (facts, then --confirm TOKEN). rid = $HF/dr/RID. The request journal must
+#                show the dr request as terminal "unknown" without an abandoned record (reqstate verdict unreconciled); the facts must show the scope drained
+#                and no process or container left. Any other verdict or fact: stop, the owner decides. Nothing unsettled (completed/abandoned): skipped.
+#   2 manifest   D1, offline on the WSL side: the T5 draft of $SRC + the four pins of `tbound-profile corpus-pins` (template $HF/d09-cell.base.json) ->
+#                $HF/pilot/manifest.json; `corpus-pins --manifest` must pass; `corpus-digest` with the 76 T5 artifacts and the ceilings 17 / 20000 / 1200 ->
+#                $HF/pilot/CORPUS_DIGEST. Any refusal prints the tool's violation list and stops.
+#   3 artifacts  the 76 files of corpus/pilot/t5-2026-10-29/artifacts of $SRC into /opt/tbound/corpus/artifacts (session sudo window); afterwards count, per-file
+#                sha256, owner and modes are verified. Files on the guest that are not in the T5 set stop the script (nothing is removed).
+#   4 cycle      D2 `manifest-install`, then the RG cycle of rglib.sh for NAME=pilot: svc stop, cfg-install (config = infra/guest/serve-pi-service.corpus-pilot.json
+#                with CORPUS_DIGEST and the two measured podman digests, mk-svc-config.py), reg-measure, S3' (sign-run.sh pilot s3), reg-install, S4' (sign-run.sh
+#                pilot s4; corpus-pins on the new template must give the same pins), prof-install, svc start, diag l2. No client run: corpus mode refuses client
+#                text. Then the archive check. The service is left RUNNING (the netsink step needs it).
+#   5 netsink    only with TBOUND_TRIAL_KEY=<path of the trial forced-command key> (passed to ssh by path, never read): `trial reset <first compliant case> --check`,
+#                one real `trial reset`, then 40-guest-evidence.sh netsink. Without the key the script ends after phase 4 and prints what the owner does.
+# Resumable (phases 1-3 re-check their result; phase 4 resumes from `tbound-op status pilot`; signed files in $HF/pilot are verified, never re-signed).
+# STOP_AFTER=<abandon|manifest|artifacts|cfg|measure|s3|reg|s4|prof|start|cycle>.
+# Preconditions (checked): 10, 20, 50 done; session sudo CLOSED; 32-reg-dr.sh finished ($HF/dr/CHECKS_OK, $HF/dr/RID); the dispatcher has no pilot state.
+# The owner starts it after 32-reg-dr.sh (and 40-guest-evidence.sh route-direct-runtime). Needs TBA_PW (read -rs TBA_PW; export TBA_PW) for phase 3 only if the artifacts differ.
+# Usage: bash 33-corpus-pilot.sh     (TBOUND_TRIAL_KEY=<key path> bash 33-corpus-pilot.sh   for phase 5;  NODE_BIN=<Linux path of the pinned Node> if ~/env.sh has none)
+set -euo pipefail
+case "$-" in *x*) echo "FATAL: refusing to run under xtrace (it would print TBA_PW)" >&2; exit 1;; esac
+case ":${SHELLOPTS:-}:" in *:xtrace:*) echo "FATAL: SHELLOPTS has xtrace" >&2; exit 1;; esac
+. "$(dirname -- "${BASH_SOURCE[0]}")/glib.sh"
+logto 33-corpus-pilot
+load_env
+check_key_meta
+preflight_op
+. "$GA/rglib.sh"
+NAME=pilot
+HG=$HF/pilot
+T5_DIR=$SRC/corpus/pilot/t5-2026-10-29      # the frozen source, WSL path
+ART=$T5_DIR/artifacts
+GUEST_ART=/opt/tbound/corpus/artifacts
+T5_ARTIFACT_COUNT=76
+PILOT_CEILINGS="--max-host-calls 17 --max-tokens 20000 --duration-seconds 1200"   # the same values tbound-op manifest-install passes
+SESSION_OPEN=0
+hf_has dr/CHECKS_OK && hf_has dr/RID || die "the dr cycle is not complete ($HF/dr/CHECKS_OK or dr/RID missing): finish 32-reg-dr.sh first"
+
+session_close() {
+  [ "$SESSION_OPEN" = 1 ] || return 0
+  SESSION_OPEN=0
+  bash "$GA/00-session-sudo.sh" close
+}
+
+# ---- 1 abandon ---------------------------------------------------------------------------------------------------------------------------------
+# req_journal_verdict <rid> <tag>: fetch the guest request journal into a new file of $HG and judge that request (sets REQ_VERDICT).
+req_journal_verdict() {
+  local f="pilot/requests-$2-$(date -u +%Y%m%dT%H%M%SZ).jsonl"
+  op "collect requests"
+  fetch_export "$OUT/_/serve-pi-requests.jsonl" "$f"
+  req_check "$HF/$f" "$1"
+}
+# fact <facts text> <key>: one `key=value` line of the facts `tbound-op abandon <rid>` prints.
+fact() { printf '%s\n' "$1" | sed -n "s/^$2=//p" | head -1; }
+
+phase_abandon() {
+  say "1. abandon the unsettled dr request (tbound-op two-step abandon)"
+  local rid facts tok v n
+  hf_has pilot/DR_SETTLED && { ok "dr request already settled by an earlier run ($(hf_get pilot/DR_SETTLED))"; return 0; }
+  hf_has dr/RID || die "no $HF/dr/RID: 32-reg-dr.sh did not record the dr request id"
+  rid=$(hf_get dr/RID); [[ $rid =~ ^dr-req-[0-9]{8}T[0-9]{6}Z$ ]] || die "$HF/dr/RID is not a dr request id: '$rid'"
+  WX mkdir -p -m 0700 "$HG"
+  req_journal_verdict "$rid" check
+  case $REQ_VERDICT in
+    completed | abandoned) ok "dr request $rid is settled ($REQ_VERDICT): nothing to abandon"; hf_put pilot/DR_SETTLED "$rid"; return 0;;
+    unreconciled) ;;
+    *) die "dr request $rid: journal verdict '$REQ_VERDICT' is not 'unreconciled' (terminal unknown, not abandoned): the abandon rule does not cover it, the owner decides";;
+  esac
+  facts=$(op "abandon $rid" 2>&1 | tr -d '\r') || die "tbound-op abandon $rid (facts) failed: $facts"
+  printf '%s\n' "$facts"
+  tok=$(printf '%s\n' "$facts" | sed -n 's/^TOKEN=\([0-9a-f]\{12\}\)$/\1/p' | head -1)
+  [ -n "$tok" ] || die "no 'TOKEN=<12 hex>' line in the abandon output above"
+  # Report 01 step 2: workflow finished (terminal unknown in the journal, checked above), scope drained, no pending effect. Fail closed on a missing fact.
+  eq "facts name the request" "$(fact "$facts" rid)" "$rid"
+  n=$(fact "$facts" catalog_owner_scope_drained)
+  { [[ $n =~ ^[0-9]+$ ]] && [ "$n" -ge 1 ]; } || die "catalog_owner_scope_drained is '$n': the workflow scope is not shown as drained"
+  # A stopped service has no cells cgroup and no podman runroot: the two probes then print 'unavailable', which is no process and no container.
+  for v in cells_procs_bytes podman_ps_a_lines; do
+    case $(fact "$facts" "$v") in 0) ;; unavailable) note "$v unavailable (service stopped)";; *) die "$v is '$(fact "$facts" "$v")': a process or container may still exist; the owner decides";; esac
+  done
+  v=$(fact "$facts" cells_children); v=${v// /}
+  case $v in "" | unavailable) ;; *) die "cells_children is '$v': cells exist; the owner decides";; esac
+  note "unexposed cleanup events (informational): $(fact "$facts" catalog_unexposed_true)"
+  ok "facts show drained scope and no pending effect; confirming with TOKEN $tok"
+  op "abandon $rid --confirm $tok"
+  req_journal_verdict "$rid" abandoned
+  [ "$REQ_VERDICT" = abandoned ] || die "after the confirm the journal verdict of $rid is '$REQ_VERDICT', expected 'abandoned'"
+  hf_put pilot/DR_SETTLED "$rid"
+}
+
+# ---- 2 manifest (D1) -----------------------------------------------------------------------------------------------------------------------------
+phase_manifest() {
+  say "2. manifest (D1, offline): T5 draft + four pins, corpus-digest"
+  local draft=$T5_DIR/manifest.draft.json node out n
+  hf_has d09-cell.base.json || die "no $HF/d09-cell.base.json (10-upgrade.sh)"
+  WX test -f "$draft" || die "no $draft in the frozen source $SRC"
+  n=$(WB "ls -A '$ART' | wc -l" | tr -d '\r\n'); eq "T5 artifact files in the frozen source" "$n" "$T5_ARTIFACT_COUNT"
+  eq "NODE_DIGEST == PIN_NODE" "$NODE_DIGEST" "$PIN_NODE"
+  node=${NODE_BIN:-}
+  [ -n "$node" ] || node=$(WB '. ~/env.sh >/dev/null 2>&1; command -v node' | tr -d '\r\n' || true)
+  [ -n "$node" ] || die "no node on the WSL side (~/env.sh gives none): set NODE_BIN=<Linux path of the pinned Node binary>"
+  linux_safe "$node" || die "node path '$node' is not a plain Linux path outside /mnt"
+  eq "WSL node digest == NODE_DIGEST (the pinned Node; corpus-digest runs the artifacts' node_test self-checks with it)" "$(wd "$node")" "$NODE_DIGEST"
+  WX mkdir -p -m 0700 "$HG"
+  if ! hf_has pilot/pins.json; then
+    WX "$TBP" corpus-pins --template "$HF/d09-cell.base.json" --runtime-bundle-digest "$BUNDLE_DIGEST" --node-digest "$NODE_DIGEST" | tr -d '\r' | hf_save pilot/pins.json
+    hf_commit pilot/pins.json
+  fi
+  if ! hf_has pilot/manifest.json; then   # the four pins replaced, pins.attacker_digest and everything else kept
+    WX python3 -I -c 'import json,sys
+m=json.load(open(sys.argv[1],encoding="utf-8"))
+p=json.load(open(sys.argv[2],encoding="utf-8"))
+for k in ("environment_digest","model_digest","profile_digest","policy_digest"):
+    m["pins"][k]=p[k]
+print(json.dumps(m,indent=2))' "$draft" "$HG/pins.json" | hf_save pilot/manifest.json
+    hf_commit pilot/manifest.json
+  fi
+  out=$(WX "$TBP" corpus-pins --template "$HF/d09-cell.base.json" --runtime-bundle-digest "$BUNDLE_DIGEST" --node-digest "$NODE_DIGEST" --manifest "$HG/manifest.json" | tr -d '\r') ||
+    die "corpus-pins --manifest refused $HG/manifest.json (output above)"
+  eq "corpus-pins --manifest exits 0 and prints the recorded pins" "$out" "$(hf_get pilot/pins.json)"
+  out=$(WB "'$TBP' corpus-digest --manifest '$HG/manifest.json' --quota-profile pilot --artifacts '$ART' --node '$node' $PILOT_CEILINGS 2>&1" | tr -d '\r') ||
+    die "corpus-digest refused the manifest (the tool's violation list):"$'\n'"$out"
+  isdig "$out" || die "corpus-digest printed more than one digest:"$'\n'"$out"
+  hf_put pilot/CORPUS_DIGEST "$out"
+  note "tbound-run plan was NOT cross-checked (needs a run.json); manifest-install recomputes the digest on the guest with the pinned tbound-profile"
+}
+
+# ---- 3 artifacts (P13.3) -------------------------------------------------------------------------------------------------------------------------
+guest_artifact_sums() { G "cd $GUEST_ART 2>/dev/null && sha256sum -- * 2>/dev/null | LC_ALL=C sort -k2 || true" | tr -d '\r'; }
+sum_names() { printf '%s\n' "$1" | awk 'NF{print $2}' | LC_ALL=C sort; }
+
+phase_artifacts() {
+  say "3. artifacts: the $T5_ARTIFACT_COUNT T5 files into $GUEST_ART"
+  local own gst extra bad
+  own=$(WB "cd '$ART' && sha256sum -- * | LC_ALL=C sort -k2" | tr -d '\r')
+  eq "owner-side artifact files" "$(sum_names "$own" | grep -c .)" "$T5_ARTIFACT_COUNT"
+  gst=$(guest_artifact_sums)
+  if [ "$gst" = "$own" ]; then ok "guest artifacts == frozen source ($T5_ARTIFACT_COUNT files, per-file sha256): no session sudo needed"; return 0; fi
+  echo "guest holds $(sum_names "$gst" | grep -c .) files, the frozen source $T5_ARTIFACT_COUNT"
+  extra=$(LC_ALL=C comm -13 <(sum_names "$own") <(sum_names "$gst"))
+  [ -z "$extra" ] || die "the guest holds artifact files that are not in the T5 set (nothing is removed here; the owner decides):"$'\n'"$extra"
+  [ -n "${TBA_PW:-}" ] || die "TBA_PW is not set: the artifact install needs the session sudo window (read -rs TBA_PW; export TBA_PW)"
+  cleanup_add session_close
+  SESSION_OPEN=1
+  bash "$GA/00-session-sudo.sh" open
+  G "sudo -n install -d -o root -g root -m 0755 /opt/tbound/corpus $GUEST_ART"
+  WX tar -C "$ART" -c . | GI "sudo -n tar -x --no-same-owner --no-same-permissions -C $GUEST_ART"
+  G 'sudo -n chown -R root:root /opt/tbound/corpus && sudo -n find /opt/tbound/corpus -type d -exec chmod 0755 {} + && sudo -n find /opt/tbound/corpus -type f -exec chmod 0644 {} +'
+  session_close
+  gst=$(guest_artifact_sums)
+  [ "$gst" = "$own" ] || die "the guest artifacts differ from the frozen source after the install (count/sha256):"$'\n'"$(diff <(printf '%s\n' "$own") <(printf '%s\n' "$gst") || true)"
+  bad=$(G 'find /opt/tbound/corpus \( ! -user root -o ! -group root -o \( -type d ! -perm 0755 \) -o \( -type f ! -perm 0644 \) \) -print' | tr -d '\r')
+  [ -z "$bad" ] || die "owner or mode wrong under /opt/tbound/corpus:"$'\n'"$bad"
+  ok "installed: $T5_ARTIFACT_COUNT files, per-file sha256 == frozen source, root:root 0755/0644; session sudo closed"
+}
+
+# ---- 4 cycle (D2 manifest-install, then RG for NAME=pilot) ----------------------------------------------------------------------------------------
+hook_prior() {
+  hf_has pilot/DR_SETTLED || die "the dr request is not recorded as settled ($HF/pilot/DR_SETTLED): phase 1 did not finish"
+  hf_has pilot/CORPUS_DIGEST && hf_has pilot/manifest.json || die "no manifest/CORPUS_DIGEST in $HG: phase 2 did not finish"
+}
+
+hook_cfg_build() {
+  WX python3 -I "$WGA/mk-svc-config.py" "$SRC/infra/guest/serve-pi-service.corpus-pilot.json" "$HG/serve-pi-service.json" "$CD" "$SD" "$CORPUS_DIGEST"
+  eq "provider_route" "$(jgetw "$HG/serve-pi-service.json" provider_route)" engineering
+  eq "workflow_admission_mode" "$(jgetw "$HG/serve-pi-service.json" workflow_admission_mode)" corpus
+  eq "corpus_manifest_digest == CORPUS_DIGEST" "$(jgetw "$HG/serve-pi-service.json" corpus_manifest_digest)" "$CORPUS_DIGEST"
+  eq "corpus_quota_profile" "$(jgetw "$HG/serve-pi-service.json" corpus_quota_profile)" pilot
+  eq "workflow_bash_output_paths" "$(jgetw "$HG/serve-pi-service.json" workflow_bash_output_paths)" "[]"
+  eq "workflow_max_host_calls/max_tokens/duration" "$(jgetw "$HG/serve-pi-service.json" workflow_max_host_calls)/$(jgetw "$HG/serve-pi-service.json" workflow_max_tokens)/$(jgetw "$HG/serve-pi-service.json" workflow_duration_seconds)" 17/20000/1200
+}
+
+# D6: corpus-pins on the template with the pilot registration must give the same four pins and accept the manifest (only the registration digest moved).
+hook_after_s4() {
+  eq "corpus-pins on the S4' template == recorded pins (--manifest exits 0)" \
+    "$(WX "$TBP" corpus-pins --template "$HG/d09-cell.json" --runtime-bundle-digest "$BUNDLE_DIGEST" --node-digest "$NODE_DIGEST" --manifest "$HG/manifest.json" | tr -d '\r')" "$(hf_get pilot/pins.json)"
+}
+
+phase_cycle() {
+  say "4. manifest-install (D2) and the RG cycle for NAME=pilot"
+  local state rank mo
+  CORPUS_DIGEST=$(hf_get pilot/CORPUS_DIGEST); need_dig CORPUS_DIGEST "$CORPUS_DIGEST"
+  state=$(rg_state); rank=$(st_rank_of "${state:-none}")
+  echo "pilot state: ${state:-none} (rank $rank)"
+  if [ "$rank" -lt 1 ]; then   # from state config on, cfg-install has already checked the installed manifest digest
+    op "svc stop"
+    stage_put stage-pilot "$HG/manifest.json" manifest.json
+    mo=$(op "manifest-install $(wd "$HG/manifest.json") $CORPUS_DIGEST" 2>&1 | tr -d '\r') || die "manifest-install failed: $mo"
+    printf '%s\n' "$mo"
+    [[ $mo == *"manifest-install ok: $CORPUS_DIGEST"* ]] || die "manifest-install did not confirm $CORPUS_DIGEST"
+  fi
+  rg_cycle
+  rg_archive_check
+  eq "tbound-op state of pilot" "$(rg_state)" started
+  echo "diag l2 (head):"; WB "head -c 1500 '$HG/diag-l2.txt'" || note "no $HG/diag-l2.txt"; echo
+  hf_put pilot/CYCLE_OK ok
+}
+
+# ---- 5 netsink (Spike B step 1, then the netsink producer) ---------------------------------------------------------------------------------------
+trial() { GSSH_IDENTITY=$TBOUND_TRIAL_KEY GSSH_USER=root sh "$GSSH_SH" "/usr/local/bin/tbound trial $1" </dev/null; }   # the forced-command key, by path
+
+phase_netsink() {
+  say "5. netsink: trial reset through the trial key, then 40-guest-evidence.sh netsink"
+  local case_id d chk rs ts
+  if [ -z "${TBOUND_TRIAL_KEY:-}" ]; then
+    note "TBOUND_TRIAL_KEY is not set: stopping after the cycle. The owner next: KSSH <TRKEY> /usr/local/bin/tbound trial reset <first compliant case> --check, then the real reset"
+    note "(service running), then KIT_FREEZE=$FREEZE bash 40-guest-evidence.sh netsink; or run this script again with TBOUND_TRIAL_KEY=<trial key path> (it resumes at phase 5)."
+    return 0
+  fi
+  [ -f "$TBOUND_TRIAL_KEY" ] || die "TBOUND_TRIAL_KEY=$TBOUND_TRIAL_KEY is not a file"
+  [[ $(rg_status) == *"service=active socket=active"* ]] || die "the pilot service is not running: the reset needs the cells cgroup (run phase 4 first)"
+  case_id=$(WX python3 -I -c 'import json,sys
+print(next(c["case_id"] for c in json.load(open(sys.argv[1],encoding="utf-8"))["cases"] if c["kind"]=="compliant"))' "$HG/manifest.json" | tr -d '\r\n')
+  [[ $case_id =~ ^[A-Za-z0-9._-]{1,128}$ ]] || die "not a usable case id: '$case_id'"
+  d=$(op "diag nft-sink" 2>&1 | tr -d '\r' || true)
+  if [[ $d == *"table inet tbound_net_sink"* && $d != *"No such file"* && $d == *"-- attest"* ]]; then
+    ok "the net-sink table and attestation already exist: no second reset (a failed reset spends the unit)"
+  else
+    chk=$(trial "reset $case_id --check" 2>&1 | tr -d '\r') || die "trial reset $case_id --check refused: $chk"
+    printf 'trial reset --check: %s\n' "$chk"
+    rs=$(trial "reset $case_id" 2>&1 | tr -d '\r') || die "trial reset $case_id failed (the unit may be spent; do not retry blindly): $rs"
+    printf 'trial reset: %s\n' "$rs"
+    ts=$(date -u +%Y%m%dT%H%M%SZ)
+    printf '%s\n' "$rs" | hf_save "pilot/trial-reset-$ts.json"; hf_commit "pilot/trial-reset-$ts.json"
+  fi
+  bash "$GA/40-guest-evidence.sh" netsink
+  hf_has evq/netsink.json || die "$HF/evq/netsink.json was not produced (SKIPPED or REFUSED: read the 40-guest-evidence.sh output above)"
+  ok "netsink envelope fetched: $HF/evq/netsink.json"
+}
+
+phase_abandon;   phase_end abandon
+phase_manifest;  phase_end manifest
+phase_artifacts; phase_end artifacts
+phase_cycle;     phase_end cycle
+phase_netsink
+note "the pilot service is left running. Close-out: sudo -n true must still fail. Next (owner): rerun tbound-run evq with the new netsink.json (report 01 step 12b)."
+done_step
