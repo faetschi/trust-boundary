@@ -172,6 +172,14 @@ print(json.dumps(m,indent=2))' "$draft" "$HG/pins.json" | hf_save pilot/manifest
 # ---- 3 artifacts (P13.3) -------------------------------------------------------------------------------------------------------------------------
 guest_artifact_sums() { G "cd $GUEST_ART 2>/dev/null && sha256sum -- * 2>/dev/null | LC_ALL=C sort -k2 || true" | tr -d '\r'; }
 sum_names() { printf '%s\n' "$1" | awk 'NF{print $2}' | LC_ALL=C sort; }
+# Complete entry set of the guest artifacts directory as "<type> <name>" lines (find: dotfiles, directories and links included, errors not hidden).
+# `sha256sum -- *` above ignores hidden entries and hides directory errors, so equality needs both lists.
+guest_artifact_entries() {
+  local have
+  have=$(G "if [ -d $GUEST_ART ]; then echo yes; else echo no; fi" | tr -d '\r')
+  [ "$have" = no ] || G "find $GUEST_ART -mindepth 1 -maxdepth 1 -printf '%y %f\n'" | tr -d '\r' | LC_ALL=C sort
+}
+entry_names() { printf '%s\n' "$1" | awk 'NF{print substr($0, 3)}' | LC_ALL=C sort; }
 
 # Owner and modes under /opt/tbound/corpus (also the pre-t5 sibling directories): root:root, directories 0755, files 0644. Readable without sudo.
 artifact_meta_check() {
@@ -183,36 +191,40 @@ artifact_meta_check() {
 
 phase_artifacts() {
   say "3. artifacts: the $T5_ARTIFACT_COUNT T5 files into $GUEST_ART"
-  local own gst extra name aside
+  local own own_ent gst gst_ent extra name aside
   own=$(WB "cd '$ART' && sha256sum -- * | LC_ALL=C sort -k2" | tr -d '\r')
+  own_ent=$(WB "cd '$ART' && find . -mindepth 1 -printf '%y %P\n' | LC_ALL=C sort" | tr -d '\r')
   eq "owner-side artifact files" "$(sum_names "$own" | grep -c .)" "$T5_ARTIFACT_COUNT"
-  gst=$(guest_artifact_sums)
-  if [ "$gst" = "$own" ]; then
-    ok "guest artifacts == frozen source ($T5_ARTIFACT_COUNT files, per-file sha256): no session sudo needed"
+  [ "$(printf '%s\n' "$own_ent" | grep -c '^f [^/]*$')" = "$T5_ARTIFACT_COUNT" ] && [ "$(printf '%s\n' "$own_ent" | grep -c .)" = "$T5_ARTIFACT_COUNT" ] ||
+    die "the T5 source directory is not exactly $T5_ARTIFACT_COUNT flat regular files (find lists other entries or subdirectories)"
+  gst=$(guest_artifact_sums); gst_ent=$(guest_artifact_entries)
+  if [ "$gst_ent" = "$own_ent" ] && [ "$gst" = "$own" ]; then
+    ok "guest artifacts == frozen source (complete entry set incl. dotfiles and directories, $T5_ARTIFACT_COUNT regular files, per-file sha256): no session sudo needed"
     artifact_meta_check
     return 0
   fi
-  echo "guest holds $(sum_names "$gst" | grep -c .) files, the frozen source $T5_ARTIFACT_COUNT"
-  extra=$(LC_ALL=C comm -13 <(sum_names "$own") <(sum_names "$gst"))
-  for name in $extra; do [[ $name =~ ^[A-Za-z0-9._-]+$ ]] || die "unusable file name on the guest: '$name'"; done
+  echo "guest holds $(printf '%s\n' "$gst_ent" | grep -c .) entries, the frozen source $T5_ARTIFACT_COUNT"
+  extra=$(entry_names "$(LC_ALL=C comm -13 <(printf '%s\n' "$own_ent") <(printf '%s\n' "$gst_ent"))")   # every type, same-named entries of another type included
+  for name in $extra; do [[ $name =~ ^[A-Za-z0-9._-]+$ ]] || die "unusable entry name on the guest: '$name'"; done
   [ -n "${TBA_PW:-}" ] || die "TBA_PW is not set: the artifact install needs the session sudo window (read -rs TBA_PW; export TBA_PW)"
   cleanup_add session_close
   SESSION_OPEN=1
   bash "$GA/00-session-sudo.sh" open
   G "sudo -n install -d -o root -g root -m 0755 /opt/tbound/corpus $GUEST_ART"
-  if [ -n "$extra" ]; then   # files that are not in the T5 set are moved (mv -n, never removed) into a dated sibling directory
+  if [ -n "$extra" ]; then   # entries that are not in the T5 set are moved (mv -n, never removed) into a dated sibling directory
     aside=/opt/tbound/corpus/artifacts.pre-t5-$(date -u +%Y%m%dT%H%M%SZ)
-    echo "moving $(printf '%s\n' "$extra" | grep -c .) file(s) that are not in the T5 set to $aside:"; printf '%s\n' "$extra" | sed 's/^/   /'
+    echo "moving $(printf '%s\n' "$extra" | grep -c .) entrie(s) that are not in the T5 set to $aside:"; printf '%s\n' "$extra" | sed 's/^/   /'
     G "sudo -n install -d -o root -g root -m 0755 $aside && cd $GUEST_ART && sudo -n mv -n -- $(printf '%s ' $extra) $aside/"
-    G "ls -A $aside" | tr -d '\r' | LC_ALL=C sort | diff - <(printf '%s\n' "$extra") || die "the moved files in $aside differ from the list above"
+    G "ls -A $aside" | tr -d '\r' | LC_ALL=C sort | diff - <(printf '%s\n' "$extra") || die "the moved entries in $aside differ from the list above"
   fi
   WX tar -C "$ART" -c . | GI "sudo -n tar -x --no-same-owner --no-same-permissions -C $GUEST_ART"
   G 'sudo -n chown -R root:root /opt/tbound/corpus && sudo -n find /opt/tbound/corpus -type d -exec chmod 0755 {} + && sudo -n find /opt/tbound/corpus -type f -exec chmod 0644 {} +'
   session_close
-  gst=$(guest_artifact_sums)
+  gst=$(guest_artifact_sums); gst_ent=$(guest_artifact_entries)
+  [ "$gst_ent" = "$own_ent" ] || die "the guest artifact entry set differs from the frozen source after the install:"$'\n'"$(diff <(printf '%s\n' "$own_ent") <(printf '%s\n' "$gst_ent") || true)"
   [ "$gst" = "$own" ] || die "the guest artifacts differ from the frozen source after the install (count/sha256):"$'\n'"$(diff <(printf '%s\n' "$own") <(printf '%s\n' "$gst") || true)"
   artifact_meta_check
-  ok "installed: $T5_ARTIFACT_COUNT files, per-file sha256 == frozen source; session sudo closed"
+  ok "installed: $T5_ARTIFACT_COUNT files, complete entry set and per-file sha256 == frozen source; session sudo closed"
 }
 
 # ---- 4 cycle (D2 manifest-install, then RG for NAME=pilot) ----------------------------------------------------------------------------------------
