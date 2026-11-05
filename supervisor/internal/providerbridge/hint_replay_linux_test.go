@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -146,9 +147,11 @@ func TestHintReplayAcrossFreshProcesses(t *testing.T) {
 				}
 				cmd := exec.Command(os.Args[0], "-test.run=^TestHintReplaySubprocess$", "-test.v")
 				cmd.Env = append(os.Environ(), "TBOUND_HINT_REPLAY_PATH="+path, "TBOUND_HINT_REPLAY_KIND="+kind)
-				if output, err := cmd.CombinedOutput(); err != nil {
+				output, err := cmd.CombinedOutput()
+				if err != nil {
 					t.Fatalf("fresh process: %v\n%s", err, output)
 				}
+				requireFreshReplayHelperBranchConfirmed(t, output, "replay")
 
 				if provider == "choice" && kind == "gate" {
 					changedPath := filepath.Join(t.TempDir(), "changed.audit")
@@ -175,9 +178,11 @@ func TestHintReplayAcrossFreshProcesses(t *testing.T) {
 					}
 					check := exec.Command(os.Args[0], "-test.run=^TestHintReplaySubprocess$", "-test.v")
 					check.Env = append(os.Environ(), "TBOUND_HINT_REPLAY_PATH="+changedPath, "TBOUND_HINT_REPLAY_KIND="+kind, "TBOUND_HINT_REPLAY_REJECT=1")
-					if output, err := check.CombinedOutput(); err != nil {
+					output, err := check.CombinedOutput()
+					if err != nil {
 						t.Fatalf("fresh process tamper check: %v\n%s", err, output)
 					}
+					requireFreshReplayHelperBranchConfirmed(t, output, "reject")
 				}
 			})
 		}
@@ -191,6 +196,29 @@ func hintReasonMustDecode(t *testing.T, raw []byte) string {
 		t.Fatal(err)
 	}
 	return hintReason(r)
+}
+
+// Helpers print their branch confirmation only after assertions and journal close pass. Exit 0 alone
+// also happens when -test.run matches nothing or the helper returns early without its path.
+const freshReplayHelperConfirmationMarker = "HINT_REPLAY_HELPER_CONFIRMED"
+
+func confirmFreshReplayHelperBranch(t *testing.T, journal io.Closer, branch string) {
+	t.Helper()
+	if err := journal.Close(); err != nil {
+		t.Fatal(err)
+	}
+	fmt.Println(freshReplayHelperConfirmationMarker + " " + branch)
+}
+
+func requireFreshReplayHelperBranchConfirmed(t *testing.T, output []byte, branch string) {
+	t.Helper()
+	if !outputConfirmsFreshReplayHelperBranch(output, branch) {
+		t.Fatalf("fresh process exited 0 without confirming the %s branch ran:\n%s", branch, output)
+	}
+}
+
+func outputConfirmsFreshReplayHelperBranch(output []byte, branch string) bool {
+	return strings.Contains(string(output), freshReplayHelperConfirmationMarker+" "+branch+"\n")
 }
 
 func TestHintReplaySubprocess(t *testing.T) {
@@ -208,11 +236,13 @@ func TestHintReplaySubprocess(t *testing.T) {
 		if !errors.Is(err, ErrTranscriptReplay) || !strings.Contains(err.Error(), "byte-match") {
 			t.Fatalf("changed hint did not fail byte identity: %v", err)
 		}
+		confirmFreshReplayHelperBranch(t, journal, "reject")
 		return
 	}
 	if err != nil || projection.ResultCount != 1 || projection.ExchangeCount != 2 {
 		t.Fatalf("%+v %v", projection, err)
 	}
+	confirmFreshReplayHelperBranch(t, journal, "replay")
 }
 
 func TestFallbackHintJournalRejectsEndpointCredentials(t *testing.T) {
@@ -275,15 +305,17 @@ func TestFallbackHintJournalRejectsEndpointCredentials(t *testing.T) {
 func TestHintReplayRejectsMixedMetadataAcrossFreshProcesses(t *testing.T) {
 	if path := os.Getenv("TBOUND_MIXED_HINT_PATH"); path != "" {
 		journal := openRecoveryTestJournal(t, path)
-		defer journal.Close()
 		projection, err := ReplayTranscript(journal, RecoveryPins{Config: recoveryTestConfig(), Model: ApprovedModel,
 			Policy: recoveryTestPolicy(t, os.Getenv("TBOUND_MIXED_HINT_KIND") == "admission")}, &replayVerifierFixture{})
 		if os.Getenv("TBOUND_MIXED_HINT_REJECT") == "1" {
 			if !errors.Is(err, ErrTranscriptReplay) || !strings.Contains(err.Error(), "mixed hint metadata") {
 				t.Fatalf("mixed journal was not rejected: %+v %v", projection, err)
 			}
+			confirmFreshReplayHelperBranch(t, journal, "reject")
 		} else if err != nil || projection.ResultCount != 2 {
 			t.Fatalf("uniform journal failed: %+v %v", projection, err)
+		} else {
+			confirmFreshReplayHelperBranch(t, journal, "uniform")
 		}
 		return
 	}
@@ -359,18 +391,50 @@ func TestHintReplayRejectsMixedMetadataAcrossFreshProcesses(t *testing.T) {
 					if err := variant.Close(); err != nil {
 						t.Fatal(err)
 					}
-					reject := "0"
+					reject, branch := "0", "uniform"
 					if strings.Contains(mode, "then") {
-						reject = "1"
+						reject, branch = "1", "reject"
 					}
 					cmd := exec.Command(os.Args[0], "-test.run=^TestHintReplayRejectsMixedMetadataAcrossFreshProcesses$", "-test.count=1")
 					cmd.Env = append(os.Environ(), "TBOUND_MIXED_HINT_PATH="+path, "TBOUND_MIXED_HINT_KIND="+kind, "TBOUND_MIXED_HINT_REJECT="+reject)
-					if output, err := cmd.CombinedOutput(); err != nil {
+					output, err := cmd.CombinedOutput()
+					if err != nil {
 						t.Fatalf("fresh replay: %v\n%s", err, output)
 					}
+					requireFreshReplayHelperBranchConfirmed(t, output, branch)
 				})
 			}
 		})
+	}
+}
+
+// The exit-0 false passes that the confirmation marker exists to reject.
+func TestFreshReplayHelperConfirmationRejectsAbsentAndMismatchedHelpers(t *testing.T) {
+	for _, child := range []struct {
+		name string
+		args []string
+		env  []string
+	}{
+		{name: "absent selector", args: []string{"-test.run=^TestHintReplaySubprocessRenamed$"}},
+		{name: "helper without path", args: []string{"-test.run=^TestHintReplaySubprocess$"}, env: []string{"TBOUND_HINT_REPLAY_PATH="}},
+	} {
+		t.Run(child.name, func(t *testing.T) {
+			cmd := exec.Command(os.Args[0], child.args...)
+			cmd.Env = append(os.Environ(), child.env...)
+			output, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("child exited non-zero, so this case does not show the exit-0 false pass: %v\n%s", err, output)
+			}
+			for _, branch := range []string{"replay", "reject", "uniform"} {
+				if outputConfirmsFreshReplayHelperBranch(output, branch) {
+					t.Fatalf("child that never ran the helper body confirmed %s:\n%s", branch, output)
+				}
+			}
+		})
+	}
+	rejectOutput := []byte(freshReplayHelperConfirmationMarker + " reject\n")
+	if outputConfirmsFreshReplayHelperBranch(rejectOutput, "replay") || !outputConfirmsFreshReplayHelperBranch(rejectOutput, "reject") {
+		t.Fatal("a reject confirmation must satisfy only the reject branch")
 	}
 }
 

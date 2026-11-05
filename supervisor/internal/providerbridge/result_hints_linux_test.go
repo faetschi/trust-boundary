@@ -19,13 +19,15 @@ func TestDenialHintExactLiveAndReplay(t *testing.T) {
 	if path := os.Getenv("TBOUND_HINT_REPLAY_JOURNAL"); path != "" {
 		journal := openRecoveryTestJournal(t, path)
 		_, err := ReplayTranscript(journal, RecoveryPins{Config: recoveryTestConfig(), Model: ApprovedModel, Policy: recoveryTestPolicy(t, false)}, nil)
-		if os.Getenv("TBOUND_HINT_REPLAY_EXPECT") == "exact" {
+		expectedTranscriptVariant := os.Getenv("TBOUND_HINT_REPLAY_EXPECT")
+		if expectedTranscriptVariant == "exact" {
 			if err != nil {
 				t.Fatalf("exact hinted history refused: %v", err)
 			}
 		} else if !errors.Is(err, ErrTranscriptReplay) || !strings.Contains(err.Error(), "byte-match") {
 			t.Fatalf("altered tool text was not refused by exact history binding: %v", err)
 		}
+		confirmFreshReplayHelperBranch(t, journal, expectedTranscriptVariant)
 		return
 	}
 	_, policy, journal, conversation, executor, doer := newDenialFixture(t, false, protectedWriteThenRead, &fixtureExecutor{})
@@ -108,9 +110,12 @@ func TestDenialHintExactLiveAndReplay(t *testing.T) {
 			}
 			child := exec.Command(os.Args[0], "-test.run=^TestDenialHintExactLiveAndReplay$", "-test.count=1")
 			child.Env = append(os.Environ(), "TBOUND_HINT_REPLAY_JOURNAL="+path, "TBOUND_HINT_REPLAY_EXPECT="+name)
-			if output, err := child.CombinedOutput(); err != nil {
+			output, err := child.CombinedOutput()
+			if err != nil {
 				t.Fatalf("fresh-process replay: %v\n%s", err, output)
 			}
+			// Exit 0 also happens when -test.run matches nothing, so require the child's own confirmation.
+			requireFreshReplayHelperBranchConfirmed(t, output, name)
 		})
 	}
 }
