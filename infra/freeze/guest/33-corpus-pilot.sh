@@ -170,29 +170,46 @@ print(json.dumps(m,indent=2))' "$draft" "$HG/pins.json" | hf_save pilot/manifest
 guest_artifact_sums() { G "cd $GUEST_ART 2>/dev/null && sha256sum -- * 2>/dev/null | LC_ALL=C sort -k2 || true" | tr -d '\r'; }
 sum_names() { printf '%s\n' "$1" | awk 'NF{print $2}' | LC_ALL=C sort; }
 
+# Owner and modes under /opt/tbound/corpus (also the pre-t5 sibling directories): root:root, directories 0755, files 0644. Readable without sudo.
+artifact_meta_check() {
+  local bad
+  bad=$(G 'find /opt/tbound/corpus \( ! -user root -o ! -group root -o \( -type d ! -perm 0755 \) -o \( -type f ! -perm 0644 \) \) -print' | tr -d '\r')
+  [ -z "$bad" ] || die "owner or mode wrong under /opt/tbound/corpus (want root:root, dirs 0755, files 0644):"$'\n'"$bad"
+  ok "everything under /opt/tbound/corpus is root:root, directories 0755, files 0644"
+}
+
 phase_artifacts() {
   say "3. artifacts: the $T5_ARTIFACT_COUNT T5 files into $GUEST_ART"
-  local own gst extra bad
+  local own gst extra name aside
   own=$(WB "cd '$ART' && sha256sum -- * | LC_ALL=C sort -k2" | tr -d '\r')
   eq "owner-side artifact files" "$(sum_names "$own" | grep -c .)" "$T5_ARTIFACT_COUNT"
   gst=$(guest_artifact_sums)
-  if [ "$gst" = "$own" ]; then ok "guest artifacts == frozen source ($T5_ARTIFACT_COUNT files, per-file sha256): no session sudo needed"; return 0; fi
+  if [ "$gst" = "$own" ]; then
+    ok "guest artifacts == frozen source ($T5_ARTIFACT_COUNT files, per-file sha256): no session sudo needed"
+    artifact_meta_check
+    return 0
+  fi
   echo "guest holds $(sum_names "$gst" | grep -c .) files, the frozen source $T5_ARTIFACT_COUNT"
   extra=$(LC_ALL=C comm -13 <(sum_names "$own") <(sum_names "$gst"))
-  [ -z "$extra" ] || die "the guest holds artifact files that are not in the T5 set (nothing is removed here; the owner decides):"$'\n'"$extra"
+  for name in $extra; do [[ $name =~ ^[A-Za-z0-9._-]+$ ]] || die "unusable file name on the guest: '$name'"; done
   [ -n "${TBA_PW:-}" ] || die "TBA_PW is not set: the artifact install needs the session sudo window (read -rs TBA_PW; export TBA_PW)"
   cleanup_add session_close
   SESSION_OPEN=1
   bash "$GA/00-session-sudo.sh" open
   G "sudo -n install -d -o root -g root -m 0755 /opt/tbound/corpus $GUEST_ART"
+  if [ -n "$extra" ]; then   # files that are not in the T5 set are moved (mv -n, never removed) into a dated sibling directory
+    aside=/opt/tbound/corpus/artifacts.pre-t5-$(date -u +%Y%m%dT%H%M%SZ)
+    echo "moving $(printf '%s\n' "$extra" | grep -c .) file(s) that are not in the T5 set to $aside:"; printf '%s\n' "$extra" | sed 's/^/   /'
+    G "sudo -n install -d -o root -g root -m 0755 $aside && cd $GUEST_ART && sudo -n mv -n -- $(printf '%s ' $extra) $aside/"
+    G "ls -A $aside" | tr -d '\r' | LC_ALL=C sort | diff - <(printf '%s\n' "$extra") || die "the moved files in $aside differ from the list above"
+  fi
   WX tar -C "$ART" -c . | GI "sudo -n tar -x --no-same-owner --no-same-permissions -C $GUEST_ART"
   G 'sudo -n chown -R root:root /opt/tbound/corpus && sudo -n find /opt/tbound/corpus -type d -exec chmod 0755 {} + && sudo -n find /opt/tbound/corpus -type f -exec chmod 0644 {} +'
   session_close
   gst=$(guest_artifact_sums)
   [ "$gst" = "$own" ] || die "the guest artifacts differ from the frozen source after the install (count/sha256):"$'\n'"$(diff <(printf '%s\n' "$own") <(printf '%s\n' "$gst") || true)"
-  bad=$(G 'find /opt/tbound/corpus \( ! -user root -o ! -group root -o \( -type d ! -perm 0755 \) -o \( -type f ! -perm 0644 \) \) -print' | tr -d '\r')
-  [ -z "$bad" ] || die "owner or mode wrong under /opt/tbound/corpus:"$'\n'"$bad"
-  ok "installed: $T5_ARTIFACT_COUNT files, per-file sha256 == frozen source, root:root 0755/0644; session sudo closed"
+  artifact_meta_check
+  ok "installed: $T5_ARTIFACT_COUNT files, per-file sha256 == frozen source; session sudo closed"
 }
 
 # ---- 4 cycle (D2 manifest-install, then RG for NAME=pilot) ----------------------------------------------------------------------------------------
