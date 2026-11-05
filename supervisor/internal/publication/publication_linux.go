@@ -803,6 +803,23 @@ func UnboundStagingNames(trace audit.Trace, workflowID string) ([]string, error)
 	return names, nil
 }
 
+// UnboundStagingNamesIncludingTerminal is UnboundStagingNames without the terminal-record condition: it also lists
+// the transactions RecoverAbandoningUnboundStaging already ended FAILED, whose staging directory it left in place.
+// It reads the journal only, and the names are the ones the journal reader validates.
+func UnboundStagingNamesIncludingTerminal(trace audit.Trace, workflowID string) ([]string, error) {
+	transactions, err := readTransactions(trace, workflowID)
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	for _, tx := range transactions {
+		if tx.token == nil && tx.artifactID == nil {
+			names = append(names, tx.prepare.ArtifactName)
+		}
+	}
+	return names, nil
+}
+
 func (r *Repository) recover(liveRoot *os.File, transactionID string, inject FaultInjector, abandonUnboundStaging bool) (Result, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

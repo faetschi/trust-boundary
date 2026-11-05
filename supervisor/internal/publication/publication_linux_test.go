@@ -1204,6 +1204,9 @@ func TestRecoverAbandoningUnboundStagingKeepsTheDirectoryOnlyWhenItsIdentityIsUn
 			if names, err := UnboundStagingNames(after, workflowID); err != nil || len(names) != 0 {
 				t.Fatalf("a closed transaction still reports unbound staging: %v %v", names, err)
 			}
+			if names, err := UnboundStagingNamesIncludingTerminal(after, workflowID); err != nil || len(names) != test.wantNames || test.wantNames == 1 && names[0] != artifactName {
+				t.Fatalf("the variant must keep naming the closed transaction: %v %v", names, err)
+			}
 			if reason := lastAbortedReason(t, after); strings.Contains(reason, artifactName) != test.wantKept {
 				t.Fatalf("terminal reason %q does not match kept=%v", reason, test.wantKept)
 			}

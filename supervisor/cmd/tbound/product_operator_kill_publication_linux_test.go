@@ -59,6 +59,22 @@ func TestProductOperatorPublicationCrashChild(t *testing.T) {
 	t.Fatalf("the child reached no crash point %s: %v", point, err)
 }
 
+// crashPublicationChild runs the fresh process above against the fixture's root and requires it to exit at point.
+func crashPublicationChild(t *testing.T, created *productDriverFixture, point string, bash bool) {
+	t.Helper()
+	child := exec.Command(os.Args[0], "-test.run=^TestProductOperatorPublicationCrashChild$", "-test.count=1")
+	child.Env = append(os.Environ(), productCrashRootEnv+"="+created.root, productCrashPointEnv+"="+point,
+		productCrashSessionEnv+"="+created.session.ID)
+	if bash {
+		child.Env = append(child.Env, productPublicationBashEnv+"=1")
+	}
+	output, err := child.CombinedOutput()
+	var exit *exec.ExitError
+	if !errors.As(err, &exit) || exit.ExitCode() != productCrashExit {
+		t.Fatalf("child did not crash at %s: %v\n%s", point, err, output)
+	}
+}
+
 type publicationLifecycle struct{ pending, resolved, prepared, terminal int }
 
 // readPublicationLifecycle counts the lifecycle records of the project's publication journal and returns its bytes.
@@ -133,17 +149,7 @@ func TestProductOperatorResolvesAKillInsidePublicationOnlyWhenProvablyUnapplied(
 				if err := created.env.Catalog.Close(); err != nil {
 					t.Fatal(err)
 				}
-				child := exec.Command(os.Args[0], "-test.run=^TestProductOperatorPublicationCrashChild$", "-test.count=1")
-				child.Env = append(os.Environ(), productCrashRootEnv+"="+created.root, productCrashPointEnv+"="+c.point,
-					productCrashSessionEnv+"="+created.session.ID)
-				if bash {
-					child.Env = append(child.Env, productPublicationBashEnv+"=1")
-				}
-				output, err := child.CombinedOutput()
-				var exit *exec.ExitError
-				if !errors.As(err, &exit) || exit.ExitCode() != productCrashExit {
-					t.Fatalf("child did not crash at %s: %v\n%s", c.point, err, output)
-				}
+				crashPublicationChild(t, created, c.point, bash)
 				open := func() *productDriverFixture {
 					var f *productDriverFixture
 					if bash {
@@ -263,8 +269,88 @@ func TestProductOperatorResolvesAKillInsidePublicationOnlyWhenProvablyUnapplied(
 	}
 }
 
-// The operator is told which staging directory a resolution leaves behind, and nothing about publication when it
-// closed no record.
+// A resolution that dies after the ledger settled the publication and before the catalog append leaves the unbound
+// staging directory with no pending record to find it by. The retry, dry or real, still names the directory while it
+// exists, and names nothing once the operator removed it.
+func TestProductOperatorRetryReportsTheStagingDirectoryAnInterruptedResolutionLeft(t *testing.T) {
+	for _, removedByOperator := range []bool{false, true} {
+		t.Run(fmt.Sprintf("removedByOperator=%v", removedByOperator), func(t *testing.T) {
+			created := newProductDriverFixture(t, productsession.PublicationReview)
+			if err := created.env.Catalog.Close(); err != nil {
+				t.Fatal(err)
+			}
+			crashPublicationChild(t, created, "publication-after-artifact-create", false)
+			f := openProductDriverFixture(t, created.root)
+			f.session = created.session
+			id := f.session.ID + "/turn-1"
+			if err := f.env.ReconcileAfterRestart(context.Background()); err == nil {
+				t.Fatal("restart reconciliation settled a turn killed inside publication")
+			}
+			turn := f.turn(t, id)
+			staging, _ := filepath.Glob(filepath.Join(filepath.Dir(f.env.ProjectRoots[turn.ProjectID]), ".tbound-publication-[0-9a-f]*"))
+			if len(staging) != 1 {
+				t.Fatalf("the kill left staging directories %v", staging)
+			}
+			if err := f.env.Catalog.Close(); err != nil {
+				t.Fatal(err)
+			}
+			catalogPath := filepath.Join(f.env.StateRoot, "catalog.jsonl")
+			errInterrupted := errors.New("interrupted after the ledger settled the publication")
+			_, err := productsession.OperatorResolve(catalogPath, f.env.Registration, id, "operator test", false,
+				func(turn productsession.Turn) (productsession.OperatorEvidence, error) {
+					evidence, err := f.env.operatorEvidence(context.Background(), turn)
+					settle := evidence.Settle
+					evidence.Settle = func() error {
+						if err := settle(); err != nil {
+							return err
+						}
+						return errInterrupted
+					}
+					return evidence, err
+				})
+			if !errors.Is(err, errInterrupted) {
+				t.Fatalf("the interruption did not reach the settled ledger: %v", err)
+			}
+			if lifecycle, _ := readPublicationLifecycle(t, f, turn.ProjectID); lifecycle.pending != 1 || lifecycle.resolved != 1 {
+				t.Fatalf("the ledger was not settled before the interruption: %+v", lifecycle)
+			}
+			if removedByOperator {
+				if err := os.Remove(staging[0]); err != nil {
+					t.Fatal(err)
+				}
+				staging = nil
+			}
+			var evidence productsession.OperatorEvidence
+			if _, err := productsession.OperatorResolve(catalogPath, f.env.Registration, id, "operator test", true,
+				func(turn productsession.Turn) (productsession.OperatorEvidence, error) {
+					var err error
+					evidence, err = f.env.operatorEvidence(context.Background(), turn)
+					return evidence, err
+				}); err != nil {
+				t.Fatalf("dry-run retry: %v", err)
+			}
+			if !slices.Equal(evidence.PublicationStagingLeft, staging) {
+				t.Fatalf("dry-run retry names staging %q, want %q", evidence.PublicationStagingLeft, staging)
+			}
+			if note := publicationNote(evidence.PublicationClosed, evidence.PublicationStagingLeft, true); (len(staging) != 0) != strings.Contains(note, ".tbound-publication-") {
+				t.Fatalf("dry-run retry note %q does not match staging %q", note, staging)
+			}
+			if _, err := operatorResolveOnDisk(f, id, false); err != nil {
+				t.Fatalf("real retry: %v", err)
+			}
+			got := openProductDriverFixture(t, created.root).turn(t, id)
+			if got.State != productsession.StateTerminal || got.Outcome != productsession.OutcomeAbandoned {
+				t.Fatalf("the retry did not resolve the turn: %+v", got)
+			}
+			if !slices.Equal(got.OperatorResolution.PublicationStagingLeft, staging) {
+				t.Fatalf("abandonment record names staging %q, want %q", got.OperatorResolution.PublicationStagingLeft, staging)
+			}
+		})
+	}
+}
+
+// The operator is told which staging directory a resolution leaves behind, whether or not the resolution closed a
+// record itself, and nothing about publication when there is neither.
 func TestPublicationNoteNamesTheStagingDirectoriesLeftForTheOperator(t *testing.T) {
 	left := []string{"/srv/p/.tbound-publication-aa"}
 	if note := publicationNote([]string{"event"}, left, false); !strings.Contains(note, "1 pending publication record(s) closed as unapplied") || !strings.Contains(note, left[0]) {
@@ -276,7 +362,10 @@ func TestPublicationNoteNamesTheStagingDirectoriesLeftForTheOperator(t *testing.
 	if note := publicationNote([]string{"event"}, nil, false); strings.Contains(note, "staging") {
 		t.Fatalf("a note without a left directory mentions staging: %q", note)
 	}
-	if note := publicationNote(nil, left, false); note != "" {
-		t.Fatalf("a resolution that closed nothing reports publication: %q", note)
+	if note := publicationNote(nil, left, false); strings.Contains(note, "pending publication record") || !strings.Contains(note, left[0]) {
+		t.Fatalf("a retry that closed nothing must still name the staging directory: %q", note)
+	}
+	if note := publicationNote(nil, nil, false); note != "" {
+		t.Fatalf("a resolution with no publication to report mentions it: %q", note)
 	}
 }

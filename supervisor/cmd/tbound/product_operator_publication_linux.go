@@ -32,7 +32,8 @@ import (
 // baseline, so nothing it did reached the live tree. settle therefore recovers through
 // RecoverAbandoningUnboundStaging, which ends such a transaction FAILED and leaves the directory in place, since
 // nothing proves it is the one the transaction created. stagingLeft names each such directory that exists, as an
-// absolute path, for the operator to remove.
+// absolute path, for the operator to remove. It reads the workflow's ended transactions too, so it also names the
+// directory when an earlier resolution settled the ledger and died before the catalog append.
 func (e *productTurnEnv) operatorPublication(ctx context.Context, turn productsession.Turn, root *os.File, measured string) (closing, stagingLeft []string, settle func() error, err error) {
 	workflowID := turn.Link.WorkflowID
 	named, _, err := e.workflowPublication(turn.ProjectID, workflowID)
@@ -72,11 +73,12 @@ func (e *productTurnEnv) operatorPublication(ctx context.Context, turn productse
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("publication lifecycle: %w", err)
 	}
-	if closing = unresolvedPublicationEvents(trace, workflowID); len(closing) == 0 {
-		return nil, nil, nil, nil
-	}
+	// The directories come from the workflow's transactions, ended or not, so a retry after the settle still names them.
 	if stagingLeft, err = unboundStagingLeft(root, trace, workflowID); err != nil {
 		return nil, nil, nil, err
+	}
+	if closing = unresolvedPublicationEvents(trace, workflowID); len(closing) == 0 {
+		return nil, stagingLeft, nil, nil
 	}
 	return closing, stagingLeft, func() error {
 		stateRoot, err := os.Open(filepath.Join(projectDir, "publication-state"))
@@ -121,9 +123,10 @@ func (r abandoningRecovery) Recover(liveRoot *os.File, transactionID string, inj
 }
 
 // unboundStagingLeft lists, as absolute paths beside the live root, the unbound staging directories of the
-// workflow's open transactions that exist now. A kill before the directory was created leaves none.
+// workflow's transactions, open or already ended, that exist now. A kill before the directory was created leaves
+// none, and one the operator removed is not listed.
 func unboundStagingLeft(root *os.File, trace audit.Trace, workflowID string) ([]string, error) {
-	names, err := publication.UnboundStagingNames(trace, workflowID)
+	names, err := publication.UnboundStagingNamesIncludingTerminal(trace, workflowID)
 	if err != nil || len(names) == 0 {
 		return nil, err
 	}
@@ -144,16 +147,17 @@ func unboundStagingLeft(root *os.File, trace audit.Trace, workflowID string) ([]
 }
 
 // publicationNote tells the operator which pending publication records a resolution closes, and which staging
-// directories it leaves behind for them to remove.
+// directories it leaves behind for them to remove. A retry after an interrupted resolution closes no record and
+// still names the directories.
 func publicationNote(closing, stagingLeft []string, dry bool) string {
-	if len(closing) == 0 {
-		return ""
+	var note string
+	if len(closing) != 0 {
+		verb := "closed"
+		if dry {
+			verb = "would be closed"
+		}
+		note = fmt.Sprintf("; %d pending publication record(s) %s as unapplied", len(closing), verb)
 	}
-	verb := "closed"
-	if dry {
-		verb = "would be closed"
-	}
-	note := fmt.Sprintf("; %d pending publication record(s) %s as unapplied", len(closing), verb)
 	if len(stagingLeft) != 0 {
 		note += fmt.Sprintf("; the unbound staging directory(s) %s stay in place and can be removed by hand", strings.Join(stagingLeft, ", "))
 	}
