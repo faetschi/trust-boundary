@@ -13,8 +13,8 @@ const unitWantedBy = "multi-user.target"
 
 // unitDirectives is the closed set of directives and the exact value each must have, in the order the
 // unit lists them. The hardening matches the research unit (infra/guest/systemd/tbound-pi.service)
-// where it applies: the product service has no Podman home, no DelegateSubgroup and no fixed
-// environment yet, because no product worker mode needs them.
+// where it applies. DelegateSubgroup keeps the service process in its runner subgroup, so the command cells can run
+// beside it in the delegated tree. The one Environment line matches the environment of the product Podman children.
 var unitDirectives = []struct{ key, value string }{
 	{"User", ServiceUser},
 	{"Group", ServiceGroup},
@@ -28,10 +28,30 @@ var unitDirectives = []struct{ key, value string }{
 	{"ProtectHome", "yes"},
 	{"PrivateTmp", "yes"},
 	{"Delegate", "yes"},
+	{"DelegateSubgroup", "runner"},
 	{"RuntimeDirectory", "tbound-product"},
 	{"RuntimeDirectoryMode", "0750"},
 	{"ReadWritePaths", RuntimeDir + " " + StateDir},
+	// Missing command inputs must not prevent a Bash-deny installation from starting.
+	{"BindReadOnlyPaths", "-/usr/bin/podman -/usr/bin/crun -/usr/local/bin/cosign -" + PodmanConfigDir},
 	{"UnsetEnvironment", "DBUS_SESSION_BUS_ADDRESS"},
+	{"Environment", strings.Join(commandCellEnvironment(), " ")},
+}
+
+// commandCellEnvironment is the environment of every product Podman and cosign child, sorted by name. The
+// unit sets it on the service too, so ValidateUnit refuses a drop-in that would change what a child inherits.
+func commandCellEnvironment() []string {
+	return []string{
+		"CONTAINERS_CONF=" + ContainersConfPath,
+		"CONTAINERS_STORAGE_CONF=" + StorageConfPath,
+		"HOME=" + PodmanHomeDir,
+		"LANG=C",
+		"LC_ALL=C",
+		"PATH=" + CommandCellPath,
+		"TMPDIR=" + PodmanTmpDir,
+		"XDG_CACHE_HOME=" + PodmanCacheDir,
+		"XDG_RUNTIME_DIR=" + RuntimeDir,
+	}
 }
 
 // RenderUnit returns the tbound-product.service unit.

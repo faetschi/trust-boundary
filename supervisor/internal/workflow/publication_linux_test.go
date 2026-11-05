@@ -211,3 +211,66 @@ func TestRootLedgerRejectsUnboundRecoveryRepositories(t *testing.T) {
 		})
 	}
 }
+
+// The dry run decides exactly as RecoverBeforeAdmission does from the journal alone, and writes nothing.
+func TestRootLedgerCheckRecoverBeforeAdmissionResolvesNothing(t *testing.T) {
+	for _, state := range []string{"no prepare", "prepare without terminal", "prepare with terminal"} {
+		t.Run(state, func(t *testing.T) {
+			base := t.TempDir()
+			rootDir, journalDir := filepath.Join(base, "live"), filepath.Join(base, "audit")
+			for _, dir := range []string{rootDir, journalDir} {
+				if err := os.Mkdir(dir, 0o700); err != nil {
+					t.Fatal(err)
+				}
+			}
+			root, err := os.Open(rootDir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer root.Close()
+			journal, err := audit.Open(filepath.Join(journalDir, "journal.jsonl"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer journal.Close()
+			ledger, _ := NewRootLedger(journal)
+			reservation, err := ledger.Begin(root, "workflow-check", 1, "publication-check", testRootWorkspace())
+			if err != nil {
+				t.Fatal(err)
+			}
+			const transaction = "pub-0123456789abcdef0123456789abcdef"
+			if state != "no prepare" {
+				prepare, _ := json.Marshal(map[string]any{"transaction_id": transaction, "workflow_id": "workflow-check", "owner_epoch": 1, "publication_id": "publication-check"})
+				if _, err := journal.Append(audit.Event{Kind: "publication_prepare", ID: transaction, Data: prepare}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if state == "prepare with terminal" {
+				terminal, _ := json.Marshal(map[string]any{"transaction_id": transaction, "status": publication.StatusFailed})
+				if _, err := journal.Append(audit.Event{Kind: "publication_aborted", ID: transaction, Data: terminal}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			reservation.Release()
+			before, err := journal.Trace()
+			if err != nil {
+				t.Fatal(err)
+			}
+			recoveries, checkErr := ledger.CheckRecoverBeforeAdmission(context.Background(), root)
+			after, err := journal.Trace()
+			if err != nil || len(after.Records) != len(before.Records) {
+				t.Fatalf("the dry run wrote records: %d -> %d, %v", len(before.Records), len(after.Records), err)
+			}
+			needsRecovery := state == "prepare without terminal"
+			if checkErr != nil || needsRecovery != (recoveries == 1) {
+				t.Fatalf("dry run of %q: recoveries=%d err=%v", state, recoveries, checkErr)
+			}
+			recoverErr := ledger.RecoverBeforeAdmission(context.Background(), root, func(string) (RecoveryRepository, error) {
+				return nil, errors.New("the journal alone decides this state")
+			})
+			if needsRecovery != errors.Is(recoverErr, ErrRootQuarantined) || !needsRecovery && recoverErr != nil {
+				t.Fatalf("recovery disagrees with its dry run: %v", recoverErr)
+			}
+		})
+	}
+}

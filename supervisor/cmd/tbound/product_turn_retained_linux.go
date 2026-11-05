@@ -3,14 +3,130 @@
 package main
 
 import (
+	"crypto/ed25519"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
+	"strings"
 
 	"tbound/supervisor/internal/audit"
+	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/piruntime"
 	"tbound/supervisor/internal/productsession"
+	"tbound/supervisor/internal/productsetup"
 	"tbound/supervisor/internal/sessionrepo"
 )
+
+// Empty command journals need no active image/profile. Nonempty journals select
+// immutable signed historical bindings; today's registration is never replay authority.
+func openProductD09CommandHistory(journal *audit.Journal, link productsession.TurnLink) (governedRecoveryCommandVerifier, error) {
+	return openProductD09CommandHistoryAt("/", journal, link)
+}
+
+func openProductD09CommandHistoryAt(root string, journal *audit.Journal, link productsession.TurnLink) (governedRecoveryCommandVerifier, error) {
+	if journal == nil {
+		return nil, errors.New("missing product command journal")
+	}
+	trace, err := journal.Trace()
+	if err != nil {
+		return nil, err
+	}
+	if len(trace.Records) == 0 {
+		return nil, nil
+	}
+	profileDigest := ""
+	for _, record := range trace.Records {
+		var header struct {
+			SchemaVersion string `json:"schema_version"`
+			ProfileDigest string `json:"profile_digest"`
+		}
+		if record.Event.Kind != productionD09SettledKind || protocol.ValidateStrictJSON(record.Event.Data) != nil || json.Unmarshal(record.Event.Data, &header) != nil ||
+			(header.SchemaVersion != productionD09SettledSchemaSuccess && header.SchemaVersion != productionD09SettledSchemaDenied) || !validDigestText(header.ProfileDigest) {
+			return nil, errors.New("unsupported product command history record or profile digest")
+		}
+		if profileDigest != "" && profileDigest != header.ProfileDigest {
+			return nil, errors.New("product command history mixes signed profiles")
+		}
+		profileDigest = header.ProfileDigest
+	}
+	base := filepath.Join(root, productsetup.PodmanConfigDir, "hosts", strings.TrimPrefix(profileDigest, "sha256:"))
+	read := func(name string, limit int64) ([]byte, error) {
+		return productImageRead(root, filepath.Join(base, name), limit)
+	}
+	decode := func(raw []byte, err error) ([]byte, error) {
+		if err != nil {
+			return nil, err
+		}
+		return base64.StdEncoding.DecodeString(strings.TrimSpace(string(raw)))
+	}
+	key, err := decode(productImageRead(root, filepath.Join(root, productsetup.RegistrationPublicKeyPath), 1024))
+	if err != nil {
+		return nil, err
+	}
+	historicalKey, err := decode(read("registration.pub", 1024))
+	if err != nil || string(historicalKey) != string(key) {
+		return nil, errors.Join(errors.New("historical product signing-key rotation is refused"), err)
+	}
+	registrationRaw, err := read("registration.json", int64(productsession.MaxRegistrationBytes))
+	if err != nil {
+		return nil, err
+	}
+	registrationSig, err := decode(read("registration.json.sig", 1024))
+	if err != nil {
+		return nil, err
+	}
+	registration, err := productsession.VerifyRegistration(registrationRaw, registrationSig, ed25519.PublicKey(key))
+	if err != nil {
+		return nil, err
+	}
+	profileRaw, err := read("host-profile.json", 1<<20)
+	if err != nil {
+		return nil, err
+	}
+	profileSig, err := decode(read("host-profile.json.sig", 1024))
+	if err != nil {
+		return nil, err
+	}
+	profile, err := piruntime.VerifyLinuxSignedHostProfile(profileRaw, profileSig, ed25519.PublicKey(key))
+	if err != nil {
+		return nil, err
+	}
+	templateRaw, err := read("d09-cell.json", 1<<20)
+	if err != nil {
+		return nil, err
+	}
+	template, err := piruntime.DecodeProductD09CellTemplate(templateRaw)
+	if err != nil {
+		return nil, err
+	}
+	templateDigest, err := template.Digest()
+	if err != nil || profile.Digest != profileDigest || len(profile.PlaceholderFields()) != 0 || profile.Mode != piruntime.ModeProduction ||
+		profile.ContainmentProfile != piruntime.D09ContainmentProfile || profile.SettlementProfile != piruntime.D09SettlementProfile ||
+		profile.ContainmentProfileDigest != templateDigest || template.ProductRegistrationDigest != registration.Digest || template.ExpectedImageDigest != registration.ImageDigest ||
+		profile.OfflineVerifierDigest != piruntime.OfflineVerifierDigest(template.CosignDigest, template.CosignPublicKeyDigest) ||
+		template.CosignPublicKeyPath != productsetup.CommandCosignPublicKeyPath || template.SeccompProfilePath != productsetup.CommandSeccompPath || template.OCILayoutPath != productsetup.CommandOCILayoutPath {
+		return nil, errors.Join(errors.New("historical product profile, template, registration or image differs"), err)
+	}
+	for _, artifact := range []struct{ name, digest string }{{"seccomp.json", template.SeccompProfileDigest}, {"cosign.pub", template.CosignPublicKeyDigest}} {
+		raw, err := read(artifact.name, 1<<20)
+		if err != nil || piruntime.DigestBytes(raw) != artifact.digest {
+			return nil, errors.Join(errors.New("historical product public artifact differs"), err)
+		}
+	}
+	for _, record := range trace.Records {
+		var event struct {
+			Receipt struct {
+				ImageDigest string `json:"image_digest"`
+			} `json:"receipt"`
+		}
+		if json.Unmarshal(record.Event.Data, &event) != nil || event.Receipt.ImageDigest != registration.ImageDigest {
+			return nil, errors.New("historical command receipt uses a different registered image")
+		}
+	}
+	return productD09CommandHistory(profile, template)(journal, link)
+}
 
 // productTurnPaths names the retained evidence of one finished product turn. CommandJournalPath and
 // Link are empty for evidence that has no command journal.
@@ -77,6 +193,13 @@ func openRetainedProductTurn(paths productTurnPaths, options sessionrepo.Options
 	if err != nil {
 		_ = root.Close()
 		return fail(fmt.Errorf("index retained Store authorizations: %w", err))
+	}
+	for _, effect := range historical.initialTrace.Effects {
+		var intent governedReplayOperationIntent
+		if effect.Unresolved && decodeCanonicalGoverned(effect.Intent, &intent) == nil && intent.Request.Tool == "bash" {
+			_ = root.Close()
+			return fail(errHistoricalBashContext)
+		}
 	}
 	options.Journal, options.ExposureBinder = storeJournal, nil
 	// The preview repairs nothing and checks every effect against its retained authorization record.

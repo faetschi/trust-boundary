@@ -53,6 +53,12 @@ type ociLayerResult struct {
 	file       *ociImageFile // a regular file at the target
 	deleted    bool          // a whiteout hides what lower layers hold at the target
 	unreadable string        // the layer makes the target unresolvable without following a link
+	node       *ociImageNode // exact or implied node, for the product's component-by-component lookup
+}
+
+type ociImageNode struct {
+	typeflag byte
+	link     string
 }
 
 // readOCIImageFile resolves imagePath through the layers of the manifest named
@@ -182,25 +188,36 @@ func (c *countingReader) Read(p []byte) (int, error) {
 // the layer does to target (a path relative to the image root).
 func scanOCILayer(blobPath string, layer ociLayerDescriptor, target string, maximum int64, requireImmutable bool) (ociLayerResult, int64, error) {
 	var result ociLayerResult
+	size, err := readOCILayer(blobPath, layer, maximum, requireImmutable, func(content io.Reader) error {
+		return scanTarForTarget(content, target, &result)
+	})
+	if err != nil {
+		return ociLayerResult{}, 0, err
+	}
+	return result, size, nil
+}
+
+// readOCILayer bounds and verifies the blob independently of its tar consumer.
+func readOCILayer(blobPath string, layer ociLayerDescriptor, maximum int64, requireImmutable bool, scan func(io.Reader) error) (int64, error) {
 	info, err := os.Lstat(blobPath)
 	if err != nil || !info.Mode().IsRegular() || info.Size() < 0 || info.Size() > maximum {
-		return result, 0, errors.Join(ErrD09TemplateInvalid, err)
+		return 0, errors.Join(ErrD09TemplateInvalid, err)
 	}
 	if requireImmutable {
 		stat, ok := info.Sys().(*syscall.Stat_t)
 		if !ok || stat.Uid != 0 || info.Mode().Perm()&0o022 != 0 {
-			return result, 0, errors.New("OCI blob must be root-owned and non-writable")
+			return 0, errors.New("OCI blob must be root-owned and non-writable")
 		}
 	}
 	fd, err := syscall.Open(blobPath, syscall.O_RDONLY|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0)
 	if err != nil {
-		return result, 0, err
+		return 0, err
 	}
 	file := os.NewFile(uintptr(fd), blobPath)
 	defer file.Close()
 	opened, err := file.Stat()
 	if err != nil || !os.SameFile(info, opened) {
-		return result, 0, errors.New("OCI blob changed while opening")
+		return 0, errors.New("OCI blob changed while opening")
 	}
 	raw := &digestingReader{reader: io.LimitReader(file, info.Size()+1), hash: sha256.New()}
 	buffered := bufio.NewReader(raw)
@@ -210,36 +227,36 @@ func scanOCILayer(blobPath string, layer ociLayerDescriptor, target string, maxi
 	case len(magic) >= 2 && magic[0] == 0x1f && magic[1] == 0x8b:
 		zr, err := gzip.NewReader(buffered)
 		if err != nil {
-			return result, 0, err
+			return 0, err
 		}
 		defer zr.Close()
 		content = zr
 	case len(magic) == 4 && magic[0] == 0x28 && magic[1] == 0xb5 && magic[2] == 0x2f && magic[3] == 0xfd:
-		return result, 0, errors.New("zstd-compressed OCI layers are not supported")
+		return 0, errors.New("zstd-compressed OCI layers are not supported")
 	}
 	// Read through the decompressor with one byte of slack past the bound. io.LimitReader at the bound
 	// would report EOF there, and a tar parser that stops at an entry boundary cannot tell that from
 	// the end of the archive: entries after the bound (an override, a whiteout) would go unseen while
 	// the compressed blob still hashes correctly.
 	counted := &countingReader{reader: io.LimitReader(content, ociLayerMaxDecompressed+1)}
-	if err := scanTarForTarget(counted, target, &result); err != nil {
-		return ociLayerResult{}, 0, err
+	if err := scan(counted); err != nil {
+		return 0, err
 	}
 	// The archive ended (end blocks or EOF). Consume the rest of the decompressed stream, which also
 	// makes the gzip reader verify its checksum, and refuse a layer that is larger than the bound.
 	if _, err := io.Copy(io.Discard, counted); err != nil {
-		return ociLayerResult{}, 0, err
+		return 0, err
 	}
 	if counted.count > ociLayerMaxDecompressed {
-		return ociLayerResult{}, 0, fmt.Errorf("OCI layer decompresses to more than %d bytes", ociLayerMaxDecompressed)
+		return 0, fmt.Errorf("OCI layer decompresses to more than %d bytes", ociLayerMaxDecompressed)
 	}
 	if _, err := io.Copy(io.Discard, buffered); err != nil {
-		return ociLayerResult{}, 0, err
+		return 0, err
 	}
 	if raw.count != info.Size() || "sha256:"+hex.EncodeToString(raw.hash.Sum(nil)) != layer.Digest {
-		return ociLayerResult{}, 0, errors.New("OCI layer content digest mismatch")
+		return 0, errors.New("OCI layer content digest mismatch")
 	}
-	return result, info.Size(), nil
+	return info.Size(), nil
 }
 
 func scanTarForTarget(content io.Reader, target string, result *ociLayerResult) error {
@@ -255,6 +272,12 @@ func scanTarForTarget(content io.Reader, target string, result *ociLayerResult) 
 		name := strings.TrimPrefix(path.Clean("/"+header.Name), "/")
 		if name == "" {
 			continue
+		}
+		if name == target {
+			result.node = &ociImageNode{typeflag: header.Typeflag, link: header.Linkname}
+		} else if result.node == nil && strings.HasPrefix(name, target+"/") {
+			// Tar layers may omit directory headers for the parents of their entries.
+			result.node = &ociImageNode{typeflag: tar.TypeDir}
 		}
 		directory, base := path.Dir(name), path.Base(name)
 		if directory == "." {

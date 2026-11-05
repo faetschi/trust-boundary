@@ -12,10 +12,83 @@ import (
 	"strings"
 	"testing"
 
+	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/broker/openrouter"
 	"tbound/supervisor/internal/productsession"
 	"tbound/supervisor/internal/providerbridge"
 )
+
+func TestProductTurnBashSettlesBeforeCaptureRefusalTerminal(t *testing.T) {
+	for _, failCleanup := range []bool{false, true} {
+		t.Run(fmt.Sprintf("cleanup-fails-%v", failCleanup), func(t *testing.T) {
+			f := newBashProductDriverFixture(t, productsession.PublicationAuto, nil, false, []string{"task.txt"}, nil)
+			installProductTrustCell(f, productTrustCell)
+			baseline := f.measure(t)
+			admission := f.submit(t, "bash-refusal", "Append to task.txt, then summarize it.")
+			factory := f.env.NewCommandRunner
+			attempts := 0
+			cleanupFailure := errors.New("command owner cleanup failed")
+			f.env.NewCommandRunner = func(c productTurnCommandContext) (productTurnCommandRunner, error) {
+				runner, err := factory(c)
+				if err != nil {
+					return runner, err
+				}
+				r := runner.(*productD09TurnRunner)
+				cleanup := r.cleanup
+				r.cleanup = func(ctx context.Context) error {
+					attempts++
+					turn := f.turn(t, admission.Turn.ID)
+					if turn.State == productsession.StateTerminal || len(turn.Receipt) != 0 {
+						t.Fatal("terminal receipt preceded command ownership settlement")
+					}
+					trace, err := c.Journal.Trace()
+					if err != nil || len(trace.Records) != 1 {
+						t.Fatalf("command settlement was not retained: %+v %v", trace, err)
+					}
+					if failCleanup && attempts == 1 {
+						return cleanupFailure
+					}
+					return cleanup(ctx)
+				}
+				return r, nil
+			}
+			script := &productDriverScript{turns: []providerbridge.ScriptTurn{
+				bashCall("append", "append task"), {FailStatus: 200, FailBody: productRejectedCaptureBody()},
+			}}
+			receipt, turn, err := f.run(t, admission, script)
+			if err == nil || !strings.Contains(err.Error(), "the provider returned a response TBound cannot use") || script.requests() != 2 || f.measure(t) != baseline {
+				t.Fatalf("Bash/capture refusal: turn=%+v requests=%d err=%v", turn, script.requests(), err)
+			}
+			if failCleanup {
+				if !errors.Is(err, cleanupFailure) || turn.State != productsession.StateUnknown || len(turn.Receipt) != 0 || turn.Refund != (productsession.Budget{}) || attempts != 1 || len(f.env.retainedCommands) != 1 {
+					t.Fatalf("failed cleanup lost ownership or refunded: turn=%+v attempts=%d err=%v", turn, attempts, err)
+				}
+				if err := f.env.Close(); err != nil || attempts != 2 || len(f.env.retainedCommands) != 0 {
+					t.Fatalf("explicit cleanup: attempts=%d err=%v", attempts, err)
+				}
+				if got := f.turn(t, turn.ID); got.State != productsession.StateUnknown {
+					t.Fatalf("cleanup changed unknown disposition: %+v", got)
+				}
+				return
+			}
+			if attempts != 1 || turn.State != productsession.StateTerminal || turn.Outcome != productsession.OutcomeFailed || turn.ContextEligible || receipt.PublicationTransactionID != "" || receipt.CommandJournalCount != 1 {
+				t.Fatalf("refusal did not settle after Bash: turn=%+v receipt=%+v attempts=%d", turn, receipt, attempts)
+			}
+			journal, err := audit.OpenExisting(turn.Link.CommandJournalPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer journal.Close()
+			trace, err := journal.Trace()
+			if err != nil || receipt.CommandJournalHead != auditHeadHash(trace.Records) {
+				t.Fatalf("terminal receipt did not commit settled command evidence: %+v %v", receipt, err)
+			}
+			if turn.Refund.HostCalls != turn.Reservation.HostCalls-turn.Usage.HostCalls || turn.Refund.Tokens != turn.Reservation.Tokens-turn.Usage.Tokens || f.currentSession(t).Blocked {
+				t.Fatalf("settled refusal did not refund unused reservation: %+v", turn)
+			}
+		})
+	}
+}
 
 func TestProductTurnProviderRefusalFailsAndAllowsNextTurn(t *testing.T) {
 	f := newProductDriverFixture(t, productsession.PublicationReview)

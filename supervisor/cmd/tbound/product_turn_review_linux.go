@@ -51,8 +51,19 @@ func (e *productTurnEnv) Close() error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	var errs []error
+	e.retainedMu.Lock()
+	retained := make([]*productTurnWorkflow, 0, len(e.retainedCommands))
+	for w := range e.retainedCommands {
+		retained = append(retained, w)
+	}
+	e.retainedMu.Unlock()
+	for _, w := range retained {
+		errs = append(errs, w.close())
+	}
 	for id, review := range e.pending {
-		errs = append(errs, review.w.close())
+		if err := review.w.close(); err != nil {
+			errs = append(errs, err, e.Catalog.MarkTurnUnknown(id, "command ownership did not settle at shutdown"))
+		}
 		delete(e.pending, id)
 	}
 	return errors.Join(errs...)
@@ -97,7 +108,10 @@ func (e *productTurnEnv) ResolveTurn(ctx context.Context, p productsession.Princ
 	if turn.Resolution == productsession.DecisionDiscard {
 		return e.discardReview(turn, review, productsession.ReasonUser)
 	}
-	defer func() { _ = review.w.close() }()
+	defer func() { _ = review.w.closeUnlessRetained() }()
+	if err := review.w.settleCommands(); err != nil {
+		return productTurnReceipt{}, errors.Join(err, e.Catalog.MarkTurnUnknown(turn.ID, "command ownership did not settle before review publication"))
+	}
 	result, finalizeErr := review.publish.Finalize(ctx)
 	after, measureErr := e.MeasureProjectBaseline(turn.ProjectID)
 	switch {
@@ -116,7 +130,10 @@ func (e *productTurnEnv) ResolveTurn(ctx context.Context, p productsession.Princ
 // discardReview ends a pending review discarded after checking the project still holds the admitted
 // baseline, and closes its retained handles.
 func (e *productTurnEnv) discardReview(turn productsession.Turn, review *productPendingReview, reason string) (productTurnReceipt, error) {
-	defer func() { _ = review.w.close() }()
+	defer func() { _ = review.w.closeUnlessRetained() }()
+	if err := review.w.settleCommands(); err != nil {
+		return productTurnReceipt{}, errors.Join(err, e.Catalog.MarkTurnUnknown(turn.ID, "command ownership did not settle before review discard"))
+	}
 	if after, err := e.MeasureProjectBaseline(turn.ProjectID); err != nil || after != turn.BaselineDigest {
 		return productTurnReceipt{}, errors.Join(fmt.Errorf("product turn %s is unknown: project is not the admitted baseline", turn.ID),
 			err, e.Catalog.MarkTurnUnknown(turn.ID, "the project changed while the turn awaited review"))
@@ -183,7 +200,9 @@ func (e *productTurnEnv) CancelTurn(_ context.Context, p productsession.Principa
 		review = e.takeReviewLocked(turn.ID)
 	case e.running[turn.ID]:
 	case turn.State == productsession.StateAdmitted:
-		err = e.Catalog.RefuseUnlinkedTurn(turn.ID, productsession.CodeCancelled)
+		if err = e.settleRetainedProductCommands(turn.ID); err == nil {
+			err = e.Catalog.RefuseUnlinkedTurn(turn.ID, productsession.CodeCancelled)
+		}
 	}
 	e.mu.Unlock()
 	if review != nil {

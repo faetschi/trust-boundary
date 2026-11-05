@@ -17,9 +17,9 @@ import (
 func (f *fixture) useLegacyInstallation() {
 	f.t.Helper()
 	unit := strings.SplitN(string(RenderUnit()), "\n[Install]", 2)[0] + "\n"
-	record := strings.Replace(f.read(SetupConfigPath), "  \"installation_format\": 2,\n", "", 1)
+	record := strings.Replace(f.read(SetupConfigPath), fmt.Sprintf("  \"installation_format\": %d,\n", InstallationFormat), "", 1)
 	if strings.Contains(record, "installation_format") {
-		f.t.Fatalf("the installed setup record does not carry installation_format 2:\n%s", record)
+		f.t.Fatalf("the installed setup record does not carry installation_format %d:\n%s", InstallationFormat, record)
 	}
 	for path, content := range map[string]string{UnitPath: unit, SetupConfigPath: record} {
 		if err := os.WriteFile(f.path(path), []byte(content), 0o644); err != nil {
@@ -101,10 +101,10 @@ func TestRollbackRefusesALastKnownGoodOfAnotherInstallationFormatBeforeStoppingT
 func TestSetupRecordsTheInstallationFormatAndRefusesItInTheAdministratorConfig(t *testing.T) {
 	f := newFixture(t)
 	f.installed()
-	if !strings.Contains(f.read(SetupConfigPath), "\"installation_format\": 2,") {
+	if !strings.Contains(f.read(SetupConfigPath), fmt.Sprintf("\"installation_format\": %d,", InstallationFormat)) {
 		t.Fatalf("the installed record does not carry the installation format:\n%s", f.read(SetupConfigPath))
 	}
-	if _, err := ParseConfig([]byte(`{"schema_version":"` + ConfigSchema + `","installation_format":2}`)); !errors.Is(err, ErrRefused) {
+	if _, err := ParseConfig([]byte(`{"schema_version":"` + ConfigSchema + `","installation_format":3}`)); !errors.Is(err, ErrRefused) {
 		t.Fatalf("an administrator config that sets installation_format was accepted: %v", err)
 	}
 }

@@ -396,18 +396,16 @@ func TestProductServiceHostRefusesAPolicyThatAllowsBashAtStartup(t *testing.T) {
 	if _, err := os.Stat(f.socketPath); !os.IsNotExist(err) {
 		t.Fatal("a refused service opened its socket")
 	}
-	// Once a contained runner exists, the same policy is accepted. The fixture's runner stands in for it here.
+	// An assigned runner is not a qualification: the same policy stays refused until every phase passes.
 	opts.Host = func(env *productTurnEnv) error {
 		env.NewCommandRunner = func(productTurnCommandContext) (productTurnCommandRunner, error) {
 			return nil, errProductBashRunnerUnavailable
 		}
 		return newProductServiceHostProfile(f.cfg)(env)
 	}
-	svc, err := startProductService(f.cfg, opts)
-	if err != nil {
-		t.Fatalf("a bash policy with a command runner was refused: %v", err)
+	if _, err := startProductService(f.cfg, opts); err == nil || !strings.Contains(err.Error(), "command qualification") {
+		t.Fatalf("a bash policy started on an assigned runner: %v", err)
 	}
-	_ = svc.Shutdown()
 }
 
 func TestProductServiceHostRefusesUnverifiedInputsBeforeListening(t *testing.T) {

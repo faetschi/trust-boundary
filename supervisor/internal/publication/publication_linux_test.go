@@ -1143,3 +1143,91 @@ func containsString(list []string, s string) bool {
 	}
 	return false
 }
+
+// Recover pauses a transaction with no token whose staging directory has no checkpointed identity. The product
+// operator's entry point ends it FAILED, leaves that directory in place and names it in the terminal reason. Every
+// other pre-token state behaves as Recover: a bound directory is removed, and a kill before the mkdir has none.
+func TestRecoverAbandoningUnboundStagingKeepsTheDirectoryOnlyWhenItsIdentityIsUnbound(t *testing.T) {
+	for _, test := range []struct {
+		point     string
+		wantNames int  // transactions the journal alone shows as unbound
+		wantKept  bool // the staging directory survives the recovery
+	}{
+		{"after-prepare-checkpoint", 1, false},
+		{"after-artifact-create", 1, true},
+		{"after-artifact-parent-sync", 0, false},
+	} {
+		t.Run(test.point, func(t *testing.T) {
+			base := map[string]string{"file.txt": "before"}
+			f := newFixture(t, base, base, map[string]string{"file.txt": "middle"}, map[string]string{"file.txt": "after"}, nil, nil, nil)
+			f.request.PublicationID = "abandon-" + test.point
+			first := f.acquire(1)
+			result, err := first.Publish(context.Background(), f.request, allowFor(test.point), func(point string, _ int) error {
+				if point == test.point {
+					return errors.New("synthetic fault")
+				}
+				return nil
+			})
+			if !errors.Is(err, ErrInjectedFault) || result.TransactionID == "" {
+				t.Fatalf("injection did not interrupt %s: result=%+v err=%v", test.point, result, err)
+			}
+			if err := first.Close(); err != nil {
+				t.Fatal(err)
+			}
+			artifactName := ".tbound-publication-" + strings.TrimPrefix(result.TransactionID, "pub-")
+			workflowID := f.options(1).WorkflowID
+			trace, err := f.journal.Trace()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if names, err := UnboundStagingNames(trace, workflowID); err != nil || len(names) != test.wantNames || test.wantNames == 1 && names[0] != artifactName {
+				t.Fatalf("unbound staging names before recovery: %v %v", names, err)
+			}
+			second := f.acquire(2)
+			defer second.Close()
+			if test.wantKept {
+				if _, err := second.Recover(f.live, result.TransactionID, nil); !errors.Is(err, ErrRecoveryUnknown) {
+					t.Fatalf("Recover must keep pausing on an unbound directory: %v", err)
+				}
+			}
+			recovered, err := second.RecoverAbandoningUnboundStaging(f.live, result.TransactionID, nil)
+			if err != nil || recovered.Status != StatusFailed {
+				t.Fatalf("abandoning recovery = %s: %v", recovered.Status, err)
+			}
+			if _, statErr := os.Stat(filepath.Join(f.root, artifactName)); (statErr == nil) != test.wantKept {
+				t.Fatalf("staging directory kept=%v, want %v (%v)", statErr == nil, test.wantKept, statErr)
+			}
+			after, err := f.journal.Trace()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if names, err := UnboundStagingNames(after, workflowID); err != nil || len(names) != 0 {
+				t.Fatalf("a closed transaction still reports unbound staging: %v %v", names, err)
+			}
+			if names, err := UnboundStagingNamesIncludingTerminal(after, workflowID); err != nil || len(names) != test.wantNames || test.wantNames == 1 && names[0] != artifactName {
+				t.Fatalf("the variant must keep naming the closed transaction: %v %v", names, err)
+			}
+			if reason := lastAbortedReason(t, after); strings.Contains(reason, artifactName) != test.wantKept {
+				t.Fatalf("terminal reason %q does not match kept=%v", reason, test.wantKept)
+			}
+			if again, err := second.Recover(f.live, result.TransactionID, nil); err != nil || again.Status != StatusFailed {
+				t.Fatalf("the terminal record must stand: %s %v", again.Status, err)
+			}
+		})
+	}
+}
+
+func lastAbortedReason(t *testing.T, trace audit.Trace) string {
+	t.Helper()
+	for i := len(trace.Records) - 1; i >= 0; i-- {
+		if record := trace.Records[i].Event; record.Kind == "publication_aborted" {
+			var terminal terminalRecord
+			if err := decodeCanonical(record.Data, &terminal); err != nil {
+				t.Fatal(err)
+			}
+			return terminal.Reason
+		}
+	}
+	t.Fatal("no publication_aborted record")
+	return ""
+}

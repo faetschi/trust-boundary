@@ -6,9 +6,14 @@ this order on a disposable Hyper-V VM (Ubuntu 24.04, Landlock ABI 8). For what
 each command checks, see [product contracts](../product-contracts.md).
 
 The product runs the `supervisor-loop` worker. It reads, writes and edits
-project files through the gate. It has no contained runner, so a policy that
-allows `bash` is refused and the model's bash calls are denied. Nothing here is
-thesis evidence.
+project files through the gate. This setup uses a policy that denies `bash`.
+Nothing here is thesis evidence.
+
+This guide keeps Bash denied. To enable the implemented D09 Podman/crun command
+cell after the first turn works, follow [Enable Bash in the product service](product-bash.md).
+That guide covers the offline image and signed bundle, format-3 `setup --replace`,
+provisioning, qualification, and recovery. Bash qualification and turns ran live
+on the demo VM on 2026-11-04. Later crash-recovery fixes await the next live run.
 
 ## Before you start
 
@@ -132,14 +137,18 @@ tbound product registration init --out ~/tbound-admin/registration.template.json
   --max-turns 50 --review-timeout 600 \
   --turn-limit 50,200000,300 --session-limit 500,2000000,3600 \
   --git-digest sha256:GIT \
-  --runtime-digest sha256:UNUSED --image-digest sha256:UNUSED --extension-digest sha256:UNUSED
+  --runtime-digest sha256:a0b7daad8b52356c44c8cc98e5cca6f1242b2012af1a59a6b3e09f5c55c977cf \
+  --image-digest sha256:a0b7daad8b52356c44c8cc98e5cca6f1242b2012af1a59a6b3e09f5c55c977cf \
+  --extension-digest sha256:a0b7daad8b52356c44c8cc98e5cca6f1242b2012af1a59a6b3e09f5c55c977cf
 tbound product registration sign --registration ~/tbound-admin/registration.template.json \
   --key ~/tbound-admin/registration.key --out ~/tbound-admin/registration.json
 ```
 
 The `supervisor-loop` worker runs no Pi runtime, image or extension, but
-`init` requires the three digests. Any valid `sha256:` value works; the demo
-used the SHA-256 of the text `unused by the supervisor-loop worker`.
+`init` requires the three digests. For these unused fields, use the declared sentinel
+`sha256:a0b7daad8b52356c44c8cc98e5cca6f1242b2012af1a59a6b3e09f5c55c977cf`,
+the SHA-256 of `unused by the supervisor-loop worker`. A Bash-enabled install
+uses the actual command image manifest digest for `image_digest`.
 
 Copy `registration.json`, `registration.json.sig` and `registration.pub` to the
 host. Do not copy `registration.key`.
@@ -299,13 +308,14 @@ Create a session with project `demo` and profile `opencode-go-engineering`,
 or click an existing session in the left panel; the chat stays empty until
 one is selected. Then try the same three prompts. Publish and Discard appear
 under the diff. A session whose earlier turn ended `unknown` is marked
-`blocked` and refuses new prompts; start a new session.
+`blocked` and its project refuses new prompts, including from new sessions.
+Use the operator recovery procedure below.
 
 ## Troubleshooting
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
-| `PROJECT_BLOCKED` / `PREDECESSOR_UNRESOLVED` after an unknown turn | Restart could not establish the outcome | Stop the service (`sudo systemctl stop tbound-product.service`), find the ID with `sudo -u tbound-product tbound product turns`, run `sudo tbound product turns resolve --turn ID --reason "provider failed; abandon inert turn" --dry-run`, then the same command without `--dry-run`, and start it (`sudo systemctl start tbound-product.service`). Resolution requires the unchanged admitted baseline, inert Store/workflow, no command activity and no publication record; it charges the full turn reservation and excludes its context. No other process may write the project while `resolve` runs: it measures the baseline again immediately before its single catalog append and refuses if the tree changed, because the command attests the tree at append time. If any evidence check refuses, retain state for investigation. |
+| `PROJECT_BLOCKED` / `PREDECESSOR_UNRESOLVED` after an unknown turn | Restart could not establish the outcome | Stop the service (`sudo systemctl stop tbound-product.service`), find the ID with `sudo -u tbound-product tbound product turns`, run `sudo tbound product turns resolve --turn ID --reason "provider failed; abandon inert turn" --dry-run`, then the same command without `--dry-run`, and start it (`sudo systemctl start tbound-product.service`). Resolution requires the unchanged admitted baseline, inert Store/workflow, no publication record, and verified drain evidence for an interrupted Bash command; it charges the full turn reservation and excludes its context. No other process may write the project while `resolve` runs: it measures the baseline again immediately before its single catalog append and refuses if the tree changed, because the command attests the tree at append time. For Bash recovery, follow [the Bash guide](product-bash.md#8-recover-a-turn-killed-during-bash). If any evidence check refuses, retain state for investigation. |
 | Setup or doctor fails `cgroup-v2` on a host with cgroup v2 | Older builds looked for `cgroup.kill` at the cgroup root, where the kernel never creates it | Use a current build |
 | Service exits with `publication fence: no such file or directory` | The project was not made by `project import` | Remove it, import it (step 3), measure and sign again (step 4) |
 | Service exits with `… differs from the signed xattr calibration` | The calibration was measured outside the unit's sandbox | Measure again with `systemd-run` (step 5) and sign again |

@@ -18,6 +18,7 @@ and [product contracts](product-contracts.md) fixes the first milestone's contra
 - [Reproduction](guides/reproduce.md): source freeze, release gate, signing, operator cycle, evidence, pilot.
 - [Release](guides/release.md): package formats and release acceptance checks.
 - [First governed product turn](guides/product-first-turn.md): product service setup order, terminal and browser chat on one Linux host; not thesis evidence.
+- [Enable Bash in the product service](guides/product-bash.md): offline image and command bundle, format-3 setup, qualification, review, and recovery.
 - [Product demo from Windows](guides/product-demo-windows.md): chat with a product VM over SSH from Git Bash or VS Code.
 - [Panel guide](guides/panel-run.md): optional supplementary blinded model analysis; agreement statistics are diagnostics.
 - [Private git staging](guides/private-git-staging.md): local staging repository for frozen sources.

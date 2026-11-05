@@ -50,6 +50,36 @@ const (
 	SocketPath                = productsession.DefaultServiceSocketPath
 )
 
+// Fixed product command-host artifacts, read only by the trusted command-host loader. Each sits under the product's
+// podman directory, outside every thesis root.
+const (
+	CommandHostProfilePath          = ConfigDir + "/podman/host-profile.json"
+	CommandHostProfileSignaturePath = CommandHostProfilePath + ".sig"
+	CommandCellTemplatePath         = ConfigDir + "/podman/d09-cell.json"
+	CommandSeccompPath              = ConfigDir + "/podman/seccomp.json"
+	CommandCosignPublicKeyPath      = ConfigDir + "/podman/cosign.pub"
+	CommandOCILayoutPath            = ConfigDir + "/podman/cell-oci"
+	ContainersConfPath              = ConfigDir + "/podman/containers.conf"
+	StorageConfPath                 = ConfigDir + "/podman/storage.conf"
+)
+
+// Fixed product Podman directories. PodmanConfigDir is root-owned. The others lie under a root that the unit lets
+// the service write, and the product Podman child environment names the ones the children use. setup creates
+// PodmanConfigDir, PodmanHomeDir and the storage tree. The runtime directories are not created by setup.
+const (
+	PodmanConfigDir    = ConfigDir + "/podman"
+	PodmanHomeDir      = StateDir + "/podman-home"
+	PodmanStorageDir   = StateDir + "/podman-storage"
+	PodmanGraphRootDir = PodmanStorageDir + "/graphroot"
+	PodmanCacheDir     = RuntimeDir + "/cache"
+	PodmanTmpDir       = RuntimeDir + "/tmp"
+	PodmanRunrootDir   = RuntimeDir + "/containers"
+)
+
+// CommandCellPath is the PATH of every product Podman and cosign child. It is the thesis D09 host PATH, so both
+// command paths search the same directories.
+const CommandCellPath = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
 // ThesisRoots are the thesis service's paths. Setup refuses a path equal to or inside one, compared by
 // whole path component. cmd/tbound's service config validator keeps the same list, and a test there
 // keeps the two equal.
@@ -96,14 +126,19 @@ type node struct {
 // directories lists the directories parents first, with the contract's owners and modes, except that
 // the state tree is 0700, not the contract table's 0750: audit.Open refuses a journal whose parent
 // directory is not exactly 0700, and the catalog journal lives directly in StateDir. RuntimeDir is
-// created by systemd from the unit (RuntimeDirectory=, RuntimeDirectoryMode=) and is not listed.
+// created by systemd from the unit (RuntimeDirectory=, RuntimeDirectoryMode=) and is not listed, and
+// neither are the Podman runtime directories, which setup does not create.
 var directories = []node{
 	{ConfigDir, true, ownRoot, 0o755},
+	{PodmanConfigDir, true, ownRoot, 0o755},
 	{CredentialsDir, true, ownService, 0o700},
 	{StateDir, true, ownService, 0o700},
 	{TurnsDir, true, ownService, 0o700},
 	{ProjectsDir, true, ownService, 0o700},
 	{BackupsDir, true, ownService, 0o700},
+	{PodmanHomeDir, true, ownService, 0o700},
+	{PodmanStorageDir, true, ownService, 0o700},
+	{PodmanGraphRootDir, true, ownService, 0o700},
 	{BinaryDir, true, ownRoot, 0o755},
 }
 
@@ -115,8 +150,19 @@ var installedFiles = []node{
 	{ServiceConfigPath, false, ownRoot, 0o644},
 	{SetupConfigPath, false, ownRoot, 0o644},
 	{UnitPath, false, ownRoot, 0o644},
+	{ContainersConfPath, false, ownRoot, 0o644},
+	{StorageConfPath, false, ownRoot, 0o644},
 	{BinaryPath, false, ownRoot, 0o755},
 	{ReleasePublicKeyPath, false, ownRoot, 0o644}, // optional: absent when the config names no release_public_key
+	{CommandHostProfilePath, false, ownRoot, 0o644},
+	{CommandHostProfileSignaturePath, false, ownRoot, 0o644},
+	{CommandCellTemplatePath, false, ownRoot, 0o644},
+	{CommandSeccompPath, false, ownRoot, 0o644},
+	{CommandCosignPublicKeyPath, false, ownRoot, 0o644},
+}
+
+func isCommandArtifact(p string) bool {
+	return p == CommandHostProfilePath || p == CommandHostProfileSignaturePath || p == CommandCellTemplatePath || p == CommandSeccompPath || p == CommandCosignPublicKeyPath
 }
 
 // writtenPaths are the single paths that setup, update, rollback, uninstall and the service write or

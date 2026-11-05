@@ -5,6 +5,7 @@ package productsession
 import (
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"time"
 
 	"tbound/supervisor/internal/audit"
@@ -14,21 +15,35 @@ const kindTurnOperatorResolved = "product_turn_operator_resolved"
 const OutcomeAbandoned = "abandoned"
 const ReasonOperatorResolved = "operator_resolved"
 
+// A turn publishes once, so a resolution closes at most a handful of pending records.
+const maxPublicationClosed = 4
+
 // OperatorEvidence commits the existing-only evidence checked by the composition.
 // Empty journals use SHA-256 of the empty bytes as their head commitment.
-// Confirm and Close are transient: the composition uses them to keep the evidence
-// handles open and to re-attest the project tree at append time, and they are never
-// part of the record.
+// CommandsSettled marks a nonempty command journal whose every command the Store
+// matched to a verified settlement.
+// PublicationClosed lists the pending publication records of the workflow that Settle
+// closed as unapplied. PublicationStagingLeft lists the absolute paths of unbound publication staging directories
+// that closing left in place for the operator to remove.
+// Confirm, Settle and Close are transient: the composition uses them to keep the evidence
+// handles open, to re-attest the project tree at append time and, for a real
+// resolution only, to close durable evidence directly before the append. They are
+// never part of the record.
 type OperatorEvidence struct {
-	WorkflowID       string       `json:"workflow_id"`
-	BaselineDigest   string       `json:"baseline_digest"`
-	ScanDigest       string       `json:"scan_digest"`
-	StoreHead        string       `json:"store_head"`
-	ProviderHead     string       `json:"provider_head"`
-	CommandHead      string       `json:"command_head"`
-	CheckpointDigest string       `json:"checkpoint_digest"`
-	Confirm          func() error `json:"-"`
-	Close            func() error `json:"-"`
+	WorkflowID             string       `json:"workflow_id"`
+	BaselineDigest         string       `json:"baseline_digest"`
+	ScanDigest             string       `json:"scan_digest"`
+	StoreHead              string       `json:"store_head"`
+	ProviderHead           string       `json:"provider_head"`
+	CommandOwnerHead       string       `json:"command_owner_head,omitempty"`
+	CommandsSettled        bool         `json:"commands_settled,omitempty"`
+	PublicationClosed      []string     `json:"publication_closed,omitempty"`
+	PublicationStagingLeft []string     `json:"publication_staging_left,omitempty"`
+	CommandHead            string       `json:"command_head"`
+	CheckpointDigest       string       `json:"checkpoint_digest"`
+	Confirm                func() error `json:"-"`
+	Settle                 func() error `json:"-"`
+	Close                  func() error `json:"-"`
 }
 
 type OperatorResolution struct {
@@ -118,6 +133,11 @@ func OperatorResolve(path string, registration Registration, turnID, reason stri
 	if dryRun {
 		return turn.clone(), nil
 	}
+	if evidence.Settle != nil {
+		if err := evidence.Settle(); err != nil {
+			return Turn{}, err
+		}
+	}
 	if err := c.commit(kindTurnOperatorResolved, turnID, r); err != nil {
 		return Turn{}, err
 	}
@@ -141,8 +161,27 @@ func (s *state) reduceOperatorResolved(data []byte) (func(), error) {
 		r.BaselineDigest != t.BaselineDigest || r.ScanDigest != t.BaselineDigest || s.project(t.ProjectID).baseline != t.BaselineDigest || r.EvidenceDigest != r.digest() {
 		return nil, fail(CodeInvalidRequest, "operator resolution identity, timestamp, baseline or evidence commitment is invalid")
 	}
-	if r.CommandHead != sha256Digest(nil) {
-		return nil, fail(CodeInvalidRequest, "operator resolution requires an empty command journal")
+	if r.CommandOwnerHead != "" && !validDigest(r.CommandOwnerHead) {
+		return nil, fail(CodeInvalidRequest, "invalid drained command owner head")
+	}
+	if r.CommandHead != sha256Digest(nil) && r.CommandOwnerHead == "" && !r.CommandsSettled {
+		return nil, fail(CodeInvalidRequest, "operator resolution requires an empty or fully settled command journal")
+	}
+	if len(r.PublicationClosed) > maxPublicationClosed {
+		return nil, fail(CodeInvalidRequest, "operator resolution closes too many publication records")
+	}
+	for _, id := range r.PublicationClosed {
+		if id == "" || len(id) > 128 {
+			return nil, fail(CodeInvalidRequest, "invalid closed publication record ID")
+		}
+	}
+	if len(r.PublicationStagingLeft) > maxPublicationClosed {
+		return nil, fail(CodeInvalidRequest, "operator resolution leaves too many staging directories")
+	}
+	for _, path := range r.PublicationStagingLeft {
+		if !filepath.IsAbs(path) || len(path) > 4096 {
+			return nil, fail(CodeInvalidRequest, "invalid left staging directory path")
+		}
 	}
 	for _, digest := range []string{r.BaselineDigest, r.ScanDigest, r.StoreHead, r.ProviderHead, r.CommandHead, r.CheckpointDigest} {
 		if !validDigest(digest) {

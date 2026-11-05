@@ -53,6 +53,8 @@ var errProductStaleBaseline = errors.New("managed project tree differs from the 
 
 // errProductBashRunnerUnavailable marks a project whose policy allows Bash on a service that has no
 // command runner, so its turns cannot launch.
+var errProductCommandUnsettled = errors.New("product command ownership is unresolved")
+
 var errProductBashRunnerUnavailable = errors.New("the project policy allows Bash but the service has no command runner")
 
 // productTurnCommandRunner is the trusted command runner of one Bash turn: the Store runs commands
@@ -66,6 +68,7 @@ type productTurnCommandRunner interface {
 // command journal, which a runner that retains settlement evidence appends to.
 type productTurnCommandContext struct {
 	Journal                                      *audit.Journal
+	TurnDir                                      string
 	WorkflowID, RunID, SessionID, ConversationID string
 }
 
@@ -131,7 +134,9 @@ type productTurnEnv struct {
 	// crashAt is a trusted-host test seam called at named driver boundaries; production leaves it nil.
 	crashAt func(point string)
 
-	mu sync.Mutex
+	retainedMu       sync.Mutex
+	retainedCommands map[*productTurnWorkflow]struct{}
+	mu               sync.Mutex
 	// running holds the turns RunTurn drives in this process. pending holds closed review turns whose
 	// workflow and finalizer stay open until a resolution, cancellation or expiry takes them.
 	running map[string]bool
@@ -171,9 +176,67 @@ type productTurnWorkflow struct {
 	config                                       providerbridge.Config
 	started                                      time.Time
 	closers                                      []func() error
+	commandLifecycle                             productCommandLifecycle
+	env                                          *productTurnEnv
+	closeMu                                      sync.Mutex
+}
+
+// settleCommands settles the command owner. A failed settlement retains the workflow, so no deferred
+// teardown can release its handles before an explicit retained-owner cleanup.
+func (w *productTurnWorkflow) settleCommands() error {
+	if w.commandLifecycle == nil {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := w.commandLifecycle.Settle(ctx); err != nil {
+		w.retainUnsettled()
+		return err
+	}
+	return nil
+}
+
+// retainUnsettled holds a workflow whose command ownership is unresolved, with its handles, in the
+// environment's retained collection. Only an explicit retained-owner cleanup closes it.
+func (w *productTurnWorkflow) retainUnsettled() {
+	if w.env == nil {
+		return
+	}
+	w.env.retainedMu.Lock()
+	defer w.env.retainedMu.Unlock()
+	if w.env.retainedCommands == nil {
+		w.env.retainedCommands = map[*productTurnWorkflow]struct{}{}
+	}
+	w.env.retainedCommands[w] = struct{}{}
+}
+
+// closeUnlessRetained is the deferred teardown: a workflow retained after a failed settlement keeps its handles.
+func (w *productTurnWorkflow) closeUnlessRetained() error {
+	if w.env != nil {
+		w.env.retainedMu.Lock()
+		_, retained := w.env.retainedCommands[w]
+		w.env.retainedMu.Unlock()
+		if retained {
+			return nil
+		}
+	}
+	return w.close()
 }
 
 func (w *productTurnWorkflow) close() error {
+	w.closeMu.Lock()
+	defer w.closeMu.Unlock()
+	if w.commandLifecycle != nil {
+		if err := w.commandLifecycle.Close(); err != nil {
+			w.retainUnsettled()
+			return err
+		}
+	}
+	if w.env != nil {
+		w.env.retainedMu.Lock()
+		delete(w.env.retainedCommands, w)
+		w.env.retainedMu.Unlock()
+	}
 	var errs []error
 	for index := len(w.closers) - 1; index >= 0; index-- {
 		errs = append(errs, w.closers[index]())
@@ -284,10 +347,12 @@ func (e *productTurnEnv) storeOptions(turn productsession.Turn) sessionrepo.Opti
 // It returns errProductStaleBaseline when the seeded tree differs from the admitted baseline.
 func (e *productTurnEnv) composeProductTurnWorkflow(ctx context.Context, turn productsession.Turn,
 	providerProfile string, predecessor providerbridge.PredecessorContext) (_ *productTurnWorkflow, err error) {
-	w := &productTurnWorkflow{taskID: turn.ID, started: time.Now()}
+	w := &productTurnWorkflow{taskID: turn.ID, started: time.Now(), env: e}
 	defer func() {
 		if err != nil {
-			err = errors.Join(err, w.close())
+			if cleanupErr := w.close(); cleanupErr != nil {
+				err = errors.Join(err, errProductCommandUnsettled, cleanupErr)
+			}
 		}
 	}()
 	for _, identity := range []struct {
@@ -342,8 +407,13 @@ func (e *productTurnEnv) composeProductTurnWorkflow(ctx context.Context, turn pr
 
 	var runner productTurnCommandRunner
 	if bashScope != nil {
-		if runner, err = e.NewCommandRunner(productTurnCommandContext{Journal: w.commandJournal, WorkflowID: w.workflowID,
-			RunID: w.runID, SessionID: w.sessionID, ConversationID: w.conversationID}); err != nil {
+		runner, err = e.NewCommandRunner(productTurnCommandContext{Journal: w.commandJournal, TurnDir: w.turnDir, WorkflowID: w.workflowID,
+			RunID: w.runID, SessionID: w.sessionID, ConversationID: w.conversationID})
+		if value := reflect.ValueOf(runner); value.IsValid() && value.Kind() == reflect.Pointer && value.IsNil() {
+			runner = nil
+		}
+		w.commandLifecycle, _ = runner.(productCommandLifecycle)
+		if err != nil {
 			return nil, err
 		}
 		if runner == nil {

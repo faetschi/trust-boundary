@@ -24,6 +24,7 @@ import (
 	"tbound/supervisor/internal/gate"
 	"tbound/supervisor/internal/productsession"
 	"tbound/supervisor/internal/productsetup"
+	"tbound/supervisor/internal/sessionrepo"
 	"tbound/supervisor/internal/workflowrecovery"
 )
 
@@ -294,24 +295,28 @@ func runProductOperatorWorker(out io.Writer) error {
 		return err
 	}
 	env := &productTurnEnv{Registration: registration, StateRoot: cfg.StateRoot, ProjectRoots: cfg.Projects,
-		StorePolicyDigest: digestBytes([]byte(gate.ProductionSessionPolicyLabel)), MetadataPolicyDigest: digestBytes([]byte(gate.ProductionMetadataPolicyLabel))}
-	if err := installProductGatePolicies(env, cfg.GatePolicyPaths); err != nil {
+		OpenCommandHistory: openProductD09CommandHistory, StorePolicyDigest: digestBytes([]byte(gate.ProductionSessionPolicyLabel)), MetadataPolicyDigest: digestBytes([]byte(gate.ProductionMetadataPolicyLabel))}
+	if _, err := installProductGatePolicies(env, cfg); err != nil {
 		return err
 	}
 	if env.Xattr, err = productHostXattr(cfg, env); err != nil {
 		return err
 	}
+	var evidence productsession.OperatorEvidence
 	turn, err := productsession.OperatorResolve(cfg.CatalogPath, registration, request.Turn, request.Reason, request.DryRun,
 		func(turn productsession.Turn) (productsession.OperatorEvidence, error) {
-			return env.operatorEvidence(context.Background(), turn)
+			var err error
+			evidence, err = env.operatorEvidence(context.Background(), turn)
+			return evidence, err
 		})
 	if err != nil {
 		return adminRefusal("operator resolution refused: %v", err)
 	}
+	publication := publicationNote(evidence.PublicationClosed, evidence.PublicationStagingLeft, request.DryRun)
 	if request.DryRun {
-		fmt.Fprintf(out, "dry-run: %s can be abandoned; baseline unchanged; full reservation charged; no records written\n", turn.ID)
+		fmt.Fprintf(out, "dry-run: %s can be abandoned; baseline unchanged; full reservation charged%s; no records written\n", turn.ID, publication)
 	} else {
-		fmt.Fprintf(out, "resolved %s: abandoned (operator_resolved); baseline unchanged; full reservation charged; session and project unblocked\n", turn.ID)
+		fmt.Fprintf(out, "resolved %s: abandoned (operator_resolved); baseline unchanged; full reservation charged%s; session and project unblocked\n", turn.ID, publication)
 	}
 	return nil
 }
@@ -327,7 +332,17 @@ func (e *productTurnEnv) operatorEvidence(ctx context.Context, turn productsessi
 	if filepath.Dir(paths.StoreJournalPath) != filepath.Join(e.StateRoot, "turns", turn.Link.WorkflowID) {
 		return evidence, errors.New("turn journals are outside the registered state root")
 	}
-	retained, err := openRetainedProductTurn(paths, e.storeOptions(turn), nil)
+	retained, err := openRetainedProductTurn(paths, e.storeOptions(turn), e.OpenCommandHistory)
+	ownerHead := ""
+	if errors.Is(err, errHistoricalBashContext) {
+		original := err
+		defer func() {
+			if err != nil {
+				err = errors.Join(original, err)
+			}
+		}()
+		retained, ownerHead, err = openInterruptedProductBash(ctx, paths, e.Registration.Digest, e.storeOptions(turn))
+	}
 	if err != nil {
 		return evidence, fmt.Errorf("retained Store/journals: %w", err)
 	}
@@ -342,7 +357,10 @@ func (e *productTurnEnv) operatorEvidence(ctx context.Context, turn productsessi
 			err = errors.Join(err, closeEvidence())
 		}
 	}()
-	bundle, err := retained.Store.EvidenceBundle()
+	var bundle sessionrepo.EvidenceBundle
+	if retained.Store != nil {
+		bundle, err = retained.Store.EvidenceBundle()
+	}
 	if err != nil {
 		return evidence, err
 	}
@@ -354,26 +372,45 @@ func (e *productTurnEnv) operatorEvidence(ctx context.Context, turn productsessi
 		return evidence, err
 	}
 	// An abandoned provider request cannot execute after its sole supervisor died.
-	// Keep every effect check; only provider-side pending state is allowed to be inert.
 	pins := checkpoint.Pins
+	if ownerHead != "" {
+		trace, err := retained.StoreJournal.Trace()
+		if err != nil {
+			return evidence, err
+		}
+		if err := productDrainedBashReservationInert(trace, pins); err != nil {
+			return evidence, err
+		}
+		// Only this local evidence check discounts the verified inert reservation; the ledger is unchanged.
+		pins.EffectReservation = nil
+	}
 	pins.HostCallReservation = nil
 	pins.PendingCallDisposition = ""
-	if err := productTurnChildResolved(bundle, pins); err != nil {
+	if err := productTurnReservationsResolved(pins); err != nil {
 		return evidence, fmt.Errorf("Store/workflow is not inert: %w", err)
+	}
+	if retained.Store != nil {
+		if err := productTurnChildResolved(bundle, pins); err != nil {
+			return evidence, fmt.Errorf("Store/workflow is not inert: %w", err)
+		}
 	}
 	command, err := retained.CommandJournal.Trace()
 	if err != nil {
 		return evidence, err
 	}
-	if len(command.Records) != 0 {
-		return evidence, errors.New("command activity exists; command-scope recovery is not supported")
-	}
-	if named, _, err := e.workflowPublication(turn.ProjectID, turn.Link.WorkflowID); err != nil || named {
-		return evidence, errors.Join(errors.New("publication evidence is present or unreadable"), err)
+	// A journal that opened through its settlement verifier holds only commands the Store matched to a retained
+	// settlement; an unsettled command left an unresolved Bash effect, which took the drained-owner path above.
+	commandsSettled := len(command.Records) != 0 && ownerHead == ""
+	if commandsSettled && retained.Commands == nil {
+		return evidence, errors.New("command records exist and no settlement verifier vouches for them")
 	}
 	measured, err := measureProductBaseline(turn.ProjectID, root, e.projectWorkspace())
 	if err != nil {
 		return evidence, fmt.Errorf("baseline scan: %w", err)
+	}
+	closing, stagingLeft, settle, err := e.operatorPublication(ctx, turn, root, measured)
+	if err != nil {
+		return evidence, err
 	}
 	if measured != turn.BaselineDigest {
 		return evidence, errProductStaleBaseline
@@ -388,7 +425,7 @@ func (e *productTurnEnv) operatorEvidence(ctx context.Context, turn productsessi
 		}
 		return "sha256:" + auditHeadHash(trace.Records), nil
 	}
-	evidence = productsession.OperatorEvidence{WorkflowID: turn.Link.WorkflowID, BaselineDigest: turn.BaselineDigest, ScanDigest: measured, CheckpointDigest: "sha256:" + checkpoint.ComputedCheckpointDigest,
+	evidence = productsession.OperatorEvidence{WorkflowID: turn.Link.WorkflowID, BaselineDigest: turn.BaselineDigest, ScanDigest: measured, CheckpointDigest: "sha256:" + checkpoint.ComputedCheckpointDigest, PublicationClosed: closing, PublicationStagingLeft: stagingLeft, Settle: settle,
 		// OperatorResolve calls Confirm while the retained journals and this project
 		// directory are still open, directly before the catalog append.
 		Confirm: func() error {
@@ -408,7 +445,10 @@ func (e *productTurnEnv) operatorEvidence(ctx context.Context, turn productsessi
 	if evidence.ProviderHead, err = head(retained.ProviderJournal); err != nil {
 		return evidence, err
 	}
-	evidence.CommandHead = digestBytes(nil)
+	evidence.CommandOwnerHead, evidence.CommandsSettled = ownerHead, commandsSettled
+	if evidence.CommandHead, err = head(retained.CommandJournal); err != nil {
+		return evidence, err
+	}
 	return evidence, nil
 }
 

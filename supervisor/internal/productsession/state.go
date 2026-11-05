@@ -196,6 +196,8 @@ func (t Turn) clone() Turn {
 	}
 	if t.OperatorResolution != nil {
 		resolution := *t.OperatorResolution
+		resolution.PublicationClosed = slices.Clone(resolution.PublicationClosed)
+		resolution.PublicationStagingLeft = slices.Clone(resolution.PublicationStagingLeft)
 		t.OperatorResolution = &resolution
 	}
 	return t
