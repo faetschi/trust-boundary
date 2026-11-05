@@ -15,6 +15,7 @@
     "check:sinks": "node scripts/check-sinks.mjs --self-test && node scripts/check-sinks.mjs",
     "check:deps": "node scripts/check-deps.mjs --self-test && node scripts/check-deps.mjs",
     "repro": "node scripts/repro-check.mjs",
+    "verify:no-build": "npm run typecheck && npm run test && npm run check:sinks && npm run check:deps",
     "verify": "npm run typecheck && npm run test && npm run build && npm run check:sinks && npm run check:deps"
   },
   "dependencies": {

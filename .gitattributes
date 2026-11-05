@@ -6,6 +6,8 @@ infra/repro/probe-existing-tbound-guest.ps1 text eol=lf
 infra/repro/run-reviewed-hyperv-inventory-worker.ps1 text eol=lf
 infra/guest/systemd/* text eol=lf
 infra/guest/nftables/* text eol=lf
+packaging/governed/Containerfile text eol=lf
+packaging/governed/base-images.lock.json text eol=lf
 corpus/** text eol=lf
 supervisor/internal/piruntime/testdata/ubuntu-24.04-accounts/* text eol=lf
 supervisor/cmd/tbound/testdata/** -text

@@ -19,13 +19,15 @@ jobs:
   # repository-wide; only the jobs whose inputs did not change are skipped.
   # Skipping a job (not the whole workflow) keeps required checks reportable.
   changes:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
     outputs:
       runtime: ${{ steps.paths.outputs.runtime }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - id: paths
         env:
@@ -43,16 +45,19 @@ jobs:
           echo "runtime=$(sh scripts/ci-runtime-paths.sh "$base" "$head")" >> "$GITHUB_OUTPUT"
 
   quick-checks:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version: "1.27.1"
           cache-dependency-path: supervisor/go.sum
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "24.21.0"
           cache: npm
@@ -104,6 +109,19 @@ jobs:
       - name: Runtime path filter regressions
         run: bash tests/ci/test-runtime-paths.sh
 
+      - name: Documentation links
+        run: python3 scripts/check-doc-links.py
+
+      - name: Governed container pins
+        run: bash tests/packaging/verify-governed-containerfile-pins.sh
+
+      - name: Workflow lint
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7 -no-color -shellcheck= -pyflakes=
+
+      - name: gofmt
+        working-directory: supervisor
+        run: test -z "$(gofmt -l .)"
+
       - name: Go vet
         working-directory: supervisor
         run: umask 077; go vet -mod=readonly ./...
@@ -120,18 +138,21 @@ jobs:
     # Fail open: if the decision job fails, run the suite instead of leaving a
     # required check skipped.
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.runtime == 'true') }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
     env:
       TBOUND_REQUIRE_PI_CLI_INTEGRATION: "1"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version: "1.27.1"
           cache-dependency-path: supervisor/go.sum
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "24.21.0"
           cache: npm
@@ -214,10 +235,15 @@ jobs:
             -run '^TestRunGuestTestsRunsTheRealCgroupTestsInAFreshCgroupAndRemovesIt$' | tee "$RUNNER_TEMP/real-cgroup.txt"
           grep -q -- '^--- PASS: TestRunGuestTestsRunsTheRealCgroupTestsInAFreshCgroupAndRemovesIt ' "$RUNNER_TEMP/real-cgroup.txt"
 
-      # Verbose, so the log shows whether this runner's kernel ran the Landlock tests or skipped them.
+      # Verbose, and fail if this runner's kernel skips the real enforcement tests.
       - name: Landlock enforcement on this runner's kernel
         working-directory: supervisor
-        run: umask 077; go test -mod=readonly -count=1 -v ./cmd/tbound-cell-entrypoint -run '^TestLandlock'
+        run: |
+          set -euo pipefail
+          umask 077
+          go test -mod=readonly -count=1 -v ./cmd/tbound-cell-entrypoint -run '^TestLandlock' | tee "$RUNNER_TEMP/landlock.txt"
+          grep -q -- '^--- PASS: TestLandlockTSYNCReachesEnforcement ' "$RUNNER_TEMP/landlock.txt"
+          grep -q -- '^--- PASS: TestLandlockConnectRightIsPort8080OnlyAndOnlyForNetSink ' "$RUNNER_TEMP/landlock.txt"
 
       - name: Go race suite
         working-directory: supervisor
