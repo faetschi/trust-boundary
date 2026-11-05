@@ -281,8 +281,8 @@ func TestOperatorResolutionSettlesBeforeAppendOnlyWhenReal(t *testing.T) {
 	}
 }
 
-// The catalog hands out copies of its state. The closed-publication list of an operator resolution must not alias it,
-// or an edit of a returned turn would change later reads without a journal record.
+// The catalog hands out copies of its state. The closed-publication and left-staging lists of an operator resolution
+// must not alias it, or an edit of a returned turn would change later reads without a journal record.
 func TestOperatorResolutionEvidenceDoesNotAliasCatalogState(t *testing.T) {
 	c, path := newCatalog(t)
 	reg := c.st.reg
@@ -294,6 +294,7 @@ func TestOperatorResolutionEvidenceDoesNotAliasCatalogState(t *testing.T) {
 	if _, err := OperatorResolve(path, reg, turn.ID, "close the pending publication", false, func(turn Turn) (OperatorEvidence, error) {
 		evidence, _ := operatorEvidence(turn)
 		evidence.PublicationClosed = []string{"root-pending-record"}
+		evidence.PublicationStagingLeft = []string{"/state/.tbound-publication-aa"}
 		return evidence, nil
 	}); err != nil {
 		t.Fatal(err)
@@ -301,8 +302,38 @@ func TestOperatorResolutionEvidenceDoesNotAliasCatalogState(t *testing.T) {
 	opened := openAt(t, path, reg)
 	read, _ := opened.Turn(turn.ID)
 	read.OperatorResolution.PublicationClosed[0] = "edited by the caller"
+	read.OperatorResolution.PublicationStagingLeft[0] = "edited by the caller"
 	again, _ := opened.Turn(turn.ID)
-	if got := again.OperatorResolution.PublicationClosed; len(got) != 1 || got[0] != "root-pending-record" {
-		t.Fatalf("an edit of a returned turn reached the catalog: %q", got)
+	if got, left := again.OperatorResolution.PublicationClosed, again.OperatorResolution.PublicationStagingLeft; len(got) != 1 || got[0] != "root-pending-record" || len(left) != 1 || left[0] != "/state/.tbound-publication-aa" {
+		t.Fatalf("an edit of a returned turn reached the catalog: %q %q", got, left)
+	}
+}
+
+// A resolution that names a staging directory by anything but a bounded absolute path, or too many of them, is
+// refused and writes nothing.
+func TestOperatorResolutionRefusesMalformedLeftStagingPaths(t *testing.T) {
+	tooMany := make([]string, maxPublicationClosed+1)
+	for i := range tooMany {
+		tooMany[i] = "/state/.tbound-publication-aa"
+	}
+	for name, left := range map[string][]string{"relative": {".tbound-publication-aa"}, "too many": tooMany} {
+		t.Run(name, func(t *testing.T) {
+			c, path := newCatalog(t)
+			reg := c.st.reg
+			turn := linkedTurn(t, c, "staging")
+			if err := c.MarkTurnUnknown(turn.ID, "lost"); err != nil {
+				t.Fatal(err)
+			}
+			c.Close()
+			before, _ := os.ReadFile(path)
+			_, err := OperatorResolve(path, reg, turn.ID, "close the pending publication", false, func(turn Turn) (OperatorEvidence, error) {
+				evidence, _ := operatorEvidence(turn)
+				evidence.PublicationStagingLeft = left
+				return evidence, nil
+			})
+			if after, _ := os.ReadFile(path); err == nil || string(after) != string(before) {
+				t.Fatalf("malformed staging paths accepted or written: %v", err)
+			}
+		})
 	}
 }

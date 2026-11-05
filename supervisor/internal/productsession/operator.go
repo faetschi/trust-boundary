@@ -5,6 +5,7 @@ package productsession
 import (
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"time"
 
 	"tbound/supervisor/internal/audit"
@@ -22,25 +23,27 @@ const maxPublicationClosed = 4
 // CommandsSettled marks a nonempty command journal whose every command the Store
 // matched to a verified settlement.
 // PublicationClosed lists the pending publication records of the workflow that Settle
-// closed as unapplied.
+// closed as unapplied. PublicationStagingLeft lists the absolute paths of unbound publication staging directories
+// that closing left in place for the operator to remove.
 // Confirm, Settle and Close are transient: the composition uses them to keep the evidence
 // handles open, to re-attest the project tree at append time and, for a real
 // resolution only, to close durable evidence directly before the append. They are
 // never part of the record.
 type OperatorEvidence struct {
-	WorkflowID        string       `json:"workflow_id"`
-	BaselineDigest    string       `json:"baseline_digest"`
-	ScanDigest        string       `json:"scan_digest"`
-	StoreHead         string       `json:"store_head"`
-	ProviderHead      string       `json:"provider_head"`
-	CommandOwnerHead  string       `json:"command_owner_head,omitempty"`
-	CommandsSettled   bool         `json:"commands_settled,omitempty"`
-	PublicationClosed []string     `json:"publication_closed,omitempty"`
-	CommandHead       string       `json:"command_head"`
-	CheckpointDigest  string       `json:"checkpoint_digest"`
-	Confirm           func() error `json:"-"`
-	Settle            func() error `json:"-"`
-	Close             func() error `json:"-"`
+	WorkflowID             string       `json:"workflow_id"`
+	BaselineDigest         string       `json:"baseline_digest"`
+	ScanDigest             string       `json:"scan_digest"`
+	StoreHead              string       `json:"store_head"`
+	ProviderHead           string       `json:"provider_head"`
+	CommandOwnerHead       string       `json:"command_owner_head,omitempty"`
+	CommandsSettled        bool         `json:"commands_settled,omitempty"`
+	PublicationClosed      []string     `json:"publication_closed,omitempty"`
+	PublicationStagingLeft []string     `json:"publication_staging_left,omitempty"`
+	CommandHead            string       `json:"command_head"`
+	CheckpointDigest       string       `json:"checkpoint_digest"`
+	Confirm                func() error `json:"-"`
+	Settle                 func() error `json:"-"`
+	Close                  func() error `json:"-"`
 }
 
 type OperatorResolution struct {
@@ -170,6 +173,14 @@ func (s *state) reduceOperatorResolved(data []byte) (func(), error) {
 	for _, id := range r.PublicationClosed {
 		if id == "" || len(id) > 128 {
 			return nil, fail(CodeInvalidRequest, "invalid closed publication record ID")
+		}
+	}
+	if len(r.PublicationStagingLeft) > maxPublicationClosed {
+		return nil, fail(CodeInvalidRequest, "operator resolution leaves too many staging directories")
+	}
+	for _, path := range r.PublicationStagingLeft {
+		if !filepath.IsAbs(path) || len(path) > 4096 {
+			return nil, fail(CodeInvalidRequest, "invalid left staging directory path")
 		}
 	}
 	for _, digest := range []string{r.BaselineDigest, r.ScanDigest, r.StoreHead, r.ProviderHead, r.CommandHead, r.CheckpointDigest} {

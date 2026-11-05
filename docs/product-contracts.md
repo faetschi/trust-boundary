@@ -116,7 +116,13 @@ record through the root ledger's own recovery, which only observes. A pending
 record with no prepared transaction resolves `FAILED`, since no live effect can
 precede the prepare. A prepared transaction without a terminal record ends
 `FAILED` through publication recovery, run on a repository at a higher owner
-epoch. An `UNKNOWN` result refuses. The abandonment record lists the closed
+epoch. A kill right after the staging directory was created leaves a transaction
+with no token and a directory whose identity was never checkpointed. With no
+token it can never apply, so recovery ends it `FAILED` and leaves the directory
+in place, since nothing proves it is the one the transaction created. The
+abandonment record lists its absolute path in `publication_staging_left`, the
+command prints it, and the operator removes it by hand. Any other `UNKNOWN`
+result refuses. The abandonment record lists the closed
 records in `publication_closed`. The dry run makes every decision that the
 journal alone settles and writes nothing. It cannot run publication recovery,
 so a real run can still refuse for a prepared transaction.

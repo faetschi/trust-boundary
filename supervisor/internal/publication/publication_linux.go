@@ -771,6 +771,39 @@ func clonePublicationTransitions(input []delta.Transition) []delta.Transition {
 // inode. It only observes a consumed token's effects; it cannot resume apply,
 // roll back, or restore a checkpoint. Pre-token staging may be discarded.
 func (r *Repository) Recover(liveRoot *os.File, transactionID string, inject FaultInjector) (Result, error) {
+	return r.recover(liveRoot, transactionID, inject, false)
+}
+
+// RecoverAbandoningUnboundStaging is Recover with one difference, for a trusted operator (the product operator
+// resolution) that needs a transaction closed: where Recover stays UNKNOWN because the transaction has no token and
+// its staging directory exists without a checkpointed identity (a kill between the mkdir and the artifact-ready
+// checkpoint), this ends the transaction FAILED and leaves the directory untouched, since it cannot be told from a
+// directory another actor created under that name. Closing it is safe because no token is durable: apply runs only
+// in Publish, after the token record, so a transaction without one never changes the live root, and the repository
+// lock this repository holds excludes any live owner that could still append one. The directory's name goes into
+// the terminal record's reason. Every other state behaves exactly as Recover.
+func (r *Repository) RecoverAbandoningUnboundStaging(liveRoot *os.File, transactionID string, inject FaultInjector) (Result, error) {
+	return r.recover(liveRoot, transactionID, inject, true)
+}
+
+// UnboundStagingNames lists the staging directory name of each transaction of the workflow that holds no token and
+// no terminal record and never checkpointed its staging directory's identity. It reads the journal only. Whether
+// the directory exists depends on where the kill came.
+func UnboundStagingNames(trace audit.Trace, workflowID string) ([]string, error) {
+	transactions, err := readTransactions(trace, workflowID)
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	for _, tx := range transactions {
+		if tx.terminal == nil && tx.token == nil && tx.artifactID == nil {
+			names = append(names, tx.prepare.ArtifactName)
+		}
+	}
+	return names, nil
+}
+
+func (r *Repository) recover(liveRoot *os.File, transactionID string, inject FaultInjector, abandonUnboundStaging bool) (Result, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if err := r.checkOpenLocked(); err != nil {
@@ -817,11 +850,14 @@ func (r *Repository) Recover(liveRoot *os.File, transactionID string, inject Fau
 		defer artifact.Close()
 	}
 	if tx.token == nil {
+		reason := "preparation interrupted before token consumption"
 		if artifact != nil {
 			if tx.artifactID == nil {
-				return Result{TransactionID: transactionID, PublicationID: tx.prepare.PublicationID, Status: StatusUnknown, Binding: tx.prepare.Binding}, ErrRecoveryUnknown
-			}
-			if err := removePreparedArtifacts(parent, artifact, tx.prepare, inject); err != nil {
+				if !abandonUnboundStaging {
+					return Result{TransactionID: transactionID, PublicationID: tx.prepare.PublicationID, Status: StatusUnknown, Binding: tx.prepare.Binding}, ErrRecoveryUnknown
+				}
+				reason += "; staging directory " + tx.prepare.ArtifactName + " has no checkpointed identity and was left in place"
+			} else if err := removePreparedArtifacts(parent, artifact, tx.prepare, inject); err != nil {
 				return Result{TransactionID: transactionID, PublicationID: tx.prepare.PublicationID, Status: StatusUnknown, Binding: tx.prepare.Binding}, err
 			}
 		}
@@ -829,7 +865,7 @@ func (r *Repository) Recover(liveRoot *os.File, transactionID string, inject Fau
 		for i, plan := range tx.prepare.Plans {
 			objects[i] = ObjectResult{Path: plan.Path, SourcePath: plan.SourcePath, Operation: plan.Operation, Status: ObjectFailed, Durability: "no-token-no-publication-effect"}
 		}
-		terminal := terminalRecord{TransactionID: transactionID, Status: StatusFailed, Objects: objects, Reason: "preparation interrupted before token consumption"}
+		terminal := terminalRecord{TransactionID: transactionID, Status: StatusFailed, Objects: objects, Reason: reason}
 		if err := r.appendRecord("publication_aborted", transactionID, terminal); err != nil {
 			return Result{}, err
 		}

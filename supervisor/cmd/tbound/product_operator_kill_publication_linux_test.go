@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -101,15 +102,26 @@ func TestProductOperatorResolvesAKillInsidePublicationOnlyWhenProvablyUnapplied(
 		point, refusal string
 		measured       string // "baseline", "candidate" or "partial"
 		prepared       int    // prepare records the kill left
+		unbound        int    // staging directories without a checkpointed identity that the resolution must leave in place and report
+		kept           int    // identity-bound staging directories that recovery keeps after a consumed token
+		overwriteOnly  bool   // the hook runs only for a turn that overwrites a file
 	}{
-		{"publication-after-source-validation", "", "baseline", 0},
-		{"publication-after-prepare-checkpoint", "", "baseline", 1},
-		{"publication-after-token-checkpoint", "", "baseline", 1},
-		{"publication-after-object-checkpoint", "not provably unapplied", "partial", 1},
-		{"publication-after-checkpoint", "was applied", "candidate", 1},
-		{"publication-after-terminal-checkpoint", "was applied", "candidate", 1},
+		{"publication-after-source-validation", "", "baseline", 0, 0, 0, false},
+		{"publication-after-prepare-checkpoint", "", "baseline", 1, 0, 0, false},
+		{"publication-after-artifact-create", "", "baseline", 1, 1, 0, false},
+		{"publication-after-artifact-parent-sync", "", "baseline", 1, 0, 0, false},
+		{"publication-after-stage-sync", "", "baseline", 1, 0, 0, false},
+		{"publication-after-backup-sync", "", "baseline", 1, 0, 0, true},
+		{"publication-after-stage-checkpoint", "", "baseline", 1, 0, 0, false},
+		{"publication-after-token-checkpoint", "", "baseline", 1, 0, 1, false},
+		{"publication-after-object-checkpoint", "not provably unapplied", "partial", 1, 0, 0, false},
+		{"publication-after-checkpoint", "was applied", "candidate", 1, 0, 0, false},
+		{"publication-after-terminal-checkpoint", "was applied", "candidate", 1, 0, 0, false},
 	} {
 		for _, bash := range []bool{true, false} {
+			if bash && c.overwriteOnly {
+				continue
+			}
 			t.Run(fmt.Sprintf("%s/bash=%v", c.point, bash), func(t *testing.T) {
 				var created *productDriverFixture
 				if bash {
@@ -170,6 +182,11 @@ func TestProductOperatorResolvesAKillInsidePublicationOnlyWhenProvablyUnapplied(
 				if lifecycle.pending != 1 || lifecycle.resolved != 0 || lifecycle.prepared != c.prepared {
 					t.Fatalf("the kill left lifecycle %+v", lifecycle)
 				}
+				stagingDirs := func() []string {
+					found, _ := filepath.Glob(filepath.Join(filepath.Dir(f.env.ProjectRoots[turn.ProjectID]), ".tbound-publication-[0-9a-f]*"))
+					return found
+				}
+				stagingBefore := stagingDirs()
 				catalogPath := filepath.Join(f.env.StateRoot, "catalog.jsonl")
 				catalogBefore, err := os.ReadFile(catalogPath)
 				if err != nil {
@@ -195,6 +212,8 @@ func TestProductOperatorResolvesAKillInsidePublicationOnlyWhenProvablyUnapplied(
 						}
 					} else if lifecycle.pending != 1 || lifecycle.resolved != 1 || lifecycle.prepared != c.prepared || lifecycle.terminal != c.prepared {
 						t.Fatalf("the pending publication was not closed with its transaction ended: %+v", lifecycle)
+					} else if left := stagingDirs(); len(left) != c.unbound+c.kept {
+						t.Fatalf("want %d staging directories left in place, found %v", c.unbound+c.kept, left)
 					}
 					if f.measure(t) != measured {
 						t.Fatal("operator resolution changed the project")
@@ -211,6 +230,14 @@ func TestProductOperatorResolvesAKillInsidePublicationOnlyWhenProvablyUnapplied(
 				if got.State != productsession.StateTerminal || got.Outcome != productsession.OutcomeAbandoned || got.ContextEligible ||
 					got.Usage != got.Reservation || reopened.currentSession(t).Blocked {
 					t.Fatalf("the abandonment did not replay: %+v", got)
+				}
+				// The unbound staging directory stays in place, and the evidence names it for the operator to remove.
+				var wantLeft []string
+				if c.unbound != 0 {
+					wantLeft = stagingBefore
+				}
+				if !slices.Equal(got.OperatorResolution.PublicationStagingLeft, wantLeft) {
+					t.Fatalf("evidence names staging %q, want %q", got.OperatorResolution.PublicationStagingLeft, wantLeft)
 				}
 				// The project publishes again, so no pending record is left that could apply later.
 				script := &productDriverScript{turns: []providerbridge.ScriptTurn{scopeDriverWrite("t2", "notes.txt", productDriverNotes), scopeDriverFinal("t2", productDriverAnswerA)}}
@@ -233,5 +260,23 @@ func TestProductOperatorResolvesAKillInsidePublicationOnlyWhenProvablyUnapplied(
 				open().turn(t, next.ID) // the catalog replays with both terminals
 			})
 		}
+	}
+}
+
+// The operator is told which staging directory a resolution leaves behind, and nothing about publication when it
+// closed no record.
+func TestPublicationNoteNamesTheStagingDirectoriesLeftForTheOperator(t *testing.T) {
+	left := []string{"/srv/p/.tbound-publication-aa"}
+	if note := publicationNote([]string{"event"}, left, false); !strings.Contains(note, "1 pending publication record(s) closed as unapplied") || !strings.Contains(note, left[0]) {
+		t.Fatalf("real note: %q", note)
+	}
+	if note := publicationNote([]string{"event"}, left, true); !strings.Contains(note, "would be closed") || !strings.Contains(note, left[0]) {
+		t.Fatalf("dry-run note: %q", note)
+	}
+	if note := publicationNote([]string{"event"}, nil, false); strings.Contains(note, "staging") {
+		t.Fatalf("a note without a left directory mentions staging: %q", note)
+	}
+	if note := publicationNote(nil, left, false); note != "" {
+		t.Fatalf("a resolution that closed nothing reports publication: %q", note)
 	}
 }

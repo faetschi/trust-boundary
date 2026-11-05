@@ -456,8 +456,10 @@ A kill during publication of a review candidate leaves the project blocked in
 the same way. The same commands resolve it when the project still equals the
 admitted baseline, which is the state after a kill before the first file was
 applied. The real run closes the pending publication record and ends any
-prepared transaction as failed before it abandons the turn. The dry run names
-that and writes nothing. If the project already holds the candidate (`the
+prepared transaction as failed before it abandons the turn. A kill right after the
+staging directory was created ends the transaction failed too, but the directory
+stays in place and the command prints its path, for you to remove. The dry run
+names that and writes nothing. If the project already holds the candidate (`the
 publication was applied`) or a partial result (`not provably unapplied`),
 resolution refuses and changes nothing. Inspect the project by hand, because
 the catalog cannot record a published outcome for an unknown turn.

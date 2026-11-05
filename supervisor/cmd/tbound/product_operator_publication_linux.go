@@ -25,21 +25,29 @@ import (
 // ledger's own recovery. The caller runs settle for a real resolution only, directly before the catalog append. A
 // publication that applied or partly applied is refused by name, because the catalog cannot record a published
 // outcome for an unknown turn.
-func (e *productTurnEnv) operatorPublication(ctx context.Context, turn productsession.Turn, root *os.File, measured string) (closing []string, settle func() error, err error) {
+//
+// A kill right after the staging directory was created leaves a transaction with no token and a directory whose
+// identity was never checkpointed, which publication.Recover keeps UNKNOWN. Closing it is safe: with no durable
+// token the transaction can never apply (apply runs only after the token record), and the project equals the
+// baseline, so nothing it did reached the live tree. settle therefore recovers through
+// RecoverAbandoningUnboundStaging, which ends such a transaction FAILED and leaves the directory in place, since
+// nothing proves it is the one the transaction created. stagingLeft names each such directory that exists, as an
+// absolute path, for the operator to remove.
+func (e *productTurnEnv) operatorPublication(ctx context.Context, turn productsession.Turn, root *os.File, measured string) (closing, stagingLeft []string, settle func() error, err error) {
 	workflowID := turn.Link.WorkflowID
 	named, _, err := e.workflowPublication(turn.ProjectID, workflowID)
 	if err != nil {
-		return nil, nil, errors.Join(errors.New("publication evidence is unreadable"), err)
+		return nil, nil, nil, errors.Join(errors.New("publication evidence is unreadable"), err)
 	}
 	if !named {
-		return nil, nil, nil
+		return nil, nil, nil, nil
 	}
 	switch measured {
 	case turn.BaselineDigest:
 	case turn.CandidateDigest:
-		return nil, nil, errors.New("the publication was applied: the project equals the turn's candidate, and operator resolution cannot record a published outcome")
+		return nil, nil, nil, errors.New("the publication was applied: the project equals the turn's candidate, and operator resolution cannot record a published outcome")
 	default:
-		return nil, nil, errors.New("the publication is not provably unapplied: the project equals neither the admitted baseline nor the turn's candidate")
+		return nil, nil, nil, errors.New("the publication is not provably unapplied: the project equals neither the admitted baseline nor the turn's candidate")
 	}
 	projectDir := e.projectPublicationDir(turn.ProjectID)
 	withLedger := func(use func(*audit.Journal, *workflow.RootLedger) error) (trace audit.Trace, err error) {
@@ -62,12 +70,15 @@ func (e *productTurnEnv) operatorPublication(ctx context.Context, turn productse
 		return err
 	})
 	if err != nil {
-		return nil, nil, fmt.Errorf("publication lifecycle: %w", err)
+		return nil, nil, nil, fmt.Errorf("publication lifecycle: %w", err)
 	}
 	if closing = unresolvedPublicationEvents(trace, workflowID); len(closing) == 0 {
-		return nil, nil, nil
+		return nil, nil, nil, nil
 	}
-	return closing, func() error {
+	if stagingLeft, err = unboundStagingLeft(root, trace, workflowID); err != nil {
+		return nil, nil, nil, err
+	}
+	return closing, stagingLeft, func() error {
 		stateRoot, err := os.Open(filepath.Join(projectDir, "publication-state"))
 		if err != nil {
 			return fmt.Errorf("close the publication lifecycle: %w", err)
@@ -83,8 +94,12 @@ func (e *productTurnEnv) operatorPublication(ctx context.Context, turn productse
 				if err != nil {
 					return nil, err
 				}
-				return publication.Acquire(publication.Options{WorkflowID: id, OwnerEpoch: nextPublicationOwnerEpoch(trace, id),
+				repository, err := publication.Acquire(publication.Options{WorkflowID: id, OwnerEpoch: nextPublicationOwnerEpoch(trace, id),
 					StateRoot: stateRoot, Journal: journal, Workspace: recovery})
+				if err != nil {
+					return nil, err
+				}
+				return abandoningRecovery{repository}, nil
 			})
 		})
 		if err == nil && len(unresolvedPublicationEvents(trace, workflowID)) != 0 {
@@ -95,6 +110,54 @@ func (e *productTurnEnv) operatorPublication(ctx context.Context, turn productse
 		}
 		return nil
 	}, nil
+}
+
+// abandoningRecovery is the recovery repository of an operator resolution: its Recover ends a transaction that has
+// no token and an unbound staging directory FAILED, leaving the directory, where publication.Recover would pause.
+type abandoningRecovery struct{ *publication.Repository }
+
+func (r abandoningRecovery) Recover(liveRoot *os.File, transactionID string, inject publication.FaultInjector) (publication.Result, error) {
+	return r.Repository.RecoverAbandoningUnboundStaging(liveRoot, transactionID, inject)
+}
+
+// unboundStagingLeft lists, as absolute paths beside the live root, the unbound staging directories of the
+// workflow's open transactions that exist now. A kill before the directory was created leaves none.
+func unboundStagingLeft(root *os.File, trace audit.Trace, workflowID string) ([]string, error) {
+	names, err := publication.UnboundStagingNames(trace, workflowID)
+	if err != nil || len(names) == 0 {
+		return nil, err
+	}
+	rootPath, err := os.Readlink(fmt.Sprintf("/proc/self/fd/%d", root.Fd()))
+	if err != nil {
+		return nil, fmt.Errorf("locate the live root of the unbound staging directory: %w", err)
+	}
+	var left []string
+	for _, name := range names {
+		path := filepath.Join(filepath.Dir(rootPath), name)
+		if _, err := os.Lstat(path); err == nil {
+			left = append(left, path)
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return nil, err
+		}
+	}
+	return left, nil
+}
+
+// publicationNote tells the operator which pending publication records a resolution closes, and which staging
+// directories it leaves behind for them to remove.
+func publicationNote(closing, stagingLeft []string, dry bool) string {
+	if len(closing) == 0 {
+		return ""
+	}
+	verb := "closed"
+	if dry {
+		verb = "would be closed"
+	}
+	note := fmt.Sprintf("; %d pending publication record(s) %s as unapplied", len(closing), verb)
+	if len(stagingLeft) != 0 {
+		note += fmt.Sprintf("; the unbound staging directory(s) %s stay in place and can be removed by hand", strings.Join(stagingLeft, ", "))
+	}
+	return note
 }
 
 // nextPublicationOwnerEpoch is the epoch after the highest the journal holds for the workflow. A recovery
