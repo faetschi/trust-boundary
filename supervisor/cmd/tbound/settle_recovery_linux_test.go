@@ -314,3 +314,43 @@ func TestSettleCompletedPassesTheRealOwnerDrainOnceTheRunClosedItsOwner(t *testi
 		t.Fatalf("settlement still refused after the owner was closed: %v", err)
 	}
 }
+
+// Fresh process: the request journal is reopened from its file, so nothing is cached. A completed
+// request that never got its terminal is verified (and so closed) at start; one whose proof fails
+// stays open and still blocks admission.
+func TestCompletedRequestWithoutTerminalIsSettledAtStart(t *testing.T) {
+	path := filepath.Join(incrementalTestRoot(t), "requests.jsonl")
+	first := openIncrementalJournal(t, path)
+	if err := first.admit(t, 1, true); err != nil {
+		t.Fatal(err)
+	}
+	first.close(t) // crash before settleCompleted ran
+
+	restarted := openIncrementalJournal(t, path)
+	defer restarted.close(t)
+	if err := restarted.requests.settleCompletedPriors(context.Background()); err != nil || restarted.total != 1 {
+		t.Fatalf("start recovery: verifier calls %d, err %v", restarted.total, err)
+	}
+	if err := restarted.admit(t, 2, false); err != nil || restarted.total != 1 {
+		t.Fatalf("the next admission re-verified or was refused (calls %d, err %v)", restarted.total, err)
+	}
+}
+
+func TestCompletedRequestWhoseProofFailsStaysOpenAtStart(t *testing.T) {
+	path := filepath.Join(incrementalTestRoot(t), "requests.jsonl")
+	first := openIncrementalJournal(t, path)
+	if err := first.admit(t, 1, true); err != nil {
+		t.Fatal(err)
+	}
+	first.close(t)
+
+	restarted := openIncrementalJournal(t, path)
+	defer restarted.close(t)
+	restarted.failID = "request-0001"
+	if err := restarted.requests.settleCompletedPriors(context.Background()); err == nil {
+		t.Fatal("a failed settlement was swallowed")
+	}
+	if err := restarted.admit(t, 2, false); !errors.Is(err, ErrPiServiceUnresolvedPrior) {
+		t.Fatalf("the unsettled prior no longer blocks: %v", err)
+	}
+}

@@ -2094,6 +2094,10 @@ func runProductionPiService(ctx context.Context, output io.Writer) error {
 	if err := requests.settleAbandonedPriors(ctx); err != nil {
 		fmt.Fprintln(os.Stderr, "abandoned requests not yet closed in the workflow catalog:", err)
 	}
+	// Likewise a completed request whose terminal was not written; it stays open and blocking if it does not verify.
+	if err := requests.settleCompletedPriors(ctx); err != nil {
+		fmt.Fprintln(os.Stderr, "completed requests not yet settled in the workflow catalog:", err)
+	}
 	runTask := func(taskCtx context.Context, request piServiceRequest) (json.RawMessage, error) {
 		requestAdmission, ok := piServiceAdmissionFromContext(taskCtx)
 		if !ok {
@@ -2241,4 +2245,30 @@ func ensureScratchDirectoriesIn(runtime *os.File, serviceUID int, names ...strin
 		}
 	}
 	return nil
+}
+
+// settleCompletedPriors is the service-start recovery of a completed request whose catalog terminal
+// was not written (a crash between journal.complete and settleCompleted, or a failed verification).
+// Each completed prior goes through the same verifier begin uses, which writes the terminal only
+// when the settlement verifies. A prior that fails stays open, still blocks admission, and its
+// error is joined into the result.
+func (j *piServiceRequestJournal) settleCompletedPriors(ctx context.Context) error {
+	if j == nil || ctx == nil {
+		return ErrPiServiceUnavailable
+	}
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if j.settlementVerifier == nil {
+		return nil
+	}
+	var failures []error
+	for key, prior := range j.entries {
+		if prior.terminal == nil || prior.terminal.Status != "completed" {
+			continue
+		}
+		if err := j.verifyCompletedPrior(ctx, key, prior); err != nil {
+			failures = append(failures, fmt.Errorf("request %q: %w", prior.accepted.RequestID, err))
+		}
+	}
+	return errors.Join(failures...)
 }
