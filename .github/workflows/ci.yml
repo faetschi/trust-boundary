@@ -40,20 +40,7 @@ jobs:
           else
             base="$PUSH_BEFORE"; head="$GITHUB_SHA"
           fi
-          # Unknown range (new branch, dispatch) runs the suite rather than guess.
-          runtime=true
-          if [ -n "$base" ] && [ "$base" != "0000000000000000000000000000000000000000" ]; then
-            if changed="$(git diff --name-only "$base...$head" 2>/dev/null)"; then
-              printf 'Changed files:\n%s\n' "$changed"
-              # Every path the runtime suite reads: the Go module, adapter
-              # contracts, corpus fixtures, guest scripts and runbooks, the
-              # installer, evaluation metadata, and this workflow.
-              if ! printf '%s\n' "$changed" | grep -Eq '^(supervisor/|adapter/|corpus/|infra/|install/|docs/evaluation/|\.github/workflows/ci\.yml$)'; then
-                runtime=false
-              fi
-            fi
-          fi
-          echo "runtime=$runtime" >> "$GITHUB_OUTPUT"
+          echo "runtime=$(sh scripts/ci-runtime-paths.sh "$base" "$head")" >> "$GITHUB_OUTPUT"
 
   quick-checks:
     runs-on: ubuntu-latest
@@ -114,6 +101,9 @@ jobs:
           bash tests/packaging/verify-package-manager-layout.sh
           bash tests/packaging/verify-publish-release-assets.sh
 
+      - name: Runtime path filter regressions
+        run: bash tests/ci/test-runtime-paths.sh
+
       - name: Go vet
         working-directory: supervisor
         run: umask 077; go vet -mod=readonly ./...
@@ -127,7 +117,9 @@ jobs:
 
   runtime:
     needs: changes
-    if: needs.changes.outputs.runtime == 'true'
+    # Fail open: if the decision job fails, run the suite instead of leaving a
+    # required check skipped.
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.runtime == 'true') }}
     runs-on: ubuntu-latest
     env:
       TBOUND_REQUIRE_PI_CLI_INTEGRATION: "1"
