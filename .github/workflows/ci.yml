@@ -15,6 +15,46 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Decide whether the expensive runtime suite is relevant. quick-checks stays
+  # repository-wide; only the jobs whose inputs did not change are skipped.
+  # Skipping a job (not the whole workflow) keeps required checks reportable.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      runtime: ${{ steps.paths.outputs.runtime }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - id: paths
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            base="$PR_BASE"; head="$PR_HEAD"
+          else
+            base="$PUSH_BEFORE"; head="$GITHUB_SHA"
+          fi
+          # Unknown range (new branch, dispatch) runs the suite rather than guess.
+          runtime=true
+          if [ -n "$base" ] && [ "$base" != "0000000000000000000000000000000000000000" ]; then
+            if changed="$(git diff --name-only "$base...$head" 2>/dev/null)"; then
+              printf 'Changed files:\n%s\n' "$changed"
+              # Every path the runtime suite reads: the Go module, adapter
+              # contracts, corpus fixtures, guest scripts and runbooks, the
+              # installer, evaluation metadata, and this workflow.
+              if ! printf '%s\n' "$changed" | grep -Eq '^(supervisor/|adapter/|corpus/|infra/|install/|docs/evaluation/|\.github/workflows/ci\.yml$)'; then
+                runtime=false
+              fi
+            fi
+          fi
+          echo "runtime=$runtime" >> "$GITHUB_OUTPUT"
+
   quick-checks:
     runs-on: ubuntu-latest
     steps:
@@ -86,6 +126,8 @@ jobs:
           npm run check
 
   runtime:
+    needs: changes
+    if: needs.changes.outputs.runtime == 'true'
     runs-on: ubuntu-latest
     env:
       TBOUND_REQUIRE_PI_CLI_INTEGRATION: "1"

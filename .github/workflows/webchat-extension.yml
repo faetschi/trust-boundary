@@ -8,17 +8,26 @@ name: webchat-extension
 # the Go job and the frontend job cannot drift apart.
 on:
   workflow_dispatch:
+  # Feature branches run through pull_request; merged trees are checked on push.
   push:
+    branches: [main, codex/tbound-prototype]
     paths:
       - "extensions/webchat/**"
+      - "supervisor/internal/productprotocol/testdata/**"
       - ".github/workflows/webchat-extension.yml"
   pull_request:
     paths:
       - "extensions/webchat/**"
+      - "supervisor/internal/productprotocol/testdata/**"
       - ".github/workflows/webchat-extension.yml"
 
 permissions:
   contents: read
+
+# Cancel superseded PR runs; push runs remain independent.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   webchat:
