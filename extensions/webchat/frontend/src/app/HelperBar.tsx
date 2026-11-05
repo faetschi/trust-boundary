@@ -17,6 +17,7 @@ import { confirmedIn } from "./verification";
 import { NO_PROJECTION, unavailableWords } from "./panels";
 import { HEALTH_TONES, LIVE_FOOTNOTE, OTHER_SESSIONS_NOTE, READ_ONLY_NOTE, bindingName, streamText } from "./Rail";
 import { conversationHead } from "./views/chat/identity";
+import { severityRank } from "./views/chat/toolGroups";
 import { postureEntries } from "./views/chat/readings";
 import type { WorkspaceModel } from "./workspaceStore";
 import styles from "./HelperBar.module.css";
@@ -51,9 +52,11 @@ interface HelperBarProps {
   readonly version: string;
   // Placement from the shell, so the card sits beside the governance column.
   readonly className?: string;
+  // The governance drawer is open and modal: the card behind it is inert, as the header, the rail and the workspace are.
+  readonly inert?: boolean;
 }
 
-export function HelperBar({ model, open, version, className }: HelperBarProps) {
+export function HelperBar({ model, open, version, className, inert = false }: HelperBarProps) {
   const live = useLive() !== null;
   const head = conversationHead(model.session, model.loaded);
   const confirmedOf = (item: Parameters<typeof confirmedIn>[1]) => confirmedIn(model, item);
@@ -63,7 +66,7 @@ export function HelperBar({ model, open, version, className }: HelperBarProps) {
   const statsLead = stats[1] + (stats.some((part) => part.includes("unavailable") && part !== stats[1]) ? " · some unavailable" : "");
 
   return (
-    <section id={HELPER_ID} aria-label="Session details" className={cx(styles.card, className)} hidden={!open}>
+    <section id={HELPER_ID} aria-label="Session details" className={cx(styles.card, className)} hidden={!open} inert={inert}>
       <Section title="Session" lead={head.status}>
         <div className={styles.rows}>
           <p className={styles.row}>{head.status}</p>
@@ -78,7 +81,7 @@ export function HelperBar({ model, open, version, className }: HelperBarProps) {
       </Section>
       <Section
         title="Observed posture"
-        lead={!model.loaded ? unavailableWords(NO_PROJECTION) : posture.length > 0 ? posture.slice(0, 2).map((entry) => entry.text).join(" · ") : "none projected"}
+        lead={!model.loaded ? unavailableWords(NO_PROJECTION) : posture.length > 0 ? [...posture].sort((a, b) => severityRank(a.tone) - severityRank(b.tone)).slice(0, 2).map((entry) => entry.text).join(" · ") : "none projected"}
       >
         <div className={styles.posture} role="group" aria-label="Observed posture">
           {!model.loaded ? (

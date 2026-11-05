@@ -3,7 +3,7 @@ import { messageItem } from "../../../core/testing/builders";
 import type { Item, ItemView } from "../../../core/contract";
 import { groupTurn, type ToolBlock } from "../../../core/store";
 import { blocksOf, itemsOf, type ToolCallSpec } from "../../../test-support/toolBlocks";
-import { GROUP_MIN, groupRuns, outcomeReading, summariseToolGroup, toolFindings, traceToneOf } from "./toolGroups";
+import { GROUP_MIN, groupRuns, outcomeReading, severityRank, summariseToolGroup, toolFindings, traceToneOf } from "./toolGroups";
 
 const unverified = (_item: ItemView): boolean => false;
 const verified = (_item: ItemView): boolean => true;
@@ -112,6 +112,13 @@ describe("a group's summary", () => {
       { name: "bash", count: 2 },
       { name: "read", count: 1 },
     ]);
+  });
+});
+
+describe("severity order, for summaries that name only a few findings", () => {
+  it("ranks a refusal, then LOST, then unknown, then reported, before a permission, so the worst is named first", () => {
+    const ranked = (["allow", "reported", "unknown", "lost", "deny"] as const).slice().sort((a, b) => severityRank(a) - severityRank(b));
+    expect(ranked).toEqual(["deny", "lost", "unknown", "reported", "allow"]);
   });
 });
 

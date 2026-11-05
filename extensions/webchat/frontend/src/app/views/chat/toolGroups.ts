@@ -57,6 +57,12 @@ export function toolFindings(block: ToolBlock, verifiedOf: Verifier): Finding[] 
 // Worst first. The success tone is last, so a block or a group draws it only when every finding in it is a verified success.
 const SEVERITY: readonly ChipTone[] = ["deny", "lost", "unknown", "reported", "pending", "allow", "idle", "ok"];
 
+// A tone's place in that order: the lower, the worse. A summary that names only a few findings names the worst ones.
+export function severityRank(tone: ChipTone): number {
+  const index = SEVERITY.indexOf(tone);
+  return index < 0 ? SEVERITY.length : index;
+}
+
 export function worstTone(findings: readonly Finding[]): ChipTone {
   return SEVERITY.find((candidate) => findings.some((finding) => finding.tone === candidate)) ?? "idle";
 }

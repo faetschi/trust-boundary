@@ -80,11 +80,14 @@ describe("the tool card header is a row of parts with gaps", () => {
 
 describe("the message meta is visible at rest on every device", () => {
   it("is never hidden with opacity or visibility, except the Copy icon and the element count, which fade only where a pointer can hover", () => {
+    const hoverBlocks = [...css.matchAll(/@media \(hover: hover\) \{([\s\S]*?)\n\}\n/g)].map((match) => match[1] ?? "");
     const withoutHoverOnly = css.replace(/@media \(hover: hover\) \{[\s\S]*?\n\}\n/g, "");
     expect(withoutHoverOnly).not.toMatch(/opacity:\s*0\b/);
-    expect(css).not.toMatch(/visibility:\s*hidden/);
+    expect(withoutHoverOnly).not.toMatch(/visibility:\s*hidden/);
+    // Inside the hover-only blocks, exactly these two selectors may be faded; nothing else may be.
+    const faded = hoverBlocks.flatMap((block) => [...block.matchAll(/([^{}]+)\{([^}]*opacity:\s*0\b[^}]*)\}/g)].map((rule) => (rule[1] ?? "").trim()));
+    expect(faded.sort()).toEqual([".meta button", ".turnCount"]);
   });
-
   it("draws the time at full emphasis, not in the muted ink", () => {
     expect(declarationsOf(".time")).toMatch(/color:\s*var\(--foreground\);/);
   });

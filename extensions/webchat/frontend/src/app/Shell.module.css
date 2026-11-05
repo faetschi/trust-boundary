@@ -154,12 +154,14 @@
 }
 
 /* The title row: one 44px line. The breadcrumb and the session title at its start, the status pill and the controls at its end. */
+/* It wraps: the controls drop under the title before the status pill's words can be squeezed away. */
 .titleRow {
   grid-column: 2;
   grid-row: 1;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-1) var(--space-2);
   min-width: 0;
   min-height: 44px;
   padding: 0 var(--space-4);
@@ -225,16 +227,17 @@
 
 .controls {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-2);
-  min-width: 0;
+  gap: var(--space-1) var(--space-2);
+  max-width: 100%;
   margin-left: auto;
 }
 
 /* The status pill: a button that is one line of words with a state dot, and opens the popover under it. */
 .statusWrap {
   position: relative;
-  min-width: 0;
+  max-width: 100%;
 }
 
 .pill {

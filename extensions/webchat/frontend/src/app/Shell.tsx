@@ -351,7 +351,7 @@ export function Shell({ version }: { readonly version: string }) {
               </TabPanel>
             </div>
           </main>
-          <HelperBar model={model} open={helperOpen} version={version} className={styles.helper} />
+          <HelperBar model={model} open={helperOpen} version={version} className={styles.helper} inert={drawerOpen} />
           <Inspector
             model={model}
             narrow={narrow}

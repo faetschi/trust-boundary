@@ -32,6 +32,11 @@ export function pillWords(model: WorkspaceModel, noSession: boolean): string {
   if (noSession) parts.push(NO_SESSION_TEXT);
   else if (model.status.state !== "open") parts.push(connectionText(model.status));
   if (claimsUnverifiedTrue(model)) parts.push("unverified claim true");
+  else if (!isDemonstration(model)) {
+    // A source that is not a demonstration still says where the claim boundary stands: its containment, in words.
+    const containment = model.panels?.qualification?.containment;
+    parts.push(containment === undefined ? "claim boundary unavailable" : containment === "unavailable" ? "containment unavailable" : "containment not established");
+  }
   return parts.join(" · ");
 }
 
@@ -70,6 +75,10 @@ export function StatusPill({ model, noSession }: StatusPillProps) {
     <div
       ref={wrapRef}
       className={styles.statusWrap}
+      // Focus that leaves the pill and its popover closes it, so Escape is never left for the shell to read as "clear the record".
+      onBlur={(event) => {
+        if (open && !(event.relatedTarget instanceof Node && wrapRef.current?.contains(event.relatedTarget))) setOpen(false);
+      }}
       onKeyDown={(event) => {
         if (event.key !== "Escape" || !open) return;
         event.stopPropagation();

@@ -1,4 +1,6 @@
 // @vitest-environment happy-dom
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { SessionHeader, SourceClass, StreamStatus } from "../core/contract";
 import { snapshotOf, streamDefault } from "../core/testing/builders";
@@ -57,6 +59,22 @@ describe("the details card", () => {
     expect(view.container.textContent).toContain("unavailable (no projection loaded)");
     expect(view.container.textContent).not.toContain("No streams projected");
     view.unmount();
+  });
+});
+
+describe("the details card behind a modal drawer, and its closed lines", () => {
+  it("is inert while the drawer is open, as the header, the rail and the workspace are", async () => {
+    const model = await loadedFrom("fixture");
+    const view = mount(<HelperBar model={model} open version="0.1.0" inert />);
+    expect((view.container.querySelector("section") as HTMLElement).hasAttribute("inert")).toBe(true);
+    view.unmount();
+  });
+
+  it("lets a closed line wrap instead of cutting it with an ellipsis", () => {
+    const css = readFileSync(resolve(process.cwd(), "src/app/HelperBar.module.css"), "utf8");
+    const lead = /\.lead\s*\{([^}]*)\}/.exec(css)?.[1] ?? "";
+    expect(lead).not.toMatch(/text-overflow:\s*ellipsis/);
+    expect(lead).not.toMatch(/white-space:\s*nowrap/);
   });
 });
 

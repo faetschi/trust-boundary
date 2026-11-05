@@ -35,6 +35,18 @@ describe("the status pill's words", () => {
   });
 });
 
+describe("the status pill says where the claim boundary stands for a source that is not a demonstration", () => {
+  it("names containment on a live, verified-looking projection, so the boundary's reading is on the pill", async () => {
+    const live = await loaded(snapshotOf({ source: "live", verification_scope: "structural-audit-only" }));
+    expect(pillWords(live, false)).toContain("containment not established");
+    expect(pillWords({ ...live, panels: null }, false)).toContain("claim boundary unavailable");
+  });
+
+  it("does not add it to a demonstration, whose own words already say it shows no live claim", async () => {
+    expect(pillWords(await loaded(snapshotOf()), false)).not.toContain("containment");
+  });
+});
+
 describe("the status pill's popover", () => {
   it("is closed, with the claim boundary in the page and hidden, and opens from the pill", async () => {
     const view = mount(<StatusPill model={await loaded(snapshotOf())} noSession={false} />);
@@ -48,6 +60,22 @@ describe("the status pill's popover", () => {
     expect(popover.hidden).toBe(false);
     expect(popover.textContent).toContain("demonstration · not a live session");
     expect(popover.textContent).toContain("Claim-bearing");
+    view.unmount();
+  });
+
+  it("closes when focus leaves the pill and its popover, so Escape is not left for the shell to read as clearing a record", async () => {
+    const view = mount(
+      <>
+        <StatusPill model={await loaded(snapshotOf())} noSession={false} />
+        <button type="button">elsewhere</button>
+      </>,
+    );
+    const pill = view.container.querySelector("button") as HTMLButtonElement;
+    act(() => pill.click());
+    act(() => pill.focus());
+    const elsewhere = view.container.querySelectorAll("button")[view.container.querySelectorAll("button").length - 1] as HTMLButtonElement;
+    act(() => elsewhere.focus());
+    expect(pill.getAttribute("aria-expanded")).toBe("false");
     view.unmount();
   });
 
