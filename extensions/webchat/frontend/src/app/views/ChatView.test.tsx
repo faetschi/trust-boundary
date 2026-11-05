@@ -617,7 +617,7 @@ describe("a run of tool activity", () => {
   });
 
   it("starts closed once a message follows the run", async () => {
-    await renderLive(verifiedSnapshot([...run.map((item) => observed(item)), observed(messageItem({ id: "m9", sequence: 20, role: "assistant", text: "done" }))]));
+    await renderLive(verifiedSnapshot([...run.map((item) => observed(item)), observed(messageItem({ id: "m9", sequence: 7, role: "assistant", text: "done" }))]));
     expect(q("[data-group] > button").getAttribute("aria-expanded")).toBe("false");
   });
 
