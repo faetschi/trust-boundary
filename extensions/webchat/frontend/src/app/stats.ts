@@ -61,10 +61,3 @@ export function retentionLead(model: StatsModel): string {
   const policy = policyPart(model);
   return policy.endsWith("unavailable") ? `${recordsPart(model)} · ${policy}` : recordsPart(model);
 }
-
-// The policy verdicts as the details card draws them: "4 allow · 1 deny · 0 unknown", or "unavailable" when the source did not state them
-// (or a loaded verdict contradicts stated zeros). Verdicts, not results.
-export function decisionsWords(model: StatsModel): string {
-  const policy = policyPart(model);
-  return policy.endsWith("unavailable") ? "unavailable" : policy.replace("policy verdicts ", "").replaceAll(" / ", " · ");
-}

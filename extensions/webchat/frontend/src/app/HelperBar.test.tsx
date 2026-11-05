@@ -72,7 +72,7 @@ describe("the details card", () => {
 
   it("names a stream that is unavailable or gapped as a row, so it is not only in the technical details", async () => {
     const view = show(await loadedFrom("fixture", [streamDefault({ id: "tap", label: "process tap", health: "gap", available: false })]));
-    expect(view.container.querySelector("[aria-label^='Streams:']")?.getAttribute("aria-label")).toBe("Streams: 1 unavailable or gapped");
+    expect(view.container.querySelector("[aria-label^='Streams:']")?.getAttribute("aria-label")).toBe("Streams: 1 unavailable");
     view.unmount();
   });
   it("reads before a projection as unavailable, with the same note", () => {

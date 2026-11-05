@@ -437,7 +437,7 @@
    beside the governance column, never over it (HelperBar.tsx takes the .helper class). */
 @media (min-width: 1181px) {
   .body[data-details="open"] .main {
-    padding-right: calc(15rem + var(--space-5));
+    padding-right: calc(17rem + var(--space-5));
   }
 }
 

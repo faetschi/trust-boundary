@@ -1,7 +1,7 @@
 // The details card: a small card at the header's right that the Details control pins open or shut. It answers, at a glance, the three
 // things an operator of the Pi harness through tbound needs: which harness this is and what state its session is in, how much has
 // happened, and what the supervisor has decided (decisions, publication, recovery). Each reading is a row: a mark, its name, its
-// words and a state dot (a shape as well as a colour). The governance rows open the Governance panel of that name. Everything else
+// words and a state dot (a shape as well as a colour; the words are the worst badge of the panel, and its counts are in the panel). The governance rows open the Governance panel of that name. Everything else
 // (identifiers, the source binding, the streams, retention, the read-only notes, the build) is under "Technical details", closed.
 // It is presentation only and holds no control that acts.
 
@@ -17,7 +17,7 @@ import { COMPOSER_REASON } from "./Composer";
 import { chipToneOf, panelBadges, worstBadgeOf, worstToneOf } from "./inspector/panelBadge";
 import { NO_PROJECTION, sessionReading, unavailableWords } from "./panels";
 import { HEALTH_TONES, LIVE_FOOTNOTE, OTHER_SESSIONS_NOTE, READ_ONLY_NOTE, bindingName, streamText } from "./sessionReadings";
-import { decisionsWords, statsParts } from "./stats";
+import { statsParts } from "./stats";
 import type { PanelKey } from "./uiPrefs";
 import { conversationHead } from "./views/chat/identity";
 import type { WorkspaceModel } from "./workspaceStore";
@@ -108,11 +108,11 @@ export function HelperBar({ model, open, version, className, inert = false, card
           words={`${turnsWords} · ${model.loaded ? `${model.items.length} records` : "records unavailable"}`}
           dot={<StateDot tone="idle" />}
         />
-        {governanceRow("decisions", "Decisions", <DecisionsIcon />, decisionsWords(model))}
+        {governanceRow("decisions", "Decisions", <DecisionsIcon />, worstBadgeOf(panelBadges("decisions", model))?.text ?? "unavailable")}
         {governanceRow("publication", "Publication", <PublicationIcon />, worstBadgeOf(panelBadges("publication", model))?.text ?? "unavailable")}
         {governanceRow("recovery", "Recovery", <RecoveryIcon />, worstBadgeOf(panelBadges("recovery", model))?.text ?? "unavailable")}
         {streamsDown > 0 ? (
-          <Row icon={<StreamsIcon />} label="Streams" words={`${streamsDown} unavailable or gapped`} dot={<StateDot tone="unknown" />} />
+          <Row icon={<StreamsIcon />} label="Streams" words={`${streamsDown} unavailable`} dot={<StateDot tone="unknown" />} />
         ) : null}
       </div>
       <div className={styles.technical}>
