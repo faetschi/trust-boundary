@@ -280,3 +280,29 @@ func TestOperatorResolutionSettlesBeforeAppendOnlyWhenReal(t *testing.T) {
 		})
 	}
 }
+
+// The catalog hands out copies of its state. The closed-publication list of an operator resolution must not alias it,
+// or an edit of a returned turn would change later reads without a journal record.
+func TestOperatorResolutionEvidenceDoesNotAliasCatalogState(t *testing.T) {
+	c, path := newCatalog(t)
+	reg := c.st.reg
+	turn := linkedTurn(t, c, "alias")
+	if err := c.MarkTurnUnknown(turn.ID, "lost"); err != nil {
+		t.Fatal(err)
+	}
+	c.Close()
+	if _, err := OperatorResolve(path, reg, turn.ID, "close the pending publication", false, func(turn Turn) (OperatorEvidence, error) {
+		evidence, _ := operatorEvidence(turn)
+		evidence.PublicationClosed = []string{"root-pending-record"}
+		return evidence, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	opened := openAt(t, path, reg)
+	read, _ := opened.Turn(turn.ID)
+	read.OperatorResolution.PublicationClosed[0] = "edited by the caller"
+	again, _ := opened.Turn(turn.ID)
+	if got := again.OperatorResolution.PublicationClosed; len(got) != 1 || got[0] != "root-pending-record" {
+		t.Fatalf("an edit of a returned turn reached the catalog: %q", got)
+	}
+}
