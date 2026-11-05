@@ -45,6 +45,7 @@ It verifies the owner tar sha256/size, space, mount/unit pins and old/new servic
 Keep the printed `.old-<previous-digest-prefix>-<UTC>` tree until the signed profile is installed and verified. Reuse/already-installed bundles only verify.
 F13 accepts the pinned F12 measurer: `VerifyLinuxPiRuntimeBundle` and its mount/device helpers are unchanged in eed7722..6162e3c; 10 rechecks with F13.
 F14 accepts the pinned F13 measurer (05 also runs when the bundle is unchanged): the same functions, `internal/sessionlaunch` and `profile_tooling_linux.go` are unchanged in 6162e3c..<F14>; 10 rechecks with F14.
+F15 accepts the pinned F14 measurer: `launcher_linux.go`, `host.go` and `profile_tooling_linux.go` are unchanged in 02f9fb7..2a6492d, and `internal/sessionlaunch`, which changed, is not in `tbound-profile`'s import closure (`GOOS=linux go list -deps ./cmd/tbound-profile`); the pair lives in a kit commit on top of F15, since a tree cannot name its own commit; 10 rechecks with F15.
 `KIT_FREEZE=F14 DRY_RUN=1 bash guest/05-runtime-swap.sh` in Git Bash checks owner inputs and prints every guest command without guest contact.
 `10-freeze.sh` step 3b refuses a frozen g1/route-probe template that carries the previous freeze's admission id, and a dr id that is spent.
 05 requires `HF/BUNDLE_TAR_SIZE`, written by P2 rebuild after tar verification (F13's missing record was added after the same sha256 check).
@@ -57,11 +58,15 @@ A missing 27 completion record is reported as pending in dry-run mode and blocks
 - [ ] `GUEST_IP` verified with `Get-NetNeighbor -LinkLayerAddress 00-15-5D-0C-40-02`; `DR_ADMISSION_ID` is new.
 - [ ] Owner-side order with `KIT_FREEZE=<FREEZE>`: `10-freeze.sh <commit>`, `20-p1.sh`, `25-p2-rebuild.sh`,
       `30-p3.sh`, `session-env.sh`, `35-evq-capture.sh`, `40-sign.sh`.
+- [ ] No `/mnt`: run the owner-side order natively in WSL from a Linux checkout at the freeze commit (`tools/freeze.sh` and `tools/all.sh` refuse Git Bash). Run the guest order from Git Bash with `TBOUND_WGA` set to `infra/freeze/guest` of a second Linux checkout at the kit commit; `guest/glib.sh` refuses a missing, relative or `/mnt` value and any helper, lib or values-file difference from the kit.
 - [ ] Guest order: `27-archive-state.sh archive` (archives the previous freeze), `00-session-sudo.sh open`,
       `05-runtime-swap.sh`, `10-upgrade.sh`, `20-r1.sh`, `50-i1-i2.sh` (`RECLAIM_PODMAN_PAUSE=1`), `00-session-sudo.sh close`,
       `29-g1-recover.sh status`, `30-reg-g1.sh`, `40-guest-evidence.sh capability procoracle landlock-connect
       provider-exchange`, `31-reg-rp.sh`, `40-guest-evidence.sh route-bash-view`, `32-reg-dr.sh`,
-      `40-guest-evidence.sh route-direct-runtime`.
+      `40-guest-evidence.sh route-direct-runtime`. Corpus mode, after that (owner approval; `TBA_PW` for the artifact install;
+      `TBOUND_TRIAL_KEY=<trial key path>` adds the netsink step): `33-corpus-pilot.sh` (abandon the dr request, D1 manifest, 76 T5 artifacts,
+      the RG cycle for `pilot`, optional `trial reset` and `40-guest-evidence.sh netsink`); `tools/guest-chain.sh` runs it with `CORPUS_PILOT=1`.
+- [ ] `33-corpus-pilot.sh` ran to "DONE" (`$HF/pilot/CYCLE_OK`; with the trial key also `$HF/evq/netsink.json`), the session sudo is closed again.
 - [ ] `27` archived the previous freeze's G1/rp/dr state and exports; its dr request ended UNKNOWN BY DESIGN and
       the stale-evidence commit check in `40-guest-evidence.sh` passed for this freeze.
 - [ ] Every log is under `<FREEZE>\logs`; no 0-byte output except `*.err` and the dr command/provider audits.

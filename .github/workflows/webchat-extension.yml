@@ -8,26 +8,38 @@ name: webchat-extension
 # the Go job and the frontend job cannot drift apart.
 on:
   workflow_dispatch:
+  # Feature branches run through pull_request; merged trees are checked on push.
   push:
+    branches: [main, codex/tbound-prototype]
     paths:
       - "extensions/webchat/**"
+      - "supervisor/internal/productprotocol/testdata/**"
       - ".github/workflows/webchat-extension.yml"
   pull_request:
     paths:
       - "extensions/webchat/**"
+      - "supervisor/internal/productprotocol/testdata/**"
       - ".github/workflows/webchat-extension.yml"
 
 permissions:
   contents: read
 
+# Cancel superseded PR runs; push runs remain independent.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   webchat:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: extensions/webchat
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
@@ -64,12 +76,15 @@ jobs:
   # repro runs before verify: it compares two clean rebuilds with the dist/
   # committed at HEAD, and nothing has rebuilt the tree when it starts.
   frontend:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: extensions/webchat/frontend
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
@@ -90,8 +105,8 @@ jobs:
       - name: Reproducibility before any build (two clean builds, compared with the dist/ committed at HEAD)
         run: umask 077; npm run repro
 
-      - name: Verify (typecheck, tests, build, sink and dependency gates)
-        run: umask 077; npm run verify
+      - name: Verify (typecheck, tests, sink and dependency gates; no rebuild)
+        run: umask 077; npm run verify:no-build
 
       - name: Committed dist/ matches the working tree after verify
         working-directory: ${{ github.workspace }}
@@ -107,12 +122,15 @@ jobs:
   # gateway on a fresh port (never 8791). No gate depends on it.
   csp-smoke:
     if: github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: extensions/webchat
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:

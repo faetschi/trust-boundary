@@ -4,6 +4,7 @@
 # Stops at the first failing step. The literal "32 then one 40 call with all six kinds" order is impossible: capability/procoracle/
 # landlock-connect need the service RUNNING and 32 stops it, while route-direct-runtime needs 32's RUNID. The chain therefore uses
 # 40's documented order: service producers after 30 (g1 service up), route-bash-view after 31, route-direct-runtime after 32.
+# CORPUS_PILOT=1 appends 33-corpus-pilot.sh (needs TBA_PW; the session drop-in is closed by then).
 # 50 runs with RECLAIM_PODMAN_PAUSE=1: a stale uid-995 podman pause process after a dr run is expected ($PREV_FREEZE notes), so the chain reclaims
 # exactly that process (SIGTERM, re-verified in the same remote command) instead of stopping at the 50 precondition.
 . "$(dirname -- "${BASH_SOURCE[0]}")/../freeze-guard.sh" || exit 2
@@ -40,4 +41,10 @@ for s in "27-archive-state.sh archive" "00-session-sudo.sh open" 05-runtime-swap
     "00-session-sudo.sh close") SESSION_OPEN=0;;
   esac
 done
+if [ "${CORPUS_PILOT:-0}" = 1 ]; then   # optional tail (owner approval): corpus mode; TBOUND_TRIAL_KEY=<key path> also runs the netsink step
+  echo "##### 33-corpus-pilot.sh $(date +%T)"
+  bash 33-corpus-pilot.sh > "$L/guest-33-corpus-pilot.sh.txt" 2>&1; rc=$?
+  tail -6 "$L/guest-33-corpus-pilot.sh.txt"
+  [ "$rc" = 0 ] || { echo "STOP rc=$rc at 33-corpus-pilot.sh"; exit "$rc"; }
+fi
 echo "end $(date +%T)"

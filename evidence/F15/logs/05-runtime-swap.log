@@ -1,0 +1,290 @@
+== 05-runtime-swap start 2026-11-04T18:30:24Z guest=192.168.220.110
+OK   env.sh commit == frozen values = 2a6492dda21e5af9eab8e92e81f56725b3f8e9c5
+OK   HF path = /home/tbound/tbound-h/f15
+OK   previous HF path = /home/tbound/tbound-h/f14
+OK   FROZEN-COMMIT = 2a6492dda21e5af9eab8e92e81f56725b3f8e9c5
+OK   P1 tbound-profile == TBP_DIGEST = sha256:94499a2e5e53a4bae9a6c1303277c9c58fe987b414c19b9b89ce1760c12bfcda
+OK   previous frozen commit = 02f9fb71a26aadf4eebeb0ff217fe97c374ffff8
+OK   previous BUNDLE_DIGEST record = sha256:af97c541f696a3d3da8d0d0799812a1f46e57f3367f0e5dbcc18292b66ac0b25
+OK   previous TBP_DIGEST record = sha256:759df1d14007e37154001c3585093399e48eb8d5cb7128a3f6550402c93b3f69
+OK   P2 tar path = /home/tbound/tbound-w.gaeUWH/p2-rebuild/runtime-bundle-2a6492dd-lf.tar
+OK   P2 tar sha256 == HF BUNDLE_TAR_DIGEST = sha256:e056666bdf521b04b46b56b861d7f70529987ff31735e9daba4f174c98c0a8b2
+OK   P2 tar size (bytes) = 429660160
+OK   tar members = 15541 (used to budget extraction blocks, plus 64 MiB metadata margin)
+NOTE PENDING: 27 archive completion record absent; a live run refuses BEFORE guest contact
+NOTE DRY_RUN: GUEST_IP=192.168.220.110 is for printing only; no guest transport will be invoked
+
+G bash -c 'set -euo pipefail
+SVC=sudo\ -n\ setpriv\ --reuid\ 995\ --regid\ 986\ --clear-groups\ --bounding-set=-all\ --inh-caps=-all\ --ambient-caps=-all\ --no-new-privs\ --
+TBPG=/usr/local/bin/tbound-profile
+BUNDLE_DIGEST=sha256:5104ec0ec6a74c441a3f545723f455e450784fcdd28c0e487621b23077902575
+PREV_BUNDLE_DIGEST=sha256:af97c541f696a3d3da8d0d0799812a1f46e57f3367f0e5dbcc18292b66ac0b25
+UNIT_SHA=2bc03ead4ba478d81655029de66a46f4bcb6357c5a24e7f8a3940ed947720ea3
+mount_check() {
+  local out target fs opts
+  out=$(findmnt -n -o TARGET,FSTYPE,OPTIONS /var/lib/tbound/runtime) || return 1
+  printf '\''%s\n'\'' "$out"
+  read -r target fs opts <<<"$out"
+  [[ $target = /var/lib/tbound/runtime && ,$opts, = *,ro,* && ,$opts, = *,nosuid,* && ,$opts, = *,nodev,* ]]
+}
+measure_expected() {
+  local out digest
+  out=$(cd / && $SVC "$TBPG" runtime-bundle-digest --root /var/lib/tbound/runtime) || return 1
+  printf '\''%s\n'\'' "$out"
+  digest=$(printf '\''%s\n'\'' "$out" | sed -n '\''s/^Pi runtime bundle tree digest: \(sha256:[0-9a-f]\{64\}\)$/\1/p'\'')
+  [ "$digest" = "$1" ]
+}
+TBP_DIGEST=sha256:94499a2e5e53a4bae9a6c1303277c9c58fe987b414c19b9b89ce1760c12bfcda
+PREV_TBP_DIGEST=sha256:759df1d14007e37154001c3585093399e48eb8d5cb7128a3f6550402c93b3f69
+ALLOW_PREV_MEASURER=1
+test "$(id -un)" = tboundadmin
+sudo -n true
+echo '\''session sudo OPEN (sudo -n true works)'\''
+profile_sha=sha256:$(sudo -n sha256sum "$TBPG" | cut -d'\'' '\'' -f1)
+case "$profile_sha" in
+  "$TBP_DIGEST") echo '\''using current frozen tbound-profile'\'';;
+  "$PREV_TBP_DIGEST") test "$ALLOW_PREV_MEASURER" = 1; echo '\''using pinned previous-freeze tbound-profile: audited runtime digest algorithm unchanged in this freeze'\'';;
+  *) echo "FATAL: unexpected tbound-profile: $profile_sha" >&2; exit 1;;
+esac
+mount_check
+unit_sha=$(sudo -n sha256sum /etc/systemd/system/var-lib-tbound-runtime.mount | cut -d'\'' '\'' -f1)
+printf '\''runtime mount unit sha256: %s\n'\'' "$unit_sha"
+test "$unit_sha" = "$UNIT_SHA"
+sudo -n test -d /var/lib/tbound/runtime-src
+sudo -n test ! -L /var/lib/tbound/runtime-src
+printf '\''runtime-src inode: %s\n'\'' "$(sudo -n stat -c %d:%i /var/lib/tbound/runtime-src)"
+cd / && $SVC "$TBPG" runtime-bundle-digest --root /var/lib/tbound/runtime'
+NOTE if CHECK measures sha256:5104ec0ec6a74c441a3f545723f455e450784fcdd28c0e487621b23077902575: no swap needed; exit 0 without streaming or writing
+NOTE otherwise CHECK must measure sha256:af97c541f696a3d3da8d0d0799812a1f46e57f3367f0e5dbcc18292b66ac0b25; runtime-src inode is captured below
+
+WX cat '/home/tbound/tbound-w.gaeUWH/p2-rebuild/runtime-bundle-2a6492dd-lf.tar' | GI sudo -n flock -x -w 120 /run/tbound-runtime-swap.lock bash -c 'set -euo pipefail
+SVC=sudo\ -n\ setpriv\ --reuid\ 995\ --regid\ 986\ --clear-groups\ --bounding-set=-all\ --inh-caps=-all\ --ambient-caps=-all\ --no-new-privs\ --
+TBPG=/usr/local/bin/tbound-profile
+BUNDLE_DIGEST=sha256:5104ec0ec6a74c441a3f545723f455e450784fcdd28c0e487621b23077902575
+PREV_BUNDLE_DIGEST=sha256:af97c541f696a3d3da8d0d0799812a1f46e57f3367f0e5dbcc18292b66ac0b25
+UNIT_SHA=2bc03ead4ba478d81655029de66a46f4bcb6357c5a24e7f8a3940ed947720ea3
+mount_check() {
+  local out target fs opts
+  out=$(findmnt -n -o TARGET,FSTYPE,OPTIONS /var/lib/tbound/runtime) || return 1
+  printf '\''%s\n'\'' "$out"
+  read -r target fs opts <<<"$out"
+  [[ $target = /var/lib/tbound/runtime && ,$opts, = *,ro,* && ,$opts, = *,nosuid,* && ,$opts, = *,nodev,* ]]
+}
+measure_expected() {
+  local out digest
+  out=$(cd / && $SVC "$TBPG" runtime-bundle-digest --root /var/lib/tbound/runtime) || return 1
+  printf '\''%s\n'\'' "$out"
+  digest=$(printf '\''%s\n'\'' "$out" | sed -n '\''s/^Pi runtime bundle tree digest: \(sha256:[0-9a-f]\{64\}\)$/\1/p'\'')
+  [ "$digest" = "$1" ]
+}
+OLD=/var/lib/tbound/runtime-src.old-af97c541-20261104T183025951353100Z
+SOURCE_INODE=\<runtime-src\ inode\ from\ CHECK\>
+TAR_SIZE=429660160
+MEMBERS=15541
+measure_tree() {
+  local out digest
+  out=$(sudo -n unshare -m bash -euo pipefail -c '\''
+    mount --make-rprivate /
+    mount --bind "$1" /var/lib/tbound/runtime
+    mount -o remount,bind,ro,nosuid,nodev /var/lib/tbound/runtime
+    cd /
+    $2 "$3" runtime-bundle-digest --root /var/lib/tbound/runtime
+  '\'' bash "$1" "$SVC" "$TBPG") || return 1
+  printf '\''%s\n'\'' "$out"
+  digest=$(printf '\''%s\n'\'' "$out" | sed -n '\''s/^Pi runtime bundle tree digest: \(sha256:[0-9a-f]\{64\}\)$/\1/p'\'')
+  [ "$digest" = "$2" ]
+}
+restore_old() {
+  echo "ROLLBACK: $OLD -> /var/lib/tbound/runtime-src"
+  sudo -n systemctl stop tbound-pi.service tbound-pi.socket || return 1
+  sudo -n systemctl stop var-lib-tbound-runtime.mount || return 1
+  if sudo -n test -e "$OLD" || sudo -n test -L "$OLD"; then
+    sudo -n test -d "$OLD" && sudo -n test ! -L "$OLD" || return 1
+    test "$(sudo -n stat -c %d:%i "$OLD")" = "$SOURCE_INODE" || return 1
+    measure_tree "$OLD" "$PREV_BUNDLE_DIGEST" || return 1
+    if sudo -n test -e /var/lib/tbound/runtime-src || sudo -n test -L /var/lib/tbound/runtime-src; then
+      sudo -n test -d /var/lib/tbound/runtime-src && sudo -n test ! -L /var/lib/tbound/runtime-src || return 1
+      if measure_tree /var/lib/tbound/runtime-src "$PREV_BUNDLE_DIGEST"; then
+        echo "KEEP previous runtime already restored; also preserve $OLD"
+      else
+        # Preserve an incomplete/unrecognised replacement; never delete a previous good tree.
+        sudo -n test ! -e "$OLD.failed" && sudo -n test ! -L "$OLD.failed" || return 1
+        sudo -n mv -T -n -- /var/lib/tbound/runtime-src "$OLD.failed" || return 1
+        sudo -n test ! -e /var/lib/tbound/runtime-src || return 1
+        echo "KEEP failed replacement: $OLD.failed"
+      fi
+    fi
+    if sudo -n test ! -e /var/lib/tbound/runtime-src; then
+      sudo -n mv -T -n -- "$OLD" /var/lib/tbound/runtime-src || return 1
+      sudo -n test ! -e "$OLD" || return 1
+    fi
+  else
+    # The rename failed, or the guest EXIT trap already restored it. Never delete an unrecognised tree.
+    test "$(sudo -n stat -c %d:%i /var/lib/tbound/runtime-src)" = "$SOURCE_INODE" || return 1
+  fi
+  sudo -n systemctl start var-lib-tbound-runtime.mount || return 1
+  mount_check || return 1
+  measure_expected "$PREV_BUNDLE_DIGEST" || return 1
+}
+QUIESCED=0; MOUNT_TOUCHED=0; SWAP_ARMED=0
+finish() {
+  local rc=$?
+  trap - EXIT HUP INT TERM
+  if [ "$SWAP_ARMED" = 1 ]; then
+    if ! restore_old; then echo "FATAL: rollback failed; preserve $OLD and leave service/socket stopped" >&2; exit 1; fi
+    [ "$rc" != 0 ] || rc=1
+  elif [ "$MOUNT_TOUCHED" = 1 ]; then
+    sudo -n systemctl start var-lib-tbound-runtime.mount && mount_check && measure_expected "$PREV_BUNDLE_DIGEST" || exit 1
+  fi
+  if [ "$QUIESCED" = 1 ]; then
+    sudo -n systemctl start tbound-pi.socket && systemctl is-active tbound-pi.socket || rc=1
+  fi
+  exit "$rc"
+}
+trap finish EXIT
+trap '\''exit 129'\'' HUP
+trap '\''exit 130'\'' INT
+trap '\''exit 143'\'' TERM
+mount_check
+test "$(sudo -n sha256sum /etc/systemd/system/var-lib-tbound-runtime.mount | cut -d'\'' '\'' -f1)" = "$UNIT_SHA"
+measure_expected "$PREV_BUNDLE_DIGEST"
+test "$(sudo -n stat -c %d:%i /var/lib/tbound/runtime-src)" = "$SOURCE_INODE"
+old_bytes=$(sudo -n du -sx -B1 /var/lib/tbound/runtime-src | cut -f1)
+available=$(df -B1 --output=avail /var/lib/tbound | tail -1 | tr -d '\'' '\'')
+block=$(stat -f -c %S /var/lib/tbound)
+[[ $old_bytes =~ ^[0-9]+$ && $available =~ ^[0-9]+$ && $block =~ ^[1-9][0-9]*$ ]]
+new_budget=$((TAR_SIZE + MEMBERS * block + 64 * 1024 * 1024))
+printf '\''space: old=%s retained; new budget=%s; available=%s bytes (old already allocated)\n'\'' "$old_bytes" "$new_budget" "$available"
+test "$available" -ge "$new_budget"
+sudo -n test ! -e "$OLD"
+sudo -n test ! -L "$OLD"
+QUIESCED=1
+sudo -n systemctl stop tbound-pi.service tbound-pi.socket
+for unit in tbound-pi.service tbound-pi.socket; do
+  state=$(systemctl show -p ActiveState --value "$unit")
+  case "$state" in inactive|failed) ;; *) echo "FATAL: $unit is $state" >&2; exit 1;; esac
+done
+MOUNT_TOUCHED=1
+sudo -n systemctl stop var-lib-tbound-runtime.mount
+SWAP_ARMED=1
+sudo -n mv -T -n -- /var/lib/tbound/runtime-src "$OLD"
+sudo -n test ! -e /var/lib/tbound/runtime-src
+sudo -n install -d -o root -g root -m 0555 /var/lib/tbound/runtime-src
+sudo -n tar -x -p --numeric-owner -C /var/lib/tbound/runtime-src -f -
+sudo -n systemctl start var-lib-tbound-runtime.mount
+mount_check
+measure_expected "$BUNDLE_DIGEST"
+sudo -n systemctl start tbound-pi.socket
+systemctl is-active tbound-pi.socket
+printf '\''KEEP old tree: %s (remove only after the signed profile is installed and verified, P11)\n'\'' "$OLD"
+QUIESCED=0; MOUNT_TOUCHED=0; SWAP_ARMED=0'
+
+# On owner-side failure/uncertain SSH completion, G sudo -n flock -x -w 120 /run/tbound-runtime-swap.lock bash -c 'set -euo pipefail
+SVC=sudo\ -n\ setpriv\ --reuid\ 995\ --regid\ 986\ --clear-groups\ --bounding-set=-all\ --inh-caps=-all\ --ambient-caps=-all\ --no-new-privs\ --
+TBPG=/usr/local/bin/tbound-profile
+BUNDLE_DIGEST=sha256:5104ec0ec6a74c441a3f545723f455e450784fcdd28c0e487621b23077902575
+PREV_BUNDLE_DIGEST=sha256:af97c541f696a3d3da8d0d0799812a1f46e57f3367f0e5dbcc18292b66ac0b25
+UNIT_SHA=2bc03ead4ba478d81655029de66a46f4bcb6357c5a24e7f8a3940ed947720ea3
+mount_check() {
+  local out target fs opts
+  out=$(findmnt -n -o TARGET,FSTYPE,OPTIONS /var/lib/tbound/runtime) || return 1
+  printf '\''%s\n'\'' "$out"
+  read -r target fs opts <<<"$out"
+  [[ $target = /var/lib/tbound/runtime && ,$opts, = *,ro,* && ,$opts, = *,nosuid,* && ,$opts, = *,nodev,* ]]
+}
+measure_expected() {
+  local out digest
+  out=$(cd / && $SVC "$TBPG" runtime-bundle-digest --root /var/lib/tbound/runtime) || return 1
+  printf '\''%s\n'\'' "$out"
+  digest=$(printf '\''%s\n'\'' "$out" | sed -n '\''s/^Pi runtime bundle tree digest: \(sha256:[0-9a-f]\{64\}\)$/\1/p'\'')
+  [ "$digest" = "$1" ]
+}
+OLD=/var/lib/tbound/runtime-src.old-af97c541-20261104T183025951353100Z
+SOURCE_INODE=\<runtime-src\ inode\ from\ CHECK\>
+TAR_SIZE=429660160
+MEMBERS=15541
+measure_tree() {
+  local out digest
+  out=$(sudo -n unshare -m bash -euo pipefail -c '\''
+    mount --make-rprivate /
+    mount --bind "$1" /var/lib/tbound/runtime
+    mount -o remount,bind,ro,nosuid,nodev /var/lib/tbound/runtime
+    cd /
+    $2 "$3" runtime-bundle-digest --root /var/lib/tbound/runtime
+  '\'' bash "$1" "$SVC" "$TBPG") || return 1
+  printf '\''%s\n'\'' "$out"
+  digest=$(printf '\''%s\n'\'' "$out" | sed -n '\''s/^Pi runtime bundle tree digest: \(sha256:[0-9a-f]\{64\}\)$/\1/p'\'')
+  [ "$digest" = "$2" ]
+}
+restore_old() {
+  echo "ROLLBACK: $OLD -> /var/lib/tbound/runtime-src"
+  sudo -n systemctl stop tbound-pi.service tbound-pi.socket || return 1
+  sudo -n systemctl stop var-lib-tbound-runtime.mount || return 1
+  if sudo -n test -e "$OLD" || sudo -n test -L "$OLD"; then
+    sudo -n test -d "$OLD" && sudo -n test ! -L "$OLD" || return 1
+    test "$(sudo -n stat -c %d:%i "$OLD")" = "$SOURCE_INODE" || return 1
+    measure_tree "$OLD" "$PREV_BUNDLE_DIGEST" || return 1
+    if sudo -n test -e /var/lib/tbound/runtime-src || sudo -n test -L /var/lib/tbound/runtime-src; then
+      sudo -n test -d /var/lib/tbound/runtime-src && sudo -n test ! -L /var/lib/tbound/runtime-src || return 1
+      if measure_tree /var/lib/tbound/runtime-src "$PREV_BUNDLE_DIGEST"; then
+        echo "KEEP previous runtime already restored; also preserve $OLD"
+      else
+        # Preserve an incomplete/unrecognised replacement; never delete a previous good tree.
+        sudo -n test ! -e "$OLD.failed" && sudo -n test ! -L "$OLD.failed" || return 1
+        sudo -n mv -T -n -- /var/lib/tbound/runtime-src "$OLD.failed" || return 1
+        sudo -n test ! -e /var/lib/tbound/runtime-src || return 1
+        echo "KEEP failed replacement: $OLD.failed"
+      fi
+    fi
+    if sudo -n test ! -e /var/lib/tbound/runtime-src; then
+      sudo -n mv -T -n -- "$OLD" /var/lib/tbound/runtime-src || return 1
+      sudo -n test ! -e "$OLD" || return 1
+    fi
+  else
+    # The rename failed, or the guest EXIT trap already restored it. Never delete an unrecognised tree.
+    test "$(sudo -n stat -c %d:%i /var/lib/tbound/runtime-src)" = "$SOURCE_INODE" || return 1
+  fi
+  sudo -n systemctl start var-lib-tbound-runtime.mount || return 1
+  mount_check || return 1
+  measure_expected "$PREV_BUNDLE_DIGEST" || return 1
+}
+restore_old || { echo '\''FATAL: rollback could not be verified; leave service/socket stopped and preserve the old tree'\'' >&2; exit 1; }
+sudo -n systemctl start tbound-pi.socket
+systemctl is-active tbound-pi.socket'
+NOTE planned old tree: /var/lib/tbound/runtime-src.old-af97c541-20261104T183025951353100Z (UTC chosen per invocation; never overwritten)
+
+== DONE 05-runtime-swap.sh 2026-11-04T18:30:28Z
+== 05-runtime-swap start 2026-11-05T09:29:11Z guest=172.26.25.5
+OK   env.sh commit == frozen values = 2a6492dda21e5af9eab8e92e81f56725b3f8e9c5
+OK   HF path = /home/tbound/tbound-h/f15
+OK   previous HF path = /home/tbound/tbound-h/f14
+OK   FROZEN-COMMIT = 2a6492dda21e5af9eab8e92e81f56725b3f8e9c5
+OK   P1 tbound-profile == TBP_DIGEST = sha256:94499a2e5e53a4bae9a6c1303277c9c58fe987b414c19b9b89ce1760c12bfcda
+OK   previous frozen commit = 02f9fb71a26aadf4eebeb0ff217fe97c374ffff8
+OK   previous BUNDLE_DIGEST record = sha256:af97c541f696a3d3da8d0d0799812a1f46e57f3367f0e5dbcc18292b66ac0b25
+OK   previous TBP_DIGEST record = sha256:759df1d14007e37154001c3585093399e48eb8d5cb7128a3f6550402c93b3f69
+OK   P2 tar path = /home/tbound/tbound-w.gaeUWH/p2-rebuild/runtime-bundle-2a6492dd-lf.tar
+OK   P2 tar sha256 == HF BUNDLE_TAR_DIGEST = sha256:e056666bdf521b04b46b56b861d7f70529987ff31735e9daba4f174c98c0a8b2
+OK   P2 tar size (bytes) = 429660160
+OK   tar members = 15541 (used to budget extraction blocks, plus 64 MiB metadata margin)
+OK   27 archive recorded: archive_dir=/root/ga/archive-f14-20261105T092836Z manifest_sha256=a347d76ad485dae9875d1327a51cd3aaa00e91692483f34562507a7a4c0b07da
+session sudo OPEN (sudo -n true works)
+using pinned previous-freeze tbound-profile: audited runtime digest algorithm unchanged in this freeze
+/var/lib/tbound/runtime ext4   ro,nosuid,nodev,relatime
+runtime mount unit sha256: 2bc03ead4ba478d81655029de66a46f4bcb6357c5a24e7f8a3940ed947720ea3
+runtime-src inode: 2050:439038
+Pi runtime bundle tree digest: sha256:af97c541f696a3d3da8d0d0799812a1f46e57f3367f0e5dbcc18292b66ac0b25
+Tree identity only; this command does not verify profile signature or host trust bindings.
+OK   pre-swap runtime == PREV_BUNDLE_DIGEST = sha256:af97c541f696a3d3da8d0d0799812a1f46e57f3367f0e5dbcc18292b66ac0b25
+/var/lib/tbound/runtime ext4   ro,nosuid,nodev,relatime
+Pi runtime bundle tree digest: sha256:af97c541f696a3d3da8d0d0799812a1f46e57f3367f0e5dbcc18292b66ac0b25
+Tree identity only; this command does not verify profile signature or host trust bindings.
+space: old=453931008 retained; new budget=560424960; available=24043204608 bytes (old already allocated)
+/var/lib/tbound/runtime ext4   ro,nosuid,nodev,relatime
+Pi runtime bundle tree digest: sha256:5104ec0ec6a74c441a3f545723f455e450784fcdd28c0e487621b23077902575
+Tree identity only; this command does not verify profile signature or host trust bindings.
+active
+KEEP old tree: /var/lib/tbound/runtime-src.old-af97c541-20261105T092912584772900Z (remove only after the signed profile is installed and verified, P11)
+NOTE kept old tree: /var/lib/tbound/runtime-src.old-af97c541-20261105T092912584772900Z; remove only after the signed profile is installed and verified
+
+== DONE 05-runtime-swap.sh 2026-11-05T09:29:24Z

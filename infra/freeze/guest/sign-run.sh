@@ -1,10 +1,10 @@
 #!/bin/bash
-# [OWNER SIGN, WSL] registration and host-profile signatures of the route-probe (rp) and direct-runtime probe (dr) RG cycles at $FREEZE,
+# [OWNER SIGN, WSL] registration and host-profile signatures of the route-probe (rp), direct-runtime probe (dr) and pilot RG cycles at $FREEZE,
 # into the NEW directory $HF/<NAME> (rule 4: never overwritten, no --force). Same as sign-g1.sh, with NAME and the dr two-template rule.
-#   bash sign-run.sh <rp|dr> s3 <unsigned-registration.json>   S3r / S3d: managed-root-sign with $H/admin.key (by path), verify with
+#   bash sign-run.sh <rp|dr|pilot> s3 <unsigned-registration.json>   S3r / S3d / S3': managed-root-sign with $H/admin.key (by path), verify with
 #                                                                  --runner-digest TBOUND_DIGEST, records REGDIGEST and the registration files.
-#   bash sign-run.sh <rp|dr> s4                                 S4r / S4d: builds the template(s) from the base template ($HF/d09-cell.base.json)
-#        with managed_live_root_registration_digest = REGDIGEST. rp: $O/d09-cell.json is the installed template.
+#   bash sign-run.sh <rp|dr|pilot> s4                                 S4r / S4d / S4': builds the template(s) from the base template ($HF/d09-cell.base.json)
+#        with managed_live_root_registration_digest = REGDIGEST. rp and pilot: $O/d09-cell.json is the installed template.
 #        dr (RG-6): $O/d09-cell.json is the PRODUCTION template, $O/d09-cell.route-probe.json = the same plus the route_probe member
 #        {"name":"direct-runtime/v1","target":"/home/node/.profile","control":"/var/lib/tbound/pi-worker/src/release.txt"}; the profile pins the PROBE template's TD.
 #        BASE_TD of every template (printed by template-digest, route_probe ignored) must equal the pinned BASE_TD. Signs the host profile
@@ -14,13 +14,13 @@ set -euo pipefail
 umask 077
 case "$-" in *x*) echo "FATAL: refusing to run under xtrace" >&2; exit 1;; esac
 . "$(dirname -- "${BASH_SOURCE[0]}")/../lib.sh"      # guard: dies while FREEZE_COMMIT is the placeholder
-. "$TBOUND_WORK/env.sh"
-. "$W/session-env.sh"
+. "$TBOUND_WORK/env.sh"; env_paths_ok
+. "$W/session-env.sh"; env_paths_ok
 [ "$F" = "$FREEZE_COMMIT" ] || { echo "env.sh F ($F) != FREEZE_COMMIT in $V" >&2; exit 2; }
 [ "$HF" = "$H/$FREEZE_LC" ] || { echo "HF ($HF) is not \$H/$FREEZE_LC: refusing (never sign into an earlier freeze directory)" >&2; exit 2; }
 NAME=${1:-}
 MODE=${2:-}
-case "$NAME" in rp|dr) ;; *) echo "usage: sign-run.sh <rp|dr> s3 <unsigned registration> | <rp|dr> s4" >&2; exit 2;; esac
+case "$NAME" in rp|dr|pilot) ;; *) echo "usage: sign-run.sh <rp|dr|pilot> s3 <unsigned registration> | <rp|dr|pilot> s4" >&2; exit 2;; esac
 O=$HF/$NAME
 need() { [ -f "$1" ] || { echo "missing $1" >&2; exit 2; }; }
 
@@ -52,7 +52,7 @@ s4)
   python3 -I - "$NAME" "$HF/d09-cell.base.json" "$O" "$REG" <<'PY'
 import json, re, sys
 name, src, outdir, reg = sys.argv[1:5]
-assert name in ("rp", "dr")
+assert name in ("rp", "dr", "pilot")
 assert re.fullmatch(r"sha256:[0-9a-f]{64}", reg)
 t = json.load(open(src))
 assert "managed_live_root_registration_digest" in t
@@ -108,5 +108,5 @@ PY
     finish_step
   fi
   ;;
-*) echo "usage: sign-run.sh <rp|dr> s3 <unsigned registration> | <rp|dr> s4" >&2; exit 2;;
+*) echo "usage: sign-run.sh <rp|dr|pilot> s3 <unsigned registration> | <rp|dr|pilot> s4" >&2; exit 2;;
 esac

@@ -117,3 +117,30 @@ func TestLoadRejectsNonObjectInput(t *testing.T) {
 		}
 	}
 }
+
+// TestLoadVMissingIsOptional: v_missing may be absent (existing v1 inputs) or present.
+func TestLoadVMissingIsOptional(t *testing.T) {
+	in := cleanInput()
+	in.Compliant[0].VMissing = true
+	raw, err := json.Marshal(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := Load(bytes.NewReader(raw))
+	if err != nil || !got.Compliant[0].VMissing || got.Compliant[1].VMissing {
+		t.Fatalf("with v_missing: err=%v", err)
+	}
+	legacy := strings.ReplaceAll(string(raw), `"v_missing":false,`, ``)
+	legacy = strings.Replace(legacy, `"v_missing":true,`, ``, 1)
+	if strings.Contains(legacy, "v_missing") {
+		t.Fatal("fixture still has v_missing")
+	}
+	got, err = Load(strings.NewReader(legacy))
+	if err != nil || got.Compliant[0].VMissing {
+		t.Fatalf("without v_missing: err=%v", err)
+	}
+	null := strings.Replace(string(raw), `"v_missing":true`, `"v_missing":null`, 1)
+	if _, err := Load(strings.NewReader(null)); err == nil || !strings.Contains(err.Error(), `field "v_missing" is null`) {
+		t.Fatalf("null v_missing: %v", err)
+	}
+}

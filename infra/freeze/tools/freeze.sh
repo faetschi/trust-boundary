@@ -3,7 +3,9 @@
 . "$(dirname -- "${BASH_SOURCE[0]}")/../freeze-guard.sh" || exit 2
 C=$FREEZE_COMMIT
 . "$(dirname -- "${BASH_SOURCE[0]}")/../paths.sh"
-LK=$(linux_path "$KIT_DIR")
+# Owner steps run natively on Linux (a Linux checkout at the freeze commit): from Git Bash, WSL would reach the kit through /mnt.
+case $(uname -s) in MINGW* | MSYS*) echo "FATAL: run tools/freeze.sh from a Linux checkout inside WSL, not from Git Bash" >&2; exit 2 ;; esac
+LK=$KIT_DIR
 cd "$KIT_DIR" || exit 2
 L=$TBOUND_WORK_VIEW/receipts/$FREEZE/logs
 make_receipts_dir

@@ -79,6 +79,7 @@ func newFixture(t *testing.T, profile, ledgerConfig string) *fixture {
 		Profile:      filepath.Join(dir, "research-profile.json"),
 		LedgerConfig: filepath.Join(dir, "research-ledger.json"),
 		Ledger:       filepath.Join(dir, "usd-ledger"),
+		Checkpoint:   filepath.Join(dir, "research-ledger-checkpoint.json"),
 		Key:          filepath.Join(dir, "openrouter.key"),
 		OwnerUID:     uint32(os.Getuid()),
 	}}
@@ -102,11 +103,20 @@ func (f *fixture) write(path, content string, mode os.FileMode) {
 	}
 }
 
+// genesis creates the ledger and writes the operator checkpoint from the genesis
+// snapshot.
 func (f *fixture) genesis() {
 	f.t.Helper()
-	if _, err := Genesis(f.paths); err != nil {
+	snap, err := Genesis(f.paths)
+	if err != nil {
 		f.t.Fatalf("genesis: %v", err)
 	}
+	f.writeCheckpoint(snap)
+}
+
+func (f *fixture) writeCheckpoint(snap usdledger.Snapshot) {
+	f.t.Helper()
+	f.write(f.paths.Checkpoint, fmt.Sprintf(`{"records":%d,"head_sha256":%q}`, snap.Records, snap.HeadSHA256), 0o600)
 }
 
 func (f *fixture) open(endpoint string) *Bundle {
@@ -517,7 +527,8 @@ func TestCredentialsIgnoreTheEnvironment(t *testing.T) {
 
 func TestMissingLedgerIsRefusedWithoutAnExplicitGenesis(t *testing.T) {
 	f := newFixture(t, frozenProfileJSON, ledgerConfigJSON(5_000_000, 20_000, "request"))
-	if _, err := open2(f); !errors.Is(err, usdledger.ErrMissingLedger) {
+	f.writeCheckpoint(usdledger.Snapshot{Records: 1, HeadSHA256: strings.Repeat("0", 64)})
+	if _, err := open2(f); !errors.Is(err, usdledger.ErrHeadMismatch) {
 		t.Fatalf("missing ledger opened: %v", err)
 	}
 	if _, err := os.Lstat(f.paths.Ledger); !errors.Is(err, os.ErrNotExist) {
@@ -536,7 +547,7 @@ func TestDeletedLedgerAfterGenesisIsRefusedNotReset(t *testing.T) {
 	if err := os.Remove(f.paths.Ledger); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := open2(f); !errors.Is(err, usdledger.ErrMissingLedger) {
+	if _, err := open2(f); !errors.Is(err, usdledger.ErrHeadMismatch) {
 		t.Fatalf("deleted ledger reopened as a fresh budget: %v", err)
 	}
 }
@@ -992,5 +1003,106 @@ func TestWorkflowUnitsReportOpenSettledAndUncertainUnits(t *testing.T) {
 	}
 	if units := probe(ambiguous); len(units) != 1 || units[0].State != usdledger.UnitStateUncertain || units[0].ReservedMicroUSD != requestReserve {
 		t.Fatalf("the ambiguous request is not an uncertain unit: %+v", units)
+	}
+}
+
+// spend records one settled request directly in the ledger and returns its
+// snapshot, then releases the lock so the next open can take it.
+func spend(t *testing.T, f *fixture, unit string) usdledger.Snapshot {
+	t.Helper()
+	b := f.open("")
+	if err := b.ledger.Reserve(unit, 100); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.ledger.Settle(unit, 40); err != nil {
+		t.Fatal(err)
+	}
+	snap := snapshot(t, b)
+	if err := b.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return snap
+}
+
+func TestOpenRefusesAMissingCheckpoint(t *testing.T) {
+	f := newFixture(t, frozenProfileJSON, ledgerConfigJSON(5_000_000, 20_000, "request"))
+	f.genesis()
+	if err := os.Remove(f.paths.Checkpoint); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := open2(f); !errors.Is(err, ErrConfigFile) {
+		t.Fatalf("missing checkpoint opened: %v", err)
+	}
+}
+
+func TestOpenRefusesAnInsecureOrWrongOwnerCheckpoint(t *testing.T) {
+	f := newFixture(t, frozenProfileJSON, ledgerConfigJSON(5_000_000, 20_000, "request"))
+	f.genesis()
+	// Only the checkpoint is read as another owner, so the refusal is its own.
+	if _, err := readOwnedFile(f.paths.Checkpoint, maxCheckpointBytes, uint32(os.Getuid())+1); !errors.Is(err, ErrConfigFile) {
+		t.Fatalf("checkpoint owned by another user accepted: %v", err)
+	}
+	doc, err := os.ReadFile(f.paths.Checkpoint)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.write(f.paths.Checkpoint, string(doc), 0o666)
+	if _, err := open2(f); !errors.Is(err, ErrConfigFile) {
+		t.Fatalf("world-writable checkpoint opened: %v", err)
+	}
+}
+
+func TestOpenRefusesAMalformedCheckpoint(t *testing.T) {
+	head := strings.Repeat("a", 64)
+	good := fmt.Sprintf(`{"records":1,"head_sha256":%q}`, head)
+	if _, err := parseCheckpoint([]byte(good)); err != nil {
+		t.Fatalf("valid checkpoint refused: %v", err)
+	}
+	for name, doc := range map[string]string{
+		"zero records":    fmt.Sprintf(`{"records":0,"head_sha256":%q}`, head),
+		"missing head":    `{"records":1}`,
+		"missing records": fmt.Sprintf(`{"head_sha256":%q}`, head),
+		"short head":      `{"records":1,"head_sha256":"abc"}`,
+		"uppercase head":  fmt.Sprintf(`{"records":1,"head_sha256":%q}`, strings.Repeat("A", 64)),
+		"unknown field":   strings.Replace(good, `"records":1`, `"records":1,"extra":1`, 1),
+		"duplicate field": strings.Replace(good, `"records":1`, `"records":2,"records":1`, 1),
+		"trailing data":   good + ` {}`,
+		"not an object":   `[]`,
+	} {
+		if _, err := parseCheckpoint([]byte(doc)); !errors.Is(err, ErrCheckpoint) {
+			t.Errorf("checkpoint accepted or mislabelled (%s): %v", name, err)
+		}
+	}
+	f := newFixture(t, frozenProfileJSON, ledgerConfigJSON(5_000_000, 20_000, "request"))
+	f.genesis()
+	f.write(f.paths.Checkpoint, `{"records":1}`, 0o600)
+	if _, err := open2(f); !errors.Is(err, ErrCheckpoint) {
+		t.Fatalf("malformed checkpoint opened: %v", err)
+	}
+}
+
+func TestGenesisCheckpointStillOpensAfterSpending(t *testing.T) {
+	f := newFixture(t, frozenProfileJSON, ledgerConfigJSON(5_000_000, 20_000, "request"))
+	f.genesis()
+	spend(t, f, "unit-1")
+	b := f.open("")
+	if snap := snapshot(t, b); snap.Records != 3 || snap.SettledMicroUSD != 40 {
+		t.Fatalf("spent ledger did not reopen with its spend: %+v", snap)
+	}
+}
+
+func TestOpenRefusesALedgerRolledBackBelowTheCheckpoint(t *testing.T) {
+	f := newFixture(t, frozenProfileJSON, ledgerConfigJSON(5_000_000, 20_000, "request"))
+	f.genesis()
+	genesisCopy, err := os.ReadFile(f.paths.Ledger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.writeCheckpoint(spend(t, f, "unit-1"))
+	if err := os.WriteFile(f.paths.Ledger, genesisCopy, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := open2(f); !errors.Is(err, usdledger.ErrHeadMismatch) {
+		t.Fatalf("rolled-back ledger opened: %v", err)
 	}
 }

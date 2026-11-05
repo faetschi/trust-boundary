@@ -22,7 +22,11 @@
 // that are not recomputed, but anyone who can rewrite the file can recompute it.
 // The newest record has no later link, so tail edits, truncation at a record
 // boundary, rollback to an older copy, and deletion are detected only against
-// Config.ExpectedHeadSHA256, a head hash stored outside the file.
+// Config.ExpectedHeadSHA256, a head hash stored outside the file. With
+// Config.AnchorRecords the anchor is a checkpoint: the head after the first N
+// records, so the file may grow past it and only rollback below it is refused.
+// Verify checks a quiescent ledger read-only (shared lock on Linux; elsewhere it
+// reads a copy, since the writer is Linux-only).
 //
 // Passing tests verify this code only. They do not establish budget feasibility,
 // G1, or H1.
@@ -104,10 +108,18 @@ type Config struct {
 	// Snapshot. It is not stored in the file and must be in (0, CapMicroUSD].
 	MinPerUnitWorstCaseMicroUSD int64
 
-	// ExpectedHeadSHA256, when set, must equal the file's head at Open. A missing
-	// file is refused rather than created, so deleting the ledger cannot reset
-	// spent budget. Store Snapshot.HeadSHA256 outside the ledger.
+	// ExpectedHeadSHA256, when set, must equal the file's head at Open, or with
+	// AnchorRecords its head after that many records. A missing file is refused
+	// rather than created, so deleting the ledger cannot reset spent budget.
+	// Store Snapshot.HeadSHA256 outside the ledger.
 	ExpectedHeadSHA256 string
+
+	// AnchorRecords, when non-zero, makes ExpectedHeadSHA256 a checkpoint: the
+	// head after the first AnchorRecords records, counted like Snapshot.Records
+	// (genesis is record 1). The file may extend past it but must hold at least
+	// that many records. It requires ExpectedHeadSHA256. Zero keeps the
+	// exact-head rule.
+	AnchorRecords uint64
 
 	// AllowGenesis lets Open create the file when it is absent. It defaults to
 	// false, so a missing or deleted ledger is refused rather than reset to an
@@ -200,6 +212,8 @@ type book struct {
 	settledMicro   int64
 	seq            uint64
 	head           string
+	// anchorHead is the head after cfg.AnchorRecords records, set by replay.
+	anchorHead string
 	// overspent is set by an overage record and is never cleared. Reserve is
 	// refused from then on, so a worst-case bound that was violated cannot keep
 	// admitting new spend.
@@ -369,13 +383,54 @@ func Open(path string, cfg Config) (*Ledger, error) {
 		_ = file.Close()
 		return nil, err
 	}
-	if cfg.ExpectedHeadSHA256 != "" && b.head != cfg.ExpectedHeadSHA256 {
+	if err := b.checkAnchor(cfg); err != nil {
 		_ = file.Close()
-		return nil, ErrHeadMismatch
+		return nil, err
 	}
 	b.recoverOpen()
 	l.book = b
 	return l, nil
+}
+
+// checkAnchor applies the head or checkpoint rule from cfg to a replayed book.
+func (b *book) checkAnchor(cfg Config) error {
+	switch {
+	case cfg.ExpectedHeadSHA256 == "":
+		return nil
+	case cfg.AnchorRecords == 0 && b.head != cfg.ExpectedHeadSHA256:
+		return ErrHeadMismatch
+	case cfg.AnchorRecords != 0 && (b.seq < cfg.AnchorRecords || b.anchorHead != cfg.ExpectedHeadSHA256):
+		return fmt.Errorf("%w: checkpoint at record %d", ErrHeadMismatch, cfg.AnchorRecords)
+	}
+	return nil
+}
+
+// Verify checks the ledger at path against cfg without creating or writing
+// anything. It takes a shared nonblocking lock, so a live writer yields
+// ErrLocked; call it on a quiescent ledger. It replays the file, applies the
+// anchor rule, reports open reservations as uncertain like Open, and returns the
+// snapshot. AllowGenesis is ignored.
+func Verify(path string, cfg Config) (Snapshot, error) {
+	if err := cfg.validate(); err != nil {
+		return Snapshot{}, err
+	}
+	file, err := openLedgerFileShared(path)
+	if errors.Is(err, ErrMissingLedger) && cfg.ExpectedHeadSHA256 != "" {
+		return Snapshot{}, fmt.Errorf("%w: ledger file is absent", ErrHeadMismatch)
+	}
+	if err != nil {
+		return Snapshot{}, err
+	}
+	defer file.Close()
+	b, err := replay(file, cfg)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	if err := b.checkAnchor(cfg); err != nil {
+		return Snapshot{}, err
+	}
+	b.recoverOpen()
+	return b.snapshot(cfg), nil
 }
 
 // Reserve records a worst-case reservation for unitID before the provider send.
@@ -510,21 +565,25 @@ func (l *Ledger) Snapshot() (Snapshot, error) {
 	if err := l.usable(); err != nil {
 		return Snapshot{}, err
 	}
+	return l.book.snapshot(l.cfg), nil
+}
+
+func (b *book) snapshot(cfg Config) Snapshot {
 	s := Snapshot{
-		LedgerID:                    l.cfg.LedgerID,
-		CapMicroUSD:                 l.cfg.CapMicroUSD,
-		MinPerUnitWorstCaseMicroUSD: l.cfg.MinPerUnitWorstCaseMicroUSD,
-		OpenMicroUSD:                l.book.openMicro,
-		UncertainMicroUSD:           l.book.uncertainMicro,
-		SettledMicroUSD:             l.book.settledMicro,
-		Records:                     l.book.seq,
-		HeadSHA256:                  l.book.head,
-		Overspent:                   l.book.overspent,
+		LedgerID:                    cfg.LedgerID,
+		CapMicroUSD:                 cfg.CapMicroUSD,
+		MinPerUnitWorstCaseMicroUSD: cfg.MinPerUnitWorstCaseMicroUSD,
+		OpenMicroUSD:                b.openMicro,
+		UncertainMicroUSD:           b.uncertainMicro,
+		SettledMicroUSD:             b.settledMicro,
+		Records:                     b.seq,
+		HeadSHA256:                  b.head,
+		Overspent:                   b.overspent,
 	}
-	s.CommittedMicroUSD = l.book.committed()
+	s.CommittedMicroUSD = b.committed()
 	s.RemainingMicroUSD = s.CapMicroUSD - s.CommittedMicroUSD
 	s.StopRule = s.RemainingMicroUSD < s.MinPerUnitWorstCaseMicroUSD
-	for _, u := range l.book.units {
+	for _, u := range b.units {
 		switch u.state {
 		case unitOpen:
 			s.OpenUnits++
@@ -534,7 +593,7 @@ func (l *Ledger) Snapshot() (Snapshot, error) {
 			s.SettledUnits++
 		}
 	}
-	return s, nil
+	return s
 }
 
 // Close releases the file lock. It is safe to call more than once.
@@ -595,6 +654,9 @@ func (c Config) validate() error {
 	}
 	if c.ExpectedHeadSHA256 != "" && !isHash(c.ExpectedHeadSHA256) {
 		return fmt.Errorf("%w: expected head must be 64 lowercase hex digits", ErrInvalidConfig)
+	}
+	if c.AnchorRecords != 0 && c.ExpectedHeadSHA256 == "" {
+		return fmt.Errorf("%w: AnchorRecords needs ExpectedHeadSHA256", ErrInvalidConfig)
 	}
 	return nil
 }
@@ -710,6 +772,9 @@ func replay(file *os.File, cfg Config) (book, error) {
 		}
 		b.seq = n + 1
 		b.head = hashHex(body)
+		if b.seq == cfg.AnchorRecords {
+			b.anchorHead = b.head
+		}
 	}
 	if b.seq == 0 {
 		return book{}, fmt.Errorf("%w: file has no genesis record", ErrCorrupt)

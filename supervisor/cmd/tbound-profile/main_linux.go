@@ -82,8 +82,10 @@ research-ledger-genesis creates the research USD ledger once, from the frozen re
 profile and the research ledger configuration (defaults: the fixed paths under
 /etc/tbound/provider and /var/lib/tbound/sessions/usd-ledger). Run it as the service identity
 so that the service owns the 0600 ledger file, e.g. through setpriv --reuid <service-uid>. It refuses an
-unfrozen profile and an existing ledger, and prints the genesis head SHA-256 to store outside
-the ledger. The service never creates a ledger: a missing one is refused.
+unfrozen profile and an existing ledger, and prints records and head_sha256. Write them, as root,
+to /etc/tbound/provider/research-ledger-checkpoint.json ({"records": N, "head_sha256": "..."}) and
+update that checkpoint between runs; the service refuses to open the ledger without it. The service
+never creates a ledger: a missing one is refused.
 
 corpus-digest admits a corpus manifest the way the corpus-mode service does (strict loader,
 evalcorpus.Validate under the quota profile, a bounded trial on every case) and prints the digest

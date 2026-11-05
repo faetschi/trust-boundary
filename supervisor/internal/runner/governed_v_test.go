@@ -189,3 +189,53 @@ func TestExecutorsRouteVToGovernedV(t *testing.T) {
 		t.Fatalf("task %q err %v", out.Task, err)
 	}
 }
+
+// The governed V executor reports no EVQ obligations, so V must not decide
+// evq_passed (D44): neither a passing V nor a V without a model response.
+func TestExportEVQIgnoresGovernedVObligations(t *testing.T) {
+	for _, noResponse := range []bool{false, true} {
+		cfg := smallConfig()
+		s := smallSchedule(t, cfg)
+		fake := NewFakeExecutor(s.Config)
+		v := GovernedV{Transport: &scriptedTransport{reply: func(argv []string) ([]byte, []byte, int, error) {
+			d := vDoc(argv[len(argv)-1], true)
+			if noResponse {
+				d.Exit, d.UsageEvents, d.TokensIn, d.TokensOut = 1, 0, 0, 0
+			}
+			raw, err := json.Marshal(d)
+			return append(raw, '\n'), nil, 0, err
+		}}, ImageDigest: vImage, Route: RouteCoverage{Complete: true, Digest: "route"}}
+		j, _ := runAll(t, s, t.TempDir(), Executors{B: fake, C: fake, P: fake, V: v})
+		res, err := Export(s, j, ExportOptions{})
+		j.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !res.Input.EVQPassed {
+			t.Fatalf("noResponse=%v: governed V outcomes failed EVQ", noResponse)
+		}
+	}
+}
+
+// An obligation a V step reports as failed still fails EVQ: it is evidence about
+// the infrastructure, not about V's result.
+func TestExportEVQKeepsAFailedVObligation(t *testing.T) {
+	cfg := smallConfig()
+	s := smallSchedule(t, cfg)
+	fake := NewFakeExecutor(s.Config)
+	fake.Hook = func(st Step, o *Outcome) error {
+		if st.Configuration == CfgV {
+			o.EVQ = []Obligation{{ID: "EVQ-1", Passed: false}}
+		}
+		return nil
+	}
+	j, _ := runAll(t, s, t.TempDir(), fake)
+	defer j.Close()
+	res, err := Export(s, j, ExportOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Input.EVQPassed {
+		t.Fatal("a failed obligation reported by V passed EVQ")
+	}
+}

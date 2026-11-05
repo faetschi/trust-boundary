@@ -16,7 +16,14 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VERSION="${1:-verify}"
 BASE="${TBOUND_VERIFY_ROOT:-$(mktemp -d "${TMPDIR:-/tmp}/tbound-verify.XXXXXX")}"
 mkdir -p "$BASE"; chmod 700 "$BASE" 2>/dev/null || true
-DIST="$BASE/dist"; PREFIX="$BASE/prefix"
+DIST="${TBOUND_VERIFY_DIST:-$BASE/dist}"
+if [ -n "${TBOUND_VERIFY_DIST:-}" ]; then
+  case "$DIST" in
+    /*) ;;
+    *) DIST="$ROOT/$DIST" ;;
+  esac
+fi
+PREFIX="$BASE/prefix"
 export XDG_CONFIG_HOME="$BASE/config"
 export XDG_DATA_HOME="$BASE/data"
 export GO="${GO:-go}"
@@ -36,9 +43,13 @@ sha256_of() {
 
 echo "verify-install: base=$BASE os=$OS arch=$ARCH"
 
-echo "[1/6] build release"
-"$ROOT/scripts/build-release.sh" "$VERSION" "$DIST" "$OS/$ARCH" >/dev/null
-[ -f "$DIST/tbound-$VERSION-$OS-$ARCH.tar.gz" ] && ok "artifact built" || bad "artifact missing"
+if [ -n "${TBOUND_VERIFY_DIST:-}" ]; then
+  echo "[1/6] use prebuilt release"
+else
+  echo "[1/6] build release"
+  "$ROOT/scripts/build-release.sh" "$VERSION" "$DIST" "$OS/$ARCH" >/dev/null
+fi
+[ -f "$DIST/tbound-$VERSION-$OS-$ARCH.tar.gz" ] && ok "artifact available" || bad "artifact missing"
 
 echo "[2/6] install into throwaway prefix"
 TBOUND_PREFIX="$PREFIX" "$ROOT/install/install.sh" --version "$VERSION" --local-dist "$DIST" --no-path >/dev/null

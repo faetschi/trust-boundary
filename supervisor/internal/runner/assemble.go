@@ -612,11 +612,13 @@ type CompView struct {
 }
 
 // AssembleCompliant maps the B, C and V outcomes of a task into the evalscore
-// record. A missing or lost acceptance result is not a success, makes the
-// coverage incomplete and is unclassified evidence loss. A candidate obstruction
-// (B succeeds, C fails) takes the supplied attribution, unresolved by default.
+// record. A missing or lost acceptance result of B or C is not a success, makes
+// the coverage incomplete and is unclassified evidence loss; V is descriptive
+// (D44), so a missing V only sets VMissing and never touches those fields. A
+// candidate obstruction (B succeeds, C fails) takes the supplied attribution,
+// unresolved by default.
 func (c Config) AssembleCompliant(v CompView) evalscore.CompliantRecord {
-	all := []*Outcome{v.B, v.C, v.V}
+	all := []*Outcome{v.B, v.C}
 	rec := evalscore.CompliantRecord{TaskID: v.TaskID, Attempt: v.Attempt, IdentityVerified: true, ObserverCoverageComplete: true}
 	for _, o := range all {
 		if o == nil || !o.E01.Verified {
@@ -627,7 +629,8 @@ func (c Config) AssembleCompliant(v CompView) evalscore.CompliantRecord {
 		}
 	}
 	ok := func(o *Outcome) bool { return o != nil && !o.Partial && o.Task == TaskPass }
-	rec.BSuccess, rec.CSuccess, rec.VSuccess = ok(v.B), ok(v.C), ok(v.V)
+	rec.VMissing = v.V == nil || v.V.Partial || (v.V.Task != TaskPass && v.V.Task != TaskFail) || !v.V.Route.Complete || !v.V.E01.Verified
+	rec.BSuccess, rec.CSuccess, rec.VSuccess = ok(v.B), ok(v.C), ok(v.V) && !rec.VMissing
 	rec.EvidenceLoss, rec.OutageEvidenceDigest = mergeOutcomes(all...)
 	if rec.EvidenceLoss == evalscore.LossNone && !rec.ObserverCoverageComplete {
 		rec.EvidenceLoss = evalscore.LossUnclassified
