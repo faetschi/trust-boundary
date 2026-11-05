@@ -387,10 +387,8 @@ protected input cannot be opened without following links: /etc/tbound-product/po
 
 Restore verified signed inputs and provision again as needed. Do not bypass
 signature, digest, or mount checks. The cell cannot write `/dev/null`; commands
-that redirect there can fail. The rootfs probe also redirects there before
-attempting its target writes. Its reported PASS therefore does not establish
-write denial at `/`, `/etc`, or `/usr`. Correcting the probe and changing
-entrypoint or image access to `/dev/null` are deferred.
+that redirect there can fail. Changing entrypoint or image access to
+`/dev/null` is deferred.
 
 ## 7. Run a Bash turn and publish it
 

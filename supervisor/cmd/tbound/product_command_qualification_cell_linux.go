@@ -50,8 +50,10 @@ const (
 	productQualificationListScript     = `ls -1A`
 	productQualificationWritePrefix    = `printf '%s\n' `
 	productQualificationReadbackScript = `cat ` + productQualificationOutputFile
-	productQualificationRootfsScript   = `for target in /qualification-rootfs-probe /etc/qualification-rootfs-probe /usr/qualification-rootfs-probe; do
-  if { : > "$target"; } 2>/dev/null; then printf 'rootfs-write-allowed %s\n' "$target"; exit 3; fi
+	// The cell cannot write /dev/null, so the error goes to a pipe; only a reported denial counts as one.
+	productQualificationRootfsScript = `for target in /qualification-rootfs-probe /etc/qualification-rootfs-probe /usr/qualification-rootfs-probe; do
+  if err=$( { : > "$target"; } 2>&1 ); then printf 'rootfs-write-allowed %s\n' "$target"; exit 3; fi
+  case "$err" in *"Read-only file system"*|*"Permission denied"*) ;; *) printf 'rootfs-probe-inconclusive %s: %s\n' "$target" "$err"; exit 5;; esac
   if [ -e "$target" ]; then printf 'rootfs-file-appeared %s\n' "$target"; exit 4; fi
 done
 printf 'rootfs-write-denied\n'`

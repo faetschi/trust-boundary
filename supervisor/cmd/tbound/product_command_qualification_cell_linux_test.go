@@ -757,3 +757,38 @@ func TestProductBashStartupRunsTheRealCellBeforeListening(t *testing.T) {
 		}
 	})
 }
+
+// The rootfs probe counts a target as denied only when the shell reports a denial for that write. A failure for any
+// other reason, such as an unusable redirection, must not pass as denial.
+func TestProductQualificationRootfsProbeRequiresAReportedDenial(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("the probe would write the real targets as root")
+	}
+	run := func(script string) (string, int) {
+		t.Helper()
+		out, err := exec.Command("/bin/bash", "-c", script).Output()
+		var exit *exec.ExitError
+		if errors.As(err, &exit) {
+			return string(out), exit.ExitCode()
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(out), 0
+	}
+	if out, code := run(productQualificationRootfsScript); code != 0 || out != "rootfs-write-denied\n" {
+		t.Fatalf("unprivileged probe = %q, exit %d; want the denial marker", out, code)
+	}
+	missing := filepath.Join(t.TempDir(), "absent", "probe")
+	script := strings.ReplaceAll(productQualificationRootfsScript,
+		"/qualification-rootfs-probe /etc/qualification-rootfs-probe /usr/qualification-rootfs-probe", missing)
+	if out, code := run(script); code != 5 || !strings.HasPrefix(out, "rootfs-probe-inconclusive "+missing+": ") {
+		t.Fatalf("probe of an unreachable target = %q, exit %d; want inconclusive", out, code)
+	}
+	writable := filepath.Join(t.TempDir(), "probe")
+	script = strings.ReplaceAll(productQualificationRootfsScript,
+		"/qualification-rootfs-probe /etc/qualification-rootfs-probe /usr/qualification-rootfs-probe", writable)
+	if out, code := run(script); code != 3 || out != "rootfs-write-allowed "+writable+"\n" {
+		t.Fatalf("probe of a writable target = %q, exit %d; want allowed", out, code)
+	}
+}
