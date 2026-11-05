@@ -219,3 +219,64 @@ func TestOperatorResolutionAcceptsASettledCommandJournalOnly(t *testing.T) {
 		}
 	}
 }
+
+// Settle closes durable evidence of the composition and runs only for a real resolution, after every check and
+// before the append. A Settle failure writes no resolution, and the record commits the records it closed.
+func TestOperatorResolutionSettlesBeforeAppendOnlyWhenReal(t *testing.T) {
+	for _, mode := range []string{"dry-run", "real", "settle-fails", "too-many-closed"} {
+		t.Run(mode, func(t *testing.T) {
+			c, path := newCatalog(t)
+			reg := c.st.reg
+			turn := linkedTurn(t, c, "settle")
+			if err := c.MarkTurnUnknown(turn.ID, "lost"); err != nil {
+				t.Fatal(err)
+			}
+			c.Close()
+			before, _ := os.ReadFile(path)
+			settled := 0
+			closed := []string{"root-pending-record"}
+			if mode == "too-many-closed" {
+				closed = make([]string, maxPublicationClosed+1)
+				for i := range closed {
+					closed[i] = "root-pending-record"
+				}
+			}
+			_, err := OperatorResolve(path, reg, turn.ID, "close the pending publication", mode == "dry-run", func(turn Turn) (OperatorEvidence, error) {
+				evidence, _ := operatorEvidence(turn)
+				evidence.PublicationClosed = closed
+				evidence.Settle = func() error {
+					settled++
+					if mode == "settle-fails" {
+						return os.ErrInvalid
+					}
+					return nil
+				}
+				return evidence, nil
+			})
+			after, _ := os.ReadFile(path)
+			switch mode {
+			case "dry-run":
+				if err != nil || settled != 0 || string(after) != string(before) {
+					t.Fatalf("dry run: settled=%d err=%v", settled, err)
+				}
+			case "real":
+				if err != nil || settled != 1 {
+					t.Fatalf("real: settled=%d err=%v", settled, err)
+				}
+				opened, err := Open(path, reg)
+				if err != nil {
+					t.Fatalf("the resolution did not replay: %v", err)
+				}
+				resolved, _ := opened.Turn(turn.ID)
+				opened.Close()
+				if resolved.OperatorResolution == nil || len(resolved.OperatorResolution.PublicationClosed) != 1 {
+					t.Fatalf("the record lost the closed publication: %+v", resolved.OperatorResolution)
+				}
+			default:
+				if err == nil || settled > 1 || string(after) != string(before) {
+					t.Fatalf("%s: settled=%d err=%v wrote=%v", mode, settled, err, string(after) != string(before))
+				}
+			}
+		})
+	}
+}

@@ -302,17 +302,27 @@ func runProductOperatorWorker(out io.Writer) error {
 	if env.Xattr, err = productHostXattr(cfg, env); err != nil {
 		return err
 	}
+	var closing []string
 	turn, err := productsession.OperatorResolve(cfg.CatalogPath, registration, request.Turn, request.Reason, request.DryRun,
 		func(turn productsession.Turn) (productsession.OperatorEvidence, error) {
-			return env.operatorEvidence(context.Background(), turn)
+			evidence, err := env.operatorEvidence(context.Background(), turn)
+			closing = evidence.PublicationClosed
+			return evidence, err
 		})
 	if err != nil {
 		return adminRefusal("operator resolution refused: %v", err)
 	}
+	publication, verb := "", "closed"
 	if request.DryRun {
-		fmt.Fprintf(out, "dry-run: %s can be abandoned; baseline unchanged; full reservation charged; no records written\n", turn.ID)
+		verb = "would be closed"
+	}
+	if len(closing) != 0 {
+		publication = fmt.Sprintf("; %d pending publication record(s) %s as unapplied", len(closing), verb)
+	}
+	if request.DryRun {
+		fmt.Fprintf(out, "dry-run: %s can be abandoned; baseline unchanged; full reservation charged%s; no records written\n", turn.ID, publication)
 	} else {
-		fmt.Fprintf(out, "resolved %s: abandoned (operator_resolved); baseline unchanged; full reservation charged; session and project unblocked\n", turn.ID)
+		fmt.Fprintf(out, "resolved %s: abandoned (operator_resolved); baseline unchanged; full reservation charged%s; session and project unblocked\n", turn.ID, publication)
 	}
 	return nil
 }
@@ -400,12 +410,13 @@ func (e *productTurnEnv) operatorEvidence(ctx context.Context, turn productsessi
 	if commandsSettled && retained.Commands == nil {
 		return evidence, errors.New("command records exist and no settlement verifier vouches for them")
 	}
-	if named, _, err := e.workflowPublication(turn.ProjectID, turn.Link.WorkflowID); err != nil || named {
-		return evidence, errors.Join(errors.New("publication evidence is present or unreadable"), err)
-	}
 	measured, err := measureProductBaseline(turn.ProjectID, root, e.projectWorkspace())
 	if err != nil {
 		return evidence, fmt.Errorf("baseline scan: %w", err)
+	}
+	closing, settle, err := e.operatorPublication(ctx, turn, root, measured)
+	if err != nil {
+		return evidence, err
 	}
 	if measured != turn.BaselineDigest {
 		return evidence, errProductStaleBaseline
@@ -420,7 +431,7 @@ func (e *productTurnEnv) operatorEvidence(ctx context.Context, turn productsessi
 		}
 		return "sha256:" + auditHeadHash(trace.Records), nil
 	}
-	evidence = productsession.OperatorEvidence{WorkflowID: turn.Link.WorkflowID, BaselineDigest: turn.BaselineDigest, ScanDigest: measured, CheckpointDigest: "sha256:" + checkpoint.ComputedCheckpointDigest,
+	evidence = productsession.OperatorEvidence{WorkflowID: turn.Link.WorkflowID, BaselineDigest: turn.BaselineDigest, ScanDigest: measured, CheckpointDigest: "sha256:" + checkpoint.ComputedCheckpointDigest, PublicationClosed: closing, Settle: settle,
 		// OperatorResolve calls Confirm while the retained journals and this project
 		// directory are still open, directly before the catalog append.
 		Confirm: func() error {
