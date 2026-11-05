@@ -1,13 +1,16 @@
 #!/bin/bash
-# rglib.sh: the generic RG cycle for NAME=rp and NAME=dr (PROVISIONING-SIGNING.md "RG: re-registration cycle"), SOURCED by 31-reg-rp.sh and 32-reg-dr.sh
+# rglib.sh: the generic RG cycle for NAME=rp, NAME=dr and NAME=pilot (PROVISIONING-SIGNING.md "RG: re-registration cycle", Part D), SOURCED by 31-reg-rp.sh, 32-reg-dr.sh and 33-corpus-pilot.sh
 # after glib.sh, load_env, check_key_meta and preflight_op. Modeled line by line on 30-reg-g1.sh (same verbs, same resume logic, same STOP_AFTER phases);
 # the differences are only: the NAME parameter, no seed-live (the live root keeps the g1 fixture), the signing helper sign-run.sh, and for dr the
 # two templates (the PROBE template is installed, the production template is staged beside it) and prof-install's fifth argument.
+# NAME=pilot (corpus mode) has no client run (the service refuses client text): rg_cycle RETURNS after svc start and diag l2 (the other names run to
+# the end), and the caller does the archive check (rg_archive_check) and everything after.
 #
-# The caller sets NAME (rp|dr) and defines these hooks before calling rg_cycle:
+# The caller sets NAME (rp|dr|pilot) and defines these hooks before calling rg_cycle:
 #   hook_prior       precondition checks on the earlier cycles (die on failure)
 #   hook_cfg_build   build "$HG/serve-pi-service.json" (uses $CD $SD) and check its members
 #   hook_baseline    (optional) extra baseline taken before the service of this cycle starts
+#   hook_after_s4    (optional) checks on the signed S4 outputs in $HG, before STOP_AFTER=s4 and before anything is installed
 #   hook_service_cleanup (optional) register cleanup before service start or resumed client polling
 #   hook_run_checks  the checks after the client has returned and the exports are fetched ($DONE, $CLIENT, $HG)
 #
@@ -44,7 +47,7 @@ rg_cycle() {
   HG=$HF/$NAME
   SIGN="$WGA/sign-run.sh"
   STG=stage-$NAME
-  case $NAME in rp) RESP=probe-response.txt;; dr) RESP=dr-response.txt;; *) die "rg_cycle: NAME must be rp or dr";; esac
+  case $NAME in rp) RESP=probe-response.txt;; dr) RESP=dr-response.txt;; pilot) RESP=;; *) die "rg_cycle: NAME must be rp, dr or pilot";; esac
 
   say "0. dispatcher and pins"
   S=$(rg_status); printf '%s\n' "$S"
@@ -145,6 +148,7 @@ rg_cycle() {
       [ "$TD" != "$TD_PROD" ] || die "probe TD equals production TD"
       echo "profile pins the PROBE template TD $TD (production TD $TD_PROD)"
     fi
+    if declare -F hook_after_s4 >/dev/null; then hook_after_s4; fi
     phase_end s4
 
     say "RG-7 stage and prof-install $NAME"
@@ -181,6 +185,7 @@ rg_cycle() {
     hf_has $NAME/diag-l2.txt || fetch_export "$OUT/_/diag-l2.txt" $NAME/diag-l2.txt || true
   fi
   phase_end start
+  if [ "$NAME" = pilot ]; then return 0; fi   # corpus mode: no client run (the service refuses client text)
 
   # -------------------------------------------------------------------------------------------------------------
   if [ -z "$CLIENT" ]; then

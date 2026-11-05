@@ -63,7 +63,10 @@ A missing 27 completion record is reported as pending in dry-run mode and blocks
       `05-runtime-swap.sh`, `10-upgrade.sh`, `20-r1.sh`, `50-i1-i2.sh` (`RECLAIM_PODMAN_PAUSE=1`), `00-session-sudo.sh close`,
       `29-g1-recover.sh status`, `30-reg-g1.sh`, `40-guest-evidence.sh capability procoracle landlock-connect
       provider-exchange`, `31-reg-rp.sh`, `40-guest-evidence.sh route-bash-view`, `32-reg-dr.sh`,
-      `40-guest-evidence.sh route-direct-runtime`.
+      `40-guest-evidence.sh route-direct-runtime`. Corpus mode, after that (owner approval; `TBA_PW` for the artifact install;
+      `TBOUND_TRIAL_KEY=<trial key path>` adds the netsink step): `33-corpus-pilot.sh` (abandon the dr request, D1 manifest, 76 T5 artifacts,
+      the RG cycle for `pilot`, optional `trial reset` and `40-guest-evidence.sh netsink`); `tools/guest-chain.sh` runs it with `CORPUS_PILOT=1`.
+- [ ] `33-corpus-pilot.sh` ran to "DONE" (`$HF/pilot/CYCLE_OK`; with the trial key also `$HF/evq/netsink.json`), the session sudo is closed again.
 - [ ] `27` archived the previous freeze's G1/rp/dr state and exports; its dr request ended UNKNOWN BY DESIGN and
       the stale-evidence commit check in `40-guest-evidence.sh` passed for this freeze.
 - [ ] Every log is under `<FREEZE>\logs`; no 0-byte output except `*.err` and the dr command/provider audits.
