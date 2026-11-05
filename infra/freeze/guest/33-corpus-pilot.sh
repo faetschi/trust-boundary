@@ -8,6 +8,8 @@
 #                service is stopped (cgroup/podman probes read `unavailable`), hence no auto-confirm. With ABANDON_CONFIRM=<token> it requires admissions==1,
 #                no undrained scope and service+socket inactive, confirms through `op` (kit log), re-reads the journal (verdict abandoned) and saves the
 #                abandoned record (provider_settlement included) as $HF/pilot/dr-abandoned-record.json.
+#   1b keys      with TBOUND_TRIAL_KEY and TBOUND_CLIENT_KEY (paths): read-only SSH-3 probes (trial `reset <case> --check`: the pre-corpus refusal or a check
+#                document; client `id`: exit 2, "not a client command"). Without them: says that M3 needs them and continues.
 #   2 manifest   D1, offline on the WSL side: the T5 draft of $SRC + the four pins of `tbound-profile corpus-pins` (template $HF/d09-cell.base.json) ->
 #                $HF/pilot/manifest.json; `corpus-pins --manifest` must pass; `corpus-digest` with the 76 T5 artifacts and the ceilings 17 / 20000 / 1200 ->
 #                $HF/pilot/CORPUS_DIGEST. Any refusal prints the tool's violation list and stops.
@@ -22,7 +24,7 @@
 #                one real `trial reset` (attempt marker before, success marker after a valid
 #                tbound-trial-reset/v1 document; an attempt without success stops for owner recovery, never retried), then 40-guest-evidence.sh netsink. Without the key the script ends after phase 4 and prints what the owner does.
 # Resumable (phases 1-3 re-check their result; phase 4 resumes from `tbound-op status pilot`; signed files in $HF/pilot are verified, never re-signed).
-# STOP_AFTER=<abandon|manifest|artifacts|cfg|measure|s3|reg|s4|prof|start|cycle>.
+# STOP_AFTER=<abandon|keys|manifest|artifacts|cfg|measure|s3|reg|s4|prof|start|cycle>.
 # Preconditions (checked): 10, 20, 50 done; session sudo CLOSED; 32-reg-dr.sh finished ($HF/dr/CHECKS_OK, $HF/dr/RID); the dispatcher has no pilot state.
 # The owner starts it after 32-reg-dr.sh (and 40-guest-evidence.sh route-direct-runtime). Needs TBA_PW (read -rs TBA_PW; export TBA_PW) for phase 3 only if the artifacts differ.
 # Usage: bash 33-corpus-pilot.sh     (TBOUND_TRIAL_KEY=<key path> bash 33-corpus-pilot.sh   for phase 5;  NODE_BIN=<Linux path of the pinned Node> if ~/env.sh has none)
@@ -136,6 +138,43 @@ for l in open(sys.argv[1],encoding="utf-8"):
         if d.get("request_id")==sys.argv[2]: print(json.dumps({"id":ev["id"],"data":d},indent=2,sort_keys=True))' "$HF/$REQ_JOURNAL_FILE" "$rid" | hf_save pilot/dr-abandoned-record.json
   hf_commit pilot/dr-abandoned-record.json
   hf_put pilot/DR_SETTLED "$rid"
+}
+
+# first_compliant_case <manifest or draft (WSL path)>: the case id of the first compliant case.
+first_compliant_case() {
+  local c
+  c=$(WX python3 -I -c 'import json,sys
+print(next(c["case_id"] for c in json.load(open(sys.argv[1],encoding="utf-8"))["cases"] if c["kind"]=="compliant"))' "$1" | tr -d '\r\n')
+  [[ $c =~ ^[A-Za-z0-9._-]{1,128}$ ]] || die "not a usable case id: '$c'"
+  printf '%s' "$c"
+}
+
+# ---- 1b keys (runbook Part K SSH-3, read-only probes of the forced-command keys) -----------------------------------------------------------------------
+# M3 needs both keys (TBOUND_TRIAL_KEY, TBOUND_CLIENT_KEY: paths, passed to ssh by path, never read). Without them the phase only says so and continues.
+phase_keys() {
+  say "1b. keys: SSH-3 probes of the trial and client forced-command keys (read-only)"
+  local out rc=0 c
+  if [ -z "${TBOUND_TRIAL_KEY:-}" ] || [ -z "${TBOUND_CLIENT_KEY:-}" ]; then
+    note "M3 needs TBOUND_TRIAL_KEY and TBOUND_CLIENT_KEY (paths of the forced-command keys): not both set, so the key probes are skipped. Set them and rerun to prove the keys before the long cycle."
+  fi
+  if [ -n "${TBOUND_TRIAL_KEY:-}" ]; then
+    [ -f "$TBOUND_TRIAL_KEY" ] || die "TBOUND_TRIAL_KEY=$TBOUND_TRIAL_KEY is not a file"
+    c=$(first_compliant_case "$T5_DIR/manifest.draft.json")
+    out=$(trial "reset $c --check" 2>&1 | tr -d '\r') || rc=$?
+    printf 'trial key, reset %s --check (rc %s): %s\n' "$c" "$rc" "$out"
+    # before the corpus config: refused with "not a corpus-mode config" (the key reached `trial`); after the cycle: a tbound-trial-reset/v1 check document
+    if [[ $out == *"not a corpus-mode config"* ]]; then ok "trial key reached tbound trial (pre-corpus refusal)"
+    elif [ "$rc" = 0 ] && [[ $out == *tbound-trial-reset/v1* && $out == *'"check":true'* ]]; then ok "trial key: check document (corpus config already installed)"
+    else die "trial key probe is neither the pre-corpus refusal nor a check document: Part K SSH-1/SSH-2 may be missing on the guest"; fi
+  fi
+  if [ -n "${TBOUND_CLIENT_KEY:-}" ]; then
+    [ -f "$TBOUND_CLIENT_KEY" ] || die "TBOUND_CLIENT_KEY=$TBOUND_CLIENT_KEY is not a file"
+    rc=0
+    out=$(GSSH_IDENTITY=$TBOUND_CLIENT_KEY GSSH_USER=root sh "$GSSH_SH" id </dev/null 2>&1 | tr -d '\r') || rc=$?
+    printf 'client key, id (rc %s): %s\n' "$rc" "$out"
+    [ "$rc" = 2 ] && [[ $out == *"not a client command"* && $out != *uid=* ]] || die "client key probe: expected exit 2 and 'not a client command' without uid= (rc $rc)"
+    ok "client key reached the forced command (refused id, exit 2)"
+  fi
 }
 
 # ---- 2 manifest (D1) -----------------------------------------------------------------------------------------------------------------------------
@@ -264,6 +303,7 @@ hook_after_s4() {
 phase_cycle() {
   say "4. manifest-install (D2) and the RG cycle for NAME=pilot"
   local state rank mo l2 l2f
+  hf_has pilot/CYCLE_OK && { ok "the pilot cycle is already complete ($HG/CYCLE_OK)"; return 0; }
   CORPUS_DIGEST=$(hf_get pilot/CORPUS_DIGEST); need_dig CORPUS_DIGEST "$CORPUS_DIGEST"
   state=$(rg_state); rank=$(st_rank_of "${state:-none}")
   echo "pilot state: ${state:-none} (rank $rank)"
@@ -297,6 +337,7 @@ phase_cycle() {
 # domain; controllers `cpu memory pids`; no process in cells; exactly one runner pid; the cgroup-root digest the tool measures live; the six mounts (tbound,
 # node, podman, crun, cell, runtime) each with the options ro, nosuid, nodev; the maintenance lock free. Sets L2_ROOT_DIGEST for the caller.
 L2_ROOT_DIGEST=""
+l2_fail() { echo "l2_check: line $((i + 1)) of the diag l2 text does not match: '${L[i]:-<end of text>}'" >&2; }
 l2_check() {
   local -a L=(); local line i=0 n t opts dirs="" re_stat re_digest
   re_stat='^[^[:space:]]+:[^[:space:]]+ [0-7]+$'
@@ -304,26 +345,26 @@ l2_check() {
   while IFS= read -r line; do L+=("${line%$'\r'}"); done <<<"$1"
   n=${#L[@]}
   while [ "$n" -gt 0 ] && [ -z "${L[n-1]}" ]; do n=$((n - 1)); done
-  [ "${L[i]:-}" = "== service cgroup" ] || return 1; i=$((i + 1))
+  [ "${L[i]:-}" = "== service cgroup" ] || { l2_fail; return 1; }; i=$((i + 1))
   while [ "$i" -lt "$n" ] && ! [[ ${L[i]} =~ $re_stat ]]; do dirs="$dirs${L[i]}"$'\n'; i=$((i + 1)); done
-  [ "$(printf '%s' "$dirs" | LC_ALL=C sort | tr '\n' ' ')" = "cells runner " ] || return 1
-  [ "${L[i]:-}" = "tbound-pi:tbound-pi 755" ] || return 1; i=$((i + 1))
-  [ "${L[i]:-}" = domain ] || return 1; i=$((i + 1))
-  [ "${L[i]:-}" = "cpu memory pids" ] || return 1; i=$((i + 1))
-  [ "${L[i]:-}" = "-- runner procs" ] || return 1; i=$((i + 1))   # cells/cgroup.procs printed nothing: no process in cells
-  [[ ${L[i]:-} =~ ^[0-9]+$ ]] || return 1; i=$((i + 1))   # exactly one runner pid: the service main process
-  [[ ${L[i]:-} =~ $re_digest ]] || return 1; L2_ROOT_DIGEST=${BASH_REMATCH[1]}; i=$((i + 1))
-  [ "${L[i]:-}" = "$L2_ROOT_DIGEST" ] || return 1; i=$((i + 1))
-  [ "${L[i]:-}" = "== mounts" ] || return 1; i=$((i + 1))
+  [ "$(printf '%s' "$dirs" | LC_ALL=C sort | tr '\n' ' ')" = "cells runner " ] || { l2_fail; return 1; }
+  [ "${L[i]:-}" = "tbound-pi:tbound-pi 755" ] || { l2_fail; return 1; }; i=$((i + 1))
+  [ "${L[i]:-}" = domain ] || { l2_fail; return 1; }; i=$((i + 1))
+  [ "${L[i]:-}" = "cpu memory pids" ] || { l2_fail; return 1; }; i=$((i + 1))
+  [ "${L[i]:-}" = "-- runner procs" ] || { l2_fail; return 1; }; i=$((i + 1))   # cells/cgroup.procs printed nothing: no process in cells
+  [[ ${L[i]:-} =~ ^[0-9]+$ ]] || { l2_fail; return 1; }; i=$((i + 1))   # exactly one runner pid: the service main process
+  [[ ${L[i]:-} =~ $re_digest ]] || { l2_fail; return 1; }; L2_ROOT_DIGEST=${BASH_REMATCH[1]}; i=$((i + 1))
+  [ "${L[i]:-}" = "$L2_ROOT_DIGEST" ] || { l2_fail; return 1; }; i=$((i + 1))
+  [ "${L[i]:-}" = "== mounts" ] || { l2_fail; return 1; }; i=$((i + 1))
   for t in /usr/local/bin/tbound /usr/local/bin/node /usr/bin/podman /usr/bin/crun /opt/tbound/cell /var/lib/tbound/runtime; do
-    line=${L[i]:-}; [ "${line%% *}" = "$t" ] || return 1
+    line=${L[i]:-}; [ "${line%% *}" = "$t" ] || { l2_fail; return 1; }
     opts=",${line#* },"
-    [[ $opts == *,ro,* && $opts == *,nosuid,* && $opts == *,nodev,* ]] || return 1
+    [[ $opts == *,ro,* && $opts == *,nosuid,* && $opts == *,nodev,* ]] || { l2_fail; return 1; }
     i=$((i + 1))
   done
-  [ "${L[i]:-}" = "== maintenance lock" ] || return 1; i=$((i + 1))
-  [ "${L[i]:-}" = lock-free ] || return 1; i=$((i + 1))
-  [ "$i" -eq "$n" ]
+  [ "${L[i]:-}" = "== maintenance lock" ] || { l2_fail; return 1; }; i=$((i + 1))
+  [ "${L[i]:-}" = lock-free ] || { l2_fail; return 1; }; i=$((i + 1))
+  [ "$i" -eq "$n" ] || { l2_fail; return 1; }
 }
 
 # ---- 5 netsink (Spike B step 1, then the netsink producer) ---------------------------------------------------------------------------------------
@@ -339,9 +380,7 @@ phase_netsink() {
   fi
   [ -f "$TBOUND_TRIAL_KEY" ] || die "TBOUND_TRIAL_KEY=$TBOUND_TRIAL_KEY is not a file"
   [[ $(rg_status) == *"service=active socket=active"* ]] || die "the pilot service is not running: the reset needs the cells cgroup (run phase 4 first)"
-  case_id=$(WX python3 -I -c 'import json,sys
-print(next(c["case_id"] for c in json.load(open(sys.argv[1],encoding="utf-8"))["cases"] if c["kind"]=="compliant"))' "$HG/manifest.json" | tr -d '\r\n')
-  [[ $case_id =~ ^[A-Za-z0-9._-]{1,128}$ ]] || die "not a usable case id: '$case_id'"
+  case_id=$(first_compliant_case "$HG/manifest.json")
   # The net-sink table and attestation do not prove a finished reset (the confinement is set before wipe, populate and the digest check), so only the
   # success marker decides. An attempt marker without a success marker means an interrupted or failed reset: the owner recovers, nothing is retried.
   if hf_has pilot/TRIAL_RESET_OK; then
@@ -367,9 +406,11 @@ sys.exit(0 if d.get("schema")=="tbound-trial-reset/v1" and d.get("case_id")==sys
 }
 
 phase_abandon;   phase_end abandon
+phase_keys;      phase_end keys
 phase_manifest;  phase_end manifest
 phase_artifacts; phase_end artifacts
 phase_cycle;     phase_end cycle
 phase_netsink
 note "the pilot service is left running. Close-out: sudo -n true must still fail. Next (owner): rerun tbound-run evq with the new netsink.json (report 01 step 12b)."
+note "NOT PROVEN: a pilot request admission (corpus mode with a real request, the Go admission path). M3 should start with ONE run with --max-steps 1 before the full pilot."
 done_step
