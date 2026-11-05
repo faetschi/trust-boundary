@@ -5,6 +5,7 @@ set -euo pipefail
 . "$(dirname -- "${BASH_SOURCE[0]}")/../freeze-guard.sh"
 SRC=$TBOUND_WORK_VIEW/receipts/$FREEZE
 [ -d "$SRC" ] || { echo "FATAL: no $SRC" >&2; exit 2; }
+case $(uname -s) in MINGW* | MSYS*) ;; *) linux_safe "$EVIDENCE" && not_mnt "$EVIDENCE" || { echo "FATAL: EVIDENCE=$EVIDENCE is not a plain Linux path outside /mnt" >&2; exit 2; } ;; esac
 DEST=$EVIDENCE/$FREEZE
 [ ! -e "$DEST" ] || { echo "FATAL: $DEST exists: evidence is never overwritten" >&2; exit 2; }
 STAGE=$DEST.partial

@@ -58,6 +58,7 @@ A missing 27 completion record is reported as pending in dry-run mode and blocks
 - [ ] `GUEST_IP` verified with `Get-NetNeighbor -LinkLayerAddress 00-15-5D-0C-40-02`; `DR_ADMISSION_ID` is new.
 - [ ] Owner-side order with `KIT_FREEZE=<FREEZE>`: `10-freeze.sh <commit>`, `20-p1.sh`, `25-p2-rebuild.sh`,
       `30-p3.sh`, `session-env.sh`, `35-evq-capture.sh`, `40-sign.sh`.
+- [ ] No `/mnt`: run the owner-side order natively in WSL from a Linux checkout at the freeze commit (`tools/freeze.sh` and `tools/all.sh` refuse Git Bash). Run the guest order from Git Bash with `TBOUND_WGA` set to `infra/freeze/guest` of a second Linux checkout at the kit commit; `guest/glib.sh` refuses a missing, relative or `/mnt` value and any helper, lib or values-file difference from the kit.
 - [ ] Guest order: `27-archive-state.sh archive` (archives the previous freeze), `00-session-sudo.sh open`,
       `05-runtime-swap.sh`, `10-upgrade.sh`, `20-r1.sh`, `50-i1-i2.sh` (`RECLAIM_PODMAN_PAUSE=1`), `00-session-sudo.sh close`,
       `29-g1-recover.sh status`, `30-reg-g1.sh`, `40-guest-evidence.sh capability procoracle landlock-connect

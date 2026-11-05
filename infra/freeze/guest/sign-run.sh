@@ -14,8 +14,8 @@ set -euo pipefail
 umask 077
 case "$-" in *x*) echo "FATAL: refusing to run under xtrace" >&2; exit 1;; esac
 . "$(dirname -- "${BASH_SOURCE[0]}")/../lib.sh"      # guard: dies while FREEZE_COMMIT is the placeholder
-. "$TBOUND_WORK/env.sh"
-. "$W/session-env.sh"
+. "$TBOUND_WORK/env.sh"; env_paths_ok
+. "$W/session-env.sh"; env_paths_ok
 [ "$F" = "$FREEZE_COMMIT" ] || { echo "env.sh F ($F) != FREEZE_COMMIT in $V" >&2; exit 2; }
 [ "$HF" = "$H/$FREEZE_LC" ] || { echo "HF ($HF) is not \$H/$FREEZE_LC: refusing (never sign into an earlier freeze directory)" >&2; exit 2; }
 NAME=${1:-}

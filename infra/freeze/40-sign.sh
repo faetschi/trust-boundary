@@ -14,7 +14,7 @@ unset BASH_XTRACEFD || true
 . "$(dirname -- "${BASH_SOURCE[0]}")/lib.sh"
 load_env
 [ -f "$W/session-env.sh" ] || die "run session-env.sh first"
-. "$W/session-env.sh"
+. "$W/session-env.sh"; env_paths_ok
 logto 40-sign
 
 step() { printf '\n== %s\n' "$*"; }
