@@ -29,7 +29,10 @@ type interruptedProductRunner struct {
 	lease        string
 }
 
-func (r interruptedProductRunner) Run(_ context.Context, view *sessionrepo.CommandView, _ sessionrepo.CommandSpec) (sessionrepo.CommandResult, sessionrepo.CommandSettlement, error) {
+func (r interruptedProductRunner) Run(ctx context.Context, view *sessionrepo.CommandView, spec sessionrepo.CommandSpec) (sessionrepo.CommandResult, sessionrepo.CommandSettlement, error) {
+	if os.Getenv("TB_PRODUCT_INTERRUPT_MODE") == "mixed" && len(spec.Args) == 2 && spec.Args[1] == "true" {
+		return r.productTurnCommandRunner.Run(ctx, view, spec)
+	}
 	j, err := audit.Open(filepath.Join(r.c.TurnDir, productCommandOwnerJournal))
 	if err != nil {
 		r.t.Fatal(err)
@@ -43,7 +46,11 @@ func (r interruptedProductRunner) Run(_ context.Context, view *sessionrepo.Comma
 	command := piruntime.D09ProductCommandOwnership{ContainerName: "tbound-pi-cell-cmd-killed", LeaseID: r.c.RunID, ViewID: view.ID(), ViewInode: 1}
 	// The registered lease is the request's lease, not the run identity.
 	trace, err := r.c.Journal.Trace()
-	if err != nil || len(trace.Records) != 0 {
+	wantSettled := 0
+	if os.Getenv("TB_PRODUCT_INTERRUPT_MODE") == "mixed" {
+		wantSettled = 1
+	}
+	if err != nil || len(trace.Records) != wantSettled {
 		r.t.Fatal("unexpected settlement", err)
 	}
 	command.LeaseID = r.lease
@@ -77,7 +84,11 @@ func TestProductInterruptedBashCrashChild(t *testing.T) {
 		r, err := factory(c)
 		return &interruptedLeaseRunner{interruptedProductRunner: interruptedProductRunner{productTurnCommandRunner: r, t: t, c: c, registration: f.env.Registration.Digest}}, err
 	}
-	_, _, err := f.run(t, f.submit(t, "turn-1", scopeDriverPrompt), &productDriverScript{turns: []providerbridge.ScriptTurn{bashCall("slow", "sleep 150")}})
+	turns := []providerbridge.ScriptTurn{bashCall("slow", "sleep 150")}
+	if os.Getenv("TB_PRODUCT_INTERRUPT_MODE") == "mixed" {
+		turns = append([]providerbridge.ScriptTurn{bashCall("settled", "true")}, turns...)
+	}
+	_, _, err := f.run(t, f.submit(t, "turn-1", scopeDriverPrompt), &productDriverScript{turns: turns})
 	t.Fatalf("did not crash: %v", err)
 }
 
@@ -89,7 +100,8 @@ func (r *interruptedLeaseRunner) RegisterLease(view, lease string) error {
 }
 
 func TestProductInterruptedBashRestartAndOperatorResolution(t *testing.T) {
-	for _, mode := range []string{"drained", "no-intent", "undrained", "missing-command-journal", "missing-owner-journal", "history-error", "policy-mismatch", "failed-effect"} {
+	for _, mode := range []string{"drained", "no-intent", "mixed", "undrained", "missing-command-journal", "missing-owner-journal", "history-error", "policy-mismatch", "failed-effect",
+		"foreign-workflow", "foreign-run", "stale-registration", "non-bash", "foreign-view", "authorization-schema", "authorization-id", "decision-outcome"} {
 		t.Run(mode, func(t *testing.T) {
 			created := newBashProductDriverFixture(t, productsession.PublicationAuto, productScopeNotes(), false, []string{}, seedBashProject(t))
 			_ = created.env.Catalog.Close()
@@ -103,6 +115,9 @@ func TestProductInterruptedBashRestartAndOperatorResolution(t *testing.T) {
 			f := openBashProductDriverFixture(t, created.root, productScopeNotes(), []string{})
 			f.session = created.session
 			f.env.OpenCommandHistory = openProductD09CommandHistory
+			if mode == "mixed" {
+				f.env.OpenCommandHistory = openProductDevCommandHistory
+			}
 			if mode == "history-error" {
 				f.env.OpenCommandHistory = func(*audit.Journal, productsession.TurnLink) (governedRecoveryCommandVerifier, error) {
 					return nil, errors.New("unrelated history failure")
@@ -113,6 +128,60 @@ func TestProductInterruptedBashRestartAndOperatorResolution(t *testing.T) {
 			}
 			turn := f.turn(t, f.session.ID+"/turn-1")
 			ownerPath := filepath.Join(filepath.Dir(turn.Link.StoreJournalPath), productCommandOwnerJournal)
+			if strings.HasPrefix(mode, "foreign-") || mode == "stale-registration" {
+				rewriteInterruptedProductJournal(t, ownerPath, func(event *audit.Event) {
+					if event.Kind == "product_command_scope_opened" {
+						var owner productD09ScopeOwner
+						if err := json.Unmarshal(event.Data, &owner); err != nil {
+							t.Fatal(err)
+						}
+						switch mode {
+						case "foreign-workflow":
+							owner.WorkflowID = "foreign-workflow"
+						case "foreign-run":
+							owner.RunID = "foreign-run"
+						case "stale-registration":
+							owner.RegistrationDigest = digestBytes([]byte("stale"))
+						}
+						event.Data, _ = json.Marshal(owner)
+					}
+					if mode == "foreign-view" && strings.HasPrefix(event.Kind, "product_command_") && !strings.HasPrefix(event.Kind, "product_command_scope_") {
+						var command piruntime.D09ProductCommandOwnership
+						if err := json.Unmarshal(event.Data, &command); err != nil {
+							t.Fatal(err)
+						}
+						command.ViewID = "foreign-view"
+						event.Data, _ = json.Marshal(command)
+					}
+				})
+			}
+			if mode == "non-bash" || mode == "decision-outcome" || strings.HasPrefix(mode, "authorization-") {
+				rewriteInterruptedProductJournal(t, turn.Link.StoreJournalPath, func(event *audit.Event) {
+					if mode == "authorization-id" && event.Kind == governedOperationAuthorizationKind {
+						event.ID = "foreign-authorization"
+					}
+					if mode == "authorization-schema" && event.Kind == governedOperationAuthorizationKind {
+						var auth governedOperationAdmissionRecord
+						if err := json.Unmarshal(event.Data, &auth); err != nil {
+							t.Fatal(err)
+						}
+						auth.SchemaVersion = "foreign-schema"
+						event.Data, _ = json.Marshal(auth)
+					}
+					if event.Kind == "effect_intent" {
+						var intent governedReplayOperationIntent
+						if json.Unmarshal(event.Data, &intent) == nil && intent.Request.Tool == "bash" {
+							if mode == "non-bash" {
+								intent.Request.Tool = "write"
+							}
+							if mode == "decision-outcome" {
+								intent.Request.Decision.Outcome = "deny"
+							}
+							event.Data, _ = json.Marshal(intent)
+						}
+					}
+				})
+			}
 			if mode == "failed-effect" {
 				rewriteInterruptedProductJournal(t, turn.Link.StoreJournalPath, func(event *audit.Event) {
 					if event.Kind == "effect_outcome" {
@@ -128,8 +197,20 @@ func TestProductInterruptedBashRestartAndOperatorResolution(t *testing.T) {
 				trace, _ := j.Trace()
 				var owner productD09ScopeOwner
 				_ = json.Unmarshal(trace.Records[0].Event.Data, &owner)
-				owner.State = "drained"
-				if err := persistProductCommandScopeOwner(j, owner); err != nil {
+				original := openProductScopeForDrain
+				openProductScopeForDrain = func(_ *os.File, name, identity string) (productDrainableScope, error) {
+					if name != filepath.Base(owner.ScopePath) || identity != owner.ScopeIdentity {
+						t.Fatal("draining a different owner")
+					}
+					return nil, os.ErrNotExist
+				}
+				t.Cleanup(func() { openProductScopeForDrain = original })
+				if err := reconcileProductCommandScope(context.Background(), nil, j, map[string]struct{}{}, func(_ context.Context, command piruntime.D09ProductCommandOwnership) error {
+					if command.ContainerName != "tbound-pi-cell-cmd-killed" || command.LeaseID == "" || command.ViewID == "" {
+						t.Fatal("lost command ownership")
+					}
+					return nil
+				}); err != nil {
 					t.Fatal(err)
 				}
 				_ = j.Close()
@@ -155,7 +236,7 @@ func TestProductInterruptedBashRestartAndOperatorResolution(t *testing.T) {
 				got, err := productsession.OperatorResolve(filepath.Join(f.env.StateRoot, "catalog.jsonl"), f.env.Registration, turn.ID, "discard killed Bash", dry, func(turn productsession.Turn) (productsession.OperatorEvidence, error) {
 					return f.env.operatorEvidence(context.Background(), turn)
 				})
-				if mode != "drained" && mode != "no-intent" {
+				if mode != "drained" && mode != "no-intent" && mode != "mixed" {
 					if err == nil {
 						t.Fatal("missing cleanup evidence accepted")
 					}
@@ -165,7 +246,7 @@ func TestProductInterruptedBashRestartAndOperatorResolution(t *testing.T) {
 					if mode == "undrained" && !strings.Contains(err.Error(), "old command-settlement context") {
 						t.Fatalf("original history-context failure lost: %v", err)
 					}
-					break
+					continue
 				}
 				if err != nil {
 					t.Fatal(err)
@@ -177,6 +258,26 @@ func TestProductInterruptedBashRestartAndOperatorResolution(t *testing.T) {
 			if f.measure(t) != turn.BaselineDigest {
 				t.Fatal("live effect")
 			}
+			reopened := openBashProductDriverFixture(t, created.root, productScopeNotes(), []string{})
+			reopened.session = created.session
+			resolved := mode == "drained" || mode == "no-intent" || mode == "mixed"
+			if reopened.currentSession(t).Blocked == resolved {
+				t.Fatal("session block did not replay")
+			}
+			if !resolved {
+				if got := reopened.turn(t, turn.ID); got.State != productsession.StateUnknown {
+					t.Fatalf("refused turn changed: %+v", got)
+				}
+				return
+			}
+			if got := reopened.turn(t, turn.ID); got.State != productsession.StateTerminal || got.Outcome != productsession.OutcomeAbandoned || got.ContextEligible {
+				t.Fatalf("abandonment did not replay: %+v", got)
+			}
+			if _, _, err := reopened.env.Catalog.CreateSession(reopened.principal, productsession.CreateSessionRequest{ProjectID: productDriverProject,
+				ProviderProfile: productDriverProfile, PublicationMode: productsession.PublicationAuto, Budget: reopened.env.Registration.Limits.Session, RequestKey: "unblocked-project"}, reopened.measure(t)); err != nil {
+				t.Fatalf("project remains blocked: %v", err)
+			}
+			reopened.followUp(t, "turn-2", "")
 		})
 	}
 }
