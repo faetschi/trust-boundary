@@ -58,19 +58,21 @@ loudly by any validator that does not know it, and every view must choose to sho
 | `text` | model-reported reasoning, bounded to `MaxTextBytes` (4096) after `cleanText` (valid UTF-8, control characters replaced, CR dropped) |
 | `text_truncated` | true when cut. Text may be empty only when truncated (same rule as `message`) |
 | other fields | forbidden: `role`, `tool`, `tool_call_id`, `verdict`, `reason_code`, `state`, `summary`, `detail`, `digest`, `lossy`, `policy_digest`, `kind` |
-| `authority` | **`diagnostic` only.** The validator refuses `observed` and `authoritative` for this type |
+| `authority` | **`diagnostic` only**, in both validators with the same rule. Go and TypeScript refuse `observed`, `authoritative` and `unknown` for this type (`validate.go:38-40` lists all four values today) |
 | `verification_scope` | must equal the snapshot's scope. The existing gate (`verification.ts` `scopeFault`) refuses any other value, so a live snapshot's reasoning item carries `structural-audit-only`. That label describes the snapshot, not the item: see 3.2 |
 
 Order and grouping: one `reasoning` item per model call (per `provider_exchange`), placed
 **before** that call's assistant message and tool calls, with the same short `turn_id`.
-The projection stays one event to one item, so `sequence = seq + 1` is unchanged.
+Inside one projection (section 2.3) the mapping stays one event to one item, so
+`sequence = seq + 1`. Sequence numbers are only comparable inside one projection.
 
 ### 2.2 Where it is produced
 
 ```
 provider journal (provider_exchange, raw SSE)           [unchanged, already durable]
   -> projectProviderEvents (cmd/tbound)                  NEW: second scan -> assistant_reasoning event
-  -> product protocol observe response                   NEW event kind, protocol version stays v1
+  -> productEventProjector.session                       NEW: filter by requested projection, THEN number
+  -> product protocol observe response                   NEW event kind and request field, version stays v1
   -> gateway live_render.go eventItem                    NEW: assistant_reasoning -> reasoning item
   -> snapshot / events JSON                              validated by ValidateSnapshot
   -> frontend validate.ts -> store -> chat view          NEW type, collapsed row
@@ -81,30 +83,109 @@ provider journal (provider_exchange, raw SSE)           [unchanged, already dura
   trusts. One source also works unchanged when a real Pi worker replaces the supervisor loop.
 - **Extraction without touching the parser.** `CaptureSSE` stays byte-for-byte as is. In
   `projectProviderEvents`, after `CaptureSSE` has accepted the response, a small second pass
-  over the same bytes concatenates `choices[0].delta.reasoning_content` (else `reasoning`)
-  across the SSE data lines, capped at 16 KiB (`productEventMaxTextBytes`), and ignores
-  `reasoning_details` (structured, may be opaque or encrypted). An empty result emits no
-  event. The alternative, a new accessor on `CapturedResponse`, edits `openrouter.go`, which
-  is shared with the research route and the frozen thesis build, so it is not preferred.
+  reads the same bytes. It must follow the same event rules as the accepted parser:
+  - **Assemble SSE events, not lines.** An event is the `data:` lines up to the blank line,
+    joined with `\n` into one JSON value (`openrouter.go:521-563`). A JSON chunk may span
+    several `data:` lines, so scanning line by line would miss or split it.
+  - **Strings only.** The accepted parser checks the names of delta fields, not their value
+    types (`openrouter.go:726,756`). Take `choices[0].delta.reasoning_content` (else
+    `reasoning`) only when the value is a JSON string. Numbers, objects, arrays and `null` add
+    nothing. `reasoning_details` is ignored (structured, may be opaque or encrypted).
+  - Concatenate in stream order, cap at 16 KiB (`productEventMaxTextBytes`), cut on a rune
+    boundary. An empty result emits no event.
+  - **Failure is diagnostic only.** If the second pass cannot read a chunk, it emits no
+    reasoning event for that call and records a service-side diagnostic. It never returns an
+    error from `projectProviderEvents` and never changes, drops or reorders the
+    `assistant_message`, `tool_call` or `tool_result` events that the existing path produces.
+
+  The alternative, a new accessor on `CapturedResponse`, edits `openrouter.go`, which is
+  shared with the research route and the frozen thesis build, so it is not preferred.
 - **Not live typing.** The projection is built from durable records after a call ends
   ("durable before published", contract section 3.1). Reasoning therefore appears when the
   model call completes, not token by token.
 - **Event.** New kind `assistant_reasoning` using the existing `Event.Text` field. No new
   struct field, so the strict wire decoders need no change beyond the kind constant.
 
-### 2.3 Compatibility
+### 2.3 Projection: filter before numbering
+
+The first draft said default-off would drop reasoning events and leave numbering unchanged.
+That cannot work, for four reasons found in review:
+
+1. Event positions are the numbering. With events `[message, reasoning, message]` a filter
+   after numbering leaves item sequences `[1,3]`, and `ValidateSnapshot` refuses a provided
+   sequence that is not contiguous from 1 (`validate.go:551-558`).
+2. The poll answer must pair `events[i]` with `items[i]`, have equal lengths, and have
+   contiguous `seq` from the cursor (`frontend/src/live/wire.ts:169-176`; `checkEvents`,
+   `live.go:594-604`).
+3. The observe handler returns the raw `events` array next to the items (`live.go:562`), so
+   hiding only the item would still send the reasoning text to the browser.
+4. The snapshot cursor is `epoch:<item count>` (`live_render.go:260`), and the poller reads
+   only the count (`poller.ts:32`).
+
+So the filter runs **before** numbering, in the service, and the projection is negotiated:
+
+- **Request.** `Observe` (and any other request whose answer depends on event positions) gains
+  an optional `projection` string. Absent means `base`, which is today's list exactly: no
+  reasoning event, positions assigned over that list. `reasoning-1` adds `assistant_reasoning`
+  events, with positions assigned over the larger list. The service strict decoder refuses
+  unknown fields (`productprotocol/protocol.go:282`), so a service that does not know the field
+  fails loudly instead of ignoring it.
+- **Where the filter sits.** `productEventProjector.session` builds the full list, drops events
+  the requested projection excludes, and only then sets `Seq` (today `product_service_events_linux.go:59,73`).
+  The per-turn cache of settled events (`settled`) must hold either the unfiltered events or be
+  keyed by projection, so one projection cannot leak into the other.
+- **Gateway.** The process picks one projection: `--show-reasoning` asks for `reasoning-1`,
+  default asks for none (`base`). The snapshot and every poll of that process use the same
+  one, so their cursors count the same list. Under `base`, a reasoning event from the service
+  is a service fault (`BAD_SERVICE_RESPONSE`), not something to drop, because dropping at the
+  gateway would break contiguity.
+- **Off means absent.** Under `base` there is no reasoning payload in `events[]`, in `items[]`,
+  or in any other field. This is tested on the raw response body, not only on item types.
+- **Cursor scope.** Under `reasoning-1` the snapshot `epoch` and cursor prefix carry the
+  projection id (for example `<session-id>.reasoning-1`); under `base` they stay as today. The
+  browser keys its stored cursor by that epoch instead of the bare session id
+  (`controller.ts:30,258-280`), and the poll names its projection; the gateway answers a poll
+  whose projection is not the process's with a refusal that makes the page reload the
+  snapshot. Whether the cursor `epoch` character set allows the dot is **not verified**: pick
+  the separator in Unit 2.
+
+### 2.4 Compatibility and deployment
 
 | Surface | Change | Compatibility |
 |---|---|---|
-| Product protocol (`tbound-product-protocol/v1`) | one new `Kind` string | Additive. Neither side validates kinds. An old gateway shows `Unmapped event "assistant_reasoning"` as a system message: noisy, safe. Ship the gateway first, then the service |
-| Wire copy in the gateway (`wire.go`) | add the constant | Parity test `TestProtocolFixturesRoundTripThroughTheWireCopy` needs a new observe fixture with a reasoning event, generated by `supervisor/internal/productprotocol/fixtures_test.go -update` |
-| Observation contract (`tbound-webchat-observation/v1`) | one new item type | Breaking for a client that does not know it (whole snapshot refused, section 1). The Go gateway embeds its own frontend build, so the pair ships as one binary. Keep the version string, and keep **default output unchanged**: the gateway emits `reasoning` items only with `--show-reasoning` (default off). A bump to `v2` is the stricter alternative: open question 3 |
-| Go validator (`validate.go`) | `ItemReasoning` const, `validateItemType`, a `validateItem` case, a rule refusing `observed`/`authoritative` for it | Fixture and replay documents stay valid (no such items) |
-| Frontend (`core/contract.ts`, `core/validate.ts`) | `ITEM_TYPES`, `ReasoningItem`, `ITEM_KEYS.reasoning`, an `assertItem` case mirroring Go | The Go/TS differential suites (`core/differential.test.ts`, `validate.live.test.ts`) must cover the new type |
+| Product protocol (`tbound-product-protocol/v1`) | one new `Kind` string, one optional `projection` request field | Additive for a caller that omits the field (it gets `base`). A caller that sends it to a service that lacks it is refused by the strict decoder. Neither side validates kinds, so the kind alone is never the guard: the request field is |
+| Wire copy in the gateway (`wire.go`) | add the constant and the field | Parity test `TestProtocolFixturesRoundTripThroughTheWireCopy` needs observe fixtures for both projections, generated by `supervisor/internal/productprotocol/fixtures_test.go -update` |
+| Observation contract (`tbound-webchat-observation/v1`) | one new item type, projection-scoped epoch | Breaking for a client that does not know the type (whole snapshot refused, section 1). The Go gateway embeds its own frontend build, so the pair ships as one binary. Under `base` the output is unchanged. A bump to `v2` is the stricter alternative: open question 3 |
+| Go validator (`validate.go`) | `ItemReasoning` const, `validateItemType`, a `validateItem` case, a rule that allows only `diagnostic` | Fixture and replay documents stay valid (no such items) |
+| Frontend (`core/contract.ts`, `core/validate.ts`) | `ITEM_TYPES`, `ReasoningItem`, `ITEM_KEYS.reasoning`, an `assertItem` case with the same authority rule as Go | Go and TypeScript must agree on a shared corpus (Unit 4). `core/differential.test.ts` compares the legacy JS modules with the TS ports, and `validate.live.test.ts` is TS only, so neither is evidence of Go agreement |
 | Consumers of `Item` | `core/store.ts:345` (blocks), `core/trajectory.ts`, `core/filters.ts`, `app/views/trajectory/rail.ts`, `app/views/chat/Transcript.tsx` | Exhaustive switches fail to compile when the type is added. Each gets an explicit "reasoning is not a tool, not a decision, not a result" branch |
-| Verification gate (`verification.ts`) | none | `isItemEvidenceOnly` needs `authority === "observed"`, so a `diagnostic` item is never verified. A test pins this |
+| Verification gate (`verification.ts`) | none | The item-only predicate `isItemEvidenceOnly` needs `authority === "observed"` (`verification.ts:66-68`), so a `diagnostic` item never passes. Views reach the gate only through `isVerifiedIn` (`:74`), and `app/verification.gate.test.ts` forbids `isItemEvidenceOnly`, `isVerified` and `judgedItem` under `src/app` while allowing `isVerifiedIn` |
 
-### 2.4 Bounds
+**Existing sessions.** The service rebuilds a session's events from its retained journals on
+every call and sets `Seq` to the index (`product_service_events_linux.go:59,73`). Gateway item
+ids are `ev-<seq>` (`live_render.go:116`) and browsers persist a cursor count per session
+(`controller.ts:258-280`). The extractor reads old journals too, so under `reasoning-1` it
+would insert events before the historical assistant messages of sessions that already exist.
+Every later id and count in those sessions shifts. Under `base` nothing shifts. The
+projection-scoped epoch and storage key above are the reset mechanism: a browser that moves
+from `base` to `reasoning-1` finds no stored cursor for the new epoch, starts from the
+snapshot, and shows no "events since you left" count for that first load. Whether to accept
+this for old sessions, or to apply reasoning to new sessions only, is owner decision 8.
+
+**Implementation order is not deployment order.** Build in the unit order of section 7. Deploy
+in this order, and do not skip a step:
+
+1. Gateway and frontend with projection support, shipped as one binary, flag off. Behavior is
+   unchanged: it sends no `projection`.
+2. Service that understands `projection`, still serving `base` to every caller that omits it.
+3. Activate by starting the gateway with `--show-reasoning`. The service emits no reasoning
+   event for any request that did not ask for `reasoning-1`, so service emission can never
+   start before a compatible gateway and frontend are in place.
+
+An old gateway against a new service is safe (no field, `base`). A new gateway with the flag
+against an old service fails loudly (step 2 missing).
+
+### 2.5 Bounds
 
 - Per item: 4096 bytes after cleaning, `text_truncated` set on a cut (gateway); 16 KiB at the
   service event (same bound as `assistant_message`). Both bounds already exist and are reused.
@@ -158,7 +239,8 @@ Open question 2 asks whether to relax the gate for a lower claim instead.
   exact-match scrub of that key from reasoning text is cheap; whether an existing helper
   can be reused is **not verified**.
 - The gateway is loopback-only, paired and CSRF-checked (contract 9.2). The flag keeps
-  reasoning off unless the operator asks for it.
+  reasoning off unless the operator asks for it. Off means the service never sends it, so no
+  reasoning text reaches the gateway process or the browser (section 2.3).
 
 ## 4. Why this does not touch the thesis
 
@@ -166,7 +248,8 @@ Open question 2 asks whether to relax the gate for a lower claim instead.
   records, digests, receipts, or any thesis harness. Reasoning is read from bytes already
   stored. The thesis freeze (F15 = `main` at `2a6492dd`) has the thesis sources unchanged;
   this work lands on the dev branch and reaches `main` only through the Resume thread's
-  merge, like other product work.
+  merge, like other product work. A supervisor rebuilt later with this change must not reuse
+  the F15 binary pins: it is a different binary and needs its own pins.
 - The webchat extension is already marked frozen for the thesis and carries no thesis claim
   (`extensions/webchat/README.md`).
 - Turning thinking **on** is a different change and is not proposed here: it alters the
@@ -197,7 +280,9 @@ Chat view, per assistant turn, newest model call last:
   count), not counted in the header, and excluded from the "denied/unknown" filters.
 - A toggle in the UI preferences (`uiPrefs`) hides all Thinking rows. Hidden is the
   default when the gateway flag is off, because no items exist then.
-- Screen readers: the disclosure button's name is "Thinking, reported by the model".
+- Screen readers: the disclosure button's name is "Thinking, reported by the model". Opening
+  a row announces nothing. The shell's single polite live region (`ui/LiveRegion.tsx:21`)
+  stays the only polite announcer; the row adds no `aria-live` element.
 
 ## 6. Options and recommendation
 
@@ -223,17 +308,19 @@ hand-merge).
 | Unit | Change | Tests that must exist | Lane |
 |---|---|---|---|
 | 0 | **Measure.** Read-only script or one-off test that scans stored `provider_exchange` responses (a demo-VM turn, `.local/product-demo` captures) for non-empty `reasoning_content`/`reasoning`. Report counts and sizes. No product code | A written result in the PR: how many exchanges, how many with reasoning, median size | product |
-| 1 | `assistant_reasoning` kind and the second-pass extractor in `projectProviderEvents`, cap 16 KiB, UTF-8-safe cut, empty means no event | Table test on recorded SSE: reasoning_content only, reasoning only, both, none, split across chunks, oversize, invalid UTF-8, `reasoning_details` ignored; assert `CaptureSSE` output is byte-identical with and without reasoning (no parser change); assert it never appears in model history | product |
-| 2 | Wire copy constant and a generated observe fixture with a reasoning event | `TestProtocolFixturesRoundTripThroughTheWireCopy` extended; supervisor `fixtures_test.go -update` regenerates | product |
-| 3 | Go contract: `ItemReasoning`, validator rules (only `diagnostic`/`unknown` authority, forbidden fields, text rules), `live_render.go` mapping, `--show-reasoning` flag (default off drops the event without a placeholder) | Go tests: valid item passes; `observed` and `authoritative` refused; each forbidden field refused; control characters cleaned; truncation flag; flag off yields byte-identical snapshots to today on the existing live fixtures | product |
-| 4 | Frontend contract: `ITEM_TYPES`, `ReasoningItem`, `ITEM_KEYS`, `assertItem` case mirroring Go; every exhaustive `Item` switch gets an explicit branch | Differential test against the Go validator (same corpus incl. the new type); `verification.test.ts` and `verification.property.test.ts` gain "a reasoning item is never verified in any projection"; gate test that `src/app` still does not name `isVerifiedIn` | webchat |
-| 5 | Chat view: collapsed "Thinking" row, literal rendering, caption, truncation note, no durations, prefs toggle | Component tests: closed by default; opened text is literal (`<script>`, markdown, `javascript:` links stay text, no `dangerouslySetInnerHTML`); no preview when closed; not counted in headline, rail, filters, status; a11y name; CSP smoke unchanged | webchat |
-| 6 | Docs: contract section 2.2 and 9.6 get the new type and event, `product-contracts.md` Milestone 6 lists the kind, README flag | Doc-only | product |
+| 1 | `assistant_reasoning` kind and the second-pass extractor in `projectProviderEvents` (rules in 2.2) | Table test on recorded SSE: `reasoning_content` only, `reasoning` only, both, none, split across chunks, oversize, invalid UTF-8, `reasoning_details` ignored. **Event assembly:** one JSON chunk spread over several `data:` lines, comment lines, CRLF line ends, `[DONE]`. **Types:** number, object, array and `null` in `reasoning_content`/`reasoning` add nothing. **Failure:** an unreadable reasoning chunk yields no reasoning event and a diagnostic, and the `assistant_message`, `tool_call` and `tool_result` events equal those of the same turn without the extractor. **Unchanged parser:** compare the trusted parsed fields (`AssistantText`, `ToolCall`, `FinishReason`, `Usage`) of a capture with reasoning and of the same capture with the reasoning deltas removed. Do not compare raw bytes across the two: `RawResponse()` preserves the response bytes (`openrouter.go:442`), so they differ by design. Compare exact bytes before and after projection of the **same** capture (journal record and `RawResponse()` untouched). Reasoning never appears in model history | product |
+| 2 | Protocol and service projection: `projection` request field, wire copy constant and field, filter-before-numbering in `productEventProjector.session`, settled-cache scoping, observe fixtures for both projections | `TestProtocolFixturesRoundTripThroughTheWireCopy` extended; supervisor `fixtures_test.go -update` regenerates. Service tests on **real reasoning-containing exchanges** (journals built from recorded SSE with reasoning deltas, not synthetic events): `[message, reasoning, message]` under `base` yields contiguous `Seq` 0..n with no reasoning event; under `reasoning-1` yields the larger list; the same session read in both projections does not mix through the cache; a request naming an unknown projection is refused | product |
+| 3 | Go contract: `ItemReasoning`, validator rules (authority `diagnostic` only, forbidden fields, text rules), `live_render.go` mapping, `--show-reasoning` flag (default off, requests `base`), projection-scoped epoch and cursor, refusal of a poll for another projection, service fault when `base` returns a reasoning event | Go tests: valid item passes; `observed`, `authoritative` and `unknown` refused; each forbidden field refused; control characters cleaned; truncation flag. **Flag off, real reasoning-containing exchange behind the fake service:** snapshot items have sequence `1..n`, `ValidateSnapshot` passes, `events[]` and `items[]` of a poll have equal length and contiguous `seq`, the snapshot cursor equals the cursor a poll continues from, and the raw response bodies contain none of the reasoning marker text. Flag on: the same checks with reasoning present, and snapshot cursor and poll cursor count the same list. Existing live fixtures render byte-identical to today under `base` | product |
+| 4 | Frontend contract: `ITEM_TYPES`, `ReasoningItem`, `ITEM_KEYS`, `assertItem` case with the Go authority rule (`diagnostic` only); every exhaustive `Item` switch gets an explicit branch; projection-scoped cursor key and reload on refusal | **Shared Go/TS corpus:** valid and invalid reasoning documents (each other authority, each forbidden field, over-long text, wrong scope, gapped sequence) under `internal/webchat/fixtures`, which `fixtures.test.ts` already imports for TS. A Go test runs `ValidateSnapshot` over the same files; both suites must agree on accept or refuse for every file. Plus `verification.test.ts` and `verification.property.test.ts` gain "a reasoning item is never verified through `isVerifiedIn` in any projection"; `verification.gate.test.ts` keeps forbidding `isItemEvidenceOnly`, `isVerified` and `judgedItem` under `src/app` and still allows `isVerifiedIn`; a controller test that a different epoch reads no stored cursor | webchat |
+| 5 | Chat view: collapsed "Thinking" row, literal rendering, caption, truncation note, no durations, prefs toggle | Component tests: closed by default; opened text is literal (`<script>`, markdown, `javascript:` links stay text, no `dangerouslySetInnerHTML`); no preview when closed; not counted in headline, rail, filters, status; a11y name; **exactly one `aria-live="polite"` element in the rendered page with Thinking rows closed and opened** (the shell's `LiveRegion`; the row adds none); CSP smoke unchanged | webchat |
+| 6 | Docs: contract section 2.2 and 9.6 get the new type, event and projection, `product-contracts.md` Milestone 6 lists the kind and the field, README flag | Doc-only | product |
 
-Order: 0, then 1 and 2, then 3, then 4 and 5, then 6. Units 3 and 4 must land in the same
-release because the gateway embeds the frontend. Do not run the full gate for this
-proposal; the units above run the focused Go and Vitest suites, and Linux-only supervisor
-tests wait for the Linux line per `.local/coordination.md`.
+Implementation order: 0, then 1, 2 and 3, then 4 and 5, then 6. Deployment order is different
+and is fixed in section 2.4: gateway and frontend first (flag off), then the service, then
+the flag. Units 3 and 4 must land in the same release because the gateway embeds the
+frontend. Do not run the full gate for this proposal; the units above run the focused Go and
+Vitest suites, and Linux-only supervisor tests wait for the Linux line per
+`.local/coordination.md`.
 
 ## 8. Open questions for the owner
 
@@ -244,8 +331,8 @@ tests wait for the Linux line per `.local/coordination.md`.
 2. **Scope label.** Keep the gate untouched and rely on `diagnostic` authority (proposed),
    or let the gate admit `unverified-input` items inside any projection (lower claim, but
    it changes the one module that decides what the chat claims)?
-3. **Contract version.** Keep `observation/v1` with the flag (proposed), or bump to `v2`
-   when the type appears?
+3. **Contract version.** Keep `observation/v1` with the negotiated projection (proposed),
+   or bump to `v2` when the type appears?
 4. **If Unit 0 finds no reasoning with thinking off:** stop, or open option C (enable
    provider thinking, new route/profile id, cost and digest review)?
 5. **Per-call or per-turn grouping.** One `Thinking` row per model call (proposed, matches
@@ -254,6 +341,12 @@ tests wait for the Linux line per `.local/coordination.md`.
    if a reusable helper exists?
 7. **Hidden vs shown by default** once the gateway flag is on: collapsed (proposed) or
    hidden behind the prefs toggle?
+8. **Existing sessions when the projection changes.** Turning the flag on re-projects every
+   existing session, so its item ids and counts shift and each browser loses its stored
+   "events since you left" cursor once (section 2.4). Accept that, with the projection-scoped
+   epoch as the reset (proposed, no persistent state)? Or apply reasoning only to sessions
+   created after activation, which needs a new per-session field recorded at creation and
+   keeps old sessions on `base` for good?
 
 ## 9. Not verified
 
@@ -264,4 +357,30 @@ tests wait for the Linux line per `.local/coordination.md`.
 - Behavior of the in-progress folded tool-line UI on the open webchat branches
   (`feat/webchat-shadcn-recipes`, PR #43): not read. Section 5 assumes `ui/Disclosure`
   is the shared building block.
+- Whether the cursor `epoch` character set accepts the projection separator (section 2.3).
+- Whether any request besides `Observe` needs the `projection` field (for example a session
+  view that carries event counts). Unit 2 enumerates the requests.
 - No test, build or gate was run. This is a document-only change.
+
+## 10. Review notes
+
+An adversarial review of the first draft raised four findings. Each was checked against the
+code at `a47661ac` before this revision. All four held; none was rejected.
+
+- **Default-off filtering and the cursor contract** (`validate.go:551-558`, `wire.ts:169-176`,
+  `live.go:562`): confirmed. Replaced by the negotiated, filter-before-numbering projection
+  in 2.3, with tests on real reasoning-containing exchanges.
+- **Existing sessions change identity** (`product_service_events_linux.go:59,73`,
+  `live_render.go:116`, `controller.ts:258-280`): confirmed. Added owner decision 8, the
+  projection-scoped epoch and the deployment order in 2.4.
+- **Extractor robustness** (`openrouter.go:521-563,726,756`): confirmed. Rules in 2.2 and the
+  cases in Unit 1.
+- **Validation plan**: confirmed on all five points. `differential.test.ts` compares legacy JS
+  with TS, `validate.live.test.ts` is TS only (Unit 4 now uses a shared corpus); the gate test
+  forbids `isItemEvidenceOnly` and allows `isVerifiedIn`; `RawResponse()` keeps response bytes
+  (Unit 1 compares parsed fields, and bytes only for the same capture); `unknown` authority
+  contradicted "diagnostic only" (removed); the single polite live region is now asserted in
+  Unit 5.
+
+Line numbers in the review were off by one in two places (`session` is at `:59` and the `Seq`
+loop at `:73`, not `:58` and `:72`). The findings are unaffected.
