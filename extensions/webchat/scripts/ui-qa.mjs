@@ -1615,7 +1615,8 @@ async function checkF(ctx) {
     ctx.expect(shapes.deny !== null && shapes.lost !== null && (shapes.deny.radius !== shapes.lost.radius || shapes.deny.clipPath !== shapes.lost.clipPath), 'the LOST dot does not differ from the DENY square');
     const laneTones = await evaluate(`Array.from(document.querySelectorAll('[role="region"][aria-label="Record ledger"] span[data-tone]')).map((s) => s.getAttribute('data-tone'))`);
     ctx.expect(!laneTones.includes('ok'), 'the ledger carries the success tone for an unverified fixture');
-    const rail = await evaluate(`(document.querySelector('nav[aria-label="Sessions and streams"]') || {}).textContent || ''`);
+    // The observation streams are in the details card (hidden until the Details control opens it, but in the page).
+    const rail = await evaluate(`(document.getElementById('helper-bar') || {}).textContent || ''`);
     ctx.expect(/unavailable/.test(rail), 'no "unavailable" reading for the production supervisor projection');
     await clickSelector('#view-tab-chat');
 
@@ -1889,7 +1890,9 @@ const POINT_STATE = `(() => {
   // the header only, so the phone strip was missed (aria-expanded null). Either one, whichever is drawn.
   const railToggle = Array.from(document.querySelectorAll('header[aria-label="Workspace header"] button[aria-controls="rail-body"], nav[aria-label="Sessions and streams"] button[aria-controls="rail-body"]')).find(visible) || null;
   const body = document.getElementById('rail-body');
-  const conv = document.querySelector('[class*="_conversation_"]');
+  // The Pi identity and the status are in the details card (hidden until opened, but in the page); the chat's first row is its toolbar.
+  const conv = document.getElementById('helper-bar');
+  const toolbar = document.querySelector('[class*="_toolbar_"]');
   // The session title is the workspace heading, in the header's title row (Shell.tsx). The chat head is the conversation block.
   const head = document.querySelector('header[aria-label="Workspace header"] h2');
   const header = document.querySelector('header[aria-label="Workspace header"]');
@@ -1907,7 +1910,7 @@ const POINT_STATE = `(() => {
       rows: rows.length,
       current: rows.length === 1 ? rows[0].getAttribute('aria-current') : null,
       interactiveInRow: rows.length === 1 ? rows[0].querySelectorAll('button, a, input, [tabindex]').length : null,
-      note: t(nav ? nav.querySelector('[role="note"]') : null),
+      note: t(conv ? conv.querySelector('[role="note"]') : null),
       toggleName: railToggle ? railToggle.getAttribute('aria-label') || t(railToggle) : null,
       toggleExpanded: railToggle ? railToggle.getAttribute('aria-expanded') : null,
       bodyFound: Boolean(body),
@@ -1918,7 +1921,7 @@ const POINT_STATE = `(() => {
       title: t(head),
       conversation: t(conv),
       // The chat head (the conversation block) starts this far below the header. Its title is in the header, so the block is measured.
-      chatHeadBelowHeader: conv && header ? Math.round(conv.getBoundingClientRect().top - header.getBoundingClientRect().bottom) : null,
+      chatHeadBelowHeader: toolbar && header ? Math.round(toolbar.getBoundingClientRect().top - header.getBoundingClientRect().bottom) : null,
     },
     messages: {
       times: times.length,
@@ -1933,10 +1936,10 @@ const POINT_STATE = `(() => {
       inForm: composer ? composer.closest('form') !== null : null,
       forms: document.querySelectorAll('form').length,
       textarea: ta ? { readOnly: ta.readOnly, ariaDisabled: ta.getAttribute('aria-disabled'), placeholder: ta.getAttribute('placeholder'), value: ta.value } : null,
-      chips: composer ? Array.from(composer.querySelectorAll('span[data-tone]')).map((s) => t(s)) : [],
+      chips: composer ? Array.from(composer.querySelectorAll('[data-fact]')).map((s) => t(s)) : [],
       send: send ? { ariaDisabled: send.getAttribute('aria-disabled'), type: send.getAttribute('type'), label: send.getAttribute('aria-label') } : null,
     },
-    footer: t(document.querySelector('[role="group"][aria-label="Session statistics"]')),
+    footer: Array.from((document.querySelector('[role="group"][aria-label="Session statistics"]') || { children: [] }).children).map((x) => t(x)).filter((x) => !x.startsWith('build ')).join(' · '),
     forbidden: labels.filter((x) => /^\\+ \\||Stop|Cancel|Model|Mode|Permission|New session|Attach/i.test(x)),
     readWriteEditBash: /read, write, edit, bash/.test(document.documentElement.outerHTML),
     newSession: /New session/i.test(document.body.innerText),
@@ -2012,7 +2015,8 @@ async function checkJ(ctx) {
       await viewport(width, height);
       await emulateMedia(theme === 'light' ? LIGHT_OS : DARK_OS);
       await navigate('/app/');
-      await evaluate(`localStorage.setItem(${JSON.stringify(THEME_KEY)}, ${JSON.stringify(theme)})`);
+      // Each pass starts from the defaults: the governance column opened by an earlier pass is a stored choice.
+      await evaluate(`localStorage.removeItem(${JSON.stringify(PREFS_KEY)}); localStorage.setItem(${JSON.stringify(THEME_KEY)}, ${JSON.stringify(theme)})`);
       await navigate('/app/');
       const st = await evaluate(POINT_STATE);
       ctx.note(`state ${key}`, { rail: st.rail, head: st.head, messages: st.messages, composer: st.composer, footer: st.footer });
@@ -2036,8 +2040,8 @@ async function checkJ(ctx) {
       ctx.expect(c.section === COMPOSER_SECTION && c.inForm === false && c.forms === 0, `${p}: composer section "${c.section}", inside a form ${c.inForm}, ${c.forms} form(s) on the page`);
       ctx.expect(c.textarea !== null && c.textarea.readOnly && c.textarea.ariaDisabled === 'true' && c.textarea.placeholder === PLACEHOLDER && c.textarea.value === '', `${p}: the prompt field is not read-only and aria-disabled with the exact placeholder (${JSON.stringify(c.textarea)})`);
       ctx.expect(JSON.stringify(c.chips) === JSON.stringify(expectedChips), `${p}: the chips read ${JSON.stringify(c.chips)}, expected ${JSON.stringify(expectedChips)}`);
-      // Contract change (design pass): the read-only composer is a notice with no button, so there is no send control to find.
-      ctx.expect(c.send === null, `${p}: the read-only composer still has a button (${JSON.stringify(c.send)})`);
+      // Contract change (minimal pass): the composer has one grey, aria-disabled send mark, named for what it is.
+      ctx.expect(c.send !== null && c.send.ariaDisabled === 'true' && c.send.label === 'Send: not available in this build', `${p}: the composer's send mark is not aria-disabled and named (${JSON.stringify(c.send)})`);
       ctx.expect(st.forbidden.length === 0 && !st.readWriteEditBash && !st.newSession, `${p}: forbidden controls ${JSON.stringify(st.forbidden)}, "read, write, edit, bash" present ${st.readWriteEditBash}, "New session" present ${st.newSession}`);
       ctx.expect(st.footer === expectedFooter, `${p}: the footer reads "${st.footer}", expected "${expectedFooter}"`);
       ctx.expect(st.overflow.scrollWidth <= st.overflow.clientWidth, `${p}: horizontal overflow (${JSON.stringify(st.overflow)})`);
@@ -2046,6 +2050,11 @@ async function checkJ(ctx) {
 
       // (b) the governance panel
       if (width > 1180) {
+        // The column starts collapsed (uiPrefs.ts): the header control says so, and one press opens it.
+        const startsClosed = await evaluate(GOV_STATE);
+        ctx.expect(startsClosed.headerToggle?.expanded === 'false', `${p}: the governance column does not start collapsed (aria-expanded ${startsClosed.headerToggle?.expanded})`);
+        await clickSelector(DRAWER_TOGGLE);
+        await sleep(300);
         const gv = await evaluate(GOV_STATE);
         ctx.expect(gv.asideVisible && gv.panels === 1 && tabNames(gv).join('|') === TAB_ORDER.join('|'), `${p}: the governance tabs are ${JSON.stringify(tabNames(gv))} with ${gv.panels} panel(s)`);
         ctx.expect(gv.tabs.find((x) => x.selected === 'true')?.id === 'governance-tab-decisions' && gv.tabs.filter((x) => x.tabindex === '0').length === 1, `${p}: the selected Decisions tab is not the only roving tab stop (${JSON.stringify(gv.tabs.map((x) => [x.selected, x.tabindex]))})`);
@@ -2073,6 +2082,9 @@ async function checkJ(ctx) {
   await navigate('/app/');
   await evaluate('localStorage.clear()');
   await navigate('/app/');
+  // The governance column starts collapsed (uiPrefs.ts): open it, as a reader would, before the tab keys are tried.
+  await clickSelector(DRAWER_TOGGLE);
+  await sleep(300);
   const focusTab = async (id) => {
     await evaluate(`document.getElementById(${JSON.stringify(id)}).focus()`);
     await sleep(100);
@@ -2327,7 +2339,8 @@ const DOCK_END = `(() => {
 const PHONE_DOCK_SHARE = 0.4;
 const COMPOSER_FIT = `(() => {
   const composer = document.querySelector('[data-testid="composer"]');
-  const reason = document.getElementById('composer-reason');
+  // The composer's readable facts (the reason itself is for assistive technology and is in the details card).
+  const reason = composer ? composer.querySelector('[data-fact]') : null;
   const status = document.getElementById('composer-status');
   const ta = composer ? composer.querySelector('textarea') : null;
   const dock = document.querySelector('[class*="_dock_"]');
@@ -2527,7 +2540,7 @@ const ABSENT_VARIANTS = [
       s.session.turn_count = 0;
       return s;
     },
-    expect: (r) => (r.footer.startsWith('0 turns ·') && r.rail.includes('Pi 0.87.1 · 0 turns') ? null : `the footer reads "${r.footer.slice(0, 40)}…" and the rail "${r.rail.match(/Pi [^·]+· [^c]+/)?.[0] ?? ''}", expected "0 turns"`),
+    expect: (r) => (r.footer.startsWith('0 turns') && r.rail.includes('Pi 0.87.1 · 0 turns') ? null : `the footer reads "${r.footer.slice(0, 40)}…" and the rail "${r.rail.match(/Pi [^·]+· [^c]+/)?.[0] ?? ''}", expected "0 turns"`),
   },
   {
     id: 'absent-omitted',
