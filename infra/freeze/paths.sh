@@ -17,14 +17,17 @@ linux_safe() { [[ $1 == /[!/]* && $1 != /mnt && $1 != /mnt/* && $1 != *//* && $1
 not_mnt() { local r; r=$(realpath -m -- "$1") && [[ $r != /mnt && $r != /mnt/* ]]; }
 host_paths_ok() {
   local v vs="TBOUND_WORK OLDH GO PASSPHRASE_FILE" native=1
-  case $(uname -s) in MINGW* | MSYS*) native=0 ;; *) vs="$vs HOME TMPDIR" ;; esac
+  case $(uname -s) in MINGW* | MSYS*) native=0 ;; *) vs="$vs HOME TMPDIR TBOUND_LOCAL"
+    # natively: no temp/config override and no PATH entry may lead to /mnt (WSL appends the Windows PATH by default)
+    export TMPDIR=${TMPDIR:-/tmp}; unset GOTMPDIR XDG_CACHE_HOME XDG_CONFIG_HOME XDG_DATA_HOME
+    PATH=$(printf %s "$PATH" | tr : '\n' | grep -v '^/mnt' | paste -sd: -) ;;
+  esac
   for v in $vs; do
     linux_safe "${!v:-}" && { [ $native = 0 ] || not_mnt "${!v}"; } || { echo "FATAL: $v=${!v:-} must be a plain absolute Linux path outside /mnt" >&2; exit 2; }
   done
   [ $native = 0 ] || not_mnt "$KIT_DIR" || { echo "FATAL: the kit is under /mnt: run it from a Linux checkout" >&2; exit 2; }
   [[ ${PREV_FREEZE:-none} =~ ^(none|F[0-9]+)$ ]] || { echo "FATAL: PREV_FREEZE=$PREV_FREEZE is not none or F<n>" >&2; exit 2; }
 }
-case $(uname -s) in MINGW* | MSYS*) ;; *) export TMPDIR=${TMPDIR:-/tmp}; unset GOTMPDIR XDG_CACHE_HOME XDG_CONFIG_HOME XDG_DATA_HOME ;; esac
 host_paths_ok
 # TBOUND_WORK is on a Linux filesystem: drive mounts are read-only from WSL and lose the modes the tests check.
 # Select by uname, not wsl.exe: WSL with interop has wsl.exe too, and there TBOUND_WORK is already a Linux path.

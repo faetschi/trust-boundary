@@ -11,6 +11,7 @@ not_mnt "$G" || { echo "FATAL: $G resolves into /mnt" >&2; exit 2; }
 rm -rf "${G:?}"; mkdir -p "$G/t"; export TMPDIR=$G/t
 tar -C "$G" -xf "$A"
 cd "$G/supervisor" || exit 2
+unset GOCACHE GOPATH GOMODCACHE GOENV GOROOT   # defaults sit under the validated HOME
 export PATH=$(dirname -- "$GO"):$PATH GOFLAGS=-mod=readonly
 echo "boot $(cat /proc/sys/kernel/random/boot_id) $(date -u +%FT%TZ)"
 go version
