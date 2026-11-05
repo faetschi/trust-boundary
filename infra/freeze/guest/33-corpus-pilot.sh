@@ -94,7 +94,7 @@ abandon_inconclusive() {
 
 phase_abandon() {
   say "1. abandon the unsettled dr request (tbound-op two-step abandon)"
-  local rid facts tok v n cf
+  local rid facts tok v n cf name
   hf_has pilot/DR_SETTLED && { ok "dr request already settled by an earlier run ($(hf_get pilot/DR_SETTLED))"; return 0; }
   hf_has dr/RID || die "no $HF/dr/RID: 32-reg-dr.sh did not record the dr request id"
   rid=$(hf_get dr/RID); [[ $rid =~ ^dr-req-[0-9]{8}T[0-9]{6}Z$ ]] || die "$HF/dr/RID is not a dr request id: '$rid'"
@@ -117,8 +117,14 @@ phase_abandon() {
     [ "$(fact "$facts" "$v")" = 0 ] || abandon_inconclusive "$rid" "$tok" "fact $v is '$(fact "$facts" "$v")', not 0 (unavailable means the probe failed, e.g. the service is stopped)"
   done
   has_fact "$facts" cells_children || abandon_inconclusive "$rid" "$tok" "fact cells_children is missing"
-  v=$(fact "$facts" cells_children); v=${v// /}
-  [ -z "$v" ] || abandon_inconclusive "$rid" "$tok" "cells_children is '$v' (not empty)"
+  # cells_children is `ls -A` of the cells cgroup: it lists the kernel interface files (cgroup.procs, memory.max, ...) as well as child scopes and cannot say
+  # which is a directory. Kernel files are recognised by their controller prefix and ignored; ANY other name (a possible child scope, or `unavailable`) is
+  # inconclusive. A cell scope, if one is left, therefore stops the script; it never passes by accident.
+  v=""
+  for name in $(fact "$facts" cells_children); do
+    [[ $name =~ ^(cgroup|cpu|cpuset|io|irq|memory|pids|hugetlb|misc|rdma)\.[a-z_.]+$ ]] || v="$v $name"
+  done
+  [ -z "$v" ] || abandon_inconclusive "$rid" "$tok" "cells_children lists name(s) that are not kernel cgroup files (possible child scopes, or the probe failed):$v"
   cf=$(catalog_drain_facts "$rid"); printf 'request-specific catalog evidence:\n%s\n' "$cf"
   [ "$(fact "$cf" admissions)" = 1 ] || abandon_inconclusive "$rid" "$tok" "the catalog holds $(fact "$cf" admissions) admission(s) for $rid, expected exactly 1"
   [ "$(fact "$cf" scopes_undrained)" = 0 ] || abandon_inconclusive "$rid" "$tok" "owner scope(s) of this request are bound but not drained"
