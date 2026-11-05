@@ -279,22 +279,45 @@ phase_cycle() {
   fi
   l2=$(op "diag l2" 2>&1 | tr -d '\r') || die "diag l2 failed: $l2"
   printf '%s\n' "$l2" | head -40
-  l2_check "$l2" || die "diag l2 does not show the expected L2 state (see above): service cgroup, cgroup-root digest, mounts, maintenance lock"
+  l2_check "$l2" || die "diag l2 does not show the expected L2 state (see above; PROVISIONING-SIGNING.md L2): cells/runner cgroups, owner tbound-pi:tbound-pi 755, domain, controllers cpu memory pids, empty cells, six ro,nosuid,nodev mounts, lock-free"
+  eq "live cgroup-root digest (diag l2) == recorded CGROUP_ROOT_DIGEST" "$L2_ROOT_DIGEST" "$(hf_get CGROUP_ROOT_DIGEST)"
   l2f="pilot/diag-l2-final-$(date -u +%Y%m%dT%H%M%SZ).txt"
   printf '%s\n' "$l2" | hf_save "$l2f"; hf_commit "$l2f"
   hf_put pilot/CYCLE_OK ok
 }
 
-# l2_check <diag l2 text>: fail closed on the facts the text can show (the verb itself always exits 0): its sections are there, no missing path, permission or
-# mount, the cgroup-root digest the tool prints equals the one in the installed profile, and the maintenance lock is free.
+# l2_check <diag l2 text>: the L2 block of PROVISIONING-SIGNING.md as tbound-op's `diag l2` prints it (the verb itself always exits 0), parsed line by line
+# against the expected values, nothing else allowed: child cgroups exactly {cells, runner}; the cells cgroup owned by tbound-pi:tbound-pi mode 755; type
+# domain; controllers `cpu memory pids`; no process in cells; exactly one runner pid; the cgroup-root digest the tool measures live; the six mounts (tbound,
+# node, podman, crun, cell, runtime) each with the options ro, nosuid, nodev; the maintenance lock free. Sets L2_ROOT_DIGEST for the caller.
+L2_ROOT_DIGEST=""
 l2_check() {
-  local t=$1 pd
-  [[ $t == *"== service cgroup"* && $t == *"== mounts"* && $t == *"== maintenance lock"* ]] || return 1
-  [[ $t != *NOMOUNT* && $t != *"No such file"* && $t != *"cannot access"* && $t != *"Permission denied"* ]] || return 1
-  [[ $t == *lock-free* ]] || return 1
-  pd=$(printf '%s\n' "$t" | sed -n 's/^-- cgroup-root-digest (profile: \(sha256:[0-9a-f]\{64\}\)).*$/\1/p' | head -1)
-  isdig "$pd" || return 1
-  [ "$(printf '%s\n' "$t" | sed -n '/^-- cgroup-root-digest/,/^== mounts/p' | grep -c "$pd")" -ge 2 ]
+  local -a L=(); local line i=0 n t opts dirs="" re_stat re_digest
+  re_stat='^[^[:space:]]+:[^[:space:]]+ [0-7]+$'
+  re_digest='^-- cgroup-root-digest \(profile: (sha256:[0-9a-f]{64})\)$'
+  while IFS= read -r line; do L+=("${line%$'\r'}"); done <<<"$1"
+  n=${#L[@]}
+  while [ "$n" -gt 0 ] && [ -z "${L[n-1]}" ]; do n=$((n - 1)); done
+  [ "${L[i]:-}" = "== service cgroup" ] || return 1; i=$((i + 1))
+  while [ "$i" -lt "$n" ] && ! [[ ${L[i]} =~ $re_stat ]]; do dirs="$dirs${L[i]}"$'\n'; i=$((i + 1)); done
+  [ "$(printf '%s' "$dirs" | LC_ALL=C sort | tr '\n' ' ')" = "cells runner " ] || return 1
+  [ "${L[i]:-}" = "tbound-pi:tbound-pi 755" ] || return 1; i=$((i + 1))
+  [ "${L[i]:-}" = domain ] || return 1; i=$((i + 1))
+  [ "${L[i]:-}" = "cpu memory pids" ] || return 1; i=$((i + 1))
+  [ "${L[i]:-}" = "-- runner procs" ] || return 1; i=$((i + 1))   # cells/cgroup.procs printed nothing: no process in cells
+  [[ ${L[i]:-} =~ ^[0-9]+$ ]] || return 1; i=$((i + 1))   # exactly one runner pid: the service main process
+  [[ ${L[i]:-} =~ $re_digest ]] || return 1; L2_ROOT_DIGEST=${BASH_REMATCH[1]}; i=$((i + 1))
+  [ "${L[i]:-}" = "$L2_ROOT_DIGEST" ] || return 1; i=$((i + 1))
+  [ "${L[i]:-}" = "== mounts" ] || return 1; i=$((i + 1))
+  for t in /usr/local/bin/tbound /usr/local/bin/node /usr/bin/podman /usr/bin/crun /opt/tbound/cell /var/lib/tbound/runtime; do
+    line=${L[i]:-}; [ "${line%% *}" = "$t" ] || return 1
+    opts=",${line#* },"
+    [[ $opts == *,ro,* && $opts == *,nosuid,* && $opts == *,nodev,* ]] || return 1
+    i=$((i + 1))
+  done
+  [ "${L[i]:-}" = "== maintenance lock" ] || return 1; i=$((i + 1))
+  [ "${L[i]:-}" = lock-free ] || return 1; i=$((i + 1))
+  [ "$i" -eq "$n" ]
 }
 
 # ---- 5 netsink (Spike B step 1, then the netsink producer) ---------------------------------------------------------------------------------------
