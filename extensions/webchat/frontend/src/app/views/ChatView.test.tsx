@@ -285,6 +285,27 @@ describe("the transcript: legacy cases from render.test.mjs", () => {
     expect(chips()).toContainEqual(["succeeded", "ok"]);
   });
 
+  it("draws no speaker and no reading on a message where the view states its provenance once, and keeps both for assistive technology", async () => {
+    await renderLive(fixtureSnapshot([messageItem({ id: "m1", sequence: 1, role: "assistant", text: "hi" })]));
+    const row = roleRow("assistant");
+    const hidden = row.querySelector("[class*='hidden']");
+    expect(hidden?.textContent).toBe("Pi, assistant reported, not verified");
+    expect(q("[role='log']").textContent).toContain("The one record in this view");
+  });
+
+  it("draws the speaker and the reading of each message in a mixed view, where nothing states them once", () => {
+    renderModel(
+      modelOf(
+        [
+          messageItem({ id: "m1", sequence: 1, role: "user", text: "hello" }),
+          observed(resultItem({ id: "r1", sequence: 2, tool: "bash", tool_call_id: "c1", state: "succeeded", summary: "exit 0" })),
+        ],
+        { source: "live", verification: "structural-audit-only" },
+      ),
+    );
+    expect(roleRow("user").querySelector("[class*='hidden']")).toBeNull();
+    expect(roleRow("user").textContent).toBe("User reported, not verified");
+  });
   it("draws the success tone on a trace only when a terminal result exists, never for an activity alone", async () => {
     await renderLive(
       verifiedSnapshot([

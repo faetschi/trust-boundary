@@ -241,13 +241,17 @@
 /* The Copy icon is a secondary action: where a pointer can hover it shows on the message's hover or focus, and on a touch device it is
    always drawn. It is in the tab order and in the accessible tree either way. */
 @media (hover: hover) {
-  .meta button {
+  .meta button,
+  .msgHead button {
     opacity: 0;
   }
 
   .msg:hover .meta button,
   .msg:focus-within .meta button,
-  .meta button:focus-visible {
+  .msg:hover .msgHead button,
+  .msg:focus-within .msgHead button,
+  .meta button:focus-visible,
+  .msgHead button:focus-visible {
     opacity: 1;
   }
 }

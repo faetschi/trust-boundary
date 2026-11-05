@@ -84,10 +84,13 @@ describe("the message meta is visible at rest on every device", () => {
     const withoutHoverOnly = css.replace(/@media \(hover: hover\) \{[\s\S]*?\n\}\n/g, "");
     expect(withoutHoverOnly).not.toMatch(/opacity:\s*0\b/);
     expect(withoutHoverOnly).not.toMatch(/visibility:\s*hidden/);
-    // Inside the hover-only blocks, exactly these two selectors may be faded; nothing else may be.
-    const faded = hoverBlocks.flatMap((block) => [...block.matchAll(/([^{}]+)\{([^}]*opacity:\s*0\b[^}]*)\}/g)].map((rule) => (rule[1] ?? "").trim()));
-    expect(faded.sort()).toEqual([".meta button", ".turnCount"]);
+    // Inside the hover-only blocks, only the Copy icon, the record link and the element count may be faded; nothing else may be.
+    const faded = hoverBlocks.flatMap((block) =>
+      [...block.matchAll(/([^{}]+)\{([^}]*opacity:\s*0\b[^}]*)\}/g)].flatMap((rule) => (rule[1] ?? "").split(",").map((selector) => selector.trim())),
+    );
+    expect(faded.sort()).toEqual([".meta button", ".msgHead button", ".turnCount"]);
   });
+
   it("draws the time at full emphasis, not in the muted ink", () => {
     expect(declarationsOf(".time")).toMatch(/color:\s*var\(--foreground\);/);
   });

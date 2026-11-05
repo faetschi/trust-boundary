@@ -48,6 +48,7 @@ export function TurnView({ turn, verifiedOf, markOf, onRecord }: TurnViewProps) 
               key={block.item.id}
               item={block.item}
               reading={messageReading(block.item.verification_scope, verifiedOf(block.item))}
+              quiet={markOf(block.item) === null}
               onRecord={onRecord}
             />
           ) : (
@@ -62,19 +63,27 @@ export function TurnView({ turn, verifiedOf, markOf, onRecord }: TurnViewProps) 
 interface MessageViewProps {
   readonly item: Item;
   readonly reading: ChipReading;
+  // The view states its provenance once, above the transcript (provenance.ts), so a message does not draw its speaker or its reading
+  // again: both stay in the page for assistive technology. A mixed view marks each message, so it is not quiet there.
+  readonly quiet: boolean;
   readonly onRecord: RecordOpener;
 }
 
-function MessageView({ item, reading, onRecord }: MessageViewProps) {
+function MessageView({ item, reading, quiet, onRecord }: MessageViewProps) {
   if (item.type !== "message") return null;
   const truncated = item.text_truncated === true;
+  const speaker = (
+    <>
+      <span>{roleLabel(item.role)}</span>
+      {item.role === "assistant" ? <VisuallyHidden>, assistant</VisuallyHidden> : null}{" "}
+      <Chip tone={reading.tone}>{reading.label}</Chip>
+    </>
+  );
   return (
     <div className={styles.msg} data-role={item.role} data-anchor={item.id}>
       <div className={styles.msgHead}>
         <p className={styles.msgRole}>
-          <span>{roleLabel(item.role)}</span>
-          {item.role === "assistant" ? <VisuallyHidden>, assistant</VisuallyHidden> : null}{" "}
-          <Chip tone={reading.tone}>{reading.label}</Chip>
+          {quiet ? <VisuallyHidden>{speaker}</VisuallyHidden> : speaker}
         </p>
         <Button variant="ghost" size="sm" className={styles.recordButton} onClick={(event) => onRecord(item.id, event.currentTarget)}>
           {`record ${item.sequence}`}

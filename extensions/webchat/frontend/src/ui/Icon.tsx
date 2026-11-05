@@ -38,15 +38,16 @@ export function LockIcon() {
   );
 }
 
-// The Pi mark: the provider of the session, drawn as the letter pi.
+// The Pi mark, from the Pi press kit (pi.dev/press-kit, the one-colour badge): drawn in the control's ink, so it follows the theme.
 export function PiIcon() {
   return (
-    <Svg>
-      <path d="M3 4.5h10M6 4.5v8M10 4.5v5.5a2 2 0 0 0 2 2" />
-    </Svg>
+    <svg viewBox="0 0 560 560" width="14" height="14" fill="currentColor" aria-hidden="true" focusable="false">
+      <path d="M420 280H280V140H0V0H420V280Z" />
+      <path d="M560 560H420V280H560V560Z" />
+      <path d="M140 560H0V140H140V280H280V420H140V560Z" />
+    </svg>
   );
 }
-
 // The five governance panels. Each mark is a plain shape; the panel's name is always beside or on the control that holds it.
 export function DecisionsIcon() {
   return (
