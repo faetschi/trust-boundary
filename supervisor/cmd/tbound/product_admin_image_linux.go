@@ -35,7 +35,8 @@ It verifies the original OCI archive and signed layout offline, then loads, tags
 and inspects in fresh tbound-product transient contexts with NoNewPrivileges and no network.
 The registration, template, signed OCI manifest and imported Digest/RepoDigest must agree.
 No pull, store reset, repin or service start is performed. --dry-run runs no cosign or Podman
-and establishes static validity only. Owner signing remains offline.
+and establishes static validity only. Run provision again after re-signing the command host profile,
+even if the image is unchanged, to retain its public history snapshot. Owner signing remains offline.
 Exit codes: 0 success, 2 refused or invalid usage, 1 other.
 `
 
