@@ -11,8 +11,8 @@ import { stateReading, verdictReading, type ChipReading } from "./readings";
 // Whether an item is verified in its projection (app verification.ts isVerifiedIn).
 type Verifier = (item: ItemView) => boolean;
 
-// A run of this many consecutive tool blocks, or more, is drawn as one group. Two tool cards read fine as they are.
-export const GROUP_MIN = 3;
+// A run of this many consecutive tool blocks, or more, is drawn as one folded line over its cards. One call stays a plain card.
+export const GROUP_MIN = 2;
 
 export interface Finding {
   readonly tone: ChipTone;
@@ -101,7 +101,7 @@ export function summariseToolGroup(blocks: readonly ToolBlock[], verifiedOf: Ver
 }
 
 // A turn's blocks, with each run of consecutive tool blocks gathered into one run. A message ends a run. Whether a run is
-// drawn as a group is its length (GROUP_MIN). A run is keyed by its place among the turn's runs, not by its first block: a run
+// drawn as a group is its length (GROUP_MIN). A run is keyed by its turn and its place among the turn's runs, not by its first block (so two turns never share an anchor): a run
 // that grows, or that loses its first block to a filter, keeps its key, so the cards it holds are never remounted.
 export interface ToolRun {
   readonly kind: "run";
@@ -111,12 +111,12 @@ export interface ToolRun {
 
 export type DrawnBlock = Exclude<TurnBlock, ToolBlock> | ToolRun;
 
-export function groupRuns(blocks: readonly TurnBlock[]): DrawnBlock[] {
+export function groupRuns(blocks: readonly TurnBlock[], turnId: string): DrawnBlock[] {
   const drawn: DrawnBlock[] = [];
   let run: ToolBlock[] = [];
   let runs = 0;
   const flush = (): void => {
-    if (run.length > 0) drawn.push({ kind: "run", key: `run-${runs++}`, blocks: run });
+    if (run.length > 0) drawn.push({ kind: "run", key: `run-${turnId}-${runs++}`, blocks: run });
     run = [];
   };
   for (const block of blocks) {

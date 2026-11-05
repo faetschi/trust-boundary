@@ -113,3 +113,76 @@ export function StreamsIcon() {
     </Svg>
   );
 }
+
+// One mark per kind of tool the supervisor records (the set is closed: read, write, edit, bash), a fallback, and one for a group of them.
+// They are plain shapes in the control's ink: a mark never says whether the call succeeded.
+export function ReadIcon() {
+  return (
+    <Svg>
+      <path d="M3.5 2.5h6l3 3v8h-9z" />
+      <path d="M9.5 2.5v3h3M5.5 8.5h5M5.5 11h5" />
+    </Svg>
+  );
+}
+
+export function WriteIcon() {
+  return (
+    <Svg>
+      <path d="M3.5 2.5h6l3 3v8h-9z" />
+      <path d="M9.5 2.5v3h3M8 7.5v4M6 9.5h4" />
+    </Svg>
+  );
+}
+
+export function EditIcon() {
+  return (
+    <Svg>
+      <path d="M3 13l1-3.2 7-7 2.2 2.2-7 7z" />
+      <path d="M9.8 4.2l2.2 2.2" />
+    </Svg>
+  );
+}
+
+export function BashIcon() {
+  return (
+    <Svg>
+      <rect x="1.75" y="2.75" width="12.5" height="10.5" rx="2" />
+      <path d="M4.5 6.5l2 1.5-2 1.5M8 10h3" />
+    </Svg>
+  );
+}
+
+export function ToolFallbackIcon() {
+  return (
+    <Svg>
+      <circle cx="8" cy="8" r="5.5" />
+      <path d="M6.5 6.4a1.6 1.6 0 1 1 2.2 1.5c-.5.3-.7.6-.7 1.2" />
+      <circle cx="8" cy="11.3" r="0.4" fill="currentColor" stroke="none" />
+    </Svg>
+  );
+}
+
+// A group of tool actions: a wrench.
+export function ToolsIcon() {
+  return (
+    <Svg>
+      <path d="M10.5 2.5a3 3 0 0 0-2.7 4L2.8 11.5a1.4 1.4 0 0 0 2 2l5-5a3 3 0 0 0 4-2.7l-1.8 1.8-1.7-.4-.4-1.7z" />
+    </Svg>
+  );
+}
+
+// The mark of a tool by its name. Any other name reads as the fallback.
+export function toolIcon(tool: string | null | undefined): ReactNode {
+  switch (tool) {
+    case "read":
+      return <ReadIcon />;
+    case "write":
+      return <WriteIcon />;
+    case "edit":
+      return <EditIcon />;
+    case "bash":
+      return <BashIcon />;
+    default:
+      return <ToolFallbackIcon />;
+  }
+}

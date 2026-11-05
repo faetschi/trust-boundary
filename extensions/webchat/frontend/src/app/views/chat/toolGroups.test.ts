@@ -126,23 +126,26 @@ describe("runs of tool blocks", () => {
   const tool = (call: string): Item[] => itemsOf({ call }, Number(call.slice(1)) * 10);
   const message = (id: string, sequence: number): Item => messageItem({ id, sequence, role: "assistant" });
   const lengths = (items: Item[]): Array<number | string> =>
-    groupRuns(groupTurn(items)).map((block) => (block.kind === "run" ? block.blocks.length : block.kind));
+    groupRuns(groupTurn(items), "t1").map((block) => (block.kind === "run" ? block.blocks.length : block.kind));
 
   it("gathers every consecutive tool block into one run, grouped or not by its length", () => {
+    expect(lengths([...tool("c1")])).toEqual([1]);
     expect(lengths([...tool("c1"), ...tool("c2")])).toEqual([2]);
-    expect(lengths([...tool("c1"), ...tool("c2"), ...tool("c3")])).toEqual([GROUP_MIN]);
+    expect(lengths([...tool("c1"), ...tool("c2"), ...tool("c3")])).toEqual([3]);
+    expect(GROUP_MIN).toBe(2);
   });
 
   it("ends a run at a message, so a message is never inside a run", () => {
     expect(lengths([...tool("c1"), ...tool("c2"), message("m1", 100), ...tool("c3"), ...tool("c4"), ...tool("c5")])).toEqual([2, "message", 3]);
   });
 
-  it("keys a run by its place among the turn's runs, so it keeps its key when it grows or loses its first block", () => {
-    const keysOf = (items: Item[]): string[] => groupRuns(groupTurn(items)).flatMap((block) => (block.kind === "run" ? [block.key] : []));
-    expect(keysOf([...tool("c1"), ...tool("c2")])).toEqual(["run-0"]);
-    expect(keysOf([...tool("c1"), ...tool("c2"), ...tool("c3")])).toEqual(["run-0"]);
+  it("keys a run by its turn and its place among the turn's runs, so it keeps its key when it grows or loses its first block, and two turns never share an anchor", () => {
+    const keysOf = (items: Item[]): string[] => groupRuns(groupTurn(items), "t1").flatMap((block) => (block.kind === "run" ? [block.key] : []));
+    expect(keysOf([...tool("c1"), ...tool("c2")])).toEqual(["run-t1-0"]);
+    expect(keysOf([...tool("c1"), ...tool("c2"), ...tool("c3")])).toEqual(["run-t1-0"]);
     // A filter that drops the first block leaves the run where it was.
-    expect(keysOf([...tool("c2")])).toEqual(["run-0"]);
-    expect(keysOf([...tool("c1"), message("m1", 100), ...tool("c2")])).toEqual(["run-0", "run-1"]);
+    expect(keysOf([...tool("c2")])).toEqual(["run-t1-0"]);
+    expect(keysOf([...tool("c1"), message("m1", 100), ...tool("c2")])).toEqual(["run-t1-0", "run-t1-1"]);
+    expect(groupRuns(groupTurn([...tool("c1")]), "t2").map((block) => (block.kind === "run" ? block.key : ""))).toEqual(["run-t2-0"]);
   });
 });

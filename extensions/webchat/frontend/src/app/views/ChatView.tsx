@@ -169,7 +169,7 @@ export function ChatView({ model }: { readonly model: WorkspaceModel }) {
       );
     }
     return turnsOf(visible).map((turn) => (
-      <TurnView key={turn.id} turn={turn} verifiedOf={verifiedOf} markOf={markOf} onRecord={openRecord} />
+      <TurnView key={turn.id} turn={turn} verifiedOf={verifiedOf} markOf={markOf} onRecord={openRecord} forceOpen={model.filter !== "all"} />
     ));
   }
 }

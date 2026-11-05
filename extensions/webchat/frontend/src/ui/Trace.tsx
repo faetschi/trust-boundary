@@ -53,7 +53,7 @@ export function TraceLine({ children }: { readonly children: ReactNode }) {
 }
 
 // A tile of one or two characters in the tone's tint. Decorative: the words beside it carry the meaning.
-export function TraceIcon({ children }: { readonly children: string }) {
+export function TraceIcon({ children }: { readonly children: ReactNode }) {
   return (
     <span className={styles.icon} aria-hidden="true">
       {children}

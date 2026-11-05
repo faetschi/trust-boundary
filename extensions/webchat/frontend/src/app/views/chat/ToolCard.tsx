@@ -7,7 +7,8 @@ import type { ReactNode } from "react";
 import { Chip } from "../../../ui/Chip";
 import { Trace, TraceIcon, TraceLine, TraceMeta, TraceTitle } from "../../../ui/Trace";
 import { VisuallyHidden } from "../../../ui/VisuallyHidden";
-import { formatClock, shortDigest, toolGlyph } from "../../../core/format";
+import { formatClock, shortDigest } from "../../../core/format";
+import { toolIcon } from "../../../ui/Icon";
 import type { ItemView } from "../../../core/contract";
 import type { ToolBlock } from "../../../core/store";
 import type { Marker } from "./provenance";
@@ -56,7 +57,7 @@ export function ToolCard({ block, verifiedOf, markOf }: ToolCardProps) {
   // target, bold; the tool and the record are the detail line beneath it, in mono.
   const line = (
     <TraceLine>
-      <TraceIcon>{toolGlyph(tool)}</TraceIcon>
+      <TraceIcon>{toolIcon(tool)}</TraceIcon>
       <TraceTitle
         title={headline}
         detail={

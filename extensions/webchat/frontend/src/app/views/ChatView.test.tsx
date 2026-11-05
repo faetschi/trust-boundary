@@ -467,7 +467,7 @@ describe("the transcript: legacy cases from render.test.mjs", () => {
 
   it("anchors each message and tool card with the key the tail window pins to", async () => {
     await renderLive(fixtureSnapshot());
-    expect(qa("[data-anchor]").map((element) => element.getAttribute("data-anchor"))).toEqual(["m1", "c1", "c2"]);
+    expect(qa("[data-anchor]").map((element) => element.getAttribute("data-anchor"))).toEqual(["m1", "run-t1-0", "c1", "c2"]);
     expect(qa("div[data-role]").map((element) => element.getAttribute("data-anchor"))).toEqual(["m1"]);
   });
 });
@@ -599,11 +599,12 @@ describe("a run of tool activity", () => {
     activityItem({ id: "a3", sequence: 6, tool: "bash", tool_call_id: "c3", state: "pending", summary: "bash: go test" }),
   ];
 
-  it("is one closed group line that counts each outcome in words and is never calmer than its worst record", async () => {
+  it("is one group line that counts each outcome in words and is never calmer than its worst record, open while nothing follows it", async () => {
     await renderLive(verifiedSnapshot(run.map((item) => observed(item))));
     const group = q("[data-group]");
     const toggle = group.querySelector("button") as HTMLButtonElement;
-    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    // Nothing follows the run in its turn, so it starts open: the page cannot say the turn is finished.
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
     expect(group.getAttribute("data-tone")).toBe("deny");
     const line = toggle.textContent ?? "";
     expect(line).toContain("3 tool actions");
@@ -613,6 +614,11 @@ describe("a run of tool activity", () => {
     // The request with no result is a request, not a success and not running.
     expect(line).toContain("1 pending");
     expect(line).toContain("1 succeeded");
+  });
+
+  it("starts closed once a message follows the run", async () => {
+    await renderLive(verifiedSnapshot([...run.map((item) => observed(item)), observed(messageItem({ id: "m9", sequence: 20, role: "assistant", text: "done" }))]));
+    expect(q("[data-group] > button").getAttribute("aria-expanded")).toBe("false");
   });
 
   it("keeps every tool card inside the group, in order, for the reader who opens it", async () => {

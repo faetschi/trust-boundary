@@ -11,6 +11,7 @@
 import { useId, useState, type ReactNode } from "react";
 import { Chip } from "../../../ui/Chip";
 import { TRACE_FRAME, TraceIcon, TraceLine, TraceMeta, TraceTitle, TraceToggle } from "../../../ui/Trace";
+import { ToolsIcon } from "../../../ui/Icon";
 import { VisuallyHidden } from "../../../ui/VisuallyHidden";
 import type { ItemView } from "../../../core/contract";
 import type { ToolBlock } from "../../../core/store";
@@ -24,6 +25,12 @@ interface ToolRunProps {
   readonly run: ToolRunData;
   readonly verifiedOf: Verifier;
   readonly markOf: (item: ItemView) => Marker | null;
+  // The state a folded line starts in, chosen once at first draw: open while nothing follows the run in its turn, closed once a message
+  // does. It is never re-derived, so a line is never closed under the reader. The page cannot know whether a turn is finished, so this
+  // is not labelled running or done.
+  readonly defaultOpen?: boolean;
+  // While a finding filter is active the messages are gone and the matched cards are what the reader asked for, so the line is open.
+  readonly forceOpen?: boolean;
 }
 
 // The record a block is named for: the result, else the request, else the policy decision.
@@ -31,9 +38,14 @@ function primaryOf(block: ToolBlock): ItemView | null {
   return block.result ?? block.activity ?? block.decision;
 }
 
-export function ToolRun({ run, verifiedOf, markOf }: ToolRunProps) {
+export function ToolRun({ run, verifiedOf, markOf, defaultOpen = false, forceOpen = false }: ToolRunProps) {
   const grouped = run.blocks.length >= GROUP_MIN;
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen || forceOpen);
+  const [wasForced, setWasForced] = useState(forceOpen);
+  if (forceOpen !== wasForced) {
+    setWasForced(forceOpen);
+    if (forceOpen) setOpen(true);
+  }
   // A run that becomes a group while it is on screen opens, so the cards the reader is looking at do not collapse under them.
   const [wasGrouped, setWasGrouped] = useState(grouped);
   if (grouped !== wasGrouped) {
@@ -78,7 +90,9 @@ function GroupLine({ run, verifiedOf, markOf }: ToolRunProps): ReactNode {
   });
   return (
     <TraceLine>
-      <TraceIcon>{String(run.blocks.length)}</TraceIcon>
+      <TraceIcon>
+        <ToolsIcon />
+      </TraceIcon>
       <TraceTitle title={title} detail={<span className={styles.name}>{tools}</span>} />
       {unverified.length > 0 && marked.length === 0 ? <VisuallyHidden>{UNVERIFIED_READING.label}</VisuallyHidden> : null}
       <TraceMeta>

@@ -25,16 +25,16 @@ function draw(run: ToolRunData, verifiedOf = verified, markOf: (item: ItemView) 
   return <ToolRun run={run} verifiedOf={verifiedOf} markOf={markOf} />;
 }
 
-describe("a run of fewer than three tools", () => {
-  it("is the tool cards alone: no group line", () => {
-    const view = mount(draw(runOf(2)));
+describe("a single tool", () => {
+  it("is a plain tool card: no group line", () => {
+    const view = mount(draw(runOf(1)));
     expect(view.container.querySelector("[data-group]")).toBeNull();
-    expect(view.container.querySelectorAll("details")).toHaveLength(2);
+    expect(view.container.querySelectorAll("details")).toHaveLength(1);
     view.unmount();
   });
 });
 
-describe("a group of three or more", () => {
+describe("a group of two or more", () => {
   it("is a closed line that is a button, naming the count, the tools and each finding, and the worst tone", () => {
     const view = mount(draw(runOf(3), unverified));
     const group = view.container.querySelector("[data-group]") as HTMLElement;
@@ -113,14 +113,14 @@ describe("a run that changes size does not remount its cards", () => {
     view.unmount();
   });
 
-  it("keeps an open card, and the group opens, when a third tool arrives", () => {
-    const view = mount(draw(runOf(2)));
+  it("keeps an open card, and the group opens, when a second tool arrives", () => {
+    const view = mount(draw(runOf(1)));
     const first = view.container.querySelector("details") as HTMLDetailsElement;
     act(() => {
       first.open = true;
       first.dispatchEvent(new Event("toggle"));
     });
-    act(() => view.root.render(draw(runOf(3))));
+    act(() => view.root.render(draw(runOf(2))));
     const group = view.container.querySelector("[data-group]") as HTMLElement;
     const again = group.querySelector("details") as HTMLDetailsElement;
     expect(again).toBe(first);
@@ -130,15 +130,42 @@ describe("a run that changes size does not remount its cards", () => {
   });
 
   it("keeps the focused card focused when the group forms, and again when it shrinks", () => {
-    const view = mount(draw(runOf(2)));
+    const view = mount(draw(runOf(1)));
     const summary = view.container.querySelector("details > summary") as HTMLElement;
     act(() => summary.focus());
     expect(document.activeElement).toBe(summary);
-    act(() => view.root.render(draw(runOf(3))));
-    expect(document.activeElement).toBe(summary);
     act(() => view.root.render(draw(runOf(2))));
     expect(document.activeElement).toBe(summary);
+    act(() => view.root.render(draw(runOf(1))));
+    expect(document.activeElement).toBe(summary);
     expect(view.container.querySelector("[data-group]")).toBeNull();
+    view.unmount();
+  });
+});
+
+describe("a folded line's open state", () => {
+  it("starts closed by default and open when told to, and is never closed by a later change of that choice", () => {
+    const closed = mount(draw(runOf(3)));
+    expect(closed.container.querySelector("[data-group] > button")?.getAttribute("aria-expanded")).toBe("false");
+    closed.unmount();
+    const run = runOf(3);
+    const view = mount(<ToolRun run={run} verifiedOf={verified} markOf={noMarker} defaultOpen />);
+    const toggle = view.container.querySelector("[data-group] > button") as HTMLButtonElement;
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    act(() => view.root.render(<ToolRun run={run} verifiedOf={verified} markOf={noMarker} defaultOpen={false} />));
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    view.unmount();
+  });
+
+  it("opens while a finding filter is active, and the reader can close it again afterwards", () => {
+    const run = runOf(3);
+    const view = mount(<ToolRun run={run} verifiedOf={verified} markOf={noMarker} />);
+    const toggle = view.container.querySelector("[data-group] > button") as HTMLButtonElement;
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    act(() => view.root.render(<ToolRun run={run} verifiedOf={verified} markOf={noMarker} forceOpen />));
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    act(() => toggle.click());
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
     view.unmount();
   });
 });

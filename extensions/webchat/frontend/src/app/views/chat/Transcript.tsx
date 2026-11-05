@@ -30,10 +30,13 @@ interface TurnViewProps {
   // The item marker of a tool record, or null when the view states its provenance once (see provenance.ts).
   readonly markOf: (item: ItemView) => Marker | null;
   readonly onRecord: RecordOpener;
+  // A finding filter is active: the folded tool lines are open (ToolGroup.tsx).
+  readonly forceOpen?: boolean;
 }
 
-export function TurnView({ turn, verifiedOf, markOf, onRecord }: TurnViewProps) {
+export function TurnView({ turn, verifiedOf, markOf, onRecord, forceOpen = false }: TurnViewProps) {
   const label = turnLabel(turn.id);
+  const drawn = groupRuns(groupTurn(turn.items), turn.id);
   return (
     <section className={styles.turn} aria-label={label}>
       <div className={styles.turnHead}>
@@ -42,7 +45,7 @@ export function TurnView({ turn, verifiedOf, markOf, onRecord }: TurnViewProps) 
         <span className={styles.turnCount}>{turn.items.length} element(s)</span>
       </div>
       <div className={styles.turnBody}>
-        {groupRuns(groupTurn(turn.items)).map((block) =>
+        {drawn.map((block, index) =>
           block.kind === "message" ? (
             <MessageView
               key={block.item.id}
@@ -52,7 +55,14 @@ export function TurnView({ turn, verifiedOf, markOf, onRecord }: TurnViewProps) 
               onRecord={onRecord}
             />
           ) : (
-            <ToolRun key={block.key} run={block} verifiedOf={verifiedOf} markOf={markOf} />
+            <ToolRun
+              key={block.key}
+              run={block}
+              verifiedOf={verifiedOf}
+              markOf={markOf}
+              defaultOpen={index === drawn.length - 1}
+              forceOpen={forceOpen}
+            />
           ),
         )}
       </div>

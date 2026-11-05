@@ -212,13 +212,35 @@
   background: var(--muted);
 }
 
-.msg[data-role="system"] .msgText {
-  padding-left: var(--space-2);
-  border-left: 2px solid var(--border);
-  font-size: var(--text-sm);
-  color: var(--muted-foreground);
+/* A system message (the live service's own lifecycle: turn started, cancel requested, turn finished) is a centred separator: a hairline,
+   its text, a hairline. It keeps its record link, its reading and its time; the tone is neutral, as no outcome is projected for it. */
+.msg[data-role="system"] {
+  align-self: stretch;
+  align-items: center;
+  max-width: none;
 }
 
+.msg[data-role="system"] .msgHead {
+  align-self: center;
+}
+
+.msg[data-role="system"] .msgText {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  font-size: var(--text-xs);
+  color: var(--muted-foreground);
+  text-align: center;
+}
+
+.msg[data-role="system"] .msgText::before,
+.msg[data-role="system"] .msgText::after {
+  content: "";
+  flex: 1 1 2rem;
+  height: 1px;
+  background: var(--border);
+}
 .assistant {
   margin-top: var(--space-1);
   min-width: 0;
