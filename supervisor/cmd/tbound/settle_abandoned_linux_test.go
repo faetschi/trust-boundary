@@ -25,7 +25,12 @@ type boundCatalogFixture struct {
 
 // boundCatalog is a catalog with one checkpoint-bound, non-terminal admission: the state of a
 // workflow that started and then ended unknown.
-func boundCatalog(t *testing.T) boundCatalogFixture {
+func boundCatalog(t *testing.T) boundCatalogFixture { return catalogFixture(t, true) }
+
+// reservedCatalog is the same with the admission authorized but never checkpoint-bound.
+func reservedCatalog(t *testing.T) boundCatalogFixture { return catalogFixture(t, false) }
+
+func catalogFixture(t *testing.T, bind bool) boundCatalogFixture {
 	t.Helper()
 	root := privateGovernedTestRoot(t)
 	ownerRoot := filepath.Join(root, "owner-store")
@@ -57,13 +62,15 @@ func boundCatalog(t *testing.T) boundCatalogFixture {
 		entry.Limits.Deadline, bareWorkflowDigest(digestBytes([]byte("settle-abandoned-root"))), store); err != nil {
 		t.Fatal(err)
 	}
-	bound, err := json.Marshal(piServiceWorkflowEvent{SchemaVersion: workflowCatalogSchema, AdmissionHash: admissionHash, Digest: initial})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := journal.Append(audit.Event{Kind: "pi_workflow_checkpoint_bound",
-		ID: workflowCatalogEventID("checkpoint", admissionHash), Data: bound}); err != nil {
-		t.Fatal(err)
+	if bind {
+		bound, err := json.Marshal(piServiceWorkflowEvent{SchemaVersion: workflowCatalogSchema, AdmissionHash: admissionHash, Digest: initial})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := journal.Append(audit.Event{Kind: "pi_workflow_checkpoint_bound",
+			ID: workflowCatalogEventID("checkpoint", admissionHash), Data: bound}); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if err := catalog.Close(); err != nil {
 		t.Fatal(err)
@@ -153,11 +160,13 @@ type markingReconciler struct {
 	*fakeAbandonReconciler
 	journal *audit.Journal
 	kinds   []string
+	marks   int
 	t       *testing.T
 	failure error
 }
 
 func (m *markingReconciler) markAbandoned(piServiceRequestState) error {
+	m.marks++
 	m.kinds = journalKinds(m.t, m.journal)
 	return m.failure
 }

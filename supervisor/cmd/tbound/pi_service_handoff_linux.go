@@ -1325,6 +1325,11 @@ func (j *piServiceRequestJournal) begin(ctx context.Context, peer piServicePeerC
 			if err := j.recheckAbandoned(ctx, reconciler, prior); err != nil {
 				return audit.Record{}, fmt.Errorf("%w: %v", ErrPiServiceUnresolvedPrior, err)
 			}
+			// Idempotent: closes the catalog workflow of a request abandoned before the terminal existed, or
+			// whose terminal write failed. Admission does not depend on it, so a failure is only logged.
+			if err := j.closeAbandonedWorkflow(prior); err != nil {
+				fmt.Fprintln(os.Stderr, err)
+			}
 			continue
 		}
 		if prior.terminal == nil || prior.terminal.Status != "completed" || j.settlementVerifier == nil {
@@ -2085,6 +2090,10 @@ func runProductionPiService(ctx context.Context, output io.Writer) error {
 	requests.setEvidenceFiles(workflowCatalog.settlementEvidenceFiles)
 	requests.setEvidenceState(workflowCatalog.settlementEvidenceState)
 	requests.setReconciler(newProductionUnknownReconciler(workflowCatalog, serviceConfig, providerRoute))
+	// Recovers an abandon whose catalog terminal is missing; a failure leaves that prior as it was.
+	if err := requests.settleAbandonedPriors(ctx); err != nil {
+		fmt.Fprintln(os.Stderr, "abandoned requests not yet closed in the workflow catalog:", err)
+	}
 	runTask := func(taskCtx context.Context, request piServiceRequest) (json.RawMessage, error) {
 		requestAdmission, ok := piServiceAdmissionFromContext(taskCtx)
 		if !ok {

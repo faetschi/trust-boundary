@@ -103,6 +103,8 @@ type piServiceWorkflowEntry struct {
 	// TerminalAbandoned marks a terminal written by abandon-unknown: the workflow is closed to
 	// admission and recovery, but it never completed and carries no settlement link.
 	TerminalAbandoned bool `json:"-"`
+	// TerminalNeverBound narrows TerminalAbandoned to a workflow that never bound a checkpoint.
+	TerminalNeverBound bool `json:"-"`
 	// AttackerUsage is the spend an adaptive attempt recorded when it finished (pi_workflow_attacker_usage); nil
 	// for every other admission and for an adaptive attempt that has not finished.
 	AttackerUsage *piServiceAttackerUsage `json:"-"`
@@ -133,7 +135,11 @@ type piServiceWorkflowEvent struct {
 	AttackerUsage       *piServiceAttackerUsage `json:"attacker_usage,omitempty"`
 }
 
-const workflowTerminalAbandonedUnknown = "abandoned-unknown"
+const (
+	workflowTerminalAbandonedUnknown = "abandoned-unknown"
+	// workflowTerminalAbandonedNeverBound closes a reserved workflow that never bound a checkpoint.
+	workflowTerminalAbandonedNeverBound = "abandoned-never-bound"
+)
 
 type piServiceWorkflowCatalog struct {
 	mu                sync.Mutex
@@ -149,6 +155,8 @@ type piServiceWorkflowCatalog struct {
 	// runProductionPiService after the manifest is loaded and verified; it is nil in
 	// the single-task modes.
 	corpus *productionCorpus
+	// retiredOwners holds the owners this process closed (markOwnerRetired); memory only.
+	retiredOwners map[string]struct{}
 }
 
 // ownerRoot is the owner-DB directory this catalog verifies against. A catalog
@@ -254,14 +262,28 @@ func loadPiServiceWorkflowCatalog(journal *audit.Journal) (*piServiceWorkflowCat
 			entry.LatestCheckpointDigest = event.Digest
 			catalog.entries[event.AdmissionHash] = entry
 		case "pi_workflow_terminal":
-			if record.Event.ID != workflowCatalogEventID("terminal", event.AdmissionHash) || !exists ||
-				!entry.CheckpointBound || entry.Terminal {
+			if record.Event.ID != workflowCatalogEventID("terminal", event.AdmissionHash) || !exists || entry.Terminal {
+				_ = journal.Close()
+				return nil, ErrPiWorkflowCatalog
+			}
+			noLink := event.RunID == "" && event.TCBProofDigest == "" && event.TCBProofSequence == 0 &&
+				event.PublicationTransactionID == ""
+			if event.Outcome == workflowTerminalAbandonedNeverBound {
+				// A reserved workflow that never bound a checkpoint: no digest and no link exist to name.
+				if !noLink || event.Digest != "" || entry.CheckpointBound || entry.LatestCheckpointDigest != "" {
+					_ = journal.Close()
+					return nil, ErrPiWorkflowCatalog
+				}
+				entry.Terminal, entry.TerminalAbandoned, entry.TerminalNeverBound = true, true, true
+				catalog.entries[event.AdmissionHash] = entry
+				continue
+			}
+			if !entry.CheckpointBound {
 				_ = journal.Close()
 				return nil, ErrPiWorkflowCatalog
 			}
 			if event.Outcome == workflowTerminalAbandonedUnknown {
-				if event.RunID != "" || event.TCBProofDigest != "" || event.TCBProofSequence != 0 ||
-					event.PublicationTransactionID != "" || event.Digest != entry.LatestCheckpointDigest {
+				if !noLink || event.Digest != entry.LatestCheckpointDigest {
 					_ = journal.Close()
 					return nil, ErrPiWorkflowCatalog
 				}
@@ -541,7 +563,11 @@ func (a *productionWorkflowAdmission) CloseOwner() error {
 	}
 	var errs []error
 	if a.OwnerCloser != nil {
-		errs = append(errs, a.OwnerCloser.Close())
+		closeErr := a.OwnerCloser.Close()
+		errs = append(errs, closeErr)
+		if closeErr == nil && a.CandidateEpoch != 0 {
+			a.Catalog.markOwnerRetired(a.Entry.WorkflowID, a.CandidateEpoch, a.OwnerIncarnation)
+		}
 		a.OwnerCloser = nil
 	}
 	if a.RootCloser != nil {
@@ -686,17 +712,52 @@ func (c *piServiceWorkflowCatalog) MarkAbandonedTerminal(admissionHash string) e
 		}
 		return ErrPiWorkflowCatalog
 	}
-	if !entry.CheckpointBound {
-		return fmt.Errorf("%w: the workflow never bound a checkpoint", ErrPiWorkflowCatalog)
-	}
 	event := piServiceWorkflowEvent{SchemaVersion: workflowCatalogSchema, AdmissionHash: admissionHash,
 		Digest: entry.LatestCheckpointDigest, Outcome: workflowTerminalAbandonedUnknown}
+	if !entry.CheckpointBound {
+		// A workflow that never bound a checkpoint has no digest to name. It is closed only while no
+		// owner scope was ever bound to it, so the terminal never hides an exposed owner.
+		for _, scope := range c.ownerScopes {
+			if scope.AdmissionHash == admissionHash {
+				return fmt.Errorf("%w: an owner scope is bound but no checkpoint was ever bound", ErrPiWorkflowCatalog)
+			}
+		}
+		event.Digest, event.Outcome = "", workflowTerminalAbandonedNeverBound
+	}
 	if err := c.appendLocked("pi_workflow_terminal", workflowCatalogEventID("terminal", admissionHash), event); err != nil {
 		return err
 	}
 	entry.Terminal, entry.TerminalAbandoned = true, true
+	entry.TerminalNeverBound = !entry.CheckpointBound
 	c.entries[admissionHash] = entry
 	return nil
+}
+
+// markOwnerRetired records that this process closed the owner of one workflow epoch. The mark is
+// memory only: a restarted process finds the recorded owner process dead anyway.
+func (c *piServiceWorkflowCatalog) markOwnerRetired(workflow string, ownerEpoch uint64, incarnation workflowrecovery.OwnerIncarnation) {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.retiredOwners == nil {
+		c.retiredOwners = make(map[string]struct{})
+	}
+	c.retiredOwners[workflowOwnerEpochKey(workflow, ownerEpoch)+"/"+incarnation.Digest] = struct{}{}
+}
+
+// ownerRetiredInThisProcess is true only for an owner incarnation of this very process whose
+// owner this process closed. The service hosts its owners in-process, so the recorded owner
+// process is live exactly as long as the service runs; the closed owner is what proves it retired.
+func (c *piServiceWorkflowCatalog) ownerRetiredInThisProcess(workflow string, ownerEpoch uint64, incarnation workflowrecovery.OwnerIncarnation) bool {
+	if c == nil || incarnation.PID != os.Getpid() {
+		return false
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	_, retired := c.retiredOwners[workflowOwnerEpochKey(workflow, ownerEpoch)+"/"+incarnation.Digest]
+	return retired
 }
 
 func (c *piServiceWorkflowCatalog) admissionEntry(admissionHash string) (piServiceWorkflowEntry, bool) {
@@ -1622,6 +1683,9 @@ func (v catalogOwnerDrainVerifier) drainOwnerEpoch(ctx context.Context, entry pi
 	process, err := workflowOwnerProcessObservation(owner.Incarnation)
 	if err != nil {
 		return "", err
+	}
+	if process.Live && v.catalog.ownerRetiredInThisProcess(entry.WorkflowID, owner.Epoch, owner.Incarnation) {
+		process.Live = false
 	}
 	if process.Live {
 		return "", errors.New("superseded owner process is still live and has no completed cleanup proof")
