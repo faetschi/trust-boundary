@@ -6,7 +6,7 @@
 # NAME=pilot (corpus mode) has no client run (the service refuses client text): rg_cycle RETURNS after svc start and diag l2 (the other names run to
 # the end), and the caller does the archive check (rg_archive_check) and everything after.
 #
-# The caller sets NAME (rp|dr) and defines these hooks before calling rg_cycle:
+# The caller sets NAME (rp|dr|pilot) and defines these hooks before calling rg_cycle:
 #   hook_prior       precondition checks on the earlier cycles (die on failure)
 #   hook_cfg_build   build "$HG/serve-pi-service.json" (uses $CD $SD) and check its members
 #   hook_baseline    (optional) extra baseline taken before the service of this cycle starts
