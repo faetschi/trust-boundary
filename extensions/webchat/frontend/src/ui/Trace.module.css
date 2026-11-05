@@ -1,0 +1,138 @@
+/*
+ * The trace: a flat line with a rule at its left. The rule and the icon take the record's state colour; the words and the chips
+ * beside them carry the meaning, so colour never stands alone. Component-local properties (--local-*) read only alias tokens;
+ * tokens.test.ts enforces that.
+ */
+
+.trace {
+  --local-rule: var(--border);
+  --local-tint: var(--muted-foreground);
+  min-width: 0;
+  max-width: 34rem;
+  border-left: 2px solid var(--local-rule);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+.trace[data-tone="ok"] {
+  --local-rule: color-mix(in oklch, var(--state-ok) 55%, transparent);
+  --local-tint: var(--state-ok);
+}
+
+.trace[data-tone="allow"] {
+  --local-rule: color-mix(in oklch, var(--state-allow) 55%, transparent);
+  --local-tint: var(--state-allow);
+}
+
+/* A refused record takes the destructive tint over the line, as the card did. */
+.trace[data-tone="deny"] {
+  --local-rule: var(--state-deny);
+  --local-tint: var(--state-deny);
+  background: color-mix(in oklch, var(--destructive) 8%, transparent);
+}
+
+.trace[data-tone="reported"],
+.trace[data-tone="unknown"],
+.trace[data-tone="pending"],
+.trace[data-tone="lost"] {
+  --local-rule: var(--state-reported);
+  --local-tint: var(--state-reported);
+}
+
+.trace[data-tone="lost"] {
+  border-left-style: double;
+  border-left-width: 4px;
+}
+
+.line {
+  display: flex;
+  align-items: center;
+  padding: var(--space-1) var(--space-2h);
+  cursor: pointer;
+  border-radius: inherit;
+}
+
+.line:hover {
+  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+}
+
+.line:focus-visible {
+  outline: var(--focus-width) solid var(--ring);
+  outline-offset: 2px;
+}
+
+/* The chevron at the end of the line, which turns when the trace is open. A summary is a flex row and draws no marker, so
+   without this a closed trace reads as a label. */
+.line::after {
+  content: "▾";
+  flex: none;
+  margin-left: auto;
+  padding-left: var(--space-2);
+  color: var(--muted-foreground);
+}
+
+.trace[open] > .line::after {
+  content: "▴";
+}
+
+.lineContent {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  min-width: 0;
+}
+
+.icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: var(--radius-xs);
+  background: color-mix(in oklch, var(--local-tint) 14%, transparent);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--foreground);
+}
+
+.titles {
+  display: flex;
+  flex: 1 1 10rem;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.title {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.detail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--muted-foreground);
+}
+
+.meta {
+  display: inline-flex;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  max-width: 100%;
+  gap: var(--space-1);
+}
+
+.body {
+  padding: var(--space-1) 0 var(--space-3);
+}

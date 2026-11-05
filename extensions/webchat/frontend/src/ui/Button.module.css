@@ -1,0 +1,88 @@
+/*
+ * The button, in the shadcn recipe: a variant (default, outline, ghost) and a size (default, sm, icon). Colour comes from the
+ * alias tier only. A caller's className places the button; it does not restyle it.
+ */
+
+.button {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  min-height: var(--row-h-button);
+  padding: 0 var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--foreground);
+  font: 600 var(--text-xs) / var(--lh-xs) var(--font-sans);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-std);
+}
+
+.button:focus-visible {
+  outline: var(--focus-width) solid var(--ring);
+  outline-offset: 2px;
+}
+
+.button[data-variant="default"] {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--primary-foreground);
+  box-shadow: var(--shadow-panel);
+}
+
+.button[data-variant="default"]:hover {
+  background: color-mix(in oklch, var(--primary) 88%, var(--background));
+}
+
+.button[data-variant="outline"] {
+  border-color: var(--border);
+  background: var(--secondary);
+}
+
+.button[data-variant="outline"]:hover,
+.button[data-variant="ghost"]:hover {
+  background: var(--accent);
+}
+
+.button[data-variant="ghost"] {
+  color: var(--muted-foreground);
+}
+
+.button[data-variant="ghost"]:hover {
+  color: var(--foreground);
+}
+
+/* A small button is a quiet inline control (the record reference, the copy icon): 24 px, with the type one step down. */
+.button[data-size="sm"],
+.button[data-size="icon"] {
+  min-width: 24px;
+  min-height: 24px;
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-xs);
+  font-size: var(--text-2xs);
+  line-height: var(--lh-2xs);
+  font-weight: 500;
+}
+
+.button[data-size="icon"] {
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+}
+
+@media (pointer: coarse) {
+  .button[data-size="sm"],
+  .button[data-size="icon"] {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .button {
+    transition: none;
+  }
+}
