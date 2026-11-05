@@ -11,6 +11,7 @@ set -eu
 
 base=${1:-}
 head=${2:-}
+mode=${3:-pr}
 
 if [ -z "$base" ] || [ -z "$head" ] || [ "$base" = "0000000000000000000000000000000000000000" ]; then
   echo true
@@ -20,7 +21,19 @@ fi
 root=$(git rev-parse --show-toplevel) || { echo true; exit 0; }
 cd "$root"
 
-if git diff --quiet "$base...$head" -- \
+if [ "$mode" = "push" ]; then
+  # A force-push or reset can make the old tip unreachable from the new one.
+  # Three-dot would compare the wrong side and could hide a revert.
+  if ! git merge-base --is-ancestor "$base" "$head"; then
+    echo true
+    exit 0
+  fi
+  range="$base..$head"
+else
+  range="$base...$head"
+fi
+
+if git diff --quiet "$range" -- \
   supervisor adapter corpus infra install docs/evaluation .github/workflows/ci.yml; then
   echo false
 else

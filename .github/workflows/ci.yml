@@ -42,7 +42,7 @@ jobs:
           else
             base="$PUSH_BEFORE"; head="$GITHUB_SHA"
           fi
-          echo "runtime=$(sh scripts/ci-runtime-paths.sh "$base" "$head")" >> "$GITHUB_OUTPUT"
+          echo "runtime=$(sh scripts/ci-runtime-paths.sh "$base" "$head" "$EVENT_NAME")" >> "$GITHUB_OUTPUT"
 
   quick-checks:
     runs-on: ubuntu-24.04
@@ -105,6 +105,9 @@ jobs:
           umask 077
           bash tests/packaging/verify-package-manager-layout.sh
           bash tests/packaging/verify-publish-release-assets.sh
+
+      - name: Release workflow coverage
+        run: bash tests/packaging/verify-release-workflow-coverage.sh 1.2.3
 
       - name: Runtime path filter regressions
         run: bash tests/ci/test-runtime-paths.sh

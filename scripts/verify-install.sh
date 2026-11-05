@@ -17,10 +17,12 @@ VERSION="${1:-verify}"
 BASE="${TBOUND_VERIFY_ROOT:-$(mktemp -d "${TMPDIR:-/tmp}/tbound-verify.XXXXXX")}"
 mkdir -p "$BASE"; chmod 700 "$BASE" 2>/dev/null || true
 DIST="${TBOUND_VERIFY_DIST:-$BASE/dist}"
-case "$DIST" in
-  /*) ;;
-  *) DIST="$ROOT/$DIST" ;;
-esac
+if [ -n "${TBOUND_VERIFY_DIST:-}" ]; then
+  case "$DIST" in
+    /*) ;;
+    *) DIST="$ROOT/$DIST" ;;
+  esac
+fi
 PREFIX="$BASE/prefix"
 export XDG_CONFIG_HOME="$BASE/config"
 export XDG_DATA_HOME="$BASE/data"

@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version to build (semver); empty uses 0.0.0-dev on branches"
+        description: "Version to build (semver); empty uses 0.0.0 on branches"
         required: false
         default: ""
 
@@ -46,7 +46,7 @@ jobs:
           if [ "$GITHUB_REF_TYPE" = "tag" ]; then
             version="${GITHUB_REF_NAME#v}"
           else
-            version="${INPUT_VERSION:-0.0.0-dev}"
+            version="${INPUT_VERSION:-0.0.0}"
           fi
           case "$version" in
             *[!A-Za-z0-9._-]*|"") echo "release: invalid version '$version'" >&2; exit 1 ;;
@@ -137,9 +137,15 @@ jobs:
           name: tbound-dist
           path: dist
 
+      - name: Verify downloaded artifacts
+        run: |
+          cd dist
+          sha256sum --quiet -c SHA256SUMS
+
       - name: Publish GitHub release
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
+          fail_on_unmatched_files: true
           files: |
             dist/*.tar.gz
             dist/SHA256SUMS

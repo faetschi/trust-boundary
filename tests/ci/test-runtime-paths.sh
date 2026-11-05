@@ -21,8 +21,8 @@ git -C "$repo" commit -qm initial
 first="$(git -C "$repo" rev-parse HEAD)"
 
 check() {
-  name=$1 want=$2
-  got="$(cd "$repo" && sh "$FILTER" "$3" "$4")"
+  name=$1 want=$2 base=$3 head=$4 mode=${5:-pr}
+  got="$(cd "$repo" && sh "$FILTER" "$base" "$head" "$mode")"
   if [ "$got" != "$want" ]; then
     echo "FAIL: $name: got $got, want $want" >&2
     exit 1
@@ -50,6 +50,10 @@ git -C "$repo" mv supervisor/a.go docs/moved.go
 git -C "$repo" commit -qm rename
 renamed="$(git -C "$repo" rev-parse HEAD)"
 check "rename out of supervisor runs runtime" true "$prev" "$renamed"
+
+check "push of a runtime change runs runtime" true "$first" "$renamed" push
+check "push of a docs-only change skips runtime" false "$first" "$docs" push
+check "force reset to an ancestor runs runtime" true "$renamed" "$first" push
 
 check "missing range runs runtime" true "" ""
 check "zero before runs runtime" true "0000000000000000000000000000000000000000" "$renamed"
