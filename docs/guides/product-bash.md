@@ -448,9 +448,19 @@ sudo systemctl start tbound-product.service
 
 Do not let another process write the project during resolution. It requires
 the unchanged admitted baseline, protected retained evidence, and durable proof
-that the exact Bash owner was drained. Missing evidence and publication
-ambiguity still refuse. Resolution charges the full reservation and records
+that the exact Bash owner was drained, or that every command settled. Missing
+evidence still refuses. Resolution charges the full reservation and records
 terminal `abandoned`. It never makes this turn a predecessor. Keep the journals.
+
+A kill during publication of a review candidate leaves the project blocked in
+the same way. The same commands resolve it when the project still equals the
+admitted baseline, which is the state after a kill before the first file was
+applied. The real run closes the pending publication record and ends any
+prepared transaction as failed before it abandons the turn. The dry run names
+that and writes nothing. If the project already holds the candidate (`the
+publication was applied`) or a partial result (`not provably unapplied`),
+resolution refuses and changes nothing. Inspect the project by hand, because
+the catalog cannot record a published outcome for an unknown turn.
 These recovery fixes are code-backed and await the next live run.
 
 ## 9. Return to Bash denied

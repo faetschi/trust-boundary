@@ -91,16 +91,35 @@ reconciliation. Missing evidence refuses resolution with its failing check.
 Resolution reuses the registered managed-root baseline scan and existing-only
 Store/journal/checkpoint readers. The measured tree must equal the admitted
 baseline. Ordinary resolution requires no Store quarantine or unknown effect,
-terminal or retired effect reservations, and an empty command journal.
+terminal or retired effect reservations, and an empty command journal, or one
+whose commands all settled. A Bash turn that ended normally has the second
+kind. Its retained open already matched every Bash effect to a verified
+settlement, and the abandonment record carries `commands_settled`. A command
+journal that no settlement verifier vouches for still refuses.
 
 A narrow interrupted-Bash path instead verifies the retained Store
 authorizations, command-owner protocol, exact effect reservation, and durable
 `product_command_scope_drained` record. It abandons the private candidate
 without certifying the command result. Other command activity still refuses.
-No publication record may name the workflow. Publication ambiguity still
-refuses resolution. A provider reservation or captured call may remain
-unresolved when the dead supervisor can no longer execute it. Nothing is
-resumed or imported. There is no `--accept-current-baseline` override.
+A provider reservation or captured call may remain unresolved when the dead
+supervisor can no longer execute it. Nothing is resumed or imported. There is
+no `--accept-current-baseline` override.
+
+A kill inside publication leaves a `workflow_publication_pending` record in the
+project's publication journal, and the turn ends `unknown` after restart.
+Resolution then accepts only a project equal to the admitted baseline. A
+project equal to the turn's candidate is refused as `the publication was
+applied`, and any other tree as `not provably unapplied`. The catalog cannot
+record a published outcome for an unknown turn, so an applied publication has no
+operator path. At the baseline, a real resolution first closes each pending
+record through the root ledger's own recovery, which only observes. A pending
+record with no prepared transaction resolves `FAILED`, since no live effect can
+precede the prepare. A prepared transaction without a terminal record ends
+`FAILED` through publication recovery, run on a repository at a higher owner
+epoch. An `UNKNOWN` result refuses. The abandonment record lists the closed
+records in `publication_closed`. The dry run makes every decision that the
+journal alone settles and writes nothing. It cannot run publication recovery,
+so a real run can still refuse for a prepared transaction.
 
 The command attests the tree at append time, not only when it starts checking.
 It keeps the project directory and the retained journals open from the first
@@ -119,7 +138,7 @@ commitment on both append and replay; duplicates and malformed/forged bindings
 fail catalog replay. The protected journal supplies integrity, not a signature
 against its own privileged owner. Dry-run holds the same lock and checks the
 same evidence but appends nothing, including no owner epoch.
-An abandonment record containing `command_owner_head` fails closed on older binaries whose strict catalog decoder does not recognize that field; keep this replay incompatibility in mind during the format-3 to format-2 rollback drill.
+An abandonment record containing `command_owner_head`, `commands_settled` or `publication_closed` fails closed on older binaries whose strict catalog decoder does not recognize that field; keep this replay incompatibility in mind during the format-3 to format-2 rollback drill.
 
 The outcome is terminal `abandoned`, reason `operator_resolved`, with no new execution
 receipt and `context_eligible=false`. A previous review receipt stays available
@@ -297,6 +316,8 @@ On `Open`, unresolved turns are rebuilt from the catalog. The driver's `Reconcil
 | `awaiting_review`, no resolution request | If the project equals the admitted baseline and no publication transaction exists for the workflow: `discarded` with reason `restart`. Otherwise `unknown`. |
 | `awaiting_review` with resolution request `publish` | If the publication journal shows the workflow's transaction `SUCCEEDED` and the project equals the sealed candidate: `published`. If no transaction exists and the project equals the admitted baseline: `discarded` with reason `restart`. Otherwise `unknown`. |
 | `awaiting_review` with resolution request `discard` | `discarded` with reason `user`, after the same baseline check. |
+
+A pending publication record counts as a publication record in the rules above, so a turn killed inside publication stays `unknown` until operator resolution closes it.
 
 Settlement `reconciled-after-restart` is valid for worker kind `supervisor-loop`, because the process that hosted the in-process worker is gone. A real Pi worker will need its drain proof instead.
 
@@ -508,8 +529,8 @@ The reusable probe is the check for a later policy-mediated egress tool. Such a 
 **Known limits.**
 
 - On 2026-11-04, build `d75ac188` passed all seven phases on the demo VM. Startup took about three minutes (190 to 202 seconds). The live network report showed name resolution `ECONNREFUSED`, numeric IPv4 and host-listener connect `EACCES` from Landlock, and only `lo`. Service-side controls succeeded. IPv6 connect was skipped because the host had none.
-- The cell cannot write `/dev/null`, so commands that redirect there fail. Changing cell access to `/dev/null` needs an entrypoint or image change and is deferred. Before 2026-11-05 the rootfs probe redirected its errors to `/dev/null`, so the round 7 PASS did not establish write denial; the probe now captures the error itself.
-- Crash recovery during Bash and publication is fixed in code after that build and awaits the next live run. Round 7 drained the killed Bash cell, but operator resolution refused; its publication crash check was unrun.
+- The cell cannot write `/dev/null`, so commands that redirect there fail. Changing cell access to `/dev/null` needs an entrypoint or image change and is deferred. Before 2026-11-05 the rootfs probe redirected its errors to `/dev/null`, so the round 7 PASS did not establish write denial; the probe now captures the error itself and keeps each target's observed denial in the stored evidence.
+- Round 8 (build `f91499e1`) passed kills during Bash. A kill inside publication left the project blocked, because operator resolution refused a settled Bash command and any named publication record. Both are fixed in code and await the next live run. The product publication recovery repository still uses owner epoch 1, so a later turn cannot recover a prepared transaction by itself. Only operator resolution closes one.
 - Recovery fails closed on unreadable relevant `/proc` entries, surviving namespace references, Podman errors or unverifiable ownership. Neither a missing scope nor a missing container proves the command outcome. Cleanup never creates a result receipt.
 - The service must reach its registered provider during every Bash-enabled startup. A provider outage can refuse startup even when containment works.
 - Unresolved runs are never pruned. Repeated unresolved failures can consume storage until cleanup is proved.
