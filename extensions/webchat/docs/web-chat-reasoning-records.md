@@ -56,7 +56,7 @@ loudly by any validator that does not know it, and every view must choose to sho
 |---|---|
 | common fields | `schema_version`, `sequence`, `id`, `turn_id`, `occurred_at`, `authority`, `verification_scope`, as every item |
 | `text` | model-reported reasoning, bounded to `MaxTextBytes` (4096) after `cleanText` (valid UTF-8, control characters replaced, CR dropped) |
-| `text_truncated` | true when cut. Text may be empty only when truncated (same rule as `message`) |
+| `text_truncated` | true when cut. Text may be blank (empty or whitespace) only when truncated (same rule as `message`, `validate.go:282`). The service drops blank reasoning before numbering, so a blank item can only come from a cut (2.2) |
 | other fields | forbidden: `role`, `tool`, `tool_call_id`, `verdict`, `reason_code`, `state`, `summary`, `detail`, `digest`, `lossy`, `policy_digest`, `kind` |
 | `authority` | **`diagnostic` only**, in both validators with the same rule. Go and TypeScript refuse `observed`, `authoritative` and `unknown` for this type (`validate.go:38-40` lists all four values today) |
 | `verification_scope` | must equal the snapshot's scope. The existing gate (`verification.ts` `scopeFault`) refuses any other value, so a live snapshot's reasoning item carries `structural-audit-only`. That label describes the snapshot, not the item: see 3.2 |
@@ -92,11 +92,31 @@ provider journal (provider_exchange, raw SSE)           [unchanged, already dura
     `reasoning`) only when the value is a JSON string. Numbers, objects, arrays and `null` add
     nothing. `reasoning_details` is ignored (structured, may be opaque or encrypted).
   - Concatenate in stream order, cap at 16 KiB (`productEventMaxTextBytes`), cut on a rune
-    boundary. An empty result emits no event.
+    boundary.
+  - **Drop blank text before numbering.** Apply the gateway's display cleaning (`cleanText`,
+    `live_render.go:32`: invalid UTF-8 replaced, CR dropped, other control characters replaced)
+    to the capped text. If nothing but whitespace is left, emit no event. A string that is only
+    `"\r"` is non-empty in the raw chunk but empty after cleaning, and a whitespace-only string
+    fails the message-style validator (`validate.go:282`), so either would invalidate the
+    whole snapshot if it reached the gateway. The drop happens in the service, before `Seq` is
+    assigned. Dropping at the gateway would leave a gap in the numbering and recreate the
+    cursor defect of 2.3. The service cannot import the gateway's `cleanText`, so it carries a
+    copy of the rule, and one shared case file pins both copies (Units 1 and 3). Control
+    characters become U+FFFD, which is not whitespace, so a control-only string is kept as
+    replacement characters and stays valid. An empty result emits no event.
   - **Failure is diagnostic only.** If the second pass cannot read a chunk, it emits no
     reasoning event for that call and records a service-side diagnostic. It never returns an
     error from `projectProviderEvents` and never changes, drops or reorders the
     `assistant_message`, `tool_call` or `tool_result` events that the existing path produces.
+  - **Diagnostics carry no payload.** A diagnostic is a code from a closed set (for example
+    `reasoning_chunk_unreadable`, `reasoning_field_not_string`, `reasoning_text_blank`) plus the
+    exchange identifier and the event index. It never contains a chunk, a field value, a
+    decoder error string (those can echo input bytes) or any part of the reasoning text. The
+    same holds for every error the reasoning path can raise: the gateway's
+    unexpected-reasoning refusal under `base` (2.3) uses a fixed detail and names no kind or
+    text, and a service error is built from a code and fixed text only, because the gateway
+    forwards a service error's `Detail` to the browser (`live.go:670`) and extraction runs
+    before filtering, so a failure there can happen for a caller that asked for `base`.
 
   The alternative, a new accessor on `CapturedResponse`, edits `openrouter.go`, which is
   shared with the research route and the frozen thesis build, so it is not preferred.
@@ -140,14 +160,54 @@ So the filter runs **before** numbering, in the service, and the projection is n
   is a service fault (`BAD_SERVICE_RESPONSE`), not something to drop, because dropping at the
   gateway would break contiguity.
 - **Off means absent.** Under `base` there is no reasoning payload in `events[]`, in `items[]`,
-  or in any other field. This is tested on the raw response body, not only on item types.
-- **Cursor scope.** Under `reasoning-1` the snapshot `epoch` and cursor prefix carry the
-  projection id (for example `<session-id>.reasoning-1`); under `base` they stay as today. The
-  browser keys its stored cursor by that epoch instead of the bare session id
-  (`controller.ts:30,258-280`), and the poll names its projection; the gateway answers a poll
-  whose projection is not the process's with a refusal that makes the page reload the
-  snapshot. Whether the cursor `epoch` character set allows the dot is **not verified**: pick
-  the separator in Unit 2.
+  or in any other field, and none in an error body, a response header or a log line of the
+  service or the gateway. Bodies of successful calls are the easy half: extraction runs before
+  the projection filter, so its failure paths and the refusal of an unexpected reasoning
+  event are the other half. Both are tested with a planted marker string (Units 1 to 3).
+- **Cursor scope and identity.** Changing only the storage key is not enough, because three
+  existing consumers tie the snapshot to the bare session id:
+  - `core/validate.ts:662` requires `live.id === epoch`, so a snapshot with epoch
+    `<session-id>.reasoning-1` fails validation. The Go validator has no such check
+    (`ValidateSnapshot` only checks the epoch pattern and that the cursor carries it,
+    `validate.go:496-499`), but the Go renderer sets `Epoch` and the cursor prefix to
+    `view.ID` (`live_render.go:259-260`), so the Go side must produce the new epoch.
+  - `live/poller.ts:72,79` builds the gap epoch and each item's cursor
+    (`${sessionId}:${n}`) from the bare session id. A snapshot parsed with another epoch
+    would not match the item cursors the poller builds.
+  - `live/controller.ts:258-280` reads, compares and persists the cursor count under
+    `cursorKey(session id)`.
+
+  The specification:
+  1. **Identity rule, both validators.** Under `base` the epoch equals the session id, as
+     today. Under `reasoning-1` the epoch equals `<session-id>.reasoning-1`. TypeScript
+     replaces `live.id !== epoch` with this rule. Go adds the same rule to `ValidateSnapshot`
+     so the two agree, and the shared corpus of Unit 4 holds a case for each outcome. The
+     projection is read from the epoch suffix against a closed list of known ids, so the live
+     view gets no new field.
+  2. **Epoch limit.** Both epoch patterns already allow the dot
+     (`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`, `validate.go:27` and `validate.ts:127`) and cap the
+     epoch at 64 characters. The suffix `.reasoning-1` takes 12, so a session id longer than 52
+     characters cannot carry it. The renderer refuses such a snapshot with a fixed error and
+     never falls back to `base` silently, because that would change the cursors under the
+     browser. Unit 3 tests ids of 52 and 53 characters.
+  3. **Propagate the snapshot epoch and projection.** The poller takes the epoch from the
+     snapshot it continues. Gap epoch and item cursors use it instead of the bare session id.
+     The poll request names the projection (a `projection` query parameter; the gateway's
+     `parseObserveQuery` accepts only `cursor` and `wait` today, `live.go:568-588`). The
+     events answer keeps checking `session_id` against the bare session id
+     (`wire.ts:158`), because that field is a session, not an epoch.
+  4. **Persist by epoch.** `cursorKey`, `readCursor`, `adoptSnapshot` and `onBatch` key the
+     stored count by the snapshot epoch. `live.id !== model.activeId` stays a session-id
+     check. Under `base` the key is the same string as today, so stored cursors survive.
+  5. **Refusal reloads.** The gateway answers a poll whose projection is not the process's
+     with a refusal that makes the page reload the snapshot.
+
+  Added test (Unit 4, with a gateway half in Unit 3): load a snapshot, poll, and reload while
+  the projection changes between runs (`base`, then `reasoning-1`, then `base`). Each snapshot
+  validates. The poll continues from the snapshot count without a gap. A batch persists under
+  the epoch of its snapshot and does not overwrite the other projection's count. A stored
+  count from `base` is not read under `reasoning-1`, so `sinceLeft` is 0 on that first load.
+  A poll naming the wrong projection is refused and the page reloads.
 
 ### 2.4 Compatibility and deployment
 
@@ -156,8 +216,8 @@ So the filter runs **before** numbering, in the service, and the projection is n
 | Product protocol (`tbound-product-protocol/v1`) | one new `Kind` string, one optional `projection` request field | Additive for a caller that omits the field (it gets `base`). A caller that sends it to a service that lacks it is refused by the strict decoder. Neither side validates kinds, so the kind alone is never the guard: the request field is |
 | Wire copy in the gateway (`wire.go`) | add the constant and the field | Parity test `TestProtocolFixturesRoundTripThroughTheWireCopy` needs observe fixtures for both projections, generated by `supervisor/internal/productprotocol/fixtures_test.go -update` |
 | Observation contract (`tbound-webchat-observation/v1`) | one new item type, projection-scoped epoch | Breaking for a client that does not know the type (whole snapshot refused, section 1). The Go gateway embeds its own frontend build, so the pair ships as one binary. Under `base` the output is unchanged. A bump to `v2` is the stricter alternative: open question 3 |
-| Go validator (`validate.go`) | `ItemReasoning` const, `validateItemType`, a `validateItem` case, a rule that allows only `diagnostic` | Fixture and replay documents stay valid (no such items) |
-| Frontend (`core/contract.ts`, `core/validate.ts`) | `ITEM_TYPES`, `ReasoningItem`, `ITEM_KEYS.reasoning`, an `assertItem` case with the same authority rule as Go | Go and TypeScript must agree on a shared corpus (Unit 4). `core/differential.test.ts` compares the legacy JS modules with the TS ports, and `validate.live.test.ts` is TS only, so neither is evidence of Go agreement |
+| Go validator (`validate.go`) | `ItemReasoning` const, `validateItemType`, a `validateItem` case, a rule that allows only `diagnostic`, the snapshot identity rule of 2.3 | Fixture and replay documents stay valid (no such items) |
+| Frontend (`core/contract.ts`, `core/validate.ts`) | `ITEM_TYPES`, `ReasoningItem`, `ITEM_KEYS.reasoning`, an `assertItem` case with the same authority rule as Go, the snapshot identity rule of 2.3 in place of `live.id !== epoch` (`validate.ts:662`) | Go and TypeScript must agree on a shared corpus (Unit 4). `core/differential.test.ts` compares the legacy JS modules with the TS ports, and `validate.live.test.ts` is TS only, so neither is evidence of Go agreement |
 | Consumers of `Item` | `core/store.ts:345` (blocks), `core/trajectory.ts`, `core/filters.ts`, `app/views/trajectory/rail.ts`, `app/views/chat/Transcript.tsx` | Exhaustive switches fail to compile when the type is added. Each gets an explicit "reasoning is not a tool, not a decision, not a result" branch |
 | Verification gate (`verification.ts`) | none | The item-only predicate `isItemEvidenceOnly` needs `authority === "observed"` (`verification.ts:66-68`), so a `diagnostic` item never passes. Views reach the gate only through `isVerifiedIn` (`:74`), and `app/verification.gate.test.ts` forbids `isItemEvidenceOnly`, `isVerified` and `judgedItem` under `src/app` while allowing `isVerifiedIn` |
 
@@ -167,7 +227,7 @@ ids are `ev-<seq>` (`live_render.go:116`) and browsers persist a cursor count pe
 (`controller.ts:258-280`). The extractor reads old journals too, so under `reasoning-1` it
 would insert events before the historical assistant messages of sessions that already exist.
 Every later id and count in those sessions shifts. Under `base` nothing shifts. The
-projection-scoped epoch and storage key above are the reset mechanism: a browser that moves
+projection-scoped epoch, which also keys the stored cursor (2.3), is the reset mechanism: a browser that moves
 from `base` to `reasoning-1` finds no stored cursor for the new epoch, starts from the
 snapshot, and shows no "events since you left" count for that first load. Whether to accept
 this for old sessions, or to apply reasoning to new sessions only, is owner decision 8.
@@ -308,10 +368,10 @@ hand-merge).
 | Unit | Change | Tests that must exist | Lane |
 |---|---|---|---|
 | 0 | **Measure.** Read-only script or one-off test that scans stored `provider_exchange` responses (a demo-VM turn, `.local/product-demo` captures) for non-empty `reasoning_content`/`reasoning`. Report counts and sizes. No product code | A written result in the PR: how many exchanges, how many with reasoning, median size | product |
-| 1 | `assistant_reasoning` kind and the second-pass extractor in `projectProviderEvents` (rules in 2.2) | Table test on recorded SSE: `reasoning_content` only, `reasoning` only, both, none, split across chunks, oversize, invalid UTF-8, `reasoning_details` ignored. **Event assembly:** one JSON chunk spread over several `data:` lines, comment lines, CRLF line ends, `[DONE]`. **Types:** number, object, array and `null` in `reasoning_content`/`reasoning` add nothing. **Failure:** an unreadable reasoning chunk yields no reasoning event and a diagnostic, and the `assistant_message`, `tool_call` and `tool_result` events equal those of the same turn without the extractor. **Unchanged parser:** compare the trusted parsed fields (`AssistantText`, `ToolCall`, `FinishReason`, `Usage`) of a capture with reasoning and of the same capture with the reasoning deltas removed. Do not compare raw bytes across the two: `RawResponse()` preserves the response bytes (`openrouter.go:442`), so they differ by design. Compare exact bytes before and after projection of the **same** capture (journal record and `RawResponse()` untouched). Reasoning never appears in model history | product |
-| 2 | Protocol and service projection: `projection` request field, wire copy constant and field, filter-before-numbering in `productEventProjector.session`, settled-cache scoping, observe fixtures for both projections | `TestProtocolFixturesRoundTripThroughTheWireCopy` extended; supervisor `fixtures_test.go -update` regenerates. Service tests on **real reasoning-containing exchanges** (journals built from recorded SSE with reasoning deltas, not synthetic events): `[message, reasoning, message]` under `base` yields contiguous `Seq` 0..n with no reasoning event; under `reasoning-1` yields the larger list; the same session read in both projections does not mix through the cache; a request naming an unknown projection is refused | product |
-| 3 | Go contract: `ItemReasoning`, validator rules (authority `diagnostic` only, forbidden fields, text rules), `live_render.go` mapping, `--show-reasoning` flag (default off, requests `base`), projection-scoped epoch and cursor, refusal of a poll for another projection, service fault when `base` returns a reasoning event | Go tests: valid item passes; `observed`, `authoritative` and `unknown` refused; each forbidden field refused; control characters cleaned; truncation flag. **Flag off, real reasoning-containing exchange behind the fake service:** snapshot items have sequence `1..n`, `ValidateSnapshot` passes, `events[]` and `items[]` of a poll have equal length and contiguous `seq`, the snapshot cursor equals the cursor a poll continues from, and the raw response bodies contain none of the reasoning marker text. Flag on: the same checks with reasoning present, and snapshot cursor and poll cursor count the same list. Existing live fixtures render byte-identical to today under `base` | product |
-| 4 | Frontend contract: `ITEM_TYPES`, `ReasoningItem`, `ITEM_KEYS`, `assertItem` case with the Go authority rule (`diagnostic` only); every exhaustive `Item` switch gets an explicit branch; projection-scoped cursor key and reload on refusal | **Shared Go/TS corpus:** valid and invalid reasoning documents (each other authority, each forbidden field, over-long text, wrong scope, gapped sequence) under `internal/webchat/fixtures`, which `fixtures.test.ts` already imports for TS. A Go test runs `ValidateSnapshot` over the same files; both suites must agree on accept or refuse for every file. Plus `verification.test.ts` and `verification.property.test.ts` gain "a reasoning item is never verified through `isVerifiedIn` in any projection"; `verification.gate.test.ts` keeps forbidding `isItemEvidenceOnly`, `isVerified` and `judgedItem` under `src/app` and still allows `isVerifiedIn`; a controller test that a different epoch reads no stored cursor | webchat |
+| 1 | `assistant_reasoning` kind and the second-pass extractor in `projectProviderEvents` (rules in 2.2) | Table test on recorded SSE: `reasoning_content` only, `reasoning` only, both, none, split across chunks, oversize, invalid UTF-8, `reasoning_details` ignored. **Event assembly:** one JSON chunk spread over several `data:` lines, comment lines, CRLF line ends, `[DONE]`. **Types:** number, object, array and `null` in `reasoning_content`/`reasoning` add nothing. **Blank text:** a reasoning string that is only `\r`, only spaces or newlines, and a mix of those with a control character; CR-only and whitespace-only emit no event, a control-only string is kept as replacement characters, and the following events are numbered without a gap. **Diagnostics:** every failure path emits a code and identifiers only (marker test below). **Failure:** an unreadable reasoning chunk yields no reasoning event and a diagnostic, and the `assistant_message`, `tool_call` and `tool_result` events equal those of the same turn without the extractor. **Unchanged parser:** compare the trusted parsed fields (`AssistantText`, `ToolCall`, `FinishReason`, `Usage`) of a capture with reasoning and of the same capture with the reasoning deltas removed. Do not compare raw bytes across the two: `RawResponse()` preserves the response bytes (`openrouter.go:442`), so they differ by design. Compare exact bytes before and after projection of the **same** capture (journal record and `RawResponse()` untouched). Reasoning never appears in model history. **No echo:** plant a marker string that occurs only in reasoning (in a valid delta, in a wrong-typed field, in an oversize delta and in a chunk the extractor cannot read) and assert it is absent from every diagnostic, returned error and captured service log line | product |
+| 2 | Protocol and service projection: `projection` request field, wire copy constant and field, filter-before-numbering in `productEventProjector.session`, settled-cache scoping, observe fixtures for both projections | `TestProtocolFixturesRoundTripThroughTheWireCopy` extended; supervisor `fixtures_test.go -update` regenerates. Service tests on **real reasoning-containing exchanges** (journals built from recorded SSE with reasoning deltas, not synthetic events): `[message, reasoning, message]` under `base` yields contiguous `Seq` 0..n with no reasoning event; under `reasoning-1` yields the larger list; the same session read in both projections does not mix through the cache; a request naming an unknown projection is refused. CR-only and whitespace-only reasoning in a journal leaves `Seq` contiguous under both projections. The marker string is absent from every service error `Detail` and log line, including calls that asked for `base` | product |
+| 3 | Go contract: `ItemReasoning`, validator rules (authority `diagnostic` only, forbidden fields, text rules), `live_render.go` mapping, `--show-reasoning` flag (default off, requests `base`), projection-scoped epoch and cursor, refusal of a poll for another projection, service fault when `base` returns a reasoning event | Go tests: valid item passes; `observed`, `authoritative` and `unknown` refused; each forbidden field refused; control characters cleaned; truncation flag. **Flag off, real reasoning-containing exchange behind the fake service:** snapshot items have sequence `1..n`, `ValidateSnapshot` passes, `events[]` and `items[]` of a poll have equal length and contiguous `seq`, the snapshot cursor equals the cursor a poll continues from, and the raw response bodies contain none of the reasoning marker text. **No echo, flag off:** plant the marker in reasoning and drive the extractor-failure and unexpected-reasoning (service returns a reasoning event under `base`) paths; assert the marker is absent from response headers, success and error bodies (including the `service.Detail` forwarded at `live.go:670`), and captured service and gateway log output. **Blank reasoning:** a CR-only and a whitespace-only reasoning exchange gives a snapshot that passes `ValidateSnapshot` and a poll with equal-length `events` and `items` and contiguous `seq`, under both projections. **Epoch:** session ids of 52 and 53 characters under `reasoning-1` (the second is refused, not downgraded); the identity rule accepts and refuses the cases of 2.3. Flag on: the same checks with reasoning present, and snapshot cursor and poll cursor count the same list. Existing live fixtures render byte-identical to today under `base` | product |
+| 4 | Frontend contract: `ITEM_TYPES`, `ReasoningItem`, `ITEM_KEYS`, `assertItem` case with the Go authority rule (`diagnostic` only); every exhaustive `Item` switch gets an explicit branch; projection-scoped cursor key and reload on refusal | **Shared Go/TS corpus:** valid and invalid reasoning documents (each other authority, each forbidden field, over-long text, wrong scope, gapped sequence) under `internal/webchat/fixtures`, which `fixtures.test.ts` already imports for TS. A Go test runs `ValidateSnapshot` over the same files; both suites must agree on accept or refuse for every file. Plus `verification.test.ts` and `verification.property.test.ts` gain "a reasoning item is never verified through `isVerifiedIn` in any projection"; `verification.gate.test.ts` keeps forbidding `isItemEvidenceOnly`, `isVerified` and `judgedItem` under `src/app` and still allows `isVerifiedIn`; the snapshot, poll and reload across projection changes test of 2.3 (poller and controller use the snapshot epoch for gap, item cursors and storage); a controller test that a different epoch reads no stored cursor; CR-only and whitespace-only cases in the shared corpus (a blank item that is not truncated is refused by both validators) | webchat |
 | 5 | Chat view: collapsed "Thinking" row, literal rendering, caption, truncation note, no durations, prefs toggle | Component tests: closed by default; opened text is literal (`<script>`, markdown, `javascript:` links stay text, no `dangerouslySetInnerHTML`); no preview when closed; not counted in headline, rail, filters, status; a11y name; **exactly one `aria-live="polite"` element in the rendered page with Thinking rows closed and opened** (the shell's `LiveRegion`; the row adds none); CSP smoke unchanged | webchat |
 | 6 | Docs: contract section 2.2 and 9.6 get the new type, event and projection, `product-contracts.md` Milestone 6 lists the kind and the field, README flag | Doc-only | product |
 
@@ -357,7 +417,8 @@ Vitest suites, and Linux-only supervisor tests wait for the Linux line per
 - Behavior of the in-progress folded tool-line UI on the open webchat branches
   (`feat/webchat-shadcn-recipes`, PR #43): not read. Section 5 assumes `ui/Disclosure`
   is the shared building block.
-- Whether the cursor `epoch` character set accepts the projection separator (section 2.3).
+- The longest session id the service issues. The 52-character limit of 2.3 matters only if ids can be that long.
+- Which log sinks the service and the gateway write to. The no-echo tests must capture all of them, so Units 2 and 3 list the sinks first.
 - Whether any request besides `Observe` needs the `projection` field (for example a session
   view that carries event counts). Unit 2 enumerates the requests.
 - No test, build or gate was run. This is a document-only change.
@@ -382,5 +443,25 @@ code at `a47661ac` before this revision. All four held; none was rejected.
   contradicted "diagnostic only" (removed); the single polite live region is now asserted in
   Unit 5.
 
-Line numbers in the review were off by one in two places (`session` is at `:59` and the `Seq`
+A second review of `7a9eb4ad` raised three more findings. Each was checked against the
+code before this revision.
+
+- **Epoch reset misses existing consumers** (`validate.ts:662`, `poller.ts:72,79`,
+  `controller.ts:258-280`): confirmed for the TypeScript side. One correction: the Go
+  `ValidateSnapshot` has no `live.id == epoch` check (`validate.go:496-499` checks the epoch
+  pattern and the cursor prefix only). The Go change is therefore the renderer
+  (`live_render.go:259-260`) plus a new identity rule for parity, not the repair of an
+  existing one. Both epoch regexes already accept the dot, and the 64-character cap leaves
+  52 for a session id. Replaced the storage-key-only reset with the specification in 2.3
+  and added the snapshot, poll and reload test.
+- **Blank reasoning invalidates the snapshot** (`live_render.go:32-52`,
+  `validate.go:282`): confirmed. `cleanText` drops CR, so a CR-only string becomes empty
+  without truncation, and a whitespace-only string fails the same check. The drop moved to the
+  service, before numbering (2.2), with CR-only and whitespace-only cases in Units 1 to 4.
+- **Off means absent only proven for successful bodies** (`live.go:670`): confirmed.
+  Extraction runs before the filter, and the gateway forwards `service.Detail`. Diagnostics
+  and errors are now payload-free by rule (2.2), and Units 1 to 3 plant a marker and check
+  headers, error bodies and logs. Which log sinks exist is not verified (section 9).
+
+Line numbers in the first review were off by one in two places (`session` is at `:59` and the `Seq`
 loop at `:73`, not `:58` and `:72`). The findings are unaffected.
