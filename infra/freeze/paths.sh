@@ -10,6 +10,8 @@ HOST_ENV=$TBOUND_LOCAL/freeze-host.env
 . "$HOST_ENV"
 # linux_safe: an absolute Linux path, written plainly (no //, /./, /../), not under /mnt. Lexical only.
 # shortcut: a symlink inside such a path can still lead to /mnt; resolve with realpath on the Linux side if that ever matters.
+# env_paths_ok: recheck the paths a sourced env.sh or session-env.sh set (a stale file must not point into /mnt).
+env_paths_ok() { local v; for v in W B H REPO HF CF LOG; do [ -z "${!v:-}" ] || linux_safe "${!v}" || { echo "FATAL: $v=${!v} is not a plain Linux path outside /mnt" >&2; exit 2; }; done; }
 linux_safe() { [[ $1 == /[!/]* && $1 != /mnt && $1 != /mnt/* && $1 != *//* && $1 != */./* && $1 != */. && $1 != */../* && $1 != */.. ]]; }
 for v in TBOUND_WORK OLDH GO PASSPHRASE_FILE; do
   linux_safe "${!v:-}" || { echo "FATAL: $HOST_ENV must set $v to a plain absolute Linux path outside /mnt" >&2; exit 2; }

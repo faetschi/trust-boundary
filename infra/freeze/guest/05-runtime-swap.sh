@@ -9,7 +9,7 @@ unset BASH_XTRACEFD || true
 logto 05-runtime-swap
 case "${DRY_RUN:=0}" in 0|1) ;; *) die "DRY_RUN must be 0 or 1";; esac
 # Unlike load_env, P11 needs only P1/P2 records, not later image/signing records.
-. "$TBOUND_WORK_VIEW/env.sh"
+. "$TBOUND_WORK_VIEW/env.sh"; env_paths_ok
 for v in W H F HF; do [ -n "${!v:-}" ] || die "env.sh lacks $v"; done
 eq "env.sh commit == frozen values" "$F" "$FREEZE_COMMIT"
 eq "HF path" "$HF" "$H/$FREEZE_LC"

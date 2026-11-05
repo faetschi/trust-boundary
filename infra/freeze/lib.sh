@@ -122,7 +122,7 @@ git_env() {
 # load_env: read $TBOUND_WORK/env.sh written by 10-freeze.sh and sanity-check it.
 load_env() {
   [ -f "$TBOUND_WORK/env.sh" ] || die "no $TBOUND_WORK/env.sh: run 10-freeze.sh first"
-  . "$TBOUND_WORK/env.sh"
+  . "$TBOUND_WORK/env.sh"; env_paths_ok
   for v in W B H F REPO HF CF LOG; do [ -n "${!v:-}" ] || die "env.sh lacks $v"; done
   git_env
   [ -d "$W" ] && [ -d "$B" ] && [ -d "$HF" ] || die "W/B/HF directory missing"

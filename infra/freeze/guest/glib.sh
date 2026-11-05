@@ -181,7 +181,7 @@ PIN_NAMES="IMGDIGEST CFG ENTRYPOINT_DIGEST BASH_DIGEST NODE_DIGEST BUNDLE_DIGEST
 load_env() {
   [ -f "$TBOUND_WORK_VIEW/env.sh" ] || die "no $TBOUND_WORK_VIEW/env.sh: run 10-freeze.sh <commit> of the freeze kit first"
   # shellcheck disable=SC1091
-  . "$TBOUND_WORK_VIEW/env.sh"                                           # W B H F REPO HF CF (WSL paths)
+  . "$TBOUND_WORK_VIEW/env.sh"; env_paths_ok                             # W B H F REPO HF CF (WSL paths)
   local v; for v in W B H F REPO HF CF; do [ -n "${!v:-}" ] || die "env.sh lacks $v"; done
   WX test -d "$HF" && WX test -f "$W/session-env.sh" || die "missing $HF or $W/session-env.sh (run the freeze kit through session-env.sh)"
   eq "FROZEN-COMMIT" "$(hf_get FROZEN-COMMIT)" "$F"
