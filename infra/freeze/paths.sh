@@ -8,8 +8,11 @@ HOST_ENV=$TBOUND_LOCAL/freeze-host.env
 [ -f "$HOST_ENV" ] || { echo "FATAL: no $HOST_ENV (copy infra/freeze/host.env.example there)" >&2; exit 2; }
 # shellcheck disable=SC1090
 . "$HOST_ENV"
+# linux_safe: an absolute Linux path, written plainly (no //, /./, /../), not under /mnt. Lexical only.
+# shortcut: a symlink inside such a path can still lead to /mnt; resolve with realpath on the Linux side if that ever matters.
+linux_safe() { [[ $1 == /[!/]* && $1 != /mnt && $1 != /mnt/* && $1 != *//* && $1 != */./* && $1 != */. && $1 != */../* && $1 != */.. ]]; }
 for v in TBOUND_WORK OLDH GO PASSPHRASE_FILE; do
-  [[ ${!v:-} == /* && ${!v} != /mnt/* ]] || { echo "FATAL: $HOST_ENV must set $v to an absolute Linux path outside /mnt" >&2; exit 2; }
+  linux_safe "${!v:-}" || { echo "FATAL: $HOST_ENV must set $v to a plain absolute Linux path outside /mnt" >&2; exit 2; }
 done
 # TBOUND_WORK is on a Linux filesystem: drive mounts are read-only from WSL and lose the modes the tests check.
 # Select by uname, not wsl.exe: WSL with interop has wsl.exe too, and there TBOUND_WORK is already a Linux path.
@@ -20,6 +23,7 @@ case $(uname -s) in
     on_linux() { MSYS_NO_PATHCONV=1 wsl.exe -d "$TBOUND_WSL_DISTRO" --cd / -e bash -c "$1"; }   # --cd /: never start in the /mnt view of the Windows cwd
     ;;
   *)
+    linux_safe "$(cd -- "$KIT_DIR" && pwd -P)" || { echo "FATAL: the kit is under /mnt: run it from a Linux checkout" >&2; exit 2; }
     TBOUND_WORK_VIEW=${TBOUND_WORK_VIEW:-$TBOUND_WORK}
     on_linux() { bash -c "$1"; }
     ;;

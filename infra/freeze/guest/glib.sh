@@ -117,7 +117,8 @@ WB()  { "${WXP[@]}" bash -c "export KIT_FREEZE=$KIT_FREEZE; $1" </dev/null; }   
 WBI() { "${WXP[@]}" bash -c "export KIT_FREEZE=$KIT_FREEZE; $1"; }              # WSL, bash -c <one string>, stdin passed through (writers: X | WBI "cat > file")
 # From Git Bash, WSL runs the helpers of TBOUND_WGA, which must be byte-identical to this kit's (helpers, lib, values file).
 if [ ${#WXP[@]} -gt 0 ]; then
-  [[ ${TBOUND_WGA:-} == /* && $TBOUND_WGA != /mnt/* ]] || die "set TBOUND_WGA to the guest/ dir of a Linux checkout of this kit (absolute, outside /mnt)"
+  linux_safe "${TBOUND_WGA:-}" && [[ $TBOUND_WGA == */infra/freeze/guest ]] ||
+    die "set TBOUND_WGA to <Linux checkout of this kit>/infra/freeze/guest (plain absolute path, outside /mnt)"
   WGA=$TBOUND_WGA
   WGA_FILES=(guest/jget.py guest/reqstate.py guest/fill-template.py guest/mk-svc-config.py guest/mk-dr-config.py guest/sign-g1.sh guest/sign-run.sh
     lib.sh paths.sh freeze-guard.sh "freezes/$KIT_FREEZE.env")
