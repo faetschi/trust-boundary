@@ -33,6 +33,10 @@ const (
 // Landlock ABI, cgroup v2 delegation, rootless Podman and crun, an ext4 managed root, and systemd.
 // The results are advisory inventory, never an admission.
 func hostPrerequisites() []productsetup.Check {
+	return hostPrerequisitesAt("/")
+}
+
+func hostPrerequisitesAt(root string) []productsetup.Check {
 	var checks []productsetup.Check
 	add := func(name string, ok bool, detail string) {
 		c := productsetup.Check{Name: name, Status: productsetup.Pass, Detail: detail}
@@ -54,7 +58,7 @@ func hostPrerequisites() []productsetup.Check {
 		path, err := exec.LookPath(bin)
 		add(bin, err == nil, "rootless containment needs "+bin+" on PATH "+path)
 	}
-	probe := productsetup.StateDir
+	probe := filepath.Join(root, productsetup.StateDir)
 	for {
 		if _, err := os.Stat(probe); err == nil || probe == "/" {
 			break
@@ -63,9 +67,9 @@ func hostPrerequisites() []productsetup.Check {
 	}
 	var fs unix.Statfs_t
 	add("ext4-managed-root", unix.Statfs(probe, &fs) == nil && fs.Type == extSuperMagic, "the managed root at "+productsetup.StateDir+" must be on ext4")
-	info, err := os.Stat("/run/systemd/system")
+	info, err := os.Stat(filepath.Join(root, "/run/systemd/system"))
 	add("systemd", err == nil && info.IsDir(), "systemd is the service manager")
-	return append(checks, productQualificationEvidenceCheck(productsetup.TurnsDir))
+	return append(checks, productQualificationEvidenceCheck(filepath.Join(root, productsetup.TurnsDir)))
 }
 
 // cgroupKillAvailable looks below the root because the kernel creates cgroup.kill only in non-root cgroups.

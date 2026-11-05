@@ -425,17 +425,27 @@ func TestProductQualificationEvidenceCheckSummarizesTheLatestRunAsAdvisory(t *te
 }
 
 func TestProductDoctorReadsQualificationFromServiceStateRoot(t *testing.T) {
-	// Guard the production caller too: a correct reader still misses every run under StateDir.
-	source, err := os.ReadFile("product_admin_doctor_linux.go")
-	if err != nil {
+	h := newQualificationHarness(t)
+	root := privateGovernedTestRoot(t)
+	// The installed service and doctor share TurnsDir, not its StateDir parent.
+	env := h.newEnv(filepath.Join(root, productsetup.TurnsDir))
+	if err := os.MkdirAll(env.StateRoot, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(source), "productQualificationEvidenceCheck(productsetup.TurnsDir)") {
-		t.Fatal("doctor must use the service StateRoot (TurnsDir)")
+	h.install(t, h.steps())
+	if _, err := qualifyProductCommandHost(context.Background(), productServiceConfig{}, env, true); err != nil {
+		t.Fatal(err)
 	}
-	if got := productQualificationRoot(productsetup.TurnsDir); got != "/var/lib/tbound-product/turns/qualification" {
-		t.Fatalf("installed qualification evidence: %s", got)
+	runs := qualificationRunDirs(t, env.StateRoot)
+	for _, check := range hostPrerequisitesAt(root) {
+		if check.Name == "command qualification" {
+			if check.Status != productsetup.Pass || !strings.Contains(check.Detail, filepath.Base(runs[0])) {
+				t.Fatalf("doctor missed the service's retained qualification: %+v", check)
+			}
+			return
+		}
 	}
+	t.Fatal("doctor omitted qualification evidence")
 }
 
 // plantOpenedOrphan records one command scope as a killed process leaves it: an fsynced opened record, and a scope
