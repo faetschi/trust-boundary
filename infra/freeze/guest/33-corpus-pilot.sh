@@ -3,19 +3,22 @@
 # Every guest write is a tbound-op verb (narrowed sudo, the session drop-in CLOSED when the script starts), except the artifact install, which has no verb
 # (runbook P13.3) and runs inside the session sudo window (00-session-sudo.sh open ... close; TBA_PW; closed again even on failure).
 #   1 abandon    settle the unsettled dr request with tbound-op's two-step `abandon <rid>` (facts, then --confirm TOKEN). rid = $HF/dr/RID. The request journal must
-#                show the dr request as terminal "unknown" without an abandoned record (reqstate verdict unreconciled); the facts must show the scope drained
-#                and no process or container left. Any other verdict or fact: stop, the owner decides. Nothing unsettled (completed/abandoned): skipped.
+#                show the dr request as terminal "unknown" without an abandoned record (reqstate verdict unreconciled); the facts must be conclusive (cells_procs_bytes,
+#                podman_ps_a_lines 0, no cells; `unavailable` or a missing fact is inconclusive) and the catalog must show THIS request's owner scopes drained.
+#                Otherwise the script does NOT confirm: it prints the facts and the owner's command and stops. Any other verdict: stop, the owner decides. Nothing unsettled (completed/abandoned): skipped.
 #   2 manifest   D1, offline on the WSL side: the T5 draft of $SRC + the four pins of `tbound-profile corpus-pins` (template $HF/d09-cell.base.json) ->
 #                $HF/pilot/manifest.json; `corpus-pins --manifest` must pass; `corpus-digest` with the 76 T5 artifacts and the ceilings 17 / 20000 / 1200 ->
 #                $HF/pilot/CORPUS_DIGEST. Any refusal prints the tool's violation list and stops.
 #   3 artifacts  the 76 files of corpus/pilot/t5-2026-10-29/artifacts of $SRC into /opt/tbound/corpus/artifacts (session sudo window); afterwards count, per-file
-#                sha256, owner and modes are verified. Files on the guest that are not in the T5 set stop the script (nothing is removed).
+#                sha256, owner and modes are verified. Guest files not in the T5 set are moved (mv -n) to artifacts.pre-t5-<UTC>.
 #   4 cycle      D2 `manifest-install`, then the RG cycle of rglib.sh for NAME=pilot: svc stop, cfg-install (config = infra/guest/serve-pi-service.corpus-pilot.json
 #                with CORPUS_DIGEST and the two measured podman digests, mk-svc-config.py), reg-measure, S3' (sign-run.sh pilot s3), reg-install, S4' (sign-run.sh
 #                pilot s4; corpus-pins on the new template must give the same pins), prof-install, svc start, diag l2. No client run: corpus mode refuses client
-#                text. Then the archive check. The service is left RUNNING (the netsink step needs it).
+#                text. Then the archive check. The service is left RUNNING (the netsink step needs it);
+#                before CYCLE_OK the service must be active and diag l2 must pass l2_check (one svc start if state started but stopped).
 #   5 netsink    only with TBOUND_TRIAL_KEY=<path of the trial forced-command key> (passed to ssh by path, never read): `trial reset <first compliant case> --check`,
-#                one real `trial reset`, then 40-guest-evidence.sh netsink. Without the key the script ends after phase 4 and prints what the owner does.
+#                one real `trial reset` (attempt marker before, success marker after a valid
+#                tbound-trial-reset/v1 document; an attempt without success stops for owner recovery, never retried), then 40-guest-evidence.sh netsink. Without the key the script ends after phase 4 and prints what the owner does.
 # Resumable (phases 1-3 re-check their result; phase 4 resumes from `tbound-op status pilot`; signed files in $HF/pilot are verified, never re-signed).
 # STOP_AFTER=<abandon|manifest|artifacts|cfg|measure|s3|reg|s4|prof|start|cycle>.
 # Preconditions (checked): 10, 20, 50 done; session sudo CLOSED; 32-reg-dr.sh finished ($HF/dr/CHECKS_OK, $HF/dr/RID); the dispatcher has no pilot state.
@@ -281,7 +284,7 @@ trial() { GSSH_IDENTITY=$TBOUND_TRIAL_KEY GSSH_USER=root sh "$GSSH_SH" "/usr/loc
 
 phase_netsink() {
   say "5. netsink: trial reset through the trial key, then 40-guest-evidence.sh netsink"
-  local case_id d chk rs ts
+  local case_id chk rs ts
   if [ -z "${TBOUND_TRIAL_KEY:-}" ]; then
     note "TBOUND_TRIAL_KEY is not set: stopping after the cycle. The owner next: KSSH <TRKEY> /usr/local/bin/tbound trial reset <first compliant case> --check, then the real reset"
     note "(service running), then KIT_FREEZE=$FREEZE bash 40-guest-evidence.sh netsink; or run this script again with TBOUND_TRIAL_KEY=<trial key path> (it resumes at phase 5)."
@@ -292,16 +295,24 @@ phase_netsink() {
   case_id=$(WX python3 -I -c 'import json,sys
 print(next(c["case_id"] for c in json.load(open(sys.argv[1],encoding="utf-8"))["cases"] if c["kind"]=="compliant"))' "$HG/manifest.json" | tr -d '\r\n')
   [[ $case_id =~ ^[A-Za-z0-9._-]{1,128}$ ]] || die "not a usable case id: '$case_id'"
-  d=$(op "diag nft-sink" 2>&1 | tr -d '\r' || true)
-  if [[ $d == *"table inet tbound_net_sink"* && $d != *"No such file"* && $d == *"-- attest"* ]]; then
-    ok "the net-sink table and attestation already exist: no second reset (a failed reset spends the unit)"
+  # The net-sink table and attestation do not prove a finished reset (the confinement is set before wipe, populate and the digest check), so only the
+  # success marker decides. An attempt marker without a success marker means an interrupted or failed reset: the owner recovers, nothing is retried.
+  if hf_has pilot/TRIAL_RESET_OK; then
+    ok "the trial reset already succeeded ($(hf_get pilot/TRIAL_RESET_OK)): no second reset"
   else
-    chk=$(trial "reset $case_id --check" 2>&1 | tr -d '\r') || die "trial reset $case_id --check refused: $chk"
+    hf_has pilot/TRIAL_RESET_ATTEMPT && die "a trial reset was attempted ($(hf_get pilot/TRIAL_RESET_ATTEMPT)) without a recorded success: it may have failed or been interrupted and a failed reset spends the unit. Owner recovery: read the guest state (diag nft-sink, ls -ln on the cells cgroup, the live root), do not retry blindly; after recovery record the outcome by hand in $HG/TRIAL_RESET_OK"
+    chk=$(trial "reset $case_id --check" | tr -d '\r') || die "trial reset $case_id --check refused (nothing was reset): $chk"
     printf 'trial reset --check: %s\n' "$chk"
-    rs=$(trial "reset $case_id" 2>&1 | tr -d '\r') || die "trial reset $case_id failed (the unit may be spent; do not retry blindly): $rs"
-    printf 'trial reset: %s\n' "$rs"
     ts=$(date -u +%Y%m%dT%H%M%SZ)
+    hf_put pilot/TRIAL_RESET_ATTEMPT "$ts $case_id"
+    rs=$(trial "reset $case_id" | tr -d '\r') || die "trial reset $case_id failed (the unit may be spent; do not retry blindly): $rs"
+    printf 'trial reset: %s\n' "$rs"
     printf '%s\n' "$rs" | hf_save "pilot/trial-reset-$ts.json"; hf_commit "pilot/trial-reset-$ts.json"
+    WX python3 -I -c 'import json,sys
+d=json.load(open(sys.argv[1],encoding="utf-8"))
+sys.exit(0 if d.get("schema")=="tbound-trial-reset/v1" and d.get("case_id")==sys.argv[2] and not d.get("check") and d.get("tree_digest") and d.get("tree_digest")==d.get("fixture_digest") else 1)' \
+      "$HG/trial-reset-$ts.json" "$case_id" || die "the reset document in $HG/trial-reset-$ts.json is not a completed tbound-trial-reset/v1 for $case_id (check false, tree_digest == fixture_digest): the attempt marker stays, owner recovery"
+    hf_put pilot/TRIAL_RESET_OK "$ts $case_id"
   fi
   bash "$GA/40-guest-evidence.sh" netsink
   hf_has evq/netsink.json || die "$HF/evq/netsink.json was not produced (SKIPPED or REFUSED: read the 40-guest-evidence.sh output above)"
