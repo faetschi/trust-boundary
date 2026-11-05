@@ -25,13 +25,21 @@ pass=0; fail=0
 ok()  { printf '  PASS  %s\n' "$1"; pass=$((pass+1)); }
 bad() { printf '  FAIL  %s\n' "$1"; fail=$((fail+1)); }
 
-DIST="$BASE/dist"; OUT="$BASE/npm"
+DIST="${TBOUND_NPM_DIST:-$BASE/dist}"; OUT="$BASE/npm"
+case "$DIST" in
+  /*) ;;
+  *) DIST="$ROOT/$DIST" ;;
+esac
 echo "verify-npm-packages: base=$BASE version=$VERSION"
 
-if ! "$ROOT/scripts/build-release.sh" "$VERSION" "$DIST" windows/amd64 darwin/arm64 >/dev/null; then
-  bad "release build for npm packaging failed"
-  echo "verify-npm-packages: $pass passed, $fail failed"
-  exit 1
+if [ -n "${TBOUND_NPM_DIST:-}" ]; then
+  echo "verify-npm-packages: using prebuilt dist $DIST"
+else
+  if ! "$ROOT/scripts/build-release.sh" "$VERSION" "$DIST" windows/amd64 darwin/arm64 >/dev/null; then
+    bad "release build for npm packaging failed"
+    echo "verify-npm-packages: $pass passed, $fail failed"
+    exit 1
+  fi
 fi
 
 if ! "$ROOT/scripts/make-npm-packages.sh" "$VERSION" "$DIST" "$OUT" >/dev/null; then
