@@ -238,7 +238,7 @@ func reconcileProductCommandScopes(ctx context.Context, host *piruntime.D09Produ
 	}
 	defer root.Close()
 	return reconcileProductCommandScopesWithRecovery(ctx, root, func(ctx context.Context, command piruntime.D09ProductCommandOwnership) error {
-		return piruntime.ReconcileProductD09CommandResidue(ctx, host, command)
+		return piruntime.ReconcileProductD09CommandResidueAfterScopeDrain(ctx, host, command)
 	}, retainedRoots...)
 }
 

@@ -104,8 +104,8 @@ func openProductCommandCgroup(scope *LinuxCgroupScope, pid int) (*os.File, error
 	return file, nil
 }
 
-// ReconcileProductD09CommandResidue proves container removal and namespace release after the caller drains the recorded cgroup scope.
-func ReconcileProductD09CommandResidue(ctx context.Context, host *D09ProductCommandHost, owner D09ProductCommandOwnership) error {
+// ReconcileProductD09CommandResidueAfterScopeDrain proves container removal and namespace release after the caller drains the recorded cgroup scope.
+func ReconcileProductD09CommandResidueAfterScopeDrain(ctx context.Context, host *D09ProductCommandHost, owner D09ProductCommandOwnership) error {
 	if err := host.Revalidate(ctx); err != nil {
 		return err
 	}
@@ -113,10 +113,10 @@ func ReconcileProductD09CommandResidue(ctx context.Context, host *D09ProductComm
 	if err != nil {
 		return err
 	}
-	return reconcileProductD09CommandResidue(ctx, config.PodmanPath, productD09CommandEnvironment(), owner, processMountNamespaceReferences)
+	return reconcileProductD09CommandResidueAfterScopeDrain(ctx, config.PodmanPath, productD09CommandEnvironment(), owner, processMountNamespaceReferences)
 }
 
-func reconcileProductD09CommandResidue(ctx context.Context, podman string, environment []string, owner D09ProductCommandOwnership, mountReferences func(context.Context, uint64) (bool, error)) error {
+func reconcileProductD09CommandResidueAfterScopeDrain(ctx context.Context, podman string, environment []string, owner D09ProductCommandOwnership, mountReferences func(context.Context, uint64) (bool, error)) error {
 	if ctx == nil || !strings.HasPrefix(owner.ContainerName, d09CellNamePrefix+"cmd-") || !validIdentity(owner.ContainerName) ||
 		!validIdentity(owner.LeaseID) || !validIdentity(owner.ViewID) || owner.ViewInode == 0 {
 		return ErrUnknownSettlement

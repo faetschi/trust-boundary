@@ -104,7 +104,7 @@ func TestProductD09ResidueRequiresRemovalAndNamespaceProof(t *testing.T) {
 					return false, nil
 				}
 			}
-			err := reconcileProductD09CommandResidue(context.Background(), podman, productD09CommandEnvironment(), owner, scan)
+			err := reconcileProductD09CommandResidueAfterScopeDrain(context.Background(), podman, productD09CommandEnvironment(), owner, scan)
 			if (err != nil) != tc.wantError {
 				t.Fatalf("cleanup error=%v, wantError=%v", err, tc.wantError)
 			}
@@ -117,7 +117,7 @@ func TestProductD09ResidueRequiresRemovalAndNamespaceProof(t *testing.T) {
 			}
 		})
 	}
-	if err := ReconcileProductD09CommandResidue(context.Background(), nil, D09ProductCommandOwnership{}); err == nil {
+	if err := ReconcileProductD09CommandResidueAfterScopeDrain(context.Background(), nil, D09ProductCommandOwnership{}); err == nil {
 		t.Fatal("unverified recovery host accepted")
 	}
 }
