@@ -2,10 +2,12 @@
 # 33 Corpus mode on the guest (Part D, NAME=pilot) at $FREEZE: PREPARED, NOT RUN. Automates report 01 section 3 (steps 1-12) and PROVISIONING-SIGNING.md Part D / Spike B.
 # Every guest write is a tbound-op verb (narrowed sudo, the session drop-in CLOSED when the script starts), except the artifact install, which has no verb
 # (runbook P13.3) and runs inside the session sudo window (00-session-sudo.sh open ... close; TBA_PW; closed again even on failure).
-#   1 abandon    settle the unsettled dr request with tbound-op's two-step `abandon <rid>` (facts, then --confirm TOKEN). rid = $HF/dr/RID. The request journal must
-#                show the dr request as terminal "unknown" without an abandoned record (reqstate verdict unreconciled); the facts must be conclusive (cells_procs_bytes,
-#                podman_ps_a_lines 0, no cells; `unavailable` or a missing fact is inconclusive) and the catalog must show THIS request's owner scopes drained.
-#                Otherwise the script does NOT confirm: it prints the facts and the owner's command and stops. Any other verdict: stop, the owner decides. Nothing unsettled (completed/abandoned): skipped.
+#   1 abandon    the unsettled dr request (rid = $HF/dr/RID). Already abandoned/completed (reqstate verdict): continue. Otherwise the script settles NOTHING by
+#                itself: it prints tbound-op's abandon facts + TOKEN and the request-specific catalog evidence (admissions, scopes undrained, drained) and stops
+#                with the owner's instruction (the verb by hand, or rerun with ABANDON_CONFIRM=<token>). The facts cannot prove "no pending effect" while the
+#                service is stopped (cgroup/podman probes read `unavailable`), hence no auto-confirm. With ABANDON_CONFIRM=<token> it requires admissions==1,
+#                no undrained scope and service+socket inactive, confirms through `op` (kit log), re-reads the journal (verdict abandoned) and saves the
+#                abandoned record (provider_settlement included) as $HF/pilot/dr-abandoned-record.json.
 #   2 manifest   D1, offline on the WSL side: the T5 draft of $SRC + the four pins of `tbound-profile corpus-pins` (template $HF/d09-cell.base.json) ->
 #                $HF/pilot/manifest.json; `corpus-pins --manifest` must pass; `corpus-digest` with the 76 T5 artifacts and the ceilings 17 / 20000 / 1200 ->
 #                $HF/pilot/CORPUS_DIGEST. Any refusal prints the tool's violation list and stops.
@@ -58,11 +60,11 @@ req_journal_verdict() {
   local f="pilot/requests-$2-$(date -u +%Y%m%dT%H%M%SZ).jsonl"
   op "collect requests"
   fetch_export "$OUT/_/serve-pi-requests.jsonl" "$f"
+  REQ_JOURNAL_FILE=$f
   req_check "$HF/$f" "$1"
 }
 # fact <facts text> <key>: one `key=value` line of the facts `tbound-op abandon <rid>` prints.
 fact() { printf '%s\n' "$1" | sed -n "s/^$2=//p" | head -1; }
-has_fact() { printf '%s\n' "$1" | grep -q "^$2="; }
 # catalog_drain_facts <rid>: request-specific drain evidence from the guest catalog (not the whole-catalog count of the abandon facts): the admission(s)
 # reserved for this request id (event entry.request_id), and for that admission_hash the owner scopes bound, bound and drained, bound but not drained,
 # and drained without a bound scope (the unexposed binder cleanup). Prints key=value lines.
@@ -83,18 +85,19 @@ if len(res)==1:
     h=next(iter(res)); B=b.get(h,set()); D=d.get(h,set())
     print("scopes_bound=%d"%len(B)); print("scopes_drained=%d"%len(B&D)); print("scopes_undrained=%d"%len(B-D)); print("drained_without_bound=%d"%len(D-B))' "$HF/$f" "$1" | tr -d '\r'
 }
-# abandon_inconclusive <rid> <token> <why>: never confirm on a missing or unavailable fact; print the exact owner command and stop.
-abandon_inconclusive() {
-  echo "ABANDON NOT CONFIRMED: $3" >&2
-  echo "The facts above are inconclusive for this script. The owner reads them and, if they show a finished workflow, a drained scope and no pending effect, runs:" >&2
+# abandon_stop <rid> <token>: the script does not settle the request on its own. Print the owner's two ways and stop (exit 1).
+abandon_stop() {
+  echo "ABANDON NOT DONE: the dr request $1 is still unsettled. The service is stopped, so tbound-op's cgroup and podman probes read 'unavailable' and cannot prove" >&2
+  echo "'no pending effect'; the owner decides from the facts and the request-specific catalog evidence printed above. Either run the verb by hand:" >&2
   echo "  GUEST_IP=$GUEST_IP sh $GSSH_SH 'sudo -n /opt/tbound/operator/tbound-op abandon $1 --confirm $2'" >&2
-  echo "(the TOKEN changes if the facts change; the guest reconciler also refuses to abandon what it cannot prove quiescent). Then run this script again: it sees the abandoned request and continues." >&2
+  echo "or run this script again with ABANDON_CONFIRM=$2 (it then requires admissions==1, no undrained scope and service+socket inactive, confirms through the kit log," >&2
+  echo "and saves the abandoned record). The TOKEN changes if the facts change; the guest reconciler refuses to abandon what it cannot prove quiescent." >&2
   exit 1
 }
 
 phase_abandon() {
   say "1. abandon the unsettled dr request (tbound-op two-step abandon)"
-  local rid facts tok v n cf name
+  local rid facts tok cf
   hf_has pilot/DR_SETTLED && { ok "dr request already settled by an earlier run ($(hf_get pilot/DR_SETTLED))"; return 0; }
   hf_has dr/RID || die "no $HF/dr/RID: 32-reg-dr.sh did not record the dr request id"
   rid=$(hf_get dr/RID); [[ $rid =~ ^dr-req-[0-9]{8}T[0-9]{6}Z$ ]] || die "$HF/dr/RID is not a dr request id: '$rid'"
@@ -109,32 +112,29 @@ phase_abandon() {
   printf '%s\n' "$facts"
   tok=$(printf '%s\n' "$facts" | sed -n 's/^TOKEN=\([0-9a-f]\{12\}\)$/\1/p' | head -1)
   [ -n "$tok" ] || die "no 'TOKEN=<12 hex>' line in the abandon output above"
-  # Report 01 step 2: workflow finished (terminal unknown in the journal, checked above), scope drained, no pending effect. Fail closed: a missing or
-  # 'unavailable' fact is inconclusive (the script does not confirm; the owner decides). The guest's own reconciler is a second gate at the confirm.
-  [ "$(fact "$facts" rid)" = "$rid" ] || abandon_inconclusive "$rid" "$tok" "the facts do not name the request"
-  for v in cells_procs_bytes podman_ps_a_lines; do
-    has_fact "$facts" "$v" || abandon_inconclusive "$rid" "$tok" "fact $v is missing"
-    [ "$(fact "$facts" "$v")" = 0 ] || abandon_inconclusive "$rid" "$tok" "fact $v is '$(fact "$facts" "$v")', not 0 (unavailable means the probe failed, e.g. the service is stopped)"
-  done
-  has_fact "$facts" cells_children || abandon_inconclusive "$rid" "$tok" "fact cells_children is missing"
-  # cells_children is `ls -A` of the cells cgroup: it lists the kernel interface files (cgroup.procs, memory.max, ...) as well as child scopes and cannot say
-  # which is a directory. Kernel files are recognised by their controller prefix and ignored; ANY other name (a possible child scope, or `unavailable`) is
-  # inconclusive. A cell scope, if one is left, therefore stops the script; it never passes by accident.
-  v=""
-  for name in $(fact "$facts" cells_children); do
-    [[ $name =~ ^(cgroup|cpu|cpuset|io|irq|memory|pids|hugetlb|misc|rdma)\.[a-z_.]+$ ]] || v="$v $name"
-  done
-  [ -z "$v" ] || abandon_inconclusive "$rid" "$tok" "cells_children lists name(s) that are not kernel cgroup files (possible child scopes, or the probe failed):$v"
+  # No auto-confirm: with the service stopped the cgroup and podman probes are always 'unavailable' (a running dr service is not allowed here), so the facts can
+  # never prove 'no pending effect'. The request-specific catalog evidence is printed next to them; the owner confirms (ABANDON_CONFIRM=<token> or by hand).
   cf=$(catalog_drain_facts "$rid"); printf 'request-specific catalog evidence:\n%s\n' "$cf"
-  [ "$(fact "$cf" admissions)" = 1 ] || abandon_inconclusive "$rid" "$tok" "the catalog holds $(fact "$cf" admissions) admission(s) for $rid, expected exactly 1"
-  [ "$(fact "$cf" scopes_undrained)" = 0 ] || abandon_inconclusive "$rid" "$tok" "owner scope(s) of this request are bound but not drained"
-  n=$(( $(fact "$cf" scopes_drained) + $(fact "$cf" drained_without_bound) ))
-  [ "$n" -ge 1 ] || abandon_inconclusive "$rid" "$tok" "no drained owner scope is recorded for this request"
   note "unexposed cleanup events in the whole catalog (informational): $(fact "$facts" catalog_unexposed_true)"
-  ok "facts and catalog show this request's scope drained and no pending effect; confirming with TOKEN $tok"
+  [ -n "${ABANDON_CONFIRM:-}" ] || abandon_stop "$rid" "$tok"
+  [[ $ABANDON_CONFIRM =~ ^[0-9a-f]{12}$ ]] || die "ABANDON_CONFIRM must be the 12 hex TOKEN printed above"
+  [ "$ABANDON_CONFIRM" = "$tok" ] || die "ABANDON_CONFIRM $ABANDON_CONFIRM is not the current TOKEN $tok (the facts changed): read them again"
+  [ "$(fact "$cf" admissions)" = 1 ] || die "the catalog holds $(fact "$cf" admissions) admission(s) for $rid, expected exactly 1: not confirming"
+  [ "$(fact "$cf" scopes_undrained)" = 0 ] || die "owner scope(s) of this request are bound but not drained: not confirming"
+  [[ $(rg_status) == *"service=inactive socket=inactive"* ]] || die "service and socket must both be inactive before the confirm (tbound-op status above): not confirming"
+  ok "ABANDON_CONFIRM given, catalog evidence ok, service and socket inactive: confirming with TOKEN $tok"
   op "abandon $rid --confirm $tok"
   req_journal_verdict "$rid" abandoned
   [ "$REQ_VERDICT" = abandoned ] || die "after the confirm the journal verdict of $rid is '$REQ_VERDICT', expected 'abandoned'"
+  # the abandoned record, with its reconciliation (provider_settlement included), as evidence
+  WX python3 -I -c 'import base64,json,sys
+for l in open(sys.argv[1],encoding="utf-8"):
+    if not l.strip(): continue
+    ev=json.loads(l)["event"]
+    if ev["kind"]=="pi_service_request_abandoned":
+        d=json.loads(base64.b64decode(ev["data"]))
+        if d.get("request_id")==sys.argv[2]: print(json.dumps({"id":ev["id"],"data":d},indent=2,sort_keys=True))' "$HF/$REQ_JOURNAL_FILE" "$rid" | hf_save pilot/dr-abandoned-record.json
+  hf_commit pilot/dr-abandoned-record.json
   hf_put pilot/DR_SETTLED "$rid"
 }
 
