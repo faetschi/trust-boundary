@@ -1,0 +1,56 @@
+== 30-p3 start 2026-11-04T18:12:15Z as tbound freeze=F15
+78M	/home/tbound/tbound-work/inputs/base-cache
+EPOCH=1793803493 (commit time of 2a6492dda21e5af9eab8e92e81f56725b3f8e9c5)
+{
+ "base_index_digest": "sha256:d6aa754f16b3197301076f047b5def2f02ea1dbbc2ca920407d46d7ec7f87b20",
+ "base_manifest_digest": "sha256:51b1100cc2a83d370c6a60952e3f2989c8a43159d0e38586e090f3b3326efefd",
+ "config_digest": "sha256:8dfc1c96b3114ee79b77143e26183bcdfa6c72a25b5debd7f6b6bff1764cec15",
+ "entrypoint_sha256": "sha256:6bb43254a27feab73d4c874b677432ee6de8804b339cbb2c11a906bd8d2a8ac8",
+ "layer_digest": "sha256:016d4f0810ca0cd0d1e18c461efdd1b0e51159813c188a83b71cb60b849983f7",
+ "layout": "/home/tbound/tbound-b.gQEChU/oci",
+ "manifest_digest": "sha256:bcca636b07bba29a176d119472e83907b243368063121aff18ab31f25083c98c"
+}
+== measure pass 1
+{
+ "bash_sha256": "sha256:55b89ab22bee4792a210f493a53fb066accd5d30b69837c28d98be5ff863efcf",
+ "config_digest": "sha256:8dfc1c96b3114ee79b77143e26183bcdfa6c72a25b5debd7f6b6bff1764cec15",
+ "entrypoint_sha256": "sha256:6bb43254a27feab73d4c874b677432ee6de8804b339cbb2c11a906bd8d2a8ac8",
+ "image_manifest_digest": "sha256:bcca636b07bba29a176d119472e83907b243368063121aff18ab31f25083c98c",
+ "node_sha256": "sha256:7fde7b8afa198da66257f42ee2001d874c7355631e6d1579a5fb5ef1f246df4c"
+}
+{
+ "base_index_digest": "sha256:d6aa754f16b3197301076f047b5def2f02ea1dbbc2ca920407d46d7ec7f87b20",
+ "base_manifest_digest": "sha256:51b1100cc2a83d370c6a60952e3f2989c8a43159d0e38586e090f3b3326efefd",
+ "config_digest": "sha256:8dfc1c96b3114ee79b77143e26183bcdfa6c72a25b5debd7f6b6bff1764cec15",
+ "entrypoint_sha256": "sha256:6bb43254a27feab73d4c874b677432ee6de8804b339cbb2c11a906bd8d2a8ac8",
+ "layer_digest": "sha256:016d4f0810ca0cd0d1e18c461efdd1b0e51159813c188a83b71cb60b849983f7",
+ "layout": "/home/tbound/tbound-b.gQEChU/oci2",
+ "manifest_digest": "sha256:bcca636b07bba29a176d119472e83907b243368063121aff18ab31f25083c98c"
+}
+== measure pass 2
+{
+ "bash_sha256": "sha256:55b89ab22bee4792a210f493a53fb066accd5d30b69837c28d98be5ff863efcf",
+ "config_digest": "sha256:8dfc1c96b3114ee79b77143e26183bcdfa6c72a25b5debd7f6b6bff1764cec15",
+ "entrypoint_sha256": "sha256:6bb43254a27feab73d4c874b677432ee6de8804b339cbb2c11a906bd8d2a8ac8",
+ "image_manifest_digest": "sha256:bcca636b07bba29a176d119472e83907b243368063121aff18ab31f25083c98c",
+ "node_sha256": "sha256:7fde7b8afa198da66257f42ee2001d874c7355631e6d1579a5fb5ef1f246df4c"
+}
+OCI LAYOUTS IDENTICAL (diff -r empty)
+MEASURE OUTPUTS IDENTICAL
+OK entrypoint in image == P1 tbound-cell-entrypoint = sha256:6bb43254a27feab73d4c874b677432ee6de8804b339cbb2c11a906bd8d2a8ac8
+OK entrypoint == P1 record = sha256:6bb43254a27feab73d4c874b677432ee6de8804b339cbb2c11a906bd8d2a8ac8
+WARNING: packaging/ changed since F0; bash/node digests are informational only
+bash_sha256: sha256:55b89ab22bee4792a210f493a53fb066accd5d30b69837c28d98be5ff863efcf  (same as F0)
+node_sha256: sha256:7fde7b8afa198da66257f42ee2001d874c7355631e6d1579a5fb5ef1f246df4c  (same as F0)
+IMGDIGEST: sha256:bcca636b07bba29a176d119472e83907b243368063121aff18ab31f25083c98c  (NEW; F0 was sha256:d02a7543041a52d864fb097f636a591ff1d0d86bfc38fedce645c1537176bd3d)
+IMGDIGEST: sha256:bcca636b07bba29a176d119472e83907b243368063121aff18ab31f25083c98c  (NEW; F14 was sha256:8352c9bdd77e1719f727326884a40299b381b5eb772fe899e907dfefcdf434de)
+ENTRYPOINT_DIGEST: sha256:6bb43254a27feab73d4c874b677432ee6de8804b339cbb2c11a906bd8d2a8ac8  (NEW; F14 was sha256:3e8d1e5297c5deed4c98c68c2b3bd806ef406165d91f4671e5cee519736a1606)
+CFG: sha256:8dfc1c96b3114ee79b77143e26183bcdfa6c72a25b5debd7f6b6bff1764cec15  (NEW; F14 was sha256:8a9731c6f551b5a4e95190eb372b1265a4223f1c1bd92399d18dd8683a67be62)
+IMGDIGEST CHANGED vs F14: 10-upgrade.sh installs the new layout, 50-i1-i2.sh must run I1
+OK sync done; no 0-byte output under /home/tbound/tbound-h/f15 nor in: /home/tbound/tbound-b.gQEChU/measure1.out /home/tbound/tbound-b.gQEChU/measure2.out
+== DONE 30-p3
+IMGDIGEST=sha256:bcca636b07bba29a176d119472e83907b243368063121aff18ab31f25083c98c
+CFG=sha256:8dfc1c96b3114ee79b77143e26183bcdfa6c72a25b5debd7f6b6bff1764cec15
+ENTRYPOINT_DIGEST=sha256:6bb43254a27feab73d4c874b677432ee6de8804b339cbb2c11a906bd8d2a8ac8
+BASH_DIGEST=sha256:55b89ab22bee4792a210f493a53fb066accd5d30b69837c28d98be5ff863efcf
+NODE_DIGEST=sha256:7fde7b8afa198da66257f42ee2001d874c7355631e6d1579a5fb5ef1f246df4c
