@@ -190,14 +190,15 @@ entry_names() { printf '%s\n' "$1" | awk 'NF{print substr($0, 3)}' | LC_ALL=C so
 # Owner and modes under /opt/tbound/corpus (also the pre-t5 sibling directories): root:root, directories 0755, files 0644. Readable without sudo.
 artifact_meta_check() {
   local bad
-  bad=$(G 'find /opt/tbound/corpus \( ! -user root -o ! -group root -o \( -type d ! -perm 0755 \) -o \( -type f ! -perm 0644 \) \) -print' | tr -d '\r')
-  [ -z "$bad" ] || die "owner or mode wrong under /opt/tbound/corpus (want root:root, dirs 0755, files 0644):"$'\n'"$bad"
+  # stderr is merged and a find failure tolerated, so a permission error is reported below instead of dying silently
+  bad=$(G 'find /opt/tbound/corpus \( ! -user root -o ! -group root -o \( -type d ! -perm 0755 \) -o \( -type f ! -perm 0644 \) \) -print 2>&1' | tr -d '\r' || true)
+  [ -z "$bad" ] || die "owner or mode wrong under /opt/tbound/corpus, or find could not read it (want root:root, dirs 0755, files 0644):"$'\n'"$bad"
   ok "everything under /opt/tbound/corpus is root:root, directories 0755, files 0644"
 }
 
 phase_artifacts() {
   say "3. artifacts: the $T5_ARTIFACT_COUNT T5 files into $GUEST_ART"
-  local own own_ent gst gst_ent extra name aside
+  local own own_ent gst gst_ent extra name aside="" differ
   own=$(WB "cd '$ART' && sha256sum -- * | LC_ALL=C sort -k2" | tr -d '\r')
   own_ent=$(WB "cd '$ART' && find . -mindepth 1 -printf '%y %P\n' | LC_ALL=C sort" | tr -d '\r')
   eq "owner-side artifact files" "$(sum_names "$own" | grep -c .)" "$T5_ARTIFACT_COUNT"
@@ -211,6 +212,9 @@ phase_artifacts() {
   fi
   echo "guest holds $(printf '%s\n' "$gst_ent" | grep -c .) entries, the frozen source $T5_ARTIFACT_COUNT"
   extra=$(entry_names "$(LC_ALL=C comm -13 <(printf '%s\n' "$own_ent") <(printf '%s\n' "$gst_ent"))")   # every type, same-named entries of another type included
+  # a T5-named file with another sha256 would be overwritten by tar: it is moved aside as well
+  differ=$(sum_names "$(LC_ALL=C comm -13 <(printf '%s\n' "$own") <(printf '%s\n' "$gst"))")
+  extra=$(printf '%s\n%s\n' "$extra" "$differ" | awk 'NF' | LC_ALL=C sort -u)
   # validate each whole line before any sudo: a name with a space must not split into two valid-looking names
   while IFS= read -r name; do [ -z "$name" ] || [[ $name =~ ^[A-Za-z0-9._-]+$ ]] || die "unusable entry name on the guest: '$name'"; done <<< "$extra"
   [ -n "${TBA_PW:-}" ] || die "TBA_PW is not set: the artifact install needs the session sudo window (read -rs TBA_PW; export TBA_PW)"
@@ -218,14 +222,15 @@ phase_artifacts() {
   SESSION_OPEN=1
   bash "$GA/00-session-sudo.sh" open
   G "sudo -n install -d -o root -g root -m 0755 /opt/tbound/corpus $GUEST_ART"
-  if [ -n "$extra" ]; then   # entries that are not in the T5 set are moved (mv -n, never removed) into a dated sibling directory
+  if [ -n "$extra" ]; then   # entries that are not in the T5 set or whose sha256 differs are moved (mv -n, never removed) into a dated sibling directory
     aside=/opt/tbound/corpus/artifacts.pre-t5-$(date -u +%Y%m%dT%H%M%SZ)
-    echo "moving $(printf '%s\n' "$extra" | grep -c .) entrie(s) that are not in the T5 set to $aside:"; printf '%s\n' "$extra" | sed 's/^/   /'
+    echo "moving $(printf '%s\n' "$extra" | grep -c .) entrie(s) that are not in the T5 set or differ in sha256 to $aside:"; printf '%s\n' "$extra" | sed 's/^/   /'
     G "sudo -n install -d -o root -g root -m 0755 $aside && cd $GUEST_ART && sudo -n mv -n -- $(printf '%s ' $extra) $aside/"
     G "ls -A $aside" | tr -d '\r' | LC_ALL=C sort | diff - <(printf '%s\n' "$extra") || die "the moved entries in $aside differ from the list above"
   fi
   WX tar -C "$ART" -c . | GI "sudo -n tar -x --no-same-owner --no-same-permissions -C $GUEST_ART"
-  G 'sudo -n chown -R root:root /opt/tbound/corpus && sudo -n find /opt/tbound/corpus -type d -exec chmod 0755 {} + && sudo -n find /opt/tbound/corpus -type f -exec chmod 0644 {} +'
+  # scoped to the artifacts directory and the aside directory (never the rest of /opt/tbound/corpus)
+  G "sudo -n chown -R root:root $GUEST_ART $aside && sudo -n find $GUEST_ART $aside -type d -exec chmod 0755 {} + && sudo -n find $GUEST_ART $aside -type f -exec chmod 0644 {} +"
   session_close
   gst=$(guest_artifact_sums); gst_ent=$(guest_artifact_entries)
   [ "$gst_ent" = "$own_ent" ] || die "the guest artifact entry set differs from the frozen source after the install:"$'\n'"$(diff <(printf '%s\n' "$own_ent") <(printf '%s\n' "$gst_ent") || true)"
