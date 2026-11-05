@@ -776,8 +776,18 @@ func TestProductQualificationRootfsProbeRequiresAReportedDenial(t *testing.T) {
 		}
 		return string(out), 0
 	}
-	if out, code := run(productQualificationRootfsScript); code != 0 || out != "rootfs-write-denied\n" {
-		t.Fatalf("unprivileged probe = %q, exit %d; want the denial marker", out, code)
+	out, code := run(productQualificationRootfsScript)
+	lines := strings.Split(strings.TrimSuffix(out, "\n"), "\n")
+	if code != 0 || len(lines) != 4 || lines[3] != "rootfs-write-denied" {
+		t.Fatalf("unprivileged probe = %q, exit %d; want three observed denials and the marker", out, code)
+	}
+	for i, target := range []string{"/qualification-rootfs-probe", "/etc/qualification-rootfs-probe", "/usr/qualification-rootfs-probe"} {
+		if !strings.HasPrefix(lines[i], "rootfs-denied "+target+": ") {
+			t.Fatalf("line %d = %q, want the observed denial of %s", i, lines[i], target)
+		}
+	}
+	if err := requireRootfsDenials(out); err != nil {
+		t.Fatalf("the verifier refused the probe's own output: %v", err)
 	}
 	missing := filepath.Join(t.TempDir(), "absent", "probe")
 	script := strings.ReplaceAll(productQualificationRootfsScript,
@@ -790,5 +800,26 @@ func TestProductQualificationRootfsProbeRequiresAReportedDenial(t *testing.T) {
 		"/qualification-rootfs-probe /etc/qualification-rootfs-probe /usr/qualification-rootfs-probe", writable)
 	if out, code := run(script); code != 3 || out != "rootfs-write-allowed "+writable+"\n" {
 		t.Fatalf("probe of a writable target = %q, exit %d; want allowed", out, code)
+	}
+}
+
+// The qualification evidence of the rootfs phase must show each target's own denial, not only the final marker.
+func TestProductQualificationRootfsEvidenceNeedsEveryTargetsDenial(t *testing.T) {
+	if err := requireRootfsDenials(qualificationRootfsOutput); err != nil {
+		t.Fatalf("a healthy cell's output was refused: %v", err)
+	}
+	lines := strings.SplitAfter(qualificationRootfsOutput, "\n")
+	for name, bad := range map[string]string{
+		"only the marker":      "rootfs-write-denied\n",
+		"a missing target":     lines[0] + lines[2] + lines[3],
+		"targets out of order": lines[1] + lines[0] + lines[2] + lines[3],
+		"no final marker":      strings.Join(lines[:3], ""),
+		"a non-denial error":   strings.Replace(qualificationRootfsOutput, "Read-only file system", "No such file or directory", 1),
+		"a repeated target":    lines[0] + lines[0] + lines[2] + lines[3],
+		"trailing output":      qualificationRootfsOutput + "extra\n",
+	} {
+		if err := requireRootfsDenials(bad); err == nil {
+			t.Errorf("%s was accepted", name)
+		}
 	}
 }

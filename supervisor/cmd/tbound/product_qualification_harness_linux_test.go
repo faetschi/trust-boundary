@@ -254,6 +254,12 @@ func (h *qualificationHarness) commandName(script string) string {
 	return ""
 }
 
+// qualificationRootfsOutput is what a healthy cell prints for the rootfs probe: each target's observed denial, then the marker.
+const qualificationRootfsOutput = "rootfs-denied /qualification-rootfs-probe: sh: 1: cannot create /qualification-rootfs-probe: Read-only file system\n" +
+	"rootfs-denied /etc/qualification-rootfs-probe: sh: 1: cannot create /etc/qualification-rootfs-probe: Read-only file system\n" +
+	"rootfs-denied /usr/qualification-rootfs-probe: sh: 1: cannot create /usr/qualification-rootfs-probe: Read-only file system\n" +
+	"rootfs-write-denied\n"
+
 // respond is what a healthy signed cell prints for the command, with its effect on the view.
 func (h *qualificationHarness) respond(name, viewDir, script string) (string, int) {
 	output := filepath.Join(viewDir, productQualificationOutputFile)
@@ -281,7 +287,7 @@ func (h *qualificationHarness) respond(name, viewDir, script string) (string, in
 		data, _ := os.ReadFile(output)
 		return string(data), 0
 	case "rootfs":
-		return "rootfs-write-denied\n", 0
+		return qualificationRootfsOutput, 0
 	case "limits":
 		if strings.Contains(script, "/sys/fs/cgroup") {
 			h.t.Fatal("frozen Landlock denies cgroup reads")

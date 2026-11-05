@@ -55,6 +55,7 @@ const (
   if err=$( { : > "$target"; } 2>&1 ); then printf 'rootfs-write-allowed %s\n' "$target"; exit 3; fi
   case "$err" in *"Read-only file system"*|*"Permission denied"*) ;; *) printf 'rootfs-probe-inconclusive %s: %s\n' "$target" "$err"; exit 5;; esac
   if [ -e "$target" ]; then printf 'rootfs-file-appeared %s\n' "$target"; exit 4; fi
+  printf 'rootfs-denied %s: %s\n' "$target" "$err"
 done
 printf 'rootfs-write-denied\n'`
 	productQualificationLimitsScript = `printf 'uid_map=%s\n' "$(cat /proc/self/uid_map)"
@@ -483,7 +484,32 @@ func (r *productQualificationRun) rootfsDenial(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	return requireCleanExit(command, "rootfs-write-denied\n")
+	if err := requireCleanExit(command, string(command.stdout)); err != nil { // exit status and view; the output is checked next
+		return err
+	}
+	if err := requireRootfsDenials(string(command.stdout)); err != nil {
+		return fmt.Errorf("%s printed %q: %w", command.record.Name, command.stdout, err)
+	}
+	return nil
+}
+
+// productQualificationRootfsTargets are the paths the rootfs probe writes, in the order its script tries them.
+var productQualificationRootfsTargets = []string{"/qualification-rootfs-probe", "/etc/qualification-rootfs-probe", "/usr/qualification-rootfs-probe"}
+
+// requireRootfsDenials holds the rootfs probe's output to one observed denial per target, in order, and the final marker.
+// The stored evidence then shows each target's own error, which a lone marker would not.
+func requireRootfsDenials(stdout string) error {
+	lines := strings.Split(strings.TrimSuffix(stdout, "\n"), "\n")
+	if len(lines) != len(productQualificationRootfsTargets)+1 || lines[len(lines)-1] != "rootfs-write-denied" || !strings.HasSuffix(stdout, "\n") {
+		return errors.New("want one observed denial per target and the final marker")
+	}
+	for i, target := range productQualificationRootfsTargets {
+		observed, found := strings.CutPrefix(lines[i], "rootfs-denied "+target+": ")
+		if !found || !strings.Contains(observed, "Read-only file system") && !strings.Contains(observed, "Permission denied") {
+			return fmt.Errorf("line %d does not report the denial of %s", i+1, target)
+		}
+	}
+	return nil
 }
 
 // limitsMapping holds the cell to the signed template's one-ID mapping (from its proof and from inside) and to the
