@@ -236,7 +236,7 @@ hook_after_s4() {
 
 phase_cycle() {
   say "4. manifest-install (D2) and the RG cycle for NAME=pilot"
-  local state rank mo
+  local state rank mo l2 l2f
   CORPUS_DIGEST=$(hf_get pilot/CORPUS_DIGEST); need_dig CORPUS_DIGEST "$CORPUS_DIGEST"
   state=$(rg_state); rank=$(st_rank_of "${state:-none}")
   echo "pilot state: ${state:-none} (rank $rank)"
@@ -250,8 +250,30 @@ phase_cycle() {
   rg_cycle
   rg_archive_check
   eq "tbound-op state of pilot" "$(rg_state)" started
-  echo "diag l2 (head):"; WB "head -c 1500 '$HG/diag-l2.txt'" || note "no $HG/diag-l2.txt"; echo
+  # State `started` outlives a svc stop, and rglib tolerates a failed diag l2 for the pilot: check both here before CYCLE_OK.
+  if [[ $(rg_status) != *"service=active socket=active"* ]]; then
+    note "state is started but the service/socket are not active: svc start once"
+    op "svc start"
+    [[ $(rg_status) == *"service=active socket=active"* ]] || die "service/socket are not active after svc start (journal: $OUT/pilot/svc-start-journal.txt)"
+  fi
+  l2=$(op "diag l2" 2>&1 | tr -d '\r') || die "diag l2 failed: $l2"
+  printf '%s\n' "$l2" | head -40
+  l2_check "$l2" || die "diag l2 does not show the expected L2 state (see above): service cgroup, cgroup-root digest, mounts, maintenance lock"
+  l2f="pilot/diag-l2-final-$(date -u +%Y%m%dT%H%M%SZ).txt"
+  printf '%s\n' "$l2" | hf_save "$l2f"; hf_commit "$l2f"
   hf_put pilot/CYCLE_OK ok
+}
+
+# l2_check <diag l2 text>: fail closed on the facts the text can show (the verb itself always exits 0): its sections are there, no missing path, permission or
+# mount, the cgroup-root digest the tool prints equals the one in the installed profile, and the maintenance lock is free.
+l2_check() {
+  local t=$1 pd
+  [[ $t == *"== service cgroup"* && $t == *"== mounts"* && $t == *"== maintenance lock"* ]] || return 1
+  [[ $t != *NOMOUNT* && $t != *"No such file"* && $t != *"cannot access"* && $t != *"Permission denied"* ]] || return 1
+  [[ $t == *lock-free* ]] || return 1
+  pd=$(printf '%s\n' "$t" | sed -n 's/^-- cgroup-root-digest (profile: \(sha256:[0-9a-f]\{64\}\)).*$/\1/p' | head -1)
+  isdig "$pd" || return 1
+  [ "$(printf '%s\n' "$t" | sed -n '/^-- cgroup-root-digest/,/^== mounts/p' | grep -c "$pd")" -ge 2 ]
 }
 
 # ---- 5 netsink (Spike B step 1, then the netsink producer) ---------------------------------------------------------------------------------------
