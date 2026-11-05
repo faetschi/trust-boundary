@@ -6,10 +6,27 @@
 import type { ChipTone } from "../../../ui/Chip";
 import type { ItemView } from "../../../core/contract";
 import type { ToolBlock, TurnBlock } from "../../../core/store";
-import { stateReading, verdictReading, type ChipReading } from "./readings";
+import { headlineSummary } from "./headline";
+import { EMPTY_TOOL_SUMMARY, stateReading, verdictReading, type ChipReading } from "./readings";
 
 // Whether an item is verified in its projection (app verification.ts isVerifiedIn).
 type Verifier = (item: ItemView) => boolean;
+
+// The first bounded summary of a block, in the order the legacy transcript used: request, policy, result.
+export function summaryOf(block: ToolBlock): string | undefined {
+  for (const candidate of [block.activity, block.decision, block.result]) {
+    if (candidate?.summary) return candidate.summary;
+  }
+  return undefined;
+}
+
+// What one call is called on a folded line: its tool, then what it acted on ("read service/entrypoint.go"). It names the call and says
+// nothing about its outcome, so it never claims the call ran or succeeded.
+export function callTitle(block: ToolBlock): string {
+  const tool = (block.result ?? block.activity ?? block.decision)?.tool ?? "tool";
+  const target = headlineSummary(tool, summaryOf(block));
+  return target === "" || target === EMPTY_TOOL_SUMMARY ? tool : `${tool} ${target}`;
+}
 
 // A run of this many consecutive tool blocks, or more, is drawn as one folded line over its cards. One call stays a plain card.
 export const GROUP_MIN = 2;

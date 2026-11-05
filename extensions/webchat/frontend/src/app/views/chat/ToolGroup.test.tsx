@@ -42,7 +42,7 @@ describe("a group of two or more", () => {
     const toggle = group.querySelector("button") as HTMLButtonElement;
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
     expect(toggle.textContent).toContain("3 tool actions");
-    expect(toggle.textContent).toContain("read · edit · bash");
+    for (const tool of ["read", "edit", "bash"]) expect(toggle.textContent).toContain(tool);
     // A verdict is named as one, so "1 DENY verdict" and the result "1 denied" are never read as one count.
     expect(toggle.textContent).toContain("1 DENY verdict");
     expect(toggle.textContent).toContain("1 denied");

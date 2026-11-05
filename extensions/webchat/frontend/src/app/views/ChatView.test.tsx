@@ -608,7 +608,8 @@ describe("a run of tool activity", () => {
     expect(group.getAttribute("data-tone")).toBe("deny");
     const line = toggle.textContent ?? "";
     expect(line).toContain("3 tool actions");
-    expect(line).toContain("read · bash ×2");
+    // The closed line names the first calls by tool and target, never by outcome.
+    expect(line).toContain("read a.go · bash curl x · bash go test");
     expect(line).toContain("1 denied");
     expect(line).toContain("1 DENY");
     // The request with no result is a request, not a success and not running.

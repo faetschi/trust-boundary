@@ -20,7 +20,7 @@ import {
   VERIFIED_READING,
   verdictReading,
 } from "./readings";
-import { outcomeReading, traceToneOf } from "./toolGroups";
+import { outcomeReading, summaryOf, traceToneOf } from "./toolGroups";
 import styles from "./Chat.module.css";
 
 // Whether an item is verified in its projection: the shared gate (app verification.ts isVerifiedIn). Only a
@@ -116,14 +116,6 @@ export function ToolCard({ block, verifiedOf, markOf }: ToolCardProps) {
       </Trace>
     </div>
   );
-}
-
-// The first bounded summary, in the order the legacy transcript used: request, policy, result.
-function summaryOf(block: ToolBlock): string | undefined {
-  for (const candidate of [block.activity, block.decision, block.result]) {
-    if (candidate?.summary) return candidate.summary;
-  }
-  return undefined;
 }
 
 interface StepProps {

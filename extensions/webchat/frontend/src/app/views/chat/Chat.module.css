@@ -311,6 +311,13 @@
   min-width: 0;
 }
 
+/* The folded line's frame is neutral whatever its worst finding is: the findings are words in their tone on its line, and only a call
+   that was itself refused or failed is drawn red, on its own row. Without this a single DENY tinted every allowed call in the group. */
+.runGroup.runGroup[data-tone] {
+  border-left-color: var(--border);
+  background: transparent;
+}
+
 /* An opened group lists its tool cards, indented under the group's line. */
 .group {
   display: flex;

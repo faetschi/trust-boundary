@@ -10,6 +10,7 @@
 
 import { useId, useState, type ReactNode } from "react";
 import { Chip } from "../../../ui/Chip";
+import { cx } from "../../../ui/cx";
 import { TRACE_FRAME, TraceIcon, TraceLine, TraceMeta, TraceTitle, TraceToggle } from "../../../ui/Trace";
 import { ToolsIcon } from "../../../ui/Icon";
 import { VisuallyHidden } from "../../../ui/VisuallyHidden";
@@ -17,7 +18,7 @@ import type { ItemView } from "../../../core/contract";
 import type { ToolBlock } from "../../../core/store";
 import type { Marker } from "./provenance";
 import { UNVERIFIED_READING } from "./readings";
-import { GROUP_MIN, summariseToolGroup, type ToolRun as ToolRunData } from "./toolGroups";
+import { GROUP_MIN, callTitle, summariseToolGroup, type ToolRun as ToolRunData } from "./toolGroups";
 import { ToolCard, type Verifier } from "./ToolCard";
 import styles from "./Chat.module.css";
 
@@ -56,7 +57,7 @@ export function ToolRun({ run, verifiedOf, markOf, defaultOpen = false, forceOpe
   const tone = grouped ? summariseToolGroup(run.blocks, verifiedOf).tone : undefined;
   return (
     <div
-      className={grouped ? TRACE_FRAME : styles.run}
+      className={grouped ? cx(TRACE_FRAME, styles.runGroup) : styles.run}
       data-anchor={grouped ? run.key : undefined}
       data-group={grouped ? "" : undefined}
       data-tone={tone}
@@ -74,10 +75,15 @@ export function ToolRun({ run, verifiedOf, markOf, defaultOpen = false, forceOpe
   );
 }
 
+// How many calls a closed line names.
+const SHOWN_CALLS = 3;
+
 function GroupLine({ run, verifiedOf, markOf }: ToolRunProps): ReactNode {
   const summary = summariseToolGroup(run.blocks, verifiedOf);
   const title = `${run.blocks.length} tool actions`;
-  const tools = summary.tools.map((tool) => (tool.count > 1 ? `${tool.name} ×${tool.count}` : tool.name)).join(" · ");
+  // The first few calls by name and target, so a closed line says what was asked and not only how many (T3's closed line does the same).
+  const shown = run.blocks.slice(0, SHOWN_CALLS).map(callTitle);
+  const tools = [...shown, ...(run.blocks.length > SHOWN_CALLS ? [`+${run.blocks.length - SHOWN_CALLS} more`] : [])].join(" · ");
   // The verification wording the cards carry: a mixed view marks each unverified record with a chip, and a uniform view states it
   // once above the transcript, so a card there carries the word for screen readers only. The group says the same, once.
   const unverified = run.blocks.filter((block) => {

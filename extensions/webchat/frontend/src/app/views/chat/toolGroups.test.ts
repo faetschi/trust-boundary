@@ -3,7 +3,7 @@ import { messageItem } from "../../../core/testing/builders";
 import type { Item, ItemView } from "../../../core/contract";
 import { groupTurn, type ToolBlock } from "../../../core/store";
 import { blocksOf, itemsOf, type ToolCallSpec } from "../../../test-support/toolBlocks";
-import { GROUP_MIN, groupRuns, outcomeReading, severityRank, summariseToolGroup, toolFindings, traceToneOf } from "./toolGroups";
+import { GROUP_MIN, callTitle, groupRuns, outcomeReading, severityRank, summariseToolGroup, toolFindings, traceToneOf } from "./toolGroups";
 
 const unverified = (_item: ItemView): boolean => false;
 const verified = (_item: ItemView): boolean => true;
@@ -112,6 +112,14 @@ describe("a group's summary", () => {
       { name: "bash", count: 2 },
       { name: "read", count: 1 },
     ]);
+  });
+});
+
+describe("what a call is called on a folded line", () => {
+  it("is its tool and what it acted on, with the tool's own repeat trimmed, and never says whether it ran", () => {
+    // The helper's summary is "<tool> call": the repeated tool name is trimmed from the target.
+    expect(callTitle(only({ call: "c1", tool: "read", request: "succeeded" }))).toBe("read call");
+    expect(callTitle(only({ call: "c2", tool: "bash", verdict: "DENY", result: "denied" }))).toBe("bash call");
   });
 });
 
