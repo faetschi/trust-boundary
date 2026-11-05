@@ -4,10 +4,6 @@ KIT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd) || exit 2
 REPO_ROOT=$(cd -- "$KIT_DIR/../.." && pwd) || exit 2
 TBOUND_LOCAL=${TBOUND_LOCAL:-$REPO_ROOT/.local}
 EVIDENCE=${TBOUND_EVIDENCE:-$REPO_ROOT/evidence}
-HOST_ENV=$TBOUND_LOCAL/freeze-host.env
-[ -f "$HOST_ENV" ] || { echo "FATAL: no $HOST_ENV (copy infra/freeze/host.env.example there)" >&2; exit 2; }
-# shellcheck disable=SC1090
-. "$HOST_ENV"
 # linux_safe: an absolute Linux path, written plainly (no //, /./, /../), not under /mnt. Lexical; natively host_paths_ok also resolves symlinks (not_mnt).
 # env_paths_ok: recheck the paths a sourced env.sh or session-env.sh set (a stale file must not point into /mnt).
 env_paths_ok() { local v; for v in W B H REPO HF CF LOG; do [ -z "${!v:-}" ] || linux_safe "${!v}" || { echo "FATAL: $v=${!v} is not a plain Linux path outside /mnt" >&2; exit 2; }; done; }
@@ -15,6 +11,13 @@ linux_safe() { [[ $1 == /[!/]* && $1 != /mnt && $1 != /mnt/* && $1 != *//* && $1
 # host_paths_ok: the host paths are plain Linux paths outside /mnt; natively also HOME, TMPDIR and the kit itself, resolved through symlinks.
 # Called here and again after the values file is sourced (lib.sh, guest/glib.sh), since that file could set them too.
 not_mnt() { local r; r=$(realpath -m -- "$1") && [[ $r != /mnt && $r != /mnt/* ]]; }
+# Natively the host env is read from TBOUND_LOCAL, so check it before sourcing anything from there.
+case $(uname -s) in MINGW* | MSYS*) ;; *) linux_safe "$TBOUND_LOCAL" && not_mnt "$TBOUND_LOCAL" ||
+  { echo "FATAL: TBOUND_LOCAL=$TBOUND_LOCAL must be a plain Linux path outside /mnt" >&2; exit 2; } ;; esac
+HOST_ENV=$TBOUND_LOCAL/freeze-host.env
+[ -f "$HOST_ENV" ] || { echo "FATAL: no $HOST_ENV (copy infra/freeze/host.env.example there)" >&2; exit 2; }
+# shellcheck disable=SC1090
+. "$HOST_ENV"
 host_paths_ok() {
   local v vs="TBOUND_WORK OLDH GO PASSPHRASE_FILE" native=1
   case $(uname -s) in MINGW* | MSYS*) native=0 ;; *) vs="$vs HOME TMPDIR TBOUND_LOCAL"
