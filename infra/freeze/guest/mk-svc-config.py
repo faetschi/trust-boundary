@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-# R2-0 / RG-2: build a service config (smoke or g1) from infra/guest/serve-pi-service.<name>.json of the frozen source.
-# Does what the runbook's two sed commands do: replace the two <MEASURE> placeholders by CD and SD, then require
-# that no MEASURE is left and that exactly two "sha256:<64 hex>" members exist.
-# Usage (WSL): python3 -I mk-smoke-config.py <template.json> <out.json> <CD> <SD>
+# R2-0 / RG-2: build a service config (smoke, g1, route probe or pilot) from infra/guest/serve-pi-service.<name>.json of the frozen source.
+# Does what the runbook's sed commands do: replace the two <MEASURE> placeholders by CD and SD (for the pilot template also <CORPUS_DIGEST>
+# by the optional CORPUS_DIGEST), then require that no placeholder is left and that exactly two (three with CORPUS_DIGEST) "sha256:<64 hex>" members exist.
+# Usage (WSL): python3 -I mk-svc-config.py <template.json> <out.json> <CD> <SD> [<CORPUS_DIGEST>]
 # An existing out file is accepted only if it is byte-identical to what would be written (idempotent re-run).
 import os
 import re
@@ -34,23 +34,29 @@ def _frozen_commit_guard():
 _FROZEN_COMMIT = _frozen_commit_guard()
 
 src, out, cd, sd = sys.argv[1:5]
+corpus = sys.argv[5] if len(sys.argv) > 5 else None
 dig = re.compile(r"^sha256:[0-9a-f]{64}$")
-for name, value in (("CD", cd), ("SD", sd)):
+for name, value in (("CD", cd), ("SD", sd), ("CORPUS_DIGEST", corpus)):
+    if value is None:
+        continue
     if not dig.match(value):
         sys.exit("%s is not sha256:<64 hex>: %r" % (name, value))
 text = open(src, encoding="utf-8", newline="").read()
 if "\r" in text:
     sys.exit("%s contains CR (must be LF)" % src)
-for key, value in (("containers_conf_digest", cd), ("storage_conf_digest", sd)):
-    old = '"%s": "<MEASURE>"' % key
+subs = [("containers_conf_digest", "<MEASURE>", cd), ("storage_conf_digest", "<MEASURE>", sd)]
+if corpus:
+    subs.append(("corpus_manifest_digest", "<CORPUS_DIGEST>", corpus))
+for key, placeholder, value in subs:
+    old = '"%s": "%s"' % (key, placeholder)
     if text.count(old) != 1:
         sys.exit("expected exactly one %s in %s" % (old, src))
     text = text.replace(old, '"%s": "%s"' % (key, value))
-if "MEASURE" in text:
-    sys.exit("MEASURE placeholder left in the output")
+if "MEASURE" in text or "CORPUS_DIGEST>" in text:
+    sys.exit("placeholder left in the output (<MEASURE> or <CORPUS_DIGEST>: the pilot template needs the CORPUS_DIGEST argument)")
 members = re.findall(r'"sha256:[0-9a-f]{64}"', text)
-if len(members) != 2:
-    sys.exit("expected 2 sha256 members, found %d" % len(members))
+if len(members) != len(subs):
+    sys.exit("expected %d sha256 members, found %d" % (len(subs), len(members)))
 data = text.encode("utf-8")
 if os.path.exists(out):
     if open(out, "rb").read() != data:
