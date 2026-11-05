@@ -284,6 +284,12 @@
   display: none;
 }
 
+.popover > [role="note"] {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
 .sourceList {
   display: flex;
   flex-direction: column;
@@ -444,6 +450,15 @@
   min-height: 0;
 }
 
+/* The details card sits beside the governance column, never over it (HelperBar.tsx takes this class). */
+.body[data-inspector="collapsed"] .helper {
+  right: calc(var(--rail-collapsed-width) + var(--space-3));
+}
+
+.body[data-inspector="expanded"] .helper {
+  right: calc(var(--inspector-width) + var(--space-3));
+}
+
 .main {
   display: flex;
   flex-direction: column;
@@ -493,6 +508,11 @@
    the drawer's containing block, and it starts below the header, so an open drawer never covers the header controls.
    overflow-x: clip stops the closed drawer, which is translated past the edge, from widening the page. */
 @media (max-width: 1180px) {
+  /* The inspector is a drawer here, so the details card has the page's edge. */
+  .body[data-inspector] .helper {
+    right: var(--space-3);
+  }
+
   .body {
     position: relative;
     overflow-x: clip;
@@ -557,8 +577,9 @@
     display: none;
   }
 
+  /* The status pill takes the first line of the controls on a phone, so its words are not cut. */
   .statusWrap {
-    flex: 1 1 auto;
+    flex: 1 1 100%;
   }
 
   .popover {
@@ -568,6 +589,7 @@
 
   .controls {
     flex: 1 1 100%;
+    flex-wrap: wrap;
     justify-content: space-between;
     margin-left: 0;
   }

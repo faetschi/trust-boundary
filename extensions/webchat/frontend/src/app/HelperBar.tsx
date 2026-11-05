@@ -6,6 +6,7 @@
 
 import type { ReactNode } from "react";
 import { Chip } from "../ui/Chip";
+import { cx } from "../ui/cx";
 import { Disclosure } from "../ui/Disclosure";
 import { StateDot } from "../ui/StateDot";
 import { governanceCounts } from "../core/filters";
@@ -44,7 +45,15 @@ function Section({ title, lead, children }: SectionProps) {
   );
 }
 
-export function HelperBar({ model, open, version }: { readonly model: WorkspaceModel; readonly open: boolean; readonly version: string }) {
+interface HelperBarProps {
+  readonly model: WorkspaceModel;
+  readonly open: boolean;
+  readonly version: string;
+  // Placement from the shell, so the card sits beside the governance column.
+  readonly className?: string;
+}
+
+export function HelperBar({ model, open, version, className }: HelperBarProps) {
   const live = useLive() !== null;
   const head = conversationHead(model.session, model.loaded);
   const confirmedOf = (item: Parameters<typeof confirmedIn>[1]) => confirmedIn(model, item);
@@ -54,7 +63,7 @@ export function HelperBar({ model, open, version }: { readonly model: WorkspaceM
   const statsLead = stats[1] + (stats.some((part) => part.includes("unavailable") && part !== stats[1]) ? " · some unavailable" : "");
 
   return (
-    <section id={HELPER_ID} aria-label="Session details" className={styles.card} hidden={!open}>
+    <section id={HELPER_ID} aria-label="Session details" className={cx(styles.card, className)} hidden={!open}>
       <Section title="Session" lead={head.status}>
         <div className={styles.rows}>
           <p className={styles.row}>{head.status}</p>
