@@ -47,7 +47,11 @@ func (r interruptedProductRunner) Run(_ context.Context, view *sessionrepo.Comma
 		r.t.Fatal("unexpected settlement", err)
 	}
 	command.LeaseID = r.lease
-	for _, kind := range []string{"product_command_intent", "product_command_started"} {
+	kinds := []string{"product_command_intent", "product_command_started"}
+	if os.Getenv("TB_PRODUCT_INTERRUPT_MODE") == "no-intent" {
+		kinds = nil // Store.RunEffect has synced its intent, but the launcher has not recorded ownership yet.
+	}
+	for _, kind := range kinds {
 		if kind == "product_command_started" {
 			command.MountNSInode = 42
 		}
@@ -85,12 +89,12 @@ func (r *interruptedLeaseRunner) RegisterLease(view, lease string) error {
 }
 
 func TestProductInterruptedBashRestartAndOperatorResolution(t *testing.T) {
-	for _, mode := range []string{"drained", "undrained", "missing-command-journal", "missing-owner-journal", "history-error", "policy-mismatch", "failed-effect"} {
+	for _, mode := range []string{"drained", "no-intent", "undrained", "missing-command-journal", "missing-owner-journal", "history-error", "policy-mismatch", "failed-effect"} {
 		t.Run(mode, func(t *testing.T) {
 			created := newBashProductDriverFixture(t, productsession.PublicationAuto, productScopeNotes(), false, []string{}, seedBashProject(t))
 			_ = created.env.Catalog.Close()
 			child := exec.Command(os.Args[0], "-test.run=^TestProductInterruptedBashCrashChild$", "-test.count=1")
-			child.Env = append(os.Environ(), productCrashRootEnv+"="+created.root, productCrashSessionEnv+"="+created.session.ID)
+			child.Env = append(os.Environ(), productCrashRootEnv+"="+created.root, productCrashSessionEnv+"="+created.session.ID, "TB_PRODUCT_INTERRUPT_MODE="+mode)
 			output, err := child.CombinedOutput()
 			var exit *exec.ExitError
 			if !errors.As(err, &exit) || exit.ExitCode() != productCrashExit {
@@ -151,7 +155,7 @@ func TestProductInterruptedBashRestartAndOperatorResolution(t *testing.T) {
 				got, err := productsession.OperatorResolve(filepath.Join(f.env.StateRoot, "catalog.jsonl"), f.env.Registration, turn.ID, "discard killed Bash", dry, func(turn productsession.Turn) (productsession.OperatorEvidence, error) {
 					return f.env.operatorEvidence(context.Background(), turn)
 				})
-				if mode != "drained" {
+				if mode != "drained" && mode != "no-intent" {
 					if err == nil {
 						t.Fatal("missing cleanup evidence accepted")
 					}

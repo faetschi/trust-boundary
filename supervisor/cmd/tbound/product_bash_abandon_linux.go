@@ -41,7 +41,7 @@ func openInterruptedProductBash(ctx context.Context, paths productTurnPaths, reg
 	}
 	r.closers = append(r.closers, owner.Close)
 	trace, err := owner.Trace()
-	if err != nil || len(trace.Records) < 3 || trace.Records[len(trace.Records)-1].Event.Kind != "product_command_scope_drained" {
+	if err != nil || len(trace.Records) < 2 || trace.Records[len(trace.Records)-1].Event.Kind != "product_command_scope_drained" {
 		return nil, "", errors.Join(errors.New("interrupted Bash scope has no durable drain evidence"), err)
 	}
 	// Reuse the owner protocol validator; the terminal drain makes this read-only.
@@ -59,7 +59,10 @@ func openInterruptedProductBash(ctx context.Context, paths productTurnPaths, reg
 			if json.Unmarshal(record.Event.Data, &command) != nil {
 				return nil, "", errors.New("invalid command owner")
 			}
-			commands[command.ViewID+"\x00"+command.LeaseID] = command
+			if _, duplicate := commands[command.LeaseID]; duplicate {
+				return nil, "", errors.New("command owner repeats a lease")
+			}
+			commands[command.LeaseID] = command
 		}
 	}
 	storeTrace, err := r.StoreJournal.Trace()
@@ -105,8 +108,10 @@ func openInterruptedProductBash(ctx context.Context, paths productTurnPaths, reg
 		if intent.Request.Tool != "bash" {
 			return nil, "", errors.New("unresolved effect is not an interrupted Bash command")
 		}
-		if _, exists := commands[intent.Request.ViewID+"\x00"+intent.Request.Operation.LeaseID]; !exists {
-			return nil, "", errors.New("interrupted Bash effect has no drained command owner")
+		// Store.RunEffect syncs first; the launcher persists ownership before command.Start.
+		// With no intent for this lease no command started; the validated drain covers every recorded command.
+		if command, exists := commands[intent.Request.Operation.LeaseID]; exists && command.ViewID != intent.Request.ViewID {
+			return nil, "", errors.New("interrupted Bash owner differs from its effect view")
 		}
 		interrupted++
 	}
