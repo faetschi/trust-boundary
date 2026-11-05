@@ -300,7 +300,11 @@
 /* A tool activity is a Trace (ui/Trace): its line, its chips and its collapsible body. What stays here is the content of the
    line's detail and of the steps. */
 .name {
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* A run of tool cards, one under the next, with the turn's own gap between them. */

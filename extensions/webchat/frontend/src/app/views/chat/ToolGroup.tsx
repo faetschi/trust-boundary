@@ -99,7 +99,11 @@ function GroupLine({ run, verifiedOf, markOf }: ToolRunProps): ReactNode {
       <TraceIcon>
         <ToolsIcon />
       </TraceIcon>
-      <TraceTitle title={title} detail={<span className={styles.name}>{tools}</span>} />
+      <TraceTitle title={title} detail={
+          <span className={styles.name} title={tools}>
+            {tools}
+          </span>
+        } />
       {unverified.length > 0 && marked.length === 0 ? <VisuallyHidden>{UNVERIFIED_READING.label}</VisuallyHidden> : null}
       <TraceMeta>
         {summary.findings.map((finding) => (

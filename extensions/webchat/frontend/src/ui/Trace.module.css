@@ -125,7 +125,7 @@ button.line {
 
 .detail {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: var(--space-1) var(--space-2);
   min-width: 0;
