@@ -173,7 +173,7 @@ rg_cycle() {
   # -------------------------------------------------------------------------------------------------------------
   if declare -F hook_service_cleanup >/dev/null; then hook_service_cleanup; fi
   if [ "$RANK" -eq 3 ]; then
-    say "svc start (the $NAME service starts here; it settles the earlier workflow)"
+    say "svc start (the $NAME service starts here; a completed earlier workflow is already terminal)"
     op "svc start"
     hf_has $NAME/svc-start-journal.txt || fetch_export "$OUT/$NAME/svc-start-journal.txt" $NAME/svc-start-journal.txt
     RANK=4
@@ -230,19 +230,32 @@ rg_cycle() {
   journal_decoded "$HG/requests-after-run.jsonl" | grep -F "$CLIENT" | cut -c1-600
 }
 
-# The settlement of the earlier workflow: the $FREEZE service of this cycle settles the prior one at its start, which writes pi_workflow_terminal
-# (as at the g1 cycle: count before the start vs after the run; the prior is g1 for rp and rp for dr).
+# The settlement of the workflows, by admission and outcome (not by counting terminals). A completed request is settled when it
+# completes, so after its run the catalog holds a completed terminal for its own admission. The earlier workflow stays
+# terminal: completed for g1 and rp. dr ends unknown by design, so its own admission stays open until the owner abandons it
+# (then it reads terminal:abandoned-unknown).
 rg_catalog_checks() {
-  local t0 t1 prior_adm="" prior=g1
-  if [ "$NAME" = dr ]; then prior=rp; fi
-  t0=$(tcount "$HG/catalog-before-start.jsonl"); t1=$(tcount "$HG/catalog-after-run.jsonl")
-  echo "pi_workflow_terminal lines: before the $NAME start $t0, after the $NAME run $t1"
-  [ "$t1" -ge 1 ] && [ "$t1" -gt "$t0" ] || die "the catalog holds no new pi_workflow_terminal: the $NAME service did not settle the earlier ($prior) workflow"
-  ok "the catalog contains pi_workflow_terminal (new since the $NAME start)"
-  WB "grep pi_workflow_terminal '$HG/catalog-after-run.jsonl' | cut -c1-400"
-  prior_adm=$(jgetw "$HF/$prior/serve-pi-service.json" workflow_admission_id)
-  if journal_decoded "$HG/catalog-after-run.jsonl" | grep pi_workflow_terminal | grep -F "$prior_adm" >/dev/null; then ok "a pi_workflow_terminal line names the $prior admission id $prior_adm"
-  else note "no pi_workflow_terminal line names the $prior admission id $prior_adm (the catalog may key the prior by another field): read the lines above"; fi
+  local own_adm prior="" prior_adm="" state
+  own_adm=$(jgetw "$HG/serve-pi-service.json" workflow_admission_id)
+  state=$(workflow_state "$HG/catalog-after-run.jsonl" "$own_adm")
+  if [ "$NAME" = dr ]; then
+    prior=rp
+    case "$state" in
+      open|terminal:abandoned-unknown*) ok "the dr workflow ($own_adm) is $state: unknown by design, settled only by the owner's abandon" ;;
+      *) die "the dr workflow ($own_adm) is '$state' after its run: expected open (unknown) or an abandoned terminal" ;;
+    esac
+  else
+    [ "$NAME" = rp ] && prior=g1
+    [ "$state" = terminal:completed ] || die "the $NAME workflow ($own_adm) is '$state' after its run, expected terminal:completed (settled at completion; read svc-start journal and the service log for a settlement failure)"
+    ok "the $NAME workflow ($own_adm) has a completed pi_workflow_terminal"
+  fi
+  if [ -n "$prior" ]; then
+    prior_adm=$(jgetw "$HF/$prior/serve-pi-service.json" workflow_admission_id)
+    state=$(workflow_state "$HG/catalog-after-run.jsonl" "$prior_adm")
+    [ "$state" = terminal:completed ] || die "the earlier ($prior) workflow ($prior_adm) is '$state', expected terminal:completed"
+    ok "the earlier ($prior) workflow ($prior_adm) is terminal:completed"
+  fi
+  WB "grep pi_workflow_terminal '$HG/catalog-after-run.jsonl' | cut -c1-400 || true"
   WB "grep -c pi_workflow_admission_reserved '$HG/catalog-after-run.jsonl' || true" | sed 's/^/pi_workflow_admission_reserved lines: /'
 }
 

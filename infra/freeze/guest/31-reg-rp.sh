@@ -12,7 +12,7 @@
 #         status, journal into $HF/rp/; collect audit <run id>; fetch the session and command audit.
 #   checks: client exit 0; response status completed, error_code empty, receipt: success true, disposition NO_DIFF, publication NO_DIFF, settlement STOPPED,
 #         provider_exchange true, claim_bearing false, tool_sequence = 4 x bash; 4 production_d09_command_settled events in the command audit;
-#         a NEW pi_workflow_terminal in the catalog (the settlement of the G1 workflow by the rp service start), the rid in serve-pi-requests.jsonl.
+#         the rp admission completed-terminal and the earlier g1 one, the rid in serve-pi-requests.jsonl.
 # Resumable (position from `tbound-op status rp`; signed files in $HF/rp are verified, never re-signed). STOP_AFTER=<cfg|measure|s3|reg|s4|prof|start|run>.
 # The service is left RUNNING at the end (as svc start leaves it); the next cycle (32) stops it first.
 # Preconditions (checked): 10, 20, 50 done; session sudo CLOSED; 30-reg-g1.sh finished with "done exit=0" ($HF/g1/CLIENT_STATUS) and its exports in $HF/g1;

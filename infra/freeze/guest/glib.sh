@@ -384,3 +384,17 @@ for line in open(sys.argv[1]):
     record["event"]["data"]=json.loads(base64.b64decode(record["event"]["data"],validate=True))
     print(json.dumps(record,separators=(",",":")))' "$1"
 }
+# workflow_state <catalog export> <workflow_admission_id>: absent | open | terminal:<outcome>. The workflow is found by its host
+# admission id on the reserved record, then its terminal by the admission hash (completed terminals carry no outcome field).
+workflow_state() {
+  WX python3 -I -c 'import base64,json,sys
+adm=sys.argv[2]; admission_hash=None; terminal={}
+for line in open(sys.argv[1]):
+    if not line.strip(): continue
+    record=json.loads(line); kind=record["event"]["kind"]
+    data=json.loads(base64.b64decode(record["event"]["data"],validate=True))
+    if kind=="pi_workflow_admission_reserved" and data["entry"]["host_admission_id"]==adm: admission_hash=data["admission_hash"]
+    if kind=="pi_workflow_terminal": terminal[data["admission_hash"]]=data.get("outcome") or "completed"
+print("absent" if admission_hash is None else ("terminal:"+terminal[admission_hash] if admission_hash in terminal else "open"))' "$1" "$2" | tr -d '\r\n'
+}
+
