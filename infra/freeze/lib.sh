@@ -3,6 +3,7 @@
 umask 077
 set -E
 
+case $(uname -s) in MINGW* | MSYS*) echo "FATAL: owner-side steps run inside WSL from a Linux checkout, not from Git Bash" >&2; exit 2 ;; esac
 . "$(dirname -- "${BASH_SOURCE[0]}")/paths.sh"
 A=$KIT_DIR
 F0COMMIT=c7f9e9ce2516f0377c4ca59a84eea3c55aa18fc5
@@ -23,7 +24,7 @@ die() { echo "FATAL: $*" >&2; exit 1; }
 # KIT_FREEZE selects freezes/<KIT_FREEZE>.env. There is no fallback: a missing file or a missing value is a stop.
 . "$(dirname -- "${BASH_SOURCE[0]}")/freeze-guard.sh" || exit 2
 # shellcheck disable=SC1090
-. "$VALUES"
+. "$VALUES"; host_paths_ok
 [ "$FREEZE" = "$KIT_FREEZE" ] || die "$VALUES says FREEZE=$FREEZE but KIT_FREEZE=$KIT_FREEZE"
 for v in FREEZE FREEZE_COMMIT PREV_FREEZE DR_ADMISSION_ID DR_ADMISSION_REFUSE GUEST_IP; do
   [ -n "${!v:-}" ] || die "$VALUES lacks $v"

@@ -1,11 +1,13 @@
 #!/bin/bash
 # Clean-room full gate: gate.sh <archive.tar> <label>. Results in ~/gates/<label>/ (persistent, not /tmp).
 umask 077
+case $(uname -s) in MINGW* | MSYS*) echo "FATAL: run gate.sh inside WSL or on Linux, not from Git Bash" >&2; exit 2 ;; esac
 . "$(dirname -- "${BASH_SOURCE[0]}")/../freeze-guard.sh" || exit 2
 . "$(dirname -- "${BASH_SOURCE[0]}")/../paths.sh"
 A=${1:?usage: gate.sh <archive.tar> <label>}; L=${2:?usage: gate.sh <archive.tar> <label>}
 [[ $L =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || { echo "FATAL: bad gate label: $L" >&2; exit 2; }
 G=$HOME/gates/$L
+not_mnt "$G" || { echo "FATAL: $G resolves into /mnt" >&2; exit 2; }
 rm -rf "${G:?}"; mkdir -p "$G/t"; export TMPDIR=$G/t
 tar -C "$G" -xf "$A"
 cd "$G/supervisor" || exit 2
