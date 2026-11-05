@@ -1,7 +1,7 @@
 import { useContext, useRef, type ReactNode } from "react";
 import { jumpLabel } from "../../core/anchor";
 import type { ItemView } from "../../core/contract";
-import { FILTERS, countFilter, filterItems } from "../../core/filters";
+import { FILTERS, countFilter, filterItems, governanceCounts } from "../../core/filters";
 import { turnsOf } from "../../core/store";
 import { Button } from "../../ui/Button";
 import { useAnnouncer } from "../../ui/LiveRegion";
@@ -15,8 +15,10 @@ import { Composer } from "../Composer";
 import { useLive } from "../../live/context";
 import { LiveComposer } from "../../live/LiveComposer";
 import { LivePanel, LiveReview } from "../../live/LivePanel";
-import { isVerifiedIn } from "../verification";
-import { filterNameOf, filterSummaryText } from "./chat/readings";
+import { confirmedIn, isVerifiedIn } from "../verification";
+import { filterNameOf, filterSummaryText, postureEntries } from "./chat/readings";
+import { severityRank } from "./chat/toolGroups";
+import { Chip } from "../../ui/Chip";
 import { markerFor, provenanceOf } from "./chat/provenance";
 import { TurnView, type RecordOpener } from "./chat/Transcript";
 import type { Verifier } from "./chat/ToolCard";
@@ -55,6 +57,9 @@ export function ChatView({ model }: { readonly model: WorkspaceModel }) {
   const markOf = (item: ItemView) => markerFor(provenance, verifiedOf(item));
   const activeFilter = FILTERS.find((entry) => entry.id === model.filter);
   const filterLabel = activeFilter ? filterNameOf(activeFilter.id).label : model.filter;
+  // The posture: every finding kind that was projected, worst first, so a lost or a refusal is never behind a click. It is words in their
+  // tone (Chat.module.css), one quiet line.
+  const posture = postureEntries(governanceCounts(model.items, (item: ItemView) => confirmedIn(model, item))).sort((a, b) => severityRank(a.tone) - severityRank(b.tone));
   const filters: ToggleItem[] = FILTERS.map((entry) => {
     const name = filterNameOf(entry.id);
     return { value: entry.id, label: name.label, count: countFilter(model.items, entry.id), hint: name.hint };
@@ -90,6 +95,19 @@ export function ChatView({ model }: { readonly model: WorkspaceModel }) {
           status and the posture counts are in the details card (HelperBar.tsx). */}
       <div className={styles.toolbar}>
         <ToggleGroup label="Timeline filters" items={filters} pressed={model.filter} onPress={choose} />
+        <div className={styles.posture} role="group" aria-label="Observed posture">
+          {!model.loaded ? (
+            <span className={styles.postureEmpty}>{unavailableWords(NO_PROJECTION)}</span>
+          ) : posture.length > 0 ? (
+            posture.map((entry) => (
+              <span key={entry.key} title={entry.hint}>
+                <Chip tone={entry.tone}>{entry.text}</Chip>
+              </span>
+            ))
+          ) : (
+            <span className={styles.postureEmpty}>no decisions or results projected</span>
+          )}
+        </div>
         <p className={styles.summary} data-summary="">
           {summary}
         </p>

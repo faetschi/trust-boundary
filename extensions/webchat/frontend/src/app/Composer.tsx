@@ -27,7 +27,8 @@ export function Composer({ session }: { readonly session: SessionHeader | null }
   // same sentence is drawn in a plain line, so a sighted reader sees what was announced. The line moves no focus.
   const announcer = useAnnouncer();
   const [status, setStatus] = useState("");
-  const piFact = `Pi ${piVersionWord(session)} · tools unavailable`;
+  const piWords = `${piVersionWord(session)} · tools unavailable`;
+  const piFact = `Pi ${piWords}`;
   const explain = () => {
     setStatus(NOT_AVAILABLE_STATUS);
     announcer.announce(NOT_AVAILABLE_STATUS);
@@ -57,7 +58,7 @@ export function Composer({ session }: { readonly session: SessionHeader | null }
           <span className={styles.fact} data-fact="" title={piFact}>
             <PiIcon />
             Pi
-            <VisuallyHidden>{` ${piFact.slice(3)}`}</VisuallyHidden>
+            <VisuallyHidden>{` ${piWords}`}</VisuallyHidden>
           </span>
           <span className={styles.fact} data-fact="" title={OBSERVED_TITLE}>
             <LockIcon />

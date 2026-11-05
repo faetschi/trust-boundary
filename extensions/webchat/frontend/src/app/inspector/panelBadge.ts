@@ -2,7 +2,7 @@ import type { ItemView, Panels } from "../../core/contract";
 import { isVerifiedProjection, type ProjectionState } from "../../core/verification";
 import type { ChipTone } from "../../ui/Chip";
 import { countValue, decisionsState, publicationReading, recoveryReading, verdictCount, type StateReading } from "../panels";
-import type { PanelKey } from "../uiPrefs";
+import { PANEL_KEYS, type PanelKey } from "../uiPrefs";
 
 // The words on each governance tab, from the projection only. Pure. The words carry the meaning; the tone is one
 // of three, and none of them is the success tone. A success is never a badge tone: an allow is a permission, and
@@ -113,4 +113,41 @@ export function warningBadge(source: Pick<BadgeSource, "loaded" | "warnings">): 
   const count = source.loaded && Array.isArray(source.warnings) ? source.warnings.length : 0;
   if (count === 0) return null;
   return { text: `${count} warning${count === 1 ? "" : "s"}`, tone: "warn" };
+}
+
+export const PANEL_LABELS: Readonly<Record<PanelKey, string>> = {
+  decisions: "Decisions",
+  provenance: "Provenance",
+  publication: "Publication",
+  recovery: "Recovery",
+  qualification: "Qualification",
+};
+
+// The badges of one governance tab. The qualification tab also counts the warnings.
+export function panelBadges(key: PanelKey, source: BadgeSource): PanelBadge[] {
+  const badge = panelBadge(key, source);
+  const warnings = key === "qualification" ? warningBadge(source) : null;
+  return warnings ? [badge, warnings] : [badge];
+}
+
+const TONE_ORDER: readonly BadgeTone[] = ["danger", "warn", "neutral"];
+
+// The worst badge of a set: the most severe tone, the first among equals.
+export function worstBadgeOf(badges: readonly PanelBadge[]): PanelBadge | null {
+  return [...badges].sort((a, b) => TONE_ORDER.indexOf(a.tone) - TONE_ORDER.indexOf(b.tone))[0] ?? null;
+}
+
+// The Governance control's badge: the worst reading across all five panels, in words. Decisions reads as it always did ("1 deny
+// verdict"); another panel's reading is named by its panel ("Publication failed"), so a collapsed column never hides a refusal or an
+// unknown behind a quiet decisions line. When every panel is neutral it is the decisions reading.
+export function governanceBadge(source: BadgeSource): PanelBadge {
+  let worst: { readonly key: PanelKey; readonly badge: PanelBadge } | null = null;
+  for (const key of PANEL_KEYS) {
+    const badge = worstBadgeOf(panelBadges(key, source));
+    if (badge && (worst === null || TONE_ORDER.indexOf(badge.tone) < TONE_ORDER.indexOf(worst.badge.tone))) worst = { key, badge };
+  }
+  if (worst === null) return panelBadge("decisions", source);
+  return worst.key === "decisions" || worst.badge.tone === "neutral"
+    ? worst.key === "decisions" ? worst.badge : panelBadge("decisions", source)
+    : { text: `${PANEL_LABELS[worst.key]} ${worst.badge.text}`, tone: worst.badge.tone };
 }

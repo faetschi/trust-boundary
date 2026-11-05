@@ -1,6 +1,5 @@
 /*
- * The rail (v2): the source binding, the sessions (the active row is highlighted), the observation streams, and the muted
- * footnotes at its foot. Colours are alias tokens (tokens.test.ts). The phone breakpoint is a literal: layout.ts holds the
+ * The rail (v2): the sessions (the active row is highlighted). Colours are alias tokens (tokens.test.ts). The phone breakpoint is a literal: layout.ts holds the
  * value, and Rail.test.tsx checks that the two agree.
  */
 
@@ -74,29 +73,6 @@
   gap: var(--space-1);
   min-width: 0;
 }
-
-/* The source binding: a bordered card with the name and its source chip on one line. */
-.binding {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-  min-width: 0;
-  padding: var(--space-1h) var(--space-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: color-mix(in oklch, var(--foreground) 4%, transparent);
-}
-
-.bindingName {
-  min-width: 0;
-  overflow: hidden;
-  font-size: var(--text-sm);
-  font-weight: 500;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .sessionList {
   display: flex;
   flex-direction: column;
@@ -144,55 +120,6 @@
 
 .trust {
   color: var(--state-reported-ink);
-}
-
-.streams {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.stream {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-2);
-  min-width: 0;
-  color: var(--foreground);
-  font-size: var(--text-xs);
-  line-height: var(--lh-xs);
-}
-
-/* The read-only footnotes sit at the foot of the rail, muted and small. */
-.footnote {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  margin-top: auto;
-  padding-top: var(--space-2);
-  border-top: 1px solid var(--border);
-}
-
-.otherNote,
-.note {
-  color: var(--muted-foreground);
-  font-size: var(--text-2xs);
-  line-height: var(--lh-2xs);
-}
-
-/* The footnotes fold under one quiet summary: the footnote's own rule is the hairline, so the disclosure draws none. */
-.footnote details {
-  border-top: 0;
-}
-
-.footnote details > summary {
-  min-height: 0;
-  padding: var(--space-1) 0;
-  color: var(--muted-foreground);
-  font-size: var(--text-2xs);
-  font-weight: 500;
 }
 
 /* Phones: the rail is one row of its own, a disclosure strip that opens the same body. */

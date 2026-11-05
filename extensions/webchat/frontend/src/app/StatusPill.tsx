@@ -25,30 +25,30 @@ export function connectionText(status: ConnectionStatus): string {
 
 const isDemonstration = (model: WorkspaceModel): boolean => model.source === "fixture" || model.source === "replay";
 
-// The pill's words: the demonstration or the source first, then anything that is not as expected. A quiet, healthy, verified
-// view reads as its source alone.
+// The pill's words: the demonstration or the source first, then the claim boundary's worst reading (an unverified true, or the
+// containment of a source that is not a demonstration), then anything about the connection that is not as expected. The claim words
+// come before the connection, so a cut or a wrap never takes the claim away. A quiet, healthy, verified view reads as its source alone.
 export function pillWords(model: WorkspaceModel, noSession: boolean): string {
   const parts = [isDemonstration(model) ? "Demonstration · unverified" : sourceText(model)];
-  if (noSession) parts.push(NO_SESSION_TEXT);
-  else if (model.status.state !== "open") parts.push(connectionText(model.status));
   if (claimsUnverifiedTrue(model)) parts.push("unverified claim true");
   else if (!isDemonstration(model)) {
     // A source that is not a demonstration still says where the claim boundary stands: its containment, in words.
     const containment = model.panels?.qualification?.containment;
     parts.push(containment === undefined ? "claim boundary unavailable" : containment === "unavailable" ? "containment unavailable" : "containment not established");
   }
+  if (noSession) parts.push(NO_SESSION_TEXT);
+  else if (model.status.state !== "open") parts.push(connectionText(model.status));
   return parts.join(" · ");
 }
 
-// The dot's shape and colour follow the worst reading: a stream that failed is a refusal-shaped square, an unverified or
-// connecting view is the dashed "reported" ring, and only a verified, open view is quiet.
+// The dot's shape and colour follow the worst reading. A stream that failed or is offline, and a claim that nothing verifies, are
+// "unknown": the page cannot say, and it is not a policy refusal, so it never takes the refusal square. Everything else is the dashed
+// "reported" ring: a demonstration, an unverified view, a connecting view, and a source whose containment is not established (the
+// contract has no established containment today, so no view is drawn quiet).
 function pillTone(model: WorkspaceModel, noSession: boolean): ChipTone {
-  if (!noSession && (model.status.state === "error" || model.status.state === "offline")) return "deny";
-  if (claimsUnverifiedTrue(model)) return "unknown";
-  if (isDemonstration(model) || !isVerifiedProjection(model) || (!noSession && model.status.state !== "open")) return "reported";
-  return "idle";
+  if (!noSession && (model.status.state === "error" || model.status.state === "offline")) return "unknown";
+  return claimsUnverifiedTrue(model) ? "unknown" : "reported";
 }
-
 interface StatusPillProps {
   readonly model: WorkspaceModel;
   readonly noSession: boolean;
@@ -99,7 +99,7 @@ export function StatusPill({ model, noSession }: StatusPillProps) {
       </button>
       {/* The popover is in the page while it is closed (hidden), so its values are never absent from the document, only
           from view. */}
-      <div id={popoverId} className={styles.popover} hidden={!open}>
+      <div id={popoverId} className={styles.popover} hidden={!open} tabIndex={-1}>
         <ul className={styles.sourceList} aria-label="Source and connection">
           <li>
             <span className={styles.badge} data-source={model.source}>

@@ -47,6 +47,32 @@ describe("the status pill says where the claim boundary stands for a source that
   });
 });
 
+describe("the status pill's dot and the order of its words", () => {
+  const toneOf = (view: ReturnType<typeof mount>) => view.container.querySelector("button [data-tone]")?.getAttribute("data-tone");
+
+  it("draws a dropped connection as unknown, never the refusal square", async () => {
+    const model = await loaded(snapshotOf());
+    const view = mount(<StatusPill model={{ ...model, status: { ...model.status, state: "error", label: "offline" } }} noSession={false} />);
+    expect(toneOf(view)).toBe("unknown");
+    view.unmount();
+  });
+
+  it("draws a demonstration and a source whose containment is not established as the reported ring, never quiet", async () => {
+    const demo = mount(<StatusPill model={await loaded(snapshotOf())} noSession={false} />);
+    expect(toneOf(demo)).toBe("reported");
+    demo.unmount();
+    const live = mount(<StatusPill model={await loaded(snapshotOf({ source: "live", verification_scope: "structural-audit-only" }))} noSession={false} />);
+    expect(toneOf(live)).toBe("reported");
+    live.unmount();
+  });
+
+  it("puts the claim words before the connection words, so a cut or a wrap never takes the claim away", async () => {
+    const live = await loaded(snapshotOf({ source: "live", verification_scope: "structural-audit-only" }));
+    const words = pillWords({ ...live, status: { ...live.status, state: "connecting", label: "connecting…" } }, false);
+    expect(words.indexOf("containment not established")).toBeLessThan(words.indexOf("connecting"));
+  });
+});
+
 describe("the status pill's popover", () => {
   it("is closed, with the claim boundary in the page and hidden, and opens from the pill", async () => {
     const view = mount(<StatusPill model={await loaded(snapshotOf())} noSession={false} />);
@@ -76,6 +102,18 @@ describe("the status pill's popover", () => {
     const elsewhere = view.container.querySelectorAll("button")[view.container.querySelectorAll("button").length - 1] as HTMLButtonElement;
     act(() => elsewhere.focus());
     expect(pill.getAttribute("aria-expanded")).toBe("false");
+    view.unmount();
+  });
+
+  it("stays open when the reader presses inside it, which moves focus to the popover and not out of the pill", async () => {
+    const view = mount(<StatusPill model={await loaded(snapshotOf())} noSession={false} />);
+    const pill = view.container.querySelector("button") as HTMLButtonElement;
+    const popover = document.getElementById(pill.getAttribute("aria-controls") as string) as HTMLElement;
+    expect(popover.tabIndex).toBe(-1);
+    act(() => pill.click());
+    act(() => pill.focus());
+    act(() => popover.focus());
+    expect(pill.getAttribute("aria-expanded")).toBe("true");
     view.unmount();
   });
 

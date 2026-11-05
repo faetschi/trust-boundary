@@ -27,6 +27,28 @@
   margin-inline: auto;
 }
 
+/* The posture line: the findings as words in their tone, worst first, on the toolbar's own line. It is quiet (no boxes) and wraps. */
+.posture {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+  min-width: 0;
+}
+
+.posture [data-tone] {
+  min-height: 0;
+  padding: 0;
+  border-color: transparent;
+  background: transparent;
+}
+
+.postureEmpty {
+  font-size: var(--text-xs);
+  color: var(--muted-foreground);
+}
+
 .toolbar .summary {
   margin-left: auto;
 }
@@ -174,10 +196,6 @@
   padding: 0;
   border-color: transparent;
   background: transparent;
-}
-
-.rule {
-  display: none;
 }
 
 .msgText {

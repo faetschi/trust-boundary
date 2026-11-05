@@ -10,19 +10,19 @@ import { useLive } from "../live/context";
 import { usePhone, useNarrow } from "./layout";
 import { useWorkspace } from "./WorkspaceProvider";
 import { ShellContext, type ShellControls } from "./shellContext";
-import { Rail, RailToggle, bindingName } from "./Rail";
+import { Rail, RailToggle } from "./Rail";
+import { bindingName } from "./sessionReadings";
 import { INSPECTOR_ID, Inspector } from "./Inspector";
 import { StatusPill } from "./StatusPill";
 import { HELPER_ID, HelperBar } from "./HelperBar";
 import { DetailsIcon } from "../ui/Icon";
-import { panelBadge, type BadgeTone } from "./inspector/panelBadge";
+import { governanceBadge } from "./inspector/panelBadge";
 import { focusableIn, trapTarget } from "./focusTrap";
 import { ChatView } from "./views/ChatView";
 import { conversationHead } from "./views/chat/identity";
 import { TrajectoryView } from "./views/TrajectoryView";
 import { EVICTED_LABEL, evictedText, gapText, WINDOW_GAP_LABEL, WINDOW_GAP_TEXT } from "./status";
 import { useUiPrefs, type PanelKey } from "./uiPrefs";
-import type { WorkspaceModel } from "./workspaceStore";
 import styles from "./Shell.module.css";
 
 const VIEW_ITEMS: ReadonlyArray<{ readonly id: ViewId; readonly label: string }> = [
@@ -35,11 +35,6 @@ const THEME_ITEMS: readonly ToggleItem[] = [
   { value: "light", label: "Light" },
   { value: "dark", label: "Dark" },
 ];
-
-// The Governance control's badge: the decisions reading, in words, so a closed panel still says "1 deny verdict".
-function governanceBadgeOf(model: WorkspaceModel): { readonly text: string; readonly tone: BadgeTone } {
-  return panelBadge("decisions", model);
-}
 
 // The application shell: a skip link to the visible view, the header (the session breadcrumb, the status pill that opens the
 // claim boundary, the Governance control with its badge, the overflow menu), the sessions rail, the workspace with its two views and its footer, and
@@ -66,6 +61,8 @@ export function Shell({ version }: { readonly version: string }) {
   const railExpanded = phone ? phoneRailOpen : !prefs.railCollapsed;
   const [theme, setTheme] = useTheme();
   const toggleRef = useRef<HTMLButtonElement | null>(null);
+  const helperToggleRef = useRef<HTMLButtonElement | null>(null);
+  const helperCardRef = useRef<HTMLDivElement | null>(null);
   const headingRef = useRef<HTMLHeadingElement | null>(null);
   // Where focus goes when the drawer closes: the row that opened it, else the toggle.
   const returnRef = useRef<HTMLElement | null>(null);
@@ -141,11 +138,34 @@ export function Shell({ version }: { readonly version: string }) {
     [actions, model.selectedId, narrow, openInspector, prefs.inspectorCollapsed, updatePrefs],
   );
 
-  // Escape clears the selected record first, and leaves an open drawer open; the next Escape closes the drawer. It never
-  // collapses the wide column.
+  // The details card behaves as the status pill's popover does: opening it moves focus into it, and Escape or a press outside closes it.
+  // Escape returns focus to the control that opened it.
+  useEffect(() => {
+    if (helperOpen) helperCardRef.current?.focus();
+  }, [helperOpen]);
+
+  useEffect(() => {
+    if (!helperOpen) return undefined;
+    function onPointerDown(event: PointerEvent) {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (helperCardRef.current?.contains(target) || helperToggleRef.current?.contains(target)) return;
+      setHelperOpen(false);
+    }
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [helperOpen]);
+
+  // Escape closes the details card first, then clears the selected record, and leaves an open drawer open; the next Escape closes
+  // the drawer. It never collapses the wide column.
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (event.key !== "Escape") return;
+      if (helperOpen) {
+        setHelperOpen(false);
+        helperToggleRef.current?.focus();
+        return;
+      }
       if (model.selectedId !== null) {
         dismissRecord();
         return;
@@ -154,7 +174,7 @@ export function Shell({ version }: { readonly version: string }) {
     }
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [model.selectedId, drawerOpen, dismissRecord, closeInspector]);
+  }, [helperOpen, model.selectedId, drawerOpen, dismissRecord, closeInspector]);
 
   // While the drawer is open it is a modal dialog: the page behind it is inert (see the markup), and Tab and Shift+Tab stay
   // inside it. The rule is in focusTrap.ts.
@@ -215,7 +235,7 @@ export function Shell({ version }: { readonly version: string }) {
     [narrow, drawerOpen, openInspector, closeInspector, selectRecord],
   );
 
-  const governance = governanceBadgeOf(model);
+  const governance = governanceBadge(model);
   const view = model.view;
   const skipLabel = view === "chat" ? "Skip to the chat transcript" : "Skip to the trajectory ledger";
   const hasNotice =
@@ -258,15 +278,15 @@ export function Shell({ version }: { readonly version: string }) {
             <div className={styles.controls}>
               <StatusPill model={model} noSession={noSession} />
               <button
+                ref={helperToggleRef}
                 type="button"
-                className={styles.iconToggle}
-                aria-label="Session details"
-                title="Session details"
+                className={styles.drawerToggle}
                 aria-controls={HELPER_ID}
                 aria-expanded={helperOpen}
                 onClick={() => setHelperOpen((open) => !open)}
               >
                 <DetailsIcon />
+                Details
               </button>
               <span className={styles.governanceControl}>
                 <button
@@ -306,6 +326,8 @@ export function Shell({ version }: { readonly version: string }) {
           data-rail={railExpanded ? "expanded" : "collapsed"}
           data-inspector={inspectorCollapsed ? "collapsed" : "expanded"}
         >
+          {/* The details card follows the header's controls in the DOM, so Tab reaches it right after the control that opens it. */}
+          <HelperBar model={model} open={helperOpen} version={version} className={styles.helper} inert={drawerOpen} cardRef={helperCardRef} />
           <Rail model={model} phone={phone} expanded={railExpanded} onToggle={toggleRail} inert={drawerOpen} />
           <main aria-label="Workspace" className={styles.main} inert={drawerOpen}>
             {hasNotice ? (
@@ -351,7 +373,6 @@ export function Shell({ version }: { readonly version: string }) {
               </TabPanel>
             </div>
           </main>
-          <HelperBar model={model} open={helperOpen} version={version} className={styles.helper} inert={drawerOpen} />
           <Inspector
             model={model}
             narrow={narrow}

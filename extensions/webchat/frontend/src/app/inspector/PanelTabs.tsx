@@ -1,12 +1,12 @@
 import { useRef, type KeyboardEvent, type ReactNode } from "react";
 import { StateDot } from "../../ui/StateDot";
-import { chipToneOf, worstToneOf, type PanelBadge } from "./panelBadge";
+import { chipToneOf, worstBadgeOf, worstToneOf, type PanelBadge } from "./panelBadge";
 import styles from "./PanelTabs.module.css";
 
 // The governance panels and the one panel that is shown. A vertical WAI-ARIA tab list with a roving tab stop: only the tab stop is
 // in the tab order. Up and Left go to the previous tab, Down and Right to the next (both wrap), Home and End jump to the ends, and
 // the arrow keys select the tab they move to (automatic activation). Each tab is one row: its mark, its label, the words of its
-// first badge, and a status dot. The dot is a shape as well as a colour (StateDot), so the tone does not rely on colour alone, and
+// worst badge, and a status dot. The dot is a shape as well as a colour (StateDot), so the tone does not rely on colour alone, and
 // the badge words are drawn in the row and are in the tab's name and title.
 
 export interface StripTab {
@@ -79,7 +79,7 @@ export function PanelTabs({ tabs, selected, stop, onSelect, status, labelledBy, 
       <div role="tablist" aria-label="Governance panels" aria-orientation="vertical" className={styles.tablist} onKeyDown={onKeyDown}>
         {tabs.map((tab) => {
           const name = tabName(tab);
-          const words = tab.badges[0]?.text ?? "";
+          const words = worstBadgeOf(tab.badges)?.text ?? "";
           return (
             <button
               key={tab.id}

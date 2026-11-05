@@ -223,6 +223,46 @@ describe("Shell: the claim boundary and the source are always visible", () => {
   });
 });
 
+describe("Shell: the details card is a popover, with a visible name", () => {
+  it("is opened by a control named 'Details', which moves focus into the card", async () => {
+    renderShell(1440);
+    await settle();
+    const toggle = byLabel("Details");
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(document.activeElement).toBe(q("#helper-bar"));
+  });
+
+  it("closes on Escape, returns focus to its control, and leaves a selected record for the next Escape", async () => {
+    renderShell(1440);
+    await settle();
+    const toggle = byLabel("Details");
+    click(toggle);
+    act(() => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(q("#helper-bar").hidden).toBe(true);
+    expect(document.activeElement).toBe(toggle);
+  });
+
+  it("closes on a press outside it, and not on a press inside it or on its own control", async () => {
+    renderShell(1440);
+    await settle();
+    const toggle = byLabel("Details");
+    click(toggle);
+    act(() => {
+      q("#helper-bar").dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+    });
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    act(() => {
+      q("main").dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+    });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+  });
+});
+
 describe("Shell: the governance column starts collapsed", () => {
   it("starts as its icon column, with the header control and its badge saying what is there, and opens with one press", async () => {
     window.localStorage.removeItem(UI_PREFS_KEY);
@@ -735,29 +775,22 @@ describe("Shell: the phone stack keeps one 4 px step between its rows (QA4 check
     expect(declarationsOf(phone, ".main")).toMatch(/gap:\s*var\(--space-1\);/);
     expect(declarationsOf(phone, ".main")).toMatch(/padding-top:\s*var\(--space-1\);/);
   });
-
-  it("sets the footer's padding to the 4 px step on a phone, and leaves its text as it is", () => {
-    const footer = readFileSync(resolve(process.cwd(), "src/app/Footer.module.css"), "utf8");
-    expect(declarationsOf(mediaBlock(footer, "@media (max-width: 760px)"), ".footer")).toMatch(/padding:\s*var\(--space-1\) var\(--space-2\);/);
-  });
 });
 
 describe("Shell: the reading order is the visual order (WCAG 1.3.2)", () => {
-  it("places the footer after the views in the DOM, at every width, which is where it is drawn", async () => {
+  it("places the details card right after the header, before the rail and the workspace, at every width, so Tab reaches it from its control", async () => {
     for (const width of [1440, 1024, 390, 360]) {
       remount(width);
       await settle();
-      const stats = q('[role="group"][aria-label="Session statistics"]');
-      const views = q("[data-view]");
-      expect(views.compareDocumentPosition(stats) & Node.DOCUMENT_POSITION_FOLLOWING, String(width)).toBeTruthy();
-      expect(views.contains(stats), String(width)).toBe(false);
+      const card = q("#helper-bar");
+      expect(q("header").compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING, String(width)).toBeTruthy();
+      expect(card.compareDocumentPosition(q("nav")) & Node.DOCUMENT_POSITION_FOLLOWING, String(width)).toBeTruthy();
+      expect(card.compareDocumentPosition(q("main")) & Node.DOCUMENT_POSITION_FOLLOWING, String(width)).toBeTruthy();
     }
   });
 
   it("moves no element with CSS order, so the DOM order is the visual order at every width", () => {
-    const footer = readFileSync(resolve(process.cwd(), "src/app/Footer.module.css"), "utf8");
     const shell = readFileSync(resolve(process.cwd(), "src/app/Shell.module.css"), "utf8");
-    expect(footer).not.toMatch(/\border:/);
     expect(shell).not.toMatch(/\border:/);
   });
 });

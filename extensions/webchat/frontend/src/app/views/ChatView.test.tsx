@@ -854,11 +854,10 @@ describe("message chrome", () => {
     expect(control.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
   });
 
-  it("puts the record button on the speaker's label row, beside the rule", async () => {
+  it("puts the record button on the speaker's label row", async () => {
     await renderLive(fixtureSnapshot([messageItem({ id: "m1", sequence: 1, role: "assistant", text: "hi" })]));
     const row = roleRow("assistant").parentElement;
     expect(row?.querySelector("button")?.textContent).toBe("record 1");
-    expect(row?.querySelector("[aria-hidden='true']")).not.toBeNull();
   });
 
   it("draws each turn heading as a label, a hairline rule and the element count", async () => {

@@ -341,3 +341,10 @@
   margin: 0;
   font: 600 var(--text-body) / var(--lh-body) var(--font-sans);
 }
+
+/* The standing line about who decides: quiet, one line, above the budget. */
+.authority {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: var(--text-xs);
+}

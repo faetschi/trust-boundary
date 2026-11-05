@@ -380,6 +380,13 @@ describe("Inspector: the collapsed column at wide widths", () => {
     view.unmount();
   });
 
+  it("marks the selected panel's icon as current, for assistive technology", async () => {
+    const view = mount(<Host model={await modelWith()} collapsed />);
+    const current = Array.from(view.container.querySelectorAll("[role='toolbar'] button")).filter((button) => button.getAttribute("aria-current") === "true");
+    expect(current.map((button) => button.getAttribute("aria-label"))).toEqual(["Open Decisions panel, unavailable"]);
+    view.unmount();
+  });
+
   it("expands and selects the panel of the icon pressed, and moves focus to its tab", async () => {
     const view = mount(<Host model={await modelWith()} collapsed />);
     const publication = view.container.querySelector("button[aria-label^='Open Publication panel']") as HTMLButtonElement;

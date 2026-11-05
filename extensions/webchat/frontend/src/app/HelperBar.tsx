@@ -1,24 +1,20 @@
 // The details card: a small floating card at the header's right (the Details control opens it), for what the page is looking at
 // and how much of it there is. It holds what the header, the chat head, the rail and the footer used to draw all at once: the
-// session and its source, the observed posture, the observation streams, the retention statistics and the read-only notes.
+// session and its source, the observation streams, the retention statistics and the read-only notes.
 // Each is a disclosure whose summary line already says its worst fact, so closing a section never hides a "gap", an
 // "unavailable" or a deny; the sections open to the full reading. It is presentation only and holds no control that acts.
 
-import type { ReactNode } from "react";
+import type { ReactNode, Ref } from "react";
 import { Chip } from "../ui/Chip";
 import { cx } from "../ui/cx";
 import { Disclosure } from "../ui/Disclosure";
 import { StateDot } from "../ui/StateDot";
-import { governanceCounts } from "../core/filters";
 import { useLive } from "../live/context";
 import { COMPOSER_REASON } from "./Composer";
-import { statsParts } from "./Footer";
-import { confirmedIn } from "./verification";
+import { retentionLead, statsParts } from "./stats";
 import { NO_PROJECTION, unavailableWords } from "./panels";
-import { HEALTH_TONES, LIVE_FOOTNOTE, OTHER_SESSIONS_NOTE, READ_ONLY_NOTE, bindingName, streamText } from "./Rail";
+import { HEALTH_TONES, LIVE_FOOTNOTE, OTHER_SESSIONS_NOTE, READ_ONLY_NOTE, bindingName, streamText } from "./sessionReadings";
 import { conversationHead } from "./views/chat/identity";
-import { severityRank } from "./views/chat/toolGroups";
-import { postureEntries } from "./views/chat/readings";
 import type { WorkspaceModel } from "./workspaceStore";
 import styles from "./HelperBar.module.css";
 
@@ -28,12 +24,14 @@ interface SectionProps {
   readonly title: string;
   // The section's worst fact, in words: what a reader sees on the closed line.
   readonly lead: string;
+  readonly defaultOpen?: boolean;
   readonly children: ReactNode;
 }
 
-function Section({ title, lead, children }: SectionProps) {
+function Section({ title, lead, defaultOpen = false, children }: SectionProps) {
   return (
     <Disclosure
+      defaultOpen={defaultOpen}
       summary={
         <>
           <span className={styles.sectionTitle}>{title}</span>
@@ -54,20 +52,29 @@ interface HelperBarProps {
   readonly className?: string;
   // The governance drawer is open and modal: the card behind it is inert, as the header, the rail and the workspace are.
   readonly inert?: boolean;
+  // The card, so the shell can move focus into it when it opens.
+  readonly cardRef?: Ref<HTMLDivElement>;
 }
 
-export function HelperBar({ model, open, version, className, inert = false }: HelperBarProps) {
+export function HelperBar({ model, open, version, className, inert = false, cardRef }: HelperBarProps) {
   const live = useLive() !== null;
   const head = conversationHead(model.session, model.loaded);
-  const confirmedOf = (item: Parameters<typeof confirmedIn>[1]) => confirmedIn(model, item);
-  const posture = postureEntries(governanceCounts(model.items, confirmedOf));
   const stats = statsParts(model);
   const streamsDown = model.streams.filter((stream) => !stream.available || stream.health === "gap").length;
-  const statsLead = stats[1] + (stats.some((part) => part.includes("unavailable") && part !== stats[1]) ? " · some unavailable" : "");
 
   return (
-    <section id={HELPER_ID} aria-label="Session details" className={cx(styles.card, className)} hidden={!open} inert={inert}>
-      <Section title="Session" lead={head.status}>
+    <div
+      id={HELPER_ID}
+      ref={cardRef}
+      role="group"
+      aria-label="Session details"
+      tabIndex={-1}
+      className={cx(styles.card, className)}
+      hidden={!open}
+      inert={inert}
+    >
+      {/* The session opens first: the Pi version, the session id and the workflow id are the audit identifiers. */}
+      <Section title="Session" lead={head.status} defaultOpen>
         <div className={styles.rows}>
           <p className={styles.row}>{head.status}</p>
           <p className={styles.row}>Pi tools: unavailable</p>
@@ -77,24 +84,6 @@ export function HelperBar({ model, open, version, className, inert = false }: He
           <p className={styles.mono} data-identity="">
             Pi <span>{head.piVersion}</span> · {head.sessionId} · {head.workflowId}
           </p>
-        </div>
-      </Section>
-      <Section
-        title="Observed posture"
-        lead={!model.loaded ? unavailableWords(NO_PROJECTION) : posture.length > 0 ? [...posture].sort((a, b) => severityRank(a.tone) - severityRank(b.tone)).slice(0, 2).map((entry) => entry.text).join(" · ") : "none projected"}
-      >
-        <div className={styles.posture} role="group" aria-label="Observed posture">
-          {!model.loaded ? (
-            <span className={styles.row}>{unavailableWords(NO_PROJECTION)}</span>
-          ) : posture.length > 0 ? (
-            posture.map((entry) => (
-              <span key={entry.key} title={entry.hint}>
-                <Chip tone={entry.tone}>{entry.text}</Chip>
-              </span>
-            ))
-          ) : (
-            <span className={styles.row}>no decisions or results projected</span>
-          )}
         </div>
       </Section>
       <Section
@@ -116,7 +105,7 @@ export function HelperBar({ model, open, version, className, inert = false }: He
           <p className={styles.row}>No streams projected.</p>
         )}
       </Section>
-      <Section title="Retention" lead={statsLead}>
+      <Section title="Retention" lead={retentionLead(model)}>
         <div role="group" aria-label="Session statistics" className={styles.stats}>
           {stats.map((part) => (
             <span key={part} className={part.includes("unavailable") ? styles.un : undefined}>
@@ -139,6 +128,6 @@ export function HelperBar({ model, open, version, className, inert = false }: He
           </>
         )}
       </Section>
-    </section>
+    </div>
   );
 }

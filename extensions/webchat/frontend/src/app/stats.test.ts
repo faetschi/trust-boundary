@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { decisionItem, messageItem, panelsDefault, sessionDefault } from "../core/testing/builders";
 import type { GovernancePanel, Panels, SessionHeader } from "../core/contract";
-import { statsLine, statsParts } from "./Footer";
+import { retentionLead, statsLine, statsParts } from "./stats";
 
 type StatsInput = Parameters<typeof statsLine>[0];
 
@@ -174,3 +174,19 @@ function governance(allow?: number, deny?: number, unknown?: number, digest?: st
     ...(digest === undefined ? {} : { policy_digest: digest }),
   };
 }
+
+describe("the Retention section's closed line", () => {
+  const model = (overrides: Record<string, unknown> = {}) =>
+    ({ session: sessionDefault(), panels: panelsDefault(), items: [], evicted: 0, loaded: true, ...overrides }) as Parameters<typeof statsLine>[0];
+
+  it("leads with the records retained, and does not always say 'some unavailable' (tokens and timing never are projected, so they are not news)", () => {
+    const lead = retentionLead(model());
+    expect(lead).toContain("records retained");
+    expect(lead).not.toContain("some unavailable");
+    expect(lead).not.toContain("tokens");
+  });
+
+  it("adds the policy verdicts when they cannot be read", () => {
+    expect(retentionLead(model({ panels: { ...panelsDefault(), governance: {} } }))).toContain("policy verdicts unavailable");
+  });
+});

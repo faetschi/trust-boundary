@@ -58,12 +58,12 @@ describe("PanelTabs: a vertical list of single-line tabs", () => {
     expect(tabsOf().map((tab) => tab.querySelector("span:nth-of-type(2)")?.textContent)).toEqual(["Decisions", "Provenance", "Qualification"]);
   });
 
-  it("draws each row's mark, its label and the words of its first badge, and keeps the mark and the words out of the name", () => {
+  it("draws each row's mark, its label and the words of its worst badge, and keeps the mark and the words out of the name", () => {
     show();
     const first = tabsOf()[0] as HTMLElement;
     expect(first.querySelector("[data-mark='decisions']")).not.toBeNull();
     expect(first.querySelector("span[aria-hidden='true']:not([data-tone])")?.getAttribute("aria-hidden")).toBe("true");
-    expect(tabsOf().map((tab) => tab.textContent)).toEqual(["Decisions1 deny verdict", "Provenanceunavailable", "Qualificationnot established"]);
+    expect(tabsOf().map((tab) => tab.textContent)).toEqual(["Decisions1 deny verdict", "Provenanceunavailable", "Qualification2 warnings"]);
   });
 
   it("gives each tab a status dot of the worst tone of its badges, drawn as a shape as well as a colour", () => {

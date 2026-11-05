@@ -52,19 +52,13 @@
 
 .rows,
 .streams,
-.stats,
-.posture {
+.stats {
   display: flex;
   flex-direction: column;
   gap: var(--space-1h);
   margin: 0;
   padding: 0;
   list-style: none;
-}
-
-.posture {
-  flex-direction: row;
-  flex-wrap: wrap;
 }
 
 .row,

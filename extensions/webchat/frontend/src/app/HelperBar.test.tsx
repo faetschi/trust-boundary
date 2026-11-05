@@ -32,7 +32,7 @@ const RECEIPT = streamDefault({ id: "receipt", label: "retained run receipt", he
 describe("the details card", () => {
   it("is in the page and hidden while closed, so what it holds is never absent from the document", async () => {
     const view = show(await loadedFrom("fixture"), false);
-    const card = view.container.querySelector("section") as HTMLElement;
+    const card = view.container.querySelector("#helper-bar") as HTMLElement;
     expect(card.hidden).toBe(true);
     expect(card.textContent).toContain(NOTE);
     view.unmount();
@@ -63,10 +63,18 @@ describe("the details card", () => {
 });
 
 describe("the details card behind a modal drawer, and its closed lines", () => {
+  it("opens the Session section first, so the audit identifiers are one press away, and leaves the others closed", async () => {
+    const view = show(await loadedFrom("fixture"));
+    const open = Array.from(view.container.querySelectorAll("details")).map((details) => details.hasAttribute("open"));
+    expect(open).toEqual([true, false, false, false]);
+    expect(view.container.querySelector("[data-identity]")?.textContent).toContain("Pi 0.87.1");
+    view.unmount();
+  });
+
   it("is inert while the drawer is open, as the header, the rail and the workspace are", async () => {
     const model = await loadedFrom("fixture");
     const view = mount(<HelperBar model={model} open version="0.1.0" inert />);
-    expect((view.container.querySelector("section") as HTMLElement).hasAttribute("inert")).toBe(true);
+    expect((view.container.querySelector("#helper-bar") as HTMLElement).hasAttribute("inert")).toBe(true);
     view.unmount();
   });
 

@@ -76,7 +76,6 @@ function MessageView({ item, reading, onRecord }: MessageViewProps) {
           {item.role === "assistant" ? <VisuallyHidden>, assistant</VisuallyHidden> : null}{" "}
           <Chip tone={reading.tone}>{reading.label}</Chip>
         </p>
-        <span className={styles.rule} aria-hidden="true" />
         <Button variant="ghost" size="sm" className={styles.recordButton} onClick={(event) => onRecord(item.id, event.currentTarget)}>
           {`record ${item.sequence}`}
         </Button>

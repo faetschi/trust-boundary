@@ -21,16 +21,6 @@ export function DetailsIcon() {
   );
 }
 
-// A window with a full-height right column: the governance panel.
-export function PanelIcon() {
-  return (
-    <Svg>
-      <rect x="1.75" y="2.75" width="12.5" height="10.5" rx="2" />
-      <path d="M10.25 2.75v10.5" />
-    </Svg>
-  );
-}
-
 export function SendIcon() {
   return (
     <Svg>
@@ -44,16 +34,6 @@ export function LockIcon() {
     <Svg>
       <rect x="3" y="7" width="10" height="6.5" rx="1.5" />
       <path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" />
-    </Svg>
-  );
-}
-
-export function InfoIcon() {
-  return (
-    <Svg>
-      <circle cx="8" cy="8" r="6.25" />
-      <path d="M8 7.5V11" />
-      <circle cx="8" cy="5" r="0.5" fill="currentColor" />
     </Svg>
   );
 }
@@ -105,11 +85,12 @@ export function RecoveryIcon() {
   );
 }
 
+// A dashed boundary around a point: where the claim boundary stands. It is not a check mark: that panel almost never reads as passed.
 export function QualificationIcon() {
   return (
     <Svg>
-      <circle cx="8" cy="8" r="6" />
-      <path d="M5.5 8.2l1.8 1.8 3.2-3.5" />
+      <rect x="2.5" y="2.5" width="11" height="11" rx="2" strokeDasharray="2.2 2" />
+      <circle cx="8" cy="8" r="1.4" fill="currentColor" stroke="none" />
     </Svg>
   );
 }
