@@ -24,6 +24,7 @@ case $(uname -s) in
     ;;
   *)
     linux_safe "$(cd -- "$KIT_DIR" && pwd -P)" || { echo "FATAL: the kit is under /mnt: run it from a Linux checkout" >&2; exit 2; }
+    linux_safe "${HOME:-}" || { echo "FATAL: HOME must be a plain Linux path outside /mnt (gate.sh deletes under it)" >&2; exit 2; }
     TBOUND_WORK_VIEW=${TBOUND_WORK_VIEW:-$TBOUND_WORK}
     on_linux() { bash -c "$1"; }
     ;;
