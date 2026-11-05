@@ -3,6 +3,7 @@ import type { ItemView } from "../../../core/contract";
 import { weightClass } from "../../../core/trajectory";
 import type { ProjectionState } from "../../../core/verification";
 import { cx } from "../../../ui/cx";
+import { Disclosure } from "../../../ui/Disclosure";
 import type { ProjectionPhase } from "../../status";
 import { railLanes, railToneText } from "./rail";
 import styles from "./Trajectory.module.css";
@@ -51,9 +52,12 @@ export function SequenceRail({ items, phase, searching, projection }: SequenceRa
           </span>
         </div>
       ))}
-      <p className={styles.axis} data-ordinal="true">
-        {note}
-      </p>
+      {/* The note says the axis is the record sequence, not time. It folds under a quiet summary, and it is in the page. */}
+      <Disclosure summary="About this axis">
+        <p className={styles.axis} data-ordinal="true">
+          {note}
+        </p>
+      </Disclosure>
     </div>
   );
 }
