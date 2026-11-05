@@ -100,6 +100,9 @@ type piServiceWorkflowEntry struct {
 	TerminalProofDigest     string                              `json:"-"`
 	TerminalProofSequence   uint64                              `json:"-"`
 	TerminalTransactionID   string                              `json:"-"`
+	// TerminalAbandoned marks a terminal written by abandon-unknown: the workflow is closed to
+	// admission and recovery, but it never completed and carries no settlement link.
+	TerminalAbandoned bool `json:"-"`
 	// AttackerUsage is the spend an adaptive attempt recorded when it finished (pi_workflow_attacker_usage); nil
 	// for every other admission and for an adaptive attempt that has not finished.
 	AttackerUsage *piServiceAttackerUsage `json:"-"`
@@ -118,14 +121,19 @@ type piServiceWorkflowEvent struct {
 	TCBProofDigest           string                              `json:"tcb_proof_digest,omitempty"`
 	TCBProofSequence         uint64                              `json:"tcb_proof_sequence,omitempty"`
 	PublicationTransactionID string                              `json:"publication_transaction_id,omitempty"`
-	WorkflowID               string                              `json:"workflow_id,omitempty"`
-	ScopeName                string                              `json:"scope_name,omitempty"`
-	ScopePath                string                              `json:"scope_path,omitempty"`
-	ScopeIdentityDigest      string                              `json:"scope_identity_digest,omitempty"`
-	DrainProofDigest         string                              `json:"drain_proof_digest,omitempty"`
-	Unexposed                bool                                `json:"unexposed,omitempty"`
-	AttackerUsage            *piServiceAttackerUsage             `json:"attacker_usage,omitempty"`
+	// Outcome is empty for a completed terminal and workflowTerminalAbandonedUnknown for one that
+	// abandon-unknown wrote after its reconciliation proof.
+	Outcome             string                  `json:"outcome,omitempty"`
+	WorkflowID          string                  `json:"workflow_id,omitempty"`
+	ScopeName           string                  `json:"scope_name,omitempty"`
+	ScopePath           string                  `json:"scope_path,omitempty"`
+	ScopeIdentityDigest string                  `json:"scope_identity_digest,omitempty"`
+	DrainProofDigest    string                  `json:"drain_proof_digest,omitempty"`
+	Unexposed           bool                    `json:"unexposed,omitempty"`
+	AttackerUsage       *piServiceAttackerUsage `json:"attacker_usage,omitempty"`
 }
+
+const workflowTerminalAbandonedUnknown = "abandoned-unknown"
 
 type piServiceWorkflowCatalog struct {
 	mu                sync.Mutex
@@ -248,6 +256,20 @@ func loadPiServiceWorkflowCatalog(journal *audit.Journal) (*piServiceWorkflowCat
 		case "pi_workflow_terminal":
 			if record.Event.ID != workflowCatalogEventID("terminal", event.AdmissionHash) || !exists ||
 				!entry.CheckpointBound || entry.Terminal {
+				_ = journal.Close()
+				return nil, ErrPiWorkflowCatalog
+			}
+			if event.Outcome == workflowTerminalAbandonedUnknown {
+				if event.RunID != "" || event.TCBProofDigest != "" || event.TCBProofSequence != 0 ||
+					event.PublicationTransactionID != "" || event.Digest != entry.LatestCheckpointDigest {
+					_ = journal.Close()
+					return nil, ErrPiWorkflowCatalog
+				}
+				entry.Terminal, entry.TerminalAbandoned = true, true
+				catalog.entries[event.AdmissionHash] = entry
+				continue
+			}
+			if event.Outcome != "" {
 				_ = journal.Close()
 				return nil, ErrPiWorkflowCatalog
 			}
@@ -640,6 +662,39 @@ func (c *piServiceWorkflowCatalog) MarkTerminal(admissionHash, checkpointDigest,
 	entry.Terminal, entry.LatestCheckpointDigest = true, checkpointDigest
 	entry.TerminalRunID, entry.TerminalProofDigest, entry.TerminalProofSequence, entry.TerminalTransactionID =
 		runID, proofDigest, proofSequence, transactionID
+	c.entries[admissionHash] = entry
+	return nil
+}
+
+// MarkAbandonedTerminal closes the workflow of an admission whose unknown request abandon-unknown
+// just settled, so trial reset sees it as settled. It records no completion: the terminal carries
+// the abandoned-unknown outcome and no settlement link, and nothing else in the catalog changes. An
+// admission with no workflow has nothing to close. Replaying the same call is a no-op.
+func (c *piServiceWorkflowCatalog) MarkAbandonedTerminal(admissionHash string) error {
+	if c == nil || !validBareWorkflowDigest(admissionHash) {
+		return ErrPiWorkflowCatalog
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	entry, ok := c.entries[admissionHash]
+	if !ok {
+		return nil
+	}
+	if entry.Terminal {
+		if entry.TerminalAbandoned {
+			return nil
+		}
+		return ErrPiWorkflowCatalog
+	}
+	if !entry.CheckpointBound {
+		return fmt.Errorf("%w: the workflow never bound a checkpoint", ErrPiWorkflowCatalog)
+	}
+	event := piServiceWorkflowEvent{SchemaVersion: workflowCatalogSchema, AdmissionHash: admissionHash,
+		Digest: entry.LatestCheckpointDigest, Outcome: workflowTerminalAbandonedUnknown}
+	if err := c.appendLocked("pi_workflow_terminal", workflowCatalogEventID("terminal", admissionHash), event); err != nil {
+		return err
+	}
+	entry.Terminal, entry.TerminalAbandoned = true, true
 	c.entries[admissionHash] = entry
 	return nil
 }
@@ -1528,7 +1583,7 @@ func (v catalogOwnerDrainVerifier) VerifyOwnerCellsDrainedWithProof(ctx context.
 		return nil, fmt.Errorf("%w: drain verifier arguments", workflowrecovery.ErrOwnerFence)
 	}
 	entry, ok := v.catalog.workflowEntry(workflow)
-	settledTerminal := entry.Terminal && validIdentityText(entry.TerminalRunID) &&
+	settledTerminal := entry.Terminal && entry.TerminalAbandoned || entry.Terminal && validIdentityText(entry.TerminalRunID) &&
 		validDigestText(entry.TerminalProofDigest) && entry.TerminalProofSequence > 0 &&
 		boundedProductionIdentity(entry.TerminalTransactionID, productionRequestMaxBytes)
 	if !ok || !entry.CheckpointBound || entry.Terminal && !settledTerminal {

@@ -224,6 +224,15 @@ func (j *piServiceRequestJournal) abandonUnknown(ctx context.Context, requestID,
 	}
 	state.abandoned = &event
 	j.entries[matchedKey] = state
+	// The abandon record is written first, so a terminal never exists without it. A failure here
+	// leaves the reset refusing (fail closed) and the request abandoned.
+	if settler, ok := j.reconciler.(interface {
+		markAbandoned(piServiceRequestState) error
+	}); ok {
+		if err := settler.markAbandoned(state); err != nil {
+			return record, fmt.Errorf("request %q is abandoned but its catalog workflow was not closed: %w", requestID, err)
+		}
+	}
 	return record, nil
 }
 

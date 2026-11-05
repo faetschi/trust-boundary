@@ -120,6 +120,11 @@ func problemText(err error) string {
 	return strings.TrimPrefix(err.Error(), ErrPiServiceUnreconciled.Error()+": ")
 }
 
+// markAbandoned closes the catalog workflow of an abandoned request (see MarkAbandonedTerminal).
+func (r *piServiceUnknownReconciler) markAbandoned(state piServiceRequestState) error {
+	return r.catalog.MarkAbandonedTerminal(state.acceptedRecord.Hash)
+}
+
 // Reconcile proves the workflow behind an unknown request quiescent, or returns an error that
 // wraps ErrPiServiceUnreconciled and lists everything that is not.
 func (r *piServiceUnknownReconciler) Reconcile(ctx context.Context, state piServiceRequestState) (piServiceReconciliation, error) {
