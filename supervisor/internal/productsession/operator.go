@@ -16,6 +16,8 @@ const ReasonOperatorResolved = "operator_resolved"
 
 // OperatorEvidence commits the existing-only evidence checked by the composition.
 // Empty journals use SHA-256 of the empty bytes as their head commitment.
+// CommandsSettled marks a nonempty command journal whose every command the Store
+// matched to a verified settlement.
 // Confirm and Close are transient: the composition uses them to keep the evidence
 // handles open and to re-attest the project tree at append time, and they are never
 // part of the record.
@@ -26,6 +28,7 @@ type OperatorEvidence struct {
 	StoreHead        string       `json:"store_head"`
 	ProviderHead     string       `json:"provider_head"`
 	CommandOwnerHead string       `json:"command_owner_head,omitempty"`
+	CommandsSettled  bool         `json:"commands_settled,omitempty"`
 	CommandHead      string       `json:"command_head"`
 	CheckpointDigest string       `json:"checkpoint_digest"`
 	Confirm          func() error `json:"-"`
@@ -145,8 +148,8 @@ func (s *state) reduceOperatorResolved(data []byte) (func(), error) {
 	if r.CommandOwnerHead != "" && !validDigest(r.CommandOwnerHead) {
 		return nil, fail(CodeInvalidRequest, "invalid drained command owner head")
 	}
-	if r.CommandHead != sha256Digest(nil) && r.CommandOwnerHead == "" {
-		return nil, fail(CodeInvalidRequest, "operator resolution requires an empty command journal")
+	if r.CommandHead != sha256Digest(nil) && r.CommandOwnerHead == "" && !r.CommandsSettled {
+		return nil, fail(CodeInvalidRequest, "operator resolution requires an empty or fully settled command journal")
 	}
 	for _, digest := range []string{r.BaselineDigest, r.ScanDigest, r.StoreHead, r.ProviderHead, r.CommandHead, r.CheckpointDigest} {
 		if !validDigest(digest) {

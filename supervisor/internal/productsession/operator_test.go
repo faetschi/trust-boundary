@@ -191,3 +191,31 @@ func TestOperatorResolutionMissingCatalogWritesNothing(t *testing.T) {
 		t.Fatalf("missing catalog was created: %v", err)
 	}
 }
+
+// A nonempty command journal is accepted only with the composition's claim that every command settled.
+func TestOperatorResolutionAcceptsASettledCommandJournalOnly(t *testing.T) {
+	for _, settled := range []bool{false, true} {
+		c, path := newCatalog(t)
+		reg := c.st.reg
+		turn := linkedTurn(t, c, "settled")
+		if err := c.MarkTurnUnknown(turn.ID, "lost"); err != nil {
+			t.Fatal(err)
+		}
+		c.Close()
+		_, err := OperatorResolve(path, reg, turn.ID, "abandon settled work", false, func(turn Turn) (OperatorEvidence, error) {
+			evidence, _ := operatorEvidence(turn)
+			evidence.CommandHead, evidence.CommandsSettled = dg("command settlements"), settled
+			return evidence, nil
+		})
+		if (err == nil) != settled {
+			t.Fatalf("settled=%v: %v", settled, err)
+		}
+		if settled {
+			opened, err := Open(path, reg)
+			if err != nil {
+				t.Fatalf("the settled resolution did not replay: %v", err)
+			}
+			opened.Close()
+		}
+	}
+}

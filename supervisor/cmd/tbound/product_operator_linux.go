@@ -394,8 +394,11 @@ func (e *productTurnEnv) operatorEvidence(ctx context.Context, turn productsessi
 	if err != nil {
 		return evidence, err
 	}
-	if len(command.Records) != 0 && ownerHead == "" {
-		return evidence, errors.New("command activity exists; command-scope recovery is not supported")
+	// A journal that opened through its settlement verifier holds only commands the Store matched to a retained
+	// settlement; an unsettled command left an unresolved Bash effect, which took the drained-owner path above.
+	commandsSettled := len(command.Records) != 0 && ownerHead == ""
+	if commandsSettled && retained.Commands == nil {
+		return evidence, errors.New("command records exist and no settlement verifier vouches for them")
 	}
 	if named, _, err := e.workflowPublication(turn.ProjectID, turn.Link.WorkflowID); err != nil || named {
 		return evidence, errors.Join(errors.New("publication evidence is present or unreadable"), err)
@@ -437,7 +440,7 @@ func (e *productTurnEnv) operatorEvidence(ctx context.Context, turn productsessi
 	if evidence.ProviderHead, err = head(retained.ProviderJournal); err != nil {
 		return evidence, err
 	}
-	evidence.CommandOwnerHead = ownerHead
+	evidence.CommandOwnerHead, evidence.CommandsSettled = ownerHead, commandsSettled
 	if evidence.CommandHead, err = head(retained.CommandJournal); err != nil {
 		return evidence, err
 	}
