@@ -150,31 +150,37 @@ print(next(c["case_id"] for c in json.load(open(sys.argv[1],encoding="utf-8"))["
 }
 
 # ---- 1b keys (runbook Part K SSH-3, read-only probes of the forced-command keys) -----------------------------------------------------------------------
-# M3 needs both keys (TBOUND_TRIAL_KEY, TBOUND_CLIENT_KEY: paths, passed to ssh by path, never read). Without them the phase only says so and continues.
+# M3 needs the trial, client and evidence keys (TBOUND_TRIAL_KEY, TBOUND_CLIENT_KEY, TBOUND_EVIDENCE_KEY: paths, passed to ssh by path, never read). Only the
+# restriction probes (`id`) run here, so the phase works at any cycle state; the trial `reset --check` needs the running corpus service and runs at the end of
+# phase 4. Without the keys the phase only says so and continues.
+# key_id_probe <label> <key path> <ERE of the accepted refusal text>: `id` through a forced-command key must exit 2, print the refusal and no uid=.
+key_id_probe() {
+  local out rc=0
+  [ -f "$2" ] || die "$1 key $2 is not a file"
+  out=$(GSSH_IDENTITY=$2 GSSH_USER=root sh "$GSSH_SH" id </dev/null 2>&1 | tr -d '\r') || rc=$?
+  printf '%s key, id (rc %s): %s\n' "$1" "$rc" "$out"
+  [ "$rc" = 2 ] && [[ $out =~ $3 && $out != *uid=* ]] || die "$1 key probe: expected exit 2, the forced-command refusal and no uid= (rc $rc): the key may be unrestricted or not installed"
+  ok "$1 key is restricted (id refused, exit 2)"
+}
 phase_keys() {
-  say "1b. keys: SSH-3 probes of the trial and client forced-command keys (read-only)"
-  local out rc=0 c
-  if [ -z "${TBOUND_TRIAL_KEY:-}" ] || [ -z "${TBOUND_CLIENT_KEY:-}" ]; then
-    note "M3 needs TBOUND_TRIAL_KEY and TBOUND_CLIENT_KEY (paths of the forced-command keys): not both set, so the key probes are skipped. Set them and rerun to prove the keys before the long cycle."
+  say "1b. keys: SSH-3 restriction probes of the trial, client and evidence keys (read-only)"
+  if [ -z "${TBOUND_TRIAL_KEY:-}" ] || [ -z "${TBOUND_CLIENT_KEY:-}" ] || [ -z "${TBOUND_EVIDENCE_KEY:-}" ]; then
+    note "M3 needs TBOUND_TRIAL_KEY, TBOUND_CLIENT_KEY and TBOUND_EVIDENCE_KEY (key paths): not all set, so the missing probes are skipped. Set them and rerun to prove the keys."
   fi
-  if [ -n "${TBOUND_TRIAL_KEY:-}" ]; then
-    [ -f "$TBOUND_TRIAL_KEY" ] || die "TBOUND_TRIAL_KEY=$TBOUND_TRIAL_KEY is not a file"
-    c=$(first_compliant_case "$T5_DIR/manifest.draft.json")
-    out=$(trial "reset $c --check" 2>&1 | tr -d '\r') || rc=$?
-    printf 'trial key, reset %s --check (rc %s): %s\n' "$c" "$rc" "$out"
-    # before the corpus config: refused with "not a corpus-mode config" (the key reached `trial`); after the cycle: a tbound-trial-reset/v1 check document
-    if [[ $out == *"not a corpus-mode config"* ]]; then ok "trial key reached tbound trial (pre-corpus refusal)"
-    elif [ "$rc" = 0 ] && [[ $out == *tbound-trial-reset/v1* && $out == *'"check":true'* ]]; then ok "trial key: check document (corpus config already installed)"
-    else die "trial key probe is neither the pre-corpus refusal nor a check document: Part K SSH-1/SSH-2 may be missing on the guest"; fi
-  fi
-  if [ -n "${TBOUND_CLIENT_KEY:-}" ]; then
-    [ -f "$TBOUND_CLIENT_KEY" ] || die "TBOUND_CLIENT_KEY=$TBOUND_CLIENT_KEY is not a file"
-    rc=0
-    out=$(GSSH_IDENTITY=$TBOUND_CLIENT_KEY GSSH_USER=root sh "$GSSH_SH" id </dev/null 2>&1 | tr -d '\r') || rc=$?
-    printf 'client key, id (rc %s): %s\n' "$rc" "$out"
-    [ "$rc" = 2 ] && [[ $out == *"not a client command"* && $out != *uid=* ]] || die "client key probe: expected exit 2 and 'not a client command' without uid= (rc $rc)"
-    ok "client key reached the forced command (refused id, exit 2)"
-  fi
+  # live wording: evidence "SSH_ORIGINAL_COMMAND is not a evidence command" (trial assumed analogous); the client key printed its usage line, exit 2
+  [ -z "${TBOUND_TRIAL_KEY:-}" ] || key_id_probe trial "$TBOUND_TRIAL_KEY" 'not an? trial command'
+  [ -z "${TBOUND_EVIDENCE_KEY:-}" ] || key_id_probe evidence "$TBOUND_EVIDENCE_KEY" 'not an? evidence command'
+  [ -z "${TBOUND_CLIENT_KEY:-}" ] || key_id_probe client "$TBOUND_CLIENT_KEY" 'not an? client command|usage: tbound client-forced'
+}
+
+# trial_check_doc: with the corpus service running, `trial reset <case> --check` through the trial key must print a check document (read-only).
+trial_check_doc() {
+  local c out rc=0
+  c=$(first_compliant_case "$HG/manifest.json")
+  out=$(trial "reset $c --check" | tr -d '\r') || rc=$?
+  printf 'trial key, reset %s --check (rc %s): %s\n' "$c" "$rc" "$out"
+  [ "$rc" = 0 ] && [[ $out == *tbound-trial-reset/v1* && $out == *'"check":true'* ]] || die "trial reset --check did not print a check document with the corpus service running (rc $rc)"
+  ok "trial key: check document for $c"
 }
 
 # ---- 2 manifest (D1) -----------------------------------------------------------------------------------------------------------------------------
@@ -215,7 +221,18 @@ print(json.dumps(m,indent=2))' "$draft" "$HG/pins.json" | hf_save pilot/manifest
 }
 
 # ---- 3 artifacts (P13.3) -------------------------------------------------------------------------------------------------------------------------
-guest_artifact_sums() { G "cd $GUEST_ART 2>/dev/null && sha256sum -- * 2>/dev/null | LC_ALL=C sort -k2 || true" | tr -d '\r'; }
+# sha256 of every regular file (dotfiles included) as "<hash>  <name>", whole-line sorted (comm needs that). An unreadable file makes sha256sum, find and so this
+# function fail: nothing is swallowed. A missing directory gives an empty list.
+guest_artifact_sums() {
+  local have
+  have=$(G "if [ -d $GUEST_ART ]; then echo yes; else echo no; fi" | tr -d '\r')
+  [ "$have" = no ] || G "find $GUEST_ART -mindepth 1 -maxdepth 1 -type f -exec sha256sum -- {} +" | tr -d '\r' | sed "s|  $GUEST_ART/|  |" | LC_ALL=C sort
+}
+# check_sums_complete <entries> <sums>: every regular file entry has exactly one checksum line (an unreadable T5-named file must not slip through).
+check_sums_complete() {
+  [ "$(printf '%s\n' "$1" | awk '$1=="f"{print substr($0, 3)}' | LC_ALL=C sort)" = "$(sum_names "$2")" ] ||
+    die "the checksum list does not cover exactly the regular files of $GUEST_ART (unreadable or odd entries): nothing is extracted"
+}
 sum_names() { printf '%s\n' "$1" | awk 'NF{print $2}' | LC_ALL=C sort; }
 # Complete entry set of the guest artifacts directory as "<type> <name>" lines (find: dotfiles, directories and links included, errors not hidden).
 # `sha256sum -- *` above ignores hidden entries and hides directory errors, so equality needs both lists.
@@ -238,12 +255,12 @@ artifact_meta_check() {
 phase_artifacts() {
   say "3. artifacts: the $T5_ARTIFACT_COUNT T5 files into $GUEST_ART"
   local own own_ent gst gst_ent extra name aside="" differ
-  own=$(WB "cd '$ART' && sha256sum -- * | LC_ALL=C sort -k2" | tr -d '\r')
+  own=$(WB "set -o pipefail; cd '$ART' && sha256sum -- * | LC_ALL=C sort" | tr -d '\r')
   own_ent=$(WB "cd '$ART' && find . -mindepth 1 -printf '%y %P\n' | LC_ALL=C sort" | tr -d '\r')
   eq "owner-side artifact files" "$(sum_names "$own" | grep -c .)" "$T5_ARTIFACT_COUNT"
   [ "$(printf '%s\n' "$own_ent" | grep -c '^f [^/]*$')" = "$T5_ARTIFACT_COUNT" ] && [ "$(printf '%s\n' "$own_ent" | grep -c .)" = "$T5_ARTIFACT_COUNT" ] ||
     die "the T5 source directory is not exactly $T5_ARTIFACT_COUNT flat regular files (find lists other entries or subdirectories)"
-  gst=$(guest_artifact_sums); gst_ent=$(guest_artifact_entries)
+  gst=$(guest_artifact_sums); gst_ent=$(guest_artifact_entries); check_sums_complete "$gst_ent" "$gst"
   if [ "$gst_ent" = "$own_ent" ] && [ "$gst" = "$own" ]; then
     ok "guest artifacts == frozen source (complete entry set incl. dotfiles and directories, $T5_ARTIFACT_COUNT regular files, per-file sha256): no session sudo needed"
     artifact_meta_check
@@ -271,7 +288,7 @@ phase_artifacts() {
   # scoped to the artifacts directory and the aside directory (never the rest of /opt/tbound/corpus)
   G "sudo -n chown -R root:root $GUEST_ART $aside && sudo -n find $GUEST_ART $aside -type d -exec chmod 0755 {} + && sudo -n find $GUEST_ART $aside -type f -exec chmod 0644 {} +"
   session_close
-  gst=$(guest_artifact_sums); gst_ent=$(guest_artifact_entries)
+  gst=$(guest_artifact_sums); gst_ent=$(guest_artifact_entries); check_sums_complete "$gst_ent" "$gst"
   [ "$gst_ent" = "$own_ent" ] || die "the guest artifact entry set differs from the frozen source after the install:"$'\n'"$(diff <(printf '%s\n' "$own_ent") <(printf '%s\n' "$gst_ent") || true)"
   [ "$gst" = "$own" ] || die "the guest artifacts differ from the frozen source after the install (count/sha256):"$'\n'"$(diff <(printf '%s\n' "$own") <(printf '%s\n' "$gst") || true)"
   artifact_meta_check
@@ -329,6 +346,7 @@ phase_cycle() {
   eq "live cgroup-root digest (diag l2) == recorded CGROUP_ROOT_DIGEST" "$L2_ROOT_DIGEST" "$(hf_get CGROUP_ROOT_DIGEST)"
   l2f="pilot/diag-l2-final-$(date -u +%Y%m%dT%H%M%SZ).txt"
   printf '%s\n' "$l2" | hf_save "$l2f"; hf_commit "$l2f"
+  if [ -n "${TBOUND_TRIAL_KEY:-}" ]; then trial_check_doc; else note "TBOUND_TRIAL_KEY not set: trial reset --check not probed"; fi
   hf_put pilot/CYCLE_OK ok
 }
 
