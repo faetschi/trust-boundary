@@ -40,10 +40,13 @@ PILOT_CEILINGS="--max-host-calls 17 --max-tokens 20000 --duration-seconds 1200" 
 SESSION_OPEN=0
 hf_has dr/CHECKS_OK && hf_has dr/RID || die "the dr cycle is not complete ($HF/dr/CHECKS_OK or dr/RID missing): finish 32-reg-dr.sh first"
 
+# The flag is cleared only after a successful close, so the EXIT cleanup retries a failed close.
 session_close() {
   [ "$SESSION_OPEN" = 1 ] || return 0
-  SESSION_OPEN=0
-  bash "$GA/00-session-sudo.sh" close
+  if bash "$GA/00-session-sudo.sh" close; then SESSION_OPEN=0; else
+    echo "FATAL: closing the session sudo window FAILED: broad passwordless sudo may still be enabled on the guest. Run: bash $GA/00-session-sudo.sh close (TBA_PW set), then check that 'sudo -n true' fails." >&2
+    return 1
+  fi
 }
 
 # ---- 1 abandon ---------------------------------------------------------------------------------------------------------------------------------
@@ -56,10 +59,39 @@ req_journal_verdict() {
 }
 # fact <facts text> <key>: one `key=value` line of the facts `tbound-op abandon <rid>` prints.
 fact() { printf '%s\n' "$1" | sed -n "s/^$2=//p" | head -1; }
+has_fact() { printf '%s\n' "$1" | grep -q "^$2="; }
+# catalog_drain_facts <rid>: request-specific drain evidence from the guest catalog (not the whole-catalog count of the abandon facts): the admission(s)
+# reserved for this request id (event entry.request_id), and for that admission_hash the owner scopes bound, bound and drained, bound but not drained,
+# and drained without a bound scope (the unexposed binder cleanup). Prints key=value lines.
+catalog_drain_facts() {
+  local f="pilot/catalog-$(date -u +%Y%m%dT%H%M%SZ).jsonl"
+  op "collect catalog" >/dev/null
+  fetch_export_nz "$OUT/_/catalog.jsonl" "$f" >/dev/null || { echo "admissions=0"; return 0; }   # empty catalog: no workflow was ever reserved
+  WX python3 -I -c 'import base64,json,sys
+rid=sys.argv[2]; res=set(); b={}; d={}
+for l in open(sys.argv[1],encoding="utf-8"):
+    if not l.strip(): continue
+    ev=json.loads(l)["event"]; x=json.loads(base64.b64decode(ev["data"])); k=ev["kind"]; h=x.get("admission_hash")
+    if k=="pi_workflow_admission_reserved" and x.get("entry",{}).get("request_id")==rid: res.add(h)
+    elif k=="pi_workflow_owner_scope_bound": b.setdefault(h,set()).add((x.get("workflow_id"),x.get("owner_epoch")))
+    elif k=="pi_workflow_owner_scope_drained": d.setdefault(h,set()).add((x.get("workflow_id"),x.get("owner_epoch")))
+print("admissions=%d"%len(res))
+if len(res)==1:
+    h=next(iter(res)); B=b.get(h,set()); D=d.get(h,set())
+    print("scopes_bound=%d"%len(B)); print("scopes_drained=%d"%len(B&D)); print("scopes_undrained=%d"%len(B-D)); print("drained_without_bound=%d"%len(D-B))' "$HF/$f" "$1" | tr -d '\r'
+}
+# abandon_inconclusive <rid> <token> <why>: never confirm on a missing or unavailable fact; print the exact owner command and stop.
+abandon_inconclusive() {
+  echo "ABANDON NOT CONFIRMED: $3" >&2
+  echo "The facts above are inconclusive for this script. The owner reads them and, if they show a finished workflow, a drained scope and no pending effect, runs:" >&2
+  echo "  GUEST_IP=$GUEST_IP sh $GSSH_SH 'sudo -n /opt/tbound/operator/tbound-op abandon $1 --confirm $2'" >&2
+  echo "(the TOKEN changes if the facts change; the guest reconciler also refuses to abandon what it cannot prove quiescent). Then run this script again: it sees the abandoned request and continues." >&2
+  exit 1
+}
 
 phase_abandon() {
   say "1. abandon the unsettled dr request (tbound-op two-step abandon)"
-  local rid facts tok v n
+  local rid facts tok v n cf
   hf_has pilot/DR_SETTLED && { ok "dr request already settled by an earlier run ($(hf_get pilot/DR_SETTLED))"; return 0; }
   hf_has dr/RID || die "no $HF/dr/RID: 32-reg-dr.sh did not record the dr request id"
   rid=$(hf_get dr/RID); [[ $rid =~ ^dr-req-[0-9]{8}T[0-9]{6}Z$ ]] || die "$HF/dr/RID is not a dr request id: '$rid'"
@@ -74,18 +106,23 @@ phase_abandon() {
   printf '%s\n' "$facts"
   tok=$(printf '%s\n' "$facts" | sed -n 's/^TOKEN=\([0-9a-f]\{12\}\)$/\1/p' | head -1)
   [ -n "$tok" ] || die "no 'TOKEN=<12 hex>' line in the abandon output above"
-  # Report 01 step 2: workflow finished (terminal unknown in the journal, checked above), scope drained, no pending effect. Fail closed on a missing fact.
-  eq "facts name the request" "$(fact "$facts" rid)" "$rid"
-  n=$(fact "$facts" catalog_owner_scope_drained)
-  { [[ $n =~ ^[0-9]+$ ]] && [ "$n" -ge 1 ]; } || die "catalog_owner_scope_drained is '$n': the workflow scope is not shown as drained"
-  # A stopped service has no cells cgroup and no podman runroot: the two probes then print 'unavailable', which is no process and no container.
+  # Report 01 step 2: workflow finished (terminal unknown in the journal, checked above), scope drained, no pending effect. Fail closed: a missing or
+  # 'unavailable' fact is inconclusive (the script does not confirm; the owner decides). The guest's own reconciler is a second gate at the confirm.
+  [ "$(fact "$facts" rid)" = "$rid" ] || abandon_inconclusive "$rid" "$tok" "the facts do not name the request"
   for v in cells_procs_bytes podman_ps_a_lines; do
-    case $(fact "$facts" "$v") in 0) ;; unavailable) note "$v unavailable (service stopped)";; *) die "$v is '$(fact "$facts" "$v")': a process or container may still exist; the owner decides";; esac
+    has_fact "$facts" "$v" || abandon_inconclusive "$rid" "$tok" "fact $v is missing"
+    [ "$(fact "$facts" "$v")" = 0 ] || abandon_inconclusive "$rid" "$tok" "fact $v is '$(fact "$facts" "$v")', not 0 (unavailable means the probe failed, e.g. the service is stopped)"
   done
+  has_fact "$facts" cells_children || abandon_inconclusive "$rid" "$tok" "fact cells_children is missing"
   v=$(fact "$facts" cells_children); v=${v// /}
-  case $v in "" | unavailable) ;; *) die "cells_children is '$v': cells exist; the owner decides";; esac
-  note "unexposed cleanup events (informational): $(fact "$facts" catalog_unexposed_true)"
-  ok "facts show drained scope and no pending effect; confirming with TOKEN $tok"
+  [ -z "$v" ] || abandon_inconclusive "$rid" "$tok" "cells_children is '$v' (not empty)"
+  cf=$(catalog_drain_facts "$rid"); printf 'request-specific catalog evidence:\n%s\n' "$cf"
+  [ "$(fact "$cf" admissions)" = 1 ] || abandon_inconclusive "$rid" "$tok" "the catalog holds $(fact "$cf" admissions) admission(s) for $rid, expected exactly 1"
+  [ "$(fact "$cf" scopes_undrained)" = 0 ] || abandon_inconclusive "$rid" "$tok" "owner scope(s) of this request are bound but not drained"
+  n=$(( $(fact "$cf" scopes_drained) + $(fact "$cf" drained_without_bound) ))
+  [ "$n" -ge 1 ] || abandon_inconclusive "$rid" "$tok" "no drained owner scope is recorded for this request"
+  note "unexposed cleanup events in the whole catalog (informational): $(fact "$facts" catalog_unexposed_true)"
+  ok "facts and catalog show this request's scope drained and no pending effect; confirming with TOKEN $tok"
   op "abandon $rid --confirm $tok"
   req_journal_verdict "$rid" abandoned
   [ "$REQ_VERDICT" = abandoned ] || die "after the confirm the journal verdict of $rid is '$REQ_VERDICT', expected 'abandoned'"
