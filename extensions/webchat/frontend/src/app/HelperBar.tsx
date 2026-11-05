@@ -67,6 +67,7 @@ export function HelperBar({ model, open, version, className }: HelperBarProps) {
       <Section title="Session" lead={head.status}>
         <div className={styles.rows}>
           <p className={styles.row}>{head.status}</p>
+          <p className={styles.row}>Pi tools: unavailable</p>
           <p className={styles.row}>
             {bindingName(model.source)} <Chip tone="idle">{model.source}</Chip>
           </p>

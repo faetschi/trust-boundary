@@ -11,8 +11,8 @@ right). Screenshots: `shadcn-p2/` (before = the previous design pass, `shadcn-p1
 | --- | --- | --- |
 | Source, demonstration, connection | three badges in the header | **status pill** ("Demonstration · unverified", plus the connection when it is not open, plus "unverified claim true" when the projection claims one). It opens a popover with all three. |
 | G1, H1, Containment, Claim-bearing, "Presentation only", "Display only" | a strip under the header | the same popover, as a two-column list with both sentences |
-| Governance decisions | a column that was always open | the column starts collapsed (icon column). The header **Governance** control carries the decisions badge ("1 deny verdict"). A stored choice is kept. |
-| Pi version, session id, workflow id, status | a line above the chat | **Details card**, Session section |
+| Governance decisions | a column that was always open, with a scrolling strip of tabs | the column starts collapsed as an **icon rail** (one mark per panel, a state dot on each). Opened, it is a vertical list of rows: mark, label, the first badge's words, a state dot. The header **Governance** control carries the decisions badge ("1 deny verdict"). A stored choice is kept. |
+| Pi version, tools reading, session id, workflow id, status | a line above the chat and a chip in the composer | **Details card**, Session section. The composer shows the provider ("π Pi") and the permission ("Observed only · no approvals"); the version and "tools unavailable" are in its title and in text for assistive technology. |
 | Observed posture counts | chips beside the filters | Details card, Observed posture section |
 | Observation streams, source binding | the sessions rail | Details card, Observation streams section (its closed line says "N unavailable or gapped") |
 | Retained records, verdict counts, tokens, timing, build | a footer | Details card, Retention section |
@@ -34,7 +34,7 @@ unasked. Every section is a native disclosure, and its closed line states its wo
 
 ## Decisions to know about
 
-- The composer has one grey, `aria-disabled` send mark, named "Send: not available in this build". It is not a picker and has
+- The composer's row follows T3's: provider mark and name, then the permission, then a send mark. Reasoning is not shown: the projection carries no reasoning level, and a picker with a made-up value would be dishonest. The composer has one grey, `aria-disabled` send mark, named "Send: not available in this build". It is not a picker and has
   no caret, because a caret on a control that does nothing would be a fake affordance. There is no attach control: nothing here
   can upload.
 - The details card is not persisted: it is a session choice.

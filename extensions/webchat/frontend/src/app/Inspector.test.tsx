@@ -338,11 +338,12 @@ describe("Inspector: the record bar", () => {
     view.unmount();
   });
 
-  it("is absent when no record is selected, and the status line names the selected tab's words instead", async () => {
+  it("is absent when no record is selected, and a tab with one badge needs no status line: its row draws the words", async () => {
     const view = mount(<Host model={await modelWith()} initialRecordTab />);
     expect(tabsOf(view.container)).toHaveLength(5);
     expect(view.container.querySelector("button[aria-label^='Close record']")).toBeNull();
-    expect(view.container.querySelector("p")?.textContent).toBe("Decisions · unavailable");
+    expect(view.container.querySelector("p[class*='tabWords']")).toBeNull();
+    expect(tabNamed(view.container, "Decisions")?.textContent).toBe("Decisionsunavailable");
     view.unmount();
   });
 });

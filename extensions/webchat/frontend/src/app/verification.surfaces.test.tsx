@@ -229,7 +229,7 @@ describe("the conversation head and the message marks: reported, not verified un
     expect(toneMarks(rail)).not.toContain("ok");
     // The inspector: the governance panel's tabs carry marks, and none is a success mark.
     const inspector = required(root().querySelector("aside[aria-label='Governance inspector']"), "governance inspector");
-    expect(inspector.textContent).toContain("Decisions · no decisions");
+    expect(inspector.querySelector("[role='tab']")?.textContent).toBe("Decisionsno decisions");
     expect(toneMarks(inspector).length).toBeGreaterThan(0);
     expect(toneMarks(inspector)).not.toContain("ok");
   });

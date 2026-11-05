@@ -709,9 +709,9 @@ describe("Shell: the header control and the workspace column", () => {
     expect(card.hidden).toBe(false);
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
   });
-  it("keeps the governance tab strip in its own scroll box, so the page never scrolls sideways", () => {
+  it("stacks the governance tabs in a column, so the page never scrolls sideways for them", () => {
     const css = readFileSync(resolve(process.cwd(), "src/app/inspector/PanelTabs.module.css"), "utf8");
-    expect(declarationsOf(css, ".strip")).toMatch(/overflow-x:\s*auto;/);
+    expect(declarationsOf(css, ".tablist")).toMatch(/flex-direction:\s*column;/);
   });
 });
 

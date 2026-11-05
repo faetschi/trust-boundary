@@ -6,7 +6,7 @@
 
 import { useState } from "react";
 import type { SessionHeader } from "../core/contract";
-import { LockIcon, SendIcon } from "../ui/Icon";
+import { LockIcon, PiIcon, SendIcon } from "../ui/Icon";
 import { VisuallyHidden } from "../ui/VisuallyHidden";
 import { useAnnouncer } from "../ui/LiveRegion";
 import { piVersionWord } from "./views/chat/identity";
@@ -27,6 +27,7 @@ export function Composer({ session }: { readonly session: SessionHeader | null }
   // same sentence is drawn in a plain line, so a sighted reader sees what was announced. The line moves no focus.
   const announcer = useAnnouncer();
   const [status, setStatus] = useState("");
+  const piFact = `Pi ${piVersionWord(session)} · tools unavailable`;
   const explain = () => {
     setStatus(NOT_AVAILABLE_STATUS);
     announcer.announce(NOT_AVAILABLE_STATUS);
@@ -51,11 +52,17 @@ export function Composer({ session }: { readonly session: SessionHeader | null }
           <span id="composer-reason">{COMPOSER_REASON}</span>
         </VisuallyHidden>
         <div className={styles.controls}>
+          {/* The provider, as T3 shows it: its mark and its name. The version and the tools reading are not drawn here; they are in the title, in the
+              text for assistive technology, and in the details card. */}
+          <span className={styles.fact} data-fact="" title={piFact}>
+            <PiIcon />
+            Pi
+            <VisuallyHidden>{` ${piFact.slice(3)}`}</VisuallyHidden>
+          </span>
           <span className={styles.fact} data-fact="" title={OBSERVED_TITLE}>
             <LockIcon />
             {OBSERVED_CHIP}
           </span>
-          <span className={styles.fact} data-fact="">{`Pi ${piVersionWord(session)} · tools unavailable`}</span>
           <button type="button" className={styles.send} aria-disabled="true" aria-label={SEND_LABEL} onClick={explain}>
             <SendIcon />
           </button>

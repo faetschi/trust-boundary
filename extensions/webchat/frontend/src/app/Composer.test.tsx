@@ -170,12 +170,12 @@ describe("the composer does not submit", () => {
 describe("the facts: non-interactive text with exact words", () => {
   it("reads 'Observed only · no approvals' and the Pi version, with tools unavailable", () => {
     render("0.87.1");
-    expect(chipTexts()).toEqual(["Observed only · no approvals", "Pi 0.87.1 · tools unavailable"]);
+    expect(chipTexts()).toEqual(["Pi 0.87.1 · tools unavailable", "Observed only · no approvals"]);
   });
 
   it("reads an absent Pi version as unavailable, never as a version", () => {
     render();
-    expect(chipTexts()).toEqual(["Observed only · no approvals", "Pi version unavailable · tools unavailable"]);
+    expect(chipTexts()).toEqual(["Pi version unavailable · tools unavailable", "Observed only · no approvals"]);
   });
 
   it("explains the first fact in its title, and draws both facts as text, never as buttons", () => {

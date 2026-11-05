@@ -2002,7 +2002,7 @@ async function checkJ(ctx) {
   const g = snapshot.panels.governance;
   const turns = `${s.turn_count} ${s.turn_count === 1 ? 'turn' : 'turns'}`;
   const expectedFooter = `${turns} · ${snapshot.items.length} records retained · policy verdicts ${g.allow_count} allow / ${g.deny_count} deny / ${g.unknown_count} unknown · tokens unavailable · timing unavailable`;
-  const expectedChips = ['Observed only · no approvals', s.pi_version ? `Pi ${s.pi_version} · tools unavailable` : 'Pi version unavailable · tools unavailable'];
+  const expectedChips = [s.pi_version ? `Pi ${s.pi_version} · tools unavailable` : 'Pi version unavailable · tools unavailable', 'Observed only · no approvals'];
   const shots = [];
 
   await viewport(1440, 900);
