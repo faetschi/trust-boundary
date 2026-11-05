@@ -194,6 +194,13 @@ func openRetainedProductTurn(paths productTurnPaths, options sessionrepo.Options
 		_ = root.Close()
 		return fail(fmt.Errorf("index retained Store authorizations: %w", err))
 	}
+	for _, effect := range historical.initialTrace.Effects {
+		var intent governedReplayOperationIntent
+		if effect.Unresolved && decodeCanonicalGoverned(effect.Intent, &intent) == nil && intent.Request.Tool == "bash" {
+			_ = root.Close()
+			return fail(errHistoricalBashContext)
+		}
+	}
 	options.Journal, options.ExposureBinder = storeJournal, nil
 	// The preview repairs nothing and checks every effect against its retained authorization record.
 	store, err := sessionrepo.OpenRecoveryPreview(root, options)

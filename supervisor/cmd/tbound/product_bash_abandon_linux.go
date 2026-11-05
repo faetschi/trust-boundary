@@ -7,16 +7,16 @@ import (
 	"encoding/json"
 	"errors"
 	"path/filepath"
+	"strings"
 
 	"tbound/supervisor/internal/audit"
-	"tbound/supervisor/internal/gate"
 	"tbound/supervisor/internal/piruntime"
 	"tbound/supervisor/internal/sessionrepo"
 )
 
 // openInterruptedProductBash opens cleanup evidence only, never a usable Store. Abandonment
 // discards the private candidate; a drained owner does not certify a command result.
-func openInterruptedProductBash(ctx context.Context, paths productTurnPaths, registration string) (_ *retainedProductTurn, ownerHead string, err error) {
+func openInterruptedProductBash(ctx context.Context, paths productTurnPaths, registration string, options sessionrepo.Options) (_ *retainedProductTurn, ownerHead string, err error) {
 	r := &retainedProductTurn{}
 	defer func() {
 		if err != nil {
@@ -66,46 +66,47 @@ func openInterruptedProductBash(ctx context.Context, paths productTurnPaths, reg
 	if err != nil {
 		return nil, "", err
 	}
-	admissions, err := openExistingRecoveryJournal(filepath.Join(paths.StoreRoot, "delta-admission.jsonl"))
+	// Reuse authorization validation, but grant no command settlement authority: this candidate is discarded.
+	historical, err := newGovernedHistoricalStoreVerifier(r.StoreJournal, options.PolicyDigest, options.MetadataPolicyDigest,
+		func(sessionrepo.CommandSettlement, string, string) error { return errHistoricalBashContext })
 	if err != nil {
 		return nil, "", err
 	}
-	r.closers = append(r.closers, admissions.Close)
 	interrupted := 0
 	for _, effect := range storeTrace.Effects {
-		if !effect.Unresolved {
+		if !effect.Unresolved && effect.Outcome != "success" {
+			return nil, "", errors.New("Store evidence has a failed effect")
+		}
+		if !strings.HasPrefix(effect.ID, "sessionrepo-effect-") {
+			return nil, "", errors.New("Store evidence has a foreign effect")
+		}
+		var seed struct {
+			Action string `json:"action"`
+		}
+		if json.Unmarshal(effect.Intent, &seed) == nil && seed.Action == "seed" && !effect.Unresolved {
 			continue
 		}
 		var intent governedReplayOperationIntent
-		if decodeCanonicalGoverned(effect.Intent, &intent) != nil || intent.SchemaVersion != sessionrepo.OperationIntentSchemaVersion || intent.Request.Tool != "bash" || intent.Request.EffectID != effect.ID {
+		if decodeCanonicalGoverned(effect.Intent, &intent) != nil || intent.SchemaVersion != sessionrepo.OperationIntentSchemaVersion || intent.Request.EffectID != effect.ID {
+			return nil, "", errors.New("invalid retained Store operation intent")
+		}
+		if err := historical.verifyOperationAuthorization(intent.Request); err != nil {
+			return nil, "", err
+		}
+		record := historical.byEffect[effect.ID]
+		var auth governedOperationAdmissionRecord
+		if decodeCanonicalGoverned(record.Event.Data, &auth) != nil || record.Sequence >= effect.IntentSequence ||
+			auth.WorkflowID != paths.Link.WorkflowID || auth.ConversationID != paths.Link.ConversationID {
+			return nil, "", errors.New("interrupted Bash authorization differs")
+		}
+		if !effect.Unresolved {
+			continue
+		}
+		if intent.Request.Tool != "bash" {
 			return nil, "", errors.New("unresolved effect is not an interrupted Bash command")
 		}
 		if _, exists := commands[intent.Request.ViewID+"\x00"+intent.Request.Operation.LeaseID]; !exists {
 			return nil, "", errors.New("interrupted Bash effect has no drained command owner")
-		}
-		matched := 0
-		for _, record := range storeTrace.Records {
-			if record.Event.Kind != governedOperationAuthorizationKind {
-				continue
-			}
-			var auth governedOperationAdmissionRecord
-			if decodeCanonicalGoverned(record.Event.Data, &auth) != nil {
-				return nil, "", errors.New("invalid retained authorization")
-			}
-			request := intent.Request
-			if auth.EffectID != effect.ID {
-				continue
-			}
-			if record.Sequence >= effect.IntentSequence || auth.WorkflowID != paths.Link.WorkflowID || auth.ConversationID != paths.Link.ConversationID ||
-				auth.Operation != request.Operation || auth.Tool != request.Tool || auth.DecisionID != request.Decision.ID || auth.GateDecision.Verdict != gate.Allow ||
-				auth.TypedArgumentDigest != request.ArgumentDigest || auth.InputGeneration != request.InputGeneration || auth.InputTreeDigest != request.InputTreeDigest ||
-				!sameDurableOutputScopePaths(auth.OutputScopePaths, request.OutputScopePaths) {
-				return nil, "", errors.New("interrupted Bash authorization differs")
-			}
-			matched++
-		}
-		if matched != 1 {
-			return nil, "", errors.New("interrupted Bash lacks a unique authorization")
 		}
 		interrupted++
 	}

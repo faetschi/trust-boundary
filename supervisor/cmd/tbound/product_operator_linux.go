@@ -330,8 +330,14 @@ func (e *productTurnEnv) operatorEvidence(ctx context.Context, turn productsessi
 	}
 	retained, err := openRetainedProductTurn(paths, e.storeOptions(turn), e.OpenCommandHistory)
 	ownerHead := ""
-	if err != nil {
-		retained, ownerHead, err = openInterruptedProductBash(ctx, paths, e.Registration.Digest)
+	if errors.Is(err, errHistoricalBashContext) {
+		original := err
+		defer func() {
+			if err != nil {
+				err = errors.Join(original, err)
+			}
+		}()
+		retained, ownerHead, err = openInterruptedProductBash(ctx, paths, e.Registration.Digest, e.storeOptions(turn))
 	}
 	if err != nil {
 		return evidence, fmt.Errorf("retained Store/journals: %w", err)
@@ -366,6 +372,9 @@ func (e *productTurnEnv) operatorEvidence(ctx context.Context, turn productsessi
 	pins := checkpoint.Pins
 	pins.HostCallReservation = nil
 	pins.PendingCallDisposition = ""
+	if err := productTurnReservationsResolved(pins); err != nil {
+		return evidence, fmt.Errorf("Store/workflow is not inert: %w", err)
+	}
 	if retained.Store != nil {
 		if err := productTurnChildResolved(bundle, pins); err != nil {
 			return evidence, fmt.Errorf("Store/workflow is not inert: %w", err)

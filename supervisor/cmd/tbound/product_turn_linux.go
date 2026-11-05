@@ -246,6 +246,10 @@ func productTurnChildResolved(bundle sessionrepo.EvidenceBundle, pins workflowre
 	if disposition.Quarantined || disposition.Unknowns != 0 || disposition.Successes != disposition.Attempts {
 		return errors.New("Store evidence is quarantined or has an unresolved effect")
 	}
+	return productTurnReservationsResolved(pins)
+}
+
+func productTurnReservationsResolved(pins workflowrecovery.Pins) error {
 	if effect := pins.EffectReservation; effect != nil && effect.Disposition != workflowrecovery.EffectReservationTerminal &&
 		effect.Disposition != workflowrecovery.EffectReservationRetired {
 		return errors.New("an effect reservation is unresolved")

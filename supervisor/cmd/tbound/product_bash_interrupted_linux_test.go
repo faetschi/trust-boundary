@@ -3,12 +3,14 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"tbound/supervisor/internal/audit"
@@ -16,6 +18,7 @@ import (
 	"tbound/supervisor/internal/productsession"
 	"tbound/supervisor/internal/providerbridge"
 	"tbound/supervisor/internal/sessionrepo"
+	"tbound/supervisor/internal/workflowrecovery"
 )
 
 type interruptedProductRunner struct {
@@ -82,7 +85,7 @@ func (r *interruptedLeaseRunner) RegisterLease(view, lease string) error {
 }
 
 func TestProductInterruptedBashRestartAndOperatorResolution(t *testing.T) {
-	for _, mode := range []string{"drained", "undrained", "missing-command-journal", "missing-owner-journal"} {
+	for _, mode := range []string{"drained", "undrained", "missing-command-journal", "missing-owner-journal", "history-error", "policy-mismatch", "failed-effect"} {
 		t.Run(mode, func(t *testing.T) {
 			created := newBashProductDriverFixture(t, productsession.PublicationAuto, productScopeNotes(), false, []string{}, seedBashProject(t))
 			_ = created.env.Catalog.Close()
@@ -96,8 +99,23 @@ func TestProductInterruptedBashRestartAndOperatorResolution(t *testing.T) {
 			f := openBashProductDriverFixture(t, created.root, productScopeNotes(), []string{})
 			f.session = created.session
 			f.env.OpenCommandHistory = openProductD09CommandHistory
+			if mode == "history-error" {
+				f.env.OpenCommandHistory = func(*audit.Journal, productsession.TurnLink) (governedRecoveryCommandVerifier, error) {
+					return nil, errors.New("unrelated history failure")
+				}
+			}
+			if mode == "policy-mismatch" {
+				f.env.StorePolicyDigest = bareSHA256Digest(digestBytes([]byte("different policy")))
+			}
 			turn := f.turn(t, f.session.ID+"/turn-1")
 			ownerPath := filepath.Join(filepath.Dir(turn.Link.StoreJournalPath), productCommandOwnerJournal)
+			if mode == "failed-effect" {
+				rewriteInterruptedProductJournal(t, turn.Link.StoreJournalPath, func(event *audit.Event) {
+					if event.Kind == "effect_outcome" {
+						event.Outcome, event.Data = "unknown", nil
+					}
+				})
+			}
 			if mode != "undrained" {
 				j, err := audit.OpenExisting(ownerPath)
 				if err != nil {
@@ -137,6 +155,12 @@ func TestProductInterruptedBashRestartAndOperatorResolution(t *testing.T) {
 					if err == nil {
 						t.Fatal("missing cleanup evidence accepted")
 					}
+					if mode == "history-error" && !strings.Contains(err.Error(), "unrelated history failure") {
+						t.Fatalf("original failure lost: %v", err)
+					}
+					if mode == "undrained" && !strings.Contains(err.Error(), "old command-settlement context") {
+						t.Fatalf("original history-context failure lost: %v", err)
+					}
 					break
 				}
 				if err != nil {
@@ -150,5 +174,54 @@ func TestProductInterruptedBashRestartAndOperatorResolution(t *testing.T) {
 				t.Fatal("live effect")
 			}
 		})
+	}
+}
+
+func TestProductInterruptedBashRequiresResolvedEffectReservation(t *testing.T) {
+	for _, disposition := range []workflowrecovery.EffectReservationDisposition{
+		workflowrecovery.EffectReservationReserved, workflowrecovery.EffectReservationUnknown,
+		workflowrecovery.EffectReservationTerminal, workflowrecovery.EffectReservationRetired,
+	} {
+		pins := workflowrecovery.Pins{EffectReservation: &workflowrecovery.EffectReservationPin{Disposition: disposition}}
+		wantError := disposition == workflowrecovery.EffectReservationReserved || disposition == workflowrecovery.EffectReservationUnknown
+		if err := productTurnReservationsResolved(pins); (err != nil) != wantError {
+			t.Fatalf("reservation %s: %v", disposition, err)
+		}
+	}
+}
+
+// Rechain tampered evidence so refusals test bindings rather than audit hash damage.
+func rewriteInterruptedProductJournal(t *testing.T, path string, change func(*audit.Event)) {
+	t.Helper()
+	j, err := audit.OpenExisting(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	trace, err := j.Trace()
+	if closeErr := j.Close(); err != nil || closeErr != nil {
+		t.Fatal(errors.Join(err, closeErr))
+	}
+	var encoded bytes.Buffer
+	head := ""
+	for _, record := range trace.Records {
+		change(&record.Event)
+		record.PreviousHash = head
+		unsigned, err := json.Marshal(struct {
+			Version      int         `json:"version"`
+			Sequence     uint64      `json:"sequence"`
+			PreviousHash string      `json:"previous_hash"`
+			Event        audit.Event `json:"event"`
+		}{record.Version, record.Sequence, record.PreviousHash, record.Event})
+		if err != nil {
+			t.Fatal(err)
+		}
+		record.Hash = bareSHA256Digest(digestBytes(unsigned))
+		if err := json.NewEncoder(&encoded).Encode(record); err != nil {
+			t.Fatal(err)
+		}
+		head = record.Hash
+	}
+	if err := os.WriteFile(path, encoded.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
 	}
 }
