@@ -211,7 +211,8 @@ phase_artifacts() {
   fi
   echo "guest holds $(printf '%s\n' "$gst_ent" | grep -c .) entries, the frozen source $T5_ARTIFACT_COUNT"
   extra=$(entry_names "$(LC_ALL=C comm -13 <(printf '%s\n' "$own_ent") <(printf '%s\n' "$gst_ent"))")   # every type, same-named entries of another type included
-  for name in $extra; do [[ $name =~ ^[A-Za-z0-9._-]+$ ]] || die "unusable entry name on the guest: '$name'"; done
+  # validate each whole line before any sudo: a name with a space must not split into two valid-looking names
+  while IFS= read -r name; do [ -z "$name" ] || [[ $name =~ ^[A-Za-z0-9._-]+$ ]] || die "unusable entry name on the guest: '$name'"; done <<< "$extra"
   [ -n "${TBA_PW:-}" ] || die "TBA_PW is not set: the artifact install needs the session sudo window (read -rs TBA_PW; export TBA_PW)"
   cleanup_add session_close
   SESSION_OPEN=1
