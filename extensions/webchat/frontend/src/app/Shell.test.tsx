@@ -223,46 +223,45 @@ describe("Shell: the claim boundary and the source are always visible", () => {
   });
 });
 
-describe("Shell: the details card is a popover, with a visible name", () => {
-  it("is opened by a control named 'Details', which moves focus into the card", async () => {
+describe("Shell: the details card is pinned by its control", () => {
+  it("is opened by a control named 'Details', and stays open while the reader uses the page: Escape and a press elsewhere leave it open", async () => {
     renderShell(1440);
     await settle();
     const toggle = byLabel("Details");
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
     click(toggle);
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
-    expect(document.activeElement).toBe(q("#helper-bar"));
-  });
-
-  it("closes on Escape, returns focus to its control, and leaves a selected record for the next Escape", async () => {
-    renderShell(1440);
-    await settle();
-    const toggle = byLabel("Details");
-    click(toggle);
+    expect(q("#helper-bar").hidden).toBe(false);
     act(() => {
       document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
-    });
-    expect(toggle.getAttribute("aria-expanded")).toBe("false");
-    expect(q("#helper-bar").hidden).toBe(true);
-    expect(document.activeElement).toBe(toggle);
-  });
-
-  it("closes on a press outside it, and not on a press inside it or on its own control", async () => {
-    renderShell(1440);
-    await settle();
-    const toggle = byLabel("Details");
-    click(toggle);
-    act(() => {
-      q("#helper-bar").dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
-    });
-    expect(toggle.getAttribute("aria-expanded")).toBe("true");
-    act(() => {
       q("main").dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
     });
-    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(q("#helper-bar").hidden).toBe(false);
+    click(toggle);
+    expect(q("#helper-bar").hidden).toBe(true);
+  });
+
+  it("makes room for itself at a wide width while it is open, so it never covers the transcript", async () => {
+    renderShell(1440);
+    await settle();
+    expect(q("[data-details]").getAttribute("data-details")).toBe("closed");
+    click(byLabel("Details"));
+    expect(q("[data-details]").getAttribute("data-details")).toBe("open");
+    const css = readFileSync(resolve(process.cwd(), "src/app/Shell.module.css"), "utf8");
+    expect(css).toMatch(/\[data-details="open"\] \.main \{[^}]*padding-right:/);
+  });
+
+  it("opens the governance panel of a row pressed in it, expanding the column", async () => {
+    window.localStorage.removeItem(UI_PREFS_KEY);
+    renderShell(1440);
+    await settle();
+    click(byLabel("Details"));
+    click(q("#helper-bar button[aria-label^='Open Publication panel']"));
+    expect(byLabel("Governance").getAttribute("aria-expanded")).toBe("true");
+    expect(governanceTab("Publication").getAttribute("aria-selected")).toBe("true");
   });
 });
-
 describe("Shell: the governance column starts collapsed", () => {
   it("starts as its icon column, with the header control and its badge saying what is there, and opens with one press", async () => {
     window.localStorage.removeItem(UI_PREFS_KEY);

@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { SessionHeader, SourceClass, StreamStatus } from "../core/contract";
 import { snapshotOf, streamDefault } from "../core/testing/builders";
+import { act } from "react";
 import { mount } from "../test-support/dom";
 import { fakeWorkspace, flush } from "../test-support/fakes";
 import { HelperBar } from "./HelperBar";
@@ -45,14 +46,35 @@ describe("the details card", () => {
     view.unmount();
   });
 
-  it("says the worst fact of a closed section on its own line", async () => {
-    const view = show(await loadedFrom("fixture", [streamDefault({ id: "tap", label: "process tap", health: "gap", available: false })]));
-    const leads = Array.from(view.container.querySelectorAll("summary")).map((summary) => summary.textContent ?? "");
-    expect(leads.some((line) => line.startsWith("Observation streams") && line.includes("1 unavailable or gapped"))).toBe(true);
-    expect(leads.some((line) => line.startsWith("Session") && line.includes("completed · reported, not verified"))).toBe(true);
+  it("shows the harness and its state, then the rows an operator needs: turns, decisions, publication, recovery, each with a state dot", async () => {
+    const view = mount(<HelperBar model={await loadedFrom("fixture")} open version="0.1.0" onOpenPanel={() => undefined} />);
+    expect(view.container.querySelector("[title]")?.textContent).toContain("Pi 0.87.1");
+    expect(view.container.textContent).toContain("completed");
+    const rows = Array.from(view.container.querySelectorAll("[aria-label]")).map((row) => row.getAttribute("aria-label"));
+    expect(rows.some((name) => name?.startsWith("Turns: 1 turn"))).toBe(true);
+    for (const panel of ["Decisions", "Publication", "Recovery"]) expect(rows.some((name) => name?.startsWith(`Open ${panel} panel,`))).toBe(true);
+    expect(view.container.querySelectorAll("[data-tone]").length).toBeGreaterThanOrEqual(4);
     view.unmount();
   });
 
+  it("opens the Governance panel of a governance row, and offers nothing to act on elsewhere", async () => {
+    const opened: string[] = [];
+    const view = mount(<HelperBar model={await loadedFrom("fixture")} open version="0.1.0" onOpenPanel={(panel) => opened.push(panel)} />);
+    act(() => (view.container.querySelector("button[aria-label^='Open Publication panel']") as HTMLButtonElement).click());
+    expect(opened).toEqual(["publication"]);
+    expect(Array.from(view.container.querySelectorAll("button")).map((button) => button.getAttribute("aria-label") ?? button.textContent)).toEqual([
+      expect.stringContaining("Open Decisions panel"),
+      expect.stringContaining("Open Publication panel"),
+      expect.stringContaining("Open Recovery panel"),
+    ]);
+    view.unmount();
+  });
+
+  it("names a stream that is unavailable or gapped as a row, so it is not only in the technical details", async () => {
+    const view = show(await loadedFrom("fixture", [streamDefault({ id: "tap", label: "process tap", health: "gap", available: false })]));
+    expect(view.container.querySelector("[aria-label^='Streams:']")?.getAttribute("aria-label")).toBe("Streams: 1 unavailable or gapped");
+    view.unmount();
+  });
   it("reads before a projection as unavailable, with the same note", () => {
     const store = createWorkspaceStore(fakeWorkspace(snapshotOf()).deps);
     const view = show(store.getSnapshot());
@@ -63,14 +85,15 @@ describe("the details card", () => {
 });
 
 describe("the details card behind a modal drawer, and its closed lines", () => {
-  it("opens the Session section first, so the audit identifiers are one press away, and leaves the others closed", async () => {
+  it("keeps the identifiers, the streams, the retention statistics and the notes under Technical details, closed but in the page", async () => {
     const view = show(await loadedFrom("fixture"));
-    const open = Array.from(view.container.querySelectorAll("details")).map((details) => details.hasAttribute("open"));
-    expect(open).toEqual([true, false, false, false]);
-    expect(view.container.querySelector("[data-identity]")?.textContent).toContain("Pi 0.87.1");
+    const details = view.container.querySelector("details") as HTMLDetailsElement;
+    expect(details.querySelector("summary")?.textContent).toBe("Technical details");
+    expect(details.hasAttribute("open")).toBe(false);
+    expect(details.querySelector("[data-identity]")?.textContent).toContain("Pi 0.87.1");
+    expect(details.querySelector("[aria-label='Session statistics']")).not.toBeNull();
     view.unmount();
   });
-
   it("is inert while the drawer is open, as the header, the rail and the workspace are", async () => {
     const model = await loadedFrom("fixture");
     const view = mount(<HelperBar model={model} open version="0.1.0" inert />);

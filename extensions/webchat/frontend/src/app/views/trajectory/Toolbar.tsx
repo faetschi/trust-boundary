@@ -21,6 +21,9 @@ interface TrajectoryToolbarProps {
 // The Trajectory toolbar: the grouping as a labelled toggle group (one tab stop, arrows between
 // the groups), the record search, and the summary line. Grouping and search are presentation: they
 // never change the projection, and the search is over allowlisted bounded fields only.
+// What a turn is, for a reader who has not met the word: the session's unit of work.
+const TURN_MEANING = " A turn is one prompt and everything Pi did in response.";
+
 export function TrajectoryToolbar({ group, query, loaded, shown, total, onGroup, onQuery }: TrajectoryToolbarProps) {
   const active = RECORD_GROUPS.find((entry) => entry.id === group) ?? RECORD_GROUPS[0];
   const searching = query.trim() !== "";
@@ -39,7 +42,7 @@ export function TrajectoryToolbar({ group, query, loaded, shown, total, onGroup,
             pressed={active?.id ?? "turn"}
             onPress={onGroup}
           />
-          <p className={styles.hint}>{active ? `${active.label}: ${active.hint}.` : ""}</p>
+          <p className={styles.hint}>{active ? `${active.label}: ${active.hint}.${active.id === "turn" ? TURN_MEANING : ""}` : ""}</p>
         </div>
         <label className={styles.search}>
           <VisuallyHidden>Search records</VisuallyHidden>

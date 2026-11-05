@@ -433,7 +433,14 @@
   min-height: 0;
 }
 
-/* The details card sits beside the governance column, never over it (HelperBar.tsx takes this class). */
+/* While the details card is pinned open at a wide width, the workspace makes room for it, so it never covers the transcript. It sits
+   beside the governance column, never over it (HelperBar.tsx takes the .helper class). */
+@media (min-width: 1181px) {
+  .body[data-details="open"] .main {
+    padding-right: calc(15rem + var(--space-5));
+  }
+}
+
 .body[data-inspector="collapsed"] .helper {
   right: calc(var(--rail-collapsed-width) + var(--space-3));
 }

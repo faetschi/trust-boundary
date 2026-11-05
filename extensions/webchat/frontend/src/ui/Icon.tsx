@@ -95,3 +95,21 @@ export function QualificationIcon() {
     </Svg>
   );
 }
+
+// A speech bubble: the turns of the session.
+export function TurnsIcon() {
+  return (
+    <Svg>
+      <path d="M3 3h10v7H7l-3 3v-3H3z" />
+    </Svg>
+  );
+}
+
+// A stack of lines: the streams the supervisor observes.
+export function StreamsIcon() {
+  return (
+    <Svg>
+      <path d="M2.5 4h11M2.5 8h11M2.5 12h7" />
+    </Svg>
+  );
+}

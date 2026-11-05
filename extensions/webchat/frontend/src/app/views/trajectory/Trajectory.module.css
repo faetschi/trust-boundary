@@ -299,7 +299,6 @@
 .groupBody {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
 }
 
 /* A record row: a grid of a status mark, the kind chip, the label, the payload, the clock and the tail chips, so the
@@ -311,15 +310,20 @@
   gap: var(--space-1h) var(--space-2h);
   width: 100%;
   min-height: var(--row-h-toolbar);
-  padding: var(--space-1) var(--row-pad-x);
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
+  padding: var(--space-1h) var(--row-pad-x);
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
   background: transparent;
   color: var(--foreground);
   font: inherit;
   font-size: var(--text-sm);
   text-align: left;
   cursor: pointer;
+}
+
+.groupBody > .row:last-child {
+  border-bottom-color: transparent;
 }
 
 .row:hover {
