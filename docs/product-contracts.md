@@ -115,6 +115,7 @@ commitment on both append and replay; duplicates and malformed/forged bindings
 fail catalog replay. The protected journal supplies integrity, not a signature
 against its own privileged owner. Dry-run holds the same lock and checks the
 same evidence but appends nothing, including no owner epoch.
+An abandonment record containing `command_owner_head` fails closed on older binaries whose strict catalog decoder does not recognize that field; keep this replay incompatibility in mind during the format-3 to format-2 rollback drill.
 
 The outcome is terminal `abandoned`, reason `operator_resolved`, with no new execution
 receipt and `context_eligible=false`. A previous review receipt stays available
