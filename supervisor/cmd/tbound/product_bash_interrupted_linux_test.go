@@ -295,6 +295,57 @@ func TestProductInterruptedBashRequiresResolvedEffectReservation(t *testing.T) {
 	}
 }
 
+func TestProductDrainedBashReservationRequiresExactBinding(t *testing.T) {
+	request := sessionrepo.OperationRequest{Tool: "bash", EffectID: "effect", ArgumentDigest: digestBytes([]byte("arguments"))}
+	intent, _ := json.Marshal(governedReplayOperationIntent{SchemaVersion: sessionrepo.OperationIntentSchemaVersion, Request: request})
+	trace := audit.Trace{Effects: []audit.EffectTrace{{ID: request.EffectID, Intent: intent, Unresolved: true}}}
+	for _, mode := range []string{"matching", "unknown", "foreign-effect", "foreign-spec", "foreign-workflow", "foreign-conversation", "foreign-call", "foreign-tool-call", "foreign-outcome", "foreign-generation", "foreign-epoch", "missing-capture", "settled", "non-bash"} {
+		t.Run(mode, func(t *testing.T) {
+			captured := &workflowrecovery.CapturedCallPin{WorkflowID: "workflow", ConversationID: "conversation", HostCallID: "host", ToolCallID: "tool", OutcomeDigest: "outcome", RecoveryGeneration: 1, OwnerEpoch: 1, Disposition: workflowrecovery.CapturedCallConsumed}
+			binding := workflowrecovery.EffectBinding{OperationID: request.EffectID, SpecDigest: bareSHA256Digest(request.ArgumentDigest), WorkflowID: captured.WorkflowID, ConversationID: captured.ConversationID,
+				HostCallID: captured.HostCallID, ToolCallID: captured.ToolCallID, HostCallOutcomeDigest: captured.OutcomeDigest, RecoveryGeneration: captured.RecoveryGeneration, OwnerEpoch: captured.OwnerEpoch}
+			pin := &workflowrecovery.EffectReservationPin{Binding: binding, Disposition: workflowrecovery.EffectReservationReserved}
+			pins := workflowrecovery.Pins{WorkflowID: captured.WorkflowID, EffectReservation: pin, HostCallReservation: &workflowrecovery.HostCallReservationPin{CapturedCall: captured}}
+			changed := trace
+			changed.Effects = append([]audit.EffectTrace(nil), trace.Effects...)
+			switch mode {
+			case "unknown":
+				pin.Disposition = workflowrecovery.EffectReservationUnknown
+			case "foreign-effect":
+				pin.Binding.OperationID = "foreign"
+			case "foreign-spec":
+				pin.Binding.SpecDigest = "foreign"
+			case "foreign-workflow":
+				pin.Binding.WorkflowID = "foreign"
+			case "foreign-conversation":
+				pin.Binding.ConversationID = "foreign"
+			case "foreign-call":
+				pin.Binding.HostCallID = "foreign"
+			case "foreign-tool-call":
+				pin.Binding.ToolCallID = "foreign"
+			case "foreign-outcome":
+				pin.Binding.HostCallOutcomeDigest = "foreign"
+			case "foreign-generation":
+				pin.Binding.RecoveryGeneration++
+			case "foreign-epoch":
+				pin.Binding.OwnerEpoch++
+			case "missing-capture":
+				pins.HostCallReservation = nil
+			case "settled":
+				changed.Effects[0].Unresolved = false
+			case "non-bash":
+				other := request
+				other.Tool = "write"
+				changed.Effects[0].Intent, _ = json.Marshal(governedReplayOperationIntent{SchemaVersion: sessionrepo.OperationIntentSchemaVersion, Request: other})
+			}
+			wantError := mode != "matching" && mode != "unknown"
+			if err := productDrainedBashReservationInert(changed, pins); (err != nil) != wantError {
+				t.Fatalf("reservation %s: %v", mode, err)
+			}
+		})
+	}
+}
+
 // Rechain tampered evidence so refusals test bindings rather than audit hash damage.
 func rewriteInterruptedProductJournal(t *testing.T, path string, change func(*audit.Event)) {
 	t.Helper()

@@ -368,8 +368,18 @@ func (e *productTurnEnv) operatorEvidence(ctx context.Context, turn productsessi
 		return evidence, err
 	}
 	// An abandoned provider request cannot execute after its sole supervisor died.
-	// Keep every effect check; only provider-side pending state is allowed to be inert.
 	pins := checkpoint.Pins
+	if ownerHead != "" {
+		trace, err := retained.StoreJournal.Trace()
+		if err != nil {
+			return evidence, err
+		}
+		if err := productDrainedBashReservationInert(trace, pins); err != nil {
+			return evidence, err
+		}
+		// Only this local evidence check discounts the verified inert reservation; the ledger is unchanged.
+		pins.EffectReservation = nil
+	}
 	pins.HostCallReservation = nil
 	pins.PendingCallDisposition = ""
 	if err := productTurnReservationsResolved(pins); err != nil {

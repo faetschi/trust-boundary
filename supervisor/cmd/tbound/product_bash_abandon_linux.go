@@ -12,6 +12,7 @@ import (
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/piruntime"
 	"tbound/supervisor/internal/sessionrepo"
+	"tbound/supervisor/internal/workflowrecovery"
 )
 
 // openInterruptedProductBash opens cleanup evidence only, never a usable Store. Abandonment
@@ -119,4 +120,34 @@ func openInterruptedProductBash(ctx context.Context, paths productTurnPaths, reg
 		return nil, "", errors.New("no interrupted Bash effect to abandon")
 	}
 	return r, "sha256:" + auditHeadHash(trace.Records), nil
+}
+
+// After openInterruptedProductBash proves the drain, only its exact interrupted reservation is inert.
+// This discards the candidate with a full charge; it never settles or retires the workflow ledger.
+func productDrainedBashReservationInert(trace audit.Trace, pins workflowrecovery.Pins) error {
+	reservation := pins.EffectReservation
+	if reservation == nil || reservation.Disposition == workflowrecovery.EffectReservationTerminal || reservation.Disposition == workflowrecovery.EffectReservationRetired {
+		return nil
+	}
+	if reservation.Disposition != workflowrecovery.EffectReservationReserved && reservation.Disposition != workflowrecovery.EffectReservationUnknown {
+		return errors.New("invalid interrupted effect reservation")
+	}
+	host := pins.HostCallReservation
+	if host == nil || host.CapturedCall == nil || host.CapturedCall.Disposition != workflowrecovery.CapturedCallConsumed || host.CapturedCall.WorkflowID != pins.WorkflowID {
+		return errors.New("interrupted effect reservation has no consumed provider call")
+	}
+	captured := host.CapturedCall
+	for _, effect := range trace.Effects {
+		var intent governedReplayOperationIntent
+		if !effect.Unresolved || decodeCanonicalGoverned(effect.Intent, &intent) != nil || intent.SchemaVersion != sessionrepo.OperationIntentSchemaVersion || intent.Request.Tool != "bash" || intent.Request.EffectID != effect.ID {
+			continue
+		}
+		expected := workflowrecovery.EffectBinding{OperationID: effect.ID, SpecDigest: bareSHA256Digest(intent.Request.ArgumentDigest),
+			WorkflowID: pins.WorkflowID, ConversationID: captured.ConversationID, HostCallID: captured.HostCallID, ToolCallID: captured.ToolCallID,
+			HostCallOutcomeDigest: captured.OutcomeDigest, RecoveryGeneration: captured.RecoveryGeneration, OwnerEpoch: captured.OwnerEpoch}
+		if reservation.Binding == expected {
+			return nil
+		}
+	}
+	return errors.New("effect reservation is not the drained interrupted Bash effect")
 }
