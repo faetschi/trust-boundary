@@ -79,7 +79,12 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.version }}
           TBOUND_VERIFY_DIST: dist
-        run: bash scripts/verify-install.sh "$VERSION"
+        run: |
+          TMPDIR="$(mktemp -d "${RUNNER_TEMP}/tbound-verify.XXXXXX")"
+          chmod 700 "$TMPDIR"
+          export TMPDIR
+          trap 'rm -rf "$TMPDIR"' EXIT
+          bash scripts/verify-install.sh "$VERSION"
 
       - name: Verify Linux packaging strict-mode failure behavior
         run: |

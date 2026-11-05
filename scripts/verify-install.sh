@@ -101,12 +101,14 @@ done
 echo "[4/6] runtime contract"
 if [ "$OS" = "linux" ]; then
   set +e
-  out="$("$PREFIX/bin/tbound" serve --pi --native-fixture 2>/dev/null)"; rc=$?
+  err="$BASE/native-fixture.err"
+  out="$("$PREFIX/bin/tbound" serve --pi --native-fixture 2>"$err")"; rc=$?
   set -e
   if [ "$rc" -eq 0 ] && printf '%s' "$out" | grep -q '"claim_bearing":false'; then
     ok "fixture exit 0 and claim_bearing=false"
   else
     bad "fixture contract failed rc=$rc"
+    sed -n '1,20p' "$err" >&2 || true
   fi
 fi
 set +e
