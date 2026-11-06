@@ -1,0 +1,97 @@
+disk /home/tbound/tbound-work/f17-src/.local: 917 GiB free (need 10)
+disk /: 917 GiB free (need 10)
+== 25-p2-rebuild start 2026-11-06T13:06:04Z as tbound freeze=F17
+OK HEAD == frozen commit = 8931c69576c2cb58b0c87d8a4ec0e88dd2c162cc
+OK PREV_* constants equal the /home/tbound/tbound-h/f16 records
+OK frozen measurer == P1 record = sha256:0494d3d9b1900ab5e51f2286e4f5013530d7d73db0f3f04f0976566260d17b20
+OK Node toolchain tar = sha256:fd8e59d5a511510f6a298afb548f18c7d2b1be404d8b4a27d94fbe49f56cb2d6
+OK P1 sources == frozen LF archive 8931c69576c2cb58b0c87d8a4ec0e88dd2c162cc
+OK Node binary = sha256:7fde7b8afa198da66257f42ee2001d874c7355631e6d1579a5fb5ef1f246df4c
+OK Node version = v24.21.0
+OK npm version = 11.19.0
+148M	/home/tbound/tbound-w.Qoutr0/p2-rebuild/cache-master
+disk /home/tbound/tbound-work/f17-src/.local: 917 GiB free (need 10)
+disk /: 917 GiB free (need 10)
+== offline build 1 (private network namespace)
+Cache verified and compressed (/home/tbound/tbound-w.Qoutr0/p2-rebuild/out/build1/npm-cache/_cacache)
+Content verified: 191 (151041715 bytes)
+Index entries: 191
+Finished in 0.447s
+npm warn deprecated node-domexception@1.0.0: Use your platform's native DOMException instead
+
+added 144 packages in 7s
+pi-prefix@ /home/tbound/tbound-w.Qoutr0/p2-rebuild/out/build1/pi-prefix
+`-- @earendil-works/pi-coding-agent@0.87.1
+
+node_modules/@earendil-works/pi-coding-agent/package.json: OK
+node_modules/@earendil-works/pi-coding-agent/npm-shrinkwrap.json: OK
+{
+  "bytes": 403643829,
+  "canonical_node": "/home/tbound/tbound-w.Qoutr0/p2-rebuild/tool/node-v24.21.0-linux-x64/bin/node",
+  "canonical_pi_entry": "/home/tbound/tbound-w.Qoutr0/p2-rebuild/out/build1/pi-prefix/node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js",
+  "canonical_pi_package_root": "/home/tbound/tbound-w.Qoutr0/p2-rebuild/out/build1/pi-prefix/node_modules/@earendil-works/pi-coding-agent",
+  "files": 14104,
+  "manifest": "/home/tbound/tbound-w.Qoutr0/p2-rebuild/out/build1/runtime-out/closure-manifest.json",
+  "manifest_sha256": "be3c1c0b2e3fe07e59d29f27b06b253a517b82c1051d452a770f59cbb705fb71",
+  "node_version": "v24.21.0",
+  "output": "/home/tbound/tbound-w.Qoutr0/p2-rebuild/out/build1/runtime-out",
+  "pi_version": "0.87.1",
+  "status": "prepared-user-owned-unsealed-not-admitted"
+}
+be3c1c0b2e3fe07e59d29f27b06b253a517b82c1051d452a770f59cbb705fb71  /home/tbound/tbound-w.Qoutr0/p2-rebuild/out/build1/runtime-out/closure-manifest.json
+f0df6335bbe5a8714962e4e34ba9a4fcfa1df91243e7924a830b953c858422e9  /home/tbound/tbound-w.Qoutr0/p2-rebuild/out/build1/runtime-out/closure-manifest.sha256
+  15541 /home/tbound/tbound-w.Qoutr0/p2-rebuild/out/build1/find.txt
+  14106 /home/tbound/tbound-w.Qoutr0/p2-rebuild/out/build1/sha256.txt
+  29647 total
+disk /home/tbound/tbound-work/f17-src/.local: 915 GiB free (need 10)
+disk /: 915 GiB free (need 10)
+== offline build 2 (private network namespace)
+Cache verified and compressed (/home/tbound/tbound-w.Qoutr0/p2-rebuild/out/build2/npm-cache/_cacache)
+Content verified: 191 (151041715 bytes)
+Index entries: 191
+Finished in 0.434s
+npm warn deprecated node-domexception@1.0.0: Use your platform's native DOMException instead
+
+added 144 packages in 7s
+pi-prefix@ /home/tbound/tbound-w.Qoutr0/p2-rebuild/out/build2/pi-prefix
+`-- @earendil-works/pi-coding-agent@0.87.1
+
+node_modules/@earendil-works/pi-coding-agent/package.json: OK
+node_modules/@earendil-works/pi-coding-agent/npm-shrinkwrap.json: OK
+{
+  "bytes": 403643829,
+  "canonical_node": "/home/tbound/tbound-w.Qoutr0/p2-rebuild/tool/node-v24.21.0-linux-x64/bin/node",
+  "canonical_pi_entry": "/home/tbound/tbound-w.Qoutr0/p2-rebuild/out/build2/pi-prefix/node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js",
+  "canonical_pi_package_root": "/home/tbound/tbound-w.Qoutr0/p2-rebuild/out/build2/pi-prefix/node_modules/@earendil-works/pi-coding-agent",
+  "files": 14104,
+  "manifest": "/home/tbound/tbound-w.Qoutr0/p2-rebuild/out/build2/runtime-out/closure-manifest.json",
+  "manifest_sha256": "be3c1c0b2e3fe07e59d29f27b06b253a517b82c1051d452a770f59cbb705fb71",
+  "node_version": "v24.21.0",
+  "output": "/home/tbound/tbound-w.Qoutr0/p2-rebuild/out/build2/runtime-out",
+  "pi_version": "0.87.1",
+  "status": "prepared-user-owned-unsealed-not-admitted"
+}
+be3c1c0b2e3fe07e59d29f27b06b253a517b82c1051d452a770f59cbb705fb71  /home/tbound/tbound-w.Qoutr0/p2-rebuild/out/build2/runtime-out/closure-manifest.json
+f0df6335bbe5a8714962e4e34ba9a4fcfa1df91243e7924a830b953c858422e9  /home/tbound/tbound-w.Qoutr0/p2-rebuild/out/build2/runtime-out/closure-manifest.sha256
+  15541 /home/tbound/tbound-w.Qoutr0/p2-rebuild/out/build2/find.txt
+  14106 /home/tbound/tbound-w.Qoutr0/p2-rebuild/out/build2/sha256.txt
+  29647 total
+OK build1 == build2: listings, hashes and bytes identical
+/home/tbound/tbound-w.Qoutr0/p2-rebuild/mnt/runtime-1 ro,nosuid,nodev,relatime,discard,errors=remount-ro,data=ordered
+Pi runtime bundle tree digest: sha256:5104ec0ec6a74c441a3f545723f455e450784fcdd28c0e487621b23077902575
+Tree identity only; this command does not verify profile signature or host trust bindings.
+/home/tbound/tbound-w.Qoutr0/p2-rebuild/mnt/runtime-2 ro,nosuid,nodev,relatime,discard,errors=remount-ro,data=ordered
+Pi runtime bundle tree digest: sha256:5104ec0ec6a74c441a3f545723f455e450784fcdd28c0e487621b23077902575
+Tree identity only; this command does not verify profile signature or host trust bindings.
+BUNDLE_DIGEST: sha256:5104ec0ec6a74c441a3f545723f455e450784fcdd28c0e487621b23077902575  (NEW; F0 was sha256:8e405ef0f2a3a3ed725dba2815d71bd8e5db007fe993f4ac3979ad59016d4f48)
+BUNDLE_DIGEST: sha256:5104ec0ec6a74c441a3f545723f455e450784fcdd28c0e487621b23077902575  (same as F16)
+disk /home/tbound/tbound-work/f17-src/.local: 914 GiB free (need 10)
+disk /: 914 GiB free (need 10)
+OK TAR REPRODUCIBLE: build1 == build2 (byte-identical)
+OK extraction listing and content == build1
+OK HEAD still frozen = 8931c69576c2cb58b0c87d8a4ec0e88dd2c162cc
+disk /home/tbound/tbound-work/f17-src/.local: 913 GiB free (need 10)
+disk /: 913 GiB free (need 10)
+TAR=/home/tbound/tbound-w.Qoutr0/p2-rebuild/runtime-bundle-8931c695-lf.tar sha256:e056666bdf521b04b46b56b861d7f70529987ff31735e9daba4f174c98c0a8b2 (429660160 bytes)
+== DONE 25-p2-rebuild: BUNDLE_DIGEST=sha256:5104ec0ec6a74c441a3f545723f455e450784fcdd28c0e487621b23077902575 (two offline builds identical)
+OK sync done; no 0-byte output under /home/tbound/tbound-h/f17 nor in: /home/tbound/tbound-w.Qoutr0/p2-rebuild/runtime-bundle-8931c695-lf.tar /home/tbound/tbound-w.Qoutr0/p2-rebuild/runtime-bundle-8931c695-lf.tar.sha256 /home/tbound/tbound-w.Qoutr0/p2-rebuild/out/build1/find.txt /home/tbound/tbound-w.Qoutr0/p2-rebuild/out/build2/find.txt /home/tbound/tbound-w.Qoutr0/p2-rebuild/out/build1/sha256.txt /home/tbound/tbound-w.Qoutr0/p2-rebuild/out/build2/sha256.txt /home/tbound/tbound-w.Qoutr0/p2-rebuild/out/build1/measure.out /home/tbound/tbound-w.Qoutr0/p2-rebuild/out/build2/measure.out
