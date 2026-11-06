@@ -1431,3 +1431,13 @@ func (v *governedStoreReplayVerifier) scopedStoreCounts() (uint64, uint64) {
 	}
 	return operations, effects
 }
+
+// importedPrefixReplayPin is RecoveryPins.ImportedPrefixDigest for replaying a provider journal of
+// records entries: a conversation's import record opens every non-empty journal, and an empty journal
+// has no record to pin yet.
+func importedPrefixReplayPin(digest string, records int) string {
+	if records == 0 {
+		return ""
+	}
+	return digest
+}

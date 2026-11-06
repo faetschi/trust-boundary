@@ -60,56 +60,16 @@ func (e *productTurnEnv) reconcileLinkedTurn(ctx context.Context, turn productse
 		return errors.Join(fmt.Errorf("product turn %s is unknown after restart: %s", turn.ID, reason), cause,
 			e.Catalog.MarkTurnUnknown(turn.ID, reason))
 	}
-	paths, err := productTurnPathsFromLink(*turn.Link)
+	ev, err := e.host().ReconcileLinkedTurn(ctx, turn)
 	if err != nil {
-		return unknown("the retained evidence paths are invalid", err)
-	}
-	retained, err := openRetainedProductTurn(paths, e.storeOptions(turn), e.OpenCommandHistory)
-	if err != nil {
-		if errors.Is(err, errHistoricalBashContext) {
-			if interrupted, _, proofErr := openInterruptedProductBash(ctx, paths, e.Registration.Digest, e.storeOptions(turn)); proofErr == nil {
-				return unknown("the interrupted Bash scope is drained; run tbound product turns resolve to abandon the retained candidate", errors.Join(err, interrupted.Close()))
-			}
-			return unknown("the retained Store has an unresolved Bash effect whose command scope is not proven drained", err)
+		var evidence *productTurnEvidenceError
+		if errors.As(err, &evidence) {
+			return unknown(evidence.Reason, evidence.Cause)
 		}
-		return unknown("the retained Store or journals cannot be reopened", err)
-	}
-	defer retained.Close()
-	bundle, err := retained.Store.EvidenceBundle()
-	if err != nil {
-		return unknown("the retained Store evidence cannot be read", err)
-	}
-	checkpoint, err := loadRetainedProductCheckpoint(ctx, filepath.Dir(paths.StoreJournalPath), turn.Link.WorkflowID)
-	if err != nil {
-		return unknown("the retained owner checkpoint cannot be read", err)
-	}
-	if err := e.verifyRetainedSoftRefusals(turn, retained, checkpoint.Pins); err != nil {
-		return unknown("the retained soft refusal cannot be reproduced", err)
-	}
-	if err := productTurnChildResolved(bundle, checkpoint.Pins); err != nil {
-		return unknown("the retained turn has unresolved Store or workflow state", err)
-	}
-	if after, err := e.MeasureProjectBaseline(turn.ProjectID); err != nil || after != turn.BaselineDigest {
-		return unknown("the project is not the admitted baseline", err)
-	}
-	records, _, err := e.workflowPublication(turn.ProjectID, turn.Link.WorkflowID)
-	if err != nil || records {
-		return unknown("the publication journal names the workflow or cannot be read", err)
-	}
-	providerTrace, err := retained.ProviderJournal.Trace()
-	if err != nil {
-		return unknown("the retained provider journal cannot be read", err)
-	}
-	storeTrace, err := retained.StoreJournal.Trace()
-	if err != nil {
-		return unknown("the retained Store journal cannot be read", err)
-	}
-	commandTrace, err := retained.CommandJournal.Trace()
-	if err != nil {
-		return unknown("the retained command journal cannot be read", err)
+		return unknown("the retained evidence cannot be read", err)
 	}
 	// The dead process's elapsed time is not retained; the reserved duration bounds it.
-	usage := productsession.Budget{HostCalls: int64(checkpoint.Counters.HostCalls), Tokens: int64(checkpoint.Counters.Tokens),
+	usage := productsession.Budget{HostCalls: ev.HostCalls, Tokens: ev.Tokens,
 		DurationSeconds: turn.Reservation.DurationSeconds}
 	link := turn.Link
 	// shortcut: the tool sequence and denials of the dead worker are not rebuilt from the provider
@@ -119,9 +79,9 @@ func (e *productTurnEnv) reconcileLinkedTurn(ctx context.Context, turn productse
 		WorkflowID: link.WorkflowID, RunID: link.RunID, ConversationID: link.ConversationID,
 		UnverifiedInputs: []string{"runtime_digest", "image_digest", "extension_digest"},
 		WorkerKind:       productsession.WorkerSupervisorLoop, WorkerInstance: productTurnUnrecordedWorker,
-		ProviderJournalHead: auditHeadHash(providerTrace.Records), ProviderJournalCount: uint64(len(providerTrace.Records)),
-		StoreJournalHead: auditHeadHash(storeTrace.Records), StoreJournalCount: uint64(len(storeTrace.Records)),
-		CommandJournalHead: auditHeadHash(commandTrace.Records), CommandJournalCount: uint64(len(commandTrace.Records)),
+		ProviderJournalHead: ev.ProviderHead, ProviderJournalCount: ev.ProviderCount,
+		StoreJournalHead: ev.StoreHead, StoreJournalCount: ev.StoreCount,
+		CommandJournalHead: ev.CommandHead, CommandJournalCount: ev.CommandCount,
 		ImportedPrefixDigest: link.ImportedPrefixDigest, PredecessorReceiptDigest: turn.PredecessorReceiptDigest,
 		BaselineDigest: turn.BaselineDigest, ResultBaselineDigest: turn.BaselineDigest,
 		Outcome: productsession.OutcomeFailed, Settlement: productsession.SettlementReconciledAfterRestart,
@@ -144,8 +104,8 @@ func (e *productTurnEnv) reconcileLinkedTurn(ctx context.Context, turn productse
 // publication record for the workflow and the project at the admitted baseline, a discard
 // resolution is discarded by the user and anything else discarded by the restart. Otherwise unknown.
 func (e *productTurnEnv) reconcileReviewTurn(turn productsession.Turn) error {
-	records, succeeded, err := e.workflowPublication(turn.ProjectID, turn.Link.WorkflowID)
-	after, measureErr := e.MeasureProjectBaseline(turn.ProjectID)
+	records, succeeded, err := e.host().WorkflowPublication(turn.ProjectID, turn.Link.WorkflowID)
+	after, measureErr := e.host().MeasureProjectBaseline(turn.ProjectID)
 	err = errors.Join(err, measureErr)
 	switch {
 	case err == nil && turn.Resolution == productsession.DecisionPublish && succeeded != "" && after == turn.CandidateDigest:

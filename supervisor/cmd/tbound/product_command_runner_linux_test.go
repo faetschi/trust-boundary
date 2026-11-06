@@ -33,7 +33,7 @@ func TestProductD09CleanupFailureRetainsOwnersAndBlocksDisposition(t *testing.T)
 			if err != nil || turn.State != productsession.StateAwaitingReview {
 				t.Fatalf("review: %+v %v", turn, err)
 			}
-			review := f.env.pending[turn.ID]
+			review := f.env.pending[turn.ID].turn.(*productComposedTurn)
 			failure := errors.New("retained cell owner")
 			fail := true
 			runner := newProductD09CommandRunnerWithFactory(func(string) (sessionrepo.CommandRunner, error) { return nil, errors.New("unused") }, func(context.Context) error {
@@ -126,7 +126,7 @@ func TestProductD09FailedReviewSettlementKeepsOwnerAgainstDeferredTeardown(t *te
 			if err != nil || turn.State != productsession.StateAwaitingReview {
 				t.Fatalf("review: %+v %v", turn, err)
 			}
-			review := f.env.pending[turn.ID]
+			review := f.env.pending[turn.ID].turn.(*productComposedTurn)
 			failure := errors.New("retained cell owner")
 			attempts, closed := 0, false
 			review.w.commandLifecycle = newProductD09CommandRunnerWithFactory(func(string) (sessionrepo.CommandRunner, error) {

@@ -16,11 +16,10 @@ import (
 // process: restart reconciliation, not this process, resolves it.
 var errProductReviewNotRetained = errors.New("the review turn is not held by this process; restart reconciliation resolves it")
 
-// productPendingReview is a closed review turn kept open for its resolution: the workflow, whose
+// productPendingReview is a closed review turn kept open for its resolution: the prepared turn, whose
 // closers include the publication finalizer, and the monotonic expiry deadline.
 type productPendingReview struct {
-	w        *productTurnWorkflow
-	publish  *PublicationRuntime
+	turn     productPreparedTurn
 	deadline time.Time
 }
 
@@ -51,17 +50,9 @@ func (e *productTurnEnv) Close() error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	var errs []error
-	e.retainedMu.Lock()
-	retained := make([]*productTurnWorkflow, 0, len(e.retainedCommands))
-	for w := range e.retainedCommands {
-		retained = append(retained, w)
-	}
-	e.retainedMu.Unlock()
-	for _, w := range retained {
-		errs = append(errs, w.close())
-	}
+	errs = append(errs, e.host().CloseRetainedCommands())
 	for id, review := range e.pending {
-		if err := review.w.close(); err != nil {
+		if err := review.turn.Close(); err != nil {
 			errs = append(errs, err, e.Catalog.MarkTurnUnknown(id, "command ownership did not settle at shutdown"))
 		}
 		delete(e.pending, id)
@@ -78,7 +69,7 @@ func (e *productTurnEnv) ResolveTurn(ctx context.Context, p productsession.Princ
 	// An expired review ends before its resolution can publish; expiry failures are already recorded
 	// in the catalog as unknown turns.
 	_ = e.ExpireReviews(time.Now())
-	e.crash("before-review-resolution")
+	e.host().Crash("before-review-resolution")
 	e.mu.Lock()
 	// The preflight scan may precede lock acquisition by arbitrarily long. Recheck the target
 	// while holding the same mutex as its durable resolution and removal from pending.
@@ -104,20 +95,20 @@ func (e *productTurnEnv) ResolveTurn(ctx context.Context, p productsession.Princ
 	case review == nil:
 		return productTurnReceipt{}, fmt.Errorf("turn %s: %w", r.TurnID, errProductReviewNotRetained)
 	}
-	e.crash("after-resolution")
+	e.host().Crash("after-resolution")
 	if turn.Resolution == productsession.DecisionDiscard {
 		return e.discardReview(turn, review, productsession.ReasonUser)
 	}
-	defer func() { _ = review.w.closeUnlessRetained() }()
-	if err := review.w.settleCommands(); err != nil {
+	defer func() { _ = review.turn.CloseUnlessRetained() }()
+	if err := review.turn.SettleCommands(); err != nil {
 		return productTurnReceipt{}, errors.Join(err, e.Catalog.MarkTurnUnknown(turn.ID, "command ownership did not settle before review publication"))
 	}
-	result, finalizeErr := review.publish.Finalize(ctx)
-	after, measureErr := e.MeasureProjectBaseline(turn.ProjectID)
+	result, finalizeErr := review.turn.Finalize(ctx)
+	after, measureErr := e.host().MeasureProjectBaseline(turn.ProjectID)
 	switch {
 	case finalizeErr == nil && result.Status == publication.StatusSucceeded && len(result.Objects) != 0 &&
 		measureErr == nil && after == turn.CandidateDigest:
-		e.crash("after-publication")
+		e.host().Crash("after-publication")
 		return e.completeReviewed(turn, productsession.OutcomePublished, "", result.TransactionID)
 	case result.Status == publication.StatusFailed && measureErr == nil && after == turn.BaselineDigest:
 		receipt, err := e.completeReviewed(turn, productsession.OutcomeFailed, "", "")
@@ -130,11 +121,11 @@ func (e *productTurnEnv) ResolveTurn(ctx context.Context, p productsession.Princ
 // discardReview ends a pending review discarded after checking the project still holds the admitted
 // baseline, and closes its retained handles.
 func (e *productTurnEnv) discardReview(turn productsession.Turn, review *productPendingReview, reason string) (productTurnReceipt, error) {
-	defer func() { _ = review.w.closeUnlessRetained() }()
-	if err := review.w.settleCommands(); err != nil {
+	defer func() { _ = review.turn.CloseUnlessRetained() }()
+	if err := review.turn.SettleCommands(); err != nil {
 		return productTurnReceipt{}, errors.Join(err, e.Catalog.MarkTurnUnknown(turn.ID, "command ownership did not settle before review discard"))
 	}
-	if after, err := e.MeasureProjectBaseline(turn.ProjectID); err != nil || after != turn.BaselineDigest {
+	if after, err := e.host().MeasureProjectBaseline(turn.ProjectID); err != nil || after != turn.BaselineDigest {
 		return productTurnReceipt{}, errors.Join(fmt.Errorf("product turn %s is unknown: project is not the admitted baseline", turn.ID),
 			err, e.Catalog.MarkTurnUnknown(turn.ID, "the project changed while the turn awaited review"))
 	}
@@ -191,7 +182,7 @@ func (e *productTurnEnv) CancelTurn(_ context.Context, p productsession.Principa
 		e.mu.Unlock()
 		return productsession.Turn{}, err
 	}
-	e.crash("after-cancel-recorded")
+	e.host().Crash("after-cancel-recorded")
 	turn, _ := e.Catalog.Turn(r.TurnID)
 	var err error
 	var review *productPendingReview
@@ -200,7 +191,7 @@ func (e *productTurnEnv) CancelTurn(_ context.Context, p productsession.Principa
 		review = e.takeReviewLocked(turn.ID)
 	case e.running[turn.ID]:
 	case turn.State == productsession.StateAdmitted:
-		if err = e.settleRetainedProductCommands(turn.ID); err == nil {
+		if err = e.host().SettleRetainedCommands(turn.ID); err == nil {
 			err = e.Catalog.RefuseUnlinkedTurn(turn.ID, productsession.CodeCancelled)
 		}
 	}
