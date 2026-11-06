@@ -156,4 +156,13 @@ describe("runs of tool blocks", () => {
     expect(keysOf([...tool("c1"), message("m1", 100), ...tool("c2")])).toEqual(["run-t1-0", "run-t1-1"]);
     expect(groupRuns(groupTurn([...tool("c1")]), "t2").map((block) => (block.kind === "run" ? block.key : ""))).toEqual(["run-t2-0"]);
   });
+  it("keeps a run's key from the unfiltered turn, so a filter that removes the earlier run and the message does not renumber the survivor", () => {
+    const all = [...tool("c1"), message("m1", 100), ...tool("c2")];
+    const whole = groupTurn(all);
+    const survivor = groupTurn(tool("c2"));
+    const keys = (blocks: ReturnType<typeof groupTurn>, of?: typeof whole): string[] =>
+      groupRuns(blocks, "t1", of).flatMap((block) => (block.kind === "run" ? [block.key] : []));
+    expect(keys(whole)).toEqual(["run-t1-0", "run-t1-1"]);
+    expect(keys(survivor, whole)).toEqual(["run-t1-1"]);
+  });
 });

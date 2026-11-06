@@ -168,8 +168,9 @@ export function ChatView({ model }: { readonly model: WorkspaceModel }) {
         </EmptyState>
       );
     }
+    const wholeTurns = new Map(turnsOf(model.items).map((turn) => [turn.id, turn]));
     return turnsOf(visible).map((turn) => (
-      <TurnView key={turn.id} turn={turn} verifiedOf={verifiedOf} markOf={markOf} onRecord={openRecord} forceOpen={model.filter !== "all"} />
+      <TurnView key={turn.id} turn={turn} whole={wholeTurns.get(turn.id)} verifiedOf={verifiedOf} markOf={markOf} onRecord={openRecord} forceOpen={model.filter !== "all"} />
     ));
   }
 }

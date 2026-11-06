@@ -26,6 +26,8 @@ export type RecordOpener = (id: string, returnTo: HTMLElement | null) => void;
 
 interface TurnViewProps {
   readonly turn: Turn<Item>;
+  // The same turn before a filter, so a run keeps the key it has there (toolGroups.ts groupRuns).
+  readonly whole?: Turn<Item>;
   readonly verifiedOf: Verifier;
   // The item marker of a tool record, or null when the view states its provenance once (see provenance.ts).
   readonly markOf: (item: ItemView) => Marker | null;
@@ -34,9 +36,9 @@ interface TurnViewProps {
   readonly forceOpen?: boolean;
 }
 
-export function TurnView({ turn, verifiedOf, markOf, onRecord, forceOpen = false }: TurnViewProps) {
+export function TurnView({ turn, whole, verifiedOf, markOf, onRecord, forceOpen = false }: TurnViewProps) {
   const label = turnLabel(turn.id);
-  const drawn = groupRuns(groupTurn(turn.items), turn.id);
+  const drawn = groupRuns(groupTurn(turn.items), turn.id, whole && groupTurn(whole.items));
   return (
     <section className={styles.turn} aria-label={label}>
       <div className={styles.turnHead}>

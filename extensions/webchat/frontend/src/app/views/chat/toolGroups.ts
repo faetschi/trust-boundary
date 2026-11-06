@@ -128,12 +128,26 @@ export interface ToolRun {
 
 type DrawnBlock = Exclude<TurnBlock, ToolBlock> | ToolRun;
 
-export function groupRuns(blocks: readonly TurnBlock[], turnId: string): DrawnBlock[] {
+// `whole` is the turn's blocks before any filter. A run's ordinal is its place among the whole turn's runs, so a filter that drops
+// an earlier run or a message does not renumber the runs that remain.
+export function groupRuns(blocks: readonly TurnBlock[], turnId: string, whole: readonly TurnBlock[] = blocks): DrawnBlock[] {
+  const ordinalOf = new Map<string, number>();
+  let place = 0;
+  let inRun = false;
+  for (const block of whole) {
+    if (block.kind !== "tool") {
+      inRun = false;
+      continue;
+    }
+    if (!inRun) place += 1;
+    inRun = true;
+    ordinalOf.set(block.key, place - 1);
+  }
   const drawn: DrawnBlock[] = [];
   let run: ToolBlock[] = [];
-  let runs = 0;
   const flush = (): void => {
-    if (run.length > 0) drawn.push({ kind: "run", key: `run-${turnId}-${runs++}`, blocks: run });
+    const first = run[0];
+    if (first) drawn.push({ kind: "run", key: `run-${turnId}-${ordinalOf.get(first.key) ?? 0}`, blocks: run });
     run = [];
   };
   for (const block of blocks) {

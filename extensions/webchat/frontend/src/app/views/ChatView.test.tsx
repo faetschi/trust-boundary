@@ -15,6 +15,7 @@ import {
   snapshotOf,
 } from "../../core/testing/builders";
 import { CONTRACT_VERSION, type Item, type SessionHeader, type Snapshot, type VerificationScope } from "../../core/contract";
+import { itemsOf } from "../../test-support/toolBlocks";
 import { fakeWorkspace, type FakeWorkspace } from "../../test-support/fakes";
 import { click, mount, settle, type Mounted } from "../../test-support/dom";
 import { AnnouncerContext, useAnnouncer } from "../../ui/LiveRegion";
@@ -469,6 +470,22 @@ describe("the transcript: legacy cases from render.test.mjs", () => {
     await renderLive(fixtureSnapshot());
     expect(qa("[data-anchor]").map((element) => element.getAttribute("data-anchor"))).toEqual(["m1", "run-t1-0", "c1", "c2"]);
     expect(qa("div[data-role]").map((element) => element.getAttribute("data-anchor"))).toEqual(["m1"]);
+  });
+});
+
+describe("a finding filter on a turn with two tool runs", () => {
+  it("does not remount the surviving run's card when the filter drops the earlier run and the message", () => {
+    const items: Item[] = [
+      ...itemsOf({ call: "c1", verdict: "ALLOW" }, 1),
+      messageItem({ id: "m1", sequence: 10, role: "assistant", text: "between" }),
+      ...itemsOf({ call: "c2", verdict: "DENY", result: "denied" }, 20),
+    ];
+    const model = modelOf(items);
+    renderModel(model);
+    const card = q("[data-anchor='c2']");
+    rerenderModel({ ...model, filter: "denied" });
+    expect(qa("[data-anchor='m1']").length).toBe(0);
+    expect(q("[data-anchor='c2']")).toBe(card);
   });
 });
 
