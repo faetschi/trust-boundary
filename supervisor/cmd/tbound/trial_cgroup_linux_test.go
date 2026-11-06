@@ -611,3 +611,13 @@ func TestCellsLiveOutsideNoReapOnARealCgroup(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// The service refuses the net-sink parent (ErrCgroupScopeRefused, "cgroup.kill is not writable") unless it can
+// open cgroup.kill for writing, and the reset runs as root: the file must be one the reset hands over.
+func TestNetSinkParentHandsOverEveryFileTheServiceNeeds(t *testing.T) {
+	for _, name := range []string{"cgroup.procs", "cgroup.subtree_control", "cgroup.threads", "cgroup.kill"} {
+		if !slices.Contains(netSinkCgroupControlFiles, name) {
+			t.Errorf("%s is not handed to the service by ensureNetSinkParent", name)
+		}
+	}
+}
