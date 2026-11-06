@@ -19,13 +19,16 @@ on the demo VM on 2026-11-04. Later crash-recovery fixes await the next live run
 
 You need:
 
-- A Linux amd64 host that passes `tbound product doctor`: Landlock ABI 8,
-  cgroup v2 with `cgroup.kill`, rootless Podman and crun, an ext4
-  `/var/lib`, and systemd. A Hyper-V VM made with
-  [the reproduction bootstrap](../../infra/repro/README.md) qualifies.
-- A `tbound` binary you trust, built from source (`make build`) or installed
-  with `install.sh` under the publisher key. Setup installs the binary that
-  runs it.
+- A Linux amd64 host with Landlock ABI 8, cgroup v2 with `cgroup.kill`,
+  rootless Podman and crun, an ext4 `/var/lib`, and systemd. After step 2,
+  `sudo /usr/local/bin/tbound product doctor` reports these as `prereq`
+  checks; its installation checks fail until step 6, which is expected. A
+  Hyper-V VM made with [the reproduction bootstrap](../../infra/repro/README.md) qualifies.
+- A `tbound` binary you trust: installed from a checkout as in
+  [USAGE section 3](../../USAGE.md#3-install) (it lands in
+  `$HOME/.local/share/tbound/bin/tbound`), or from a release with
+  `install.sh --public-key FILE --key-fingerprint FP`. `make build` alone
+  only writes a tarball to `dist/`. Setup installs the binary that runs it.
 - A checkout of this repository on the host, for the census helper
   `infra/guest/helpers/xattr-census-r9.py`.
 - An OpenCode Go API key. You type it into a hidden prompt; it is never an
@@ -73,12 +76,13 @@ install -d -o root -g root -m 0755 /etc/tbound-product \
 ## 2. Install the binary, Git and the gate policy
 
 ```sh
-install -o root -g root -m 0755 /path/to/tbound /usr/local/bin/tbound
+install -o root -g root -m 0755 ~admin/.local/share/tbound/bin/tbound /usr/local/bin/tbound
 install -o root -g root -m 0755 /usr/bin/git /usr/local/lib/tbound-product/git
 sha256sum /usr/local/lib/tbound-product/git
 ```
 
-Keep the Git digest for step 4. Write the policy. It must not allow `bash`:
+Keep the Git digest (the hex before the file name) for steps 4 and 6. Write
+the policy. It must not allow `bash`:
 
 ```sh
 cat > /etc/tbound-product/policies/demo.json <<'JSON'
@@ -94,9 +98,11 @@ the empty `lost+found` publication fence that the service requires. A
 directory you create by hand fails at service start with `publication fence:
 no such file or directory`.
 
-As your admin user, bundle a source tree:
+As your admin user, bundle a source tree. The prompts in step 9 read
+`README.md`, so give it one:
 
 ```sh
+mkdir -p ~/demo-source && printf '# Demo\n' > ~/demo-source/README.md
 tbound project bundle --source ~/demo-source --out ~/demo.bundle
 ```
 
@@ -111,7 +117,8 @@ rm /tmp/demo.bundle
 
 ## 4. Measure and sign the registration
 
-On the host, as the service user, print the two digests the service checks:
+As root on the host, print the two digests the service checks. `setpriv`
+runs the measurement as the service user:
 
 ```sh
 setpriv --reuid=tbound-product --regid=tbound-product --clear-groups --no-new-privs -- \
@@ -161,7 +168,8 @@ A calibration measured outside it fails at service start with `filesystem,
 mount or scanner … differs from the signed xattr calibration`.
 
 As root, from the repository checkout, place a probe corpus with one attribute
-and take its census. The census digest replaces `CENSUS` below:
+and take its census. The census digest (the hex, without the trailing `-`)
+replaces `CENSUS` below:
 
 ```sh
 install -d -o tbound-product -g tbound-product -m 0700 /var/lib/tbound-product/calibration-probe
@@ -212,7 +220,7 @@ The last command must print nothing.
 ## 6. Run setup
 
 Write the setup config. Paths to the registration files are where you copied
-them on the host:
+them on the host. Replace `GIT` with the Git digest from step 2:
 
 ```json
 {"schema_version":"tbound-product-setup-config/v1",
@@ -281,6 +289,7 @@ output to a file, because the pairing link is a credential:
 
 ```sh
 cd extensions/webchat
+mkdir -p ~/bin
 go build -o ~/bin/tbound-webchat ./cmd/tbound-webchat
 ~/bin/tbound-webchat --live --socket /run/tbound-product/product.sock
 ```
@@ -320,5 +329,5 @@ Use the operator recovery procedure below.
 | Service exits with `publication fence: no such file or directory` | The project was not made by `project import` | Remove it, import it (step 3), measure and sign again (step 4) |
 | Service exits with `… differs from the signed xattr calibration` | The calibration was measured outside the unit's sandbox | Measure again with `systemd-run` (step 5) and sign again |
 | Setup or the service refuses a policy or project digest | The policy or project directory changed after measuring | Measure again, sign a new registration, then `setup --replace` |
-| SSH to the VM times out after a host restart | The Hyper-V Default Switch gave the VM a new address | Look up the VM's MAC with `Get-NetNeighbor -LinkLayerAddress` and keep the host-key alias |
+| SSH to the VM times out after a host restart | The Hyper-V Default Switch gave the VM a new address | In elevated PowerShell, take the MAC from `Get-VMNetworkAdapter -VMName NAME`, find the new address with `Get-NetNeighbor -LinkLayerAddress MAC`, and keep the host-key alias |
 | The pairing page says the token is invalid | It was used or is older than 10 minutes | Restart `tbound-webchat` |
