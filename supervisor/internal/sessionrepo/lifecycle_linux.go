@@ -699,14 +699,6 @@ func (s *Store) recordOperationLocked(tool string, effectID string, operation de
 	return nil
 }
 
-func (s *Store) testPath() string { return s.rootPath }
-
-func (g *Generation) testPath() string {
-	return filepath.Join(g.store.rootPath, "generations", g.id)
-}
-
-func (view *CommandView) testPath() string { return view.path }
-
 func newEffectID() (string, error) {
 	var token [24]byte
 	if _, err := rand.Read(token[:]); err != nil {

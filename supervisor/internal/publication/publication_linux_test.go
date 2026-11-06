@@ -1266,3 +1266,20 @@ func TestNestedDirectoryCreationClassifiesAsAppliedAndRecoversByObservation(t *t
 		})
 	}
 }
+
+// UnboundStagingNames lists the staging directory name of each transaction of the workflow that holds no token and
+// no terminal record and never checkpointed its staging directory's identity. It reads the journal only. Whether
+// the directory exists depends on where the kill came.
+func UnboundStagingNames(trace audit.Trace, workflowID string) ([]string, error) {
+	transactions, err := readTransactions(trace, workflowID)
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	for _, tx := range transactions {
+		if tx.terminal == nil && tx.token == nil && tx.artifactID == nil {
+			names = append(names, tx.prepare.ArtifactName)
+		}
+	}
+	return names, nil
+}

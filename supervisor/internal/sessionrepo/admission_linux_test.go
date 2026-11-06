@@ -281,3 +281,40 @@ func mustTreeDigest(t *testing.T, manifest delta.TreeManifest) string {
 	}
 	return digest
 }
+
+// AppendAdmission validates and durably appends the complete admission
+// evidence. primaryIntent is the exact byte sequence whose digest is recorded.
+// The Store must authenticate the pre-operation decision and validate the
+// candidate against its accepted chain before calling this function. This API
+// does not independently prove that the supplied intent is a durable effect.
+func AppendAdmission(
+	journal *audit.Journal,
+	request OperationRequest,
+	primaryIntent []byte,
+	policyDigest, metadataPolicyDigest string,
+	input, output delta.TreeManifest,
+	candidate delta.Transition,
+) (AdmissionReference, error) {
+	return AppendAdmissionScoped(journal, request, primaryIntent, policyDigest, metadataPolicyDigest,
+		input, output, candidate, AdmissionScope{})
+}
+
+// VerifyAdmission checks the journal chain, persisted record, supplied
+// reference, exact primary intent, pinned policy identities, and recomputed
+// scope outcome.
+func VerifyAdmission(
+	journal *audit.Journal,
+	reference AdmissionReference,
+	primaryIntent []byte,
+	policyDigest, metadataPolicyDigest string,
+) error {
+	return VerifyAdmissionScoped(journal, reference, primaryIntent, policyDigest, metadataPolicyDigest, AdmissionScope{})
+}
+
+func (s *Store) testPath() string { return s.rootPath }
+
+func (g *Generation) testPath() string {
+	return filepath.Join(g.store.rootPath, "generations", g.id)
+}
+
+func (view *CommandView) testPath() string { return view.path }
