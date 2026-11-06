@@ -633,13 +633,6 @@ func productD09RequireEffectiveUnit(ctx context.Context) (map[string]string, err
 	return properties, nil
 }
 
-// productD09ReadFile reads one protected product input. It refuses a missing, symlinked, non-regular, group- or
-// world-writable, non-root-owned, or oversized file, and any ancestor that is not a protected directory.
-func productD09ReadFile(path string, limit int64) ([]byte, error) {
-	data, _, err := productD09ReadIdentifiedFile(path, limit)
-	return data, err
-}
-
 // productD09ReadIdentifiedFile is productD09ReadFile that also returns the descriptor identity of the bytes it measured. The
 // metadata is taken before and after the read, and the read fails if the file changed in between.
 // productD09ReadPolicy keeps the production root policy separate from unprivileged filesystem fixtures.

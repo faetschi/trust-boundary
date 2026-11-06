@@ -274,12 +274,6 @@ func DefaultLinuxHostProfileTemplate() HostProfile {
 	}
 }
 
-// MarshalUnsignedLinuxHostProfileTemplate returns the canonical JSON of the
-// unsigned template. It is the exact byte form the signer consumes.
-func MarshalUnsignedLinuxHostProfileTemplate() ([]byte, error) {
-	return json.Marshal(DefaultLinuxHostProfileTemplate())
-}
-
 // PlaceholderFields names the fields of a profile that still hold the value the generated template put there for
 // the operator to replace: the template id, and the digests of the Node executable, the cgroup root, the runtime
 // bundle, the source provenance, the offline verifier and the provider profile. A profile with one is not a

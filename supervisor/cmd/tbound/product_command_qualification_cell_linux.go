@@ -19,8 +19,6 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/sys/unix"
-
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/delta"
 	"tbound/supervisor/internal/piruntime"
@@ -760,17 +758,6 @@ func productQualificationEvidenceCheck(stateDir string) productsetup.Check {
 	}
 	check.Detail = "no qualification run has retained evidence"
 	return check
-}
-
-// productErrnoName names a failed connection's errno for the retained evidence.
-func productErrnoName(err error) string {
-	var errno unix.Errno
-	if errors.As(err, &errno) {
-		if name := unix.ErrnoName(errno); name != "" {
-			return name
-		}
-	}
-	return ""
 }
 
 // pruneProductQualifications removes only completed, durably drained disposable runs, keeping the newest five.

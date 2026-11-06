@@ -302,17 +302,6 @@ type admissionDeniedEvidence struct {
 	ReasonCode string `json:"reason_code"`
 }
 
-// NewFromEnvironment uses the existing secure Go credential loader and its
-// redirect-forbidding transport. The OpenCode Go model and route are fixed;
-// provider configuration cannot come from Pi or Node.
-func NewFromEnvironment(cfg Config, journal *audit.Journal) (*Conversation, error) {
-	credentials, err := openrouter.LoadCredentials()
-	if err != nil {
-		return nil, errors.New("OpenCode Go credentials are unavailable")
-	}
-	return NewFromCredentials(cfg, credentials, journal)
-}
-
 // NewFromCredentials constructs the production-shaped owner from a secure
 // loader result. The API key remains encapsulated by Credentials/HTTPDoer.
 func NewFromCredentials(cfg Config, credentials openrouter.Credentials, journal *audit.Journal) (*Conversation, error) {
@@ -345,7 +334,7 @@ func NewFromCredentials(cfg Config, credentials openrouter.Credentials, journal 
 }
 
 // newWithDoer is an in-package offline fixture seam. Production callers must
-// use NewFromCredentials/NewFromEnvironment and the protected audit.Journal.
+// use NewFromCredentials and the protected audit.Journal.
 func newWithDoer(cfg Config, model string, doer broker.HTTPDoer, journal eventJournal) (*Conversation, error) {
 	if reflectNil(doer) || reflectNil(journal) {
 		return nil, errors.New("provider conversation requires an injected HTTP Doer and durable journal")
