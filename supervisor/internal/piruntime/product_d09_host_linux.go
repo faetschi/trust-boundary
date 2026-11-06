@@ -57,10 +57,6 @@ runroot = "/run/tbound-product/containers"
 ignore_chown_errors = "true"
 `
 
-// productD09EffectiveUnitProperties are the properties asked of systemd. productsetup.ValidateCommandEffectiveUnit judges the same
-// set and refuses a reply that lacks one, so a drift between the two lists fails closed.
-var productD09EffectiveUnitProperties = []string{"LoadState", "NeedDaemonReload", "FragmentPath", "DropInPaths", "Environment", "EnvironmentFiles", "User", "Group"}
-
 // productD09UnitOverrideRoots are the systemd directories whose drop-ins apply to the product unit or to every service.
 var productD09UnitOverrideRoots = []string{
 	"/etc/systemd/system",
@@ -260,16 +256,10 @@ func loadProductD09Snapshot(ctx context.Context) (productD09Snapshot, error) {
 	if err != nil {
 		return productD09Snapshot{}, err
 	}
-	var readErr error
 	registrationRaw, registrationSig, publicKey, err := productsetup.ReadCommandRegistration(func(path string, limit int64) ([]byte, error) {
-		raw, err := inputs.read(path, limit)
-		readErr = err
-		return raw, err
+		return inputs.read(path, limit)
 	})
 	if err != nil {
-		if readErr != nil && err == readErr {
-			return productD09Snapshot{}, err
-		}
 		return productD09Snapshot{}, productD09RefusedPolicy(err)
 	}
 	profileRaw, err := inputs.read(productsetup.CommandHostProfilePath, maxHostProfileBytes)
@@ -621,7 +611,7 @@ func productD09RequireEffectiveUnit(ctx context.Context) (map[string]string, err
 		return nil, err
 	}
 	args := []string{"show", "--no-pager"}
-	for _, property := range productD09EffectiveUnitProperties {
+	for _, property := range productsetup.CommandEffectiveUnitProperties() {
 		args = append(args, "--property="+property)
 	}
 	args = append(args, productsetup.UnitName)
@@ -914,12 +904,15 @@ func productD09Refused(cause error, detail string) error {
 	return fmt.Errorf("%w: %s: %w", ErrProductD09HostRefused, detail, cause)
 }
 
-// productD09RefusedPolicy wraps a productsetup policy refusal in ErrProductD09HostRefused. Its message is the policy's own.
+// productD09RefusedPolicy rebuilds a productsetup policy refusal through productD09Refused, so it wraps the sentinel and its
+// cause exactly as a refusal made here does. Any other error is a protected-read error that is already refused; it passes
+// through unchanged.
 func productD09RefusedPolicy(err error) error {
-	if err == nil {
-		return nil
+	var policy *productsetup.CommandPolicyError
+	if errors.As(err, &policy) {
+		return productD09Refused(policy.Cause, policy.Detail)
 	}
-	return fmt.Errorf("%w: %w", ErrProductD09HostRefused, err)
+	return err
 }
 
 // productD09ValidateServiceRoots keeps turn evidence and managed projects in the setup-owned product trees.
