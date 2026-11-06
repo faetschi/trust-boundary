@@ -13,6 +13,7 @@ import (
 
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/piruntime"
+	"tbound/supervisor/internal/productdriver"
 	"tbound/supervisor/internal/productsession"
 	"tbound/supervisor/internal/productsetup"
 	"tbound/supervisor/internal/providerbridge"
@@ -121,7 +122,7 @@ func TestProductD09HistoryHandlesEmptyAndMixedProfileJournals(t *testing.T) {
 			t.Fatal(err)
 		}
 		worker, _ := newProductTurnWorker(8, func() bool { return false }, func(string) {})
-		_, err = f.env.driveProductTurn(context.Background(), admission.Turn, w, worker)
+		work, err := f.env.driveProductTurn(context.Background(), admission.Turn, w, worker)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -157,8 +158,34 @@ func TestProductD09HistoryHandlesEmptyAndMixedProfileJournals(t *testing.T) {
 		if err := check(); err != nil {
 			t.Fatal(err)
 		}
-		// The command owner settles before the journals are closed, as the driver does before it writes a receipt.
-		if err := (&productComposedTurn{env: f.env, w: w, worker: worker}).SettleCommands(); err != nil {
+		// Settle as the driver does: commands first, then a receipt bound to the journals and a terminal catalog record.
+		prepared := &productComposedTurn{env: f.env, w: w, worker: worker}
+		if err := prepared.SettleCommands(); err != nil {
+			t.Fatal(err)
+		}
+		ev, err := prepared.Evidence(productdriver.EvidenceSettlement)
+		if err != nil {
+			t.Fatal(err)
+		}
+		usage := productsession.Budget{HostCalls: ev.HostCalls, Tokens: ev.Tokens, DurationSeconds: 1}
+		receipt := productsession.TurnReceipt{SchemaVersion: productsession.ReceiptSchema,
+			SessionID: admission.Turn.SessionID, TurnID: admission.Turn.ID, Ordinal: admission.Turn.Ordinal,
+			WorkflowID: link.WorkflowID, RunID: link.RunID, ConversationID: link.ConversationID,
+			UnverifiedInputs: []string{"runtime_digest", "image_digest", "extension_digest"},
+			WorkerKind:       productsession.WorkerSupervisorLoop, WorkerInstance: prepared.WorkerInstance(),
+			ProviderJournalHead: ev.ProviderHead, ProviderJournalCount: ev.ProviderCount,
+			StoreJournalHead: ev.StoreHead, StoreJournalCount: ev.StoreCount,
+			CommandJournalHead: ev.CommandHead, CommandJournalCount: ev.CommandCount,
+			BaselineDigest: admission.Turn.BaselineDigest, ResultBaselineDigest: admission.Turn.BaselineDigest,
+			Outcome: productsession.OutcomeFailed, Settlement: productsession.SettlementSupervisorLoopClosed,
+			Usage: usage, ToolSequence: work.ToolSequence, Denials: work.Denials}
+		encoded, err := productdriver.EncodeReceipt(receipt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := f.env.Catalog.CompleteTurn(admission.Turn.ID, productsession.TurnTerminal{Outcome: receipt.Outcome,
+			Settlement: receipt.Settlement, Receipt: encoded, Usage: usage, ResultBaselineDigest: receipt.ResultBaselineDigest,
+			ContextEligible: work.FinalAnswer}); err != nil {
 			t.Fatal(err)
 		}
 		if err := w.close(); err != nil {
