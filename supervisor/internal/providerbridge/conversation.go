@@ -621,6 +621,21 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 		disposed = exchangeDisposed(persistErr, records, hostCallBinding)
 		return Turn{}, c.failLocked(errors.Join(fmt.Errorf("provider response projection exceeds its durable evidence budget: %w", err), persistErr))
 	}
+	// Identity reuse is checked before the exchange is journaled as a normal one: the raw response is
+	// failed-exchange evidence, and the unsettled spend is left for the defer to mark uncertain.
+	var identityErr error
+	if _, duplicate := c.responseIDs[captured.ResponseID()]; duplicate {
+		identityErr = errors.New("provider response ID was reused across conversation turns")
+	} else if capturedCall != nil {
+		if _, reserved := c.reservedCallIDs[capturedCall.ID]; reserved {
+			identityErr = errors.New("provider tool-call ID reuses an imported predecessor call")
+		}
+	}
+	if identityErr != nil {
+		persistErr := c.persistFailedExchangeLocked(records, identityErr, hostCallBinding)
+		disposed = exchangeDisposed(persistErr, records, hostCallBinding)
+		return Turn{}, c.failLocked(errors.Join(identityErr, persistErr))
+	}
 	callArray := []openrouter.PriorToolCall(nil)
 	if projection.ToolCall != nil {
 		callArray = []openrouter.PriorToolCall{priorCall}
@@ -652,13 +667,7 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 	if err := ctx.Err(); err != nil {
 		return Turn{}, c.failLocked(fmt.Errorf("provider exchange canceled before release: %w", err))
 	}
-	if _, duplicate := c.responseIDs[captured.ResponseID()]; duplicate {
-		return Turn{}, c.failLocked(errors.New("provider response ID was reused across conversation turns"))
-	}
 	if capturedCall != nil {
-		if _, reserved := c.reservedCallIDs[capturedCall.ID]; reserved {
-			return Turn{}, c.failLocked(errors.New("provider tool-call ID reuses an imported predecessor call"))
-		}
 		trusted, err := captured.TrustedCapture(callIssuer, responseIssuer, c.generation, nextSequence)
 		if err != nil {
 			return Turn{}, c.failLocked(fmt.Errorf("derive captured tool-call identity: %w", err))
