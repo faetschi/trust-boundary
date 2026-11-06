@@ -240,44 +240,10 @@
   justify-content: flex-end;
 }
 
-.copy,
-.recordButton {
-  flex: none;
-  min-height: 24px;
-  min-width: 24px;
-  padding: 0 var(--space-1);
-  border: 0;
-  border-radius: var(--radius-xs);
-  background: transparent;
-  color: var(--muted-foreground);
-  font: 500 var(--text-2xs) / var(--lh-2xs) var(--font-sans);
-  cursor: pointer;
-}
-
-/* The Copy control is an icon alone, centred in its box. */
-.copy {
-  display: inline-grid;
-  place-items: center;
-  padding: 0;
-}
-
-/* The record is a reference, so it reads in the mono face, as the tool card's record does. */
+/* The record is a reference, so its button reads in the mono face, as the tool card's record does. */
 .recordButton {
   font-family: var(--font-mono);
   font-weight: 400;
-}
-
-.copy:hover,
-.recordButton:hover {
-  background: var(--accent);
-  color: var(--foreground);
-}
-
-.copy:focus-visible,
-.recordButton:focus-visible,
-.jump:focus-visible {
-  outline: var(--focus-width) solid var(--ring);
-  outline-offset: 2px;
 }
 
 .recordRef {
@@ -293,97 +259,10 @@
   color: var(--muted-foreground);
 }
 
-/* A tool activity: a compact card, with its icon tile at the left, the target bold and the detail in mono. Its disclosure is the
-   card itself, so the disclosure's own hairline is dropped and its summary takes the card's padding. */
-.card {
-  min-width: 0;
-  max-width: 34rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: color-mix(in oklch, var(--foreground) 3%, transparent);
-}
-
-.card details {
-  border-top: 0;
-}
-
-.card summary {
-  padding: var(--space-2) var(--space-2h);
-}
-
-/* A denied or refused record: the destructive tint, in the border and the ground, as the v2 reference shows. */
-.refused {
-  border-color: color-mix(in oklch, var(--destructive) 38%, transparent);
-  background: color-mix(in oklch, var(--destructive) 8%, transparent);
-}
-
-/* The tool card's summary row: the icon tile, the target and its detail line, and the chips, with gaps between them. At phone
-   widths the row wraps, so the chips move under the summary and never past the card edge. */
-.head {
-  display: flex;
-  flex: 1 1 auto;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-1) var(--space-2);
-  min-width: 0;
-}
-
-/* The icon tile: 28 px, on the muted ground. */
-.glyph {
-  flex: none;
-  display: grid;
-  place-items: center;
-  width: 1.75rem;
-  height: 1.75rem;
-  border-radius: var(--radius-sm);
-  background: var(--muted);
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  color: var(--muted-foreground);
-}
-
-.titles {
-  display: flex;
-  flex: 1 1 10rem;
-  flex-direction: column;
-  min-width: 0;
-}
-
-/* The target: the bounded summary, in bold. It takes the spare width and ends in an ellipsis. Its full text is the title, and the
-   step beneath repeats it. */
-.summaryText {
-  display: block;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: var(--text-sm);
-  font-weight: 600;
-}
-
-/* The detail line: the tool and the record, in mono. */
-.byline {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-1) var(--space-2);
-  min-width: 0;
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
-  color: var(--muted-foreground);
-}
-
+/* A tool activity is a Trace (ui/Trace): its line, its chips and its collapsible body. What stays here is the content of the
+   line's detail and of the steps. */
 .name {
   flex: none;
-}
-
-.chips {
-  display: inline-flex;
-  flex: 0 1 auto;
-  justify-content: flex-end;
-  max-width: 100%;
-  flex-wrap: wrap;
-  gap: var(--space-1);
 }
 
 .steps {
@@ -450,14 +329,6 @@
   color: var(--foreground);
 }
 
-@media (pointer: coarse) {
-  .copy,
-  .recordButton {
-    min-height: 44px;
-    min-width: 44px;
-  }
-}
-
 /* The composer dock: the view's last box, holding the jump and the composer. At wide widths it is in the column. */
 .dock {
   position: relative;
@@ -470,19 +341,6 @@
   bottom: calc(100% + var(--space-2) + var(--space-3));
   left: 50%;
   transform: translateX(-50%);
-  white-space: nowrap;
-  min-height: var(--row-h-button);
-  padding: 0 var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--secondary);
-  color: var(--foreground);
-  font: 600 var(--text-xs) / var(--lh-xs) var(--font-sans);
-  cursor: pointer;
-}
-
-.jump:hover {
-  background: var(--accent);
 }
 
 /* At phone widths the page scrolls and the transcript is as tall as its content, so the composer dock sticks to the bottom

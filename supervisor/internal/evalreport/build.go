@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"maps"
 	"math"
+	"regexp"
 	"slices"
 	"sort"
 
@@ -221,6 +222,9 @@ func Build(in Inputs) (Report, error) {
 	if err := checkSnapshot(in.Ledger); err != nil {
 		return Report{}, err
 	}
+	if err := checkAttributionDigests(in.AttributionsDigest, in.AttributionRubricDigest); err != nil {
+		return Report{}, err
+	}
 	manifestDigest, err := evalcorpus.Digest(in.Manifest)
 	if err != nil {
 		return Report{}, fmt.Errorf("evalreport: manifest digest: %w", err)
@@ -307,6 +311,9 @@ func Build(in Inputs) (Report, error) {
 			LedgerHead:           in.Ledger.HeadSHA256,
 			LedgerRecords:        in.Ledger.Records,
 			LedgerSnapshotDigest: ledgerDigest,
+
+			AttributionsDigest:      in.AttributionsDigest,
+			AttributionRubricDigest: in.AttributionRubricDigest,
 		},
 		Coverage:               cov,
 		Strata:                 strata,
@@ -394,6 +401,19 @@ func calibrationOf(p evalscore.PConfig) Calibration {
 
 func snapErr(format string, args ...any) error {
 	return fmt.Errorf("evalreport: ledger snapshot: "+format, args...)
+}
+
+var sha256DigestRE = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
+
+// checkAttributionDigests accepts either two digests or none.
+func checkAttributionDigests(attributions, rubric string) error {
+	if attributions == "" && rubric == "" {
+		return nil
+	}
+	if !sha256DigestRE.MatchString(attributions) || !sha256DigestRE.MatchString(rubric) {
+		return fmt.Errorf("evalreport: attributions digest %q and rubric digest %q must both be sha256:<64 hex> or both empty", attributions, rubric)
+	}
+	return nil
 }
 
 // addNonNegative adds two non-negative values and reports overflow.

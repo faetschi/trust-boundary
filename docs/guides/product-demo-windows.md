@@ -5,6 +5,9 @@ workstation, in the terminal and in your browser. The service runs in a Linux
 VM; Windows only needs an SSH client. To set up the VM and the service first,
 follow [Run a first governed product turn](product-first-turn.md).
 
+The prompts below assume the Bash-deny install from that guide. For Bash through
+the signed D09 cell, follow [Enable Bash](product-bash.md) first.
+
 Nothing here is thesis evidence.
 
 ## Before you start
@@ -95,7 +98,8 @@ ssh -t $GUEST_OPTS -L 127.0.0.1:8791:127.0.0.1:8791 tboundadmin@$GUEST_IP \
 Each turn spends provider tokens from the installed key.
 
 A session marked `blocked` has an earlier turn whose outcome is `unknown` and
-refuses new prompts. Start a new session.
+refuses new prompts. The project is also blocked in new sessions. Use
+[operator recovery](product-bash.md#8-recover-a-turn-killed-during-bash).
 
 ## 4. Run the product tests (optional)
 

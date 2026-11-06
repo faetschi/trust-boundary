@@ -134,7 +134,7 @@ if archived_prev; then
 else
   [ "$csize" -gt 0 ] || die "catalog.jsonl is empty: the smoke workflow record is missing; stop, do not re-init (if the $PREV_FREEZE state was archived on purpose, run 27-archive-state.sh archive until it records $HF/g1-prior/archive-done.txt)"
 fi
-echo "terminal records now: $(G "sudo -n grep -c pi_workflow_terminal $CAT || true" | tr -d '\r') (with option A the $PREV_FREEZE g1 workflow is archived with its journal, so there is no earlier workflow to settle; without it the $FREEZE service may write its terminal: see 30-reg-g1.sh, ALLOW_NO_NEW_TERMINAL)"
+echo "terminal records now: $(G "sudo -n grep -c pi_workflow_terminal $CAT || true" | tr -d '\r') (with option A the $PREV_FREEZE g1 workflow is archived with its journal, so there is no earlier workflow; the g1 and rp cycles check their own terminal by admission id, see rglib.sh workflow_state)"
 
 say "live root [READ-ONLY] canonical form"
 echo "entries (live root /var/lib/tbound/live/root): $(G 'sudo -n ls -A /var/lib/tbound/live/root 2>/dev/null' | tr -d '\r' | LC_ALL=C sort | tr '\n' '|')"

@@ -4,6 +4,21 @@
 
 This is the product-branch checkpoint for [the product plan](product-plan.md). It records what is implemented and verified on `feature/tbound-product`. The thesis state is owner-local and is not tracked here.
 
+## Product Bash checkpoint, 2026-11-05
+
+Bash through the signed D09 Podman/crun cell is implemented. On 2026-11-04,
+build `d75ac188` passed live startup qualification, Bash turns, review publication,
+scope refusal, and predecessor replay on the demo VM. A killed Bash turn drained
+but remained blocked because operator resolution refused. Publication crash
+recovery was not run. The recovery fixes through `23800b63` cover Bash and
+publication in code and await the next live run. The VM was restored to its
+format-2 Bash-deny installation. The rootfs probe reported PASS, but its blocked
+`/dev/null` redirection makes that write-denial result inconclusive.
+
+Use [Enable Bash](guides/product-bash.md) for installation and operation. The
+worker remains `supervisor-loop`, not Pi. These product runs are not thesis
+evidence. The package checkpoints below are historical unless updated here.
+
 ## Status by package (P0-P11)
 
 Current combined gate, 2026-10-27, on `610577b` (code `5311409`). Linux, Go 1.27.1, `-mod=readonly`, `GOPROXY=off`. Archive SHA-256 `4f25ad02cd1174c92856604ae1d4cf0b908a30f75ddfc502b9d1c7204a0305e7`. Receipts are in `%TEMP%\tbproduct\receipts\610577b\`.
@@ -234,7 +249,7 @@ The mount test `TestSecurityBindMounts` needs root and skips otherwise. It is no
 
 ### Pending and known limits
 
-- **Bash in production.** `product-serve` refuses a policy that allows Bash. Only the development command runner has run Bash. The D09 cell runner and its history opener need the product guest.
+- **Bash in production.** The D09 cell runner and history opener are implemented and ran live on 2026-11-04. Bash-enabled startup requires fresh qualification before listening. Crash-recovery fixes await the next live run.
 - **Output is not filtered.** A command can print any file it can read in its workspace, and the model sees it.
 - **Development environment.** The pinned Go toolchain image and module cache do not exist. Real tests with command-cell network disabled have not run.
 - **Service-account isolation.** That the service account cannot read the original repository follows from the client doing the reading. It was not checked on a host.
@@ -399,7 +414,7 @@ Status: implemented and verified locally against a loopback fake provider. Not q
 
 - `tbound product-serve` starts. Its host profile (`cmd/tbound/product_service_host_linux.go`) fills every trusted piece of a turn from installed, verified inputs: the gate policies, the pinned Git executable, the xattr attestation, the provider conversation factory, the prompts, the publication trust and the worker step bound. It refuses to start when an input is missing or differs from the signed registration.
 - The worker kind is `supervisor-loop`, and its settlement is `supervisor-loop-closed`. These replace `headless-fixture` and `headless-fixture-closed` everywhere. No product catalog is deployed, so there is no compatibility alias.
-- A project policy that allows Bash refuses the start, because no contained command runner exists.
+- A project policy that allows Bash starts only after the command qualification of this process passed in a disposable signed cell (see `docs/product-contracts.md`, Command qualification at start). The real cell run is untested until unit H on the demo VM, so no deployed start admits Bash yet.
 - The service setup requires the host inputs and writes them into the service config. It does not install the policy files, the Git executable or the calibration.
 
 ### Demonstrated behaviour

@@ -278,6 +278,18 @@ describe("the transcript: legacy cases from render.test.mjs", () => {
     expect(chips()).toContainEqual(["succeeded", "ok"]);
   });
 
+  it("draws the success tone on a trace only when a terminal result exists, never for an activity alone", async () => {
+    await renderLive(
+      verifiedSnapshot([
+        observed(activityItem({ id: "a1", sequence: 1, tool: "bash", tool_call_id: "c1", state: "succeeded", summary: "bash: go test" })),
+        observed(activityItem({ id: "a2", sequence: 2, tool: "bash", tool_call_id: "c2", state: "succeeded", summary: "bash: go vet" })),
+        observed(resultItem({ id: "r2", sequence: 3, tool: "bash", tool_call_id: "c2", state: "succeeded", summary: "exit 0" })),
+      ]),
+    );
+    expect(q("[data-anchor='c1'] details").getAttribute("data-tone")).toBe("idle");
+    expect(q("[data-anchor='c2'] details").getAttribute("data-tone")).toBe("ok");
+  });
+
   it("gives a verified lossy success in a mixed view a neutral evidence marker, never the green verified chip", () => {
     renderModel(
       modelOf(

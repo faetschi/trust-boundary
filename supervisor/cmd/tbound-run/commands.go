@@ -188,14 +188,18 @@ func (a *app) exportJournal(p plan) (runner.ExportResult, error) {
 		return runner.ExportResult{}, err
 	}
 	defer j.Close()
-	opt := runner.ExportOptions{}
+	opt := runner.ExportOptions{Attributions: p.attributions.byTask}
 	if p.cfg.CDH != nil {
 		opt.CDHBaseline, err = loadCDHBaseline(p.cfg.CDHBaseline)
 		if err != nil {
 			return runner.ExportResult{}, err
 		}
 	}
-	return runner.Export(p.sched, j, opt)
+	res, err := runner.Export(p.sched, j, opt)
+	if err != nil {
+		return res, err
+	}
+	return res, p.attributions.checkCandidates(res)
 }
 
 func (a *app) printExport(res runner.ExportResult) {
@@ -221,8 +225,35 @@ func syntheticLedger() usdledger.Snapshot {
 	}
 }
 
+// reportLedger gives the snapshot a report binds. The synthetic setting yields the
+// empty ledger. A ledger file is verified read-only against its checkpoint, and the
+// result must be exactly the state run.json names as final.
+func reportLedger(l ledgerSetting) (usdledger.Snapshot, error) {
+	if l.file == nil {
+		return syntheticLedger(), nil
+	}
+	f := l.file
+	snap, err := usdledger.Verify(f.Path, usdledger.Config{LedgerID: f.LedgerID, CapMicroUSD: f.CapMicroUSD,
+		MinPerUnitWorstCaseMicroUSD: f.MinPerUnitWorstCaseMicroUSD,
+		ExpectedHeadSHA256:          f.Checkpoint.HeadSHA256, AnchorRecords: f.Checkpoint.Records})
+	if err != nil {
+		return usdledger.Snapshot{}, fmt.Errorf("ledger %s does not verify against ledger.checkpoint: %w", f.Path, err)
+	}
+	if snap.Records != f.Final.Records {
+		return usdledger.Snapshot{}, fmt.Errorf("ledger.final.records is %d, the ledger file has %d", f.Final.Records, snap.Records)
+	}
+	if snap.HeadSHA256 != f.Final.HeadSHA256 {
+		return usdledger.Snapshot{}, fmt.Errorf("ledger.final.head_sha256 is %s, the ledger file has %s", f.Final.HeadSHA256, snap.HeadSHA256)
+	}
+	return snap, nil
+}
+
 const nonClaimNote = "NON-CLAIM-BEARING: the USD ledger of this report is synthetic and empty, so its spend section " +
 	"says nothing about the research budget. It is a pilot or dry-run report, not a result for G1, H1 or any thesis claim."
+
+// realLedgerNote replaces nonClaimNote when the report binds a verified ledger file: tbound-run
+// still marks no report claim-bearing.
+const realLedgerNote = "NON-CLAIM-BEARING: this report binds the verified USD ledger %s (%d records, head %s), but tbound-run does not mark any report claim-bearing."
 
 func (a *app) reportCmd(args []string) error {
 	var dir string
@@ -236,7 +267,16 @@ func (a *app) reportCmd(args []string) error {
 		if err != nil {
 			return err
 		}
-		rep, err := evalreport.Build(evalreport.Inputs{Manifest: p.manifest, Trials: res.Input, Ledger: syntheticLedger()})
+		ledger, err := reportLedger(p.cfg.Ledger)
+		if err != nil {
+			return err
+		}
+		note := nonClaimNote
+		if p.cfg.Ledger.file != nil {
+			note = fmt.Sprintf(realLedgerNote, ledger.LedgerID, ledger.Records, ledger.HeadSHA256)
+		}
+		rep, err := evalreport.Build(evalreport.Inputs{Manifest: p.manifest, Trials: res.Input, Ledger: ledger,
+			AttributionsDigest: p.attributions.digest, AttributionRubricDigest: p.attributions.rubricDigest})
 		if err != nil {
 			return err
 		}
@@ -260,7 +300,7 @@ func (a *app) reportCmd(args []string) error {
 			Flags        []string `json:"adaptive_budget_flags,omitempty"`
 			FlagsDigest  string   `json:"adaptive_budget_flags_sha256,omitempty"`
 			Note         string   `json:"note"`
-		}{false, ledgerSyntheticEmpty, rep.Digest, p.sched.Digest, len(res.Incomplete), flagLines(res.AdaptiveBudgetFlags), flagsDigest, nonClaimNote})
+		}{false, ledger.LedgerID, rep.Digest, p.sched.Digest, len(res.Incomplete), flagLines(res.AdaptiveBudgetFlags), flagsDigest, note})
 		if err != nil {
 			return err
 		}
@@ -269,14 +309,14 @@ func (a *app) reportCmd(args []string) error {
 			data []byte
 		}{
 			{"report.json", append(canonical, '\n')},
-			{"report.md", []byte("> " + nonClaimNote + "\n\n" + flagsMarkdown(res.AdaptiveBudgetFlags) + rep.Markdown())},
+			{"report.md", []byte("> " + note + "\n\n" + flagsMarkdown(res.AdaptiveBudgetFlags) + rep.Markdown())},
 			{"report.meta.json", append(meta, '\n')},
 		} {
 			if err := writeFileAtomic(filepath.Join(dir, f.name), f.data); err != nil {
 				return err
 			}
 		}
-		fmt.Fprintf(a.out, "report_digest %s\nclaim_bearing false\nledger %s\n", rep.Digest, ledgerSyntheticEmpty)
+		fmt.Fprintf(a.out, "report_digest %s\nclaim_bearing false\nledger %s\n", rep.Digest, ledger.LedgerID)
 		a.printExport(res)
 		return nil
 	})

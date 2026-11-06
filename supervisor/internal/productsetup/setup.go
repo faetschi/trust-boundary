@@ -110,6 +110,11 @@ func Setup(env Env, cfg Config, binary Candidate) (Report, error) {
 	}
 	var refused []string
 	for _, p := range plan {
+		if p.Path == CommandHostProfilePath && p.Status == "updated" {
+			h.rep.Notes = append(h.rep.Notes, "command host profile replaced: run tbound product image provision before starting the service")
+		}
+	}
+	for _, p := range plan {
 		h.rep.Steps = append(h.rep.Steps, p.Step)
 		if p.Status == "refused" {
 			refused = append(refused, p.Path+": "+p.Detail)
@@ -209,6 +214,26 @@ func (h *host) desiredFiles(cfg Config, binary Candidate) (map[string][]byte, Re
 	files := map[string][]byte{
 		RegistrationPath: registration, RegistrationSignaturePath: signature, RegistrationPublicKeyPath: key,
 		ServiceConfigPath: serviceConfig, SetupConfigPath: installed, UnitPath: unit,
+		ContainersConfPath: RenderProductContainersConf(), StorageConfPath: RenderProductStorageConf(),
+	}
+	// Retained profiles must remain verifiable under the installed key; trust transitions are not supported.
+	if _, err := os.Lstat(h.real(PodmanConfigDir + "/hosts")); !errors.Is(err, os.ErrNotExist) {
+		if err != nil {
+			return nil, RegistrationSummary{}, refuse("cannot check retained command history: %v; nothing was changed", err)
+		}
+		installedKey, err := readSource(h.real(RegistrationPublicKeyPath))
+		if err != nil || !bytes.Equal(installedKey, key) {
+			return nil, RegistrationSummary{}, refuse("signing-key rotation across retained command history is unsupported; keep the installed registration public key; nothing was changed")
+		}
+	}
+	if err := h.commandBundleFiles(cfg.CommandBundle, files); err != nil {
+		return nil, RegistrationSummary{}, err
+	}
+	if h.env.ValidateCommandInputs != nil {
+		in := h.commandInputs(cfg, summary, files)
+		if err := h.env.ValidateCommandInputs(in); err != nil {
+			return nil, RegistrationSummary{}, refuse("command bundle: %v; nothing was changed", err)
+		}
 	}
 	if cfg.ReleasePublicKey != "" {
 		publisher, err := readSource(cfg.ReleasePublicKey)

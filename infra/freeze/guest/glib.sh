@@ -11,7 +11,7 @@ export MSYS_NO_PATHCONV=1
 . "$(dirname -- "${BASH_SOURCE[0]}")/../paths.sh"
 A=$KIT_DIR
 GA=$A/guest
-WGA=$(linux_path "$GA")      # same dir, as Linux sees it
+WGA=$GA                       # helpers WSL runs; from Git Bash they come from TBOUND_WGA (a Linux checkout), never through /mnt
 GSSH_SH=$A/tools/gssh.sh
 
 SCR=/var/tmp/tbound-cal-20261017                        # guest scratch (995:986 0700)
@@ -62,7 +62,7 @@ DR_ADMISSION_ID_ENV=${DR_ADMISSION_ID:-}
 . "$(dirname -- "${BASH_SOURCE[0]}")/../freeze-guard.sh" || exit 2
 V=$VALUES
 # shellcheck disable=SC1090
-. "$V"
+. "$V"; host_paths_ok
 [ "$FREEZE" = "$KIT_FREEZE" ] || die "$V says FREEZE=$FREEZE but KIT_FREEZE=$KIT_FREEZE"
 [ "${PREV_FREEZE:-}" != none ] || die "$V: PREV_FREEZE=none starts a new chain, and the guest scripts do not support that yet"
 for v in FREEZE FREEZE_COMMIT PREV_FREEZE PREV_COMMIT PREV_W PREV_NAMES PREV_G1_RID PREV_RP_RID PREV_DR_RID PREV_DR_RUNID PREV_DR_CHECKS_OK PREV_DR_ADMISSION_ID DR_ADMISSION_ID DR_ADMISSION_REFUSE GUEST_IP; do
@@ -111,10 +111,20 @@ local_tmp() { [ -n "$LOCAL_TMP" ] || LOCAL_TMP=$(mktemp -d); }
 # --- transports -------------------------------------------------------------------------------------------------
 G()  { sh "$GSSH_SH" "$@" </dev/null; }          # guest as tboundadmin, no stdin
 GI() { sh "$GSSH_SH" "$@"; }                     # guest as tboundadmin, stdin passed through (X | GI 'sudo -n install ... /dev/stdin dest')
-case $(uname -s) in MINGW* | MSYS*) WXP=(wsl.exe -d "$TBOUND_WSL_DISTRO" -e) ;; *) WXP=() ;; esac   # as paths.sh: WSL itself is Linux
+case $(uname -s) in MINGW* | MSYS*) WXP=(wsl.exe -d "$TBOUND_WSL_DISTRO" --cd / -e) ;; *) WXP=() ;; esac   # as paths.sh: WSL itself is Linux
 WX()  { "${WXP[@]}" env KIT_FREEZE="$KIT_FREEZE" "$@" </dev/null; }   # WSL, direct exec (no shell), no stdin; KIT_FREEZE reaches the Python guards
 WB()  { "${WXP[@]}" bash -c "export KIT_FREEZE=$KIT_FREEZE; $1" </dev/null; }   # WSL, bash -c <one string>, no stdin
 WBI() { "${WXP[@]}" bash -c "export KIT_FREEZE=$KIT_FREEZE; $1"; }              # WSL, bash -c <one string>, stdin passed through (writers: X | WBI "cat > file")
+# From Git Bash, WSL runs the helpers of TBOUND_WGA, which must be byte-identical to this kit's (helpers, lib, values file).
+if [ ${#WXP[@]} -gt 0 ]; then
+  linux_safe "${TBOUND_WGA:-}" && [[ $TBOUND_WGA == */infra/freeze/guest ]] ||
+    die "set TBOUND_WGA to <Linux checkout of this kit>/infra/freeze/guest (plain absolute path, outside /mnt)"
+  WGA=$TBOUND_WGA
+  WGA_FILES=(guest/jget.py guest/reqstate.py guest/fill-template.py guest/mk-svc-config.py guest/mk-dr-config.py guest/sign-g1.sh guest/sign-run.sh
+    lib.sh paths.sh freeze-guard.sh "freezes/$KIT_FREEZE.env")
+  [ "$(cd "$A" && sha256sum "${WGA_FILES[@]}" | cut -c1-64)" = "$(WX bash -c 'cd "$1/.." && shift && sha256sum "$@" | cut -c1-64' _ "$WGA" "${WGA_FILES[@]}")" ] ||
+    die "TBOUND_WGA=$WGA differs from this kit (helpers, lib or freezes/$KIT_FREEZE.env): refresh the Linux checkout"
+fi
 svc()    { G "cd / && $SVC $1"; }                # command in the service context (uid 995, no-new-privs, empty caps)
 podsvc() { G "cd / && $PODMAN_SVC $1"; }
 
@@ -171,7 +181,7 @@ PIN_NAMES="IMGDIGEST CFG ENTRYPOINT_DIGEST BASH_DIGEST NODE_DIGEST BUNDLE_DIGEST
 load_env() {
   [ -f "$TBOUND_WORK_VIEW/env.sh" ] || die "no $TBOUND_WORK_VIEW/env.sh: run 10-freeze.sh <commit> of the freeze kit first"
   # shellcheck disable=SC1091
-  . "$TBOUND_WORK_VIEW/env.sh"                                           # W B H F REPO HF CF (WSL paths)
+  . "$TBOUND_WORK_VIEW/env.sh"; env_paths_ok                             # W B H F REPO HF CF (WSL paths)
   local v; for v in W B H F REPO HF CF; do [ -n "${!v:-}" ] || die "env.sh lacks $v"; done
   WX test -d "$HF" && WX test -f "$W/session-env.sh" || die "missing $HF or $W/session-env.sh (run the freeze kit through session-env.sh)"
   eq "FROZEN-COMMIT" "$(hf_get FROZEN-COMMIT)" "$F"
@@ -374,3 +384,17 @@ for line in open(sys.argv[1]):
     record["event"]["data"]=json.loads(base64.b64decode(record["event"]["data"],validate=True))
     print(json.dumps(record,separators=(",",":")))' "$1"
 }
+# workflow_state <catalog export> <workflow_admission_id>: absent | open | terminal:<outcome>. The workflow is found by its host
+# admission id on the reserved record, then its terminal by the admission hash (completed terminals carry no outcome field).
+workflow_state() {
+  WX python3 -I -c 'import base64,json,sys
+adm=sys.argv[2]; admission_hash=None; terminal={}
+for line in open(sys.argv[1]):
+    if not line.strip(): continue
+    record=json.loads(line); kind=record["event"]["kind"]
+    data=json.loads(base64.b64decode(record["event"]["data"],validate=True))
+    if kind=="pi_workflow_admission_reserved" and data["entry"]["host_admission_id"]==adm: admission_hash=data["admission_hash"]
+    if kind=="pi_workflow_terminal": terminal[data["admission_hash"]]=data.get("outcome") or "completed"
+print("absent" if admission_hash is None else ("terminal:"+terminal[admission_hash] if admission_hash in terminal else "open"))' "$1" "$2" | tr -d '\r\n'
+}
+

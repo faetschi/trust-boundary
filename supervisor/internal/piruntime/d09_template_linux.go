@@ -17,6 +17,7 @@ import (
 	"syscall"
 
 	"tbound/supervisor/internal/broker/protocol"
+	"tbound/supervisor/internal/productsetup"
 )
 
 // The registered D09 cell template is the only source of D09 image, entrypoint,
@@ -80,8 +81,11 @@ type D09CellTemplate struct {
 	XattrScanGID                      int    `json:"xattr_scan_gid"`
 	XattrScanPrivilegeProfile         string `json:"xattr_scan_privilege_profile"`
 	ManagedLiveRootRegistrationDigest string `json:"managed_live_root_registration_digest"`
-	UserNamespaceMappingProfile       string `json:"user_namespace_mapping_profile"`
-	UserNamespaceMappingDigest        string `json:"user_namespace_mapping_digest"`
+	// ProductRegistrationDigest binds a product template to its signed registration. It is omitted when empty, so every
+	// thesis template keeps its canonical bytes and digest.
+	ProductRegistrationDigest   string `json:"product_registration_digest,omitempty"`
+	UserNamespaceMappingProfile string `json:"user_namespace_mapping_profile"`
+	UserNamespaceMappingDigest  string `json:"user_namespace_mapping_digest"`
 	// RouteProbe, when present, makes the template a route-probe template: a cell launched from it runs the
 	// direct-runtime route probe instead of Pi (see d09_route_probe.go). It is absent from a production
 	// template, whose canonical form and digest the member does not change.
@@ -166,9 +170,9 @@ func templateDigestOrEmpty(t D09CellTemplate) string {
 	return digest
 }
 
-// validateD09CellTemplate checks that every identity the launcher relies on is
-// present, well-formed, and measured. An unmeasured draft fails.
-func validateD09CellTemplate(t D09CellTemplate) error {
+// validateD09CellMeasurements checks that every identity the launcher relies on is present, well-formed, and measured.
+// The thesis and product validators add their own registration binding on top of it.
+func validateD09CellMeasurements(t D09CellTemplate) error {
 	roPaths, roErr := ParseD09LandlockPaths(t.LandlockROPath)
 	rwPaths, rwErr := ParseD09LandlockPaths(t.LandlockRWPath)
 	landlockDigest, landlockErr := DigestD09LandlockRules(roPaths, rwPaths)
@@ -190,13 +194,27 @@ func validateD09CellTemplate(t D09CellTemplate) error {
 		!validDigest(t.XattrVisibilityProfileDigest) || t.XattrVisibilityAuthority != D09XattrVisibilityAuthority || t.XattrFilesystemMagic == 0 ||
 		!validDigest(t.XattrMountOptionsDigest) || t.XattrScanUID <= 0 || t.XattrScanGID <= 0 ||
 		t.XattrScanPrivilegeProfile != D09XattrScanPrivilegeProfile ||
-		!validDigest(t.ManagedLiveRootRegistrationDigest) ||
 		t.UserNamespaceMappingProfile != D09UserNamespaceMappingProfile || !validDigest(t.UserNamespaceMappingDigest) ||
 		DigestD09XattrVisibilityProfile(t.XattrFilesystemMagic, t.XattrMountOptionsDigest, t.XattrScanUID, t.XattrScanGID,
 			t.XattrScanPrivilegeProfile) != t.XattrVisibilityProfileDigest {
 		return ErrD09TemplateInvalid
 	}
 	if t.RouteProbe != nil && t.RouteProbe.Validate(roPaths, rwPaths) != nil {
+		return ErrD09TemplateInvalid
+	}
+	return nil
+}
+
+// validateD09CellTemplate is the thesis validator: the shared measurements plus the managed-live-root binding. A product
+// registration digest is never admissible in a thesis template.
+func validateD09CellTemplate(t D09CellTemplate) error {
+	if t.ProductRegistrationDigest != "" {
+		return fmt.Errorf("%w: product_registration_digest is not admissible in a thesis D09 template", ErrD09TemplateInvalid)
+	}
+	if err := validateD09CellMeasurements(t); err != nil {
+		return err
+	}
+	if !validDigest(t.ManagedLiveRootRegistrationDigest) {
 		return ErrD09TemplateInvalid
 	}
 	return nil
@@ -234,6 +252,17 @@ func DecodeD09CellTemplate(raw []byte) (D09CellTemplate, error) {
 	if err := protocol.ValidateStrictJSON(raw); err != nil {
 		return D09CellTemplate{}, fmt.Errorf("%w: template is not strict JSON: %v", ErrD09TemplateInvalid, err)
 	}
+	// Presence, not value, decides: a thesis template never carries the product member, even an empty one.
+	var members map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &members); err != nil {
+		return D09CellTemplate{}, fmt.Errorf("%w: template is not a JSON object: %v", ErrD09TemplateInvalid, err)
+	}
+	// encoding/json matches keys case-insensitively, so refuse every case alias of the product member.
+	for key := range members {
+		if strings.EqualFold(key, "product_registration_digest") {
+			return D09CellTemplate{}, fmt.Errorf("%w: product_registration_digest is not admissible in a thesis D09 template", ErrD09TemplateInvalid)
+		}
+	}
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
 	var template D09CellTemplate
@@ -242,6 +271,30 @@ func DecodeD09CellTemplate(raw []byte) (D09CellTemplate, error) {
 	}
 	if err := validateD09CellTemplate(template); err != nil {
 		return D09CellTemplate{}, err
+	}
+	return template, nil
+}
+
+// DecodeProductD09CellTemplate is the inverse of DecodeD09CellTemplate. It requires the product registration digest,
+// refuses the managed-live-root binding and route probes, and pins the cosign key, OCI layout, and seccomp profile to the
+// product's fixed paths. A raw decode never registers the template; only a verified loader does.
+func DecodeProductD09CellTemplate(raw []byte) (D09CellTemplate, error) {
+	if err := protocol.ValidateStrictJSON(raw); err != nil {
+		return D09CellTemplate{}, fmt.Errorf("%w: product template is not strict JSON: %v", ErrD09TemplateInvalid, err)
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	var template D09CellTemplate
+	if err := decoder.Decode(&template); err != nil {
+		return D09CellTemplate{}, fmt.Errorf("%w: decode product D09 cell template: %v", ErrD09TemplateInvalid, err)
+	}
+	if err := validateD09CellMeasurements(template); err != nil {
+		return D09CellTemplate{}, err
+	}
+	if !validDigest(template.ProductRegistrationDigest) || template.ManagedLiveRootRegistrationDigest != "" || template.RouteProbe != nil ||
+		template.CosignPublicKeyPath != productsetup.CommandCosignPublicKeyPath || template.OCILayoutPath != productsetup.CommandOCILayoutPath ||
+		template.SeccompProfilePath != productsetup.CommandSeccompPath {
+		return D09CellTemplate{}, fmt.Errorf("%w: product template is not bound to the product registration and fixed product paths", ErrD09TemplateInvalid)
 	}
 	return template, nil
 }

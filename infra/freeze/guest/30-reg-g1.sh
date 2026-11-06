@@ -9,7 +9,7 @@
 #   RG-7  stage; prof-install g1; seed-live g1; svc start (the $FREEZE service starts; with option A there is no earlier workflow, otherwise the $PREV_FREEZE rp
 #         workflow, which 28 would have abandoned); diag l2
 #   L     client-run g1 (detached, one use); poll `status g1`; collect l4, catalog, requests; fetch response/status/journal into $HF/g1/
-#   check zero NEW pi_workflow_terminal on fresh option-A state (31 settles G1); other routes retain ALLOW_NO_NEW_TERMINAL; the g1 request is in
+#   check the g1 admission has a completed pi_workflow_terminal (a completed request is settled at completion); the g1 request is in
 #         serve-pi-requests.jsonl, the client exit is 0.
 # Resumable: the position is read from `tbound-op status g1` (state none/config/reg/prof/started, client marker); signed files already in $HF/g1 are
 # verified, never re-signed. STOP_AFTER=<cfg|measure|s3|reg|s4|prof|start|run> ends the script after that phase (one approval point per owner action).
@@ -233,20 +233,13 @@ phase_end run
 
 say "checks"
 case "$DONE" in "done exit=0") ok "client returned exit=0";; *) die "client did not return exit=0: $DONE (read $HG/response.txt, l4.txt, requests-after-run.jsonl)";; esac
-T0=$(tcount "$HG/catalog-before-start.jsonl"); T1=$(tcount "$HG/catalog-after-run.jsonl")
-echo "pi_workflow_terminal lines: before the $FREEZE start $T0, after the g1 run $T1"
-# On option A the state is fresh: G1 does not write its own terminal. The NEXT request verifies and settles it (31 checks that).
-# For other recovery routes retain the prior-settlement check with ALLOW_NO_NEW_TERMINAL=1 as the override.
-if [ "$ARCHMODE" = 1 ]; then
-  [ "$T1" -eq "$T0" ] || die "fresh G1 unexpectedly added pi_workflow_terminal (before $T0, after $T1): inspect the catalog"
-  ok "fresh G1 added 0 terminals; the next rp request must settle G1"
-elif [ "$T1" -ge 1 ] && [ "$T1" -gt "$T0" ]; then
-  ok "the catalog contains pi_workflow_terminal (new since the $FREEZE start)"
-elif [ "${ALLOW_NO_NEW_TERMINAL:-0}" = 1 ]; then
-  note "no new pi_workflow_terminal: accepted by ALLOW_NO_NEW_TERMINAL=1; inspect $HG/catalog-after-run.jsonl"
-else
-  die "no new pi_workflow_terminal for the earlier workflow; inspect the catalog or use ALLOW_NO_NEW_TERMINAL=1 after review"
-fi
+# A completed request is settled when it completes: the catalog holds a completed pi_workflow_terminal for the g1 admission itself.
+# The check names the admission and its outcome; the terminal count only informs (an earlier workflow may already be terminal).
+G1_ADM=$(jgetw "$HG/serve-pi-service.json" workflow_admission_id)
+G1_STATE=$(workflow_state "$HG/catalog-after-run.jsonl" "$G1_ADM")
+echo "pi_workflow_terminal lines: before the $FREEZE start $(tcount "$HG/catalog-before-start.jsonl"), after the g1 run $(tcount "$HG/catalog-after-run.jsonl"); g1 workflow $G1_ADM: $G1_STATE"
+[ "$G1_STATE" = terminal:completed ] || die "the g1 workflow ($G1_ADM) is '$G1_STATE' after its run, expected terminal:completed (settled at completion; read the service journal for a settlement failure)"
+ok "the g1 workflow ($G1_ADM) has a completed pi_workflow_terminal"
 WB "grep pi_workflow_terminal '$HG/catalog-after-run.jsonl' | cut -c1-400 || true"
 WB "grep -c pi_workflow_admission_reserved '$HG/catalog-after-run.jsonl' || true" | sed 's/^/pi_workflow_admission_reserved lines: /'
 # event data is base64 JSON, so the request id is matched in the decoded data (a plain grep never matches)

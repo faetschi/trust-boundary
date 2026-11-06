@@ -63,7 +63,10 @@ func (h *host) refuseBadHostInputs(cfg Config, summary RegistrationSummary, key 
 	if h.env.CheckHostInputs == nil {
 		return nil
 	}
-	checks := h.env.CheckHostInputs(h.hostInputs(cfg, summary, key, keyPath))
+	// desiredFiles has already verified the proposed bundle; pass its static status to the policy check.
+	in := h.hostInputs(cfg, summary, key, keyPath)
+	in.CommandInputsValid = cfg.CommandBundle != "" && h.env.ValidateCommandInputs != nil
+	checks := h.env.CheckHostInputs(in)
 	h.rep.Checks = append(h.rep.Checks, checks...)
 	var failed []string
 	for _, c := range checks {
@@ -79,8 +82,9 @@ func (h *host) refuseBadHostInputs(cfg Config, summary RegistrationSummary, key 
 
 // installedHostInputChecks checks the inputs the installed setup record names, for the doctor.
 func (h *host) installedHostInputChecks(summary RegistrationSummary) []Check {
+	commandChecks := h.installedCommandInputChecks(summary)
 	if h.env.CheckHostInputs == nil {
-		return nil
+		return commandChecks
 	}
 	keyPath := h.real(RegistrationPublicKeyPath)
 	record, recordErr := readSource(h.real(SetupConfigPath))
@@ -93,5 +97,7 @@ func (h *host) installedHostInputChecks(summary RegistrationSummary) []Check {
 		return []Check{{Name: "host inputs", Status: Fail, Detail: "the installed setup record or registration public key is unreadable", Fix: "run `tbound product setup`"}}
 	}
 	h.learnServiceIDs()
-	return h.env.CheckHostInputs(h.hostInputs(cfg, summary, key, keyPath))
+	in := h.hostInputs(cfg, summary, key, keyPath)
+	in.CommandInputsValid = len(commandChecks) == 1 && commandChecks[0].Status == Pass
+	return append(commandChecks, h.env.CheckHostInputs(in)...)
 }

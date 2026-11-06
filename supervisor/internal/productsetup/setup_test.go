@@ -119,6 +119,9 @@ func TestSetupFreshRootBuildsTheExpectedTree(t *testing.T) {
 		t.Fatalf("setup: %v\n%s", err, rep)
 	}
 	for _, n := range append(append([]node{}, directories...), installedFiles...) {
+		if isCommandArtifact(n.Path) { // absent in this deny-only installation
+			continue
+		}
 		if got := f.mode(n.Path); got != n.Mode {
 			t.Errorf("%s mode = %04o, want %04o", n.Path, got, n.Mode)
 		}

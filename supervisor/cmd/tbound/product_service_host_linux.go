@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"crypto/ed25519"
 	"encoding/json"
 	"errors"
@@ -61,7 +62,8 @@ func newProductServiceHostProfile(cfg productServiceConfig) productServiceHost {
 		if cfg.GitDigest != env.Registration.GitDigest || identity != env.Registration.HostIdentityDigest {
 			return errors.New("the executing inputs differ from the registered host profile")
 		}
-		if err := installProductGatePolicies(env, cfg.GatePolicyPaths); err != nil {
+		bashAllowed, err := installProductGatePolicies(env, cfg)
+		if err != nil {
 			return err
 		}
 		for _, id := range env.Registration.ProviderProfiles {
@@ -84,6 +86,19 @@ func newProductServiceHostProfile(cfg productServiceConfig) productServiceHost {
 				return errors.Join(err, closeErr)
 			}
 		}
+		// Refuse at start, not at the first turn.
+		if _, err := verifyProductGit(cfg.GitPath, cfg.GitDigest, productServiceOwners()); err != nil {
+			return err
+		}
+		xattr := func() (workspace.XattrVisibilityAttestation, error) { return productHostXattr(cfg, env) }
+		if env.Xattr, err = xattr(); err != nil {
+			return err
+		}
+		// Qualification runs before any provider, trust or publication hook is installed, so a refused start leaves none.
+		// It runs on the host inputs every turn will use, and the socket opens only after this function returns.
+		if err := installProductCommandHooks(env, cfg, bashAllowed); err != nil {
+			return err
+		}
 		profiles := env.Registration.ProviderProfiles
 		env.NewConversation = func(c providerbridge.Config, journal *audit.Journal) (*providerbridge.Conversation, error) {
 			path, supported := productprovider.CredentialPath(c.ProfileID)
@@ -102,14 +117,6 @@ func newProductServiceHostProfile(cfg productServiceConfig) productServiceHost {
 		env.PinGit = func() (privategit.PinnedGit, sessionlaunch.GitProfile, error) {
 			return pinProductionGit(productionOperatorArtifacts{GitPath: cfg.GitPath, GitDigest: cfg.GitDigest, GitBoundary: productGitBoundary}, nil)
 		}
-		// Refuse at start, not at the first turn.
-		if _, err := verifyProductGit(cfg.GitPath, cfg.GitDigest, productServiceOwners()); err != nil {
-			return err
-		}
-		xattr := func() (workspace.XattrVisibilityAttestation, error) { return productHostXattr(cfg, env) }
-		if env.Xattr, err = xattr(); err != nil {
-			return err
-		}
 		env.PublicationTrust = func(a *SessionOperationAuthority) workflow.Trust {
 			return &productPublicationTrust{env: env, authority: a, xattr: xattr}
 		}
@@ -119,20 +126,41 @@ func newProductServiceHostProfile(cfg productServiceConfig) productServiceHost {
 	}
 }
 
-// installProductGatePolicies loads each project's installed gate policy through the shared static
-// validator: protected file, registered digest, and no bash policy without a contained command runner.
-func installProductGatePolicies(env *productTurnEnv, paths map[string]string) error {
-	env.GatePolicies = make(map[string]gate.Policy, len(paths))
+// installProductGatePolicies loads each project's installed gate policy through the shared static validator:
+// protected file and registered digest. The read is structural: a policy that allows bash is admitted only by
+// installProductCommandHooks, after every qualification phase passed in this process. It reports whether any does.
+func installProductGatePolicies(env *productTurnEnv, cfg productServiceConfig) (bashAllowed bool, err error) {
+	env.GatePolicies = make(map[string]gate.Policy, len(cfg.GatePolicyPaths))
 	for _, project := range env.Registration.Projects {
-		file, ok := paths[project.ProjectID]
+		file, ok := cfg.GatePolicyPaths[project.ProjectID]
 		if !ok {
-			return fmt.Errorf("gate_policy_paths has no file for project %q", project.ProjectID)
+			return false, fmt.Errorf("gate_policy_paths has no file for project %q", project.ProjectID)
 		}
-		policy, _, err := loadProductGatePolicy(project.ProjectID, project.PolicyDigest, file, productServiceOwners(), env.NewCommandRunner != nil)
+		policy, _, err := loadProductGatePolicy(project.ProjectID, project.PolicyDigest, file, productServiceOwners(), productBashStructural)
 		if err != nil {
-			return err
+			return false, err
 		}
 		env.GatePolicies[project.ProjectID] = policy
+		bashAllowed = bashAllowed || productPolicyAllowsBash(policy)
+	}
+	return bashAllowed, nil
+}
+
+// installProductCommandHooks installs the Bash hooks the qualification returns. The Bash hooks come only from
+// qualifyProductCommandHost. A deny-only host reconciles any retained command journal before it listens.
+func installProductCommandHooks(env *productTurnEnv, cfg productServiceConfig, bashAllowed bool) error {
+	ctx, cancel := context.WithTimeout(context.Background(), productCommandQualificationTimeout)
+	defer cancel()
+	hooks, err := qualifyProductCommandHost(ctx, cfg, env, bashAllowed)
+	if err != nil {
+		if bashAllowed {
+			return fmt.Errorf("the installed gate policy allows bash, but the product host has no contained command runner: %w", err)
+		}
+		return err
+	}
+	env.NewCommandRunner, env.OpenCommandHistory = hooks.NewCommandRunner, hooks.OpenCommandHistory
+	if bashAllowed && env.NewCommandRunner == nil {
+		return errors.New("the installed gate policy allows bash, but the product host has no contained command runner")
 	}
 	return nil
 }

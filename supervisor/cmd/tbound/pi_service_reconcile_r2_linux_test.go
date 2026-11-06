@@ -144,7 +144,12 @@ func TestBeginReadsThePublicationJournalOnceForAllAbandonedPriors(t *testing.T) 
 	h := openIncrementalJournal(t, filepath.Join(incrementalTestRoot(t), "requests.jsonl"))
 	defer h.close(t)
 	const abandoned = 4
-	catalog := &piServiceWorkflowCatalog{entries: map[string]piServiceWorkflowEntry{}, ownerScopes: map[string]piServiceWorkflowOwnerScope{}}
+	catalogJournal, err := audit.Open(filepath.Join(incrementalTestRoot(t), "catalog.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer catalogJournal.Close()
+	catalog := &piServiceWorkflowCatalog{journal: catalogJournal, entries: map[string]piServiceWorkflowEntry{}, ownerScopes: map[string]piServiceWorkflowOwnerScope{}}
 	var publicationReads atomic.Int64
 	trace := reconcileTestTrace(t, publicationPending("workflow-2", "publication-2"), publicationResolved("workflow-2", "publication-2"))
 	r := &piServiceUnknownReconciler{catalog: catalog, route: piruntime.D09ManagedPiProviderRouteResearch, auditRoot: productionAuditRootDefault,

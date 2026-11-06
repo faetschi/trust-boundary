@@ -4,6 +4,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -47,7 +48,8 @@ func researchRoutePaths(t *testing.T) researchroute.Paths {
 	}
 	paths := researchroute.Paths{
 		Profile: filepath.Join(dir, "research-profile.json"), LedgerConfig: filepath.Join(dir, "research-ledger.json"),
-		Ledger: filepath.Join(dir, "usd-ledger"), Key: filepath.Join(dir, "openrouter.key"), OwnerUID: uint32(os.Getuid()),
+		Ledger: filepath.Join(dir, "usd-ledger"), Checkpoint: filepath.Join(dir, "research-ledger-checkpoint.json"),
+		Key: filepath.Join(dir, "openrouter.key"), OwnerUID: uint32(os.Getuid()),
 	}
 	for path, item := range map[string]struct {
 		content string
@@ -67,10 +69,22 @@ func researchRoutePaths(t *testing.T) researchroute.Paths {
 	return paths
 }
 
+// researchRouteGenesis creates the ledger and writes the operator checkpoint from
+// the genesis snapshot, as the operator does after tbound-profile prints it.
 func researchRouteGenesis(t *testing.T, paths researchroute.Paths) {
 	t.Helper()
-	if _, err := researchroute.Genesis(paths); err != nil {
+	snapshot, err := researchroute.Genesis(paths)
+	if err != nil {
 		t.Fatalf("genesis: %v", err)
+	}
+	writeResearchCheckpoint(t, paths, snapshot.Records, snapshot.HeadSHA256)
+}
+
+func writeResearchCheckpoint(t *testing.T, paths researchroute.Paths, records uint64, head string) {
+	t.Helper()
+	doc := fmt.Sprintf(`{"records":%d,"head_sha256":%q}`, records, head)
+	if err := os.WriteFile(paths.Checkpoint, []byte(doc), 0o600); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -154,8 +168,9 @@ func TestResearchRouteOpensWithAFrozenProfileKeyAndGenesisLedger(t *testing.T) {
 
 func TestResearchRouteRefusesWithoutAGenesisLedger(t *testing.T) {
 	paths := researchRoutePaths(t)
+	writeResearchCheckpoint(t, paths, 1, strings.Repeat("0", 64))
 	_, err := openProductionProviderRoute(piServiceConfig{ProviderRoute: piruntime.D09ManagedPiProviderRouteResearch, WorkflowMaxHostCalls: 4}, paths)
-	if !errors.Is(err, usdledger.ErrMissingLedger) {
+	if !errors.Is(err, usdledger.ErrHeadMismatch) {
 		t.Fatalf("research route started without a genesis ledger: %v", err)
 	}
 	if _, statErr := os.Lstat(paths.Ledger); !errors.Is(statErr, os.ErrNotExist) {
@@ -205,7 +220,8 @@ func TestResearchRoutePathsAreFixedAndWritableUnderTheUnchangedServiceUnit(t *te
 	if defaults.Key != "/etc/tbound/provider/openrouter.key" ||
 		defaults.Profile != "/etc/tbound/provider/research-profile.json" ||
 		defaults.LedgerConfig != "/etc/tbound/provider/research-ledger.json" ||
-		defaults.Ledger != "/var/lib/tbound/sessions/usd-ledger" || defaults.OwnerUID != 0 {
+		defaults.Ledger != "/var/lib/tbound/sessions/usd-ledger" ||
+		defaults.Checkpoint != "/etc/tbound/provider/research-ledger-checkpoint.json" || defaults.OwnerUID != 0 {
 		t.Fatalf("fixed research paths drifted: %+v", defaults)
 	}
 	_, _, writable, _ := piServiceUnitFixture()

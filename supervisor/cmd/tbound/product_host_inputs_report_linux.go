@@ -13,6 +13,7 @@ import (
 	"strings"
 	"syscall"
 
+	"tbound/supervisor/internal/gate"
 	"tbound/supervisor/internal/productsetup"
 	"tbound/supervisor/internal/releasetrust"
 )
@@ -39,12 +40,23 @@ func checkProductHostInputs(in productsetup.HostInputs) []productsetup.Check {
 		path, ok := in.GatePolicyPaths[id]
 		var file productHostFile
 		var err error
+		note := ""
 		if ok {
-			_, file, err = loadProductGatePolicy(id, in.PolicyDigests[id], path, in.Owners, false)
+			// A verified bundle establishes static configuration only. Startup still requires a qualified runner, so
+			// the report names such a policy as configured and never as available.
+			mode := productBashRefused
+			if in.CommandInputsValid {
+				mode = productBashStructural
+			}
+			var policy gate.Policy
+			policy, file, err = loadProductGatePolicy(id, in.PolicyDigests[id], path, in.Owners, mode)
+			if err == nil && productPolicyAllowsBash(policy) {
+				note = "; allows bash: configured, not qualified. The service qualifies the command cell at every start"
+			}
 		} else {
 			err = fmt.Errorf("gate_policy_paths has no file for project %q", id)
 		}
-		add("policy "+id, path, file, "digest "+shortDigest(in.PolicyDigests[id]), err)
+		add("policy "+id, path, file, "digest "+shortDigest(in.PolicyDigests[id])+note, err)
 	}
 	git, err := verifyProductGit(in.GitPath, in.GitDigest, in.Owners)
 	if err == nil && in.GitDigest != in.Registration.GitDigest {

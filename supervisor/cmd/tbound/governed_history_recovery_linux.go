@@ -22,6 +22,8 @@ import (
 // vouch for a settlement produced by a prior process.
 type historicalSettlementVerifier func(sessionrepo.CommandSettlement, string, string) error
 
+var errHistoricalBashContext = errors.New("historical Bash operations require their old command-settlement context")
+
 // governedHistoricalStoreVerifier authenticates each replayed Store request
 // against the old, held primary journal without appending authorization or
 // minting an operation/lease proof. Provider-to-Store joins are then checked by
@@ -54,7 +56,7 @@ func newGovernedHistoricalStoreVerifier(journal *audit.Journal, storePolicyDiges
 		if strings.HasPrefix(effect.ID, "sessionrepo-effect-") {
 			var intent governedReplayOperationIntent
 			if decodeCanonicalGoverned(effect.Intent, &intent) == nil && intent.Request.Tool == "bash" && settlementVerifier == nil {
-				return nil, errors.New("historical Bash operations require their old command-settlement context")
+				return nil, errHistoricalBashContext
 			}
 		}
 		if _, duplicate := v.effects[effect.ID]; duplicate {
@@ -82,6 +84,23 @@ func newGovernedHistoricalStoreVerifier(journal *audit.Journal, storePolicyDiges
 }
 
 func (v *governedHistoricalStoreVerifier) verifyOperation(request sessionrepo.OperationRequest) error {
+	if err := v.verifyOperationAuthorization(request); err != nil {
+		return err
+	}
+	authorizationRecord := v.byEffect[request.EffectID]
+	effect, exists := v.effects[request.EffectID]
+	if !exists || effect.Unresolved || effect.Outcome != "success" || effect.IntentSequence <= authorizationRecord.Sequence {
+		return errors.New("historical Store authorization has no later successful terminal effect")
+	}
+	var intent governedReplayOperationIntent
+	if decodeCanonicalGoverned(effect.Intent, &intent) != nil || intent.SchemaVersion != sessionrepo.OperationIntentSchemaVersion ||
+		!reflect.DeepEqual(intent.Request, request) {
+		return errors.New("historical Store effect intent differs from the exact operation request")
+	}
+	return nil
+}
+
+func (v *governedHistoricalStoreVerifier) verifyOperationAuthorization(request sessionrepo.OperationRequest) error {
 	if v == nil || v.journal == nil || request.EffectID == "" || request.Decision.Outcome != delta.PolicyAllow ||
 		request.Decision.PolicyDigest != v.storePolicyDigest || request.Decision.MetadataPolicyDigest != v.metadataPolicyDigest {
 		return ErrGovernedSessionEvidence
@@ -99,15 +118,6 @@ func (v *governedHistoricalStoreVerifier) verifyOperation(request sessionrepo.Op
 		authorization.TypedArgumentDigest != request.ArgumentDigest || authorization.InputGeneration != request.InputGeneration ||
 		authorization.InputTreeDigest != request.InputTreeDigest || authorization.GatePolicyDigest == "" {
 		return errors.New("historical Store operation differs from its exact durable authorization")
-	}
-	effect, exists := v.effects[request.EffectID]
-	if !exists || effect.Unresolved || effect.Outcome != "success" || effect.IntentSequence <= authorizationRecord.Sequence {
-		return errors.New("historical Store authorization has no later successful terminal effect")
-	}
-	var intent governedReplayOperationIntent
-	if decodeCanonicalGoverned(effect.Intent, &intent) != nil || intent.SchemaVersion != sessionrepo.OperationIntentSchemaVersion ||
-		!reflect.DeepEqual(intent.Request, request) {
-		return errors.New("historical Store effect intent differs from the exact operation request")
 	}
 	return nil
 }

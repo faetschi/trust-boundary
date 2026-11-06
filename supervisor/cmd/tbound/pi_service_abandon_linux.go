@@ -224,6 +224,12 @@ func (j *piServiceRequestJournal) abandonUnknown(ctx context.Context, requestID,
 	}
 	state.abandoned = &event
 	j.entries[matchedKey] = state
+	// The abandon record is written first, so a terminal never exists without it. A failure here
+	// leaves the reset refusing (fail closed) and the request abandoned; the next service start
+	// (settleAbandonedPriors) and every later admission retry it.
+	if err := j.closeAbandonedWorkflow(state); err != nil {
+		return record, err
+	}
 	return record, nil
 }
 
@@ -376,4 +382,48 @@ func openProductionAbandonReconciler(ctx context.Context, registration piruntime
 	return newProductionUnknownReconciler(catalog, config, route), func() error {
 		return errors.Join(catalog.Close(), route.Close())
 	}, nil
+}
+
+// closeAbandonedWorkflow writes the catalog terminal of an abandoned request through the
+// reconciler, when it can. The call is idempotent. The caller has the abandon record in hand and
+// holds j.mu.
+func (j *piServiceRequestJournal) closeAbandonedWorkflow(state piServiceRequestState) error {
+	settler, ok := j.reconciler.(interface {
+		markAbandoned(piServiceRequestState) error
+	})
+	if !ok {
+		return nil
+	}
+	if err := settler.markAbandoned(state); err != nil {
+		return fmt.Errorf("request %q is abandoned but its catalog workflow was not closed: %w", state.accepted.RequestID, err)
+	}
+	return nil
+}
+
+// settleAbandonedPriors is the service-start recovery of an abandon whose catalog terminal is
+// missing (a crash or catalog failure after the abandon record, or an abandon from before the
+// terminal existed). Each abandoned prior is re-reconciled first, so a terminal is written only
+// while the evidence bound in its abandon record still holds. A prior that fails stays as it
+// was, and its error is joined into the result.
+func (j *piServiceRequestJournal) settleAbandonedPriors(ctx context.Context) error {
+	if j == nil || ctx == nil {
+		return ErrPiServiceUnavailable
+	}
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	reconciler := j.admissionReconciler()
+	var failures []error
+	for _, prior := range j.entries {
+		if prior.abandoned == nil || prior.terminal == nil || prior.terminal.Status != "unknown" {
+			continue
+		}
+		if err := j.recheckAbandoned(ctx, reconciler, prior); err != nil {
+			failures = append(failures, err)
+			continue
+		}
+		if err := j.closeAbandonedWorkflow(prior); err != nil {
+			failures = append(failures, err)
+		}
+	}
+	return errors.Join(failures...)
 }

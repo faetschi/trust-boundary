@@ -9,19 +9,20 @@ import (
 	"slices"
 
 	"tbound/supervisor/internal/delta"
+	"tbound/supervisor/internal/piruntime"
 	"tbound/supervisor/internal/sessionrepo"
 	"tbound/supervisor/internal/workflow"
 	"tbound/supervisor/internal/workspace"
 )
 
 // productPublicationTrust is the live-root trust of a supervisor-loop turn. The loop runs inside this
-// process, with no Pi worker and no command cell, so it is quiescent once its conversation is closed.
+// process, with no Pi worker. Command cells must settle before publication.
 // Every transition and origin is verified by the turn's own authority. The trust never claims what the
 // supervisor-loop worker cannot show:
 //
 //   - The host checks OS permissions on each managed root's ancestry before publication. Root and
 //     the service account remain trusted writers; a racing writer with either identity is not excluded.
-//   - It does not resolve a Bash lease origin, so a turn that composes Bash cannot start under it.
+//   - Bash authority comes only from the exact terminal lease and authenticated D09 receipts.
 //
 // It replaces neither the research production trust, which needs a Pi worker, its D09 launch proof and a
 // managed live-root permit, nor the test trust, which accepts every admission.
@@ -42,7 +43,13 @@ func (t *productPublicationTrust) CheckAdmission(ctx context.Context) error {
 		return err
 	}
 	a := t.authority
-	if a.runner != nil || a.workflowLedger == nil || a.store == nil || a.baseline == nil ||
+	if a.runner != nil {
+		runner, ok := a.runner.(*productD09TurnRunner)
+		if !ok || runner == nil || runner.productionCommandRunner == nil || runner.cleanup == nil || runner.Profile() != piruntime.D09CommandRunnerProfile {
+			return errProductTrust
+		}
+	}
+	if a.workflowLedger == nil || a.store == nil || a.baseline == nil ||
 		!slices.Contains(t.env.Registration.ProviderProfiles, a.providerProfileID) {
 		return errProductTrust
 	}
@@ -58,12 +65,36 @@ func (t *productPublicationTrust) CheckPublicationPrerequisites(ctx context.Cont
 		r.Bundle.MetadataPolicyDigest != a.metadataPolicyDigest {
 		return errProductTrust
 	}
+	commandRunner, _ := a.runner.(sessionrepo.CommandRunner)
 	for _, operation := range r.Bundle.Operations {
-		if operation.Tool == "bash" {
-			return errors.Join(errProductTrust, errors.New("a command effect has no D09 containment evidence"))
+		if operation.Tool != "bash" {
+			continue
+		}
+		if !deniedAfterEffect(operation) {
+			transition, err := productionTransitionForOperation(r.Bundle, operation)
+			if err != nil {
+				return err
+			}
+			if err := a.VerifyOrigin(r.Bundle, transition); err != nil {
+				return err
+			}
+		}
+		// A scope-denied effect has no approved delta, but still needs its settled receipt.
+		if err := verifyProductionBashEvidence(ctx, commandRunner, operation); err != nil {
+			return err
 		}
 	}
+	if a.runner != nil && a.runner.(*productD09TurnRunner).Pending() != 0 {
+		return errors.Join(errProductTrust, piruntime.ErrUnknownSettlement)
+	}
 	return nil
+}
+
+func (t *productPublicationTrust) ResolveTerminalLeaseOrigin(ctx context.Context, bundle sessionrepo.EvidenceBundle, terminal delta.Transition) (delta.OperationIdentity, error) {
+	if err := t.CheckAdmission(ctx); err != nil {
+		return delta.OperationIdentity{}, err
+	}
+	return t.authority.ResolveTerminalLeaseOrigin(ctx, bundle, terminal)
 }
 
 func (t *productPublicationTrust) AttestQuiescent(ctx context.Context, live *os.File, baseline, tip *sessionrepo.Generation) error {
@@ -83,6 +114,9 @@ func (t *productPublicationTrust) AttestQuiescent(ctx context.Context, live *os.
 	}
 	bundle, err := a.store.EvidenceBundle()
 	if err != nil {
+		return err
+	}
+	if err := t.CheckPublicationPrerequisites(ctx, workflow.EvidenceRequest{Workflow: a.workflowID, OwnerEpoch: 1, Bundle: bundle}); err != nil {
 		return err
 	}
 	checkpoint, _ := a.workflowLedger.Snapshot()

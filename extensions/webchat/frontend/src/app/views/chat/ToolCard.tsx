@@ -1,12 +1,11 @@
 // One tool activity: the request, the policy decision and the result, correlated by tool_call_id
-// (core store.ts groupTurn). The card is a native disclosure. Its summary states the tool, the
+// (core store.ts groupTurn). It is drawn as a Trace, a native disclosure. Its line states the tool, the
 // bounded summary and the chips; its steps state each record with its reason, digest, timestamp
 // and notes. The readings (readings.ts) carry the honesty rules.
 
 import type { ReactNode } from "react";
 import { Chip } from "../../../ui/Chip";
-import { cx } from "../../../ui/cx";
-import { Disclosure } from "../../../ui/Disclosure";
+import { Trace, TraceIcon, TraceLine, TraceMeta, TraceTitle } from "../../../ui/Trace";
 import { VisuallyHidden } from "../../../ui/VisuallyHidden";
 import { formatClock, shortDigest, toolGlyph } from "../../../core/format";
 import type { ItemView } from "../../../core/contract";
@@ -51,39 +50,41 @@ export function ToolCard({ block, verifiedOf, markOf }: ToolCardProps) {
   // A uniform view states "unverified" once, above the transcript, so the card carries the word for
   // screen-reader users only. A mixed view draws the chip, which the name already includes.
   const unverifiedWord = primary !== null && !verifiedOf(primary) && marker !== "unverified";
-  // A refused or denied record (a DENY verdict, or a result in the deny tone) takes the destructive tint of the card.
+  // The trace takes the state the record is in: a refused record (a DENY verdict, or a result in the deny tone) is deny, else the
+  // result's tone, else the request's, else the verdict's. A request with no result is never drawn as running or as success.
   const refused = verdict?.tone === "deny" || stateReadingOf?.tone === "deny";
+  const readTone = refused ? "deny" : (stateReadingOf?.tone ?? verdict?.tone ?? "idle");
+  // Only a terminal result may draw the success tone: an activity that reports "succeeded" with no result after it is a request.
+  const tone = readTone === "ok" && result === null ? "idle" : readTone;
 
-  // One wrapping line: at narrow widths the chips move under the summary, not past the card edge. The headline is the
+  // One wrapping line: at narrow widths the chips move under the summary, not past the line's edge. The headline is the
   // target, bold; the tool and the record are the detail line beneath it, in mono.
-  const summary = (
-    <span className={styles.head}>
-      <span className={styles.glyph} aria-hidden="true">
-        {toolGlyph(tool)}
-      </span>
-      <span className={styles.titles}>
-        <span className={styles.summaryText} title={headline}>
-          {headline}
-        </span>
-        <span className={styles.byline}>
-          <span className={styles.name}>{tool}</span>
-          {/* The record the card is named for: the result, else the request, else the policy decision (sequence as projected). */}
-          {primary ? <span className={styles.recordRef}>{`record ${primary.sequence}`}</span> : null}
-        </span>
-      </span>
+  const line = (
+    <TraceLine>
+      <TraceIcon>{toolGlyph(tool)}</TraceIcon>
+      <TraceTitle
+        title={headline}
+        detail={
+          <>
+            <span className={styles.name}>{tool}</span>
+            {/* The record the card is named for: the result, else the request, else the policy decision (sequence as projected). */}
+            {primary ? <span className={styles.recordRef}>{`record ${primary.sequence}`}</span> : null}
+          </>
+        }
+      />
       {unverifiedWord ? <VisuallyHidden>{UNVERIFIED_READING.label}</VisuallyHidden> : null}
-      <span className={styles.chips}>
+      <TraceMeta>
         {verdict ? <Chip tone={verdict.tone}>{verdict.label}</Chip> : null}
         {stateReadingOf ? <Chip tone={stateReadingOf.tone}>{stateReadingOf.label}</Chip> : null}
         {marker === "unverified" ? <Chip tone={UNVERIFIED_READING.tone}>{UNVERIFIED_READING.label}</Chip> : null}
         {marker === "verified" ? <Chip tone={evidence.tone}>{evidence.label}</Chip> : null}
-      </span>
-    </span>
+      </TraceMeta>
+    </TraceLine>
   );
 
   return (
-    <div className={cx(styles.card, refused && styles.refused)} data-anchor={block.key}>
-      <Disclosure summary={summary}>
+    <div data-anchor={block.key}>
+      <Trace tone={tone} line={line}>
         <div className={styles.steps}>
           {activity ? (
             <Step label="request" at={activity.occurred_at}>
@@ -116,7 +117,7 @@ export function ToolCard({ block, verifiedOf, markOf }: ToolCardProps) {
           ) : null}
           {activity?.detail ? <p className={styles.detail}>{activity.detail}</p> : null}
         </div>
-      </Disclosure>
+      </Trace>
     </div>
   );
 }

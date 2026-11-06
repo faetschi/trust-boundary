@@ -12,7 +12,7 @@ import (
 // ScanInstallationFormat and never run the candidate. The number is InstallationFormat (a test pins them
 // together). A binary without a marker predates it and is LegacyInstallationFormat. A forged marker only
 // passes the format check. The self-test and the restoration still guard a binary that does not work.
-const InstallationMarker = "tbound-product-installation-format=2;"
+const InstallationMarker = "tbound-product-installation-format=3;"
 
 // ScanInstallationFormat returns the format a binary declares, read through the one reader (or descriptor) the caller
 // validated and bounded by maxBinaryBytes. The first well-formed marker wins. None means the legacy format.

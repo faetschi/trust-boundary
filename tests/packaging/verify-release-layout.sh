@@ -111,7 +111,23 @@ verify_manifest() {
   return $rc
 }
 
+PREBUILT="${TBOUND_RELEASE_DIST:-}"
+if [ -n "$PREBUILT" ]; then
+  case "$PREBUILT" in
+    /*) ;;
+    *) PREBUILT="$ROOT/$PREBUILT" ;;
+  esac
+fi
 DIST="$BASE/dist"
+LIN="$BASE/dist-lin"
+if [ -n "$PREBUILT" ]; then
+  mkdir -p "$DIST" "$LIN"
+  cp -a "$PREBUILT"/. "$DIST"/
+  cp -a "$PREBUILT"/. "$LIN"/
+  linux_build=(true)
+else
+  linux_build=("$ROOT/scripts/build-release.sh" "$VERSION" "$LIN" linux/amd64)
+fi
 mode=diagnostic; [ "$REQUIRE_LINUX" -eq 1 ] && mode=release-acceptance
 echo "verify-release-layout: base=$BASE version=$VERSION mode=$mode"
 
@@ -127,13 +143,18 @@ else
   bad "manual publisher release asset regression"
 fi
 
-echo "[1] build windows/amd64 darwin/amd64 darwin/arm64"
-if ! "$ROOT/scripts/build-release.sh" "$VERSION" "$DIST" windows/amd64 darwin/amd64 darwin/arm64 >/dev/null; then
-  bad "non-linux release build failed"
-  echo "verify-release-layout: $pass passed, $fail failed, $skip skipped"
-  exit 1
+if [ -n "$PREBUILT" ]; then
+  echo "[1] use prebuilt windows/amd64 darwin/amd64 darwin/arm64"
+  ok "non-linux tarballs available"
+else
+  echo "[1] build windows/amd64 darwin/amd64 darwin/arm64"
+  if ! "$ROOT/scripts/build-release.sh" "$VERSION" "$DIST" windows/amd64 darwin/amd64 darwin/arm64 >/dev/null; then
+    bad "non-linux release build failed"
+    echo "verify-release-layout: $pass passed, $fail failed, $skip skipped"
+    exit 1
+  fi
+  ok "non-linux tarballs built"
 fi
-ok "non-linux tarballs built"
 
 check_nonlinux() {
   local tar="$1" os="$2" ext="$3"
@@ -184,10 +205,13 @@ if check_sums "$DIST/SHA256SUMS"; then
 else
   bad "SHA256SUMS digest verification failed"
 fi
-echo "[3] build linux/amd64 (entrypoint + metadata)"
-LIN="$BASE/dist-lin"
+if [ -n "$PREBUILT" ]; then
+  echo "[3] use prebuilt linux/amd64 (entrypoint + metadata)"
+else
+  echo "[3] build linux/amd64 (entrypoint + metadata)"
+fi
 LINLOG="$BASE/linux-build.log"
-if "$ROOT/scripts/build-release.sh" "$VERSION" "$LIN" linux/amd64 >"$LINLOG" 2>&1; then
+if "${linux_build[@]}" >"$LINLOG" 2>&1; then
   x="$BASE/x-linux"; mkdir -p "$x"
   tar -xzf "$LIN/tbound-$VERSION-linux-amd64.tar.gz" -C "$x"
   [ -f "$x/bin/tbound" ] && ok "linux bin/tbound" || bad "linux bin/tbound missing"

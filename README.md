@@ -27,13 +27,17 @@ See [OVERVIEW.md](OVERVIEW.md) for the engineering checkpoint and
 The TBound product service runs interactive, governed chat turns on one Linux
 host, from the terminal (`tbound chat`) or a browser (`tbound-webchat --live`).
 The model works through the same gate: reads run, a write waits for your
-Publish or Discard, and Bash is denied until a contained command runner exists.
+Publish or Discard. Bash runs through the signed D09 Podman/crun cell when
+the install enables it; the first-turn guide starts with Bash denied.
 Its worker is the supervisor's own agent loop, not Pi, and nothing it produces
 is thesis evidence.
 
 This ran end to end on 2026-11-02 on a disposable Hyper-V VM, driven from a
 Windows workstation over SSH, with a real OpenCode Go provider. To set it up
 and try it, follow [Run a first governed product turn](docs/guides/product-first-turn.md).
+Bash qualification, turns, publication, scope refusal, and predecessor replay ran
+on the demo VM on 2026-11-04. Follow [Enable Bash](docs/guides/product-bash.md)
+for that installation. Crash-recovery fixes await the next live run.
 
 ## Start here
 
@@ -44,6 +48,8 @@ and try it, follow [Run a first governed product turn](docs/guides/product-first
   run, and the thesis evaluation workflow.
 - [Run a first governed product turn](docs/guides/product-first-turn.md): set up the
   product service and chat on one Linux host.
+- [Enable Bash in the product service](docs/guides/product-bash.md): sign, install,
+  and qualify the offline command image.
 - [Try the product demo from Windows](docs/guides/product-demo-windows.md): terminal
   and browser chat with a product VM over SSH, from Git Bash or VS Code.
 - [Documentation index](docs/README.md): guides and detailed references.

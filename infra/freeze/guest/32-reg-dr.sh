@@ -14,7 +14,7 @@
 #   L       client-run dr (any task; Pi is not started; the service run FAILS after the launch proof is journaled: a nonzero client exit is EXPECTED), poll status dr.
 #           The run id is the new "*-session-audit.jsonl" (listing of /var/tmp/tbound-op/_ before vs after the run; override with DR_RUNID=<id>).
 #   The service is STOPPED after the client returns and on cleanup after a timeout/export failure (KEEP_RUNNING=1 to skip), as the runbook says: do not start it for anything else before the
-#   pilot cycle replaces the probe template. Checks: new pi_workflow_terminal since the dr start (settles the rp workflow), exactly one production_tcb_proof event in
+#   pilot cycle replaces the probe template. Checks: the rp workflow is terminal:completed, the dr one open (unknown by design), exactly one production_tcb_proof event in
 #   the run's session audit, the archive in /root/ga/dr equals the signed files. Result: $HF/dr/RUNID for 40-guest-evidence.sh route-direct-runtime.
 # Resumable and STOP_AFTER=<cfg|measure|s3|reg|s4|prof|start|run> as 30/31.
 # Preconditions (checked): 10, 20, 50 done; session sudo CLOSED; 31-reg-rp.sh completed all its checks ($HF/rp/CHECKS_OK). The live root must still hold

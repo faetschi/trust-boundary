@@ -191,3 +191,149 @@ func TestOperatorResolutionMissingCatalogWritesNothing(t *testing.T) {
 		t.Fatalf("missing catalog was created: %v", err)
 	}
 }
+
+// A nonempty command journal is accepted only with the composition's claim that every command settled.
+func TestOperatorResolutionAcceptsASettledCommandJournalOnly(t *testing.T) {
+	for _, settled := range []bool{false, true} {
+		c, path := newCatalog(t)
+		reg := c.st.reg
+		turn := linkedTurn(t, c, "settled")
+		if err := c.MarkTurnUnknown(turn.ID, "lost"); err != nil {
+			t.Fatal(err)
+		}
+		c.Close()
+		_, err := OperatorResolve(path, reg, turn.ID, "abandon settled work", false, func(turn Turn) (OperatorEvidence, error) {
+			evidence, _ := operatorEvidence(turn)
+			evidence.CommandHead, evidence.CommandsSettled = dg("command settlements"), settled
+			return evidence, nil
+		})
+		if (err == nil) != settled {
+			t.Fatalf("settled=%v: %v", settled, err)
+		}
+		if settled {
+			opened, err := Open(path, reg)
+			if err != nil {
+				t.Fatalf("the settled resolution did not replay: %v", err)
+			}
+			opened.Close()
+		}
+	}
+}
+
+// Settle closes durable evidence of the composition and runs only for a real resolution, after every check and
+// before the append. A Settle failure writes no resolution, and the record commits the records it closed.
+func TestOperatorResolutionSettlesBeforeAppendOnlyWhenReal(t *testing.T) {
+	for _, mode := range []string{"dry-run", "real", "settle-fails", "too-many-closed"} {
+		t.Run(mode, func(t *testing.T) {
+			c, path := newCatalog(t)
+			reg := c.st.reg
+			turn := linkedTurn(t, c, "settle")
+			if err := c.MarkTurnUnknown(turn.ID, "lost"); err != nil {
+				t.Fatal(err)
+			}
+			c.Close()
+			before, _ := os.ReadFile(path)
+			settled := 0
+			closed := []string{"root-pending-record"}
+			if mode == "too-many-closed" {
+				closed = make([]string, maxPublicationClosed+1)
+				for i := range closed {
+					closed[i] = "root-pending-record"
+				}
+			}
+			_, err := OperatorResolve(path, reg, turn.ID, "close the pending publication", mode == "dry-run", func(turn Turn) (OperatorEvidence, error) {
+				evidence, _ := operatorEvidence(turn)
+				evidence.PublicationClosed = closed
+				evidence.Settle = func() error {
+					settled++
+					if mode == "settle-fails" {
+						return os.ErrInvalid
+					}
+					return nil
+				}
+				return evidence, nil
+			})
+			after, _ := os.ReadFile(path)
+			switch mode {
+			case "dry-run":
+				if err != nil || settled != 0 || string(after) != string(before) {
+					t.Fatalf("dry run: settled=%d err=%v", settled, err)
+				}
+			case "real":
+				if err != nil || settled != 1 {
+					t.Fatalf("real: settled=%d err=%v", settled, err)
+				}
+				opened, err := Open(path, reg)
+				if err != nil {
+					t.Fatalf("the resolution did not replay: %v", err)
+				}
+				resolved, _ := opened.Turn(turn.ID)
+				opened.Close()
+				if resolved.OperatorResolution == nil || len(resolved.OperatorResolution.PublicationClosed) != 1 {
+					t.Fatalf("the record lost the closed publication: %+v", resolved.OperatorResolution)
+				}
+			default:
+				if err == nil || settled > 1 || string(after) != string(before) {
+					t.Fatalf("%s: settled=%d err=%v wrote=%v", mode, settled, err, string(after) != string(before))
+				}
+			}
+		})
+	}
+}
+
+// The catalog hands out copies of its state. The closed-publication and left-staging lists of an operator resolution
+// must not alias it, or an edit of a returned turn would change later reads without a journal record.
+func TestOperatorResolutionEvidenceDoesNotAliasCatalogState(t *testing.T) {
+	c, path := newCatalog(t)
+	reg := c.st.reg
+	turn := linkedTurn(t, c, "alias")
+	if err := c.MarkTurnUnknown(turn.ID, "lost"); err != nil {
+		t.Fatal(err)
+	}
+	c.Close()
+	if _, err := OperatorResolve(path, reg, turn.ID, "close the pending publication", false, func(turn Turn) (OperatorEvidence, error) {
+		evidence, _ := operatorEvidence(turn)
+		evidence.PublicationClosed = []string{"root-pending-record"}
+		evidence.PublicationStagingLeft = []string{"/state/.tbound-publication-aa"}
+		return evidence, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	opened := openAt(t, path, reg)
+	read, _ := opened.Turn(turn.ID)
+	read.OperatorResolution.PublicationClosed[0] = "edited by the caller"
+	read.OperatorResolution.PublicationStagingLeft[0] = "edited by the caller"
+	again, _ := opened.Turn(turn.ID)
+	if got, left := again.OperatorResolution.PublicationClosed, again.OperatorResolution.PublicationStagingLeft; len(got) != 1 || got[0] != "root-pending-record" || len(left) != 1 || left[0] != "/state/.tbound-publication-aa" {
+		t.Fatalf("an edit of a returned turn reached the catalog: %q %q", got, left)
+	}
+}
+
+// A resolution that names a staging directory by anything but a bounded absolute path, or too many of them, is
+// refused and writes nothing.
+func TestOperatorResolutionRefusesMalformedLeftStagingPaths(t *testing.T) {
+	tooMany := make([]string, maxPublicationClosed+1)
+	for i := range tooMany {
+		tooMany[i] = "/state/.tbound-publication-aa"
+	}
+	for name, left := range map[string][]string{"relative": {".tbound-publication-aa"}, "too many": tooMany} {
+		t.Run(name, func(t *testing.T) {
+			c, path := newCatalog(t)
+			reg := c.st.reg
+			turn := linkedTurn(t, c, "staging")
+			if err := c.MarkTurnUnknown(turn.ID, "lost"); err != nil {
+				t.Fatal(err)
+			}
+			c.Close()
+			before, _ := os.ReadFile(path)
+			_, err := OperatorResolve(path, reg, turn.ID, "close the pending publication", false, func(turn Turn) (OperatorEvidence, error) {
+				evidence, _ := operatorEvidence(turn)
+				evidence.PublicationStagingLeft = left
+				return evidence, nil
+			})
+			if after, _ := os.ReadFile(path); err == nil || string(after) != string(before) {
+				t.Fatalf("malformed staging paths accepted or written: %v", err)
+			}
+		})
+	}
+}

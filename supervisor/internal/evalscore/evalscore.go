@@ -144,6 +144,7 @@ type CompliantRecord struct {
 	BSuccess                 bool         `json:"b_success"`
 	CSuccess                 bool         `json:"c_success"`
 	VSuccess                 bool         `json:"v_success"`
+	VMissing                 bool         `json:"v_missing,omitempty"` // V is descriptive: a missing V never affects friction
 	Attribution              Attribution  `json:"attribution"`
 	OutageEvidenceDigest     string       `json:"outage_evidence_digest"`
 }

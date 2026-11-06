@@ -516,7 +516,7 @@ func (r *D09CommandRunner) Run(ctx context.Context, view *sessionrepo.CommandVie
 			cleanupCtx, cancel := context.WithTimeout(context.Background(), d09CommandCleanupLimit)
 			if containerStarted {
 				cleanup := exec.CommandContext(cleanupCtx, report.PodmanPath, "rm", "-f", name)
-				cleanup.Env = d09ProbeEnv()
+				cleanup.Env = r.launcher.commandEnvironment()
 				cleanup.Stdout, cleanup.Stderr = io.Discard, io.Discard
 				_ = cleanup.Run()
 			}
@@ -605,9 +605,15 @@ func (r *D09CommandRunner) Run(ctx context.Context, view *sessionrepo.CommandVie
 		stderr = newD09MarkedOutput(d09CommandOutputLimit, []byte(D09OutputEndMarker(outputToken)))
 	}
 	command := exec.CommandContext(commandCtx, report.PodmanPath, args...)
-	command.Env = d09ProbeEnv()
+	command.Env = r.launcher.commandEnvironment()
 	command.ExtraFiles = []*os.File{viewSource, proofWrite, ackRead} // child fds3=readonly-view-source,4=proof,5=start-ack.
 	command.Stdout, command.Stderr = stdout, stderr
+	productOwner := D09ProductCommandOwnership{ContainerName: name, LeaseID: r.leaseID, ViewID: viewID, ViewDevice: uint64(viewStat.Dev), ViewInode: viewStat.Ino}
+	if err := r.launcher.reportProductCommand(productOwner, nil, 0); err != nil {
+		_ = proofWrite.Close()
+		_ = ackRead.Close()
+		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, err
+	}
 	if err := command.Start(); err != nil {
 		_ = proofWrite.Close()
 		_ = ackRead.Close()
@@ -626,7 +632,7 @@ func (r *D09CommandRunner) Run(ctx context.Context, view *sessionrepo.CommandVie
 		_ = waitD09PodmanShutdown(waitResult, d09CommandCleanupLimit)
 		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, fmt.Errorf("D09 command container identity is UNKNOWN: %w", err)
 	}
-	containerState, err := inspectContainer(commandCtx, report.PodmanPath, cid)
+	containerState, err := inspectContainer(commandCtx, report.PodmanPath, cid, r.launcher.commandEnvironment())
 	if err != nil || containerState.State.Status != "running" || containerState.State.PID <= 0 ||
 		strings.TrimPrefix(containerState.Name, "/") != name {
 		r.cleanupCommand(scope, report.PodmanPath, name)
@@ -686,6 +692,13 @@ func (r *D09CommandRunner) Run(ctx context.Context, view *sessionrepo.CommandVie
 		_ = waitD09PodmanShutdown(waitResult, d09CommandCleanupLimit)
 		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, errors.Join(fmt.Errorf("read command mount-namespace identity"), err)
 	}
+	productOwner.MountNSInode = mountNSInode
+	if err := r.launcher.reportProductCommand(productOwner, scope.scope, startProof.LeaderPID); err != nil {
+		r.cleanupCommand(scope, report.PodmanPath, name)
+		_ = command.Process.Kill()
+		_ = waitD09PodmanShutdown(waitResult, d09CommandCleanupLimit)
+		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, err
+	}
 	var ack [1]byte
 	ack[0] = 1
 	ackSent = true // from here the cell may hold the acknowledgement and start the command
@@ -732,7 +745,7 @@ func (r *D09CommandRunner) Run(ctx context.Context, view *sessionrepo.CommandVie
 		_ = waitD09PodmanShutdown(waitResult, d09CommandCleanupLimit)
 		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, commandCtx.Err()
 	}
-	state, err := inspectContainer(commandCtx, report.PodmanPath, cid)
+	state, err := inspectContainer(commandCtx, report.PodmanPath, cid, r.launcher.commandEnvironment())
 	if err != nil || state.State.Status != "exited" {
 		r.cleanupCommand(scope, report.PodmanPath, name)
 		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, errors.Join(fmt.Errorf("D09 command container did not report an observed exit"), err)
@@ -754,11 +767,11 @@ func (r *D09CommandRunner) Run(ctx context.Context, view *sessionrepo.CommandVie
 		r.cleanupCommand(scope, report.PodmanPath, name)
 		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, errors.New("D09 command output exceeded the bounded result size")
 	}
-	if err := removeContainer(commandCtx, report.PodmanPath, cid); err != nil {
+	if err := removeContainer(commandCtx, report.PodmanPath, cid, r.launcher.commandEnvironment()); err != nil {
 		r.cleanupCommand(scope, report.PodmanPath, name)
 		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, err
 	}
-	if exists, err := containerExists(commandCtx, report.PodmanPath, cid); err != nil || exists {
+	if exists, err := containerExists(commandCtx, report.PodmanPath, cid, r.launcher.commandEnvironment()); err != nil || exists {
 		r.cleanupCommand(scope, report.PodmanPath, name)
 		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, errors.Join(fmt.Errorf("D09 command container removal is UNKNOWN"), err)
 	}
@@ -879,7 +892,7 @@ func (r *D09CommandRunner) cleanupCommand(scope *d09OwnedCommandScope, podmanPat
 	cleanupCtx, cancel := context.WithTimeout(context.Background(), d09CommandCleanupLimit)
 	defer cancel()
 	cmd := exec.CommandContext(cleanupCtx, podmanPath, "rm", "-f", name)
-	cmd.Env = d09ProbeEnv()
+	cmd.Env = r.launcher.commandEnvironment()
 	_ = cmd.Run()
 	if scope != nil {
 		_, _ = scope.Settle(cleanupCtx)
@@ -1189,9 +1202,9 @@ type d09ContainerState struct {
 	} `json:"State"`
 }
 
-func inspectContainer(ctx context.Context, podmanPath, id string) (d09ContainerState, error) {
+func inspectContainer(ctx context.Context, podmanPath, id string, environment []string) (d09ContainerState, error) {
 	cmd := exec.CommandContext(ctx, podmanPath, "inspect", id)
-	cmd.Env = d09ProbeEnv()
+	cmd.Env = environment
 	var output d09BoundedOutput
 	output.limit = 1 << 20
 	cmd.Stdout = &output
@@ -1206,16 +1219,16 @@ func inspectContainer(ctx context.Context, podmanPath, id string) (d09ContainerS
 	return values[0], nil
 }
 
-func removeContainer(ctx context.Context, podmanPath, id string) error {
+func removeContainer(ctx context.Context, podmanPath, id string, environment []string) error {
 	cmd := exec.CommandContext(ctx, podmanPath, "rm", "-f", id)
-	cmd.Env = d09ProbeEnv()
+	cmd.Env = environment
 	cmd.Stdout, cmd.Stderr = io.Discard, io.Discard
 	return cmd.Run()
 }
 
-func containerExists(ctx context.Context, podmanPath, id string) (bool, error) {
+func containerExists(ctx context.Context, podmanPath, id string, environment []string) (bool, error) {
 	cmd := exec.CommandContext(ctx, podmanPath, "container", "exists", id)
-	cmd.Env = d09ProbeEnv()
+	cmd.Env = environment
 	cmd.Stdout, cmd.Stderr = io.Discard, io.Discard
 	err := cmd.Run()
 	if err == nil {

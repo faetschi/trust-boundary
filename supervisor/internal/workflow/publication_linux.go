@@ -127,7 +127,24 @@ func NewRootLedger(journal *audit.Journal) (*RootLedger, error) {
 // publication API observes it. UNKNOWN remains quarantined. A pending marker
 // with no prepare is safe to resolve as no live effect can precede prepare.
 func (l *RootLedger) RecoverBeforeAdmission(ctx context.Context, liveRoot *os.File, open RecoveryRepositoryOpener) error {
-	if l == nil || l.journal == nil || l.state == nil || liveRoot == nil || open == nil || ctx == nil {
+	if open == nil {
+		return ErrFinalizerConfig
+	}
+	return l.recoverBeforeAdmission(ctx, liveRoot, open, nil)
+}
+
+// CheckRecoverBeforeAdmission makes every decision of RecoverBeforeAdmission that the journal alone settles, and
+// writes nothing. It returns how many unresolved records need publication recovery, which only a repository can
+// run, and fails like RecoverBeforeAdmission for a record that stays quarantined.
+func (l *RootLedger) CheckRecoverBeforeAdmission(ctx context.Context, liveRoot *os.File) (recoveries int, err error) {
+	err = l.recoverBeforeAdmission(ctx, liveRoot, nil, &recoveries)
+	return recoveries, err
+}
+
+// recoverBeforeAdmission is the recovery loop; a non-nil dryRecoveries makes it a dry run that counts the records
+// needing a repository there.
+func (l *RootLedger) recoverBeforeAdmission(ctx context.Context, liveRoot *os.File, open RecoveryRepositoryOpener, dryRecoveries *int) error {
+	if l == nil || l.journal == nil || l.state == nil || liveRoot == nil || ctx == nil {
 		return ErrFinalizerConfig
 	}
 	if err := ctx.Err(); err != nil {
@@ -146,6 +163,12 @@ func (l *RootLedger) RecoverBeforeAdmission(ctx context.Context, liveRoot *os.Fi
 	if err != nil {
 		return err
 	}
+	resolve := func(item pendingRoot, transactionID string, status publication.Status, reason string) error {
+		if dryRecoveries != nil {
+			return nil
+		}
+		return l.resolve(item, transactionID, status, reason)
+	}
 	for _, item := range pending {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -155,7 +178,7 @@ func (l *RootLedger) RecoverBeforeAdmission(ctx context.Context, liveRoot *os.Fi
 			return fmt.Errorf("%w: %v", ErrRootQuarantined, err)
 		}
 		if txID == "" {
-			if err := l.resolve(item, "", publication.StatusFailed, "no publication prepare exists; no live effect could have begun"); err != nil {
+			if err := resolve(item, "", publication.StatusFailed, "no publication prepare exists; no live effect could have begun"); err != nil {
 				return err
 			}
 			continue
@@ -164,9 +187,13 @@ func (l *RootLedger) RecoverBeforeAdmission(ctx context.Context, liveRoot *os.Fi
 			if terminal == publication.StatusUnknown {
 				return fmt.Errorf("%w: workflow %s transaction %s is UNKNOWN", ErrRootQuarantined, item.WorkflowID, txID)
 			}
-			if err := l.resolve(item, txID, terminal, "recovered existing durable terminal record"); err != nil {
+			if err := resolve(item, txID, terminal, "recovered existing durable terminal record"); err != nil {
 				return err
 			}
+			continue
+		}
+		if dryRecoveries != nil {
+			*dryRecoveries++
 			continue
 		}
 		repository, err := open(item.WorkflowID)
@@ -193,6 +220,9 @@ func (l *RootLedger) RecoverBeforeAdmission(ctx context.Context, liveRoot *os.Fi
 		if err := l.resolve(item, txID, result.Status, "reconciled by publication.Recover"); err != nil {
 			return err
 		}
+	}
+	if dryRecoveries != nil {
+		return nil
 	}
 	remaining, _, err := l.pendingForRoot(root)
 	if err != nil {
