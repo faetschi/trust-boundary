@@ -813,7 +813,7 @@ func replayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 				evidence.StatusCode != 200 || evidence.ResponseDigest != digestBytes(evidence.Response) ||
 				len(evidence.Request.Body) > broker.MaxDurableExchangeBytes ||
 				len(evidence.Response) > broker.MaxDurableExchangeBytes-len(evidence.Request.Body) ||
-				evidence.Reason == "" || evidence.Reason != captureRefusalReason(evidence.Response) ||
+				evidence.Reason == "" || (evidence.Reason != captureRefusalReason(evidence.Response) && evidence.Reason != legacyCaptureRefusalReason(evidence.Response)) ||
 				verifyReplayEventID(record, cfg.ConversationID, captureRefusalID, ordinal) != nil {
 				return TranscriptProjection{}, replayError("product provider capture refusal differs from its reserved request or rejected response")
 			}

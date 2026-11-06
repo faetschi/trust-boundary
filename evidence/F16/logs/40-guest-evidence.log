@@ -1,0 +1,249 @@
+== 40-guest-evidence start 2026-11-06T09:17:21Z guest=172.26.25.5
+OK   FROZEN-COMMIT = 97738b60125b77be41c4800c7ce1d0fb327557f6
+OK   F15 record TBOUND_DIGEST == PREV_TBOUND_DIGEST = sha256:7a869ca90977e731b96ea292b647875bc39d4186030c15b57addba60a40b7691
+OK   F15 record TBP_DIGEST == PREV_TBP_DIGEST = sha256:94499a2e5e53a4bae9a6c1303277c9c58fe987b414c19b9b89ce1760c12bfcda
+OK   F15 record ENTRYPOINT_DIGEST == PREV_ENTRYPOINT_DIGEST = sha256:6bb43254a27feab73d4c874b677432ee6de8804b339cbb2c11a906bd8d2a8ac8
+OK   F15 record SRC_DIGEST == PREV_SRC_DIGEST = sha256:9a19f0da01fc650505da5f3a9d7845c4e7c6cd2f661ba1eee29c28f39a2d1d7d
+OK   F15 record BUNDLE_DIGEST == PREV_BUNDLE_DIGEST = sha256:5104ec0ec6a74c441a3f545723f455e450784fcdd28c0e487621b23077902575
+OK   F15 record IMGDIGEST == PREV_IMGDIGEST = sha256:bcca636b07bba29a176d119472e83907b243368063121aff18ab31f25083c98c
+OK   F15 record CFG == PREV_CFG = sha256:8dfc1c96b3114ee79b77143e26183bcdfa6c72a25b5debd7f6b6bff1764cec15
+OK   F15 record BASE_TD == PREV_BASE_TD = sha256:85139e5fe9f05bb3ee7576df08b919fda565efe45cf49703568069bedf26b859
+OK   F15 record LOAD_TAR_DIGEST == PREV_LOAD_TAR_DIGEST = sha256:0dcc928425ad16bc58da32b819da6318177680ecdab562c7bbd92461d9d2f541
+OK   F15 record CAL_RO_DIGEST == PREV_CAL_RO_DIGEST = sha256:6b12c0ac0dcbf65684ea3889cfd8241f9e8e69cc7ccbcb52eb22e5ddd851188e
+OK   F15 record CAL_RW_DIGEST == PREV_CAL_RW_DIGEST = sha256:07b235cccb3fd8bcbd3be50b0816e708d7b5332fbefa78deb54d0a55497b3bf5
+OK   F15 record TEST_PROCORACLE == PREV_TEST_PROCORACLE = sha256:53f748ad00e8c8767227cb51e36a5721f65a7cb757598ff988a0175e5341aba8
+OK   F15 record TEST_ENTRYPOINT == PREV_TEST_ENTRYPOINT = sha256:6d4a89e471962e29060ca8c5f4f83dafa3692726db4fa7a0b64d76fdfa64445d
+OK   F15 FROZEN-COMMIT record == PREV_COMMIT = 2a6492dda21e5af9eab8e92e81f56725b3f8e9c5
+OK   F15 g1/RID record == PREV_G1_RID = g1-req-20261105T093204Z
+OK   F15 rp/RID record == PREV_RP_RID = rp-req-20261105T093425Z
+OK   F15 dr/RID record == PREV_DR_RID = dr-req-20261105T093631Z
+OK   F15 dr/RUNID record == PREV_DR_RUNID = production-run-0013b266e85f3b58fb6dc2ba
+OK   F15 dr/CHECKS_OK record == 'ok' = ok
+OK   F15 dr/ADMISSION_ID record == PREV_DR_ADMISSION_ID = route-probe-dr-2026-11-01a
+OK   IMGDIGEST (session-env == HF) = sha256:5b7ce434523688606b9e748b793fc696206be498cb3379eba24a5cc96b6de5f7
+OK   frozen commit 97738b60125b77be41c4800c7ce1d0fb327557f6; HF=/home/tbound/tbound-h/f16
+
+== preflight: guest 172.26.25.5 (pinned host key, StrictHostKeyChecking=yes), tbound-op only
+guest address: GUEST_IP=172.26.25.5 (changes after host restarts; if a connection fails, look it up: PowerShell 'Get-NetNeighbor -LinkLayerAddress 00-15-5D-0C-40-02', then export GUEST_IP=<IPAddress>)
+OK   ssh identity = tboundadmin
+OK   sudo -n true fails (narrowed sudo)
+guest: tbound-abi8-seed 7.0.0-38-generic 2026-11-06T09:17:27Z 
+
+== == capability
+OK   tbound-profile owner file == expected digest = sha256:fe11ddd13d2b223961de85faee51325638cc816a0ed56def2b847cfaff4d6dad
+OK   staged stage-ga/tbound-profile == owner file = sha256:fe11ddd13d2b223961de85faee51325638cc816a0ed56def2b847cfaff4d6dad
+stage-ga tbound-profile ok: sha256:fe11ddd13d2b223961de85faee51325638cc816a0ed56def2b847cfaff4d6dad -> /root/ga/tbound-profile (0500)
+OK   recorded evq/staged.tbound-profile = sha256:fe11ddd13d2b223961de85faee51325638cc816a0ed56def2b847cfaff4d6dad
+wrote guest-capability artifact /root/ga/out/capability.json
+sha256 sha256:b91f1742ff311890ed9af1d445c09ab79948c5da5fd62be800030a921c0a8165
+binary_sha256 sha256:fe11ddd13d2b223961de85faee51325638cc816a0ed56def2b847cfaff4d6dad
+commit 97738b60125b77be41c4800c7ce1d0fb327557f6
+guest-evidence capability ok: sha256:b91f1742ff311890ed9af1d445c09ab79948c5da5fd62be800030a921c0a8165 -> /var/tmp/tbound-op/_/evidence-capability.json
+OK   saved /home/tbound/tbound-h/f16/evq/capability.json
+OK   fetched capability.json == digest the producer printed = sha256:b91f1742ff311890ed9af1d445c09ab79948c5da5fd62be800030a921c0a8165
+
+== == procoracle
+OK   tbound-profile already staged to /root/ga (sha256:fe11ddd13d2b223961de85faee51325638cc816a0ed56def2b847cfaff4d6dad)
+OK   procoracle.test owner file == expected digest = sha256:e34e26c91238bc0712341ba6694de2fc3985c15e970fc1e17d9f977275407dcf
+OK   staged stage-ga/procoracle.test == owner file = sha256:e34e26c91238bc0712341ba6694de2fc3985c15e970fc1e17d9f977275407dcf
+stage-ga procoracle-test ok: sha256:e34e26c91238bc0712341ba6694de2fc3985c15e970fc1e17d9f977275407dcf -> /root/ga/procoracle.test (0500)
+OK   recorded evq/staged.procoracle.test = sha256:e34e26c91238bc0712341ba6694de2fc3985c15e970fc1e17d9f977275407dcf
+wrote guest-tests-procoracle artifact /root/ga/out/procoracle.json
+sha256 sha256:8e5d7af3e6861d6494b29acc0dc4b21ff16ea7f7cc0edd7e72b1e3baa99bf6b9
+binary_sha256 sha256:fe11ddd13d2b223961de85faee51325638cc816a0ed56def2b847cfaff4d6dad
+commit 97738b60125b77be41c4800c7ce1d0fb327557f6
+guest-evidence procoracle ok: sha256:8e5d7af3e6861d6494b29acc0dc4b21ff16ea7f7cc0edd7e72b1e3baa99bf6b9 -> /var/tmp/tbound-op/_/evidence-procoracle.json
+OK   saved /home/tbound/tbound-h/f16/evq/procoracle.json
+OK   fetched procoracle.json == digest the producer printed = sha256:8e5d7af3e6861d6494b29acc0dc4b21ff16ea7f7cc0edd7e72b1e3baa99bf6b9
+
+== == landlock-connect
+OK   tbound-profile already staged to /root/ga (sha256:fe11ddd13d2b223961de85faee51325638cc816a0ed56def2b847cfaff4d6dad)
+OK   tbound-cell-entrypoint.test owner file == expected digest = sha256:c860d2c64aa696bb42bdf56a04ba619525e4fe55d70871fe30e29ba6ca509c0a
+OK   staged stage-ga/tbound-cell-entrypoint.test == owner file = sha256:c860d2c64aa696bb42bdf56a04ba619525e4fe55d70871fe30e29ba6ca509c0a
+stage-ga cell-entrypoint-test ok: sha256:c860d2c64aa696bb42bdf56a04ba619525e4fe55d70871fe30e29ba6ca509c0a -> /root/ga/tbound-cell-entrypoint.test (0500)
+OK   recorded evq/staged.tbound-cell-entrypoint.test = sha256:c860d2c64aa696bb42bdf56a04ba619525e4fe55d70871fe30e29ba6ca509c0a
+wrote guest-tests-landlock-connect artifact /root/ga/out/landlock-connect.json
+sha256 sha256:cec73317259b9a59661ab7b652e4c487a632b863088ad87f9e00dbce7b5ca9ae
+binary_sha256 sha256:fe11ddd13d2b223961de85faee51325638cc816a0ed56def2b847cfaff4d6dad
+commit 97738b60125b77be41c4800c7ce1d0fb327557f6
+guest-evidence landlock-connect ok: sha256:cec73317259b9a59661ab7b652e4c487a632b863088ad87f9e00dbce7b5ca9ae -> /var/tmp/tbound-op/_/evidence-landlock-connect.json
+OK   saved /home/tbound/tbound-h/f16/evq/landlock-connect.json
+OK   fetched landlock-connect.json == digest the producer printed = sha256:cec73317259b9a59661ab7b652e4c487a632b863088ad87f9e00dbce7b5ca9ae
+
+== == provider-exchange
+OK   tbound-profile already staged to /root/ga (sha256:fe11ddd13d2b223961de85faee51325638cc816a0ed56def2b847cfaff4d6dad)
+OK   staged run.json == generated = sha256:c0c70a4e36570464e86d5b45a56eecf07941b491dd833a9589f8d1e8d23a6ff3
+OK   saved /home/tbound/tbound-h/f16/evq/ga-run.json
+stage-ga run-json ok: sha256:c0c70a4e36570464e86d5b45a56eecf07941b491dd833a9589f8d1e8d23a6ff3 -> /root/ga/run.json (0444)
+OK   recorded evq/staged.run.json = sha256:c0c70a4e36570464e86d5b45a56eecf07941b491dd833a9589f8d1e8d23a6ff3
+wrote guest-provider-exchange artifact /root/ga/out/provider.json
+sha256 sha256:831789cd842a5621012dab4431c75130011d0cbb64c86c87037019328b5b4686
+binary_sha256 sha256:fe11ddd13d2b223961de85faee51325638cc816a0ed56def2b847cfaff4d6dad
+commit 97738b60125b77be41c4800c7ce1d0fb327557f6
+guest-evidence provider-exchange ok: sha256:831789cd842a5621012dab4431c75130011d0cbb64c86c87037019328b5b4686 -> /var/tmp/tbound-op/_/evidence-provider.json
+OK   saved /home/tbound/tbound-h/f16/evq/provider.json
+OK   fetched provider.json == digest the producer printed = sha256:831789cd842a5621012dab4431c75130011d0cbb64c86c87037019328b5b4686
+
+== summary
+capability: DONE (commit 97738b60125b77be41c4800c7ce1d0fb327557f6) -> /home/tbound/tbound-h/f16/evq/capability.json (sha256:b91f1742ff311890ed9af1d445c09ab79948c5da5fd62be800030a921c0a8165)
+procoracle: DONE (commit 97738b60125b77be41c4800c7ce1d0fb327557f6) -> /home/tbound/tbound-h/f16/evq/procoracle.json (sha256:8e5d7af3e6861d6494b29acc0dc4b21ff16ea7f7cc0edd7e72b1e3baa99bf6b9)
+landlock-connect: DONE (commit 97738b60125b77be41c4800c7ce1d0fb327557f6) -> /home/tbound/tbound-h/f16/evq/landlock-connect.json (sha256:cec73317259b9a59661ab7b652e4c487a632b863088ad87f9e00dbce7b5ca9ae)
+provider-exchange: DONE (commit 97738b60125b77be41c4800c7ce1d0fb327557f6) -> /home/tbound/tbound-h/f16/evq/provider.json (sha256:831789cd842a5621012dab4431c75130011d0cbb64c86c87037019328b5b4686)
+-rw-r----- 1 root tboundadmin   3293 Nov  6 09:17 evidence-capability.json
+-rw-r----- 1 root tboundadmin   3184 Nov  6 09:17 evidence-landlock-connect.json
+-rw-r----- 1 root tboundadmin  11619 Nov  6 09:17 evidence-procoracle.json
+-rw-r----- 1 root tboundadmin   3347 Nov  6 09:17 evidence-provider.json
+NOTE host side: tbound-run evq/route-report take --artifact guest-capability=<file> etc. from /home/tbound/tbound-h/f16/evq (copy to the host /home/tbound/tbound-h/ga names as the runbook wants); --guest-binary-sha256 = TBP_DIGEST.
+
+== DONE 40-guest-evidence.sh 2026-11-06T09:17:56Z
+== 40-guest-evidence start 2026-11-06T09:19:38Z guest=172.26.25.5
+OK   FROZEN-COMMIT = 97738b60125b77be41c4800c7ce1d0fb327557f6
+OK   F15 record TBOUND_DIGEST == PREV_TBOUND_DIGEST = sha256:7a869ca90977e731b96ea292b647875bc39d4186030c15b57addba60a40b7691
+OK   F15 record TBP_DIGEST == PREV_TBP_DIGEST = sha256:94499a2e5e53a4bae9a6c1303277c9c58fe987b414c19b9b89ce1760c12bfcda
+OK   F15 record ENTRYPOINT_DIGEST == PREV_ENTRYPOINT_DIGEST = sha256:6bb43254a27feab73d4c874b677432ee6de8804b339cbb2c11a906bd8d2a8ac8
+OK   F15 record SRC_DIGEST == PREV_SRC_DIGEST = sha256:9a19f0da01fc650505da5f3a9d7845c4e7c6cd2f661ba1eee29c28f39a2d1d7d
+OK   F15 record BUNDLE_DIGEST == PREV_BUNDLE_DIGEST = sha256:5104ec0ec6a74c441a3f545723f455e450784fcdd28c0e487621b23077902575
+OK   F15 record IMGDIGEST == PREV_IMGDIGEST = sha256:bcca636b07bba29a176d119472e83907b243368063121aff18ab31f25083c98c
+OK   F15 record CFG == PREV_CFG = sha256:8dfc1c96b3114ee79b77143e26183bcdfa6c72a25b5debd7f6b6bff1764cec15
+OK   F15 record BASE_TD == PREV_BASE_TD = sha256:85139e5fe9f05bb3ee7576df08b919fda565efe45cf49703568069bedf26b859
+OK   F15 record LOAD_TAR_DIGEST == PREV_LOAD_TAR_DIGEST = sha256:0dcc928425ad16bc58da32b819da6318177680ecdab562c7bbd92461d9d2f541
+OK   F15 record CAL_RO_DIGEST == PREV_CAL_RO_DIGEST = sha256:6b12c0ac0dcbf65684ea3889cfd8241f9e8e69cc7ccbcb52eb22e5ddd851188e
+OK   F15 record CAL_RW_DIGEST == PREV_CAL_RW_DIGEST = sha256:07b235cccb3fd8bcbd3be50b0816e708d7b5332fbefa78deb54d0a55497b3bf5
+OK   F15 record TEST_PROCORACLE == PREV_TEST_PROCORACLE = sha256:53f748ad00e8c8767227cb51e36a5721f65a7cb757598ff988a0175e5341aba8
+OK   F15 record TEST_ENTRYPOINT == PREV_TEST_ENTRYPOINT = sha256:6d4a89e471962e29060ca8c5f4f83dafa3692726db4fa7a0b64d76fdfa64445d
+OK   F15 FROZEN-COMMIT record == PREV_COMMIT = 2a6492dda21e5af9eab8e92e81f56725b3f8e9c5
+OK   F15 g1/RID record == PREV_G1_RID = g1-req-20261105T093204Z
+OK   F15 rp/RID record == PREV_RP_RID = rp-req-20261105T093425Z
+OK   F15 dr/RID record == PREV_DR_RID = dr-req-20261105T093631Z
+OK   F15 dr/RUNID record == PREV_DR_RUNID = production-run-0013b266e85f3b58fb6dc2ba
+OK   F15 dr/CHECKS_OK record == 'ok' = ok
+OK   F15 dr/ADMISSION_ID record == PREV_DR_ADMISSION_ID = route-probe-dr-2026-11-01a
+OK   IMGDIGEST (session-env == HF) = sha256:5b7ce434523688606b9e748b793fc696206be498cb3379eba24a5cc96b6de5f7
+OK   frozen commit 97738b60125b77be41c4800c7ce1d0fb327557f6; HF=/home/tbound/tbound-h/f16
+
+== preflight: guest 172.26.25.5 (pinned host key, StrictHostKeyChecking=yes), tbound-op only
+guest address: GUEST_IP=172.26.25.5 (changes after host restarts; if a connection fails, look it up: PowerShell 'Get-NetNeighbor -LinkLayerAddress 00-15-5D-0C-40-02', then export GUEST_IP=<IPAddress>)
+OK   ssh identity = tboundadmin
+OK   sudo -n true fails (narrowed sudo)
+guest: tbound-abi8-seed 7.0.0-38-generic 2026-11-06T09:19:44Z 
+
+== == route-bash-view
+OK   tbound-profile already staged to /root/ga (sha256:fe11ddd13d2b223961de85faee51325638cc816a0ed56def2b847cfaff4d6dad)
+OK   run.json already staged to /root/ga (sha256:c0c70a4e36570464e86d5b45a56eecf07941b491dd833a9589f8d1e8d23a6ff3)
+wrote guest-route-bash-view artifact /root/ga/out/route-bash-view.json
+sha256 sha256:794edb201f9fe9f7a7276085a3d1b43018d2201b1c4ec5c7ead7f84cf11397b4
+binary_sha256 sha256:fe11ddd13d2b223961de85faee51325638cc816a0ed56def2b847cfaff4d6dad
+commit 97738b60125b77be41c4800c7ce1d0fb327557f6
+guest-evidence route-bash-view ok: sha256:794edb201f9fe9f7a7276085a3d1b43018d2201b1c4ec5c7ead7f84cf11397b4 -> /var/tmp/tbound-op/_/evidence-route-bash-view.json
+OK   saved /home/tbound/tbound-h/f16/evq/route-bash-view.json
+OK   fetched route-bash-view.json == digest the producer printed = sha256:794edb201f9fe9f7a7276085a3d1b43018d2201b1c4ec5c7ead7f84cf11397b4
+
+== summary
+route-bash-view: DONE (commit 97738b60125b77be41c4800c7ce1d0fb327557f6) -> /home/tbound/tbound-h/f16/evq/route-bash-view.json (sha256:794edb201f9fe9f7a7276085a3d1b43018d2201b1c4ec5c7ead7f84cf11397b4)
+-rw-r----- 1 root tboundadmin   3293 Nov  6 09:17 evidence-capability.json
+-rw-r----- 1 root tboundadmin   3184 Nov  6 09:17 evidence-landlock-connect.json
+-rw-r----- 1 root tboundadmin  11619 Nov  6 09:17 evidence-procoracle.json
+-rw-r----- 1 root tboundadmin   3347 Nov  6 09:17 evidence-provider.json
+-rw-r----- 1 root tboundadmin   4124 Nov  6 09:19 evidence-route-bash-view.json
+NOTE host side: tbound-run evq/route-report take --artifact guest-capability=<file> etc. from /home/tbound/tbound-h/f16/evq (copy to the host /home/tbound/tbound-h/ga names as the runbook wants); --guest-binary-sha256 = TBP_DIGEST.
+
+== DONE 40-guest-evidence.sh 2026-11-06T09:19:49Z
+== 40-guest-evidence start 2026-11-06T09:21:15Z guest=172.26.25.5
+OK   FROZEN-COMMIT = 97738b60125b77be41c4800c7ce1d0fb327557f6
+OK   F15 record TBOUND_DIGEST == PREV_TBOUND_DIGEST = sha256:7a869ca90977e731b96ea292b647875bc39d4186030c15b57addba60a40b7691
+OK   F15 record TBP_DIGEST == PREV_TBP_DIGEST = sha256:94499a2e5e53a4bae9a6c1303277c9c58fe987b414c19b9b89ce1760c12bfcda
+OK   F15 record ENTRYPOINT_DIGEST == PREV_ENTRYPOINT_DIGEST = sha256:6bb43254a27feab73d4c874b677432ee6de8804b339cbb2c11a906bd8d2a8ac8
+OK   F15 record SRC_DIGEST == PREV_SRC_DIGEST = sha256:9a19f0da01fc650505da5f3a9d7845c4e7c6cd2f661ba1eee29c28f39a2d1d7d
+OK   F15 record BUNDLE_DIGEST == PREV_BUNDLE_DIGEST = sha256:5104ec0ec6a74c441a3f545723f455e450784fcdd28c0e487621b23077902575
+OK   F15 record IMGDIGEST == PREV_IMGDIGEST = sha256:bcca636b07bba29a176d119472e83907b243368063121aff18ab31f25083c98c
+OK   F15 record CFG == PREV_CFG = sha256:8dfc1c96b3114ee79b77143e26183bcdfa6c72a25b5debd7f6b6bff1764cec15
+OK   F15 record BASE_TD == PREV_BASE_TD = sha256:85139e5fe9f05bb3ee7576df08b919fda565efe45cf49703568069bedf26b859
+OK   F15 record LOAD_TAR_DIGEST == PREV_LOAD_TAR_DIGEST = sha256:0dcc928425ad16bc58da32b819da6318177680ecdab562c7bbd92461d9d2f541
+OK   F15 record CAL_RO_DIGEST == PREV_CAL_RO_DIGEST = sha256:6b12c0ac0dcbf65684ea3889cfd8241f9e8e69cc7ccbcb52eb22e5ddd851188e
+OK   F15 record CAL_RW_DIGEST == PREV_CAL_RW_DIGEST = sha256:07b235cccb3fd8bcbd3be50b0816e708d7b5332fbefa78deb54d0a55497b3bf5
+OK   F15 record TEST_PROCORACLE == PREV_TEST_PROCORACLE = sha256:53f748ad00e8c8767227cb51e36a5721f65a7cb757598ff988a0175e5341aba8
+OK   F15 record TEST_ENTRYPOINT == PREV_TEST_ENTRYPOINT = sha256:6d4a89e471962e29060ca8c5f4f83dafa3692726db4fa7a0b64d76fdfa64445d
+OK   F15 FROZEN-COMMIT record == PREV_COMMIT = 2a6492dda21e5af9eab8e92e81f56725b3f8e9c5
+OK   F15 g1/RID record == PREV_G1_RID = g1-req-20261105T093204Z
+OK   F15 rp/RID record == PREV_RP_RID = rp-req-20261105T093425Z
+OK   F15 dr/RID record == PREV_DR_RID = dr-req-20261105T093631Z
+OK   F15 dr/RUNID record == PREV_DR_RUNID = production-run-0013b266e85f3b58fb6dc2ba
+OK   F15 dr/CHECKS_OK record == 'ok' = ok
+OK   F15 dr/ADMISSION_ID record == PREV_DR_ADMISSION_ID = route-probe-dr-2026-11-01a
+OK   IMGDIGEST (session-env == HF) = sha256:5b7ce434523688606b9e748b793fc696206be498cb3379eba24a5cc96b6de5f7
+OK   frozen commit 97738b60125b77be41c4800c7ce1d0fb327557f6; HF=/home/tbound/tbound-h/f16
+
+== preflight: guest 172.26.25.5 (pinned host key, StrictHostKeyChecking=yes), tbound-op only
+guest address: GUEST_IP=172.26.25.5 (changes after host restarts; if a connection fails, look it up: PowerShell 'Get-NetNeighbor -LinkLayerAddress 00-15-5D-0C-40-02', then export GUEST_IP=<IPAddress>)
+OK   ssh identity = tboundadmin
+OK   sudo -n true fails (narrowed sudo)
+guest: tbound-abi8-seed 7.0.0-38-generic 2026-11-06T09:21:21Z 
+
+== == route-direct-runtime
+OK   tbound-profile already staged to /root/ga (sha256:fe11ddd13d2b223961de85faee51325638cc816a0ed56def2b847cfaff4d6dad)
+OK   run.json already staged to /root/ga (sha256:c0c70a4e36570464e86d5b45a56eecf07941b491dd833a9589f8d1e8d23a6ff3)
+wrote guest-route-direct-runtime artifact /root/ga/out/route-direct-runtime.json
+sha256 sha256:9ce61731cb178b54a559cd4de75495ba9b4ccbfba952960644a70c49a9f9a950
+binary_sha256 sha256:fe11ddd13d2b223961de85faee51325638cc816a0ed56def2b847cfaff4d6dad
+commit 97738b60125b77be41c4800c7ce1d0fb327557f6
+guest-evidence route-direct-runtime ok: sha256:9ce61731cb178b54a559cd4de75495ba9b4ccbfba952960644a70c49a9f9a950 -> /var/tmp/tbound-op/_/evidence-route-direct-runtime.json
+OK   saved /home/tbound/tbound-h/f16/evq/route-direct-runtime.json
+OK   fetched route-direct-runtime.json == digest the producer printed = sha256:9ce61731cb178b54a559cd4de75495ba9b4ccbfba952960644a70c49a9f9a950
+
+== summary
+route-direct-runtime: DONE (commit 97738b60125b77be41c4800c7ce1d0fb327557f6) -> /home/tbound/tbound-h/f16/evq/route-direct-runtime.json (sha256:9ce61731cb178b54a559cd4de75495ba9b4ccbfba952960644a70c49a9f9a950)
+-rw-r----- 1 root tboundadmin   3293 Nov  6 09:17 evidence-capability.json
+-rw-r----- 1 root tboundadmin   3184 Nov  6 09:17 evidence-landlock-connect.json
+-rw-r----- 1 root tboundadmin  11619 Nov  6 09:17 evidence-procoracle.json
+-rw-r----- 1 root tboundadmin   3347 Nov  6 09:17 evidence-provider.json
+-rw-r----- 1 root tboundadmin   4124 Nov  6 09:19 evidence-route-bash-view.json
+-rw-r----- 1 root tboundadmin   9222 Nov  6 09:21 evidence-route-direct-runtime.json
+NOTE host side: tbound-run evq/route-report take --artifact guest-capability=<file> etc. from /home/tbound/tbound-h/f16/evq (copy to the host /home/tbound/tbound-h/ga names as the runbook wants); --guest-binary-sha256 = TBP_DIGEST.
+
+== DONE 40-guest-evidence.sh 2026-11-06T09:21:26Z
+== 40-guest-evidence start 2026-11-06T09:36:29Z guest=172.26.25.5
+OK   FROZEN-COMMIT = 97738b60125b77be41c4800c7ce1d0fb327557f6
+OK   F15 record TBOUND_DIGEST == PREV_TBOUND_DIGEST = sha256:7a869ca90977e731b96ea292b647875bc39d4186030c15b57addba60a40b7691
+OK   F15 record TBP_DIGEST == PREV_TBP_DIGEST = sha256:94499a2e5e53a4bae9a6c1303277c9c58fe987b414c19b9b89ce1760c12bfcda
+OK   F15 record ENTRYPOINT_DIGEST == PREV_ENTRYPOINT_DIGEST = sha256:6bb43254a27feab73d4c874b677432ee6de8804b339cbb2c11a906bd8d2a8ac8
+OK   F15 record SRC_DIGEST == PREV_SRC_DIGEST = sha256:9a19f0da01fc650505da5f3a9d7845c4e7c6cd2f661ba1eee29c28f39a2d1d7d
+OK   F15 record BUNDLE_DIGEST == PREV_BUNDLE_DIGEST = sha256:5104ec0ec6a74c441a3f545723f455e450784fcdd28c0e487621b23077902575
+OK   F15 record IMGDIGEST == PREV_IMGDIGEST = sha256:bcca636b07bba29a176d119472e83907b243368063121aff18ab31f25083c98c
+OK   F15 record CFG == PREV_CFG = sha256:8dfc1c96b3114ee79b77143e26183bcdfa6c72a25b5debd7f6b6bff1764cec15
+OK   F15 record BASE_TD == PREV_BASE_TD = sha256:85139e5fe9f05bb3ee7576df08b919fda565efe45cf49703568069bedf26b859
+OK   F15 record LOAD_TAR_DIGEST == PREV_LOAD_TAR_DIGEST = sha256:0dcc928425ad16bc58da32b819da6318177680ecdab562c7bbd92461d9d2f541
+OK   F15 record CAL_RO_DIGEST == PREV_CAL_RO_DIGEST = sha256:6b12c0ac0dcbf65684ea3889cfd8241f9e8e69cc7ccbcb52eb22e5ddd851188e
+OK   F15 record CAL_RW_DIGEST == PREV_CAL_RW_DIGEST = sha256:07b235cccb3fd8bcbd3be50b0816e708d7b5332fbefa78deb54d0a55497b3bf5
+OK   F15 record TEST_PROCORACLE == PREV_TEST_PROCORACLE = sha256:53f748ad00e8c8767227cb51e36a5721f65a7cb757598ff988a0175e5341aba8
+OK   F15 record TEST_ENTRYPOINT == PREV_TEST_ENTRYPOINT = sha256:6d4a89e471962e29060ca8c5f4f83dafa3692726db4fa7a0b64d76fdfa64445d
+OK   F15 FROZEN-COMMIT record == PREV_COMMIT = 2a6492dda21e5af9eab8e92e81f56725b3f8e9c5
+OK   F15 g1/RID record == PREV_G1_RID = g1-req-20261105T093204Z
+OK   F15 rp/RID record == PREV_RP_RID = rp-req-20261105T093425Z
+OK   F15 dr/RID record == PREV_DR_RID = dr-req-20261105T093631Z
+OK   F15 dr/RUNID record == PREV_DR_RUNID = production-run-0013b266e85f3b58fb6dc2ba
+OK   F15 dr/CHECKS_OK record == 'ok' = ok
+OK   F15 dr/ADMISSION_ID record == PREV_DR_ADMISSION_ID = route-probe-dr-2026-11-01a
+OK   IMGDIGEST (session-env == HF) = sha256:5b7ce434523688606b9e748b793fc696206be498cb3379eba24a5cc96b6de5f7
+OK   frozen commit 97738b60125b77be41c4800c7ce1d0fb327557f6; HF=/home/tbound/tbound-h/f16
+
+== preflight: guest 172.26.25.5 (pinned host key, StrictHostKeyChecking=yes), tbound-op only
+guest address: GUEST_IP=172.26.25.5 (changes after host restarts; if a connection fails, look it up: PowerShell 'Get-NetNeighbor -LinkLayerAddress 00-15-5D-0C-40-02', then export GUEST_IP=<IPAddress>)
+OK   ssh identity = tboundadmin
+OK   sudo -n true fails (narrowed sudo)
+guest: tbound-abi8-seed 7.0.0-38-generic 2026-11-06T09:36:35Z 
+
+== == netsink
+OK   tbound-profile already staged to /root/ga (sha256:fe11ddd13d2b223961de85faee51325638cc816a0ed56def2b847cfaff4d6dad)
+the observed facts do not meet the requirement, nothing is written: guest artifact guest-netsink: the UDP datagram probe was "error: write udp 127.0.0.1:33335->127.0.33.1:8080: write: operation not permitted", want "sent"
+tbound-op: guest-evidence netsink refused (nothing written)
+
+== summary
+netsink: REFUSED (nothing written; see the message above)
+-rw-r----- 1 root tboundadmin   3293 Nov  6 09:17 evidence-capability.json
+-rw-r----- 1 root tboundadmin   3184 Nov  6 09:17 evidence-landlock-connect.json
+-rw-r----- 1 root tboundadmin  11619 Nov  6 09:17 evidence-procoracle.json
+-rw-r----- 1 root tboundadmin   3347 Nov  6 09:17 evidence-provider.json
+-rw-r----- 1 root tboundadmin   4124 Nov  6 09:19 evidence-route-bash-view.json
+-rw-r----- 1 root tboundadmin   9222 Nov  6 09:21 evidence-route-direct-runtime.json
+NOTE host side: tbound-run evq/route-report take --artifact guest-capability=<file> etc. from /home/tbound/tbound-h/f16/evq (copy to the host /home/tbound/tbound-h/ga names as the runbook wants); --guest-binary-sha256 = TBP_DIGEST.
+FATAL: at least one producer was REFUSED (see the summary); the guest wrote nothing for it

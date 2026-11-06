@@ -1,0 +1,512 @@
+== 27-archive-state start 2026-11-06T09:12:21Z guest=172.26.25.5
+OK   FROZEN-COMMIT = 97738b60125b77be41c4800c7ce1d0fb327557f6
+OK   F15 record TBOUND_DIGEST == PREV_TBOUND_DIGEST = sha256:7a869ca90977e731b96ea292b647875bc39d4186030c15b57addba60a40b7691
+OK   F15 record TBP_DIGEST == PREV_TBP_DIGEST = sha256:94499a2e5e53a4bae9a6c1303277c9c58fe987b414c19b9b89ce1760c12bfcda
+OK   F15 record ENTRYPOINT_DIGEST == PREV_ENTRYPOINT_DIGEST = sha256:6bb43254a27feab73d4c874b677432ee6de8804b339cbb2c11a906bd8d2a8ac8
+OK   F15 record SRC_DIGEST == PREV_SRC_DIGEST = sha256:9a19f0da01fc650505da5f3a9d7845c4e7c6cd2f661ba1eee29c28f39a2d1d7d
+OK   F15 record BUNDLE_DIGEST == PREV_BUNDLE_DIGEST = sha256:5104ec0ec6a74c441a3f545723f455e450784fcdd28c0e487621b23077902575
+OK   F15 record IMGDIGEST == PREV_IMGDIGEST = sha256:bcca636b07bba29a176d119472e83907b243368063121aff18ab31f25083c98c
+OK   F15 record CFG == PREV_CFG = sha256:8dfc1c96b3114ee79b77143e26183bcdfa6c72a25b5debd7f6b6bff1764cec15
+OK   F15 record BASE_TD == PREV_BASE_TD = sha256:85139e5fe9f05bb3ee7576df08b919fda565efe45cf49703568069bedf26b859
+OK   F15 record LOAD_TAR_DIGEST == PREV_LOAD_TAR_DIGEST = sha256:0dcc928425ad16bc58da32b819da6318177680ecdab562c7bbd92461d9d2f541
+OK   F15 record CAL_RO_DIGEST == PREV_CAL_RO_DIGEST = sha256:6b12c0ac0dcbf65684ea3889cfd8241f9e8e69cc7ccbcb52eb22e5ddd851188e
+OK   F15 record CAL_RW_DIGEST == PREV_CAL_RW_DIGEST = sha256:07b235cccb3fd8bcbd3be50b0816e708d7b5332fbefa78deb54d0a55497b3bf5
+OK   F15 record TEST_PROCORACLE == PREV_TEST_PROCORACLE = sha256:53f748ad00e8c8767227cb51e36a5721f65a7cb757598ff988a0175e5341aba8
+OK   F15 record TEST_ENTRYPOINT == PREV_TEST_ENTRYPOINT = sha256:6d4a89e471962e29060ca8c5f4f83dafa3692726db4fa7a0b64d76fdfa64445d
+OK   F15 FROZEN-COMMIT record == PREV_COMMIT = 2a6492dda21e5af9eab8e92e81f56725b3f8e9c5
+OK   F15 g1/RID record == PREV_G1_RID = g1-req-20261105T093204Z
+OK   F15 rp/RID record == PREV_RP_RID = rp-req-20261105T093425Z
+OK   F15 dr/RID record == PREV_DR_RID = dr-req-20261105T093631Z
+OK   F15 dr/RUNID record == PREV_DR_RUNID = production-run-0013b266e85f3b58fb6dc2ba
+OK   F15 dr/CHECKS_OK record == 'ok' = ok
+OK   F15 dr/ADMISSION_ID record == PREV_DR_ADMISSION_ID = route-probe-dr-2026-11-01a
+OK   IMGDIGEST (session-env == HF) = sha256:5b7ce434523688606b9e748b793fc696206be498cb3379eba24a5cc96b6de5f7
+OK   frozen commit 97738b60125b77be41c4800c7ce1d0fb327557f6; HF=/home/tbound/tbound-h/f16
+
+== preflight: guest 172.26.25.5 (pinned host key, StrictHostKeyChecking=yes), tbound-op only
+guest address: GUEST_IP=172.26.25.5 (changes after host restarts; if a connection fails, look it up: PowerShell 'Get-NetNeighbor -LinkLayerAddress 00-15-5D-0C-40-02', then export GUEST_IP=<IPAddress>)
+OK   ssh identity = tboundadmin
+OK   sudo -n true fails (narrowed sudo)
+guest: tbound-abi8-seed 7.0.0-38-generic 2026-11-06T09:12:28Z 
+OK   password sudo works
+
+== 1. what is on the guest (password sudo, read-only); only archive-f15-* counts, archive-f10-*, archive-f9-*, archive-f8-*, archive-f7-*, archive-f6-*, archive-f5-* and archive-f4-* are the older archives of the F15, F10, F9, F8, F7, F6 and F5 kits
+archive-f15 dirs counted: 0 ; older archive-f10 dirs ignored: 1 ; older archive-f9 dirs ignored: 1 ; older archive-f8 dirs ignored: 1 ; older archive-f7 dirs ignored: 1 ; older archive-f6 dirs ignored: 1 ; older archive-f5 dirs ignored: 1 ; older archive-f4 dirs ignored: 1
+archive-state=NONE dir=/root/ga/archive-f15-20261106T091228Z
+present /var/lib/tbound/audit
+present /var/lib/tbound/private-admin
+present /var/lib/tbound/sessions
+present /var/lib/tbound/publication-state
+present /root/ga/state/g1
+present /root/ga/state/g1.once
+present /root/ga/reg-g1
+present /root/ga/state/g1.client-status
+present /root/ga/g1
+present /var/tmp/tbound-op/g1
+present /root/ga/state/rp
+present /root/ga/state/rp.once
+present /root/ga/reg-rp
+present /root/ga/state/rp.client-status
+present /root/ga/rp
+present /var/tmp/tbound-op/rp
+present /root/ga/state/dr
+present /root/ga/state/dr.once
+present /root/ga/reg-dr
+present /root/ga/state/dr.client-status
+present /root/ga/dr
+present /var/tmp/tbound-op/dr
+present /root/ga/out
+present /var/tmp/tbound-op/_/evidence-capability.json
+present /var/tmp/tbound-op/_/evidence-landlock-connect.json
+present /var/tmp/tbound-op/_/evidence-procoracle.json
+present /var/tmp/tbound-op/_/evidence-provider.json
+present /var/tmp/tbound-op/_/evidence-route-bash-view.json
+present /var/tmp/tbound-op/_/evidence-route-direct-runtime.json
+absent /var/tmp/tbound-op/_/out-*
+state-dir 995:986 700 tbound-pi:tbound-pi /var/lib/tbound/audit
+size /var/lib/tbound/audit files=14 bytes=614806
+   entry f 995:986 600 0 /var/lib/tbound/audit/production-run-0013b266e85f3b58fb6dc2ba-command-audit.jsonl
+   entry f 995:986 600 0 /var/lib/tbound/audit/production-run-0013b266e85f3b58fb6dc2ba-provider-audit.jsonl
+   entry f 995:986 600 10019 /var/lib/tbound/audit/production-run-bce8f37b6fe7ae7712c72737-command-audit.jsonl
+   entry f 995:986 600 12026 /var/lib/tbound/audit/serve-pi-requests.jsonl
+   entry f 995:986 600 13567 /var/lib/tbound/audit/tbound-workflow-c54971905e06d74c8b8666de-e04-audit.jsonl
+   entry f 995:986 600 16223 /var/lib/tbound/audit/tbound-workflow-bce8f37b6fe7ae7712c72737-e04-audit.jsonl
+   entry f 995:986 600 166743 /var/lib/tbound/audit/production-run-c54971905e06d74c8b8666de-provider-audit.jsonl
+   entry f 995:986 600 202327 /var/lib/tbound/audit/production-run-bce8f37b6fe7ae7712c72737-provider-audit.jsonl
+   entry f 995:986 600 22448 /var/lib/tbound/audit/production-run-0013b266e85f3b58fb6dc2ba-session-audit.jsonl
+   entry f 995:986 600 32586 /var/lib/tbound/audit/publication-audit.jsonl
+   entry f 995:986 600 38540 /var/lib/tbound/audit/production-run-c54971905e06d74c8b8666de-command-audit.jsonl
+   entry f 995:986 600 43838 /var/lib/tbound/audit/production-run-bce8f37b6fe7ae7712c72737-session-audit.jsonl
+   entry f 995:986 600 50734 /var/lib/tbound/audit/production-run-c54971905e06d74c8b8666de-session-audit.jsonl
+   entry f 995:986 600 5755 /var/lib/tbound/audit/tbound-workflow-0013b266e85f3b58fb6dc2ba-e04-audit.jsonl
+state-dir 995:986 700 tbound-pi:tbound-pi /var/lib/tbound/private-admin
+size /var/lib/tbound/private-admin files=6 bytes=83988
+   entry d 995:986 700 4096 /var/lib/tbound/private-admin/admin-0013b266e85f3b58fb6dc2ba
+   entry d 995:986 700 4096 /var/lib/tbound/private-admin/admin-bce8f37b6fe7ae7712c72737
+   entry d 995:986 700 4096 /var/lib/tbound/private-admin/admin-c54971905e06d74c8b8666de
+   entry d 995:986 700 4096 /var/lib/tbound/private-admin/workflow-recovery
+   entry f 995:986 600 0 /var/lib/tbound/private-admin/admin-0013b266e85f3b58fb6dc2ba/.tbound-sessionlaunch.lock
+   entry f 995:986 600 0 /var/lib/tbound/private-admin/admin-bce8f37b6fe7ae7712c72737/.tbound-sessionlaunch.lock
+   entry f 995:986 600 0 /var/lib/tbound/private-admin/admin-c54971905e06d74c8b8666de/.tbound-sessionlaunch.lock
+   entry f 995:986 600 0 /var/lib/tbound/private-admin/workflow-recovery/root.db.lock
+   entry f 995:986 600 24576 /var/lib/tbound/private-admin/workflow-recovery/root.db
+   entry f 995:986 600 59412 /var/lib/tbound/private-admin/workflow-recovery/catalog.jsonl
+state-dir 995:986 700 tbound-pi:tbound-pi /var/lib/tbound/sessions
+size /var/lib/tbound/sessions files=31 bytes=996765
+   entry d 995:986 700 4096 /var/lib/tbound/sessions/session-0013b266e85f3b58fb6dc2ba
+   entry d 995:986 700 4096 /var/lib/tbound/sessions/session-0013b266e85f3b58fb6dc2ba/exposed
+   entry d 995:986 700 4096 /var/lib/tbound/sessions/session-0013b266e85f3b58fb6dc2ba/generations
+   entry d 995:986 700 4096 /var/lib/tbound/sessions/session-0013b266e85f3b58fb6dc2ba/views
+   entry d 995:986 700 4096 /var/lib/tbound/sessions/session-bce8f37b6fe7ae7712c72737
+   entry d 995:986 700 4096 /var/lib/tbound/sessions/session-bce8f37b6fe7ae7712c72737/exposed
+   entry d 995:986 700 4096 /var/lib/tbound/sessions/session-bce8f37b6fe7ae7712c72737/generations
+   entry d 995:986 700 4096 /var/lib/tbound/sessions/session-bce8f37b6fe7ae7712c72737/views
+   entry d 995:986 700 4096 /var/lib/tbound/sessions/session-c54971905e06d74c8b8666de
+   entry d 995:986 700 4096 /var/lib/tbound/sessions/session-c54971905e06d74c8b8666de/exposed
+   entry d 995:986 700 4096 /var/lib/tbound/sessions/session-c54971905e06d74c8b8666de/generations
+   entry d 995:986 700 4096 /var/lib/tbound/sessions/session-c54971905e06d74c8b8666de/views
+   entry d 995:986 700 4096 /var/lib/tbound/sessions/workflow-owners
+   entry f 995:986 600 0 /var/lib/tbound/sessions/session-0013b266e85f3b58fb6dc2ba/delta-admission.jsonl
+   entry f 995:986 600 0 /var/lib/tbound/sessions/workflow-owners/tbound-workflow-0013b266e85f3b58fb6dc2ba.sqlite-wal
+   entry f 995:986 600 0 /var/lib/tbound/sessions/workflow-owners/tbound-workflow-bce8f37b6fe7ae7712c72737.sqlite-wal
+   entry f 995:986 600 0 /var/lib/tbound/sessions/workflow-owners/tbound-workflow-c54971905e06d74c8b8666de.sqlite-wal
+   entry f 995:986 600 10947 /var/lib/tbound/sessions/session-c54971905e06d74c8b8666de/repository-state.json
+   entry f 995:986 600 12888 /var/lib/tbound/sessions/session-bce8f37b6fe7ae7712c72737/delta-admission.jsonl
+   entry f 995:986 600 1568 /var/lib/tbound/sessions/session-0013b266e85f3b58fb6dc2ba/repository-state.json
+   entry f 995:986 600 26128 /var/lib/tbound/sessions/session-c54971905e06d74c8b8666de/delta-admission.jsonl
+   entry f 995:986 600 32768 /var/lib/tbound/sessions/workflow-owners/tbound-workflow-0013b266e85f3b58fb6dc2ba.sqlite-shm
+   entry f 995:986 600 32768 /var/lib/tbound/sessions/workflow-owners/tbound-workflow-bce8f37b6fe7ae7712c72737.sqlite-shm
+   entry f 995:986 600 32768 /var/lib/tbound/sessions/workflow-owners/tbound-workflow-c54971905e06d74c8b8666de.sqlite-shm
+   entry f 995:986 600 397312 /var/lib/tbound/sessions/workflow-owners/tbound-workflow-bce8f37b6fe7ae7712c72737.sqlite
+   entry f 995:986 600 401408 /var/lib/tbound/sessions/workflow-owners/tbound-workflow-c54971905e06d74c8b8666de.sqlite
+   entry f 995:986 600 40960 /var/lib/tbound/sessions/workflow-owners/tbound-workflow-0013b266e85f3b58fb6dc2ba.sqlite
+   entry f 995:986 600 6433 /var/lib/tbound/sessions/session-bce8f37b6fe7ae7712c72737/repository-state.json
+state-dir 995:986 700 tbound-pi:tbound-pi /var/lib/tbound/publication-state
+size /var/lib/tbound/publication-state files=3 bytes=0
+   entry f 995:986 600 0 /var/lib/tbound/publication-state/publication-05c40283376753fc2916c7c9795c6c8b601f15d47c8440c6cad67ebade6810cb.lock
+   entry f 995:986 600 0 /var/lib/tbound/publication-state/publication-e472e2ea12d9a948dd68a7543de8b06110ee80c6fcd22c68921dc925e845f773.lock
+   entry f 995:986 600 0 /var/lib/tbound/publication-state/publication-e5c0c17b3822b0c6b80888b208ea8665c4c67ef3dea5374e90f2968549c766e0.lock
+catalog 995:986 600 59412 bytes
+root.db: /var/lib/tbound/private-admin/workflow-recovery/root.db 
+units: service=active socket=active
+once=client=g1-req-20261105T093204Z
+statecfg=sha256:9225f65fc4bcf1ada4aa9290d936c24a87389b0c213147cfd70eab33fa122791
+rid smoke-req-20261021T110233Z
+rid smoke-req-20261021T110406Z
+rid smoke-req-20261021T110407Z
+rid g1-req-20261021T120201Z
+rid g1-req-20261021T183003Z
+rid g1-req-20261022T194100Z
+rid g1-req-20261022T204719Z
+rid g1-req-20261022T213236Z
+rid g1-req-20261022T223029Z
+rid g1-req-20261023T161800Z
+rid g1-req-20261023T165907Z
+rid rp-req-20261023T170430Z
+rid g1-req-20261023T173638Z
+rid rp-req-20261023T173815Z
+rid dr-req-20261023T174242Z
+rid g1-req-20261023T184837Z
+rid rp-req-20261023T185033Z
+rid dr-req-20261023T185224Z
+rid g1-req-20261023T195027Z
+rid rp-req-20261023T195225Z
+rid dr-req-20261023T195423Z
+rid g1-req-20261024T160906Z
+rid rp-req-20261024T161147Z
+rid dr-req-20261024T161421Z
+rid g1-req-20261030T052233Z
+rid rp-req-20261030T052439Z
+rid dr-req-20261030T052659Z
+rid g1-req-20261105T093204Z
+rid rp-req-20261105T093425Z
+rid dr-req-20261105T093631Z
+live mount root /var/lib/tbound/live (read-only listing; keeps lost+found): type mode owner path
+mount d 700 995:986 .tbound-publication-659bbb6956e021ff9c9714563e5d52c9
+mount d 700 995:986 .tbound-publication-86d21af989ddc4ac477cd9ff033c3ae2
+mount d 700 995:986 .tbound-publication-8e4650488051c5672504f1e50c11d682
+mount d 700 995:986 .tbound-publication-9d01b694d80031f5e95c84c1b966f617
+mount d 700 995:986 .tbound-publication-9d59ebaf71c1e9889e7c7528046f375b
+mount d 700 995:986 .tbound-publication-a945b0d9bf261c15b349ba5f4cc54700
+mount d 700 995:986 .tbound-publication-bc1798f7d9ea7c94861f1ca8eb29809e
+mount d 700 995:986 root
+mount d 755 995:986 lost+found
+mount f 600 995:986 .tbound-publication-live-0000000000000700-000000000000000c.lock
+live root /var/lib/tbound/live/root: mount=/var/lib/tbound/live type=directory owner=tbound-pi:tbound-pi 700
+live-entry /var/lib/tbound/live/root/out type=directory owner=tbound-pi:tbound-pi 755
+live-entry /var/lib/tbound/live/root/src type=directory owner=tbound-pi:tbound-pi 755
+live-entries: out src 
+live lost+found: kept in place (tbound-pi:tbound-pi 755)
+live release.txt: version=2.4.0
+live release.txt: status=final
+probe done
+archive state: NONE (/root/ga/archive-f15-20261106T091228Z)
+OK   F15 g1/RID record == PREV_G1_RID = g1-req-20261105T093204Z
+OK   F15 rp/RID record == PREV_RP_RID = rp-req-20261105T093425Z
+OK   F15 dr/RID record == PREV_DR_RID = dr-req-20261105T093631Z
+
+== tbound-op status g1 (narrowed sudo)
+tbound-op status 2026-11-06T09:12:32Z pins F=2a6492dda21e5af9eab8e92e81f56725b3f8e9c5
+anchor: ok (pi-host-profile.pub sha256:be206a41ad321f29ef89e8157f69a6f0820a93fafa3096b71867ece745f9afac)
+runner: sha256:7a869ca90977e731 tbound-profile: sha256:94499a2e5e53a4ba
+service=active socket=active
+installed: cfg sha256:d0d8002803d441cdaacf832d4fb06d390f837f233e8b9b0cb26d56d524fca6f5 reg sha256:425abcf7bd78a514 prof sha256:7556075dd39ba389 tpl sha256:f0d162b01210eb55
+installed config matches state of: pilot
+-- g1 one-use markers: client=g1-req-20261105T093204Z 
+-- g1 client-run.status: done exit=0 2026-11-05T09:32:41Z
+-- g1:
+     cfg=sha256:9225f65fc4bcf1ada4aa9290d936c24a87389b0c213147cfd70eab33fa122791
+     prof=sha256:97973e506912924a4f822846434a37ba7c467578365fd7106e29a1dc0f71a15a
+     profjson=sha256:6150606ad88894343f036be79d4ec04cee0260622f9d5f63264299df830f5abd
+     profsig=sha256:96c717d91499733738e027c07a2a39b66e0a7a7cc8985d92c39126a9311fdc43
+     reg=sha256:a6f3c534a5bc49455f19fc34e4553b13fc869e27c149ce90318b9ad35dcb3e26
+     regjson=sha256:1fbba6d27fcc8f2b06809f709b36447af1eed2ea1f2ca6e6cfbc498913958b00
+     regsig=sha256:da3b0fb903251998659fc8aef9420e500cffc96df552b18daa48dbd7615ff8fe
+     state=started
+     td=sha256:9af45f5a3328eb7c8ba32dc1e62cbebad416a7eaabed97d093e6b98959ade864
+     tpl=sha256:9af45f5a3328eb7c8ba32dc1e62cbebad416a7eaabed97d093e6b98959ade864
+     client stderr: 
+-- last log lines
+2026-11-05T15:00:18Z tboundadmin END rc=0 argv=status pilot 
+2026-11-05T15:00:18Z tboundadmin BEGIN argv=diag l2 
+2026-11-05T15:00:18Z tboundadmin OK diag l2 
+2026-11-05T15:00:18Z tboundadmin END rc=0 argv=diag l2 
+2026-11-06T09:12:32Z tboundadmin BEGIN argv=status g1 
+pins: F15
+
+== 2. request journal and catalog (tbound-op collect, narrowed sudo); terminal state per request id
+collected requests (12026 bytes)
+OK   saved /home/tbound/tbound-h/f16/g1-prior/requests-27-20261106T091228Z.jsonl
+   journal: rid=smoke-req-20261021T110233Z
+   journal: records=7
+   journal: accepted=0
+   journal: verdict=not-journaled
+   journal: rid=smoke-req-20261021T110406Z
+   journal: records=7
+   journal: accepted=0
+   journal: verdict=not-journaled
+   journal: rid=smoke-req-20261021T110407Z
+   journal: records=7
+   journal: accepted=0
+   journal: verdict=not-journaled
+   journal: rid=g1-req-20261021T120201Z
+   journal: records=7
+   journal: accepted=0
+   journal: verdict=not-journaled
+   journal: rid=g1-req-20261021T183003Z
+   journal: records=7
+   journal: accepted=0
+   journal: verdict=not-journaled
+   journal: rid=g1-req-20261022T194100Z
+   journal: records=7
+   journal: accepted=0
+   journal: verdict=not-journaled
+   journal: rid=g1-req-20261022T204719Z
+   journal: records=7
+   journal: accepted=0
+   journal: verdict=not-journaled
+   journal: rid=g1-req-20261022T213236Z
+   journal: records=7
+   journal: accepted=0
+   journal: verdict=not-journaled
+   journal: rid=g1-req-20261022T223029Z
+   journal: records=7
+   journal: accepted=0
+   journal: verdict=not-journaled
+   journal: rid=g1-req-20261023T161800Z
+   journal: records=7
+   journal: accepted=0
+   journal: verdict=not-journaled
+   journal: rid=g1-req-20261023T165907Z
+   journal: records=7
+   journal: accepted=0
+   journal: verdict=not-journaled
+   journal: rid=rp-req-20261023T170430Z
+   journal: records=7
+   journal: accepted=0
+   journal: verdict=not-journaled
+   journal: rid=g1-req-20261023T173638Z
+   journal: records=7
+   journal: accepted=0
+   journal: verdict=not-journaled
+   journal: rid=rp-req-20261023T173815Z
+   journal: records=7
+   journal: accepted=0
+   journal: verdict=not-journaled
+   journal: rid=dr-req-20261023T174242Z
+   journal: records=7
+   journal: accepted=0
+   journal: verdict=not-journaled
+   journal: rid=g1-req-20261023T184837Z
+   journal: records=7
+   journal: accepted=0
+   journal: verdict=not-journaled
+   journal: rid=rp-req-20261023T185033Z
+   journal: records=7
+   journal: accepted=0
+   journal: verdict=not-journaled
+   journal: rid=dr-req-20261023T185224Z
+   journal: records=7
+   journal: accepted=0
+   journal: verdict=not-journaled
+   journal: rid=g1-req-20261023T195027Z
+   journal: records=7
+   journal: accepted=0
+   journal: verdict=not-journaled
+   journal: rid=rp-req-20261023T195225Z
+   journal: records=7
+   journal: accepted=0
+   journal: verdict=not-journaled
+   journal: rid=dr-req-20261023T195423Z
+   journal: records=7
+   journal: accepted=0
+   journal: verdict=not-journaled
+   journal: rid=g1-req-20261024T160906Z
+   journal: records=7
+   journal: accepted=0
+   journal: verdict=not-journaled
+   journal: rid=rp-req-20261024T161147Z
+   journal: records=7
+   journal: accepted=0
+   journal: verdict=not-journaled
+   journal: rid=dr-req-20261024T161421Z
+   journal: records=7
+   journal: accepted=0
+   journal: verdict=not-journaled
+   journal: rid=g1-req-20261030T052233Z
+   journal: records=7
+   journal: accepted=0
+   journal: verdict=not-journaled
+   journal: rid=rp-req-20261030T052439Z
+   journal: records=7
+   journal: accepted=0
+   journal: verdict=not-journaled
+   journal: rid=dr-req-20261030T052659Z
+   journal: records=7
+   journal: accepted=0
+   journal: verdict=not-journaled
+   journal: rid=g1-req-20261105T093204Z
+   journal: records=7
+   journal: accepted=1
+   journal: key=pi-service-request-b19f65d0e91d538c4b5797df4ba20bbc8ec1dcb9269b29ae0f760a4a15373683
+   journal: terminal=completed
+   journal: abandoned=no
+   journal: verdict=completed
+   journal: rid=rp-req-20261105T093425Z
+   journal: records=7
+   journal: accepted=1
+   journal: key=pi-service-request-90f916d1680db8ad35d0e4b645e95f9bb58673101f6f1c3d7863387ecf11ff50
+   journal: terminal=completed
+   journal: abandoned=no
+   journal: verdict=completed
+   journal: rid=dr-req-20261105T093631Z
+   journal: records=7
+   journal: accepted=1
+   journal: key=pi-service-request-2cb364077d2af1b428e9e958aca7d66c615296296115b176d0f42e17fbcfc848
+   journal: terminal=unknown
+   journal: abandoned=yes
+   journal: verdict=abandoned
+   journal: rid=g1-req-20261105T093204Z
+   journal: records=7
+   journal: accepted=1
+   journal: key=pi-service-request-b19f65d0e91d538c4b5797df4ba20bbc8ec1dcb9269b29ae0f760a4a15373683
+   journal: terminal=completed
+   journal: abandoned=no
+   journal: verdict=completed
+collected catalog (59412 bytes)
+OK   saved /home/tbound/tbound-h/f16/g1-prior/catalog-27-20261106T091228Z.jsonl
+catalog lines: 22
+  pi_workflow_admission_reserved: 3
+  pi_workflow_fresh_authorized: 3
+  pi_workflow_owner_scope_bound: 3
+  pi_workflow_owner_scope_drained: 3
+  pi_workflow_terminal: 2
+request id -> journal verdict:
+   smoke-req-20261021T110233Z not-journaled
+   smoke-req-20261021T110406Z not-journaled
+   smoke-req-20261021T110407Z not-journaled
+   g1-req-20261021T120201Z not-journaled
+   g1-req-20261021T183003Z not-journaled
+   g1-req-20261022T194100Z not-journaled
+   g1-req-20261022T204719Z not-journaled
+   g1-req-20261022T213236Z not-journaled
+   g1-req-20261022T223029Z not-journaled
+   g1-req-20261023T161800Z not-journaled
+   g1-req-20261023T165907Z not-journaled
+   rp-req-20261023T170430Z not-journaled
+   g1-req-20261023T173638Z not-journaled
+   rp-req-20261023T173815Z not-journaled
+   dr-req-20261023T174242Z not-journaled
+   g1-req-20261023T184837Z not-journaled
+   rp-req-20261023T185033Z not-journaled
+   dr-req-20261023T185224Z not-journaled
+   g1-req-20261023T195027Z not-journaled
+   rp-req-20261023T195225Z not-journaled
+   dr-req-20261023T195423Z not-journaled
+   g1-req-20261024T160906Z not-journaled
+   rp-req-20261024T161147Z not-journaled
+   dr-req-20261024T161421Z not-journaled
+   g1-req-20261030T052233Z not-journaled
+   rp-req-20261030T052439Z not-journaled
+   dr-req-20261030T052659Z not-journaled
+   g1-req-20261105T093204Z completed
+   rp-req-20261105T093425Z completed
+   dr-req-20261105T093631Z abandoned
+
+== 3. owner gates
+OK   one-use marker /root/ga/state/g1.once = client=g1-req-20261105T093204Z
+OK   F15 rp one-use marker = client=rp-req-20261105T093425Z
+OK   F15 rp state config = sha256:c13cfd9a4a7c11d82b8819e7bd83c7ba7fa86c242e408ae336f09feeaacc89f4
+OK   F15 dr one-use marker = client=dr-req-20261105T093631Z
+OK   F15 dr state config = sha256:ab19002c3fe7a14ff20b71111a69adb1fad4068f3b06fa953c4aab3e4c536e5f
+OK   state-g1 cfg == sha256 of the F15 g1 service config = sha256:9225f65fc4bcf1ada4aa9290d936c24a87389b0c213147cfd70eab33fa122791
+OK   rp-req-20261105T093425Z is terminal completed (the F15 route probe passed; not claim-bearing)
+OK   dr-req-20261105T093631Z is terminal UNKNOWN BY DESIGN (journal verdict abandoned; response status unknown / task-outcome-unknown; launch proof journaled, Pi not started; CHECKS_OK): nothing can still run
+OK   no request without a terminal record
+OK   live-root control file src/release.txt carries the F15 g1 edit (version=2.4.0, status=final): the known F15 outcome, archived as evidence
+OK   live-root out/ holds exactly release.sha256 (written by the F15 bash cell from the completed G1 run); it is archived as evidence, not judged
+
+== 4. PRIVILEGED WRITE: tbound-op svc stop, then the manifest phase (lock, service and socket stopped)
+svc stop ok: service and socket inactive
+archive-f15 dirs counted: 0 ; older archive-f10 dirs ignored: 1 ; older archive-f9 dirs ignored: 1 ; older archive-f8 dirs ignored: 1 ; older archive-f7 dirs ignored: 1 ; older archive-f6 dirs ignored: 1 ; older archive-f5 dirs ignored: 1 ; older archive-f4 dirs ignored: 1
+tbound-pi.service and tbound-pi.socket inactive
+ARCH=/root/ga/archive-f15-20261106T091228Z AST=NONE
+MANIFEST-BEGIN
+MANIFEST-END
+MANIFEST-SHA256 845f225c919d8bb45a5047ca65405407ecf515ccf46f17ab69de1de5a141c320
+manifest: 412 lines, 127 files, sha256 845f225c919d8bb45a5047ca65405407ecf515ccf46f17ab69de1de5a141c320
+OK   saved /home/tbound/tbound-h/f16/g1-prior/archive-manifest.txt
+OK   owner copy g1-prior/archive-manifest.txt sha256 == guest manifest sha256 = 845f225c919d8bb45a5047ca65405407ecf515ccf46f17ab69de1de5a141c320
+
+== 5. PRIVILEGED WRITE: archive (move, verify, recreate empty state, ONE session under /run/tbound-op.lock)
+archive-f15 dirs counted: 0 ; older archive-f10 dirs ignored: 1 ; older archive-f9 dirs ignored: 1 ; older archive-f8 dirs ignored: 1 ; older archive-f7 dirs ignored: 1 ; older archive-f6 dirs ignored: 1 ; older archive-f5 dirs ignored: 1 ; older archive-f4 dirs ignored: 1
+tbound-pi.service and tbound-pi.socket inactive
+== archive dir /root/ga/archive-f15-20261106T091228Z (state NONE)
+== move (nothing is deleted)
+moved /var/lib/tbound/audit -> /root/ga/archive-f15-20261106T091228Z/rootfs/var/lib/tbound/audit
+moved /var/lib/tbound/private-admin -> /root/ga/archive-f15-20261106T091228Z/rootfs/var/lib/tbound/private-admin
+moved /var/lib/tbound/sessions -> /root/ga/archive-f15-20261106T091228Z/rootfs/var/lib/tbound/sessions
+moved /var/lib/tbound/publication-state -> /root/ga/archive-f15-20261106T091228Z/rootfs/var/lib/tbound/publication-state
+moved /root/ga/state/g1 -> /root/ga/archive-f15-20261106T091228Z/rootfs/root/ga/state/g1
+moved /root/ga/state/g1.once -> /root/ga/archive-f15-20261106T091228Z/rootfs/root/ga/state/g1.once
+moved /root/ga/reg-g1 -> /root/ga/archive-f15-20261106T091228Z/rootfs/root/ga/reg-g1
+moved /root/ga/state/g1.client-status -> /root/ga/archive-f15-20261106T091228Z/rootfs/root/ga/state/g1.client-status
+moved /root/ga/g1 -> /root/ga/archive-f15-20261106T091228Z/rootfs/root/ga/g1
+moved /var/tmp/tbound-op/g1 -> /root/ga/archive-f15-20261106T091228Z/rootfs/var/tmp/tbound-op/g1
+moved /root/ga/state/rp -> /root/ga/archive-f15-20261106T091228Z/rootfs/root/ga/state/rp
+moved /root/ga/state/rp.once -> /root/ga/archive-f15-20261106T091228Z/rootfs/root/ga/state/rp.once
+moved /root/ga/reg-rp -> /root/ga/archive-f15-20261106T091228Z/rootfs/root/ga/reg-rp
+moved /root/ga/state/rp.client-status -> /root/ga/archive-f15-20261106T091228Z/rootfs/root/ga/state/rp.client-status
+moved /root/ga/rp -> /root/ga/archive-f15-20261106T091228Z/rootfs/root/ga/rp
+moved /var/tmp/tbound-op/rp -> /root/ga/archive-f15-20261106T091228Z/rootfs/var/tmp/tbound-op/rp
+moved /root/ga/state/dr -> /root/ga/archive-f15-20261106T091228Z/rootfs/root/ga/state/dr
+moved /root/ga/state/dr.once -> /root/ga/archive-f15-20261106T091228Z/rootfs/root/ga/state/dr.once
+moved /root/ga/reg-dr -> /root/ga/archive-f15-20261106T091228Z/rootfs/root/ga/reg-dr
+moved /root/ga/state/dr.client-status -> /root/ga/archive-f15-20261106T091228Z/rootfs/root/ga/state/dr.client-status
+moved /root/ga/dr -> /root/ga/archive-f15-20261106T091228Z/rootfs/root/ga/dr
+moved /var/tmp/tbound-op/dr -> /root/ga/archive-f15-20261106T091228Z/rootfs/var/tmp/tbound-op/dr
+moved /root/ga/out -> /root/ga/archive-f15-20261106T091228Z/rootfs/root/ga/out
+moved /var/tmp/tbound-op/_/evidence-capability.json -> /root/ga/archive-f15-20261106T091228Z/rootfs/var/tmp/tbound-op/_/evidence-capability.json
+moved /var/tmp/tbound-op/_/evidence-landlock-connect.json -> /root/ga/archive-f15-20261106T091228Z/rootfs/var/tmp/tbound-op/_/evidence-landlock-connect.json
+moved /var/tmp/tbound-op/_/evidence-procoracle.json -> /root/ga/archive-f15-20261106T091228Z/rootfs/var/tmp/tbound-op/_/evidence-procoracle.json
+moved /var/tmp/tbound-op/_/evidence-provider.json -> /root/ga/archive-f15-20261106T091228Z/rootfs/var/tmp/tbound-op/_/evidence-provider.json
+moved /var/tmp/tbound-op/_/evidence-route-bash-view.json -> /root/ga/archive-f15-20261106T091228Z/rootfs/var/tmp/tbound-op/_/evidence-route-bash-view.json
+moved /var/tmp/tbound-op/_/evidence-route-direct-runtime.json -> /root/ga/archive-f15-20261106T091228Z/rootfs/var/tmp/tbound-op/_/evidence-route-direct-runtime.json
+absent /var/tmp/tbound-op/_/out-* (nothing to move)
+moved /var/lib/tbound/live/root/out -> /root/ga/archive-f15-20261106T091228Z/rootfs/var/lib/tbound/live/root/out
+moved /var/lib/tbound/live/root/src -> /root/ga/archive-f15-20261106T091228Z/rootfs/var/lib/tbound/live/root/src
+== verify the archive against the manifest (sha256, owner, group, mode)
+VERIFIED: the archive equals the manifest
+== recreate the empty state (PROVISIONING-SIGNING.md I2; audit and publication-state as tbound-pi.service StateDirectory= creates them)
+{"path":"/var/lib/tbound/private-admin/workflow-recovery/root.db","owner_store_root":"/var/lib/tbound/sessions/workflow-owners","root_identity":"4d49212a460aa38b44f11e79e64b1c83f8580b842e05c5cf760ad703a8be6268"}
+== verify the fresh state (I2: tbound-pi:tbound-pi 700 for the directories, 600 for catalog.jsonl, exactly one root.db)
+stat tbound-pi:tbound-pi 700 /var/lib/tbound/audit
+stat tbound-pi:tbound-pi 700 /var/lib/tbound/publication-state
+stat tbound-pi:tbound-pi 700 /var/lib/tbound/private-admin
+stat tbound-pi:tbound-pi 700 /var/lib/tbound/sessions
+stat tbound-pi:tbound-pi 700 /var/lib/tbound/private-admin/workflow-recovery
+stat tbound-pi:tbound-pi 700 /var/lib/tbound/sessions/workflow-owners
+stat tbound-pi:tbound-pi 600 0 bytes /var/lib/tbound/private-admin/workflow-recovery/catalog.jsonl
+stat tbound-pi:tbound-pi 600 24576 bytes /var/lib/tbound/private-admin/workflow-recovery/root.db
+== verify the kept live root: the directory itself stays, its content is archived, lost+found is untouched
+stat tbound-pi:tbound-pi 700 directory /var/lib/tbound/live/root
+fresh d 995:986 700 /var/lib/tbound/audit
+fresh d 995:986 700 /var/lib/tbound/private-admin
+fresh d 995:986 700 /var/lib/tbound/private-admin/workflow-recovery
+fresh d 995:986 700 /var/lib/tbound/publication-state
+fresh d 995:986 700 /var/lib/tbound/sessions
+fresh d 995:986 700 /var/lib/tbound/sessions/workflow-owners
+fresh f 995:986 600 /var/lib/tbound/private-admin/workflow-recovery/catalog.jsonl
+fresh f 995:986 600 /var/lib/tbound/private-admin/workflow-recovery/root.db
+fresh f 995:986 600 /var/lib/tbound/private-admin/workflow-recovery/root.db.lock
+kept d 995:986 755 var/lib/tbound/live/root/lost+found
+socket: active
+ARCHIVE-DONE /root/ga/archive-f15-20261106T091228Z
+OK   saved /home/tbound/tbound-h/f16/g1-prior/archive-run-20261106T091228Z.txt
+OK   archived into /root/ga/archive-f15-20261106T091228Z; fresh state verified on the guest
+OK   recorded g1-prior/archive-done.txt = archive_dir=/root/ga/archive-f15-20261106T091228Z manifest_sha256=845f225c919d8bb45a5047ca65405407ecf515ccf46f17ab69de1de5a141c320
+
+== 6. proof
+tbound-op status 2026-11-06T09:12:54Z pins F=2a6492dda21e5af9eab8e92e81f56725b3f8e9c5
+anchor: ok (pi-host-profile.pub sha256:be206a41ad321f29ef89e8157f69a6f0820a93fafa3096b71867ece745f9afac)
+runner: sha256:7a869ca90977e731 tbound-profile: sha256:94499a2e5e53a4ba
+service=inactive socket=active
+installed: cfg sha256:d0d8002803d441cdaacf832d4fb06d390f837f233e8b9b0cb26d56d524fca6f5 reg sha256:425abcf7bd78a514 prof sha256:7556075dd39ba389 tpl sha256:f0d162b01210eb55
+installed config matches state of: pilot
+-- g1: no state
+-- last log lines
+2026-11-06T09:12:43Z tboundadmin END rc=0 argv=collect catalog 
+2026-11-06T09:12:49Z tboundadmin BEGIN argv=svc stop 
+2026-11-06T09:12:49Z tboundadmin OK svc stop 
+2026-11-06T09:12:49Z tboundadmin END rc=0 argv=svc stop 
+2026-11-06T09:12:54Z tboundadmin BEGIN argv=status g1 
+OK   tbound-op status g1: no state, no one-use marker
+OK   tbound-pi.socket = active
+NOTE service state: inactive (the socket starts it on demand; nothing started it on purpose)
+OK   sudo -n true fails (narrowed sudo unchanged; this script only used password sudo and tbound-op)
+NOTE live root after the archive: 
+NOTE the live root directory /var/lib/tbound/live/root was KEPT (only its content moved into the archive); its lost+found, if any, stayed. 30-reg-g1.sh runs tbound-op seed-live g1 to re-create the canonical g1 fixture (it stops with 'owner must look' if the root holds something unexpected)
+NOTE next: 00-session-sudo.sh open, 10-upgrade.sh, 20-r1.sh, 50-i1-i2.sh, 00-session-sudo.sh close, 29-g1-recover.sh status|move (finds nothing left), 30-reg-g1.sh
+
+== DONE 27-archive-state.sh 2026-11-06T09:12:56Z
+cleanup: tbound-pi.socket must be active again

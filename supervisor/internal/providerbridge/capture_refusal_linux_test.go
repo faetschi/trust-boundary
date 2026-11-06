@@ -205,3 +205,69 @@ func TestProductCaptureRefusalReasonIsDeterministic(t *testing.T) {
 		}
 	}
 }
+
+// A journal written before f53fd29f holds a refusal whose body the live parser now accepts.
+func TestProductCaptureRefusalReplaysLegacyNullRefusal(t *testing.T) {
+	cfg := recoveryTestConfig()
+	cfg.ProductCaptureRefusals = true
+	hooks := &retryHooks{}
+	hooks.apply(&cfg)
+	source := openRecoveryTestJournal(t, filepath.Join(t.TempDir(), "source.audit"))
+	c, err := newWithDoer(cfg, ApprovedModel, &fixtureDoer{responses: []fixtureResponse{{failStatus: 200, failBody: rejectedCaptureBody}}}, source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.AdmitPrompt("task", "prompt"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.NextTurn(context.Background()); err == nil {
+		t.Fatal("no refusal")
+	}
+	trace, err := source.Trace()
+	if err != nil {
+		t.Fatal(err)
+	}
+	last := trace.Records[len(trace.Records)-1]
+	pins := RecoveryPins{Config: cfg, Model: ApprovedModel, Policy: recoveryTestPolicy(t, true), RequireHostCallReservations: true}
+	forge := func(t *testing.T, edit func(*captureRefusalEvidence)) error {
+		var evidence captureRefusalEvidence
+		if err := json.Unmarshal(last.Event.Data, &evidence); err != nil {
+			t.Fatal(err)
+		}
+		evidence.Response = []byte(legacyNullRefusalBody)
+		evidence.ResponseDigest = digestBytes(evidence.Response)
+		evidence.Reason = "multiple or malformed tool calls"
+		edit(&evidence)
+		encoded, err := json.Marshal(evidence)
+		if err != nil {
+			t.Fatal(err)
+		}
+		forged := openRecoveryTestJournal(t, filepath.Join(t.TempDir(), "forged.audit"))
+		for i, record := range trace.Records {
+			event := record.Event
+			if i == len(trace.Records)-1 {
+				event.Data = encoded
+			}
+			if _, err := forged.Append(event); err != nil {
+				t.Fatal(err)
+			}
+		}
+		_, err = ReplayTranscript(forged, pins, nil)
+		return err
+	}
+	if err := forge(t, func(*captureRefusalEvidence) {}); err != nil {
+		t.Fatalf("legacy refusal rejected: %v", err)
+	}
+	if err := forge(t, func(e *captureRefusalEvidence) { e.Reason = "invalid provider response" }); !errors.Is(err, ErrTranscriptReplay) {
+		t.Fatalf("changed reason accepted: %v", err)
+	}
+	if err := forge(t, func(e *captureRefusalEvidence) {
+		e.Response = []byte(strings.Replace(legacyNullRefusalBody, `"created":1`, `"created":1,"extra_a":true`, 1))
+		e.ResponseDigest = digestBytes(e.Response)
+	}); !errors.Is(err, ErrTranscriptReplay) {
+		t.Fatalf("body now failing for another reason accepted: %v", err)
+	}
+	if err := forge(t, func(e *captureRefusalEvidence) { e.ResponseDigest = digestBytes([]byte("other")) }); !errors.Is(err, ErrTranscriptReplay) {
+		t.Fatalf("changed digest accepted: %v", err)
+	}
+}
