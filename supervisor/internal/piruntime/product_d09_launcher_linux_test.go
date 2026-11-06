@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"tbound/supervisor/internal/productsetup"
 )
 
 func TestProductD09ProbeAcceptsProductBindingOnly(t *testing.T) {
@@ -16,7 +18,7 @@ func TestProductD09ProbeAcceptsProductBindingOnly(t *testing.T) {
 	f.template.CellGID = testD09CellID(os.Getegid(), 732)
 	productD09TestSetServiceIdentity(&f.template, os.Geteuid(), os.Getegid())
 	f.rebind(t)
-	f.profile.CgroupRootDigest, _ = DigestD09CgroupRoot(productD09CellsHierarchyPath, os.Geteuid())
+	f.profile.CgroupRootDigest, _ = DigestD09CgroupRoot(productsetup.CommandCellsCgroupHierarchyPath, os.Geteuid())
 	host := &D09ProductCommandHost{loaded: true, snapshot: productD09Snapshot{
 		profile: f.profile, template: f.template, serviceUID: os.Geteuid(), serviceGID: os.Getegid(),
 	}}
@@ -43,7 +45,7 @@ func TestProductD09ProbeAcceptsProductBindingOnly(t *testing.T) {
 			h.snapshot.profile.ContainmentProfileDigest = DigestBytes([]byte("other"))
 		},
 		"host filesystem digest": func(h *D09ProductCommandHost) {
-			h.snapshot.profile.CgroupRootDigest, _ = DigestD09CgroupRoot(productD09CellsHostPath, os.Geteuid())
+			h.snapshot.profile.CgroupRootDigest, _ = DigestD09CgroupRoot(productsetup.CommandCellsCgroupHostPath, os.Geteuid())
 		},
 		"wrong cells path": func(h *D09ProductCommandHost) { h.snapshot.template.CgroupsPath = "/sys/fs/cgroup/tbound" },
 	} {
@@ -111,13 +113,13 @@ func TestProductD09CellsInitialization(t *testing.T) {
 			}
 		})
 	}
-	if err := validateProductD09CgroupPaths(productD09RunnerHierarchyPath, productD09ServiceHostPath, productD09ServiceHostPath+"/runner"); err != nil {
+	if err := validateProductD09CgroupPaths(productsetup.CommandRunnerCgroupHierarchyPath, productsetup.CommandServiceCgroupHostPath, productsetup.CommandServiceCgroupHostPath+"/runner"); err != nil {
 		t.Fatal(err)
 	}
 	for _, paths := range [][3]string{
-		{productD09CellsHierarchyPath, productD09ServiceHostPath, productD09ServiceHostPath + "/runner"},
-		{productD09RunnerHierarchyPath, "/sys/fs/cgroup/tbound-pi.service", productD09ServiceHostPath + "/runner"},
-		{productD09RunnerHierarchyPath, productD09ServiceHostPath, productD09CellsHostPath},
+		{productsetup.CommandCellsCgroupHierarchyPath, productsetup.CommandServiceCgroupHostPath, productsetup.CommandServiceCgroupHostPath + "/runner"},
+		{productsetup.CommandRunnerCgroupHierarchyPath, "/sys/fs/cgroup/tbound-pi.service", productsetup.CommandServiceCgroupHostPath + "/runner"},
+		{productsetup.CommandRunnerCgroupHierarchyPath, productsetup.CommandServiceCgroupHostPath, productsetup.CommandCellsCgroupHostPath},
 	} {
 		if err := validateProductD09CgroupPaths(paths[0], paths[1], paths[2]); err == nil {
 			t.Fatal("wrong runner/parent path accepted")

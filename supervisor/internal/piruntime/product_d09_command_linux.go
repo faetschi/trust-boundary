@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+
+	"tbound/supervisor/internal/productsetup"
 )
 
 // D09ProductCommandOwnership identifies a product command before launch and, when started, its authenticated namespace.
@@ -113,7 +115,7 @@ func ReconcileProductD09CommandResidueAfterScopeDrain(ctx context.Context, host 
 	if err != nil {
 		return err
 	}
-	return reconcileProductD09CommandResidueAfterScopeDrain(ctx, config.PodmanPath, productD09CommandEnvironment(), owner, processMountNamespaceReferences)
+	return reconcileProductD09CommandResidueAfterScopeDrain(ctx, config.PodmanPath, productsetup.CommandCellEnvironment(), owner, processMountNamespaceReferences)
 }
 
 func reconcileProductD09CommandResidueAfterScopeDrain(ctx context.Context, podman string, environment []string, owner D09ProductCommandOwnership, mountReferences func(context.Context, uint64) (bool, error)) error {

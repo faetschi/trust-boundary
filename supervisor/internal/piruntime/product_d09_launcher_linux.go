@@ -9,13 +9,8 @@ import (
 	"path/filepath"
 	"reflect"
 	"syscall"
-)
 
-const (
-	productD09ServiceHostPath     = "/sys/fs/cgroup/system.slice/tbound-product.service"
-	productD09CellsHostPath       = productD09ServiceHostPath + "/cells"
-	productD09CellsHierarchyPath  = "/system.slice/tbound-product.service/cells"
-	productD09RunnerHierarchyPath = "/system.slice/tbound-product.service/runner"
+	"tbound/supervisor/internal/productsetup"
 )
 
 // PrepareProductD09CgroupRoot initializes only the product service's empty cells
@@ -31,7 +26,7 @@ func PrepareProductD09CgroupRoot(ctx context.Context, host *D09ProductCommandHos
 	if err != nil {
 		return nil, err
 	}
-	parent, err := openAbsoluteDirectoryNoSymlinks(productD09ServiceHostPath)
+	parent, err := openAbsoluteDirectoryNoSymlinks(productsetup.CommandServiceCgroupHostPath)
 	if err != nil {
 		return nil, err
 	}
@@ -85,7 +80,7 @@ func PrepareProductD09CgroupRoot(ctx context.Context, host *D09ProductCommandHos
 }
 
 func validateProductD09CgroupPaths(current, parent, runner string) error {
-	if current != productD09RunnerHierarchyPath || parent != productD09ServiceHostPath || runner != productD09ServiceHostPath+"/runner" {
+	if current != productsetup.CommandRunnerCgroupHierarchyPath || parent != productsetup.CommandServiceCgroupHostPath || runner != productsetup.CommandServiceCgroupHostPath+"/runner" {
 		return ErrCgroupScopeRefused
 	}
 	return nil
@@ -96,7 +91,7 @@ func validateProductD09CellsRoot(root *os.File, host *D09ProductCommandHost) err
 		return ErrCgroupScopeRefused
 	}
 	path, err := cgroupDescriptorPath(root)
-	if err != nil || path != productD09CellsHostPath {
+	if err != nil || path != productsetup.CommandCellsCgroupHostPath {
 		return errors.Join(ErrCgroupScopeRefused, err)
 	}
 	if err := requireCgroup2Descriptor(root); err != nil {
@@ -118,7 +113,7 @@ func validateProductD09CellsRoot(root *os.File, host *D09ProductCommandHost) err
 		return err
 	}
 	hierarchy, err := observeCgroup2Descriptor(root, string(mountinfo))
-	if err != nil || hierarchy != productD09CellsHierarchyPath {
+	if err != nil || hierarchy != productsetup.CommandCellsCgroupHierarchyPath {
 		return errors.Join(ErrCgroupScopeRefused, err)
 	}
 	controllers, err := readAt(root, "cgroup.controllers", 1024)
@@ -142,10 +137,10 @@ func productD09LauncherConfig(host *D09ProductCommandHost) (D09Config, error) {
 	}
 	template, profile := host.Template(), host.Profile()
 	digest, err := template.Digest()
-	rootDigest, rootErr := DigestD09CgroupRoot(productD09CellsHierarchyPath, host.snapshot.serviceUID)
+	rootDigest, rootErr := DigestD09CgroupRoot(productsetup.CommandCellsCgroupHierarchyPath, host.snapshot.serviceUID)
 	if err != nil || rootErr != nil || digest != profile.ContainmentProfileDigest || profile.CgroupRootDigest != rootDigest ||
 		profile.Mode != ModeProduction || profile.ContainmentProfile != D09ContainmentProfile || profile.SettlementProfile != D09SettlementProfile ||
-		template.CgroupsPath != productD09CellsHostPath || template.ManagedLiveRootRegistrationDigest != "" || !validDigest(template.ProductRegistrationDigest) {
+		template.CgroupsPath != productsetup.CommandCellsCgroupHostPath || template.ManagedLiveRootRegistrationDigest != "" || !validDigest(template.ProductRegistrationDigest) {
 		return D09Config{}, ErrProductD09HostRefused
 	}
 	config := template.Config().normalized()
@@ -163,7 +158,7 @@ func NewProductD09PodmanCrunLauncher(ctx context.Context, host *D09ProductComman
 	if err != nil {
 		return nil, err
 	}
-	launcher := &D09PodmanCrunLauncher{config: config, runner: execD09CommandRunner{environment: productD09CommandEnvironment()}}
+	launcher := &D09PodmanCrunLauncher{config: config, runner: execD09CommandRunner{environment: productsetup.CommandCellEnvironment()}}
 	if err := validateProductD09Scope(scope, host); err != nil {
 		return nil, err
 	}
@@ -206,7 +201,7 @@ func validateProductD09Scope(scope *LinuxCgroupScope, host *D09ProductCommandHos
 		return err
 	}
 	path, err := scope.Path()
-	if err != nil || filepath.Dir(path) != productD09CellsHostPath {
+	if err != nil || filepath.Dir(path) != productsetup.CommandCellsCgroupHostPath {
 		return errors.Join(ErrCgroupScopeRefused, err)
 	}
 	return nil

@@ -3,11 +3,9 @@
 package piruntime
 
 import (
-	"bytes"
 	"context"
 	"crypto/ed25519"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -16,13 +14,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
-	"slices"
 	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
-	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/productsession"
 	"tbound/supervisor/internal/productsetup"
 )
@@ -60,25 +56,6 @@ runroot = "/run/tbound-product/containers"
 [storage.options]
 ignore_chown_errors = "true"
 `
-
-// productD09CommandEnvironment is the environment of every product Podman and cosign child, built fresh on each call. It
-// inherits nothing. It holds the product's own roots, the C locale that the thesis unit sets, and the shared D09 PATH.
-func productD09CommandEnvironment() []string {
-	return []string{
-		"CONTAINERS_CONF=" + productsetup.ContainersConfPath,
-		"CONTAINERS_STORAGE_CONF=" + productsetup.StorageConfPath,
-		"HOME=" + productsetup.PodmanHomeDir,
-		"LANG=C",
-		"LC_ALL=C",
-		"PATH=" + d09FixedPath,
-		"TMPDIR=" + productsetup.PodmanTmpDir,
-		"XDG_CACHE_HOME=" + productsetup.PodmanCacheDir,
-		"XDG_RUNTIME_DIR=" + productsetup.RuntimeDir,
-	}
-}
-
-// productD09EffectiveUnitProperties are the systemd properties that decide the daemon's effective unit and environment.
-var productD09EffectiveUnitProperties = []string{"LoadState", "NeedDaemonReload", "FragmentPath", "DropInPaths", "Environment", "EnvironmentFiles", "User", "Group"}
 
 // productD09UnitOverrideRoots are the systemd directories whose drop-ins apply to the product unit or to every service.
 var productD09UnitOverrideRoots = []string{
@@ -150,13 +127,6 @@ type productD09DirIdentity struct {
 
 // productD09Inputs records the identity of every protected input one load read or pinned, keyed by path.
 type productD09Inputs map[string]productD09FileIdentity
-
-// productD09ServiceConfigFile is the installed service config. It adds shutdown_grace_seconds, which the product service
-// config accepts and productsetup.ServiceConfig does not model; the grace period is not a loader input.
-type productD09ServiceConfigFile struct {
-	productsetup.ServiceConfig
-	ShutdownGraceSeconds int `json:"shutdown_grace_seconds,omitempty"`
-}
 
 // LoadProductD09CommandHost verifies the installed product command-host inputs at their fixed paths. It takes no path
 // argument: the trust roots are the product constants in productsetup.
@@ -268,9 +238,9 @@ func loadProductD09Snapshot(ctx context.Context) (productD09Snapshot, error) {
 	if err != nil {
 		return productD09Snapshot{}, err
 	}
-	service, err := productD09DecodeServiceConfig(serviceConfigRaw)
+	service, err := productsetup.DecodeCommandServiceConfig(serviceConfigRaw)
 	if err != nil {
-		return productD09Snapshot{}, err
+		return productD09Snapshot{}, productD09RefusedPolicy(err)
 	}
 	unitRaw, err := inputs.read(productsetup.UnitPath, productD09MaxConfigBytes)
 	if err != nil {
@@ -286,17 +256,11 @@ func loadProductD09Snapshot(ctx context.Context) (productD09Snapshot, error) {
 	if err != nil {
 		return productD09Snapshot{}, err
 	}
-	registrationRaw, err := inputs.read(productsetup.RegistrationPath, int64(productsession.MaxRegistrationBytes))
+	registrationRaw, registrationSig, publicKey, err := productsetup.ReadCommandRegistration(func(path string, limit int64) ([]byte, error) {
+		return inputs.read(path, limit)
+	})
 	if err != nil {
-		return productD09Snapshot{}, err
-	}
-	registrationSig, err := productD09ReadBase64(inputs, productsetup.RegistrationSignaturePath)
-	if err != nil {
-		return productD09Snapshot{}, err
-	}
-	publicKey, err := productD09ReadBase64(inputs, productsetup.RegistrationPublicKeyPath)
-	if err != nil {
-		return productD09Snapshot{}, err
+		return productD09Snapshot{}, productD09RefusedPolicy(err)
 	}
 	profileRaw, err := inputs.read(productsetup.CommandHostProfilePath, maxHostProfileBytes)
 	if err != nil {
@@ -323,8 +287,8 @@ func loadProductD09Snapshot(ctx context.Context) (productD09Snapshot, error) {
 	if err != nil {
 		return productD09Snapshot{}, productD09Refused(err, "product registration does not verify under the fixed product key")
 	}
-	if err := productD09RequireServiceMatchesRegistration(service, registration); err != nil {
-		return productD09Snapshot{}, err
+	if err := service.RequireCommandRegistration(registration); err != nil {
+		return productD09Snapshot{}, productD09RefusedPolicy(err)
 	}
 	if err := productD09VerifyArtifacts(ctx, inputs, template, profile); err != nil {
 		return productD09Snapshot{}, err
@@ -343,44 +307,6 @@ func loadProductD09Snapshot(ctx context.Context) (productD09Snapshot, error) {
 		rootScanners:   rootScanners,
 		unitProperties: unitProperties,
 	}, nil
-}
-
-// productD09DecodeServiceConfig strictly decodes the fixed product service config and requires its registration and key
-// fields to name the canonical product paths.
-func productD09DecodeServiceConfig(raw []byte) (productsetup.ServiceConfig, error) {
-	if err := protocol.ValidateStrictJSON(raw); err != nil {
-		return productsetup.ServiceConfig{}, productD09Refused(err, "service config is not strict JSON")
-	}
-	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.DisallowUnknownFields()
-	var file productD09ServiceConfigFile
-	if err := decoder.Decode(&file); err != nil {
-		return productsetup.ServiceConfig{}, productD09Refused(err, "service config does not match the product schema")
-	}
-	config := file.ServiceConfig
-	if config.SchemaVersion != productsetup.ServiceConfigSchema || config.RegistrationPath != productsetup.RegistrationPath ||
-		config.RegistrationSignaturePath != productsetup.RegistrationSignaturePath ||
-		config.RegistrationPublicKeyPath != productsetup.RegistrationPublicKeyPath {
-		return productsetup.ServiceConfig{}, productD09Refused(nil, "service config does not name the canonical registration and key")
-	}
-	return config, nil
-}
-
-// productD09RequireServiceMatchesRegistration requires the service config to name the registration's git tool and exactly
-// the registration's projects.
-func productD09RequireServiceMatchesRegistration(service productsetup.ServiceConfig, registration productsession.Registration) error {
-	if service.GitDigest != registration.GitDigest {
-		return productD09Refused(nil, "service git digest differs from the verified registration")
-	}
-	if len(service.Projects) != len(registration.Projects) {
-		return productD09Refused(nil, "service projects differ from the verified registration")
-	}
-	for _, project := range registration.Projects {
-		if _, ok := service.Projects[project.ProjectID]; !ok {
-			return productD09Refused(nil, "service projects differ from the verified registration: "+project.ProjectID)
-		}
-	}
-	return nil
 }
 
 // productD09ReadBase64 reads a standard base64 file, the product convention for keys and signatures.
@@ -523,7 +449,7 @@ func productD09VerifyArtifacts(ctx context.Context, inputs productD09Inputs, tem
 			return err
 		}
 	}
-	launcher := &D09PodmanCrunLauncher{runner: execD09CommandRunner{environment: productD09CommandEnvironment()}}
+	launcher := &D09PodmanCrunLauncher{runner: execD09CommandRunner{environment: productsetup.CommandCellEnvironment()}}
 	if err := launcher.verifyOfflineSignatureMemoized(ctx, template.Config(), template.CosignPath, true); err != nil {
 		return productD09Refused(err, "offline cosign verification of the product image failed")
 	}
@@ -618,21 +544,6 @@ func productD09VerifyStateRoots(inputs productD09Inputs, service productsetup.Se
 	return roots, scanners, nil
 }
 
-// productD09ValidateServiceRoots keeps turn evidence and managed projects in the setup-owned product trees.
-func productD09ValidateServiceRoots(service productsetup.ServiceConfig) error {
-	if !productD09IsCleanAbsolute(service.StateRoot) || productsetup.IsThesisPath(service.StateRoot) ||
-		!productsetup.PathInside(service.StateRoot, productsetup.TurnsDir) {
-		return productD09Refused(nil, "service state root is not a clean path inside the product state tree")
-	}
-	for _, project := range service.Projects {
-		if !productD09IsCleanAbsolute(project) || productsetup.IsThesisPath(project) ||
-			project == productsetup.ProjectsDir || !productsetup.PathInside(project, productsetup.ProjectsDir) {
-			return productD09Refused(nil, "service project root is not a clean managed product path: "+project)
-		}
-	}
-	return nil
-}
-
 // productD09MeasureRoot measures one root directory as the current scanner sees it. The root is opened without following
 // links, and the descriptor must be the directory its metadata named.
 func productD09MeasureRoot(path string) (D09XattrVisibilityMeasurements, productD09DirIdentity, error) {
@@ -700,7 +611,7 @@ func productD09RequireEffectiveUnit(ctx context.Context) (map[string]string, err
 		return nil, err
 	}
 	args := []string{"show", "--no-pager"}
-	for _, property := range productD09EffectiveUnitProperties {
+	for _, property := range productsetup.CommandEffectiveUnitProperties() {
 		args = append(args, "--property="+property)
 	}
 	args = append(args, productsetup.UnitName)
@@ -720,28 +631,6 @@ func productD09RequireEffectiveUnit(ctx context.Context) (map[string]string, err
 		return nil, err
 	}
 	return properties, nil
-}
-
-func productD09ValidateEffectiveUnit(properties map[string]string) error {
-	for _, property := range productD09EffectiveUnitProperties {
-		// systemctl show leaves out an empty EnvironmentFiles list; absent then means empty, checked below.
-		if _, ok := properties[property]; !ok && property != "EnvironmentFiles" {
-			return productD09Refused(nil, "systemctl did not report the effective property "+property)
-		}
-	}
-	if properties["LoadState"] != "loaded" || properties["NeedDaemonReload"] != "no" ||
-		properties["FragmentPath"] != productsetup.UnitPath || properties["DropInPaths"] != "" ||
-		properties["EnvironmentFiles"] != "" ||
-		properties["User"] != productsetup.ServiceUser || properties["Group"] != productsetup.ServiceGroup {
-		return productD09Refused(nil, "effective product unit differs from the installed unit")
-	}
-	// systemctl separates assignments with one ASCII space; strings.Fields would also strip Unicode spaces inside values.
-	environment := strings.Split(properties["Environment"], " ")
-	slices.Sort(environment)
-	if !slices.Equal(environment, productD09CommandEnvironment()) {
-		return productD09Refused(nil, "effective product environment differs from the fixed assignments")
-	}
-	return nil
 }
 
 // productD09ReadFile reads one protected product input. It refuses a missing, symlinked, non-regular, group- or
@@ -1013,4 +902,24 @@ func productD09Refused(cause error, detail string) error {
 		return fmt.Errorf("%s: %w", detail, cause)
 	}
 	return fmt.Errorf("%w: %s: %w", ErrProductD09HostRefused, detail, cause)
+}
+
+// productD09RefusedPolicy rebuilds a productsetup policy refusal through productD09Refused, so it wraps the sentinel and its
+// cause exactly as a refusal made here does. Any other error is a protected-read error that is already refused; it passes
+// through unchanged.
+func productD09RefusedPolicy(err error) error {
+	var policy *productsetup.CommandPolicyError
+	if errors.As(err, &policy) {
+		return productD09Refused(policy.Cause, policy.Detail)
+	}
+	return err
+}
+
+// productD09ValidateServiceRoots keeps turn evidence and managed projects in the setup-owned product trees.
+func productD09ValidateServiceRoots(service productsetup.ServiceConfig) error {
+	return productD09RefusedPolicy(service.ValidateCommandRoots())
+}
+
+func productD09ValidateEffectiveUnit(properties map[string]string) error {
+	return productD09RefusedPolicy(productsetup.ValidateCommandEffectiveUnit(properties))
 }

@@ -95,7 +95,7 @@ func TestProductD09EnvironmentCallSitesCarryTheProductEnvironment(t *testing.T) 
 			"return=r.environment", "return=d09ProbeEnv()",
 		}},
 		{file: "containment_linux.go", function: "D09PodmanCrunLauncher.commandEnvironment", returns: true, want: []string{
-			"return=productD09CommandEnvironment()", "return=d09ProbeEnv()",
+			"return=productsetup.CommandCellEnvironment()", "return=d09ProbeEnv()",
 		}},
 		{file: "containment_linux.go", function: "D09PodmanCrunLauncher.StartVerifiedWithProof", want: []string{
 			"Env=l.commandEnvironment()", "arg:inspectContainer=l.commandEnvironment()",
@@ -115,7 +115,7 @@ func TestProductD09EnvironmentCallSitesCarryTheProductEnvironment(t *testing.T) 
 		{file: "d09_command_runner_linux.go", function: "removeContainer", want: []string{"Env=environment"}},
 		{file: "d09_command_runner_linux.go", function: "containerExists", want: []string{"Env=environment"}},
 		{file: "product_d09_host_linux.go", function: "productD09VerifyArtifacts", want: []string{
-			"literal:environment=productD09CommandEnvironment()",
+			"literal:environment=productsetup.CommandCellEnvironment()",
 		}},
 	} {
 		want := slices.Clone(site.want)
