@@ -1,5 +1,6 @@
 {
  "frozen legacy oracle: format helpers > every helper returns the frozen legacy result on a seeded corpus": {
+  "file": "core/frozen-oracle.test.ts",
   "n": 23364,
   "chunks": [
    "4eb5fae14a02dbec",
@@ -99,6 +100,7 @@
   ]
  },
  "frozen legacy oracle: filters and governance counts > matchesFilter, filterItems, countFilter and governanceCounts agree on seeded timelines": {
+  "file": "core/frozen-oracle.test.ts",
   "n": 50634,
   "chunks": [
    "1b7c62a88e53058c",
@@ -307,6 +309,7 @@
   ]
  },
  "frozen legacy oracle: store reducers > the full store state matches the frozen legacy state after every step of seeded runs": {
+  "file": "core/frozen-oracle.test.ts",
   "n": 66000,
   "chunks": [
    "77a6697ebc3fafc1",
@@ -576,6 +579,7 @@
   ]
  },
  "frozen legacy oracle: store reducers > the eviction and window-gap paths match over long runs of 512-plus items": {
+  "file": "core/frozen-oracle.test.ts",
   "n": 8403,
   "chunks": [
    "f70f651815dd435b",
@@ -615,6 +619,7 @@
   ]
  },
  "frozen legacy oracle: trajectory projections > every projection returns the frozen legacy result on seeded item lists": {
+  "file": "core/frozen-oracle.test.ts",
   "n": 48359,
   "chunks": [
    "aec799d9fbdbfb6b",
@@ -814,6 +819,7 @@
   ]
  },
  "frozen legacy oracle: anchor arithmetic > the tail, scroll and announcement functions agree on seeded metrics": {
+  "file": "core/frozen-oracle.test.ts",
   "n": 160001,
   "chunks": [
    "d54adae290605984",
@@ -1460,6 +1466,7 @@
   ]
  },
  "frozen legacy oracle: backoff delays and scheduler > delays with an injected random source, and timers, agree on seeded sequences": {
+  "file": "core/frozen-oracle.test.ts",
   "n": 112801,
   "chunks": [
    "8332e9a13c5ab1bd",
@@ -1917,24 +1924,28 @@
   ]
  },
  "frozen legacy oracle: markdown parser > (a) the 31 golden ordinary samples agree": {
+  "file": "markdown/frozen-oracle.test.ts",
   "n": 31,
   "chunks": [
    "0eb740b603817168"
   ]
  },
  "frozen legacy oracle: markdown parser > (b) the 18 hostile payloads agree": {
+  "file": "markdown/frozen-oracle.test.ts",
   "n": 18,
   "chunks": [
    "08f398d022a9eaf2"
   ]
  },
  "frozen legacy oracle: markdown parser > (b) the adversarial 4096-character messages agree, look-ahead work included": {
+  "file": "markdown/frozen-oracle.test.ts",
   "n": 6,
   "chunks": [
    "d7fafc9325da8ab4"
   ]
  },
  "frozen legacy oracle: markdown parser > (c) a seeded fuzz corpus of 100,000 markdown-token inputs agrees": {
+  "file": "markdown/frozen-oracle.test.ts",
   "n": 100000,
   "chunks": [
    "8f56270dfa104ee5",
@@ -2340,6 +2351,7 @@
   ]
  },
  "frozen legacy oracle: markdown parser > (c) 20,000 link-shaped inputs agree, so the safe and unsafe link paths are compared": {
+  "file": "markdown/frozen-oracle.test.ts",
   "n": 20000,
   "chunks": [
    "6c0d3b2958412671",
@@ -2425,12 +2437,14 @@
   ]
  },
  "frozen legacy oracle: markdown parser > (c) look-ahead window boundaries agree: closers and labels either side of 512 and 2048": {
+  "file": "markdown/frozen-oracle.test.ts",
   "n": 80,
   "chunks": [
    "ba3c623a2edb6533"
   ]
  },
  "frozen legacy oracle: markdown parser > (c) block-heavy inputs over the 512-block bound agree": {
+  "file": "markdown/frozen-oracle.test.ts",
   "n": 300,
   "chunks": [
    "0f7452aee8b1a939",
@@ -2438,6 +2452,7 @@
   ]
  },
  "frozen legacy oracle: markdown parser > (c) splitBlocks and safeHref agree on 100,000 and 50,000 seeded inputs": {
+  "file": "markdown/frozen-oracle.test.ts",
   "n": 150000,
   "chunks": [
    "3662dd4c1acaafda",
@@ -3043,6 +3058,7 @@
   ]
  },
  "frozen legacy oracle: markdown parser > (d) 2,500 streamed messages agree at every update (reuse counts) and at the end (result)": {
+  "file": "markdown/frozen-oracle.test.ts",
   "n": 79374,
   "chunks": [
    "20b553210fc67e82",
@@ -3366,24 +3382,28 @@
   ]
  },
  "frozen legacy oracle: markdown parser > (d) the 170-character stream agrees at every prefix, DOM and counts included": {
+  "file": "markdown/frozen-oracle.test.ts",
   "n": 170,
   "chunks": [
    "f95046f429337584"
   ]
  },
  "frozen legacy oracle: markdown parser > (d) the per-update look-ahead work of a 4096-character streamed message agrees": {
+  "file": "markdown/frozen-oracle.test.ts",
   "n": 1,
   "chunks": [
    "ff40af8a79fcda8d"
   ]
  },
  "frozen legacy oracle: markdown parser > (e) the bounds agree: the 64 KiB cut, the 512-block cut, depth 4 and the notice": {
+  "file": "markdown/frozen-oracle.test.ts",
   "n": 16,
   "chunks": [
    "7cbc006048627fb2"
   ]
  },
  "frozen legacy oracle: markdown parser > (e) a stream beyond the 64 KiB bound agrees at each update": {
+  "file": "markdown/frozen-oracle.test.ts",
   "n": 71,
   "chunks": [
    "49ce40def52e40cb"

@@ -6,12 +6,12 @@
 // output on these corpora fails here. Provenance and the mapping table: docs/phase2-parity.md.
 import { createHash } from "node:crypto";
 import { appendFileSync } from "node:fs";
-import { afterEach, expect } from "vitest";
+import { afterAll, afterEach, expect } from "vitest";
 import oracle from "./legacy-oracle.json" with { type: "json" };
 
 const CHUNK = 250;
 
-type Oracle = Record<string, { n: number; chunks: string[] }>;
+type Oracle = Record<string, { file: string; n: number; chunks: string[] }>;
 
 // Canonical text of a value: stable for undefined, NaN, infinities, -0, Map, Set and key order.
 export function canon(value: unknown): string {
@@ -81,10 +81,38 @@ export function frozen(group: string): Frozen {
   };
 }
 
+// Recorded groups of a suite file that no test of that file carries any more: a deleted or renamed
+// test would otherwise drop its coverage silently. filepath is matched by its tail (core/x.test.ts).
+export function orphanedGroups(filepath: string, testNames: readonly string[]): string[] {
+  const here = filepath.split("\\").join("/");
+  return Object.entries(oracle as Oracle)
+    .filter(([name, group]) => here.endsWith(group.file) && !testNames.includes(name))
+    .map(([name]) => name);
+}
+
+interface TaskNode {
+  readonly name: string;
+  readonly type: string;
+  readonly tasks?: readonly TaskNode[];
+}
+
+// The root node is the file: its name is the path, which currentTestName does not carry.
+function testNamesOf(node: TaskNode, prefix: string[] = [], root = true): string[] {
+  if (node.type === "test") return [[...prefix, node.name].join(" > ")];
+  const next = root ? prefix : [...prefix, node.name];
+  return (node.tasks ?? []).flatMap((child) => testNamesOf(child, next, false));
+}
+
 // One frozen group per test, named by the test. Call once at module level; it registers the
 // afterEach that closes the group. Returns the check function for the suite.
 export function frozenSuite(): (label: string, value: unknown) => void {
   let current: { name: string; group: Frozen } | null = null;
+  afterAll(({}, suite: unknown) => {
+    if (process.env["LEGACY_ORACLE_RECORD"]) return;
+    const file = suite as TaskNode & { readonly filepath?: string };
+    const orphans = orphanedGroups(file.filepath ?? "", testNamesOf(file));
+    if (orphans.length > 0) throw new Error(`recorded oracle group(s) with no test in this file: ${orphans.join(" | ")}`);
+  });
   afterEach(() => {
     // A fixture-backed test that made no comparison still closes its group, so the recorded
     // non-zero count rejects an emptied corpus.
