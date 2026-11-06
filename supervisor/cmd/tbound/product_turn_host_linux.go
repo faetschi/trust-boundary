@@ -25,10 +25,10 @@ import (
 type productTurnHost interface {
 	MeasureProjectBaseline(projectID string) (string, error)
 	PredecessorContext(turn productsession.Turn, providerProfile string) (providerbridge.PredecessorContext, error)
-	// PrepareTurn composes the turn's workflow and holds its provider journal for readers; the caller
-	// owns the returned turn and must close it.
+	// PrepareTurn validates the turn worker, then composes the turn workflow and holds its provider journal
+	// for readers; the caller owns the returned turn and must close it. cancelled reports a durable cancel request.
 	PrepareTurn(ctx context.Context, turn productsession.Turn, providerProfile string,
-		predecessor providerbridge.PredecessorContext) (productPreparedTurn, error)
+		predecessor providerbridge.PredecessorContext, cancelled func() bool) (productPreparedTurn, error)
 	SettleRetainedCommands(turnID string) error
 	CloseRetainedCommands() error
 	// ReconcileLinkedTurn reads the retained evidence of a linked turn whose process died and proves it
@@ -44,7 +44,9 @@ type productPreparedTurn interface {
 	Link() productsession.TurnLink
 	// BeginPublication composes the finalizer and holds session admission until the returned release.
 	BeginPublication(ctx context.Context, projectID string) (release func(), err error)
-	Drive(ctx context.Context, turn productsession.Turn, worker *productTurnWorker) (productTurnWork, error)
+	Drive(ctx context.Context, turn productsession.Turn) (productTurnWork, error)
+	// WorkerInstance is the identity of the worker PrepareTurn validated, which the receipt records.
+	WorkerInstance() string
 	Evidence(stage productTurnEvidenceStage) (productTurnEvidence, error)
 	SettleCommands() error
 	Finalize(ctx context.Context) (publication.Result, error)
@@ -107,14 +109,18 @@ func (c productTurnComposition) PredecessorContext(turn productsession.Turn, pro
 }
 
 func (c productTurnComposition) PrepareTurn(ctx context.Context, turn productsession.Turn, providerProfile string,
-	predecessor providerbridge.PredecessorContext) (productPreparedTurn, error) {
+	predecessor providerbridge.PredecessorContext, cancelled func() bool) (productPreparedTurn, error) {
+	worker, err := newProductTurnWorker(c.env.MaxWorkerSteps, cancelled, c.env.crash)
+	if err != nil {
+		return nil, err
+	}
 	w, err := c.env.composeProductTurnWorkflow(ctx, turn, providerProfile, predecessor)
 	if err != nil {
 		return nil, err
 	}
 	// The release goes first in the list, so it runs after the journals are closed.
 	w.closers = append([]func() error{c.env.holdLiveProviderJournal(turn.ID, w.providerJournal)}, w.closers...)
-	return &productComposedTurn{env: c.env, w: w, predecessor: predecessor}, nil
+	return &productComposedTurn{env: c.env, w: w, predecessor: predecessor, worker: worker}, nil
 }
 
 func (c productTurnComposition) SettleRetainedCommands(turnID string) error {
@@ -211,6 +217,7 @@ type productComposedTurn struct {
 	w           *productTurnWorkflow
 	predecessor providerbridge.PredecessorContext
 	publish     *PublicationRuntime
+	worker      *productTurnWorker
 }
 
 func (t *productComposedTurn) Link() productsession.TurnLink { return t.w.link(t.predecessor) }
@@ -224,9 +231,11 @@ func (t *productComposedTurn) BeginPublication(ctx context.Context, projectID st
 	return release, nil
 }
 
-func (t *productComposedTurn) Drive(ctx context.Context, turn productsession.Turn, worker *productTurnWorker) (productTurnWork, error) {
-	return t.env.driveProductTurn(ctx, turn, t.w, worker)
+func (t *productComposedTurn) Drive(ctx context.Context, turn productsession.Turn) (productTurnWork, error) {
+	return t.env.driveProductTurn(ctx, turn, t.w, t.worker)
 }
+
+func (t *productComposedTurn) WorkerInstance() string { return t.worker.instance }
 
 func (t *productComposedTurn) Evidence(stage productTurnEvidenceStage) (productTurnEvidence, error) {
 	w := t.w

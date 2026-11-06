@@ -98,11 +98,7 @@ func (e *productTurnEnv) RunTurn(ctx context.Context, admission productsession.A
 	if measured != turn.BaselineDigest {
 		return productTurnReceipt{}, e.refuse(turn.ID, productsession.CodeStaleBaseline, errProductStaleBaseline)
 	}
-	worker, err := newProductTurnWorker(e.MaxWorkerSteps, func() bool { return e.cancelRequested(turn.ID) }, host.Crash)
-	if err != nil {
-		return productTurnReceipt{}, e.abandon(turn.ID, err)
-	}
-	prepared, err := host.PrepareTurn(ctx, turn, session.ProviderProfile, predecessor)
+	prepared, err := host.PrepareTurn(ctx, turn, session.ProviderProfile, predecessor, func() bool { return e.cancelRequested(turn.ID) })
 	if err != nil {
 		if errors.Is(err, errProductCommandUnsettled) {
 			return productTurnReceipt{}, err
@@ -143,9 +139,9 @@ func (e *productTurnEnv) RunTurn(ctx context.Context, admission productsession.A
 		return productTurnReceipt{}, err
 	}
 
-	s := productTurnSettlement{env: e, turn: turn, prepared: prepared, worker: worker, predecessor: predecessor,
+	s := productTurnSettlement{env: e, turn: turn, prepared: prepared, predecessor: predecessor,
 		resultBaseline: turn.BaselineDigest}
-	s.work, s.runErr = prepared.Drive(ctx, turn, worker)
+	s.work, s.runErr = prepared.Drive(ctx, turn)
 	releasePublication()
 	if err := prepared.SettleCommands(); err != nil {
 		return s.unknown("command ownership did not settle", err)
@@ -259,7 +255,6 @@ type productTurnSettlement struct {
 	env            *productTurnEnv
 	turn           productsession.Turn
 	prepared       productPreparedTurn
-	worker         *productTurnWorker
 	predecessor    providerbridge.PredecessorContext
 	work           productTurnWork
 	runErr         error
@@ -304,7 +299,7 @@ func (s *productTurnSettlement) settle() (productTurnReceipt, error) {
 		SessionID: s.turn.SessionID, TurnID: s.turn.ID, Ordinal: s.turn.Ordinal,
 		WorkflowID: link.WorkflowID, RunID: link.RunID, ConversationID: link.ConversationID,
 		UnverifiedInputs: []string{"runtime_digest", "image_digest", "extension_digest"},
-		WorkerKind:       productsession.WorkerSupervisorLoop, WorkerInstance: s.worker.instance,
+		WorkerKind:       productsession.WorkerSupervisorLoop, WorkerInstance: s.prepared.WorkerInstance(),
 		ProviderJournalHead: ev.ProviderHead, ProviderJournalCount: ev.ProviderCount,
 		StoreJournalHead: ev.StoreHead, StoreJournalCount: ev.StoreCount,
 		CommandJournalHead: ev.CommandHead, CommandJournalCount: ev.CommandCount,

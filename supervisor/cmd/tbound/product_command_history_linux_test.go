@@ -157,7 +157,7 @@ func TestProductD09HistoryHandlesEmptyAndMixedProfileJournals(t *testing.T) {
 		if err := check(); err != nil {
 			t.Fatal(err)
 		}
-		s := productTurnSettlement{env: f.env, turn: admission.Turn, prepared: &productComposedTurn{env: f.env, w: w}, worker: worker, work: work,
+		s := productTurnSettlement{env: f.env, turn: admission.Turn, prepared: &productComposedTurn{env: f.env, w: w, worker: worker}, work: work,
 			outcome: productsession.OutcomeFailed, resultBaseline: admission.Turn.BaselineDigest}
 		if _, err := s.settle(); err != nil {
 			t.Fatal(err)
