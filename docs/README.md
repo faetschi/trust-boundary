@@ -37,7 +37,7 @@ and [product contracts](product-contracts.md) fixes the first milestone's contra
 - [Publication runtime integration](runtime/publication-runtime-integration.md): contract to code.
 - [Providers](runtime/providers.md): provider profiles and the durable conversation bridge.
 - [Provider durable evidence](runtime/provider-durable-evidence.md): the recorded durable bridge evidence.
-- [Design notes](design/): denial hints and bounded storage capacity.
+- [Design notes](design/): denial hints, bounded storage capacity, and the [supervisor ownership map](design/supervisor-ownership.md).
 
 ## [Evaluation](evaluation/): gates and research records
 
