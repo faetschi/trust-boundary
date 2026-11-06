@@ -16,7 +16,9 @@ import { groupTurn, type Turn } from "../../../core/store";
 import { clockHm, COPIED_ANNOUNCEMENT, COPIED_LABEL, COPIED_MS, COPY_LABEL, COPY_TRUNCATED_LABEL, COPY_UNAVAILABLE_ANNOUNCEMENT, COPY_UNAVAILABLE_LABEL, copyMessage, copyName, roleLabel } from "./chrome";
 import type { Marker } from "./provenance";
 import { messageReading, turnLabel, type ChipReading } from "./readings";
-import { ToolCard, type Verifier } from "./ToolCard";
+import type { Verifier } from "./ToolCard";
+import { ToolRun } from "./ToolGroup";
+import { groupRuns } from "./toolGroups";
 import styles from "./Chat.module.css";
 
 // Opens a record in the inspector, from the control that asked. The shell moves focus back to that control on close.
@@ -24,14 +26,19 @@ export type RecordOpener = (id: string, returnTo: HTMLElement | null) => void;
 
 interface TurnViewProps {
   readonly turn: Turn<Item>;
+  // The same turn before a filter, so a run keeps the key it has there (toolGroups.ts groupRuns).
+  readonly whole?: Turn<Item>;
   readonly verifiedOf: Verifier;
   // The item marker of a tool record, or null when the view states its provenance once (see provenance.ts).
   readonly markOf: (item: ItemView) => Marker | null;
   readonly onRecord: RecordOpener;
+  // A finding filter is active: the folded tool lines are open (ToolGroup.tsx).
+  readonly forceOpen?: boolean;
 }
 
-export function TurnView({ turn, verifiedOf, markOf, onRecord }: TurnViewProps) {
+export function TurnView({ turn, whole, verifiedOf, markOf, onRecord, forceOpen = false }: TurnViewProps) {
   const label = turnLabel(turn.id);
+  const drawn = groupRuns(groupTurn(turn.items), turn.id, whole && groupTurn(whole.items));
   return (
     <section className={styles.turn} aria-label={label}>
       <div className={styles.turnHead}>
@@ -40,16 +47,24 @@ export function TurnView({ turn, verifiedOf, markOf, onRecord }: TurnViewProps) 
         <span className={styles.turnCount}>{turn.items.length} element(s)</span>
       </div>
       <div className={styles.turnBody}>
-        {groupTurn(turn.items).map((block) =>
+        {drawn.map((block, index) =>
           block.kind === "message" ? (
             <MessageView
               key={block.item.id}
               item={block.item}
               reading={messageReading(block.item.verification_scope, verifiedOf(block.item))}
+              quiet={markOf(block.item) === null}
               onRecord={onRecord}
             />
           ) : (
-            <ToolCard key={block.key} block={block} verifiedOf={verifiedOf} markOf={markOf} />
+            <ToolRun
+              key={block.key}
+              run={block}
+              verifiedOf={verifiedOf}
+              markOf={markOf}
+              defaultOpen={index === drawn.length - 1}
+              forceOpen={forceOpen}
+            />
           ),
         )}
       </div>
@@ -60,21 +75,28 @@ export function TurnView({ turn, verifiedOf, markOf, onRecord }: TurnViewProps) 
 interface MessageViewProps {
   readonly item: Item;
   readonly reading: ChipReading;
+  // The view states its provenance once, above the transcript (provenance.ts), so a message does not draw its speaker or its reading
+  // again: both stay in the page for assistive technology. A mixed view marks each message, so it is not quiet there.
+  readonly quiet: boolean;
   readonly onRecord: RecordOpener;
 }
 
-function MessageView({ item, reading, onRecord }: MessageViewProps) {
+function MessageView({ item, reading, quiet, onRecord }: MessageViewProps) {
   if (item.type !== "message") return null;
   const truncated = item.text_truncated === true;
+  const speaker = (
+    <>
+      <span>{roleLabel(item.role)}</span>
+      {item.role === "assistant" ? <VisuallyHidden>, assistant</VisuallyHidden> : null}{" "}
+      <Chip tone={reading.tone}>{reading.label}</Chip>
+    </>
+  );
   return (
     <div className={styles.msg} data-role={item.role} data-anchor={item.id}>
       <div className={styles.msgHead}>
         <p className={styles.msgRole}>
-          <span>{roleLabel(item.role)}</span>
-          {item.role === "assistant" ? <VisuallyHidden>, assistant</VisuallyHidden> : null}{" "}
-          <Chip tone={reading.tone}>{reading.label}</Chip>
+          {quiet ? <VisuallyHidden>{speaker}</VisuallyHidden> : speaker}
         </p>
-        <span className={styles.rule} aria-hidden="true" />
         <Button variant="ghost" size="sm" className={styles.recordButton} onClick={(event) => onRecord(item.id, event.currentTarget)}>
           {`record ${item.sequence}`}
         </Button>

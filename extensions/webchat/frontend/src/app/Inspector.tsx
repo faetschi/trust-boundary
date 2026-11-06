@@ -1,9 +1,10 @@
-import { useEffect, useRef, type KeyboardEvent, type RefObject } from "react";
+import { useEffect, useRef, type KeyboardEvent, type ReactNode, type RefObject } from "react";
 import { GovernancePanels } from "./GovernancePanels";
 import { RecordInspector } from "./inspector/RecordInspector";
 import { nextTabIndex, PanelTabs, stripTabId, type StripTab } from "./inspector/PanelTabs";
-import { chipToneOf, panelBadge, warningBadge, worstToneOf, type PanelBadge } from "./inspector/panelBadge";
+import { chipToneOf, PANEL_LABELS, panelBadges as badgesOf, worstToneOf } from "./inspector/panelBadge";
 import { StateDot } from "../ui/StateDot";
+import { DecisionsIcon, ProvenanceIcon, PublicationIcon, QualificationIcon, RecoveryIcon } from "../ui/Icon";
 import { isPanelKey, PANEL_KEYS, type PanelKey } from "./uiPrefs";
 import type { WorkspaceModel } from "./workspaceStore";
 import styles from "./Inspector.module.css";
@@ -13,35 +14,15 @@ export const INSPECTOR_ID = "governance-inspector";
 // Names the panel while a record is shown: no governance tab is selected then, so the record bar's label stands in for one.
 const RECORD_LABEL_ID = "governance-record-label";
 
-const PANEL_LABELS: Readonly<Record<PanelKey, string>> = {
-  decisions: "Decisions",
-  provenance: "Provenance",
-  publication: "Publication",
-  recovery: "Recovery",
-  qualification: "Qualification",
+// The mark on each panel: on the collapsed rail it is the whole control (the button's name carries the words), and on the expanded
+// list it sits beside the label.
+const PANEL_ICONS: Readonly<Record<PanelKey, ReactNode>> = {
+  decisions: <DecisionsIcon />,
+  provenance: <ProvenanceIcon />,
+  publication: <PublicationIcon />,
+  recovery: <RecoveryIcon />,
+  qualification: <QualificationIcon />,
 };
-
-// The letters on each collapsed icon: the first letters of the panel's word, so the icon reads as the panel. The button's
-// name carries the full words.
-const PANEL_GLYPHS: Readonly<Record<PanelKey, string>> = {
-  decisions: "Dec",
-  provenance: "Prov",
-  publication: "Pub",
-  recovery: "Rec",
-  qualification: "Qual",
-};
-
-// The badges of one governance tab. The qualification tab also counts the warnings.
-function badgesOf(key: PanelKey, model: WorkspaceModel): PanelBadge[] {
-  const badge = panelBadge(key, model);
-  const warnings = key === "qualification" ? warningBadge(model) : null;
-  return warnings ? [badge, warnings] : [badge];
-}
-
-// A tab's words in one line, for the status line under the strip: its label, then its badges.
-function wordsOf(tab: StripTab): string {
-  return [tab.label, ...tab.badges.map((badge) => badge.text)].join(" · ");
-}
 
 interface InspectorProps {
   readonly model: WorkspaceModel;
@@ -157,10 +138,12 @@ export function Inspector({
                 aria-label={name}
                 title={name}
                 tabIndex={key === panel ? 0 : -1}
+                data-selected={key === panel}
+                aria-current={key === panel ? "true" : undefined}
                 onClick={() => expandTo(key)}
               >
                 <span aria-hidden="true" className={styles.glyph}>
-                  {PANEL_GLYPHS[key]}
+                  {PANEL_ICONS[key]}
                 </span>
                 <span className={styles.badgeMark}>
                   <StateDot tone={chipToneOf(worstToneOf(badges))} />
@@ -173,8 +156,7 @@ export function Inspector({
     );
   }
 
-  const tabs: StripTab[] = PANEL_KEYS.map((key) => ({ id: key, label: PANEL_LABELS[key], badges: badgesOf(key, model) }));
-  const selectedTab = tabs.find((tab) => tab.id === panel);
+  const tabs: StripTab[] = PANEL_KEYS.map((key) => ({ id: key, label: PANEL_LABELS[key], badges: badgesOf(key, model), icon: PANEL_ICONS[key] }));
   const status =
     record && recordShown ? (
       <div className={styles.recordBar}>
@@ -185,8 +167,6 @@ export function Inspector({
           Close record
         </button>
       </div>
-    ) : selectedTab ? (
-      <p className={styles.tabWords}>{wordsOf(selectedTab)}</p>
     ) : null;
 
   // At narrow widths the inspector is the drawer, and while it is open it is a modal dialog (the page behind it is inert).

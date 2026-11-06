@@ -1,11 +1,9 @@
-// The footer: the session's statistics as one wrapping line. A count the projection does not carry reads
-// "unavailable", never zero. Tokens and timing are not projected, so they read unavailable too. Before the first snapshot
-// every count is unavailable: an empty window is a statement only once a projection has loaded.
+// The session's statistics as separate readings, for the details card's Retention section. A count the projection does not carry reads
+// "unavailable", never zero. Tokens and timing are not projected, so they read unavailable too. Before the first snapshot every count
+// is unavailable: an empty window is a statement only once a projection has loaded.
 
-import { Fragment } from "react";
 import { decisionsState, verdictCount } from "./panels";
 import type { WorkspaceModel } from "./workspaceStore";
-import styles from "./Footer.module.css";
 
 type StatsModel = Pick<WorkspaceModel, "session" | "panels" | "items" | "evicted" | "loaded">;
 
@@ -44,29 +42,22 @@ function policyPart(model: StatsModel): string {
   return `policy verdicts ${word(governance.allow_count)} allow / ${word(governance.deny_count)} deny / ${word(governance.unknown_count)} unknown`;
 }
 
-// The statistics as separate readings. Each one is a part the footer can draw on its own, so an unavailable one can be drawn in
-// the warning ink.
+const TOKENS_PART = "tokens unavailable";
+const TIMING_PART = "timing unavailable";
+
+// The statistics as separate readings, so an unavailable one can be drawn in the warning ink.
 export function statsParts(model: StatsModel): string[] {
-  return [turnsPart(model), recordsPart(model), policyPart(model), "tokens unavailable", "timing unavailable"];
+  return [turnsPart(model), recordsPart(model), policyPart(model), TOKENS_PART, TIMING_PART];
 }
 
-// The statistics as the one line the footer shows.
+// The statistics as the one line.
 export function statsLine(model: StatsModel): string {
   return statsParts(model).join(" · ");
 }
 
-export function Footer({ model, version }: { readonly model: WorkspaceModel; readonly version: string }) {
-  return (
-    <div className={styles.footer}>
-      <div role="group" aria-label="Session statistics" className={styles.line}>
-        {statsParts(model).map((part, index) => (
-          <Fragment key={part}>
-            {index > 0 ? <span className={styles.sep}> · </span> : null}
-            <span className={part.includes("unavailable") ? styles.un : undefined}>{part}</span>
-          </Fragment>
-        ))}
-      </div>
-      <p className={styles.build}>build {version}</p>
-    </div>
-  );
+// What the closed Retention line says: the records retained, and the policy verdicts when they cannot be read. Tokens and timing are
+// never projected, so they are not news and are not in the lead.
+export function retentionLead(model: StatsModel): string {
+  const policy = policyPart(model);
+  return policy.endsWith("unavailable") ? `${recordsPart(model)} · ${policy}` : recordsPart(model);
 }

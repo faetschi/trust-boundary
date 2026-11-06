@@ -26,13 +26,34 @@ export function Trace({ tone, line, children, defaultOpen = false }: TraceProps)
   );
 }
 
+// For a trace whose body must stay where it is in the tree when the trace is not drawn (the tool group, ToolGroup.tsx): the
+// frame class for any element, and a line that is a button, with the open state held by the caller. The body is the caller's
+// own element, hidden while the line is closed, so the browser's details element is not used.
+export const TRACE_FRAME = styles.trace;
+
+interface TraceToggleProps {
+  readonly line: ReactNode;
+  readonly open: boolean;
+  // The id of the body this line opens.
+  readonly controls: string;
+  readonly onToggle: () => void;
+}
+
+export function TraceToggle({ line, open, controls, onToggle }: TraceToggleProps) {
+  return (
+    <button type="button" className={styles.line} aria-expanded={open} aria-controls={controls} onClick={onToggle}>
+      {line}
+    </button>
+  );
+}
+
 // The line's content, wrapping: the icon, the title and its detail, then the chips.
 export function TraceLine({ children }: { readonly children: ReactNode }) {
   return <span className={styles.lineContent}>{children}</span>;
 }
 
 // A tile of one or two characters in the tone's tint. Decorative: the words beside it carry the meaning.
-export function TraceIcon({ children }: { readonly children: string }) {
+export function TraceIcon({ children }: { readonly children: ReactNode }) {
   return (
     <span className={styles.icon} aria-hidden="true">
       {children}

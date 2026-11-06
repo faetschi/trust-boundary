@@ -15,6 +15,7 @@ import {
   snapshotOf,
 } from "../../core/testing/builders";
 import { CONTRACT_VERSION, type Item, type SessionHeader, type Snapshot, type VerificationScope } from "../../core/contract";
+import { itemsOf } from "../../test-support/toolBlocks";
 import { fakeWorkspace, type FakeWorkspace } from "../../test-support/fakes";
 import { click, mount, settle, type Mounted } from "../../test-support/dom";
 import { AnnouncerContext, useAnnouncer } from "../../ui/LiveRegion";
@@ -23,6 +24,7 @@ import { WorkspaceProvider, useWorkspace } from "../WorkspaceProvider";
 import { createWorkspaceStore, type WorkspaceModel } from "../workspaceStore";
 import { WINDOW_GAP_LABEL, WINDOW_GAP_TEXT } from "../status";
 import { ChatView, TRANSCRIPT_NOTICE_POINTER } from "./ChatView";
+import { HelperBar } from "../HelperBar";
 import { TAIL_ANNOUNCE_DELAY_MS } from "./chat/tail";
 import { COPIED_MS } from "./chat/chrome";
 
@@ -34,7 +36,13 @@ function Probe() {
   const model = useWorkspace();
   latest = model;
   liveAnnouncer = useAnnouncer();
-  return <ChatView model={model} />;
+  // The identity and the posture counts live in the details card (HelperBar.tsx), so the probe draws it beside the view.
+  return (
+    <>
+      <ChatView model={model} />
+      <HelperBar model={model} open version="test" />
+    </>
+  );
 }
 
 let mounted: Mounted | null = null;
@@ -255,7 +263,7 @@ describe("the transcript: legacy cases from render.test.mjs", () => {
 
   it("keeps the unverified wording in each tool card's accessible name, though no chip is drawn", async () => {
     await renderLive(fixtureSnapshot());
-    const summaries = qa("summary");
+    const summaries = qa("[role='log'] summary");
     expect(summaries.length).toBeGreaterThan(0);
     for (const summary of summaries) expect(summary.textContent).toContain("unverified");
   });
@@ -278,6 +286,27 @@ describe("the transcript: legacy cases from render.test.mjs", () => {
     expect(chips()).toContainEqual(["succeeded", "ok"]);
   });
 
+  it("draws no speaker and no reading on a message where the view states its provenance once, and keeps both for assistive technology", async () => {
+    await renderLive(fixtureSnapshot([messageItem({ id: "m1", sequence: 1, role: "assistant", text: "hi" })]));
+    const row = roleRow("assistant");
+    const hidden = row.querySelector("[class*='hidden']");
+    expect(hidden?.textContent).toBe("Pi, assistant reported, not verified");
+    expect(q("[role='log']").textContent).toContain("The one record in this view");
+  });
+
+  it("draws the speaker and the reading of each message in a mixed view, where nothing states them once", () => {
+    renderModel(
+      modelOf(
+        [
+          messageItem({ id: "m1", sequence: 1, role: "user", text: "hello" }),
+          observed(resultItem({ id: "r1", sequence: 2, tool: "bash", tool_call_id: "c1", state: "succeeded", summary: "exit 0" })),
+        ],
+        { source: "live", verification: "structural-audit-only" },
+      ),
+    );
+    expect(roleRow("user").querySelector("[class*='hidden']")).toBeNull();
+    expect(roleRow("user").textContent).toBe("User reported, not verified");
+  });
   it("draws the success tone on a trace only when a terminal result exists, never for an activity alone", async () => {
     await renderLive(
       verifiedSnapshot([
@@ -439,8 +468,46 @@ describe("the transcript: legacy cases from render.test.mjs", () => {
 
   it("anchors each message and tool card with the key the tail window pins to", async () => {
     await renderLive(fixtureSnapshot());
-    expect(qa("[data-anchor]").map((element) => element.getAttribute("data-anchor"))).toEqual(["m1", "c1", "c2"]);
+    expect(qa("[data-anchor]").map((element) => element.getAttribute("data-anchor"))).toEqual(["m1", "run-t1-0", "c1", "c2"]);
     expect(qa("div[data-role]").map((element) => element.getAttribute("data-anchor"))).toEqual(["m1"]);
+  });
+});
+
+describe("a finding filter on a turn with two tool runs", () => {
+  it("does not remount the surviving run's card when the filter drops the earlier run and the message", () => {
+    const items: Item[] = [
+      ...itemsOf({ call: "c1", verdict: "ALLOW" }, 1),
+      messageItem({ id: "m1", sequence: 10, role: "assistant", text: "between" }),
+      ...itemsOf({ call: "c2", verdict: "DENY", result: "denied" }, 20),
+    ];
+    const model = modelOf(items);
+    renderModel(model);
+    const card = q("[data-anchor='c2']");
+    rerenderModel({ ...model, filter: "denied" });
+    expect(qa("[data-anchor='m1']").length).toBe(0);
+    expect(q("[data-anchor='c2']")).toBe(card);
+  });
+});
+
+describe("a finding filter that removes the message between two surviving runs", () => {
+  it("keeps both runs, their cards and an open group as they were", () => {
+    const deny = (calls: string[], at: number): Item[] => calls.flatMap((call, index) => itemsOf({ call, verdict: "DENY", result: "denied" }, at + index * 10));
+    const items: Item[] = [
+      ...deny(["c1", "c2"], 1),
+      messageItem({ id: "m1", sequence: 50, role: "assistant", text: "between" }),
+      ...deny(["c3", "c4"], 100),
+    ];
+    const model = modelOf(items);
+    renderModel(model);
+    const second = q("[data-anchor='run-t1-1']");
+    const card = q("[data-anchor='c3']");
+    expect(second.getAttribute("data-open")).toBe("true");
+    rerenderModel({ ...model, filter: "denied" });
+    expect(qa("[data-anchor='m1']").length).toBe(0);
+    expect(qa("[data-anchor^='run-t1-']").map((element) => element.getAttribute("data-anchor"))).toEqual(["run-t1-0", "run-t1-1"]);
+    expect(q("[data-anchor='run-t1-1']")).toBe(second);
+    expect(q("[data-anchor='c3']")).toBe(card);
+    expect(q("[data-anchor='run-t1-1']").getAttribute("data-open")).toBe("true");
   });
 });
 
@@ -558,6 +625,46 @@ describe("honesty rules on the transcript (web-chat.md sections 4.1 and 4.3)", (
     const times = qa("time[datetime]");
     expect(times.length).toBeGreaterThan(0);
     expect(times[0]?.getAttribute("datetime")).toBe("2026-10-13T09:12:04Z");
+  });
+});
+
+describe("a run of tool activity", () => {
+  const run = [
+    activityItem({ id: "a1", sequence: 1, tool: "read", tool_call_id: "c1", state: "pending", summary: "read: a.go" }),
+    resultItem({ id: "r1", sequence: 2, tool: "read", tool_call_id: "c1", state: "succeeded", summary: "ok" }),
+    activityItem({ id: "a2", sequence: 3, tool: "bash", tool_call_id: "c2", state: "pending", summary: "bash: curl x" }),
+    decisionItem({ id: "d2", sequence: 4, tool: "bash", tool_call_id: "c2", verdict: "DENY" }),
+    resultItem({ id: "r2", sequence: 5, tool: "bash", tool_call_id: "c2", state: "denied", summary: "denied" }),
+    activityItem({ id: "a3", sequence: 6, tool: "bash", tool_call_id: "c3", state: "pending", summary: "bash: go test" }),
+  ];
+
+  it("is one group line that counts each outcome in words and is never calmer than its worst record, open while nothing follows it", async () => {
+    await renderLive(verifiedSnapshot(run.map((item) => observed(item))));
+    const group = q("[data-group]");
+    const toggle = group.querySelector("button") as HTMLButtonElement;
+    // Nothing follows the run in its turn, so it starts open: the page cannot say the turn is finished.
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(group.getAttribute("data-tone")).toBe("deny");
+    const line = toggle.textContent ?? "";
+    expect(line).toContain("3 tool actions");
+    // The closed line names the first calls by tool and target, never by outcome.
+    expect(line).toContain("read a.go · bash curl x · bash go test");
+    expect(line).toContain("1 denied");
+    expect(line).toContain("1 DENY");
+    // The request with no result is a request, not a success and not running.
+    expect(line).toContain("1 pending");
+    expect(line).toContain("1 succeeded");
+  });
+
+  it("starts closed once a message follows the run", async () => {
+    await renderLive(verifiedSnapshot([...run.map((item) => observed(item)), observed(messageItem({ id: "m9", sequence: 7, role: "assistant", text: "done" }))]));
+    expect(q("[data-group] > button").getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("keeps every tool card inside the group, in order, for the reader who opens it", async () => {
+    await renderLive(verifiedSnapshot(run.map((item) => observed(item))));
+    const cards = Array.from(document.querySelectorAll("[data-group] [data-anchor]")).map((card) => card.getAttribute("data-anchor"));
+    expect(cards).toEqual(["c1", "c2", "c3"]);
   });
 });
 
@@ -814,11 +921,10 @@ describe("message chrome", () => {
     expect(control.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
   });
 
-  it("puts the record button on the speaker's label row, beside the rule", async () => {
+  it("puts the record button on the speaker's label row", async () => {
     await renderLive(fixtureSnapshot([messageItem({ id: "m1", sequence: 1, role: "assistant", text: "hi" })]));
     const row = roleRow("assistant").parentElement;
     expect(row?.querySelector("button")?.textContent).toBe("record 1");
-    expect(row?.querySelector("[aria-hidden='true']")).not.toBeNull();
   });
 
   it("draws each turn heading as a label, a hairline rule and the element count", async () => {

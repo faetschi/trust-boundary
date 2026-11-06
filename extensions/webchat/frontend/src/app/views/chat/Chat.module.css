@@ -16,66 +16,41 @@
   min-height: 0;
 }
 
-/* The conversation head: the session title, with the window's count on its right, and the Pi identity and status beneath
-   it on one line where they fit. */
-.conversation {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  min-width: 0;
-}
-
-.headRow {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-1) var(--space-3);
-  min-width: 0;
-}
-
-.facts {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: var(--space-1) var(--space-3);
-  min-width: 0;
-}
-
-/* The readings line: small and muted, as the v2 meta line is. */
-.identity {
-  margin: 0;
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
-  color: var(--muted-foreground);
-  overflow-wrap: anywhere;
-}
-
-.status {
-  margin: 0;
-  font-size: var(--text-2xs);
-  color: var(--muted-foreground);
-}
-
-/* The posture chips and the filters share the toolbar row, and wrap onto the next line only where the column is narrow. */
-.posture {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-1);
-  min-width: 0;
-}
-
-.postureEmpty {
-  font-size: var(--text-2xs);
-  color: var(--muted-foreground);
-}
-
+/* The toolbar and the composer share the transcript's column: one centred reading width, as the turns have. */
 .toolbar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2) var(--space-3);
+  width: 100%;
+  max-width: var(--column-width);
+  margin-inline: auto;
+}
+
+/* The posture line: the findings as words in their tone, worst first, on the toolbar's own line. It is quiet (no boxes) and wraps. */
+.posture {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+  min-width: 0;
+}
+
+.posture [data-tone] {
+  min-height: 0;
+  padding: 0;
+  border-color: transparent;
+  background: transparent;
+}
+
+.postureEmpty {
+  font-size: var(--text-xs);
+  color: var(--muted-foreground);
+}
+
+.toolbar .summary {
+  margin-left: auto;
 }
 
 .summary {
@@ -102,6 +77,7 @@
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
+  align-items: center;
   gap: var(--space-3);
   min-width: 0;
   min-height: 0;
@@ -119,6 +95,13 @@
 
 /* A turn keeps its natural height. The log scrolls; a turn that shrank to fit the log would clip its content. A turn has no box:
    its heading is a divider, and its messages and cards sit on the page. */
+/* The turn and the notes above it sit in the reading column, centred in the scroller. */
+.turn,
+.log > .note {
+  width: 100%;
+  max-width: var(--column-width);
+}
+
 .turn {
   flex: none;
   min-width: 0;
@@ -130,9 +113,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  font: 500 var(--text-2xs) / var(--lh-2xs) var(--font-mono);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font: 400 var(--text-2xs) / var(--lh-2xs) var(--font-sans);
   color: var(--muted-foreground);
 }
 
@@ -147,6 +128,18 @@
   min-width: 1rem;
   height: 1px;
   background: var(--border);
+}
+
+/* The element count is a secondary reading: where a pointer can hover, it shows on the turn's hover or focus. */
+@media (hover: hover) {
+  .turnCount {
+    opacity: 0;
+  }
+
+  .turn:hover .turnCount,
+  .turn:focus-within .turnCount {
+    opacity: 1;
+  }
 }
 
 .turnBody {
@@ -170,12 +163,16 @@
   align-items: flex-end;
 }
 
+.msg[data-role="user"] .msgHead {
+  align-self: flex-end;
+}
+
 /* The label row: the speaker, its reading, a hairline rule, and the record it came from. */
 .msgHead {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  align-self: stretch;
+  align-self: flex-start;
   min-width: 0;
   font-size: var(--text-2xs);
   color: var(--muted-foreground);
@@ -192,11 +189,13 @@
   color: var(--muted-foreground);
 }
 
-.rule {
-  flex: 1 1 auto;
-  min-width: 1rem;
-  height: 1px;
-  background: var(--border);
+/* The reading beside the speaker is the same words on every message of an unverified view, and the view states it once above
+   the transcript. So here it is the chip's text alone, without the box: the words and their ink stay, the border and ground go. */
+.msgRole [data-tone] {
+  min-height: 0;
+  padding: 0;
+  border-color: transparent;
+  background: transparent;
 }
 
 .msgText {
@@ -205,22 +204,43 @@
   overflow-wrap: anywhere;
 }
 
-/* A user message is a bubble: the info tint over the card, a hairline edge, a 12 px radius, and at most 68% of the column. */
+/* A user message is a quiet bubble: the muted surface, no edge, a 16 px radius, and at most 80% of the column. */
 .msg[data-role="user"] .msgText {
-  max-width: 68%;
+  max-width: 80%;
   padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: color-mix(in oklch, var(--info) 16%, var(--card));
+  border-radius: var(--radius-lg);
+  background: var(--muted);
+}
+
+/* A system message (the live service's own lifecycle: turn started, cancel requested, turn finished) is a centred separator: a hairline,
+   its text, a hairline. It keeps its record link, its reading and its time; the tone is neutral, as no outcome is projected for it. */
+.msg[data-role="system"] {
+  align-self: stretch;
+  align-items: center;
+  max-width: none;
+}
+
+.msg[data-role="system"] .msgHead {
+  align-self: center;
 }
 
 .msg[data-role="system"] .msgText {
-  padding-left: var(--space-2);
-  border-left: 2px solid var(--border);
-  font-size: var(--text-sm);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  font-size: var(--text-xs);
   color: var(--muted-foreground);
+  text-align: center;
 }
 
+.msg[data-role="system"] .msgText::before,
+.msg[data-role="system"] .msgText::after {
+  content: "";
+  flex: 1 1 2rem;
+  height: 1px;
+  background: var(--border);
+}
 .assistant {
   margin-top: var(--space-1);
   min-width: 0;
@@ -238,6 +258,24 @@
 
 .msg[data-role="user"] .meta {
   justify-content: flex-end;
+}
+
+/* The Copy icon is a secondary action: where a pointer can hover it shows on the message's hover or focus, and on a touch device it is
+   always drawn. It is in the tab order and in the accessible tree either way. */
+@media (hover: hover) {
+  .meta button,
+  .msgHead button {
+    opacity: 0;
+  }
+
+  .msg:hover .meta button,
+  .msg:focus-within .meta button,
+  .msg:hover .msgHead button,
+  .msg:focus-within .msgHead button,
+  .meta button:focus-visible,
+  .msgHead button:focus-visible {
+    opacity: 1;
+  }
 }
 
 /* The record is a reference, so its button reads in the mono face, as the tool card's record does. */
@@ -262,7 +300,34 @@
 /* A tool activity is a Trace (ui/Trace): its line, its chips and its collapsible body. What stays here is the content of the
    line's detail and of the steps. */
 .name {
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A run of tool cards, one under the next, with the turn's own gap between them. */
+.run {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+/* The folded line's frame is neutral whatever its worst finding is: the findings are words in their tone on its line, and only a call
+   that was itself refused or failed is drawn red, on its own row. Without this a single DENY tinted every allowed call in the group. */
+.runGroup.runGroup[data-tone] {
+  border-left-color: var(--border);
+  background: transparent;
+}
+
+/* An opened group lists its tool cards, indented under the group's line. */
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding-left: var(--space-3);
 }
 
 .steps {
@@ -332,6 +397,9 @@
 /* The composer dock: the view's last box, holding the jump and the composer. At wide widths it is in the column. */
 .dock {
   position: relative;
+  width: 100%;
+  max-width: var(--column-width);
+  margin-inline: auto;
 }
 
 /* Jump to latest sits on the dock's top edge, over the foot of the transcript: 12 px above the transcript's foot, across the

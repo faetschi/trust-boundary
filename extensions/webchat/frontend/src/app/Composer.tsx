@@ -1,28 +1,34 @@
 // The composer of the Chat view: a labelled, read-only region that submits nothing. It is not a form, it has no submit or
-// key handler, and it makes no request. Its one behaviour is to say, politely, that this page cannot submit turns. The Pi
-// version it shows is the projection's, or unavailable.
+// key handler, and it makes no request. It is drawn as the quiet T3-style card (a field, then one row of what this session is and a
+// round send mark), and the mark is a grey, aria-disabled button that says, politely, that this page cannot submit turns. Nothing
+// else here is a control, and the two facts in the row are text, not pickers: a caret on a control that does nothing would be a
+// fake affordance. The Pi version it shows is the projection's, or unavailable.
 
 import { useState } from "react";
 import type { SessionHeader } from "../core/contract";
-import { Chip } from "../ui/Chip";
+import { LockIcon, PiIcon, SendIcon } from "../ui/Icon";
+import { VisuallyHidden } from "../ui/VisuallyHidden";
 import { useAnnouncer } from "../ui/LiveRegion";
 import { piVersionWord } from "./views/chat/identity";
 import styles from "./Composer.module.css";
 
 const COMPOSER_LABEL = "Message Pi: not available in this build";
 const PLACEHOLDER = "Submitting turns is not available in this build.";
-const COMPOSER_REASON =
+export const COMPOSER_REASON =
   "Read-only view of a Pi session. This page cannot submit turns, cancel, or approve. Turn submission is a later milestone.";
 const NOT_AVAILABLE_STATUS = "Not available: this page cannot submit turns.";
-const SEND_LABEL = "Send: not available in this build";
 const OBSERVED_CHIP = "Observed only · no approvals";
 const OBSERVED_TITLE = "This page observes the Pi session. It cannot approve, submit or cancel.";
+
+const SEND_LABEL = "Send: not available in this build";
 
 export function Composer({ session }: { readonly session: SessionHeader | null }) {
   // The explanation is spoken by the shell's one polite announcer (LiveRegion), so the app keeps a single live path. The
   // same sentence is drawn in a plain line, so a sighted reader sees what was announced. The line moves no focus.
   const announcer = useAnnouncer();
   const [status, setStatus] = useState("");
+  const piWords = `${piVersionWord(session)} · tools unavailable`;
+  const piFact = `Pi ${piWords}`;
   const explain = () => {
     setStatus(NOT_AVAILABLE_STATUS);
     announcer.announce(NOT_AVAILABLE_STATUS);
@@ -30,38 +36,41 @@ export function Composer({ session }: { readonly session: SessionHeader | null }
   return (
     <section aria-label={COMPOSER_LABEL} data-testid="composer" className={styles.composer}>
       <div className={styles.card}>
-        <div className={styles.field}>
-          <span className={styles.attach} aria-hidden="true">
-            +
+        <textarea
+          aria-label="Message Pi"
+          aria-describedby="composer-reason"
+          aria-disabled="true"
+          aria-readonly="true"
+          className={styles.input}
+          onClick={explain}
+          onFocus={explain}
+          placeholder={PLACEHOLDER}
+          readOnly
+          rows={1}
+        />
+        {/* The full reason is read by assistive technology with the field, and it is in the details card's read-only section. */}
+        <VisuallyHidden>
+          <span id="composer-reason">{COMPOSER_REASON}</span>
+        </VisuallyHidden>
+        <div className={styles.controls}>
+          {/* The provider, as T3 shows it: its mark and its name. The version and the tools reading are not drawn here; they are in the title, in the
+              text for assistive technology, and in the details card. */}
+          <span className={styles.fact} data-fact="" title={piFact}>
+            <PiIcon />
+            Pi
+            <VisuallyHidden>{` ${piWords}`}</VisuallyHidden>
           </span>
-          <textarea
-            aria-label="Message Pi"
-            aria-describedby="composer-reason"
-            aria-disabled="true"
-            aria-readonly="true"
-            className={styles.input}
-            onClick={explain}
-            onFocus={explain}
-            placeholder={PLACEHOLDER}
-            readOnly
-            rows={1}
-          />
-          <button type="button" aria-disabled="true" aria-label={SEND_LABEL} className={styles.send} onClick={explain}>
-            <span aria-hidden="true">↑</span>
+          <span className={styles.fact} data-fact="" title={OBSERVED_TITLE}>
+            <LockIcon />
+            {OBSERVED_CHIP}
+          </span>
+          <button type="button" className={styles.send} aria-disabled="true" aria-label={SEND_LABEL} onClick={explain}>
+            <SendIcon />
           </button>
         </div>
-        <p id="composer-reason" className={styles.reason}>
-          {COMPOSER_REASON}
-        </p>
         <p id="composer-status" className={styles.status}>
           {status}
         </p>
-        <div className={styles.chips}>
-          <span title={OBSERVED_TITLE}>
-            <Chip tone="idle">{OBSERVED_CHIP}</Chip>
-          </span>
-          <Chip tone="idle">{`Pi ${piVersionWord(session)} · tools unavailable`}</Chip>
-        </div>
       </div>
     </section>
   );

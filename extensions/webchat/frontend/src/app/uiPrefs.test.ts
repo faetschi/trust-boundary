@@ -16,7 +16,7 @@ import {
 
 const VALID: UiPrefs = { railCollapsed: true, inspectorCollapsed: false, panel: "publication" };
 // The defaults, pinned as literals. The read cases compare to these, not to DEFAULT_UI_PREFS, so a changed default fails here.
-const PINNED_DEFAULTS: UiPrefs = { railCollapsed: false, inspectorCollapsed: false, panel: "decisions" };
+const PINNED_DEFAULTS: UiPrefs = { railCollapsed: false, inspectorCollapsed: true, panel: "decisions" };
 
 function memoryStorage(initial: Record<string, string> = {}): PrefsStorage & { readonly data: Map<string, string> } {
   const data = new Map(Object.entries(initial));
@@ -197,7 +197,7 @@ describe("useUiPrefs", () => {
     const hook = renderHook();
     expect(hook.latest().prefs).toEqual(PINNED_DEFAULTS);
     expect(() => act(() => hook.latest().update({ inspectorCollapsed: true, panel: "recovery" }))).not.toThrow();
-    expect(hook.latest().prefs).toEqual({ ...PINNED_DEFAULTS, inspectorCollapsed: true, panel: "recovery" });
+    expect(hook.latest().prefs).toEqual({ ...PINNED_DEFAULTS, panel: "recovery" });
   });
 
   it("applies two updates in one batch, from the latest value of each", () => {

@@ -80,3 +80,36 @@ export function railLanes(items: readonly ItemView[], projection: ProjectionStat
     note: "The axis is record sequence, not time: the projection records no duration, so no span here is drawn as one.",
   };
 }
+
+// The key under the lanes, in words. Colour is the kind of record a lane draws; shape is the state of a record in it. Only the states
+// that the retained records actually show are listed, so the key is as short as the picture needs.
+const LANE_WORDS: Readonly<Record<string, string>> = {
+  model: "messages (user, assistant, system)",
+  policy: "policy decisions",
+  tools: "tool requests and results",
+};
+
+const LEGEND_STATE_WORDS: Readonly<Record<string, string>> = {
+  allow: "ALLOW, a permission",
+  ok: "succeeded, verified",
+  reported: "reported, not verified",
+  pending: "pending",
+  unknown: "UNKNOWN",
+  deny: "DENY or denied",
+  lost: "LOST",
+  idle: "a message",
+};
+
+interface RailLegend {
+  readonly kinds: ReadonlyArray<{ readonly lane: string; readonly label: string; readonly words: string }>;
+  readonly states: ReadonlyArray<{ readonly tone: string; readonly words: string }>;
+}
+
+export function railLegend(rail: RailModel): RailLegend {
+  const shown = new Set<string>();
+  for (const lane of rail.lanes) for (const segment of lane.segments) shown.add(segment.tone);
+  const order = ["allow", "ok", "reported", "pending", "unknown", "deny", "lost", "idle"];
+  const states = order.filter((tone) => shown.has(tone)).map((tone) => ({ tone, words: LEGEND_STATE_WORDS[tone] ?? tone }));
+  if (shown.has("muted")) states.push({ tone: "muted", words: "no record of this kind here" });
+  return { kinds: rail.lanes.map((lane) => ({ lane: lane.id, label: lane.label, words: LANE_WORDS[lane.id] ?? lane.label })), states };
+}

@@ -1,106 +1,71 @@
 /*
- * The governance tab strip: one row of single-line tabs, each a label and a tone dot. The strip scrolls sideways inside its
- * own box when its tabs do not fit, and the ‹ and › controls step it for a pointer. Colours are alias tokens only.
+ * The governance tabs: a vertical list of single-line rows, each a mark, a label, the first badge's words and a tone dot, with the
+ * selected row tinted. The words carry the meaning; the dot is a shape as well as a colour. Colours are alias tokens only.
  */
-
-/* The strip's row: the tabs sit on the header's gutter, under a rule that runs the full width. */
-.row {
-  display: flex;
-  align-items: stretch;
-  min-width: 0;
-  padding: 0 var(--space-2);
-  border-bottom: 1px solid var(--border);
-}
-
-/* The strip still scrolls sideways (touch, trackpad, the controls, and the keyboard's focus), but its scrollbar is not drawn. */
-.strip {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.strip::-webkit-scrollbar {
-  display: none;
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .strip {
-    scroll-behavior: smooth;
-  }
-}
 
 .tablist {
   display: flex;
-  align-items: stretch;
-  width: max-content;
-  min-width: 100%;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-2);
+  border-bottom: 1px solid var(--border);
 }
 
-/* One line: the label and the dot, never wrapped. The tab's full words are in its name and title. */
-/* Five tabs with their dots fit the inspector without the step controls. The label is 11 px and the tab has a hairline of side
-   padding. Measured in the headless render: at 1440 px the strip is 323 px and the five tabs 316 px; in a 360 px phone's drawer
-   (332 px wide) the tabs overflow by 1 px, inside the step control's tolerance, so no arrows show. */
 .tab {
-  display: inline-flex;
-  flex: none;
+  display: flex;
   align-items: center;
-  gap: 2px;
-  min-height: var(--row-h-button);
-  padding: 0 1px;
+  gap: var(--space-2);
+  min-height: var(--row-h-toolbar);
+  padding: 0 var(--space-2);
   border: 0;
-  border-bottom: 2px solid transparent;
-  border-radius: 0;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--muted-foreground);
-  font-size: var(--text-2xs);
-  white-space: nowrap;
+  font-size: var(--text-sm);
+  text-align: left;
   cursor: pointer;
-}
-
-.tab[aria-selected="true"] {
-  border-bottom-color: var(--foreground);
-  color: var(--foreground);
 }
 
 .tab:hover {
   background: var(--accent);
-}
-
-/* The step controls: one at each end, shown only while the tabs overflow. Disabled at the end they cannot pass. They are
-   touch-sized (the button token, 36 px) and hidden from assistive technology, since the arrow keys already do the same job. */
-.step {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: var(--row-h-button);
-  padding: 0;
-  border: 0;
-  background: var(--card);
   color: var(--foreground);
-  font-size: var(--text-body);
-  cursor: pointer;
 }
 
-.step:hover:not(:disabled) {
+.tab[aria-selected="true"] {
   background: var(--accent);
+  color: var(--foreground);
+  font-weight: 500;
 }
 
-.step:disabled {
+.mark {
+  display: inline-flex;
+  flex: none;
+}
+
+.label {
+  flex: none;
+}
+
+/* The first badge's words, at the row's end: muted, one line, cut with an ellipsis (the full words are in the name and the panel). */
+.words {
+  min-width: 0;
+  margin-left: auto;
+  overflow: hidden;
   color: var(--muted-foreground);
-  opacity: 0.4;
-  cursor: default;
+  font-size: var(--text-xs);
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-/* The line beneath the strip, on the header's gutter: the selected tab's words, or the record bar. */
+/* The line beneath the list, on the header's gutter: the record bar. */
 .status {
   min-width: 0;
   padding: var(--space-2) var(--space-3) 0;
 }
 
-/* The one rendered panel: the body under the strip, which scrolls on its own, on the same gutter. It is focusable, so that
-   focus can move into it from the strip's skip. */
+/* The one rendered panel: the body under the list, which scrolls on its own, on the same gutter. It is focusable, so that
+   focus can move into it from the list's skip. */
 .panel {
   flex: 1 1 auto;
   min-width: 0;

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Containment, GovernancePanel, Panels, PublicationPanel } from "../../core/contract";
 import { decisionItem, panelsDefault } from "../../core/testing/builders";
 import { PANEL_KEYS, type PanelKey } from "../uiPrefs";
-import { panelBadge, warningBadge, type BadgeSource, type PanelBadge } from "./panelBadge";
+import { governanceBadge, panelBadge, warningBadge, type BadgeSource, type PanelBadge } from "./panelBadge";
 
 function source(overrides: Partial<BadgeSource> = {}): BadgeSource {
   return {
@@ -258,5 +258,27 @@ describe("every tab key has a badge", () => {
     const keys: PanelKey[] = [...PANEL_KEYS];
     expect(keys).toEqual(["decisions", "provenance", "publication", "recovery", "qualification"]);
     for (const key of keys) expect(panelBadge(key, source()).text).toBeTruthy();
+  });
+});
+
+describe("the Governance control's badge is the worst reading of all five panels", () => {
+  it("is the decisions reading when it is the worst: a deny verdict", () => {
+    const badge = governanceBadge(withPanels({ governance: { allow_count: 1, deny_count: 1, unknown_count: 0 } }));
+    expect(badge).toEqual({ text: "1 deny verdict", tone: "danger" });
+  });
+
+  it("names another panel when that panel is the worst, so a collapsed column never hides a failed publication behind a quiet decisions line", () => {
+    const badge = governanceBadge(
+      withPanels({ governance: { allow_count: 2, deny_count: 0, unknown_count: 0 }, publication: { state: "failed" } as PublicationPanel }),
+    );
+    expect(badge.tone).toBe("danger");
+    expect(badge.text.toLowerCase()).toContain("publication");
+    expect(badge.text).toContain("failed");
+  });
+
+  it("is never the success tone, and reads the decisions words when every panel is neutral", () => {
+    const badge = governanceBadge(withPanels({ governance: { allow_count: 2, deny_count: 0, unknown_count: 0 } }));
+    expect(["neutral", "warn", "danger"]).toContain(badge.tone);
+    expect(badge.text.length).toBeGreaterThan(0);
   });
 });
