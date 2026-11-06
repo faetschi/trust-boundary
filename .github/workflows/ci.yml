@@ -97,6 +97,9 @@ jobs:
       - name: Official Pi runtime closure regressions
         run: python3 -m unittest discover -s scripts -p 'test_prepare_official_pi_runtime.py' -v
 
+      - name: Go test timing summary regressions
+        run: python3 -m unittest discover -s scripts -p 'test_ci_go_test_timing.py' -v
+
       - name: Corpus sampling (D48) regressions
         run: python3 -m unittest discover -s corpus/sampling -p 'test_*.py' -v
 
@@ -111,6 +114,9 @@ jobs:
 
       - name: Runtime path filter regressions
         run: bash tests/ci/test-runtime-paths.sh
+
+      - name: Runtime status workflow regressions
+        run: bash tests/ci/test-runtime-status.sh
 
       - name: Documentation links
         run: python3 scripts/check-doc-links.py
@@ -136,13 +142,20 @@ jobs:
           npm ci --ignore-scripts --no-audit --no-fund
           npm run check
 
-  runtime:
+  # One matrix runs both Go suites, so setup is written once. fail-fast is off: a failed unit leg
+  # does not stop the race sweep from reporting. The runtime job below reports the combined result.
+  runtime-tests:
     needs: changes
     # Fail open: if the decision job fails, run the suite instead of leaving a
     # required check skipped.
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.runtime == 'true') }}
+    name: runtime (${{ matrix.suite }})
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [unit, race]
     env:
       TBOUND_REQUIRE_PI_CLI_INTEGRATION: "1"
     steps:
@@ -217,14 +230,42 @@ jobs:
             exit 1
           fi
 
+      # go test -json goes to the private TMPDIR. Only the sanitized timing document is uploaded.
       - name: Go unit suite
+        id: go-unit-suite
+        if: ${{ matrix.suite == 'unit' }}
         working-directory: supervisor
-        run: umask 077; go test -mod=readonly -count=1 ./...
+        run: |
+          set -euo pipefail
+          umask 077
+          go test -mod=readonly -count=1 -json ./... > "$TMPDIR/go-test-unit.jsonl"
+
+      # Reports only: the step above decides pass or fail, and this step runs even when it fails.
+      - name: Go unit suite timing
+        continue-on-error: true
+        if: ${{ matrix.suite == 'unit' && always() && steps.go-unit-suite.outcome != 'skipped' }}
+        run: |
+          set -euo pipefail
+          umask 077
+          python3 scripts/ci_go_test_timing.py --suite unit \
+            --go-test-json "$TMPDIR/go-test-unit.jsonl" \
+            --timing-json "$RUNNER_TEMP/go-test-timing/unit.json" \
+            --step-summary "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Go unit suite timing
+        continue-on-error: true
+        if: ${{ matrix.suite == 'unit' && always() && steps.go-unit-suite.outcome != 'skipped' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: go-unit-suite-timing-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/go-test-timing/unit.json
+          retention-days: 14
 
       # The real-cgroup test skips in the unit suite above: a hosted runner is not root and its service
       # cgroup is not delegated to it. Run it once in a cgroup delegated to the runner user, and fail if it
       # skips, so the fresh-cgroup run is verified on this runner and not silently dropped.
       - name: Real cgroup test in a delegated cgroup
+        if: ${{ matrix.suite == 'unit' }}
         working-directory: supervisor
         run: |
           set -euo pipefail
@@ -240,6 +281,7 @@ jobs:
 
       # Verbose, and fail if this runner's kernel skips the real enforcement tests.
       - name: Landlock enforcement on this runner's kernel
+        if: ${{ matrix.suite == 'unit' }}
         working-directory: supervisor
         run: |
           set -euo pipefail
@@ -249,10 +291,36 @@ jobs:
           grep -q -- '^--- PASS: TestLandlockConnectRightIsPort8080OnlyAndOnlyForNetSink ' "$RUNNER_TEMP/landlock.txt"
 
       - name: Go race suite
+        id: go-race-suite
+        if: ${{ matrix.suite == 'race' }}
         working-directory: supervisor
-        run: umask 077; go test -race -mod=readonly -count=1 -timeout 40m ./...
+        run: |
+          set -euo pipefail
+          umask 077
+          go test -race -mod=readonly -count=1 -timeout 40m -json ./... > "$TMPDIR/go-test-race.jsonl"
+
+      - name: Go race suite timing
+        continue-on-error: true
+        if: ${{ matrix.suite == 'race' && always() && steps.go-race-suite.outcome != 'skipped' }}
+        run: |
+          set -euo pipefail
+          umask 077
+          python3 scripts/ci_go_test_timing.py --suite race \
+            --go-test-json "$TMPDIR/go-test-race.jsonl" \
+            --timing-json "$RUNNER_TEMP/go-test-timing/race.json" \
+            --step-summary "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Go race suite timing
+        continue-on-error: true
+        if: ${{ matrix.suite == 'race' && always() && steps.go-race-suite.outcome != 'skipped' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: go-race-suite-timing-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/go-test-timing/race.json
+          retention-days: 14
 
       - name: Install adapter dependencies for the Pi fixture
+        if: ${{ matrix.suite == 'unit' }}
         working-directory: adapter
         run: |
           umask 077
@@ -260,6 +328,7 @@ jobs:
 
       # quick-checks has no Pi CLI, so its adapter run skips this test. It must run, and not skip, here.
       - name: Official Pi CLI adapter integration
+        if: ${{ matrix.suite == 'unit' }}
         working-directory: adapter
         run: |
           set -o pipefail
@@ -268,6 +337,7 @@ jobs:
           grep -q 'ℹ skipped 0' "$TMPDIR/pi-adapter-integration.txt"
 
       - name: Offline official Pi CLI development fixture (non-claim-bearing)
+        if: ${{ matrix.suite == 'unit' }}
         working-directory: supervisor
         run: |
           set -euo pipefail
@@ -322,3 +392,30 @@ jobs:
           assert receipt["settlement"] == "UNKNOWN", receipt
           print("PASS: offline Pi CLI fixture completed; non-claim-bearing, settlement UNKNOWN")
           PY
+
+  # Stable required check; the name is unchanged. Passes when runtime-tests succeeded, or when the
+  # decision job succeeded and skipped runtime-tests with an output of exactly "false". Every other
+  # result fails: failures, cancellations and unexpected skips.
+  runtime:
+    needs: [changes, runtime-tests]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Decide runtime status
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          CHANGES_RUNTIME: ${{ needs.changes.outputs.runtime }}
+          RUNTIME_TESTS_RESULT: ${{ needs.runtime-tests.result }}
+        run: |
+          set -euo pipefail
+          echo "changes=$CHANGES_RESULT runtime=$CHANGES_RUNTIME runtime-tests=$RUNTIME_TESTS_RESULT"
+          if [ "$RUNTIME_TESTS_RESULT" = success ]; then
+            exit 0
+          fi
+          if [ "$RUNTIME_TESTS_RESULT" = skipped ] && [ "$CHANGES_RESULT" = success ] && [ "$CHANGES_RUNTIME" = false ]; then
+            echo "No runtime-relevant change: the runtime suites were skipped by the decision."
+            exit 0
+          fi
+          echo "::error::The runtime suites did not pass, and no clean no-change decision skipped them."
+          exit 1

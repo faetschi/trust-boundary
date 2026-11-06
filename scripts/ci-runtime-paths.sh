@@ -6,7 +6,7 @@
 # The pathspec is deliberate: a rename out of one of these trees still matches
 # the deleted side, so it cannot hide a runtime change. Every path the suite
 # reads is listed here: the Go module, adapter contracts, corpus fixtures, guest
-# scripts and runbooks, the installer, evaluation metadata, and this workflow.
+# scripts and runbooks, the installer, evaluation metadata, this workflow, and its timing helper.
 set -eu
 
 base=${1:-}
@@ -34,7 +34,7 @@ else
 fi
 
 if git diff --quiet "$range" -- \
-  supervisor adapter corpus infra install docs/evaluation .github/workflows/ci.yml; then
+  supervisor adapter corpus infra install docs/evaluation .github/workflows/ci.yml scripts/ci_go_test_timing.py; then
   echo false
 else
   # 1 means a runtime input changed; any other status is an error, so run.
