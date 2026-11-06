@@ -493,6 +493,9 @@ func TestResetHostRemovesNrCgroupsAndCreatesTheNetSinkParentOnRealCgroups(t *tes
 		runtimeDir: filepath.Join(t.TempDir(), "absent"),
 		owner:      trialfix.Owner{UID: uint32(os.Geteuid()), GID: uint32(os.Getegid())},
 	}
+	if os.Geteuid() == 0 { // the guest reset runs as root and hands the parent to the service uid
+		host.owner = trialfix.Owner{UID: 995, GID: 986}
+	}
 	for _, name := range []string{"tbound-nr-aa/child", "tbound-nr-bb", "tbound-cmd-cc"} {
 		if err := os.MkdirAll(filepath.Join(cg.path, name), 0o755); err != nil {
 			t.Skipf("cannot create cgroups here: %v", err)
@@ -503,6 +506,17 @@ func TestResetHostRemovesNrCgroupsAndCreatesTheNetSinkParentOnRealCgroups(t *tes
 		t.Fatal(err)
 	}
 	parent.Close()
+	// The service admits the parent (validateCgroupDirectoryState) only if it owns the directory and
+	// can open cgroup.kill for writing: every file it needs must be its own, not just the directory.
+	for _, name := range []string{".", "cgroup.procs", "cgroup.subtree_control", "cgroup.threads", "cgroup.kill"} {
+		info, err := os.Lstat(filepath.Join(cg.path, "net-sink", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if st := info.Sys().(*syscall.Stat_t); st.Uid != host.owner.UID || st.Gid != host.owner.GID {
+			t.Errorf("net-sink/%s is owned by %d:%d, want the service %d:%d", name, st.Uid, st.Gid, host.owner.UID, host.owner.GID)
+		}
+	}
 	if err := host.cleanNoReap(context.Background(), evidenceCell{}); err != nil {
 		t.Fatal(err)
 	}
