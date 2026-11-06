@@ -476,6 +476,7 @@ type stream struct {
 	init, finished, done bool
 	tool                 *assembly
 	events               int
+	legacyNulls          bool
 }
 
 // CaptureSSE reads and bounds the complete body before parsing it, preserving
@@ -483,7 +484,16 @@ type stream struct {
 // its caller must be the trusted broker after a real provider exchange. The
 // fixed request does not enable stream_options.include_usage, so usage-only
 // trailing chunks are outside this profile.
-func CaptureSSE(reader io.Reader) (CapturedResponse, error) {
+func CaptureSSE(reader io.Reader) (CapturedResponse, error) { return captureSSE(reader, false) }
+
+// CaptureSSELegacyNulls parses with the strictness before f53fd29f: JSON null in a
+// delta role or tool_calls, or a tool delta id or type, is an error. Only replay of
+// capture-refusal records journaled before that fix may use it.
+func CaptureSSELegacyNulls(reader io.Reader) (CapturedResponse, error) {
+	return captureSSE(reader, true)
+}
+
+func captureSSE(reader io.Reader, legacyNulls bool) (CapturedResponse, error) {
 	if reader == nil {
 		return CapturedResponse{}, errors.New("nil response reader")
 	}
@@ -494,14 +504,14 @@ func CaptureSSE(reader io.Reader) (CapturedResponse, error) {
 	if len(raw) == 0 || len(raw) > MaxResponseBytes {
 		return CapturedResponse{}, errors.New("response byte length out of bounds")
 	}
-	return decodeSSE(raw)
+	return decodeSSE(raw, legacyNulls)
 }
 
-func decodeSSE(raw []byte) (CapturedResponse, error) {
+func decodeSSE(raw []byte, legacyNulls bool) (CapturedResponse, error) {
 	if !utf8.Valid(raw) {
 		return CapturedResponse{}, errors.New("SSE is invalid UTF-8")
 	}
-	s := stream{}
+	s := stream{legacyNulls: legacyNulls}
 	var data []byte
 	hasData := false
 	for off := 0; off < len(raw); {
@@ -756,7 +766,7 @@ func (s *stream) delta(raw []byte) error {
 	if e = keys(d, nil, []string{"role", "content", "tool_calls", "reasoning", "reasoning_content", "reasoning_details", "refusal"}); e != nil {
 		return e
 	}
-	if v, ok := d["role"]; ok && !isNull(v) {
+	if v, ok := d["role"]; ok && !s.null(v) {
 		role, e := strRaw(v)
 		if e != nil || role != "assistant" {
 			return errors.New("unsupported delta role")
@@ -769,7 +779,7 @@ func (s *stream) delta(raw []byte) error {
 		}
 		s.out.text += text
 	}
-	if v, ok := d["tool_calls"]; ok && !isNull(v) {
+	if v, ok := d["tool_calls"]; ok && !s.null(v) {
 		calls, e := array(v)
 		if e != nil || len(calls) > 1 {
 			return errors.New("multiple or malformed tool calls")
@@ -796,14 +806,14 @@ func (s *stream) toolDelta(raw []byte) error {
 		s.tool = &assembly{}
 	}
 	a := s.tool
-	if v, ok := t["id"]; ok && !isNull(v) {
+	if v, ok := t["id"]; ok && !s.null(v) {
 		id, e := strRaw(v)
 		if e != nil || !validText(id, maxText) || (a.id != "" && id != a.id) {
 			return errors.New("empty or changed tool-call ID")
 		}
 		a.id = id
 	}
-	if v, ok := t["type"]; ok && !isNull(v) {
+	if v, ok := t["type"]; ok && !s.null(v) {
 		kind, e := strRaw(v)
 		if e != nil || kind != "function" || (a.kind != "" && a.kind != kind) {
 			return errors.New("unsupported or changed tool-call type")
@@ -928,3 +938,5 @@ func validText(s string, limit int) bool {
 	}
 	return true
 }
+
+func (s *stream) null(v []byte) bool { return !s.legacyNulls && isNull(v) }

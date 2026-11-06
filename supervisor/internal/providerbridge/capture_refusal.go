@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 
 	"tbound/supervisor/internal/broker"
 	"tbound/supervisor/internal/broker/openrouter"
@@ -27,7 +28,17 @@ type captureRefusalEvidence struct {
 }
 
 func captureRefusalReason(response []byte) string {
-	if _, err := openrouter.CaptureSSE(bytes.NewReader(response)); err != nil {
+	return refusalReason(openrouter.CaptureSSE, response)
+}
+
+// legacyCaptureRefusalReason is the reason a build before f53fd29f recorded: replay
+// keeps validating such journaled refusals exactly as written.
+func legacyCaptureRefusalReason(response []byte) string {
+	return refusalReason(openrouter.CaptureSSELegacyNulls, response)
+}
+
+func refusalReason(capture func(io.Reader) (openrouter.CapturedResponse, error), response []byte) string {
+	if _, err := capture(bytes.NewReader(response)); err != nil {
 		// Unsupported-field errors can depend on Go map iteration; never persist that text.
 		if err.Error() == "multiple or malformed tool calls" {
 			return "multiple or malformed tool calls"
