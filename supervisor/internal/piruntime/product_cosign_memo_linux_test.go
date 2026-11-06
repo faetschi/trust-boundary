@@ -42,6 +42,10 @@ func cosignCalls(runner *fakeD09Runner, cosign string) (count int) {
 	return count
 }
 
+// waitForNewCtimeTick lets the kernel coarse file clock (one jiffy, up to 10 ms) advance, so a change right after
+// the file was created or last touched gets a new ctime/mtime instead of an identical identity.
+func waitForNewCtimeTick() { time.Sleep(20 * time.Millisecond) }
+
 // rewriteKeepingMtime changes only ctime (and the bytes, if mutate changes them) while keeping inode, size and mtime.
 func rewriteKeepingMtime(t *testing.T, name string, mutate func([]byte)) {
 	t.Helper()
@@ -54,6 +58,7 @@ func rewriteKeepingMtime(t *testing.T, name string, mutate func([]byte)) {
 		t.Fatal(err)
 	}
 	mutate(data)
+	waitForNewCtimeTick()
 	file, err := os.OpenFile(name, os.O_WRONLY, 0)
 	if err != nil {
 		t.Fatal(err)

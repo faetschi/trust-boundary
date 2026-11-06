@@ -242,6 +242,7 @@ func TestProductOCIImageFilesMemoRescansOnlyAfterIdentityChange(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	waitForNewCtimeTick()
 	if err := os.WriteFile(indexPath, append(index, '\n'), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -271,6 +272,7 @@ func TestProductOCIImageFilesMemoRescansOnlyAfterIdentityChange(t *testing.T) {
 			continue
 		}
 		data[len(data)/2] ^= 0xff
+		waitForNewCtimeTick()
 		if err := os.WriteFile(name, data, 0o600); err != nil {
 			t.Fatal(err)
 		}
@@ -298,6 +300,7 @@ func TestProductOCIImageFilesMemoNoticesCtimeOnlyChange(t *testing.T) {
 			t.Fatal(err)
 		}
 		mutate(data)
+		waitForNewCtimeTick()
 		file, err := os.OpenFile(name, os.O_WRONLY, 0)
 		if err != nil {
 			t.Fatal(err)
