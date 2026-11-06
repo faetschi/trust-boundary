@@ -521,3 +521,37 @@ Expect `product service listening`, an allowed read, and Bash denied with
 `policy_default_deny`. The demo round restored format 2 with catalog and project
 state repairs. Those were disposable-VM state surgery, not a general recovery
 procedure. Do not truncate a live catalog to make an older binary accept it.
+
+### Rolling state back instead of restoring a whole backup
+
+A format-2 binary cannot replay a catalog that holds format-3 records: it stops
+with `CATALOG_CORRUPT`. That is why a restore to a Bash-deny format-2 install
+must roll the state back. The catalog is not the only state. Each project keeps
+its own publication audit, `/var/lib/tbound-product/turns/projects/<project-id>/publication-audit.jsonl`
+(the catalog is `/var/lib/tbound-product/catalog.jsonl`). If only the catalog is
+cut back, the audit stays ahead of it. Its newer or UNKNOWN publication
+transaction then fails every later admission with `live root has an unresolved
+publication lifecycle record`. No `tbound` command rolls either file back, so
+do it by hand, in this order:
+
+1. `systemctl stop tbound-product`, and check that no process of the service
+   account is left.
+2. Copy the catalog, every project's `publication-audit.jsonl`, and the managed
+   project files aside in full. Never erase the originals.
+3. Choose the record boundary in the catalog (a byte offset just after a
+   newline) and cut the catalog there: move the full file aside, then write its
+   first N bytes back with the same owner and mode 0600.
+4. Cut each project's audit to the matching boundary: the byte offset and
+   record count the audit had at the moment the catalog was at that boundary.
+   Best source: record `wc -lc` of the catalog and of every audit in the stopped
+   backup you take before the change. Without that, find it in the full audit:
+   the last record before the first `workflow_publication_pending` that belongs
+   to a turn the rolled-back catalog does not contain. Check that the prefix
+   ends at a newline and holds whole records only.
+5. Move aside every published file (and directory) that postdates the
+   rolled-back baseline. The project must equal the baseline of the last
+   catalog record kept.
+6. `systemctl start tbound-product`, then `tbound product doctor`.
+
+Round 9 did this with a catalog prefix and an audit cut to its first 664
+records, with the full audit kept beside it.
