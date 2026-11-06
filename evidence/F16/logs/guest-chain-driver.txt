@@ -1,0 +1,100 @@
+##### 27-archive-state.sh archive 10:12:20
+NOTE live root after the archive: 
+NOTE the live root directory /var/lib/tbound/live/root was KEPT (only its content moved into the archive); its lost+found, if any, stayed. 30-reg-g1.sh runs tbound-op seed-live g1 to re-create the canonical g1 fixture (it stops with 'owner must look' if the root holds something unexpected)
+NOTE next: 00-session-sudo.sh open, 10-upgrade.sh, 20-r1.sh, 50-i1-i2.sh, 00-session-sudo.sh close, 29-g1-recover.sh status|move (finds nothing left), 30-reg-g1.sh
+
+== DONE 27-archive-state.sh 2026-11-06T09:12:56Z
+cleanup: tbound-pi.socket must be active again
+##### 00-session-sudo.sh open 10:12:57
+/etc/sudoers.d/50-tbound-op: parsed OK
+/etc/sudoers.d/91-tbound-f16-session: parsed OK
+/etc/sudoers.d/README: parsed OK
+NOTE SESSION OPEN: close it when the privileged steps are done: bash 00-session-sudo.sh close
+
+== DONE 00-session-sudo.sh 2026-11-06T09:13:02Z
+##### 05-runtime-swap.sh 10:13:03
+runtime-src inode: 2050:439651
+Pi runtime bundle tree digest: sha256:5104ec0ec6a74c441a3f545723f455e450784fcdd28c0e487621b23077902575
+Tree identity only; this command does not verify profile signature or host trust bindings.
+NOTE no swap needed
+
+== DONE 05-runtime-swap.sh 2026-11-06T09:13:07Z
+##### 10-upgrade.sh 10:13:08
+
+== DONE 10-upgrade.sh 2026-11-06T09:14:01Z
+cleanup: runner mount and tbound-netsink must be up again
+active
+cleanup: tbound-pi.socket must be active again
+active
+##### 20-r1.sh 10:14:03
+cp: warning: behavior of -n is non-portable and may change in future; use --update=none instead
+cp: warning: behavior of -n is non-portable and may change in future; use --update=none instead
+OK   recorded R1-MODE = reused-from-f15: calibrations carry no frozen-commit binding; F15 files copied, installed copies verified under the F16 tbound-profile
+NOTE CAL_RW_DIGEST is what the G1 registration binds (reg-measure reads /etc/tbound/d09-xattr-enumeration-calibration.json)
+
+== DONE 20-r1.sh 2026-11-06T09:14:23Z
+##### 50-i1-i2.sh 10:14:24
+OK   live root: no xattr names, no errors
+
+== DONE 50-i1-i2.sh 2026-11-06T09:14:50Z
+cleanup: no uid-995 process, no /run/tbound-pi
+cleanup: tbound-pi.socket must be active again
+active
+##### 00-session-sudo.sh close 10:14:53
+    (ALL : ALL) ALL
+    (root) NOPASSWD: /opt/tbound/operator/tbound-op
+sudoers.d: 50-tbound-op README 
+OK   narrowed: only the tbound-op NOPASSWD rule plus password (ALL : ALL) ALL
+
+== DONE 00-session-sudo.sh 2026-11-06T09:14:59Z
+##### 29-g1-recover.sh status 10:15:01
+
+== 3. reconciliation gate for the F15 rp request rp-req-20261105T093425Z (status g1 + request journal)
+OK   nothing left to move: no gate needed (the F15 items are already aside)
+NOTE status only: nothing changed. Next: bash 29-g1-recover.sh move
+
+== DONE 29-g1-recover.sh 2026-11-06T09:15:11Z
+##### 30-reg-g1.sh 10:15:12
+{"version":1,"sequence":2,"previous_hash":"9c865d80602dad0259d67cc24f519f8abd194345b2be1bff75f67732bda7c723","event":{"kind":"pi_service_request_terminal","id":"pi-service-request-d0d1a1597bdb64b14c41282688e34397ed638308693dcf1c31f861b087b8232c/terminal","data":{"schema_version":"tbound-pi-service-request-terminal/v1","client_uid":994,"request_id":"g1-req-20261106T091546Z","payload_digest":"sha256:20b59edd4b15ded2066ffd98114dcf4c244fdd6a67f723aa5f7cdfb4d5be418a","response":{"schema_version":"tbound-pi-service-response/v1","request_id":"g1-req-20261106T091546Z","status":"completed","receipt":{"
+response (head):
+{"schema_version":"tbound-pi-service-response/v1","request_id":"g1-req-20261106T091546Z","status":"completed","receipt":{"schema_version":"tbound-production-pi-receipt/v1","mode":"production","run_id":"production-run-102123b7879ed267d8fbfd27","profile_id":"pi-host-profile-g1-97738b60125b","profile_hash":"sha256:2583e1ff09f853efb04d833ab8fb4eab69342d222a7da421d9e69adbb977de6b","containment_profile":"d09-rootless-podman-crun-frozen-cell/v1","containment_profile_digest":"sha256:f8917f058a5d4161b486d9949dad04f5ebd03cdf399f5a143e62c4c0a523b4ca","frozen_source_digest":"sha256:670fbee9f0e5f1373bd81f68d297889ace74a7aec511e0e041b908fee6807086","provider_profile":"go-providerbridge/v1","provider_exchange":true,"claim_bearing":false,"worker_ready":true,"task_admitted":true,"turn_completed":true,"proposal_count":4,"tool_sequence":["read","edit","bash","read"],"provider_turns":5,"source_generation":"g0","final_generation":"g2","generation_count":3,"settlement":"STOPPED","exit_observed":true,"exit_code":-1,"descendants_settled":true,"command_runner_profile":"d09-rootless-podman-crun-frozen-cell/v1","command_cell_settlement_count":1,"tcb_proof_digest":"sha256:5fc496a2924744e4cdccaf79b789da444b0da
+NOTE the g1 service is left running; owner decision next: evidence (stage-ga, guest-evidence provider-exchange) and svc stop. Close-out: sudo -n true must still fail.
+
+== DONE 30-reg-g1.sh 2026-11-06T09:17:19Z
+##### 40-guest-evidence.sh capability procoracle landlock-connect provider-exchange 10:17:20
+-rw-r----- 1 root tboundadmin   3184 Nov  6 09:17 evidence-landlock-connect.json
+-rw-r----- 1 root tboundadmin  11619 Nov  6 09:17 evidence-procoracle.json
+-rw-r----- 1 root tboundadmin   3347 Nov  6 09:17 evidence-provider.json
+NOTE host side: tbound-run evq/route-report take --artifact guest-capability=<file> etc. from /home/tbound/tbound-h/f16/evq (copy to the host /home/tbound/tbound-h/ga names as the runbook wants); --guest-binary-sha256 = TBP_DIGEST.
+
+== DONE 40-guest-evidence.sh 2026-11-06T09:17:56Z
+##### 31-reg-rp.sh 10:17:57
+-rw-r----- 1 root tboundadmin    0 Nov  6 09:19 probe-response.txt.err
+-rw-r----- 1 root tboundadmin  139 Nov  6 09:18 svc-start-journal.txt
+OK   recorded rp/CHECKS_OK = ok
+NOTE the rp service is left running; next: 40-guest-evidence.sh route-bash-view (RUNID in /home/tbound/tbound-h/f16/rp/RUNID), then 32-reg-dr.sh (it stops the service). Close-out: sudo -n true must still fail.
+
+== DONE 31-reg-rp.sh 2026-11-06T09:19:36Z
+##### 40-guest-evidence.sh route-bash-view 10:19:37
+-rw-r----- 1 root tboundadmin  11619 Nov  6 09:17 evidence-procoracle.json
+-rw-r----- 1 root tboundadmin   3347 Nov  6 09:17 evidence-provider.json
+-rw-r----- 1 root tboundadmin   4124 Nov  6 09:19 evidence-route-bash-view.json
+NOTE host side: tbound-run evq/route-report take --artifact guest-capability=<file> etc. from /home/tbound/tbound-h/f16/evq (copy to the host /home/tbound/tbound-h/ga names as the runbook wants); --guest-binary-sha256 = TBP_DIGEST.
+
+== DONE 40-guest-evidence.sh 2026-11-06T09:19:49Z
+##### 32-reg-dr.sh 10:19:50
+{"version":1,"sequence":6,"previous_hash":"383e441811dadf31aafcf2cb3873cb044351d28b0489f75f1c2fc378f547319d","event":{"kind":"pi_service_request_terminal","id":"pi-service-request-b705a8de0f028b0f0427ae03c7b27c197f7427b0d16dee5a34ea930df0f95b16/terminal","data":{"schema_version":"tbound-pi-service-request-terminal/v1","client_uid":994,"request_id":"dr-req-20261106T092030Z","payload_digest":"sha256:53fe5fb68dd8a7e5ce035003e009adce27f3309b6200886ae383eed413d65e09","response":{"schema_version":"tbound-pi-service-response/v1","request_id":"dr-req-20261106T092030Z","status":"unknown","error_code":"
+OK   recorded dr/CHECKS_OK = ok
+NOTE the dr service is stopped (unless KEEP_RUNNING=1). Next: 40-guest-evidence.sh route-direct-runtime (RUNID in /home/tbound/tbound-h/f16/dr/RUNID). Do not start the service before the pilot cycle replaces the probe template.
+
+== DONE 32-reg-dr.sh 2026-11-06T09:21:13Z
+svc stop ok: service and socket inactive
+##### 40-guest-evidence.sh route-direct-runtime 10:21:14
+-rw-r----- 1 root tboundadmin   3347 Nov  6 09:17 evidence-provider.json
+-rw-r----- 1 root tboundadmin   4124 Nov  6 09:19 evidence-route-bash-view.json
+-rw-r----- 1 root tboundadmin   9222 Nov  6 09:21 evidence-route-direct-runtime.json
+NOTE host side: tbound-run evq/route-report take --artifact guest-capability=<file> etc. from /home/tbound/tbound-h/f16/evq (copy to the host /home/tbound/tbound-h/ga names as the runbook wants); --guest-binary-sha256 = TBP_DIGEST.
+
+== DONE 40-guest-evidence.sh 2026-11-06T09:21:26Z
+end 10:21:28
+guest-chain rc=0
