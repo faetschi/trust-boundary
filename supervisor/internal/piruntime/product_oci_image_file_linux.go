@@ -39,17 +39,32 @@ func readProductOCIImageFile(ctx context.Context, layoutPath, manifestDigest, im
 // component remains a regular file, matching the cell's Lstat. All paths share one redirected-write pass and one
 // per-component lookup cache. A successful result is memoized while every layout file identity is unchanged.
 func readProductOCIImageFiles(ctx context.Context, layoutPath, manifestDigest string, imagePaths []string, requireImmutable bool) ([]ociImageFile, error) {
+	files, fileErrs, err := readProductOCIImageFilesEach(ctx, layoutPath, manifestDigest, imagePaths, requireImmutable)
+	if err != nil {
+		return nil, err
+	}
+	for i, fileErr := range fileErrs {
+		if fileErr != nil {
+			return nil, fmt.Errorf("%s: %w", imagePaths[i], fileErr)
+		}
+	}
+	return files, nil
+}
+
+// readProductOCIImageFilesEach is readProductOCIImageFiles with one resolution error per path (files[i] is valid where
+// fileErrs[i] is nil); err fails the whole request. Only a fully successful result is memoized.
+func readProductOCIImageFilesEach(ctx context.Context, layoutPath, manifestDigest string, imagePaths []string, requireImmutable bool) (files []ociImageFile, fileErrs []error, err error) {
 	if ctx == nil || !validDigest(manifestDigest) || len(imagePaths) == 0 {
-		return nil, ErrHostProfileMismatch
+		return nil, nil, ErrHostProfileMismatch
 	}
 	for _, imagePath := range imagePaths {
 		if !path.IsAbs(imagePath) || path.Clean(imagePath) != imagePath || imagePath == "/" {
-			return nil, ErrHostProfileMismatch
+			return nil, nil, ErrHostProfileMismatch
 		}
 	}
 	layers, err := ociManifestLayers(layoutPath, manifestDigest, requireImmutable)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	key, identified := productOCIMemoKey(layoutPath, manifestDigest, imagePaths, requireImmutable, layers)
 	if identified {
@@ -57,13 +72,13 @@ func readProductOCIImageFiles(ctx context.Context, layoutPath, manifestDigest st
 		if productOCIMemo.key == key && productOCIMemo.files != nil {
 			files := append([]ociImageFile(nil), productOCIMemo.files...)
 			productOCIMemo.Unlock()
-			return files, nil
+			return files, make([]error, len(files)), nil
 		}
 		productOCIMemo.Unlock()
 	}
 	hardlinkTargets, err := refuseProductOCIRedirectedWrites(ctx, layoutPath, layers, requireImmutable)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	cache := map[string]ociLayerResult{}
 	lookup := func(target string) (ociLayerResult, error) {
@@ -92,21 +107,19 @@ func readProductOCIImageFiles(ctx context.Context, layoutPath, manifestDigest st
 		cache[target] = current
 		return current, nil
 	}
-	files := make([]ociImageFile, 0, len(imagePaths))
-	for _, imagePath := range imagePaths {
-		file, err := resolveProductOCIImageFile(ctx, imagePath, lookup, hardlinkTargets)
-		if err != nil {
-			return nil, err
-		}
-		files = append(files, file)
+	files, fileErrs = make([]ociImageFile, len(imagePaths)), make([]error, len(imagePaths))
+	failed := false
+	for i, imagePath := range imagePaths {
+		files[i], fileErrs[i] = resolveProductOCIImageFile(ctx, imagePath, lookup, hardlinkTargets)
+		failed = failed || fileErrs[i] != nil
 	}
 	// Identities taken before and after the reads must agree, or the result is not memoized.
-	if after, ok := productOCIMemoKey(layoutPath, manifestDigest, imagePaths, requireImmutable, layers); identified && ok && after == key {
+	if after, ok := productOCIMemoKey(layoutPath, manifestDigest, imagePaths, requireImmutable, layers); !failed && identified && ok && after == key {
 		productOCIMemo.Lock()
 		productOCIMemo.key, productOCIMemo.files = key, append([]ociImageFile(nil), files...)
 		productOCIMemo.Unlock()
 	}
-	return files, nil
+	return files, fileErrs, nil
 }
 
 // productOCIMemoKey names everything the verification read: the request plus the identity (device, inode, size, times,

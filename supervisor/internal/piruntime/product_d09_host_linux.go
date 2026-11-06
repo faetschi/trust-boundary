@@ -161,7 +161,9 @@ type productD09ServiceConfigFile struct {
 // LoadProductD09CommandHost verifies the installed product command-host inputs at their fixed paths. It takes no path
 // argument: the trust roots are the product constants in productsetup.
 func LoadProductD09CommandHost(ctx context.Context) (*D09ProductCommandHost, error) {
+	started := time.Now()
 	snapshot, err := loadProductD09Snapshot(ctx)
+	fmt.Fprintf(os.Stderr, "tbound: product snapshot verification took %s\n", time.Since(started))
 	if err != nil {
 		return nil, err
 	}
@@ -190,7 +192,11 @@ func (h *D09ProductCommandHost) Revalidate(ctx context.Context) error {
 	if !h.verified() || ctx == nil {
 		return productD09Refused(nil, "product command host was not loaded")
 	}
+	started := time.Now()
 	fresh, err := loadProductD09Snapshot(ctx)
+	if elapsed := time.Since(started); elapsed >= time.Second {
+		fmt.Fprintf(os.Stderr, "tbound: slow product snapshot revalidation took %s\n", elapsed)
+	}
 	if err != nil {
 		return err
 	}
@@ -251,8 +257,6 @@ func validateProductD09Artifacts(profileRaw, profileSig, registrationRaw, regist
 // loadProductD09Snapshot reads, verifies, pins, and measures every fixed product input in one order: service config, unit,
 // effective unit, registration, host profile, template, service account, artifacts, and the managed-RW roots.
 func loadProductD09Snapshot(ctx context.Context) (productD09Snapshot, error) {
-	started := time.Now()
-	defer func() { fmt.Fprintf(os.Stderr, "tbound: product snapshot verification took %s\n", time.Since(started)) }()
 	if ctx == nil {
 		return productD09Snapshot{}, productD09Refused(nil, "nil context")
 	}
@@ -538,11 +542,15 @@ func productD09VerifyImageFiles(ctx context.Context, template D09CellTemplate, p
 	for i, image := range images {
 		paths[i] = filepath.Clean(image.path)
 	}
-	files, err := readProductOCIImageFiles(ctx, template.OCILayoutPath, template.ExpectedImageDigest, paths, true)
+	files, fileErrs, err := readProductOCIImageFilesEach(ctx, template.OCILayoutPath, template.ExpectedImageDigest, paths, true)
 	if err != nil {
-		return productD09Refused(err, "an in-image file is not in the pinned product image")
+		return productD09Refused(err, "the pinned product image cannot be read")
 	}
+	// The first failing file in the fixed order is reported, whatever the kind of failure.
 	for i, image := range images {
+		if fileErrs[i] != nil {
+			return productD09Refused(fileErrs[i], image.what+" "+paths[i]+" is not in the pinned product image")
+		}
 		file := files[i]
 		if file.mode&0o111 == 0 || file.mode&0o022 != 0 {
 			return productD09Refused(nil, image.what+" is not a non-writable executable regular file")
