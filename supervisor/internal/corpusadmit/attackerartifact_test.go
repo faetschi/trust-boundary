@@ -6,6 +6,7 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"tbound/supervisor/internal/adaptivesource"
 	"tbound/supervisor/internal/attacker"
 	"tbound/supervisor/internal/evalcorpus"
 	"tbound/supervisor/internal/providerbridge"
@@ -84,7 +85,7 @@ func TestCheckManifestArtifactsAcceptsAMatchingAttacker(t *testing.T) {
 	for id, turn := range m.Cases[0].Trial.Pivots {
 		pivots[id] = providerbridge.ScriptTurn{Tool: turn.Tool, Arguments: turn.Arguments}
 	}
-	if _, err := providerbridge.NewAdaptiveSource(spec, pivots); err != nil {
+	if _, err := adaptivesource.NewAdaptiveSource(spec, pivots); err != nil {
 		t.Fatalf("admitted replay must construct: %v", err)
 	}
 	// a manifest without pivots needs no attacker artifact, and CheckArtifacts itself is unchanged
@@ -157,7 +158,7 @@ func TestCheckAttackerRefusesModelCapsForScriptedReplay(t *testing.T) {
 	for id, turn := range m.Cases[0].Trial.Pivots {
 		pivots[id] = providerbridge.ScriptTurn{Tool: turn.Tool, Arguments: turn.Arguments}
 	}
-	if _, err := providerbridge.NewAdaptiveSource(spec, pivots); err == nil || !strings.Contains(err.Error(), "scripted") {
+	if _, err := adaptivesource.NewAdaptiveSource(spec, pivots); err == nil || !strings.Contains(err.Error(), "scripted") {
 		t.Fatalf("runtime must refuse model caps for replay: %v", err)
 	}
 	if err := CheckAttacker(m, fsys, 0); err == nil || !strings.Contains(err.Error(), "scripted") {

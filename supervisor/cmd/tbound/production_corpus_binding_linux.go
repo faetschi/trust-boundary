@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"tbound/supervisor/internal/adaptivesource"
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/corpusadmit"
@@ -103,7 +104,7 @@ type corpusBinding struct {
 	// adaptive is the attacker-driven source of an adaptive replay role. It is shared by the provider factory
 	// and the receipt, which reads its terminal state. attackerDigest and pivotsDigest identify the pinned
 	// artifact and the case's pivot table.
-	adaptive       *providerbridge.AdaptiveSource
+	adaptive       *adaptivesource.AdaptiveSource
 	attackerDigest string
 	pivotsDigest   string
 	// predecessor is the earlier attempt of the case and role whose attacker budget this attempt continues
@@ -113,7 +114,7 @@ type corpusBinding struct {
 
 // bindingFor derives the binding of role for caseID, or reports that this build cannot serve it. The options
 // configure the adaptive source of an adaptive role (the budget a retry continues).
-func (c *productionCorpus) bindingFor(caseID, role string, options ...providerbridge.AdaptiveOption) (corpusBinding, error) {
+func (c *productionCorpus) bindingFor(caseID, role string, options ...adaptivesource.AdaptiveOption) (corpusBinding, error) {
 	if !c.roleServable(caseID, role) {
 		return corpusBinding{}, fmt.Errorf("%w: role %q is not served for case %q", ErrPiServiceCorpus, role, caseID)
 	}
@@ -143,7 +144,7 @@ func (c *productionCorpus) bindingFor(caseID, role string, options ...providerbr
 		for id, turn := range trial.Pivots {
 			pivots[id] = providerbridge.ScriptTurn{Tool: turn.Tool, Arguments: append([]byte(nil), turn.Arguments...), Text: turn.Text}
 		}
-		source, err := providerbridge.NewAdaptiveSource(*c.attacker, pivots, options...)
+		source, err := adaptivesource.NewAdaptiveSource(*c.attacker, pivots, options...)
 		if err != nil {
 			return corpusBinding{}, fmt.Errorf("%w: adaptive source of case %q: %w", ErrPiServiceCorpus, caseID, err)
 		}
@@ -170,14 +171,14 @@ func (c *piServiceWorkflowCatalog) bindingForEntry(entry piServiceWorkflowEntry)
 	}
 	// An adaptive retry continues the cumulative attacker budget of the attempt before it, read from the
 	// service's own catalog.
-	var options []providerbridge.AdaptiveOption
+	var options []adaptivesource.AdaptiveOption
 	var predecessor *productionAttackerPredecessor
 	if adaptiveCorpusRole(role) && attempt > 1 {
 		var err error
 		if predecessor, err = c.attackerPredecessor(entry.TaskID, role, attempt); err != nil {
 			return nil, err
 		}
-		options = append(options, providerbridge.WithPriorUsage(predecessor.CumulativeUsage))
+		options = append(options, adaptivesource.WithPriorUsage(predecessor.CumulativeUsage))
 	}
 	binding, err := c.corpus.bindingFor(entry.TaskID, role, options...)
 	if err != nil {

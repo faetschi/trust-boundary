@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"tbound/supervisor/internal/adaptivesource"
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/corpusadmit"
 	"tbound/supervisor/internal/evalscore"
@@ -307,8 +308,8 @@ type productionPiReceipt struct {
 	// The attacker budget (production_corpus_adaptive_budget_linux.go): what this attempt spent, what the case
 	// has spent in all (the budget is cumulative across attempts), and the earlier attempt whose budget it
 	// continued (empty for attempt 1).
-	AttackerUsage           *providerbridge.AdaptiveUsage  `json:"attacker_usage,omitempty"`
-	AttackerCumulativeUsage *providerbridge.AdaptiveUsage  `json:"attacker_cumulative_usage,omitempty"`
+	AttackerUsage           *adaptivesource.AdaptiveUsage  `json:"attacker_usage,omitempty"`
+	AttackerCumulativeUsage *adaptivesource.AdaptiveUsage  `json:"attacker_cumulative_usage,omitempty"`
 	AttackerPredecessor     *productionAttackerPredecessor `json:"attacker_predecessor,omitempty"`
 	E04GapCount             int                            `json:"e04_gap_count,omitempty"`
 	Success                 bool                           `json:"success"`
