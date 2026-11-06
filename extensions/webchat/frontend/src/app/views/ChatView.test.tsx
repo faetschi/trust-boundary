@@ -489,6 +489,28 @@ describe("a finding filter on a turn with two tool runs", () => {
   });
 });
 
+describe("a finding filter that removes the message between two surviving runs", () => {
+  it("keeps both runs, their cards and an open group as they were", () => {
+    const deny = (calls: string[], at: number): Item[] => calls.flatMap((call, index) => itemsOf({ call, verdict: "DENY", result: "denied" }, at + index * 10));
+    const items: Item[] = [
+      ...deny(["c1", "c2"], 1),
+      messageItem({ id: "m1", sequence: 50, role: "assistant", text: "between" }),
+      ...deny(["c3", "c4"], 100),
+    ];
+    const model = modelOf(items);
+    renderModel(model);
+    const second = q("[data-anchor='run-t1-1']");
+    const card = q("[data-anchor='c3']");
+    expect(second.getAttribute("data-open")).toBe("true");
+    rerenderModel({ ...model, filter: "denied" });
+    expect(qa("[data-anchor='m1']").length).toBe(0);
+    expect(qa("[data-anchor^='run-t1-']").map((element) => element.getAttribute("data-anchor"))).toEqual(["run-t1-0", "run-t1-1"]);
+    expect(q("[data-anchor='run-t1-1']")).toBe(second);
+    expect(q("[data-anchor='c3']")).toBe(card);
+    expect(q("[data-anchor='run-t1-1']").getAttribute("data-open")).toBe("true");
+  });
+});
+
 describe("honesty rules on the transcript (web-chat.md sections 4.1 and 4.3)", () => {
   it("shows ALLOW beside a lost result as a permission and a lost state, never as a success", async () => {
     await renderLive(

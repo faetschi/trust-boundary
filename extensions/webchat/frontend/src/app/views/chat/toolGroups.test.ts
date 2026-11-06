@@ -156,6 +156,14 @@ describe("runs of tool blocks", () => {
     expect(keysOf([...tool("c1"), message("m1", 100), ...tool("c2")])).toEqual(["run-t1-0", "run-t1-1"]);
     expect(groupRuns(groupTurn([...tool("c1")]), "t2").map((block) => (block.kind === "run" ? block.key : ""))).toEqual(["run-t2-0"]);
   });
+  it("does not merge two surviving runs when the filter removes the message between them", () => {
+    const whole = groupTurn([...tool("c1"), message("m1", 100), ...tool("c2")]);
+    const survivors = groupTurn([...tool("c1"), ...tool("c2")]);
+    const runs = groupRuns(survivors, "t1", whole).flatMap((block) => (block.kind === "run" ? [block] : []));
+    expect(runs.map((run) => run.key)).toEqual(["run-t1-0", "run-t1-1"]);
+    expect(runs.map((run) => run.blocks.map((block) => block.key))).toEqual([["c1"], ["c2"]]);
+  });
+
   it("keeps a run's key from the unfiltered turn, so a filter that removes the earlier run and the message does not renumber the survivor", () => {
     const all = [...tool("c1"), message("m1", 100), ...tool("c2")];
     const whole = groupTurn(all);
