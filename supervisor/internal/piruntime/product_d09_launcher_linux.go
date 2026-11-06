@@ -11,13 +11,6 @@ import (
 	"syscall"
 )
 
-const (
-	productD09ServiceHostPath     = "/sys/fs/cgroup/system.slice/tbound-product.service"
-	productD09CellsHostPath       = productD09ServiceHostPath + "/cells"
-	productD09CellsHierarchyPath  = "/system.slice/tbound-product.service/cells"
-	productD09RunnerHierarchyPath = "/system.slice/tbound-product.service/runner"
-)
-
 // PrepareProductD09CgroupRoot initializes only the product service's empty cells
 // sibling. The caller owns the returned descriptor; no caller path is accepted.
 func PrepareProductD09CgroupRoot(ctx context.Context, host *D09ProductCommandHost) (*os.File, error) {
