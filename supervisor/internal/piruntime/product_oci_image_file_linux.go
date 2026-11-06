@@ -8,24 +8,62 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"path"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
+	"syscall"
 )
 
-// readProductOCIImageFile follows at most eight ancestor symlinks in the merged
-// signed image. The final component remains a regular file, matching the cell's Lstat.
+// productOCILayerReads counts layer blob reads by the product reader, so tests can prove the memo avoids rescans.
+var productOCILayerReads atomic.Int64
+
+var productOCIMemo struct {
+	sync.Mutex
+	key   string
+	files []ociImageFile
+}
+
+// readProductOCIImageFile resolves one file; see readProductOCIImageFiles.
 func readProductOCIImageFile(ctx context.Context, layoutPath, manifestDigest, imagePath string, requireImmutable bool) (ociImageFile, error) {
-	if ctx == nil || !validDigest(manifestDigest) || !path.IsAbs(imagePath) || path.Clean(imagePath) != imagePath || imagePath == "/" {
-		return ociImageFile{}, ErrHostProfileMismatch
+	files, err := readProductOCIImageFiles(ctx, layoutPath, manifestDigest, []string{imagePath}, requireImmutable)
+	if err != nil {
+		return ociImageFile{}, err
+	}
+	return files[0], nil
+}
+
+// readProductOCIImageFiles follows at most eight ancestor symlinks per path in the merged signed image. The final
+// component remains a regular file, matching the cell's Lstat. All paths share one redirected-write pass and one
+// per-component lookup cache. A successful result is memoized while every layout file identity is unchanged.
+func readProductOCIImageFiles(ctx context.Context, layoutPath, manifestDigest string, imagePaths []string, requireImmutable bool) ([]ociImageFile, error) {
+	if ctx == nil || !validDigest(manifestDigest) || len(imagePaths) == 0 {
+		return nil, ErrHostProfileMismatch
+	}
+	for _, imagePath := range imagePaths {
+		if !path.IsAbs(imagePath) || path.Clean(imagePath) != imagePath || imagePath == "/" {
+			return nil, ErrHostProfileMismatch
+		}
 	}
 	layers, err := ociManifestLayers(layoutPath, manifestDigest, requireImmutable)
 	if err != nil {
-		return ociImageFile{}, err
+		return nil, err
+	}
+	key, identified := productOCIMemoKey(layoutPath, manifestDigest, imagePaths, requireImmutable, layers)
+	if identified {
+		productOCIMemo.Lock()
+		if productOCIMemo.key == key && productOCIMemo.files != nil {
+			files := append([]ociImageFile(nil), productOCIMemo.files...)
+			productOCIMemo.Unlock()
+			return files, nil
+		}
+		productOCIMemo.Unlock()
 	}
 	hardlinkTargets, err := refuseProductOCIRedirectedWrites(ctx, layoutPath, layers, requireImmutable)
 	if err != nil {
-		return ociImageFile{}, err
+		return nil, err
 	}
 	cache := map[string]ociLayerResult{}
 	lookup := func(target string) (ociLayerResult, error) {
@@ -38,6 +76,7 @@ func readProductOCIImageFile(ctx context.Context, layoutPath, manifestDigest, im
 			if err := ctx.Err(); err != nil {
 				return current, err
 			}
+			productOCILayerReads.Add(1)
 			result, size, err := scanOCILayer(filepath.Join(layoutPath, "blobs", "sha256", strings.TrimPrefix(layer.Digest, "sha256:")),
 				layer, target, budget, requireImmutable)
 			if err != nil {
@@ -53,6 +92,50 @@ func readProductOCIImageFile(ctx context.Context, layoutPath, manifestDigest, im
 		cache[target] = current
 		return current, nil
 	}
+	files := make([]ociImageFile, 0, len(imagePaths))
+	for _, imagePath := range imagePaths {
+		file, err := resolveProductOCIImageFile(ctx, imagePath, lookup, hardlinkTargets)
+		if err != nil {
+			return nil, err
+		}
+		files = append(files, file)
+	}
+	// Identities taken before and after the reads must agree, or the result is not memoized.
+	if after, ok := productOCIMemoKey(layoutPath, manifestDigest, imagePaths, requireImmutable, layers); identified && ok && after == key {
+		productOCIMemo.Lock()
+		productOCIMemo.key, productOCIMemo.files = key, append([]ociImageFile(nil), files...)
+		productOCIMemo.Unlock()
+	}
+	return files, nil
+}
+
+// productOCIMemoKey names everything the verification read: the request plus the identity (device, inode, size, times,
+// mode, owner) of the layout directories, index.json, the manifest blob and every layer blob. ok is false if any is unreadable.
+func productOCIMemoKey(layoutPath, manifestDigest string, imagePaths []string, requireImmutable bool, layers []ociLayerDescriptor) (string, bool) {
+	var key strings.Builder
+	fmt.Fprintf(&key, "%s\x00%s\x00%v\x00%q", layoutPath, manifestDigest, requireImmutable, imagePaths)
+	blobs := filepath.Join(layoutPath, "blobs", "sha256")
+	names := []string{layoutPath, filepath.Join(layoutPath, "blobs"), blobs, filepath.Join(layoutPath, "index.json"),
+		filepath.Join(blobs, strings.TrimPrefix(manifestDigest, "sha256:"))}
+	for _, layer := range layers {
+		names = append(names, filepath.Join(blobs, strings.TrimPrefix(layer.Digest, "sha256:")))
+	}
+	for _, name := range names {
+		info, err := os.Lstat(name)
+		if err != nil {
+			return "", false
+		}
+		stat, ok := info.Sys().(*syscall.Stat_t)
+		if !ok {
+			return "", false
+		}
+		fmt.Fprintf(&key, "\x00%s:%d:%d:%d:%d:%d:%d:%d:%d:%d", name, stat.Dev, stat.Ino, stat.Size, stat.Mtim.Sec, stat.Mtim.Nsec,
+			stat.Ctim.Sec, stat.Ctim.Nsec, stat.Mode, stat.Uid)
+	}
+	return key.String(), true
+}
+
+func resolveProductOCIImageFile(ctx context.Context, imagePath string, lookup func(string) (ociLayerResult, error), hardlinkTargets map[string]bool) (ociImageFile, error) {
 	var resolved []string
 	pending := strings.Split(strings.TrimPrefix(imagePath, "/"), "/")
 	hops := 0
@@ -164,6 +247,7 @@ func refuseProductOCIRedirectedWrites(ctx context.Context, layoutPath string, la
 	}
 	budget := PiRuntimeBundleMaxBytes
 	for _, layer := range layers {
+		productOCILayerReads.Add(1)
 		size, err := readOCILayer(filepath.Join(layoutPath, "blobs", "sha256", strings.TrimPrefix(layer.Digest, "sha256:")),
 			layer, budget, requireImmutable, scan)
 		if err != nil {

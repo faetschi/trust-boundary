@@ -20,6 +20,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/productsession"
@@ -250,6 +251,8 @@ func validateProductD09Artifacts(profileRaw, profileSig, registrationRaw, regist
 // loadProductD09Snapshot reads, verifies, pins, and measures every fixed product input in one order: service config, unit,
 // effective unit, registration, host profile, template, service account, artifacts, and the managed-RW roots.
 func loadProductD09Snapshot(ctx context.Context) (productD09Snapshot, error) {
+	started := time.Now()
+	defer func() { fmt.Fprintf(os.Stderr, "tbound: product snapshot verification took %s\n", time.Since(started)) }()
 	if ctx == nil {
 		return productD09Snapshot{}, productD09Refused(nil, "nil context")
 	}
@@ -520,30 +523,33 @@ func productD09VerifyArtifacts(ctx context.Context, inputs productD09Inputs, tem
 	if err := launcher.verifyOfflineSignature(ctx, template.Config(), template.CosignPath, true); err != nil {
 		return productD09Refused(err, "offline cosign verification of the product image failed")
 	}
-	for _, image := range []struct{ path, digest, what string }{
+	return productD09VerifyImageFiles(ctx, template, profile)
+}
+
+// productD09VerifyImageFiles resolves the in-image entrypoint, Bash and Node through the signed OCI layout in one layer
+// pass without extracting it, and compares the digest of each regular file with the expected one.
+func productD09VerifyImageFiles(ctx context.Context, template D09CellTemplate, profile HostProfile) error {
+	images := []struct{ path, digest, what string }{
 		{template.EntrypointPath, template.EntrypointDigest, "in-image entrypoint"},
 		{template.CommandExecutable, template.CommandExecutableDigest, "in-image Bash"},
 		{profile.ChildExecutable, profile.ExecutableDigest, "in-image Node"},
-	} {
-		if err := productD09VerifyImageFile(ctx, template, image.path, image.digest, image.what); err != nil {
-			return err
-		}
 	}
-	return nil
-}
-
-// productD09VerifyImageFile resolves imagePath through the signed OCI layout without extracting it, and compares the digest
-// of the regular file it names with the expected one.
-func productD09VerifyImageFile(ctx context.Context, template D09CellTemplate, imagePath, expectedDigest, what string) error {
-	file, err := readProductOCIImageFile(ctx, template.OCILayoutPath, template.ExpectedImageDigest, filepath.Clean(imagePath), true)
+	paths := make([]string, len(images))
+	for i, image := range images {
+		paths[i] = filepath.Clean(image.path)
+	}
+	files, err := readProductOCIImageFiles(ctx, template.OCILayoutPath, template.ExpectedImageDigest, paths, true)
 	if err != nil {
-		return productD09Refused(err, what+" is not in the pinned product image")
+		return productD09Refused(err, "an in-image file is not in the pinned product image")
 	}
-	if file.mode&0o111 == 0 || file.mode&0o022 != 0 {
-		return productD09Refused(nil, what+" is not a non-writable executable regular file")
-	}
-	if file.digest != expectedDigest {
-		return productD09Refused(nil, what+" digest does not match the template")
+	for i, image := range images {
+		file := files[i]
+		if file.mode&0o111 == 0 || file.mode&0o022 != 0 {
+			return productD09Refused(nil, image.what+" is not a non-writable executable regular file")
+		}
+		if file.digest != image.digest {
+			return productD09Refused(nil, image.what+" digest does not match the template")
+		}
 	}
 	return nil
 }

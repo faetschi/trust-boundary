@@ -162,3 +162,109 @@ func TestProductOCIImageFileStillVerifiesSignedBlobsAndThesisRefusesLinks(t *tes
 		t.Fatalf("tampered layer was not refused by digest: %v", err)
 	}
 }
+
+func productOCIMemoTestLayout(t *testing.T) (layout, manifest string, paths []string) {
+	t.Helper()
+	productOCIMemo.Lock()
+	productOCIMemo.key, productOCIMemo.files = "", nil
+	productOCIMemo.Unlock()
+	lower := ociTestLayer(t, true, ociTestEntry{name: "bin", typeflag: tar.TypeSymlink, link: "usr/bin"},
+		regEntry("usr/bin/bash", "bash", 0o555), regEntry("usr/bin/node", "node", 0o555))
+	upper := ociTestLayer(t, false, regEntry("entrypoint", "entry", 0o555))
+	layout, manifest = ociTestLayout(t, lower, upper)
+	return layout, manifest, []string{"/entrypoint", "/bin/bash", "/usr/bin/node"}
+}
+
+func TestProductOCIImageFilesMatchSeparateCalls(t *testing.T) {
+	layout, manifest, paths := productOCIMemoTestLayout(t)
+	got, err := readProductOCIImageFiles(context.Background(), layout, manifest, paths, false)
+	if err != nil || len(got) != 3 {
+		t.Fatalf("batch = %+v, %v", got, err)
+	}
+	for i, imagePath := range paths {
+		productOCIMemo.Lock()
+		productOCIMemo.key, productOCIMemo.files = "", nil
+		productOCIMemo.Unlock()
+		want, err := readProductOCIImageFile(context.Background(), layout, manifest, imagePath, false)
+		if err != nil || want != got[i] {
+			t.Fatalf("%s: separate = %+v, %v; batch = %+v", imagePath, want, err, got[i])
+		}
+	}
+	if got[1].digest != DigestBytes([]byte("bash")) || got[2].digest != DigestBytes([]byte("node")) {
+		t.Fatalf("merged-usr results wrong: %+v", got)
+	}
+	if _, err := readProductOCIImageFiles(context.Background(), layout, manifest, []string{"/entrypoint", "/missing"}, false); err == nil {
+		t.Fatal("a missing path in the batch was accepted")
+	}
+}
+
+func TestProductOCIImageFilesMemoRescansOnlyAfterIdentityChange(t *testing.T) {
+	layout, manifest, paths := productOCIMemoTestLayout(t)
+	read := func() ([]ociImageFile, error) {
+		return readProductOCIImageFiles(context.Background(), layout, manifest, paths, false)
+	}
+	reads := func() int64 { return productOCILayerReads.Load() }
+	first, err := read()
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := reads()
+	again, err := read()
+	if err != nil || reads() != before || fmt.Sprint(again) != fmt.Sprint(first) {
+		t.Fatalf("second verification rescanned layers (%d reads) or differed: %v", reads()-before, err)
+	}
+	// The expected manifest digest is part of the key: another digest is refused, never answered from the memo.
+	if _, err := readProductOCIImageFiles(context.Background(), layout, DigestBytes([]byte("other")), paths, false); err == nil {
+		t.Fatal("unlisted manifest digest accepted")
+	}
+	// A different set of paths is a different key.
+	if _, err := readProductOCIImageFiles(context.Background(), layout, manifest, paths[:1], false); err != nil || reads() == before {
+		t.Fatalf("different paths were answered from the memo: %v", err)
+	}
+	if _, err := read(); err != nil {
+		t.Fatal(err)
+	}
+	// A layout file change (index.json gains whitespace) forces a full re-verification that still succeeds.
+	indexPath := filepath.Join(layout, "index.json")
+	index, err := os.ReadFile(indexPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(indexPath, append(index, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	before = reads()
+	if _, err := read(); err != nil || reads() == before {
+		t.Fatalf("index.json change was not re-verified: %v", err)
+	}
+	// A replaced blob is re-verified and refused.
+	if _, err := read(); err != nil {
+		t.Fatal(err)
+	}
+	blobs := filepath.Join(layout, "blobs", "sha256")
+	entries, err := os.ReadDir(blobs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if entry.Name() == strings.TrimPrefix(manifest, "sha256:") {
+			continue
+		}
+		name := filepath.Join(blobs, entry.Name())
+		data, err := os.ReadFile(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(data) < 100 { // the image config, which verification never reads
+			continue
+		}
+		data[len(data)/2] ^= 0xff
+		if err := os.WriteFile(name, data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		break
+	}
+	if got, err := read(); err == nil {
+		t.Fatalf("tampered blob accepted from the memo: %+v", got)
+	}
+}
