@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Check local Markdown links in the entry points and docs tree, offline."""
+"""Check local Markdown links in the entry points and active documentation roots, offline.
+
+evidence/ and other historical records are not scanned; node_modules and the digest-pinned
+corpus artifacts/ trees are skipped.
+"""
 
 import re
 from pathlib import Path
@@ -11,20 +15,44 @@ ACTIVE_ROOTS = ("docs", "corpus", "infra", "extensions")
 
 
 def prose(text):
-    text = re.sub(r"(?ms)^\s*(`{3,}|~{3,})[^\n]*\n.*?^\s*\1[^\n]*$",
+    """Blank out fenced code blocks, keeping line numbers."""
+    return re.sub(r"(?ms)^\s*(`{3,}|~{3,})[^\n]*\n.*?^\s*\1[^\n]*$",
                   lambda match: "\n" * match[0].count("\n"), text)
-    # Inline code spans are examples, not links.
-    return re.sub(r"(?s)(?<!`)(`+)(?!`)(.+?)(?<!`)\1(?!`)",
-                  lambda match: "\n" * match[0].count("\n"), text)
+
+
+def code_spans(text):
+    """Offsets of inline code spans. A span closes within its own block (no blank line), and an
+    escaped backtick neither opens nor closes one."""
+    spans = []
+    for block in re.finditer(r"(?:(?!\n[ \t]*\n).)+", text, re.S):
+        runs = [(m.start(1), m.end(1)) for m in re.finditer(r"(?<!\\)(?:\\\\)*(`+)", block[0])]
+        index = 0
+        while index < len(runs):
+            width = runs[index][1] - runs[index][0]
+            close = next((j for j in range(index + 1, len(runs))
+                          if runs[j][1] - runs[j][0] == width), None)
+            if close is None:
+                index += 1
+                continue
+            spans.append((block.start() + runs[index][0], block.start() + runs[close][1]))
+            index = close + 1
+    return spans
 
 
 def links(text):
     text = prose(text)
+    spans = code_spans(text)
+
+    def inside(offset):
+        return any(start <= offset < end for start, end in spans)
+
     definitions = dict(re.findall(r"(?m)^\s*\[([^\]]+)\]:\s*<?([^\s>]+)>?", text))
     for match in re.finditer(r"\[[^\]\n]*\]\(<?([^\s)>]+)>?(?:\s+[^)]*)?\)", text):
-        yield match.start(), match[1]
+        if not inside(match.start()):
+            yield match.start(), match[1]
     for match in re.finditer(r"\[([^\]\n]+)\]\[([^\]\n]*)\]", text):
-        yield match.start(), definitions.get(match[2] or match[1], "MISSING-REFERENCE")
+        if not inside(match.start()):
+            yield match.start(), definitions.get(match[2] or match[1], "MISSING-REFERENCE")
 
 
 def anchors(text):
@@ -39,14 +67,23 @@ def anchors(text):
 
 
 def main():
-    assert [url for _, url in links('[a](a.md#part) [b](<b.md> "title")')] == ["a.md#part", "b.md"]
-    assert list(links("Use `[text](url)` and ``[a](b) `x` ``.")) == []
-    assert [url for _, url in links("`code` then [a](real.md)")] == ["real.md"]
-    assert list(links("```sh\n[not a link](missing)\n```")) == []
+    urls = lambda text: [url for _, url in links(text)]
+    assert urls('[a](a.md#part) [b](<b.md> "title")') == ["a.md#part", "b.md"]
+    assert urls("Use `[text](url)` and ``[a](b) `x` ``.") == []
+    assert urls("`code` then [a](real.md)") == ["real.md"]
+    assert urls("[`tool`][guide]\n\n[guide]: missing.md") == ["missing.md"]
+    assert urls("\\`[a](x.md) `b`") == ["x.md"]
+    assert urls("one ` here\n\n[a](y.md) and ` there") == ["y.md"]
+    assert urls("```sh\n[not a link](missing)\n```") == []
     assert anchors("# A heading\n## A heading\n") == {"a-heading", "a-heading-1"}
+    assert anchors("### Terminal client `tbound chat`\n") == {"terminal-client-tbound-chat"}
+    contracts = anchors((ROOT / "docs/product-contracts.md").read_text(encoding="utf-8"))
+    assert "terminal-client-tbound-chat" in contracts and "terminal-client" not in contracts
     documents = [ROOT / name for name in ("README.md", "USAGE.md", "OVERVIEW.md")]
     for name in ACTIVE_ROOTS:
-        documents += sorted(path for path in (ROOT / name).rglob("*.md") if "node_modules" not in path.parts)
+        documents += sorted(path for path in (ROOT / name).rglob("*.md")
+                            if "node_modules" not in path.parts
+                            and not (name == "corpus" and "artifacts" in path.parts))
     checked = 0
     errors = []
     for document in documents:
