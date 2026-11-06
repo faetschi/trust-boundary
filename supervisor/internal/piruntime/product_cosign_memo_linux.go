@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 // productCosignRuns counts cosign runs by the product signature check, so tests can prove the memo avoids them.
@@ -35,7 +36,7 @@ func (l *D09PodmanCrunLauncher) verifyOfflineSignatureForProbe(ctx context.Conte
 // verifyOfflineSignatureMemoized skips the cosign run while every input it read is unchanged. Failures are never memoized,
 // and a key that differs before and after the run is not stored.
 func (l *D09PodmanCrunLauncher) verifyOfflineSignatureMemoized(ctx context.Context, config D09Config, cosignBinary string, requireImmutable bool) error {
-	key, identified := productCosignMemoKey(config, cosignBinary, requireImmutable)
+	key, identified, _ := productCosignMemoKey(config, cosignBinary, requireImmutable)
 	if identified {
 		productCosignMemo.Lock()
 		hit := productCosignMemo.key == key
@@ -54,7 +55,7 @@ func (l *D09PodmanCrunLauncher) verifyOfflineSignatureMemoized(ctx context.Conte
 	if err := l.verifyOfflineSignature(ctx, config, cosignBinary, requireImmutable); err != nil {
 		return err
 	}
-	if after, ok := productCosignMemoKey(config, cosignBinary, requireImmutable); identified && ok && after == key {
+	if after, ok, settled := productCosignMemoKey(config, cosignBinary, requireImmutable); identified && ok && settled && after == key {
 		productCosignMemo.Lock()
 		productCosignMemo.key = key
 		productCosignMemo.Unlock()
@@ -65,20 +66,20 @@ func (l *D09PodmanCrunLauncher) verifyOfflineSignatureMemoized(ctx context.Conte
 // productCosignMemoKey names every input of the offline verification: the cosign binary, the public key (registered digest
 // and file identity), the expected manifest digest, the fixed flags, and the identity of the layout directories,
 // oci-layout, index.json and every blob (which holds the signature). ok is false if any is unreadable or cosign is not
-// an absolute path.
-func productCosignMemoKey(config D09Config, cosignBinary string, requireImmutable bool) (string, bool) {
+// an absolute path; settled is false if any ctime is too recent to trust (see productFilesSettled).
+func productCosignMemoKey(config D09Config, cosignBinary string, requireImmutable bool) (key string, ok, settled bool) {
 	if !filepath.IsAbs(cosignBinary) || !filepath.IsAbs(config.CosignPublicKeyPath) || !filepath.IsAbs(config.OCILayoutPath) {
-		return "", false
+		return "", false, false
 	}
-	var key strings.Builder
-	fmt.Fprintf(&key, "%s\x00%s\x00%v\x00%s\x00--offline --insecure-ignore-tlog=true", config.ExpectedImageDigest, config.CosignPublicKeyDigest,
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s\x00%s\x00%v\x00%s\x00--offline --insecure-ignore-tlog=true", config.ExpectedImageDigest, config.CosignPublicKeyDigest,
 		requireImmutable, config.CosignPublicKeyPath)
 	blobs := filepath.Join(config.OCILayoutPath, "blobs", "sha256")
 	names := []string{cosignBinary, config.CosignPublicKeyPath, config.OCILayoutPath, filepath.Join(config.OCILayoutPath, "blobs"), blobs,
 		filepath.Join(config.OCILayoutPath, "index.json"), filepath.Join(config.OCILayoutPath, "oci-layout")}
 	entries, err := os.ReadDir(blobs)
 	if err != nil {
-		return "", false
+		return "", false, false
 	}
 	for _, entry := range entries {
 		names = append(names, filepath.Join(blobs, entry.Name()))
@@ -89,17 +90,21 @@ func productCosignMemoKey(config D09Config, cosignBinary string, requireImmutabl
 			names = append(names, target)
 		}
 	}
+	var newest time.Time
 	for _, name := range names {
-		identity, ok := productFileIdentity(name)
+		identity, ctime, ok := productFileIdentity(name)
+		if ctime.After(newest) {
+			newest = ctime
+		}
 		if !ok {
 			// oci-layout is optional for a layout; its absence is part of the key.
 			if filepath.Base(name) == "oci-layout" {
 				identity = name + ":absent"
 			} else {
-				return "", false
+				return "", false, false
 			}
 		}
-		key.WriteString("\x00" + identity)
+		b.WriteString("\x00" + identity)
 	}
-	return key.String(), true
+	return b.String(), true, productFilesSettled(newest)
 }

@@ -15,6 +15,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"syscall"
+	"time"
 )
 
 // productOCILayerReads counts layer blob reads by the product reader, so tests can prove the memo avoids rescans.
@@ -66,7 +67,7 @@ func readProductOCIImageFilesEach(ctx context.Context, layoutPath, manifestDiges
 	if err != nil {
 		return nil, nil, err
 	}
-	key, identified := productOCIMemoKey(layoutPath, manifestDigest, requireImmutable, layers)
+	key, identified, _ := productOCIMemoKey(layoutPath, manifestDigest, requireImmutable, layers)
 	if identified {
 		productOCIMemo.Lock()
 		if productOCIMemo.key == key {
@@ -120,8 +121,8 @@ func readProductOCIImageFilesEach(ctx context.Context, layoutPath, manifestDiges
 		files[i], fileErrs[i] = resolveProductOCIImageFile(ctx, imagePath, lookup, hardlinkTargets)
 		failed = failed || fileErrs[i] != nil
 	}
-	// Identities taken before and after the reads must agree, or the result is not memoized.
-	if after, ok := productOCIMemoKey(layoutPath, manifestDigest, requireImmutable, layers); !failed && identified && ok && after == key {
+	// Identities taken before and after the reads must agree and be settled, or the result is not memoized.
+	if after, ok, settled := productOCIMemoKey(layoutPath, manifestDigest, requireImmutable, layers); !failed && identified && ok && settled && after == key {
 		productOCIMemo.Lock()
 		if productOCIMemo.key != key || productOCIMemo.files == nil {
 			productOCIMemo.key, productOCIMemo.files = key, map[string]ociImageFile{}
@@ -135,38 +136,55 @@ func readProductOCIImageFilesEach(ctx context.Context, layoutPath, manifestDiges
 }
 
 // productOCIMemoKey names everything the verification read: the layout, digest and mode plus the identity (device, inode, size, times,
-// mode, owner) of the layout directories, index.json, the manifest blob and every layer blob. ok is false if any is unreadable.
-func productOCIMemoKey(layoutPath, manifestDigest string, requireImmutable bool, layers []ociLayerDescriptor) (string, bool) {
-	var key strings.Builder
-	fmt.Fprintf(&key, "%s\x00%s\x00%v", layoutPath, manifestDigest, requireImmutable)
+// mode, owner) of the layout directories, index.json, the manifest blob and every layer blob. ok is false if any is unreadable;
+// settled is false if any ctime is too recent to trust (see productFilesSettled).
+func productOCIMemoKey(layoutPath, manifestDigest string, requireImmutable bool, layers []ociLayerDescriptor) (key string, ok, settled bool) {
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s\x00%s\x00%v", layoutPath, manifestDigest, requireImmutable)
 	blobs := filepath.Join(layoutPath, "blobs", "sha256")
 	names := []string{layoutPath, filepath.Join(layoutPath, "blobs"), blobs, filepath.Join(layoutPath, "index.json"),
 		filepath.Join(blobs, strings.TrimPrefix(manifestDigest, "sha256:"))}
 	for _, layer := range layers {
 		names = append(names, filepath.Join(blobs, strings.TrimPrefix(layer.Digest, "sha256:")))
 	}
+	var newest time.Time
 	for _, name := range names {
-		identity, ok := productFileIdentity(name)
+		identity, ctime, ok := productFileIdentity(name)
 		if !ok {
-			return "", false
+			return "", false, false
 		}
-		key.WriteString("\x00" + identity)
+		if ctime.After(newest) {
+			newest = ctime
+		}
+		b.WriteString("\x00" + identity)
 	}
-	return key.String(), true
+	return b.String(), true, productFilesSettled(newest)
+}
+
+// productMemoMinAge is how much older than the identity snapshot every keyed ctime must be before a result is memoized.
+// The kernel stamps files from a coarse clock (one tick, 4-10 ms, lagging real time by up to a tick), so a rewrite within
+// the same tick as the last stamp leaves the identity unchanged. With a margin of many ticks, any later change to a
+// memoized file gets a later stamp and a different key. Tests lower it.
+var productMemoMinAge = 100 * time.Millisecond
+
+// productFilesSettled reports whether the newest ctime is at least productMemoMinAge before now (a future ctime is not).
+func productFilesSettled(newestCtime time.Time) bool {
+	return time.Since(newestCtime) >= productMemoMinAge
 }
 
 // productFileIdentity names a file by device, inode, size, mtime, ctime, mode and owner, without following a final symlink.
-func productFileIdentity(name string) (string, bool) {
+// It also returns the ctime.
+func productFileIdentity(name string) (string, time.Time, bool) {
 	info, err := os.Lstat(name)
 	if err != nil {
-		return "", false
+		return "", time.Time{}, false
 	}
 	stat, ok := info.Sys().(*syscall.Stat_t)
 	if !ok {
-		return "", false
+		return "", time.Time{}, false
 	}
 	return fmt.Sprintf("%s:%d:%d:%d:%d:%d:%d:%d:%d:%d", name, stat.Dev, stat.Ino, stat.Size, stat.Mtim.Sec, stat.Mtim.Nsec,
-		stat.Ctim.Sec, stat.Ctim.Nsec, stat.Mode, stat.Uid), true
+		stat.Ctim.Sec, stat.Ctim.Nsec, stat.Mode, stat.Uid), time.Unix(int64(stat.Ctim.Sec), int64(stat.Ctim.Nsec)), true
 }
 
 func resolveProductOCIImageFile(ctx context.Context, imagePath string, lookup func(string) (ociLayerResult, error), hardlinkTargets map[string]bool) (ociImageFile, error) {

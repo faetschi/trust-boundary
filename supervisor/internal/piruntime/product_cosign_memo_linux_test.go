@@ -27,6 +27,7 @@ func productCosignMemoFixture(t *testing.T, host bool) (*D09PodmanCrunLauncher, 
 	verify := " verify --offline --insecure-ignore-tlog=true --key " + config.CosignPublicKeyPath + " --local-image " + config.OCILayoutPath
 	runner.results[cosign+verify] = runner.results["cosign"+verify]
 	launcher := newTestLauncher(config, runner)
+	waitUntilSettled()
 	if host {
 		launcher.productHost = &D09ProductCommandHost{loaded: true}
 	}
@@ -42,9 +43,10 @@ func cosignCalls(runner *fakeD09Runner, cosign string) (count int) {
 	return count
 }
 
-// waitForNewCtimeTick lets the kernel coarse file clock (one jiffy, up to 10 ms) advance, so a change right after
-// the file was created or last touched gets a new ctime/mtime instead of an identical identity.
-func waitForNewCtimeTick() { time.Sleep(20 * time.Millisecond) }
+func init() { productMemoMinAge = 25 * time.Millisecond }
+
+// waitUntilSettled waits until files touched now are older than productMemoMinAge, so a verification may memoize them.
+func waitUntilSettled() { time.Sleep(productMemoMinAge + 15*time.Millisecond) }
 
 // rewriteKeepingMtime changes only ctime (and the bytes, if mutate changes them) while keeping inode, size and mtime.
 func rewriteKeepingMtime(t *testing.T, name string, mutate func([]byte)) {
@@ -58,7 +60,6 @@ func rewriteKeepingMtime(t *testing.T, name string, mutate func([]byte)) {
 		t.Fatal(err)
 	}
 	mutate(data)
-	waitForNewCtimeTick()
 	file, err := os.OpenFile(name, os.O_WRONLY, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -72,6 +73,7 @@ func rewriteKeepingMtime(t *testing.T, name string, mutate func([]byte)) {
 	if err := os.Chtimes(name, time.Now(), before.ModTime()); err != nil {
 		t.Fatal(err)
 	}
+	waitUntilSettled()
 }
 
 func TestProductProbeCosignMemoRunsCosignOnce(t *testing.T) {
@@ -134,6 +136,20 @@ func TestProductProbeCosignMemoRerunsOnAnyInputChange(t *testing.T) {
 	rewriteKeepingMtime(t, filepath.Join(blobs, strings.TrimPrefix(config.ExpectedImageDigest, "sha256:")), func(data []byte) { data[len(data)/2] ^= 0x01 })
 	if err := verify(); err == nil {
 		t.Fatal("tampered manifest accepted from the memo")
+	}
+}
+
+func TestProductProbeCosignFreshFilesAreNotMemoized(t *testing.T) {
+	launcher, config, runner, cosign := productCosignMemoFixture(t, true)
+	defer func(old time.Duration) { productMemoMinAge = old }(productMemoMinAge)
+	productMemoMinAge = time.Hour
+	for i := 1; i <= 2; i++ {
+		if err := launcher.verifyOfflineSignatureForProbe(context.Background(), config, cosign, false); err != nil {
+			t.Fatal(err)
+		}
+		if got := cosignCalls(runner, cosign); got != i {
+			t.Fatalf("cosign ran %d times after %d probes of files newer than the threshold, want %d", got, i, i)
+		}
 	}
 }
 
@@ -241,7 +257,7 @@ func TestProductProbeEntrypointReusesImageFileMemo(t *testing.T) {
 
 func TestProductProbeCosignMemoHitRechecksReadOnlyMount(t *testing.T) {
 	launcher, config, runner, cosign := productCosignMemoFixture(t, true)
-	key, ok := productCosignMemoKey(config, cosign, true)
+	key, ok, _ := productCosignMemoKey(config, cosign, true)
 	if !ok {
 		t.Fatal("memo key not identified")
 	}

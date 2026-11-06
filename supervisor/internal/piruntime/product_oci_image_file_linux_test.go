@@ -173,6 +173,7 @@ func productOCIMemoTestLayout(t *testing.T) (layout, manifest string, paths []st
 		regEntry("usr/bin/bash", "bash", 0o555), regEntry("usr/bin/node", "node", 0o555))
 	upper := ociTestLayer(t, false, regEntry("entrypoint", "entry", 0o555))
 	layout, manifest = ociTestLayout(t, lower, upper)
+	waitUntilSettled()
 	return layout, manifest, []string{"/entrypoint", "/bin/bash", "/usr/bin/node"}
 }
 
@@ -242,7 +243,6 @@ func TestProductOCIImageFilesMemoRescansOnlyAfterIdentityChange(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	waitForNewCtimeTick()
 	if err := os.WriteFile(indexPath, append(index, '\n'), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -272,7 +272,6 @@ func TestProductOCIImageFilesMemoRescansOnlyAfterIdentityChange(t *testing.T) {
 			continue
 		}
 		data[len(data)/2] ^= 0xff
-		waitForNewCtimeTick()
 		if err := os.WriteFile(name, data, 0o600); err != nil {
 			t.Fatal(err)
 		}
@@ -280,6 +279,21 @@ func TestProductOCIImageFilesMemoRescansOnlyAfterIdentityChange(t *testing.T) {
 	}
 	if got, err := read(); err == nil {
 		t.Fatalf("tampered blob accepted from the memo: %+v", got)
+	}
+}
+
+func TestProductOCIImageFilesFreshLayoutIsNotMemoized(t *testing.T) {
+	layout, manifest, paths := productOCIMemoTestLayout(t)
+	defer func(old time.Duration) { productMemoMinAge = old }(productMemoMinAge)
+	productMemoMinAge = time.Hour
+	for i := 0; i < 2; i++ {
+		before := productOCILayerReads.Load()
+		if _, err := readProductOCIImageFiles(context.Background(), layout, manifest, paths, false); err != nil {
+			t.Fatal(err)
+		}
+		if productOCILayerReads.Load() == before {
+			t.Fatalf("call %d answered from the memo although the layout is newer than the threshold", i+1)
+		}
 	}
 }
 
@@ -300,7 +314,6 @@ func TestProductOCIImageFilesMemoNoticesCtimeOnlyChange(t *testing.T) {
 			t.Fatal(err)
 		}
 		mutate(data)
-		waitForNewCtimeTick()
 		file, err := os.OpenFile(name, os.O_WRONLY, 0)
 		if err != nil {
 			t.Fatal(err)
