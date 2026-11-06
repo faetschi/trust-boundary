@@ -1,6 +1,7 @@
 # Current status
 
-Updated 2026-10-29. This page is the short gate summary. [OVERVIEW](../../OVERVIEW.md)
+Updated 2026-11-06 (front matter and checkpoint; the sections below keep the
+2026-10-29 wording where marked historical). This page is the short gate summary. [OVERVIEW](../../OVERVIEW.md)
 is the one-screen state. Decisions, blockers, and next steps are in the owner's working log, which is not part of this repository. History before this date is in Git.
 
 Current policy is the [dated owner decisions](owner-protocol-decisions-2026-10-29.md).
@@ -9,6 +10,22 @@ administrative only, with no input or sign-off. No advisor confirmation,
 human audit, or replacement mandatory owner acceptance gate is required.
 Operational owner cryptographic signing is unchanged. Independent human review
 is not claimed.
+
+## Baselines at a glance
+
+- **Frozen research baseline:** F13 = `6162e3c` (G1 reference) and F14 = `02f9fb7`,
+  the guest-verified thesis source freeze ([F14 record](../../evidence/F14/F14-RESULT.md)).
+- **Interim engineering qualification (not H1):** F15 = `2a6492d`
+  ([record](../../evidence/F15/F15-RESULT.md)) and F16 = `97738b6`
+  ([record](../../evidence/F16/F16-RESULT.md)) are guest-verified freezes of
+  `main`. F17 (`main` at `8931c695`) is in progress and has no result. These
+  freezes do not establish H1 readiness or product release readiness. Freeze
+  values and procedure are in the [freeze kit](../../infra/freeze/README.md).
+- **H1 evaluation:** not run; no F-H1 build exists. No PVR or ORR value exists.
+
+The sections below were written at F13/F14 on 2026-10-29. Where they name F13 or
+F14 as the current guest, or say a fix is "not yet on the guest", read them as
+historical: the later records above supersede them.
 
 ## Claim boundary
 
@@ -44,7 +61,7 @@ is not claimed.
   A local green report, `corpus-digest`, or `preregistration-record` does not
   establish full construct completion.
 
-## Current checkpoint
+## Checkpoint at 2026-10-29 (historical; see the baselines above)
 
 | Area | State |
 | --- | --- |

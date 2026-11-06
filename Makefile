@@ -8,7 +8,7 @@ UNAME_S := $(shell uname -s 2>/dev/null)
 HOST_OS := $(if $(filter Linux,$(UNAME_S)),linux,$(if $(filter Darwin,$(UNAME_S)),darwin,windows))
 HOST_ARCH := $(shell uname -m 2>/dev/null | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')
 
-.PHONY: help build release verify test boundary extension-webchat extension-webchat-frontend-verify extension-webchat-csp fmt clean deb rpm container npm-packages publish
+.PHONY: help build release verify test check-node boundary extension-webchat extension-webchat-frontend-verify extension-webchat-csp fmt clean deb rpm container npm-packages publish
 
 help:
 	@echo "tbound make targets:"
@@ -20,7 +20,7 @@ help:
 	@echo "  deb          build a .deb from the linux-amd64 tarball (needs dpkg-deb)"
 	@echo "  rpm          build an RPM from the linux-amd64 tarball (needs rpmbuild)"
 	@echo "  container    build the container image (needs podman or docker)"
-	@echo "  test         run the extension boundary guard, then all core Go module tests (no Node)"
+	@echo "  test         run the extension boundary guard, then the full supervisor Go suite (needs Node on PATH)"
 	@echo "  boundary     check that core never imports the optional extensions/webchat (pure sh)"
 	@echo "  extension-webchat  gofmt, vet, race tests and Node tests for the optional web chat extension (needs Node)"
 	@echo "  extension-webchat-frontend-verify  npm ci --ignore-scripts, frontend verify, and dist reproducibility (needs Node; not a core gate)"
@@ -52,11 +52,17 @@ rpm:
 container:
 	@scripts/build-container.sh $(VERSION)
 
-test: boundary
+# Several supervisor tests (internal/taskaccept, internal/corpusadmit,
+# cmd/tbound-profile and others) run node and fail, not skip, without it.
+check-node:
+	@command -v node >/dev/null 2>&1 || { echo "make test needs Node.js on PATH (supervisor tests run node); see docs/guides/setup.md. 'make boundary' needs no Node." >&2; exit 1; }
+
+test: check-node boundary
 	cd supervisor && $(GO) test ./...
 
-# The core gate must stay free of the optional extension and of Node: boundary
-# is pure sh and grep, and the core test target never invokes Node.
+# boundary stays pure sh and grep: it needs neither Node nor the optional
+# extension, so it can run on a host without Node. Only the full test target
+# above requires Node.
 boundary:
 	@sh scripts/check-extension-boundary.sh
 	@sh scripts/check-extension-boundary.sh --self-test

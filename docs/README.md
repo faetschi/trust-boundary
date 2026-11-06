@@ -16,6 +16,7 @@ and [product contracts](product-contracts.md) fixes the first milestone's contra
 - [Governed host setup](guides/governed-setup.md): host, profile, template, and live-root contracts; retains older design notes.
 - [Self-contained workspace](guides/self-contained-workspace.md): what lives where, and continuing on another machine.
 - [Reproduction](guides/reproduce.md): source freeze, release gate, signing, operator cycle, evidence, pilot.
+- [Developer tools](guides/developer-tools.md): source-only provider probe, web chat UI QA, and similar tools, with prerequisites and status.
 - [Release](guides/release.md): package formats and release acceptance checks.
 - [First governed product turn](guides/product-first-turn.md): product service setup order, terminal and browser chat on one Linux host; not thesis evidence.
 - [Enable Bash in the product service](guides/product-bash.md): offline image and command bundle, format-3 setup, qualification, review, and recovery.
