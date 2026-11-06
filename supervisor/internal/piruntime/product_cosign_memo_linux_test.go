@@ -43,10 +43,10 @@ func cosignCalls(runner *fakeD09Runner, cosign string) (count int) {
 	return count
 }
 
-func init() { productMemoMinAge = 25 * time.Millisecond }
+func init() { productMemoMinAge = 100 * time.Millisecond }
 
 // waitUntilSettled waits until files touched now are older than productMemoMinAge, so a verification may memoize them.
-func waitUntilSettled() { time.Sleep(productMemoMinAge + 15*time.Millisecond) }
+func waitUntilSettled() { time.Sleep(productMemoMinAge + 50*time.Millisecond) }
 
 // rewriteKeepingMtime changes only ctime (and the bytes, if mutate changes them) while keeping inode, size and mtime.
 func rewriteKeepingMtime(t *testing.T, name string, mutate func([]byte)) {

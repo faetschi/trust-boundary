@@ -55,6 +55,9 @@ func (l *D09PodmanCrunLauncher) verifyOfflineSignatureMemoized(ctx context.Conte
 	if err := l.verifyOfflineSignature(ctx, config, cosignBinary, requireImmutable); err != nil {
 		return err
 	}
+	// Assumption, as for every verification: no writer to the layout, key or cosign binary (root-owned, non-writable, read-only
+	// mounts, rechecked on hits). A writable mapping could change bytes without a new ctime, but an uncached check would equally
+	// be undone after it (TOCTOU), so the memo adds no exposure.
 	if after, ok, _ := productCosignMemoKey(config, cosignBinary, requireImmutable); identified && settled && ok && after == key {
 		productCosignMemo.Lock()
 		productCosignMemo.key = key

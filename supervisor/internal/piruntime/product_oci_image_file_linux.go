@@ -63,6 +63,12 @@ func readProductOCIImageFilesEach(ctx context.Context, layoutPath, manifestDiges
 			return nil, nil, ErrHostProfileMismatch
 		}
 	}
+	// File identity cannot show a bind mount that makes the layout writable, so check it before any memo hit, as cosign hits do.
+	if requireImmutable {
+		if err := productLayoutMountCheck(layoutPath); err != nil {
+			return nil, nil, fmt.Errorf("local OCI image layout is not on a read-only mount: %w", err)
+		}
+	}
 	layers, err := ociManifestLayers(layoutPath, manifestDigest, requireImmutable)
 	if err != nil {
 		return nil, nil, err
@@ -122,6 +128,8 @@ func readProductOCIImageFilesEach(ctx context.Context, layoutPath, manifestDiges
 		failed = failed || fileErrs[i] != nil
 	}
 	// Memoize only if the pre-read snapshot was settled and the post-read snapshot is identical (see productMemoMinAge).
+	// Assumption, as for every verification: no writer to the layout (root-owned, non-writable, read-only mount). A writable mapping
+	// could change bytes without a new ctime, but an uncached check would equally be undone after it (TOCTOU).
 	if after, ok, _ := productOCIMemoKey(layoutPath, manifestDigest, requireImmutable, layers); !failed && identified && settled && ok && after == key {
 		productOCIMemo.Lock()
 		if productOCIMemo.key != key || productOCIMemo.files == nil {

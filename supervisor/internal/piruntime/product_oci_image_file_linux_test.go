@@ -5,6 +5,7 @@ package piruntime
 import (
 	"archive/tar"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path"
@@ -400,5 +401,26 @@ func TestProductOCIImageFilesSettledLayoutIsMemoizedAfterStall(t *testing.T) {
 	before := productOCILayerReads.Load()
 	if _, err := readProductOCIImageFiles(context.Background(), layout, manifest, paths, false); err != nil || productOCILayerReads.Load() != before {
 		t.Fatalf("settled layout was not answered from the memo: %v", err)
+	}
+}
+
+func TestProductOCIImageFilesRecheckReadOnlyMount(t *testing.T) {
+	layout, manifest, paths := productOCIMemoTestLayout(t)
+	if _, err := readProductOCIImageFiles(context.Background(), layout, manifest, paths, false); err != nil {
+		t.Fatal(err)
+	}
+	defer func(old func(string) error) { productLayoutMountCheck = old }(productLayoutMountCheck)
+	checks := 0
+	productLayoutMountCheck = func(string) error { checks++; return errors.New("mount is writable") }
+	// requireImmutable=false never asks (the test layout is not root-owned); true is refused before any memo or layer read.
+	before := productOCILayerReads.Load()
+	if _, err := readProductOCIImageFiles(context.Background(), layout, manifest, paths, false); err != nil || checks != 0 {
+		t.Fatalf("mutable read: err = %v, mount checks = %d", err, checks)
+	}
+	if _, err := readProductOCIImageFiles(context.Background(), layout, manifest, paths, true); err == nil || !strings.Contains(err.Error(), "read-only mount") {
+		t.Fatalf("writable layout mount: err = %v, want refusal", err)
+	}
+	if checks != 1 || productOCILayerReads.Load() != before {
+		t.Fatalf("mount checks = %d, layer reads = %d", checks, productOCILayerReads.Load()-before)
 	}
 }
