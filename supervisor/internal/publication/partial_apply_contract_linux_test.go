@@ -12,8 +12,8 @@ import (
 )
 
 // Contract (audit #13, owner decision: document and pin current behaviour). When recovery fully
-// observes a multi-object publication in which some objects were applied and later ones were not
-// started, the objects are [SUCCEEDED, FAILED] and the aggregate status is FAILED with no error.
+// observes a multi-object publication in which some objects were applied and a later one was started
+// but not applied, the objects are [SUCCEEDED, FAILED] and the aggregate status is FAILED with no error.
 // Aggregate FAILED therefore MAY include a known partial apply: it is not proof of an unchanged
 // baseline, and every consumer must re-check the baseline itself.
 func TestRecoverReportsAggregateFailedForAKnownPartialApply(t *testing.T) {

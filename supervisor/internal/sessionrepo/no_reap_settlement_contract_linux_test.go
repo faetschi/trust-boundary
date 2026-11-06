@@ -23,6 +23,21 @@ import (
 // runToleratedBash runs one synthetic Bash effect whose settlement claims tolerated survivors.
 func runToleratedBash(t *testing.T, settlement func(op delta.OperationIdentity, viewID string) CommandSettlement) (*Store, MutationResult, error) {
 	t.Helper()
+	return runToleratedBashVerified(t, settlement, authorizeTolerated)
+}
+
+// authorizeTolerated is the explicit authorization of tolerated survivors; the default fixture
+// verifier refuses them.
+func authorizeTolerated(s CommandSettlement, view, leaseID string) error {
+	if !s.Admitted() || !s.SurvivorsTolerated || s.ViewID != view || s.LeaseID != leaseID {
+		return fmt.Errorf("settlement is not an authorized tolerated-survivor settlement")
+	}
+	return nil
+}
+
+func runToleratedBashVerified(t *testing.T, settlement func(op delta.OperationIdentity, viewID string) CommandSettlement,
+	verify func(CommandSettlement, string, string) error) (*Store, MutationResult, error) {
+	t.Helper()
 	store, _, _, authority := newE2EStore(t)
 	sourcePath := filepath.Join(t.TempDir(), "source")
 	if err := os.Mkdir(sourcePath, 0o700); err != nil {
@@ -52,13 +67,7 @@ func runToleratedBash(t *testing.T, settlement func(op delta.OperationIdentity, 
 	authority.grant(request)
 	expected := fixtureSnapshot(t, "g1", "baseline text\n", "changed result\n")
 	authority.grantBinding(decision.ID, exactBinding(g0.snapshot, expected, request, 1))
-	// The explicit authorization of tolerated survivors; the default fixture verifier refuses them.
-	store.options.VerifySettlement = func(s CommandSettlement, view, leaseID string) error {
-		if !s.Admitted() || !s.SurvivorsTolerated || s.ViewID != view || s.LeaseID != leaseID {
-			return fmt.Errorf("settlement is not an authorized tolerated-survivor settlement")
-		}
-		return nil
-	}
+	store.options.VerifySettlement = verify
 	result, err := store.RunBash(context.Background(), g0, op, decision, spec, CommandRunnerFunc(
 		func(_ context.Context, v *CommandView, _ CommandSpec) (CommandResult, CommandSettlement, error) {
 			if err := os.WriteFile(filepath.Join(v.testPath(), "build", "result.txt"), []byte("changed result\n"), 0o644); err != nil {
@@ -88,8 +97,18 @@ func TestNoReapToleratedFlagIsNotAuthorityLive(t *testing.T) {
 		s.ProcessScopeEmpty = true
 		return s
 	})
-	if err == nil || result.Generation != nil {
+	if !errors.Is(err, ErrInvalidSettlement) || result.Generation != nil {
 		t.Fatalf("live RunBash trusted SurvivorsTolerated on a half-closed settlement: result=%+v err=%v", result, err)
+	}
+}
+
+// A well-formed tolerated-survivor settlement is still not authority: the caller's verifier decides.
+func TestNoReapToleratedSettlementIsRefusedWhenTheVerifierRejects(t *testing.T) {
+	errRejected := errors.New("verifier rejects the tolerated-survivor settlement")
+	store, result, err := runToleratedBashVerified(t, toleratedSettlement,
+		func(CommandSettlement, string, string) error { return errRejected })
+	if !errors.Is(err, errRejected) || result.Generation != nil || len(store.generations) != 1 {
+		t.Fatalf("rejected tolerated settlement: generations=%d result=%+v err=%v", len(store.generations), result, err)
 	}
 }
 
