@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 )
@@ -118,3 +119,6 @@ func TestGoTestJSONNoTestFilesPackageIsNotAPass(t *testing.T) {
 		t.Fatal("state must name a reason")
 	}
 }
+
+// add reads one `go test -json` document.
+func (o *testOutcomes) add(data []byte) error { return o.addReader(bytes.NewReader(data)) }

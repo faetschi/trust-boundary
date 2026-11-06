@@ -103,15 +103,6 @@ func planLandlock(delta piruntime.D09CellDelta, roPaths, rwPaths []string) landl
 	return plan
 }
 
-// rulesetDigest is the digest the host expects in the proof, derived by the same function.
-func (p landlockPlan) rulesetDigest(roPaths, rwPaths []string) string {
-	digest, err := p.delta.LandlockRulesetDigest(roPaths, rwPaths)
-	if err != nil {
-		return ""
-	}
-	return digest
-}
-
 // lingerAsInit keeps the cell init alive after the command exited and reaps what its orphaned
 // descendants leave behind. A no-reap/v1 cell must not exit: the exit of PID 1 would end the PID
 // namespace and kill every survivor. The operator reset ends it. It never returns.

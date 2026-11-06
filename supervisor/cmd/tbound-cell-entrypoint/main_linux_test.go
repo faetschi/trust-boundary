@@ -400,3 +400,12 @@ func mustDelta(t *testing.T, name string) piruntime.D09CellDelta {
 	}
 	return delta
 }
+
+// applyLandlock installs the ruleset whose effective rights are derived from the
+// signed template and returns the kernel ABI and the canonical ruleset digest. It
+// uses LANDLOCK_RESTRICT_SELF_TSYNC so every Go runtime thread is covered, and
+// fails closed with an exact ABI prerequisite when the kernel lacks the
+// registered TSYNC ABI or the reviewed paths are missing.
+func applyLandlock(requiredABI int) (int, string, error) {
+	return applyLandlockFor(requiredABI, piruntime.D09CellDelta{})
+}

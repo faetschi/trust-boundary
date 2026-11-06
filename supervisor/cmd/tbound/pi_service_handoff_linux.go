@@ -359,12 +359,6 @@ func (j *piServiceRequestJournal) setReconciler(reconciler piServiceAbandonRecon
 	j.reconciler = reconciler
 }
 
-func (j *piServiceRequestJournal) setAfterScreen(hook func(piServiceRequest, *atomic.Bool)) {
-	j.mu.Lock()
-	defer j.mu.Unlock()
-	j.afterScreen = hook
-}
-
 func (j *piServiceRequestJournal) runAfterScreen(request piServiceRequest, active *atomic.Bool) {
 	j.mu.Lock()
 	hook := j.afterScreen

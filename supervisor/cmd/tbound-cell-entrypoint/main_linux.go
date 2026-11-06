@@ -890,15 +890,6 @@ func unescapeMountPoint(value string) string {
 	return strings.NewReplacer("\\040", " ", "\\011", "\t", "\\012", "\n", "\\134", "\\").Replace(value)
 }
 
-// applyLandlock installs the ruleset whose effective rights are derived from the
-// signed template and returns the kernel ABI and the canonical ruleset digest. It
-// uses LANDLOCK_RESTRICT_SELF_TSYNC so every Go runtime thread is covered, and
-// fails closed with an exact ABI prerequisite when the kernel lacks the
-// registered TSYNC ABI or the reviewed paths are missing.
-func applyLandlock(requiredABI int) (int, string, error) {
-	return applyLandlockFor(requiredABI, piruntime.D09CellDelta{})
-}
-
 // applyLandlockFor is applyLandlock for the Landlock ruleset of a command-cell delta (planLandlock).
 func applyLandlockFor(requiredABI int, delta piruntime.D09CellDelta) (int, string, error) {
 	if requiredABI != landlockTSYNCABI {
