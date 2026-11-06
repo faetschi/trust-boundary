@@ -119,7 +119,8 @@ under the current user's Desktop. The launcher prints that exact directory
 and returns nonzero if UAC is denied, the worker times out, or any check fails.
 
 ```powershell
-& 'C:\Users\Admin\Desktop\FH\Master Software Engineering\MA Thesis\trust-boundary\infra\repro\launch-reviewed-hyperv-inventory-elevated.ps1'
+# From the repository root.
+& '.\infra\repro\launch-reviewed-hyperv-inventory-elevated.ps1'
 ```
 
 The fixed host script and elevated worker are pinned by literal SHA-256 values
