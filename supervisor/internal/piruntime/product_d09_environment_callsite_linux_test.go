@@ -94,7 +94,7 @@ func TestProductD09EnvironmentCallSitesCarryTheProductEnvironment(t *testing.T) 
 		{file: "containment_config_linux.go", function: "execD09CommandRunner.commandEnvironment", returns: true, want: []string{
 			"return=r.environment", "return=d09ProbeEnv()",
 		}},
-		{file: "containment_config_linux.go", function: "D09PodmanCrunLauncher.commandEnvironment", returns: true, want: []string{
+		{file: "product_d09_launcher_linux.go", function: "D09PodmanCrunLauncher.commandEnvironment", returns: true, want: []string{
 			"return=productsetup.CommandCellEnvironment()", "return=d09ProbeEnv()",
 		}},
 		{file: "containment_launch_linux.go", function: "D09PodmanCrunLauncher.StartVerifiedWithProof", want: []string{

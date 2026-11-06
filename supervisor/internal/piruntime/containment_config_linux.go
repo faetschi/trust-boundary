@@ -17,8 +17,6 @@ import (
 	"sync"
 	"syscall"
 	"time"
-
-	"tbound/supervisor/internal/productsetup"
 )
 
 // This file is the concrete D09 containment backend: a rootless Podman/crun
@@ -416,15 +414,6 @@ func (l *D09PodmanCrunLauncher) productionRunner() bool {
 	}
 	_, ok := l.runner.(execD09CommandRunner)
 	return ok
-}
-
-// commandEnvironment is the environment of every Podman child this launcher starts. A product launcher holds only a
-// verified host, so its children get the fixed product environment and nothing inherited.
-func (l *D09PodmanCrunLauncher) commandEnvironment() []string {
-	if l != nil && l.productHost.verified() {
-		return productsetup.CommandCellEnvironment()
-	}
-	return d09ProbeEnv()
 }
 
 func (l *D09PodmanCrunLauncher) isClosed() bool {

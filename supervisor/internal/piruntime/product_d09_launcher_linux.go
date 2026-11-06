@@ -231,3 +231,12 @@ func (l *D09PodmanCrunLauncher) productD09ProbeConfig(ctx context.Context) (D09C
 	}
 	return config, nil
 }
+
+// commandEnvironment is the environment of every Podman child this launcher starts. A product launcher holds only a
+// verified host, so its children get the fixed product environment and nothing inherited.
+func (l *D09PodmanCrunLauncher) commandEnvironment() []string {
+	if l != nil && l.productHost.verified() {
+		return productsetup.CommandCellEnvironment()
+	}
+	return d09ProbeEnv()
+}
