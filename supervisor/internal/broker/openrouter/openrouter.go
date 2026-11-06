@@ -756,7 +756,7 @@ func (s *stream) delta(raw []byte) error {
 	if e = keys(d, nil, []string{"role", "content", "tool_calls", "reasoning", "reasoning_content", "reasoning_details", "refusal"}); e != nil {
 		return e
 	}
-	if v, ok := d["role"]; ok {
+	if v, ok := d["role"]; ok && !isNull(v) {
 		role, e := strRaw(v)
 		if e != nil || role != "assistant" {
 			return errors.New("unsupported delta role")
@@ -769,7 +769,7 @@ func (s *stream) delta(raw []byte) error {
 		}
 		s.out.text += text
 	}
-	if v, ok := d["tool_calls"]; ok {
+	if v, ok := d["tool_calls"]; ok && !isNull(v) {
 		calls, e := array(v)
 		if e != nil || len(calls) > 1 {
 			return errors.New("multiple or malformed tool calls")
@@ -796,14 +796,14 @@ func (s *stream) toolDelta(raw []byte) error {
 		s.tool = &assembly{}
 	}
 	a := s.tool
-	if v, ok := t["id"]; ok {
+	if v, ok := t["id"]; ok && !isNull(v) {
 		id, e := strRaw(v)
 		if e != nil || !validText(id, maxText) || (a.id != "" && id != a.id) {
 			return errors.New("empty or changed tool-call ID")
 		}
 		a.id = id
 	}
-	if v, ok := t["type"]; ok {
+	if v, ok := t["type"]; ok && !isNull(v) {
 		kind, e := strRaw(v)
 		if e != nil || kind != "function" || (a.kind != "" && a.kind != kind) {
 			return errors.New("unsupported or changed tool-call type")
