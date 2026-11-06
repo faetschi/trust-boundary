@@ -457,3 +457,63 @@ func TestCaptureSSERejectsIncompleteStreamsThatOmitFinishReason(t *testing.T) {
 		})
 	}
 }
+
+func nullStreamBody(first, cont string, finish string) []byte {
+	c := func(delta string, fin string) []byte {
+		return event([]byte(`{"id":"chatcmpl-X","object":"chat.completion.chunk","created":1793804664,"model":"deepseek-v4.1-flash","choices":[{"index":0,"finish_reason":` + fin + `,"logprobs":null,"delta":` + delta + `}],"usage":null}`))
+	}
+	b := c(`{"role":"assistant","content":"","reasoning_content":null,"tool_calls":null}`, "null")
+	b = append(b, c(`{"role":null,"content":null,"reasoning_content":null,"tool_calls":null}`, "null")...)
+	b = append(b, c(first, "null")...)
+	b = append(b, c(cont, "null")...)
+	b = append(b, c(`{"role":null,"content":"","tool_calls":[{"index":0,"function":{"arguments":"{\"path\":"}}]}`, "null")...)
+	b = append(b, c(`{"role":null,"content":"","tool_calls":[{"index":0,"function":{"arguments":"\"a.txt\"}"}}]}`, "null")...)
+	b = append(b, c(`{}`, finish)...)
+	return append(b, doneEvent()...)
+}
+
+const (
+	nullFirst = `{"role":null,"content":"","reasoning_content":null,"tool_calls":[{"index":0,"id":"chatcmpl-tool-ae43","type":"function","function":{"name":"read","arguments":""}}]}`
+	nullCont  = `{"role":null,"content":"","reasoning_content":null,"tool_calls":[{"index":0,"id":null,"type":null,"function":{"name":null,"arguments":""}}]}`
+)
+
+func TestCaptureSSEAcceptsNullToolCallFields(t *testing.T) {
+	got, err := CaptureSSE(bytes.NewReader(nullStreamBody(nullFirst, nullCont, `"tool_calls"`)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	call, ok := got.ToolCall()
+	if !ok || call.ID != "chatcmpl-tool-ae43" || call.Name != "read" || string(call.RawArguments) != `{"path":"a.txt"}` {
+		t.Fatalf("call ok=%v %+v", ok, call)
+	}
+}
+
+func TestCaptureSSENullFieldsDoNotWeakenToolCallGuards(t *testing.T) {
+	two := `{"tool_calls":[{"index":0},{"index":0}]}`
+	noName := `{"tool_calls":[{"index":0,"id":"x","type":"function","function":{"name":null,"arguments":""}}]}`
+	cases := map[string]string{
+		"two calls":      `{"role":null,"content":"","tool_calls":[{"index":0},{"index":0}]}`,
+		"index one":      strings.Replace(nullFirst, `"index":0`, `"index":1`, 1),
+		"changed id":     strings.Replace(nullCont, `"id":null`, `"id":"other"`, 1),
+		"changed type":   strings.Replace(nullCont, `"type":null`, `"type":"custom"`, 1),
+		"empty id":       strings.Replace(nullCont, `"id":null`, `"id":""`, 1),
+		"role not asst":  strings.Replace(nullCont, `"role":null`, `"role":"user"`, 1),
+		"null index":     strings.Replace(nullCont, `"index":0`, `"index":null`, 1),
+		"unknown key":    strings.Replace(nullCont, `"id":null`, `"bogus":null`, 1),
+		"never named":    strings.Replace(nullFirst, `"name":"read"`, `"name":null`, 1),
+		"two in a delta": two,
+		"no name":        noName,
+	}
+	for name, first := range cases {
+		cont := nullCont
+		if name == "two calls" || name == "two in a delta" || name == "changed id" || name == "changed type" || name == "empty id" || name == "role not asst" || name == "null index" || name == "unknown key" {
+			first, cont = nullFirst, first
+		}
+		if _, err := CaptureSSE(bytes.NewReader(nullStreamBody(first, cont, `"tool_calls"`))); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+	if _, err := CaptureSSE(bytes.NewReader(nullStreamBody(strings.Replace(nullFirst, `"id":"chatcmpl-tool-ae43",`, `"id":null,`, 1), nullCont, `"tool_calls"`))); err == nil {
+		t.Error("never got an id: accepted")
+	}
+}
