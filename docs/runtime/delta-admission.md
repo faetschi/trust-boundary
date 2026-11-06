@@ -36,6 +36,32 @@ repeat effects. Intent, evidence and bundle schemas are version 2; legacy roots
 without the required admission journal are refused rather than assigned
 invented decisions.
 
+### No-reap settlement is live-only and unreconstructable
+
+The research P-half `no-reap/v1` delta leaves the command cell init and a
+descendant running after the command exits. Its settlement carries
+`SurvivorsTolerated` with all three postcondition booleans false
+(`CommandSettlement.Admitted`). The contract is deliberate and pinned by
+`no_reap_settlement_contract_linux_test.go` in `internal/sessionrepo`:
+
+- Live `RunBash` admits the settlement only when the caller explicitly
+  authorizes it through `VerifySettlement` (the production runner does, bound to
+  the delta). Every other runner still needs the three booleans.
+- `Reconstruct`, replay and `Open`/`OpenRecoveryPreview` refuse a bundle or
+  repository that holds a committed no-reap Bash effect: `Reconstruct` returns
+  `ErrInvalidEvidenceBundle` and reopening quarantines the repository
+  (`ErrQuarantined`). Such runs are unreconstructable by design. A serialized
+  `SurvivorsTolerated` is never trusted as authority.
+- The production command evidence validator calls `Reconstruct`, so it also
+  refuses these commands (`bundle-reconstruct`).
+
+An evaluation unit that uses no-reap should therefore expect: the receipt records
+`command_survivors` (the number of cells left running) and the delta template
+digest; its evidence cannot be reconstructed or replayed after the fact; an
+interrupted run cannot reopen its own repository; and the operator reset, not the
+run, ends the surviving descendants. Do not plan any bundle-level disposition
+check, replay or recovery for a no-reap unit.
+
 A native subprocess regression cuts a typed write after the admitted candidate
 has been promoted and synced, before the primary outcome is durable. It checks
 the actual candidate files and admission manifest, then verifies quarantine in
