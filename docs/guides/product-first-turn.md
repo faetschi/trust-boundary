@@ -22,19 +22,26 @@ You need:
 - A Linux amd64 host with Landlock ABI 8, cgroup v2 with `cgroup.kill`,
   rootless Podman and crun, an ext4 `/var/lib`, and systemd. After step 2,
   `sudo /usr/local/bin/tbound product doctor` reports these as `prereq`
-  checks; its installation checks fail until step 6, which is expected. A
-  Hyper-V VM made with [the reproduction bootstrap](../../infra/repro/README.md) qualifies.
-- A `tbound` binary you trust: installed from a checkout as in
-  [USAGE section 3](../../USAGE.md#3-install) (it lands in
-  `$HOME/.local/share/tbound/bin/tbound`), or from a release with
-  `install.sh --public-key FILE --key-fingerprint FP`. `make build` alone
-  only writes a tarball to `dist/`. Setup installs the binary that runs it.
+  checks; its installation checks fail until step 6, which is expected. The
+  [reproduction bootstrap](../../infra/repro/README.md) prepares a Hyper-V VM
+  but does not guarantee Landlock ABI 8. If it exits 3, follow its kernel
+  instructions, reboot, and rerun its checks before continuing.
+- A `tbound` binary you trust, installed from a checkout as in
+  [USAGE section 3](../../USAGE.md#3-install). Run those commands as your
+  unprivileged administrator login; the binary lands in
+  `$HOME/.local/share/tbound/bin/tbound`. `make build` alone only writes a
+  tarball to `dist/`. A release install also needs an independently trusted
+  verifier binary; see [install/README.md](../../install/README.md). Setup
+  installs the binary that runs it.
 - A checkout of this repository on the host, for the census helper
   `infra/guest/helpers/xattr-census-r9.py`.
 - An OpenCode Go API key. You type it into a hidden prompt; it is never an
   argument or a file you keep.
 - An administrator machine that holds the registration key. The steps marked
   **offline** run there.
+
+The examples call your administrator login `admin`. Replace `~admin`,
+`/home/admin`, and `admin@` with your actual login and home directory.
 
 > [!WARNING]
 > The registration private key must never be on the product host. On a
@@ -201,7 +208,7 @@ Copy `calibration-unsigned.json` off the host and sign it **offline**:
 ```sh
 tbound product calibration sign --key ~/tbound-admin/registration.key \
   --public-key ~/tbound-admin/registration.pub \
-  --in calibration-unsigned.json --out calibration.json
+  --in calibration-unsigned.json --out "$PWD/calibration.json"
 ```
 
 Back on the host, install the pair, remove the probe and the temporary files,
@@ -235,7 +242,9 @@ them on the host. Replace `GIT` with the Git digest from step 2:
  "xattr_calibration_path":"/etc/tbound-product/xattr-calibration.json"}
 ```
 
-Run it from the installed binary, first as a dry run:
+Return to your administrator login for steps 6 to 10, and use `sudo` where
+shown, so that `$USER` below is the user who chats. Save the JSON as
+`setup.json`, then run setup from the installed binary, first as a dry run:
 
 ```sh
 sudo /usr/local/bin/tbound product setup --config setup.json --dry-run
