@@ -470,3 +470,19 @@ func TestUnknownReconcilerHandlesAWorkflowThatNeverBoundAnOwner(t *testing.T) {
 		t.Fatalf("a bound owner scope without a bound checkpoint was reconciled: %v", err)
 	}
 }
+
+// workflowPublicationEvidence digests the workflow's records in the publication journal and
+// requires every one of its publications to be resolved and every managed-root run it was
+// admitted under to be released or reconciled. Records of other workflows, whatever their
+// state, are ignored and do not move the digest, which is stable once the workflow is
+// quiescent.
+func workflowPublicationEvidence(trace audit.Trace, workflowID string) (string, error) {
+	if !validIdentityText(workflowID) {
+		return "", unreconciledf("publication: the workflow id is not valid")
+	}
+	index, err := indexPublicationRecords(trace)
+	if err != nil {
+		return "", err
+	}
+	return publicationEvidence(index[workflowID], workflowID)
+}

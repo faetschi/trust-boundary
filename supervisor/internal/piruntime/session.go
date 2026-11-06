@@ -56,15 +56,6 @@ func (s *Session) Acquire(ctx context.Context) (*Lease, error) {
 	return s.admission.Acquire(ctx)
 }
 
-func (s *Session) State() SettlementState {
-	if s == nil {
-		return SettlementUnknown
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.state
-}
-
 // Close closes admission and shares one bounded cleanup attempt among
 // concurrent callers. A caller deadline only controls that caller's wait. An
 // UNKNOWN attempt is retryable: subsequent calls re-drain leases, observe child

@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -441,4 +442,16 @@ func encodeRequest(t *testing.T, id, tool, args string) []byte {
 		t.Fatal(err)
 	}
 	return encoded
+}
+
+// canonicalizeJSON exposes the lower-level JCS transform to package tests so
+// normative RFC vectors can be checked independently of TBound's tool schema.
+func canonicalizeJSON(raw []byte) ([]byte, error) {
+	if len(raw) == 0 || len(raw) > MaxFrameBytes {
+		return nil, errors.New("JSON has invalid size")
+	}
+	if err := checkStrictJSON(raw); err != nil {
+		return nil, err
+	}
+	return canonicalizeValidatedJSON(raw)
 }

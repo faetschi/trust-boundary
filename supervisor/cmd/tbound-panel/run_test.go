@@ -767,3 +767,5 @@ func TestRerunRefusesToEraseAdvisorSignoffs(t *testing.T) {
 		}
 	})
 }
+
+func (a *app) run(args []string) error { return a.runCtx(context.Background(), args) }

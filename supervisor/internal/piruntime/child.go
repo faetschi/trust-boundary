@@ -216,11 +216,6 @@ func (s ChildSpec) validateShape() error {
 	return nil
 }
 
-// validate retains the package-local name used by the original cmd/tbound
-// tests while keeping capability checks in StartChild separate from shape
-// validation.
-func (s ChildSpec) validate() error { return s.validateShape() }
-
 func (c *AdmissionCapability) BindChild(spec ChildSpec, launcher ExecutableLauncher) (ChildSpec, error) {
 	if c == nil || !c.valid() {
 		return ChildSpec{}, ErrChildCapabilityMissing

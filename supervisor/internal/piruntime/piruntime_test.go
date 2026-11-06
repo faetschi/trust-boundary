@@ -1341,3 +1341,26 @@ func completedProcess(settler DescendantSettler) *Process {
 	close(process.completion)
 	return process
 }
+
+func (a *Admission) Closed() bool {
+	if a == nil {
+		return true
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.closed
+}
+
+func (s *Session) State() SettlementState {
+	if s == nil {
+		return SettlementUnknown
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.state
+}
+
+// validate retains the package-local name used by the original cmd/tbound
+// tests while keeping capability checks in StartChild separate from shape
+// validation.
+func (s ChildSpec) validate() error { return s.validateShape() }

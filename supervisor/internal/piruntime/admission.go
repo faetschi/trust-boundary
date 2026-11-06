@@ -131,12 +131,3 @@ func (a *Admission) CloseAndWait(ctx context.Context) error {
 		return ctx.Err()
 	}
 }
-
-func (a *Admission) Closed() bool {
-	if a == nil {
-		return true
-	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	return a.closed
-}

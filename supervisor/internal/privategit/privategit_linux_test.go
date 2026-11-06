@@ -1460,3 +1460,13 @@ func TestReopenRefusesPreAuthorityProvenanceAsAnUnsupportedVersion(t *testing.T)
 		t.Fatalf("Reopen of a v3 provenance without authority = %v, want a plain binding refusal", err)
 	}
 }
+
+// DefaultLimits returns the bounded staging profile used by workspace.Import.
+func DefaultLimits() Limits {
+	return Limits{
+		MaxObjects:    delta.MaxObjectsPerManifest,
+		MaxDepth:      256,
+		MaxFileBytes:  256 << 20,
+		MaxTotalBytes: 1 << 30,
+	}
+}

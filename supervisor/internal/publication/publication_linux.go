@@ -24,13 +24,14 @@ import (
 	"unicode/utf8"
 	"unsafe"
 
-	"github.com/gowebpki/jcs"
-	"golang.org/x/sys/unix"
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/delta"
 	"tbound/supervisor/internal/effectoracle"
 	"tbound/supervisor/internal/workspace"
 	"tbound/supervisor/internal/wsoracle"
+
+	"github.com/gowebpki/jcs"
+	"golang.org/x/sys/unix"
 )
 
 const (
@@ -784,23 +785,6 @@ func (r *Repository) Recover(liveRoot *os.File, transactionID string, inject Fau
 // the terminal record's reason. Every other state behaves exactly as Recover.
 func (r *Repository) RecoverAbandoningUnboundStaging(liveRoot *os.File, transactionID string, inject FaultInjector) (Result, error) {
 	return r.recover(liveRoot, transactionID, inject, true)
-}
-
-// UnboundStagingNames lists the staging directory name of each transaction of the workflow that holds no token and
-// no terminal record and never checkpointed its staging directory's identity. It reads the journal only. Whether
-// the directory exists depends on where the kill came.
-func UnboundStagingNames(trace audit.Trace, workflowID string) ([]string, error) {
-	transactions, err := readTransactions(trace, workflowID)
-	if err != nil {
-		return nil, err
-	}
-	var names []string
-	for _, tx := range transactions {
-		if tx.terminal == nil && tx.token == nil && tx.artifactID == nil {
-			names = append(names, tx.prepare.ArtifactName)
-		}
-	}
-	return names, nil
 }
 
 // UnboundStagingNamesIncludingTerminal is UnboundStagingNames without the terminal-record condition: it also lists

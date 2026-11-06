@@ -161,27 +161,6 @@ func requireCgroup2PathIn(mountinfo, path string) error {
 	return nil
 }
 
-// parseFdinfoMountID extracts the single mnt_id line of /proc/self/fdinfo/<fd>.
-func parseFdinfoMountID(fdinfo string) (uint64, error) {
-	var id uint64
-	seen := 0
-	for _, line := range strings.Split(fdinfo, "\n") {
-		value, ok := strings.CutPrefix(line, "mnt_id:")
-		if !ok {
-			continue
-		}
-		parsed, err := strconv.ParseUint(strings.TrimSpace(value), 10, 64)
-		if err != nil || parsed == 0 {
-			return 0, errors.New("descriptor mount id is malformed")
-		}
-		id, seen = parsed, seen+1
-	}
-	if seen != 1 {
-		return 0, errors.New("descriptor mount id is unavailable")
-	}
-	return id, nil
-}
-
 // requireDescriptorOnMount refuses a descriptor that does not live on mount.
 func requireDescriptorOnMount(descriptorMountID uint64, mount mountinfoEntry) error {
 	if descriptorMountID == 0 || descriptorMountID != mount.id {
