@@ -178,6 +178,13 @@ measurements, the service UID/GID, the tool digests, a copy of
 
 ## 3. Sign the registration and command bundle offline
 
+Use the binaries built in section 1, not older installed ones. In each offline
+owner shell below, put them first on `PATH`:
+
+```sh
+export PATH="/path/to/build/bin:$PATH"
+```
+
 Create a new registration with the measured root, policy, private Git digest,
 and actual image manifest digest. Keep the allowed principal and service
 identity appropriate to this installation. This example permits writes only
