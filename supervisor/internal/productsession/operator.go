@@ -25,6 +25,9 @@ const maxPublicationClosed = 4
 // PublicationClosed lists the pending publication records of the workflow that Settle
 // closed as unapplied. PublicationStagingLeft lists the absolute paths of unbound publication staging directories
 // that closing left in place for the operator to remove.
+// PublishedBaseline is set only when the publication fully applied before the process died: the project then holds
+// exactly the candidate tree, which the resolution records as the turn's result baseline (outcome published). An older
+// binary rejects the record, as it does the other fields added after format 2.
 // Confirm, Settle and Close are transient: the composition uses them to keep the evidence
 // handles open, to re-attest the project tree at append time and, for a real
 // resolution only, to close durable evidence directly before the append. They are
@@ -39,6 +42,7 @@ type OperatorEvidence struct {
 	CommandsSettled        bool         `json:"commands_settled,omitempty"`
 	PublicationClosed      []string     `json:"publication_closed,omitempty"`
 	PublicationStagingLeft []string     `json:"publication_staging_left,omitempty"`
+	PublishedBaseline      string       `json:"published_baseline,omitempty"`
 	CommandHead            string       `json:"command_head"`
 	CheckpointDigest       string       `json:"checkpoint_digest"`
 	Confirm                func() error `json:"-"`
@@ -157,8 +161,13 @@ func (s *state) reduceOperatorResolved(data []byte) (func(), error) {
 		return nil, err
 	}
 	at, timeErr := time.Parse(time.RFC3339Nano, r.ResolvedAt)
+	published := r.PublishedBaseline != ""
+	wantScan := t.BaselineDigest
+	if published { // the project holds the candidate, which must differ from the admitted baseline
+		wantScan = r.PublishedBaseline
+	}
 	if r.OperatorUID != 0 || timeErr != nil || at.IsZero() || at.Location() != time.UTC || t.Link == nil || r.WorkflowID != t.Link.WorkflowID ||
-		r.BaselineDigest != t.BaselineDigest || r.ScanDigest != t.BaselineDigest || s.project(t.ProjectID).baseline != t.BaselineDigest || r.EvidenceDigest != r.digest() {
+		r.BaselineDigest != t.BaselineDigest || r.ScanDigest != wantScan || published && (!validDigest(wantScan) || wantScan == t.BaselineDigest) || s.project(t.ProjectID).baseline != t.BaselineDigest || r.EvidenceDigest != r.digest() {
 		return nil, fail(CodeInvalidRequest, "operator resolution identity, timestamp, baseline or evidence commitment is invalid")
 	}
 	if r.CommandOwnerHead != "" && !validDigest(r.CommandOwnerHead) {
@@ -198,8 +207,13 @@ func (s *state) reduceOperatorResolved(data []byte) (func(), error) {
 		t.State, t.Outcome, t.TerminalReason = StateTerminal, OutcomeAbandoned, ReasonOperatorResolved
 		t.Usage, t.Refund = t.Reservation, Budget{}
 		// Retain a prior review receipt for the append-only observation history.
+		// Never context-eligible: no final answer or receipt of the dead process is retained to replay.
 		t.ContextEligible = false
 		t.ResultBaselineDigest = t.BaselineDigest
+		if published {
+			t.Outcome, t.ResultBaselineDigest = OutcomePublished, r.PublishedBaseline
+			s.project(t.ProjectID).baseline = r.PublishedBaseline
+		}
 		resolution := r.OperatorResolution
 		t.OperatorResolution = &resolution
 	}, nil

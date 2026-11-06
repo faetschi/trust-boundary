@@ -107,11 +107,20 @@ no `--accept-current-baseline` override.
 
 A kill inside publication leaves a `workflow_publication_pending` record in the
 project's publication journal, and the turn ends `unknown` after restart.
-Resolution then accepts only a project equal to the admitted baseline. A
-project equal to the turn's candidate is refused as `the publication was
-applied`, and any other tree as `not provably unapplied`. The catalog cannot
-record a published outcome for an unknown turn, so an applied publication has no
-operator path. At the baseline, a real resolution first closes each pending
+Resolution then accepts a project equal to the admitted baseline, and refuses
+any other tree except the candidate as `not provably unapplied`. The candidate
+is the tree the turn's Store sealed (the catalog holds it for a review turn
+only; an auto-publish turn gets it from the retained Store). A project equal to
+exactly the candidate means the publication applied and only its terminal record
+was lost. Resolution then records the turn as `published`, with the candidate
+as result baseline, in the `published_baseline` field of the operator record;
+an older binary rejects that field. The pending record is closed through the
+same ledger recovery, which must classify the transaction applied (`SUCCEEDED`).
+Anything else, or a transaction record that ended otherwise, refuses and nothing
+is applied again. The turn is charged its full reservation and is never
+context-eligible or a predecessor, because no final answer or receipt of the
+dead process is retained. The dry run cannot run that recovery, so a real run
+can still refuse. At the baseline, a real resolution first closes each pending
 record through the root ledger's own recovery, which only observes. A pending
 record with no prepared transaction resolves `FAILED`, since no live effect can
 precede the prepare. A prepared transaction without a terminal record ends
@@ -144,7 +153,7 @@ commitment on both append and replay; duplicates and malformed/forged bindings
 fail catalog replay. The protected journal supplies integrity, not a signature
 against its own privileged owner. Dry-run holds the same lock and checks the
 same evidence but appends nothing, including no owner epoch.
-An abandonment record containing `command_owner_head`, `commands_settled` or `publication_closed` fails closed on older binaries whose strict catalog decoder does not recognize that field; keep this replay incompatibility in mind during the format-3 to format-2 rollback drill. A rollback of the catalog to a record boundary must be paired with the matching cut of each project's `publication-audit.jsonl` (see `docs/guides/product-bash.md`, "Rolling state back"), or the newer audit records block every admission.
+An abandonment record containing `command_owner_head`, `commands_settled`, `publication_closed` or `published_baseline` fails closed on older binaries whose strict catalog decoder does not recognize that field; keep this replay incompatibility in mind during the format-3 to format-2 rollback drill. A rollback of the catalog to a record boundary must be paired with the matching cut of each project's `publication-audit.jsonl` (see `docs/guides/product-bash.md`, "Rolling state back"), or the newer audit records block every admission.
 
 The outcome is terminal `abandoned`, reason `operator_resolved`, with no new execution
 receipt and `context_eligible=false`. A previous review receipt stays available

@@ -459,10 +459,13 @@ applied. The real run closes the pending publication record and ends any
 prepared transaction as failed before it abandons the turn. A kill right after the
 staging directory was created ends the transaction failed too, but the directory
 stays in place and the command prints its path, for you to remove. The dry run
-names that and writes nothing. If the project already holds the candidate (`the
-publication was applied`) or a partial result (`not provably unapplied`),
-resolution refuses and changes nothing. Inspect the project by hand, because
-the catalog cannot record a published outcome for an unknown turn.
+names that and writes nothing. If the project holds exactly the candidate, the
+publication applied and only its terminal record was lost. The same commands
+then record the turn as `published`: they close the pending record as applied
+through publication recovery (nothing is applied again), charge the full
+reservation, and print the result baseline. The turn is not context-eligible.
+A partial or mixed tree (`not provably unapplied`) refuses and changes nothing.
+Inspect that project by hand.
 These recovery fixes are code-backed and await the next live run.
 
 ## 9. Return to Bash denied
