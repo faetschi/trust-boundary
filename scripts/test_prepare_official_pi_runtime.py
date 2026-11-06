@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import stat
 import sys
 import tempfile
@@ -276,6 +277,23 @@ class StagingControlTests(unittest.TestCase):
             }
             with self.assertRaisesRegex(runtime.PreparationError, "source file changed while it was copied"):
                 runtime.copy_regular_file(source, destination, expected)
+
+class ExtensionFileListTests(unittest.TestCase):
+    def test_all_four_runtime_file_lists_agree(self) -> None:
+        repo = Path(__file__).resolve().parent.parent
+        names = lambda text: set(re.findall(r"[\w-]+\.ts", text))  # noqa: E731
+        build = (repo / "scripts/build-release.sh").read_text(encoding="utf-8")
+        go = (repo / "supervisor/internal/piruntime/development_linux.go").read_text(encoding="utf-8")
+        ts = (repo / "adapter/src/tbound-cli-extension.test.ts").read_text(encoding="utf-8")
+        sources = {
+            "build-release.sh": names(re.search(r"for runtime_source in ([^;]*);", build).group(1)),
+            "development_linux.go": names(re.search(r"\{([^{}]*tbound-cli-extension\.ts[^{}]*)\}", go).group(1)),
+            "tbound-cli-extension.test.ts": names(re.search(r"for \(const name of \[([^\]]*)\]", ts).group(1)),
+        }
+        expected = set(runtime.EXTENSION_FILES)
+        self.assertEqual(len(expected), 5)
+        for label, found in sources.items():
+            self.assertEqual(found, expected, label)
 
 
 if __name__ == "__main__":
