@@ -16,6 +16,7 @@
 #   /root/ga/state/g1.client-status  /root/ga/g1  /var/tmp/tbound-op/g1
 #   the same rp items (state/rp, state/rp.once, reg-rp, state/rp.client-status, /root/ga/rp, /var/tmp/tbound-op/rp)
 #   and the dr items (state/dr, state/dr.once, reg-dr, state/dr.client-status, /root/ga/dr, /var/tmp/tbound-op/dr)
+#   and the pilot items a corpus-mode run (33-corpus-pilot.sh) left (state/pilot, state/pilot.once, reg-pilot, state/pilot.client-status, /root/ga/pilot, /var/tmp/tbound-op/pilot)
 #   /root/ga/out (the entire directory: responses and all guest EVQ evidence)
 #   /var/tmp/tbound-op/_/evidence-*  /var/tmp/tbound-op/_/out-* (other exports stay in place)
 #   the CONTENT of the live root /var/lib/tbound/live/root (every entry inside it except lost+found)
@@ -92,7 +93,7 @@ NL=$'\n'
 # STAMP, PHASE-specific ones. LIVE is relative to / (cwd) so that the manifest prints the same relative paths in place and inside the archive.
 REMOTE_COMMON='set -eu; umask 077
 cd /
-ITEMS="var/lib/tbound/audit var/lib/tbound/private-admin var/lib/tbound/sessions var/lib/tbound/publication-state root/ga/state/g1 root/ga/state/g1.once root/ga/reg-g1 root/ga/state/g1.client-status root/ga/g1 var/tmp/tbound-op/g1 root/ga/state/rp root/ga/state/rp.once root/ga/reg-rp root/ga/state/rp.client-status root/ga/rp var/tmp/tbound-op/rp root/ga/state/dr root/ga/state/dr.once root/ga/reg-dr root/ga/state/dr.client-status root/ga/dr var/tmp/tbound-op/dr root/ga/out var/tmp/tbound-op/_/evidence-* var/tmp/tbound-op/_/out-*"
+ITEMS="var/lib/tbound/audit var/lib/tbound/private-admin var/lib/tbound/sessions var/lib/tbound/publication-state root/ga/state/g1 root/ga/state/g1.once root/ga/reg-g1 root/ga/state/g1.client-status root/ga/g1 var/tmp/tbound-op/g1 root/ga/state/rp root/ga/state/rp.once root/ga/reg-rp root/ga/state/rp.client-status root/ga/rp var/tmp/tbound-op/rp root/ga/state/dr root/ga/state/dr.once root/ga/reg-dr root/ga/state/dr.client-status root/ga/dr var/tmp/tbound-op/dr root/ga/state/pilot root/ga/state/pilot.once root/ga/reg-pilot root/ga/state/pilot.client-status root/ga/pilot var/tmp/tbound-op/pilot root/ga/out var/tmp/tbound-op/_/evidence-* var/tmp/tbound-op/_/out-*"
 STATEDIRS="var/lib/tbound/audit var/lib/tbound/private-admin var/lib/tbound/sessions var/lib/tbound/publication-state"
 LIVE=var/lib/tbound/live/root
 LIVEMNT=/var/lib/tbound/live
