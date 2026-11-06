@@ -288,15 +288,15 @@ func TestProductOCIImageFilesMemoRescansOnlyAfterIdentityChange(t *testing.T) {
 	}
 }
 
-// A file fresh at snapshot time must not be memoized even if the scan stalls past the threshold before the settle check.
+// A file fresh at pre-snapshot time is never memoized, even if verification stalls past the threshold after the snapshot.
 func TestProductOCIImageFilesStalledScanIsNotMemoized(t *testing.T) {
 	layout, manifest, paths := productOCIMemoTestLayout(t)
 	now := time.Now()
 	if err := os.Chtimes(filepath.Join(layout, "index.json"), now, now); err != nil {
 		t.Fatal(err)
 	}
-	productBeforeSettleCheck = waitUntilSettled
-	defer func() { productBeforeSettleCheck = nil }()
+	productAfterSnapshot = waitUntilSettled
+	defer func() { productAfterSnapshot = nil }()
 	for i := 0; i < 2; i++ {
 		before := productOCILayerReads.Load()
 		if _, err := readProductOCIImageFiles(context.Background(), layout, manifest, paths, false); err != nil {
@@ -367,6 +367,15 @@ func TestProductOCIImageFilesMemoNoticesCtimeOnlyChange(t *testing.T) {
 	if _, err := read(); err != nil || productOCILayerReads.Load() == before {
 		t.Fatalf("ctime-only index.json change was not re-verified: %v", err)
 	}
+	// The rewritten index.json is fresh: settle, re-prime, and require a memo hit before tampering.
+	waitUntilSettled()
+	if _, err := read(); err != nil {
+		t.Fatal(err)
+	}
+	before = productOCILayerReads.Load()
+	if _, err := read(); err != nil || productOCILayerReads.Load() != before {
+		t.Fatalf("settled layout was not answered from the memo: %v", err)
+	}
 	// A layer blob: tampered in place -> rescan and refusal.
 	layers, err := ociManifestLayers(layout, manifest, false)
 	if err != nil {
@@ -377,5 +386,19 @@ func TestProductOCIImageFilesMemoNoticesCtimeOnlyChange(t *testing.T) {
 	rewriteKeepingMtime(blob, func(data []byte) { data[len(data)/2] ^= 0xff })
 	if got, err := read(); err == nil || productOCILayerReads.Load() == before {
 		t.Fatalf("ctime-only blob tamper accepted from the memo: %+v, %v", got, err)
+	}
+}
+
+// A layout that is settled before the first call is memoized even if verification stalls after the snapshot.
+func TestProductOCIImageFilesSettledLayoutIsMemoizedAfterStall(t *testing.T) {
+	layout, manifest, paths := productOCIMemoTestLayout(t)
+	productAfterSnapshot = waitUntilSettled
+	defer func() { productAfterSnapshot = nil }()
+	if _, err := readProductOCIImageFiles(context.Background(), layout, manifest, paths, false); err != nil {
+		t.Fatal(err)
+	}
+	before := productOCILayerReads.Load()
+	if _, err := readProductOCIImageFiles(context.Background(), layout, manifest, paths, false); err != nil || productOCILayerReads.Load() != before {
+		t.Fatalf("settled layout was not answered from the memo: %v", err)
 	}
 }

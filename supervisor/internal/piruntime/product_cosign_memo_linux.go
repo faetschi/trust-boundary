@@ -36,7 +36,7 @@ func (l *D09PodmanCrunLauncher) verifyOfflineSignatureForProbe(ctx context.Conte
 // verifyOfflineSignatureMemoized skips the cosign run while every input it read is unchanged. Failures are never memoized,
 // and a key that differs before and after the run is not stored.
 func (l *D09PodmanCrunLauncher) verifyOfflineSignatureMemoized(ctx context.Context, config D09Config, cosignBinary string, requireImmutable bool) error {
-	key, identified, _ := productCosignMemoKey(config, cosignBinary, requireImmutable)
+	key, identified, settled := productCosignMemoKey(config, cosignBinary, requireImmutable)
 	if identified {
 		productCosignMemo.Lock()
 		hit := productCosignMemo.key == key
@@ -55,7 +55,7 @@ func (l *D09PodmanCrunLauncher) verifyOfflineSignatureMemoized(ctx context.Conte
 	if err := l.verifyOfflineSignature(ctx, config, cosignBinary, requireImmutable); err != nil {
 		return err
 	}
-	if after, ok, settled := productCosignMemoKey(config, cosignBinary, requireImmutable); identified && ok && settled && after == key {
+	if after, ok, _ := productCosignMemoKey(config, cosignBinary, requireImmutable); identified && settled && ok && after == key {
 		productCosignMemo.Lock()
 		productCosignMemo.key = key
 		productCosignMemo.Unlock()
@@ -90,7 +90,7 @@ func productCosignMemoKey(config D09Config, cosignBinary string, requireImmutabl
 			names = append(names, target)
 		}
 	}
-	now := time.Now() // before the stats: a file is settled only if it was already old enough when its identity was taken
+	now := time.Now() // before the stats: settled means already old enough before verification read the files
 	var newest time.Time
 	for _, name := range names {
 		identity, ctime, ok := productFileIdentity(name)

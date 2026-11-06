@@ -278,15 +278,15 @@ func TestProductProbeCosignMemoHitRechecksReadOnlyMount(t *testing.T) {
 	}
 }
 
-// A file fresh at snapshot time must not be memoized even if the scan stalls past the threshold before the settle check.
+// A file fresh at pre-snapshot time is never memoized, even if verification stalls past the threshold after the snapshot.
 func TestProductProbeCosignStalledScanIsNotMemoized(t *testing.T) {
 	launcher, config, runner, cosign := productCosignMemoFixture(t, true)
 	now := time.Now()
 	if err := os.Chtimes(config.CosignPublicKeyPath, now, now); err != nil {
 		t.Fatal(err)
 	}
-	productBeforeSettleCheck = waitUntilSettled
-	defer func() { productBeforeSettleCheck = nil }()
+	productAfterSnapshot = waitUntilSettled
+	defer func() { productAfterSnapshot = nil }()
 	for i := 1; i <= 2; i++ {
 		if err := launcher.verifyOfflineSignatureForProbe(context.Background(), config, cosign, false); err != nil {
 			t.Fatal(err)
@@ -294,5 +294,20 @@ func TestProductProbeCosignStalledScanIsNotMemoized(t *testing.T) {
 		if got := cosignCalls(runner, cosign); got != i {
 			t.Fatalf("cosign ran %d times after %d probes with a key fresh at snapshot time, want %d", got, i, i)
 		}
+	}
+}
+
+// Inputs that are settled before the first call are memoized even if verification stalls after the snapshot.
+func TestProductProbeCosignSettledFilesAreMemoizedAfterStall(t *testing.T) {
+	launcher, config, runner, cosign := productCosignMemoFixture(t, true)
+	productAfterSnapshot = waitUntilSettled
+	defer func() { productAfterSnapshot = nil }()
+	for i := 0; i < 2; i++ {
+		if err := launcher.verifyOfflineSignatureForProbe(context.Background(), config, cosign, false); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := cosignCalls(runner, cosign); got != 1 {
+		t.Fatalf("cosign ran %d times for settled inputs, want 1", got)
 	}
 }

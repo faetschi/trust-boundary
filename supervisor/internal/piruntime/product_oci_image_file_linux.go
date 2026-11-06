@@ -67,7 +67,7 @@ func readProductOCIImageFilesEach(ctx context.Context, layoutPath, manifestDiges
 	if err != nil {
 		return nil, nil, err
 	}
-	key, identified, _ := productOCIMemoKey(layoutPath, manifestDigest, requireImmutable, layers)
+	key, identified, settled := productOCIMemoKey(layoutPath, manifestDigest, requireImmutable, layers)
 	if identified {
 		productOCIMemo.Lock()
 		if productOCIMemo.key == key {
@@ -121,8 +121,8 @@ func readProductOCIImageFilesEach(ctx context.Context, layoutPath, manifestDiges
 		files[i], fileErrs[i] = resolveProductOCIImageFile(ctx, imagePath, lookup, hardlinkTargets)
 		failed = failed || fileErrs[i] != nil
 	}
-	// Identities taken before and after the reads must agree and be settled, or the result is not memoized.
-	if after, ok, settled := productOCIMemoKey(layoutPath, manifestDigest, requireImmutable, layers); !failed && identified && ok && settled && after == key {
+	// Memoize only if the pre-read snapshot was settled and the post-read snapshot is identical (see productMemoMinAge).
+	if after, ok, _ := productOCIMemoKey(layoutPath, manifestDigest, requireImmutable, layers); !failed && identified && settled && ok && after == key {
 		productOCIMemo.Lock()
 		if productOCIMemo.key != key || productOCIMemo.files == nil {
 			productOCIMemo.key, productOCIMemo.files = key, map[string]ociImageFile{}
@@ -147,7 +147,7 @@ func productOCIMemoKey(layoutPath, manifestDigest string, requireImmutable bool,
 	for _, layer := range layers {
 		names = append(names, filepath.Join(blobs, strings.TrimPrefix(layer.Digest, "sha256:")))
 	}
-	now := time.Now() // before the stats: a file is settled only if it was already old enough when its identity was taken
+	now := time.Now() // before the stats: settled means already old enough before verification read the files
 	var newest time.Time
 	for _, name := range names {
 		identity, ctime, ok := productFileIdentity(name)
@@ -162,20 +162,21 @@ func productOCIMemoKey(layoutPath, manifestDigest string, requireImmutable bool,
 	return b.String(), true, productFilesSettled(now, newest)
 }
 
-// productMemoMinAge is how much older than the identity snapshot every keyed ctime must be before a result is memoized.
-// The kernel stamps files from a coarse clock (one tick, 4-10 ms, lagging real time by up to a tick), so a rewrite within
-// the same tick as the last stamp leaves the identity unchanged. With a margin of many ticks, any later change to a
-// memoized file gets a later stamp and a different key. Tests lower it.
+// productMemoMinAge is how old every keyed ctime must be, measured from a clock read before the pre-verification
+// snapshot, for a result to be memoized. The kernel stamps files from a coarse clock (one tick, 4-10 ms, lagging real
+// time by up to a tick). If every file was already this old before verification read it, any later write gets a ctime
+// in a later tick, so it changes the identity and the post-verification snapshot differs: no post-snapshot age check
+// is needed. Tests lower it.
 var productMemoMinAge = 100 * time.Millisecond
 
-// productBeforeSettleCheck is a test hook that delays the scan between the identity snapshot and the settle check.
-var productBeforeSettleCheck func()
+// productAfterSnapshot is a test hook that delays the caller after an identity snapshot, before verification.
+var productAfterSnapshot func()
 
 // productFilesSettled reports whether the newest ctime is at least productMemoMinAge before now (a future ctime is not).
 // now must have been read before the identities were collected.
 func productFilesSettled(now, newestCtime time.Time) bool {
-	if productBeforeSettleCheck != nil {
-		productBeforeSettleCheck()
+	if productAfterSnapshot != nil {
+		productAfterSnapshot()
 	}
 	return now.Sub(newestCtime) >= productMemoMinAge
 }
