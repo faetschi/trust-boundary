@@ -59,7 +59,9 @@ type NetSinkProbes struct {
 	// UDP is a datagram to 127.0.33.1:8080.
 	UDP               string `json:"udp"`
 	DropCounterBefore uint64 `json:"drop_counter_before"`
-	DropCounterAfter  uint64 `json:"drop_counter_after"`
+	// DropCounterAfterUDP is read right after the UDP probe, which runs alone before the TCP probes.
+	DropCounterAfterUDP uint64 `json:"drop_counter_after_udp"`
+	DropCounterAfter    uint64 `json:"drop_counter_after"`
 }
 
 func validateNetSink(raw []byte) error {
@@ -100,6 +102,9 @@ func validateNetSink(raw []byte) error {
 	// EPERM is the drop itself; the counter check below proves nftables did it.
 	if p.UDP != ProbeSent && p.UDP != ProbeDroppedEPERM {
 		add("the UDP datagram probe was %q, want %q or %q", p.UDP, ProbeSent, ProbeDroppedEPERM)
+	}
+	if p.UDP == ProbeDroppedEPERM && (p.DropCounterAfterUDP <= p.DropCounterBefore || p.DropCounterAfterUDP > p.DropCounterAfter) {
+		add("the UDP datagram failed with EPERM but the drop counter went from %d to %d across the UDP probe alone, want a rise", p.DropCounterBefore, p.DropCounterAfterUDP)
 	}
 	if p.DropCounterAfter < p.DropCounterBefore || p.DropCounterAfter-p.DropCounterBefore < MinDroppedPackets {
 		add("the drop counter rose from %d to %d, want at least %d", p.DropCounterBefore, p.DropCounterAfter, MinDroppedPackets)

@@ -10,11 +10,13 @@ import (
 	"encoding/json"
 	"errors"
 	"io/fs"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -402,10 +404,10 @@ func geNetSinkEnv(t *testing.T) netSinkEnv {
 		},
 		mountinfo: "mountinfo", cellsPath: guestevidence.CellsCgroup, attestPath: "/run/tbound/net-sink.attest", rulePath: "/etc/tbound/net-sink.nft",
 		nftList: func(context.Context) ([]byte, error) {
-			defer func() { counter += 3 }() // the denied connections and the datagram were dropped between the listings
+			defer func() { counter += 3 }() // drops happen between the listings
 			return geNftJSON(t, counter), nil
 		},
-		probe: func(context.Context, string) (netSinkProbeResult, error) {
+		probe: func(context.Context, string, string) (netSinkProbeResult, error) {
 			return netSinkProbeResult{Cgroup: guestevidence.CellsCgroup + "/net-sink", AllowedConnect: "connected", WrongPort: "timeout", OtherLoopback: "timeout", UDP: "sent"}, nil
 		},
 	}
@@ -422,7 +424,7 @@ func TestProbeNetSinkProducesAnArtifactThatPasses(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n.Probes.DropCounterBefore != 4 || n.Probes.DropCounterAfter != 7 || !n.RulesetVerified || n.BootID != "boot-1" || n.Attestation.ParentIno != 99 {
+	if n.Probes.DropCounterBefore != 4 || n.Probes.DropCounterAfterUDP != 7 || n.Probes.DropCounterAfter != 10 || !n.RulesetVerified || n.BootID != "boot-1" || n.Attestation.ParentIno != 99 {
 		t.Fatalf("net sink = %+v", n)
 	}
 	if err := geValidateNetSink(t, n); err != nil {
@@ -466,12 +468,12 @@ func TestProbeNetSinkRefusesWhatIsNotTheLoadedRule(t *testing.T) {
 			}
 		},
 		"the probe ran outside the cgroup": func(e *netSinkEnv) {
-			e.probe = func(context.Context, string) (netSinkProbeResult, error) {
+			e.probe = func(context.Context, string, string) (netSinkProbeResult, error) {
 				return netSinkProbeResult{Cgroup: "/user.slice", AllowedConnect: "connected", WrongPort: "timeout", OtherLoopback: "timeout", UDP: "sent"}, nil
 			}
 		},
 		"the probe failed": func(e *netSinkEnv) {
-			e.probe = func(context.Context, string) (netSinkProbeResult, error) {
+			e.probe = func(context.Context, string, string) (netSinkProbeResult, error) {
 				return netSinkProbeResult{}, errors.New("no cgroup")
 			}
 		},
@@ -494,7 +496,7 @@ func TestProbeNetSinkRefusesWhatIsNotTheLoadedRule(t *testing.T) {
 	// What the probe sees can also make a complete artifact that the validator refuses.
 	for name, mutate := range map[string]func(*netSinkEnv){
 		"a refused connect": func(e *netSinkEnv) {
-			e.probe = func(context.Context, string) (netSinkProbeResult, error) {
+			e.probe = func(context.Context, string, string) (netSinkProbeResult, error) {
 				return netSinkProbeResult{Cgroup: guestevidence.CellsCgroup + "/net-sink", AllowedConnect: "connected", WrongPort: "refused", OtherLoopback: "timeout", UDP: "sent"}, nil
 			}
 		},
@@ -532,6 +534,18 @@ func TestDropCounter(t *testing.T) {
 	for _, bad := range []string{"", "{}", `{"nftables":[]}`, `{"nftables":[{"rule":{"expr":[{"accept":null}]}}]}`, "not json"} {
 		if _, err := dropCounter([]byte(bad)); err == nil {
 			t.Errorf("%q: a counter was found", bad)
+		}
+	}
+}
+
+func TestUDPWriteOutcome(t *testing.T) {
+	wrapped := &net.OpError{Op: "write", Err: os.NewSyscallError("write", syscall.EPERM)}
+	for _, c := range []struct {
+		err  error
+		want string
+	}{{nil, "sent"}, {wrapped, "dropped-eperm"}, {syscall.ECONNREFUSED, "error: connection refused"}} {
+		if got := udpWriteOutcome(0, c.err); got != c.want {
+			t.Errorf("%v = %q, want %q", c.err, got, c.want)
 		}
 	}
 }

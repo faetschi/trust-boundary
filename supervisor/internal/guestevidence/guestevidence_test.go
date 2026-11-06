@@ -74,7 +74,7 @@ func goodNetSink() NetSink {
 		Attestation:    NetSinkAttestation{Schema: NetSinkAttestSchema, BootID: "boot-1", ParentDev: 5, ParentIno: 77, RuleDigest: NetSinkRuleDigest},
 		RuleFileSHA256: NetSinkRuleDigest, CellsCgroup: CellsCgroup, NftListingSHA256: digestOf("listing"), RulesetVerified: true,
 		Probes: NetSinkProbes{AllowedConnect: ProbeConnected, WrongPort: ProbeTimeout, OtherLoopback: ProbeTimeout, UDP: ProbeSent,
-			DropCounterBefore: 10, DropCounterAfter: 16}}
+			DropCounterBefore: 10, DropCounterAfterUDP: 11, DropCounterAfter: 16}}
 }
 
 func goodReceipt(e Expect) map[string]any {
@@ -299,19 +299,22 @@ func TestNetSinkUDPDroppedByTheRule(t *testing.T) {
 	e := expect()
 	live := `error: write udp 127.0.0.1:33335->127.0.33.1:8080: write: operation not permitted`
 	for _, c := range []struct {
-		name string
-		udp  string
-		rise uint64
-		ok   bool
+		name   string
+		udp    string
+		rise   uint64
+		viaUDP uint64 // the rise across the UDP probe alone
+		ok     bool
 	}{
-		{"today's live artifact", live, 6, false},
-		{"dropped with counter rise", ProbeDroppedEPERM, 6, true},
-		{"dropped without counter rise", ProbeDroppedEPERM, 0, false},
-		{"other error", "error: write: connection refused", 6, false},
+		{"today's live artifact", live, 6, 1, false},
+		{"dropped with counter rise", ProbeDroppedEPERM, 6, 1, true},
+		{"dropped without counter rise", ProbeDroppedEPERM, 0, 0, false},
+		{"tcp supplied the whole rise, udp delta zero", ProbeDroppedEPERM, 6, 0, false},
+		{"other error", "error: write: connection refused", 6, 1, false},
 	} {
 		n := goodNetSink()
 		n.Probes.UDP = c.udp
 		n.Probes.DropCounterAfter = n.Probes.DropCounterBefore + c.rise
+		n.Probes.DropCounterAfterUDP = n.Probes.DropCounterBefore + c.viaUDP
 		if err := Validate(KindNetSink, encode(t, KindNetSink, n), e); (err == nil) != c.ok {
 			t.Errorf("%s: err = %v, want ok=%v", c.name, err, c.ok)
 		}

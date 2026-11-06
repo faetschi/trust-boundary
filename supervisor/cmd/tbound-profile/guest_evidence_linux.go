@@ -47,6 +47,8 @@ const guestEvidenceUsage = `  tbound-profile guest-evidence capability        --
 
 const (
 	netSinkProbeVerb  = "netsink-probe"
+	netSinkStageUDP   = "udp"
+	netSinkStageTCP   = "tcp"
 	nftBinary         = "/usr/sbin/nft"
 	maxProbeOutput    = 64 << 10
 	maxTestRunOutput  = 64 << 20
@@ -62,7 +64,7 @@ func runGuestEvidence(args []string, stdout, stderr io.Writer) error {
 	}
 	kind, rest := args[0], args[1:]
 	if kind == netSinkProbeVerb {
-		return runNetSinkProbe(stdout)
+		return runNetSinkProbe(stdout, rest)
 	}
 	flags := flag.NewFlagSet("tbound-profile guest-evidence "+kind, flag.ContinueOnError)
 	flags.SetOutput(stderr)
@@ -555,7 +557,7 @@ type netSinkEnv struct {
 	readFile   func(path string) ([]byte, error)
 	mountinfo  string
 	nftList    func(ctx context.Context) ([]byte, error)
-	probe      func(ctx context.Context, cgroupDir string) (netSinkProbeResult, error)
+	probe      func(ctx context.Context, cgroupDir, stage string) (netSinkProbeResult, error)
 	cellsPath  string
 	attestPath string
 	rulePath   string
@@ -637,14 +639,39 @@ func probeNetSink(ctx context.Context, env netSinkEnv) (guestevidence.NetSink, e
 	if n.Probes.DropCounterBefore, err = dropCounter(before); err != nil {
 		return n, err
 	}
-	res, err := env.probe(ctx, filepath.Join(mount, env.cellsPath, piruntime.D09NetSinkCgroupName))
+	// UDP runs alone first, bracketed by its own listings, so that its drop is attributable to the counter
+	// and not to the TCP retransmissions that follow.
+	sinkDir := filepath.Join(mount, env.cellsPath, piruntime.D09NetSinkCgroupName)
+	runStage := func(stage string) (netSinkProbeResult, error) {
+		res, err := env.probe(ctx, sinkDir, stage)
+		if err != nil {
+			return res, err
+		}
+		if want := filepath.Join(env.cellsPath, piruntime.D09NetSinkCgroupName); res.Cgroup != want {
+			return res, fmt.Errorf("the probe ran in cgroup %q, not in %q", res.Cgroup, want)
+		}
+		return res, nil
+	}
+	udp, err := runStage(netSinkStageUDP)
 	if err != nil {
 		return n, err
 	}
-	if want := filepath.Join(env.cellsPath, piruntime.D09NetSinkCgroupName); res.Cgroup != want {
-		return n, fmt.Errorf("the probe ran in cgroup %q, not in %q", res.Cgroup, want)
+	n.Probes.UDP = udp.UDP
+	afterUDP, err := env.nftList(ctx)
+	if err != nil {
+		return n, err
 	}
-	n.Probes.AllowedConnect, n.Probes.WrongPort, n.Probes.OtherLoopback, n.Probes.UDP = res.AllowedConnect, res.WrongPort, res.OtherLoopback, res.UDP
+	if err := piruntime.VerifyNetSinkRuleset(afterUDP, cgroupPath, level); err != nil {
+		return n, fmt.Errorf("the table changed during the probe: %w", err)
+	}
+	if n.Probes.DropCounterAfterUDP, err = dropCounter(afterUDP); err != nil {
+		return n, err
+	}
+	res, err := runStage(netSinkStageTCP)
+	if err != nil {
+		return n, err
+	}
+	n.Probes.AllowedConnect, n.Probes.WrongPort, n.Probes.OtherLoopback = res.AllowedConnect, res.WrongPort, res.OtherLoopback
 	after, err := env.nftList(ctx)
 	if err != nil {
 		return n, err
@@ -702,7 +729,7 @@ func dropCounter(listing []byte) (uint64, error) {
 // runProbeInCgroup runs this executable's probe verb as a child that the kernel starts inside the given
 // cgroup (clone3 with CLONE_INTO_CGROUP), so that the child's sockets match the rule from their first
 // packet.
-func runProbeInCgroup(ctx context.Context, cgroupDir string) (netSinkProbeResult, error) {
+func runProbeInCgroup(ctx context.Context, cgroupDir, stage string) (netSinkProbeResult, error) {
 	var res netSinkProbeResult
 	dir, err := os.Open(cgroupDir)
 	if err != nil {
@@ -713,7 +740,7 @@ func runProbeInCgroup(ctx context.Context, cgroupDir string) (netSinkProbeResult
 	if err != nil {
 		return res, err
 	}
-	cmd := exec.CommandContext(ctx, self, "guest-evidence", netSinkProbeVerb)
+	cmd := exec.CommandContext(ctx, self, "guest-evidence", netSinkProbeVerb, stage)
 	cmd.Env = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "LANG=C", "LC_ALL=C"}
 	cmd.SysProcAttr = &syscall.SysProcAttr{UseCgroupFD: true, CgroupFD: int(dir.Fd())}
 	var stderr bytes.Buffer
@@ -732,7 +759,10 @@ func runProbeInCgroup(ctx context.Context, cgroupDir string) (netSinkProbeResult
 }
 
 // runNetSinkProbe is the child: it makes the probe connections and reports what happened to each.
-func runNetSinkProbe(stdout io.Writer) error {
+func runNetSinkProbe(stdout io.Writer, args []string) error {
+	if len(args) != 1 || (args[0] != netSinkStageUDP && args[0] != netSinkStageTCP) {
+		return errors.New("the net-sink probe needs one stage: udp or tcp")
+	}
 	cgroup := ""
 	if data, err := os.ReadFile("/proc/self/cgroup"); err == nil {
 		for _, line := range strings.Split(string(data), "\n") {
@@ -742,12 +772,13 @@ func runNetSinkProbe(stdout io.Writer) error {
 		}
 	}
 	sink := net.JoinHostPort(piruntime.D09NetSinkAddress, fmt.Sprint(piruntime.D09NetSinkPort))
-	res := netSinkProbeResult{
-		Cgroup:         cgroup,
-		AllowedConnect: dialOutcome(sink),
-		WrongPort:      dialOutcome(net.JoinHostPort(piruntime.D09NetSinkAddress, fmt.Sprint(piruntime.D09NetSinkPort+1))),
-		OtherLoopback:  dialOutcome(net.JoinHostPort("127.0.0.1", fmt.Sprint(piruntime.D09NetSinkPort))),
-		UDP:            udpOutcome(sink),
+	res := netSinkProbeResult{Cgroup: cgroup}
+	if args[0] == netSinkStageUDP {
+		res.UDP = udpOutcome(sink)
+	} else {
+		res.AllowedConnect = dialOutcome(sink)
+		res.WrongPort = dialOutcome(net.JoinHostPort(piruntime.D09NetSinkAddress, fmt.Sprint(piruntime.D09NetSinkPort+1)))
+		res.OtherLoopback = dialOutcome(net.JoinHostPort("127.0.0.1", fmt.Sprint(piruntime.D09NetSinkPort)))
 	}
 	return json.NewEncoder(stdout).Encode(res)
 }
@@ -776,13 +807,18 @@ func udpOutcome(addr string) string {
 		return "error: " + err.Error()
 	}
 	defer conn.Close()
-	if _, err := conn.Write([]byte("tbound-netsink-probe")); err != nil {
-		if errors.Is(err, syscall.EPERM) {
-			return guestevidence.ProbeDroppedEPERM
-		}
-		return "error: " + err.Error()
+	return udpWriteOutcome(conn.Write([]byte("tbound-netsink-probe")))
+}
+
+// udpWriteOutcome classifies a datagram write: EPERM is the output hook's drop surfacing at the sender.
+func udpWriteOutcome(_ int, err error) string {
+	switch {
+	case err == nil:
+		return guestevidence.ProbeSent
+	case errors.Is(err, syscall.EPERM):
+		return guestevidence.ProbeDroppedEPERM
 	}
-	return guestevidence.ProbeSent
+	return "error: " + err.Error()
 }
 
 // ---- delegation chain and the cells cgroup ----
