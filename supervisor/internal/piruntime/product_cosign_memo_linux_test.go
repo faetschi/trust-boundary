@@ -277,3 +277,22 @@ func TestProductProbeCosignMemoHitRechecksReadOnlyMount(t *testing.T) {
 		t.Fatalf("cosign ran %d times on memo hits", got)
 	}
 }
+
+// A file fresh at snapshot time must not be memoized even if the scan stalls past the threshold before the settle check.
+func TestProductProbeCosignStalledScanIsNotMemoized(t *testing.T) {
+	launcher, config, runner, cosign := productCosignMemoFixture(t, true)
+	now := time.Now()
+	if err := os.Chtimes(config.CosignPublicKeyPath, now, now); err != nil {
+		t.Fatal(err)
+	}
+	productBeforeSettleCheck = waitUntilSettled
+	defer func() { productBeforeSettleCheck = nil }()
+	for i := 1; i <= 2; i++ {
+		if err := launcher.verifyOfflineSignatureForProbe(context.Background(), config, cosign, false); err != nil {
+			t.Fatal(err)
+		}
+		if got := cosignCalls(runner, cosign); got != i {
+			t.Fatalf("cosign ran %d times after %d probes with a key fresh at snapshot time, want %d", got, i, i)
+		}
+	}
+}

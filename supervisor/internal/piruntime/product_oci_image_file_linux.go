@@ -147,6 +147,7 @@ func productOCIMemoKey(layoutPath, manifestDigest string, requireImmutable bool,
 	for _, layer := range layers {
 		names = append(names, filepath.Join(blobs, strings.TrimPrefix(layer.Digest, "sha256:")))
 	}
+	now := time.Now() // before the stats: a file is settled only if it was already old enough when its identity was taken
 	var newest time.Time
 	for _, name := range names {
 		identity, ctime, ok := productFileIdentity(name)
@@ -158,7 +159,7 @@ func productOCIMemoKey(layoutPath, manifestDigest string, requireImmutable bool,
 		}
 		b.WriteString("\x00" + identity)
 	}
-	return b.String(), true, productFilesSettled(newest)
+	return b.String(), true, productFilesSettled(now, newest)
 }
 
 // productMemoMinAge is how much older than the identity snapshot every keyed ctime must be before a result is memoized.
@@ -167,9 +168,16 @@ func productOCIMemoKey(layoutPath, manifestDigest string, requireImmutable bool,
 // memoized file gets a later stamp and a different key. Tests lower it.
 var productMemoMinAge = 100 * time.Millisecond
 
+// productBeforeSettleCheck is a test hook that delays the scan between the identity snapshot and the settle check.
+var productBeforeSettleCheck func()
+
 // productFilesSettled reports whether the newest ctime is at least productMemoMinAge before now (a future ctime is not).
-func productFilesSettled(newestCtime time.Time) bool {
-	return time.Since(newestCtime) >= productMemoMinAge
+// now must have been read before the identities were collected.
+func productFilesSettled(now, newestCtime time.Time) bool {
+	if productBeforeSettleCheck != nil {
+		productBeforeSettleCheck()
+	}
+	return now.Sub(newestCtime) >= productMemoMinAge
 }
 
 // productFileIdentity names a file by device, inode, size, mtime, ctime, mode and owner, without following a final symlink.

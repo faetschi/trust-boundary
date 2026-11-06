@@ -90,6 +90,7 @@ func productCosignMemoKey(config D09Config, cosignBinary string, requireImmutabl
 			names = append(names, target)
 		}
 	}
+	now := time.Now() // before the stats: a file is settled only if it was already old enough when its identity was taken
 	var newest time.Time
 	for _, name := range names {
 		identity, ctime, ok := productFileIdentity(name)
@@ -106,5 +107,5 @@ func productCosignMemoKey(config D09Config, cosignBinary string, requireImmutabl
 		}
 		b.WriteString("\x00" + identity)
 	}
-	return b.String(), true, productFilesSettled(newest)
+	return b.String(), true, productFilesSettled(now, newest)
 }

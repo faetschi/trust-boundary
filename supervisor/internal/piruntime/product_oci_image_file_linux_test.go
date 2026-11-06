@@ -250,10 +250,16 @@ func TestProductOCIImageFilesMemoRescansOnlyAfterIdentityChange(t *testing.T) {
 	if _, err := read(); err != nil || reads() == before {
 		t.Fatalf("index.json change was not re-verified: %v", err)
 	}
-	// A replaced blob is re-verified and refused.
+	// The rewritten index.json is fresh: settle, re-prime, and require a memo hit before tampering.
+	waitUntilSettled()
 	if _, err := read(); err != nil {
 		t.Fatal(err)
 	}
+	before = reads()
+	if _, err := read(); err != nil || reads() != before {
+		t.Fatalf("settled layout was not answered from the memo: %v", err)
+	}
+	// A replaced blob is re-verified and refused.
 	blobs := filepath.Join(layout, "blobs", "sha256")
 	entries, err := os.ReadDir(blobs)
 	if err != nil {
@@ -277,8 +283,28 @@ func TestProductOCIImageFilesMemoRescansOnlyAfterIdentityChange(t *testing.T) {
 		}
 		break
 	}
-	if got, err := read(); err == nil {
-		t.Fatalf("tampered blob accepted from the memo: %+v", got)
+	if got, err := read(); err == nil || reads() == before {
+		t.Fatalf("tampered blob accepted from the memo or not rescanned: %+v, %v", got, err)
+	}
+}
+
+// A file fresh at snapshot time must not be memoized even if the scan stalls past the threshold before the settle check.
+func TestProductOCIImageFilesStalledScanIsNotMemoized(t *testing.T) {
+	layout, manifest, paths := productOCIMemoTestLayout(t)
+	now := time.Now()
+	if err := os.Chtimes(filepath.Join(layout, "index.json"), now, now); err != nil {
+		t.Fatal(err)
+	}
+	productBeforeSettleCheck = waitUntilSettled
+	defer func() { productBeforeSettleCheck = nil }()
+	for i := 0; i < 2; i++ {
+		before := productOCILayerReads.Load()
+		if _, err := readProductOCIImageFiles(context.Background(), layout, manifest, paths, false); err != nil {
+			t.Fatal(err)
+		}
+		if productOCILayerReads.Load() == before {
+			t.Fatalf("call %d answered from the memo although index.json was fresh at snapshot time", i+1)
+		}
 	}
 }
 
