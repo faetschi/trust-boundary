@@ -1,7 +1,7 @@
 # Canonical source for /etc/systemd/system/usr-bin-podman.mount (root:root 0644).
 # File bind mount of the pinned Podman (/opt/tbound/podman/podman, a root:root 0555
 # copy of /usr/bin/podman) onto /usr/bin/podman with ro,nosuid,nodev, so that
-# verifyPinnedToolBinary (supervisor/internal/piruntime/containment_linux.go, called
+# verifyPinnedToolBinary (supervisor/internal/piruntime/containment_launch_linux.go, called
 # from Probe for config.PodmanPath; it calls requireReadOnlyMount) sees the template's podman_path on a
 # read-only mount. The path stays /usr/bin/podman because the registered template
 # and the services use that path.

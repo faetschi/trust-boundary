@@ -20,7 +20,7 @@ PROVISIONING-SIGNING.md B2):
 
 Verification needs `--insecure-ignore-tlog=true`: a key signature that was not
 uploaded to Rekor cannot pass the transparency-log check, so the launcher
-(containment_linux.go verifyOfflineSignature) passes that flag. The trust root
+(containment_preflight_linux.go verifyOfflineSignature) passes that flag. The trust root
 is the pinned cosign.pub digest, not a log.
 
   sign_cell_image.py sign   --layout L --cosign C --key K --out DIR
