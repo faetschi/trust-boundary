@@ -20,6 +20,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/productsession"
@@ -160,7 +161,9 @@ type productD09ServiceConfigFile struct {
 // LoadProductD09CommandHost verifies the installed product command-host inputs at their fixed paths. It takes no path
 // argument: the trust roots are the product constants in productsetup.
 func LoadProductD09CommandHost(ctx context.Context) (*D09ProductCommandHost, error) {
+	started := time.Now()
 	snapshot, err := loadProductD09Snapshot(ctx)
+	fmt.Fprintf(os.Stderr, "tbound: product snapshot verification took %s\n", time.Since(started))
 	if err != nil {
 		return nil, err
 	}
@@ -189,7 +192,11 @@ func (h *D09ProductCommandHost) Revalidate(ctx context.Context) error {
 	if !h.verified() || ctx == nil {
 		return productD09Refused(nil, "product command host was not loaded")
 	}
+	started := time.Now()
 	fresh, err := loadProductD09Snapshot(ctx)
+	if elapsed := time.Since(started); elapsed >= time.Second {
+		fmt.Fprintf(os.Stderr, "tbound: slow product snapshot revalidation took %s\n", elapsed)
+	}
 	if err != nil {
 		return err
 	}
@@ -517,33 +524,40 @@ func productD09VerifyArtifacts(ctx context.Context, inputs productD09Inputs, tem
 		}
 	}
 	launcher := &D09PodmanCrunLauncher{runner: execD09CommandRunner{environment: productD09CommandEnvironment()}}
-	if err := launcher.verifyOfflineSignature(ctx, template.Config(), template.CosignPath, true); err != nil {
+	if err := launcher.verifyOfflineSignatureMemoized(ctx, template.Config(), template.CosignPath, true); err != nil {
 		return productD09Refused(err, "offline cosign verification of the product image failed")
 	}
-	for _, image := range []struct{ path, digest, what string }{
+	return productD09VerifyImageFiles(ctx, template, profile)
+}
+
+// productD09VerifyImageFiles resolves the in-image entrypoint, Bash and Node through the signed OCI layout in one layer
+// pass without extracting it, and compares the digest of each regular file with the expected one.
+func productD09VerifyImageFiles(ctx context.Context, template D09CellTemplate, profile HostProfile) error {
+	images := []struct{ path, digest, what string }{
 		{template.EntrypointPath, template.EntrypointDigest, "in-image entrypoint"},
 		{template.CommandExecutable, template.CommandExecutableDigest, "in-image Bash"},
 		{profile.ChildExecutable, profile.ExecutableDigest, "in-image Node"},
-	} {
-		if err := productD09VerifyImageFile(ctx, template, image.path, image.digest, image.what); err != nil {
-			return err
-		}
 	}
-	return nil
-}
-
-// productD09VerifyImageFile resolves imagePath through the signed OCI layout without extracting it, and compares the digest
-// of the regular file it names with the expected one.
-func productD09VerifyImageFile(ctx context.Context, template D09CellTemplate, imagePath, expectedDigest, what string) error {
-	file, err := readProductOCIImageFile(ctx, template.OCILayoutPath, template.ExpectedImageDigest, filepath.Clean(imagePath), true)
+	paths := make([]string, len(images))
+	for i, image := range images {
+		paths[i] = filepath.Clean(image.path)
+	}
+	files, fileErrs, err := readProductOCIImageFilesEach(ctx, template.OCILayoutPath, template.ExpectedImageDigest, paths, true)
 	if err != nil {
-		return productD09Refused(err, what+" is not in the pinned product image")
+		return productD09Refused(err, "the pinned product image cannot be read")
 	}
-	if file.mode&0o111 == 0 || file.mode&0o022 != 0 {
-		return productD09Refused(nil, what+" is not a non-writable executable regular file")
-	}
-	if file.digest != expectedDigest {
-		return productD09Refused(nil, what+" digest does not match the template")
+	// The first failing file in the fixed order is reported, whatever the kind of failure.
+	for i, image := range images {
+		if fileErrs[i] != nil {
+			return productD09Refused(fileErrs[i], image.what+" "+paths[i]+" is not in the pinned product image")
+		}
+		file := files[i]
+		if file.mode&0o111 == 0 || file.mode&0o022 != 0 {
+			return productD09Refused(nil, image.what+" is not a non-writable executable regular file")
+		}
+		if file.digest != image.digest {
+			return productD09Refused(nil, image.what+" digest does not match the template")
+		}
 	}
 	return nil
 }
