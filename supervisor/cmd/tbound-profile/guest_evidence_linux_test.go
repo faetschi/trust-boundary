@@ -504,7 +504,13 @@ func TestProbeNetSinkRefusesWhatIsNotTheLoadedRule(t *testing.T) {
 				if udpDone {
 					return "populated 1\n"
 				}
-				return ""
+				return "populated 0\n"
+			})
+			// the refusal must come from the after-UDP check, so the UDP stage has to have run
+			t.Cleanup(func() {
+				if !udpDone {
+					t.Error("the UDP stage never ran: the refusal came from an earlier check")
+				}
 			})
 		},
 		"the maintenance lock is held": func(e *netSinkEnv) {
