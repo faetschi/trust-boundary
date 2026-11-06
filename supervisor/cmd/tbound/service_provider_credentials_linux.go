@@ -44,7 +44,7 @@ func loadServiceProviderCredentials(path string) (openrouter.Credentials, error)
 	return credentials, nil
 }
 
-// serviceProviderConversationFactory replaces providerbridge.NewFromEnvironment
+// serviceProviderConversationFactory replaces the removed providerbridge.NewFromEnvironment
 // on the production path. Any credential refusal ends the session start.
 func serviceProviderConversationFactory(path string) func(providerbridge.Config, *audit.Journal) (*providerbridge.Conversation, error) {
 	return func(config providerbridge.Config, journal *audit.Journal) (*providerbridge.Conversation, error) {

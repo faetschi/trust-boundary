@@ -34,7 +34,7 @@ type DevelopmentProviderTurn struct {
 // production serve --pi route or any other composition root, and a Conversation
 // built here carries no provider-authenticity, G1, or containment claim. Its
 // receipt remains claim_bearing=false and provider_exchange=false. Production
-// callers must use NewFromCredentials/NewFromEnvironment, or NewScriptedConversation
+// callers must use NewFromCredentials, or NewScriptedConversation
 // where a corpus trial's admitted role selects a scripted source.
 //
 // It is NewScriptedConversation over a fixed list of turns that must carry their own IDs and that

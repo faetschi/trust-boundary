@@ -479,17 +479,6 @@ func SignD09ManagedLiveRootRegistration(registration D09ManagedLiveRootRegistrat
 	return encoded, ed25519.Sign(privateKey, message), registration.Digest, nil
 }
 
-// MeasureD09ManagedLiveRootRegistration constructs operator input from the
-// currently opened root, its parent object, local account database, installed
-// systemd unit files and pinned TBound executable. It does not sign, install,
-// acquire a writer lease, or assert quiescence. The provided service cgroup path
-// must be the exact system.slice unit path selected by the root administrator.
-func MeasureD09ManagedLiveRootRegistration(rootPath, serviceName, serviceGroup,
-	serviceUnitPath, mountUnitPath, runnerPath, serviceCgroupPath string) (D09ManagedLiveRootRegistration, error) {
-	return MeasureD09ManagedLiveRootRegistrationWithOptions(rootPath, serviceName, serviceGroup,
-		serviceUnitPath, mountUnitPath, runnerPath, serviceCgroupPath, D09ManagedLiveRootMeasurementOptions{})
-}
-
 func MeasureD09ManagedLiveRootRegistrationWithOptions(rootPath, serviceName, serviceGroup,
 	serviceUnitPath, mountUnitPath, runnerPath, serviceCgroupPath string,
 	options D09ManagedLiveRootMeasurementOptions) (D09ManagedLiveRootRegistration, error) {

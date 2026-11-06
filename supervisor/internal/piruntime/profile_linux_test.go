@@ -45,12 +45,8 @@ func TestLinuxSignedHostProfileVerifiesCanonicalPinnedProfile(t *testing.T) {
 	}
 }
 
-func TestLinuxHostExecPrimitiveRefusesFrozenProductionAdmission(t *testing.T) {
+func TestLinuxHostProfileVerifierRefusesFrozenProductionAdmission(t *testing.T) {
 	profile, _ := testHostProfile()
-	launcher := &LinuxExecutableLauncher{}
-	if err := launcher.admitsFrozenLinuxProfile(profile); !errors.Is(err, ErrProductionLauncherUnavailable) {
-		t.Fatalf("cgroup-only host exec was promoted to the frozen Podman/crun profile: %v", err)
-	}
 	verifier := &LinuxHostProfileVerifier{profile: profile}
 	if err := verifier.admitsFrozenLinuxProfile(profile); !errors.Is(err, ErrProductionLauncherUnavailable) {
 		t.Fatalf("profile verifier did not preserve production refusal: %v", err)

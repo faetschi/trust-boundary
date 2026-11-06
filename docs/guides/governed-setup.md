@@ -541,8 +541,9 @@ The static root registration is policy input, not a `Complete` assertion or
 quiescence capability. Runtime A exposes:
 
 ```go
-func MeasureD09ManagedLiveRootRegistration(rootPath, serviceName, serviceGroup,
-    serviceUnitPath, mountUnitPath, runnerPath, serviceCgroupPath string) (D09ManagedLiveRootRegistration, error)
+func MeasureD09ManagedLiveRootRegistrationWithOptions(rootPath, serviceName, serviceGroup,
+    serviceUnitPath, mountUnitPath, runnerPath, serviceCgroupPath string,
+    options D09ManagedLiveRootMeasurementOptions) (D09ManagedLiveRootRegistration, error)
 func SignD09ManagedLiveRootRegistration(reg D09ManagedLiveRootRegistration,
     privateKey ed25519.PrivateKey) (registrationJSON, signature []byte, digest string, err error)
 func VerifyD09ManagedLiveRootRegistration(registrationJSON, signature []byte,

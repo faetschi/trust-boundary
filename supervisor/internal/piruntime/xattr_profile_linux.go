@@ -873,65 +873,6 @@ func verifyD09ManagedLeaseEvidence(ctx context.Context, verified *VerifiedD09Man
 	return registration, cgroup, evidence, nil
 }
 
-// QualifyD09ManagedLiveRootSnapshot proves only that this exact current managed
-// root was stable under C's held/recovered lease during the descriptor-rooted
-// inventory. It creates neither a Store generation nor a Pi-facing descriptor.
-func QualifyD09ManagedLiveRootSnapshot(ctx context.Context, verified *VerifiedD09ManagedLiveRoot,
-	candidate *os.File, lease D09ManagedSourceLease) (D09ManagedLiveRootSnapshotEvidence, error) {
-	if ctx == nil || verified == nil || candidate == nil || lease == nil {
-		return D09ManagedLiveRootSnapshotEvidence{}, ErrD09ManagedLiveRootRefused
-	}
-	if err := verified.Revalidate(ctx, candidate); err != nil {
-		return D09ManagedLiveRootSnapshotEvidence{}, err
-	}
-	registration, _, leaseEvidence, err := verifyD09ManagedLeaseEvidence(ctx, verified, lease)
-	if err != nil {
-		return D09ManagedLiveRootSnapshotEvidence{}, err
-	}
-	observation, err := MeasureD09XattrEnumeration(candidate)
-	if err != nil {
-		return D09ManagedLiveRootSnapshotEvidence{}, errors.Join(ErrD09ManagedLiveRootRefused, err)
-	}
-	if err := lease.VerifyD09ManagedSourceLease(ctx, verified, leaseEvidence); err != nil {
-		return D09ManagedLiveRootSnapshotEvidence{}, errors.Join(ErrD09ManagedLiveRootRefused, err)
-	}
-	if err := verified.Revalidate(ctx, candidate); err != nil {
-		return D09ManagedLiveRootSnapshotEvidence{}, err
-	}
-	evidence := D09ManagedLiveRootSnapshotEvidence{
-		SchemaVersion: "tbound-d09-managed-live-snapshot-evidence/v1", RunID: leaseEvidence.RunID,
-		OwnerEpoch: leaseEvidence.OwnerEpoch, RegistrationDigest: registration.Digest,
-		RootDevice: registration.RootDevice, RootInode: registration.RootInode, RootMountID: leaseEvidence.RootMountID,
-		LeaseEvidenceDigest: leaseEvidence.EvidenceDigest, EntryCount: observation.EntryCount,
-		DirectoryCount: observation.DirectoryCount, XattrNameCount: observation.XattrNameCount,
-		ObservationDigest: observation.ObservationDigest,
-	}
-	message, err := d09ManagedSnapshotEvidenceBytes(evidence)
-	if err != nil {
-		return D09ManagedLiveRootSnapshotEvidence{}, err
-	}
-	evidence.EvidenceDigest = DigestBytes(message)
-	if err := evidence.Validate(); err != nil {
-		return D09ManagedLiveRootSnapshotEvidence{}, err
-	}
-	return evidence, nil
-}
-
-// VerifyD09ManagedLiveRootSnapshot remeasures the current source and requires
-// the same lease epoch/head/root inventory, allowing C to bracket its filtered
-// Store seed without converting evidence into a Quiescent boolean.
-func VerifyD09ManagedLiveRootSnapshot(ctx context.Context, verified *VerifiedD09ManagedLiveRoot,
-	candidate *os.File, lease D09ManagedSourceLease, expected D09ManagedLiveRootSnapshotEvidence) error {
-	if err := expected.Validate(); err != nil {
-		return err
-	}
-	observed, err := QualifyD09ManagedLiveRootSnapshot(ctx, verified, candidate, lease)
-	if err != nil || observed != expected {
-		return errors.Join(ErrD09ManagedLiveRootRefused, err, errors.New("managed live-root snapshot evidence changed"))
-	}
-	return nil
-}
-
 // MeasureD09ManagedLiveRootXattrs performs the managed-RW measurement only
 // under a current verified registration and C's recovered opaque writer lease.
 // It never returns workspace Quiescent/authority flags.
