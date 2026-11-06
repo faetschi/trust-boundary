@@ -34,7 +34,7 @@ func commandEvidenceRefused(check string, causes ...error) error {
 }
 
 // productionLifecycleEvidence records observations made by this run. These
-// fields are populated only from PiSDKWorker.Close, the joined governed loops,
+// fields are populated only from PiCLIWorker.Close, the joined governed loops,
 // task admission, turn_end, and the actual command runner receipt map. They are
 // necessary but not sufficient for publication: live-root writer quiescence
 // still requires a trusted host attestor, which this CLI does not have.
@@ -289,7 +289,7 @@ type productionLaunchTCBProofEvent struct {
 // the exact signed profile and registered template and durably appends it before
 // the task/control descriptor is released. A worker observation or a caller
 // constructed JSON object cannot reach this function from the launch path: the
-// value is obtained from PiSDKWorker.D09LaunchProof, which is filled only from
+// value is obtained from PiCLIWorker.D09LaunchProof, which is filled only from
 // the launcher's proof pipe after entrypoint validation.
 func journalProductionLaunchProof(journal *audit.Journal, lifecycle *productionLifecycleEvidence,
 	runID, sessionID, workflowID, conversationID, generationID, sourceBindingDigest string,

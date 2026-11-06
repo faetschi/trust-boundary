@@ -524,7 +524,7 @@ func runComposedProductionPiSession(ctx context.Context, output io.Writer, confi
 			session.Prepared.Provenance().BindingDigest, session.Profile, session.D09Template, launcherPID, proof)
 	}
 	session.Lifecycle.markWorkerLaunchAttempted()
-	worker, err := piruntime.LaunchD09PiSDKWorker(ctx, capability, session.D09Channels, bootstrap)
+	worker, err := piruntime.LaunchD09PiCLIWorker(ctx, capability, session.D09Channels, bootstrap)
 	if err != nil {
 		workerLaunchErr = err
 		session.Lifecycle.markLaunchFailed(err)
@@ -1085,7 +1085,7 @@ func productionCommandRunnerSettlements(runner sessionrepo.CommandRunner) int {
 	return 0
 }
 
-func waitProductionTurnEnd(ctx context.Context, worker *piruntime.PiSDKWorker, requestID string) error {
+func waitProductionTurnEnd(ctx context.Context, worker *piruntime.PiCLIWorker, requestID string) error {
 	for {
 		event, err := worker.NextEvent(ctx)
 		if err != nil {

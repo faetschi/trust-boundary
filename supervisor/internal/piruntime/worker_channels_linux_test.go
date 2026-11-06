@@ -608,7 +608,7 @@ func TestPiWorkerChannelsCloseOwnedSourcesButBorrowDevelopmentSources(t *testing
 	})
 }
 
-func newPiWorkerEventPumpFixture(t *testing.T, queueSize int, rpcClients ...*PiRPCClient) *PiSDKWorker {
+func newPiWorkerEventPumpFixture(t *testing.T, queueSize int, rpcClients ...*PiRPCClient) *PiCLIWorker {
 	t.Helper()
 	cwdHandle, err := os.Open(makePrivateTestDirectory(t, "worker-cwd"))
 	if err != nil {
@@ -633,7 +633,7 @@ func newPiWorkerEventPumpFixture(t *testing.T, queueSize int, rpcClients ...*PiR
 	if len(rpcClients) > 1 {
 		t.Fatal("event pump fixture accepts at most one RPC client")
 	}
-	worker := &PiSDKWorker{Channels: channels, events: make(chan PiWorkerEvent, queueSize), readerDone: make(chan struct{})}
+	worker := &PiCLIWorker{Channels: channels, events: make(chan PiWorkerEvent, queueSize), readerDone: make(chan struct{})}
 	if len(rpcClients) == 1 {
 		worker.rpc = rpcClients[0]
 	}
@@ -641,7 +641,7 @@ func newPiWorkerEventPumpFixture(t *testing.T, queueSize int, rpcClients ...*PiR
 	return worker
 }
 
-func waitWorkerEventPump(t *testing.T, worker *PiSDKWorker) {
+func waitWorkerEventPump(t *testing.T, worker *PiCLIWorker) {
 	t.Helper()
 	select {
 	case <-worker.readerDone:

@@ -169,7 +169,7 @@ component regression `TestPublicationRuntimePublishesVersionedAuthenticatedTermi
 ## Legacy SDK-worker TCB proof (not the current CLI dev path)
 
 The legacy SDK-worker implementation retrieves
-`PiSDKWorker.D09LaunchProof()` after the launcher captured and validated
+`PiCLIWorker.D09LaunchProof()` after the launcher captured and validated
 the entrypoint's proof pipe on `D09ProofChildFD` (fd10), then appends a
 run/profile/image/template-bound `production_tcb_proof` event to the durable Store
 journal **before** constructing/admitting the task prompt or releasing control

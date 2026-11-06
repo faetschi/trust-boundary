@@ -543,13 +543,6 @@ func (c *PiWorkerChannels) Abort(ctx context.Context, requestID string) error {
 	return c.sendControl(ctx, PiWorkerControl{Type: "abort", RequestID: requestID})
 }
 
-func (c *PiWorkerChannels) RequestStop(ctx context.Context, requestID string) error {
-	if !workerValidIdentity(requestID, 256) {
-		return errors.New("Pi worker stop request ID is invalid")
-	}
-	return c.sendControl(ctx, PiWorkerControl{Type: "stop", RequestID: requestID})
-}
-
 func (c *PiWorkerChannels) NextEvent(ctx context.Context) (PiWorkerEvent, error) {
 	if c == nil || ctx == nil {
 		return PiWorkerEvent{}, errors.New("Pi worker event stream is unavailable")
@@ -969,8 +962,6 @@ type PiCLIWorker struct {
 	stdoutClosed   bool
 }
 
-type PiSDKWorker = PiCLIWorker
-
 type workerPromptLease struct {
 	lease *Lease
 	stop  func() bool
@@ -1021,12 +1012,6 @@ func (w *PiCLIWorker) D09LaunchProof() (D09TCBProof, bool) {
 func LaunchPiCLIWorker(ctx context.Context, capability *AdmissionCapability, exposure VerifiedWorkerExposure, assets VerifiedWorkerRuntimeAssets, channels *PiWorkerChannels, bootstrap PiWorkerBootstrap) (*PiCLIWorker, error) {
 	return nil, errors.New("production Pi launch refused: admitted profiles must attest the official Pi CLI executable, RPC arguments, extension and transitive closure")
 
-}
-
-// LaunchPiSDKWorker preserves the old source-level entrypoint as a fail-closed
-// alias while callers migrate to LaunchPiCLIWorker.
-func LaunchPiSDKWorker(ctx context.Context, capability *AdmissionCapability, exposure VerifiedWorkerExposure, assets VerifiedWorkerRuntimeAssets, channels *PiWorkerChannels, bootstrap PiWorkerBootstrap) (*PiCLIWorker, error) {
-	return LaunchPiCLIWorker(ctx, capability, exposure, assets, channels, bootstrap)
 }
 
 // LaunchD09PiCLIWorker launches from a source-stage binding. The Store-issued
@@ -1172,12 +1157,6 @@ func bindD09ConsumerViewProof(bootstrap *PiWorkerBootstrap, runtime HostRuntimeB
 		proof.WorkerDevice, proof.WorkerInode, proof.ConsumerWorkerMountID)))
 	bootstrap.WorkerMountID = proof.ConsumerWorkerMountID
 	return nil
-}
-
-// LaunchD09PiSDKWorker preserves the previous API as a guarded CLI alias.
-func LaunchD09PiSDKWorker(ctx context.Context, capability *AdmissionCapability,
-	channels *D09PiWorkerChannels, bootstrap PiWorkerBootstrap) (*PiCLIWorker, error) {
-	return LaunchD09PiCLIWorker(ctx, capability, channels, bootstrap)
 }
 
 // DeveloperPiCLIPlan describes a real official Pi CLI subprocess and an

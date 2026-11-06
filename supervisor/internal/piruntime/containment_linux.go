@@ -29,7 +29,7 @@ import (
 
 // This file is the concrete D09 containment backend: a rootless Podman/crun
 // cell for the governed Pi worker. It implements the sealed
-// ExecutableLauncher.StartVerified seam that StartChild/LaunchPiSDKWorker drive,
+// ExecutableLauncher.StartVerified seam that StartChild/LaunchPiCLIWorker drive,
 // rather than a probe-only report.
 //
 // HONESTY BOUNDARY. This backend:
