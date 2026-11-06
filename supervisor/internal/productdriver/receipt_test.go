@@ -59,3 +59,25 @@ func TestProductTurnReceiptIsStrict(t *testing.T) {
 		}
 	}
 }
+
+// The digest formats copy cmd/tbound's validators, which cannot be imported; this pins what they accept.
+func TestDigestFormatsArePinned(t *testing.T) {
+	hex64 := strings.Repeat("0123456789abcdef", 4)
+	for value, want := range map[string]bool{
+		hex64: true, hex64[1:]: false, hex64 + "0": false, strings.ToUpper(hex64): false,
+		"A" + hex64[1:]: false, strings.Repeat("g", 64): false, "": false, "sha256:" + hex64: false,
+	} {
+		if got := validBareDigest(value); got != want {
+			t.Errorf("validBareDigest(%q) = %v", value, got)
+		}
+	}
+	for value, want := range map[string]bool{
+		"sha256:" + hex64: true, hex64: false, "sha256:" + hex64[1:]: false, "sha256:" + hex64 + "0": false,
+		"sha256:" + strings.ToUpper(hex64): false, "SHA256:" + hex64: false, "sha512:" + hex64: false,
+		"sha256:" + strings.Repeat("g", 64): false, "sha256:": false, "": false,
+	} {
+		if got := validDigest(value); got != want {
+			t.Errorf("validDigest(%q) = %v", value, got)
+		}
+	}
+}
