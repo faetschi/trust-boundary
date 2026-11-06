@@ -777,6 +777,9 @@ func udpOutcome(addr string) string {
 	}
 	defer conn.Close()
 	if _, err := conn.Write([]byte("tbound-netsink-probe")); err != nil {
+		if errors.Is(err, syscall.EPERM) {
+			return guestevidence.ProbeDroppedEPERM
+		}
 		return "error: " + err.Error()
 	}
 	return guestevidence.ProbeSent

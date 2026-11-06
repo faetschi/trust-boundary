@@ -295,6 +295,29 @@ func TestNetSinkRequiredValues(t *testing.T) {
 	}
 }
 
+func TestNetSinkUDPDroppedByTheRule(t *testing.T) {
+	e := expect()
+	live := `error: write udp 127.0.0.1:33335->127.0.33.1:8080: write: operation not permitted`
+	for _, c := range []struct {
+		name string
+		udp  string
+		rise uint64
+		ok   bool
+	}{
+		{"today's live artifact", live, 6, false},
+		{"dropped with counter rise", ProbeDroppedEPERM, 6, true},
+		{"dropped without counter rise", ProbeDroppedEPERM, 0, false},
+		{"other error", "error: write: connection refused", 6, false},
+	} {
+		n := goodNetSink()
+		n.Probes.UDP = c.udp
+		n.Probes.DropCounterAfter = n.Probes.DropCounterBefore + c.rise
+		if err := Validate(KindNetSink, encode(t, KindNetSink, n), e); (err == nil) != c.ok {
+			t.Errorf("%s: err = %v, want ok=%v", c.name, err, c.ok)
+		}
+	}
+}
+
 func TestProviderExchangeRequiredValues(t *testing.T) {
 	e := expect()
 	for name, mutate := range map[string]func(response, receipt map[string]any){

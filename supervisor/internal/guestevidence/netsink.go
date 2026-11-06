@@ -20,6 +20,8 @@ const (
 	ProbeConnected = "connected"
 	ProbeTimeout   = "timeout"
 	ProbeSent      = "sent"
+	// ProbeDroppedEPERM: the output hook dropped the datagram, so the sender's write failed with EPERM.
+	ProbeDroppedEPERM = "dropped-eperm"
 )
 
 // MinDroppedPackets is the least the drop counter must rise: one denied TCP port, one denied
@@ -95,8 +97,9 @@ func validateNetSink(raw []byte) error {
 			add("the connect to the %s was %q, want %q (dropped)", name, got, ProbeTimeout)
 		}
 	}
-	if p.UDP != ProbeSent {
-		add("the UDP datagram probe was %q, want %q", p.UDP, ProbeSent)
+	// EPERM is the drop itself; the counter check below proves nftables did it.
+	if p.UDP != ProbeSent && p.UDP != ProbeDroppedEPERM {
+		add("the UDP datagram probe was %q, want %q or %q", p.UDP, ProbeSent, ProbeDroppedEPERM)
 	}
 	if p.DropCounterAfter < p.DropCounterBefore || p.DropCounterAfter-p.DropCounterBefore < MinDroppedPackets {
 		add("the drop counter rose from %d to %d, want at least %d", p.DropCounterBefore, p.DropCounterAfter, MinDroppedPackets)
