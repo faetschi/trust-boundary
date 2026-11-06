@@ -46,13 +46,16 @@ const guestEvidenceUsage = `  tbound-profile guest-evidence capability        --
 // names what failed.
 
 const (
-	netSinkProbeVerb  = "netsink-probe"
-	netSinkStageUDP   = "udp"
-	netSinkStageTCP   = "tcp"
-	nftBinary         = "/usr/sbin/nft"
-	maxProbeOutput    = 64 << 10
-	maxTestRunOutput  = 64 << 20
-	maxGuestInputSize = 1 << 20
+	netSinkProbeVerb = "netsink-probe"
+	netSinkStageUDP  = "udp"
+	netSinkStageTCP  = "tcp"
+	// netSinkCaptureLock serializes standalone captures: the drop counter is shared, so two captures would
+	// spoil each other's UDP bracket.
+	netSinkCaptureLock = "/run/tbound/net-sink-capture.lock"
+	nftBinary          = "/usr/sbin/nft"
+	maxProbeOutput     = 64 << 10
+	maxTestRunOutput   = 64 << 20
+	maxGuestInputSize  = 1 << 20
 )
 
 // guestTestsTimeout bounds a guest test run; a variable so a test can shorten it.
@@ -560,13 +563,14 @@ type netSinkEnv struct {
 	probe      func(ctx context.Context, cgroupDir, stage string) (netSinkProbeResult, error)
 	cellsPath  string
 	attestPath string
+	lockPath   string
 	rulePath   string
 }
 
 func productionNetSinkEnv(self string) netSinkEnv {
 	return netSinkEnv{
 		self: self, bootID: piruntime.ReadD09BootID, readFile: os.ReadFile, mountinfo: "/proc/self/mountinfo",
-		cellsPath: guestevidence.CellsCgroup, attestPath: piruntime.D09NetSinkAttestPath, rulePath: piruntime.D09NetSinkRulePath,
+		cellsPath: guestevidence.CellsCgroup, attestPath: piruntime.D09NetSinkAttestPath, lockPath: netSinkCaptureLock, rulePath: piruntime.D09NetSinkRulePath,
 		nftList: func(ctx context.Context) ([]byte, error) {
 			cmd := exec.CommandContext(ctx, nftBinary, "-j", "list", "table", "inet", piruntime.D09NetSinkTable)
 			cmd.Env = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "LANG=C", "LC_ALL=C"}
@@ -594,6 +598,14 @@ type netSinkProbeResult struct {
 func probeNetSink(ctx context.Context, env netSinkEnv) (guestevidence.NetSink, error) {
 	var n guestevidence.NetSink
 	var err error
+	lock, err := os.OpenFile(env.lockPath, os.O_RDWR|os.O_CREATE|syscall.O_NOFOLLOW, 0o600)
+	if err != nil {
+		return n, fmt.Errorf("net-sink capture lock: %w", err)
+	}
+	defer lock.Close() // closing releases the flock
+	if err := unix.Flock(int(lock.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
+		return n, fmt.Errorf("another net-sink capture holds %s: %w", env.lockPath, err)
+	}
 	if n.BootID, err = env.bootID(); err != nil {
 		return n, fmt.Errorf("boot id: %w", err)
 	}
@@ -652,8 +664,25 @@ func probeNetSink(ctx context.Context, env netSinkEnv) (guestevidence.NetSink, e
 		}
 		return res, nil
 	}
+	// The datagram's drop is only attributable if nothing else in the cgroup could raise the counter.
+	quiet := func(when string) error {
+		procs, err := env.readFile(filepath.Join(sinkDir, "cgroup.procs"))
+		if err != nil {
+			return fmt.Errorf("net-sink cgroup members: %w", err)
+		}
+		if len(bytes.TrimSpace(procs)) != 0 {
+			return fmt.Errorf("the net-sink cgroup is not empty %s the UDP probe: %s", when, strings.Join(strings.Fields(string(procs)), " "))
+		}
+		return nil
+	}
+	if err := quiet("before"); err != nil {
+		return n, err
+	}
 	udp, err := runStage(netSinkStageUDP)
 	if err != nil {
+		return n, err
+	}
+	if err := quiet("after"); err != nil {
 		return n, err
 	}
 	n.Probes.UDP = udp.UDP

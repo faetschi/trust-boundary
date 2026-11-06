@@ -20,6 +20,8 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/sys/unix"
+
 	"tbound/supervisor/internal/cgroupguard"
 	"tbound/supervisor/internal/guestevidence"
 	"tbound/supervisor/internal/piruntime"
@@ -397,12 +399,14 @@ func geNetSinkEnv(t *testing.T) netSinkEnv {
 				return raw, nil
 			case "/etc/tbound/net-sink.nft":
 				return rule, nil
+			case "/sys/fs/cgroup" + guestevidence.CellsCgroup + "/net-sink/cgroup.procs":
+				return nil, nil
 			case "mountinfo":
 				return []byte("35 25 0:30 / /sys/fs/cgroup rw - cgroup2 cgroup2 rw\n"), nil
 			}
 			return nil, os.ErrNotExist
 		},
-		mountinfo: "mountinfo", cellsPath: guestevidence.CellsCgroup, attestPath: "/run/tbound/net-sink.attest", rulePath: "/etc/tbound/net-sink.nft",
+		lockPath: filepath.Join(t.TempDir(), "capture.lock"), mountinfo: "mountinfo", cellsPath: guestevidence.CellsCgroup, attestPath: "/run/tbound/net-sink.attest", rulePath: "/etc/tbound/net-sink.nft",
 		nftList: func(context.Context) ([]byte, error) {
 			defer func() { counter += 3 }() // drops happen between the listings
 			return geNftJSON(t, counter), nil
@@ -410,6 +414,16 @@ func geNetSinkEnv(t *testing.T) netSinkEnv {
 		probe: func(context.Context, string, string) (netSinkProbeResult, error) {
 			return netSinkProbeResult{Cgroup: guestevidence.CellsCgroup + "/net-sink", AllowedConnect: "connected", WrongPort: "timeout", OtherLoopback: "timeout", UDP: "sent"}, nil
 		},
+	}
+}
+
+// geWithProcs answers reads of the net-sink cgroup.procs with procs() and everything else as before.
+func geWithProcs(inner func(string) ([]byte, error), procs func() string) func(string) ([]byte, error) {
+	return func(p string) ([]byte, error) {
+		if strings.HasSuffix(p, "/net-sink/cgroup.procs") {
+			return []byte(procs()), nil
+		}
+		return inner(p)
 	}
 }
 
@@ -465,6 +479,33 @@ func TestProbeNetSinkRefusesWhatIsNotTheLoadedRule(t *testing.T) {
 				doc["nftables"] = append(doc["nftables"], map[string]any{"rule": map[string]any{"expr": []any{map[string]any{"accept": nil}}}})
 				b, _ := json.Marshal(doc)
 				return b, nil
+			}
+		},
+		"a foreign process in the cgroup before the UDP stage": func(e *netSinkEnv) {
+			e.readFile = geWithProcs(e.readFile, func() string { return "4242\n" })
+		},
+		"a foreign process in the cgroup after the UDP stage": func(e *netSinkEnv) {
+			udpDone := false
+			inner := e.probe
+			e.probe = func(ctx context.Context, d, stage string) (netSinkProbeResult, error) {
+				udpDone = stage == netSinkStageUDP
+				return inner(ctx, d, stage)
+			}
+			e.readFile = geWithProcs(e.readFile, func() string {
+				if udpDone {
+					return "4242\n"
+				}
+				return ""
+			})
+		},
+		"another capture holds the lock": func(e *netSinkEnv) {
+			held, err := os.OpenFile(e.lockPath, os.O_RDWR|os.O_CREATE, 0o600)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { held.Close() })
+			if err := unix.Flock(int(held.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
+				t.Fatal(err)
 			}
 		},
 		"the probe ran outside the cgroup": func(e *netSinkEnv) {
