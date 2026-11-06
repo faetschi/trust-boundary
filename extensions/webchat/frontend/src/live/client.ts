@@ -26,7 +26,7 @@ import {
   type EventsAnswer,
 } from "./wire";
 
-export const CSRF_HEADER = "X-TBound-CSRF";
+const CSRF_HEADER = "X-TBound-CSRF";
 
 export interface LiveFetchInit {
   readonly method: "GET" | "POST";
@@ -81,7 +81,7 @@ export interface Intent {
   readonly body: Readonly<Record<string, unknown>>;
 }
 
-export type IntentResult =
+type IntentResult =
   | { readonly kind: "create"; readonly session: LiveSessionView; readonly replayed: boolean }
   | { readonly kind: "submit" | "cancel" | "resolve"; readonly turn: LiveTurn; readonly replayed: boolean };
 

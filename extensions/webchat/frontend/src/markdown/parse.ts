@@ -99,7 +99,7 @@ export function noticeBlock(truncated: Truncation): NoticeBlock {
 }
 
 // The notice wording is the legacy wording, byte for byte.
-export function truncationNotice(truncated: Truncation): string {
+function truncationNotice(truncated: Truncation): string {
   const parts: string[] = [];
   if (truncated.chars) {
     parts.push(`the first ${truncated.chars.shown} of ${truncated.chars.total} characters are shown`);

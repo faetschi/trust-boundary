@@ -8,12 +8,12 @@ import type { ItemView } from "../../../core/contract";
 import { recordDot, type RailTone } from "../../../core/trajectory";
 import type { ProjectionState } from "../../../core/verification";
 
-export interface RailSegment {
+interface RailSegment {
   readonly tone: RailTone;
   weight: number;
 }
 
-export interface RailLane {
+interface RailLane {
   readonly id: string;
   readonly label: string;
   readonly segments: RailSegment[];

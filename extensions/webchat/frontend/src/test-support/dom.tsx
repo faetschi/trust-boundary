@@ -50,12 +50,6 @@ export async function settle(): Promise<void> {
   });
 }
 
-export function byText(container: ParentNode, selector: string, text: string): HTMLElement {
-  const match = Array.from(container.querySelectorAll<HTMLElement>(selector)).find((el) => el.textContent?.trim() === text);
-  if (!match) throw new Error(`no ${selector} with text "${text}"`);
-  return match;
-}
-
 export interface MatchMediaShim {
   setWidth(width: number): void;
   restore(): void;

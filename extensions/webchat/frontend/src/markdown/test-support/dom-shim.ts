@@ -71,7 +71,7 @@ function asShim(child: DomChild): ShimChild {
   throw new TypeError("the shim only holds nodes it created");
 }
 
-export function textOf(node: ShimChild): string {
+function textOf(node: ShimChild): string {
   return node instanceof ShimText ? node.data : node.textContent;
 }
 

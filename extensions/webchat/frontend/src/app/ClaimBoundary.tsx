@@ -10,7 +10,7 @@ import styles from "./Shell.module.css";
 export const DISPLAY_ONLY_TEXT = "Display only: these values are copied from the projection and are not evidence.";
 export const UNVERIFIED_CLAIM_TEXT = "unverified projection claims true";
 // The phone header folds the two explanatory sentences under this summary. The claim values never fold.
-export const EXPLANATION_SUMMARY = "Presentation only · display only";
+const EXPLANATION_SUMMARY = "Presentation only · display only";
 
 // The two rows that claim qualification (labels from panels.ts qualificationRows). A true value from a
 // projection that is not verified is a claim the page cannot back, so it carries a warning and never a pass.

@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import styles from "./Notice.module.css";
 
-export type NoticeTone = "info" | "warning" | "claim";
+type NoticeTone = "info" | "warning" | "claim";
 
 interface NoticeProps {
   // The accessible name of the note.

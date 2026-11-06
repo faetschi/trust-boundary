@@ -35,7 +35,7 @@ function DiffText({ path, diff }: { readonly path: string; readonly diff: string
   );
 }
 
-export const REVIEW_HEADING_ID = "live-review-heading";
+const REVIEW_HEADING_ID = "live-review-heading";
 
 function ReviewCard({ candidate }: { readonly candidate: Candidate }) {
   const live = useLive();

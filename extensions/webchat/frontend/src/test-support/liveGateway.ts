@@ -30,7 +30,7 @@ export interface FakeEvent {
   paths?: string[];
 }
 
-export interface Call {
+interface Call {
   readonly method: string;
   readonly url: string;
   readonly headers: Readonly<Record<string, string>>;
@@ -39,10 +39,10 @@ export interface Call {
 }
 
 // reject: the call fails before the gateway sees it. lose: the gateway applies it, and the answer is lost on the way back.
-export type Reply = { reject: string } | { lose: string } | { status: number; body: unknown; ok?: boolean } | { unreadable: number };
+type Reply = { reject: string } | { lose: string } | { status: number; body: unknown; ok?: boolean } | { unreadable: number };
 
 // A turn the fake may change in place, as the service does.
-export type MutableTurn = { -readonly [K in keyof LiveTurn]: LiveTurn[K] };
+type MutableTurn = { -readonly [K in keyof LiveTurn]: LiveTurn[K] };
 
 export interface FakeGateway {
   readonly fetch: LiveFetch;
@@ -59,7 +59,7 @@ export interface FakeGateway {
   snapshot(): Snapshot;
 }
 
-export interface GatewayState {
+interface GatewayState {
   csrf: string;
   revision: number;
   blocked: boolean;

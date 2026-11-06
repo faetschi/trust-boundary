@@ -1,7 +1,7 @@
 import { useRef, type KeyboardEvent, type ReactNode } from "react";
 import styles from "./Tabs.module.css";
 
-export interface TabItem {
+interface TabItem {
   readonly id: string;
   readonly label: string;
 }
@@ -16,7 +16,7 @@ interface TabsProps {
   readonly onValueChange: (id: string) => void;
 }
 
-export function tabId(idPrefix: string, id: string): string {
+function tabId(idPrefix: string, id: string): string {
   return `${idPrefix}-tab-${id}`;
 }
 
