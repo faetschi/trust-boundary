@@ -17,6 +17,7 @@ import (
 	"unicode/utf8"
 
 	"tbound/supervisor/internal/audit"
+	"tbound/supervisor/internal/productdriver"
 	"tbound/supervisor/internal/productsession"
 	"tbound/supervisor/internal/providerbridge"
 	"tbound/supervisor/internal/sessionrepo"
@@ -168,11 +169,11 @@ func TestProductTurnBashIsAdmittedByTheProductScopeAndReopensAsPredecessor(t *te
 		{"rename-protected", `mv notes/secret.txt notes/moved.txt`, "scope_protected_path"},
 	}
 	script := &productDriverScript{}
-	var wantDenials []productTurnDenial
+	var wantDenials []productsession.ReceiptDenial
 	for _, call := range calls {
 		script.turns = append(script.turns, bashCall(call.id, call.command))
 		if call.reason != "" {
-			wantDenials = append(wantDenials, productTurnDenial{ToolCallID: "call-" + call.id, Tool: "bash", ReasonCode: call.reason})
+			wantDenials = append(wantDenials, productsession.ReceiptDenial{ToolCallID: "call-" + call.id, Tool: "bash", ReasonCode: call.reason})
 		}
 	}
 	script.turns = append(script.turns, scopeDriverFinal("t1", scopeDriverAnswer))
@@ -321,7 +322,7 @@ func TestProductTurnBashRefusesAPredecessorWithTamperedCommandEvidence(t *testin
 			tamper(t, f, turn1)
 			script := &productDriverScript{turns: []providerbridge.ScriptTurn{scopeDriverFinal("t2", "Done.")}}
 			_, turn2, err := f.run(t, f.submit(t, "turn-2", "Read notes/a.txt back to me."), script)
-			var refusal *productTurnRefusal
+			var refusal *productdriver.Refusal
 			if !errors.Is(err, productsession.ErrCode(productsession.CodePredecessorEvidenceInvalid)) || !errors.As(err, &refusal) {
 				t.Fatalf("tampered command evidence: %v", err)
 			}
@@ -334,7 +335,7 @@ func TestProductTurnBashRefusesAPredecessorWithTamperedCommandEvidence(t *testin
 }
 
 func verifyReceiptCommitsCommands(turn productsession.Turn) error {
-	receipt, err := decodeProductTurnReceipt(turn.Receipt)
+	receipt, err := productdriver.DecodeReceipt(turn.Receipt)
 	if err != nil {
 		return err
 	}
@@ -364,7 +365,7 @@ func TestProductTurnBashInAReadOnlySessionChangesNothing(t *testing.T) {
 			if err != nil {
 				t.Fatalf("turn: %v", err)
 			}
-			wantDenials := []productTurnDenial{{ToolCallID: "call-write", Tool: "bash", ReasonCode: "scope_path_not_covered"}}
+			wantDenials := []productsession.ReceiptDenial{{ToolCallID: "call-write", Tool: "bash", ReasonCode: "scope_path_not_covered"}}
 			if turn.State != productsession.StateTerminal || turn.Outcome != productsession.OutcomeNoDiff ||
 				turn.ResultBaselineDigest != baseline || f.measure(t) != baseline || receipt.PublicationTransactionID != "" ||
 				fmt.Sprint(receipt.Denials) != fmt.Sprint(wantDenials) || receipt.CommandJournalCount != 2 {
@@ -388,7 +389,7 @@ func TestProductTurnBashKeepsTheExactPathRuleWithoutAProductScope(t *testing.T) 
 	script := &productDriverScript{turns: []providerbridge.ScriptTurn{
 		bashCall("out", `printf 'ok\n' > out.txt`), bashCall("task", `printf 'no\n' > task.txt`), scopeDriverFinal("t1", "Done.")}}
 	receipt, turn, err := f.run(t, f.submit(t, "turn-1", scopeDriverPrompt), script)
-	wantDenials := []productTurnDenial{{ToolCallID: "call-task", Tool: "bash", ReasonCode: "scope_path_not_covered"}}
+	wantDenials := []productsession.ReceiptDenial{{ToolCallID: "call-task", Tool: "bash", ReasonCode: "scope_path_not_covered"}}
 	if err != nil || turn.Outcome != productsession.OutcomePublished || fmt.Sprint(receipt.Denials) != fmt.Sprint(wantDenials) ||
 		fileContent(t, f.projectDir, "out.txt") != "ok\n" || fileContent(t, f.projectDir, "task.txt") != "turn fixture\n" {
 		t.Fatalf("exact-path Bash turn: %+v %+v %v", turn, receipt, err)
@@ -457,7 +458,7 @@ func TestProductTurnBashRestartReconcilesALinkedTurn(t *testing.T) {
 			if !c.history {
 				f.env.OpenCommandHistory = nil
 			}
-			reconcileErr := f.env.ReconcileAfterRestart(context.Background())
+			reconcileErr := f.env.driver().ReconcileAfterRestart(context.Background())
 			turn, session := f.turn(t, f.session.ID+"/turn-1"), f.currentSession(t)
 			if f.measure(t) != baseline {
 				t.Fatal("the project changed")
@@ -468,7 +469,7 @@ func TestProductTurnBashRestartReconcilesALinkedTurn(t *testing.T) {
 				}
 				return
 			}
-			receipt, decodeErr := decodeProductTurnReceipt(turn.Receipt)
+			receipt, decodeErr := productdriver.DecodeReceipt(turn.Receipt)
 			if reconcileErr != nil || decodeErr != nil || turn.State != productsession.StateTerminal || turn.Outcome != productsession.OutcomeFailed ||
 				turn.Settlement != productsession.SettlementReconciledAfterRestart || session.Blocked || receipt.CommandJournalCount != 1 {
 				t.Fatalf("verified Bash turn: turn=%+v session=%+v receipt=%+v errs=%v %v", turn, session, receipt, reconcileErr, decodeErr)

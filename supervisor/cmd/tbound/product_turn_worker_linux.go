@@ -10,16 +10,14 @@ import (
 
 	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/gate"
+	"tbound/supervisor/internal/productdriver"
+	"tbound/supervisor/internal/productsession"
 	"tbound/supervisor/internal/providerbridge"
 )
 
 // errProductWorkerStepBound marks a turn whose provider did not give a final answer within the
 // worker's step bound.
 var errProductWorkerStepBound = errors.New("product turn worker reached its step bound before a final answer")
-
-// errProductTurnCancelled marks a turn that stopped at a step boundary because a cancellation was
-// requested.
-var errProductTurnCancelled = errors.New("product turn cancelled at a step boundary")
 
 // productTurnWorker is the in-process supervisor-loop worker of one turn. It is the supervisor's own agent
 // loop, and only its provider conversation is scripted in tests. It drives the governed conversation
@@ -36,14 +34,6 @@ type productTurnWorker struct {
 	boundary func(point string)
 }
 
-// productTurnWork is what the worker observed: the tools it proposed in order, the denials released
-// to the provider, and whether the transcript ended at a final provider answer.
-type productTurnWork struct {
-	toolSequence []string
-	denials      []productTurnDenial
-	finalAnswer  bool
-}
-
 func newProductTurnWorker(maxSteps int, cancelled func() bool, boundary func(string)) (*productTurnWorker, error) {
 	if maxSteps < 1 {
 		return nil, errors.New("product turn worker needs a positive step bound")
@@ -56,22 +46,22 @@ func newProductTurnWorker(maxSteps int, cancelled func() bool, boundary func(str
 }
 
 func (w *productTurnWorker) run(ctx context.Context, conversation *providerbridge.Conversation, durable *DurableExecutor,
-	policy gate.Policy) (productTurnWork, error) {
-	work := productTurnWork{toolSequence: []string{}, denials: []productTurnDenial{}}
+	policy gate.Policy) (productdriver.Work, error) {
+	work := productdriver.Work{ToolSequence: []string{}, Denials: []productsession.ReceiptDenial{}}
 	executor, err := providerbridge.NewExecutor(conversation, durable)
 	if err != nil {
 		return work, err
 	}
 	for step := 0; step < w.maxSteps; step++ {
 		if w.cancelled() {
-			return work, errProductTurnCancelled
+			return work, productdriver.ErrTurnCancelled
 		}
 		turn, err := conversation.NextTurn(ctx)
 		if err != nil {
 			return work, err
 		}
 		if turn.ToolCall == nil {
-			work.finalAnswer = true
+			work.FinalAnswer = true
 			return work, nil
 		}
 		proposal := protocol.Proposal{SchemaVersion: protocol.ProposalSchemaVersion, ToolCallID: turn.ToolCall.ID,
@@ -93,16 +83,16 @@ func (w *productTurnWorker) run(ctx context.Context, conversation *providerbridg
 				if err := conversation.RecordSoftRefusal(ctx, proposal, refusal.ArgumentDigest, refusal.Code, refusal.Hint, w.boundary); err != nil {
 					return work, err
 				}
-				work.toolSequence = append(work.toolSequence, proposal.Tool)
+				work.ToolSequence = append(work.ToolSequence, proposal.Tool)
 				continue
 			}
 		}
 		if err := conversation.RecordDecision(ctx, proposal, decision); err != nil {
 			return work, err
 		}
-		work.toolSequence = append(work.toolSequence, proposal.Tool)
+		work.ToolSequence = append(work.ToolSequence, proposal.Tool)
 		if decision.Verdict != gate.Allow {
-			work.denials = append(work.denials, productTurnDenial{ToolCallID: proposal.ToolCallID, Tool: proposal.Tool,
+			work.Denials = append(work.Denials, productsession.ReceiptDenial{ToolCallID: proposal.ToolCallID, Tool: proposal.Tool,
 				ReasonCode: decision.ReasonCode})
 			continue
 		}
@@ -113,7 +103,7 @@ func (w *productTurnWorker) run(ctx context.Context, conversation *providerbridg
 			if !errors.As(err, &denied) {
 				return work, err
 			}
-			work.denials = append(work.denials, productTurnDenial{ToolCallID: proposal.ToolCallID, Tool: proposal.Tool,
+			work.Denials = append(work.Denials, productsession.ReceiptDenial{ToolCallID: proposal.ToolCallID, Tool: proposal.Tool,
 				ReasonCode: denied.ReasonCode})
 			continue
 		}

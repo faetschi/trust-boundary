@@ -5,9 +5,11 @@ package main
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"tbound/supervisor/internal/productdriver"
 	"tbound/supervisor/internal/productsession"
 )
 
@@ -25,7 +27,7 @@ func TestProductTurnArbitrationCancelBetweenCheckAndLink(t *testing.T) {
 	}
 	script := productDriverTurnOne(false)
 	_, turn, err := f.run(t, admission, script)
-	var refusal *productTurnRefusal
+	var refusal *productdriver.Refusal
 	if !paused || !errors.As(err, &refusal) || refusal.Code != productsession.CodeCancelled || turn.Link != nil ||
 		turn.Outcome != productsession.OutcomeCancelled || turn.Refund != turn.Reservation || script.requests() != 0 || f.notesPublished(t) {
 		t.Fatalf("cancel between check and link: paused=%v turn=%+v err=%v", paused, turn, err)
@@ -42,13 +44,13 @@ func TestProductTurnArbitrationDeadlinePassesAfterExpiryScan(t *testing.T) {
 	f := newProductDriverFixture(t, productsession.PublicationReview)
 	pending := f.awaitReview(t)
 	paused := false
+	var skew atomic.Int64
+	f.env.reviewClock = func() time.Time { return time.Now().Add(time.Duration(skew.Load())) }
 	f.env.crashAt = func(point string) {
 		if point == "before-review-resolution" {
 			paused = true
-			f.env.mu.Lock()
-			// Advance the deadline across the monotonic clock after the initial expiry scan.
-			f.env.pending[pending.ID].deadline = time.Now().Add(-time.Second)
-			f.env.mu.Unlock()
+			// Advance the clock across the review deadline after the initial expiry scan.
+			skew.Store(int64(2 * time.Hour))
 		}
 	}
 	_, err := f.resolve(t, pending.ID, "publish", pending.CandidateDigest, productsession.DecisionPublish)
@@ -109,7 +111,7 @@ func TestProductTurnArbitrationRecordedCancelPreventsPublishResolution(t *testin
 		ExpectedRevision: f.currentSession(t).Revision, RequestKey: "cancel"}
 	cancelDone := make(chan error, 1)
 	go func() {
-		_, err := f.env.CancelTurn(context.Background(), f.principal, cancelRequest)
+		_, err := f.env.driver().CancelTurn(context.Background(), f.principal, cancelRequest)
 		cancelDone <- err
 	}()
 	select {
@@ -118,9 +120,15 @@ func TestProductTurnArbitrationRecordedCancelPreventsPublishResolution(t *testin
 		t.Fatal("cancellation did not reach its durable record")
 	}
 	// The durable record must still own the mutex that arbitrates resolution and publication start.
-	if f.env.mu.TryLock() {
-		f.env.mu.Unlock()
+	probe := make(chan struct{})
+	go func() {
+		_ = f.env.driver().ExpireReviews(time.Now())
+		close(probe)
+	}()
+	select {
+	case <-probe:
 		t.Error("cancellation recorded outside the driver mutex")
+	case <-time.After(200 * time.Millisecond):
 	}
 	request := productsession.ResolveTurnRequest{SessionID: f.session.ID, TurnID: pending.ID,
 		ExpectedRevision: f.currentSession(t).Revision, RequestKey: "publish", CandidateDigest: pending.CandidateDigest,
@@ -128,7 +136,7 @@ func TestProductTurnArbitrationRecordedCancelPreventsPublishResolution(t *testin
 	resolveAttempt, resolveDone := make(chan struct{}), make(chan error, 1)
 	go func() {
 		close(resolveAttempt)
-		_, err := f.env.ResolveTurn(context.Background(), f.principal, request)
+		_, err := f.env.driver().ResolveTurn(context.Background(), f.principal, request)
 		resolveDone <- err
 	}()
 	<-resolveAttempt

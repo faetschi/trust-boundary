@@ -5,12 +5,12 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"time"
 
 	"tbound/supervisor/internal/audit"
+	"tbound/supervisor/internal/productdriver"
 	"tbound/supervisor/internal/productprotocol"
 	"tbound/supervisor/internal/productsession"
 	"tbound/supervisor/internal/providerbridge"
@@ -19,97 +19,41 @@ import (
 	"tbound/supervisor/internal/workspace"
 )
 
-// productTurnHost is everything the product turn driver needs from the governed composition. The driver
-// owns turn, review and catalog state; the host owns Store, executor, publication, command runner and
-// provider handles, the retained-command set and the live provider-journal map.
-type productTurnHost interface {
-	MeasureProjectBaseline(projectID string) (string, error)
-	PredecessorContext(turn productsession.Turn, providerProfile string) (providerbridge.PredecessorContext, error)
-	// PrepareTurn validates the turn worker, then composes the turn workflow and holds its provider journal
-	// for readers; the caller owns the returned turn and must close it. cancelled reports a durable cancel request.
-	PrepareTurn(ctx context.Context, turn productsession.Turn, providerProfile string,
-		predecessor providerbridge.PredecessorContext, cancelled func() bool) (productPreparedTurn, error)
-	SettleRetainedCommands(turnID string) error
-	CloseRetainedCommands() error
-	// ReconcileLinkedTurn reads the retained evidence of a linked turn whose process died and proves it
-	// resolved; a failure is a *productTurnEvidenceError.
-	ReconcileLinkedTurn(ctx context.Context, turn productsession.Turn) (productTurnEvidence, error)
-	WorkflowPublication(projectID, workflowID string) (records bool, succeeded string, err error)
-	// Crash is the named test hook called at driver boundaries.
-	Crash(point string)
-}
-
-// productPreparedTurn is one composed turn: workflow, publication finalizer and handles.
-type productPreparedTurn interface {
-	Link() productsession.TurnLink
-	// BeginPublication composes the finalizer and holds session admission until the returned release.
-	BeginPublication(ctx context.Context, projectID string) (release func(), err error)
-	Drive(ctx context.Context, turn productsession.Turn) (productTurnWork, error)
-	// WorkerInstance is the identity of the worker PrepareTurn validated, which the receipt records.
-	WorkerInstance() string
-	Evidence(stage productTurnEvidenceStage) (productTurnEvidence, error)
-	SettleCommands() error
-	Finalize(ctx context.Context) (publication.Result, error)
-	Close() error
-	CloseUnlessRetained() error
-	// Candidate is the read-only view of the sealed candidate; it is valid until the turn closes.
-	Candidate(turnID, candidateDigest string) (productprotocol.CandidateView, error)
-}
-
-type productTurnEvidenceStage int
-
-const (
-	// productEvidenceResolved reads what decides the outcome: that nothing is unresolved, the sealed
-	// tree and whether the turn changed anything.
-	productEvidenceResolved productTurnEvidenceStage = iota
-	// productEvidenceSettlement reads what the receipt commits: journal heads, usage and identity.
-	productEvidenceSettlement
-)
-
-// productTurnEvidence is what the driver reads to decide and record a turn; only the fields of the
-// requested stage are set.
-type productTurnEvidence struct {
-	Sealed   string
-	NoChange bool
-
-	ProviderHead, StoreHead, CommandHead    string
-	ProviderCount, StoreCount, CommandCount uint64
-	HostCalls, Tokens                       int64
-	Started                                 time.Time
-}
-
-// productTurnEvidenceError is evidence the host could not establish: the driver records the turn unknown
-// with Reason.
-type productTurnEvidenceError struct {
-	Reason string
-	Cause  error
-}
-
-func (e *productTurnEvidenceError) Error() string {
-	return fmt.Sprintf("%s: %v", e.Reason, e.Cause)
-}
-
-func (e *productTurnEvidenceError) Unwrap() error { return e.Cause }
-
-func unestablished(reason string, cause error) error {
-	return &productTurnEvidenceError{Reason: reason, Cause: cause}
-}
-
 // productTurnComposition is the host over the env's concrete composition.
 type productTurnComposition struct{ env *productTurnEnv }
 
-func (e *productTurnEnv) host() productTurnHost { return productTurnComposition{e} }
+// driver is the process's product turn driver over this env's composition. It is built on first use,
+// after the host profile has filled the env.
+func (e *productTurnEnv) driver() *productdriver.Driver {
+	e.driverOnce.Do(func() {
+		e.drv = productdriver.New(productdriver.Config{Catalog: e.Catalog, Host: productTurnComposition{e},
+			ReviewTimeoutSeconds: e.Registration.Limits.ReviewTimeoutSeconds, Now: e.reviewNow})
+	})
+	return e.drv
+}
+
+// reviewNow is the clock of review deadlines; reviewClock is a trusted-host test seam.
+func (e *productTurnEnv) reviewNow() time.Time {
+	if e.reviewClock != nil {
+		return e.reviewClock()
+	}
+	return time.Now()
+}
 
 func (c productTurnComposition) MeasureProjectBaseline(projectID string) (string, error) {
 	return c.env.MeasureProjectBaseline(projectID)
 }
 
-func (c productTurnComposition) PredecessorContext(turn productsession.Turn, providerProfile string) (providerbridge.PredecessorContext, error) {
+func (c productTurnComposition) PredecessorContext(turn productsession.Turn, providerProfile string) (productdriver.Predecessor, error) {
 	return c.env.predecessorContext(turn, providerProfile)
 }
 
 func (c productTurnComposition) PrepareTurn(ctx context.Context, turn productsession.Turn, providerProfile string,
-	predecessor providerbridge.PredecessorContext, cancelled func() bool) (productPreparedTurn, error) {
+	predecessorValue productdriver.Predecessor, cancelled func() bool) (productdriver.PreparedTurn, error) {
+	predecessor, ok := predecessorValue.(providerbridge.PredecessorContext)
+	if !ok {
+		return nil, errors.New("product turn predecessor is not a provider predecessor context")
+	}
 	worker, err := newProductTurnWorker(c.env.MaxWorkerSteps, cancelled, c.env.crash)
 	if err != nil {
 		return nil, err
@@ -120,7 +64,11 @@ func (c productTurnComposition) PrepareTurn(ctx context.Context, turn productses
 	}
 	// The release goes first in the list, so it runs after the journals are closed.
 	w.closers = append([]func() error{c.env.holdLiveProviderJournal(turn.ID, w.providerJournal)}, w.closers...)
-	return &productComposedTurn{env: c.env, w: w, predecessor: predecessor, worker: worker}, nil
+	composed := &productComposedTurn{env: c.env, w: w, predecessor: predecessor, worker: worker}
+	if c.env.onPrepared != nil {
+		c.env.onPrepared(turn.ID, composed)
+	}
+	return composed, nil
 }
 
 func (c productTurnComposition) SettleRetainedCommands(turnID string) error {
@@ -152,58 +100,58 @@ func (c productTurnComposition) Crash(point string) { c.env.crash(point) }
 // settlement reconciled-after-restart is justified when the retained Store reconstructs cleanly, the
 // owner checkpoint has no open reservation, the project still holds the admitted baseline and the
 // publication journal has no record for the workflow.
-func (c productTurnComposition) ReconcileLinkedTurn(ctx context.Context, turn productsession.Turn) (productTurnEvidence, error) {
+func (c productTurnComposition) ReconcileLinkedTurn(ctx context.Context, turn productsession.Turn) (productdriver.Evidence, error) {
 	e := c.env
-	none := productTurnEvidence{}
+	none := productdriver.Evidence{}
 	paths, err := productTurnPathsFromLink(*turn.Link)
 	if err != nil {
-		return none, unestablished("the retained evidence paths are invalid", err)
+		return none, productdriver.Unestablished("the retained evidence paths are invalid", err)
 	}
 	retained, err := openRetainedProductTurn(paths, e.storeOptions(turn), e.OpenCommandHistory)
 	if err != nil {
 		if errors.Is(err, errHistoricalBashContext) {
 			if interrupted, _, proofErr := openInterruptedProductBash(ctx, paths, e.Registration.Digest, e.storeOptions(turn)); proofErr == nil {
-				return none, unestablished("the interrupted Bash scope is drained; run tbound product turns resolve to abandon the retained candidate", errors.Join(err, interrupted.Close()))
+				return none, productdriver.Unestablished("the interrupted Bash scope is drained; run tbound product turns resolve to abandon the retained candidate", errors.Join(err, interrupted.Close()))
 			}
-			return none, unestablished("the retained Store has an unresolved Bash effect whose command scope is not proven drained", err)
+			return none, productdriver.Unestablished("the retained Store has an unresolved Bash effect whose command scope is not proven drained", err)
 		}
-		return none, unestablished("the retained Store or journals cannot be reopened", err)
+		return none, productdriver.Unestablished("the retained Store or journals cannot be reopened", err)
 	}
 	defer retained.Close()
 	bundle, err := retained.Store.EvidenceBundle()
 	if err != nil {
-		return none, unestablished("the retained Store evidence cannot be read", err)
+		return none, productdriver.Unestablished("the retained Store evidence cannot be read", err)
 	}
 	checkpoint, err := loadRetainedProductCheckpoint(ctx, filepath.Dir(paths.StoreJournalPath), turn.Link.WorkflowID)
 	if err != nil {
-		return none, unestablished("the retained owner checkpoint cannot be read", err)
+		return none, productdriver.Unestablished("the retained owner checkpoint cannot be read", err)
 	}
 	if err := e.verifyRetainedSoftRefusals(turn, retained, checkpoint.Pins); err != nil {
-		return none, unestablished("the retained soft refusal cannot be reproduced", err)
+		return none, productdriver.Unestablished("the retained soft refusal cannot be reproduced", err)
 	}
 	if err := productTurnChildResolved(bundle, checkpoint.Pins); err != nil {
-		return none, unestablished("the retained turn has unresolved Store or workflow state", err)
+		return none, productdriver.Unestablished("the retained turn has unresolved Store or workflow state", err)
 	}
 	if after, err := c.MeasureProjectBaseline(turn.ProjectID); err != nil || after != turn.BaselineDigest {
-		return none, unestablished("the project is not the admitted baseline", err)
+		return none, productdriver.Unestablished("the project is not the admitted baseline", err)
 	}
 	records, _, err := c.WorkflowPublication(turn.ProjectID, turn.Link.WorkflowID)
 	if err != nil || records {
-		return none, unestablished("the publication journal names the workflow or cannot be read", err)
+		return none, productdriver.Unestablished("the publication journal names the workflow or cannot be read", err)
 	}
 	providerTrace, err := retained.ProviderJournal.Trace()
 	if err != nil {
-		return none, unestablished("the retained provider journal cannot be read", err)
+		return none, productdriver.Unestablished("the retained provider journal cannot be read", err)
 	}
 	storeTrace, err := retained.StoreJournal.Trace()
 	if err != nil {
-		return none, unestablished("the retained Store journal cannot be read", err)
+		return none, productdriver.Unestablished("the retained Store journal cannot be read", err)
 	}
 	commandTrace, err := retained.CommandJournal.Trace()
 	if err != nil {
-		return none, unestablished("the retained command journal cannot be read", err)
+		return none, productdriver.Unestablished("the retained command journal cannot be read", err)
 	}
-	return productTurnEvidence{
+	return productdriver.Evidence{
 		ProviderHead: auditHeadHash(providerTrace.Records), ProviderCount: uint64(len(providerTrace.Records)),
 		StoreHead: auditHeadHash(storeTrace.Records), StoreCount: uint64(len(storeTrace.Records)),
 		CommandHead: auditHeadHash(commandTrace.Records), CommandCount: uint64(len(commandTrace.Records)),
@@ -231,42 +179,42 @@ func (t *productComposedTurn) BeginPublication(ctx context.Context, projectID st
 	return release, nil
 }
 
-func (t *productComposedTurn) Drive(ctx context.Context, turn productsession.Turn) (productTurnWork, error) {
+func (t *productComposedTurn) Drive(ctx context.Context, turn productsession.Turn) (productdriver.Work, error) {
 	return t.env.driveProductTurn(ctx, turn, t.w, t.worker)
 }
 
 func (t *productComposedTurn) WorkerInstance() string { return t.worker.instance }
 
-func (t *productComposedTurn) Evidence(stage productTurnEvidenceStage) (productTurnEvidence, error) {
+func (t *productComposedTurn) Evidence(stage productdriver.EvidenceStage) (productdriver.Evidence, error) {
 	w := t.w
-	if stage == productEvidenceResolved {
+	if stage == productdriver.EvidenceResolved {
 		bundle, err := w.store.EvidenceBundle()
 		if err != nil {
-			return productTurnEvidence{}, unestablished("the turn's Store evidence could not be read", err)
+			return productdriver.Evidence{}, productdriver.Unestablished("the turn's Store evidence could not be read", err)
 		}
 		checkpoint, _ := w.ledger.Snapshot()
 		if err := productTurnChildResolved(bundle, checkpoint.Pins); err != nil {
-			return productTurnEvidence{}, unestablished("the turn left unresolved Store or workflow state", err)
+			return productdriver.Evidence{}, productdriver.Unestablished("the turn left unresolved Store or workflow state", err)
 		}
-		return productTurnEvidence{
+		return productdriver.Evidence{
 			Sealed:   sha256DigestFromBarePin(bareStoreTreeDigest(bundle.ValidatedChain.SealedTreeDigest)),
 			NoChange: bundleHasNoChange(bundle),
 		}, nil
 	}
 	providerTrace, err := w.providerJournal.Trace()
 	if err != nil {
-		return productTurnEvidence{}, unestablished("the provider journal could not be read", err)
+		return productdriver.Evidence{}, productdriver.Unestablished("the provider journal could not be read", err)
 	}
 	storeTrace, err := w.storeJournal.Trace()
 	if err != nil {
-		return productTurnEvidence{}, unestablished("the Store journal could not be read", err)
+		return productdriver.Evidence{}, productdriver.Unestablished("the Store journal could not be read", err)
 	}
 	commandTrace, err := w.commandJournal.Trace()
 	if err != nil {
-		return productTurnEvidence{}, unestablished("the command journal could not be read", err)
+		return productdriver.Evidence{}, productdriver.Unestablished("the command journal could not be read", err)
 	}
 	checkpoint, _ := w.ledger.Snapshot()
-	return productTurnEvidence{
+	return productdriver.Evidence{
 		ProviderHead: auditHeadHash(providerTrace.Records), ProviderCount: uint64(len(providerTrace.Records)),
 		StoreHead: auditHeadHash(storeTrace.Records), StoreCount: uint64(len(storeTrace.Records)),
 		CommandHead: auditHeadHash(commandTrace.Records), CommandCount: uint64(len(commandTrace.Records)),
@@ -291,17 +239,17 @@ func (t *productComposedTurn) Candidate(turnID, candidateDigest string) (product
 // driveProductTurn constructs the provider conversation with the imported context, admits the
 // turn's prompt, runs the worker and closes the conversation.
 func (e *productTurnEnv) driveProductTurn(ctx context.Context, turn productsession.Turn, w *productTurnWorkflow,
-	worker *productTurnWorker) (productTurnWork, error) {
+	worker *productTurnWorker) (productdriver.Work, error) {
 	if e.NewConversation == nil {
-		return productTurnWork{}, errors.New("product turn has no provider conversation factory")
+		return productdriver.Work{}, errors.New("product turn has no provider conversation factory")
 	}
 	conversation, err := w.authority.newProviderConversation(w.config, e.NewConversation)
 	if err != nil {
-		return productTurnWork{}, err
+		return productdriver.Work{}, err
 	}
 	defer conversation.Close()
 	if err := w.authority.AdmitPrompt(conversation, w.durable, w.taskID, turn.Prompt); err != nil {
-		return productTurnWork{}, err
+		return productdriver.Work{}, err
 	}
 	e.crash("before-first-exchange")
 	return worker.run(ctx, conversation, w.durable, w.policy)

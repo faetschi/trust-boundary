@@ -19,6 +19,7 @@ import (
 	"tbound/supervisor/internal/delta"
 	"tbound/supervisor/internal/gate"
 	"tbound/supervisor/internal/privategit"
+	"tbound/supervisor/internal/productdriver"
 	"tbound/supervisor/internal/productsession"
 	"tbound/supervisor/internal/providerbridge"
 	"tbound/supervisor/internal/sessionlaunch"
@@ -244,7 +245,7 @@ func openBashProductDriverFixture(t *testing.T, root string, scope *productsessi
 		}
 		f.env.OpenCommandHistory = openProductDevCommandHistory
 	}
-	t.Cleanup(func() { _ = f.env.Close() })
+	t.Cleanup(func() { _ = f.env.driver().Close() })
 	return f
 }
 
@@ -288,10 +289,10 @@ func (f *productDriverFixture) submit(t *testing.T, key, prompt string) products
 }
 
 // run runs one admitted turn against script and returns its receipt and the turn's catalog state.
-func (f *productDriverFixture) run(t *testing.T, admission productsession.Admission, script *productDriverScript) (productTurnReceipt, productsession.Turn, error) {
+func (f *productDriverFixture) run(t *testing.T, admission productsession.Admission, script *productDriverScript) (productsession.TurnReceipt, productsession.Turn, error) {
 	t.Helper()
 	f.script = script
-	receipt, err := f.env.RunTurn(context.Background(), admission)
+	receipt, err := f.env.driver().RunTurn(context.Background(), admission)
 	turn, ok := f.env.Catalog.Turn(admission.Turn.ID)
 	if !ok {
 		t.Fatalf("turn %s vanished from the catalog", admission.Turn.ID)
@@ -364,10 +365,10 @@ func runProductDriverTwoTurns(t *testing.T, withDenial bool) {
 	if err != nil || string(notes) != productDriverNotes {
 		t.Fatalf("turn 1 did not publish notes.txt: %q %v", notes, err)
 	}
-	wantTools, wantDenials := []string{"write"}, []productTurnDenial{}
+	wantTools, wantDenials := []string{"write"}, []productsession.ReceiptDenial{}
 	if withDenial {
 		wantTools = append(wantTools, "edit")
-		wantDenials = append(wantDenials, productTurnDenial{ToolCallID: productDriverEditCall, Tool: "edit", ReasonCode: "policy_rule_deny"})
+		wantDenials = append(wantDenials, productsession.ReceiptDenial{ToolCallID: productDriverEditCall, Tool: "edit", ReasonCode: "policy_rule_deny"})
 	}
 	if turn1.State != productsession.StateTerminal || turn1.Outcome != productsession.OutcomePublished || !turn1.ContextEligible ||
 		turn1.ResultBaselineDigest == baselineBefore || turn1.ResultBaselineDigest != f.measure(t) ||
@@ -496,7 +497,7 @@ func TestProductTurnDriverRefusesTamperedPredecessorEvidence(t *testing.T) {
 	second := f.submit(t, "turn-2", productDriverPromptB)
 	script := &productDriverScript{turns: []providerbridge.ScriptTurn{{ResponseID: "t2-response-final", Text: productDriverAnswerB}}}
 	_, turn2, err := f.run(t, second, script)
-	var refusal *productTurnRefusal
+	var refusal *productdriver.Refusal
 	if !errors.Is(err, productsession.ErrCode(productsession.CodePredecessorEvidenceInvalid)) || !errors.As(err, &refusal) {
 		t.Fatalf("tampered predecessor journal: %v", err)
 	}

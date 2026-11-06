@@ -121,7 +121,7 @@ func TestProductD09HistoryHandlesEmptyAndMixedProfileJournals(t *testing.T) {
 			t.Fatal(err)
 		}
 		worker, _ := newProductTurnWorker(8, func() bool { return false }, func(string) {})
-		work, err := f.env.driveProductTurn(context.Background(), admission.Turn, w, worker)
+		_, err = f.env.driveProductTurn(context.Background(), admission.Turn, w, worker)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -157,9 +157,8 @@ func TestProductD09HistoryHandlesEmptyAndMixedProfileJournals(t *testing.T) {
 		if err := check(); err != nil {
 			t.Fatal(err)
 		}
-		s := productTurnSettlement{env: f.env, turn: admission.Turn, prepared: &productComposedTurn{env: f.env, w: w, worker: worker}, work: work,
-			outcome: productsession.OutcomeFailed, resultBaseline: admission.Turn.BaselineDigest}
-		if _, err := s.settle(); err != nil {
+		// The command owner settles before the journals are closed, as the driver does before it writes a receipt.
+		if err := (&productComposedTurn{env: f.env, w: w, worker: worker}).SettleCommands(); err != nil {
 			t.Fatal(err)
 		}
 		if err := w.close(); err != nil {
@@ -187,7 +186,7 @@ func TestProductD09HistoryHandlesEmptyAndMixedProfileJournals(t *testing.T) {
 			t.Fatal(err)
 		}
 		next := f.submit(t, "next", "read task")
-		if err := f.env.Close(); err != nil {
+		if err := f.env.driver().Close(); err != nil {
 			t.Fatal(err)
 		}
 		if err := f.env.Catalog.Close(); err != nil {

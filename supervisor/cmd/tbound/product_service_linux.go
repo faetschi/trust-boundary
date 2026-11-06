@@ -18,6 +18,7 @@ import (
 	"syscall"
 	"time"
 
+	"tbound/supervisor/internal/productdriver"
 	"tbound/supervisor/internal/productprotocol"
 	"tbound/supervisor/internal/productsession"
 )
@@ -115,7 +116,7 @@ func startProductService(cfg productServiceConfig, opts productServiceOptions) (
 	}
 	defer func() {
 		if err != nil {
-			err = errors.Join(err, env.Close(), catalog.Close())
+			err = errors.Join(err, env.driver().Close(), catalog.Close())
 		}
 	}()
 	if err := opts.Host(env); err != nil {
@@ -130,7 +131,7 @@ func startProductService(cfg productServiceConfig, opts productServiceOptions) (
 	}
 	// Reconciliation records what it cannot prove as unknown turns, which is a settled state that
 	// blocks only its own project. Only a turn that is still unresolved afterwards stops the start.
-	if reconcileErr := env.ReconcileAfterRestart(context.Background()); reconcileErr != nil {
+	if reconcileErr := env.driver().ReconcileAfterRestart(context.Background()); reconcileErr != nil {
 		logger.Printf("restart reconciliation: %v", reconcileErr)
 	}
 	if left := catalog.UnresolvedTurns(); len(left) != 0 {
@@ -260,7 +261,7 @@ func (s *productService) expiryLoop(every time.Duration) {
 		case <-s.ctx.Done():
 			return
 		case now := <-ticker.C:
-			if err := s.env.ExpireReviews(now); err != nil {
+			if err := s.env.driver().ExpireReviews(now); err != nil {
 				s.log.Printf("review expiry: %v", err)
 			}
 		}
@@ -322,7 +323,7 @@ func (s *productService) errorResponse(op string, err error) *productprotocol.Re
 	switch {
 	case errors.As(err, &catalogErr):
 		return failure(string(catalogErr.Code))
-	case errors.Is(err, errProductReviewNotRetained):
+	case errors.Is(err, productdriver.ErrReviewNotRetained):
 		return failure(string(productsession.CodeReviewNotPending))
 	}
 	s.log.Printf("%s: %v", op, err)
@@ -431,7 +432,7 @@ func (s *productService) startTurn(admission productsession.Admission) {
 	s.turns.Add(1)
 	go func() {
 		defer s.turns.Done()
-		if _, err := s.env.RunTurn(context.Background(), admission); err != nil {
+		if _, err := s.env.driver().RunTurn(context.Background(), admission); err != nil {
 			s.log.Printf("turn %s ended with an error: %v", admission.Turn.ID, err)
 		}
 	}()
@@ -508,11 +509,10 @@ func (s *productService) getCandidate(p productsession.Principal, r productproto
 	if err != nil {
 		return s.errorResponse(productprotocol.OpGetCandidate, err)
 	}
-	prepared, held := s.env.pendingReviewTurn(turn.ID)
-	if turn.State != productsession.StateAwaitingReview || !held {
+	view, held, err := s.env.driver().Candidate(turn)
+	if !held {
 		return failure(string(productsession.CodeReviewNotPending))
 	}
-	view, err := prepared.Candidate(turn.ID, turn.CandidateDigest)
 	if err != nil {
 		return s.errorResponse(productprotocol.OpGetCandidate, err)
 	}
@@ -525,7 +525,7 @@ func (s *productService) cancelTurn(p productsession.Principal, r productprotoco
 	if _, err := s.sessionTurn(p, r.SessionID, r.TurnID); err != nil {
 		return s.errorResponse(productprotocol.OpCancelTurn, err)
 	}
-	_, err := s.env.CancelTurn(context.Background(), p, productsession.CancelTurnRequest{SessionID: r.SessionID, TurnID: r.TurnID,
+	_, err := s.env.driver().CancelTurn(context.Background(), p, productsession.CancelTurnRequest{SessionID: r.SessionID, TurnID: r.TurnID,
 		ExpectedRevision: r.ExpectedRevision, RequestKey: r.RequestKey})
 	turn, _ := s.catalog.Turn(r.TurnID)
 	// A request the catalog recorded stands even when ending the turn afterwards failed: the turn reports its real state.
@@ -542,7 +542,7 @@ func (s *productService) resolveTurn(p productsession.Principal, r productprotoc
 	if _, err := s.sessionTurn(p, r.SessionID, r.TurnID); err != nil {
 		return s.errorResponse(productprotocol.OpResolveTurn, err)
 	}
-	_, err := s.env.ResolveTurn(context.Background(), p, productsession.ResolveTurnRequest{SessionID: r.SessionID, TurnID: r.TurnID,
+	_, err := s.env.driver().ResolveTurn(context.Background(), p, productsession.ResolveTurnRequest{SessionID: r.SessionID, TurnID: r.TurnID,
 		ExpectedRevision: r.ExpectedRevision, RequestKey: r.RequestKey, CandidateDigest: r.CandidateDigest, Decision: r.Decision})
 	turn, _ := s.catalog.Turn(r.TurnID)
 	// A decision the catalog recorded stands even when the publication then failed or ended unknown: the
@@ -623,7 +623,7 @@ func (s *productService) Shutdown() error {
 			s.result = errors.Join(s.result, errProductServiceTurnsRunning)
 			return
 		}
-		s.result = errors.Join(s.result, s.env.Close(), s.catalog.Close(), s.socketLock.Close())
+		s.result = errors.Join(s.result, s.env.driver().Close(), s.catalog.Close(), s.socketLock.Close())
 	})
 	return s.result
 }

@@ -14,19 +14,20 @@ import (
 	"testing"
 	"time"
 
+	"tbound/supervisor/internal/productdriver"
 	"tbound/supervisor/internal/productsession"
 	"tbound/supervisor/internal/providerbridge"
 )
 
-func (f *productDriverFixture) resolve(t *testing.T, turnID, key, candidate, decision string) (productTurnReceipt, error) {
+func (f *productDriverFixture) resolve(t *testing.T, turnID, key, candidate, decision string) (productsession.TurnReceipt, error) {
 	t.Helper()
-	return f.env.ResolveTurn(context.Background(), f.principal, productsession.ResolveTurnRequest{SessionID: f.session.ID,
+	return f.env.driver().ResolveTurn(context.Background(), f.principal, productsession.ResolveTurnRequest{SessionID: f.session.ID,
 		TurnID: turnID, ExpectedRevision: f.currentSession(t).Revision, RequestKey: key, CandidateDigest: candidate, Decision: decision})
 }
 
 func (f *productDriverFixture) cancel(t *testing.T, turnID, key string) (productsession.Turn, error) {
 	t.Helper()
-	return f.env.CancelTurn(context.Background(), f.principal, productsession.CancelTurnRequest{SessionID: f.session.ID,
+	return f.env.driver().CancelTurn(context.Background(), f.principal, productsession.CancelTurnRequest{SessionID: f.session.ID,
 		TurnID: turnID, ExpectedRevision: f.currentSession(t).Revision, RequestKey: key})
 }
 
@@ -95,14 +96,14 @@ func TestProductTurnReviewPublishesOnlyTheExactCandidate(t *testing.T) {
 	revision := f.currentSession(t).Revision
 	request := productsession.ResolveTurnRequest{SessionID: f.session.ID, TurnID: pending.ID, ExpectedRevision: revision,
 		RequestKey: "resolve-1", CandidateDigest: pending.CandidateDigest, Decision: productsession.DecisionPublish}
-	receipt, err := f.env.ResolveTurn(context.Background(), f.principal, request)
+	receipt, err := f.env.driver().ResolveTurn(context.Background(), f.principal, request)
 	turn := f.turn(t, pending.ID)
 	if err != nil || turn.Outcome != productsession.OutcomePublished || receipt.PublicationTransactionID == "" ||
 		turn.ResultBaselineDigest != pending.CandidateDigest || f.measure(t) != pending.CandidateDigest || !f.notesPublished(t) ||
 		turn.Usage != pending.Usage || turn.Refund != pending.Refund {
 		t.Fatalf("publish: turn=%+v receipt=%+v err=%v", turn, receipt, err)
 	}
-	if again, err := f.env.ResolveTurn(context.Background(), f.principal, request); err != nil || !reflect.DeepEqual(again, receipt) {
+	if again, err := f.env.driver().ResolveTurn(context.Background(), f.principal, request); err != nil || !reflect.DeepEqual(again, receipt) {
 		t.Fatalf("replayed resolution: %+v %v", again, err)
 	}
 	f.followUp(t, "turn-2", productsession.OutcomePublished)
@@ -126,10 +127,10 @@ func TestProductTurnReviewDiscardKeepsTheProjectAndTheSpend(t *testing.T) {
 func TestProductTurnReviewExpires(t *testing.T) {
 	f := newProductDriverFixture(t, productsession.PublicationReview)
 	pending := f.awaitReview(t)
-	if err := f.env.ExpireReviews(time.Now()); err != nil || f.turn(t, pending.ID).State != productsession.StateAwaitingReview {
+	if err := f.env.driver().ExpireReviews(time.Now()); err != nil || f.turn(t, pending.ID).State != productsession.StateAwaitingReview {
 		t.Fatalf("a review expired early: %v", err)
 	}
-	if err := f.env.ExpireReviews(time.Now().Add(601 * time.Second)); err != nil {
+	if err := f.env.driver().ExpireReviews(time.Now().Add(601 * time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	if turn := f.turn(t, pending.ID); turn.Outcome != productsession.OutcomeDiscarded || turn.TerminalReason != productsession.ReasonExpired ||
@@ -160,7 +161,7 @@ func TestProductTurnCancelBeforeLaunchRefundsAndBlocksNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, turn, err = f.run(t, second, script)
-	var refusal *productTurnRefusal
+	var refusal *productdriver.Refusal
 	if !errors.As(err, &refusal) || refusal.Code != productsession.CodeCancelled || script.requests() != 0 ||
 		turn.Outcome != productsession.OutcomeCancelled || turn.Refund != turn.Reservation {
 		t.Fatalf("RunTurn of a cancelled admission: %+v %v", turn, err)
