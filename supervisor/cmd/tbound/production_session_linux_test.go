@@ -315,3 +315,29 @@ func TestSettledLaunchFailureReleasesCleanupAndAbortsBeforeTask(t *testing.T) {
 		})
 	}
 }
+
+// The channel loops fail while the worker stays silent: the wait returns the channel error at once, not at
+// the task context deadline.
+func TestWaitTurnOrChannelFailureReturnsTheChannelErrorWithoutWaitingForASilentWorker(t *testing.T) {
+	channelErr := errors.New("provider channel closed")
+	channelFailed := make(chan error, 1)
+	channelFailed <- channelErr
+	silentWorker := func(ctx context.Context) error { <-ctx.Done(); return ctx.Err() }
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	started := time.Now()
+	err := waitTurnOrChannelFailure(ctx, silentWorker, channelFailed)
+	if !errors.Is(err, channelErr) || time.Since(started) > 5*time.Second {
+		t.Fatalf("err = %v after %v, want the channel error promptly", err, time.Since(started))
+	}
+}
+
+func TestWaitTurnOrChannelFailureKeepsTheTurnResult(t *testing.T) {
+	turnErr := errors.New("worker error")
+	if err := waitTurnOrChannelFailure(context.Background(), func(context.Context) error { return turnErr }, make(chan error, 1)); !errors.Is(err, turnErr) {
+		t.Fatalf("err = %v, want the turn error", err)
+	}
+	if err := waitTurnOrChannelFailure(context.Background(), func(context.Context) error { return nil }, make(chan error, 1)); err != nil {
+		t.Fatalf("err = %v, want nil", err)
+	}
+}
