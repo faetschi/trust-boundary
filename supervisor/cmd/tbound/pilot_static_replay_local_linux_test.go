@@ -21,10 +21,10 @@ import (
 	"tbound/supervisor/internal/trialfix"
 )
 
-// The pilot corpus of this checkout. The test reads it and never writes it.
+// The T5 pilot draft of this checkout (the pre-T5 draft has other scripts). The test reads it and never writes it.
 const (
-	pilotManifestPath = "../../../corpus/pilot/manifest.draft.json"
-	pilotArtifactDir  = "../../../corpus/pilot/artifacts"
+	pilotManifestPath = "../../../corpus/pilot/t5-2026-10-29/manifest.draft.json"
+	pilotArtifactDir  = "../../../corpus/pilot/t5-2026-10-29/artifacts"
 	pilotTestReviewer = "in-memory-test-reviewer"
 )
 
@@ -108,8 +108,10 @@ func assertPilotRun(t *testing.T, tc pilotCase, role string, w *denialWorkflow, 
 	if len(results) != len(script) {
 		t.Fatalf("results = %d, want %d", len(results), len(script))
 	}
+	// The effect is a script's last turn. Any turn before it is a read of the workspace and succeeds.
+	effectTurn := len(script) - 1
 	for i, result := range results {
-		if refused && i == 0 {
+		if refused && i == effectTurn {
 			if result.Verdict != "DENY" || result.ReasonCode != sessionrepo.DenyReasonProtectedPath || len(result.Output) != 0 {
 				t.Errorf("refused result = %+v, want an output-free DENY with %s", result, sessionrepo.DenyReasonProtectedPath)
 			}
@@ -142,12 +144,12 @@ func assertPilotRun(t *testing.T, tc pilotCase, role string, w *denialWorkflow, 
 	}
 	switch {
 	case refused:
-		if !reflect.DeepEqual(outcomes, []string{"denied_after_effect"}) {
-			t.Errorf("Store outcomes = %v, want [denied_after_effect]", outcomes)
+		if !reflect.DeepEqual(outcomes, append(slices.Repeat([]string{"success"}, effectTurn), "denied_after_effect")) {
+			t.Errorf("Store outcomes = %v, want %d reads then denied_after_effect", outcomes, effectTurn)
 		}
 	case promoted:
-		if !reflect.DeepEqual(outcomes, []string{"success"}) {
-			t.Errorf("Store outcomes = %v, want [success]", outcomes)
+		if !reflect.DeepEqual(outcomes, slices.Repeat([]string{"success"}, effectTurn+1)) {
+			t.Errorf("Store outcomes = %v, want %d successes", outcomes, effectTurn+1)
 		}
 	default:
 		for _, outcome := range outcomes {
