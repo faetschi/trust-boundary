@@ -530,8 +530,10 @@ procedure. Do not truncate a live catalog to make an older binary accept it.
 A format-2 binary cannot replay a catalog that holds format-3 records: it stops
 with `CATALOG_CORRUPT`. That is why a restore to a Bash-deny format-2 install
 must roll the state back. The catalog is not the only state. Each project keeps
-its own publication audit, `/var/lib/tbound-product/turns/projects/<project-id>/publication-audit.jsonl`
-(the catalog is `/var/lib/tbound-product/catalog.jsonl`). If only the catalog is
+its own publication audit, `/var/lib/tbound-product/turns/projects/<hash>/publication-audit.jsonl`
+(the catalog is `/var/lib/tbound-product/catalog.jsonl`). `<hash>` is the lowercase
+hex SHA-256 of the exact project ID bytes, with no prefix and no trailing newline:
+`printf '%s' demo | sha256sum` gives the directory name for project `demo`. If only the catalog is
 cut back, the audit stays ahead of it. Its newer or UNKNOWN publication
 transaction then fails every later admission with `live root has an unresolved
 publication lifecycle record`. No `tbound` command rolls either file back, so
@@ -545,12 +547,14 @@ do it by hand, in this order:
    newline) and cut the catalog there: move the full file aside, then write its
    first N bytes back with the same owner and mode 0600.
 4. Cut each project's audit to the matching boundary: the byte offset and
-   record count the audit had at the moment the catalog was at that boundary.
-   Best source: record `wc -lc` of the catalog and of every audit in the stopped
-   backup you take before the change. Without that, find it in the full audit:
-   the last record before the first `workflow_publication_pending` that belongs
-   to a turn the rolled-back catalog does not contain. Check that the prefix
-   ends at a newline and holds whole records only.
+   record count the audit had when the catalog had the size you chose. Use only
+   recorded offsets: the `wc -lc` of the catalog and of every audit, taken
+   together from a backup made while the service was stopped. Turn membership
+   cannot find the cutoff: a turn can exist at the catalog boundary while its
+   publication begins after it, and cutting before that turn's pending record
+   keeps its later pending or UNKNOWN records and recreates the admission
+   quarantine. Without such a backup, do not guess; do not cut. Check that the
+   prefix ends at a newline and holds whole records only.
 5. Move aside every published file (and directory) that postdates the
    rolled-back baseline. The project must equal the baseline of the last
    catalog record kept.
