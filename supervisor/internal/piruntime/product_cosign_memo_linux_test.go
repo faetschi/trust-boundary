@@ -4,6 +4,7 @@ package piruntime
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -230,5 +231,28 @@ func TestProductProbeEntrypointReusesImageFileMemo(t *testing.T) {
 	rewriteKeepingMtime(t, filepath.Join(layout, "blobs", "sha256", strings.TrimPrefix(layers[len(layers)-1].Digest, "sha256:")), func(data []byte) { data[len(data)/2] ^= 0xff })
 	if err := launcher.verifyEntrypointInImage(context.Background(), imageConfig); err == nil || productOCILayerReads.Load() == reads {
 		t.Fatalf("ctime-only layer tamper not rescanned and refused: %v", err)
+	}
+}
+
+func TestProductProbeCosignMemoHitRechecksReadOnlyMount(t *testing.T) {
+	launcher, config, runner, cosign := productCosignMemoFixture(t, true)
+	key, ok := productCosignMemoKey(config, cosign, true)
+	if !ok {
+		t.Fatal("memo key not identified")
+	}
+	productCosignMemo.Lock()
+	productCosignMemo.key = key
+	productCosignMemo.Unlock()
+	defer func(old func(string) error) { productLayoutMountCheck = old }(productLayoutMountCheck)
+	productLayoutMountCheck = func(string) error { return errors.New("mount is writable") }
+	if err := launcher.verifyOfflineSignatureForProbe(context.Background(), config, cosign, true); err == nil || !strings.Contains(err.Error(), "read-only mount") {
+		t.Fatalf("primed memo with a writable layout mount: err = %v, want refusal", err)
+	}
+	productLayoutMountCheck = func(string) error { return nil }
+	if err := launcher.verifyOfflineSignatureForProbe(context.Background(), config, cosign, true); err != nil {
+		t.Fatalf("read-only mount memo hit: %v", err)
+	}
+	if got := cosignCalls(runner, cosign); got != 0 {
+		t.Fatalf("cosign ran %d times on memo hits", got)
 	}
 }

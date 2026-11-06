@@ -15,6 +15,9 @@ import (
 // productCosignRuns counts cosign runs by the product signature check, so tests can prove the memo avoids them.
 var productCosignRuns atomic.Int64
 
+// productLayoutMountCheck is requireReadOnlyMount; tests replace it because a unit test cannot make a read-only mount.
+var productLayoutMountCheck = requireReadOnlyMount
+
 var productCosignMemo struct {
 	sync.Mutex
 	key string // the last offline verification that succeeded
@@ -38,6 +41,12 @@ func (l *D09PodmanCrunLauncher) verifyOfflineSignatureMemoized(ctx context.Conte
 		hit := productCosignMemo.key == key
 		productCosignMemo.Unlock()
 		if hit {
+			// The uncached path also requires a read-only layout mount, which no file identity shows (a same-tree bind mount keeps them).
+			if requireImmutable {
+				if err := productLayoutMountCheck(config.OCILayoutPath); err != nil {
+					return fmt.Errorf("local OCI image layout is not on a read-only mount: %w", err)
+				}
+			}
 			return nil
 		}
 	}
