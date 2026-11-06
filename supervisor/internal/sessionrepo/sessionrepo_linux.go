@@ -665,9 +665,6 @@ func (s *Store) RunBash(ctx context.Context, input *Generation, operation delta.
 	if operation.Kind != delta.OperationLease || strings.TrimSpace(operation.LeaseID) == "" {
 		return MutationResult{}, ErrInvalidOptions
 	}
-	if err := validateCommandSpec(spec); err != nil {
-		return MutationResult{}, err
-	}
 	view, err := s.newViewLocked(input)
 	if err != nil {
 		return MutationResult{}, err
@@ -779,12 +776,8 @@ func (s *Store) RunBash(ctx context.Context, input *Generation, operation delta.
 			_, committed.DenyReason = s.options.AdmissionScope.Decide(request.OutputScopePaths, transition.Changes)
 			stageClosed = true
 			keepStage = true
-			cleanupErr := errors.Join(stage.Close(), removeTreeAt(int(s.genDir.Fd()), stageName))
-			if cleanupErr == nil {
-				cleanupErr = syncDirectory(s.genDir)
-			}
-			if cleanupErr != nil {
-				return nil, fmt.Errorf("clean denied candidate stage: %w", cleanupErr)
+			if err := s.cleanDeniedStage(stage, stageName); err != nil {
+				return nil, err
 			}
 			return payload, nil
 		}
