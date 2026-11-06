@@ -62,9 +62,9 @@ boundary:
 	@sh scripts/check-extension-boundary.sh --self-test
 
 # Optional extension only (extensions/webchat). Not a prerequisite of any core
-# target; it needs Node for the browser-side tests.
+# target. The browser-side tests live in the React frontend (the next target).
 extension-webchat:
-	cd extensions/webchat && gofmt -l . | (! grep .) && $(GO) vet -mod=readonly ./... && $(GO) test -race -mod=readonly -count=1 ./... && node --test internal/webchat/jstest/*.test.mjs
+	cd extensions/webchat && gofmt -l . | (! grep .) && $(GO) vet -mod=readonly ./... && $(GO) test -race -mod=readonly -count=1 ./...
 
 # React frontend of the optional extension (extensions/webchat/frontend). Node is
 # needed only to change the UI; the Go gateway embeds the committed build. Installs

@@ -16,7 +16,7 @@
 // the PNG files are written to docs/webchat/qa/ as PREFIX-ui-qa-receipt.json and PREFIX-*.png.
 // PREFIX is --run (default p5, the redesign run). The p4 files are the pre-redesign run and are not rewritten:
 //   A  csp-smoke.mjs passes with no favicon allowance (run as a child process).
-//   B  GET / ends on /app/ with the React shell; /legacy/ shows the deprecation notice;
+//   B  GET / ends on /app/ with the React shell; the retired /legacy/ is 404;
 //      HEAD / is 302 to /app/; the served /app/assets files equal the committed dist.
 //   C  keyboard-only walk on /app/ at 1440 px: skip link, header, tabs, filters, tool cards,
 //      trajectory ledger, focus rings, no traps.
@@ -636,14 +636,14 @@ async function checkA(ctx) {
   ctx.note('output', `${RUN}-csp-smoke-output.txt`);
   ctx.expect(run.status === 0, `csp-smoke exited ${run.status}; its output is in ${RUN}-csp-smoke-output.txt`);
   const clean = output.split('\n').filter((line) => line.startsWith('PASS ') && /0 console errors\/exceptions/.test(line));
-  for (const label of ['PASS / (redirect', 'PASS /app/ (React)', 'PASS /legacy/ (deprecated']) {
+  for (const label of ['PASS / (redirect', 'PASS /app/ (React)']) {
     ctx.expect(clean.some((line) => line.startsWith(label)), `csp-smoke has no PASS line with 0 console errors for ${label}`);
   }
   ctx.expect(!/favicon/i.test(output), 'csp-smoke output still mentions a favicon allowance');
   ctx.note('summary', `csp-smoke exit ${run.status}; ${clean.length} pages with 0 console errors/exceptions; no favicon allowance in its output`);
 }
 
-// ---------- B: redirect, legacy notice, served assets ----------
+// ---------- B: redirect, retired legacy path, served assets ----------
 
 function probe(method, path) {
   const { hostname, port } = new URL(ORIGIN);
@@ -679,10 +679,9 @@ async function checkB(ctx) {
   ctx.expect(landed === '/app/', `GET / ended on ${landed}, expected /app/`);
   ctx.expect(shell.header, 'no workspace header after GET / (the React shell did not render)');
 
-  await navigate('/legacy/', { app: false });
-  const notice = await waitFor(`(document.querySelector('.legacy-notice') || {}).textContent || null`, 5000);
-  ctx.note('/legacy/ notice', notice);
-  ctx.expect(typeof notice === 'string' && notice.includes('Deprecated: legacy workspace'), '/legacy/ does not show the "Deprecated: legacy workspace" notice');
+  const legacy = await probe('GET', '/legacy/');
+  ctx.note('GET /legacy/', { status: legacy.status });
+  ctx.expect(legacy.status === 404, `GET /legacy/ answered ${legacy.status}, expected 404 (the legacy client is retired)`);
 
   // The served shell and its assets must be the committed build, byte for byte.
   const shellBytes = Buffer.from(await (await fetch(`${ORIGIN}/app/`)).arrayBuffer());
@@ -696,7 +695,7 @@ async function checkB(ctx) {
     ctx.expect(sha256(bytes) === sha256File(join(DIST_DIR, ref.slice('/app/'.length))), `served ${ref} differs from the committed dist`);
   }
   ctx.note('servedAssetSha256', served);
-  ctx.note('summary', `HEAD / 302 to /app/; GET / ended on ${landed} with the React header; /legacy/ shows "${notice}"; ${refs.length} served assets equal dist`);
+  ctx.note('summary', `HEAD / 302 to /app/; GET / ended on ${landed} with the React header; GET /legacy/ is 404; ${refs.length} served assets equal dist`);
 }
 
 // ---------- C: keyboard-only walk on /app/ at 1440 px ----------
