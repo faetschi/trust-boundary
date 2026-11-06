@@ -1,4 +1,4 @@
-package providerbridge
+package adaptivesource
 
 import (
 	"errors"
@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"tbound/supervisor/internal/attacker"
+	"tbound/supervisor/internal/providerbridge"
 )
 
 // fakeClock advances only when a test says so, so a source's wall time is exact and its state digest never
@@ -21,7 +22,7 @@ func (c *fakeClock) advance(ms int64) {
 func newFakeClock() *fakeClock { return &fakeClock{at: time.Unix(1_800_000_000, 0)} }
 
 // newTestSource is NewAdaptiveSource on a frozen clock unless the test passes its own.
-func newTestSource(spec attacker.Spec, pivots map[string]ScriptTurn, options ...AdaptiveOption) (*AdaptiveSource, error) {
+func newTestSource(spec attacker.Spec, pivots map[string]providerbridge.ScriptTurn, options ...AdaptiveOption) (*AdaptiveSource, error) {
 	frozen := newFakeClock()
 	return NewAdaptiveSource(spec, pivots, append([]AdaptiveOption{WithClock(frozen.now)}, options...)...)
 }
@@ -30,10 +31,10 @@ func newTestSource(spec attacker.Spec, pivots map[string]ScriptTurn, options ...
 // wall time, and returns the steps issued.
 func driveDenied(t *testing.T, source *AdaptiveSource, clock *fakeClock, windowMS int64) []string {
 	t.Helper()
-	history := []ScriptMessage{{Role: "system", Content: "s"}, {Role: "user", Content: "u"}}
+	history := []providerbridge.ScriptMessage{{Role: "system", Content: "s"}, {Role: "user", Content: "u"}}
 	var steps []string
 	for n := 1; n <= 40; n++ {
-		turn, err := source.Next(append([]ScriptMessage(nil), history...))
+		turn, err := source.Next(append([]providerbridge.ScriptMessage(nil), history...))
 		if err != nil {
 			t.Fatalf("turn %d: %v", n, err)
 		}
@@ -42,7 +43,7 @@ func driveDenied(t *testing.T, source *AdaptiveSource, clock *fakeClock, windowM
 		}
 		steps = append(steps, stepOf(t, turn))
 		clock.advance(windowMS)
-		history = append(history, ScriptMessage{Role: "assistant", Content: "call"}, resultMessage(t, n, "DENY", "policy_rule_deny", ""))
+		history = append(history, providerbridge.ScriptMessage{Role: "assistant", Content: "call"}, resultMessage(t, n, "DENY", "policy_rule_deny", ""))
 	}
 	t.Fatal("the source never stopped")
 	return nil
@@ -58,13 +59,13 @@ func TestAdaptiveSourceOfARetryStartsWithTheRemainingBudget(t *testing.T) {
 		t.Fatal(err)
 	}
 	// attempt 1 is cut off (an outage) after three pivots: its terminal is open
-	history := []ScriptMessage{{Role: "user", Content: "u"}}
+	history := []providerbridge.ScriptMessage{{Role: "user", Content: "u"}}
 	for n := 1; n <= 3; n++ {
-		if _, err := first.Next(append([]ScriptMessage(nil), history...)); err != nil {
+		if _, err := first.Next(append([]providerbridge.ScriptMessage(nil), history...)); err != nil {
 			t.Fatal(err)
 		}
 		clock.advance(100)
-		history = append(history, ScriptMessage{Role: "assistant", Content: "call"}, resultMessage(t, n, "DENY", "policy_rule_deny", ""))
+		history = append(history, providerbridge.ScriptMessage{Role: "assistant", Content: "call"}, resultMessage(t, n, "DENY", "policy_rule_deny", ""))
 	}
 	if _, err := first.Next(history); err != nil {
 		t.Fatal(err)

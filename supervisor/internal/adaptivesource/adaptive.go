@@ -1,4 +1,4 @@
-package providerbridge
+package adaptivesource
 
 import (
 	"encoding/hex"
@@ -11,6 +11,7 @@ import (
 	"tbound/supervisor/internal/attacker"
 	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/gate"
+	"tbound/supervisor/internal/providerbridge"
 )
 
 // The stops of an adaptive replay, as the receipt names them. The attacker machine's own stop reasons map
@@ -77,7 +78,7 @@ type AdaptiveTerminal struct {
 	Cumulative AdaptiveUsage
 }
 
-// AdaptiveSource is the ScriptSource of the adaptive replay roles (C and P run the identical machine). It
+// AdaptiveSource is the providerbridge.ScriptSource of the adaptive replay roles (C and P run the identical machine). It
 // holds the attacker Machine built from the pinned artifact and the case's pivot table. Its only input
 // from the run is the verdict and reason code of the last tool Result in the request history:
 //
@@ -104,7 +105,7 @@ type AdaptiveSource struct {
 	mu      sync.Mutex
 	machine attacker.Machine
 	policy  attacker.FeedbackPolicy
-	pivots  map[string]ScriptTurn
+	pivots  map[string]providerbridge.ScriptTurn
 
 	prior   AdaptiveUsage
 	wallCap int64 // the artifact's cumulative wall cap, milliseconds
@@ -119,7 +120,7 @@ type AdaptiveSource struct {
 	startedAt time.Time
 	endedAt   time.Time
 
-	last      ScriptTurn
+	last      providerbridge.ScriptTurn
 	lastTools int
 	haveLast  bool
 }
@@ -128,7 +129,7 @@ type AdaptiveSource struct {
 // pivot must be a tool call; the source owns copies. With WithPriorUsage the machine's caps are the
 // artifact's minus the prior usage, and a prior usage that leaves no positive cap is
 // ErrAdaptiveBudgetExhausted.
-func NewAdaptiveSource(spec attacker.Spec, pivots map[string]ScriptTurn, options ...AdaptiveOption) (*AdaptiveSource, error) {
+func NewAdaptiveSource(spec attacker.Spec, pivots map[string]providerbridge.ScriptTurn, options ...AdaptiveOption) (*AdaptiveSource, error) {
 	if err := spec.Validate(); err != nil {
 		return nil, err
 	}
@@ -157,7 +158,7 @@ func NewAdaptiveSource(spec attacker.Spec, pivots map[string]ScriptTurn, options
 	if len(pivots) == 0 {
 		return nil, errors.New("adaptive replay requires at least one pivot")
 	}
-	copied := make(map[string]ScriptTurn, len(pivots))
+	copied := make(map[string]providerbridge.ScriptTurn, len(pivots))
 	for id, turn := range pivots {
 		if turn.Tool == "" || len(turn.Arguments) == 0 || turn.Text != "" {
 			return nil, fmt.Errorf("adaptive pivot %q is not a tool call", id)
@@ -206,11 +207,11 @@ func (s *AdaptiveSource) Terminal() AdaptiveTerminal {
 
 func adaptiveCallID(n int) string { return fmt.Sprintf("adaptive-call-%d", n) }
 
-// Next implements ScriptSource.
-func (s *AdaptiveSource) Next(history []ScriptMessage) (ScriptTurn, error) {
+// Next implements providerbridge.ScriptSource.
+func (s *AdaptiveSource) Next(history []providerbridge.ScriptMessage) (providerbridge.ScriptTurn, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	var tools []ScriptMessage
+	var tools []providerbridge.ScriptMessage
 	for _, message := range history {
 		if message.Role == "tool" {
 			tools = append(tools, message)
@@ -221,11 +222,11 @@ func (s *AdaptiveSource) Next(history []ScriptMessage) (ScriptTurn, error) {
 		return s.copyLast(), nil
 	}
 	if s.done {
-		return ScriptTurn{}, ErrScriptExhausted
+		return providerbridge.ScriptTurn{}, providerbridge.ErrScriptExhausted
 	}
 	if !s.started {
 		if len(tools) != 0 {
-			return ScriptTurn{}, errors.New("adaptive replay: history holds tool results before the first pivot")
+			return providerbridge.ScriptTurn{}, errors.New("adaptive replay: history holds tool results before the first pivot")
 		}
 		s.started, s.startedAt = true, s.now()
 		var action attacker.Action
@@ -233,11 +234,11 @@ func (s *AdaptiveSource) Next(history []ScriptMessage) (ScriptTurn, error) {
 		return s.serve(action, len(tools))
 	}
 	if len(tools) != s.issued {
-		return ScriptTurn{}, fmt.Errorf("adaptive replay: history holds %d tool results for %d pivots", len(tools), s.issued)
+		return providerbridge.ScriptTurn{}, fmt.Errorf("adaptive replay: history holds %d tool results for %d pivots", len(tools), s.issued)
 	}
 	result, err := lastResult(tools[len(tools)-1], adaptiveCallID(s.issued))
 	if err != nil {
-		return ScriptTurn{}, err
+		return providerbridge.ScriptTurn{}, err
 	}
 	s.state = s.machine.Charge(s.state, attacker.Usage{ToolCalls: 1})
 	// The reason the machine is shown: the denial's own reason code, or the public reason of an ALLOWed
@@ -260,7 +261,7 @@ func (s *AdaptiveSource) Next(history []ScriptMessage) (ScriptTurn, error) {
 			return s.finish(AdaptiveStopInvalid, len(tools)), nil
 		}
 	default:
-		return ScriptTurn{}, errors.New("adaptive replay: the tool Result has no ALLOW or DENY verdict")
+		return providerbridge.ScriptTurn{}, errors.New("adaptive replay: the tool Result has no ALLOW or DENY verdict")
 	}
 	if s.wallMS()+s.prior.WallMS >= s.wallCap {
 		return s.finish(AdaptiveStopCap, len(tools)), nil
@@ -279,7 +280,7 @@ func (s *AdaptiveSource) Next(history []ScriptMessage) (ScriptTurn, error) {
 }
 
 // serve turns a machine action into the next provider turn.
-func (s *AdaptiveSource) serve(action attacker.Action, tools int) (ScriptTurn, error) {
+func (s *AdaptiveSource) serve(action attacker.Action, tools int) (providerbridge.ScriptTurn, error) {
 	switch action.Kind {
 	case attacker.ActionPivot:
 		turn, ok := s.pivots[action.StepID]
@@ -303,20 +304,20 @@ func (s *AdaptiveSource) serve(action attacker.Action, tools int) (ScriptTurn, e
 	return s.finish(AdaptiveStopInvalid, tools), nil
 }
 
-func (s *AdaptiveSource) finish(stop string, tools int) ScriptTurn {
+func (s *AdaptiveSource) finish(stop string, tools int) providerbridge.ScriptTurn {
 	s.stop, s.done = stop, true
 	if s.started && s.endedAt.IsZero() {
 		s.endedAt = s.now()
 	}
-	s.remember(ScriptTurn{ResponseID: fmt.Sprintf("adaptive-response-%d", s.issued+1), Text: AdaptiveFinalText}, tools)
+	s.remember(providerbridge.ScriptTurn{ResponseID: fmt.Sprintf("adaptive-response-%d", s.issued+1), Text: AdaptiveFinalText}, tools)
 	return s.copyLast()
 }
 
-func (s *AdaptiveSource) remember(turn ScriptTurn, tools int) {
+func (s *AdaptiveSource) remember(turn providerbridge.ScriptTurn, tools int) {
 	s.last, s.lastTools, s.haveLast = turn, tools, true
 }
 
-func (s *AdaptiveSource) copyLast() ScriptTurn {
+func (s *AdaptiveSource) copyLast() providerbridge.ScriptTurn {
 	turn := s.last
 	turn.Arguments = append(json.RawMessage(nil), s.last.Arguments...)
 	return turn
@@ -332,7 +333,7 @@ type toolResult struct {
 	Status        string `json:"status"`
 }
 
-func lastResult(message ScriptMessage, wantCallID string) (toolResult, error) {
+func lastResult(message providerbridge.ScriptMessage, wantCallID string) (toolResult, error) {
 	var result toolResult
 	if message.ToolCallID != wantCallID {
 		return result, fmt.Errorf("adaptive replay: the last tool message answers %q, not the last pivot %q", message.ToolCallID, wantCallID)

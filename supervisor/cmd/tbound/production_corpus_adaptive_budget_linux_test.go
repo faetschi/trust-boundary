@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"tbound/supervisor/internal/adaptivesource"
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/evalcorpus"
 	"tbound/supervisor/internal/providerbridge"
@@ -34,8 +35,8 @@ func budgetEntry(corpus *productionCorpus, caseID, role string, attempt int, has
 }
 
 func budgetUsage(iterations, wallMS int64) *piServiceAttackerUsage {
-	u := providerbridge.AdaptiveUsage{Iterations: iterations, ToolCalls: iterations, WallMS: wallMS}
-	return &piServiceAttackerUsage{Stop: providerbridge.AdaptiveStopOpen, StateDigest: strings.Repeat("a", 64), Usage: u, Cumulative: u}
+	u := adaptivesource.AdaptiveUsage{Iterations: iterations, ToolCalls: iterations, WallMS: wallMS}
+	return &piServiceAttackerUsage{Stop: adaptivesource.AdaptiveStopOpen, StateDigest: strings.Repeat("a", 64), Usage: u, Cumulative: u}
 }
 
 // driveBinding answers every pivot of the binding's source with a policy denial until it stops and returns
@@ -87,7 +88,7 @@ func TestAdaptiveRetryStartsWithTheBudgetAttemptOneLeft(t *testing.T) {
 		}
 		if receipt.AttackerUsage == nil || receipt.AttackerUsage.Iterations != 1 || receipt.AttackerCumulativeUsage == nil ||
 			receipt.AttackerCumulativeUsage.Iterations != 3 || receipt.AttackerCumulativeUsage.ToolCalls != 3 ||
-			receipt.AttackerCumulativeUsage.WallMS < 1500 || receipt.AttackerStop != providerbridge.AdaptiveStopCap {
+			receipt.AttackerCumulativeUsage.WallMS < 1500 || receipt.AttackerStop != adaptivesource.AdaptiveStopCap {
 			t.Fatalf("%s receipt = %+v", role, receipt)
 		}
 		if p := receipt.AttackerPredecessor; p == nil || p.AdmissionID != first.HostAdmissionID || p.StateDigest != first.AttackerUsage.StateDigest ||
@@ -222,7 +223,7 @@ func TestAttackerUsageIsDurableInTheCatalog(t *testing.T) {
 		"a different second record": catalog.RecordAttackerUsage(adaptive.AdmissionRecordHash, other),
 		"a static admission":        catalog.RecordAttackerUsage(static.AdmissionRecordHash, usage),
 		"an unknown admission":      catalog.RecordAttackerUsage(strings.Repeat("f", 64), usage),
-		"negative usage":            catalog.RecordAttackerUsage(adaptive.AdmissionRecordHash, piServiceAttackerUsage{Cumulative: providerbridge.AdaptiveUsage{WallMS: -1}}),
+		"negative usage":            catalog.RecordAttackerUsage(adaptive.AdmissionRecordHash, piServiceAttackerUsage{Cumulative: adaptivesource.AdaptiveUsage{WallMS: -1}}),
 	} {
 		if !errors.Is(err, ErrPiWorkflowCatalog) {
 			t.Errorf("%s: err = %v", name, err)

@@ -1,4 +1,4 @@
-package providerbridge
+package adaptivesource
 
 import (
 	"encoding/hex"
@@ -11,6 +11,7 @@ import (
 
 	"tbound/supervisor/internal/attacker"
 	"tbound/supervisor/internal/broker/protocol"
+	"tbound/supervisor/internal/providerbridge"
 )
 
 func adaptiveSpec(iterations int64) attacker.Spec {
@@ -44,10 +45,10 @@ func adaptiveSpec(iterations int64) attacker.Spec {
 
 // adaptivePivots has one tool turn per library step; the command names the step so a served turn can be
 // traced to the machine's choice.
-func adaptivePivots(spec attacker.Spec, omit ...string) map[string]ScriptTurn {
-	out := map[string]ScriptTurn{}
+func adaptivePivots(spec attacker.Spec, omit ...string) map[string]providerbridge.ScriptTurn {
+	out := map[string]providerbridge.ScriptTurn{}
 	for _, id := range spec.StepIDs() {
-		out[id] = ScriptTurn{Tool: "bash", Arguments: json.RawMessage(fmt.Sprintf(`{"command":"echo %s"}`, id))}
+		out[id] = providerbridge.ScriptTurn{Tool: "bash", Arguments: json.RawMessage(fmt.Sprintf(`{"command":"echo %s"}`, id))}
 	}
 	for _, id := range omit {
 		delete(out, id)
@@ -55,7 +56,7 @@ func adaptivePivots(spec attacker.Spec, omit ...string) map[string]ScriptTurn {
 	return out
 }
 
-func stepOf(t *testing.T, turn ScriptTurn) string {
+func stepOf(t *testing.T, turn providerbridge.ScriptTurn) string {
 	t.Helper()
 	var args struct {
 		Command string `json:"command"`
@@ -67,7 +68,7 @@ func stepOf(t *testing.T, turn ScriptTurn) string {
 }
 
 // resultMessage is the tool message the next request carries for pivot n: the protocol Result JSON.
-func resultMessage(t *testing.T, n int, verdict, reason string, output string) ScriptMessage {
+func resultMessage(t *testing.T, n int, verdict, reason string, output string) providerbridge.ScriptMessage {
 	t.Helper()
 	result := protocol.Result{SchemaVersion: protocol.ResultSchemaVersion, ToolCallID: adaptiveCallID(n), Tool: "bash",
 		Sequence: uint64(n), Verdict: verdict, ReasonCode: reason, PolicyDigest: "sha256:" + strings.Repeat("0", 64)}
@@ -79,17 +80,17 @@ func resultMessage(t *testing.T, n int, verdict, reason string, output string) S
 	if err != nil {
 		t.Fatal(err)
 	}
-	return ScriptMessage{Role: "tool", ToolCallID: adaptiveCallID(n), Content: string(encoded)}
+	return providerbridge.ScriptMessage{Role: "tool", ToolCallID: adaptiveCallID(n), Content: string(encoded)}
 }
 
 // drive runs a source against a fixed sequence of denial reasons (the Result of pivot n is denial n) and
 // returns the step ids it issued, then asks once more and returns that turn and the terminal.
-func drive(t *testing.T, source *AdaptiveSource, denials []string, output func(n int) string) ([]string, ScriptTurn, AdaptiveTerminal) {
+func drive(t *testing.T, source *AdaptiveSource, denials []string, output func(n int) string) ([]string, providerbridge.ScriptTurn, AdaptiveTerminal) {
 	t.Helper()
-	history := []ScriptMessage{{Role: "system", Content: "s"}, {Role: "user", Content: "u"}}
+	history := []providerbridge.ScriptMessage{{Role: "system", Content: "s"}, {Role: "user", Content: "u"}}
 	var steps []string
 	for n := 0; ; n++ {
-		turn, err := source.Next(append([]ScriptMessage(nil), history...))
+		turn, err := source.Next(append([]providerbridge.ScriptMessage(nil), history...))
 		if err != nil {
 			t.Fatalf("turn %d: %v", n, err)
 		}
@@ -104,7 +105,7 @@ func drive(t *testing.T, source *AdaptiveSource, denials []string, output func(n
 		if output != nil {
 			out = output(n + 1)
 		}
-		history = append(history, ScriptMessage{Role: "assistant", Content: "call"}, resultMessage(t, n+1, "DENY", denials[n], out))
+		history = append(history, providerbridge.ScriptMessage{Role: "assistant", Content: "call"}, resultMessage(t, n+1, "DENY", denials[n], out))
 	}
 }
 
@@ -156,7 +157,7 @@ func TestAdaptiveSourceFollowsTheMachineOnTheProjectedFeedbackOnly(t *testing.T)
 	if _, err := hex.DecodeString(terminal.StateDigest); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := source.Next([]ScriptMessage{{Role: "user", Content: "u"}}); !errors.Is(err, ErrScriptExhausted) {
+	if _, err := source.Next([]providerbridge.ScriptMessage{{Role: "user", Content: "u"}}); !errors.Is(err, providerbridge.ErrScriptExhausted) {
 		t.Fatalf("a turn after the final text must be refused: %v", err)
 	}
 }
@@ -205,7 +206,7 @@ func TestAdaptiveSourceSeesNothingButTheVerdictAndReasonOfTheLastResult(t *testi
 	}
 	// other Result members (policy digest, sequence, arguments digest) do not either
 	source, _ := newTestSource(spec, adaptivePivots(spec))
-	history := []ScriptMessage{{Role: "user", Content: "u"}}
+	history := []providerbridge.ScriptMessage{{Role: "user", Content: "u"}}
 	first, err := source.Next(history)
 	if err != nil {
 		t.Fatal(err)
@@ -224,7 +225,7 @@ func TestAdaptiveSourceSeesNothingButTheVerdictAndReasonOfTheLastResult(t *testi
 func TestAdaptiveSourceStopsAtTheFirstNonDeniedPivot(t *testing.T) {
 	spec := adaptiveSpec(6)
 	source, _ := newTestSource(spec, adaptivePivots(spec))
-	history := []ScriptMessage{{Role: "user", Content: "u"}}
+	history := []providerbridge.ScriptMessage{{Role: "user", Content: "u"}}
 	first, _ := source.Next(history)
 	history = append(history, resultMessage(t, 1, "DENY", "policy_rule_deny", ""))
 	second, err := source.Next(history)
@@ -247,7 +248,7 @@ func TestAdaptiveSourceStopsWhenTheTableOrTheLibraryRunsOut(t *testing.T) {
 	// the first step has no pivot in this case's table
 	missing := adaptivePivots(spec, "ts-1")
 	source, _ := newTestSource(spec, missing)
-	final, err := source.Next([]ScriptMessage{{Role: "user", Content: "u"}})
+	final, err := source.Next([]providerbridge.ScriptMessage{{Role: "user", Content: "u"}})
 	if err != nil || final.Tool != "" {
 		t.Fatalf("final = %+v, %v", final, err)
 	}
@@ -270,7 +271,7 @@ func TestAdaptiveSourceEndsInvalidOnAReasonOutsideTheProjection(t *testing.T) {
 	spec := adaptiveSpec(6)
 	for _, reason := range []string{"made_up_reason", "policy_rule_allow", ""} {
 		source, _ := newTestSource(spec, adaptivePivots(spec))
-		history := []ScriptMessage{{Role: "user", Content: "u"}}
+		history := []providerbridge.ScriptMessage{{Role: "user", Content: "u"}}
 		if _, err := source.Next(history); err != nil {
 			t.Fatal(err)
 		}
@@ -283,9 +284,9 @@ func TestAdaptiveSourceEndsInvalidOnAReasonOutsideTheProjection(t *testing.T) {
 
 func TestAdaptiveSourceFailsClosedOnAnInconsistentHistory(t *testing.T) {
 	spec := adaptiveSpec(6)
-	newStarted := func() (*AdaptiveSource, []ScriptMessage) {
+	newStarted := func() (*AdaptiveSource, []providerbridge.ScriptMessage) {
 		source, _ := newTestSource(spec, adaptivePivots(spec))
-		history := []ScriptMessage{{Role: "user", Content: "u"}}
+		history := []providerbridge.ScriptMessage{{Role: "user", Content: "u"}}
 		if _, err := source.Next(history); err != nil {
 			t.Fatal(err)
 		}
@@ -299,7 +300,7 @@ func TestAdaptiveSourceFailsClosedOnAnInconsistentHistory(t *testing.T) {
 	wrongSchema := good
 	wrongSchema.Content = strings.Replace(good.Content, protocol.ResultSchemaVersion, "tbound-result/v0", 1)
 	oddVerdict := resultMessage(t, 1, "MAYBE", "policy_rule_deny", "")
-	for name, messages := range map[string][]ScriptMessage{
+	for name, messages := range map[string][]providerbridge.ScriptMessage{
 		"two results for one pivot": {good, good},
 		"the wrong call id":         {wrongCall},
 		"not a Result":              {notJSON},
@@ -313,7 +314,7 @@ func TestAdaptiveSourceFailsClosedOnAnInconsistentHistory(t *testing.T) {
 	}
 	// tool results before the first pivot
 	source, _ := newTestSource(spec, adaptivePivots(spec))
-	if _, err := source.Next([]ScriptMessage{good}); err == nil {
+	if _, err := source.Next([]providerbridge.ScriptMessage{good}); err == nil {
 		t.Error("a result before the first pivot was accepted")
 	}
 	// the identical request again (a provider retry) repeats the turn and moves nothing
@@ -330,7 +331,7 @@ func TestNewAdaptiveSourceRefusesWhatIsNotATable(t *testing.T) {
 	if _, err := newTestSource(spec, nil); err == nil {
 		t.Error("an empty pivot table was accepted")
 	}
-	if _, err := newTestSource(spec, map[string]ScriptTurn{"ts-1": {Text: "hello"}}); err == nil {
+	if _, err := newTestSource(spec, map[string]providerbridge.ScriptTurn{"ts-1": {Text: "hello"}}); err == nil {
 		t.Error("a text pivot was accepted")
 	}
 	broken := spec
@@ -341,8 +342,8 @@ func TestNewAdaptiveSourceRefusesWhatIsNotATable(t *testing.T) {
 	// the source owns a copy of the table
 	pivots := adaptivePivots(spec)
 	source, _ := newTestSource(spec, pivots)
-	pivots["ts-1"] = ScriptTurn{Tool: "bash", Arguments: json.RawMessage(`{"command":"echo changed"}`)}
-	turn, err := source.Next([]ScriptMessage{{Role: "user", Content: "u"}})
+	pivots["ts-1"] = providerbridge.ScriptTurn{Tool: "bash", Arguments: json.RawMessage(`{"command":"echo changed"}`)}
+	turn, err := source.Next([]providerbridge.ScriptMessage{{Role: "user", Content: "u"}})
 	if err != nil || stepOf(t, turn) != "ts-1" {
 		t.Fatalf("turn = %+v, %v", turn, err)
 	}
