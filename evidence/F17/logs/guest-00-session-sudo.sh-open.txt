@@ -1,0 +1,19 @@
+== 00-session-sudo start 2026-11-06T13:37:50Z guest=172.26.25.5
+OK   ssh identity = tboundadmin
+guest: tbound-abi8-seed 7.0.0-38-generic 2026-11-06T13:37:51Z 
+operator: Admin mode=open
+
+== password sudo works (one throwaway command; the password is not printed)
+OK   password sudo works
+/etc/sudoers.d/.91-tbound-f17-session.new: parsed OK
+
+== verify
+OK   sudo -n true works (session open)
+root:root 440 /etc/sudoers.d/91-tbound-f17-session
+/etc/sudoers: parsed OK
+/etc/sudoers.d/50-tbound-op: parsed OK
+/etc/sudoers.d/91-tbound-f17-session: parsed OK
+/etc/sudoers.d/README: parsed OK
+NOTE SESSION OPEN: close it when the privileged steps are done: bash 00-session-sudo.sh close
+
+== DONE 00-session-sudo.sh 2026-11-06T13:37:55Z
