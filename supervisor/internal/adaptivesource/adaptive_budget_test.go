@@ -157,3 +157,8 @@ func TestAdaptiveStateDigestDoesNotDependOnTheClock(t *testing.T) {
 		t.Fatalf("the clock changed the run: %s %v vs %s %v", fast, fastSteps, slow, slowSteps)
 	}
 }
+
+// WithClock replaces the wall clock that measures the run (tests only).
+func WithClock(now func() time.Time) AdaptiveOption {
+	return func(s *AdaptiveSource) { s.now = now }
+}

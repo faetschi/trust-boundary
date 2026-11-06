@@ -60,11 +60,6 @@ func WithPriorUsage(prior AdaptiveUsage) AdaptiveOption {
 	return func(s *AdaptiveSource) { s.prior = prior }
 }
 
-// WithClock replaces the wall clock that measures the run (tests only).
-func WithClock(now func() time.Time) AdaptiveOption {
-	return func(s *AdaptiveSource) { s.now = now }
-}
-
 // AdaptiveTerminal is what an adaptive replay reports at its end.
 type AdaptiveTerminal struct {
 	Stop         string

@@ -25,16 +25,6 @@ type DoctorReport struct {
 	SelfTestDetail string
 }
 
-// Failed reports whether any check failed or a requested self-test did not pass.
-func (r DoctorReport) Failed() bool {
-	for _, c := range r.Checks {
-		if c.Status == Fail {
-			return true
-		}
-	}
-	return r.SelfTestRequested && r.SelfTestErr != nil
-}
-
 // String renders the report.
 func (r DoctorReport) String() string {
 	var b strings.Builder
