@@ -99,6 +99,7 @@ func validateReceipt(r productsession.TurnReceipt) error {
 }
 
 // validBareDigest reports a lowercase 64-digit hex SHA-256 without a prefix.
+// Same format as validBareWorkflowDigest in cmd/tbound/governed_recovery_linux.go (package main, not importable).
 func validBareDigest(value string) bool {
 	if len(value) != sha256.Size*2 || strings.ToLower(value) != value {
 		return false
@@ -108,6 +109,7 @@ func validBareDigest(value string) bool {
 }
 
 // validDigest reports "sha256:" followed by a lowercase 64-digit hex SHA-256.
+// Same format as validDigestText in cmd/tbound/production_command_runner_linux.go (package main, not importable).
 func validDigest(value string) bool {
 	const prefix = "sha256:"
 	if len(value) != len(prefix)+sha256.Size*2 || !strings.HasPrefix(value, prefix) {
