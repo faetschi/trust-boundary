@@ -3,6 +3,7 @@
 package productdriver
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -54,10 +55,61 @@ func TestRefusalMatchesItsCodeAndCause(t *testing.T) {
 
 func TestUnestablishedKeepsReasonAndCause(t *testing.T) {
 	cause := errors.New("journal")
-	var evidence *EvidenceError
+	var evidence *evidenceError
 	if !errors.As(Unestablished("the provider journal could not be read", cause), &evidence) ||
 		evidence.Reason != "the provider journal could not be read" || evidence.Cause != cause ||
 		!errors.Is(evidence, cause) {
 		t.Fatalf("evidence error: %+v", evidence)
+	}
+}
+
+// cancelCatalog records a cancel request and an unlinked-turn refusal for an admitted turn.
+type cancelCatalog struct {
+	turnCatalog
+	refused bool
+}
+
+func (c *cancelCatalog) CancelTurn(productsession.Principal, productsession.CancelTurnRequest) (productsession.Turn, bool, error) {
+	return productsession.Turn{}, false, nil
+}
+
+func (c *cancelCatalog) Turn(id string) (productsession.Turn, bool) {
+	return productsession.Turn{ID: id, State: productsession.StateAdmitted}, true
+}
+
+func (c *cancelCatalog) RefuseUnlinkedTurn(string, productsession.Code) error {
+	c.refused = true
+	return nil
+}
+
+type cancelHost struct {
+	Host
+	crash func(point string)
+}
+
+func (h cancelHost) Crash(point string)                  { h.crash(point) }
+func (h cancelHost) SettleRetainedCommands(string) error { return nil }
+
+// The durable cancel record is written under the driver mutex, which arbitrates resolution and
+// publication start; the mutex is still held when the record is visible to the crash hook.
+func TestCancelRecordsUnderTheDriverMutex(t *testing.T) {
+	catalog := &cancelCatalog{}
+	var d *Driver
+	checked := false
+	d = New(Config{Catalog: catalog, Host: cancelHost{crash: func(point string) {
+		if point != "after-cancel-recorded" {
+			return
+		}
+		checked = true
+		if d.mu.TryLock() {
+			d.mu.Unlock()
+			t.Error("cancellation recorded outside the driver mutex")
+		}
+	}}})
+	if _, err := d.CancelTurn(context.Background(), 1, productsession.CancelTurnRequest{TurnID: "t"}); err != nil {
+		t.Fatal(err)
+	}
+	if !checked || !catalog.refused {
+		t.Fatalf("hook ran=%v refused=%v", checked, catalog.refused)
 	}
 }

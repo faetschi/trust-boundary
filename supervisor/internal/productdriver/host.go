@@ -46,7 +46,7 @@ type Host interface {
 	SettleRetainedCommands(turnID string) error
 	CloseRetainedCommands() error
 	// ReconcileLinkedTurn reads the retained evidence of a linked turn whose process died and proves
-	// it resolved; a failure is an *EvidenceError.
+	// it resolved; a failure comes from Unestablished.
 	ReconcileLinkedTurn(ctx context.Context, turn productsession.Turn) (Evidence, error)
 	WorkflowPublication(projectID, workflowID string) (records bool, succeeded string, err error)
 	// Crash is the named test hook called at driver boundaries.
@@ -107,22 +107,22 @@ type Evidence struct {
 	Started                                 time.Time
 }
 
-// EvidenceError is evidence the host could not establish: the driver records the turn unknown with
+// evidenceError is evidence the host could not establish: the driver records the turn unknown with
 // Reason.
-type EvidenceError struct {
+type evidenceError struct {
 	Reason string
 	Cause  error
 }
 
-func (e *EvidenceError) Error() string {
+func (e *evidenceError) Error() string {
 	return fmt.Sprintf("%s: %v", e.Reason, e.Cause)
 }
 
-func (e *EvidenceError) Unwrap() error { return e.Cause }
+func (e *evidenceError) Unwrap() error { return e.Cause }
 
-// Unestablished is an *EvidenceError for the host to return.
+// Unestablished is the error a host returns for evidence it cannot establish.
 func Unestablished(reason string, cause error) error {
-	return &EvidenceError{Reason: reason, Cause: cause}
+	return &evidenceError{Reason: reason, Cause: cause}
 }
 
 // Refusal is a launch the driver refused before linking the turn: the catalog recorded the turn as

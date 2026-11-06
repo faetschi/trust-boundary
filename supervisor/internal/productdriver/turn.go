@@ -224,7 +224,7 @@ func (s *settlement) unknown(reason string, cause error) (productsession.TurnRec
 
 // unknownEvidence records a turn whose host could not establish its evidence.
 func (s *settlement) unknownEvidence(err error) (productsession.TurnReceipt, error) {
-	var evidence *EvidenceError
+	var evidence *evidenceError
 	if errors.As(err, &evidence) {
 		return s.unknown(evidence.Reason, evidence.Cause)
 	}

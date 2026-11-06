@@ -49,7 +49,7 @@ func (d *Driver) reconcileLinkedTurn(ctx context.Context, turn productsession.Tu
 	}
 	ev, err := d.host.ReconcileLinkedTurn(ctx, turn)
 	if err != nil {
-		var evidence *EvidenceError
+		var evidence *evidenceError
 		if errors.As(err, &evidence) {
 			return unknown(evidence.Reason, evidence.Cause)
 		}

@@ -119,17 +119,6 @@ func TestProductTurnArbitrationRecordedCancelPreventsPublishResolution(t *testin
 	case <-time.After(10 * time.Second):
 		t.Fatal("cancellation did not reach its durable record")
 	}
-	// The durable record must still own the mutex that arbitrates resolution and publication start.
-	probe := make(chan struct{})
-	go func() {
-		_ = f.env.driver().ExpireReviews(time.Now())
-		close(probe)
-	}()
-	select {
-	case <-probe:
-		t.Error("cancellation recorded outside the driver mutex")
-	case <-time.After(200 * time.Millisecond):
-	}
 	request := productsession.ResolveTurnRequest{SessionID: f.session.ID, TurnID: pending.ID,
 		ExpectedRevision: f.currentSession(t).Revision, RequestKey: "publish", CandidateDigest: pending.CandidateDigest,
 		Decision: productsession.DecisionPublish}
