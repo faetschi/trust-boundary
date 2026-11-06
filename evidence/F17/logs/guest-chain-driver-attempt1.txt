@@ -1,0 +1,9 @@
+##### 27-archive-state.sh archive 14:30:16
+OK   F16 dr state config = sha256:a875039de4e4dba857ce05f2013c0f074fbfa671a8c0ada80ee86795a52d8414
+OK   state-g1 cfg == sha256 of the F16 g1 service config = sha256:bd6b10715da488e30184e752d39e1b59a323320881e3afcdc1f2ea60af0c33e3
+OK   rp-req-20261106T091832Z is terminal completed (the F16 route probe passed; not claim-bearing)
+OK   dr-req-20261106T092030Z is terminal UNKNOWN BY DESIGN (journal verdict abandoned; response status unknown / task-outcome-unknown; launch proof journaled, Pi not started; CHECKS_OK): nothing can still run
+OK   no request without a terminal record
+FATAL: the live root holds no src/release.txt: the F16 seed-live g1 fixture is not intact (the F16 G1 completed), so this is not the F16 state this script was written for. Stop and read the listing above (nothing has moved)
+STOP rc=1 at 27-archive-state.sh archive
+guest-chain rc=1
