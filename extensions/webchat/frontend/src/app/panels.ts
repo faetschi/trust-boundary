@@ -46,17 +46,12 @@ export function countValue(value: unknown): number | null {
   return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : null;
 }
 
-export function countReading(value: unknown, reason: string): Reading {
-  const count = countValue(value);
-  return count === null ? { kind: "unavailable", reason } : { kind: "value", text: String(count) };
-}
-
-export function textReading(value: unknown, reason: string): Reading {
+function textReading(value: unknown, reason: string): Reading {
   if (typeof value === "string" && value !== "") return { kind: "value", text: value };
   return { kind: "unavailable", reason };
 }
 
-export function flagReading(value: unknown, reason: string): Reading {
+function flagReading(value: unknown, reason: string): Reading {
   if (typeof value === "boolean") return { kind: "value", text: value ? "true" : "false" };
   return { kind: "unavailable", reason };
 }

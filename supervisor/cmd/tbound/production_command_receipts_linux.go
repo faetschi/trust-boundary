@@ -450,11 +450,6 @@ func decodeProductionD09CommandIntent(raw []byte) (sessionrepo.OperationRequest,
 	return intent.Request, intent.Command, intent.RunnerProfile, nil
 }
 
-func validateProductionD09OperationBundle(bundle sessionrepo.EvidenceBundle, transition delta.Transition,
-	operation sessionrepo.OperationEvidence, receipt piruntime.D09CommandReceipt) error {
-	return validateProductionD09Operation(bundle, transition, operation, receipt, false)
-}
-
 // validateProductionD09Operation accepts exactly two shapes of a settled D09 command. Undenied: a
 // success operation under an allow admission with its promoted transition in the approved ledger.
 // Denied: a denied_after_effect operation under a deny admission whose retained record holds the given

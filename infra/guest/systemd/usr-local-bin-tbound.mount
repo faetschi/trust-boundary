@@ -3,7 +3,7 @@
 # copy of the HEAD-built /usr/local/bin/tbound) onto /usr/local/bin/tbound with
 # ro,nosuid,nodev, so that hashProtectedFile and verifyPinnedToolBinary
 # (supervisor/internal/piruntime: hashProtectedFile in d09_template_linux.go and
-# verifyPinnedToolBinary in containment_linux.go, reached from
+# verifyPinnedToolBinary in containment_launch_linux.go, reached from
 # MeasureD09ManagedLiveRootRegistrationWithOptions at managed-root-measure and from
 # verifyD09ManagedWriterProcess at launch, both in managed_live_root_linux.go) see
 # the runner on a read-only mount.

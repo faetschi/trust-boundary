@@ -583,6 +583,35 @@ func (a *SessionOperationAuthority) buildActiveProgressPins(ctx context.Context,
 	return next, nil
 }
 
+func activeUnexecutedCaptureDigest(journal *audit.Journal, toolCallID string) (string, error) {
+	trace, err := journal.Trace()
+	if err != nil {
+		return "", err
+	}
+	var refusal *audit.Record
+	for _, record := range trace.Records {
+		if record.Event.Kind != providerbridge.SoftRefusalEvent {
+			continue
+		}
+		var e providerbridge.SoftRefusalEvidence
+		if decodeCanonicalGoverned(record.Event.Data, &e) != nil {
+			return "", workflowrecovery.ErrObservation
+		}
+		if e.ToolCallID != toolCallID {
+			continue
+		}
+		if refusal != nil {
+			return "", workflowrecovery.ErrObservation
+		}
+		copy := record
+		refusal = &copy
+	}
+	if refusal != nil {
+		return providerbridge.SoftRefusalRetirementDigest(*refusal)
+	}
+	return activeDeniedCaptureDigest(journal, toolCallID)
+}
+
 // activeUnexecutedCaptureDigest digests the journaled evidence that retires an available captured call without an
 // effect: a gate DENY with its DENY result, or an ALLOW with the fixed no_effect_refused result.
 func activeDeniedCaptureDigest(providerJournal *audit.Journal, toolCallID string) (string, error) {

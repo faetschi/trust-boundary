@@ -2,8 +2,8 @@ import type { ButtonHTMLAttributes } from "react";
 import { cx } from "./cx";
 import styles from "./Button.module.css";
 
-export type ButtonVariant = "default" | "outline" | "ghost";
-export type ButtonSize = "default" | "sm" | "icon";
+type ButtonVariant = "default" | "outline" | "ghost";
+type ButtonSize = "default" | "sm" | "icon";
 
 type ButtonProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, "type"> & {
   readonly variant?: ButtonVariant;

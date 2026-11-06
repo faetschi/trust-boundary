@@ -599,6 +599,8 @@ func (state *reconstruction) reconstructMutation(effect audit.EffectTrace, reque
 		if argumentsErr != nil || contextErr != nil || wantArguments != request.ArgumentDigest || wantContext != request.ExecutionContextDigest ||
 			!sameCommandSpec(result.Spec, scope.Command) || result.RunnerProfile != scope.RunnerProfile ||
 			result.Settlement.LeaseID != request.Operation.LeaseID || result.Settlement.ViewID != request.ViewID ||
+			// Deliberate (audit #12): the three booleans, not SurvivorsTolerated, so a no-reap/v1 effect is
+			// unreconstructable. Replay cannot verify cgroup proof and must not trust the serialized flag.
 			!result.Settlement.ProcessScopeEmpty || !result.Settlement.WritersStopped || !result.Settlement.MountDetached ||
 			!result.Settlement.ExitObserved || result.Settlement.ExitCode != command.ExitCode ||
 			strings.TrimSpace(result.Settlement.EvidenceClass) == "" {

@@ -22,6 +22,7 @@ import (
 	"golang.org/x/sys/unix"
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/gate"
+	"tbound/supervisor/internal/productdriver"
 	"tbound/supervisor/internal/productsession"
 	"tbound/supervisor/internal/productsetup"
 	"tbound/supervisor/internal/sessionrepo"
@@ -429,7 +430,7 @@ func (e *productTurnEnv) operatorEvidence(ctx context.Context, turn productsessi
 		return evidence, err
 	}
 	if !applied && measured != turn.BaselineDigest {
-		return evidence, errProductStaleBaseline
+		return evidence, productdriver.ErrStaleBaseline
 	}
 	head := func(j *audit.Journal) (string, error) {
 		trace, err := j.Trace()
@@ -450,7 +451,7 @@ func (e *productTurnEnv) operatorEvidence(ctx context.Context, turn productsessi
 				return fmt.Errorf("baseline rescan: %w", err)
 			}
 			if second != measured || !applied && second != turn.BaselineDigest {
-				return fmt.Errorf("%w: project changed before the resolution record was appended", errProductStaleBaseline)
+				return fmt.Errorf("%w: project changed before the resolution record was appended", productdriver.ErrStaleBaseline)
 			}
 			return nil
 		},

@@ -273,7 +273,7 @@ const ITEM_KEYS: Readonly<Record<ItemType, readonly string[]>> = {
   result: [...ITEM_COMMON, "tool", "tool_call_id", "state", "summary", "detail", "digest", "lossy"],
 };
 
-export interface ItemContext {
+interface ItemContext {
   // The source and scope of the projection the item is judged in: its snapshot, or for a
   // streamed item the snapshot its stream is bound to. The rule is verification.ts.
   readonly source: SourceClass;
@@ -284,7 +284,7 @@ export interface ItemContext {
 }
 
 // Checks one item and narrows it to the contract type. Each check mirrors validateItem.
-export function assertItem(path: string, value: unknown, context: ItemContext): asserts value is Item {
+function assertItem(path: string, value: unknown, context: ItemContext): asserts value is Item {
   const record = asRecord(path, value);
   const type = oneOf(`${path}.type`, ITEM_TYPES, record.type);
   closedKeys(path, record, ITEM_KEYS[type]);
@@ -612,11 +612,11 @@ function cursorParts(cursor: string): { epoch: string; sequence: number } | null
   return Number.isSafeInteger(sequence) ? { epoch, sequence } : null;
 }
 
-export type SnapshotForm = "served" | "document";
+type SnapshotForm = "served" | "document";
 
 // Checks a snapshot and narrows it. The item and stream rules run here, not in the
 // caller, so a single entry point covers the whole object.
-export function assertSnapshot(
+function assertSnapshot(
   path: string,
   value: unknown,
   form: SnapshotForm,

@@ -421,7 +421,7 @@ func (t D09CellTemplate) Digest() (string, error)
 func VerifyD09XattrVisibility(source *os.File, signedProfile HostProfile, template D09CellTemplate) (workspace.XattrVisibilityAttestation, error)
 
 // Per-launch TCB proof (bound to the exact command identity, never global):
-func (w *PiSDKWorker) D09LaunchProof() (D09TCBProof, bool)
+func (w *PiCLIWorker) D09LaunchProof() (D09TCBProof, bool)
 func (l *D09PodmanCrunLauncher) TakeLaunchProof(cmd *exec.Cmd) (any, bool)
 func (p *Process) LaunchProof() any
 ```
@@ -432,10 +432,10 @@ calls the package-private D09 admission gate while constructing the trusted
 verifier. A D09 command runner cannot be constructed before that admission.
 
 **Legacy SDK-worker proof wiring (reference only; unqualified and inadmissible for
-production):** `LaunchPiSDKWorker` -> `StartChild` -> `StartVerified` no longer drops
+production):** `LaunchPiCLIWorker` -> `StartChild` -> `StartVerified` no longer drops
 the proof. The launcher registers the validated proof against the exact `*exec.Cmd`;
-`StartChild` attaches it to the `*Process`; `LaunchPiSDKWorker` attaches it to the
-`*PiSDKWorker`. C calls `worker.D09LaunchProof()` and MUST journal the returned
+`StartChild` attaches it to the `*Process`; `LaunchPiCLIWorker` attaches it to the
+`*PiCLIWorker`. C calls `worker.D09LaunchProof()` and MUST journal the returned
 `D09TCBProof` before releasing any prompt/effect; a `false` return means no proof
 (development, or a failed launch) and no release is permitted.
 
@@ -444,7 +444,7 @@ load + verify the signed profile; load the registered
 template and require `profile.ContainmentProfileDigest == template digest`;
 construct the held `LinuxCgroupScope` and `BindCgroupScope`; build the
 `HostRuntimeBindings`/channels via `BindProductionPiWorkerBindings`; admit through
-the trusted verifier; then `LaunchPiSDKWorker`. On close, call
+the trusted verifier; then `LaunchPiCLIWorker`. On close, call
 `SettleCell(ctx, leaderPID)` for the pidfd + `cgroup.kill` + `populated=0`
 evidence. After successful session worker removal, call `scope.Remove(ctx)` to
 settle and descriptor-relatively remove only the verified direct-child session
@@ -528,7 +528,7 @@ reconciliation.
 
 **TCB proof journaling:** `StartVerifiedWithProof` returns a `D09TCBProof` bound to
 the exact container name, leader pid, image ref/digest, template digest, and
-consumer-mount proof. The legacy SDK-worker `LaunchPiSDKWorker` -> `StartChild` ->
+consumer-mount proof. The legacy SDK-worker `LaunchPiCLIWorker` -> `StartChild` ->
 `StartVerified` path attaches it to that worker; C reads it with
 `worker.D09LaunchProof()`. C **must append it as a durable TCB record before
 releasing any worker prompt or effect**; a missing proof or failed journal must
@@ -541,8 +541,9 @@ The static root registration is policy input, not a `Complete` assertion or
 quiescence capability. Runtime A exposes:
 
 ```go
-func MeasureD09ManagedLiveRootRegistration(rootPath, serviceName, serviceGroup,
-    serviceUnitPath, mountUnitPath, runnerPath, serviceCgroupPath string) (D09ManagedLiveRootRegistration, error)
+func MeasureD09ManagedLiveRootRegistrationWithOptions(rootPath, serviceName, serviceGroup,
+    serviceUnitPath, mountUnitPath, runnerPath, serviceCgroupPath string,
+    options D09ManagedLiveRootMeasurementOptions) (D09ManagedLiveRootRegistration, error)
 func SignD09ManagedLiveRootRegistration(reg D09ManagedLiveRootRegistration,
     privateKey ed25519.PrivateKey) (registrationJSON, signature []byte, digest string, err error)
 func VerifyD09ManagedLiveRootRegistration(registrationJSON, signature []byte,

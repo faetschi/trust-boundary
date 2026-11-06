@@ -1010,10 +1010,6 @@ func validateD09CommandSpec(spec sessionrepo.CommandSpec, config D09Config) erro
 	return nil
 }
 
-func d09CommandCellArguments(config D09Config, name, cidPath, imageRef, viewPath, viewID, leaseID string, viewDevice, viewInode uint64, spec sessionrepo.CommandSpec) []string {
-	return d09CommandCellArgumentsDelta(d09BasePlan(config), config, name, cidPath, imageRef, viewPath, viewID, leaseID, viewDevice, viewInode, spec)
-}
-
 // d09CommandCellArgumentsDelta builds the Podman command vector of one command cell under the plan
 // of its delta. The unrelaxed plan yields the signed base cell. net-sink/v1 changes the network
 // mode and the Landlock ruleset digest, and passes the delta and its derived template identity;
@@ -1151,10 +1147,6 @@ func readBoundedProofLine(reader *bufio.Reader) (string, error) {
 		return "", errors.New("TCB proof exceeds byte bound")
 	}
 	return string(line), nil
-}
-
-func validateD09CommandProof(proof d09CommandProof, config D09Config, imageRef, leaseID, viewID, containerName string, viewDevice, viewInode uint64, spec sessionrepo.CommandSpec) error {
-	return validateD09CommandProofDelta(d09BasePlan(config), proof, config, imageRef, leaseID, viewID, containerName, viewDevice, viewInode, spec)
 }
 
 // validateD09CommandProofDelta validates the command proof of a cell launched under the plan of its

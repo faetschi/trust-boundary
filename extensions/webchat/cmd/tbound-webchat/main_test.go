@@ -12,11 +12,13 @@ func TestStartupBannerPrintsTheReactUrlFirst(t *testing.T) {
 	if len(lines) < 2 || lines[0] != "UI: http://127.0.0.1:8791/ (React app at /app/)" {
 		t.Fatalf("banner = %q, want the React URL on the first line", lines)
 	}
-	if !strings.Contains(lines[1], "http://127.0.0.1:8791/legacy/") || !strings.Contains(lines[1], "deprecated") {
-		t.Errorf("second banner line %q should name the deprecated /legacy/ URL", lines[1])
+	for _, line := range lines {
+		if strings.Contains(line, "legacy") {
+			t.Errorf("banner line %q names the retired legacy UI", line)
+		}
 	}
 	fallback := startupBanner("127.0.0.1:8791", errors.New("app manifest is missing"))
-	if !strings.HasPrefix(fallback[0], "UI: http://127.0.0.1:8791/ (fallback") {
+	if !strings.HasPrefix(fallback[0], "UI: http://127.0.0.1:8791/ (the React app is unavailable") {
 		t.Errorf("fallback banner first line = %q", fallback[0])
 	}
 }

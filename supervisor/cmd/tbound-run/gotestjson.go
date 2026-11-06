@@ -58,9 +58,6 @@ type testEvent struct {
 	Test    string `json:"Test"`
 }
 
-// add reads one `go test -json` document.
-func (o *testOutcomes) add(data []byte) error { return o.addReader(bytes.NewReader(data)) }
-
 // addReader reads one `go test -json` stream. A line that is not a JSON object with an Action and a
 // Package is refused, and so is a stream without any event: nothing is guessed from text.
 func (o *testOutcomes) addReader(r io.Reader) error {

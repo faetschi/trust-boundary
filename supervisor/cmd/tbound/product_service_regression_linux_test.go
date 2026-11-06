@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"tbound/supervisor/internal/audit"
+	"tbound/supervisor/internal/productdriver"
 	"tbound/supervisor/internal/productprotocol"
 	"tbound/supervisor/internal/productsession"
 	"tbound/supervisor/internal/providerbridge"
@@ -35,7 +36,7 @@ func TestProductServiceRegressionObservationAndPredecessorDoNotCompete(t *testin
 	done := make(chan error, 2)
 	launch := make(chan error, 1)
 	go func() {
-		_, err := f.env.RunTurn(context.Background(), admission)
+		_, err := f.env.driver().RunTurn(context.Background(), admission)
 		launch <- err
 	}()
 	for range 2 {
@@ -236,7 +237,19 @@ func TestProductServiceRegressionReviewMutationCursor(t *testing.T) {
 		}
 	}
 	turn, _ = f.env.Catalog.Turn(turn.ID)
-	if _, err := f.env.completeReviewed(turn, productsession.OutcomeDiscarded, productsession.ReasonCancelled, ""); err != nil {
+	// What the driver writes when a discarded review ends: the awaiting-review receipt with the outcome changed.
+	receipt, err := productdriver.DecodeReceipt(turn.Receipt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipt.Outcome, receipt.ResultBaselineDigest = productsession.OutcomeDiscarded, turn.BaselineDigest
+	encoded, err := productdriver.EncodeReceipt(receipt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.env.Catalog.CompleteTurn(turn.ID, productsession.TurnTerminal{Outcome: productsession.OutcomeDiscarded, Settlement: receipt.Settlement,
+		Receipt: encoded, Usage: turn.Usage, ResultBaselineDigest: receipt.ResultBaselineDigest, ContextEligible: true,
+		Reason: productsession.ReasonCancelled}); err != nil {
 		t.Fatal(err)
 	}
 	final := read()

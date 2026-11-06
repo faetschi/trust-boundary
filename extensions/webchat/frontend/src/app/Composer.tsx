@@ -9,14 +9,14 @@ import { useAnnouncer } from "../ui/LiveRegion";
 import { piVersionWord } from "./views/chat/identity";
 import styles from "./Composer.module.css";
 
-export const COMPOSER_LABEL = "Message Pi: not available in this build";
-export const PLACEHOLDER = "Submitting turns is not available in this build.";
-export const COMPOSER_REASON =
+const COMPOSER_LABEL = "Message Pi: not available in this build";
+const PLACEHOLDER = "Submitting turns is not available in this build.";
+const COMPOSER_REASON =
   "Read-only view of a Pi session. This page cannot submit turns, cancel, or approve. Turn submission is a later milestone.";
-export const NOT_AVAILABLE_STATUS = "Not available: this page cannot submit turns.";
-export const SEND_LABEL = "Send: not available in this build";
-export const OBSERVED_CHIP = "Observed only · no approvals";
-export const OBSERVED_TITLE = "This page observes the Pi session. It cannot approve, submit or cancel.";
+const NOT_AVAILABLE_STATUS = "Not available: this page cannot submit turns.";
+const SEND_LABEL = "Send: not available in this build";
+const OBSERVED_CHIP = "Observed only · no approvals";
+const OBSERVED_TITLE = "This page observes the Pi session. It cannot approve, submit or cancel.";
 
 export function Composer({ session }: { readonly session: SessionHeader | null }) {
   // The explanation is spoken by the shell's one polite announcer (LiveRegion), so the app keeps a single live path. The

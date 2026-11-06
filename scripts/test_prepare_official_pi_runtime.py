@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import stat
 import sys
 import tempfile
@@ -276,6 +277,38 @@ class StagingControlTests(unittest.TestCase):
             }
             with self.assertRaisesRegex(runtime.PreparationError, "source file changed while it was copied"):
                 runtime.copy_regular_file(source, destination, expected)
+
+class ExtensionFileListTests(unittest.TestCase):
+    def test_all_four_runtime_file_lists_agree(self) -> None:
+        repo = Path(__file__).resolve().parent.parent
+
+        def active(path: str, comment: str) -> str:
+            text = (repo / path).read_text(encoding="utf-8")
+            if comment == "//":
+                text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
+            return re.sub(re.escape(comment) + r".*", "", text)
+
+        def entries(text: str, pattern: str, prefix: str = "") -> list[str]:
+            body = re.search(pattern, text, re.S)
+            self.assertIsNotNone(body, pattern)
+            found = re.findall(r"[\"']([^\"']+)[\"']", body.group(1))
+            self.assertTrue(all(name.startswith(prefix) for name in found), found)
+            return sorted(name[len(prefix):] for name in found)
+
+        build = active("scripts/build-release.sh", "#")
+        sh = re.search(r"for runtime_source in ([^;]*);", build)
+        self.assertIsNotNone(sh)
+        expected = sorted(runtime.EXTENSION_FILES)
+        self.assertEqual(len(expected), 5)
+        self.assertEqual(sorted(sh.group(1).split()), expected, "build-release.sh")
+        self.assertEqual(
+            entries(active("supervisor/internal/piruntime/development_linux.go", "//"),
+                    r"DeveloperPiCLIAdapterSourceFiles = \[\]string\{([^}]*)\}", "src/"),
+            expected, "development_linux.go")
+        self.assertEqual(
+            entries(active("adapter/src/tbound-cli-extension.test.ts", "//"),
+                    r"for \(const name of \[([^\]]*)\]"),
+            expected, "tbound-cli-extension.test.ts")
 
 
 if __name__ == "__main__":

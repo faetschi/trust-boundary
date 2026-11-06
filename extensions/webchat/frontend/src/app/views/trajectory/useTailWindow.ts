@@ -5,7 +5,7 @@ import type { WorkspaceActions } from "../../workspaceStore";
 import { metricsOf, onTailScroll, scrollTailTo, tailScroller } from "../tailScroller";
 
 // A burst of arrivals is announced once it has settled, as the legacy client did.
-export const TAIL_SETTLE_MS = 400;
+const TAIL_SETTLE_MS = 400;
 
 export interface TailInput {
   // The store's pin: a reader at the tail moves it to the applied count, and a reader away keeps it.

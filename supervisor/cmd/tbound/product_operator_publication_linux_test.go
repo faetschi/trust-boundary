@@ -39,7 +39,7 @@ func awaitReviewThenUnknown(t *testing.T, bash bool) (*productDriverFixture, pro
 	if err != nil || turn.State != productsession.StateAwaitingReview {
 		t.Fatalf("review turn: %+v %v", turn, err)
 	}
-	if err := f.env.Close(); err != nil {
+	if err := f.env.driver().Close(); err != nil {
 		t.Fatal(err)
 	}
 	if err := f.env.Catalog.MarkTurnUnknown(turn.ID, "the review disposition is not established after restart"); err != nil {

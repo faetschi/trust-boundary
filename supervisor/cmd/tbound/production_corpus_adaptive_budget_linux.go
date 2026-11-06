@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"strings"
 
+	"tbound/supervisor/internal/adaptivesource"
 	"tbound/supervisor/internal/evalcorpus"
-	"tbound/supervisor/internal/providerbridge"
 )
 
 // The adaptive budget is cumulative across the attempts of one case and role (D32 item 6: the caps hold
@@ -33,8 +33,8 @@ import (
 type piServiceAttackerUsage struct {
 	Stop        string                       `json:"stop"`
 	StateDigest string                       `json:"state_digest"`
-	Usage       providerbridge.AdaptiveUsage `json:"usage"`
-	Cumulative  providerbridge.AdaptiveUsage `json:"cumulative"`
+	Usage       adaptivesource.AdaptiveUsage `json:"usage"`
+	Cumulative  adaptivesource.AdaptiveUsage `json:"cumulative"`
 	// Predecessor is the admission id of the attempt this one continued the budget of, empty for attempt 1.
 	Predecessor string `json:"predecessor,omitempty"`
 }
@@ -44,10 +44,10 @@ type piServiceAttackerUsage struct {
 type productionAttackerPredecessor struct {
 	AdmissionID     string                       `json:"admission_id"`
 	StateDigest     string                       `json:"state_digest"`
-	CumulativeUsage providerbridge.AdaptiveUsage `json:"cumulative_usage"`
+	CumulativeUsage adaptivesource.AdaptiveUsage `json:"cumulative_usage"`
 }
 
-func validAdaptiveUsage(u providerbridge.AdaptiveUsage) bool {
+func validAdaptiveUsage(u adaptivesource.AdaptiveUsage) bool {
 	return u.Iterations >= 0 && u.ToolCalls >= 0 && u.WallMS >= 0
 }
 
@@ -122,7 +122,7 @@ func (c *piServiceWorkflowCatalog) attemptDurationSeconds(trial evalcorpus.Trial
 	if c == nil || c.corpus == nil || c.corpus.attacker == nil {
 		return 0, false
 	}
-	var prior providerbridge.AdaptiveUsage
+	var prior adaptivesource.AdaptiveUsage
 	if request.Attempt > 1 {
 		predecessor, err := c.attackerPredecessor(request.TaskID, request.Role, request.Attempt)
 		if err != nil {
@@ -140,7 +140,7 @@ func (c *piServiceWorkflowCatalog) attemptDurationSeconds(trial evalcorpus.Trial
 
 // applyAttackerUsage fills the receipt's usage members from the source's terminal and the binding's
 // predecessor.
-func applyAttackerUsage(receipt *productionPiReceipt, binding *corpusBinding, terminal providerbridge.AdaptiveTerminal) {
+func applyAttackerUsage(receipt *productionPiReceipt, binding *corpusBinding, terminal adaptivesource.AdaptiveTerminal) {
 	usage, cumulative := terminal.Usage, terminal.Cumulative
 	receipt.AttackerUsage, receipt.AttackerCumulativeUsage = &usage, &cumulative
 	receipt.AttackerPredecessor = binding.predecessor

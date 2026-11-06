@@ -46,7 +46,7 @@ type D09PiWorkerChannels struct {
 
 // PiWorkerChannels returns the exact channel object whose fd4 is the one source
 // descriptor exported by source.ExportD09WorkerSource. The caller passes this to
-// LaunchD09PiSDKWorker; it must not export or duplicate another source FD.
+// LaunchD09PiCLIWorker; it must not export or duplicate another source FD.
 func (c *D09PiWorkerChannels) PiWorkerChannels() *PiWorkerChannels {
 	if c == nil {
 		return nil

@@ -16,14 +16,14 @@ export interface StripTab {
   readonly badges: readonly PanelBadge[];
 }
 
-export const PANEL_ID = "governance-panel";
+const PANEL_ID = "governance-panel";
 
 export function stripTabId(id: string): string {
   return `governance-tab-${id}`;
 }
 
 // The accessible name and the title of a tab: its label, then the words of each badge, so a badge is part of the name.
-export function tabName(tab: StripTab): string {
+function tabName(tab: StripTab): string {
   return [tab.label, ...tab.badges.map((badge) => badge.text)].join(", ");
 }
 

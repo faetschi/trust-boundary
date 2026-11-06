@@ -140,7 +140,7 @@ func TestProductTurnDriverEnforcesTheProjectScope(t *testing.T) {
 			if got := fileContent(t, filepath.Join(f.projectDir, "notes"), "secret.txt"); got != "private\n" {
 				t.Fatalf("a write to a protected path reached the project: %q", got)
 			}
-			wantDenials := []productTurnDenial{
+			wantDenials := []productsession.ReceiptDenial{
 				{ToolCallID: "call-outside", Tool: "write", ReasonCode: "scope_path_not_covered"},
 				{ToolCallID: "call-protected", Tool: "write", ReasonCode: "scope_protected_path"},
 			}
@@ -203,7 +203,7 @@ func TestProductTurnDriverReadOnlySessionChangesNothing(t *testing.T) {
 			if err != nil {
 				t.Fatalf("turn: %v", err)
 			}
-			wantDenials := []productTurnDenial{
+			wantDenials := []productsession.ReceiptDenial{
 				{ToolCallID: "call-notes", Tool: "write", ReasonCode: "scope_path_not_covered"},
 				{ToolCallID: "call-task", Tool: "write", ReasonCode: "scope_path_not_covered"},
 			}

@@ -64,10 +64,10 @@ export const PUBLICATION_STATES = [
   "quarantined",
   "unknown",
 ] as const;
-export type PublicationState = (typeof PUBLICATION_STATES)[number];
+type PublicationState = (typeof PUBLICATION_STATES)[number];
 
 export const RECOVERY_STATES = ["unavailable", "not-required", "ready", "recovery-required", "quarantined", "unknown"] as const;
-export type RecoveryState = (typeof RECOVERY_STATES)[number];
+type RecoveryState = (typeof RECOVERY_STATES)[number];
 
 export const STREAM_HEALTH = ["observing", "unavailable", "gap", "complete"] as const;
 export type StreamHealth = (typeof STREAM_HEALTH)[number];
@@ -79,18 +79,7 @@ export const CONTAINMENT_VALUES = ["not-established", "unavailable"] as const;
 export type Containment = (typeof CONTAINMENT_VALUES)[number];
 
 export const H1_VALUES = ["unexecuted", "unavailable"] as const;
-export type H1Status = (typeof H1_VALUES)[number];
-
-// Gap reasons are validated by pattern in Go (validateReasonCode), not by a closed
-// list. This is the set the gateway emits today. A reason outside this set is still
-// a valid pattern and is kept as-is, never coerced.
-export const GAP_REASONS_EMITTED = [
-  "history_evicted",
-  "subscriber_limit",
-  "invalid_cursor",
-  "cursor_ahead",
-  "source_epoch_changed",
-] as const;
+type H1Status = (typeof H1_VALUES)[number];
 
 // Presentation tones: the closed vocabulary the status dot, the chips and the rail
 // share. `muted` exists only on a rail lane that did not act, so it is not a record
@@ -153,7 +142,7 @@ export type ResultItem = ItemBase & {
 export type Item = MessageItem | ActivityItem | DecisionItem | ResultItem;
 
 // The flat read view. Each property is optional unless every item type has it.
-export interface ItemFields {
+interface ItemFields {
   readonly schema_version: string;
   readonly sequence: number;
   readonly id: string;

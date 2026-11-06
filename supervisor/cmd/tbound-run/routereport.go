@@ -70,14 +70,6 @@ func (o *testOutcomes) refPassed(ref string) bool {
 	return i > 0 && o.passed(ref[:i], ref[i+1:])
 }
 
-// buildRouteReport turns the pinned matrix and the test results into the routematrix.Report that
-// run.json names as route_report. A cell the definition declares Covered stays Covered only if every
-// test reference of it passed; otherwise it is reported Missing. The lookup of routematrix.Coverage is
-// "the test passed", so a reference that failed, was skipped or is absent keeps the report incomplete.
-func buildRouteReport(m routematrix.Matrix, o *testOutcomes) (routematrix.Report, error) {
-	return buildRouteReportWithGuest(m, o, guestRouteArtifacts{})
-}
-
 // guestRouteArtifacts is the guest evidence a route report is given: Digests maps an artifact kind to
 // the sha256 of its file once the file passed the kind's validator, Errors maps a kind to why a
 // supplied file did not.

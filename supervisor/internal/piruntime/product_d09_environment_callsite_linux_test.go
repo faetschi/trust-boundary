@@ -88,19 +88,19 @@ func productD09EnvironmentExpressions(t *testing.T, site productD09CallSite) []s
 // Podman or cosign child's environment, so a temporary revert of any one of them fails here on every host.
 func TestProductD09EnvironmentCallSitesCarryTheProductEnvironment(t *testing.T) {
 	for _, site := range []productD09CallSite{
-		{file: "containment_linux.go", function: "execD09CommandRunner.Run", want: []string{
+		{file: "containment_config_linux.go", function: "execD09CommandRunner.Run", want: []string{
 			"Env=r.commandEnvironment()",
 		}},
-		{file: "containment_linux.go", function: "execD09CommandRunner.commandEnvironment", returns: true, want: []string{
+		{file: "containment_config_linux.go", function: "execD09CommandRunner.commandEnvironment", returns: true, want: []string{
 			"return=r.environment", "return=d09ProbeEnv()",
 		}},
-		{file: "containment_linux.go", function: "D09PodmanCrunLauncher.commandEnvironment", returns: true, want: []string{
-			"return=productD09CommandEnvironment()", "return=d09ProbeEnv()",
+		{file: "product_d09_launcher_linux.go", function: "D09PodmanCrunLauncher.commandEnvironment", returns: true, want: []string{
+			"return=productsetup.CommandCellEnvironment()", "return=d09ProbeEnv()",
 		}},
-		{file: "containment_linux.go", function: "D09PodmanCrunLauncher.StartVerifiedWithProof", want: []string{
+		{file: "containment_launch_linux.go", function: "D09PodmanCrunLauncher.StartVerifiedWithProof", want: []string{
 			"Env=l.commandEnvironment()", "arg:inspectContainer=l.commandEnvironment()",
 		}},
-		{file: "containment_linux.go", function: "D09PodmanCrunLauncher.cleanupContainer", want: []string{
+		{file: "containment_settle_linux.go", function: "D09PodmanCrunLauncher.cleanupContainer", want: []string{
 			"Env=l.commandEnvironment()",
 		}},
 		{file: "d09_command_runner_linux.go", function: "D09CommandRunner.Run", want: []string{
@@ -115,7 +115,7 @@ func TestProductD09EnvironmentCallSitesCarryTheProductEnvironment(t *testing.T) 
 		{file: "d09_command_runner_linux.go", function: "removeContainer", want: []string{"Env=environment"}},
 		{file: "d09_command_runner_linux.go", function: "containerExists", want: []string{"Env=environment"}},
 		{file: "product_d09_host_linux.go", function: "productD09VerifyArtifacts", want: []string{
-			"literal:environment=productD09CommandEnvironment()",
+			"literal:environment=productsetup.CommandCellEnvironment()",
 		}},
 	} {
 		want := slices.Clone(site.want)

@@ -11,6 +11,7 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"tbound/supervisor/internal/adaptivesource"
 	"tbound/supervisor/internal/attacker"
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/broker/protocol"
@@ -271,7 +272,7 @@ func TestAdaptiveReceiptReportsTheAttackerRun(t *testing.T) {
 	}
 	// before the source was asked for a turn the run is open and has no state digest
 	binding, _ := corpus.bindingFor(caseID, corpusRolePAdaptiveReplay)
-	if r := receiptOf(binding); r.AttackerStop != providerbridge.AdaptiveStopOpen || r.PivotsIssued != 0 || r.AttackerStateDigest != "" ||
+	if r := receiptOf(binding); r.AttackerStop != adaptivesource.AdaptiveStopOpen || r.PivotsIssued != 0 || r.AttackerStateDigest != "" ||
 		r.AttackerDigest != binding.attackerDigest || r.PivotsDigest != binding.pivotsDigest || r.ProviderMode != "scripted" || r.ScriptDigest != "" {
 		t.Fatalf("open receipt = %+v", r)
 	}
@@ -355,7 +356,7 @@ func TestAdaptiveFactoryRunsThroughTheRealConversation(t *testing.T) {
 	if err != nil || turn.ToolCall == nil || turn.ToolCall.Name != "write" {
 		t.Fatalf("first pivot = %+v, %v", turn.ToolCall, err)
 	}
-	if terminal := binding.adaptive.Terminal(); terminal.PivotsIssued != 1 || terminal.Stop != providerbridge.AdaptiveStopOpen {
+	if terminal := binding.adaptive.Terminal(); terminal.PivotsIssued != 1 || terminal.Stop != adaptivesource.AdaptiveStopOpen {
 		t.Fatalf("terminal = %+v", terminal)
 	}
 }

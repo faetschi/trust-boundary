@@ -1,5 +1,12 @@
 # Phase 2b: assistant markdown as a typed AST
 
+> **Historical.** This document records the Phase 2b markdown AST and its differential evidence. The legacy vanilla client it compares
+> against (`internal/webchat/assets/`, `internal/webchat/jstest/`) was retired by audit
+> finding #5; the code and the legacy test suites remain in git history at the commit
+> before the retirement (`git log --diff-filter=D -- extensions/webchat/internal/webchat/assets`).
+> Legacy-only commands and paths named below no longer run at HEAD. The retirement mapping
+> is in phase2-parity.md section 11.
+
 Status at `4700ca5`: the parser, the typed AST, the incremental parser and the differential net
 are implemented and committed in `extensions/webchat/frontend/src/markdown/`. At that commit they
 were not wired into the app. The legacy renderer (`internal/webchat/assets/markdown.mjs`) still

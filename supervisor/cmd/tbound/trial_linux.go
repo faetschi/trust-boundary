@@ -444,7 +444,7 @@ func trialPendingFrom(catalog, lifecycle audit.Trace, root workflow.RootIdentity
 // The stated limit: a process that left the subtree is not killed or found. Nothing in the
 // launcher flags lets a cell do that (--cap-drop=ALL, no-new-privileges, --read-only, a
 // seccomp profile, podman's default cgroup namespace and read-only cgroup mount, no
-// --privileged; containment_linux.go, d09_command_runner_linux.go), but that is not measured
+// --privileged; containment_launch_linux.go, d09_command_runner_linux.go), but that is not measured
 // on a running cell, and a scan for such a process is the race this design removes.
 
 // openCellsCgroup opens the cells cgroup directory without following a final symlink and

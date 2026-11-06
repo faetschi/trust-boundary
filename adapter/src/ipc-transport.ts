@@ -124,7 +124,7 @@ function validText(value: unknown, maxBytes = 256): value is string {
 }
 
 function validBindingToken(token: unknown): token is string {
-  return typeof token === "string" && /^[0-9a-f]{64}$/.test(token);
+  return typeof token === "string" && token.length === IPC_BINDING_TOKEN_HEX_BYTES && /^[0-9a-f]+$/.test(token);
 }
 
 function validateBindingToken(token: unknown): asserts token is string {

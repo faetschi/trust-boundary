@@ -7,12 +7,12 @@
 
 import { type Block, type ContentBlock, type Inline, assertNever } from "./ast";
 
-export interface DomText {
+interface DomText {
   readonly nodeType: 3;
   readonly data: string;
 }
 
-export interface DomElement {
+interface DomElement {
   readonly nodeType: 1;
   className: string;
   setAttribute(name: string, value: string): void;

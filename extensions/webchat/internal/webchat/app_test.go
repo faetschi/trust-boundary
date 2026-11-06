@@ -267,8 +267,8 @@ func TestAppUnavailableWithClearErrorWhileTheRestOfTheServerWorks(t *testing.T) 
 					assertSecurityHeaders(t, target, recorder)
 				}
 			}
-			if recorder := appTestRequest(t, handler, http.MethodGet, "/"); recorder.Code != http.StatusOK {
-				t.Errorf("GET / status=%d, want 200: the vanilla UI must keep working", recorder.Code)
+			if recorder := appTestRequest(t, handler, http.MethodGet, "/"); recorder.Code != http.StatusFound {
+				t.Errorf("GET / status=%d, want 302: / still redirects to /app/", recorder.Code)
 			}
 			if recorder := appTestRequest(t, handler, http.MethodGet, "/api/v1/contract"); recorder.Code != http.StatusOK {
 				t.Errorf("GET /api/v1/contract status=%d, want 200", recorder.Code)
@@ -418,7 +418,7 @@ func appTestRequestFrom(t *testing.T, handler http.Handler, target, host, origin
 }
 
 // authorizeRequest runs before routing. A foreign Host or Origin must be refused on
-// every document route (/, /app/ and /legacy/), with the gateway's security
+// every document route (/ and /app/), with the gateway's security
 // headers. Mutation check: skipping authorizeRequest for any of them must fail
 // this test.
 func TestAppRefusesForeignHostAndOrigin(t *testing.T) {
@@ -436,9 +436,9 @@ func TestAppRefusesForeignHostAndOrigin(t *testing.T) {
 		{"fixture unreachable file", fixture, "/app/assets/orphan.js"},
 		{"embedded shell", embedded, "/app/"},
 		{"root redirect", embedded, "/"},
-		{"root fallback", fallback, "/"},
-		{"legacy", embedded, "/legacy/"},
-		{"legacy fallback", fallback, "/legacy/"},
+		{"root redirect with the app unavailable", fallback, "/"},
+		{"retired legacy path", embedded, "/legacy/"},
+		{"retired static path", embedded, "/static/app.mjs"},
 	}
 	refused := []struct {
 		name, host, origin string

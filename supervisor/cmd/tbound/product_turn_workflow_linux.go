@@ -20,6 +20,7 @@ import (
 	"tbound/supervisor/internal/gate"
 	"tbound/supervisor/internal/piruntime"
 	"tbound/supervisor/internal/privategit"
+	"tbound/supervisor/internal/productdriver"
 	"tbound/supervisor/internal/productsession"
 	"tbound/supervisor/internal/providerbridge"
 	"tbound/supervisor/internal/publication"
@@ -48,13 +49,8 @@ const (
 	productCommandOutputBytes = 16 << 10
 )
 
-// errProductStaleBaseline marks a managed project whose tree differs from the admitted baseline.
-var errProductStaleBaseline = errors.New("managed project tree differs from the admitted baseline")
-
 // errProductBashRunnerUnavailable marks a project whose policy allows Bash on a service that has no
 // command runner, so its turns cannot launch.
-var errProductCommandUnsettled = errors.New("product command ownership is unresolved")
-
 var errProductBashRunnerUnavailable = errors.New("the project policy allows Bash but the service has no command runner")
 
 // productTurnCommandRunner is the trusted command runner of one Bash turn: the Store runs commands
@@ -136,14 +132,15 @@ type productTurnEnv struct {
 
 	retainedMu       sync.Mutex
 	retainedCommands map[*productTurnWorkflow]struct{}
-	mu               sync.Mutex
-	// running holds the turns RunTurn drives in this process. pending holds closed review turns whose
-	// workflow and finalizer stay open until a resolution, cancellation or expiry takes them.
-	running map[string]bool
-	pending map[string]*productPendingReview
+	driverOnce       sync.Once
+	drv              *productdriver.Driver
+	// reviewClock is a trusted-host test seam for review deadlines; production leaves it nil.
+	reviewClock func() time.Time
+	// onPrepared is a trusted-host test seam that receives each composed turn; production leaves it nil.
+	onPrepared func(turnID string, turn *productComposedTurn)
 	// liveProvider holds the open provider journal of every turn whose workflow this process still holds, so
 	// the service reads a running or pending-review turn's journal without a second writer lock. It has its
-	// own mutex because workflow close runs under mu.
+	// own mutex because workflow close runs under the driver mutex.
 	liveMu       sync.Mutex
 	liveProvider map[string]*audit.Journal
 }
@@ -344,14 +341,14 @@ func (e *productTurnEnv) storeOptions(turn productsession.Turn) sessionrepo.Opti
 // including its provider conversation: fresh identities and per-turn directory, a Store seeded from
 // the managed project, the private Git source binding, a fresh protected owner and checkpoint whose
 // limits are the turn's reservation and whose pins carry the imported prefix, and the bound ledger.
-// It returns errProductStaleBaseline when the seeded tree differs from the admitted baseline.
+// It returns productdriver.ErrStaleBaseline when the seeded tree differs from the admitted baseline.
 func (e *productTurnEnv) composeProductTurnWorkflow(ctx context.Context, turn productsession.Turn,
 	providerProfile string, predecessor providerbridge.PredecessorContext) (_ *productTurnWorkflow, err error) {
 	w := &productTurnWorkflow{taskID: turn.ID, started: time.Now(), env: e}
 	defer func() {
 		if err != nil {
 			if cleanupErr := w.close(); cleanupErr != nil {
-				err = errors.Join(err, errProductCommandUnsettled, cleanupErr)
+				err = errors.Join(err, productdriver.ErrCommandsUnsettled, cleanupErr)
 			}
 		}
 	}()
@@ -456,7 +453,7 @@ func (e *productTurnEnv) composeProductTurnWorkflow(ctx context.Context, turn pr
 	}
 	if baseline.ID() != productStoreSeedGeneration ||
 		sha256DigestFromBarePin(bareStoreTreeDigest(baseline.TreeDigest())) != turn.BaselineDigest {
-		return nil, errProductStaleBaseline
+		return nil, productdriver.ErrStaleBaseline
 	}
 	if err := authority.BindBaseline(w.store, baseline); err != nil {
 		return nil, err

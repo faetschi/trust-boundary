@@ -69,8 +69,6 @@ func main() {
 	}
 }
 
-func (a *app) run(args []string) error { return a.runCtx(context.Background(), args) }
-
 func (a *app) runCtx(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("tbound-panel", flag.ContinueOnError)
 	fs.SetOutput(a.errOut)

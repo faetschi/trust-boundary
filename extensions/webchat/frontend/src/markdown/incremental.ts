@@ -10,7 +10,7 @@
 import type { Block, ContentBlock } from "./ast";
 import { type Limits, noticeBlock, renderSource, segment } from "./parse";
 
-export interface IncrementalResult {
+interface IncrementalResult {
   readonly blocks: readonly Block[];
   // Leading top-level source blocks reused, and source blocks parsed. Both count
   // source blocks, as the legacy renderer does, not AST nodes.

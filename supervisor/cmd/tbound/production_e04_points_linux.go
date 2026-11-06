@@ -262,13 +262,6 @@ func newProductionE04Recorder(auditRoot, workflowID, runID, liveRootPath string,
 	return r
 }
 
-// newProductionE04RecorderOn is a recorder over a journal the caller opened (a test).
-func newProductionE04RecorderOn(journal productionE04Journal, next uint64, workflowID, runID, liveRootPath string, liveRoot *os.File) *productionE04Recorder {
-	r := newProductionE04Recorder("", "", runID, liveRootPath, liveRoot)
-	r.workflowID, r.journal, r.next, r.fatal = workflowID, journal, next, nil
-	return r
-}
-
 // setLedger sets the ledger prefix recorded from now on.
 func (r *productionE04Recorder) setLedger(ledger productionE04Ledger) {
 	if r == nil {
@@ -405,16 +398,6 @@ func validE04Point(point string) bool {
 		}
 	}
 	return false
-}
-
-// gaps is how many points of this run are recorded as a gap or could not be recorded.
-func (r *productionE04Recorder) gaps() int {
-	if r == nil {
-		return 0
-	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return r.gapped
 }
 
 // binding is the head and count of the store as the recorder committed it. After close it is

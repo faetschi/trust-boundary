@@ -348,12 +348,8 @@ func (s *Store) mutate(ctx context.Context, input *Generation, tool string, oper
 			_, committed.DenyReason = s.options.AdmissionScope.Decide(request.OutputScopePaths, transition.Changes)
 			stageClosed = true
 			keepStage = true
-			cleanupErr := errors.Join(stage.Close(), removeTreeAt(int(s.genDir.Fd()), stageName))
-			if cleanupErr == nil {
-				cleanupErr = syncDirectory(s.genDir)
-			}
-			if cleanupErr != nil {
-				return nil, fmt.Errorf("clean denied candidate stage: %w", cleanupErr)
+			if err := s.cleanDeniedStage(stage, stageName); err != nil {
+				return nil, err
 			}
 			return payload, nil
 		}
@@ -413,6 +409,19 @@ func (s *Store) mutate(ctx context.Context, input *Generation, tool string, oper
 		return MutationResult{}, fmt.Errorf("%w: record mutation outcome evidence: %w", ErrAudit, err)
 	}
 	return committed, nil
+}
+
+// cleanDeniedStage closes and removes a denied candidate stage and syncs the
+// generation directory. The caller has already marked the stage closed.
+func (s *Store) cleanDeniedStage(stage *os.File, stageName string) error {
+	cleanupErr := errors.Join(stage.Close(), removeTreeAt(int(s.genDir.Fd()), stageName))
+	if cleanupErr == nil {
+		cleanupErr = syncDirectory(s.genDir)
+	}
+	if cleanupErr != nil {
+		return fmt.Errorf("clean denied candidate stage: %w", cleanupErr)
+	}
+	return nil
 }
 
 func (s *Store) authorizeLocked(request OperationRequest) error {
@@ -689,14 +698,6 @@ func (s *Store) recordOperationLocked(tool string, effectID string, operation de
 	s.operations = append(s.operations, evidence)
 	return nil
 }
-
-func (s *Store) testPath() string { return s.rootPath }
-
-func (g *Generation) testPath() string {
-	return filepath.Join(g.store.rootPath, "generations", g.id)
-}
-
-func (view *CommandView) testPath() string { return view.path }
 
 func newEffectID() (string, error) {
 	var token [24]byte

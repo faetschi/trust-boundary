@@ -16,6 +16,7 @@ import (
 
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/piruntime"
+	"tbound/supervisor/internal/productdriver"
 	"tbound/supervisor/internal/sessionrepo"
 )
 
@@ -99,7 +100,7 @@ func (e *productTurnEnv) settleRetainedProductCommands(turnID string) error {
 	e.retainedMu.Unlock()
 	for _, w := range retained {
 		if err := w.close(); err != nil {
-			return errors.Join(errProductCommandUnsettled, err)
+			return errors.Join(productdriver.ErrCommandsUnsettled, err)
 		}
 	}
 	return nil
@@ -240,12 +241,6 @@ func reconcileProductCommandScopes(ctx context.Context, host *piruntime.D09Produ
 	return reconcileProductCommandScopesWithRecovery(ctx, root, func(ctx context.Context, command piruntime.D09ProductCommandOwnership) error {
 		return piruntime.ReconcileProductD09CommandResidueAfterScopeDrain(ctx, host, command)
 	}, retainedRoots...)
-}
-
-// reconcileProductCommandScopesUnder is reconcileProductCommandScopes over a cells root that is already
-// prepared, so the journal and direct-child checks need no host.
-func reconcileProductCommandScopesUnder(ctx context.Context, root *os.File, retainedRoots ...string) error {
-	return reconcileProductCommandScopesWithRecovery(ctx, root, nil, retainedRoots...)
 }
 
 func reconcileProductCommandScopesWithRecovery(ctx context.Context, root *os.File, recoverCommand func(context.Context, piruntime.D09ProductCommandOwnership) error, retainedRoots ...string) error {
