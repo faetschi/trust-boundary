@@ -84,7 +84,7 @@ export function railLanes(items: readonly ItemView[], projection: ProjectionStat
 // The key under the lanes, in words. Colour is the kind of record a lane draws; shape is the state of a record in it. Only the states
 // that the retained records actually show are listed, so the key is as short as the picture needs.
 const LANE_WORDS: Readonly<Record<string, string>> = {
-  model: "assistant messages",
+  model: "messages (user, assistant, system)",
   policy: "policy decisions",
   tools: "tool requests and results",
 };

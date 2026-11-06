@@ -38,7 +38,7 @@ it("keys its colours and shapes in words, listing only the states the retained r
   ];
   const mounted = mount(<SequenceRail items={items} phase="loaded" searching={false} projection={{ source: "fixture", verification: "unverified-input" }} />);
   const key = mounted.container.querySelector("[aria-label='Key to the rail']") as HTMLElement;
-  expect(key.textContent).toContain("Model: assistant messages");
+  expect(key.textContent).toContain("Model: messages (user, assistant, system)");
   expect(key.textContent).toContain("Policy: policy decisions");
   expect(key.textContent).toContain("Tools: tool requests and results");
   expect(key.textContent).toContain("DENY or denied");
