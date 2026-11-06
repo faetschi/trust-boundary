@@ -572,13 +572,6 @@ func readCgroupPopulated(directory *os.File) (bool, error) {
 // admitted production launcher until a separate frozen cell launcher exists.
 type LinuxExecutableLauncher struct{ scope *LinuxCgroupScope }
 
-func NewLinuxExecutableLauncher(scope *LinuxCgroupScope) (*LinuxExecutableLauncher, error) {
-	if scope == nil || scope.file == nil {
-		return nil, ErrCgroupScopeRefused
-	}
-	return &LinuxExecutableLauncher{scope: scope}, nil
-}
-
 func (l *LinuxExecutableLauncher) BoundSettlement() DescendantSettler {
 	if l == nil {
 		return nil

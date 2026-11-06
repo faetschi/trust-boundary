@@ -543,13 +543,6 @@ func (c *PiWorkerChannels) Abort(ctx context.Context, requestID string) error {
 	return c.sendControl(ctx, PiWorkerControl{Type: "abort", RequestID: requestID})
 }
 
-func (c *PiWorkerChannels) RequestStop(ctx context.Context, requestID string) error {
-	if !workerValidIdentity(requestID, 256) {
-		return errors.New("Pi worker stop request ID is invalid")
-	}
-	return c.sendControl(ctx, PiWorkerControl{Type: "stop", RequestID: requestID})
-}
-
 func (c *PiWorkerChannels) NextEvent(ctx context.Context) (PiWorkerEvent, error) {
 	if c == nil || ctx == nil {
 		return PiWorkerEvent{}, errors.New("Pi worker event stream is unavailable")
