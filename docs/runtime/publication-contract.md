@@ -122,9 +122,7 @@ changed root. The workflow root-ledger marker does resolve on `SUCCEEDED` or
 `FAILED` without measuring the root (`internal/workflow/publication_linux.go:846`,
 `:211-225`); safety comes from the next acquirer re-checking: publication
 rescans the live root and refuses a baseline mismatch (`ErrBaselineConflict`,
-`internal/publication/publication_linux.go:566-571`), the managed live-root
-release compares the scanned tree digest (`cmd/tbound/managed_live_root_linux.go:901`),
-the production binder seeds from the recovered tree
+`internal/publication/publication_linux.go:566-571`), the production binder seeds from the recovered tree
 (`cmd/tbound/production_binder_linux.go:352`), operator publication classifies
 the measured project (`cmd/tbound/product_operator_publication_linux.go:50`),
 and the trial reset measures the live tree (`cmd/tbound/trial_linux.go:279`).
