@@ -100,7 +100,7 @@ const LEGEND_STATE_WORDS: Readonly<Record<string, string>> = {
   idle: "a message",
 };
 
-export interface RailLegend {
+interface RailLegend {
   readonly kinds: ReadonlyArray<{ readonly lane: string; readonly label: string; readonly words: string }>;
   readonly states: ReadonlyArray<{ readonly tone: string; readonly words: string }>;
 }

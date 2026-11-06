@@ -12,14 +12,14 @@ import type { ConnectionStatus } from "./status";
 import type { WorkspaceModel } from "./workspaceStore";
 import styles from "./Shell.module.css";
 
-export const NO_SESSION_TEXT = "no session selected";
+const NO_SESSION_TEXT = "no session selected";
 
-export function sourceText(model: WorkspaceModel): string {
+function sourceText(model: WorkspaceModel): string {
   const scope = isVerifiedProjection(model) ? "" : " · unverified";
   return `source: ${model.source}${scope}`;
 }
 
-export function connectionText(status: ConnectionStatus): string {
+function connectionText(status: ConnectionStatus): string {
   return status.warning ? `${status.label} · ${status.warning}` : status.label;
 }
 

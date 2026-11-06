@@ -116,7 +116,7 @@ export function StreamsIcon() {
 
 // One mark per kind of tool the supervisor records (the set is closed: read, write, edit, bash), a fallback, and one for a group of them.
 // They are plain shapes in the control's ink: a mark never says whether the call succeeded.
-export function ReadIcon() {
+function ReadIcon() {
   return (
     <Svg>
       <path d="M3.5 2.5h6l3 3v8h-9z" />
@@ -125,7 +125,7 @@ export function ReadIcon() {
   );
 }
 
-export function WriteIcon() {
+function WriteIcon() {
   return (
     <Svg>
       <path d="M3.5 2.5h6l3 3v8h-9z" />
@@ -134,7 +134,7 @@ export function WriteIcon() {
   );
 }
 
-export function EditIcon() {
+function EditIcon() {
   return (
     <Svg>
       <path d="M3 13l1-3.2 7-7 2.2 2.2-7 7z" />
@@ -143,7 +143,7 @@ export function EditIcon() {
   );
 }
 
-export function BashIcon() {
+function BashIcon() {
   return (
     <Svg>
       <rect x="1.75" y="2.75" width="12.5" height="10.5" rx="2" />
@@ -152,7 +152,7 @@ export function BashIcon() {
   );
 }
 
-export function ToolFallbackIcon() {
+function ToolFallbackIcon() {
   return (
     <Svg>
       <circle cx="8" cy="8" r="5.5" />

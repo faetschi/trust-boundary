@@ -14,13 +14,13 @@ import styles from "./Composer.module.css";
 
 const COMPOSER_LABEL = "Message Pi: not available in this build";
 const PLACEHOLDER = "Submitting turns is not available in this build.";
-const COMPOSER_REASON =
+export const COMPOSER_REASON =
   "Read-only view of a Pi session. This page cannot submit turns, cancel, or approve. Turn submission is a later milestone.";
 const NOT_AVAILABLE_STATUS = "Not available: this page cannot submit turns.";
 const OBSERVED_CHIP = "Observed only · no approvals";
 const OBSERVED_TITLE = "This page observes the Pi session. It cannot approve, submit or cancel.";
 
-export const SEND_LABEL = "Send: not available in this build";
+const SEND_LABEL = "Send: not available in this build";
 
 export function Composer({ session }: { readonly session: SessionHeader | null }) {
   // The explanation is spoken by the shell's one polite announcer (LiveRegion), so the app keeps a single live path. The

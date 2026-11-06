@@ -31,7 +31,7 @@ export function callTitle(block: ToolBlock): string {
 // A run of this many consecutive tool blocks, or more, is drawn as one folded line over its cards. One call stays a plain card.
 export const GROUP_MIN = 2;
 
-export interface Finding {
+interface Finding {
   readonly tone: ChipTone;
   readonly label: string;
   // A policy verdict (DENY, UNKNOWN) is not a result (denied, unresolved): the group line names the kind, so "1 DENY verdict" and
@@ -41,7 +41,7 @@ export interface Finding {
 
 // A request with no result after it: whatever state the request itself reports, nothing terminal has been recorded. It is not a
 // success (verified or not) and it is not running.
-export const NO_RESULT_READING: ChipReading = {
+const NO_RESULT_READING: ChipReading = {
   label: "no result",
   tone: "idle",
   note: "a request with no result recorded after it: not a success, and not running.",
@@ -80,7 +80,7 @@ export function severityRank(tone: ChipTone): number {
   return index < 0 ? SEVERITY.length : index;
 }
 
-export function worstTone(findings: readonly Finding[]): ChipTone {
+function worstTone(findings: readonly Finding[]): ChipTone {
   return SEVERITY.find((candidate) => findings.some((finding) => finding.tone === candidate)) ?? "idle";
 }
 
@@ -89,11 +89,11 @@ export function traceToneOf(block: ToolBlock, verifiedOf: Verifier): ChipTone {
   return worstTone(toolFindings(block, verifiedOf));
 }
 
-export interface FindingCount extends Finding {
+interface FindingCount extends Finding {
   readonly count: number;
 }
 
-export interface ToolGroupSummary {
+interface ToolGroupSummary {
   // The group's tone: the worst of its findings.
   readonly tone: ChipTone;
   // The distinct tools, in the order they first appear, with how many times each ran.
@@ -126,7 +126,7 @@ export interface ToolRun {
   readonly blocks: readonly ToolBlock[];
 }
 
-export type DrawnBlock = Exclude<TurnBlock, ToolBlock> | ToolRun;
+type DrawnBlock = Exclude<TurnBlock, ToolBlock> | ToolRun;
 
 export function groupRuns(blocks: readonly TurnBlock[], turnId: string): DrawnBlock[] {
   const drawn: DrawnBlock[] = [];
