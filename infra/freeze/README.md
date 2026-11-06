@@ -47,6 +47,7 @@ F13 accepts the pinned F12 measurer: `VerifyLinuxPiRuntimeBundle` and its mount/
 F14 accepts the pinned F13 measurer (05 also runs when the bundle is unchanged): the same functions, `internal/sessionlaunch` and `profile_tooling_linux.go` are unchanged in 6162e3c..<F14>; 10 rechecks with F14.
 F15 accepts the pinned F14 measurer: `launcher_linux.go`, `host.go` and `profile_tooling_linux.go` are unchanged in 02f9fb7..2a6492d, and `internal/sessionlaunch`, which changed, is not in `tbound-profile`'s import closure (`GOOS=linux go list -deps ./cmd/tbound-profile`); the pair lives in a kit commit on top of F15, since a tree cannot name its own commit; 10 rechecks with F15.
 F16 accepts the pinned F15 measurer: `launcher_linux.go`, `host.go` and `profile_tooling_linux.go` are unchanged in 2a6492d..97738b6 (`git diff --quiet`); the pair lives in a kit commit on top of F16; 10 rechecks with F16.
+F17 accepts the pinned F16 measurer: `launcher_linux.go`, `host.go` and `profile_tooling_linux.go` are unchanged in 97738b6..8931c69 (`git diff --quiet`); the pair lives in a kit commit on top of F17; 10 rechecks with F17.
 `KIT_FREEZE=F14 DRY_RUN=1 bash guest/05-runtime-swap.sh` in Git Bash checks owner inputs and prints every guest command without guest contact.
 `10-freeze.sh` step 3b refuses a frozen g1/route-probe template that carries the previous freeze's admission id, and a dr id that is spent.
 05 requires `HF/BUNDLE_TAR_SIZE`, written by P2 rebuild after tar verification (F13's missing record was added after the same sha256 check).
