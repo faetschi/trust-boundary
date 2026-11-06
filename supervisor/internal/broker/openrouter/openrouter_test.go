@@ -489,10 +489,10 @@ func TestCaptureSSEAcceptsNullToolCallFields(t *testing.T) {
 }
 
 func TestCaptureSSENullFieldsDoNotWeakenToolCallGuards(t *testing.T) {
-	two := `{"tool_calls":[{"index":0,"id":"x","type":"function","function":{"name":"read"}},{"index":0}]}`
-	noName := `{"tool_calls":[{"index":0,"id":"x","type":"function","function":{"name":null,"arguments":"{}"}}]}`
+	two := `{"tool_calls":[{"index":0},{"index":0}]}`
+	noName := `{"tool_calls":[{"index":0,"id":"x","type":"function","function":{"name":null,"arguments":""}}]}`
 	cases := map[string]string{
-		"two calls":      strings.Replace(nullFirst, `[{"index":0,"id":"chatcmpl-tool-ae43","type":"function","function":{"name":"read","arguments":""}}]`, `[{"index":0},{"index":0}]`, 1),
+		"two calls":      `{"role":null,"content":"","tool_calls":[{"index":0},{"index":0}]}`,
 		"index one":      strings.Replace(nullFirst, `"index":0`, `"index":1`, 1),
 		"changed id":     strings.Replace(nullCont, `"id":null`, `"id":"other"`, 1),
 		"changed type":   strings.Replace(nullCont, `"type":null`, `"type":"custom"`, 1),
@@ -506,7 +506,7 @@ func TestCaptureSSENullFieldsDoNotWeakenToolCallGuards(t *testing.T) {
 	}
 	for name, first := range cases {
 		cont := nullCont
-		if name == "changed id" || name == "changed type" || name == "empty id" || name == "role not asst" || name == "null index" || name == "unknown key" {
+		if name == "two calls" || name == "two in a delta" || name == "changed id" || name == "changed type" || name == "empty id" || name == "role not asst" || name == "null index" || name == "unknown key" {
 			first, cont = nullFirst, first
 		}
 		if _, err := CaptureSSE(bytes.NewReader(nullStreamBody(first, cont, `"tool_calls"`))); err == nil {
