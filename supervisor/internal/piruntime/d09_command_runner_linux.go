@@ -475,19 +475,9 @@ func (r *D09CommandRunner) Run(ctx context.Context, view *sessionrepo.CommandVie
 	if err != nil {
 		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, err
 	}
-	var scope *d09OwnedCommandScope
-	switch {
-	case r.delta.NoReap():
-		scope, err = r.launcher.NewDetachedCommandScope(ctx, r.leaseID, viewID)
-	case r.delta.NetSink():
-		// Fail closed before any cell starts: the pinned rule must be installed and attested as
-		// loaded for the current net-sink parent cgroup (NewNetSinkCommandScope).
-		scope, err = r.launcher.NewNetSinkCommandScope(ctx, r.leaseID, viewID)
-	default:
-		scope, err = r.launcher.NewCommandScope(ctx, r.leaseID, viewID)
-	}
+	scope, err := r.allocateCommandScope(ctx, viewID)
 	if err != nil {
-		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, fmt.Errorf("allocate unique D09 command cgroup: %w", err)
+		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, err
 	}
 	if scope == nil || scope.scope == nil || scope.leaseID != r.leaseID || scope.viewID != viewID {
 		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, ErrCgroupScopeRefused
@@ -886,6 +876,29 @@ func d09PreStartFailure(err error, ackSent, cellSettled bool) error {
 		return err
 	}
 	return errors.Join(protocol.ErrCommandNotStarted, err)
+}
+
+// allocateCommandScope allocates the unique command cgroup of the lease's delta. A failure here is
+// typed protocol.ErrCommandNotStarted: no container or process exists yet, and the scope allocation
+// removes the empty directory it made (an empty one left behind holds no process), so the one-use lease is
+// released instead of staying pending as an unknown effect.
+func (r *D09CommandRunner) allocateCommandScope(ctx context.Context, viewID string) (*d09OwnedCommandScope, error) {
+	var scope *d09OwnedCommandScope
+	var err error
+	switch {
+	case r.delta.NoReap():
+		scope, err = r.launcher.NewDetachedCommandScope(ctx, r.leaseID, viewID)
+	case r.delta.NetSink():
+		// Fail closed before any cell starts: the pinned rule must be installed and attested as
+		// loaded for the current net-sink parent cgroup (NewNetSinkCommandScope).
+		scope, err = r.launcher.NewNetSinkCommandScope(ctx, r.leaseID, viewID)
+	default:
+		scope, err = r.launcher.NewCommandScope(ctx, r.leaseID, viewID)
+	}
+	if err != nil {
+		return nil, d09PreStartFailure(fmt.Errorf("allocate unique D09 command cgroup: %w", err), false, true)
+	}
+	return scope, nil
 }
 
 func (r *D09CommandRunner) cleanupCommand(scope *d09OwnedCommandScope, podmanPath, name string) {

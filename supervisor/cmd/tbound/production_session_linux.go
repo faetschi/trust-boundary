@@ -602,9 +602,14 @@ func runComposedProductionPiSession(ctx context.Context, output io.Writer, confi
 	// host-control variant must NOT also be applied here, because
 	// Conversation.AdmitPrompt is single-use and would refuse a double admission.
 	channelsDone := make(chan error, 1)
+	channelFailed := make(chan error, 1) // a loop failure, seen by waitTurn before the worker ends the turn
 	session.Lifecycle.markChannelsStarted()
 	go func() {
-		channelsDone <- RunGovernedChannels(runCtx, supervisor, session.Channels.ProviderChannel(), conversation)
+		err := RunGovernedChannels(runCtx, supervisor, session.Channels.ProviderChannel(), conversation)
+		if err != nil {
+			channelFailed <- err
+		}
+		channelsDone <- err
 	}()
 	channelsJoined := false
 	defer func() {
@@ -642,7 +647,9 @@ func runComposedProductionPiSession(ctx context.Context, output io.Writer, confi
 	session.ManagedLiveRootLease.markTaskAdmitted()
 	ops := productionLifecycleOps{
 		waitTurn: func() error {
-			if err := waitProductionTurnEnd(ctx, worker, config.TaskRequestID); err != nil {
+			if err := waitTurnOrChannelFailure(ctx, func(turnCtx context.Context) error {
+				return waitProductionTurnEnd(turnCtx, worker, config.TaskRequestID)
+			}, channelFailed); err != nil {
 				cancelRun()
 				return err
 			}
@@ -1119,4 +1126,23 @@ func boundedProductionIdentity(value string, maximum int) bool {
 
 func boundedProductionPrompt(value string) bool {
 	return corpusadmit.BoundedPrompt(value)
+}
+
+// waitTurnOrChannelFailure waits for the end of the turn, but returns as soon as the governed channel
+// loops fail: a worker whose provider or tool channel is gone may never send a terminal event, and the
+// caller's teardown must not wait for the 20-minute task context. The channel error is kept in the
+// result; the caller cancels the run and enters its bounded teardown.
+func waitTurnOrChannelFailure(ctx context.Context, turn func(context.Context) error, channelFailed <-chan error) error {
+	turnCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	turnDone := make(chan error, 1)
+	go func() { turnDone <- turn(turnCtx) }()
+	select {
+	case err := <-turnDone:
+		return err
+	case err := <-channelFailed:
+		cancel()
+		<-turnDone // the turn wait honors its context, so this is prompt
+		return fmt.Errorf("governed production channels failed before the turn ended: %w", err)
+	}
 }

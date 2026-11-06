@@ -3,6 +3,7 @@
 package piruntime
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -29,5 +30,15 @@ func TestD09PreStartFailureTypedOnlyWhenTheCommandCannotHaveRun(t *testing.T) {
 	}
 	if err := d09PreStartFailure(nil, false, true); err != nil {
 		t.Fatalf("a successful run was typed as a failure: %v", err)
+	}
+}
+
+// A refused command cgroup allocation (here: a launcher with no bound scope) happens before any cell
+// exists, so it is typed as never started and productionCommandRunner releases the lease.
+func TestD09CommandScopeAllocationFailureIsTypedNotStarted(t *testing.T) {
+	runner := &D09CommandRunner{launcher: &D09PodmanCrunLauncher{}, leaseID: "lease-1"}
+	_, err := runner.allocateCommandScope(context.Background(), "view-1")
+	if !errors.Is(err, protocol.ErrCommandNotStarted) || !errors.Is(err, ErrCgroupScopeRefused) {
+		t.Fatalf("allocation failure = %v, want ErrCommandNotStarted wrapping the refusal", err)
 	}
 }

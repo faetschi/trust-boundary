@@ -135,8 +135,9 @@ func servicePodmanCommand(ctx context.Context, uid, gid uint32, args ...string) 
 
 // ---- net-sink/v1 ----
 
-// netSinkCgroupControlFiles are the files of a cgroup directory a delegatee must own to manage it.
-var netSinkCgroupControlFiles = []string{"cgroup.procs", "cgroup.subtree_control", "cgroup.threads"}
+// netSinkCgroupControlFiles are the files of a cgroup directory a delegatee must own to manage it;
+// the service also opens cgroup.kill for writing when it admits the parent and settles its scopes.
+var netSinkCgroupControlFiles = []string{"cgroup.procs", "cgroup.subtree_control", "cgroup.threads", "cgroup.kill"}
 
 func (h trialHost) ensureNetSink(ctx context.Context, cell evidenceCell) (err error) {
 	// A guest that has no rule installed has no net-sink; the service refuses net-sink for it.
