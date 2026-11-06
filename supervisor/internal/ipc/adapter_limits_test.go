@@ -12,7 +12,10 @@ import (
 // adapter/src/ipc-transport.ts repeats the Go transport limits as literals. This test reads that source
 // and holds each constant to the Go value, so a one-sided change fails here instead of on the wire.
 
-var tsConstRE = regexp.MustCompile(`(?m)^export const (IPC_\w+) = ("[^"]*"|[A-Z0-9_ +*]+);`)
+var tsCommentRE = regexp.MustCompile(`(?s)/\*.*?\*/|//[^
+]*`)
+
+var tsConstRE = regexp.MustCompile(`(?m)^\s*export const (IPC_\w+) = ("[^"]*"|[A-Z0-9_ +*]+);`)
 
 // tsConstants evaluates the adapter's IPC_ constants: numbers with "_" separators, "+", "*" and earlier names.
 func tsConstants(t *testing.T) map[string]string {
@@ -22,7 +25,12 @@ func tsConstants(t *testing.T) map[string]string {
 		t.Fatal(err)
 	}
 	out := map[string]string{}
-	for _, m := range tsConstRE.FindAllStringSubmatch(string(data), -1) {
+	seen := map[string]int{}
+	for _, m := range tsConstRE.FindAllStringSubmatch(tsCommentRE.ReplaceAllString(string(data), ""), -1) {
+		seen[m[1]]++
+		if seen[m[1]] > 1 {
+			t.Fatalf("adapter declares %s more than once", m[1])
+		}
 		expr := strings.TrimSpace(m[2])
 		if strings.HasPrefix(expr, `"`) {
 			out[m[1]] = strings.Trim(expr, `"`)
@@ -63,7 +71,9 @@ func TestAdapterTransportLimitsMatchGo(t *testing.T) {
 		"IPC_BINDING_TOKEN_HEX_BYTES":  strconv.Itoa(BindingTokenHexBytes),
 	}
 	for name, goValue := range want {
-		if got, ok := ts[name]; !ok || got != goValue {
+		if got, ok := ts[name]; !ok {
+			t.Errorf("adapter declares no active %s", name)
+		} else if got != goValue {
 			t.Errorf("adapter %s = %q, Go = %q", name, got, goValue)
 		}
 	}
