@@ -105,9 +105,9 @@ stand in for a higher one.
 | Lane | Needs | Local command | CI job |
 | --- | --- | --- | --- |
 | Boundary guard | POSIX `sh` only, no Node | `make boundary` | `extension-boundary` (`boundary`) |
-| Ordinary Go unit | Go 1.27.1, GCC, cgo | `cd supervisor && go test -mod=readonly -count=1 ./...` | `linux-ci` `runtime (unit)` |
+| Full supervisor Go suite (unit) | Go 1.27.1, GCC, cgo, Node.js 24.21.0 on `PATH` (some packages run node) | `cd supervisor && go test -mod=readonly -count=1 ./...` | `linux-ci` `runtime (unit)` |
 | Node-needing Go tests and adapter | Node.js 24.21.0 on `PATH`; for the adapter, `npm ci` in `adapter/` | `make test` (fails early without Node); `cd adapter && npm ci --ignore-scripts && npm run check` | `linux-ci` `quick-checks` (adapter) and `runtime (unit)` |
-| Race | as for Go unit | `cd supervisor && CGO_ENABLED=1 go test -race -mod=readonly -count=1 ./...` | `linux-ci` `runtime (race)` |
+| Full supervisor Go suite (race) | as for the unit suite, including Node.js 24.21.0 | `cd supervisor && CGO_ENABLED=1 go test -race -mod=readonly -count=1 -timeout 40m ./...` | `linux-ci` `runtime (race)` |
 | Format, vet, docs, scripts | Go, Python 3 | `gofmt -l .` and `go vet -mod=readonly ./...` in `supervisor/`; `python3 scripts/check-doc-links.py`; the unittest and `tests/` scripts named in `quick-checks` | `linux-ci` `quick-checks` |
 | Optional webchat and frontend | Node; Chrome for the CSP smoke | `make extension-webchat`, `make extension-webchat-frontend-verify`, `make extension-webchat-csp` | `webchat-extension` (`webchat`, `frontend`, `csp-smoke`) |
 | Release packaging | Linux, see [release](release.md) | `make build verify` and `tests/packaging/verify-release-layout.sh` as in the gate above | `release` |
