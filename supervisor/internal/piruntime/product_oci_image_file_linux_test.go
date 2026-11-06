@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestProductOCIImageFileRefusesRedirectedLayerEntries(t *testing.T) {
@@ -181,6 +182,12 @@ func TestProductOCIImageFilesMatchSeparateCalls(t *testing.T) {
 	if err != nil || len(got) != 3 {
 		t.Fatalf("batch = %+v, %v", got, err)
 	}
+	// The oracle is the known content of the layers, not the batch code under test.
+	for i, content := range []string{"entry", "bash", "node"} {
+		if got[i].digest != DigestBytes([]byte(content)) || got[i].size != int64(len(content)) || got[i].mode != 0o555 {
+			t.Fatalf("%s: batch = %+v, want %q mode 0555", paths[i], got[i], content)
+		}
+	}
 	for i, imagePath := range paths {
 		productOCIMemo.Lock()
 		productOCIMemo.key, productOCIMemo.files = "", nil
@@ -190,11 +197,13 @@ func TestProductOCIImageFilesMatchSeparateCalls(t *testing.T) {
 			t.Fatalf("%s: separate = %+v, %v; batch = %+v", imagePath, want, err, got[i])
 		}
 	}
-	if got[1].digest != DigestBytes([]byte("bash")) || got[2].digest != DigestBytes([]byte("node")) {
-		t.Fatalf("merged-usr results wrong: %+v", got)
+	// A missing path is refused with its own error and does not hide the others.
+	files, fileErrs, err := readProductOCIImageFilesEach(context.Background(), layout, manifest, []string{"/entrypoint", "/missing", "/bin/bash"}, false)
+	if err != nil || fileErrs[0] != nil || fileErrs[1] == nil || fileErrs[2] != nil || files[2] != got[1] {
+		t.Fatalf("per-file results = %+v, %v, %v", files, fileErrs, err)
 	}
-	if _, err := readProductOCIImageFiles(context.Background(), layout, manifest, []string{"/entrypoint", "/missing"}, false); err == nil {
-		t.Fatal("a missing path in the batch was accepted")
+	if _, err := readProductOCIImageFiles(context.Background(), layout, manifest, []string{"/entrypoint", "/missing"}, false); err == nil || !strings.Contains(err.Error(), "/missing") {
+		t.Fatalf("a missing path in the batch was accepted or unnamed: %v", err)
 	}
 }
 
@@ -266,5 +275,62 @@ func TestProductOCIImageFilesMemoRescansOnlyAfterIdentityChange(t *testing.T) {
 	}
 	if got, err := read(); err == nil {
 		t.Fatalf("tampered blob accepted from the memo: %+v", got)
+	}
+}
+
+// A same-inode, same-size, same-mtime rewrite differs only in ctime; the memo key must still notice it.
+func TestProductOCIImageFilesMemoNoticesCtimeOnlyChange(t *testing.T) {
+	layout, manifest, paths := productOCIMemoTestLayout(t)
+	read := func() ([]ociImageFile, error) {
+		return readProductOCIImageFiles(context.Background(), layout, manifest, paths, false)
+	}
+	rewriteKeepingMtime := func(name string, mutate func([]byte)) {
+		t.Helper()
+		before, err := os.Stat(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		data, err := os.ReadFile(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		mutate(data)
+		file, err := os.OpenFile(name, os.O_WRONLY, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := file.Write(data); err != nil {
+			t.Fatal(err)
+		}
+		if err := file.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(name, time.Now(), before.ModTime()); err != nil {
+			t.Fatal(err)
+		}
+		after, err := os.Stat(name)
+		if err != nil || !os.SameFile(before, after) || after.Size() != before.Size() || !after.ModTime().Equal(before.ModTime()) {
+			t.Fatalf("rewrite changed more than ctime: %v", err)
+		}
+	}
+	if _, err := read(); err != nil {
+		t.Fatal(err)
+	}
+	// index.json: same size, same mtime, different ctime -> rescan, still accepted.
+	before := productOCILayerReads.Load()
+	rewriteKeepingMtime(filepath.Join(layout, "index.json"), func([]byte) {})
+	if _, err := read(); err != nil || productOCILayerReads.Load() == before {
+		t.Fatalf("ctime-only index.json change was not re-verified: %v", err)
+	}
+	// A layer blob: tampered in place -> rescan and refusal.
+	layers, err := ociManifestLayers(layout, manifest, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	blob := filepath.Join(layout, "blobs", "sha256", strings.TrimPrefix(layers[0].Digest, "sha256:"))
+	before = productOCILayerReads.Load()
+	rewriteKeepingMtime(blob, func(data []byte) { data[len(data)/2] ^= 0xff })
+	if got, err := read(); err == nil || productOCILayerReads.Load() == before {
+		t.Fatalf("ctime-only blob tamper accepted from the memo: %+v, %v", got, err)
 	}
 }
