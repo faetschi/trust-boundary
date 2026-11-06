@@ -14,7 +14,7 @@ const CHUNK = 250;
 type Oracle = Record<string, { file: string; n: number; chunks: string[] }>;
 
 // Canonical text of a value: stable for undefined, NaN, infinities, -0, Map, Set and key order.
-export function canon(value: unknown): string {
+function canon(value: unknown): string {
   if (value === undefined) return "u";
   if (value === null) return "n";
   if (typeof value === "number") return Object.is(value, -0) ? "-0" : `d${String(value)}`;

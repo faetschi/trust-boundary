@@ -32,7 +32,7 @@ export const cursorKey = (sessionId: string) => `tbound.live.cursor.${sessionId}
 // Automatic repeats of one intent after a transport failure, and the wait before each. Only the same key is ever repeated.
 export const AUTO_RETRY_DELAYS_MS: readonly number[] = [400, 1200];
 
-export type ActionStatus = "idle" | "sending" | "failed" | "unknown";
+type ActionStatus = "idle" | "sending" | "failed" | "unknown";
 
 export interface ActionState {
   readonly status: ActionStatus;
@@ -45,7 +45,7 @@ export interface ActionState {
   readonly done: { readonly kind: Intent["kind"]; readonly replayed: boolean } | null;
 }
 
-export type CandidateState =
+type CandidateState =
   | { readonly status: "none" }
   | { readonly status: "loading"; readonly turnId: string; readonly digest: string }
   | { readonly status: "failed"; readonly turnId: string; readonly digest: string; readonly message: string }

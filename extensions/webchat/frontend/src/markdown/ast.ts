@@ -26,17 +26,17 @@ export interface TextInline {
   readonly value: string;
 }
 
-export interface CodeInline {
+interface CodeInline {
   readonly type: "code";
   readonly value: string;
 }
 
-export interface EmInline {
+interface EmInline {
   readonly type: "em";
   readonly children: readonly Inline[];
 }
 
-export interface StrongInline {
+interface StrongInline {
   readonly type: "strong";
   readonly children: readonly Inline[];
 }
@@ -78,7 +78,7 @@ export type ListItem =
   | { readonly layout: "inline"; readonly children: readonly Inline[] }
   | { readonly layout: "blocks"; readonly children: readonly ContentBlock[] };
 
-export interface BlockquoteBlock {
+interface BlockquoteBlock {
   readonly type: "blockquote";
   readonly children: readonly ContentBlock[];
 }

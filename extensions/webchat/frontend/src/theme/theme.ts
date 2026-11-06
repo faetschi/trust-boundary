@@ -8,8 +8,6 @@
 
 export type ThemeChoice = "system" | "light" | "dark";
 
-export const THEME_CHOICES: readonly ThemeChoice[] = ["system", "light", "dark"];
-
 export const DEFAULT_THEME: ThemeChoice = "dark";
 
 export const THEME_STORAGE_KEY = "tbound-webchat-theme";

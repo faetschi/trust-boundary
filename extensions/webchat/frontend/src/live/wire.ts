@@ -17,7 +17,7 @@ export interface Candidate {
   readonly changes: readonly CandidateChange[];
 }
 
-export interface CandidateChange {
+interface CandidateChange {
   readonly path: string;
   readonly op: string;
   readonly diff: string;
