@@ -77,9 +77,9 @@ func TestOnlyTheExactRootRedirects(t *testing.T) {
 	}
 }
 
-// When the React app cannot be derived, / and /legacy/ serve the legacy workspace
-// with a fallback notice. / never redirects into the app's 503.
-func TestRootFallsBackToTheLegacyWorkspaceWhenTheAppIsUnavailable(t *testing.T) {
+// When the React app cannot be derived, / still redirects to /app/, and /app/ answers
+// 503 with the reason as plain text. Nothing falls back to another client.
+func TestRootStillRedirectsWhenTheAppIsUnavailable(t *testing.T) {
 	missing := reachableFixture()
 	delete(missing, ".vite/manifest.json")
 	cases := []struct {
@@ -89,6 +89,7 @@ func TestRootFallsBackToTheLegacyWorkspaceWhenTheAppIsUnavailable(t *testing.T) 
 	}{
 		{"missing manifest", missing, "is missing"},
 		{"corrupt manifest", fixtureWithManifest(`{"index.html": `), "is corrupt"},
+		{"hostile manifest reason", fixtureWithManifest(`{"index.html": {"file": "assets/<img src=x onerror=alert(1)>.js", "isEntry": true}}`), "<img src=x"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -99,116 +100,58 @@ func TestRootFallsBackToTheLegacyWorkspaceWhenTheAppIsUnavailable(t *testing.T) 
 			handler := newHandler(appTestStore(t), HandlerOptions{}, app)
 			for _, method := range []string{http.MethodGet, http.MethodHead} {
 				recorder := appTestRequest(t, handler, method, "/")
-				if recorder.Code != http.StatusOK {
-					t.Errorf("%s / status=%d, want 200 (the legacy fallback, not a redirect into a 503)", method, recorder.Code)
+				if recorder.Code != http.StatusFound || recorder.Header().Get("Location") != "/app/" {
+					t.Errorf("%s / status=%d Location=%q, want 302 to /app/", method, recorder.Code, recorder.Header().Get("Location"))
 				}
-				if got := recorder.Header().Get("Location"); got != "" {
-					t.Errorf("%s / redirected to %q while the app is unavailable", method, got)
-				}
-				assertSecurityHeaders(t, method+" / (fallback)", recorder)
+				assertSecurityHeaders(t, method+" / (app unavailable)", recorder)
 			}
-			for _, target := range []string{"/", "/legacy/"} {
-				body := appTestRequest(t, handler, http.MethodGet, target).Body.String()
-				if !strings.Contains(body, "Fallback: legacy workspace") || !strings.Contains(body, tc.reason) {
-					t.Errorf("GET %s does not show the fallback notice with its reason %q", target, tc.reason)
-				}
-				if !strings.Contains(body, `<main class="layout" id="layout">`) {
-					t.Errorf("GET %s is not the legacy workspace", target)
-				}
+			recorder := appTestRequest(t, handler, http.MethodGet, "/app/")
+			if recorder.Code != http.StatusServiceUnavailable {
+				t.Fatalf("GET /app/ status=%d, want 503", recorder.Code)
 			}
-			if recorder := appTestRequest(t, handler, http.MethodGet, "/app/"); recorder.Code != http.StatusServiceUnavailable {
-				t.Errorf("GET /app/ status=%d, want 503", recorder.Code)
+			if got := recorder.Header().Get("Content-Type"); !strings.HasPrefix(got, "text/plain") {
+				t.Errorf("GET /app/ 503 content-type=%q, want text/plain, so the manifest reason is never parsed as markup", got)
 			}
+			if !strings.Contains(recorder.Body.String(), tc.reason) {
+				t.Errorf("GET /app/ 503 body %q does not state the reason %q", recorder.Body.String(), tc.reason)
+			}
+			assertSecurityHeaders(t, "/app/ (503)", recorder)
 		})
 	}
 }
 
-// The reason comes from the build manifest, so it is escaped before it is shown.
-func TestFallbackNoticeEscapesTheManifestReason(t *testing.T) {
-	hostile := fixtureWithManifest(`{"index.html": {"file": "assets/<img src=x onerror=alert(1)>.js", "isEntry": true}}`)
-	app := loadAppBundle(hostile)
-	if app.err == nil {
-		t.Fatal("hostile manifest should be unavailable")
-	}
-	body := appTestRequest(t, newHandler(appTestStore(t), HandlerOptions{}, app), http.MethodGet, "/").Body.String()
-	if strings.Contains(body, "<img src=x") {
-		t.Fatal("the manifest reason reached the page unescaped")
-	}
-	if !strings.Contains(body, "&lt;img src=x") {
-		t.Fatalf("the escaped reason is missing from the fallback notice: %q", body)
-	}
-}
-
-// /legacy/ is the deprecated workspace. The notice sits above <main>, and the rest
-// of the served page is byte-identical to the shipped assets/index.html.
-func TestLegacyRouteShowsTheDeprecationNoticeAndNothingElseChanges(t *testing.T) {
+// The legacy client is retired. Its document route and each asset path it used to
+// serve are refused exactly as any other unknown path: the same status, body and
+// Allow header, with the gateway's security headers and no redirect.
+func TestRetiredLegacyPathsAreRefusedLikeAnyUnknownPath(t *testing.T) {
 	handler := newHandler(appTestStore(t), HandlerOptions{}, embeddedApp())
-	recorder := appTestRequest(t, handler, http.MethodGet, "/legacy/")
-	if recorder.Code != http.StatusOK {
-		t.Fatalf("GET /legacy/ status=%d, want 200", recorder.Code)
+	retired := []string{
+		"/legacy/", "/legacy", "/legacy/index.html",
+		"/static/styles.css", "/static/app.mjs", "/static/api.mjs", "/static/store.mjs", "/static/render.mjs",
+		"/static/filters.mjs", "/static/format.mjs", "/static/trajectory.mjs", "/static/markdown.mjs",
+		"/static/backoff.mjs", "/static/stream.mjs", "/static/anchor.mjs", "/static/stop-sequence.mjs",
 	}
-	if got := recorder.Header().Get("Content-Type"); got != "text/html; charset=utf-8" {
-		t.Errorf("GET /legacy/ content-type=%q", got)
-	}
-	assertSecurityHeaders(t, "/legacy/", recorder)
-	body := recorder.Body.String()
-	if !strings.Contains(body, "Deprecated: legacy workspace — use /app/") {
-		t.Fatal("GET /legacy/ has no deprecation notice")
-	}
-	shell, err := assetsFS.ReadFile("assets/index.html")
-	if err != nil {
-		t.Fatal(err)
-	}
-	start := strings.Index(body, `<div class="notices legacy-notice">`)
-	mainAt := strings.Index(body, `<main class="layout" id="layout">`)
-	if start < 0 || mainAt < start {
-		t.Fatal("the notice must sit before <main>")
-	}
-	if body[:start]+body[mainAt:] != string(shell) {
-		t.Error("the served legacy page differs from assets/index.html by more than the notice")
-	}
-	for _, method := range []string{http.MethodPost, http.MethodHead} {
-		recorder := appTestRequest(t, handler, method, "/legacy/")
-		if recorder.Code != http.StatusMethodNotAllowed {
-			t.Errorf("%s /legacy/ status=%d, want 405", method, recorder.Code)
-		}
-		if got := recorder.Header().Get("Allow"); got != "GET" {
-			t.Errorf("%s /legacy/ Allow=%q, want GET", method, got)
-		}
-		assertSecurityHeaders(t, method+" /legacy/", recorder)
-	}
-}
-
-// The deprecated page is still under the closed asset allowlist: every /static/
-// reference it serves is an allowlisted route.
-func TestLegacyRouteReferencesOnlyAllowlistedAssets(t *testing.T) {
-	handler := newHandler(appTestStore(t), HandlerOptions{}, embeddedApp())
-	body := appTestRequest(t, handler, http.MethodGet, "/legacy/").Body.String()
-	references := shellReferencePattern.FindAllStringSubmatch(body, -1)
-	if len(references) < 2 {
-		t.Fatalf("only %d /static/ reference(s) on /legacy/; the check would be vacuous", len(references))
-	}
-	for _, match := range references {
-		if _, ok := staticRoutes[match[1]]; !ok {
-			t.Errorf("/legacy/ references %s, which the allowlist does not serve", match[1])
+	for _, method := range []string{http.MethodGet, http.MethodPost, http.MethodHead} {
+		unknown := appTestRequest(t, handler, method, "/no-such-path")
+		for _, target := range retired {
+			recorder := appTestRequest(t, handler, method, target)
+			if recorder.Code != unknown.Code {
+				t.Errorf("%s %s status=%d, an unknown path gives %d", method, target, recorder.Code, unknown.Code)
+			}
+			if recorder.Body.String() != unknown.Body.String() {
+				t.Errorf("%s %s body=%q, an unknown path gives %q", method, target, recorder.Body.String(), unknown.Body.String())
+			}
+			if recorder.Header().Get("Allow") != unknown.Header().Get("Allow") {
+				t.Errorf("%s %s Allow=%q, an unknown path gives %q", method, target, recorder.Header().Get("Allow"), unknown.Header().Get("Allow"))
+			}
+			if recorder.Header().Get("Location") != "" {
+				t.Errorf("%s %s redirected to %q", method, target, recorder.Header().Get("Location"))
+			}
+			assertSecurityHeaders(t, method+" "+target, recorder)
 		}
 	}
-}
-
-// Every legacy route carries the gateway's security headers: the deprecated page and
-// each allowlisted asset under /static/.
-func TestLegacyRoutesCarrySecurityHeaders(t *testing.T) {
-	handler := newHandler(appTestStore(t), HandlerOptions{}, embeddedApp())
-	targets := []string{legacyPath}
-	for path := range staticRoutes {
-		targets = append(targets, path)
-	}
-	for _, target := range targets {
-		recorder := appTestRequest(t, handler, http.MethodGet, target)
-		if recorder.Code != http.StatusOK {
-			t.Errorf("GET %s status=%d, want 200", target, recorder.Code)
-		}
-		assertSecurityHeaders(t, target, recorder)
+	if recorder := appTestRequest(t, handler, http.MethodGet, "/legacy/"); recorder.Code != http.StatusNotFound {
+		t.Errorf("GET /legacy/ status=%d, want 404", recorder.Code)
 	}
 }
 
@@ -227,8 +170,8 @@ func TestSmokeScriptRoutesMatchTheGoRouteTable(t *testing.T) {
 	for _, entry := range smokeRouteEntry.FindAllStringSubmatch(string(source), -1) {
 		path, kind, landing := entry[1], entry[2], entry[3]
 		paths = append(paths, path)
-		if (kind == "legacy") != (path == "/legacy/") {
-			t.Errorf("csp-smoke.mjs audits %s as kind %q", path, kind)
+		if kind == "legacy" {
+			t.Errorf("csp-smoke.mjs audits %s as the retired kind %q", path, kind)
 		}
 		recorder := appTestRequest(t, handler, http.MethodGet, path)
 		switch recorder.Code {
@@ -245,7 +188,7 @@ func TestSmokeScriptRoutesMatchTheGoRouteTable(t *testing.T) {
 		}
 	}
 	sort.Strings(paths)
-	if want := []string{"/", "/app/", "/legacy/"}; !slices.Equal(paths, want) {
+	if want := []string{"/", "/app/"}; !slices.Equal(paths, want) {
 		t.Errorf("csp-smoke.mjs audits %q, the Go route table serves %q", paths, want)
 	}
 }

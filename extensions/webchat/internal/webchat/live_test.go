@@ -863,7 +863,7 @@ func TestPairingPageIsStaticAndHoldsNoSecret(t *testing.T) {
 
 func TestLiveModeKeepsServingTheDocumentRoutesUnderTheStrictHost(t *testing.T) {
 	h := newLiveHarness(t, defaultService())
-	for _, path := range []string{"/", "/app/", "/legacy/", "/favicon.ico", "/static/styles.css"} {
+	for _, path := range []string{"/", "/app/", "/favicon.ico"} {
 		response, _ := h.do(http.MethodGet, path, reqOpts{})
 		if response.StatusCode >= 500 || response.StatusCode == http.StatusForbidden || response.StatusCode == http.StatusUnauthorized {
 			t.Errorf("GET %s: %d", path, response.StatusCode)

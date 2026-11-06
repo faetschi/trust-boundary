@@ -19,15 +19,17 @@ no Node. Nothing under `supervisor/` imports it.
   default UI: `/` redirects to `/app/`. Its committed build
   (`internal/webchat/dist/`) is embedded, and the `/app/` routes are derived from
   its Vite manifest. Phase 2 added the typed DOM-free core (`frontend/src/core/`)
-  and the markdown AST (`frontend/src/markdown/`), each checked against the legacy
-  client by parity tests.
+  and the markdown AST (`frontend/src/markdown/`). Both were built to match the
+  retired vanilla client; the recorded legacy outputs are frozen as digests in
+  `frontend/src/test-support/legacy-oracle.json` and replayed by the
+  `frozen-oracle.test.ts` suites.
   `docs/adr-0001-optional-extension.md` allows this frontend build, so the
   extension as a whole is not zero-build.
-- A legacy vanilla browser client (`internal/webchat/assets/`, no build step), now
-  **deprecated**. It is served at `/legacy/`, and `/` serves it only when the React
-  app cannot be loaded. It will be removed after sign-off. The Go gateway
-  (`internal/webchat/`, entrypoint `cmd/tbound-webchat/`) serves both. The module
-  has no third-party Go dependencies.
+- The Go gateway (`internal/webchat/`, entrypoint `cmd/tbound-webchat/`) serves the
+  React app and the read-only API. The legacy vanilla client that used to be served at
+  `/legacy/` was **retired**: `/legacy/` and the old `/static/` paths answer like any
+  unknown path (404; 405 for a non-GET method). The module has no third-party Go
+  dependencies.
 - **Demonstrations are read-only.** `--demo`, `--fixture`, `--replay`, `--receipt` and
   `--receipt-demo` serve embedded fixtures, retained replay documents and imported
   post-run receipts. They have no turn submission, cancellation or browser
@@ -57,8 +59,8 @@ go run ./cmd/tbound-webchat --live --socket /run/tbound-product/product.sock   #
 The flags `--demo`, `--fixture`, `--replay`, `--receipt`, `--receipt-demo` and
 `--live` are mutually exclusive. `--socket` goes only with `--live`, and `--live` needs
 it. `--listen` is the new name of `--addr`. The startup banner states the source class and
-the claim boundary. Open `http://127.0.0.1:<port>/` — React UI (it redirects to
-`/app/`); `/legacy/` is deprecated and will be removed after sign-off.
+the claim boundary. Open `http://127.0.0.1:<port>/`: it redirects to the React UI at
+`/app/`.
 
 ## Live mode (P9)
 
@@ -144,12 +146,11 @@ From this directory:
 gofmt -l .                                   # no output
 go vet -mod=readonly ./...
 go test -race -mod=readonly -count=1 ./...
-node --test internal/webchat/jstest/*.test.mjs
 ```
 
-From the repository root, `make extension-webchat` runs the same four checks.
-Node is needed only for the last one and for `make extension-webchat`. The core
-`make test` target does not run them. The CI workflow
+From the repository root, `make extension-webchat` runs the same three checks. The
+browser-side tests are the React frontend's (below). The core `make test` target does
+not run them. The CI workflow
 `.github/workflows/webchat-extension.yml` runs them for changes under
 `extensions/webchat/**`.
 
@@ -161,9 +162,7 @@ supervisor generates. After a protocol change, regenerate them from `supervisor/
 
 The React frontend has its own gate. It needs Node 24.15.0 (`frontend/.nvmrc`). The live UI
 is tested with a fake gateway behind `fetch` (`frontend/src/live/*.test.ts*`,
-`frontend/src/test-support/liveGateway.ts`), not with a browser. On a checkout whose path has
-a space, `src/core/differential.test.ts` needs
-`VITE_WEBCHAT_LEGACY_ASSETS=file:///<checkout>/extensions/webchat/internal/webchat/assets`:
+`frontend/src/test-support/liveGateway.ts`), not with a browser:
 
 ```sh
 make extension-webchat-frontend-verify       # npm ci --ignore-scripts, verify, dist reproducibility
@@ -176,8 +175,8 @@ any gate. Point it at a demo gateway on a fresh port:
 make extension-webchat-csp CSP_URL=http://127.0.0.1:8793
 ```
 
-It checks `/` (which must land on `/app/`), `/app/` and `/legacy/`, and the
-header responses for each route.
+It checks `/` (which must land on `/app/`) and `/app/`, and the header responses for
+each route, including the 404 of the retired `/legacy/` and `/static/` paths.
 
 ## Claim boundary
 
@@ -215,9 +214,9 @@ header responses for each route.
 
 - `extensions/webchat/internal/webchat/`: bounded projection contract,
   validation, gateway store, HTTP/SSE handler, post-run receipt importer,
-  embedded assets (`assets/`), fixtures (`fixtures/`) and Node tests (`jstest/`).
-  - `handler.go`: the document routes (`/` redirect or legacy fallback,
-    `/legacy/`), the legacy `/static/` assets and the read-only API.
+  fixtures (`fixtures/`) and the committed React build (`dist/`).
+  - `handler.go`: the document routes (`/` redirect, `/favicon.ico`, `/app/`) and the
+    read-only API.
   - `app.go`: the `/app/` route table, derived from the Vite manifest.
   - `live.go`, `live_render.go`: live mode: pairing, cookie, CSRF, Host and Origin
     checks, the `/api/v1/` routes, and the snapshot and item rendering.
@@ -248,5 +247,6 @@ header responses for each route.
     Desktop frames: buttons with a matching frame jump to it; the governance tabs swap in place.
 
 Paths in these documents are repository-root-relative, for example
-`extensions/webchat/internal/webchat/`. Bare file names such as `store.mjs`
-refer to `extensions/webchat/internal/webchat/assets/`.
+`extensions/webchat/internal/webchat/`. Bare file names such as `store.mjs`, in the
+historical parity documents, refer to the retired `internal/webchat/assets/` of the
+commit before the legacy retirement.

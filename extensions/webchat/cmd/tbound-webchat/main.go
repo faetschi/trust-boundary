@@ -199,16 +199,15 @@ func liveBanner(bound, socket, token string) []string {
 	}
 }
 
-// startupBanner lists the URLs to open, with the React app first. When the app is
-// unavailable, the first line says that / is serving the legacy fallback.
+// startupBanner lists the URL to open. When the React app is unavailable, the first
+// line says that /app/ answers 503.
 func startupBanner(bound string, appErr error) []string {
 	ui := fmt.Sprintf("UI: http://%s/ (React app at /app/)", bound)
 	if appErr != nil {
-		ui = fmt.Sprintf("UI: http://%s/ (fallback: the React app is unavailable, so the legacy workspace is served here)", bound)
+		ui = fmt.Sprintf("UI: http://%s/ (the React app is unavailable: /app/ answers 503)", bound)
 	}
 	return []string{
 		ui,
-		fmt.Sprintf("legacy UI (deprecated; removed after sign-off): http://%s/legacy/", bound),
 		fmt.Sprintf("tbound-webchat listening on http://%s", bound),
 	}
 }

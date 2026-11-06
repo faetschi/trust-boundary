@@ -1,14 +1,10 @@
-// Differential check: the legacy .mjs modules (internal/webchat/assets) and their TypeScript ports
-// receive the same seeded inputs and must return the same outputs. The store is compared in full
-// after every step. Nothing here is random without a seed: every corpus comes from Rng(seed).
-//
-// The legacy files are loaded by path, not by import, so this file needs no declarations for them.
-// VITE_WEBCHAT_LEGACY_ASSETS overrides the directory. The mutation receipt in phase2-parity.md uses
-// that override to point at a copy with one function changed; the repository copy is never edited.
+// Frozen-oracle check. Until the legacy vanilla client was retired, these corpora ran through its .mjs
+// modules next to the TypeScript ports and had to agree. The recorded legacy outputs now live in
+// test-support/legacy-oracle.json as rolling digests (see test-support/frozen.ts), and the same seeded
+// corpora run against the ports alone. Every corpus comes from Rng(seed); the original differential
+// suite stays in git history at the commit before the retirement. Mapping: docs/phase2-parity.md.
 import { describe, expect, test, vi } from "vitest";
 import assert from "node:assert/strict";
-import { join } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
 
 // The corpora are large by design. They take 3 to 5 seconds on their own and more when the suite runs in
 // parallel, so the default 5-second budget would fail the run without a comparison failing.
@@ -21,6 +17,7 @@ import * as trajectoryTs from "./trajectory";
 import * as gateTs from "./verification";
 import * as anchorTs from "./anchor";
 import * as backoffTs from "./backoff";
+import { frozenSuite } from "../test-support/frozen";
 import { createFakeTimers } from "./testing/fake-timers";
 import { activityItem, decisionItem, messageItem, panelsDefault, resultItem, sessionDefault, snapshotOf, streamDefault, TIMESTAMP } from "./testing/builders";
 import {
@@ -42,22 +39,6 @@ import {
 } from "./contract";
 import type { ConnectionState, StoredGap, Workspace } from "./store";
 import type { FilterId } from "./filters";
-
-const ASSETS: string =
-  import.meta.env.VITE_WEBCHAT_LEGACY_ASSETS || fileURLToPath(new URL("../../../internal/webchat/assets", import.meta.url));
-
-// Loads one legacy module and checks each named export at run time. The legacy files are untyped
-// JavaScript, so the loaded namespace is typed as its TypeScript port: both sides then take the same
-// arguments. This cast is the one boundary cast in the differential suite. The check above it is the
-// reason it is safe.
-async function legacy<T extends object>(file: string, names: readonly (keyof T & string)[]): Promise<T> {
-  const mod: unknown = await import(/* @vite-ignore */ pathToFileURL(join(ASSETS, file)).href);
-  if (typeof mod !== "object" || mod === null) throw new Error(`legacy ${file} did not load as a module`);
-  for (const name of names) {
-    if (!(name in mod)) throw new Error(`legacy ${file} has no export ${name}`);
-  }
-  return mod as T;
-}
 
 // mulberry32: a small, seeded PRNG. Every corpus takes its own seed.
 class Rng {
@@ -121,106 +102,27 @@ function cover(name: string): void {
 
 // Compare two values with the strict deep equality of node:assert. Functions compare by reference, so a
 // prototype lookup that returns a function is compared, not skipped.
-function same(label: string, expected: unknown, actual: unknown): void {
-  assert.deepEqual(actual, expected, label);
-}
+const same = frozenSuite();
 
-const legacyFormat = await legacy<typeof formatTs>("format.mjs", [
-  "SUCCESS_STATES",
-  "TOOL_GLYPH",
-  "slug",
-  "humanize",
-  "isVerifiedProjection",
-  "stateChipClass",
-  "verdictChipClass",
-  "toolGlyph",
-  "shortDigest",
-  "formatClock",
-  "formatStamp",
-]);
-const legacyFilters = await legacy<typeof filtersTs>("filters.mjs", [
-  "FILTERS",
-  "matchesFilter",
-  "countFilter",
-  "filterItems",
-  "governanceCounts",
-]);
-const legacyStore = await legacy<typeof storeTs>("store.mjs", [
-  "MAX_CLIENT_ITEMS",
-  "VIEWS",
-  "createWorkspace",
-  "setView",
-  "setGroup",
-  "setQuery",
-  "selectRecord",
-  "clearRecord",
-  "applySnapshot",
-  "applyItem",
-  "applySession",
-  "noteGap",
-  "setConnection",
-  "setError",
-  "setFilter",
-  "groupTurn",
-  "turnsOf",
-]);
-// The legacy item-only predicate. The port names it isItemEvidenceOnly (verification.ts): the same judgement, renamed so
-// that nothing outside the differential suite can mistake it for the verified gate.
-const legacyItemOnly = await legacy<{ isVerified: (item: unknown) => boolean }>("format.mjs", ["isVerified"]);
-
-const legacyTrajectory = await legacy<typeof trajectoryTs>("trajectory.mjs", [
-  "RECORD_GROUPS",
-  "MAX_PREVIEW",
-  "recordSource",
-  "sourceLabel",
-  "preview",
-  "recordDot",
-  "statusText",
-  "recordLabel",
-  "recordPayload",
-  "recordChips",
-  "timingOf",
-  "toneText",
-  "weightClass",
-  "sequenceLanes",
-  "searchRecords",
-  "groupRecords",
-  "recordDetail",
-  "recordOf",
-  "visibleRecords",
-]);
-const legacyAnchor = await legacy<typeof anchorTs>("anchor.mjs", [
-  "TAIL_SLACK_PX",
-  "maxScrollTop",
-  "isAtTail",
-  "restoredScrollTop",
-  "pendingSince",
-  "repin",
-  "jumpLabel",
-  "tailAnnouncement",
-]);
-const legacyBackoff = await legacy<typeof backoffTs>("backoff.mjs", ["BACKOFF_DEFAULTS", "createBackoff", "createScheduler"]);
-
-// ---------------------------------------------------------------------------------------------
 // A. format helpers
 // ---------------------------------------------------------------------------------------------
-describe("differential: format helpers", () => {
-  test("every helper returns the legacy result on a seeded corpus", () => {
+describe("frozen legacy oracle: format helpers", () => {
+  test("every helper returns the frozen legacy result on a seeded corpus", () => {
     const rng = new Rng(0x5eed0001);
     const states: string[] = [...RESULT_STATES, "completed", "published", "ready", "cancelled", "unavailable", "unverified", "reported", "", ...WORDS];
     const sources: (string | undefined)[] = [...SOURCE_CLASSES, "live", undefined];
 
-    assert.deepEqual(formatTs.SUCCESS_STATES, legacyFormat.SUCCESS_STATES);
-    assert.deepEqual(formatTs.TOOL_GLYPH, legacyFormat.TOOL_GLYPH);
+    same("SUCCESS_STATES", formatTs.SUCCESS_STATES);
+    same("TOOL_GLYPH", formatTs.TOOL_GLYPH);
     tally("format", 2);
 
     const values: unknown[] = [undefined, null, 0, 1, -1, 3.5, Number.NaN, Number.POSITIVE_INFINITY, true, false, "", " "];
     for (let i = 0; i < 3000; i += 1) values.push(randomText(rng));
     for (const value of values) {
-      same(`slug(${String(value)})`, legacyFormat.slug(value), formatTs.slug(value));
-      same(`humanize(${String(value)})`, legacyFormat.humanize(value), formatTs.humanize(value));
-      same("verdictChipClass", legacyFormat.verdictChipClass(value), formatTs.verdictChipClass(value));
-      same("shortDigest", legacyFormat.shortDigest(value), formatTs.shortDigest(value));
+      same(`slug(${String(value)})`, formatTs.slug(value));
+      same(`humanize(${String(value)})`, formatTs.humanize(value));
+      same("verdictChipClass", formatTs.verdictChipClass(value));
+      same("shortDigest", formatTs.shortDigest(value));
       tally("format", 4);
     }
 
@@ -228,30 +130,30 @@ describe("differential: format helpers", () => {
     const scopes: (string | undefined)[] = ["structural-audit-only", "unverified-input", "unavailable", "", "x", undefined];
     for (let i = 0; i < 2000; i += 1) {
       const item = { authority: rng.pick(authorities), verification_scope: rng.pick(scopes) };
-      same("isItemEvidenceOnly", legacyItemOnly.isVerified(item), gateTs.isItemEvidenceOnly(item));
+      same("isItemEvidenceOnly", gateTs.isItemEvidenceOnly(item));
       tally("format");
     }
-    same("isItemEvidenceOnly(null)", legacyItemOnly.isVerified(null), gateTs.isItemEvidenceOnly(null));
-    same("isItemEvidenceOnly(undefined)", legacyItemOnly.isVerified(undefined), gateTs.isItemEvidenceOnly(undefined));
+    same("isItemEvidenceOnly(null)", gateTs.isItemEvidenceOnly(null));
+    same("isItemEvidenceOnly(undefined)", gateTs.isItemEvidenceOnly(undefined));
     tally("format", 2);
 
     for (let i = 0; i < 1000; i += 1) {
       const state = { source: rng.pick(sources), verification: rng.pick([...scopes, "live"]) };
-      same("isVerifiedProjection", legacyFormat.isVerifiedProjection(state), formatTs.isVerifiedProjection(state));
+      same("isVerifiedProjection", formatTs.isVerifiedProjection(state));
       tally("format");
     }
 
     for (let i = 0; i < 3000; i += 1) {
       const state = rng.bool(0.2) ? randomText(rng) : rng.pick(states);
       const verified = rng.bool();
-      same("stateChipClass", legacyFormat.stateChipClass(state, verified), formatTs.stateChipClass(state, verified));
+      same("stateChipClass", formatTs.stateChipClass(state, verified));
       tally("format");
     }
 
     const tools: (string | null | undefined)[] = ["read", "write", "edit", "bash", "exec", "", null, undefined, "constructor"];
     for (let i = 0; i < 500; i += 1) {
       const tool = rng.bool(0.7) ? rng.pick(tools) : randomText(rng, 6);
-      same("toolGlyph", legacyFormat.toolGlyph(tool), formatTs.toolGlyph(tool));
+      same("toolGlyph", formatTs.toolGlyph(tool));
       tally("format");
     }
 
@@ -262,8 +164,8 @@ describe("differential: format helpers", () => {
       dates.push(new Date(ms).toISOString(), ms, new Date(ms));
     }
     for (const date of dates) {
-      same("formatClock", legacyFormat.formatClock(date), formatTs.formatClock(date));
-      same("formatStamp", legacyFormat.formatStamp(date), formatTs.formatStamp(date));
+      same("formatClock", formatTs.formatClock(date));
+      same("formatStamp", formatTs.formatStamp(date));
       tally("format", 2);
     }
   });
@@ -304,11 +206,11 @@ function randomItemView(rng: Rng, index: number): ItemView {
   };
 }
 
-describe("differential: filters and governance counts", () => {
+describe("frozen legacy oracle: filters and governance counts", () => {
   test("matchesFilter, filterItems, countFilter and governanceCounts agree on seeded timelines", () => {
     const rng = new Rng(0x5eed0002);
-    const filterIds: string[] = [...legacyFilters.FILTERS.map((entry) => entry.id), "bogus", ""];
-    same("FILTERS", legacyFilters.FILTERS, filtersTs.FILTERS);
+    const filterIds: string[] = [...filtersTs.FILTERS.map((entry) => entry.id), "bogus", ""];
+    same("FILTERS", filtersTs.FILTERS);
     tally("filters");
 
     const predicate = (item: ItemView): boolean => ((item.id?.length ?? 0) + (item.sequence ?? 0)) % 3 === 0;
@@ -318,20 +220,20 @@ describe("differential: filters and governance counts", () => {
       for (let i = 0; i < length; i += 1) timeline.push(randomItemView(rng, i));
       for (const item of timeline) {
         for (const filter of filterIds) {
-          same("matchesFilter", legacyFilters.matchesFilter(item, filter), filtersTs.matchesFilter(item, filter));
+          same("matchesFilter", filtersTs.matchesFilter(item, filter));
           tally("filters");
         }
       }
       for (const filter of filterIds) {
-        same("filterItems", legacyFilters.filterItems(timeline, filter), filtersTs.filterItems(timeline, filter));
-        same("countFilter", legacyFilters.countFilter(timeline, filter), filtersTs.countFilter(timeline, filter));
+        same("filterItems", filtersTs.filterItems(timeline, filter));
+        same("countFilter", filtersTs.countFilter(timeline, filter));
         tally("filters", 2);
       }
-      same("governanceCounts(predicate)", legacyFilters.governanceCounts(timeline, predicate), filtersTs.governanceCounts(timeline, predicate));
-      same("governanceCounts(none)", legacyFilters.governanceCounts(timeline), filtersTs.governanceCounts(timeline));
+      same("governanceCounts(predicate)", filtersTs.governanceCounts(timeline, predicate));
+      same("governanceCounts(none)", filtersTs.governanceCounts(timeline));
       tally("filters", 2);
     }
-    same("matchesFilter(null)", legacyFilters.matchesFilter(null, "denied"), filtersTs.matchesFilter(null, "denied"));
+    same("matchesFilter(null)", filtersTs.matchesFilter(null, "denied"));
     tally("filters");
   });
 });
@@ -489,25 +391,23 @@ function applyStore(api: typeof storeTs, state: Workspace, event: StoreEvent): u
   }
 }
 
-describe("differential: store reducers", () => {
-  test("the full store state matches the legacy state after every step of seeded runs", () => {
+describe("frozen legacy oracle: store reducers", () => {
+  test("the full store state matches the frozen legacy state after every step of seeded runs", () => {
     const rng = new Rng(0x5eed0003);
     for (let run = 0; run < 120; run += 1) {
-      const legacyState = legacyStore.createWorkspace();
       const tsState = storeTs.createWorkspace();
       const generator = { last: 0 };
       for (let step = 0; step < 250; step += 1) {
         const event = storeEvent(rng, generator);
-        const expected = applyStore(legacyStore, legacyState, event);
         const actual = applyStore(storeTs, tsState, event);
-        same(`run ${run} step ${step} outcome`, expected, actual);
-        same(`run ${run} step ${step} state`, normalize(legacyState), normalize(tsState));
+        same(`run ${run} step ${step} outcome`, actual);
+        same(`run ${run} step ${step} state`, normalize(tsState));
         tally("store");
         observeStore(tsState, actual);
         if (step % 10 === 0) {
           // Both grouping helpers on the store's own item list, as the view calls them.
-          same("groupTurn", legacyStore.groupTurn(tsState.items), storeTs.groupTurn(tsState.items));
-          same("turnsOf", legacyStore.turnsOf(tsState.items), storeTs.turnsOf(tsState.items));
+          same("groupTurn", storeTs.groupTurn(tsState.items));
+          same("turnsOf", storeTs.turnsOf(tsState.items));
           tally("store", 2);
         }
       }
@@ -517,7 +417,6 @@ describe("differential: store reducers", () => {
   test("the eviction and window-gap paths match over long runs of 512-plus items", () => {
     const rng = new Rng(0x5eed0004);
     for (let run = 0; run < 3; run += 1) {
-      const legacyState = legacyStore.createWorkspace();
       const tsState = storeTs.createWorkspace();
       const generator = { last: 0 };
       // Run 0 has no snapshots, so the client cap trims with no earlier server loss (the client window gap).
@@ -532,14 +431,13 @@ describe("differential: store reducers", () => {
         } else {
           event = storeEvent(rng, generator, allowSnapshots);
         }
-        const expected = applyStore(legacyStore, legacyState, event);
         const actual = applyStore(storeTs, tsState, event);
-        same(`long run ${run} step ${step} outcome`, expected, actual);
-        same(`long run ${run} step ${step} state`, normalize(legacyState), normalize(tsState));
+        same(`long run ${run} step ${step} outcome`, actual);
+        same(`long run ${run} step ${step} state`, normalize(tsState));
         tally("store");
         observeStore(tsState, actual);
       }
-      expect(tsState.evicted).toBe(legacyState.evicted);
+      same("evicted", tsState.evicted);
     }
   });
 });
@@ -552,23 +450,11 @@ describe("differential: store reducers", () => {
 // same argument, ignore it, and judge the item alone, which is the judgement the live projection makes identical.
 const LIVE = { source: "live", verification: "structural-audit-only" } as const;
 
-// D4 (phase2-parity.md): a lossy success that is reported adds ", not counted as confirmed" to the legacy
-// words, which stop at "output lossy". Every other status text must equal the legacy text exactly.
-const D4_CLAUSE = ", not counted as confirmed";
-function expectedStatusText(item: ItemView): string {
-  const legacy = legacyTrajectory.statusText(item, LIVE);
-  const reportedLossySuccess =
-    item.lossy === true && formatTs.SUCCESS_STATES.has(formatTs.slug(item.state)) && legacyTrajectory.recordDot(item, LIVE) === "reported";
-  if (!reportedLossySuccess) return legacy;
-  assert.ok(legacy.endsWith("; output lossy"), `D4 applies only to the legacy lossy clause: ${legacy}`);
-  return `${legacy}${D4_CLAUSE}`;
-}
-
-describe("differential: trajectory projections", () => {
-  test("every projection returns the legacy result on seeded item lists", () => {
+describe("frozen legacy oracle: trajectory projections", () => {
+  test("every projection returns the frozen legacy result on seeded item lists", () => {
     const rng = new Rng(0x5eed0005);
-    same("RECORD_GROUPS", legacyTrajectory.RECORD_GROUPS, trajectoryTs.RECORD_GROUPS);
-    same("MAX_PREVIEW", legacyTrajectory.MAX_PREVIEW, trajectoryTs.MAX_PREVIEW);
+    same("RECORD_GROUPS", trajectoryTs.RECORD_GROUPS);
+    same("MAX_PREVIEW", trajectoryTs.MAX_PREVIEW);
     tally("trajectory", 2);
 
     const sources: string[] = ["decision", "result", "tool", "user", "assistant", "system", "message", "unknown", "context", "constructor", "", "x"];
@@ -584,46 +470,46 @@ describe("differential: trajectory projections", () => {
       const query = rng.pick(queries);
 
       for (const item of items) {
-        same("recordSource", legacyTrajectory.recordSource(item), trajectoryTs.recordSource(item));
-        same("recordDot", legacyTrajectory.recordDot(item, LIVE), trajectoryTs.recordDot(item, LIVE));
-        same("statusText", expectedStatusText(item), trajectoryTs.statusText(item, LIVE));
-        same("recordLabel", legacyTrajectory.recordLabel(item), trajectoryTs.recordLabel(item));
-        same("recordPayload", legacyTrajectory.recordPayload(item), trajectoryTs.recordPayload(item));
-        same("recordChips", legacyTrajectory.recordChips(item, LIVE), trajectoryTs.recordChips(item, LIVE));
-        same("timingOf", legacyTrajectory.timingOf(item), trajectoryTs.timingOf(item));
-        same("recordDetail", legacyTrajectory.recordDetail(item, LIVE), trajectoryTs.recordDetail(item, LIVE));
-        same("recordOf", legacyTrajectory.recordOf(item, LIVE), trajectoryTs.recordOf(item, LIVE));
+        same("recordSource", trajectoryTs.recordSource(item));
+        same("recordDot", trajectoryTs.recordDot(item, LIVE));
+        same("statusText", trajectoryTs.statusText(item, LIVE));
+        same("recordLabel", trajectoryTs.recordLabel(item));
+        same("recordPayload", trajectoryTs.recordPayload(item));
+        same("recordChips", trajectoryTs.recordChips(item, LIVE));
+        same("timingOf", trajectoryTs.timingOf(item));
+        same("recordDetail", trajectoryTs.recordDetail(item, LIVE));
+        same("recordOf", trajectoryTs.recordOf(item, LIVE));
         tally("trajectory", 9);
       }
       for (const source of sources) {
-        same("sourceLabel", legacyTrajectory.sourceLabel(source), trajectoryTs.sourceLabel(source));
+        same("sourceLabel", trajectoryTs.sourceLabel(source));
         tally("trajectory");
       }
       for (let i = 0; i < 40; i += 1) {
         const text = rng.bool(0.5) ? randomText(rng, 200) : undefined;
         const max = rng.pick([0, 1, 5, 40, 160, 300]);
-        same("preview", legacyTrajectory.preview(text, max), trajectoryTs.preview(text, max));
+        same("preview", trajectoryTs.preview(text, max));
         tally("trajectory");
       }
       for (const tone of tones) {
-        same("toneText", legacyTrajectory.toneText(tone), trajectoryTs.toneText(tone));
+        same("toneText", trajectoryTs.toneText(tone));
         tally("trajectory");
       }
       for (const weight of weights) {
-        same("weightClass", legacyTrajectory.weightClass(weight), trajectoryTs.weightClass(weight));
+        same("weightClass", trajectoryTs.weightClass(weight));
         tally("trajectory");
       }
-      same("sequenceLanes", legacyTrajectory.sequenceLanes(items, LIVE), trajectoryTs.sequenceLanes(items, LIVE));
-      same("searchRecords", legacyTrajectory.searchRecords(items, query), trajectoryTs.searchRecords(items, query));
+      same("sequenceLanes", trajectoryTs.sequenceLanes(items, LIVE));
+      same("searchRecords", trajectoryTs.searchRecords(items, query));
       tally("trajectory", 2);
       for (const groupMode of ["turn", "tool", "verdict", "other"]) {
-        same(`groupRecords ${groupMode}`, legacyTrajectory.groupRecords(items, groupMode, LIVE), trajectoryTs.groupRecords(items, groupMode, LIVE));
+        same(`groupRecords ${groupMode}`, trajectoryTs.groupRecords(items, groupMode, LIVE));
         tally("trajectory");
       }
       // The view's query is a string or absent; null is covered through searchRecords above.
       const view = { items, query: typeof query === "string" ? query : undefined, group: mode };
       const judged = { ...view, projection: LIVE };
-      same("visibleRecords", legacyTrajectory.visibleRecords(judged), trajectoryTs.visibleRecords(judged));
+      same("visibleRecords", trajectoryTs.visibleRecords(judged));
       tally("trajectory");
     }
   });
@@ -632,33 +518,33 @@ describe("differential: trajectory projections", () => {
 // ---------------------------------------------------------------------------------------------
 // E. anchor arithmetic
 // ---------------------------------------------------------------------------------------------
-describe("differential: anchor arithmetic", () => {
+describe("frozen legacy oracle: anchor arithmetic", () => {
   test("the tail, scroll and announcement functions agree on seeded metrics", () => {
     const rng = new Rng(0x5eed0006);
-    same("TAIL_SLACK_PX", legacyAnchor.TAIL_SLACK_PX, anchorTs.TAIL_SLACK_PX);
+    same("TAIL_SLACK_PX", anchorTs.TAIL_SLACK_PX);
     tally("anchor");
     const numbers = [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, -1, 0, 0.5];
     const real = (): number => (rng.bool(0.1) ? rng.pick(numbers) : rng.int(5000) - 500);
     const optional = (): number | null | undefined => (rng.bool(0.1) ? rng.pick<number | null | undefined>([null, undefined]) : real());
     for (let i = 0; i < 20000; i += 1) {
       const metrics = { scrollTop: real(), clientHeight: real(), scrollHeight: real() };
-      same("maxScrollTop", legacyAnchor.maxScrollTop(metrics), anchorTs.maxScrollTop(metrics));
-      same("isAtTail", legacyAnchor.isAtTail(metrics), anchorTs.isAtTail(metrics));
+      same("maxScrollTop", anchorTs.maxScrollTop(metrics));
+      same("isAtTail", anchorTs.isAtTail(metrics));
       const slack = rng.bool(0.2) ? rng.int(100) : undefined;
-      same("isAtTail(slack)", legacyAnchor.isAtTail(metrics, slack), anchorTs.isAtTail(metrics, slack));
+      same("isAtTail(slack)", anchorTs.isAtTail(metrics, slack));
       const capture = { capturedScrollTop: real(), capturedOffset: optional(), currentScrollTop: real(), nextOffset: optional() };
-      same("restoredScrollTop", legacyAnchor.restoredScrollTop(capture, metrics), anchorTs.restoredScrollTop(capture, metrics));
+      same("restoredScrollTop", anchorTs.restoredScrollTop(capture, metrics));
       const applied = real();
       const pinned = real();
-      same("pendingSince", legacyAnchor.pendingSince(applied, pinned), anchorTs.pendingSince(applied, pinned));
+      same("pendingSince", anchorTs.pendingSince(applied, pinned));
       const atTail = rng.bool();
-      same("repin", legacyAnchor.repin(applied, atTail, pinned), anchorTs.repin(applied, atTail, pinned));
+      same("repin", anchorTs.repin(applied, atTail, pinned));
       // Draw each argument once, so both implementations receive the same values.
       const labelCount = rng.int(4);
-      same("jumpLabel", legacyAnchor.jumpLabel(labelCount), anchorTs.jumpLabel(labelCount));
+      same("jumpLabel", anchorTs.jumpLabel(labelCount));
       const announced = rng.int(5);
       const pending = rng.int(6);
-      same("tailAnnouncement", legacyAnchor.tailAnnouncement(announced, pending), anchorTs.tailAnnouncement(announced, pending));
+      same("tailAnnouncement", anchorTs.tailAnnouncement(announced, pending));
       tally("anchor", 7);
     }
   });
@@ -667,10 +553,10 @@ describe("differential: anchor arithmetic", () => {
 // ---------------------------------------------------------------------------------------------
 // F. backoff delays and the scheduler's fire order
 // ---------------------------------------------------------------------------------------------
-describe("differential: backoff delays and scheduler", () => {
+describe("frozen legacy oracle: backoff delays and scheduler", () => {
   test("delays with an injected random source, and timers, agree on seeded sequences", () => {
     const rng = new Rng(0x5eed0007);
-    same("BACKOFF_DEFAULTS", legacyBackoff.BACKOFF_DEFAULTS, backoffTs.BACKOFF_DEFAULTS);
+    same("BACKOFF_DEFAULTS", backoffTs.BACKOFF_DEFAULTS);
     tally("backoff");
 
     const draws = [Number.NaN, -2, 0, 1, 1.5, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY];
@@ -691,45 +577,37 @@ describe("differential: backoff delays and scheduler", () => {
           return value ?? 0;
         };
       };
-      const legacyBo = legacyBackoff.createBackoff({ ...options, random: replay() });
       const tsBo = backoffTs.createBackoff({ ...options, random: replay() });
       for (let i = 0; i < 14; i += 1) {
         if (rng.bool(0.15)) {
-          legacyBo.reset();
           tsBo.reset();
         }
-        same("backoff.next", legacyBo.next(), tsBo.next());
-        same("backoff.attempts", legacyBo.attempts, tsBo.attempts);
+        same("backoff.next", tsBo.next());
+        same("backoff.attempts", tsBo.attempts);
         tally("backoff", 2);
       }
     }
 
     for (let run = 0; run < 300; run += 1) {
-      const legacyClock = createFakeTimers();
       const tsClock = createFakeTimers();
-      const legacyScheduler = legacyBackoff.createScheduler({ setTimer: legacyClock.setTimeout, clearTimer: legacyClock.clearTimeout });
       const tsScheduler = backoffTs.createScheduler({ setTimer: tsClock.setTimeout, clearTimer: tsClock.clearTimeout });
-      const legacyFired: string[] = [];
       const tsFired: string[] = [];
       for (let op = 0; op < 80; op += 1) {
         const roll = rng.next();
         if (roll < 0.45) {
           const delay = rng.int(900) - 50;
           const label = `t${op}`;
-          legacyScheduler.schedule(delay, () => legacyFired.push(label));
           tsScheduler.schedule(delay, () => tsFired.push(label));
         } else if (roll < 0.6) {
-          legacyScheduler.cancel();
           tsScheduler.cancel();
         } else {
           const ms = rng.int(400);
-          legacyClock.advance(ms);
           tsClock.advance(ms);
         }
-        same("scheduler.fired", legacyFired, tsFired);
-        same("scheduler.pending", legacyScheduler.pending, tsScheduler.pending);
-        same("clock.now", legacyClock.now, tsClock.now);
-        same("clock.pendingCount", legacyClock.pendingCount, tsClock.pendingCount);
+        same("scheduler.fired", tsFired);
+        same("scheduler.pending", tsScheduler.pending);
+        same("clock.now", tsClock.now);
+        same("clock.pendingCount", tsClock.pendingCount);
         tally("backoff", 4);
       }
     }
@@ -739,7 +617,7 @@ describe("differential: backoff delays and scheduler", () => {
 // ---------------------------------------------------------------------------------------------
 // Corpus sizes. The totals are the comparisons made above; they are printed for the report.
 // ---------------------------------------------------------------------------------------------
-describe("differential: corpus", () => {
+describe("frozen legacy oracle: corpus", () => {
   test("the corpus is large, and every group compared something", () => {
     const groups = Object.keys(counts);
     const total = Object.values(counts).reduce((sum, value) => sum + value, 0);
@@ -759,7 +637,7 @@ describe("differential: corpus", () => {
 // Each deviation is listed in phase2-parity.md ("Deliberate deviations") with the same name. The corpus above
 // is constrained to the live structural projection, where the legacy item-only judgement and the port agree.
 // Everywhere else the port is stricter, and this block holds that difference to account.
-describe("differential: deliberate deviations (stricter than legacy)", () => {
+describe("frozen legacy oracle: deliberate deviations (stricter than legacy)", () => {
   const NON_LIVE_PROJECTIONS = [
     { source: "fixture", verification: "unverified-input" },
     { source: "fixture", verification: "structural-audit-only" },
@@ -782,7 +660,6 @@ describe("differential: deliberate deviations (stricter than legacy)", () => {
       authority: "observed" as const,
       verification_scope: "structural-audit-only" as const,
     };
-    assert.equal(legacyTrajectory.recordDot(record, LIVE), "ok", "legacy: the record alone decides");
     assert.equal(trajectoryTs.recordDot(record, { source: "live", verification: "structural-audit-only" }), "ok", "agreement inside a live structural projection");
     for (const projection of NON_LIVE_PROJECTIONS) {
       assert.notEqual(trajectoryTs.recordDot(record, projection), "ok", `port, ${projection.source}/${projection.verification}`);
@@ -792,8 +669,8 @@ describe("differential: deliberate deviations (stricter than legacy)", () => {
   test("D4: a lossy success that is reported says it is not counted as confirmed; the legacy words stop at 'output lossy'", () => {
     // Legacy trajectory.mjs words an unverified lossy success "reported ...; output lossy". The port adds the clause
     // that check F of ui-qa.mjs expects. Evidence: trajectory.test.ts ("a lossy success says it is not counted as
-    // confirmed in the reported branch as well as the verified one"). The corpus above applies this clause through
-    // expectedStatusText, and nothing else.
+    // confirmed in the reported branch as well as the verified one"). The frozen statusText digests were recorded with this clause applied,
+    // and nothing else.
     const record = {
       id: "r4",
       sequence: 4,
@@ -805,7 +682,7 @@ describe("differential: deliberate deviations (stricter than legacy)", () => {
       state: "succeeded" as const,
       lossy: true,
     };
-    assert.equal(legacyTrajectory.statusText(record, LIVE), "Result: succeeded, reported, not independently verified; output lossy", "legacy");
+    // Legacy words, frozen from the retired oracle: "Result: succeeded, reported, not independently verified; output lossy".
     assert.equal(
       trajectoryTs.statusText(record, LIVE),
       "Result: succeeded, reported, not independently verified; output lossy, not counted as confirmed",
@@ -813,7 +690,6 @@ describe("differential: deliberate deviations (stricter than legacy)", () => {
     );
     // A verified lossy success is on the unknown tone in both, and both words are identical: no deviation there.
     const verified = { ...record, authority: "observed" as const, verification_scope: "structural-audit-only" as const };
-    assert.equal(legacyTrajectory.statusText(verified, LIVE), trajectoryTs.statusText(verified, LIVE), "verified lossy: no deviation");
     assert.equal(trajectoryTs.statusText(verified, LIVE), "Result: succeeded, output lossy, not counted as confirmed");
   });
 });

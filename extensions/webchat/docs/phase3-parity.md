@@ -1,5 +1,12 @@
 # Phase 3: parity table (legacy UI tests to React tests)
 
+> **Historical.** This document records the Phase 3 mapping from legacy UI tests to React tests. The legacy vanilla client it compares
+> against (`internal/webchat/assets/`, `internal/webchat/jstest/`) was retired by audit
+> finding #5; the code and the legacy test suites remain in git history at the commit
+> before the retirement (`git log --diff-filter=D -- extensions/webchat/internal/webchat/assets`).
+> Legacy-only commands and paths named below no longer run at HEAD. The retirement mapping
+> is in phase2-parity.md section 11.
+
 Status: Phases 3a, 3b and 3c are in place. The claim-boundary review fixes of 2026-10-14 are
 rows R1 to R8 at the end of this file. Each row maps one legacy test in
 `internal/webchat/jstest/` to the React test that now asserts the same behaviour,
@@ -23,7 +30,7 @@ is also not a browser. Nothing here is a visual or layout check.
 | 2 | unverified success never renders with the confirmed-success chip | 3a + 3b | Partial. The panel side is `app/panels.test.ts` (publication and state readings). The transcript side: `app/views/ChatView.test.tsx` "shows an unverified success as reported, never as succeeded or in the success tone"; `app/views/chat/readings.test.ts` "shows an unverified success as reported, never succeeded and never the success tone". |
 | 3 | unverified publication is presented as reported, not published | 3a | `app/Shell.test.tsx` "shows an unverified publication as reported, never as published"; `app/panels.test.ts` "shows an unverified publication as reported, never as published". |
 | 4 | inspector renders bounded key/value rows and the claim boundary | 3a | Partial. Claim boundary: `app/Shell.test.tsx` "shows the claim boundary before any snapshot arrives". Rows: `app/panels.test.ts` (governance, provenance and qualification rows). The decision rows are asserted on the panel model, not on the DOM. Absent provenance and absent evidence read unavailable, never no: `app/panels.test.ts` "absent input reads unavailable, never no, zero, none, complete or ok"; `app/inspector/RecordInspector.test.tsx` "reads absent authority and verification as unavailable" (review fix 6). |
-| 5 | unverified panel and session claims carry an explicit textual trust label | 3a | `app/panels.test.ts` "shows an unverified publication as reported, never as published"; the session reading: "reads a session 'completed' as reported when the projection is not verified". |
+| 5 | unverified panel and session claims carry an explicit textual trust label | 3a | The rendered sentence "reported by the source, not independently verified" in the Publication and Recovery panels: `app/GovernancePanels.test.tsx` (added at the legacy retirement; fails if the paragraph is removed). The model: `app/panels.test.ts` "shows an unverified publication as reported, never as published"; the session reading: "reads a session 'completed' as reported when the projection is not verified". |
 | 6 | the sessions rail carries the unverified marker | 3a | Partial. `app/panels.test.ts` covers the session reading. The rail's DOM text is not asserted for a `completed` session. |
 | 7 | the current session is a non-interactive row, not a dead control | 3a | `app/Shell.test.tsx` "keeps the rail to one control, the collapse toggle, with no link or field". |
 | 8 | snapshot continuity gaps are surfaced as explicit notices | 3a | `app/workspaceStore.test.ts` "a server gap recovers from a fresh snapshot and says so"; `app/status.test.ts` (gap text, announced once). |

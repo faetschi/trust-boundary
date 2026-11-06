@@ -3,8 +3,8 @@
 Status: **development increment, non-claim-bearing.** `G1=false`; containment is
 `not-established`; `H1` is `unexecuted`. No qualified public production launch has
 occurred. A green workspace, green tests, or a loaded fixture establishes none of
-these. The React client at `/app/` is the default UI, and `/` redirects there. The
-legacy workspace at `/legacy/` is deprecated until sign-off.
+these. The React client at `/app/` is the only UI, and `/` redirects there. The legacy
+workspace that used to be served at `/legacy/` was retired (audit finding #5).
 
 This document describes the first frontend product increment for tbound: a new,
 untrusted web chat workspace for the official Pi CLI/RPC harness, wrapped by
@@ -45,7 +45,7 @@ require the authenticated supervisor session service.
 | Capability | State |
 |---|---|
 | Bounded read-only projection (snapshot + cursor SSE) | Implemented (fixture / replay / receipt / unavailable sources) |
-| Default UI: the React client at `/app/`, with `/` redirecting there | Implemented. The legacy UI at `/legacy/` is deprecated, and `/` serves it only when the React app is unavailable |
+| Default UI: the React client at `/app/`, with `/` redirecting there | Implemented. The legacy UI at `/legacy/` was retired: `/legacy/` answers like any unknown path |
 | Typed post-run Pi receipt import (development, native-fixture and production shapes) | Implemented (`--receipt`, `--receipt-demo`) |
 | Chat transcript rendering (user/assistant messages) | Implemented |
 | Tool activity with policy verdict, reason code, and result state | Implemented |
@@ -88,8 +88,8 @@ browser (untrusted)  ──HTTP/SSE (loopback)──▶  tbound-webchat gateway 
 New, additive code (no authority-owned file is modified):
 
 - `extensions/webchat/internal/webchat/` — the bounded projection contract,
-  validation, the gateway store, the HTTP/SSE handler, the receipt importer, the
-  legacy workspace assets (`assets/`, deprecated), and the committed React build
+  validation, the gateway store, the HTTP/SSE handler, the receipt importer, and
+  the committed React build
   (`dist/`, served under `/app/`). This is an optional extension: the core never
   imports it (see `extensions/webchat/README.md`).
 - `extensions/webchat/frontend/` — the React and TypeScript client: `src/` (with the
@@ -306,7 +306,7 @@ Limits, stated plainly: the count is exact only for live arrivals. Records that 
 reconnect snapshot delivers are not counted, so after a reconnect the count is a
 lower bound. Trimming the oldest records while the reader is away moves the content
 shown, and the held record keeps its place only if it is still in the window. The
-arithmetic is covered by `jstest/anchor.test.mjs`; the scroll and focus behaviour is
+arithmetic is covered by `frontend/src/core/anchor.test.ts`; the scroll and focus behaviour is
 browser-only and is not covered by the Node tests.
 
 ### 4.6 Assistant messages as markdown
@@ -349,10 +349,9 @@ or `Origin` gets `403` on every route.
 
 | Route | Purpose |
 |---|---|
-| `GET` or `HEAD /` | `302` to `/app/`. The target is a constant: the query string and the rest of the request never reach `Location`, so it is not an open redirect. If the React app cannot be derived, `/` serves the legacy workspace (`200`) with a fallback notice instead. |
+| `GET` or `HEAD /` | `302` to `/app/`. The target is a constant: the query string and the rest of the request never reach `Location`, so it is not an open redirect. It redirects even when the React app cannot be derived; `/app/` then answers `503`. |
 | `GET` or `HEAD /favicon.ico` | `204`, with no body and no `Content-Type`. |
-| `GET /legacy/` | The deprecated legacy workspace, with a deprecation notice above its content. It is removed after sign-off. |
-| `GET /static/*.css`, `/static/*.mjs` | Closed allowlist of the legacy workspace's modules. |
+| `/legacy/`, `/static/*` | Retired. Not routes: they get the refusal of any unknown path (`404`; `405` for a non-GET method), with the gateway's security headers. |
 | `GET /app/`, `/app/*` | The React client build. Exact files come from the committed Vite manifest; `503` if the table cannot be derived. |
 | `GET /api/v1/snapshot` | Bounded observation snapshot (recovery point for a gap). |
 | `GET /api/v1/contract` | Bounded contract descriptor (schemas, enums, limits, `read_only: true`, `controls: []`). |
@@ -515,12 +514,11 @@ loading states, `Kbd`, and a sidebar with muted hover/active rows. The timeline
 filter is a segmented Toggle Group built from `aria-pressed` buttons with roving
 arrow-key focus, and the posture row uses the badge/chip shapes.
 
-No React, Base UI or Tailwind is used in the legacy workspace served at `/legacy/`.
-The thesis treats a browser client as a deferred, non-claim-bearing demonstrator and
-requires the web service to stay minimal, so the legacy workspace is a zero-build
-ESM + CSS client served by the Go gateway. It was the default until the React client
-became the default (2026-10-14); it is now deprecated and will be removed after
-sign-off. [ADR-0001](adr-0001-optional-extension.md) supersedes
+The first client was a zero-build ESM + CSS workspace (served at `/legacy/`, with no
+React, Base UI or Tailwind). The thesis treats a browser client as a deferred,
+non-claim-bearing demonstrator and requires the web service to stay minimal. It was the
+default until the React client became the default (2026-10-14) and was then retired
+(audit finding #5). [ADR-0001](adr-0001-optional-extension.md) supersedes
 that zero-build rule for Phase 1 onward: React and TypeScript with the project's
 own components, CSS Modules compiled to same-origin CSS, and a committed Vite
 build. The tokens are defined in `:root`. Fonts degrade to local Inter / Geist Mono
@@ -536,8 +534,7 @@ Requires the pinned Go toolchain (module `tbound/webchat`, in
 cd extensions/webchat
 go vet ./internal/webchat/... ./cmd/tbound-webchat/...
 go test ./internal/webchat/... ./cmd/tbound-webchat/...
-node --test internal/webchat/jstest/*.test.mjs
-go run ./cmd/tbound-webchat --demo                 # embedded fixture, port 8791; open / (React), /legacy/ is deprecated
+go run ./cmd/tbound-webchat --demo                 # embedded fixture, port 8791; open / (it redirects to /app/)
 go run ./cmd/tbound-webchat                         # unavailable projection
 go run ./cmd/tbound-webchat --replay path.json      # retained observations
 go run ./cmd/tbound-webchat --receipt path.json     # import a real run receipt
@@ -568,7 +565,7 @@ or secrets.
 
 ### 9.2 Visual QA and keyboard receipts
 
-These captures were made while `/` still served the legacy workspace (before `6d03657`).
+These captures were made while `/` still served the legacy workspace (before `6d03657`; historical, that client is retired).
 Keyboard audits were driven over the DevTools protocol. They
 were recorded before the redesign follow-up, so they describe that build. They
 verify tab order (skip link → governance toggle → session → timeline filters →
@@ -583,7 +580,7 @@ data loading.
 
 ## 10. Verification receipts
 
-Gates at 57e6406 (historical): vitest 896 in 60 files; Go 54 top-level; legacy node 258. Current (FX4, 2026-10-15): vitest 1259 in 74 files; Go 60 top-level; legacy node 262; 0 skipped. The 57e6406 run was on Linux and WSL (Go 1.27.1, Node 24.15.0), with 132 PASS including subtests (from the `-v` run recorded in [phase3-parity.md](phase3-parity.md)); boundary guard OK. The receipts below are the historical record of
+The counts in this section are historical; the legacy node suites it names no longer exist at HEAD. Gates at 57e6406 (historical): vitest 896 in 60 files; Go 54 top-level; legacy node 258. Current (FX4, 2026-10-15): vitest 1259 in 74 files; Go 60 top-level; legacy node 262; 0 skipped. The 57e6406 run was on Linux and WSL (Go 1.27.1, Node 24.15.0), with 132 PASS including subtests (from the `-v` run recorded in [phase3-parity.md](phase3-parity.md)); boundary guard OK. The receipts below are the historical record of
 earlier increments.
 
 Focused checks on the pinned Go 1.27.1 in Linux, run from `extensions/webchat/`

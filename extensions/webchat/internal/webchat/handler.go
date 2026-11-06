@@ -1,12 +1,9 @@
 package webchat
 
 import (
-	"bytes"
-	"embed"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"html"
 	"io"
 	"io/fs"
 	"net"
@@ -15,9 +12,6 @@ import (
 	"strings"
 	"time"
 )
-
-//go:embed assets
-var assetsFS embed.FS
 
 const responseWriteTimeout = 5 * time.Second
 
@@ -34,37 +28,13 @@ type HandlerOptions struct {
 	Live *LiveGateway
 }
 
-type staticRoute struct {
-	asset       string
-	contentType string
-}
-
-// Document routes. "/" redirects to the React app at /app/, and serves the legacy
-// workspace only when that app is unavailable. /legacy/ is the deprecated legacy
-// workspace. Both are handled in newHandler, not in staticRoutes.
+// Document routes. "/" always redirects to the React app at /app/; /app/ itself
+// answers 503 when its bundle did not derive. Every other path, including the
+// retired /legacy/ and /static/ paths, is an unknown path.
 const (
 	rootPath    = "/"
-	legacyPath  = "/legacy/"
 	faviconPath = "/favicon.ico"
 )
-
-// staticRoutes is a closed allowlist of the legacy workspace's assets. Only these
-// exact paths are served; there is no directory listing, path joining, or
-// filesystem access.
-var staticRoutes = map[string]staticRoute{
-	"/static/styles.css":     {"assets/styles.css", "text/css; charset=utf-8"},
-	"/static/app.mjs":        {"assets/app.mjs", "text/javascript; charset=utf-8"},
-	"/static/api.mjs":        {"assets/api.mjs", "text/javascript; charset=utf-8"},
-	"/static/store.mjs":      {"assets/store.mjs", "text/javascript; charset=utf-8"},
-	"/static/render.mjs":     {"assets/render.mjs", "text/javascript; charset=utf-8"},
-	"/static/filters.mjs":    {"assets/filters.mjs", "text/javascript; charset=utf-8"},
-	"/static/format.mjs":     {"assets/format.mjs", "text/javascript; charset=utf-8"},
-	"/static/trajectory.mjs": {"assets/trajectory.mjs", "text/javascript; charset=utf-8"},
-	"/static/markdown.mjs":   {"assets/markdown.mjs", "text/javascript; charset=utf-8"},
-	"/static/backoff.mjs":    {"assets/backoff.mjs", "text/javascript; charset=utf-8"},
-	"/static/stream.mjs":     {"assets/stream.mjs", "text/javascript; charset=utf-8"},
-	"/static/anchor.mjs":     {"assets/anchor.mjs", "text/javascript; charset=utf-8"},
-}
 
 // NewHandler exposes GET-only snapshots, retained projected items, and cursor
 // SSE. It has no session-control, launch, cancel, approval, filesystem, or
@@ -99,23 +69,16 @@ func newHandler(store *Store, options HandlerOptions, app *appBundle) http.Handl
 		}
 		path := request.URL.Path
 		// The document routes match the escaped path, as /app/ does, so a
-		// percent-encoded spelling of "/" or "/legacy/" is not a route.
+		// percent-encoded spelling of "/" is not a route.
 		escaped := request.URL.EscapedPath()
 		switch escaped {
 		case rootPath:
-			serveRoot(writer, request, app)
-			return
-		case legacyPath:
-			serveLegacy(writer, app)
+			serveRoot(writer, request)
 			return
 		case faviconPath:
 			// No body and no Content-Type: the base security headers are already set
 			// above for every response.
 			writer.WriteHeader(http.StatusNoContent)
-			return
-		}
-		if route, ok := staticRoutes[path]; ok {
-			serveAsset(writer, route)
 			return
 		}
 		if escaped == "/app" || strings.HasPrefix(escaped, appPrefix) {
@@ -147,67 +110,12 @@ func newHandler(store *Store, options HandlerOptions, app *appBundle) http.Handl
 	})
 }
 
-func serveAsset(writer http.ResponseWriter, route staticRoute) {
-	serveFile(writer, assetsFS, route.asset, route.contentType)
-}
-
-// serveRoot answers "/". When the React app derives, it redirects to appPrefix.
-// That target is a constant: no part of the request (query, path, Host, Origin)
-// reaches Location, so "/" cannot be an open redirect. When the app does not
-// derive, "/" serves the legacy workspace with a fallback notice instead of a
-// redirect into the app's 503.
-func serveRoot(writer http.ResponseWriter, request *http.Request, app *appBundle) {
-	if app.err != nil {
-		serveLegacy(writer, app)
-		return
-	}
+// serveRoot answers "/" with a redirect to appPrefix. The target is a constant: no
+// part of the request (query, path, Host, Origin) reaches Location, so "/" cannot
+// be an open redirect. When the app did not derive, the redirect still happens and
+// /app/ answers 503 with the reason.
+func serveRoot(writer http.ResponseWriter, request *http.Request) {
 	http.Redirect(writer, request, appPrefix, http.StatusFound)
-}
-
-// serveLegacy serves the deprecated legacy workspace. The shipped assets do not
-// change: the page is served with a notice inserted above <main>, so the legacy
-// tests keep reading exactly the files on disk.
-func serveLegacy(writer http.ResponseWriter, app *appBundle) {
-	page, err := legacyPage(app)
-	if err != nil {
-		http.Error(writer, "legacy UI unavailable", http.StatusInternalServerError)
-		return
-	}
-	setSecurityHeaders(writer, "text/html; charset=utf-8")
-	_ = boundedWrite(writer, func() error {
-		_, err := writer.Write(page)
-		return err
-	})
-}
-
-// legacyAnchor is where the legacy notice is inserted. It must occur exactly once
-// in the shipped shell; legacyPage refuses to serve the page otherwise.
-const legacyAnchor = `<main class="layout" id="layout">`
-
-func legacyPage(app *appBundle) ([]byte, error) {
-	shell, err := fs.ReadFile(assetsFS, "assets/index.html")
-	if err != nil {
-		return nil, err
-	}
-	if bytes.Count(shell, []byte(legacyAnchor)) != 1 {
-		return nil, errors.New("the legacy shell has no unique insertion point for its notice")
-	}
-	return bytes.Replace(shell, []byte(legacyAnchor), []byte(legacyNotice(app)+legacyAnchor), 1), nil
-}
-
-// The notices reuse the gateway's notice classes, so they need no inline style
-// under the Content-Security-Policy. Only the reason in the fallback is variable,
-// and it is escaped before it is inserted.
-const (
-	legacyDeprecatedNotice = `<div class="notices legacy-notice"><div class="notice" data-variant="gap" role="note"><span class="notice-icon" aria-hidden="true">!</span><span><span class="notice-kind">Deprecated: legacy workspace — use /app/</span><span class="notice-text">This page stays until the React workspace is signed off, then it is removed. <a href="/app/">Open the React app</a>.</span></span></div></div>`
-	legacyFallbackNotice   = `<div class="notices legacy-notice"><div class="notice" data-variant="error" role="note"><span class="notice-icon" aria-hidden="true">!</span><span><span class="notice-kind">Fallback: legacy workspace</span><span class="notice-text">The React app at /app/ is unavailable (%s). This deprecated page is the fallback until the app is restored.</span></span></div></div>`
-)
-
-func legacyNotice(app *appBundle) string {
-	if app.err != nil {
-		return fmt.Sprintf(legacyFallbackNotice, html.EscapeString(app.err.Error()))
-	}
-	return legacyDeprecatedNotice
 }
 
 // serveApp serves /app/ only from the manifest-derived table. The lookup uses the

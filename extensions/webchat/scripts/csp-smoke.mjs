@@ -11,22 +11,20 @@
 //      gateway page is judged.
 //   2. Header probes (plain HTTP). Every response must carry the Content-Security-Policy
 //      header exactly, and its status and Location must match. GET and HEAD / are 302 to
-//      /app/ (also with a query string); /app/ and /legacy/ are 200; POST on /, /app/ and
-//      /legacy/ is 405; an unknown path and a missing /app/ asset are 404; a foreign Host
-//      or Origin is 403 on /, /app/ and /legacy/. The policy is read from
+//      /app/ (also with a query string); /app/ is 200; POST on / and /app/ is 405; an unknown
+//      path, a missing /app/ asset and the retired /legacy/ and /static/ paths are 404; a
+//      foreign Host or Origin is 403 on / and /app/. The policy is read from
 //      contentSecurityPolicy in internal/webchat/handler.go, the single source;
 //      app_test.go pins that constant to the shipped string.
-//   3. Browser audit of GATEWAY_ROUTES. / must land on /app/ (the React shell), /app/ is
-//      the React client, and /legacy/ is the deprecated legacy workspace, which must show
-//      its deprecation notice. For each page, the Document response's
+//   3. Browser audit of GATEWAY_ROUTES. / must land on /app/ (the React shell) and /app/ is
+//      the React client. For each page, the Document response's
 //      Content-Security-Policy as the browser received it must equal the policy. There
 //      must be zero CSP violations, zero console errors and zero uncaught exceptions.
 //      There is no favicon exception: /favicon.ico answers 204 (handler.go, pinned by
 //      favicon_test.go), so a favicon 404 is a console error and fails the run. There
 //      must also be zero style attributes and zero on* attributes. The
 //      React pages must render their banner with a CSS Modules class whose computed
-//      background differs from a default probe, and a linked stylesheet. /legacy/ must
-//      have its title, the claim strip, the chat view, and the chat and trajectory tabs.
+//      background differs from a default probe, and a linked stylesheet.
 //      internal/webchat/routes_test.go checks GATEWAY_ROUTES against the Go route table.
 //
 // Usage, from extensions/webchat/:
@@ -58,7 +56,6 @@ const isWindows = process.platform === 'win32';
 const exe = (name) => (isWindows ? `${name}.exe` : name);
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const APP_TITLE = 'tbound web chat';
-const VANILLA_TITLE = 'tbound · Pi chat workspace';
 
 class Stop extends Error {
   constructor(code, message) {
@@ -91,7 +88,6 @@ for (const [signal, code] of [['SIGINT', 130], ['SIGTERM', 143], ['SIGHUP', 129]
 const GATEWAY_ROUTES = [
   { path: '/', kind: 'app', landing: '/app/', label: '/ (redirect, lands on /app/)' },
   { path: '/app/', kind: 'app', landing: '/app/', label: '/app/ (React)' },
-  { path: '/legacy/', kind: 'legacy', landing: '/legacy/', label: '/legacy/ (deprecated legacy workspace)' },
 ];
 
 // Plain HTTP probes. Host and Origin are set by hand, so the gateway's refusals
@@ -106,14 +102,13 @@ const PROBES = [
   { label: 'GET /app/', path: '/app/', status: 200 },
   { label: 'GET /app/assets/missing.js', path: '/app/assets/missing.js', status: 404 },
   { label: 'POST /app/', method: 'POST', path: '/app/', status: 405 },
-  { label: 'GET /legacy/', path: '/legacy/', status: 200 },
-  { label: 'POST /legacy/', method: 'POST', path: '/legacy/', status: 405 },
+  { label: 'GET /legacy/ (retired)', path: '/legacy/', status: 404 },
+  { label: 'POST /legacy/ (retired)', method: 'POST', path: '/legacy/', status: 405 },
+  { label: 'GET /static/app.mjs (retired)', path: '/static/app.mjs', status: 404 },
   { label: 'GET /no-such-route', path: '/no-such-route', status: 404 },
   { label: 'GET / with a foreign Host', path: '/', headers: { host: 'evil.example' }, status: 403 },
-  { label: 'GET /legacy/ with a foreign Host', path: '/legacy/', headers: { host: 'evil.example' }, status: 403 },
   { label: 'GET / with a foreign Origin', path: '/', headers: { origin: 'http://evil.example' }, status: 403 },
   { label: 'GET /app/ with a foreign Origin', path: '/app/', headers: { origin: 'http://evil.example' }, status: 403 },
-  { label: 'GET /legacy/ with a foreign Origin', path: '/legacy/', headers: { origin: 'http://evil.example' }, status: 403 },
 ];
 
 // Installed before any page script runs. It only listens, so it cannot change
@@ -151,26 +146,15 @@ const AUDIT = `(() => {
       text: banner.textContent || '',
     };
   }
-  const tabs = ['tab-chat', 'tab-trajectory'].map((id) => {
-    const element = document.getElementById(id);
-    return element ? { id, role: element.getAttribute('role') } : null;
-  });
-  const notice = document.querySelector('.legacy-notice');
   return {
     title: document.title,
     location: window.location.pathname,
-    legacyNotice: notice ? notice.textContent : null,
     elements: all.length,
     inlineStyles: all.filter((el) => el.hasAttribute('style')).length,
     eventAttributes: all.reduce((n, el) => n + Array.from(el.attributes).filter((a) => a.name.toLowerCase().startsWith('on')).length, 0),
     cspCaptured: (window.__tboundCsp || []).length,
     stylesheetLinks: document.querySelectorAll('link[rel="stylesheet"]').length,
     scaffold,
-    vanilla: {
-      claimStrip: Boolean(document.getElementById('claim-strip')),
-      chatView: Boolean(document.getElementById('chat-view')),
-      tabs,
-    },
   };
 })()`;
 
@@ -558,7 +542,7 @@ async function auditTargets(base, targets) {
       if (target.kind === 'app') {
         await poll(async () => (await evaluate(cdp, 'Boolean(document.querySelector("header[aria-label=\\"Workspace header\\"]"))')) === true, 10000);
       }
-      await sleep(target.kind === 'legacy' ? 1500 : 500);
+      await sleep(500);
       const audit = await evaluate(cdp, AUDIT);
       // The document is the one the browser ended on, after any redirect.
       const documentEntry = [...state.documents].reverse().find((entry) => entry.url === target.finalUrl);
@@ -673,18 +657,6 @@ function judgePage({ target, audit, state, documentCsp }, policy) {
       }
     }
     if (audit.stylesheetLinks < 1) failures.push('no stylesheet link on /app/');
-  } else {
-    if (audit.title !== VANILLA_TITLE) failures.push(`title is ${JSON.stringify(audit.title)}, expected ${JSON.stringify(VANILLA_TITLE)}`);
-    if (audit.legacyNotice === null || !audit.legacyNotice.includes('Deprecated: legacy workspace')) {
-      failures.push('no "Deprecated: legacy workspace" notice on the legacy page');
-    }
-    if (!audit.vanilla.claimStrip) failures.push('no #claim-strip (the claim boundary strip)');
-    if (!audit.vanilla.chatView) failures.push('no #chat-view');
-    for (const id of ['tab-chat', 'tab-trajectory']) {
-      if (!audit.vanilla.tabs.some((tab) => tab !== null && tab.id === id && tab.role === 'tab')) {
-        failures.push(`no #${id} with role="tab"`);
-      }
-    }
   }
   return failures;
 }
