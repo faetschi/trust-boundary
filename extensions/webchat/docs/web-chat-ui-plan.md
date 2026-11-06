@@ -388,7 +388,7 @@ None of them changes the Appendix A decision. Effort is an estimate for a vanill
 | No HTML parser in markdown; URL scheme allowlist (http, https, mailto) | `ui-primitives/src/markdown/render.tsx:333-335,53` | Keep zero `innerHTML`; build DOM with `createElement`/`createTextNode` only | S–M |
 | Capped exponential backoff with jitter; slow-connect warning that does not cancel | `connection/src/client/connection.ts:139-150`, `recovery-config.ts` | Reconnect; a resync replaces the whole loaded window | S |
 | Explicit "history not loaded" window gap marker | `ui-conversation/.../assembler.ts:27,769` | Gap rendering | S |
-| Two-press Escape cancel bound to session/turn/generation; skips IME and key repeat | `ui-conversation/src/client/stop-sequence.ts` | Cancel is a request; the UI still waits for the settled result | S |
+| Two-press Escape cancel bound to session/turn/generation; skips IME and key repeat | `ui-conversation/src/client/stop-sequence.ts` | Cancel is a request; the UI still waits for the settled result. The implementation was later removed unwired | S |
 | Visually hidden text beside colour-only status | `ui-tool/.../ToolRow.tsx:104-114` | Accessibility | S |
 | Anchored tail window (pin the tail at open, extend forward) | `ui-trajectory/src/client/TrajectoryView.tsx:163-177` | Needs a snapshot `anchor` cursor field | M |
 

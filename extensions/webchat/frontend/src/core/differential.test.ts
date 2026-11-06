@@ -21,7 +21,6 @@ import * as trajectoryTs from "./trajectory";
 import * as gateTs from "./verification";
 import * as anchorTs from "./anchor";
 import * as backoffTs from "./backoff";
-import * as stopTs from "./stop-sequence";
 import { createFakeTimers } from "./testing/fake-timers";
 import { activityItem, decisionItem, messageItem, panelsDefault, resultItem, sessionDefault, snapshotOf, streamDefault, TIMESTAMP } from "./testing/builders";
 import {
@@ -43,7 +42,6 @@ import {
 } from "./contract";
 import type { ConnectionState, StoredGap, Workspace } from "./store";
 import type { FilterId } from "./filters";
-import type { CancelTarget, ContextEvent, KeyEvent, SequenceState } from "./stop-sequence";
 
 const ASSETS: string =
   import.meta.env.VITE_WEBCHAT_LEGACY_ASSETS || fileURLToPath(new URL("../../../internal/webchat/assets", import.meta.url));
@@ -202,14 +200,6 @@ const legacyAnchor = await legacy<typeof anchorTs>("anchor.mjs", [
   "tailAnnouncement",
 ]);
 const legacyBackoff = await legacy<typeof backoffTs>("backoff.mjs", ["BACKOFF_DEFAULTS", "createBackoff", "createScheduler"]);
-const legacyStop = await legacy<typeof stopTs>("stop-sequence.mjs", [
-  "DEFAULT_WINDOW_MS",
-  "CONFIRMED_TEXT",
-  "CLEARED_TEXT",
-  "armedText",
-  "initialState",
-  "step",
-]);
 
 // ---------------------------------------------------------------------------------------------
 // A. format helpers
@@ -747,68 +737,6 @@ describe("differential: backoff delays and scheduler", () => {
 });
 
 // ---------------------------------------------------------------------------------------------
-// G. stop-sequence step() over random event streams
-// ---------------------------------------------------------------------------------------------
-describe("differential: stop-sequence step()", () => {
-  test("every outcome and state matches the legacy step() on seeded event streams", () => {
-    const rng = new Rng(0x5eed0008);
-    same("CONFIRMED_TEXT", legacyStop.CONFIRMED_TEXT, stopTs.CONFIRMED_TEXT);
-    same("CLEARED_TEXT", legacyStop.CLEARED_TEXT, stopTs.CLEARED_TEXT);
-    same("initialState", legacyStop.initialState(), stopTs.initialState());
-    same("DEFAULT_WINDOW_MS", legacyStop.DEFAULT_WINDOW_MS, stopTs.DEFAULT_WINDOW_MS);
-    for (const turnId of ["t1", "", "turn with spaces", "constructor"]) {
-      same("armedText", legacyStop.armedText(turnId), stopTs.armedText(turnId));
-    }
-    tally("stop", 7);
-
-    const keys = ["Escape", "Esc", "a", "Enter", "Tab", "", "escape"];
-    const generations: (string | number | null | undefined)[] = [undefined, "g1", "", 1, 2, Number.NaN, Number.POSITIVE_INFINITY, null];
-    const turnIds = ["t1", "t2", ""];
-    const windows = [0, 1, 500, 2000, 10000];
-
-    for (let stream = 0; stream < 300; stream += 1) {
-      const windowMs = rng.pick(windows);
-      let legacyState: SequenceState = legacyStop.initialState();
-      let tsState: SequenceState = stopTs.initialState();
-      let clock = 0;
-      for (let step = 0; step < 150; step += 1) {
-        clock += rng.int(3000) - 300;
-        const target = rng.bool(0.15)
-          ? rng.pick<CancelTarget | null | undefined>([null, undefined])
-          : { sessionId: rng.bool(0.95) ? "s1" : "", turnId: rng.pick(turnIds), generation: rng.pick(generations) };
-        const modal = rng.bool(0.1);
-        const isModalActive = (): boolean => modal;
-        const options = { windowMs, isModalActive };
-        const event: KeyEvent | ContextEvent =
-          rng.bool(0.8)
-            ? {
-                type: "key",
-                at: clock,
-                key: rng.pick(keys),
-                target,
-                inRegion: rng.bool(0.85),
-                isComposing: rng.bool(0.03),
-                keyCode: rng.pick<number | undefined>([undefined, 229, 27]),
-                repeat: rng.bool(0.05),
-                ctrlKey: rng.bool(0.03),
-                altKey: rng.bool(0.02),
-                metaKey: rng.bool(0.02),
-                shiftKey: rng.bool(0.02),
-              }
-            : { type: "context", at: clock, target, inRegion: rng.bool(0.85) };
-        const expected = legacyStop.step(legacyState, event, options);
-        const actual = stopTs.step(tsState, event, options);
-        same(`stream ${stream} step ${step} outcome`, expected, actual);
-        legacyState = expected.state;
-        tsState = actual.state;
-        same(`stream ${stream} step ${step} state`, legacyState, tsState);
-        tally("stop", 2);
-      }
-    }
-  });
-});
-
-// ---------------------------------------------------------------------------------------------
 // Corpus sizes. The totals are the comparisons made above; they are printed for the report.
 // ---------------------------------------------------------------------------------------------
 describe("differential: corpus", () => {
@@ -816,7 +744,7 @@ describe("differential: corpus", () => {
     const groups = Object.keys(counts);
     const total = Object.values(counts).reduce((sum, value) => sum + value, 0);
     console.log(`differential corpus comparisons: ${JSON.stringify(counts)} total=${total}`);
-    expect(groups.sort()).toEqual(["anchor", "backoff", "filters", "format", "stop", "store", "trajectory"]);
+    expect(groups.sort()).toEqual(["anchor", "backoff", "filters", "format", "store", "trajectory"]);
     expect(total).toBeGreaterThan(100000);
     console.log(`differential store coverage: ${JSON.stringify(coverage)}`);
     for (const branch of ["item:applied", "item:duplicate", "item:gap", "item:invalid", "windowGap:server", "windowGap:client", "evicted", "window-at-cap"]) {

@@ -1,5 +1,7 @@
 # Phase 2a: parity port of the DOM-free logic (`frontend/src/core/`)
 
+> **Update:** the `stop-sequence` module, its ported tests and its differential section named below were removed because they were never wired into a UI. The figures in this record are the Phase 2a counts at the time and were not recomputed.
+
 Status at `4700ca5`: **Phase 2a implemented and committed.** The DOM-free
 modules of the legacy client are ported to strict TypeScript under
 `extensions/webchat/frontend/src/core/`. At that commit the legacy modules were

@@ -58,7 +58,7 @@ require the authenticated supervisor session service.
 | Assistant messages as a bounded markdown subset, no HTML parsing (§4.6) | Implemented |
 | Tail window: records that arrive while scrolled away are counted on a `Jump to latest` control (§4.5) | Implemented, client-only |
 | Diff viewer | **Deferred** (§12) |
-| Two-press cancel state machine (legacy `stop-sequence.mjs`; typed port in `frontend/src/core/stop-sequence.ts`) | Written and ported, **not wired** into either UI (§4.7) |
+| Two-press Escape cancel state machine | **Removed** (§4.7). It was never wired into either UI |
 | Live projection from the product service | **Implemented for v1 live mode** (`--live --socket PATH`, [contract §9](web-chat-contract.md#9-implemented-for-v1-live-mode-p9)); the React app does not use it yet |
 | Persistent multi-turn sessions and history | **Not implemented** (supervisor-owned) |
 | Turn submission / cancellation | Gateway routes **implemented** in live mode; the composer in the UI is still read-only |
@@ -332,18 +332,13 @@ Known simplifications:
 
 While a message streams, only the blocks whose source changed are re-rendered.
 
-### 4.7 Stop sequence (written, not wired)
+### 4.7 Stop sequence (removed)
 
-`stop-sequence.mjs` is a pure two-press Escape state machine: a first press arms a
-request for the turn on screen, and a second press within 2 s confirms it. It is
-**not wired**. No module imports it, the shell does not reference it, and
-`handler.go` does not serve it. It waits for the milestone-3 cancel API, which the
-core thread owns.
-
-Its wording is fixed. It never says a turn was cancelled, stopped or settled.
-Cancellation is a request; the settled result comes from the supervisor, and an
-uncertain effect stays `UNKNOWN`. A confirmed press yields a cancel-request intent
-for the caller to send. Nothing is re-sent on a reconnect, and nothing is retried.
+The two-press Escape state machine (`stop-sequence.mjs` in the legacy client and
+`stop-sequence.ts` in the React client) was never wired into either UI, and has been
+removed together with its dedicated and differential tests. The turn-cancel API and
+the cancel control are unaffected. Cancellation remains a request: the settled
+result comes from the supervisor, and an uncertain effect stays `UNKNOWN`.
 
 ## 5. API endpoints
 
