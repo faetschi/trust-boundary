@@ -25,6 +25,43 @@ def write_go_test_stream(test_case: unittest.TestCase, lines: list[object]) -> P
 
 
 class GoTestTimingSummaryTest(unittest.TestCase):
+    def test_malformed_stream_keeps_raw_diagnostics_in_the_job_log(self) -> None:
+        stream_path = write_go_test_stream(self, [
+            {"Action": "output", "Package": "example.com/a", "Output": "original failure diagnostic\n"},
+            "truncated JSON event",
+        ])
+        timing_path = stream_path.with_name("timing.json")
+        output, errors = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
+            status = timing.main(["--suite", "unit", "--go-test-json", str(stream_path),
+                                  "--timing-json", str(timing_path)])
+        self.assertEqual(status, 1)
+        self.assertIn("original failure diagnostic", output.getvalue())
+        self.assertFalse(timing_path.exists())
+
+    def test_build_output_without_an_attributed_import_path_is_reported(self) -> None:
+        stream_path = write_go_test_stream(self, [
+            {"Action": "build-output", "ImportPath": "", "Output": "unattributed compiler error\n"},
+            {"Action": "build-fail", "ImportPath": ""},
+            {"Action": "fail", "Package": "example.com/a", "Elapsed": 0},
+        ])
+        summary = timing.summarize_go_test_json(stream_path, "unit")
+        self.assertIn("unattributed compiler error", summary.failure_output)
+        self.assertNotIn("unattributed compiler error", json.dumps(summary.timing_document))
+
+    def test_interleaved_failure_output_is_grouped_by_package(self) -> None:
+        stream_path = write_go_test_stream(self, [
+            {"Action": "output", "Package": "example.com/a", "Output": "a1\n"},
+            {"Action": "output", "Package": "example.com/b", "Output": "b1\n"},
+            {"Action": "output", "Package": "example.com/a", "Output": "a2\n"},
+            {"Action": "output", "Package": "example.com/b", "Output": "b2\n"},
+            {"Action": "fail", "Package": "example.com/a", "Elapsed": 1},
+            {"Action": "fail", "Package": "example.com/b", "Elapsed": 1},
+        ])
+        summary = timing.summarize_go_test_json(stream_path, "race")
+        self.assertEqual(summary.failure_output,
+                         "== example.com/a ==\na1\na2\n\n== example.com/b ==\nb1\nb2\n")
+
     def test_artifact_write_failure_does_not_hide_test_diagnostics(self) -> None:
         stream_path = write_go_test_stream(self, [
             {"Action": "output", "Package": "example.com/a", "Output": "failure diagnostic\n"},
@@ -95,6 +132,7 @@ class GoTestTimingSummaryTest(unittest.TestCase):
             "Elapsed": [{"Action": "pass", "Package": "example.com/a", "Test": "TestX"}],
             "Action": [{"Package": "example.com/a", "Test": "TestX", "Elapsed": 0.1}],
             "Package": [{"Action": "pass", "Test": "TestX", "Elapsed": 0.1}],
+            "ImportPath": [{"Action": "build-output", "Output": "compiler error"}],
             "JSON test event": ["this is not json"],
             "no test events": [],
         }

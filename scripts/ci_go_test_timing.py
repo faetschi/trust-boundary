@@ -3,15 +3,14 @@
 
 The go test step decides pass or fail; this script only reports. It writes a timing
 document with no test Output, appends a markdown summary to the step summary, and
-prints the Output of failed tests and packages to the job log. A malformed event
-exits 1 with the line and field named, as the evidence reader in
-supervisor/cmd/tbound-run does: nothing is guessed.
+prints the Output of failed tests and packages to the job log. Malformed streams
+print a raw tail and exit 1 without writing a timing document.
 """
 
 from __future__ import annotations
 
 import argparse
-from collections import Counter
+from collections import Counter, deque
 from dataclasses import dataclass
 import json
 from pathlib import Path
@@ -59,7 +58,7 @@ def iterate_events(go_test_json_path: Path):
             if not isinstance(event, dict):
                 raise GoTestJsonError(f"line {line_number} is not a JSON object")
             if event.get("Action") in ("build-output", "build-fail"):
-                if not isinstance(event.get("ImportPath"), str) or not event["ImportPath"]:
+                if not isinstance(event.get("ImportPath"), str):
                     raise GoTestJsonError(f"line {line_number} has no ImportPath")
                 if event["Action"] == "build-output" and not isinstance(event.get("Output"), str):
                     raise GoTestJsonError(f"line {line_number} is a build-output event with no Output")
@@ -97,15 +96,17 @@ def collect_failure_output(
     failed_packages: set[str],
 ) -> str:
     """Keep all failed-package output: late crashes can be attributed to passed tests."""
-    output_chunks: list[str] = []
+    output_by_package: dict[str, list[str]] = {}
     for _, event in iterate_events(go_test_json_path):
         if event["Action"] == "build-output":
-            output_chunks.append(event["Output"])
+            package = event["ImportPath"]
+        elif event["Action"] == "output" and event["Package"] in failed_packages:
+            package = event["Package"]
+        else:
             continue
-        if event["Action"] != "output" or event["Package"] not in failed_packages:
-            continue
-        output_chunks.append(event["Output"])
-    return "".join(output_chunks)
+        output_by_package.setdefault(package, []).append(event["Output"])
+    return "\n".join(f"== {package or 'build'} ==\n{''.join(chunks)}"
+                     for package, chunks in output_by_package.items())
 
 
 def summarize_go_test_json(go_test_json_path: Path, suite_name: str) -> SuiteSummary:
@@ -247,8 +248,14 @@ def main(argument_values: list[str] | None = None) -> int:
     arguments = parser.parse_args(argument_values)
     try:
         summary = summarize_go_test_json(arguments.go_test_json, arguments.suite)
-    except (GoTestJsonError, OSError) as error:
+    except (GoTestJsonError, OSError, UnicodeError) as error:
         print(f"ci_go_test_timing: {arguments.suite}: {error}", file=sys.stderr)
+        try:
+            with arguments.go_test_json.open(encoding="utf-8", errors="replace") as stream:
+                sys.stdout.write("Last 200 raw Go test events (job log only):\n")
+                sys.stdout.writelines(deque(stream, maxlen=200))
+        except OSError:
+            pass  # The input itself may be unreadable; keep the original error and nonzero status.
         return 1
     sys.stdout.write(summary.markdown)
     if summary.failure_output:
