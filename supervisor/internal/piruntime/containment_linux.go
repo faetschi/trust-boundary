@@ -25,6 +25,7 @@ import (
 	"unsafe"
 
 	"tbound/supervisor/internal/broker/protocol"
+	"tbound/supervisor/internal/productsetup"
 )
 
 // This file is the concrete D09 containment backend: a rootless Podman/crun
@@ -428,7 +429,7 @@ func (l *D09PodmanCrunLauncher) productionRunner() bool {
 // verified host, so its children get the fixed product environment and nothing inherited.
 func (l *D09PodmanCrunLauncher) commandEnvironment() []string {
 	if l != nil && l.productHost.verified() {
-		return productD09CommandEnvironment()
+		return productsetup.CommandCellEnvironment()
 	}
 	return d09ProbeEnv()
 }

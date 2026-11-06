@@ -57,7 +57,8 @@ runroot = "/run/tbound-product/containers"
 ignore_chown_errors = "true"
 `
 
-// productD09EffectiveUnitProperties are the systemd properties that decide the daemon's effective unit and environment.
+// productD09EffectiveUnitProperties are the properties asked of systemd. productsetup.ValidateCommandEffectiveUnit judges the same
+// set and refuses a reply that lacks one, so a drift between the two lists fails closed.
 var productD09EffectiveUnitProperties = []string{"LoadState", "NeedDaemonReload", "FragmentPath", "DropInPaths", "Environment", "EnvironmentFiles", "User", "Group"}
 
 // productD09UnitOverrideRoots are the systemd directories whose drop-ins apply to the product unit or to every service.
@@ -241,9 +242,9 @@ func loadProductD09Snapshot(ctx context.Context) (productD09Snapshot, error) {
 	if err != nil {
 		return productD09Snapshot{}, err
 	}
-	service, err := productD09DecodeServiceConfig(serviceConfigRaw)
+	service, err := productsetup.DecodeCommandServiceConfig(serviceConfigRaw)
 	if err != nil {
-		return productD09Snapshot{}, err
+		return productD09Snapshot{}, productD09RefusedPolicy(err)
 	}
 	unitRaw, err := inputs.read(productsetup.UnitPath, productD09MaxConfigBytes)
 	if err != nil {
@@ -259,17 +260,17 @@ func loadProductD09Snapshot(ctx context.Context) (productD09Snapshot, error) {
 	if err != nil {
 		return productD09Snapshot{}, err
 	}
-	registrationRaw, err := inputs.read(productsetup.RegistrationPath, int64(productsession.MaxRegistrationBytes))
+	var readErr error
+	registrationRaw, registrationSig, publicKey, err := productsetup.ReadCommandRegistration(func(path string, limit int64) ([]byte, error) {
+		raw, err := inputs.read(path, limit)
+		readErr = err
+		return raw, err
+	})
 	if err != nil {
-		return productD09Snapshot{}, err
-	}
-	registrationSig, err := productD09ReadBase64(inputs, productsetup.RegistrationSignaturePath)
-	if err != nil {
-		return productD09Snapshot{}, err
-	}
-	publicKey, err := productD09ReadBase64(inputs, productsetup.RegistrationPublicKeyPath)
-	if err != nil {
-		return productD09Snapshot{}, err
+		if readErr != nil && err == readErr {
+			return productD09Snapshot{}, err
+		}
+		return productD09Snapshot{}, productD09RefusedPolicy(err)
 	}
 	profileRaw, err := inputs.read(productsetup.CommandHostProfilePath, maxHostProfileBytes)
 	if err != nil {
@@ -296,8 +297,8 @@ func loadProductD09Snapshot(ctx context.Context) (productD09Snapshot, error) {
 	if err != nil {
 		return productD09Snapshot{}, productD09Refused(err, "product registration does not verify under the fixed product key")
 	}
-	if err := productD09RequireServiceMatchesRegistration(service, registration); err != nil {
-		return productD09Snapshot{}, err
+	if err := service.RequireCommandRegistration(registration); err != nil {
+		return productD09Snapshot{}, productD09RefusedPolicy(err)
 	}
 	if err := productD09VerifyArtifacts(ctx, inputs, template, profile); err != nil {
 		return productD09Snapshot{}, err
@@ -458,7 +459,7 @@ func productD09VerifyArtifacts(ctx context.Context, inputs productD09Inputs, tem
 			return err
 		}
 	}
-	launcher := &D09PodmanCrunLauncher{runner: execD09CommandRunner{environment: productD09CommandEnvironment()}}
+	launcher := &D09PodmanCrunLauncher{runner: execD09CommandRunner{environment: productsetup.CommandCellEnvironment()}}
 	if err := launcher.verifyOfflineSignatureMemoized(ctx, template.Config(), template.CosignPath, true); err != nil {
 		return productD09Refused(err, "offline cosign verification of the product image failed")
 	}
@@ -911,4 +912,21 @@ func productD09Refused(cause error, detail string) error {
 		return fmt.Errorf("%s: %w", detail, cause)
 	}
 	return fmt.Errorf("%w: %s: %w", ErrProductD09HostRefused, detail, cause)
+}
+
+// productD09RefusedPolicy wraps a productsetup policy refusal in ErrProductD09HostRefused. Its message is the policy's own.
+func productD09RefusedPolicy(err error) error {
+	if err == nil {
+		return nil
+	}
+	return fmt.Errorf("%w: %w", ErrProductD09HostRefused, err)
+}
+
+// productD09ValidateServiceRoots keeps turn evidence and managed projects in the setup-owned product trees.
+func productD09ValidateServiceRoots(service productsetup.ServiceConfig) error {
+	return productD09RefusedPolicy(service.ValidateCommandRoots())
+}
+
+func productD09ValidateEffectiveUnit(properties map[string]string) error {
+	return productD09RefusedPolicy(productsetup.ValidateCommandEffectiveUnit(properties))
 }
