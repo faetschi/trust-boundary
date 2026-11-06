@@ -408,7 +408,12 @@ func TestProductOperatorPublishedResolutionRefusesAChangedTreeAndResolvesAutoPub
 			t.Fatal("restart reconciliation settled a turn killed inside publication")
 		}
 		projectID := f.turn(t, id).ProjectID
-		if err := os.WriteFile(filepath.Join(f.env.ProjectRoots[projectID], "outside.txt"), []byte("late"), 0o600); err != nil {
+		// 0o644 is the normalized mode, so the baseline scan accepts the file and the mixed-tree check is what refuses it.
+		outside := filepath.Join(f.env.ProjectRoots[projectID], "outside.txt")
+		if err := os.WriteFile(outside, []byte("late"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(outside, 0o644); err != nil {
 			t.Fatal(err)
 		}
 		_, journalBefore := readPublicationLifecycle(t, f, projectID)
