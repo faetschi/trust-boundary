@@ -6,7 +6,7 @@
   core port and markdown AST) is committed in `4700ca5`.** **Phase 3 (React views)
   is committed in `58492c5`, `57bcd95`, `a2aaf30`, `60ca5b0`, `6d03657` and
   `57e6406`.** The React client is the default UI at `/` (`6d03657`). The legacy
-  client stays at `/legacy/`, deprecated, until the owner signs off its removal.
+  client was retired afterwards (audit finding #5): `/legacy/` is no longer served.
   §(v) has the phase table and the receipts. Status as of HEAD `57e6406`.
 - Date: 2026-10-14
 - Scope: `extensions/webchat/` and its relation to `supervisor/`.

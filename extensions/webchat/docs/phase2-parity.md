@@ -1,5 +1,12 @@
 # Phase 2a: parity port of the DOM-free logic (`frontend/src/core/`)
 
+> **Historical.** This document records the Phase 2a parity evidence. The legacy vanilla client it compares
+> against (`internal/webchat/assets/`, `internal/webchat/jstest/`) was retired by audit
+> finding #5; the code and the legacy test suites remain in git history at the commit
+> before the retirement (`git log --diff-filter=D -- extensions/webchat/internal/webchat/assets`).
+> Legacy-only commands and paths named below no longer run at HEAD. The retirement mapping
+> is in phase2-parity.md section 11.
+
 Status at `4700ca5`: **Phase 2a implemented and committed.** The DOM-free
 modules of the legacy client are ported to strict TypeScript under
 `extensions/webchat/frontend/src/core/`. At that commit the legacy modules were
@@ -350,3 +357,30 @@ Not run here:
 - `npm run build`, by instruction (the build owner rebuilds `dist/`). So `npm run repro` is expected to fail until `dist/` is rebuilt and committed, and the served `/app/` bundle is the pre-change one until then. *(Superseded by `57e6406`, which commits the rebuilt `dist/`; the Linux rebuild equals it.)*
 - Go `-race` and the WSL/Linux gates, which the project requires for a final verification. These results are Windows only.
 - The csp-smoke browser check.
+
+## 11. Retirement of the legacy oracle (audit finding #5)
+
+The legacy modules are deleted, so the differential suites that loaded them are replaced by
+frozen oracles. Before deletion, the original suites ran every seeded corpus through the real
+legacy modules and recorded a rolling SHA-256 over the legacy output of each comparison, in order
+(`frontend/src/test-support/legacy-oracle.json`, one digest per 250 comparisons;
+`frontend/src/test-support/frozen.ts`). The new suites feed the same corpora to the ports alone
+and fail with the chunk and its first labels when a digest differs. Mutating a port (the anchor
+slack, a `data:` link scheme) fails them.
+
+| Old test or suite | Now |
+|---|---|
+| `core/differential.test.ts` A to F: format, filters, store (full state after each step), trajectory, anchor, backoff and scheduler | `core/frozen-oracle.test.ts` (same seeds and corpora) |
+| `core/differential.test.ts` deviations D1 and D4 | the same two tests in `core/frozen-oracle.test.ts`; the legacy words are quoted in a comment |
+| `core/differential.test.ts` G: stop-sequence `step()` | not carried: the unwired stop feature is removed on a separate branch |
+| `markdown/differential.test.ts`: golden, hostile, adversarial, 100,000 fuzz, 20,000 link-shaped, window bounds, block bound, `splitBlocks`, `safeHref`, 2,500 streams, the 170-character stream, work counts, bounds and notice | `markdown/frozen-oracle.test.ts` (same seeds and corpora) |
+| `jstest/{anchor,api,backoff,filters,format,store,stream,trajectory}.test.mjs` | `core/*.test.ts`, ported earlier with the same test names |
+| `jstest/markdown.test.mjs` | `markdown/{parse,golden,hostile,bounds,incremental,perf,render,security}.test.ts` |
+| `jstest/{render,shell,tokens}.test.mjs` | the rows of phase3-parity.md |
+| `jstest/stop-sequence.test.mjs`, `assets/stop-sequence.mjs` | not carried (see above) |
+| Go: `TestLegacyRoute*`, `TestLegacyRoutes*`, `TestStaticAssetsAreClosedAndComplete` | `TestRetiredLegacyPathsAreRefusedLikeAnyUnknownPath`, `TestRootStillRedirectsWhenTheAppIsUnavailable` |
+
+Limits, stated plainly. A digest says "the port still produces what the legacy client produced on
+these inputs"; on a mismatch it cannot show the legacy value, so debugging a failure starts from
+the port and the labels. A function-valued result is recorded as `fn`, not by identity. Run the
+original suites from git history (the commit before the retirement) to regenerate the oracle.

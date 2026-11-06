@@ -1,5 +1,12 @@
 # Phase 3: parity table (legacy UI tests to React tests)
 
+> **Historical.** This document records the Phase 3 mapping from legacy UI tests to React tests. The legacy vanilla client it compares
+> against (`internal/webchat/assets/`, `internal/webchat/jstest/`) was retired by audit
+> finding #5; the code and the legacy test suites remain in git history at the commit
+> before the retirement (`git log --diff-filter=D -- extensions/webchat/internal/webchat/assets`).
+> Legacy-only commands and paths named below no longer run at HEAD. The retirement mapping
+> is in phase2-parity.md section 11.
+
 Status: Phases 3a, 3b and 3c are in place. The claim-boundary review fixes of 2026-10-14 are
 rows R1 to R8 at the end of this file. Each row maps one legacy test in
 `internal/webchat/jstest/` to the React test that now asserts the same behaviour,

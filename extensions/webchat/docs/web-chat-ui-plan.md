@@ -8,8 +8,8 @@ H1 unexecuted, containment not-established, claim-bearing=false.
 > **Scope and phase naming (written at HEAD `4700ca5`, 2026-10-14; status updated at `57e6406`).**
 > "Phase 0" to "Phase 4" in this plan are this redesign's own phases, not the ADR-0001 phases P1
 > to P3. What shipped first is the legacy vanilla UI (`assets/`). It was the default at `/` until
-> the React client became the default in `6d03657`; it is now deprecated at `/legacy/` until
-> sign-off. ADR-0001 P1 (scaffold, `263b6ca`, review fixes `2583f5a`), P2 (typed core port and
+> the React client became the default in `6d03657`; it was later retired
+> (audit finding #5). ADR-0001 P1 (scaffold, `263b6ca`, review fixes `2583f5a`), P2 (typed core port and
 > markdown AST, `4700ca5`) and P3 (React views, `58492c5` to `57e6406`) are committed. The current visual spec is
 > [design/design-language.md](design/design-language.md).
 > On its desktop frames, buttons with a matching frame jump to it; the governance tabs swap in place.
