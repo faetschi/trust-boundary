@@ -151,6 +151,27 @@ describe("the composer does not submit", () => {
     expect(spoken()).toBe("Not available: this page cannot submit turns.");
   });
 
+  it("makes no request when Send is clicked or has Enter or Space pressed on it, and says it is not available", () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+    render();
+    const send = q<HTMLButtonElement>("button");
+    click(send);
+    expect(drawn()).toBe("Not available: this page cannot submit turns.");
+    press(send, "Enter");
+    press(send, " ");
+    expect(fetchSpy).toHaveBeenCalledTimes(0);
+    expect(submitted).toHaveBeenCalledTimes(0);
+    expect(field().value).toBe("");
+  });
+
+  it("puts the field, then Send, in the tab order, and nothing else in the composer", () => {
+    render();
+    const stops = Array.from(q("section[data-testid='composer']").querySelectorAll<HTMLElement>("a[href], button, input, select, textarea, [tabindex]"));
+    expect(stops.map((stop) => stop.tagName.toLowerCase())).toEqual(["textarea", "button"]);
+    expect(stops.every((stop) => stop.tabIndex >= 0)).toBe(true);
+  });
+
   it("handles no typing and no Enter or Ctrl+Enter: the value stays empty and nothing is sent", () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);

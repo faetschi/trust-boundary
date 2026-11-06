@@ -2251,25 +2251,38 @@ async function checkJ(ctx) {
   await cdp.send('Input.insertText', { text: 'a stray draft' }).catch(() => {});
   await press('Enter');
   await pressCtrlEnter();
-  const sendAt = await evaluate(`(() => { const r = document.querySelector('[data-testid="composer"] textarea').getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }; })()`);
-  await pointerPress(sendAt.x, sendAt.y);
+  const centreOf = (selector) => evaluate(`(() => { const r = document.querySelector('[data-testid="composer"] ${selector}').getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }; })()`);
+  const fieldAt = await centreOf('textarea');
+  await pointerPress(fieldAt.x, fieldAt.y);
   await evaluate(`document.querySelector('[data-testid="composer"] textarea').focus()`);
+  await press('Enter');
+  await press(' ');
+  // The Send mark is a real, aria-disabled button: a click, Enter and Space on it send nothing.
+  const sendAt = await centreOf('button');
+  await pointerPress(sendAt.x, sendAt.y);
+  await evaluate(`document.querySelector('[data-testid="composer"] button').focus()`);
+  const focusedSend = await describe();
+  ctx.expect(focusedSend.tag === 'button' && /^Send/.test(focusedSend.label ?? ''), `focusing the Send mark did not focus the Send button (focus ${shortStop(focusedSend)})`);
   await press('Enter');
   await press(' ');
   await sleep(300);
   const composerRequests = observed.requests.slice(reqBefore).filter((r) => r.url.startsWith(ORIGIN) && !/\/api\/v1\/events/.test(r.url));
   const after = await evaluate(POINT_STATE);
   ctx.note('composerActions', { requests: composerRequests.map((r) => r.url.replace(ORIGIN, '')), value: after.composer.textarea?.value ?? null });
-  ctx.expect(composerRequests.length === 0, `${composerRequests.length} request(s) after typing, Enter, Ctrl+Enter, a click and Enter/Space on Send: ${composerRequests.map((r) => r.url.replace(ORIGIN, '')).join(', ')}`);
+  ctx.expect(composerRequests.length === 0, `${composerRequests.length} request(s) after typing, Enter, Ctrl+Enter, a click on the field, and a click and Enter/Space on Send: ${composerRequests.map((r) => r.url.replace(ORIGIN, '')).join(', ')}`);
   ctx.expect(after.composer.textarea?.value === '', `the read-only prompt field took the typed text: "${after.composer.textarea?.value}"`);
   const statusText = await evaluate(`(() => { const c = document.querySelector('[data-testid="composer"]'); return c ? c.textContent : ''; })()`);
   ctx.expect(/Not available/.test(statusText), 'pressing the read-only field did not show the "Not available" explanation');
 
   await evaluate(`document.querySelector('[data-testid="composer"] textarea').focus()`);
-  // Contract change (design pass): the composer has no Send button, so Tab from its field leaves the composer.
+  // Tab order inside the composer: the field, then the Send button, then out of the composer.
   await press('Tab');
   const afterTa = await describe();
-  ctx.expect(afterTa.tag !== 'textarea', `Tab from the composer field did not leave it (went to ${shortStop(afterTa)})`);
+  ctx.expect(afterTa.tag === 'button' && /^Send/.test(afterTa.label ?? ''), `Tab from the composer field reached ${shortStop(afterTa)}, expected the Send button`);
+  await press('Tab');
+  const afterSend = await describe();
+  const insideComposer = await evaluate(`!!document.activeElement && !!document.activeElement.closest('[data-testid="composer"]')`);
+  ctx.expect(!insideComposer, `Tab from the Send button stayed inside the composer (went to ${shortStop(afterSend)}), expected a stop outside it`);
 
   const clipText = snapshot.items[0].text;
   await evaluate(`(() => { const b = document.querySelector('[role="log"] button[aria-label^="Copy message"]'); b.click(); return true; })()`);
