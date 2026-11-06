@@ -1990,8 +1990,10 @@ func identityFromStat(info syscall.Stat_t) fileIdentity {
 }
 
 func sameIdentity(expected, actual fileIdentity) bool {
+	// Directory link count and size change legitimately when children are added (for example by the same publication).
+	dir := expected.Mode&syscall.S_IFMT == syscall.S_IFDIR
 	return expected.Device == actual.Device && expected.Inode == actual.Inode && expected.Mode == actual.Mode &&
-		expected.UID == actual.UID && expected.GID == actual.GID && expected.Links == actual.Links && expected.Size == actual.Size
+		expected.UID == actual.UID && expected.GID == actual.GID && (dir || expected.Links == actual.Links && expected.Size == actual.Size)
 }
 
 func sameIdentityNode(left, right fileIdentity) bool {

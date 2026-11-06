@@ -20,6 +20,7 @@ import (
 )
 
 const productPublicationBashEnv = "TB_PRODUCT_PUBLICATION_BASH"
+const productPublicationAutoEnv = "TB_PRODUCT_PUBLICATION_AUTO"
 
 // TestProductOperatorPublicationCrashChild runs only as the fresh process the matrix below starts. It drives a
 // review-mode turn that changes two objects, requests publication and exits without cleanup at the named point.
@@ -49,9 +50,15 @@ func TestProductOperatorPublicationCrashChild(t *testing.T) {
 		if at != "after-object-checkpoint" || index == 0 {
 			f.env.crash("publication-" + at)
 		}
+		if at == "after-object-checkpoint" && index == 1 { // the last of the two objects
+			f.env.crash("publication-after-last-object-checkpoint")
+		}
 		return nil
 	}
 	_, turn, err := f.run(t, f.submit(t, "turn-1", prompt), script)
+	if os.Getenv(productPublicationAutoEnv) != "" {
+		t.Fatalf("the auto-publish child reached no crash point %s: %+v %v", point, turn, err)
+	}
 	if err != nil || turn.State != productsession.StateAwaitingReview {
 		t.Fatalf("review turn before the crash point %s: %+v %v", point, turn, err)
 	}
@@ -60,13 +67,16 @@ func TestProductOperatorPublicationCrashChild(t *testing.T) {
 }
 
 // crashPublicationChild runs the fresh process above against the fixture's root and requires it to exit at point.
-func crashPublicationChild(t *testing.T, created *productDriverFixture, point string, bash bool) {
+func crashPublicationChild(t *testing.T, created *productDriverFixture, point string, bash bool, auto ...bool) {
 	t.Helper()
 	child := exec.Command(os.Args[0], "-test.run=^TestProductOperatorPublicationCrashChild$", "-test.count=1")
 	child.Env = append(os.Environ(), productCrashRootEnv+"="+created.root, productCrashPointEnv+"="+point,
 		productCrashSessionEnv+"="+created.session.ID)
 	if bash {
 		child.Env = append(child.Env, productPublicationBashEnv+"=1")
+	}
+	if len(auto) != 0 && auto[0] {
+		child.Env = append(child.Env, productPublicationAutoEnv+"=1")
 	}
 	output, err := child.CombinedOutput()
 	var exit *exec.ExitError
@@ -116,7 +126,7 @@ func readPublicationLifecycle(t *testing.T, f *productDriverFixture, projectID s
 func TestProductOperatorResolvesAKillInsidePublicationOnlyWhenProvablyUnapplied(t *testing.T) {
 	for _, c := range []struct {
 		point, refusal string
-		measured       string // "baseline", "candidate" or "partial"
+		measured       string // "baseline", "candidate" or "partial"; a "candidate" row is recorded as published
 		prepared       int    // prepare records the kill left
 		unbound        int    // staging directories without a checkpointed identity that the resolution must leave in place and report
 		kept           int    // identity-bound staging directories that recovery keeps after a consumed token
@@ -131,8 +141,9 @@ func TestProductOperatorResolvesAKillInsidePublicationOnlyWhenProvablyUnapplied(
 		{"publication-after-stage-checkpoint", "", "baseline", 1, 0, 0, false},
 		{"publication-after-token-checkpoint", "", "baseline", 1, 0, 1, false},
 		{"publication-after-object-checkpoint", "not provably unapplied", "partial", 1, 0, 0, false},
-		{"publication-after-checkpoint", "was applied", "candidate", 1, 0, 0, false},
-		{"publication-after-terminal-checkpoint", "was applied", "candidate", 1, 0, 0, false},
+		{"publication-after-last-object-checkpoint", "", "candidate", 1, 0, 1, false},
+		{"publication-after-checkpoint", "", "candidate", 1, 0, 1, false},
+		{"publication-after-terminal-checkpoint", "", "candidate", 1, 0, 1, false},
 	} {
 		for _, bash := range []bool{true, false} {
 			if bash && c.overwriteOnly {
@@ -233,9 +244,16 @@ func TestProductOperatorResolvesAKillInsidePublicationOnlyWhenProvablyUnapplied(
 					}
 					return
 				}
-				if got.State != productsession.StateTerminal || got.Outcome != productsession.OutcomeAbandoned || got.ContextEligible ||
+				wantOutcome := productsession.OutcomeAbandoned
+				if c.measured == "candidate" {
+					wantOutcome = productsession.OutcomePublished
+				}
+				if got.State != productsession.StateTerminal || got.Outcome != wantOutcome || got.ContextEligible ||
 					got.Usage != got.Reservation || reopened.currentSession(t).Blocked {
-					t.Fatalf("the abandonment did not replay: %+v", got)
+					t.Fatalf("the resolution did not replay: %+v", got)
+				}
+				if c.measured == "candidate" && (got.ResultBaselineDigest != turn.CandidateDigest || got.OperatorResolution.PublishedBaseline != turn.CandidateDigest) {
+					t.Fatalf("a published resolution must carry the candidate as its result baseline: %+v", got)
 				}
 				// The unbound staging directory stays in place, and the evidence names it for the operator to remove.
 				var wantLeft []string
@@ -246,13 +264,16 @@ func TestProductOperatorResolvesAKillInsidePublicationOnlyWhenProvablyUnapplied(
 					t.Fatalf("evidence names staging %q, want %q", got.OperatorResolution.PublicationStagingLeft, wantLeft)
 				}
 				// The project publishes again, so no pending record is left that could apply later.
-				script := &productDriverScript{turns: []providerbridge.ScriptTurn{scopeDriverWrite("t2", "notes.txt", productDriverNotes), scopeDriverFinal("t2", productDriverAnswerA)}}
+				script := &productDriverScript{turns: []providerbridge.ScriptTurn{scopeDriverWrite("t2", "notes.txt", productDriverNotes+"follow-up\n"), scopeDriverFinal("t2", productDriverAnswerA)}}
 				if bash {
 					script = &productDriverScript{turns: []providerbridge.ScriptTurn{bashCall("again", `printf 'c\n' > notes/c.txt`), scopeDriverFinal("t2", scopeDriverAnswer)}}
 				}
 				_, next, err := reopened.run(t, reopened.submit(t, "turn-2", productDriverPromptA), script)
 				if err != nil || next.State != productsession.StateAwaitingReview {
 					t.Fatalf("turn after the resolution: %+v %v", next, err)
+				}
+				if c.measured == "candidate" && next.BaselineDigest != turn.CandidateDigest {
+					t.Fatalf("the turn after a published resolution starts from %s, want the candidate", next.BaselineDigest)
 				}
 				if _, err := reopened.resolve(t, next.ID, "resolve-2", next.CandidateDigest, productsession.DecisionPublish); err != nil {
 					t.Fatalf("publication after the resolution: %v", err)
@@ -368,4 +389,74 @@ func TestPublicationNoteNamesTheStagingDirectoriesLeftForTheOperator(t *testing.
 	if note := publicationNote(nil, nil, false); note != "" {
 		t.Fatalf("a resolution with no publication to report mentions it: %q", note)
 	}
+}
+
+// A published resolution needs the live tree to be exactly the candidate. A tree that the crash left at the candidate
+// and an outside writer then changed is mixed, so the resolution refuses and writes nothing; an auto-publish turn,
+// whose catalog record holds no candidate, derives it from the retained Store and resolves the same way.
+func TestProductOperatorPublishedResolutionRefusesAChangedTreeAndResolvesAutoPublish(t *testing.T) {
+	t.Run("tree changed after the crash", func(t *testing.T) {
+		created := newProductDriverFixture(t, productsession.PublicationReview)
+		if err := created.env.Catalog.Close(); err != nil {
+			t.Fatal(err)
+		}
+		crashPublicationChild(t, created, "publication-after-checkpoint", false)
+		f := openProductDriverFixture(t, created.root)
+		f.session = created.session
+		id := f.session.ID + "/turn-1"
+		if err := f.env.ReconcileAfterRestart(context.Background()); err == nil {
+			t.Fatal("restart reconciliation settled a turn killed inside publication")
+		}
+		projectID := f.turn(t, id).ProjectID
+		// 0o644 is the normalized mode, so the baseline scan accepts the file and the mixed-tree check is what refuses it.
+		outside := filepath.Join(f.env.ProjectRoots[projectID], "outside.txt")
+		if err := os.WriteFile(outside, []byte("late"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(outside, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		_, journalBefore := readPublicationLifecycle(t, f, projectID)
+		catalogPath := filepath.Join(f.env.StateRoot, "catalog.jsonl")
+		catalogBefore, _ := os.ReadFile(catalogPath)
+		if err := f.env.Catalog.Close(); err != nil {
+			t.Fatal(err)
+		}
+		for _, dry := range []bool{true, false} {
+			if _, err := operatorResolveOnDisk(f, id, dry); err == nil || !strings.Contains(err.Error(), "not provably unapplied") {
+				t.Fatalf("dry=%v: a changed tree must be refused as mixed: %v", dry, err)
+			}
+		}
+		_, journalAfter := readPublicationLifecycle(t, f, projectID)
+		catalogAfter, _ := os.ReadFile(catalogPath)
+		if !bytes.Equal(journalBefore, journalAfter) || !bytes.Equal(catalogBefore, catalogAfter) {
+			t.Fatal("a refused resolution wrote state")
+		}
+	})
+	t.Run("auto publish", func(t *testing.T) {
+		created := newProductDriverFixture(t, productsession.PublicationAuto)
+		if err := created.env.Catalog.Close(); err != nil {
+			t.Fatal(err)
+		}
+		crashPublicationChild(t, created, "publication-after-checkpoint", false, true)
+		f := openProductDriverFixture(t, created.root)
+		f.session = created.session
+		id := f.session.ID + "/turn-1"
+		if err := f.env.ReconcileAfterRestart(context.Background()); err == nil {
+			t.Fatal("restart reconciliation settled a turn killed inside publication")
+		}
+		if err := f.env.Catalog.Close(); err != nil {
+			t.Fatal(err)
+		}
+		measured := f.measure(t)
+		for _, dry := range []bool{true, false} {
+			if _, err := operatorResolveOnDisk(f, id, dry); err != nil {
+				t.Fatalf("dry=%v: %v", dry, err)
+			}
+		}
+		got := openProductDriverFixture(t, created.root).turn(t, id)
+		if got.Outcome != productsession.OutcomePublished || got.ResultBaselineDigest != measured || got.ContextEligible {
+			t.Fatalf("auto-publish turn not recorded as published: %+v", got)
+		}
+	})
 }

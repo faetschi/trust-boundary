@@ -46,6 +46,7 @@ Keep the printed `.old-<previous-digest-prefix>-<UTC>` tree until the signed pro
 F13 accepts the pinned F12 measurer: `VerifyLinuxPiRuntimeBundle` and its mount/device helpers are unchanged in eed7722..6162e3c; 10 rechecks with F13.
 F14 accepts the pinned F13 measurer (05 also runs when the bundle is unchanged): the same functions, `internal/sessionlaunch` and `profile_tooling_linux.go` are unchanged in 6162e3c..<F14>; 10 rechecks with F14.
 F15 accepts the pinned F14 measurer: `launcher_linux.go`, `host.go` and `profile_tooling_linux.go` are unchanged in 02f9fb7..2a6492d, and `internal/sessionlaunch`, which changed, is not in `tbound-profile`'s import closure (`GOOS=linux go list -deps ./cmd/tbound-profile`); the pair lives in a kit commit on top of F15, since a tree cannot name its own commit; 10 rechecks with F15.
+F16 accepts the pinned F15 measurer: `launcher_linux.go`, `host.go` and `profile_tooling_linux.go` are unchanged in 2a6492d..97738b6 (`git diff --quiet`); the pair lives in a kit commit on top of F16; 10 rechecks with F16.
 `KIT_FREEZE=F14 DRY_RUN=1 bash guest/05-runtime-swap.sh` in Git Bash checks owner inputs and prints every guest command without guest contact.
 `10-freeze.sh` step 3b refuses a frozen g1/route-probe template that carries the previous freeze's admission id, and a dr id that is spent.
 05 requires `HF/BUNDLE_TAR_SIZE`, written by P2 rebuild after tar verification (F13's missing record was added after the same sha256 check).
@@ -67,7 +68,7 @@ A missing 27 completion record is reported as pending in dry-run mode and blocks
       `TBOUND_TRIAL_KEY=<trial key path>` adds the netsink step): `33-corpus-pilot.sh` (abandon the dr request, D1 manifest, 76 T5 artifacts,
       the RG cycle for `pilot`, optional `trial reset` and `40-guest-evidence.sh netsink`); `tools/guest-chain.sh` runs it with `CORPUS_PILOT=1`.
 - [ ] `33-corpus-pilot.sh` ran to "DONE" (`$HF/pilot/CYCLE_OK`; with the trial key also `$HF/evq/netsink.json`), the session sudo is closed again.
-- [ ] `27` archived the previous freeze's G1/rp/dr state and exports; its dr request ended UNKNOWN BY DESIGN and
+- [ ] `27` archived the previous freeze's G1/rp/dr state and exports; it archives the pilot items too, and `33` resets a pilot install left by an earlier freeze (`pilot-reset` phase); its dr request ended UNKNOWN BY DESIGN and
       the stale-evidence commit check in `40-guest-evidence.sh` passed for this freeze.
 - [ ] Every log is under `<FREEZE>\logs`; no 0-byte output except `*.err` and the dr command/provider audits.
 - [ ] The kit scripts pass `bash -n`; the Python files pass `python -I -m py_compile`; all files are UTF-8 without

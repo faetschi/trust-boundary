@@ -23,8 +23,12 @@ import (
 // every unresolved lifecycle record. Publication recovery only observes, so at the baseline it ends a prepared
 // transaction as failed and never applies anything. It returns the pending records that settle closes through the
 // ledger's own recovery. The caller runs settle for a real resolution only, directly before the catalog append. A
-// publication that applied or partly applied is refused by name, because the catalog cannot record a published
-// outcome for an unknown turn.
+// publication that partly applied is refused by name.
+//
+// When the project equals exactly the candidate (the tree the turn's Store sealed), the publication applied and only
+// its terminal record was lost. applied is then true and settle closes the lifecycle record through the same ledger
+// recovery, which must classify the transaction SUCCEEDED; nothing is ever applied again. A transaction whose own
+// record ended in anything but SUCCEEDED refuses, since the tree would then not come from a successful publication.
 //
 // A kill right after the staging directory was created leaves a transaction with no token and a directory whose
 // identity was never checkpointed, which publication.Recover keeps UNKNOWN. Closing it is safe: with no durable
@@ -34,21 +38,21 @@ import (
 // nothing proves it is the one the transaction created. stagingLeft names each such directory that exists, as an
 // absolute path, for the operator to remove. It reads the workflow's ended transactions too, so it also names the
 // directory when an earlier resolution settled the ledger and died before the catalog append.
-func (e *productTurnEnv) operatorPublication(ctx context.Context, turn productsession.Turn, root *os.File, measured string) (closing, stagingLeft []string, settle func() error, err error) {
+func (e *productTurnEnv) operatorPublication(ctx context.Context, turn productsession.Turn, root *os.File, measured, candidate string) (closing, stagingLeft []string, settle func() error, applied bool, err error) {
 	workflowID := turn.Link.WorkflowID
 	named, _, err := e.workflowPublication(turn.ProjectID, workflowID)
 	if err != nil {
-		return nil, nil, nil, errors.Join(errors.New("publication evidence is unreadable"), err)
+		return nil, nil, nil, false, errors.Join(errors.New("publication evidence is unreadable"), err)
 	}
 	if !named {
-		return nil, nil, nil, nil
+		return nil, nil, nil, false, nil
 	}
-	switch measured {
-	case turn.BaselineDigest:
-	case turn.CandidateDigest:
-		return nil, nil, nil, errors.New("the publication was applied: the project equals the turn's candidate, and operator resolution cannot record a published outcome")
+	switch {
+	case measured == turn.BaselineDigest:
+	case candidate != "" && measured == candidate:
+		applied = true
 	default:
-		return nil, nil, nil, errors.New("the publication is not provably unapplied: the project equals neither the admitted baseline nor the turn's candidate")
+		return nil, nil, nil, false, errors.New("the publication is not provably unapplied: the project equals neither the admitted baseline nor the turn's candidate")
 	}
 	projectDir := e.projectPublicationDir(turn.ProjectID)
 	withLedger := func(use func(*audit.Journal, *workflow.RootLedger) error) (trace audit.Trace, err error) {
@@ -71,14 +75,19 @@ func (e *productTurnEnv) operatorPublication(ctx context.Context, turn productse
 		return err
 	})
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("publication lifecycle: %w", err)
+		return nil, nil, nil, false, fmt.Errorf("publication lifecycle: %w", err)
+	}
+	if applied {
+		if err := appliedPublicationRecords(trace, workflowID); err != nil {
+			return nil, nil, nil, false, err
+		}
 	}
 	// The directories come from the workflow's transactions, ended or not, so a retry after the settle still names them.
 	if stagingLeft, err = unboundStagingLeft(root, trace, workflowID); err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, false, err
 	}
 	if closing = unresolvedPublicationEvents(trace, workflowID); len(closing) == 0 {
-		return nil, stagingLeft, nil, nil
+		return nil, stagingLeft, nil, applied, nil
 	}
 	return closing, stagingLeft, func() error {
 		stateRoot, err := os.Open(filepath.Join(projectDir, "publication-state"))
@@ -101,6 +110,9 @@ func (e *productTurnEnv) operatorPublication(ctx context.Context, turn productse
 				if err != nil {
 					return nil, err
 				}
+				if applied {
+					return appliedRecovery{repository}, nil
+				}
 				return abandoningRecovery{repository}, nil
 			})
 		})
@@ -111,7 +123,60 @@ func (e *productTurnEnv) operatorPublication(ctx context.Context, turn productse
 			return fmt.Errorf("close the publication lifecycle: %w", err)
 		}
 		return nil
-	}, nil
+	}, applied, nil
+}
+
+// appliedPublicationRecords requires that the workflow prepared a transaction and that no record of it ended in a
+// status other than SUCCEEDED. A transaction with no terminal record yet is classified by the recovery in settle,
+// which only observes the tree; a dry run cannot run it, because it writes.
+func appliedPublicationRecords(trace audit.Trace, workflowID string) error {
+	type event struct {
+		TransactionID string             `json:"transaction_id"`
+		WorkflowID    string             `json:"workflow_id"`
+		Status        publication.Status `json:"status"`
+	}
+	transactions := map[string]bool{}
+	var terminals []event
+	for _, record := range trace.Records {
+		switch record.Event.Kind {
+		case "publication_prepare", "publication_terminal", "publication_aborted", "workflow_publication_resolved":
+		default:
+			continue
+		}
+		var e event
+		if err := json.Unmarshal(record.Event.Data, &e); err != nil {
+			return fmt.Errorf("decode publication record %d: %w", record.Sequence, err)
+		}
+		switch {
+		case record.Event.Kind == "publication_prepare" && e.WorkflowID == workflowID:
+			transactions[e.TransactionID] = true
+		case record.Event.Kind == "workflow_publication_resolved" && e.WorkflowID == workflowID && e.Status != publication.StatusSucceeded:
+			return fmt.Errorf("the publication was resolved %s, so a project equal to the candidate does not come from a successful publication", e.Status)
+		case record.Event.Kind == "publication_terminal" || record.Event.Kind == "publication_aborted":
+			terminals = append(terminals, e)
+		}
+	}
+	for _, terminal := range terminals {
+		if transactions[terminal.TransactionID] && terminal.Status != publication.StatusSucceeded {
+			return fmt.Errorf("the publication ended %s, so a project equal to the candidate does not come from a successful publication", terminal.Status)
+		}
+	}
+	if len(transactions) == 0 {
+		return errors.New("the project equals the candidate but the workflow prepared no publication transaction")
+	}
+	return nil
+}
+
+// appliedRecovery is the recovery repository of a published resolution: the ledger resolves a record only when
+// publication recovery classifies the transaction SUCCEEDED, so any other result quarantines it and writes nothing.
+type appliedRecovery struct{ *publication.Repository }
+
+func (r appliedRecovery) Recover(liveRoot *os.File, transactionID string, inject publication.FaultInjector) (publication.Result, error) {
+	result, err := r.Repository.Recover(liveRoot, transactionID, inject)
+	if err == nil && result.Status != publication.StatusSucceeded {
+		err = fmt.Errorf("publication recovery classified the transaction %s, not applied", result.Status)
+	}
+	return result, err
 }
 
 // abandoningRecovery is the recovery repository of an operator resolution: its Recover ends a transaction that has

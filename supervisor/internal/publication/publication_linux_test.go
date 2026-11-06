@@ -1231,3 +1231,38 @@ func lastAbortedReason(t *testing.T, trace audit.Trace) string {
 	t.Fatal("no publication_aborted record")
 	return ""
 }
+
+// A correct publication that creates a directory, a subdirectory and a file in it changes the
+// parent's link count and size; neither the apply nor recovery may read that as UNKNOWN.
+func TestNestedDirectoryCreationClassifiesAsAppliedAndRecoversByObservation(t *testing.T) {
+	for _, point := range []string{"", "after-object-checkpoint", "after-checkpoint", "after-terminal-checkpoint"} {
+		t.Run("fault "+point, func(t *testing.T) {
+			final := map[string]string{"out/sub/a.txt": "hello"}
+			f := newFixture(t, map[string]string{}, map[string]string{}, map[string]string{}, final, nil, nil, []string{"out", "out/sub"})
+			first := f.acquire(1)
+			result, err := first.Publish(context.Background(), f.request, allowFor("nested"), func(p string, index int) error {
+				if point != "" && p == point && (index == 2 || p == "after-terminal-checkpoint") {
+					return errors.New("synthetic late fault")
+				}
+				return nil
+			})
+			if point == "" {
+				if err != nil || result.Status != StatusSucceeded {
+					t.Fatalf("nested publication = %+v err=%v", result, err)
+				}
+				_ = first.Close()
+				return
+			}
+			if !errors.Is(err, ErrInjectedFault) || result.TransactionID == "" {
+				t.Fatalf("fault %q not injected: %+v err=%v", point, result, err)
+			}
+			_ = first.Close()
+			second := f.acquire(2)
+			recovered, recoverErr := second.Recover(f.live, result.TransactionID, nil)
+			if recoverErr != nil || recovered.Status != StatusSucceeded {
+				t.Fatalf("recovery after %q = %s err=%v objects=%+v", point, recovered.Status, recoverErr, recovered.Objects)
+			}
+			_ = second.Close()
+		})
+	}
+}
