@@ -63,14 +63,3 @@ func readProductJournalTrace(path string) (audit.Trace, error) {
 	}
 	return audit.Verify(bytes.NewReader(data))
 }
-
-// pendingReviewTurn is a review turn this process holds open for its resolution.
-func (e *productTurnEnv) pendingReviewTurn(turnID string) (productPreparedTurn, bool) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	review := e.pending[turnID]
-	if review == nil {
-		return nil, false
-	}
-	return review.turn, true
-}

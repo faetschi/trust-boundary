@@ -45,7 +45,7 @@ func TestProductReviewQualificationSettleFailureIsNotRetriedByFinish(t *testing.
 	if _, err := r.commandJournal.Trace(); err != nil {
 		t.Fatalf("dependent journal closed: %v", err)
 	}
-	if err := env.Close(); err != nil || !r.closed || len(env.retainedCommands) != 0 {
+	if err := env.driver().Close(); err != nil || !r.closed || len(env.retainedCommands) != 0 {
 		t.Fatalf("explicit cleanup failed: %v", err)
 	}
 }
@@ -62,7 +62,7 @@ func TestProductReviewConstructionFailureRetainsOwnership(t *testing.T) {
 		t.Fatalf("construction dropped owner: cell=%v err=%v retained=%d attempts=%d", cell, err, len(env.retainedCommands), h.cleanupAttempts)
 	}
 	h.cleanupErr = nil
-	if err := env.Close(); err != nil {
+	if err := env.driver().Close(); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -164,7 +164,7 @@ func TestProductReviewPruningKeepsUnresolvedAndHonorsCancellation(t *testing.T) 
 	if err := pruneProductQualifications(ctx, filepath.Join(env.StateRoot, productQualificationDir)); !errors.Is(err, context.Canceled) {
 		t.Fatalf("scan ignored cancellation: %v", err)
 	}
-	if err := env.Close(); err != nil {
+	if err := env.driver().Close(); err != nil {
 		t.Fatal(err)
 	}
 }

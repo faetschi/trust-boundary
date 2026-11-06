@@ -63,7 +63,7 @@ func TestProductTurnBashSettlesBeforeCaptureRefusalTerminal(t *testing.T) {
 				if !errors.Is(err, cleanupFailure) || turn.State != productsession.StateUnknown || len(turn.Receipt) != 0 || turn.Refund != (productsession.Budget{}) || attempts != 1 || len(f.env.retainedCommands) != 1 {
 					t.Fatalf("failed cleanup lost ownership or refunded: turn=%+v attempts=%d err=%v", turn, attempts, err)
 				}
-				if err := f.env.Close(); err != nil || attempts != 2 || len(f.env.retainedCommands) != 0 {
+				if err := f.env.driver().Close(); err != nil || attempts != 2 || len(f.env.retainedCommands) != 0 {
 					t.Fatalf("explicit cleanup: attempts=%d err=%v", attempts, err)
 				}
 				if got := f.turn(t, turn.ID); got.State != productsession.StateUnknown {
@@ -164,7 +164,7 @@ func TestProductTurnCaptureRefusalRestartBoundaries(t *testing.T) {
 			if before := f.turn(t, id); before.State != productsession.StateLinked {
 				t.Fatalf("settled before crash: %+v", before)
 			}
-			err = f.env.ReconcileAfterRestart(context.Background())
+			err = f.env.driver().ReconcileAfterRestart(context.Background())
 			turn, session := f.turn(t, id), f.currentSession(t)
 			if f.measure(t) != baseline || f.notesPublished(t) {
 				t.Fatal("refused response changed project")

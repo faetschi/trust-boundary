@@ -173,7 +173,7 @@ func TestProductOperatorResolvesAKillInsidePublicationOnlyWhenProvablyUnapplied(
 				}
 				f := open()
 				id := f.session.ID + "/turn-1"
-				if err := f.env.ReconcileAfterRestart(context.Background()); err == nil {
+				if err := f.env.driver().ReconcileAfterRestart(context.Background()); err == nil {
 					t.Fatal("restart reconciliation settled a turn killed inside publication")
 				}
 				turn := f.turn(t, id)
@@ -304,7 +304,7 @@ func TestProductOperatorRetryReportsTheStagingDirectoryAnInterruptedResolutionLe
 			f := openProductDriverFixture(t, created.root)
 			f.session = created.session
 			id := f.session.ID + "/turn-1"
-			if err := f.env.ReconcileAfterRestart(context.Background()); err == nil {
+			if err := f.env.driver().ReconcileAfterRestart(context.Background()); err == nil {
 				t.Fatal("restart reconciliation settled a turn killed inside publication")
 			}
 			turn := f.turn(t, id)
@@ -404,7 +404,7 @@ func TestProductOperatorPublishedResolutionRefusesAChangedTreeAndResolvesAutoPub
 		f := openProductDriverFixture(t, created.root)
 		f.session = created.session
 		id := f.session.ID + "/turn-1"
-		if err := f.env.ReconcileAfterRestart(context.Background()); err == nil {
+		if err := f.env.driver().ReconcileAfterRestart(context.Background()); err == nil {
 			t.Fatal("restart reconciliation settled a turn killed inside publication")
 		}
 		projectID := f.turn(t, id).ProjectID
@@ -442,7 +442,7 @@ func TestProductOperatorPublishedResolutionRefusesAChangedTreeAndResolvesAutoPub
 		f := openProductDriverFixture(t, created.root)
 		f.session = created.session
 		id := f.session.ID + "/turn-1"
-		if err := f.env.ReconcileAfterRestart(context.Background()); err == nil {
+		if err := f.env.driver().ReconcileAfterRestart(context.Background()); err == nil {
 			t.Fatal("restart reconciliation settled a turn killed inside publication")
 		}
 		if err := f.env.Catalog.Close(); err != nil {

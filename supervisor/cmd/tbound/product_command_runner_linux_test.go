@@ -27,13 +27,15 @@ func TestProductD09CleanupFailureRetainsOwnersAndBlocksDisposition(t *testing.T)
 	for _, path := range []string{"close", "accept", "discard", "expiry", "cancel", "shutdown"} {
 		t.Run(path, func(t *testing.T) {
 			f := newProductDriverFixture(t, productsession.PublicationReview)
+			composed := map[string]*productComposedTurn{}
+			f.env.onPrepared = func(turnID string, turn *productComposedTurn) { composed[turnID] = turn }
 			_, turn, err := f.run(t, f.submit(t, "review", "write task"), &productDriverScript{turns: []providerbridge.ScriptTurn{
 				{ResponseID: "write-response", CallID: "write-call", Tool: "write", Arguments: []byte(`{"path":"task.txt","content":"new\n"}`)},
 				scopeDriverFinal("review", scopeDriverAnswer)}})
 			if err != nil || turn.State != productsession.StateAwaitingReview {
 				t.Fatalf("review: %+v %v", turn, err)
 			}
-			review := f.env.pending[turn.ID].turn.(*productComposedTurn)
+			review := composed[turn.ID]
 			failure := errors.New("retained cell owner")
 			fail := true
 			runner := newProductD09CommandRunnerWithFactory(func(string) (sessionrepo.CommandRunner, error) { return nil, errors.New("unused") }, func(context.Context) error {
@@ -55,11 +57,11 @@ func TestProductD09CleanupFailureRetainsOwnersAndBlocksDisposition(t *testing.T)
 				}
 				_, err = f.resolve(t, turn.ID, "resolve", turn.CandidateDigest, decision)
 			case "expiry":
-				err = f.env.ExpireReviews(time.Now().Add(time.Hour))
+				err = f.env.driver().ExpireReviews(time.Now().Add(time.Hour))
 			case "cancel":
 				_, err = f.cancel(t, turn.ID, "cancel")
 			case "shutdown":
-				err = f.env.Close()
+				err = f.env.driver().Close()
 			}
 			if !errors.Is(err, failure) || closed || len(f.env.retainedCommands) != 1 || runner.Pending() == 0 {
 				t.Fatalf("cleanup did not retain owners: err=%v closed=%v retained=%d pending=%d", err, closed, len(f.env.retainedCommands), runner.Pending())
@@ -69,7 +71,7 @@ func TestProductD09CleanupFailureRetainsOwnersAndBlocksDisposition(t *testing.T)
 				t.Fatalf("disposition escaped cleanup: %+v", got)
 			}
 			fail = false
-			if err := f.env.Close(); err != nil || !closed || runner.Pending() != 0 || len(f.env.retainedCommands) != 0 {
+			if err := f.env.driver().Close(); err != nil || !closed || runner.Pending() != 0 || len(f.env.retainedCommands) != 0 {
 				t.Fatalf("retry: closed=%v err=%v", closed, err)
 			}
 		})
@@ -107,7 +109,7 @@ func TestProductD09FailedTurnSettlementKeepsOwnerAgainstDeferredTeardown(t *test
 			t.Fatal("retained workflow released its handles")
 		}
 	}
-	if err := f.env.Close(); err != nil || !cleaned || len(f.env.retainedCommands) != 0 {
+	if err := f.env.driver().Close(); err != nil || !cleaned || len(f.env.retainedCommands) != 0 {
 		t.Fatalf("explicit retained cleanup: cleaned=%v err=%v retained=%d", cleaned, err, len(f.env.retainedCommands))
 	}
 	if got := f.turn(t, admission.Turn.ID); got.State != productsession.StateUnknown {
@@ -120,13 +122,15 @@ func TestProductD09FailedReviewSettlementKeepsOwnerAgainstDeferredTeardown(t *te
 	for _, path := range []string{"accept", "discard"} {
 		t.Run(path, func(t *testing.T) {
 			f := newProductDriverFixture(t, productsession.PublicationReview)
+			composed := map[string]*productComposedTurn{}
+			f.env.onPrepared = func(turnID string, turn *productComposedTurn) { composed[turnID] = turn }
 			_, turn, err := f.run(t, f.submit(t, "review", "write task"), &productDriverScript{turns: []providerbridge.ScriptTurn{
 				{ResponseID: "write-response", CallID: "write-call", Tool: "write", Arguments: []byte(`{"path":"task.txt","content":"new\n"}`)},
 				scopeDriverFinal("review", scopeDriverAnswer)}})
 			if err != nil || turn.State != productsession.StateAwaitingReview {
 				t.Fatalf("review: %+v %v", turn, err)
 			}
-			review := f.env.pending[turn.ID].turn.(*productComposedTurn)
+			review := composed[turn.ID]
 			failure := errors.New("retained cell owner")
 			attempts, closed := 0, false
 			review.w.commandLifecycle = newProductD09CommandRunnerWithFactory(func(string) (sessionrepo.CommandRunner, error) {
@@ -149,7 +153,7 @@ func TestProductD09FailedReviewSettlementKeepsOwnerAgainstDeferredTeardown(t *te
 			if got := f.turn(t, turn.ID); got.State != productsession.StateUnknown || attempts != 1 || closed || len(f.env.retainedCommands) != 1 {
 				t.Fatalf("deferred teardown retried the owner: state=%s attempts=%d closed=%v retained=%d", got.State, attempts, closed, len(f.env.retainedCommands))
 			}
-			if err := f.env.Close(); err != nil || !closed || len(f.env.retainedCommands) != 0 {
+			if err := f.env.driver().Close(); err != nil || !closed || len(f.env.retainedCommands) != 0 {
 				t.Fatalf("explicit retained cleanup: closed=%v err=%v retained=%d", closed, err, len(f.env.retainedCommands))
 			}
 		})
@@ -221,7 +225,7 @@ func TestProductD09FactoryAndRetainedHistoryComposition(t *testing.T) {
 	if err := os.WriteFile(turn.Link.CommandJournalPath, raw, 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.env.Close(); err != nil {
+	if err := f.env.driver().Close(); err != nil {
 		t.Fatal(err)
 	}
 	if err := f.env.Catalog.Close(); err != nil {
@@ -348,7 +352,7 @@ func TestProductD09UnqualifiedTrustRefusalSettlesBeforeAbandon(t *testing.T) {
 				if turn.State != productsession.StateAdmitted || len(f.env.retainedCommands) != 1 || cleaned || f.currentSession(t).Reserved == (productsession.Budget{}) {
 					t.Fatalf("failed cleanup refunded/forgot owner: %+v", turn)
 				}
-				if _, err := f.env.RunTurn(context.Background(), admission); err == nil || factories != 1 {
+				if _, err := f.env.driver().RunTurn(context.Background(), admission); err == nil || factories != 1 {
 					t.Fatalf("retry bypassed retained owner: factories=%d err=%v", factories, err)
 				}
 				cancelled, err := f.cancel(t, turn.ID, "cancel-retained")
@@ -359,7 +363,7 @@ func TestProductD09UnqualifiedTrustRefusalSettlesBeforeAbandon(t *testing.T) {
 				t.Fatalf("refusal was not cleaned before abandon: %+v", turn)
 			}
 			cleanupFailed = false
-			if err := f.env.Close(); err != nil {
+			if err := f.env.driver().Close(); err != nil {
 				t.Fatal(err)
 			}
 		})

@@ -16,6 +16,7 @@ import (
 
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/piruntime"
+	"tbound/supervisor/internal/productdriver"
 	"tbound/supervisor/internal/sessionrepo"
 )
 
@@ -99,7 +100,7 @@ func (e *productTurnEnv) settleRetainedProductCommands(turnID string) error {
 	e.retainedMu.Unlock()
 	for _, w := range retained {
 		if err := w.close(); err != nil {
-			return errors.Join(errProductCommandUnsettled, err)
+			return errors.Join(productdriver.ErrCommandsUnsettled, err)
 		}
 	}
 	return nil

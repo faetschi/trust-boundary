@@ -225,7 +225,7 @@ func TestProductInterruptedBashRestartAndOperatorResolution(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			if err := f.env.ReconcileAfterRestart(context.Background()); err == nil {
+			if err := f.env.driver().ReconcileAfterRestart(context.Background()); err == nil {
 				t.Fatal("killed effect silently accepted")
 			}
 			if got := f.turn(t, turn.ID); got.State != productsession.StateUnknown {
