@@ -1404,3 +1404,11 @@ func TestD09WorkerCellForwardsStdinButCommandCellsDoNot(t *testing.T) {
 		t.Fatalf("a command cell reads no stdin but forwards it: %q", command)
 	}
 }
+
+func d09CommandCellArguments(config D09Config, name, cidPath, imageRef, viewPath, viewID, leaseID string, viewDevice, viewInode uint64, spec sessionrepo.CommandSpec) []string {
+	return d09CommandCellArgumentsDelta(d09BasePlan(config), config, name, cidPath, imageRef, viewPath, viewID, leaseID, viewDevice, viewInode, spec)
+}
+
+func validateD09CommandProof(proof d09CommandProof, config D09Config, imageRef, leaseID, viewID, containerName string, viewDevice, viewInode uint64, spec sessionrepo.CommandSpec) error {
+	return validateD09CommandProofDelta(d09BasePlan(config), proof, config, imageRef, leaseID, viewID, containerName, viewDevice, viewInode, spec)
+}

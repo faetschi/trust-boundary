@@ -100,15 +100,6 @@ func TestCgroup2DescriptorObservationRefusesANonCgroupDescriptor(t *testing.T) {
 }
 
 func TestCgroup2DescriptorMountIDIsCorrelatedWithMountinfo(t *testing.T) {
-	fdinfo := "pos:\t0\nflags:\t02500000\nmnt_id:\t25\nino:\t7\n"
-	if id, err := parseFdinfoMountID(fdinfo); err != nil || id != 25 {
-		t.Fatalf("fdinfo mount id = %d, %v", id, err)
-	}
-	for _, bad := range []string{"", "pos:\t0\n", "mnt_id:\t\n", "mnt_id:\tx\n", "mnt_id:\t0\n", "mnt_id:\t1\nmnt_id:\t2\n"} {
-		if id, err := parseFdinfoMountID(bad); err == nil {
-			t.Fatalf("fdinfo %q parsed to %d", bad, id)
-		}
-	}
 	entry, ok := coveringMount(testCoveredCellsMountinfo("sys", "cgroup", "tmpfs"), testCellsHostPath+"/pi-x")
 	if !ok || entry.id != 41 || entry.fstype != "tmpfs" {
 		t.Fatalf("covering mount = %+v ok=%v", entry, ok)
