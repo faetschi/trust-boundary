@@ -49,13 +49,13 @@ const (
 	netSinkProbeVerb = "netsink-probe"
 	netSinkStageUDP  = "udp"
 	netSinkStageTCP  = "tcp"
-	// netSinkCaptureLock serializes standalone captures: the drop counter is shared, so two captures would
-	// spoil each other's UDP bracket.
-	netSinkCaptureLock = "/run/tbound/net-sink-capture.lock"
-	nftBinary          = "/usr/sbin/nft"
-	maxProbeOutput     = 64 << 10
-	maxTestRunOutput   = 64 << 20
-	maxGuestInputSize  = 1 << 20
+	// netSinkMaintenanceLock is the file `tbound trial reset` and the Pi service flock (cmd/tbound
+	// maintenance_lock_linux.go; another package, so the path is repeated here).
+	netSinkMaintenanceLock = "/run/tbound/maintenance.lock"
+	nftBinary              = "/usr/sbin/nft"
+	maxProbeOutput         = 64 << 10
+	maxTestRunOutput       = 64 << 20
+	maxGuestInputSize      = 1 << 20
 )
 
 // guestTestsTimeout bounds a guest test run; a variable so a test can shorten it.
@@ -570,7 +570,7 @@ type netSinkEnv struct {
 func productionNetSinkEnv(self string) netSinkEnv {
 	return netSinkEnv{
 		self: self, bootID: piruntime.ReadD09BootID, readFile: os.ReadFile, mountinfo: "/proc/self/mountinfo",
-		cellsPath: guestevidence.CellsCgroup, attestPath: piruntime.D09NetSinkAttestPath, lockPath: netSinkCaptureLock, rulePath: piruntime.D09NetSinkRulePath,
+		cellsPath: guestevidence.CellsCgroup, attestPath: piruntime.D09NetSinkAttestPath, lockPath: netSinkMaintenanceLock, rulePath: piruntime.D09NetSinkRulePath,
 		nftList: func(ctx context.Context) ([]byte, error) {
 			cmd := exec.CommandContext(ctx, nftBinary, "-j", "list", "table", "inet", piruntime.D09NetSinkTable)
 			cmd.Env = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "LANG=C", "LC_ALL=C"}
@@ -598,13 +598,17 @@ type netSinkProbeResult struct {
 func probeNetSink(ctx context.Context, env netSinkEnv) (guestevidence.NetSink, error) {
 	var n guestevidence.NetSink
 	var err error
-	lock, err := os.OpenFile(env.lockPath, os.O_RDWR|os.O_CREATE|syscall.O_NOFOLLOW, 0o600)
+	// The maintenance lock is held for the whole counter bracket. The service takes it for every admitted
+	// workflow and the trial reset takes it too, so holding it excludes every legitimate producer of
+	// processes in the cells cgroup, and a second capture. Residual: a root process acting adversarially
+	// on the guest is outside the threat model (it could forge any evidence).
+	lock, err := os.OpenFile(env.lockPath, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0)
 	if err != nil {
-		return n, fmt.Errorf("net-sink capture lock: %w", err)
+		return n, fmt.Errorf("maintenance lock (run tbound trial reset or the tmpfiles unit first): %w", err)
 	}
 	defer lock.Close() // closing releases the flock
 	if err := unix.Flock(int(lock.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
-		return n, fmt.Errorf("another net-sink capture holds %s: %w", env.lockPath, err)
+		return n, fmt.Errorf("the maintenance lock %s is held (a workflow, a trial reset or another capture): %w", env.lockPath, err)
 	}
 	if n.BootID, err = env.bootID(); err != nil {
 		return n, fmt.Errorf("boot id: %w", err)
@@ -664,14 +668,15 @@ func probeNetSink(ctx context.Context, env netSinkEnv) (guestevidence.NetSink, e
 		}
 		return res, nil
 	}
-	// The datagram's drop is only attributable if nothing else in the cgroup could raise the counter.
+	// The datagram's drop is only attributable if nothing else in the cgroup could raise the counter;
+	// cgroup.events "populated 0" covers descendants too.
 	quiet := func(when string) error {
-		procs, err := env.readFile(filepath.Join(sinkDir, "cgroup.procs"))
+		events, err := env.readFile(filepath.Join(sinkDir, "cgroup.events"))
 		if err != nil {
-			return fmt.Errorf("net-sink cgroup members: %w", err)
+			return fmt.Errorf("net-sink cgroup events: %w", err)
 		}
-		if len(bytes.TrimSpace(procs)) != 0 {
-			return fmt.Errorf("the net-sink cgroup is not empty %s the UDP probe: %s", when, strings.Join(strings.Fields(string(procs)), " "))
+		if !slices.Contains(strings.Split(string(events), "\n"), "populated 0") {
+			return fmt.Errorf("the net-sink cgroup is populated %s the UDP probe", when)
 		}
 		return nil
 	}

@@ -399,14 +399,14 @@ func geNetSinkEnv(t *testing.T) netSinkEnv {
 				return raw, nil
 			case "/etc/tbound/net-sink.nft":
 				return rule, nil
-			case "/sys/fs/cgroup" + guestevidence.CellsCgroup + "/net-sink/cgroup.procs":
-				return nil, nil
+			case "/sys/fs/cgroup" + guestevidence.CellsCgroup + "/net-sink/cgroup.events":
+				return []byte("populated 0\nfrozen 0\n"), nil
 			case "mountinfo":
 				return []byte("35 25 0:30 / /sys/fs/cgroup rw - cgroup2 cgroup2 rw\n"), nil
 			}
 			return nil, os.ErrNotExist
 		},
-		lockPath: filepath.Join(t.TempDir(), "capture.lock"), mountinfo: "mountinfo", cellsPath: guestevidence.CellsCgroup, attestPath: "/run/tbound/net-sink.attest", rulePath: "/etc/tbound/net-sink.nft",
+		lockPath: geLockFile(t), mountinfo: "mountinfo", cellsPath: guestevidence.CellsCgroup, attestPath: "/run/tbound/net-sink.attest", rulePath: "/etc/tbound/net-sink.nft",
 		nftList: func(context.Context) ([]byte, error) {
 			defer func() { counter += 3 }() // drops happen between the listings
 			return geNftJSON(t, counter), nil
@@ -417,14 +417,23 @@ func geNetSinkEnv(t *testing.T) netSinkEnv {
 	}
 }
 
-// geWithProcs answers reads of the net-sink cgroup.procs with procs() and everything else as before.
-func geWithProcs(inner func(string) ([]byte, error), procs func() string) func(string) ([]byte, error) {
+// geWithEvents answers reads of the net-sink cgroup.events with events() and everything else as before.
+func geWithEvents(inner func(string) ([]byte, error), events func() string) func(string) ([]byte, error) {
 	return func(p string) ([]byte, error) {
-		if strings.HasSuffix(p, "/net-sink/cgroup.procs") {
-			return []byte(procs()), nil
+		if strings.HasSuffix(p, "/net-sink/cgroup.events") {
+			return []byte(events()), nil
 		}
 		return inner(p)
 	}
+}
+
+func geLockFile(t *testing.T) string {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), "maintenance.lock")
+	if err := os.WriteFile(p, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return p
 }
 
 func geValidateNetSink(t *testing.T, n guestevidence.NetSink) error {
@@ -481,25 +490,25 @@ func TestProbeNetSinkRefusesWhatIsNotTheLoadedRule(t *testing.T) {
 				return b, nil
 			}
 		},
-		"a foreign process in the cgroup before the UDP stage": func(e *netSinkEnv) {
-			e.readFile = geWithProcs(e.readFile, func() string { return "4242\n" })
+		"a descendant in the cgroup before the UDP stage": func(e *netSinkEnv) {
+			e.readFile = geWithEvents(e.readFile, func() string { return "populated 1\n" })
 		},
-		"a foreign process in the cgroup after the UDP stage": func(e *netSinkEnv) {
+		"a descendant in the cgroup after the UDP stage": func(e *netSinkEnv) {
 			udpDone := false
 			inner := e.probe
 			e.probe = func(ctx context.Context, d, stage string) (netSinkProbeResult, error) {
 				udpDone = stage == netSinkStageUDP
 				return inner(ctx, d, stage)
 			}
-			e.readFile = geWithProcs(e.readFile, func() string {
+			e.readFile = geWithEvents(e.readFile, func() string {
 				if udpDone {
-					return "4242\n"
+					return "populated 1\n"
 				}
 				return ""
 			})
 		},
-		"another capture holds the lock": func(e *netSinkEnv) {
-			held, err := os.OpenFile(e.lockPath, os.O_RDWR|os.O_CREATE, 0o600)
+		"the maintenance lock is held": func(e *netSinkEnv) {
+			held, err := os.OpenFile(e.lockPath, os.O_RDONLY, 0)
 			if err != nil {
 				t.Fatal(err)
 			}
