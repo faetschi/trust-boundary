@@ -86,6 +86,10 @@ export function frozen(group: string): Frozen {
 export function frozenSuite(): (label: string, value: unknown) => void {
   let current: { name: string; group: Frozen } | null = null;
   afterEach(() => {
+    // A fixture-backed test that made no comparison still closes its group, so the recorded
+    // non-zero count rejects an emptied corpus.
+    const name = expect.getState().currentTestName ?? "";
+    if (current?.name !== name && !process.env["LEGACY_ORACLE_RECORD"] && (oracle as Oracle)[name]) current = { name, group: frozen(name) };
     current?.group.done();
     current = null;
   });
