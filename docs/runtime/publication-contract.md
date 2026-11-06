@@ -110,6 +110,22 @@ Any `UNKNOWN` blocks further publication for the workflow. Known partial apply
 is retained and reported per object; a fresh effect requires a fresh correlated
 proposal, authority, baseline and remaining workflow budget.
 
+The aggregate `FAILED` status therefore does not mean "unchanged". When
+recovery fully observes a multi-object publication in which some objects were
+applied and a later object was started but not applied, the objects are
+`[SUCCEEDED, FAILED]`, the aggregate is `FAILED`, and recovery returns no error;
+the live tree keeps the applied objects. Aggregate `FAILED` MAY include a known
+partial apply. Every consumer of aggregate `FAILED` must re-check the baseline
+and must not assume the live root is unchanged. Only `UNKNOWN` blocks, so a
+consumer that closes a lifecycle marker on `FAILED` closes it over a possibly
+changed root. The product turn driver does re-check (it compares the measured
+project with the committed baseline and ends the turn `UNKNOWN` on a mismatch).
+The workflow root-ledger marker resolution does not: it resolves the marker on
+`SUCCEEDED` or `FAILED` without measuring the root. `TestRecoverReportsAggregateFailedForAKnownPartialApply`
+pins the observation. A live `Publish` returns `UNKNOWN`, not `FAILED`, when it
+is cut short, so aggregate `FAILED` with a partial apply is reached through
+`Recover`.
+
 `RestoreDisposableCheckpoint` and `RecoverDisposableCheckpoint` provide the
 separate checkpoint-restoration path. The caller supplies an already-open,
 supervisor-owned retained checkpoint descriptor and its complete manifest,
