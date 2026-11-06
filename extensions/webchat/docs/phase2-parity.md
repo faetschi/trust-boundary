@@ -376,7 +376,7 @@ slack, a `data:` link scheme) fails them.
 | `markdown/differential.test.ts`: golden, hostile, adversarial, 100,000 fuzz, 20,000 link-shaped, window bounds, block bound, `splitBlocks`, `safeHref`, 2,500 streams, the 170-character stream, work counts, bounds and notice | `markdown/frozen-oracle.test.ts` (same seeds and corpora) |
 | `jstest/{anchor,api,backoff,filters,format,store,stream,trajectory}.test.mjs` | `core/*.test.ts`, ported earlier with the same test names |
 | `jstest/markdown.test.mjs` | `markdown/{parse,golden,hostile,bounds,incremental,perf,render,security}.test.ts` |
-| `jstest/{render,shell,tokens}.test.mjs` | the rows of phase3-parity.md |
+| `jstest/{render,shell,tokens}.test.mjs` | the rows of phase3-parity.md; the Publication and Recovery trust sentence (render row 5) is asserted in the DOM by `app/GovernancePanels.test.tsx` |
 | `jstest/stop-sequence.test.mjs`, `assets/stop-sequence.mjs` | not carried (see above) |
 | Go: `TestLegacyRoute*`, `TestLegacyRoutes*`, `TestStaticAssetsAreClosedAndComplete` | `TestRetiredLegacyPathsAreRefusedLikeAnyUnknownPath`, `TestRootStillRedirectsWhenTheAppIsUnavailable` |
 
