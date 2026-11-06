@@ -508,11 +508,11 @@ func (s *productService) getCandidate(p productsession.Principal, r productproto
 	if err != nil {
 		return s.errorResponse(productprotocol.OpGetCandidate, err)
 	}
-	store, held := s.env.pendingReviewStore(turn.ID)
+	prepared, held := s.env.pendingReviewTurn(turn.ID)
 	if turn.State != productsession.StateAwaitingReview || !held {
 		return failure(string(productsession.CodeReviewNotPending))
 	}
-	view, err := buildProductCandidate(turn.ID, store, turn.CandidateDigest)
+	view, err := prepared.Candidate(turn.ID, turn.CandidateDigest)
 	if err != nil {
 		return s.errorResponse(productprotocol.OpGetCandidate, err)
 	}

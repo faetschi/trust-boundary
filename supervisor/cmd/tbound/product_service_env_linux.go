@@ -9,7 +9,6 @@ import (
 
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/productsession"
-	"tbound/supervisor/internal/sessionrepo"
 )
 
 // holdLiveProviderJournal registers the open provider journal of a turn for read access and returns
@@ -65,13 +64,13 @@ func readProductJournalTrace(path string) (audit.Trace, error) {
 	return audit.Verify(bytes.NewReader(data))
 }
 
-// pendingReviewStore is the Store of a review turn this process holds open for its resolution.
-func (e *productTurnEnv) pendingReviewStore(turnID string) (*sessionrepo.Store, bool) {
+// pendingReviewTurn is a review turn this process holds open for its resolution.
+func (e *productTurnEnv) pendingReviewTurn(turnID string) (productPreparedTurn, bool) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	review := e.pending[turnID]
 	if review == nil {
 		return nil, false
 	}
-	return review.w.store, true
+	return review.turn, true
 }

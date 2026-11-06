@@ -7,8 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"os"
-	"path/filepath"
 	"syscall"
 	"time"
 
@@ -19,9 +17,7 @@ import (
 	"tbound/supervisor/internal/providerbridge"
 	"tbound/supervisor/internal/publication"
 	"tbound/supervisor/internal/sessionrepo"
-	"tbound/supervisor/internal/workflow"
 	"tbound/supervisor/internal/workflowrecovery"
-	"tbound/supervisor/internal/workspace"
 )
 
 // productTurnRefusal is a launch the driver refused before linking the turn: the catalog recorded
@@ -76,7 +72,8 @@ func (e *productTurnEnv) RunTurn(ctx context.Context, admission productsession.A
 	if turn.State != productsession.StateAdmitted {
 		return productTurnReceipt{}, fmt.Errorf("turn %s is %s, not admitted", admission.Turn.ID, turn.State)
 	}
-	if err := e.settleRetainedProductCommands(turn.ID); err != nil {
+	host := e.host()
+	if err := host.SettleRetainedCommands(turn.ID); err != nil {
 		return productTurnReceipt{}, err
 	}
 	if turn.CancelRequested {
@@ -86,7 +83,7 @@ func (e *productTurnEnv) RunTurn(ctx context.Context, admission productsession.A
 	if err != nil {
 		return productTurnReceipt{}, err
 	}
-	predecessor, err := e.predecessorContext(turn, session.ProviderProfile)
+	predecessor, err := host.PredecessorContext(turn, session.ProviderProfile)
 	if err != nil {
 		if errors.Is(err, audit.ErrAlreadyOpen) || errors.Is(err, syscall.EAGAIN) || errors.Is(err, syscall.EBUSY) ||
 			errors.Is(err, syscall.EINTR) || errors.Is(err, syscall.EMFILE) || errors.Is(err, syscall.ENFILE) {
@@ -94,18 +91,18 @@ func (e *productTurnEnv) RunTurn(ctx context.Context, admission productsession.A
 		}
 		return productTurnReceipt{}, e.refuse(turn.ID, productsession.CodePredecessorEvidenceInvalid, err)
 	}
-	measured, err := e.MeasureProjectBaseline(turn.ProjectID)
+	measured, err := host.MeasureProjectBaseline(turn.ProjectID)
 	if err != nil {
 		return productTurnReceipt{}, e.abandon(turn.ID, err)
 	}
 	if measured != turn.BaselineDigest {
 		return productTurnReceipt{}, e.refuse(turn.ID, productsession.CodeStaleBaseline, errProductStaleBaseline)
 	}
-	worker, err := newProductTurnWorker(e.MaxWorkerSteps, func() bool { return e.cancelRequested(turn.ID) }, e.crash)
+	worker, err := newProductTurnWorker(e.MaxWorkerSteps, func() bool { return e.cancelRequested(turn.ID) }, host.Crash)
 	if err != nil {
 		return productTurnReceipt{}, e.abandon(turn.ID, err)
 	}
-	w, err := e.composeProductTurnWorkflow(ctx, turn, session.ProviderProfile, predecessor)
+	prepared, err := host.PrepareTurn(ctx, turn, session.ProviderProfile, predecessor)
 	if err != nil {
 		if errors.Is(err, errProductCommandUnsettled) {
 			return productTurnReceipt{}, err
@@ -115,31 +112,29 @@ func (e *productTurnEnv) RunTurn(ctx context.Context, admission productsession.A
 		}
 		return productTurnReceipt{}, e.abandon(turn.ID, err)
 	}
-	// The release goes first in the list, so it runs after the journals are closed.
-	w.closers = append([]func() error{e.holdLiveProviderJournal(turn.ID, w.providerJournal)}, w.closers...)
 	heldForReview := false
 	defer func() {
 		if !heldForReview {
-			err = errors.Join(err, w.closeUnlessRetained())
+			err = errors.Join(err, prepared.CloseUnlessRetained())
 		}
 	}()
 	// Both publication modes compose the finalizer at start; a review turn keeps it for its resolution.
-	publish, releasePublication, err := e.beginProductPublication(ctx, turn.ProjectID, w)
+	releasePublication, err := prepared.BeginPublication(ctx, turn.ProjectID)
 	if err != nil {
-		if cleanupErr := w.close(); cleanupErr != nil {
+		if cleanupErr := prepared.Close(); cleanupErr != nil {
 			return productTurnReceipt{}, errors.Join(err, errProductCommandUnsettled, cleanupErr)
 		}
 		return productTurnReceipt{}, e.abandon(turn.ID, err)
 	}
 	if e.cancelRequested(turn.ID) {
-		if err := w.close(); err != nil {
+		if err := prepared.Close(); err != nil {
 			return productTurnReceipt{}, errors.Join(errProductCommandUnsettled, err)
 		}
 		return productTurnReceipt{}, e.refuse(turn.ID, productsession.CodeCancelled, errProductTurnCancelled)
 	}
-	e.crash("before-link")
-	if err := e.Catalog.LinkTurn(turn.ID, w.link(predecessor)); err != nil {
-		if cleanupErr := w.close(); cleanupErr != nil {
+	host.Crash("before-link")
+	if err := e.Catalog.LinkTurn(turn.ID, prepared.Link()); err != nil {
+		if cleanupErr := prepared.Close(); cleanupErr != nil {
 			return productTurnReceipt{}, errors.Join(err, errProductCommandUnsettled, cleanupErr)
 		}
 		if errors.Is(err, productsession.ErrCode(productsession.CodeCancelled)) {
@@ -148,22 +143,18 @@ func (e *productTurnEnv) RunTurn(ctx context.Context, admission productsession.A
 		return productTurnReceipt{}, err
 	}
 
-	s := productTurnSettlement{env: e, turn: turn, w: w, worker: worker, predecessor: predecessor,
+	s := productTurnSettlement{env: e, turn: turn, prepared: prepared, worker: worker, predecessor: predecessor,
 		resultBaseline: turn.BaselineDigest}
-	s.work, s.runErr = e.driveProductTurn(ctx, turn, w, worker)
+	s.work, s.runErr = prepared.Drive(ctx, turn, worker)
 	releasePublication()
-	if err := w.settleCommands(); err != nil {
+	if err := prepared.SettleCommands(); err != nil {
 		return s.unknown("command ownership did not settle", err)
 	}
-	bundle, err := w.store.EvidenceBundle()
+	resolved, err := prepared.Evidence(productEvidenceResolved)
 	if err != nil {
-		return s.unknown("the turn's Store evidence could not be read", err)
+		return s.unknownEvidence(err)
 	}
-	checkpoint, _ := w.ledger.Snapshot()
-	if err := productTurnChildResolved(bundle, checkpoint.Pins); err != nil {
-		return s.unknown("the turn left unresolved Store or workflow state", err)
-	}
-	sealed := sha256DigestFromBarePin(bareStoreTreeDigest(bundle.ValidatedChain.SealedTreeDigest))
+	sealed := resolved.Sealed
 	switch {
 	// A cancel request that arrives before the finalizer starts or the review is recorded still
 	// prevents both; once the finalizer started, the turn reports its real disposition.
@@ -171,12 +162,12 @@ func (e *productTurnEnv) RunTurn(ctx context.Context, admission productsession.A
 		s.outcome, s.runErr = productsession.OutcomeCancelled, nil
 	case s.runErr != nil:
 		s.outcome = productsession.OutcomeFailed
-	case bundleHasNoChange(bundle):
+	case resolved.NoChange:
 		s.outcome = productsession.OutcomeNoDiff
 	case turn.PublicationMode == productsession.PublicationReview:
 		s.outcome, s.candidate = "awaiting_review", sealed
 	default:
-		e.crash("before-auto-publication")
+		host.Crash("before-auto-publication")
 		// This decision is the publication-start boundary, ordered with CancelTurn's durable record.
 		// The running turn owns settlement afterwards; cancellation then only records its request.
 		e.mu.Lock()
@@ -186,8 +177,8 @@ func (e *productTurnEnv) RunTurn(ctx context.Context, admission productsession.A
 			s.outcome = productsession.OutcomeCancelled
 			break
 		}
-		e.crash("after-auto-publication-started")
-		result, finalizeErr := publish.Finalize(ctx)
+		host.Crash("after-auto-publication-started")
+		result, finalizeErr := prepared.Finalize(ctx)
 		switch {
 		case finalizeErr == nil && result.Status == publication.StatusSucceeded && len(result.Objects) != 0:
 			s.outcome, s.resultBaseline, s.transactionID = productsession.OutcomePublished, sealed, result.TransactionID
@@ -199,7 +190,7 @@ func (e *productTurnEnv) RunTurn(ctx context.Context, admission productsession.A
 	}
 	// The project must hold exactly the tree this turn commits: the published sealed tree, or the
 	// admitted baseline when nothing was published. Anything else is an external writer.
-	after, err := e.MeasureProjectBaseline(turn.ProjectID)
+	after, err := host.MeasureProjectBaseline(turn.ProjectID)
 	if err != nil {
 		return s.unknown("the project could not be measured after the turn", err)
 	}
@@ -216,7 +207,7 @@ func (e *productTurnEnv) RunTurn(ctx context.Context, admission productsession.A
 	var cancelled *productPendingReview
 	if err == nil {
 		heldForReview = true
-		review := &productPendingReview{w: w, publish: publish,
+		review := &productPendingReview{turn: prepared,
 			deadline: time.Now().Add(time.Duration(e.Registration.Limits.ReviewTimeoutSeconds) * time.Second)}
 		if e.cancelRequested(turn.ID) {
 			cancelled = review
@@ -230,7 +221,7 @@ func (e *productTurnEnv) RunTurn(ctx context.Context, admission productsession.A
 		return e.discardReview(reviewed, cancelled, productsession.ReasonCancelled)
 	}
 	if heldForReview {
-		e.crash("after-awaiting-review")
+		host.Crash("after-awaiting-review")
 	}
 	return receipt, err
 }
@@ -263,96 +254,11 @@ func productTurnReservationsResolved(pins workflowrecovery.Pins) error {
 	return nil
 }
 
-// driveProductTurn constructs the provider conversation with the imported context, admits the
-// turn's prompt, runs the worker and closes the conversation.
-func (e *productTurnEnv) driveProductTurn(ctx context.Context, turn productsession.Turn, w *productTurnWorkflow,
-	worker *productTurnWorker) (productTurnWork, error) {
-	if e.NewConversation == nil {
-		return productTurnWork{}, errors.New("product turn has no provider conversation factory")
-	}
-	conversation, err := w.authority.newProviderConversation(w.config, e.NewConversation)
-	if err != nil {
-		return productTurnWork{}, err
-	}
-	defer conversation.Close()
-	if err := w.authority.AdmitPrompt(conversation, w.durable, w.taskID, turn.Prompt); err != nil {
-		return productTurnWork{}, err
-	}
-	e.crash("before-first-exchange")
-	return worker.run(ctx, conversation, w.durable, w.policy)
-}
-
-// beginProductPublication composes the existing publication finalizer over the project's managed
-// directory and lifecycle journal, recovers earlier publications of that root, and holds session
-// admission until the returned release, which the driver calls once the worker has finished.
-func (e *productTurnEnv) beginProductPublication(ctx context.Context, projectID string, w *productTurnWorkflow) (*PublicationRuntime, func(), error) {
-	if e.PublicationTrust == nil {
-		return nil, nil, errors.New("product turn has no publication trust")
-	}
-	trust := e.PublicationTrust(w.authority)
-	if trust == nil {
-		return nil, nil, errors.New("product turn has no publication trust")
-	}
-	if _, ok := trust.(workflow.TerminalOriginResolver); w.bash && !ok {
-		return nil, nil, errors.New("product turn publication trust cannot resolve the origin of a Bash lease")
-	}
-	projectDir := e.projectPublicationDir(projectID)
-	statePath := filepath.Join(projectDir, "publication-state")
-	if err := os.MkdirAll(statePath, 0o700); err != nil {
-		return nil, nil, err
-	}
-	journal, err := audit.Open(filepath.Join(projectDir, "publication-audit.jsonl"))
-	if err != nil {
-		return nil, nil, err
-	}
-	w.closers = append(w.closers, journal.Close)
-	stateRoot, err := os.Open(statePath)
-	if err != nil {
-		return nil, nil, err
-	}
-	w.closers = append(w.closers, stateRoot.Close)
-	ledger, err := workflow.NewRootLedger(journal)
-	if err != nil {
-		return nil, nil, err
-	}
-	publicationID, err := randomProductIdentity("ppub-")
-	if err != nil {
-		return nil, nil, err
-	}
-	open := func(workflowID string, ws workspace.Options) (*publication.Repository, error) {
-		return publication.Acquire(publication.Options{WorkflowID: workflowID, OwnerEpoch: 1,
-			StateRoot: stateRoot, Journal: journal, Workspace: ws})
-	}
-	ws := e.projectWorkspace()
-	runtime, err := NewPublicationRuntime(w.durable, workflow.FinalizerOptions{
-		WorkflowID: w.workflowID, OwnerEpoch: 1, PublicationID: publicationID,
-		LiveRoot: w.projectRoot, Baseline: w.baseline, Workspace: ws, Journal: journal, Ledger: ledger,
-		OpenPublication: func() (*publication.Repository, error) { return open(w.workflowID, ws) },
-		OpenRecovery: func(workflowID string) (workflow.RecoveryRepository, error) {
-			recovery, err := managedRecoveryWorkspace(journal, w.projectRoot, workflowID)
-			if err != nil {
-				return nil, err
-			}
-			return open(workflowID, recovery)
-		},
-		Trust: trust, FaultInjector: e.publicationFaults,
-	})
-	if err != nil {
-		return nil, nil, err
-	}
-	w.closers = append(w.closers, runtime.Close)
-	release, err := runtime.BeginSession(ctx)
-	if err != nil {
-		return nil, nil, err
-	}
-	return runtime, release, nil
-}
-
 // productTurnSettlement is a linked turn on its way to a catalog disposition.
 type productTurnSettlement struct {
 	env            *productTurnEnv
 	turn           productsession.Turn
-	w              *productTurnWorkflow
+	prepared       productPreparedTurn
 	worker         *productTurnWorker
 	predecessor    providerbridge.PredecessorContext
 	work           productTurnWork
@@ -369,38 +275,39 @@ func (s *productTurnSettlement) unknown(reason string, cause error) (productTurn
 		s.runErr, s.env.Catalog.MarkTurnUnknown(s.turn.ID, reason))
 }
 
+// unknownEvidence records a turn whose host could not establish its evidence.
+func (s *productTurnSettlement) unknownEvidence(err error) (productTurnReceipt, error) {
+	var evidence *productTurnEvidenceError
+	if errors.As(err, &evidence) {
+		return s.unknown(evidence.Reason, evidence.Cause)
+	}
+	return s.unknown("the turn evidence could not be read", err)
+}
+
 // settle writes the receipt of the closed turn and records its disposition in the catalog.
 func (s *productTurnSettlement) settle() (productTurnReceipt, error) {
-	if err := s.w.settleCommands(); err != nil {
+	if err := s.prepared.SettleCommands(); err != nil {
 		return s.unknown("command ownership did not settle", err)
 	}
-	providerTrace, err := s.w.providerJournal.Trace()
+	ev, err := s.prepared.Evidence(productEvidenceSettlement)
 	if err != nil {
-		return s.unknown("the provider journal could not be read", err)
+		return s.unknownEvidence(err)
 	}
-	storeTrace, err := s.w.storeJournal.Trace()
-	if err != nil {
-		return s.unknown("the Store journal could not be read", err)
-	}
-	commandTrace, err := s.w.commandJournal.Trace()
-	if err != nil {
-		return s.unknown("the command journal could not be read", err)
-	}
-	checkpoint, _ := s.w.ledger.Snapshot()
+	link := s.prepared.Link()
 	reservation := s.turn.Reservation
 	// shortcut: elapsed time after the ledger deadline (settlement, publication) is not billed beyond
 	// the reservation; bill it once the catalog can record an overrun.
-	elapsed := min(int64(math.Ceil(time.Since(s.w.started).Seconds())), reservation.DurationSeconds)
-	usage := productsession.Budget{HostCalls: int64(checkpoint.Counters.HostCalls), Tokens: int64(checkpoint.Counters.Tokens),
+	elapsed := min(int64(math.Ceil(time.Since(ev.Started).Seconds())), reservation.DurationSeconds)
+	usage := productsession.Budget{HostCalls: ev.HostCalls, Tokens: ev.Tokens,
 		DurationSeconds: elapsed}
 	receipt := productTurnReceipt{SchemaVersion: productTurnReceiptSchema,
 		SessionID: s.turn.SessionID, TurnID: s.turn.ID, Ordinal: s.turn.Ordinal,
-		WorkflowID: s.w.workflowID, RunID: s.w.runID, ConversationID: s.w.conversationID,
+		WorkflowID: link.WorkflowID, RunID: link.RunID, ConversationID: link.ConversationID,
 		UnverifiedInputs: []string{"runtime_digest", "image_digest", "extension_digest"},
 		WorkerKind:       productsession.WorkerSupervisorLoop, WorkerInstance: s.worker.instance,
-		ProviderJournalHead: auditHeadHash(providerTrace.Records), ProviderJournalCount: uint64(len(providerTrace.Records)),
-		StoreJournalHead: auditHeadHash(storeTrace.Records), StoreJournalCount: uint64(len(storeTrace.Records)),
-		CommandJournalHead: auditHeadHash(commandTrace.Records), CommandJournalCount: uint64(len(commandTrace.Records)),
+		ProviderJournalHead: ev.ProviderHead, ProviderJournalCount: ev.ProviderCount,
+		StoreJournalHead: ev.StoreHead, StoreJournalCount: ev.StoreCount,
+		CommandJournalHead: ev.CommandHead, CommandJournalCount: ev.CommandCount,
 		ImportedPrefixDigest: s.predecessor.Digest(), PredecessorReceiptDigest: s.predecessor.PredecessorReceiptDigest(),
 		BaselineDigest: s.turn.BaselineDigest, ResultBaselineDigest: s.resultBaseline,
 		Outcome: s.outcome, Settlement: productsession.SettlementSupervisorLoopClosed,
