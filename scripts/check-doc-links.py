@@ -21,21 +21,26 @@ def prose(text):
 
 
 def code_spans(text):
-    """Offsets of inline code spans. A span closes within its own block (no blank line), and an
-    escaped backtick neither opens nor closes one."""
+    """Offsets of inline code spans, paired within a single line. Multi-line spans are rare, and
+    pairing across lines let one stray backtick hide links in other blocks, so they are ignored.
+    A backslash escapes a backtick only where it would open a span; a closing run is any run
+    of equal width."""
     spans = []
-    for block in re.finditer(r"(?:(?!\n[ \t]*\n).)+", text, re.S):
-        runs = [(m.start(1), m.end(1)) for m in re.finditer(r"(?<!\\)(?:\\\\)*(`+)", block[0])]
+    offset = 0
+    for line in text.split("\n"):
+        runs = [(m.start(), m.end()) for m in re.finditer(r"`+", line)]
         index = 0
         while index < len(runs):
-            width = runs[index][1] - runs[index][0]
+            start, end = runs[index]
+            backslashes = len(line[:start]) - len(line[:start].rstrip("\\"))
             close = next((j for j in range(index + 1, len(runs))
-                          if runs[j][1] - runs[j][0] == width), None)
-            if close is None:
+                          if runs[j][1] - runs[j][0] == end - start), None)
+            if backslashes % 2 or close is None:
                 index += 1
                 continue
-            spans.append((block.start() + runs[index][0], block.start() + runs[close][1]))
+            spans.append((offset + start, offset + runs[close][1]))
             index = close + 1
+        offset += len(line) + 1
     return spans
 
 
@@ -74,6 +79,10 @@ def main():
     assert urls("[`tool`][guide]\n\n[guide]: missing.md") == ["missing.md"]
     assert urls("\\`[a](x.md) `b`") == ["x.md"]
     assert urls("one ` here\n\n[a](y.md) and ` there") == ["y.md"]
+    assert urls("- one `\n- [real](missing.md)\n- two `") == ["missing.md"]
+    assert urls("`one \\` [real](missing.md) `two`") == ["missing.md"]
+    assert urls("| a ` |\n| [real](missing.md) |\n| b ` |") == ["missing.md"]
+    assert urls("# head `\n[real](missing.md)\n## head `") == ["missing.md"]
     assert urls("```sh\n[not a link](missing)\n```") == []
     assert anchors("# A heading\n## A heading\n") == {"a-heading", "a-heading-1"}
     assert anchors("### Terminal client `tbound chat`\n") == {"terminal-client-tbound-chat"}
