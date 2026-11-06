@@ -1040,7 +1040,7 @@ func (c *Conversation) Closed() bool {
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.closed && c.state == stateClosed
+	return c.closed
 }
 
 // Close poisons the current transcript and forbids later provider or tool turns.
@@ -1050,8 +1050,13 @@ func (c *Conversation) Close() {
 	}
 	c.mu.Lock()
 	c.closed = true
-	c.state = stateClosed
-	c.current = nil
+	// An ALLOWed call whose executor still runs keeps its state and binding: when the executor returns,
+	// the closed check under this mutex routes it to recordUnknownExecutionLocked, which needs c.current
+	// to journal the UNKNOWN disposition and then closes the state. Every entry point checks c.closed.
+	if c.state != stateExecuting {
+		c.state = stateClosed
+		c.current = nil
+	}
 	c.mu.Unlock()
 }
 
