@@ -4,6 +4,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io/fs"
 	"os"
@@ -16,15 +17,16 @@ import (
 	"tbound/supervisor/internal/corpusadmit"
 	"tbound/supervisor/internal/evalcorpus"
 	"tbound/supervisor/internal/piruntime"
+	"tbound/supervisor/internal/sandbox"
 	"tbound/supervisor/internal/sessionlaunch"
 	"tbound/supervisor/internal/sessionrepo"
 	"tbound/supervisor/internal/trialfix"
 )
 
-// The pilot corpus of this checkout. The test reads it and never writes it.
+// The T5 pilot draft of this checkout (the pre-T5 draft has other scripts). The test reads it and never writes it.
 const (
-	pilotManifestPath = "../../../corpus/pilot/manifest.draft.json"
-	pilotArtifactDir  = "../../../corpus/pilot/artifacts"
+	pilotManifestPath = "../../../corpus/pilot/t5-2026-10-29/manifest.draft.json"
+	pilotArtifactDir  = "../../../corpus/pilot/t5-2026-10-29/artifacts"
 	pilotTestReviewer = "in-memory-test-reviewer"
 )
 
@@ -97,19 +99,42 @@ func assertPilotRun(t *testing.T, tc pilotCase, role string, w *denialWorkflow, 
 		t.Fatal(err)
 	}
 
-	// The contained runner fixes PATH to /usr/bin:/bin, so the scripted bare node never runs there. Exit 126 or 127
-	// is an environment gap, so the network case skips rather than passing or failing.
+	// A script is reads and then one effect turn, the last. The effect tool follows from the case.
+	if len(script) == 0 {
+		t.Fatal("the case has an empty script")
+	}
+	wantEffectTool := "write"
+	if tc.bash {
+		wantEffectTool = "bash"
+	}
+	for i, turn := range script {
+		want := "read"
+		if i == len(script)-1 {
+			want = wantEffectTool
+		}
+		if turn.Tool != want {
+			t.Fatalf("script turn %d is %q, want %q", i, turn.Tool, want)
+		}
+	}
+
+	// The contained runner fixes PATH to /usr/bin:/bin, so the scripted bare node may not run there. Skip only when a
+	// separate probe in the same sandbox shows node is missing; with node present, exit 126 or 127 is a failure.
 	for _, op := range bundle.Operations {
 		if op.Tool == "bash" && tc.protected == "" && op.ExitCode != nil && (*op.ExitCode == 126 || *op.ExitCode == 127) {
-			t.Skip("node not executable in the dev sandbox; network cases need the guest cell")
+			if !nodeRunsInDevSandbox(t) {
+				t.Skip("node not executable in the dev sandbox; network cases need the guest cell")
+			}
+			t.Errorf("network bash exit %d although node runs in the dev sandbox", *op.ExitCode)
 		}
 	}
 
 	if len(results) != len(script) {
 		t.Fatalf("results = %d, want %d", len(results), len(script))
 	}
+	// The effect is a script's last turn. Any turn before it is a read of the workspace and succeeds.
+	effectTurn := len(script) - 1
 	for i, result := range results {
-		if refused && i == 0 {
+		if refused && i == effectTurn {
 			if result.Verdict != "DENY" || result.ReasonCode != sessionrepo.DenyReasonProtectedPath || len(result.Output) != 0 {
 				t.Errorf("refused result = %+v, want an output-free DENY with %s", result, sessionrepo.DenyReasonProtectedPath)
 			}
@@ -142,12 +167,12 @@ func assertPilotRun(t *testing.T, tc pilotCase, role string, w *denialWorkflow, 
 	}
 	switch {
 	case refused:
-		if !reflect.DeepEqual(outcomes, []string{"denied_after_effect"}) {
-			t.Errorf("Store outcomes = %v, want [denied_after_effect]", outcomes)
+		if !reflect.DeepEqual(outcomes, append(slices.Repeat([]string{"success"}, effectTurn), "denied_after_effect")) {
+			t.Errorf("Store outcomes = %v, want %d reads then denied_after_effect", outcomes, effectTurn)
 		}
 	case promoted:
-		if !reflect.DeepEqual(outcomes, []string{"success"}) {
-			t.Errorf("Store outcomes = %v, want [success]", outcomes)
+		if !reflect.DeepEqual(outcomes, slices.Repeat([]string{"success"}, effectTurn+1)) {
+			t.Errorf("Store outcomes = %v, want %d successes", outcomes, effectTurn+1)
 		}
 	default:
 		for _, outcome := range outcomes {
@@ -280,6 +305,24 @@ func requireContainedDevSandbox(t *testing.T) {
 		t.Skipf("the contained dev sandbox is unavailable, so the runner would be %q; the pilot scripts must not run uncontained", runner.Profile())
 	}
 	t.Logf("contained runner profile: %s", runner.Profile())
+}
+
+// nodeRunsInDevSandbox runs node --version in the sandbox of the dev command runner, with the same PATH.
+func nodeRunsInDevSandbox(t *testing.T) bool {
+	t.Helper()
+	root, err := os.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	result, _, err := sandbox.Launch(context.Background(), sandbox.Request{
+		Root: root, Argv: []string{"/bin/bash", "-lc", "node --version"},
+		Env: []string{"PATH=/usr/bin:/bin", "HOME=/tmp", "TMPDIR=/tmp", "LANG=C"},
+	})
+	if err != nil {
+		t.Fatalf("node probe could not run in the dev sandbox: %v", err)
+	}
+	return result.ExitCode == 0
 }
 
 // loadPilotCorpus admits the pilot manifest through the production loader. The draft's sign-offs and construct

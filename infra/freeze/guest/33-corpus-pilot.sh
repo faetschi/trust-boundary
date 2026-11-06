@@ -15,6 +15,9 @@
 #                $HF/pilot/CORPUS_DIGEST. Any refusal prints the tool's violation list and stops.
 #   3 artifacts  the 76 files of corpus/pilot/t5-2026-10-29/artifacts of $SRC into /opt/tbound/corpus/artifacts (session sudo window); afterwards count, per-file
 #                sha256, owner and modes are verified. Guest files not in the T5 set are moved (mv -n) to artifacts.pre-t5-<UTC>.
+#   3b pilot-reset  only if the guest holds a pilot state that is not from this freeze (cfg differs from $HG/serve-pi-service.json, or the signed files of its rank are not in
+#                $HG): svc stop, `rollback pilot cfg` (its refusal stops the script), then in the session sudo window mv -n /root/ga/reg-pilot, /root/ga/pilot and
+#                /var/tmp/tbound-op/pilot into /root/ga/archive-pilot-<prev freeze>-<UTC>/rootfs/<same path> (never deleted); needs TBA_PW; marker RESET_PENDING/RESET_DONE in $HG.
 #   4 cycle      D2 `manifest-install`, then the RG cycle of rglib.sh for NAME=pilot: svc stop, cfg-install (config = infra/guest/serve-pi-service.corpus-pilot.json
 #                with CORPUS_DIGEST and the two measured podman digests, mk-svc-config.py), reg-measure, S3' (sign-run.sh pilot s3), reg-install, S4' (sign-run.sh
 #                pilot s4; corpus-pins on the new template must give the same pins), prof-install, svc start, diag l2. No client run: corpus mode refuses client
@@ -24,7 +27,7 @@
 #                one real `trial reset` (attempt marker before, success marker after a valid
 #                tbound-trial-reset/v1 document; an attempt without success stops for owner recovery, never retried), then 40-guest-evidence.sh netsink. Without the key the script ends after phase 4 and prints what the owner does.
 # Resumable (phases 1-3 re-check their result; phase 4 resumes from `tbound-op status pilot`; signed files in $HF/pilot are verified, never re-signed).
-# STOP_AFTER=<abandon|keys|manifest|artifacts|cfg|measure|s3|reg|s4|prof|start|cycle>.
+# STOP_AFTER=<abandon|keys|manifest|artifacts|pilot-reset|cfg|measure|s3|reg|s4|prof|start|cycle>.
 # Preconditions (checked): 10, 20, 50 done; session sudo CLOSED; 32-reg-dr.sh finished ($HF/dr/CHECKS_OK, $HF/dr/RID); the dispatcher has no pilot state.
 # The owner starts it after 32-reg-dr.sh (and 40-guest-evidence.sh route-direct-runtime). Needs TBA_PW (read -rs TBA_PW; export TBA_PW) for phase 3 only if the artifacts differ.
 # Usage: bash 33-corpus-pilot.sh     (TBOUND_TRIAL_KEY=<key path> bash 33-corpus-pilot.sh   for phase 5;  NODE_BIN=<Linux path of the pinned Node> if ~/env.sh has none)
@@ -295,6 +298,64 @@ phase_artifacts() {
   ok "installed: $T5_ARTIFACT_COUNT files, complete entry set and per-file sha256 == frozen source; session sudo closed"
 }
 
+# ---- 3b pilot-reset (a pilot install left by an earlier freeze) ------------------------------------------------------------------------------------
+# 27 archives the pilot items too, but a guest that was not archived (or an install of an earlier freeze) must not be resumed: its signed files are not in $HG.
+# "Ours" = the installed pilot state's cfg equals the config this freeze built ($HG/serve-pi-service.json) and, from state reg / prof on, the signed
+# registration / profile of this freeze are in $HG. Anything else is foreign. The archive name is recorded (RESET_PENDING) before anything is changed, so a rerun resumes.
+PILOT_ITEMS="root/ga/reg-pilot root/ga/pilot var/tmp/tbound-op/pilot"   # moved to <archive>/rootfs/<same path>; nothing is deleted
+pilot_state_is_ours() {   # $1 = status text with a state
+  local cfg here state
+  cfg=$(printf '%s\n' "$1" | sed -n 's/^ *cfg=\(.*\)$/\1/p' | head -1); state=$(printf '%s\n' "$1" | sed -n 's/^ *state=\(.*\)$/\1/p' | head -1)
+  hf_has pilot/serve-pi-service.json || return 1
+  here=$(wd "$HG/serve-pi-service.json")
+  [ -n "$cfg" ] && [ "${cfg#sha256:}" = "${here#sha256:}" ] || return 1
+  [ "$(st_rank_of "$state")" -lt 2 ] || hf_has pilot/managed-live-root.json || return 1
+  [ "$(st_rank_of "$state")" -lt 3 ] || hf_has pilot/pi-host-profile.signed.json || return 1
+}
+phase_pilot_reset() {
+  say "3b. pilot-reset: clear a pilot install that belongs to an earlier freeze (svc stop, rollback pilot cfg, archive the leftovers)"
+  local s arch it d present="" ro
+  hf_has pilot/RESET_DONE && { ok "pilot reset already done ($(hf_get pilot/RESET_DONE))"; return 0; }
+  WX mkdir -p -m 0700 "$HG"
+  if hf_has pilot/RESET_PENDING; then
+    arch=$(hf_get pilot/RESET_PENDING); note "resuming the pilot reset, archive $arch"
+  else
+    s=$(rg_status); printf '%s\n' "$s"
+    [ -n "$(rg_state)" ] || { ok "no pilot state on the guest: nothing to reset (leftover reg-pilot/pilot dirs without a state are not visible without sudo; reg-measure would refuse them)"; return 0; }
+    pilot_state_is_ours "$s" && { ok "the pilot state belongs to $FREEZE (cfg and signed files match $HG): resumed by the cycle"; return 0; }
+    [ -n "${TBA_PW:-}" ] || die "the installed pilot state is not from $FREEZE and must be reset, which needs the session sudo window (read -rs TBA_PW; export TBA_PW)"
+    arch=/root/ga/archive-pilot-$PREV_LC-$(date -u +%Y%m%dT%H%M%SZ)
+    hf_put pilot/RESET_PENDING "$arch"
+  fi
+  [[ $arch =~ ^/root/ga/archive-pilot-f[0-9]+-[0-9]{8}T[0-9]{6}Z$ ]] || die "bad archive name '$arch' in $HG/RESET_PENDING"
+  if [ -n "$(rg_state)" ]; then
+    op "svc stop"
+    ro=$(op "rollback pilot cfg" 2>&1 | tr -d '\r') || die "rollback pilot cfg refused: $ro"
+    printf '%s\n' "$ro"
+  fi
+  [[ $(rg_status) == *"-- pilot: no state"* ]] || die "the pilot state is still present after the rollback (tbound-op status pilot)"
+  [ -n "${TBA_PW:-}" ] || die "TBA_PW is not set: moving the pilot leftovers needs the session sudo window (read -rs TBA_PW; export TBA_PW), then rerun (resumes)"
+  cleanup_add session_close
+  SESSION_OPEN=1
+  bash "$GA/00-session-sudo.sh" open
+  G "sudo -n install -d -o root -g root -m 0700 $arch $arch/rootfs"
+  for it in $PILOT_ITEMS; do
+    [ "$(G "if sudo -n test -e /$it || sudo -n test -L /$it; then echo yes; else echo no; fi" | tr -d '\r')" = yes ] || continue
+    d=$arch/rootfs/$(dirname "$it")
+    G "sudo -n install -d -o root -g root -m 0700 $d && sudo -n mv -n -- /$it $d/"
+    present="$present /$it"
+  done
+  echo "moved into $arch/rootfs:${present:- (nothing was present)}"
+  for it in $PILOT_ITEMS; do   # verify: no source left; every moved item is in the archive
+    [ "$(G "if sudo -n test -e /$it || sudo -n test -L /$it; then echo yes; else echo no; fi" | tr -d '\r')" = no ] || die "/$it is still on the guest after the move (an item of that name already exists in $arch/rootfs? owner looks)"
+  done
+  for it in $present; do G "sudo -n ls -ldn -- $arch/rootfs$it"; done
+  session_close
+  [[ $(rg_status) == *"-- pilot: no state"* ]] || die "tbound-op status pilot still shows a pilot state"
+  hf_put pilot/RESET_DONE "$arch"
+  ok "pilot reset: state cleared, leftovers archived in $arch/rootfs, session sudo closed"
+}
+
 # ---- 4 cycle (D2 manifest-install, then RG for NAME=pilot) ----------------------------------------------------------------------------------------
 hook_prior() {
   hf_has pilot/DR_SETTLED || die "the dr request is not recorded as settled ($HF/pilot/DR_SETTLED): phase 1 did not finish"
@@ -427,6 +488,7 @@ phase_abandon;   phase_end abandon
 phase_keys;      phase_end keys
 phase_manifest;  phase_end manifest
 phase_artifacts; phase_end artifacts
+phase_pilot_reset; phase_end pilot-reset
 phase_cycle;     phase_end cycle
 phase_netsink
 note "the pilot service is left running. Close-out: sudo -n true must still fail. Next (owner): rerun tbound-run evq with the new netsink.json (report 01 step 12b)."

@@ -313,6 +313,16 @@ func runProductOperatorWorker(out io.Writer) error {
 		return adminRefusal("operator resolution refused: %v", err)
 	}
 	publication := publicationNote(evidence.PublicationClosed, evidence.PublicationStagingLeft, request.DryRun)
+	if evidence.PublishedBaseline != "" {
+		// Publication recovery classifies an open transaction at the real resolution only, because it writes.
+		publication = strings.ReplaceAll(publication, "as unapplied", "as applied")
+		if request.DryRun {
+			fmt.Fprintf(out, "dry-run: %s can be recorded as published; the project equals the candidate %s; full reservation charged; not context-eligible%s; no records written\n", turn.ID, evidence.PublishedBaseline, publication)
+		} else {
+			fmt.Fprintf(out, "resolved %s: published (operator_resolved); result baseline %s; full reservation charged; not context-eligible%s; session and project unblocked\n", turn.ID, evidence.PublishedBaseline, publication)
+		}
+		return nil
+	}
 	if request.DryRun {
 		fmt.Fprintf(out, "dry-run: %s can be abandoned; baseline unchanged; full reservation charged%s; no records written\n", turn.ID, publication)
 	} else {
@@ -408,11 +418,17 @@ func (e *productTurnEnv) operatorEvidence(ctx context.Context, turn productsessi
 	if err != nil {
 		return evidence, fmt.Errorf("baseline scan: %w", err)
 	}
-	closing, stagingLeft, settle, err := e.operatorPublication(ctx, turn, root, measured)
+	// The candidate is the tree the turn's Store sealed: a review turn's catalog record holds it, an auto-publish
+	// turn's does not.
+	candidate := turn.CandidateDigest
+	if candidate == "" && retained.Store != nil && bundle.ValidatedChain.SealedTreeDigest != "" {
+		candidate = sha256DigestFromBarePin(bareStoreTreeDigest(bundle.ValidatedChain.SealedTreeDigest))
+	}
+	closing, stagingLeft, settle, applied, err := e.operatorPublication(ctx, turn, root, measured, candidate)
 	if err != nil {
 		return evidence, err
 	}
-	if measured != turn.BaselineDigest {
+	if !applied && measured != turn.BaselineDigest {
 		return evidence, errProductStaleBaseline
 	}
 	head := func(j *audit.Journal) (string, error) {
@@ -433,7 +449,7 @@ func (e *productTurnEnv) operatorEvidence(ctx context.Context, turn productsessi
 			if err != nil {
 				return fmt.Errorf("baseline rescan: %w", err)
 			}
-			if second != measured || second != turn.BaselineDigest {
+			if second != measured || !applied && second != turn.BaselineDigest {
 				return fmt.Errorf("%w: project changed before the resolution record was appended", errProductStaleBaseline)
 			}
 			return nil
@@ -446,6 +462,9 @@ func (e *productTurnEnv) operatorEvidence(ctx context.Context, turn productsessi
 		return evidence, err
 	}
 	evidence.CommandOwnerHead, evidence.CommandsSettled = ownerHead, commandsSettled
+	if applied {
+		evidence.PublishedBaseline = measured
+	}
 	if evidence.CommandHead, err = head(retained.CommandJournal); err != nil {
 		return evidence, err
 	}
