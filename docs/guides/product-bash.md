@@ -459,10 +459,13 @@ applied. The real run closes the pending publication record and ends any
 prepared transaction as failed before it abandons the turn. A kill right after the
 staging directory was created ends the transaction failed too, but the directory
 stays in place and the command prints its path, for you to remove. The dry run
-names that and writes nothing. If the project already holds the candidate (`the
-publication was applied`) or a partial result (`not provably unapplied`),
-resolution refuses and changes nothing. Inspect the project by hand, because
-the catalog cannot record a published outcome for an unknown turn.
+names that and writes nothing. If the project holds exactly the candidate, the
+publication applied and only its terminal record was lost. The same commands
+then record the turn as `published`: they close the pending record as applied
+through publication recovery (nothing is applied again), charge the full
+reservation, and print the result baseline. The turn is not context-eligible.
+A partial or mixed tree (`not provably unapplied`) refuses and changes nothing.
+Inspect that project by hand.
 These recovery fixes are code-backed and await the next live run.
 
 ## 9. Return to Bash denied
@@ -521,3 +524,41 @@ Expect `product service listening`, an allowed read, and Bash denied with
 `policy_default_deny`. The demo round restored format 2 with catalog and project
 state repairs. Those were disposable-VM state surgery, not a general recovery
 procedure. Do not truncate a live catalog to make an older binary accept it.
+
+### Rolling state back instead of restoring a whole backup
+
+A format-2 binary cannot replay a catalog that holds format-3 records: it stops
+with `CATALOG_CORRUPT`. That is why a restore to a Bash-deny format-2 install
+must roll the state back. The catalog is not the only state. Each project keeps
+its own publication audit, `/var/lib/tbound-product/turns/projects/<hash>/publication-audit.jsonl`
+(the catalog is `/var/lib/tbound-product/catalog.jsonl`). `<hash>` is the lowercase
+hex SHA-256 of the exact project ID bytes, with no prefix and no trailing newline:
+`printf '%s' demo | sha256sum` gives the directory name for project `demo`. If only the catalog is
+cut back, the audit stays ahead of it. Its newer or UNKNOWN publication
+transaction then fails every later admission with `live root has an unresolved
+publication lifecycle record`. No `tbound` command rolls either file back, so
+do it by hand, in this order:
+
+1. `systemctl stop tbound-product`, and check that no process of the service
+   account is left.
+2. Copy the catalog, every project's `publication-audit.jsonl`, and the managed
+   project files aside in full. Never erase the originals.
+3. Choose the record boundary in the catalog (a byte offset just after a
+   newline) and cut the catalog there: move the full file aside, then write its
+   first N bytes back with the same owner and mode 0600.
+4. Cut each project's audit to the matching boundary: the byte offset and
+   record count the audit had when the catalog had the size you chose. Use only
+   recorded offsets: the `wc -lc` of the catalog and of every audit, taken
+   together from a backup made while the service was stopped. Turn membership
+   cannot find the cutoff: a turn can exist at the catalog boundary while its
+   publication begins after it, and cutting before that turn's pending record
+   keeps its later pending or UNKNOWN records and recreates the admission
+   quarantine. Without such a backup, do not guess; do not cut. Check that the
+   prefix ends at a newline and holds whole records only.
+5. Move aside every published file (and directory) that postdates the
+   rolled-back baseline. The project must equal the baseline of the last
+   catalog record kept.
+6. `systemctl start tbound-product`, then `tbound product doctor`.
+
+Round 9 did this with a catalog prefix and an audit cut to its first 664
+records, with the full audit kept beside it.
