@@ -675,8 +675,15 @@ systemctl() { printf 'systemctl %s\\n' "$*" >>"$BASE/calls"; }
     def test_missing_or_not_unknown_terminal_refuses(self):
         self.journal(self.accepted(self.rid), self.terminal(self.rid))
         self.assertAccepted(self.rid)
+        abandoned = ("pi_service_request_abandoned", {"client_uid": 994, "request_id": self.rid, "payload_digest": self.digest})
+        other_payload = self.terminal(self.rid)
+        other_payload[1]["payload_digest"] = "sha256:" + "1" * 64
         for name, records in (("no terminal", [self.accepted(self.rid)]),
-                              ("completed terminal", [self.accepted(self.rid), self.terminal(self.rid, "completed")])):
+                              ("completed terminal", [self.accepted(self.rid), self.terminal(self.rid, "completed")]),
+                              ("already abandoned", [self.accepted(self.rid), self.terminal(self.rid), abandoned]),
+                              ("duplicate acceptance", [self.accepted(self.rid), self.accepted(self.rid), self.terminal(self.rid)]),
+                              ("duplicate terminal", [self.accepted(self.rid), self.terminal(self.rid), self.terminal(self.rid)]),
+                              ("terminal for another payload", [self.accepted(self.rid), other_payload])):
             with self.subTest(name):
                 self.journal(*records)
                 self.assertRefused(self.rid)

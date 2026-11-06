@@ -873,16 +873,16 @@ for line in open(sys.argv[1]):
     data = json.loads(base64.b64decode(ev["data"]))
     if data.get("request_id") == sys.argv[2]: print(ev["kind"], json.dumps(data, sort_keys=True))' "$AUDIT/serve-pi-requests.jsonl" "$1"
 }
-runner_rid_abandonable() {   # tbr- RID: pilot started, and the journal has it accepted from uid 994 and terminal status unknown
+runner_rid_abandonable() {   # tbr- RID: pilot started; journal holds exactly one uid-994 acceptance, one matching unknown terminal, nothing else
   [[ $(st_rank pilot) -ge 4 ]] || return 1
+  # Refuse settled or ambiguous requests here, before abandon stops the service.
   req_records "$1" | python3 -I -c 'import json,sys
-acc = end = False
-for line in sys.stdin:
-    kind, data = line.split(" ", 1)
-    d = json.loads(data)
-    acc = acc or (kind == "pi_service_request_accepted" and d.get("client_uid") == 994)
-    end = end or (kind == "pi_service_request_terminal" and d.get("response", {}).get("status") == "unknown")
-sys.exit(0 if acc and end else 1)'
+recs = [(k, json.loads(d)) for k, d in (line.split(" ", 1) for line in sys.stdin)]
+if [k for k, _ in recs] != ["pi_service_request_accepted", "pi_service_request_terminal"]: sys.exit(1)
+acc, end = recs[0][1], recs[1][1]
+ok = acc.get("client_uid") == 994 and end.get("client_uid") == 994 and acc.get("payload_digest") == end.get("payload_digest") \
+    and end.get("response", {}).get("status") == "unknown"
+sys.exit(0 if ok else 1)'
 }
 
 catalog_unexposed_count() {   # cleanup events whose decoded payload records no worker exposure
