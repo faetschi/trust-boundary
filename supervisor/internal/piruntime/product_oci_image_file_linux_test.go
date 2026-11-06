@@ -226,9 +226,12 @@ func TestProductOCIImageFilesMemoRescansOnlyAfterIdentityChange(t *testing.T) {
 	if _, err := readProductOCIImageFiles(context.Background(), layout, DigestBytes([]byte("other")), paths, false); err == nil {
 		t.Fatal("unlisted manifest digest accepted")
 	}
-	// A different set of paths is a different key.
-	if _, err := readProductOCIImageFiles(context.Background(), layout, manifest, paths[:1], false); err != nil || reads() == before {
-		t.Fatalf("different paths were answered from the memo: %v", err)
+	// A subset of memoized paths is answered from the memo; a path never verified is scanned.
+	if _, err := readProductOCIImageFiles(context.Background(), layout, manifest, paths[:1], false); err != nil || reads() != before {
+		t.Fatalf("a memoized subset rescanned layers: %v", err)
+	}
+	if _, err := readProductOCIImageFiles(context.Background(), layout, manifest, []string{"/usr/bin/bash"}, false); err != nil || reads() == before {
+		t.Fatalf("an unverified path was answered from the memo: %v", err)
 	}
 	if _, err := read(); err != nil {
 		t.Fatal(err)

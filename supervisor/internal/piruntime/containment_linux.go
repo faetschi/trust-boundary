@@ -1186,7 +1186,7 @@ func (l *D09PodmanCrunLauncher) Probe(ctx context.Context) (D09Report, error) {
 			report.ImagePinned = true
 			if !report.CosignPresent {
 				missing = append(missing, D09Prerequisite{Name: "image-signature", Detail: "cosign is unavailable for local offline verification"})
-			} else if verifyErr := l.verifyOfflineSignature(ctx, config, cosignBinary, l.productionRunner()); verifyErr != nil {
+			} else if verifyErr := l.verifyOfflineSignatureForProbe(ctx, config, cosignBinary, l.productionRunner()); verifyErr != nil {
 				missing = append(missing, D09Prerequisite{Name: "image-signature", Detail: verifyErr.Error()})
 			} else {
 				report.ImageVerified = true
@@ -1244,7 +1244,11 @@ func (l *D09PodmanCrunLauncher) verifyImageWorkerExecutable(ctx context.Context,
 }
 
 func (l *D09PodmanCrunLauncher) verifyImageFile(ctx context.Context, config D09Config, imagePath, expectedDigest, what string) error {
-	file, err := readOCIImageFile(ctx, config.OCILayoutPath, config.ExpectedImageDigest, filepath.Clean(imagePath), l.productionRunner())
+	readImageFile := readOCIImageFile
+	if l.productHost.verified() {
+		readImageFile = readProductOCIImageFile // memoized while the layout is unchanged
+	}
+	file, err := readImageFile(ctx, config.OCILayoutPath, config.ExpectedImageDigest, filepath.Clean(imagePath), l.productionRunner())
 	if err != nil {
 		return fmt.Errorf("%s: %w", what, err)
 	}

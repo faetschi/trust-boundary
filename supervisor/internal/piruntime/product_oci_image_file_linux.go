@@ -23,7 +23,7 @@ var productOCILayerReads atomic.Int64
 var productOCIMemo struct {
 	sync.Mutex
 	key   string
-	files []ociImageFile
+	files map[string]ociImageFile // by image path; each was verified under key
 }
 
 // readProductOCIImageFile resolves one file; see readProductOCIImageFiles.
@@ -37,7 +37,7 @@ func readProductOCIImageFile(ctx context.Context, layoutPath, manifestDigest, im
 
 // readProductOCIImageFiles follows at most eight ancestor symlinks per path in the merged signed image. The final
 // component remains a regular file, matching the cell's Lstat. All paths share one redirected-write pass and one
-// per-component lookup cache. A successful result is memoized while every layout file identity is unchanged.
+// per-component lookup cache. A successful result is memoized per path while every layout file identity is unchanged.
 func readProductOCIImageFiles(ctx context.Context, layoutPath, manifestDigest string, imagePaths []string, requireImmutable bool) ([]ociImageFile, error) {
 	files, fileErrs, err := readProductOCIImageFilesEach(ctx, layoutPath, manifestDigest, imagePaths, requireImmutable)
 	if err != nil {
@@ -66,13 +66,20 @@ func readProductOCIImageFilesEach(ctx context.Context, layoutPath, manifestDiges
 	if err != nil {
 		return nil, nil, err
 	}
-	key, identified := productOCIMemoKey(layoutPath, manifestDigest, imagePaths, requireImmutable, layers)
+	key, identified := productOCIMemoKey(layoutPath, manifestDigest, requireImmutable, layers)
 	if identified {
 		productOCIMemo.Lock()
-		if productOCIMemo.key == key && productOCIMemo.files != nil {
-			files := append([]ociImageFile(nil), productOCIMemo.files...)
-			productOCIMemo.Unlock()
-			return files, make([]error, len(files)), nil
+		if productOCIMemo.key == key {
+			cached, hit := make([]ociImageFile, len(imagePaths)), true
+			for i, imagePath := range imagePaths {
+				var known bool
+				cached[i], known = productOCIMemo.files[imagePath]
+				hit = hit && known
+			}
+			if hit {
+				productOCIMemo.Unlock()
+				return cached, make([]error, len(cached)), nil
+			}
 		}
 		productOCIMemo.Unlock()
 	}
@@ -114,19 +121,24 @@ func readProductOCIImageFilesEach(ctx context.Context, layoutPath, manifestDiges
 		failed = failed || fileErrs[i] != nil
 	}
 	// Identities taken before and after the reads must agree, or the result is not memoized.
-	if after, ok := productOCIMemoKey(layoutPath, manifestDigest, imagePaths, requireImmutable, layers); !failed && identified && ok && after == key {
+	if after, ok := productOCIMemoKey(layoutPath, manifestDigest, requireImmutable, layers); !failed && identified && ok && after == key {
 		productOCIMemo.Lock()
-		productOCIMemo.key, productOCIMemo.files = key, append([]ociImageFile(nil), files...)
+		if productOCIMemo.key != key || productOCIMemo.files == nil {
+			productOCIMemo.key, productOCIMemo.files = key, map[string]ociImageFile{}
+		}
+		for i, imagePath := range imagePaths {
+			productOCIMemo.files[imagePath] = files[i]
+		}
 		productOCIMemo.Unlock()
 	}
 	return files, fileErrs, nil
 }
 
-// productOCIMemoKey names everything the verification read: the request plus the identity (device, inode, size, times,
+// productOCIMemoKey names everything the verification read: the layout, digest and mode plus the identity (device, inode, size, times,
 // mode, owner) of the layout directories, index.json, the manifest blob and every layer blob. ok is false if any is unreadable.
-func productOCIMemoKey(layoutPath, manifestDigest string, imagePaths []string, requireImmutable bool, layers []ociLayerDescriptor) (string, bool) {
+func productOCIMemoKey(layoutPath, manifestDigest string, requireImmutable bool, layers []ociLayerDescriptor) (string, bool) {
 	var key strings.Builder
-	fmt.Fprintf(&key, "%s\x00%s\x00%v\x00%q", layoutPath, manifestDigest, requireImmutable, imagePaths)
+	fmt.Fprintf(&key, "%s\x00%s\x00%v", layoutPath, manifestDigest, requireImmutable)
 	blobs := filepath.Join(layoutPath, "blobs", "sha256")
 	names := []string{layoutPath, filepath.Join(layoutPath, "blobs"), blobs, filepath.Join(layoutPath, "index.json"),
 		filepath.Join(blobs, strings.TrimPrefix(manifestDigest, "sha256:"))}
@@ -134,18 +146,27 @@ func productOCIMemoKey(layoutPath, manifestDigest string, imagePaths []string, r
 		names = append(names, filepath.Join(blobs, strings.TrimPrefix(layer.Digest, "sha256:")))
 	}
 	for _, name := range names {
-		info, err := os.Lstat(name)
-		if err != nil {
-			return "", false
-		}
-		stat, ok := info.Sys().(*syscall.Stat_t)
+		identity, ok := productFileIdentity(name)
 		if !ok {
 			return "", false
 		}
-		fmt.Fprintf(&key, "\x00%s:%d:%d:%d:%d:%d:%d:%d:%d:%d", name, stat.Dev, stat.Ino, stat.Size, stat.Mtim.Sec, stat.Mtim.Nsec,
-			stat.Ctim.Sec, stat.Ctim.Nsec, stat.Mode, stat.Uid)
+		key.WriteString("\x00" + identity)
 	}
 	return key.String(), true
+}
+
+// productFileIdentity names a file by device, inode, size, mtime, ctime, mode and owner, without following a final symlink.
+func productFileIdentity(name string) (string, bool) {
+	info, err := os.Lstat(name)
+	if err != nil {
+		return "", false
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return "", false
+	}
+	return fmt.Sprintf("%s:%d:%d:%d:%d:%d:%d:%d:%d:%d", name, stat.Dev, stat.Ino, stat.Size, stat.Mtim.Sec, stat.Mtim.Nsec,
+		stat.Ctim.Sec, stat.Ctim.Nsec, stat.Mode, stat.Uid), true
 }
 
 func resolveProductOCIImageFile(ctx context.Context, imagePath string, lookup func(string) (ociLayerResult, error), hardlinkTargets map[string]bool) (ociImageFile, error) {

@@ -524,7 +524,7 @@ func productD09VerifyArtifacts(ctx context.Context, inputs productD09Inputs, tem
 		}
 	}
 	launcher := &D09PodmanCrunLauncher{runner: execD09CommandRunner{environment: productD09CommandEnvironment()}}
-	if err := launcher.verifyOfflineSignature(ctx, template.Config(), template.CosignPath, true); err != nil {
+	if err := launcher.verifyOfflineSignatureMemoized(ctx, template.Config(), template.CosignPath, true); err != nil {
 		return productD09Refused(err, "offline cosign verification of the product image failed")
 	}
 	return productD09VerifyImageFiles(ctx, template, profile)
