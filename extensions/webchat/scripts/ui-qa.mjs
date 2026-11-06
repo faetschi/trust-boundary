@@ -957,6 +957,8 @@ async function checkC(ctx) {
   const onSearch = await describe();
   ctx.expect(onSearch.tag === 'input', `Tab from the grouping toolbar reached ${shortStop(onSearch)}, expected the search input`);
   await press('Tab');
+  // The rail's folded "About this axis" note sits between the search and the ledger; step over it.
+  if ((await describe()).tag === 'summary') await press('Tab');
   const onRow1 = await describe();
   ctx.expect(/^User record 1/.test(onRow1.label ?? ''), `Tab from the search reached ${shortStop(onRow1)}, expected the first ledger row`);
   await press('ArrowDown');
@@ -994,6 +996,7 @@ async function checkC(ctx) {
   await press('Tab');
   await press('Tab');
   await press('Tab');
+  if ((await describe()).tag === 'summary') await press('Tab');
   await press('ArrowDown');
   await press('ArrowDown');
   await press('ArrowUp');
