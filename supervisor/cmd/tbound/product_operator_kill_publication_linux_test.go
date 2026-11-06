@@ -141,9 +141,9 @@ func TestProductOperatorResolvesAKillInsidePublicationOnlyWhenProvablyUnapplied(
 		{"publication-after-stage-checkpoint", "", "baseline", 1, 0, 0, false},
 		{"publication-after-token-checkpoint", "", "baseline", 1, 0, 1, false},
 		{"publication-after-object-checkpoint", "not provably unapplied", "partial", 1, 0, 0, false},
-		{"publication-after-last-object-checkpoint", "", "candidate", 1, 0, 0, false},
-		{"publication-after-checkpoint", "", "candidate", 1, 0, 0, false},
-		{"publication-after-terminal-checkpoint", "", "candidate", 1, 0, 0, false},
+		{"publication-after-last-object-checkpoint", "", "candidate", 1, 0, 1, false},
+		{"publication-after-checkpoint", "", "candidate", 1, 0, 1, false},
+		{"publication-after-terminal-checkpoint", "", "candidate", 1, 0, 1, false},
 	} {
 		for _, bash := range []bool{true, false} {
 			if bash && c.overwriteOnly {
@@ -264,7 +264,7 @@ func TestProductOperatorResolvesAKillInsidePublicationOnlyWhenProvablyUnapplied(
 					t.Fatalf("evidence names staging %q, want %q", got.OperatorResolution.PublicationStagingLeft, wantLeft)
 				}
 				// The project publishes again, so no pending record is left that could apply later.
-				script := &productDriverScript{turns: []providerbridge.ScriptTurn{scopeDriverWrite("t2", "notes.txt", productDriverNotes), scopeDriverFinal("t2", productDriverAnswerA)}}
+				script := &productDriverScript{turns: []providerbridge.ScriptTurn{scopeDriverWrite("t2", "notes.txt", productDriverNotes+"follow-up\n"), scopeDriverFinal("t2", productDriverAnswerA)}}
 				if bash {
 					script = &productDriverScript{turns: []providerbridge.ScriptTurn{bashCall("again", `printf 'c\n' > notes/c.txt`), scopeDriverFinal("t2", scopeDriverAnswer)}}
 				}

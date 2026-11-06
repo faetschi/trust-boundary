@@ -1241,7 +1241,7 @@ func TestNestedDirectoryCreationClassifiesAsAppliedAndRecoversByObservation(t *t
 			f := newFixture(t, map[string]string{}, map[string]string{}, map[string]string{}, final, nil, nil, []string{"out", "out/sub"})
 			first := f.acquire(1)
 			result, err := first.Publish(context.Background(), f.request, allowFor("nested"), func(p string, index int) error {
-				if point != "" && p == point && index == 2 {
+				if point != "" && p == point && (index == 2 || p == "after-terminal-checkpoint") {
 					return errors.New("synthetic late fault")
 				}
 				return nil
