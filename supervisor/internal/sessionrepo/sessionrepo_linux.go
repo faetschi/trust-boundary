@@ -665,9 +665,6 @@ func (s *Store) RunBash(ctx context.Context, input *Generation, operation delta.
 	if operation.Kind != delta.OperationLease || strings.TrimSpace(operation.LeaseID) == "" {
 		return MutationResult{}, ErrInvalidOptions
 	}
-	if err := validateCommandSpec(spec); err != nil {
-		return MutationResult{}, err
-	}
 	view, err := s.newViewLocked(input)
 	if err != nil {
 		return MutationResult{}, err
