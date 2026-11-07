@@ -282,6 +282,24 @@ func TestConstructWitnessPlansOneStaticPPerAdversarialCase(t *testing.T) {
 	}
 }
 
+// Same steps, only Config.Purpose differs: the purpose must change the digest on its own, not through the steps.
+func TestPurposeAloneChangesThePlanDigest(t *testing.T) {
+	w := witnessSchedule(t)
+	noPurpose := w
+	noPurpose.Config.Purpose = ""
+	witnessDigest, err := planDigest(w)
+	if err != nil {
+		t.Fatalf("planDigest: %v", err)
+	}
+	noPurposeDigest, err := planDigest(noPurpose)
+	if err != nil {
+		t.Fatalf("planDigest: %v", err)
+	}
+	if witnessDigest == noPurposeDigest {
+		t.Fatalf("clearing only the purpose keeps the plan digest %s", noPurposeDigest)
+	}
+}
+
 // A construct-witness run is refused with the config it cannot honour: C-DH, a subset of cases, or a purpose it does
 // not know. The planner refuses them, so no journal is written for them.
 func TestConstructWitnessRefusals(t *testing.T) {

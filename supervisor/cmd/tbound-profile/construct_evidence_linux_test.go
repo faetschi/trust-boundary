@@ -1162,6 +1162,33 @@ func TestConstructThesisImportRequiresTheWitnessPurpose(t *testing.T) {
 	}
 }
 
+// The CLI passes --quota-profile into the thesis guard, so under thesis quotas an ordinary journal is refused with the
+// guard's reason. A witness journal gets past the purpose guard and is still refused: the pilot corpus is not a thesis
+// allocation, and the repository has no thesis-size corpus to test acceptance with.
+func TestCorpusCheckThesisProfileRefusesAnOrdinaryJournal(t *testing.T) {
+	calibrationP := func(w *constructWorld) corpusadmit.ConstructCheck {
+		t.Helper()
+		out := filepath.Join(constructPrivateDir(t), "report")
+		var stdout, stderr bytes.Buffer
+		// The exit status is not asserted: the pilot manifest is judged against the thesis quota rules. The report is written either way.
+		_ = runCorpusCheck([]string{"--manifest", constructPilotManifest, "--quota-profile", "thesis", "--node", constructTestNode(t), "--out", out,
+			"--guest-evidence", w.ev, "--run-config", w.config, "--guest-binary-sha256", w.binary}, &stdout, &stderr)
+		raw, err := os.ReadFile(filepath.Join(out, "report.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var report corpusadmit.ConstructReport
+		if err := json.Unmarshal(raw, &report); err != nil {
+			t.Fatal(err)
+		}
+		return rowOf(t, report, constructNetCase, "calibration-p")
+	}
+	wantRow(t, calibrationP(buildWorld(t, worldOpts{})), "guest-only", "construct-witness")
+	if row := calibrationP(buildWorld(t, worldOpts{witness: true})); strings.Contains(row.Reason, "construct-witness") {
+		t.Fatalf("the thesis guard refused a witness journal: %s", row.Reason)
+	}
+}
+
 // An ordinary journal cannot satisfy a witness import: the import plans the run the witness config names, and the
 // journal header binds the plan digest, which includes the purpose.
 func TestConstructOrdinaryJournalCannotSatisfyAWitnessImport(t *testing.T) {

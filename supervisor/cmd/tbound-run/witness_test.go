@@ -136,6 +136,26 @@ func TestWitnessRunReachesOnlyConfigurationP(t *testing.T) {
 	}
 }
 
+// The spy only sees dispatched steps, and a witness plan dispatches only P. This checks what wireSSH builds.
+func TestWitnessRunWiresOnlyConfigurationP(t *testing.T) {
+	e := witnessEnv(t)
+	p, err := loadPlan(mustConfig(t, e))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.sched.Config.Purpose != runner.PurposeConstructWitness {
+		t.Fatalf("the plan's purpose is %q", p.sched.Config.Purpose)
+	}
+	ex, err := wireSSH(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ex.P == nil || ex.A != nil || ex.B != nil || ex.C != nil || ex.V != nil || len(ex.CDH) != 0 {
+		t.Fatalf("a witness run wires P=%t A=%t B=%t C=%t V=%t CDH=%d; want configuration P alone",
+			ex.P != nil, ex.A != nil, ex.B != nil, ex.C != nil, ex.V != nil, len(ex.CDH))
+	}
+}
+
 // The witness journal is not a study result: export and report refuse it, and the study plan cannot resume it.
 func TestWitnessRunIsNotExportedOrResumedAsAStudy(t *testing.T) {
 	e := witnessEnv(t)
