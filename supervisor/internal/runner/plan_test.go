@@ -239,3 +239,63 @@ func TestPlanSubsetForDryRun(t *testing.T) {
 		t.Fatal("subset and full plans must be distinguishable")
 	}
 }
+
+// The study's own plans keep their digests: an empty purpose is omitted from the digested config, so the bytes the
+// registered digests cover do not change. The values were computed before the purpose member was added.
+func TestNormalPlanDigestsAreUnchanged(t *testing.T) {
+	if got, want := smallSchedule(t, smallConfig()).Digest, "sha256:55b45cbe07bc55f1525c8e9d00692688c418423022bbbadeeb7f0d8542776b8b"; got != want {
+		t.Errorf("small plan digest %s, want %s", got, want)
+	}
+	if got, want := thesisSchedule(t).Digest, "sha256:37faf9c235a4c570d7af07724cc729f282b5486fd907b0e36977e18092ac7c4d"; got != want {
+		t.Errorf("thesis plan digest %s, want %s", got, want)
+	}
+}
+
+// A construct-witness plan holds exactly one static P replay per adversarial case of the admitted manifest, and nothing
+// else: no trajectory, adaptive replay, compliant or ambiguous run, or variance repeat.
+func TestConstructWitnessPlansOneStaticPPerAdversarialCase(t *testing.T) {
+	src, alloc := synth(t, evalcorpus.ThesisQuotas())
+	cfg := testConfig()
+	cfg.Purpose = PurposeConstructWitness
+	s, err := Plan(src, alloc, cfg)
+	if err != nil {
+		t.Fatalf("Plan: %v", err)
+	}
+	adv := src.CaseIDs(evalcorpus.KindAdversarial)
+	if !s.Subset || s.Config.Purpose != PurposeConstructWitness || len(s.Steps) != len(adv) {
+		t.Fatalf("subset %t, purpose %q, %d units; want a witness subset of %d units", s.Subset, s.Config.Purpose, len(s.Steps), len(adv))
+	}
+	planned := map[string]int{}
+	for i, st := range s.Steps {
+		if st.Index != i || st.Kind != evalcorpus.KindAdversarial || st.Configuration != CfgP || st.Role != RoleStaticReplay {
+			t.Fatalf("step %d is %s/%s/%s, want a static P replay", i, st.CaseID, st.Role, st.Configuration)
+		}
+		planned[st.CaseID]++
+	}
+	for _, id := range adv {
+		if planned[id] != 1 {
+			t.Errorf("case %s has %d static P steps, want 1", id, planned[id])
+		}
+	}
+	if s.Digest == thesisSchedule(t).Digest {
+		t.Fatal("a witness run has the study's plan digest")
+	}
+}
+
+// A construct-witness run is refused with the config it cannot honour: C-DH, a subset of cases, or a purpose it does
+// not know. The planner refuses them, so no journal is written for them.
+func TestConstructWitnessRefusals(t *testing.T) {
+	src, alloc := synth(t, smallQuotas())
+	cases := map[string]func(*Config){
+		"subset":          func(c *Config) { c.Purpose = PurposeConstructWitness; c.OnlyCases = []string{"adv-TM-A-001"} },
+		"C-DH":            func(c *Config) { c.Purpose = PurposeConstructWitness; c.CDH = testCDH(t) },
+		"unknown purpose": func(c *Config) { c.Purpose = "study" },
+	}
+	for name, mut := range cases {
+		cfg := testConfig()
+		mut(&cfg)
+		if _, err := Plan(src, alloc, cfg); err == nil {
+			t.Errorf("%s: Plan succeeded", name)
+		}
+	}
+}

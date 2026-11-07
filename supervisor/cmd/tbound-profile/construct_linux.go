@@ -99,7 +99,7 @@ func runCorpusCheck(args []string, stdout, stderr io.Writer) error {
 		}
 		artifacts := filepath.Join(filepath.Dir(*manifest), "artifacts")
 		expect.ConfigPath = *runConfig
-		applyConstructEvidence(&report, constructInput{Manifest: m, Quotas: quotas, Set: set, Artifacts: os.DirFS(artifacts), ArtifactsDir: artifacts, Expect: expect, Err: inputErr})
+		applyConstructEvidence(&report, constructInput{Manifest: m, Quotas: quotas, Profile: *profile, Set: set, Artifacts: os.DirFS(artifacts), ArtifactsDir: artifacts, Expect: expect, Err: inputErr})
 	}
 	return writeConstructReport(*out, report, stdout)
 }

@@ -199,6 +199,9 @@ func anyTerminal(j *Journal, steps []Step) bool {
 // step that has not run (a missing C result would read as a failed task). A
 // rerun gives a second record with attempt 2 and keeps the original.
 func Export(s Schedule, j *Journal, opt ExportOptions) (ExportResult, error) {
+	if s.Config.Purpose == PurposeConstructWitness {
+		return ExportResult{}, ErrNonConfirmatoryPurpose
+	}
 	if s.Config.CDH != nil {
 		return exportCDH(s, j, opt)
 	}
@@ -399,6 +402,9 @@ type CaseCalibration struct {
 // schedule, in plan order, from the latest attempt of each replay. A case whose
 // replays have not run is not_run or invalid, never manifested.
 func Calibrations(s Schedule, j *Journal) ([]CaseCalibration, error) {
+	if s.Config.Purpose == PurposeConstructWitness {
+		return nil, ErrNonConfirmatoryPurpose
+	}
 	order, groups := caseGroups(s)
 	var out []CaseCalibration
 	for _, id := range order {

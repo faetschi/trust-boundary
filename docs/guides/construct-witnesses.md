@@ -7,6 +7,24 @@ witness. It recomputes each result from the original outputs of the producers
 that you retained. Take `run.json` and the binary digest from the frozen run,
 not from the files being checked. The command reads no SSH or credential file.
 
+## Collecting the witnesses before registration
+
+Before registration a corpus may collect only what `corpus-check` requires (D41).
+To collect the witnesses, set `"purpose": "construct-witness"` in `run.json`:
+
+```json
+"purpose": "construct-witness"
+```
+
+The plan is then one static P replay per admitted adversarial case and nothing else:
+no trajectory, adaptive replay, C, B or V run, and no variance repeat. `tbound-run plan`
+shows `subset true` and that many units, and the guest sees Configuration P only.
+
+A witness run is not a study result. `tbound-run export` and `report` refuse it, and
+the study plan cannot resume its journal, because the purpose is part of the plan digest.
+With `--quota-profile thesis`, `corpus-check` imports a journal only from a witness run.
+`tbound-profile preregistration-record` refuses it.
+
 ## The only file you write
 
 `DIR/construct-map.json` names files and the cases they belong to. It holds no

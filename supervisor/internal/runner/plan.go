@@ -32,6 +32,17 @@ const (
 	orderDomain = "tbound-runner-order/v1"
 )
 
+// RunPurpose says what a run is for. The empty purpose is the study's run. A construct-witness run collects only the
+// static P replays that corpus-check needs before registration (D41); it is never confirmatory.
+type RunPurpose string
+
+// PurposeConstructWitness is the non-confirmatory run that retains construct witnesses (docs/guides/construct-witnesses.md).
+const PurposeConstructWitness RunPurpose = "construct-witness"
+
+// ErrNonConfirmatoryPurpose means a construct-witness run was asked for what only a confirmatory run has: its export,
+// report or calibration summary. It holds no C outcomes, and none is synthesized as a failure.
+var ErrNonConfirmatoryPurpose = errors.New("runner: a construct-witness run is non-confirmatory and has no export, report or calibration summary")
+
 // Config is the frozen protocol of one run. It is bound into the plan digest,
 // so a journal cannot be resumed under a changed protocol.
 type Config struct {
@@ -64,6 +75,9 @@ type Config struct {
 	// OnlyCases restricts the plan to these adversarial cases (a dry run, for
 	// example the final-pilot cases of the G4 gate). The plan is then a Subset.
 	OnlyCases []string `json:"only_cases"`
+	// Purpose is empty for the study's run, which omits it from the digested bytes, so the study's digests do not change.
+	// A construct-witness run plans only the static P replays of the admitted manifest.
+	Purpose RunPurpose `json:"purpose,omitempty"`
 }
 
 var freezeRE = regexp.MustCompile(`^([0-9a-f]{40}|[0-9a-f]{64})$`)
@@ -102,6 +116,18 @@ func (c Config) normalize() (Config, error) {
 		c.RerunHeadroom = MaxRerunHeadroom
 	case c.RerunHeadroom < 0 || c.RerunHeadroom > MaxRerunHeadroom:
 		return c, fmt.Errorf("runner: RerunHeadroom %d outside 1..%d", c.RerunHeadroom, MaxRerunHeadroom)
+	}
+	switch c.Purpose {
+	case "":
+	case PurposeConstructWitness:
+		if c.CDH != nil {
+			return c, errors.New("runner: a construct-witness run cannot be C-DH")
+		}
+		if len(c.OnlyCases) != 0 {
+			return c, errors.New("runner: a construct-witness run plans every admitted adversarial case, so OnlyCases is refused")
+		}
+	default:
+		return c, fmt.Errorf("runner: unknown run purpose %q", c.Purpose)
 	}
 	c.EVQObligations = slices.Sorted(slices.Values(c.EVQObligations))
 	c.OnlyCases = slices.Sorted(slices.Values(c.OnlyCases))
@@ -155,7 +181,8 @@ func (s Schedule) Lookup(id string) (Step, bool) {
 // the static P/C replays then the adaptive P/C replays; then compliant tasks in
 // seeded-rank order, each as B, C and V in a balanced pair order; then the
 // ambiguous cases as B and C; then the two variance repeats of each
-// variance-subset case. Configuration A is never planned.
+// variance-subset case. Configuration A is never planned. A construct-witness
+// plan is only the static P replay of each adversarial case.
 func Plan(manifest, allocation evalcorpus.Manifest, cfg Config) (Schedule, error) {
 	cfg, err := cfg.normalize()
 	if err != nil {
@@ -200,8 +227,9 @@ func Plan(manifest, allocation evalcorpus.Manifest, cfg Config) (Schedule, error
 		}
 	}
 
-	subset := len(cfg.OnlyCases) > 0
-	if subset {
+	witness := cfg.Purpose == PurposeConstructWitness
+	subset := len(cfg.OnlyCases) > 0 || witness
+	if len(cfg.OnlyCases) > 0 {
 		only := make(map[string]bool, len(cfg.OnlyCases))
 		for _, id := range cfg.OnlyCases {
 			if c, ok := byID[id]; !ok || c.Kind != evalcorpus.KindAdversarial {
@@ -210,6 +238,8 @@ func Plan(manifest, allocation evalcorpus.Manifest, cfg Config) (Schedule, error
 			only[id] = true
 		}
 		adv = slices.DeleteFunc(adv, func(id string) bool { return !only[id] })
+	}
+	if subset {
 		cmp, amb = nil, nil
 	}
 
@@ -235,6 +265,10 @@ func Plan(manifest, allocation evalcorpus.Manifest, cfg Config) (Schedule, error
 
 	for _, id := range rankOrder(seed, "order/adversarial", adv) {
 		c := byID[id]
+		if witness {
+			add(c, CfgP, RoleStaticReplay, 0)
+			continue
+		}
 		add(c, CfgC, RoleTrajectory, 0)
 		add(c, CfgP, RoleStaticReplay, 0)
 		add(c, CfgC, RoleStaticReplay, 0)
@@ -282,10 +316,27 @@ func Plan(manifest, allocation evalcorpus.Manifest, cfg Config) (Schedule, error
 		}
 		s.index[st.ID()] = i
 	}
+	if err := s.validateWitnessPurpose(); err != nil {
+		return Schedule{}, err
+	}
 	if s.Digest, err = planDigest(s); err != nil {
 		return Schedule{}, err
 	}
 	return s, nil
+}
+
+// validateWitnessPurpose refuses a construct-witness schedule that holds any step but a static P replay. Under that
+// purpose no C, B or V step, and no trajectory, adaptive or variance step, may be planned, dispatched or imported.
+func (s Schedule) validateWitnessPurpose() error {
+	if s.Config.Purpose != PurposeConstructWitness {
+		return nil
+	}
+	for _, st := range s.Steps {
+		if st.Configuration != CfgP || st.Role != RoleStaticReplay {
+			return fmt.Errorf("runner: a construct-witness run holds only static P replays, not %s/%s", st.Configuration, st.Role)
+		}
+	}
+	return nil
 }
 
 // sameCorpus checks that allocation is manifest with partitions assigned: same

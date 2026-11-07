@@ -39,11 +39,16 @@ func wireSSH(p plan) (runner.Executors, error) {
 	}
 	governedP := governed
 	governedP.Configuration = runner.CfgP
+	executorP := p.attest(runner.ResetExecutor{Inner: governedP, Transport: ts.trial})
+	if p.sched.Config.Purpose == runner.PurposeConstructWitness {
+		// A construct-witness run reaches the guest as Configuration P only, so no other executor is wired.
+		return runner.Executors{P: executorP}, nil
+	}
 	governedB := governed
 	governedB.Configuration = runner.CfgB
 	executors := runner.Executors{
 		C: p.attest(runner.AcceptExecutor{FreezeCommit: p.sched.Config.FreezeCommit, Inner: runner.ResetExecutor{Inner: governed, Transport: ts.trial}, Transport: ts.trial}),
-		P: p.attest(runner.ResetExecutor{Inner: governedP, Transport: ts.trial}),
+		P: executorP,
 		B: p.attest(runner.AcceptExecutor{FreezeCommit: p.sched.Config.FreezeCommit, Inner: runner.ResetExecutor{Inner: governedB, Transport: ts.trial}, Transport: ts.trial}),
 		V: p.governedV(ts.trial),
 	}

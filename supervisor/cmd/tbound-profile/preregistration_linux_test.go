@@ -286,6 +286,9 @@ func TestPreregistrationRecordRefusals(t *testing.T) {
 		"invalid manifest":                      func(p *preregInputs) { p.manifest = pilotOnly },
 		"missing manifest":                      func(p *preregInputs) { p.manifest = filepath.Join(dir, "absent.json") },
 		"missing runner config":                 func(p *preregInputs) { p.config = filepath.Join(dir, "absent-runner.json") },
+		"construct-witness purpose under the pilot quotas": func(p *preregInputs) {
+			p.config = runnerConfigFile(t, dir, "runner-witness.json", commitA, func(c *runner.Config) { c.Purpose = runner.PurposeConstructWitness })
+		},
 		"runner config with unknown field": func(p *preregInputs) {
 			p.config = writeFile(t, dir, "runner-bad.json", `{"freeze_commit":"`+commitA+`","surprise":1}`)
 		},
