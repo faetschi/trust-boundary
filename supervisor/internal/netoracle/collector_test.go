@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"tbound/supervisor/internal/evalcorpus"
 	"tbound/supervisor/internal/runner"
@@ -401,5 +402,145 @@ func TestCollectorWithoutRetainDirKeepsNothingAndAnUnwritableOneIsAbsentEvidence
 	}
 	if _, err := c.Net(context.Background(), collectorRef()); !errors.Is(err, runner.ErrEvidenceAbsent) {
 		t.Fatalf("Net with an unwritable RetainDir = %v, want absent evidence", err)
+	}
+}
+
+// D49: the end canary waits for the proof's drain grace, or for the original horizon without a proof.
+
+type fakeGate struct{ c runner.IntervalClosure }
+
+func (f fakeGate) Closure(context.Context, runner.EvidenceRef) runner.IntervalClosure { return f.c }
+
+var gateT0 = time.Unix(1_800_000_000, 0).UTC()
+
+func gatedCollector(g *guestNet, c runner.IntervalClosure, onWait func(until time.Time)) (*Collector, *[]time.Time) {
+	col := g.collector()
+	var waited []time.Time
+	col.Gate = fakeGate{c}
+	col.Wait = func(_ context.Context, until time.Time) error {
+		waited = append(waited, until)
+		if onWait != nil {
+			onWait(until)
+		}
+		return nil
+	}
+	return col, &waited
+}
+
+func TestCollectorDelayedArrivalInsideTheDrainGraceStaysInsideTheWindow(t *testing.T) {
+	g := newGuestNet(t)
+	drain := gateT0.Add(7 * time.Second)
+	c, waited := gatedCollector(g, runner.IntervalClosure{Proven: true, DrainUntil: drain, Horizon: gateT0.Add(time.Hour)}, func(time.Time) {
+		// The sink hears from the cell's side after the terminal, while the drain grace runs.
+		do(t, "GET", "http://"+g.s.Addr()+"/late", "")
+	})
+	if err := c.BeginInterval(context.Background(), collectorRef()); err != nil {
+		t.Fatal(err)
+	}
+	ev, err := c.Net(context.Background(), collectorRef())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ev.Findings[runner.OracleNet01] != runner.FindingObserved {
+		t.Fatalf("a late arrival inside the drain grace was missed: %v", ev.Findings)
+	}
+	if len(*waited) != 1 || !(*waited)[0].Equal(drain) {
+		t.Fatalf("waited %v, want the drain deadline %v", *waited, drain)
+	}
+	if calls := g.argvs(); len(calls) != 3 || calls[1][2] != "end" {
+		t.Fatalf("calls = %q", calls)
+	}
+}
+
+func TestCollectorWithoutProofKeepsTheFullHorizon(t *testing.T) {
+	g := newGuestNet(t)
+	horizon := gateT0.Add(20 * time.Minute)
+	endSent := false
+	c, waited := gatedCollector(g, runner.IntervalClosure{Horizon: horizon, Reasons: []string{"no proof"}}, func(time.Time) {
+		for _, a := range g.argvs() {
+			if a[0] == "net-canary" && a[2] == "end" {
+				endSent = true
+			}
+		}
+	})
+	if err := c.BeginInterval(context.Background(), collectorRef()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Net(context.Background(), collectorRef()); err != nil {
+		t.Fatal(err)
+	}
+	if endSent || len(*waited) != 1 || !(*waited)[0].Equal(horizon) {
+		t.Fatalf("end canary before the horizon: sent early=%v, waited %v", endSent, *waited)
+	}
+}
+
+func TestCollectorGateFailuresAreAbsentNeverClean(t *testing.T) {
+	g := newGuestNet(t)
+	c := g.collector()
+	c.Gate = fakeGate{runner.IntervalClosure{Proven: true, DrainUntil: gateT0, Horizon: gateT0}}
+	c.Wait = func(context.Context, time.Time) error { return errors.New("cancelled") }
+	if err := c.BeginInterval(context.Background(), collectorRef()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Net(context.Background(), collectorRef()); !errors.Is(err, runner.ErrEvidenceAbsent) {
+		t.Fatalf("a wait that failed still produced an answer: %v", err)
+	}
+	for _, a := range g.argvs() {
+		if a[0] == "net-canary" && a[2] == "end" {
+			t.Fatal("the end canary was sent although the wait failed")
+		}
+	}
+}
+
+// Review round 1: unresolved closure evidence is lost NET evidence, and the closure is retained and bound.
+func TestCollectorUnresolvedClosureIsLostNeverClean(t *testing.T) {
+	g := newGuestNet(t)
+	cl := runner.IntervalClosure{Horizon: gateT0.Add(time.Hour), Digest: strings.Repeat("d", 64), Reasons: []string{"x"}, Unresolved: []string{"command 0: output writers drained is not established"}}
+	c, _ := gatedCollector(g, cl, nil)
+	if err := c.BeginInterval(context.Background(), collectorRef()); err != nil {
+		t.Fatal(err)
+	}
+	ev, err := c.Net(context.Background(), collectorRef())
+	if err != nil || ev.Findings[runner.OracleNet01] != runner.FindingLost {
+		t.Fatalf("unresolved closure: %v %v", ev.Findings, err)
+	}
+	// A legitimate full window (no unresolved reason) stays clean.
+	g = newGuestNet(t)
+	c, _ = gatedCollector(g, runner.IntervalClosure{Horizon: gateT0.Add(time.Hour), Reasons: []string{"no-reap"}}, nil)
+	_ = c.BeginInterval(context.Background(), collectorRef())
+	if ev, err := c.Net(context.Background(), collectorRef()); err != nil || ev.Findings[runner.OracleNet01] != runner.FindingNone {
+		t.Fatalf("legitimate full window: %v %v", ev.Findings, err)
+	}
+}
+
+func TestCollectorRetainsAndBindsTheClosure(t *testing.T) {
+	run := func(digest string) (runner.ObserverEvidence, Retained) {
+		g := newGuestNet(t)
+		c, _ := gatedCollector(g, runner.IntervalClosure{Proven: true, DrainUntil: gateT0, Horizon: gateT0, Digest: digest}, nil)
+		c.RetainDir = t.TempDir()
+		if err := c.BeginInterval(context.Background(), collectorRef()); err != nil {
+			t.Fatal(err)
+		}
+		ev, err := c.Net(context.Background(), collectorRef())
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw, err := os.ReadFile(filepath.Join(c.RetainDir, RetainedName(collectorInterval)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		r, err := ParseRetained(raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return ev, r
+	}
+	ev1, r1 := run(strings.Repeat("a", 64))
+	ev2, _ := run(strings.Repeat("b", 64))
+	if r1.Closure == nil || r1.Closure.Digest != strings.Repeat("a", 64) || !r1.Closure.Proven {
+		t.Fatalf("closure not retained: %+v", r1.Closure)
+	}
+	if ev1.Refs[runner.OracleNet01].Report == ev2.Refs[runner.OracleNet01].Report {
+		t.Fatal("the NET reference does not depend on the closure")
 	}
 }

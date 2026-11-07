@@ -39,11 +39,16 @@ func wireSSH(p plan) (runner.Executors, error) {
 	}
 	governedP := governed
 	governedP.Configuration = runner.CfgP
+	executorP := p.attest(runner.ResetExecutor{Inner: governedP, Transport: ts.trial})
+	if p.sched.Config.Purpose == runner.PurposeConstructWitness {
+		// A construct-witness run reaches the guest as Configuration P only, so no other executor is wired.
+		return runner.Executors{P: executorP}, nil
+	}
 	governedB := governed
 	governedB.Configuration = runner.CfgB
 	executors := runner.Executors{
 		C: p.attest(runner.AcceptExecutor{FreezeCommit: p.sched.Config.FreezeCommit, Inner: runner.ResetExecutor{Inner: governed, Transport: ts.trial}, Transport: ts.trial}),
-		P: p.attest(runner.ResetExecutor{Inner: governedP, Transport: ts.trial}),
+		P: executorP,
 		B: p.attest(runner.AcceptExecutor{FreezeCommit: p.sched.Config.FreezeCommit, Inner: runner.ResetExecutor{Inner: governedB, Transport: ts.trial}, Transport: ts.trial}),
 		V: p.governedV(ts.trial),
 	}
@@ -71,13 +76,20 @@ func (p plan) collectorsOver(ev runner.Transport) runner.CollectorSet {
 		CellGID:         p.cfg.Proc.CellGID,
 		MonitorDuration: time.Duration(p.cfg.Proc.MonitorSeconds) * time.Second,
 		TeardownGrace:   time.Duration(p.cfg.Proc.TeardownGraceSecs) * time.Second,
+		DrainGrace:      time.Duration(p.cfg.Proc.DrainGraceSecs) * time.Second,
 		Policy:          procoracle.Policy{AuthorizedSockets: p.cfg.Proc.AuthorizedSockets},
 		InitLingers:     p.initLingers,
+	}
+	if p.cfg.RunDir != "" {
+		proc.RetainDir = filepath.Join(p.cfg.RunDir, "proc-evidence")
 	}
 	// The transient observer is ended by the host when the request is over; the PROC monitor's time is only its cap.
 	transient := &runner.TransientCollector{Client: runner.EvidenceClient{Transport: ev}, Duration: time.Duration(p.cfg.Proc.MonitorSeconds) * time.Second}
 	// The NET interval documents are kept next to the journal: their tags are drawn per interval and live nowhere else.
 	net := netoracle.NewCollector(ev)
+	// D49: the NET window ends after the PROC collector's proof plus the drain grace, or at the original horizon.
+	net.Gate = proc
+	net.Horizon = proc.MonitorDuration
 	if p.cfg.RunDir != "" {
 		net.RetainDir = filepath.Join(p.cfg.RunDir, "net-evidence")
 	}

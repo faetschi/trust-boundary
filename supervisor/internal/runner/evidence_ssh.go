@@ -31,6 +31,7 @@ const (
 	EvidenceProcCell           = "proc-cell"
 	EvidenceProcCapture        = "proc-capture"
 	EvidenceProcMonitor        = "proc-monitor"
+	EvidenceProcClosure        = "proc-closure"
 	EvidencePublicationJournal = "publication-interval-journal"
 	// EvidenceNetCanary is the one evidence kind with an effect: it sends one canary request to
 	// the guest NET sink (EFF-NET-01), and only to the sink. EvidenceNetJournal reads the sink journal.

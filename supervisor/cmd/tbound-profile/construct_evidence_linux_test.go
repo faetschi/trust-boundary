@@ -23,6 +23,7 @@ import (
 	"tbound/supervisor/internal/evalscore"
 	"tbound/supervisor/internal/guestevidence"
 	"tbound/supervisor/internal/netoracle"
+	"tbound/supervisor/internal/piruntime"
 	"tbound/supervisor/internal/runner"
 	"tbound/supervisor/internal/taskaccept"
 	"tbound/supervisor/internal/trialfix"
@@ -136,6 +137,8 @@ type worldOpts struct {
 	pNegative, outage []string
 	// acceptBad maps a compliant case to "fixture-passes" or "reference-fails".
 	acceptBad map[string]string
+	// witness runs the pilot as a construct-witness run: its journal holds the static P replays and nothing else.
+	witness bool
 }
 
 // constructWorld is a retained capture set: the producers' real output for the pilot manifest, an evidence
@@ -173,7 +176,11 @@ func buildWorld(t *testing.T, opts worldOpts) *constructWorld {
 	}
 	w.bind = newBindWorld(t, filepath.Join(w.ev, "signed"))
 	w.config = filepath.Join(w.root, "run.json")
-	w.writeConfig(nil)
+	var edit func(map[string]any)
+	if opts.witness {
+		edit = func(doc map[string]any) { doc["purpose"] = string(runner.PurposeConstructWitness) }
+	}
+	w.writeConfig(edit)
 	w.writeJournal()
 	for _, c := range w.m.Cases {
 		if c.Compliant != nil && w.selected(c.CaseID) {
@@ -1109,4 +1116,110 @@ func constructWSInput(class, pred string, negative bool) wsoracle.EvaluateE04Inp
 		in.Points = append(in.Points, wsoracle.E04Point{Name: name, Manifest: manifest(name, entries), LedgerPrefixDigest: wsoracle.LedgerPrefixDigest(nil, 0)})
 	}
 	return in
+}
+
+// A construct-witness run is the producer of a P import: its journal holds the static P replays of the admitted
+// adversarial cases and nothing else, and every calibration-p row passes from it.
+func TestConstructWitnessJournalImportsAsPEvidence(t *testing.T) {
+	w := buildWorld(t, worldOpts{witness: true})
+	adv := w.m.CaseIDs(evalcorpus.KindAdversarial)
+	var static []string
+	for _, id := range adv {
+		static = append(static, staticPOf(id))
+	}
+	raw, err := os.ReadFile(filepath.Join(w.ev, "run", "journal.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range bytes.Split(bytes.TrimSpace(raw), []byte("\n")) {
+		var e runner.Entry
+		if err := json.Unmarshal(line, &e); err != nil {
+			t.Fatal(err)
+		}
+		if e.StepID != "" && !slices.Contains(static, e.StepID) {
+			t.Fatalf("the witness journal holds %s", e.StepID)
+		}
+	}
+	r := w.apply(w.ev)
+	for _, id := range adv {
+		wantRow(t, rowOf(t, r, id, "calibration-p"), "pass", "registered P witness observed")
+	}
+}
+
+// The thesis import is the registered corpus under the thesis quotas, so an ordinary run is refused there: its journal
+// was collected with Configuration C before registration. The pilot import of an ordinary run is unchanged.
+func TestConstructThesisImportRequiresTheWitnessPurpose(t *testing.T) {
+	w := buildWorld(t, worldOpts{})
+	thesis := w.input()
+	thesis.Quotas, thesis.Profile = evalcorpus.ThesisQuotas(), piruntime.D09ManagedPiCorpusQuotaProfileThesis
+	if _, err := constructSchedule(thesis); err == nil || !strings.Contains(err.Error(), "construct-witness") {
+		t.Fatalf("a thesis import accepted an ordinary run: %v", err)
+	}
+	pilot := w.input()
+	pilot.Profile = piruntime.D09ManagedPiCorpusQuotaProfilePilot
+	if _, err := constructSchedule(pilot); err != nil {
+		t.Fatalf("a pilot import of an ordinary run: %v", err)
+	}
+}
+
+// The CLI passes --quota-profile into the thesis guard, so under thesis quotas an ordinary journal is refused with the
+// guard's reason. A witness journal gets past the purpose guard and is still refused: the pilot corpus is not a thesis
+// allocation, and the repository has no thesis-size corpus to test acceptance with.
+func TestCorpusCheckThesisProfileRefusesAnOrdinaryJournal(t *testing.T) {
+	calibrationP := func(w *constructWorld) corpusadmit.ConstructCheck {
+		t.Helper()
+		out := filepath.Join(constructPrivateDir(t), "report")
+		var stdout, stderr bytes.Buffer
+		// The exit status is not asserted: the pilot manifest is judged against the thesis quota rules. The report is written either way.
+		_ = runCorpusCheck([]string{"--manifest", constructPilotManifest, "--quota-profile", "thesis", "--node", constructTestNode(t), "--out", out,
+			"--guest-evidence", w.ev, "--run-config", w.config, "--guest-binary-sha256", w.binary}, &stdout, &stderr)
+		raw, err := os.ReadFile(filepath.Join(out, "report.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var report corpusadmit.ConstructReport
+		if err := json.Unmarshal(raw, &report); err != nil {
+			t.Fatal(err)
+		}
+		return rowOf(t, report, constructNetCase, "calibration-p")
+	}
+	wantRow(t, calibrationP(buildWorld(t, worldOpts{})), "guest-only", "construct-witness")
+	if row := calibrationP(buildWorld(t, worldOpts{witness: true})); strings.Contains(row.Reason, "construct-witness") {
+		t.Fatalf("the thesis guard refused a witness journal: %s", row.Reason)
+	}
+}
+
+// An ordinary journal cannot satisfy a witness import: the import plans the run the witness config names, and the
+// journal header binds the plan digest, which includes the purpose.
+func TestConstructOrdinaryJournalCannotSatisfyAWitnessImport(t *testing.T) {
+	w := buildWorld(t, worldOpts{})
+	witness := w.expect
+	witness.Purpose = runner.PurposeConstructWitness
+	ids := []string{constructNetCase, constructWSCase}
+	r := w.applyWith(w.ev, witness, ids...)
+	for _, id := range ids {
+		wantRow(t, rowOf(t, r, id, "calibration-p"), "guest-only", "runner: journal plan digest")
+	}
+}
+
+// A witness journal that holds a step the witness plan does not hold is refused on import, even though its header is the
+// witness plan's.
+func TestConstructWitnessRefusesAnInjectedStep(t *testing.T) {
+	w := buildWorld(t, worldOpts{witness: true})
+	journal := filepath.Join(w.ev, "run", "journal.jsonl")
+	c := runner.Step{CaseID: constructNetCase, Configuration: runner.CfgC, Role: runner.RoleTrajectory}
+	raw, err := os.ReadFile(journal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seq := bytes.Count(raw, []byte("\n")) // a record's seq is the count of records before it
+	extra, err := json.Marshal(runner.Entry{Seq: seq, Kind: runner.EntryBegin, StepID: c.ID(), CaseID: c.CaseID, Attempt: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(journal, append(raw, append(extra, '\n')...), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	r := w.apply(w.ev, constructNetCase)
+	wantRow(t, rowOf(t, r, constructNetCase, "calibration-p"), "guest-only", "unknown step")
 }

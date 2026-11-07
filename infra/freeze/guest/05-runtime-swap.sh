@@ -45,6 +45,11 @@ if [ "$PREV_COMMIT" = 2a6492dda21e5af9eab8e92e81f56725b3f8e9c5 ] &&
 # 97738b6..8931c69 (F17): launcher_linux.go, host.go and profile_tooling_linux.go are unchanged (git diff --quiet).
 if [ "$PREV_COMMIT" = 97738b60125b77be41c4800c7ce1d0fb327557f6 ] &&
    [ "$F" = 8931c69576c2cb58b0c87d8a4ec0e88dd2c162cc ]; then ALLOW_PREV_MEASURER=1; fi
+# 8931c69..b26e5ef (F18): launcher_linux.go, profile_tooling_linux.go and construct_evidence_linux.go have deletion-only
+# non-test changes, unreachable from runtime-bundle-digest (F17 caller grep and import-closure audit). runRuntimeBundleDigest,
+# VerifyLinuxPiRuntimeBundle, statDevice, requireReadOnlyMount, unescapeMountField and host.go limits are byte-identical.
+if [ "$PREV_COMMIT" = 8931c69576c2cb58b0c87d8a4ec0e88dd2c162cc ] &&
+   [ "$F" = b26e5efdf8ac04cce185de06d771a558d57b42af ]; then ALLOW_PREV_MEASURER=1; fi
 UNIT_SHA=2bc03ead4ba478d81655029de66a46f4bcb6357c5a24e7f8a3940ed947720ea3
 OLD=/var/lib/tbound/runtime-src.old-${PREV_BUNDLE_DIGEST:7:8}-$(date -u +%Y%m%dT%H%M%S%NZ)
 

@@ -1,0 +1,114 @@
+{
+  "obligations": [
+    {
+      "id": "EVQ-IDENTITY",
+      "passed": true,
+      "evidence_ref": "commit=b26e5efdf8ac04cce185de06d771a558d57b42af;evq-capture=sha256:65388c9bf5b0cb596c8518270a3c9d0f3b1e2647744fcd4d405ab1e16e42f609;evq-mapping=sha256:ae1c65a714ef4259353884827cac7c7a4ef046d1562d039a789980e55049dd38;go-test-json=sha256:f1e32e95e0c2b1d4bac0bbfba0bd688c64addb252f893b8e70455dbe085fce58"
+    },
+    {
+      "id": "EVQ-SURFACE-INVENTORY",
+      "passed": true,
+      "evidence_ref": "commit=b26e5efdf8ac04cce185de06d771a558d57b42af;evq-capture=sha256:65388c9bf5b0cb596c8518270a3c9d0f3b1e2647744fcd4d405ab1e16e42f609;evq-mapping=sha256:ae1c65a714ef4259353884827cac7c7a4ef046d1562d039a789980e55049dd38;go-test-json=sha256:f1e32e95e0c2b1d4bac0bbfba0bd688c64addb252f893b8e70455dbe085fce58"
+    },
+    {
+      "id": "EVQ-SURFACE-ADAPTER-EQUIVALENCE",
+      "passed": true,
+      "evidence_ref": "commit=b26e5efdf8ac04cce185de06d771a558d57b42af;evq-capture=sha256:65388c9bf5b0cb596c8518270a3c9d0f3b1e2647744fcd4d405ab1e16e42f609;evq-mapping=sha256:ae1c65a714ef4259353884827cac7c7a4ef046d1562d039a789980e55049dd38;go-test-json=sha256:f1e32e95e0c2b1d4bac0bbfba0bd688c64addb252f893b8e70455dbe085fce58;artifact:adapter-tests=sha256:e248a974d53eeb4d57c04bfe4ba5c3d68c68981d218f2fbbd7812a959a6b1d1d"
+    },
+    {
+      "id": "EVQ-PROPOSAL-INTEGRITY",
+      "passed": true,
+      "evidence_ref": "commit=b26e5efdf8ac04cce185de06d771a558d57b42af;evq-capture=sha256:65388c9bf5b0cb596c8518270a3c9d0f3b1e2647744fcd4d405ab1e16e42f609;evq-mapping=sha256:ae1c65a714ef4259353884827cac7c7a4ef046d1562d039a789980e55049dd38;go-test-json=sha256:f1e32e95e0c2b1d4bac0bbfba0bd688c64addb252f893b8e70455dbe085fce58"
+    },
+    {
+      "id": "EVQ-PROVIDER-CORRELATION",
+      "passed": true,
+      "evidence_ref": "commit=b26e5efdf8ac04cce185de06d771a558d57b42af;evq-capture=sha256:65388c9bf5b0cb596c8518270a3c9d0f3b1e2647744fcd4d405ab1e16e42f609;evq-mapping=sha256:ae1c65a714ef4259353884827cac7c7a4ef046d1562d039a789980e55049dd38;go-test-json=sha256:f1e32e95e0c2b1d4bac0bbfba0bd688c64addb252f893b8e70455dbe085fce58"
+    },
+    {
+      "id": "EVQ-PROVIDER-ROUTE",
+      "passed": true,
+      "evidence_ref": "commit=b26e5efdf8ac04cce185de06d771a558d57b42af;evq-capture=sha256:65388c9bf5b0cb596c8518270a3c9d0f3b1e2647744fcd4d405ab1e16e42f609;evq-mapping=sha256:ae1c65a714ef4259353884827cac7c7a4ef046d1562d039a789980e55049dd38;go-test-json=sha256:f1e32e95e0c2b1d4bac0bbfba0bd688c64addb252f893b8e70455dbe085fce58"
+    },
+    {
+      "id": "EVQ-PROVIDER-REAL-EXCHANGE",
+      "passed": true,
+      "evidence_ref": "commit=b26e5efdf8ac04cce185de06d771a558d57b42af;evq-capture=sha256:65388c9bf5b0cb596c8518270a3c9d0f3b1e2647744fcd4d405ab1e16e42f609;evq-mapping=sha256:ae1c65a714ef4259353884827cac7c7a4ef046d1562d039a789980e55049dd38;artifact:guest-provider-exchange=sha256:cb3ad3b818aa905032f23654e9bb891d97cc6d5a50afffcfcb68077ed5961d26"
+    },
+    {
+      "id": "EVQ-WORKSPACE-CONFINEMENT",
+      "passed": true,
+      "evidence_ref": "commit=b26e5efdf8ac04cce185de06d771a558d57b42af;evq-capture=sha256:65388c9bf5b0cb596c8518270a3c9d0f3b1e2647744fcd4d405ab1e16e42f609;evq-mapping=sha256:ae1c65a714ef4259353884827cac7c7a4ef046d1562d039a789980e55049dd38;go-test-json=sha256:f1e32e95e0c2b1d4bac0bbfba0bd688c64addb252f893b8e70455dbe085fce58"
+    },
+    {
+      "id": "EVQ-STAGING-DELTA",
+      "passed": true,
+      "evidence_ref": "commit=b26e5efdf8ac04cce185de06d771a558d57b42af;evq-capture=sha256:65388c9bf5b0cb596c8518270a3c9d0f3b1e2647744fcd4d405ab1e16e42f609;evq-mapping=sha256:ae1c65a714ef4259353884827cac7c7a4ef046d1562d039a789980e55049dd38;go-test-json=sha256:f1e32e95e0c2b1d4bac0bbfba0bd688c64addb252f893b8e70455dbe085fce58"
+    },
+    {
+      "id": "EVQ-PUBLICATION-PROVENANCE",
+      "passed": true,
+      "evidence_ref": "commit=b26e5efdf8ac04cce185de06d771a558d57b42af;evq-capture=sha256:65388c9bf5b0cb596c8518270a3c9d0f3b1e2647744fcd4d405ab1e16e42f609;evq-mapping=sha256:ae1c65a714ef4259353884827cac7c7a4ef046d1562d039a789980e55049dd38;go-test-json=sha256:f1e32e95e0c2b1d4bac0bbfba0bd688c64addb252f893b8e70455dbe085fce58"
+    },
+    {
+      "id": "EVQ-RECOVERY-ADMISSION",
+      "passed": true,
+      "evidence_ref": "commit=b26e5efdf8ac04cce185de06d771a558d57b42af;evq-capture=sha256:65388c9bf5b0cb596c8518270a3c9d0f3b1e2647744fcd4d405ab1e16e42f609;evq-mapping=sha256:ae1c65a714ef4259353884827cac7c7a4ef046d1562d039a789980e55049dd38;go-test-json=sha256:f1e32e95e0c2b1d4bac0bbfba0bd688c64addb252f893b8e70455dbe085fce58"
+    },
+    {
+      "id": "EVQ-RECOVERY-LIFECYCLE-CUTPOINTS",
+      "passed": true,
+      "evidence_ref": "commit=b26e5efdf8ac04cce185de06d771a558d57b42af;evq-capture=sha256:65388c9bf5b0cb596c8518270a3c9d0f3b1e2647744fcd4d405ab1e16e42f609;evq-mapping=sha256:ae1c65a714ef4259353884827cac7c7a4ef046d1562d039a789980e55049dd38;go-test-json=sha256:f1e32e95e0c2b1d4bac0bbfba0bd688c64addb252f893b8e70455dbe085fce58"
+    },
+    {
+      "id": "EVQ-JOURNAL-FAULTS",
+      "passed": true,
+      "evidence_ref": "commit=b26e5efdf8ac04cce185de06d771a558d57b42af;evq-capture=sha256:65388c9bf5b0cb596c8518270a3c9d0f3b1e2647744fcd4d405ab1e16e42f609;evq-mapping=sha256:ae1c65a714ef4259353884827cac7c7a4ef046d1562d039a789980e55049dd38;go-test-json=sha256:f1e32e95e0c2b1d4bac0bbfba0bd688c64addb252f893b8e70455dbe085fce58"
+    },
+    {
+      "id": "EVQ-ORACLE-WORKSPACE",
+      "passed": true,
+      "evidence_ref": "commit=b26e5efdf8ac04cce185de06d771a558d57b42af;evq-capture=sha256:65388c9bf5b0cb596c8518270a3c9d0f3b1e2647744fcd4d405ab1e16e42f609;evq-mapping=sha256:ae1c65a714ef4259353884827cac7c7a4ef046d1562d039a789980e55049dd38;go-test-json=sha256:f1e32e95e0c2b1d4bac0bbfba0bd688c64addb252f893b8e70455dbe085fce58"
+    },
+    {
+      "id": "EVQ-ORACLE-TRANSIENT",
+      "passed": true,
+      "evidence_ref": "commit=b26e5efdf8ac04cce185de06d771a558d57b42af;evq-capture=sha256:65388c9bf5b0cb596c8518270a3c9d0f3b1e2647744fcd4d405ab1e16e42f609;evq-mapping=sha256:ae1c65a714ef4259353884827cac7c7a4ef046d1562d039a789980e55049dd38;go-test-json=sha256:f1e32e95e0c2b1d4bac0bbfba0bd688c64addb252f893b8e70455dbe085fce58"
+    },
+    {
+      "id": "EVQ-ORACLE-NETWORK",
+      "passed": true,
+      "evidence_ref": "commit=b26e5efdf8ac04cce185de06d771a558d57b42af;evq-capture=sha256:65388c9bf5b0cb596c8518270a3c9d0f3b1e2647744fcd4d405ab1e16e42f609;evq-mapping=sha256:ae1c65a714ef4259353884827cac7c7a4ef046d1562d039a789980e55049dd38;go-test-json=sha256:f1e32e95e0c2b1d4bac0bbfba0bd688c64addb252f893b8e70455dbe085fce58"
+    },
+    {
+      "id": "EVQ-NETWORK-SINK-GUEST",
+      "passed": true,
+      "evidence_ref": "commit=b26e5efdf8ac04cce185de06d771a558d57b42af;evq-capture=sha256:65388c9bf5b0cb596c8518270a3c9d0f3b1e2647744fcd4d405ab1e16e42f609;evq-mapping=sha256:ae1c65a714ef4259353884827cac7c7a4ef046d1562d039a789980e55049dd38;artifact:guest-netsink=sha256:934bea10bcfd01706298ab687880a35c6033734abcfb9c9833be29b37ea76c4f;artifact:guest-tests-landlock-connect=sha256:867bbb5c4dd62d4354eff62675f8662c6a489bfe4418192d3dedd8c3e38a1d15"
+    },
+    {
+      "id": "EVQ-ORACLE-PROCESS",
+      "passed": true,
+      "evidence_ref": "commit=b26e5efdf8ac04cce185de06d771a558d57b42af;evq-capture=sha256:65388c9bf5b0cb596c8518270a3c9d0f3b1e2647744fcd4d405ab1e16e42f609;evq-mapping=sha256:ae1c65a714ef4259353884827cac7c7a4ef046d1562d039a789980e55049dd38;go-test-json=sha256:f1e32e95e0c2b1d4bac0bbfba0bd688c64addb252f893b8e70455dbe085fce58;artifact:guest-tests-procoracle=sha256:7c922f759add58de8af8e68fb9099a44dc1d321bfb28f98e0ab41f8b04d2775f"
+    },
+    {
+      "id": "EVQ-PROCESS-CONTAINMENT",
+      "passed": true,
+      "evidence_ref": "commit=b26e5efdf8ac04cce185de06d771a558d57b42af;evq-capture=sha256:65388c9bf5b0cb596c8518270a3c9d0f3b1e2647744fcd4d405ab1e16e42f609;evq-mapping=sha256:ae1c65a714ef4259353884827cac7c7a4ef046d1562d039a789980e55049dd38;go-test-json=sha256:f1e32e95e0c2b1d4bac0bbfba0bd688c64addb252f893b8e70455dbe085fce58"
+    },
+    {
+      "id": "EVQ-LINUX-CONTAINMENT",
+      "passed": true,
+      "evidence_ref": "commit=b26e5efdf8ac04cce185de06d771a558d57b42af;evq-capture=sha256:65388c9bf5b0cb596c8518270a3c9d0f3b1e2647744fcd4d405ab1e16e42f609;evq-mapping=sha256:ae1c65a714ef4259353884827cac7c7a4ef046d1562d039a789980e55049dd38;go-test-json=sha256:f1e32e95e0c2b1d4bac0bbfba0bd688c64addb252f893b8e70455dbe085fce58"
+    },
+    {
+      "id": "EVQ-LINUX-CAPABILITY-GUEST",
+      "passed": true,
+      "evidence_ref": "commit=b26e5efdf8ac04cce185de06d771a558d57b42af;evq-capture=sha256:65388c9bf5b0cb596c8518270a3c9d0f3b1e2647744fcd4d405ab1e16e42f609;evq-mapping=sha256:ae1c65a714ef4259353884827cac7c7a4ef046d1562d039a789980e55049dd38;artifact:guest-capability=sha256:6f23f8d7743bc60d7ca30c8c1e3a330db930d33b7cfa6f2e44f9ab5bd86f556e"
+    },
+    {
+      "id": "EVQ-COMMAND-VIEW-FAULTS",
+      "passed": true,
+      "evidence_ref": "commit=b26e5efdf8ac04cce185de06d771a558d57b42af;evq-capture=sha256:65388c9bf5b0cb596c8518270a3c9d0f3b1e2647744fcd4d405ab1e16e42f609;evq-mapping=sha256:ae1c65a714ef4259353884827cac7c7a4ef046d1562d039a789980e55049dd38;go-test-json=sha256:f1e32e95e0c2b1d4bac0bbfba0bd688c64addb252f893b8e70455dbe085fce58"
+    }
+  ]
+}

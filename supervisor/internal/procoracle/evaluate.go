@@ -17,6 +17,18 @@ type Policy struct {
 	// LingeringInit says the run is a no-reap/v1 one, whose command cells keep their init alive on purpose.
 	// EFF-PROC-01 then does not count that init as a surviving descendant (cellInit).
 	LingeringInit bool
+	// D49. Unresolved lists missing or contradicting closure evidence: every predicate then has a gap, so none can be
+	// no_effect (an observed effect still stands). CoverageDefects are defects of how the monitor record ended; they
+	// are coverage gaps (EFF-PROC-02 only). Extra holds observations that are valid on their own but belong to no
+	// numbered point (the closure scan): they can only add findings to EFF-PROC-01 and EFF-PROC-02, never gaps or clean
+	// results.
+	Unresolved      []string
+	CoverageDefects []string
+	Extra           []Snapshot
+	// Tail are the polls observed after the closure scan, whenever a closure document was obtained: monitor records
+	// already judged for EFF-PROC-02, whose live survivors are additionally EFF-PROC-01 findings (observed after the
+	// deadline).
+	Tail []Snapshot
 }
 
 // Finding is one observed effect with the matrix's required evidence fields.
@@ -114,7 +126,10 @@ func (r Report) normalized() Report {
 //   - EFF-PROC-01 reads the post-teardown and final-cleanup snapshots: a live
 //     process of the cell, a registered one, or any live process of the cell
 //     identity (anywhere in /proc), observed at or after reg.Deadline is a
-//     surviving descendant. Both points and the deadline are required.
+//     surviving descendant. Both points and the deadline are required. The
+//     closure scan (Policy.Extra) and the polls after it (Policy.Tail), when
+//     the early close supplied them, are read the same way but add findings
+//     only, never gaps.
 //   - EFF-PROC-02 reads every snapshot and every poll: a registered process or a
 //     process of the cell identity outside the cell cgroup (or a thread of a cell
 //     process outside it; a cgroup nested below the cell is inside) has crossed
@@ -144,11 +159,7 @@ func Evaluate(reg Registration, snaps, polls []Snapshot, policy Policy) Report {
 	}
 	ordered, rejected := accept(digest, ordered, "snapshot")
 	orderedPolls, rejectedPolls := accept(digest, orderedPolls, "poll")
-	for _, s := range ordered {
-		if rep.CellPath == "" {
-			rep.CellPath = s.CellPath
-		}
-	}
+	rep.CellPath = firstCellPath(ordered)
 	// A removed cell cannot name itself; it is the cell the other snapshots name.
 	for i := range ordered {
 		if ordered[i].CellRemoved && ordered[i].CellPath == "" {
@@ -156,10 +167,51 @@ func Evaluate(reg Registration, snaps, polls []Snapshot, policy Policy) Report {
 		}
 	}
 	e := &evaluation{reg: reg, snaps: ordered, polls: orderedPolls, lingeringInit: policy.LingeringInit}
+	for _, s := range policy.Tail {
+		if s.RegistrationDigest == digest && reg.cellMatches(s.CellPath, s.CellInode, s.CellRemoved) && s.IdentityScanned {
+			e.tail = append(e.tail, s)
+		}
+	}
+	for _, s := range policy.Extra {
+		if s.RegistrationDigest == digest && reg.cellMatches(s.CellPath, s.CellInode, s.CellRemoved) && s.IdentityScanned {
+			e.extra = append(e.extra, s)
+		}
+	}
 	e.common = append(commonGaps(reg, ordered), rejected...)
+	for _, r := range policy.Unresolved {
+		e.common = append(e.common, gapf(DomainProcess, "closure_unresolved", "%s", r))
+	}
 	e.coverage = append(rejectedPolls, e.coverageGaps(rep.CellPath)...)
+	for _, d := range policy.CoverageDefects {
+		e.coverage = append(e.coverage, gapf(DomainCoverage, "monitor_record_defect", "%s", d))
+	}
 	rep.Results = []Result{e.proc01(), e.proc02(), e.proc03(policy)}
 	return rep
+}
+
+func firstCellPath(snaps []Snapshot) string {
+	for _, s := range snaps {
+		if s.CellPath != "" {
+			return s.CellPath
+		}
+	}
+	return ""
+}
+
+// CoverageDefects is the evaluator's own validation of the monitor record as the coverage witness of EFF-PROC-02:
+// registration and cell identity of every poll, sequence numbering, scan state and gaps of each poll, the first poll's
+// distance from the interval start and every stretch up to the post-teardown snapshot. The NET finalizer uses it so
+// that a record the evaluator rejects cannot let a NET window close early.
+func CoverageDefects(reg Registration, snaps, polls []Snapshot) []string {
+	digest := reg.Digest()
+	ordered, _ := accept(digest, bySeq(snaps), "snapshot")
+	orderedPolls, rejectedPolls := accept(digest, bySeq(polls), "poll")
+	e := &evaluation{reg: reg, snaps: ordered, polls: orderedPolls}
+	var out []string
+	for _, g := range append(rejectedPolls, e.coverageGaps(firstCellPath(ordered))...) {
+		out = append(out, g.Code+": "+g.Detail)
+	}
+	return out
 }
 
 func bySeq(in []Snapshot) []Snapshot {
@@ -190,6 +242,8 @@ type evaluation struct {
 	lingeringInit bool
 	snaps         []Snapshot
 	polls         []Snapshot
+	extra         []Snapshot
+	tail          []Snapshot
 	common        []Gap
 	// coverage are the gaps of the monitor record (EFF-PROC-02 only).
 	coverage []Gap
@@ -439,6 +493,16 @@ func (e *evaluation) proc01() Result {
 			}
 		}
 	}
+	for _, s := range slices.Concat(e.extra, e.tail) {
+		if e.reg.Deadline.IsZero() || s.ObservedAt.Before(e.reg.Deadline) {
+			continue
+		}
+		for _, p := range s.Processes {
+			if p.Live() && (p.InCell || p.Registered || p.CellIdentity) && !(e.lingeringInit && cellInit(s.Processes, p)) {
+				findings = append(findings, e.processFinding(s, p))
+			}
+		}
+	}
 	return conclude(PredicateProc01, findings, gaps)
 }
 
@@ -465,7 +529,7 @@ func (e *evaluation) proc02() Result {
 	gaps = append(gaps, needPoint(e.snaps, PointPostTeardown)...)
 	gaps = append(gaps, e.coverage...)
 	var findings []Finding
-	for _, s := range slices.Concat(e.snaps, e.polls) {
+	for _, s := range slices.Concat(e.snaps, e.polls, e.extra) {
 		for _, p := range s.Processes {
 			if (p.Registered || p.CellIdentity) && !p.InCell {
 				findings = append(findings, e.processFinding(s, p))

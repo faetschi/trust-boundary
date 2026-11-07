@@ -200,7 +200,8 @@ summary rather than treating the raw exit code alone as a capability result.
 - `bootstrap-linux.sh` — native Linux bootstrap (idempotent, fail-closed).
 - `bootstrap-hyperv-windows.ps1` — Hyper-V VM creation and guest provisioning.
 - `bootstrap-qemu-linux.sh`: the same for a QEMU VM on a Linux host. It has only had its `--check` and syntax run on a machine without QEMU.
-- `test_windows_tool_manifest.ps1`: tests the optional `-WindowsToolManifestPath` pins of `bootstrap-hyperv-windows.ps1`. Its host tools must have a valid Microsoft signature and TrustedInstaller ownership. Hash pins are optional, because each Windows build ships different binaries.
+- `test_windows_tool_manifest.ps1`: tests the optional `-WindowsToolManifestPath` pins of `bootstrap-hyperv-windows.ps1`. Its host tools must have a valid Microsoft signature and TrustedInstaller ownership. Hash pins are optional, because each Windows build ships different binaries. CI does not run it; run it by hand on Windows with `powershell -NoProfile -ExecutionPolicy Bypass -File infra\repro\test_windows_tool_manifest.ps1`.
+- `test_cgroup_teardown_witness.py` and `../guest/test_*.py`: fixture-only Python regressions that CI runs in `quick-checks`. `../guest/test_landlock_profile_gate.py` also runs `test_landlock_profile_gate.ps1` and the `probe-host.ps1` file wrapper on Windows, and skips that case elsewhere, CI included.
 - `probe-host.ps1` — one-command capability report (SSH / WSL / saved capture).
 - [DISPOSABLE-CGROUP-TEARDOWN.md](DISPOSABLE-CGROUP-TEARDOWN.md) — operator procedure and trust boundary for the destructive `cgroup_teardown_witness.py` component probe; not qualification evidence.
 

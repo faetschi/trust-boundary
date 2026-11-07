@@ -63,7 +63,7 @@ for that installation. Crash-recovery fixes await the next live run.
 - `install/`, `scripts/`, `packaging/`: local installation, build, and release assets.
 - `infra/`: host preparation, guest provisioning, operator dispatcher, and evidence mappings.
 - `corpus/`: engineering smoke fixtures and the draft benchmark-adapted pilot corpus.
-- `docs/`: guides, runtime contracts, evaluation records, decisions, evidence, and archive.
+- `docs/`: guides, runtime contracts, evaluation records, decisions, and design notes.
 - `extensions/webchat/`: the frozen optional web chat extension.
 
 ## Master thesis

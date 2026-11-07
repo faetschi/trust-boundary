@@ -72,6 +72,7 @@
     "cell_gid": 0,
     "monitor_seconds": 0,
     "teardown_grace_seconds": 0,
+    "drain_grace_seconds": 0,
     "authorized_sockets": []
   }
 }

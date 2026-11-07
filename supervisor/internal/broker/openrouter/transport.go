@@ -2,12 +2,16 @@ package openrouter
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"net/url"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -146,7 +150,7 @@ func (d *HTTPDoer) Do(request *http.Request) (*http.Response, error) {
 		if response != nil && response.Body != nil {
 			_ = response.Body.Close()
 		}
-		return nil, errors.New("OpenRouter HTTP request failed")
+		return nil, fmt.Errorf("provider HTTP request failed: %s", transportFailureClass(doErr))
 	}
 	return response, nil
 }
@@ -182,7 +186,8 @@ type redactingReadCloser struct {
 func (r *redactingReadCloser) Read(buffer []byte) (int, error) {
 	n, err := r.reader.Read(buffer)
 	if err != nil && err != io.EOF {
-		return n, errors.New("OpenRouter response body read failed")
+		// The class is the whole text: the raw error can carry a URL or an address.
+		return n, errors.New(transportFailureClass(err))
 	}
 	return n, err
 }
@@ -237,10 +242,58 @@ func (r *redactingReader) Read(buffer []byte) (int, error) {
 		if err == io.EOF {
 			r.eof = true
 		} else if err != nil {
-			return 0, errors.New("OpenRouter response body read failed")
+			return 0, err
 		}
 	}
 	n := copy(buffer, r.output)
 	r.output = r.output[n:]
 	return n, nil
+}
+
+// WinSock numbers for a timed-out, reset or refused socket. On Windows the syscall ETIMEDOUT,
+// ECONNRESET and ECONNREFUSED values are invented and do not match these; Linux never returns them.
+const (
+	winsockTimedOut    = syscall.Errno(10060)
+	winsockConnReset   = syscall.Errno(10054)
+	winsockConnRefused = syscall.Errno(10061)
+	winsockConnAborted = syscall.Errno(10053)
+	winsockNetUnreach  = syscall.Errno(10051)
+	winsockHostUnreach = syscall.Errno(10065)
+)
+
+// transportFailureClass returns one fixed class for a transport error, never its text. The checks run in
+// this order and the first match wins: timeout comes first because a timed-out dial or lookup also matches
+// the generic net errors below; then canceled, dns, tls, connection_refused, unreachable and connection_reset.
+// Anything else is other.
+func transportFailureClass(err error) string {
+	var netErr net.Error
+	var dnsErr *net.DNSError
+	var recordErr tls.RecordHeaderError
+	var alertErr tls.AlertError
+	var verifyErr *tls.CertificateVerificationError
+	var authorityErr x509.UnknownAuthorityError
+	var hostnameErr x509.HostnameError
+	var certErr x509.CertificateInvalidError
+	switch {
+	case errors.Is(err, context.DeadlineExceeded), errors.Is(err, winsockTimedOut),
+		errors.As(err, &netErr) && netErr.Timeout():
+		return "timeout"
+	case errors.Is(err, context.Canceled):
+		return "canceled"
+	case errors.As(err, &dnsErr):
+		return "dns"
+	case errors.As(err, &recordErr), errors.As(err, &alertErr), errors.As(err, &verifyErr),
+		errors.As(err, &authorityErr), errors.As(err, &hostnameErr), errors.As(err, &certErr):
+		return "tls"
+	case errors.Is(err, syscall.ECONNREFUSED), errors.Is(err, winsockConnRefused):
+		return "connection_refused"
+	case errors.Is(err, syscall.ENETUNREACH), errors.Is(err, syscall.EHOSTUNREACH),
+		errors.Is(err, winsockNetUnreach), errors.Is(err, winsockHostUnreach):
+		return "unreachable"
+	case errors.Is(err, syscall.ECONNRESET), errors.Is(err, syscall.EPIPE), errors.Is(err, syscall.ECONNABORTED),
+		errors.Is(err, winsockConnReset), errors.Is(err, winsockConnAborted),
+		errors.Is(err, io.EOF), errors.Is(err, io.ErrUnexpectedEOF):
+		return "connection_reset"
+	}
+	return "other"
 }

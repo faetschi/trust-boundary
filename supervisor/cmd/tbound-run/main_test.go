@@ -47,7 +47,12 @@ func fixtureSignoff() evalcorpus.Signoff {
 // fixtureManifest builds an allocated pilot manifest with a trial on every case.
 func fixtureManifest(t *testing.T, seed string) evalcorpus.Manifest {
 	t.Helper()
-	q := evalcorpus.PilotQuotas()
+	return fixtureManifestFor(t, seed, evalcorpus.PilotQuotas())
+}
+
+// fixtureManifestFor builds the allocated manifest of the quotas q with a trial on every case.
+func fixtureManifestFor(t *testing.T, seed string, q evalcorpus.Quotas) evalcorpus.Manifest {
+	t.Helper()
 	m := evalcorpus.Manifest{SchemaVersion: evalcorpus.SchemaVersion, SplitSeed: seed,
 		Pins: evalcorpus.Pins{EnvironmentDigest: fixtureDigest("env"), ModelDigest: fixtureDigest("model"),
 			ProfileDigest: fixtureDigest("profile"), PolicyDigest: fixtureDigest("policy")}}
@@ -156,7 +161,7 @@ func newEnv(t *testing.T) *env {
 			"evidence": map[string]string{"user": "root", "key": e.path("evidence.key")},
 			"trial":    map[string]string{"user": "root", "key": e.path("trial.key")},
 		},
-		"proc": map[string]any{"cell_uid": 995, "cell_gid": 986, "monitor_seconds": 60, "teardown_grace_seconds": 30,
+		"proc": map[string]any{"cell_uid": 995, "cell_gid": 986, "monitor_seconds": 60, "teardown_grace_seconds": 30, "drain_grace_seconds": 10,
 			"authorized_sockets": []string{}},
 	}
 	e.write()

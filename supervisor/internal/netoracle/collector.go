@@ -2,8 +2,12 @@ package netoracle
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"sync"
+	"time"
 
 	"tbound/supervisor/internal/runner"
 )
@@ -39,6 +43,17 @@ type Collector struct {
 	// original canary and journal documents. A file that cannot be written makes the interval evidence
 	// absent, so a verdict is never journaled without the evidence behind it.
 	RetainDir string
+	// Gate is D49's closure source (the PROC collector). With it, the end canary is sent only after the drain deadline
+	// of a proven closure, or after the original horizon when there is no proof; a gate that knows no interval leaves
+	// the end canary where it was. Nil sends it right after the answer.
+	Gate runner.ClosureSource
+	// Wait is a test seam: it returns when until has passed (a timer by default).
+	Wait func(ctx context.Context, until time.Time) error
+	// Horizon is the NET window's own fallback length (the fixed monitor window): when the gate knows no interval (PROC
+	// never began) the end canary still waits this long from the start canary, independent of PROC's startup.
+	Horizon time.Duration
+	// Now is a test seam (time.Now).
+	Now func() time.Time
 
 	mu     sync.Mutex
 	active map[string]*netInterval
@@ -47,6 +62,7 @@ type Collector struct {
 type netInterval struct {
 	tag   string
 	start runner.NetCanaryDoc
+	began time.Time
 }
 
 // NewCollector returns the NET collector over the evidence transport.
@@ -67,6 +83,60 @@ func (c *Collector) canary(ctx context.Context, tag, phase string) (runner.NetCa
 		return doc, fmt.Errorf("%w: the %s canary document does not answer the request", runner.ErrEvidenceAbsent, phase)
 	}
 	return doc, nil
+}
+
+func (c *Collector) now() time.Time {
+	if c.Now != nil {
+		return c.Now()
+	}
+	return time.Now()
+}
+
+// EndDecision waits as long as the closure the gate gives requires and returns that closure (nil without a gate): the
+// drain deadline of a proven, FINAL closure; otherwise the original horizon; and when the gate knows no interval, this
+// collector's own Horizon from its start canary. An error is a failed wait.
+func (c *Collector) EndDecision(ctx context.Context, ref runner.EvidenceRef) (*runner.IntervalClosure, error) {
+	if c.Gate == nil {
+		return nil, nil
+	}
+	cl := c.Gate.Closure(ctx, ref)
+	until := cl.Horizon
+	if cl.Proven {
+		until = cl.DrainUntil
+	}
+	if until.IsZero() && c.Horizon > 0 {
+		began := c.now()
+		c.mu.Lock()
+		if iv := c.active[ref.Interval]; iv != nil {
+			began = iv.began
+		}
+		c.mu.Unlock()
+		until = began.Add(c.Horizon)
+	}
+	if !until.IsZero() {
+		if err := c.wait(ctx, until); err != nil {
+			return nil, fmt.Errorf("%w: waiting to end the NET window: %v", runner.ErrEvidenceAbsent, err)
+		}
+	}
+	return &cl, nil
+}
+
+func (c *Collector) wait(ctx context.Context, until time.Time) error {
+	if c.Wait != nil {
+		return c.Wait(ctx, until)
+	}
+	d := time.Until(until)
+	if d <= 0 {
+		return nil
+	}
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-t.C:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 // BeginInterval implements runner.IntervalCollectors: it issues the start canary.
@@ -92,7 +162,7 @@ func (c *Collector) BeginInterval(ctx context.Context, ref runner.EvidenceRef) e
 	if c.active == nil {
 		c.active = map[string]*netInterval{}
 	}
-	c.active[ref.Interval] = &netInterval{tag: tag, start: start}
+	c.active[ref.Interval] = &netInterval{tag: tag, start: start, began: c.now()}
 	return nil
 }
 
@@ -115,6 +185,10 @@ func (c *Collector) Net(ctx context.Context, ref runner.EvidenceRef) (runner.Obs
 	if iv == nil {
 		return runner.ObserverEvidence{}, fmt.Errorf("%w: no NET interval was begun for %s", runner.ErrEvidenceAbsent, ref.Interval)
 	}
+	closure, err := c.EndDecision(ctx, ref)
+	if err != nil {
+		return runner.ObserverEvidence{}, err
+	}
 	end, err := c.canary(ctx, iv.tag, PhaseEnd)
 	if err != nil {
 		return runner.ObserverEvidence{}, err
@@ -135,12 +209,28 @@ func (c *Collector) Net(ctx context.Context, ref runner.EvidenceRef) (runner.Obs
 		return absent("the NET report has no digest")
 	}
 	if c.RetainDir != "" {
-		if err := retain(c.RetainDir, Retained{Schema: RetainedSchema, Interval: ref.Interval, Start: iv.start, End: end, Journal: doc}); err != nil {
+		if err := retain(c.RetainDir, Retained{Schema: RetainedSchema, Interval: ref.Interval, Start: iv.start, End: end, Journal: doc, Closure: closure}); err != nil {
 			return absent("the interval evidence could not be retained: %v", err)
 		}
 	}
+	findings, digest := BindClosure(OraclesFromNET01(rep), digest, closure)
 	return runner.ObserverEvidence{
-		Findings: OraclesFromNET01(rep),
+		Findings: findings,
 		Refs:     map[string]runner.OracleRef{runner.OracleNet01: {Version: rep.OracleVersion, Report: digest}},
 	}, nil
+}
+
+// BindClosure applies the D49 closure the end canary waited on to a NET report: the closure is folded into the
+// reference digest, and unresolved closure evidence turns a clean result into lost (an observed arrival stands). The
+// collector and the verifier of retained intervals both use it. A nil closure changes nothing.
+func BindClosure(findings map[string]runner.Finding, digest string, closure *runner.IntervalClosure) (map[string]runner.Finding, string) {
+	if closure == nil {
+		return findings, digest
+	}
+	raw, _ := json.Marshal(closure)
+	sum := sha256.Sum256(append([]byte(digest+"|"), raw...))
+	if len(closure.Unresolved) != 0 && findings[runner.OracleNet01] == runner.FindingNone {
+		findings[runner.OracleNet01] = runner.FindingLost
+	}
+	return findings, hex.EncodeToString(sum[:])
 }

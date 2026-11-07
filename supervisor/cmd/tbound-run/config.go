@@ -15,6 +15,7 @@ import (
 
 	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/calibration"
+	"tbound/supervisor/internal/procoracle"
 	"tbound/supervisor/internal/routematrix"
 	"tbound/supervisor/internal/runner"
 )
@@ -41,10 +42,12 @@ type runConfig struct {
 	// Manifest is the corpus manifest. QuotaProfile is thesis or pilot.
 	Manifest     string `json:"manifest"`
 	QuotaProfile string `json:"quota_profile"`
-	// FreezeCommit, EVQObligations, AdaptiveCaps and OnlyCases are runner.Config.
+	// FreezeCommit, EVQObligations, AdaptiveCaps, OnlyCases and Purpose are runner.Config.
 	FreezeCommit   string           `json:"freeze_commit"`
 	EVQObligations []string         `json:"evq_obligations"`
 	AdaptiveCaps   calibration.Caps `json:"adaptive_caps"`
+	// Purpose is "construct-witness" for a non-confirmatory witness run; absent is the study's run.
+	Purpose runner.RunPurpose `json:"purpose,omitempty"`
 	// Artifacts is the directory of the corpus artifacts (attacker-<hex>.json among them). A manifest that pins an
 	// attacker artifact needs it: the adaptive caps are then those of the artifact (runner.AdaptiveCapsFor).
 	Artifacts string   `json:"artifacts_dir"`
@@ -122,10 +125,13 @@ type identity struct {
 // procConfig is the PROC collector's view of the service's cell registration and the
 // length of the guest monitor.
 type procConfig struct {
-	CellUID           uint32   `json:"cell_uid"`
-	CellGID           uint32   `json:"cell_gid"`
-	MonitorSeconds    int      `json:"monitor_seconds"`
-	TeardownGraceSecs int      `json:"teardown_grace_seconds"`
+	CellUID           uint32 `json:"cell_uid"`
+	CellGID           uint32 `json:"cell_gid"`
+	MonitorSeconds    int    `json:"monitor_seconds"`
+	TeardownGraceSecs int    `json:"teardown_grace_seconds"`
+	// DrainGraceSecs is D49's registered NET drain grace: how long after the cell's network namespace is gone the
+	// observation stays open for a late sink arrival before the end canary. MonitorSeconds stays the fallback cap.
+	DrainGraceSecs    int      `json:"drain_grace_seconds"`
 	AuthorizedSockets []string `json:"authorized_sockets"`
 }
 
@@ -227,6 +233,10 @@ func (c runConfig) validate() error {
 	if c.Proc.CellUID == 0 || c.Proc.CellGID == 0 || c.Proc.MonitorSeconds <= 0 || c.Proc.TeardownGraceSecs < 0 {
 		return errors.New("proc needs cell_uid, cell_gid, monitor_seconds and a non-negative teardown_grace_seconds")
 	}
+	if c.Proc.DrainGraceSecs < procoracle.MinDrainGraceSeconds || c.Proc.DrainGraceSecs > procoracle.MaxDrainGraceSeconds {
+		return fmt.Errorf("proc.drain_grace_seconds is required (D49) and must be between %d and %d, got %d",
+			procoracle.MinDrainGraceSeconds, procoracle.MaxDrainGraceSeconds, c.Proc.DrainGraceSecs)
+	}
 	if err := (runner.Attest{EVQ: c.EVQObligations, Pins: c.Pins.ReceiptPins}).Validate(); err != nil {
 		return err
 	}
@@ -242,7 +252,7 @@ func (c runConfig) validate() error {
 // runnerConfig is the protocol Config bound into the plan digest.
 func (c runConfig) runnerConfig() runner.Config {
 	return runner.Config{CDH: c.CDH, FreezeCommit: c.FreezeCommit, AdaptiveCaps: c.AdaptiveCaps,
-		EVQObligations: slices.Clone(c.EVQObligations), OnlyCases: slices.Clone(c.OnlyCases)}
+		EVQObligations: slices.Clone(c.EVQObligations), OnlyCases: slices.Clone(c.OnlyCases), Purpose: c.Purpose}
 }
 
 func (c runConfig) journalPath() string { return filepath.Join(c.RunDir, "journal.jsonl") }

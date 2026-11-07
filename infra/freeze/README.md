@@ -21,9 +21,9 @@ The guest scripts stop on `PREV_FREEZE=none`.
 
 ## Start a new freeze
 
-1. Copy the last values file: `cp freezes/F14.env freezes/F15.env`.
-2. Set `FREEZE=F15`, `FREEZE_COMMIT=FROZEN_COMMIT_TBD`, `PREV_FREEZE=F14` and `PREV_COMMIT=<the F14 commit>`.
-3. Fill every `PREV_*` value from `evidence/F14/logs`, plus a new `DR_ADMISSION_ID` and the current `GUEST_IP`.
+1. Copy the last values file, for example after F18: `cp freezes/F18.env freezes/F19.env`.
+2. Set `FREEZE=F19`, `FREEZE_COMMIT=FROZEN_COMMIT_TBD`, `PREV_FREEZE=F18` and `PREV_COMMIT=<the F18 commit>`.
+3. Fill every `PREV_*` value from `evidence/F18/logs`, plus a new `DR_ADMISSION_ID` and the current `GUEST_IP`.
    Commit fresh admission IDs in `infra/guest/serve-pi-service.g1.json` and `serve-pi-service.route-probe.json`; `10-freeze.sh` refuses reused ones.
 4. Set `FREEZE_COMMIT` to the owner-selected 40-hex commit.
 
@@ -48,6 +48,7 @@ F14 accepts the pinned F13 measurer (05 also runs when the bundle is unchanged):
 F15 accepts the pinned F14 measurer: `launcher_linux.go`, `host.go` and `profile_tooling_linux.go` are unchanged in 02f9fb7..2a6492d, and `internal/sessionlaunch`, which changed, is not in `tbound-profile`'s import closure (`GOOS=linux go list -deps ./cmd/tbound-profile`); the pair lives in a kit commit on top of F15, since a tree cannot name its own commit; 10 rechecks with F15.
 F16 accepts the pinned F15 measurer: `launcher_linux.go`, `host.go` and `profile_tooling_linux.go` are unchanged in 2a6492d..97738b6 (`git diff --quiet`); the pair lives in a kit commit on top of F16; 10 rechecks with F16.
 F17 accepts the pinned F16 measurer: `launcher_linux.go`, `host.go` and `profile_tooling_linux.go` are unchanged in 97738b6..8931c69 (`git diff --quiet`); the pair lives in a kit commit on top of F17; 10 rechecks with F17.
+F18 accepts the pinned F17 measurer: 8931c69..b26e5ef has deletion-only non-test changes in `launcher_linux.go`, `profile_tooling_linux.go` and `construct_evidence_linux.go`, unreachable from `runtime-bundle-digest` (F17 caller grep and import-closure audit); the command, `VerifyLinuxPiRuntimeBundle`, the mount/device helpers and the `host.go` limits are byte-identical; the pair lives in a kit commit on top of F18; 10 rechecks with F18.
 `KIT_FREEZE=F14 DRY_RUN=1 bash guest/05-runtime-swap.sh` in Git Bash checks owner inputs and prints every guest command without guest contact.
 `10-freeze.sh` step 3b refuses a frozen g1/route-probe template that carries the previous freeze's admission id, and a dr id that is spent.
 05 requires `HF/BUNDLE_TAR_SIZE`, written by P2 rebuild after tar verification (F13's missing record was added after the same sha256 check).

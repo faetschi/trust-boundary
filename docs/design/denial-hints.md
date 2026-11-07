@@ -1,6 +1,6 @@
 # Denial hints
 
-Status: stage 1 in progress (branch `feat/denial-hints`); stage 2 planned after the thesis.
+Status: stage 1 (the static table) is merged into `main`; stage 2 is planned after the thesis. The offline decision-model chooser (C-DH) is described separately in [denial hint providers](denial-hint-providers.md).
 
 When the gate denies a call, or an allowed `bash` command fails, the model gets one extra sentence that names what it may do instead. An unattended Pi then gets back onto a compliant route instead of retrying a variant of the denied call. There is no human prompt to wait on: a `DENY` returns immediately and the run continues.
 

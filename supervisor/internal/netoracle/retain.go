@@ -29,6 +29,8 @@ type Retained struct {
 	Start    runner.NetCanaryDoc  `json:"start"`
 	End      runner.NetCanaryDoc  `json:"end"`
 	Journal  runner.NetJournalDoc `json:"journal"`
+	// Closure is the D49 closure verdict the end canary waited on (nil without a gate).
+	Closure *runner.IntervalClosure `json:"closure,omitempty"`
 }
 
 // RetainedName is the file name of the interval ref (runner.IntervalRef) in a RetainDir. The ref holds

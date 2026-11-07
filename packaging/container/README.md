@@ -31,7 +31,7 @@ host profile and containment described in [`../../docs/guides/governed-setup.md`
   it does not install Pi development dependencies. Production packaging of the
   official installed Pi CLI and verification of its executable/extension closure
   are pending. No private embedded Pi SDK is packaged.
-- The build context is narrowed by `.dockerignore`/`.containerignore`.
+- The build context is narrowed by `.dockerignore` (podman and buildah read it too).
 - Base images are currently **not digest-pinned**; pin `golang:1.27-*` and
   `node:24-*` digests before claiming a pinned runtime.
 - Build context is the repository root; do not add the full repo to the image
