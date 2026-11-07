@@ -6,6 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -67,7 +70,10 @@ type ClosureDoc struct {
 	// which is empty whenever no command cell runs; the proof needs the children gone, not the parent empty.
 	CellChildren int `json:"cell_children"`
 	// NetNSGone is true when none of the commands' network namespaces is held any more (no process, no mount).
-	NetNSGone bool     `json:"netns_gone"`
+	NetNSGone bool `json:"netns_gone"`
+	// HostNetNS is true when a command ran in the host's own network namespace (net-sink/v1), which never goes away:
+	// the drain cannot be proven, and the full window is the legitimate answer.
+	HostNetNS bool     `json:"host_netns"`
 	Scan      Snapshot `json:"scan"`
 }
 
@@ -86,14 +92,21 @@ func (d ClosureDoc) Digest() string {
 type Closure struct {
 	Proven  bool
 	Reasons []string
-	Digest  string
+	// Unresolved is the part of Reasons that is missing or contradicting evidence; a legitimate full window (no-reap,
+	// host network namespace) is a reason only.
+	Unresolved []string
+	Digest     string
 }
 
 // EvaluateClosure decides whether doc proves the interval complete. interval and runID are the host's own: the
 // interval of the step and the run id of the completed receipt the client printed (empty when it printed none).
 func EvaluateClosure(reg Registration, doc ClosureDoc, interval, runID string) Closure {
 	c := Closure{Digest: doc.Digest()}
-	no := func(format string, args ...any) { c.Reasons = append(c.Reasons, fmt.Sprintf(format, args...)) }
+	no := func(format string, args ...any) {
+		r := fmt.Sprintf(format, args...)
+		c.Reasons, c.Unresolved = append(c.Reasons, r), append(c.Unresolved, r)
+	}
+	legit := func(format string, args ...any) { c.Reasons = append(c.Reasons, fmt.Sprintf(format, args...)) }
 	switch {
 	case doc.Schema != runner.EvidenceSchema || doc.Kind != runner.EvidenceProcClosure:
 		no("not a proc-closure document")
@@ -110,7 +123,14 @@ func EvaluateClosure(reg Registration, doc ClosureDoc, interval, runID string) C
 	if doc.ExpectedSettlements < 0 || len(doc.Commands) != doc.ExpectedSettlements {
 		no("%d command settlements, the receipt counts %d", len(doc.Commands), doc.ExpectedSettlements)
 	}
+	noReap := false
 	for i, s := range doc.Commands {
+		if s.SurvivorsTolerated || s.ContainerLeftRunning || s.CommandScopeDetached || s.OutputMarkerObserved {
+			// A cell left running on purpose has another settlement shape and survivors by design: the window stays full.
+			legit("command %d: a cell left running on purpose (no-reap) never closes early", i)
+			noReap = true
+			continue
+		}
 		for _, f := range []struct {
 			name string
 			ok   bool
@@ -125,14 +145,14 @@ func EvaluateClosure(reg Registration, doc ClosureDoc, interval, runID string) C
 				no("command %d: %s is not established", i, f.name)
 			}
 		}
-		if s.SurvivorsTolerated || s.ContainerLeftRunning || s.CommandScopeDetached || s.OutputMarkerObserved {
-			no("command %d: a cell left running on purpose (no-reap) never closes early", i)
-		}
 	}
-	if doc.CellChildren != 0 {
+	if doc.CellChildren != 0 && !noReap {
 		no("%d command cgroups remain below the cells cgroup", doc.CellChildren)
 	}
-	if !doc.NetNSGone {
+	switch {
+	case doc.HostNetNS:
+		legit("a command ran in the host network namespace, which cannot disappear: no drain proof exists")
+	case !doc.NetNSGone && !noReap:
 		no("a command network namespace is still held")
 	}
 	s := doc.Scan
@@ -151,7 +171,7 @@ func EvaluateClosure(reg Registration, doc ClosureDoc, interval, runID string) C
 		no("the scan was taken before the teardown deadline")
 	}
 	for _, p := range s.Processes {
-		if p.Live() && (p.InCell || p.Registered || p.CellIdentity) {
+		if p.Live() && (p.InCell || p.Registered || p.CellIdentity) && !noReap {
 			no("process %d (%s) of the cell identity is alive", p.PID, p.Comm)
 		}
 	}
@@ -201,4 +221,121 @@ type MonitorStop struct {
 	FirstPollAt time.Time `json:"first_poll_at"`
 	LastPollAt  time.Time `json:"last_poll_at"`
 	StoppedAt   time.Time `json:"stopped_at"`
+}
+
+// CoverageHealthy checks the monitor record as a witness of the whole time it ran: its polls strictly increase in time
+// and no stretch between two polls exceeds maxGap. The evaluator checks the stretch up to the post-teardown snapshot;
+// this covers the rest, through the last poll, which is where a closure or a stop ends the record.
+func CoverageHealthy(polls []Snapshot, maxGap time.Duration) error {
+	if len(polls) == 0 {
+		return errors.New("no polls")
+	}
+	for i := 1; i < len(polls); i++ {
+		switch d := polls[i].ObservedAt.Sub(polls[i-1].ObservedAt); {
+		case d <= 0:
+			return fmt.Errorf("poll %d was not observed after poll %d", polls[i].Seq, polls[i-1].Seq)
+		case d > maxGap:
+			return fmt.Errorf("%s between poll %d and poll %d (MaxGap %s)", d, polls[i-1].Seq, polls[i].Seq, maxGap)
+		}
+	}
+	return nil
+}
+
+// MaxStopInputBytes bounds what the guest reads of its stdin for a stop request.
+const MaxStopInputBytes = 512
+
+// ReadMonitorStop reads the monitor's whole bounded input and accepts exactly one stop record. A second line, any
+// other text, an input over the bound, or no complete line is an error, and the monitor keeps its horizon.
+func ReadMonitorStop(r io.Reader) (MonitorStopRequest, error) {
+	raw, err := io.ReadAll(io.LimitReader(r, MaxStopInputBytes+1))
+	if err != nil {
+		return MonitorStopRequest{}, err
+	}
+	if len(raw) > MaxStopInputBytes {
+		return MonitorStopRequest{}, errors.New("the stop input is over its bound")
+	}
+	return ParseMonitorStopLine(string(raw))
+}
+
+// TerminationSchema, RetainedSuffix: the retained termination record of an interval (D49).
+const (
+	TerminationSchema = "tbound-proc-termination/v1"
+	RetainedSuffix    = ".proc-closure.json"
+)
+
+// Termination is the retained record of how a PROC interval ended: the closure document, its verdict, the monitor's
+// stop record and the coverage defects the host found. Its digest is folded into the PROC oracle references.
+type Termination struct {
+	Schema          string      `json:"schema"`
+	Interval        string      `json:"interval"`
+	RunID           string      `json:"run_id"`
+	Registration    string      `json:"registration"`
+	Proven          bool        `json:"proven"`
+	Reasons         []string    `json:"reasons"`
+	Unresolved      []string    `json:"unresolved"`
+	ClosureDigest   string      `json:"closure_digest"`
+	Closure         *ClosureDoc `json:"closure"`
+	Stop            MonitorStop `json:"stop"`
+	PollCount       int         `json:"poll_count"`
+	CoverageDefects []string    `json:"coverage_defects"`
+}
+
+// Digest is the hex SHA-256 of the record's compact JSON.
+func (t Termination) Digest() string {
+	t.Reasons, t.Unresolved, t.CoverageDefects = nonNil(t.Reasons), nonNil(t.Unresolved), nonNil(t.CoverageDefects)
+	if t.Closure != nil {
+		c := *t.Closure
+		c.Scan = c.Scan.normalized()
+		if c.Commands == nil {
+			c.Commands = []CommandSettlement{}
+		}
+		t.Closure = &c
+	}
+	b, _ := json.Marshal(&t)
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:])
+}
+
+// RetainedName is the file name of an interval's termination record (its ref is not portable in a file name).
+func RetainedName(interval string) string {
+	sum := sha256.Sum256([]byte(interval))
+	return hex.EncodeToString(sum[:]) + RetainedSuffix
+}
+
+// ParseRetained decodes one retained termination record strictly.
+func ParseRetained(raw []byte) (Termination, error) {
+	var t Termination
+	if err := runner.DecodeEvidenceDoc(raw, &t); err != nil {
+		return Termination{}, err
+	}
+	if t.Schema != TerminationSchema {
+		return Termination{}, fmt.Errorf("retained proc termination: schema %q, want %q", t.Schema, TerminationSchema)
+	}
+	return t, nil
+}
+
+func retainTermination(dir string, t Termination) error {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	raw, err := json.Marshal(t)
+	if err != nil {
+		return err
+	}
+	f, err := os.OpenFile(filepath.Join(dir, RetainedName(t.Interval)), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return err
+	}
+	werr := error(nil)
+	if _, werr = f.Write(append(raw, '\n')); werr == nil {
+		werr = f.Sync()
+	}
+	return errors.Join(werr, f.Close())
+}
+
+// BindDigest folds a termination digest into a report digest: the oracle reference then depends on how the interval
+// ended, not only on what the snapshots said.
+func BindDigest(report, termination string) string {
+	sum := sha256.Sum256([]byte(report + "\n" + termination))
+	return hex.EncodeToString(sum[:])
 }

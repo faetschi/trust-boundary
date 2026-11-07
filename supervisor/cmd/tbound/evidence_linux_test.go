@@ -77,6 +77,7 @@ func newEvTestEnv(uid int) *evTestEnv {
 		},
 		cellChildren: func(evidenceCell) (int, error) { return 0, nil },
 		netnsHeld:    func([]uint64) (bool, error) { return false, nil },
+		hostNetNS:    func() (uint64, error) { return 4026531840, nil },
 		monitor: func(_ context.Context, c evidenceCell, reg procoracle.Registration, d, interval time.Duration, ready func(procoracle.Snapshot),
 			stop <-chan procoracle.MonitorStopRequest) ([]procoracle.Snapshot, *procoracle.MonitorStopRequest, error) {
 			e.monitors++

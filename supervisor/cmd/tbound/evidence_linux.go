@@ -221,6 +221,8 @@ type evidenceEnv struct {
 	// namespaces (nsfs inodes) is still held by a process or a mount. Both are proc-closure's.
 	cellChildren func(c evidenceCell) (int, error)
 	netnsHeld    func(inodes []uint64) (bool, error)
+	// hostNetNS is the inode of the host's own network namespace (a net-sink/v1 command shares it).
+	hostNetNS func() (uint64, error)
 	// lockMonitor admits one monitor at a time; the release function frees it.
 	lockMonitor func() (release func(), err error)
 	// lockTransient admits one transient-watch at a time; watch is the effectoracle observer over root (it calls ready
@@ -243,7 +245,7 @@ func productionEvidenceEnv() evidenceEnv {
 	return evidenceEnv{
 		geteuid: os.Geteuid, getenv: os.Getenv, snapshotDir: wsoracle.SnapshotDir, pinRoot: pinRegisteredLiveRoot,
 		cell: loadEvidenceCell, capture: captureEvidenceCell, monitor: monitorEvidenceCell, readTrace: readEvidenceTrace,
-		cellChildren: listCellChildren, netnsHeld: hostNetnsHeld,
+		cellChildren: listCellChildren, netnsHeld: hostNetnsHeld, hostNetNS: hostNetnsInode,
 		lockMonitor: func() (func(), error) { return lockEvidenceMonitorFile(evidenceMonitorLockPath, evidenceRequiredUID) },
 		netCanary:   sendNetsinkCanary, netJournal: readNetsinkJournal,
 		lockTransient: func() (func(), error) { return lockEvidenceMonitorFile(evidenceTransientLockPath, evidenceRequiredUID) },
@@ -540,11 +542,8 @@ func evidenceProcMonitor(ctx context.Context, env evidenceEnv, f map[string]stri
 	stopCh := make(chan procoracle.MonitorStopRequest, 1)
 	if env.stdin != nil {
 		go func() {
-			line, err := bufio.NewReader(io.LimitReader(env.stdin, 512)).ReadString(0x0a)
-			if err != nil {
-				return
-			}
-			if req, perr := procoracle.ParseMonitorStopLine(line); perr == nil {
+			// The whole bounded input is one stop record: a stop followed by anything else keeps the horizon.
+			if req, err := procoracle.ReadMonitorStop(env.stdin); err == nil {
 				stopCh <- req
 			}
 		}()
@@ -683,15 +682,22 @@ func monitorEvidenceCell(ctx context.Context, c evidenceCell, reg procoracle.Reg
 	ready(m.Records()[0])
 	timer := time.NewTimer(d)
 	defer timer.Stop()
-	select {
-	case <-timer.C:
-		return m.Stop(), nil, nil
-	case req := <-stop:
-		return m.Stop(), &req, nil
-	case <-ctx.Done():
-		// A signal is not the horizon: a record cut short must not be taken for a complete one.
-		m.Stop()
-		return nil, nil, ctx.Err()
+	for {
+		select {
+		case <-timer.C:
+			return m.Stop(), nil, nil
+		case req := <-stop:
+			// The live monitor vetoes a stop whose accumulated coverage is unhealthy: a record with a hole is not
+			// ended early on the host's say-so, it runs to its horizon and says so.
+			if procoracle.CoverageHealthy(m.Records(), reg.MaxGap) == nil && time.Since(m.Records()[len(m.Records())-1].ObservedAt) <= reg.MaxGap {
+				return m.Stop(), &req, nil
+			}
+			stop = nil
+		case <-ctx.Done():
+			// A signal is not the horizon: a record cut short must not be taken for a complete one.
+			m.Stop()
+			return nil, nil, ctx.Err()
+		}
 	}
 }
 

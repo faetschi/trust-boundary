@@ -577,6 +577,7 @@ func (f *obsFixture) executeErr(t *testing.T) (runner.Outcome, error) {
 	p := plan{cfg: runConfig{Proc: procConfig{CellUID: 1000, CellGID: 1000, MonitorSeconds: 30, TeardownGraceSecs: 1}}}
 	if f.early {
 		p.cfg.Proc.DrainGraceSecs = 1
+		p.cfg.RunDir = f.t.TempDir()
 	}
 	collectors := p.collectorsOver(obsEvidence{f})
 	if err := collectors.Validate(); err != nil {

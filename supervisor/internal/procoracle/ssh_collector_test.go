@@ -51,6 +51,10 @@ type fakeGuest struct {
 	stopIgnored   bool
 	// shortHorizon: the record claims the horizon but holds only six seconds of polls.
 	shortHorizon bool
+	// pollProcs puts processes into the poll of that sequence number; stopPollSecs replaces the seconds (from the
+	// interval start) at which a stopped monitor polled.
+	pollProcs    map[int][]Process
+	stopPollSecs []int
 	// stops are the stop lines the monitor read from its stdin.
 	stops []string
 }
@@ -175,10 +179,18 @@ func (g *fakeGuest) RunReadyStdin(ctx context.Context, argv []string, stdin io.R
 		if g.shortHorizon {
 			last = 6
 		}
-		var polls []Snapshot
+		secs := make([]int, 0, last)
 		for i := 1; i <= last; i++ {
+			secs = append(secs, i)
+		}
+		if stopReq != nil && g.stopPollSecs != nil {
+			secs = g.stopPollSecs
+		}
+		var polls []Snapshot
+		for i, sec := range secs {
 			s := base
-			s.Seq, s.Point, s.ObservedAt = i, PointMonitor, sshT0.Add(time.Duration(i)*time.Second)
+			s.Seq, s.Point, s.ObservedAt = i+1, PointMonitor, sshT0.Add(time.Duration(sec)*time.Second)
+			s.Processes = g.pollProcs[i+1]
 			polls = append(polls, s)
 		}
 		doc := MonitorDoc{Schema: runner.EvidenceSchema, Kind: runner.EvidenceProcMonitor, RegistrationDigest: reg.Digest(), Polls: polls,

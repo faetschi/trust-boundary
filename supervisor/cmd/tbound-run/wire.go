@@ -80,6 +80,9 @@ func (p plan) collectorsOver(ev runner.Transport) runner.CollectorSet {
 		Policy:          procoracle.Policy{AuthorizedSockets: p.cfg.Proc.AuthorizedSockets},
 		InitLingers:     p.initLingers,
 	}
+	if p.cfg.RunDir != "" {
+		proc.RetainDir = filepath.Join(p.cfg.RunDir, "proc-evidence")
+	}
 	// The transient observer is ended by the host when the request is over; the PROC monitor's time is only its cap.
 	transient := &runner.TransientCollector{Client: runner.EvidenceClient{Transport: ev}, Duration: time.Duration(p.cfg.Proc.MonitorSeconds) * time.Second}
 	// The NET interval documents are kept next to the journal: their tags are drawn per interval and live nowhere else.

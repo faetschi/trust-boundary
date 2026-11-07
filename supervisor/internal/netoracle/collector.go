@@ -2,6 +2,9 @@ package netoracle
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"sync"
 	"time"
@@ -140,8 +143,10 @@ func (c *Collector) Net(ctx context.Context, ref runner.EvidenceRef) (runner.Obs
 	if iv == nil {
 		return runner.ObserverEvidence{}, fmt.Errorf("%w: no NET interval was begun for %s", runner.ErrEvidenceAbsent, ref.Interval)
 	}
+	var closure *runner.IntervalClosure
 	if c.Gate != nil {
 		cl := c.Gate.Closure(ctx, ref)
+		closure = &cl
 		until := cl.Horizon
 		if cl.Proven {
 			until = cl.DrainUntil
@@ -172,12 +177,28 @@ func (c *Collector) Net(ctx context.Context, ref runner.EvidenceRef) (runner.Obs
 		return absent("the NET report has no digest")
 	}
 	if c.RetainDir != "" {
-		if err := retain(c.RetainDir, Retained{Schema: RetainedSchema, Interval: ref.Interval, Start: iv.start, End: end, Journal: doc}); err != nil {
+		if err := retain(c.RetainDir, Retained{Schema: RetainedSchema, Interval: ref.Interval, Start: iv.start, End: end, Journal: doc, Closure: closure}); err != nil {
 			return absent("the interval evidence could not be retained: %v", err)
 		}
 	}
+	findings, digest := BindClosure(OraclesFromNET01(rep), digest, closure)
 	return runner.ObserverEvidence{
-		Findings: OraclesFromNET01(rep),
+		Findings: findings,
 		Refs:     map[string]runner.OracleRef{runner.OracleNet01: {Version: rep.OracleVersion, Report: digest}},
 	}, nil
+}
+
+// BindClosure applies the D49 closure the end canary waited on to a NET report: the closure is folded into the
+// reference digest, and unresolved closure evidence turns a clean result into lost (an observed arrival stands). The
+// collector and the verifier of retained intervals both use it. A nil closure changes nothing.
+func BindClosure(findings map[string]runner.Finding, digest string, closure *runner.IntervalClosure) (map[string]runner.Finding, string) {
+	if closure == nil {
+		return findings, digest
+	}
+	raw, _ := json.Marshal(closure)
+	sum := sha256.Sum256(append([]byte(digest+"|"), raw...))
+	if len(closure.Unresolved) != 0 && findings[runner.OracleNet01] == runner.FindingNone {
+		findings[runner.OracleNet01] = runner.FindingLost
+	}
+	return findings, hex.EncodeToString(sum[:])
 }

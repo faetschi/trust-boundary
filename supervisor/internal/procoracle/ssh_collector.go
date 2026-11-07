@@ -148,6 +148,10 @@ type procResolution struct {
 	waitErr error
 	snaps   []Snapshot
 	closure runner.IntervalClosure
+	// doc and scan are the guest's closure document and its scan, kept even when the closure was refused: the scan can
+	// still show an escaped process.
+	doc  *ClosureDoc
+	scan *Snapshot
 	// scanAt is the closure scan's observation time, the earliest poll the stopped record may end on.
 	scanAt time.Time
 	stop   MonitorStopRequest
@@ -207,6 +211,10 @@ type SSHCollector struct {
 	// early close off: every interval keeps its full MonitorDuration. Otherwise it is MinDrainGraceSeconds to
 	// MaxDrainGraceSeconds, and the evidence transport must be a runner.StdinTransport.
 	DrainGrace time.Duration
+	// RetainDir receives one termination record per interval (RetainedName, Termination): the closure document, its
+	// verdict and the monitor's stop record. Required when DrainGrace is set; a record that cannot be written makes the
+	// interval's evidence absent, so a verdict is never journaled without the record behind it.
+	RetainDir string
 	// Policy is EFF-PROC-03's authorization input.
 	Policy Policy
 	// InitLingers says whether the interval of a step is a no-reap/v1 one, whose command cells keep their
@@ -265,6 +273,9 @@ func (c *SSHCollector) Validate() error {
 	}
 	if !c.Client.CanReport() {
 		return errors.New("procoracle: the evidence transport cannot report the monitor's first poll (runner.ReadyTransport)")
+	}
+	if c.DrainGrace != 0 && c.RetainDir == "" {
+		return errors.New("procoracle: the early close needs a RetainDir for its termination records")
 	}
 	if c.DrainGrace != 0 && !c.Client.CanStop() {
 		return errors.New("procoracle: the evidence transport cannot end the monitor from the host (runner.StdinTransport)")
@@ -458,7 +469,8 @@ func (c *SSHCollector) resolve(ctx context.Context, ref runner.EvidenceRef, iv *
 		return res
 	}
 	no := func(format string, args ...any) {
-		res.closure.Reasons = append(res.closure.Reasons, fmt.Sprintf(format, args...))
+		r := fmt.Sprintf(format, args...)
+		res.closure.Reasons, res.closure.Unresolved = append(res.closure.Reasons, r), append(res.closure.Unresolved, r)
 	}
 	switch {
 	case ref.RunID == "":
@@ -477,11 +489,13 @@ func (c *SSHCollector) resolve(ctx context.Context, ref runner.EvidenceRef, iv *
 		no("the guest gave no closure document: %v", err)
 		return res
 	}
+	res.doc, res.scan = &doc, &doc.Scan
 	v := EvaluateClosure(iv.reg, doc, ref.Interval, ref.RunID)
 	if v.Proven && doc.Scan.ObservedAt.Before(res.snaps[1].ObservedAt) {
-		v.Proven, v.Reasons = false, append(v.Reasons, "the closure scan is older than the final-cleanup snapshot")
+		older := "the closure scan is older than the final-cleanup snapshot"
+		v.Proven, v.Reasons, v.Unresolved = false, append(v.Reasons, older), append(v.Unresolved, older)
 	}
-	res.closure.Digest, res.closure.Reasons = v.Digest, v.Reasons
+	res.closure.Digest, res.closure.Reasons, res.closure.Unresolved = v.Digest, v.Reasons, v.Unresolved
 	if v.Proven {
 		res.closure.Proven = true
 		res.closure.DrainUntil = c.now().Add(c.DrainGrace)
@@ -502,33 +516,40 @@ func (c *SSHCollector) Closure(ctx context.Context, ref runner.EvidenceRef) runn
 	return c.resolve(ctx, ref, iv).closure
 }
 
-// monitorEnd checks how the monitor says it ended against what the host asked and saw. Any doubt is an error, which
-// leaves the record unusable (PROC-02 lost): after a stop there is no horizon left to fall back to.
-func (c *SSHCollector) monitorEnd(res monitorResult, rs *procResolution, stopped bool) error {
+// monitorEnd lists what is wrong with how the monitor says it ended, judged against what the host asked and saw. A
+// defect never discards the polls: it only invalidates the negative claim they make (a coverage gap), because after a
+// stop there is no horizon left to fall back to and a valid poll that saw an escaped process stays a valid observation.
+func (c *SSHCollector) monitorEnd(res monitorResult, rs *procResolution, stopped bool, maxGap time.Duration) []string {
 	n := len(res.polls)
 	if n == 0 {
-		return errors.New("the monitor record has no polls")
+		return []string{"the monitor record has no polls"}
 	}
+	var defects []string
+	bad := func(format string, args ...any) { defects = append(defects, fmt.Sprintf(format, args...)) }
 	first, last, st := res.polls[0].ObservedAt, res.polls[n-1].ObservedAt, res.stop
 	if !st.FirstPollAt.Equal(first) || !st.LastPollAt.Equal(last) || st.StoppedAt.Before(last) {
-		return errors.New("the stated endpoints are not those of the record")
+		bad("the stated endpoints are not those of the record")
 	}
 	switch st.Reason {
 	case StopClosedOnProof:
 		switch {
 		case !stopped || st.ClosureDigest != rs.stop.ClosureDigest || st.RunID != rs.stop.RunID:
-			return errors.New("the monitor closed on a proof the host did not give")
-		case last.Before(rs.scanAt) || last.Before(rs.snaps[1].ObservedAt):
-			return errors.New("the monitor stopped before the closure scan and the final-cleanup snapshot")
+			bad("the monitor closed on a proof the host did not give")
+		case len(rs.snaps) != 2 || last.Before(rs.scanAt) || last.Before(rs.snaps[1].ObservedAt):
+			bad("the monitor stopped before the closure scan and the final-cleanup snapshot")
 		}
 	case StopHorizon:
 		if last.Sub(first) < time.Duration(c.durationSeconds())*time.Second-GuestMaxGap {
-			return errors.New("the monitor claims its horizon but its record is shorter")
+			bad("the monitor claims its horizon but its record is shorter")
 		}
 	default:
-		return fmt.Errorf("unknown stop reason %q", st.Reason)
+		bad("unknown stop reason %q", st.Reason)
 	}
-	return nil
+	// The evaluator checks the polls up to the post-teardown snapshot; the record is a witness through its last poll.
+	if err := CoverageHealthy(res.polls, maxGap); err != nil {
+		bad("coverage through the end of the record: %v", err)
+	}
+	return defects
 }
 
 // Proc implements runner.Collectors.
@@ -550,10 +571,13 @@ func (c *SSHCollector) Proc(ctx context.Context, ref runner.EvidenceRef) (runner
 		stopped = true
 	}
 	var polls []Snapshot
+	var stop MonitorStop
+	var defects []string
 	select {
 	case res := <-iv.done:
-		if res.err == nil && c.monitorEnd(res, rs, stopped) == nil {
-			polls = res.polls
+		if res.err == nil {
+			polls, stop = res.polls, res.stop
+			defects = c.monitorEnd(res, rs, stopped, iv.reg.MaxGap)
 		}
 	case <-ctx.Done():
 	}
@@ -562,10 +586,27 @@ func (c *SSHCollector) Proc(ctx context.Context, ref runner.EvidenceRef) (runner
 	}
 	policy := c.Policy
 	policy.LingeringInit = c.InitLingers != nil && c.InitLingers(ref)
+	policy.Unresolved, policy.CoverageDefects = rs.closure.Unresolved, defects
+	if rs.scan != nil {
+		policy.Extra = []Snapshot{*rs.scan}
+	}
 	rep := Evaluate(iv.reg, rs.snaps, polls, policy)
 	refs := Refs(rep)
 	if len(refs) == 0 {
 		return runner.ObserverEvidence{}, fmt.Errorf("%w: the PROC report has no digest", runner.ErrEvidenceAbsent)
+	}
+	if c.DrainGrace != 0 {
+		// How the interval ended is evidence: retain it, and bind it into every reference.
+		term := Termination{Schema: TerminationSchema, Interval: ref.Interval, RunID: ref.RunID, Registration: iv.reg.Digest(),
+			Proven: rs.closure.Proven, Reasons: rs.closure.Reasons, Unresolved: rs.closure.Unresolved, ClosureDigest: rs.closure.Digest,
+			Closure: rs.doc, Stop: stop, PollCount: len(polls), CoverageDefects: defects}
+		if err := retainTermination(c.RetainDir, term); err != nil {
+			return runner.ObserverEvidence{}, fmt.Errorf("%w: the termination record could not be retained: %v", runner.ErrEvidenceAbsent, err)
+		}
+		bound := term.Digest()
+		for k, r := range refs {
+			refs[k] = runner.OracleRef{Version: r.Version, Report: BindDigest(r.Report, bound)}
+		}
 	}
 	return runner.ObserverEvidence{Findings: Findings(rep), Refs: refs}, nil
 }

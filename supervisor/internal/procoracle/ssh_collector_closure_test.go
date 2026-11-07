@@ -3,6 +3,8 @@ package procoracle
 import (
 	"context"
 	"errors"
+	"maps"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -19,6 +21,7 @@ const testDrain = 7 * time.Second
 func newEarlyCollector(g *fakeGuest) (*SSHCollector, *[]time.Time) {
 	c, waited := newSSHCollector(g)
 	c.DrainGrace = testDrain
+	c.RetainDir, _ = os.MkdirTemp("", "d49-proc")
 	return c, waited
 }
 
@@ -97,16 +100,23 @@ func TestEarlyCloseStopsOnlyAfterTheDrainGrace(t *testing.T) {
 
 func TestEarlyCloseRefusedKeepsTheFullHorizon(t *testing.T) {
 	escaped := Process{PID: 9, StartTicks: 1, PPID: 1, State: "S", Comm: "sleep", CgroupPath: "/user.slice", CellIdentity: true, UID: [3]uint32{1000, 1000, 1000}}
+	type want = map[string]runner.Finding
+	allLost := want{runner.OracleProc01: runner.FindingLost, runner.OracleProc02: runner.FindingLost, runner.OracleProc03: runner.FindingLost}
+	allNone := want{runner.OracleProc01: runner.FindingNone, runner.OracleProc02: runner.FindingNone, runner.OracleProc03: runner.FindingNone}
 	for name, tc := range map[string]struct {
 		g   func(*fakeGuest)
 		ref runner.EvidenceRef
+		// legit: a full-window case that is not unresolved evidence (no-reap, host network namespace)
+		legit bool
+		// observed: positive observations that stand even though the evidence is unresolved
+		observed want
 	}{
 		"UNKNOWN step (no completed receipt, no run id)": {ref: runner.EvidenceRef{Interval: sshRef.Interval}},
 		"missing settlement":                             {g: func(g *fakeGuest) { g.closureMutate = func(d *ClosureDoc) { d.Commands = nil } }},
 		"missing drain proof (netns held)":               {g: func(g *fakeGuest) { g.closureMutate = func(d *ClosureDoc) { d.NetNSGone = false } }},
 		"receipt not verified":                           {g: func(g *fakeGuest) { g.closureMutate = func(d *ClosureDoc) { d.ReceiptVerified = false } }},
 		"another run":                                    {g: func(g *fakeGuest) { g.closureRun = "run-9" }},
-		"empty cells parent and an escaped cell-uid process": {g: func(g *fakeGuest) {
+		"empty cells parent and an escaped cell-uid process": {observed: want{runner.OracleProc01: runner.FindingObserved, runner.OracleProc02: runner.FindingObserved}, g: func(g *fakeGuest) {
 			g.closureMutate = func(d *ClosureDoc) { d.Scan.Processes = []Process{escaped} }
 		}},
 		"command cgroup child remains": {g: func(g *fakeGuest) { g.closureMutate = func(d *ClosureDoc) { d.CellChildren = 1 } }},
@@ -119,7 +129,10 @@ func TestEarlyCloseRefusedKeepsTheFullHorizon(t *testing.T) {
 		"closure transport loss":    {g: func(g *fakeGuest) { g.failClosure = true }},
 		"final snapshot missing":    {g: func(g *fakeGuest) { g.failCap = map[Point]bool{PointFinalCleanup: true} }},
 		"post-teardown missing":     {g: func(g *fakeGuest) { g.failCap = map[Point]bool{PointPostTeardown: true} }},
-		"no-reap cell left running": {g: func(g *fakeGuest) { g.closureMutate = func(d *ClosureDoc) { d.Commands[0].SurvivorsTolerated = true } }},
+		"no-reap cell left running": {legit: true, g: func(g *fakeGuest) { g.closureMutate = func(d *ClosureDoc) { d.Commands[0].SurvivorsTolerated = true } }},
+		"host network namespace (net-sink/v1)": {legit: true, g: func(g *fakeGuest) {
+			g.closureMutate = func(d *ClosureDoc) { d.HostNetNS, d.NetNSGone = true, false }
+		}},
 	} {
 		g := &fakeGuest{cell: sshCell, release: make(chan struct{})}
 		if tc.g != nil {
@@ -134,11 +147,15 @@ func TestEarlyCloseRefusedKeepsTheFullHorizon(t *testing.T) {
 			t.Fatalf("%s: %v", name, err)
 		}
 		// Proc must be waiting for the monitor's own timer: it does not return until the guest releases it.
-		done := make(chan error, 1)
-		go func() { _, err := c.Proc(context.Background(), ref); done <- err }()
+		type result struct {
+			ev  runner.ObserverEvidence
+			err error
+		}
+		done := make(chan result, 1)
+		go func() { ev, err := c.Proc(context.Background(), ref); done <- result{ev, err} }()
 		select {
-		case err := <-done:
-			t.Fatalf("%s: Proc returned (%v) without proof, before the horizon", name, err)
+		case r := <-done:
+			t.Fatalf("%s: Proc returned (%v) without proof, before the horizon", name, r.err)
 		case <-time.After(150 * time.Millisecond):
 		}
 		if stops := g.stopLines(); len(stops) != 0 {
@@ -148,8 +165,24 @@ func TestEarlyCloseRefusedKeepsTheFullHorizon(t *testing.T) {
 			t.Errorf("%s: closure = %+v", name, v)
 		}
 		close(g.release)
-		if err := <-done; err != nil {
-			t.Errorf("%s: %v", name, err)
+		r := <-done
+		if r.err != nil {
+			t.Errorf("%s: %v", name, r.err)
+		}
+		// The horizon does not erase the failure: unresolved evidence is lost, legitimate full windows are clean, and
+		// positive observations stand.
+		w := allLost
+		if tc.legit {
+			w = allNone
+		}
+		for k, f := range tc.observed {
+			w = maps.Clone(w)
+			w[k] = f
+		}
+		for k, f := range w {
+			if r.ev.Findings[k] != f {
+				t.Errorf("%s: %s = %q, want %q", name, k, r.ev.Findings[k], f)
+			}
 		}
 	}
 }

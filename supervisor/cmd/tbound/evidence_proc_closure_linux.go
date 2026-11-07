@@ -11,9 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
-	"syscall"
 
 	"tbound/supervisor/internal/piruntime"
 	"tbound/supervisor/internal/procoracle"
@@ -33,7 +31,7 @@ func evidenceProcClosure(ctx context.Context, env evidenceEnv, f map[string]stri
 	if err != nil {
 		return procoracle.ClosureDoc{}, err
 	}
-	if env.readTrace == nil || env.cellChildren == nil || env.netnsHeld == nil {
+	if env.readTrace == nil || env.cellChildren == nil || env.netnsHeld == nil || env.hostNetNS == nil {
 		return procoracle.ClosureDoc{}, errors.New("no closure instruments")
 	}
 	entry, err := evidenceAdmissionForInterval(env, ref)
@@ -70,6 +68,13 @@ func evidenceProcClosure(ctx context.Context, env evidenceEnv, f map[string]stri
 		if c.NetworkNSInode != 0 { // a command that names none is refused by the host's predicate
 			inodes = append(inodes, c.NetworkNSInode)
 		}
+	}
+	hostNS, err := env.hostNetNS()
+	if err != nil {
+		return procoracle.ClosureDoc{}, fmt.Errorf("the host network namespace cannot be read: %w", err)
+	}
+	for _, ino := range inodes {
+		doc.HostNetNS = doc.HostNetNS || ino == hostNS
 	}
 	held, err := env.netnsHeld(inodes)
 	if err != nil {
@@ -138,64 +143,4 @@ func listCellChildren(c evidenceCell) (int, error) {
 		}
 	}
 	return n, nil
-}
-
-// hostNetnsHeld reports whether any of the network namespaces (nsfs inodes) is still held: by a thread of any process
-// or by a mount (a bind-mounted namespace file). A /proc that cannot be read completely is an error, not "not held".
-func hostNetnsHeld(inodes []uint64) (bool, error) { return netnsHeldIn("/proc", inodes) }
-
-func netnsHeldIn(procRoot string, inodes []uint64) (bool, error) {
-	if len(inodes) == 0 {
-		return false, nil
-	}
-	want := map[string]bool{}
-	for _, ino := range inodes {
-		if ino == 0 {
-			return false, errors.New("a command names no network namespace")
-		}
-		want["net:["+strconv.FormatUint(ino, 10)+"]"] = true
-	}
-	mounts, err := os.ReadFile(filepath.Join(procRoot, "self/mountinfo"))
-	if err != nil {
-		return false, err
-	}
-	for token := range want {
-		if strings.Contains(string(mounts), token) {
-			return true, nil
-		}
-	}
-	pids, err := os.ReadDir(procRoot)
-	if err != nil {
-		return false, err
-	}
-	seen := 0
-	for _, p := range pids {
-		if _, err := strconv.Atoi(p.Name()); err != nil {
-			continue
-		}
-		tasks, err := os.ReadDir(filepath.Join(procRoot, p.Name(), "task"))
-		if errors.Is(err, os.ErrNotExist) {
-			continue // the process exited while the directory was read
-		}
-		if err != nil {
-			return false, err
-		}
-		for _, t := range tasks {
-			link, err := os.Readlink(filepath.Join(procRoot, p.Name(), "task", t.Name(), "ns/net"))
-			if errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ESRCH) {
-				continue
-			}
-			if err != nil {
-				return false, err
-			}
-			seen++
-			if want[link] {
-				return true, nil
-			}
-		}
-	}
-	if seen == 0 {
-		return false, errors.New("no process namespace was readable")
-	}
-	return false, nil
 }

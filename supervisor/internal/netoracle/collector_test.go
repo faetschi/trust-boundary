@@ -491,3 +491,56 @@ func TestCollectorGateFailuresAreAbsentNeverClean(t *testing.T) {
 		}
 	}
 }
+
+// Review round 1: unresolved closure evidence is lost NET evidence, and the closure is retained and bound.
+func TestCollectorUnresolvedClosureIsLostNeverClean(t *testing.T) {
+	g := newGuestNet(t)
+	cl := runner.IntervalClosure{Horizon: gateT0.Add(time.Hour), Digest: strings.Repeat("d", 64), Reasons: []string{"x"}, Unresolved: []string{"command 0: output writers drained is not established"}}
+	c, _ := gatedCollector(g, cl, nil)
+	if err := c.BeginInterval(context.Background(), collectorRef()); err != nil {
+		t.Fatal(err)
+	}
+	ev, err := c.Net(context.Background(), collectorRef())
+	if err != nil || ev.Findings[runner.OracleNet01] != runner.FindingLost {
+		t.Fatalf("unresolved closure: %v %v", ev.Findings, err)
+	}
+	// A legitimate full window (no unresolved reason) stays clean.
+	g = newGuestNet(t)
+	c, _ = gatedCollector(g, runner.IntervalClosure{Horizon: gateT0.Add(time.Hour), Reasons: []string{"no-reap"}}, nil)
+	_ = c.BeginInterval(context.Background(), collectorRef())
+	if ev, err := c.Net(context.Background(), collectorRef()); err != nil || ev.Findings[runner.OracleNet01] != runner.FindingNone {
+		t.Fatalf("legitimate full window: %v %v", ev.Findings, err)
+	}
+}
+
+func TestCollectorRetainsAndBindsTheClosure(t *testing.T) {
+	run := func(digest string) (runner.ObserverEvidence, Retained) {
+		g := newGuestNet(t)
+		c, _ := gatedCollector(g, runner.IntervalClosure{Proven: true, DrainUntil: gateT0, Horizon: gateT0, Digest: digest}, nil)
+		c.RetainDir = t.TempDir()
+		if err := c.BeginInterval(context.Background(), collectorRef()); err != nil {
+			t.Fatal(err)
+		}
+		ev, err := c.Net(context.Background(), collectorRef())
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw, err := os.ReadFile(filepath.Join(c.RetainDir, RetainedName(collectorInterval)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		r, err := ParseRetained(raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return ev, r
+	}
+	ev1, r1 := run(strings.Repeat("a", 64))
+	ev2, _ := run(strings.Repeat("b", 64))
+	if r1.Closure == nil || r1.Closure.Digest != strings.Repeat("a", 64) || !r1.Closure.Proven {
+		t.Fatalf("closure not retained: %+v", r1.Closure)
+	}
+	if ev1.Refs[runner.OracleNet01].Report == ev2.Refs[runner.OracleNet01].Report {
+		t.Fatal("the NET reference does not depend on the closure")
+	}
+}

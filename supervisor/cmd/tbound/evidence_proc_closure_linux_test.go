@@ -129,39 +129,6 @@ func TestEvidenceProcClosureRefusesWhatIsNotACompletedSettledRun(t *testing.T) {
 	}
 }
 
-func TestNetnsHeldInSeesProcessesThreadsAndMounts(t *testing.T) {
-	proc := t.TempDir()
-	mk := func(pid, tid, link string) {
-		dir := filepath.Join(proc, pid, "task", tid, "ns")
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.Symlink(link, filepath.Join(dir, "net")); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := os.MkdirAll(filepath.Join(proc, "self"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(proc, "self/mountinfo"), []byte("36 35 0:4 net:[4026531840] /run/x rw - nsfs nsfs rw\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	mk("1", "1", "net:[4026531840]")
-	mk("200", "200", "net:[4026532100]")
-	mk("200", "201", "net:[4026532999]") // a thread in another namespace than its process
-	if held, err := netnsHeldIn(proc, []uint64{4026532001}); err != nil || held {
-		t.Errorf("an unheld namespace: held=%v err=%v", held, err)
-	}
-	for name, ino := range map[string]uint64{"a process": 4026532100, "a thread": 4026532999, "a mount": 4026531840} {
-		if held, err := netnsHeldIn(proc, []uint64{4026532001, ino}); err != nil || !held {
-			t.Errorf("%s: held=%v err=%v", name, held, err)
-		}
-	}
-	if _, err := netnsHeldIn(t.TempDir(), []uint64{1}); err == nil {
-		t.Error("an unreadable /proc was read as not held")
-	}
-}
-
 func TestEvidenceProcMonitorEndsOnlyOnAWellFormedStopLine(t *testing.T) {
 	reg, start, deadline := evTestRegistration()
 	args := []string{"proc-monitor", "--registration", reg.Digest(), "--interval-start", procoracle.InstantArg(start),
@@ -178,7 +145,7 @@ func TestEvidenceProcMonitorEndsOnlyOnAWellFormedStopLine(t *testing.T) {
 		"another reason":      {"stop horizon " + digest + " run-1\n", procoracle.StopHorizon},
 		"unrelated input":     {"hello\n", procoracle.StopHorizon},
 		"stop after garbage":  {"hello\n" + procoracle.MonitorStopLine(digest, "run-1"), procoracle.StopHorizon},
-		"stop plus more text": {procoracle.MonitorStopLine(digest, "run-1") + "more\n", procoracle.StopClosedOnProof},
+		"stop plus more text": {procoracle.MonitorStopLine(digest, "run-1") + "more\n", procoracle.StopHorizon},
 	} {
 		env := newEvTestEnv(0)
 		env.awaitStop = true
