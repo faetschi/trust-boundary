@@ -71,7 +71,7 @@ func TestEvidenceProcClosureReadsTheReceiptSettlementAndAFreshScan(t *testing.T)
 	singleDoc(t, out, &doc)
 	if doc.Kind != runner.EvidenceProcClosure || doc.RunID != e04TestRun || doc.IntervalRef != e04TestInterval || !doc.ReceiptVerified ||
 		doc.ExpectedSettlements != 1 || len(doc.Commands) != 1 || !doc.Commands[0].OutputWritersDrained || !doc.Commands[0].CommandCgroupRemoved ||
-		!doc.NetNSGone || doc.CellChildren != 0 || doc.Scan.Point != procoracle.PointInterval || doc.Scan.Seq != 1 {
+		doc.CellChildren != 0 || doc.Scan.Point != procoracle.PointInterval || doc.Scan.Seq != 1 {
 		t.Fatalf("doc = %+v", doc)
 	}
 	// The structural snapshot names no network namespace, which the host's predicate refuses: no proof from this fixture.
@@ -112,17 +112,11 @@ func TestEvidenceProcClosureRefusesWhatIsNotACompletedSettledRun(t *testing.T) {
 			t.Errorf("%s: err = %v, stdout %q", name, err, out)
 		}
 	}
-	// A namespace lookup that fails is an error, not "not held". The structural snapshot names no namespace, so the
-	// lookup is asked about nothing and the document is still produced (the host refuses the missing inode).
-	cmdEnv := closureEnvFor(t, settledRunReceipt(1), "completed", cmd)
-	cmdEnv.netnsHeld = func(inodes []uint64) (bool, error) {
-		if len(inodes) != 0 {
-			t.Errorf("asked about inodes %v", inodes)
-		}
-		return false, os.ErrPermission
-	}
-	if _, err := runEvTest(t, cmdEnv, closureArgs(t)...); err == nil {
-		t.Error("a failing namespace lookup was not an error")
+	// The host network namespace cannot be read: no document.
+	hostEnv := closureEnvFor(t, settledRunReceipt(1), "completed", cmd)
+	hostEnv.hostNetNS = func() (uint64, error) { return 0, os.ErrPermission }
+	if out, err := runEvTest(t, hostEnv, closureArgs(t)...); err == nil || out != "" {
+		t.Errorf("an unreadable host network namespace: err = %v", err)
 	}
 	if out, err := runEvTest(t, closureEnvFor(t, settledRunReceipt(0), "completed"), append(closureArgs(t)[:7:7], "--interval-ref", "other|trajectory|C|0#1")...); err == nil || out != "" {
 		t.Errorf("another interval: err = %v", err)

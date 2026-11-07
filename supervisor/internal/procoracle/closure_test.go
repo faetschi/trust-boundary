@@ -14,13 +14,14 @@ func settledCommand() CommandSettlement {
 	return CommandSettlement{LeaseID: "lease-1", ReceiptDigest: strings.Repeat("a", 64), NetworkNSInode: 4026532001,
 		ContainerExitInspected: true, FinalCommandProofRead: true, PodmanWaitCompleted: true, OutputWritersDrained: true,
 		ContainerRemoved: true, LeaderPidfdExited: true, CgroupPopulatedZero: true, MountNamespaceReleased: true,
-		CommandOutputWithinBound: true, CommandCgroupRemoved: true}
+		CommandOutputWithinBound: true, CommandCgroupRemoved: true,
+		NetworkMode: "none", NoExternalRoutes: true, CapEff: "0000000000000000", NoNewPrivs: true}
 }
 
 func cleanClosureDoc() ClosureDoc {
 	return ClosureDoc{Schema: runner.EvidenceSchema, Kind: runner.EvidenceProcClosure, IntervalRef: sshRef.Interval,
 		RunID: "run-1", RegistrationDigest: closureReg.Digest(), ReceiptVerified: true, ReceiptDigest: strings.Repeat("b", 64),
-		ExpectedSettlements: 1, Commands: []CommandSettlement{settledCommand()}, NetNSGone: true,
+		ExpectedSettlements: 1, Commands: []CommandSettlement{settledCommand()},
 		Scan: Snapshot{Seq: 1, Point: PointInterval, ObservedAt: sshT0.Add(5 * time.Second), RegistrationDigest: closureReg.Digest(),
 			IdentityScanned: true, ScannedPIDs: 40, CellPath: sshCell.CellCgroupPath, CellInode: sshCell.CellCgroupInode, Registry: Registry{Recorded: true}}}
 }
@@ -51,7 +52,13 @@ func TestEvaluateClosureRefusesAnythingShortOfProof(t *testing.T) {
 		"survivors tolerated (no-reap)": func(d *ClosureDoc) { d.Commands[0].SurvivorsTolerated = true },
 		"container left running":        func(d *ClosureDoc) { d.Commands[0].ContainerLeftRunning = true },
 		"no netns inode":                func(d *ClosureDoc) { d.Commands[0].NetworkNSInode = 0 },
-		"netns still held":              func(d *ClosureDoc) { d.NetNSGone = false },
+		"no network mode bound":         func(d *ClosureDoc) { d.Commands[0].NetworkMode = "" },
+		"unknown network mode":          func(d *ClosureDoc) { d.Commands[0].NetworkMode = "bridge" },
+		"NET_ADMIN in cap_eff":          func(d *ClosureDoc) { d.Commands[0].CapEff = "0000000000001000" },
+		"NET_RAW in cap_eff":            func(d *ClosureDoc) { d.Commands[0].CapEff = "0000000000002000" },
+		"routes not excluded":           func(d *ClosureDoc) { d.Commands[0].NoExternalRoutes = false },
+		"new privileges allowed":        func(d *ClosureDoc) { d.Commands[0].NoNewPrivs = false },
+		"none-mode command in host ns":  func(d *ClosureDoc) { d.HostNetNS = true },
 		"cells child remains":           func(d *ClosureDoc) { d.CellChildren = 1 },
 		"identity scan not done":        func(d *ClosureDoc) { d.Scan.IdentityScanned = false },
 		"scan gap":                      func(d *ClosureDoc) { d.Scan.Gaps = []Gap{gapf(DomainSocket, "x", "y")} },
@@ -80,6 +87,24 @@ func TestEvaluateClosureRefusesAnythingShortOfProof(t *testing.T) {
 	// No run id on the host side means the client's answer was not a completed receipt.
 	if v := EvaluateClosure(closureReg, cleanClosureDoc(), sshRef.Interval, ""); v.Proven {
 		t.Error("proven without a host-side run id")
+	}
+}
+
+// A network-none cell with the recorded empty capability set closes without any namespace-destruction proof. A host
+// network (net-sink/v1) is a legitimate full window, not unresolved evidence; a missing binding is unresolved.
+func TestEvaluateClosureNetworkProofClassification(t *testing.T) {
+	host := cleanClosureDoc()
+	host.Commands[0].NetworkMode, host.Commands[0].NoExternalRoutes, host.HostNetNS = "host", false, true
+	if v := EvaluateClosure(closureReg, host, sshRef.Interval, "run-1"); v.Proven || len(v.Reasons) == 0 || len(v.Unresolved) != 0 {
+		t.Fatalf("host network: %+v", v)
+	}
+	for name, mutate := range map[string]func(*CommandSettlement){
+		"unbound": func(c *CommandSettlement) { c.NetworkMode = "" }, "NET_ADMIN": func(c *CommandSettlement) { c.CapEff = "0000000000001000" }} {
+		d := cleanClosureDoc()
+		mutate(&d.Commands[0])
+		if v := EvaluateClosure(closureReg, d, sshRef.Interval, "run-1"); v.Proven || len(v.Unresolved) == 0 {
+			t.Errorf("%s: %+v", name, v)
+		}
 	}
 }
 

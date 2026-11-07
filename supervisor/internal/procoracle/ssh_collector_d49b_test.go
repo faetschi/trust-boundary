@@ -21,14 +21,19 @@ func TestCoverageHealthy(t *testing.T) {
 	at := func(secs ...int) []Snapshot {
 		var out []Snapshot
 		for _, s := range secs {
-			out = append(out, Snapshot{ObservedAt: sshT0.Add(time.Duration(s) * time.Second)})
+			out = append(out, Snapshot{Seq: len(out) + 1, IdentityScanned: true, ScannedPIDs: 1, Registry: Registry{Recorded: true},
+				ObservedAt: sshT0.Add(time.Duration(s) * time.Second)})
 		}
 		return out
 	}
 	if err := CoverageHealthy(at(1, 2, 3, 4), GuestMaxGap); err != nil {
 		t.Fatal(err)
 	}
-	for name, polls := range map[string][]Snapshot{"nine second gap": at(1, 2, 3, 12), "regressed": at(1, 3, 2), "equal": at(1, 1), "none": nil} {
+	withGap := at(1, 2, 3)
+	withGap[1].Gaps = []Gap{gapf(DomainProcess, "x", "y")}
+	unscanned := at(1, 2, 3)
+	unscanned[2].IdentityScanned = false
+	for name, polls := range map[string][]Snapshot{"recorded scan gap": withGap, "no identity scan": unscanned, "nine second gap": at(1, 2, 3, 12), "regressed": at(1, 3, 2), "equal": at(1, 1), "none": nil} {
 		if CoverageHealthy(polls, GuestMaxGap) == nil {
 			t.Errorf("%s: accepted", name)
 		}

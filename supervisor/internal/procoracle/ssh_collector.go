@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strconv"
 	"sync"
 	"time"
@@ -155,6 +156,14 @@ type procResolution struct {
 	// scanAt is the closure scan's observation time, the earliest poll the stopped record may end on.
 	scanAt time.Time
 	stop   MonitorStopRequest
+
+	// Set by finalize: the monitor's record and how it ended, and the decision a NET consumer may rely on.
+	final   bool
+	stopped bool
+	polls   []Snapshot
+	stop2   MonitorStop
+	defects []string
+	net     runner.IntervalClosure
 }
 
 // requestStop writes the stop line; it blocks until the line is taken or the session is gone.
@@ -505,15 +514,63 @@ func (c *SSHCollector) resolve(ctx context.Context, ref runner.EvidenceRef, iv *
 	return res
 }
 
-// Closure implements runner.ClosureSource.
+// Closure implements runner.ClosureSource. It answers only when the decision is FINAL: the closure was proven or
+// refused, and the monitor has ended (on the stop line, or at its horizon) and its record has been validated. A NET
+// window that ends early therefore never rests on a monitor whose coverage was not checked.
 func (c *SSHCollector) Closure(ctx context.Context, ref runner.EvidenceRef) runner.IntervalClosure {
 	c.mu.Lock()
 	iv := c.active[ref.Interval]
 	c.mu.Unlock()
 	if iv == nil {
-		return runner.IntervalClosure{Reasons: []string{"no PROC interval was begun for " + ref.Interval}}
+		// A PROC interval that never began is unresolved evidence, not a clean window: the consumer keeps its own horizon.
+		r := "no PROC interval was begun for " + ref.Interval
+		return runner.IntervalClosure{Reasons: []string{r}, Unresolved: []string{r}}
 	}
-	return c.resolve(ctx, ref, iv).closure
+	return c.finalize(ctx, ref, iv).net
+}
+
+// finalize runs the closure phase to its end, once per interval: resolve, then (on proof) the drain grace and the stop
+// line, then the monitor's document and its validation. rs.net is the decision a NET consumer may rely on.
+func (c *SSHCollector) finalize(ctx context.Context, ref runner.EvidenceRef, iv *procInterval) *procResolution {
+	rs := c.resolve(ctx, ref, iv)
+	iv.rmu.Lock()
+	defer iv.rmu.Unlock()
+	if rs.final {
+		return rs
+	}
+	rs.final = true
+	rs.net = rs.closure
+	rs.net.Reasons, rs.net.Unresolved = slices.Clone(rs.closure.Reasons), slices.Clone(rs.closure.Unresolved)
+	if rs.waitErr != nil {
+		rs.net.Proven = false
+		rs.net.Unresolved = append(rs.net.Unresolved, "the teardown deadline wait failed: "+rs.waitErr.Error())
+		return rs
+	}
+	// On proof, observe through the drain grace and then end the monitor; otherwise it runs to its horizon.
+	if rs.closure.Proven && c.wait(ctx, rs.closure.DrainUntil) == nil {
+		iv.requestStop(MonitorStopLine(rs.stop.ClosureDigest, rs.stop.RunID))
+		rs.stopped = true
+	}
+	select {
+	case res := <-iv.done:
+		if res.err == nil {
+			rs.polls, rs.stop2 = res.polls, res.stop
+			rs.defects = c.monitorEnd(res, rs, rs.stopped, iv.reg.MaxGap)
+		}
+	case <-ctx.Done():
+	}
+	if len(rs.polls) == 0 && len(rs.defects) == 0 {
+		rs.defects = []string{"no usable monitor record"}
+	}
+	if len(rs.defects) != 0 || (rs.closure.Proven && !rs.stopped) {
+		rs.net.Proven, rs.net.DrainUntil = false, time.Time{}
+		rs.net.Reasons = append(rs.net.Reasons, rs.defects...)
+		rs.net.Unresolved = append(rs.net.Unresolved, rs.defects...)
+		if rs.closure.Proven && !rs.stopped {
+			rs.net.Unresolved = append(rs.net.Unresolved, "the monitor was not told to stop")
+		}
+	}
+	return rs
 }
 
 // monitorEnd lists what is wrong with how the monitor says it ended, judged against what the host asked and saw. A
@@ -560,27 +617,11 @@ func (c *SSHCollector) Proc(ctx context.Context, ref runner.EvidenceRef) (runner
 	if iv == nil {
 		return runner.ObserverEvidence{}, fmt.Errorf("%w: no PROC interval was begun for %s", runner.ErrEvidenceAbsent, ref.Interval)
 	}
-	rs := c.resolve(ctx, ref, iv)
+	rs := c.finalize(ctx, ref, iv)
 	if rs.waitErr != nil {
 		return runner.ObserverEvidence{}, fmt.Errorf("%w: waiting for the teardown deadline: %v", runner.ErrEvidenceAbsent, rs.waitErr)
 	}
-	// On proof, observe through the drain grace and then end the monitor; otherwise it runs to its horizon.
-	stopped := false
-	if rs.closure.Proven && c.wait(ctx, rs.closure.DrainUntil) == nil {
-		iv.requestStop(MonitorStopLine(rs.stop.ClosureDigest, rs.stop.RunID))
-		stopped = true
-	}
-	var polls []Snapshot
-	var stop MonitorStop
-	var defects []string
-	select {
-	case res := <-iv.done:
-		if res.err == nil {
-			polls, stop = res.polls, res.stop
-			defects = c.monitorEnd(res, rs, stopped, iv.reg.MaxGap)
-		}
-	case <-ctx.Done():
-	}
+	polls, stop, defects := rs.polls, rs.stop2, rs.defects
 	if len(rs.snaps) == 0 && len(polls) == 0 {
 		return runner.ObserverEvidence{}, fmt.Errorf("%w: the guest returned no usable PROC document", runner.ErrEvidenceAbsent)
 	}

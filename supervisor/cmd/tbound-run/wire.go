@@ -89,6 +89,7 @@ func (p plan) collectorsOver(ev runner.Transport) runner.CollectorSet {
 	net := netoracle.NewCollector(ev)
 	// D49: the NET window ends after the PROC collector's proof plus the drain grace, or at the original horizon.
 	net.Gate = proc
+	net.Horizon = proc.MonitorDuration
 	if p.cfg.RunDir != "" {
 		net.RetainDir = filepath.Join(p.cfg.RunDir, "net-evidence")
 	}

@@ -450,10 +450,11 @@ func (e obsEvidence) RunReadyStdin(ctx context.Context, argv []string, stdin io.
 			cmd := procoracle.CommandSettlement{LeaseID: "lease-obs", ReceiptDigest: strings.Repeat("a", 64), NetworkNSInode: 4026532001,
 				ContainerExitInspected: true, FinalCommandProofRead: true, PodmanWaitCompleted: true, OutputWritersDrained: true,
 				ContainerRemoved: true, LeaderPidfdExited: true, CgroupPopulatedZero: true, MountNamespaceReleased: true,
-				CommandOutputWithinBound: true, CommandCgroupRemoved: true}
+				CommandOutputWithinBound: true, CommandCgroupRemoved: true,
+				NetworkMode: "none", NoExternalRoutes: true, CapEff: "0000000000000000", NoNewPrivs: true}
 			return obsReply(procoracle.ClosureDoc{Schema: runner.EvidenceSchema, Kind: runner.EvidenceProcClosure, IntervalRef: flags["--interval-ref"],
 				RunID: obsRunID, RegistrationDigest: reg.Digest(), ReceiptVerified: true, ReceiptDigest: strings.Repeat("b", 64),
-				ExpectedSettlements: 1, Commands: []procoracle.CommandSettlement{cmd}, NetNSGone: true, Scan: scan})
+				ExpectedSettlements: 1, Commands: []procoracle.CommandSettlement{cmd}, Scan: scan})
 		}
 		line, _, _, _ := obsReply(procoracle.MonitorReadyDoc{Schema: runner.EvidenceSchema, Kind: procoracle.MonitorReadyKind,
 			RegistrationDigest: reg.Digest(), FirstPollSeq: 1, FirstPollAt: start.Add(100 * time.Millisecond)})

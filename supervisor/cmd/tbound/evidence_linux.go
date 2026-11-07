@@ -77,7 +77,7 @@ import (
 //	proc-closure                 --registration D --interval-start NS --deadline NS --interval-ref REF
 //	    D49: whether the interval REF is provably complete, read-only: the admission's completed receipt
 //	    (the e04-points lookup), the settlement of every command of the run from the run's command
-//	    journal, the children of the cells cgroup, the commands' network namespaces and a fresh
+//	    journal, the children of the cells cgroup, each command's structural network proof and a fresh
 //	    identity, process and socket scan of the registered cell (procoracle.ClosureDoc). The host
 //	    judges it. Any failure is an error, never a document that looks provable.
 //	publication-interval-journal --interval-ref REF
@@ -217,10 +217,8 @@ type evidenceEnv struct {
 	// stop delivers a valid host stop request (D49); the monitor then ends at once and returns the request it obeyed.
 	monitor func(ctx context.Context, c evidenceCell, reg procoracle.Registration, d, interval time.Duration, ready func(procoracle.Snapshot),
 		stop <-chan procoracle.MonitorStopRequest) ([]procoracle.Snapshot, *procoracle.MonitorStopRequest, error)
-	// cellChildren counts the command cgroups below the registered cells cgroup; netnsHeld says whether any of the network
-	// namespaces (nsfs inodes) is still held by a process or a mount. Both are proc-closure's.
+	// cellChildren counts the command cgroups below the registered cells cgroup (proc-closure's).
 	cellChildren func(c evidenceCell) (int, error)
-	netnsHeld    func(inodes []uint64) (bool, error)
 	// hostNetNS is the inode of the host's own network namespace (a net-sink/v1 command shares it).
 	hostNetNS func() (uint64, error)
 	// lockMonitor admits one monitor at a time; the release function frees it.
@@ -245,7 +243,7 @@ func productionEvidenceEnv() evidenceEnv {
 	return evidenceEnv{
 		geteuid: os.Geteuid, getenv: os.Getenv, snapshotDir: wsoracle.SnapshotDir, pinRoot: pinRegisteredLiveRoot,
 		cell: loadEvidenceCell, capture: captureEvidenceCell, monitor: monitorEvidenceCell, readTrace: readEvidenceTrace,
-		cellChildren: listCellChildren, netnsHeld: hostNetnsHeld, hostNetNS: hostNetnsInode,
+		cellChildren: listCellChildren, hostNetNS: hostNetnsInode,
 		lockMonitor: func() (func(), error) { return lockEvidenceMonitorFile(evidenceMonitorLockPath, evidenceRequiredUID) },
 		netCanary:   sendNetsinkCanary, netJournal: readNetsinkJournal,
 		lockTransient: func() (func(), error) { return lockEvidenceMonitorFile(evidenceTransientLockPath, evidenceRequiredUID) },

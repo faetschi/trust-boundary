@@ -33,6 +33,16 @@ type CommandSettlement struct {
 	LeaseID        string `json:"lease_id"`
 	ReceiptDigest  string `json:"receipt_digest"`
 	NetworkNSInode uint64 `json:"network_ns_inode"`
+	// The structural network proof (D49): what the command's signed proof binds about its network. Delta is the
+	// registered delta the cell was launched under (proof.delta; empty for the base cell) and NetworkMode the Podman
+	// --network value that delta fixes ("none" for the base cell and no-reap/v1, "host" for net-sink/v1). The proof
+	// also carries no_external_routes, the effective capability set (cap_eff) and no_new_privs. All of them are covered
+	// by the receipt's proof digest, which the guest re-validated.
+	Delta            string `json:"delta"`
+	NetworkMode      string `json:"network_mode"`
+	NoExternalRoutes bool   `json:"no_external_routes"`
+	CapEff           string `json:"cap_eff"`
+	NoNewPrivs       bool   `json:"no_new_privs"`
 
 	ContainerExitInspected   bool `json:"container_exit_inspected"`
 	FinalCommandProofRead    bool `json:"final_command_proof_read"`
@@ -54,7 +64,7 @@ type CommandSettlement struct {
 // ClosureDoc is the output of `tbound evidence proc-closure`: the guest's own reading, after the request, of whether the
 // interval is complete. The guest found the interval's admission and its completed receipt in the service journals
 // (ReceiptVerified), read the settlement of every command of the run, listed the children of the cells cgroup, looked
-// for the command cells' network namespaces and ran a fresh identity, process and socket scan of the registered cell.
+// recorded each command's structural network proof (below) and ran a fresh identity, process and socket scan of the registered cell.
 type ClosureDoc struct {
 	Schema             string `json:"schema"`
 	Kind               string `json:"kind"`
@@ -69,10 +79,7 @@ type ClosureDoc struct {
 	// CellChildren counts the cgroups below the registered cells cgroup. The registered cell is the persistent PARENT,
 	// which is empty whenever no command cell runs; the proof needs the children gone, not the parent empty.
 	CellChildren int `json:"cell_children"`
-	// NetNSGone is true when none of the commands' network namespaces is held any more (no process, no mount).
-	NetNSGone bool `json:"netns_gone"`
-	// HostNetNS is true when a command ran in the host's own network namespace (net-sink/v1), which never goes away:
-	// the drain cannot be proven, and the full window is the legitimate answer.
+	// HostNetNS is true when a command's network namespace is the host's own (pid 1's): the net-sink/v1 delta.
 	HostNetNS bool     `json:"host_netns"`
 	Scan      Snapshot `json:"scan"`
 }
@@ -123,7 +130,7 @@ func EvaluateClosure(reg Registration, doc ClosureDoc, interval, runID string) C
 	if doc.ExpectedSettlements < 0 || len(doc.Commands) != doc.ExpectedSettlements {
 		no("%d command settlements, the receipt counts %d", len(doc.Commands), doc.ExpectedSettlements)
 	}
-	noReap := false
+	noReap, hostNet := false, false
 	for i, s := range doc.Commands {
 		if s.SurvivorsTolerated || s.ContainerLeftRunning || s.CommandScopeDetached || s.OutputMarkerObserved {
 			// A cell left running on purpose has another settlement shape and survivors by design: the window stays full.
@@ -145,15 +152,28 @@ func EvaluateClosure(reg Registration, doc ClosureDoc, interval, runID string) C
 				no("command %d: %s is not established", i, f.name)
 			}
 		}
+		// The structural drain proof. A network-none cell has no interface but loopback and, without capabilities, no way
+		// to add one, so a process still holding its namespace cannot reach the sink: there is no need to prove the
+		// namespace gone. The base cells are network none; net-sink/v1 is host and keeps the full window.
+		switch s.NetworkMode {
+		case "none":
+			if !s.NoExternalRoutes || s.CapEff != "0000000000000000" || !s.NoNewPrivs {
+				no("command %d: network none without the recorded no-routes and empty capability proof (cap_eff %q)", i, s.CapEff)
+			}
+		case "host":
+			hostNet = true
+		default:
+			no("command %d: the proof binds no network mode (%q)", i, s.NetworkMode)
+		}
 	}
 	if doc.CellChildren != 0 && !noReap {
 		no("%d command cgroups remain below the cells cgroup", doc.CellChildren)
 	}
 	switch {
+	case hostNet:
+		legit("a command ran in the host network namespace (net-sink/v1): the drain cannot be bounded, the window stays full")
 	case doc.HostNetNS:
-		legit("a command ran in the host network namespace, which cannot disappear: no drain proof exists")
-	case !doc.NetNSGone && !noReap:
-		no("a command network namespace is still held")
+		no("a command whose proof says network none is in the host network namespace")
 	}
 	s := doc.Scan
 	switch {
@@ -229,6 +249,11 @@ type MonitorStop struct {
 func CoverageHealthy(polls []Snapshot, maxGap time.Duration) error {
 	if len(polls) == 0 {
 		return errors.New("no polls")
+	}
+	for _, p := range polls {
+		if len(p.Gaps) != 0 || !p.IdentityScanned || p.ScannedPIDs == 0 || !p.Registry.Recorded {
+			return fmt.Errorf("poll %d has recorded scan gaps or no completed scan", p.Seq)
+		}
 	}
 	for i := 1; i < len(polls); i++ {
 		switch d := polls[i].ObservedAt.Sub(polls[i-1].ObservedAt); {

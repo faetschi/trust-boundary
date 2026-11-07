@@ -49,6 +49,11 @@ type Collector struct {
 	Gate runner.ClosureSource
 	// Wait is a test seam: it returns when until has passed (a timer by default).
 	Wait func(ctx context.Context, until time.Time) error
+	// Horizon is the NET window's own fallback length (the fixed monitor window): when the gate knows no interval (PROC
+	// never began) the end canary still waits this long from the start canary, independent of PROC's startup.
+	Horizon time.Duration
+	// Now is a test seam (time.Now).
+	Now func() time.Time
 
 	mu     sync.Mutex
 	active map[string]*netInterval
@@ -57,6 +62,7 @@ type Collector struct {
 type netInterval struct {
 	tag   string
 	start runner.NetCanaryDoc
+	began time.Time
 }
 
 // NewCollector returns the NET collector over the evidence transport.
@@ -77,6 +83,42 @@ func (c *Collector) canary(ctx context.Context, tag, phase string) (runner.NetCa
 		return doc, fmt.Errorf("%w: the %s canary document does not answer the request", runner.ErrEvidenceAbsent, phase)
 	}
 	return doc, nil
+}
+
+func (c *Collector) now() time.Time {
+	if c.Now != nil {
+		return c.Now()
+	}
+	return time.Now()
+}
+
+// EndDecision waits as long as the closure the gate gives requires and returns that closure (nil without a gate): the
+// drain deadline of a proven, FINAL closure; otherwise the original horizon; and when the gate knows no interval, this
+// collector's own Horizon from its start canary. An error is a failed wait.
+func (c *Collector) EndDecision(ctx context.Context, ref runner.EvidenceRef) (*runner.IntervalClosure, error) {
+	if c.Gate == nil {
+		return nil, nil
+	}
+	cl := c.Gate.Closure(ctx, ref)
+	until := cl.Horizon
+	if cl.Proven {
+		until = cl.DrainUntil
+	}
+	if until.IsZero() && c.Horizon > 0 {
+		began := c.now()
+		c.mu.Lock()
+		if iv := c.active[ref.Interval]; iv != nil {
+			began = iv.began
+		}
+		c.mu.Unlock()
+		until = began.Add(c.Horizon)
+	}
+	if !until.IsZero() {
+		if err := c.wait(ctx, until); err != nil {
+			return nil, fmt.Errorf("%w: waiting to end the NET window: %v", runner.ErrEvidenceAbsent, err)
+		}
+	}
+	return &cl, nil
 }
 
 func (c *Collector) wait(ctx context.Context, until time.Time) error {
@@ -120,7 +162,7 @@ func (c *Collector) BeginInterval(ctx context.Context, ref runner.EvidenceRef) e
 	if c.active == nil {
 		c.active = map[string]*netInterval{}
 	}
-	c.active[ref.Interval] = &netInterval{tag: tag, start: start}
+	c.active[ref.Interval] = &netInterval{tag: tag, start: start, began: c.now()}
 	return nil
 }
 
@@ -143,19 +185,9 @@ func (c *Collector) Net(ctx context.Context, ref runner.EvidenceRef) (runner.Obs
 	if iv == nil {
 		return runner.ObserverEvidence{}, fmt.Errorf("%w: no NET interval was begun for %s", runner.ErrEvidenceAbsent, ref.Interval)
 	}
-	var closure *runner.IntervalClosure
-	if c.Gate != nil {
-		cl := c.Gate.Closure(ctx, ref)
-		closure = &cl
-		until := cl.Horizon
-		if cl.Proven {
-			until = cl.DrainUntil
-		}
-		if !until.IsZero() {
-			if err := c.wait(ctx, until); err != nil {
-				return runner.ObserverEvidence{}, fmt.Errorf("%w: waiting to end the NET window: %v", runner.ErrEvidenceAbsent, err)
-			}
-		}
+	closure, err := c.EndDecision(ctx, ref)
+	if err != nil {
+		return runner.ObserverEvidence{}, err
 	}
 	end, err := c.canary(ctx, iv.tag, PhaseEnd)
 	if err != nil {

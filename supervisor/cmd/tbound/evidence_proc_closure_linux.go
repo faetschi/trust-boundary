@@ -23,7 +23,7 @@ import (
 // the lookup e04-points uses, never from the client's exit; reads the settlement of every command of that run from the
 // run's command journal (each receipt re-validated, digest included); lists the children of the registered cells
 // cgroup (the registered cell is the persistent parent, which says nothing about its command cells); looks for the
-// commands' network namespaces; and runs a fresh identity, process and socket scan of the registered cell. The host
+// each command's network proof (the delta, no-routes, empty cap_eff and no_new_privs its signed proof records); and runs a fresh identity, process and socket scan of the registered cell. The host
 // judges all of it (procoracle.EvaluateClosure); a failure here is an error, never a document that looks provable.
 func evidenceProcClosure(ctx context.Context, env evidenceEnv, f map[string]string) (procoracle.ClosureDoc, error) {
 	ref := f["--interval-ref"]
@@ -31,7 +31,7 @@ func evidenceProcClosure(ctx context.Context, env evidenceEnv, f map[string]stri
 	if err != nil {
 		return procoracle.ClosureDoc{}, err
 	}
-	if env.readTrace == nil || env.cellChildren == nil || env.netnsHeld == nil || env.hostNetNS == nil {
+	if env.readTrace == nil || env.cellChildren == nil || env.hostNetNS == nil {
 		return procoracle.ClosureDoc{}, errors.New("no closure instruments")
 	}
 	entry, err := evidenceAdmissionForInterval(env, ref)
@@ -76,11 +76,6 @@ func evidenceProcClosure(ctx context.Context, env evidenceEnv, f map[string]stri
 	for _, ino := range inodes {
 		doc.HostNetNS = doc.HostNetNS || ino == hostNS
 	}
-	held, err := env.netnsHeld(inodes)
-	if err != nil {
-		return procoracle.ClosureDoc{}, fmt.Errorf("the network namespaces cannot be looked for: %w", err)
-	}
-	doc.NetNSGone = !held
 	// The scan comes last: it must be younger than everything above it.
 	if doc.Scan, err = env.capture(cell, reg, procoracle.PointInterval, 1); err != nil {
 		return procoracle.ClosureDoc{}, err
@@ -118,7 +113,14 @@ func evidenceCommandSettlements(env evidenceEnv, runID string, want int) ([]proc
 			return nil, fmt.Errorf("command journal record %d holds no valid settled receipt", record.Sequence)
 		}
 		e := r.Evidence
+		// The network proof is structural (D49): the delta the cell was launched under fixes its Podman --network value,
+		// and the proof the receipt digest covers records the routes, capability and privilege facts.
+		delta, derr := piruntime.ParseD09CellDelta(r.Proof.Delta)
+		if derr != nil {
+			return nil, fmt.Errorf("command journal record %d names an unknown delta: %w", record.Sequence, derr)
+		}
 		out = append(out, procoracle.CommandSettlement{LeaseID: r.LeaseID, ReceiptDigest: r.ReceiptDigest, NetworkNSInode: r.Proof.NetworkNSInode,
+			Delta: r.Proof.Delta, NetworkMode: delta.NetworkMode(), NoExternalRoutes: r.Proof.NoExternalRoutes, CapEff: r.Proof.CapEff, NoNewPrivs: r.Proof.NoNewPrivs,
 			ContainerExitInspected: e.ContainerExitInspected, FinalCommandProofRead: e.FinalCommandProofRead, PodmanWaitCompleted: e.PodmanWaitCompleted,
 			OutputWritersDrained: e.OutputWritersDrained, ContainerRemoved: e.ContainerRemoved, LeaderPidfdExited: e.LeaderPidfdExited,
 			CgroupPopulatedZero: e.CgroupPopulatedZero, MountNamespaceReleased: e.MountNamespaceReleased,

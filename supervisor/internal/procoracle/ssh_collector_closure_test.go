@@ -113,9 +113,12 @@ func TestEarlyCloseRefusedKeepsTheFullHorizon(t *testing.T) {
 	}{
 		"UNKNOWN step (no completed receipt, no run id)": {ref: runner.EvidenceRef{Interval: sshRef.Interval}},
 		"missing settlement":                             {g: func(g *fakeGuest) { g.closureMutate = func(d *ClosureDoc) { d.Commands = nil } }},
-		"missing drain proof (netns held)":               {g: func(g *fakeGuest) { g.closureMutate = func(d *ClosureDoc) { d.NetNSGone = false } }},
-		"receipt not verified":                           {g: func(g *fakeGuest) { g.closureMutate = func(d *ClosureDoc) { d.ReceiptVerified = false } }},
-		"another run":                                    {g: func(g *fakeGuest) { g.closureRun = "run-9" }},
+		"network mode not bound by the proof":            {g: func(g *fakeGuest) { g.closureMutate = func(d *ClosureDoc) { d.Commands[0].NetworkMode = "" } }},
+		"NET_ADMIN recorded in the proof": {g: func(g *fakeGuest) {
+			g.closureMutate = func(d *ClosureDoc) { d.Commands[0].CapEff = "0000000000001000" }
+		}},
+		"receipt not verified": {g: func(g *fakeGuest) { g.closureMutate = func(d *ClosureDoc) { d.ReceiptVerified = false } }},
+		"another run":          {g: func(g *fakeGuest) { g.closureRun = "run-9" }},
 		"empty cells parent and an escaped cell-uid process": {observed: want{runner.OracleProc01: runner.FindingObserved, runner.OracleProc02: runner.FindingObserved}, g: func(g *fakeGuest) {
 			g.closureMutate = func(d *ClosureDoc) { d.Scan.Processes = []Process{escaped} }
 		}},
@@ -131,7 +134,9 @@ func TestEarlyCloseRefusedKeepsTheFullHorizon(t *testing.T) {
 		"post-teardown missing":     {g: func(g *fakeGuest) { g.failCap = map[Point]bool{PointPostTeardown: true} }},
 		"no-reap cell left running": {legit: true, g: func(g *fakeGuest) { g.closureMutate = func(d *ClosureDoc) { d.Commands[0].SurvivorsTolerated = true } }},
 		"host network namespace (net-sink/v1)": {legit: true, g: func(g *fakeGuest) {
-			g.closureMutate = func(d *ClosureDoc) { d.HostNetNS, d.NetNSGone = true, false }
+			g.closureMutate = func(d *ClosureDoc) {
+				d.HostNetNS, d.Commands[0].NetworkMode, d.Commands[0].NoExternalRoutes = true, "host", false
+			}
 		}},
 	} {
 		g := &fakeGuest{cell: sshCell, release: make(chan struct{})}
@@ -161,11 +166,11 @@ func TestEarlyCloseRefusedKeepsTheFullHorizon(t *testing.T) {
 		if stops := g.stopLines(); len(stops) != 0 {
 			t.Errorf("%s: the monitor was told to stop: %q", name, stops)
 		}
+		close(g.release)
+		r := <-done
 		if v := c.Closure(context.Background(), ref); v.Proven || !v.Horizon.Equal(sshT0.Add(30*time.Second)) {
 			t.Errorf("%s: closure = %+v", name, v)
 		}
-		close(g.release)
-		r := <-done
 		if r.err != nil {
 			t.Errorf("%s: %v", name, r.err)
 		}

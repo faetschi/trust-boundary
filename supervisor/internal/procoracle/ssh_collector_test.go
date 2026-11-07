@@ -54,6 +54,7 @@ type fakeGuest struct {
 	// pollProcs puts processes into the poll of that sequence number; stopPollSecs replaces the seconds (from the
 	// interval start) at which a stopped monitor polled.
 	pollProcs    map[int][]Process
+	pollGaps     map[int][]Gap
 	stopPollSecs []int
 	// stops are the stop lines the monitor read from its stdin.
 	stops []string
@@ -190,7 +191,7 @@ func (g *fakeGuest) RunReadyStdin(ctx context.Context, argv []string, stdin io.R
 		for i, sec := range secs {
 			s := base
 			s.Seq, s.Point, s.ObservedAt = i+1, PointMonitor, sshT0.Add(time.Duration(sec)*time.Second)
-			s.Processes = g.pollProcs[i+1]
+			s.Processes, s.Gaps = g.pollProcs[i+1], g.pollGaps[i+1]
 			polls = append(polls, s)
 		}
 		doc := MonitorDoc{Schema: runner.EvidenceSchema, Kind: runner.EvidenceProcMonitor, RegistrationDigest: reg.Digest(), Polls: polls,
@@ -215,7 +216,7 @@ func (g *fakeGuest) RunReadyStdin(ctx context.Context, argv []string, stdin io.R
 		scan.Seq, scan.Point, scan.ObservedAt = 1, PointInterval, sshT0.Add(5*time.Second)
 		doc := ClosureDoc{Schema: runner.EvidenceSchema, Kind: runner.EvidenceProcClosure, IntervalRef: f["--interval-ref"], RunID: run,
 			RegistrationDigest: reg.Digest(), ReceiptVerified: true, ReceiptDigest: strings.Repeat("b", 64), ExpectedSettlements: 1,
-			Commands: []CommandSettlement{settledCommand()}, NetNSGone: true, Scan: scan}
+			Commands: []CommandSettlement{settledCommand()}, Scan: scan}
 		if g.closureMutate != nil {
 			g.closureMutate(&doc)
 		}
