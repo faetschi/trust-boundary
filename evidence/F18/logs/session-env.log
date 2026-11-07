@@ -1,0 +1,11 @@
+== session-env start 2026-11-07T09:34:11Z as tbound freeze=F18
+4629c757b7618056f8ddd7e2625ae9fdd94c0372a65049520bc7d9df9efc7f71  /home/tbound/tbound-w.pWt43B/bin/cosign
+# TBound F18 signing session environment (non-secret). Source it: . /home/tbound/tbound-w.pWt43B/session-env.sh
+umask 077
+export W=/home/tbound/tbound-w.pWt43B B=/home/tbound/tbound-b.UfPIeE H=/home/tbound/tbound-h HF=/home/tbound/tbound-h/f18
+export F=$(cat $HF/FROZEN-COMMIT)
+export COSIGN=$W/bin/cosign TBP=$W/bin/tbound-profile PATH=$W/bin:$PATH
+D() { echo "sha256:$(sha256sum "$1" | cut -d' ' -f1)"; }
+export IMGDIGEST=$(cat $HF/IMGDIGEST)
+OK sync done; no 0-byte output under /home/tbound/tbound-h/f18 nor in: /home/tbound/tbound-w.pWt43B/session-env.sh
+== DONE session-env: /home/tbound/tbound-w.pWt43B/session-env.sh
