@@ -136,6 +136,12 @@ func main() {
 	if capEff != "0000000000000000" {
 		fatal("capability set is not empty: %s", capEff)
 	}
+	// The other sets are recorded, not enforced here: the host's closure predicate (D49) requires them empty for an
+	// early close, and a cell that keeps one simply keeps its full observation window.
+	capSets, err := readCapSets()
+	if err != nil {
+		fatal("read capability sets: %v", err)
+	}
 	if noNewPrivs != "1" {
 		fatal("no_new_privs is not set: %s", noNewPrivs)
 	}
@@ -210,6 +216,7 @@ func main() {
 	proof := map[string]any{
 		"schema": cellEntrypointSchema, "uid": uid, "gid": gid,
 		"cap_eff": capEff, "no_new_privs": true, "seccomp": 2,
+		"cap_prm": capSets["CapPrm:"], "cap_bnd": capSets["CapBnd:"], "cap_inh": capSets["CapInh:"], "cap_amb": capSets["CapAmb:"],
 		"landlock_abi": abi, "landlock_ruleset_digest": digest,
 		"landlock_tsync": true, "cgroup_v2": true,
 		"container_leader_pid":     os.Getpid(),
@@ -392,6 +399,10 @@ type commandProof struct {
 	UID                    int    `json:"uid"`
 	GID                    int    `json:"gid"`
 	CapEff                 string `json:"cap_eff"`
+	CapPrm                 string `json:"cap_prm,omitempty"`
+	CapBnd                 string `json:"cap_bnd,omitempty"`
+	CapInh                 string `json:"cap_inh,omitempty"`
+	CapAmb                 string `json:"cap_amb,omitempty"`
 	NoNewPrivs             bool   `json:"no_new_privs"`
 	Seccomp                int    `json:"seccomp"`
 	LandlockABI            int    `json:"landlock_abi"`
@@ -484,6 +495,7 @@ func runCommandCell(commandPath string, args []string, base map[string]any, delt
 	proof := commandProof{
 		Schema: cellEntrypointSchema, UID: base["uid"].(int), GID: base["gid"].(int),
 		CapEff: base["cap_eff"].(string), NoNewPrivs: true, Seccomp: 2,
+		CapPrm: base["cap_prm"].(string), CapBnd: base["cap_bnd"].(string), CapInh: base["cap_inh"].(string), CapAmb: base["cap_amb"].(string),
 		LandlockABI: base["landlock_abi"].(int), LandlockRulesetDigest: base["landlock_ruleset_digest"].(string),
 		LandlockTSYNC: true, CgroupV2: true, ContainerLeaderPID: os.Getpid(),
 		ConsumerMountsVerified: base["consumer_mounts_verified"].(bool),
@@ -773,6 +785,28 @@ func readStatus() (capEff, noNewPrivs, seccomp string, err error) {
 		return "", "", "", fmt.Errorf("status omitted a required measured field")
 	}
 	return capEff, noNewPrivs, seccomp, nil
+}
+
+// readCapSets reads the permitted, bounding, inheritable and ambient capability sets from /proc/self/status, at the
+// same point and the same way as the effective set. A missing line is an error.
+func readCapSets() (map[string]string, error) {
+	data, err := os.ReadFile("/proc/self/status")
+	if err != nil {
+		return nil, err
+	}
+	sets := map[string]string{}
+	for _, line := range strings.Split(string(data), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 2 && (fields[0] == "CapPrm:" || fields[0] == "CapBnd:" || fields[0] == "CapInh:" || fields[0] == "CapAmb:") {
+			sets[fields[0]] = fields[1]
+		}
+	}
+	for _, k := range []string{"CapPrm:", "CapBnd:", "CapInh:", "CapAmb:"} {
+		if sets[k] == "" {
+			return nil, fmt.Errorf("status omitted %s", k)
+		}
+	}
+	return sets, nil
 }
 
 // requireCgroupV2 fails closed unless the process is a member of a cgroup-v2

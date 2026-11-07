@@ -499,10 +499,11 @@ func (c *constructCtx) verifyNet(use *constructUse, m *constructMap, o *runner.O
 		return err
 	}
 	digest, err := rep.Digest()
+	findings, digest := netoracle.BindClosure(netoracle.OraclesFromNET01(rep), digest, n.Closure)
 	if err != nil || len(rep.Gaps) != 0 || digest != o.OracleRefs[runner.OracleNet01].Report {
 		return errors.New("net report digest differs from the journaled one, or the window has evidence gaps")
 	}
-	if netoracle.OraclesFromNET01(rep)[runner.OracleNet01] != o.Oracles[runner.OracleNet01] {
+	if findings[runner.OracleNet01] != o.Oracles[runner.OracleNet01] {
 		return errors.New("net journal contradicts P oracle outcome")
 	}
 	return nil

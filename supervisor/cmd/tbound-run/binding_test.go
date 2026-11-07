@@ -48,6 +48,7 @@ func bindingMutations() map[string]func(e *env) {
 		"proc cell gid":        func(e *env) { proc(e)["cell_gid"] = 987 },
 		"proc monitor seconds": func(e *env) { proc(e)["monitor_seconds"] = 61 },
 		"proc teardown grace":  func(e *env) { proc(e)["teardown_grace_seconds"] = 31 },
+		"proc drain grace":     func(e *env) { proc(e)["drain_grace_seconds"] = 11 },
 		"proc sockets":         func(e *env) { proc(e)["authorized_sockets"] = []string{"/run/other.sock"} },
 	}
 }

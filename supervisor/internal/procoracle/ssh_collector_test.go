@@ -1,9 +1,11 @@
 package procoracle
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"reflect"
 	"strconv"
 	"strings"
@@ -39,6 +41,23 @@ type fakeGuest struct {
 	readyMutate func(*MonitorReadyDoc)
 	// failMonLate: the monitor acknowledges and then dies.
 	failMonLate bool
+	// D49. closureRun is the run id the closure document names (default "run-1"); failClosure fails proc-closure;
+	// closureMutate edits the document; stopMutate edits the monitor document that answers a stop request;
+	// stopIgnored: the monitor does not act on the stop line and runs to its horizon.
+	closureRun    string
+	failClosure   bool
+	closureMutate func(*ClosureDoc)
+	stopMutate    func(*MonitorDoc)
+	stopIgnored   bool
+	// shortHorizon: the record claims the horizon but holds only six seconds of polls.
+	shortHorizon bool
+	// pollProcs puts processes into the poll of that sequence number; stopPollSecs replaces the seconds (from the
+	// interval start) at which a stopped monitor polled.
+	pollProcs    map[int][]Process
+	pollGaps     map[int][]Gap
+	stopPollSecs []int
+	// stops are the stop lines the monitor read from its stdin.
+	stops []string
 }
 
 // Run is a transport that cannot report readiness: used to prove that such a transport
@@ -62,6 +81,10 @@ func (g *fakeGuest) Run(ctx context.Context, argv []string) ([]byte, []byte, int
 }
 
 func (g *fakeGuest) RunReady(ctx context.Context, argv []string, ready func([]byte)) ([]byte, []byte, int, error) {
+	return g.RunReadyStdin(ctx, argv, nil, ready)
+}
+
+func (g *fakeGuest) RunReadyStdin(ctx context.Context, argv []string, stdin io.Reader, ready func([]byte)) ([]byte, []byte, int, error) {
 	g.mu.Lock()
 	g.calls = append(g.calls, append([]string(nil), argv...))
 	cell, release := g.cell, g.release
@@ -119,9 +142,27 @@ func (g *fakeGuest) RunReady(ctx context.Context, argv []string, ready func([]by
 				ready(readyLine)
 			}
 		}
-		if release != nil {
+		stopCh := make(chan MonitorStopRequest, 1)
+		if stdin != nil {
+			go func() {
+				line, _ := bufio.NewReader(stdin).ReadString(0x0a)
+				if line != "" { // an end of input without a line is not a stop request
+					g.mu.Lock()
+					g.stops = append(g.stops, line)
+					g.mu.Unlock()
+				}
+				if r, err := ParseMonitorStopLine(line); err == nil && !g.stopIgnored {
+					stopCh <- r
+				}
+			}()
+		}
+		var stopReq *MonitorStopRequest
+		if release != nil || stdin != nil {
+			var rel <-chan struct{} = release // a nil channel never fires
 			select {
-			case <-release:
+			case <-rel:
+			case r := <-stopCh:
+				stopReq = &r
 			case <-ctx.Done():
 				return nil, nil, 0, ctx.Err()
 			}
@@ -129,14 +170,57 @@ func (g *fakeGuest) RunReady(ctx context.Context, argv []string, ready func([]by
 		if g.failMonLate {
 			return readyLine, []byte("monitor died"), 2, nil
 		}
+		last := 30 // a horizon record spans the whole duration
+		if d, err := strconv.Atoi(f["--duration"]); err == nil {
+			last = d
+		}
+		if stopReq != nil {
+			last = 13 // the scan was at 5 s and the drain grace of the tests is 7 s: the monitor polled through 12 s
+		}
+		if g.shortHorizon {
+			last = 6
+		}
+		secs := make([]int, 0, last)
+		for i := 1; i <= last; i++ {
+			secs = append(secs, i)
+		}
+		if stopReq != nil && g.stopPollSecs != nil {
+			secs = g.stopPollSecs
+		}
 		var polls []Snapshot
-		for i := 1; i <= 6; i++ {
+		for i, sec := range secs {
 			s := base
-			s.Seq, s.Point, s.ObservedAt = i, PointMonitor, sshT0.Add(time.Duration(i)*time.Second)
+			s.Seq, s.Point, s.ObservedAt = i+1, PointMonitor, sshT0.Add(time.Duration(sec)*time.Second)
+			s.Processes, s.Gaps = g.pollProcs[i+1], g.pollGaps[i+1]
 			polls = append(polls, s)
 		}
-		final, _, _, _ := reply(MonitorDoc{Schema: runner.EvidenceSchema, Kind: runner.EvidenceProcMonitor, RegistrationDigest: reg.Digest(), Polls: polls})
+		doc := MonitorDoc{Schema: runner.EvidenceSchema, Kind: runner.EvidenceProcMonitor, RegistrationDigest: reg.Digest(), Polls: polls,
+			Stop: MonitorStop{Reason: StopHorizon, FirstPollAt: polls[0].ObservedAt, LastPollAt: polls[len(polls)-1].ObservedAt, StoppedAt: polls[len(polls)-1].ObservedAt}}
+		if stopReq != nil {
+			doc.Stop.Reason, doc.Stop.ClosureDigest, doc.Stop.RunID = StopClosedOnProof, stopReq.ClosureDigest, stopReq.RunID
+			if g.stopMutate != nil {
+				g.stopMutate(&doc)
+			}
+		}
+		final, _, _, _ := reply(doc)
 		return append(readyLine, final...), nil, 0, nil
+	case runner.EvidenceProcClosure:
+		if g.failClosure {
+			return nil, []byte("closure failed"), 2, nil
+		}
+		run := g.closureRun
+		if run == "" {
+			run = "run-1"
+		}
+		scan := base
+		scan.Seq, scan.Point, scan.ObservedAt = 1, PointInterval, sshT0.Add(5*time.Second)
+		doc := ClosureDoc{Schema: runner.EvidenceSchema, Kind: runner.EvidenceProcClosure, IntervalRef: f["--interval-ref"], RunID: run,
+			RegistrationDigest: reg.Digest(), ReceiptVerified: true, ReceiptDigest: strings.Repeat("b", 64), ExpectedSettlements: 1,
+			Commands: []CommandSettlement{settledCommand()}, Scan: scan}
+		if g.closureMutate != nil {
+			g.closureMutate(&doc)
+		}
+		return reply(doc)
 	case runner.EvidenceProcCapture:
 		p := Point(f["--point"])
 		seq, ok := GuestPointSeq(p)
@@ -155,6 +239,12 @@ func (g *fakeGuest) argvs() [][]string {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	return append([][]string(nil), g.calls...)
+}
+
+func (g *fakeGuest) stopLines() []string {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return append([]string(nil), g.stops...)
 }
 
 func newSSHCollector(g *fakeGuest) (*SSHCollector, *[]time.Time) {
