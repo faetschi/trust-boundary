@@ -1,0 +1,12 @@
+boot 1a719193-36d4-4a79-86c0-a1a21255bcd5 2026-11-06T23:09:42Z
+go version go1.27.1 linux/amd64
+BUILD_OK
+VET_OK
+WINDOWS_OK
+FMT_OK
+BOUNDARY_OK
+TEST_RC=0
+boot 1a719193-36d4-4a79-86c0-a1a21255bcd5 2026-11-06T23:30:06Z
+tests {'pass': 7234, 'skip': 50} packages {'skip': 3, 'pass': 61}
+
+[exited with code 0]
