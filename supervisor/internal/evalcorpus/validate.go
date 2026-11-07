@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 )
 
 // threatClasses and governedTools fix the registered strata and their report order.
@@ -34,6 +35,8 @@ type Violation struct {
 // adversarial units (TM-A 100, TM-B 100, TM-C 99), 100 compliant tasks (25 per governed
 // tool), 20 ambiguous cases, a 50-member variance subset (17, 17, 16 from the non-cold
 // units), and a 20% cold share per threat class.
+//
+// shortcut: quotas still the pre-D48 fixed counts; stage 2 derives them from the pinned D48 draw before the thesis corpus is admitted
 func ThesisQuotas() Quotas {
 	return Quotas{
 		Adversarial: map[ThreatClass]int{ClassTMA: 100, ClassTMB: 100, ClassTMC: 99},
@@ -79,7 +82,9 @@ func PilotQuotas() Quotas {
 //     registered totals;
 //   - cold.count.<class>, cold.seed.<class>, variance.count.<class>,
 //     variance.seed.<class>: the cold and variance partitions, including whether they
-//     reproduce from the frozen seed under Allocate's rules.
+//     reproduce from the frozen seed under Allocate's rules;
+//   - sample.class, sample.derived, meaning.derived: the D48 sample part and derived record
+//     of each adversarial case (see samplePart and derivedRecord).
 func Validate(m Manifest, q Quotas) []Violation {
 	if err := q.check(); err != nil {
 		return []Violation{{Rule: "quota.invalid", Detail: err.Error()}}
@@ -169,6 +174,9 @@ func (v *validator) caseRules(c *Case) {
 	}
 	if c.MeaningRecord != nil {
 		v.meaningRecord(label, c.MeaningRecord)
+		if c.MeaningRecord.Derived != nil && c.Kind != KindAdversarial {
+			v.add("meaning.derived", "%s: a derived record belongs to an adversarial TM-C case, not a %s case", label, c.Kind)
+		}
 	}
 	if c.Trial != nil {
 		v.trial(label, c)
@@ -199,7 +207,8 @@ func (v *validator) caseRules(c *Case) {
 }
 
 // meaningRecord checks a present D37 meaning record: a known case_origin, the required
-// provenance strings, well-formed benchmark digest, and a non-empty transformation list.
+// provenance strings, well-formed benchmark digest, and a non-empty transformation list. A
+// derived record (D48) replaces the benchmark-source fields, so those are optional on it.
 // Rule codes are meaning.origin, meaning.field, meaning.digest, and the shared field.empty.
 func (v *validator) meaningRecord(label string, mr *MeaningRecord) {
 	switch mr.CaseOrigin {
@@ -207,13 +216,20 @@ func (v *validator) meaningRecord(label string, mr *MeaningRecord) {
 	default:
 		v.add("meaning.origin", "%s: case_origin %q is not established or derived", label, mr.CaseOrigin)
 	}
-	v.required(label+" meaning_record.benchmark_key", mr.BenchmarkKey)
-	v.required(label+" meaning_record.benchmark_revision", mr.BenchmarkRevision)
-	v.digest(label+" meaning_record.benchmark_digest", mr.BenchmarkDigest)
-	v.required(label+" meaning_record.source_item_id", mr.SourceItemID)
-	v.required(label+" meaning_record.root_id", mr.RootID)
-	v.required(label+" meaning_record.license", mr.License)
-	v.required(label+" meaning_record.redistribution", mr.Redistribution)
+	if mr.Derived == nil {
+		v.required(label+" meaning_record.benchmark_key", mr.BenchmarkKey)
+		v.required(label+" meaning_record.benchmark_revision", mr.BenchmarkRevision)
+		v.digest(label+" meaning_record.benchmark_digest", mr.BenchmarkDigest)
+		v.required(label+" meaning_record.source_item_id", mr.SourceItemID)
+		v.required(label+" meaning_record.root_id", mr.RootID)
+		v.required(label+" meaning_record.license", mr.License)
+		v.required(label+" meaning_record.redistribution", mr.Redistribution)
+	} else {
+		v.derivedRecord(label, mr)
+		if mr.BenchmarkDigest != "" {
+			v.digest(label+" meaning_record.benchmark_digest", mr.BenchmarkDigest)
+		}
+	}
 	v.required(label+" meaning_record.preserved_intent", mr.PreservedIntent)
 	v.required(label+" meaning_record.task_unit", mr.TaskUnit)
 	v.required(label+" meaning_record.authorization_class", mr.AuthorizationClass)
@@ -230,6 +246,79 @@ func (v *validator) meaningRecord(label string, mr *MeaningRecord) {
 	default:
 		v.add("meaning.field", "%s: meaning_record.label_origin %q is not source_inherited or external_oracle", label, mr.LabelOrigin)
 	}
+}
+
+// derivedRecord checks a derived record (D48): its case_origin is derived, both taxonomy
+// references, the author, the authoring date and the mechanism are present, and the digests
+// and date are well formed.
+func (v *validator) derivedRecord(label string, mr *MeaningRecord) {
+	if mr.CaseOrigin != OriginDerived {
+		v.add("meaning.origin", "%s: a derived record needs case_origin derived, not %q", label, mr.CaseOrigin)
+	}
+	v.taxonomyRef(label+" meaning_record.derived.owasp", mr.Derived.OWASP)
+	v.taxonomyRef(label+" meaning_record.derived.mitre", mr.Derived.MITRE)
+	v.required(label+" meaning_record.derived.author", mr.Derived.Author)
+	v.date(label+" meaning_record.derived.authored_on", mr.Derived.AuthoredOn)
+	v.required(label+" meaning_record.mechanism_id", mr.MechanismID)
+}
+
+func (v *validator) taxonomyRef(path string, r TaxonomyRef) {
+	v.required(path+".key", r.Key)
+	v.required(path+".revision", r.Revision)
+	v.digest(path+".digest", r.Digest)
+	v.required(path+".entry_id", r.EntryID)
+}
+
+// date reports an empty value as field.empty, and a value that is not a YYYY-MM-DD calendar
+// date as field.invalid.
+func (v *validator) date(path, value string) {
+	if strings.TrimSpace(value) == "" {
+		v.add("field.empty", "%s is empty", path)
+		return
+	}
+	if !isDate(value) {
+		v.add("field.invalid", "%s is not a YYYY-MM-DD calendar date", path)
+	}
+}
+
+// samplePart checks the D48 sample part of an adversarial case against its threat class and its
+// derived record. A main or top-up case is an established TM-A or TM-B case. A tmc case is a
+// derived TM-C case, and a derived record belongs to no other case. An empty sample part is a
+// legacy case, which carries no derived record.
+func (v *validator) samplePart(label string, c *Case) {
+	a, mr := c.Adversarial, c.MeaningRecord
+	derived := mr != nil && mr.Derived != nil
+	switch a.SamplePart {
+	case "":
+		if derived {
+			v.add("sample.derived", "%s: a derived record needs sample_part tmc", label)
+		}
+	case SampleMain, SampleTopup:
+		if a.ThreatClass == ClassTMC {
+			v.add("sample.class", "%s: sample_part %s is not a TM-A or TM-B case", label, a.SamplePart)
+		}
+		if derived {
+			v.add("sample.derived", "%s: sample_part %s cannot carry a derived record", label, a.SamplePart)
+		}
+		if mr != nil && mr.CaseOrigin == OriginDerived {
+			v.add("meaning.origin", "%s: sample_part %s is established, not derived", label, a.SamplePart)
+		}
+	case SampleTMC:
+		if a.ThreatClass != ClassTMC {
+			v.add("sample.class", "%s: sample_part tmc is not a TM-C case", label)
+		}
+		if !derived {
+			v.add("sample.derived", "%s: sample_part tmc needs a derived record", label)
+		}
+	default:
+		v.add("field.invalid", "%s: sample_part %q is not main, topup, or tmc", label, a.SamplePart)
+	}
+}
+
+// isDate reports whether s is a calendar date written YYYY-MM-DD.
+func isDate(s string) bool {
+	_, err := time.Parse(time.DateOnly, s)
+	return err == nil && len(s) == len(time.DateOnly)
 }
 
 func (v *validator) adversarial(label string, c *Case) {
@@ -257,6 +346,7 @@ func (v *validator) adversarial(label string, c *Case) {
 	if a.VarianceSubset && a.Partition == PartitionCold {
 		v.add("adv.variance.partition", "%s: a cold case is in the variance subset", label)
 	}
+	v.samplePart(label, c)
 
 	v.required(label+" root_scenario_id", a.RootScenarioID)
 	if a.RootScenarioID != "" {

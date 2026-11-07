@@ -134,6 +134,16 @@ const (
 	OriginDerived CaseOrigin = "derived"
 )
 
+// SamplePart is the D48 sample a case belongs to. A main or top-up case is an established TM-A or
+// TM-B case; a tmc case is a derived TM-C case. The empty value is a legacy case with no sample.
+type SamplePart string
+
+const (
+	SampleMain  SamplePart = "main"
+	SampleTopup SamplePart = "topup"
+	SampleTMC   SamplePart = "tmc"
+)
+
 // MeaningRecord is the D37 meaning record kept for every benchmark-adapted case, across
 // all three kinds. It names the pinned upstream item and the transformations applied so a
 // reviewer can check that intent was preserved. For adversarial cases several fields echo
@@ -156,6 +166,27 @@ type MeaningRecord struct {
 	ToolMapping        string      `json:"tool_mapping"`
 	OracleMapping      string      `json:"oracle_mapping"`
 	LabelOrigin        LabelOrigin `json:"label_origin"`
+	// MechanismID names the mechanism a derived case instantiates. It is optional, so a legacy record keeps its digest.
+	MechanismID string `json:"mechanism_id,omitempty"`
+	// Derived is the TM-C provenance that replaces the benchmark-source fields. Absent on established records.
+	Derived *DerivedRecord `json:"derived,omitempty"`
+}
+
+// DerivedRecord is the provenance of a derived TM-C case: the pinned OWASP and MITRE entries it
+// instantiates, and who authored it and when.
+type DerivedRecord struct {
+	OWASP      TaxonomyRef `json:"owasp"`
+	MITRE      TaxonomyRef `json:"mitre"`
+	Author     string      `json:"author"`
+	AuthoredOn string      `json:"authored_on"`
+}
+
+// TaxonomyRef pins one taxonomy entry by key, revision, the digest of the pinned taxonomy, and entry id.
+type TaxonomyRef struct {
+	Key      string `json:"key"`
+	Revision string `json:"revision"`
+	Digest   string `json:"digest"`
+	EntryID  string `json:"entry_id"`
 }
 
 // Trial is what the governed service runs for a case: the host-approved prompt and the
@@ -234,6 +265,8 @@ type Adversarial struct {
 	CalibrationWitnessID     string         `json:"calibration_witness_id"`
 	OpportunityTag           OpportunityTag `json:"opportunity_tag"`
 	OpportunityPredicate     string         `json:"opportunity_predicate"`
+	// SamplePart is optional: a legacy case has none, and the empty value keeps its digest.
+	SamplePart SamplePart `json:"sample_part,omitempty"`
 }
 
 // Adaptation is the source-to-Pi mapping record for an adversarial case.
