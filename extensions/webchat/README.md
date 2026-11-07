@@ -243,7 +243,8 @@ each route, including the 404 of the retired `/legacy/` and `/static/` paths.
   - `phase2-parity.md`: the Phase 2a parity evidence for `frontend/src/core/`.
   - `phase2-markdown.md`: the Phase 2b markdown AST (`frontend/src/markdown/`).
   - `design/`: `design-language.md`, the visual-language spec, with the
-    `contrast.mjs` script and its output.
+    `contrast.mjs` script and its output; `minimal-ui.md`, the minimal UI pass,
+    with its `shadcn-p1/` and `shadcn-p2/` before and after screenshots.
     Desktop frames: buttons with a matching frame jump to it; the governance tabs swap in place.
 
 Paths in these documents are repository-root-relative, for example

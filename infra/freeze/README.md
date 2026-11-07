@@ -21,9 +21,9 @@ The guest scripts stop on `PREV_FREEZE=none`.
 
 ## Start a new freeze
 
-1. Copy the last values file: `cp freezes/F14.env freezes/F15.env`.
-2. Set `FREEZE=F15`, `FREEZE_COMMIT=FROZEN_COMMIT_TBD`, `PREV_FREEZE=F14` and `PREV_COMMIT=<the F14 commit>`.
-3. Fill every `PREV_*` value from `evidence/F14/logs`, plus a new `DR_ADMISSION_ID` and the current `GUEST_IP`.
+1. Copy the last values file, for example after F18: `cp freezes/F18.env freezes/F19.env`.
+2. Set `FREEZE=F19`, `FREEZE_COMMIT=FROZEN_COMMIT_TBD`, `PREV_FREEZE=F18` and `PREV_COMMIT=<the F18 commit>`.
+3. Fill every `PREV_*` value from `evidence/F18/logs`, plus a new `DR_ADMISSION_ID` and the current `GUEST_IP`.
    Commit fresh admission IDs in `infra/guest/serve-pi-service.g1.json` and `serve-pi-service.route-probe.json`; `10-freeze.sh` refuses reused ones.
 4. Set `FREEZE_COMMIT` to the owner-selected 40-hex commit.
 
