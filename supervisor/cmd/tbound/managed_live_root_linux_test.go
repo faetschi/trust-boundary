@@ -588,3 +588,8 @@ const (
 )
 
 func stringsOf(char byte, count int) string { return strings.Repeat(string(char), count) }
+
+func validateProductionD09OperationBundle(bundle sessionrepo.EvidenceBundle, transition delta.Transition,
+	operation sessionrepo.OperationEvidence, receipt piruntime.D09CommandReceipt) error {
+	return validateProductionD09Operation(bundle, transition, operation, receipt, false)
+}

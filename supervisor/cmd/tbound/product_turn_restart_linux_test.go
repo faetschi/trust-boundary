@@ -127,7 +127,7 @@ func TestProductTurnRestartReconcilesEveryCrashBoundary(t *testing.T) {
 				before.State != productsession.StateAwaitingReview {
 				t.Fatalf("the child settled the turn before crashing: %+v", before)
 			}
-			if err := f.env.ReconcileAfterRestart(context.Background()); err != nil {
+			if err := f.env.driver().ReconcileAfterRestart(context.Background()); err != nil {
 				t.Fatalf("reconcile: %v", err)
 			}
 			turn, session := f.turn(t, id), f.currentSession(t)
@@ -195,7 +195,7 @@ func TestProductTurnRestartRecordsAChangedProjectAsUnknown(t *testing.T) {
 	writeProductDriverFile(t, created.projectDir, "outside.txt", "written while the service was down\n")
 	f := openProductDriverFixture(t, created.root)
 	f.session = created.session
-	if err := f.env.ReconcileAfterRestart(context.Background()); err == nil {
+	if err := f.env.driver().ReconcileAfterRestart(context.Background()); err == nil {
 		t.Fatal("a changed project reconciled without an error")
 	}
 	turn, session := f.turn(t, f.session.ID+"/turn-1"), f.currentSession(t)
@@ -269,7 +269,7 @@ func TestProductTurnRestartPublicationFaultBoundaries(t *testing.T) {
 				if named, succeeded, err := f.env.workflowPublication(before.ProjectID, before.Link.WorkflowID); err != nil || !named || succeeded != "" {
 					t.Fatalf("pre-resolution lifecycle: named=%v succeeded=%s err=%v", named, succeeded, err)
 				}
-				if err := f.env.ReconcileAfterRestart(context.Background()); err == nil {
+				if err := f.env.driver().ReconcileAfterRestart(context.Background()); err == nil {
 					t.Fatal("an incomplete publication lifecycle reconciled without an error")
 				}
 				turn, session := f.turn(t, before.ID), f.currentSession(t)

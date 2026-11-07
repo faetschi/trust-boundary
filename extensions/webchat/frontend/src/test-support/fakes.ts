@@ -5,7 +5,7 @@ import type { EventSourceLike, FetchResponseLike } from "../core/api";
 import type { Snapshot } from "../core/contract";
 import type { WorkspaceDeps } from "../app/workspaceStore";
 
-export class FakeSource implements EventSourceLike {
+class FakeSource implements EventSourceLike {
   readonly url: string;
   closed = false;
   private readonly listeners = new Map<string, Array<(event: { readonly data?: string }) => void>>();
@@ -45,7 +45,7 @@ interface ScheduledTimer {
   cancelled: boolean;
 }
 
-export interface FakeFetchReply {
+interface FakeFetchReply {
   readonly ok: boolean;
   readonly status: number;
   readonly body: unknown;

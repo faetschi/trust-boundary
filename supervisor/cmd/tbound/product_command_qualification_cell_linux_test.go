@@ -823,3 +823,9 @@ func TestProductQualificationRootfsEvidenceNeedsEveryTargetsDenial(t *testing.T)
 		}
 	}
 }
+
+// reconcileProductCommandScopesUnder is reconcileProductCommandScopes over a cells root that is already
+// prepared, so the journal and direct-child checks need no host.
+func reconcileProductCommandScopesUnder(ctx context.Context, root *os.File, retainedRoots ...string) error {
+	return reconcileProductCommandScopesWithRecovery(ctx, root, nil, retainedRoots...)
+}

@@ -376,7 +376,12 @@ if [ "$AST" = NONE ]; then
   # $PREV_FREEZE G1 published successfully; preserve the fixture and publication output as evidence (the $PREV_FREEZE rp was NO_DIFF and the dr ended UNKNOWN by design).
   PREVDRAFT="$(printf 'version=2.4.0\nstatus=draft')"
   PREVFINAL="$(printf 'version=2.4.0\nstatus=final')"
-  if ! pw 'test -f /var/lib/tbound/live/root/src/release.txt'; then
+  # A corpus pilot at $PREV_FREEZE (33-corpus-pilot.sh, trial reset recorded in $PREV_HF/pilot) replaces the g1 fixture with a pilot
+  # case fixture, so the g1 live-root checks do not apply; the content is archived as evidence like everything else (moved, never deleted).
+  PILOT_RAN=0; WX test -f "$PREV_HF/pilot/TRIAL_RESET_OK" && PILOT_RAN=1
+  if [ "$PILOT_RAN" = 1 ]; then
+    note "the $PREV_FREEZE corpus pilot reset the live root to a case fixture ($PREV_HF/pilot/TRIAL_RESET_OK: $(WX cat "$PREV_HF/pilot/TRIAL_RESET_OK" | tr -d '\r')); its content is archived as evidence, not judged against the g1 fixture"
+  elif ! pw 'test -f /var/lib/tbound/live/root/src/release.txt'; then
     die "the live root holds no src/release.txt: the $PREV_FREEZE seed-live g1 fixture is not intact (the $PREV_FREEZE G1 completed), so this is not the $PREV_FREEZE state this script was written for. Stop and read the listing above (nothing has moved)"
   elif REL=$(pw 'cat /var/lib/tbound/live/root/src/release.txt' | tr -d '\r') && [ "$REL" = "$PREVFINAL" ]; then
     ok "live-root control file src/release.txt carries the $PREV_FREEZE g1 edit (version=2.4.0, status=final): the known $PREV_FREEZE outcome, archived as evidence"
@@ -385,13 +390,15 @@ if [ "$AST" = NONE ]; then
   else
     die "live-root src/release.txt is neither the $PREV_FREEZE g1 edit (status=final) nor the seeded fixture (status=draft): '$REL'. Stop and read it before archiving (nothing has moved)"
   fi
-  pw 'test -d /var/lib/tbound/live/root/out' || die "the live root holds no out/ directory: the $PREV_FREEZE seed-live g1 fixture is not intact (RG-7 created it). Stop and read the listing above (nothing has moved)"
+  [ "$PILOT_RAN" = 1 ] || pw 'test -d /var/lib/tbound/live/root/out' || die "the live root holds no out/ directory: the $PREV_FREEZE seed-live g1 fixture is not intact (RG-7 created it). Stop and read the listing above (nothing has moved)"
   OUTENT=$(pw 'ls -A /var/lib/tbound/live/root/out 2>/dev/null | LC_ALL=C sort' | tr -d '\r')
+  if [ "$PILOT_RAN" = 1 ]; then ok "live-root out/ belongs to the $PREV_FREEZE pilot case fixture; archived as evidence, not judged"; else
   case "$OUTENT" in
     "") ok "live-root out/ is empty: the $PREV_FREEZE bash cell left no out/release.sha256 (G1 completed; preserve this observed layout)" ;;
     "release.sha256") ok "live-root out/ holds exactly release.sha256 (written by the $PREV_FREEZE bash cell from the completed G1 run); it is archived as evidence, not judged" ;;
     *) die "live-root out/ holds something other than release.sha256: '$OUTENT'. Stop and read it before archiving (nothing has moved)" ;;
   esac
+  fi
 else
   note "archive dir state $AST: continuing the earlier run (items and journal are not re-judged; the stored manifest is authoritative)"
 fi

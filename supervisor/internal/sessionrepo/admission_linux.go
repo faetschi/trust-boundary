@@ -78,23 +78,6 @@ type AdmissionReference struct {
 	AdmissionPolicyDigest string `json:"admission_policy_digest"`
 }
 
-// AppendAdmission validates and durably appends the complete admission
-// evidence. primaryIntent is the exact byte sequence whose digest is recorded.
-// The Store must authenticate the pre-operation decision and validate the
-// candidate against its accepted chain before calling this function. This API
-// does not independently prove that the supplied intent is a durable effect.
-func AppendAdmission(
-	journal *audit.Journal,
-	request OperationRequest,
-	primaryIntent []byte,
-	policyDigest, metadataPolicyDigest string,
-	input, output delta.TreeManifest,
-	candidate delta.Transition,
-) (AdmissionReference, error) {
-	return AppendAdmissionScoped(journal, request, primaryIntent, policyDigest, metadataPolicyDigest,
-		input, output, candidate, AdmissionScope{})
-}
-
 // AppendAdmissionScoped is AppendAdmission under an admission scope. The scope decides the outcome
 // and is part of the admission policy digest of the record.
 func AppendAdmissionScoped(
@@ -149,18 +132,6 @@ func AppendAdmissionScoped(
 		return AdmissionReference{}, fmt.Errorf("append durable admission: %w", err)
 	}
 	return referenceFor(appended, record), nil
-}
-
-// VerifyAdmission checks the journal chain, persisted record, supplied
-// reference, exact primary intent, pinned policy identities, and recomputed
-// scope outcome.
-func VerifyAdmission(
-	journal *audit.Journal,
-	reference AdmissionReference,
-	primaryIntent []byte,
-	policyDigest, metadataPolicyDigest string,
-) error {
-	return VerifyAdmissionScoped(journal, reference, primaryIntent, policyDigest, metadataPolicyDigest, AdmissionScope{})
 }
 
 // VerifyAdmissionScoped is VerifyAdmission under the admission scope the record was written under.

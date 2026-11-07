@@ -18,6 +18,7 @@ import (
 	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/delta"
 	"tbound/supervisor/internal/gate"
+	"tbound/supervisor/internal/productdriver"
 	"tbound/supervisor/internal/productsession"
 	"tbound/supervisor/internal/providerbridge"
 	"tbound/supervisor/internal/sessionrepo"
@@ -35,7 +36,7 @@ type retainedProductPredecessor struct {
 	paths    productTurnPaths
 	options  sessionrepo.Options
 	pins     GovernedReplayPins
-	receipt  productTurnReceipt
+	receipt  productsession.TurnReceipt
 	boundary providerbridge.TurnBoundary
 }
 
@@ -114,7 +115,7 @@ func runProductPredecessorTurn(t *testing.T) retainedProductPredecessor {
 				ResponseIDIssuer: governedResponseIssuer, Generation: config.InitialGenerationID},
 			Baseline: bundle.Baseline, StorePolicyDigest: governedReplayStorePolicy, MetadataPolicyDigest: governedReplayMetaPolicy,
 		},
-		receipt: productTurnReceipt{SchemaVersion: productTurnReceiptSchema,
+		receipt: productsession.TurnReceipt{SchemaVersion: productsession.ReceiptSchema,
 			SessionID: "psess-" + strings.Repeat("ab", 16), Ordinal: 1, WorkflowID: config.WorkflowID, RunID: "vertical-run",
 			ConversationID: config.ConversationID, UnverifiedInputs: []string{"runtime_digest", "image_digest", "extension_digest"},
 			WorkerKind: productsession.WorkerSupervisorLoop, WorkerInstance: "fixture-1",
@@ -124,10 +125,10 @@ func runProductPredecessorTurn(t *testing.T) retainedProductPredecessor {
 			ResultBaselineDigest: "sha256:" + bareStoreTreeDigest(bundle.Baseline.TreeDigest),
 			Outcome:              productsession.OutcomeNoDiff, Settlement: productsession.SettlementSupervisorLoopClosed, Usage: productsession.Budget{HostCalls: 4, Tokens: 3072, DurationSeconds: 1},
 			ToolSequence: []string{"read", "write"},
-			Denials:      []productTurnDenial{{ToolCallID: productDeniedCallID, Tool: "write", ReasonCode: "policy_rule_deny"}}},
+			Denials:      []productsession.ReceiptDenial{{ToolCallID: productDeniedCallID, Tool: "write", ReasonCode: "policy_rule_deny"}}},
 	}
 	retained.receipt.TurnID = retained.receipt.SessionID + "/turn-1"
-	encoded, err := encodeProductTurnReceipt(retained.receipt)
+	encoded, err := productdriver.EncodeReceipt(retained.receipt)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -232,11 +233,11 @@ func TestProductTurnPredecessorFromRetainedEvidenceReachesTheNextTurn(t *testing
 	if err := verifyProductTurnReceiptJournals(retained.receipt, turn.ProviderJournal, turn.StoreJournal, nil); err != nil {
 		t.Fatalf("receipt does not match the retained journals: %v", err)
 	}
-	for name, mutate := range map[string]func(*productTurnReceipt){
-		"provider count": func(r *productTurnReceipt) { r.ProviderJournalCount-- },
-		"provider head":  func(r *productTurnReceipt) { r.ProviderJournalHead = strings.Repeat("0", 64) },
-		"Store count":    func(r *productTurnReceipt) { r.StoreJournalCount++ },
-		"Store head":     func(r *productTurnReceipt) { r.StoreJournalHead = r.ProviderJournalHead },
+	for name, mutate := range map[string]func(*productsession.TurnReceipt){
+		"provider count": func(r *productsession.TurnReceipt) { r.ProviderJournalCount-- },
+		"provider head":  func(r *productsession.TurnReceipt) { r.ProviderJournalHead = strings.Repeat("0", 64) },
+		"Store count":    func(r *productsession.TurnReceipt) { r.StoreJournalCount++ },
+		"Store head":     func(r *productsession.TurnReceipt) { r.StoreJournalHead = r.ProviderJournalHead },
 	} {
 		changed := retained.receipt
 		mutate(&changed)
@@ -374,49 +375,5 @@ func TestProductProviderConversationRequiresTheCheckpointedPredecessor(t *testin
 				t.Fatal("newProviderConversation accepted disagreeing predecessor pins")
 			}
 		})
-	}
-}
-
-func TestProductTurnReceiptIsStrict(t *testing.T) {
-	receipt := productTurnReceipt{SchemaVersion: productTurnReceiptSchema, SessionID: "psess-1", TurnID: "psess-1/turn-2",
-		Ordinal: 2, WorkflowID: "w", RunID: "r", ConversationID: "c", UnverifiedInputs: []string{"runtime_digest", "image_digest", "extension_digest"},
-		WorkerKind: productsession.WorkerSupervisorLoop, WorkerInstance: "i",
-		ProviderJournalHead: strings.Repeat("a", 64), ProviderJournalCount: 3, StoreJournalHead: strings.Repeat("b", 64), StoreJournalCount: 4,
-		ImportedPrefixDigest: digestBytes([]byte("prefix")), PredecessorReceiptDigest: digestBytes([]byte("receipt")),
-		BaselineDigest: digestBytes([]byte("base")), ResultBaselineDigest: digestBytes([]byte("base")),
-		Outcome: productsession.OutcomeNoDiff, Settlement: productsession.SettlementSupervisorLoopClosed, ToolSequence: []string{}, Denials: []productTurnDenial{}}
-	encoded, err := encodeProductTurnReceipt(receipt)
-	if err != nil {
-		t.Fatal(err)
-	}
-	decoded, err := decodeProductTurnReceipt(encoded)
-	if err != nil || decoded.TurnID != receipt.TurnID || decoded.ImportedPrefixDigest != receipt.ImportedPrefixDigest {
-		t.Fatalf("receipt did not round-trip: %+v %v", decoded, err)
-	}
-	for name, raw := range map[string][]byte{
-		"unknown field":  append(encoded[:len(encoded)-1:len(encoded)-1], []byte(`,"extra":1}`)...),
-		"trailing data":  append(append([]byte(nil), encoded...), []byte(` {}`)...),
-		"duplicate key":  append([]byte(`{"ordinal":2,`), encoded[1:]...),
-		"over the bound": append(append([]byte(nil), encoded...), make([]byte, productsession.MaxReceiptBytes)...),
-	} {
-		if _, err := decodeProductTurnReceipt(raw); err == nil {
-			t.Errorf("receipt with %s was accepted", name)
-		}
-	}
-	for name, mutate := range map[string]func(*productTurnReceipt){
-		"missing unverified inputs": func(r *productTurnReceipt) { r.UnverifiedInputs = nil },
-		"claims verified runtime":   func(r *productTurnReceipt) { r.UnverifiedInputs = []string{"image_digest", "extension_digest"} },
-		"other worker":              func(r *productTurnReceipt) { r.WorkerKind = "pi-process" },
-		"turn ID mismatch":          func(r *productTurnReceipt) { r.TurnID = "psess-1/turn-3" },
-		"half predecessor":          func(r *productTurnReceipt) { r.PredecessorReceiptDigest = "" },
-		"no journal head":           func(r *productTurnReceipt) { r.StoreJournalHead = "" },
-		"unknown outcome":           func(r *productTurnReceipt) { r.Outcome = "unknown" },
-		"missing denials list":      func(r *productTurnReceipt) { r.Denials = nil },
-	} {
-		changed := receipt
-		mutate(&changed)
-		if _, err := encodeProductTurnReceipt(changed); err == nil {
-			t.Errorf("receipt with %s was encoded", name)
-		}
 	}
 }

@@ -13,7 +13,6 @@ import (
 
 	providerbroker "tbound/supervisor/internal/broker"
 	"tbound/supervisor/internal/broker/openrouter"
-	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/gate"
 	"tbound/supervisor/internal/ipc"
 	"tbound/supervisor/internal/piruntime"
@@ -228,17 +227,3 @@ func verifySmokeSocket(path string) error {
 	}
 	return nil
 }
-
-func smokeProposals() []protocol.Proposal {
-	proposals := make([]protocol.Proposal, 0, len(smokeCalls))
-	for _, call := range smokeCalls {
-		proposals = append(proposals, protocol.Proposal{
-			SchemaVersion: protocol.ProposalSchemaVersion,
-			ToolCallID:    call.callID, Tool: call.tool,
-			Arguments: append(json.RawMessage(nil), call.arguments...),
-		})
-	}
-	return proposals
-}
-
-func smokeTokenFilePath(socketDir string) string { return filepath.Join(socketDir, smokeTokenName) }

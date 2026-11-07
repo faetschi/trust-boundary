@@ -17,7 +17,9 @@ export interface UiPrefs {
   readonly panel: PanelKey;
 }
 
-export const DEFAULT_UI_PREFS: UiPrefs = { railCollapsed: false, inspectorCollapsed: false, panel: "decisions" };
+// The governance column starts as its icon column: the header's Governance control carries the decisions badge, and opening it
+// is one press. A choice made by the reader is stored and kept.
+export const DEFAULT_UI_PREFS: UiPrefs = { railCollapsed: false, inspectorCollapsed: true, panel: "decisions" };
 
 export interface PrefsStorage {
   getItem(key: string): string | null;

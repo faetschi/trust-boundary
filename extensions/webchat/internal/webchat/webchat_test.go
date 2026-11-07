@@ -6,16 +6,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"regexp"
 	"strings"
 	"testing"
 	"time"
-)
-
-// The shell and the module graph declare which static assets the client loads.
-var (
-	shellReferencePattern  = regexp.MustCompile(`(?:src|href)="(/static/[A-Za-z0-9._-]+)"`)
-	moduleReferencePattern = regexp.MustCompile(`["']\./([A-Za-z0-9._-]+\.mjs)["']`)
 )
 
 func validSnapshot() Snapshot {
@@ -730,75 +723,5 @@ func readSSELines(t *testing.T, response *http.Response, count int) []string {
 	case <-time.After(5 * time.Second):
 		t.Fatalf("timed out reading %d SSE lines", count)
 		return nil
-	}
-}
-
-// The client is served from a closed allowlist. An asset that one served file
-// references but the allowlist does not serve would 404 at runtime, leaving a
-// half-rendered projection; an allowlisted asset that nothing references is a
-// dead route. So the shell, the module graph and the allowlist are checked
-// against each other.
-func TestStaticAssetsAreClosedAndComplete(t *testing.T) {
-	shell, err := assetsFS.ReadFile("assets/index.html")
-	if err != nil {
-		t.Fatalf("read shell: %v", err)
-	}
-
-	// path -> the file that references it.
-	referenced := map[string]string{}
-	for _, match := range shellReferencePattern.FindAllStringSubmatch(string(shell), -1) {
-		referenced[match[1]] = "assets/index.html"
-	}
-	for path, route := range staticRoutes {
-		if !strings.HasSuffix(route.asset, ".mjs") {
-			continue
-		}
-		body, err := assetsFS.ReadFile(route.asset)
-		if err != nil {
-			t.Errorf("allowlisted asset %s is missing: %v", route.asset, err)
-			continue
-		}
-		for _, match := range moduleReferencePattern.FindAllStringSubmatch(string(body), -1) {
-			referenced["/static/"+match[1]] = path
-		}
-	}
-
-	if len(referenced) < 8 {
-		t.Fatalf("only %d static reference(s) found; the graph check would be vacuous", len(referenced))
-	}
-	for path, from := range referenced {
-		if _, ok := staticRoutes[path]; !ok {
-			t.Errorf("%s references %s, which the allowlist does not serve", from, path)
-		}
-	}
-	for path := range staticRoutes {
-		if !strings.HasSuffix(path, ".mjs") {
-			continue
-		}
-		if _, ok := referenced[path]; !ok {
-			t.Errorf("%s is allowlisted but no served file imports it", path)
-		}
-	}
-
-	store, err := NewFixtureStore()
-	if err != nil {
-		t.Fatalf("NewFixtureStore: %v", err)
-	}
-	server := httptest.NewServer(NewHandler(store, HandlerOptions{}))
-	defer server.Close()
-
-	for path, route := range staticRoutes {
-		response, err := http.Get(server.URL + path)
-		if err != nil {
-			t.Fatalf("GET %s: %v", path, err)
-		}
-		if response.StatusCode != http.StatusOK {
-			t.Errorf("GET %s status=%d, want 200", path, response.StatusCode)
-		}
-		want := strings.TrimSpace(strings.Split(route.contentType, ";")[0])
-		if got := response.Header.Get("Content-Type"); !strings.HasPrefix(got, want) {
-			t.Errorf("GET %s content-type=%q, want %q", path, got, want)
-		}
-		response.Body.Close()
 	}
 }

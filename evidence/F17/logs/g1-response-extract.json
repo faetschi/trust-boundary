@@ -1,0 +1,24 @@
+{
+ "source": "H/g1/response.txt (F17, tbound-dev)",
+ "source_sha256": "sha256:231e4c4e6dd88526311071bdee04dcf4e5a338fc102501ef919920ee45ed4585",
+ "request_id": "g1-req-20261106T134116Z",
+ "status": "completed",
+ "run_id": "production-run-7a3e3c0e564490b696f5c7e2",
+ "success": true,
+ "disposition": "PUBLISHED",
+ "publication_status": "SUCCEEDED",
+ "publication_transaction_id": "pub-8e827c7933fb564701ef71f39b93b3cf",
+ "settlement": "STOPPED",
+ "tool_sequence": [
+  "read",
+  "edit",
+  "bash",
+  "read"
+ ],
+ "proposal_count": 4,
+ "provider_mode": "model",
+ "provider_turns": 5,
+ "claim_bearing": false,
+ "profile_id": "pi-host-profile-g1-8931c69576c2",
+ "frozen_source_digest": "sha256:b45aab633157fa1110a7b76382750f73264b667410595c3bd611cd0111681236"
+}

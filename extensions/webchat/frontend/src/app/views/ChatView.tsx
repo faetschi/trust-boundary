@@ -4,7 +4,6 @@ import type { ItemView } from "../../core/contract";
 import { FILTERS, countFilter, filterItems, governanceCounts } from "../../core/filters";
 import { turnsOf } from "../../core/store";
 import { Button } from "../../ui/Button";
-import { Chip } from "../../ui/Chip";
 import { useAnnouncer } from "../../ui/LiveRegion";
 import { ToggleGroup, type ToggleItem } from "../../ui/ToggleGroup";
 import { EmptyState, ErrorState, LoadingState } from "../../ui/StateMessage";
@@ -18,8 +17,9 @@ import { LiveComposer } from "../../live/LiveComposer";
 import { LivePanel, LiveReview } from "../../live/LivePanel";
 import { confirmedIn, isVerifiedIn } from "../verification";
 import { filterNameOf, filterSummaryText, postureEntries } from "./chat/readings";
+import { severityRank } from "./chat/toolGroups";
+import { Chip } from "../../ui/Chip";
 import { markerFor, provenanceOf } from "./chat/provenance";
-import { conversationHead } from "./chat/identity";
 import { TurnView, type RecordOpener } from "./chat/Transcript";
 import type { Verifier } from "./chat/ToolCard";
 import { useTailWindow } from "./chat/tail";
@@ -43,7 +43,6 @@ export function ChatView({ model }: { readonly model: WorkspaceModel }) {
   // The shared gate: a record is verified only in a live, structurally audited projection, and only with
   // its own observed evidence. The posture counts a success as confirmed only when it is verified and not lossy.
   const verifiedOf: Verifier = (item) => isVerifiedIn(model, item);
-  const confirmedOf = (item: ItemView) => confirmedIn(model, item);
   const tail = useTailWindow({
     region: logRef,
     actions: model.actions,
@@ -58,7 +57,9 @@ export function ChatView({ model }: { readonly model: WorkspaceModel }) {
   const markOf = (item: ItemView) => markerFor(provenance, verifiedOf(item));
   const activeFilter = FILTERS.find((entry) => entry.id === model.filter);
   const filterLabel = activeFilter ? filterNameOf(activeFilter.id).label : model.filter;
-  const posture = postureEntries(governanceCounts(model.items, confirmedOf));
+  // The posture: every finding kind that was projected, worst first, so a lost or a refusal is never behind a click. It is words in their
+  // tone (Chat.module.css), one quiet line.
+  const posture = postureEntries(governanceCounts(model.items, (item: ItemView) => confirmedIn(model, item))).sort((a, b) => severityRank(a.tone) - severityRank(b.tone));
   const filters: ToggleItem[] = FILTERS.map((entry) => {
     const name = filterNameOf(entry.id);
     return { value: entry.id, label: name.label, count: countFilter(model.items, entry.id), hint: name.hint };
@@ -73,7 +74,6 @@ export function ChatView({ model }: { readonly model: WorkspaceModel }) {
         evicted: model.evicted,
       })
     : unavailableWords(NO_PROJECTION);
-  const head = conversationHead(model.session, model.loaded);
 
   // A record opens through the shell, so the inspector opens where it belongs at each width. A view mounted without
   // the shell (a test, or a host that renders the view alone) selects the record in the store.
@@ -91,22 +91,10 @@ export function ChatView({ model }: { readonly model: WorkspaceModel }) {
 
   return (
     <div className={styles.view}>
-      <div className={styles.conversation}>
-        {/* The session title is the header's heading (Shell.tsx), beside its chips; the chat head keeps the window's summary. */}
-        <div className={styles.headRow}>
-          <p className={styles.summary} data-summary="">
-            {summary}
-          </p>
-        </div>
-        <div className={styles.facts}>
-          <p className={styles.identity}>
-            Pi <span>{head.piVersion}</span> · {head.sessionId} · {head.workflowId}
-          </p>
-          <p className={styles.status}>{head.status}</p>
-        </div>
-      </div>
-
+      {/* One quiet toolbar: the finding filters, and the retained window's summary at its end. The Pi identity, the session
+          status and the posture counts are in the details card (HelperBar.tsx). */}
       <div className={styles.toolbar}>
+        <ToggleGroup label="Timeline filters" items={filters} pressed={model.filter} onPress={choose} />
         <div className={styles.posture} role="group" aria-label="Observed posture">
           {!model.loaded ? (
             <span className={styles.postureEmpty}>{unavailableWords(NO_PROJECTION)}</span>
@@ -120,9 +108,10 @@ export function ChatView({ model }: { readonly model: WorkspaceModel }) {
             <span className={styles.postureEmpty}>no decisions or results projected</span>
           )}
         </div>
-        <ToggleGroup label="Timeline filters" items={filters} pressed={model.filter} onPress={choose} />
+        <p className={styles.summary} data-summary="">
+          {summary}
+        </p>
       </div>
-
       {live ? <LivePanel /> : null}
 
       <div className={styles.logWrap}>
@@ -179,8 +168,9 @@ export function ChatView({ model }: { readonly model: WorkspaceModel }) {
         </EmptyState>
       );
     }
+    const wholeTurns = new Map(turnsOf(model.items).map((turn) => [turn.id, turn]));
     return turnsOf(visible).map((turn) => (
-      <TurnView key={turn.id} turn={turn} verifiedOf={verifiedOf} markOf={markOf} onRecord={openRecord} />
+      <TurnView key={turn.id} turn={turn} whole={wholeTurns.get(turn.id)} verifiedOf={verifiedOf} markOf={markOf} onRecord={openRecord} forceOpen={model.filter !== "all"} />
     ));
   }
 }

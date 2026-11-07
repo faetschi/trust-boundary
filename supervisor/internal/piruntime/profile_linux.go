@@ -190,10 +190,6 @@ func (v *LinuxHostProfileVerifier) verifyRuntime(ctx context.Context, profile Ho
 	}
 	var scope *LinuxCgroupScope
 	switch launcher := v.runtime.Launcher.(type) {
-	case *LinuxExecutableLauncher:
-		// Cgroup-scoped host exec is not a D09 cell. Keep refusing it here as
-		// well as at the launcher's own gate.
-		return ErrProductionLauncherUnavailable
 	case *D09PodmanCrunLauncher:
 		if err := launcher.admitsFrozenLinuxProfile(profile); err != nil {
 			return err

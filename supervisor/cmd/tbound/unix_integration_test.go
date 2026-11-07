@@ -151,3 +151,17 @@ func waitForSmokeEndpoint(ctx context.Context, socketPath, tokenPath string, ser
 		}
 	}
 }
+
+func smokeProposals() []protocol.Proposal {
+	proposals := make([]protocol.Proposal, 0, len(smokeCalls))
+	for _, call := range smokeCalls {
+		proposals = append(proposals, protocol.Proposal{
+			SchemaVersion: protocol.ProposalSchemaVersion,
+			ToolCallID:    call.callID, Tool: call.tool,
+			Arguments: append(json.RawMessage(nil), call.arguments...),
+		})
+	}
+	return proposals
+}
+
+func smokeTokenFilePath(socketDir string) string { return filepath.Join(socketDir, smokeTokenName) }

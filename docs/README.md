@@ -16,6 +16,7 @@ and [product contracts](product-contracts.md) fixes the first milestone's contra
 - [Governed host setup](guides/governed-setup.md): host, profile, template, and live-root contracts; retains older design notes.
 - [Self-contained workspace](guides/self-contained-workspace.md): what lives where, and continuing on another machine.
 - [Reproduction](guides/reproduce.md): source freeze, release gate, signing, operator cycle, evidence, pilot.
+- [Developer tools](guides/developer-tools.md): source-only provider probe, web chat UI QA, and similar tools, with prerequisites and status.
 - [Release](guides/release.md): package formats and release acceptance checks.
 - [First governed product turn](guides/product-first-turn.md): product service setup order, terminal and browser chat on one Linux host; not thesis evidence.
 - [Enable Bash in the product service](guides/product-bash.md): offline image and command bundle, format-3 setup, qualification, review, and recovery.
@@ -36,7 +37,7 @@ and [product contracts](product-contracts.md) fixes the first milestone's contra
 - [Publication runtime integration](runtime/publication-runtime-integration.md): contract to code.
 - [Providers](runtime/providers.md): provider profiles and the durable conversation bridge.
 - [Provider durable evidence](runtime/provider-durable-evidence.md): the recorded durable bridge evidence.
-- [Design notes](design/): denial hints and bounded storage capacity.
+- [Design notes](design/): denial hints, bounded storage capacity, and the [supervisor ownership map](design/supervisor-ownership.md).
 
 ## [Evaluation](evaluation/): gates and research records
 

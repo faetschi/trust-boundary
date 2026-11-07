@@ -95,6 +95,8 @@ type spendDoer struct {
 	status int
 	url    string
 	body   []byte
+	// callID, when set, answers with one read tool call of that ID instead of text.
+	callID string
 }
 
 func (d *spendDoer) Do(request *http.Request) (*http.Response, error) {
@@ -108,10 +110,16 @@ func (d *spendDoer) Do(request *http.Request) (*http.Response, error) {
 	if status == 0 {
 		status = http.StatusOK
 	}
+	delta, finish := map[string]any{"role": "assistant", "content": "ok"}, "stop"
+	if d.callID != "" {
+		delta = map[string]any{"role": "assistant", "tool_calls": []any{map[string]any{"index": 0, "id": d.callID, "type": "function",
+			"function": map[string]any{"name": "read", "arguments": `{"path":"x"}`}}}}
+		finish = "tool_calls"
+	}
 	first, _ := json.Marshal(map[string]any{"id": "resp-1", "model": spendTestModel, "created": 1, "object": "chat.completion.chunk",
-		"choices": []any{map[string]any{"index": 0, "delta": map[string]any{"role": "assistant", "content": "ok"}, "finish_reason": nil}}})
+		"choices": []any{map[string]any{"index": 0, "delta": delta, "finish_reason": nil}}})
 	last, _ := json.Marshal(map[string]any{"id": "resp-1", "model": spendTestModel, "created": 1, "object": "chat.completion.chunk",
-		"choices": []any{map[string]any{"index": 0, "delta": map[string]any{}, "finish_reason": "stop"}}})
+		"choices": []any{map[string]any{"index": 0, "delta": map[string]any{}, "finish_reason": finish}}})
 	usage, _ := json.Marshal(map[string]any{"id": "resp-1", "model": spendTestModel, "created": 1, "object": "chat.completion.chunk",
 		"choices": []any{}, "usage": map[string]any{"prompt_tokens": 11, "completion_tokens": 3, "cost": 0.000002}})
 	raw := []byte("data: " + string(first) + "\n\ndata: " + string(last) + "\n\ndata: " + string(usage) + "\n\ndata: [DONE]\n\n")

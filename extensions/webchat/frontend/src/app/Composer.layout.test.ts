@@ -28,9 +28,9 @@ function mediaBlockOf(query: string): string {
 describe("the composer's reason and placeholder read in full on a phone: they wrap, and the dock grows to hold them", () => {
   const phone = mediaBlockOf("max-width: 760px");
 
-  it("never clips the reason: no nowrap, no ellipsis and no hidden overflow, at any width", () => {
-    // Every rule that styles the reason, at any width. It is the explanation of why submitting is unavailable, so it reads in full.
-    const reasonRules = [...css.matchAll(/([^{}]*\.reason[^{}]*)\{([^}]*)\}/g)].map((m) => m[2]);
+  it("never clips the facts in the control row: no nowrap, no ellipsis and no hidden overflow, at any width", () => {
+    // Every rule that styles a fact, at any width. They say what this session is, so they read in full.
+    const reasonRules = [...css.matchAll(/([^{}]*\.fact[^{}]*)\{([^}]*)\}/g)].map((m) => m[2]);
     expect(reasonRules.length).toBeGreaterThan(0);
     for (const decls of reasonRules) {
       expect(decls).not.toMatch(/white-space:\s*nowrap;/);

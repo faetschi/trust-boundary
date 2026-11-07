@@ -22,7 +22,7 @@ export function randomInt(rng: () => number, bound: number): number {
   return Math.floor(rng() * bound);
 }
 
-export function pick<T>(rng: () => number, items: readonly T[]): T {
+function pick<T>(rng: () => number, items: readonly T[]): T {
   const item = items[randomInt(rng, items.length)];
   if (item === undefined) throw new RangeError("pick from an empty list");
   return item;
@@ -32,7 +32,7 @@ export function pick<T>(rng: () => number, items: readonly T[]): T {
 // or a word. The tokens are short on purpose: a random sequence of them reaches
 // every branch of the parser, and markup is never written as one source line that a
 // source gate could match (the gate scans this file).
-export const MARKDOWN_TOKENS: readonly string[] = [
+const MARKDOWN_TOKENS: readonly string[] = [
   "*", "**", "***", "_", "__", "`", "``", "```", "~~~", "~~", "[", "]", "[x]", "(", ")", "](", "![", "!",
   "\\", "\\*", "\\_", "\\[", "\\`", "#", "##", "###", "# ", "## ", "#######",
   " ", "  ", "   ", "    ", "\t", "\n", "\n", "\n\n", "\r\n", "\r",

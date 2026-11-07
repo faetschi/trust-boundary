@@ -1361,3 +1361,23 @@ func combinedRecoveryCheckPublicationOrigins(t *testing.T, session *governedReco
 		t.Fatal("a later sequence borrowed the retained authorization")
 	}
 }
+
+func (s *governedRecoverySession) Close() error {
+	if s == nil {
+		return nil
+	}
+	var errs []error
+	if s.Conversation != nil {
+		s.Conversation.Close()
+	}
+	if s.Prepared != nil {
+		errs = append(errs, s.Prepared.Close())
+	}
+	if s.Managed != nil {
+		errs = append(errs, s.Managed.Close())
+	}
+	if s.Admin != nil {
+		errs = append(errs, s.Admin.Close())
+	}
+	return errors.Join(errs...)
+}

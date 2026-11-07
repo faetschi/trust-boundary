@@ -81,7 +81,7 @@
 
 .brand {
   grid-column: 1;
-  grid-row: 1 / span 2;
+  grid-row: 1;
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -153,78 +153,197 @@
   line-height: var(--lh-2xs);
 }
 
+/* The title row: one 44px line. The breadcrumb and the session title at its start, the status pill and the controls at its end. */
+/* It wraps: the controls drop under the title before the status pill's words can be squeezed away. */
 .titleRow {
   grid-column: 2;
   grid-row: 1;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-2) var(--space-3);
+  gap: var(--space-1) var(--space-2);
   min-width: 0;
-  padding: var(--space-2) var(--space-4) var(--space-1);
+  min-height: 44px;
+  padding: var(--space-1) var(--space-4);
 }
 
-/* The session's title: the workspace heading, one line, beside the chips. */
+.crumb {
+  flex: none;
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+
+/* The session's title: the workspace heading, one line. */
 .sessionTitle {
   flex: 0 1 auto;
   min-width: 0;
-  max-width: 100%;
   margin: 0;
   overflow: hidden;
-  font-size: var(--text-body);
+  font-size: var(--text-sm);
   font-weight: 600;
   line-height: var(--lh-sm);
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
-.badges {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-1h);
-  min-width: 0;
-}
-
+/* The source, demonstration and connection readings, inside the status popover: quiet text with a dot. The words carry the
+   state, the dot only marks where each one starts. Neutral by default; the connection dot takes a state colour. */
 .badge {
   display: inline-flex;
   align-items: center;
-  min-height: 22px;
+  gap: var(--space-1h);
   max-width: 100%;
-  padding: 0 var(--space-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-xs);
-  background: color-mix(in oklch, var(--foreground) 4%, transparent);
   color: var(--foreground);
   font-size: var(--text-xs);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+}
+
+.badge::before {
+  content: "";
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--state-idle);
+}
+
+.badge[data-connection="open"]::before {
+  background: var(--state-ok);
+}
+
+.badge[data-connection="error"]::before,
+.badge[data-connection="offline"]::before {
+  background: var(--state-deny);
+}
+
+.badge[data-connection="connecting"]::before {
+  background: var(--state-reported);
+}
+
+.badge[data-demonstration]::before {
+  background: var(--state-reported);
 }
 
 .controls {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-1) var(--space-2);
+  max-width: 100%;
   margin-left: auto;
 }
 
-/* The Governance control is shown at every width: the drawer at narrow widths, the column's collapse at wide ones. */
+/* The status pill: a button that is one line of words with a state dot, and opens the popover under it. */
+.statusWrap {
+  position: relative;
+  max-width: 100%;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1h);
+  max-width: 100%;
+  min-height: 26px;
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  text-align: left;
+  background: transparent;
+  color: var(--muted-foreground);
+  font: inherit;
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.pill:hover,
+.pill[aria-expanded="true"] {
+  background: var(--accent);
+  color: var(--foreground);
+}
+
+.pillText {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.popover {
+  position: absolute;
+  right: 0;
+  top: calc(100% + var(--space-1h));
+  z-index: var(--z-popover);
+  width: min(22rem, calc(100vw - 2 * var(--space-3)));
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--popover);
+  color: var(--popover-foreground);
+  box-shadow: var(--shadow-panel);
+}
+
+.popover[hidden] {
+  display: none;
+}
+
+.popover > [role="note"] {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.sourceList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0 0 var(--space-3);
+  padding: 0;
+  list-style: none;
+}
+
+/* The Governance control and its badge: the badge is words ("1 deny verdict"), in the worst tone, and the button names it. */
+.governanceControl {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1h);
+}
+
 .drawerToggle {
   display: inline-flex;
   align-items: center;
+  gap: var(--space-1h);
   min-height: var(--row-h-toolbar);
-  padding: 0 var(--space-3);
+  padding: 0 var(--space-2);
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--muted-foreground);
+  font-size: var(--text-xs);
   cursor: pointer;
 }
 
-.drawerToggle:hover {
-  border-color: var(--border);
+.drawerToggle:hover,
+.drawerToggle[aria-expanded="true"] {
+  background: var(--accent);
   color: var(--foreground);
+}
+
+.governanceBadge {
+  padding: 0 var(--space-2);
+  border-radius: 999px;
+  background: var(--muted);
+  color: var(--foreground);
+  font-size: var(--text-2xs);
+  line-height: var(--lh-xs);
+  white-space: nowrap;
+}
+
+.governanceBadge[data-tone="danger"] {
+  color: var(--state-deny-ink);
+}
+
+.governanceBadge[data-tone="warn"] {
+  color: var(--state-reported-ink);
 }
 
 /* The overflow item: a native disclosure that holds the theme switch. */
@@ -249,7 +368,7 @@
 }
 
 .moreSummary:hover {
-  border-color: var(--border);
+  background: var(--accent);
   color: var(--foreground);
 }
 
@@ -265,50 +384,31 @@
   box-shadow: var(--shadow-panel);
 }
 
-/* The claim strip: the claim values, then the presentation lines. The Notice's card styling is reset, so it reads as a strip. */
-.claimRow {
-  grid-column: 2;
-  grid-row: 2;
-  min-width: 0;
-  padding: 0 var(--space-4) var(--space-2);
-}
-
-.claimRow > [role="note"][data-tone="claim"] {
-  display: grid;
-  gap: var(--space-1) var(--space-4);
-  padding: var(--space-1) 0 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
+/* The claim boundary, inside the popover: the values as a two-column list, then the two sentences that say what they are. */
+.explain {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-top: var(--space-2);
   color: var(--muted-foreground);
-  font-size: var(--text-2xs);
-  line-height: var(--lh-2xs);
+  font-size: var(--text-xs);
 }
 
 .claimText {
   margin: 0;
 }
 
-.explain {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0 var(--space-3);
-  color: var(--muted-foreground);
-}
-
 .claim {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-1) var(--space-4);
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-1) var(--space-3);
   margin: 0;
   font-size: var(--text-xs);
   line-height: var(--lh-xs);
 }
 
 .claim > div {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
+  display: contents;
 }
 
 .claim dt {
@@ -317,6 +417,7 @@
 
 .claim dd {
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-1);
   margin: 0;
@@ -324,10 +425,28 @@
   font-weight: 600;
 }
 
+
 /* The workspace body: the rail, the workspace (which takes the rest) and the inspector. */
 .body {
+  position: relative;
   flex: 1 1 auto;
   min-height: 0;
+}
+
+/* While the details card is pinned open at a wide width, the workspace makes room for it, so it never covers the transcript. It sits
+   beside the governance column, never over it (HelperBar.tsx takes the .helper class). */
+@media (min-width: 1181px) {
+  .body[data-details="open"] .main {
+    padding-right: calc(17rem + var(--space-5));
+  }
+}
+
+.body[data-inspector="collapsed"] .helper {
+  right: calc(var(--rail-collapsed-width) + var(--space-3));
+}
+
+.body[data-inspector="expanded"] .helper {
+  right: calc(var(--inspector-width) + var(--space-3));
 }
 
 .main {
@@ -379,6 +498,11 @@
    the drawer's containing block, and it starts below the header, so an open drawer never covers the header controls.
    overflow-x: clip stops the closed drawer, which is translated past the edge, from widening the page. */
 @media (max-width: 1180px) {
+  /* The inspector is a drawer here, so the details card has the page's edge. */
+  .body[data-inspector] .helper {
+    right: var(--space-3);
+  }
+
   .body {
     position: relative;
     overflow-x: clip;
@@ -395,7 +519,7 @@
   }
 }
 
-/* Narrow screens: the header stacks (the brand, the title row, the claim strip), the rail stacks above the workspace, and the
+/* Narrow screens: the header stacks (the brand, the title row), the rail stacks above the workspace, and the
    page scrolls. The Governance control is a touch target. */
 @media (max-width: 760px) {
   .header,
@@ -412,8 +536,7 @@
   }
 
   .brand,
-  .titleRow,
-  .claimRow {
+  .titleRow {
     grid-column: 1;
     grid-row: auto;
   }
@@ -428,12 +551,15 @@
     display: block;
   }
 
+  /* The title row wraps: the crumb and the title on one line, the status pill and the controls under them. */
   .titleRow {
+    flex-wrap: wrap;
+    min-height: 0;
     padding: 0;
   }
 
-  .claimRow {
-    padding: 0;
+  .crumb {
+    display: none;
   }
 
   /* The subtitle is dropped on a phone, so the name and the title row take one line less (the claims keep all their words). */
@@ -441,20 +567,19 @@
     display: none;
   }
 
-  /* The claim boundary's disclosure is a compact row here, so the header leaves the chat its height. */
-  .claimRow details > summary {
-    min-height: 0;
-    padding: var(--space-1) 0;
+  /* The status pill takes the first line of the controls on a phone, so its words are not cut. */
+  .statusWrap {
+    flex: 1 1 100%;
   }
 
-  .badges {
-    flex: 1 1 auto;
-    justify-content: flex-end;
-    min-width: 0;
+  .popover {
+    right: auto;
+    left: 0;
   }
 
   .controls {
     flex: 1 1 100%;
+    flex-wrap: wrap;
     justify-content: space-between;
     margin-left: 0;
   }

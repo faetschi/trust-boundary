@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Type } from "typebox";
 import {
+  IPC_BINDING_TOKEN_HEX_BYTES,
   IPC_MAX_MESSAGE_BYTES,
   IPC_WIRE_VERSION,
   IpcClient,
@@ -369,5 +370,13 @@ test("IPC rejects a no-effect refusal that is not the fixed output of an allowed
       await writeRaw(peer, wireFrame(rawEnvelope({ payload })));
       await expectCode(reading, "ERR_IPC_MALFORMED_FRAME");
     });
+  }
+});
+
+test("binding token must be exactly IPC_BINDING_TOKEN_HEX_BYTES lowercase hex chars", () => {
+  const frame = { version: IPC_WIRE_VERSION, binding_token: "a".repeat(IPC_BINDING_TOKEN_HEX_BYTES), sequence: 1, kind: "proposal", payload: proposal } as never;
+  assert.doesNotThrow(() => encodeIpcFrame(frame));
+  for (const token of ["a".repeat(IPC_BINDING_TOKEN_HEX_BYTES - 1), "a".repeat(IPC_BINDING_TOKEN_HEX_BYTES + 1), "A".repeat(IPC_BINDING_TOKEN_HEX_BYTES)]) {
+    assert.throws(() => encodeIpcFrame({ ...(frame as object), binding_token: token } as never), { code: "ERR_IPC_INVALID_TOKEN" });
   }
 });

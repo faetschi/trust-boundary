@@ -14,9 +14,6 @@ import (
 	"os/signal"
 	"runtime"
 
-	"tbound/supervisor/internal/broker/correlation"
-	"tbound/supervisor/internal/broker/protocol"
-	"tbound/supervisor/internal/gate"
 	"tbound/supervisor/internal/piruntime"
 )
 
@@ -29,15 +26,6 @@ type Executor = piruntime.Executor
 type DurableDecisionRecorder = piruntime.DurableDecisionRecorder
 type DecisionRecorder = DurableDecisionRecorder
 type Supervisor = piruntime.Supervisor
-
-// transcriptEntry remains a small command-package decoding type used by the
-// existing smoke/integration tests. The shared runtime owns its writer type.
-type transcriptEntry struct {
-	Proposal    protocol.Proposal    `json:"proposal"`
-	Correlation correlation.Decision `json:"correlation"`
-	Decision    gate.Decision        `json:"decision"`
-	Result      protocol.Result      `json:"result"`
-}
 
 func main() {
 	if err := run(os.Args[1:], os.Stdout, os.Stderr); err != nil {

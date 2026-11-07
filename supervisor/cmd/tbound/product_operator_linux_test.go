@@ -18,6 +18,7 @@ import (
 
 	"golang.org/x/sys/unix"
 	"tbound/supervisor/internal/audit"
+	"tbound/supervisor/internal/productdriver"
 	"tbound/supervisor/internal/productprotocol"
 	"tbound/supervisor/internal/productsession"
 	"tbound/supervisor/internal/providerbridge"
@@ -179,7 +180,7 @@ func TestProductOperatorResolvedReviewRemainsObservable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := f.env.Close(); err != nil {
+	if err := f.env.driver().Close(); err != nil {
 		t.Fatal(err)
 	}
 	if err := f.env.Catalog.MarkTurnUnknown(turn.ID, "review disposition unknown"); err != nil {
@@ -222,7 +223,7 @@ func TestProductOperatorEvidenceAndAdmission(t *testing.T) {
 	for _, mode := range []string{"success", "changed", "held-journal", "dry-run", "missing-checkpoint", "commands", "publication", "provider-truncated"} {
 		t.Run(mode, func(t *testing.T) {
 			f, id := crashProductSoftRefusal(t, "after-capture-refusal-record")
-			if err := f.env.ReconcileAfterRestart(context.Background()); err == nil {
+			if err := f.env.driver().ReconcileAfterRestart(context.Background()); err == nil {
 				t.Fatal("expected unknown")
 			}
 			turn, _ := f.env.Catalog.Turn(id)
@@ -320,7 +321,7 @@ func TestProductOperatorEvidenceAndAdmission(t *testing.T) {
 
 func TestProductOperatorRefusesBaselineChangeBeforeAppend(t *testing.T) {
 	f, id := crashProductSoftRefusal(t, "after-capture-refusal-record")
-	if err := f.env.ReconcileAfterRestart(context.Background()); err == nil {
+	if err := f.env.driver().ReconcileAfterRestart(context.Background()); err == nil {
 		t.Fatal("expected unknown")
 	}
 	turn, _ := f.env.Catalog.Turn(id)
@@ -343,7 +344,7 @@ func TestProductOperatorRefusesBaselineChangeBeforeAppend(t *testing.T) {
 			writeProductDriverFile(t, f.projectDir, "task.txt", "changed before append")
 			return evidence, nil
 		})
-	if err == nil || !errors.Is(err, errProductStaleBaseline) {
+	if err == nil || !errors.Is(err, productdriver.ErrStaleBaseline) {
 		t.Fatalf("baseline change before append: %v", err)
 	}
 	after, err := os.ReadFile(path)

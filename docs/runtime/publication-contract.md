@@ -110,6 +110,28 @@ Any `UNKNOWN` blocks further publication for the workflow. Known partial apply
 is retained and reported per object; a fresh effect requires a fresh correlated
 proposal, authority, baseline and remaining workflow budget.
 
+The aggregate `FAILED` status therefore does not mean "unchanged". When
+recovery fully observes a multi-object publication in which some objects were
+applied and a later object was started but not applied, the objects are
+`[SUCCEEDED, FAILED]`, the aggregate is `FAILED`, and recovery returns no error;
+the live tree keeps the applied objects. Aggregate `FAILED` MAY include a known
+partial apply. Every consumer of aggregate `FAILED` must re-check the baseline
+and must not assume the live root is unchanged. Only `UNKNOWN` blocks, so a
+consumer that closes a lifecycle marker on `FAILED` closes it over a possibly
+changed root. The workflow root-ledger marker does resolve on `SUCCEEDED` or
+`FAILED` without measuring the root (`internal/workflow/publication_linux.go:846`,
+`:211-225`); safety comes from the next acquirer re-checking: publication
+rescans the live root and refuses a baseline mismatch (`ErrBaselineConflict`,
+`internal/publication/publication_linux.go:566-571`), the production binder seeds from the recovered tree
+(`cmd/tbound/production_binder_linux.go:352`), operator publication classifies
+the measured project (`cmd/tbound/product_operator_publication_linux.go:50`),
+and the trial reset measures the live tree (`cmd/tbound/trial_linux.go:279`).
+The product turn driver also re-checks: it compares the measured project with
+the committed baseline and ends the turn `UNKNOWN` on a mismatch.
+`TestRecoverReportsAggregateFailedForAKnownPartialApply` pins the observation. A live `Publish` returns `UNKNOWN`, not `FAILED`, when it
+is cut short, so aggregate `FAILED` with a partial apply is reached through
+`Recover`.
+
 `RestoreDisposableCheckpoint` and `RecoverDisposableCheckpoint` provide the
 separate checkpoint-restoration path. The caller supplies an already-open,
 supervisor-owned retained checkpoint descriptor and its complete manifest,

@@ -221,3 +221,9 @@ func TestCorpusServiceUnreservedUnknownTerminalReplayChecksTheAcceptedBinding(t 
 		}
 	}
 }
+
+func (j *piServiceRequestJournal) setAfterScreen(hook func(piServiceRequest, *atomic.Bool)) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	j.afterScreen = hook
+}

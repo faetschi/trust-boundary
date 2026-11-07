@@ -680,17 +680,6 @@ func productD09TestReplace(t *testing.T, raw, old, replacement []byte) []byte {
 	return bytes.Replace(raw, old, replacement, 1)
 }
 
-func productD09TestWriteFile(t *testing.T, path string, mode fs.FileMode) {
-	t.Helper()
-	if err := os.WriteFile(path, []byte("{}\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	// Chmod after writing, so the umask cannot hide the permission bit under test.
-	if err := os.Chmod(path, mode); err != nil {
-		t.Fatal(err)
-	}
-}
-
 // productD09TestInfo is file metadata for a trust decision, so the root-owned accept path runs without root.
 type productD09TestInfo struct {
 	mode fs.FileMode

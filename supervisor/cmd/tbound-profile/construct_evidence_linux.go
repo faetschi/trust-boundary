@@ -159,10 +159,6 @@ func sha256Prefixed(b []byte) string {
 	return "sha256:" + hex.EncodeToString(sum[:])
 }
 
-func readConstructEvidence(set fs.FS, name string) ([]byte, error) {
-	return readConstructFile(set, name, guestevidence.MaxBytes)
-}
-
 func readConstructFile(set fs.FS, name string, limit int64) ([]byte, error) {
 	f, err := set.Open(name)
 	if err != nil {

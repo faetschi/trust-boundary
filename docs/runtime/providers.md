@@ -111,8 +111,7 @@ profile := providerbridge.Config{
     InitialGenerationID: generationID, InitialTreeDigest: treeDigest,
     SystemPrompt: registeredSystemPrompt, DeveloperPrompt: registeredDeveloperPrompt,
 }
-conversation, err := providerbridge.NewFromEnvironment(profile, auditJournal)
-// Or use NewFromCredentials(profile, secureCredentials, auditJournal).
+conversation, err := providerbridge.NewFromCredentials(profile, secureCredentials, auditJournal)
 if err != nil { return err }
 if err := conversation.AdmitPrompt(taskID, boundedPrompt); err != nil { return err }
 wrappedExecutor, err := providerbridge.NewExecutor(conversation, durableExecutor)
@@ -196,8 +195,8 @@ proposal IPC, and checks the Go owner's `read(g0) -> edit(g1) -> Bash(g2) ->
 read(g2)` result-history chain against its synced audit journal. Its HTTP Doer
 and executor are explicit synthetic fixtures; it does not perform an OpenRouter
 request, load credentials, access a guest, or qualify containment. The Go test journal/transport
-adapter is an in-package seam only; exported `NewFromCredentials` and
-`NewFromEnvironment` require the concrete protected `*audit.Journal` and use
+adapter is an in-package seam only; exported `NewFromCredentials`
+requires the concrete protected `*audit.Journal` and uses
 the existing secure Go loader/transport. No public fake transport or journal
 constructor is exposed.
 

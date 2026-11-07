@@ -55,18 +55,6 @@ func CanonicalArgumentsDigest(tool string, raw json.RawMessage) (string, error) 
 	return CanonicalizationProfile + ":sha256:" + hex.EncodeToString(digest[:]), nil
 }
 
-// canonicalizeJSON exposes the lower-level JCS transform to package tests so
-// normative RFC vectors can be checked independently of TBound's tool schema.
-func canonicalizeJSON(raw []byte) ([]byte, error) {
-	if len(raw) == 0 || len(raw) > MaxFrameBytes {
-		return nil, errors.New("JSON has invalid size")
-	}
-	if err := checkStrictJSON(raw); err != nil {
-		return nil, err
-	}
-	return canonicalizeValidatedJSON(raw)
-}
-
 func canonicalizeValidatedJSON(raw []byte) ([]byte, error) {
 	canonical, err := jcs.Transform(raw)
 	if err != nil {

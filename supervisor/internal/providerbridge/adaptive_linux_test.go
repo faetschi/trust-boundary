@@ -1,6 +1,6 @@
 //go:build linux
 
-package providerbridge
+package providerbridge_test
 
 import (
 	"context"
@@ -9,9 +9,11 @@ import (
 	"strings"
 	"testing"
 
+	"tbound/supervisor/internal/adaptivesource"
 	"tbound/supervisor/internal/broker"
 	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/gate"
+	"tbound/supervisor/internal/providerbridge"
 )
 
 // The adaptive source through the real Conversation: a pivot is issued as a scripted provider response, an
@@ -22,26 +24,26 @@ func TestAdaptiveSourceDrivesTheRealConversationThroughADenialToASuccessPivot(t 
 	pivots := adaptivePivots(spec)
 	// the first library step is a write that delta admission denies; the step the machine selects after a
 	// protected-path denial is a read
-	pivots["ts-1"] = ScriptTurn{Tool: "write", Arguments: json.RawMessage(`{"path":"task.txt","content":"x"}`)}
-	pivots["drs-1"] = ScriptTurn{Tool: "read", Arguments: json.RawMessage(`{"path":"task.txt"}`)}
-	source, err := NewAdaptiveSource(spec, pivots)
+	pivots["ts-1"] = providerbridge.ScriptTurn{Tool: "write", Arguments: json.RawMessage(`{"path":"task.txt","content":"x"}`)}
+	pivots["drs-1"] = providerbridge.ScriptTurn{Tool: "read", Arguments: json.RawMessage(`{"path":"task.txt"}`)}
+	source, err := adaptivesource.NewAdaptiveSource(spec, pivots)
 	if err != nil {
 		t.Fatal(err)
 	}
-	journal := &memoryJournal{}
+	journal := &providerbridge.TestJournal{}
 	hostCalls := 0
-	cfg := Config{
+	cfg := providerbridge.Config{
 		ConversationID: "conversation-adaptive", WorkflowID: "workflow-adaptive", ProfileID: "profile-adaptive",
 		InitialGenerationID: "g0", InitialTreeDigest: "tree-g0",
 		SystemPrompt: "Fixture system prompt.", DeveloperPrompt: "Fixture developer profile.",
 		SelectCompletionTokenLimit: func(context.Context) (uint64, error) { return 64, nil },
-		ReserveHostCall: func(_ context.Context, request broker.RequestRecord, limit uint64) (HostCallBinding, error) {
+		ReserveHostCall: func(_ context.Context, request broker.RequestRecord, limit uint64) (providerbridge.HostCallBinding, error) {
 			hostCalls++
-			return HostCallBinding{CallID: fmt.Sprintf("host-call-%d", hostCalls), RequestDigest: broker.DigestRequestRecord(request), TokenUpperBound: limit}, nil
+			return providerbridge.HostCallBinding{CallID: fmt.Sprintf("host-call-%d", hostCalls), RequestDigest: broker.DigestRequestRecord(request), TokenUpperBound: limit}, nil
 		},
-		CompleteHostCall: func(context.Context, HostCallCompletion) error { return nil },
+		CompleteHostCall: func(context.Context, providerbridge.HostCallCompletion) error { return nil },
 	}
-	conversation, err := newScripted(cfg, journal, source)
+	conversation, err := providerbridge.NewScriptedForTest(cfg, journal, source)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,8 +57,8 @@ func TestAdaptiveSourceDrivesTheRealConversationThroughADenialToASuccessPivot(t 
 	}
 	denial := &protocol.AdmissionDeniedError{Tool: "write", ReasonCode: "scope_protected_path", EffectID: "effect-denied",
 		Err: fmt.Errorf("candidate transition was denied by output-scope admission")}
-	executor, err := NewExecutor(conversation, &denyingExecutor{deny: map[int]*protocol.AdmissionDeniedError{0: denial},
-		outputs: []json.RawMessage{nil, readOutput("g0", "tree-g0", "baseline")}})
+	executor, err := providerbridge.NewExecutor(conversation, providerbridge.NewDenyingExecutor(map[int]*protocol.AdmissionDeniedError{0: denial},
+		[]json.RawMessage{nil, providerbridge.ReadOutput("g0", "tree-g0", "baseline")}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +69,7 @@ func TestAdaptiveSourceDrivesTheRealConversationThroughADenialToASuccessPivot(t 
 			t.Fatalf("turn %d = %+v, %v", i, turn, err)
 		}
 		tools = append(tools, turn.ToolCall.Name)
-		proposal := proposalFor(turn)
+		proposal := providerbridge.ProposalFor(turn)
 		matched, err := conversation.Correlate(context.Background(), proposal)
 		if err != nil || !matched.Accepted {
 			t.Fatalf("correlate turn %d: %+v %v", i, matched, err)
@@ -82,14 +84,14 @@ func TestAdaptiveSourceDrivesTheRealConversationThroughADenialToASuccessPivot(t 
 		}
 	}
 	final, err := conversation.NextTurn(context.Background())
-	if err != nil || final.ToolCall != nil || !strings.Contains(final.AssistantText, AdaptiveFinalText) {
+	if err != nil || final.ToolCall != nil || !strings.Contains(final.AssistantText, adaptivesource.AdaptiveFinalText) {
 		t.Fatalf("final turn = %+v, %v", final, err)
 	}
 	if strings.Join(tools, ",") != "write,read" {
 		t.Fatalf("pivots issued: %v", tools)
 	}
 	terminal := source.Terminal()
-	if terminal.Stop != AdaptiveStopSuccessPivot || terminal.PivotsIssued != 2 || len(terminal.StateDigest) != 64 {
+	if terminal.Stop != adaptivesource.AdaptiveStopSuccessPivot || terminal.PivotsIssued != 2 || len(terminal.StateDigest) != 64 {
 		t.Fatalf("terminal = %+v", terminal)
 	}
 	if hostCalls != 3 {

@@ -14,7 +14,6 @@ import (
 	"hash"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -566,127 +565,6 @@ func readCgroupPopulated(directory *os.File) (bool, error) {
 	return populated, nil
 }
 
-// LinuxExecutableLauncher is the descriptor-bound host-exec primitive. It uses
-// clone3's CLONE_INTO_CGROUP but does not create a D09 rootless Podman/crun
-// cell, namespaces, or seccomp profile. Therefore it is deliberately not an
-// admitted production launcher until a separate frozen cell launcher exists.
-type LinuxExecutableLauncher struct{ scope *LinuxCgroupScope }
-
-func NewLinuxExecutableLauncher(scope *LinuxCgroupScope) (*LinuxExecutableLauncher, error) {
-	if scope == nil || scope.file == nil {
-		return nil, ErrCgroupScopeRefused
-	}
-	return &LinuxExecutableLauncher{scope: scope}, nil
-}
-
-func (l *LinuxExecutableLauncher) BoundSettlement() DescendantSettler {
-	if l == nil {
-		return nil
-	}
-	return l.scope
-}
-
-func (l *LinuxExecutableLauncher) admitsFrozenLinuxProfile(profile HostProfile) error {
-	if l == nil || l.scope == nil || profile.Mode != ModeProduction {
-		return ErrProductionLauncherUnavailable
-	}
-	// Cgroup-scoped host exec is not equivalent to D09 Podman/crun containment.
-	// Keep the concrete primitive usable for reviewed development probes while
-	// refusing to turn it into a signed production admission claim.
-	return ErrProductionLauncherUnavailable
-}
-
-func (l *LinuxExecutableLauncher) StartVerified(ctx context.Context, request ExecutableLaunchRequest) (*exec.Cmd, error) {
-	if ctx == nil || l == nil || l.scope == nil || request.ProfileDigest == "" ||
-		!validDigest(request.Digest) || !validDigest(request.ArgumentsDigest) ||
-		!validDigest(request.EnvironmentDigest) || !validDigest(request.WorkingDirectoryDigest) ||
-		!validDigest(request.StdinDigest) || !validDigest(request.DescriptorProfileDigest) ||
-		request.DescriptorProfile != PiWorkerDescriptorProfile ||
-		request.DescriptorProfileDigest != DigestBytes([]byte(PiWorkerDescriptorProfile)) ||
-		request.ContainmentProfile != l.scope.containment || request.SettlementProfile != l.scope.settlement ||
-		request.PiRuntimeBundleHandle == nil || request.PiRuntimeBundleDigest == "" ||
-		request.admission == nil || !request.admission.valid() || request.admission.profile.Mode != ModeProduction ||
-		!sameBinding(request.admission.runtime.Launcher, l) || !sameBinding(request.Stdout, io.Discard) ||
-		!sameBinding(request.Stderr, io.Discard) {
-		return nil, ErrLinuxLauncherRefused
-	}
-	profile := request.admission.profile
-	if err := l.admitsFrozenLinuxProfile(profile); err != nil {
-		// This cgroup-scoped host-exec primitive is not a namespace-backed D09
-		// launcher. Do not fall through to a direct-host execution path.
-		return nil, err
-	}
-	if request.ProfileDigest != profile.Digest || request.Path != profile.ChildExecutable || request.Digest != profile.ExecutableDigest ||
-		request.NodeVersion != profile.NodeVersion || request.ArgumentsDigest != profile.ChildArgumentsDigest ||
-		request.EnvironmentDigest != profile.ChildEnvironmentDigest || request.WorkingDirectoryDigest != profile.WorkingDirectoryDigest ||
-		request.Dir != profile.WorkingDirectory || request.StdinDigest != profile.StdinDigest ||
-		request.StdinProfile != profile.StdinProfile || request.SourceDigest != profile.SourceProvenanceDigest ||
-		request.DescriptorProfile != profile.DescriptorProfile ||
-		request.DescriptorProfileDigest != profile.DescriptorProfileDigest || request.PiRuntimeBundleRoot != profile.PiRuntimeBundleRoot ||
-		request.PiRuntimeBundleDigest != profile.PiRuntimeBundleDigest || request.ContainmentProfile != profile.ContainmentProfile ||
-		request.SettlementProfile != profile.SettlementProfile || l.scope.RootDigest() != profile.CgroupRootDigest ||
-		!sameBinding(request.WorkerExposureHandle, request.admission.runtime.WorkerExposureHandle) ||
-		!sameBinding(request.PiRuntimeBundleHandle, request.admission.runtime.PiRuntimeBundleHandle) ||
-		!sameBinding(request.Stdin, request.admission.runtime.Stdin) ||
-		!sameInheritedDescriptors(request.Descriptors, request.admission.runtime.Descriptors) ||
-		!sameBinding(l.scope, request.admission.runtime.Descendant) {
-		return nil, ErrHostProfileMismatch
-	}
-	if DigestArguments(request.Args) != request.ArgumentsDigest || DigestEnvironment(request.Env) != request.EnvironmentDigest ||
-		DigestBytes([]byte(request.Dir)) != request.WorkingDirectoryDigest || !minimalPiWorkerEnvironment(request.Env) {
-		return nil, ErrHostProfileMismatch
-	}
-	if !equalStrings(request.Args, PiWorkerCellArguments()) || request.Path == "" || request.NodeVersion == "" {
-		return nil, ErrHostProfileMismatch
-	}
-	if err := validatePrivateDirectory(request.Env); err != nil {
-		return nil, err
-	}
-	if err := validateWorkerExposureDescriptor(request.WorkerExposureHandle, request.admission.runtime.WorkerExposureEvidence); err != nil {
-		return nil, err
-	}
-	if err := verifyImmutableLinuxExecutable(request.Path); err != nil {
-		return nil, err
-	}
-	runtimeDigest, err := VerifyLinuxPiRuntimeBundle(request.PiRuntimeBundleHandle)
-	if err != nil || runtimeDigest != request.PiRuntimeBundleDigest {
-		return nil, fmt.Errorf("%w: runtime bundle digest differs from admitted profile", ErrRuntimeBundleRefused)
-	}
-	if err := validatePiWorkerDescriptors(request.DescriptorProfile, request.Descriptors, request.WorkerExposureHandle, request.PiRuntimeBundleHandle); err != nil {
-		return nil, err
-	}
-	executable, err := openVerifiedExecutable(request.Path, request.Digest)
-	if err != nil {
-		return nil, err
-	}
-	defer executable.Close()
-	ordered := cloneInheritedDescriptors(request.Descriptors)
-	extraFiles := make([]*os.File, 1, len(ordered)+1)
-	extraFiles[0] = executable // child fd 3 is the descriptor-bound Node executable.
-	for _, descriptor := range ordered {
-		if descriptor.File == nil {
-			return nil, ErrHostBindingsMissing
-		}
-		extraFiles = append(extraFiles, descriptor.File)
-	}
-	command := exec.CommandContext(ctx, "/proc/self/fd/3", request.Args...)
-	// os/exec applies Dir before installing ExtraFiles, so Linux cannot use fd 4
-	// for fchdir here. Bind the private path in the signed profile and require
-	// the worker to compare its actual cwd identity with inherited fd 4 before
-	// emitting ready or accepting a prompt.
-	command.Dir = request.Dir
-	command.Env = append([]string{}, request.Env...)
-	command.Stdin = request.Stdin
-	command.Stdout = request.Stdout
-	command.Stderr = request.Stderr
-	command.ExtraFiles = extraFiles
-	command.SysProcAttr = &syscall.SysProcAttr{UseCgroupFD: true, CgroupFD: int(l.scope.file.Fd())}
-	if err := command.Start(); err != nil {
-		return nil, fmt.Errorf("start descriptor-bound Node in admitted cgroup: %w", err)
-	}
-	return command, nil
-}
-
 func openVerifiedExecutable(path, expectedDigest string) (*os.File, error) {
 	if !filepath.IsAbs(path) {
 		return nil, ErrLinuxLauncherRefused
@@ -747,23 +625,6 @@ func verifyImmutableLinuxExecutable(path string) error {
 		return fmt.Errorf("production Pi Node executable mount is mutable: %w", err)
 	}
 	return nil
-}
-
-func minimalPiWorkerEnvironment(environment []string) bool {
-	allowed := map[string]bool{"HOME": true, "TMPDIR": true, "LANG": true, "PI_OFFLINE": true}
-	values := make(map[string]string, len(environment))
-	for _, item := range environment {
-		name, value, ok := strings.Cut(item, "=")
-		if !ok || !allowed[name] {
-			return false
-		}
-		if _, duplicate := values[name]; duplicate {
-			return false
-		}
-		values[name] = value
-	}
-	return len(values) == len(allowed) && values["PI_OFFLINE"] == "1" && values["LANG"] == "C.UTF-8" &&
-		filepath.IsAbs(values["HOME"]) && filepath.IsAbs(values["TMPDIR"])
 }
 
 func validatePrivateDirectory(environment []string) error {

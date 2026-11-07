@@ -1131,3 +1131,11 @@ func TestPinnedRouteMatrix(t *testing.T) {
 		t.Fatalf("empty evidence: %+v %v", rep, err)
 	}
 }
+
+// buildRouteReport turns the pinned matrix and the test results into the routematrix.Report that
+// run.json names as route_report. A cell the definition declares Covered stays Covered only if every
+// test reference of it passed; otherwise it is reported Missing. The lookup of routematrix.Coverage is
+// "the test passed", so a reference that failed, was skipped or is absent keeps the report incomplete.
+func buildRouteReport(m routematrix.Matrix, o *testOutcomes) (routematrix.Report, error) {
+	return buildRouteReportWithGuest(m, o, guestRouteArtifacts{})
+}

@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"tbound/supervisor/internal/productsetup"
 )
 
 func TestThesisD09RunnerNeverInvokesProductCallbacks(t *testing.T) {
@@ -104,7 +106,7 @@ func TestProductD09ResidueRequiresRemovalAndNamespaceProof(t *testing.T) {
 					return false, nil
 				}
 			}
-			err := reconcileProductD09CommandResidueAfterScopeDrain(context.Background(), podman, productD09CommandEnvironment(), owner, scan)
+			err := reconcileProductD09CommandResidueAfterScopeDrain(context.Background(), podman, productsetup.CommandCellEnvironment(), owner, scan)
 			if (err != nil) != tc.wantError {
 				t.Fatalf("cleanup error=%v, wantError=%v", err, tc.wantError)
 			}

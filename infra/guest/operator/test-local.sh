@@ -578,5 +578,137 @@ ACTIVE=%d
         self.assertFalse(exported.exists())
 
 
+class AbandonTests(unittest.TestCase):
+    """abandon takes a pilot runner RID (tbr-) only when pilot is started and the journal shows it accepted from uid 994 and ended unknown."""
+
+    rid = "tbr-e483c73e4c63395e4c6d6318a74fe343"
+    digest = "sha256:" + "0" * 64
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory(prefix="tbound-op-abandon-")
+        self.addCleanup(tmp.cleanup)
+        self.base = Path(tmp.name)
+        for name in ("state", "audit", "cg/cells"):
+            (self.base / name).mkdir(parents=True)
+        (self.base / "catalog.jsonl").touch()
+        (self.base / "state" / "pilot").write_text("state=started\n")
+        (self.base / "tb").write_text('#!/bin/bash\nprintf "%s\\n" "$*" >>"$(dirname "$0")/tb-calls"\n')
+        (self.base / "tb").chmod(0o700)
+
+    def journal(self, *records):
+        lines = []
+        for seq, (kind, data) in enumerate(records, 1):
+            event = {"kind": kind, "id": "fixture", "data": base64.b64encode(json.dumps(data).encode()).decode()}
+            lines.append(json.dumps({"sequence": seq, "event": event}) + "\n")
+        (self.base / "audit" / "serve-pi-requests.jsonl").write_text("".join(lines))
+
+    def accepted(self, rid, uid=994):
+        return ("pi_service_request_accepted", {"schema_version": "tbound-pi-service-request-accepted/v1", "client_uid": uid,
+                "client_gid": 985, "client_pid": 4242, "request_id": rid, "task_id": "PILOT-ADV-A-05", "payload_digest": self.digest})
+
+    def terminal(self, rid, status="unknown"):
+        response = {"schema_version": "tbound-pi-service-response/v1", "request_id": rid, "status": status}
+        if status == "unknown":
+            response["error_code"] = "task-outcome-unknown"
+        return ("pi_service_request_terminal", {"schema_version": "tbound-pi-service-request-terminal/v1", "client_uid": 994,
+                "request_id": rid, "payload_digest": self.digest, "response": response})
+
+    def abandon(self, *args):
+        for name in ("calls", "tb-calls"):
+            (self.base / name).unlink(missing_ok=True)
+        helpers = source[source.index("st_file() {"):source.index("inst_name() {")]
+        helpers += source[source.index("req_records() {"):source.index("GE_OUT=$GA/out")]
+        regexes = "\n".join(line for line in source.splitlines() if line.startswith(("re_rid=", "re_tbr=")))
+        script = """set -euo pipefail
+BASE=$1; shift
+STATE=$BASE/state; AUDIT=$BASE/audit; CATALOG=$BASE/catalog.jsonl; CG=$BASE/cg; TB=$BASE/tb
+SVC_UNIT=tbound-pi.service; SOCK_UNIT=tbound-pi.socket
+SVC_PRIV=(); PODMAN=(false)
+ARGS=("$@")
+die() { echo "tbound-op: $*" >&2; exit 1; }
+usage() { echo "tbound-op: $*" >&2; exit 2; }
+say() { echo "$*"; }
+check_tools() { :; }; mkwork() { :; }; prep_ga() { :; }
+systemctl() { printf 'systemctl %s\\n' "$*" >>"$BASE/calls"; }
+""" + regexes + "\n" + helpers + "\nv_abandon\n"
+        got = subprocess.run(["bash", "-c", script, "abandon-test", str(self.base), *args], capture_output=True, text=True)
+        calls = (self.base / "calls").read_text().splitlines() if (self.base / "calls").exists() else []
+        tb_calls = (self.base / "tb-calls").read_text().splitlines() if (self.base / "tb-calls").exists() else []
+        return got, calls, tb_calls
+
+    def assertAccepted(self, rid):
+        got, calls, tb_calls = self.abandon(rid)
+        self.assertEqual(got.returncode, 0, got.stdout + got.stderr)
+        self.assertIn("TOKEN=", got.stdout)
+        self.assertEqual((calls, tb_calls), ([], []))
+
+    def assertRefused(self, rid):
+        got, calls, tb_calls = self.abandon(rid, "--confirm", "0" * 12)
+        self.assertEqual((got.returncode, got.stdout), (2, ""), got.stderr)
+        self.assertIn("bad RID", got.stderr)
+        self.assertEqual((calls, tb_calls), ([], []))
+
+    def test_retained_runner_rid_is_previewed_then_settled(self):
+        self.journal(self.accepted(self.rid), self.terminal(self.rid))
+        got, calls, tb_calls = self.abandon(self.rid)
+        self.assertEqual(got.returncode, 0, got.stdout + got.stderr)
+        self.assertIn("pi_service_request_terminal", got.stdout)
+        self.assertEqual((calls, tb_calls), ([], []))
+        token = got.stdout.split("TOKEN=")[1].split()[0]
+        got, calls, tb_calls = self.abandon(self.rid, "--confirm", token)
+        self.assertEqual(got.returncode, 0, got.stdout + got.stderr)
+        self.assertEqual(calls, ["systemctl stop tbound-pi.service tbound-pi.socket", "systemctl start tbound-pi.socket"])
+        self.assertEqual(tb_calls, [f"abandon-unknown --request-id {self.rid} --reason operator recovery via tbound-op for {self.rid}, facts {token}"])
+
+    def test_pilot_not_started_refuses(self):
+        self.journal(self.accepted(self.rid), self.terminal(self.rid))
+        self.assertAccepted(self.rid)
+        (self.base / "state" / "pilot").write_text("state=prof\n")
+        self.assertRefused(self.rid)
+
+    def test_other_client_uid_refuses(self):
+        self.journal(self.accepted(self.rid), self.terminal(self.rid))
+        self.assertAccepted(self.rid)
+        self.journal(self.accepted(self.rid, uid=1000), self.terminal(self.rid))
+        self.assertRefused(self.rid)
+
+    def test_missing_or_not_unknown_terminal_refuses(self):
+        self.journal(self.accepted(self.rid), self.terminal(self.rid))
+        self.assertAccepted(self.rid)
+        abandoned = ("pi_service_request_abandoned", {"client_uid": 994, "request_id": self.rid, "payload_digest": self.digest})
+        other_payload = self.terminal(self.rid)
+        other_payload[1]["payload_digest"] = "sha256:" + "1" * 64
+        for name, records in (("no terminal", [self.accepted(self.rid)]),
+                              ("completed terminal", [self.accepted(self.rid), self.terminal(self.rid, "completed")]),
+                              ("already abandoned", [self.accepted(self.rid), self.terminal(self.rid), abandoned]),
+                              ("duplicate acceptance", [self.accepted(self.rid), self.accepted(self.rid), self.terminal(self.rid)]),
+                              ("duplicate terminal", [self.accepted(self.rid), self.terminal(self.rid), self.terminal(self.rid)]),
+                              ("terminal for another payload", [self.accepted(self.rid), other_payload])):
+            with self.subTest(name):
+                self.journal(*records)
+                self.assertRefused(self.rid)
+
+    def test_malformed_runner_rids_refuse(self):
+        self.journal(self.accepted(self.rid), self.terminal(self.rid))
+        self.assertAccepted(self.rid)
+        for bad in ("tbr-e483c73e4c63395e4c6d6318a74fe34", "tbr-E483C73E4C63395E4C6D6318A74FE343",
+                    "tbr-e483c73e4c63395e4c6d6318a74fe343-x"):
+            with self.subTest(bad):
+                self.journal(self.accepted(bad), self.terminal(bad))
+                self.assertRefused(bad)
+
+    def test_dispatcher_rids_keep_their_path(self):
+        rid = "smoke-req-20000101T000000Z"
+        self.journal(self.accepted(rid))
+        (self.base / "state" / "rids").write_text(rid + "\n")
+        got, _, _ = self.abandon(rid)
+        self.assertEqual(got.returncode, 0, got.stdout + got.stderr)
+        self.assertIn("TOKEN=", got.stdout)
+        (self.base / "state" / "rids").unlink()
+        got, _, _ = self.abandon(rid)
+        self.assertEqual(got.returncode, 1, got.stdout + got.stderr)
+        self.assertIn("was not generated by this dispatcher", got.stderr)
+
+
 unittest.main(verbosity=2)
 PY

@@ -338,11 +338,12 @@ describe("Inspector: the record bar", () => {
     view.unmount();
   });
 
-  it("is absent when no record is selected, and the status line names the selected tab's words instead", async () => {
+  it("is absent when no record is selected, and a tab with one badge needs no status line: its row draws the words", async () => {
     const view = mount(<Host model={await modelWith()} initialRecordTab />);
     expect(tabsOf(view.container)).toHaveLength(5);
     expect(view.container.querySelector("button[aria-label^='Close record']")).toBeNull();
-    expect(view.container.querySelector("p")?.textContent).toBe("Decisions · unavailable");
+    expect(view.container.querySelector("p[class*='tabWords']")).toBeNull();
+    expect(tabNamed(view.container, "Decisions")?.textContent).toBe("Decisionsunavailable");
     view.unmount();
   });
 });
@@ -376,6 +377,13 @@ describe("Inspector: the collapsed column at wide widths", () => {
     expect(dots[0]).toBe("deny");
     expect(dots).not.toContain("ok");
     expect(dots).not.toContain("allow");
+    view.unmount();
+  });
+
+  it("marks the selected panel's icon as current, for assistive technology", async () => {
+    const view = mount(<Host model={await modelWith()} collapsed />);
+    const current = Array.from(view.container.querySelectorAll("[role='toolbar'] button")).filter((button) => button.getAttribute("aria-current") === "true");
+    expect(current.map((button) => button.getAttribute("aria-label"))).toEqual(["Open Decisions panel, unavailable"]);
     view.unmount();
   });
 

@@ -136,29 +136,30 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: var(--row-h-toolbar);
-  height: var(--row-h-toolbar);
-  border: 1px solid var(--border);
+  width: 2.25rem;
+  height: 2.25rem;
+  border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--foreground);
+  color: var(--muted-foreground);
   cursor: pointer;
 }
 
-.iconButton:hover {
+.iconButton:hover,
+.iconButton[data-selected="true"] {
   background: var(--accent);
+  color: var(--foreground);
 }
 
 .glyph {
-  font-size: var(--text-2xs);
-  font-weight: 600;
+  display: inline-flex;
 }
 
 /* The badge mark in the icon's corner: a StateDot, so its shape and colour are the badge's tone. The button's name carries the words. */
 .badgeMark {
   position: absolute;
-  top: 2px;
-  right: 2px;
+  top: 4px;
+  right: 4px;
   display: inline-flex;
 }
 

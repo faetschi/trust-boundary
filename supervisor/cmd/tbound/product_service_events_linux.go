@@ -16,6 +16,7 @@ import (
 	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/delta"
 	"tbound/supervisor/internal/gate"
+	"tbound/supervisor/internal/productdriver"
 	"tbound/supervisor/internal/productprotocol"
 	"tbound/supervisor/internal/productsession"
 	"tbound/supervisor/internal/providerbridge"
@@ -191,7 +192,7 @@ func (p *productEventProjector) candidatePaths(turn productsession.Turn) ([]stri
 	if err != nil {
 		return nil, err
 	}
-	receipt, err := decodeProductTurnReceipt(turn.Receipt)
+	receipt, err := productdriver.DecodeReceipt(turn.Receipt)
 	if err != nil {
 		return nil, err
 	}

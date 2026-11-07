@@ -3,6 +3,7 @@
 // product service reported about the session, so governance state is never part of the model's text. Every value is drawn as
 // text. Nothing here publishes anything: Publish and Discard send a request that names the candidate shown, and the service decides.
 
+import { LIVE_AUTHORITY_LINE } from "../app/sessionReadings";
 import { Fragment, useEffect, useLayoutEffect, useRef } from "react";
 import { Chip } from "../ui/Chip";
 import { Disclosure } from "../ui/Disclosure";
@@ -35,7 +36,7 @@ function DiffText({ path, diff }: { readonly path: string; readonly diff: string
   );
 }
 
-export const REVIEW_HEADING_ID = "live-review-heading";
+const REVIEW_HEADING_ID = "live-review-heading";
 
 function ReviewCard({ candidate }: { readonly candidate: Candidate }) {
   const live = useLive();
@@ -131,6 +132,8 @@ export function LivePanel() {
   const candidate = model.candidate;
   return (
     <div className={styles.panel} role="group" aria-label="Session state">
+      {/* The one standing line about who decides, where the controls are. The full sentence is in the details card. */}
+      <p className={styles.authority}>{LIVE_AUTHORITY_LINE}</p>
       <div className={styles.status} role="group" aria-label="Remaining budget">
         <Chip tone={budgetUsedUp(view) ? "deny" : "idle"}>{`host calls ${left.host_calls} left of ${view.budget.host_calls}`}</Chip>
         <Chip tone={budgetUsedUp(view) ? "deny" : "idle"}>{`tokens ${left.tokens} left of ${view.budget.tokens}`}</Chip>

@@ -19,17 +19,36 @@ service account and managed project from the Bash-deny install. The service
 account must have no subordinate UID or GID allocation. It must differ from
 the signed in-cell UID and GID.
 
-Keep the existing registration private key and the image cosign private key on
-the offline owner machine. Transfer public artifacts only. Use the same product
-registration key for the command host profile. Do not rotate it across retained
-history.
+Keep the existing registration private key on the offline owner machine.
+Transfer public artifacts only. Use the same product registration key for the
+command host profile. Do not rotate it across retained history.
+
+The image needs its own cosign key pair. If you have none, create it once
+**offline**, in an owner-only directory, and keep `cosign.key` there:
+
+```sh
+install -d -m 0700 /path/to/owner
+COSIGN_PASSWORD= cosign generate-key-pair --output-key-prefix /path/to/owner/cosign
+chmod 0600 /path/to/owner/cosign.key
+```
+
+`cosign generate-key-pair` prompts for a password unless `COSIGN_PASSWORD` is
+set. An empty one suits a disposable demo only.
 
 Replace uppercase measurement placeholders before running commands. Digests
 include `sha256:`. Replace `/path/to/...` with absolute paths. Commands marked
 **offline** run on the Linux build or owner machine, not on the service host.
 Use trusted tools from the chosen frozen source commit. The build host needs a
-local Go dependency cache and the digest-pinned base-image cache. Create the
-private build output directories before running the recipes. Run each shell
+local Go dependency cache and the digest-pinned base-image cache. Fill the base
+cache once from the frozen repository root, because `build` fails on missing
+blobs:
+
+```sh
+python3 -I packaging/governed/cell_image.py pull \
+  --lock packaging/governed/base-images.lock.json --cache /path/to/base-cache
+```
+
+Create the private build output directories before running the recipes. Run each shell
 procedure with `set -euo pipefail`; stop at a failed comparison or command.
 
 Stop the service before replacing installed inputs. Preserve a stopped backup
@@ -54,7 +73,8 @@ done
 ```
 
 `cmp` must print nothing. From the frozen repository root, build the OCI layout
-twice into new directories. Use the frozen commit time as `EPOCH`:
+twice into new directories. Use the frozen commit time as `EPOCH`, the integer
+printed by `git log -1 --format=%ct FROZEN_40_HEX_COMMIT`:
 
 ```sh
 python3 -I packaging/governed/cell_image.py build \
@@ -95,11 +115,12 @@ Do not pull an image on the service host.
 
 ## 2. Transfer public files and measure the host
 
-Transfer the archive, signed layout, cosign public key, seccomp file, and new
-binaries over the operator's authenticated transport. Stage public files below
+Transfer the archive, signed layout, cosign public key, and new binaries over
+the operator's authenticated transport. Stage public files below
 `/etc/tbound-product/incoming/RELEASE/`. Every input and ancestor must be
 root-owned, non-symlink, and not writable by group or others. Use 0755 directories
-and 0644 public files. For example, from the build machine:
+and 0644 public files. For example, from the build machine (`sudo -n` needs
+passwordless sudo for the admin; otherwise run the `sudo` part on the host):
 
 ```sh
 ssh admin@PRODUCT_HOST 'sudo -n install -d -o root -g root -m 0755 /etc/tbound-product/incoming/RELEASE'
@@ -110,6 +131,7 @@ tar -C /path/to/release -c signed-layout | ssh admin@PRODUCT_HOST 'sudo -n tar -
 Install the candidate separately from both active binaries on the product host:
 
 ```sh
+sudo install -d -o root -g root -m 0755 /usr/local/libexec
 sudo install -o root -g root -m 0755 /path/to/tbound /usr/local/libexec/tbound-candidate
 sudo sha256sum /usr/local/libexec/tbound-candidate
 sudo sha256sum /etc/tbound-product/incoming/RELEASE/cell.tar
@@ -118,10 +140,19 @@ sudo sha256sum /etc/tbound-product/incoming/RELEASE/cell.tar
 Compare the checksums with the offline release. The pinned tools at
 `/usr/bin/podman`, `/usr/bin/crun`, and `/usr/local/bin/cosign` must be regular
 root-owned files. A cosign symlink fails even if it points at the correct bytes.
-Measure after installing a regular copy, before signing its pin:
+Replace a symlink with a regular copy, then measure, before signing the pins.
+The cell's seccomp profile is the host Podman package's default,
+`/usr/share/containers/seccomp.json`, and its digest is pinned too. Also record
+the service account's numeric IDs:
 
 ```sh
-sudo sha256sum /usr/bin/podman /usr/bin/crun /usr/local/bin/cosign
+if test -L /usr/local/bin/cosign; then
+  sudo install -o root -g root -m 0755 "$(readlink -f /usr/local/bin/cosign)" /usr/local/bin/cosign.regular
+  sudo mv -f /usr/local/bin/cosign.regular /usr/local/bin/cosign
+fi
+sudo sha256sum /usr/bin/podman /usr/bin/crun /usr/local/bin/cosign \
+  /usr/share/containers/seccomp.json
+id -u tbound-product; getent group tbound-product | cut -d: -f3
 ```
 
 Write a new root-owned 0644 policy at
@@ -141,10 +172,18 @@ sudo setpriv --reuid=tbound-product --regid=tbound-product --clear-groups --no-n
 ```
 
 Keep the printed `root=sha256:...` and `policy=sha256:...`. Transfer these public
-measurements, the service UID/GID, tool digests, and existing scanner calibration
-to the offline owner. Do not reuse another host's IDs or mount measurements.
+measurements, the service UID/GID, the tool digests, a copy of
+`/usr/share/containers/seccomp.json`, and the installed scanner calibration
+`/etc/tbound-product/xattr-calibration.json` to the offline owner. Do not reuse another host's IDs or mount measurements.
 
 ## 3. Sign the registration and command bundle offline
+
+Use the binaries built in section 1, not older installed ones. In each offline
+owner shell below, put them first on `PATH`:
+
+```sh
+export PATH="/path/to/build/bin:$PATH"
+```
 
 Create a new registration with the measured root, policy, private Git digest,
 and actual image manifest digest. Keep the allowed principal and service
@@ -170,9 +209,11 @@ tbound product registration verify --registration registration.json \
 
 Prepare the measured product `d09-cell.json`. The
 [D09 template schema](../../supervisor/internal/piruntime/d09_template_linux.go)
-and the existing [image recipe](../../packaging/governed/README.md) describe the
-measured fields. A `tbound-profile template-init --out d09-cell.json` draft is
-unmeasured and is not an installable product template. Before computing its
+describes the measured fields. The thesis [image recipe](../../packaging/governed/README.md)
+and the `template-init` hint set `managed_live_root_registration_digest` and
+install under `/etc/tbound/`. The product refuses both, so follow this list
+instead. A `tbound-profile template-init` draft is unmeasured and is not an
+installable product template. Before computing its
 product digest, fill every measurement and set:
 
 - `product_registration_digest` to the new signed registration's `digest`,
@@ -184,6 +225,15 @@ product digest, fill every measurement and set:
   `/etc/tbound-product/podman/seccomp.json`.
 - The measured tool paths/digests, image entrypoint and `/bin/bash` digests,
   service scanner IDs/calibration, and the one-own-ID mapping to the in-cell IDs.
+  `command_executable` is `/bin/bash` with `bash_sha256` from `measure`, and
+  `entrypoint_digest` is `entrypoint_sha256`. The image's `node` user makes
+  `cell_uid` and `cell_gid` 1000. `seccomp_profile_digest` is the digest of the
+  host's `seccomp.json`. `frozen_capabilities` is `0000000000000000`.
+- The seven `xattr_*` fields, copied from the signed calibration:
+  `visibility_profile_digest`, `authority`, `filesystem_magic`,
+  `mount_options_digest`, `scan_uid`, `scan_gid`, and `scan_privilege_profile`
+  become `xattr_visibility_profile_digest`, `xattr_visibility_authority`, and
+  so on.
   Use `/sys/fs/cgroup/system.slice/tbound-product.service/cells` for
   `cgroups_path`. The cgroup-root digest below uses the hierarchy path without
   `/sys/fs/cgroup`.
@@ -211,6 +261,54 @@ parts = [
     'parent=initial-userns/v1',
 ]
 print('sha256:' + hashlib.sha256('\x00'.join(parts).encode('ascii')).hexdigest())
+PY
+```
+
+`SERVICE_UID` and `SERVICE_GID` are the IDs recorded in section 2.
+
+A refused template prints only `registered D09 cell template is missing or
+invalid`, without the field, so fill it with a script. This one starts from
+the draft and fills the fields above from the signed registration, the
+transferred calibration and seccomp file, and your measurements. Replace the
+uppercase values. `LANDLOCK_DIGEST` and `USERNS_DIGEST` come from the commands
+around it:
+
+```sh
+tbound-profile template-init --out template-draft.json
+python3 -I - <<'PY'
+import hashlib, json, pathlib
+def digest(path): return 'sha256:' + hashlib.sha256(pathlib.Path(path).read_bytes()).hexdigest()
+t = json.loads(pathlib.Path('template-draft.json').read_text())
+r = json.loads(pathlib.Path('registration.json').read_text())
+c = json.loads(pathlib.Path('xattr-calibration.json').read_text())
+t.update(
+    image='localhost/tbound/pi-cell:latest', expected_image_digest=r['image_digest'],
+    product_registration_digest=r['digest'], managed_live_root_registration_digest='',
+    cosign_public_key_path='/etc/tbound-product/podman/cosign.pub',
+    cosign_public_key_digest=digest('/path/to/owner/cosign.pub'),
+    oci_layout_path='/etc/tbound-product/podman/cell-oci',
+    seccomp_profile_path='/etc/tbound-product/podman/seccomp.json',
+    seccomp_profile_digest=digest('seccomp.json'),
+    landlock_abi=8, landlock_ruleset_digest='LANDLOCK_DIGEST',
+    landlock_ro_path='/usr,/lib,/lib64,/etc,/runtime,/var/lib/tbound/pi-worker,/proc,/dev',
+    landlock_rw_path='/work,/tmp', frozen_capabilities='0000000000000000',
+    entrypoint_digest='ENTRYPOINT_SHA256',
+    cgroups_path='/sys/fs/cgroup/system.slice/tbound-product.service/cells',
+    cpus='1', pids_max=256, memory_mb=1024,
+    podman_path='/usr/bin/podman', podman_digest='PODMAN_DIGEST',
+    crun_path='/usr/bin/crun', crun_digest='CRUN_DIGEST',
+    cosign_path='/usr/local/bin/cosign', cosign_digest='COSIGN_DIGEST',
+    command_executable='/bin/bash', command_executable_digest='BASH_SHA256',
+    cell_uid=1000, cell_gid=1000,
+    xattr_visibility_profile_digest=c['visibility_profile_digest'],
+    xattr_visibility_authority=c['authority'], xattr_filesystem_magic=c['filesystem_magic'],
+    xattr_mount_options_digest=c['mount_options_digest'],
+    xattr_scan_uid=c['scan_uid'], xattr_scan_gid=c['scan_gid'],
+    xattr_scan_privilege_profile=c['scan_privilege_profile'],
+    user_namespace_mapping_profile='rootless-single-own-uid-gid/v1',
+    user_namespace_mapping_digest='USERNS_DIGEST')
+t.pop('route_probe', None)
+pathlib.Path('d09-cell.json').write_text(json.dumps(t, separators=(',', ':')))
 PY
 ```
 
@@ -275,14 +373,23 @@ trap - EXIT
 
 The key comparison must succeed. Transfer only `registration.json`, its `.sig`,
 `registration.pub`, and the five bundle files: `host-profile.json`, its `.sig`,
-`d09-cell.json`, `seccomp.json`, and `cosign.pub`. Install the bundle as root-owned
-0644 files in a protected staging directory. Never transfer `registration.raw`
-or either private key.
+`d09-cell.json`, `seccomp.json`, and `cosign.pub`. Never transfer
+`registration.raw` or either private key. Setup reads the five bundle files by
+these names from one root-protected directory. On the host, stage them and the
+registration as root-owned files, from wherever you copied them:
+
+```sh
+sudo install -d -o root -g root -m 0755 /etc/tbound-product/incoming/RELEASE/command-bundle
+sudo install -o root -g root -m 0644 host-profile.json host-profile.json.sig \
+  d09-cell.json seccomp.json cosign.pub /etc/tbound-product/incoming/RELEASE/command-bundle/
+sudo install -o root -g root -m 0644 registration.json registration.json.sig \
+  registration.pub /etc/tbound-product/incoming/RELEASE/
+```
 
 ## 4. Replace setup with format 3
 
 Copy the original setup input to a new file. Point its registration fields at
-the new public registration, its `gate_policy_paths.demo` at the new policy,
+the new public registration in `/etc/tbound-product/incoming/RELEASE/`, its `gate_policy_paths.demo` at the new policy,
 and add `command_bundle`:
 
 ```json
@@ -304,8 +411,9 @@ sudo /usr/local/libexec/tbound-candidate product setup \
 ```
 
 Resolve unsettled turns before replacing the registration. Review the dry-run
-paths first. The installed setup record must show `"installation_format": 3`.
-The unit includes `DelegateSubgroup=runner` and per-path `BindReadOnlyPaths=`.
+paths first. The installed setup record, `/etc/tbound-product/setup.json`, must show
+`"installation_format": 3`. The unit includes `DelegateSubgroup=runner` and one
+`BindReadOnlyPaths=` line that lists the read-only paths.
 Setup installs `/usr/local/lib/tbound-product/tbound`; update the terminal
 client separately to the same bytes:
 
@@ -533,7 +641,7 @@ must roll the state back. The catalog is not the only state. Each project keeps
 its own publication audit, `/var/lib/tbound-product/turns/projects/<hash>/publication-audit.jsonl`
 (the catalog is `/var/lib/tbound-product/catalog.jsonl`). `<hash>` is the lowercase
 hex SHA-256 of the exact project ID bytes, with no prefix and no trailing newline:
-`printf '%s' demo | sha256sum` gives the directory name for project `demo`. If only the catalog is
+`printf '%s' demo | sha256sum | cut -d' ' -f1` gives the directory name for project `demo`. If only the catalog is
 cut back, the audit stays ahead of it. Its newer or UNKNOWN publication
 transaction then fails every later admission with `live root has an unresolved
 publication lifecycle record`. No `tbound` command rolls either file back, so

@@ -133,3 +133,12 @@ func TestNamespaceMeasurementSharesTheNetworkNamespaceOnlyForNetSink(t *testing.
 		t.Error("only net-sink may share the host network namespace")
 	}
 }
+
+// rulesetDigest is the digest the host expects in the proof, derived by the same function.
+func (p landlockPlan) rulesetDigest(roPaths, rwPaths []string) string {
+	digest, err := p.delta.LandlockRulesetDigest(roPaths, rwPaths)
+	if err != nil {
+		return ""
+	}
+	return digest
+}

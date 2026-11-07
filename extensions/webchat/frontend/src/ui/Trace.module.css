@@ -8,7 +8,7 @@
   --local-rule: var(--border);
   --local-tint: var(--muted-foreground);
   min-width: 0;
-  max-width: 34rem;
+  max-width: 100%;
   border-left: 2px solid var(--local-rule);
   border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
 }
@@ -46,7 +46,7 @@
 .line {
   display: flex;
   align-items: center;
-  padding: var(--space-1) var(--space-2h);
+  padding: var(--space-1) var(--space-2);
   cursor: pointer;
   border-radius: inherit;
 }
@@ -68,10 +68,22 @@
   margin-left: auto;
   padding-left: var(--space-2);
   color: var(--muted-foreground);
+  font-size: var(--text-2xs);
 }
 
-.trace[open] > .line::after {
+.trace[open] > .line::after,
+.trace[data-open="true"] > .line::after {
   content: "▴";
+}
+
+/* The line as a button (TraceToggle): the browser's button look is reset, so it reads as the summary does. */
+button.line {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
 }
 
 .lineContent {
@@ -87,13 +99,11 @@
   flex: none;
   display: grid;
   place-items: center;
-  width: 1.5rem;
+  width: 1.25rem;
   height: 1.5rem;
-  border-radius: var(--radius-xs);
-  background: color-mix(in oklch, var(--local-tint) 14%, transparent);
   font-family: var(--font-mono);
   font-size: var(--text-xs);
-  color: var(--foreground);
+  color: var(--muted-foreground);
 }
 
 .titles {
@@ -115,7 +125,7 @@
 
 .detail {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: var(--space-1) var(--space-2);
   min-width: 0;
@@ -130,7 +140,16 @@
   flex-wrap: wrap;
   justify-content: flex-end;
   max-width: 100%;
-  gap: var(--space-1);
+  gap: var(--space-1) var(--space-3);
+}
+
+/* The readings on a line are words in their tone, not boxes: the chip's text and ink stay, its border and ground go. The words carry
+   the meaning (DENY, reported, no result), so the box adds nothing a reader needs. */
+.meta [data-tone] {
+  min-height: 0;
+  padding: 0;
+  border-color: transparent;
+  background: transparent;
 }
 
 .body {

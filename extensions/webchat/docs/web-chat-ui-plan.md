@@ -8,8 +8,8 @@ H1 unexecuted, containment not-established, claim-bearing=false.
 > **Scope and phase naming (written at HEAD `4700ca5`, 2026-10-14; status updated at `57e6406`).**
 > "Phase 0" to "Phase 4" in this plan are this redesign's own phases, not the ADR-0001 phases P1
 > to P3. What shipped first is the legacy vanilla UI (`assets/`). It was the default at `/` until
-> the React client became the default in `6d03657`; it is now deprecated at `/legacy/` until
-> sign-off. ADR-0001 P1 (scaffold, `263b6ca`, review fixes `2583f5a`), P2 (typed core port and
+> the React client became the default in `6d03657`; it was later retired
+> (audit finding #5). ADR-0001 P1 (scaffold, `263b6ca`, review fixes `2583f5a`), P2 (typed core port and
 > markdown AST, `4700ca5`) and P3 (React views, `58492c5` to `57e6406`) are committed. The current visual spec is
 > [design/design-language.md](design/design-language.md).
 > On its desktop frames, buttons with a matching frame jump to it; the governance tabs swap in place.
@@ -388,7 +388,7 @@ None of them changes the Appendix A decision. Effort is an estimate for a vanill
 | No HTML parser in markdown; URL scheme allowlist (http, https, mailto) | `ui-primitives/src/markdown/render.tsx:333-335,53` | Keep zero `innerHTML`; build DOM with `createElement`/`createTextNode` only | S–M |
 | Capped exponential backoff with jitter; slow-connect warning that does not cancel | `connection/src/client/connection.ts:139-150`, `recovery-config.ts` | Reconnect; a resync replaces the whole loaded window | S |
 | Explicit "history not loaded" window gap marker | `ui-conversation/.../assembler.ts:27,769` | Gap rendering | S |
-| Two-press Escape cancel bound to session/turn/generation; skips IME and key repeat | `ui-conversation/src/client/stop-sequence.ts` | Cancel is a request; the UI still waits for the settled result | S |
+| Two-press Escape cancel bound to session/turn/generation; skips IME and key repeat | `ui-conversation/src/client/stop-sequence.ts` | Cancel is a request; the UI still waits for the settled result. The implementation was later removed unwired | S |
 | Visually hidden text beside colour-only status | `ui-tool/.../ToolRow.tsx:104-114` | Accessibility | S |
 | Anchored tail window (pin the tail at open, extend forward) | `ui-trajectory/src/client/TrajectoryView.tsx:163-177` | Needs a snapshot `anchor` cursor field | M |
 

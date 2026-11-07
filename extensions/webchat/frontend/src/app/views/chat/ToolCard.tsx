@@ -7,7 +7,8 @@ import type { ReactNode } from "react";
 import { Chip } from "../../../ui/Chip";
 import { Trace, TraceIcon, TraceLine, TraceMeta, TraceTitle } from "../../../ui/Trace";
 import { VisuallyHidden } from "../../../ui/VisuallyHidden";
-import { formatClock, shortDigest, toolGlyph } from "../../../core/format";
+import { formatClock, shortDigest } from "../../../core/format";
+import { toolIcon } from "../../../ui/Icon";
 import type { ItemView } from "../../../core/contract";
 import type { ToolBlock } from "../../../core/store";
 import type { Marker } from "./provenance";
@@ -17,9 +18,9 @@ import {
   LOSSY_READING,
   UNVERIFIED_READING,
   VERIFIED_READING,
-  stateReading,
   verdictReading,
 } from "./readings";
+import { outcomeReading, summaryOf, traceToneOf } from "./toolGroups";
 import styles from "./Chat.module.css";
 
 // Whether an item is verified in its projection: the shared gate (app verification.ts isVerifiedIn). Only a
@@ -36,11 +37,9 @@ interface ToolCardProps {
 export function ToolCard({ block, verifiedOf, markOf }: ToolCardProps) {
   const { activity, decision, result } = block;
   const primary = result ?? activity ?? decision;
-  const stateItem = result ?? activity;
   const tool = primary?.tool ?? "tool";
-  const stateReadingOf = stateItem
-    ? stateReading(stateItem.state, verifiedOf(stateItem), stateItem.type === "result" && stateItem.lossy === true)
-    : null;
+  // The outcome's reading (toolGroups.ts): a request that reports "succeeded" with no result after it is "no result", not a success.
+  const stateReadingOf = outcomeReading(block, verifiedOf);
   const verdict = decision ? verdictReading(decision.verdict) : null;
   const marker = primary ? markOf(primary) : null;
   // A verified lossy result keeps its evidence marker, neutral: the output is not confirmed, so it is never green.
@@ -50,18 +49,15 @@ export function ToolCard({ block, verifiedOf, markOf }: ToolCardProps) {
   // A uniform view states "unverified" once, above the transcript, so the card carries the word for
   // screen-reader users only. A mixed view draws the chip, which the name already includes.
   const unverifiedWord = primary !== null && !verifiedOf(primary) && marker !== "unverified";
-  // The trace takes the state the record is in: a refused record (a DENY verdict, or a result in the deny tone) is deny, else the
-  // result's tone, else the request's, else the verdict's. A request with no result is never drawn as running or as success.
-  const refused = verdict?.tone === "deny" || stateReadingOf?.tone === "deny";
-  const readTone = refused ? "deny" : (stateReadingOf?.tone ?? verdict?.tone ?? "idle");
-  // Only a terminal result may draw the success tone: an activity that reports "succeeded" with no result after it is a request.
-  const tone = readTone === "ok" && result === null ? "idle" : readTone;
+  // The trace takes the state the record is in (toolGroups.ts): a refused record is deny, else the result's tone, else the
+  // request's, else the verdict's. A request with no result is never drawn as running or as success.
+  const tone = traceToneOf(block, verifiedOf);
 
   // One wrapping line: at narrow widths the chips move under the summary, not past the line's edge. The headline is the
   // target, bold; the tool and the record are the detail line beneath it, in mono.
   const line = (
     <TraceLine>
-      <TraceIcon>{toolGlyph(tool)}</TraceIcon>
+      <TraceIcon>{toolIcon(tool)}</TraceIcon>
       <TraceTitle
         title={headline}
         detail={
@@ -120,14 +116,6 @@ export function ToolCard({ block, verifiedOf, markOf }: ToolCardProps) {
       </Trace>
     </div>
   );
-}
-
-// The first bounded summary, in the order the legacy transcript used: request, policy, result.
-function summaryOf(block: ToolBlock): string | undefined {
-  for (const candidate of [block.activity, block.decision, block.result]) {
-    if (candidate?.summary) return candidate.summary;
-  }
-  return undefined;
 }
 
 interface StepProps {

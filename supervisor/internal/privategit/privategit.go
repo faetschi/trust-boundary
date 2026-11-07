@@ -50,16 +50,6 @@ type Limits struct {
 	MaxTotalBytes int64
 }
 
-// DefaultLimits returns the bounded staging profile used by workspace.Import.
-func DefaultLimits() Limits {
-	return Limits{
-		MaxObjects:    delta.MaxObjectsPerManifest,
-		MaxDepth:      256,
-		MaxFileBytes:  256 << 20,
-		MaxTotalBytes: 1 << 30,
-	}
-}
-
 // ProvenanceSchemaVersion is the schema label of Provenance. It is bumped whenever
 // the shape changes (v3 added xattr_authority), so that an older retained record
 // is refused as an unsupported version rather than as a misleading field error.

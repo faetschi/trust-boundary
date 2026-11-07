@@ -2,12 +2,12 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { act, type ReactNode } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { click, mount, type Mounted } from "../../test-support/dom";
-import { PanelTabs, type StripTab } from "./PanelTabs";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { mount, type Mounted } from "../../test-support/dom";
+import { nextTabIndex, PanelTabs, type StripTab } from "./PanelTabs";
 
 const TABS: StripTab[] = [
-  { id: "decisions", label: "Decisions", badges: [{ text: "1 deny verdict", tone: "danger" }] },
+  { id: "decisions", label: "Decisions", badges: [{ text: "1 deny verdict", tone: "danger" }], icon: <svg data-mark="decisions" /> },
   { id: "provenance", label: "Provenance", badges: [{ text: "unavailable", tone: "neutral" }] },
   {
     id: "qualification",
@@ -20,28 +20,17 @@ const TABS: StripTab[] = [
 ];
 
 let view: Mounted | null = null;
-let scrollIntoView: ReturnType<typeof vi.fn>;
-const original = Element.prototype.scrollIntoView;
-// The element each scrollIntoView call was made on, in order (the mock's `this`).
-const scrolledTo = (): unknown[] => scrollIntoView.mock.contexts;
 
 interface ShowOptions {
   readonly selected?: string | null;
   readonly stop?: string;
   readonly status?: ReactNode;
+  readonly onSelect?: (id: string) => void;
 }
 
-// The strip, as the inspector shows it. Mounting runs the strip's effects, which keep the selected tab in view.
-function show({ selected = "decisions", stop = "decisions", status = null }: ShowOptions = {}): void {
+function show({ selected = "decisions", stop = "decisions", status = null, onSelect = () => undefined }: ShowOptions = {}): void {
   view = mount(
-    <PanelTabs
-      tabs={TABS}
-      selected={selected}
-      stop={stop}
-      onSelect={() => undefined}
-      status={status}
-      labelledBy="governance-tab-decisions"
-    >
+    <PanelTabs tabs={TABS} selected={selected} stop={stop} onSelect={onSelect} status={status} labelledBy="governance-tab-decisions">
       <p>panel</p>
     </PanelTabs>,
   );
@@ -51,51 +40,30 @@ function tabsOf(): HTMLElement[] {
   return Array.from(view?.container.querySelectorAll<HTMLElement>("[role='tab']") ?? []);
 }
 
-function tablist(): HTMLElement {
-  const list = view?.container.querySelector<HTMLElement>("[role='tablist']");
-  if (!list?.parentElement) throw new Error("no tablist");
-  return list.parentElement;
-}
-
-// The two scroll controls, back then forward. They are the only buttons that are aria-hidden.
-function controls(): HTMLButtonElement[] {
-  return Array.from(view?.container.querySelectorAll<HTMLButtonElement>("button[aria-hidden='true']") ?? []);
-}
-
-// Gives the strip a layout: a scrollable width, a visible width, and a scroll position that the browser would clamp.
-function laidOut(scrollWidth: number, clientWidth: number): HTMLElement {
-  const strip = tablist();
-  let left = 0;
-  Object.defineProperty(strip, "scrollWidth", { configurable: true, get: () => scrollWidth });
-  Object.defineProperty(strip, "clientWidth", { configurable: true, get: () => clientWidth });
-  Object.defineProperty(strip, "scrollLeft", {
-    configurable: true,
-    get: () => left,
-    set: (value: number) => {
-      left = Math.max(0, Math.min(value, scrollWidth - clientWidth));
-    },
-  });
+function press(element: HTMLElement, key: string): void {
   act(() => {
-    strip.dispatchEvent(new Event("scroll"));
+    element.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
   });
-  return strip;
 }
-
-beforeEach(() => {
-  scrollIntoView = vi.fn();
-  Element.prototype.scrollIntoView = scrollIntoView as unknown as typeof Element.prototype.scrollIntoView;
-});
 
 afterEach(() => {
   view?.unmount();
   view = null;
-  Element.prototype.scrollIntoView = original;
 });
 
-describe("PanelTabs: five single-line tabs", () => {
-  it("renders one tab per governance tab, in order, and no tab for anything else", () => {
+describe("PanelTabs: a vertical list of single-line tabs", () => {
+  it("is a vertical tab list, with one tab per governance tab, in order", () => {
     show();
-    expect(tabsOf().map((tab) => tab.textContent)).toEqual(["Decisions", "Provenance", "Qualification"]);
+    expect(view?.container.querySelector("[role='tablist']")?.getAttribute("aria-orientation")).toBe("vertical");
+    expect(tabsOf().map((tab) => tab.querySelector("span:nth-of-type(2)")?.textContent)).toEqual(["Decisions", "Provenance", "Qualification"]);
+  });
+
+  it("draws each row's mark, its label and the words of its worst badge, and keeps the mark and the words out of the name", () => {
+    show();
+    const first = tabsOf()[0] as HTMLElement;
+    expect(first.querySelector("[data-mark='decisions']")).not.toBeNull();
+    expect(first.querySelector("span[aria-hidden='true']:not([data-tone])")?.getAttribute("aria-hidden")).toBe("true");
+    expect(tabsOf().map((tab) => tab.textContent)).toEqual(["Decisions1 deny verdict", "Provenanceunavailable", "Qualification2 warnings"]);
   });
 
   it("gives each tab a status dot of the worst tone of its badges, drawn as a shape as well as a colour", () => {
@@ -127,20 +95,7 @@ describe("PanelTabs: five single-line tabs", () => {
     expect(tabsOf().map((tab) => tab.tabIndex)).toEqual([-1, -1, 0]);
   });
 
-  it("scrolls the selected tab into view, and only when a tab is selected", () => {
-    show({ selected: "provenance", stop: "decisions" });
-    expect(scrollIntoView).toHaveBeenCalledTimes(1);
-    expect(scrolledTo()).toHaveLength(1);
-    expect(scrolledTo()[0]).toBe(tabsOf()[1]);
-    expect(scrollIntoView).toHaveBeenCalledWith({ inline: "nearest", block: "nearest" });
-    view?.unmount();
-    view = null;
-    scrollIntoView.mockClear();
-    show({ selected: null });
-    expect(scrollIntoView).not.toHaveBeenCalled();
-  });
-
-  it("draws the status line beneath the strip and above the panel", () => {
+  it("draws the status line beneath the list and above the panel", () => {
     show({ status: <span data-testid="status">Record 2</span> });
     const status = view?.container.querySelector("[data-testid='status']");
     const list = view?.container.querySelector("[role='tablist']");
@@ -151,87 +106,47 @@ describe("PanelTabs: five single-line tabs", () => {
   });
 });
 
-describe("PanelTabs: the scroll controls", () => {
-  it("shows no control while the strip fits, and both controls once it overflows", () => {
-    show();
-    laidOut(300, 300);
-    expect(controls().map((button) => button.hidden)).toEqual([true, true]);
-    laidOut(500, 300);
-    expect(controls().map((button) => button.hidden)).toEqual([false, false]);
+describe("PanelTabs: keys", () => {
+  it("moves with Up and Down as well as Left and Right, wrapping at both ends, and selects the tab it moves to", () => {
+    const onSelect = vi.fn();
+    show({ onSelect });
+    const [first, second, third] = tabsOf() as [HTMLElement, HTMLElement, HTMLElement];
+    press(first, "ArrowDown");
+    expect(onSelect).toHaveBeenLastCalledWith("provenance");
+    expect(document.activeElement).toBe(second);
+    press(second, "ArrowRight");
+    expect(onSelect).toHaveBeenLastCalledWith("qualification");
+    press(third, "ArrowDown");
+    expect(onSelect).toHaveBeenLastCalledWith("decisions");
+    press(first, "ArrowUp");
+    expect(onSelect).toHaveBeenLastCalledWith("qualification");
+    press(third, "Home");
+    expect(onSelect).toHaveBeenLastCalledWith("decisions");
+    press(first, "End");
+    expect(onSelect).toHaveBeenLastCalledWith("qualification");
   });
 
-  it("disables the back control at the start and the forward control at the end, and steps the strip between them", () => {
-    show();
-    const strip = laidOut(500, 300);
-    const [back, forward] = controls();
-    expect(back?.disabled).toBe(true);
-    expect(forward?.disabled).toBe(false);
-    click(forward as HTMLButtonElement);
-    expect(strip.scrollLeft).toBe(200);
-    expect(back?.disabled).toBe(false);
-    expect(forward?.disabled).toBe(true);
-    click(back as HTMLButtonElement);
-    expect(strip.scrollLeft).toBe(0);
-    expect(back?.disabled).toBe(true);
-  });
-
-  it("steps the strip by exactly 80% of its visible width, and back by the same step", () => {
-    show();
-    // 1000 px of scroll on a 300 px window: a step of 0.8 x 300 = 240 px is never clamped by the end.
-    const strip = laidOut(1000, 300);
-    const [back, forward] = controls();
-    click(forward as HTMLButtonElement);
-    expect(strip.scrollLeft).toBe(240);
-    click(forward as HTMLButtonElement);
-    expect(strip.scrollLeft).toBe(480);
-    click(back as HTMLButtonElement);
-    expect(strip.scrollLeft).toBe(240);
-  });
-
-  it("never steps less than 48 px, so a narrow strip still moves", () => {
-    show();
-    const strip = laidOut(1000, 40);
-    const [, forward] = controls();
-    click(forward as HTMLButtonElement);
-    expect(strip.scrollLeft).toBe(48);
-  });
-
-  it("keeps the controls out of the tab order and hidden from assistive technology, since the arrow keys already move between tabs", () => {
-    show();
-    laidOut(500, 300);
-    for (const button of controls()) {
-      expect(button.tabIndex).toBe(-1);
-      expect(button.getAttribute("aria-hidden")).toBe("true");
-    }
+  it("maps keys to indexes the same way for the icon rail", () => {
+    expect([nextTabIndex("ArrowDown", 0, 5), nextTabIndex("ArrowUp", 0, 5), nextTabIndex("x", 0, 5)]).toEqual([1, 4, null]);
   });
 });
 
-describe("PanelTabs: the strip's CSS", () => {
+describe("PanelTabs: the list's CSS", () => {
   const css = readFileSync(resolve(process.cwd(), "src/app/inspector/PanelTabs.module.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
 
-  // The declarations of the first rule for `selector`, or "" when the sheet has none.
   function declarationsOf(selector: string): string {
     const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     return new RegExp(`(?:^|[\\s},])${escaped}\\s*\\{([^}]*)\\}`).exec(css)?.[1] ?? "";
   }
 
-  it("keeps each tab on one line: the label never wraps and the dot sits beside it", () => {
-    const tab = declarationsOf(".tab");
-    expect(tab).toMatch(/white-space:\s*nowrap;/);
-    expect(tab).not.toMatch(/flex-direction:\s*column;/);
+  it("stacks the tabs in a column, so no control is needed to reach one", () => {
+    expect(declarationsOf(".tablist")).toMatch(/flex-direction:\s*column;/);
+    expect(css).not.toMatch(/overflow-x/);
   });
 
-  it("draws each step control at least 36 px wide, the button token, so it is a touch-sized target", () => {
-    expect(declarationsOf(".step")).toMatch(/width:\s*var\(--row-h-button\);/);
-  });
-
-  it("hides the strip's scrollbar while it still scrolls, since the controls and the trackpad move it", () => {
-    const strip = declarationsOf(".strip");
-    expect(strip).toMatch(/overflow-x:\s*auto;/);
-    expect(strip).toMatch(/scrollbar-width:\s*none;/);
-  });
-
-  it("eases the strip's scroll only when motion is allowed", () => {
-    expect(css).toMatch(/@media \(prefers-reduced-motion: no-preference\)\s*\{[^}]*\.strip\s*\{[^}]*scroll-behavior:\s*smooth;/);
+  it("keeps the words on one line, cut with an ellipsis, since the full words are in the name and the panel", () => {
+    const words = declarationsOf(".words");
+    expect(words).toMatch(/white-space:\s*nowrap;/);
+    expect(words).toMatch(/text-overflow:\s*ellipsis;/);
   });
 });

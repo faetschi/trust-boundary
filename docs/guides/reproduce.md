@@ -97,6 +97,28 @@ Some host tests need a registered guest. Record every skip and obtain fresh
 guest evidence for those obligations. A green local gate is not containment
 qualification.
 
+### Validation lanes and CI jobs
+
+Local commands cover only the lane they name. A green lower lane does not
+stand in for a higher one.
+
+| Lane | Needs | Local command | CI job |
+| --- | --- | --- | --- |
+| Boundary guard | POSIX `sh` only, no Node | `make boundary` | `extension-boundary` (`boundary`) |
+| Full supervisor Go suite (unit) | Go 1.27.1, GCC, cgo, Node.js 24.21.0 on `PATH` (some packages run node) | `cd supervisor && go test -mod=readonly -count=1 ./...` | `linux-ci` `runtime (unit)` |
+| Node-needing Go tests and adapter | Node.js 24.21.0 on `PATH`; for the adapter, `npm ci` in `adapter/` | `make test` (fails early without Node); `cd adapter && npm ci --ignore-scripts && npm run check` | `linux-ci` `quick-checks` (adapter) and `runtime (unit)` |
+| Full supervisor Go suite (race) | as for the unit suite, including Node.js 24.21.0 | `cd supervisor && CGO_ENABLED=1 go test -race -mod=readonly -count=1 -timeout 40m ./...` | `linux-ci` `runtime (race)` |
+| Format, vet, docs, scripts | Go, Python 3 | `gofmt -l .` and `go vet -mod=readonly ./...` in `supervisor/`; `python3 scripts/check-doc-links.py`; the unittest and `tests/` scripts named in `quick-checks` | `linux-ci` `quick-checks` |
+| Optional webchat and frontend | Node; Chrome for the CSP smoke | `make extension-webchat`, `make extension-webchat-frontend-verify`, `make extension-webchat-csp` | `webchat-extension` (`webchat`, `frontend`, `csp-smoke`) |
+| Release packaging | Linux, see [release](release.md) | `make build verify` and `tests/packaging/verify-release-layout.sh` as in the gate above | `release` |
+| Qualified guest | Signed freeze on the guest VM | the [freeze kit](../../infra/freeze/README.md) | none; owner-run, records under `evidence/` |
+
+`make test` is the nearest local stand-in for `runtime (unit)`, without the
+real-cgroup, Landlock, Pi CLI, and hosted-namespace steps that need the CI
+runner or a Linux host. Some host tests skip off Linux, and the race lane and
+the guest lane have no `make` target. When GitHub Actions is unavailable, the
+local gate above is the merge check. It does not replace guest qualification.
+
 ## 4. Provision and sign offline
 
 Provision protected binaries and runtime assets, read-only mounts, the ext4

@@ -546,3 +546,20 @@ func TestE04TheStoreReaderRefusesAFileThatIsNotTheServicesOwn(t *testing.T) {
 		t.Error("a workflow id with a separator named a store")
 	}
 }
+
+// newProductionE04RecorderOn is a recorder over a journal the caller opened (a test).
+func newProductionE04RecorderOn(journal productionE04Journal, next uint64, workflowID, runID, liveRootPath string, liveRoot *os.File) *productionE04Recorder {
+	r := newProductionE04Recorder("", "", runID, liveRootPath, liveRoot)
+	r.workflowID, r.journal, r.next, r.fatal = workflowID, journal, next, nil
+	return r
+}
+
+// gaps is how many points of this run are recorded as a gap or could not be recorded.
+func (r *productionE04Recorder) gaps() int {
+	if r == nil {
+		return 0
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.gapped
+}

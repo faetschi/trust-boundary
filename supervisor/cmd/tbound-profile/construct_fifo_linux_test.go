@@ -3,9 +3,11 @@
 package main
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
 	"syscall"
+	"tbound/supervisor/internal/guestevidence"
 	"testing"
 	"time"
 )
@@ -38,4 +40,8 @@ func TestConstructFIFORejectedWithoutWriter(t *testing.T) {
 			}
 		})
 	}
+}
+
+func readConstructEvidence(set fs.FS, name string) ([]byte, error) {
+	return readConstructFile(set, name, guestevidence.MaxBytes)
 }

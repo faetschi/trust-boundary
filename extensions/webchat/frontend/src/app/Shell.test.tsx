@@ -110,6 +110,9 @@ afterEach(() => {
 
 beforeEach(() => {
   document.body.innerHTML = "";
+  // The governance column starts collapsed (uiPrefs.ts). Most cases below read its panels, so they start from an opened column; the
+  // "starts collapsed" case clears this.
+  window.localStorage.setItem(UI_PREFS_KEY, JSON.stringify({ railCollapsed: false, inspectorCollapsed: false, panel: "decisions" }));
 });
 
 describe("Shell: landmarks and headings", () => {
@@ -182,7 +185,7 @@ describe("Shell: the claim boundary and the source are always visible", () => {
   it("shows no session and no rows before a projection is loaded", () => {
     renderShell(1440);
     expect(q("nav").textContent).toContain("No session projection");
-    expect(q("nav").textContent).toContain("unavailable (no projection loaded)");
+    expect(q("#helper-bar").textContent).toContain("unavailable (no projection loaded)");
     click(governanceTab("Qualification"));
     expect(q("aside").textContent).toContain("unavailable (no projection loaded)");
     expect(q("aside").textContent).not.toContain("No warnings projected.");
@@ -197,7 +200,7 @@ describe("Shell: the claim boundary and the source are always visible", () => {
     }
     expect(values.length).toBeGreaterThan(10);
     for (const value of values) expect(value, value).toMatch(/^unavailable/);
-    expect(q("nav").textContent).not.toMatch(/No streams projected/);
+    expect(q("#helper-bar").textContent).not.toMatch(/No streams projected/);
     expect(q("[role='group'][aria-label='Observed posture']").textContent).not.toContain("no decisions or results projected");
   });
 
@@ -217,6 +220,57 @@ describe("Shell: the claim boundary and the source are always visible", () => {
     act(() => fake.sources[0]?.open());
     expect(q("[data-connection]").textContent).toBe("connected");
     expect(mounted?.container.querySelector("[role='status']")?.textContent?.trim()).toBe("Stream connected.");
+  });
+});
+
+describe("Shell: the details card is pinned by its control", () => {
+  it("is opened by a control named 'Details', and stays open while the reader uses the page: Escape and a press elsewhere leave it open", async () => {
+    renderShell(1440);
+    await settle();
+    const toggle = byLabel("Details");
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(q("#helper-bar").hidden).toBe(false);
+    act(() => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      q("main").dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+    });
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(q("#helper-bar").hidden).toBe(false);
+    click(toggle);
+    expect(q("#helper-bar").hidden).toBe(true);
+  });
+
+  it("makes room for itself at a wide width while it is open, so it never covers the transcript", async () => {
+    renderShell(1440);
+    await settle();
+    expect(q("[data-details]").getAttribute("data-details")).toBe("closed");
+    click(byLabel("Details"));
+    expect(q("[data-details]").getAttribute("data-details")).toBe("open");
+    const css = readFileSync(resolve(process.cwd(), "src/app/Shell.module.css"), "utf8");
+    expect(css).toMatch(/\[data-details="open"\] \.main \{[^}]*padding-right:/);
+  });
+
+  it("opens the governance panel of a row pressed in it, expanding the column", async () => {
+    window.localStorage.removeItem(UI_PREFS_KEY);
+    renderShell(1440);
+    await settle();
+    click(byLabel("Details"));
+    click(q("#helper-bar button[aria-label^='Open Publication panel']"));
+    expect(byLabel("Governance").getAttribute("aria-expanded")).toBe("true");
+    expect(governanceTab("Publication").getAttribute("aria-selected")).toBe("true");
+  });
+});
+describe("Shell: the governance column starts collapsed", () => {
+  it("starts as its icon column, with the header control and its badge saying what is there, and opens with one press", async () => {
+    window.localStorage.removeItem(UI_PREFS_KEY);
+    renderShell(1440);
+    await settle();
+    expect(byLabel("Governance").getAttribute("aria-expanded")).toBe("false");
+    expect(q("#governance-badge").textContent).toMatch(/verdict/);
+    click(byLabel("Governance"));
+    expect(byLabel("Governance").getAttribute("aria-expanded")).toBe("true");
   });
 });
 
@@ -450,6 +504,7 @@ describe("Shell: the sessions rail", () => {
   });
 
   it("is a disclosure strip on a phone, collapsed by default, and its state is not persisted", async () => {
+    window.localStorage.removeItem(UI_PREFS_KEY);
     renderShell(390);
     await settle();
     const strip = q("nav h2 button");
@@ -681,19 +736,21 @@ describe("Shell: the header control and the workspace column", () => {
     }
   });
 
-  it("holds the footer inside the workspace column, after the views, as the column's last box", async () => {
+  it("keeps the details card closed until the Details control opens it, and the retention statistics stay in the page", async () => {
     renderShell(1440);
     await settle();
-    const main = q("main[aria-label='Workspace']");
-    const footer = q("main [role='group'][aria-label='Session statistics']").parentElement;
-    expect(footer?.parentElement).toBe(main);
-    expect(main.lastElementChild).toBe(footer);
-    expect(q("[data-view]").compareDocumentPosition(footer as HTMLElement) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const card = q("#helper-bar");
+    const toggle = q("button[aria-controls='helper-bar']");
+    expect(card.hidden).toBe(true);
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(card.querySelector("[role='group'][aria-label='Session statistics']")).not.toBeNull();
+    click(toggle);
+    expect(card.hidden).toBe(false);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
   });
-
-  it("keeps the governance tab strip in its own scroll box, so the page never scrolls sideways", () => {
+  it("stacks the governance tabs in a column, so the page never scrolls sideways for them", () => {
     const css = readFileSync(resolve(process.cwd(), "src/app/inspector/PanelTabs.module.css"), "utf8");
-    expect(declarationsOf(css, ".strip")).toMatch(/overflow-x:\s*auto;/);
+    expect(declarationsOf(css, ".tablist")).toMatch(/flex-direction:\s*column;/);
   });
 });
 
@@ -717,29 +774,22 @@ describe("Shell: the phone stack keeps one 4 px step between its rows (QA4 check
     expect(declarationsOf(phone, ".main")).toMatch(/gap:\s*var\(--space-1\);/);
     expect(declarationsOf(phone, ".main")).toMatch(/padding-top:\s*var\(--space-1\);/);
   });
-
-  it("sets the footer's padding to the 4 px step on a phone, and leaves its text as it is", () => {
-    const footer = readFileSync(resolve(process.cwd(), "src/app/Footer.module.css"), "utf8");
-    expect(declarationsOf(mediaBlock(footer, "@media (max-width: 760px)"), ".footer")).toMatch(/padding:\s*var\(--space-1\) var\(--space-2\);/);
-  });
 });
 
 describe("Shell: the reading order is the visual order (WCAG 1.3.2)", () => {
-  it("places the footer after the views in the DOM, at every width, which is where it is drawn", async () => {
+  it("places the details card right after the header, before the rail and the workspace, at every width, so Tab reaches it from its control", async () => {
     for (const width of [1440, 1024, 390, 360]) {
       remount(width);
       await settle();
-      const stats = q('[role="group"][aria-label="Session statistics"]');
-      const views = q("[data-view]");
-      expect(views.compareDocumentPosition(stats) & Node.DOCUMENT_POSITION_FOLLOWING, String(width)).toBeTruthy();
-      expect(views.contains(stats), String(width)).toBe(false);
+      const card = q("#helper-bar");
+      expect(q("header").compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING, String(width)).toBeTruthy();
+      expect(card.compareDocumentPosition(q("nav")) & Node.DOCUMENT_POSITION_FOLLOWING, String(width)).toBeTruthy();
+      expect(card.compareDocumentPosition(q("main")) & Node.DOCUMENT_POSITION_FOLLOWING, String(width)).toBeTruthy();
     }
   });
 
   it("moves no element with CSS order, so the DOM order is the visual order at every width", () => {
-    const footer = readFileSync(resolve(process.cwd(), "src/app/Footer.module.css"), "utf8");
     const shell = readFileSync(resolve(process.cwd(), "src/app/Shell.module.css"), "utf8");
-    expect(footer).not.toMatch(/\border:/);
     expect(shell).not.toMatch(/\border:/);
   });
 });

@@ -68,9 +68,6 @@ jobs:
       - name: Go race suite
         run: umask 077; go test -race -mod=readonly -count=1 ./...
 
-      - name: Node tests (browser-side pure modules and DOM stubs)
-        run: umask 077; node --test internal/webchat/jstest/*.test.mjs
-
   # React frontend (extensions/webchat/frontend). Installs run without install
   # scripts. The build is committed, so the job also proves it is reproducible.
   # repro runs before verify: it compares two clean rebuilds with the dist/

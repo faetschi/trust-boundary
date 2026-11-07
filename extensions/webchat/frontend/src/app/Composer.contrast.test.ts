@@ -13,22 +13,16 @@ function declarationsOf(selector: string): string {
   return new RegExp(`(?:^|[\\s},])${escaped}\\s*\\{([^}]*)\\}`).exec(css)?.[1] ?? "";
 }
 
-describe("composer contrast: the placeholder and the send glyph", () => {
+describe("composer contrast: the placeholder, and a card that does not read as a field", () => {
   it("sets the placeholder to the muted text token, at full opacity, in both themes (8.5:1 light, 9.3:1 dark)", () => {
     const placeholder = declarationsOf(".input::placeholder");
     expect(placeholder).toMatch(/color:\s*var\(--muted-foreground\);/);
     expect(placeholder).toMatch(/opacity:\s*1;/);
   });
 
-  it("keeps the send glyph at 70% opacity or more: 3.6:1 on the light fill, 5.0:1 on the dark one", () => {
-    const opacity = Number(/opacity:\s*([\d.]+);/.exec(declarationsOf(".send > span"))?.[1]);
-    expect(opacity).toBeGreaterThanOrEqual(0.7);
-    expect(opacity).toBeLessThan(1);
-  });
-
-  it("keeps the disabled send affordance a dashed outline and a not-allowed cursor", () => {
-    const send = declarationsOf(".send");
-    expect(send).toMatch(/border:\s*1px dashed var\(--border\);/);
-    expect(send).toMatch(/cursor:\s*not-allowed;/);
+  it("draws the field and the send mark with a not-allowed cursor, and the send mark in the neutral tone, so neither reads as working", () => {
+    expect(declarationsOf(".input")).toMatch(/cursor:\s*not-allowed;/);
+    expect(declarationsOf(".send")).toMatch(/cursor:\s*not-allowed;/);
+    expect(declarationsOf(".send")).toMatch(/background:\s*var\(--muted\);/);
   });
 });

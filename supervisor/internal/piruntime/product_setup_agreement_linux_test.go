@@ -34,7 +34,7 @@ func TestProductSetupInstallsTheConfigsAndEnvironmentTheLoaderPins(t *testing.T)
 	if err := productD09ValidateEffectiveUnit(properties); err != nil {
 		t.Fatalf("loader refuses setup's effective environment: %v", err)
 	}
-	if want := productD09CommandEnvironment(); !slices.Equal(unitEnvironment, want) {
+	if want := productsetup.CommandCellEnvironment(); !slices.Equal(unitEnvironment, want) {
 		t.Fatalf("the unit gives the service %v, but the product Podman children inherit %v", unitEnvironment, want)
 	}
 }

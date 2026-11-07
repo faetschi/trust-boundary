@@ -677,6 +677,7 @@ func (s *Store) recoverMutationLocked(effect audit.EffectTrace, request Operatio
 		if err != nil || contextErr != nil || wantArguments != request.ArgumentDigest || wantContext != request.ExecutionContextDigest ||
 			!sameCommandSpec(result.Spec, requestedSpec) || result.RunnerProfile != runnerProfile || result.Settlement.LeaseID != request.Operation.LeaseID ||
 			result.Settlement.ViewID != request.ViewID ||
+			// Deliberate (audit #12): a committed no-reap/v1 effect does not reopen; see replay_linux.go.
 			!result.Settlement.ProcessScopeEmpty || !result.Settlement.WritersStopped || !result.Settlement.MountDetached ||
 			!result.Settlement.ExitObserved || result.Settlement.ExitCode != command.ExitCode || strings.TrimSpace(result.Settlement.EvidenceClass) == "" {
 			return ErrInvalidSettlement

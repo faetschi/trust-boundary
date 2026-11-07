@@ -59,7 +59,7 @@ func TestProductTurnSoftRefusalRestartWithUnsettledEffectIsUnknown(t *testing.T)
 	}
 	reopened := openBashProductDriverFixture(t, f.root, productScopeNotes(), []string{})
 	reopened.session = f.session
-	err = reopened.env.ReconcileAfterRestart(context.Background())
+	err = reopened.env.driver().ReconcileAfterRestart(context.Background())
 	turn := reopened.turn(t, f.session.ID+"/turn-1")
 	if err == nil || !strings.Contains(err.Error(), "unresolved") || turn.State != productsession.StateUnknown || turn.UnknownReason == "" || !reopened.currentSession(t).Blocked {
 		t.Fatalf("unsettled effect after refusal needs UNKNOWN and a reason: turn=%+v err=%v", turn, err)
@@ -88,7 +88,7 @@ func TestProductTurnSoftRefusalRestartNeverResumes(t *testing.T) {
 	for _, point := range []string{"before-soft-refusal-record", "after-soft-refusal-record", "after-soft-refusal-retirement"} {
 		t.Run(point, func(t *testing.T) {
 			f, id := crashProductSoftRefusal(t, point)
-			err := f.env.ReconcileAfterRestart(context.Background())
+			err := f.env.driver().ReconcileAfterRestart(context.Background())
 			turn := f.turn(t, id)
 			if point == "after-soft-refusal-retirement" {
 				if err != nil || turn.State != productsession.StateTerminal || turn.Outcome != productsession.OutcomeFailed {
@@ -190,7 +190,7 @@ func testProductTurnSoftRefusalRechainedEvidence(t *testing.T, mutation string) 
 	if err := os.Rename(paths.ProviderJournalPath+".tampered", paths.ProviderJournalPath); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.env.ReconcileAfterRestart(context.Background()); err == nil || !strings.Contains(err.Error(), "protected checkpoint prefix") {
+	if err := f.env.driver().ReconcileAfterRestart(context.Background()); err == nil || !strings.Contains(err.Error(), "protected checkpoint prefix") {
 		t.Fatalf("restart did not reject the changed checkpoint prefix: %v", err)
 	}
 	if got := f.turn(t, id); got.State != productsession.StateUnknown {

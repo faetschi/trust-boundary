@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"sort"
-	"strings"
 )
 
 type DescriptorRole string
@@ -199,13 +198,4 @@ func sameInheritedDescriptors(left, right []InheritedDescriptor) bool {
 		}
 	}
 	return true
-}
-
-func descriptorRoles(descriptors []InheritedDescriptor) string {
-	ordered := cloneInheritedDescriptors(descriptors)
-	parts := make([]string, len(ordered))
-	for index, descriptor := range ordered {
-		parts[index] = fmt.Sprintf("%d=%s", descriptor.ChildFD, descriptor.Role)
-	}
-	return strings.Join(parts, ";")
 }
