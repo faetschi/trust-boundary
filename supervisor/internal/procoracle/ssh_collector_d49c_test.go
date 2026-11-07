@@ -3,6 +3,8 @@ package procoracle
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -160,4 +162,69 @@ func TestResidualCellUIDSocketNeverAuthorizesAnEarlyClose(t *testing.T) {
 	close(g.release) // unproven: the monitor runs to its own horizon
 	// The same socket is authorized for EFF-PROC-03 scoring; that exemption must not license the NET close.
 	assertNetKeepsHorizon(t, "ownerless socket", g, func(c *SSHCollector) { c.Policy.AuthorizedSockets = []string{"tcp 127.0.0.1:9"} })
+}
+
+// Review round 4.
+
+func lingeringInit(pid int) Process {
+	return Process{PID: pid, StartTicks: 3, PPID: 900, State: "S", Comm: CellInitComm, CgroupPath: sshCell.CellCgroupPath, InCell: true,
+		CellIdentity: true, UID: [3]uint32{1000, 1000, 1000}, NSPid: []int{pid, 1}}
+}
+
+// A no-reap interval keeps its full horizon as a legitimate reason: the init that lingers by design is neither an
+// unresolved survivor nor a revocation, so NET and PROC stay clean.
+func TestNoReapLingeringInitIsLegitimateNotUnresolved(t *testing.T) {
+	procs := map[int][]Process{}
+	for i := 6; i <= 30; i++ {
+		procs[i] = []Process{lingeringInit(50)}
+	}
+	g := &fakeGuest{cell: sshCell, release: make(chan struct{}), pollProcs: procs,
+		closureMutate: func(d *ClosureDoc) { d.Commands[0].SurvivorsTolerated = true }}
+	close(g.release)
+	c, _ := newEarlyCollector(g)
+	c.InitLingers = func(runner.EvidenceRef) bool { return true }
+	begin(t, c)
+	n, _ := netSide(c)
+	cl, err := n.EndDecision(context.Background(), closureRef)
+	if err != nil || cl.Proven || len(cl.Unresolved) != 0 || len(cl.Reasons) == 0 || netNegative(cl) != runner.FindingNone {
+		t.Fatalf("no-reap closure: %+v %v", cl, err)
+	}
+	ev, err := runProc(t, c, closureRef)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantAll(t, ev, runner.FindingNone)
+}
+
+// One reason per surviving process, not one per poll; and the retained record carries the effective decision.
+func TestRevocationIsOneReasonPerProcessAndRecordedInTheTermination(t *testing.T) {
+	procs := map[int][]Process{}
+	for i := 7; i <= 13; i++ {
+		procs[i] = []Process{escapedProc}
+	}
+	g := &fakeGuest{cell: sshCell, release: make(chan struct{}), pollProcs: procs}
+	c, cl := assertNetKeepsHorizon(t, "survivor in seven polls", g, nil)
+	if len(cl.Unresolved) != 1 {
+		t.Fatalf("%d reasons for one process: %q", len(cl.Unresolved), cl.Unresolved)
+	}
+	if _, err := runProc(t, c, closureRef); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(c.RetainDir, RetainedName(closureRef.Interval)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec, err := ParseRetained(raw)
+	if err != nil || rec.Proven || len(rec.Unresolved) != 1 || len(rec.Reasons) == 0 {
+		t.Fatalf("the termination record keeps the pre-revocation decision: %+v %v", rec, err)
+	}
+}
+
+// The monitor must have observed through the drain grace: a stop whose record ends at the scan proves nothing.
+func TestStopWithoutObservationThroughTheDrainGraceIsNotProven(t *testing.T) {
+	g := &fakeGuest{cell: sshCell, release: make(chan struct{}), stopPollSecs: []int{1, 2, 3, 4, 5}}
+	assertNetKeepsHorizon(t, "no polls inside the grace", g, nil)
+	// The last poll is far from the stop instant.
+	g = &fakeGuest{cell: sshCell, release: make(chan struct{}), stopMutate: func(d *MonitorDoc) { d.Stop.StoppedAt = d.Stop.StoppedAt.Add(5 * time.Second) }}
+	assertNetKeepsHorizon(t, "stopped long after the last poll", g, nil)
 }

@@ -175,7 +175,7 @@ func (g *fakeGuest) RunReadyStdin(ctx context.Context, argv []string, stdin io.R
 			last = d
 		}
 		if stopReq != nil {
-			last = 7
+			last = 13 // the scan was at 5 s and the drain grace of the tests is 7 s: the monitor polled through 12 s
 		}
 		if g.shortHorizon {
 			last = 6

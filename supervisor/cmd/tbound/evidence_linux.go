@@ -688,6 +688,14 @@ func monitorEvidenceCell(ctx context.Context, c evidenceCell, reg procoracle.Reg
 			// The live monitor vetoes a stop whose accumulated coverage is unhealthy: a record with a hole is not
 			// ended early on the host's say-so, it runs to its horizon and says so.
 			if procoracle.CoverageHealthy(m.Records(), reg.MaxGap) == nil && time.Since(m.Records()[len(m.Records())-1].ObservedAt) <= reg.MaxGap {
+				// Poll once more after the stop arrived, so the record reaches the stop instant (the host requires the
+				// last poll within MaxGap of it): the ticker fires within one interval, and Stop completes a poll in progress.
+				select {
+				case <-time.After(interval + interval/2):
+				case <-ctx.Done():
+					m.Stop()
+					return nil, nil, ctx.Err()
+				}
 				return m.Stop(), &req, nil
 			}
 			stop = nil

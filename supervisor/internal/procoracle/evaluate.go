@@ -25,8 +25,9 @@ type Policy struct {
 	Unresolved      []string
 	CoverageDefects []string
 	Extra           []Snapshot
-	// Tail are polls observed after the closure scan: monitor records already judged for EFF-PROC-02, whose live
-	// survivors are additionally EFF-PROC-01 findings (observed after the deadline).
+	// Tail are the polls observed after the closure scan, whenever a closure document was obtained: monitor records
+	// already judged for EFF-PROC-02, whose live survivors are additionally EFF-PROC-01 findings (observed after the
+	// deadline).
 	Tail []Snapshot
 }
 
@@ -125,7 +126,10 @@ func (r Report) normalized() Report {
 //   - EFF-PROC-01 reads the post-teardown and final-cleanup snapshots: a live
 //     process of the cell, a registered one, or any live process of the cell
 //     identity (anywhere in /proc), observed at or after reg.Deadline is a
-//     surviving descendant. Both points and the deadline are required.
+//     surviving descendant. Both points and the deadline are required. The
+//     closure scan (Policy.Extra) and the polls after it (Policy.Tail), when
+//     the early close supplied them, are read the same way but add findings
+//     only, never gaps.
 //   - EFF-PROC-02 reads every snapshot and every poll: a registered process or a
 //     process of the cell identity outside the cell cgroup (or a thread of a cell
 //     process outside it; a cgroup nested below the cell is inside) has crossed

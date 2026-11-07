@@ -577,12 +577,33 @@ func (c *SSHCollector) finalize(ctx context.Context, ref runner.EvidenceRef, iv 
 	if len(rs.polls) == 0 && len(rs.defects) == 0 {
 		rs.defects = []string{"no usable monitor record"}
 	}
-	// Every poll after the closure scan is reconciled: a live process of the cell identity there revokes the proof.
-	for _, p := range rs.afterScan {
-		for _, pr := range p.Processes {
-			if pr.Live() && (pr.InCell || pr.Registered || pr.CellIdentity) {
-				rs.defects = append(rs.defects, fmt.Sprintf("process %d (%s) of the cell identity was alive at poll %d, after the closure scan", pr.PID, pr.Comm, p.Seq))
+	// Every poll after the closure scan is reconciled: a live process of the cell identity there revokes the proof. Only a
+	// proof can be revoked (a refused closure, a no-reap window among them, has nothing to revoke), and the init that a
+	// no-reap interval lets linger by design is not a survivor. One reason per process, from its first to its last poll.
+	if rs.closure.Proven {
+		lingering := c.InitLingers != nil && c.InitLingers(ref)
+		type span struct {
+			comm        string
+			first, last int
+		}
+		seen := map[ProcID]*span{}
+		var order []ProcID
+		for _, p := range rs.afterScan {
+			for _, pr := range p.Processes {
+				if !pr.Live() || !(pr.InCell || pr.Registered || pr.CellIdentity) || lingering && cellInit(p.Processes, pr) {
+					continue
+				}
+				if sp := seen[pr.ID()]; sp != nil {
+					sp.last = p.Seq
+				} else {
+					seen[pr.ID()] = &span{pr.Comm, p.Seq, p.Seq}
+					order = append(order, pr.ID())
+				}
 			}
+		}
+		for _, id := range order {
+			sp := seen[id]
+			rs.defects = append(rs.defects, fmt.Sprintf("process %d (%s) of the cell identity was alive at polls %d..%d, after the closure scan", id.PID, sp.comm, sp.first, sp.last))
 		}
 	}
 	if len(rs.defects) != 0 || (rs.closure.Proven && !rs.stopped) {
@@ -617,6 +638,15 @@ func (c *SSHCollector) monitorEnd(res monitorResult, reg Registration, rs *procR
 			bad("the monitor closed on a proof the host did not give")
 		case len(rs.snaps) != 2 || last.Before(rs.scanAt) || last.Before(rs.snaps[1].ObservedAt):
 			bad("the monitor stopped before the closure scan and the final-cleanup snapshot")
+		default:
+			// The drain grace is observed time: the monitor must have run through it, and its last poll must be at the
+			// stop (the guest polls once more when the stop arrives).
+			if st.StoppedAt.Sub(rs.scanAt) < c.DrainGrace {
+				bad("the monitor stopped %s after the closure scan, before the %s drain grace was observed", st.StoppedAt.Sub(rs.scanAt), c.DrainGrace)
+			}
+			if st.StoppedAt.Sub(last) > maxGap {
+				bad("the last poll is %s before the stop (MaxGap %s)", st.StoppedAt.Sub(last), maxGap)
+			}
 		}
 	case StopHorizon:
 		if last.Sub(first) < time.Duration(c.durationSeconds())*time.Second-GuestMaxGap {
@@ -669,7 +699,7 @@ func (c *SSHCollector) Proc(ctx context.Context, ref runner.EvidenceRef) (runner
 	if c.DrainGrace != 0 {
 		// How the interval ended is evidence: retain it, and bind it into every reference.
 		term := Termination{Schema: TerminationSchema, Interval: ref.Interval, RunID: ref.RunID, Registration: iv.reg.Digest(),
-			Proven: rs.closure.Proven, Reasons: rs.closure.Reasons, Unresolved: rs.closure.Unresolved, ClosureDigest: rs.closure.Digest,
+			Proven: rs.net.Proven, Reasons: rs.net.Reasons, Unresolved: rs.net.Unresolved, ClosureDigest: rs.closure.Digest,
 			Closure: rs.doc, Stop: stop, PollCount: len(polls), CoverageDefects: defects}
 		if err := retainTermination(c.RetainDir, term); err != nil {
 			return runner.ObserverEvidence{}, fmt.Errorf("%w: the termination record could not be retained: %v", runner.ErrEvidenceAbsent, err)

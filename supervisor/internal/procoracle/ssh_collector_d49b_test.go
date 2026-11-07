@@ -111,7 +111,7 @@ func TestEarlyCloseRetainsAndBindsTheTerminationRecord(t *testing.T) {
 		t.Fatal(err)
 	}
 	if rec.Interval != closureRef.Interval || rec.RunID != "run-1" || !rec.Proven || rec.Closure == nil || rec.Closure.RunID != "run-1" ||
-		rec.Stop.Reason != StopClosedOnProof || rec.Stop.ClosureDigest != rec.ClosureDigest || rec.PollCount != 7 || len(rec.Digest()) != 64 {
+		rec.Stop.Reason != StopClosedOnProof || rec.Stop.ClosureDigest != rec.ClosureDigest || rec.PollCount != 13 || len(rec.Digest()) != 64 {
 		t.Fatalf("retained record = %+v", rec)
 	}
 	// Another closure document gives another reference: the closure is bound into the oracle reference.
