@@ -34,7 +34,7 @@ Dispositions: **fixed** (P1-P3 on `audit/product-fixes-1029`, merged as `a7f3a60
 
 - Thesis to product, ported: `5d74c0b` and `abfb6ad` to `b7eefe3` (P4 alias normalization, escape refusals, protected alias scope/continuation/replay); `f1ee21d` to `b824d0d` (P5 retirement replay after promoted write).
 - Thesis to product, test-only: `9759b42` and `aee0722` adapted as `df8b655` for mount-namespace scan observation. Stable PID start time and UID are required for an owned-process error; inconclusive observations fail after three attempts. Production scanning is unchanged and no skips were added.
-- Thesis to product, still owed after F14 freeze: recovery identity helper `a11cee5` plus `fc117ef` tests (product-serve does not reach it), and guest-evidence fixes `5a3f4c5` and `44b6f7d` (thesis tooling). Carry these through the reviewed integration branch, not a pre-freeze product-to-thesis merge.
+- Thesis to product, closed: recovery identity helper `a11cee5` plus `fc117ef` tests (product-serve does not reach it), and guest-evidence fixes `5a3f4c5` and `44b6f7d` (thesis tooling). Checked 2026-11-07: all four are ancestors of F14 (`02f9fb7`) and of `main`, so nothing is owed.
 - Product to thesis: none from this audit. P1 to P3 are product-only code.
 
 ## Takeover validation

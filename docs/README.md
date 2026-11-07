@@ -7,8 +7,9 @@ the thesis.
 
 Product development: the [product implementation plan](product-plan.md) describes the
 proposed interactive Pi product. It is a plan, not a list of shipped capabilities.
-On the product branch, [product status](product-status.md) records what is implemented
+Since the product branch merged into `main` (2026-10-30), [product status](product-status.md) records what is implemented
 and [product contracts](product-contracts.md) fixes the first milestone's contracts.
+The [product audit of 2026-10-29](product-audit-2026-10-29.md) is the product debt ledger.
 
 ## [Guides](guides/): install, run, reproduce
 
@@ -37,13 +38,13 @@ and [product contracts](product-contracts.md) fixes the first milestone's contra
 - [Publication runtime integration](runtime/publication-runtime-integration.md): contract to code.
 - [Providers](runtime/providers.md): provider profiles and the durable conversation bridge.
 - [Provider durable evidence](runtime/provider-durable-evidence.md): the recorded durable bridge evidence.
+- [Model-facing tool feedback](../adapter/MODEL-FEEDBACK.md): the denial hint and command-failure text the model sees.
 - [Design notes](design/): denial hints, bounded storage capacity, and the [supervisor ownership map](design/supervisor-ownership.md).
 
 ## [Evaluation](evaluation/): gates and research records
 
 - [Owner protocol decisions, 2026-10-29](evaluation/owner-protocol-decisions-2026-10-29.md): current D35, D26, T5, T7, and AMB-02 policy, superseding advisor prerequisites.
 - [Status and gates](evaluation/status.md): verified scope and remaining evaluation gates.
-- [Evaluation evidence index](evaluation/evaluation-evidence-index-2026-10-07.json): source-only ledger of gaps.
 - [Pilot corpus](../corpus/pilot/README.md): adapted cases, licenses, artifacts, quotas, optional review metadata, and pending construct evidence.
 - [G1 case](../corpus/g1/README.md): the engineering read, edit, Bash, and publish check.
 - [Master thesis](../README.md#master-thesis): the separate protocol repository, hypotheses, methods, and decision register.

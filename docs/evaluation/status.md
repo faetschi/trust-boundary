@@ -16,9 +16,11 @@ is not claimed.
 - **Frozen research baseline:** F13 = `6162e3c` (G1 reference) and F14 = `02f9fb7`,
   the guest-verified thesis source freeze ([F14 record](../../evidence/F14/F14-RESULT.md)).
 - **Interim engineering qualification (not H1):** F15 = `2a6492d`
-  ([record](../../evidence/F15/F15-RESULT.md)) and F16 = `97738b6`
-  ([record](../../evidence/F16/F16-RESULT.md)) are guest-verified freezes of
-  `main`. F17 (`main` at `8931c695`) is in progress and has no result. These
+  ([record](../../evidence/F15/F15-RESULT.md)), F16 = `97738b6`
+  ([record](../../evidence/F16/F16-RESULT.md)), F17 = `8931c69`
+  ([record](../../evidence/F17/F17-RESULT.md)) and F18 = `b26e5ef`
+  ([record](../../evidence/F18/F18-RESULT.md)) are guest-verified freezes of
+  `main`. F17 and F18 pass EVQ 22/22 with the guest net-sink artifact. These
   freezes do not establish H1 readiness or product release readiness. Freeze
   values and procedure are in the [freeze kit](../../infra/freeze/README.md).
 - **H1 evaluation:** not run; no F-H1 build exists. No PVR or ORR value exists.
