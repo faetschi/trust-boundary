@@ -43,7 +43,6 @@ and [product contracts](product-contracts.md) fixes the first milestone's contra
 
 - [Owner protocol decisions, 2026-10-29](evaluation/owner-protocol-decisions-2026-10-29.md): current D35, D26, T5, T7, and AMB-02 policy, superseding advisor prerequisites.
 - [Status and gates](evaluation/status.md): verified scope and remaining evaluation gates.
-- [Evaluation evidence index](evaluation/evaluation-evidence-index-2026-10-07.json): source-only ledger of gaps.
 - [Pilot corpus](../corpus/pilot/README.md): adapted cases, licenses, artifacts, quotas, optional review metadata, and pending construct evidence.
 - [G1 case](../corpus/g1/README.md): the engineering read, edit, Bash, and publish check.
 - [Master thesis](../README.md#master-thesis): the separate protocol repository, hypotheses, methods, and decision register.

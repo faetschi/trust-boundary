@@ -30,7 +30,7 @@ var layerPackages = map[string][]string{
 		"publicationevents", "sandbox", "sessionlaunch", "sessionrepo", "workflow", "workflowrecovery", "workspace", "wsoracle"},
 	layerProduct: {"productdriver", "productprotocol", "productprovider", "productsession", "productsetup", "projectbundle", "releasetrust"},
 	layerEval: {"adaptivesource", "attacker", "calibration", "cgroupguard", "corpusadmit", "evalcorpus", "evalreport", "evalscore",
-		"evaluationindex", "guestevidence", "netoracle", "panelaudit", "procoracle", "researchprofile", "researchroute", "routematrix",
+		"guestevidence", "netoracle", "panelaudit", "procoracle", "researchprofile", "researchroute", "routematrix",
 		"runbooklint", "runner", "taskaccept", "trialfix", "usdledger", "vrun", "e2e"},
 	layerCommand: {"cmd/tbound", "cmd/tbound-cell-entrypoint", "cmd/tbound-doctor", "cmd/tbound-hint-eval", "cmd/tbound-panel",
 		"cmd/tbound-profile", "cmd/tbound-provider", "cmd/tbound-run"},
