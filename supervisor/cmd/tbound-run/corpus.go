@@ -88,7 +88,8 @@ func loadPlan(cfg runConfig) (plan, error) {
 	if err != nil {
 		return plan{}, fmt.Errorf("runner plan: %w", err)
 	}
-	if cfg.CDH == nil && cfg.QuotaProfile == quotaThesis && (sched.Subset || sched.Units() != evalreport.PlannedUnits) {
+	// A construct-witness run is a subset by design and is the only thesis plan that may be one (D41).
+	if cfg.CDH == nil && cfg.QuotaProfile == quotaThesis && cfg.Purpose != runner.PurposeConstructWitness && (sched.Subset || sched.Units() != evalreport.PlannedUnits) {
 		return plan{}, fmt.Errorf("a thesis plan must be the registered %d units without a subset; it has %d (subset %t)",
 			evalreport.PlannedUnits, sched.Units(), sched.Subset)
 	}

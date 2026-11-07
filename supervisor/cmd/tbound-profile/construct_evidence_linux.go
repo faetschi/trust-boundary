@@ -24,6 +24,7 @@ import (
 	"tbound/supervisor/internal/evalscore"
 	"tbound/supervisor/internal/guestevidence"
 	"tbound/supervisor/internal/netoracle"
+	"tbound/supervisor/internal/piruntime"
 	"tbound/supervisor/internal/runner"
 	"tbound/supervisor/internal/taskaccept"
 	"tbound/supervisor/internal/trialfix"
@@ -86,6 +87,7 @@ type constructExpect struct {
 	EVQObligations []string
 	AdaptiveCaps   calibration.Caps
 	OnlyCases      []string
+	Purpose        runner.RunPurpose
 	CDH            bool
 	ConfigPath     string
 	ConfigSHA256   string
@@ -95,6 +97,7 @@ type constructExpect struct {
 type constructInput struct {
 	Manifest     evalcorpus.Manifest
 	Quotas       evalcorpus.Quotas
+	Profile      string // the quota profile name Quotas came from: thesis or pilot
 	Set          fs.FS
 	Artifacts    fs.FS
 	ArtifactsDir string
@@ -139,16 +142,18 @@ func parseConstructExpect(raw []byte, binary string) (constructExpect, error) {
 			PolicyDigest         string `json:"policy_digest"`
 			MetadataPolicyDigest string `json:"metadata_policy_digest"`
 		} `json:"admission_policy"`
-		EVQObligations []string         `json:"evq_obligations"`
-		AdaptiveCaps   calibration.Caps `json:"adaptive_caps"`
-		OnlyCases      []string         `json:"only_cases"`
-		CDH            json.RawMessage  `json:"cdh"`
+		EVQObligations []string          `json:"evq_obligations"`
+		AdaptiveCaps   calibration.Caps  `json:"adaptive_caps"`
+		OnlyCases      []string          `json:"only_cases"`
+		Purpose        runner.RunPurpose `json:"purpose"`
+		CDH            json.RawMessage   `json:"cdh"`
 	}
 	if err := json.Unmarshal(raw, &config); err != nil {
 		return e, err
 	}
 	e.PolicyDigest, e.MetadataPolicyDigest = config.AdmissionPolicy.PolicyDigest, config.AdmissionPolicy.MetadataPolicyDigest
 	e.Receipt, e.EVQObligations, e.AdaptiveCaps, e.OnlyCases = config.Pins.ReceiptPins, config.EVQObligations, config.AdaptiveCaps, config.OnlyCases
+	e.Purpose = config.Purpose
 	e.CDH = len(config.CDH) != 0 && string(config.CDH) != "null"
 	e.ConfigSHA256 = sha256Prefixed(raw)
 	return e, nil
@@ -289,6 +294,11 @@ func constructSchedule(in constructInput) (runner.Schedule, error) {
 	if e.CDH {
 		return runner.Schedule{}, errors.New("a C-DH run config is not supported")
 	}
+	// A thesis import is taken only from a construct-witness run: an ordinary run collects Configuration C outcomes,
+	// which D41 forbids before registration.
+	if in.Profile == piruntime.D09ManagedPiCorpusQuotaProfileThesis && e.Purpose != runner.PurposeConstructWitness {
+		return runner.Schedule{}, errors.New("a thesis construct import needs a construct-witness run: run.json must set purpose to construct-witness")
+	}
 	caps, err := runner.AdaptiveCapsFor(in.Manifest, in.ArtifactsDir, e.AdaptiveCaps)
 	if err != nil {
 		return runner.Schedule{}, err
@@ -302,7 +312,7 @@ func constructSchedule(in constructInput) (runner.Schedule, error) {
 		return runner.Schedule{}, errors.New("the manifest is not its own seeded allocation")
 	}
 	return runner.Plan(in.Manifest, allocation, runner.Config{FreezeCommit: e.Commit, AdaptiveCaps: caps,
-		EVQObligations: slices.Clone(e.EVQObligations), OnlyCases: slices.Clone(e.OnlyCases)})
+		EVQObligations: slices.Clone(e.EVQObligations), OnlyCases: slices.Clone(e.OnlyCases), Purpose: e.Purpose})
 }
 
 // loadJournal replays the runner journal against the plan of this manifest and run config. The journal's

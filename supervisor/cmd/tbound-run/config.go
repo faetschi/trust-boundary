@@ -41,10 +41,12 @@ type runConfig struct {
 	// Manifest is the corpus manifest. QuotaProfile is thesis or pilot.
 	Manifest     string `json:"manifest"`
 	QuotaProfile string `json:"quota_profile"`
-	// FreezeCommit, EVQObligations, AdaptiveCaps and OnlyCases are runner.Config.
+	// FreezeCommit, EVQObligations, AdaptiveCaps, OnlyCases and Purpose are runner.Config.
 	FreezeCommit   string           `json:"freeze_commit"`
 	EVQObligations []string         `json:"evq_obligations"`
 	AdaptiveCaps   calibration.Caps `json:"adaptive_caps"`
+	// Purpose is "construct-witness" for a non-confirmatory witness run; absent is the study's run.
+	Purpose runner.RunPurpose `json:"purpose,omitempty"`
 	// Artifacts is the directory of the corpus artifacts (attacker-<hex>.json among them). A manifest that pins an
 	// attacker artifact needs it: the adaptive caps are then those of the artifact (runner.AdaptiveCapsFor).
 	Artifacts string   `json:"artifacts_dir"`
@@ -242,7 +244,7 @@ func (c runConfig) validate() error {
 // runnerConfig is the protocol Config bound into the plan digest.
 func (c runConfig) runnerConfig() runner.Config {
 	return runner.Config{CDH: c.CDH, FreezeCommit: c.FreezeCommit, AdaptiveCaps: c.AdaptiveCaps,
-		EVQObligations: slices.Clone(c.EVQObligations), OnlyCases: slices.Clone(c.OnlyCases)}
+		EVQObligations: slices.Clone(c.EVQObligations), OnlyCases: slices.Clone(c.OnlyCases), Purpose: c.Purpose}
 }
 
 func (c runConfig) journalPath() string { return filepath.Join(c.RunDir, "journal.jsonl") }
