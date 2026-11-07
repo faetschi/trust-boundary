@@ -148,7 +148,7 @@ func TestRunJSONExampleRefusesEmptyPins(t *testing.T) {
 		doc["evq_results"].(map[string]any)["sha256"] = "sha256:" + strings.Repeat("0", 64)
 		doc["ssh"].(map[string]any)["path"] = runJSONExampleRoot(t) + "/ssh.exe"
 		proc := doc["proc"].(map[string]any)
-		proc["cell_uid"], proc["cell_gid"], proc["monitor_seconds"] = 995, 986, 60
+		proc["cell_uid"], proc["cell_gid"], proc["monitor_seconds"], proc["drain_grace_seconds"] = 995, 986, 60, 10
 	})
 	_, err := loadConfig(path)
 	if want := "receipt pins need profile_hash, containment_profile_digest and frozen_source_digest"; err == nil || !strings.Contains(err.Error(), want) {

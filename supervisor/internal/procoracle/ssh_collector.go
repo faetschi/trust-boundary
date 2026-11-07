@@ -35,6 +35,10 @@ const (
 	MinGuestPollInterval    = 200 * time.Millisecond
 	MaxGuestMonitorDuration = 1500 * time.Second
 
+	// MinDrainGraceSeconds and MaxDrainGraceSeconds bound proc.drain_grace_seconds (D49).
+	MinDrainGraceSeconds = 1
+	MaxDrainGraceSeconds = 60
+
 	// DefaultReadyTimeout is how long BeginInterval waits for the monitor's first poll.
 	DefaultReadyTimeout = 10 * time.Second
 

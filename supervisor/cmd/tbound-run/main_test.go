@@ -161,7 +161,7 @@ func newEnv(t *testing.T) *env {
 			"evidence": map[string]string{"user": "root", "key": e.path("evidence.key")},
 			"trial":    map[string]string{"user": "root", "key": e.path("trial.key")},
 		},
-		"proc": map[string]any{"cell_uid": 995, "cell_gid": 986, "monitor_seconds": 60, "teardown_grace_seconds": 30,
+		"proc": map[string]any{"cell_uid": 995, "cell_gid": 986, "monitor_seconds": 60, "teardown_grace_seconds": 30, "drain_grace_seconds": 10,
 			"authorized_sockets": []string{}},
 	}
 	e.write()
