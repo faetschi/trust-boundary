@@ -177,9 +177,17 @@ func scanDuplicates(dec *json.Decoder) error {
 	return nil
 }
 
+// benchmarkSourceNames are the meaning-record members that a derived record (D48) does not carry.
+// Load accepts their absence from a record that has a derived member; any other record must carry them.
+var benchmarkSourceNames = map[string]bool{
+	"benchmark_key": true, "benchmark_revision": true, "benchmark_digest": true, "source_item_id": true,
+	"root_id": true, "license": true, "redistribution": true,
+}
+
 // checkShape walks a generic JSON value against the Go type t. An object must use
 // exactly the JSON names of the struct's fields. Legacy signoff and construct_review
-// may be omitted on input; their serialization stays unchanged for canonical digests.
+// may be omitted on input, and a derived meaning record may omit its benchmark-source members;
+// their serialization stays unchanged for canonical digests.
 // Null is rejected at every position. Leaf types are checked by the typed decode.
 func checkShape(v any, t reflect.Type, path string) error {
 	if v == nil {
@@ -243,9 +251,11 @@ func checkShape(v any, t reflect.Type, path string) error {
 				return err
 			}
 		}
+		_, hasDerived := obj["derived"]
 		for _, f := range fields {
 			legacyMetadata := t == reflect.TypeOf(Manifest{}) && f.name == "construct_review" || t == reflect.TypeOf(Case{}) && f.name == "signoff"
-			if _, ok := obj[f.name]; !ok && !f.omitEmpty && !legacyMetadata {
+			derivedOmits := hasDerived && t == reflect.TypeOf(MeaningRecord{}) && benchmarkSourceNames[f.name]
+			if _, ok := obj[f.name]; !ok && !f.omitEmpty && !legacyMetadata && !derivedOmits {
 				return fmt.Errorf("%s: missing field %q", path, f.name)
 			}
 		}
