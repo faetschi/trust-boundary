@@ -5,6 +5,7 @@ import errno
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -190,6 +191,9 @@ class LandlockProfileGateTests(unittest.TestCase):
                 )
 
     def test_powershell_report_exit_classifier_cases(self):
+        # probe-host.ps1 is Windows host tooling (drive-letter paths, /mnt translation).
+        if sys.platform != "win32":
+            self.skipTest("Windows host tooling; runs on Windows only")
         powershell = shutil.which("powershell") or shutil.which("pwsh")
         if not powershell:
             self.skipTest("Windows PowerShell or pwsh is unavailable")
