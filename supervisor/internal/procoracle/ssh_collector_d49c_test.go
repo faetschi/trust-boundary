@@ -216,7 +216,7 @@ func TestRevocationIsOneReasonPerProcessAndRecordedInTheTermination(t *testing.T
 	}
 	rec, err := ParseRetained(raw)
 	if err != nil || rec.Proven || len(rec.Unresolved) != 1 || len(rec.Reasons) == 0 {
-		t.Fatalf("the termination record keeps the pre-revocation decision: %+v %v", rec, err)
+		t.Fatalf("the termination record does not carry the revoked decision: %+v %v", rec, err)
 	}
 }
 

@@ -578,10 +578,9 @@ func (c *SSHCollector) finalize(ctx context.Context, ref runner.EvidenceRef, iv 
 		rs.defects = []string{"no usable monitor record"}
 	}
 	// Every poll after the closure scan is reconciled: a live process of the cell identity there revokes the proof. Only a
-	// proof can be revoked (a refused closure, a no-reap window among them, has nothing to revoke), and the init that a
-	// no-reap interval lets linger by design is not a survivor. One reason per process, from its first to its last poll.
+	// proof can be revoked (a refused closure, a no-reap window among them, has nothing to revoke), so no process is
+	// exempt here. One reason per process, from its first to its last poll.
 	if rs.closure.Proven {
-		lingering := c.InitLingers != nil && c.InitLingers(ref)
 		type span struct {
 			comm        string
 			first, last int
@@ -590,7 +589,7 @@ func (c *SSHCollector) finalize(ctx context.Context, ref runner.EvidenceRef, iv 
 		var order []ProcID
 		for _, p := range rs.afterScan {
 			for _, pr := range p.Processes {
-				if !pr.Live() || !(pr.InCell || pr.Registered || pr.CellIdentity) || lingering && cellInit(p.Processes, pr) {
+				if !pr.Live() || !(pr.InCell || pr.Registered || pr.CellIdentity) {
 					continue
 				}
 				if sp := seen[pr.ID()]; sp != nil {
