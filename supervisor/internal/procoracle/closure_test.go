@@ -15,7 +15,8 @@ func settledCommand() CommandSettlement {
 		ContainerExitInspected: true, FinalCommandProofRead: true, PodmanWaitCompleted: true, OutputWritersDrained: true,
 		ContainerRemoved: true, LeaderPidfdExited: true, CgroupPopulatedZero: true, MountNamespaceReleased: true,
 		CommandOutputWithinBound: true, CommandCgroupRemoved: true,
-		NetworkMode: "none", NoExternalRoutes: true, CapEff: "0000000000000000", NoNewPrivs: true}
+		NetworkMode: "none", NoExternalRoutes: true, CapEff: "0000000000000000", NoNewPrivs: true,
+		CapPrm: "0000000000000000", CapBnd: "0000000000000000", CapInh: "0000000000000000", CapAmb: "0000000000000000"}
 }
 
 func cleanClosureDoc() ClosureDoc {
@@ -55,18 +56,29 @@ func TestEvaluateClosureRefusesAnythingShortOfProof(t *testing.T) {
 		"no network mode bound":         func(d *ClosureDoc) { d.Commands[0].NetworkMode = "" },
 		"unknown network mode":          func(d *ClosureDoc) { d.Commands[0].NetworkMode = "bridge" },
 		"NET_ADMIN in cap_eff":          func(d *ClosureDoc) { d.Commands[0].CapEff = "0000000000001000" },
-		"NET_RAW in cap_eff":            func(d *ClosureDoc) { d.Commands[0].CapEff = "0000000000002000" },
-		"routes not excluded":           func(d *ClosureDoc) { d.Commands[0].NoExternalRoutes = false },
-		"new privileges allowed":        func(d *ClosureDoc) { d.Commands[0].NoNewPrivs = false },
-		"none-mode command in host ns":  func(d *ClosureDoc) { d.HostNetNS = true },
-		"cells child remains":           func(d *ClosureDoc) { d.CellChildren = 1 },
-		"identity scan not done":        func(d *ClosureDoc) { d.Scan.IdentityScanned = false },
-		"scan gap":                      func(d *ClosureDoc) { d.Scan.Gaps = []Gap{gapf(DomainSocket, "x", "y")} },
-		"scan of another cell":          func(d *ClosureDoc) { d.Scan.CellInode++ },
-		"scan bound to another reg":     func(d *ClosureDoc) { d.Scan.RegistrationDigest = strings.Repeat("d", 64) },
-		"scan before the deadline":      func(d *ClosureDoc) { d.Scan.ObservedAt = sshT0 },
-		"cell populated":                func(d *ClosureDoc) { d.Scan.Populated = true },
-		"cell removed":                  func(d *ClosureDoc) { d.Scan.CellRemoved = true },
+		"permitted set not empty":       func(d *ClosureDoc) { d.Commands[0].CapPrm = "0000000000003000" },
+		"bounding set not empty":        func(d *ClosureDoc) { d.Commands[0].CapBnd = "000001ffffffffff" },
+		"ambient set not empty":         func(d *ClosureDoc) { d.Commands[0].CapAmb = "0000000000001000" },
+		"inheritable set not empty":     func(d *ClosureDoc) { d.Commands[0].CapInh = "0000000000001000" },
+		"sets not recorded (old proof)": func(d *ClosureDoc) { d.Commands[0].CapPrm, d.Commands[0].CapBnd = "", "" },
+		// Sockets: an inet socket of the cell uid with no attributable process is residual, and the EFF-PROC-03
+		// authorization (a scoring exemption) does not authorize an early close.
+		"ownerless cell-uid socket": func(d *ClosureDoc) {
+			d.Scan.Sockets = []Socket{{Proto: "tcp", Local: "127.0.0.1:9", UID: 1000, Role: RoleConnected, State: "FIN_WAIT2"}}
+		},
+		"unaccounted socket inode":     func(d *ClosureDoc) { d.Scan.Sockets = []Socket{{Proto: "unknown", Role: RoleUnknown, Inode: 7}} },
+		"NET_RAW in cap_eff":           func(d *ClosureDoc) { d.Commands[0].CapEff = "0000000000002000" },
+		"routes not excluded":          func(d *ClosureDoc) { d.Commands[0].NoExternalRoutes = false },
+		"new privileges allowed":       func(d *ClosureDoc) { d.Commands[0].NoNewPrivs = false },
+		"none-mode command in host ns": func(d *ClosureDoc) { d.HostNetNS = true },
+		"cells child remains":          func(d *ClosureDoc) { d.CellChildren = 1 },
+		"identity scan not done":       func(d *ClosureDoc) { d.Scan.IdentityScanned = false },
+		"scan gap":                     func(d *ClosureDoc) { d.Scan.Gaps = []Gap{gapf(DomainSocket, "x", "y")} },
+		"scan of another cell":         func(d *ClosureDoc) { d.Scan.CellInode++ },
+		"scan bound to another reg":    func(d *ClosureDoc) { d.Scan.RegistrationDigest = strings.Repeat("d", 64) },
+		"scan before the deadline":     func(d *ClosureDoc) { d.Scan.ObservedAt = sshT0 },
+		"cell populated":               func(d *ClosureDoc) { d.Scan.Populated = true },
+		"cell removed":                 func(d *ClosureDoc) { d.Scan.CellRemoved = true },
 		// The registered cell is the persistent cells parent: it is empty when the command children are gone, so an
 		// escaped process of the cell identity is the only thing that says the cell is not clean.
 		"empty parent, escaped cell-uid process": func(d *ClosureDoc) { d.Scan.Processes = []Process{escaped} },

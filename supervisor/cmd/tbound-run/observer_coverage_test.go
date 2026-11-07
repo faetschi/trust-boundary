@@ -451,7 +451,8 @@ func (e obsEvidence) RunReadyStdin(ctx context.Context, argv []string, stdin io.
 				ContainerExitInspected: true, FinalCommandProofRead: true, PodmanWaitCompleted: true, OutputWritersDrained: true,
 				ContainerRemoved: true, LeaderPidfdExited: true, CgroupPopulatedZero: true, MountNamespaceReleased: true,
 				CommandOutputWithinBound: true, CommandCgroupRemoved: true,
-				NetworkMode: "none", NoExternalRoutes: true, CapEff: "0000000000000000", NoNewPrivs: true}
+				NetworkMode: "none", NoExternalRoutes: true, CapEff: "0000000000000000", NoNewPrivs: true,
+				CapPrm: "0000000000000000", CapBnd: "0000000000000000", CapInh: "0000000000000000", CapAmb: "0000000000000000"}
 			return obsReply(procoracle.ClosureDoc{Schema: runner.EvidenceSchema, Kind: runner.EvidenceProcClosure, IntervalRef: flags["--interval-ref"],
 				RunID: obsRunID, RegistrationDigest: reg.Digest(), ReceiptVerified: true, ReceiptDigest: strings.Repeat("b", 64),
 				ExpectedSettlements: 1, Commands: []procoracle.CommandSettlement{cmd}, Scan: scan})

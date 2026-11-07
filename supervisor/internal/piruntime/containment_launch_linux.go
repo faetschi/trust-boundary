@@ -41,6 +41,10 @@ type D09TCBProof struct {
 	UID                    int    `json:"uid"`
 	GID                    int    `json:"gid"`
 	CapEff                 string `json:"cap_eff"`
+	CapPrm                 string `json:"cap_prm,omitempty"`
+	CapBnd                 string `json:"cap_bnd,omitempty"`
+	CapInh                 string `json:"cap_inh,omitempty"`
+	CapAmb                 string `json:"cap_amb,omitempty"`
 	NoNewPrivs             bool   `json:"no_new_privs"`
 	Seccomp                int    `json:"seccomp"`
 	LandlockABI            int    `json:"landlock_abi"`

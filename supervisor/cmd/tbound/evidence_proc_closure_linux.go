@@ -120,7 +120,7 @@ func evidenceCommandSettlements(env evidenceEnv, runID string, want int) ([]proc
 			return nil, fmt.Errorf("command journal record %d names an unknown delta: %w", record.Sequence, derr)
 		}
 		out = append(out, procoracle.CommandSettlement{LeaseID: r.LeaseID, ReceiptDigest: r.ReceiptDigest, NetworkNSInode: r.Proof.NetworkNSInode,
-			Delta: r.Proof.Delta, NetworkMode: delta.NetworkMode(), NoExternalRoutes: r.Proof.NoExternalRoutes, CapEff: r.Proof.CapEff, NoNewPrivs: r.Proof.NoNewPrivs,
+			Delta: r.Proof.Delta, NetworkMode: delta.NetworkMode(), NoExternalRoutes: r.Proof.NoExternalRoutes, CapEff: r.Proof.CapEff, CapPrm: r.Proof.CapPrm, CapBnd: r.Proof.CapBnd, CapInh: r.Proof.CapInh, CapAmb: r.Proof.CapAmb, NoNewPrivs: r.Proof.NoNewPrivs,
 			ContainerExitInspected: e.ContainerExitInspected, FinalCommandProofRead: e.FinalCommandProofRead, PodmanWaitCompleted: e.PodmanWaitCompleted,
 			OutputWritersDrained: e.OutputWritersDrained, ContainerRemoved: e.ContainerRemoved, LeaderPidfdExited: e.LeaderPidfdExited,
 			CgroupPopulatedZero: e.CgroupPopulatedZero, MountNamespaceReleased: e.MountNamespaceReleased,

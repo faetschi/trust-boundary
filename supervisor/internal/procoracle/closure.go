@@ -43,6 +43,12 @@ type CommandSettlement struct {
 	NoExternalRoutes bool   `json:"no_external_routes"`
 	CapEff           string `json:"cap_eff"`
 	NoNewPrivs       bool   `json:"no_new_privs"`
+	// The other capability sets of the same /proc/PID/status read (effective capabilities can be raised from the
+	// permitted set, and the bounding and ambient sets limit what exec can grant). Empty when the proof predates them.
+	CapPrm string `json:"cap_prm"`
+	CapBnd string `json:"cap_bnd"`
+	CapInh string `json:"cap_inh"`
+	CapAmb string `json:"cap_amb"`
 
 	ContainerExitInspected   bool `json:"container_exit_inspected"`
 	FinalCommandProofRead    bool `json:"final_command_proof_read"`
@@ -157,8 +163,14 @@ func EvaluateClosure(reg Registration, doc ClosureDoc, interval, runID string) C
 		// namespace gone. The base cells are network none; net-sink/v1 is host and keeps the full window.
 		switch s.NetworkMode {
 		case "none":
-			if !s.NoExternalRoutes || s.CapEff != "0000000000000000" || !s.NoNewPrivs {
-				no("command %d: network none without the recorded no-routes and empty capability proof (cap_eff %q)", i, s.CapEff)
+			// Why this is enough (the premise to keep in mind): a command is launched with exactly its output pipes and the
+			// proof/ack pipes plus the view mount; the launcher passes no socket and no namespace descriptor, so no
+			// host-network socket is inherited. A network-none cell has loopback only and, with every capability set
+			// empty and no_new_privs, cannot add an interface or reach the sink even while it still holds its namespace.
+			const zero = "0000000000000000"
+			if !s.NoExternalRoutes || !s.NoNewPrivs || s.CapEff != zero || s.CapPrm != zero || s.CapBnd != zero || s.CapInh != zero || s.CapAmb != zero {
+				no("command %d: network none without the recorded no-routes, no_new_privs and all-empty capability sets (eff %q prm %q bnd %q inh %q amb %q)",
+					i, s.CapEff, s.CapPrm, s.CapBnd, s.CapInh, s.CapAmb)
 			}
 		case "host":
 			hostNet = true
@@ -193,6 +205,16 @@ func EvaluateClosure(reg Registration, doc ClosureDoc, interval, runID string) C
 	for _, p := range s.Processes {
 		if p.Live() && (p.InCell || p.Registered || p.CellIdentity) && !noReap {
 			no("process %d (%s) of the cell identity is alive", p.PID, p.Comm)
+		}
+	}
+	// A residual socket of the cell identity (uidSockets records them in the host namespace even without an
+	// attributable process) or one no net table accounts for. The EFF-PROC-03 authorization is a scoring exemption and
+	// is not consulted: it never licenses an early close.
+	if !noReap {
+		for _, so := range s.Sockets {
+			if so.Role == RoleUnknown || so.UID == reg.CellUID && reg.CellUID != 0 || so.Role == RoleListener || so.Role == RoleConnected {
+				no("a %s socket %s (uid %d, %s) of the cell identity remains", so.Proto, so.Local, so.UID, so.State)
+			}
 		}
 	}
 	c.Proven = len(c.Reasons) == 0

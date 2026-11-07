@@ -163,7 +163,22 @@ type procResolution struct {
 	polls   []Snapshot
 	stop2   MonitorStop
 	defects []string
-	net     runner.IntervalClosure
+	// afterScan are the polls observed after the closure scan (monitoring continues through the drain grace).
+	afterScan []Snapshot
+	net       runner.IntervalClosure
+}
+
+func pollsAfter(polls []Snapshot, t time.Time) []Snapshot {
+	if t.IsZero() {
+		return nil
+	}
+	var out []Snapshot
+	for _, p := range polls {
+		if p.ObservedAt.After(t) {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // requestStop writes the stop line; it blocks until the line is taken or the session is gone.
@@ -498,7 +513,7 @@ func (c *SSHCollector) resolve(ctx context.Context, ref runner.EvidenceRef, iv *
 		no("the guest gave no closure document: %v", err)
 		return res
 	}
-	res.doc, res.scan = &doc, &doc.Scan
+	res.doc, res.scan, res.scanAt = &doc, &doc.Scan, doc.Scan.ObservedAt
 	v := EvaluateClosure(iv.reg, doc, ref.Interval, ref.RunID)
 	if v.Proven && doc.Scan.ObservedAt.Before(res.snaps[1].ObservedAt) {
 		older := "the closure scan is older than the final-cleanup snapshot"
@@ -508,7 +523,6 @@ func (c *SSHCollector) resolve(ctx context.Context, ref runner.EvidenceRef, iv *
 	if v.Proven {
 		res.closure.Proven = true
 		res.closure.DrainUntil = c.now().Add(c.DrainGrace)
-		res.scanAt = doc.Scan.ObservedAt
 		res.stop = MonitorStopRequest{ClosureDigest: v.Digest, RunID: ref.RunID}
 	}
 	return res
@@ -555,12 +569,21 @@ func (c *SSHCollector) finalize(ctx context.Context, ref runner.EvidenceRef, iv 
 	case res := <-iv.done:
 		if res.err == nil {
 			rs.polls, rs.stop2 = res.polls, res.stop
-			rs.defects = c.monitorEnd(res, rs, rs.stopped, iv.reg.MaxGap)
+			rs.defects = c.monitorEnd(res, iv.reg, rs, rs.stopped, iv.reg.MaxGap)
+			rs.afterScan = pollsAfter(res.polls, rs.scanAt)
 		}
 	case <-ctx.Done():
 	}
 	if len(rs.polls) == 0 && len(rs.defects) == 0 {
 		rs.defects = []string{"no usable monitor record"}
+	}
+	// Every poll after the closure scan is reconciled: a live process of the cell identity there revokes the proof.
+	for _, p := range rs.afterScan {
+		for _, pr := range p.Processes {
+			if pr.Live() && (pr.InCell || pr.Registered || pr.CellIdentity) {
+				rs.defects = append(rs.defects, fmt.Sprintf("process %d (%s) of the cell identity was alive at poll %d, after the closure scan", pr.PID, pr.Comm, p.Seq))
+			}
+		}
 	}
 	if len(rs.defects) != 0 || (rs.closure.Proven && !rs.stopped) {
 		rs.net.Proven, rs.net.DrainUntil = false, time.Time{}
@@ -576,7 +599,7 @@ func (c *SSHCollector) finalize(ctx context.Context, ref runner.EvidenceRef, iv 
 // monitorEnd lists what is wrong with how the monitor says it ended, judged against what the host asked and saw. A
 // defect never discards the polls: it only invalidates the negative claim they make (a coverage gap), because after a
 // stop there is no horizon left to fall back to and a valid poll that saw an escaped process stays a valid observation.
-func (c *SSHCollector) monitorEnd(res monitorResult, rs *procResolution, stopped bool, maxGap time.Duration) []string {
+func (c *SSHCollector) monitorEnd(res monitorResult, reg Registration, rs *procResolution, stopped bool, maxGap time.Duration) []string {
 	n := len(res.polls)
 	if n == 0 {
 		return []string{"the monitor record has no polls"}
@@ -602,7 +625,11 @@ func (c *SSHCollector) monitorEnd(res monitorResult, rs *procResolution, stopped
 	default:
 		bad("unknown stop reason %q", st.Reason)
 	}
-	// The evaluator checks the polls up to the post-teardown snapshot; the record is a witness through its last poll.
+	// The evaluator's own coverage validation (identity, numbering, scan state, interval start, stretches up to the
+	// post-teardown snapshot), and the same spacing through the last poll, where a closure or a stop ends the record.
+	for _, d := range CoverageDefects(reg, rs.snaps, res.polls) {
+		bad("%s", d)
+	}
 	if err := CoverageHealthy(res.polls, maxGap); err != nil {
 		bad("coverage through the end of the record: %v", err)
 	}
@@ -631,6 +658,9 @@ func (c *SSHCollector) Proc(ctx context.Context, ref runner.EvidenceRef) (runner
 	if rs.scan != nil {
 		policy.Extra = []Snapshot{*rs.scan}
 	}
+	// With the early close on, a poll after the closure scan is an observation of the interval's tail: its survivors
+	// are findings (the deadline has long passed), not only a reason to keep the window.
+	policy.Tail = rs.afterScan
 	rep := Evaluate(iv.reg, rs.snaps, polls, policy)
 	refs := Refs(rep)
 	if len(refs) == 0 {

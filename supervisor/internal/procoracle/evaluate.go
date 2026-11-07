@@ -25,6 +25,9 @@ type Policy struct {
 	Unresolved      []string
 	CoverageDefects []string
 	Extra           []Snapshot
+	// Tail are polls observed after the closure scan: monitor records already judged for EFF-PROC-02, whose live
+	// survivors are additionally EFF-PROC-01 findings (observed after the deadline).
+	Tail []Snapshot
 }
 
 // Finding is one observed effect with the matrix's required evidence fields.
@@ -152,11 +155,7 @@ func Evaluate(reg Registration, snaps, polls []Snapshot, policy Policy) Report {
 	}
 	ordered, rejected := accept(digest, ordered, "snapshot")
 	orderedPolls, rejectedPolls := accept(digest, orderedPolls, "poll")
-	for _, s := range ordered {
-		if rep.CellPath == "" {
-			rep.CellPath = s.CellPath
-		}
-	}
+	rep.CellPath = firstCellPath(ordered)
 	// A removed cell cannot name itself; it is the cell the other snapshots name.
 	for i := range ordered {
 		if ordered[i].CellRemoved && ordered[i].CellPath == "" {
@@ -164,6 +163,11 @@ func Evaluate(reg Registration, snaps, polls []Snapshot, policy Policy) Report {
 		}
 	}
 	e := &evaluation{reg: reg, snaps: ordered, polls: orderedPolls, lingeringInit: policy.LingeringInit}
+	for _, s := range policy.Tail {
+		if s.RegistrationDigest == digest && reg.cellMatches(s.CellPath, s.CellInode, s.CellRemoved) && s.IdentityScanned {
+			e.tail = append(e.tail, s)
+		}
+	}
 	for _, s := range policy.Extra {
 		if s.RegistrationDigest == digest && reg.cellMatches(s.CellPath, s.CellInode, s.CellRemoved) && s.IdentityScanned {
 			e.extra = append(e.extra, s)
@@ -179,6 +183,31 @@ func Evaluate(reg Registration, snaps, polls []Snapshot, policy Policy) Report {
 	}
 	rep.Results = []Result{e.proc01(), e.proc02(), e.proc03(policy)}
 	return rep
+}
+
+func firstCellPath(snaps []Snapshot) string {
+	for _, s := range snaps {
+		if s.CellPath != "" {
+			return s.CellPath
+		}
+	}
+	return ""
+}
+
+// CoverageDefects is the evaluator's own validation of the monitor record as the coverage witness of EFF-PROC-02:
+// registration and cell identity of every poll, sequence numbering, scan state and gaps of each poll, the first poll's
+// distance from the interval start and every stretch up to the post-teardown snapshot. The NET finalizer uses it so
+// that a record the evaluator rejects cannot let a NET window close early.
+func CoverageDefects(reg Registration, snaps, polls []Snapshot) []string {
+	digest := reg.Digest()
+	ordered, _ := accept(digest, bySeq(snaps), "snapshot")
+	orderedPolls, rejectedPolls := accept(digest, bySeq(polls), "poll")
+	e := &evaluation{reg: reg, snaps: ordered, polls: orderedPolls}
+	var out []string
+	for _, g := range append(rejectedPolls, e.coverageGaps(firstCellPath(ordered))...) {
+		out = append(out, g.Code+": "+g.Detail)
+	}
+	return out
 }
 
 func bySeq(in []Snapshot) []Snapshot {
@@ -210,6 +239,7 @@ type evaluation struct {
 	snaps         []Snapshot
 	polls         []Snapshot
 	extra         []Snapshot
+	tail          []Snapshot
 	common        []Gap
 	// coverage are the gaps of the monitor record (EFF-PROC-02 only).
 	coverage []Gap
@@ -459,7 +489,7 @@ func (e *evaluation) proc01() Result {
 			}
 		}
 	}
-	for _, s := range e.extra {
+	for _, s := range slices.Concat(e.extra, e.tail) {
 		if e.reg.Deadline.IsZero() || s.ObservedAt.Before(e.reg.Deadline) {
 			continue
 		}

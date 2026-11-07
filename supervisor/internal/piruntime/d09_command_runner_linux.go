@@ -90,6 +90,10 @@ type D09CommandProof struct {
 	UID                    int    `json:"uid"`
 	GID                    int    `json:"gid"`
 	CapEff                 string `json:"cap_eff"`
+	CapPrm                 string `json:"cap_prm,omitempty"`
+	CapBnd                 string `json:"cap_bnd,omitempty"`
+	CapInh                 string `json:"cap_inh,omitempty"`
+	CapAmb                 string `json:"cap_amb,omitempty"`
 	NoNewPrivs             bool   `json:"no_new_privs"`
 	Seccomp                int    `json:"seccomp"`
 	LandlockABI            int    `json:"landlock_abi"`
@@ -847,7 +851,8 @@ func (r *D09CommandRunner) reserveCommandView(viewID string) error {
 
 func sameD09CommandProofIdentity(first, final d09CommandProof) bool {
 	return first.Schema == final.Schema && first.UID == final.UID && first.GID == final.GID &&
-		first.CapEff == final.CapEff && first.NoNewPrivs == final.NoNewPrivs && first.Seccomp == final.Seccomp &&
+		first.CapEff == final.CapEff && first.CapPrm == final.CapPrm && first.CapBnd == final.CapBnd &&
+		first.CapInh == final.CapInh && first.CapAmb == final.CapAmb && first.NoNewPrivs == final.NoNewPrivs && first.Seccomp == final.Seccomp &&
 		first.LandlockABI == final.LandlockABI && first.LandlockRulesetDigest == final.LandlockRulesetDigest &&
 		first.LandlockTSYNC == final.LandlockTSYNC && first.CgroupV2 == final.CgroupV2 &&
 		first.UIDMap == final.UIDMap && first.GIDMap == final.GIDMap && first.UserNamespaceMapDigest == final.UserNamespaceMapDigest &&
@@ -1159,7 +1164,7 @@ func validateD09CommandProofDelta(plan d09DeltaPlan, proof d09CommandProof, conf
 	}
 	config.LandlockRulesetDigest = plan.landlockDigest
 	base := D09TCBProof{Schema: proof.Schema, UID: proof.UID, GID: proof.GID, CapEff: proof.CapEff,
-		NoNewPrivs: proof.NoNewPrivs, Seccomp: proof.Seccomp, LandlockABI: proof.LandlockABI,
+		CapPrm: proof.CapPrm, CapBnd: proof.CapBnd, CapInh: proof.CapInh, CapAmb: proof.CapAmb, NoNewPrivs: proof.NoNewPrivs, Seccomp: proof.Seccomp, LandlockABI: proof.LandlockABI,
 		LandlockRulesetDigest: proof.LandlockRulesetDigest, LandlockTSYNC: proof.LandlockTSYNC,
 		CgroupV2: proof.CgroupV2, UIDMap: proof.UIDMap, GIDMap: proof.GIDMap, UserNamespaceMapDigest: proof.UserNamespaceMapDigest,
 		LeaderPID: proof.LeaderPID, ContainerLeaderPID: proof.ContainerLeaderPID, ContainerName: proof.ContainerName,

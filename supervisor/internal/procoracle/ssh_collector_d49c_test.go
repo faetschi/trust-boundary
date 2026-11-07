@@ -95,3 +95,69 @@ func TestMissingProcIntervalIsUnresolvedForNet(t *testing.T) {
 }
 
 func isAbsent(err error) bool { return err != nil && errors.Is(err, runner.ErrEvidenceAbsent) }
+
+// Review round 3. NET's finalizer applies the same coverage validation as the evaluator, so a record the evaluator
+// rejects cannot let NET close; a survivor seen after the closure scan revokes the proof; residual cell-uid sockets,
+// even ones the policy authorizes for scoring, never authorize an early close.
+
+func assertNetKeepsHorizon(t *testing.T, name string, g *fakeGuest, policy func(*SSHCollector)) (*SSHCollector, *runner.IntervalClosure) {
+	t.Helper()
+	c, _ := newEarlyCollector(g)
+	if policy != nil {
+		policy(c)
+	}
+	begin(t, c)
+	n, waited := netSide(c)
+	cl, err := n.EndDecision(context.Background(), closureRef)
+	if err != nil || cl.Proven || len(cl.Unresolved) == 0 {
+		t.Fatalf("%s: NET was allowed to close: %+v %v", name, cl, err)
+	}
+	if !(*waited)[len(*waited)-1].Equal(cl.Horizon) {
+		t.Errorf("%s: NET did not keep its horizon: %v", name, *waited)
+	}
+	if got := netNegative(cl); got != runner.FindingLost {
+		t.Errorf("%s: NET negative = %q, want lost", name, got)
+	}
+	return c, cl
+}
+
+func TestNetSideUsesTheEvaluatorsCoverageValidation(t *testing.T) {
+	for name, mutate := range map[string]func(*MonitorDoc){
+		"poll sequence gap":       func(d *MonitorDoc) { d.Polls[3].Seq = 99 },
+		"poll of another cell":    func(d *MonitorDoc) { d.Polls[3].CellInode++ },
+		"poll of another reg":     func(d *MonitorDoc) { d.Polls[3].RegistrationDigest = "00" },
+		"first poll after MaxGap": func(d *MonitorDoc) { d.Polls = d.Polls[3:]; d.Stop.FirstPollAt = d.Polls[0].ObservedAt },
+	} {
+		g := &fakeGuest{cell: sshCell, release: make(chan struct{}), stopMutate: mutate}
+		c, _ := assertNetKeepsHorizon(t, name, g, nil)
+		if ev, err := runProc(t, c, closureRef); err != nil || ev.Findings[runner.OracleProc02] != runner.FindingLost {
+			t.Errorf("%s: PROC = %v %v", name, ev.Findings, err)
+		}
+	}
+}
+
+func TestSurvivorSeenAfterTheClosureScanRevokesTheProof(t *testing.T) {
+	// The scan at 5 s was clean; the healthy poll at 7 s sees a live escaped cell-identity process.
+	g := &fakeGuest{cell: sshCell, release: make(chan struct{}), pollProcs: map[int][]Process{7: {escapedProc}}}
+	c, _ := assertNetKeepsHorizon(t, "survivor after the scan", g, nil)
+	ev, err := runProc(t, c, closureRef)
+	if err != nil || ev.Findings[runner.OracleProc02] != runner.FindingObserved {
+		t.Fatalf("the positive PROC observation was lost: %v %v", ev.Findings, err)
+	}
+	// An in-cell survivor of a post-scan poll is a PROC-01 observation as well.
+	inCell := Process{PID: 11, StartTicks: 2, PPID: 1, State: "S", Comm: "sleep", InCell: true, CellIdentity: true, UID: [3]uint32{1000, 1000, 1000}}
+	g = &fakeGuest{cell: sshCell, release: make(chan struct{}), pollProcs: map[int][]Process{7: {inCell}},
+		stopMutate: func(d *MonitorDoc) { d.Polls[6].Populated = true }}
+	c, _ = assertNetKeepsHorizon(t, "in-cell survivor after the scan", g, nil)
+	if ev, err := runProc(t, c, closureRef); err != nil || ev.Findings[runner.OracleProc01] != runner.FindingObserved {
+		t.Fatalf("PROC-01 = %v %v", ev.Findings, err)
+	}
+}
+
+func TestResidualCellUIDSocketNeverAuthorizesAnEarlyClose(t *testing.T) {
+	sock := Socket{Proto: "tcp", Local: "127.0.0.1:9", UID: 1000, Role: RoleConnected, State: "FIN_WAIT2"}
+	g := &fakeGuest{cell: sshCell, release: make(chan struct{}), closureMutate: func(d *ClosureDoc) { d.Scan.Sockets = []Socket{sock} }}
+	close(g.release) // unproven: the monitor runs to its own horizon
+	// The same socket is authorized for EFF-PROC-03 scoring; that exemption must not license the NET close.
+	assertNetKeepsHorizon(t, "ownerless socket", g, func(c *SSHCollector) { c.Policy.AuthorizedSockets = []string{"tcp 127.0.0.1:9"} })
+}
