@@ -94,6 +94,9 @@ type obsFixture struct {
 	release    chan struct{}
 	// early: D49 early close is on. The monitor then ends on the host's stop line, not at the request's end.
 	early bool
+	// hold keeps the fake monitor running until the host stops it (the proven path); without it the request's end
+	// releases it, as a monitor that reached its horizon. unproven makes the fake closure document refuse the proof.
+	hold, unproven bool
 }
 
 func newObsFixture(t *testing.T, published bool) *obsFixture {
@@ -356,7 +359,7 @@ func (c obsClient) Run(_ context.Context, argv []string) ([]byte, []byte, int, e
 	if err != nil {
 		return nil, nil, 0, err
 	}
-	if !c.f.early {
+	if !c.f.hold {
 		close(c.f.release) // the request is over: the watcher's time is up
 	}
 	return append(line, '\n'), nil, 0, nil
@@ -455,7 +458,7 @@ func (e obsEvidence) RunReadyStdin(ctx context.Context, argv []string, stdin io.
 				CapPrm: "0000000000000000", CapBnd: "0000000000000000", CapInh: "0000000000000000", CapAmb: "0000000000000000"}
 			return obsReply(procoracle.ClosureDoc{Schema: runner.EvidenceSchema, Kind: runner.EvidenceProcClosure, IntervalRef: flags["--interval-ref"],
 				RunID: obsRunID, RegistrationDigest: reg.Digest(), ReceiptVerified: true, ReceiptDigest: strings.Repeat("b", 64),
-				ExpectedSettlements: 1, Commands: []procoracle.CommandSettlement{cmd}, Scan: scan})
+				ExpectedSettlements: 1, Commands: []procoracle.CommandSettlement{cmd}, Scan: scan, CellChildren: unprovenChildren(f)})
 		}
 		line, _, _, _ := obsReply(procoracle.MonitorReadyDoc{Schema: runner.EvidenceSchema, Kind: procoracle.MonitorReadyKind,
 			RegistrationDigest: reg.Digest(), FirstPollSeq: 1, FirstPollAt: start.Add(100 * time.Millisecond)})
@@ -588,8 +591,18 @@ func (f *obsFixture) executeErr(t *testing.T) (runner.Outcome, error) {
 	proc := collectors.ProcFrom.(*procoracle.SSHCollector)
 	proc.Now = func() time.Time { return obsT0 }
 	proc.Wait = func(context.Context, time.Time) error { return nil }
+	// obsT0 is in the future of the wall clock: neither collector may really wait for an instant derived from it.
+	if net, ok := collectors.NetFrom.(*netoracle.Collector); ok {
+		net.Wait = func(context.Context, time.Time) error { return nil }
+	}
 	g := runner.GovernedC{PlanDigest: "plan-obs", Transport: obsClient{f}, Collectors: collectors}
-	o, err := g.Execute(context.Background(), f.step)
+	// A closure that is unexpectedly unproven must fail the test quickly and clearly, not hang on a horizon.
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	o, err := g.Execute(ctx, f.step)
+	if ctx.Err() != nil {
+		t.Fatalf("Execute did not finish within 60 s (early=%v hold=%v unproven=%v): the closure was not proven, or a collector waited for a real horizon", f.early, f.hold, f.unproven)
+	}
 	if err != nil {
 		return o, err
 	}
@@ -616,7 +629,7 @@ func coverage(o runner.Outcome) bool {
 // timer) and every oracle reference, PROC included, is still there.
 func TestObserverCoverageEarlyCloseEndsOnProofAndKeepsEveryOracleReference(t *testing.T) {
 	f := newObsFixture(t, false)
-	f.early = true
+	f.early, f.hold = true, true
 	o := f.execute(t)
 	for _, k := range []string{runner.OracleNet01, runner.OracleProc01, runner.OracleProc02, runner.OracleProc03, runner.OracleTransient} {
 		if o.Oracles[k] != runner.FindingNone || o.OracleRefs[k].Report == "" {
@@ -632,6 +645,29 @@ func TestObserverCoverageEarlyCloseEndsOnProofAndKeepsEveryOracleReference(t *te
 	}
 	if !coverage(o) {
 		t.Fatalf("observer_coverage_complete is false after an early close; oracles %v", o.Oracles)
+	}
+}
+
+func unprovenChildren(f *obsFixture) int {
+	if f.unproven {
+		return 1 // a command cgroup remains below the cells cgroup
+	}
+	return 0
+}
+
+// The sibling case: the closure is refused, so the observation keeps its horizon (the fake monitor ends with the
+// request) and the unresolved evidence is lost for PROC and NET, never a clean negative.
+func TestObserverCoverageUnprovenClosureKeepsTheHorizonAndIsLost(t *testing.T) {
+	f := newObsFixture(t, false)
+	f.early, f.unproven = true, true
+	o := f.execute(t)
+	for _, k := range []string{runner.OracleNet01, runner.OracleProc01, runner.OracleProc02, runner.OracleProc03} {
+		if o.Oracles[k] != runner.FindingLost {
+			t.Errorf("%s = %q, want lost (unresolved closure)", k, o.Oracles[k])
+		}
+	}
+	if coverage(o) {
+		t.Error("observer_coverage_complete is true although the closure was unresolved")
 	}
 }
 
