@@ -369,10 +369,15 @@ func TestTransportFailureClass(t *testing.T) {
 		{"winsock timed out", syscall.Errno(10060), "timeout"},
 		{"context canceled", context.Canceled, "canceled"},
 		{"connection reset", syscall.ECONNRESET, "connection_reset"},
-		{"connection refused", syscall.ECONNREFUSED, "connection_reset"},
+		{"connection refused", syscall.ECONNREFUSED, "connection_refused"},
+		{"connection aborted", syscall.ECONNABORTED, "connection_reset"},
+		{"network unreachable", syscall.ENETUNREACH, "unreachable"},
+		{"host unreachable", syscall.EHOSTUNREACH, "unreachable"},
+		{"winsock aborted", syscall.Errno(10053), "connection_reset"},
+		{"winsock net unreachable", syscall.Errno(10051), "unreachable"},
 		{"broken pipe", syscall.EPIPE, "connection_reset"},
 		{"winsock reset", syscall.Errno(10054), "connection_reset"},
-		{"winsock refused", syscall.Errno(10061), "connection_reset"},
+		{"winsock refused", syscall.Errno(10061), "connection_refused"},
 		{"unexpected EOF", io.ErrUnexpectedEOF, "connection_reset"},
 		{"EOF", io.EOF, "connection_reset"},
 		{"TLS record header", tls.RecordHeaderError{Msg: "first record does not look like a TLS handshake"}, "tls"},
@@ -438,9 +443,9 @@ func TestHTTPDoerClassifiesRefusedConnection(t *testing.T) {
 	if response != nil && response.Body != nil {
 		_ = response.Body.Close()
 	}
-	// Linux returns ECONNREFUSED and Windows WSAECONNREFUSED for a closed loopback port. connection_reset
+	// Linux returns ECONNREFUSED and Windows WSAECONNREFUSED for a closed loopback port. connection_refused
 	// groups both: each fails at the connection, before any response exists.
-	if err == nil || err.Error() != "provider HTTP request failed: connection_reset" {
+	if err == nil || err.Error() != "provider HTTP request failed: connection_refused" {
 		t.Fatalf("refused connection error = %v", err)
 	}
 	if strings.Contains(err.Error(), address) {

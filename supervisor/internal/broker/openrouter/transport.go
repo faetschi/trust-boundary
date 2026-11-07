@@ -256,11 +256,15 @@ const (
 	winsockTimedOut    = syscall.Errno(10060)
 	winsockConnReset   = syscall.Errno(10054)
 	winsockConnRefused = syscall.Errno(10061)
+	winsockConnAborted = syscall.Errno(10053)
+	winsockNetUnreach  = syscall.Errno(10051)
+	winsockHostUnreach = syscall.Errno(10065)
 )
 
 // transportFailureClass returns one fixed class for a transport error, never its text. The checks run in
 // this order and the first match wins: timeout comes first because a timed-out dial or lookup also matches
-// the generic net errors below; then canceled, dns, tls and connection_reset. Anything else is other.
+// the generic net errors below; then canceled, dns, tls, connection_refused, unreachable and connection_reset.
+// Anything else is other.
 func transportFailureClass(err error) string {
 	var netErr net.Error
 	var dnsErr *net.DNSError
@@ -281,8 +285,13 @@ func transportFailureClass(err error) string {
 	case errors.As(err, &recordErr), errors.As(err, &alertErr), errors.As(err, &verifyErr),
 		errors.As(err, &authorityErr), errors.As(err, &hostnameErr), errors.As(err, &certErr):
 		return "tls"
-	case errors.Is(err, syscall.ECONNRESET), errors.Is(err, syscall.EPIPE), errors.Is(err, syscall.ECONNREFUSED),
-		errors.Is(err, winsockConnReset), errors.Is(err, winsockConnRefused),
+	case errors.Is(err, syscall.ECONNREFUSED), errors.Is(err, winsockConnRefused):
+		return "connection_refused"
+	case errors.Is(err, syscall.ENETUNREACH), errors.Is(err, syscall.EHOSTUNREACH),
+		errors.Is(err, winsockNetUnreach), errors.Is(err, winsockHostUnreach):
+		return "unreachable"
+	case errors.Is(err, syscall.ECONNRESET), errors.Is(err, syscall.EPIPE), errors.Is(err, syscall.ECONNABORTED),
+		errors.Is(err, winsockConnReset), errors.Is(err, winsockConnAborted),
 		errors.Is(err, io.EOF), errors.Is(err, io.ErrUnexpectedEOF):
 		return "connection_reset"
 	}
