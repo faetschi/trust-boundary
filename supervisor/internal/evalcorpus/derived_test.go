@@ -38,6 +38,18 @@ func goodDerived() *MeaningRecord {
 	}
 }
 
+// goodEstablished returns a complete established record, the kind a main or top-up case carries.
+func goodEstablished() *MeaningRecord {
+	return &MeaningRecord{
+		CaseOrigin: OriginEstablished, BenchmarkKey: "InjecAgent", BenchmarkRevision: "f19c9f2",
+		BenchmarkDigest: synthDigest("item"), SourceItemID: "dh:line:10", RootID: "InjecAgent:dh:line:10",
+		License: "MIT", Redistribution: "notice retained", PreservedIntent: "move a protected file away",
+		TaskUnit: "single injected instruction", AuthorizationClass: "injected-third-party-instruction",
+		Transformations: []string{"service tool mapped to bash mv"}, LostDistinctions: []string{},
+		ToolMapping: "Pi bash mv", OracleMapping: "EFF-WS-02 removal", LabelOrigin: LabelExternalOracle,
+	}
+}
+
 // derivedManifest returns the synthetic manifest with SYNTH-ADV-TM-C-001 as a derived tmc case.
 func derivedManifest(t *testing.T) (Manifest, Quotas) {
 	t.Helper()
@@ -101,6 +113,22 @@ func TestSamplePartAndDerivedRules(t *testing.T) {
 			c.MeaningRecord = goodDerived()
 			c.MeaningRecord.Derived = nil
 		}, "meaning.origin"},
+		{"main without a meaning record", tmA, func(c *Case) {
+			c.Adversarial.SamplePart = SampleMain
+			c.MeaningRecord = nil
+		}, "sample.provenance"},
+		{"topup without a meaning record", tmB, func(c *Case) {
+			c.Adversarial.SamplePart = SampleTopup
+			c.MeaningRecord = nil
+		}, "sample.provenance"},
+		{"main with an established record", tmA, func(c *Case) {
+			c.Adversarial.SamplePart = SampleMain
+			c.MeaningRecord = goodEstablished()
+		}, ""},
+		{"topup with an established record", tmB, func(c *Case) {
+			c.Adversarial.SamplePart = SampleTopup
+			c.MeaningRecord = goodEstablished()
+		}, ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -190,6 +218,71 @@ func TestDerivedRecordBenchmarkFieldsAreConditional(t *testing.T) {
 			m, q := derivedManifest(t)
 			tc.mutate(findCase(t, &m, derivedCaseID).MeaningRecord)
 			wantRule(t, validate(m, q), tc.rule)
+		})
+	}
+}
+
+// benchmarkSourceFields are the seven benchmark-source members of a meaning record, by JSON name.
+var benchmarkSourceFields = []string{"benchmark_key", "benchmark_revision", "benchmark_digest", "source_item_id", "root_id", "license", "redistribution"}
+
+// recordOf returns m in its input form, decoded to generic JSON, and the meaning_record object of case id,
+// so that a test can delete one member before Load reads the manifest.
+func recordOf(t *testing.T, m Manifest, id string) (map[string]any, map[string]any) {
+	t.Helper()
+	raw, err := json.Marshal(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range doc["cases"].([]any) {
+		if obj := c.(map[string]any); obj["case_id"] == id {
+			return doc, obj["meaning_record"].(map[string]any)
+		}
+	}
+	t.Fatalf("case %q not found", id)
+	return nil, nil
+}
+
+// encodeDoc returns the JSON text of a decoded manifest.
+func encodeDoc(t *testing.T, doc map[string]any) string {
+	t.Helper()
+	raw, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(raw)
+}
+
+// A derived record does not carry the benchmark-source members, so Load accepts each one absent from it,
+// and the record stays valid.
+func TestDerivedRecordOmitsBenchmarkSourceFields(t *testing.T) {
+	for _, name := range benchmarkSourceFields {
+		t.Run(name, func(t *testing.T) {
+			m, q := derivedManifest(t)
+			doc, mr := recordOf(t, m, derivedCaseID)
+			delete(mr, name)
+			got, err := Load(strings.NewReader(encodeDoc(t, doc)))
+			if err != nil {
+				t.Fatalf("Load without %s: %v", name, err)
+			}
+			wantClean(t, Validate(got, q))
+		})
+	}
+}
+
+// Without a derived member, the benchmark-source members stay required: Load refuses each one that is absent.
+func TestEstablishedRecordRequiresBenchmarkSourceFields(t *testing.T) {
+	const id = "SYNTH-ADV-TM-A-001"
+	for _, name := range benchmarkSourceFields {
+		t.Run(name, func(t *testing.T) {
+			m, _ := derivedManifest(t)
+			findCase(t, &m, id).MeaningRecord = goodEstablished()
+			doc, mr := recordOf(t, m, id)
+			delete(mr, name)
+			wantLoadError(t, encodeDoc(t, doc), `missing field "`+name+`"`)
 		})
 	}
 }

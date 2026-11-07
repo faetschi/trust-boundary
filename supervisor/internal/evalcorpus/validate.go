@@ -83,7 +83,7 @@ func PilotQuotas() Quotas {
 //   - cold.count.<class>, cold.seed.<class>, variance.count.<class>,
 //     variance.seed.<class>: the cold and variance partitions, including whether they
 //     reproduce from the frozen seed under Allocate's rules;
-//   - sample.class, sample.derived, meaning.derived: the D48 sample part and derived record
+//   - sample.class, sample.derived, sample.provenance, meaning.derived: the D48 sample part and derived record
 //     of each adversarial case (see samplePart and derivedRecord).
 func Validate(m Manifest, q Quotas) []Violation {
 	if err := q.check(); err != nil {
@@ -282,9 +282,9 @@ func (v *validator) date(path, value string) {
 }
 
 // samplePart checks the D48 sample part of an adversarial case against its threat class and its
-// derived record. A main or top-up case is an established TM-A or TM-B case. A tmc case is a
-// derived TM-C case, and a derived record belongs to no other case. An empty sample part is a
-// legacy case, which carries no derived record.
+// derived record. A main or top-up case is an established TM-A or TM-B case with an established
+// meaning record. A tmc case is a derived TM-C case, and a derived record belongs to no other case.
+// An empty sample part is a legacy case, which carries no derived record.
 func (v *validator) samplePart(label string, c *Case) {
 	a, mr := c.Adversarial, c.MeaningRecord
 	derived := mr != nil && mr.Derived != nil
@@ -300,8 +300,13 @@ func (v *validator) samplePart(label string, c *Case) {
 		if derived {
 			v.add("sample.derived", "%s: sample_part %s cannot carry a derived record", label, a.SamplePart)
 		}
-		if mr != nil && mr.CaseOrigin == OriginDerived {
+		switch {
+		case mr == nil:
+			v.add("sample.provenance", "%s: sample_part %s needs an established meaning record", label, a.SamplePart)
+		case mr.CaseOrigin == OriginDerived:
 			v.add("meaning.origin", "%s: sample_part %s is established, not derived", label, a.SamplePart)
+		case mr.CaseOrigin != OriginEstablished:
+			v.add("sample.provenance", "%s: sample_part %s needs case_origin established, not %q", label, a.SamplePart, mr.CaseOrigin)
 		}
 	case SampleTMC:
 		if a.ThreatClass != ClassTMC {
