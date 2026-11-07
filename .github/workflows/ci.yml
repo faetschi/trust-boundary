@@ -94,6 +94,12 @@ jobs:
           command -v netplan >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq netplan.io; }
           python3 infra/repro/test_hyperv_netplan_injection.py -v
 
+      - name: Guest provisioning helper regressions
+        run: python3 -m unittest discover -s infra/guest -p 'test_*.py' -v
+
+      - name: Cgroup teardown witness regressions
+        run: python3 -m unittest discover -s infra/repro -p 'test_cgroup_teardown_witness.py' -v
+
       - name: Official Pi runtime closure regressions
         run: python3 -m unittest discover -s scripts -p 'test_prepare_official_pi_runtime.py' -v
 
