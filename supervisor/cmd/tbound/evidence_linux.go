@@ -66,9 +66,20 @@ import (
 //	                             --duration SECONDS --interval MILLISECONDS
 //	    procoracle.StartMonitor over the same cell for SECONDS (1..1500) at MILLISECONDS (200..1000),
 //	    then the poll records, once. TWO lines: the readiness line (procoracle.MonitorReadyDoc),
-//	    written right after the first poll and before polling on, then the final document. At
+//	    written right after the first poll and before polling on, then the final document. D49: the
+//	    host may end the monitor early by writing ONE line to its stdin, "stop closed-on-proof DIGEST
+//	    RUNID" (procoracle.ParseMonitorStopLine); the document then says how it ended
+//	    (procoracle.MonitorStop). An end of input without that line, a malformed or repeated line, or
+//	    any other input is NOT a stop: the monitor runs to its --duration and says "horizon". A
+//	    signal is an error, never a short record. At
 //	    most one monitor runs at a time (flock on a root-owned lock file in /run: the one
 //	    file this subcommand creates, a lock with no content); a second is refused.
+//	proc-closure                 --registration D --interval-start NS --deadline NS --interval-ref REF
+//	    D49: whether the interval REF is provably complete, read-only: the admission's completed receipt
+//	    (the e04-points lookup), the settlement of every command of the run from the run's command
+//	    journal, the children of the cells cgroup, the commands' network namespaces and a fresh
+//	    identity, process and socket scan of the registered cell (procoracle.ClosureDoc). The host
+//	    judges it. Any failure is an error, never a document that looks provable.
 //	publication-interval-journal --interval-ref REF
 //	    the interval journal of the corpus admission REF names (marker record, then the
 //	    workflow's publication records), base64, with the head and count the receipt
@@ -133,7 +144,8 @@ const evidenceUsage = `usage: tbound evidence <kind> [--flag value]...   (read-o
   e04-snapshot                 --root <protected root> --point <e04 point>
   proc-cell
   proc-capture                 --registration <digest> --point <post_teardown|final_cleanup> --interval-start <ns> --deadline <ns>
-  proc-monitor                 --registration <digest> --interval-start <ns> --deadline <ns> --duration <s> --interval <ms>
+  proc-monitor                 --registration <digest> --interval-start <ns> --deadline <ns> --duration <s> --interval <ms>   (ends early only on a "stop closed-on-proof <digest> <run>" line on stdin)
+  proc-closure                 --registration <digest> --interval-start <ns> --deadline <ns> --interval-ref <ref>
   publication-interval-journal --interval-ref <ref>
   e04-points                   --interval-ref <ref>
   transient-watch              --interval-ref <ref> --duration <s>   (inotify over the live root; ends on a "stop" line on stdin; writes a liveness canary in the live root at start and at stop)
@@ -156,6 +168,7 @@ var evidenceFlags = map[string][]string{
 	runner.EvidenceProcCell:           {},
 	runner.EvidenceProcCapture:        {"--registration", "--point", "--interval-start", "--deadline"},
 	runner.EvidenceProcMonitor:        {"--registration", "--interval-start", "--deadline", "--duration", "--interval"},
+	runner.EvidenceProcClosure:        {"--registration", "--interval-start", "--deadline", "--interval-ref"},
 	runner.EvidencePublicationJournal: {"--interval-ref"},
 	runner.EvidenceTransientWatch:     {"--interval-ref", "--duration"},
 	runner.EvidenceNetCanary:          {"--phase", "--interval"},
@@ -201,7 +214,13 @@ type evidenceEnv struct {
 	// capture and monitor observe it (procoracle.Capture and StartMonitor). monitor calls ready
 	// with its first poll before it polls on.
 	capture func(c evidenceCell, reg procoracle.Registration, p procoracle.Point, seq int) (procoracle.Snapshot, error)
-	monitor func(ctx context.Context, c evidenceCell, reg procoracle.Registration, d, interval time.Duration, ready func(procoracle.Snapshot)) ([]procoracle.Snapshot, error)
+	// stop delivers a valid host stop request (D49); the monitor then ends at once and returns the request it obeyed.
+	monitor func(ctx context.Context, c evidenceCell, reg procoracle.Registration, d, interval time.Duration, ready func(procoracle.Snapshot),
+		stop <-chan procoracle.MonitorStopRequest) ([]procoracle.Snapshot, *procoracle.MonitorStopRequest, error)
+	// cellChildren counts the command cgroups below the registered cells cgroup; netnsHeld says whether any of the network
+	// namespaces (nsfs inodes) is still held by a process or a mount. Both are proc-closure's.
+	cellChildren func(c evidenceCell) (int, error)
+	netnsHeld    func(inodes []uint64) (bool, error)
 	// lockMonitor admits one monitor at a time; the release function frees it.
 	lockMonitor func() (release func(), err error)
 	// lockTransient admits one transient-watch at a time; watch is the effectoracle observer over root (it calls ready
@@ -224,6 +243,7 @@ func productionEvidenceEnv() evidenceEnv {
 	return evidenceEnv{
 		geteuid: os.Geteuid, getenv: os.Getenv, snapshotDir: wsoracle.SnapshotDir, pinRoot: pinRegisteredLiveRoot,
 		cell: loadEvidenceCell, capture: captureEvidenceCell, monitor: monitorEvidenceCell, readTrace: readEvidenceTrace,
+		cellChildren: listCellChildren, netnsHeld: hostNetnsHeld,
 		lockMonitor: func() (func(), error) { return lockEvidenceMonitorFile(evidenceMonitorLockPath, evidenceRequiredUID) },
 		netCanary:   sendNetsinkCanary, netJournal: readNetsinkJournal,
 		lockTransient: func() (func(), error) { return lockEvidenceMonitorFile(evidenceTransientLockPath, evidenceRequiredUID) },
@@ -320,6 +340,8 @@ func runEvidence(ctx context.Context, args []string, stdout io.Writer, env evide
 		doc, err = evidenceProcCapture(ctx, env, flags)
 	case runner.EvidenceProcMonitor:
 		doc, err = evidenceProcMonitor(ctx, env, flags, stdout)
+	case runner.EvidenceProcClosure:
+		doc, err = evidenceProcClosure(ctx, env, flags)
 	case runner.EvidencePublicationJournal:
 		doc, err = evidencePublicationJournal(env, flags["--interval-ref"])
 	case runner.EvidenceTransientWatch:
@@ -513,15 +535,29 @@ func evidenceProcMonitor(ctx context.Context, env evidenceEnv, f map[string]stri
 		return procoracle.MonitorDoc{}, fmt.Errorf("proc-monitor refused: %w", err)
 	}
 	defer release()
+	// The host may end the monitor on proof with one stop line on stdin. Anything else on stdin (an end of input, a
+	// malformed or extra line) is not a stop: the monitor keeps its horizon.
+	stopCh := make(chan procoracle.MonitorStopRequest, 1)
+	if env.stdin != nil {
+		go func() {
+			line, err := bufio.NewReader(io.LimitReader(env.stdin, 512)).ReadString(0x0a)
+			if err != nil {
+				return
+			}
+			if req, perr := procoracle.ParseMonitorStopLine(line); perr == nil {
+				stopCh <- req
+			}
+		}()
+	}
 	var readyErr error
-	polls, err := env.monitor(ctx, cell, reg, time.Duration(seconds)*time.Second, time.Duration(millis)*time.Millisecond, func(first procoracle.Snapshot) {
+	polls, stopped, err := env.monitor(ctx, cell, reg, time.Duration(seconds)*time.Second, time.Duration(millis)*time.Millisecond, func(first procoracle.Snapshot) {
 		line, err := json.Marshal(procoracle.MonitorReadyDoc{Schema: runner.EvidenceSchema, Kind: procoracle.MonitorReadyKind,
 			RegistrationDigest: reg.Digest(), FirstPollSeq: first.Seq, FirstPollAt: first.ObservedAt})
 		if err == nil {
 			_, err = stdout.Write(append(line, '\n'))
 		}
 		readyErr = err
-	})
+	}, stopCh)
 	switch {
 	case err != nil:
 		return procoracle.MonitorDoc{}, err
@@ -530,8 +566,17 @@ func evidenceProcMonitor(ctx context.Context, env evidenceEnv, f map[string]stri
 	case len(polls) == 0 || len(polls) > evidenceMaxMonitorSamples:
 		return procoracle.MonitorDoc{}, fmt.Errorf("the monitor kept %d polls, want 1..%d", len(polls), evidenceMaxMonitorSamples)
 	}
+	last := polls[len(polls)-1].ObservedAt
+	stoppedAt := time.Now().UTC()
+	if stoppedAt.Before(last) {
+		stoppedAt = last
+	}
 	doc := procoracle.MonitorDoc{Schema: runner.EvidenceSchema, Kind: runner.EvidenceProcMonitor,
-		RegistrationDigest: reg.Digest(), Polls: polls}
+		RegistrationDigest: reg.Digest(), Polls: polls,
+		Stop: procoracle.MonitorStop{Reason: procoracle.StopHorizon, FirstPollAt: polls[0].ObservedAt, LastPollAt: last, StoppedAt: stoppedAt}}
+	if stopped != nil {
+		doc.Stop.Reason, doc.Stop.ClosureDigest, doc.Stop.RunID = procoracle.StopClosedOnProof, stopped.ClosureDigest, stopped.RunID
+	}
 	if encoded, err := json.Marshal(doc); err != nil || len(encoded) > evidenceMaxMonitorBytes {
 		return procoracle.MonitorDoc{}, fmt.Errorf("the monitor record is %d bytes (cap %d)", len(encoded), evidenceMaxMonitorBytes)
 	}
@@ -622,16 +667,17 @@ func captureEvidenceCell(c evidenceCell, reg procoracle.Registration, p procorac
 		Point: p, Seq: seq, Registration: reg, Registry: evidenceRegistry()}), nil
 }
 
-func monitorEvidenceCell(ctx context.Context, c evidenceCell, reg procoracle.Registration, d, interval time.Duration, ready func(procoracle.Snapshot)) ([]procoracle.Snapshot, error) {
+func monitorEvidenceCell(ctx context.Context, c evidenceCell, reg procoracle.Registration, d, interval time.Duration, ready func(procoracle.Snapshot),
+	stop <-chan procoracle.MonitorStopRequest) ([]procoracle.Snapshot, *procoracle.MonitorStopRequest, error) {
 	dir, err := openEvidenceCellDir(c.CgroupPath)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer dir.Close()
 	m, err := procoracle.StartMonitor(procoracle.HeldCell(dir), procoracle.HostProc(), procoracle.MonitorConfig{
 		Registration: reg, Interval: interval, Registry: evidenceRegistry, MaxRecords: evidenceMaxMonitorSamples})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	// StartMonitor took the first poll synchronously: say so before polling on.
 	ready(m.Records()[0])
@@ -639,9 +685,14 @@ func monitorEvidenceCell(ctx context.Context, c evidenceCell, reg procoracle.Reg
 	defer timer.Stop()
 	select {
 	case <-timer.C:
+		return m.Stop(), nil, nil
+	case req := <-stop:
+		return m.Stop(), &req, nil
 	case <-ctx.Done():
+		// A signal is not the horizon: a record cut short must not be taken for a complete one.
+		m.Stop()
+		return nil, nil, ctx.Err()
 	}
-	return m.Stop(), nil
 }
 
 // readEvidenceTrace verifies an audit journal read-only: no lock, no create, no follow.

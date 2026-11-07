@@ -50,6 +50,7 @@ type evTestEnv struct {
 	locks      int // monitor locks currently held
 	lockErr    error
 	nPolls     int         // polls the fake monitor returns (default 1)
+	awaitStop  bool        // the fake monitor waits (briefly) for a stop request before it reaches its horizon
 	canaries   [][2]string // (phase, tag) of every canary the fake sink was asked to journal
 	canaryErr  error
 	netJournal []byte
@@ -74,7 +75,10 @@ func newEvTestEnv(uid int) *evTestEnv {
 			return procoracle.Snapshot{Seq: seq, Point: p, RegistrationDigest: reg.Digest(), CellPath: c.Hierarchy, CellInode: c.Inode,
 				IdentityScanned: true, ScannedPIDs: 3, Registry: procoracle.Registry{Recorded: true}, ObservedAt: time.Unix(1_700_000_003, 0).UTC()}, nil
 		},
-		monitor: func(_ context.Context, c evidenceCell, reg procoracle.Registration, d, interval time.Duration, ready func(procoracle.Snapshot)) ([]procoracle.Snapshot, error) {
+		cellChildren: func(evidenceCell) (int, error) { return 0, nil },
+		netnsHeld:    func([]uint64) (bool, error) { return false, nil },
+		monitor: func(_ context.Context, c evidenceCell, reg procoracle.Registration, d, interval time.Duration, ready func(procoracle.Snapshot),
+			stop <-chan procoracle.MonitorStopRequest) ([]procoracle.Snapshot, *procoracle.MonitorStopRequest, error) {
 			e.monitors++
 			n := max(e.nPolls, 1)
 			polls := make([]procoracle.Snapshot, n)
@@ -83,7 +87,14 @@ func newEvTestEnv(uid int) *evTestEnv {
 					IdentityScanned: true, ScannedPIDs: 3, Registry: procoracle.Registry{Recorded: true}, ObservedAt: time.Unix(1_700_000_001, 0).UTC()}
 			}
 			ready(polls[0])
-			return polls, nil
+			if e.awaitStop {
+				select {
+				case req := <-stop:
+					return polls, &req, nil
+				case <-time.After(300 * time.Millisecond): // the fake's horizon
+				}
+			}
+			return polls, nil, nil
 		},
 		lockMonitor: func() (func(), error) {
 			if e.lockErr != nil {
