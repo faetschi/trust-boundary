@@ -265,7 +265,7 @@ func (b *Broker) ExchangeWithCompletionLimit(ctx context.Context, completionLimi
 		if response != nil && response.Body != nil {
 			_ = response.Body.Close()
 		}
-		return openrouter.CapturedResponse{}, b.failLocked(recordIndex, fmt.Errorf("OpenRouter transport failed: %w", doErr))
+		return openrouter.CapturedResponse{}, b.failLocked(recordIndex, fmt.Errorf("provider transport failed: %w", doErr))
 	}
 	if response == nil {
 		return openrouter.CapturedResponse{}, b.failLocked(recordIndex, errors.New("OpenRouter transport returned a nil response"))
@@ -306,7 +306,7 @@ func (b *Broker) ExchangeWithCompletionLimit(ctx context.Context, completionLimi
 	b.recorded += uint64(len(responseBody))
 	record.responseComplete = (readErr == nil || errors.Is(readErr, errEmptyResponse)) && closeErr == nil
 	if readErr != nil {
-		return openrouter.CapturedResponse{}, b.failLocked(recordIndex, fmt.Errorf("read OpenRouter response: %w", readErr))
+		return openrouter.CapturedResponse{}, b.failLocked(recordIndex, fmt.Errorf("read provider response: %w", readErr))
 	}
 	if closeErr != nil {
 		return openrouter.CapturedResponse{}, b.failLocked(recordIndex, fmt.Errorf("close OpenRouter response: %w", closeErr))
