@@ -76,6 +76,7 @@ func (p plan) collectorsOver(ev runner.Transport) runner.CollectorSet {
 		CellGID:         p.cfg.Proc.CellGID,
 		MonitorDuration: time.Duration(p.cfg.Proc.MonitorSeconds) * time.Second,
 		TeardownGrace:   time.Duration(p.cfg.Proc.TeardownGraceSecs) * time.Second,
+		DrainGrace:      time.Duration(p.cfg.Proc.DrainGraceSecs) * time.Second,
 		Policy:          procoracle.Policy{AuthorizedSockets: p.cfg.Proc.AuthorizedSockets},
 		InitLingers:     p.initLingers,
 	}
@@ -83,6 +84,8 @@ func (p plan) collectorsOver(ev runner.Transport) runner.CollectorSet {
 	transient := &runner.TransientCollector{Client: runner.EvidenceClient{Transport: ev}, Duration: time.Duration(p.cfg.Proc.MonitorSeconds) * time.Second}
 	// The NET interval documents are kept next to the journal: their tags are drawn per interval and live nowhere else.
 	net := netoracle.NewCollector(ev)
+	// D49: the NET window ends after the PROC collector's proof plus the drain grace, or at the original horizon.
+	net.Gate = proc
 	if p.cfg.RunDir != "" {
 		net.RetainDir = filepath.Join(p.cfg.RunDir, "net-evidence")
 	}

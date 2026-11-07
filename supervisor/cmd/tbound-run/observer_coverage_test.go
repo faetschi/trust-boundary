@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -91,6 +92,8 @@ type obsFixture struct {
 	pubJournal runner.PublicationJournalDoc
 	receipt    map[string]any
 	release    chan struct{}
+	// early: D49 early close is on. The monitor then ends on the host's stop line, not at the request's end.
+	early bool
 }
 
 func newObsFixture(t *testing.T, published bool) *obsFixture {
@@ -134,6 +137,12 @@ func newObsFixture(t *testing.T, published bool) *obsFixture {
 	}
 	t.Cleanup(func() { _ = f.sink.Close() })
 	return f
+}
+
+func (f *obsFixture) snapshotCalls() [][]string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([][]string(nil), f.calls...)
 }
 
 func (f *obsFixture) record(argv []string) {
@@ -347,7 +356,9 @@ func (c obsClient) Run(_ context.Context, argv []string) ([]byte, []byte, int, e
 	if err != nil {
 		return nil, nil, 0, err
 	}
-	close(c.f.release) // the request is over: the watcher's time is up
+	if !c.f.early {
+		close(c.f.release) // the request is over: the watcher's time is up
+	}
 	return append(line, '\n'), nil, 0, nil
 }
 
@@ -411,7 +422,7 @@ func (e obsEvidence) RunReadyStdin(ctx context.Context, argv []string, stdin io.
 			JournalB64: base64.StdEncoding.EncodeToString(iv.Journal), Head: iv.Head, Count: iv.Count, StartSeq: iv.StartSeq, EndSeq: iv.EndSeq})
 	case runner.EvidenceProcCell:
 		return obsReply(obsCell)
-	case runner.EvidenceProcMonitor, runner.EvidenceProcCapture:
+	case runner.EvidenceProcMonitor, runner.EvidenceProcCapture, runner.EvidenceProcClosure:
 		start, err1 := procoracle.ParseInstantArg(flags["--interval-start"])
 		deadline, err2 := procoracle.ParseInstantArg(flags["--deadline"])
 		if err1 != nil || err2 != nil {
@@ -433,23 +444,56 @@ func (e obsEvidence) RunReadyStdin(ctx context.Context, argv []string, stdin io.
 			s.Seq, s.Point, s.ObservedAt = seq, p, obsT0.Add(time.Duration(2+seq)*time.Second)
 			return obsReply(procoracle.CaptureDoc{Schema: runner.EvidenceSchema, Kind: runner.EvidenceProcCapture, Point: p, RegistrationDigest: reg.Digest(), Snapshot: s})
 		}
+		if argv[0] == runner.EvidenceProcClosure {
+			scan := base
+			scan.Seq, scan.Point, scan.ObservedAt = 1, procoracle.PointInterval, obsT0.Add(5*time.Second)
+			cmd := procoracle.CommandSettlement{LeaseID: "lease-obs", ReceiptDigest: strings.Repeat("a", 64), NetworkNSInode: 4026532001,
+				ContainerExitInspected: true, FinalCommandProofRead: true, PodmanWaitCompleted: true, OutputWritersDrained: true,
+				ContainerRemoved: true, LeaderPidfdExited: true, CgroupPopulatedZero: true, MountNamespaceReleased: true,
+				CommandOutputWithinBound: true, CommandCgroupRemoved: true}
+			return obsReply(procoracle.ClosureDoc{Schema: runner.EvidenceSchema, Kind: runner.EvidenceProcClosure, IntervalRef: flags["--interval-ref"],
+				RunID: obsRunID, RegistrationDigest: reg.Digest(), ReceiptVerified: true, ReceiptDigest: strings.Repeat("b", 64),
+				ExpectedSettlements: 1, Commands: []procoracle.CommandSettlement{cmd}, NetNSGone: true, Scan: scan})
+		}
 		line, _, _, _ := obsReply(procoracle.MonitorReadyDoc{Schema: runner.EvidenceSchema, Kind: procoracle.MonitorReadyKind,
 			RegistrationDigest: reg.Digest(), FirstPollSeq: 1, FirstPollAt: start.Add(100 * time.Millisecond)})
 		if ready != nil {
 			ready(line)
 		}
+		var stopReq *procoracle.MonitorStopRequest
+		stopCh := make(chan procoracle.MonitorStopRequest, 1)
+		if stdin != nil {
+			go func() {
+				text, _ := bufio.NewReader(stdin).ReadString(0x0a)
+				if r, err := procoracle.ParseMonitorStopLine(text); err == nil {
+					stopCh <- r
+				}
+			}()
+		}
 		select {
 		case <-f.release:
+		case r := <-stopCh:
+			stopReq = &r
 		case <-ctx.Done():
 			return nil, nil, 0, ctx.Err()
 		}
+		last := 30 // a horizon record spans the whole duration the host asked for
+		if stopReq != nil {
+			last = 7
+		}
 		var polls []procoracle.Snapshot
-		for i := 1; i <= 6; i++ {
+		for i := 1; i <= last; i++ {
 			s := base
 			s.Seq, s.Point, s.ObservedAt = i, procoracle.PointMonitor, obsT0.Add(time.Duration(i)*time.Second)
 			polls = append(polls, s)
 		}
-		final, _, _, _ := obsReply(procoracle.MonitorDoc{Schema: runner.EvidenceSchema, Kind: runner.EvidenceProcMonitor, RegistrationDigest: reg.Digest(), Polls: polls})
+		doc := procoracle.MonitorDoc{Schema: runner.EvidenceSchema, Kind: runner.EvidenceProcMonitor, RegistrationDigest: reg.Digest(), Polls: polls,
+			Stop: procoracle.MonitorStop{Reason: procoracle.StopHorizon, FirstPollAt: polls[0].ObservedAt, LastPollAt: polls[len(polls)-1].ObservedAt,
+				StoppedAt: polls[len(polls)-1].ObservedAt}}
+		if stopReq != nil {
+			doc.Stop.Reason, doc.Stop.ClosureDigest, doc.Stop.RunID = procoracle.StopClosedOnProof, stopReq.ClosureDigest, stopReq.RunID
+		}
+		final, _, _, _ := obsReply(doc)
 		return append(line, final...), nil, 0, nil
 	case "transient-watch":
 		return e.transientWatch(ctx, flags, stdin, ready)
@@ -531,6 +575,9 @@ func (f *obsFixture) execute(t *testing.T) runner.Outcome {
 func (f *obsFixture) executeErr(t *testing.T) (runner.Outcome, error) {
 	t.Helper()
 	p := plan{cfg: runConfig{Proc: procConfig{CellUID: 1000, CellGID: 1000, MonitorSeconds: 30, TeardownGraceSecs: 1}}}
+	if f.early {
+		p.cfg.Proc.DrainGraceSecs = 1
+	}
 	collectors := p.collectorsOver(obsEvidence{f})
 	if err := collectors.Validate(); err != nil {
 		t.Fatalf("collectors: %v", err)
@@ -560,6 +607,29 @@ func coverage(o runner.Outcome) bool {
 	v := runner.AdvView{CaseID: "obs-case", Attempt: 1, Class: evalcorpus.ClassTMA, Predicate: "EFF-WS-01", WitnessID: "w-obs",
 		Trajectory: &o, StaticC: &o, AdaptiveC: &o}
 	return runner.Config{}.AssembleAdversarial(v).Record.ObserverCoverageComplete
+}
+
+// D49: with the early close on, the interval ends on the proof (the monitor is stopped by the host, never released by a
+// timer) and every oracle reference, PROC included, is still there.
+func TestObserverCoverageEarlyCloseEndsOnProofAndKeepsEveryOracleReference(t *testing.T) {
+	f := newObsFixture(t, false)
+	f.early = true
+	o := f.execute(t)
+	for _, k := range []string{runner.OracleNet01, runner.OracleProc01, runner.OracleProc02, runner.OracleProc03, runner.OracleTransient} {
+		if o.Oracles[k] != runner.FindingNone || o.OracleRefs[k].Report == "" {
+			t.Errorf("%s = %q ref %+v, want none with a report reference", k, o.Oracles[k], o.OracleRefs[k])
+		}
+	}
+	asked := false
+	for _, a := range f.snapshotCalls() {
+		asked = asked || a[0] == runner.EvidenceProcClosure
+	}
+	if !asked {
+		t.Fatal("no closure document was asked for")
+	}
+	if !coverage(o) {
+		t.Fatalf("observer_coverage_complete is false after an early close; oracles %v", o.Oracles)
+	}
 }
 
 func TestObserverCoverageIsCompleteForAnIntervalWithoutPublication(t *testing.T) {

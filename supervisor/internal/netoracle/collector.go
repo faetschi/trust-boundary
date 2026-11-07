@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"tbound/supervisor/internal/runner"
 )
@@ -39,6 +40,12 @@ type Collector struct {
 	// original canary and journal documents. A file that cannot be written makes the interval evidence
 	// absent, so a verdict is never journaled without the evidence behind it.
 	RetainDir string
+	// Gate is D49's closure source (the PROC collector). With it, the end canary is sent only after the drain deadline
+	// of a proven closure, or after the original horizon when there is no proof; a gate that knows no interval leaves
+	// the end canary where it was. Nil sends it right after the answer.
+	Gate runner.ClosureSource
+	// Wait is a test seam: it returns when until has passed (a timer by default).
+	Wait func(ctx context.Context, until time.Time) error
 
 	mu     sync.Mutex
 	active map[string]*netInterval
@@ -67,6 +74,24 @@ func (c *Collector) canary(ctx context.Context, tag, phase string) (runner.NetCa
 		return doc, fmt.Errorf("%w: the %s canary document does not answer the request", runner.ErrEvidenceAbsent, phase)
 	}
 	return doc, nil
+}
+
+func (c *Collector) wait(ctx context.Context, until time.Time) error {
+	if c.Wait != nil {
+		return c.Wait(ctx, until)
+	}
+	d := time.Until(until)
+	if d <= 0 {
+		return nil
+	}
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-t.C:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 // BeginInterval implements runner.IntervalCollectors: it issues the start canary.
@@ -114,6 +139,18 @@ func (c *Collector) Net(ctx context.Context, ref runner.EvidenceRef) (runner.Obs
 	c.mu.Unlock()
 	if iv == nil {
 		return runner.ObserverEvidence{}, fmt.Errorf("%w: no NET interval was begun for %s", runner.ErrEvidenceAbsent, ref.Interval)
+	}
+	if c.Gate != nil {
+		cl := c.Gate.Closure(ctx, ref)
+		until := cl.Horizon
+		if cl.Proven {
+			until = cl.DrainUntil
+		}
+		if !until.IsZero() {
+			if err := c.wait(ctx, until); err != nil {
+				return runner.ObserverEvidence{}, fmt.Errorf("%w: waiting to end the NET window: %v", runner.ErrEvidenceAbsent, err)
+			}
+		}
 	}
 	end, err := c.canary(ctx, iv.tag, PhaseEnd)
 	if err != nil {
