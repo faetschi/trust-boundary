@@ -3,16 +3,22 @@ package openrouter
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -345,3 +351,121 @@ func TestWithTestTransportIsRefusedOutsideATestBinaryAndKeepsTheEndpointChecks(t
 		t.Fatal("a request for another URL was sent through the test transport")
 	}
 }
+
+func TestTransportFailureClass(t *testing.T) {
+	endpoint := "https://api.provider.test/v1/chat"
+	wrap := func(cause error) error {
+		return &url.Error{Op: http.MethodPost, URL: endpoint, Err: &net.OpError{Op: "dial", Net: "tcp", Err: cause}}
+	}
+	cases := []struct {
+		name  string
+		cause error
+		want  string
+	}{
+		{"dns lookup failure", &net.DNSError{Err: "no such host", Name: "api.provider.test", IsNotFound: true}, "dns"},
+		{"dns lookup timeout is a timeout", &net.DNSError{Err: "i/o timeout", Name: "api.provider.test", IsTimeout: true}, "timeout"},
+		{"context deadline", context.DeadlineExceeded, "timeout"},
+		{"dial deadline", os.ErrDeadlineExceeded, "timeout"},
+		{"winsock timed out", syscall.Errno(10060), "timeout"},
+		{"context canceled", context.Canceled, "canceled"},
+		{"connection reset", syscall.ECONNRESET, "connection_reset"},
+		{"connection refused", syscall.ECONNREFUSED, "connection_refused"},
+		{"connection aborted", syscall.ECONNABORTED, "connection_reset"},
+		{"network unreachable", syscall.ENETUNREACH, "unreachable"},
+		{"host unreachable", syscall.EHOSTUNREACH, "unreachable"},
+		{"winsock aborted", syscall.Errno(10053), "connection_reset"},
+		{"winsock net unreachable", syscall.Errno(10051), "unreachable"},
+		{"broken pipe", syscall.EPIPE, "connection_reset"},
+		{"winsock reset", syscall.Errno(10054), "connection_reset"},
+		{"winsock refused", syscall.Errno(10061), "connection_refused"},
+		{"unexpected EOF", io.ErrUnexpectedEOF, "connection_reset"},
+		{"EOF", io.EOF, "connection_reset"},
+		{"TLS record header", tls.RecordHeaderError{Msg: "first record does not look like a TLS handshake"}, "tls"},
+		{"TLS alert", tls.AlertError(40), "tls"},
+		{"certificate verification", &tls.CertificateVerificationError{Err: x509.CertificateInvalidError{Reason: x509.Expired}}, "tls"},
+		{"x509 unknown authority", x509.UnknownAuthorityError{}, "tls"},
+		{"x509 hostname mismatch", x509.HostnameError{Certificate: &x509.Certificate{}, Host: "api.provider.test"}, "tls"},
+		{"unclassified", errors.New("unclassified"), "other"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := transportFailureClass(wrap(tc.cause)); got != tc.want {
+				t.Fatalf("class = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestHTTPDoerClassifiesResponseHeaderTimeout(t *testing.T) {
+	release := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, request *http.Request) {
+		select {
+		case <-release:
+		case <-request.Context().Done():
+		}
+	}))
+	defer server.Close()
+	defer close(release)
+	doer, err := newHTTPDoer(func() (string, error) { return "test-key-123", nil }, time.Minute, server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := doer.WithTestTransport(&http.Transport{ResponseHeaderTimeout: 20 * time.Millisecond}); err != nil {
+		t.Fatal(err)
+	}
+	response, err := doer.Do(testRequest(t, server.URL))
+	if response != nil && response.Body != nil {
+		_ = response.Body.Close()
+	}
+	if err == nil || err.Error() != "provider HTTP request failed: timeout" {
+		t.Fatalf("response header timeout error = %v", err)
+	}
+	if strings.Contains(err.Error(), server.URL) {
+		t.Fatal("transport error contains the endpoint")
+	}
+}
+
+func TestHTTPDoerClassifiesRefusedConnection(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	address := listener.Addr().String()
+	if err := listener.Close(); err != nil {
+		t.Fatal(err)
+	}
+	endpoint := "http://" + address
+	doer, err := newHTTPDoer(func() (string, error) { return "test-key-123", nil }, time.Second, endpoint)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := doer.Do(testRequest(t, endpoint))
+	if response != nil && response.Body != nil {
+		_ = response.Body.Close()
+	}
+	// Linux returns ECONNREFUSED and Windows WSAECONNREFUSED for a closed loopback port. connection_refused
+	// groups both: each fails at the connection, before any response exists.
+	if err == nil || err.Error() != "provider HTTP request failed: connection_refused" {
+		t.Fatalf("refused connection error = %v", err)
+	}
+	if strings.Contains(err.Error(), address) {
+		t.Fatal("transport error contains the endpoint")
+	}
+}
+
+func TestBodyReadFailureIsReportedAsItsClassOnly(t *testing.T) {
+	body := &redactingReadCloser{
+		reader: &redactingReader{
+			source: failingReader{&net.OpError{Op: "read", Net: "tcp", Err: syscall.ECONNRESET}},
+			secret: []byte("test-key-123"),
+		},
+		closer: io.NopCloser(strings.NewReader("")),
+	}
+	if _, err := io.ReadAll(body); err == nil || err.Error() != "connection_reset" {
+		t.Fatalf("body read error = %v, want the connection_reset class", err)
+	}
+}
+
+type failingReader struct{ err error }
+
+func (r failingReader) Read([]byte) (int, error) { return 0, r.err }

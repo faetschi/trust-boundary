@@ -305,7 +305,7 @@ func TestTransportFailureIsRecordedAndClosesBroker(t *testing.T) {
 	if _, err := broker.Exchange(context.Background()); err == nil || !strings.Contains(err.Error(), "offline") {
 		t.Fatalf("transport failure was not returned: %v", err)
 	}
-	if records := broker.Records(); len(records) != 1 || records[0].Request().URL() != openrouter.Endpoint || records[0].HasResponse() || records[0].Failure() == "" {
+	if records := broker.Records(); len(records) != 1 || records[0].Request().URL() != openrouter.Endpoint || records[0].HasResponse() || records[0].Failure() != "provider transport failed: offline" {
 		t.Fatalf("failed request was not recorded: %+v", records)
 	}
 	if _, err := broker.Exchange(context.Background()); err == nil || len(doer.requests) != 1 {
