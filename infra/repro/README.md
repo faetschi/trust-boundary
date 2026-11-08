@@ -58,6 +58,17 @@ for a dedicated disposable evaluation machine after reviewing the script.
 Without `TBOUND_APPLY_USERNS_SYSCTL=1`, an unattended run on a host that restricts
 user namespaces stops before changing that policy.
 
+Before you run it on a host that is not a fresh machine:
+
+- uid 995 and gid 986 (the `tbound-pi` service,
+  `supervisor/internal/guestevidence/capability.go`) and uid 1000 must be free.
+- Keep the signing keys in a separate account or on a separate machine, not on
+  the host the bootstrap provisions.
+- There is no native-Linux equivalent of a Hyper-V checkpoint. Take a disk
+  image or snapshot of your choice (LVM, btrfs, a cloud or hypervisor
+  snapshot) before you start, to return to a known state. That is the
+  operator's responsibility; the scripts do not make one.
+
 What it does, in order, and what each step verifies:
 
 1. **Trial account and subordinate ID ranges** — verifies or creates the

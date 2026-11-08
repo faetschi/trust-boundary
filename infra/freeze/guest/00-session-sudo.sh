@@ -23,7 +23,7 @@ MODE=${1:-}
 case "$MODE" in open|close|status) ;; *) die "usage: bash 00-session-sudo.sh open|close|status";; esac
 
 DROPIN=/etc/sudoers.d/91-tbound-$FREEZE_LC-session
-LINE='tboundadmin ALL=(ALL) NOPASSWD: ALL'
+LINE="$GADMIN ALL=(ALL) NOPASSWD: ALL"
 
 # Password-sudo transport: the password goes on the stdin of the ssh session, the command reads it with -S and no prompt.
 need_pw() { [ -n "${TBA_PW:-}" ] || die "TBA_PW is not set (read -rs TBA_PW; export TBA_PW)"; }
@@ -51,7 +51,7 @@ narrow_report() { # prints the facts; returns 0 if narrowed
   return "$rc"
 }
 
-eq "ssh identity" "$(G 'id -un' | tr -d '\r')" tboundadmin
+eq "ssh identity" "$(G 'id -un' | tr -d '\r')" "$GADMIN"
 echo "guest: $(G 'hostname; uname -r; date -u +%FT%TZ' | tr -d '\r' | tr '\n' ' ')"
 echo "operator: ${SUDO_USER:-$(id -un)} mode=$MODE"
 
