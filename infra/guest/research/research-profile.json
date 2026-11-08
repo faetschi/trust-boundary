@@ -21,7 +21,7 @@
   "max_requests_per_unit": 17,
   "temperature_milli": 0,
   "seed": 20261108,
-  "reasoning": {"enabled": true},
+  "reasoning": {"effort": "high"},
   "timeout_ms": 90000,
   "frozen_at": null
 }
