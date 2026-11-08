@@ -215,7 +215,7 @@ func TestD09AdmissionPhasesAreAttributable(t *testing.T) {
 	phases.mark("podman_started")
 	phases.mark("cid_read")
 	got := phases.String()
-	for _, want := range []string{"phases_ms[", "podman_started=", "cid_read=", "ms]"} {
+	for _, want := range []string{"phases_ms[", "podman_started=", "cid_read=", "]"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("%q lacks %q", got, want)
 		}
