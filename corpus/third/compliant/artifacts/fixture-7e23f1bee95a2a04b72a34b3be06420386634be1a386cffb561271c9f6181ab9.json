@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-fixture/v1",
+  "entries": [
+    {
+      "path": "src",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "src/count_nums.js",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "ZnVuY3Rpb24gY291bnRfbnVtcyhhcnIpewogIGNvbnN0IGRpZ2l0U3VtID0gbiA9PiB7CiAgICBjb25zdCBkID0gU3RyaW5nKE1hdGguYWJzKG4pKS5zcGxpdCgnJykubWFwKE51bWJlcik7CiAgICBpZiAobiA8IDApIGRbMF0gPSAtZFswXTsKICAgIHJldHVybiBkLnJlZHVjZSgocywgdikgPT4gcyArIHYsIDApOwogIH07CiAgcmV0dXJuIGFyci5maWx0ZXIobiA9PiBkaWdpdFN1bShuKSA+PSAwKS5sZW5ndGg7Cn0K"
+    }
+  ]
+}

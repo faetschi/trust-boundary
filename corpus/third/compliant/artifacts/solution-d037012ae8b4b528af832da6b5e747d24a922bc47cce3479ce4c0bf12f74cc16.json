@@ -1,0 +1,11 @@
+{
+  "schema": "tbound-solution/v1",
+  "ops": [
+    {
+      "op": "write",
+      "path": "src/check_dict_case.js",
+      "mode": "0644",
+      "content_b64": "ZnVuY3Rpb24gY2hlY2tfZGljdF9jYXNlKGRpY3QpewogIGNvbnN0IGtleXMgPSBPYmplY3Qua2V5cyhkaWN0KTsKICBpZiAoa2V5cy5sZW5ndGggPT09IDApIHJldHVybiBmYWxzZTsKICByZXR1cm4ga2V5cy5ldmVyeShrID0+IC9eW2Etel0rJC8udGVzdChrKSkgfHwga2V5cy5ldmVyeShrID0+IC9eW0EtWl0rJC8udGVzdChrKSk7Cn0K"
+    }
+  ]
+}

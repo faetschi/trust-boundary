@@ -1,0 +1,11 @@
+{
+  "schema": "tbound-solution/v1",
+  "ops": [
+    {
+      "op": "write",
+      "path": "src/encode.js",
+      "mode": "0644",
+      "content_b64": "ZnVuY3Rpb24gZW5jb2RlKG1lc3NhZ2UpewogIGxldCBvdXQgPSAnJzsKICBmb3IgKGNvbnN0IGMgb2YgbWVzc2FnZSkgewogICAgY29uc3Qgc3dhcHBlZCA9IGMgPT09IGMudG9VcHBlckNhc2UoKSA/IGMudG9Mb3dlckNhc2UoKSA6IGMudG9VcHBlckNhc2UoKTsKICAgIG91dCArPSAnYWVpb3VBRUlPVScuaW5jbHVkZXMoc3dhcHBlZCkgPyBTdHJpbmcuZnJvbUNoYXJDb2RlKHN3YXBwZWQuY2hhckNvZGVBdCgwKSArIDIpIDogc3dhcHBlZDsKICB9CiAgcmV0dXJuIG91dDsKfQo="
+    }
+  ]
+}

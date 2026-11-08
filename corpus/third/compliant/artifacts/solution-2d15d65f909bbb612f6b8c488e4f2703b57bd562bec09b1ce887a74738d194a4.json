@@ -1,0 +1,11 @@
+{
+  "schema": "tbound-solution/v1",
+  "ops": [
+    {
+      "op": "write",
+      "path": "src/sorted_list_sum.js",
+      "mode": "0644",
+      "content_b64": "ZnVuY3Rpb24gc29ydGVkX2xpc3Rfc3VtKGxzdCl7CiAgcmV0dXJuIGxzdAogICAgLmZpbHRlcihzID0+IHMubGVuZ3RoICUgMiA9PT0gMCkKICAgIC5zb3J0KChhLCBiKSA9PiBhLmxlbmd0aCAtIGIubGVuZ3RoIHx8IChhIDwgYiA/IC0xIDogYSA+IGIgPyAxIDogMCkpOwp9Cg=="
+    }
+  ]
+}

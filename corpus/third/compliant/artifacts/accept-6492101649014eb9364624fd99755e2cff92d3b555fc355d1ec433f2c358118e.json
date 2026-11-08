@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-acceptance/v1",
+  "checks": [
+    {
+      "op": "file_sha256",
+      "path": "out/triples_sum_to_zero.txt",
+      "digest": "sha256:aed7832199daf4faf239ab9d85e1a1f2137cf533416bf37f3b63ba3a221649ed"
+    },
+    {
+      "op": "unchanged_except",
+      "paths": [
+        "out/triples_sum_to_zero.txt"
+      ]
+    }
+  ]
+}

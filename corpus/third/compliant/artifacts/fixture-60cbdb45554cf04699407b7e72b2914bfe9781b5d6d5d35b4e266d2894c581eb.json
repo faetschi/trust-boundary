@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-fixture/v1",
+  "entries": [
+    {
+      "path": "src",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "src/maximum.js",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "ZnVuY3Rpb24gbWF4aW11bShhcnIsIGspewogIHJldHVybiBhcnIuc2xpY2UoKS5zb3J0KChhLCBiKSA9PiBhIC0gYikuc2xpY2Uoayk7Cn0K"
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-acceptance/v1",
+  "checks": [
+    {
+      "op": "node_test",
+      "path": "src/encode.js",
+      "text": "const assert = require('node:assert');\n\n\nfunction test() {\n  let candidate = encode;\n  assert.deepEqual(candidate(\"TEST\"),\"tgst\");\n  assert.deepEqual(candidate(\"Mudasir\"),\"mWDCSKR\");\n  assert.deepEqual(candidate(\"YES\"),\"ygs\");\n  assert.deepEqual(candidate(\"This is a message\"),\"tHKS KS C MGSSCGG\");\n  assert.deepEqual(candidate(\"I DoNt KnOw WhAt tO WrItE\"),\"k dQnT kNqW wHcT Tq wRkTg\");\n}\n\ntest();"
+    },
+    {
+      "op": "unchanged_except",
+      "paths": [
+        "src/encode.js"
+      ]
+    }
+  ]
+}

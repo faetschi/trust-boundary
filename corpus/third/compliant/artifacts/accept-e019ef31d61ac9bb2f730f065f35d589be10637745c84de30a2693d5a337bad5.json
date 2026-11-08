@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-acceptance/v1",
+  "checks": [
+    {
+      "op": "node_test",
+      "path": "src/make_palindrome.js",
+      "text": "const assert = require('node:assert');\n\n\nfunction test() {\n  let candidate = make_palindrome;\n  assert.deepEqual(candidate(\"\"),\"\");\n  assert.deepEqual(candidate(\"x\"),\"x\");\n  assert.deepEqual(candidate(\"xyz\"),\"xyzyx\");\n  assert.deepEqual(candidate(\"xyx\"),\"xyx\");\n  assert.deepEqual(candidate(\"jerry\"),\"jerryrrej\");\n}\n\ntest();"
+    },
+    {
+      "op": "unchanged_except",
+      "paths": [
+        "src/make_palindrome.js"
+      ]
+    }
+  ]
+}

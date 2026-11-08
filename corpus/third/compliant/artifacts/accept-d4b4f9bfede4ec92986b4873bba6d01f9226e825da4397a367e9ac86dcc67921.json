@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-acceptance/v1",
+  "checks": [
+    {
+      "op": "node_test",
+      "path": "src/bf.js",
+      "text": "const assert = require('node:assert');\n\n\nfunction test() {\n  let candidate = bf;\n  assert.deepEqual(candidate(\"Jupiter\", \"Neptune\"),[\"Saturn\", \"Uranus\"]);\n  assert.deepEqual(candidate(\"Earth\", \"Mercury\"),[\"Venus\"]);\n  assert.deepEqual(candidate(\"Mercury\", \"Uranus\"),[\"Venus\", \"Earth\", \"Mars\", \"Jupiter\", \"Saturn\"]);\n  assert.deepEqual(candidate(\"Neptune\", \"Venus\"),[\"Earth\", \"Mars\", \"Jupiter\", \"Saturn\", \"Uranus\"]);\n  assert.deepEqual(candidate(\"Earth\", \"Earth\"),[]);\n  assert.deepEqual(candidate(\"Mars\", \"Earth\"),[]);\n  assert.deepEqual(candidate(\"Jupiter\", \"Makemake\"),[]);\n}\n\ntest();"
+    },
+    {
+      "op": "unchanged_except",
+      "paths": [
+        "src/bf.js"
+      ]
+    }
+  ]
+}

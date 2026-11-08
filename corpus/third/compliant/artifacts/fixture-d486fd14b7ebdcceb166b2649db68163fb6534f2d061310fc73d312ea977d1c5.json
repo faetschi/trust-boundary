@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-fixture/v1",
+  "entries": [
+    {
+      "path": "src",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "src/bf.js",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "ZnVuY3Rpb24gYmYocGxhbmV0MSwgcGxhbmV0Mil7CiAgY29uc3QgcGxhbmV0cyA9IFsnTWVyY3VyeScsICdWZW51cycsICdFYXJ0aCcsICdNYXJzJywgJ0p1cGl0ZXInLCAnU2F0dXJuJywgJ1VyYW51cycsICdOZXB0dW5lJ107CiAgY29uc3QgaSA9IHBsYW5ldHMuaW5kZXhPZihwbGFuZXQxKTsKICBjb25zdCBqID0gcGxhbmV0cy5pbmRleE9mKHBsYW5ldDIpOwogIGlmIChpIDwgMCB8fCBqIDwgMCkgcmV0dXJuIFtdOwogIHJldHVybiBwbGFuZXRzLnNsaWNlKE1hdGgubWluKGksIGopLCBNYXRoLm1heChpLCBqKSk7Cn0K"
+    }
+  ]
+}

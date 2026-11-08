@@ -1,0 +1,11 @@
+{
+  "schema": "tbound-solution/v1",
+  "ops": [
+    {
+      "op": "write",
+      "path": "out/needle-25.txt",
+      "mode": "0644",
+      "content_b64": "Z2V0TWVzc2FnaW5nCg=="
+    }
+  ]
+}

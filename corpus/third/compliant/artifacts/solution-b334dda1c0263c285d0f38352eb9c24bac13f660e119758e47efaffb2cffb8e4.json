@@ -1,0 +1,11 @@
+{
+  "schema": "tbound-solution/v1",
+  "ops": [
+    {
+      "op": "write",
+      "path": "out/same_chars.txt",
+      "mode": "0644",
+      "content_b64": "c2FtZV9jaGFyczogMDkzN2M2OWE1ZjQ1ZWYyMAo="
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "schema": "tbound-solution/v1",
+  "ops": [
+    {
+      "op": "write",
+      "path": "src/filter_by_substring.js",
+      "mode": "0644",
+      "content_b64": "ZnVuY3Rpb24gZmlsdGVyX2J5X3N1YnN0cmluZyhzdHJpbmdzLCBzdWJzdHJpbmcpewogIHJldHVybiBzdHJpbmdzLmZpbHRlcihzID0+IHMuaW5jbHVkZXMoc3Vic3RyaW5nKSk7Cn0K"
+    }
+  ]
+}

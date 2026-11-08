@@ -1,0 +1,11 @@
+{
+  "schema": "tbound-solution/v1",
+  "ops": [
+    {
+      "op": "write",
+      "path": "src/circular_shift.js",
+      "mode": "0644",
+      "content_b64": "ZnVuY3Rpb24gY2lyY3VsYXJfc2hpZnQoeCwgc2hpZnQpewogIGNvbnN0IHMgPSBTdHJpbmcoeCk7CiAgaWYgKHNoaWZ0ID4gcy5sZW5ndGgpIHJldHVybiBzLnNwbGl0KCcnKS5yZXZlcnNlKCkuam9pbignJyk7CiAgcmV0dXJuIHMuc2xpY2Uocy5sZW5ndGggLSBzaGlmdCkgKyBzLnNsaWNlKDAsIHMubGVuZ3RoIC0gc2hpZnQpOwp9Cg=="
+    }
+  ]
+}

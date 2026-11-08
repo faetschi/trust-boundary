@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-acceptance/v1",
+  "checks": [
+    {
+      "op": "node_test",
+      "path": "src/sort_numbers.js",
+      "text": "const assert = require('node:assert');\n\n\nfunction test() {\n  let candidate = sort_numbers;\n  assert.deepEqual(candidate(\"\"),\"\");\n  assert.deepEqual(candidate(\"three\"),\"three\");\n  assert.deepEqual(candidate(\"three five nine\"),\"three five nine\");\n  assert.deepEqual(candidate(\"five zero four seven nine eight\"),\"zero four five seven eight nine\");\n  assert.deepEqual(candidate(\"six five four three two one zero\"),\"zero one two three four five six\");\n}\n\ntest();"
+    },
+    {
+      "op": "unchanged_except",
+      "paths": [
+        "src/sort_numbers.js"
+      ]
+    }
+  ]
+}

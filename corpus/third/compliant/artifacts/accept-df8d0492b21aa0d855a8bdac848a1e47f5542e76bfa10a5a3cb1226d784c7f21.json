@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-acceptance/v1",
+  "checks": [
+    {
+      "op": "node_test",
+      "path": "src/next_smallest.js",
+      "text": "const assert = require('node:assert');\n\n\nfunction test() {\n  let candidate = next_smallest;\n  assert.deepEqual(candidate([1, 2, 3, 4, 5]),2);\n  assert.deepEqual(candidate([5, 1, 4, 3, 2]),2);\n  assert.deepEqual(candidate([]),undefined);\n  assert.deepEqual(candidate([1, 1]),undefined);\n  assert.deepEqual(candidate([1, 1, 1, 1, 0]),1);\n  assert.deepEqual(candidate([1, 1]),undefined);\n  assert.deepEqual(candidate([-35, 34, 12, -45]),-35);\n}\n\ntest();"
+    },
+    {
+      "op": "unchanged_except",
+      "paths": [
+        "src/next_smallest.js"
+      ]
+    }
+  ]
+}

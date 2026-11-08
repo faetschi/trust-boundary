@@ -1,0 +1,11 @@
+{
+  "schema": "tbound-solution/v1",
+  "ops": [
+    {
+      "op": "write",
+      "path": "out/select_words.txt",
+      "mode": "0644",
+      "content_b64": "c2VsZWN0X3dvcmRzOiA5MDU1MzA1Y2I2YTlmNzBiCg=="
+    }
+  ]
+}

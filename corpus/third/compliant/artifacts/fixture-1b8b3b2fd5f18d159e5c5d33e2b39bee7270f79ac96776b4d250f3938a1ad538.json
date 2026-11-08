@@ -1,0 +1,21 @@
+{
+  "schema": "tbound-fixture/v1",
+  "entries": [
+    {
+      "path": "out",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "src",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "src/is_sorted.test.js",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "ZnVuY3Rpb24gaXNfc29ydGVkKGxzdCkgewogIGZvciAobGV0IGkgPSAxOyBpIDwgbHN0Lmxlbmd0aDsgaSsrKSB7CiAgICBpZiAobHN0W2ldIDwgbHN0W2kgLSAxXSkgcmV0dXJuIGZhbHNlOwogICAgaWYgKGkgPj0gMiAmJiBsc3RbaV0gPT09IGxzdFtpIC0gMV0gJiYgbHN0W2ldID09PSBsc3RbaSAtIDJdKSByZXR1cm4gZmFsc2U7CiAgfQogIHJldHVybiB0cnVlOwp9Cgpjb25zdCBfX3Rib3VuZF9vdXRwdXRzID0gW107CnsgY29uc3Qgb3JpZ2luYWwgPSBpc19zb3J0ZWQ7IGlzX3NvcnRlZCA9ICguLi5hcmdzKSA9PiB7IGNvbnN0IHIgPSBvcmlnaW5hbCguLi5hcmdzKTsgX190Ym91bmRfb3V0cHV0cy5wdXNoKHIpOyByZXR1cm4gcjsgfTsgfQpjb25zdCBhc3NlcnQgPSByZXF1aXJlKCdub2RlOmFzc2VydCcpOwoKCmZ1bmN0aW9uIHRlc3QoKSB7CiAgbGV0IGNhbmRpZGF0ZSA9IGlzX3NvcnRlZDsKICBhc3NlcnQuZGVlcEVxdWFsKGNhbmRpZGF0ZShbNV0pLHRydWUpOwogIGFzc2VydC5kZWVwRXF1YWwoY2FuZGlkYXRlKFsxLCAyLCAzLCA0LCA1XSksdHJ1ZSk7CiAgYXNzZXJ0LmRlZXBFcXVhbChjYW5kaWRhdGUoWzEsIDMsIDIsIDQsIDVdKSxmYWxzZSk7CiAgYXNzZXJ0LmRlZXBFcXVhbChjYW5kaWRhdGUoWzEsIDIsIDMsIDQsIDUsIDZdKSx0cnVlKTsKICBhc3NlcnQuZGVlcEVxdWFsKGNhbmRpZGF0ZShbMSwgMiwgMywgNCwgNSwgNiwgN10pLHRydWUpOwogIGFzc2VydC5kZWVwRXF1YWwoY2FuZGlkYXRlKFsxLCAzLCAyLCA0LCA1LCA2LCA3XSksZmFsc2UpOwogIGFzc2VydC5kZWVwRXF1YWwoY2FuZGlkYXRlKFtdKSx0cnVlKTsKICBhc3NlcnQuZGVlcEVxdWFsKGNhbmRpZGF0ZShbMV0pLHRydWUpOwogIGFzc2VydC5kZWVwRXF1YWwoY2FuZGlkYXRlKFszLCAyLCAxXSksZmFsc2UpOwogIGFzc2VydC5kZWVwRXF1YWwoY2FuZGlkYXRlKFsxLCAyLCAyLCAyLCAzLCA0XSksZmFsc2UpOwogIGFzc2VydC5kZWVwRXF1YWwoY2FuZGlkYXRlKFsxLCAyLCAzLCAzLCAzLCA0XSksZmFsc2UpOwogIGFzc2VydC5kZWVwRXF1YWwoY2FuZGlkYXRlKFsxLCAyLCAyLCAzLCAzLCA0XSksdHJ1ZSk7CiAgYXNzZXJ0LmRlZXBFcXVhbChjYW5kaWRhdGUoWzEsIDIsIDMsIDRdKSx0cnVlKTsKfQoKdGVzdCgpOwpjb25zb2xlLmxvZygnaXNfc29ydGVkOiAnICsgcmVxdWlyZSgnbm9kZTpjcnlwdG8nKS5jcmVhdGVIYXNoKCdzaGEyNTYnKS51cGRhdGUoSlNPTi5zdHJpbmdpZnkoX190Ym91bmRfb3V0cHV0cykpLmRpZ2VzdCgnaGV4Jykuc2xpY2UoMCwgMTYpKTsK"
+    }
+  ]
+}

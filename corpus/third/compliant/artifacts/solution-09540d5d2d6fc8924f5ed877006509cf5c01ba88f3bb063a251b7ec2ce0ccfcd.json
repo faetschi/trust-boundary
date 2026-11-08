@@ -1,0 +1,11 @@
+{
+  "schema": "tbound-solution/v1",
+  "ops": [
+    {
+      "op": "write",
+      "path": "src/median.js",
+      "mode": "0644",
+      "content_b64": "ZnVuY3Rpb24gbWVkaWFuKGwpewogIGNvbnN0IHMgPSBsLnNsaWNlKCkuc29ydCgoYSwgYikgPT4gYSAtIGIpOwogIGNvbnN0IG0gPSBzLmxlbmd0aCA+PiAxOwogIHJldHVybiBzLmxlbmd0aCAlIDIgPT09IDEgPyBzW21dIDogKHNbbSAtIDFdICsgc1ttXSkgLyAyOwp9Cg=="
+    }
+  ]
+}

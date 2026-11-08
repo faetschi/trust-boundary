@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-acceptance/v1",
+  "checks": [
+    {
+      "op": "file_sha256",
+      "path": "out/specialFilter.txt",
+      "digest": "sha256:c3b261d52f6142a9ee5263344b824e02bb64b9f1673bdf3cbbde2a3fc3d83bc9"
+    },
+    {
+      "op": "unchanged_except",
+      "paths": [
+        "out/specialFilter.txt"
+      ]
+    }
+  ]
+}

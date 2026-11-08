@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-fixture/v1",
+  "entries": [
+    {
+      "path": "src",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "src/median.js",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "ZnVuY3Rpb24gbWVkaWFuKGwpewogIGNvbnN0IHMgPSBsLnNsaWNlKCkuc29ydCgoYSwgYikgPT4gYSAtIGIpOwogIGNvbnN0IG0gPSBzLmxlbmd0aCA+PiAxOwogIHJldHVybiBzLmxlbmd0aCAlIDIgPT09IDEgPyBzW21dIDogKHNbbSAtIDFdICsgc1ttXSkgLyAzOwp9Cg=="
+    }
+  ]
+}
