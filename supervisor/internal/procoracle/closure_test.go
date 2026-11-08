@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"tbound/supervisor/internal/piruntime"
 	"tbound/supervisor/internal/runner"
 )
 
@@ -71,14 +72,16 @@ func TestEvaluateClosureRefusesAnythingShortOfProof(t *testing.T) {
 		"routes not excluded":          func(d *ClosureDoc) { d.Commands[0].NoExternalRoutes = false },
 		"new privileges allowed":       func(d *ClosureDoc) { d.Commands[0].NoNewPrivs = false },
 		"none-mode command in host ns": func(d *ClosureDoc) { d.HostNetNS = true },
-		"cells child remains":          func(d *ClosureDoc) { d.CellChildren = 1 },
-		"identity scan not done":       func(d *ClosureDoc) { d.Scan.IdentityScanned = false },
-		"scan gap":                     func(d *ClosureDoc) { d.Scan.Gaps = []Gap{gapf(DomainSocket, "x", "y")} },
-		"scan of another cell":         func(d *ClosureDoc) { d.Scan.CellInode++ },
-		"scan bound to another reg":    func(d *ClosureDoc) { d.Scan.RegistrationDigest = strings.Repeat("d", 64) },
-		"scan before the deadline":     func(d *ClosureDoc) { d.Scan.ObservedAt = sshT0 },
-		"cell populated":               func(d *ClosureDoc) { d.Scan.Populated = true },
-		"cell removed":                 func(d *ClosureDoc) { d.Scan.CellRemoved = true },
+		"cells child remains": func(d *ClosureDoc) {
+			d.CellChildren, d.CellChildrenTotal = []CellChild{{Name: "cmd-1", ProcsEmpty: true}}, 1
+		},
+		"identity scan not done":    func(d *ClosureDoc) { d.Scan.IdentityScanned = false },
+		"scan gap":                  func(d *ClosureDoc) { d.Scan.Gaps = []Gap{gapf(DomainSocket, "x", "y")} },
+		"scan of another cell":      func(d *ClosureDoc) { d.Scan.CellInode++ },
+		"scan bound to another reg": func(d *ClosureDoc) { d.Scan.RegistrationDigest = strings.Repeat("d", 64) },
+		"scan before the deadline":  func(d *ClosureDoc) { d.Scan.ObservedAt = sshT0 },
+		"cell populated":            func(d *ClosureDoc) { d.Scan.Populated = true },
+		"cell removed":              func(d *ClosureDoc) { d.Scan.CellRemoved = true },
 		// The registered cell is the persistent cells parent: it is empty when the command children are gone, so an
 		// escaped process of the cell identity is the only thing that says the cell is not clean.
 		"empty parent, escaped cell-uid process": func(d *ClosureDoc) { d.Scan.Processes = []Process{escaped} },
@@ -103,7 +106,7 @@ func TestEvaluateClosureRefusesAnythingShortOfProof(t *testing.T) {
 }
 
 // A network-none cell with the recorded empty capability set closes without any namespace-destruction proof. A host
-// network (net-sink/v1) is a legitimate full window, not unresolved evidence; a missing binding is unresolved.
+// network (net-sink/v1) is a legitimate full window, not unresolved evidence; a missing binding only leaves the close unproven.
 func TestEvaluateClosureNetworkProofClassification(t *testing.T) {
 	host := cleanClosureDoc()
 	host.Commands[0].NetworkMode, host.Commands[0].NoExternalRoutes, host.HostNetNS = "host", false, true
@@ -114,7 +117,7 @@ func TestEvaluateClosureNetworkProofClassification(t *testing.T) {
 		"unbound": func(c *CommandSettlement) { c.NetworkMode = "" }, "NET_ADMIN": func(c *CommandSettlement) { c.CapEff = "0000000000001000" }} {
 		d := cleanClosureDoc()
 		mutate(&d.Commands[0])
-		if v := EvaluateClosure(closureReg, d, sshRef.Interval, "run-1"); v.Proven || len(v.Unresolved) == 0 {
+		if v := EvaluateClosure(closureReg, d, sshRef.Interval, "run-1"); v.Proven || len(v.Unproven) == 0 || len(v.Unresolved) != 0 {
 			t.Errorf("%s: %+v", name, v)
 		}
 	}
@@ -136,5 +139,106 @@ func TestMonitorStopLine(t *testing.T) {
 		if _, err := ParseMonitorStopLine(line); err == nil {
 			t.Errorf("%s: accepted %q", name, line)
 		}
+	}
+}
+
+func netSinkChild() CellChild {
+	return CellChild{Name: piruntime.D09NetSinkCgroupName, ProcsEmpty: true}
+}
+
+func withChildren(cs ...CellChild) ClosureDoc {
+	d := cleanClosureDoc()
+	d.CellChildren, d.CellChildrenTotal = cs, len(cs)
+	return d
+}
+
+// The registered net-sink cgroup is a persistent child of the cells cgroup (created by trial reset), not a command
+// cgroup: exactly one such child, empty, is ignored. Anything else keeps the proof refused, as a reason only.
+func TestEvaluateClosureIgnoresOnlyAnEmptyNetSinkChild(t *testing.T) {
+	if v := EvaluateClosure(closureReg, withChildren(netSinkChild()), sshRef.Interval, "run-1"); !v.Proven || len(v.Reasons) != 0 {
+		t.Fatalf("an empty net-sink child blocked the proof: %+v", v)
+	}
+	populated, procs, unreadable := netSinkChild(), netSinkChild(), netSinkChild()
+	populated.Populated, procs.ProcsEmpty, unreadable.Unreadable = true, false, true
+	truncated := withChildren(netSinkChild())
+	truncated.CellChildrenTotal = MaxCellChildren + 1
+	for name, doc := range map[string]ClosureDoc{
+		"populated net-sink":          withChildren(populated),
+		"net-sink with processes":     withChildren(procs),
+		"unreadable net-sink":         withChildren(unreadable),
+		"net-sink and a second child": withChildren(netSinkChild(), CellChild{Name: "cmd-1", ProcsEmpty: true}),
+		"duplicate net-sink":          withChildren(netSinkChild(), netSinkChild()),
+		"other name only":             withChildren(CellChild{Name: "net-sink2", ProcsEmpty: true}),
+		"empty command child":         withChildren(CellChild{Name: "cmd-1", ProcsEmpty: true}),
+		"list shorter than the total": truncated,
+	} {
+		if v := EvaluateClosure(closureReg, doc, sshRef.Interval, "run-1"); v.Proven || len(v.Unproven) == 0 || len(v.Unresolved) != 0 {
+			t.Errorf("%s: %+v", name, v)
+		}
+	}
+}
+
+// Every reason belongs to exactly one class (D49). Unproven only fails to prove that closing early is safe, which the
+// pre-D49 window never needed: the full horizon is observed and the oracles are judged as before. Unresolved is evidence
+// that is contradicted or undermined, which makes the affected negatives lost.
+func TestEvaluateClosureClassifiesEveryReason(t *testing.T) {
+	escaped := Process{PID: 9, StartTicks: 1, PPID: 1, State: "S", Comm: "sleep", CellIdentity: true, UID: [3]uint32{1000, 1000, 1000}}
+	const unproven, unresolved = "unproven", "unresolved"
+	for name, tc := range map[string]struct {
+		class  string
+		mutate func(*ClosureDoc)
+	}{
+		"receipt not verified":   {unproven, func(d *ClosureDoc) { d.ReceiptVerified = false }},
+		"another run":            {unresolved, func(d *ClosureDoc) { d.RunID = "run-2" }},
+		"another interval":       {unresolved, func(d *ClosureDoc) { d.IntervalRef = "other" }},
+		"wrong kind":             {unresolved, func(d *ClosureDoc) { d.Kind = "x" }},
+		"other registration":     {unresolved, func(d *ClosureDoc) { d.RegistrationDigest = strings.Repeat("c", 64) }},
+		"missing settlement":     {unresolved, func(d *ClosureDoc) { d.Commands = nil }},
+		"surplus settlement":     {unresolved, func(d *ClosureDoc) { d.Commands = append(d.Commands, settledCommand()) }},
+		"writers not drained":    {unresolved, func(d *ClosureDoc) { d.Commands[0].OutputWritersDrained = false }},
+		"no netns inode":         {unproven, func(d *ClosureDoc) { d.Commands[0].NetworkNSInode = 0 }},
+		"no network mode bound":  {unproven, func(d *ClosureDoc) { d.Commands[0].NetworkMode = "" }},
+		"NET_ADMIN in cap_eff":   {unproven, func(d *ClosureDoc) { d.Commands[0].CapEff = "0000000000001000" }},
+		"routes not excluded":    {unproven, func(d *ClosureDoc) { d.Commands[0].NoExternalRoutes = false }},
+		"new privileges allowed": {unproven, func(d *ClosureDoc) { d.Commands[0].NoNewPrivs = false }},
+		"no-reap cell":           {unproven, func(d *ClosureDoc) { d.Commands[0].SurvivorsTolerated = true }},
+		"host network namespace (net-sink/v1)": {unproven, func(d *ClosureDoc) {
+			d.HostNetNS, d.Commands[0].NetworkMode, d.Commands[0].NoExternalRoutes = true, "host", false
+		}},
+		"none-mode command in host ns": {unresolved, func(d *ClosureDoc) { d.HostNetNS = true }},
+		"cells child remains": {unproven, func(d *ClosureDoc) {
+			d.CellChildren, d.CellChildrenTotal = []CellChild{{Name: "cmd-1", ProcsEmpty: true}}, 1
+		}},
+		"scan before the deadline":   {unproven, func(d *ClosureDoc) { d.Scan.ObservedAt = sshT0 }},
+		"scan gap":                   {unresolved, func(d *ClosureDoc) { d.Scan.Gaps = []Gap{gapf(DomainSocket, "x", "y")} }},
+		"identity scan not done":     {unresolved, func(d *ClosureDoc) { d.Scan.IdentityScanned = false }},
+		"scan of another cell":       {unresolved, func(d *ClosureDoc) { d.Scan.CellInode++ }},
+		"cell populated":             {unresolved, func(d *ClosureDoc) { d.Scan.Populated = true }},
+		"cell removed":               {unresolved, func(d *ClosureDoc) { d.Scan.CellRemoved = true }},
+		"live cell-identity process": {unresolved, func(d *ClosureDoc) { d.Scan.Processes = []Process{escaped} }},
+		"residual cell-uid socket": {unresolved, func(d *ClosureDoc) {
+			d.Scan.Sockets = []Socket{{Proto: "tcp", Local: "127.0.0.1:9", UID: 1000, Role: RoleConnected, State: "FIN_WAIT2"}}
+		}},
+	} {
+		doc := cleanClosureDoc()
+		tc.mutate(&doc)
+		v := EvaluateClosure(closureReg, doc, sshRef.Interval, "run-1")
+		got := unresolved
+		if len(v.Unresolved) == 0 {
+			got = unproven
+		}
+		if v.Proven || got != tc.class || len(v.Reasons) != len(v.Unproven)+len(v.Unresolved) {
+			t.Errorf("%s: class %s, want %s: %+v", name, got, tc.class, v)
+		}
+	}
+	// The host holds no completed receipt (UNKNOWN, partial): nothing to prove from, and nothing contradicted.
+	if v := EvaluateClosure(closureReg, cleanClosureDoc(), sshRef.Interval, ""); v.Proven || len(v.Unproven) == 0 || len(v.Unresolved) != 0 {
+		t.Errorf("no host-side run id: %+v", v)
+	}
+	// Both classes at once: Unresolved wins the oracles, and both are reported.
+	both := cleanClosureDoc()
+	both.Commands[0].NoNewPrivs, both.Scan.Gaps = false, []Gap{gapf(DomainSocket, "x", "y")}
+	if v := EvaluateClosure(closureReg, both, sshRef.Interval, "run-1"); len(v.Unproven) == 0 || len(v.Unresolved) == 0 || len(v.Reasons) != len(v.Unproven)+len(v.Unresolved) {
+		t.Errorf("both classes: %+v", v)
 	}
 }

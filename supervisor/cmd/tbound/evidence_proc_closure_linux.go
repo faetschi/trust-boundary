@@ -3,12 +3,14 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -60,7 +62,7 @@ func evidenceProcClosure(ctx context.Context, env evidenceEnv, f map[string]stri
 	if doc.Commands, err = evidenceCommandSettlements(env, receipt.RunID, receipt.CommandCellSettlements); err != nil {
 		return procoracle.ClosureDoc{}, err
 	}
-	if doc.CellChildren, err = env.cellChildren(cell); err != nil {
+	if doc.CellChildren, doc.CellChildrenTotal, err = env.cellChildren(cell); err != nil {
 		return procoracle.ClosureDoc{}, fmt.Errorf("the cells cgroup cannot be listed: %w", err)
 	}
 	var inodes []uint64
@@ -132,17 +134,45 @@ func evidenceCommandSettlements(env evidenceEnv, runID string, want int) ([]proc
 	return out, nil
 }
 
-// listCellChildren counts the cgroups below the cells cgroup directory.
-func listCellChildren(c evidenceCell) (int, error) {
+// listCellChildren lists the cgroups directly below the cells cgroup directory: the total, and for the first
+// MaxCellChildren (by name) whether each is populated and has processes. A child whose files cannot be read is
+// reported as unreadable, never as empty: the host then refuses the proof.
+func listCellChildren(c evidenceCell) ([]procoracle.CellChild, int, error) {
 	entries, err := os.ReadDir(c.CgroupPath)
 	if err != nil {
-		return 0, err
+		return nil, 0, err
 	}
-	n := 0
+	out, total := []procoracle.CellChild{}, 0
 	for _, e := range entries {
-		if e.IsDir() {
-			n++
+		if !e.IsDir() {
+			continue
 		}
+		if total++; total > procoracle.MaxCellChildren {
+			continue
+		}
+		dir := filepath.Join(c.CgroupPath, e.Name())
+		child := procoracle.CellChild{Name: e.Name()}
+		events, eerr := os.ReadFile(filepath.Join(dir, "cgroup.events"))
+		procsEmpty, perr := cgroupProcsEmpty(filepath.Join(dir, "cgroup.procs"))
+		child.Populated = bytes.Contains(events, []byte("populated 1"))
+		child.ProcsEmpty = procsEmpty
+		child.Unreadable = eerr != nil || perr != nil || !bytes.Contains(events, []byte("populated "))
+		out = append(out, child)
 	}
-	return n, nil
+	return out, total, nil
+}
+
+// cgroupProcsEmpty reports whether a cgroup.procs file lists no process (it reads one byte at most).
+func cgroupProcsEmpty(path string) (bool, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return false, err
+	}
+	defer f.Close()
+	var b [1]byte
+	n, err := f.Read(b[:])
+	if err == io.EOF {
+		return true, nil
+	}
+	return n == 0 && err == nil, err
 }

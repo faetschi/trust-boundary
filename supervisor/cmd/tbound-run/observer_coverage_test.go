@@ -458,7 +458,7 @@ func (e obsEvidence) RunReadyStdin(ctx context.Context, argv []string, stdin io.
 				CapPrm: "0000000000000000", CapBnd: "0000000000000000", CapInh: "0000000000000000", CapAmb: "0000000000000000"}
 			return obsReply(procoracle.ClosureDoc{Schema: runner.EvidenceSchema, Kind: runner.EvidenceProcClosure, IntervalRef: flags["--interval-ref"],
 				RunID: obsRunID, RegistrationDigest: reg.Digest(), ReceiptVerified: true, ReceiptDigest: strings.Repeat("b", 64),
-				ExpectedSettlements: 1, Commands: []procoracle.CommandSettlement{cmd}, Scan: scan, CellChildren: unprovenChildren(f)})
+				ExpectedSettlements: 1, Commands: []procoracle.CommandSettlement{cmd}, Scan: scan, CellChildrenTotal: unprovenChildren(f)})
 		}
 		line, _, _, _ := obsReply(procoracle.MonitorReadyDoc{Schema: runner.EvidenceSchema, Kind: procoracle.MonitorReadyKind,
 			RegistrationDigest: reg.Digest(), FirstPollSeq: 1, FirstPollAt: start.Add(100 * time.Millisecond)})

@@ -75,7 +75,7 @@ func newEvTestEnv(uid int) *evTestEnv {
 			return procoracle.Snapshot{Seq: seq, Point: p, RegistrationDigest: reg.Digest(), CellPath: c.Hierarchy, CellInode: c.Inode,
 				IdentityScanned: true, ScannedPIDs: 3, Registry: procoracle.Registry{Recorded: true}, ObservedAt: time.Unix(1_700_000_003, 0).UTC()}, nil
 		},
-		cellChildren: func(evidenceCell) (int, error) { return 0, nil },
+		cellChildren: func(evidenceCell) ([]procoracle.CellChild, int, error) { return []procoracle.CellChild{}, 0, nil },
 		hostNetNS:    func() (uint64, error) { return 4026531840, nil },
 		monitor: func(_ context.Context, c evidenceCell, reg procoracle.Registration, d, interval time.Duration, ready func(procoracle.Snapshot),
 			stop <-chan procoracle.MonitorStopRequest) ([]procoracle.Snapshot, *procoracle.MonitorStopRequest, error) {

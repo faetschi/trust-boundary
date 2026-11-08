@@ -24,6 +24,7 @@ type IntervalClosure struct {
 	// scan, an unresolved drain, an UNKNOWN step), as opposed to a legitimate full window (a no-reap cell left running
 	// on purpose, a command in the host network namespace). The horizon does not erase it: the oracles it concerns are
 	// evidence_lost unless they observed an effect.
+	Unproven   []string `json:"unproven"`
 	Unresolved []string `json:"unresolved"`
 }
 

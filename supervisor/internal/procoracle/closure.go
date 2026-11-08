@@ -67,6 +67,18 @@ type CommandSettlement struct {
 	CommandScopeDetached bool `json:"command_scope_detached"`
 }
 
+// MaxCellChildren bounds the children the closure document lists.
+const MaxCellChildren = 16
+
+// CellChild is one cgroup directly below the cells cgroup as the guest read it. Unreadable is true when its
+// cgroup.events or cgroup.procs could not be read; Populated and ProcsEmpty are then meaningless.
+type CellChild struct {
+	Name       string `json:"name"`
+	Populated  bool   `json:"populated"`
+	ProcsEmpty bool   `json:"procs_empty"`
+	Unreadable bool   `json:"unreadable"`
+}
+
 // ClosureDoc is the output of `tbound evidence proc-closure`: the guest's own reading, after the request, of whether the
 // interval is complete. The guest found the interval's admission and its completed receipt in the service journals
 // (ReceiptVerified), read the settlement of every command of the run, listed the children of the cells cgroup, looked
@@ -82,9 +94,12 @@ type ClosureDoc struct {
 	// ExpectedSettlements is the receipt's command_cell_settlement_count; Commands must hold exactly that many.
 	ExpectedSettlements int                 `json:"expected_settlements"`
 	Commands            []CommandSettlement `json:"commands"`
-	// CellChildren counts the cgroups below the registered cells cgroup. The registered cell is the persistent PARENT,
-	// which is empty whenever no command cell runs; the proof needs the children gone, not the parent empty.
-	CellChildren int `json:"cell_children"`
+	// CellChildren lists (at most MaxCellChildren, by name) the cgroups below the registered cells cgroup and
+	// CellChildrenTotal counts all of them. The registered cell is the persistent PARENT, which is empty whenever no
+	// command cell runs; the proof needs the command children gone, not the parent empty. The only child that may remain
+	// is the empty registered net-sink cgroup.
+	CellChildren      []CellChild `json:"cell_children"`
+	CellChildrenTotal int         `json:"cell_children_total"`
 	// HostNetNS is true when a command's network namespace is the host's own (pid 1's): the net-sink/v1 delta.
 	HostNetNS bool     `json:"host_netns"`
 	Scan      Snapshot `json:"scan"`
@@ -103,8 +118,9 @@ func (d ClosureDoc) Digest() string {
 
 // Closure is the verdict of EvaluateClosure. Proven is true only when Reasons is empty.
 type Closure struct {
-	Proven  bool
-	Reasons []string
+	Proven   bool
+	Reasons  []string
+	Unproven []string
 	// Unresolved is the part of Reasons that is missing or contradicting evidence; a legitimate full window (no-reap,
 	// host network namespace) is a reason only.
 	Unresolved []string
@@ -178,8 +194,8 @@ func EvaluateClosure(reg Registration, doc ClosureDoc, interval, runID string) C
 			no("command %d: the proof binds no network mode (%q)", i, s.NetworkMode)
 		}
 	}
-	if doc.CellChildren != 0 && !noReap {
-		no("%d command cgroups remain below the cells cgroup", doc.CellChildren)
+	if doc.CellChildrenTotal != 0 && !noReap {
+		no("%d command cgroups remain below the cells cgroup", doc.CellChildrenTotal)
 	}
 	switch {
 	case hostNet:
@@ -319,6 +335,7 @@ type Termination struct {
 	Registration    string      `json:"registration"`
 	Proven          bool        `json:"proven"`
 	Reasons         []string    `json:"reasons"`
+	Unproven        []string    `json:"unproven"`
 	Unresolved      []string    `json:"unresolved"`
 	ClosureDigest   string      `json:"closure_digest"`
 	Closure         *ClosureDoc `json:"closure"`

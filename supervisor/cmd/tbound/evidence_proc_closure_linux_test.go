@@ -5,8 +5,10 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -71,7 +73,7 @@ func TestEvidenceProcClosureReadsTheReceiptSettlementAndAFreshScan(t *testing.T)
 	singleDoc(t, out, &doc)
 	if doc.Kind != runner.EvidenceProcClosure || doc.RunID != e04TestRun || doc.IntervalRef != e04TestInterval || !doc.ReceiptVerified ||
 		doc.ExpectedSettlements != 1 || len(doc.Commands) != 1 || !doc.Commands[0].OutputWritersDrained || !doc.Commands[0].CommandCgroupRemoved ||
-		doc.CellChildren != 0 || doc.Scan.Point != procoracle.PointInterval || doc.Scan.Seq != 1 {
+		doc.CellChildrenTotal != 0 || doc.Scan.Point != procoracle.PointInterval || doc.Scan.Seq != 1 {
 		t.Fatalf("doc = %+v", doc)
 	}
 	// The structural snapshot names no network namespace, which the host's predicate refuses: no proof from this fixture.
@@ -106,7 +108,7 @@ func TestEvidenceProcClosureRefusesWhatIsNotACompletedSettledRun(t *testing.T) {
 	} {
 		if env == nil {
 			env = closureEnvFor(t, settledRunReceipt(1), "completed", cmd)
-			env.cellChildren = func(evidenceCell) (int, error) { return 0, os.ErrPermission }
+			env.cellChildren = func(evidenceCell) ([]procoracle.CellChild, int, error) { return nil, 0, os.ErrPermission }
 		}
 		if out, err := runEvTest(t, env, closureArgs(t)...); err == nil || out != "" {
 			t.Errorf("%s: err = %v, stdout %q", name, err, out)
@@ -174,5 +176,44 @@ func TestEvidenceProcMonitorSignalIsAnErrorNotAShortRecord(t *testing.T) {
 		"--deadline", procoracle.InstantArg(deadline), "--duration", "30", "--interval", "500"}
 	if out, err := runEvTest(t, env, args...); err == nil || strings.Contains(out, "proc-monitor\"") {
 		t.Fatalf("err = %v, stdout %q", err, out)
+	}
+}
+
+// The guest lists the children of the cells cgroup, not only their count: the persistent net-sink cgroup (created by
+// trial reset) must be told apart from a command cgroup, a populated one and an unreadable one. The list is bounded.
+func TestListCellChildrenReadsNameStateAndProcesses(t *testing.T) {
+	dir := t.TempDir()
+	child := func(name, events, procs string) {
+		if err := os.MkdirAll(filepath.Join(dir, name), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if events != "" {
+			if err := os.WriteFile(filepath.Join(dir, name, "cgroup.events"), []byte(events), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := os.WriteFile(filepath.Join(dir, name, "cgroup.procs"), []byte(procs), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	child("net-sink", "populated 0\nfrozen 0\n", "")
+	child("busy", "populated 1\nfrozen 0\n", "42\n")
+	child("noevents", "", "")
+	if err := os.WriteFile(filepath.Join(dir, "cgroup.procs"), nil, 0o644); err != nil { // a file is not a child
+		t.Fatal(err)
+	}
+	got, total, err := listCellChildren(evidenceCell{CgroupPath: dir})
+	want := []procoracle.CellChild{{Name: "busy", Populated: true}, {Name: "net-sink", ProcsEmpty: true}, {Name: "noevents", ProcsEmpty: true, Unreadable: true}}
+	if err != nil || total != 3 || !slices.Equal(got, want) {
+		t.Fatalf("children = %+v total %d err %v, want %+v", got, total, err, want)
+	}
+	for i := 0; i < procoracle.MaxCellChildren; i++ {
+		child(fmt.Sprintf("z%02d", i), "populated 0\n", "")
+	}
+	if got, total, err = listCellChildren(evidenceCell{CgroupPath: dir}); err != nil || len(got) != procoracle.MaxCellChildren || total != 3+procoracle.MaxCellChildren {
+		t.Fatalf("the list is not bounded: %d of %d (%v)", len(got), total, err)
+	}
+	if _, _, err = listCellChildren(evidenceCell{CgroupPath: filepath.Join(dir, "absent")}); err == nil {
+		t.Fatal("an unlistable cells cgroup gave a list")
 	}
 }
