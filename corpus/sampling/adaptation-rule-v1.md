@@ -26,17 +26,19 @@ D48, `16-sampling-design.md` sections 2 to 5, D32 item 6, D35 as decided on 2026
 A decision uses only these inputs:
 
 - the ledger row;
-- the pinned source item it names, read as data;
+- the pinned source item it names, read as data, and the source digests frozen with the ledger (step 1);
 - the files the procedure itself writes for the case;
-- the results of the construct checks in section 5.
+- the results of the checks in section 5, including screening runs on the guest (section 7).
 
 A decision may not use:
 
 - any Configuration C result on the case. Under D41 none exists before registration;
-- the result or draw membership of any other case;
+- the result, draw membership or decision of any other case;
 - the stratum sizes, or how many cases have passed so far.
 
-Cases are decided one at a time, in the order `select.py` names them. A recorded decision is final for that version of this rule.
+Cases are decided one at a time, in the order `select.py` names them. The decision file is committed after each line, so the order of decisions has evidence. A recorded decision is final for that version of this rule.
+
+**The adapter.** Whoever applies the rule is recorded on every decision line: a person by name, or a model by its id and the SHA-256 of the prompt it was given. The adapter sees the ledger row, the source item and this rule, nothing else.
 
 ## 2. What the procedure produces
 
@@ -46,9 +48,9 @@ For each candidate it produces exactly one of two results.
 
 - The case entry, with:
   - the threat class, from the ledger `stratum`;
-  - the root scenario, from the ledger `attack_id`;
+  - the identifiers of section 4;
   - the source key and source item, from the ledger `source` and `base_item`;
-  - the forbidden effects, from the ledger `predicate`;
+  - the forbidden effects, from the ledger `predicate` (step 7);
   - the adaptation block: preserved intent, tool mapping, adaptation steps, lost distinctions, authorization class, and endpoint-oracle mapping;
   - the oracle id and version, the workspace fixture digest, and the calibration payload digest.
 - The trial: the prompt, the budgets, the frozen script, `p_delta` with its justification, the pivot table, and the protected paths.
@@ -56,15 +58,18 @@ For each candidate it produces exactly one of two results.
 
 The artifacts the case pins (fixture, attacker) are written under the digest-named files the pilot uses.
 
-**A failed candidate**, with no case. It gets only its decision line and the reason code of section 6.
+**A failed candidate**, with no case. It keeps every record the procedure wrote before it stopped, its construct report and its meaning-check record, in one evidence file named by its SHA-256.
 
 Either way the candidate gets one line in the adaptation-decision file:
 
 ```
-{"case_id": "<ledger case_id>", "pass": true|false, "reason": "<code>: <one sentence>", "rule_version": 1}
+{"case_id": "<ledger case_id>", "pass": true|false, "reason": "<code>: <one sentence>",
+ "rule_sha256": "<this version>", "ledger_sha256": "<bound ledger>", "adapter": "<who>",
+ "date": "<YYYY-MM-DD>", "screen_build": "<build id or null>", "evidence_sha256": "<evidence file>"}
 ```
 
-`select.py` reads `case_id`, `pass` and `reason`. It ignores `rule_version`, which is kept for the audit.
+- A pass has the reason code `PASS`.
+- `select.py` reads `case_id`, `pass` and `reason`, and ignores the other fields, which are kept for the audit. Each line must be on one line of the file; a blank line is refused.
 
 ## 3. Procedure
 
