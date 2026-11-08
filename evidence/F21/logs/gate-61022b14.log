@@ -1,0 +1,12 @@
+boot ae7a1412-9e7d-40cb-bd49-82a4e324225b 2026-11-08T13:33:30Z
+go version go1.27.1 linux/amd64
+BUILD_OK
+VET_OK
+WINDOWS_OK
+FMT_OK
+BOUNDARY_OK
+TEST_RC=0
+boot ae7a1412-9e7d-40cb-bd49-82a4e324225b 2026-11-08T13:53:59Z
+tests {'pass': 7368, 'skip': 50} packages {'skip': 3, 'pass': 60}
+
+[exited with code 0]
