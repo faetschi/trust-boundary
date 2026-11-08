@@ -242,3 +242,25 @@ func TestEvaluateClosureClassifiesEveryReason(t *testing.T) {
 		t.Errorf("both classes: %+v", v)
 	}
 }
+
+// The termination digest binds both classes: dropping or moving a reason changes it.
+func TestTerminationDigestBindsTheReasonClasses(t *testing.T) {
+	base := Termination{Schema: TerminationSchema, Interval: "i", Reasons: []string{"r"}, Unproven: []string{"r"}}
+	moved := base
+	moved.Unproven, moved.Unresolved = nil, []string{"r"}
+	dropped := base
+	dropped.Unproven = nil
+	if base.Digest() == moved.Digest() || base.Digest() == dropped.Digest() || moved.Digest() == dropped.Digest() {
+		t.Fatal("the digest does not bind the class of a reason")
+	}
+	if base.Digest() != base.Digest() {
+		t.Fatal("digest unstable")
+	}
+}
+
+// The record format changed (unproven key, cell_children list): a record of the previous format is not re-verified.
+func TestParseRetainedRefusesThePreviousTerminationSchema(t *testing.T) {
+	if _, err := ParseRetained([]byte(`{"schema":"tbound-proc-termination/v1"}`)); err == nil {
+		t.Fatal("a v1 record was accepted")
+	}
+}

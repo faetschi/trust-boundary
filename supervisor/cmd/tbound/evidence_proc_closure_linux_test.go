@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -215,5 +216,30 @@ func TestListCellChildrenReadsNameStateAndProcesses(t *testing.T) {
 	}
 	if _, _, err = listCellChildren(evidenceCell{CgroupPath: filepath.Join(dir, "absent")}); err == nil {
 		t.Fatal("an unlistable cells cgroup gave a list")
+	}
+}
+
+// The host tells a guest refusal (undermined evidence) from a failure to be asked or a transport loss by the exit status.
+func TestEvidenceProcClosureRefusalHasItsOwnExitStatus(t *testing.T) {
+	cmd := structurallyValidReceiptSnapshot(t)
+	unsettled := settledRunReceipt(1)
+	unsettled.DescendantsSettled = false
+	tampered := cmd
+	tampered.Evidence.OutputWritersDrained = false
+	for name, env := range map[string]*evTestEnv{
+		"run not settled":      closureEnvFor(t, unsettled, "completed", cmd),
+		"tampered settlement":  closureEnvFor(t, settledRunReceipt(1), "completed", tampered),
+		"no command journal":   closureEnvFor(t, settledRunReceipt(1), "completed"),
+		"request not complete": closureEnvFor(t, settledRunReceipt(1), "unknown", cmd),
+	} {
+		var out, errOut bytes.Buffer
+		if code := evidenceMain(closureArgs(t), &out, &errOut, env.evidenceEnv); code != runner.EvidenceRefusalExit || out.Len() != 0 {
+			t.Errorf("%s: exit %d, stdout %q", name, code, out.String())
+		}
+	}
+	// A request the guest cannot even read is not a refusal.
+	var out, errOut bytes.Buffer
+	if code := evidenceMain([]string{"proc-closure", "--bogus", "x"}, &out, &errOut, closureEnvFor(t, settledRunReceipt(1), "completed", cmd).evidenceEnv); code != 2 {
+		t.Errorf("bad usage: exit %d", code)
 	}
 }

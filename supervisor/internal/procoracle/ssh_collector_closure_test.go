@@ -142,10 +142,12 @@ func TestEarlyCloseRefusedKeepsTheFullHorizon(t *testing.T) {
 		"scan before the final-cleanup snapshot": {unprovenOnly: true, g: func(g *fakeGuest) {
 			g.closureMutate = func(d *ClosureDoc) { d.Scan.ObservedAt = sshT0.Add(3500 * time.Millisecond) }
 		}},
-		"closure transport loss":    {unprovenOnly: true, g: func(g *fakeGuest) { g.failClosure = true }},
-		"final snapshot missing":    {g: func(g *fakeGuest) { g.failCap = map[Point]bool{PointFinalCleanup: true} }},
-		"post-teardown missing":     {g: func(g *fakeGuest) { g.failCap = map[Point]bool{PointPostTeardown: true} }},
-		"no-reap cell left running": {unprovenOnly: true, g: func(g *fakeGuest) { g.closureMutate = func(d *ClosureDoc) { d.Commands[0].SurvivorsTolerated = true } }},
+		"closure transport loss":                                 {unprovenOnly: true, g: func(g *fakeGuest) { g.failClosure = true }},
+		"closure transport error":                                {unprovenOnly: true, g: func(g *fakeGuest) { g.closureTransportErr = true }},
+		"guest refuses the closure (unsettled run, bad journal)": {g: func(g *fakeGuest) { g.refuseClosure = true }},
+		"final snapshot missing":                                 {g: func(g *fakeGuest) { g.failCap = map[Point]bool{PointFinalCleanup: true} }},
+		"post-teardown missing":                                  {g: func(g *fakeGuest) { g.failCap = map[Point]bool{PointPostTeardown: true} }},
+		"no-reap cell left running":                              {unprovenOnly: true, g: func(g *fakeGuest) { g.closureMutate = func(d *ClosureDoc) { d.Commands[0].SurvivorsTolerated = true } }},
 		"host network namespace (net-sink/v1)": {unprovenOnly: true, g: func(g *fakeGuest) {
 			g.closureMutate = func(d *ClosureDoc) {
 				d.HostNetNS, d.Commands[0].NetworkMode, d.Commands[0].NoExternalRoutes = true, "host", false
@@ -388,5 +390,22 @@ func TestEmptyNetSinkChildStillClosesEarly(t *testing.T) {
 	wantAll(t, ev, runner.FindingNone)
 	if stops := g.stopLines(); len(stops) != 1 {
 		t.Fatalf("stop lines = %q", stops)
+	}
+}
+
+// A closure the guest ANSWERED with a refusal (the run did not settle, the command journal is unreadable or holds an
+// invalid receipt, the scan failed) undermines the evidence, unlike a transport that never delivered an answer: the
+// negatives of NET and PROC are lost, and the retained record says so (class b).
+func TestGuestRefusalOfTheClosureLosesNetAndProcNegatives(t *testing.T) {
+	g := &fakeGuest{cell: sshCell, release: make(chan struct{}), refuseClosure: true}
+	close(g.release)
+	c, cl := assertNetKeepsHorizon(t, "guest refusal", g, nil)
+	if len(cl.Unresolved) == 0 || len(cl.Unproven) != 0 {
+		t.Fatalf("unproven %q unresolved %q", cl.Unproven, cl.Unresolved)
+	}
+	ev, err := runProc(t, c, closureRef)
+	wantAll(t, ev, runner.FindingLost)
+	if err != nil {
+		t.Fatal(err)
 	}
 }

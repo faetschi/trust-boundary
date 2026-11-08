@@ -268,6 +268,9 @@ func evidenceMain(args []string, stdout, stderr io.Writer, env evidenceEnv) int 
 	}
 	if err := runEvidence(ctx, args, stdout, env); err != nil {
 		fmt.Fprintf(stderr, "tbound evidence: %v\n%s", err, evidenceUsage)
+		if errors.As(err, new(*evidenceRefusal)) {
+			return runner.EvidenceRefusalExit
+		}
 		return 2
 	}
 	return 0

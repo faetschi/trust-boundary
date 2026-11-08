@@ -349,7 +349,9 @@ func ReadMonitorStop(r io.Reader) (MonitorStopRequest, error) {
 
 // TerminationSchema, RetainedSuffix: the retained termination record of an interval (D49).
 const (
-	TerminationSchema = "tbound-proc-termination/v1"
+	// v2: the record gained the unproven key and the closure document lists its cells children (cell_children, with
+	// cell_children_total, instead of a count). A v1 record is not re-verified with this build.
+	TerminationSchema = "tbound-proc-termination/v2"
 	RetainedSuffix    = ".proc-closure.json"
 )
 

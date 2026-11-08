@@ -515,7 +515,13 @@ func (c *SSHCollector) resolve(ctx context.Context, ref runner.EvidenceRef, iv *
 	var doc ClosureDoc
 	args := append([]string{runner.EvidenceProcClosure}, registrationArgs(iv.reg)...)
 	if err := c.Client.CallDoc(ctx, &doc, append(args, "--interval-ref", ref.Interval)...); err != nil {
-		unproven("the guest gave no closure document: %v", err)
+		// A transport that delivered no answer only leaves the close unproven (class a); an answer that is a refusal (the run
+		// is not settled, the journal or a receipt is invalid, the scan failed) undermines the evidence (class b).
+		if errors.Is(err, runner.ErrEvidenceRefused) {
+			unresolved("the guest refused the closure: %v", err)
+		} else {
+			unproven("the guest gave no closure document: %v", err)
+		}
 		return res
 	}
 	res.doc, res.scan, res.scanAt = &doc, &doc.Scan, doc.Scan.ObservedAt

@@ -27,7 +27,7 @@ import (
 // cgroup (the registered cell is the persistent parent, which says nothing about its command cells); looks for the
 // each command's network proof (the delta, no-routes, empty cap_eff and no_new_privs its signed proof records); and runs a fresh identity, process and socket scan of the registered cell. The host
 // judges all of it (procoracle.EvaluateClosure); a failure here is an error, never a document that looks provable.
-func evidenceProcClosure(ctx context.Context, env evidenceEnv, f map[string]string) (procoracle.ClosureDoc, error) {
+func evidenceProcClosure(ctx context.Context, env evidenceEnv, f map[string]string) (out procoracle.ClosureDoc, err error) {
 	ref := f["--interval-ref"]
 	cell, reg, err := evidenceRegistration(ctx, env, f)
 	if err != nil {
@@ -36,6 +36,13 @@ func evidenceProcClosure(ctx context.Context, env evidenceEnv, f map[string]stri
 	if env.readTrace == nil || env.cellChildren == nil || env.hostNetNS == nil {
 		return procoracle.ClosureDoc{}, errors.New("no closure instruments")
 	}
+	// From here on the guest has understood the request: a failure is its refusal to vouch (exit evidenceRefusalExit, which
+	// the host classifies as undermined evidence), not a failure to be asked.
+	defer func() {
+		if err != nil {
+			err = &evidenceRefusal{err}
+		}
+	}()
 	entry, err := evidenceAdmissionForInterval(env, ref)
 	if err != nil {
 		return procoracle.ClosureDoc{}, err
@@ -171,8 +178,18 @@ func cgroupProcsEmpty(path string) (bool, error) {
 	defer f.Close()
 	var b [1]byte
 	n, err := f.Read(b[:])
-	if err == io.EOF {
-		return true, nil
+	switch {
+	case err == io.EOF:
+		return true, nil // only an end of file on the first read means empty
+	case err != nil:
+		return false, err
+	case n == 0:
+		return false, io.ErrNoProgress // a (0, nil) read says nothing: unreadable, not empty
 	}
-	return n == 0 && err == nil, err
+	return false, nil
 }
+
+// evidenceRefusal marks an error as the guest command's own refusal: evidenceMain ends with runner.EvidenceRefusalExit.
+type evidenceRefusal struct{ error }
+
+func (r *evidenceRefusal) Unwrap() error { return r.error }
