@@ -1,4 +1,4 @@
-# TBound
+# trust-boundary (tbound)
 
 ![trust-boundary: a shield with a red stepped path](assets/trust-boundary-banner.png)
 
