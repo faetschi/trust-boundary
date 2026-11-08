@@ -1,0 +1,154 @@
+Nov 08 14:37:46.206730 tbound-abi8-seed sshd[287119]: Received disconnect from 172.26.16.1 port 65057:11: disconnected by user
+Nov 08 14:37:46.206870 tbound-abi8-seed sshd[287119]: Disconnected from user root 172.26.16.1 port 65057
+Nov 08 14:37:46.206936 tbound-abi8-seed sshd[287119]: pam_unix(sshd:session): session closed for user root
+Nov 08 14:37:46.209145 tbound-abi8-seed systemd[1]: session-3989.scope: Deactivated successfully.
+Nov 08 14:37:46.209918 tbound-abi8-seed systemd-logind[803]: Session 3989 logged out. Waiting for processes to exit.
+Nov 08 14:37:46.210721 tbound-abi8-seed systemd-logind[803]: Removed session 3989.
+Nov 08 14:37:46.365108 tbound-abi8-seed sshd[288093]: Root login accepted for forced command.
+Nov 08 14:37:46.372594 tbound-abi8-seed sshd[288093]: Accepted publickey for root from 172.26.16.1 port 65090 ssh2: ED25519 SHA256:3jVTqtxuasOWSq+tYpPnRVRBBlXbVn8H+EhLdF5h3UU
+Nov 08 14:37:46.372638 tbound-abi8-seed sshd[288093]: Root login accepted for forced command. [preauth]
+Nov 08 14:37:46.374028 tbound-abi8-seed sshd[288093]: pam_unix(sshd:session): session opened for user root(uid=0) by root(uid=0)
+Nov 08 14:37:46.377164 tbound-abi8-seed systemd-logind[803]: New session 3998 of user root.
+Nov 08 14:37:46.385480 tbound-abi8-seed systemd[1]: Started session-3998.scope - Session 3998 of User root.
+Nov 08 14:37:46.481413 tbound-abi8-seed sshd[288093]: Received disconnect from 172.26.16.1 port 65090:11: disconnected by user
+Nov 08 14:37:46.481566 tbound-abi8-seed sshd[288093]: Disconnected from user root 172.26.16.1 port 65090
+Nov 08 14:37:46.481638 tbound-abi8-seed sshd[288093]: pam_unix(sshd:session): session closed for user root
+Nov 08 14:37:46.483752 tbound-abi8-seed systemd[1]: session-3998.scope: Deactivated successfully.
+Nov 08 14:37:46.484444 tbound-abi8-seed systemd-logind[803]: Session 3998 logged out. Waiting for processes to exit.
+Nov 08 14:37:46.485196 tbound-abi8-seed systemd-logind[803]: Removed session 3998.
+Nov 08 14:37:46.643292 tbound-abi8-seed sshd[288152]: Root login accepted for forced command.
+Nov 08 14:37:46.650868 tbound-abi8-seed sshd[288152]: Accepted publickey for root from 172.26.16.1 port 65091 ssh2: ED25519 SHA256:3jVTqtxuasOWSq+tYpPnRVRBBlXbVn8H+EhLdF5h3UU
+Nov 08 14:37:46.650971 tbound-abi8-seed sshd[288152]: Root login accepted for forced command. [preauth]
+Nov 08 14:37:46.652432 tbound-abi8-seed sshd[288152]: pam_unix(sshd:session): session opened for user root(uid=0) by root(uid=0)
+Nov 08 14:37:46.655566 tbound-abi8-seed systemd-logind[803]: New session 3999 of user root.
+Nov 08 14:37:46.663459 tbound-abi8-seed systemd[1]: Started session-3999.scope - Session 3999 of User root.
+Nov 08 14:37:46.757505 tbound-abi8-seed sshd[288152]: Received disconnect from 172.26.16.1 port 65091:11: disconnected by user
+Nov 08 14:37:46.757661 tbound-abi8-seed sshd[288152]: Disconnected from user root 172.26.16.1 port 65091
+Nov 08 14:37:46.757746 tbound-abi8-seed sshd[288152]: pam_unix(sshd:session): session closed for user root
+Nov 08 14:37:46.760077 tbound-abi8-seed systemd[1]: session-3999.scope: Deactivated successfully.
+Nov 08 14:37:46.760673 tbound-abi8-seed systemd-logind[803]: Session 3999 logged out. Waiting for processes to exit.
+Nov 08 14:37:46.761475 tbound-abi8-seed systemd-logind[803]: Removed session 3999.
+Nov 08 14:37:46.853596 tbound-abi8-seed sshd[287179]: Received disconnect from 172.26.16.1 port 65058:11: disconnected by user
+Nov 08 14:37:46.853741 tbound-abi8-seed sshd[287179]: Disconnected from user root 172.26.16.1 port 65058
+Nov 08 14:37:46.853806 tbound-abi8-seed sshd[287179]: pam_unix(sshd:session): session closed for user root
+Nov 08 14:37:46.856281 tbound-abi8-seed systemd[1]: session-3990.scope: Deactivated successfully.
+Nov 08 14:37:46.856995 tbound-abi8-seed systemd-logind[803]: Session 3990 logged out. Waiting for processes to exit.
+Nov 08 14:37:46.857786 tbound-abi8-seed systemd-logind[803]: Removed session 3990.
+Nov 08 14:37:47.021552 tbound-abi8-seed sshd[288209]: Root login accepted for forced command.
+Nov 08 14:37:47.028823 tbound-abi8-seed sshd[288209]: Accepted publickey for root from 172.26.16.1 port 65092 ssh2: ED25519 SHA256:3jVTqtxuasOWSq+tYpPnRVRBBlXbVn8H+EhLdF5h3UU
+Nov 08 14:37:47.028884 tbound-abi8-seed sshd[288209]: Root login accepted for forced command. [preauth]
+Nov 08 14:37:47.030360 tbound-abi8-seed sshd[288209]: pam_unix(sshd:session): session opened for user root(uid=0) by root(uid=0)
+Nov 08 14:37:47.033238 tbound-abi8-seed systemd-logind[803]: New session 4000 of user root.
+Nov 08 14:37:47.041488 tbound-abi8-seed systemd[1]: Started session-4000.scope - Session 4000 of User root.
+Nov 08 14:37:47.128959 tbound-abi8-seed sshd[288209]: Received disconnect from 172.26.16.1 port 65092:11: disconnected by user
+Nov 08 14:37:47.129098 tbound-abi8-seed sshd[288209]: Disconnected from user root 172.26.16.1 port 65092
+Nov 08 14:37:47.129169 tbound-abi8-seed sshd[288209]: pam_unix(sshd:session): session closed for user root
+Nov 08 14:37:47.131622 tbound-abi8-seed systemd[1]: session-4000.scope: Deactivated successfully.
+Nov 08 14:37:47.132328 tbound-abi8-seed systemd-logind[803]: Session 4000 logged out. Waiting for processes to exit.
+Nov 08 14:37:47.133123 tbound-abi8-seed systemd-logind[803]: Removed session 4000.
+Nov 08 14:38:19.865273 tbound-abi8-seed sshd[288270]: Root login accepted for forced command.
+Nov 08 14:38:19.872551 tbound-abi8-seed sshd[288270]: Accepted publickey for root from 172.26.16.1 port 65127 ssh2: ED25519 SHA256:bCA+9aG41m8o86o1vzsaJ+h+T/KCx/CoL1p/z5Jv92U
+Nov 08 14:38:19.872603 tbound-abi8-seed sshd[288270]: Root login accepted for forced command. [preauth]
+Nov 08 14:38:19.873955 tbound-abi8-seed sshd[288270]: pam_unix(sshd:session): session opened for user root(uid=0) by root(uid=0)
+Nov 08 14:38:19.876837 tbound-abi8-seed systemd-logind[803]: New session 4001 of user root.
+Nov 08 14:38:19.883493 tbound-abi8-seed systemd[1]: Started session-4001.scope - Session 4001 of User root.
+Nov 08 14:38:20.203850 tbound-abi8-seed sshd[288270]: Received disconnect from 172.26.16.1 port 65127:11: disconnected by user
+Nov 08 14:38:20.203994 tbound-abi8-seed sshd[288270]: Disconnected from user root 172.26.16.1 port 65127
+Nov 08 14:38:20.204063 tbound-abi8-seed sshd[288270]: pam_unix(sshd:session): session closed for user root
+Nov 08 14:38:20.206850 tbound-abi8-seed systemd[1]: session-4001.scope: Deactivated successfully.
+Nov 08 14:38:20.207637 tbound-abi8-seed systemd-logind[803]: Session 4001 logged out. Waiting for processes to exit.
+Nov 08 14:38:20.208470 tbound-abi8-seed systemd-logind[803]: Removed session 4001.
+Nov 08 14:38:20.375410 tbound-abi8-seed sshd[288338]: Root login accepted for forced command.
+Nov 08 14:38:20.382721 tbound-abi8-seed sshd[288338]: Accepted publickey for root from 172.26.16.1 port 65128 ssh2: ED25519 SHA256:bCA+9aG41m8o86o1vzsaJ+h+T/KCx/CoL1p/z5Jv92U
+Nov 08 14:38:20.382803 tbound-abi8-seed sshd[288338]: Root login accepted for forced command. [preauth]
+Nov 08 14:38:20.384168 tbound-abi8-seed sshd[288338]: pam_unix(sshd:session): session opened for user root(uid=0) by root(uid=0)
+Nov 08 14:38:20.387049 tbound-abi8-seed systemd-logind[803]: New session 4002 of user root.
+Nov 08 14:38:20.395434 tbound-abi8-seed systemd[1]: Started session-4002.scope - Session 4002 of User root.
+Nov 08 14:38:20.573657 tbound-abi8-seed sshd[288338]: Received disconnect from 172.26.16.1 port 65128:11: disconnected by user
+Nov 08 14:38:20.573799 tbound-abi8-seed sshd[288338]: Disconnected from user root 172.26.16.1 port 65128
+Nov 08 14:38:20.573873 tbound-abi8-seed sshd[288338]: pam_unix(sshd:session): session closed for user root
+Nov 08 14:38:20.576243 tbound-abi8-seed systemd[1]: session-4002.scope: Deactivated successfully.
+Nov 08 14:38:20.577012 tbound-abi8-seed systemd-logind[803]: Session 4002 logged out. Waiting for processes to exit.
+Nov 08 14:38:20.577882 tbound-abi8-seed systemd-logind[803]: Removed session 4002.
+Nov 08 14:38:20.743281 tbound-abi8-seed sshd[288409]: Root login accepted for forced command.
+Nov 08 14:38:20.750759 tbound-abi8-seed sshd[288409]: Accepted publickey for root from 172.26.16.1 port 65129 ssh2: ED25519 SHA256:3jVTqtxuasOWSq+tYpPnRVRBBlXbVn8H+EhLdF5h3UU
+Nov 08 14:38:20.750918 tbound-abi8-seed sshd[288409]: Root login accepted for forced command. [preauth]
+Nov 08 14:38:20.752293 tbound-abi8-seed sshd[288409]: pam_unix(sshd:session): session opened for user root(uid=0) by root(uid=0)
+Nov 08 14:38:20.755285 tbound-abi8-seed systemd-logind[803]: New session 4003 of user root.
+Nov 08 14:38:20.760461 tbound-abi8-seed systemd[1]: Started session-4003.scope - Session 4003 of User root.
+Nov 08 14:38:20.860108 tbound-abi8-seed sshd[288409]: Received disconnect from 172.26.16.1 port 65129:11: disconnected by user
+Nov 08 14:38:20.860238 tbound-abi8-seed sshd[288409]: Disconnected from user root 172.26.16.1 port 65129
+Nov 08 14:38:20.860331 tbound-abi8-seed sshd[288409]: pam_unix(sshd:session): session closed for user root
+Nov 08 14:38:20.862322 tbound-abi8-seed systemd[1]: session-4003.scope: Deactivated successfully.
+Nov 08 14:38:20.862914 tbound-abi8-seed systemd-logind[803]: Session 4003 logged out. Waiting for processes to exit.
+Nov 08 14:38:20.863647 tbound-abi8-seed systemd-logind[803]: Removed session 4003.
+Nov 08 14:38:21.031302 tbound-abi8-seed sshd[288467]: Root login accepted for forced command.
+Nov 08 14:38:21.038757 tbound-abi8-seed sshd[288467]: Accepted publickey for root from 172.26.16.1 port 65130 ssh2: ED25519 SHA256:3jVTqtxuasOWSq+tYpPnRVRBBlXbVn8H+EhLdF5h3UU
+Nov 08 14:38:21.038807 tbound-abi8-seed sshd[288467]: Root login accepted for forced command. [preauth]
+Nov 08 14:38:21.040177 tbound-abi8-seed sshd[288467]: pam_unix(sshd:session): session opened for user root(uid=0) by root(uid=0)
+Nov 08 14:38:21.042999 tbound-abi8-seed systemd-logind[803]: New session 4004 of user root.
+Nov 08 14:38:21.053434 tbound-abi8-seed systemd[1]: Started session-4004.scope - Session 4004 of User root.
+Nov 08 14:38:21.148147 tbound-abi8-seed sshd[288467]: Received disconnect from 172.26.16.1 port 65130:11: disconnected by user
+Nov 08 14:38:21.148321 tbound-abi8-seed sshd[288467]: Disconnected from user root 172.26.16.1 port 65130
+Nov 08 14:38:21.148387 tbound-abi8-seed sshd[288467]: pam_unix(sshd:session): session closed for user root
+Nov 08 14:38:21.150357 tbound-abi8-seed systemd[1]: session-4004.scope: Deactivated successfully.
+Nov 08 14:38:21.150934 tbound-abi8-seed systemd-logind[803]: Session 4004 logged out. Waiting for processes to exit.
+Nov 08 14:38:21.151693 tbound-abi8-seed systemd-logind[803]: Removed session 4004.
+Nov 08 14:38:21.318074 tbound-abi8-seed sshd[288524]: Root login accepted for forced command.
+Nov 08 14:38:21.324673 tbound-abi8-seed sshd[288524]: Accepted publickey for root from 172.26.16.1 port 65131 ssh2: ED25519 SHA256:3jVTqtxuasOWSq+tYpPnRVRBBlXbVn8H+EhLdF5h3UU
+Nov 08 14:38:21.324721 tbound-abi8-seed sshd[288524]: Root login accepted for forced command. [preauth]
+Nov 08 14:38:21.326147 tbound-abi8-seed sshd[288524]: pam_unix(sshd:session): session opened for user root(uid=0) by root(uid=0)
+Nov 08 14:38:21.329205 tbound-abi8-seed systemd-logind[803]: New session 4005 of user root.
+Nov 08 14:38:21.337535 tbound-abi8-seed systemd[1]: Started session-4005.scope - Session 4005 of User root.
+Nov 08 14:38:21.591083 tbound-abi8-seed sshd[288585]: Root login accepted for forced command.
+Nov 08 14:38:21.598551 tbound-abi8-seed sshd[288585]: Accepted publickey for root from 172.26.16.1 port 65132 ssh2: ED25519 SHA256:3jVTqtxuasOWSq+tYpPnRVRBBlXbVn8H+EhLdF5h3UU
+Nov 08 14:38:21.598599 tbound-abi8-seed sshd[288585]: Root login accepted for forced command. [preauth]
+Nov 08 14:38:21.599921 tbound-abi8-seed sshd[288585]: pam_unix(sshd:session): session opened for user root(uid=0) by root(uid=0)
+Nov 08 14:38:21.602922 tbound-abi8-seed systemd-logind[803]: New session 4006 of user root.
+Nov 08 14:38:21.608439 tbound-abi8-seed systemd[1]: Started session-4006.scope - Session 4006 of User root.
+Nov 08 14:38:21.859327 tbound-abi8-seed sshd[288643]: Root login accepted for forced command.
+Nov 08 14:38:21.866776 tbound-abi8-seed sshd[288643]: Accepted publickey for root from 172.26.16.1 port 65133 ssh2: ED25519 SHA256:AcJRPHUch2L5rvt2+9dgG9unmjSJ7465hPwuTbWmE5M
+Nov 08 14:38:21.866823 tbound-abi8-seed sshd[288643]: Root login accepted for forced command. [preauth]
+Nov 08 14:38:21.868229 tbound-abi8-seed sshd[288643]: pam_unix(sshd:session): session opened for user root(uid=0) by root(uid=0)
+Nov 08 14:38:21.871283 tbound-abi8-seed systemd-logind[803]: New session 4007 of user root.
+Nov 08 14:38:21.877451 tbound-abi8-seed systemd[1]: Started session-4007.scope - Session 4007 of User root.
+Nov 08 14:38:22.522326 tbound-abi8-seed kernel: audit: type=1400 audit(1794148702.520:725): apparmor="AUDIT" operation="userns_create" class="namespace" info="Userns create - transitioning profile" profile="unconfined" pid=285190 comm="tbound" requested="userns_create" target="unprivileged_userns" execpath="/usr/local/bin/tbound"
+Nov 08 14:38:28.669342 tbound-abi8-seed kernel: audit: type=1400 audit(1794148708.667:726): apparmor="AUDIT" operation="userns_create" class="namespace" info="Userns create - transitioning profile" profile="unconfined" pid=285190 comm="tbound" requested="userns_create" target="unprivileged_userns" execpath="/usr/local/bin/tbound"
+Nov 08 14:38:33.042330 tbound-abi8-seed kernel: audit: type=1400 audit(1794148713.040:727): apparmor="AUDIT" operation="userns_create" class="namespace" info="Userns create - transitioning profile" profile="unconfined" pid=285190 comm="tbound" requested="userns_create" target="unprivileged_userns" execpath="/usr/local/bin/tbound"
+Nov 08 14:38:37.222341 tbound-abi8-seed kernel: audit: type=1400 audit(1794148717.220:728): apparmor="AUDIT" operation="userns_create" class="namespace" info="Userns create - transitioning profile" profile="unconfined" pid=285190 comm="tbound" requested="userns_create" target="unprivileged_userns" execpath="/usr/local/bin/tbound"
+Nov 08 14:38:42.529357 tbound-abi8-seed kernel: audit: type=1400 audit(1794148722.527:729): apparmor="AUDIT" operation="userns_create" class="namespace" info="Userns create - transitioning profile" profile="unconfined" pid=285190 comm="tbound" requested="userns_create" target="unprivileged_userns" execpath="/usr/local/bin/tbound"
+Nov 08 14:38:43.834308 tbound-abi8-seed kernel: overlayfs: fs on '/var/lib/tbound/podman-storage/graphroot/overlay/l/C2FDXXI6ACTU6EK7MXFGA6OUNQ' does not support file handles, falling back to xino=off.
+Nov 08 14:38:54.398135 tbound-abi8-seed tbound[285190]: request tbr-3be331efea2d8e841d24b886baed40fd outcome unknown: launch admitted production Pi worker: start admitted native child: verify exact host-visible D09 uid/gid map before launch admission: open /proc/289114/gid_map: invalid argument
+Nov 08 14:38:54.398135 tbound-abi8-seed tbound[285190]: podman signal: killed
+Nov 08 14:38:54.398135 tbound-abi8-seed tbound[285190]: close composed production session: production worker or command lifecycle is not proven settled
+Nov 08 14:38:54.398135 tbound-abi8-seed tbound[285190]: production worker or command lifecycle is not proven settled
+Nov 08 14:38:54.402623 tbound-abi8-seed sshd[288643]: Received disconnect from 172.26.16.1 port 65133:11: disconnected by user
+Nov 08 14:38:54.402772 tbound-abi8-seed sshd[288643]: Disconnected from user root 172.26.16.1 port 65133
+Nov 08 14:38:54.402843 tbound-abi8-seed sshd[288643]: pam_unix(sshd:session): session closed for user root
+Nov 08 14:38:54.405033 tbound-abi8-seed systemd[1]: session-4007.scope: Deactivated successfully.
+Nov 08 14:38:54.405855 tbound-abi8-seed systemd-logind[803]: Session 4007 logged out. Waiting for processes to exit.
+Nov 08 14:38:54.406830 tbound-abi8-seed systemd-logind[803]: Removed session 4007.
+Nov 08 14:38:54.572198 tbound-abi8-seed sshd[289163]: Root login accepted for forced command.
+Nov 08 14:38:54.579501 tbound-abi8-seed sshd[289163]: Accepted publickey for root from 172.26.16.1 port 65186 ssh2: ED25519 SHA256:3jVTqtxuasOWSq+tYpPnRVRBBlXbVn8H+EhLdF5h3UU
+Nov 08 14:38:54.579546 tbound-abi8-seed sshd[289163]: Root login accepted for forced command. [preauth]
+Nov 08 14:38:54.581057 tbound-abi8-seed sshd[289163]: pam_unix(sshd:session): session opened for user root(uid=0) by root(uid=0)
+Nov 08 14:38:54.584251 tbound-abi8-seed systemd-logind[803]: New session 4008 of user root.
+Nov 08 14:38:54.591546 tbound-abi8-seed systemd[1]: Started session-4008.scope - Session 4008 of User root.
+Nov 08 14:38:54.698021 tbound-abi8-seed sshd[289163]: Received disconnect from 172.26.16.1 port 65186:11: disconnected by user
+Nov 08 14:38:54.698195 tbound-abi8-seed sshd[289163]: Disconnected from user root 172.26.16.1 port 65186
+Nov 08 14:38:54.698332 tbound-abi8-seed sshd[289163]: pam_unix(sshd:session): session closed for user root
+Nov 08 14:38:54.700888 tbound-abi8-seed systemd[1]: session-4008.scope: Deactivated successfully.
+Nov 08 14:38:54.701742 tbound-abi8-seed systemd-logind[803]: Session 4008 logged out. Waiting for processes to exit.
+Nov 08 14:38:54.702692 tbound-abi8-seed systemd-logind[803]: Removed session 4008.
+Nov 08 14:38:54.865665 tbound-abi8-seed sshd[289222]: Root login accepted for forced command.
+Nov 08 14:38:54.872813 tbound-abi8-seed sshd[289222]: Accepted publickey for root from 172.26.16.1 port 65187 ssh2: ED25519 SHA256:3jVTqtxuasOWSq+tYpPnRVRBBlXbVn8H+EhLdF5h3UU
+Nov 08 14:38:54.872864 tbound-abi8-seed sshd[289222]: Root login accepted for forced command. [preauth]
+Nov 08 14:38:54.874176 tbound-abi8-seed sshd[289222]: pam_unix(sshd:session): session opened for user root(uid=0) by root(uid=0)
+Nov 08 14:38:54.877403 tbound-abi8-seed systemd-logind[803]: New session 4009 of user root.
+Nov 08 14:38:54.895815 tbound-abi8-seed systemd[1]: Started session-4009.scope - Session 4009 of User root.
+Nov 08 14:38:55.005759 tbound-abi8-seed sshd[289222]: Received disconnect from 172.26.16.1 port 65187:11: disconnected by user
+Nov 08 14:38:55.005917 tbound-abi8-seed sshd[289222]: Disconnected from user root 172.26.16.1 port 65187
+Nov 08 14:38:55.005994 tbound-abi8-seed sshd[289222]: pam_unix(sshd:session): session closed for user root
+Nov 08 14:38:55.008715 tbound-abi8-seed systemd[1]: session-4009.scope: Deactivated successfully.
+Nov 08 14:38:55.009418 tbound-abi8-seed systemd-logind[803]: Session 4009 logged out. Waiting for processes to exit.
+Nov 08 14:38:55.010308 tbound-abi8-seed systemd-logind[803]: Removed session 4009.
