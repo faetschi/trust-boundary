@@ -103,7 +103,7 @@ default at `/`, and the zero-build client is deprecated at `/legacy/` until sign
 - Zero `innerHTML` sinks, and the decision not to adopt the harness runtime
   (Appendix A.4).
 - GET-only, literal-loopback gateway until the authenticated service exists. HEAD is also
-  answered on `/` (a redirect) and `/favicon.ico` (`204`).
+  answered on `/` (a redirect) and `/favicon.ico` (the brand icon).
 
 ### (v) Phase plan
 

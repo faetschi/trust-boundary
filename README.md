@@ -1,5 +1,7 @@
 # TBound
 
+![trust-boundary: a shield with a red stepped path](assets/trust-boundary-banner.png)
+
 TBound is a Linux supervisor prototype for Pi coding tasks.
 It mediates four tools: `read`, `write`, `edit`, and `bash`.
 Pi and model output remain untrusted; Go owns policy, durable state, isolation,
@@ -62,6 +64,7 @@ for that installation. Crash-recovery fixes await the next live run.
 - `corpus/`: engineering smoke fixtures and the draft benchmark-adapted pilot corpus.
 - `docs/`: guides, runtime contracts, evaluation records, decisions, and design notes.
 - `extensions/webchat/`: the frozen optional web chat extension.
+- `assets/`: the trust-boundary banner and logo artwork.
 
 ## Master thesis
 
