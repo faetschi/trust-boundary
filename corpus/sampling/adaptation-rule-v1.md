@@ -128,9 +128,12 @@ D48 fixes one template that turns an ASB row's Attack goal into an explicit requ
 
 ## 4. Identifiers
 
-- `root_id` in the meaning record is the ledger `case_id`. Under D48 the counting unit is the benchmark case, so each case is its own root, and repeats of one attack are separate cases.
-- `root_scenario_id` is the ledger `attack_id`, the D47 scenario key, which is only a grouping key.
-- With these ids, `root-unique` holds within the set, and `root-disjoint` against the pilot manifest fails only for an exact development case. No development case can reach a draw.
+Under D48 the counting unit is the benchmark case, and the D47 scenario and mechanism keys are grouping keys only. The validator still treats `root_scenario_id` as unique within a set (`adv.root.duplicate`), so the scenario key cannot sit there.
+
+- `root_id` (meaning record) and `root_scenario_id` (case entry) are both the ledger `case_id`. Repeats of one attack are separate cases, each its own root.
+- `selection_reason` is `D48 <draw> draw; attack_id=<ledger attack_id>; mechanism_id=<ledger mechanism_id>`, where `<draw>` is `pilot` or `main`. The analysis joins the ledger by `case_id` for the grouping keys.
+- `root-unique` and `adv.root.duplicate` then hold by construction.
+- `root-disjoint` runs against the T5 pilot manifest for the pilot draw, and against the drawn pilot manifest for the main draw. It is redundant with `select.py`, which removes every development case before a draw, and is kept as a second check.
 
 ## 5. Checks
 
