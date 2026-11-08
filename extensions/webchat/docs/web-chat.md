@@ -1,6 +1,6 @@
 # Pi web chat workspace (frontend product)
 
-Status: **development increment, non-claim-bearing.** `G1=false`; containment is
+Status: **frozen development increment, non-claim-bearing.** `G1=false`; containment is
 `not-established`; `H1` is `unexecuted`. No qualified public production launch has
 occurred. A green workspace, green tests, or a loaded fixture establishes none of
 these. The React client at `/app/` is the only UI, and `/` redirects there. The legacy
@@ -13,7 +13,7 @@ authority. The relationship to OpenChamber-for-OpenCode is the *product concept*
 (a better presentation layer for a harness), not a visual or backend template.
 
 Related: [web chat service contract proposal](web-chat-contract.md),
-[architecture](../../../docs/runtime/architecture.md), [status](../../../docs/evaluation/status.md).
+[architecture](../../../docs/runtime/architecture.md), [OVERVIEW](../../../OVERVIEW.md).
 
 ## 1. Authority boundary
 

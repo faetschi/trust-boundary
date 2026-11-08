@@ -9,7 +9,7 @@ produced it.
 The governed path has engineering smoke evidence. A clean-host installation
 and the final evaluation profile still need qualification. H1 is unexecuted.
 Tests, fixtures, capability probes, G1, and pilot reports do not establish
-thesis results. See [status](../evaluation/status.md) for the claim boundary. The thesis
+thesis results. See [OVERVIEW](../../OVERVIEW.md) for the claim boundary. The thesis
 protocol is in the separate `MSE_MA_Thesis` repository, in
 `tbound/tbound-thesis.md` and `tbound/AH-technical/10-decision-register.md`.
 
@@ -417,5 +417,5 @@ execution. H1 measures PVR, forbidden effects in adversarial runs, and ORR,
 rejection of compliant tasks, with independent effect checks. Preserve the
 registered denominators and report unsupported evidence. H1 has not run.
 The current runner's synthetic-ledger report is not a claim-bearing H1
-reporting path. See [status](../evaluation/status.md) and the thesis protocol referenced
+reporting path. See [OVERVIEW](../../OVERVIEW.md) and the thesis protocol referenced
 [above](../../README.md#master-thesis).

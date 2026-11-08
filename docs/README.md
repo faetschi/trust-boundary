@@ -1,15 +1,22 @@
 # TBound documentation
 
-Start with [USAGE](../USAGE.md) for the user workflow. TBound runs one fixed,
-signed Pi task per service configuration, or registered cases in corpus mode.
-There is no interactive Pi chat mode yet. The web chat is frozen and outside
-the thesis.
+Start with [USAGE](../USAGE.md) for the user workflow. [OVERVIEW](../OVERVIEW.md)
+is the only current-state file. TBound runs one fixed, signed Pi task per service
+configuration, or registered cases in corpus mode. There is no interactive Pi
+chat mode. The product service runs a governed chat with the supervisor loop,
+not Pi. The web chat is frozen and outside the thesis.
 
-Product development: the [product implementation plan](product-plan.md) describes the
-proposed interactive Pi product. It is a plan, not a list of shipped capabilities.
-Since the product branch merged into `main` (2026-10-30), [product status](product-status.md) records what is implemented
-and [product contracts](product-contracts.md) fixes the first milestone's contracts.
-The [product audit of 2026-10-29](product-audit-2026-10-29.md) is the product debt ledger.
+The [product contracts](product-contracts.md) fix the first milestone's
+contracts. The [product audit of 2026-10-29](product-audit-2026-10-29.md) is the
+product debt ledger. Both are records, not current state.
+
+## Current state
+
+[OVERVIEW](../OVERVIEW.md) is the only current-state file. Plans, audits, freeze
+records, and evidence are records, not current instructions. Do not edit
+`evidence/`, `infra/freeze/freezes/`, or dated decision records. `TODO` strings
+in `corpus/pilot/*.json` are fixture placeholders, not work items. The earlier
+product plan and status pages are in git history, not current instructions.
 
 ## [Guides](guides/): install, run, reproduce
 
@@ -17,6 +24,7 @@ The [product audit of 2026-10-29](product-audit-2026-10-29.md) is the product de
 - [Governed host setup](guides/governed-setup.md): host, profile, template, and live-root contracts; retains older design notes.
 - [Self-contained workspace](guides/self-contained-workspace.md): what lives where, and continuing on another machine.
 - [Reproduction](guides/reproduce.md): source freeze, release gate, signing, operator cycle, evidence, pilot.
+- [Construct witnesses](guides/construct-witnesses.md): retaining guest construct evidence before registration.
 - [Developer tools](guides/developer-tools.md): source-only provider probe, web chat UI QA, and similar tools, with prerequisites and status.
 - [Release](guides/release.md): package formats and release acceptance checks.
 - [First governed product turn](guides/product-first-turn.md): product service setup order, terminal and browser chat on one Linux host; not thesis evidence.
@@ -44,7 +52,6 @@ The [product audit of 2026-10-29](product-audit-2026-10-29.md) is the product de
 ## [Evaluation](evaluation/): gates and research records
 
 - [Owner protocol decisions, 2026-10-29](evaluation/owner-protocol-decisions-2026-10-29.md): current D35, D26, T5, T7, and AMB-02 policy, superseding advisor prerequisites.
-- [Status and gates](evaluation/status.md): verified scope and remaining evaluation gates.
 - [Pilot corpus](../corpus/pilot/README.md): adapted cases, licenses, artifacts, quotas, optional review metadata, and pending construct evidence.
 - [G1 case](../corpus/g1/README.md): the engineering read, edit, Bash, and publish check.
 - [Master thesis](../README.md#master-thesis): the separate protocol repository, hypotheses, methods, and decision register.

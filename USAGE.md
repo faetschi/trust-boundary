@@ -222,4 +222,4 @@ Full guide: [docs/guides/panel-run.md](docs/guides/panel-run.md).
 - [Reproduce TBound](docs/guides/reproduce.md): the host, signing, freeze, and evaluation sequence.
 - [docs/README.md](docs/README.md): what each document covers.
 - [docs/runtime/architecture.md](docs/runtime/architecture.md): components and trust boundaries.
-- [docs/evaluation/status.md](docs/evaluation/status.md): what is verified and what is not.
+- [OVERVIEW.md](OVERVIEW.md): the single current-state file.

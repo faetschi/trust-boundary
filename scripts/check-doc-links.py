@@ -110,10 +110,29 @@ def main():
             if reason:
                 line = text[:offset].count("\n") + 1
                 errors.append(f"{document.relative_to(ROOT)}:{line}: {url}: {reason}")
+    index = (ROOT / "docs/README.md").read_text(encoding="utf-8")
+    indexed = set()
+    for _, url in links(index):
+        parsed = urlsplit(url)
+        if not parsed.path or parsed.scheme or parsed.netloc or parsed.path.startswith("/"):
+            continue
+        target = (ROOT / "docs" / unquote(parsed.path)).resolve()
+        if target.is_dir():
+            indexed.update(path.resolve() for path in target.rglob("*.md"))
+        elif target.suffix == ".md":
+            indexed.add(target)
+    unindexed = sorted(
+        path for path in (ROOT / "docs").rglob("*.md")
+        if path.resolve() not in indexed
+        and path.resolve() != (ROOT / "docs/README.md").resolve()
+    )
     for error in errors:
         print(error)
-    print(f"{len(documents)} documents, {checked} local links, {len(errors)} broken")
-    return bool(errors)
+    for path in unindexed:
+        print(f"{path.relative_to(ROOT)}: not linked from docs/README.md")
+    print(f"{len(documents)} documents, {checked} local links, {len(errors)} broken, "
+          f"{len(unindexed)} unindexed")
+    return bool(errors or unindexed)
 
 
 if __name__ == "__main__":

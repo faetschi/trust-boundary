@@ -2,7 +2,7 @@
 
 **Status (2026-10-24):** historical embedded-SDK composition detail, still cited
 by code. It records an earlier increment; G1=false statements below describe that
-time. G1 later passed at F12. See [current status](../evaluation/status.md).
+time. G1 later passed at F12. See [OVERVIEW](../../OVERVIEW.md).
 
 **Worker migration:** this document retains implementation details from the
 former embedded Pi SDK worker. The selected worker is the official Pi 0.87.1
@@ -10,7 +10,7 @@ CLI in RPC mode with the TBound extension. The offline CLI/RPC fixture and
 isolated extension have passed development checks; SDK worker names and test
 receipts below do not qualify production.
 See the [CLI reproduction decision](../decisions/2026-10-12-cli-reproduction.md)
-and [current status](../evaluation/status.md).
+and [OVERVIEW](../../OVERVIEW.md).
 
 ## Status and claim boundary
 
