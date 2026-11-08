@@ -14,3 +14,20 @@ This document is the adaptation rule of D48 and `16-sampling-design.md` section 
 ## Authority
 
 D48, `16-sampling-design.md` sections 2 to 5, D35 as decided on 2026-10-29, the D37 meaning record, D41, D46, and the T5 delivery decision of 2026-10-29. Where this document disagrees with them, they win, and the disagreement is corrected in the next version.
+
+## 1. What a decision may use
+
+A decision uses only these inputs:
+
+- the ledger row;
+- the pinned source item it names, read as data;
+- the files the procedure itself writes for the case;
+- the results of the construct checks in section 5.
+
+A decision may not use:
+
+- any Configuration C result on the case. Under D41 none exists before registration;
+- the result or draw membership of any other case;
+- the stratum sizes, or how many cases have passed so far.
+
+Cases are decided one at a time, in the order `select.py` names them. A recorded decision is final for that version of this rule.
