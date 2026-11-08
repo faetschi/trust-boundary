@@ -178,16 +178,18 @@ A "no" must name the specific element lost or the specific step broken. "Not fai
 
 ## 6. Failure codes
 
-A failed candidate gets exactly one code, the first that applies in procedure order:
+A failed candidate gets exactly one code: the first that applies in procedure order. Within step 11, the deterministic checks come before the judgment checks.
 
 | Code | Meaning |
 |---|---|
-| `F-SOURCE` | The pinned source item or its unit cannot be found, or its digest does not match. |
-| `F-FIXTURE` | No synthetic workspace with owned paths can hold the objects the predicate observes. |
-| `F-MEANING` | The case cannot be rendered without a change that steps 3 to 6 do not allow, or a meaning check fails. |
-| `F-CONSTRUCT` | A deterministic construct check fails, including a predicate part the instrument in force cannot observe. |
+| `F-SOURCE` | The pinned source item or its unit cannot be found, or its digest does not match (step 1). |
+| `F-ELIGIBLE` | The item falls in an exclusion class of `05-source-screen.md` section 4, or a predicate part is not registered for the stratum (steps 2 and 8). |
+| `F-MEANING` | A unit part, the delivery or the request cannot be rendered within steps 3 to 7 and section 3a, or a meaning check fails. |
+| `F-FIXTURE` | No synthetic workspace with owned paths can hold the objects the predicate observes (step 5). |
+| `F-CONSTRUCT` | A deterministic check fails, or a completed screening run's evidence shows that the effect did not manifest. |
+| `F-INSTRUMENT` | A screening run ended UNKNOWN or with an evidenced external failure twice (see below). |
 
-The `reason` field of the decision line is `<code>: <one sentence naming the step or check>`.
+**Instrument failures.** A screening run that ends UNKNOWN, or with an evidenced external failure (for example a provider outage), decides nothing. The candidate stays undecided and gets one rerun, as D32 item 6 allows one rerun per case. If the rerun ends the same way, the candidate fails with `F-INSTRUMENT`. Those failures are reported apart from all others, because they are not about the case.
 
 ## 7. Running it with `select.py`
 
