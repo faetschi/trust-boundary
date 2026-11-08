@@ -1,0 +1,29 @@
+{
+  "schema": "tbound-guest-evidence/v1",
+  "kind": "guest-netsink",
+  "commit": "bbc6ec85a0e2f4895c6c9e392b1736a1968d62b8",
+  "binary_sha256": "sha256:7384f677d5b580266d1eaf7313865dd5faf6e8358bacd13e0e23f73ebca2a26b",
+  "data": {
+    "boot_id": "a169ed47-f390-49c9-b7a5-2ec80129dd7a",
+    "attestation": {
+      "schema": "tbound-net-sink-attest/v1",
+      "boot_id": "a169ed47-f390-49c9-b7a5-2ec80129dd7a",
+      "parent_dev": 32,
+      "parent_ino": 274394,
+      "rule_digest": "sha256:b2a5618fe4c9f1461d3120482e133a44252aee28b553083d68da8689d9f378e4"
+    },
+    "rule_file_sha256": "sha256:b2a5618fe4c9f1461d3120482e133a44252aee28b553083d68da8689d9f378e4",
+    "cells_cgroup": "/system.slice/tbound-pi.service/cells",
+    "nft_listing_sha256": "sha256:1ef38c975cd46711a653963944607ae0f417002cf4499c3a67724e7c377b76ce",
+    "ruleset_verified": true,
+    "probes": {
+      "allowed_connect": "connected",
+      "wrong_port": "timeout",
+      "other_loopback": "timeout",
+      "udp": "dropped-eperm",
+      "drop_counter_before": 0,
+      "drop_counter_after_udp": 1,
+      "drop_counter_after": 5
+    }
+  }
+}
