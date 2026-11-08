@@ -74,12 +74,17 @@ func (l *D09PodmanCrunLauncher) finishFailedLaunchRecord(command *exec.Cmd, reco
 }
 
 // settledFailedLaunch types a launch that failed after its cell started once the failed-launch
-// cleanup proved the cell gone (command waited, held cgroup populated=0, launch record finished).
-// The typed complete settlement is what lets the caller release its owners and drain the owner scope;
-// an untyped error cannot be told from a launch whose cell may still run. Any cleanup error keeps
-// the error untyped, so the caller keeps its owners.
-func settledFailedLaunch(launchErr, cleanupErr error) error {
-	if launchErr == nil || cleanupErr != nil {
+// cleanup proved the cell gone. A single empty-cgroup sample is not enough before the leader was
+// pinned (a detached conmon may not have populated the scope, and a late crun create could still
+// start a cell), so it also requires the pinned-leader phase and that podman reports the container
+// does not exist after the kill. Any cleanup error, an ErrUnknownSettlement in the cause (a typed
+// settlement must never be produced then), or an unprovable existence check leaves the error untyped
+// and the caller keeps its owners.
+func settledFailedLaunch(launchErr, cleanupErr error, leaderPinned bool, containerExists func() (bool, error)) error {
+	if launchErr == nil || cleanupErr != nil || !leaderPinned || errors.Is(launchErr, ErrUnknownSettlement) {
+		return launchErr
+	}
+	if exists, err := containerExists(); err != nil || exists {
 		return launchErr
 	}
 	return &PiWorkerLaunchError{Cause: launchErr,

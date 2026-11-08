@@ -142,7 +142,14 @@ func (l *D09PodmanCrunLauncher) StartVerifiedWithProof(ctx context.Context, requ
 			record := l.launchRecord(launchCmd)
 			cleanupErr := l.cleanupFailedContainer(launchCmd, launchPodman, launchName)
 			returnedErr = errors.Join(returnedErr, cleanupErr, l.failedLaunchExitStatus(record))
-			returnedErr = settledFailedLaunch(returnedErr, cleanupErr)
+			returnedErr = settledFailedLaunch(returnedErr, cleanupErr, phases.reached("pidfd_pinned"), func() (bool, error) {
+				if launchPodman == "" || launchName == "" {
+					return true, errors.New("failed launch has no podman path or container name")
+				}
+				ctx, cancel := context.WithTimeout(context.Background(), d09CleanupTimeout)
+				defer cancel()
+				return containerExists(ctx, launchPodman, launchName, l.commandEnvironment())
+			})
 			return
 		}
 		if stdoutPipe != nil {
@@ -1087,6 +1094,15 @@ func newD09AdmissionPhases() *d09AdmissionPhases { return &d09AdmissionPhases{st
 
 func (p *d09AdmissionPhases) mark(name string) {
 	p.marks = append(p.marks, name+"="+strconv.FormatInt(time.Since(p.start).Milliseconds(), 10))
+}
+
+func (p *d09AdmissionPhases) reached(name string) bool {
+	for _, mark := range p.marks {
+		if strings.HasPrefix(mark, name+"=") {
+			return true
+		}
+	}
+	return false
 }
 
 func (p *d09AdmissionPhases) String() string {
