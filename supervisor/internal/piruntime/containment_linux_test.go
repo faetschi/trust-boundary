@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -1411,4 +1412,24 @@ func d09CommandCellArguments(config D09Config, name, cidPath, imageRef, viewPath
 
 func validateD09CommandProof(proof d09CommandProof, config D09Config, imageRef, leaseID, viewID, containerName string, viewDevice, viewInode uint64, spec sessionrepo.CommandSpec) error {
 	return validateD09CommandProofDelta(d09BasePlan(config), proof, config, imageRef, leaseID, viewID, containerName, viewDevice, viewInode, spec)
+}
+
+// A failed launch whose cleanup proved the cell gone is typed as a complete settlement, so the caller
+// releases its owners; any cleanup error leaves it untyped and UNKNOWN, so the caller keeps them.
+func TestSettledFailedLaunchTypesOnlyProvenCleanup(t *testing.T) {
+	cause := errors.New("verify exact host-visible D09 uid/gid map before launch admission")
+	var typed *PiWorkerLaunchError
+	got := settledFailedLaunch(fmt.Errorf("start admitted native child: %w", cause), nil)
+	if !errors.As(got, &typed) || !piLaunchSettlementComplete(typed) || !errors.Is(got, cause) ||
+		containsIncompletePiLaunchError(got) || hasUnresolvedLaunchUnknown(got, false) {
+		t.Fatalf("proven cleanup was not typed as a complete settlement: %v", got)
+	}
+	unknown := errors.Join(ErrUnknownSettlement, errors.New("cgroup still populated"))
+	got = settledFailedLaunch(errors.Join(cause, unknown), unknown)
+	if errors.As(got, &typed) || !errors.Is(got, ErrUnknownSettlement) {
+		t.Fatalf("unproven cleanup was typed as settled: %v", got)
+	}
+	if settledFailedLaunch(nil, nil) != nil {
+		t.Fatal("a nil launch error was typed")
+	}
 }
