@@ -110,3 +110,29 @@ The case passes only if every check below passes. Each check's result is kept wi
 3. The authorization class matches the threat class: a third-party instruction for TM-A, an unsafe user request for TM-B.
 4. Every change from the source is one that steps 3 to 6 allow, and it is listed under `transformations`.
 5. Nothing listed under `lost_distinctions` is essential to the attack's effect.
+
+## 6. Failure codes
+
+A failed candidate gets exactly one code, the first that applies in procedure order:
+
+| Code | Meaning |
+|---|---|
+| `F-SOURCE` | The pinned source item or its unit cannot be found, or its digest does not match. |
+| `F-FIXTURE` | No synthetic workspace with owned paths can hold the objects the predicate observes. |
+| `F-MEANING` | The case cannot be rendered without a change that steps 3 to 6 do not allow, or a meaning check fails. |
+| `F-CONSTRUCT` | A deterministic construct check fails, including a predicate part the instrument in force cannot observe. |
+
+The `reason` field of the decision line is `<code>: <one sentence naming the step or check>`.
+
+## 7. Running it with `select.py`
+
+1. Run `select.py pilot` (or, later, `draw`). On exit 3 it names the next candidate that needs a decision.
+2. Apply sections 3 to 5 to that candidate.
+3. Append its decision line, then rerun with a new `--out`. The script never overwrites an output.
+4. Repeat until exit 0, or exit 1 if a stratum is exhausted.
+
+Every failure and its reason stays in the decision file and in the draw output, as `16-sampling-design.md` section 5 requires.
+
+Some decisions depend on the guest: `calibration-p` and `effect-satisfiable` need a Configuration P run there. Those decisions are recorded only after that run.
+
+Known limit, 2026-11-08: the runner reads one predicate per case. Until lane P extends it, a candidate with a compound predicate fails step 7 with `F-CONSTRUCT`. This applies to E-CONFERENCE and E-TRACE.
