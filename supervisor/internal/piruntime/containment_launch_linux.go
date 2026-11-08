@@ -127,12 +127,16 @@ func (l *D09PodmanCrunLauncher) StartVerifiedWithProof(ctx context.Context, requ
 	l.launchInProg = true
 	l.proofMu.Unlock()
 	launchSucceeded := false
+	phases := newD09AdmissionPhases()
 	var launchCmd *exec.Cmd
 	var launchName, launchPodman string
 	var stdoutPipe *ownedStdoutPipe
 	defer func() {
 		if launchSucceeded {
 			return
+		}
+		if returnedErr != nil {
+			returnedErr = fmt.Errorf("%w (%s)", returnedErr, phases)
 		}
 		if launchCmd != nil && launchCmd.Process != nil {
 			record := l.launchRecord(launchCmd)
@@ -281,6 +285,7 @@ func (l *D09PodmanCrunLauncher) StartVerifiedWithProof(ctx context.Context, requ
 		_ = proofWrite.Close()
 		return nil, D09TCBProof{}, fmt.Errorf("start D09 rootless Podman/crun cell: %w", startErr)
 	}
+	phases.mark("podman_started")
 	_ = proofWrite.Close()
 	// Everything below waits on podman or on the cell it starts. If podman exits first
 	// (a failed mount, a refused image), nothing will ever answer, so each wait also ends
@@ -291,6 +296,7 @@ func (l *D09PodmanCrunLauncher) StartVerifiedWithProof(ctx context.Context, requ
 	if err != nil {
 		return nil, D09TCBProof{}, fmt.Errorf("observe D09 worker container id: %w", errors.Join(err, context.Cause(watchCtx)))
 	}
+	phases.mark("cid_read")
 	inspectCtx, cancelInspect := context.WithTimeout(watchCtx, d09WorkerProofTimeout)
 	containerState, err := inspectContainer(inspectCtx, report.PodmanPath, cid, l.commandEnvironment())
 	cancelInspect()
@@ -298,11 +304,12 @@ func (l *D09PodmanCrunLauncher) StartVerifiedWithProof(ctx context.Context, requ
 		strings.TrimPrefix(containerState.Name, "/") != name {
 		return nil, D09TCBProof{}, errors.Join(fmt.Errorf("D09 worker container identity/state is not running as the requested cell"), err)
 	}
+	phases.mark("inspect_done")
 	// Pin the leader before anything else reads it: the cell can exit at any moment, and the pidfd both
 	// survives that and reports it. It becomes the worker pidfd on success.
 	pidfd, err := openPidfd(containerState.State.PID)
 	if err != nil {
-		if exited := d09ExitedBeforeAdmission(ctx, report.PodmanPath, cid, l.commandEnvironment(), -1, command.Process.Pid, err); exited != nil {
+		if exited := d09ExitedBeforeAdmission(ctx, report.PodmanPath, cid, l.commandEnvironment(), -1, containerState.State.PID, command.Process.Pid, err); exited != nil {
 			return nil, D09TCBProof{}, exited
 		}
 		return nil, D09TCBProof{}, fmt.Errorf("entrypoint leader PID %d has no host pidfd: %w", containerState.State.PID, err)
@@ -312,12 +319,14 @@ func (l *D09PodmanCrunLauncher) StartVerifiedWithProof(ctx context.Context, requ
 			_ = syscall.Close(pidfd)
 		}
 	}()
+	phases.mark("pidfd_pinned")
 	startupProofCtx, cancelStartupProof := context.WithTimeout(watchCtx, d09WorkerProofTimeout)
 	proof, err := readD09TCBProofContext(startupProofCtx, proofRead)
 	cancelStartupProof()
 	if err != nil {
 		return nil, D09TCBProof{}, fmt.Errorf("captured TCB proof is missing or invalid: %w", errors.Join(err, context.Cause(watchCtx)))
 	}
+	phases.mark("proof_read")
 	proof.ContainerName = name
 	proof.LauncherProcessPID = command.Process.Pid
 	proof.LeaderPID = containerState.State.PID
@@ -342,13 +351,15 @@ func (l *D09PodmanCrunLauncher) StartVerifiedWithProof(ctx context.Context, requ
 	if proof.ContainerLeaderPID != 1 {
 		return nil, D09TCBProof{}, errors.New("D09 worker entrypoint is not PID1 inside the private namespace")
 	}
+	phases.mark("map_check_start")
 	if err := verifyD09HostProcessIDMaps(proof.LeaderPID, proof.UserNSInode, config,
 		proof.UIDMap, proof.GIDMap); err != nil {
-		if exited := d09ExitedBeforeAdmission(ctx, report.PodmanPath, cid, l.commandEnvironment(), pidfd, command.Process.Pid, err); exited != nil {
+		if exited := d09ExitedBeforeAdmission(ctx, report.PodmanPath, cid, l.commandEnvironment(), pidfd, proof.LeaderPID, command.Process.Pid, err); exited != nil {
 			return nil, D09TCBProof{}, exited
 		}
 		return nil, D09TCBProof{}, fmt.Errorf("verify exact host-visible D09 uid/gid map before launch admission: %w", err)
 	}
+	phases.mark("map_check_done")
 	if !proof.ConsumerMountsVerified || !proof.RawSourceFDsClosed ||
 		proof.WorkerDevice != workerDevice || proof.WorkerInode != workerInode ||
 		proof.RuntimeDevice != runtimeEvidence.Device || proof.RuntimeInode != runtimeEvidence.Inode ||
@@ -380,7 +391,7 @@ func (l *D09PodmanCrunLauncher) StartVerifiedWithProof(ctx context.Context, requ
 	}
 	// A leader that exited during the checks above must not be admitted.
 	if pidfdReadable(pidfd) {
-		return nil, D09TCBProof{}, d09ExitedBeforeAdmission(ctx, report.PodmanPath, cid, l.commandEnvironment(), pidfd, command.Process.Pid,
+		return nil, D09TCBProof{}, d09ExitedBeforeAdmission(ctx, report.PodmanPath, cid, l.commandEnvironment(), pidfd, proof.LeaderPID, command.Process.Pid,
 			errors.New("leader pidfd reports exit after the admission checks"))
 	}
 	if err := validateD09TCBProof(proof, config); err != nil {
@@ -957,8 +968,8 @@ var ErrD09WorkerExitedBeforeAdmission = errors.New("D09 worker cell exited befor
 // It is waited on for a bound without reaping it, so cleanupFailedContainer still owns Wait. The
 // secondary source is one short inspect of State.Status, ExitCode, OOMKilled and a bounded State.Error.
 // Pi/Node output is never read.
-func d09ExitedBeforeAdmission(ctx context.Context, podmanPath, cid string, environment []string, pidfd, launcherPID int, cause error) error {
-	if !errors.Is(cause, os.ErrNotExist) && !errors.Is(cause, syscall.ESRCH) && !(pidfd >= 0 && pidfdReadable(pidfd)) {
+func d09ExitedBeforeAdmission(ctx context.Context, podmanPath, cid string, environment []string, pidfd, leaderPID, launcherPID int, cause error) error {
+	if !d09LeaderExited(pidfd, leaderPID, cause) {
 		return nil
 	}
 	podmanExit := d09PodmanExitStatus(launcherPID, 3*time.Second)
@@ -1025,4 +1036,59 @@ func d09Printable(s string, limit int) string {
 		text = text[:limit]
 	}
 	return text
+}
+
+// d09LeaderExited decides whether cause means the leader is gone. ENOENT/ESRCH say so directly. Any other
+// errno from the /proc map/ns reads (proc_id_map_open returns EINVAL once the pid has no task) is only
+// believed after the pinned pidfd, given a short settle, or a fresh /proc/<pid>/status State line (Z, X or
+// missing) agrees; a live leader keeps its original error.
+func d09LeaderExited(pidfd, leaderPID int, cause error) bool {
+	if errors.Is(cause, os.ErrNotExist) || errors.Is(cause, syscall.ESRCH) || (pidfd >= 0 && pidfdReadable(pidfd)) {
+		return true
+	}
+	var errno syscall.Errno
+	if !errors.As(cause, &errno) {
+		return false
+	}
+	if pidfd >= 0 {
+		fds := []unix.PollFd{{Fd: int32(pidfd), Events: unix.POLLIN}}
+		if n, _ := unix.Poll(fds, 250); n > 0 {
+			return true
+		}
+	}
+	return d09LeaderStateGone(leaderPID)
+}
+
+// d09LeaderStateGone reports whether /proc/<pid>/status is missing or shows State Z or X.
+func d09LeaderStateGone(pid int) bool {
+	if pid <= 0 {
+		return false
+	}
+	data, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/status")
+	if err != nil {
+		return errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ESRCH)
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		if state, ok := strings.CutPrefix(line, "State:"); ok {
+			state = strings.TrimSpace(state)
+			return strings.HasPrefix(state, "Z") || strings.HasPrefix(state, "X")
+		}
+	}
+	return false
+}
+
+// d09AdmissionPhases records monotonic offsets since launch start so a slow admission is attributable.
+type d09AdmissionPhases struct {
+	start time.Time
+	marks []string
+}
+
+func newD09AdmissionPhases() *d09AdmissionPhases { return &d09AdmissionPhases{start: time.Now()} }
+
+func (p *d09AdmissionPhases) mark(name string) {
+	p.marks = append(p.marks, name+"="+strconv.FormatInt(time.Since(p.start).Milliseconds(), 10))
+}
+
+func (p *d09AdmissionPhases) String() string {
+	return "phases_ms[" + strings.Join(p.marks, " ") + "]"
 }
