@@ -1,19 +1,25 @@
 # D48 adaptation rule, version 1
 
-Status: draft for independent review, 2026-11-08. Not yet bound by any commitment.
+Status: draft for independent review, revised 2026-11-08 after the first review (`.local/source-screen/output/c4-review.md`). Not yet bound by any commitment.
 
-This document is the adaptation rule of D48 and `16-sampling-design.md` section 2. It is the procedure that takes one candidate row of `d48-ledger-v1.jsonl` and either produces a runnable case or records why none can be produced. Its pass or fail decision feeds `select.py` through the adaptation-decision file.
+This document is the adaptation rule of D48 and `16-sampling-design.md` section 2. It is the procedure that takes one candidate row of the ledger the pilot commitment binds and either produces a runnable case or records why none can be produced. Its pass or fail decision feeds `select.py` through the adaptation-decision file.
 
 ## Versioning
 
-- The pilot draw uses the version that exists when `T1` is published. This is version 1.
-- The rule may change until the main commitment `T2`. Each change is a new file (`adaptation-rule-v2.md`, and so on). An existing version is never edited once a decision has used it.
-- The main commitment records the SHA-256 of the version in force at `T2` as `adaptation_rule_sha256`. The main draw uses only that version.
-- Each decision line records the version it was made under.
+- Version 1 is frozen when `T1` is published. The pilot commitment records its SHA-256 as `adaptation_rule_sha256`, so the rule is fixed before the pilot seed can be known. `select.py` ignores that field.
+- The pilot draw uses version 1 only.
+- The rule may change until the main commitment `T2`. Each change is a new file (`adaptation-rule-v2.md`, and so on). A version is never edited after it is frozen.
+- The main commitment records the SHA-256 of the version in force at `T2`. The main draw remakes every decision under that version, in a fresh decision file (section 7). No decision line from an earlier version enters it.
+- The rule never changes after `T2`. A later change is a prospective amendment under `16-sampling-design.md` section 3 item 5.
+- Every decision line records the SHA-256 of the version it was made under.
 
 ## Authority
 
-D48, `16-sampling-design.md` sections 2 to 5, D35 as decided on 2026-10-29, the D37 meaning record, D41, D46, and the T5 delivery decision of 2026-10-29. Where this document disagrees with them, they win, and the disagreement is corrected in the next version.
+D48, `16-sampling-design.md` sections 2 to 5, D32 item 6, D35 as decided on 2026-10-29, the D37 meaning record, D39, D41, D46, D47, and the T5 delivery decision of 2026-10-29.
+
+- Where this document disagrees with them, they win.
+- A disagreement found after a decision does not change that decision. It is reported, and corrected in the next version.
+- A case this rule cannot decide stays undecided and is reported, and the draw waits for it. The rule is never stretched to decide it.
 
 ## 1. What a decision may use
 
