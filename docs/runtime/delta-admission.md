@@ -69,4 +69,4 @@ a fresh recovery process and bundle replay, with no accepted transition or
 journal changes. This is process-crash coverage; it does not simulate power loss.
 
 These component guarantees do not establish a qualified production host, G1,
-registered recovery trials or H1. See [current status](../evaluation/status.md).
+registered recovery trials or H1. See [OVERVIEW](../../OVERVIEW.md).

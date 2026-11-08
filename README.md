@@ -13,14 +13,11 @@ There is no interactive Pi chat mode yet.
 
 ## Current status
 
-- The governed read, edit, Bash, and publish smoke path has real-host engineering
-  evidence. Each new deployment must repeat it with fresh evidence.
-- The pilot still needs review, complete evidence, and guest qualification checks.
-- H1 is unexecuted. Tests, fixtures, probes, and pilot reports are not thesis results.
-- The optional [web chat](extensions/webchat/README.md) is frozen and outside the thesis.
-
-See [OVERVIEW.md](OVERVIEW.md) for the engineering checkpoint and
-[status and gates](docs/evaluation/status.md) for verified scope and remaining work.
+[OVERVIEW.md](OVERVIEW.md) is the only current-state file. It records the
+frozen research baseline, the interim engineering freezes, the unexecuted H1
+evaluation, the product lane, and the claim boundary. Tests, fixtures, probes,
+and pilot reports are not thesis results. The optional
+[web chat](extensions/webchat/README.md) is frozen and outside the thesis.
 
 ## Product demo: governed chat
 

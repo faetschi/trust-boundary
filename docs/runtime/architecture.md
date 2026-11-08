@@ -2,7 +2,7 @@
 
 **Status (2026-10-24):** G1 passes on the real guest at F12. This page describes
 the authority boundaries and seams, not the current gate state; see
-[current status](../evaluation/status.md) and [OVERVIEW](../../OVERVIEW.md).
+[OVERVIEW](../../OVERVIEW.md) and [OVERVIEW](../../OVERVIEW.md).
 
 TBound is a Linux host supervisor prototype for a single Pi coding task. Its
 design keeps authorization and durable execution state outside the model
@@ -107,7 +107,7 @@ CLI routes and exit codes are in [governed host setup](../guides/governed-setup.
 The service handoff, journal, source capture, Pi CLI launch, command cells,
 settlement, and publication have F12 engineering smoke evidence. The final
 evaluation profile and complete independent-effect evidence still need
-qualification. Gates are tracked in [current status](../evaluation/status.md).
+qualification. Gates are tracked in [OVERVIEW](../../OVERVIEW.md).
 Component fixture captures and `nativeFixtureTrust` remain synthetic.
 Every effect-capable run needs an admitted
 session store and durable recorder (a non-nil interface is not evidence); a
