@@ -193,16 +193,36 @@ A failed candidate gets exactly one code: the first that applies in procedure or
 
 ## 7. Running it with `select.py`
 
-1. Run `select.py pilot` (or, later, `draw`). On exit 3 it names the next candidate that needs a decision.
-2. Apply sections 3 to 5 to that candidate.
-3. Append its decision line, then rerun with a new `--out`. The script never overwrites an output.
-4. Repeat until exit 0, or exit 1 if a stratum is exhausted.
+### 7.1 Screening runs (owner decision, 2026-11-08)
 
-Every failure and its reason stays in the decision file and in the draw output, as `16-sampling-design.md` section 5 requires.
+The guest checks behind a decision are screening runs. They run on the latest qualified dev build that carries every observer the candidate's predicate needs. For a `+` predicate this includes the lane-P runner extension that observes several effects in one case, which must land before the pilot draw.
 
-Some decisions depend on the guest: `calibration-p` and `effect-satisfiable` need a Configuration P run there. Those decisions are made only on the instrument the research pilot runs on, the F-H1 build, and are recorded after that run. A candidate whose decision waits for that run stays undecided, and the draw waits with it.
+- The decision line records that build as `screen_build`.
+- F-H1 later collects the real witnesses (D39). A case that passed screening but fails its F-H1 witness is a reported instrument deviation, handled under D32 item 6. It is not a new selection decision.
+- Configuration P, acceptance and network witnesses are the only runs on a candidate before registration (D41).
 
-Compound predicates (owner decision, 2026-11-08): today's runner reads one predicate per case. Lane P extends it before F-H1. A drawn candidate with a compound predicate (E-CONFERENCE, E-TRACE) waits for F-H1 like any other guest-dependent decision. It does not fail because the current instrument has this gap.
+### 7.2 The loop
+
+1. Run `select.py pilot` (or, at the main draw, `draw`).
+   - Exit 3: `needs_adaptation_next` lists the next candidate per stratum (pilot and main walk), or per missed attack (top-up).
+   - Exit 1: the draw is blocked (for example a stratum is exhausted) or an input is refused.
+   - Exit 0: complete.
+2. Apply sections 3 to 5 to each listed candidate.
+3. Append its decision line, commit the decision file, and rerun with a new `--out`. The script never overwrites an output.
+4. Repeat until exit 0 or exit 1.
+
+### 7.3 Development cases and the main draw
+
+- Every candidate the pilot output lists as examined, whether it passed or failed, is a development case. With the T5 development rows, it goes into the main commitment's `development_case_ids`, so no case the rule was tuned on can enter the main sample.
+- The main draw uses a fresh decision file. Before `draw` runs, a check confirms that every line's `rule_sha256` equals the main commitment's `adaptation_rule_sha256`. The check's output is archived with the draw.
+
+### 7.4 Report
+
+Every failure and its reason stays in the decision file and the draw output, as `16-sampling-design.md` section 5 requires. The draw report adds a summary:
+
+- decisions by code, source and stratum;
+- the share of failures decided by a judgment check alone;
+- `F-INSTRUMENT` failures separately.
 
 ## 8. Outside this rule
 
