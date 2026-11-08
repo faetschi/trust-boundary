@@ -985,7 +985,14 @@ func d09PodmanExitStatus(pid int, bound time.Duration) string {
 	}
 	defer syscall.Close(fd)
 	fds := []unix.PollFd{{Fd: int32(fd), Events: unix.POLLIN}}
-	if n, _ := unix.Poll(fds, int(bound.Milliseconds())); n <= 0 {
+	n, err := unix.Poll(fds, int(bound.Milliseconds()))
+	if err == unix.EINTR {
+		n, err = unix.Poll(fds, int(bound.Milliseconds()))
+	}
+	if err != nil {
+		return "unavailable"
+	}
+	if n <= 0 {
 		return "running(after " + bound.String() + ")"
 	}
 	var info [128]byte // siginfo_t: si_code at 8, si_status at 24
@@ -994,6 +1001,9 @@ func d09PodmanExitStatus(pid int, bound time.Duration) string {
 		return "unavailable"
 	}
 	code, status := *(*int32)(unsafe.Pointer(&info[8])), *(*int32)(unsafe.Pointer(&info[24]))
+	if code == 0 { // nothing waitable: no state to report
+		return "unavailable"
+	}
 	if code == 1 { // CLD_EXITED
 		return strconv.Itoa(int(status))
 	}
