@@ -6,14 +6,18 @@ contract, a guide, a decision record, or historical evidence.
 | Layer | State | Record |
 | --- | --- | --- |
 | Frozen research baseline | G1 passes on the real guest at F13 = `6162e3c` (2026-10-24). F14 = `02f9fb7` is the guest-verified thesis source freeze (2026-10-30). Both stay as recorded. | [F14 result](evidence/F14/F14-RESULT.md), [freeze kit](infra/freeze/README.md) |
-| Interim engineering qualification | F15 = `2a6492d`, F16 = `97738b6`, F17 = `8931c69` and F18 = `b26e5ef` are guest-verified engineering freezes of `main`. Each passed G1, rp and dr, and routes 4/4. EVQ was 21/22 at F15 and F16, and 22/22 with the guest net-sink artifact at F17 and F18. | [F15](evidence/F15/F15-RESULT.md), [F16](evidence/F16/F16-RESULT.md), [F17](evidence/F17/F17-RESULT.md), [F18](evidence/F18/F18-RESULT.md) |
-| H1 evaluation | Not run. The build for it is F-H1, which does not exist yet. There are no H1 results. | [F18 result](evidence/F18/F18-RESULT.md) |
+| Interim engineering qualification | F15 = `2a6492d`, F16 = `97738b6`, F17 = `8931c69`, F18 = `b26e5ef` and F20 = `2641c6bc` are guest-verified engineering freezes of `main`. Each passed G1, rp and dr, and routes 4/4. EVQ was 21/22 at F15 and F16, and 22/22 with the guest net-sink artifact at F17, F18 and F20. | [F15](evidence/F15/F15-RESULT.md), [F16](evidence/F16/F16-RESULT.md), [F17](evidence/F17/F17-RESULT.md), [F18](evidence/F18/F18-RESULT.md), [F20](evidence/F20/F20-RESULT.md) |
+| H1 evaluation | Not run. The build for it is F-H1, which does not exist yet. There are no H1 results. | [F20 result](evidence/F20/F20-RESULT.md) |
 | Product lane | In progress with no qualified product host. See the product paragraph below. | [Product contract](docs/product-contracts.md), [debt ledger](docs/product-audit-2026-10-29.md) |
 
-F15 to F18 are not the H1 build. They establish neither H1 readiness nor
+F19 = `b5ed5b0d` was cut but not qualified; its route probe ended unknown, and
+F20 supersedes it ([F19 result](evidence/F19/F19-RESULT.md)). F20 is the latest
+verified interim qualification.
+
+F15 to F18 and F20 are not the H1 build. They establish neither H1 readiness nor
 product release readiness. `EVQ-NETWORK-SINK-GUEST` is open at F14, F15 and F16.
-F17 and F18 passed it as interim rehearsals; the claim-bearing 22/22 belongs to
-F-H1.
+F17, F18 and F20 passed it as interim rehearsals; the claim-bearing 22/22 belongs
+to F-H1.
 
 The product lane runs governed chat turns with the supervisor loop, not Pi.
 Bash through the signed D09 cell is implemented. On 2026-11-04, build
@@ -30,9 +34,9 @@ These product runs are not thesis evidence.
 - **H1 is unexecuted.** No PVR or ORR value exists. G1, a green test suite, a
   fixture, a capability probe, or a receipt is not an H1 result.
 - **The pilot is not ready.** EVQ at F13 passed 21 of 22 obligations; only the
-  net-sink obligation was open. F17 and F18 passed 22/22 as interim rehearsals.
-  The service-mode blockers found since F13 are fixed and merged, but not all
-  have run on the guest.
+  net-sink obligation was open. F17, F18 and F20 passed 22/22 as interim
+  rehearsals. The service-mode blockers found since F13 are fixed and merged,
+  but not all have run on the guest.
 - **Production resume is fixed at component level, not proven end to end.**
   The full binder, live-root permit and finalizer are not driven in a test, and
   nothing has run on the guest. No registered run depends on resume.
@@ -92,7 +96,7 @@ report.
 
 ## Historical records
 
-- [Evidence](evidence/): F13 to F18 results and guest logs.
+- [Evidence](evidence/): F13 to F20 results and guest logs.
 - [Freeze kit](infra/freeze/README.md): freeze values and procedure.
 - [Decision records](docs/decisions/): dated architecture decisions.
 - [Architecture](docs/runtime/architecture.md): components and trust boundaries.
