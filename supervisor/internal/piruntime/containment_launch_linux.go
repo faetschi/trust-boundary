@@ -140,9 +140,9 @@ func (l *D09PodmanCrunLauncher) StartVerifiedWithProof(ctx context.Context, requ
 		}
 		if launchCmd != nil && launchCmd.Process != nil {
 			record := l.launchRecord(launchCmd)
-			returnedErr = errors.Join(returnedErr,
-				l.cleanupFailedContainer(launchCmd, launchPodman, launchName))
-			returnedErr = errors.Join(returnedErr, l.failedLaunchExitStatus(record))
+			cleanupErr := l.cleanupFailedContainer(launchCmd, launchPodman, launchName)
+			returnedErr = errors.Join(returnedErr, cleanupErr, l.failedLaunchExitStatus(record))
+			returnedErr = settledFailedLaunch(returnedErr, cleanupErr)
 			return
 		}
 		if stdoutPipe != nil {

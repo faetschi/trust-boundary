@@ -73,6 +73,19 @@ func (l *D09PodmanCrunLauncher) finishFailedLaunchRecord(command *exec.Cmd, reco
 	return nil
 }
 
+// settledFailedLaunch types a launch that failed after its cell started once the failed-launch
+// cleanup proved the cell gone (command waited, held cgroup populated=0, launch record finished).
+// The typed complete settlement is what lets the caller release its owners and drain the owner scope;
+// an untyped error cannot be told from a launch whose cell may still run. Any cleanup error keeps
+// the error untyped, so the caller keeps its owners.
+func settledFailedLaunch(launchErr, cleanupErr error) error {
+	if launchErr == nil || cleanupErr != nil {
+		return launchErr
+	}
+	return &PiWorkerLaunchError{Cause: launchErr,
+		Settlement: Settlement{State: SettlementStopped, ExitObserved: true, DescendantsSettled: true}}
+}
+
 func (l *D09PodmanCrunLauncher) cleanupFailedContainer(command *exec.Cmd, podmanPath, name string) error {
 	if command == nil || command.Process == nil {
 		return nil
