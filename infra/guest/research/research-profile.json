@@ -15,7 +15,7 @@
   "output_micro_usd_per_1m_tokens": 420000,
   "max_price_micro_usd_per_1m_tokens_in": 300000,
   "max_price_micro_usd_per_1m_tokens_out": 1200000,
-  "max_input_tokens": 32768,
+  "max_input_tokens": 131072,
   "input_framing_reserve_tokens": 1024,
   "max_output_tokens": 4096,
   "max_requests_per_unit": 17,

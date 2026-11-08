@@ -2,6 +2,6 @@
   "schema_version": 1,
   "ledger_id": "tbound-h1-research",
   "cap_micro_usd": 5000000,
-  "min_per_unit_worst_case_micro_usd": 250682,
+  "min_per_unit_worst_case_micro_usd": 752029,
   "reserve_basis": "request"
 }
