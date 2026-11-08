@@ -44,11 +44,13 @@ type fakeGuest struct {
 	// D49. closureRun is the run id the closure document names (default "run-1"); failClosure fails proc-closure;
 	// closureMutate edits the document; stopMutate edits the monitor document that answers a stop request;
 	// stopIgnored: the monitor does not act on the stop line and runs to its horizon.
-	closureRun    string
-	failClosure   bool
-	closureMutate func(*ClosureDoc)
-	stopMutate    func(*MonitorDoc)
-	stopIgnored   bool
+	closureRun  string
+	failClosure bool
+	// refuseClosure: the guest ANSWERS with its refusal exit status; closureTransportErr: the transport itself fails.
+	refuseClosure, closureTransportErr bool
+	closureMutate                      func(*ClosureDoc)
+	stopMutate                         func(*MonitorDoc)
+	stopIgnored                        bool
 	// shortHorizon: the record claims the horizon but holds only six seconds of polls.
 	shortHorizon bool
 	// pollProcs puts processes into the poll of that sequence number; stopPollSecs replaces the seconds (from the
@@ -207,6 +209,12 @@ func (g *fakeGuest) RunReadyStdin(ctx context.Context, argv []string, stdin io.R
 	case runner.EvidenceProcClosure:
 		if g.failClosure {
 			return nil, []byte("closure failed"), 2, nil
+		}
+		if g.refuseClosure {
+			return nil, []byte("the receipt does not report a settled run"), runner.EvidenceRefusalExit, nil
+		}
+		if g.closureTransportErr {
+			return nil, nil, 0, errors.New("ssh: connection reset")
 		}
 		run := g.closureRun
 		if run == "" {

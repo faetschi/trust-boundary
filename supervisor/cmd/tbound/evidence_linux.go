@@ -217,8 +217,8 @@ type evidenceEnv struct {
 	// stop delivers a valid host stop request (D49); the monitor then ends at once and returns the request it obeyed.
 	monitor func(ctx context.Context, c evidenceCell, reg procoracle.Registration, d, interval time.Duration, ready func(procoracle.Snapshot),
 		stop <-chan procoracle.MonitorStopRequest) ([]procoracle.Snapshot, *procoracle.MonitorStopRequest, error)
-	// cellChildren counts the command cgroups below the registered cells cgroup (proc-closure's).
-	cellChildren func(c evidenceCell) (int, error)
+	// cellChildren lists the cgroups below the registered cells cgroup and counts them (proc-closure's).
+	cellChildren func(c evidenceCell) ([]procoracle.CellChild, int, error)
 	// hostNetNS is the inode of the host's own network namespace (a net-sink/v1 command shares it).
 	hostNetNS func() (uint64, error)
 	// lockMonitor admits one monitor at a time; the release function frees it.
@@ -268,6 +268,9 @@ func evidenceMain(args []string, stdout, stderr io.Writer, env evidenceEnv) int 
 	}
 	if err := runEvidence(ctx, args, stdout, env); err != nil {
 		fmt.Fprintf(stderr, "tbound evidence: %v\n%s", err, evidenceUsage)
+		if errors.As(err, new(*evidenceRefusal)) {
+			return runner.EvidenceRefusalExit
+		}
 		return 2
 	}
 	return 0

@@ -1,0 +1,76 @@
+== 40-sign start 2026-11-08T10:15:51Z as tbound freeze=F20
+
+== preconditions (names, modes and public digests only)
+OK IMGDIGEST file == session env = sha256:60948dfa81f797672865cf6395d56b5a81fd2c236d291e528d8adf1ea098580b
+
+== keys are the K0 keys (public digests must equal the F0 records)
+OK ADMIN_PUB_DIGEST == F0 = sha256:be206a41ad321f29ef89e8157f69a6f0820a93fafa3096b71867ece745f9afac
+OK COSIGN_PUB_DIGEST == F0 = sha256:caf906a4ead6cd8998502333030f0602e66302e47b1539afebe5a13c39e66bcd
+
+== the layout to sign is the P3 layout
+OK measure(/home/tbound/tbound-b.KYzApw/oci) == IMGDIGEST = sha256:60948dfa81f797672865cf6395d56b5a81fd2c236d291e528d8adf1ea098580b
+
+== S5: sign into a partial dir (renamed to pi-cell-oci only after every check passes)
+Flag --tlog-upload has been deprecated, prefer using a --signing-config file with no transparency log services
+Using payload from: /home/tbound/toolchains/tmp/cosign-sign-z8o3igwf/payload.json
+Signing artifact...
+Wrote bundle to file /home/tbound/toolchains/tmp/cosign-sign-z8o3igwf/bundle.json
+{
+ "signed_manifest_digest": "sha256:60948dfa81f797672865cf6395d56b5a81fd2c236d291e528d8adf1ea098580b",
+ "layout": "/home/tbound/tbound-h/f20/.pi-cell-oci.partial"
+}
+
+== load tar (deterministic, same recipe as F0, from the unsigned layout; checked by building twice)
+
+== P7: verify with cosign.pub against IMGDIGEST
+OK signed_manifest_digest == IMGDIGEST = sha256:60948dfa81f797672865cf6395d56b5a81fd2c236d291e528d8adf1ea098580b
+
+== P7: a fresh throwaway key must NOT verify
+Private key written to /dev/shm/tbound-f20.FbmD8D/throw.key
+Public key written to /dev/shm/tbound-f20.FbmD8D/throw.pub
+OK throwaway key fails: no matching signatures (rc=1)
+throwaway key shredded
+
+== commit outputs
+total 92556
+drwx------  3 tbound tbound     4096 Nov  8 11:15 .
+drwx------ 44 tbound tbound     4096 Nov  8 10:52 ..
+-rw-------  1 tbound tbound       72 Nov  8 11:15 ADMIN_PUB_DIGEST
+-rw-------  1 tbound tbound       72 Nov  8 10:52 BASH_DIGEST
+-rw-------  1 tbound tbound       72 Nov  8 10:52 BUNDLE_DIGEST
+-rw-------  1 tbound tbound       72 Nov  8 10:52 BUNDLE_TAR_DIGEST
+-rw-------  1 tbound tbound       71 Nov  8 10:52 BUNDLE_TAR_PATH
+-rw-------  1 tbound tbound       10 Nov  8 10:52 BUNDLE_TAR_SIZE
+-rw-------  1 tbound tbound       72 Nov  8 10:52 CFG
+-rw-------  1 tbound tbound   111958 Nov  8 10:52 CHANGED-PATHS-vs-F0.txt
+-rw-------  1 tbound tbound     6737 Nov  8 10:52 CHANGED-PATHS-vs-F18.txt
+-rw-------  1 tbound tbound       72 Nov  8 11:15 COSIGN_PUB_DIGEST
+-rw-------  1 tbound tbound       72 Nov  8 10:51 COSIGN_TOOL_DIGEST
+-rw-------  1 tbound tbound       72 Nov  8 10:52 ENTRYPOINT_DIGEST
+-rw-------  1 tbound tbound       72 Nov  8 10:51 ENTRYPOINT_P1_DIGEST
+-rw-------  1 tbound tbound       72 Nov  8 11:15 EVQ_CAPTURE_FILE_DIGEST
+-rw-------  1 tbound tbound       41 Nov  8 10:50 FROZEN-COMMIT
+-rw-------  1 tbound tbound       72 Nov  8 10:52 IMGDIGEST
+-rw-------  1 tbound tbound       72 Nov  8 11:15 LOAD_TAR_DIGEST
+-rw-------  1 tbound tbound       72 Nov  8 10:52 NODE_DIGEST
+-rw-------  1 tbound tbound        8 Nov  8 10:52 P2-MODE
+-rw-------  1 tbound tbound       72 Nov  8 11:15 SIGNED_MANIFEST_DIGEST
+-rw-------  1 tbound tbound       72 Nov  8 10:51 SRC_DIGEST
+-rw-------  1 tbound tbound       72 Nov  8 10:51 TBOUND_DIGEST
+-rw-------  1 tbound tbound       72 Nov  8 10:51 TBOUND_RUN_DIGEST
+-rw-------  1 tbound tbound       72 Nov  8 10:51 TBOUND_RUN_EXE_DIGEST
+-rw-------  1 tbound tbound       72 Nov  8 10:51 TBP_DIGEST
+-rw-------  1 tbound tbound       72 Nov  8 11:15 TEST_ENTRYPOINT
+-rw-------  1 tbound tbound       72 Nov  8 11:15 TEST_PROCORACLE
+-rw-------  1 tbound tbound      476 Nov  8 10:52 p3-measure.json
+-rw-------  1 tbound tbound 94535680 Nov  8 11:15 pi-cell-load.tar
+drwx------  3 tbound tbound     4096 Nov  8 11:15 pi-cell-oci
+OK sync done; no 0-byte output under /home/tbound/tbound-h/f20
+
+== DONE: public values (safe to share)
+F20=2641c6bc73a501ee1578d6dcdbe652c6086fac53
+ADMIN_PUB_DIGEST=sha256:be206a41ad321f29ef89e8157f69a6f0820a93fafa3096b71867ece745f9afac
+COSIGN_PUB_DIGEST=sha256:caf906a4ead6cd8998502333030f0602e66302e47b1539afebe5a13c39e66bcd
+S5 signed_manifest_digest=sha256:60948dfa81f797672865cf6395d56b5a81fd2c236d291e528d8adf1ea098580b (== IMGDIGEST)
+LOAD_TAR_DIGEST=sha256:f19f4a7bab422bbec2c2257592890f47d70d504551189eccf4633062c5dfbd29
+LOAD_TAR_DIGEST: sha256:f19f4a7bab422bbec2c2257592890f47d70d504551189eccf4633062c5dfbd29  (NEW; F18 was sha256:3074ed51a10a8f996e875f5f87af7db30a99bb9d38dca292f6aff1928cbffffd)

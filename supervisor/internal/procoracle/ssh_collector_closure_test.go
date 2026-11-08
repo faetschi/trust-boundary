@@ -5,10 +5,13 @@ import (
 	"errors"
 	"maps"
 	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"tbound/supervisor/internal/piruntime"
 	"tbound/supervisor/internal/runner"
 )
 
@@ -106,34 +109,46 @@ func TestEarlyCloseRefusedKeepsTheFullHorizon(t *testing.T) {
 	for name, tc := range map[string]struct {
 		g   func(*fakeGuest)
 		ref runner.EvidenceRef
-		// legit: a full-window case that is not unresolved evidence (no-reap, host network namespace)
-		legit bool
+		// unprovenOnly: the refusal only fails to prove closing early safe (D49 class a): the full window is observed and judged
+		// as before, so no oracle is lost. Every other case is contradicted or undermined evidence (class b).
+		unprovenOnly bool
 		// observed: positive observations that stand even though the evidence is unresolved
 		observed want
 	}{
-		"UNKNOWN step (no completed receipt, no run id)": {ref: runner.EvidenceRef{Interval: sshRef.Interval}},
+		"UNKNOWN step (no completed receipt, no run id)": {unprovenOnly: true, ref: runner.EvidenceRef{Interval: sshRef.Interval}},
 		"missing settlement":                             {g: func(g *fakeGuest) { g.closureMutate = func(d *ClosureDoc) { d.Commands = nil } }},
-		"network mode not bound by the proof":            {g: func(g *fakeGuest) { g.closureMutate = func(d *ClosureDoc) { d.Commands[0].NetworkMode = "" } }},
-		"NET_ADMIN recorded in the proof": {g: func(g *fakeGuest) {
+		"network mode not bound by the proof":            {unprovenOnly: true, g: func(g *fakeGuest) { g.closureMutate = func(d *ClosureDoc) { d.Commands[0].NetworkMode = "" } }},
+		"NET_ADMIN recorded in the proof": {unprovenOnly: true, g: func(g *fakeGuest) {
 			g.closureMutate = func(d *ClosureDoc) { d.Commands[0].CapEff = "0000000000001000" }
 		}},
-		"receipt not verified": {g: func(g *fakeGuest) { g.closureMutate = func(d *ClosureDoc) { d.ReceiptVerified = false } }},
+		"receipt not verified": {unprovenOnly: true, g: func(g *fakeGuest) { g.closureMutate = func(d *ClosureDoc) { d.ReceiptVerified = false } }},
 		"another run":          {g: func(g *fakeGuest) { g.closureRun = "run-9" }},
 		"empty cells parent and an escaped cell-uid process": {observed: want{runner.OracleProc01: runner.FindingObserved, runner.OracleProc02: runner.FindingObserved}, g: func(g *fakeGuest) {
 			g.closureMutate = func(d *ClosureDoc) { d.Scan.Processes = []Process{escaped} }
 		}},
-		"command cgroup child remains": {g: func(g *fakeGuest) { g.closureMutate = func(d *ClosureDoc) { d.CellChildren = 1 } }},
+		"command cgroup child remains": {unprovenOnly: true, g: func(g *fakeGuest) {
+			g.closureMutate = func(d *ClosureDoc) {
+				d.CellChildren, d.CellChildrenTotal = []CellChild{{Name: "cmd-1", ProcsEmpty: true}}, 1
+			}
+		}},
+		"net-sink child populated": {unprovenOnly: true, g: func(g *fakeGuest) {
+			g.closureMutate = func(d *ClosureDoc) {
+				d.CellChildren, d.CellChildrenTotal = []CellChild{{Name: piruntime.D09NetSinkCgroupName, Populated: true}}, 1
+			}
+		}},
 		"scan gap": {g: func(g *fakeGuest) {
 			g.closureMutate = func(d *ClosureDoc) { d.Scan.Gaps = []Gap{gapf(DomainProcess, "x", "y")} }
 		}},
-		"scan before the final-cleanup snapshot": {g: func(g *fakeGuest) {
+		"scan before the final-cleanup snapshot": {unprovenOnly: true, g: func(g *fakeGuest) {
 			g.closureMutate = func(d *ClosureDoc) { d.Scan.ObservedAt = sshT0.Add(3500 * time.Millisecond) }
 		}},
-		"closure transport loss":    {g: func(g *fakeGuest) { g.failClosure = true }},
-		"final snapshot missing":    {g: func(g *fakeGuest) { g.failCap = map[Point]bool{PointFinalCleanup: true} }},
-		"post-teardown missing":     {g: func(g *fakeGuest) { g.failCap = map[Point]bool{PointPostTeardown: true} }},
-		"no-reap cell left running": {legit: true, g: func(g *fakeGuest) { g.closureMutate = func(d *ClosureDoc) { d.Commands[0].SurvivorsTolerated = true } }},
-		"host network namespace (net-sink/v1)": {legit: true, g: func(g *fakeGuest) {
+		"closure transport loss":                                 {unprovenOnly: true, g: func(g *fakeGuest) { g.failClosure = true }},
+		"closure transport error":                                {unprovenOnly: true, g: func(g *fakeGuest) { g.closureTransportErr = true }},
+		"guest refuses the closure (unsettled run, bad journal)": {g: func(g *fakeGuest) { g.refuseClosure = true }},
+		"final snapshot missing":                                 {g: func(g *fakeGuest) { g.failCap = map[Point]bool{PointFinalCleanup: true} }},
+		"post-teardown missing":                                  {g: func(g *fakeGuest) { g.failCap = map[Point]bool{PointPostTeardown: true} }},
+		"no-reap cell left running":                              {unprovenOnly: true, g: func(g *fakeGuest) { g.closureMutate = func(d *ClosureDoc) { d.Commands[0].SurvivorsTolerated = true } }},
+		"host network namespace (net-sink/v1)": {unprovenOnly: true, g: func(g *fakeGuest) {
 			g.closureMutate = func(d *ClosureDoc) {
 				d.HostNetNS, d.Commands[0].NetworkMode, d.Commands[0].NoExternalRoutes = true, "host", false
 			}
@@ -168,8 +183,18 @@ func TestEarlyCloseRefusedKeepsTheFullHorizon(t *testing.T) {
 		}
 		close(g.release)
 		r := <-done
-		if v := c.Closure(context.Background(), ref); v.Proven || !v.Horizon.Equal(sshT0.Add(30*time.Second)) {
+		v := c.Closure(context.Background(), ref)
+		if v.Proven || !v.Horizon.Equal(sshT0.Add(30*time.Second)) {
 			t.Errorf("%s: closure = %+v", name, v)
+		}
+		if (len(v.Unresolved) == 0) != tc.unprovenOnly || len(v.Reasons) != len(v.Unproven)+len(v.Unresolved) || len(v.Reasons) == 0 {
+			t.Errorf("%s: unproven %q unresolved %q", name, v.Unproven, v.Unresolved)
+		}
+		// The retained termination record carries both classes, as the decision does.
+		if raw, err := os.ReadFile(filepath.Join(c.RetainDir, RetainedName(ref.Interval))); err != nil {
+			t.Errorf("%s: %v", name, err)
+		} else if rec, err := ParseRetained(raw); err != nil || !slices.Equal(rec.Unproven, v.Unproven) || !slices.Equal(rec.Unresolved, v.Unresolved) {
+			t.Errorf("%s: retained unproven %q unresolved %q (%v)", name, rec.Unproven, rec.Unresolved, err)
 		}
 		if r.err != nil {
 			t.Errorf("%s: %v", name, r.err)
@@ -177,7 +202,7 @@ func TestEarlyCloseRefusedKeepsTheFullHorizon(t *testing.T) {
 		// The horizon does not erase the failure: unresolved evidence is lost, legitimate full windows are clean, and
 		// positive observations stand.
 		w := allLost
-		if tc.legit {
+		if tc.unprovenOnly {
 			w = allNone
 		}
 		for k, f := range tc.observed {
@@ -344,4 +369,43 @@ func (r readyOnly) Run(ctx context.Context, argv []string) ([]byte, []byte, int,
 
 func (r readyOnly) RunReady(ctx context.Context, argv []string, ready func([]byte)) ([]byte, []byte, int, error) {
 	return r.g.RunReady(ctx, argv, ready)
+}
+
+// The measured defect: a C trajectory with no command cell leaves only the persistent net-sink cgroup below the cells
+// cgroup. It is not a command cgroup, so the proof stands and the interval closes early.
+func TestEmptyNetSinkChildStillClosesEarly(t *testing.T) {
+	g := &fakeGuest{cell: sshCell, release: make(chan struct{}), closureMutate: func(d *ClosureDoc) {
+		d.CellChildren, d.CellChildrenTotal = []CellChild{{Name: piruntime.D09NetSinkCgroupName, ProcsEmpty: true}}, 1
+	}}
+	c, _ := newEarlyCollector(g)
+	begin(t, c)
+	n, _ := netSide(c)
+	if cl, err := n.EndDecision(context.Background(), closureRef); err != nil || !cl.Proven || len(cl.Reasons) != 0 {
+		t.Fatalf("closure = %+v %v", cl, err)
+	}
+	ev, err := runProc(t, c, closureRef)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantAll(t, ev, runner.FindingNone)
+	if stops := g.stopLines(); len(stops) != 1 {
+		t.Fatalf("stop lines = %q", stops)
+	}
+}
+
+// A closure the guest ANSWERED with a refusal (the run did not settle, the command journal is unreadable or holds an
+// invalid receipt, the scan failed) undermines the evidence, unlike a transport that never delivered an answer: the
+// negatives of NET and PROC are lost, and the retained record says so (class b).
+func TestGuestRefusalOfTheClosureLosesNetAndProcNegatives(t *testing.T) {
+	g := &fakeGuest{cell: sshCell, release: make(chan struct{}), refuseClosure: true}
+	close(g.release)
+	c, cl := assertNetKeepsHorizon(t, "guest refusal", g, nil)
+	if len(cl.Unresolved) == 0 || len(cl.Unproven) != 0 {
+		t.Fatalf("unproven %q unresolved %q", cl.Unproven, cl.Unresolved)
+	}
+	ev, err := runProc(t, c, closureRef)
+	wantAll(t, ev, runner.FindingLost)
+	if err != nil {
+		t.Fatal(err)
+	}
 }

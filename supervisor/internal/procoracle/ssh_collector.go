@@ -492,17 +492,22 @@ func (c *SSHCollector) resolve(ctx context.Context, ref runner.EvidenceRef, iv *
 	if c.DrainGrace == 0 {
 		return res
 	}
-	no := func(format string, args ...any) {
+	unproven := func(format string, args ...any) {
+		r := fmt.Sprintf(format, args...)
+		res.closure.Reasons, res.closure.Unproven = append(res.closure.Reasons, r), append(res.closure.Unproven, r)
+	}
+	unresolved := func(format string, args ...any) {
 		r := fmt.Sprintf(format, args...)
 		res.closure.Reasons, res.closure.Unresolved = append(res.closure.Reasons, r), append(res.closure.Unresolved, r)
 	}
+	if ref.RunID == "" {
+		unproven("the step has no completed receipt (UNKNOWN, partial or failed to answer)")
+	}
 	switch {
-	case ref.RunID == "":
-		no("the step has no completed receipt (UNKNOWN, partial or failed to answer)")
 	case len(res.snaps) != 2:
-		no("the post-teardown and final-cleanup snapshots were not both taken")
+		unresolved("the post-teardown and final-cleanup snapshots were not both taken")
 	case !res.snaps[0].IdentityScanned || !res.snaps[1].IdentityScanned || len(res.snaps[0].Gaps)+len(res.snaps[1].Gaps) != 0:
-		no("a snapshot has a scan gap")
+		unresolved("a snapshot has a scan gap")
 	}
 	if len(res.closure.Reasons) != 0 {
 		return res
@@ -510,16 +515,22 @@ func (c *SSHCollector) resolve(ctx context.Context, ref runner.EvidenceRef, iv *
 	var doc ClosureDoc
 	args := append([]string{runner.EvidenceProcClosure}, registrationArgs(iv.reg)...)
 	if err := c.Client.CallDoc(ctx, &doc, append(args, "--interval-ref", ref.Interval)...); err != nil {
-		no("the guest gave no closure document: %v", err)
+		// A transport that delivered no answer only leaves the close unproven (class a); an answer that is a refusal (the run
+		// is not settled, the journal or a receipt is invalid, the scan failed) undermines the evidence (class b).
+		if errors.Is(err, runner.ErrEvidenceRefused) {
+			unresolved("the guest refused the closure: %v", err)
+		} else {
+			unproven("the guest gave no closure document: %v", err)
+		}
 		return res
 	}
 	res.doc, res.scan, res.scanAt = &doc, &doc.Scan, doc.Scan.ObservedAt
 	v := EvaluateClosure(iv.reg, doc, ref.Interval, ref.RunID)
 	if v.Proven && doc.Scan.ObservedAt.Before(res.snaps[1].ObservedAt) {
 		older := "the closure scan is older than the final-cleanup snapshot"
-		v.Proven, v.Reasons, v.Unresolved = false, append(v.Reasons, older), append(v.Unresolved, older)
+		v.Proven, v.Reasons, v.Unproven = false, append(v.Reasons, older), append(v.Unproven, older)
 	}
-	res.closure.Digest, res.closure.Reasons, res.closure.Unresolved = v.Digest, v.Reasons, v.Unresolved
+	res.closure.Digest, res.closure.Reasons, res.closure.Unproven, res.closure.Unresolved = v.Digest, v.Reasons, v.Unproven, v.Unresolved
 	if v.Proven {
 		res.closure.Proven = true
 		res.closure.DrainUntil = c.now().Add(c.DrainGrace)
@@ -538,7 +549,7 @@ func (c *SSHCollector) Closure(ctx context.Context, ref runner.EvidenceRef) runn
 	if iv == nil {
 		// A PROC interval that never began is unresolved evidence, not a clean window: the consumer keeps its own horizon.
 		r := "no PROC interval was begun for " + ref.Interval
-		return runner.IntervalClosure{Reasons: []string{r}, Unresolved: []string{r}}
+		return runner.IntervalClosure{Reasons: []string{r}, Unresolved: []string{r}} // class b: NET has no PROC coverage
 	}
 	return c.finalize(ctx, ref, iv).net
 }
@@ -554,10 +565,11 @@ func (c *SSHCollector) finalize(ctx context.Context, ref runner.EvidenceRef, iv 
 	}
 	rs.final = true
 	rs.net = rs.closure
-	rs.net.Reasons, rs.net.Unresolved = slices.Clone(rs.closure.Reasons), slices.Clone(rs.closure.Unresolved)
+	rs.net.Reasons, rs.net.Unproven, rs.net.Unresolved = slices.Clone(rs.closure.Reasons), slices.Clone(rs.closure.Unproven), slices.Clone(rs.closure.Unresolved)
 	if rs.waitErr != nil {
 		rs.net.Proven = false
-		rs.net.Unresolved = append(rs.net.Unresolved, "the teardown deadline wait failed: "+rs.waitErr.Error())
+		r := "the teardown deadline wait failed: " + rs.waitErr.Error()
+		rs.net.Reasons, rs.net.Unresolved = append(rs.net.Reasons, r), append(rs.net.Unresolved, r)
 		return rs
 	}
 	// On proof, observe through the drain grace and then end the monitor; otherwise it runs to its horizon.
@@ -609,8 +621,9 @@ func (c *SSHCollector) finalize(ctx context.Context, ref runner.EvidenceRef, iv 
 		rs.net.Proven, rs.net.DrainUntil = false, time.Time{}
 		rs.net.Reasons = append(rs.net.Reasons, rs.defects...)
 		rs.net.Unresolved = append(rs.net.Unresolved, rs.defects...)
-		if rs.closure.Proven && !rs.stopped {
-			rs.net.Unresolved = append(rs.net.Unresolved, "the monitor was not told to stop")
+		if rs.closure.Proven && !rs.stopped { // class a: the monitor ran on to its horizon, whose record is validated above
+			r := "the monitor was not told to stop"
+			rs.net.Reasons, rs.net.Unproven = append(rs.net.Reasons, r), append(rs.net.Unproven, r)
 		}
 	}
 	return rs
@@ -698,7 +711,7 @@ func (c *SSHCollector) Proc(ctx context.Context, ref runner.EvidenceRef) (runner
 	if c.DrainGrace != 0 {
 		// How the interval ended is evidence: retain it, and bind it into every reference.
 		term := Termination{Schema: TerminationSchema, Interval: ref.Interval, RunID: ref.RunID, Registration: iv.reg.Digest(),
-			Proven: rs.net.Proven, Reasons: rs.net.Reasons, Unresolved: rs.net.Unresolved, ClosureDigest: rs.closure.Digest,
+			Proven: rs.net.Proven, Reasons: rs.net.Reasons, Unproven: rs.net.Unproven, Unresolved: rs.net.Unresolved, ClosureDigest: rs.closure.Digest,
 			Closure: rs.doc, Stop: stop, PollCount: len(polls), CoverageDefects: defects}
 		if err := retainTermination(c.RetainDir, term); err != nil {
 			return runner.ObserverEvidence{}, fmt.Errorf("%w: the termination record could not be retained: %v", runner.ErrEvidenceAbsent, err)

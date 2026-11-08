@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"tbound/supervisor/internal/piruntime"
 	"tbound/supervisor/internal/runner"
 )
 
@@ -67,6 +68,18 @@ type CommandSettlement struct {
 	CommandScopeDetached bool `json:"command_scope_detached"`
 }
 
+// MaxCellChildren bounds the children the closure document lists.
+const MaxCellChildren = 16
+
+// CellChild is one cgroup directly below the cells cgroup as the guest read it. Unreadable is true when its
+// cgroup.events or cgroup.procs could not be read; Populated and ProcsEmpty are then meaningless.
+type CellChild struct {
+	Name       string `json:"name"`
+	Populated  bool   `json:"populated"`
+	ProcsEmpty bool   `json:"procs_empty"`
+	Unreadable bool   `json:"unreadable"`
+}
+
 // ClosureDoc is the output of `tbound evidence proc-closure`: the guest's own reading, after the request, of whether the
 // interval is complete. The guest found the interval's admission and its completed receipt in the service journals
 // (ReceiptVerified), read the settlement of every command of the run, listed the children of the cells cgroup, looked
@@ -82,9 +95,12 @@ type ClosureDoc struct {
 	// ExpectedSettlements is the receipt's command_cell_settlement_count; Commands must hold exactly that many.
 	ExpectedSettlements int                 `json:"expected_settlements"`
 	Commands            []CommandSettlement `json:"commands"`
-	// CellChildren counts the cgroups below the registered cells cgroup. The registered cell is the persistent PARENT,
-	// which is empty whenever no command cell runs; the proof needs the children gone, not the parent empty.
-	CellChildren int `json:"cell_children"`
+	// CellChildren lists (at most MaxCellChildren, by name) the cgroups below the registered cells cgroup and
+	// CellChildrenTotal counts all of them. The registered cell is the persistent PARENT, which is empty whenever no
+	// command cell runs; the proof needs the command children gone, not the parent empty. The only child that may remain
+	// is the empty registered net-sink cgroup.
+	CellChildren      []CellChild `json:"cell_children"`
+	CellChildrenTotal int         `json:"cell_children_total"`
 	// HostNetNS is true when a command's network namespace is the host's own (pid 1's): the net-sink/v1 delta.
 	HostNetNS bool     `json:"host_netns"`
 	Scan      Snapshot `json:"scan"`
@@ -101,12 +117,19 @@ func (d ClosureDoc) Digest() string {
 	return hex.EncodeToString(sum[:])
 }
 
-// Closure is the verdict of EvaluateClosure. Proven is true only when Reasons is empty.
+// Closure is the verdict of EvaluateClosure. Proven is true only when Reasons is empty. Reasons is the union of two
+// classes, each reason in exactly one of them:
+//
+//   - Unproven: the reason only fails to PROVE that closing early is safe (a command cgroup remains, the network proof
+//     is incomplete, a no-reap or host-network cell, no receipt to prove from). The pre-D49 window never needed any of
+//     it, so the full horizon is observed and the oracles are judged exactly as before D49.
+//   - Unresolved: the reason contradicts or undermines the evidence itself (a scan gap, a survivor or residual socket
+//     after the scan, a missing or mismatched settlement of a command that ran, a document of another run). The affected
+//     negatives are lost, whatever the horizon.
 type Closure struct {
-	Proven  bool
-	Reasons []string
-	// Unresolved is the part of Reasons that is missing or contradicting evidence; a legitimate full window (no-reap,
-	// host network namespace) is a reason only.
+	Proven     bool
+	Reasons    []string
+	Unproven   []string
 	Unresolved []string
 	Digest     string
 }
@@ -115,32 +138,37 @@ type Closure struct {
 // interval of the step and the run id of the completed receipt the client printed (empty when it printed none).
 func EvaluateClosure(reg Registration, doc ClosureDoc, interval, runID string) Closure {
 	c := Closure{Digest: doc.Digest()}
-	no := func(format string, args ...any) {
+	unproven := func(format string, args ...any) {
+		r := fmt.Sprintf(format, args...)
+		c.Reasons, c.Unproven = append(c.Reasons, r), append(c.Unproven, r)
+	}
+	unresolved := func(format string, args ...any) {
 		r := fmt.Sprintf(format, args...)
 		c.Reasons, c.Unresolved = append(c.Reasons, r), append(c.Unresolved, r)
 	}
-	legit := func(format string, args ...any) { c.Reasons = append(c.Reasons, fmt.Sprintf(format, args...)) }
 	switch {
 	case doc.Schema != runner.EvidenceSchema || doc.Kind != runner.EvidenceProcClosure:
-		no("not a proc-closure document")
+		unresolved("not a proc-closure document")
 	case doc.IntervalRef != interval:
-		no("the document is for interval %q", doc.IntervalRef)
-	case runID == "" || doc.RunID != runID:
-		no("the document is for run %q, the completed receipt names %q", doc.RunID, runID)
+		unresolved("the document is for interval %q", doc.IntervalRef)
+	case runID == "":
+		unproven("the step has no completed receipt (UNKNOWN, partial or failed to answer)")
+	case doc.RunID != runID:
+		unresolved("the document is for run %q, the completed receipt names %q", doc.RunID, runID)
 	case doc.RegistrationDigest != reg.Digest():
-		no("the document is for another registration")
+		unresolved("the document is for another registration")
 	}
 	if !doc.ReceiptVerified {
-		no("the interval-bound request has no verified completed receipt")
+		unproven("the interval-bound request has no verified completed receipt")
 	}
 	if doc.ExpectedSettlements < 0 || len(doc.Commands) != doc.ExpectedSettlements {
-		no("%d command settlements, the receipt counts %d", len(doc.Commands), doc.ExpectedSettlements)
+		unresolved("%d command settlements, the receipt counts %d", len(doc.Commands), doc.ExpectedSettlements)
 	}
 	noReap, hostNet := false, false
 	for i, s := range doc.Commands {
 		if s.SurvivorsTolerated || s.ContainerLeftRunning || s.CommandScopeDetached || s.OutputMarkerObserved {
 			// A cell left running on purpose has another settlement shape and survivors by design: the window stays full.
-			legit("command %d: a cell left running on purpose (no-reap) never closes early", i)
+			unproven("command %d: a cell left running on purpose (no-reap) never closes early", i)
 			noReap = true
 			continue
 		}
@@ -152,11 +180,14 @@ func EvaluateClosure(reg Registration, doc ClosureDoc, interval, runID string) C
 			{"podman wait completed", s.PodmanWaitCompleted}, {"output writers drained", s.OutputWritersDrained},
 			{"container removed", s.ContainerRemoved}, {"leader exited", s.LeaderPidfdExited}, {"cgroup populated=0", s.CgroupPopulatedZero},
 			{"mount namespace released", s.MountNamespaceReleased}, {"output within bound", s.CommandOutputWithinBound},
-			{"command cgroup removed", s.CommandCgroupRemoved}, {"network namespace inode named", s.NetworkNSInode != 0},
+			{"command cgroup removed", s.CommandCgroupRemoved},
 		} {
 			if !f.ok {
-				no("command %d: %s is not established", i, f.name)
+				unresolved("command %d: %s is not established", i, f.name)
 			}
+		}
+		if s.NetworkNSInode == 0 {
+			unproven("command %d: network namespace inode named is not established", i)
 		}
 		// The structural drain proof. A network-none cell has no interface but loopback and, without capabilities, no way
 		// to add one, so a process still holding its namespace cannot reach the sink: there is no need to prove the
@@ -169,42 +200,54 @@ func EvaluateClosure(reg Registration, doc ClosureDoc, interval, runID string) C
 			// empty and no_new_privs, cannot add an interface or reach the sink even while it still holds its namespace.
 			const zero = "0000000000000000"
 			if !s.NoExternalRoutes || !s.NoNewPrivs || s.CapEff != zero || s.CapPrm != zero || s.CapBnd != zero || s.CapInh != zero || s.CapAmb != zero {
-				no("command %d: network none without the recorded no-routes, no_new_privs and all-empty capability sets (eff %q prm %q bnd %q inh %q amb %q)",
+				unproven("command %d: network none without the recorded no-routes, no_new_privs and all-empty capability sets (eff %q prm %q bnd %q inh %q amb %q)",
 					i, s.CapEff, s.CapPrm, s.CapBnd, s.CapInh, s.CapAmb)
 			}
 		case "host":
 			hostNet = true
 		default:
-			no("command %d: the proof binds no network mode (%q)", i, s.NetworkMode)
+			unproven("command %d: the proof binds no network mode (%q)", i, s.NetworkMode)
 		}
 	}
-	if doc.CellChildren != 0 && !noReap {
-		no("%d command cgroups remain below the cells cgroup", doc.CellChildren)
+	if !noReap {
+		if doc.CellChildrenTotal != len(doc.CellChildren) {
+			unproven("the document lists %d of the %d cgroups below the cells cgroup", len(doc.CellChildren), doc.CellChildrenTotal)
+		}
+		// The persistent net-sink cgroup (made by trial reset, D09NetSinkCgroupName) is the one child that is not a command
+		// cgroup. Exactly one, empty and readable, is ignored; anything else below the cells cgroup keeps the proof refused.
+		netSink := false
+		for _, ch := range doc.CellChildren {
+			if !netSink && ch.Name == piruntime.D09NetSinkCgroupName && !ch.Unreadable && !ch.Populated && ch.ProcsEmpty {
+				netSink = true
+				continue
+			}
+			unproven("cgroup %q remains below the cells cgroup (populated %t, no processes %t, unreadable %t)", ch.Name, ch.Populated, ch.ProcsEmpty, ch.Unreadable)
+		}
 	}
 	switch {
 	case hostNet:
-		legit("a command ran in the host network namespace (net-sink/v1): the drain cannot be bounded, the window stays full")
+		unproven("a command ran in the host network namespace (net-sink/v1): the drain cannot be bounded, the window stays full")
 	case doc.HostNetNS:
-		no("a command whose proof says network none is in the host network namespace")
+		unresolved("a command whose proof says network none is in the host network namespace")
 	}
 	s := doc.Scan
 	switch {
 	case s.RegistrationDigest != reg.Digest() || s.CellInode != reg.CellCgroupInode || s.CellPath != reg.CellCgroupPath:
-		no("the scan is not of the registered cell")
+		unresolved("the scan is not of the registered cell")
 	case s.Point != PointInterval:
-		no("the scan is a %s record", s.Point)
+		unresolved("the scan is a %s record", s.Point)
 	case !s.IdentityScanned || !s.Registry.Recorded:
-		no("the identity scan was not performed")
+		unresolved("the identity scan was not performed")
 	case len(s.Gaps) != 0:
-		no("the scan has %d gaps", len(s.Gaps))
+		unresolved("the scan has %d gaps", len(s.Gaps))
 	case s.Populated || s.CellRemoved:
-		no("the registered cell is populated or gone")
+		unresolved("the registered cell is populated or gone")
 	case reg.Deadline.IsZero() || s.ObservedAt.Before(reg.Deadline):
-		no("the scan was taken before the teardown deadline")
+		unproven("the scan was taken before the teardown deadline")
 	}
 	for _, p := range s.Processes {
 		if p.Live() && (p.InCell || p.Registered || p.CellIdentity) && !noReap {
-			no("process %d (%s) of the cell identity is alive", p.PID, p.Comm)
+			unresolved("process %d (%s) of the cell identity is alive", p.PID, p.Comm)
 		}
 	}
 	// A residual socket of the cell identity (uidSockets records them in the host namespace even without an
@@ -213,7 +256,7 @@ func EvaluateClosure(reg Registration, doc ClosureDoc, interval, runID string) C
 	if !noReap {
 		for _, so := range s.Sockets {
 			if so.Role == RoleUnknown || so.UID == reg.CellUID && reg.CellUID != 0 || so.Role == RoleListener || so.Role == RoleConnected {
-				no("a %s socket %s (uid %d, %s) of the cell identity remains", so.Proto, so.Local, so.UID, so.State)
+				unresolved("a %s socket %s (uid %d, %s) of the cell identity remains", so.Proto, so.Local, so.UID, so.State)
 			}
 		}
 	}
@@ -306,7 +349,9 @@ func ReadMonitorStop(r io.Reader) (MonitorStopRequest, error) {
 
 // TerminationSchema, RetainedSuffix: the retained termination record of an interval (D49).
 const (
-	TerminationSchema = "tbound-proc-termination/v1"
+	// v2: the record gained the unproven key and the closure document lists its cells children (cell_children, with
+	// cell_children_total, instead of a count). A v1 record is not re-verified with this build.
+	TerminationSchema = "tbound-proc-termination/v2"
 	RetainedSuffix    = ".proc-closure.json"
 )
 
@@ -319,6 +364,7 @@ type Termination struct {
 	Registration    string      `json:"registration"`
 	Proven          bool        `json:"proven"`
 	Reasons         []string    `json:"reasons"`
+	Unproven        []string    `json:"unproven"`
 	Unresolved      []string    `json:"unresolved"`
 	ClosureDigest   string      `json:"closure_digest"`
 	Closure         *ClosureDoc `json:"closure"`
@@ -329,7 +375,7 @@ type Termination struct {
 
 // Digest is the hex SHA-256 of the record's compact JSON.
 func (t Termination) Digest() string {
-	t.Reasons, t.Unresolved, t.CoverageDefects = nonNil(t.Reasons), nonNil(t.Unresolved), nonNil(t.CoverageDefects)
+	t.Reasons, t.Unproven, t.Unresolved, t.CoverageDefects = nonNil(t.Reasons), nonNil(t.Unproven), nonNil(t.Unresolved), nonNil(t.CoverageDefects)
 	if t.Closure != nil {
 		c := *t.Closure
 		c.Scan = c.Scan.normalized()
