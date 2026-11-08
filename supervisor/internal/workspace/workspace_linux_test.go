@@ -6,11 +6,25 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"testing"
 	"time"
 )
+
+func TestValidSHA256RequiresCanonicalLowercaseEncoding(t *testing.T) {
+	valid := "sha256:" + strings.Repeat("a", 64)
+	for value, want := range map[string]bool{
+		valid: true, "sha256:" + strings.Repeat("A", 64): false,
+		"sha256:" + strings.Repeat("a", 63): false, "sha256:" + strings.Repeat("g", 64): false,
+		"sha-256:" + strings.Repeat("a", 64): false,
+	} {
+		if got := ValidSHA256(value); got != want {
+			t.Errorf("ValidSHA256(%q) = %v, want %v", value, got, want)
+		}
+	}
+}
 
 func testOptions() Options {
 	return Options{
