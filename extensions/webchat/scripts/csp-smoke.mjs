@@ -20,9 +20,10 @@
 //      the React client. For each page, the Document response's
 //      Content-Security-Policy as the browser received it must equal the policy. There
 //      must be zero CSP violations, zero console errors and zero uncaught exceptions.
-//      There is no favicon exception: /favicon.ico answers 204 (handler.go, pinned by
-//      favicon_test.go), so a favicon 404 is a console error and fails the run. There
-//      must also be zero style attributes and zero on* attributes. The
+//      There is no favicon exception: /favicon.ico serves the embedded brand icon
+//      (handler.go, pinned by favicon_test.go), so a favicon 404 is a console error
+//      and fails the run. There must also be zero style attributes and zero on*
+//      attributes. The
 //      React pages must render their banner with a CSS Modules class whose computed
 //      background differs from a default probe, and a linked stylesheet.
 //      internal/webchat/routes_test.go checks GATEWAY_ROUTES against the Go route table.

@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -1411,4 +1412,45 @@ func d09CommandCellArguments(config D09Config, name, cidPath, imageRef, viewPath
 
 func validateD09CommandProof(proof d09CommandProof, config D09Config, imageRef, leaseID, viewID, containerName string, viewDevice, viewInode uint64, spec sessionrepo.CommandSpec) error {
 	return validateD09CommandProofDelta(d09BasePlan(config), proof, config, imageRef, leaseID, viewID, containerName, viewDevice, viewInode, spec)
+}
+
+// A failed launch is typed settled only after the leader was pinned, cleanup succeeded and podman
+// reports the container gone; every other failure point stays untyped so the caller keeps its owners.
+func TestSettledFailedLaunchTypesOnlyProvenCleanup(t *testing.T) {
+	cause := errors.New("verify exact host-visible D09 uid/gid map before launch admission")
+	unknown := errors.Join(ErrUnknownSettlement, errors.New("cgroup still populated"))
+	gone := func() (bool, error) { return false, nil }
+	for _, tc := range []struct {
+		name    string
+		err     error
+		cleanup error
+		pinned  bool
+		exists  func() (bool, error)
+		typed   bool
+	}{
+		{"post-pidfd map failure, container gone", cause, nil, true, gone, true},
+		{"pre-cid failure", cause, nil, false, gone, false},
+		{"pre-inspect failure", cause, nil, false, gone, false},
+		{"post-pidfd, container still exists", cause, nil, true, func() (bool, error) { return true, nil }, false},
+		{"post-pidfd, existence unprovable", cause, nil, true, func() (bool, error) { return false, errors.New("podman failed") }, false},
+		{"post-pidfd, cleanup error", errors.Join(cause, unknown), unknown, true, gone, false},
+		{"post-pidfd, unknown in cause", errors.Join(cause, ErrUnknownSettlement), nil, true, gone, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var typed *PiWorkerLaunchError
+			got := settledFailedLaunch(fmt.Errorf("start admitted native child: %w", tc.err), tc.cleanup, tc.pinned, tc.exists)
+			if isTyped := errors.As(got, &typed); isTyped != tc.typed {
+				t.Fatalf("typed=%t, want %t: %v", isTyped, tc.typed, got)
+			}
+			if tc.typed && (!piLaunchSettlementComplete(typed) || containsIncompletePiLaunchError(got) || hasUnresolvedLaunchUnknown(got, false)) {
+				t.Fatalf("typed launch is not a complete settlement: %v", got)
+			}
+			if !errors.Is(got, tc.err) {
+				t.Fatalf("cause lost: %v", got)
+			}
+		})
+	}
+	if settledFailedLaunch(nil, nil, true, func() (bool, error) { return false, nil }) != nil {
+		t.Fatal("a nil launch error was typed")
+	}
 }

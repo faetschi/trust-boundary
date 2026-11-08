@@ -54,6 +54,9 @@ if [ "$PREV_COMMIT" = 8931c69576c2cb58b0c87d8a4ec0e88dd2c162cc ] &&
 # profile_tooling_linux.go are unchanged (git diff --quiet).
 if [ "$PREV_COMMIT" = b26e5efdf8ac04cce185de06d771a558d57b42af ] &&
    [ "$F" = 2641c6bc73a501ee1578d6dcdbe652c6086fac53 ]; then ALLOW_PREV_MEASURER=1; fi
+# 2641c6b..bbc6ec8 (F21): launcher_linux.go, host.go and profile_tooling_linux.go are unchanged (git diff --quiet).
+if [ "$PREV_COMMIT" = 2641c6bc73a501ee1578d6dcdbe652c6086fac53 ] &&
+   [ "$F" = bbc6ec85a0e2f4895c6c9e392b1736a1968d62b8 ]; then ALLOW_PREV_MEASURER=1; fi
 UNIT_SHA=2bc03ead4ba478d81655029de66a46f4bcb6357c5a24e7f8a3940ed947720ea3
 OLD=/var/lib/tbound/runtime-src.old-${PREV_BUNDLE_DIGEST:7:8}-$(date -u +%Y%m%dT%H%M%S%NZ)
 

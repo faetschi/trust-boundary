@@ -1,0 +1,22 @@
+{
+ "source": "H/g1/response.txt (F21, tbound-dev)",
+ "source_sha256": "sha256:ebaee4f2a02a1865c9135840e2dd82d343698c6346af4bd50a912333fcc26a03",
+ "request_id": "g1-req-20261108T142653Z",
+ "status": "completed",
+ "run_id": "production-run-07eca5e41dd35dde211fbb67",
+ "success": true,
+ "disposition": "PUBLISHED",
+ "publication_status": "SUCCEEDED",
+ "publication_transaction_id": "pub-f321f74de082a2f06422b952195d7bce",
+ "settlement": "STOPPED",
+ "tool_sequence": [
+  "read",
+  "edit",
+  "bash",
+  "read"
+ ],
+ "proposal_count": 4,
+ "provider_mode": "model",
+ "provider_turns": 5,
+ "claim_bearing": false
+}
