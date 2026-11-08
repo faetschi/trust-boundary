@@ -52,7 +52,7 @@ func TestD09LeaderGoneAfterInspectReportsExitedBeforeAdmission(t *testing.T) {
 	}
 	podman := fakeInspectPodman(t, "cat <<'EOT'\n"+d09FinalStateJSON+"\nEOT")
 	launcher := exitedPodman(t, 137)
-	err := d09ExitedBeforeAdmission(context.Background(), podman, "cid", nil, pidfd, launcher, statErr)
+	err := d09ExitedBeforeAdmission(context.Background(), podman, "cid", nil, pidfd, 0, launcher, statErr)
 	if !errors.Is(err, ErrD09WorkerExitedBeforeAdmission) {
 		t.Fatalf("err = %v, want ErrD09WorkerExitedBeforeAdmission", err)
 	}
@@ -70,7 +70,7 @@ func TestD09PidfdExitAloneIsExitedBeforeAdmission(t *testing.T) {
 	_, pidfd := exitedCell(t)
 	podman := fakeInspectPodman(t, "cat <<'EOT'\n"+d09FinalStateJSON+"\nEOT")
 	launcher := exitedPodman(t, 137)
-	if err := d09ExitedBeforeAdmission(context.Background(), podman, "cid", nil, pidfd, launcher, errors.New("unrelated map mismatch")); !errors.Is(err, ErrD09WorkerExitedBeforeAdmission) {
+	if err := d09ExitedBeforeAdmission(context.Background(), podman, "cid", nil, pidfd, 0, launcher, errors.New("unrelated map mismatch")); !errors.Is(err, ErrD09WorkerExitedBeforeAdmission) {
 		t.Fatalf("err = %v", err)
 	}
 }
@@ -86,7 +86,7 @@ func TestD09LiveLeaderMapErrorIsNotRelabelled(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer syscall.Close(pidfd)
-	if got := d09ExitedBeforeAdmission(context.Background(), "/nonexistent", "cid", nil, pidfd, 0, errors.New("map mismatch")); got != nil {
+	if got := d09ExitedBeforeAdmission(context.Background(), "/nonexistent", "cid", nil, pidfd, 0, 0, errors.New("map mismatch")); got != nil {
 		t.Fatalf("a live leader with a map mismatch was relabelled: %v", got)
 	}
 }
@@ -95,7 +95,7 @@ func TestD09FinalInspectFailureStillFailsClosedAndSaysSo(t *testing.T) {
 	_, pidfd := exitedCell(t)
 	podman := fakeInspectPodman(t, "exit 1")
 	launcher := exitedPodman(t, 137)
-	err := d09ExitedBeforeAdmission(context.Background(), podman, "cid", nil, pidfd, launcher, os.ErrNotExist)
+	err := d09ExitedBeforeAdmission(context.Background(), podman, "cid", nil, pidfd, 0, launcher, os.ErrNotExist)
 	if !errors.Is(err, ErrD09WorkerExitedBeforeAdmission) || !strings.Contains(err.Error(), "final container state unavailable") {
 		t.Fatalf("err = %v", err)
 	}
@@ -116,7 +116,7 @@ func exitedPodman(t *testing.T, code int) int {
 func TestD09ExitedBeforeAdmissionReportsPodmanExitStatus(t *testing.T) {
 	_, pidfd := exitedCell(t)
 	podman := fakeInspectPodman(t, "cat <<'EOT'\n"+d09FinalStateJSON+"\nEOT")
-	err := d09ExitedBeforeAdmission(context.Background(), podman, "cid", nil, pidfd, exitedPodman(t, 137), os.ErrNotExist)
+	err := d09ExitedBeforeAdmission(context.Background(), podman, "cid", nil, pidfd, 0, exitedPodman(t, 137), os.ErrNotExist)
 	if !errors.Is(err, ErrD09WorkerExitedBeforeAdmission) || !errors.Is(err, os.ErrNotExist) || !strings.Contains(err.Error(), "podman_exit=137") {
 		t.Fatalf("err = %v", err)
 	}
@@ -126,7 +126,7 @@ func TestD09ExitedBeforeAdmissionReportsPodmanExitStatus(t *testing.T) {
 func TestD09ExitedBeforeAdmissionKeepsPodmanExitWhenContainerIsRemoved(t *testing.T) {
 	_, pidfd := exitedCell(t)
 	podman := fakeInspectPodman(t, "echo 'Error: no such container' >&2; exit 125")
-	err := d09ExitedBeforeAdmission(context.Background(), podman, "cid", nil, pidfd, exitedPodman(t, 137), os.ErrNotExist)
+	err := d09ExitedBeforeAdmission(context.Background(), podman, "cid", nil, pidfd, 0, exitedPodman(t, 137), os.ErrNotExist)
 	if !errors.Is(err, ErrD09WorkerExitedBeforeAdmission) ||
 		!strings.Contains(err.Error(), "podman_exit=137") || !strings.Contains(err.Error(), "final container state unavailable") {
 		t.Fatalf("err = %v", err)
@@ -161,5 +161,66 @@ func TestD09PidfdReadableAfterChecksIsRefused(t *testing.T) {
 	defer syscall.Close(liveFD)
 	if pidfdReadable(liveFD) {
 		t.Fatal("a live leader's pidfd is readable")
+	}
+}
+
+// zombieCell starts a fake cell and leaves it exited but unreaped: /proc/<pid> still exists with State Z.
+func zombieCell(t *testing.T) int {
+	t.Helper()
+	cell := exec.Command("/bin/sh", "-c", "exit 0")
+	if err := cell.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = cell.Wait() })
+	for i := 0; i < 200; i++ {
+		if d09LeaderStateGone(cell.Process.Pid) {
+			return cell.Process.Pid
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("cell never became a zombie")
+	return 0
+}
+
+// proc_id_map_open fails with EINVAL (not ENOENT) once the pid has no task, so EINVAL must reach the exit check.
+func TestD09EINVALMapErrorOnExitedLeaderIsExitedBeforeAdmission(t *testing.T) {
+	pid := zombieCell(t)
+	podman := fakeInspectPodman(t, "exit 1")
+	cause := &os.PathError{Op: "open", Path: "/proc/" + strconv.Itoa(pid) + "/gid_map", Err: syscall.EINVAL}
+	err := d09ExitedBeforeAdmission(context.Background(), podman, "cid", nil, -1, pid, exitedPodman(t, 137), cause)
+	if !errors.Is(err, ErrD09WorkerExitedBeforeAdmission) || !errors.Is(err, syscall.EINVAL) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestD09EINVALMapErrorOnLiveLeaderIsNotRelabelled(t *testing.T) {
+	live := exec.Command("/bin/sh", "-c", "exec sleep 30")
+	if err := live.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = live.Process.Kill(); _ = live.Wait() }()
+	pidfd, err := openPidfd(live.Process.Pid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer syscall.Close(pidfd)
+	cause := &os.PathError{Op: "open", Path: "/proc/x/gid_map", Err: syscall.EINVAL}
+	if got := d09ExitedBeforeAdmission(context.Background(), "/nonexistent", "cid", nil, pidfd, live.Process.Pid, 0, cause); got != nil {
+		t.Fatalf("a live leader was relabelled: %v", got)
+	}
+}
+
+func TestD09AdmissionPhasesAreAttributable(t *testing.T) {
+	phases := newD09AdmissionPhases()
+	phases.mark("podman_started")
+	phases.mark("cid_read")
+	got := phases.String()
+	for _, want := range []string{"phases_ms[", "podman_started=", "cid_read=", "]"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("%q lacks %q", got, want)
+		}
+	}
+	if strings.Index(got, "podman_started") > strings.Index(got, "cid_read") {
+		t.Fatalf("phases out of order: %q", got)
 	}
 }
