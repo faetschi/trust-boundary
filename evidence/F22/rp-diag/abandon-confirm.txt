@@ -1,0 +1,2 @@
+{"settlement":"abandoned-unknown","request_id":"rp-req-20261108T173325Z","journal_sequence":5,"journal_hash":"9c7c4b801993b02b8fd486020c78f873c415d709fe5e201b3408f47d248c1a4c"}
+abandon rp-req-20261108T173325Z ok; socket started (service starts on demand; use svc start for a run)
