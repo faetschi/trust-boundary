@@ -1,0 +1,41 @@
+{
+ "chain": {
+  "beacon_id": "default",
+  "genesis_time": 1595431050,
+  "group_hash": "176f93498eac9ca337150b46d21dd58673ea4e3581185f869672e59fa4cb390a",
+  "hash": "8990e7a9aaed2ffed73dbd7092123d6f289930540d7651336225dc172e51b2ce",
+  "period": 30,
+  "public_key": "868f005eb8e6e4ca0a47c8a77ceaa5309a47978a7c71bc5cce96366b5d7a569937c529eeda66c7293784a9402801af31",
+  "scheme": "pedersen-bls-chained",
+  "source": "https://api.drand.sh/8990e7a9aaed2ffed73dbd7092123d6f289930540d7651336225dc172e51b2ce/info, read 2026-11-08 (League of Entropy mainnet default chain)"
+ },
+ "kind": "pilot",
+ "ledger_path": "corpus/sampling/d48-ledger-v1.jsonl",
+ "ledger_sha256": "49491eb6255a7f885b38648d6f8a8889d9c91e347fddccaa3a8b190c8bf6c4eb",
+ "pilot_size": 11,
+ "register": "D48 (thesis/tbound/AH-technical/10-decision-register.md); 16-sampling-design.md sections 3 to 5",
+ "round_rule": "R is the first round of the chain whose scheduled time genesis_time + (R - 1) * period is at least 24 hours after T1, the first-publication time in UTC of this file's OSF version (16-sampling-design.md section 4). The seed is that round's 32-byte randomness. No later round, alternate commitment, seed or redraw may be chosen.",
+ "script_path": "corpus/sampling/select.py",
+ "script_sha256": "085c771f571062fdcaf17a7f166631d18f89fad85bf0a25af986ff6408d8a940",
+ "signed_tag": {
+  "commit": "FILL: git rev-parse corpus-d48-ledger-v1^{commit}",
+  "name": "corpus-d48-ledger-v1",
+  "object": "FILL: git rev-parse corpus-d48-ledger-v1"
+ },
+ "unit_choices": {
+  "ASB": "one attacker tool x its agent's first user task (task_num = 1)",
+  "ASEval": "one injected conversation",
+  "Agent-SafetyBench": "one test case",
+  "AgentDojo": "one user task x injection task pair of the pinned v1 suites",
+  "CodeIPI": "one injected sample",
+  "ControlArena": "one main task x side task pair (no row is a candidate)",
+  "InjecAgent": "one base-setting case: attacker case x user case; the enhanced setting adds none",
+  "MSB": "one attack goal item",
+  "OS-Harm": "one task (goal) item",
+  "RedCode-Exec": "one Text_details prompt per row",
+  "RedTeamCUA": "one adversarial goal item",
+  "RiOSWorld": "one task item (development row only)",
+  "SABER": "one benchmark row",
+  "SHADE-Arena": "one main task x side task pair"
+ }
+}
