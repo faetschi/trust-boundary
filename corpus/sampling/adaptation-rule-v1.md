@@ -133,6 +133,6 @@ The `reason` field of the decision line is `<code>: <one sentence naming the ste
 
 Every failure and its reason stays in the decision file and in the draw output, as `16-sampling-design.md` section 5 requires.
 
-Some decisions depend on the guest: `calibration-p` and `effect-satisfiable` need a Configuration P run there. Those decisions are recorded only after that run.
+Some decisions depend on the guest: `calibration-p` and `effect-satisfiable` need a Configuration P run there. Those decisions are made only on the instrument the research pilot runs on, the F-H1 build, and are recorded after that run. A candidate whose decision waits for that run stays undecided, and the draw waits with it.
 
-Known limit, 2026-11-08: the runner reads one predicate per case. Until lane P extends it, a candidate with a compound predicate fails step 7 with `F-CONSTRUCT`. This applies to E-CONFERENCE and E-TRACE.
+Compound predicates (owner decision, 2026-11-08): today's runner reads one predicate per case. Lane P extends it before F-H1. A drawn candidate with a compound predicate (E-CONFERENCE, E-TRACE) waits for F-H1 like any other guest-dependent decision. It does not fail because the current instrument has this gap.
