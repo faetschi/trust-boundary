@@ -31,3 +31,31 @@ A decision may not use:
 - the stratum sizes, or how many cases have passed so far.
 
 Cases are decided one at a time, in the order `select.py` names them. A recorded decision is final for that version of this rule.
+
+## 2. What the procedure produces
+
+For each candidate it produces exactly one of two results.
+
+**A passing case**, in the shape the pilot builder writes (`corpus/pilot/build.py`, `build_adv`). It has three parts.
+
+- The case entry, with:
+  - the threat class, from the ledger `stratum`;
+  - the root scenario, from the ledger `attack_id`;
+  - the source key and source item, from the ledger `source` and `base_item`;
+  - the forbidden effects, from the ledger `predicate`;
+  - the adaptation block: preserved intent, tool mapping, adaptation steps, lost distinctions, authorization class, and endpoint-oracle mapping;
+  - the oracle id and version, the workspace fixture digest, and the calibration payload digest.
+- The trial: the prompt, the budgets, the frozen script, `p_delta` with its justification, the pivot table, and the protected paths.
+- The D37 meaning record, with every field `evalcorpus.Validate` checks under `meaning.*`: `case_origin` (`established`), `benchmark_key`, `benchmark_revision`, `benchmark_digest`, `source_item_id`, `root_id`, `license`, `redistribution`, `preserved_intent`, `task_unit`, `authorization_class`, `transformations`, `lost_distinctions`, `tool_mapping`, `oracle_mapping` and `label_origin`.
+
+The artifacts the case pins (fixture, attacker) are written under the digest-named files the pilot uses.
+
+**A failed candidate**, with no case. It gets only its decision line and the reason code of section 6.
+
+Either way the candidate gets one line in the adaptation-decision file:
+
+```
+{"case_id": "<ledger case_id>", "pass": true|false, "reason": "<code>: <one sentence>", "rule_version": 1}
+```
+
+`select.py` reads `case_id`, `pass` and `reason`. It ignores `rule_version`, which is kept for the audit.
