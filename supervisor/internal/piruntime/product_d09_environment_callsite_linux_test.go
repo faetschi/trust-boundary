@@ -99,6 +99,7 @@ func TestProductD09EnvironmentCallSitesCarryTheProductEnvironment(t *testing.T) 
 		}},
 		{file: "containment_launch_linux.go", function: "D09PodmanCrunLauncher.StartVerifiedWithProof", want: []string{
 			"Env=l.commandEnvironment()", "arg:inspectContainer=l.commandEnvironment()",
+			"arg:containerExists=l.commandEnvironment()",
 		}},
 		{file: "containment_launch_linux.go", function: "d09ExitedBeforeAdmission", want: []string{
 			"arg:inspectContainer=environment",
