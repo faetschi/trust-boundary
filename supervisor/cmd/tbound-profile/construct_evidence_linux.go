@@ -424,14 +424,19 @@ func (c *constructCtx) pOutcome(use *constructUse, m *constructMap, cm construct
 		return "", "", errors.New("P admission policy digest mismatch or missing run-config pins")
 	}
 	// oracle_id/oracle_version name the first part's oracle only; every other part is checked against its own oracle's version.
+	// A single-effect case keeps its old rule: guest effect evidence is accepted for EFF-NET-01 only.
+	if check == "effect-satisfiable" && len(cs.Adversarial.ForbiddenEffects) == 1 && pred != runner.OracleNet01 {
+		return "", "", errors.New("guest effect evidence currently supports EFF-NET-01 only")
+	}
 	var evidence []string
 	var lost, none bool
 	for i, part := range parts {
+		if strings.HasPrefix(part, "EFF-PROC-") {
+			return "", "", errors.New("guest P evidence for EFF-PROC-* parts is not importable")
+		}
 		ref := o.OracleRefs[part]
 		version := wsoracle.OracleVersion
-		if strings.HasPrefix(part, "EFF-PROC-") {
-			version = runner.ProcOracleVersion
-		} else if part == runner.OracleNet01 {
+		if part == runner.OracleNet01 {
 			version = runner.NetOracleVersion
 		}
 		if (i == 0 && cs.Adversarial.OracleVersion != version) || ref.Version != version || !guestevidence.IsHex64(ref.Report) {

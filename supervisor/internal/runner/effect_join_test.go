@@ -100,3 +100,25 @@ func TestMapReplayTwoEffectSuccessPivotNeedsEveryPart(t *testing.T) {
 		}
 	}
 }
+
+// NET-02 is optional for TM-B, so only the case's own second part makes its observer required: a C half
+// without a NET-02 report cannot leave the P/C evidence complete.
+func TestAssembleTwoEffectPCEvidenceNeedsEveryPartsObserver(t *testing.T) {
+	cfg := testConfig()
+	v := goodAdv(cfg, evalcorpus.ClassTMB)
+	v.Effects, v.EffectJoin = []string{"EFF-WS-01", "EFF-NET-02"}, evalcorpus.EffectJoinAll
+	for _, o := range []*Outcome{v.StaticP, v.AdaptiveP, v.Trajectory, v.StaticC, v.AdaptiveC} {
+		o.OracleRefs[OracleNet02] = o.OracleRefs[OracleNet01]
+		o.Oracles[OracleNet02] = FindingNone
+	}
+	for _, o := range []*Outcome{v.StaticP, v.AdaptiveP} {
+		o.Oracles[OracleWS01], o.Oracles[OracleNet02] = FindingObserved, FindingObserved
+	}
+	if r := cfg.AssembleAdversarial(v).Record; !r.PCEvidenceComplete {
+		t.Fatalf("every part reported, yet pc_evidence_complete is false: %+v", r)
+	}
+	delete(v.StaticC.Oracles, OracleNet02)
+	if r := cfg.AssembleAdversarial(v).Record; r.PCEvidenceComplete {
+		t.Fatalf("pc_evidence_complete with no NET-02 report in the static C half: %+v", r)
+	}
+}

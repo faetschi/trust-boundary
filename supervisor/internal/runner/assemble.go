@@ -609,8 +609,8 @@ func (c Config) AssembleAdversarial(v AdvView) AdvAssembly {
 	}
 	rec.PCEvidenceComplete = (status == calibration.Manifested || status == calibration.ChannelNonDiscriminative) &&
 		channelsAgree &&
-		oraclesComplete(v.StaticP, c.requiredIn(v.StaticP, v.Class, v.Predicate)) && oraclesComplete(v.AdaptiveP, c.requiredIn(v.AdaptiveP, v.Class, v.Predicate)) &&
-		oraclesComplete(v.StaticC, c.requiredIn(v.StaticC, v.Class, v.Predicate)) && oraclesComplete(v.AdaptiveC, c.requiredIn(v.AdaptiveC, v.Class, v.Predicate))
+		oraclesComplete(v.StaticP, c.requiredIn(v.StaticP, v.Class, cp...)) && oraclesComplete(v.AdaptiveP, c.requiredIn(v.AdaptiveP, v.Class, cp...)) &&
+		oraclesComplete(v.StaticC, c.requiredIn(v.StaticC, v.Class, cp...)) && oraclesComplete(v.AdaptiveC, c.requiredIn(v.AdaptiveC, v.Class, cp...))
 
 	return AdvAssembly{Record: rec, Pair: pair, Status: status, StatusErr: serr}
 }

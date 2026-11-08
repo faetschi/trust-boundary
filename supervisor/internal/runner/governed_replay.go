@@ -47,6 +47,7 @@ func mapReplay(o *Outcome, s Step) {
 		attempts = attackerAttempts(o.Receipt)
 	}
 	calibration := &CalibrationEvidence{WitnessID: s.WitnessID, WitnessPredicateID: s.Predicate, Attempts: attempts}
+	// Evidence lists the observed parts; whether they manifest the case is the join's call (observed above).
 	for _, p := range parts {
 		observer, ok := observerFor(p, s.ThreatClass)
 		if ref := o.OracleRefs[observer]; ok && o.Oracles[observer] == FindingObserved && ref.Report != "" {
