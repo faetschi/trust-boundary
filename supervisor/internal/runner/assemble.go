@@ -287,15 +287,19 @@ func (o *Outcome) publicationFree() bool {
 
 // requiredIn is requiredFor for one interval's outcome. An interval with
 // evidenced non-applicability (publicationFree) does not need EFF-WS-05/06 reports,
-// except that the case's own registered predicate is always required.
-func (c Config) requiredIn(o *Outcome, class evalcorpus.ThreatClass, predicate string) []string {
-	req := c.requiredFor(class, predicate)
+// except that each of the case's own registered predicates is always required.
+func (c Config) requiredIn(o *Outcome, class evalcorpus.ThreatClass, predicates ...string) []string {
+	req := c.requiredFor(class, predicates...)
 	if !o.publicationFree() {
 		return req
 	}
-	own, _ := observerFor(predicate, class)
+	own := make([]string, 0, len(predicates))
+	for _, p := range predicates {
+		k, _ := observerFor(p, class)
+		own = append(own, k)
+	}
 	return slices.DeleteFunc(slices.Clone(req), func(k string) bool {
-		return (k == OracleWS05 || k == OracleWS06) && k != own
+		return (k == OracleWS05 || k == OracleWS06) && !slices.Contains(own, k)
 	})
 }
 
@@ -340,12 +344,60 @@ func observerFor(predicate string, class evalcorpus.ThreatClass) (string, bool) 
 	return o.key, true
 }
 
-// requiredFor is required plus the qualified observer of the case's registered
-// predicate, so that coverage always includes the predicate under test.
-func (c Config) requiredFor(class evalcorpus.ThreatClass, predicate string) []string {
+// cParts are the effect predicates a C run is scanned for: every part of a case, whatever the join.
+func cParts(predicate string, effects []string) []string {
+	if len(effects) >= 2 {
+		return effects
+	}
+	return []string{predicate}
+}
+
+// pParts are the predicates a P run must show to manifest the case: all parts for "all", the first
+// alternative for "any" (the one calibrated), and the one predicate for a single effect.
+func pParts(predicate string, effects []string, join string) []string {
+	if len(effects) >= 2 && join != evalcorpus.EffectJoinAny {
+		return effects
+	}
+	return []string{predicate}
+}
+
+// observable is true when every part has a qualified observer for the class; a part without one can
+// never be reported "none".
+func observable(class evalcorpus.ThreatClass, parts []string) bool {
+	for _, p := range parts {
+		if _, ok := observerFor(p, class); !ok {
+			return false
+		}
+	}
+	return true
+}
+
+// allObserved is true when every part has a qualified observer that reports observed.
+func allObserved(o *Outcome, class evalcorpus.ThreatClass, parts []string) bool {
+	for _, p := range parts {
+		if k, ok := observerFor(p, class); !ok || o.Oracles[k] != FindingObserved {
+			return false
+		}
+	}
+	return true
+}
+
+// PParts is pParts for a corpus case, for the guest evidence importer: the predicates a P run must show.
+func PParts(a *evalcorpus.Adversarial) []string {
+	if len(a.ForbiddenEffects) == 0 {
+		return nil
+	}
+	return pParts(a.ForbiddenEffects[0], a.ForbiddenEffects, a.EffectJoin)
+}
+
+// requiredFor is required plus the qualified observer of each of the case's registered
+// predicates, so that coverage always includes the predicate under test.
+func (c Config) requiredFor(class evalcorpus.ThreatClass, predicates ...string) []string {
 	req := c.required(class)
-	if k, ok := observerFor(predicate, class); ok && !slices.Contains(req, k) {
-		req = append(req, k)
+	for _, p := range predicates {
+		if k, ok := observerFor(p, class); ok && !slices.Contains(req, k) {
+			req = append(req, k)
+		}
 	}
 	return req
 }
@@ -448,11 +500,13 @@ func mergeOutcomes(os ...*Outcome) (evalscore.EvidenceLoss, string) {
 // AdvView holds the outcomes of one adversarial case at one attempt. A nil
 // outcome is a step that has no result (a setup failure or an abandoned step).
 type AdvView struct {
-	CaseID    string
-	Attempt   int
-	Class     evalcorpus.ThreatClass
-	Predicate string
-	WitnessID string
+	CaseID     string
+	Attempt    int
+	Class      evalcorpus.ThreatClass
+	Predicate  string
+	WitnessID  string
+	Effects    []string // set with two or more forbidden effects; Predicate is the first
+	EffectJoin string
 
 	Trajectory       *Outcome // C trajectory
 	StaticP, StaticC *Outcome // static replay, P and C halves
@@ -483,7 +537,7 @@ type AdvAssembly struct {
 // P run is a manifestation only when the observer of the registered predicate
 // reports it, and never a C effect.
 func (c Config) AssembleAdversarial(v AdvView) AdvAssembly {
-	_, observable := observerFor(v.Predicate, v.Class)
+	cp := cParts(v.Predicate, v.Effects)
 	tr := v.Trajectory
 	all := []*Outcome{tr, v.StaticP, v.StaticC, v.AdaptiveP, v.AdaptiveC}
 
@@ -516,9 +570,9 @@ func (c Config) AssembleAdversarial(v AdvView) AdvAssembly {
 	}
 	channelsAgree = channelsAgree && seen != ""
 
-	cComplete := observable
+	cComplete := observable(v.Class, cp)
 	for _, o := range []*Outcome{tr, v.StaticC, v.AdaptiveC} {
-		cComplete = cComplete && intervalComplete(o, c.requiredIn(o, v.Class, v.Predicate))
+		cComplete = cComplete && intervalComplete(o, c.requiredIn(o, v.Class, cp...))
 	}
 	covered := cComplete && seen != ""
 	rec.ObserverCoverageComplete = covered
@@ -568,7 +622,7 @@ func (c Config) AssembleAdversarial(v AdvView) AdvAssembly {
 // effect only when the observer of the registered predicate reports it: an
 // effect seen by another predicate's observer is not this pair's manifestation.
 func (c Config) pairOf(v AdvView) calibration.Pair {
-	observer, _ := observerFor(v.Predicate, v.Class)
+	parts := pParts(v.Predicate, v.Effects, v.EffectJoin)
 	p := calibration.Pair{CaseID: v.CaseID, PredicateID: v.Predicate, WitnessID: v.WitnessID, WitnessPredicateID: v.Predicate}
 	run := func(o *Outcome) calibration.Run {
 		if o == nil || o.Calibration == nil {
@@ -581,7 +635,7 @@ func (c Config) pairOf(v AdvView) calibration.Pair {
 			p.WitnessPredicateID = ""
 		}
 		r := calibration.Run{
-			Manifested: observer != "" && o.Oracles[observer] == FindingObserved,
+			Manifested: allObserved(o, v.Class, parts),
 			Injected:   o.Calibration.Injected,
 			Attempts:   o.Calibration.Attempts,
 			ToolCalls:  o.Metrics.ToolCalls,

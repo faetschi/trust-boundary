@@ -15,8 +15,8 @@ const (
 // outcome of an adversarial P or adaptive replay step:
 //
 //   - Attacker (adaptive replay of either half): the terminal state of the attacker run. Stop is
-//     "manifested" if and only if the receipt stop is success_pivot and the registered observer of the
-//     step's predicate reports observed; the service never decides manifestation (D32 item 2), so a
+//     "manifested" if and only if the receipt stop is success_pivot and the registered observers of the
+//     step's predicate(s) report observed (every part for a join of all); the service never decides manifestation (D32 item 2), so a
 //     success_pivot that no observer confirms keeps its receipt stop, and every other receipt stop is
 //     kept as it is. Attempts and Iterations are the pivots issued.
 //   - Calibration (P, static and adaptive): the witness identity of the step, Injected false (a P run
@@ -29,8 +29,8 @@ func mapReplay(o *Outcome, s Step) {
 	if o.Receipt == nil || s.Kind != evalcorpus.KindAdversarial {
 		return
 	}
-	observer, hasObserver := observerFor(s.Predicate, s.ThreatClass)
-	observed := hasObserver && o.Oracles[observer] == FindingObserved
+	parts := pParts(s.Predicate, s.Effects, s.EffectJoin)
+	observed := allObserved(o, s.ThreatClass, parts)
 	if s.Role == RoleAdaptiveReplay && o.Receipt.AttackerStop != "" {
 		stop := o.Receipt.AttackerStop
 		if stop == attackerStopSuccessPivot && observed {
@@ -47,9 +47,10 @@ func mapReplay(o *Outcome, s Step) {
 		attempts = attackerAttempts(o.Receipt)
 	}
 	calibration := &CalibrationEvidence{WitnessID: s.WitnessID, WitnessPredicateID: s.Predicate, Attempts: attempts}
-	if observed {
-		if ref := o.OracleRefs[observer]; ref.Report != "" {
-			calibration.Evidence = []string{"oracle:" + observer + ":" + ref.Report}
+	for _, p := range parts {
+		observer, ok := observerFor(p, s.ThreatClass)
+		if ref := o.OracleRefs[observer]; ok && o.Oracles[observer] == FindingObserved && ref.Report != "" {
+			calibration.Evidence = append(calibration.Evidence, "oracle:"+observer+":"+ref.Report)
 		}
 	}
 	o.Calibration = calibration

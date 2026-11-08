@@ -76,9 +76,7 @@ func planCDH(s Schedule, allocation evalcorpus.Manifest) (Schedule, error) {
 				if c.Adversarial != nil {
 					st.ThreatClass = c.Adversarial.ThreatClass
 					st.WitnessID = c.Adversarial.CalibrationWitnessID
-					if len(c.Adversarial.ForbiddenEffects) != 0 {
-						st.Predicate = c.Adversarial.ForbiddenEffects[0]
-					}
+					st.setEffects(c.Adversarial)
 				}
 				s.Steps = append(s.Steps, st)
 			}

@@ -247,19 +247,28 @@ type Ref struct {
 	Digest string `json:"digest"`
 }
 
+// The effect_join values: every forbidden effect must show (all) or any alternative may (any).
+const (
+	EffectJoinAll = "all"
+	EffectJoinAny = "any"
+)
+
 // Adversarial is the payload of an adversarial case unit.
 type Adversarial struct {
-	ThreatClass              ThreatClass    `json:"threat_class"`
-	Partition                Partition      `json:"partition"`
-	VarianceSubset           bool           `json:"variance_subset"`
-	RootScenarioID           string         `json:"root_scenario_id"`
-	SourceKey                string         `json:"source_key"`
-	SourceItemID             string         `json:"source_item_id"`
-	SelectionReason          string         `json:"selection_reason"`
-	Adaptation               Adaptation     `json:"adaptation"`
-	OracleID                 string         `json:"oracle_id"`
-	OracleVersion            string         `json:"oracle_version"`
-	ForbiddenEffects         []string       `json:"forbidden_effects"`
+	ThreatClass     ThreatClass `json:"threat_class"`
+	Partition       Partition   `json:"partition"`
+	VarianceSubset  bool        `json:"variance_subset"`
+	RootScenarioID  string      `json:"root_scenario_id"`
+	SourceKey       string      `json:"source_key"`
+	SourceItemID    string      `json:"source_item_id"`
+	SelectionReason string      `json:"selection_reason"`
+	Adaptation      Adaptation  `json:"adaptation"`
+	// OracleID and OracleVersion name the oracle of the first forbidden effect only; the other parts use their own oracles' versions.
+	OracleID         string   `json:"oracle_id"`
+	OracleVersion    string   `json:"oracle_version"`
+	ForbiddenEffects []string `json:"forbidden_effects"`
+	// EffectJoin says how the effects combine: "all" or "any". It is required with two or more effects and empty with one (omitted, so a single-effect digest is unchanged).
+	EffectJoin               string         `json:"effect_join,omitempty"`
 	WorkspaceFixtureDigest   string         `json:"workspace_fixture_digest"`
 	CalibrationPayloadDigest string         `json:"calibration_payload_digest"`
 	CalibrationWitnessID     string         `json:"calibration_witness_id"`
@@ -283,9 +292,10 @@ type Adaptation struct {
 
 // Compliant is the payload of a compliant task.
 type Compliant struct {
-	PrimaryTool            Tool              `json:"primary_tool"`
-	TaskGoal               string            `json:"task_goal"`
-	ToolMapping            string            `json:"tool_mapping"`
+	PrimaryTool Tool   `json:"primary_tool"`
+	TaskGoal    string `json:"task_goal"`
+	ToolMapping string `json:"tool_mapping"`
+	// OracleID and OracleVersion name the oracle of the first forbidden effect only; the other parts use their own oracles' versions.
 	OracleID               string            `json:"oracle_id"`
 	OracleVersion          string            `json:"oracle_version"`
 	WorkspaceFixtureDigest string            `json:"workspace_fixture_digest"`
