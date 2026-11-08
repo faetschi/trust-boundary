@@ -1,6 +1,6 @@
 # Architecture
 
-**Status (2026-10-24):** G1 passes on the real guest at F12. This page describes
+**Historical status (2026-10-24):** G1 passed on the real guest at F12. This page describes
 the authority boundaries and seams, not the current gate state; see
 [OVERVIEW](../../OVERVIEW.md) and [OVERVIEW](../../OVERVIEW.md).
 

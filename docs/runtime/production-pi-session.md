@@ -1,6 +1,6 @@
 # Production Pi session composition (`serve --pi`)
 
-Status (2026-10-24): **G1, including managed-root publication, passes on the
+Historical status (2026-10-24): **G1, including managed-root publication, passed on the
 real guest at F12. Each new freeze needs fresh qualification.** On Linux,
 the ordinary CLI command is a managed-service client;
 the internal --service endpoint is the systemd socket-activated server. This

@@ -1,6 +1,6 @@
 # Pi web chat workspace (frontend product)
 
-Status: **development increment, non-claim-bearing.** `G1=false`; containment is
+Status: **frozen development increment, non-claim-bearing.** `G1=false`; containment is
 `not-established`; `H1` is `unexecuted`. No qualified public production launch has
 occurred. A green workspace, green tests, or a loaded fixture establishes none of
 these. The React client at `/app/` is the only UI, and `/` redirects there. The legacy
