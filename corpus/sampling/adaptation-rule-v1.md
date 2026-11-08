@@ -230,7 +230,14 @@ Every failure and its reason stays in the decision file and the draw output, as 
 - Compliant and ambiguous cases. They have their own builders (`corpus/third/compliant/`) and the D43 rubric.
 - The derived TM-C set. It follows the D37 amendment rules, not this rule.
 - The cap, allocation, order and partitions. Those belong to `select.py` and `16-sampling-design.md`.
+- The lane-P runner extension for `+` predicates (section 7.1). This rule depends on it but does not define it.
 
 ## Change log
 
-- Version 1, 2026-11-08. First version, written for the pilot draw. Not yet reviewed.
+- Version 1, 2026-11-08. First draft, then revised the same day after an independent review (`c4-review.md`) and before any use. Owner decisions taken into the revision:
+  - screening runs on the latest qualified dev build;
+  - the slot package of the ASB template;
+  - the Node.js language swap;
+  - binding at `T1`, and pilot-examined candidates as development cases.
+
+  Not yet re-reviewed.
