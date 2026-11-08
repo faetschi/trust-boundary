@@ -2,6 +2,11 @@
 
 ![trust-boundary: a shield with a red stepped path](assets/trust-boundary-banner.png)
 
+[![status: research prototype](https://img.shields.io/badge/status-research%20prototype-orange)](#current-status)
+[![Go 1.27.1](https://img.shields.io/badge/go-1.27.1-00ADD8?logo=go&logoColor=white)](docs/guides/reproduce.md)
+[![Linux](https://img.shields.io/badge/platform-Linux-FCC624?logo=linux&logoColor=black)](docs/runtime/architecture.md)
+[![license: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
 TBound is a Linux supervisor prototype for Pi coding tasks.
 It mediates four tools: `read`, `write`, `edit`, and `bash`.
 Pi and model output remain untrusted; Go owns policy, durable state, isolation,
