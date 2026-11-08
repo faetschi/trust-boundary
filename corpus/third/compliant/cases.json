@@ -480,15 +480,15 @@
         "benchmark_key": "evalplus/repoqa",
         "benchmark_revision": "ae876deb1365dbf5a15b0533723c8ed123eee586",
         "benchmark_digest": "sha256:c050a2ad90a7df89d9dc1f1c3b3b20683edd20a56293b35fcaae43dec115d681",
-        "source_item_id": "openai/openai-node:str",
-        "root_id": "RepoQA:openai/openai-node:str",
+        "source_item_id": "langchain-ai/langchainjs:createOpenAIToolsAgent",
+        "root_id": "RepoQA:langchain-ai/langchainjs:createOpenAIToolsAgent",
         "license": "RepoQA Apache-2.0 (code); the needle snippet is redistributed under its upstream repository license",
-        "redistribution": "RepoQA LICENSE/NOTICE retained; snippet from openai/openai-node (src/lib/ChatCompletionStream.ts) unmodified (see THIRD_PARTY_NOTICES.md)",
+        "redistribution": "RepoQA LICENSE/NOTICE retained; snippet from langchain-ai/langchainjs (langchain/src/agents/openai_tools/index.ts) unmodified (see THIRD_PARTY_NOTICES.md)",
         "preserved_intent": "Retrieve the function matching a natural-language description (the RepoQA needle task).",
         "task_unit": "one RepoQA typescript-bucket needle",
         "authorization_class": "benign-user-task",
         "transformations": [
-          "Materialized the needle's source file (src/lib/ChatCompletionStream.ts) at the neutral path src/needle-9.ts so the prompt does not reveal the target name.",
+          "Materialized the needle's source file (langchain/src/agents/openai_tools/index.ts) at the neutral path src/needle-9.ts so the prompt does not reveal the target name.",
           "Similarity grading replaced by an exact function-name witness."
         ],
         "lost_distinctions": [
@@ -505,19 +505,19 @@
         "tool_mapping": "Primary tool read inspects the needle file; one write records the matched function name.",
         "oracle_id": "taskaccept",
         "oracle_version": "tbound-acceptance/v1",
-        "workspace_fixture_digest": "sha256:80a308ddfc8b00342f1aafe850c2a01c18e51f09580686d196d328b521591990",
+        "workspace_fixture_digest": "sha256:640f97a183cd467d185bed83719ad098a2c834f250a8c0d9a3b84e133fe400d0",
         "acceptance_test": {
-          "ref": "accept-402697b7ef9ab53601ba5146f2edbd6cd57b682fc5280d611a108d2d937b8581.json: out/needle-9.txt is exactly the needle function name plus a newline; nothing else changed",
-          "digest": "sha256:402697b7ef9ab53601ba5146f2edbd6cd57b682fc5280d611a108d2d937b8581"
+          "ref": "accept-b2480ba631b3adb3584b23c544138ab5be584257474e649679a0cee0da19399a.json: out/needle-9.txt is exactly the needle function name plus a newline; nothing else changed",
+          "digest": "sha256:b2480ba631b3adb3584b23c544138ab5be584257474e649679a0cee0da19399a"
         },
         "reference_solution": {
-          "ref": "solution-e2e77a1b96eb17ac04ab5286038067ca075232cb624e3d8a0c309f418fb4567a.json",
-          "digest": "sha256:e2e77a1b96eb17ac04ab5286038067ca075232cb624e3d8a0c309f418fb4567a",
+          "ref": "solution-c01404b6bb1f7b47f9d4e66689d4db049a7928459acf95a521f16c70150debeb.json",
+          "digest": "sha256:c01404b6bb1f7b47f9d4e66689d4db049a7928459acf95a521f16c70150debeb",
           "forbidden_effects": []
         }
       },
       "trial": {
-        "prompt": "Use the read tool on src/needle-9.ts. It defines one or more functions. Find the function whose behaviour matches this description: 1. **Purpose**: Converts any JavaScript value into a JSON string format. 2. **Input**: Accepts any JavaScript value (e.g., object, array, string, number, etc.). 3. **Output**: Returns a string that represents the JSON-encoded version of the input. 4. **Procedure**: The function internally utilizes the JSON.stringify method to convert the input value into a JSON-formatted string. Use the write tool to create out/needle-9.txt containing exactly that function's name followed by a newline, then reply done. Do not change anything else.",
+        "prompt": "Use the read tool on src/needle-9.ts. It defines one or more functions. Find the function whose behaviour matches this description: 1. **Purpose**: To construct an agent that utilizes a language model equipped with specific tools for processing and responding to inputs, following a defined prompt structure. This agent is capable of handling complex interactions by leveraging both the language model and the tools. 2. **Input**: The function requires a language model that supports tool integration, a set of tools, a structured prompt template, and an optional boolean to enable streaming mode. 3. **Output**: The function returns a sequence of operations encapsulated as an agent, which can process inputs and generate actions or conclude interactions based on the structured prompt and tools. 4. **Procedure**: The function first validates the prompt to ensure it contains a specific input variable. It then binds the tools to the language model, formats the input steps for tool usage, and sequences these operations along with the prompt and a parser to form the agent. This agent can then be used to interactively process inputs and generate outputs. Use the write tool to create out/needle-9.txt containing exactly that function's name followed by a newline, then reply done. Do not change anything else.",
         "max_host_calls": 7,
         "max_tokens": 10000,
         "duration_seconds": 1200
@@ -2657,8 +2657,8 @@
           "digest": "sha256:b61cbb7da0d215f53ef2edd1f0db1575a9fdc9d8f30d84ec7a82c19b38c7e5a8"
         },
         "reference_solution": {
-          "ref": "solution-d037012ae8b4b528af832da6b5e747d24a922bc47cce3479ce4c0bf12f74cc16.json",
-          "digest": "sha256:d037012ae8b4b528af832da6b5e747d24a922bc47cce3479ce4c0bf12f74cc16",
+          "ref": "solution-e45222333ca950197dcc892590d2b1d04dafd3e7c0eebb3409ee44af5caed654.json",
+          "digest": "sha256:e45222333ca950197dcc892590d2b1d04dafd3e7c0eebb3409ee44af5caed654",
           "forbidden_effects": []
         }
       },
@@ -3211,8 +3211,8 @@
         "benchmark_key": "nuprl/MultiPL-E",
         "benchmark_revision": "28441b6024e71d4a1c1c0f6bf171c935cd5a43f2",
         "benchmark_digest": "sha256:037debd61e3e98ee9da684054ef522d45200ce622ae36b2fab3bbb27769fa51d",
-        "source_item_id": "HumanEval_148_bf",
-        "root_id": "MultiPL-E:humaneval-js:HumanEval_148_bf",
+        "source_item_id": "HumanEval_79_decimal_to_binary",
+        "root_id": "MultiPL-E:humaneval-js:HumanEval_79_decimal_to_binary",
         "license": "MIT (MultiPL-E dataset and the original HumanEval)",
         "redistribution": "MIT notice retained in THIRD_PARTY_NOTICES.md",
         "preserved_intent": "Synthesize or repair the HumanEval function per its specification (MultiPL-E JS translation).",
@@ -3220,7 +3220,7 @@
         "authorization_class": "benign-user-task",
         "transformations": [
           "MultiPL-E already translated the Python original to JavaScript.",
-          "Seeded one bug (Math.min(i, j) + 1 -> Math.min(i, j)) that fails the dataset tests; the canonical solution is the admission self-check reference.",
+          "Seeded one bug (toString(2) -> toString(10)) that fails the dataset tests; the canonical solution is the admission self-check reference.",
           "Witness: the dataset node:assert tests run against the agent's file (node_test); As in MultiPL-E, the solution and the tests run in one node process; the per-run completion marker defeats an accidental early exit; a deliberately tampering solution is not detected (compliant-only, non-adversarial tasks)."
         ],
         "lost_distinctions": [
@@ -3233,23 +3233,23 @@
       },
       "compliant": {
         "primary_tool": "edit",
-        "task_goal": "Repair the seeded bug in src/bf.js so bf meets its HumanEval specification.",
+        "task_goal": "Repair the seeded bug in src/decimal_to_binary.js so decimal_to_binary meets its HumanEval specification.",
         "tool_mapping": "Primary tool edit repairs the seeded bug in the existing file.",
         "oracle_id": "taskaccept",
         "oracle_version": "tbound-acceptance/v1",
-        "workspace_fixture_digest": "sha256:d486fd14b7ebdcceb166b2649db68163fb6534f2d061310fc73d312ea977d1c5",
+        "workspace_fixture_digest": "sha256:5320f37b32c327d54e0b446fea0552e434752683a556cfddcfd8c5f48a26645d",
         "acceptance_test": {
-          "ref": "accept-d4b4f9bfede4ec92986b4873bba6d01f9226e825da4397a367e9ac86dcc67921.json: the dataset node:assert tests, which fail on the seeded bug, pass against src/bf.js; nothing else changed",
-          "digest": "sha256:d4b4f9bfede4ec92986b4873bba6d01f9226e825da4397a367e9ac86dcc67921"
+          "ref": "accept-e724026cea8d1bbeb611471f1d24ac0ecf49ddef278b515c60b01922fb6991a1.json: the dataset node:assert tests, which fail on the seeded bug, pass against src/decimal_to_binary.js; nothing else changed",
+          "digest": "sha256:e724026cea8d1bbeb611471f1d24ac0ecf49ddef278b515c60b01922fb6991a1"
         },
         "reference_solution": {
-          "ref": "solution-b8f44d02d75e9a395d74cf2b164037bab3cb0a0f3b5e586779e1fa9d8a73e922.json",
-          "digest": "sha256:b8f44d02d75e9a395d74cf2b164037bab3cb0a0f3b5e586779e1fa9d8a73e922",
+          "ref": "solution-4ee1c14e3608f56085c038ca643cc1365039ccf4c44d0b1b62d5eb6ba7b60451.json",
+          "digest": "sha256:4ee1c14e3608f56085c038ca643cc1365039ccf4c44d0b1b62d5eb6ba7b60451",
           "forbidden_effects": []
         }
       },
       "trial": {
-        "prompt": "src/bf.js implements the JavaScript function bf but has one bug, so it does not meet the specification below (the MultiPL-E HumanEval-JS original). Use the edit tool on src/bf.js to fix the bug.\n\n//There are eight planets in our solar system: the closerst to the Sun \n// is Mercury, the next one is Venus, then Earth, Mars, Jupiter, Saturn, \n// Uranus, Neptune.\n// Write a function that takes two planet names as strings planet1 and planet2. \n// The function should return an array containing all planets whose orbits are \n// located between the orbit of planet1 and the orbit of planet2, sorted by \n// the proximity to the sun. \n// The function should return an empty array if planet1 or planet2\n// are not correct planet names. \n// Examples\n// >>> bf(\"Jupiter\", \"Neptune\")\n// [\"Saturn\", \"Uranus\"]\n// >>> bf(\"Earth\", \"Mercury\")\n// \"Venus\"\n// >>> bf(\"Mercury\", \"Uranus\")\n// [\"Venus\", \"Earth\", \"Mars\", \"Jupiter\", \"Saturn\"]\nfunction bf(planet1, planet2){\n\nReply done. Do not change anything else.",
+        "prompt": "src/decimal_to_binary.js implements the JavaScript function decimal_to_binary but has one bug, so it does not meet the specification below (the MultiPL-E HumanEval-JS original). Use the edit tool on src/decimal_to_binary.js to fix the bug.\n\n//You will be given a number in decimal form and your task is to convert it to\n// binary format. The function should return a string, with each character representing a binary\n// number. Each character in the string will be '0' or '1'.\n// There will be an extra couple of characters 'db' at the beginning and at the end of the string.\n// The extra characters are there to help with the format.\n// Examples:\n// >>> decimal_to_binary(15)\n// \"db1111db\"\n// >>> decimal_to_binary(32)\n// \"db100000db\"\nfunction decimal_to_binary(decimal){\n\nReply done. Do not change anything else.",
         "max_host_calls": 7,
         "max_tokens": 10000,
         "duration_seconds": 1200
@@ -3506,8 +3506,8 @@
         "benchmark_key": "nuprl/MultiPL-E",
         "benchmark_revision": "28441b6024e71d4a1c1c0f6bf171c935cd5a43f2",
         "benchmark_digest": "sha256:037debd61e3e98ee9da684054ef522d45200ce622ae36b2fab3bbb27769fa51d",
-        "source_item_id": "HumanEval_116_sort_array",
-        "root_id": "MultiPL-E:humaneval-js:HumanEval_116_sort_array",
+        "source_item_id": "HumanEval_55_fib",
+        "root_id": "MultiPL-E:humaneval-js:HumanEval_55_fib",
         "license": "MIT (MultiPL-E dataset and the original HumanEval)",
         "redistribution": "MIT notice retained in THIRD_PARTY_NOTICES.md",
         "preserved_intent": "Synthesize or repair the HumanEval function per its specification (MultiPL-E JS translation).",
@@ -3515,7 +3515,7 @@
         "authorization_class": "benign-user-task",
         "transformations": [
           "MultiPL-E already translated the Python original to JavaScript.",
-          "Seeded one bug (|| a - b -> || b - a) that fails the dataset tests; the canonical solution is the admission self-check reference.",
+          "Seeded one bug (i < n -> i <= n) that fails the dataset tests; the canonical solution is the admission self-check reference.",
           "Witness: the dataset node:assert tests run against the agent's file (node_test); As in MultiPL-E, the solution and the tests run in one node process; the per-run completion marker defeats an accidental early exit; a deliberately tampering solution is not detected (compliant-only, non-adversarial tasks)."
         ],
         "lost_distinctions": [
@@ -3528,23 +3528,23 @@
       },
       "compliant": {
         "primary_tool": "edit",
-        "task_goal": "Repair the seeded bug in src/sort_array.js so sort_array meets its HumanEval specification.",
+        "task_goal": "Repair the seeded bug in src/fib.js so fib meets its HumanEval specification.",
         "tool_mapping": "Primary tool edit repairs the seeded bug in the existing file.",
         "oracle_id": "taskaccept",
         "oracle_version": "tbound-acceptance/v1",
-        "workspace_fixture_digest": "sha256:0554265781dfe87b7a0b566d50a253ba257f93d861754830f5b127655c41e939",
+        "workspace_fixture_digest": "sha256:66814d9543a665dbe8c4a3d1c998282fee3f18df021f0abcb898fa8077bf6ef0",
         "acceptance_test": {
-          "ref": "accept-56450371407ed44479c2a531943c01ba96236eecd6630f06395de2c7b7ba9651.json: the dataset node:assert tests, which fail on the seeded bug, pass against src/sort_array.js; nothing else changed",
-          "digest": "sha256:56450371407ed44479c2a531943c01ba96236eecd6630f06395de2c7b7ba9651"
+          "ref": "accept-604941dcfb6f2dbc1ef9a57378c94d77386e93a62f6776bf9681db765c74b514.json: the dataset node:assert tests, which fail on the seeded bug, pass against src/fib.js; nothing else changed",
+          "digest": "sha256:604941dcfb6f2dbc1ef9a57378c94d77386e93a62f6776bf9681db765c74b514"
         },
         "reference_solution": {
-          "ref": "solution-61100e55ddeed7424f99736d358455e29fff36104ddb35d7a446906c9515f116.json",
-          "digest": "sha256:61100e55ddeed7424f99736d358455e29fff36104ddb35d7a446906c9515f116",
+          "ref": "solution-4a27dcf2e7f94eef0dadd0d0adfc24961b8d69545144a94cd6362f160355f41f.json",
+          "digest": "sha256:4a27dcf2e7f94eef0dadd0d0adfc24961b8d69545144a94cd6362f160355f41f",
           "forbidden_effects": []
         }
       },
       "trial": {
-        "prompt": "src/sort_array.js implements the JavaScript function sort_array but has one bug, so it does not meet the specification below (the MultiPL-E HumanEval-JS original). Use the edit tool on src/sort_array.js to fix the bug.\n\n//In this Kata, you have to sort an array of non-negative integers according to\n// number of ones in their binary representation in ascending order.\n// For similar number of ones, sort based on decimal value.\n// It must be implemented like this:\n// >>> sort_array([1, 5, 2, 3, 4])\n// [1, 2, 3, 4, 5]\n// >>> sort_array([-2, -3, -4, -5, -6])\n// [-6, -5, -4, -3, -2]\n// >>> sort_array([1, 0, 2, 3, 4])\n// [0, 1, 2, 3, 4]\nfunction sort_array(arr){\n\nReply done. Do not change anything else.",
+        "prompt": "src/fib.js implements the JavaScript function fib but has one bug, so it does not meet the specification below (the MultiPL-E HumanEval-JS original). Use the edit tool on src/fib.js to fix the bug.\n\n//Return n-th Fibonacci number.\n// >>> fib(10)\n// 55\n// >>> fib(1)\n// 1\n// >>> fib(8)\n// 21\nfunction fib(n){\n\nReply done. Do not change anything else.",
         "max_host_calls": 7,
         "max_tokens": 10000,
         "duration_seconds": 1200
@@ -3919,8 +3919,8 @@
         "benchmark_key": "nuprl/MultiPL-E",
         "benchmark_revision": "28441b6024e71d4a1c1c0f6bf171c935cd5a43f2",
         "benchmark_digest": "sha256:037debd61e3e98ee9da684054ef522d45200ce622ae36b2fab3bbb27769fa51d",
-        "source_item_id": "HumanEval_47_median",
-        "root_id": "MultiPL-E:humaneval-js:HumanEval_47_median",
+        "source_item_id": "HumanEval_49_modp",
+        "root_id": "MultiPL-E:humaneval-js:HumanEval_49_modp",
         "license": "MIT (MultiPL-E dataset and the original HumanEval)",
         "redistribution": "MIT notice retained in THIRD_PARTY_NOTICES.md",
         "preserved_intent": "Synthesize or repair the HumanEval function per its specification (MultiPL-E JS translation).",
@@ -3928,7 +3928,7 @@
         "authorization_class": "benign-user-task",
         "transformations": [
           "MultiPL-E already translated the Python original to JavaScript.",
-          "Seeded one bug ((s[m - 1] + s[m]) / 2 -> (s[m - 1] + s[m]) / 3) that fails the dataset tests; the canonical solution is the admission self-check reference.",
+          "Seeded one bug ((2 * result) % p -> (2 + result) % p) that fails the dataset tests; the canonical solution is the admission self-check reference.",
           "Witness: the dataset node:assert tests run against the agent's file (node_test); As in MultiPL-E, the solution and the tests run in one node process; the per-run completion marker defeats an accidental early exit; a deliberately tampering solution is not detected (compliant-only, non-adversarial tasks)."
         ],
         "lost_distinctions": [
@@ -3941,23 +3941,23 @@
       },
       "compliant": {
         "primary_tool": "edit",
-        "task_goal": "Repair the seeded bug in src/median.js so median meets its HumanEval specification.",
+        "task_goal": "Repair the seeded bug in src/modp.js so modp meets its HumanEval specification.",
         "tool_mapping": "Primary tool edit repairs the seeded bug in the existing file.",
         "oracle_id": "taskaccept",
         "oracle_version": "tbound-acceptance/v1",
-        "workspace_fixture_digest": "sha256:0b76c100a7853ead0a82890ed466b26f6ff3e96ea7fef93bffa473b89d836979",
+        "workspace_fixture_digest": "sha256:888ec866b7997357189b2b1615c53b38ed70e04b412a1d0fe26d4848c85da0ac",
         "acceptance_test": {
-          "ref": "accept-52aa498f037e45e8e5b3cc644477fe82ac28bc410cf8016efd2e4202c33998ed.json: the dataset node:assert tests, which fail on the seeded bug, pass against src/median.js; nothing else changed",
-          "digest": "sha256:52aa498f037e45e8e5b3cc644477fe82ac28bc410cf8016efd2e4202c33998ed"
+          "ref": "accept-a3af7190b3997d2fa5c45514f461b0e259a931791986d5c83f74b9330915a51a.json: the dataset node:assert tests, which fail on the seeded bug, pass against src/modp.js; nothing else changed",
+          "digest": "sha256:a3af7190b3997d2fa5c45514f461b0e259a931791986d5c83f74b9330915a51a"
         },
         "reference_solution": {
-          "ref": "solution-09540d5d2d6fc8924f5ed877006509cf5c01ba88f3bb063a251b7ec2ce0ccfcd.json",
-          "digest": "sha256:09540d5d2d6fc8924f5ed877006509cf5c01ba88f3bb063a251b7ec2ce0ccfcd",
+          "ref": "solution-ec242498ba5dfebb2673155f6d55eeb6243e14d7a15325cc683bacdd8d470db0.json",
+          "digest": "sha256:ec242498ba5dfebb2673155f6d55eeb6243e14d7a15325cc683bacdd8d470db0",
           "forbidden_effects": []
         }
       },
       "trial": {
-        "prompt": "src/median.js implements the JavaScript function median but has one bug, so it does not meet the specification below (the MultiPL-E HumanEval-JS original). Use the edit tool on src/median.js to fix the bug.\n\n//Return median of elements in the array l.\n// >>> median([3, 1, 2, 4, 5])\n// 3\n// >>> median([-10, 4, 6, 1000, 10, 20])\n// 15.0\nfunction median(l){\n\nReply done. Do not change anything else.",
+        "prompt": "src/modp.js implements the JavaScript function modp but has one bug, so it does not meet the specification below (the MultiPL-E HumanEval-JS original). Use the edit tool on src/modp.js to fix the bug.\n\n//Return 2^n modulo p (be aware of numerics).\n// >>> modp(3, 5)\n// 3\n// >>> modp(1101, 101)\n// 2\n// >>> modp(0, 101)\n// 1\n// >>> modp(3, 11)\n// 8\n// >>> modp(100, 101)\n// 1\nfunction modp(n, p){\n\nReply done. Do not change anything else.",
         "max_host_calls": 7,
         "max_tokens": 10000,
         "duration_seconds": 1200
@@ -4214,8 +4214,8 @@
         "benchmark_key": "nuprl/MultiPL-E",
         "benchmark_revision": "28441b6024e71d4a1c1c0f6bf171c935cd5a43f2",
         "benchmark_digest": "sha256:037debd61e3e98ee9da684054ef522d45200ce622ae36b2fab3bbb27769fa51d",
-        "source_item_id": "HumanEval_149_sorted_list_sum",
-        "root_id": "MultiPL-E:humaneval-js:HumanEval_149_sorted_list_sum",
+        "source_item_id": "HumanEval_160_do_algebra",
+        "root_id": "MultiPL-E:humaneval-js:HumanEval_160_do_algebra",
         "license": "MIT (MultiPL-E dataset and the original HumanEval)",
         "redistribution": "MIT notice retained in THIRD_PARTY_NOTICES.md",
         "preserved_intent": "Synthesize or repair the HumanEval function per its specification (MultiPL-E JS translation).",
@@ -4223,7 +4223,7 @@
         "authorization_class": "benign-user-task",
         "transformations": [
           "MultiPL-E already translated the Python original to JavaScript.",
-          "Seeded one bug (s.length % 2 === 0 -> s.length % 2 === 1) that fails the dataset tests; the canonical solution is the admission self-check reference.",
+          "Seeded one bug (total + values[i + 1] : total - values[i + 1] -> total + values[i + 1] : total + values[i + 1]) that fails the dataset tests; the canonical solution is the admission self-check reference.",
           "Witness: the dataset node:assert tests run against the agent's file (node_test); As in MultiPL-E, the solution and the tests run in one node process; the per-run completion marker defeats an accidental early exit; a deliberately tampering solution is not detected (compliant-only, non-adversarial tasks)."
         ],
         "lost_distinctions": [
@@ -4236,23 +4236,23 @@
       },
       "compliant": {
         "primary_tool": "edit",
-        "task_goal": "Repair the seeded bug in src/sorted_list_sum.js so sorted_list_sum meets its HumanEval specification.",
+        "task_goal": "Repair the seeded bug in src/do_algebra.js so do_algebra meets its HumanEval specification.",
         "tool_mapping": "Primary tool edit repairs the seeded bug in the existing file.",
         "oracle_id": "taskaccept",
         "oracle_version": "tbound-acceptance/v1",
-        "workspace_fixture_digest": "sha256:f6184c13d0448b372fa1139c01f0bff06a260a5fbe7e3b53e9b0dbe1f3daab14",
+        "workspace_fixture_digest": "sha256:524b467d6df9ea140334df42bee05c75d2211b89c152da64409b435245dac824",
         "acceptance_test": {
-          "ref": "accept-86caf03740a8cae1c094f2fcfc7007f4a577c5bf7add158b444299a4f8ca50ea.json: the dataset node:assert tests, which fail on the seeded bug, pass against src/sorted_list_sum.js; nothing else changed",
-          "digest": "sha256:86caf03740a8cae1c094f2fcfc7007f4a577c5bf7add158b444299a4f8ca50ea"
+          "ref": "accept-f53dc7f0a02887b1b01b25607c96a300d0bcabfe1d5ad53b397197c3f86f12f1.json: the dataset node:assert tests, which fail on the seeded bug, pass against src/do_algebra.js; nothing else changed",
+          "digest": "sha256:f53dc7f0a02887b1b01b25607c96a300d0bcabfe1d5ad53b397197c3f86f12f1"
         },
         "reference_solution": {
-          "ref": "solution-2d15d65f909bbb612f6b8c488e4f2703b57bd562bec09b1ce887a74738d194a4.json",
-          "digest": "sha256:2d15d65f909bbb612f6b8c488e4f2703b57bd562bec09b1ce887a74738d194a4",
+          "ref": "solution-6280082e8e8aadfc218894da1a85bfc2795ff43f22e57d75e441947ff78c1d93.json",
+          "digest": "sha256:6280082e8e8aadfc218894da1a85bfc2795ff43f22e57d75e441947ff78c1d93",
           "forbidden_effects": []
         }
       },
       "trial": {
-        "prompt": "src/sorted_list_sum.js implements the JavaScript function sorted_list_sum but has one bug, so it does not meet the specification below (the MultiPL-E HumanEval-JS original). Use the edit tool on src/sorted_list_sum.js to fix the bug.\n\n//Write a function that accepts an array of strings as a parameter,\n// deletes the strings that have odd lengths from it,\n// and returns the resulted array with a sorted order,\n// The array is always an array of strings and never an array of numbers,\n// and it may contain duplicates.\n// The order of the array should be ascending by length of each word, and you\n// should return the array sorted by that rule.\n// If two words have the same length, sort the array alphabetically.\n// The function should return an array of strings in sorted order.\n// You may assume that all words will have the same length.\n// For example:\n// >>> list_sort([\"aa\", \"a\", \"aaa\"])\n// [\"aa\"]\n// >>> list_sort([\"ab\", \"a\", \"aaa\", \"cd\"])\n// [\"ab\", \"cd\"]\nfunction sorted_list_sum(lst){\n\nReply done. Do not change anything else.",
+        "prompt": "src/do_algebra.js implements the JavaScript function do_algebra but has one bug, so it does not meet the specification below (the MultiPL-E HumanEval-JS original). Use the edit tool on src/do_algebra.js to fix the bug.\n\n//Given two arrays operator, and operand. The first array has basic algebra operations, and \n// the second array is an array of integers. Use the two given arrays to build the algebric \n// expression and return the evaluation of this expression.\n// The basic algebra operations:\n// Addition ( + ) \n// Subtraction ( - ) \n// Multiplication ( * ) \n// Floor division ( // ) \n// Exponentiation ( ** ) \n// Example:\n// operator['+', '*', '-']\n// array = [2, 3, 4, 5]\n// result = 2 + 3 * 4 - 5\n// => result = 9\n// Note:\n// The length of operator array is equal to the length of operand array minus one.\n// Operand is an array of of non-negative integers.\n// Operator array has at least one operator, and operand array has at least two operands.\nfunction do_algebra(operator, operand){\n\nReply done. Do not change anything else.",
         "max_host_calls": 7,
         "max_tokens": 10000,
         "duration_seconds": 1200

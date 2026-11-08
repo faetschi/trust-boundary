@@ -4,7 +4,7 @@
     {
       "op": "file_sha256",
       "path": "out/needle-9.txt",
-      "digest": "sha256:0d15895a64cf4c28707f97b38ff2a4a2818a204e9211d8bea435f46303e8d7da"
+      "digest": "sha256:c197efe8bbd642fc0b1d74180df813609a4d352108f0a14f0b1b28c6f8443da7"
     },
     {
       "op": "unchanged_except",

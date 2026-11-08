@@ -5,7 +5,7 @@
       "op": "write",
       "path": "out/needle-9.txt",
       "mode": "0644",
-      "content_b64": "c3RyCg=="
+      "content_b64": "Y3JlYXRlT3BlbkFJVG9vbHNBZ2VudAo="
     }
   ]
 }
