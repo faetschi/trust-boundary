@@ -286,7 +286,7 @@ The normal admission command needs no panel files:
 ```sh
 tbound-profile corpus-digest --manifest corpus/pilot/manifest.json --quota-profile pilot \
   --artifacts corpus/pilot/artifacts --node "$(command -v node)" \
-  --max-host-calls 17 --max-tokens 20000 --duration-seconds 1200
+  --max-host-calls 17 --max-tokens 69632 --duration-seconds 1200
 ```
 
 To verify optional evidence, append all three paths:

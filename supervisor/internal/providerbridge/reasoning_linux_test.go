@@ -102,3 +102,41 @@ func TestReplayOfAnUnmarkedJournalKeepsTheDefaultBytes(t *testing.T) {
 		t.Fatal("a default journal replayed under the reasoning route")
 	}
 }
+
+func TestReplayPredecessorContextKeepsReasoningForTheSuccessorRequest(t *testing.T) {
+	route := openrouter.EngineeringRoute().WithReasoning(true)
+	run := runReasoningConversation(t, route)
+	pins := RecoveryPins{Config: run.cfg, Model: ApprovedModel, Policy: run.policy}
+	boundary := testBoundary("d50", "no_diff")
+	predecessor, _, err := ReplayPredecessorContext(run.journal, pins, &replayVerifierFixture{}, boundary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := successorConfig(predecessor)
+	cfg.Route = route
+	doer := &rawDoer{bodies: [][]byte{sseChunks("resp-s", openrouter.ApprovedModel, "stop", map[string]any{"role": "assistant", "content": "ok"})}}
+	successor, err := newWithDoer(cfg, ApprovedModel, doer, openRecoveryTestJournal(t, filepath.Join(t.TempDir(), "s.audit")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := successor.AdmitPrompt("task-s", "next"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := successor.NextTurn(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(doer.requests[0], []byte(`"reasoning_content":"think-1a think-1b"`)) {
+		t.Fatalf("successor request lost the predecessor reasoning: %s", doer.requests[0])
+	}
+	// An unmarked predecessor keeps the digest the code computed before reasoning existed.
+	plain := runReasoningConversation(t, openrouter.Route{})
+	plainContext, _, err := ReplayPredecessorContext(plain.journal, RecoveryPins{Config: plain.cfg, Model: ApprovedModel, Policy: plain.policy},
+		&replayVerifierFixture{}, boundary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := plainContext.sealed
+	if s.digest != legacyImportedDigest(s.receiptDigest, s.messages, s.reservedResponseIDs, s.reservedToolCallIDs) {
+		t.Fatal("unmarked predecessor digest changed")
+	}
+}

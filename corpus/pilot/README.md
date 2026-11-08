@@ -212,7 +212,7 @@ On Linux, with a separately prepared manifest and the service ceilings:
 ```sh
 tbound-profile corpus-digest --manifest corpus/pilot/manifest.json --quota-profile pilot \
   --artifacts corpus/pilot/artifacts --node "$(command -v node)" \
-  --max-host-calls 17 --max-tokens 20000 --duration-seconds 1200
+  --max-host-calls 17 --max-tokens 69632 --duration-seconds 1200
 ```
 
 The command performs strict loading, validation, quotas, and `CheckTrials`,

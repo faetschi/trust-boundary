@@ -219,3 +219,128 @@ func TestOversizeReasoningStreamIsJournaledUnknown(t *testing.T) {
 		t.Fatalf("journal kinds %v", kinds)
 	}
 }
+
+// legacyImportedMessage is importedMessage as it was before D50 (no reasoning member).
+type legacyImportedMessage struct {
+	Role       openrouter.Role    `json:"role"`
+	Content    *string            `json:"content"`
+	ToolCallID string             `json:"tool_call_id,omitempty"`
+	ToolCalls  []importedToolCall `json:"tool_calls,omitempty"`
+}
+
+func legacyImportedDigest(receipt string, messages []importedMessage, responses, calls []string) string {
+	legacy := make([]legacyImportedMessage, len(messages))
+	for i, m := range messages {
+		legacy[i] = legacyImportedMessage{Role: m.Role, Content: m.Content, ToolCallID: m.ToolCallID, ToolCalls: m.ToolCalls}
+	}
+	encoded, _ := json.Marshal(struct {
+		SchemaVersion            string                  `json:"schema_version"`
+		PredecessorReceiptDigest string                  `json:"predecessor_receipt_digest"`
+		Messages                 []legacyImportedMessage `json:"messages"`
+		ReservedResponseIDs      []string                `json:"reserved_response_ids"`
+		ReservedToolCallIDs      []string                `json:"reserved_tool_call_ids"`
+	}{importedPrefixSchema, receipt, legacy, responses, calls})
+	return digestBytes(encoded)
+}
+
+func predecessorHistory(reasoning string) []openrouter.Message {
+	prompt, empty, result, final := "task", "", "contents", "done"
+	return []openrouter.Message{
+		{Role: openrouter.User, Content: &prompt},
+		{Role: openrouter.Assistant, Content: &empty, Reasoning: reasoning,
+			ToolCalls: []openrouter.PriorToolCall{{ID: "call-x", Name: "read", RawArguments: json.RawMessage(`{"path":"a.txt"}`)}}},
+		{Role: openrouter.Tool, ToolCallID: "call-x", Content: &result},
+		{Role: openrouter.Assistant, Content: &final},
+	}
+}
+
+func TestImportedMessagesCarryReasoningAndEmptyReasoningKeepsTheOldDigest(t *testing.T) {
+	const receipt = "sha256:0000000000000000000000000000000000000000000000000000000000000001"
+	with := toImportedMessages(predecessorHistory("r-pred"))
+	if back := fromImportedMessages(with); back[1].Reasoning != "r-pred" || back[0].Reasoning != "" {
+		t.Fatalf("round trip lost reasoning: %+v", back)
+	}
+	without := toImportedMessages(predecessorHistory(""))
+	if got, want := importedPrefixDigest(receipt, without, nil, []string{"call-x"}), legacyImportedDigest(receipt, without, nil, []string{"call-x"}); got != want {
+		t.Fatalf("an unmarked predecessor digest changed: %s != %s", got, want)
+	}
+	if importedPrefixDigest(receipt, with, nil, []string{"call-x"}) == legacyImportedDigest(receipt, with, nil, []string{"call-x"}) {
+		t.Fatal("the digest does not commit to imported reasoning")
+	}
+}
+
+func TestSuccessorOnAReasoningRouteSendsImportedReasoningBack(t *testing.T) {
+	route := openrouter.EngineeringRoute().WithReasoning(true)
+	predecessor := newPredecessorContext("sha256:0000000000000000000000000000000000000000000000000000000000000001",
+		toImportedMessages(predecessorHistory("r-pred")), nil, []string{"call-x"})
+	doer := &rawDoer{bodies: [][]byte{sseChunks("resp-s", openrouter.ApprovedModel, "stop", map[string]any{"role": "assistant", "content": "ok"})}}
+	c, err := newWithDoer(Config{
+		ConversationID: "conversation-s", WorkflowID: "workflow-s", ProfileID: "profile-s",
+		InitialGenerationID: "g0", InitialTreeDigest: "tree-g0", SystemPrompt: "s", DeveloperPrompt: "d",
+		Route: route, Predecessor: predecessor,
+	}, openrouter.ApprovedModel, doer, &memoryJournal{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.AdmitPrompt("task-s", "next"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.NextTurn(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(string(doer.requests[0]), `"reasoning_content":"r-pred"`) != 1 {
+		t.Fatalf("imported assistant turn lost its reasoning: %s", doer.requests[0])
+	}
+}
+
+func TestEmptyReplyKeepsItsOldBehaviourOnTheUnmarkedRouteAndIsJournaledOnAReasoningRoute(t *testing.T) {
+	raw := sseChunks("resp-1", openrouter.ApprovedModel, "stop", map[string]any{"role": "assistant", "reasoning_content": "only thinking"})
+	for _, tc := range []struct {
+		name      string
+		route     openrouter.Route
+		wantKinds []string
+	}{
+		{"unmarked", openrouter.Route{}, []string{"provider_user_admitted"}},
+		{"reasoning", openrouter.EngineeringRoute().WithReasoning(true), []string{"provider_user_admitted", "provider_exchange_unknown"}},
+	} {
+		c, journal := reasoningConversation(t, tc.route, nil, &rawDoer{bodies: [][]byte{raw}})
+		if _, err := c.NextTurn(context.Background()); err == nil {
+			t.Fatalf("%s: an empty reply was accepted", tc.name)
+		}
+		if got := memoryJournalKinds(journal); !reflect.DeepEqual(got, tc.wantKinds) {
+			t.Errorf("%s: journal kinds %v, want %v", tc.name, got, tc.wantKinds)
+		}
+	}
+}
+
+func withUsage(stream []byte, model string) []byte {
+	usage, _ := json.Marshal(map[string]any{"id": "resp-1", "model": model, "created": 1, "object": "chat.completion.chunk",
+		"choices": []any{}, "usage": map[string]any{"prompt_tokens": 11, "completion_tokens": 4096, "cost": 0.000002}})
+	return bytes.Replace(stream, []byte("data: [DONE]"), append([]byte("data: "+string(usage)+"\n\n"), []byte("data: [DONE]")...), 1)
+}
+
+func TestLengthTruncatedStreamSettlesSpendToItsUsageOnlyOnAReasoningRoute(t *testing.T) {
+	truncated := sseChunks("resp-1", spendTestModel, "length", map[string]any{"role": "assistant", "reasoning_content": "still thinking"})
+	for _, tc := range []struct {
+		name  string
+		route openrouter.Route
+		body  []byte
+		want  []string
+	}{
+		{"reasoning route with usage", spendTestRoute(t).WithReasoning(true), withUsage(truncated, spendTestModel), []string{"reserve", "settle:unit-1"}},
+		{"reasoning route without usage", spendTestRoute(t).WithReasoning(true), truncated, []string{"reserve", "uncertain:unit-1"}},
+		{"unmarked route with usage", spendTestRoute(t), withUsage(truncated, spendTestModel), []string{"reserve", "uncertain:unit-1"}},
+	} {
+		spend := &spendRecorder{}
+		c, journal := reasoningConversation(t, tc.route, spend, &rawDoer{bodies: [][]byte{tc.body}})
+		if _, err := c.NextTurn(context.Background()); err == nil {
+			t.Fatalf("%s: a truncated stream was accepted", tc.name)
+		}
+		if got := spend.sequence(); !reflect.DeepEqual(got, tc.want) {
+			t.Errorf("%s: spend %v, want %v", tc.name, got, tc.want)
+		}
+		if kinds := memoryJournalKinds(journal); kinds[len(kinds)-1] != "provider_exchange_unknown" {
+			t.Errorf("%s: journal kinds %v", tc.name, kinds)
+		}
+	}
+}

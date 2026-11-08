@@ -530,6 +530,7 @@ type stream struct {
 	events               int
 	legacyNulls          bool
 	reasoning            bool
+	allowLength          bool
 	maxEvents            int
 }
 
@@ -539,23 +540,37 @@ type stream struct {
 // fixed request does not enable stream_options.include_usage, so usage-only
 // trailing chunks are outside this profile.
 func CaptureSSE(reader io.Reader) (CapturedResponse, error) {
-	return captureSSE(reader, false, Route{})
+	return captureSSE(reader, false, Route{}, false)
 }
 
 // CaptureSSEForRoute parses like CaptureSSE. A route with the Reasoning mark also accumulates the streamed
 // reasoning (bounded by MaxAssistantTextBytes) and allows MaxReasoningSSEEvents events.
 func CaptureSSEForRoute(reader io.Reader, route Route) (CapturedResponse, error) {
-	return captureSSE(reader, false, route)
+	return captureSSE(reader, false, route, false)
+}
+
+// TruncatedUsage returns the usage object of a Reasoning route's stream that ended with finish_reason "length",
+// which CaptureSSE refuses. The stream must otherwise parse exactly as CaptureSSEForRoute requires, and the
+// result is for spend settlement only: nothing of the truncated reply is released.
+func TruncatedUsage(raw []byte, route Route) (json.RawMessage, bool) {
+	if !route.Reasoning {
+		return nil, false
+	}
+	captured, err := captureSSE(bytes.NewReader(raw), false, route, true)
+	if err != nil || captured.finish != "length" || len(captured.usage) == 0 {
+		return nil, false
+	}
+	return captured.Usage(), true
 }
 
 // CaptureSSELegacyNulls parses with the strictness before f53fd29f: JSON null in a
 // delta role or tool_calls, or a tool delta id or type, is an error. Only replay of
 // capture-refusal records journaled before that fix may use it.
 func CaptureSSELegacyNulls(reader io.Reader) (CapturedResponse, error) {
-	return captureSSE(reader, true, Route{})
+	return captureSSE(reader, true, Route{}, false)
 }
 
-func captureSSE(reader io.Reader, legacyNulls bool, route Route) (CapturedResponse, error) {
+func captureSSE(reader io.Reader, legacyNulls bool, route Route, allowLength bool) (CapturedResponse, error) {
 	if reader == nil {
 		return CapturedResponse{}, errors.New("nil response reader")
 	}
@@ -566,14 +581,14 @@ func captureSSE(reader io.Reader, legacyNulls bool, route Route) (CapturedRespon
 	if len(raw) == 0 || len(raw) > MaxResponseBytes {
 		return CapturedResponse{}, errors.New("response byte length out of bounds")
 	}
-	return decodeSSE(raw, legacyNulls, route.Reasoning)
+	return decodeSSE(raw, legacyNulls, route.Reasoning, allowLength)
 }
 
-func decodeSSE(raw []byte, legacyNulls, reasoning bool) (CapturedResponse, error) {
+func decodeSSE(raw []byte, legacyNulls, reasoning, allowLength bool) (CapturedResponse, error) {
 	if !utf8.Valid(raw) {
 		return CapturedResponse{}, errors.New("SSE is invalid UTF-8")
 	}
-	s := stream{legacyNulls: legacyNulls, reasoning: reasoning, maxEvents: MaxSSEEvents}
+	s := stream{legacyNulls: legacyNulls, reasoning: reasoning, allowLength: allowLength, maxEvents: MaxSSEEvents}
 	if reasoning {
 		s.maxEvents = MaxReasoningSSEEvents
 	}
@@ -748,7 +763,7 @@ func (s *stream) chunk(raw []byte) error {
 		return nil
 	}
 	finish, e := strRaw(finishRaw)
-	if e != nil || (finish != "stop" && finish != "tool_calls") || s.finished {
+	if e != nil || (finish != "stop" && finish != "tool_calls" && !(s.allowLength && finish == "length")) || s.finished {
 		return errors.New("unsupported or repeated finish reason")
 	}
 	s.finished = true
@@ -845,7 +860,7 @@ func (s *stream) delta(raw []byte) error {
 		s.out.text += text
 	}
 	if s.reasoning {
-		// reasoning_content is preferred when a provider repeats the text under both names.
+		// the first non-empty of reasoning_content and reasoning is taken, so a provider repeating the text under both names counts it once.
 		for _, name := range []string{"reasoning_content", "reasoning"} {
 			v, ok := d[name]
 			if !ok || isNull(v) {
@@ -854,6 +869,9 @@ func (s *stream) delta(raw []byte) error {
 			text, e := strRaw(v)
 			if e != nil || len(text) > MaxAssistantTextBytes-len(s.out.reasoning) {
 				return errors.New("invalid or oversized reasoning")
+			}
+			if text == "" {
+				continue
 			}
 			s.out.reasoning += text
 			break
@@ -927,6 +945,8 @@ func (s *stream) toolDelta(raw []byte) error {
 }
 func (s *stream) finalize() error {
 	switch s.out.finish {
+	case "length":
+		return nil
 	case "stop":
 		if s.tool != nil {
 			return errors.New("stop finish reason conflicts with a tool call")

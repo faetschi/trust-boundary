@@ -160,3 +160,25 @@ func TestMessageCountBoundDoesNotGrowWithTheEventLimit(t *testing.T) {
 		t.Fatal("message bound grew with the reasoning event limit")
 	}
 }
+
+func TestReasoningTakesTheFirstNonEmptyOfBothFields(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		delta map[string]any
+		want  string
+	}{
+		{"empty reasoning_content beside reasoning", map[string]any{"reasoning_content": "", "reasoning": "R"}, "R"},
+		{"null reasoning_content beside reasoning", map[string]any{"reasoning_content": nil, "reasoning": "R"}, "R"},
+		{"both set", map[string]any{"reasoning_content": "C", "reasoning": "R"}, "C"},
+		{"empty reasoning beside reasoning_content", map[string]any{"reasoning_content": "C", "reasoning": ""}, "C"},
+		{"both empty", map[string]any{"reasoning_content": "", "reasoning": ""}, ""},
+	} {
+		body := chunk("resp-p", tc.delta, nil)
+		body = append(body, chunk("resp-p", map[string]any{"content": "x"}, "stop")...)
+		body = append(body, doneEvent()...)
+		got, err := CaptureSSEForRoute(bytes.NewReader(body), EngineeringRoute().WithReasoning(true))
+		if err != nil || got.Reasoning() != tc.want {
+			t.Errorf("%s: reasoning %q (%v), want %q", tc.name, got.Reasoning(), err, tc.want)
+		}
+	}
+}

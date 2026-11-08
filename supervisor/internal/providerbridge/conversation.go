@@ -580,6 +580,15 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 		}
 		persistErr := c.persistFailedExchangeLocked(records, exchangeErr, hostCallBinding)
 		disposed = exchangeDisposed(persistErr, records, hostCallBinding)
+		if spendUnit != "" && spendDispatched && !spendSettled && len(records) == 1 && records[0].ResponseComplete() && records[0].StatusCode() == 200 {
+			// A Reasoning route's reply cut off at max_completion_tokens still reports what it cost.
+			if usage, ok := openrouter.TruncatedUsage(records[0].ResponseBody(), c.route); ok {
+				spendSettled = true
+				if err := c.cfg.Spend.SettleSpend(ctx, spendUnit, usage); err != nil {
+					persistErr = errors.Join(persistErr, fmt.Errorf("settle provider spend: %w", err))
+				}
+			}
+		}
 		return Turn{}, c.failLocked(errors.Join(fmt.Errorf("registered provider exchange failed; response withheld: %w", exchangeErr), persistErr))
 	}
 	if err := ctx.Err(); err != nil {
@@ -614,9 +623,12 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 	}
 	assistantText := captured.AssistantText()
 	if assistantText == "" && projection.ToolCall == nil {
+		emptyErr := errors.New("provider response has neither assistant text nor a tool call")
+		if !c.route.Reasoning {
+			return Turn{}, c.failLocked(emptyErr) // the product route keeps its pre-D50 behaviour
+		}
 		// A reasoning-only reply is a complete exchange: journal it as unknown and settle its spend, so
 		// neither the host call nor the cost is left open, then end the request.
-		emptyErr := errors.New("provider response has neither assistant text nor a tool call")
 		persistErr := c.persistFailedExchangeLocked(records, emptyErr, hostCallBinding)
 		disposed = exchangeDisposed(persistErr, records, hostCallBinding)
 		if spendUnit != "" {
