@@ -50,18 +50,6 @@ func TestCheckTrialsLeavesBudgetsWithoutAModelRoleAlone(t *testing.T) {
 	}
 }
 
-func TestRolesAreClassifiedByTheProviderTheyCall(t *testing.T) {
-	for role, want := range map[string]bool{
-		"trajectory": true, "variance-1": true, "variance-2": true, "compliant": true, "ambiguous": true,
-		RoleBCompliant: true, RoleBAmbiguous: true,
-		"static-replay": false, RoleAdaptiveReplay: false, RolePStaticReplay: false, RolePAdaptiveReplay: false,
-	} {
-		if got := RoleModelDriven(role); got != want {
-			t.Errorf("RoleModelDriven(%q) = %v, want %v", role, got, want)
-		}
-	}
-}
-
 // The T5 draft still carries the pre-D50 budgets, 7/10000 and 17/20000, and is refused until it is rebuilt.
 func TestT5DraftIsRefusedUnderTheThesisCap(t *testing.T) {
 	draft := loadT5Manifest(t)

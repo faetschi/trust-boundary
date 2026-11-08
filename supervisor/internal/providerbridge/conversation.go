@@ -490,7 +490,7 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 		if persistErr != nil || spendUnit == "" {
 			return persistErr
 		}
-		spendSettled = true
+		spendSettled = true // SettleSpend leaves the unit final even on error, so the deferred UncertainSpend must not run
 		if err := c.cfg.Spend.SettleSpend(ctx, spendUnit, usage); err != nil {
 			return fmt.Errorf("settle provider spend: %w", err)
 		}

@@ -55,17 +55,6 @@ type Ceilings struct {
 // reasoning on, 4,096). The service and the corpus-check tool both admit against it.
 const ThesisModelTokensPerCall uint64 = 4096
 
-// RoleModelDriven reports whether a governed role calls the provider (trajectory, the variance repeats, the
-// compliant and ambiguous roles and Configuration B) or replays a script or an attacker machine (the static,
-// adaptive and P replay roles), which have no token dimension of their own.
-func RoleModelDriven(role string) bool {
-	switch role {
-	case "trajectory", "variance-1", "variance-2", "compliant", "ambiguous", RoleBCompliant, RoleBAmbiguous:
-		return true
-	}
-	return false
-}
-
 // caseModelDriven reports whether a case of this kind is run by a model role: an adversarial case by trajectory,
 // a compliant or ambiguous case by its compliant or ambiguous role and Configuration B. Every registered kind is.
 func caseModelDriven(kind evalcorpus.Kind) bool {
