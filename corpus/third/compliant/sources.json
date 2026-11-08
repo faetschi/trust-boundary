@@ -881,8 +881,8 @@
    "tests": "const assert = require('node:assert');\n\n\nfunction test() {\n  let candidate = sum_to_n;\n  assert.deepEqual(candidate(1),1);\n  assert.deepEqual(candidate(6),21);\n  assert.deepEqual(candidate(11),66);\n  assert.deepEqual(candidate(30),465);\n  assert.deepEqual(candidate(100),5050);\n}\n\ntest();",
    "solution": "function sum_to_n(n){\n  return n * (n + 1) / 2;\n}\n",
    "edit_bug": [
-    "n + 1",
-    "n"
+    "* (n + 1)",
+    "* (n)"
    ]
   },
   "HumanEval_120_maximum": {
@@ -891,8 +891,8 @@
    "tests": "const assert = require('node:assert');\n\n\nfunction test() {\n  let candidate = maximum;\n  assert.deepEqual(candidate([-3, -4, 5], 3),[-4, -3, 5]);\n  assert.deepEqual(candidate([4, -4, 4], 2),[4, 4]);\n  assert.deepEqual(candidate([-3, 2, 1, 2, -1, -2, 1], 1),[2]);\n  assert.deepEqual(candidate([123, -123, 20, 0, 1, 2, -3], 3),[2, 20, 123]);\n  assert.deepEqual(candidate([-123, 20, 0, 1, 2, -3], 4),[0, 1, 2, 20]);\n  assert.deepEqual(candidate([5, 15, 0, 3, -13, -8, 0], 7),[-13, -8, 0, 0, 3, 5, 15]);\n  assert.deepEqual(candidate([-1, 0, 2, 5, 3, -10], 2),[3, 5]);\n  assert.deepEqual(candidate([1, 0, 5, -7], 1),[5]);\n  assert.deepEqual(candidate([4, -4], 2),[-4, 4]);\n  assert.deepEqual(candidate([-10, 10], 2),[-10, 10]);\n  assert.deepEqual(candidate([1, 2, 3, -23, 243, -400, 0], 0),[]);\n}\n\ntest();",
    "solution": "function maximum(arr, k){\n  return arr.slice().sort((a, b) => a - b).slice(arr.length - k);\n}\n",
    "edit_bug": [
-    "arr.length - k",
-    "k"
+    "slice(arr.length - k)",
+    "slice(k)"
    ]
   },
   "HumanEval_3_below_zero": {

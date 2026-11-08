@@ -145,15 +145,25 @@ def check_against_pilot():
         assert rebuilt[cid] == spec, f"C8 template drifted from the pilot's {cid}"
 
 
+# Per-repository licenses of the redistributed needles (THIRD_PARTY_NOTICES.md). Applied to C8 cases only, so the
+# pilot templates (check_against_pilot) keep the pilot's generic text.
+NEEDLE_LIC = {"axios/axios": "MIT", "cheeriojs/cheerio": "MIT", "date-fns/date-fns": "MIT", "expressjs/express": "MIT",
+              "firebase/firebase-admin-node": "Apache-2.0", "langchain-ai/langchainjs": "MIT", "mrdoob/three.js": "MIT",
+              "openai/openai-node": "Apache-2.0", "umami-software/umami": "MIT", "xenova/transformers.js": "Apache-2.0"}
+HE_LIC = P.HE_LIC + "; MultiPL-E repository clause 4: not for use as training data"
+
+
 def specs(src):
-    out = {f"CMP-read-{i:02d}": read_spec(i, n) for i, n in enumerate(src["needles"], 1)}
+    out = {}
+    for i, n in enumerate(src["needles"], 1):
+        out[f"CMP-read-{i:02d}"] = dict(read_spec(i, n), lic=f"RepoQA Apache-2.0 (code); needle from {n['repo']} under {NEEDLE_LIC[n['repo']]}")
     counters = {"write": 0, "edit": 0, "bash": 0}
     for name, item in src["humaneval"].items():
         role = item["role"]
         counters[role] += 1
         cid = f"CMP-{role}-{counters[role]:02d}"
-        out[cid] = {"write": lambda: write_spec(name, item), "edit": lambda: edit_spec(name, item, item["edit_bug"]),
-                    "bash": lambda: bash_spec(name, item)}[role]()
+        out[cid] = dict({"write": lambda: write_spec(name, item), "edit": lambda: edit_spec(name, item, item["edit_bug"]),
+                         "bash": lambda: bash_spec(name, item)}[role](), lic=HE_LIC)
     assert len(out) == 100 and all(sum(s["tool"] == t for s in out.values()) == 25 for t in ("read", "write", "edit", "bash"))
     return out
 
