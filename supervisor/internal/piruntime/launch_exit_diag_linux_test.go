@@ -3,6 +3,7 @@
 package piruntime
 
 import (
+	"context"
 	"errors"
 	"os"
 	"os/exec"
@@ -11,6 +12,7 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 )
 
 // fakeInspectPodman writes a podman stand-in that prints the given inspect output (or fails).
@@ -49,7 +51,8 @@ func TestD09LeaderGoneAfterInspectReportsExitedBeforeAdmission(t *testing.T) {
 		t.Skip("pid still visible")
 	}
 	podman := fakeInspectPodman(t, "cat <<'EOT'\n"+d09FinalStateJSON+"\nEOT")
-	err := d09ExitedBeforeAdmission(podman, "cid", nil, pidfd, statErr)
+	launcher := exitedPodman(t, 137)
+	err := d09ExitedBeforeAdmission(context.Background(), podman, "cid", nil, pidfd, launcher, statErr)
 	if !errors.Is(err, ErrD09WorkerExitedBeforeAdmission) {
 		t.Fatalf("err = %v, want ErrD09WorkerExitedBeforeAdmission", err)
 	}
@@ -66,7 +69,8 @@ func TestD09LeaderGoneAfterInspectReportsExitedBeforeAdmission(t *testing.T) {
 func TestD09PidfdExitAloneIsExitedBeforeAdmission(t *testing.T) {
 	_, pidfd := exitedCell(t)
 	podman := fakeInspectPodman(t, "cat <<'EOT'\n"+d09FinalStateJSON+"\nEOT")
-	if err := d09ExitedBeforeAdmission(podman, "cid", nil, pidfd, errors.New("unrelated map mismatch")); !errors.Is(err, ErrD09WorkerExitedBeforeAdmission) {
+	launcher := exitedPodman(t, 137)
+	if err := d09ExitedBeforeAdmission(context.Background(), podman, "cid", nil, pidfd, launcher, errors.New("unrelated map mismatch")); !errors.Is(err, ErrD09WorkerExitedBeforeAdmission) {
 		t.Fatalf("err = %v", err)
 	}
 }
@@ -82,7 +86,7 @@ func TestD09LiveLeaderMapErrorIsNotRelabelled(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer syscall.Close(pidfd)
-	if got := d09ExitedBeforeAdmission("/nonexistent", "cid", nil, pidfd, errors.New("map mismatch")); got != nil {
+	if got := d09ExitedBeforeAdmission(context.Background(), "/nonexistent", "cid", nil, pidfd, 0, errors.New("map mismatch")); got != nil {
 		t.Fatalf("a live leader with a map mismatch was relabelled: %v", got)
 	}
 }
@@ -90,8 +94,72 @@ func TestD09LiveLeaderMapErrorIsNotRelabelled(t *testing.T) {
 func TestD09FinalInspectFailureStillFailsClosedAndSaysSo(t *testing.T) {
 	_, pidfd := exitedCell(t)
 	podman := fakeInspectPodman(t, "exit 1")
-	err := d09ExitedBeforeAdmission(podman, "cid", nil, pidfd, os.ErrNotExist)
+	launcher := exitedPodman(t, 137)
+	err := d09ExitedBeforeAdmission(context.Background(), podman, "cid", nil, pidfd, launcher, os.ErrNotExist)
 	if !errors.Is(err, ErrD09WorkerExitedBeforeAdmission) || !strings.Contains(err.Error(), "final container state unavailable") {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+// exitedPodman starts a stand-in for the 'podman run' process that exits with code and is left unreaped
+// (as in production, where cleanupFailedContainer owns Wait); it returns its pid.
+func exitedPodman(t *testing.T, code int) int {
+	t.Helper()
+	cmd := exec.Command("/bin/sh", "-c", "exit "+strconv.Itoa(code))
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = cmd.Wait() })
+	return cmd.Process.Pid
+}
+
+func TestD09ExitedBeforeAdmissionReportsPodmanExitStatus(t *testing.T) {
+	_, pidfd := exitedCell(t)
+	podman := fakeInspectPodman(t, "cat <<'EOT'\n"+d09FinalStateJSON+"\nEOT")
+	err := d09ExitedBeforeAdmission(context.Background(), podman, "cid", nil, pidfd, exitedPodman(t, 137), os.ErrNotExist)
+	if !errors.Is(err, ErrD09WorkerExitedBeforeAdmission) || !errors.Is(err, os.ErrNotExist) || !strings.Contains(err.Error(), "podman_exit=137") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+// With --rm the container is already removed when the diagnostic runs, so inspect says "no such container".
+func TestD09ExitedBeforeAdmissionKeepsPodmanExitWhenContainerIsRemoved(t *testing.T) {
+	_, pidfd := exitedCell(t)
+	podman := fakeInspectPodman(t, "echo 'Error: no such container' >&2; exit 125")
+	err := d09ExitedBeforeAdmission(context.Background(), podman, "cid", nil, pidfd, exitedPodman(t, 137), os.ErrNotExist)
+	if !errors.Is(err, ErrD09WorkerExitedBeforeAdmission) ||
+		!strings.Contains(err.Error(), "podman_exit=137") || !strings.Contains(err.Error(), "final container state unavailable") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestD09PodmanStillRunningIsBoundedNotBlocking(t *testing.T) {
+	cmd := exec.Command("/bin/sh", "-c", "exec sleep 30")
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = cmd.Process.Kill(); _ = cmd.Wait() }()
+	if got := d09PodmanExitStatus(cmd.Process.Pid, 100*time.Millisecond); !strings.HasPrefix(got, "running") {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestD09PidfdReadableAfterChecksIsRefused(t *testing.T) {
+	_, pidfd := exitedCell(t)
+	if !pidfdReadable(pidfd) {
+		t.Fatal("an exited leader's pidfd is not readable")
+	}
+	live := exec.Command("/bin/sh", "-c", "exec sleep 30")
+	if err := live.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = live.Process.Kill(); _ = live.Wait() }()
+	liveFD, err := openPidfd(live.Process.Pid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer syscall.Close(liveFD)
+	if pidfdReadable(liveFD) {
+		t.Fatal("a live leader's pidfd is readable")
 	}
 }
