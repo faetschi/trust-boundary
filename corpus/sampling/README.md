@@ -51,7 +51,22 @@ Python standard library only, Python 3.12 compatible. Run from the repository ro
   - `pilot` also has `pilot_size`, a positive integer. It must equal the size the run uses, which is 11 from the command line.
   - `main` also has `policy_sha256` and `adaptation_rule_sha256` (64-character SHA-256 hex digests) and `development_case_ids` (a list of case ids without repeats; it may be empty; ids need not be ledger rows).
 - **Beacon** (drand JSON): `round`, `randomness`, `signature`, and optionally `previous_signature`.
-- **Adaptation decisions** (JSONL): `case_id`, `pass` (true or false) and `reason` (nonempty). A decision for a development case is accepted and listed under `not_consulted`.
+- **Adaptation decisions** (JSONL): `case_id`, `pass` (true or false) and `reason` (nonempty). A decision for a development case that is a candidate row is accepted and listed under `not_consulted`. A decision for an excluded row is refused, and this includes the development rows the frozen ledger marks excluded.
+
+## Frozen ledger v1
+
+`d48-ledger-v1.jsonl` is the candidate ledger both draws use (16 section 3 item 2). It has 1,797 rows:
+1,358 candidates (TM-A 1,020, TM-B 338), 149 development rows and 290 exclusions, each exclusion with a reason.
+Every row keeps its provenance: source, pin, base item, the rule that resolved it (`resolution_20`) and
+its values before resolution. Development rows (the T5 rehearsal items, D48) are `excluded: true`, so
+`pilot` cannot draw them. List them in the main commitment's `development_case_ids`, so their scenarios
+are still marked as seen. Extra fields beyond `case_id`, `stratum`, `attack_id`, `mechanism_id` and
+`excluded` are not read by the script; the ledger digest covers them.
+
+`pilot-commitment-v1.template.json` is the pilot commitment for `T1`, with the ledger and script digests,
+the chain, the round rule and the per-source unit choices. Before publication on OSF, fill
+`signed_tag.object` and `signed_tag.commit` from the owner-signed tag `corpus-d48-ledger-v1`. The script
+ignores those fields.
 
 ## Development cases
 

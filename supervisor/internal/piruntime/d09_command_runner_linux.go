@@ -1206,9 +1206,11 @@ func validateD09CommandProofDelta(plan d09DeltaPlan, proof d09CommandProof, conf
 type d09ContainerState struct {
 	Name  string `json:"Name"`
 	State struct {
-		Status   string `json:"Status"`
-		ExitCode int    `json:"ExitCode"`
-		PID      int    `json:"Pid"`
+		Status    string `json:"Status"`
+		ExitCode  int    `json:"ExitCode"`
+		PID       int    `json:"Pid"`
+		OOMKilled bool   `json:"OOMKilled"`
+		Error     string `json:"Error"`
 	} `json:"State"`
 }
 

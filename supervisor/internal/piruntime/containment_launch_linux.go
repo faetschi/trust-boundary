@@ -18,6 +18,10 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
+	"unsafe"
+
+	"golang.org/x/sys/unix"
 
 	"tbound/supervisor/internal/broker/protocol"
 )
@@ -294,6 +298,20 @@ func (l *D09PodmanCrunLauncher) StartVerifiedWithProof(ctx context.Context, requ
 		strings.TrimPrefix(containerState.Name, "/") != name {
 		return nil, D09TCBProof{}, errors.Join(fmt.Errorf("D09 worker container identity/state is not running as the requested cell"), err)
 	}
+	// Pin the leader before anything else reads it: the cell can exit at any moment, and the pidfd both
+	// survives that and reports it. It becomes the worker pidfd on success.
+	pidfd, err := openPidfd(containerState.State.PID)
+	if err != nil {
+		if exited := d09ExitedBeforeAdmission(ctx, report.PodmanPath, cid, l.commandEnvironment(), -1, command.Process.Pid, err); exited != nil {
+			return nil, D09TCBProof{}, exited
+		}
+		return nil, D09TCBProof{}, fmt.Errorf("entrypoint leader PID %d has no host pidfd: %w", containerState.State.PID, err)
+	}
+	defer func() {
+		if !launchSucceeded {
+			_ = syscall.Close(pidfd)
+		}
+	}()
 	startupProofCtx, cancelStartupProof := context.WithTimeout(watchCtx, d09WorkerProofTimeout)
 	proof, err := readD09TCBProofContext(startupProofCtx, proofRead)
 	cancelStartupProof()
@@ -326,6 +344,9 @@ func (l *D09PodmanCrunLauncher) StartVerifiedWithProof(ctx context.Context, requ
 	}
 	if err := verifyD09HostProcessIDMaps(proof.LeaderPID, proof.UserNSInode, config,
 		proof.UIDMap, proof.GIDMap); err != nil {
+		if exited := d09ExitedBeforeAdmission(ctx, report.PodmanPath, cid, l.commandEnvironment(), pidfd, command.Process.Pid, err); exited != nil {
+			return nil, D09TCBProof{}, exited
+		}
 		return nil, D09TCBProof{}, fmt.Errorf("verify exact host-visible D09 uid/gid map before launch admission: %w", err)
 	}
 	if !proof.ConsumerMountsVerified || !proof.RawSourceFDsClosed ||
@@ -357,16 +378,15 @@ func (l *D09PodmanCrunLauncher) StartVerifiedWithProof(ctx context.Context, requ
 	if err != nil || !contains {
 		return nil, D09TCBProof{}, errors.Join(fmt.Errorf("%w: entrypoint leader is not in the held D09 cgroup scope", ErrProductionLauncherUnavailable), err)
 	}
-	pidfd, err := openPidfd(proof.LeaderPID)
-	if err != nil {
-		return nil, D09TCBProof{}, fmt.Errorf("entrypoint leader PID %d has no host pidfd: %w", proof.LeaderPID, err)
+	// A leader that exited during the checks above must not be admitted.
+	if pidfdReadable(pidfd) {
+		return nil, D09TCBProof{}, d09ExitedBeforeAdmission(ctx, report.PodmanPath, cid, l.commandEnvironment(), pidfd, command.Process.Pid,
+			errors.New("leader pidfd reports exit after the admission checks"))
 	}
 	if err := validateD09TCBProof(proof, config); err != nil {
-		_ = syscall.Close(pidfd)
 		return nil, D09TCBProof{}, err
 	}
 	if err := validateD09RouteProbeProof(proof, config); err != nil {
-		_ = syscall.Close(pidfd)
 		return nil, D09TCBProof{}, fmt.Errorf("%w: %v", ErrProductionLauncherUnavailable, err)
 	}
 	l.storeLaunchProof(command, proof, config.HostNamespaces, os.NewFile(uintptr(pidfd), "d09-worker-pidfd"), stdoutPipe.reader)
@@ -925,3 +945,84 @@ const D09ExecChildFD = 3
 // D09ProofChildFD is the container fd number of the dedicated TCB proof pipe.
 // The entrypoint writes its typed proof there and closes it before Node starts.
 const D09ProofChildFD = 10
+
+// ErrD09WorkerExitedBeforeAdmission means the worker cell's leader was gone before launch admission finished.
+// Admission is still refused; the message carries the container's final state so the exit is diagnosable.
+var ErrD09WorkerExitedBeforeAdmission = errors.New("D09 worker cell exited before launch admission")
+
+// d09ExitedBeforeAdmission returns ErrD09WorkerExitedBeforeAdmission when cause shows the leader is gone,
+// either by ENOENT/ESRCH or because its pidfd reports exit; it returns nil while the leader is alive.
+// Cells run with --rm, so the container is usually already removed and inspect cannot answer: the primary
+// source is the exit status of the 'podman run' process (launcherPID), which exits with the container's.
+// It is waited on for a bound without reaping it, so cleanupFailedContainer still owns Wait. The
+// secondary source is one short inspect of State.Status, ExitCode, OOMKilled and a bounded State.Error.
+// Pi/Node output is never read.
+func d09ExitedBeforeAdmission(ctx context.Context, podmanPath, cid string, environment []string, pidfd, launcherPID int, cause error) error {
+	if !errors.Is(cause, os.ErrNotExist) && !errors.Is(cause, syscall.ESRCH) && !(pidfd >= 0 && pidfdReadable(pidfd)) {
+		return nil
+	}
+	podmanExit := d09PodmanExitStatus(launcherPID, 3*time.Second)
+	inspectCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
+	defer cancel()
+	state, err := inspectContainer(inspectCtx, podmanPath, cid, environment)
+	if err != nil {
+		return fmt.Errorf("%w: podman_exit=%s (final container state unavailable: %s): %w", ErrD09WorkerExitedBeforeAdmission,
+			podmanExit, d09Printable(err.Error(), 200), cause)
+	}
+	return fmt.Errorf("%w: podman_exit=%s status=%q exit_code=%d oom_killed=%t error=%q: %w", ErrD09WorkerExitedBeforeAdmission,
+		podmanExit, d09Printable(state.State.Status, 32), state.State.ExitCode, state.State.OOMKilled, d09Printable(state.State.Error, 200), cause)
+}
+
+// d09PodmanExitStatus waits up to bound for the (unreaped) podman process to exit and reports its code or
+// signal, using waitid(WNOWAIT) so the later exec.Cmd.Wait still collects it.
+func d09PodmanExitStatus(pid int, bound time.Duration) string {
+	if pid <= 0 {
+		return "unavailable"
+	}
+	fd, err := openPidfd(pid)
+	if err != nil {
+		return "unavailable"
+	}
+	defer syscall.Close(fd)
+	fds := []unix.PollFd{{Fd: int32(fd), Events: unix.POLLIN}}
+	n, err := unix.Poll(fds, int(bound.Milliseconds()))
+	if err == unix.EINTR {
+		n, err = unix.Poll(fds, int(bound.Milliseconds()))
+	}
+	if err != nil {
+		return "unavailable"
+	}
+	if n <= 0 {
+		return "running(after " + bound.String() + ")"
+	}
+	var info [128]byte // siginfo_t: si_code at 8, si_status at 24
+	if _, _, errno := syscall.Syscall6(syscall.SYS_WAITID, 1 /* P_PID */, uintptr(pid), uintptr(unsafe.Pointer(&info[0])),
+		syscall.WEXITED|syscall.WNOHANG|0x01000000 /* WNOWAIT */, 0, 0); errno != 0 {
+		return "unavailable"
+	}
+	code, status := *(*int32)(unsafe.Pointer(&info[8])), *(*int32)(unsafe.Pointer(&info[24]))
+	if code == 0 { // nothing waitable: no state to report
+		return "unavailable"
+	}
+	if code == 1 { // CLD_EXITED
+		return strconv.Itoa(int(status))
+	}
+	return "signal:" + strconv.Itoa(int(status))
+}
+
+// d09Printable keeps printable ASCII only (other bytes become '?'), trims, and bounds the length.
+func d09Printable(s string, limit int) string {
+	out := make([]byte, 0, len(s))
+	for i := 0; i < len(s); i++ {
+		if s[i] >= 0x20 && s[i] < 0x7f {
+			out = append(out, s[i])
+		} else {
+			out = append(out, '?')
+		}
+	}
+	text := strings.TrimSpace(string(out))
+	if len(text) > limit {
+		text = text[:limit]
+	}
+	return text
+}
