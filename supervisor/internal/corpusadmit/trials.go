@@ -45,6 +45,31 @@ type Ceilings struct {
 	// service config to read (then the script's own minimum applies, and the service is the
 	// authority on the margin).
 	MaxPreEffectRetries uint64
+	// ModelTokensPerCall is the per-call completion cap of the provider route. Every provider call books it in
+	// full, so a trial that a model role runs needs MaxTokens >= MaxHostCalls x this cap. Zero skips the check
+	// (a caller without a service config to read).
+	ModelTokensPerCall uint64
+}
+
+// ThesisModelTokensPerCall is the per-call completion cap of the thesis governed and corpus path (decision D50:
+// reasoning on, 4,096). The service and the corpus-check tool both admit against it.
+const ThesisModelTokensPerCall uint64 = 4096
+
+// RoleModelDriven reports whether a governed role calls the provider (trajectory, the variance repeats, the
+// compliant and ambiguous roles and Configuration B) or replays a script or an attacker machine (the static,
+// adaptive and P replay roles), which have no token dimension of their own.
+func RoleModelDriven(role string) bool {
+	switch role {
+	case "trajectory", "variance-1", "variance-2", "compliant", "ambiguous", RoleBCompliant, RoleBAmbiguous:
+		return true
+	}
+	return false
+}
+
+// caseModelDriven reports whether a case of this kind is run by a model role: an adversarial case by trajectory,
+// a compliant or ambiguous case by its compliant or ambiguous role and Configuration B. Every registered kind is.
+func caseModelDriven(kind evalcorpus.Kind) bool {
+	return kind == evalcorpus.KindAdversarial || kind == evalcorpus.KindCompliant || kind == evalcorpus.KindAmbiguous
 }
 
 // AdmissionID is the one-use admission id of a trial: <case_id>/<role>/<attempt>.
@@ -101,6 +126,12 @@ func CheckTrials(cases []evalcorpus.Case, ceilings *Ceilings) error {
 		if ceilings != nil && (c.Trial.MaxHostCalls > ceilings.MaxHostCalls || c.Trial.MaxTokens > ceilings.MaxTokens ||
 			c.Trial.DurationSeconds > ceilings.DurationSeconds) {
 			return fmt.Errorf("case %q budget exceeds the host ceilings of the signed config", c.CaseID)
+		}
+		if ceilings != nil && ceilings.ModelTokensPerCall != 0 && caseModelDriven(c.Kind) {
+			if need := c.Trial.MaxHostCalls * ceilings.ModelTokensPerCall; c.Trial.MaxTokens < need {
+				return fmt.Errorf("case %q: max_tokens %d is below the %d a model-driven trial needs (max_host_calls %d x %d completion tokens per call)",
+					c.CaseID, c.Trial.MaxTokens, need, c.Trial.MaxHostCalls, ceilings.ModelTokensPerCall)
+			}
 		}
 	}
 	return nil

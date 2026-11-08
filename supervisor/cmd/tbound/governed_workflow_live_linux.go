@@ -17,6 +17,7 @@ import (
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/broker"
 	"tbound/supervisor/internal/broker/protocol"
+	"tbound/supervisor/internal/corpusadmit"
 	"tbound/supervisor/internal/delta"
 	"tbound/supervisor/internal/gate"
 	"tbound/supervisor/internal/providerbridge"
@@ -26,7 +27,7 @@ import (
 
 // productionProviderCompletionCap is the per-call max_completion_tokens of the thesis governed and corpus path
 // (decision D50: reasoning on, 4,096). The product path keeps its own, smaller cap.
-const productionProviderCompletionCap uint64 = 4096
+const productionProviderCompletionCap = corpusadmit.ThesisModelTokensPerCall
 
 // productProviderCompletionCap is the per-call cap of a product turn; it is not raised by D50.
 const productProviderCompletionCap uint64 = 1024

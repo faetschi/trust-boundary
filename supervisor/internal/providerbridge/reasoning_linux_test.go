@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"tbound/supervisor/internal/audit"
@@ -138,5 +139,30 @@ func TestReplayPredecessorContextKeepsReasoningForTheSuccessorRequest(t *testing
 	s := plainContext.sealed
 	if s.digest != legacyImportedDigest(s.receiptDigest, s.messages, s.reservedResponseIDs, s.reservedToolCallIDs) {
 		t.Fatal("unmarked predecessor digest changed")
+	}
+}
+
+// A reply whose escaped history cannot fit the next request is recorded as UNKNOWN, and replay stops on that
+// record like on any other unresolved UNKNOWN exchange, not on a history it cannot rebuild.
+func TestReplayAgreesWithAnOverflowingReasoningExchangeRecordedAsUnknown(t *testing.T) {
+	route := openrouter.EngineeringRoute().WithReasoning(true)
+	cfg := recoveryTestConfig()
+	cfg.Route = route
+	journal := openRecoveryTestJournal(t, filepath.Join(t.TempDir(), "overflow-provider.audit"))
+	body := escapedHistoryOverflowStream(openrouter.ApprovedModel)
+	body = append(body, sseChunks("resp-1", openrouter.ApprovedModel, "stop", map[string]any{"content": "answer"})...)
+	conversation, err := newWithDoer(cfg, ApprovedModel, &rawDoer{bodies: [][]byte{body}}, journal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := conversation.AdmitPrompt("task-d50", "Read it."); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conversation.NextTurn(context.Background()); err == nil {
+		t.Fatal("an overflowing reply was accepted")
+	}
+	_, err = ReplayTranscript(journal, RecoveryPins{Config: cfg, Model: ApprovedModel, Policy: recoveryTestPolicy(t, true)}, &replayVerifierFixture{})
+	if err == nil || !strings.Contains(err.Error(), "UNKNOWN provider exchange") {
+		t.Fatalf("replay = %v, want the unresolved UNKNOWN exchange", err)
 	}
 }

@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"tbound/supervisor/internal/broker/openrouter"
+	"tbound/supervisor/internal/corpusadmit"
+	"tbound/supervisor/internal/evalcorpus"
 	"tbound/supervisor/internal/workflowrecovery"
 )
 
@@ -40,5 +42,19 @@ func TestThesisProviderRouteCarriesTheReasoningMarkAndAuthorityKeepsIt(t *testin
 	route := a.currentProviderRoute()
 	if !route.Reasoning || route.Validate() != nil || route.WithReasoning(false) != openrouter.EngineeringRoute() {
 		t.Fatalf("thesis route = %+v", route)
+	}
+}
+
+// The corpus admission applies the thesis cap: a model-driven trial needs max_host_calls x 4096 tokens.
+func TestCorpusAdmissionRefusesAModelTrialBelowTheThesisCap(t *testing.T) {
+	ceilings := &corpusadmit.Ceilings{MaxHostCalls: 17, MaxTokens: 69632, DurationSeconds: 1200, ModelTokensPerCall: productionProviderCompletionCap}
+	c := evalcorpus.Case{CaseID: "a", Kind: evalcorpus.KindCompliant,
+		Trial: &evalcorpus.Trial{Prompt: "do a", MaxHostCalls: 7, MaxTokens: 10000, DurationSeconds: 600}}
+	if err := corpusadmit.CheckTrials([]evalcorpus.Case{c}, ceilings); err == nil {
+		t.Fatal("7 calls / 10000 tokens admitted under the 4096 cap")
+	}
+	c.Trial.MaxTokens = 7 * productionProviderCompletionCap
+	if err := corpusadmit.CheckTrials([]evalcorpus.Case{c}, ceilings); err != nil {
+		t.Fatal(err)
 	}
 }

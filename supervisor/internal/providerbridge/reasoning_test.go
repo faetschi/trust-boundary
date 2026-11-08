@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"reflect"
@@ -342,5 +343,68 @@ func TestLengthTruncatedStreamSettlesSpendToItsUsageOnlyOnAReasoningRoute(t *tes
 		if kinds := memoryJournalKinds(journal); kinds[len(kinds)-1] != "provider_exchange_unknown" {
 			t.Errorf("%s: journal kinds %v", tc.name, kinds)
 		}
+	}
+}
+
+// Spend is settled only after the unknown record is durable; when the append fails the deferred uncertain
+// marking stands, as on the normal path.
+func TestSpendIsNotSettledWhenTheUnknownRecordCannotBeJournaled(t *testing.T) {
+	truncated := withUsage(sseChunks("resp-1", spendTestModel, "length", map[string]any{"role": "assistant", "reasoning_content": "t"}), spendTestModel)
+	reasoningOnly := withUsage(sseChunks("resp-1", spendTestModel, "stop", map[string]any{"role": "assistant", "reasoning_content": "t"}), spendTestModel)
+	for name, body := range map[string][]byte{"truncated": truncated, "reasoning-only": reasoningOnly} {
+		spend := &spendRecorder{}
+		c, _ := reasoningConversation(t, spendTestRoute(t).WithReasoning(true), spend, &rawDoer{bodies: [][]byte{body}})
+		c.journal = &memoryJournal{failKind: "provider_exchange_unknown"}
+		_, err := c.NextTurn(context.Background())
+		if err == nil {
+			t.Fatalf("%s: accepted", name)
+		}
+		var journaled journaledFailure
+		if errors.As(err, &journaled) {
+			t.Errorf("%s: a failed journal append was reported as a disposed exchange", name)
+		}
+		if got, want := spend.sequence(), []string{"reserve", "uncertain:unit-1"}; !reflect.DeepEqual(got, want) {
+			t.Errorf("%s: spend %v, want %v", name, got, want)
+		}
+	}
+}
+
+// rawReasoningChunk streams text as reasoning without JSON-escaping it, so a megabyte of '<' stays a megabyte
+// on the wire and only the request builder escapes it (six bytes each).
+func rawReasoningChunk(id, model, text string) []byte {
+	return []byte(`data: {"id":"` + id + `","model":"` + model + `","created":1,"object":"chat.completion.chunk","choices":[{"index":0,"delta":{"reasoning_content":"` +
+		text + `"},"finish_reason":null}]}` + "\n\n")
+}
+
+func escapedHistoryOverflowStream(model string) []byte {
+	var body []byte
+	for i := 0; i < 5; i++ {
+		body = append(body, rawReasoningChunk("resp-1", model, strings.Repeat("<", 200000))...)
+	}
+	return body
+}
+
+func TestReasoningThatOverflowsTheNextRequestEndsAsARecordedUnknown(t *testing.T) {
+	model := spendTestModel
+	body := escapedHistoryOverflowStream(model)
+	body = append(body, sseChunks("resp-1", model, "stop", map[string]any{"content": "answer"})...)
+	spend := &spendRecorder{}
+	c, journal := reasoningConversation(t, spendTestRoute(t).WithReasoning(true), spend, &rawDoer{bodies: [][]byte{body}})
+	_, err := c.NextTurn(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "does not fit the next request") {
+		t.Fatalf("NextTurn: %v", err)
+	}
+	kinds := memoryJournalKinds(journal)
+	if kinds[len(kinds)-1] != "provider_exchange_unknown" {
+		t.Fatalf("journal kinds %v", kinds)
+	}
+	for _, kind := range kinds {
+		if kind == "provider_exchange" {
+			t.Fatal("the exchange was journaled as a normal one")
+		}
+	}
+	var journaled journaledFailure
+	if !errors.As(err, &journaled) {
+		t.Error("the failure is not reported as a disposed exchange")
 	}
 }

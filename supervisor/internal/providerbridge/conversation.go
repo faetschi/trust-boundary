@@ -484,6 +484,18 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 			turnErr = journaledFailure{turnErr}
 		}
 	}()
+	// settleAfterJournal settles the open spend unit to usage only once the failed exchange's record is durable
+	// (persistErr == nil); otherwise the unit stays for the deferred UncertainSpend, as on the normal path.
+	settleAfterJournal := func(persistErr error, usage json.RawMessage) error {
+		if persistErr != nil || spendUnit == "" {
+			return persistErr
+		}
+		spendSettled = true
+		if err := c.cfg.Spend.SettleSpend(ctx, spendUnit, usage); err != nil {
+			return fmt.Errorf("settle provider spend: %w", err)
+		}
+		return nil
+	}
 	var captured openrouter.CapturedResponse
 	var exchangeErr error
 	var records []broker.ExchangeRecord
@@ -579,16 +591,13 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 			}
 		}
 		persistErr := c.persistFailedExchangeLocked(records, exchangeErr, hostCallBinding)
-		disposed = exchangeDisposed(persistErr, records, hostCallBinding)
 		if spendUnit != "" && spendDispatched && !spendSettled && len(records) == 1 && records[0].ResponseComplete() && records[0].StatusCode() == 200 {
 			// A Reasoning route's reply cut off at max_completion_tokens still reports what it cost.
 			if usage, ok := openrouter.TruncatedUsage(records[0].ResponseBody(), c.route); ok {
-				spendSettled = true
-				if err := c.cfg.Spend.SettleSpend(ctx, spendUnit, usage); err != nil {
-					persistErr = errors.Join(persistErr, fmt.Errorf("settle provider spend: %w", err))
-				}
+				persistErr = settleAfterJournal(persistErr, usage)
 			}
 		}
+		disposed = exchangeDisposed(persistErr, records, hostCallBinding)
 		return Turn{}, c.failLocked(errors.Join(fmt.Errorf("registered provider exchange failed; response withheld: %w", exchangeErr), persistErr))
 	}
 	if err := ctx.Err(); err != nil {
@@ -630,13 +639,8 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 		// A reasoning-only reply is a complete exchange: journal it as unknown and settle its spend, so
 		// neither the host call nor the cost is left open, then end the request.
 		persistErr := c.persistFailedExchangeLocked(records, emptyErr, hostCallBinding)
+		persistErr = settleAfterJournal(persistErr, captured.Usage())
 		disposed = exchangeDisposed(persistErr, records, hostCallBinding)
-		if spendUnit != "" {
-			spendSettled = true
-			if err := c.cfg.Spend.SettleSpend(ctx, spendUnit, captured.Usage()); err != nil {
-				persistErr = errors.Join(persistErr, fmt.Errorf("settle provider spend: %w", err))
-			}
-		}
 		return Turn{}, c.failLocked(errors.Join(emptyErr, persistErr))
 	}
 	if err := validateTurnProjectionBudget(projection); err != nil {
@@ -662,6 +666,15 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 	callArray := []openrouter.PriorToolCall(nil)
 	if projection.ToolCall != nil {
 		callArray = []openrouter.PriorToolCall{priorCall}
+	}
+	// The assistant entry must fit the next request before the exchange is journaled as a normal one: replay
+	// appends it under the same bound, and a journaled exchange that replay refuses would be unrecoverable.
+	nextHistory, err := c.boundedHistoryLocked(assistantMessage(c.route, captured, assistantText, callArray))
+	if err != nil {
+		persistErr := c.persistFailedExchangeLocked(records, err, hostCallBinding)
+		persistErr = settleAfterJournal(persistErr, captured.Usage())
+		disposed = exchangeDisposed(persistErr, records, hostCallBinding)
+		return Turn{}, c.failLocked(errors.Join(fmt.Errorf("provider response does not fit the next request: %w", err), persistErr))
 	}
 	requestRecord := records[0].Request()
 	evidence := exchangeEvidence{
@@ -700,9 +713,7 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 			return Turn{}, c.failLocked(fmt.Errorf("register captured tool call: %s", decision.ReasonCode))
 		}
 	}
-	if err := c.appendHistoryLocked(assistantMessage(c.route, captured, assistantText, callArray)); err != nil {
-		return Turn{}, c.failLocked(fmt.Errorf("append captured assistant response: %w", err))
-	}
+	c.history = nextHistory
 	c.turns++
 	c.sequence = nextSequence
 	c.responseIDs[captured.ResponseID()] = struct{}{}

@@ -92,7 +92,7 @@ func fixtureManifest(t *testing.T, q evalcorpus.Quotas, seed string) evalcorpus.
 	}
 	for i := range allocated.Cases {
 		id := allocated.Cases[i].CaseID
-		allocated.Cases[i].Trial = &evalcorpus.Trial{Prompt: "Host-approved prompt of " + id, MaxHostCalls: 4, MaxTokens: 10000, DurationSeconds: 600}
+		allocated.Cases[i].Trial = &evalcorpus.Trial{Prompt: "Host-approved prompt of " + id, MaxHostCalls: 4, MaxTokens: 16384, DurationSeconds: 600}
 	}
 	allocated = sealConstructReview(t, allocated)
 	if violations := evalcorpus.Validate(allocated, q); len(violations) != 0 {
@@ -355,16 +355,27 @@ func TestCorpusDigestPilotManifestIsRefusedUnderThesisQuotas(t *testing.T) {
 }
 
 func TestCorpusDigestHostCeilings(t *testing.T) {
-	m, panel := signedPanel(t, t.TempDir(), fixtureManifest(t, evalcorpus.PilotQuotas(), "corpus-digest-seed")) // budgets 4 / 10000 / 600
+	m, panel := signedPanel(t, t.TempDir(), fixtureManifest(t, evalcorpus.PilotQuotas(), "corpus-digest-seed")) // budgets 4 / 16384 / 600 (4 x the D50 cap)
 	path := writeManifest(t, t.TempDir(), "corpus.json", m)
 	if _, _, err := runDigest(panel, "--manifest", path, "--quota-profile", "pilot",
-		"--max-host-calls", "4", "--max-tokens", "10000", "--duration-seconds", "600"); err != nil {
+		"--max-host-calls", "4", "--max-tokens", "16384", "--duration-seconds", "600"); err != nil {
 		t.Fatalf("ceilings equal to the budgets: %v", err)
 	}
 	if _, _, err := runDigest(panel, "--manifest", path, "--quota-profile", "pilot",
-		"--max-host-calls", "3", "--max-tokens", "10000", "--duration-seconds", "600"); err == nil ||
+		"--max-host-calls", "3", "--max-tokens", "16384", "--duration-seconds", "600"); err == nil ||
 		!strings.Contains(err.Error(), "host ceilings") {
 		t.Fatalf("a budget over the ceiling was accepted: %v", err)
+	}
+	lowFixture := fixtureManifest(t, evalcorpus.PilotQuotas(), "corpus-digest-seed")
+	for i := range lowFixture.Cases {
+		lowFixture.Cases[i].Trial.MaxTokens = 10000 // below 4 x the D50 cap; set before the panel signs
+	}
+	low, lowPanel := signedPanel(t, t.TempDir(), lowFixture)
+	lowPath := writeManifest(t, t.TempDir(), "corpus.json", low)
+	if _, _, err := runDigest(lowPanel, "--manifest", lowPath, "--quota-profile", "pilot",
+		"--max-host-calls", "4", "--max-tokens", "16384", "--duration-seconds", "600"); err == nil ||
+		!strings.Contains(err.Error(), "a model-driven trial needs") {
+		t.Fatalf("a model budget below max_host_calls x the D50 cap was accepted: %v", err)
 	}
 	if _, _, err := runDigest(panel, "--manifest", path, "--quota-profile", "pilot", "--max-host-calls", "4"); err == nil {
 		t.Fatal("a partial ceiling set was accepted")
