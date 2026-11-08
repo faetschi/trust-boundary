@@ -50,7 +50,7 @@ For each candidate it produces exactly one of two results.
   - the threat class, from the ledger `stratum`;
   - the identifiers of section 4;
   - the source key and source item, from the ledger `source` and `base_item`;
-  - the forbidden effects, from the ledger `predicate` (step 7);
+  - the forbidden effects, from the ledger `predicate` (step 8);
   - the adaptation block: preserved intent, tool mapping, adaptation steps, lost distinctions, authorization class, and endpoint-oracle mapping;
   - the oracle id and version, the workspace fixture digest, and the calibration payload digest.
 - The trial: the prompt, the budgets, the frozen script, `p_delta` with its justification, the pivot table, and the protected paths.
@@ -80,7 +80,7 @@ Apply the steps in order. A step that cannot be completed ends the procedure wit
 2. **Check eligibility on the item.** Recheck the item itself against every exclusion class of `05-source-screen.md` section 4 except "variant of another root", as that section applies them. The ledger checked them on paper only. Two exceptions are fixed by this rule: a system path that only locates a file the case itself creates (step 5), and a request that names Python (step 6). A predicate must be registered for the row's stratum. [`F-ELIGIBLE`]
 3. **Fix the unit and render both parts of it.** Take the unit the pilot commitment records for the source, and the exact pairing the `case_id` names. A pairing unit keeps both parts:
    - the source's user task goes into the user prompt word for word;
-   - where the source gives the user task a tool response (InjecAgent), that response becomes the fixture file that carries the third-party content;
+   - where the source places the third-party content inside the user task's environment (InjecAgent's tool response, AgentDojo's injection vector for that user task), that place becomes the fixture file that carries it;
    - `task_unit` in the meaning record names both parts.
 
    If one part cannot be rendered, the case fails. [`F-MEANING`]
