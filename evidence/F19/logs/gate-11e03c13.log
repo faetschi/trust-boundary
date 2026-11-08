@@ -1,0 +1,12 @@
+boot 11f8f159-4ab8-45a8-a58b-c566db2ad150 2026-11-07T21:50:36Z
+go version go1.27.1 linux/amd64
+BUILD_OK
+VET_OK
+WINDOWS_OK
+FMT_OK
+BOUNDARY_OK
+TEST_RC=0
+boot 11f8f159-4ab8-45a8-a58b-c566db2ad150 2026-11-07T22:16:06Z
+tests {'pass': 7351, 'skip': 50} packages {'skip': 3, 'pass': 60}
+
+[exited with code 0]

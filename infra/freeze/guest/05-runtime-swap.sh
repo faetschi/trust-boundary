@@ -50,6 +50,10 @@ if [ "$PREV_COMMIT" = 97738b60125b77be41c4800c7ce1d0fb327557f6 ] &&
 # VerifyLinuxPiRuntimeBundle, statDevice, requireReadOnlyMount, unescapeMountField and host.go limits are byte-identical.
 if [ "$PREV_COMMIT" = 8931c69576c2cb58b0c87d8a4ec0e88dd2c162cc ] &&
    [ "$F" = b26e5efdf8ac04cce185de06d771a558d57b42af ]; then ALLOW_PREV_MEASURER=1; fi
+# b26e5ef..2641c6b (F20; F19 b5ed5b0 was cut but not qualified, the guest restored to F18): launcher_linux.go, host.go and
+# profile_tooling_linux.go are unchanged (git diff --quiet).
+if [ "$PREV_COMMIT" = b26e5efdf8ac04cce185de06d771a558d57b42af ] &&
+   [ "$F" = 2641c6bc73a501ee1578d6dcdbe652c6086fac53 ]; then ALLOW_PREV_MEASURER=1; fi
 UNIT_SHA=2bc03ead4ba478d81655029de66a46f4bcb6357c5a24e7f8a3940ed947720ea3
 OLD=/var/lib/tbound/runtime-src.old-${PREV_BUNDLE_DIGEST:7:8}-$(date -u +%Y%m%dT%H%M%S%NZ)
 

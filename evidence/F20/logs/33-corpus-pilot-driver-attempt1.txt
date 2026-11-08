@@ -1,0 +1,70 @@
+== 33-corpus-pilot start 2026-11-08T10:25:20Z guest=172.26.25.5
+OK   FROZEN-COMMIT = 2641c6bc73a501ee1578d6dcdbe652c6086fac53
+OK   F18 record TBOUND_DIGEST == PREV_TBOUND_DIGEST = sha256:aa7328c8a2b06b7dbd098c7720034338f1c31d625e81b5795578c19200260fd2
+OK   F18 record TBP_DIGEST == PREV_TBP_DIGEST = sha256:430f722c07ecccfce73bdb26fd406d15a095ed422fae05f3262e368237265546
+OK   F18 record ENTRYPOINT_DIGEST == PREV_ENTRYPOINT_DIGEST = sha256:73cd13f4a610ff238c49ddf4bf6913262facb1a716d5827831502b4fb20aee30
+OK   F18 record SRC_DIGEST == PREV_SRC_DIGEST = sha256:06cf24386cb8b85a48d7b5a549fafad5b4be41d16cbdb5038519fc6ccee40de7
+OK   F18 record BUNDLE_DIGEST == PREV_BUNDLE_DIGEST = sha256:73866d76ad8a8a9f91f40aa8b43168e10f5844f21bb32ef2537065b48b2ff1e1
+OK   F18 record IMGDIGEST == PREV_IMGDIGEST = sha256:fc20b347f25f8bef011a4f738d7aa46fea95dbbd409cd7565b181b07b69343b7
+OK   F18 record CFG == PREV_CFG = sha256:d6608dafa664152171e685ad22f881681b183ce56a00650bd8b43d3f3c11eabc
+OK   F18 record BASE_TD == PREV_BASE_TD = sha256:f64c667a417f414845f68562ecbde7136d591c70c722b71094f74d5bee9ebe78
+OK   F18 record LOAD_TAR_DIGEST == PREV_LOAD_TAR_DIGEST = sha256:3074ed51a10a8f996e875f5f87af7db30a99bb9d38dca292f6aff1928cbffffd
+OK   F18 record CAL_RO_DIGEST == PREV_CAL_RO_DIGEST = sha256:6b12c0ac0dcbf65684ea3889cfd8241f9e8e69cc7ccbcb52eb22e5ddd851188e
+OK   F18 record CAL_RW_DIGEST == PREV_CAL_RW_DIGEST = sha256:07b235cccb3fd8bcbd3be50b0816e708d7b5332fbefa78deb54d0a55497b3bf5
+OK   F18 record TEST_PROCORACLE == PREV_TEST_PROCORACLE = sha256:98add249e56d29dce100a1de04c10e797f4b5cb3d7ac12335caac9757ad35df6
+OK   F18 record TEST_ENTRYPOINT == PREV_TEST_ENTRYPOINT = sha256:cb131de6b0850c47e967a1452d8d6ff282160101b7839ebdb86651a55c79e217
+OK   F18 FROZEN-COMMIT record == PREV_COMMIT = b26e5efdf8ac04cce185de06d771a558d57b42af
+OK   F18 g1/RID record == PREV_G1_RID = g1-req-20261107T100334Z
+OK   F18 rp/RID record == PREV_RP_RID = rp-req-20261107T100541Z
+OK   F18 dr/RID record == PREV_DR_RID = dr-req-20261107T100743Z
+OK   F18 dr/RUNID record == PREV_DR_RUNID = production-run-d7a17bcb3c26f14d656bee16
+OK   F18 dr/CHECKS_OK record == 'ok' = ok
+OK   F18 dr/ADMISSION_ID record == PREV_DR_ADMISSION_ID = route-probe-dr-2026-11-07a
+OK   IMGDIGEST (session-env == HF) = sha256:60948dfa81f797672865cf6395d56b5a81fd2c236d291e528d8adf1ea098580b
+OK   frozen commit 2641c6bc73a501ee1578d6dcdbe652c6086fac53; HF=/home/tbound/tbound-h/f20
+OK   admin.key size/mode = 64 600
+OK   admin.pub digest == HF ADMIN_PUB_DIGEST = sha256:be206a41ad321f29ef89e8157f69a6f0820a93fafa3096b71867ece745f9afac
+OK   admin.pub digest == F0 = sha256:be206a41ad321f29ef89e8157f69a6f0820a93fafa3096b71867ece745f9afac
+OK   cosign.pub digest == HF COSIGN_PUB_DIGEST = sha256:caf906a4ead6cd8998502333030f0602e66302e47b1539afebe5a13c39e66bcd
+OK   cosign.pub digest == F0 = sha256:caf906a4ead6cd8998502333030f0602e66302e47b1539afebe5a13c39e66bcd
+
+== preflight: guest 172.26.25.5 (pinned host key, StrictHostKeyChecking=yes), tbound-op only
+guest address: GUEST_IP=172.26.25.5 (changes after host restarts; if a connection fails, look it up: PowerShell 'Get-NetNeighbor -LinkLayerAddress 00-15-5D-0C-40-02', then export GUEST_IP=<IPAddress>)
+OK   ssh identity = tboundadmin
+OK   sudo -n true fails (narrowed sudo)
+guest: tbound-abi8-seed 7.0.0-38-generic 2026-11-08T10:25:27Z 
+
+== 1. abandon the unsettled dr request (tbound-op two-step abandon)
+collected requests (10215 bytes)
+OK   saved /home/tbound/tbound-h/f20/pilot/requests-check-20261108T102528Z.jsonl
+   journal: rid=dr-req-20261108T102405Z
+   journal: records=6
+   journal: accepted=1
+   journal: key=pi-service-request-f4574563d694bf9585ce5c2c0145858ea372e6a175fc4c3d5ca3d6dd9b1e0ae2
+   journal: terminal=unknown
+   journal: abandoned=no
+   journal: verdict=unreconciled
+/opt/tbound/operator/tbound-op: line 906: /sys/fs/cgroup/system.slice/tbound-pi.service/cells/cgroup.procs: No such file or directory
+rid=dr-req-20261108T102405Z
+request_records:
+pi_service_request_accepted {"client_gid": 985, "client_pid": 235686, "client_uid": 994, "config_digest": "sha256:fb13b88a639d5c222efa08273ec8587c3efbca421d8264967fc452de93e3a195", "envelope_digest": "sha256:9984e4b2eeebbbb8019552d6ce205a06bd8d2f3585911a843481d0ed34a2364c", "payload_digest": "sha256:7844a98a3eb120bc588d0eb21e3a115c76b15fbff769333bdc0402230d15a453", "registration_id": "sha256:c58233fdab400835ba4a9bb8355ea84ceee286279d43d17f1221a1b7f12ea9c5", "request_id": "dr-req-20261108T102405Z", "schema_version": "tbound-pi-service-request-accepted/v1", "task_id": "route-probe-bash-view"}
+pi_service_request_terminal {"client_uid": 994, "payload_digest": "sha256:7844a98a3eb120bc588d0eb21e3a115c76b15fbff769333bdc0402230d15a453", "request_id": "dr-req-20261108T102405Z", "response": {"error_code": "task-outcome-unknown", "request_id": "dr-req-20261108T102405Z", "schema_version": "tbound-pi-service-response/v1", "status": "unknown"}, "schema_version": "tbound-pi-service-request-terminal/v1"}
+catalog_owner_scope_drained=3
+catalog_unexposed_true=0
+cells_children=unavailable 
+cells_procs_bytes=unavailable
+podman_ps_a_lines=unavailable
+TOKEN=f1c65b809044
+re-run: abandon dr-req-20261108T102405Z --confirm f1c65b809044 (after reading the facts: workflow finished, scope drained, no pending effect)
+request-specific catalog evidence:
+admissions=1
+scopes_bound=1
+scopes_drained=1
+scopes_undrained=0
+drained_without_bound=0
+NOTE unexposed cleanup events in the whole catalog (informational): 0
+ABANDON NOT DONE: the dr request dr-req-20261108T102405Z is still unsettled. The service is stopped, so tbound-op's cgroup and podman probes read 'unavailable' and cannot prove
+'no pending effect'; the owner decides from the facts and the request-specific catalog evidence printed above. Either run the verb by hand:
+  GUEST_IP=172.26.25.5 sh /f/trust-boundary/.local/worktrees/f20-kit/infra/freeze/tools/gssh.sh 'sudo -n /opt/tbound/operator/tbound-op abandon dr-req-20261108T102405Z --confirm f1c65b809044'
+or run this script again with ABANDON_CONFIRM=f1c65b809044 (it then requires admissions==1, no undrained scope and service+socket inactive, confirms through the kit log,
+and saves the abandoned record). The TOKEN changes if the facts change; the guest reconciler refuses to abandon what it cannot prove quiescent.
