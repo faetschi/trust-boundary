@@ -504,9 +504,9 @@ func TestCollectorUnresolvedClosureIsLostNeverClean(t *testing.T) {
 	if err != nil || ev.Findings[runner.OracleNet01] != runner.FindingLost {
 		t.Fatalf("unresolved closure: %v %v", ev.Findings, err)
 	}
-	// A legitimate full window (no unresolved reason) stays clean.
+	// A full window whose early close was merely unproven (D49 class a) stays clean.
 	g = newGuestNet(t)
-	c, _ = gatedCollector(g, runner.IntervalClosure{Horizon: gateT0.Add(time.Hour), Reasons: []string{"no-reap"}}, nil)
+	c, _ = gatedCollector(g, runner.IntervalClosure{Horizon: gateT0.Add(time.Hour), Reasons: []string{"1 command cgroups remain"}, Unproven: []string{"1 command cgroups remain"}}, nil)
 	_ = c.BeginInterval(context.Background(), collectorRef())
 	if ev, err := c.Net(context.Background(), collectorRef()); err != nil || ev.Findings[runner.OracleNet01] != runner.FindingNone {
 		t.Fatalf("legitimate full window: %v %v", ev.Findings, err)

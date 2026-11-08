@@ -23,6 +23,7 @@ import (
 	"tbound/supervisor/internal/effectoracle"
 	"tbound/supervisor/internal/evalcorpus"
 	"tbound/supervisor/internal/netoracle"
+	"tbound/supervisor/internal/piruntime"
 	"tbound/supervisor/internal/procoracle"
 	"tbound/supervisor/internal/runner"
 	"tbound/supervisor/internal/wsoracle"
@@ -456,9 +457,10 @@ func (e obsEvidence) RunReadyStdin(ctx context.Context, argv []string, stdin io.
 				CommandOutputWithinBound: true, CommandCgroupRemoved: true,
 				NetworkMode: "none", NoExternalRoutes: true, CapEff: "0000000000000000", NoNewPrivs: true,
 				CapPrm: "0000000000000000", CapBnd: "0000000000000000", CapInh: "0000000000000000", CapAmb: "0000000000000000"}
+			kids := unprovenChildren(f)
 			return obsReply(procoracle.ClosureDoc{Schema: runner.EvidenceSchema, Kind: runner.EvidenceProcClosure, IntervalRef: flags["--interval-ref"],
 				RunID: obsRunID, RegistrationDigest: reg.Digest(), ReceiptVerified: true, ReceiptDigest: strings.Repeat("b", 64),
-				ExpectedSettlements: 1, Commands: []procoracle.CommandSettlement{cmd}, Scan: scan, CellChildren: unprovenChildren(f)})
+				ExpectedSettlements: 1, Commands: []procoracle.CommandSettlement{cmd}, Scan: scan, CellChildren: kids, CellChildrenTotal: len(kids)})
 		}
 		line, _, _, _ := obsReply(procoracle.MonitorReadyDoc{Schema: runner.EvidenceSchema, Kind: procoracle.MonitorReadyKind,
 			RegistrationDigest: reg.Digest(), FirstPollSeq: 1, FirstPollAt: start.Add(100 * time.Millisecond)})
@@ -648,26 +650,29 @@ func TestObserverCoverageEarlyCloseEndsOnProofAndKeepsEveryOracleReference(t *te
 	}
 }
 
-func unprovenChildren(f *obsFixture) int {
+// unprovenChildren is what the fake guest lists below the cells cgroup: the persistent net-sink cgroup, as on the real
+// guest, and with unproven a command cgroup that remains.
+func unprovenChildren(f *obsFixture) []procoracle.CellChild {
+	kids := []procoracle.CellChild{{Name: piruntime.D09NetSinkCgroupName, ProcsEmpty: true}}
 	if f.unproven {
-		return 1 // a command cgroup remains below the cells cgroup
+		kids = append(kids, procoracle.CellChild{Name: "cmd-1", ProcsEmpty: true})
 	}
-	return 0
+	return kids
 }
 
-// The sibling case: the closure is refused, so the observation keeps its horizon (the fake monitor ends with the
-// request) and the unresolved evidence is lost for PROC and NET, never a clean negative.
-func TestObserverCoverageUnprovenClosureKeepsTheHorizonAndIsLost(t *testing.T) {
+// The sibling case: the closure is refused only for a command cgroup that remains (D49 class a), so the observation keeps its
+// horizon (the fake monitor ends with the request) and the oracles are judged exactly as before D49: clean, not lost.
+func TestObserverCoverageUnprovenClosureKeepsTheHorizonAndStaysClean(t *testing.T) {
 	f := newObsFixture(t, false)
 	f.early, f.unproven = true, true
 	o := f.execute(t)
 	for _, k := range []string{runner.OracleNet01, runner.OracleProc01, runner.OracleProc02, runner.OracleProc03} {
-		if o.Oracles[k] != runner.FindingLost {
-			t.Errorf("%s = %q, want lost (unresolved closure)", k, o.Oracles[k])
+		if o.Oracles[k] != runner.FindingNone {
+			t.Errorf("%s = %q, want none (the window was fully observed; the close was only unproven)", k, o.Oracles[k])
 		}
 	}
-	if coverage(o) {
-		t.Error("observer_coverage_complete is true although the closure was unresolved")
+	if !coverage(o) {
+		t.Error("observer_coverage_complete is false although the full window was observed")
 	}
 }
 

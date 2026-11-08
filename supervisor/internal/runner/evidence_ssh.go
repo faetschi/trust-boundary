@@ -204,6 +204,8 @@ func evidenceOutput(stdout, stderr []byte, exit int, err error) ([]byte, error) 
 	switch {
 	case err != nil:
 		return nil, evidenceAbsent("evidence transport: %v", err)
+	case exit == EvidenceRefusalExit:
+		return nil, fmt.Errorf("%w: %w: %s", ErrEvidenceAbsent, ErrEvidenceRefused, clip(stderr))
 	case exit != 0:
 		return nil, evidenceAbsent("evidence command exited %d: %s", exit, clip(stderr))
 	case len(bytes.TrimSpace(stdout)) == 0:
@@ -213,21 +215,14 @@ func evidenceOutput(stdout, stderr []byte, exit int, err error) ([]byte, error) 
 }
 
 // Call runs `tbound evidence <argv...>` and returns its one JSON document. Any failure
-// (no transport, a transport error, a non-zero exit, no output) is ErrEvidenceAbsent.
+// (no transport, a transport error, a non-zero exit, no output) is ErrEvidenceAbsent; a refusal of the guest command
+// (exit EvidenceRefusalExit) is also ErrEvidenceRefused.
 func (c EvidenceClient) Call(ctx context.Context, argv ...string) ([]byte, error) {
 	if c.Transport == nil {
 		return nil, evidenceAbsent("no evidence transport")
 	}
 	stdout, stderr, exit, err := c.Transport.Run(ctx, argv)
-	switch {
-	case err != nil:
-		return nil, evidenceAbsent("evidence transport: %v", err)
-	case exit != 0:
-		return nil, evidenceAbsent("evidence command exited %d: %s", exit, clip(stderr))
-	case len(bytes.TrimSpace(stdout)) == 0:
-		return nil, evidenceAbsent("evidence command wrote nothing")
-	}
-	return stdout, nil
+	return evidenceOutput(stdout, stderr, exit, err)
 }
 
 // CallDoc is Call plus a strict decode into v.
@@ -466,3 +461,11 @@ func (c EvidenceClient) CallStdin(ctx context.Context, stdin io.Reader, ready fu
 	raw, oerr := evidenceOutput(stdout, stderr, exit, err)
 	return raw, err == nil && exit >= 0 && exit != 255, oerr
 }
+
+// EvidenceRefusalExit is the exit status a guest evidence command ends with when it ANSWERED and refused (its own
+// check failed: an unsettled run, an unreadable journal, an invalid receipt), as opposed to 2 (usage, setup) and to the
+// failures of the transport (ssh's 255, a kill, no output). ErrEvidenceRefused marks such an error; it also is an
+// ErrEvidenceAbsent, as every failed call is.
+const EvidenceRefusalExit = 3
+
+var ErrEvidenceRefused = errors.New("the guest evidence command refused")

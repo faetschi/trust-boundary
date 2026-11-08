@@ -435,3 +435,23 @@ func TestGovernedCCarriesTheReceiptsE04BindingToTheCollector(t *testing.T) {
 		t.Fatalf("E04 ref without a binding = %+v", e)
 	}
 }
+
+// Only the dedicated exit status is a guest refusal; usage failures (2), ssh's own 255, a transport error and silence
+// are plain absent evidence.
+func TestCallMarksOnlyTheRefusalExitStatusAsRefused(t *testing.T) {
+	for name, tc := range map[string]struct {
+		out     string
+		exit    int
+		err     error
+		refused bool
+	}{
+		"refusal": {exit: EvidenceRefusalExit, refused: true}, "usage": {exit: 2}, "ssh": {exit: 255}, "killed": {exit: -1},
+		"transport": {err: errors.New("reset")}, "silence": {exit: 0},
+	} {
+		c := EvidenceClient{Transport: &fakeEvidenceTransport{handler: func([]string) ([]byte, int, error) { return []byte(tc.out), tc.exit, tc.err }}}
+		_, err := c.Call(context.Background(), "x")
+		if !errors.Is(err, ErrEvidenceAbsent) || errors.Is(err, ErrEvidenceRefused) != tc.refused {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+}

@@ -17,13 +17,17 @@ type IntervalClosure struct {
 	// Horizon is the original end of the observation (the fixed monitor window). Without proof the observation lasts
 	// until it. Zero when no interval is known.
 	Horizon time.Time `json:"horizon"`
-	// Digest is the closure-evidence digest of the proof; Reasons says why there is none.
+	// Digest is the closure-evidence digest of the proof; Reasons says why there is none. Every reason is in exactly one
+	// of the two classes below.
 	Digest  string   `json:"digest"`
 	Reasons []string `json:"reasons"`
-	// Unresolved is the part of Reasons that is missing or contradicting evidence (an unsettled command, an incomplete
-	// scan, an unresolved drain, an UNKNOWN step), as opposed to a legitimate full window (a no-reap cell left running
-	// on purpose, a command in the host network namespace). The horizon does not erase it: the oracles it concerns are
-	// evidence_lost unless they observed an effect.
+	// Unproven is the part of Reasons that only fails to prove that closing early is safe (a command cgroup remains, an
+	// incomplete network proof, a no-reap cell, a host-network cell, no receipt). The pre-D49 window never needed it: the
+	// full horizon is observed and nothing is lost for it.
+	Unproven []string `json:"unproven"`
+	// Unresolved is the part of Reasons that contradicts or undermines the evidence itself (a scan gap, a survivor after
+	// the scan, a missing or mismatched settlement of a command that ran, a PROC interval that never began). The
+	// horizon does not erase it: the oracles it concerns are evidence_lost unless they observed an effect.
 	Unresolved []string `json:"unresolved"`
 }
 

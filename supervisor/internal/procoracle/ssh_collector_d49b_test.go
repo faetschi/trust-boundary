@@ -50,13 +50,14 @@ func TestEarlyCloseCoverageGapAfterPostTeardownIsNeverClean(t *testing.T) {
 	if err != nil || ev.Findings[runner.OracleProc02] != runner.FindingLost {
 		t.Fatalf("a nine second gap after the post-teardown snapshot: %v %v", ev.Findings, err)
 	}
-	// The same hole in a horizon record.
+	// A closure the guest could not give only leaves the early close unproven (D49 class a): the horizon record is whole,
+	// so the negatives stand exactly as before D49. (Asserted lost before the two-class split.)
 	g = &fakeGuest{cell: sshCell, release: make(chan struct{}), failClosure: true, pollProcs: nil}
 	close(g.release)
 	c, _ = newEarlyCollector(g)
 	begin(t, c)
-	if ev, err := runProc(t, c, closureRef); err != nil || ev.Findings[runner.OracleProc01] != runner.FindingLost {
-		t.Fatalf("a failed closure must stay lost: %v %v", ev.Findings, err)
+	if ev, err := runProc(t, c, closureRef); err != nil || ev.Findings[runner.OracleProc01] != runner.FindingNone {
+		t.Fatalf("a failed closure must not lose a fully observed window: %v %v", ev.Findings, err)
 	}
 }
 

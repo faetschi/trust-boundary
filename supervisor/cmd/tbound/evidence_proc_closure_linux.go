@@ -3,12 +3,14 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -25,7 +27,7 @@ import (
 // cgroup (the registered cell is the persistent parent, which says nothing about its command cells); looks for the
 // each command's network proof (the delta, no-routes, empty cap_eff and no_new_privs its signed proof records); and runs a fresh identity, process and socket scan of the registered cell. The host
 // judges all of it (procoracle.EvaluateClosure); a failure here is an error, never a document that looks provable.
-func evidenceProcClosure(ctx context.Context, env evidenceEnv, f map[string]string) (procoracle.ClosureDoc, error) {
+func evidenceProcClosure(ctx context.Context, env evidenceEnv, f map[string]string) (out procoracle.ClosureDoc, err error) {
 	ref := f["--interval-ref"]
 	cell, reg, err := evidenceRegistration(ctx, env, f)
 	if err != nil {
@@ -34,6 +36,13 @@ func evidenceProcClosure(ctx context.Context, env evidenceEnv, f map[string]stri
 	if env.readTrace == nil || env.cellChildren == nil || env.hostNetNS == nil {
 		return procoracle.ClosureDoc{}, errors.New("no closure instruments")
 	}
+	// From here on the guest has understood the request: a failure is its refusal to vouch (exit evidenceRefusalExit, which
+	// the host classifies as undermined evidence), not a failure to be asked.
+	defer func() {
+		if err != nil {
+			err = &evidenceRefusal{err}
+		}
+	}()
 	entry, err := evidenceAdmissionForInterval(env, ref)
 	if err != nil {
 		return procoracle.ClosureDoc{}, err
@@ -60,7 +69,7 @@ func evidenceProcClosure(ctx context.Context, env evidenceEnv, f map[string]stri
 	if doc.Commands, err = evidenceCommandSettlements(env, receipt.RunID, receipt.CommandCellSettlements); err != nil {
 		return procoracle.ClosureDoc{}, err
 	}
-	if doc.CellChildren, err = env.cellChildren(cell); err != nil {
+	if doc.CellChildren, doc.CellChildrenTotal, err = env.cellChildren(cell); err != nil {
 		return procoracle.ClosureDoc{}, fmt.Errorf("the cells cgroup cannot be listed: %w", err)
 	}
 	var inodes []uint64
@@ -132,17 +141,55 @@ func evidenceCommandSettlements(env evidenceEnv, runID string, want int) ([]proc
 	return out, nil
 }
 
-// listCellChildren counts the cgroups below the cells cgroup directory.
-func listCellChildren(c evidenceCell) (int, error) {
+// listCellChildren lists the cgroups directly below the cells cgroup directory: the total, and for the first
+// MaxCellChildren (by name) whether each is populated and has processes. A child whose files cannot be read is
+// reported as unreadable, never as empty: the host then refuses the proof.
+func listCellChildren(c evidenceCell) ([]procoracle.CellChild, int, error) {
 	entries, err := os.ReadDir(c.CgroupPath)
 	if err != nil {
-		return 0, err
+		return nil, 0, err
 	}
-	n := 0
+	out, total := []procoracle.CellChild{}, 0
 	for _, e := range entries {
-		if e.IsDir() {
-			n++
+		if !e.IsDir() {
+			continue
 		}
+		if total++; total > procoracle.MaxCellChildren {
+			continue
+		}
+		dir := filepath.Join(c.CgroupPath, e.Name())
+		child := procoracle.CellChild{Name: e.Name()}
+		events, eerr := os.ReadFile(filepath.Join(dir, "cgroup.events"))
+		procsEmpty, perr := cgroupProcsEmpty(filepath.Join(dir, "cgroup.procs"))
+		child.Populated = bytes.Contains(events, []byte("populated 1"))
+		child.ProcsEmpty = procsEmpty
+		child.Unreadable = eerr != nil || perr != nil || !bytes.Contains(events, []byte("populated "))
+		out = append(out, child)
 	}
-	return n, nil
+	return out, total, nil
 }
+
+// cgroupProcsEmpty reports whether a cgroup.procs file lists no process (it reads one byte at most).
+func cgroupProcsEmpty(path string) (bool, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return false, err
+	}
+	defer f.Close()
+	var b [1]byte
+	n, err := f.Read(b[:])
+	switch {
+	case err == io.EOF:
+		return true, nil // only an end of file on the first read means empty
+	case err != nil:
+		return false, err
+	case n == 0:
+		return false, io.ErrNoProgress // a (0, nil) read says nothing: unreadable, not empty
+	}
+	return false, nil
+}
+
+// evidenceRefusal marks an error as the guest command's own refusal: evidenceMain ends with runner.EvidenceRefusalExit.
+type evidenceRefusal struct{ error }
+
+func (r *evidenceRefusal) Unwrap() error { return r.error }
