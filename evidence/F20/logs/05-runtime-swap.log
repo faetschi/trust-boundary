@@ -1,0 +1,19 @@
+== 05-runtime-swap start 2026-11-08T10:17:12Z guest=172.26.25.5
+OK   env.sh commit == frozen values = 2641c6bc73a501ee1578d6dcdbe652c6086fac53
+OK   HF path = /home/tbound/tbound-h/f20
+OK   previous HF path = /home/tbound/tbound-h/f18
+OK   FROZEN-COMMIT = 2641c6bc73a501ee1578d6dcdbe652c6086fac53
+OK   P1 tbound-profile == TBP_DIGEST = sha256:2b08facaca92dd4a8457072cf081ad15acefb593bf9a347883f241691bfe852e
+OK   previous frozen commit = b26e5efdf8ac04cce185de06d771a558d57b42af
+OK   previous BUNDLE_DIGEST record = sha256:73866d76ad8a8a9f91f40aa8b43168e10f5844f21bb32ef2537065b48b2ff1e1
+OK   previous TBP_DIGEST record = sha256:430f722c07ecccfce73bdb26fd406d15a095ed422fae05f3262e368237265546
+session sudo OPEN (sudo -n true works)
+using pinned previous-freeze tbound-profile: audited runtime digest algorithm unchanged in this freeze
+/var/lib/tbound/runtime ext4   ro,nosuid,nodev,relatime
+runtime mount unit sha256: 2bc03ead4ba478d81655029de66a46f4bcb6357c5a24e7f8a3940ed947720ea3
+runtime-src inode: 2050:683646
+Pi runtime bundle tree digest: sha256:73866d76ad8a8a9f91f40aa8b43168e10f5844f21bb32ef2537065b48b2ff1e1
+Tree identity only; this command does not verify profile signature or host trust bindings.
+NOTE no swap needed
+
+== DONE 05-runtime-swap.sh 2026-11-08T10:17:15Z
