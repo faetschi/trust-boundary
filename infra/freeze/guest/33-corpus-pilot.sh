@@ -11,7 +11,7 @@
 #   1b keys      with TBOUND_TRIAL_KEY and TBOUND_CLIENT_KEY (paths): read-only SSH-3 probes (trial `reset <case> --check`: the pre-corpus refusal or a check
 #                document; client `id`: exit 2, "not a client command"). Without them: says that M3 needs them and continues.
 #   2 manifest   D1, offline on the WSL side: the T5 draft of $SRC + the four pins of `tbound-profile corpus-pins` (template $HF/d09-cell.base.json) ->
-#                $HF/pilot/manifest.json; `corpus-pins --manifest` must pass; `corpus-digest` with the 76 T5 artifacts and the ceilings 17 / 20000 / 1200 ->
+#                $HF/pilot/manifest.json; `corpus-pins --manifest` must pass; `corpus-digest` with the 76 T5 artifacts and the ceilings 17 / 69632 / 1200 ->
 #                $HF/pilot/CORPUS_DIGEST. Any refusal prints the tool's violation list and stops.
 #   3 artifacts  the 76 files of corpus/pilot/t5-2026-10-29/artifacts of $SRC into /opt/tbound/corpus/artifacts (session sudo window); afterwards count, per-file
 #                sha256, owner and modes are verified. Guest files not in the T5 set are moved (mv -n) to artifacts.pre-t5-<UTC>.
@@ -46,7 +46,7 @@ T5_DIR=$SRC/corpus/pilot/t5-2026-10-29      # the frozen source, WSL path
 ART=$T5_DIR/artifacts
 GUEST_ART=/opt/tbound/corpus/artifacts
 T5_ARTIFACT_COUNT=76
-PILOT_CEILINGS="--max-host-calls 17 --max-tokens 20000 --duration-seconds 1200"   # the same values tbound-op manifest-install passes
+PILOT_CEILINGS="--max-host-calls 17 --max-tokens 69632 --duration-seconds 1200"   # the same values tbound-op manifest-install passes
 SESSION_OPEN=0
 hf_has dr/CHECKS_OK && hf_has dr/RID || die "the dr cycle is not complete ($HF/dr/CHECKS_OK or dr/RID missing): finish 32-reg-dr.sh first"
 
@@ -369,7 +369,7 @@ hook_cfg_build() {
   eq "corpus_manifest_digest == CORPUS_DIGEST" "$(jgetw "$HG/serve-pi-service.json" corpus_manifest_digest)" "$CORPUS_DIGEST"
   eq "corpus_quota_profile" "$(jgetw "$HG/serve-pi-service.json" corpus_quota_profile)" pilot
   eq "workflow_bash_output_paths" "$(jgetw "$HG/serve-pi-service.json" workflow_bash_output_paths)" "[]"
-  eq "workflow_max_host_calls/max_tokens/duration" "$(jgetw "$HG/serve-pi-service.json" workflow_max_host_calls)/$(jgetw "$HG/serve-pi-service.json" workflow_max_tokens)/$(jgetw "$HG/serve-pi-service.json" workflow_duration_seconds)" 17/20000/1200
+  eq "workflow_max_host_calls/max_tokens/duration" "$(jgetw "$HG/serve-pi-service.json" workflow_max_host_calls)/$(jgetw "$HG/serve-pi-service.json" workflow_max_tokens)/$(jgetw "$HG/serve-pi-service.json" workflow_duration_seconds)" 17/69632/1200
 }
 
 # D6: corpus-pins on the template with the pilot registration must give the same four pins and accept the manifest (only the registration digest moved).

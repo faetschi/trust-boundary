@@ -223,10 +223,20 @@ func initializeProductionFreshWorkflow(ctx context.Context, config productionSer
 }
 
 func productionProviderTokenUpperBound(limits workflowrecovery.Limits) uint64 {
-	if limits.MaxTokens < productionProviderCompletionCap {
+	return providerTokenUpperBound(limits, productionProviderCompletionCap)
+}
+
+// productProviderTokenUpperBound is the same bound for a product turn.
+func productProviderTokenUpperBound(limits workflowrecovery.Limits) uint64 {
+	return providerTokenUpperBound(limits, productProviderCompletionCap)
+}
+
+// providerTokenUpperBound is the per-call completion bound: the cap, or the whole workflow token limit when that is smaller.
+func providerTokenUpperBound(limits workflowrecovery.Limits, completionCap uint64) uint64 {
+	if limits.MaxTokens < completionCap {
 		return limits.MaxTokens
 	}
-	return productionProviderCompletionCap
+	return completionCap
 }
 
 type productionInitialTranscriptProgressVerifier struct {

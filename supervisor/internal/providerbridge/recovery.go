@@ -489,7 +489,7 @@ func replayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 				len(evidence.Response) > broker.MaxDurableExchangeBytes-len(evidence.Request.Body) {
 				return TranscriptProjection{}, replayError("provider exchange exceeds its durable raw-byte budget")
 			}
-			captured, err := openrouter.CaptureSSE(bytes.NewReader(evidence.Response))
+			captured, err := openrouter.CaptureSSEForRoute(bytes.NewReader(evidence.Response), route)
 			if err != nil || !route.AcceptsResponseModel(captured.Model()) || captured.ResponseID() != evidence.ResponseID {
 				return TranscriptProjection{}, replayError("captured response does not parse to the recorded provider identity")
 			}
@@ -538,7 +538,7 @@ func replayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 			if err := validateTurnProjectionBudget(replayedTurn); err != nil {
 				return TranscriptProjection{}, errors.Join(ErrTranscriptReplay, err)
 			}
-			if err := appendReplayHistory(&history, route, openrouter.Message{Role: openrouter.Assistant, Content: &assistantText, ToolCalls: priorCalls}); err != nil {
+			if err := appendReplayHistory(&history, route, assistantMessage(route, captured, assistantText, priorCalls)); err != nil {
 				return TranscriptProjection{}, errors.Join(ErrTranscriptReplay, err)
 			}
 			providerSequence++

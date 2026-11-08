@@ -614,7 +614,18 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 	}
 	assistantText := captured.AssistantText()
 	if assistantText == "" && projection.ToolCall == nil {
-		return Turn{}, c.failLocked(errors.New("provider response has neither assistant text nor a tool call"))
+		// A reasoning-only reply is a complete exchange: journal it as unknown and settle its spend, so
+		// neither the host call nor the cost is left open, then end the request.
+		emptyErr := errors.New("provider response has neither assistant text nor a tool call")
+		persistErr := c.persistFailedExchangeLocked(records, emptyErr, hostCallBinding)
+		disposed = exchangeDisposed(persistErr, records, hostCallBinding)
+		if spendUnit != "" {
+			spendSettled = true
+			if err := c.cfg.Spend.SettleSpend(ctx, spendUnit, captured.Usage()); err != nil {
+				persistErr = errors.Join(persistErr, fmt.Errorf("settle provider spend: %w", err))
+			}
+		}
+		return Turn{}, c.failLocked(errors.Join(emptyErr, persistErr))
 	}
 	if err := validateTurnProjectionBudget(projection); err != nil {
 		persistErr := c.persistFailedExchangeLocked(records, err, hostCallBinding)
@@ -677,7 +688,7 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 			return Turn{}, c.failLocked(fmt.Errorf("register captured tool call: %s", decision.ReasonCode))
 		}
 	}
-	if err := c.appendHistoryLocked(openrouter.Message{Role: openrouter.Assistant, Content: &assistantText, ToolCalls: callArray}); err != nil {
+	if err := c.appendHistoryLocked(assistantMessage(c.route, captured, assistantText, callArray)); err != nil {
 		return Turn{}, c.failLocked(fmt.Errorf("append captured assistant response: %w", err))
 	}
 	c.turns++
@@ -700,6 +711,17 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 		}
 	}
 	return projection, nil
+}
+
+// assistantMessage is the history entry of a captured assistant turn. Only a route with the Reasoning mark keeps the
+// turn's reasoning, which the request builder sends back; live capture and journal replay both build it from the
+// same parsed response, so the two give identical request bytes.
+func assistantMessage(route openrouter.Route, captured openrouter.CapturedResponse, text string, calls []openrouter.PriorToolCall) openrouter.Message {
+	message := openrouter.Message{Role: openrouter.Assistant, Content: &text, ToolCalls: calls}
+	if route.Reasoning {
+		message.Reasoning = captured.Reasoning()
+	}
+	return message
 }
 
 // projectedModel is the model id shown to the Pi worker in a Turn. The worker pins

@@ -57,13 +57,14 @@ func openProductionProviderRoute(config piServiceConfig, paths researchroute.Pat
 // IsResearch reports whether the route is the research route.
 func (r productionProviderRoute) IsResearch() bool { return r.research != nil }
 
-// Route is the wire route to pin: the zero openrouter.Route (the engineering
-// profile) or the route built from the frozen research profile.
+// Route is the wire route to pin: the engineering profile or the route built from
+// the frozen research profile, each with the Reasoning mark of the thesis governed
+// and corpus path (decision D50). Product turns never use this route.
 func (r productionProviderRoute) Route() openrouter.Route {
 	if r.research == nil {
-		return openrouter.Route{}
+		return openrouter.Route{}.WithReasoning(true)
 	}
-	return r.research.Route()
+	return r.research.Route().WithReasoning(true)
 }
 
 // Model is the provider model id the route pins.
@@ -105,7 +106,7 @@ func (r productionProviderRoute) conversationFactory() func(providerbridge.Confi
 	}
 	bundle := r.research
 	return func(config providerbridge.Config, journal *audit.Journal) (*providerbridge.Conversation, error) {
-		if !config.Route.IsResearch() || config.Route != bundle.Route() || config.Spend == nil {
+		if !config.Route.IsResearch() || config.Route.WithReasoning(false) != bundle.Route() || config.Spend == nil {
 			return nil, errors.New("research conversation is not bound to the opened research route and ledger")
 		}
 		credentials, err := bundle.Credentials()

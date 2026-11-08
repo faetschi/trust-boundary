@@ -30,6 +30,14 @@ const (
 	maxText               = 256
 )
 
+const (
+	// MaxReasoningSSEEvents bounds the stream of a reasoning route: a 4,096-token reasoning-plus-answer
+	// completion is at most one event per token, so four times the cap leaves margin for framing events.
+	MaxReasoningSSEEvents = 4 * 4096
+	// maxMessages bounds the message count of a request; it is independent of the SSE event limits.
+	maxMessages = 4096
+)
+
 type Role string
 
 const (
@@ -45,6 +53,9 @@ type Message struct {
 	Content    *string         `json:"content"`
 	ToolCallID string          `json:"tool_call_id,omitempty"`
 	ToolCalls  []PriorToolCall `json:"tool_calls,omitempty"`
+	// Reasoning is the captured reasoning of an assistant turn. It is never serialized by Message itself:
+	// only a route with the Reasoning mark sends it back, under that route's wire name.
+	Reasoning string `json:"-"`
 }
 type PriorToolCall struct {
 	ID, Name     string
@@ -70,12 +81,13 @@ type functionTool struct {
 }
 type request struct {
 	Model               string         `json:"model"`
-	Messages            []Message      `json:"messages"`
+	Messages            []wireMessage  `json:"messages"`
 	Tools               []functionTool `json:"tools"`
 	Stream              bool           `json:"stream"`
 	ParallelToolCalls   bool           `json:"parallel_tool_calls"`
 	ToolChoice          string         `json:"tool_choice"`
 	Thinking            thinkingConfig `json:"thinking"`
+	ReasoningEffort     string         `json:"reasoning_effort,omitempty"`
 	MaxCompletionTokens uint64         `json:"max_completion_tokens,omitempty"`
 }
 
@@ -83,7 +95,7 @@ type request struct {
 // members are spliced after it by BuildRequestForRoute.
 type researchRequest struct {
 	Model               string         `json:"model"`
-	Messages            []Message      `json:"messages"`
+	Messages            []wireMessage  `json:"messages"`
 	Tools               []functionTool `json:"tools"`
 	Stream              bool           `json:"stream"`
 	ParallelToolCalls   bool           `json:"parallel_tool_calls"`
@@ -93,6 +105,14 @@ type researchRequest struct {
 
 type thinkingConfig struct {
 	Type string `json:"type"`
+}
+
+// wireMessage is a Message as sent: the reasoning of an assistant turn follows its other members under the
+// route's wire name (reasoning_content for DeepSeek-native, reasoning for OpenRouter) and is empty otherwise.
+type wireMessage struct {
+	Message
+	ReasoningContent string `json:"reasoning_content,omitempty"`
+	ReasoningText    string `json:"reasoning,omitempty"`
 }
 
 const researchSchemaRead = `{"type":"object","properties":{"path":{"type":"string","description":"Path to the file to read (relative or absolute)"},"offset":{"type":"number","description":"Line number to start reading from (1-indexed)"},"limit":{"type":"number","description":"Maximum number of lines to read"}},"required":["path"]}`
@@ -164,6 +184,8 @@ func BuildRequestWithCompletionLimit(modelID string, messages []Message, complet
 const (
 	engineeringTail = `,"stream":true,"parallel_tool_calls":false,"tool_choice":"auto","thinking":{"type":"disabled"}`
 	researchTail    = `,"stream":true,"parallel_tool_calls":false,"tool_choice":"auto"`
+	// reasoningEngineeringTail is the engineering tail of a Reasoning route (DeepSeek-native fields).
+	reasoningEngineeringTail = `,"stream":true,"parallel_tool_calls":false,"tool_choice":"auto","thinking":{"type":"enabled"},"reasoning_effort":"high"`
 )
 
 // BuildRequestForRoute builds the registered request for one route. The zero
@@ -178,14 +200,20 @@ func BuildRequestForRoute(route Route, messages []Message, completionLimit uint6
 		return BuiltRequest{}, err
 	}
 	modelID := route.Model
-	tail := engineeringTail
-	if route.IsResearch() {
+	tail, reasoningKey := engineeringTail, ""
+	switch {
+	case route.IsResearch():
 		tail = researchTail
+		if route.Reasoning {
+			reasoningKey = "reasoning"
+		}
+	case route.Reasoning:
+		tail, reasoningKey = reasoningEngineeringTail, "reasoning_content"
 	}
 	if completionLimit > math.MaxInt32 {
 		return BuiltRequest{}, errors.New("completion-token cap is outside the supported request range")
 	}
-	if len(messages) == 0 || len(messages) > MaxSSEEvents {
+	if len(messages) == 0 || len(messages) > maxMessages {
 		return BuiltRequest{}, errors.New("invalid message count")
 	}
 	for i, message := range messages {
@@ -201,7 +229,7 @@ func BuildRequestForRoute(route Route, messages []Message, completionLimit uint6
 	if err != nil {
 		return BuiltRequest{}, fmt.Errorf("encode fixed tool schemas: %w", err)
 	}
-	expectedSize, err := preflightRequestSize(modelID, messages, toolsJSON, completionLimit, tail)
+	expectedSize, err := preflightRequestSize(modelID, messages, toolsJSON, completionLimit, tail, reasoningKey)
 	if err != nil {
 		return BuiltRequest{}, err
 	}
@@ -212,9 +240,19 @@ func BuildRequestForRoute(route Route, messages []Message, completionLimit uint6
 			}
 		}
 	}
+	wire := make([]wireMessage, len(messages))
+	for i, message := range messages {
+		wire[i].Message = message
+		switch reasoningKey {
+		case "reasoning":
+			wire[i].ReasoningText = message.Reasoning
+		case "reasoning_content":
+			wire[i].ReasoningContent = message.Reasoning
+		}
+	}
 	var body []byte
 	if route.IsResearch() {
-		body, err = json.Marshal(researchRequest{Model: modelID, Messages: messages, Tools: fixedTools, Stream: true,
+		body, err = json.Marshal(researchRequest{Model: modelID, Messages: wire, Tools: fixedTools, Stream: true,
 			ParallelToolCalls: false, ToolChoice: "auto", MaxCompletionTokens: completionLimit})
 		if err == nil {
 			// Replace the closing brace with the frozen members: ",<members without its opening brace>".
@@ -222,8 +260,12 @@ func BuildRequestForRoute(route Route, messages []Message, completionLimit uint6
 			expectedSize += len(route.members) - 1
 		}
 	} else {
-		body, err = json.Marshal(request{Model: modelID, Messages: messages, Tools: fixedTools, Stream: true,
-			ParallelToolCalls: false, ToolChoice: "auto", Thinking: thinkingConfig{Type: "disabled"},
+		thinking, effort := thinkingConfig{Type: "disabled"}, ""
+		if route.Reasoning {
+			thinking, effort = thinkingConfig{Type: "enabled"}, "high"
+		}
+		body, err = json.Marshal(request{Model: modelID, Messages: wire, Tools: fixedTools, Stream: true,
+			ParallelToolCalls: false, ToolChoice: "auto", Thinking: thinking, ReasoningEffort: effort,
 			MaxCompletionTokens: completionLimit})
 	}
 	if err != nil {
@@ -234,7 +276,7 @@ func BuildRequestForRoute(route Route, messages []Message, completionLimit uint6
 	}
 	return BuiltRequest{body: body, url: route.Endpoint}, nil
 }
-func preflightRequestSize(modelID string, messages []Message, toolsJSON []byte, completionLimit uint64, tail string) (int, error) {
+func preflightRequestSize(modelID string, messages []Message, toolsJSON []byte, completionLimit uint64, tail, reasoningKey string) (int, error) {
 	size := 0
 	var failure error
 	add := func(amount int) {
@@ -305,6 +347,10 @@ func preflightRequestSize(modelID string, messages []Message, toolsJSON []byte, 
 			}
 			add(1) // closes tool_calls array
 		}
+		if reasoningKey != "" && message.Reasoning != "" {
+			addLiteral(`,"` + reasoningKey + `":`)
+			addString(message.Reasoning)
+		}
 		add(1) // closes message object
 	}
 	addLiteral(`],"tools":`, tail)
@@ -366,6 +412,9 @@ func escapedRuneLength(r rune) int {
 	}
 }
 func validateMessage(m Message) error {
+	if m.Reasoning != "" && m.Role != Assistant {
+		return errors.New("only an assistant message carries reasoning")
+	}
 	switch m.Role {
 	case System, Developer, User:
 		if m.Content == nil || m.ToolCallID != "" || len(m.ToolCalls) != 0 {
@@ -425,16 +474,21 @@ type ToolCall struct {
 // CapturedResponse is minted by the bounded parser. Private fields prevent ordinary adapter IPC decoding from constructing it. Parsing and typed mapping alone do not authenticate that the bytes came from OpenRouter; the future trusted broker transport must establish that provenance.
 type CapturedResponse struct {
 	id, model, provider, systemFingerprint, text, finish, nativeFinish string
+	reasoning                                                          string
 	created                                                            int64
 	usage, raw                                                         []byte
 	call                                                               *ToolCall
 }
 
-func (r CapturedResponse) ResponseID() string     { return r.id }
-func (r CapturedResponse) Model() string          { return r.model }
-func (r CapturedResponse) Provider() string       { return r.provider }
-func (r CapturedResponse) Created() int64         { return r.created }
-func (r CapturedResponse) AssistantText() string  { return r.text }
+func (r CapturedResponse) ResponseID() string    { return r.id }
+func (r CapturedResponse) Model() string         { return r.model }
+func (r CapturedResponse) Provider() string      { return r.provider }
+func (r CapturedResponse) Created() int64        { return r.created }
+func (r CapturedResponse) AssistantText() string { return r.text }
+
+// Reasoning is the reasoning text streamed by the provider, accumulated only when the response was parsed for a
+// Reasoning route. It is evidence to be sent back on later requests; it carries no authority.
+func (r CapturedResponse) Reasoning() string      { return r.reasoning }
 func (r CapturedResponse) FinishReason() string   { return r.finish }
 func (r CapturedResponse) Usage() json.RawMessage { return append(json.RawMessage(nil), r.usage...) }
 func (r CapturedResponse) RawResponse() []byte    { return append([]byte(nil), r.raw...) }
@@ -475,6 +529,8 @@ type stream struct {
 	tool                 *assembly
 	events               int
 	legacyNulls          bool
+	reasoning            bool
+	maxEvents            int
 }
 
 // CaptureSSE reads and bounds the complete body before parsing it, preserving
@@ -482,16 +538,24 @@ type stream struct {
 // its caller must be the trusted broker after a real provider exchange. The
 // fixed request does not enable stream_options.include_usage, so usage-only
 // trailing chunks are outside this profile.
-func CaptureSSE(reader io.Reader) (CapturedResponse, error) { return captureSSE(reader, false) }
+func CaptureSSE(reader io.Reader) (CapturedResponse, error) {
+	return captureSSE(reader, false, Route{})
+}
+
+// CaptureSSEForRoute parses like CaptureSSE. A route with the Reasoning mark also accumulates the streamed
+// reasoning (bounded by MaxAssistantTextBytes) and allows MaxReasoningSSEEvents events.
+func CaptureSSEForRoute(reader io.Reader, route Route) (CapturedResponse, error) {
+	return captureSSE(reader, false, route)
+}
 
 // CaptureSSELegacyNulls parses with the strictness before f53fd29f: JSON null in a
 // delta role or tool_calls, or a tool delta id or type, is an error. Only replay of
 // capture-refusal records journaled before that fix may use it.
 func CaptureSSELegacyNulls(reader io.Reader) (CapturedResponse, error) {
-	return captureSSE(reader, true)
+	return captureSSE(reader, true, Route{})
 }
 
-func captureSSE(reader io.Reader, legacyNulls bool) (CapturedResponse, error) {
+func captureSSE(reader io.Reader, legacyNulls bool, route Route) (CapturedResponse, error) {
 	if reader == nil {
 		return CapturedResponse{}, errors.New("nil response reader")
 	}
@@ -502,14 +566,17 @@ func captureSSE(reader io.Reader, legacyNulls bool) (CapturedResponse, error) {
 	if len(raw) == 0 || len(raw) > MaxResponseBytes {
 		return CapturedResponse{}, errors.New("response byte length out of bounds")
 	}
-	return decodeSSE(raw, legacyNulls)
+	return decodeSSE(raw, legacyNulls, route.Reasoning)
 }
 
-func decodeSSE(raw []byte, legacyNulls bool) (CapturedResponse, error) {
+func decodeSSE(raw []byte, legacyNulls, reasoning bool) (CapturedResponse, error) {
 	if !utf8.Valid(raw) {
 		return CapturedResponse{}, errors.New("SSE is invalid UTF-8")
 	}
-	s := stream{legacyNulls: legacyNulls}
+	s := stream{legacyNulls: legacyNulls, reasoning: reasoning, maxEvents: MaxSSEEvents}
+	if reasoning {
+		s.maxEvents = MaxReasoningSSEEvents
+	}
 	var data []byte
 	hasData := false
 	for off := 0; off < len(raw); {
@@ -531,7 +598,7 @@ func decodeSSE(raw []byte, legacyNulls bool) (CapturedResponse, error) {
 				continue
 			}
 			s.events++
-			if s.events > MaxSSEEvents {
+			if s.events > s.maxEvents {
 				return CapturedResponse{}, errors.New("too many SSE events")
 			}
 			if s.done {
@@ -776,6 +843,21 @@ func (s *stream) delta(raw []byte) error {
 			return errors.New("invalid or oversized assistant text")
 		}
 		s.out.text += text
+	}
+	if s.reasoning {
+		// reasoning_content is preferred when a provider repeats the text under both names.
+		for _, name := range []string{"reasoning_content", "reasoning"} {
+			v, ok := d[name]
+			if !ok || isNull(v) {
+				continue
+			}
+			text, e := strRaw(v)
+			if e != nil || len(text) > MaxAssistantTextBytes-len(s.out.reasoning) {
+				return errors.New("invalid or oversized reasoning")
+			}
+			s.out.reasoning += text
+			break
+		}
 	}
 	if v, ok := d["tool_calls"]; ok && !s.null(v) {
 		calls, e := array(v)
