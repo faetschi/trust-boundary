@@ -70,10 +70,11 @@ ignores those fields.
 
 ## Ledger v2 (draft, under review)
 
-`d48-ledger-v2.jsonl` replaces v1 for the pilot commitment once it is reviewed and the owner signs its tag. v1 stays as history. v2 has 3,089 rows: 1,536 candidates (TM-A 1,020, TM-B 516), 149 development rows and 1,404 exclusions. Against v1 it adds:
+`d48-ledger-v2.jsonl` replaces v1 for the pilot commitment once it is reviewed and the owner signs its tag. v1 stays as history. v2 has 3,089 rows: 1,476 candidates (TM-A 1,020, TM-B 456), 149 development rows and 1,464 exclusions. Against v1 it adds:
 
 - the ASB re-screen: the 152 aggressive attacker tools v1 did not hold, 29 of them candidates;
 - the RedCode-Exec re-screen: the 38 files v1 did not hold (18 Python, 20 Bash, 1,140 rows), 149 of them candidates. Bash rows run as written;
+- the exclusion of the 60 RedCode UDP rows (`E-UDP`, Python and Bash `index21`): the registered sink is one TCP listener, so `EFF-NET-01` cannot be observed (adaptation-rule review 3, M5);
 - the ASEval pin `f24d57ce…` on the 165 ASEval rows, where v1 had "unresolved".
 
 Every candidate predicate splits under adaptation rule v1 step 8, and every part is registered for its stratum.
