@@ -68,6 +68,20 @@ the chain, the round rule and the per-source unit choices. Before publication on
 `signed_tag.object` and `signed_tag.commit` from the owner-signed tag `corpus-d48-ledger-v1`. The script
 ignores those fields.
 
+## Ledger v2 (draft, under review)
+
+`d48-ledger-v2.jsonl` replaces v1 for the pilot commitment once it is reviewed and the owner signs its tag. v1 stays as history. v2 has 3,089 rows: 1,535 candidates (TM-A 1,020, TM-B 515), 149 development rows and 1,405 exclusions. Against v1 it adds:
+
+- the ASB re-screen: the 152 aggressive attacker tools v1 did not hold, 28 of them candidates;
+- the RedCode-Exec re-screen: the 38 files v1 did not hold (18 Python, 20 Bash, 1,140 rows), 149 of them candidates. Bash rows run as written;
+- the ASEval pin `f24d57ce…` on the 165 ASEval rows, where v1 had "unresolved".
+
+Every candidate predicate splits under adaptation rule v1 step 8, and every part is registered for its stratum.
+
+`d48-source-digests-v2.json` is the source digest file of adaptation rule v1, step 1. For every candidate it gives the pin key, the revision, the source files and `benchmark_digest`. For every pin key it gives the repository, the licence and the licence files with their digests. It also records the SHA-256 of the ledger it was built from.
+
+Both files are built outside the repository by the lane C screening scripts (`20-build.py`, `21-build.py`, `21-source-digests.py`, `22-asb-screen.py`, `22-redcode-screen.py`), against the pinned clones.
+
 ## Development cases
 
 `draw` and `allocate` remove every `development_case_ids` entry from the candidates before the cap and the allocation. An id that is not a ledger row (a T5 rehearsal item, say) is not refused. Its grammar is checked, it stays in `development.case_ids`, and it is also listed in `development_not_in_ledger`, so a typo shows up there. Only ledger rows are removed; the removal is counted per stratum in `development`. An attack whose cases are all development cases has no candidate left, so it is reported as untested.
