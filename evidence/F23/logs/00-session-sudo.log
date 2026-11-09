@@ -1,0 +1,43 @@
+== 00-session-sudo start 2026-11-08T18:29:55Z guest=172.26.25.5
+OK   ssh identity = tboundadmin
+guest: tbound-abi8-seed 7.0.0-38-generic 2026-11-08T18:29:56Z 
+operator: Admin mode=open
+
+== password sudo works (one throwaway command; the password is not printed)
+OK   password sudo works
+/etc/sudoers.d/.91-tbound-f23-session.new: parsed OK
+
+== verify
+OK   sudo -n true works (session open)
+root:root 440 /etc/sudoers.d/91-tbound-f23-session
+/etc/sudoers: parsed OK
+/etc/sudoers.d/50-tbound-op: parsed OK
+/etc/sudoers.d/91-tbound-f23-session: parsed OK
+/etc/sudoers.d/README: parsed OK
+NOTE SESSION OPEN: close it when the privileged steps are done: bash 00-session-sudo.sh close
+
+== DONE 00-session-sudo.sh 2026-11-08T18:29:58Z
+== 00-session-sudo start 2026-11-08T18:31:52Z guest=172.26.25.5
+OK   ssh identity = tboundadmin
+guest: tbound-abi8-seed 7.0.0-38-generic 2026-11-08T18:31:53Z 
+operator: Admin mode=close
+
+== remove the drop-in
+OK   /etc/sudoers.d/91-tbound-f23-session removed
+OK   sudo -n true fails again
+
+== narrowed-sudo facts
+sudo -n true: fails (good)
+Matching Defaults entries for tboundadmin on tbound-abi8-seed:
+    env_reset, mail_badpass, secure_path=/usr/local/sbin\:/usr/local/bin\:/usr/sbin\:/usr/bin\:/sbin\:/bin\:/snap/bin, use_pty
+
+Runas and Command-specific defaults for tboundadmin:
+    Defaults!/opt/tbound/operator/tbound-op env_reset, !setenv
+
+User tboundadmin may run the following commands on tbound-abi8-seed:
+    (ALL : ALL) ALL
+    (root) NOPASSWD: /opt/tbound/operator/tbound-op
+sudoers.d: 50-tbound-op README 
+OK   narrowed: only the tbound-op NOPASSWD rule plus password (ALL : ALL) ALL
+
+== DONE 00-session-sudo.sh 2026-11-08T18:31:57Z

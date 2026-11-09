@@ -1,4 +1,11 @@
-# TBound
+# trust-boundary (tbound)
+
+![trust-boundary: a shield with a red stepped path](assets/trust-boundary-banner.png)
+
+[![status: research prototype](https://img.shields.io/badge/status-research%20prototype-orange)](#current-status)
+[![Go 1.27.1](https://img.shields.io/badge/go-1.27.1-00ADD8?logo=go&logoColor=white)](docs/guides/reproduce.md)
+[![Linux](https://img.shields.io/badge/platform-Linux-FCC624?logo=linux&logoColor=black)](docs/runtime/architecture.md)
+[![license: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 TBound is a Linux supervisor prototype for Pi coding tasks.
 It mediates four tools: `read`, `write`, `edit`, and `bash`.
@@ -13,14 +20,11 @@ There is no interactive Pi chat mode yet.
 
 ## Current status
 
-- The governed read, edit, Bash, and publish smoke path has real-host engineering
-  evidence. Each new deployment must repeat it with fresh evidence.
-- The pilot still needs review, complete evidence, and guest qualification checks.
-- H1 is unexecuted. Tests, fixtures, probes, and pilot reports are not thesis results.
-- The optional [web chat](extensions/webchat/README.md) is frozen and outside the thesis.
-
-See [OVERVIEW.md](OVERVIEW.md) for the engineering checkpoint and
-[status and gates](docs/evaluation/status.md) for verified scope and remaining work.
+[OVERVIEW.md](OVERVIEW.md) is the only current-state file. It records the
+frozen research baseline, the interim engineering freezes, the unexecuted H1
+evaluation, the product lane, and the claim boundary. Tests, fixtures, probes,
+and pilot reports are not thesis results. The optional
+[web chat](extensions/webchat/README.md) is frozen and outside the thesis.
 
 ## Product demo: governed chat
 
@@ -65,6 +69,7 @@ for that installation. Crash-recovery fixes await the next live run.
 - `corpus/`: engineering smoke fixtures and the draft benchmark-adapted pilot corpus.
 - `docs/`: guides, runtime contracts, evaluation records, decisions, and design notes.
 - `extensions/webchat/`: the frozen optional web chat extension.
+- `assets/`: the trust-boundary banner and logo artwork.
 
 ## Master thesis
 

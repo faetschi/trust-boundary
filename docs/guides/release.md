@@ -5,7 +5,7 @@ release artifact does not qualify a governed run. On Linux, `tbound serve --pi`
 is a client for the local systemd socket-activated service; service provisioning
 and the live signed-profile/source path are separate from release packaging.
 G1 has real-host engineering evidence at F12; each new deployment needs fresh
-qualification. See [current status](../evaluation/status.md) for the run boundary.
+qualification. See [OVERVIEW](../../OVERVIEW.md) for the run boundary.
 
 ## Local build
 

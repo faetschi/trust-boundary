@@ -237,13 +237,13 @@ func validateOptions(options Options) error {
 			return fmt.Errorf("%w: generation label contains a control character", ErrInvalidOptions)
 		}
 	}
-	if !validSHA256(options.MetadataPolicyDigest) {
+	if !ValidSHA256(options.MetadataPolicyDigest) {
 		return fmt.Errorf("%w: metadata-policy digest must be sha256:<lowercase hex>", ErrInvalidOptions)
 	}
 	if !options.QuiescentRoot {
 		return ErrNotQuiescent
 	}
-	if options.XattrVisibility.Authority != XattrAuthorityBoundedNoHiddenTrusted || !validSHA256(options.XattrVisibility.ProfileDigest) {
+	if options.XattrVisibility.Authority != XattrAuthorityBoundedNoHiddenTrusted || !ValidSHA256(options.XattrVisibility.ProfileDigest) {
 		return ErrXattrVisibilityUnproven
 	}
 	limits := options.Limits
@@ -918,7 +918,8 @@ func validateSegment(name string) error {
 	return nil
 }
 
-func validSHA256(value string) bool {
+// ValidSHA256 reports whether value is a canonical lowercase SHA-256 digest.
+func ValidSHA256(value string) bool {
 	const prefix = "sha256:"
 	if len(value) != len(prefix)+sha256.Size*2 || !strings.HasPrefix(value, prefix) {
 		return false

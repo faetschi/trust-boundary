@@ -1,6 +1,6 @@
 # TBound product contracts (P1, milestone 1)
 
-Status: contract for the first product milestone, the headless governed multi-turn conversation, and its P4 extension at the end. It fixes the decisions that [the product plan](product-plan.md) sections 3 to 5 leave open, for P2 and P3 only. Review, cancellation, the wire protocol, and client UX are later packages and are not specified here.
+Status: contract for the first product milestone, the headless governed multi-turn conversation, and its P4 extension at the end. It fixes the decisions that the 2026-10-24 product plan (historical, removed from HEAD; see git history) left open, for P2 and P3 only. Review, cancellation, the wire protocol, and client UX are later packages and are not specified here.
 
 Research and corpus modes are unchanged. Nothing below is reachable from `serve --pi`, and the research service refuses any admission mode other than `fresh`, `resume`, and `corpus`.
 

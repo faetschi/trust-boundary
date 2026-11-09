@@ -892,16 +892,7 @@ func validIdentity(value string) bool {
 }
 
 func validSHA256(value string) bool {
-	const prefix = "sha256:"
-	if !strings.HasPrefix(value, prefix) || len(value) != len(prefix)+sha256.Size*2 {
-		return false
-	}
-	encoded := value[len(prefix):]
-	if strings.ToLower(encoded) != encoded {
-		return false
-	}
-	_, err := hex.DecodeString(encoded)
-	return err == nil
+	return workspace.ValidSHA256(value)
 }
 
 func validTreeDigest(value string) bool {

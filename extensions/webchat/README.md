@@ -40,9 +40,10 @@ no Node. Nothing under `supervisor/` imports it.
   hold no effect authority. Success is shown only where verification exists.
 - **Loopback-only.** The gateway binds a literal loopback address (default
   `127.0.0.1:8791`). In the demonstration modes it answers GET and HEAD on `/` (a
-  redirect to `/app/`) and on `/favicon.ico` (`204`); every other route is GET-only.
-  Other methods get `405` with an `Allow` header, and request bodies are rejected.
-  Live mode adds the `POST` routes of its contract and keeps the loopback bind.
+  redirect to `/app/`) and on `/favicon.ico` (the brand mark); every other route is
+  GET-only. Other methods get `405` with an `Allow` header, and request bodies are
+  rejected. Live mode adds the `POST` routes of its contract and keeps the loopback
+  bind.
 
 ## Run the demo
 

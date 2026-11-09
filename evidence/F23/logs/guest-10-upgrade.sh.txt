@@ -1,0 +1,270 @@
+== 10-upgrade start 2026-11-08T18:30:06Z guest=172.26.25.5
+OK   FROZEN-COMMIT = 13ed11939c06e552a2d8662fb752bf2b3640ac68
+OK   F20 record TBOUND_DIGEST == PREV_TBOUND_DIGEST = sha256:ac8823a2d8702ce4fed2985cb26e24f868c1f71a9fb510e94c09e246100a0b00
+OK   F20 record TBP_DIGEST == PREV_TBP_DIGEST = sha256:2b08facaca92dd4a8457072cf081ad15acefb593bf9a347883f241691bfe852e
+OK   F20 record ENTRYPOINT_DIGEST == PREV_ENTRYPOINT_DIGEST = sha256:5c70db26cfead4576d59a2da54621667288ac38adffde1d38ca0b882e369e42c
+OK   F20 record SRC_DIGEST == PREV_SRC_DIGEST = sha256:686807637e96fae881e279be2c9eec24274f625f0aeee51dcaea64107b80dabb
+OK   F20 record BUNDLE_DIGEST == PREV_BUNDLE_DIGEST = sha256:73866d76ad8a8a9f91f40aa8b43168e10f5844f21bb32ef2537065b48b2ff1e1
+OK   F20 record IMGDIGEST == PREV_IMGDIGEST = sha256:60948dfa81f797672865cf6395d56b5a81fd2c236d291e528d8adf1ea098580b
+OK   F20 record CFG == PREV_CFG = sha256:0ef6ede75f0d66cbb4951a2985008c5e5e6a0984ae6122a473f66ee3352e296b
+OK   F20 record BASE_TD == PREV_BASE_TD = sha256:2ad72d1f2279d523074e3fe155fb7f54252bf2a50a3140049c6d1e0ce5c67aac
+OK   F20 record LOAD_TAR_DIGEST == PREV_LOAD_TAR_DIGEST = sha256:f19f4a7bab422bbec2c2257592890f47d70d504551189eccf4633062c5dfbd29
+OK   F20 record CAL_RO_DIGEST == PREV_CAL_RO_DIGEST = sha256:6b12c0ac0dcbf65684ea3889cfd8241f9e8e69cc7ccbcb52eb22e5ddd851188e
+OK   F20 record CAL_RW_DIGEST == PREV_CAL_RW_DIGEST = sha256:07b235cccb3fd8bcbd3be50b0816e708d7b5332fbefa78deb54d0a55497b3bf5
+OK   F20 record TEST_PROCORACLE == PREV_TEST_PROCORACLE = sha256:4f48cd0b8e1600b7ba1b779a16f3c72d711b4444896611e72260cf82e0ba1fae
+OK   F20 record TEST_ENTRYPOINT == PREV_TEST_ENTRYPOINT = sha256:a302585892b3e29b0cdca5463d95b738d98cc793e2fec7da96cb5517d9ddbbf1
+OK   F20 FROZEN-COMMIT record == PREV_COMMIT = 2641c6bc73a501ee1578d6dcdbe652c6086fac53
+OK   F20 g1/RID record == PREV_G1_RID = g1-req-20261108T101956Z
+OK   F20 rp/RID record == PREV_RP_RID = rp-req-20261108T102206Z
+OK   F20 dr/RID record == PREV_DR_RID = dr-req-20261108T102405Z
+OK   F20 dr/RUNID record == PREV_DR_RUNID = production-run-dec49d00a7e8f82e966d718e
+OK   F20 dr/CHECKS_OK record == 'ok' = ok
+OK   F20 dr/ADMISSION_ID record == PREV_DR_ADMISSION_ID = route-probe-dr-2026-11-08a
+OK   IMGDIGEST (session-env == HF) = sha256:eb5cd99b5e7e62905cdab34a02d2116b8671c110929d86b001b00b614da89a2f
+OK   frozen commit 13ed11939c06e552a2d8662fb752bf2b3640ac68; HF=/home/tbound/tbound-h/f23
+OK   admin.key size/mode = 64 600
+OK   admin.pub digest == HF ADMIN_PUB_DIGEST = sha256:be206a41ad321f29ef89e8157f69a6f0820a93fafa3096b71867ece745f9afac
+OK   admin.pub digest == F0 = sha256:be206a41ad321f29ef89e8157f69a6f0820a93fafa3096b71867ece745f9afac
+OK   cosign.pub digest == HF COSIGN_PUB_DIGEST = sha256:caf906a4ead6cd8998502333030f0602e66302e47b1539afebe5a13c39e66bcd
+OK   cosign.pub digest == F0 = sha256:caf906a4ead6cd8998502333030f0602e66302e47b1539afebe5a13c39e66bcd
+
+== preflight: guest 172.26.25.5 (pinned host key, StrictHostKeyChecking=yes)
+guest address: GUEST_IP=172.26.25.5 (changes after host restarts; if a connection fails, look it up: PowerShell 'Get-NetNeighbor -LinkLayerAddress 00-15-5D-0C-40-02', then export GUEST_IP=<IPAddress>)
+OK   ssh identity = tboundadmin
+OK   sudo -n works
+guest: tbound-abi8-seed 7.0.0-38-generic 2026-11-08T18:30:13Z 
+
+== 1. owner-side inputs (F23 build, signed layout, EVQ capture)
+OK   tbound == TBOUND_DIGEST = sha256:4852c78fc660d8073e6347814b2e553a41fa0494dececc0d32f8b37869dacd31
+OK   tbound-profile == TBP_DIGEST = sha256:16a4b00fb4b75b56301ec699c4cd613afda9773b695d9a6d5f0831412604a468
+OK   cosign tool == COSIGN_TOOL_DIGEST = sha256:4629c757b7618056f8ddd7e2625ae9fdd94c0372a65049520bc7d9df9efc7f71
+OK   cosign tool == runbook pin 4629c757... = sha256:4629c757b7618056f8ddd7e2625ae9fdd94c0372a65049520bc7d9df9efc7f71
+OK   cosign.pub == COSIGN_PUB_DIGEST = sha256:caf906a4ead6cd8998502333030f0602e66302e47b1539afebe5a13c39e66bcd
+OK   BUNDLE_DIGEST same as F20 (sha256:73866d76ad8a8a9f91f40aa8b43168e10f5844f21bb32ef2537065b48b2ff1e1)
+OK   BASH_DIGEST/NODE_DIGEST: node == pin = sha256:7fde7b8afa198da66257f42ee2001d874c7355631e6d1579a5fb5ef1f246df4c
+OK   signed layout verifies under cosign.pub and prints IMGDIGEST sha256:eb5cd99b5e7e62905cdab34a02d2116b8671c110929d86b001b00b614da89a2f
+OK   capture commit = 13ed11939c06e552a2d8662fb752bf2b3640ac68
+OK   capture archive_tree_digest == SRC_DIGEST = sha256:da00b275241e06c23b49e7bd064eb3573f52f4de136c1293157e7938f520eb95
+OK   capture exit_status = 0
+OK   capture test_binaries procoracle == TEST_PROCORACLE = sha256:72274bf50b9977652d540999940fc9791444ed675302cb9f609c703aad5a86b9
+OK   capture test_binaries cell-entrypoint == TEST_ENTRYPOINT = sha256:e29b6f8b22e3c38a01274b628bf24a239b116648a00f2c32d994b8a854a5f4d6
+OK   IMGDIGEST (F20 record) = sha256:60948dfa81f797672865cf6395d56b5a81fd2c236d291e528d8adf1ea098580b
+IMG_CHANGED=1 (IMGDIGEST F23 sha256:eb5cd99b5e7e62905cdab34a02d2116b8671c110929d86b001b00b614da89a2f, F20 sha256:60948dfa81f797672865cf6395d56b5a81fd2c236d291e528d8adf1ea098580b)
+OK   ADMIN_PUB_DIGEST == guest trust anchor = sha256:be206a41ad321f29ef89e8157f69a6f0820a93fafa3096b71867ece745f9afac
+g1 admission id: F23 template g1-eng-2026-11-08d, F20 service config g1-eng-2026-11-08a
+NOTE F23 g1 admission id is read from the frozen repo: g1-eng-2026-11-08d (must differ from F20)
+OK   g1 template has a new admission id (G1-5 step 1)
+
+== 1c. the F20 request rp-req-20261108T102206Z must be reconciled or archived (terminal + abandoned, completed, or moved aside by 27) before the F20 chain is replaced
+OK   the F20 service state was archived by 27-archive-state.sh (archive_dir=/root/ga/archive-f20-20261108T182924Z manifest_sha256=0fade4b0c99defd2a0a5bc3e9555807aa257b423934fa4ee953eab96f2f49717): no reconciliation needed, the request journal and catalog are fresh
+OK   live root kept by 27 (owner/mode) = tbound-pi:tbound-pi 700
+OK   live root content archived by 27 (only lost+found may stay) = 0
+
+== 1b. guest units and canonical podman config (verified, never reinstalled here)
+OK   usr-local-bin-tbound.mount = active
+OK   usr-bin-podman.mount = active
+OK   usr-bin-crun.mount = active
+OK   opt-tbound-cell.mount = active
+OK   usr-local-bin-node.mount = active
+OK   guest containers.conf == F23 canonical = sha256:39d4074e9443db514b09313e45d46923b84c372dea6b394dbc3056bf354c3ba0
+OK   guest storage.conf == F23 canonical = sha256:9ebdcc8b5ed0ec25af5bdd93ccd8328b7a8ceb0744ee140ca9e7722cb294c0c7
+OK   CONTAINERS_CONF_DIGEST == F20 record = sha256:39d4074e9443db514b09313e45d46923b84c372dea6b394dbc3056bf354c3ba0
+OK   STORAGE_CONF_DIGEST == F20 record = sha256:9ebdcc8b5ed0ec25af5bdd93ccd8328b7a8ceb0744ee140ca9e7722cb294c0c7
+OK   recorded CONTAINERS_CONF_DIGEST = sha256:39d4074e9443db514b09313e45d46923b84c372dea6b394dbc3056bf354c3ba0
+OK   recorded STORAGE_CONF_DIGEST = sha256:9ebdcc8b5ed0ec25af5bdd93ccd8328b7a8ceb0744ee140ca9e7722cb294c0c7
+
+== 2. stop service and socket
+
+== stop tbound-pi.service and tbound-pi.socket (the socket is started again when this script ends)
+tbound-pi.service/.socket is-active: inactive inactive
+OK   tbound-pi service and socket inactive
+
+== 3. rollback copies of the F20 files (written once)
+backups: total 45876|drwxr-xr-x 2 root root     4096 Nov  8 10:18 cfg-templates|-r--r--r-- 1 root root     1440 Nov  8 10:18 pins.env|-r-xr-xr-x 1 root root 30877311 Nov  8 10:17 tbound|-rwxr-xr-x 1 root root    65414 Nov  7 10:01 tbound-op|-rwxr-xr-x 1 root root 16022644 Nov  8 10:17 tbound-profile|
+
+== 4. runner: /opt/tbound/tbound/tbound and its read-only file bind
+swap: tbound-netsink was active=1
+OK   guest /usr/local/bin/tbound (ro bind) = sha256:4852c78fc660d8073e6347814b2e553a41fa0494dececc0d32f8b37869dacd31
+OK   guest /opt/tbound/tbound/tbound = sha256:4852c78fc660d8073e6347814b2e553a41fa0494dececc0d32f8b37869dacd31
+
+== 5. tbound-profile
+OK   guest /usr/local/bin/tbound-profile = sha256:16a4b00fb4b75b56301ec699c4cd613afda9773b695d9a6d5f0831412604a468
+NOTE TBP_DIGEST changed vs F20: sha256:2b08facaca92dd4a8457072cf081ad15acefb593bf9a347883f241691bfe852e -> sha256:16a4b00fb4b75b56301ec699c4cd613afda9773b695d9a6d5f0831412604a468
+
+== 6. cell-src: cosign, seccomp.json, cosign.pub, signed layout
+OK   cell-src/cosign == pin = sha256:4629c757b7618056f8ddd7e2625ae9fdd94c0372a65049520bc7d9df9efc7f71
+OK   cell-src/cosign == owner cosign tool = sha256:4629c757b7618056f8ddd7e2625ae9fdd94c0372a65049520bc7d9df9efc7f71
+OK   cell-src/seccomp.json == pin = sha256:cc374cf23846ce1f62f4dc807a8e2b8673c783c6f56cb475467621035d281e6c
+OK   cell-src/cosign.pub (unchanged key) = sha256:caf906a4ead6cd8998502333030f0602e66302e47b1539afebe5a13c39e66bcd
+owner layout tree digests: F23 b8680b6fbca6129bd132859140438d9e8bdbd37bb553f8ba94d9a3204fb5ab62   F20 91517b2ec83e1ce82f1eca33a02a7a8fced2d75429543244c72df207e09ee03e   (equal bytes: no)
+guest cell-src layout tree digest: 91517b2ec83e1ce82f1eca33a02a7a8fced2d75429543244c72df207e09ee03e
+OK   F20 layout moved to /opt/tbound/bin/f23-backup/pi-cell-oci
+OK   layout tree digest cell-src = b8680b6fbca6129bd132859140438d9e8bdbd37bb553f8ba94d9a3204fb5ab62
+OK   layout files not root:root / dirs not 0755 / files not 0444 = 0
+  ro ok  /usr/local/bin/tbound ro,nosuid,nodev,relatime
+  ro ok  /usr/local/bin/node ro,nosuid,nodev,relatime
+  ro ok  /usr/bin/podman ro,nosuid,nodev,relatime
+  ro ok  /usr/bin/crun ro,nosuid,nodev,relatime
+  ro ok  /opt/tbound/cell ro,nosuid,nodev,relatime
+OK   ro,nosuid,nodev: /usr/local/bin/tbound /usr/local/bin/node /usr/bin/podman /usr/bin/crun /opt/tbound/cell
+OK   ro /usr/local/bin/tbound == $W/bin/tbound = sha256:4852c78fc660d8073e6347814b2e553a41fa0494dececc0d32f8b37869dacd31
+OK   ro /usr/local/bin/tbound == TBOUND_DIGEST = sha256:4852c78fc660d8073e6347814b2e553a41fa0494dececc0d32f8b37869dacd31
+OK   tbound-profile == $W/bin/tbound-profile = sha256:16a4b00fb4b75b56301ec699c4cd613afda9773b695d9a6d5f0831412604a468
+OK   node = sha256:7fde7b8afa198da66257f42ee2001d874c7355631e6d1579a5fb5ef1f246df4c
+OK   podman = sha256:859cb7e29723d1ca2f6bec025405b7ed6ea3040709ed129d7fed5f8fca92d2ca
+OK   crun = sha256:bd8ad7e7798edd5a857476c33bbef463b8b60ca2db43d7feb77698a703060c84
+OK   ro cosign = sha256:4629c757b7618056f8ddd7e2625ae9fdd94c0372a65049520bc7d9df9efc7f71
+OK   ro cosign.pub == COSIGN_PUB_DIGEST = sha256:caf906a4ead6cd8998502333030f0602e66302e47b1539afebe5a13c39e66bcd
+OK   ro seccomp.json = sha256:cc374cf23846ce1f62f4dc807a8e2b8673c783c6f56cb475467621035d281e6c
+OK   ro layout tree digest == cell-src = b8680b6fbca6129bd132859140438d9e8bdbd37bb553f8ba94d9a3204fb5ab62
+Flag --offline has been deprecated, To verify in an airgapped environment, provide a --bundle with the signature and verification material, and a --trusted-root file with the service keys and certificates
+WARNING: Skipping tlog verification is an insecure practice that lacks transparency and auditability verification for the signature.
+
+Verification for /opt/tbound/cell/pi-cell-oci --
+The following checks were performed on each of these signatures:
+  - The cosign claims were validated
+  - The signatures were verified against the specified public key
+
+[{"critical":{"identity":{"docker-reference":"localhost/tbound/pi-cell"},"image":{"docker-manifest-digest":"sha256:eb5cd99b5e7e62905cdab34a02d2116b8671c110929d86b001b00b614da89a2f"},"type":"cosign container image signature"},"optional":null}]
+
+OK   guest cosign verify docker-manifest-digest == IMGDIGEST (F23) = sha256:eb5cd99b5e7e62905cdab34a02d2116b8671c110929d86b001b00b614da89a2f
+OK   tbound-netsink = active
+OK   netsink process image (/proc/252406/exe) == F23 runner = sha256:4852c78fc660d8073e6347814b2e553a41fa0494dececc0d32f8b37869dacd31
+
+== 7. measures (service context, read-only) and the F23 base template
+OK   BUNDLE_DIGEST (guest, service context) = sha256:73866d76ad8a8a9f91f40aa8b43168e10f5844f21bb32ef2537065b48b2ff1e1
+{"filesystem_magic":61267,"mount_options_digest":"sha256:4ae60254afe183f9f8b49d2956ca8ee68ba00380a20111b8ccb12fed35581cb3","scan_uid":995,"scan_gid":986,"scan_privilege_profile":"service-nonroot-no-extra-groups-empty-caps-nnp-initial-userns/v1","effective_capabilities":"0000000000000000","no_new_privs":true,"initial_user_namespace":true,"read_only":true,"root_owned":true}
+OK   xattr-measure output lines = 1
+OK   read_only true, root_owned true
+OK   filesystem magic (0xef63 ext4) = 61267
+OK   mount_options_digest == F0 value sha256:4ae60254afe183f9f8b49d2956ca8ee68ba00380a20111b8ccb12fed35581cb3
+OK   XATTR_MOPT == F20
+OK   recorded xattr-measure-runtime.json = {"filesystem_magic":61267,"mount_options_digest":"sha256:4ae60254afe183f9f8b49d2956ca8ee68ba00380a20111b8ccb12fed35581cb3","scan_uid":995,"scan_gid":986,"scan_privilege_profile":"service-nonroot-no-extra-groups-empty-caps-nnp-initial-userns/v1","effective_capabilities":"0000000000000000","no_new_privs":true,"initial_user_namespace":true,"read_only":true,"root_owned":true}
+OK   recorded XATTR_MOPT = sha256:4ae60254afe183f9f8b49d2956ca8ee68ba00380a20111b8ccb12fed35581cb3
+OK   recorded XATTR_MAGIC = 61267
+OK   LANDLOCK_DIGEST same as F20 (sha256:6c7bcda1461c17b7847cd124a0bba03ba4d7779bb3b07c2bc83805e7859a06af)
+OK   recorded LANDLOCK_DIGEST = sha256:6c7bcda1461c17b7847cd124a0bba03ba4d7779bb3b07c2bc83805e7859a06af
+OK   XATTR_VIS_DIGEST same as F20 (sha256:aca635c08be5e4eb5aa9dd978626fe5cc7d0c2e505dd74cf31b455d944539dd1)
+OK   recorded XATTR_VIS_DIGEST = sha256:aca635c08be5e4eb5aa9dd978626fe5cc7d0c2e505dd74cf31b455d944539dd1
+OK   CGROUP_ROOT_DIGEST same as F20 (sha256:8c64df4047d2e49832d3fd5334c06eca57a9812c2bb374c26ab8a947ac2e03ce)
+OK   recorded CGROUP_ROOT_DIGEST = sha256:8c64df4047d2e49832d3fd5334c06eca57a9812c2bb374c26ab8a947ac2e03ce
+wrote unmeasured draft D09 cell template: /home/tbound/tbound-h/f23/d09-cell.base.json.partial
+Replace every empty digest (including managed_live_root_registration_digest), the exact Landlock ABI, and resource bounds with measured values. Sign the protected managed-root registration with managed-root-sign before binding its digest here. Then compute:
+  tbound-profile template-digest --template /home/tbound/tbound-h/f23/d09-cell.base.json.partial
+  (set the signed profile ContainmentProfileDigest to that digest)
+filled /home/tbound/tbound-h/f23/d09-cell.base.json.partial: 42 members, mapping digest sha256:30bd0f961c016eaeba90fa5e80a8e4d65893ae1dd142e466a1a4ea21cf5bf7f4
+mapping_digest sha256:30bd0f961c016eaeba90fa5e80a8e4d65893ae1dd142e466a1a4ea21cf5bf7f4
+OK   saved /home/tbound/tbound-h/f23/d09-cell.base.json
+OK   base template: expected_image_digest == IMGDIGEST = sha256:eb5cd99b5e7e62905cdab34a02d2116b8671c110929d86b001b00b614da89a2f
+OK   base template: user_namespace_mapping_digest = sha256:30bd0f961c016eaeba90fa5e80a8e4d65893ae1dd142e466a1a4ea21cf5bf7f4
+OK   base template: registration digest is the placeholder = sha256:0000000000000000000000000000000000000000000000000000000000000000
+D09 cell template canonical digest: sha256:c690989e3eb98950f5cc35b9d27cd811b47558598059678342d04a14d3cec9ce
+D09 base template digest (registration digest emptied; run.json pins.base_template_digest): sha256:0179bdd920627ce28ee7041c67c924df7dfcaefeb046270de54ec3b65e2e8fce
+D09 command-cell delta net-sink/v1 template digest: sha256:8cd30d963c72f42ff652637d5806ae6b411d34a9374581e67bf1c06c06d637a8
+D09 command-cell delta no-reap/v1 template digest: sha256:4bc82011832ad4ece9998af436488186af89f8e33c9abed90e4340baf48a7582
+NOTE BASE_TD changed vs F20: sha256:2ad72d1f2279d523074e3fe155fb7f54252bf2a50a3140049c6d1e0ce5c67aac -> sha256:0179bdd920627ce28ee7041c67c924df7dfcaefeb046270de54ec3b65e2e8fce
+OK   recorded BASE_TD = sha256:0179bdd920627ce28ee7041c67c924df7dfcaefeb046270de54ec3b65e2e8fce
+
+== 8. operator files (owner tree: /home/tbound/tbound-w.DWUiOo/src/infra/guest/operator, templates /home/tbound/tbound-w.DWUiOo/src/infra/guest/serve-pi-service.*.json)
+OK   /opt/tbound/operator/tbound-op already equals the F23 source
+OK   guest tbound-op == owner F23 source = sha256:c4b53534fec63c0a1d614a2a8c9a9ec3e533f7c55202a45c3f63e730999ef734
+OK   tbound-op owner/mode = root:root 755|root:root 755|
+OK   /etc/sudoers.d/50-tbound-op == F23 source = sha256:0ab6ffb495eddb06d5bcc889d217ea5c581669c980cb0ad555ee896c7ca1fc92
+OK   smoke template already equals the F23 source
+OK   guest cfg-template smoke == F23 source = sha256:e262c7a954e09b7e02b4fd640d37fa0ce2aa4bc618ecc284aa2b75f2f5d7f999
+OK   guest cfg-template g1 == F23 source = sha256:85211c7cc72318ab2884ad782ece25155ace72b306adc8ae55bd256ba7cf4f84
+OK   guest cfg-template route-probe == F23 source = sha256:4760a04269b27f5bc7fcfe740d679df4782773346ff440b479cc8218fb6088b9
+OK   corpus-pilot template already equals the F23 source
+OK   guest cfg-template corpus-pilot == F23 source = sha256:68a9a8a2818d838954c5c6b27f6c3426040c89922078534f91d3abec57f76975
+      1 4
+      4 root:root:444
+OK   pins.env key set (guest now == F23 generated) = ADMIN_PUB_DIGEST BASE_TD BUNDLE_DIGEST CFG F IMGDIGEST SRC_DIGEST TBOUND_DIGEST TBP_DIGEST TEST_ENTRYPOINT TEST_PROCORACLE TPL_G1 TPL_PILOT TPL_RP TPL_SMOKE 
+generated pins.env sha256 sha256:82a0129ab2e6002eb5d4f16d0f038c2b7d6e3bce46c1605ed7d6974daac29019:
+# tbound-op pins (generated from $HF digest files and $CF/capture.json; F23 frozen commit 13ed11939c06e552a2d8662fb752bf2b3640ac68). root:root 0444.
+# Parsed (never sourced) by tbound-op: KEY=value, value = sha256:<64 hex> or 40 hex.
+ADMIN_PUB_DIGEST=sha256:be206a41ad321f29ef89e8157f69a6f0820a93fafa3096b71867ece745f9afac
+BASE_TD=sha256:0179bdd920627ce28ee7041c67c924df7dfcaefeb046270de54ec3b65e2e8fce
+BUNDLE_DIGEST=sha256:73866d76ad8a8a9f91f40aa8b43168e10f5844f21bb32ef2537065b48b2ff1e1
+CFG=sha256:2656d410f2b5b8dd40cce326f3c3f73affdd5154fc85fa9a190cbe4d4e2f7731
+F=13ed11939c06e552a2d8662fb752bf2b3640ac68
+IMGDIGEST=sha256:eb5cd99b5e7e62905cdab34a02d2116b8671c110929d86b001b00b614da89a2f
+SRC_DIGEST=sha256:da00b275241e06c23b49e7bd064eb3573f52f4de136c1293157e7938f520eb95
+TBOUND_DIGEST=sha256:4852c78fc660d8073e6347814b2e553a41fa0494dececc0d32f8b37869dacd31
+TBP_DIGEST=sha256:16a4b00fb4b75b56301ec699c4cd613afda9773b695d9a6d5f0831412604a468
+TEST_ENTRYPOINT=sha256:e29b6f8b22e3c38a01274b628bf24a239b116648a00f2c32d994b8a854a5f4d6
+TEST_PROCORACLE=sha256:72274bf50b9977652d540999940fc9791444ed675302cb9f609c703aad5a86b9
+TPL_G1=sha256:85211c7cc72318ab2884ad782ece25155ace72b306adc8ae55bd256ba7cf4f84
+TPL_PILOT=sha256:68a9a8a2818d838954c5c6b27f6c3426040c89922078534f91d3abec57f76975
+TPL_RP=sha256:4760a04269b27f5bc7fcfe740d679df4782773346ff440b479cc8218fb6088b9
+TPL_SMOKE=sha256:e262c7a954e09b7e02b4fd640d37fa0ce2aa4bc618ecc284aa2b75f2f5d7f999
+-- changes vs the current guest pins.env:
+2c2
+< BASE_TD=sha256:2ad72d1f2279d523074e3fe155fb7f54252bf2a50a3140049c6d1e0ce5c67aac
+---
+> BASE_TD=sha256:0179bdd920627ce28ee7041c67c924df7dfcaefeb046270de54ec3b65e2e8fce
+4,12c4,12
+< CFG=sha256:0ef6ede75f0d66cbb4951a2985008c5e5e6a0984ae6122a473f66ee3352e296b
+< F=2641c6bc73a501ee1578d6dcdbe652c6086fac53
+< IMGDIGEST=sha256:60948dfa81f797672865cf6395d56b5a81fd2c236d291e528d8adf1ea098580b
+< SRC_DIGEST=sha256:686807637e96fae881e279be2c9eec24274f625f0aeee51dcaea64107b80dabb
+< TBOUND_DIGEST=sha256:ac8823a2d8702ce4fed2985cb26e24f868c1f71a9fb510e94c09e246100a0b00
+< TBP_DIGEST=sha256:2b08facaca92dd4a8457072cf081ad15acefb593bf9a347883f241691bfe852e
+< TEST_ENTRYPOINT=sha256:a302585892b3e29b0cdca5463d95b738d98cc793e2fec7da96cb5517d9ddbbf1
+< TEST_PROCORACLE=sha256:4f48cd0b8e1600b7ba1b779a16f3c72d711b4444896611e72260cf82e0ba1fae
+< TPL_G1=sha256:6cd5265d88e11a17de3f26873014fae5aba8a482b5f8c38054a65fffb1755eb8
+---
+> CFG=sha256:2656d410f2b5b8dd40cce326f3c3f73affdd5154fc85fa9a190cbe4d4e2f7731
+> F=13ed11939c06e552a2d8662fb752bf2b3640ac68
+> IMGDIGEST=sha256:eb5cd99b5e7e62905cdab34a02d2116b8671c110929d86b001b00b614da89a2f
+> SRC_DIGEST=sha256:da00b275241e06c23b49e7bd064eb3573f52f4de136c1293157e7938f520eb95
+> TBOUND_DIGEST=sha256:4852c78fc660d8073e6347814b2e553a41fa0494dececc0d32f8b37869dacd31
+> TBP_DIGEST=sha256:16a4b00fb4b75b56301ec699c4cd613afda9773b695d9a6d5f0831412604a468
+> TEST_ENTRYPOINT=sha256:e29b6f8b22e3c38a01274b628bf24a239b116648a00f2c32d994b8a854a5f4d6
+> TEST_PROCORACLE=sha256:72274bf50b9977652d540999940fc9791444ed675302cb9f609c703aad5a86b9
+> TPL_G1=sha256:85211c7cc72318ab2884ad782ece25155ace72b306adc8ae55bd256ba7cf4f84
+14c14
+< TPL_RP=sha256:0a81b564227ca2eae71091c321feb17351f39ca293300a2aea86db5b1653d9c3
+---
+> TPL_RP=sha256:4760a04269b27f5bc7fcfe740d679df4782773346ff440b479cc8218fb6088b9
+OK   guest pins.env == generated = sha256:82a0129ab2e6002eb5d4f16d0f038c2b7d6e3bce46c1605ed7d6974daac29019
+OK   pins.env owner/mode = root:root 444
+
+== 9. socket up, dispatcher status
+OK   tbound-pi.socket = active
+tbound-op status 2026-11-08T18:30:56Z pins F=13ed11939c06e552a2d8662fb752bf2b3640ac68
+anchor: ok (pi-host-profile.pub sha256:be206a41ad321f29ef89e8157f69a6f0820a93fafa3096b71867ece745f9afac)
+runner: sha256:4852c78fc660d807 tbound-profile: sha256:16a4b00fb4b75b56
+service=inactive socket=active
+installed: cfg sha256:66962b82bd66fd648e149861a100b6cc4c4a43abccbe6dede19a86645e33596e reg sha256:b1acff77a029a283 prof sha256:099f8f87d4658167 tpl sha256:72a873898daeefcf
+installed config matches state of: 
+-- smoke one-use markers: client=smoke-req-20261021T110233Z n7=smoke-req-20261021T110407Z 
+-- smoke client-run.status: done exit=0 2026-10-21T11:03:11Z
+-- smoke:
+     cfg=sha256:a46353903e6d82bc4e716ac64914be5b97ae72c7a0b7daa5875aa8db65dbd4fc
+     prof=sha256:ab69b7a61200481ca21f18b435922818698fad0c57c249a372260e07c29c9ba0
+     profjson=sha256:90bcdf326e8389527e5cc5b914395259f2f695493af5cd279af63b72d66dca5c
+     profsig=sha256:9edf4e7806e70bea2f0793590af80f39b0fd7fa8f8e4c2f28bd9a4b413e47180
+     reg=sha256:186d7bdda910c725a237e3ea0f5b389baa77e8a32f2c775325824103c8e9191a
+     regjson=sha256:4c154470bf3fa48a1656ea5bbe3e80c1912385e1847ed2b9a3d76a22af95d27e
+     regsig=sha256:c717f049c77fb8be8e64175e01613ecbfe237fcb8c70ceca0432568f1529ffcb
+     state=started
+     td=sha256:631328590d8ea4763fe3b72feec9e2fa0156e189e0cff4b3695f4ba23bc91655
+     tpl=sha256:631328590d8ea4763fe3b72feec9e2fa0156e189e0cff4b3695f4ba23bc91655
+-- g1: no state
+-- rp: no state
+-- dr: no state
+-- pilot: no state
+-- last log lines
+2026-11-08T18:29:50Z tboundadmin END rc=0 argv=status g1 
+2026-11-08T18:30:16Z tboundadmin BEGIN argv=status g1 
+2026-11-08T18:30:16Z tboundadmin OK status g1 
+2026-11-08T18:30:16Z tboundadmin END rc=0 argv=status g1 
+2026-11-08T18:30:56Z tboundadmin BEGIN argv=status 
+OK   tbound-op status: pins F=13ed11939c06e552a2d8662fb752bf2b3640ac68, anchor ok, runner and tbound-profile are the F23 builds
+NOTE the installed g1 chain (registration binds the F20 runner) is stale by design; next: 20-r1.sh (verify), 50-i1-i2.sh, CLOSE the session sudo, then 29-g1-recover.sh (G1-5 step 2, password sudo) and 30-reg-g1.sh
+
+== DONE 10-upgrade.sh 2026-11-08T18:30:56Z
+cleanup: runner mount and tbound-netsink must be up again
+active
+cleanup: tbound-pi.socket must be active again
+active

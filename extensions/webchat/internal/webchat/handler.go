@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -76,9 +77,7 @@ func newHandler(store *Store, options HandlerOptions, app *appBundle) http.Handl
 			serveRoot(writer, request)
 			return
 		case faviconPath:
-			// No body and no Content-Type: the base security headers are already set
-			// above for every response.
-			writer.WriteHeader(http.StatusNoContent)
+			serveFavicon(writer, request)
 			return
 		}
 		if escaped == "/app" || strings.HasPrefix(escaped, appPrefix) {
@@ -148,6 +147,19 @@ func serveFile(writer http.ResponseWriter, source fs.FS, name, contentType strin
 	setSecurityHeaders(writer, contentType)
 	_ = boundedWrite(writer, func() error {
 		_, err := writer.Write(content)
+		return err
+	})
+}
+
+func serveFavicon(writer http.ResponseWriter, request *http.Request) {
+	setSecurityHeaders(writer, "image/x-icon")
+	writer.Header().Set("Content-Length", strconv.Itoa(len(faviconICO)))
+	if request.Method == http.MethodHead {
+		writer.WriteHeader(http.StatusOK)
+		return
+	}
+	_ = boundedWrite(writer, func() error {
+		_, err := writer.Write(faviconICO)
 		return err
 	})
 }
@@ -381,8 +393,8 @@ func boundedWrite(writer http.ResponseWriter, write func() error) error {
 
 // allowedMethods is the method policy for a path. "/" and /favicon.ico also answer
 // HEAD, so a HEAD probe sees the same answer as GET: the redirect or fallback at "/",
-// and the 204 at /favicon.ico. HEAD is refused everywhere else, so it cannot open the
-// event stream.
+// and the brand icon's headers at /favicon.ico. HEAD is refused everywhere else, so it
+// cannot open the event stream.
 func allowedMethods(escaped string) []string {
 	if escaped == rootPath || escaped == faviconPath {
 		return []string{http.MethodGet, http.MethodHead}

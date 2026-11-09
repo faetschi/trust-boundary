@@ -1,0 +1,10 @@
+boot d6612c79-2b05-4b4c-aa78-22b42926a780 2026-11-08T17:39:51Z
+go version go1.27.1 linux/amd64
+BUILD_OK
+VET_OK
+WINDOWS_OK
+FMT_OK
+BOUNDARY_OK
+TEST_RC=0
+boot d6612c79-2b05-4b4c-aa78-22b42926a780 2026-11-08T18:03:21Z
+tests {'pass': 7383, 'skip': 50} packages {'skip': 3, 'pass': 60}

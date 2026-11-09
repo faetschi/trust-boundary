@@ -1,6 +1,6 @@
 # Pi web chat workspace (frontend product)
 
-Status: **development increment, non-claim-bearing.** `G1=false`; containment is
+Status: **frozen development increment, non-claim-bearing.** `G1=false`; containment is
 `not-established`; `H1` is `unexecuted`. No qualified public production launch has
 occurred. A green workspace, green tests, or a loaded fixture establishes none of
 these. The React client at `/app/` is the only UI, and `/` redirects there. The legacy
@@ -13,7 +13,7 @@ authority. The relationship to OpenChamber-for-OpenCode is the *product concept*
 (a better presentation layer for a harness), not a visual or backend template.
 
 Related: [web chat service contract proposal](web-chat-contract.md),
-[architecture](../../../docs/runtime/architecture.md), [status](../../../docs/evaluation/status.md).
+[architecture](../../../docs/runtime/architecture.md), [OVERVIEW](../../../OVERVIEW.md).
 
 ## 1. Authority boundary
 
@@ -350,7 +350,7 @@ or `Origin` gets `403` on every route.
 | Route | Purpose |
 |---|---|
 | `GET` or `HEAD /` | `302` to `/app/`. The target is a constant: the query string and the rest of the request never reach `Location`, so it is not an open redirect. It redirects even when the React app cannot be derived; `/app/` then answers `503`. |
-| `GET` or `HEAD /favicon.ico` | `204`, with no body and no `Content-Type`. |
+| `GET` or `HEAD /favicon.ico` | `200` with the brand icon (`Content-Type: image/x-icon`); `HEAD` sends the headers with no body. |
 | `/legacy/`, `/static/*` | Retired. Not routes: they get the refusal of any unknown path (`404`; `405` for a non-GET method), with the gateway's security headers. |
 | `GET /app/`, `/app/*` | The React client build. Exact files come from the committed Vite manifest; `503` if the table cannot be derived. |
 | `GET /api/v1/snapshot` | Bounded observation snapshot (recovery point for a gap). |

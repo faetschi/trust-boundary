@@ -1,6 +1,7 @@
 package webchat
 
 import (
+	"bytes"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -20,17 +21,24 @@ func faviconTestRequest(t *testing.T, handler http.Handler, method, target, host
 	return recorder
 }
 
-// The browser requests /favicon.ico on every page load. The gateway answers it with
-// 204 No Content so that request is not a console error.
-func TestFaviconAnswersNoContentForGetAndHead(t *testing.T) {
+// The browser requests /favicon.ico on every page load. The gateway serves the
+// embedded brand mark so that request shows the icon instead of a console error.
+func TestFaviconServesTheBrandMarkForGetAndHead(t *testing.T) {
 	handler := newHandler(appTestStore(t), HandlerOptions{}, embeddedApp())
 	for _, method := range []string{http.MethodGet, http.MethodHead} {
 		recorder := appTestRequest(t, handler, method, "/favicon.ico")
-		if recorder.Code != http.StatusNoContent {
-			t.Errorf("%s /favicon.ico status=%d, want 204", method, recorder.Code)
+		if recorder.Code != http.StatusOK {
+			t.Errorf("%s /favicon.ico status=%d, want 200", method, recorder.Code)
 		}
-		if recorder.Body.Len() != 0 {
-			t.Errorf("%s /favicon.ico body=%q, want empty", method, recorder.Body.String())
+		if got := recorder.Header().Get("Content-Type"); got != "image/x-icon" {
+			t.Errorf("%s /favicon.ico Content-Type=%q, want %q", method, got, "image/x-icon")
+		}
+		if method == http.MethodHead {
+			if recorder.Body.Len() != 0 {
+				t.Errorf("HEAD /favicon.ico body=%q, want empty", recorder.Body.String())
+			}
+		} else if !bytes.Equal(recorder.Body.Bytes(), faviconICO) {
+			t.Errorf("GET /favicon.ico body=%d bytes, want the embedded mark", recorder.Body.Len())
 		}
 		assertSecurityHeaders(t, method+" /favicon.ico", recorder)
 	}
@@ -95,8 +103,8 @@ func TestFaviconRefusesForeignHostAndOrigin(t *testing.T) {
 	}
 
 	configured := newHandler(appTestStore(t), HandlerOptions{AllowedHost: "127.0.0.1:8791", AllowedOrigin: "http://127.0.0.1:8791"}, embeddedApp())
-	if recorder := faviconTestRequest(t, configured, http.MethodGet, "/favicon.ico", "127.0.0.1:8791", "http://127.0.0.1:8791"); recorder.Code != http.StatusNoContent {
-		t.Errorf("configured host and origin: GET /favicon.ico status=%d, want 204", recorder.Code)
+	if recorder := faviconTestRequest(t, configured, http.MethodGet, "/favicon.ico", "127.0.0.1:8791", "http://127.0.0.1:8791"); recorder.Code != http.StatusOK {
+		t.Errorf("configured host and origin: GET /favicon.ico status=%d, want 200", recorder.Code)
 	}
 	if recorder := faviconTestRequest(t, configured, http.MethodGet, "/favicon.ico", "127.0.0.1:9999", ""); recorder.Code != http.StatusForbidden {
 		t.Errorf("configured host mismatch: GET /favicon.ico status=%d, want 403", recorder.Code)
