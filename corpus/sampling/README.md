@@ -63,9 +63,9 @@ its values before resolution. Development rows (the T5 rehearsal items, D48) are
 are still marked as seen. Extra fields beyond `case_id`, `stratum`, `attack_id`, `mechanism_id` and
 `excluded` are not read by the script; the ledger digest covers them.
 
-`pilot-commitment-v1.template.json` is the pilot commitment for `T1`, with the ledger and script digests,
-the chain, the round rule and the per-source unit choices. Before publication on OSF, fill
-`signed_tag.object` and `signed_tag.commit` from the owner-signed tag `corpus-d48-ledger-v1`. The script
+`pilot-commitment-v1.template.json` is the pilot commitment for `T1`, with the ledger v2, source-digest file and script digests,
+the chain, the round rule and the per-source unit choices. Before publication on OSF, fill `adaptation_rule_sha256` with the frozen rule digest, and
+`signed_tag.object` and `signed_tag.commit` from the owner-signed tag `corpus-d48-ledger-v2`. The script
 ignores those fields.
 
 ## Ledger v2 (draft, under review)
