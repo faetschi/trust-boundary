@@ -1,4 +1,6 @@
 {
+ "adaptation_rule_path": "corpus/sampling/adaptation-rule-v1.md",
+ "adaptation_rule_sha256": "FILL: SHA-256 of adaptation rule version 1 as frozen (status line \"Version 1, frozen at T1.\"); select.py ignores this field for a pilot",
  "chain": {
   "beacon_id": "default",
   "genesis_time": 1595431050,
@@ -10,26 +12,28 @@
   "source": "https://api.drand.sh/8990e7a9aaed2ffed73dbd7092123d6f289930540d7651336225dc172e51b2ce/info, read 2026-11-08 (League of Entropy mainnet default chain)"
  },
  "kind": "pilot",
- "ledger_path": "corpus/sampling/d48-ledger-v1.jsonl",
- "ledger_sha256": "49491eb6255a7f885b38648d6f8a8889d9c91e347fddccaa3a8b190c8bf6c4eb",
+ "ledger_path": "corpus/sampling/d48-ledger-v2.jsonl",
+ "ledger_sha256": "39640703ff31dfe6099fb741d9760c1344df378b7ab3ef49be939cfe148aaebe",
  "pilot_size": 11,
  "register": "D48 (thesis/tbound/AH-technical/10-decision-register.md); 16-sampling-design.md sections 3 to 5",
  "round_rule": "R is the first round of the chain whose scheduled time genesis_time + (R - 1) * period is at least 24 hours after T1, the first-publication time in UTC of this file's OSF version (16-sampling-design.md section 4). The seed is that round's 32-byte randomness. No later round, alternate commitment, seed or redraw may be chosen.",
  "script_path": "corpus/sampling/select.py",
  "script_sha256": "085c771f571062fdcaf17a7f166631d18f89fad85bf0a25af986ff6408d8a940",
  "signed_tag": {
-  "commit": "FILL: git rev-parse corpus-d48-ledger-v1^{commit}",
-  "name": "corpus-d48-ledger-v1",
-  "object": "FILL: git rev-parse corpus-d48-ledger-v1"
+  "commit": "FILL: git rev-parse corpus-d48-ledger-v2^{commit}",
+  "name": "corpus-d48-ledger-v2",
+  "object": "FILL: git rev-parse corpus-d48-ledger-v2"
  },
+ "source_digests_path": "corpus/sampling/d48-source-digests-v2.json",
+ "source_digests_sha256": "4b8eaf678c31ae33e8c8a4484d0d714034f8bf1183d586acfe19f5a46236f95d",
  "unit_choices": {
   "ASB": "one attacker tool x its agent's first user task (task_num = 1)",
   "ASEval": "one injected conversation",
   "Agent-SafetyBench": "one test case",
-  "AgentDojo": "one user task x injection task pair of the pinned v1 suites",
+  "AgentDojo": "one user task x injection task pair of the pinned v1 suites; attack: important_instructions (src/agentdojo/attacks/important_instructions_attacks.py, sha256 519f24e0b9d72f43343d665679adacc33758b50cd1b586a81fa53fb098dcfe71) with user 'Emma Johnson' and model 'the AI language model', placed in every injection vector the user task's ground truth reads",
   "CodeIPI": "one injected sample",
   "ControlArena": "one main task x side task pair (no row is a candidate)",
-  "InjecAgent": "one base-setting case: attacker case x user case; the enhanced setting adds none",
+  "InjecAgent": "one base-setting case: attacker case x user case, with the Tool Response of data/test_cases_{dh,ds}_base.json; the enhanced setting adds none",
   "MSB": "one attack goal item",
   "OS-Harm": "one task (goal) item",
   "RedCode-Exec": "one Text_details prompt per row",
