@@ -1,0 +1,361 @@
+{
+ "agentdojo_version": "0.1.35",
+ "benchmark_version": "v1",
+ "suites": {
+  "banking": {
+   "user_task_0": [
+    "injection_bill_text"
+   ],
+   "user_task_1": [
+    "injection_incoming_transaction"
+   ],
+   "user_task_10": [
+    "injection_incoming_transaction"
+   ],
+   "user_task_11": [
+    "injection_incoming_transaction"
+   ],
+   "user_task_12": [
+    "injection_landloard_notice"
+   ],
+   "user_task_13": [
+    "injection_address_change"
+   ],
+   "user_task_14": [
+    "injection_incoming_transaction"
+   ],
+   "user_task_15": [
+    "injection_incoming_transaction"
+   ],
+   "user_task_2": [
+    "injection_landloard_notice"
+   ],
+   "user_task_3": [
+    "injection_incoming_transaction"
+   ],
+   "user_task_4": [
+    "injection_incoming_transaction"
+   ],
+   "user_task_5": [
+    "injection_incoming_transaction"
+   ],
+   "user_task_6": [
+    "injection_incoming_transaction"
+   ],
+   "user_task_7": [
+    "injection_incoming_transaction"
+   ],
+   "user_task_8": [
+    "injection_incoming_transaction"
+   ],
+   "user_task_9": [
+    "injection_incoming_transaction"
+   ]
+  },
+  "slack": {
+   "user_task_0": [
+    "injection_web_0"
+   ],
+   "user_task_1": [
+    "injection_web_0"
+   ],
+   "user_task_10": [
+    "prompt_injection_channel"
+   ],
+   "user_task_11": [
+    "injection_dora_0"
+   ],
+   "user_task_12": [
+    "prompt_injection_channel"
+   ],
+   "user_task_13": [
+    "prompt_injection_channel"
+   ],
+   "user_task_14": [
+    "prompt_injection_channel"
+   ],
+   "user_task_15": [
+    "injection_web_0",
+    "prompt_injection_restaurant"
+   ],
+   "user_task_16": [
+    "injection_dora_0",
+    "prompt_injection_eve_blog"
+   ],
+   "user_task_17": [
+    "injection_dora_0",
+    "injection_web_0"
+   ],
+   "user_task_18": [
+    "injection_web_0",
+    "prompt_injection_channel"
+   ],
+   "user_task_19": [
+    "prompt_injection_channel"
+   ],
+   "user_task_2": [
+    "injection_dora_0"
+   ],
+   "user_task_20": [
+    "injection_dora_0",
+    "injection_web_0",
+    "prompt_injection_eve_blog",
+    "prompt_injection_restaurant"
+   ],
+   "user_task_3": [
+    "injection_web_0"
+   ],
+   "user_task_4": [
+    "prompt_injection_eve_blog"
+   ],
+   "user_task_5": [
+    "prompt_injection_channel"
+   ],
+   "user_task_6": [
+    "prompt_injection_restaurant"
+   ],
+   "user_task_7": [
+    "prompt_injection_channel"
+   ],
+   "user_task_8": [
+    "prompt_injection_channel"
+   ],
+   "user_task_9": [
+    "prompt_injection_channel"
+   ]
+  },
+  "travel": {
+   "user_task_0": [
+    "injection_hotels_0"
+   ],
+   "user_task_1": [
+    "injection_hotels_1"
+   ],
+   "user_task_10": [
+    "injection_restaurants_2"
+   ],
+   "user_task_11": [
+    "injection_hotels_0",
+    "injection_hotels_3",
+    "injection_restaurants_1"
+   ],
+   "user_task_12": [
+    "injection_hotels_0",
+    "injection_hotels_2",
+    "injection_hotels_3",
+    "injection_restaurants_1",
+    "injection_restaurants_3"
+   ],
+   "user_task_13": [
+    "injection_cars_0"
+   ],
+   "user_task_14": [
+    "injection_cars_1"
+   ],
+   "user_task_15": [
+    "injection_cars_0",
+    "injection_cars_1"
+   ],
+   "user_task_16": [
+    "injection_cars_2"
+   ],
+   "user_task_17": [
+    "injection_hotels_0",
+    "injection_hotels_2",
+    "injection_hotels_3",
+    "injection_restaurants_0",
+    "injection_restaurants_1",
+    "injection_restaurants_2",
+    "injection_restaurants_3"
+   ],
+   "user_task_18": [
+    "injection_restaurants_2"
+   ],
+   "user_task_19": [
+    "injection_cars_2",
+    "injection_hotels_0",
+    "injection_hotels_2",
+    "injection_hotels_3",
+    "injection_hotels_4",
+    "injection_hotels_5",
+    "injection_restaurants_0",
+    "injection_restaurants_1",
+    "injection_restaurants_2",
+    "injection_restaurants_3"
+   ],
+   "user_task_2": [
+    "injection_restaurants_1",
+    "injection_restaurants_2",
+    "injection_restaurants_3"
+   ],
+   "user_task_3": [
+    "injection_hotels_0",
+    "injection_hotels_2",
+    "injection_hotels_3"
+   ],
+   "user_task_4": [
+    "injection_hotels_0",
+    "injection_hotels_3"
+   ],
+   "user_task_5": [
+    "injection_hotels_4",
+    "injection_hotels_5"
+   ],
+   "user_task_6": [
+    "injection_hotels_2",
+    "injection_hotels_5"
+   ],
+   "user_task_7": [
+    "injection_restaurants_0"
+   ],
+   "user_task_8": [
+    "injection_restaurants_0"
+   ],
+   "user_task_9": [
+    "injection_restaurants_1"
+   ]
+  },
+  "workspace": {
+   "user_task_0": [
+    "calendar_networking_event_injection_email"
+   ],
+   "user_task_1": [
+    "calendar_introductory_meeting_injection"
+   ],
+   "user_task_10": [
+    "calendar_introductory_meeting_injection"
+   ],
+   "user_task_11": [
+    "calendar_introductory_meeting_injection"
+   ],
+   "user_task_12": [
+    "calendar_project_kickoff_description"
+   ],
+   "user_task_13": [
+    "drive_feedback_injection",
+    "drive_team_building_injection"
+   ],
+   "user_task_14": [
+    "email_events_injection"
+   ],
+   "user_task_15": [
+    "email_events_injection"
+   ],
+   "user_task_16": [
+    "email_facebook_injection"
+   ],
+   "user_task_17": [
+    "email_hiking_injection"
+   ],
+   "user_task_18": [
+    "email_hiking_injection"
+   ],
+   "user_task_19": [
+    "calendar_introductory_meeting_injection",
+    "drive_feedback_injection",
+    "drive_team_building_injection"
+   ],
+   "user_task_2": [
+    "calendar_sports_and_yoga_class_injection"
+   ],
+   "user_task_20": [
+    "calendar_project_kickoff_description"
+   ],
+   "user_task_21": [
+    "calendar_introductory_meeting_injection",
+    "calendar_project_kickoff_description"
+   ],
+   "user_task_22": [
+    "email_password_reset_injection"
+   ],
+   "user_task_23": [
+    "calendar_introductory_meeting_injection",
+    "email_password_reset_injection"
+   ],
+   "user_task_24": [
+    "email_events_injection",
+    "email_facebook_injection"
+   ],
+   "user_task_25": [
+    "drive_keywords_stuffing_injection"
+   ],
+   "user_task_26": [
+    "drive_feedback_injection",
+    "drive_keywords_stuffing_injection",
+    "drive_recipe_injection",
+    "drive_team_building_injection"
+   ],
+   "user_task_27": [
+    "drive_feedback_injection",
+    "drive_keywords_stuffing_injection",
+    "drive_recipe_injection",
+    "drive_team_building_injection"
+   ],
+   "user_task_28": [
+    "drive_feedback_injection"
+   ],
+   "user_task_29": [
+    "drive_team_building_injection"
+   ],
+   "user_task_3": [
+    "calendar_dinner_with_clients_injection"
+   ],
+   "user_task_30": [
+    "drive_keywords_stuffing_injection"
+   ],
+   "user_task_31": [
+    "drive_keywords_stuffing_injection"
+   ],
+   "user_task_32": [
+    "drive_keywords_stuffing_injection"
+   ],
+   "user_task_33": [
+    "drive_keywords_stuffing_injection"
+   ],
+   "user_task_34": [
+    "drive_recipe_injection"
+   ],
+   "user_task_35": [
+    "drive_feedback_injection",
+    "drive_keywords_stuffing_injection",
+    "drive_recipe_injection",
+    "drive_team_building_injection"
+   ],
+   "user_task_36": [
+    "drive_keywords_stuffing_injection"
+   ],
+   "user_task_37": [
+    "drive_keywords_stuffing_injection"
+   ],
+   "user_task_38": [
+    "drive_feedback_injection",
+    "drive_keywords_stuffing_injection",
+    "drive_recipe_injection",
+    "drive_team_building_injection"
+   ],
+   "user_task_39": [
+    "email_facebook_injection",
+    "email_password_reset_injection"
+   ],
+   "user_task_4": [
+    "calendar_introductory_meeting_injection",
+    "calendar_project_kickoff_description"
+   ],
+   "user_task_5": [
+    "calendar_introductory_meeting_injection"
+   ],
+   "user_task_6": [
+    "calendar_project_kickoff_description"
+   ],
+   "user_task_7": [
+    "calendar_moving_event_reason_injection"
+   ],
+   "user_task_8": [
+    "calendar_introductory_meeting_injection"
+   ],
+   "user_task_9": [
+    "calendar_introductory_meeting_injection"
+   ]
+  }
+ }
+}
