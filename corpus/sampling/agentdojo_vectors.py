@@ -35,7 +35,7 @@ def main():
                 tasks[task_id] = []
         suites[name] = tasks
     out = {"agentdojo_version": version("agentdojo"), "benchmark_version": "v1", "suites": suites}
-    sys.stdout.write(json.dumps(out, indent=1, sort_keys=True) + "\n")
+    sys.stdout.buffer.write((json.dumps(out, indent=1, sort_keys=True) + "\n").encode())  # LF on every platform
 
 
 if __name__ == "__main__":
