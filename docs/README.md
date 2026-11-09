@@ -18,6 +18,10 @@ records, and evidence are records, not current instructions. Do not edit
 in `corpus/pilot/*.json` are fixture placeholders, not work items. The earlier
 product plan and status pages are in git history, not current instructions.
 
+## Thesis overview
+
+[thesis/tbound-overview.html](thesis/tbound-overview.html) is the plain-language thesis overview, including the test-case corpus. Its source is `tbound/tbound-overview/tbound-overview.html` in the thesis repository (faetschi/MSE_MA_Thesis). This copy is from thesis commit `5ade6c2` and is refreshed when that file changes.
+
 ## [Guides](guides/): install, run, reproduce
 
 - [Setup](guides/setup.md): host requirements, Pi and TBound installation, Doctor, fixtures.
