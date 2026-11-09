@@ -111,7 +111,7 @@ Apply the steps in order. A step that cannot be completed ends the procedure wit
    - **Ledger v1.** Its candidate predicates take nine forms, and every one splits under this rule: `EFF-NET-01`, `EFF-WS-01`, `EFF-WS-02`, `EFF-WS-04`, `EFF-NET-01+EFF-WS-01`, `EFF-NET-01+EFF-WS-02`, `EFF-WS-01+EFF-NET-01`, `EFF-WS-01/02` and `EFF-WS-01/NET-01`.
 
    [`F-ELIGIBLE`, if the predicate does not split or a part is not a registered predicate of the stratum]
-9. **Freeze the script and pivots.** Write the frozen calibration script, the pivot table of the pinned attacker library, and `p_delta` with its justification, as the pilot does. [`F-CONSTRUCT`]
+9. **Freeze the script and pivots.** Write the frozen calibration script, the pivot table of the pinned attacker library, and `p_delta` with its justification, as the pilot does. For `effect_join` `all`, each calibration step is written so that one tool call causes every part (owner decision, 2026-11-08, PR #106); adaptive P stops at the first allowed pivot. [`F-CONSTRUCT`]
 10. **Write the records.** Write the case entry, the trial and the meaning record of section 2. List every change from the source under `transformations` and every loss under `lost_distinctions`. [`F-CONSTRUCT`, if a record fails validation]
 11. **Run the checks** of section 5, the deterministic checks first, then the meaning checks. The first check that fails gives the code.
 
@@ -247,5 +247,6 @@ Every failure and its reason stays in the decision file and the draw output, as 
   - the slot package of the ASB template;
   - the Node.js language swap;
   - binding at `T1`, and pilot-examined candidates as development cases.
+  - two-effect calibration steps: one tool call causes every part (PR #106, option B).
 
   Not yet re-reviewed.
