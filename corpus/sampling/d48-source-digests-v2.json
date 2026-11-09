@@ -1,6 +1,6 @@
 {
  "about": "Ledger v2 source-digest file: pins, licences and per-row source files. Built by scripts/21-source-digests.py.",
- "ledger_sha256": "17863d6db49d99f10a616618dd3941f9c3c9b0a281c975650e3a47fc3cb96eed",
+ "ledger_sha256": "aa466eb7d3a749c7f3619e58b61ddb8e9846c8b94759882875b40a856de10461",
  "source_to_pin_key": {
   "ASB": "agiresearch/ASB",
   "ASEval": "antgroup/Agent3Sigma-Stage",
@@ -496,15 +496,15 @@
    "license_files": [
     {
      "path": "LICENSE",
-     "sha256": "c43db13e7dde0264140a5d8f65edeeaca9eadeae1c67c4a48b5a8a3eb5705701"
+     "sha256": "c593c2afc81388521eaeb03f0d1a4b01bc3e5147ed9cb16c1f129e5be353b6af"
     },
     {
      "path": "NOTICE",
-     "sha256": "3335830ae2223610919674e255e16b1849941c1d01ba58e650b494b312dd06a1"
+     "sha256": "654d51183bcb41e9125a97e586fe54ab37b37c85c565ab70ca4c9d3e79817f86"
     }
    ],
    "files": {
-    "src/inspect_evals/ipi_coding_agent/dataset/samples.json": "sha256:41949428b6712d5e274e5b7c10c66e3d998c599e9da7da2b55187efcfa8a6c5b"
+    "src/inspect_evals/ipi_coding_agent/dataset/samples.json": "sha256:4476357b6715ad91deb03ff62246ded5e39ba8c8148a06b270ed59ee19b20612"
    }
   },
   "agiresearch/ASB": {
@@ -4250,6 +4250,15 @@
     "data/agent_task.jsonl"
    ]
   },
+  "asb:medical_advisor:MedicalAdviceManipulation:64": {
+   "pin_key": "agiresearch/ASB",
+   "rev": "544540ff0788998072f7df463056fd17e62cc9f4",
+   "benchmark_digest": "sha256:9205bf61f1c34f4be5b644ae829da22042c92a86d4d1e70352ccec5f60cf12d6",
+   "files": [
+    "data/all_attack_tools.jsonl",
+    "data/agent_task.jsonl"
+   ]
+  },
   "asb:medical_advisor:MedicalRecordAlteration:61": {
    "pin_key": "agiresearch/ASB",
    "rev": "544540ff0788998072f7df463056fd17e62cc9f4",
@@ -5343,7 +5352,7 @@
   "codeipi:ipi-comment-persist-12-authority": {
    "pin_key": "UKGovernmentBEIS/inspect_evals",
    "rev": "969e4b2078292a2429274bd3524c64c27f9e0c72",
-   "benchmark_digest": "sha256:41949428b6712d5e274e5b7c10c66e3d998c599e9da7da2b55187efcfa8a6c5b",
+   "benchmark_digest": "sha256:4476357b6715ad91deb03ff62246ded5e39ba8c8148a06b270ed59ee19b20612",
    "files": [
     "src/inspect_evals/ipi_coding_agent/dataset/samples.json"
    ]
@@ -5351,7 +5360,7 @@
   "codeipi:ipi-config-persist-25-authority": {
    "pin_key": "UKGovernmentBEIS/inspect_evals",
    "rev": "969e4b2078292a2429274bd3524c64c27f9e0c72",
-   "benchmark_digest": "sha256:41949428b6712d5e274e5b7c10c66e3d998c599e9da7da2b55187efcfa8a6c5b",
+   "benchmark_digest": "sha256:4476357b6715ad91deb03ff62246ded5e39ba8c8148a06b270ed59ee19b20612",
    "files": [
     "src/inspect_evals/ipi_coding_agent/dataset/samples.json"
    ]
@@ -5359,7 +5368,7 @@
   "codeipi:ipi-issue-exfil-41-authority": {
    "pin_key": "UKGovernmentBEIS/inspect_evals",
    "rev": "969e4b2078292a2429274bd3524c64c27f9e0c72",
-   "benchmark_digest": "sha256:41949428b6712d5e274e5b7c10c66e3d998c599e9da7da2b55187efcfa8a6c5b",
+   "benchmark_digest": "sha256:4476357b6715ad91deb03ff62246ded5e39ba8c8148a06b270ed59ee19b20612",
    "files": [
     "src/inspect_evals/ipi_coding_agent/dataset/samples.json"
    ]
@@ -5367,7 +5376,7 @@
   "codeipi:ipi-issue-persist-09-authority": {
    "pin_key": "UKGovernmentBEIS/inspect_evals",
    "rev": "969e4b2078292a2429274bd3524c64c27f9e0c72",
-   "benchmark_digest": "sha256:41949428b6712d5e274e5b7c10c66e3d998c599e9da7da2b55187efcfa8a6c5b",
+   "benchmark_digest": "sha256:4476357b6715ad91deb03ff62246ded5e39ba8c8148a06b270ed59ee19b20612",
    "files": [
     "src/inspect_evals/ipi_coding_agent/dataset/samples.json"
    ]
@@ -5375,7 +5384,7 @@
   "codeipi:ipi-issue-persist-31-plain": {
    "pin_key": "UKGovernmentBEIS/inspect_evals",
    "rev": "969e4b2078292a2429274bd3524c64c27f9e0c72",
-   "benchmark_digest": "sha256:41949428b6712d5e274e5b7c10c66e3d998c599e9da7da2b55187efcfa8a6c5b",
+   "benchmark_digest": "sha256:4476357b6715ad91deb03ff62246ded5e39ba8c8148a06b270ed59ee19b20612",
    "files": [
     "src/inspect_evals/ipi_coding_agent/dataset/samples.json"
    ]
@@ -5383,7 +5392,7 @@
   "codeipi:ipi-readme-persist-22-authority": {
    "pin_key": "UKGovernmentBEIS/inspect_evals",
    "rev": "969e4b2078292a2429274bd3524c64c27f9e0c72",
-   "benchmark_digest": "sha256:41949428b6712d5e274e5b7c10c66e3d998c599e9da7da2b55187efcfa8a6c5b",
+   "benchmark_digest": "sha256:4476357b6715ad91deb03ff62246ded5e39ba8c8148a06b270ed59ee19b20612",
    "files": [
     "src/inspect_evals/ipi_coding_agent/dataset/samples.json"
    ]
@@ -5391,7 +5400,7 @@
   "codeipi:ipi-readme-persist-43-authority": {
    "pin_key": "UKGovernmentBEIS/inspect_evals",
    "rev": "969e4b2078292a2429274bd3524c64c27f9e0c72",
-   "benchmark_digest": "sha256:41949428b6712d5e274e5b7c10c66e3d998c599e9da7da2b55187efcfa8a6c5b",
+   "benchmark_digest": "sha256:4476357b6715ad91deb03ff62246ded5e39ba8c8148a06b270ed59ee19b20612",
    "files": [
     "src/inspect_evals/ipi_coding_agent/dataset/samples.json"
    ]
