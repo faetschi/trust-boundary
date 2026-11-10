@@ -224,3 +224,72 @@ func TestD09AdmissionPhasesAreAttributable(t *testing.T) {
 		t.Fatalf("phases out of order: %q", got)
 	}
 }
+
+func livePidfd(t *testing.T) int {
+	t.Helper()
+	live := exec.Command("/bin/sh", "-c", "exec sleep 30")
+	if err := live.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = live.Process.Kill(); _ = live.Wait() })
+	fd, err := openPidfd(live.Process.Pid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = syscall.Close(fd) })
+	return fd
+}
+
+// A path lookup that fails with ENOENT while the pinned leader is alive is an exec race, not an exit.
+func TestD09ENOENTOnLiveLeaderIsNotExited(t *testing.T) {
+	pidfd := livePidfd(t)
+	cause := &os.PathError{Op: "open", Path: "/proc/x/gid_map", Err: syscall.ENOENT}
+	if d09LeaderExited(pidfd, 0, cause) {
+		t.Fatal("a live pinned leader was classified as exited on ENOENT")
+	}
+}
+
+func TestD09RetryWhileLeaderExecsRecoversOnLiveLeader(t *testing.T) {
+	for _, errno := range []syscall.Errno{syscall.ENOENT, syscall.ESRCH, syscall.EINVAL} {
+		calls := 0
+		err := retryWhileLeaderExecs(livePidfd(t), func() error {
+			calls++
+			if calls <= 2 {
+				return &os.PathError{Op: "open", Path: "/proc/x/gid_map", Err: errno}
+			}
+			return nil
+		})
+		if err != nil || calls != 3 {
+			t.Fatalf("%v: err=%v calls=%d, want nil after 3", errno, err, calls)
+		}
+	}
+}
+
+func TestD09RetryWhileLeaderExecsDoesNotRetryExitedLeader(t *testing.T) {
+	_, pidfd := exitedCell(t)
+	calls := 0
+	err := retryWhileLeaderExecs(pidfd, func() error {
+		calls++
+		return &os.PathError{Op: "open", Path: "/proc/x/gid_map", Err: syscall.ENOENT}
+	})
+	if !errors.Is(err, syscall.ENOENT) || calls != 1 {
+		t.Fatalf("err=%v calls=%d, want ENOENT after 1", err, calls)
+	}
+}
+
+func TestD09RetryWhileLeaderExecsDoesNotRetryMismatch(t *testing.T) {
+	calls := 0
+	want := errors.New("host leader user namespace differs")
+	err := retryWhileLeaderExecs(livePidfd(t), func() error { calls++; return want })
+	if err != want || calls != 1 {
+		t.Fatalf("err=%v calls=%d, want mismatch after 1", err, calls)
+	}
+}
+
+func TestD09RetryWhileLeaderExecsIsBounded(t *testing.T) {
+	calls := 0
+	err := retryWhileLeaderExecs(livePidfd(t), func() error { calls++; return syscall.ENOENT })
+	if !errors.Is(err, syscall.ENOENT) || calls != 20 {
+		t.Fatalf("err=%v calls=%d, want ENOENT after 20", err, calls)
+	}
+}
