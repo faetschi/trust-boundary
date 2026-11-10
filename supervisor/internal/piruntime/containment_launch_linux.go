@@ -398,6 +398,11 @@ func (l *D09PodmanCrunLauncher) StartVerifiedWithProof(ctx context.Context, requ
 		contains, containsErr = l.scope.ContainsPID(proof.LeaderPID)
 		return containsErr
 	})
+	if err != nil {
+		if exited := d09ExitedBeforeAdmission(ctx, report.PodmanPath, cid, l.commandEnvironment(), pidfd, proof.LeaderPID, command.Process.Pid, err); exited != nil {
+			return nil, D09TCBProof{}, exited
+		}
+	}
 	if err != nil || !contains {
 		return nil, D09TCBProof{}, errors.Join(fmt.Errorf("%w: entrypoint leader is not in the held D09 cgroup scope", ErrProductionLauncherUnavailable), err)
 	}
@@ -1064,7 +1069,10 @@ func d09LeaderExited(pidfd, leaderPID int, cause error) bool {
 			return false
 		}
 		fds := []unix.PollFd{{Fd: int32(pidfd), Events: unix.POLLIN}}
-		n, _ := unix.Poll(fds, 250)
+		n, err := unix.Poll(fds, 250)
+		if errors.Is(err, unix.EINTR) {
+			n, _ = unix.Poll(fds, 250)
+		}
 		return n > 0
 	}
 	if errors.Is(cause, os.ErrNotExist) || errors.Is(cause, syscall.ESRCH) {
@@ -1085,6 +1093,9 @@ const (
 // retryWhileLeaderExecs runs check, repeating it unchanged on ENOENT/ESRCH/EINVAL while the pinned pidfd is
 // not readable (leader alive): path lookups can fail while the leader execs. Any other error returns at once.
 func retryWhileLeaderExecs(pidfd int, check func() error) error {
+	if pidfd < 0 {
+		return check()
+	}
 	err := check()
 	for attempt := 1; attempt < d09ExecRetryAttempts && err != nil; attempt++ {
 		if !errors.Is(err, os.ErrNotExist) && !errors.Is(err, syscall.ESRCH) && !errors.Is(err, syscall.EINVAL) {
