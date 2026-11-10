@@ -1,6 +1,6 @@
 #!/bin/bash
 # EVQ capture of $FREEZE [READ-ONLY on the repo; writes only the NEW dir $CF]: the Linux test run of the frozen commit, like the $PREV_FREEZE run
-# ($CF). Needs 10, 20 (tbound-run). Takes a while (go test -race ./...). Run in WSL as jeli2k: bash 35-evq-capture.sh
+# ($CF). Needs 10, 20 (tbound-run). Takes a while (go test -race ./...). Run on Linux (in WSL from Windows): bash 35-evq-capture.sh
 # Results: $CF/capture.json (archive_tree_digest must equal SRC_DIGEST, exit_status 0), go-test.json, guest-tests/{procoracle,tbound-cell-entrypoint}.test,
 # and the two test_binaries digests = TEST_PROCORACLE / TEST_ENTRYPOINT for the $FREEZE pins.env (guest/10-upgrade.sh reads them from capture.json).
 set -euo pipefail
