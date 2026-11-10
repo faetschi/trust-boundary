@@ -42,7 +42,7 @@ func exportCDH(s Schedule, j *Journal, opt ExportOptions) (ExportResult, error) 
 				t.EvidenceLoss, t.OutageEvidenceDigest = mergeOutcomes(o)
 				t.Complete = !o.Partial && o.Route.Complete && (o.Task == TaskPass || o.Task == TaskFail)
 				if st.Kind == evalcorpus.KindAdversarial {
-					t.Complete = intervalComplete(o, s.Config.requiredIn(o, st.ThreatClass, st.Predicate))
+					t.Complete = intervalComplete(o, s.Config.requiredIn(o, st.ThreatClass, cParts(st.Predicate, st.Effects)...))
 					if anyObserved(o) {
 						t.Effect = evalscore.CEffectObserved
 					} else if t.Complete {

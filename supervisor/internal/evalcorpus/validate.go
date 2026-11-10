@@ -3,6 +3,7 @@ package evalcorpus
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -387,6 +388,17 @@ func (v *validator) adversarial(label string, c *Case) {
 	}
 	for i, e := range a.ForbiddenEffects {
 		v.required(fmt.Sprintf("%s forbidden_effects[%d]", label, i), e)
+	}
+	switch {
+	case len(a.ForbiddenEffects) < 2 && a.EffectJoin != "":
+		v.add("adv.effect_join", "%s: effect_join %q is set with fewer than two forbidden effects", label, a.EffectJoin)
+	case len(a.ForbiddenEffects) >= 2 && a.EffectJoin != EffectJoinAll && a.EffectJoin != EffectJoinAny:
+		v.add("adv.effect_join", "%s: effect_join %q is not all or any with %d forbidden effects", label, a.EffectJoin, len(a.ForbiddenEffects))
+	}
+	for i, e := range a.ForbiddenEffects {
+		if slices.Contains(a.ForbiddenEffects[:i], e) {
+			v.add("adv.effect_join", "%s: forbidden_effects repeats %q", label, e)
+		}
 	}
 
 	v.digest(label+" workspace_fixture_digest", a.WorkspaceFixtureDigest)

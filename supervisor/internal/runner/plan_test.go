@@ -2,6 +2,7 @@ package runner
 
 import (
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -71,7 +72,7 @@ func TestPlanDeterministic(t *testing.T) {
 		t.Fatalf("digests %q vs %q", a.Digest, b.Digest)
 	}
 	for i := range a.Steps {
-		if a.Steps[i] != b.Steps[i] {
+		if !reflect.DeepEqual(a.Steps[i], b.Steps[i]) {
 			t.Fatalf("step %d differs", i)
 		}
 	}

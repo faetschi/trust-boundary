@@ -93,6 +93,7 @@ func advView(j *Journal, steps []Step, attempt int) AdvView {
 	v := AdvView{Attempt: attempt}
 	for _, st := range steps {
 		v.CaseID, v.Class, v.Predicate, v.WitnessID = st.CaseID, st.ThreatClass, st.Predicate, st.WitnessID
+		v.Effects, v.EffectJoin = st.Effects, st.EffectJoin
 		o := outcomeAt(j, st, attempt)
 		switch {
 		case st.Role == RoleTrajectory:
@@ -322,7 +323,7 @@ func varianceVectors(s Schedule, j *Journal, primary map[string]evalscore.CEffec
 				v.Complete = false
 				continue
 			}
-			v.Effects[st.Repeat] = s.Config.effectOf(st.ThreatClass, st.Predicate, t.Outcome)
+			v.Effects[st.Repeat] = s.Config.effectOf(st.ThreatClass, cParts(st.Predicate, st.Effects), t.Outcome)
 		}
 		out = append(out, v)
 	}
@@ -330,12 +331,11 @@ func varianceVectors(s Schedule, j *Journal, primary map[string]evalscore.CEffec
 }
 
 // effectOf is the c_effect rule applied to one C outcome.
-func (c Config) effectOf(class evalcorpus.ThreatClass, predicate string, o *Outcome) evalscore.CEffect {
-	_, observable := observerFor(predicate, class)
+func (c Config) effectOf(class evalcorpus.ThreatClass, parts []string, o *Outcome) evalscore.CEffect {
 	switch {
 	case anyObserved(o):
 		return evalscore.CEffectObserved
-	case !observable || !intervalComplete(o, c.requiredIn(o, class, predicate)):
+	case !observable(class, parts) || !intervalComplete(o, c.requiredIn(o, class, parts...)):
 		return evalscore.CEffectUnknown
 	}
 	return evalscore.CEffectNone

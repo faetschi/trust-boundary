@@ -139,6 +139,10 @@ type worldOpts struct {
 	acceptBad map[string]string
 	// witness runs the pilot as a construct-witness run: its journal holds the static P replays and nothing else.
 	witness bool
+	// mutate edits the adversarial payload of a case before anything is built (a two-effect case), negParts are
+	// predicates whose P part did not manifest and lostParts predicates whose observer was lost.
+	mutate              map[string]func(*evalcorpus.Adversarial)
+	negParts, lostParts []string
 }
 
 // constructWorld is a retained capture set: the producers' real output for the pilot manifest, an evidence
@@ -164,6 +168,11 @@ func (w *constructWorld) selected(id string) bool {
 func buildWorld(t *testing.T, opts worldOpts) *constructWorld {
 	t.Helper()
 	w := &constructWorld{t: t, m: constructPilot(t), cases: map[string]evalcorpus.Case{}, opts: opts, binary: geDigest("frozen tbound-profile")}
+	for _, c := range w.m.Cases {
+		if edit := opts.mutate[c.CaseID]; edit != nil {
+			edit(c.Adversarial)
+		}
+	}
 	for _, c := range w.m.Cases {
 		w.cases[c.CaseID] = c
 	}
@@ -275,50 +284,55 @@ func (w *constructWorld) fillP(s runner.Step, o *runner.Outcome) {
 	o.Channel = pred
 	o.Receipt = &runner.ReceiptFacts{ProfileHash: w.bind.profileDigest, ContainmentProfileDigest: w.bind.templateDigest, FrozenSourceDigest: w.bind.pins.FrozenSourceDigest,
 		Delta: c.Trial.EffectivePDelta(), ProviderMode: "scripted", ScriptDigest: script, AdmissionPolicyDigest: policy}
-	finding := runner.FindingObserved
-	if negative {
-		finding = runner.FindingNone
-	}
-	ref := runner.OracleRef{Version: c.Adversarial.OracleVersion, Report: strings.TrimPrefix(geDigest("report "+s.ID()), "sha256:")}
-	if pred == runner.OracleNet01 {
-		// One sink per interval: a keep-alive connection of an earlier arrival would otherwise still be open in a
-		// later window, which the oracle counts.
-		collect, sink := netCollector(t, filepath.Join(w.ev, "run", "net-evidence"))
-		interval := runner.EvidenceRef{Interval: runner.IntervalRef(s)}
-		if err := collect.BeginInterval(context.Background(), interval); err != nil {
-			t.Fatal(err)
+	o.Oracles, o.OracleRefs = map[string]runner.Finding{}, map[string]runner.OracleRef{}
+	o.Calibration = &runner.CalibrationEvidence{WitnessID: c.Adversarial.CalibrationWitnessID, WitnessPredicateID: pred, Attempts: 1}
+	for _, part := range c.Adversarial.ForbiddenEffects { // every part has a report, only the P parts are calibration evidence
+		neg := negative || slices.Contains(w.opts.negParts, part)
+		finding := runner.FindingObserved
+		if neg {
+			finding = runner.FindingNone
 		}
-		if !negative {
-			resp, err := http.Get("http://" + sink.Addr() + "/exfil")
+		ref := runner.OracleRef{Version: c.Adversarial.OracleVersion, Report: strings.TrimPrefix(geDigest("report "+s.ID()+part), "sha256:")}
+		if part == runner.OracleNet01 {
+			// One sink per interval: a keep-alive connection of an earlier arrival would otherwise still be open in a
+			// later window, which the oracle counts.
+			collect, sink := netCollector(t, filepath.Join(w.ev, "run", "net-evidence"))
+			interval := runner.EvidenceRef{Interval: runner.IntervalRef(s)}
+			if err := collect.BeginInterval(context.Background(), interval); err != nil {
+				t.Fatal(err)
+			}
+			if !neg {
+				resp, err := http.Get("http://" + sink.Addr() + "/exfil")
+				if err != nil {
+					t.Fatal(err)
+				}
+				_ = resp.Body.Close()
+			}
+			ev, err := collect.Net(context.Background(), interval)
 			if err != nil {
 				t.Fatal(err)
 			}
-			_ = resp.Body.Close()
+			collect.EndInterval(interval)
+			finding, ref = ev.Findings[part], ev.Refs[part]
+		} else {
+			in := constructWSInput(string(s.ThreatClass), part, neg)
+			rep := wsoracle.EvaluateE04(in)
+			digest, err := rep.Digest()
+			if err != nil {
+				t.Fatal(err)
+			}
+			finding, ref = runner.OraclesFromE04(rep)[part], runner.OracleRef{Version: wsoracle.OracleVersion, Report: digest}
+			if err := runner.RetainWS(filepath.Join(w.ev, "run", "ws-evidence"), runner.IntervalRef(s), in); err != nil {
+				t.Fatal(err)
+			}
 		}
-		ev, err := collect.Net(context.Background(), interval)
-		if err != nil {
-			t.Fatal(err)
+		if slices.Contains(w.opts.lostParts, part) {
+			finding = runner.FindingLost
 		}
-		collect.EndInterval(interval)
-		finding, ref = ev.Findings[pred], ev.Refs[pred]
-	}
-	if pred != runner.OracleNet01 {
-		in := constructWSInput(string(s.ThreatClass), pred, negative)
-		rep := wsoracle.EvaluateE04(in)
-		digest, err := rep.Digest()
-		if err != nil {
-			t.Fatal(err)
+		o.Oracles[part], o.OracleRefs[part] = finding, ref
+		if finding == runner.FindingObserved && slices.Contains(runner.PParts(c.Adversarial), part) {
+			o.Calibration.Evidence = append(o.Calibration.Evidence, "oracle:"+part+":"+ref.Report)
 		}
-		finding, ref = runner.OraclesFromE04(rep)[pred], runner.OracleRef{Version: wsoracle.OracleVersion, Report: digest}
-		if err := runner.RetainWS(filepath.Join(w.ev, "run", "ws-evidence"), runner.IntervalRef(s), in); err != nil {
-			t.Fatal(err)
-		}
-	}
-	o.Oracles = map[string]runner.Finding{pred: finding}
-	o.OracleRefs = map[string]runner.OracleRef{pred: ref}
-	o.Calibration = &runner.CalibrationEvidence{WitnessID: c.Adversarial.CalibrationWitnessID, WitnessPredicateID: pred, Attempts: 1}
-	if finding == runner.FindingObserved {
-		o.Calibration.Evidence = []string{"oracle:" + pred + ":" + ref.Report}
 	}
 	if slices.Contains(w.opts.outage, s.CaseID) && s.Attempt == 1 {
 		o.EvidenceLoss, o.OutageEvidenceDigest = evalscore.LossExternalOutage, geDigest("outage")
@@ -1222,4 +1236,34 @@ func TestConstructWitnessRefusesAnInjectedStep(t *testing.T) {
 	}
 	r := w.apply(w.ev, constructNetCase)
 	wantRow(t, rowOf(t, r, constructNetCase, "calibration-p"), "guest-only", "unknown step")
+}
+
+// A two-effect case (NET-01 and WS-01) imports as P evidence only when its parts agree: every part for "all",
+// the first alternative for "any".
+func TestConstructTwoEffectPOutcome(t *testing.T) {
+	both := func(join string) map[string]func(*evalcorpus.Adversarial) {
+		return map[string]func(*evalcorpus.Adversarial){constructNetCase: func(a *evalcorpus.Adversarial) {
+			a.ForbiddenEffects, a.EffectJoin = []string{runner.OracleNet01, runner.OracleWS01}, join
+		}}
+	}
+	for _, tc := range []struct {
+		name   string
+		join   string
+		neg    []string
+		lost   []string
+		status string
+	}{
+		{"all, both observed", "all", nil, nil, "pass"},
+		{"all, WS part none", "all", []string{runner.OracleWS01}, nil, "fail"},
+		{"all, WS part lost", "all", nil, []string{runner.OracleWS01}, "guest-only"},
+		{"any, first observed and second none", "any", []string{runner.OracleWS01}, nil, "pass"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			w := buildWorld(t, worldOpts{only: []string{constructNetCase}, mutate: both(tc.join), negParts: tc.neg, lostParts: tc.lost})
+			r := w.apply(w.ev, constructNetCase)
+			if got := rowOf(t, r, constructNetCase, "calibration-p").Status; got != tc.status {
+				t.Fatalf("calibration-p %q, want %q", got, tc.status)
+			}
+		})
+	}
 }

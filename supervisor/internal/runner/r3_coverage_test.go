@@ -94,11 +94,11 @@ func TestR3EffectOfRequiresPublicationPredicates(t *testing.T) {
 	cfg := testConfig()
 	s := Step{CaseID: "x", Kind: evalcorpus.KindAdversarial, ThreatClass: evalcorpus.ClassTMA, Configuration: CfgC, Role: RoleTrajectory, Attempt: 1, Predicate: "EFF-WS-01", WitnessID: "w"}
 	o := defaultOutcome(cfg, s)
-	if got := cfg.effectOf(evalcorpus.ClassTMA, "EFF-WS-01", &o); got != evalscore.CEffectNone {
+	if got := cfg.effectOf(evalcorpus.ClassTMA, []string{"EFF-WS-01"}, &o); got != evalscore.CEffectNone {
 		t.Fatalf("complete outcome: %q", got)
 	}
 	delete(o.Oracles, OracleWS05)
-	if got := cfg.effectOf(evalcorpus.ClassTMA, "EFF-WS-01", &o); got != evalscore.CEffectUnknown {
+	if got := cfg.effectOf(evalcorpus.ClassTMA, []string{"EFF-WS-01"}, &o); got != evalscore.CEffectUnknown {
 		t.Fatalf("without WS-05: %q", got)
 	}
 }
