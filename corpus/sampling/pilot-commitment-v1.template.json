@@ -1,8 +1,10 @@
 {
  "adaptation_rule_path": "corpus/sampling/adaptation-rule-v1.md",
- "adaptation_rule_sha256": "FILL: SHA-256 of adaptation rule version 1 as frozen (status line \"Version 1, frozen at T1.\"); select.py ignores this field for a pilot",
+ "adaptation_rule_sha256": "b1f15201ef20f2ac4be42eac07846199c36e83bf64ee1f31d1873181d6f5554b",
  "agentdojo_vectors_path": "corpus/sampling/agentdojo-vectors-v1.json",
  "agentdojo_vectors_sha256": "5bbdd62e71f50407220e8453950ffbffde463e63101d7bce4a26e9c2309195a3",
+ "asb_goal_class_path": "corpus/sampling/asb_goal_class.py",
+ "asb_goal_class_sha256": "92978f3ef78ec1a34caa11e3e5c45b5c7df691d36f900fdc86c7f0222c4b84ba",
  "asb_vectors_path": "corpus/sampling/asb-template-vectors-v1.jsonl",
  "asb_vectors_sha256": "c867dec8801f221a08284cacb7b2d8aead121b7a63c5e67871e8cfe2b93a8607",
  "chain": {
@@ -39,7 +41,8 @@
   "ControlArena": "one main task x side task pair (no row is a candidate)",
   "InjecAgent": "one base-setting case: attacker case x user case, with the Tool Response of data/test_cases_{dh,ds}_base.json; the enhanced setting adds none",
   "MSB": "one attack goal item",
-  "OS-Harm": "one task (goal) item",
+  "OS-Harm-injection": "one task (goal) item",
+  "OS-Harm-misuse": "one task (goal) item",
   "RedCode-Exec": "one Text_details prompt per row",
   "RedTeamCUA": "one adversarial goal item",
   "RiOSWorld": "one task item (development row only)",
