@@ -42,7 +42,7 @@ The trigger condition is met. Decision 13 therefore requires a register entry an
 ## Usage, time, cost
 
 - **Provider usage, from the guest provider audits:**
-  - 98 units called the model;
+  - 98 units had provider exchanges, scripted replays included (79 of the 123 units are model-driven);
   - 309 completed exchanges and 3 unknown exchanges;
   - 216,473 prompt tokens and 9,911 completion tokens;
   - 0 reasoning tokens (F23 does not carry D50).
