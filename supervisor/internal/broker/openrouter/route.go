@@ -44,7 +44,12 @@ type Route struct {
 	// CommandOutput selects the product Bash description for configurable stream bounds. The zero value
 	// keeps the frozen serve --pi description; its executor still releases thesis 4 KiB tails and byte counts.
 	CommandOutput bool
-	members       string
+	// Reasoning is the thesis governed-path mark (decision D50). On the engineering route the request
+	// enables DeepSeek thinking with a pinned effort; on either route a captured assistant turn's
+	// reasoning is sent back with later requests and the SSE parser accumulates it. The zero value
+	// keeps the exact bytes and parsing every earlier journal was written with.
+	Reasoning bool
+	members   string
 	// responseModels is the newline-joined exact list of response-model strings the
 	// route accepts (a string, so that Route stays comparable). The zero route
 	// accepts only Model.
@@ -80,6 +85,13 @@ func (r Route) Resolved() Route {
 func (r Route) WithCommandOutput(on bool) Route {
 	r = r.Resolved()
 	r.CommandOutput = on
+	return r
+}
+
+// WithReasoning returns the resolved route with its Reasoning mark set to on.
+func (r Route) WithReasoning(on bool) Route {
+	r = r.Resolved()
+	r.Reasoning = on
 	return r
 }
 
@@ -127,14 +139,16 @@ func NewResearchRoute(spec ResearchSpec) (Route, error) {
 func (r Route) Validate() error {
 	r = r.Resolved()
 	if !r.IsResearch() {
-		if r.WithCommandOutput(false) != EngineeringRoute() {
+		unmarked := r
+		unmarked.CommandOutput, unmarked.Reasoning = false, false
+		if unmarked != EngineeringRoute() {
 			return errors.New("provider route is outside the fixed OpenCode Go profile")
 		}
 		return nil
 	}
 	checked, err := NewResearchRoute(ResearchSpec{Model: r.Model, Endpoint: r.Endpoint,
 		ProfileDigest: r.ProfileDigest, Members: r.members, Timeout: r.Timeout, ResponseModels: r.ResponseModels()})
-	if err != nil || checked != r {
+	if err != nil || checked != unmarkedReasoning(r) {
 		return errors.New("provider route is not a valid research route")
 	}
 	return nil
@@ -239,4 +253,10 @@ func loopbackHTTPEndpoint(endpoint string) bool {
 	}
 	ip := net.ParseIP(parsed.Hostname())
 	return ip != nil && ip.IsLoopback()
+}
+
+// unmarkedReasoning is the route with its Reasoning mark cleared, without resolving the zero route.
+func unmarkedReasoning(r Route) Route {
+	r.Reasoning = false
+	return r
 }

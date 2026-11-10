@@ -94,7 +94,7 @@ func corpusTestManifest(t *testing.T) evalcorpus.Manifest {
 		id := allocated.Cases[i].CaseID
 		// The fixture's adversarial cases carry up to two scripted tool turns (2*2+1 = 5) and a
 		// three-step pivot table (2*3+1 = 7), so the trial budget must admit seven host calls.
-		allocated.Cases[i].Trial = &evalcorpus.Trial{Prompt: "Host-approved prompt of " + id, MaxHostCalls: 9, MaxTokens: 10000, DurationSeconds: 600}
+		allocated.Cases[i].Trial = &evalcorpus.Trial{Prompt: "Host-approved prompt of " + id, MaxHostCalls: 9, MaxTokens: 36864, DurationSeconds: 600}
 		if allocated.Cases[i].Kind != evalcorpus.KindAdversarial {
 			continue
 		}
@@ -143,7 +143,7 @@ func corpusTestServiceConfig(manifestDigest string) piServiceConfig {
 		CorpusManifestPath: piServiceCorpusManifestPath, CorpusManifestDigest: manifestDigest,
 		WorkflowCatalogPath: piServiceWorkflowCatalogPath, WorkflowRootDBPath: piServiceWorkflowRootDBPath,
 		WorkflowOwnerStoreRoot: piServiceOwnerStoreRoot, WorkflowMaxPreEffectRetries: 2, WorkflowMaxCleanRestarts: 2,
-		WorkflowMaxHostCalls: 17, WorkflowMaxTokens: 20000, WorkflowDurationSeconds: 1200,
+		WorkflowMaxHostCalls: 17, WorkflowMaxTokens: 69632, WorkflowDurationSeconds: 1200,
 		PodmanHome: "/var/lib/tbound/podman-home", PodmanGraphRoot: "/var/lib/tbound/podman-storage/graphroot",
 		PodmanRunRoot: "/run/tbound-pi/podman-runroot", XDGRuntimeDir: "/run/tbound-pi",
 		XDGConfigHome: "/etc/tbound/podman-config", XDGDataHome: "/var/lib/tbound/podman-home/data",
@@ -187,7 +187,7 @@ func TestCorpusModeAdmitsAManifestCase(t *testing.T) {
 		t.Fatalf("corpus digest %q, want %q", corpus.digest, digest)
 	}
 	trial, ok := corpus.trial(corpusTestCase)
-	if !ok || trial.Prompt != "Host-approved prompt of "+corpusTestCase || trial.MaxHostCalls != 9 || trial.MaxTokens != 10000 || trial.DurationSeconds != 600 {
+	if !ok || trial.Prompt != "Host-approved prompt of "+corpusTestCase || trial.MaxHostCalls != 9 || trial.MaxTokens != 36864 || trial.DurationSeconds != 600 {
 		t.Fatalf("trial for %s = %+v ok=%v", corpusTestCase, trial, ok)
 	}
 	if len(corpus.trials) != len(manifest.Cases) {
@@ -499,7 +499,7 @@ func TestCorpusServiceAdmitsAManifestCaseWithTheHostPromptAndBudgets(t *testing.
 	}
 	if receipt.HostAdmissionID != corpusTestCase+"/compliant/1" || receipt.TaskID != corpusTestCase ||
 		receipt.Prompt != "Host-approved prompt of "+corpusTestCase || receipt.Digest != h.digest ||
-		receipt.MaxHostCalls != 9 || receipt.MaxTokens != 10000 || receipt.DeadlineSeconds != 600 {
+		receipt.MaxHostCalls != 9 || receipt.MaxTokens != 36864 || receipt.DeadlineSeconds != 600 {
 		t.Fatalf("admission did not take the prompt and budgets from the manifest: %+v", receipt)
 	}
 	if got := h.journalRecords(t); got != 2 {

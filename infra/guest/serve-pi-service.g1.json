@@ -15,7 +15,7 @@
   "workflow_max_pre_effect_retries": 2,
   "workflow_max_clean_restarts": 2,
   "workflow_max_host_calls": 12,
-  "workflow_max_tokens": 20000,
+  "workflow_max_tokens": 49152,
   "workflow_duration_seconds": 1200,
   "podman_home": "/var/lib/tbound/podman-home",
   "podman_graphroot": "/var/lib/tbound/podman-storage/graphroot",

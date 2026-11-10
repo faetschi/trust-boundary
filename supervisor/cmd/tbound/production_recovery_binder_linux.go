@@ -204,7 +204,8 @@ func bindProductionPiRecoverySession(ctx context.Context, config productionServe
 			Messages: profileMessages, ToolManifest: broker.DeclaredToolManifest(), ToolCallIssuer: governedCallIssuer,
 			ResponseIDIssuer: governedResponseIssuer}
 		providerConfig := providerbridge.Config{WorkflowID: entry.WorkflowID, ConversationID: pin.ConversationID,
-			ProfileID: profile.ProviderProfile, SystemPrompt: productionSystemPrompt, DeveloperPrompt: productionDeveloperPrompt}
+			ProfileID: profile.ProviderProfile, Route: config.providerRoute.Route(),
+			SystemPrompt: productionSystemPrompt, DeveloperPrompt: productionDeveloperPrompt}
 		journalTrace, traceErr := journal.Trace()
 		if traceErr != nil {
 			return fail(traceErr)

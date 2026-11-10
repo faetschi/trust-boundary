@@ -86,3 +86,39 @@ func TestBashCumulativeRequestFitsWithMarginAtThePilotToolResultCeiling(t *testi
 			pilotRunToolResultCeiling, size, openrouter.MaxRequestBytes)
 	}
 }
+
+// worstReasoningBytesPerToken is an assumption, not a measurement: the longest run of '<' (which escapes to the six
+// bytes <) that one token is taken to cover. A 4,096-token reasoning block then holds 16 KiB of '<'.
+const worstReasoningBytesPerToken = 4
+
+// On a reasoning route every assistant turn also carries its reasoning back. With a worst-case escaped block of
+// 4,096 tokens on each of the 17 turns on top of the worst-case bash results, the request must still build, and
+// the builder's own preflight is the bound that refuses it otherwise. The half-cap margin of the plain route is
+// logged, not required: reasoning is bounded per turn by the 4,096-token cap, not by the tool-result ceiling.
+func TestBashCumulativeRequestWithWorstCaseReasoningStaysWithinTheRequestCap(t *testing.T) {
+	route := openrouter.EngineeringRoute().WithReasoning(true)
+	messages := providerbridge.InitialPromptMessages(route, strings.Repeat("s", 48<<10), strings.Repeat("d", 16<<10))
+	stream := bytes.Repeat([]byte{0x01}, 1<<20)
+	arguments := json.RawMessage(`{"command":"node src/fn.test.js"}`)
+	reasoning := strings.Repeat("<", int(productionProviderCompletionCap)*worstReasoningBytesPerToken)
+	for index := 0; index < pilotRunToolResultCeiling; index++ {
+		callID := fmt.Sprintf("call-request-bound-%d", index)
+		messages = append(messages, openrouter.Message{Role: openrouter.Assistant, Reasoning: reasoning,
+			ToolCalls: []openrouter.PriorToolCall{{ID: callID, Name: "bash", RawArguments: arguments}}})
+		text := releasedBashResultText(t, uint64(index+1), callID, arguments, stream)
+		messages = append(messages, openrouter.Message{Role: openrouter.Tool, ToolCallID: callID, Content: &text})
+	}
+	request, err := openrouter.BuildRequestForRoute(route, messages, productionProviderCompletionCap)
+	if err != nil {
+		t.Fatalf("the request of %d worst-case bash results with worst-case reasoning was refused: %v", pilotRunToolResultCeiling, err)
+	}
+	size := len(request.Body())
+	t.Logf("cumulative reasoning-route request at the pilot ceiling: %d of %d bytes (half cap %d)", size, openrouter.MaxRequestBytes, openrouter.MaxRequestBytes/2)
+	if size > openrouter.MaxRequestBytes || size > providerbridge.MaxTranscriptBytes {
+		t.Fatalf("request is %d bytes", size)
+	}
+	// encoding/json writes '<' as the six-byte escape backslash-u-003c, which is the worst case this test sizes.
+	if !bytes.Contains(request.Body(), []byte(`"reasoning_content":"`+strings.Repeat(`\`+`u003c`, 2))) {
+		t.Fatal("the worst-case reasoning is not on the wire")
+	}
+}

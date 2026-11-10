@@ -122,7 +122,7 @@ PJ=$(sha '~/stage-smoke/pi-host-profile.json'); PS=$(sha '~/stage-smoke/pi-host-
 t 4.svc-stop 0 'svc stop ok' svc stop
 r 4.inspect-inactive 3 'inactive' 'systemctl is-active tbound-pi.service tbound-pi.socket'
 t 4.cfg-install-identical 0 'config already installed' cfg-install smoke "$CFG"
-r 4.setup-tamper-cfg 0 - 'cd ~/stage-smoke && cp serve-pi-service.json /tmp/cfg.orig && sed -i "s/\"workflow_max_tokens\": 10000/\"workflow_max_tokens\": 100000/" serve-pi-service.json'
+r 4.setup-tamper-cfg 0 - 'cd ~/stage-smoke && cp serve-pi-service.json /tmp/cfg.orig && sed -i "s/\"workflow_max_tokens\": 16384/\"workflow_max_tokens\": 163840/" serve-pi-service.json'
 TC=$(sha '~/stage-smoke/serve-pi-service.json')
 t 4.cfg-install-tampered-config 1 'differs from the shipped template' cfg-install smoke "$TC"
 r 4.setup-restore-cfg-and-symlink 0 - 'cd ~/stage-smoke && cp /tmp/cfg.orig serve-pi-service.json && rm /tmp/cfg.orig'

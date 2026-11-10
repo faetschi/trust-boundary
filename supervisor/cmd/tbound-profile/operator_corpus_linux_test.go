@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"tbound/supervisor/internal/corpusadmit"
 	"tbound/supervisor/internal/evalcorpus"
 	"testing"
 )
@@ -22,6 +23,10 @@ func TestOperatorCorpusDigestArgumentsRunPilotNodeChecks(t *testing.T) {
 	}
 	for i := range m.Cases {
 		m.Cases[i].Signoff = fixtureSignoff()
+		// The shipped T5 budgets predate D50; this test checks the operator's arguments, so give each trial the D50 minimum.
+		if tr := m.Cases[i].Trial; tr != nil {
+			tr.MaxTokens = tr.MaxHostCalls * corpusadmit.ThesisModelTokensPerCall
+		}
 	}
 	m, panel := signedPanel(t, t.TempDir(), m)
 	path := writeManifest(t, t.TempDir(), "manifest.json", m)

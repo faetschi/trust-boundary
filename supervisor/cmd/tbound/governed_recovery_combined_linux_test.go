@@ -21,7 +21,6 @@ import (
 
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/broker"
-	"tbound/supervisor/internal/broker/openrouter"
 	"tbound/supervisor/internal/delta"
 	"tbound/supervisor/internal/drainproof"
 	"tbound/supervisor/internal/gate"
@@ -319,8 +318,13 @@ func combinedRecoveryPolicy(t *testing.T, sc combinedRecoveryScenario) gate.Poli
 	return policy
 }
 
+// combinedRecoveryProviderRoute is the engineering route as production derives it for the thesis path: both the
+// original session and the recovery request must carry it, or the retained request bytes and pins diverge.
+var combinedRecoveryProviderRoute = productionProviderRoute{}
+
 func combinedRecoveryProviderConfig(conversationID, generationID, treeDigest string) providerbridge.Config {
 	return providerbridge.Config{WorkflowID: combinedRecoveryWorkflow, ConversationID: conversationID,
+		Route:     combinedRecoveryProviderRoute.Route(),
 		ProfileID: combinedRecoveryProfile, InitialGenerationID: generationID, InitialTreeDigest: treeDigest,
 		SystemPrompt: governedReplaySystem, DeveloperPrompt: governedReplayDeveloper}
 }
@@ -328,7 +332,8 @@ func combinedRecoveryProviderConfig(conversationID, generationID, treeDigest str
 func combinedRecoveryProviderProfile(generationID string) broker.Profile {
 	systemPrompt, developerPrompt := governedReplaySystem, governedReplayDeveloper
 	return broker.Profile{ID: combinedRecoveryProfile, Model: providerbridge.ApprovedModel,
-		Messages:     providerbridge.InitialPromptMessages(openrouter.Route{}, systemPrompt, developerPrompt),
+		Route:        combinedRecoveryProviderRoute.Route(),
+		Messages:     providerbridge.InitialPromptMessages(combinedRecoveryProviderRoute.Route(), systemPrompt, developerPrompt),
 		ToolManifest: broker.DeclaredToolManifest(), ToolCallIssuer: governedCallIssuer,
 		ResponseIDIssuer: governedResponseIssuer, Generation: generationID}
 }
@@ -479,6 +484,7 @@ func combinedRecoveryOriginal(t *testing.T, root, step string, sc combinedRecove
 		t.Fatal(err)
 	}
 	authority.requireEvidencedBashContainment = sc.productionBash
+	authority.BindProviderRoute(combinedRecoveryProviderRoute) // the route production binds, as D50 marks it
 	storeRoot, err := os.Open(p.store)
 	if err != nil {
 		t.Fatal(err)
@@ -841,8 +847,9 @@ func combinedRecoveryRecover(t *testing.T, root, step, phase string, capture boo
 			Limits: workspace.DefaultLimits(), XattrVisibility: workspace.XattrVisibilityAttestation{ProfileDigest: governedReplayXattrPolicy, Authority: workspace.XattrAuthorityBoundedNoHiddenTrusted},
 			Journal: storeJournal},
 		AdminRoot: adminRoot, GitPin: gitPin, Transcripts: transcripts,
-		ProviderProfile: providerProfile, ProviderProfileDigest: digestBytes([]byte("combined-recovery-provider-profile/v1")),
-		ImageDigest: digestBytes([]byte("combined-recovery-image/v1")), RuntimeProfileDigest: digestBytes([]byte("combined-recovery-runtime/v1")),
+		ProviderProfile: providerProfile, ProviderRoute: combinedRecoveryProviderRoute,
+		ProviderProfileDigest: digestBytes([]byte("combined-recovery-provider-profile/v1")),
+		ImageDigest:           digestBytes([]byte("combined-recovery-image/v1")), RuntimeProfileDigest: digestBytes([]byte("combined-recovery-runtime/v1")),
 		SystemPrompt: governedReplaySystem, DeveloperPrompt: governedReplayDeveloper,
 		StorePolicyDigest: governedReplayStorePolicy, MetadataPolicyDigest: governedReplayMetaPolicy,
 		BashOutputPaths: []string{"task.txt"}, GatePolicy: policy,

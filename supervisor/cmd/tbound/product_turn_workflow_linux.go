@@ -601,7 +601,7 @@ func (e *productTurnEnv) composeProductTurnWorkflow(ctx context.Context, turn pr
 		return nil, fmt.Errorf("register the empty provider transcript of the product turn: %w", err)
 	}
 	checkpoint, _ := w.ledger.Snapshot()
-	if err := authority.BindWorkflowLedger(w.ledger, checkpoint.Pins, productionProviderTokenUpperBound(limits)); err != nil {
+	if err := authority.BindWorkflowLedger(w.ledger, checkpoint.Pins, productProviderTokenUpperBound(limits)); err != nil {
 		return nil, err
 	}
 	if err := authority.BindInitialWorkflowPrompt(w.taskID, turn.Prompt, taskDigest); err != nil {

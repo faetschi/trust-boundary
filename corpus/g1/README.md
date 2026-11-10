@@ -48,7 +48,7 @@ transcript `read(g0) -> edit(g1) -> Bash(g2) -> read(g2)`. The `guest-provider-e
   `sha256sum src/release.txt > out/release.sha256`; read `out/release.sha256`; then one sentence.
 - Acceptance: `src/release.txt` is exactly `version=2.4.0` / `status=final`; `out/release.sha256` is the
   `sha256sum` line of that file; nothing else changed.
-- Ceilings: 12 host calls, 20000 tokens, 1200 s. A provider turn and every tool effect (`read` too) each charge one host call: five turns plus four effects need nine, and the rest is headroom for pre-effect retries.
+- Ceilings: 12 host calls, 49152 tokens (12 x 4096, D50), 1200 s. A provider turn and every tool effect (`read` too) each charge one host call: five turns plus four effects need nine, and the rest is headroom for pre-effect retries.
 
 ## Open points (not measured)
 - A run that publishes a diff (edit, Bash output) to the managed live root is not exercised by the

@@ -307,7 +307,7 @@ human sign-offs are required.
 tbound-profile corpus-digest \
   --manifest /absolute/path/to/manifest.json --quota-profile pilot \
   --artifacts "$TBOUND_REPO/corpus/pilot/artifacts" --node "$(command -v node)" \
-  --max-host-calls 17 --max-tokens 20000 --duration-seconds 1200
+  --max-host-calls 17 --max-tokens 69632 --duration-seconds 1200
 ```
 
 ### Add optional supplementary AI analysis

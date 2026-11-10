@@ -484,6 +484,18 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 			turnErr = journaledFailure{turnErr}
 		}
 	}()
+	// settleAfterJournal settles the open spend unit to usage only once the failed exchange's record is durable
+	// (persistErr == nil); otherwise the unit stays for the deferred UncertainSpend, as on the normal path.
+	settleAfterJournal := func(persistErr error, usage json.RawMessage) error {
+		if persistErr != nil || spendUnit == "" {
+			return persistErr
+		}
+		spendSettled = true // SettleSpend leaves the unit final even on error, so the deferred UncertainSpend must not run
+		if err := c.cfg.Spend.SettleSpend(ctx, spendUnit, usage); err != nil {
+			return fmt.Errorf("settle provider spend: %w", err)
+		}
+		return nil
+	}
 	var captured openrouter.CapturedResponse
 	var exchangeErr error
 	var records []broker.ExchangeRecord
@@ -579,6 +591,12 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 			}
 		}
 		persistErr := c.persistFailedExchangeLocked(records, exchangeErr, hostCallBinding)
+		if spendUnit != "" && spendDispatched && !spendSettled && len(records) == 1 && records[0].ResponseComplete() && records[0].StatusCode() == 200 {
+			// A Reasoning route's reply cut off at max_completion_tokens still reports what it cost.
+			if usage, ok := openrouter.TruncatedUsage(records[0].ResponseBody(), c.route); ok {
+				persistErr = settleAfterJournal(persistErr, usage)
+			}
+		}
 		disposed = exchangeDisposed(persistErr, records, hostCallBinding)
 		return Turn{}, c.failLocked(errors.Join(fmt.Errorf("registered provider exchange failed; response withheld: %w", exchangeErr), persistErr))
 	}
@@ -614,7 +632,16 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 	}
 	assistantText := captured.AssistantText()
 	if assistantText == "" && projection.ToolCall == nil {
-		return Turn{}, c.failLocked(errors.New("provider response has neither assistant text nor a tool call"))
+		emptyErr := errors.New("provider response has neither assistant text nor a tool call")
+		if !c.route.Reasoning {
+			return Turn{}, c.failLocked(emptyErr) // the product route keeps its pre-D50 behaviour
+		}
+		// A reasoning-only reply is a complete exchange: journal it as unknown and settle its spend, so
+		// neither the host call nor the cost is left open, then end the request.
+		persistErr := c.persistFailedExchangeLocked(records, emptyErr, hostCallBinding)
+		persistErr = settleAfterJournal(persistErr, captured.Usage())
+		disposed = exchangeDisposed(persistErr, records, hostCallBinding)
+		return Turn{}, c.failLocked(errors.Join(emptyErr, persistErr))
 	}
 	if err := validateTurnProjectionBudget(projection); err != nil {
 		persistErr := c.persistFailedExchangeLocked(records, err, hostCallBinding)
@@ -639,6 +666,15 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 	callArray := []openrouter.PriorToolCall(nil)
 	if projection.ToolCall != nil {
 		callArray = []openrouter.PriorToolCall{priorCall}
+	}
+	// The assistant entry must fit the next request before the exchange is journaled as a normal one: replay
+	// appends it under the same bound, and a journaled exchange that replay refuses would be unrecoverable.
+	nextHistory, err := c.boundedHistoryLocked(assistantMessage(c.route, captured, assistantText, callArray))
+	if err != nil {
+		persistErr := c.persistFailedExchangeLocked(records, err, hostCallBinding)
+		persistErr = settleAfterJournal(persistErr, captured.Usage())
+		disposed = exchangeDisposed(persistErr, records, hostCallBinding)
+		return Turn{}, c.failLocked(errors.Join(fmt.Errorf("provider response does not fit the next request: %w", err), persistErr))
 	}
 	requestRecord := records[0].Request()
 	evidence := exchangeEvidence{
@@ -677,9 +713,7 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 			return Turn{}, c.failLocked(fmt.Errorf("register captured tool call: %s", decision.ReasonCode))
 		}
 	}
-	if err := c.appendHistoryLocked(openrouter.Message{Role: openrouter.Assistant, Content: &assistantText, ToolCalls: callArray}); err != nil {
-		return Turn{}, c.failLocked(fmt.Errorf("append captured assistant response: %w", err))
-	}
+	c.history = nextHistory
 	c.turns++
 	c.sequence = nextSequence
 	c.responseIDs[captured.ResponseID()] = struct{}{}
@@ -700,6 +734,17 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 		}
 	}
 	return projection, nil
+}
+
+// assistantMessage is the history entry of a captured assistant turn. Only a route with the Reasoning mark keeps the
+// turn's reasoning, which the request builder sends back; live capture and journal replay both build it from the
+// same parsed response, so the two give identical request bytes.
+func assistantMessage(route openrouter.Route, captured openrouter.CapturedResponse, text string, calls []openrouter.PriorToolCall) openrouter.Message {
+	message := openrouter.Message{Role: openrouter.Assistant, Content: &text, ToolCalls: calls}
+	if route.Reasoning {
+		message.Reasoning = captured.Reasoning()
+	}
+	return message
 }
 
 // projectedModel is the model id shown to the Pi worker in a Turn. The worker pins

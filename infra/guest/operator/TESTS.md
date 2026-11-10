@@ -735,7 +735,7 @@ cfg-install smoke ok: sha256:a46353903e6d82bc4e716ac64914be5b97ae72c7a0b7daa5875
 
 #### 4.setup-tamper-cfg  PASS
 
-Command: `cd ~/stage-smoke && cp serve-pi-service.json /tmp/cfg.orig && sed -i "s/\"workflow_max_tokens\": 10000/\"workflow_max_tokens\": 100000/" serve-pi-service.json`
+Command: `cd ~/stage-smoke && cp serve-pi-service.json /tmp/cfg.orig && sed -i "s/\"workflow_max_tokens\": 16384/\"workflow_max_tokens\": 163840/" serve-pi-service.json`
 
 Expected: rc=0, output ~ /-/. Got rc=0.
 
@@ -750,7 +750,7 @@ Command: `sudo -n /opt/tbound/operator/tbound-op cfg-install smoke 3709716199597
 Expected: rc=1, output ~ /differs from the shipped template/. Got rc=1.
 
 ```
-cfgcheck: differs from the shipped template at line 16: want '  "workflow_max_tokens": 10000,' got '  "workflow_max_tokens": 100000,'
+cfgcheck: differs from the shipped template at line 16: want '  "workflow_max_tokens": 16384,' got '  "workflow_max_tokens": 163840,'
 tbound-op: config for smoke is not the shipped template with only the allowed members changed
 ```
 
