@@ -117,8 +117,8 @@ func TestBashCumulativeRequestWithWorstCaseReasoningStaysWithinTheRequestCap(t *
 	if size > openrouter.MaxRequestBytes || size > providerbridge.MaxTranscriptBytes {
 		t.Fatalf("request is %d bytes", size)
 	}
-	// encoding/json escapes '<' as <, which is the worst case this test sizes.
-	if !bytes.Contains(request.Body(), []byte(`"reasoning_content":"<<`)) {
+	// encoding/json writes '<' as the six-byte escape backslash-u-003c, which is the worst case this test sizes.
+	if !bytes.Contains(request.Body(), []byte(`"reasoning_content":"`+strings.Repeat(`\`+`u003c`, 2))) {
 		t.Fatal("the worst-case reasoning is not on the wire")
 	}
 }
