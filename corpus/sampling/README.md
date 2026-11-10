@@ -53,9 +53,9 @@ Python standard library only, Python 3.12 compatible. Run from the repository ro
 - **Beacon** (drand JSON): `round`, `randomness`, `signature`, and optionally `previous_signature`.
 - **Adaptation decisions** (JSONL): `case_id`, `pass` (true or false) and `reason` (nonempty). A decision for a development case that is a candidate row is accepted and listed under `not_consulted`. A decision for an excluded row is refused, and this includes the development rows the frozen ledger marks excluded.
 
-## Frozen ledger v1
+## Ledger v1 (history)
 
-`d48-ledger-v1.jsonl` is the candidate ledger both draws use (16 section 3 item 2). It has 1,797 rows:
+`d48-ledger-v1.jsonl` is the first candidate ledger. D51 item 8 keeps it as history: the commitments bind ledger v2 (below). It has 1,797 rows:
 1,358 candidates (TM-A 1,020, TM-B 338), 149 development rows and 290 exclusions, each exclusion with a reason.
 Every row keeps its provenance: source, pin, base item, the rule that resolved it (`resolution_20`) and
 its values before resolution. Development rows (the T5 rehearsal items, D48) are `excluded: true`, so
@@ -68,9 +68,9 @@ the chain, the round rule and the per-source unit choices. Before publication on
 `signed_tag.object` and `signed_tag.commit` from the owner-signed tag `corpus-d48-ledger-v2`. The script
 ignores those fields.
 
-## Ledger v2 (draft, under review)
+## Ledger v2 (the candidate ledger both draws use)
 
-`d48-ledger-v2.jsonl` replaces v1 for the pilot commitment once it is reviewed and the owner signs its tag. v1 stays as history. v2 has 3,089 rows: 1,476 candidates (TM-A 1,020, TM-B 456), 149 development rows and 1,464 exclusions. Against v1 it adds:
+`d48-ledger-v2.jsonl` is the candidate ledger both draws use (16 section 3 item 2). D51 item 8 binds it in the pilot commitment, and the owner signs the tag `corpus-d48-ledger-v2` on the merge commit that holds the final template. v1 stays as history. v2 has 3,089 rows: 1,476 candidates (TM-A 1,020, TM-B 456), 149 development rows and 1,464 exclusions. Against v1 it adds:
 
 - the ASB re-screen: the 152 aggressive attacker tools v1 did not hold, 29 of them candidates;
 - the RedCode-Exec re-screen: the 38 files v1 did not hold (18 Python, 20 Bash, 1,140 rows), 149 of them candidates. Bash rows run as written;
@@ -81,7 +81,9 @@ Every candidate predicate splits under adaptation rule v1 step 8, and every part
 
 `d48-source-digests-v2.json` is the source digest file of adaptation rule v1, step 1. For every candidate it gives the pin key, the revision, the source files and `benchmark_digest`. For every pin key it gives the repository, the licence and the licence files with their digests. It also records the SHA-256 of the ledger it was built from. File digests are taken from the git blobs at each pin, not from working trees.
 
-Both files are built outside the repository by the lane C screening scripts (`20-build.py`, `21-build.py`, `21-source-digests.py`, `22-asb-screen.py`, `22-redcode-screen.py`), against the pinned clones.
+Both files are built outside the repository by the lane C screening scripts (`20-build.py`, `21-build.py`, `21-source-digests.py`, `22-asb-screen.py`, `22-redcode-screen.py`), against the pinned clones. `22-asb-screen.py` decides every ASB class with `asb_goal_class.py` (D51 item 21, adaptation rule section 3c), which names no case.
+
+`adaptation-rule-v1.md` is the adaptation rule (D48, D51). Its SHA-256 is the `adaptation_rule_sha256` of the pilot commitment. `agentdojo_vectors.py`, `agentdojo-vectors-v1.json`, `asb_vectors.py` and `asb-template-vectors-v1.jsonl` are its pre-`T1` test vectors (rule step 3 and section 3a).
 
 ## Development cases
 
