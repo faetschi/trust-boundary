@@ -1,6 +1,6 @@
 {
  "adaptation_rule_path": "corpus/sampling/adaptation-rule-v1.md",
- "adaptation_rule_sha256": "b1f15201ef20f2ac4be42eac07846199c36e83bf64ee1f31d1873181d6f5554b",
+ "adaptation_rule_sha256": "049b55c28659d350e08c462f0109ba91d35aab5c7a3b1bbbcbe500817bea33ff",
  "agentdojo_vectors_path": "corpus/sampling/agentdojo-vectors-v1.json",
  "agentdojo_vectors_sha256": "5bbdd62e71f50407220e8453950ffbffde463e63101d7bce4a26e9c2309195a3",
  "asb_goal_class_path": "corpus/sampling/asb_goal_class.py",
@@ -21,8 +21,8 @@
  "ledger_path": "corpus/sampling/d48-ledger-v2.jsonl",
  "ledger_sha256": "39640703ff31dfe6099fb741d9760c1344df378b7ab3ef49be939cfe148aaebe",
  "pilot_size": 11,
- "register": "D48 (thesis/tbound/AH-technical/10-decision-register.md); 16-sampling-design.md sections 3 to 5",
- "round_rule": "R is the first round of the chain whose scheduled time genesis_time + (R - 1) * period is at least 24 hours after T1, the first-publication time in UTC of this file's OSF version (16-sampling-design.md section 4). The seed is that round's 32-byte randomness. No later round, alternate commitment, seed or redraw may be chosen.",
+ "register": "D48 (thesis/tbound/AH-technical/10-decision-register.md); D53 (T1 venue); 16-sampling-design.md sections 3 to 5",
+ "round_rule": "R is the first round of the chain whose scheduled time genesis_time + (R - 1) * period is at least 24 hours after T1, the `created` timestamp in UTC, as the Zenodo API returns it, of this file's Zenodo record (D53; 16-sampling-design.md section 4). The seed is that round's 32-byte randomness. No later round, alternate commitment, seed or redraw may be chosen.",
  "script_path": "corpus/sampling/select.py",
  "script_sha256": "085c771f571062fdcaf17a7f166631d18f89fad85bf0a25af986ff6408d8a940",
  "signed_tag": {

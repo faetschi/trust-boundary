@@ -23,7 +23,7 @@ Python standard library only, Python 3.12 compatible. Run from the repository ro
 | `verify-beacon --commitment C --published-utc T --beacon B` | Check round and `randomness` against a pilot or a main commitment | 0 ok, 1 refused |
 | `certify --NA N --NB N --nA N --nB N` | Zero-event certification (section 6); a range is `LOW:HIGH` | 0 certified, 1 not certified |
 
-- `--published-utc` is the commitment file version's first publication time from OSF: whole-second UTC ending in `Z`, for example `2026-11-03T12:00:00Z`. If OSF shows fractions of a second, round up to the next whole second. The commitment file cannot hold it (a file with a `T` field is refused). It is recorded as `round.published_utc`.
+- `--published-utc` is the commitment record's `created` timestamp from the Zenodo API (D53): whole-second UTC ending in `Z`, for example `2026-11-03T12:00:00Z`. `created` has fractions of a second: round up to the next whole second. The script's own help text still says OSF; read it as the commitment venue (D53). The commitment file cannot hold it (a file with a `T` field is refused). It is recorded as `round.published_utc`.
 - `--bls-verified-by "TOOL VERSION"` names the independent drand verifier that checked the BLS signature (a nonempty string). The script does not verify BLS; it records the name under `inputs.beacon.bls_verified_by`. The draw counts only after that verification is archived.
 - `draw --pilot-output` is the JSON that `pilot` wrote. The draw is refused unless it is a complete pilot (`schema` `tbound-d48-pilot/v1`, `memberships.pilot` present) and every pilot member is in `development_case_ids`. Its digest and members are recorded under `inputs.pilot_output`.
 - `pilot` and `draw` never overwrite `OUT`. After a `needs-adaptation` run, add decisions and rerun with a new `--out`.
@@ -34,11 +34,11 @@ Python standard library only, Python 3.12 compatible. Run from the repository ro
 ## The two commitments
 
 1. Freeze the ledger and the script, and record the SHA-256 of each (`Get-FileHash` output is accepted).
-2. Write the **pilot commitment** (`"kind": "pilot"`) and publish it as one OSF file version. Its time `T1` is that version's first publication time on OSF, which you pass as `--published-utc`.
+2. Write the **pilot commitment** (`"kind": "pilot"`) and publish it as one public Zenodo record (D53). Its time `T1` is that record's `created` timestamp, which you pass as `--published-utc`.
 3. Round `R` is the first drand round scheduled at least 24 hours after `T1`. Once it exists, save its beacon JSON, run `verify-beacon --published-utc T1`, and check the BLS signature with an independent drand verifier. Note its name and version for `--bls-verified-by`.
 4. Run `pilot` with `--published-utc T1`. On exit 3, add the adaptation decisions for the named cases and rerun with a new `--out`. Exit 1 means the pilot is blocked. No new seed or larger pilot is allowed.
 5. Policy tuning and adaptation-rule fixing use the pilot and development material only. Development cases are every case used in the pilot or in any development or rehearsal run.
-6. Write the **main commitment** (`"kind": "main"`) with the same ledger and script digests, `policy_sha256`, `adaptation_rule_sha256`, and `development_case_ids` listing every development case, the pilot's selected cases included. Publish it once; its OSF first-publication time is `T2`.
+6. Write the **main commitment** (`"kind": "main"`) with the same ledger and script digests, `policy_sha256`, `adaptation_rule_sha256`, and `development_case_ids` listing every development case, the pilot's selected cases included. Publish it once; its Zenodo `created` time is `T2`.
 7. For `T2`, take the round `R` defined in step 3 (first round scheduled at least 24 hours after `T2`), save its beacon, verify it as in step 3, and run `draw` with `--published-utc T2` and `--pilot-output` set to the pilot's output file. Run `allocate` first if you want the cap preview.
 
 `pilot` refuses a main commitment and `draw` refuses a pilot commitment. `allocate` needs a main commitment.
@@ -63,7 +63,7 @@ are still marked as seen. Extra fields beyond `case_id`, `stratum`, `attack_id`,
 `excluded` are not read by the script; the ledger digest covers them.
 
 `pilot-commitment-v1.template.json` is the pilot commitment for `T1`, with the ledger v2, source-digest file and script digests,
-the chain, the round rule and the per-source unit choices. The rule digest is filled (the rule is frozen). Before publication on OSF, fill `signed_tag.object` and `signed_tag.commit` from the owner-signed tag `corpus-d48-ledger-v2`. The script
+the chain, the round rule and the per-source unit choices. The rule digest is filled (the rule is frozen). Before publication on Zenodo, fill `signed_tag.object` and `signed_tag.commit` from the owner-signed tag `corpus-d48-ledger-v2`. The script
 ignores those fields. `test_pilot_template.py` keeps every recorded digest equal to its file.
 
 ## Ledger v2 (the candidate ledger both draws use)
@@ -121,5 +121,5 @@ record it. The output still says `bls_signature_verified: false`, because this s
 - The script checks that `development_case_ids` holds every pilot member, but not the other development or rehearsal cases. That is the owner's attestation.
 - `policy_sha256` and `adaptation_rule_sha256` are recorded and echoed, but the script has no policy or rule file to check them against.
 - Section 3 item 5 also binds the signed tag object and its commit, the per-source unit choices and the rule that derives `R`. The script does not read those fields. They sit in the published commitment file, whose digest the output records.
-- `--published-utc` is taken as given. The script cannot see OSF, so check it against the OSF version's first publication time (rounded up to the next whole second).
+- `--published-utc` is taken as given. The script cannot see Zenodo, so check it against the record's `created` timestamp (rounded up to the next whole second).
 - `--bls-verified-by` is an attestation, not a check.
