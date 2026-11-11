@@ -281,7 +281,6 @@ func TestCommandViewSetupFaultsFailClosedWithIdempotentCleanup(t *testing.T) {
 		{"import-create-second", faultfs.SiteWorkspaceImport, faultfs.OpCreate, 2},
 		{"import-write-first", faultfs.SiteWorkspaceImport, faultfs.OpWrite, 1},
 		{"import-write-second", faultfs.SiteWorkspaceImport, faultfs.OpWrite, 2},
-		{"import-fsync-first", faultfs.SiteWorkspaceImport, faultfs.OpFsync, 1},
 		{"view-tree-fsync", faultfs.SiteViewSetup, faultfs.OpFsync, 1},
 	}
 	forEachFault(t, cases, func(t *testing.T, c faultCase, errno syscall.Errno) {
@@ -334,11 +333,11 @@ func TestCopyOnWriteAndPromotionFaultsQuarantineWithoutPromotion(t *testing.T) {
 		{faultCase{"cow-create-second", faultfs.SiteWorkspaceImport, faultfs.OpCreate, 2}, 0, false},
 		{faultCase{"cow-write-first", faultfs.SiteWorkspaceImport, faultfs.OpWrite, 1}, 0, false},
 		{faultCase{"cow-write-second", faultfs.SiteWorkspaceImport, faultfs.OpWrite, 2}, 0, false},
-		{faultCase{"cow-fsync-first", faultfs.SiteWorkspaceImport, faultfs.OpFsync, 1}, 0, false},
 		{faultCase{"apply-create", faultfs.SiteStageApply, faultfs.OpCreate, 1}, 0, false},
 		{faultCase{"apply-write", faultfs.SiteStageApply, faultfs.OpWrite, 1}, 0, false},
 		{faultCase{"apply-fsync", faultfs.SiteStageApply, faultfs.OpFsync, 1}, 0, false},
 		{faultCase{"apply-rename", faultfs.SiteStageApply, faultfs.OpRename, 1}, 0, false},
+		// Stage files are imported unsynced, so a failing data sync surfaces here, in syncfs.
 		{faultCase{"stage-tree-fsync", faultfs.SiteStageSetup, faultfs.OpFsync, 1}, 1, false},
 		{faultCase{"promote-rename", faultfs.SitePromote, faultfs.OpRename, 1}, 1, false},
 		{faultCase{"promote-dir-fsync", faultfs.SitePromote, faultfs.OpFsync, 1}, 1, true},
@@ -400,7 +399,6 @@ func TestSettledCommandViewImportFaultsQuarantineAfterOneRun(t *testing.T) {
 		{"import-mkdir", faultfs.SiteWorkspaceImport, faultfs.OpMkdir, 1},
 		{"import-create-first", faultfs.SiteWorkspaceImport, faultfs.OpCreate, 1},
 		{"import-write-first", faultfs.SiteWorkspaceImport, faultfs.OpWrite, 1},
-		{"import-fsync-first", faultfs.SiteWorkspaceImport, faultfs.OpFsync, 1},
 		{"stage-mkdir", faultfs.SiteStageSetup, faultfs.OpMkdir, 1},
 	}
 	forEachFault(t, cases, func(t *testing.T, c faultCase, errno syscall.Errno) {

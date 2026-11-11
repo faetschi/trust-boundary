@@ -449,7 +449,7 @@ func (s *Store) Seed(source *os.File, attestation RootAttestation) (*Generation,
 				_ = removeTreeAt(int(s.genDir.Fd()), stageName)
 			}
 		}()
-		snapshot, err := workspace.Import(source, stage, s.options.workspaceOptions("g0", true))
+		snapshot, err := workspace.ImportUnsynced(source, stage, s.options.workspaceOptions("g0", true))
 		if err != nil {
 			return nil, fmt.Errorf("import baseline: %w", err)
 		}
@@ -746,7 +746,7 @@ func (s *Store) RunBash(ctx context.Context, input *Generation, operation delta.
 				_ = removeTreeAt(int(s.genDir.Fd()), stageName)
 			}
 		}()
-		snapshot, err := workspace.Import(view.root, stage, s.options.workspaceOptions(outputID, true))
+		snapshot, err := workspace.ImportUnsynced(view.root, stage, s.options.workspaceOptions(outputID, true))
 		if err != nil {
 			return nil, fmt.Errorf("import settled command view: %w", err)
 		}

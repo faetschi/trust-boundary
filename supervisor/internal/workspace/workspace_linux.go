@@ -150,6 +150,17 @@ type Snapshot struct {
 // manifest match. On error the destination may contain a partial tree; callers
 // must discard it and never promote or reuse it.
 func Import(sourceRoot, destinationRoot *os.File, options Options) (Snapshot, error) {
+	return importTree(sourceRoot, destinationRoot, options, true)
+}
+
+// ImportUnsynced is Import without the per-file fsync. It is for a caller that
+// makes the whole destination durable in one step before relying on it, or that
+// discards the destination after use and never needs it durable.
+func ImportUnsynced(sourceRoot, destinationRoot *os.File, options Options) (Snapshot, error) {
+	return importTree(sourceRoot, destinationRoot, options, false)
+}
+
+func importTree(sourceRoot, destinationRoot *os.File, options Options, syncFiles bool) (Snapshot, error) {
 	if err := validateOptions(options); err != nil {
 		return Snapshot{}, err
 	}
@@ -179,7 +190,7 @@ func Import(sourceRoot, destinationRoot *os.File, options Options) (Snapshot, er
 	if err != nil {
 		return Snapshot{}, err
 	}
-	state := walkState{options: options, rootMountID: sourceMount}
+	state := walkState{options: options, rootMountID: sourceMount, syncFiles: syncFiles}
 	if err := walkDirectory(sourceRoot, destinationRoot, "", 0, &state, false); err != nil {
 		return Snapshot{}, err
 	}
@@ -227,6 +238,7 @@ type walkState struct {
 	objects     []delta.ManifestObject
 	bytes       int64
 	seen        int
+	syncFiles   bool // Import only: fsync each copied file
 }
 
 func validateOptions(options Options) error {
@@ -641,12 +653,14 @@ func walkRegularFile(parentSource, parentDestination *os.File, name, path string
 		if err := syscall.Fchmod(int(destination.Fd()), mode); err != nil {
 			return fmt.Errorf("normalize file mode %q: %w", path, err)
 		}
-		err := faultfs.Check(faultfs.SiteWorkspaceImport, faultfs.OpFsync)
-		if err == nil {
-			err = destination.Sync()
-		}
-		if err != nil {
-			return fmt.Errorf("sync imported file %q: %w", path, err)
+		if state.syncFiles {
+			err := faultfs.Check(faultfs.SiteWorkspaceImport, faultfs.OpFsync)
+			if err == nil {
+				err = destination.Sync()
+			}
+			if err != nil {
+				return fmt.Errorf("sync imported file %q: %w", path, err)
+			}
 		}
 		info, err := statFile(destination)
 		if err != nil || !ownedBySupervisor(info) || uint32(info.Mode&0o7777) != mode {

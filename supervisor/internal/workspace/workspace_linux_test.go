@@ -11,6 +11,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"tbound/supervisor/internal/faultfs"
 )
 
 func TestValidSHA256RequiresCanonicalLowercaseEncoding(t *testing.T) {
@@ -468,6 +470,56 @@ func TestScanRejectsNoncanonicalStoredMode(t *testing.T) {
 	_, err := Scan(destination, testOptions())
 	if !errors.Is(err, ErrNoncanonicalMode) {
 		t.Fatalf("Scan error = %v, want ErrNoncanonicalMode", err)
+	}
+}
+
+// ImportUnsynced must build the same tree as Import and skip only the per-file fsync,
+// which its callers replace with one filesystem sync or do not need.
+func TestImportUnsyncedSkipsOnlyFileSync(t *testing.T) {
+	base := t.TempDir()
+	sourcePath := filepath.Join(base, "source")
+	if err := os.MkdirAll(filepath.Join(sourcePath, "nested"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"a.txt", "nested/b.txt"} {
+		if err := os.WriteFile(filepath.Join(sourcePath, name), []byte(name), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	source, err := os.Open(sourcePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer source.Close()
+	fsyncs := 0
+	defer faultfs.Install(func(site faultfs.Site, op faultfs.Op) error {
+		if site == faultfs.SiteWorkspaceImport && op == faultfs.OpFsync {
+			fsyncs++
+		}
+		return nil
+	})()
+	var digests []string
+	for _, run := range []struct {
+		name       string
+		importTree func(*os.File, *os.File, Options) (Snapshot, error)
+		wantFsyncs int
+	}{{"Import", Import, 2}, {"ImportUnsynced", ImportUnsynced, 0}} {
+		destinationPath := filepath.Join(base, run.name)
+		if err := os.Mkdir(destinationPath, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		fsyncs = 0
+		snapshot, err := run.importTree(source, openPrivateRoot(t, destinationPath), testOptions())
+		if err != nil {
+			t.Fatalf("%s: %v", run.name, err)
+		}
+		if fsyncs != run.wantFsyncs {
+			t.Fatalf("%s made %d file fsyncs, want %d", run.name, fsyncs, run.wantFsyncs)
+		}
+		digests = append(digests, snapshot.TreeDigest)
+	}
+	if digests[0] != digests[1] {
+		t.Fatalf("Import and ImportUnsynced built different trees: %v", digests)
 	}
 }
 

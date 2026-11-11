@@ -21,6 +21,8 @@ import (
 	"unicode/utf8"
 	"unsafe"
 
+	"golang.org/x/sys/unix"
+
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/delta"
 	"tbound/supervisor/internal/faultfs"
@@ -315,7 +317,7 @@ func (s *Store) mutate(ctx context.Context, input *Generation, tool string, oper
 				_ = removeTreeAt(int(s.genDir.Fd()), stageName)
 			}
 		}()
-		if _, err := workspace.Import(input.root, stage, s.options.workspaceOptions(input.id, true)); err != nil {
+		if _, err := workspace.ImportUnsynced(input.root, stage, s.options.workspaceOptions(input.id, true)); err != nil {
 			return nil, fmt.Errorf("copy sealed input generation: %w", err)
 		}
 		if err := apply(stage); err != nil {
@@ -563,7 +565,7 @@ func (s *Store) newViewLocked(input *Generation) (*CommandView, error) {
 		_ = removeTreeAt(int(s.viewDir.Fd()), name)
 		return nil, fmt.Errorf("open private command view: %w", err)
 	}
-	snapshot, err := workspace.Import(input.root, root, s.options.workspaceOptions(input.id, true))
+	snapshot, err := workspace.ImportUnsynced(input.root, root, s.options.workspaceOptions(input.id, true))
 	if err != nil {
 		_ = root.Close()
 		_ = removeTreeAt(int(s.viewDir.Fd()), name)
@@ -1462,6 +1464,11 @@ func unlinkAt(parentFD int, name string, flags uintptr) error {
 // that make a staged generation durable and then visible under its final name.
 func syncStageTree(stage *os.File) error {
 	if err := faultfs.Check(faultfs.SiteStageSetup, faultfs.OpFsync); err != nil {
+		return err
+	}
+	// Stage files are imported unsynced; one syncfs makes all their data durable before
+	// the directory syncs and the rename. Linux 5.8+ reports writeback errors here.
+	if err := unix.Syncfs(int(stage.Fd())); err != nil {
 		return err
 	}
 	return syncTreeDirectories(stage)
