@@ -96,11 +96,13 @@ after 42 s before and 7 s after, and it reads as an audit failure ("effect may
 have occurred"), not as a clean size refusal.
 
 **A lower practical limit.** The admission record holds both full manifests and
-must fit in one 8 MiB audit record. A parallel measurement on main `13ed1193`
+must fit in one 8 MiB audit record; the record data is base64 in the frame, so
+the usable budget is about 6 MiB. A parallel measurement on main `13ed1193`
 (uniform 2 KiB files) saw `RunBash` fail after the command had run at 19,697
 objects with "audit record exceeds the configured record limit"; 9,900 objects
 still passed. `write` and `edit` append the same record. So the working limit is
-somewhere between those two sizes, below the 20,000-object cap. A refusal before
+somewhere between those two sizes, below the 20,000-object cap. django (7,100
+objects) passed every call in this sweep. A refusal before
 the effect is tracked separately (workspace I/O plan, P2).
 
 ## What remains
