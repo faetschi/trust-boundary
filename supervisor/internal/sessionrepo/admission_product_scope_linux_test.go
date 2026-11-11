@@ -4,6 +4,7 @@ package sessionrepo
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -413,6 +414,8 @@ func TestProductScopeNoDeleteDecide(t *testing.T) {
 		{"a sibling that shares the no_delete prefix", noDeleteScope([]string{"srcx", "src"}, []string{"src"}), []delta.ObjectChange{deletedFile("srcx/a")}, "allow", ""},
 		{"read-only is reported before no_delete", scope, []delta.ObjectChange{deletedFile("src/vendor/x")}, "deny", DenyReasonProtectedPath},
 		{"uncovered is reported before no_delete", scope, []delta.ObjectChange{deletedFile("other"), deletedFile("src/a.go")}, "deny", DenyReasonUncoveredPath},
+		{"removing a parent of a deeper no_delete entry", noDeleteScope([]string{"src"}, []string{"src/keep"}),
+			[]delta.ObjectChange{deletedFile("src"), deletedFile("src/keep"), deletedFile("src/keep/a")}, "deny", DenyReasonProtectedPath},
 		{"no_delete outside writable is harmless", noDeleteScope([]string{"docs"}, []string{"src"}), []delta.ObjectChange{deletedFile("docs/a.md")}, "allow", ""},
 	} {
 		outcome, reason := tc.scope.Decide(nil, tc.changes)
@@ -458,10 +461,25 @@ func TestProductScopeNoDeleteValidate(t *testing.T) {
 
 func TestProductScopeNoDeleteDigest(t *testing.T) {
 	policy, metadata := digestBytes([]byte("p")), digestBytes([]byte("m"))
-	plain := mustDigest(t, policy, metadata, productScope([]string{"src"}, nil, nil))
-	if got := mustDigest(t, policy, metadata, noDeleteScope([]string{"src"}, nil)); got != plain {
-		t.Error("an absent no_delete must leave the digest unchanged")
+	plain := mustDigest(t, policy, metadata, productScope([]string{"src"}, []string{"docs"}, []string{"secret"}))
+	// The payload exactly as it was before no_delete existed.
+	legacy, err := json.Marshal(struct {
+		SchemaVersion        string   `json:"schema_version"`
+		PolicyDigest         string   `json:"policy_digest"`
+		MetadataPolicyDigest string   `json:"metadata_policy_digest"`
+		ScopeRule            string   `json:"scope_rule"`
+		ProtectedPaths       []string `json:"protected_paths,omitempty"`
+		Writable             []string `json:"writable,omitempty"`
+		ReadOnly             []string `json:"read_only,omitempty"`
+		Protected            []string `json:"protected,omitempty"`
+	}{AdmissionSchemaVersion, policy, metadata, AdmissionScopeRuleProduct, nil, []string{"src"}, []string{"docs"}, []string{"secret"}})
+	if err != nil {
+		t.Fatal(err)
 	}
+	if plain != digestBytes(legacy) {
+		t.Error("a product scope without no_delete must keep its pre-no_delete digest")
+	}
+	plain = mustDigest(t, policy, metadata, productScope([]string{"src"}, nil, nil))
 	withNoDelete := mustDigest(t, policy, metadata, noDeleteScope([]string{"src"}, []string{"src"}))
 	if withNoDelete == plain {
 		t.Error("no_delete must change the admission policy digest")

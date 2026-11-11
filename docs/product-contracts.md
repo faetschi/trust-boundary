@@ -394,13 +394,14 @@ Decisions taken during implementation:
 - A typed `write`, `edit` or `delete` still declares its own path as its operation's output scope, and that field is still validated. Under `product-scope/v1` `Decide` ignores it, so it can neither widen nor narrow the rule.
 - A change list holds one entry per path whose state differs. A rename is two entries (the old path removed, the new path created) and each is checked, so the two ends of a rename may sit on different sides of a scope boundary and any refusal denies the candidate.
 - A candidate refused by delta admission is a normal DENY for the provider, with the reason code and hint. The turn records it in the receipt's `denials` and continues. If nothing else changed the turn is `no_diff`.
-- Registration validation uses the Store's own list validator: canonical relative paths, strictly sorted, at most 128 per list, no path in two lists. An empty `scope` object is a valid scope that admits nothing, and it is not the same as no `scope`.
+- Registration validation uses the Store's own list validator: canonical relative paths, strictly sorted, at most 128 per list, no path in two of `writable`, `read_only` and `protected` (`no_delete` is exempt). An empty `scope` object is a valid scope that admits nothing, and it is not the same as no `scope`.
 
-`no_delete` is for "edit `src`, never remove anything in it": `writable: [src]` and `no_delete: [src]`. An entry outside every writable entry does nothing, because that path is already refused. It is allowed only under `product-scope/v1`.
+`no_delete` is for "edit `src`, never remove anything in it": `writable: [src]` and `no_delete: [src]`. An entry outside every writable entry does nothing, because that path is already refused. It is allowed only under `product-scope/v1`. It checks each candidate, not the turn's net change, so it also refuses removing a file that the same turn created in an earlier call.
 
 `auto_publish_max_removals` is an optional integer on the project `scope`, from 0 to 1048576. It is not part of the admission rule or its digest. A turn in auto mode whose net change removes more objects than the limit ends `awaiting_review` instead of publishing, and a person resolves it like any review turn. Without the field there is no limit, as before.
 
-- The driver counts every removed object of the turn's net change from the baseline to the sealed tree: files, directories and links. A rename counts as one removal, so it can cost a human look.
+- The driver counts every removed object of the turn's net change from the baseline to the sealed tree: files, directories and links. A file rename counts as one removal, so it can cost a human look. A directory rename or removal counts the directory and every object below it, although publication refuses a directory removal anyway.
+- The limit is per turn. There is no session-wide or cumulative removal budget, so several auto turns that each stay at or under the limit all publish.
 - The limit rides in the turn's recorded `scope`, so it is fixed at admission and replays. The reducer accepts an auto-mode turn at `awaiting_review` only when its scope carries the limit.
 - Neither control sees an overwrite or a truncation such as `: > file`. The path still exists, so no removal is counted and `no_delete` does not apply.
 
