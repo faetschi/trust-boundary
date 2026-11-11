@@ -11,7 +11,7 @@ import (
 // MonitorConfig configures a Monitor.
 type MonitorConfig struct {
 	// Registration is the registered record (its digest is carried by every poll,
-	// its CellUID drives the identity scan, its MaxGap is the bound the record is
+	// its ServiceUID drives the identity scan, its MaxGap is the bound the record is
 	// evaluated against).
 	Registration Registration
 	// Interval is the polling period. It must be positive and shorter than

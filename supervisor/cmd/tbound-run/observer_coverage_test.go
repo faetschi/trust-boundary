@@ -46,7 +46,7 @@ const (
 var obsT0 = time.Unix(1_800_000_000, 0).UTC()
 
 var obsCell = procoracle.CellDoc{Schema: runner.EvidenceSchema, Kind: runner.EvidenceProcCell, CellID: "/sys/fs/cgroup/system.slice/tbound-pi.service/cells",
-	CellCgroupPath: "/system.slice/tbound-pi.service/cells", CellCgroupInode: 4242, CellUID: 1000, CellGID: 1000}
+	CellCgroupPath: "/system.slice/tbound-pi.service/cells", CellCgroupInode: 4242, CellUID: 1000, CellGID: 1000, ServiceUID: 995}
 
 // obsPublication mirrors runner.E04PublicationEvidence on the wire (the contract is tested here as JSON).
 type obsPublication struct {

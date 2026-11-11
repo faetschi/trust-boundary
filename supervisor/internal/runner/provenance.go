@@ -63,7 +63,7 @@ func (p *PublicationFree) verifies(interval string) bool {
 // these constants, so there is one source and no registration order.
 const (
 	NetOracleVersion  = "netoracle/v3"
-	ProcOracleVersion = "procoracle/v4"
+	ProcOracleVersion = "procoracle/v5"
 )
 
 // oracleVersionFor is the oracle version a finding under key must be bound to. It is

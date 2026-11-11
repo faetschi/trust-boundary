@@ -102,6 +102,9 @@ type CellDoc struct {
 	CellCgroupInode uint64 `json:"cell_cgroup_inode"`
 	CellUID         uint32 `json:"cell_uid"`
 	CellGID         uint32 `json:"cell_gid"`
+	// ServiceUID is the host uid the signed user-namespace mapping puts the cell on: the service uid
+	// that owns the cells' rootless user namespaces (Registration.ServiceUID).
+	ServiceUID uint32 `json:"service_uid"`
 }
 
 // GuestRegistration is the one definition of the registration both sides compute. The
@@ -111,7 +114,8 @@ type CellDoc struct {
 // one it computes itself from the same resolution.
 func GuestRegistration(cell CellDoc, start, deadline time.Time) Registration {
 	return Registration{CellID: cell.CellID, CellCgroupPath: cell.CellCgroupPath, CellCgroupInode: cell.CellCgroupInode,
-		IntervalStart: start.UTC(), Deadline: deadline.UTC(), CellUID: cell.CellUID, CellGID: cell.CellGID, MaxGap: GuestMaxGap}
+		IntervalStart: start.UTC(), Deadline: deadline.UTC(), CellUID: cell.CellUID, CellGID: cell.CellGID, ServiceUID: cell.ServiceUID,
+		MaxGap: GuestMaxGap}
 }
 
 // InstantArg and ParseInstantArg carry a time as UTC unix nanoseconds on the command line.

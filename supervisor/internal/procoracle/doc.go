@@ -14,7 +14,8 @@
 // # Registration
 //
 // Registration is the one immutable record (cell id, interval start, teardown
-// deadline, the dedicated cell identity CellUID/CellGID, the cell cgroup identity
+// deadline, the in-cell identity CellUID/CellGID, the service uid ServiceUID that
+// owns the cells' user namespaces, the cell cgroup identity
 // CellCgroupPath/CellCgroupInode, and MaxGap) that the
 // oracle works from. The executor MUST take it from the launcher or service
 // receipt, the party that created the cell and set the deadline, and hand the
@@ -32,23 +33,36 @@
 // Registration and records one Snapshot at one sampling point (matrix sections 2
 // and 3). The processes it records are the union of the cell members, the
 // launcher's (pid, start time) registry, and the identity scan: every process of
-// the whole /proc whose real, effective or saved uid is CellUID, wherever its
-// cgroup is. The registry is an additional source; completeness does not depend
-// on it, so a double-fork descendant that left the cell before registration is
-// still found by its uid. Sockets are those the observed processes hold, plus
-// every inet socket whose /proc/net uid column is CellUID in the host view and in
-// the network namespace of each live cell-identity process; unix sockets are
-// matched by inode through the descriptors of cell-identity processes.
+// the whole /proc in a cell user namespace, wherever its cgroup is.
+//
+// The cell identity is a user namespace, not a uid. The cells are rootless Podman
+// containers of the service: in the host's eyes every cell process runs as the
+// service uid (the single-uid map puts the in-cell CellUID on it), and the in-cell
+// uid is an ordinary host uid (the guest admin's login). The tree is: the initial
+// user namespace (the scanner's), the service's rootless namespace below it (owned
+// by ServiceUID; Podman, its pause process and conmon live there), and one
+// namespace per cell below that. A process is cell identity when its user
+// namespace is two or more levels below the scanner's and the topmost of those is
+// owned by ServiceUID (cellUserNS, NS_GET_PARENT and NS_GET_OWNER_UID). A process
+// cannot move into an ancestor user namespace, so a cell process and everything it
+// starts, including in a user namespace it nests, stays cell identity. The
+// registry is an additional source; completeness does not depend on it, so a
+// double-fork descendant that left the cell before registration is still found by
+// its namespace. Sockets are those the observed processes hold, plus every inet
+// socket of a network namespace other than the scanner's that a live
+// cell-identity process is in; unix sockets are matched by inode through the
+// descriptors of cell-identity processes.
 //
 // The identity scan fails closed. It is only complete if /proc lists, pid 1 and
 // the scanner's own pid (/proc/self) are listed, pid 1's status is readable (so
 // hidepid=1/2/ptraceable, which hide other users' processes, is detected
 // functionally; a hidepid mount that exempts the scanner passes) and the status
-// of every listed pid is readable. Anything else is a DomainIdentity gap and the
-// verdicts are evidence_lost. Reading the descriptors and namespaces of
-// cell-identity processes needs ptrace-read access to them (root or
-// CAP_SYS_PTRACE when the scanner is another uid); without it the gaps make the
-// verdicts evidence_lost.
+// and the user namespace of every listed pid are readable. Anything else is a
+// DomainIdentity gap and the verdicts are evidence_lost. Reading the user
+// namespace of every process, and the descriptors and namespaces of
+// cell-identity processes, needs ptrace-read access to them: the scanner must be
+// root (the guest's evidence command is), or every scan has gaps and the verdicts
+// are evidence_lost.
 //
 // # Monitor
 //
@@ -91,12 +105,21 @@
 //   - A boundary crossing that begins and ends between two polls (shorter than
 //     the poll spacing, at most MaxGap) is not seen by EFF-PROC-02.
 //   - A cell-identity process that is outside the cell cgroup only transiently at
-//     startup (forked as the cell uid before it is placed in the cell cgroup) is
-//     an EFF-PROC-02 finding; the launcher must place cell processes in the cell
-//     cgroup at creation.
-//   - The identity is assumed to be used by one cell at a time (the dedicated
-//     cell identity of the registration); a second concurrent cell with the same
-//     uid would be reported as an escape.
+//     startup (in a cell user namespace before it is placed in the cell cgroup,
+//     as crun's child is between clone and cgroup placement) is an EFF-PROC-02
+//     finding if a poll lands in that window; the launcher must place cell
+//     processes in the cell cgroup at creation.
+//   - Every container the service uid starts with rootless Podman is cell
+//     identity, not only the cells of the registered cgroup: a v-run or acceptance
+//     cell, or a leftover container, running outside the cells cgroup during an
+//     interval is reported as an escape.
+//   - The rule depends on the rootless Podman topology (a cell namespace below the
+//     service's rootless namespace). A cell started directly in a namespace one
+//     level below the scanner's would be indistinguishable from Podman's own
+//     rootless namespace and is not cell identity; only its cgroup would count.
+//   - A host socket of the cell (a net-sink/v1 cell shares the host network
+//     namespace) is the cell's only while a cell process holds it by descriptor:
+//     the host uid column cannot tell a cell socket from the service's own.
 //   - A network namespace that no process of the cell identity holds, and a
 //     socket that no /proc table or descriptor accounts for, are not visible.
 //     Closing orphan sockets (FIN_WAIT) of a dead cell process may be reported by

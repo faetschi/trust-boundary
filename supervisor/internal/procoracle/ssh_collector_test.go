@@ -19,7 +19,7 @@ import (
 var (
 	sshT0   = time.Unix(1_800_000_000, 0).UTC()
 	sshCell = CellDoc{Schema: runner.EvidenceSchema, Kind: runner.EvidenceProcCell, CellID: "/sys/fs/cgroup/system.slice/tbound-pi.service/cells",
-		CellCgroupPath: "/system.slice/tbound-pi.service/cells", CellCgroupInode: 4242, CellUID: 1000, CellGID: 1000}
+		CellCgroupPath: "/system.slice/tbound-pi.service/cells", CellCgroupInode: 4242, CellUID: 1000, CellGID: 1000, ServiceUID: 995}
 )
 
 // fakeGuest answers the evidence kinds the way the guest does: it rebuilds the registration

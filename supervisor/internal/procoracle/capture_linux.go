@@ -15,6 +15,8 @@ import (
 	"syscall"
 	"time"
 
+	"golang.org/x/sys/unix"
+
 	"tbound/supervisor/internal/piruntime"
 )
 
@@ -42,7 +44,7 @@ func (h heldCell) Observe() (CellFacts, error) {
 const (
 	candListed   uint8 = 1 << iota // named by the cell's cgroup.procs
 	candRegistry                   // in the launcher's registry
-	candIdentity                   // its uid in /proc/<pid>/status is the cell identity
+	candIdentity                   // its user namespace is a cell's (cellUserNS)
 )
 
 // Capture records one snapshot at one sampling point. It refuses (a cell_identity_mismatch
@@ -54,28 +56,29 @@ const (
 // The processes read are the union of three sources. (1) The members of the
 // cell (cgroup.procs of the held descriptor and of its descendants). (2) The live
 // registry entries. (3) The identity scan: every process of the whole /proc
-// whose real, effective or saved uid is Registration.CellUID, wherever its
-// cgroup is. The identity scan is what makes the capture independent of the
-// registry's completeness: a double-fork descendant that left the cell before it
-// was registered is still found by its uid.
+// whose user namespace is a cell's (cellUserNS), wherever its cgroup is. The
+// identity scan is what makes the capture independent of the registry's
+// completeness: a double-fork descendant that left the cell before it was
+// registered is still found by its user namespace, which it cannot leave for an
+// ancestor.
 //
 // Completeness of the identity scan (see scanIdentity): it fails closed with a
 // DomainIdentity gap when /proc cannot be listed, when pid 1 or the scanner's own
-// pid is not visible, or when the status of any pid cannot be read, which is what
-// hidepid=1/2/ptraceable and a restricted /proc look like. A pid whose /proc entry
-// vanishes while it is read has exited and is not a gap; every other read
-// failure is.
+// pid is not visible, or when the status or the user namespace of any pid cannot
+// be read, which is what hidepid=1/2/ptraceable, a restricted /proc and a scanner
+// without ptrace-read access look like. A pid whose /proc entry vanishes while it
+// is read has exited and is not a gap; every other read failure is.
 //
 // Sockets are those held (by descriptor) by the observed processes, resolved
 // through the net tables of each process's own network namespace, plus every
-// inet socket whose uid column is CellUID in the host view and in the network
-// namespace of each live cell-identity process (uidSockets).
+// inet socket of a network namespace other than the scanner's that a live cell
+// process is in (cellNetnsSockets).
 func Capture(cell CellReader, view HostView, p CaptureParams) Snapshot {
 	return capture(cell, view, p, true)
 }
 
 func capture(cell CellReader, view HostView, p CaptureParams, withSockets bool) Snapshot {
-	c := &capturer{root: view.ProcRoot, reg: p.Registration, withSockets: withSockets, snap: Snapshot{
+	c := &capturer{root: view.ProcRoot, reg: p.Registration, withSockets: withSockets, userNS: view.UserNS, nsCache: map[uint64]cellNS{}, snap: Snapshot{
 		Seq: p.Seq, Point: p.Point, DrainProof: p.DrainProof, RegistrationDigest: p.Registration.Digest(),
 		Registry:  Registry{Recorded: p.Registry.Recorded, Procs: slices.Clone(p.Registry.Procs)},
 		Processes: []Process{}, Sockets: []Socket{}, Gaps: []Gap{},
@@ -87,6 +90,9 @@ func capture(cell CellReader, view HostView, p CaptureParams, withSockets bool) 
 		return int(a.StartTicks) - int(b.StartTicks)
 	})
 	c.snap.Registry.Procs = slices.Compact(c.snap.Registry.Procs)
+	if c.userNS == nil {
+		c.userNS = userNSAncestry
+	}
 	now := view.Now
 	if now == nil {
 		now = time.Now
@@ -135,6 +141,11 @@ func capture(cell CellReader, view HostView, p CaptureParams, withSockets bool) 
 		candidates[id.PID] |= candRegistry
 	}
 	if c.reg.identityUsable() {
+		if link, err := os.Readlink(filepath.Join(c.root, "self/ns/user")); err != nil {
+			c.gap(DomainIdentity, "userns_unreadable", "the scanner's own user namespace: "+err.Error())
+		} else if c.selfUserNS, err = nsInode(link, "user"); err != nil {
+			c.gap(DomainIdentity, "userns_unreadable", "the scanner's own user namespace: "+err.Error())
+		}
 		for _, pid := range c.scanIdentity() {
 			candidates[pid] |= candIdentity
 		}
@@ -150,7 +161,7 @@ func capture(cell CellReader, view HostView, p CaptureParams, withSockets bool) 
 		c.observe(pid, candidates[pid])
 	}
 	if withSockets {
-		c.uidSockets()
+		c.cellNetnsSockets()
 	}
 	return c.snap
 }
@@ -160,6 +171,17 @@ type capturer struct {
 	reg         Registration
 	withSockets bool
 	snap        Snapshot
+	// userNS walks a user namespace's ancestry (HostView.UserNS); selfUserNS is the scanner's own user
+	// namespace and nsCache the verdict for each user namespace already walked in this capture.
+	userNS     func(nsFile string) ([]UserNSLevel, error)
+	selfUserNS uint64
+	nsCache    map[uint64]cellNS
+}
+
+// cellNS is the verdict of cellUserNS for one user namespace.
+type cellNS struct {
+	cell  bool
+	chain []uint64
 }
 
 func (c *capturer) gap(domain, code, detail string) {
@@ -174,8 +196,86 @@ func (c *capturer) registered(id ProcID) bool {
 	return slices.Contains(c.snap.Registry.Procs, id)
 }
 
-func (c *capturer) isCellUID(uids [3]uint32) bool {
-	return c.reg.identityUsable() && slices.Contains(uids[:], c.reg.CellUID)
+// cellUserNS decides the cell identity of the process of dir from its user namespace. The cells are
+// rootless Podman containers of the service: each is a user namespace below the service's rootless
+// namespace (Podman's pause namespace), which is directly below the scanner's (the initial one) and owned
+// by Registration.ServiceUID. So a process is the cell's when its user namespace is two or more levels
+// below the scanner's and the topmost of those is owned by ServiceUID. The rootless namespace itself
+// (Podman, its pause process, conmon, crun before it creates the cell) is not the cell's, and neither is
+// any other account's container. A cell process cannot leave for an ancestor user namespace; a namespace it
+// nests below its own is a deeper one of the same tree. chain lists the namespaces from the process's own
+// up to the one directly below the scanner's. With no usable identity in the registration nothing is read.
+func (c *capturer) cellUserNS(dir string) (bool, []uint64, error) {
+	if !c.reg.identityUsable() {
+		return false, nil, nil
+	}
+	file := filepath.Join(dir, "ns/user")
+	link, err := os.Readlink(file)
+	if err != nil {
+		return false, nil, err
+	}
+	inode, err := nsInode(link, "user")
+	if err != nil {
+		return false, nil, err
+	}
+	if v, ok := c.nsCache[inode]; ok {
+		return v.cell, v.chain, nil
+	}
+	levels, err := c.userNS(file)
+	if err != nil {
+		return false, nil, err
+	}
+	top := slices.IndexFunc(levels, func(l UserNSLevel) bool { return l.Inode == c.selfUserNS })
+	if c.selfUserNS == 0 || top < 0 {
+		return false, nil, fmt.Errorf("user namespace %s does not descend from the scanner's own (%d)", link, c.selfUserNS)
+	}
+	v := cellNS{cell: top >= 2 && levels[top-1].Owner == c.reg.ServiceUID, chain: make([]uint64, top)}
+	for i := range v.chain {
+		v.chain[i] = levels[i].Inode
+	}
+	// A process that changed its user namespace between the link and the walk (crun creating a cell) is
+	// judged by what the walk found, but that verdict is not the namespace its link named.
+	if levels[0].Inode == inode {
+		c.nsCache[inode] = v
+	}
+	return v.cell, v.chain, nil
+}
+
+// maxUserNSLevels bounds the walk: the kernel nests user namespaces at most 32 deep below the initial one.
+const maxUserNSLevels = 33
+
+// userNSAncestry is HostView.UserNS of the live kernel: it opens the namespace link and walks NS_GET_PARENT
+// up to the outermost user namespace the caller may see (EPERM), reading each one's inode and owner
+// (NS_GET_OWNER_UID, as the caller's namespace sees it). Opening another process's link needs ptrace-read
+// access to it.
+func userNSAncestry(nsFile string) ([]UserNSLevel, error) {
+	fd, err := unix.Open(nsFile, unix.O_RDONLY|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return nil, &fs.PathError{Op: "open", Path: nsFile, Err: err}
+	}
+	defer func() { _ = unix.Close(fd) }()
+	var out []UserNSLevel
+	for range maxUserNSLevels {
+		var st unix.Stat_t
+		if err := unix.Fstat(fd, &st); err != nil {
+			return nil, fmt.Errorf("%s: fstat: %w", nsFile, err)
+		}
+		owner, err := unix.IoctlGetUint32(fd, unix.NS_GET_OWNER_UID)
+		if err != nil {
+			return nil, fmt.Errorf("%s: NS_GET_OWNER_UID: %w", nsFile, err)
+		}
+		out = append(out, UserNSLevel{Inode: st.Ino, Owner: owner})
+		parent, err := unix.IoctlRetInt(fd, unix.NS_GET_PARENT)
+		if errors.Is(err, unix.EPERM) {
+			return out, nil // the outermost namespace the caller may see
+		}
+		if err != nil {
+			return nil, fmt.Errorf("%s: NS_GET_PARENT: %w", nsFile, err)
+		}
+		_ = unix.Close(fd)
+		fd = parent
+	}
+	return nil, fmt.Errorf("%s: user namespace ancestry deeper than %d levels", nsFile, maxUserNSLevels)
 }
 
 // parseUIDs reads the Uid line of /proc/<pid>/status: real, effective and saved
@@ -229,8 +329,8 @@ func parseNSpid(data []byte) ([]int, error) {
 	return nil, nil
 }
 
-// scanIdentity lists every pid of the whole /proc whose real, effective or saved
-// uid is the cell identity, wherever its cgroup is.
+// scanIdentity lists every pid of the whole /proc whose user namespace is a
+// cell's (cellUserNS), wherever its cgroup is.
 //
 // Hidepid check. A /proc mounted with hidepid=1 (contents of other users' pids
 // unreadable), hidepid=2 (other users' pids not listed) or hidepid=ptraceable
@@ -238,11 +338,12 @@ func parseNSpid(data []byte) ([]int, error) {
 // scanner. The scan therefore fails closed unless it can show that it sees them:
 // (a) /proc lists, (b) pid 1 and the scanner's own pid (the /proc/self link) are
 // listed, (c) pid 1's status is readable (pid 1 belongs to another user than any
-// scanner but root, so hidepid=1/2/ptraceable denies it), and (d) the status of
-// every listed pid is readable (vanished pids excepted). Each failure is a
-// DomainIdentity gap. The check is functional, not a parse of the mount
-// options: a hidepid mount that exempts the scanner's group (gid=) is complete
-// and passes.
+// scanner but root, so hidepid=1/2/ptraceable denies it), and (d) the status and
+// the user namespace of every listed pid are readable (vanished pids excepted;
+// the namespace needs ptrace-read access, so a scanner that is not root fails
+// here). Each failure is a DomainIdentity gap. The check is functional, not a
+// parse of the mount options: a hidepid mount that exempts the scanner's group
+// (gid=) is complete and passes.
 func (c *capturer) scanIdentity() []int {
 	c.snap.IdentityScanned = true
 	entries, err := os.ReadDir(c.root)
@@ -270,15 +371,15 @@ func (c *capturer) scanIdentity() []int {
 	}
 
 	var out []int
-	var unread []string
+	var unread, nsUnread []string
 	for _, pid := range pids {
-		data, err := os.ReadFile(filepath.Join(c.root, strconv.Itoa(pid), "status"))
+		dir := filepath.Join(c.root, strconv.Itoa(pid))
+		data, err := os.ReadFile(filepath.Join(dir, "status"))
 		if vanished(err) {
 			continue
 		}
-		var uids [3]uint32
 		if err == nil {
-			uids, err = parseUIDs(data)
+			_, err = parseUIDs(data)
 		}
 		if err != nil {
 			if pid == 1 {
@@ -287,7 +388,17 @@ func (c *capturer) scanIdentity() []int {
 			unread = append(unread, fmt.Sprintf("pid %d: %v", pid, err))
 			continue
 		}
-		if c.isCellUID(uids) {
+		cell, _, err := c.cellUserNS(dir)
+		if vanished(err) {
+			if _, serr := os.Stat(dir); serr != nil {
+				continue // exited; a live process always has its user namespace link
+			}
+		}
+		if err != nil {
+			nsUnread = append(nsUnread, fmt.Sprintf("pid %d: %v", pid, err))
+			continue
+		}
+		if cell {
 			out = append(out, pid)
 		}
 	}
@@ -295,13 +406,17 @@ func (c *capturer) scanIdentity() []int {
 		c.gap(DomainIdentity, "status_unreadable",
 			fmt.Sprintf("%d of %d pids cannot be checked for the cell identity, first %s", len(unread), len(pids), unread[0]))
 	}
+	if len(nsUnread) > 0 {
+		c.gap(DomainIdentity, "userns_unreadable",
+			fmt.Sprintf("the user namespace of %d of %d pids cannot be read, first %s", len(nsUnread), len(pids), nsUnread[0]))
+	}
 	return out
 }
 
 // observe reads one candidate pid. flags say why it is a candidate. A registry
 // entry only counts when the start time still matches, and an identity candidate
-// only when its uid still matches when it is read again here (a different start
-// time or uid is pid reuse).
+// only when its user namespace is still a cell's when it is read again here (a
+// different start time or namespace is pid reuse).
 func (c *capturer) observe(pid int, flags uint8) {
 	dir := filepath.Join(c.root, strconv.Itoa(pid))
 	fail := func(code string, err error) {
@@ -361,9 +476,12 @@ func (c *capturer) observe(pid int, flags uint8) {
 	if failed("status_unreadable", err) {
 		return
 	}
-	identity := c.isCellUID(uids)
+	identity, userNS, err := c.cellUserNS(dir)
+	if failed("userns_unreadable", err) {
+		return
+	}
 	if !listed && !registered && !identity {
-		return // the pid was reused by a process of another identity
+		return // the pid was reused by a process outside the cell's user namespaces
 	}
 	nspid, err := parseNSpid(statusData)
 	if err != nil {
@@ -372,7 +490,7 @@ func (c *capturer) observe(pid int, flags uint8) {
 	}
 	proc := Process{
 		PID: pid, StartTicks: st.start, PPID: st.ppid, State: st.state, Comm: st.comm, CgroupPath: cg,
-		InCell: underCell(cg, c.snap.CellPath), UID: uids, CellIdentity: identity, Registered: registered, OutThreads: []Thread{},
+		InCell: underCell(cg, c.snap.CellPath), UID: uids, CellIdentity: identity, UserNS: userNS, Registered: registered, OutThreads: []Thread{},
 		NSPid: nspid,
 	}
 	if proc.InCell {
@@ -401,6 +519,19 @@ func (c *capturer) observe(pid int, flags uint8) {
 	}
 	c.snap.Processes = append(c.snap.Processes, proc)
 	c.snap.Sockets = append(c.snap.Sockets, sockets...)
+}
+
+// nsInode parses a namespace link ("user:[4026531837]") of the given kind.
+func nsInode(link, kind string) (uint64, error) {
+	v, ok := strings.CutPrefix(link, kind+":[")
+	if ok {
+		v, ok = strings.CutSuffix(v, "]")
+	}
+	n, err := strconv.ParseUint(v, 10, 64)
+	if !ok || err != nil || n == 0 {
+		return 0, fmt.Errorf("%q is not a %s namespace link", link, kind)
+	}
+	return n, nil
 }
 
 func readCgroupPath(file string) (string, error) {
@@ -444,33 +575,33 @@ func (c *capturer) outThreads(dir string) ([]Thread, error) {
 	return out, nil
 }
 
-// inetTables are the net tables with a uid column. tcp6 and udp6 are optional
+// inetTables are the inet net tables (cellNetnsSockets). tcp6 and udp6 are optional
 // (IPv6 may be disabled).
 var inetTables = []struct {
 	name     string
 	optional bool
 }{{"tcp", false}, {"tcp6", true}, {"udp", false}, {"udp6", true}}
 
-// uidSockets adds the inet sockets whose uid column is the cell identity and that
-// no observed process holds by descriptor (an orphan, or a socket whose holder
-// could not be attributed). It reads the table of the scanner's own network
-// namespace (the host view) and of the network namespace of every live
-// cell-identity process, so a cell that created its own namespace is covered as
-// long as one of its processes is alive. A namespace held by no process is
-// unreachable through /proc: a stated limit. Unix sockets have no uid column and
-// are attributed by inode through the descriptors of cell-identity processes
-// (resolve).
-func (c *capturer) uidSockets() {
+// cellNetnsSockets adds the inet sockets of the cell's own network namespaces
+// that no observed process holds by descriptor (an orphan, or a socket whose
+// holder could not be attributed). A network namespace other than the scanner's
+// that a live cell process is in is the cell's (a network-none cell gets one of
+// its own), so every row of it is. The scanner's own (host) namespace is not read
+// this way: there a cell socket shows the service uid in the uid column, as the
+// service's own sockets do, so a host socket is the cell's only through the
+// descriptor of a cell process. A namespace held by no process is unreachable
+// through /proc: a stated limit. Unix sockets are attributed by inode through the
+// descriptors of cell processes (resolve).
+func (c *capturer) cellNetnsSockets() {
 	if !c.reg.identityUsable() {
 		return
 	}
-	host := filepath.Join(c.root, "self")
-	reps := map[string][]string{} // netns link -> /proc dirs that are in it
-	if link, err := os.Readlink(filepath.Join(host, "ns/net")); err != nil {
+	host, err := os.Readlink(filepath.Join(c.root, "self/ns/net"))
+	if err != nil {
 		c.gap(DomainSocket, "netns_unreadable", "scanner's own network namespace: "+err.Error())
-	} else {
-		reps[link] = append(reps[link], host)
+		return
 	}
+	reps := map[string][]string{} // netns link -> /proc dirs that are in it
 	for _, p := range c.snap.Processes {
 		if !p.CellIdentity || !p.Live() {
 			continue
@@ -484,7 +615,9 @@ func (c *capturer) uidSockets() {
 			c.gap(DomainSocket, "netns_unreadable", fmt.Sprintf("pid %d: %v", p.PID, err))
 			continue
 		}
-		reps[link] = append(reps[link], dir)
+		if link != host {
+			reps[link] = append(reps[link], dir)
+		}
 	}
 	owned := map[uint64]bool{}
 	for _, s := range c.snap.Sockets {
@@ -498,7 +631,7 @@ func (c *capturer) uidSockets() {
 	for _, link := range links {
 		for _, tbl := range inetTables {
 			for _, s := range c.readInet(reps[link], tbl.name, tbl.optional) {
-				if s.UID == c.reg.CellUID && s.Inode != 0 && !owned[s.Inode] {
+				if s.Inode != 0 && !owned[s.Inode] {
 					owned[s.Inode] = true
 					c.snap.Sockets = append(c.snap.Sockets, s)
 				}
