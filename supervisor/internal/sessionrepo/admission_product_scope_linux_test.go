@@ -484,7 +484,7 @@ func TestProductScopeNoDeleteDigest(t *testing.T) {
 	if withNoDelete == plain {
 		t.Error("no_delete must change the admission policy digest")
 	}
-	if withNoDelete == mustDigest(t, policy, metadata, productScope([]string{"src"}, []string{"src"}, nil)) {
+	if mustDigest(t, policy, metadata, noDeleteScope([]string{"src"}, []string{"src/a"})) == mustDigest(t, policy, metadata, productScope([]string{"src"}, []string{"src/a"}, nil)) {
 		t.Error("no_delete and read_only must not share a digest")
 	}
 	if got := cloneAdmissionScope(noDeleteScope([]string{"src"}, []string{"src"})); len(got.NoDelete) != 1 {
