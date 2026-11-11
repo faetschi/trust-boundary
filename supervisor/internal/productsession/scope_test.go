@@ -82,6 +82,9 @@ func TestRegistrationScopeValidation(t *testing.T) {
 		"trailing slash":             {ReadOnly: []string{"a/"}},
 		"empty path":                 {Writable: []string{""}},
 		"more than 128 entries":      {Writable: many},
+		"unsorted no_delete":         {Writable: []string{"a", "b"}, NoDelete: []string{"b", "a"}},
+		"non-canonical no_delete":    {Writable: []string{"a"}, NoDelete: []string{"a/"}},
+		"more than 128 no_delete":    {NoDelete: many},
 	} {
 		r := fixtureUnsigned()
 		r.Projects[0].Scope = scope
@@ -90,10 +93,11 @@ func TestRegistrationScopeValidation(t *testing.T) {
 		}
 	}
 	for name, scope := range map[string]*ProductScope{
-		"no scope":     nil,
-		"empty scope":  {},
-		"notes scope":  notesScope(),
-		"nested lists": {Writable: []string{"src"}, ReadOnly: []string{"src/vendor"}, Protected: []string{"src/vendor/key"}},
+		"no scope":          nil,
+		"empty scope":       {},
+		"notes scope":       notesScope(),
+		"nested lists":      {Writable: []string{"src"}, ReadOnly: []string{"src/vendor"}, Protected: []string{"src/vendor/key"}},
+		"no_delete overlay": {Writable: []string{"src"}, NoDelete: []string{"src"}},
 	} {
 		reg := signedRegistration(t, withAlphaScope(scope))
 		got := reg.Projects[0].Scope
@@ -301,5 +305,22 @@ func TestTurnKeepsItsScopeAcrossARegistrationChange(t *testing.T) {
 	second := mustSubmit(t, c, uid1, s.ID, 2, "k2", "p")
 	if !sameScope(second.Scope, &ProductScope{Writable: []string{"src"}}) {
 		t.Fatalf("the new turn must run under the new registration's scope: %+v", second.Scope)
+	}
+}
+
+func TestNoDeleteIsPartOfTheScopeIdentity(t *testing.T) {
+	plain := &ProductScope{Writable: []string{"src"}}
+	guarded := &ProductScope{Writable: []string{"src"}, NoDelete: []string{"src"}}
+	if sameScope(plain, guarded) {
+		t.Error("a scope with no_delete equals one without")
+	}
+	if got := guarded.clone(); !sameScope(guarded, got) || &got.NoDelete[0] == &guarded.NoDelete[0] {
+		t.Errorf("clone must copy no_delete: %+v", got)
+	}
+	if got := guarded.AdmissionScope().NoDelete; len(got) != 1 || got[0] != "src" {
+		t.Errorf("AdmissionScope drops no_delete: %+v", got)
+	}
+	if signedRegistration(t, withAlphaScope(plain)).Digest == signedRegistration(t, withAlphaScope(guarded)).Digest {
+		t.Error("no_delete must change the registration digest")
 	}
 }
