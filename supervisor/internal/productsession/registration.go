@@ -68,6 +68,9 @@ type ProductScope struct {
 	Writable  []string `json:"writable,omitempty"`
 	ReadOnly  []string `json:"read_only,omitempty"`
 	Protected []string `json:"protected,omitempty"`
+	// NoDelete is an overlay on Writable: an entry may equal or lie inside a writable entry, and a
+	// change that removes an object at or below it is denied.
+	NoDelete []string `json:"no_delete,omitempty"`
 }
 
 // AdmissionScope is the Store admission rule of s. A nil scope is the default rule.
@@ -76,14 +79,14 @@ func (s *ProductScope) AdmissionScope() sessionrepo.AdmissionScope {
 		return sessionrepo.AdmissionScope{}
 	}
 	return sessionrepo.AdmissionScope{Rule: sessionrepo.AdmissionScopeRuleProduct,
-		Writable: slices.Clone(s.Writable), ReadOnly: slices.Clone(s.ReadOnly), Protected: slices.Clone(s.Protected)}
+		Writable: slices.Clone(s.Writable), ReadOnly: slices.Clone(s.ReadOnly), Protected: slices.Clone(s.Protected), NoDelete: slices.Clone(s.NoDelete)}
 }
 
 func (s *ProductScope) clone() *ProductScope {
 	if s == nil {
 		return nil
 	}
-	return &ProductScope{Writable: slices.Clone(s.Writable), ReadOnly: slices.Clone(s.ReadOnly), Protected: slices.Clone(s.Protected)}
+	return &ProductScope{Writable: slices.Clone(s.Writable), ReadOnly: slices.Clone(s.ReadOnly), Protected: slices.Clone(s.Protected), NoDelete: slices.Clone(s.NoDelete)}
 }
 
 // sameScope compares scopes by content: nil is the default rule, an empty scope admits nothing.
@@ -91,7 +94,7 @@ func sameScope(a, b *ProductScope) bool {
 	if a == nil || b == nil {
 		return a == b
 	}
-	return slices.Equal(a.Writable, b.Writable) && slices.Equal(a.ReadOnly, b.ReadOnly) && slices.Equal(a.Protected, b.Protected)
+	return slices.Equal(a.Writable, b.Writable) && slices.Equal(a.ReadOnly, b.ReadOnly) && slices.Equal(a.Protected, b.Protected) && slices.Equal(a.NoDelete, b.NoDelete)
 }
 
 // effectiveScope is the scope a turn of a session on p runs under. A read-only session has no

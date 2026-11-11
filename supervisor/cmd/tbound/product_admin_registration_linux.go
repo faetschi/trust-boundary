@@ -34,7 +34,7 @@ const registrationUsage = `Usage (offline administrator; the private key never e
   tbound product registration measure --project-dir DIR --gate-policy FILE
 measure prints the root= and policy= digests for --project; run it as the service user, on the product host.
 --project SPEC is KEY=VALUE pairs joined by commas, list values joined by +:
-  id=P,root=sha256:HEX,policy=sha256:HEX,modes=review+auto[,bash=PATH+PATH][,writable=A+B][,read-only=A+B][,protected=A+B]
+  id=P,root=sha256:HEX,policy=sha256:HEX,modes=review+auto[,bash=PATH+PATH][,writable=A+B][,read-only=A+B][,protected=A+B][,no-delete=A+B]
 init writes an unsigned template and refuses values the registration would refuse. It has no
 placeholders: limits and artifact digests are explicit flags; the compiled host identity is filled by init. sign writes FILE and FILE.sig and refuses
 to overwrite either. Changing a project, scope, policy or limit means signing a new registration.
@@ -175,11 +175,13 @@ func parseProject(spec string) (productsession.Project, error) {
 			scope.ReadOnly = list(value)
 		case "protected":
 			scope.Protected = list(value)
+		case "no-delete":
+			scope.NoDelete = list(value)
 		default:
 			return p, fmt.Errorf("unknown project spec key %q", key)
 		}
 	}
-	if scope.Writable != nil || scope.ReadOnly != nil || scope.Protected != nil {
+	if scope.Writable != nil || scope.ReadOnly != nil || scope.Protected != nil || scope.NoDelete != nil {
 		p.Scope = &scope
 	}
 	if p.BashOutputPaths == nil {
@@ -330,7 +332,7 @@ func registrationSummary(r productsession.Registration) productsetup.Registratio
 		s.PolicyDigests[p.ProjectID] = p.PolicyDigest
 		scope := "exact-path admission"
 		if p.Scope != nil {
-			scope = fmt.Sprintf("scope: %d writable, %d read-only, %d protected", len(p.Scope.Writable), len(p.Scope.ReadOnly), len(p.Scope.Protected))
+			scope = fmt.Sprintf("scope: %d writable, %d read-only, %d protected, %d no-delete", len(p.Scope.Writable), len(p.Scope.ReadOnly), len(p.Scope.Protected), len(p.Scope.NoDelete))
 		}
 		fmt.Fprintf(&b, "project %s: modes %s; bash outputs %d; %s\n", p.ProjectID, strings.Join(p.PublicationModes, "+"), len(p.BashOutputPaths), scope)
 	}
