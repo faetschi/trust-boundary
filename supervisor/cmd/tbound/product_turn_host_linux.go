@@ -199,6 +199,7 @@ func (t *productComposedTurn) Evidence(stage productdriver.EvidenceStage) (produ
 		return productdriver.Evidence{
 			Sealed:   sha256DigestFromBarePin(bareStoreTreeDigest(bundle.ValidatedChain.SealedTreeDigest)),
 			NoChange: bundleHasNoChange(bundle),
+			Removed:  bundleRemovedCount(bundle),
 		}, nil
 	}
 	providerTrace, err := w.providerJournal.Trace()

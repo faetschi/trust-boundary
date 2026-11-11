@@ -503,7 +503,7 @@ func (s *state) reduceAdmitted(data []byte) (func(), error) {
 		}
 	} else if !r.Reservation.valid() || !r.Reservation.fits(rem) || !validDigest(r.PolicyDigest) ||
 		sessionrepo.ValidateOutputScopePaths(r.BashOutputPaths) != nil ||
-		(r.Scope != nil && r.Scope.AdmissionScope().Validate() != nil) {
+		(r.Scope != nil && !r.Scope.valid()) {
 		return nil, fail(CodeInvalidRequest, "reservation or project pins are invalid")
 	}
 	pred := s.predecessor(sess)
@@ -812,8 +812,9 @@ func (s *state) reduceAwaitingReview(data []byte) (func(), error) {
 	if err != nil {
 		return nil, err
 	}
-	if t.PublicationMode != PublicationReview || !validDigest(r.CandidateDigest) {
-		return nil, fail(CodeInvalidRequest, "only a review-mode turn with a candidate digest can await review")
+	// An auto-mode turn awaits review only when its scope carries a removal limit.
+	if !(t.PublicationMode == PublicationReview || t.Scope != nil && t.Scope.AutoPublishMaxRemovals != nil) || !validDigest(r.CandidateDigest) {
+		return nil, fail(CodeInvalidRequest, "only a review-mode or removal-limited auto-mode turn with a candidate digest can await review")
 	}
 	if r.ReviewTimeoutSeconds < 1 || r.ReviewTimeoutSeconds > maxReviewTimeout ||
 		(s.current() && r.ReviewTimeoutSeconds != int64(s.reg.Limits.ReviewTimeoutSeconds)) {
