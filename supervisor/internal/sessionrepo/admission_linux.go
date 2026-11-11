@@ -4,6 +4,7 @@ package sessionrepo
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/delta"
+	"tbound/supervisor/internal/workspace"
 )
 
 const (
@@ -54,6 +56,29 @@ func requireAdmissionJournal(root *os.File) error {
 }
 
 var ErrInvalidAdmission = errors.New("invalid session repository admission")
+
+// ErrAdmissionRecordLimit refuses a mutation before its effect: even its smallest admission record
+// would not fit one audit record. It is a workspace limit, so errors.Is(err, workspace.ErrLimit) holds.
+var ErrAdmissionRecordLimit = fmt.Errorf("%w: workspace manifest is too large for one durable admission record", workspace.ErrLimit)
+
+// admissionRecordOverheadBytes bounds everything in an admission record and its audit frame except
+// the two manifests: request, digests, candidate fields, the frame header and hashes.
+const admissionRecordOverheadBytes = 64 << 10
+
+// checkAdmissionRecordFits refuses a mutation of input whose smallest admission record (output equal
+// to input, no changes) cannot be appended. Appending fails only after the effect, which leaves the
+// effect unresolved and quarantines the journal, so the check must run before any effect.
+func checkAdmissionRecordFits(input delta.TreeManifest) error {
+	manifest, err := json.Marshal(input)
+	if err != nil {
+		return fmt.Errorf("%w: encode input manifest: %v", ErrInvalidAdmission, err)
+	}
+	// The audit frame carries the record as base64 (audit.Event.Data is []byte).
+	if base64.StdEncoding.EncodedLen(2*len(manifest))+admissionRecordOverheadBytes > audit.MaxRecordBytes {
+		return ErrAdmissionRecordLimit
+	}
+	return nil
+}
 
 type admissionRecord struct {
 	SchemaVersion         string             `json:"schema_version"`

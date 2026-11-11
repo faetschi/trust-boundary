@@ -276,6 +276,9 @@ func (s *Store) mutate(ctx context.Context, input *Generation, tool string, oper
 	if operation.Kind != delta.OperationProposalCall {
 		return MutationResult{}, ErrInvalidOptions
 	}
+	if err := checkAdmissionRecordFits(input.snapshot.Manifest); err != nil {
+		return MutationResult{}, err
+	}
 	effectID, err := newEffectID()
 	if err != nil {
 		return MutationResult{}, err
@@ -621,6 +624,65 @@ func (view *CommandView) MountSource() (*os.File, error) {
 		return nil, fmt.Errorf("open command-view mount source: %w", err)
 	}
 	return os.NewFile(uintptr(fd), "command-view-mount-source"), nil
+}
+
+// ReadOnlyMountPaths lists the product-scope protected and read-only entries that exist in the view,
+// sorted, without entries below another listed one. The runner mounts each read-only over the
+// writable view, so the kernel refuses writes there while the command runs. Admission still refuses
+// any change at or below them afterwards: a mount cannot stop a renamed parent or a newly created
+// entry. Under every other admission rule the list is empty.
+func (view *CommandView) ReadOnlyMountPaths() ([]string, error) {
+	if view == nil || view.store == nil || view.consumed || view.root == nil {
+		return nil, ErrViewConsumed
+	}
+	scope := view.store.options.AdmissionScope
+	if scope.rule() != AdmissionScopeRuleProduct {
+		return nil, nil
+	}
+	entries := append(append([]string(nil), scope.Protected...), scope.ReadOnly...)
+	sort.Strings(entries)
+	var paths []string
+	for _, path := range entries {
+		if pathAtOrBelow(paths, path) {
+			continue
+		}
+		exists, err := viewEntryExists(view.root, path)
+		if err != nil {
+			return nil, fmt.Errorf("inspect read-only view entry %q: %w", path, err)
+		}
+		if exists {
+			paths = append(paths, path)
+		}
+	}
+	return paths, nil
+}
+
+// viewEntryExists reports whether path names a regular file or directory in root, following no link.
+func viewEntryExists(root *os.File, path string) (bool, error) {
+	parent, leaf, err := openParent(root, path)
+	if errors.Is(err, syscall.ENOENT) || errors.Is(err, syscall.ENOTDIR) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	defer parent.Close()
+	fd, err := syscall.Openat(int(parent.Fd()), leaf, linuxOPath|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0)
+	if errors.Is(err, syscall.ENOENT) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	defer syscall.Close(fd)
+	var stat syscall.Stat_t
+	if err := syscall.Fstat(fd, &stat); err != nil {
+		return false, err
+	}
+	if kind := stat.Mode & syscall.S_IFMT; kind != syscall.S_IFREG && kind != syscall.S_IFDIR {
+		return false, ErrUnsupportedTarget
+	}
+	return true, nil
 }
 
 func (s *Store) discardViewLocked(view *CommandView) error {

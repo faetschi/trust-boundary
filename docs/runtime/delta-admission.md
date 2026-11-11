@@ -19,6 +19,16 @@ promotes the verified candidate. DENY retains its evidence, removes the candidat
 and reports `denied_after_effect` without advancing the generation or ledger.
 Uncertain execution or cleanup remains UNKNOWN and blocks publication.
 
+One admission record holds both manifests and must fit one audit record
+(`audit.MaxRecordBytes`, 8 MiB, with the record base64-encoded in the frame).
+Write, edit and Bash therefore check the input manifest before authorization:
+if even a record with an unchanged output and no changes could not fit, they
+refuse with `ErrAdmissionRecordLimit` (a `workspace.ErrLimit`). Nothing runs and
+the Store stays usable. Without the check, the append would fail only after the
+effect and leave it UNKNOWN. A command that grows the tree enough to overflow
+the record after a passing check still ends UNKNOWN; storing manifests by digest
+would remove that case.
+
 A denied Bash command has already run in its D09 cell. Its command journal
 records exactly one `production_d09_command_settled` event with schema
 `tbound-production-d09-command-settled-denied/v1`, which binds the denied

@@ -380,6 +380,7 @@ New error codes: `CANDIDATE_MISMATCH`, `REVIEW_NOT_PENDING`, `CANCEL_NOT_ALLOWED
   - A path outside every writable entry gives `scope_path_not_covered`.
   - These are the existing reason codes and hints, so no adapter change is needed.
 - The same `Decide` applies to typed `write`/`edit` and to Bash candidate deltas.
+- In a Bash command cell, each protected or read-only entry that exists in the command view is bind-mounted read-only over `/work`. A write there fails during the command (`Read-only file system`; removing or renaming the entry itself gives `Device or resource busy`), so the command can continue on an allowed path. `Decide` still checks the result. It refuses what a mount cannot stop, such as renaming a parent directory or creating an entry that did not exist when the view was made. A protected or read-only path that contains `,` or `"` cannot be mounted, and Bash refuses to start for that project.
 - The admission policy digest commits to the rule and all three lists.
 - A registration project carries `scope`. A project without one keeps the milestone 1 behaviour.
 - A session may be created `read_only`. That empties `writable` for its turns, so no tool can change the project. A read-only command can still run.
