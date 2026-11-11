@@ -16,6 +16,7 @@ case "$dest" in
 *) echo "destination must be absolute" >&2; exit 2 ;;
 esac
 case "$dest" in
+*/..|*/../*) echo "destination must not contain .." >&2; exit 2 ;;
 "$HOME"/?*) ;;
 *) echo "destination must be under \$HOME" >&2; exit 2 ;;
 esac

@@ -31,20 +31,24 @@ with calls × project size (about 86 MB per generation for django below).
 1. **Mount ID with `statx`.** The walk checks every file's mount ID up to three
    times. It read `/proc/self/fdinfo/<fd>` each time (open, read, parse, close).
    It now uses one `statx(STATX_MNT_ID)` call on the held descriptor, which
-   returns the same ID. The fdinfo path stays as the fallback for kernels before
-   5.8. `TestStatxMountIDMatchesFdinfo` checks both IDs agree.
+   returns the same ID. Kernels before 5.8 lack `STATX_MNT_ID`; the walk then
+   fails closed. `TestStatxMountIDMatchesFdinfo` checks both IDs agree.
 2. **One `syncfs` per stage instead of one fsync per file.** The session store
    now imports with `workspace.ImportUnsynced`. A stage (a new generation) is
    made durable by one `syncfs` in `syncStageTree`, before the existing directory
    syncs and the rename. The throwaway command view gets no file sync: recovery
    refuses any leftover view, and the cell reads it through the page cache.
    `workspace.Import` keeps its per-file fsync for its other callers (private
-   Git, publication restore). Requires Linux 5.8 or later for `syncfs` to
-   report writeback errors.
+   Git, publication restore). `syncfs` reports writeback errors from Linux 5.8,
+   the same minimum as the mount-ID check. It flushes the whole filesystem,
+   including what a command wrote into its view; per-file fsync wrote those
+   files too, one by one. The sweep's runner writes one file, so a command that
+   writes much more is not measured here.
 
 No digest, manifest, evidence format or check changes. Fault tests: the three
 `SiteWorkspaceImport/OpFsync` subcases are removed because the store no longer
-calls that fsync; a data-sync failure now surfaces at `stage-tree-fsync`.
+calls that fsync; a data-sync failure now surfaces at `stage-tree-fsync`, which
+is now also injected on the Bash path (after the admission record).
 
 ## Results
 
@@ -82,8 +86,9 @@ Steps on django (medians, seconds):
 | Bound: no file sync at all (throwaway build) | 1.43 | 4.70 | 6.96 |
 | Also no view directory sync (throwaway build) | 1.42 | 4.98 | 7.71 |
 
-The view's directory sync costs under 5 % of a django `bash` call, so it stays;
-two fault tests use it as their seam.
+Dropping the view's directory sync made no difference beyond run-to-run noise
+(single runs; the two throwaway builds differ by about 10 % in the wrong
+direction), so it stays. Two fault tests use it as their seam.
 
 **Over the limit.** pingdotgg/t3code (31,962 files, 379 MB, 17 symlinks removed)
 is refused at Seed: the walk reaches the 20,000-object limit. The refusal comes

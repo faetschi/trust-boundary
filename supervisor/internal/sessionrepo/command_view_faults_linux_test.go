@@ -400,8 +400,14 @@ func TestSettledCommandViewImportFaultsQuarantineAfterOneRun(t *testing.T) {
 		{"import-create-first", faultfs.SiteWorkspaceImport, faultfs.OpCreate, 1},
 		{"import-write-first", faultfs.SiteWorkspaceImport, faultfs.OpWrite, 1},
 		{"stage-mkdir", faultfs.SiteStageSetup, faultfs.OpMkdir, 1},
+		// The stage's data sync (syncfs) runs after the admission record is appended.
+		{"stage-tree-fsync", faultfs.SiteStageSetup, faultfs.OpFsync, 1},
 	}
 	forEachFault(t, cases, func(t *testing.T, c faultCase, errno syscall.Errno) {
+		wantAdmissions := 0
+		if c.name == "stage-tree-fsync" {
+			wantAdmissions = 1
+		}
 		f := newFaultFixture(t)
 		before := f.image()
 		runnerCalls := 0
@@ -415,7 +421,7 @@ func TestSettledCommandViewImportFaultsQuarantineAfterOneRun(t *testing.T) {
 		}
 		after := f.image()
 		requireNoStage(t, after)
-		if fmt.Sprint(after.generations) != "[g0]" || !bytes.Equal(before.state, after.state) || after.admissionRecords(t) != 0 {
+		if fmt.Sprint(after.generations) != "[g0]" || !bytes.Equal(before.state, after.state) || after.admissionRecords(t) != wantAdmissions {
 			t.Fatalf("durable state advanced under the fault: generations=%v", after.generations)
 		}
 		effects := after.effects(t)

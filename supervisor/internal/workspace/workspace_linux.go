@@ -11,7 +11,6 @@ import (
 	"io"
 	"os"
 	"sort"
-	"strconv"
 	"strings"
 	"syscall"
 	"unicode"
@@ -882,41 +881,19 @@ func verifyMountIdentity(id, rootMountID uint64, path string) error {
 	return nil
 }
 
-// mountID reads the kernel-reported mount ID for an opened object. statx on the
-// held descriptor reports the same ID as /proc fdinfo in one syscall; fdinfo
-// stays as the fallback for kernels before 5.8, which lack STATX_MNT_ID.
+// mountID reads the kernel-reported mount ID (the fdinfo mnt_id) of a held
+// descriptor with statx. It fails closed on kernels before 5.8, which lack
+// STATX_MNT_ID; the session store's syncfs also needs 5.8 to report errors.
 func mountID(file *os.File) (uint64, error) {
 	var info unix.Statx_t
 	err := unix.Statx(int(file.Fd()), "", unix.AT_EMPTY_PATH|unix.AT_SYMLINK_NOFOLLOW, unix.STATX_MNT_ID, &info)
-	if err == nil && info.Mask&unix.STATX_MNT_ID != 0 {
-		return info.Mnt_id, nil
-	}
-	return fdinfoMountID(file)
-}
-
-// fdinfoMountID reads mnt_id from /proc fdinfo. It is used only with a held
-// descriptor; the input tree cannot supply this path.
-func fdinfoMountID(file *os.File) (uint64, error) {
-	info, err := os.Open(fmt.Sprintf("/proc/self/fdinfo/%d", file.Fd()))
 	if err != nil {
 		return 0, fmt.Errorf("%w: %v", ErrMountIdentityUnavailable, err)
 	}
-	defer info.Close()
-	data, err := io.ReadAll(io.LimitReader(info, 16<<10))
-	if err != nil {
-		return 0, fmt.Errorf("%w: %v", ErrMountIdentityUnavailable, err)
+	if info.Mask&unix.STATX_MNT_ID == 0 {
+		return 0, ErrMountIdentityUnavailable
 	}
-	for _, line := range strings.Split(string(data), "\n") {
-		key, value, ok := strings.Cut(line, ":")
-		if !ok || strings.TrimSpace(key) != "mnt_id" {
-			continue
-		}
-		id, err := strconv.ParseUint(strings.TrimSpace(value), 10, 64)
-		if err == nil {
-			return id, nil
-		}
-	}
-	return 0, ErrMountIdentityUnavailable
+	return info.Mnt_id, nil
 }
 
 func checkXattrs(file *os.File) error {

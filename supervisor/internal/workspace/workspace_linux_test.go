@@ -4,8 +4,11 @@ package workspace
 
 import (
 	"errors"
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -580,4 +583,29 @@ func TestStatxMountIDMatchesFdinfo(t *testing.T) {
 	if tmpID == procID {
 		t.Fatalf("temp dir and /proc report the same mount ID %d", tmpID)
 	}
+}
+
+// fdinfoMountID is the test oracle: the kernel's fdinfo mnt_id, the ID the walk compared
+// before it used statx.
+func fdinfoMountID(file *os.File) (uint64, error) {
+	info, err := os.Open(fmt.Sprintf("/proc/self/fdinfo/%d", file.Fd()))
+	if err != nil {
+		return 0, fmt.Errorf("%w: %v", ErrMountIdentityUnavailable, err)
+	}
+	defer info.Close()
+	data, err := io.ReadAll(io.LimitReader(info, 16<<10))
+	if err != nil {
+		return 0, fmt.Errorf("%w: %v", ErrMountIdentityUnavailable, err)
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		key, value, ok := strings.Cut(line, ":")
+		if !ok || strings.TrimSpace(key) != "mnt_id" {
+			continue
+		}
+		id, err := strconv.ParseUint(strings.TrimSpace(value), 10, 64)
+		if err == nil {
+			return id, nil
+		}
+	}
+	return 0, ErrMountIdentityUnavailable
 }
