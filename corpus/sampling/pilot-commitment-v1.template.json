@@ -1,6 +1,6 @@
 {
  "adaptation_rule_path": "corpus/sampling/adaptation-rule-v1.md",
- "adaptation_rule_sha256": "58f6f9b382fcb1bde6689bcaeedebe99ac21eb7556d14b7427a20365cc46a2c5",
+ "adaptation_rule_sha256": "c0d572de6f8e752162426dda980abf790df81f555aa9a330118ca77f44b1101b",
  "agentdojo_vectors_path": "corpus/sampling/agentdojo-vectors-v1.json",
  "agentdojo_vectors_sha256": "5bbdd62e71f50407220e8453950ffbffde463e63101d7bce4a26e9c2309195a3",
  "asb_goal_class_path": "corpus/sampling/asb_goal_class.py",
