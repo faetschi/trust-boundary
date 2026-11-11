@@ -385,3 +385,91 @@ func TestStoreProductScopeAdmitsANewFileNamedExactly(t *testing.T) {
 		t.Fatalf("a sibling of an exact writable entry: %+v, %v", result, err)
 	}
 }
+
+func noDeleteScope(writable, noDelete []string) AdmissionScope {
+	scope := productScope(writable, nil, nil)
+	scope.NoDelete = noDelete
+	return scope
+}
+
+func TestProductScopeNoDeleteDecide(t *testing.T) {
+	scope := noDeleteScope([]string{"docs", "src"}, []string{"src"})
+	scope.ReadOnly = []string{"src/vendor"}
+	for _, tc := range []struct {
+		name    string
+		scope   AdmissionScope
+		changes []delta.ObjectChange
+		outcome string
+		reason  string
+	}{
+		{"a delete under no_delete", scope, []delta.ObjectChange{deletedFile("src/a.go")}, "deny", DenyReasonProtectedPath},
+		{"a delete of the no_delete entry itself", scope, []delta.ObjectChange{deletedFile("src")}, "deny", DenyReasonProtectedPath},
+		{"a modify under no_delete", scope, []delta.ObjectChange{metadataOnly("src/a.go")}, "allow", ""},
+		{"a create under no_delete", scope, []delta.ObjectChange{createdFile("src/new.go")}, "allow", ""},
+		{"a rename inside no_delete removes the old path", scope, []delta.ObjectChange{deletedFile("src/a.go"), createdFile("src/b.go")}, "deny", DenyReasonProtectedPath},
+		{"a rename out of no_delete", scope, []delta.ObjectChange{deletedFile("src/a.go"), createdFile("docs/a.go")}, "deny", DenyReasonProtectedPath},
+		{"a rename into no_delete from a deletable path", scope, []delta.ObjectChange{deletedFile("docs/a.go"), createdFile("src/a.go")}, "allow", ""},
+		{"a delete in writable but not no_delete", scope, []delta.ObjectChange{deletedFile("docs/a.md")}, "allow", ""},
+		{"a sibling that shares the no_delete prefix", noDeleteScope([]string{"srcx", "src"}, []string{"src"}), []delta.ObjectChange{deletedFile("srcx/a")}, "allow", ""},
+		{"read-only is reported before no_delete", scope, []delta.ObjectChange{deletedFile("src/vendor/x")}, "deny", DenyReasonProtectedPath},
+		{"uncovered is reported before no_delete", scope, []delta.ObjectChange{deletedFile("other"), deletedFile("src/a.go")}, "deny", DenyReasonUncoveredPath},
+		{"no_delete outside writable is harmless", noDeleteScope([]string{"docs"}, []string{"src"}), []delta.ObjectChange{deletedFile("docs/a.md")}, "allow", ""},
+	} {
+		outcome, reason := tc.scope.Decide(nil, tc.changes)
+		if outcome != tc.outcome || reason != tc.reason {
+			t.Errorf("%s: got %s/%q, want %s/%q", tc.name, outcome, reason, tc.outcome, tc.reason)
+		}
+	}
+}
+
+func TestProductScopeNoDeleteValidate(t *testing.T) {
+	for name, scope := range map[string]AdmissionScope{
+		"unsorted no_delete":       noDeleteScope([]string{"a", "b"}, []string{"b", "a"}),
+		"non-canonical no_delete":  noDeleteScope([]string{"a"}, []string{"a/"}),
+		"duplicate no_delete":      noDeleteScope([]string{"a"}, []string{"a", "a"}),
+		"under exact path":         {NoDelete: []string{"a"}},
+		"under promote-all":        {Rule: AdmissionScopeRulePromoteAll, NoDelete: []string{"a"}},
+		"no_delete is not default": {Rule: AdmissionScopeRuleExactPath, NoDelete: []string{"a"}},
+	} {
+		if err := scope.Validate(); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+	tooMany := make([]string, 129)
+	for i := range tooMany {
+		tooMany[i] = fmt.Sprintf("d%03d", i)
+	}
+	if err := noDeleteScope(nil, tooMany).Validate(); err == nil {
+		t.Error("more than 128 no_delete entries accepted")
+	}
+	for name, scope := range map[string]AdmissionScope{
+		"equal to a writable entry":  noDeleteScope([]string{"src"}, []string{"src"}),
+		"inside a writable entry":    noDeleteScope([]string{"src"}, []string{"src/lib"}),
+		"outside every writable one": noDeleteScope([]string{"src"}, []string{"docs"}),
+	} {
+		if err := scope.Validate(); err != nil {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	if noDeleteScope(nil, []string{"a"}).IsZero() {
+		t.Error("a product scope with no_delete is never the default scope")
+	}
+}
+
+func TestProductScopeNoDeleteDigest(t *testing.T) {
+	policy, metadata := digestBytes([]byte("p")), digestBytes([]byte("m"))
+	plain := mustDigest(t, policy, metadata, productScope([]string{"src"}, nil, nil))
+	if got := mustDigest(t, policy, metadata, noDeleteScope([]string{"src"}, nil)); got != plain {
+		t.Error("an absent no_delete must leave the digest unchanged")
+	}
+	withNoDelete := mustDigest(t, policy, metadata, noDeleteScope([]string{"src"}, []string{"src"}))
+	if withNoDelete == plain {
+		t.Error("no_delete must change the admission policy digest")
+	}
+	if withNoDelete == mustDigest(t, policy, metadata, productScope([]string{"src"}, []string{"src"}, nil)) {
+		t.Error("no_delete and read_only must not share a digest")
+	}
+	if got := cloneAdmissionScope(noDeleteScope([]string{"src"}, []string{"src"})); len(got.NoDelete) != 1 {
+		t.Error("cloneAdmissionScope drops no_delete")
+	}
+}
