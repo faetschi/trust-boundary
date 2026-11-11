@@ -21,13 +21,16 @@ Uncertain execution or cleanup remains UNKNOWN and blocks publication.
 
 One admission record holds both manifests and must fit one audit record
 (`audit.MaxRecordBytes`, 8 MiB, with the record base64-encoded in the frame).
-Write, edit and Bash therefore check the input manifest before authorization:
-if even a record with an unchanged output and no changes could not fit, they
-refuse with `ErrAdmissionRecordLimit` (a `workspace.ErrLimit`). Nothing runs and
-the Store stays usable. Without the check, the append would fail only after the
-effect and leave it UNKNOWN. A command that grows the tree enough to overflow
-the record after a passing check still ends UNKNOWN; storing manifests by digest
-would remove that case.
+Write, edit, delete and Bash therefore check the input manifest and the
+declared output paths before authorization: if even a record with an unchanged
+output and no changes could not fit, they refuse with `ErrAdmissionRecordLimit`
+(a `workspace.ErrLimit`). Nothing runs, no decision is used, and the call leaves
+the Store usable. Without the check, the append would fail only after the effect
+and leave it UNKNOWN. Two cases still end UNKNOWN after an effect: a command
+that grows the tree enough to overflow the record after a passing check, and a
+session whose totals pass the 32 MiB repository-state limit or the 64 MiB
+evidence-bundle limit, since both hold every manifest. Storing manifests by
+digest would remove all three.
 
 A denied Bash command has already run in its D09 cell. Its command journal
 records exactly one `production_d09_command_settled` event with schema

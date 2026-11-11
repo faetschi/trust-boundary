@@ -276,7 +276,7 @@ func (s *Store) mutate(ctx context.Context, input *Generation, tool string, oper
 	if operation.Kind != delta.OperationProposalCall {
 		return MutationResult{}, ErrInvalidOptions
 	}
-	if err := checkAdmissionRecordFits(input.snapshot.Manifest); err != nil {
+	if err := checkAdmissionRecordFits(input.snapshot.Manifest, []string{outputPath}); err != nil {
 		return MutationResult{}, err
 	}
 	effectID, err := newEffectID()
@@ -630,12 +630,17 @@ func (view *CommandView) MountSource() (*os.File, error) {
 // sorted, without entries below another listed one. The runner mounts each read-only over the
 // writable view, so the kernel refuses writes there while the command runs. Admission still refuses
 // any change at or below them afterwards: a mount cannot stop a renamed parent or a newly created
-// entry. Under every other admission rule the list is empty.
+// entry. Under every other admission rule the list is empty. The list was fixed before the command
+// was authorized.
 func (view *CommandView) ReadOnlyMountPaths() ([]string, error) {
 	if view == nil || view.store == nil || view.consumed || view.root == nil {
 		return nil, ErrViewConsumed
 	}
-	scope := view.store.options.AdmissionScope
+	return append([]string(nil), view.readOnlyMounts...), nil
+}
+
+func (s *Store) readOnlyMountPathsLocked(view *CommandView) ([]string, error) {
+	scope := s.options.AdmissionScope
 	if scope.rule() != AdmissionScopeRuleProduct {
 		return nil, nil
 	}
@@ -646,19 +651,20 @@ func (view *CommandView) ReadOnlyMountPaths() ([]string, error) {
 		if pathAtOrBelow(paths, path) {
 			continue
 		}
-		exists, err := viewEntryExists(view.root, path)
+		mountable, err := viewEntryMountable(view.root, path)
 		if err != nil {
 			return nil, fmt.Errorf("inspect read-only view entry %q: %w", path, err)
 		}
-		if exists {
+		if mountable {
 			paths = append(paths, path)
 		}
 	}
 	return paths, nil
 }
 
-// viewEntryExists reports whether path names a regular file or directory in root, following no link.
-func viewEntryExists(root *os.File, path string) (bool, error) {
+// viewEntryMountable reports whether path names a regular file or directory in root, following no
+// link. Anything else is left unmounted; admission still refuses changes there.
+func viewEntryMountable(root *os.File, path string) (bool, error) {
 	parent, leaf, err := openParent(root, path)
 	if errors.Is(err, syscall.ENOENT) || errors.Is(err, syscall.ENOTDIR) {
 		return false, nil
@@ -679,10 +685,8 @@ func viewEntryExists(root *os.File, path string) (bool, error) {
 	if err := syscall.Fstat(fd, &stat); err != nil {
 		return false, err
 	}
-	if kind := stat.Mode & syscall.S_IFMT; kind != syscall.S_IFREG && kind != syscall.S_IFDIR {
-		return false, ErrUnsupportedTarget
-	}
-	return true, nil
+	kind := stat.Mode & syscall.S_IFMT
+	return kind == syscall.S_IFREG || kind == syscall.S_IFDIR, nil
 }
 
 func (s *Store) discardViewLocked(view *CommandView) error {

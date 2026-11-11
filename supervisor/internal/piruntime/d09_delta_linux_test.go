@@ -739,13 +739,17 @@ func TestD09CommandCellsSetUmask0022(t *testing.T) {
 }
 
 // A product scope's read-only entries are mounted read-only over the writable /work view, as podman
-// options before the image, under every delta. Without entries the vector has only the /work mount.
+// options before the image, under every delta. A path podman's --mount parser cannot carry safely is
+// left unmounted. Without entries the vector has only the /work mount.
 func TestD09CommandCellsMountReadOnlyEntriesOverTheView(t *testing.T) {
 	for _, name := range []string{"", D09CellDeltaNetSink, D09CellDeltaNoReap} {
 		plan, config := testD09DeltaPlan(t, name)
 		spec := sessionrepo.CommandSpec{Executable: config.CommandExecutable, Args: []string{"-lc", "true"}}
 		image := "localhost/tbound/pi-cell@sha256:" + strings.Repeat("a", 64)
-		args := d09CommandCellArgumentsDelta(plan, config, "tbound-pi-cell-cmd-x", "/tmp/cid", image, "/views/v1", []string{"README.md", "docs/api"}, "view-1", "lease-1", 1, 2, spec)
+		args := d09CommandCellArgumentsDelta(plan, config, "tbound-pi-cell-cmd-x", "/tmp/cid", image, "/views/v1", []string{"README.md", "a,rw", "docs/api", "q\"x"}, "view-1", "lease-1", 1, 2, spec)
+		if mounts := countOfString(args, "--mount"); mounts != 3 {
+			t.Errorf("delta %q: paths with a comma or quote must stay unmounted, got %d mounts: %q", name, mounts, args)
+		}
 		imageAt := indexOfString(args, image)
 		work := indexOfString(args, "type=bind,src=/views/v1,dst=/work,rw,bind-propagation=rprivate")
 		for _, mount := range []string{

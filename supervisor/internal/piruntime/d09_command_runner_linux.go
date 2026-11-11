@@ -478,12 +478,6 @@ func (r *D09CommandRunner) Run(ctx context.Context, view *sessionrepo.CommandVie
 	if err != nil {
 		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, fmt.Errorf("%w: %v", ErrHostBindingsMissing, err)
 	}
-	for _, path := range readOnlyPaths {
-		// Podman splits --mount on commas and reads it as CSV, so such a path could inject mount options.
-		if strings.ContainsAny(path, ",\"") {
-			return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, fmt.Errorf("%w: read-only path %q cannot be mounted", ErrHostBindingsMissing, path)
-		}
-	}
 
 	report, err := r.launcher.Probe(ctx)
 	if err != nil {
@@ -1082,6 +1076,11 @@ func d09CommandCellArgumentsDelta(plan d09DeltaPlan, config D09Config, name, cid
 		"-e", "TBOUND_CELL_PROOF_FD=4", "-e", "TBOUND_CELL_ACK_FD=5",
 	}
 	for _, path := range readOnly {
+		// Podman reads --mount as comma-separated CSV, so such a path could inject mount options. It
+		// stays unmounted; admission still refuses changes there.
+		if strings.ContainsAny(path, ",\"") {
+			continue
+		}
 		args = append(args, "--mount", "type=bind,src="+viewPath+"/"+path+",dst=/work/"+path+",ro,bind-propagation=rprivate")
 	}
 	if plan.delta.Relaxed() {
