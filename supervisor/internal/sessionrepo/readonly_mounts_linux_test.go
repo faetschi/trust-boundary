@@ -12,15 +12,18 @@ import (
 
 // The runner of a product-scoped Store learns which protected and read-only entries exist in its
 // view, outermost first, so it can mount them read-only. Entries absent from the view and entries
-// below another listed one are left out. Under a research rule the list is empty.
+// below another listed one are left out. Under every research rule the list is empty, so the research
+// command cell keeps exactly its /work mount.
 func TestCommandViewListsReadOnlyMountPaths(t *testing.T) {
 	product := productScope([]string{"src"}, []string{"README.md", "docs", "missing.txt"}, []string{"docs/secret.txt"})
 	for name, tc := range map[string]struct {
 		scope AdmissionScope
 		want  []string
 	}{
-		"product scope": {product, []string{"README.md", "docs"}},
-		"research rule": {AdmissionScope{}, nil},
+		"product scope":                  {product, []string{"README.md", "docs"}},
+		"research exact-path":            {AdmissionScope{}, nil},
+		"research exact-path, protected": {AdmissionScope{ProtectedPaths: []string{"README.md", "docs"}}, nil},
+		"research promote-all":           {AdmissionScope{Rule: AdmissionScopeRulePromoteAll}, nil},
 	} {
 		t.Run(name, func(t *testing.T) {
 			store, _, _, authority := newScopedE2EStore(t, tc.scope)
