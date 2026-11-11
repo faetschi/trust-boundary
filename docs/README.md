@@ -46,6 +46,7 @@ product plan and status pages are in git history, not current instructions.
 - [Production Pi session](runtime/production-pi-session.md): service composition and receipts.
 - [Governed session composition](runtime/governed-session-composition.md): legacy embedded SDK reference.
 - [Delta admission](runtime/delta-admission.md): the post-operation publication decision.
+- [Session-store I/O cost](runtime/session-store-io-cost.md): per-call cost against project size, measured on public repositories.
 - [Publication contract](runtime/publication-contract.md): controlled live-root update rules.
 - [Publication runtime integration](runtime/publication-runtime-integration.md): contract to code.
 - [Providers](runtime/providers.md): provider profiles and the durable conversation bridge.
