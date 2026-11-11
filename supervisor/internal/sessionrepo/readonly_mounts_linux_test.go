@@ -5,8 +5,10 @@ package sessionrepo
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"reflect"
+	"syscall"
 	"testing"
 )
 
@@ -62,5 +64,34 @@ func TestCommandViewListsReadOnlyMountPaths(t *testing.T) {
 				t.Fatalf("read-only mount paths = %q, %v; want %q", got, listErr, tc.want)
 			}
 		})
+	}
+}
+
+// Seeding refuses links and special files, so a view cannot hold one; the listing still follows no
+// link, because a bind source that followed a link could mount a host file into the cell.
+func TestViewEntryMountableFollowsNoLink(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "root")
+	writeFixtureDir(t, root, 0o700)
+	writeFixtureDir(t, filepath.Join(root, "dir"), 0o755)
+	writeFixtureFile(t, filepath.Join(root, "file"), "x", 0o644)
+	writeFixtureFile(t, filepath.Join(root, "dir", "inner"), "x", 0o644)
+	for link, target := range map[string]string{"link-file": "file", "link-dir": "dir", "link-host": "/etc/passwd"} {
+		if err := os.Symlink(target, filepath.Join(root, link)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := syscall.Mkfifo(filepath.Join(root, "fifo"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	rootFile := openFixtureRoot(t, root)
+	for path, want := range map[string]bool{
+		"file": true, "dir": true, "dir/inner": true,
+		"link-file": false, "link-dir": false, "link-host": false, "link-dir/inner": false,
+		"fifo": false, "missing": false, "file/below": false,
+	} {
+		got, err := viewEntryMountable(rootFile, path)
+		if err != nil || got != want {
+			t.Errorf("viewEntryMountable(%q) = %v, %v; want %v", path, got, err, want)
+		}
 	}
 }

@@ -666,7 +666,8 @@ func (s *Store) readOnlyMountPathsLocked(view *CommandView) ([]string, error) {
 // link. Anything else is left unmounted; admission still refuses changes there.
 func viewEntryMountable(root *os.File, path string) (bool, error) {
 	parent, leaf, err := openParent(root, path)
-	if errors.Is(err, syscall.ENOENT) || errors.Is(err, syscall.ENOTDIR) {
+	// A missing parent, a file, or a symbolic link in place of a parent directory: nothing to mount.
+	if errors.Is(err, syscall.ENOENT) || errors.Is(err, syscall.ENOTDIR) || errors.Is(err, syscall.ELOOP) {
 		return false, nil
 	}
 	if err != nil {

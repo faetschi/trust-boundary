@@ -27,7 +27,8 @@ output and no changes could not fit, they refuse with `ErrAdmissionRecordLimit`
 (a `workspace.ErrLimit`). Nothing runs, no decision is used, and the call leaves
 the Store usable. Without the check, the append would fail only after the effect
 and leave it UNKNOWN. Two cases still end UNKNOWN after an effect: a command
-that grows the tree enough to overflow the record after a passing check, and a
+whose changes or new entries overflow the record after a passing check (each
+changed path adds its old and new state), and a
 session whose totals pass the 32 MiB repository-state limit or the 64 MiB
 evidence-bundle limit, since both hold every manifest. Storing manifests by
 digest would remove all three.
