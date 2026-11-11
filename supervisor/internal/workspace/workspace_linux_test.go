@@ -481,3 +481,51 @@ func TestMountIDComparatorRejectsUnexpectedIdentity(t *testing.T) {
 		t.Fatalf("mismatched mount identity error = %v, want ErrNestedMount", err)
 	}
 }
+
+// The statx mount ID must be the fdinfo mnt_id for every descriptor kind the walk holds,
+// and differ across mounts, or the nested-mount check would compare unlike IDs.
+func TestStatxMountIDMatchesFdinfo(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "file")
+	if err := os.WriteFile(path, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	directory, err := os.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer directory.Close()
+	regular, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer regular.Close()
+	pathNode, err := openPathNode(directory, "file")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pathNode.Close()
+	proc, err := os.Open("/proc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer proc.Close()
+	for name, file := range map[string]*os.File{"directory": directory, "regular": regular, "o_path": pathNode, "proc": proc} {
+		got, err := mountID(file)
+		if err != nil {
+			t.Fatalf("%s: mountID: %v", name, err)
+		}
+		want, err := fdinfoMountID(file)
+		if err != nil {
+			t.Fatalf("%s: fdinfoMountID: %v", name, err)
+		}
+		if got != want {
+			t.Fatalf("%s: statx mount ID %d, fdinfo mnt_id %d", name, got, want)
+		}
+	}
+	tmpID, _ := mountID(directory)
+	procID, _ := mountID(proc)
+	if tmpID == procID {
+		t.Fatalf("temp dir and /proc report the same mount ID %d", tmpID)
+	}
+}

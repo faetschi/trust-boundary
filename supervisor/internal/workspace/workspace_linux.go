@@ -17,6 +17,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"golang.org/x/sys/unix"
+
 	"tbound/supervisor/internal/delta"
 	"tbound/supervisor/internal/faultfs"
 )
@@ -866,9 +868,21 @@ func verifyMountIdentity(id, rootMountID uint64, path string) error {
 	return nil
 }
 
-// mountID reads the kernel-reported mount ID for an opened object. /proc fdinfo
-// is used only with a held descriptor; the input tree cannot supply this path.
+// mountID reads the kernel-reported mount ID for an opened object. statx on the
+// held descriptor reports the same ID as /proc fdinfo in one syscall; fdinfo
+// stays as the fallback for kernels before 5.8, which lack STATX_MNT_ID.
 func mountID(file *os.File) (uint64, error) {
+	var info unix.Statx_t
+	err := unix.Statx(int(file.Fd()), "", unix.AT_EMPTY_PATH|unix.AT_SYMLINK_NOFOLLOW, unix.STATX_MNT_ID, &info)
+	if err == nil && info.Mask&unix.STATX_MNT_ID != 0 {
+		return info.Mnt_id, nil
+	}
+	return fdinfoMountID(file)
+}
+
+// fdinfoMountID reads mnt_id from /proc fdinfo. It is used only with a held
+// descriptor; the input tree cannot supply this path.
+func fdinfoMountID(file *os.File) (uint64, error) {
 	info, err := os.Open(fmt.Sprintf("/proc/self/fdinfo/%d", file.Fd()))
 	if err != nil {
 		return 0, fmt.Errorf("%w: %v", ErrMountIdentityUnavailable, err)
