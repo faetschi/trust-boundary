@@ -5,6 +5,8 @@ package researchroute
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -1104,5 +1106,88 @@ func TestOpenRefusesALedgerRolledBackBelowTheCheckpoint(t *testing.T) {
 	}
 	if _, err := open2(f); !errors.Is(err, usdledger.ErrHeadMismatch) {
 		t.Fatalf("rolled-back ledger opened: %v", err)
+	}
+}
+
+// parallelSSE streams a read call at index 0 and a bash call at index 1, which the capture refuses
+// (decision 13), with a usage trailer.
+func parallelSSE(w http.ResponseWriter) {
+	chunk := func(choices []any, usage any) string {
+		raw, _ := json.Marshal(map[string]any{"id": "resp-p", "model": "deepseek/deepseek-v4.1-flash", "created": 1,
+			"object": "chat.completion.chunk", "choices": choices, "usage": usage})
+		return "data: " + string(raw) + "\n\n"
+	}
+	call := func(index int, id, name, arguments string) []any {
+		return []any{map[string]any{"index": 0, "finish_reason": nil, "delta": map[string]any{"role": "assistant", "tool_calls": []any{
+			map[string]any{"index": index, "id": id, "type": "function", "function": map[string]any{"name": name, "arguments": arguments}}}}}}
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	_, _ = w.Write([]byte(chunk(call(0, "call-0", "read", `{"path":"a"}`), nil)))
+	_, _ = w.Write([]byte(chunk(call(1, "call-1", "bash", `{"command":"ls"}`), nil)))
+	_, _ = w.Write([]byte(chunk([]any{map[string]any{"index": 0, "delta": map[string]any{}, "finish_reason": "tool_calls"}}, nil)))
+	_, _ = w.Write([]byte(chunk([]any{}, map[string]any{"prompt_tokens": 11, "completion_tokens": 9, "cost": 0.000002})))
+	_, _ = w.Write([]byte("data: [DONE]\n\n"))
+}
+
+// Decision 13 on the research route: the refused attempt keeps its full worst case in the ledger
+// (uncertain), the resample is its own unit, and WorkflowUnits reports both units.
+func TestParallelCallResampleIsBookedAsItsOwnLedgerUnit(t *testing.T) {
+	f := newFixture(t, frozenProfileJSON, ledgerConfigJSON(5_000_000, 20_000, "request"))
+	f.genesis()
+	var bundle *Bundle
+	server := newProviderServer(t, &bundle)
+	server.handler = func(w http.ResponseWriter, _ *http.Request) {
+		if server.requests.Load() == 1 {
+			parallelSSE(w)
+			return
+		}
+		sse(w, map[string]any{"prompt_tokens": 11, "completion_tokens": 3, "cost": 0.000002})
+	}
+	bundle = f.open(server.URL + "/api/v1/chat/completions")
+	if _, err := conversation(t, f, bundle).NextTurn(context.Background()); err != nil {
+		t.Fatalf("NextTurn: %v", err)
+	}
+	if server.requests.Load() != 2 {
+		t.Fatalf("provider saw %d requests, want 2", server.requests.Load())
+	}
+	snap := snapshot(t, bundle)
+	if snap.UncertainUnits != 1 || snap.UncertainMicroUSD != requestReserve || snap.SettledUnits != 1 || snap.SettledMicroUSD != 2 || snap.OpenMicroUSD != 0 {
+		t.Fatalf("ledger = %+v, want the refused attempt uncertain at its worst case and the resample settled", snap)
+	}
+	units, err := bundle.WorkflowUnits("workflow-1", []string{"conversation-1"}, 1)
+	if err != nil || len(units) != 2 {
+		t.Fatalf("WorkflowUnits = %+v, err = %v, want both attempts of turn 1", units, err)
+	}
+}
+
+// A resample whose worst case no longer fits the cap is refused before it is sent.
+func TestParallelCallResampleNeverExceedsTheCap(t *testing.T) {
+	f := newFixture(t, frozenProfileJSON, ledgerConfigJSON(10_000, 1000, "request"))
+	f.genesis()
+	var bundle *Bundle
+	server := newProviderServer(t, &bundle)
+	server.handler = func(w http.ResponseWriter, _ *http.Request) { parallelSSE(w) }
+	bundle = f.open(server.URL + "/api/v1/chat/completions")
+	if _, err := conversation(t, f, bundle).NextTurn(context.Background()); err == nil {
+		t.Fatal("a refused stream released a turn")
+	}
+	if server.requests.Load() != 1 {
+		t.Fatalf("provider saw %d requests, want the resample refused before dispatch", server.requests.Load())
+	}
+	if snap := snapshot(t, bundle); snap.CommittedMicroUSD != requestReserve || snap.UncertainUnits != 1 || snap.OpenMicroUSD != 0 {
+		t.Fatalf("ledger = %+v", snap)
+	}
+}
+
+// The first attempt of a turn keeps the unit id every earlier ledger holds; a resample has its own.
+func TestUnitIDOfAFirstAttemptIsUnchanged(t *testing.T) {
+	reservation := providerbridge.SpendReservation{WorkflowID: "w", ConversationID: "c", Turn: 3}
+	sum := sha256.Sum256([]byte("tbound-research-call/v1\x00w\x00c\x003"))
+	if got := unitID(reservation); got != "research-call/"+hex.EncodeToString(sum[:]) {
+		t.Fatalf("first-attempt unit id changed: %s", got)
+	}
+	reservation.Attempt = 1
+	if unitID(reservation) == unitID(providerbridge.SpendReservation{WorkflowID: "w", ConversationID: "c", Turn: 3}) {
+		t.Fatal("a resample shares the unit id of its first attempt")
 	}
 }

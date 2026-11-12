@@ -3,6 +3,7 @@ package openrouter
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"os"
 	"reflect"
@@ -515,5 +516,30 @@ func TestCaptureSSENullFieldsDoNotWeakenToolCallGuards(t *testing.T) {
 	}
 	if _, err := CaptureSSE(bytes.NewReader(nullStreamBody(strings.Replace(nullFirst, `"id":"chatcmpl-tool-ae43",`, `"id":null,`, 1), nullCont, `"tool_calls"`))); err == nil {
 		t.Error("never got an id: accepted")
+	}
+}
+
+// A stream that starts a second tool call is refused with ErrParallelToolCall and the refusal text journaled
+// before the sentinel existed; a malformed or negative index is refused without the sentinel.
+func TestCaptureSSEParallelToolCallRefusalClass(t *testing.T) {
+	cases := map[string]struct {
+		first string
+		class bool
+	}{
+		"index one":      {strings.Replace(nullFirst, `"index":0`, `"index":1`, 1), true},
+		"index two":      {strings.Replace(nullFirst, `"index":0`, `"index":2`, 1), true},
+		"negative index": {strings.Replace(nullFirst, `"index":0`, `"index":-1`, 1), false},
+		"string index":   {strings.Replace(nullFirst, `"index":0`, `"index":"1"`, 1), false},
+		"two in a delta": {`{"tool_calls":[{"index":0},{"index":0}]}`, false},
+	}
+	for name, tc := range cases {
+		_, err := CaptureSSE(bytes.NewReader(nullStreamBody(tc.first, nullCont, `"tool_calls"`)))
+		if err == nil || errors.Is(err, ErrParallelToolCall) != tc.class {
+			t.Errorf("%s: err = %v, parallel class = %v, want %v", name, err, errors.Is(err, ErrParallelToolCall), tc.class)
+		}
+	}
+	_, err := CaptureSSE(bytes.NewReader(nullStreamBody(strings.Replace(nullFirst, `"index":0`, `"index":1`, 1), nullCont, `"tool_calls"`)))
+	if err == nil || err.Error() != "tool-call index must be zero" {
+		t.Fatalf("the parallel-call refusal text changed: %v", err)
 	}
 }
