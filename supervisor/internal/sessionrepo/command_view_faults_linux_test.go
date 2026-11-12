@@ -316,6 +316,33 @@ func TestCommandViewSetupFaultsFailClosedWithIdempotentCleanup(t *testing.T) {
 	})
 }
 
+// g0 is imported unsynced, so syncStageTree is its only data sync: a failure
+// there must leave no baseline and quarantine the Store.
+func TestSeedStageSyncFaultLeavesNoBaseline(t *testing.T) {
+	forEachFault(t, []faultCase{{"stage-tree-fsync", faultfs.SiteStageSetup, faultfs.OpFsync, 1}},
+		func(t *testing.T, c faultCase, errno syscall.Errno) {
+			store, _, _, _ := newE2EStore(t)
+			sourcePath := filepath.Join(t.TempDir(), "source")
+			if err := os.Mkdir(sourcePath, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			writeFixtureFile(t, filepath.Join(sourcePath, "README.md"), "baseline text\n", 0o644)
+			plan := &faultPlan{faultCase: c, errno: errno}
+			t.Cleanup(faultfs.Install(plan.hook))
+			generation, err := store.Seed(openFixtureRoot(t, sourcePath), RootAttestation{Quiescent: true})
+			if plan.fired != 1 || generation != nil || !errors.Is(err, errno) || !errors.Is(err, ErrAudit) {
+				t.Fatalf("Seed err=%v fired=%d generation=%v, want the typed audit error and no baseline", err, plan.fired, generation)
+			}
+			entries, err := os.ReadDir(filepath.Join(store.rootPath, "generations"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(entries) != 0 || !store.quarantined || store.baseline != nil {
+				t.Fatalf("faulted Seed left generations=%v quarantined=%t", entries, store.quarantined)
+			}
+		})
+}
+
 // Staging, first copy-on-write allocation, content write, promotion and the
 // directory syncs of a Write. The intent is already durable, so the effect is
 // unknown: the typed error is returned, nothing enters the approved ledger or

@@ -495,9 +495,11 @@ func TestImportUnsyncedSkipsOnlyFileSync(t *testing.T) {
 	}
 	defer source.Close()
 	fsyncs := 0
+	var fsyncErr error
 	defer faultfs.Install(func(site faultfs.Site, op faultfs.Op) error {
 		if site == faultfs.SiteWorkspaceImport && op == faultfs.OpFsync {
 			fsyncs++
+			return fsyncErr
 		}
 		return nil
 	})()
@@ -523,6 +525,15 @@ func TestImportUnsyncedSkipsOnlyFileSync(t *testing.T) {
 	}
 	if digests[0] != digests[1] {
 		t.Fatalf("Import and ImportUnsynced built different trees: %v", digests)
+	}
+	// Private Git and publication restore rely on Import failing when a file sync fails.
+	fsyncErr = syscall.EIO
+	destinationPath := filepath.Join(base, "failed-sync")
+	if err := os.Mkdir(destinationPath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Import(source, openPrivateRoot(t, destinationPath), testOptions()); !errors.Is(err, syscall.EIO) {
+		t.Fatalf("Import with a failing file sync: err = %v, want EIO", err)
 	}
 }
 

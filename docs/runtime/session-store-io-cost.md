@@ -32,7 +32,9 @@ with calls × project size (about 86 MB per generation for django below).
    times. It read `/proc/self/fdinfo/<fd>` each time (open, read, parse, close).
    It now uses one `statx(STATX_MNT_ID)` call on the held descriptor, which
    returns the same ID. Kernels before 5.8 lack `STATX_MNT_ID`; the walk then
-   fails closed. `TestStatxMountIDMatchesFdinfo` checks both IDs agree.
+   fails closed. This applies to every `workspace` caller (also private Git and
+   publication restore), not only the session store.
+   `TestStatxMountIDMatchesFdinfo` checks both IDs agree.
 2. **One `syncfs` per stage instead of one fsync per file.** The session store
    now imports with `workspace.ImportUnsynced`. A stage (a new generation) is
    made durable by one `syncfs` in `syncStageTree`, before the existing directory
@@ -41,9 +43,14 @@ with calls × project size (about 86 MB per generation for django below).
    `workspace.Import` keeps its per-file fsync for its other callers (private
    Git, publication restore). `syncfs` reports writeback errors from Linux 5.8,
    the same minimum as the mount-ID check. It flushes the whole filesystem,
-   including what a command wrote into its view; per-file fsync wrote those
-   files too, one by one. The sweep's runner writes one file, so a command that
-   writes much more is not measured here.
+   including what a command wrote into its view, which per-file fsync never
+   synced. The sweep's runner writes one file, so a command that writes much
+   more is not measured here, and neither is a store filesystem shared with
+   other busy writers. `syncfs` is as strong as per-file fsync on local block
+   filesystems (ext4, XFS, Btrfs). On FUSE, 9p and possibly overlayfs it can be
+   weaker: it may not reach the backing server or report its errors. Keep the
+   session store on a local block filesystem; recovery still detects a torn
+   generation by its manifest and fails closed.
 
 No digest, manifest, evidence format or check changes. Fault tests: the three
 `SiteWorkspaceImport/OpFsync` subcases are removed because the store no longer
