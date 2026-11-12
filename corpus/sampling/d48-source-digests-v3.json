@@ -1,6 +1,6 @@
 {
  "about": "Ledger v3 source-digest file: pins, licences and per-row source files. Built by scripts/23-source-digests.py.",
- "ledger_sha256": "b201e82e4a6a6b50267677e0da8aeab4ec9c152422042d8ba834bb30b3b8e7a8",
+ "ledger_sha256": "277fc72c16bbfc27bc90723202c190a57b44987950e93f266209b3118ce79004",
  "source_to_pin_key": {
   "ASB": "agiresearch/ASB",
   "ASEval": "antgroup/Agent3Sigma-Stage",
@@ -624,16 +624,13 @@
     "evaluation_examples/examples/thunderbird/__injected_draft.json": "sha256:77376727aac21143200a013725fe7382a45e23d7e78464c1e92f0840d1b282ad",
     "evaluation_examples/examples/thunderbird/__injected_email.json": "sha256:61db50488854ae83516fbae196fd05864c0b261ccb65573e1d9cd3ac69f2c090",
     "evaluation_examples/examples/vs_code/0ed39f63-6049-43d4-ba4d-5fa2fe04a951.json": "sha256:c6f070a91ac031b1ef3e11b6a64c61aec64cf87758ed8c1745f08b7a31fd6556",
-    "assets/main.py": "sha256:d78c3ea2cd003fda91018c754cc2b4b744b62d75b55fde557f9048d2c8f2319d",
-    "evaluation_examples/examples/libreoffice_writer/__align_text.json": "sha256:813a4d9d32c5a082c5de824dce74fdbde19910747f29d2ed8145e394f6ec47f7",
-    "evaluation_examples/examples/vs_code/7aeae0e2-70ee-4705-821d-1bba5d5b2ddd.json": "sha256:d720ee160afb91fd64a8163bc00851f24b8eb1934110ba6795d99011aa83adfa",
+    "assets/04 CHIN9505 EBook Purchasing info 2021 Jan.docx": "sha256:efe354c69b84d33e87696922afb7b397a18167d19dbe8fabc64ff6931693f101",
     "assets/LibreOffice_Open_Source_Word_Processing.docx": "sha256:14bf1830fe564811f847eb688fc36ae5c64317481f7aaad7473965d035cd2b28",
     "assets/test.py": "sha256:e7d4e1fdee6722fc07fa402ab026a7158f4b94f5760cca332523d5378d152888",
-    "evaluation_examples/examples/chrome/2ad9387a-65d8-4e33-ad5b-7580065a27ca.json": "sha256:c2eb1de42f83db2be6188325905eb5503ddeb3ada479de2ab5e90243b789fa30",
-    "evaluation_examples/examples/chrome/2ae9ba84-3a0d-4d4c-8338-3a1478dc5fe3.json": "sha256:34d76a35b9d8301fc47c3b5025f4cd34d08542f66af872502b51271f0093347d",
     "evaluation_examples/examples/libreoffice_writer/__add_page_numbers.json": "sha256:9272e3e92ab83d85beb493d023c00a9d7ff2152c55a82f91e7bd2a13c05acb39",
+    "evaluation_examples/examples/libreoffice_writer/__align_text.json": "sha256:813a4d9d32c5a082c5de824dce74fdbde19910747f29d2ed8145e394f6ec47f7",
     "evaluation_examples/examples/vs_code/ec71221e-ac43-46f9-89b8-ee7d80f7e1c5.json": "sha256:c7f6e2c9616641ca6083afeb3b0e9a96dad6277476ad91b3c08e1901700d3323",
-    "assets/04 CHIN9505 EBook Purchasing info 2021 Jan.docx": "sha256:efe354c69b84d33e87696922afb7b397a18167d19dbe8fabc64ff6931693f101"
+    "evaluation_examples/examples/chrome/2ad9387a-65d8-4e33-ad5b-7580065a27ca.json": "sha256:c2eb1de42f83db2be6188325905eb5503ddeb3ada479de2ab5e90243b789fa30"
    }
   }
  },
@@ -4460,7 +4457,7 @@
     "data/advance/injected.json"
    ]
   },
-  "aseval:0093": {
+  "aseval:0076": {
    "pin_key": "antgroup/Agent3Sigma-Stage",
    "rev": "f24d57cecd14315bd1c56ad5d470d75a27618b06",
    "benchmark_digest": "sha256:24dc705f94c6bc01852f6bd2743eb3bd3a15701c0c17e070e5bd34397f81898d",
@@ -10501,37 +10498,6 @@
     "evaluation_examples/examples/vs_code/0ed39f63-6049-43d4-ba4d-5fa2fe04a951.json"
    ]
   },
-  "osharm:injection:email_send_file": {
-   "pin_key": "tml-epfl/os-harm",
-   "rev": "c0fa95e75bafb00ac05d2eb4ac5418b9913475ee",
-   "benchmark_digest": "sha256:86dd59a252fd654fc3244268a75de37b2c7f97e16f6b1de8c4cf885458a422f7",
-   "files": [
-    "run.py",
-    "evaluation_examples/test_injection.json",
-    "assets/main.py",
-    "evaluation_examples/examples/libreoffice_writer/__align_text.json",
-    "evaluation_examples/examples/vs_code/7aeae0e2-70ee-4705-821d-1bba5d5b2ddd.json"
-   ]
-  },
-  "osharm:injection:email_send_prompt": {
-   "pin_key": "tml-epfl/os-harm",
-   "rev": "c0fa95e75bafb00ac05d2eb4ac5418b9913475ee",
-   "benchmark_digest": "sha256:86dd59a252fd654fc3244268a75de37b2c7f97e16f6b1de8c4cf885458a422f7",
-   "files": [
-    "run.py",
-    "evaluation_examples/test_injection.json",
-    "assets/LibreOffice_Open_Source_Word_Processing.docx",
-    "assets/main.py",
-    "assets/test.py",
-    "evaluation_examples/examples/chrome/2ad9387a-65d8-4e33-ad5b-7580065a27ca.json",
-    "evaluation_examples/examples/chrome/2ae9ba84-3a0d-4d4c-8338-3a1478dc5fe3.json",
-    "evaluation_examples/examples/libreoffice_writer/__add_page_numbers.json",
-    "evaluation_examples/examples/libreoffice_writer/__align_text.json",
-    "evaluation_examples/examples/thunderbird/__injected_draft.json",
-    "evaluation_examples/examples/vs_code/7aeae0e2-70ee-4705-821d-1bba5d5b2ddd.json",
-    "evaluation_examples/examples/vs_code/ec71221e-ac43-46f9-89b8-ee7d80f7e1c5.json"
-   ]
-  },
   "osharm:injection:form_paste_ssh": {
    "pin_key": "tml-epfl/os-harm",
    "rev": "c0fa95e75bafb00ac05d2eb4ac5418b9913475ee",
@@ -10545,20 +10511,6 @@
     "evaluation_examples/examples/libreoffice_writer/__add_page_numbers.json",
     "evaluation_examples/examples/libreoffice_writer/__align_text.json",
     "evaluation_examples/examples/vs_code/ec71221e-ac43-46f9-89b8-ee7d80f7e1c5.json"
-   ]
-  },
-  "osharm:injection:swisstransfer_send_files": {
-   "pin_key": "tml-epfl/os-harm",
-   "rev": "c0fa95e75bafb00ac05d2eb4ac5418b9913475ee",
-   "benchmark_digest": "sha256:86dd59a252fd654fc3244268a75de37b2c7f97e16f6b1de8c4cf885458a422f7",
-   "files": [
-    "run.py",
-    "evaluation_examples/test_injection.json",
-    "assets/main.py",
-    "evaluation_examples/examples/chrome/2ad9387a-65d8-4e33-ad5b-7580065a27ca.json",
-    "evaluation_examples/examples/chrome/2ae9ba84-3a0d-4d4c-8338-3a1478dc5fe3.json",
-    "evaluation_examples/examples/thunderbird/__injected_email.json",
-    "evaluation_examples/examples/vs_code/7aeae0e2-70ee-4705-821d-1bba5d5b2ddd.json"
    ]
   },
   "osharm:injection:url_query_params": {
@@ -12389,6 +12341,22 @@
     "dataset/data/tasks.jsonl"
    ]
   },
+  "saber:A_code_024": {
+   "pin_key": "sssr-lab/saber",
+   "rev": "27df0fbdc5dee0162b0521d5224cf5f04f2778ba",
+   "benchmark_digest": "sha256:5edcec5dc87b3e89acb2c0cc1f4ec00ffd83c4d109191c28de588b70fbc7b52c",
+   "files": [
+    "dataset/data/tasks.jsonl"
+   ]
+  },
+  "saber:A_code_025": {
+   "pin_key": "sssr-lab/saber",
+   "rev": "27df0fbdc5dee0162b0521d5224cf5f04f2778ba",
+   "benchmark_digest": "sha256:5edcec5dc87b3e89acb2c0cc1f4ec00ffd83c4d109191c28de588b70fbc7b52c",
+   "files": [
+    "dataset/data/tasks.jsonl"
+   ]
+  },
   "saber:A_code_027": {
    "pin_key": "sssr-lab/saber",
    "rev": "27df0fbdc5dee0162b0521d5224cf5f04f2778ba",
@@ -12454,6 +12422,14 @@
    ]
   },
   "saber:A_code_042": {
+   "pin_key": "sssr-lab/saber",
+   "rev": "27df0fbdc5dee0162b0521d5224cf5f04f2778ba",
+   "benchmark_digest": "sha256:5edcec5dc87b3e89acb2c0cc1f4ec00ffd83c4d109191c28de588b70fbc7b52c",
+   "files": [
+    "dataset/data/tasks.jsonl"
+   ]
+  },
+  "saber:A_data_006": {
    "pin_key": "sssr-lab/saber",
    "rev": "27df0fbdc5dee0162b0521d5224cf5f04f2778ba",
    "benchmark_digest": "sha256:5edcec5dc87b3e89acb2c0cc1f4ec00ffd83c4d109191c28de588b70fbc7b52c",
@@ -12997,6 +12973,14 @@
     "dataset/data/tasks.jsonl"
    ]
   },
+  "saber:B_info_014": {
+   "pin_key": "sssr-lab/saber",
+   "rev": "27df0fbdc5dee0162b0521d5224cf5f04f2778ba",
+   "benchmark_digest": "sha256:5edcec5dc87b3e89acb2c0cc1f4ec00ffd83c4d109191c28de588b70fbc7b52c",
+   "files": [
+    "dataset/data/tasks.jsonl"
+   ]
+  },
   "saber:B_info_017": {
    "pin_key": "sssr-lab/saber",
    "rev": "27df0fbdc5dee0162b0521d5224cf5f04f2778ba",
@@ -13006,6 +12990,14 @@
    ]
   },
   "saber:B_info_018": {
+   "pin_key": "sssr-lab/saber",
+   "rev": "27df0fbdc5dee0162b0521d5224cf5f04f2778ba",
+   "benchmark_digest": "sha256:5edcec5dc87b3e89acb2c0cc1f4ec00ffd83c4d109191c28de588b70fbc7b52c",
+   "files": [
+    "dataset/data/tasks.jsonl"
+   ]
+  },
+  "saber:B_info_019": {
    "pin_key": "sssr-lab/saber",
    "rev": "27df0fbdc5dee0162b0521d5224cf5f04f2778ba",
    "benchmark_digest": "sha256:5edcec5dc87b3e89acb2c0cc1f4ec00ffd83c4d109191c28de588b70fbc7b52c",
@@ -13117,6 +13109,14 @@
     "dataset/data/tasks.jsonl"
    ]
   },
+  "saber:C_code_021": {
+   "pin_key": "sssr-lab/saber",
+   "rev": "27df0fbdc5dee0162b0521d5224cf5f04f2778ba",
+   "benchmark_digest": "sha256:5edcec5dc87b3e89acb2c0cc1f4ec00ffd83c4d109191c28de588b70fbc7b52c",
+   "files": [
+    "dataset/data/tasks.jsonl"
+   ]
+  },
   "saber:C_code_027": {
    "pin_key": "sssr-lab/saber",
    "rev": "27df0fbdc5dee0162b0521d5224cf5f04f2778ba",
@@ -13189,6 +13189,14 @@
     "dataset/data/tasks.jsonl"
    ]
   },
+  "saber:C_net_017": {
+   "pin_key": "sssr-lab/saber",
+   "rev": "27df0fbdc5dee0162b0521d5224cf5f04f2778ba",
+   "benchmark_digest": "sha256:5edcec5dc87b3e89acb2c0cc1f4ec00ffd83c4d109191c28de588b70fbc7b52c",
+   "files": [
+    "dataset/data/tasks.jsonl"
+   ]
+  },
   "saber:C_net_018": {
    "pin_key": "sssr-lab/saber",
    "rev": "27df0fbdc5dee0162b0521d5224cf5f04f2778ba",
@@ -13214,6 +13222,14 @@
    ]
   },
   "saber:C_net_023": {
+   "pin_key": "sssr-lab/saber",
+   "rev": "27df0fbdc5dee0162b0521d5224cf5f04f2778ba",
+   "benchmark_digest": "sha256:5edcec5dc87b3e89acb2c0cc1f4ec00ffd83c4d109191c28de588b70fbc7b52c",
+   "files": [
+    "dataset/data/tasks.jsonl"
+   ]
+  },
+  "saber:C_net_024": {
    "pin_key": "sssr-lab/saber",
    "rev": "27df0fbdc5dee0162b0521d5224cf5f04f2778ba",
    "benchmark_digest": "sha256:5edcec5dc87b3e89acb2c0cc1f4ec00ffd83c4d109191c28de588b70fbc7b52c",
