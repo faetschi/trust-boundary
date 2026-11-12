@@ -518,6 +518,12 @@ func (r CapturedResponse) TrustedCapture(callIssuer, responseIssuer, generation 
 	}, nil
 }
 
+// ErrParallelToolCall is the capture refusal of a stream that starts a second tool call (a tool-call
+// index above zero) although the request sets parallel_tool_calls=false. The capture still refuses it;
+// the sentinel only lets the bridge apply decision 13's bounded resample to exactly this class. Its text
+// is the refusal text journaled before the sentinel existed.
+var ErrParallelToolCall = errors.New("tool-call index must be zero")
+
 type assembly struct {
 	id, kind string
 	name     strings.Builder
@@ -897,6 +903,9 @@ func (s *stream) toolDelta(raw []byte) error {
 		return e
 	}
 	index, e := integer(t["index"])
+	if e == nil && index > 0 {
+		return ErrParallelToolCall
+	}
 	if e != nil || index != 0 {
 		return errors.New("tool-call index must be zero")
 	}

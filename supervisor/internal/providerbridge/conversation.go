@@ -132,6 +132,9 @@ type SpendReservation struct {
 	ConversationID string
 	// Turn is the one-based provider turn of this conversation.
 	Turn uint64
+	// Attempt is the number of earlier attempts of this turn: zero for a first attempt, above zero only
+	// for a decision-13 resample (see resample.go), which is booked as its own reservation.
+	Attempt uint64
 	// CompletionLimit is the host-selected max_completion_tokens bound of the
 	// request. Zero means the host selected none.
 	CompletionLimit uint64
@@ -500,8 +503,13 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 	var exchangeErr error
 	var records []broker.ExchangeRecord
 	// A pre-effect provider failure may be retried (see retry.go): only with host-call accounting and
-	// without monetary spend, so every attempt is its own reserved host call.
-	retryable := c.cfg.Spend == nil && c.cfg.SelectCompletionTokenLimit != nil && c.cfg.ReserveHostCall != nil && c.cfg.CompleteHostCall != nil
+	// without monetary spend, so every attempt is its own reserved host call. A parallel-call refusal may
+	// be resampled (see resample.go): with host-call accounting, on both routes, never in a product turn.
+	hostCallAccounting := c.cfg.SelectCompletionTokenLimit != nil && c.cfg.ReserveHostCall != nil && c.cfg.CompleteHostCall != nil
+	retryable := c.cfg.Spend == nil && hostCallAccounting
+	resamplable := hostCallAccounting && !c.cfg.ProductCaptureRefusals
+	// resampleOf is the request digest a resample must repeat exactly; empty for any other attempt.
+	resampleOf := ""
 	for attempt := uint64(0); ; attempt++ {
 		hostCallBinding = nil
 		profile := broker.Profile{
@@ -525,9 +533,13 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 			}
 		}
 		captured, exchangeErr = requestBroker.ExchangeWithCompletionLimit(ctx, completionLimit, func(request broker.RequestRecord) error {
+			if resampleOf != "" && broker.DigestRequestRecord(request) != resampleOf {
+				// Nothing is reserved yet: the resample stops here and the turn ends UNKNOWN.
+				return errResampleRequestChanged
+			}
 			if c.cfg.Spend != nil {
 				unit, spendErr := c.cfg.Spend.ReserveSpend(ctx, SpendReservation{WorkflowID: c.cfg.WorkflowID,
-					ConversationID: c.cfg.ConversationID, Turn: c.turns + 1, CompletionLimit: completionLimit, Request: request})
+					ConversationID: c.cfg.ConversationID, Turn: c.turns + 1, Attempt: attempt, CompletionLimit: completionLimit, Request: request})
 				if spendErr != nil {
 					return fmt.Errorf("reserve provider spend before dispatch: %w", spendErr)
 				}
@@ -572,14 +584,28 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 			return nil
 		})
 		records = requestBroker.Records()
-		if exchangeErr != nil && retryable && attempt < MaxProviderRetries && ctx.Err() == nil &&
-			hostCallBinding != nil && retryableExchange(records) {
-			if retryErr := c.recordRetryableFailureLocked(ctx, records, *hostCallBinding, attempt+1); retryErr != nil {
-				return Turn{}, c.failLocked(retryErr)
-			}
-			continue
+		if exchangeErr == nil || attempt >= MaxProviderRetries || ctx.Err() != nil || hostCallBinding == nil {
+			break
 		}
-		break
+		resample := resamplable && resampleableExchange(records, c.route)
+		if !resample && !(retryable && retryableExchange(records)) {
+			break
+		}
+		if resample && spendUnit != "" {
+			// The refused attempt reached the provider and its cost is not established: its full
+			// reservation stays booked before the attempt is closed and the next one reserved.
+			if err := c.cfg.Spend.UncertainSpend(ctx, spendUnit); err != nil {
+				return Turn{}, c.failLocked(fmt.Errorf("book the refused provider attempt's spend: %w", err))
+			}
+			spendUnit, spendDispatched = "", false
+		}
+		if retryErr := c.recordRetryableFailureLocked(ctx, records, *hostCallBinding, attempt+1); retryErr != nil {
+			return Turn{}, c.failLocked(retryErr)
+		}
+		resampleOf = ""
+		if resample {
+			resampleOf = broker.DigestRequestRecord(records[0].Request())
+		}
 	}
 	if exchangeErr != nil {
 		if c.cfg.ProductCaptureRefusals && c.cfg.Spend == nil && hostCallBinding != nil &&

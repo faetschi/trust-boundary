@@ -439,8 +439,8 @@ func replayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 
 		case exchangeRetryKind:
 			// A failed, retryable attempt of the turn being awaited: it closes exactly the open
-			// reservation, is itself retryable by the same rule the live path applied, and the
-			// turn stays awaiting its exchange. At most MaxProviderRetries per turn.
+			// reservation, is itself retryable (retry.go) or resampleable (resample.go) by the same rule
+			// the live path applied, and the turn stays awaiting its exchange. At most MaxProviderRetries per turn.
 			if state != replayAwaitExchange || pendingHostCall == nil || turnRetries >= MaxProviderRetries || totalRetries == math.MaxUint64 {
 				return TranscriptProjection{}, replayError("provider retryable failure is out of order or exceeds the retry bound")
 			}
@@ -448,7 +448,9 @@ func replayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 			if err := unmarshalCanonicalEvent(record.Event.Data, &evidence); err != nil ||
 				evidence.WorkflowID != cfg.WorkflowID || evidence.Turn != providerSequence+1 || evidence.Attempt != turnRetries+1 ||
 				evidence.HostCall != pendingHostCall.Binding || !reflect.DeepEqual(evidence.Request, pendingHostCall.Request) ||
-				!RetryableProviderFailure(evidence.StatusCode, evidence.ContentType, evidence.Response, evidence.RetryAfter) ||
+				!(RetryableProviderFailure(evidence.StatusCode, evidence.ContentType, evidence.Response, evidence.RetryAfter) ||
+					!cfg.ProductCaptureRefusals && len(evidence.Response) <= broker.MaxDurableExchangeBytes-len(evidence.Request.Body) &&
+						ParallelToolCallResample(evidence.StatusCode, evidence.Response, route)) ||
 				verifyReplayEventID(record, cfg.ConversationID, exchangeRetryID, ordinal) != nil {
 				return TranscriptProjection{}, replayError("provider retryable failure does not bind its reserved host request")
 			}

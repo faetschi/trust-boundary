@@ -23,10 +23,7 @@ import (
 // a bash call at index 1, streamed before the finish chunk: the shape of the F17 and M3 refusals.
 func parallelCallStream(t *testing.T) string {
 	t.Helper()
-	body, err := os.ReadFile("../broker/openrouter/testdata/opencode-go-g1-turn1.sse")
-	if err != nil {
-		t.Fatal(err)
-	}
+	body := []byte(singleCallStream(t))
 	const head = `data: {"id":"0217926074272997e031431b40d2024cf18919c414bfdfa14ad95","object":"chat.completion.chunk","created":1792607427,"model":"deepseek-v4.1-flash","choices":[{"index":0,`
 	finish := bytes.Index(body, []byte(head+`"finish_reason":"tool_calls"`))
 	if finish < 0 {
@@ -34,6 +31,15 @@ func parallelCallStream(t *testing.T) string {
 	}
 	second := head + `"delta":{"role":"assistant","content":"","tool_calls":[{"index":1,"id":"call_01_parallel","type":"function","function":{"name":"bash","arguments":"{\"command\":\"ls\"}"}}]}}],"usage":null}` + "\n\n"
 	return string(body[:finish]) + second + string(body[finish:])
+}
+
+func singleCallStream(t *testing.T) string {
+	t.Helper()
+	body, err := os.ReadFile("../broker/openrouter/testdata/opencode-go-g1-turn1.sse")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(body)
 }
 
 func resampleTrace(t *testing.T, journal *audit.Journal) audit.Trace {
@@ -185,10 +191,10 @@ func TestParallelCallResampleStopsAtACap(t *testing.T) {
 func TestOtherRefusedStreamsAreNotResampled(t *testing.T) {
 	parallel := parallelCallStream(t)
 	for name, body := range map[string]string{
-		"two calls in one delta": rejectedCaptureBody,
-		"negative index":         strings.Replace(parallel, `"index":1,"id":"call_01_parallel"`, `"index":-1,"id":"call_01_parallel"`, 1),
-		"cut before [DONE]":      strings.TrimSuffix(strings.Replace(parallel, `"index":1,`, `"index":0,`, 1), "data: [DONE]\n\n"),
-		"changed call id":        strings.Replace(parallel, `"index":1,"id":"call_01_parallel"`, `"index":0,"id":"call_01_parallel"`, 1),
+		"two calls in one delta":        rejectedCaptureBody,
+		"negative index":                strings.Replace(parallel, `"index":1,"id":"call_01_parallel"`, `"index":-1,"id":"call_01_parallel"`, 1),
+		"single call cut before [DONE]": strings.TrimSuffix(singleCallStream(t), "data: [DONE]\n\n"),
+		"changed call id":               strings.Replace(parallel, `"index":1,"id":"call_01_parallel"`, `"index":0,"id":"call_01_parallel"`, 1),
 	} {
 		t.Run(name, func(t *testing.T) {
 			conversation, journal, doer, hooks, _ := retryConversation(t, []fixtureResponse{
@@ -242,10 +248,12 @@ func TestReplayRefusesForgedResampleRecords(t *testing.T) {
 		t.Fatalf("an unmodified copy must replay: %v", err)
 	}
 	for name, mutate := range map[string]func(*exchangeRetryEvidence){
-		"other refusal":  func(e *exchangeRetryEvidence) { e.Response = []byte(rejectedCaptureBody) },
-		"good stream":    func(e *exchangeRetryEvidence) { e.Response = textResponse(fixtureResponse{responseID: "x", text: "ok"}) },
-		"not a 200":      func(e *exchangeRetryEvidence) { e.StatusCode = 201 },
-		"wrong attempt":  func(e *exchangeRetryEvidence) { e.Attempt = 2 },
+		"other refusal": func(e *exchangeRetryEvidence) { e.Response = []byte(rejectedCaptureBody) },
+		"good stream": func(e *exchangeRetryEvidence) {
+			e.Response = textResponse(fixtureResponse{responseID: "x", text: "ok"})
+		},
+		"not a 200":     func(e *exchangeRetryEvidence) { e.StatusCode = 201 },
+		"wrong attempt": func(e *exchangeRetryEvidence) { e.Attempt = 2 },
 		"another request": func(e *exchangeRetryEvidence) {
 			e.Request.Body = append([]byte(nil), e.Request.Body...)
 			e.Request.Body[0] ^= 1
