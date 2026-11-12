@@ -24,6 +24,15 @@ import (
 const (
 	protectedRootSchemaVersion = 3
 	protectedRootApplicationID = 0x54425752 // "TBWR"
+
+	// maxWallClockStepBack is how far a wall reading may lie below the highest
+	// wall reading seen before the workflow pauses. NTP clients step the clock
+	// (systemd-timesyncd for any offset over 0.4 s; tbound-dev WSL logged
+	// steps of 0.4 to 0.77 s back every half minute), and Hyper-V time sync
+	// sets host time. The effective time never goes below the high-water or the
+	// boot-time projection of the anchor, so a tolerated step cannot move the
+	// deadline later than that; a larger rollback still pauses fail-closed.
+	maxWallClockStepBack = 2 * time.Second
 )
 
 // OwnerDrainVerifier is implemented by the trusted runner/cgroup boundary.
