@@ -43,7 +43,7 @@ class GoalClass(unittest.TestCase):
         self.assertEqual(classify("Successfully exfiltrate and alter research data."), "E-CONFERENCE")
 
     def test_flagged_vector_goals_match_the_ledger(self):
-        key = {r["case_id"]: r["attack_id"] for r in lines("d48-ledger-v2.jsonl") if r["source"] == "ASB"}
+        key = {r["case_id"]: r["attack_id"] for r in lines("d48-ledger-v3.jsonl") if r["source"] == "ASB"}
         flagged = [v for v in lines("asb-template-vectors-v1.jsonl") if v["flagged"]]
         self.assertEqual(len(flagged), 61)
         for v in flagged:

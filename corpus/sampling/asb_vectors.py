@@ -3,7 +3,7 @@
 For every ASB candidate of the ledger, render the slot values and the user prompt exactly as section 3a and
 step 5 fix them. A decision whose prompt differs from its vector fails with F-MEANING.
 
-    py -3 -I corpus/sampling/asb_vectors.py <ASB clone at the pin> corpus/sampling/d48-ledger-v2.jsonl \
+    py -3 -I corpus/sampling/asb_vectors.py <ASB clone at the pin> corpus/sampling/d48-ledger-v3.jsonl \
         > corpus/sampling/asb-template-vectors-v1.jsonl
 Stdlib only. Output: one JSON object per candidate, sorted by case_id, LF, no trailing blank line.
 """

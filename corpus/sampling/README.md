@@ -54,7 +54,7 @@ Python standard library only, Python 3.12 compatible. Run from the repository ro
 
 ## Ledger v1 (history)
 
-`d48-ledger-v1.jsonl` is the first candidate ledger. D51 item 8 keeps it as history: the commitments bind ledger v2 (below). It has 1,797 rows:
+`d48-ledger-v1.jsonl` is the first candidate ledger. D51 item 8 keeps it as history: the commitments bind ledger v3 (below). It has 1,797 rows:
 1,358 candidates (TM-A 1,020, TM-B 338), 149 development rows and 290 exclusions, each exclusion with a reason.
 Every row keeps its provenance: source, pin, base item, the rule that resolved it (`resolution_20`) and
 its values before resolution. Development rows (the T5 rehearsal items, D48) are `excluded: true`, so
@@ -62,13 +62,17 @@ its values before resolution. Development rows (the T5 rehearsal items, D48) are
 are still marked as seen. Extra fields beyond `case_id`, `stratum`, `attack_id`, `mechanism_id` and
 `excluded` are not read by the script; the ledger digest covers them.
 
-`pilot-commitment-v1.template.json` is the pilot commitment for `T1`, with the ledger v2, source-digest file and script digests,
-the chain, the round rule and the per-source unit choices. The rule digest is filled (the rule is frozen). Before publication on Zenodo, fill `signed_tag.object` and `signed_tag.commit` from the owner-signed tag `corpus-d48-ledger-v2`. The script
+`pilot-commitment-v1.template.json` is the pilot commitment for `T1`, with the ledger v3, source-digest file and script digests,
+the chain, the round rule and the per-source unit choices. The rule digest is filled (the rule is frozen). Before publication on Zenodo, fill `signed_tag.object` and `signed_tag.commit` from the owner-signed tag `corpus-d48-ledger-v3`. The script
 ignores those fields. `test_pilot_template.py` keeps every recorded digest equal to its file.
 
-## Ledger v2 (the candidate ledger both draws use)
+## Ledger v3 (the candidate ledger both draws use)
 
-`d48-ledger-v2.jsonl` is the candidate ledger both draws use (16 section 3 item 2). D51 item 8 binds it in the pilot commitment, and the owner signs the tag `corpus-d48-ledger-v2` on the merge commit that holds the final template. v1 stays as history. v2 has 3,089 rows: 1,476 candidates (TM-A 1,020, TM-B 456), 149 development rows and 1,464 exclusions. Against v1 it adds:
+`d48-ledger-v3.jsonl` is the candidate ledger both draws use (16 section 3 item 2). D51 item 26 binds it in the pilot commitment, and the owner signs the tag `corpus-d48-ledger-v3` on the merge commit that holds the final template. It is ledger v2 with the 211 candidates that fail the adaptation rule by construction marked excluded, one reason per row: 60 RedCode-Exec Bash rows that need `wget` or `curl`, 91 ASEval records (modules with no Node.js equivalent, absolute paths, setup commands), 50 SABER tasks (modules, setup commands, MCP tools, absent executables), 2 CodeIPI, 5 OS-Harm-injection, 2 OS-Harm-misuse and 1 SHADE-Arena. Every other row is byte-identical to v2. v3 has 3,089 rows: 1,265 candidates (TM-A 979, TM-B 286), 149 development rows and 1,675 exclusions. Only failures that are certain under the rule are excluded; a row that might pass stays a candidate and is decided by the adapter. `d48-source-digests-v3.json` is its source digest file; it also lists the files v2's missed (OS-Harm, MSB, RedTeamCUA). Built by `23-structural-screen.py` and `23-source-digests.py`.
+
+## Ledger v2 (history)
+
+`d48-ledger-v2.jsonl` was the candidate ledger until ledger v3 replaced it before `T1`. v2 has 3,089 rows: 1,476 candidates (TM-A 1,020, TM-B 456), 149 development rows and 1,464 exclusions. Against v1 it adds:
 
 - the ASB re-screen: the 152 aggressive attacker tools v1 did not hold, 29 of them candidates;
 - the RedCode-Exec re-screen: the 38 files v1 did not hold (18 Python, 20 Bash, 1,140 rows), 119 of them candidates. Bash rows run as written;
@@ -77,7 +81,7 @@ ignores those fields. `test_pilot_template.py` keeps every recorded digest equal
 
 Every candidate predicate splits under adaptation rule v1 step 8, and every part is registered for its stratum.
 
-`d48-source-digests-v2.json` is the source digest file of adaptation rule v1, step 1. For every candidate it gives the pin key, the revision, the source files and `benchmark_digest`. For every pin key it gives the repository, the licence and the licence files with their digests. It also records the SHA-256 of the ledger it was built from. File digests are taken from the git blobs at each pin, not from working trees.
+`d48-source-digests-v2.json` was the source digest file of ledger v2. The current one, `d48-source-digests-v3.json`, has the same form. For every candidate it gives the pin key, the revision, the source files and `benchmark_digest`. For every pin key it gives the repository, the licence and the licence files with their digests. It also records the SHA-256 of the ledger it was built from. File digests are taken from the git blobs at each pin, not from working trees.
 
 Both files are built outside the repository by the lane C screening scripts (`20-build.py`, `21-build.py`, `21-source-digests.py`, `22-asb-screen.py`, `22-redcode-screen.py`), against the pinned clones. `22-asb-screen.py` decides every ASB class with `asb_goal_class.py` (D51 item 21, adaptation rule section 3c), which names no case.
 
