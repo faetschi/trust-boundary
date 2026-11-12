@@ -595,7 +595,10 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 			// The refused attempt reached the provider and its cost is not established: its full
 			// reservation stays booked before the attempt is closed and the next one reserved.
 			if err := c.cfg.Spend.UncertainSpend(ctx, spendUnit); err != nil {
-				return Turn{}, c.failLocked(fmt.Errorf("book the refused provider attempt's spend: %w", err))
+				// Not resampled: the failure path below journals the refused attempt as unknown and the
+				// deferred UncertainSpend books its unit again.
+				exchangeErr = errors.Join(exchangeErr, fmt.Errorf("book the refused provider attempt's spend: %w", err))
+				break
 			}
 			spendUnit, spendDispatched = "", false
 		}

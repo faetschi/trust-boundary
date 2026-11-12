@@ -209,6 +209,78 @@ func TestOtherRefusedStreamsAreNotResampled(t *testing.T) {
 			}
 		})
 	}
+	// The parallel-call stream itself is resampled only on a 200 received whole.
+	for name, respond := range map[string]func(*http.Request) (*http.Response, error){
+		"status 500": func(r *http.Request) (*http.Response, error) {
+			return &http.Response{StatusCode: 500, Header: make(http.Header), Request: r, Body: io.NopCloser(strings.NewReader(parallel))}, nil
+		},
+		"read cut": func(r *http.Request) (*http.Response, error) {
+			return &http.Response{StatusCode: 200, Header: make(http.Header), Request: r,
+				Body: &failingBody{data: []byte(parallel), err: io.ErrUnexpectedEOF}}, nil
+		},
+	} {
+		cfg := recoveryTestConfig()
+		hooks := &retryHooks{}
+		hooks.apply(&cfg)
+		calls := 0
+		doer := doerFunc(func(r *http.Request) (*http.Response, error) { calls++; return respond(r) })
+		conversation, err := newWithDoer(cfg, ApprovedModel, doer, openRecoveryTestJournal(t, filepath.Join(t.TempDir(), "whole.audit")))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := conversation.AdmitPrompt("task", "prompt"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := conversation.NextTurn(context.Background()); err == nil || calls != 1 || len(hooks.reservations) != 1 {
+			t.Fatalf("%s: attempts=%d reservations=%d err=%v, want one attempt", name, calls, len(hooks.reservations), err)
+		}
+	}
+}
+
+// Resamples and pre-effect retries share the per-turn bound of extra attempts.
+func TestResamplesAndRetriesShareTheBound(t *testing.T) {
+	parallel := parallelCallStream(t)
+	conversation, journal, doer, _, _ := retryConversation(t, []fixtureResponse{
+		{failStatus: 503}, {failStatus: 200, failBody: parallel}, {failStatus: 200, failBody: parallel},
+		{responseID: "never", text: "unreachable"},
+	})
+	if _, err := conversation.NextTurn(context.Background()); err == nil {
+		t.Fatal("the turn was released after the shared bound")
+	}
+	kinds := journalKinds(t, journal)
+	if doer.call != 1+MaxProviderRetries || kinds[len(kinds)-1] != "provider_exchange_unknown" {
+		t.Fatalf("attempts=%d kinds=%v", doer.call, kinds)
+	}
+}
+
+// Replay requires a resample to repeat the refused request: a retry record turned into a parallel-call
+// refusal, over a journal whose next attempt carried another completion cap, does not replay.
+func TestReplayRequiresTheResampleToRepeatTheRequest(t *testing.T) {
+	cfg := recoveryTestConfig()
+	hooks := &retryHooks{}
+	hooks.apply(&cfg)
+	cfg.SelectCompletionTokenLimit = func(context.Context) (uint64, error) { hooks.limits++; return uint64(513 - hooks.limits), nil }
+	journal := openRecoveryTestJournal(t, filepath.Join(t.TempDir(), "caps.audit"))
+	conversation, err := newWithDoer(cfg, ApprovedModel, &fixtureDoer{responses: []fixtureResponse{
+		{failStatus: 503}, {responseID: "response-ok", text: "finished"}}}, journal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := conversation.AdmitPrompt("task", "prompt"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conversation.NextTurn(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	pins := resamplePins(t, cfg)
+	if _, err := ReplayTranscript(journal, pins, nil); err != nil {
+		t.Fatalf("an HTTP retry with another cap must replay: %v", err)
+	}
+	parallel := []byte(parallelCallStream(t))
+	asResample := func(e *exchangeRetryEvidence) { e.StatusCode, e.ContentType, e.Response = 200, "", parallel }
+	if _, err := ReplayTranscript(tamperedRetryJournal(t, journal, asResample), pins, nil); !errors.Is(err, ErrTranscriptReplay) {
+		t.Fatalf("a resample with other request bytes replayed: %v", err)
+	}
 }
 
 // Product turns keep their durable capture refusal: decision 13 is a thesis rule.
@@ -293,21 +365,7 @@ func TestJournalEndingAfterAResampleReplaysToAwaitingExchange(t *testing.T) {
 // worst case (uncertain), the next one is reserved under its own attempt number and settled.
 func TestResearchRouteResampleBooksEveryAttempt(t *testing.T) {
 	spend := &attemptSpend{}
-	parallel := strings.ReplaceAll(parallelCallStream(t), `"model":"deepseek-v4.1-flash"`, `"model":"`+spendTestModel+`"`)
-	doer := &queuedSpendDoer{raw: [][]byte{[]byte(parallel)}}
-	cfg := Config{
-		ConversationID: "conversation-spend", WorkflowID: "workflow-spend", ProfileID: "profile-spend",
-		InitialGenerationID: "generation-1", InitialTreeDigest: "sha256:" + strings.Repeat("0", 64),
-		SystemPrompt: "Spend system prompt.", DeveloperPrompt: "Spend developer profile.",
-		Route: spendTestRoute(t), Spend: spend,
-	}
-	hooks := &retryHooks{}
-	hooks.apply(&cfg)
-	conversation, err := newWithDoer(cfg, spendTestModel, doer, &memoryJournal{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	admitSpendPrompt(t, conversation)
+	conversation, doer, _ := researchResampleConversation(t, spend)
 	if _, err := conversation.NextTurn(context.Background()); err != nil {
 		t.Fatalf("NextTurn: %v", err)
 	}
@@ -320,10 +378,54 @@ func TestResearchRouteResampleBooksEveryAttempt(t *testing.T) {
 	}
 }
 
+// If the refused attempt's unit cannot be marked uncertain, the turn is not resampled: the refused
+// stream is journaled as the unknown exchange and the unit is marked again on the way out.
+func TestResearchRouteSpendFailureEndsTheTurnWithTheRefusedStreamJournaled(t *testing.T) {
+	spend := &attemptSpend{uncertainErr: errors.New("ledger write failed")}
+	conversation, doer, journal := researchResampleConversation(t, spend)
+	if _, err := conversation.NextTurn(context.Background()); err == nil {
+		t.Fatal("the turn was released")
+	}
+	events := journal.snapshot()
+	last := events[len(events)-1]
+	var unknown struct {
+		Response []byte `json:"response"`
+	}
+	if doer.inner.calls != 0 || last.Kind != "provider_exchange_unknown" ||
+		json.Unmarshal(last.Data, &unknown) != nil || !strings.Contains(string(unknown.Response), `"index":1`) {
+		t.Fatalf("calls after the refusal=%d kind=%s, want the refused stream journaled as unknown", doer.inner.calls, last.Kind)
+	}
+	if got := strings.Join(spend.events, ","); got != "reserve:unit-0,uncertain:unit-0,uncertain:unit-0" {
+		t.Fatalf("spend sequence = %s", got)
+	}
+}
+
+func researchResampleConversation(t *testing.T, spend SpendAccountant) (*Conversation, *queuedSpendDoer, *memoryJournal) {
+	t.Helper()
+	parallel := strings.ReplaceAll(parallelCallStream(t), `"model":"deepseek-v4.1-flash"`, `"model":"`+spendTestModel+`"`)
+	doer := &queuedSpendDoer{raw: [][]byte{[]byte(parallel)}}
+	journal := &memoryJournal{}
+	cfg := Config{
+		ConversationID: "conversation-spend", WorkflowID: "workflow-spend", ProfileID: "profile-spend",
+		InitialGenerationID: "generation-1", InitialTreeDigest: "sha256:" + strings.Repeat("0", 64),
+		SystemPrompt: "Spend system prompt.", DeveloperPrompt: "Spend developer profile.",
+		Route: spendTestRoute(t), Spend: spend,
+	}
+	hooks := &retryHooks{}
+	hooks.apply(&cfg)
+	conversation, err := newWithDoer(cfg, spendTestModel, doer, journal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	admitSpendPrompt(t, conversation)
+	return conversation, doer, journal
+}
+
 // attemptSpend names one unit per reservation and records every call.
 type attemptSpend struct {
 	reservations []SpendReservation
 	events       []string
+	uncertainErr error
 }
 
 func (s *attemptSpend) ReserveSpend(_ context.Context, reservation SpendReservation) (string, error) {
@@ -342,7 +444,7 @@ func (s *attemptSpend) SettleSpend(_ context.Context, unit string, _ json.RawMes
 }
 func (s *attemptSpend) UncertainSpend(_ context.Context, unit string) error {
 	s.events = append(s.events, "uncertain:"+unit)
-	return nil
+	return s.uncertainErr
 }
 
 // queuedSpendDoer answers its queued raw streams first, then the spendDoer's text completion.

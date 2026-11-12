@@ -340,6 +340,8 @@ func replayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 	var retiredCall *ProviderCallRetirementBinding
 	var ordinal, providerSequence, exchangeCount, callCount, decisionCount, softRefusalCount, resultCount uint64
 	var turnRetries, totalRetries uint64
+	// resampledRequest is the refused request that the next reservation must repeat exactly (decision 13).
+	var resampledRequest *requestEvidence
 	hostCallIDs := make(map[string]struct{})
 	var storeDecisionChecks uint64
 	responses := make(map[string]struct{})
@@ -431,6 +433,10 @@ func replayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 				evidence.Binding.TokenUpperBound); err != nil || requestEvidenceDigest(evidence.Request) != evidence.Binding.RequestDigest {
 				return TranscriptProjection{}, errors.Join(ErrTranscriptReplay, errors.New("provider host-call reservation does not bind the exact request"), err)
 			}
+			if resampledRequest != nil && !reflect.DeepEqual(evidence.Request, *resampledRequest) {
+				return TranscriptProjection{}, replayError("decision 13 resample does not repeat the refused request")
+			}
+			resampledRequest = nil
 			if _, reused := hostCallIDs[evidence.Binding.CallID]; reused {
 				return TranscriptProjection{}, replayError("provider host-call identity was reused by a later reservation")
 			}
@@ -448,11 +454,17 @@ func replayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 			if err := unmarshalCanonicalEvent(record.Event.Data, &evidence); err != nil ||
 				evidence.WorkflowID != cfg.WorkflowID || evidence.Turn != providerSequence+1 || evidence.Attempt != turnRetries+1 ||
 				evidence.HostCall != pendingHostCall.Binding || !reflect.DeepEqual(evidence.Request, pendingHostCall.Request) ||
-				!(RetryableProviderFailure(evidence.StatusCode, evidence.ContentType, evidence.Response, evidence.RetryAfter) ||
-					!cfg.ProductCaptureRefusals && len(evidence.Response) <= broker.MaxDurableExchangeBytes-len(evidence.Request.Body) &&
-						ParallelToolCallResample(evidence.StatusCode, evidence.Response, route)) ||
 				verifyReplayEventID(record, cfg.ConversationID, exchangeRetryID, ordinal) != nil {
 				return TranscriptProjection{}, replayError("provider retryable failure does not bind its reserved host request")
+			}
+			resample := !cfg.ProductCaptureRefusals && len(evidence.Response) <= broker.MaxDurableExchangeBytes-len(evidence.Request.Body) &&
+				ParallelToolCallResample(evidence.StatusCode, evidence.Response, route)
+			if !resample && !RetryableProviderFailure(evidence.StatusCode, evidence.ContentType, evidence.Response, evidence.RetryAfter) {
+				return TranscriptProjection{}, replayError("provider retryable failure does not bind its reserved host request")
+			}
+			if resample {
+				request := evidence.Request
+				resampledRequest = &request
 			}
 			binding := pendingHostCall.Binding
 			lastHostCall = &binding
