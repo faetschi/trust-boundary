@@ -529,7 +529,7 @@ func TestCaptureSSEParallelToolCallRefusalClass(t *testing.T) {
 		"index one":      {strings.Replace(nullFirst, `"index":0`, `"index":1`, 1), true},
 		"index two":      {strings.Replace(nullFirst, `"index":0`, `"index":2`, 1), true},
 		"negative index": {strings.Replace(nullFirst, `"index":0`, `"index":-1`, 1), false},
-		"string index":   {strings.Replace(nullFirst, `"index":0`, `"index":"1"`, 1), false},
+		"fraction index": {strings.Replace(nullFirst, `"index":0`, `"index":1.5`, 1), false},
 		"two in a delta": {`{"tool_calls":[{"index":0},{"index":0}]}`, false},
 	}
 	for name, tc := range cases {
