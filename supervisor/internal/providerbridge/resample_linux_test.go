@@ -278,7 +278,8 @@ func TestReplayRequiresTheResampleToRepeatTheRequest(t *testing.T) {
 	}
 	parallel := []byte(parallelCallStream(t))
 	asResample := func(e *exchangeRetryEvidence) { e.StatusCode, e.ContentType, e.Response = 200, "", parallel }
-	if _, err := ReplayTranscript(tamperedRetryJournal(t, journal, asResample), pins, nil); !errors.Is(err, ErrTranscriptReplay) {
+	if _, err := ReplayTranscript(tamperedRetryJournal(t, journal, asResample), pins, nil); !errors.Is(err, ErrTranscriptReplay) ||
+		!strings.Contains(err.Error(), "does not repeat the refused request") {
 		t.Fatalf("a resample with other request bytes replayed: %v", err)
 	}
 }
