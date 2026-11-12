@@ -24,6 +24,7 @@ var testSpecs = map[string]TestSpec{
 			"TestRealProcessMovedOutOfTheCellIsProc02",
 			"TestRealReparentedSurvivorIsProc01",
 			"TestRealResidualListenerIsProc03",
+			"TestRealCellUserNamespaceProcessIsCellIdentity",
 		},
 	},
 	// EVQ-NETWORK-SINK-GUEST: the Landlock TCP connect right of the command cell. It skips below

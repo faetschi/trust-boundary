@@ -17,6 +17,8 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/sys/unix"
+
 	"tbound/supervisor/internal/cgroupguard"
 	"tbound/supervisor/internal/piruntime"
 )
@@ -431,9 +433,8 @@ func TestRealProcessMovedOutOfTheCellIsProc02(t *testing.T) {
 
 // startListener runs the listener helper (it opens a TCP and a Unix listener) and
 // returns its command, TCP port and pid. detached starts it through a subshell
-// that exits (double fork, reparented away) and in its own session.
-// startListener starts the listener helper; a detached one runs under wrap (a command prefix such as
-// unshare) in its own session.
+// that exits (double fork, reparented away), under wrap (a command prefix such as
+// unshare) and in its own session.
 func startListener(t *testing.T, sock string, detached bool, wrap ...string) (cmd *exec.Cmd, port, pid int) {
 	t.Helper()
 	env := append(os.Environ(), "PROCORACLE_HELPER=listen", "PROCORACLE_SOCK="+sock)
@@ -584,6 +585,75 @@ func TestRealEscapedDoubleForkDaemonWithEmptyCellIsProc01Proc02Proc03(t *testing
 	}
 	if !seen {
 		t.Error("no poll recorded the escaped daemon")
+	}
+}
+
+// startCellNamespaceSleep starts, as root, a sleep two user namespaces below this process's under one owned
+// by uid, the shape of a rootless Podman cell of a service running as uid. CAP_SYS_ADMIN (ambient) makes the
+// first namespace a privileged creation, so the test does not depend on unprivileged user namespaces being
+// allowed; its owner is still the uid that made it. It returns once the pid is the sleep (unshare execs each
+// stage in place).
+func startCellNamespaceSleep(t *testing.T, uid uint32) *exec.Cmd {
+	t.Helper()
+	unshareBin, err := exec.LookPath("unshare")
+	if err != nil {
+		t.Fatalf("no unshare to make the cell user namespaces: %v", err)
+	}
+	sleepBin, err := exec.LookPath("sleep")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(unshareBin, "--user", "--map-root-user", unshareBin, "--user", sleepBin, "300")
+	cmd.Dir = "/"
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true, AmbientCaps: []uintptr{unix.CAP_SYS_ADMIN},
+		Credential: &syscall.Credential{Uid: uid, Gid: uid, Groups: []uint32{}}}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	for deadline := time.Now().Add(10 * time.Second); ; {
+		if comm, _ := os.ReadFile(fmt.Sprintf("/proc/%d/comm", cmd.Process.Pid)); string(comm) == "sleep\n" {
+			return cmd
+		}
+		if time.Now().After(deadline) {
+			_ = cmd.Process.Kill()
+			_ = cmd.Wait()
+			t.Fatal("the nested sleep did not start")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// The guest's positive check of the identity rule, as root and with a complete scan: a process two user
+// namespaces below the scanner's, under one owned by the service uid (unusedUID plays the service: the first
+// namespace is made by a process running as that uid, as rootless Podman makes the service's), outside the
+// cell and never registered, is found by the identity scan alone and is EFF-PROC-01 and EFF-PROC-02.
+func TestRealCellUserNamespaceProcessIsCellIdentity(t *testing.T) {
+	e := newRealEnv(t)
+	cmd := startCellNamespaceSleep(t, unusedUID)
+	e.cmds = append(e.cmds, cmd)
+	pid := cmd.Process.Pid
+	e.move(pid, e.outerDir)
+	id := idOf(t, pid)
+	e.startMonitor(noRegistry)
+
+	running := e.capture(PointInterval, 1)
+	e.waitDeadline()
+	post := e.capture(PointPostTeardown, 2)
+	final := e.capture(PointFinalCleanup, 3)
+	assertNoGaps(t, running, post, final)
+	i := slices.IndexFunc(running.Processes, func(p Process) bool { return p.ID() == id })
+	if i < 0 {
+		t.Fatalf("the identity scan did not find the cell-namespace process %v: %+v", id, running.Processes)
+	}
+	if p := running.Processes[i]; !p.CellIdentity || p.InCell || p.Registered || len(p.UserNS) != 2 || p.UID[0] != unusedUID {
+		t.Fatalf("cell-namespace process: %+v", p)
+	}
+	polls := e.polls()
+	assertNoGaps(t, polls...)
+	r := Evaluate(e.reg, []Snapshot{running, post, final}, polls, Policy{})
+	wantVerdicts(t, r, VerdictEffectPresent, VerdictEffectPresent, VerdictNoEffect)
+	if f := result(t, r, PredicateProc02).Findings; !slices.ContainsFunc(f, func(f Finding) bool { return f.Process == id }) {
+		t.Errorf("PROC-02 does not name the cell-namespace process %v: %+v", id, f)
 	}
 }
 
