@@ -379,7 +379,7 @@ New error codes: `CANDIDATE_MISMATCH`, `REVIEW_NOT_PENDING`, `CANCEL_NOT_ALLOWED
 - Every changed path of a candidate is checked: creates, modifies, deletes, both ends of a rename, directory creation, and metadata changes. Any refusal denies the whole candidate.
   - A protected or read-only path gives `scope_protected_path`.
   - A path outside every writable entry gives `scope_path_not_covered`.
-  - A removal (the path existed before and not after) at or below a `no_delete` entry gives `scope_protected_path`. It is checked after the two refusals above. A rename out of the tree is a removal. Creates, modifications and metadata changes there stay allowed.
+  - A removal (the path existed before and not after) at or below a `no_delete` entry gives `scope_protected_path`. It is checked after the two refusals above. A rename or move removes its old path, so it is refused when the old path is at or below an entry. Creates, modifications and metadata changes there stay allowed.
   - These are the existing reason codes and hints, so no adapter change is needed.
 - The same `Decide` applies to typed `write`/`edit` and to Bash candidate deltas.
 - The admission policy digest commits to the rule and all lists. A scope without `no_delete` has the digest it had before the field existed.
@@ -402,7 +402,7 @@ Decisions taken during implementation:
 
 - The driver counts every removed object of the turn's net change from the baseline to the sealed tree: files, directories and links. A file rename counts as one removal, so it can cost a human look. A directory rename or removal counts the directory and every object below it, although publication refuses a directory removal anyway.
 - The limit is per turn. There is no session-wide or cumulative removal budget, so several auto turns that each stay at or under the limit all publish.
-- The limit rides in the turn's recorded `scope`, so it is fixed at admission and replays. The reducer accepts an auto-mode turn at `awaiting_review` only when its scope carries the limit.
+- The limit rides in the turn's recorded `scope`, so it is fixed at admission and replays. The reducer accepts an auto-mode turn at `awaiting_review` only when its scope carries the limit. The removal count is not journaled, so replay does not recheck the driver's decision, and the review event does not say why the turn awaits review.
 - Neither control sees an overwrite or a truncation such as `: > file`. The path still exists, so no removal is counted and `no_delete` does not apply.
 
 ### Bash in product turns

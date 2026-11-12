@@ -322,6 +322,8 @@ func TestStoreProductScopeChecksBothEndsOfARename(t *testing.T) {
 		{"the new path is outside the writable tree", productScope([]string{"plain.txt"}, nil, nil), DenyReasonUncoveredPath},
 		{"the new path is read-only", productScope([]string{"build", "plain.txt"}, []string{"build/plain.txt"}, nil), DenyReasonProtectedPath},
 		{"the old path is protected", productScope([]string{"build"}, nil, []string{"plain.txt"}), DenyReasonProtectedPath},
+		{"the old path is no_delete", noDeleteScope([]string{"build", "plain.txt"}, []string{"plain.txt"}), DenyReasonProtectedPath},
+		{"only the new path is no_delete", noDeleteScope([]string{"build", "plain.txt"}, []string{"build"}), ""},
 		{"both ends are writable", productScope([]string{"build", "plain.txt"}, nil, nil), ""},
 	} {
 		store, g0, authority := scopedE2EStore(t, tc.scope)

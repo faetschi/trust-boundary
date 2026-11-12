@@ -48,7 +48,7 @@ const (
 // NoDelete is an overlay on Writable, not a fourth partition: an entry may equal or lie inside a
 // Writable entry and is exempt from the no-two-lists rule. A change that removes an object at or
 // below a NoDelete entry is denied with DenyReasonProtectedPath. Creates, modifications and
-// metadata changes stay allowed. A rename out of the tree is a removal. An overwrite or truncation
+// metadata changes stay allowed. A rename removes its old path. An overwrite or truncation
 // keeps the path existing, so NoDelete does not see it.
 type AdmissionScope struct {
 	Rule           string   `json:"rule,omitempty"`
