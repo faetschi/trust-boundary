@@ -240,7 +240,7 @@ func (g *fakeGuest) RunReadyStdin(ctx context.Context, argv []string, stdin io.R
 		s := base
 		s.Seq, s.Point, s.ObservedAt = seq, p, sshT0.Add(time.Duration(2+seq)*time.Second)
 		if g.guestClock != nil {
-			s.ObservedAt = g.guestClock()
+			s.ObservedAt = g.guestClock().Add(time.Duration(seq) * time.Millisecond) // the guest clock advances between calls
 		}
 		s.Processes = g.processes[p]
 		return reply(CaptureDoc{Schema: runner.EvidenceSchema, Kind: runner.EvidenceProcCapture, Point: p, RegistrationDigest: reg.Digest(), Snapshot: s})
@@ -518,21 +518,28 @@ func TestSSHCollectorRefusesATransportThatCannotReportReadiness(t *testing.T) {
 	}
 }
 
-func TestSSHCollectorProc01SurvivesAGuestClockBehindTheHost(t *testing.T) {
-	var hostNow time.Time
-	g := &fakeGuest{cell: sshCell, release: make(chan struct{}),
-		guestClock: func() time.Time { return hostNow.Add(-300 * time.Millisecond) }}
-	c, _ := newSSHCollector(g)
-	c.Wait = func(_ context.Context, until time.Time) error { hostNow = until; return nil }
-	if err := c.BeginInterval(context.Background(), sshRef); err != nil {
-		t.Fatal(err)
-	}
-	close(g.release)
-	ev, err := c.Proc(context.Background(), sshRef)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := ev.Findings[runner.OracleProc01]; got != runner.FindingNone {
-		t.Fatalf("%s = %q with the guest clock 300 ms behind the host, want none", runner.OracleProc01, got)
+// The host waits GuestMaxGap past the deadline, so a guest clock lagging by less still gives a clean PROC-01; a larger lag
+// leaves the snapshots stamped before the deadline, which stays lost.
+func TestSSHCollectorProc01GuestClockBehindTheHost(t *testing.T) {
+	for _, tc := range []struct {
+		lag  time.Duration
+		want runner.Finding
+	}{{300 * time.Millisecond, runner.FindingNone}, {GuestMaxGap + 500*time.Millisecond, runner.FindingLost}} {
+		var hostNow time.Time
+		g := &fakeGuest{cell: sshCell, release: make(chan struct{}),
+			guestClock: func() time.Time { return hostNow.Add(-tc.lag) }}
+		c, _ := newSSHCollector(g)
+		c.Wait = func(_ context.Context, until time.Time) error { hostNow = until; return nil }
+		if err := c.BeginInterval(context.Background(), sshRef); err != nil {
+			t.Fatal(err)
+		}
+		close(g.release)
+		ev, err := c.Proc(context.Background(), sshRef)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := ev.Findings[runner.OracleProc01]; got != tc.want {
+			t.Errorf("%s = %q with the guest clock %s behind the host, want %q", runner.OracleProc01, got, tc.lag, tc.want)
+		}
 	}
 }

@@ -207,8 +207,10 @@ func (iv *procInterval) requestStop(line string) {
 // (request, teardown and the grace). A request that outlasts it leaves the record short of
 // the post-teardown snapshot, which is a coverage gap, never a clean PROC-02.
 //
-// Proc waits until the deadline, then asks the guest for the post-teardown and
-// final-cleanup snapshots while the monitor is still running, and has Evaluate judge them
+// Proc waits until the deadline plus GuestMaxGap (the guest clock may lag the host by that much,
+// so PROC-01 samples at that point plus the call latency and does not see a descendant that
+// exits before it), then asks the guest for the post-teardown and final-cleanup snapshots
+// while the monitor is still running, and has Evaluate judge them
 // with the polls. Whatever fails stays missing: a failed capture or monitor leaves the
 // predicates it feeds evidence_lost, and with no usable document at all the result is
 // ErrEvidenceAbsent. There is no launcher registry on the guest, so the registry is

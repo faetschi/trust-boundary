@@ -1131,6 +1131,8 @@ Direct-runtime probe run (`guest-route-direct-runtime`; draft, owner approval re
 
 An artifact proves what its producer observed on the machine it ran on; it cannot prove that this machine is the pinned guest. The binding is to `F` (the commit the owner names), to the P1 `tbound-profile` digest (taken by the tool from its own executable) for test runs, to the test binary built from `F`, and for the G1, route-probe and direct-runtime probe runs to what those runs share with the pilot (`binding`: base template, image, source, Pi runtime bundle, runner of the signed registration, admin key) together with the run's own signed profile, registration and template.
 
+Guest clock after a host restart or a VM start from saved state [PRIVILEGED WRITE, needs owner approval], before the next `run`: step the guest clock with `sudo chronyc makestep` (or `sudo systemctl restart systemd-timesyncd` where chrony is not installed), then [READ-ONLY] `chronyc tracking` (or `timedatectl timesync-status`) must show an offset well under 1 s. The PROC collector tolerates a guest clock at most `GuestMaxGap` (1 s) behind the host; a larger lag makes EFF-PROC-01 `lost` on steps shorter than the teardown grace (M3 finding 4). Rollback: none.
+
 Sequence (each is [READ-ONLY] on the guest side except `run` and `rerun`, which spend units):
 
 ```
