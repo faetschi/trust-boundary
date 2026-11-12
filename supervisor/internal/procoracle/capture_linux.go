@@ -78,7 +78,7 @@ func Capture(cell CellReader, view HostView, p CaptureParams) Snapshot {
 }
 
 func capture(cell CellReader, view HostView, p CaptureParams, withSockets bool) Snapshot {
-	c := &capturer{root: view.ProcRoot, reg: p.Registration, withSockets: withSockets, userNS: view.UserNS, nsCache: map[uint64]cellNS{}, snap: Snapshot{
+	c := &capturer{root: view.ProcRoot, reg: p.Registration, withSockets: withSockets, userNS: view.UserNS, snap: Snapshot{
 		Seq: p.Seq, Point: p.Point, DrainProof: p.DrainProof, RegistrationDigest: p.Registration.Digest(),
 		Registry:  Registry{Recorded: p.Registry.Recorded, Procs: slices.Clone(p.Registry.Procs)},
 		Processes: []Process{}, Sockets: []Socket{}, Gaps: []Gap{},
@@ -172,16 +172,9 @@ type capturer struct {
 	withSockets bool
 	snap        Snapshot
 	// userNS walks a user namespace's ancestry (HostView.UserNS); selfUserNS is the scanner's own user
-	// namespace and nsCache the verdict for each user namespace already walked in this capture.
+	// namespace.
 	userNS     func(nsFile string) ([]UserNSLevel, error)
 	selfUserNS uint64
-	nsCache    map[uint64]cellNS
-}
-
-// cellNS is the verdict of cellUserNS for one user namespace.
-type cellNS struct {
-	cell  bool
-	chain []uint64
 }
 
 func (c *capturer) gap(domain, code, detail string) {
@@ -209,36 +202,22 @@ func (c *capturer) cellUserNS(dir string) (bool, []uint64, error) {
 	if !c.reg.identityUsable() {
 		return false, nil, nil
 	}
+	// No verdict is cached by inode: the kernel reuses a freed namespace's number at once, so each
+	// process is judged by the walk of its own namespace.
 	file := filepath.Join(dir, "ns/user")
-	link, err := os.Readlink(file)
-	if err != nil {
-		return false, nil, err
-	}
-	inode, err := nsInode(link, "user")
-	if err != nil {
-		return false, nil, err
-	}
-	if v, ok := c.nsCache[inode]; ok {
-		return v.cell, v.chain, nil
-	}
 	levels, err := c.userNS(file)
 	if err != nil {
 		return false, nil, err
 	}
 	top := slices.IndexFunc(levels, func(l UserNSLevel) bool { return l.Inode == c.selfUserNS })
 	if c.selfUserNS == 0 || top < 0 {
-		return false, nil, fmt.Errorf("user namespace %s does not descend from the scanner's own (%d)", link, c.selfUserNS)
+		return false, nil, fmt.Errorf("the user namespace of %s does not descend from the scanner's own (%d)", file, c.selfUserNS)
 	}
-	v := cellNS{cell: top >= 2 && levels[top-1].Owner == c.reg.ServiceUID, chain: make([]uint64, top)}
-	for i := range v.chain {
-		v.chain[i] = levels[i].Inode
+	chain := make([]uint64, top)
+	for i := range chain {
+		chain[i] = levels[i].Inode
 	}
-	// A process that changed its user namespace between the link and the walk (crun creating a cell) is
-	// judged by what the walk found, but that verdict is not the namespace its link named.
-	if levels[0].Inode == inode {
-		c.nsCache[inode] = v
-	}
-	return v.cell, v.chain, nil
+	return top >= 2 && levels[top-1].Owner == c.reg.ServiceUID, chain, nil
 }
 
 // maxUserNSLevels bounds the walk: the kernel nests user namespaces at most 32 deep below the initial one.
@@ -513,6 +492,12 @@ func (c *capturer) observe(pid int, flags uint8) {
 		return // exited, or the pid was reused, while it was read
 	}
 
+	// The rule checked against the cell itself: a member nested like a cell but outside the identity means
+	// the topology or ServiceUID is not what the rule assumes, and every escape would be missed silently.
+	if proc.InCell && !identity && len(userNS) >= 2 {
+		c.gap(DomainIdentity, "cell_member_not_identity", fmt.Sprintf(
+			"pid %d in the cell is %d user namespaces below the scanner's, but not under one owned by the service uid %d", pid, len(userNS), c.reg.ServiceUID))
+	}
 	if listed && !proc.InCell && !registered && !identity {
 		c.gap(DomainRegistry, "unregistered_member_left_cell",
 			fmt.Sprintf("pid %d was a member of the cell and is now in %s but was never registered", pid, cg))

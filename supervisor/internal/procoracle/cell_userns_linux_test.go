@@ -77,10 +77,10 @@ func TestCaptureRootlessNamespaceAndForeignContainersAreNotCellIdentity(t *testi
 	wantVerdicts(t, evalT(snaps, Policy{}), VerdictNoEffect, VerdictNoEffect, VerdictNoEffect)
 }
 
-// A process that changes its user namespace between the link read and the walk (crun creating a cell's
-// namespace from the rootless one) must not make the namespace its link named a cell's: conmon, still in
-// the rootless namespace, stays outside the cell identity.
-func TestCaptureUserNSThatMovedDuringTheReadIsNotCached(t *testing.T) {
+// A process that changes its user namespace during the read (crun creating a cell's namespace from the
+// rootless one) is judged by its own walk, and that verdict does not reach another process of the
+// namespace its link named: conmon, still in the rootless namespace, stays outside the cell identity.
+func TestCaptureUserNSThatMovedDuringTheReadStaysWithThatProcess(t *testing.T) {
 	f := newFakeProc(t)
 	f.addProcUID(fakeUID, 600, 7000, "crun", "S", 1, "/system.slice/tbound-pi.service/runner")
 	f.setUserNS(600, rootlessUserNS)
@@ -212,7 +212,7 @@ func TestCellUserNSOnTheLiveKernel(t *testing.T) {
 	judge := func(serviceUID uint32, pid int) (bool, []uint64, error) {
 		reg := testReg
 		reg.ServiceUID = serviceUID
-		c := &capturer{root: "/proc", reg: reg, userNS: userNSAncestry, selfUserNS: selfNS, nsCache: map[uint64]cellNS{}}
+		c := &capturer{root: "/proc", reg: reg, userNS: userNSAncestry, selfUserNS: selfNS}
 		return c.cellUserNS(filepath.Join("/proc", strconv.Itoa(pid)))
 	}
 	// unshare execs sleep once it made the inner namespace.
@@ -239,4 +239,60 @@ func TestCellUserNSOnTheLiveKernel(t *testing.T) {
 	if ok, _, err := judge(uint32(uid)+1, cell); err != nil || ok {
 		t.Errorf("two levels below another uid's namespace: %v %v", ok, err)
 	}
+}
+
+// A namespace inode number is reused as soon as the namespace is freed. A process whose link names the
+// number of a cell namespace seen earlier in the same capture, but whose own walk finds a namespace of
+// another owner, is judged by its walk: no verdict is shared between processes by inode number.
+func TestCaptureReusedUserNSInodeIsJudgedByItsOwnWalk(t *testing.T) {
+	const adminRootless, adminContainer uint64 = 4026532400, 4026532401
+	f := newFakeProc(t)
+	f.addUserNS(adminRootless, hostUserNS, 1000)
+	f.addUserNS(adminContainer, adminRootless, 1000)
+	f.addProc(500, 7000, "cell", "S", 1, fakeCell)
+	f.addProcUID(1000, 610, 7100, "admin-ctr", "S", 1, "/user.slice")
+	f.setUserNS(610, cellUserNS) // the number the freed cell namespace had
+	f.walkAs[610] = adminContainer
+	s := Capture(cellOf(500), f.view(), params(PointInterval))
+	for _, p := range s.Processes {
+		if p.PID == 610 {
+			t.Fatalf("a process of another namespace with a reused inode number became cell identity: %+v", p)
+		}
+	}
+}
+
+// The identity rule is checked against the cell itself: a live cell member two or more user namespaces
+// below the scanner's that the rule does not call cell identity (the service's topology or ServiceUID
+// drifted, e.g. PrivateUsers= puts a root-owned namespace on top) is an identity gap, never a silent miss.
+func TestCaptureCellMemberOutsideTheIdentityIsAnIdentityGap(t *testing.T) {
+	const privateUsers, rootless, cell uint64 = 4026532500, 4026532501, 4026532502
+	f := newFakeProc(t)
+	f.addUserNS(privateUsers, hostUserNS, 0)
+	f.addUserNS(rootless, privateUsers, fakeUID)
+	f.addUserNS(cell, rootless, fakeUID)
+	f.addProc(500, 7000, "cell", "S", 1, fakeCell)
+	f.setUserNS(500, cell)
+	var snaps []Snapshot
+	for i, pt := range []Point{PointInterval, PointPostTeardown, PointFinalCleanup} {
+		snaps = append(snaps, Capture(cellOf(500), f.view(), withSeq(params(pt), i+1)))
+	}
+	wantGapCode(t, snaps[0], DomainIdentity, "cell_member_not_identity")
+	r := evalT(snaps, Policy{})
+	if v := result(t, r, PredicateProc02).Verdict; v != VerdictEvidenceLost {
+		t.Errorf("PROC-02 = %s, want evidence_lost", v)
+	}
+}
+
+// The scanner's own user namespace is the anchor of the rule: unreadable, the scan has an identity gap.
+func TestCaptureUnreadableScannerUserNSIsAnIdentityGap(t *testing.T) {
+	f := newFakeProc(t)
+	if err := os.Remove(filepath.Join(f.root, "999/ns/user")); err != nil {
+		t.Fatal(err)
+	}
+	var snaps []Snapshot
+	for i, pt := range []Point{PointInterval, PointPostTeardown, PointFinalCleanup} {
+		snaps = append(snaps, Capture(cellOf(), f.view(), withSeq(params(pt), i+1)))
+	}
+	wantGapCode(t, snaps[2], DomainIdentity, "userns_unreadable")
+	wantVerdicts(t, evalT(snaps, Policy{}), VerdictEvidenceLost, VerdictEvidenceLost, VerdictEvidenceLost)
 }

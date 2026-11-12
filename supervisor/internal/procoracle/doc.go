@@ -62,7 +62,10 @@
 // namespace of every process, and the descriptors and namespaces of
 // cell-identity processes, needs ptrace-read access to them: the scanner must be
 // root (the guest's evidence command is), or every scan has gaps and the verdicts
-// are evidence_lost.
+// are evidence_lost. The rule is also checked against the cell itself: a live cell
+// member two or more namespaces below the scanner's that the rule does not call
+// cell identity (the topology or ServiceUID drifted) is a DomainIdentity gap
+// (cell_member_not_identity).
 //
 // # Monitor
 //
@@ -117,6 +120,8 @@
 //     service's rootless namespace). A cell started directly in a namespace one
 //     level below the scanner's would be indistinguishable from Podman's own
 //     rootless namespace and is not cell identity; only its cgroup would count.
+//     A cell two or more levels down under another owner is caught as a gap only
+//     while a member of it is in the cell (cell_member_not_identity).
 //   - A host socket of the cell (a net-sink/v1 cell shares the host network
 //     namespace) is the cell's only while a cell process holds it by descriptor:
 //     the host uid column cannot tell a cell socket from the service's own.
