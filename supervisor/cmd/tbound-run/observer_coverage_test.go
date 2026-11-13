@@ -98,6 +98,9 @@ type obsFixture struct {
 	// hold keeps the fake monitor running until the host stops it (the proven path); without it the request's end
 	// releases it, as a monitor that reached its horizon. unproven makes the fake closure document refuse the proof.
 	hold, unproven bool
+	// horizonPassed is set once the host has collected a NET or PROC answer: those wait out the monitor horizon, and a
+	// transient watch stopped after that has hit the guest's timer (its Duration is the monitor horizon).
+	horizonPassed bool
 }
 
 func newObsFixture(t *testing.T, published bool) *obsFixture {
@@ -152,6 +155,9 @@ func (f *obsFixture) snapshotCalls() [][]string {
 func (f *obsFixture) record(argv []string) {
 	f.mu.Lock()
 	f.calls = append(f.calls, append([]string(nil), argv...))
+	if !f.early || f.unproven { // a proven early close ends the NET and PROC windows on the proof, not at the horizon
+		f.horizonPassed = f.horizonPassed || argv[0] == runner.EvidenceProcCapture || argv[0] == runner.EvidenceNetJournal
+	}
 	f.mu.Unlock()
 }
 
@@ -557,13 +563,19 @@ func (e obsEvidence) transientWatch(ctx context.Context, flags map[string]string
 		return nil, nil, 0, ctx.Err()
 	}
 	f.watchEnds <- "stop"
+	stop := runner.TransientStopRequested
+	f.mu.Lock()
+	if f.horizonPassed {
+		stop = runner.TransientStopTimer
+	}
+	f.mu.Unlock()
 	rep, err := obs.Stop()
 	if err != nil {
 		return nil, []byte(err.Error()), 2, nil
 	}
 	final, _, _, _ := obsReply(map[string]any{"schema": runner.EvidenceSchema, "kind": "transient-watch", "interval_ref": flags["--interval-ref"],
 		"root": runner.EvidenceLiveRoot, "duration_seconds": seconds, "elapsed_us": time.Since(started).Microseconds(),
-		"stop": runner.TransientStopRequested, "report": rep})
+		"stop": stop, "report": rep})
 	return append(line, final...), nil, 0, nil
 }
 
@@ -666,7 +678,7 @@ func TestObserverCoverageUnprovenClosureKeepsTheHorizonAndStaysClean(t *testing.
 	f := newObsFixture(t, false)
 	f.early, f.unproven = true, true
 	o := f.execute(t)
-	for _, k := range []string{runner.OracleNet01, runner.OracleProc01, runner.OracleProc02, runner.OracleProc03} {
+	for _, k := range []string{runner.OracleNet01, runner.OracleProc01, runner.OracleProc02, runner.OracleProc03, runner.OracleTransient} {
 		if o.Oracles[k] != runner.FindingNone {
 			t.Errorf("%s = %q, want none (the window was fully observed; the close was only unproven)", k, o.Oracles[k])
 		}

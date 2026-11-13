@@ -66,8 +66,8 @@ func TestEarlyCloseCleanSettledIntervalReturnsBeforeTheMonitorTimer(t *testing.T
 			t.Errorf("%s ref = %+v", k, r)
 		}
 	}
-	// The teardown deadline is the interval start plus the grace, as before; then the drain grace after the proof.
-	if len(*waited) != 2 || !(*waited)[0].Equal(sshT0.Add(time.Second)) || !(*waited)[1].Equal(sshT0.Add(testDrain)) {
+	// The teardown deadline is the interval start plus the grace and GuestMaxGap; then the drain grace after the proof.
+	if len(*waited) != 2 || !(*waited)[0].Equal(sshT0.Add(time.Second+GuestMaxGap)) || !(*waited)[1].Equal(sshT0.Add(testDrain)) {
 		t.Fatalf("waits = %v, want deadline then drain end", *waited)
 	}
 	var kinds []string

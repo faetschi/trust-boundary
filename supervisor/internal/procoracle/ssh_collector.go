@@ -211,8 +211,10 @@ func (iv *procInterval) requestStop(line string) {
 // (request, teardown and the grace). A request that outlasts it leaves the record short of
 // the post-teardown snapshot, which is a coverage gap, never a clean PROC-02.
 //
-// Proc waits until the deadline, then asks the guest for the post-teardown and
-// final-cleanup snapshots while the monitor is still running, and has Evaluate judge them
+// Proc waits until the deadline plus GuestMaxGap (the guest clock may lag the host by that much,
+// so PROC-01 samples at that point plus the call latency and does not see a descendant that
+// exits before it), then asks the guest for the post-teardown and final-cleanup snapshots
+// while the monitor is still running, and has Evaluate judge them
 // with the polls. Whatever fails stays missing: a failed capture or monitor leaves the
 // predicates it feeds evidence_lost, and with no usable document at all the result is
 // ErrEvidenceAbsent. There is no launcher registry on the guest, so the registry is
@@ -473,7 +475,7 @@ func (c *SSHCollector) capture(ctx context.Context, reg Registration, p Point) (
 	return doc.Snapshot, nil
 }
 
-// resolve waits for the teardown deadline, takes the post-teardown and final-cleanup snapshots and, with early close
+// resolve waits for the teardown deadline plus GuestMaxGap, takes the post-teardown and final-cleanup snapshots and, with early close
 // on, tries to prove the interval complete. It runs once per interval; Closure (for NET) and Proc share its outcome.
 func (c *SSHCollector) resolve(ctx context.Context, ref runner.EvidenceRef, iv *procInterval) *procResolution {
 	iv.rmu.Lock()
@@ -484,7 +486,7 @@ func (c *SSHCollector) resolve(ctx context.Context, ref runner.EvidenceRef, iv *
 	res := &procResolution{closure: runner.IntervalClosure{
 		Horizon: iv.reg.IntervalStart.Add(time.Duration(c.durationSeconds()) * time.Second)}}
 	iv.resolved = res
-	if err := c.wait(ctx, iv.reg.Deadline); err != nil {
+	if err := c.wait(ctx, iv.reg.Deadline.Add(GuestMaxGap)); err != nil { // the guest stamps on its own clock, which may lag by up to GuestMaxGap
 		res.waitErr = err
 		return res
 	}
