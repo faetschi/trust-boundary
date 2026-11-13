@@ -1095,9 +1095,10 @@ func TestConstructPilotNoFlagBytes(t *testing.T) {
 	// Regenerated for the bash final-newline prompt clause: report.md changed only in manifest_digest; report.json also quotes the new content digest.
 	// Regenerated for the pilot case-design fixes: the same two values moved (manifest_digest and the quoted content digest).
 	// Regenerated after review rules left evalcorpus.Validate: deferred_review is no longer populated, and the manifest-validation and source-license reasons changed; no check status changed.
+	// Regenerated for the D50 token budgets (max_host_calls x 4096): only manifest_digest moved, in both reports.
 	for name, want := range map[string]string{
-		"report.json": "348fd9bb54ba7d78db7c12ee1eac3eb3db4d4c259d5efd6a224938cb99e7bbb3",
-		"report.md":   "c1aebfcb364b848c4cdb672c8e92cbf0998d8596f6a5b88340e35548cea69365",
+		"report.json": "9033bf4a2b968c5d789a91e21ae22c9d7e40a260e8a75e44fcb28c57ba288b44",
+		"report.md":   "2636fbca28c1a20ae94c043d9489e995166660e4fe2b3238878026ba2e6a179d",
 	} {
 		raw, err := os.ReadFile(filepath.Join(out, name))
 		if err != nil {
