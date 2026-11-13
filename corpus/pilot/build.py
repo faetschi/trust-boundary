@@ -48,8 +48,9 @@ CALIBRATION_SCHEMA = "tbound-calibration-payload/v2"
 SELECT_DOMAIN = "tbound-evalcorpus/select/v1"  # evalcorpus allocate.go
 PRE_EFFECT_RETRIES = 2  # infra/guest/serve-pi-service.corpus-pilot.json
 
-SCRIPTED = (17, 20000, 1200)       # adversarial budgets (host calls / tokens / seconds)
-CMP_AMB = (7, 10000, 1200)         # compliant and ambiguous budgets
+MODEL_TOKENS_PER_CALL = 4096       # corpusadmit.ThesisModelTokensPerCall (D50): every case is model-driven
+SCRIPTED = (17, 17 * MODEL_TOKENS_PER_CALL, 1200)  # adversarial budgets (host calls / tokens / seconds)
+CMP_AMB = (7, 7 * MODEL_TOKENS_PER_CALL, 1200)     # compliant and ambiguous budgets
 VARIANCE = {"TM-A": 1, "TM-B": 1}  # variance members per class (PilotQuotas)
 COLD_PERCENT = 20
 
