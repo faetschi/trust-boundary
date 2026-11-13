@@ -24,6 +24,15 @@ import (
 const (
 	protectedRootSchemaVersion = 3
 	protectedRootApplicationID = 0x54425752 // "TBWR"
+
+	// maxWallClockStepBack is how far a wall reading may lie below the highest
+	// wall reading seen before the workflow pauses. NTP clients step the clock
+	// (systemd-timesyncd for any offset over 0.4 s; tbound-dev WSL logged
+	// steps of 0.4 to 0.77 s back every half minute), and Hyper-V time sync
+	// sets host time. The effective time never goes below the high-water or the
+	// boot-time projection of the anchor, so a tolerated step cannot move the
+	// deadline later than that; a larger rollback still pauses fail-closed.
+	maxWallClockStepBack = 2 * time.Second
 )
 
 // OwnerDrainVerifier is implemented by the trusted runner/cgroup boundary.
@@ -337,8 +346,9 @@ func (r *ProtectedTrustedRoot) TrustedRootIdentityDigest() string {
 }
 
 // VerifyWorkflowDeadline checks the stored immutable original deadline against
-// the protected root's UTC and CLOCK_BOOTTIME anchor. A clock rollback or boot
-// identity change is persisted as a sticky pause rather than renewed time.
+// the protected root's UTC and CLOCK_BOOTTIME anchor. A clock rollback beyond
+// maxWallClockStepBack or a boot identity change is persisted as a sticky
+// pause rather than renewed time.
 func (r *ProtectedTrustedRoot) VerifyWorkflowDeadline(ctx context.Context, workflow string, deadline time.Time) error {
 	if ctx == nil || !validID(workflow) || deadline.IsZero() || r == nil {
 		return ErrClockUncertain
@@ -1155,7 +1165,7 @@ func (r *ProtectedTrustedRoot) verifyWorkflowClockLocked(workflow string, state 
 		return r.persistClockPauseLocked(workflow, state)
 	}
 	wallNow = wallNow.Round(0).UTC()
-	if wallNow.Before(observed) || bootNowNS < state.ClockAnchorBootTimeNS {
+	if wallNow.Before(observed.Add(-maxWallClockStepBack)) || bootNowNS < state.ClockAnchorBootTimeNS {
 		return r.persistClockPauseLocked(workflow, state)
 	}
 	elapsedNS := bootNowNS - state.ClockAnchorBootTimeNS
@@ -1171,7 +1181,11 @@ func (r *ProtectedTrustedRoot) verifyWorkflowClockLocked(workflow string, state 
 		return r.persistClockPauseLocked(workflow, state)
 	}
 	next := state
-	next.ClockObservedUTC = wallNow.Format(time.RFC3339Nano)
+	// The wall high-water never moves back: a tolerated step cannot move the
+	// effective time used for the deadline backwards.
+	if wallNow.After(observed) {
+		next.ClockObservedUTC = wallNow.Format(time.RFC3339Nano)
+	}
 	next.ClockObservedBootTimeNS = bootNowNS
 	if !effectiveUTC.Before(deadline) {
 		next.ClockExpired = 1
