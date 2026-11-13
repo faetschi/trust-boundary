@@ -15,6 +15,8 @@ import (
 // depend on it.
 // v4: Process.NSPid, Policy.LingeringInit and Report.LingeringInit; EFF-PROC-01 skips the cell init of a
 // no-reap/v1 run (cellInit).
+// v5: the cell identity is the user namespace (cellUserNS), not a uid: Registration.ServiceUID, Process.UserNS;
+// ownerless sockets come from the cell's own network namespaces only, and any socket of a closure scan refuses it.
 // The value is defined in the runner (runner.ProcOracleVersion), which checks the
 // provenance of every PROC finding against it and cannot import this package.
 const OracleVersion = runner.ProcOracleVersion
@@ -120,9 +122,13 @@ type Process struct {
 	InCell bool `json:"in_cell"`
 	// UID is the real, effective and saved user id from /proc/<pid>/status.
 	UID [3]uint32 `json:"uid"`
-	// CellIdentity is true when any of UID equals the registered CellUID: the
-	// process belongs to the cell wherever its cgroup is.
+	// CellIdentity is true when the process is in a cell user namespace (cellUserNS): two or more levels
+	// below the scanner's own user namespace, under a top namespace owned by Registration.ServiceUID. The
+	// process belongs to the cell wherever its cgroup is and whatever its uid.
 	CellIdentity bool `json:"cell_identity"`
+	// UserNS are the inodes of the process's user namespace and its ancestors, own first, up to the one
+	// directly below the scanner's (empty for a process in the scanner's own user namespace).
+	UserNS []uint64 `json:"user_ns"`
 	// Registered is true when the registry holds this pid and start time.
 	Registered bool `json:"registered"`
 	// OutThreads are threads that sit in another cgroup than the process.
@@ -160,8 +166,9 @@ type Socket struct {
 	Remote string `json:"remote"`
 	State  string `json:"state"`
 	Inode  uint64 `json:"inode"`
-	// UID is the uid column of a /proc/net inet row (0 for unix sockets, which
-	// have none and are attributed by inode through the owner's descriptors).
+	// UID is the uid column of a /proc/net inet row as the scanner's user namespace
+	// shows it (a cell socket shows the service uid). It attributes nothing: 0 for unix
+	// sockets, which have none.
 	UID  uint32 `json:"uid"`
 	Role string `json:"role"`
 }
@@ -216,6 +223,7 @@ func (s Snapshot) normalized() Snapshot {
 	for i := range s.Processes {
 		s.Processes[i].OutThreads = nonNil(s.Processes[i].OutThreads)
 		s.Processes[i].NSPid = nonNil(s.Processes[i].NSPid)
+		s.Processes[i].UserNS = nonNil(s.Processes[i].UserNS)
 	}
 	s.Sockets = nonNil(s.Sockets)
 	s.Gaps = nonNil(s.Gaps)
@@ -252,6 +260,16 @@ type HostView struct {
 	ProcRoot string
 	// Now returns the observation time; nil means time.Now.
 	Now func() time.Time
+	// UserNS resolves a /proc/<pid>/ns/user link to that user namespace and its ancestors, own first,
+	// through the outermost one the scanner may see; nil means the NS_GET_PARENT walk of the live kernel.
+	UserNS func(nsFile string) ([]UserNSLevel, error)
+}
+
+// UserNSLevel is one user namespace of an ancestry: its inode and the uid of its owner as the
+// scanner's user namespace sees it (NS_GET_OWNER_UID).
+type UserNSLevel struct {
+	Inode uint64
+	Owner uint32
 }
 
 // HostProc is the view of the running host.
@@ -291,12 +309,14 @@ type Registration struct {
 	IntervalStart time.Time `json:"interval_start"`
 	// Deadline is the registered teardown deadline (EFF-PROC-01).
 	Deadline time.Time `json:"deadline"`
-	// CellUID and CellGID are the dedicated cell identity. It is used only by
-	// cells; the oracle matches processes and sockets by CellUID wherever they
-	// are. CellGID is bound into the digest but processes are matched by uid, the
-	// id an unprivileged process cannot shed.
+	// CellUID and CellGID are the identity inside the cell (the template's --user). They are bound into
+	// the digest; processes are not matched by them: inside a user namespace they say nothing about the host.
 	CellUID uint32 `json:"cell_uid"`
 	CellGID uint32 `json:"cell_gid"`
+	// ServiceUID is the host uid that runs the cells' rootless Podman: it owns the rootless user namespace
+	// (Podman's pause namespace) whose descendants are the cells. The cell identity is that ancestry
+	// (cellUserNS), not a uid: a process cannot move into an ancestor user namespace.
+	ServiceUID uint32 `json:"service_uid"`
 	// MaxGap is the largest allowed time between two Monitor polls (and between
 	// IntervalStart and the first poll, and the last poll and the post-teardown
 	// snapshot). A boundary crossing shorter than MaxGap can be missed: that is
@@ -325,6 +345,8 @@ func (r Registration) gaps() []Gap {
 		bad("no cell id")
 	case r.CellUID == 0 || r.CellGID == 0 || r.CellUID == ^uint32(0) || r.CellGID == ^uint32(0):
 		bad("the cell identity %d:%d is root or unset", r.CellUID, r.CellGID)
+	case r.ServiceUID == 0 || r.ServiceUID == ^uint32(0):
+		bad("the service uid %d that owns the cells' user namespaces is root or unset", r.ServiceUID)
 	case r.MaxGap <= 0:
 		bad("no positive MaxGap")
 	case r.IntervalStart.IsZero():
@@ -349,7 +371,8 @@ func (r Registration) cellMatches(path string, inode uint64, removed bool) bool 
 }
 
 func (r Registration) identityUsable() bool {
-	return r.CellID != "" && r.CellUID != 0 && r.CellGID != 0 && r.CellUID != ^uint32(0) && r.CellGID != ^uint32(0)
+	return r.CellID != "" && r.CellUID != 0 && r.CellGID != 0 && r.CellUID != ^uint32(0) && r.CellGID != ^uint32(0) &&
+		r.ServiceUID != 0 && r.ServiceUID != ^uint32(0)
 }
 
 // underCell is true when path is the cell cgroup or a cgroup nested below it.

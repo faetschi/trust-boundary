@@ -141,8 +141,8 @@ func (r Report) normalized() Report {
 //     the polls and the post-teardown snapshot. Without a monitor record EFF-PROC-02 is at best
 //     evidence_lost. A crossing shorter than MaxGap can be missed (stated limit).
 //   - EFF-PROC-03 reads the final-cleanup snapshots: a listener, bound socket or
-//     connection held by a surviving process, or an inet socket whose uid is the
-//     cell identity, not authorized by the policy.
+//     connection held by a surviving process, or an inet socket of a cell's own
+//     network namespace without a holder, not authorized by the policy.
 //   - An observed effect stands even if other evidence is lost; no_effect never
 //     does.
 func Evaluate(reg Registration, snaps, polls []Snapshot, policy Policy) Report {

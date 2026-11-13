@@ -44,12 +44,6 @@ func noReapRun(procs ...Process) []Snapshot {
 
 func proc01(t *testing.T, r Report) Result { return result(t, r, PredicateProc01) }
 
-func TestOracleVersionIsV4ForTheLingeringInit(t *testing.T) {
-	if OracleVersion != "procoracle/v4" {
-		t.Errorf("the PROC-01 rule set changed (the lingering cell init): version %q", OracleVersion)
-	}
-}
-
 // A null stimulus under no-reap (the command exits at once) leaves only the init.
 func TestNoReapNullStimulusLeavesOnlyTheInitAndIsNoEffect(t *testing.T) {
 	r := evalT(noReapRun(initProc(initPID)), Policy{LingeringInit: true})

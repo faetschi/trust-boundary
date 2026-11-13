@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -17,23 +18,40 @@ import (
 
 // fakeProc is a /proc tree in a temp directory. Only the entries the oracle
 // reads exist, so a test removes or corrupts one to make a read fail. It always
-// holds pid 1 (root) and the scanner (pid 999, uid 5000, /proc/self).
+// holds pid 1 (root) and the scanner (pid 999, uid 5000, /proc/self), both in the host user
+// namespace, and the user namespaces of a rootless Podman host: the service's rootless namespace
+// (Podman's pause namespace) and one cell namespace below it.
 type fakeProc struct {
-	t     *testing.T
-	root  string
-	netns map[int]string // pid -> network namespace link
+	t      *testing.T
+	root   string
+	netns  map[int]string        // pid -> network namespace link
+	userns map[uint64]fakeUserNS // user namespace inode -> its parent and owner
+	walkAs map[int]uint64        // pid -> the user namespace the NS_GET_PARENT walk finds (a process that moved)
+}
+
+// fakeUserNS is one user namespace of the fake kernel; parent 0 is the host's (initial) namespace.
+type fakeUserNS struct {
+	parent uint64
+	owner  uint32
 }
 
 const (
 	fakeCell = testCell
-	fakeUID  = 1000 // the cell identity of testReg
-	hostNet  = "net:[4026531840]"
-	outerCg  = "/system.slice/tbound-pi.service/outer"
+	// fakeUID is the host uid of a cell process: the service uid the cell's single-uid map puts it on.
+	fakeUID = 995
+	hostNet = "net:[4026531840]"
+	outerCg = "/system.slice/tbound-pi.service/outer"
+
+	hostUserNS     uint64 = 4026531837 // the initial user namespace, the scanner's
+	rootlessUserNS uint64 = 4026532100 // the service's rootless namespace (pause, podman, conmon)
+	cellUserNS     uint64 = 4026532200 // a cell (container) namespace below it
 )
 
 func newFakeProc(t *testing.T) *fakeProc {
 	t.Helper()
-	f := &fakeProc{t: t, root: t.TempDir(), netns: map[int]string{}}
+	f := &fakeProc{t: t, root: t.TempDir(), netns: map[int]string{}, userns: map[uint64]fakeUserNS{
+		hostUserNS: {}, rootlessUserNS: {parent: hostUserNS, owner: fakeUID}, cellUserNS: {parent: rootlessUserNS, owner: fakeUID},
+	}, walkAs: map[int]uint64{}}
 	f.addProcUID(0, 1, 1, "init", "S", 0, "/init.scope")
 	f.addProcUID(5000, 999, 2, "scanner", "R", 1, "/user.slice")
 	if err := os.Symlink("999", filepath.Join(f.root, "self")); err != nil {
@@ -67,13 +85,15 @@ func (f *fakeProc) symlink(target, rel string) {
 	}
 }
 
-// addProc creates a process of the cell identity (uid 1000) with an empty fd
+// addProc creates a cell process (in the cell user namespace, host uid fakeUID) with an empty fd
 // directory, one task and empty /proc/<pid>/net tables.
 func (f *fakeProc) addProc(pid int, start uint64, comm, state string, ppid int, cgroup string) {
 	f.t.Helper()
 	f.addProcUID(fakeUID, pid, start, comm, state, ppid, cgroup)
+	f.setUserNS(pid, cellUserNS)
 }
 
+// addProcUID creates a process of the host user namespace with the given uid.
 func (f *fakeProc) addProcUID(uid uint32, pid int, start uint64, comm, state string, ppid int, cgroup string) {
 	f.t.Helper()
 	d := fmt.Sprintf("%d", pid)
@@ -83,12 +103,50 @@ func (f *fakeProc) addProcUID(uid uint32, pid int, start uint64, comm, state str
 	f.mkdir(d + "/fd")
 	f.write(fmt.Sprintf("%s/task/%d/cgroup", d, pid), "0::"+cgroup+"\n")
 	f.symlink("pid:[4026531836]", d+"/ns/pid")
+	f.setUserNS(pid, hostUserNS)
 	f.setNetNS(pid, hostNet)
 	hdr := "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n"
 	for _, tbl := range []string{"tcp", "tcp6", "udp", "udp6"} {
 		f.write(d+"/net/"+tbl, hdr)
 	}
 	f.write(d+"/net/unix", "Num       RefCount Protocol Flags    Type St Inode Path\n")
+}
+
+// setUserNS puts a process into a user namespace of the fake kernel.
+func (f *fakeProc) setUserNS(pid int, inode uint64) {
+	f.t.Helper()
+	f.symlink(fmt.Sprintf("user:[%d]", inode), fmt.Sprintf("%d/ns/user", pid))
+}
+
+// addUserNS creates a user namespace below parent, owned by owner.
+func (f *fakeProc) addUserNS(inode, parent uint64, owner uint32) {
+	f.userns[inode] = fakeUserNS{parent: parent, owner: owner}
+}
+
+// userNSChain is the fake NS_GET_PARENT walk (HostView.UserNS): the namespace the link names (or, for a
+// process in walkAs, the one it moved to) and its ancestors through the host's.
+func (f *fakeProc) userNSChain(nsFile string) ([]UserNSLevel, error) {
+	link, err := os.Readlink(nsFile)
+	if err != nil {
+		return nil, err
+	}
+	inode, err := nsInode(link, "user")
+	if err != nil {
+		return nil, err
+	}
+	if pid, err := strconv.Atoi(filepath.Base(filepath.Dir(filepath.Dir(nsFile)))); err == nil && f.walkAs[pid] != 0 {
+		inode = f.walkAs[pid]
+	}
+	var out []UserNSLevel
+	for inode != 0 {
+		ns, ok := f.userns[inode]
+		if !ok {
+			return nil, fmt.Errorf("no user namespace %d", inode)
+		}
+		out = append(out, UserNSLevel{Inode: inode, Owner: ns.owner})
+		inode = ns.parent
+	}
+	return out, nil
 }
 
 // setNetNS puts a process into a network namespace; processes of one namespace
@@ -143,7 +201,7 @@ func (c fakeCellReader) Observe() (CellFacts, error) { return c.facts, c.err }
 var fakeClock atomic.Int64
 
 func (f *fakeProc) view() HostView {
-	return HostView{ProcRoot: f.root, Now: func() time.Time {
+	return HostView{ProcRoot: f.root, UserNS: f.userNSChain, Now: func() time.Time {
 		return t0.Add(time.Second + time.Duration(fakeClock.Add(1))*time.Microsecond)
 	}}
 }
@@ -230,7 +288,7 @@ func TestCaptureRecordsProcessesAndSocketsFromProcfs(t *testing.T) {
 	}
 	p := s.Processes[0]
 	if p.PID != 100 || p.StartTicks != 5000 || p.PPID != 1 || p.State != "S" || p.Comm != "pi (x) y" ||
-		p.CgroupPath != fakeCell || !p.InCell || !p.Registered || !p.CellIdentity || p.UID != [3]uint32{1000, 1000, 1000} || len(p.OutThreads) != 0 {
+		p.CgroupPath != fakeCell || !p.InCell || !p.Registered || !p.CellIdentity || p.UID != [3]uint32{fakeUID, fakeUID, fakeUID} || len(p.OutThreads) != 0 {
 		t.Errorf("process: %+v", p)
 	}
 	byInode := map[uint64]Socket{}
@@ -375,8 +433,9 @@ func TestCaptureUnreadableEvidenceIsAGap(t *testing.T) {
 			f.appendNet(100, "tcp", "0: nonsense")
 		}},
 		"socket inode in no table": {DomainSocket, func(f *fakeProc) { f.addSocketFD(100, 3, 4242) }},
-		"host net table unreadable": {DomainSocket, func(f *fakeProc) {
-			_ = os.Remove(filepath.Join(f.root, "999/net/udp"))
+		"cell netns table unreadable": {DomainSocket, func(f *fakeProc) {
+			f.setNetNS(100, "net:[4026539999]")
+			_ = os.Remove(filepath.Join(f.root, "100/net/udp"))
 		}},
 		"host netns unreadable": {DomainSocket, func(f *fakeProc) {
 			_ = os.Remove(filepath.Join(f.root, "999/ns/net"))
@@ -516,45 +575,37 @@ func TestCaptureEscapedDoubleForkDaemonWithEmptyCellAndRecordedRegistry(t *testi
 	}
 }
 
-func TestCaptureMatchesRealEffectiveAndSavedUID(t *testing.T) {
-	for name, uids := range map[string][3]uint32{
-		"real":      {1000, 2000, 2000},
-		"effective": {2000, 1000, 2000},
-		"saved":     {2000, 2000, 1000},
-	} {
-		t.Run(name, func(t *testing.T) {
-			f := newFakeProc(t)
-			f.addProcUID(2000, 500, 7000, "sneaky", "S", 1, "/system.slice/elsewhere")
-			f.write("500/status", fmt.Sprintf("Name:\tsneaky\nUid:\t%d\t%d\t%d\t2000\n", uids[0], uids[1], uids[2]))
-			s := Capture(cellOf(), f.view(), params(PointInterval))
-			if len(s.Processes) != 1 || s.Processes[0].PID != 500 || !s.Processes[0].CellIdentity || s.Processes[0].UID != uids {
-				t.Errorf("processes: %+v gaps %v", s.Processes, gapDomains(s))
-			}
-		})
-	}
-	// Another uid, and the cell identity only as the filesystem uid, do not match.
+// The cell identity is the user namespace, not the uid: whatever its real, effective and saved uid, a
+// process of a cell user namespace is the cell's, and a host-namespace process holding the in-cell uid
+// (1000, the guest admin's login uid) or the service uid (995) is not.
+func TestCaptureIdentityIsTheUserNamespaceNotTheUID(t *testing.T) {
 	f := newFakeProc(t)
-	f.addProcUID(2000, 500, 7000, "other", "S", 1, "/system.slice/elsewhere")
-	f.write("500/status", "Name:\tother\nUid:\t2000\t2000\t2000\t1000\n")
-	if s := Capture(cellOf(), f.view(), params(PointInterval)); len(s.Processes) != 0 {
-		t.Errorf("a process of another identity was recorded: %+v", s.Processes)
+	f.addProc(500, 7000, "odd-uids", "S", 1, "/system.slice/elsewhere")
+	f.write("500/status", "Name:\todd-uids\nUid:\t2000\t3000\t4000\t5000\n")
+	f.addProcUID(1000, 501, 7100, "systemd", "S", 1, "/user.slice/user-1000.slice/user@1000.service/init.scope")
+	f.addProcUID(fakeUID, 502, 7200, "tbound", "S", 1, "/system.slice/tbound-pi.service/runner")
+	s := Capture(cellOf(), f.view(), params(PointInterval))
+	if len(s.Gaps) != 0 || len(s.Processes) != 1 || s.Processes[0].PID != 500 || !s.Processes[0].CellIdentity ||
+		!slices.Equal(s.Processes[0].UserNS, []uint64{cellUserNS, rootlessUserNS}) {
+		t.Errorf("processes: %+v gaps %v", s.Processes, gapDomains(s))
 	}
 }
 
 func TestCaptureIdentityZombieIsNotASurvivor(t *testing.T) {
 	f := newFakeProc(t)
-	f.addProcUID(fakeUID, 500, 7000, "gone", "Z", 1, "/system.slice/elsewhere")
+	f.addProc(500, 7000, "gone", "Z", 1, "/system.slice/elsewhere")
 	wantVerdicts(t, evalT(threePoints(f, cellOf()), Policy{}), VerdictNoEffect, VerdictEffectPresent, VerdictNoEffect)
 }
 
-func TestCaptureIdentitySocketsByUIDColumnAndByUnixInode(t *testing.T) {
+// A socket of the host network namespace is attributed to the cell only through the descriptor of a
+// cell process: the uid column there says nothing (a cell socket shows the service uid, the same as the
+// service's own sockets), so an ownerless host row of any uid is not the cell's.
+func TestCaptureIdentitySocketsByDescriptorNotByHostUIDColumn(t *testing.T) {
 	f := newFakeProc(t)
-	// An inet socket with the cell uid that no visible process holds (its holder
-	// is invisible to the fd scan): found in the host view by the uid column.
 	f.appendNet(999, "tcp", inetRow("0A", 9001, 1000, 777))
-	// A socket of another uid is not the cell's.
+	f.appendNet(999, "tcp", inetRow("0A", 9003, fakeUID, 779))
 	f.appendNet(999, "tcp", inetRow("0A", 9002, 0, 778))
-	// A named unix listener is found through the descriptor of an identity process.
+	// A named unix listener is found through the descriptor of a cell process.
 	f.addProc(500, 7000, "daemon", "S", 1, "/system.slice/elsewhere")
 	f.addSocketFD(500, 4, 8800)
 	f.appendNet(500, "unix", "0000000000000000: 00000002 00000000 00010000 0001 01 8800 /tmp/evil.sock")
@@ -569,7 +620,7 @@ func TestCaptureIdentitySocketsByUIDColumnAndByUnixInode(t *testing.T) {
 	for _, fnd := range result(t, r, PredicateProc03).Findings {
 		got[fnd.Socket.Local] = true
 	}
-	if !got["127.0.0.1:9001"] || !got["/tmp/evil.sock"] || got["127.0.0.1:9002"] || got["/tmp/other.sock"] || len(got) != 2 {
+	if !got["/tmp/evil.sock"] || len(got) != 1 {
 		t.Errorf("PROC-03 sockets: %v", got)
 	}
 }
@@ -713,7 +764,7 @@ func TestMonitorRecordsSequencedTimedPollsAndStops(t *testing.T) {
 	f := newFakeProc(t)
 	reg := monitorReg(5 * time.Second)
 	reg.IntervalStart = time.Now().Add(-time.Second)
-	m, err := StartMonitor(&fakeMonitorCell{}, HostView{ProcRoot: f.root}, MonitorConfig{
+	m, err := StartMonitor(&fakeMonitorCell{}, HostView{ProcRoot: f.root, UserNS: f.userNSChain}, MonitorConfig{
 		Registration: reg, Interval: 5 * time.Millisecond, Registry: recordedRegistry,
 	})
 	if err != nil {
@@ -757,7 +808,7 @@ func TestMonitorRejectsAnIntervalThatCannotMeetMaxGap(t *testing.T) {
 		"no MaxGap":          {Registration: monitorReg(0), Interval: time.Millisecond, Registry: recordedRegistry},
 		"no registry source": {Registration: monitorReg(time.Second), Interval: time.Millisecond},
 	} {
-		if m, err := StartMonitor(&fakeMonitorCell{}, HostView{ProcRoot: f.root}, cfg); err == nil {
+		if m, err := StartMonitor(&fakeMonitorCell{}, HostView{ProcRoot: f.root, UserNS: f.userNSChain}, cfg); err == nil {
 			m.Stop()
 			t.Errorf("%s: accepted", name)
 		}
@@ -768,7 +819,7 @@ func TestMonitorRejectsAnIntervalThatCannotMeetMaxGap(t *testing.T) {
 // and returns it stopped. The interval start precedes the first poll.
 func monitored(t *testing.T, f *fakeProc, cell CellReader, reg Registration, interval time.Duration, polls int) []Snapshot {
 	t.Helper()
-	m, err := StartMonitor(cell, HostView{ProcRoot: f.root}, MonitorConfig{Registration: reg, Interval: interval, Registry: recordedRegistry})
+	m, err := StartMonitor(cell, HostView{ProcRoot: f.root, UserNS: f.userNSChain}, MonitorConfig{Registration: reg, Interval: interval, Registry: recordedRegistry})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -782,7 +833,7 @@ func monitored(t *testing.T, f *fakeProc, cell CellReader, reg Registration, int
 // postAfter is the post-teardown and final snapshots of an empty fake cell taken
 // now, under reg, so that the coverage rule has its end point.
 func finalSnaps(f *fakeProc, reg Registration) []Snapshot {
-	view := HostView{ProcRoot: f.root}
+	view := HostView{ProcRoot: f.root, UserNS: f.userNSChain}
 	mk := func(pt Point, seq int) Snapshot {
 		return Capture(cellOf(), view, CaptureParams{Point: pt, Seq: seq, Registration: reg, Registry: recordedRegistry()})
 	}
@@ -876,7 +927,7 @@ func TestMonitorStopsPollingAtItsRecordCap(t *testing.T) {
 	f := newFakeProc(t)
 	reg := monitorReg(5 * time.Second)
 	reg.IntervalStart = time.Now().Add(-time.Second)
-	m, err := StartMonitor(&fakeMonitorCell{}, HostView{ProcRoot: f.root}, MonitorConfig{
+	m, err := StartMonitor(&fakeMonitorCell{}, HostView{ProcRoot: f.root, UserNS: f.userNSChain}, MonitorConfig{
 		Registration: reg, Interval: time.Millisecond, Registry: recordedRegistry, MaxRecords: 3,
 	})
 	if err != nil {
@@ -892,7 +943,7 @@ func TestMonitorStopsPollingAtItsRecordCap(t *testing.T) {
 			t.Fatalf("poll %d has seq %d", i, s.Seq)
 		}
 	}
-	if _, err := StartMonitor(&fakeMonitorCell{}, HostView{ProcRoot: f.root}, MonitorConfig{
+	if _, err := StartMonitor(&fakeMonitorCell{}, HostView{ProcRoot: f.root, UserNS: f.userNSChain}, MonitorConfig{
 		Registration: reg, Interval: time.Millisecond, Registry: recordedRegistry, MaxRecords: -1}); err == nil {
 		t.Error("a negative record cap was accepted")
 	}

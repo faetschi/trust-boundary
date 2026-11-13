@@ -345,7 +345,11 @@
           "TestEvaluateZombieIsNotASurvivor",
           "TestEvaluateMissingRegistryIsEvidenceLost",
           "TestMonitorGapGreaterThanMaxGapIsEvidenceLost",
-          "TestCaptureHiddenOrUnreadableProcIsEvidenceLost"
+          "TestCaptureHiddenOrUnreadableProcIsEvidenceLost",
+          "TestCaptureHostUID1000OutsideTheCellIsNotProc02",
+          "TestCaptureCellUserNSProcessOutsideTheCellIsProc02",
+          "TestCaptureUnreadableUserNamespaceIsAnIdentityGap",
+          "TestCaptureCellMemberOutsideTheIdentityIsAnIdentityGap"
         ]
       },
       "artifacts": ["guest-tests-procoracle"]
