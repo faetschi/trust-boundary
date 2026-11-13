@@ -65,6 +65,10 @@ if [ "$PREV_COMMIT" = 2641c6bc73a501ee1578d6dcdbe652c6086fac53 ] &&
 # (git diff --quiet); VerifyLinuxPiRuntimeBundle's callees all live in launcher_linux.go.
 if [ "$PREV_COMMIT" = 13ed11939c06e552a2d8662fb752bf2b3640ac68 ] &&
    [ "$F" = de2a3cfdbae532d8a9b5826af6208c96bcf4a302 ]; then ALLOW_PREV_MEASURER=1; fi
+# 13ed119..2fa3e00 (F25; F24 was not qualified, G1 UNKNOWN on an inactive provider subscription, the guest restored to F23):
+# the same four files are unchanged (git diff --quiet); F25 is de2a3cf plus the F24 kit and fresh admission ids.
+if [ "$PREV_COMMIT" = 13ed11939c06e552a2d8662fb752bf2b3640ac68 ] &&
+   [ "$F" = 2fa3e008d01b658b16ddbc59ea2063ec5efdc1d3 ]; then ALLOW_PREV_MEASURER=1; fi
 UNIT_SHA=2bc03ead4ba478d81655029de66a46f4bcb6357c5a24e7f8a3940ed947720ea3
 OLD=/var/lib/tbound/runtime-src.old-${PREV_BUNDLE_DIGEST:7:8}-$(date -u +%Y%m%dT%H%M%S%NZ)
 
