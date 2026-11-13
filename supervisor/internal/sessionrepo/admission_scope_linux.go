@@ -40,16 +40,23 @@ const (
 // to a protected path (the path itself, or anything below it) is denied even if the output scope
 // declares it. They are not allowed with promote-all/v1 or product-scope/v1.
 //
-// Writable, ReadOnly and Protected belong to product-scope/v1 only. Each is a list of canonical
+// Writable, ReadOnly and Protected belong to product-scope/v1 only, as does NoDelete. Each is a list of canonical
 // relative paths, strictly sorted, at most 128, and no path is in two lists. Matching is by whole
 // path components. A change is admitted only at or below a Writable entry, and a change at or
 // below a Protected or ReadOnly entry is denied first, whatever the nesting.
+//
+// NoDelete is an overlay on Writable, not a fourth partition: an entry may equal or lie inside a
+// Writable entry and is exempt from the no-two-lists rule. A change that removes an object at or
+// below a NoDelete entry is denied with DenyReasonProtectedPath. Creates, modifications and
+// metadata changes stay allowed. A rename removes its old path. An overwrite or truncation
+// keeps the path existing, so NoDelete does not see it.
 type AdmissionScope struct {
 	Rule           string   `json:"rule,omitempty"`
 	ProtectedPaths []string `json:"protected_paths,omitempty"`
 	Writable       []string `json:"writable,omitempty"`
 	ReadOnly       []string `json:"read_only,omitempty"`
 	Protected      []string `json:"protected,omitempty"`
+	NoDelete       []string `json:"no_delete,omitempty"`
 }
 
 func (s AdmissionScope) rule() string {
@@ -62,7 +69,7 @@ func (s AdmissionScope) rule() string {
 // IsZero reports whether s is the default scope. It also lets encoding/json omit a default scope
 // (omitzero) from an evidence bundle.
 func (s AdmissionScope) IsZero() bool {
-	return s.rule() == AdmissionScopeRuleExactPath && len(s.ProtectedPaths)+len(s.Writable)+len(s.ReadOnly)+len(s.Protected) == 0
+	return s.rule() == AdmissionScopeRuleExactPath && len(s.ProtectedPaths)+len(s.Writable)+len(s.ReadOnly)+len(s.Protected)+len(s.NoDelete) == 0
 }
 
 // cloneAdmissionScope copies all four path lists, so a bundle or its clone cannot change the
@@ -72,6 +79,7 @@ func cloneAdmissionScope(scope AdmissionScope) AdmissionScope {
 	scope.Writable = cloneSliceKeepingNil(scope.Writable)
 	scope.ReadOnly = cloneSliceKeepingNil(scope.ReadOnly)
 	scope.Protected = cloneSliceKeepingNil(scope.Protected)
+	scope.NoDelete = cloneSliceKeepingNil(scope.NoDelete)
 	return scope
 }
 
@@ -90,8 +98,8 @@ func (s AdmissionScope) Validate() error {
 	default:
 		return fmt.Errorf("unknown admission scope rule %q", s.Rule)
 	}
-	if len(s.Writable)+len(s.ReadOnly)+len(s.Protected) != 0 {
-		return errors.New("writable, read_only and protected belong to product-scope/v1")
+	if len(s.Writable)+len(s.ReadOnly)+len(s.Protected)+len(s.NoDelete) != 0 {
+		return errors.New("writable, read_only, protected and no_delete belong to product-scope/v1")
 	}
 	if len(s.ProtectedPaths) == 0 {
 		return nil
@@ -117,6 +125,9 @@ func (s AdmissionScope) validateProduct() error {
 			listed[path] = true
 		}
 	}
+	if len(s.NoDelete) != 0 {
+		return ValidateOutputScopePaths(s.NoDelete)
+	}
 	return nil
 }
 
@@ -137,6 +148,11 @@ func (s AdmissionScope) Decide(requestScope []string, changes []delta.ObjectChan
 		for _, change := range changes {
 			if !pathAtOrBelow(s.Writable, change.Path) {
 				return "deny", DenyReasonUncoveredPath
+			}
+		}
+		for _, change := range changes {
+			if change.Before.Exists && !change.After.Exists && pathAtOrBelow(s.NoDelete, change.Path) {
+				return "deny", DenyReasonProtectedPath
 			}
 		}
 		return "allow", ""
@@ -181,6 +197,7 @@ func computeAdmissionPolicyDigest(policyDigest, metadataPolicyDigest string, sco
 		Writable             []string `json:"writable,omitempty"`
 		ReadOnly             []string `json:"read_only,omitempty"`
 		Protected            []string `json:"protected,omitempty"`
+		NoDelete             []string `json:"no_delete,omitempty"`
 	}{
 		SchemaVersion:        AdmissionSchemaVersion,
 		PolicyDigest:         policyDigest,
@@ -190,6 +207,7 @@ func computeAdmissionPolicyDigest(policyDigest, metadataPolicyDigest string, sco
 		Writable:             scope.Writable,
 		ReadOnly:             scope.ReadOnly,
 		Protected:            scope.Protected,
+		NoDelete:             scope.NoDelete,
 	}
 	encoded, err := json.Marshal(payload)
 	if err != nil {

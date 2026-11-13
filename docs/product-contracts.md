@@ -372,15 +372,17 @@ New error codes: `CANDIDATE_MISMATCH`, `REVIEW_NOT_PENDING`, `CANCEL_NOT_ALLOWED
 | `writable` | Canonical relative paths. Each one is an exact file or a subtree root. A change is admissible only at or below one of them. |
 | `read_only` | Canonical relative paths. Changes at or below them are refused, even inside a writable subtree. |
 | `protected` | Canonical relative paths. Changes at or below them are refused first. These are also the private paths excluded from import. |
+| `no_delete` | Canonical relative paths. A change that removes an object at or below one is refused. An entry may equal or lie inside a `writable` entry. |
 
-- Each list is strictly sorted and holds at most 128 entries. No entry may appear in two lists. Nesting is allowed and resolved by precedence: protected, then read-only, then writable.
+- Each list is strictly sorted and holds at most 128 entries. No entry may appear in two of `writable`, `read_only` and `protected`. `no_delete` is an overlay, so it is exempt from that rule. Nesting is allowed and resolved by precedence: protected, then read-only, then writable.
 - Matching is by whole path components: `src` covers `src` and `src/a`, never `srcx`. Paths are the Store's canonical relative paths, so there is no string-prefix relaxation and no symlink following.
 - Every changed path of a candidate is checked: creates, modifies, deletes, both ends of a rename, directory creation, and metadata changes. Any refusal denies the whole candidate.
   - A protected or read-only path gives `scope_protected_path`.
   - A path outside every writable entry gives `scope_path_not_covered`.
+  - A removal (the path existed before and not after) at or below a `no_delete` entry gives `scope_protected_path`. It is checked after the two refusals above. A rename or move removes its old path, so it is refused when the old path is at or below an entry. Creates, modifications and metadata changes there stay allowed.
   - These are the existing reason codes and hints, so no adapter change is needed.
 - The same `Decide` applies to typed `write`/`edit` and to Bash candidate deltas.
-- The admission policy digest commits to the rule and all three lists.
+- The admission policy digest commits to the rule and all lists. A scope without `no_delete` has the digest it had before the field existed.
 - A registration project carries `scope`. A project without one keeps the milestone 1 behaviour.
 - A session may be created `read_only`. That empties `writable` for its turns, so no tool can change the project. A read-only command can still run.
 
@@ -392,7 +394,16 @@ Decisions taken during implementation:
 - A typed `write`, `edit` or `delete` still declares its own path as its operation's output scope, and that field is still validated. Under `product-scope/v1` `Decide` ignores it, so it can neither widen nor narrow the rule.
 - A change list holds one entry per path whose state differs. A rename is two entries (the old path removed, the new path created) and each is checked, so the two ends of a rename may sit on different sides of a scope boundary and any refusal denies the candidate.
 - A candidate refused by delta admission is a normal DENY for the provider, with the reason code and hint. The turn records it in the receipt's `denials` and continues. If nothing else changed the turn is `no_diff`.
-- Registration validation uses the Store's own list validator: canonical relative paths, strictly sorted, at most 128 per list, no path in two lists. An empty `scope` object is a valid scope that admits nothing, and it is not the same as no `scope`.
+- Registration validation uses the Store's own list validator: canonical relative paths, strictly sorted, at most 128 per list, no path in two of `writable`, `read_only` and `protected` (`no_delete` is exempt). An empty `scope` object is a valid scope that admits nothing, and it is not the same as no `scope`.
+
+`no_delete` is for "edit `src`, never remove anything in it": `writable: [src]` and `no_delete: [src]`. An entry outside every writable entry does nothing, because that path is already refused. It is allowed only under `product-scope/v1`. It checks each candidate, not the turn's net change, so it also refuses removing a file that the same turn created in an earlier call.
+
+`auto_publish_max_removals` is an optional integer on the project `scope`, from 0 to 1048576. It is not part of the admission rule or its digest. A turn in auto mode whose net change removes more objects than the limit ends `awaiting_review` instead of publishing, and a person resolves it like any review turn. Without the field there is no limit, as before.
+
+- The driver counts every removed object of the turn's net change from the baseline to the sealed tree: files, directories and links. A file rename counts as one removal, so it can cost a human look. A directory rename or removal counts the directory and every object below it, although publication refuses a directory removal anyway.
+- The limit is per turn. There is no session-wide or cumulative removal budget, so several auto turns that each stay at or under the limit all publish.
+- The limit rides in the turn's recorded `scope`, so it is fixed at admission and replays. The reducer accepts an auto-mode turn at `awaiting_review` only when its scope carries the limit. The removal count is not journaled, so replay does not recheck the driver's decision, and the review event does not say why the turn awaits review.
+- Neither control sees an overwrite or a truncation such as `: > file`. The path still exists, so no removal is counted and `no_delete` does not apply.
 
 ### Bash in product turns
 

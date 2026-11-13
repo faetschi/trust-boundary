@@ -30,11 +30,12 @@ const (
 	PublicationReview = "review"
 	PublicationAuto   = "auto"
 
-	maxIdentityBytes   = 128
-	maxBudgetField     = 1 << 40 // keeps Budget sums far from int64 overflow
-	maxKeyFileBytes    = 1024
-	maxReviewTimeout   = 86400
-	maxTurnsPerSession = 10000
+	maxIdentityBytes       = 128
+	maxBudgetField         = 1 << 40 // keeps Budget sums far from int64 overflow
+	maxKeyFileBytes        = 1024
+	maxReviewTimeout       = 86400
+	maxAutoPublishRemovals = 1 << 20
+	maxTurnsPerSession     = 10000
 )
 
 // ErrRegistration marks a refused product registration.
@@ -68,6 +69,12 @@ type ProductScope struct {
 	Writable  []string `json:"writable,omitempty"`
 	ReadOnly  []string `json:"read_only,omitempty"`
 	Protected []string `json:"protected,omitempty"`
+	// NoDelete is an overlay on Writable: an entry may equal or lie inside a writable entry, and a
+	// change that removes an object at or below it is denied.
+	NoDelete []string `json:"no_delete,omitempty"`
+	// AutoPublishMaxRemovals is not part of the admission rule. A turn in auto mode that removes
+	// more objects than this awaits review instead of publishing. nil is no limit.
+	AutoPublishMaxRemovals *int `json:"auto_publish_max_removals,omitempty"`
 }
 
 // AdmissionScope is the Store admission rule of s. A nil scope is the default rule.
@@ -76,14 +83,28 @@ func (s *ProductScope) AdmissionScope() sessionrepo.AdmissionScope {
 		return sessionrepo.AdmissionScope{}
 	}
 	return sessionrepo.AdmissionScope{Rule: sessionrepo.AdmissionScopeRuleProduct,
-		Writable: slices.Clone(s.Writable), ReadOnly: slices.Clone(s.ReadOnly), Protected: slices.Clone(s.Protected)}
+		Writable: slices.Clone(s.Writable), ReadOnly: slices.Clone(s.ReadOnly), Protected: slices.Clone(s.Protected), NoDelete: slices.Clone(s.NoDelete)}
 }
 
 func (s *ProductScope) clone() *ProductScope {
 	if s == nil {
 		return nil
 	}
-	return &ProductScope{Writable: slices.Clone(s.Writable), ReadOnly: slices.Clone(s.ReadOnly), Protected: slices.Clone(s.Protected)}
+	return &ProductScope{Writable: slices.Clone(s.Writable), ReadOnly: slices.Clone(s.ReadOnly), Protected: slices.Clone(s.Protected), NoDelete: slices.Clone(s.NoDelete), AutoPublishMaxRemovals: cloneInt(s.AutoPublishMaxRemovals)}
+}
+
+func cloneInt(p *int) *int {
+	if p == nil {
+		return nil
+	}
+	v := *p
+	return &v
+}
+
+// valid reports whether the scope's lists are canonical and its removal limit is in range.
+func (s *ProductScope) valid() bool {
+	return s.AdmissionScope().Validate() == nil &&
+		(s.AutoPublishMaxRemovals == nil || *s.AutoPublishMaxRemovals >= 0 && *s.AutoPublishMaxRemovals <= maxAutoPublishRemovals)
 }
 
 // sameScope compares scopes by content: nil is the default rule, an empty scope admits nothing.
@@ -91,7 +112,9 @@ func sameScope(a, b *ProductScope) bool {
 	if a == nil || b == nil {
 		return a == b
 	}
-	return slices.Equal(a.Writable, b.Writable) && slices.Equal(a.ReadOnly, b.ReadOnly) && slices.Equal(a.Protected, b.Protected)
+	return slices.Equal(a.Writable, b.Writable) && slices.Equal(a.ReadOnly, b.ReadOnly) && slices.Equal(a.Protected, b.Protected) && slices.Equal(a.NoDelete, b.NoDelete) &&
+		(a.AutoPublishMaxRemovals == nil) == (b.AutoPublishMaxRemovals == nil) &&
+		(a.AutoPublishMaxRemovals == nil || *a.AutoPublishMaxRemovals == *b.AutoPublishMaxRemovals)
 }
 
 // effectiveScope is the scope a turn of a session on p runs under. A read-only session has no
@@ -299,8 +322,8 @@ func (r Registration) validateFields() error {
 		if err := sessionrepo.ValidateOutputScopePaths(p.BashOutputPaths); err != nil {
 			return regErr("bash_output_paths is not a canonical exact scope")
 		}
-		if p.Scope != nil && p.Scope.AdmissionScope().Validate() != nil {
-			return regErr("scope lists must be canonical, strictly sorted, at most 128 paths, with no path in two lists")
+		if p.Scope != nil && !p.Scope.valid() {
+			return regErr("scope lists must be canonical, strictly sorted, at most 128 paths, with no path in two lists, and auto_publish_max_removals must be 0 to 1048576")
 		}
 		if len(p.PublicationModes) == 0 {
 			return regErr("publication_modes is empty")

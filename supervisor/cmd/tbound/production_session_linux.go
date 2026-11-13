@@ -926,6 +926,17 @@ func bundleHasChanges(bundle sessionrepo.EvidenceBundle) bool {
 	return false
 }
 
+// bundleRemovedCount counts the objects the run's net change removes, files, directories and links alike.
+func bundleRemovedCount(bundle sessionrepo.EvidenceBundle) int {
+	removed := 0
+	for _, change := range bundle.ValidatedChain.ComposedChanges {
+		if change.Before.Exists && !change.After.Exists {
+			removed++
+		}
+	}
+	return removed
+}
+
 // bundleHasNoChange reports a run that publication would find nothing to write:
 // no approved transition carries a change, or the verified sealed tree equals
 // the verified baseline tree. Publication composes net changes per path, so

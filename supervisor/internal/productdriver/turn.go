@@ -140,7 +140,8 @@ func (d *Driver) RunTurn(ctx context.Context, admission productsession.Admission
 		s.outcome = productsession.OutcomeFailed
 	case resolved.NoChange:
 		s.outcome = productsession.OutcomeNoDiff
-	case turn.PublicationMode == productsession.PublicationReview:
+	case turn.PublicationMode == productsession.PublicationReview,
+		turn.Scope != nil && turn.Scope.AutoPublishMaxRemovals != nil && resolved.Removed > *turn.Scope.AutoPublishMaxRemovals:
 		s.outcome, s.candidate = "awaiting_review", sealed
 	default:
 		host.Crash("before-auto-publication")

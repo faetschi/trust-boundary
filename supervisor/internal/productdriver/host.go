@@ -100,6 +100,8 @@ const (
 type Evidence struct {
 	Sealed   string
 	NoChange bool
+	// Removed counts the objects the turn's net change removes: Before exists, After does not.
+	Removed int
 
 	ProviderHead, StoreHead, CommandHead    string
 	ProviderCount, StoreCount, CommandCount uint64
