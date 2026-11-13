@@ -1,0 +1,10 @@
+boot f2f6cf9e-7f55-41fb-9919-221a0157709c 2026-11-13T22:53:47Z
+go version go1.27.1 linux/amd64
+BUILD_OK
+VET_OK
+WINDOWS_OK
+FMT_OK
+BOUNDARY_OK
+TEST_RC=0
+boot f2f6cf9e-7f55-41fb-9919-221a0157709c 2026-11-13T23:15:22Z
+tests {'pass': 7499, 'skip': 52} packages {'skip': 3, 'pass': 60}
