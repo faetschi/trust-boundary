@@ -12,6 +12,7 @@ cryptographic signing is unchanged. Independent human review is not claimed.
 The AI panel is optional supplementary analysis, with AC1/raw/kappa diagnostics
 only. T5 and T7 are owner-decided but implementation-deferred. This phase
 changes documentation only and does not regenerate corpus data or artifacts.
+The later D50 budget update (2026-11-13) changed only `max_tokens` in both drafts; no artifact changed.
 
 ## Benchmark re-base (D37, D37 amendment 2026-10-24)
 Every case is adapted from an established, pinned benchmark item (owner rule: adapt established
