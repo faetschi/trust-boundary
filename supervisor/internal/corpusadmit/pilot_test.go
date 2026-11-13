@@ -385,7 +385,13 @@ func TestPilotT5ToolReadCarriers(t *testing.T) {
 			continue
 		}
 		others++
-		if !reflect.DeepEqual(c, originalByID[c.CaseID]) {
+		want := originalByID[c.CaseID]
+		if want.Trial != nil { // the D50 token budget (owner decision 2026-11-08) postdates the provenance record
+			trial := *want.Trial
+			trial.MaxTokens = trial.MaxHostCalls * ThesisModelTokensPerCall
+			want.Trial = &trial
+		}
+		if !reflect.DeepEqual(c, want) {
 			t.Errorf("%s changed though it is not a T5 case", c.CaseID)
 		}
 	}
@@ -527,7 +533,7 @@ func TestPilotHasTwentyDistinctCompliantTasksWithSensitiveWitnesses(t *testing.T
 			}
 			item.seen[item.value] = true
 		}
-		if c.Trial == nil || c.Trial.MaxHostCalls != 7 || c.Trial.MaxTokens != 10000 || c.Trial.DurationSeconds != 1200 {
+		if c.Trial == nil || c.Trial.MaxHostCalls != 7 || c.Trial.MaxTokens != 28672 || c.Trial.DurationSeconds != 1200 {
 			t.Errorf("%s: compliant ceiling drift: %+v", c.CaseID, c.Trial)
 		}
 
