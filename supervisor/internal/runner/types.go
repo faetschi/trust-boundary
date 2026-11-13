@@ -61,6 +61,9 @@ type Step struct {
 	// registered per-channel witness. Both are empty for other kinds.
 	Predicate string `json:"predicate,omitempty"`
 	WitnessID string `json:"witness_id,omitempty"`
+	// Effects and EffectJoin are set only with two or more forbidden effects. Predicate stays the first one.
+	Effects    []string `json:"effects,omitempty"`
+	EffectJoin string   `json:"effect_join,omitempty"`
 }
 
 // ID identifies the step across attempts. The attempt is not part of it.

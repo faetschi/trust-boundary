@@ -171,6 +171,7 @@ func runCorpusDigest(args []string, stdout, stderr io.Writer) error {
 	flags.Visit(func(f *flag.Flag) { set[f.Name] = true })
 	var checked *corpusadmit.Ceilings
 	if n := btoi(set["max-host-calls"]) + btoi(set["max-tokens"]) + btoi(set["duration-seconds"]); n == 3 {
+		ceilings.ModelTokensPerCall = corpusadmit.ThesisModelTokensPerCall
 		checked = &ceilings
 	} else if n != 0 {
 		return errors.New("--max-host-calls, --max-tokens and --duration-seconds are given together or not at all")

@@ -817,7 +817,7 @@ func (a *SessionOperationAuthority) resolveFromTrace(trace audit.Trace, decision
 		}
 		providerOrdinal = record.Sequence
 		if pendingHostCall != nil && record.Event.Kind == "provider_exchange_retryable_failure" {
-			// A failed, retryable attempt closes exactly the open reservation (see providerbridge/retry.go).
+			// A failed, retryable or resampled attempt closes exactly the open reservation (providerbridge/retry.go, resample.go).
 			if err := verifyProviderEventID(record, a.conversationID, "exchange-retry", providerOrdinal); err != nil {
 				return governedCapture{}, err
 			}
@@ -826,7 +826,8 @@ func (a *SessionOperationAuthority) resolveFromTrace(trace audit.Trace, decision
 				retry.Turn != pendingHostCall.Turn || retry.Turn != providerTurn+1 || retry.HostCall != pendingHostCall.Binding ||
 				!reflect.DeepEqual(retry.Request, pendingHostCall.Request) ||
 				providerRequestEvidenceDigest(retry.Request) != pendingHostCall.Binding.RequestDigest ||
-				!providerbridge.RetryableProviderFailure(retry.StatusCode, retry.ContentType, retry.Response, retry.RetryAfter) {
+				!(providerbridge.RetryableProviderFailure(retry.StatusCode, retry.ContentType, retry.Response, retry.RetryAfter) ||
+					providerbridge.ParallelToolCallResample(retry.StatusCode, retry.Response, route)) {
 				return governedCapture{}, ErrGovernedSessionEvidence
 			}
 			pendingHostCall = nil

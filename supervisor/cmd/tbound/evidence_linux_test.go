@@ -31,7 +31,8 @@ const (
 )
 
 func evTestCell() evidenceCell {
-	return evidenceCell{ID: evTestCgroup, CgroupPath: evTestCgroup, Hierarchy: evTestHierarchy, Inode: evTestInode, UID: 1000, GID: 1000}
+	return evidenceCell{ID: evTestCgroup, CgroupPath: evTestCgroup, Hierarchy: evTestHierarchy, Inode: evTestInode, UID: 1000, GID: 1000,
+		HostUID: 995, HostGID: 986}
 }
 
 // evTestRegistration is the registration the host would compute for the fixture cell.
@@ -755,7 +756,7 @@ func TestEvidenceProcCellIsTheServicesRegisteredCell(t *testing.T) {
 	}
 	var doc procoracle.CellDoc
 	singleDoc(t, out, &doc)
-	if doc != evTestCell().doc() || doc.CellCgroupPath != evTestHierarchy || doc.CellCgroupInode != evTestInode || doc.CellUID != 1000 {
+	if doc != evTestCell().doc() || doc.CellCgroupPath != evTestHierarchy || doc.CellCgroupInode != evTestInode || doc.CellUID != 1000 || doc.ServiceUID != 995 {
 		t.Fatalf("doc = %+v", doc)
 	}
 	// It takes no argument, and a cell that cannot be resolved is an error, not an empty cell.

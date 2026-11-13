@@ -98,7 +98,7 @@ func TestEngineeringRouteIsUnchangedAndTouchesNoLedgerOrResearchFile(t *testing.
 		t.Fatalf("engineering route refused: %v", err)
 	}
 	defer route.Close()
-	if route.IsResearch() || route.Route() != (openrouter.Route{}) || route.Spend() != nil {
+	if route.IsResearch() || route.Route() != openrouter.EngineeringRoute().WithReasoning(true) || route.Spend() != nil {
 		t.Fatalf("engineering route carries research state: %+v", route.Route())
 	}
 	const host = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -109,7 +109,7 @@ func TestEngineeringRouteIsUnchangedAndTouchesNoLedgerOrResearchFile(t *testing.
 		t.Fatalf("engineering route touched the filesystem: %v %v", entries, err)
 	}
 	var zero productionProviderRoute
-	if zero.IsResearch() || zero.Spend() != nil || zero.Route() != (openrouter.Route{}) || zero.Close() != nil {
+	if zero.IsResearch() || zero.Spend() != nil || zero.Route() != openrouter.EngineeringRoute().WithReasoning(true) || zero.Close() != nil {
 		t.Fatal("the zero route is not the engineering route")
 	}
 }

@@ -474,6 +474,10 @@ func (r *D09CommandRunner) Run(ctx context.Context, view *sessionrepo.CommandVie
 		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, ErrHostBindingsMissing
 	}
 	viewMountPath := viewPath // canonical path, not /proc/<pid>/fd: see descriptorPathForMount; the entrypoint checks TBOUND_COMMAND_VIEW_DEVICE/INODE
+	readOnlyPaths, err := view.ReadOnlyMountPaths()
+	if err != nil {
+		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, fmt.Errorf("%w: %v", ErrHostBindingsMissing, err)
+	}
 
 	report, err := r.launcher.Probe(ctx)
 	if err != nil {
@@ -592,7 +596,7 @@ func (r *D09CommandRunner) Run(ctx context.Context, view *sessionrepo.CommandVie
 	if err != nil {
 		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, fmt.Errorf("derive the command-cell delta identity: %w", err)
 	}
-	args := d09CommandCellArgumentsDelta(plan, config, name, cidPath, report.ImageRef, viewMountPath, viewID, r.leaseID, uint64(viewStat.Dev), viewStat.Ino, spec)
+	args := d09CommandCellArgumentsDelta(plan, config, name, cidPath, report.ImageRef, viewMountPath, readOnlyPaths, viewID, r.leaseID, uint64(viewStat.Dev), viewStat.Ino, spec)
 	var stdout, stderr d09CapturedOutput = &d09BoundedOutput{limit: d09CommandOutputLimit}, &d09BoundedOutput{limit: d09CommandOutputLimit}
 	if r.delta.NoReap() {
 		stdout = newD09MarkedOutput(d09CommandOutputLimit, []byte(D09OutputEndMarker(outputToken)))
@@ -1019,7 +1023,8 @@ func validateD09CommandSpec(spec sessionrepo.CommandSpec, config D09Config) erro
 // of its delta. The unrelaxed plan yields the signed base cell. net-sink/v1 changes the network
 // mode and the Landlock ruleset digest, and passes the delta and its derived template identity;
 // no-reap/v1 passes the delta, its identity and the end-of-output marker. Nothing else differs.
-func d09CommandCellArgumentsDelta(plan d09DeltaPlan, config D09Config, name, cidPath, imageRef, viewPath, viewID, leaseID string, viewDevice, viewInode uint64, spec sessionrepo.CommandSpec) []string {
+// readOnly lists view entries mounted read-only over /work (product scope only; empty otherwise).
+func d09CommandCellArgumentsDelta(plan d09DeltaPlan, config D09Config, name, cidPath, imageRef, viewPath string, readOnly []string, viewID, leaseID string, viewDevice, viewInode uint64, spec sessionrepo.CommandSpec) []string {
 	uid, gid := strconv.Itoa(config.UID), strconv.Itoa(config.GID)
 	workdir := "/work"
 	if spec.WorkingDirectory != "" {
@@ -1069,6 +1074,14 @@ func d09CommandCellArgumentsDelta(plan d09DeltaPlan, config D09Config, name, cid
 		"-e", "TBOUND_HOST_NS_UTS=" + strconv.FormatUint(config.HostNamespaces.UTS, 10),
 		"-e", "TBOUND_HOST_NS_NETWORK=" + strconv.FormatUint(config.HostNamespaces.Network, 10),
 		"-e", "TBOUND_CELL_PROOF_FD=4", "-e", "TBOUND_CELL_ACK_FD=5",
+	}
+	for _, path := range readOnly {
+		// Podman reads --mount as comma-separated CSV, so such a path could inject mount options. It
+		// stays unmounted; admission still refuses changes there.
+		if strings.ContainsAny(path, ",\"") {
+			continue
+		}
+		args = append(args, "--mount", "type=bind,src="+viewPath+"/"+path+",dst=/work/"+path+",ro,bind-propagation=rprivate")
 	}
 	if plan.delta.Relaxed() {
 		args = append(args, "-e", "TBOUND_CELL_DELTA="+plan.delta.Name(), "-e", "TBOUND_DELTA_TEMPLATE_DIGEST="+plan.templateDigest)

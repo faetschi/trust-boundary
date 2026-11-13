@@ -21,6 +21,8 @@ import (
 	"unicode/utf8"
 	"unsafe"
 
+	"golang.org/x/sys/unix"
+
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/delta"
 	"tbound/supervisor/internal/faultfs"
@@ -276,6 +278,9 @@ func (s *Store) mutate(ctx context.Context, input *Generation, tool string, oper
 	if operation.Kind != delta.OperationProposalCall {
 		return MutationResult{}, ErrInvalidOptions
 	}
+	if err := checkAdmissionRecordFits(input.snapshot.Manifest, []string{outputPath}); err != nil {
+		return MutationResult{}, err
+	}
 	effectID, err := newEffectID()
 	if err != nil {
 		return MutationResult{}, err
@@ -315,7 +320,7 @@ func (s *Store) mutate(ctx context.Context, input *Generation, tool string, oper
 				_ = removeTreeAt(int(s.genDir.Fd()), stageName)
 			}
 		}()
-		if _, err := workspace.Import(input.root, stage, s.options.workspaceOptions(input.id, true)); err != nil {
+		if _, err := workspace.ImportUnsynced(input.root, stage, s.options.workspaceOptions(input.id, true)); err != nil {
 			return nil, fmt.Errorf("copy sealed input generation: %w", err)
 		}
 		if err := apply(stage); err != nil {
@@ -563,7 +568,7 @@ func (s *Store) newViewLocked(input *Generation) (*CommandView, error) {
 		_ = removeTreeAt(int(s.viewDir.Fd()), name)
 		return nil, fmt.Errorf("open private command view: %w", err)
 	}
-	snapshot, err := workspace.Import(input.root, root, s.options.workspaceOptions(input.id, true))
+	snapshot, err := workspace.ImportUnsynced(input.root, root, s.options.workspaceOptions(input.id, true))
 	if err != nil {
 		_ = root.Close()
 		_ = removeTreeAt(int(s.viewDir.Fd()), name)
@@ -621,6 +626,70 @@ func (view *CommandView) MountSource() (*os.File, error) {
 		return nil, fmt.Errorf("open command-view mount source: %w", err)
 	}
 	return os.NewFile(uintptr(fd), "command-view-mount-source"), nil
+}
+
+// ReadOnlyMountPaths lists the product-scope protected and read-only entries that exist in the view,
+// sorted, without entries below another listed one. The runner mounts each read-only over the
+// writable view, so the kernel refuses writes there while the command runs. Admission still refuses
+// any change at or below them afterwards: a mount cannot stop a renamed parent or a newly created
+// entry. Under every other admission rule the list is empty. The list was fixed before the command
+// was authorized.
+func (view *CommandView) ReadOnlyMountPaths() ([]string, error) {
+	if view == nil || view.store == nil || view.consumed || view.root == nil {
+		return nil, ErrViewConsumed
+	}
+	return append([]string(nil), view.readOnlyMounts...), nil
+}
+
+func (s *Store) readOnlyMountPathsLocked(view *CommandView) ([]string, error) {
+	scope := s.options.AdmissionScope
+	if scope.rule() != AdmissionScopeRuleProduct {
+		return nil, nil
+	}
+	entries := append(append([]string(nil), scope.Protected...), scope.ReadOnly...)
+	sort.Strings(entries)
+	var paths []string
+	for _, path := range entries {
+		if pathAtOrBelow(paths, path) {
+			continue
+		}
+		mountable, err := viewEntryMountable(view.root, path)
+		if err != nil {
+			return nil, fmt.Errorf("inspect read-only view entry %q: %w", path, err)
+		}
+		if mountable {
+			paths = append(paths, path)
+		}
+	}
+	return paths, nil
+}
+
+// viewEntryMountable reports whether path names a regular file or directory in root, following no
+// link. Anything else is left unmounted; admission still refuses changes there.
+func viewEntryMountable(root *os.File, path string) (bool, error) {
+	parent, leaf, err := openParent(root, path)
+	// A missing parent, a file, or a symbolic link in place of a parent directory: nothing to mount.
+	if errors.Is(err, syscall.ENOENT) || errors.Is(err, syscall.ENOTDIR) || errors.Is(err, syscall.ELOOP) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	defer parent.Close()
+	fd, err := syscall.Openat(int(parent.Fd()), leaf, linuxOPath|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0)
+	if errors.Is(err, syscall.ENOENT) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	defer syscall.Close(fd)
+	var stat syscall.Stat_t
+	if err := syscall.Fstat(fd, &stat); err != nil {
+		return false, err
+	}
+	kind := stat.Mode & syscall.S_IFMT
+	return kind == syscall.S_IFREG || kind == syscall.S_IFDIR, nil
 }
 
 func (s *Store) discardViewLocked(view *CommandView) error {
@@ -892,16 +961,7 @@ func validIdentity(value string) bool {
 }
 
 func validSHA256(value string) bool {
-	const prefix = "sha256:"
-	if !strings.HasPrefix(value, prefix) || len(value) != len(prefix)+sha256.Size*2 {
-		return false
-	}
-	encoded := value[len(prefix):]
-	if strings.ToLower(encoded) != encoded {
-		return false
-	}
-	_, err := hex.DecodeString(encoded)
-	return err == nil
+	return workspace.ValidSHA256(value)
 }
 
 func validTreeDigest(value string) bool {
@@ -1471,6 +1531,11 @@ func unlinkAt(parentFD int, name string, flags uintptr) error {
 // that make a staged generation durable and then visible under its final name.
 func syncStageTree(stage *os.File) error {
 	if err := faultfs.Check(faultfs.SiteStageSetup, faultfs.OpFsync); err != nil {
+		return err
+	}
+	// Stage files are imported unsynced; one syncfs makes all their data durable before
+	// the directory syncs and the rename. Linux 5.8+ reports writeback errors here.
+	if err := unix.Syncfs(int(stage.Fd())); err != nil {
 		return err
 	}
 	return syncTreeDirectories(stage)

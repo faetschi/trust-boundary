@@ -1,0 +1,107 @@
+== 10-freeze start 2026-11-08T17:02:17Z as tbound freeze=F22
+NOTE: replacing /home/tbound/tbound-work/env.sh of an earlier freeze (bbc6ec85a0e2f4895c6c9e392b1736a1968d62b8) with F22
+/home/tbound/tbound-work/f22-src
+F=aa5aed10ff0d7cabbb827e565818e39baa9dcfdd
+status-porcelain-bytes=0
+
+H names:
+ADMIN_PUB_DIGEST
+BUNDLE_DIGEST
+COSIGN_PUB_DIGEST
+FROZEN-COMMIT
+LOAD_TAR_DIGEST
+SRC_DIGEST
+admin.key
+admin.pub
+authorized_keys.tbound
+cal-ro.unsigned.json
+cal-rw.unsigned.json
+census-live-base.jsonl
+census-live-base2.jsonl
+census-live-probe.jsonl
+census-runtime-base.jsonl
+census-runtime-probe.jsonl
+cf1
+cf10
+cf11
+cf12
+cf13
+cf14
+cf14.failed-20261029T221236Z
+cf15
+cf16
+cf17
+cf18
+cf19
+cf2
+cf20
+cf21
+cf3
+cf4
+cf5
+cf6
+cf7
+cf8
+cf9
+cl.key
+cl.key.pub
+cosign-gen.key
+cosign-gen.pub
+cosign.pub
+d09-xattr-enumeration-calibration-readonly.ed25519
+d09-xattr-enumeration-calibration-readonly.json
+d09-xattr-enumeration-calibration.ed25519
+d09-xattr-enumeration-calibration.json
+ev.key
+ev.key.pub
+f1
+f10
+f11
+f12
+f13
+f14
+f15
+f16
+f17
+f18
+f19
+f2
+f20
+f21
+f3
+f4
+f5
+f6
+f7
+f8
+f9
+managed-live-root.unsigned.json
+pi-cell-load.tar
+pi-cell-oci
+serve-pi-service.json
+serve-pi-service.json.prev
+tr.key
+tr.key.pub
+xattr-measure-runtime.json
+OK PREV_* constants equal the /home/tbound/tbound-h/f20 records
+OK admission ids: g1 and route-probe templates differ from F20, dr id is new
+700 tbound /home/tbound/tbound-w.VSWz8e
+700 tbound /home/tbound/tbound-b.zHfR2c
+700 tbound /home/tbound/tbound-h
+700 tbound /home/tbound/tbound-h/f22
+fs=ext2/ext3 /home/tbound/tbound-w.VSWz8e
+fs=ext2/ext3 /home/tbound/tbound-h/f22
+W=/home/tbound/tbound-w.VSWz8e
+B=/home/tbound/tbound-b.zHfR2c
+H=/home/tbound/tbound-h
+F=aa5aed10ff0d7cabbb827e565818e39baa9dcfdd
+REPO=/home/tbound/tbound-work/f22-src
+HF=/home/tbound/tbound-h/f22
+CF=/home/tbound/tbound-h/cf22
+LOG=/home/tbound/tbound-work/receipts/F22/logs
+total 12
+drwx------  2 tbound tbound 4096 Nov  8 18:02 .
+drwx------ 47 tbound tbound 4096 Nov  8 18:02 ..
+-rw-------  1 tbound tbound   41 Nov  8 18:02 FROZEN-COMMIT
+OK sync done; no 0-byte output under /home/tbound/tbound-h/f22 nor in: /home/tbound/tbound-work/env.sh
+== DONE 10-freeze: F22=aa5aed10ff0d7cabbb827e565818e39baa9dcfdd

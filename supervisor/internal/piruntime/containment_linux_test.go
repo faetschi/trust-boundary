@@ -1407,7 +1407,7 @@ func TestD09WorkerCellForwardsStdinButCommandCellsDoNot(t *testing.T) {
 }
 
 func d09CommandCellArguments(config D09Config, name, cidPath, imageRef, viewPath, viewID, leaseID string, viewDevice, viewInode uint64, spec sessionrepo.CommandSpec) []string {
-	return d09CommandCellArgumentsDelta(d09BasePlan(config), config, name, cidPath, imageRef, viewPath, viewID, leaseID, viewDevice, viewInode, spec)
+	return d09CommandCellArgumentsDelta(d09BasePlan(config), config, name, cidPath, imageRef, viewPath, nil, viewID, leaseID, viewDevice, viewInode, spec)
 }
 
 func validateD09CommandProof(proof d09CommandProof, config D09Config, imageRef, leaseID, viewID, containerName string, viewDevice, viewInode uint64, spec sessionrepo.CommandSpec) error {

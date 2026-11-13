@@ -250,14 +250,12 @@ func EvaluateClosure(reg Registration, doc ClosureDoc, interval, runID string) C
 			unresolved("process %d (%s) of the cell identity is alive", p.PID, p.Comm)
 		}
 	}
-	// A residual socket of the cell identity (uidSockets records them in the host namespace even without an
-	// attributable process) or one no net table accounts for. The EFF-PROC-03 authorization is a scoring exemption and
-	// is not consulted: it never licenses an early close.
+	// A residual socket. Every socket of the scan is the cell's: held by a member or a cell-identity process, or in a
+	// cell's own network namespace without an attributable holder (cellNetnsSockets); an unknown one is in no net table.
+	// The EFF-PROC-03 authorization is a scoring exemption and is not consulted: it never licenses an early close.
 	if !noReap {
 		for _, so := range s.Sockets {
-			if so.Role == RoleUnknown || so.UID == reg.CellUID && reg.CellUID != 0 || so.Role == RoleListener || so.Role == RoleConnected {
-				unresolved("a %s socket %s (uid %d, %s) of the cell identity remains", so.Proto, so.Local, so.UID, so.State)
-			}
+			unresolved("a %s socket %s (%s, %s) of the cell remains", so.Proto, so.Local, so.Role, so.State)
 		}
 	}
 	c.Proven = len(c.Reasons) == 0

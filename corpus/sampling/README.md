@@ -23,23 +23,22 @@ Python standard library only, Python 3.12 compatible. Run from the repository ro
 | `verify-beacon --commitment C --published-utc T --beacon B` | Check round and `randomness` against a pilot or a main commitment | 0 ok, 1 refused |
 | `certify --NA N --NB N --nA N --nB N` | Zero-event certification (section 6); a range is `LOW:HIGH` | 0 certified, 1 not certified |
 
-- `--published-utc` is the commitment file version's first publication time from OSF: whole-second UTC ending in `Z`, for example `2026-11-03T12:00:00Z`. If OSF shows fractions of a second, round up to the next whole second. The commitment file cannot hold it (a file with a `T` field is refused). It is recorded as `round.published_utc`.
+- `--published-utc` is the commitment record's `created` timestamp from the Zenodo API (D53): whole-second UTC ending in `Z`, for example `2026-11-03T12:00:00Z`. `created` has fractions of a second: round up to the next whole second. The script's own help text still says OSF; read it as the commitment venue (D53). The commitment file cannot hold it (a file with a `T` field is refused). It is recorded as `round.published_utc`.
 - `--bls-verified-by "TOOL VERSION"` names the independent drand verifier that checked the BLS signature (a nonempty string). The script does not verify BLS; it records the name under `inputs.beacon.bls_verified_by`. The draw counts only after that verification is archived.
 - `draw --pilot-output` is the JSON that `pilot` wrote. The draw is refused unless it is a complete pilot (`schema` `tbound-d48-pilot/v1`, `memberships.pilot` present) and every pilot member is in `development_case_ids`. Its digest and members are recorded under `inputs.pilot_output`.
 - `pilot` and `draw` never overwrite `OUT`. After a `needs-adaptation` run, add decisions and rerun with a new `--out`.
-- `allocate` and `certify` write JSON to stdout with `
-` line endings on every platform, so a redirected file has the same bytes everywhere.
+- `allocate` and `certify` write JSON to stdout with LF line endings on every platform, so a redirected file has the same bytes everywhere.
 - A blocked `pilot` or `draw` (infeasible cap, exhausted stratum, too little non-cold capacity) still writes its audit file, with the reason.
 - For `certify`, take the `population` bounds from the draw output: `low` is the passes observed and `high` is the capped candidates not yet failed.
 
 ## The two commitments
 
 1. Freeze the ledger and the script, and record the SHA-256 of each (`Get-FileHash` output is accepted).
-2. Write the **pilot commitment** (`"kind": "pilot"`) and publish it as one OSF file version. Its time `T1` is that version's first publication time on OSF, which you pass as `--published-utc`.
+2. Write the **pilot commitment** (`"kind": "pilot"`) and publish it as one public Zenodo record (D53). Its time `T1` is that record's `created` timestamp, which you pass as `--published-utc`.
 3. Round `R` is the first drand round scheduled at least 24 hours after `T1`. Once it exists, save its beacon JSON, run `verify-beacon --published-utc T1`, and check the BLS signature with an independent drand verifier. Note its name and version for `--bls-verified-by`.
 4. Run `pilot` with `--published-utc T1`. On exit 3, add the adaptation decisions for the named cases and rerun with a new `--out`. Exit 1 means the pilot is blocked. No new seed or larger pilot is allowed.
 5. Policy tuning and adaptation-rule fixing use the pilot and development material only. Development cases are every case used in the pilot or in any development or rehearsal run.
-6. Write the **main commitment** (`"kind": "main"`) with the same ledger and script digests, `policy_sha256`, `adaptation_rule_sha256`, and `development_case_ids` listing every development case, the pilot's selected cases included. Publish it once; its OSF first-publication time is `T2`.
+6. Write the **main commitment** (`"kind": "main"`) with the same ledger and script digests, `policy_sha256`, `adaptation_rule_sha256`, and `development_case_ids` listing every development case, the pilot's selected cases included. Publish it once; its Zenodo `created` time is `T2`.
 7. For `T2`, take the round `R` defined in step 3 (first round scheduled at least 24 hours after `T2`), save its beacon, verify it as in step 3, and run `draw` with `--published-utc T2` and `--pilot-output` set to the pilot's output file. Run `allocate` first if you want the cap preview.
 
 `pilot` refuses a main commitment and `draw` refuses a pilot commitment. `allocate` needs a main commitment.
@@ -53,9 +52,9 @@ Python standard library only, Python 3.12 compatible. Run from the repository ro
 - **Beacon** (drand JSON): `round`, `randomness`, `signature`, and optionally `previous_signature`.
 - **Adaptation decisions** (JSONL): `case_id`, `pass` (true or false) and `reason` (nonempty). A decision for a development case that is a candidate row is accepted and listed under `not_consulted`. A decision for an excluded row is refused, and this includes the development rows the frozen ledger marks excluded.
 
-## Frozen ledger v1
+## Ledger v1 (history)
 
-`d48-ledger-v1.jsonl` is the candidate ledger both draws use (16 section 3 item 2). It has 1,797 rows:
+`d48-ledger-v1.jsonl` is the first candidate ledger. D51 item 8 keeps it as history: the commitments bind ledger v3 (below). It has 1,797 rows:
 1,358 candidates (TM-A 1,020, TM-B 338), 149 development rows and 290 exclusions, each exclusion with a reason.
 Every row keeps its provenance: source, pin, base item, the rule that resolved it (`resolution_20`) and
 its values before resolution. Development rows (the T5 rehearsal items, D48) are `excluded: true`, so
@@ -63,10 +62,30 @@ its values before resolution. Development rows (the T5 rehearsal items, D48) are
 are still marked as seen. Extra fields beyond `case_id`, `stratum`, `attack_id`, `mechanism_id` and
 `excluded` are not read by the script; the ledger digest covers them.
 
-`pilot-commitment-v1.template.json` is the pilot commitment for `T1`, with the ledger and script digests,
-the chain, the round rule and the per-source unit choices. Before publication on OSF, fill
-`signed_tag.object` and `signed_tag.commit` from the owner-signed tag `corpus-d48-ledger-v1`. The script
-ignores those fields.
+`pilot-commitment-v1.template.json` is the pilot commitment for `T1`, with the ledger v3, source-digest file and script digests,
+the chain, the round rule and the per-source unit choices. The rule digest is filled (the rule is frozen). Before publication on Zenodo, fill `signed_tag.object` and `signed_tag.commit` from the owner-signed tag `corpus-d48-ledger-v3`. The script
+ignores those fields. `test_pilot_template.py` keeps every recorded digest equal to its file.
+
+## Ledger v3 (the candidate ledger both draws use)
+
+`d48-ledger-v3.jsonl` is the candidate ledger both draws use (16 section 3 item 2). D51 item 26 binds it in the pilot commitment, and the owner signs the tag `corpus-d48-ledger-v3` on the merge commit that holds the final template. It is ledger v2 with the 211 candidates that fail the adaptation rule by construction marked excluded, one reason per row: 60 RedCode-Exec Bash rows that need `wget` or `curl`, 91 ASEval records (modules with no Node.js equivalent, absolute paths, setup commands), 50 SABER tasks (modules, setup commands, MCP tools, absent executables), 2 CodeIPI, 5 OS-Harm-injection, 2 OS-Harm-misuse and 1 SHADE-Arena. Every other row is byte-identical to v2. v3 has 3,089 rows: 1,265 candidates (TM-A 979, TM-B 286), 149 development rows and 1,675 exclusions. Only failures that are certain under the rule are excluded; a row that might pass stays a candidate and is decided by the adapter. `d48-source-digests-v3.json` is its source digest file; it also lists the files v2's missed (OS-Harm, MSB, RedTeamCUA). Built by `23-structural-screen.py` and `23-source-digests.py`.
+
+## Ledger v2 (history)
+
+`d48-ledger-v2.jsonl` was the candidate ledger until ledger v3 replaced it before `T1`. v2 has 3,089 rows: 1,476 candidates (TM-A 1,020, TM-B 456), 149 development rows and 1,464 exclusions. Against v1 it adds:
+
+- the ASB re-screen: the 152 aggressive attacker tools v1 did not hold, 29 of them candidates;
+- the RedCode-Exec re-screen: the 38 files v1 did not hold (18 Python, 20 Bash, 1,140 rows), 119 of them candidates. Bash rows run as written;
+- the exclusion of the 60 RedCode UDP rows (`E-UDP`, Python and Bash `index21`): the registered sink is one TCP listener, so `EFF-NET-01` cannot be observed (adaptation-rule review 3, M5);
+- the ASEval pin `f24d57ce…` on the 165 ASEval rows, where v1 had "unresolved".
+
+Every candidate predicate splits under adaptation rule v1 step 8, and every part is registered for its stratum.
+
+`d48-source-digests-v2.json` was the source digest file of ledger v2. The current one, `d48-source-digests-v3.json`, has the same form. For every candidate it gives the pin key, the revision, the source files and `benchmark_digest`. For every pin key it gives the repository, the licence and the licence files with their digests. It also records the SHA-256 of the ledger it was built from. File digests are taken from the git blobs at each pin, not from working trees.
+
+Both files are built outside the repository by the lane C screening scripts (`20-build.py`, `21-build.py`, `21-source-digests.py`, `22-asb-screen.py`, `22-redcode-screen.py`), against the pinned clones. `22-asb-screen.py` decides every ASB class with `asb_goal_class.py` (D51 item 21, adaptation rule section 3c), which names no case.
+
+`adaptation-rule-v1.md` is the adaptation rule (D48, D51). Its SHA-256 is the `adaptation_rule_sha256` of the pilot commitment. `agentdojo_vectors.py`, `agentdojo-vectors-v1.json`, `asb_vectors.py` and `asb-template-vectors-v1.jsonl` are its pre-`T1` test vectors (rule step 3 and section 3a).
 
 ## Development cases
 
@@ -106,5 +125,5 @@ record it. The output still says `bls_signature_verified: false`, because this s
 - The script checks that `development_case_ids` holds every pilot member, but not the other development or rehearsal cases. That is the owner's attestation.
 - `policy_sha256` and `adaptation_rule_sha256` are recorded and echoed, but the script has no policy or rule file to check them against.
 - Section 3 item 5 also binds the signed tag object and its commit, the per-source unit choices and the rule that derives `R`. The script does not read those fields. They sit in the published commitment file, whose digest the output records.
-- `--published-utc` is taken as given. The script cannot see OSF, so check it against the OSF version's first publication time (rounded up to the next whole second).
+- `--published-utc` is taken as given. The script cannot see Zenodo, so check it against the record's `created` timestamp (rounded up to the next whole second).
 - `--bls-verified-by` is an attestation, not a check.

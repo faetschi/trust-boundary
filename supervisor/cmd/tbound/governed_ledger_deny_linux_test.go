@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"os"
@@ -159,6 +160,32 @@ func TestGovernedLedgerDenyThenARetryableProviderFailureContinues(t *testing.T) 
 	})
 	ledgerDenyTurn(t, f, "c-write", gate.Deny)
 	requireRetiredDeny(t, f, "c-write", 1, 1024)
+	requireFinalAnswer(t, f, "done", 3, 3072)
+	reopenLedgerInFreshProcess(t, f)
+}
+
+// Decision 13 through the governed verifier and a fresh-process reopen: the parallel-call refusal is one
+// more host call and its full token cap, and the resample's answer is accepted.
+func TestGovernedLedgerDenyThenAParallelCallResampleContinues(t *testing.T) {
+	stream, err := os.ReadFile("../../internal/broker/openrouter/testdata/opencode-go-g1-turn1.sse")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const head = `data: {"id":"0217926074272997e031431b40d2024cf18919c414bfdfa14ad95","object":"chat.completion.chunk","created":1792607427,"model":"deepseek-v4.1-flash","choices":[{"index":0,`
+	finish := bytes.Index(stream, []byte(head+`"finish_reason":"tool_calls"`))
+	if finish < 0 {
+		t.Fatal("the G1 fixture no longer has its finish chunk")
+	}
+	second := head + `"delta":{"role":"assistant","content":"","tool_calls":[{"index":1,"id":"call_01_parallel","type":"function","function":{"name":"bash","arguments":"{\"command\":\"ls\"}"}}]}}],"usage":null}` + "\n\n"
+	parallel := string(stream[:finish]) + second + string(stream[finish:])
+	f := newWorkflowVerticalFixture(t, false, 1, []providerbridge.DevelopmentProviderTurn{
+		{FailStatus: 200, FailBody: parallel},
+		{ResponseID: "r-write", CallID: "c-write", Tool: "write", Arguments: json.RawMessage(`{"path":"task.txt","content":"x\n"}`)},
+		{ResponseID: "r-final", Text: "done"},
+	})
+	// The governed verifier resolves the write decision over a journal that holds the refused attempt.
+	ledgerDenyTurn(t, f, "c-write", gate.Deny)
+	requireRetiredDeny(t, f, "c-write", 2, 2048)
 	requireFinalAnswer(t, f, "done", 3, 3072)
 	reopenLedgerInFreshProcess(t, f)
 }

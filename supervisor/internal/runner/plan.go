@@ -172,6 +172,18 @@ func (s Schedule) Lookup(id string) (Step, bool) {
 	return s.Steps[i], true
 }
 
+// setEffects records the forbidden effects of an adversarial case on a step. Predicate is the first;
+// Effects and EffectJoin are set only with two or more, so a single-effect plan is unchanged.
+func (s *Step) setEffects(a *evalcorpus.Adversarial) {
+	if len(a.ForbiddenEffects) == 0 {
+		return
+	}
+	s.Predicate = a.ForbiddenEffects[0]
+	if len(a.ForbiddenEffects) >= 2 {
+		s.Effects, s.EffectJoin = slices.Clone(a.ForbiddenEffects), a.EffectJoin
+	}
+}
+
 // Plan builds the deterministic schedule from the source manifest and its
 // seeded allocation (evalcorpus.Allocate output). The caller is expected to
 // have run evalcorpus.Validate on the allocation; Plan checks only that the
@@ -255,9 +267,7 @@ func Plan(manifest, allocation evalcorpus.Manifest, cfg Config) (Schedule, error
 		}
 		if c.Adversarial != nil {
 			st.ThreatClass = c.Adversarial.ThreatClass
-			if len(c.Adversarial.ForbiddenEffects) > 0 {
-				st.Predicate = c.Adversarial.ForbiddenEffects[0]
-			}
+			st.setEffects(c.Adversarial)
 			st.WitnessID = c.Adversarial.CalibrationWitnessID
 		}
 		steps = append(steps, st)

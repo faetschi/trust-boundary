@@ -10,11 +10,14 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
 	"testing"
 	"time"
+
+	"golang.org/x/sys/unix"
 
 	"tbound/supervisor/internal/cgroupguard"
 	"tbound/supervisor/internal/piruntime"
@@ -48,11 +51,10 @@ func runListenHelper() {
 	runtime.KeepAlive(unix)
 }
 
-// unusedUID is a cell identity no process on the machine has. The tests that
-// check clean teardowns on a real /proc use it, because the real identity scan
-// would otherwise see every process of the test user; the registry and the cell
-// members still drive those tests. The test of the escaped daemon uses the real
-// uid of the test user instead.
+// unusedUID is a cell and service identity no process on the machine has: no user
+// namespace is owned by it, so the identity scan finds no cell process and the
+// registry and the cell members drive the clean-teardown tests. The test of the
+// escaped daemon makes the test user the service instead.
 const unusedUID = 4000999
 
 // realEnv is a private pair of cgroups, cell and outer, below the cgroup the
@@ -102,7 +104,17 @@ func ownCgroupPath(t *testing.T) string {
 	return ""
 }
 
+// newRealEnv is a real env whose scans can be complete: the identity scan reads the user namespace of
+// every process, which needs ptrace-read access to all of them (root).
 func newRealEnv(t *testing.T) *realEnv {
+	t.Helper()
+	if os.Geteuid() != 0 {
+		t.Skip("the identity scan reads every process's user namespace: a complete scan needs root")
+	}
+	return newRealEnvAnyUser(t)
+}
+
+func newRealEnvAnyUser(t *testing.T) *realEnv {
 	t.Helper()
 	if !cgroupguard.Enabled() {
 		t.Skip("set " + cgroupguard.Env + "=1 to run the real-cgroup tests (in a delegated scope, not a login session)")
@@ -138,7 +150,7 @@ func newRealEnv(t *testing.T) *realEnv {
 	now := time.Now()
 	e.reg = Registration{
 		CellID: filepath.Base(work), IntervalStart: now, Deadline: now.Add(400 * time.Millisecond),
-		CellUID: unusedUID, CellGID: unusedUID, MaxGap: 5 * time.Second,
+		CellUID: unusedUID, CellGID: unusedUID, ServiceUID: unusedUID, MaxGap: 5 * time.Second,
 		CellCgroupPath: e.hierarchy(e.cellDir), CellCgroupInode: dirInode(t, e.cell),
 	}
 	return e
@@ -421,8 +433,9 @@ func TestRealProcessMovedOutOfTheCellIsProc02(t *testing.T) {
 
 // startListener runs the listener helper (it opens a TCP and a Unix listener) and
 // returns its command, TCP port and pid. detached starts it through a subshell
-// that exits (double fork, reparented away) and in its own session.
-func startListener(t *testing.T, sock string, detached bool) (cmd *exec.Cmd, port, pid int) {
+// that exits (double fork, reparented away), under wrap (a command prefix such as
+// unshare) and in its own session.
+func startListener(t *testing.T, sock string, detached bool, wrap ...string) (cmd *exec.Cmd, port, pid int) {
 	t.Helper()
 	env := append(os.Environ(), "PROCORACLE_HELPER=listen", "PROCORACLE_SOCK="+sock)
 	if !detached {
@@ -442,7 +455,7 @@ func startListener(t *testing.T, sock string, detached bool) (cmd *exec.Cmd, por
 		return cmd, parseReady(t, line, &pid), pid
 	}
 	out := filepath.Join(t.TempDir(), "ready")
-	sh := exec.Command("sh", "-c", `(setsid "$0" >"$1" 2>&1 </dev/null &)`, os.Args[0], out)
+	sh := exec.Command("sh", slices.Concat([]string{"-c", `out=$0; (setsid "$@" >"$out" 2>&1 </dev/null &)`, out}, wrap, []string{os.Args[0]})...)
 	sh.Env = env
 	if err := sh.Run(); err != nil {
 		t.Fatal(err)
@@ -511,20 +524,25 @@ func TestRealResidualListenerIsProc03(t *testing.T) {
 	wantVerdicts(t, r, VerdictEffectPresent, VerdictNoEffect, VerdictNoEffect)
 }
 
-// Finding 1 on real processes: a double-fork daemon of the test user, started
-// outside the cell and never registered, with a TCP listener. The cell is empty
-// and the registry is recorded. The cell identity is the test user's own uid, so
-// the scan sees every process of the user: the assertions pick the daemon out of
-// the findings.
+// Finding 1 on real processes: a double-fork daemon in a cell user namespace,
+// started outside the cell and never registered, with a TCP listener. The cell is
+// empty and the registry is recorded. The test user plays the service: the daemon
+// runs two user namespaces below the test's, under one the test user owns (as a
+// rootless Podman cell does). Not as root (the namespaces would be root's), so the
+// scan of other users' namespaces has gaps: the observed effects stand regardless.
 func TestRealEscapedDoubleForkDaemonWithEmptyCellIsProc01Proc02Proc03(t *testing.T) {
-	uid, gid := os.Getuid(), os.Getgid()
-	if uid == 0 || gid == 0 {
-		t.Skip("running as root: the cell identity cannot be root")
+	uid := os.Getuid()
+	if uid == 0 {
+		t.Skip("running as root: the namespaces this test makes would be owned by root, which is no service identity")
 	}
-	e := newRealEnv(t)
-	e.reg.CellUID, e.reg.CellGID = uint32(uid), uint32(gid)
+	unshare, err := exec.LookPath("unshare")
+	if err != nil {
+		t.Skip("no unshare to make the cell user namespaces")
+	}
+	e := newRealEnvAnyUser(t)
+	e.reg.ServiceUID = uint32(uid)
 	sock := filepath.Join(t.TempDir(), "s")
-	_, port, pid := startListener(t, sock, true)
+	_, port, pid := startListener(t, sock, true, unshare, "--user", "--map-root-user", unshare, "--user")
 	e.pids = append(e.pids, pid)
 	id := idOf(t, pid)
 	if own := e.hierarchy(e.cellDir); own == ownCgroupPath(t) {
@@ -567,6 +585,75 @@ func TestRealEscapedDoubleForkDaemonWithEmptyCellIsProc01Proc02Proc03(t *testing
 	}
 	if !seen {
 		t.Error("no poll recorded the escaped daemon")
+	}
+}
+
+// startCellNamespaceSleep starts, as root, a sleep two user namespaces below this process's under one owned
+// by uid, the shape of a rootless Podman cell of a service running as uid. CAP_SYS_ADMIN (ambient) makes the
+// first namespace a privileged creation, so the test does not depend on unprivileged user namespaces being
+// allowed; its owner is still the uid that made it. It returns once the pid is the sleep (unshare execs each
+// stage in place).
+func startCellNamespaceSleep(t *testing.T, uid uint32) *exec.Cmd {
+	t.Helper()
+	unshareBin, err := exec.LookPath("unshare")
+	if err != nil {
+		t.Fatalf("no unshare to make the cell user namespaces: %v", err)
+	}
+	sleepBin, err := exec.LookPath("sleep")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(unshareBin, "--user", "--map-root-user", unshareBin, "--user", sleepBin, "300")
+	cmd.Dir = "/"
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true, AmbientCaps: []uintptr{unix.CAP_SYS_ADMIN},
+		Credential: &syscall.Credential{Uid: uid, Gid: uid, Groups: []uint32{}}}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	for deadline := time.Now().Add(10 * time.Second); ; {
+		if comm, _ := os.ReadFile(fmt.Sprintf("/proc/%d/comm", cmd.Process.Pid)); string(comm) == "sleep\n" {
+			return cmd
+		}
+		if time.Now().After(deadline) {
+			_ = cmd.Process.Kill()
+			_ = cmd.Wait()
+			t.Fatal("the nested sleep did not start")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// The guest's positive check of the identity rule, as root and with a complete scan: a process two user
+// namespaces below the scanner's, under one owned by the service uid (unusedUID plays the service: the first
+// namespace is made by a process running as that uid, as rootless Podman makes the service's), outside the
+// cell and never registered, is found by the identity scan alone and is EFF-PROC-01 and EFF-PROC-02.
+func TestRealCellUserNamespaceProcessIsCellIdentity(t *testing.T) {
+	e := newRealEnv(t)
+	cmd := startCellNamespaceSleep(t, unusedUID)
+	e.cmds = append(e.cmds, cmd)
+	pid := cmd.Process.Pid
+	e.move(pid, e.outerDir)
+	id := idOf(t, pid)
+	e.startMonitor(noRegistry)
+
+	running := e.capture(PointInterval, 1)
+	e.waitDeadline()
+	post := e.capture(PointPostTeardown, 2)
+	final := e.capture(PointFinalCleanup, 3)
+	assertNoGaps(t, running, post, final)
+	i := slices.IndexFunc(running.Processes, func(p Process) bool { return p.ID() == id })
+	if i < 0 {
+		t.Fatalf("the identity scan did not find the cell-namespace process %v: %+v", id, running.Processes)
+	}
+	if p := running.Processes[i]; !p.CellIdentity || p.InCell || p.Registered || len(p.UserNS) != 2 || p.UID[0] != unusedUID {
+		t.Fatalf("cell-namespace process: %+v", p)
+	}
+	polls := e.polls()
+	assertNoGaps(t, polls...)
+	r := Evaluate(e.reg, []Snapshot{running, post, final}, polls, Policy{})
+	wantVerdicts(t, r, VerdictEffectPresent, VerdictEffectPresent, VerdictNoEffect)
+	if f := result(t, r, PredicateProc02).Findings; !slices.ContainsFunc(f, func(f Finding) bool { return f.Process == id }) {
+		t.Errorf("PROC-02 does not name the cell-namespace process %v: %+v", id, f)
 	}
 }
 
@@ -617,21 +704,18 @@ func TestHeldDescriptorThatIsNotACgroupIsEvidenceLost(t *testing.T) {
 
 // TestCaptureSeesThisProcessThroughTheRealProc needs no privilege: it holds the
 // cgroup this very process runs in and checks that the oracle finds the test
-// process there with the identity /proc reports, and that the identity scan of the
-// real /proc finds it by uid.
+// process there (a member and registered) and that the identity scan of the real
+// /proc runs. This process is in the scanner's own user namespace, so it is not
+// cell identity. Without root the scan cannot read other users' user namespaces
+// and fails closed with an identity gap; as root it is complete.
 func TestCaptureSeesThisProcessThroughTheRealProc(t *testing.T) {
 	dir, err := os.Open(filepath.Join(cgroup2Mount(t), ownCgroupPath(t)))
 	if err != nil {
 		t.Skipf("cannot open the own cgroup: %v", err)
 	}
 	defer dir.Close()
-	uid, gid := os.Getuid(), os.Getgid()
-	if uid == 0 || gid == 0 {
-		t.Skip("running as root: the cell identity cannot be root")
-	}
 	self := idOf(t, os.Getpid())
 	reg := testReg
-	reg.CellUID, reg.CellGID = uint32(uid), uint32(gid)
 	reg.CellCgroupPath, reg.CellCgroupInode = ownCgroupPath(t), dirInode(t, dir)
 	s := Capture(HeldCell(dir), HostProc(), CaptureParams{
 		Point: PointInterval, Seq: 1, Registration: reg, Registry: Registry{Recorded: true, Procs: []ProcID{self}},
@@ -639,10 +723,14 @@ func TestCaptureSeesThisProcessThroughTheRealProc(t *testing.T) {
 	if s.CellPath != ownCgroupPath(t) || !s.Populated || !s.IdentityScanned || s.ScannedPIDs < 2 {
 		t.Fatalf("cell: %q populated=%v scan=%v/%d", s.CellPath, s.Populated, s.IdentityScanned, s.ScannedPIDs)
 	}
+	identityGap := slices.ContainsFunc(s.Gaps, func(g Gap) bool { return g.Domain == DomainIdentity && g.Code == "userns_unreadable" })
+	if identityGap != (os.Geteuid() != 0) {
+		t.Errorf("euid %d: userns_unreadable gap %v (gaps %+v)", os.Geteuid(), identityGap, s.Gaps)
+	}
 	for _, p := range s.Processes {
 		if p.ID() == self {
-			if !p.InCell || !p.Registered || !p.CellIdentity || p.CgroupPath != s.CellPath || p.State == "" || p.Comm == "" ||
-				p.UID[0] != uint32(uid) {
+			if !p.InCell || !p.Registered || p.CellIdentity || len(p.UserNS) != 0 || p.CgroupPath != s.CellPath || p.State == "" || p.Comm == "" ||
+				p.UID[0] != uint32(os.Getuid()) {
 				t.Errorf("self: %+v", p)
 			}
 			return

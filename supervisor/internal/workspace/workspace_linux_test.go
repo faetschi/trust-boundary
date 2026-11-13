@@ -4,13 +4,32 @@ package workspace
 
 import (
 	"errors"
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"testing"
 	"time"
+
+	"tbound/supervisor/internal/faultfs"
 )
+
+func TestValidSHA256RequiresCanonicalLowercaseEncoding(t *testing.T) {
+	valid := "sha256:" + strings.Repeat("a", 64)
+	for value, want := range map[string]bool{
+		valid: true, "sha256:" + strings.Repeat("A", 64): false,
+		"sha256:" + strings.Repeat("a", 63): false, "sha256:" + strings.Repeat("g", 64): false,
+		"sha-256:" + strings.Repeat("a", 64): false,
+	} {
+		if got := ValidSHA256(value); got != want {
+			t.Errorf("ValidSHA256(%q) = %v, want %v", value, got, want)
+		}
+	}
+}
 
 func testOptions() Options {
 	return Options{
@@ -457,6 +476,67 @@ func TestScanRejectsNoncanonicalStoredMode(t *testing.T) {
 	}
 }
 
+// ImportUnsynced must build the same tree as Import and skip only the per-file fsync,
+// which its callers replace with one filesystem sync or do not need.
+func TestImportUnsyncedSkipsOnlyFileSync(t *testing.T) {
+	base := t.TempDir()
+	sourcePath := filepath.Join(base, "source")
+	if err := os.MkdirAll(filepath.Join(sourcePath, "nested"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"a.txt", "nested/b.txt"} {
+		if err := os.WriteFile(filepath.Join(sourcePath, name), []byte(name), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	source, err := os.Open(sourcePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer source.Close()
+	fsyncs := 0
+	var fsyncErr error
+	defer faultfs.Install(func(site faultfs.Site, op faultfs.Op) error {
+		if site == faultfs.SiteWorkspaceImport && op == faultfs.OpFsync {
+			fsyncs++
+			return fsyncErr
+		}
+		return nil
+	})()
+	var digests []string
+	for _, run := range []struct {
+		name       string
+		importTree func(*os.File, *os.File, Options) (Snapshot, error)
+		wantFsyncs int
+	}{{"Import", Import, 2}, {"ImportUnsynced", ImportUnsynced, 0}} {
+		destinationPath := filepath.Join(base, run.name)
+		if err := os.Mkdir(destinationPath, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		fsyncs = 0
+		snapshot, err := run.importTree(source, openPrivateRoot(t, destinationPath), testOptions())
+		if err != nil {
+			t.Fatalf("%s: %v", run.name, err)
+		}
+		if fsyncs != run.wantFsyncs {
+			t.Fatalf("%s made %d file fsyncs, want %d", run.name, fsyncs, run.wantFsyncs)
+		}
+		digests = append(digests, snapshot.TreeDigest)
+	}
+	if digests[0] != digests[1] {
+		t.Fatalf("Import and ImportUnsynced built different trees: %v", digests)
+	}
+	// Private Git and publication restore rely on Import failing when a file sync fails.
+	fsyncErr = syscall.EIO
+	destinationPath := filepath.Join(base, "failed-sync")
+	if err := os.Mkdir(destinationPath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Import(source, openPrivateRoot(t, destinationPath), testOptions()); !errors.Is(err, syscall.EIO) {
+		t.Fatalf("Import with a failing file sync: err = %v, want EIO", err)
+	}
+}
+
 // This exercises the fail-closed comparator only. Bind-mount traversal needs a
 // separate Linux integration test with mount privileges.
 func TestMountIDComparatorRejectsUnexpectedIdentity(t *testing.T) {
@@ -466,4 +546,77 @@ func TestMountIDComparatorRejectsUnexpectedIdentity(t *testing.T) {
 	if err := verifyMountIdentity(42, 41, "file"); !errors.Is(err, ErrNestedMount) {
 		t.Fatalf("mismatched mount identity error = %v, want ErrNestedMount", err)
 	}
+}
+
+// The statx mount ID must be the fdinfo mnt_id for every descriptor kind the walk holds,
+// and differ across mounts, or the nested-mount check would compare unlike IDs.
+func TestStatxMountIDMatchesFdinfo(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "file")
+	if err := os.WriteFile(path, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	directory, err := os.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer directory.Close()
+	regular, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer regular.Close()
+	pathNode, err := openPathNode(directory, "file")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pathNode.Close()
+	proc, err := os.Open("/proc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer proc.Close()
+	for name, file := range map[string]*os.File{"directory": directory, "regular": regular, "o_path": pathNode, "proc": proc} {
+		got, err := mountID(file)
+		if err != nil {
+			t.Fatalf("%s: mountID: %v", name, err)
+		}
+		want, err := fdinfoMountID(file)
+		if err != nil {
+			t.Fatalf("%s: fdinfoMountID: %v", name, err)
+		}
+		if got != want {
+			t.Fatalf("%s: statx mount ID %d, fdinfo mnt_id %d", name, got, want)
+		}
+	}
+	tmpID, _ := mountID(directory)
+	procID, _ := mountID(proc)
+	if tmpID == procID {
+		t.Fatalf("temp dir and /proc report the same mount ID %d", tmpID)
+	}
+}
+
+// fdinfoMountID is the test oracle: the kernel's fdinfo mnt_id, the ID the walk compared
+// before it used statx.
+func fdinfoMountID(file *os.File) (uint64, error) {
+	info, err := os.Open(fmt.Sprintf("/proc/self/fdinfo/%d", file.Fd()))
+	if err != nil {
+		return 0, fmt.Errorf("%w: %v", ErrMountIdentityUnavailable, err)
+	}
+	defer info.Close()
+	data, err := io.ReadAll(io.LimitReader(info, 16<<10))
+	if err != nil {
+		return 0, fmt.Errorf("%w: %v", ErrMountIdentityUnavailable, err)
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		key, value, ok := strings.Cut(line, ":")
+		if !ok || strings.TrimSpace(key) != "mnt_id" {
+			continue
+		}
+		id, err := strconv.ParseUint(strings.TrimSpace(value), 10, 64)
+		if err == nil {
+			return id, nil
+		}
+	}
+	return 0, ErrMountIdentityUnavailable
 }

@@ -315,7 +315,7 @@ func (b *Broker) ExchangeWithCompletionLimit(ctx context.Context, completionLimi
 		return openrouter.CapturedResponse{}, b.failLocked(recordIndex, fmt.Errorf("OpenRouter returned HTTP status %d", response.StatusCode))
 	}
 
-	captured, err := openrouter.CaptureSSE(bytes.NewReader(responseBody))
+	captured, err := openrouter.CaptureSSEForRoute(bytes.NewReader(responseBody), b.profile.Route)
 	if err != nil {
 		return openrouter.CapturedResponse{}, b.failLocked(recordIndex, fmt.Errorf("capture OpenRouter response: %w", err))
 	}

@@ -2,8 +2,8 @@
 # Generic TBound freeze kit guest provisioning session: shared helpers. SOURCED by the step scripts in Git Bash (not run directly).
 # No secrets here. Key files are only ever passed to tools by PATH; nothing in this kit reads or prints one.
 # One reusable kit: every freeze-specific value comes from freezes/$KIT_FREEZE.env (selected by KIT_FREEZE).
-# Owner-side files (W, B, H, HF = $H/<freeze>, PREV_HF = $H/<prev> read-only) live on the WSL ext4 disk and are reached through wsl.exe;
-# the guest is reached through the helper tools/gssh.sh (tboundadmin), both Git Bash ssh.
+# Owner-side files (W, B, H, HF = $H/<freeze>, PREV_HF = $H/<prev> read-only) live on a Linux ext4 disk: reached through wsl.exe from Git Bash, directly on native Linux;
+# the guest is reached through the helper tools/gssh.sh (admin account $GADMIN, default tboundadmin), plain ssh.
 umask 077
 set -E
 export MSYS_NO_PATHCONV=1
@@ -71,6 +71,9 @@ done
 [ "$PREV_FREEZE" != "$FREEZE" ] || die "$V: PREV_FREEZE equals FREEZE"
 [[ $PREV_COMMIT =~ ^[0-9a-f]{40}$ ]] || die "$V: PREV_COMMIT is not a 40-hex lowercase commit: '$PREV_COMMIT'"
 GUEST_IP=${GUEST_IP_ENV:-$GUEST_IP}; export GUEST_IP
+# Guest admin account (ssh login of gssh.sh); host.env.example documents TBOUND_GUEST_ADMIN, TBOUND_GUEST_KEY, TBOUND_GUEST_HOST_ALIAS.
+GADMIN=${TBOUND_GUEST_ADMIN:-tboundadmin}; export TBOUND_GUEST_ADMIN=$GADMIN
+[[ $GADMIN =~ ^[a-z_][a-z0-9_-]{0,31}$ ]] || die "TBOUND_GUEST_ADMIN='$GADMIN' is not a plain Linux user name (it is written into a sudoers line)"
 DR_ADMISSION_ID=${DR_ADMISSION_ID_ENV:-$DR_ADMISSION_ID}; export DR_ADMISSION_ID
 FREEZE_LC=$(printf '%s' "$FREEZE" | tr 'A-Z' 'a-z')
 PREV_LC=$(printf '%s' "$PREV_FREEZE" | tr 'A-Z' 'a-z')
@@ -214,16 +217,16 @@ check_key_meta() {
 
 # guest_ip_note: the guest address changes after a host restart (172.24.152.73 at the end of $PREV_FREEZE). Look it up first, do not guess:
 #   PowerShell: Get-NetNeighbor -LinkLayerAddress 00-15-5D-0C-40-02   ->  IPAddress
-# then export GUEST_IP=<that address>. gssh.sh pins HostKeyAlias=172.18.155.19 with StrictHostKeyChecking=yes, so only the address
+# then export GUEST_IP=<that address>. gssh.sh pins HostKeyAlias=${TBOUND_GUEST_HOST_ALIAS:-172.18.155.19} with StrictHostKeyChecking=yes, so only the address
 # moves: the host key is still checked strictly (a wrong address fails, it does not silently accept another host).
 guest_ip_note() {
-  echo "guest address: GUEST_IP=$GUEST_IP (changes after host restarts; if a connection fails, look it up: PowerShell 'Get-NetNeighbor -LinkLayerAddress 00-15-5D-0C-40-02', then export GUEST_IP=<IPAddress>)"
+  echo "guest address: GUEST_IP=$GUEST_IP (changes after host restarts; if a connection fails, look it up: PowerShell 'Get-NetNeighbor -LinkLayerAddress 00-15-5D-0C-40-02', or 'ip -4 addr' on the guest console, then export GUEST_IP=<IPAddress>)"
 }
 
 preflight_guest() {
   say "preflight: guest $GUEST_IP (pinned host key, StrictHostKeyChecking=yes)"
   guest_ip_note
-  eq "ssh identity" "$(G 'id -un' | tr -d '\r')" tboundadmin
+  eq "ssh identity" "$(G 'id -un' | tr -d '\r')" "$GADMIN"
   G 'sudo -n true' || die "no passwordless sudo: open the session drop-in first (bash 00-session-sudo.sh open); close it again at the end"
   ok "sudo -n works"
   echo "guest: $(G 'hostname; uname -r; date -u +%FT%TZ' | tr -d '\r' | tr '\n' ' ')"
@@ -267,7 +270,7 @@ done_step() { hf_zero_check; echo; echo "== DONE ${0##*/} $(date -u +%FT%TZ)"; }
 OP='sudo -n /opt/tbound/operator/tbound-op'             # the only NOPASSWD command of tboundadmin once the session drop-in is closed
 op()  { G "$OP $*"; }                                   # one tbound-op verb, no stdin
 OPDIR=/opt/tbound/operator
-STAGE_HOME=/home/tboundadmin
+STAGE_HOME=/home/$GADMIN
 
 prev_get() { WX cat "$PREV_HF/$1" | tr -d '\r\n'; }       # $PREV_FREEZE output value (read-only comparison base)
 prev_has() { WX test -e "$PREV_HF/$1"; }
@@ -292,7 +295,7 @@ check_prev_values() {
 preflight_op() {
   say "preflight: guest $GUEST_IP (pinned host key, StrictHostKeyChecking=yes), tbound-op only"
   guest_ip_note
-  eq "ssh identity" "$(G 'id -un' | tr -d '\r')" tboundadmin
+  eq "ssh identity" "$(G 'id -un' | tr -d '\r')" "$GADMIN"
   if G 'sudo -n true' 2>/dev/null; then die "sudo -n true works: the session drop-in 91-tbound-$FREEZE_LC-session is open. Close it first (bash 00-session-sudo.sh close); 28, 29, 30, 31, 32 and 40 run with the narrowed sudo"; fi
   ok "sudo -n true fails (narrowed sudo)"
   echo "guest: $(G 'hostname; uname -r; date -u +%FT%TZ' | tr -d '\r' | tr '\n' ' ')"

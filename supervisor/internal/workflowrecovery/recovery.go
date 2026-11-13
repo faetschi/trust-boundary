@@ -141,9 +141,10 @@ type HostCallReservationPin struct {
 	OutcomeDigest    string           `json:"outcome_digest,omitempty"`
 	RetirementDigest string           `json:"retirement_digest,omitempty"`
 	CapturedCall     *CapturedCallPin `json:"captured_call,omitempty"`
-	// RetryableFailure marks a terminal reservation whose provider attempt failed before any effect
-	// and was journaled as a retryable failure: the exchange is still awaited and the next attempt may
-	// reserve its own host call. It is set only by the verified progress that settles that attempt.
+	// RetryableFailure marks a terminal reservation whose provider attempt released nothing and was
+	// journaled as a retryable failure: a pre-effect HTTP failure, or a decision-13 parallel-call refusal
+	// the provider did process. The exchange is still awaited and the next attempt may reserve its own
+	// host call. It is set only by the verified progress that settles that attempt.
 	RetryableFailure bool `json:"retryable_failure,omitempty"`
 }
 

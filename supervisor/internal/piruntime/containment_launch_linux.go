@@ -359,8 +359,9 @@ func (l *D09PodmanCrunLauncher) StartVerifiedWithProof(ctx context.Context, requ
 		return nil, D09TCBProof{}, errors.New("D09 worker entrypoint is not PID1 inside the private namespace")
 	}
 	phases.mark("map_check_start")
-	if err := verifyD09HostProcessIDMaps(proof.LeaderPID, proof.UserNSInode, config,
-		proof.UIDMap, proof.GIDMap); err != nil {
+	if err := retryWhileLeaderExecs(pidfd, func() error {
+		return verifyD09HostProcessIDMaps(proof.LeaderPID, proof.UserNSInode, config, proof.UIDMap, proof.GIDMap)
+	}); err != nil {
 		if exited := d09ExitedBeforeAdmission(ctx, report.PodmanPath, cid, l.commandEnvironment(), pidfd, proof.LeaderPID, command.Process.Pid, err); exited != nil {
 			return nil, D09TCBProof{}, exited
 		}
@@ -392,7 +393,16 @@ func (l *D09PodmanCrunLauncher) StartVerifiedWithProof(ctx context.Context, requ
 	if err := validateD09NamespaceProof(proof, config.HostNamespaces); err != nil {
 		return nil, D09TCBProof{}, err
 	}
-	contains, err := l.scope.ContainsPID(proof.LeaderPID)
+	var contains bool
+	err = retryWhileLeaderExecs(pidfd, func() (containsErr error) {
+		contains, containsErr = l.scope.ContainsPID(proof.LeaderPID)
+		return containsErr
+	})
+	if err != nil {
+		if exited := d09ExitedBeforeAdmission(ctx, report.PodmanPath, cid, l.commandEnvironment(), pidfd, proof.LeaderPID, command.Process.Pid, err); exited != nil {
+			return nil, D09TCBProof{}, exited
+		}
+	}
 	if err != nil || !contains {
 		return nil, D09TCBProof{}, errors.Join(fmt.Errorf("%w: entrypoint leader is not in the held D09 cgroup scope", ErrProductionLauncherUnavailable), err)
 	}
@@ -1045,25 +1055,59 @@ func d09Printable(s string, limit int) string {
 	return text
 }
 
-// d09LeaderExited decides whether cause means the leader is gone. ENOENT/ESRCH say so directly. Any other
-// errno from the /proc map/ns reads (proc_id_map_open returns EINVAL once the pid has no task) is only
-// believed after the pinned pidfd, given a short settle, or a fresh /proc/<pid>/status State line (Z, X or
-// missing) agrees; a live leader keeps its original error.
+// d09LeaderExited decides whether cause means the leader is gone. With a pinned pidfd (>= 0) only the pidfd
+// decides: a /proc path lookup can fail with ENOENT/ESRCH/EINVAL while a live leader execs, so an errno gets a
+// short settle on the pidfd and nothing else. Without a pidfd, ENOENT/ESRCH say so directly and any other
+// errno is believed only if a fresh /proc/<pid>/status State line (Z, X or missing) agrees.
 func d09LeaderExited(pidfd, leaderPID int, cause error) bool {
-	if errors.Is(cause, os.ErrNotExist) || errors.Is(cause, syscall.ESRCH) || (pidfd >= 0 && pidfdReadable(pidfd)) {
+	if pidfd >= 0 {
+		if pidfdReadable(pidfd) {
+			return true
+		}
+		var errno syscall.Errno
+		if !errors.As(cause, &errno) {
+			return false
+		}
+		fds := []unix.PollFd{{Fd: int32(pidfd), Events: unix.POLLIN}}
+		n, err := unix.Poll(fds, 250)
+		if errors.Is(err, unix.EINTR) {
+			n, _ = unix.Poll(fds, 250)
+		}
+		return n > 0
+	}
+	if errors.Is(cause, os.ErrNotExist) || errors.Is(cause, syscall.ESRCH) {
 		return true
 	}
 	var errno syscall.Errno
 	if !errors.As(cause, &errno) {
 		return false
 	}
-	if pidfd >= 0 {
-		fds := []unix.PollFd{{Fd: int32(pidfd), Events: unix.POLLIN}}
-		if n, _ := unix.Poll(fds, 250); n > 0 {
-			return true
-		}
-	}
 	return d09LeaderStateGone(leaderPID)
+}
+
+const (
+	d09ExecRetryAttempts = 20
+	d09ExecRetryInterval = 10 * time.Millisecond
+)
+
+// retryWhileLeaderExecs runs check, repeating it unchanged on ENOENT/ESRCH/EINVAL while the pinned pidfd is
+// not readable (leader alive): path lookups can fail while the leader execs. Any other error returns at once.
+func retryWhileLeaderExecs(pidfd int, check func() error) error {
+	if pidfd < 0 {
+		return check()
+	}
+	err := check()
+	for attempt := 1; attempt < d09ExecRetryAttempts && err != nil; attempt++ {
+		if !errors.Is(err, os.ErrNotExist) && !errors.Is(err, syscall.ESRCH) && !errors.Is(err, syscall.EINVAL) {
+			return err
+		}
+		if pidfdReadable(pidfd) {
+			return err
+		}
+		time.Sleep(d09ExecRetryInterval)
+		err = check()
+	}
+	return err
 }
 
 // d09LeaderStateGone reports whether /proc/<pid>/status is missing or shows State Z or X.

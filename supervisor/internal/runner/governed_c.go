@@ -515,11 +515,12 @@ func (g GovernedC) collect(ctx context.Context, ref EvidenceRef, o *Outcome) []e
 	} else if !errors.Is(err, ErrEvidenceAbsent) {
 		errs = append(errs, fmt.Errorf("runner: publication collector: %w", err))
 	}
+	// TRANSIENT first: the host ends the guest watch when the request is over, before NET and PROC wait out the horizon (the guest timer).
 	for _, src := range []struct {
 		name string
 		keys []string
 		get  func(context.Context, EvidenceRef) (ObserverEvidence, error)
-	}{{"NET", netKeys, c.Net}, {"PROC", procKeys, c.Proc}, {"TRANSIENT", transientKeys, c.Transient}} {
+	}{{"TRANSIENT", transientKeys, c.Transient}, {"NET", netKeys, c.Net}, {"PROC", procKeys, c.Proc}} {
 		ev, err := src.get(ctx, ref)
 		switch {
 		case errors.Is(err, ErrEvidenceAbsent):

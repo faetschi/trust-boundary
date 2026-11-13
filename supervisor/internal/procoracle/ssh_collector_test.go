@@ -19,7 +19,7 @@ import (
 var (
 	sshT0   = time.Unix(1_800_000_000, 0).UTC()
 	sshCell = CellDoc{Schema: runner.EvidenceSchema, Kind: runner.EvidenceProcCell, CellID: "/sys/fs/cgroup/system.slice/tbound-pi.service/cells",
-		CellCgroupPath: "/system.slice/tbound-pi.service/cells", CellCgroupInode: 4242, CellUID: 1000, CellGID: 1000}
+		CellCgroupPath: "/system.slice/tbound-pi.service/cells", CellCgroupInode: 4242, CellUID: 1000, CellGID: 1000, ServiceUID: 995}
 )
 
 // fakeGuest answers the evidence kinds the way the guest does: it rebuilds the registration
@@ -60,6 +60,8 @@ type fakeGuest struct {
 	stopPollSecs []int
 	// stops are the stop lines the monitor read from its stdin.
 	stops []string
+	// guestClock, when set, stamps the capture snapshots (a guest clock that is not the host clock).
+	guestClock func() time.Time
 }
 
 // Run is a transport that cannot report readiness: used to prove that such a transport
@@ -237,6 +239,9 @@ func (g *fakeGuest) RunReadyStdin(ctx context.Context, argv []string, stdin io.R
 		}
 		s := base
 		s.Seq, s.Point, s.ObservedAt = seq, p, sshT0.Add(time.Duration(2+seq)*time.Second)
+		if g.guestClock != nil {
+			s.ObservedAt = g.guestClock().Add(time.Duration(seq) * time.Millisecond) // the guest clock advances between calls
+		}
 		s.Processes = g.processes[p]
 		return reply(CaptureDoc{Schema: runner.EvidenceSchema, Kind: runner.EvidenceProcCapture, Point: p, RegistrationDigest: reg.Digest(), Snapshot: s})
 	}
@@ -304,7 +309,7 @@ func TestSSHCollectorCleanIntervalIsNoneWithReportReferences(t *testing.T) {
 			t.Errorf("%s ref = %+v", k, r)
 		}
 	}
-	if len(*waited) != 1 || !(*waited)[0].Equal(sshT0.Add(time.Second)) {
+	if len(*waited) != 1 || !(*waited)[0].Equal(sshT0.Add(time.Second+GuestMaxGap)) {
 		t.Fatalf("Proc did not wait for the teardown deadline: %v", *waited)
 	}
 	all := g.argvs()
@@ -510,5 +515,31 @@ func TestSSHCollectorRefusesATransportThatCannotReportReadiness(t *testing.T) {
 	c.Client = runner.EvidenceClient{Transport: plainTransport{g: &fakeGuest{cell: sshCell}}}
 	if err := c.BeginInterval(context.Background(), sshRef); err == nil || errors.Is(err, runner.ErrEvidenceAbsent) {
 		t.Fatalf("Begin over a non-streaming transport = %v, want a configuration error", err)
+	}
+}
+
+// The host waits GuestMaxGap past the deadline, so a guest clock lagging by less still gives a clean PROC-01; a larger lag
+// leaves the snapshots stamped before the deadline, which stays lost.
+func TestSSHCollectorProc01GuestClockBehindTheHost(t *testing.T) {
+	for _, tc := range []struct {
+		lag  time.Duration
+		want runner.Finding
+	}{{300 * time.Millisecond, runner.FindingNone}, {GuestMaxGap + 500*time.Millisecond, runner.FindingLost}} {
+		var hostNow time.Time
+		g := &fakeGuest{cell: sshCell, release: make(chan struct{}),
+			guestClock: func() time.Time { return hostNow.Add(-tc.lag) }}
+		c, _ := newSSHCollector(g)
+		c.Wait = func(_ context.Context, until time.Time) error { hostNow = until; return nil }
+		if err := c.BeginInterval(context.Background(), sshRef); err != nil {
+			t.Fatal(err)
+		}
+		close(g.release)
+		ev, err := c.Proc(context.Background(), sshRef)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := ev.Findings[runner.OracleProc01]; got != tc.want {
+			t.Errorf("%s = %q with the guest clock %s behind the host, want %q", runner.OracleProc01, got, tc.lag, tc.want)
+		}
 	}
 }

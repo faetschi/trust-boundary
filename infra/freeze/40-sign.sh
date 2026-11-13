@@ -3,7 +3,7 @@
 # Signs the $FREEZE layout with the reused $H/cosign-gen.key, builds the load tar, verifies, proves a fresh key fails.
 # The passphrase is read from the owner secret file into a shell variable and handed to the one signing command
 # through COSIGN_PASSWORD; it is never printed, never logged, never put in argv. Do NOT run this under `bash -x`.
-# Usage (WSL terminal as jeli2k, after 10, 20, 25, 30 and session-env.sh):  bash 40-sign.sh
+# Usage (Linux terminal, in WSL from Windows, after 10, 20, 25, 30 and session-env.sh):  bash 40-sign.sh
 set -euo pipefail
 umask 077
 

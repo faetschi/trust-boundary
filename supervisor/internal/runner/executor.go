@@ -296,13 +296,15 @@ func defaultOutcome(cfg Config, s Step) Outcome {
 		o.Task = TaskPass
 		return o
 	}
-	for _, k := range cfg.requiredFor(s.ThreatClass, s.Predicate) {
+	for _, k := range cfg.requiredFor(s.ThreatClass, cParts(s.Predicate, s.Effects)...) {
 		o.Oracles[k] = FindingNone
 	}
 	o.OracleVersion = wsoracle.OracleVersion
 	if s.Configuration == CfgP {
-		if k, ok := observerFor(s.Predicate, s.ThreatClass); ok {
-			o.Oracles[k] = FindingObserved
+		for _, p := range pParts(s.Predicate, s.Effects, s.EffectJoin) {
+			if k, ok := observerFor(p, s.ThreatClass); ok {
+				o.Oracles[k] = FindingObserved
+			}
 		}
 		attempts := 1
 		if s.Role == RoleAdaptiveReplay {

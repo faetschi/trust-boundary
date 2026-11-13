@@ -1,0 +1,11 @@
+rid=rp-req-20261108T173325Z
+request_records:
+pi_service_request_accepted {"client_gid": 985, "client_pid": 270135, "client_uid": 994, "config_digest": "sha256:7290086ad1b81205e38d5db435bbf267af2fe05b13ba06b6cc79bd010d1cf9cb", "envelope_digest": "sha256:cdfa3f3b1e2e81f944fe43e48df92a75594c2c63731038a445ba8a45249f02b8", "payload_digest": "sha256:f430af4e17f448f51d7f3f58b26451f238917acdad412b51730cf6b1a6370aaa", "registration_id": "sha256:12f54988bd526929e6502cb542e25435d0b4a135309f50b56491205d3c74760d", "request_id": "rp-req-20261108T173325Z", "schema_version": "tbound-pi-service-request-accepted/v1", "task_id": "route-probe-bash-view"}
+pi_service_request_terminal {"client_uid": 994, "payload_digest": "sha256:f430af4e17f448f51d7f3f58b26451f238917acdad412b51730cf6b1a6370aaa", "request_id": "rp-req-20261108T173325Z", "response": {"error_code": "task-outcome-unknown", "request_id": "rp-req-20261108T173325Z", "schema_version": "tbound-pi-service-response/v1", "status": "unknown"}, "schema_version": "tbound-pi-service-request-terminal/v1"}
+catalog_owner_scope_drained=2
+catalog_unexposed_true=0
+cells_children=cgroup.controllers cgroup.events cgroup.freeze cgroup.kill cgroup.max.depth cgroup.max.descendants cgroup.pressure cgroup.procs cgroup.stat cgroup.stat.local cgroup.subtree_control cgroup.threads cgroup.type cpu.idle cpu.max cpu.max.burst cpu.pressure cpu.stat cpu.stat.local cpu.uclamp.max cpu.uclamp.min cpu.weight cpu.weight.nice cpuset.cpus cpuset.cpus.effective cpuset.cpus.exclusive cpuset.cpus.exclusive.effective cpuset.cpus.partition cpuset.mems cpuset.mems.effective io.max io.pressure io.prio.class io.stat io.weight memory.current memory.events memory.events.local memory.high memory.low memory.max memory.min memory.numa_stat memory.oom.group memory.peak memory.pressure memory.reclaim memory.stat memory.swap.current memory.swap.events memory.swap.high memory.swap.max memory.swap.peak memory.zswap.current memory.zswap.max memory.zswap.writeback pids.current pids.events pids.events.local pids.max pids.peak 
+cells_procs_bytes=0
+podman_ps_a_lines=0
+TOKEN=4bd98b184ceb
+re-run: abandon rp-req-20261108T173325Z --confirm 4bd98b184ceb (after reading the facts: workflow finished, scope drained, no pending effect)

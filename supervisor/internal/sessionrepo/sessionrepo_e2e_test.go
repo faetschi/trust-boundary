@@ -700,6 +700,11 @@ func ancestorsArePrivate(path string) bool {
 
 func newE2EStore(t *testing.T) (*Store, *audit.Journal, string, *e2eReceiptAuthority) {
 	t.Helper()
+	return newScopedE2EStore(t, AdmissionScope{})
+}
+
+func newScopedE2EStore(t *testing.T, scope AdmissionScope) (*Store, *audit.Journal, string, *e2eReceiptAuthority) {
+	t.Helper()
 	base := privateTestBase(t)
 	storePath := filepath.Join(base, "repository")
 	auditPath := filepath.Join(base, "audit")
@@ -723,6 +728,7 @@ func newE2EStore(t *testing.T) (*Store, *audit.Journal, string, *e2eReceiptAutho
 			ProfileDigest: "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
 			Authority:     workspace.XattrAuthorityBoundedNoHiddenTrusted,
 		},
+		AdmissionScope:     scope,
 		Journal:            journal,
 		AuthorizeOperation: authority.authorize,
 		VerifyDecision:     authority.verifyDecision,

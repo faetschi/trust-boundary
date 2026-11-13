@@ -584,7 +584,7 @@ v_rollback() {
   for f in "${files[@]}"; do [[ -f $PREV/$n/$f ]] || die "no backup $PREV/$n/$f: rollback refused"; done
   if [[ $part == corpus ]]; then
     local out dig
-    out=$("$TBP" corpus-digest --manifest "$PREV/$n/corpus/manifest.json" "${PANEL_ARGS[@]}" --quota-profile pilot --artifacts /opt/tbound/corpus/artifacts --node /usr/local/bin/node --max-host-calls 17 --max-tokens 20000 --duration-seconds 1200) || die "backup corpus does not verify"
+    out=$("$TBP" corpus-digest --manifest "$PREV/$n/corpus/manifest.json" "${PANEL_ARGS[@]}" --quota-profile pilot --artifacts /opt/tbound/corpus/artifacts --node /usr/local/bin/node --max-host-calls 17 --max-tokens 69632 --duration-seconds 1200) || die "backup corpus does not verify"
     dig=$(printf '%s\n' "$out" | grep -Eo 'sha256:[0-9a-f]{64}' | sort -u)
     [[ $dig =~ $re_dig ]] || die "backup corpus has no unique digest"
   fi
@@ -622,7 +622,7 @@ v_manifest_install() {
     done
   fi
   panel_args "$WORK"
-  out=$("$TBP" corpus-digest "${PANEL_ARGS[@]}" --manifest "$WORK/manifest.json" --quota-profile pilot --artifacts /opt/tbound/corpus/artifacts --node /usr/local/bin/node --max-host-calls 17 --max-tokens 20000 --duration-seconds 1200 2>&1) || die "corpus-digest refused the manifest: ${out:0:600}"
+  out=$("$TBP" corpus-digest "${PANEL_ARGS[@]}" --manifest "$WORK/manifest.json" --quota-profile pilot --artifacts /opt/tbound/corpus/artifacts --node /usr/local/bin/node --max-host-calls 17 --max-tokens 69632 --duration-seconds 1200 2>&1) || die "corpus-digest refused the manifest: ${out:0:600}"
   dig=$(printf '%s\n' "$out" | grep -Eo 'sha256:[0-9a-f]{64}' | sort -u)
   [[ $dig == "$want" ]] || die "corpus digest of the staged manifest is not the given CORPUS_DIGEST"
   need_inactive
@@ -636,7 +636,7 @@ v_manifest_install() {
   if ((${#ARGS[@]} == 2)); then rm -f -- "$ETC/corpus/receipt.json" "$ETC/corpus/audit.json" "$ETC/corpus/stats.json"; fi
   for f in "${files[@]}"; do install_atomic "$WORK/$f" "$ETC/corpus/$f" 0644; done
   panel_args "$ETC/corpus"
-  out=$("$TBP" corpus-digest "${PANEL_ARGS[@]}" --manifest "$ETC/corpus/manifest.json" --quota-profile pilot --artifacts /opt/tbound/corpus/artifacts --node /usr/local/bin/node --max-host-calls 17 --max-tokens 20000 --duration-seconds 1200 2>&1) || die "installed manifest does not verify"
+  out=$("$TBP" corpus-digest "${PANEL_ARGS[@]}" --manifest "$ETC/corpus/manifest.json" --quota-profile pilot --artifacts /opt/tbound/corpus/artifacts --node /usr/local/bin/node --max-host-calls 17 --max-tokens 69632 --duration-seconds 1200 2>&1) || die "installed manifest does not verify"
   [[ $(printf '%s\n' "$out" | grep -Eo 'sha256:[0-9a-f]{64}' | sort -u) == "$want" ]] || die "installed manifest digest differs"
   printf '%s\n' "$want" >"$GA/state/corpus-digest"
   say "manifest-install ok: $want"

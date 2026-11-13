@@ -339,6 +339,12 @@ func loadPilotCorpus(t *testing.T) *productionCorpus {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The T5 draft still carries the pre-D50 budgets. Admission now refuses a model-driven trial below
+	// max_host_calls x the thesis per-call cap, so this copy raises each budget to that minimum; the digest below is
+	// computed from the copy. The static replay roles run no model, so nothing the test proves depends on the value.
+	for i := range manifest.Cases {
+		manifest.Cases[i].Trial.MaxTokens = manifest.Cases[i].Trial.MaxHostCalls * productionProviderCompletionCap
+	}
 	for i := range manifest.Cases {
 		manifest.Cases[i].Signoff = evalcorpus.Signoff{Reviewer: pilotTestReviewer, Human: true, Decision: "accept"}
 	}

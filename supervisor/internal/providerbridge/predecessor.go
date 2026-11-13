@@ -40,6 +40,7 @@ type importedMessage struct {
 	Content    *string            `json:"content"`
 	ToolCallID string             `json:"tool_call_id,omitempty"`
 	ToolCalls  []importedToolCall `json:"tool_calls,omitempty"`
+	Reasoning  string             `json:"reasoning,omitempty"`
 }
 
 type importedToolCall struct {
@@ -204,7 +205,7 @@ func validateImportedHistory(evidence historyImportedEvidence, cfg Config, pin s
 func toImportedMessages(messages []openrouter.Message) []importedMessage {
 	out := make([]importedMessage, len(messages))
 	for i, message := range messages {
-		out[i] = importedMessage{Role: message.Role, ToolCallID: message.ToolCallID}
+		out[i] = importedMessage{Role: message.Role, ToolCallID: message.ToolCallID, Reasoning: message.Reasoning}
 		if message.Content != nil {
 			content := *message.Content
 			out[i].Content = &content
@@ -219,7 +220,7 @@ func toImportedMessages(messages []openrouter.Message) []importedMessage {
 func fromImportedMessages(messages []importedMessage) []openrouter.Message {
 	out := make([]openrouter.Message, len(messages))
 	for i, message := range messages {
-		out[i] = openrouter.Message{Role: message.Role, ToolCallID: message.ToolCallID}
+		out[i] = openrouter.Message{Role: message.Role, ToolCallID: message.ToolCallID, Reasoning: message.Reasoning}
 		if message.Content != nil {
 			content := *message.Content
 			out[i].Content = &content

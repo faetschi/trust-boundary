@@ -45,8 +45,8 @@ import (
 // logs in as, with a forced command restricted to this subcommand (sshd Match User +
 // ForceCommand, or authorized_keys command="..." with restrict), see
 // infra/guest/PROVISIONING-SIGNING.md, Evidence collection. The root requirement is
-// deliberate: PROC reads /proc/<pid>/fd of the cell uid, and the service's catalog and
-// audit files are private to the service uid.
+// deliberate: PROC reads the user namespace of every /proc pid and the descriptors of cell
+// processes, and the service's catalog and audit files are private to the service uid.
 //
 // Kinds (each flag exactly once, in any order):
 //
@@ -54,7 +54,7 @@ import (
 //	    wsoracle.Snapshot of R at E04 point P. R must be one of evidenceLiveRoots (the
 //	    managed live root, piruntime.D09ManagedPiLiveRootPath); P one of the seven E04 points.
 //	proc-cell
-//	    the registered cell (cgroup2 path, directory inode, uid, gid), resolved from the signed
+//	    the registered cell (cgroup2 path, directory inode, uid, gid, service uid), resolved from the signed
 //	    managed-root registration and the cell template; the host builds the registration
 //	    digest from it.
 //	proc-capture                 --registration D --point post_teardown|final_cleanup|final_cleanup
@@ -188,14 +188,14 @@ type evidenceCell struct {
 	Hierarchy  string // the cgroup2 hierarchy path Capture reports for it
 	Inode      uint64 // the inode of that directory, read by the loader
 	UID, GID   uint32 // the identity inside the cell (the template's CellUID and CellGID)
-	// HostUID and HostGID are the host identity the signed mapping puts UID and GID on. Only
-	// loadTrialCell sets them (cellHostIdentity).
+	// HostUID and HostGID are the host identity the signed mapping puts UID and GID on
+	// (cellHostIdentity): the service's, whose rootless user namespace holds the cells.
 	HostUID, HostGID uint32
 }
 
 func (c evidenceCell) doc() procoracle.CellDoc {
 	return procoracle.CellDoc{Schema: runner.EvidenceSchema, Kind: runner.EvidenceProcCell, CellID: c.ID,
-		CellCgroupPath: c.Hierarchy, CellCgroupInode: c.Inode, CellUID: c.UID, CellGID: c.GID}
+		CellCgroupPath: c.Hierarchy, CellCgroupInode: c.Inode, CellUID: c.UID, CellGID: c.GID, ServiceUID: c.HostUID}
 }
 
 // evidenceEnv is everything the subcommand touches outside its arguments; tests replace it.
@@ -600,49 +600,40 @@ func evidenceCellFrom(reg piruntime.D09ManagedLiveRootRegistration, tmpl pirunti
 		UID: uint32(tmpl.CellUID), GID: uint32(tmpl.CellGID)}, nil
 }
 
+// loadTrialCell is loadEvidenceCell: reset and v-run take the host identity from the same resolution.
+var loadTrialCell = loadEvidenceCell
+
 func loadEvidenceCell(ctx context.Context) (evidenceCell, error) {
-	cell, _, _, err := loadRegisteredCell(ctx)
-	return cell, err
-}
-
-// loadTrialCell is loadEvidenceCell with the host identity of the signed mapping.
-func loadTrialCell(ctx context.Context) (evidenceCell, error) {
-	cell, reg, tmpl, err := loadRegisteredCell(ctx)
-	if err != nil {
-		return evidenceCell{}, err
-	}
-	if cell.HostUID, cell.HostGID, err = cellHostIdentity(reg, tmpl); err != nil {
-		return evidenceCell{}, err
-	}
-	return cell, nil
-}
-
-func loadRegisteredCell(ctx context.Context) (evidenceCell, piruntime.D09ManagedLiveRootRegistration, piruntime.D09CellTemplate, error) {
 	reg, err := piruntime.LoadVerifiedD09ManagedLiveRootPolicy(ctx)
 	if err != nil {
-		return evidenceCell{}, reg, piruntime.D09CellTemplate{}, err
+		return evidenceCell{}, err
 	}
 	tmpl, _, err := piruntime.LoadD09CellTemplate(ctx)
 	if err != nil {
-		return evidenceCell{}, reg, tmpl, err
+		return evidenceCell{}, err
 	}
 	cell, err := evidenceCellFrom(reg, tmpl)
 	if err != nil {
-		return evidenceCell{}, reg, tmpl, err
+		return evidenceCell{}, err
+	}
+	// The host identity of the signed mapping: the service uid owns the cells' user namespaces, which
+	// is what the identity scan matches (procoracle Registration.ServiceUID).
+	if cell.HostUID, cell.HostGID, err = cellHostIdentity(reg, tmpl); err != nil {
+		return evidenceCell{}, err
 	}
 	// The identity Capture will compare against: the hierarchy path and the inode of the
 	// cell cgroup directory, read from the directory itself.
 	dir, err := openEvidenceCellDir(cell.CgroupPath)
 	if err != nil {
-		return evidenceCell{}, reg, tmpl, err
+		return evidenceCell{}, err
 	}
 	defer dir.Close()
 	facts, err := procoracle.HeldCell(dir).Observe()
 	if err != nil || facts.Removed || facts.Inode == 0 || facts.HierarchyPath != cell.Hierarchy {
-		return evidenceCell{}, reg, tmpl, fmt.Errorf("the registered cell cgroup is not observable as %q: %v", cell.Hierarchy, err)
+		return evidenceCell{}, fmt.Errorf("the registered cell cgroup is not observable as %q: %v", cell.Hierarchy, err)
 	}
 	cell.Inode = facts.Inode
-	return cell, reg, tmpl, nil
+	return cell, nil
 }
 
 func openEvidenceCellDir(path string) (*os.File, error) {
