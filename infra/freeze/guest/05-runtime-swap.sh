@@ -61,6 +61,10 @@ if [ "$PREV_COMMIT" = 2641c6bc73a501ee1578d6dcdbe652c6086fac53 ] &&
 # 2641c6b..bbc6ec8 (F21): launcher_linux.go, host.go and profile_tooling_linux.go are unchanged (git diff --quiet).
 if [ "$PREV_COMMIT" = 2641c6bc73a501ee1578d6dcdbe652c6086fac53 ] &&
    [ "$F" = bbc6ec85a0e2f4895c6c9e392b1736a1968d62b8 ]; then ALLOW_PREV_MEASURER=1; fi
+# 13ed119..de2a3cf (F24): launcher_linux.go, host.go, profile_tooling_linux.go and cmd/tbound-profile/main_linux.go are unchanged
+# (git diff --quiet); VerifyLinuxPiRuntimeBundle's callees all live in launcher_linux.go.
+if [ "$PREV_COMMIT" = 13ed11939c06e552a2d8662fb752bf2b3640ac68 ] &&
+   [ "$F" = de2a3cfdbae532d8a9b5826af6208c96bcf4a302 ]; then ALLOW_PREV_MEASURER=1; fi
 UNIT_SHA=2bc03ead4ba478d81655029de66a46f4bcb6357c5a24e7f8a3940ed947720ea3
 OLD=/var/lib/tbound/runtime-src.old-${PREV_BUNDLE_DIGEST:7:8}-$(date -u +%Y%m%dT%H%M%S%NZ)
 
