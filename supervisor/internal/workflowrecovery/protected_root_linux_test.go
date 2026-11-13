@@ -1033,7 +1033,7 @@ func TestProtectedRootDeadlineClockRollbackAndBootChangePersistPause(t *testing.
 
 			bootTimeNS += int64(time.Second)
 			if scenario == "wall-rollback" {
-				wallNow = baseWall.Add(-time.Second)
+				wallNow = baseWall.Add(-maxWallClockStepBack - time.Millisecond)
 			} else {
 				wallNow = baseWall.Add(time.Second)
 				bootID = "00000000-0000-4000-8000-000000000003"
@@ -1060,6 +1060,77 @@ func TestProtectedRootDeadlineClockRollbackAndBootChangePersistPause(t *testing.
 			defer reopened.Close()
 			if err := reopened.VerifyWorkflowDeadline(context.Background(), workflow, deadline); !errors.Is(err, ErrClockUncertain) {
 				t.Fatalf("reopened root cleared sticky clock pause: %v", err)
+			}
+		})
+	}
+}
+
+// Time sync (NTP, Hyper-V) steps the wall clock back, often while a governed
+// run checks the clock every few milliseconds. A step within
+// maxWallClockStepBack of the highest wall reading must not pause the
+// workflow or hide a boot-time expiry; a larger net rollback still pauses.
+func TestProtectedRootDeadlineToleratesSmallWallStepBack(t *testing.T) {
+	type step struct {
+		boot, wall time.Duration // advance of CLOCK_BOOTTIME and of the wall clock
+		want       error
+	}
+	// tbound-dev WSL: timesyncd stepped the clock back 0.4 to 0.77 s every half minute.
+	var ntpFastClock []step
+	for i := 0; i < 20; i++ {
+		ntpFastClock = append(ntpFastClock, step{time.Millisecond, time.Millisecond - 770*time.Millisecond, nil},
+			step{30 * time.Second, 30 * time.Second, nil})
+	}
+	for _, test := range []struct {
+		name  string
+		steps []step
+	}{
+		{"few-ms-back", []step{{time.Millisecond, time.Millisecond - 5*time.Millisecond, nil}}},
+		{"at-bound", []step{{time.Millisecond, -maxWallClockStepBack, nil}}},
+		{"beyond-bound", []step{{time.Millisecond, -maxWallClockStepBack - time.Millisecond, ErrClockUncertain}}},
+		{"repeated-steps-heal", ntpFastClock},
+		{"net-rollback-beyond-bound", []step{
+			{time.Millisecond, time.Millisecond - maxWallClockStepBack*3/4, nil},
+			{time.Millisecond, time.Millisecond - maxWallClockStepBack*3/4, ErrClockUncertain},
+		}},
+		{"boot-time-expiry-during-step", []step{
+			{time.Hour - 10*time.Millisecond, time.Hour - 10*time.Millisecond, nil},
+			{20 * time.Millisecond, 20*time.Millisecond - 50*time.Millisecond, ErrDeadline},
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			rootPath, ownerStoreRoot, _ := newProtectedRootTestDirs(t)
+			workflow := "clock-step-" + test.name
+			_, root := createProtectedRoot(t, rootPath, ownerStoreRoot, workflow)
+			defer root.Close()
+			baseWall := time.Now().Round(0).UTC()
+			deadline := baseWall.Add(time.Hour).UTC()
+			bootID := "00000000-0000-4000-8000-000000000004"
+			bootTimeNS := int64(9_000_000_000)
+			wallNow := baseWall
+			root.clockNow = func() (time.Time, string, int64, error) { return wallNow, bootID, bootTimeNS, nil }
+			owner, err := CreateFreshSQLiteOwner(filepath.Join(ownerStoreRoot, "workflow.sqlite"), root)
+			if err != nil {
+				t.Fatalf("create owner store: %v", err)
+			}
+			defer owner.Close()
+			limits := testLimits()
+			limits.Deadline = deadline
+			pins := testPins(root.TrustedRootIdentityDigest(), owner.OwnerIncarnationDigest(), workflow, "session-clock-step", 1, 1)
+			if _, err := InitializeFresh(context.Background(), owner, pins, limits); err != nil {
+				t.Fatalf("initialize original workflow: %v", err)
+			}
+			for i, s := range test.steps {
+				bootTimeNS += int64(s.boot)
+				wallNow = wallNow.Add(s.wall)
+				if err := root.VerifyWorkflowDeadline(context.Background(), workflow, deadline); !errors.Is(err, s.want) {
+					t.Fatalf("step %d: VerifyWorkflowDeadline = %v, want %v", i, err, s.want)
+				}
+			}
+			state, exists, err := loadProtectedRootState(context.Background(), root.db, workflow)
+			last := test.steps[len(test.steps)-1].want
+			if err != nil || !exists || (state.ClockUncertain == 1) != (last == ErrClockUncertain) ||
+				(state.ClockExpired == 1) != (last == ErrDeadline) {
+				t.Fatalf("persisted clock state = %+v exists=%v err=%v, want %v", state, exists, err, last)
 			}
 		})
 	}

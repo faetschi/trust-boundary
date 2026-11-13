@@ -1,6 +1,6 @@
 """Prepare the T1 pilot commitment for publication, without publishing anything.
 
-    py -3 -I corpus/sampling/t1_prepare.py build --repo <repo root> --tag corpus-d48-ledger-v2 --out <new dir>
+    py -3 -I corpus/sampling/t1_prepare.py build --repo <repo root> --tag corpus-d48-ledger-v3 --out <new dir>
     py -3 -I corpus/sampling/t1_prepare.py round --commitment <file> --t1 2026-11-12T10:00:01Z
     py -3 -I corpus/sampling/t1_prepare.py record --id <Zenodo record id> --file <the uploaded file>
 
@@ -22,8 +22,8 @@ import sys
 import urllib.request
 
 TEMPLATE = "corpus/sampling/pilot-commitment-v1.template.json"
-OBJECT_FILL = '"FILL: git rev-parse corpus-d48-ledger-v2"'
-COMMIT_FILL = '"FILL: git rev-parse corpus-d48-ledger-v2^{commit}"'
+OBJECT_FILL = '"FILL: git rev-parse corpus-d48-ledger-v3"'
+COMMIT_FILL = '"FILL: git rev-parse corpus-d48-ledger-v3^{commit}"'
 ROUND_DELAY = 24 * 3600
 
 

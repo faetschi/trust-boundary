@@ -730,8 +730,8 @@ func (o *SQLiteOwner) OwnerStoreIdentity(ctx context.Context, workflow string) (
 }
 
 // VerifyWorkflowDeadline checks the immutable original deadline against the
-// protected host root's persisted UTC/boot-time anchor. A boot change or
-// backward wall-clock observation pauses the workflow.
+// protected host root's persisted UTC/boot-time anchor. A boot change or a
+// backward wall-clock step beyond maxWallClockStepBack pauses the workflow.
 func (o *SQLiteOwner) VerifyWorkflowDeadline(ctx context.Context, workflow string, deadline time.Time) error {
 	if ctx == nil || !validID(workflow) || deadline.IsZero() || o == nil {
 		return ErrClockUncertain

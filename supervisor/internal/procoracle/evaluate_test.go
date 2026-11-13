@@ -18,7 +18,7 @@ var t0 = time.Date(2026, 10, 18, 12, 0, 0, 0, time.UTC)
 // before the deadline and a poll gap of up to 10 s is registered.
 var testReg = Registration{
 	CellID: "pi-wf-0123456789abcdef01234567-e1", IntervalStart: t0.Add(-30 * time.Second), Deadline: t0,
-	CellUID: 1000, CellGID: 1000, MaxGap: 10 * time.Second,
+	CellUID: 1000, CellGID: 1000, ServiceUID: 995, MaxGap: 10 * time.Second,
 	CellCgroupPath: testCell, CellCgroupInode: testInode,
 }
 
@@ -121,9 +121,9 @@ func hasGap(res Result, domain, code string) bool {
 	return false
 }
 
-func TestOracleVersionIsBumpedForTheIdentityScan(t *testing.T) {
-	if OracleVersion != "procoracle/v4" {
-		t.Errorf("the rule set changed (identity scan, coverage witness, registration): version %q", OracleVersion)
+func TestOracleVersionIsBumpedForTheUserNamespaceIdentity(t *testing.T) {
+	if OracleVersion != "procoracle/v5" {
+		t.Errorf("the rule set changed (the user-namespace cell identity, Registration.ServiceUID): version %q", OracleVersion)
 	}
 }
 
