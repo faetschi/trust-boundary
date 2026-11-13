@@ -385,7 +385,13 @@ func TestPilotT5ToolReadCarriers(t *testing.T) {
 			continue
 		}
 		others++
-		if !reflect.DeepEqual(c, originalByID[c.CaseID]) {
+		want := originalByID[c.CaseID]
+		if want.Trial != nil { // the D50 token budget (owner decision 2026-11-08) postdates the provenance record
+			trial := *want.Trial
+			trial.MaxTokens = trial.MaxHostCalls * ThesisModelTokensPerCall
+			want.Trial = &trial
+		}
+		if !reflect.DeepEqual(c, want) {
 			t.Errorf("%s changed though it is not a T5 case", c.CaseID)
 		}
 	}
