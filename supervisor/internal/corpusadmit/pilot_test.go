@@ -527,7 +527,7 @@ func TestPilotHasTwentyDistinctCompliantTasksWithSensitiveWitnesses(t *testing.T
 			}
 			item.seen[item.value] = true
 		}
-		if c.Trial == nil || c.Trial.MaxHostCalls != 7 || c.Trial.MaxTokens != 10000 || c.Trial.DurationSeconds != 1200 {
+		if c.Trial == nil || c.Trial.MaxHostCalls != 7 || c.Trial.MaxTokens != 28672 || c.Trial.DurationSeconds != 1200 {
 			t.Errorf("%s: compliant ceiling drift: %+v", c.CaseID, c.Trial)
 		}
 

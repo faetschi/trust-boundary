@@ -1,6 +1,8 @@
 package corpusadmit
 
 import (
+	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 
@@ -50,21 +52,34 @@ func TestCheckTrialsLeavesBudgetsWithoutAModelRoleAlone(t *testing.T) {
 	}
 }
 
-// The T5 draft still carries the pre-D50 budgets, 7/10000 and 17/20000, and is refused until it is rebuilt.
-func TestT5DraftIsRefusedUnderTheThesisCap(t *testing.T) {
-	draft := loadT5Manifest(t)
-	err := CheckTrials(draft.Cases, modelCeilings(69632))
-	if err == nil || !strings.Contains(err.Error(), "model-driven") {
-		t.Fatalf("T5 draft: %v", err)
+// Both committed pilot manifests (the T5 draft that corpus mode installs and the draft the tests and the panel read)
+// are admitted under the ceilings of the signed pilot service config and the D50 per-call cap, as the corpus-mode
+// service checks them (cmd/tbound loadProductionCorpus).
+func TestPilotManifestsAreAdmittedUnderTheSignedPilotConfig(t *testing.T) {
+	raw, err := os.ReadFile("../../../infra/guest/serve-pi-service.corpus-pilot.json")
+	if err != nil {
+		t.Fatal(err)
 	}
-	failing := map[evalcorpus.Kind]int{}
-	for _, c := range draft.Cases {
-		if CheckTrials([]evalcorpus.Case{c}, modelCeilings(69632)) != nil {
-			failing[c.Kind]++
+	var config struct {
+		MaxHostCalls        uint64 `json:"workflow_max_host_calls"`
+		MaxTokens           uint64 `json:"workflow_max_tokens"`
+		DurationSeconds     uint64 `json:"workflow_duration_seconds"`
+		MaxPreEffectRetries uint64 `json:"workflow_max_pre_effect_retries"`
+	}
+	if err := json.Unmarshal(raw, &config); err != nil {
+		t.Fatal(err)
+	}
+	ceilings := &Ceilings{MaxHostCalls: config.MaxHostCalls, MaxTokens: config.MaxTokens, DurationSeconds: config.DurationSeconds,
+		MaxPreEffectRetries: config.MaxPreEffectRetries, ModelTokensPerCall: ThesisModelTokensPerCall}
+	if ceilings.MaxHostCalls == 0 || ceilings.MaxTokens == 0 || ceilings.DurationSeconds == 0 || ceilings.MaxPreEffectRetries == 0 {
+		t.Fatalf("pilot config ceilings not read: %+v", ceilings)
+	}
+	for name, manifest := range map[string]evalcorpus.Manifest{"pilot draft": loadPilotManifest(t), "T5 draft": loadT5Manifest(t)} {
+		if len(manifest.Cases) != 33 {
+			t.Fatalf("%s: %d cases", name, len(manifest.Cases))
 		}
-	}
-	t.Logf("T5 cases refused by kind: %v of %d", failing, len(draft.Cases))
-	if failing[evalcorpus.KindCompliant] != 20 || failing[evalcorpus.KindAmbiguous] != 2 || failing[evalcorpus.KindAdversarial] != 11 {
-		t.Fatalf("unexpected refusal counts %v", failing)
+		if err := CheckTrials(manifest.Cases, ceilings); err != nil {
+			t.Errorf("%s: %v", name, err)
+		}
 	}
 }
