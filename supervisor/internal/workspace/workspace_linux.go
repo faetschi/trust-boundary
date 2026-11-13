@@ -11,11 +11,12 @@ import (
 	"io"
 	"os"
 	"sort"
-	"strconv"
 	"strings"
 	"syscall"
 	"unicode"
 	"unicode/utf8"
+
+	"golang.org/x/sys/unix"
 
 	"tbound/supervisor/internal/delta"
 	"tbound/supervisor/internal/faultfs"
@@ -148,6 +149,17 @@ type Snapshot struct {
 // manifest match. On error the destination may contain a partial tree; callers
 // must discard it and never promote or reuse it.
 func Import(sourceRoot, destinationRoot *os.File, options Options) (Snapshot, error) {
+	return importTree(sourceRoot, destinationRoot, options, true)
+}
+
+// ImportUnsynced is Import without the per-file fsync. It is for a caller that
+// makes the whole destination durable in one step before relying on it, or that
+// discards the destination after use and never needs it durable.
+func ImportUnsynced(sourceRoot, destinationRoot *os.File, options Options) (Snapshot, error) {
+	return importTree(sourceRoot, destinationRoot, options, false)
+}
+
+func importTree(sourceRoot, destinationRoot *os.File, options Options, syncFiles bool) (Snapshot, error) {
 	if err := validateOptions(options); err != nil {
 		return Snapshot{}, err
 	}
@@ -177,7 +189,7 @@ func Import(sourceRoot, destinationRoot *os.File, options Options) (Snapshot, er
 	if err != nil {
 		return Snapshot{}, err
 	}
-	state := walkState{options: options, rootMountID: sourceMount}
+	state := walkState{options: options, rootMountID: sourceMount, syncFiles: syncFiles}
 	if err := walkDirectory(sourceRoot, destinationRoot, "", 0, &state, false); err != nil {
 		return Snapshot{}, err
 	}
@@ -225,6 +237,7 @@ type walkState struct {
 	objects     []delta.ManifestObject
 	bytes       int64
 	seen        int
+	syncFiles   bool // Import only: fsync each copied file
 }
 
 func validateOptions(options Options) error {
@@ -639,12 +652,14 @@ func walkRegularFile(parentSource, parentDestination *os.File, name, path string
 		if err := syscall.Fchmod(int(destination.Fd()), mode); err != nil {
 			return fmt.Errorf("normalize file mode %q: %w", path, err)
 		}
-		err := faultfs.Check(faultfs.SiteWorkspaceImport, faultfs.OpFsync)
-		if err == nil {
-			err = destination.Sync()
-		}
-		if err != nil {
-			return fmt.Errorf("sync imported file %q: %w", path, err)
+		if state.syncFiles {
+			err := faultfs.Check(faultfs.SiteWorkspaceImport, faultfs.OpFsync)
+			if err == nil {
+				err = destination.Sync()
+			}
+			if err != nil {
+				return fmt.Errorf("sync imported file %q: %w", path, err)
+			}
 		}
 		info, err := statFile(destination)
 		if err != nil || !ownedBySupervisor(info) || uint32(info.Mode&0o7777) != mode {
@@ -866,29 +881,19 @@ func verifyMountIdentity(id, rootMountID uint64, path string) error {
 	return nil
 }
 
-// mountID reads the kernel-reported mount ID for an opened object. /proc fdinfo
-// is used only with a held descriptor; the input tree cannot supply this path.
+// mountID reads the kernel-reported mount ID (the fdinfo mnt_id) of a held
+// descriptor with statx. It fails closed on kernels before 5.8, which lack
+// STATX_MNT_ID; the session store's syncfs also needs 5.8 to report errors.
 func mountID(file *os.File) (uint64, error) {
-	info, err := os.Open(fmt.Sprintf("/proc/self/fdinfo/%d", file.Fd()))
+	var info unix.Statx_t
+	err := unix.Statx(int(file.Fd()), "", unix.AT_EMPTY_PATH|unix.AT_SYMLINK_NOFOLLOW, unix.STATX_MNT_ID, &info)
 	if err != nil {
 		return 0, fmt.Errorf("%w: %v", ErrMountIdentityUnavailable, err)
 	}
-	defer info.Close()
-	data, err := io.ReadAll(io.LimitReader(info, 16<<10))
-	if err != nil {
-		return 0, fmt.Errorf("%w: %v", ErrMountIdentityUnavailable, err)
+	if info.Mask&unix.STATX_MNT_ID == 0 {
+		return 0, ErrMountIdentityUnavailable
 	}
-	for _, line := range strings.Split(string(data), "\n") {
-		key, value, ok := strings.Cut(line, ":")
-		if !ok || strings.TrimSpace(key) != "mnt_id" {
-			continue
-		}
-		id, err := strconv.ParseUint(strings.TrimSpace(value), 10, 64)
-		if err == nil {
-			return id, nil
-		}
-	}
-	return 0, ErrMountIdentityUnavailable
+	return info.Mnt_id, nil
 }
 
 func checkXattrs(file *os.File) error {

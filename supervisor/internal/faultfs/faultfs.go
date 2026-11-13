@@ -31,9 +31,10 @@ const (
 type Site string
 
 const (
-	// SiteWorkspaceImport covers every create, write and sync of
-	// workspace.Import. The destination is a command view during view setup
-	// and a staging generation during copy-on-write and command import.
+	// SiteWorkspaceImport covers every create and write of workspace.Import,
+	// and its per-file sync, which the session store skips (ImportUnsynced).
+	// The destination is a command view during view setup and a staging
+	// generation during copy-on-write and command import.
 	SiteWorkspaceImport Site = "workspace.import"
 	SiteViewSetup       Site = "sessionrepo.view-setup"
 	SiteStageSetup      Site = "sessionrepo.stage-setup"

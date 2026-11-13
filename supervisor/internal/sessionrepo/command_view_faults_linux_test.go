@@ -281,7 +281,6 @@ func TestCommandViewSetupFaultsFailClosedWithIdempotentCleanup(t *testing.T) {
 		{"import-create-second", faultfs.SiteWorkspaceImport, faultfs.OpCreate, 2},
 		{"import-write-first", faultfs.SiteWorkspaceImport, faultfs.OpWrite, 1},
 		{"import-write-second", faultfs.SiteWorkspaceImport, faultfs.OpWrite, 2},
-		{"import-fsync-first", faultfs.SiteWorkspaceImport, faultfs.OpFsync, 1},
 		{"view-tree-fsync", faultfs.SiteViewSetup, faultfs.OpFsync, 1},
 	}
 	forEachFault(t, cases, func(t *testing.T, c faultCase, errno syscall.Errno) {
@@ -317,6 +316,33 @@ func TestCommandViewSetupFaultsFailClosedWithIdempotentCleanup(t *testing.T) {
 	})
 }
 
+// g0 is imported unsynced, so syncStageTree is its only data sync: a failure
+// there must leave no baseline and quarantine the Store.
+func TestSeedStageSyncFaultLeavesNoBaseline(t *testing.T) {
+	forEachFault(t, []faultCase{{"stage-tree-fsync", faultfs.SiteStageSetup, faultfs.OpFsync, 1}},
+		func(t *testing.T, c faultCase, errno syscall.Errno) {
+			store, _, _, _ := newE2EStore(t)
+			sourcePath := filepath.Join(t.TempDir(), "source")
+			if err := os.Mkdir(sourcePath, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			writeFixtureFile(t, filepath.Join(sourcePath, "README.md"), "baseline text\n", 0o644)
+			plan := &faultPlan{faultCase: c, errno: errno}
+			t.Cleanup(faultfs.Install(plan.hook))
+			generation, err := store.Seed(openFixtureRoot(t, sourcePath), RootAttestation{Quiescent: true})
+			if plan.fired != 1 || generation != nil || !errors.Is(err, errno) || !errors.Is(err, ErrAudit) {
+				t.Fatalf("Seed err=%v fired=%d generation=%v, want the typed audit error and no baseline", err, plan.fired, generation)
+			}
+			entries, err := os.ReadDir(filepath.Join(store.rootPath, "generations"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(entries) != 0 || !store.quarantined || store.baseline != nil {
+				t.Fatalf("faulted Seed left generations=%v quarantined=%t", entries, store.quarantined)
+			}
+		})
+}
+
 // Staging, first copy-on-write allocation, content write, promotion and the
 // directory syncs of a Write. The intent is already durable, so the effect is
 // unknown: the typed error is returned, nothing enters the approved ledger or
@@ -334,11 +360,11 @@ func TestCopyOnWriteAndPromotionFaultsQuarantineWithoutPromotion(t *testing.T) {
 		{faultCase{"cow-create-second", faultfs.SiteWorkspaceImport, faultfs.OpCreate, 2}, 0, false},
 		{faultCase{"cow-write-first", faultfs.SiteWorkspaceImport, faultfs.OpWrite, 1}, 0, false},
 		{faultCase{"cow-write-second", faultfs.SiteWorkspaceImport, faultfs.OpWrite, 2}, 0, false},
-		{faultCase{"cow-fsync-first", faultfs.SiteWorkspaceImport, faultfs.OpFsync, 1}, 0, false},
 		{faultCase{"apply-create", faultfs.SiteStageApply, faultfs.OpCreate, 1}, 0, false},
 		{faultCase{"apply-write", faultfs.SiteStageApply, faultfs.OpWrite, 1}, 0, false},
 		{faultCase{"apply-fsync", faultfs.SiteStageApply, faultfs.OpFsync, 1}, 0, false},
 		{faultCase{"apply-rename", faultfs.SiteStageApply, faultfs.OpRename, 1}, 0, false},
+		// Stage files are imported unsynced, so a failing data sync surfaces here, in syncfs.
 		{faultCase{"stage-tree-fsync", faultfs.SiteStageSetup, faultfs.OpFsync, 1}, 1, false},
 		{faultCase{"promote-rename", faultfs.SitePromote, faultfs.OpRename, 1}, 1, false},
 		{faultCase{"promote-dir-fsync", faultfs.SitePromote, faultfs.OpFsync, 1}, 1, true},
@@ -400,10 +426,15 @@ func TestSettledCommandViewImportFaultsQuarantineAfterOneRun(t *testing.T) {
 		{"import-mkdir", faultfs.SiteWorkspaceImport, faultfs.OpMkdir, 1},
 		{"import-create-first", faultfs.SiteWorkspaceImport, faultfs.OpCreate, 1},
 		{"import-write-first", faultfs.SiteWorkspaceImport, faultfs.OpWrite, 1},
-		{"import-fsync-first", faultfs.SiteWorkspaceImport, faultfs.OpFsync, 1},
 		{"stage-mkdir", faultfs.SiteStageSetup, faultfs.OpMkdir, 1},
+		// The stage's data sync (syncfs) runs after the admission record is appended.
+		{"stage-tree-fsync", faultfs.SiteStageSetup, faultfs.OpFsync, 1},
 	}
 	forEachFault(t, cases, func(t *testing.T, c faultCase, errno syscall.Errno) {
+		wantAdmissions := 0
+		if c.name == "stage-tree-fsync" {
+			wantAdmissions = 1
+		}
 		f := newFaultFixture(t)
 		before := f.image()
 		runnerCalls := 0
@@ -417,7 +448,7 @@ func TestSettledCommandViewImportFaultsQuarantineAfterOneRun(t *testing.T) {
 		}
 		after := f.image()
 		requireNoStage(t, after)
-		if fmt.Sprint(after.generations) != "[g0]" || !bytes.Equal(before.state, after.state) || after.admissionRecords(t) != 0 {
+		if fmt.Sprint(after.generations) != "[g0]" || !bytes.Equal(before.state, after.state) || after.admissionRecords(t) != wantAdmissions {
 			t.Fatalf("durable state advanced under the fault: generations=%v", after.generations)
 		}
 		effects := after.effects(t)
