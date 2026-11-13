@@ -313,6 +313,9 @@ type CommandView struct {
 	root     *os.File
 	path     string
 	consumed bool
+	// readOnlyMounts is computed before authorization, so a failure to list it discards the view
+	// before any effect instead of failing inside the runner.
+	readOnlyMounts []string
 }
 
 // Create initializes an empty, exact-mode private repository root. Existing
@@ -665,6 +668,9 @@ func (s *Store) RunBash(ctx context.Context, input *Generation, operation delta.
 	if operation.Kind != delta.OperationLease || strings.TrimSpace(operation.LeaseID) == "" {
 		return MutationResult{}, ErrInvalidOptions
 	}
+	if err := checkAdmissionRecordFits(input.snapshot.Manifest, spec.DeclaredOutputPaths); err != nil {
+		return MutationResult{}, err
+	}
 	view, err := s.newViewLocked(input)
 	if err != nil {
 		return MutationResult{}, err
@@ -673,6 +679,9 @@ func (s *Store) RunBash(ctx context.Context, input *Generation, operation delta.
 	viewSnapshot, err := workspace.Scan(view.root, s.options.workspaceOptions(input.id, true))
 	if err != nil {
 		return MutationResult{}, s.discardUnstartedViewLocked(view, fmt.Errorf("verify command view before authorization: %w", err))
+	}
+	if view.readOnlyMounts, err = s.readOnlyMountPathsLocked(view); err != nil {
+		return MutationResult{}, s.discardUnstartedViewLocked(view, err)
 	}
 	argumentDigest, err := commandArgumentsDigest(spec)
 	if err != nil {

@@ -91,7 +91,7 @@ func commandArgsFor(t *testing.T, plan d09DeltaPlan, config D09Config) string {
 	t.Helper()
 	spec := sessionrepo.CommandSpec{Executable: config.CommandExecutable, Args: []string{"-lc", "true"}}
 	return strings.Join(d09CommandCellArgumentsDelta(plan, config, "tbound-pi-cell-cmd-x", "/tmp/cid",
-		"localhost/tbound/pi-cell@sha256:"+strings.Repeat("a", 64), "/proc/123/fd/4", "view-1", "lease-1", 1, 2, spec), " ")
+		"localhost/tbound/pi-cell@sha256:"+strings.Repeat("a", 64), "/proc/123/fd/4", nil, "view-1", "lease-1", 1, 2, spec), " ")
 }
 
 func TestD09CommandCellArgumentsPerDelta(t *testing.T) {
@@ -730,10 +730,50 @@ func TestD09CommandCellsSetUmask0022(t *testing.T) {
 		plan, config := testD09DeltaPlan(t, name)
 		spec := sessionrepo.CommandSpec{Executable: config.CommandExecutable, Args: []string{"-lc", "true"}}
 		image := "localhost/tbound/pi-cell@sha256:" + strings.Repeat("a", 64)
-		args := d09CommandCellArgumentsDelta(plan, config, "tbound-pi-cell-cmd-x", "/tmp/cid", image, "/proc/123/fd/4", "view-1", "lease-1", 1, 2, spec)
+		args := d09CommandCellArgumentsDelta(plan, config, "tbound-pi-cell-cmd-x", "/tmp/cid", image, "/proc/123/fd/4", nil, "view-1", "lease-1", 1, 2, spec)
 		at, imageAt := indexOfString(args, "--umask=0022"), indexOfString(args, image)
 		if at < 0 || imageAt < 0 || at > imageAt {
 			t.Errorf("delta %q: --umask=0022 must be a podman option before the image: %q", name, args)
 		}
 	}
+}
+
+// A product scope's read-only entries are mounted read-only over the writable /work view, as podman
+// options before the image, under every delta. A path podman's --mount parser cannot carry safely is
+// left unmounted. Without entries the vector has only the /work mount.
+func TestD09CommandCellsMountReadOnlyEntriesOverTheView(t *testing.T) {
+	for _, name := range []string{"", D09CellDeltaNetSink, D09CellDeltaNoReap} {
+		plan, config := testD09DeltaPlan(t, name)
+		spec := sessionrepo.CommandSpec{Executable: config.CommandExecutable, Args: []string{"-lc", "true"}}
+		image := "localhost/tbound/pi-cell@sha256:" + strings.Repeat("a", 64)
+		args := d09CommandCellArgumentsDelta(plan, config, "tbound-pi-cell-cmd-x", "/tmp/cid", image, "/views/v1", []string{"README.md", "a,rw", "docs/api", "q\"x"}, "view-1", "lease-1", 1, 2, spec)
+		if mounts := countOfString(args, "--mount"); mounts != 3 {
+			t.Errorf("delta %q: paths with a comma or quote must stay unmounted, got %d mounts: %q", name, mounts, args)
+		}
+		imageAt := indexOfString(args, image)
+		work := indexOfString(args, "type=bind,src=/views/v1,dst=/work,rw,bind-propagation=rprivate")
+		for _, mount := range []string{
+			"type=bind,src=/views/v1/README.md,dst=/work/README.md,ro,bind-propagation=rprivate",
+			"type=bind,src=/views/v1/docs/api,dst=/work/docs/api,ro,bind-propagation=rprivate",
+		} {
+			at := indexOfString(args, mount)
+			if at < 1 || args[at-1] != "--mount" || work < 0 || at < work || at > imageAt {
+				t.Errorf("delta %q: %s must be a --mount after /work and before the image: %q", name, mount, args)
+			}
+		}
+		plain := d09CommandCellArgumentsDelta(plan, config, "tbound-pi-cell-cmd-x", "/tmp/cid", image, "/views/v1", nil, "view-1", "lease-1", 1, 2, spec)
+		if mounts := countOfString(plain, "--mount"); mounts != 1 {
+			t.Errorf("delta %q: without read-only entries the cell has %d mounts, want only /work: %q", name, mounts, plain)
+		}
+	}
+}
+
+func countOfString(values []string, want string) int {
+	count := 0
+	for _, value := range values {
+		if value == want {
+			count++
+		}
+	}
+	return count
 }
