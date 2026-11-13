@@ -30,7 +30,8 @@ import (
 //     waited out before the next attempt (the context ends the wait);
 //   - at most MaxProviderRetries extra attempts per turn, then the existing failure path
 //     (provider_exchange_unknown) applies to the last attempt;
-//   - never after a 200 or any streamed/completion byte, never for other 4xx, never for a
+//   - never after a 200 or any streamed/completion byte (a 200 parallel-call refusal is the separate
+//     decision-13 resample of resample.go, which shares this record and bound), never for other 4xx, never for a
 //     transport error (the request may have been processed), never on the research route
 //     (its monetary spend accounting has its own per-request reservation);
 //   - a crash after the retry record but before the host call is settled in the workflow
