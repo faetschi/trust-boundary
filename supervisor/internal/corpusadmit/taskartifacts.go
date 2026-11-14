@@ -22,17 +22,21 @@ func SolutionArtifactName(digest string) (string, bool) { return artifactName("s
 // readArtifact reads the artifact of digest, named by name, and returns its bytes only if
 // they digest to exactly digest (the SHA-256 of the file).
 func readArtifact(fsys fs.FS, name, digest string) ([]byte, error) {
+	return readArtifactMax(fsys, name, digest, taskaccept.MaxSpecBytes)
+}
+
+func readArtifactMax(fsys fs.FS, name, digest string, limit int) ([]byte, error) {
 	f, err := fsys.Open(name)
 	if err != nil {
 		return nil, fmt.Errorf("artifact %s: %w", name, err)
 	}
 	defer f.Close()
-	raw, err := io.ReadAll(io.LimitReader(f, taskaccept.MaxSpecBytes+1))
+	raw, err := io.ReadAll(io.LimitReader(f, int64(limit)+1))
 	if err != nil {
 		return nil, fmt.Errorf("artifact %s: %w", name, err)
 	}
-	if len(raw) > taskaccept.MaxSpecBytes {
-		return nil, fmt.Errorf("artifact %s: more than %d bytes", name, taskaccept.MaxSpecBytes)
+	if len(raw) > limit {
+		return nil, fmt.Errorf("artifact %s: more than %d bytes", name, limit)
 	}
 	if got := taskaccept.DigestOf(raw); got != digest {
 		return nil, fmt.Errorf("artifact %s digests to %s, not %s", name, got, digest)

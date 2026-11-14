@@ -15,15 +15,19 @@ var (
 	governedTools = []Tool{ToolRead, ToolWrite, ToolEdit, ToolBash}
 )
 
-// Quotas are the registered counts. ThesisQuotas returns the pre-registered values, and
-// tests substitute small counts with the same keys. Every map must have exactly the
-// keys TM-A, TM-B, TM-C (Adversarial and Variance) or read, write, edit, bash (Compliant).
+// Quotas are the registered counts. ThesisQuotasFromDraw and PilotQuotasFromDraw derive them from the pinned
+// D48 draw, PilotQuotas gives the pre-D48 rehearsal counts, and tests substitute small counts with the same keys.
+// Every map must have exactly the keys TM-A, TM-B, TM-C (Adversarial and Variance) or read, write, edit, bash
+// (Compliant).
 type Quotas struct {
 	Adversarial map[ThreatClass]int // adversarial case units per threat class
 	Compliant   map[Tool]int        // compliant tasks per primary governed tool
 	Ambiguous   int                 // ambiguous cases
 	Variance    map[ThreatClass]int // variance-subset members per class (non-cold only)
 	ColdPercent int                 // cold share of each class, in percent (nearest, ties up)
+	// Draw is the D48 draw the manifest pins (pins.draw_digest), nil for a pre-D48 manifest. Its members must be the
+	// manifest's TM-A and TM-B cases; a main draw also fixes their sample parts, cold cases and variance subset.
+	Draw *Draw
 }
 
 // Violation is one failed rule. Rule is a stable code, and Detail names the case or field.
@@ -32,23 +36,7 @@ type Violation struct {
 	Detail string
 }
 
-// ThesisQuotas returns the pre-registered counts of tbound-thesis.md section 7.5: 299
-// adversarial units (TM-A 100, TM-B 100, TM-C 99), 100 compliant tasks (25 per governed
-// tool), 20 ambiguous cases, a 50-member variance subset (17, 17, 16 from the non-cold
-// units), and a 20% cold share per threat class.
-//
-// shortcut: quotas still the pre-D48 fixed counts; stage 2 derives them from the pinned D48 draw before the thesis corpus is admitted
-func ThesisQuotas() Quotas {
-	return Quotas{
-		Adversarial: map[ThreatClass]int{ClassTMA: 100, ClassTMB: 100, ClassTMC: 99},
-		Compliant:   map[Tool]int{ToolRead: 25, ToolWrite: 25, ToolEdit: 25, ToolBash: 25},
-		Ambiguous:   20,
-		Variance:    map[ThreatClass]int{ClassTMA: 17, ClassTMB: 17, ClassTMC: 16},
-		ColdPercent: 20,
-	}
-}
-
-// PilotQuotas returns the explicit counts of a pilot or G4 dry-run corpus: 11 adversarial
+// PilotQuotas returns the explicit counts of a pre-D48 pilot or G4 dry-run corpus: 11 adversarial
 // units (TM-A 7, TM-B 4, TM-C 0), 20 compliant tasks (5 per governed tool), 2 ambiguous
 // cases, a 2-member variance subset (1 each for TM-A and TM-B) and the same 20% cold
 // share. The adversarial units are established benchmark roots only (D37 amendment
@@ -56,6 +44,8 @@ func ThesisQuotas() Quotas {
 // pilot. They are not the pre-registered quotas. Validate applies every structural rule
 // under them, so a pilot corpus is checked as strictly as the thesis corpus except for
 // its counts, and a result obtained from it must never be reported as a thesis result.
+// The rehearsal pilot and the screening carriers use these counts. The research pilot takes its
+// adversarial split from the pilot draw (PilotQuotasFromDraw).
 func PilotQuotas() Quotas {
 	return Quotas{
 		Adversarial: map[ThreatClass]int{ClassTMA: 7, ClassTMB: 4, ClassTMC: 0},
@@ -85,7 +75,8 @@ func PilotQuotas() Quotas {
 //     variance.seed.<class>: the cold and variance partitions, including whether they
 //     reproduce from the frozen seed under Allocate's rules;
 //   - sample.class, sample.derived, sample.provenance, meaning.derived: the D48 sample part and derived record
-//     of each adversarial case (see samplePart and derivedRecord).
+//     of each adversarial case (see samplePart and derivedRecord);
+//   - pins.draw, draw.member.<class>, draw.part, draw.cold, draw.variance: the pinned D48 draw (see drawRules).
 func Validate(m Manifest, q Quotas) []Violation {
 	if err := q.check(); err != nil {
 		return []Violation{{Rule: "quota.invalid", Detail: err.Error()}}
@@ -105,7 +96,10 @@ func Validate(m Manifest, q Quotas) []Violation {
 		v.caseRules(&m.Cases[i])
 	}
 	v.countRules(m, q)
-	v.allocationRules(m, q)
+	v.drawRules(m, q)
+	if q.Draw == nil || q.Draw.Pilot {
+		v.allocationRules(m, q) // a main draw fixes the partitions itself (drawRules)
+	}
 	return v.out
 }
 
@@ -160,6 +154,9 @@ func (v *validator) manifestRules(m Manifest) {
 	v.digest("pins.model_digest", m.Pins.ModelDigest)
 	v.digest("pins.profile_digest", m.Pins.ProfileDigest)
 	v.digest("pins.policy_digest", m.Pins.PolicyDigest)
+	if m.Pins.DrawDigest != "" {
+		v.digest("pins.draw_digest", m.Pins.DrawDigest)
+	}
 	v.pinAttacker(m)
 }
 
@@ -216,6 +213,9 @@ func (v *validator) meaningRecord(label string, mr *MeaningRecord) {
 	case OriginEstablished, OriginDerived:
 	default:
 		v.add("meaning.origin", "%s: case_origin %q is not established or derived", label, mr.CaseOrigin)
+	}
+	if mr.Derived == nil && mr.CaseOrigin == OriginDerived {
+		v.add("meaning.derived", "%s: case_origin derived needs a derived record", label)
 	}
 	if mr.Derived == nil {
 		v.required(label+" meaning_record.benchmark_key", mr.BenchmarkKey)

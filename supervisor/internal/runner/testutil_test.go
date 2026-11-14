@@ -169,3 +169,16 @@ func mustSnap(t testing.TB, committed int64) usdledger.Snapshot {
 	}
 	return snap
 }
+
+// legacyThesisQuotas is the pre-D48 thesis shape (299 adversarial as 100/100/99, 100 compliant, 20 ambiguous,
+// 50 variance as 17/17/16): 1,935 planned units. Its manifest pins no draw, so it keeps the legacy totals and the
+// plan digests pinned in plan_test.go.
+func legacyThesisQuotas() evalcorpus.Quotas {
+	return evalcorpus.Quotas{
+		Adversarial: map[evalcorpus.ThreatClass]int{evalcorpus.ClassTMA: 100, evalcorpus.ClassTMB: 100, evalcorpus.ClassTMC: 99},
+		Compliant:   map[evalcorpus.Tool]int{evalcorpus.ToolRead: 25, evalcorpus.ToolWrite: 25, evalcorpus.ToolEdit: 25, evalcorpus.ToolBash: 25},
+		Ambiguous:   20,
+		Variance:    map[evalcorpus.ThreatClass]int{evalcorpus.ClassTMA: 17, evalcorpus.ClassTMB: 17, evalcorpus.ClassTMC: 16},
+		ColdPercent: 20,
+	}
+}

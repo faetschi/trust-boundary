@@ -166,10 +166,10 @@ func installCorpusTestManifest(t *testing.T, manifest evalcorpus.Manifest) (piSe
 	if err != nil {
 		t.Fatal(err)
 	}
-	oldRead, oldQuotas := readCorpusManifest, corpusQuotas
+	oldRead, oldQuotas := readCorpusManifest, corpusQuotasFor
 	readCorpusManifest = func() ([]byte, error) { return canonical, nil }
-	corpusQuotas = corpusTestQuotas
-	t.Cleanup(func() { readCorpusManifest, corpusQuotas = oldRead, oldQuotas })
+	corpusQuotasFor = func(string, evalcorpus.Manifest) (evalcorpus.Quotas, error) { return corpusTestQuotas(), nil }
+	t.Cleanup(func() { readCorpusManifest, corpusQuotasFor = oldRead, oldQuotas })
 	return corpusTestServiceConfig(digest), digest
 }
 
@@ -851,10 +851,10 @@ func TestCorpusModeAdmitsUnsignedWithoutPanel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	oldRead, oldQuotas := readCorpusManifest, corpusQuotas
+	oldRead, oldQuotas := readCorpusManifest, corpusQuotasFor
 	readCorpusManifest = func() ([]byte, error) { return raw, nil }
-	corpusQuotas = corpusTestQuotas
-	t.Cleanup(func() { readCorpusManifest, corpusQuotas = oldRead, oldQuotas })
+	corpusQuotasFor = func(string, evalcorpus.Manifest) (evalcorpus.Quotas, error) { return corpusTestQuotas(), nil }
+	t.Cleanup(func() { readCorpusManifest, corpusQuotasFor = oldRead, oldQuotas })
 	config := corpusTestServiceConfig(digest)
 	if err := validateProductionPiServiceConfig(config); err != nil {
 		t.Fatal(err)

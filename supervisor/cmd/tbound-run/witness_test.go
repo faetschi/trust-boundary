@@ -4,10 +4,12 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
 
+	"tbound/supervisor/internal/corpusadmit"
 	"tbound/supervisor/internal/evalcorpus"
 	"tbound/supervisor/internal/runner"
 )
@@ -47,29 +49,97 @@ func witnessEnv(t *testing.T) *env {
 	return e
 }
 
-// thesisEnv is the fixture run over a thesis-sized corpus under the thesis quotas.
+// thesisEnv is the fixture run over a thesis-sized D48 corpus under the thesis quotas: the main-draw test vector of
+// internal/evalcorpus/testdata/d48 (299 main and 5 top-up cases), 100 compliant tasks and 2 ambiguous cases, with the
+// draw installed in artifacts_dir.
 func thesisEnv(t *testing.T) *env {
 	t.Helper()
 	e := newEnv(t)
-	e.manifest = fixtureManifestFor(t, "run-cli-thesis-seed", evalcorpus.ThesisQuotas())
-	raw, err := evalcorpus.CanonicalJSON(e.manifest)
+	raw, err := os.ReadFile(filepath.Join("..", "..", "internal", "evalcorpus", "testdata", "d48", "draw-output.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	e.file("corpus.json", string(raw))
+	d, err := evalcorpus.ParseDraw(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := map[evalcorpus.ThreatClass][]string{}
+	parts := map[string]evalcorpus.SamplePart{}
+	for _, class := range []evalcorpus.ThreatClass{evalcorpus.ClassTMA, evalcorpus.ClassTMB} {
+		for _, id := range d.Members[class] {
+			ids[class], parts[id] = append(ids[class], id), evalcorpus.SampleMain
+		}
+		for _, id := range d.Topup[class] {
+			ids[class], parts[id] = append(ids[class], id), evalcorpus.SampleTopup
+		}
+	}
+	m := fixtureManifestFor(t, "run-cli-thesis-seed", evalcorpus.Quotas{
+		Adversarial: map[evalcorpus.ThreatClass]int{evalcorpus.ClassTMA: len(ids[evalcorpus.ClassTMA]), evalcorpus.ClassTMB: len(ids[evalcorpus.ClassTMB]), evalcorpus.ClassTMC: 0},
+		Compliant:   map[evalcorpus.Tool]int{evalcorpus.ToolRead: 25, evalcorpus.ToolWrite: 25, evalcorpus.ToolEdit: 25, evalcorpus.ToolBash: 25},
+		Ambiguous:   2,
+		Variance:    map[evalcorpus.ThreatClass]int{evalcorpus.ClassTMA: 0, evalcorpus.ClassTMB: 0, evalcorpus.ClassTMC: 0},
+	})
+	m.Pins.DrawDigest = d.Digest
+	next := map[evalcorpus.ThreatClass]int{}
+	for i := range m.Cases {
+		a := m.Cases[i].Adversarial
+		if a == nil {
+			continue
+		}
+		id := ids[a.ThreatClass][next[a.ThreatClass]]
+		next[a.ThreatClass]++
+		a.RootScenarioID, a.SamplePart = id, parts[id]
+		m.Cases[i].MeaningRecord = &evalcorpus.MeaningRecord{CaseOrigin: evalcorpus.OriginEstablished, BenchmarkKey: "bench",
+			BenchmarkRevision: "rev", BenchmarkDigest: fixtureDigest("bench/" + id), SourceItemID: id, RootID: id, License: "MIT",
+			Redistribution: "notice retained", PreservedIntent: "i", TaskUnit: "case", AuthorizationClass: "a",
+			Transformations: []string{"t"}, LostDistinctions: []string{}, ToolMapping: "m", OracleMapping: "o",
+			LabelOrigin: evalcorpus.LabelExternalOracle}
+	}
+	q, err := evalcorpus.ThesisQuotasFromDraw(d, m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m, err = evalcorpus.Allocate(m, q); err != nil {
+		t.Fatal(err)
+	}
+	e.manifest = sealConstructReview(t, m)
+	if v := evalcorpus.Validate(e.manifest, q); len(v) != 0 {
+		t.Fatalf("thesis fixture is invalid: %v", v[:min(len(v), 5)])
+	}
+	canonical, err := evalcorpus.CanonicalJSON(e.manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.file("corpus.json", string(canonical))
+	name, _ := corpusadmit.DrawArtifactName(d.Digest)
+	if err := os.Mkdir(e.path("artifacts"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	e.file(filepath.Join("artifacts", name), string(raw))
 	e.cfg["quota_profile"] = "thesis"
+	e.cfg["artifacts_dir"] = e.path("artifacts")
 	e.write()
 	return e
 }
 
-// The thesis plan is the registered 1,935 units, so a subset of it is refused. A construct-witness run of the same corpus
-// is a subset by design and loads: one static P replay per adversarial case, and no other configuration.
+// The thesis plan is the registered total computed from the final counts (D53 item 4: 304x5 + 100x3 + 2x2 + 50x2), so
+// a subset of it is refused. A construct-witness run of the same corpus is a subset by design and loads: one static P
+// replay per adversarial case, and no other configuration. Without its draw file the thesis corpus is refused.
 func TestThesisWitnessPlanLoadsAndAThesisSubsetDoesNot(t *testing.T) {
 	e := thesisEnv(t)
 	out, err := e.cliCfg(nil, "plan")
-	if err != nil || line(out, "units") != "1935" || line(out, "subset") != "false" {
+	if err != nil || line(out, "units") != strconv.Itoa(304*5+100*3+2*2+50*2) || line(out, "subset") != "false" {
 		t.Fatalf("the ordinary thesis plan: %v\n%s", err, out)
 	}
+	for _, dir := range []string{e.path("no-artifacts"), ""} {
+		e.cfg["artifacts_dir"] = dir
+		e.write()
+		if _, err := e.cliCfg(nil, "plan"); err == nil || !strings.Contains(err.Error(), "draw") {
+			t.Fatalf("artifacts_dir %q: a thesis corpus without its draw file was accepted: %v", dir, err)
+		}
+	}
+	e.cfg["artifacts_dir"] = e.path("artifacts")
+	e.write()
 	id := e.manifest.CaseIDs(evalcorpus.KindAdversarial)[0]
 	e.cfg["only_cases"] = []string{id}
 	e.write()

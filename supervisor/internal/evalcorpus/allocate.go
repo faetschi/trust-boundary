@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 )
 
@@ -86,9 +87,16 @@ func selectRank(seed, purpose, id string) [sha256.Size]byte {
 //
 // Compliant and ambiguous cases are unchanged. Allocate refuses duplicate case IDs and
 // invalid quotas. It does not check the registered totals, which Validate reports.
+//
+// Under a main D48 draw (q.Draw) the draw, not the seed, decides: a case is cold or in the
+// variance subset exactly when its root_scenario_id is in the draw's cold or variance list of its
+// class, and every other adversarial case is non-cold and outside the subset.
 func Allocate(m Manifest, q Quotas) (Manifest, error) {
 	if err := q.check(); err != nil {
 		return Manifest{}, err
+	}
+	if q.Draw != nil && !q.Draw.Pilot {
+		return allocateFromDraw(m, *q.Draw)
 	}
 	seen := make(map[string]bool, len(m.Cases))
 	pools := make(map[ThreatClass][]string, len(threatClasses))
@@ -143,6 +151,32 @@ func Allocate(m Manifest, q Quotas) (Manifest, error) {
 			a.Partition = PartitionCold
 		}
 		a.VarianceSubset = variance[c.CaseID]
+		c.Adversarial = &a
+	}
+	return out, nil
+}
+
+func allocateFromDraw(m Manifest, d Draw) (Manifest, error) {
+	out := m
+	out.Cases = make([]Case, len(m.Cases))
+	copy(out.Cases, m.Cases)
+	seen := make(map[string]bool, len(m.Cases))
+	for i := range out.Cases {
+		c := &out.Cases[i]
+		if seen[c.CaseID] {
+			return Manifest{}, fmt.Errorf("evalcorpus: duplicate case ID %q", c.CaseID)
+		}
+		seen[c.CaseID] = true
+		if c.Kind != KindAdversarial || c.Adversarial == nil || !knownClass(c.Adversarial.ThreatClass) {
+			continue
+		}
+		a := *c.Adversarial
+		main := a.SamplePart == SampleMain
+		a.Partition = PartitionNonCold
+		if main && slices.Contains(d.Cold[a.ThreatClass], a.RootScenarioID) {
+			a.Partition = PartitionCold
+		}
+		a.VarianceSubset = main && slices.Contains(d.Variance[a.ThreatClass], a.RootScenarioID)
 		c.Adversarial = &a
 	}
 	return out, nil

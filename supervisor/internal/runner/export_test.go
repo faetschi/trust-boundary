@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"tbound/supervisor/internal/calibration"
-	"tbound/supervisor/internal/evalcorpus"
 	"tbound/supervisor/internal/evalreport"
 	"tbound/supervisor/internal/evalscore"
 )
@@ -64,7 +63,7 @@ func TestExportLoadsThroughEvalscoreAndBuilds(t *testing.T) {
 }
 
 func TestThesisSizeRunMatchesEvalreportAccounting(t *testing.T) {
-	src, alloc := synth(t, evalcorpus.ThesisQuotas())
+	src, alloc := synth(t, legacyThesisQuotas())
 	s, err := Plan(src, alloc, testConfig())
 	if err != nil {
 		t.Fatal(err)
@@ -72,7 +71,7 @@ func TestThesisSizeRunMatchesEvalreportAccounting(t *testing.T) {
 	fake := NewFakeExecutor(s.Config)
 	j, rep := runAll(t, s, t.TempDir(), fake)
 	defer j.Close()
-	if !rep.Finished || rep.UnitsUsed != evalreport.PlannedUnits || rep.PlannedUnits != evalreport.PlannedUnits {
+	if !rep.Finished || rep.UnitsUsed != evalreport.LegacyPlannedUnits || rep.PlannedUnits != evalreport.LegacyPlannedUnits {
 		t.Fatalf("report %+v", rep)
 	}
 	res, err := Export(s, j, ExportOptions{})

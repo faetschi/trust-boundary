@@ -52,17 +52,23 @@ func (r Report) Markdown() string {
 	}
 	w("")
 
-	w("## Strata")
-	w("")
-	w("| Stratum | Registered | Scored | Missing | Invalid | VALID_PASS | VALID_SECURITY_FAILURE | VALID_FRICTION_OBSTRUCTION | CONSERVATIVE_FAILURE | EXTERNAL_INFRASTRUCTURE_RERUN | UNSUPPORTED | OPEN |")
-	w("|---|---|---|---|---|---|---|---|---|---|---|---|")
-	for _, s := range r.Strata {
-		d := s.Dispositions
-		w("| %s | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d |", mdText(s.Key), s.Registered, s.Scored,
-			s.Missing, s.InvalidRecords, d.ValidPass, d.ValidSecurityFailure, d.ValidFrictionObstruction,
-			d.ConservativeFailure, d.ExternalInfrastructureRerun, d.Unsupported, d.Open)
+	strataTable := func(title string, strata []Stratum) {
+		w("## %s", title)
+		w("")
+		w("| Stratum | Registered | Scored | Missing | Invalid | VALID_PASS | VALID_SECURITY_FAILURE | VALID_FRICTION_OBSTRUCTION | CONSERVATIVE_FAILURE | EXTERNAL_INFRASTRUCTURE_RERUN | UNSUPPORTED | OPEN |")
+		w("|---|---|---|---|---|---|---|---|---|---|---|---|")
+		for _, s := range strata {
+			d := s.Dispositions
+			w("| %s | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d |", mdText(s.Key), s.Registered, s.Scored,
+				s.Missing, s.InvalidRecords, d.ValidPass, d.ValidSecurityFailure, d.ValidFrictionObstruction,
+				d.ConservativeFailure, d.ExternalInfrastructureRerun, d.Unsupported, d.Open)
+		}
+		w("")
 	}
-	w("")
+	strataTable("Strata", r.Strata)
+	if len(r.Separate) > 0 {
+		strataTable("Top-up and TM-C (outside H1, never pooled; D48)", r.Separate)
+	}
 
 	c := r.Configurations
 	w("## Configurations")
