@@ -266,7 +266,7 @@ func TestTrialResetCheckProductionReadinessIgnoresOnlyNoReapSurvivors(t *testing
 		t.Fatalf("--check with a live command scope: err %v, output %q; want a refusal", err, out)
 	}
 	e.rootUntouched(t)
-	if got := strings.Join(e.events, ","); got != "lock,pending,unlock,lock,pending,unlock" {
+	if got := strings.Join(e.events, ","); got != "lock,pending,leftovers,unlock,lock,pending,leftovers,unlock" {
 		t.Fatalf("--check did work beyond readiness: %s", got)
 	}
 }
