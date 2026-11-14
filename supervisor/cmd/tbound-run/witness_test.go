@@ -131,10 +131,12 @@ func TestThesisWitnessPlanLoadsAndAThesisSubsetDoesNot(t *testing.T) {
 	if err != nil || line(out, "units") != strconv.Itoa(304*5+100*3+2*2+50*2) || line(out, "subset") != "false" {
 		t.Fatalf("the ordinary thesis plan: %v\n%s", err, out)
 	}
-	e.cfg["artifacts_dir"] = e.path("no-artifacts")
-	e.write()
-	if _, err := e.cliCfg(nil, "plan"); err == nil || !strings.Contains(err.Error(), "draw") {
-		t.Fatalf("a thesis corpus without its draw file was accepted: %v", err)
+	for _, dir := range []string{e.path("no-artifacts"), ""} {
+		e.cfg["artifacts_dir"] = dir
+		e.write()
+		if _, err := e.cliCfg(nil, "plan"); err == nil || !strings.Contains(err.Error(), "draw") {
+			t.Fatalf("artifacts_dir %q: a thesis corpus without its draw file was accepted: %v", dir, err)
+		}
 	}
 	e.cfg["artifacts_dir"] = e.path("artifacts")
 	e.write()

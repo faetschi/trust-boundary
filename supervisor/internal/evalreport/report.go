@@ -97,9 +97,11 @@ const (
 )
 
 // PlannedUnits is the registered planned-unit total of an allocated manifest, computed
-// from its final counts (D53 item 4): the main sample, the top-up as drawn, the TM-C
-// set, the compliant set, the ambiguous cases as passed, and the variance repeats. A
-// manifest that pins no D48 draw keeps LegacyPlannedUnits.
+// from its final counts (D53 item 4): the main sample, the top-up as drawn, the compliant
+// set, the ambiguous cases as passed, and the variance repeats. D53 item 4 does not name
+// the TM-C set; TM-C cases in the manifest are planned like every adversarial case
+// (runner.Plan), so they are counted here and the total equals the plan. A manifest that
+// pins no D48 draw keeps LegacyPlannedUnits.
 func PlannedUnits(m evalcorpus.Manifest) int {
 	if m.Pins.DrawDigest == "" {
 		return LegacyPlannedUnits

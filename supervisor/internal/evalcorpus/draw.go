@@ -29,6 +29,10 @@ const (
 	MainSampleSize = 299
 	VarianceSize   = 50
 
+	// LedgerV3CandidatesTMA and TMB are ledger v3's candidates per stratum (D51 item 26), the weights of the pilot split.
+	LedgerV3CandidatesTMA = 979
+	LedgerV3CandidatesTMB = 286
+
 	// MaxDrawBytes bounds a draw output: it lists every examined candidate of the 1,265 in ledger v3.
 	MaxDrawBytes = 16 << 20
 )
@@ -171,38 +175,57 @@ func (d Draw) check() error {
 	if err := ids("top-up", d.Topup); err != nil {
 		return err
 	}
-	total := len(d.Members[ClassTMA]) + len(d.Members[ClassTMB])
 	if d.Pilot {
-		if total != PilotPlaces {
-			return fmt.Errorf("draw output: %d pilot places, registered %d", total, PilotPlaces)
+		// 16-sampling-design.md section 5 step 0 over the uncapped ledger-v3 candidates (D51 item 26).
+		if a, b := largestRemainder(PilotPlaces, LedgerV3CandidatesTMA, LedgerV3CandidatesTMB); len(d.Members[ClassTMA]) != a || len(d.Members[ClassTMB]) != b {
+			return fmt.Errorf("draw output: pilot places TM-A %d, TM-B %d; ledger v3 gives %d and %d", len(d.Members[ClassTMA]), len(d.Members[ClassTMB]), a, b)
 		}
 		return nil
 	}
-	if total != MainSampleSize {
+	if total := len(d.Members[ClassTMA]) + len(d.Members[ClassTMB]); total != MainSampleSize {
 		return fmt.Errorf("draw output: a main sample of %d, registered %d", total, MainSampleSize)
 	}
-	variance := 0
+	nonCold := map[ThreatClass]int{}
 	for _, class := range drawStrata {
 		main, cold := d.Members[class], d.Cold[class]
 		if len(cold) != ColdCount(20, len(main)) {
 			return fmt.Errorf("draw output: %d cold %s cases; floor(0.20*%d+0.5) is %d", len(cold), class, len(main), ColdCount(20, len(main)))
 		}
-		for _, id := range cold {
-			if !slices.Contains(main, id) {
-				return fmt.Errorf("draw output: cold case %q is not in the %s main sample", id, class)
+		for i, id := range cold {
+			if !slices.Contains(main, id) || slices.Contains(cold[:i], id) {
+				return fmt.Errorf("draw output: cold case %q is not a distinct %s main case", id, class)
 			}
 		}
-		for _, id := range d.Variance[class] {
-			if !slices.Contains(main, id) || slices.Contains(cold, id) {
-				return fmt.Errorf("draw output: variance case %q is not a non-cold %s main case", id, class)
+		for i, id := range d.Variance[class] {
+			if !slices.Contains(main, id) || slices.Contains(cold, id) || slices.Contains(d.Variance[class][:i], id) {
+				return fmt.Errorf("draw output: variance case %q is not a distinct non-cold %s main case", id, class)
 			}
 		}
-		variance += len(d.Variance[class])
+		nonCold[class] = len(main) - len(cold)
 	}
-	if variance != VarianceSize {
-		return fmt.Errorf("draw output: a variance subset of %d, registered %d", variance, VarianceSize)
+	// Section 5 step 6: 50 places in proportion to the non-cold main cases, by largest remainder.
+	if a, b := largestRemainder(VarianceSize, nonCold[ClassTMA], nonCold[ClassTMB]); len(d.Variance[ClassTMA]) != a || len(d.Variance[ClassTMB]) != b {
+		return fmt.Errorf("draw output: variance places TM-A %d, TM-B %d; the registered split is %d and %d", len(d.Variance[ClassTMA]), len(d.Variance[ClassTMB]), a, b)
 	}
 	return nil
+}
+
+// largestRemainder is select.py's split of total in proportion to two weights: the floors, then a leftover place
+// to the larger remainder, a tie to TM-B.
+func largestRemainder(total, a, b int) (int, int) {
+	if a+b == 0 {
+		return 0, 0
+	}
+	na, ra := total*a/(a+b), total*a%(a+b)
+	nb, rb := total*b/(a+b), total*b%(a+b)
+	if na+nb < total {
+		if ra > rb {
+			na++
+		} else {
+			nb++
+		}
+	}
+	return na, nb
 }
 
 // PilotQuotasFromDraw returns the research pilot's quotas: PilotQuotas with the adversarial split of the pilot

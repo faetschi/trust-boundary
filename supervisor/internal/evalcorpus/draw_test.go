@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 )
 
@@ -262,5 +263,56 @@ func TestDerivedOriginWithoutADerivedRecordIsRefused(t *testing.T) {
 		if v.Rule == "meaning.derived" && !bytes.Contains([]byte(v.Detail), []byte(fmt.Sprintf("%q", derivedCaseID))) {
 			t.Errorf("meaning.derived names another case: %s", v.Detail)
 		}
+	}
+}
+
+// The main draw's cold and variance lists are sets inside the main sample, and the variance places follow the
+// registered split (16-sampling-design.md section 5 step 6); a draw that breaks either is refused.
+func TestMainDrawWithBrokenPartitionsIsRefused(t *testing.T) {
+	d := parsedDraw(t, "draw-output.json")
+	if a, b := largestRemainder(VarianceSize, len(d.Members[ClassTMA])-len(d.Cold[ClassTMA]), len(d.Members[ClassTMB])-len(d.Cold[ClassTMB])); a != len(d.Variance[ClassTMA]) || b != len(d.Variance[ClassTMB]) {
+		t.Fatalf("variance split %d/%d, fixture %d/%d", a, b, len(d.Variance[ClassTMA]), len(d.Variance[ClassTMB]))
+	}
+	if a, b := largestRemainder(PilotPlaces, LedgerV3CandidatesTMA, LedgerV3CandidatesTMB); a != 9 || b != 2 {
+		t.Fatalf("ledger-v3 pilot split %d/%d, want 9/2", a, b)
+	}
+	clone := func(m map[ThreatClass][]string) map[ThreatClass][]string {
+		out := map[ThreatClass][]string{}
+		for k, v := range m {
+			out[k] = append([]string(nil), v...)
+		}
+		return out
+	}
+	for name, edit := range map[string]func(d *Draw){
+		"repeated cold id": func(d *Draw) { d.Cold[ClassTMA][1] = d.Cold[ClassTMA][0] },
+		"repeated variance id": func(d *Draw) {
+			d.Variance[ClassTMA][1] = d.Variance[ClassTMA][0]
+		},
+		"variance split moved": func(d *Draw) {
+			for _, id := range d.Members[ClassTMA] {
+				if !slices.Contains(d.Cold[ClassTMA], id) && !slices.Contains(d.Variance[ClassTMA], id) {
+					d.Variance[ClassTMA] = append(d.Variance[ClassTMA], id)
+					d.Variance[ClassTMB] = d.Variance[ClassTMB][1:]
+					return
+				}
+			}
+		},
+	} {
+		bad := d
+		bad.Cold, bad.Variance = clone(d.Cold), clone(d.Variance)
+		edit(&bad)
+		if err := bad.check(); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+	if err := d.check(); err != nil {
+		t.Fatalf("the fixture itself: %v", err)
+	}
+	pilot := parsedDraw(t, "pilot-output.json")
+	pilot.Members = clone(pilot.Members)
+	pilot.Members[ClassTMA] = append(pilot.Members[ClassTMA], pilot.Members[ClassTMB][0])
+	pilot.Members[ClassTMB] = pilot.Members[ClassTMB][1:]
+	if err := pilot.check(); err == nil {
+		t.Error("a 10/1 pilot split was accepted")
 	}
 }

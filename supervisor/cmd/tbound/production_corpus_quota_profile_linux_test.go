@@ -283,3 +283,21 @@ func TestCorpusResearchPilotIsAdmittedFromThePinnedDraw(t *testing.T) {
 		t.Fatalf("a missing draw file was accepted: %v", err)
 	}
 }
+
+// On the research route a pilot corpus is the research pilot: without a pinned pilot draw it is refused, and with one
+// it is admitted.
+func TestCorpusResearchRoutePilotNeedsThePilotDraw(t *testing.T) {
+	research := func(config piServiceConfig) piServiceConfig {
+		config.ProviderRoute, config.AllowPilotOnResearch = piruntime.D09ManagedPiProviderRouteResearch, true
+		return config
+	}
+	rehearsal := research(installCorpusManifestWithRealQuotas(t, corpusTestManifest(t), "pilot"))
+	if _, err := loadProductionCorpus(rehearsal); !errors.Is(err, ErrPiServiceCorpus) || !strings.Contains(err.Error(), "research pilot") {
+		t.Fatalf("a rehearsal-sized pilot without a draw was loaded on the research route: %v", err)
+	}
+	m, raw := researchPilotManifest(t)
+	serveDraw(t, raw)
+	if _, err := loadProductionCorpus(research(installCorpusManifestWithRealQuotas(t, m, "pilot"))); err != nil {
+		t.Fatalf("the research pilot was refused on the research route: %v", err)
+	}
+}

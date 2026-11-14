@@ -205,6 +205,12 @@ func loadProductionCorpus(config piServiceConfig) (*productionCorpus, error) {
 	if profile != piruntime.D09ManagedPiCorpusQuotaProfilePilot && profile != piruntime.D09ManagedPiCorpusQuotaProfileThesis {
 		return nil, fmt.Errorf("%w: unknown corpus quota profile %q", ErrPiServiceCorpus, profile)
 	}
+	// The research pilot's adversarial cases are the random pilot draw (D40 as amended by D48), so a pilot corpus on the
+	// research route must pin it; the rehearsal counts are for the engineering route only.
+	if profile == piruntime.D09ManagedPiCorpusQuotaProfilePilot && config.ProviderRoute == piruntime.D09ManagedPiProviderRouteResearch &&
+		manifest.Pins.DrawDigest == "" {
+		return nil, fmt.Errorf("%w: a pilot corpus on the research route is the research pilot and must pin its D48 pilot draw (pins.draw_digest)", ErrPiServiceCorpus)
+	}
 	quotas, err := corpusQuotasFor(profile, manifest)
 	if err != nil {
 		return nil, fmt.Errorf("%w: the %s quotas: %w", ErrPiServiceCorpus, profile, err)
