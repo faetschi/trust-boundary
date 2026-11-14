@@ -743,24 +743,7 @@ func runComposedProductionPiSession(ctx context.Context, output io.Writer, confi
 		}
 	}
 	if providerTraceErr == nil {
-		for _, record := range providerTrace.Records {
-			if record.Event.Kind == "provider_exchange_retryable_failure" {
-				receipt.ProviderRetries++
-				continue
-			}
-			if record.Event.Kind != "provider_exchange" {
-				continue
-			}
-			var exchange providerExchangeEvidence
-			if err := unmarshalGovernedJSON(record.Event.Data, &exchange); err != nil {
-				publishErr = errors.Join(publishErr, fmt.Errorf("decode production provider lineage: %w", err))
-				continue
-			}
-			receipt.ProviderTurns++
-			if exchange.ToolCall != nil && len(receipt.ToolSequence) < 32 {
-				receipt.ToolSequence = append(receipt.ToolSequence, exchange.ToolCall.Name)
-			}
-		}
+		publishErr = errors.Join(publishErr, applyProviderLineage(&receipt, providerTrace, config.providerRoute.Route()))
 	}
 	if err := applyCorpusReceipt(&receipt, session.Corpus, providerExchange, session.StorePolicyDigest,
 		session.MetadataPolicyDigest, providerTrace, providerTraceErr); err != nil {
