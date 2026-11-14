@@ -689,8 +689,10 @@ func prepareWorkflowVertical(t *testing.T, options workflowVerticalOptions) *wor
 		t.Fatal(err)
 	}
 	taskDigest := digestBytes([]byte("vertical task source identity"))
+	// Two tool turns, their effects, and the provider call that would return the second result: the bridge
+	// captures a tool call only when its effect and that result turn both fit.
 	limits := workflowrecovery.Limits{MaxPreEffectRetries: 2, MaxCleanRestarts: 2,
-		MaxHostCalls: uint64(4 + 2*retries), MaxTokens: uint64(2048 + 1024*retries), Deadline: deadline}
+		MaxHostCalls: uint64(5 + 2*retries), MaxTokens: uint64(2048 + 1024*retries), Deadline: deadline}
 	if options.maxHostCalls != 0 {
 		limits.MaxHostCalls, limits.MaxTokens = options.maxHostCalls, options.maxTokens
 	}

@@ -600,6 +600,11 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 		if !resample && !(retryable && retryableExchange(records)) {
 			break
 		}
+		if c.cfg.HostCallsLeft != nil && c.cfg.HostCallsLeft() == 0 {
+			// The next attempt could not be reserved, and that refusal would leave nothing reserved for
+			// abandon to close: end on this attempt, whose reservation the failure path closes as unknown.
+			break
+		}
 		if resample && spendUnit != "" {
 			// The refused attempt reached the provider and its cost is not established: its full
 			// reservation stays booked before the attempt is closed and the next one reserved.
@@ -700,6 +705,15 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 		persistErr := c.persistFailedExchangeLocked(records, identityErr, hostCallBinding)
 		disposed = exchangeDisposed(persistErr, records, hostCallBinding)
 		return Turn{}, c.failLocked(errors.Join(identityErr, persistErr))
+	}
+	if capturedCall != nil && c.cfg.HostCallsLeft != nil && c.cfg.HostCallsLeft() < 2 {
+		// Journaled like the reasoning-only stop: the host call stays reserved and closed as unknown, which
+		// abandon reconciles. Captured, the call would stay pending behind a refused effect (F26 unit 90),
+		// or its effect would take the last host call and the next exchange could not be reserved.
+		persistErr := c.persistFailedExchangeLocked(records, ErrNoHostCallForToolEffect, hostCallBinding)
+		persistErr = settleAfterJournal(persistErr, captured.Usage())
+		disposed = exchangeDisposed(persistErr, records, hostCallBinding)
+		return Turn{}, c.failLocked(errors.Join(ErrNoHostCallForToolEffect, persistErr))
 	}
 	callArray := []openrouter.PriorToolCall(nil)
 	if projection.ToolCall != nil {
