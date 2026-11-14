@@ -55,6 +55,10 @@ var (
 	ErrSQLiteEngine          = errors.New("workflow recovery requires SQLite with the WAL-reset fix")
 )
 
+// ErrEffectNotReserved marks a ReserveEffect refusal that wrote no checkpoint: the effect has no
+// reservation, so it cannot run, and a captured call it was for stays unconsumed.
+var ErrEffectNotReserved = errors.New("workflow effect was not reserved")
+
 // TranscriptPin is a typed commitment to a single held provider conversation
 // and its protected transcript journal. Ordinal is one-based and entries are
 // kept in workflow order. The current conversation may advance only through
