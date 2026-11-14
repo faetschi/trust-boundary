@@ -1,0 +1,52 @@
+2026-11-13T22:58:04.487660941Z
+tbound-abi8-seed
+4852c78fc660d807
+active
+inactive
+Timezone=Etc/UTC
+LocalRTC=no
+CanNTP=yes
+NTP=yes
+NTPSynchronized=yes
+TimeUSec=Fri 2026-11-13 22:58:04 UTC
+RTCTimeUSec=Fri 2026-11-13 22:58:02 UTC
+       Server: 185.125.190.56 (ntp.ubuntu.com)
+Poll interval: 32s (min: 32s; max 34min 8s)
+         Leap: normal
+      Version: 4
+      Stratum: 2
+    Reference: 1D586304
+    Precision: 1us (-25)
+Root distance: 4.363ms (max: 5s)
+       Offset: +70.675ms
+        Delay: 45.799ms
+       Jitter: 49.160ms
+ Packet count: 30
+    Frequency: +500.000ppm
+2026-11-13T18:28:36.451964Z mono=441003.146424 real-mono=1794153513.305540 kernel hv_utils: Heartbeat IC version 3.0
+2026-11-13T18:28:36.452155Z mono=441003.146615 real-mono=1794153513.305540 kernel hv_utils: Shutdown IC version 3.2
+2026-11-13T18:28:36.452168Z mono=441003.146628 real-mono=1794153513.305540 kernel hv_utils: TimeSync IC version 4.0
+2026-11-13T18:28:36.452682Z mono=441003.147142 real-mono=1794153513.305540 systemd-networkd eth0: Lost carrier
+2026-11-13T22:55:06.388364Z mono=441003.147602 real-mono=1794169503.240762 systemd-networkd eth0: DHCP lease lost
+2026-11-13T22:55:06.388432Z mono=441003.147670 real-mono=1794169503.240762 systemd-networkd eth0: DHCPv6 lease lost
+2026-11-13T22:55:06.388478Z mono=441003.147716 real-mono=1794169503.240762 systemd-resolved Clock change detected. Flushing caches.
+2026-11-13T22:55:06.388814Z mono=441003.148052 real-mono=1794169503.240762 kernel random: crng reseeded due to virtual machine fork
+2026-11-13T22:55:07.826827Z mono=441004.586066 real-mono=1794169503.240761 kernel hv_balloon: Max. dynamic memory size: 16384 MB
+2026-11-13T22:55:08.420244Z mono=441005.179482 real-mono=1794169503.240762 systemd-networkd eth0: Gained carrier
+2026-11-13T22:55:08.420577Z mono=441005.179815 real-mono=1794169503.240762 systemd-networkd eth0: found matching network '/run/systemd/network/10-netplan-eth0.network', based on potentially unpredictable interfac
+2026-11-13T22:55:08.424232Z mono=441005.183470 real-mono=1794169503.240762 systemd-timesyncd Network configuration changed, trying to establish connection.
+2026-11-13T22:55:08.440928Z mono=441005.200166 real-mono=1794169503.240762 systemd-networkd eth0: DHCPv4 address 172.31.19.28/20, gateway 172.31.16.1 acquired from 172.31.16.1
+2026-11-13T22:55:08.441445Z mono=441005.200683 real-mono=1794169503.240762 systemd-timesyncd Network configuration changed, trying to establish connection.
+2026-11-13T22:55:08.456670Z mono=441005.215909 real-mono=1794169503.240761 systemd-resolved Using degraded feature set UDP instead of UDP+EDNS0 for DNS server 172.31.16.1.
+2026-11-13T22:55:08.506183Z mono=441005.265421 real-mono=1794169503.240762 systemd-timesyncd Contacted time server 185.125.190.58:123 (ntp.ubuntu.com).
+2026-11-13T22:55:12.516787Z mono=441009.276026 real-mono=1794169503.240761 systemd-networkd eth0: Lost carrier
+2026-11-13T22:55:12.517159Z mono=441009.276397 real-mono=1794169503.240762 systemd-networkd eth0: DHCP lease lost
+2026-11-13T22:55:12.517216Z mono=441009.276454 real-mono=1794169503.240762 systemd-networkd eth0: DHCPv6 lease lost
+2026-11-13T22:55:12.525432Z mono=441009.284671 real-mono=1794169503.240761 systemd-timesyncd No network connectivity, watching for changes.
+2026-11-13T22:55:14.564241Z mono=441011.323479 real-mono=1794169503.240762 systemd-networkd eth0: Gained carrier
+2026-11-13T22:55:14.564614Z mono=441011.323852 real-mono=1794169503.240762 systemd-networkd eth0: found matching network '/run/systemd/network/10-netplan-eth0.network', based on potentially unpredictable interfac
+2026-11-13T22:55:14.568219Z mono=441011.327457 real-mono=1794169503.240762 systemd-timesyncd Network configuration changed, trying to establish connection.
+2026-11-13T22:55:14.579915Z mono=441011.339153 real-mono=1794169503.240762 systemd-networkd eth0: DHCPv4 address 172.31.19.28/20, gateway 172.31.16.1 acquired from 172.31.16.1
+2026-11-13T22:55:14.580354Z mono=441011.339592 real-mono=1794169503.240762 systemd-timesyncd Network configuration changed, trying to establish connection.
+2026-11-13T22:55:14.612360Z mono=441011.371599 real-mono=1794169503.240761 systemd-timesyncd Contacted time server 185.125.190.58:123 (ntp.ubuntu.com).
+2026-11-13T22:55:44.760859Z mono=441041.520097 real-mono=1794169503.240762 systemd-timesyncd Contacted time server 185.125.190.56:123 (ntp.ubuntu.com).
