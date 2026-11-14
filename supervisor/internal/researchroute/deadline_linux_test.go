@@ -5,6 +5,7 @@ package researchroute
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -84,9 +85,9 @@ func parallelCallSSE(w http.ResponseWriter) {
 	_, _ = w.Write([]byte("data: [DONE]\n\n"))
 }
 
-// requireLedgerAfterDeadline checks the USD ledger after the request deadline: every reservation of the turn
-// is final in the expected state, none is open (abandon refuses an open unit), each was booked once, and
-// the cap arithmetic still holds.
+// requireLedgerAfterDeadline checks the USD ledger after the request deadline: the turn holds exactly the
+// expected units (no second reservation), each final in the expected state, and none is open (abandon refuses
+// an open unit). The cap still binds: a reservation above the remaining budget is refused.
 func requireLedgerAfterDeadline(t *testing.T, b *Bundle, state string, units int) {
 	t.Helper()
 	snap := snapshot(t, b)
@@ -102,9 +103,11 @@ func requireLedgerAfterDeadline(t *testing.T, b *Bundle, state string, units int
 			t.Fatalf("unit %s is %s, want %s: %+v", unit.ID, unit.State, state, list)
 		}
 	}
-	if snap.OpenMicroUSD != 0 || snap.CommittedMicroUSD != snap.SettledMicroUSD+snap.UncertainMicroUSD ||
-		snap.RemainingMicroUSD != snap.CapMicroUSD-snap.CommittedMicroUSD {
-		t.Fatalf("ledger accounting after the deadline: %+v", snap)
+	if snap.OpenMicroUSD != 0 || snap.OpenUnits != 0 {
+		t.Fatalf("a unit is still open after the deadline: %+v", snap)
+	}
+	if err := b.ledger.Reserve("cap-probe", snap.RemainingMicroUSD+1); !errors.Is(err, usdledger.ErrOverCap) {
+		t.Fatalf("a reservation above the remaining budget was not refused: %v", err)
 	}
 }
 

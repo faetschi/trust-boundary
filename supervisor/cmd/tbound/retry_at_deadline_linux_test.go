@@ -148,6 +148,17 @@ func TestReconcileOwnerAcceptsAnIdleAwaitedExchangeOnly(t *testing.T) {
 				ConversationID: "conversation-1", HostCallID: g1HostCallID, ToolCallID: "call-held", OutcomeDigest: strings.Repeat("7", 64),
 				RecoveryGeneration: 1, OwnerEpoch: 1, Disposition: workflowrecovery.CapturedCallAvailable}
 		})}, false},
+		"captured call retired after a DENY": {[]func(*ownerFixture){idle, pinned(func(pins *workflowrecovery.Pins) {
+			pins.PendingCallDisposition = workflowrecovery.PendingCallRetired
+			pins.HostCallReservation.CapturedCall = &workflowrecovery.CapturedCallPin{WorkflowID: reconcileTestWorkflow,
+				ConversationID: "conversation-1", HostCallID: g1HostCallID, ToolCallID: "call-denied", OutcomeDigest: strings.Repeat("7", 64),
+				RecoveryGeneration: 1, OwnerEpoch: 1, Disposition: workflowrecovery.CapturedCallRetired, RetirementDigest: strings.Repeat("9", 64)}
+		})}, true},
+		"captured call retired, pending call not": {[]func(*ownerFixture){idle, pinned(func(pins *workflowrecovery.Pins) {
+			pins.HostCallReservation.CapturedCall = &workflowrecovery.CapturedCallPin{WorkflowID: reconcileTestWorkflow,
+				ConversationID: "conversation-1", HostCallID: g1HostCallID, ToolCallID: "call-denied", OutcomeDigest: strings.Repeat("7", 64),
+				RecoveryGeneration: 1, OwnerEpoch: 1, Disposition: workflowrecovery.CapturedCallRetired, RetirementDigest: strings.Repeat("9", 64)}
+		})}, false},
 		"effect still reserved": {[]func(*ownerFixture){idle, pinned(func(pins *workflowrecovery.Pins) {
 			pins.EffectReservation = &workflowrecovery.EffectReservationPin{Disposition: workflowrecovery.EffectReservationReserved,
 				Binding: workflowrecovery.EffectBinding{OperationID: "sessionrepo-effect-1", SpecDigest: strings.Repeat("8", 64)}}

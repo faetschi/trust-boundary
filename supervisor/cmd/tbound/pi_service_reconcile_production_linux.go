@@ -446,13 +446,21 @@ func commandNeverStartedClosesCall(checkpoint workflowrecovery.Checkpoint, trace
 }
 
 // providerExchangeIdle reports whether the pins await the conversation's next provider exchange with none
-// reserved: no host call, or the last one settled without a captured call. ReserveHostCall commits a
-// reservation before the request is journaled or dispatched, so no provider request is outstanding. A request
-// stopped between turns, or after a settled retryable attempt, ends here.
+// reserved: no host call, or the last one settled with no captured call left open (none, or one retired with
+// its pending call after a DENY or a verified no-effect refusal). ReserveHostCall commits a reservation before
+// the request is journaled or dispatched, so no provider request is outstanding. A request stopped between
+// turns, or after a settled retryable attempt, ends here.
 func providerExchangeIdle(pins workflowrecovery.Pins) bool {
 	call := pins.HostCallReservation
-	return pins.ProviderDisposition == workflowrecovery.DispositionAwaitingProviderExchange &&
-		(call == nil || call.Disposition == workflowrecovery.HostCallTerminal && call.CapturedCall == nil)
+	if pins.ProviderDisposition != workflowrecovery.DispositionAwaitingProviderExchange {
+		return false
+	}
+	if call == nil {
+		return true
+	}
+	return call.Disposition == workflowrecovery.HostCallTerminal && (call.CapturedCall == nil ||
+		call.CapturedCall.Disposition == workflowrecovery.CapturedCallRetired &&
+			pins.PendingCallDisposition == workflowrecovery.PendingCallRetired)
 }
 
 // capturedCallNeverReserved reports whether the pins hold the conversation's one captured call unconsumed
