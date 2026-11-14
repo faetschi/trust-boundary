@@ -1,0 +1,12 @@
+Nov 14 14:24:39 tbound-abi8-seed tbound[508866]: request tbr-6b2681f818fcb5a8b71ec64ab2e473a1 outcome unknown: governed production channels failed before the turn ended: executor failed; result withheld: provider conversation is closed
+Nov 14 14:24:39 tbound-abi8-seed tbound[508866]: durable provider tool result could not be recorded; result withheld
+Nov 14 14:24:39 tbound-abi8-seed tbound[508866]: trusted executor failed; provider result withheld: durable bash: operation was denied by the trusted policy authorizer: durably reserve workflow effect allowance before operation authorization: workflow recovery allowance is exhausted; workflow paused
+Nov 14 14:24:39 tbound-abi8-seed tbound[508866]: join canceled governed production loops: executor failed; result withheld: provider conversation is closed
+Nov 14 14:24:39 tbound-abi8-seed tbound[508866]: durable provider tool result could not be recorded; result withheld
+Nov 14 14:24:39 tbound-abi8-seed tbound[508866]: trusted executor failed; provider result withheld: durable bash: operation was denied by the trusted policy authorizer: durably reserve workflow effect allowance before operation authorization: workflow recovery allowance is exhausted; workflow paused
+Nov 14 14:24:39 tbound-abi8-seed tbound[508866]: close composed production session: production worker or command lifecycle is not proven settled
+Nov 14 14:24:39 tbound-abi8-seed tbound[508866]: production worker or command lifecycle is not proven settled
+Nov 14 14:24:47 tbound-abi8-seed systemd[1]: Stopping tbound-pi.service - TBound managed Pi service (socket-activated, one fixed workflow)...
+Nov 14 14:24:47 tbound-abi8-seed systemd[1]: tbound-pi.service: Deactivated successfully.
+Nov 14 14:24:47 tbound-abi8-seed systemd[1]: Stopped tbound-pi.service - TBound managed Pi service (socket-activated, one fixed workflow).
+Nov 14 14:24:47 tbound-abi8-seed systemd[1]: tbound-pi.service: Consumed 34min 40.227s CPU time.
