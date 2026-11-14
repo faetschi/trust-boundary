@@ -67,3 +67,13 @@ func TestReceiptUsageSumsSettledExchangesOfTheProviderAudit(t *testing.T) {
 		t.Fatalf("receipt usage = %+v, want in %d out %d retries 1 turns 3", wire, 832+1100, 40+60)
 	}
 }
+
+func TestReceiptUsageRefusesUnreadableTokenCounts(t *testing.T) {
+	for _, usage := range []string{`{"prompt_tokens":-1,"completion_tokens":4}`, `{"prompt_tokens":3}`, `{"prompt_tokens":3.5,"completion_tokens":4}`} {
+		trace := audit.Trace{Records: []audit.Record{usageRecord(t, 1, "provider_exchange", usageSSE(usage))}}
+		var receipt productionPiReceipt
+		if err := applyProviderLineage(&receipt, trace, openrouter.Route{}); err == nil || receipt.InTokens != 0 {
+			t.Fatalf("usage %s: err = %v, in_tokens = %d; want a lineage error and no tokens", usage, err, receipt.InTokens)
+		}
+	}
+}

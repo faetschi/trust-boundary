@@ -141,10 +141,10 @@ func TestGovernedCCompletedReceiptIsMapped(t *testing.T) {
 func TestGovernedCOptionalTokensAndCostAreCopiedWhenPresent(t *testing.T) {
 	f := newGovernedFixture(t)
 	r := f.receipt(true)
-	r["in_tokens"], r["out_tokens"], r["cost_micro_usd"] = 120, 30, 4500
+	r["in_tokens"], r["out_tokens"], r["cost_micro_usd"], r["provider_retries"] = 120, 30, 4500, 2
 	f.respond("completed", "", r, 0)
 	o, err := f.g.Execute(context.Background(), f.step)
-	if err != nil || o.Metrics.InTokens != 120 || o.Metrics.OutTokens != 30 || o.Metrics.CostMicroUSD != 4500 {
+	if err != nil || o.Metrics.InTokens != 120 || o.Metrics.OutTokens != 30 || o.Metrics.CostMicroUSD != 4500 || o.Metrics.Retries != 2 {
 		t.Fatalf("metrics = %+v, %v", o.Metrics, err)
 	}
 }

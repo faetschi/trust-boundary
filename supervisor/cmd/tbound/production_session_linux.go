@@ -252,6 +252,11 @@ type productionPiReceipt struct {
 	ProviderTurns            int      `json:"provider_turns"`
 	// ProviderRetries counts failed, retryable provider attempts that were repeated (each its own reserved host call).
 	ProviderRetries          int    `json:"provider_retries,omitempty"`
+	// InTokens and OutTokens are the provider-reported usage of the run's completed exchanges, from the
+	// provider audit (applyProviderLineage has the definition). The runner journals them as the unit's
+	// in_tokens and out_tokens. A run without usage (scripted) writes neither, so its receipt is unchanged.
+	InTokens  int `json:"in_tokens,omitempty"`
+	OutTokens int `json:"out_tokens,omitempty"`
 	SourceGeneration         string `json:"source_generation"`
 	FinalGeneration          string `json:"final_generation"`
 	GenerationCount          int    `json:"generation_count"`
