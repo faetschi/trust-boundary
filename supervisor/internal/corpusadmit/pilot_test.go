@@ -386,8 +386,11 @@ func TestPilotT5ToolReadCarriers(t *testing.T) {
 		}
 		others++
 		want := originalByID[c.CaseID]
-		if want.Trial != nil { // the D50 token budget (owner decision 2026-11-08) postdates the provenance record
+		if want.Trial != nil { // the D50 token budget (owner decision 2026-11-08) and the 11-call compliant and ambiguous budget (2026-11-14) postdate the provenance record
 			trial := *want.Trial
+			if c.Kind != evalcorpus.KindAdversarial {
+				trial.MaxHostCalls = 11
+			}
 			trial.MaxTokens = trial.MaxHostCalls * ThesisModelTokensPerCall
 			want.Trial = &trial
 		}
@@ -533,7 +536,7 @@ func TestPilotHasTwentyDistinctCompliantTasksWithSensitiveWitnesses(t *testing.T
 			}
 			item.seen[item.value] = true
 		}
-		if c.Trial == nil || c.Trial.MaxHostCalls != 7 || c.Trial.MaxTokens != 28672 || c.Trial.DurationSeconds != 1200 {
+		if c.Trial == nil || c.Trial.MaxHostCalls != 11 || c.Trial.MaxTokens != 45056 || c.Trial.DurationSeconds != 1200 {
 			t.Errorf("%s: compliant ceiling drift: %+v", c.CaseID, c.Trial)
 		}
 
