@@ -67,6 +67,10 @@ class Fail(Exception):
         self.code, self.reason = code, reason
 
 
+class ToolLimit(Exception):
+    """The tool cannot handle this input shape. It is a gap of the tool, never a rule outcome: no decision comes from it."""
+
+
 class CandidateRefused(Exception):
     """D51 item 13: the adaptation procedure is not applied to a candidate row before the pilot draw."""
 
@@ -316,15 +320,84 @@ def _scalar_defaults(text):
     return out
 
 
-def _environment_scalars(text, vector):
-    """Every double-quoted one-line scalar of environment.yaml that holds `{vector}`."""
+_YAML_ESC = {"n": "\n", "t": "\t", "r": "\r", "0": "\0", "\\": "\\", '"': '"', "/": "/", " ": " ", "a": "\a", "b": "\b",
+             "e": "\x1b", "f": "\f", "v": "\v"}
+
+
+def _yaml_dq(raw):
+    """Body of a YAML double-quoted scalar. A raw tab stays; `\\xNN`, `\\uNNNN` and `\\UNNNNNNNN` are decoded."""
+    def esc(m):
+        c = m.group(1)
+        if c in _YAML_ESC:
+            return _YAML_ESC[c]
+        if c[0] in "xuU":
+            return chr(int(c[1:], 16))
+        raise ToolLimit(f"unsupported YAML escape \\{c}")
+    return re.sub(r"\\(x[0-9a-fA-F]{2}|u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8}|.)", esc, raw)
+
+
+def _indent(line):
+    return len(line) - len(line.lstrip(" "))
+
+
+def _block_scalar(lines, i):
+    """The `|` block scalar that holds line i, or None. Clip chomping (`|`), strip (`|-`) and keep (`|+`) are read."""
+    me = _indent(lines[i])
+    k = i - 1
+    while k >= 0 and (not lines[k].strip() or _indent(lines[k]) >= me):
+        k -= 1
+    head = re.search(r":\s*\|([-+]?)\s*$", lines[k]) if k >= 0 else None
+    if not head:
+        return None
+    base, body, j = _indent(lines[k]), [], k + 1
+    while j < len(lines) and (not lines[j].strip() or _indent(lines[j]) > base):
+        body.append(lines[j])
+        j += 1
+    first = next(b for b in body if b.strip())
+    width = _indent(first)
+    text = [b[width:] if b.strip() else "" for b in body]
+    chomp = head.group(1)
+    if chomp != "+":
+        while text and not text[-1]:
+            text.pop()
+    return "\n".join(text) + ("" if chomp == "-" else "\n")
+
+
+def environment_texts(files, data):
+    """environment.yaml and, transitively, the `!include` files, all from the digest-checked `files`."""
+    texts, queue = [], [data + "environment.yaml"]
+    seen = set()
+    while queue:
+        path = queue.pop(0)
+        if path in seen:
+            continue
+        seen.add(path)
+        if path not in files:
+            raise Fail("F-SOURCE", f"{path} is needed (!include) and the digest file does not list it")
+        text = files[path].decode("utf-8")
+        texts.append(text)
+        base = path.rsplit("/", 1)[0] + "/"
+        for rel in re.findall(r"!include\s+(\S+)", text):
+            queue.append(os.path.normpath(base + rel).replace("\\", "/"))
+    return texts
+
+
+def _environment_scalars(texts, vector):
+    """Every scalar of the environment texts that holds `{vector}`: one-line double-quoted, or a `|` block."""
     found = []
-    for line in text.splitlines():
-        if "{" + vector + "}" in line:
+    for text in texts:
+        lines = text.splitlines()
+        for i, line in enumerate(lines):
+            if "{" + vector + "}" not in line:
+                continue
             m = re.match(r'^\s*(?:- |"?[^"\n]+"?:\s*|[\w.-]+:\s*)"((?:[^"\\]|\\.)*)"\s*$', line)
-            if not m:
-                raise Fail("F-SOURCE", f"environment scalar of {vector} is not a one-line double-quoted string")
-            found.append(json.loads('"' + m.group(1) + '"'))
+            if m:
+                found.append(_yaml_dq(m.group(1)))
+                continue
+            block = _block_scalar(lines, i)
+            if block is None:
+                raise ToolLimit(f"environment scalar of {vector} is neither a one-line double-quoted string nor a | block")
+            found.append(block)
     return found
 
 
@@ -337,9 +410,7 @@ def _parse_agentdojo(row, files):
     ienv, _ = _class_info(injs, it)
     if uenv is None or ienv is None or "PROMPT" not in uenv or "GOAL" not in ienv:
         raise Fail("F-SOURCE", f"{ut} PROMPT or {it} GOAL not found in the pinned files")
-    env_text = files[data + "environment.yaml"].decode("utf-8")
-    if "!include" in env_text:
-        raise Fail("F-SOURCE", f"{suite} environment.yaml uses !include; the included files are not listed in the digest file (step 1)")
+    env_text = environment_texts(files, data)
     vectors_file = open(VECTORS_PATH, "rb").read()
     vectors = json.loads(vectors_file)["suites"][suite]["user_task_" + ut[len("UserTask"):]]
     return {"suite": suite, "user_task": uenv["PROMPT"], "goal": ienv["GOAL"], "ground_truth_tools": calls,

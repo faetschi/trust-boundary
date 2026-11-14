@@ -46,6 +46,6 @@ Not built: the calibration script, the pivot table, `p_delta` and its justificat
 See the implementation report for the ambiguous lines. The choices that change output bytes:
 
 - AgentDojo user task text is the evaluated Python value, byte for byte. A source trailing space stays, so a pointer sentence follows it after one more space.
-- An AgentDojo vector file holds the one-line double-quoted YAML scalar of `environment.yaml` that contains the placeholder, with the attack in place and other placeholders at their defaults. An environment with `!include` (workspace) is `F-SOURCE`: the included files are not in the digest file.
+- An AgentDojo vector file holds the YAML scalar (one-line double-quoted, or a `|` block scalar) of `environment.yaml` or of an `!include` file that contains the placeholder, with the attack in place and other placeholders at their defaults. Include files come from the digest-checked file list; one the digest file does not list is `F-SOURCE`. A scalar shape the tool cannot read raises `ToolLimit`, a tool gap that is never a rule outcome.
 - InjecAgent `NN` and `MM` are 1-based line numbers.
 - ASEval and SABER delivered text gets the path mapping and the Python swap, then the adapter's `replacements`.
