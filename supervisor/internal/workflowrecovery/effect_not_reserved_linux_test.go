@@ -12,7 +12,8 @@ import (
 )
 
 // A ReserveEffect refusal that wrote no checkpoint is typed ErrEffectNotReserved: the workflow deadline
-// passed between the capture and the effect, and the durable checkpoint keeps no reservation.
+// passed between the capture and the effect, and the durable checkpoint keeps no reservation. While
+// another effect is still open the same refusal stays untyped.
 func TestReserveEffectDeadlineRefusalIsTypedNotReserved(t *testing.T) {
 	ctx := context.Background()
 	workflow := "effect-not-reserved-deadline"
@@ -47,9 +48,31 @@ func TestReserveEffectDeadlineRefusalIsTypedNotReserved(t *testing.T) {
 		t.Fatal(err)
 	}
 	settleInitialTranscript(t, ledger)
-	_, beforeDigest := ledger.Snapshot()
+	open, err := ledger.ReserveEffect(ctx, testEffectBinding("operation-open"), nil)
+	if err != nil {
+		t.Fatalf("reserve the first effect before the deadline: %v", err)
+	}
 
 	bootTimeNS += int64(time.Hour + time.Second)
+	if _, err := ledger.ReserveEffect(ctx, testEffectBinding("operation-beside-open"), nil); !errors.Is(err, ErrDeadline) ||
+		errors.Is(err, ErrEffectNotReserved) {
+		t.Fatalf("ReserveEffect after the deadline with an effect open = %v, want ErrDeadline untyped", err)
+	}
+	reserved, _ := ledger.Snapshot()
+	terminal := clonePins(reserved.Pins)
+	terminal.EffectReservation.Disposition = EffectReservationTerminal
+	terminal.EffectReservation.OutcomeDigest = testDigest("not-reserved Store outcome")
+	terminal.StoreJournalCount++
+	terminal.StoreJournalHead = testDigest("not-reserved Store journal head")
+	terminal.StoreTipGenerationID = "g1-not-reserved"
+	terminal.StoreTipTreeDigest = testDigest("not-reserved Store tip tree")
+	terminal.AdmissionJournalCount++
+	terminal.AdmissionJournalHead = testDigest("not-reserved admission head")
+	if _, err := ledger.RecordTerminalEffectOutcome(ctx, open, acceptBoundTerminalEffect{}, terminal); err != nil {
+		t.Fatalf("settle the first effect after the deadline: %v", err)
+	}
+	_, beforeDigest := ledger.Snapshot()
+
 	_, err = ledger.ReserveEffect(ctx, testEffectBinding("operation-after-deadline"), nil)
 	if !errors.Is(err, ErrDeadline) || !errors.Is(err, ErrEffectNotReserved) {
 		t.Fatalf("ReserveEffect after the deadline = %v, want ErrDeadline typed ErrEffectNotReserved", err)
@@ -60,7 +83,8 @@ func TestReserveEffectDeadlineRefusalIsTypedNotReserved(t *testing.T) {
 	after, afterDigest := ledger.Snapshot()
 	durable, durableDigest, _, loadErr := owner.LoadCheckpoint(ctx, workflow)
 	if loadErr != nil || afterDigest != beforeDigest || durableDigest != beforeDigest ||
-		after.Pins.EffectReservation != nil || durable.Pins.EffectReservation != nil {
+		after.Pins.EffectReservation.Binding.OperationID != "operation-open" ||
+		durable.Pins.EffectReservation.Binding.OperationID != "operation-open" {
 		t.Fatalf("the refused reservation changed the checkpoint: digest %s -> %s (durable %s) err=%v", beforeDigest, afterDigest, durableDigest, loadErr)
 	}
 }

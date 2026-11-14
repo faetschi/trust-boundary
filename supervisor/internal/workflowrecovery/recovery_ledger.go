@@ -289,13 +289,23 @@ func (l *Ledger) HostCallsLeft() uint64 {
 // irreversible governed effect. It charges no provider tokens and has no
 // refund path if the effect callback or process later fails.
 func (l *Ledger) ReserveEffect(ctx context.Context, binding EffectBinding, verifier CapturedOperationVerifier) (Receipt, error) {
-	// Every refusal before the commit writes nothing, so it is typed ErrEffectNotReserved.
-	refuse := func(err error) (Receipt, error) { return Receipt{}, fmt.Errorf("%w: %w", ErrEffectNotReserved, err) }
 	if l == nil || ctx == nil || !validEffectBinding(binding) {
-		return refuse(fmt.Errorf("%w: invalid effect reservation", ErrInvalid))
+		return Receipt{}, fmt.Errorf("%w: invalid effect reservation", ErrInvalid)
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	// A refusal before the commit writes nothing. Only a deadline, clock or allowance refusal of an
+	// intact ledger with no other effect open is typed ErrEffectNotReserved; anything else keeps the
+	// captured call unsettleable.
+	refuse := func(err error) (Receipt, error) {
+		effect := l.checkpoint.Pins.EffectReservation
+		if (effect == nil || effect.Disposition == EffectReservationTerminal || effect.Disposition == EffectReservationRetired) &&
+			(errors.Is(err, ErrDeadline) || errors.Is(err, ErrClockUncertain) || errors.Is(err, ErrExhausted)) &&
+			!errors.Is(err, ErrCAS) && !errors.Is(err, ErrRollback) {
+			err = fmt.Errorf("%w: %w", ErrEffectNotReserved, err)
+		}
+		return Receipt{}, err
+	}
 	if err := l.checkDeadline(ctx); err != nil {
 		return refuse(err)
 	}
@@ -303,10 +313,10 @@ func (l *Ledger) ReserveEffect(ctx context.Context, binding EffectBinding, verif
 		return refuse(err)
 	}
 	if len(l.checkpoint.Pins.ProviderTranscripts) == 0 {
-		return refuse(ErrObservation)
+		return Receipt{}, ErrObservation
 	}
 	if err := l.requireCurrentIncarnation(); err != nil {
-		return refuse(ErrRestartRequired)
+		return Receipt{}, ErrRestartRequired
 	}
 	if l.checkpoint.Counters.HostCalls >= l.checkpoint.Limits.MaxHostCalls {
 		return refuse(ErrExhausted)
@@ -316,7 +326,7 @@ func (l *Ledger) ReserveEffect(ctx context.Context, binding EffectBinding, verif
 	if next.Pins.EffectReservation != nil &&
 		next.Pins.EffectReservation.Disposition != EffectReservationTerminal &&
 		next.Pins.EffectReservation.Disposition != EffectReservationRetired {
-		return refuse(ErrPendingUnknown)
+		return Receipt{}, ErrPendingUnknown
 	}
 	if next.Pins.ProviderDisposition == DispositionAwaitingGateDecision {
 		captured := next.Pins.HostCallReservation.CapturedCall

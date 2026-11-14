@@ -558,8 +558,8 @@ func TestD14EffectRefusalLeavesHeadUnchangedAndRetryAdmitted(t *testing.T) {
 	}
 	pagesBefore := readSQLitePageGeometry(t, low.db).PageCount
 	receipt, refused := lowLedger.ReserveEffect(ctx, fixture.binding, exactCapturedOperationVerifier{expected: fixture.binding})
-	if !errors.Is(refused, ErrExhausted) || errors.Is(refused, ErrCAS) {
-		t.Fatalf("reservation below the threshold = %v, want typed ErrExhausted without ErrCAS", refused)
+	if !errors.Is(refused, ErrExhausted) || errors.Is(refused, ErrCAS) || !errors.Is(refused, ErrEffectNotReserved) {
+		t.Fatalf("reservation below the threshold = %v, want typed ErrExhausted without ErrCAS, typed not reserved", refused)
 	}
 	d14PCRequireUnchangedHead(t, fixture, lowLedger, low, receipt)
 	if pagesAfter := readSQLitePageGeometry(t, low.db).PageCount; pagesAfter != pagesBefore {
