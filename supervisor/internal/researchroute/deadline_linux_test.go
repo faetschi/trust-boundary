@@ -87,7 +87,7 @@ func parallelCallSSE(w http.ResponseWriter) {
 
 // requireLedgerAfterDeadline checks the USD ledger after the request deadline: the turn holds exactly the
 // expected units (no second reservation), each final in the expected state, and none is open (abandon refuses
-// an open unit). The cap still binds: a reservation above the remaining budget is refused.
+// an open unit). The cap still binds: a reservation above the remaining budget is refused (ErrCapExceeded).
 func requireLedgerAfterDeadline(t *testing.T, b *Bundle, state string, units int) {
 	t.Helper()
 	snap := snapshot(t, b)
@@ -106,7 +106,7 @@ func requireLedgerAfterDeadline(t *testing.T, b *Bundle, state string, units int
 	if snap.OpenMicroUSD != 0 || snap.OpenUnits != 0 {
 		t.Fatalf("a unit is still open after the deadline: %+v", snap)
 	}
-	if err := b.ledger.Reserve("cap-probe", snap.RemainingMicroUSD+1); !errors.Is(err, usdledger.ErrOverCap) {
+	if err := b.ledger.Reserve("cap-probe", snap.RemainingMicroUSD+1); !errors.Is(err, usdledger.ErrCapExceeded) {
 		t.Fatalf("a reservation above the remaining budget was not refused: %v", err)
 	}
 }
