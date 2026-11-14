@@ -354,8 +354,8 @@ func TestFindingRerunHeadroomDefaultAndCeiling(t *testing.T) {
 	if small.Digest == max.Digest {
 		t.Fatal("the plan digest does not bind the rerun headroom")
 	}
-	if MaxRerunHeadroom != 97 || MaxRerunHeadroom < evalreport.PlannedUnits*5/100 {
-		t.Fatalf("MaxRerunHeadroom %d, want the owner's 97", MaxRerunHeadroom)
+	if RerunHeadroomFor(evalreport.LegacyPlannedUnits) != 97 {
+		t.Fatalf("RerunHeadroomFor(1935) %d, want the owner's 97", RerunHeadroomFor(evalreport.LegacyPlannedUnits))
 	}
 
 	// The off switch is explicit, idempotent under normalize and bound into the digest.
@@ -365,7 +365,7 @@ func TestFindingRerunHeadroomDefaultAndCeiling(t *testing.T) {
 	if err != nil || so.Config.RerunHeadroom != 0 || !so.Config.NoRerunHeadroom || so.Digest == max.Digest {
 		t.Fatalf("off: %+v %v", so.Config, err)
 	}
-	again, err := so.Config.normalize()
+	again, err := so.Config.normalize(evalreport.LegacyPlannedUnits)
 	if err != nil || again.RerunHeadroom != 0 || !again.NoRerunHeadroom {
 		t.Fatalf("normalize is not idempotent: %+v %v", again, err)
 	}

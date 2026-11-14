@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"slices"
 	"strings"
@@ -25,24 +26,23 @@ type plan struct {
 	attributions attributionSet
 }
 
-func quotasFor(profile string) (evalcorpus.Quotas, error) {
-	switch profile {
-	case quotaThesis:
-		return evalcorpus.ThesisQuotas(), nil
-	case quotaPilot:
-		return evalcorpus.PilotQuotas(), nil
+// quotasFor returns the quotas of a profile for m, from the D48 draw it pins in the artifact directory
+// (corpusadmit.QuotasFor), as the corpus-mode service resolves them.
+func quotasFor(profile string, m evalcorpus.Manifest, artifactsDir string) (evalcorpus.Quotas, error) {
+	if profile != quotaThesis && profile != quotaPilot {
+		return evalcorpus.Quotas{}, fmt.Errorf("unknown quota profile %q", profile)
 	}
-	return evalcorpus.Quotas{}, fmt.Errorf("unknown quota profile %q", profile)
+	var artifacts fs.FS
+	if artifactsDir != "" {
+		artifacts = os.DirFS(artifactsDir)
+	}
+	return corpusadmit.QuotasFor(profile, m, artifacts)
 }
 
 // loadPlan admits the corpus the way the corpus-mode service and `tbound-profile
 // preregistration-record` do (strict loader, evalcorpus.Validate under the quotas,
 // corpusadmit.CheckTrials), allocates it from its own split seed and plans it.
 func loadPlan(cfg runConfig) (plan, error) {
-	quotas, err := quotasFor(cfg.QuotaProfile)
-	if err != nil {
-		return plan{}, err
-	}
 	f, err := os.Open(cfg.Manifest)
 	if err != nil {
 		return plan{}, fmt.Errorf("corpus manifest: %w", err)
@@ -56,6 +56,10 @@ func loadPlan(cfg runConfig) (plan, error) {
 		return plan{}, fmt.Errorf("corpus manifest refused: %w", err)
 	}
 	digest, err := evalcorpus.Digest(manifest)
+	if err != nil {
+		return plan{}, fmt.Errorf("corpus manifest refused: %w", err)
+	}
+	quotas, err := quotasFor(cfg.QuotaProfile, manifest, cfg.Artifacts)
 	if err != nil {
 		return plan{}, fmt.Errorf("corpus manifest refused: %w", err)
 	}
@@ -88,10 +92,12 @@ func loadPlan(cfg runConfig) (plan, error) {
 	if err != nil {
 		return plan{}, fmt.Errorf("runner plan: %w", err)
 	}
-	// A construct-witness run is a subset by design and is the only thesis plan that may be one (D41).
-	if cfg.CDH == nil && cfg.QuotaProfile == quotaThesis && cfg.Purpose != runner.PurposeConstructWitness && (sched.Subset || sched.Units() != evalreport.PlannedUnits) {
+	// A construct-witness run is a subset by design and is the only thesis plan that may be one (D41). The registered
+	// total is computed from the final counts (D53 item 4).
+	if planned := evalreport.PlannedUnits(allocation); cfg.CDH == nil && cfg.QuotaProfile == quotaThesis && cfg.Purpose != runner.PurposeConstructWitness &&
+		(sched.Subset || sched.Units() != planned) {
 		return plan{}, fmt.Errorf("a thesis plan must be the registered %d units without a subset; it has %d (subset %t)",
-			evalreport.PlannedUnits, sched.Units(), sched.Subset)
+			planned, sched.Units(), sched.Subset)
 	}
 	if cfg.VImageDigest == "" && slices.ContainsFunc(sched.Steps, func(s runner.Step) bool { return s.Configuration == runner.CfgV }) {
 		return plan{}, errors.New("config: v_image_digest is required: the plan has Configuration V steps, and a V outcome is E01-verified only against the pinned cell image")

@@ -12,7 +12,7 @@ import (
 
 func thesisSchedule(t testing.TB) Schedule {
 	t.Helper()
-	src, alloc := synth(t, evalcorpus.ThesisQuotas())
+	src, alloc := synth(t, legacyThesisQuotas())
 	s, err := Plan(src, alloc, testConfig())
 	if err != nil {
 		t.Fatalf("Plan: %v", err)
@@ -22,11 +22,11 @@ func thesisSchedule(t testing.TB) Schedule {
 
 func TestPlanThesisUnitCounts(t *testing.T) {
 	s := thesisSchedule(t)
-	if evalreport.PlannedUnits != 1935 {
-		t.Fatalf("evalreport.PlannedUnits = %d, want 1935", evalreport.PlannedUnits)
+	if evalreport.LegacyPlannedUnits != 1935 {
+		t.Fatalf("evalreport.LegacyPlannedUnits = %d, want 1935", evalreport.LegacyPlannedUnits)
 	}
-	if got := len(s.Steps); got != evalreport.PlannedUnits {
-		t.Fatalf("units = %d, want %d", got, evalreport.PlannedUnits)
+	if got := len(s.Steps); got != evalreport.LegacyPlannedUnits {
+		t.Fatalf("units = %d, want %d", got, evalreport.LegacyPlannedUnits)
 	}
 	byRole := map[Role]int{}
 	byCfg := map[Configuration]int{}
@@ -77,9 +77,9 @@ func TestPlanDeterministic(t *testing.T) {
 		}
 	}
 	// A different seed changes the order, hence the digest.
-	src, alloc := synth(t, evalcorpus.ThesisQuotas())
+	src, alloc := synth(t, legacyThesisQuotas())
 	src.SplitSeed, alloc.SplitSeed = "other", "other"
-	alloc, err := evalcorpus.Allocate(src, evalcorpus.ThesisQuotas())
+	alloc, err := evalcorpus.Allocate(src, legacyThesisQuotas())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +93,7 @@ func TestPlanDeterministic(t *testing.T) {
 	// A protocol knob is part of the digest.
 	cfg := testConfig()
 	cfg.NET02Mandatory = true
-	src, alloc = synth(t, evalcorpus.ThesisQuotas())
+	src, alloc = synth(t, legacyThesisQuotas())
 	d, err := Plan(src, alloc, cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -255,7 +255,7 @@ func TestNormalPlanDigestsAreUnchanged(t *testing.T) {
 // A construct-witness plan holds exactly one static P replay per adversarial case of the admitted manifest, and nothing
 // else: no trajectory, adaptive replay, compliant or ambiguous run, or variance repeat.
 func TestConstructWitnessPlansOneStaticPPerAdversarialCase(t *testing.T) {
-	src, alloc := synth(t, evalcorpus.ThesisQuotas())
+	src, alloc := synth(t, legacyThesisQuotas())
 	cfg := testConfig()
 	cfg.Purpose = PurposeConstructWitness
 	s, err := Plan(src, alloc, cfg)
@@ -316,5 +316,33 @@ func TestConstructWitnessRefusals(t *testing.T) {
 		if _, err := Plan(src, alloc, cfg); err == nil {
 			t.Errorf("%s: Plan succeeded", name)
 		}
+	}
+}
+
+// A manifest that pins a D48 draw plans its own computed total (D53 item 4): the unit cap and the rerun headroom
+// follow from the final counts, and a cap above that total is refused.
+func TestD48PlanUnitTotalIsComputedFromTheFinalCounts(t *testing.T) {
+	src, alloc := synth(t, smallQuotas())
+	for _, m := range []*evalcorpus.Manifest{&src, &alloc} {
+		m.Pins.DrawDigest = digestOf("draw")
+	}
+	cfg := testConfig()
+	s, err := Plan(src, alloc, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// smallQuotas: 11 adversarial, 8 compliant, 2 ambiguous, 3 variance cases.
+	want := 11*5 + 8*3 + 2*2 + 3*2
+	if s.Units() != want || s.PlannedUnits != want || evalreport.PlannedUnits(alloc) != want ||
+		s.Config.UnitCap != want || s.Config.RerunHeadroom != RerunHeadroomFor(want) || RerunHeadroomFor(want) != 5 {
+		t.Fatalf("units %d, planned %d, cap %d, headroom %d; want %d, headroom 5", s.Units(), s.PlannedUnits, s.Config.UnitCap, s.Config.RerunHeadroom, want)
+	}
+	cfg.UnitCap = want + 1
+	if _, err := Plan(src, alloc, cfg); err == nil {
+		t.Fatal("a unit cap above the computed total was accepted")
+	}
+	cfg.UnitCap, cfg.RerunHeadroom = 0, RerunHeadroomFor(want)+1
+	if _, err := Plan(src, alloc, cfg); err == nil {
+		t.Fatal("a headroom above 5% of the computed total was accepted")
 	}
 }

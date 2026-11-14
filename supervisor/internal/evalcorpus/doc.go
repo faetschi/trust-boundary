@@ -5,7 +5,7 @@
 //
 // The package checks the structure, counts, quotas, uniqueness, digest formats, and
 // seeded partitions of a manifest that the caller supplies. It contains no registered
-// corpus content. The registered quotas are returned by ThesisQuotas. Tests use small
+// corpus content. The registered quotas come from the pinned D48 draw (ThesisQuotasFromDraw). Tests use small
 // synthetic counts and synthetic identifiers.
 //
 // Synthetic fixtures in the tests exercise the parser, the rules, and the allocation

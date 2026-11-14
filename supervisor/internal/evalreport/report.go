@@ -37,9 +37,15 @@
 //     whose ID is an ambiguous case is unregistered.
 //   - Strata are the adversarial threat class by cold partition, and the
 //     compliant primary tool.
-//   - Spend is checked against the registered US$5 cap and the 1,935 planned
-//     units. Permitted external reruns may exceed 1,935 units, so exceeding it
-//     is flagged but does not by itself make WithinBudget false.
+//   - Spend is checked against the registered US$5 cap and the planned units of
+//     the manifest (PlannedUnits). Permitted external reruns may exceed them, so
+//     exceeding them is flagged but does not by itself make WithinBudget false.
+//
+// No pooling (D48): top-up and TM-C cases (sample_part topup and tmc) never enter
+// the H1 figures. Build scores them on their own and reports them in Separate,
+// one stratum per sample part, threat class and partition; every H1 field,
+// coverage and the strata are computed over the other cases. A manifest without
+// such cases gives the same report, and the same digest, as before.
 //   - The ledger snapshot may show committed spend above the cap (a recorded
 //     overage), so RemainingMicroUSD may be negative; every other money and
 //     unit field must be non-negative.
@@ -73,11 +79,47 @@ const (
 	TrialsDigestDomain = "tbound-eval-trials/v1"
 	LedgerDigestDomain = "tbound-eval-ledger/v1"
 
-	// RegisteredCapMicroUSD is the research cap (US$5) and PlannedUnits the planned
-	// execution-unit ledger (tbound-thesis.md section 7.5, "Planned execution ledger").
+	// RegisteredCapMicroUSD is the research cap (US$5).
 	RegisteredCapMicroUSD int64 = 5_000_000
-	PlannedUnits                = 1935
+
+	// LegacyPlannedUnits is the pre-D48 planned execution-unit ledger (tbound-thesis.md
+	// section 7.5): 299x5 + 100x3 + 20x2 + 50x2. D53 item 4 withdrew it; it stays the
+	// total of a manifest that pins no D48 draw, so those plans and reports keep their digests.
+	LegacyPlannedUnits = 1935
+
+	// The planned units of one case, as runner.Plan schedules them: an adversarial case
+	// runs the C trajectory and the static and adaptive P/C replays, a compliant task B, C
+	// and V, an ambiguous case B and C, and a variance case two more C repeats.
+	AdversarialUnits = 5
+	CompliantUnits   = 3
+	AmbiguousUnits   = 2
+	VarianceUnits    = 2
 )
+
+// PlannedUnits is the registered planned-unit total of an allocated manifest, computed
+// from its final counts (D53 item 4): the main sample, the top-up as drawn, the TM-C
+// set, the compliant set, the ambiguous cases as passed, and the variance repeats. A
+// manifest that pins no D48 draw keeps LegacyPlannedUnits.
+func PlannedUnits(m evalcorpus.Manifest) int {
+	if m.Pins.DrawDigest == "" {
+		return LegacyPlannedUnits
+	}
+	units := 0
+	for _, c := range m.Cases {
+		switch c.Kind {
+		case evalcorpus.KindAdversarial:
+			units += AdversarialUnits
+			if c.Adversarial != nil && c.Adversarial.VarianceSubset {
+				units += VarianceUnits
+			}
+		case evalcorpus.KindCompliant:
+			units += CompliantUnits
+		case evalcorpus.KindAmbiguous:
+			units += AmbiguousUnits
+		}
+	}
+	return units
+}
 
 // Inputs are the three artifacts a report binds.
 type Inputs struct {
@@ -175,6 +217,7 @@ type Report struct {
 	Bindings               Bindings                  `json:"bindings"`
 	Coverage               Coverage                  `json:"coverage"`
 	Strata                 []Stratum                 `json:"strata"`
+	Separate               []Stratum                 `json:"separate,omitempty"`
 	Configurations         evalscore.ConfigSummary   `json:"configurations"`
 	PostDenialContinuation PostDenialContinuation    `json:"post_denial_continuation"`
 	Calibration            Calibration               `json:"calibration"`

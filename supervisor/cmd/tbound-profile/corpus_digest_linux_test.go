@@ -342,8 +342,8 @@ func TestCorpusDigestPilotManifestIsRefusedUnderThesisQuotas(t *testing.T) {
 		{"--manifest", path, "--quota-profile", "thesis"},
 	} {
 		out, _, err := runDigest(panel, args...)
-		if err == nil || !strings.Contains(err.Error(), "count.") || out != "" {
-			t.Fatalf("%v: out %q err %v, want a count.* refusal", args, out, err)
+		if err == nil || !strings.Contains(err.Error(), "D48 main draw") || out != "" {
+			t.Fatalf("%v: out %q err %v, want the refusal of a thesis manifest without a pinned draw", args, out, err)
 		}
 	}
 	if _, _, err := runDigest(panel, "--manifest", path, "--quota-profile", "bogus"); err == nil {
@@ -762,5 +762,78 @@ func TestCorpusDigestOptionalSupplementaryDiagnostics(t *testing.T) {
 		if out, _, err := runDigest(panel, "--manifest", path, "--quota-profile", "pilot"); err == nil || out != "" {
 			t.Fatalf("forged unpinned stats accepted: %q %v", out, err)
 		}
+	}
+}
+
+// thesisDrawFixture is a thesis manifest under the main-draw test vector (internal/evalcorpus/testdata/d48): the main
+// sample and the top-up as established TM-A and TM-B cases, 100 compliant tasks and 2 ambiguous cases, the draw pinned.
+// It returns the draw bytes too; writeDraw installs them beside the manifest.
+func thesisDrawFixture(t *testing.T, seed string) (evalcorpus.Manifest, []byte) {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join("..", "..", "internal", "evalcorpus", "testdata", "d48", "draw-output.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := evalcorpus.ParseDraw(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := map[evalcorpus.ThreatClass][]string{}
+	parts := map[string]evalcorpus.SamplePart{}
+	for _, class := range []evalcorpus.ThreatClass{evalcorpus.ClassTMA, evalcorpus.ClassTMB} {
+		for _, id := range d.Members[class] {
+			ids[class], parts[id] = append(ids[class], id), evalcorpus.SampleMain
+		}
+		for _, id := range d.Topup[class] {
+			ids[class], parts[id] = append(ids[class], id), evalcorpus.SampleTopup
+		}
+	}
+	legacy := evalcorpus.Quotas{
+		Adversarial: map[evalcorpus.ThreatClass]int{evalcorpus.ClassTMA: len(ids[evalcorpus.ClassTMA]), evalcorpus.ClassTMB: len(ids[evalcorpus.ClassTMB]), evalcorpus.ClassTMC: 0},
+		Compliant:   map[evalcorpus.Tool]int{evalcorpus.ToolRead: 25, evalcorpus.ToolWrite: 25, evalcorpus.ToolEdit: 25, evalcorpus.ToolBash: 25},
+		Ambiguous:   2,
+		Variance:    map[evalcorpus.ThreatClass]int{evalcorpus.ClassTMA: 0, evalcorpus.ClassTMB: 0, evalcorpus.ClassTMC: 0},
+		ColdPercent: 0,
+	}
+	m := fixtureManifest(t, legacy, seed)
+	m.Pins.DrawDigest = d.Digest
+	next := map[evalcorpus.ThreatClass]int{}
+	for i := range m.Cases {
+		a := m.Cases[i].Adversarial
+		if a == nil {
+			continue
+		}
+		id := ids[a.ThreatClass][next[a.ThreatClass]]
+		next[a.ThreatClass]++
+		a.RootScenarioID, a.SamplePart = id, parts[id]
+		m.Cases[i].MeaningRecord = &evalcorpus.MeaningRecord{CaseOrigin: evalcorpus.OriginEstablished, BenchmarkKey: "bench",
+			BenchmarkRevision: "rev", BenchmarkDigest: fixtureDigest("bench/" + id), SourceItemID: id, RootID: id, License: "MIT",
+			Redistribution: "notice retained", PreservedIntent: "i", TaskUnit: "case", AuthorizationClass: "a",
+			Transformations: []string{"t"}, LostDistinctions: []string{}, ToolMapping: "m", OracleMapping: "o",
+			LabelOrigin: evalcorpus.LabelExternalOracle}
+	}
+	q, err := evalcorpus.ThesisQuotasFromDraw(d, m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m, err = evalcorpus.Allocate(m, q); err != nil {
+		t.Fatal(err)
+	}
+	m = sealConstructReview(t, m)
+	if v := evalcorpus.Validate(m, q); len(v) != 0 {
+		t.Fatalf("thesis draw fixture is invalid: %v", v[:min(len(v), 5)])
+	}
+	return m, raw
+}
+
+// writeDraw installs a draw output as artifacts/draw-<hex>.json under dir, beside a manifest written there.
+func writeDraw(t *testing.T, dir string, raw []byte) {
+	t.Helper()
+	name, _ := corpusadmit.DrawArtifactName(evalcorpus.DrawDigest(raw))
+	if err := os.MkdirAll(filepath.Join(dir, "artifacts"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "artifacts", name), raw, 0o600); err != nil {
+		t.Fatal(err)
 	}
 }

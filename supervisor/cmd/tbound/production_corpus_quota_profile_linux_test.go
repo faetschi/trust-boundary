@@ -6,19 +6,22 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/fstest"
 
 	"tbound/supervisor/internal/audit"
+	"tbound/supervisor/internal/corpusadmit"
 	"tbound/supervisor/internal/evalcorpus"
 	"tbound/supervisor/internal/piruntime"
 )
 
 // installCorpusManifestWithRealQuotas serves manifest through the read seam only. The
-// quota seams stay the real ThesisQuotas and PilotQuotas, so these tests exercise the
-// profile selection itself.
+// quota seam stays the real corpusadmit.QuotasFor, so these tests exercise the profile
+// selection itself.
 func installCorpusManifestWithRealQuotas(t *testing.T, manifest evalcorpus.Manifest, profile string) piServiceConfig {
 	t.Helper()
 	canonical, err := evalcorpus.CanonicalJSON(manifest)
@@ -41,7 +44,7 @@ func TestCorpusPilotManifestLoadsOnlyUnderThePilotProfile(t *testing.T) {
 	manifest := corpusTestManifest(t) // pilot-sized
 	for _, profile := range []string{"", "thesis"} {
 		config := installCorpusManifestWithRealQuotas(t, manifest, profile)
-		if _, err := loadProductionCorpus(config); !errors.Is(err, ErrPiServiceCorpus) || !strings.Contains(err.Error(), "count.") {
+		if _, err := loadProductionCorpus(config); !errors.Is(err, ErrPiServiceCorpus) || !strings.Contains(err.Error(), "D48 main draw") {
 			t.Fatalf("profile %q: a pilot manifest was loaded under the thesis quotas: %v", profile, err)
 		}
 	}
@@ -129,9 +132,9 @@ func TestCorpusQuotaProfileIsPinnedInEntryEnvelopeAndRuntimeDigest(t *testing.T)
 		config := installCorpusManifestWithRealQuotas(t, manifest, profile)
 		if profile == "thesis" {
 			// the registered quotas are the 299-case ones; stand in the small ones for this case only
-			oldQuotas := corpusQuotas
-			corpusQuotas = corpusTestQuotas
-			t.Cleanup(func() { corpusQuotas = oldQuotas })
+			oldQuotas := corpusQuotasFor
+			corpusQuotasFor = func(string, evalcorpus.Manifest) (evalcorpus.Quotas, error) { return corpusTestQuotas(), nil }
+			t.Cleanup(func() { corpusQuotasFor = oldQuotas })
 		}
 		corpus, err := loadProductionCorpus(config)
 		if err != nil {
@@ -202,5 +205,81 @@ func TestRuntimeBindingCoversTheCorpusQuotaProfile(t *testing.T) {
 	encoded, _ := json.Marshal(binding)
 	if strings.Contains(string(encoded), "quota") {
 		t.Fatalf("a single-task runtime binding changed its encoding: %s", encoded)
+	}
+}
+
+// researchPilotManifest turns the rehearsal-sized test manifest (TM-A 7, TM-B 4) into the research pilot of the
+// pilot-draw test vector: TM-A 9, TM-B 2, its roots the drawn ledger cases, the draw pinned and the draw file
+// behind the artifact seam.
+func researchPilotManifest(t *testing.T) (evalcorpus.Manifest, []byte) {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join("..", "..", "internal", "evalcorpus", "testdata", "d48", "pilot-output.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := evalcorpus.ParseDraw(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	q, err := evalcorpus.PilotQuotasFromDraw(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := corpusTestManifest(t)
+	m.Pins.DrawDigest = d.Digest
+	next := map[evalcorpus.ThreatClass]int{}
+	for i := range m.Cases {
+		a := m.Cases[i].Adversarial
+		if a == nil {
+			continue
+		}
+		if a.ThreatClass == evalcorpus.ClassTMB && next[evalcorpus.ClassTMB] == len(d.Members[evalcorpus.ClassTMB]) {
+			a.ThreatClass = evalcorpus.ClassTMA
+		}
+		a.RootScenarioID = d.Members[a.ThreatClass][next[a.ThreatClass]]
+		next[a.ThreatClass]++
+	}
+	m, err = evalcorpus.Allocate(m, q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m = sealConstructReview(t, m)
+	if v := evalcorpus.Validate(m, q); len(v) != 0 {
+		t.Fatalf("research pilot test manifest is invalid: %v", v)
+	}
+	return m, raw
+}
+
+func serveDraw(t *testing.T, raw []byte) {
+	t.Helper()
+	name, _ := corpusadmit.DrawArtifactName(evalcorpus.DrawDigest(raw))
+	old := attackerArtifacts
+	attackerArtifacts = func() fs.FS { return fstest.MapFS{name: &fstest.MapFile{Data: raw}} }
+	t.Cleanup(func() { attackerArtifacts = old })
+}
+
+// The ledger-v3 pilot split (TM-A 9, TM-B 2) was refused at admission while the pilot quotas were the rehearsal's
+// 7 and 4. It is admitted from the pinned draw; a tampered or missing draw file refuses the service.
+func TestCorpusResearchPilotIsAdmittedFromThePinnedDraw(t *testing.T) {
+	m, raw := researchPilotManifest(t)
+	serveDraw(t, raw)
+	corpus, err := loadProductionCorpus(installCorpusManifestWithRealQuotas(t, m, "pilot"))
+	if err != nil || len(corpus.trials) != len(m.Cases) {
+		t.Fatalf("research pilot refused: %v", err)
+	}
+	if _, err := loadProductionCorpus(installCorpusManifestWithRealQuotas(t, m, "thesis")); !errors.Is(err, ErrPiServiceCorpus) {
+		t.Fatalf("a pilot draw stood in for the main draw: %v", err)
+	}
+
+	tampered := append([]byte(nil), raw...)
+	tampered[len(tampered)-2] = ' ' // same name, other bytes
+	name, _ := corpusadmit.DrawArtifactName(m.Pins.DrawDigest)
+	attackerArtifacts = func() fs.FS { return fstest.MapFS{name: &fstest.MapFile{Data: tampered}} }
+	if _, err := loadProductionCorpus(installCorpusManifestWithRealQuotas(t, m, "pilot")); !errors.Is(err, ErrPiServiceCorpus) || !strings.Contains(err.Error(), "digests to") {
+		t.Fatalf("a tampered draw file was used: %v", err)
+	}
+	attackerArtifacts = func() fs.FS { return fstest.MapFS{} }
+	if _, err := loadProductionCorpus(installCorpusManifestWithRealQuotas(t, m, "pilot")); !errors.Is(err, ErrPiServiceCorpus) {
+		t.Fatalf("a missing draw file was accepted: %v", err)
 	}
 }

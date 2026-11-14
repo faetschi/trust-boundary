@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"syscall"
 
@@ -21,17 +22,29 @@ import (
 // maxReportedViolations bounds the violations an error message lists.
 const maxReportedViolations = 5
 
-// quotasFor returns the registered quotas of a corpus quota profile. The profile names are
-// the ones of the service config (piruntime.D09ManagedPiCorpusQuotaProfile*).
-func quotasFor(profile string) (evalcorpus.Quotas, error) {
+// checkProfile refuses a corpus quota profile the service config does not know
+// (piruntime.D09ManagedPiCorpusQuotaProfile*).
+func checkProfile(profile string) error {
 	switch profile {
-	case piruntime.D09ManagedPiCorpusQuotaProfileThesis:
-		return evalcorpus.ThesisQuotas(), nil
-	case piruntime.D09ManagedPiCorpusQuotaProfilePilot:
-		return evalcorpus.PilotQuotas(), nil
+	case piruntime.D09ManagedPiCorpusQuotaProfileThesis, piruntime.D09ManagedPiCorpusQuotaProfilePilot:
+		return nil
 	}
-	return evalcorpus.Quotas{}, fmt.Errorf("unknown quota profile %q: use %q or %q", profile,
+	return fmt.Errorf("unknown quota profile %q: use %q or %q", profile,
 		piruntime.D09ManagedPiCorpusQuotaProfileThesis, piruntime.D09ManagedPiCorpusQuotaProfilePilot)
+}
+
+// quotasFor returns the quotas of a profile for m, from the D48 draw it pins in the artifact
+// directory (corpusadmit.QuotasFor), as the corpus-mode service resolves them.
+func quotasFor(profile string, m evalcorpus.Manifest, artifactsDir string) (evalcorpus.Quotas, error) {
+	if err := checkProfile(profile); err != nil {
+		return evalcorpus.Quotas{}, err
+	}
+	return corpusadmit.QuotasFor(profile, m, os.DirFS(artifactsDir))
+}
+
+// artifactsBeside is the corpus layout's artifact directory: artifacts/ beside the manifest.
+func artifactsBeside(manifestPath string) string {
+	return filepath.Join(filepath.Dir(manifestPath), "artifacts")
 }
 
 // openRegularFile opens path for reading and refuses anything but a regular file.
@@ -56,25 +69,29 @@ func openRegularFile(path string) (*os.File, error) {
 // in the same order and with the same code: the strict loader, the digest,
 // evalcorpus.Validate under the quotas of the profile, and corpusadmit.CheckTrials on every
 // case. It returns the manifest and the digest the service config must pin as
-// corpus_manifest_digest. A nil ceilings skips only the comparison with the host ceilings,
-// which are a property of the service config.
-func admitCorpus(path, profile string, ceilings *corpusadmit.Ceilings) (evalcorpus.Manifest, string, error) {
-	quotas, err := quotasFor(profile)
-	if err != nil {
-		return evalcorpus.Manifest{}, "", err
+// corpus_manifest_digest, and the quotas it was validated under. A nil ceilings skips only the
+// comparison with the host ceilings, which are a property of the service config. The D48
+// draw the manifest pins is read from artifactsDir.
+func admitCorpus(path, profile, artifactsDir string, ceilings *corpusadmit.Ceilings) (evalcorpus.Manifest, string, evalcorpus.Quotas, error) {
+	if err := checkProfile(profile); err != nil {
+		return evalcorpus.Manifest{}, "", evalcorpus.Quotas{}, err
 	}
 	f, err := openRegularFile(path)
 	if err != nil {
-		return evalcorpus.Manifest{}, "", fmt.Errorf("corpus manifest: %w", err)
+		return evalcorpus.Manifest{}, "", evalcorpus.Quotas{}, fmt.Errorf("corpus manifest: %w", err)
 	}
 	defer f.Close()
 	manifest, err := evalcorpus.Load(f)
 	if err != nil {
-		return evalcorpus.Manifest{}, "", fmt.Errorf("corpus manifest refused: %w", err)
+		return evalcorpus.Manifest{}, "", evalcorpus.Quotas{}, fmt.Errorf("corpus manifest refused: %w", err)
 	}
 	digest, err := evalcorpus.Digest(manifest)
 	if err != nil {
-		return evalcorpus.Manifest{}, "", fmt.Errorf("corpus manifest refused: %w", err)
+		return evalcorpus.Manifest{}, "", evalcorpus.Quotas{}, fmt.Errorf("corpus manifest refused: %w", err)
+	}
+	quotas, err := quotasFor(profile, manifest, artifactsDir)
+	if err != nil {
+		return evalcorpus.Manifest{}, "", evalcorpus.Quotas{}, fmt.Errorf("corpus manifest refused: %w", err)
 	}
 	if violations := evalcorpus.Validate(manifest, quotas); len(violations) != 0 {
 		var listed []string
@@ -85,13 +102,13 @@ func admitCorpus(path, profile string, ceilings *corpusadmit.Ceilings) (evalcorp
 			}
 			listed = append(listed, v.Rule+": "+v.Detail)
 		}
-		return evalcorpus.Manifest{}, "", fmt.Errorf("corpus manifest refused: evalcorpus.Validate under the %s quotas: %d violation(s): %s",
+		return evalcorpus.Manifest{}, "", evalcorpus.Quotas{}, fmt.Errorf("corpus manifest refused: evalcorpus.Validate under the %s quotas: %d violation(s): %s",
 			profile, len(violations), strings.Join(listed, "; "))
 	}
 	if err := corpusadmit.CheckTrials(manifest.Cases, ceilings); err != nil {
-		return evalcorpus.Manifest{}, "", fmt.Errorf("corpus manifest refused: %w", err)
+		return evalcorpus.Manifest{}, "", evalcorpus.Quotas{}, fmt.Errorf("corpus manifest refused: %w", err)
 	}
-	return manifest, digest, nil
+	return manifest, digest, quotas, nil
 }
 
 // readPanelFile reads one panel file, a regular file of at most panelaudit.MaxFileBytes.
@@ -153,7 +170,7 @@ func runCorpusDigest(args []string, stdout, stderr io.Writer) error {
 	flags.Uint64Var(&ceilings.MaxHostCalls, "max-host-calls", 0, "service config workflow_max_host_calls (with --max-tokens and --duration-seconds)")
 	flags.Uint64Var(&ceilings.MaxTokens, "max-tokens", 0, "service config workflow_max_tokens")
 	flags.Uint64Var(&ceilings.DurationSeconds, "duration-seconds", 0, "service config workflow_duration_seconds")
-	artifacts := flags.String("artifacts", "", "directory of the artifacts (fixture-<hex>.json; for compliant cases also accept-<hex>.json and solution-<hex>.json); when given, every case's artifacts must verify")
+	artifacts := flags.String("artifacts", "", "directory of the artifacts (fixture-<hex>.json; for compliant cases also accept-<hex>.json and solution-<hex>.json); when given, every case's artifacts must verify. The pinned D48 draw (draw-<hex>.json) is read from it, or from artifacts/ beside the manifest without it")
 	panelReceipt := flags.String("panel-receipt", "", "optional supplementary panel receipt.json; verifies content, receipt and any manifest pins")
 	panelAudit := flags.String("panel-audit", "", "optional supplementary panel audit.json; provide all three panel files together")
 	panelStats := flags.String("panel-stats", "", "optional supplementary panel stats.json; diagnostics do not gate admission")
@@ -176,7 +193,11 @@ func runCorpusDigest(args []string, stdout, stderr io.Writer) error {
 	} else if n != 0 {
 		return errors.New("--max-host-calls, --max-tokens and --duration-seconds are given together or not at all")
 	}
-	manifest, digest, err := admitCorpus(*manifestPath, *profile, checked)
+	artifactsDir := *artifacts
+	if artifactsDir == "" {
+		artifactsDir = artifactsBeside(*manifestPath)
+	}
+	manifest, digest, _, err := admitCorpus(*manifestPath, *profile, artifactsDir, checked)
 	if err != nil {
 		return err
 	}

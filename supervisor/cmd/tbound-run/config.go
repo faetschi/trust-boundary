@@ -48,8 +48,9 @@ type runConfig struct {
 	AdaptiveCaps   calibration.Caps `json:"adaptive_caps"`
 	// Purpose is "construct-witness" for a non-confirmatory witness run; absent is the study's run.
 	Purpose runner.RunPurpose `json:"purpose,omitempty"`
-	// Artifacts is the directory of the corpus artifacts (attacker-<hex>.json among them). A manifest that pins an
-	// attacker artifact needs it: the adaptive caps are then those of the artifact (runner.AdaptiveCapsFor).
+	// Artifacts is the directory of the corpus artifacts (attacker-<hex>.json and draw-<hex>.json among them). A manifest
+	// that pins an attacker artifact needs it: the adaptive caps are then those of the artifact (runner.AdaptiveCapsFor).
+	// A manifest that pins a D48 draw needs it too: the quotas come from that draw (corpusadmit.QuotasFor).
 	Artifacts string   `json:"artifacts_dir"`
 	OnlyCases []string `json:"only_cases"`
 	// Pins are the receipt identity values E01 is verified against, and the admin key pin of the route evidence.

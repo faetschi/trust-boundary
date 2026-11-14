@@ -102,6 +102,9 @@ type Pins struct {
 	// pivot library, seed, caps and feedback policy that C and P share. It is required when any case carries
 	// pivots and absent otherwise.
 	AttackerDigest string `json:"attacker_digest,omitempty"`
+	// DrawDigest pins the D48 draw output (draw-<hex>.json, ParseDraw) that the corpus is installed with (D39):
+	// the pilot draw for the research pilot, the main draw for the thesis corpus. Absent on pre-D48 manifests.
+	DrawDigest string `json:"draw_digest,omitempty"`
 }
 
 // Case is one registered unit. Exactly one of Adversarial, Compliant, or Ambiguous is

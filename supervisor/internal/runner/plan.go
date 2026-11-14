@@ -22,10 +22,11 @@ import (
 // (tbound-thesis.md section 7.5).
 const VarianceRepeats = 2
 
-// MaxRerunHeadroom is the owner-decided ceiling, and the default, of the units
-// that outage reruns may use beyond the planned units: 5% of
-// evalreport.PlannedUnits (1,935 x 5 / 100 = 96.75), rounded up to 97 units.
-const MaxRerunHeadroom = (evalreport.PlannedUnits*5 + 99) / 100
+// RerunHeadroomFor is the owner-decided ceiling, and the default, of the units
+// that outage reruns may use beyond the planned units: 5% of the planned units,
+// rounded up. It is computed from the manifest's own total (evalreport.PlannedUnits,
+// D53 item 4); a pre-D48 manifest keeps 1,935 x 5 / 100 = 96.75, rounded up to 97.
+func RerunHeadroomFor(planned int) int { return (planned*5 + 99) / 100 }
 
 const (
 	planDomain  = "tbound-runner-plan/v2"
@@ -59,12 +60,12 @@ type Config struct {
 	// EVQObligations lists the obligations every trial must report as passed.
 	// If empty, a trial must report at least one obligation and all must pass.
 	EVQObligations []string `json:"evq_obligations"`
-	// UnitCap is the planned-unit ceiling. 0 means evalreport.PlannedUnits, and
-	// a larger value is refused.
+	// UnitCap is the planned-unit ceiling. 0 means the manifest's
+	// evalreport.PlannedUnits, and a larger value is refused.
 	UnitCap int `json:"unit_cap"`
 	// RerunHeadroom is the number of units beyond UnitCap that outage reruns may
-	// use. The owner bounds it at MaxRerunHeadroom (5% of the planned units,
-	// 97). 0 means that default, and a larger or a negative value is refused
+	// use. The owner bounds it at RerunHeadroomFor the planned units (5%,
+	// rounded up; 97 for a pre-D48 manifest). 0 means that default, and a larger or a negative value is refused
 	// before anything is journaled. The normalized value is part of the plan
 	// digest.
 	RerunHeadroom int `json:"rerun_headroom"`
@@ -82,7 +83,9 @@ type Config struct {
 
 var freezeRE = regexp.MustCompile(`^([0-9a-f]{40}|[0-9a-f]{64})$`)
 
-func (c Config) normalize() (Config, error) {
+// normalize fills the defaults and refuses values outside the bounds that planned, the
+// manifest's planned-unit total, sets.
+func (c Config) normalize(planned int) (Config, error) {
 	if c.CDH != nil {
 		if err := c.CDH.Validate(); err != nil {
 			return c, err
@@ -103,19 +106,19 @@ func (c Config) normalize() (Config, error) {
 		return c, errors.New("runner: FreezeCommit must be a 40 or 64 digit lowercase hex commit id")
 	}
 	if c.UnitCap == 0 {
-		c.UnitCap = evalreport.PlannedUnits
+		c.UnitCap = planned
 	}
-	if c.UnitCap < 1 || c.UnitCap > evalreport.PlannedUnits {
-		return c, fmt.Errorf("runner: UnitCap %d outside 1..%d", c.UnitCap, evalreport.PlannedUnits)
+	if c.UnitCap < 1 || c.UnitCap > planned {
+		return c, fmt.Errorf("runner: UnitCap %d outside 1..%d", c.UnitCap, planned)
 	}
 	switch {
 	case c.NoRerunHeadroom && c.RerunHeadroom != 0:
 		return c, errors.New("runner: NoRerunHeadroom needs RerunHeadroom 0")
 	case c.NoRerunHeadroom:
 	case c.RerunHeadroom == 0:
-		c.RerunHeadroom = MaxRerunHeadroom
-	case c.RerunHeadroom < 0 || c.RerunHeadroom > MaxRerunHeadroom:
-		return c, fmt.Errorf("runner: RerunHeadroom %d outside 1..%d", c.RerunHeadroom, MaxRerunHeadroom)
+		c.RerunHeadroom = RerunHeadroomFor(planned)
+	case c.RerunHeadroom < 0 || c.RerunHeadroom > RerunHeadroomFor(planned):
+		return c, fmt.Errorf("runner: RerunHeadroom %d outside 1..%d", c.RerunHeadroom, RerunHeadroomFor(planned))
 	}
 	switch c.Purpose {
 	case "":
@@ -148,8 +151,12 @@ type Schedule struct {
 	ManifestDigest string
 	Config         Config
 	// Subset is true when Config.OnlyCases restricted the plan. A subset plan
-	// is not the registered 1,935-unit plan.
+	// is not the registered plan.
 	Subset bool
+	// PlannedUnits is the manifest's registered planned-unit total
+	// (evalreport.PlannedUnits), which bounds UnitCap and the rerun headroom.
+	// The plan digest binds it through the manifest digest.
+	PlannedUnits int
 	// RunBinding is the digest of the host's attestation and collector inputs of a run
 	// (receipt pins, route report, EVQ results, PROC settings). It is not part of Digest,
 	// so the registered plan digest stays the pre-registered one, but the journal header
@@ -196,7 +203,8 @@ func (s *Step) setEffects(a *evalcorpus.Adversarial) {
 // variance-subset case. Configuration A is never planned. A construct-witness
 // plan is only the static P replay of each adversarial case.
 func Plan(manifest, allocation evalcorpus.Manifest, cfg Config) (Schedule, error) {
-	cfg, err := cfg.normalize()
+	planned := evalreport.PlannedUnits(allocation)
+	cfg, err := cfg.normalize(planned)
 	if err != nil {
 		return Schedule{}, err
 	}
@@ -256,7 +264,7 @@ func Plan(manifest, allocation evalcorpus.Manifest, cfg Config) (Schedule, error
 	}
 
 	if cfg.CDH != nil {
-		return planCDH(Schedule{ManifestDigest: md, Config: cfg}, allocation)
+		return planCDH(Schedule{ManifestDigest: md, Config: cfg, PlannedUnits: planned}, allocation)
 	}
 	seed := allocation.SplitSeed
 	var steps []Step
@@ -319,7 +327,7 @@ func Plan(manifest, allocation evalcorpus.Manifest, cfg Config) (Schedule, error
 		return Schedule{}, fmt.Errorf("%w: %d steps, cap %d", ErrOverPlanned, len(steps), cfg.UnitCap)
 	}
 
-	s := Schedule{Steps: steps, ManifestDigest: md, Config: cfg, Subset: subset, index: make(map[string]int, len(steps))}
+	s := Schedule{Steps: steps, ManifestDigest: md, Config: cfg, Subset: subset, PlannedUnits: planned, index: make(map[string]int, len(steps))}
 	for i, st := range steps {
 		if _, dup := s.index[st.ID()]; dup {
 			return Schedule{}, fmt.Errorf("runner: duplicate step id %q", st.ID())
