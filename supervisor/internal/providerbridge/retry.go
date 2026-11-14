@@ -202,6 +202,11 @@ func rateLimitDelay(value string) (time.Duration, bool) {
 	return time.Duration(seconds) * time.Second, true
 }
 
+// postRecordSettleTimeout bounds the settlement that runs, without the request's cancellation, after a provider
+// record is durable: under the session's 30 s loop-join limit, so a hung ledger commit fails closed first.
+// Red-test declaration; the settlement does not use it yet.
+var postRecordSettleTimeout = 20 * time.Second
+
 // retryWait waits before the next attempt; a seam for tests.
 var retryWait = func(ctx context.Context, delay time.Duration) error {
 	if delay <= 0 {
