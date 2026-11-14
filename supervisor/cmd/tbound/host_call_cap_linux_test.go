@@ -81,7 +81,7 @@ func requireAbandonableCapEnd(t *testing.T, f *workflowVerticalFixture, err erro
 	if !unknownExchangeClosesHostCall(checkpoint, trace, workflowVerticalID, workflowVerticalConversation) {
 		t.Fatal("the provider journal does not close the reserved host call as unknown")
 	}
-	if err := validateSettledServiceDisposition(checkpoint.Pins, workflowVerticalConversation, true, false, false); err != nil {
+	if err := validateSettledServiceDisposition(checkpoint.Pins, workflowVerticalConversation, true, false, false, false); err != nil {
 		t.Fatalf("abandon would refuse the checkpoint: %v", err)
 	}
 }

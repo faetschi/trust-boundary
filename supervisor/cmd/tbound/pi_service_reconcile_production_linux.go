@@ -445,6 +445,45 @@ func commandNeverStartedClosesCall(checkpoint workflowrecovery.Checkpoint, trace
 	return ok && result.CommandNotStarted
 }
 
+// providerExchangeIdle reports whether the pins await the conversation's next provider exchange with none
+// reserved: no host call, or the last one settled with no captured call left open (none, or one retired with
+// its pending call after a DENY or a verified no-effect refusal). ReserveHostCall commits a reservation before
+// the request is journaled or dispatched, so no provider request is outstanding. A request stopped between
+// turns, or after a settled retryable attempt, ends here. Abandon also requires the provider journal to agree
+// (journaledHostCallMatches).
+func providerExchangeIdle(pins workflowrecovery.Pins) bool {
+	call := pins.HostCallReservation
+	if pins.ProviderDisposition != workflowrecovery.DispositionAwaitingProviderExchange {
+		return false
+	}
+	if call == nil {
+		return true
+	}
+	return call.Disposition == workflowrecovery.HostCallTerminal && (call.CapturedCall == nil ||
+		call.CapturedCall.Disposition == workflowrecovery.CapturedCallRetired &&
+			pins.PendingCallDisposition == workflowrecovery.PendingCallRetired)
+}
+
+// journaledHostCallMatches reports whether the provider journal's last host-call reservation is the
+// checkpoint's (or neither has one). A reservation the checkpoint does not hold means the two disagree, and
+// abandon then refuses the awaited exchange as idle.
+func journaledHostCallMatches(trace audit.Trace, call *workflowrecovery.HostCallReservationPin) bool {
+	for index := len(trace.Records) - 1; index >= 0; index-- {
+		event := trace.Records[index].Event
+		if event.Kind != "provider_host_call_reserved" {
+			continue
+		}
+		var reservation struct {
+			Binding *workflowrecovery.HostCallBinding `json:"binding"`
+		}
+		if json.Unmarshal(event.Data, &reservation) != nil || reservation.Binding == nil {
+			return false
+		}
+		return call != nil && *reservation.Binding == call.Binding
+	}
+	return call == nil
+}
+
 // capturedCallNeverReserved reports whether the pins hold the conversation's one captured call unconsumed
 // and awaiting its gate result, with no effect reservation that names it or is open. ReserveEffect consumes
 // the captured call in the same commit that reserves its effect, and the Store authorizes an effect only
@@ -592,16 +631,18 @@ func (c *piServiceWorkflowCatalog) reconcileSettledOwner(ctx context.Context, en
 	if pins.RecoveryGeneration > 1 {
 		_, _, expectedConversationID = recoveryGenerationIdentities(entry.WorkflowID, pins.RecoveryGeneration)
 	}
-	closedUnknown, commandNeverStarted, effectNotReserved := false, false, false
+	closedUnknown, commandNeverStarted, effectNotReserved, idleExchange := false, false, false, false
 	if providerTrace != nil {
 		if trace, err := providerTrace(expectedConversationID); err == nil {
+			idleExchange = providerExchangeIdle(pins) && journaledHostCallMatches(trace, pins.HostCallReservation)
 			closedUnknown = unknownExchangeClosesHostCall(view.Checkpoint, trace, entry.WorkflowID, expectedConversationID)
 			commandNeverStarted = commandNeverStartedClosesCall(view.Checkpoint, trace, entry.WorkflowID, expectedConversationID)
 			effectNotReserved = capturedCallNeverReserved(pins, entry.WorkflowID, expectedConversationID) &&
 				!heldCallResultReleased(trace, pins.HostCallReservation.CapturedCall.ToolCallID)
 		}
 	}
-	if err := validateSettledServiceDisposition(pins, expectedConversationID, closedUnknown, commandNeverStarted, effectNotReserved); err != nil {
+	if err := validateSettledServiceDisposition(pins, expectedConversationID, closedUnknown, commandNeverStarted, effectNotReserved,
+		idleExchange); err != nil {
 		problems = append(problems, "owner checkpoint: pending effect, host call, pending call or provider exchange: "+err.Error())
 	}
 	proofs, err := drain.VerifyOwnerCellsDrainedWithProof(ctx, entry.WorkflowID, view.OwnerEpochs)
