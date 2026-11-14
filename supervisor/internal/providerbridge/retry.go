@@ -204,6 +204,7 @@ func rateLimitDelay(value string) (time.Duration, bool) {
 
 // postRecordSettleTimeout bounds the settlement that runs, without the request's cancellation, after a provider
 // record is durable: under the session's 30 s loop-join limit, so a hung ledger commit fails closed first.
+// A turn's spend and host-call settlement share one bound (the USD ledger ignores its context).
 var postRecordSettleTimeout = 20 * time.Second
 
 // settleContext is ctx without its cancellation, bounded by postRecordSettleTimeout: the settlement of a
