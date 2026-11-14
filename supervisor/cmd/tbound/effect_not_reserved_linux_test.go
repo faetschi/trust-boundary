@@ -194,14 +194,26 @@ func TestReconcileOwnerAcceptsOnlyAnEffectThatWasNeverReserved(t *testing.T) {
 		"effect never reserved": {[]func(*ownerFixture){heldCall, typed}, true},
 		"first call, no effect before": {[]func(*ownerFixture){heldCall, typed,
 			pinned(func(pins *workflowrecovery.Pins) { pins.EffectReservation = nil })}, true},
-		// The journal does not decide: the checkpoint alone proves the effect never ran, so every way the
-		// call's journal can end is accepted, including journals written before the record was typed.
+		// The checkpoint proves the effect never ran, so every way the call's journal can end is accepted,
+		// including journals written before the record was typed, as long as the journal released no result
+		// for the call: that would mean the checkpoint and the journal disagree.
 		"journal before the record was typed": {[]func(*ownerFixture){heldCall,
 			journal(decision, notReservedResult(field("effect_not_reserved", nil)))}, true},
 		"journal ends at the decision": {[]func(*ownerFixture){heldCall, journal(decision)}, true},
 		"journal ends at the capture": {[]func(*ownerFixture){heldCall,
 			journal(audit.Event{Kind: "provider_exchange", ID: "conversation-1:exchange:1", Data: []byte(`{}`)})}, true},
-		"no provider journal reader": {[]func(*ownerFixture){heldCall}, true},
+		"a result of an earlier call": {[]func(*ownerFixture){heldCall, journal(audit.Event{Kind: "provider_tool_result",
+			ID: "conversation-1:result:1", Data: []byte(`{"tool_call_id":"call-read-1"}`)}, decision)}, true},
+		"a result released for the call": {[]func(*ownerFixture){heldCall, journal(decision, audit.Event{Kind: "provider_tool_result",
+			ID: "conversation-1:result:2", Data: []byte(`{"tool_call_id":"` + notReservedToolCall + `"}`)})}, false},
+		"an admission denial for the call": {[]func(*ownerFixture){heldCall, journal(decision, audit.Event{Kind: "provider_admission_denied",
+			ID: "conversation-1:result:2", Data: []byte(`{"tool_call_id":"` + notReservedToolCall + `"}`)})}, false},
+		"an UNKNOWN result with output": {[]func(*ownerFixture){heldCall,
+			journal(decision, notReservedResult(field("executor_output", []byte(`{"content":"partial"}`))))}, false},
+		"no provider journal reader": {[]func(*ownerFixture){heldCall}, false},
+		"an unreadable provider journal": {[]func(*ownerFixture){heldCall, func(f *ownerFixture) {
+			f.providerTrace = func(string) (audit.Trace, error) { return audit.Trace{}, errors.New("journal unreadable") }
+		}}, false},
 		"effect reserved for the call": {[]func(*ownerFixture){heldCall, typed, pinned(ownEffect(workflowrecovery.EffectReservationReserved)),
 			pinned(func(pins *workflowrecovery.Pins) {
 				pins.HostCallReservation.CapturedCall.Disposition = workflowrecovery.CapturedCallConsumed

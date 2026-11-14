@@ -14,8 +14,8 @@ import (
 	"tbound/supervisor/internal/gate"
 )
 
-// The journals that a held call leaves when it stops before its effect replay exactly as before: this change
-// adds no record and no field, and abandon reads the workflow checkpoint, not these journals.
+// The journals that a held call leaves when it stops before its effect replay exactly as before: settling
+// such a call from the workflow checkpoint adds no record and no field to these journals.
 //   - stopped before Pi's proposal: the journal ends at the capture, and replay awaits the gate decision;
 //   - the wrapper's context check before dispatch: it ends at the decision, and replay awaits the result;
 //   - the durable executor's context check: it ends in an untyped UNKNOWN result, which replay refuses.

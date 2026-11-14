@@ -214,8 +214,8 @@ func productionCleanupSafe(evidence productionLifecycleSnapshot, runner *product
 // started, or they joined either cleanly, with only a failed provider turn, or on a call whose effect
 // never ran. The bridge types the turn failure only when the turn left its exchange disposed of in the
 // provider journal (an unknown one is reconciled at abandon); a call's failure is typed only once the
-// runner proved its cell gone or the ledger refused its effect reservation before writing it, and the
-// call is reconciled at abandon. Nothing local is open. Cleanup and the managed-root abort share this
+// runner proved its cell gone, the ledger refused its effect reservation before writing it, or a context
+// end stopped it while the ledger held it never reserved, and the call is reconciled at abandon. Nothing local is open. Cleanup and the managed-root abort share this
 // check.
 func (s productionLifecycleSnapshot) channelsSettled() bool {
 	if !s.channelsStarted {

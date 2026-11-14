@@ -450,7 +450,8 @@ func commandNeverStartedClosesCall(checkpoint workflowrecovery.Checkpoint, trace
 // the captured call in the same commit that reserves its effect, and the Store authorizes an effect only
 // after that commit, so these pins prove that the call's effect never ran, however the call ended: a
 // refused reservation, a request timeout, or a context check before the Store. Abandon reads them from the
-// authenticated settled checkpoint, the session from the workflow ledger.
+// authenticated settled checkpoint (and refuses if the provider journal disagrees), the session from the
+// workflow ledger.
 func capturedCallNeverReserved(pins workflowrecovery.Pins, workflowID, conversationID string) bool {
 	call := pins.HostCallReservation
 	if call == nil || call.Disposition != workflowrecovery.HostCallTerminal || call.CapturedCall == nil ||
@@ -469,6 +470,30 @@ func capturedCallNeverReserved(pins workflowrecovery.Pins, workflowID, conversat
 		return false
 	}
 	return true
+}
+
+// heldCallResultReleased reports whether the provider journal released a result for the held call
+// toolCallID: a tool result, an admission denial, or an UNKNOWN result with executor output. Each needs a
+// reserved effect, so for a call the checkpoint holds unconsumed it means the checkpoint and the journal
+// disagree, and abandon refuses.
+func heldCallResultReleased(trace audit.Trace, toolCallID string) bool {
+	for _, record := range trace.Records {
+		kind := record.Event.Kind
+		if kind != "provider_tool_result" && kind != "provider_admission_denied" && kind != "provider_tool_result_unknown" {
+			continue
+		}
+		var result struct {
+			ToolCallID     string `json:"tool_call_id"`
+			ExecutorOutput []byte `json:"executor_output"`
+		}
+		if json.Unmarshal(record.Event.Data, &result) != nil {
+			return true
+		}
+		if result.ToolCallID == toolCallID && (kind != "provider_tool_result_unknown" || len(result.ExecutorOutput) != 0) {
+			return true
+		}
+	}
+	return false
 }
 
 // heldCallResult is the typing of the UNKNOWN result that closes a call the checkpoint still holds.
@@ -547,7 +572,8 @@ func providerJournalUndisposed(trace audit.Trace) int {
 // checkpoint: it must be the checkpoint the catalog entry authorized, its pins must carry no
 // pending effect, host call, pending call or undisposed provider exchange (a reserved host call
 // counts as disposed only when providerTrace shows it closed as unknown, a held call only when it shows
-// the command never started or the checkpoint shows its effect never reserved), every owner epoch it
+// the command never started, or when the checkpoint shows its effect never reserved and providerTrace
+// released no result for it), every owner epoch it
 // names must be proven drained by the owner drain verifier (drainproof, with NeverBound receipts
 // for owners that were never exposed), and the catalog's owner-scope records must be exactly
 // those epochs, all drained and removed.
@@ -566,12 +592,13 @@ func (c *piServiceWorkflowCatalog) reconcileSettledOwner(ctx context.Context, en
 	if pins.RecoveryGeneration > 1 {
 		_, _, expectedConversationID = recoveryGenerationIdentities(entry.WorkflowID, pins.RecoveryGeneration)
 	}
-	closedUnknown, commandNeverStarted := false, false
-	effectNotReserved := capturedCallNeverReserved(pins, entry.WorkflowID, expectedConversationID)
+	closedUnknown, commandNeverStarted, effectNotReserved := false, false, false
 	if providerTrace != nil {
 		if trace, err := providerTrace(expectedConversationID); err == nil {
 			closedUnknown = unknownExchangeClosesHostCall(view.Checkpoint, trace, entry.WorkflowID, expectedConversationID)
 			commandNeverStarted = commandNeverStartedClosesCall(view.Checkpoint, trace, entry.WorkflowID, expectedConversationID)
+			effectNotReserved = capturedCallNeverReserved(pins, entry.WorkflowID, expectedConversationID) &&
+				!heldCallResultReleased(trace, pins.HostCallReservation.CapturedCall.ToolCallID)
 		}
 	}
 	if err := validateSettledServiceDisposition(pins, expectedConversationID, closedUnknown, commandNeverStarted, effectNotReserved); err != nil {

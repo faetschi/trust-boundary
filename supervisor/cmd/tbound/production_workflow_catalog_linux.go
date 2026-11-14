@@ -935,7 +935,9 @@ func validateSettledServiceProfile(profile piruntime.HostProfile, template pirun
 // reserved call, and the provider exchange the conversation still awaits, then count as disposed.
 // commandNeverStarted is likewise true only on the abandon path, once that journal closed the held
 // Bash call as a command that never started: the captured call, its reserved effect and the gate
-// result the conversation awaits then count as disposed.
+// result the conversation awaits then count as disposed. effectNotReserved is true only on the abandon
+// path, once the checkpoint holds the call captured and never reserved (capturedCallNeverReserved): the
+// captured call and the gate result the conversation awaits then count as disposed.
 func validateSettledServiceDisposition(pins workflowrecovery.Pins, expectedConversationID string,
 	closedUnknown, commandNeverStarted, effectNotReserved bool) error {
 	heldCallClosed := commandNeverStarted || effectNotReserved

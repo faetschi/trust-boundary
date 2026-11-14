@@ -1354,11 +1354,11 @@ type providerTurnFailure struct{ err error }
 func (f providerTurnFailure) Error() string { return f.err.Error() }
 func (f providerTurnFailure) Unwrap() error { return f.err }
 
-// effectNeverRanFailure is RunGovernedChannels' error when the supervisor loop failed on a call whose
-// effect provably never ran: a command cell that the runner proved never started its command, or an
-// effect whose reservation the workflow ledger refused before writing it. The provider result wrapper
-// recorded that call as UNKNOWN and closed the conversation, which serializes it with every provider
-// exchange, so whatever the bridge returned after that leaves no exchange open.
+// effectNeverRanFailure is the governed loops' error when they failed on a call whose effect provably
+// never ran: a command cell that the runner proved never started its command, an effect whose reservation
+// the workflow ledger refused before writing it, or a captured call that a context end stopped before its
+// reservation (heldCallChannelsError). The conversation is closed, which serializes the call with every
+// provider exchange, so whatever the bridge returned after that leaves no exchange open.
 type effectNeverRanFailure struct{ err error }
 
 func (f effectNeverRanFailure) Error() string { return f.err.Error() }
@@ -1375,17 +1375,20 @@ func governedChannelsError(serveErr, bridgeErr error) error {
 	return errors.Join(serveErr, bridgeErr)
 }
 
-// heldCallChannelsError types the governed loops' joined error as effectNeverRanFailure when the workflow
-// ledger holds this conversation's captured call never reserved (capturedCallNeverReserved): its effect never
-// started and no other effect is open, so cleanup may drain and release whatever stopped the loops. The
-// in-memory checkpoint can lag the durable one only after an ambiguous commit, and a reservation whose
+// heldCallChannelsError types the governed loops' joined error as effectNeverRanFailure when a context end
+// stopped them (a request timeout or a cancellation) and the workflow ledger holds this conversation's
+// captured call never reserved (capturedCallNeverReserved): its effect never started and no other effect is
+// open, so cleanup may drain and release. An audit, evidence or commit failure keeps the owners quarantined.
+// The in-memory checkpoint can lag the durable one only after an ambiguous commit, and a reservation whose
 // commit was ambiguous also refused its effect.
 func (a *SessionOperationAuthority) heldCallChannelsError(err error) error {
 	switch err.(type) {
 	case nil, providerTurnFailure, effectNeverRanFailure:
 		return err
 	}
-	if a == nil {
+	if a == nil || !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) ||
+		errors.Is(err, sessionrepo.ErrAudit) || errors.Is(err, ErrGovernedSessionEvidence) ||
+		errors.Is(err, workflowrecovery.ErrCAS) || errors.Is(err, workflowrecovery.ErrRollback) {
 		return err
 	}
 	a.mu.Lock()

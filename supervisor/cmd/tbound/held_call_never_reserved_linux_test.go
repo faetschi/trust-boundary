@@ -15,6 +15,7 @@ import (
 	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/gate"
 	"tbound/supervisor/internal/providerbridge"
+	"tbound/supervisor/internal/sessionrepo"
 	"tbound/supervisor/internal/workflowrecovery"
 )
 
@@ -99,11 +100,12 @@ func requireHeldCallNeverReserved(t *testing.T, f *workflowVerticalFixture) {
 // settles the request from that checkpoint fact alone, and a later request is admitted.
 func TestHeldCallNeverReservedFreesCleanupAndAbandonSettles(t *testing.T) {
 	for name, end := range map[string]func(*testing.T, *workflowVerticalFixture) error{
-		// The request was accepted productionSessionMaxRuntime (1,200 s) ago less three seconds. The provider
+		// The request was accepted productionSessionMaxRuntime (1,200 s) ago less ten seconds. The provider
 		// reply arrives and is captured, then the request context expires before Pi's proposal is read: the
-		// bridge and the supervisor loop both stop on the context and return nil.
+		// bridge and the supervisor loop both stop on the context and return nil, so this path needs only
+		// the abandon side.
 		"request timeout before the proposal is read": func(t *testing.T, f *workflowVerticalFixture) error {
-			accepted := time.Now().Add(3*time.Second - productionSessionMaxRuntime)
+			accepted := time.Now().Add(10*time.Second - productionSessionMaxRuntime)
 			requestCtx, cancel := context.WithDeadline(f.ctx, accepted.Add(productionSessionMaxRuntime))
 			defer cancel()
 			serverConn, clientConn := net.Pipe()
@@ -163,6 +165,35 @@ func TestHeldCallNeverReservedFreesCleanupAndAbandonSettles(t *testing.T) {
 			}
 			if err := h.requests.admit(t, 2, true); err != nil {
 				t.Fatalf("a later request stayed blocked after the abandon: %v", err)
+			}
+		})
+	}
+}
+
+// Only a context end is typed from the checkpoint. With the same held call, a loop that failed for another
+// reason, or on an audit, evidence or commit failure next to the context end, keeps the owners quarantined.
+func TestHeldCallChannelsErrorTypesOnlyAContextEnd(t *testing.T) {
+	f := newWorkflowVerticalFixture(t, true, 0, []providerbridge.DevelopmentProviderTurn{heldCallRead})
+	heldCallDecided(t, f)
+	requireHeldCallNeverReserved(t, f)
+	for name, tc := range map[string]struct {
+		err   error
+		typed bool
+	}{
+		"request timeout":           {fmt.Errorf("executor failed; result withheld: %w", context.DeadlineExceeded), true},
+		"cancellation":              {fmt.Errorf("executor failed; result withheld: %w", context.Canceled), true},
+		"no error":                  {nil, false},
+		"other loop failure":        {errors.New("receive IPC proposal: broken pipe"), false},
+		"evidence diverged":         {errors.Join(context.Canceled, ErrGovernedSessionEvidence), false},
+		"audit failure":             {errors.Join(context.Canceled, sessionrepo.ErrAudit), false},
+		"ambiguous commit":          {errors.Join(context.DeadlineExceeded, workflowrecovery.ErrCAS), false},
+		"checkpoint rollback":       {errors.Join(context.DeadlineExceeded, workflowrecovery.ErrRollback), false},
+		"provider turn failure too": {providerTurnFailure{err: context.Canceled}, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			got := f.authority.heldCallChannelsError(tc.err)
+			if _, typed := got.(effectNeverRanFailure); typed != tc.typed || !errors.Is(got, tc.err) && tc.err != nil {
+				t.Fatalf("heldCallChannelsError(%v) = %#v, want typed=%v", tc.err, got, tc.typed)
 			}
 		})
 	}
