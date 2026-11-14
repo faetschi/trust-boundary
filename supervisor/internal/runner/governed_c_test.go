@@ -142,9 +142,11 @@ func TestGovernedCOptionalTokensAndCostAreCopiedWhenPresent(t *testing.T) {
 	f := newGovernedFixture(t)
 	r := f.receipt(true)
 	r["in_tokens"], r["out_tokens"], r["cost_micro_usd"], r["provider_retries"] = 120, 30, 4500, 2
+	r["provider_usage_unread"] = 1
 	f.respond("completed", "", r, 0)
 	o, err := f.g.Execute(context.Background(), f.step)
-	if err != nil || o.Metrics.InTokens != 120 || o.Metrics.OutTokens != 30 || o.Metrics.CostMicroUSD != 4500 || o.Metrics.Retries != 2 {
+	if err != nil || o.Metrics.InTokens != 120 || o.Metrics.OutTokens != 30 || o.Metrics.CostMicroUSD != 4500 ||
+		o.Metrics.Retries != 2 || o.Metrics.UsageUnread != 1 {
 		t.Fatalf("metrics = %+v, %v", o.Metrics, err)
 	}
 }

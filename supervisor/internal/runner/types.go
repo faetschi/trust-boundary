@@ -201,6 +201,9 @@ type Metrics struct {
 	CostMicroUSD  int64 `json:"cost_micro_usd"`
 	ToolCalls     int   `json:"tool_calls"`
 	Retries       int   `json:"retries"`
+	// UsageUnread counts provider exchanges whose usage the guest could not read: InTokens and
+	// OutTokens are then a lower bound. Omitted when zero, so older journals stay byte-identical.
+	UsageUnread int `json:"usage_unread,omitempty"`
 }
 
 // CalibrationEvidence is what a P step reports about its witness. Whether the

@@ -257,6 +257,7 @@ type productionPiReceipt struct {
 	// in_tokens and out_tokens. A run without usage (scripted) writes neither, so its receipt is unchanged.
 	InTokens                 int    `json:"in_tokens,omitempty"`
 	OutTokens                int    `json:"out_tokens,omitempty"`
+	ProviderUsageUnread      int    `json:"provider_usage_unread,omitempty"` // completed exchanges whose usage could not be read
 	SourceGeneration         string `json:"source_generation"`
 	FinalGeneration          string `json:"final_generation"`
 	GenerationCount          int    `json:"generation_count"`

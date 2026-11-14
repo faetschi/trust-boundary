@@ -4,6 +4,7 @@ package main
 
 import (
 	"encoding/json"
+	"os"
 	"testing"
 
 	"tbound/supervisor/internal/audit"
@@ -68,12 +69,32 @@ func TestReceiptUsageSumsSettledExchangesOfTheProviderAudit(t *testing.T) {
 	}
 }
 
-func TestReceiptUsageRefusesUnreadableTokenCounts(t *testing.T) {
-	for _, usage := range []string{`{"prompt_tokens":-1,"completion_tokens":4}`, `{"prompt_tokens":3}`, `{"prompt_tokens":3.5,"completion_tokens":4}`} {
-		trace := audit.Trace{Records: []audit.Record{usageRecord(t, 1, "provider_exchange", usageSSE(usage))}}
+func TestReceiptUsageCountsUnreadableUsageWithoutFailingTheRun(t *testing.T) {
+	for _, usage := range []string{`{"prompt_tokens":-1,"completion_tokens":4}`, `{"prompt_tokens":3}`,
+		`{"prompt_tokens":3.5,"completion_tokens":4}`, `{"cost":0.0002}`} {
+		trace := audit.Trace{Records: []audit.Record{
+			usageRecord(t, 1, "provider_exchange", usageSSE(usage)),
+			usageRecord(t, 2, "provider_exchange", usageSSE(`{"prompt_tokens":10,"completion_tokens":2}`)),
+		}}
 		var receipt productionPiReceipt
-		if err := applyProviderLineage(&receipt, trace, openrouter.Route{}); err == nil || receipt.InTokens != 0 {
-			t.Fatalf("usage %s: err = %v, in_tokens = %d; want a lineage error and no tokens", usage, err, receipt.InTokens)
+		if err := applyProviderLineage(&receipt, trace, openrouter.Route{}); err != nil ||
+			receipt.InTokens != 10 || receipt.OutTokens != 2 || receipt.ProviderUsageUnread != 1 {
+			t.Fatalf("usage %s: err = %v, receipt in %d out %d unread %d; want 10, 2, 1 and no error",
+				usage, err, receipt.InTokens, receipt.OutTokens, receipt.ProviderUsageUnread)
 		}
+	}
+}
+
+// The live OpenCode Go stream carries usage:null on every chunk but the last.
+func TestReceiptUsageReadsTheCapturedOpenCodeGoStream(t *testing.T) {
+	stream, err := os.ReadFile("../../internal/broker/openrouter/testdata/opencode-go-g1-turn1.sse")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var receipt productionPiReceipt
+	trace := audit.Trace{Records: []audit.Record{usageRecord(t, 1, "provider_exchange", stream)}}
+	if err := applyProviderLineage(&receipt, trace, openrouter.Route{}); err != nil ||
+		receipt.InTokens != 913 || receipt.OutTokens != 46 || receipt.ProviderUsageUnread != 0 {
+		t.Fatalf("receipt in %d out %d unread %d, %v; want 913, 46, 0", receipt.InTokens, receipt.OutTokens, receipt.ProviderUsageUnread, err)
 	}
 }

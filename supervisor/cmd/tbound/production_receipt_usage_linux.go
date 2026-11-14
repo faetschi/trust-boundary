@@ -27,7 +27,13 @@ import (
 //   - a provider_exchange_unknown: such a request ends UNKNOWN, and an UNKNOWN answer carries no
 //     receipt at all.
 //
-// A scripted exchange has no usage object and adds nothing.
+// A scripted exchange has no usage object and adds nothing. A completed exchange whose usage has no
+// readable token counts (or whose response cannot be captured again) adds nothing and is counted in
+// ProviderUsageUnread instead: an accounting gap never fails a run.
+//
+// shortcut: a recovered session starts a fresh provider journal, so the exchanges of its crashed
+// predecessor process are in no receipt (an undercount, never a double count); add the predecessor
+// journal's completed exchanges if recovery ever happens in a claim-bearing run.
 func applyProviderLineage(receipt *productionPiReceipt, trace audit.Trace, route openrouter.Route) error {
 	var errs []error
 	for _, record := range trace.Records {
@@ -49,7 +55,7 @@ func applyProviderLineage(receipt *productionPiReceipt, trace audit.Trace, route
 		}
 		in, out, err := exchangeTokens(exchange.Response, route)
 		if err != nil {
-			errs = append(errs, fmt.Errorf("read the provider usage of record %d: %w", record.Sequence, err))
+			receipt.ProviderUsageUnread++
 			continue
 		}
 		receipt.InTokens += in
