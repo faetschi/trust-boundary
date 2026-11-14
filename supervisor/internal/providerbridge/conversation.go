@@ -746,8 +746,9 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 	}
 	// The exchange is durable: its spend and host call settle even if the request context ends now, or a
 	// deadline would leave the journaled exchange's host call reserved, which abandon cannot reconcile. A
-	// canceled turn is refused only after that, below.
-	settleCtx := context.WithoutCancel(ctx)
+	// canceled turn is refused only after that, below. The settlement is bounded (settleContext).
+	settleCtx, cancelSettle := settleContext(ctx)
+	defer cancelSettle()
 	if spendUnit != "" {
 		// SettleSpend leaves the unit in its final state (settled, overage-settled
 		// or uncertain) whether or not it returns an error.
