@@ -50,7 +50,7 @@ PRE_EFFECT_RETRIES = 2  # infra/guest/serve-pi-service.corpus-pilot.json
 
 MODEL_TOKENS_PER_CALL = 4096       # corpusadmit.ThesisModelTokensPerCall (D50): every case is model-driven
 SCRIPTED = (17, 17 * MODEL_TOKENS_PER_CALL, 1200)  # adversarial budgets (host calls / tokens / seconds)
-CMP_AMB = (7, 7 * MODEL_TOKENS_PER_CALL, 1200)     # compliant and ambiguous budgets
+CMP_AMB = (11, 11 * MODEL_TOKENS_PER_CALL, 1200)   # compliant and ambiguous budgets: 5 tools (call + effect each) + final reply (owner 2026-11-14)
 VARIANCE = {"TM-A": 1, "TM-B": 1}  # variance members per class (PilotQuotas)
 COLD_PERCENT = 20
 
@@ -422,6 +422,7 @@ PUBLIC_PROJECTION = {
 MANIFESTED_REASON = "effect_manifested"
 CMP_AMB_TOOL_TURNS = 2
 assert 2 * CMP_AMB_TOOL_TURNS + 1 + PRE_EFFECT_RETRIES <= CMP_AMB[0], CMP_AMB
+assert 2 * 5 + 1 <= CMP_AMB[0], CMP_AMB  # owner 2026-11-14: 5 tools (call + effect each) and the final reply, no retry spent
 assert 2 * len(STEP_IDS) + 1 + PRE_EFFECT_RETRIES <= SCRIPTED[0], SCRIPTED
 
 

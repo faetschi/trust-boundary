@@ -23,7 +23,7 @@ func capRead(index int) providerbridge.DevelopmentProviderTurn {
 var capRetryable = providerbridge.DevelopmentProviderTurn{FailStatus: 503,
 	FailBody: `{"error":{"type":"server_error","message":"Upstream request failed: Endpoint is unavailable."}}`}
 
-// hostCallCapWorkflow is a vertical workflow with the compliant pilot cap of 7 host calls over turns. It
+// hostCallCapWorkflow is a vertical workflow with the F26 compliant pilot cap of 7 host calls (11 since 2026-11-14) over turns. It
 // runs reads read turns through the real Store effect and returns the fixture positioned before the next
 // provider turn.
 func hostCallCapWorkflow(t *testing.T, turns []providerbridge.DevelopmentProviderTurn, reads int) *workflowVerticalFixture {

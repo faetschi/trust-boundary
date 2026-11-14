@@ -4,7 +4,7 @@ import "testing"
 
 // TestPilotManifestDigestsAreUnchanged pins the canonical length, Digest and ContentDigest of every committed
 // pilot manifest. The values were recorded from the code before the optional sample_part, mechanism_id and
-// derived members were added (D48 stage 1); the two drafts were re-pinned for the D50 token budgets (provenance unchanged). A new member that is written when absent moves these digests, so
+// derived members were added (D48 stage 1); the two drafts were re-pinned for the D50 token budgets and again for the 11-call compliant and ambiguous budgets (provenance unchanged). A new member that is written when absent moves these digests, so
 // this gate must pass both before and after that change. Digest is the SHA-256 of the canonical bytes.
 func TestPilotManifestDigestsAreUnchanged(t *testing.T) {
 	pins := []struct {
@@ -15,9 +15,9 @@ func TestPilotManifestDigestsAreUnchanged(t *testing.T) {
 	}{
 		{
 			path:      "../../../corpus/pilot/manifest.draft.json",
-			canonical: 139266,
-			digest:    "sha256:fe78fb7dced3dc5618e3797096afcb4408575aa4c66b0164b6a8a19ca9668029",
-			content:   "sha256:0089b7c593bc8f7b0dd740461b01cdf1bdc2767a2c87c5e94d725661e8cbf6f5",
+			canonical: 139288,
+			digest:    "sha256:abdbd9b9375b0965fd631bf2e330f40f9d97e321b73cb95d5fdd6709fa6cdb9a",
+			content:   "sha256:65f3b594fdd73ffd73e7abe50709df388f31eb7ad79707f5bef015a8bdf0d378",
 		},
 		{
 			path:      "../../../corpus/pilot/provenance-2026-10-29/manifest.draft.json",
@@ -27,9 +27,9 @@ func TestPilotManifestDigestsAreUnchanged(t *testing.T) {
 		},
 		{
 			path:      "../../../corpus/pilot/t5-2026-10-29/manifest.draft.json",
-			canonical: 144449,
-			digest:    "sha256:be85e49bd76a666d69c8a96582450362098b2a09a4eb4053154f19519a52f4e4",
-			content:   "sha256:8c0c722de904c2d0b271e81a2f331a6aa0cb128fa93fe87c1423e7d6156d6338",
+			canonical: 144471,
+			digest:    "sha256:dde22c458b6166a605c520c2e634eeae01d28889886270944c567afd1ce7c6f2",
+			content:   "sha256:050f79e1715ec97a382dc9ad83f502cb411e3ad1d789925097cdc703f1f5433c",
 		},
 	}
 	for _, p := range pins {
