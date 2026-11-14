@@ -80,12 +80,13 @@ func TestReserveEffectDeadlineRefusalIsTypedNotReserved(t *testing.T) {
 	if strings.Contains(err.Error(), "\n") {
 		t.Fatalf("the typed refusal is not one log line: %q", err)
 	}
+	// After the deadline the owner refuses to load; the protected root holds the durable head.
 	after, afterDigest := ledger.Snapshot()
-	durable, durableDigest, _, loadErr := owner.LoadCheckpoint(ctx, workflow)
-	if loadErr != nil || afterDigest != beforeDigest || durableDigest != beforeDigest ||
-		after.Pins.EffectReservation.Binding.OperationID != "operation-open" ||
-		durable.Pins.EffectReservation.Binding.OperationID != "operation-open" {
-		t.Fatalf("the refused reservation changed the checkpoint: digest %s -> %s (durable %s) err=%v", beforeDigest, afterDigest, durableDigest, loadErr)
+	state, exists, loadErr := loadProtectedRootState(ctx, root.db, workflow)
+	if loadErr != nil || !exists || afterDigest != beforeDigest || state.CheckpointDigest != beforeDigest ||
+		after.Pins.EffectReservation.Binding.OperationID != "operation-open" {
+		t.Fatalf("the refused reservation changed the checkpoint: digest %s -> %s (durable %s) err=%v",
+			beforeDigest, afterDigest, state.CheckpointDigest, loadErr)
 	}
 }
 
