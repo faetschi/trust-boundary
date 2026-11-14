@@ -31,7 +31,7 @@
   "object": "FILL: git rev-parse corpus-d48-ledger-v3"
  },
  "source_digests_path": "corpus/sampling/d48-source-digests-v3.json",
- "source_digests_sha256": "17a3dc7d383cd7a44f41701f088423ce6e40d626c7fc675d3fdc757496a3b8f2",
+ "source_digests_sha256": "3f72d12a4d3636ddbc446ce9ffee7be54456e1a16b15c67a51666676d6fc655a",
  "unit_choices": {
   "ASB": "one attacker tool x its agent's first user task (task_num = 1)",
   "ASEval": "one injected conversation",

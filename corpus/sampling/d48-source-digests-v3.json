@@ -50,6 +50,9 @@
     "src/agentdojo/default_suites/v1/slack/user_tasks.py": "sha256:25e43a0c58109765da090aa2f01bfb0892aaee70ca1622028074d7b49443a57b",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml": "sha256:efc01621ffa7955ee10e00e916ac933a41bd8347ba285e1e4888813bf5e0d3a2",
     "src/agentdojo/data/suites/slack/environment.yaml": "sha256:0ea2f9b83e5ffaae0bf50fab2b13d6c8ee59a952f791b16c9554fdc48935c87d",
+    "src/agentdojo/task_suite/task_combinators.py": "sha256:a225f427c006b2fd814df86c47225ce9193d51857e3f14e69c8a56ee49116df1",
+    "src/agentdojo/attacks/important_instructions_attacks.py": "sha256:519f24e0b9d72f43343d665679adacc33758b50cd1b586a81fa53fb098dcfe71",
+    "src/agentdojo/attacks/base_attacks.py": "sha256:d962c68a8a6cd41c33eac0a2fd27fe38d77dfb3e2f85425b2c2fda63c920b62b",
     "src/agentdojo/default_suites/v1/travel/injection_tasks.py": "sha256:9252be834b0ae0e28fe06744e052987d71d8ad3666b8d0b1f65f2875f998fca8",
     "src/agentdojo/default_suites/v1/travel/user_tasks.py": "sha256:757f0e28208f92c2082e016469654524cb1120ec10928ce229da15fe32f6d3ee",
     "src/agentdojo/data/suites/travel/injection_vectors.yaml": "sha256:a6ab848b39d862439e7b4844a617e578294de93cd0176c1851184dd901edb51c",
@@ -646,7 +649,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask0:InjectionTask2": {
@@ -657,7 +663,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask0:InjectionTask3": {
@@ -668,7 +677,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask0:InjectionTask4": {
@@ -679,7 +691,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask10:InjectionTask1": {
@@ -690,7 +705,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask10:InjectionTask2": {
@@ -701,7 +719,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask10:InjectionTask3": {
@@ -712,7 +733,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask10:InjectionTask4": {
@@ -723,7 +747,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask11:InjectionTask1": {
@@ -734,7 +761,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask11:InjectionTask2": {
@@ -745,7 +775,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask11:InjectionTask3": {
@@ -756,7 +789,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask11:InjectionTask4": {
@@ -767,7 +803,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask12:InjectionTask1": {
@@ -778,7 +817,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask12:InjectionTask2": {
@@ -789,7 +831,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask12:InjectionTask3": {
@@ -800,7 +845,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask12:InjectionTask4": {
@@ -811,7 +859,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask13:InjectionTask1": {
@@ -822,7 +873,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask13:InjectionTask2": {
@@ -833,7 +887,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask13:InjectionTask3": {
@@ -844,7 +901,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask13:InjectionTask4": {
@@ -855,7 +915,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask14:InjectionTask1": {
@@ -866,7 +929,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask14:InjectionTask2": {
@@ -877,7 +943,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask14:InjectionTask3": {
@@ -888,7 +957,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask14:InjectionTask4": {
@@ -899,7 +971,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask15:InjectionTask1": {
@@ -910,7 +985,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask15:InjectionTask2": {
@@ -921,7 +999,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask15:InjectionTask3": {
@@ -932,7 +1013,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask15:InjectionTask4": {
@@ -943,7 +1027,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask16:InjectionTask1": {
@@ -954,7 +1041,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask16:InjectionTask2": {
@@ -965,7 +1055,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask16:InjectionTask3": {
@@ -976,7 +1069,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask16:InjectionTask4": {
@@ -987,7 +1083,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask17:InjectionTask1": {
@@ -998,7 +1097,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask17:InjectionTask2": {
@@ -1009,7 +1111,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask17:InjectionTask3": {
@@ -1020,7 +1125,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask17:InjectionTask4": {
@@ -1031,7 +1139,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask18:InjectionTask1": {
@@ -1042,7 +1153,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask18:InjectionTask2": {
@@ -1053,7 +1167,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask18:InjectionTask3": {
@@ -1064,7 +1181,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask18:InjectionTask4": {
@@ -1075,7 +1195,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask19:InjectionTask1": {
@@ -1086,7 +1209,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask19:InjectionTask2": {
@@ -1097,7 +1223,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask19:InjectionTask3": {
@@ -1108,7 +1237,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask19:InjectionTask4": {
@@ -1119,7 +1251,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask1:InjectionTask1": {
@@ -1130,7 +1265,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask1:InjectionTask2": {
@@ -1141,7 +1279,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask1:InjectionTask3": {
@@ -1152,7 +1293,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask1:InjectionTask4": {
@@ -1163,7 +1307,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask20:InjectionTask1": {
@@ -1174,7 +1321,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask20:InjectionTask2": {
@@ -1185,7 +1335,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask20:InjectionTask3": {
@@ -1196,7 +1349,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask20:InjectionTask4": {
@@ -1207,7 +1363,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask2:InjectionTask1": {
@@ -1218,7 +1377,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask2:InjectionTask2": {
@@ -1229,7 +1391,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask2:InjectionTask3": {
@@ -1240,7 +1405,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask2:InjectionTask4": {
@@ -1251,7 +1419,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask3:InjectionTask1": {
@@ -1262,7 +1433,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask3:InjectionTask2": {
@@ -1273,7 +1447,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask3:InjectionTask3": {
@@ -1284,7 +1461,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask3:InjectionTask4": {
@@ -1295,7 +1475,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask4:InjectionTask1": {
@@ -1306,7 +1489,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask4:InjectionTask2": {
@@ -1317,7 +1503,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask4:InjectionTask3": {
@@ -1328,7 +1517,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask4:InjectionTask4": {
@@ -1339,7 +1531,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask5:InjectionTask1": {
@@ -1350,7 +1545,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask5:InjectionTask2": {
@@ -1361,7 +1559,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask5:InjectionTask3": {
@@ -1372,7 +1573,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask5:InjectionTask4": {
@@ -1383,7 +1587,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask6:InjectionTask1": {
@@ -1394,7 +1601,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask6:InjectionTask2": {
@@ -1405,7 +1615,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask6:InjectionTask3": {
@@ -1416,7 +1629,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask6:InjectionTask4": {
@@ -1427,7 +1643,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask7:InjectionTask1": {
@@ -1438,7 +1657,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask7:InjectionTask2": {
@@ -1449,7 +1671,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask7:InjectionTask3": {
@@ -1460,7 +1685,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask7:InjectionTask4": {
@@ -1471,7 +1699,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask8:InjectionTask1": {
@@ -1482,7 +1713,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask8:InjectionTask2": {
@@ -1493,7 +1727,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask8:InjectionTask3": {
@@ -1504,7 +1741,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask8:InjectionTask4": {
@@ -1515,7 +1755,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask9:InjectionTask1": {
@@ -1526,7 +1769,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask9:InjectionTask2": {
@@ -1537,7 +1783,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask9:InjectionTask3": {
@@ -1548,7 +1797,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:slack:UserTask9:InjectionTask4": {
@@ -1559,7 +1811,10 @@
     "src/agentdojo/default_suites/v1/slack/injection_tasks.py",
     "src/agentdojo/default_suites/v1/slack/user_tasks.py",
     "src/agentdojo/data/suites/slack/injection_vectors.yaml",
-    "src/agentdojo/data/suites/slack/environment.yaml"
+    "src/agentdojo/data/suites/slack/environment.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:travel:UserTask0:InjectionTask3": {
@@ -1570,7 +1825,9 @@
     "src/agentdojo/default_suites/v1/travel/injection_tasks.py",
     "src/agentdojo/default_suites/v1/travel/user_tasks.py",
     "src/agentdojo/data/suites/travel/injection_vectors.yaml",
-    "src/agentdojo/data/suites/travel/environment.yaml"
+    "src/agentdojo/data/suites/travel/environment.yaml",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:travel:UserTask0:InjectionTask5": {
@@ -1581,7 +1838,9 @@
     "src/agentdojo/default_suites/v1/travel/injection_tasks.py",
     "src/agentdojo/default_suites/v1/travel/user_tasks.py",
     "src/agentdojo/data/suites/travel/injection_vectors.yaml",
-    "src/agentdojo/data/suites/travel/environment.yaml"
+    "src/agentdojo/data/suites/travel/environment.yaml",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:travel:UserTask10:InjectionTask3": {
@@ -1592,7 +1851,9 @@
     "src/agentdojo/default_suites/v1/travel/injection_tasks.py",
     "src/agentdojo/default_suites/v1/travel/user_tasks.py",
     "src/agentdojo/data/suites/travel/injection_vectors.yaml",
-    "src/agentdojo/data/suites/travel/environment.yaml"
+    "src/agentdojo/data/suites/travel/environment.yaml",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:travel:UserTask10:InjectionTask5": {
@@ -1603,7 +1864,9 @@
     "src/agentdojo/default_suites/v1/travel/injection_tasks.py",
     "src/agentdojo/default_suites/v1/travel/user_tasks.py",
     "src/agentdojo/data/suites/travel/injection_vectors.yaml",
-    "src/agentdojo/data/suites/travel/environment.yaml"
+    "src/agentdojo/data/suites/travel/environment.yaml",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:travel:UserTask11:InjectionTask3": {
@@ -1614,7 +1877,9 @@
     "src/agentdojo/default_suites/v1/travel/injection_tasks.py",
     "src/agentdojo/default_suites/v1/travel/user_tasks.py",
     "src/agentdojo/data/suites/travel/injection_vectors.yaml",
-    "src/agentdojo/data/suites/travel/environment.yaml"
+    "src/agentdojo/data/suites/travel/environment.yaml",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:travel:UserTask11:InjectionTask5": {
@@ -1625,7 +1890,9 @@
     "src/agentdojo/default_suites/v1/travel/injection_tasks.py",
     "src/agentdojo/default_suites/v1/travel/user_tasks.py",
     "src/agentdojo/data/suites/travel/injection_vectors.yaml",
-    "src/agentdojo/data/suites/travel/environment.yaml"
+    "src/agentdojo/data/suites/travel/environment.yaml",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:travel:UserTask12:InjectionTask3": {
@@ -1636,7 +1903,9 @@
     "src/agentdojo/default_suites/v1/travel/injection_tasks.py",
     "src/agentdojo/default_suites/v1/travel/user_tasks.py",
     "src/agentdojo/data/suites/travel/injection_vectors.yaml",
-    "src/agentdojo/data/suites/travel/environment.yaml"
+    "src/agentdojo/data/suites/travel/environment.yaml",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:travel:UserTask12:InjectionTask5": {
@@ -1647,7 +1916,9 @@
     "src/agentdojo/default_suites/v1/travel/injection_tasks.py",
     "src/agentdojo/default_suites/v1/travel/user_tasks.py",
     "src/agentdojo/data/suites/travel/injection_vectors.yaml",
-    "src/agentdojo/data/suites/travel/environment.yaml"
+    "src/agentdojo/data/suites/travel/environment.yaml",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:travel:UserTask13:InjectionTask3": {
@@ -1658,7 +1929,9 @@
     "src/agentdojo/default_suites/v1/travel/injection_tasks.py",
     "src/agentdojo/default_suites/v1/travel/user_tasks.py",
     "src/agentdojo/data/suites/travel/injection_vectors.yaml",
-    "src/agentdojo/data/suites/travel/environment.yaml"
+    "src/agentdojo/data/suites/travel/environment.yaml",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:travel:UserTask13:InjectionTask5": {
@@ -1669,7 +1942,9 @@
     "src/agentdojo/default_suites/v1/travel/injection_tasks.py",
     "src/agentdojo/default_suites/v1/travel/user_tasks.py",
     "src/agentdojo/data/suites/travel/injection_vectors.yaml",
-    "src/agentdojo/data/suites/travel/environment.yaml"
+    "src/agentdojo/data/suites/travel/environment.yaml",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:travel:UserTask14:InjectionTask3": {
@@ -1680,7 +1955,9 @@
     "src/agentdojo/default_suites/v1/travel/injection_tasks.py",
     "src/agentdojo/default_suites/v1/travel/user_tasks.py",
     "src/agentdojo/data/suites/travel/injection_vectors.yaml",
-    "src/agentdojo/data/suites/travel/environment.yaml"
+    "src/agentdojo/data/suites/travel/environment.yaml",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:travel:UserTask14:InjectionTask5": {
@@ -1691,7 +1968,9 @@
     "src/agentdojo/default_suites/v1/travel/injection_tasks.py",
     "src/agentdojo/default_suites/v1/travel/user_tasks.py",
     "src/agentdojo/data/suites/travel/injection_vectors.yaml",
-    "src/agentdojo/data/suites/travel/environment.yaml"
+    "src/agentdojo/data/suites/travel/environment.yaml",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:travel:UserTask15:InjectionTask3": {
@@ -1702,7 +1981,9 @@
     "src/agentdojo/default_suites/v1/travel/injection_tasks.py",
     "src/agentdojo/default_suites/v1/travel/user_tasks.py",
     "src/agentdojo/data/suites/travel/injection_vectors.yaml",
-    "src/agentdojo/data/suites/travel/environment.yaml"
+    "src/agentdojo/data/suites/travel/environment.yaml",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:travel:UserTask15:InjectionTask5": {
@@ -1713,7 +1994,9 @@
     "src/agentdojo/default_suites/v1/travel/injection_tasks.py",
     "src/agentdojo/default_suites/v1/travel/user_tasks.py",
     "src/agentdojo/data/suites/travel/injection_vectors.yaml",
-    "src/agentdojo/data/suites/travel/environment.yaml"
+    "src/agentdojo/data/suites/travel/environment.yaml",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:travel:UserTask16:InjectionTask3": {
@@ -1724,7 +2007,9 @@
     "src/agentdojo/default_suites/v1/travel/injection_tasks.py",
     "src/agentdojo/default_suites/v1/travel/user_tasks.py",
     "src/agentdojo/data/suites/travel/injection_vectors.yaml",
-    "src/agentdojo/data/suites/travel/environment.yaml"
+    "src/agentdojo/data/suites/travel/environment.yaml",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:travel:UserTask16:InjectionTask5": {
@@ -1735,7 +2020,9 @@
     "src/agentdojo/default_suites/v1/travel/injection_tasks.py",
     "src/agentdojo/default_suites/v1/travel/user_tasks.py",
     "src/agentdojo/data/suites/travel/injection_vectors.yaml",
-    "src/agentdojo/data/suites/travel/environment.yaml"
+    "src/agentdojo/data/suites/travel/environment.yaml",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:travel:UserTask17:InjectionTask3": {
@@ -1746,7 +2033,9 @@
     "src/agentdojo/default_suites/v1/travel/injection_tasks.py",
     "src/agentdojo/default_suites/v1/travel/user_tasks.py",
     "src/agentdojo/data/suites/travel/injection_vectors.yaml",
-    "src/agentdojo/data/suites/travel/environment.yaml"
+    "src/agentdojo/data/suites/travel/environment.yaml",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:travel:UserTask17:InjectionTask5": {
@@ -1757,7 +2046,9 @@
     "src/agentdojo/default_suites/v1/travel/injection_tasks.py",
     "src/agentdojo/default_suites/v1/travel/user_tasks.py",
     "src/agentdojo/data/suites/travel/injection_vectors.yaml",
-    "src/agentdojo/data/suites/travel/environment.yaml"
+    "src/agentdojo/data/suites/travel/environment.yaml",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:travel:UserTask18:InjectionTask3": {
@@ -1768,7 +2059,9 @@
     "src/agentdojo/default_suites/v1/travel/injection_tasks.py",
     "src/agentdojo/default_suites/v1/travel/user_tasks.py",
     "src/agentdojo/data/suites/travel/injection_vectors.yaml",
-    "src/agentdojo/data/suites/travel/environment.yaml"
+    "src/agentdojo/data/suites/travel/environment.yaml",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:travel:UserTask18:InjectionTask5": {
@@ -1779,7 +2072,9 @@
     "src/agentdojo/default_suites/v1/travel/injection_tasks.py",
     "src/agentdojo/default_suites/v1/travel/user_tasks.py",
     "src/agentdojo/data/suites/travel/injection_vectors.yaml",
-    "src/agentdojo/data/suites/travel/environment.yaml"
+    "src/agentdojo/data/suites/travel/environment.yaml",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:travel:UserTask19:InjectionTask3": {
@@ -1790,7 +2085,9 @@
     "src/agentdojo/default_suites/v1/travel/injection_tasks.py",
     "src/agentdojo/default_suites/v1/travel/user_tasks.py",
     "src/agentdojo/data/suites/travel/injection_vectors.yaml",
-    "src/agentdojo/data/suites/travel/environment.yaml"
+    "src/agentdojo/data/suites/travel/environment.yaml",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:travel:UserTask19:InjectionTask5": {
@@ -1801,7 +2098,9 @@
     "src/agentdojo/default_suites/v1/travel/injection_tasks.py",
     "src/agentdojo/default_suites/v1/travel/user_tasks.py",
     "src/agentdojo/data/suites/travel/injection_vectors.yaml",
-    "src/agentdojo/data/suites/travel/environment.yaml"
+    "src/agentdojo/data/suites/travel/environment.yaml",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:travel:UserTask1:InjectionTask3": {
@@ -1812,7 +2111,9 @@
     "src/agentdojo/default_suites/v1/travel/injection_tasks.py",
     "src/agentdojo/default_suites/v1/travel/user_tasks.py",
     "src/agentdojo/data/suites/travel/injection_vectors.yaml",
-    "src/agentdojo/data/suites/travel/environment.yaml"
+    "src/agentdojo/data/suites/travel/environment.yaml",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:travel:UserTask1:InjectionTask5": {
@@ -1823,7 +2124,9 @@
     "src/agentdojo/default_suites/v1/travel/injection_tasks.py",
     "src/agentdojo/default_suites/v1/travel/user_tasks.py",
     "src/agentdojo/data/suites/travel/injection_vectors.yaml",
-    "src/agentdojo/data/suites/travel/environment.yaml"
+    "src/agentdojo/data/suites/travel/environment.yaml",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:travel:UserTask2:InjectionTask3": {
@@ -1834,7 +2137,9 @@
     "src/agentdojo/default_suites/v1/travel/injection_tasks.py",
     "src/agentdojo/default_suites/v1/travel/user_tasks.py",
     "src/agentdojo/data/suites/travel/injection_vectors.yaml",
-    "src/agentdojo/data/suites/travel/environment.yaml"
+    "src/agentdojo/data/suites/travel/environment.yaml",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:travel:UserTask2:InjectionTask5": {
@@ -1845,7 +2150,9 @@
     "src/agentdojo/default_suites/v1/travel/injection_tasks.py",
     "src/agentdojo/default_suites/v1/travel/user_tasks.py",
     "src/agentdojo/data/suites/travel/injection_vectors.yaml",
-    "src/agentdojo/data/suites/travel/environment.yaml"
+    "src/agentdojo/data/suites/travel/environment.yaml",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:travel:UserTask3:InjectionTask3": {
@@ -1856,7 +2163,9 @@
     "src/agentdojo/default_suites/v1/travel/injection_tasks.py",
     "src/agentdojo/default_suites/v1/travel/user_tasks.py",
     "src/agentdojo/data/suites/travel/injection_vectors.yaml",
-    "src/agentdojo/data/suites/travel/environment.yaml"
+    "src/agentdojo/data/suites/travel/environment.yaml",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:travel:UserTask3:InjectionTask5": {
@@ -1867,7 +2176,9 @@
     "src/agentdojo/default_suites/v1/travel/injection_tasks.py",
     "src/agentdojo/default_suites/v1/travel/user_tasks.py",
     "src/agentdojo/data/suites/travel/injection_vectors.yaml",
-    "src/agentdojo/data/suites/travel/environment.yaml"
+    "src/agentdojo/data/suites/travel/environment.yaml",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:travel:UserTask4:InjectionTask3": {
@@ -1878,7 +2189,9 @@
     "src/agentdojo/default_suites/v1/travel/injection_tasks.py",
     "src/agentdojo/default_suites/v1/travel/user_tasks.py",
     "src/agentdojo/data/suites/travel/injection_vectors.yaml",
-    "src/agentdojo/data/suites/travel/environment.yaml"
+    "src/agentdojo/data/suites/travel/environment.yaml",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:travel:UserTask4:InjectionTask5": {
@@ -1889,7 +2202,9 @@
     "src/agentdojo/default_suites/v1/travel/injection_tasks.py",
     "src/agentdojo/default_suites/v1/travel/user_tasks.py",
     "src/agentdojo/data/suites/travel/injection_vectors.yaml",
-    "src/agentdojo/data/suites/travel/environment.yaml"
+    "src/agentdojo/data/suites/travel/environment.yaml",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:travel:UserTask5:InjectionTask3": {
@@ -1900,7 +2215,9 @@
     "src/agentdojo/default_suites/v1/travel/injection_tasks.py",
     "src/agentdojo/default_suites/v1/travel/user_tasks.py",
     "src/agentdojo/data/suites/travel/injection_vectors.yaml",
-    "src/agentdojo/data/suites/travel/environment.yaml"
+    "src/agentdojo/data/suites/travel/environment.yaml",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:travel:UserTask5:InjectionTask5": {
@@ -1911,7 +2228,9 @@
     "src/agentdojo/default_suites/v1/travel/injection_tasks.py",
     "src/agentdojo/default_suites/v1/travel/user_tasks.py",
     "src/agentdojo/data/suites/travel/injection_vectors.yaml",
-    "src/agentdojo/data/suites/travel/environment.yaml"
+    "src/agentdojo/data/suites/travel/environment.yaml",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:travel:UserTask6:InjectionTask3": {
@@ -1922,7 +2241,9 @@
     "src/agentdojo/default_suites/v1/travel/injection_tasks.py",
     "src/agentdojo/default_suites/v1/travel/user_tasks.py",
     "src/agentdojo/data/suites/travel/injection_vectors.yaml",
-    "src/agentdojo/data/suites/travel/environment.yaml"
+    "src/agentdojo/data/suites/travel/environment.yaml",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:travel:UserTask6:InjectionTask5": {
@@ -1933,7 +2254,9 @@
     "src/agentdojo/default_suites/v1/travel/injection_tasks.py",
     "src/agentdojo/default_suites/v1/travel/user_tasks.py",
     "src/agentdojo/data/suites/travel/injection_vectors.yaml",
-    "src/agentdojo/data/suites/travel/environment.yaml"
+    "src/agentdojo/data/suites/travel/environment.yaml",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:travel:UserTask7:InjectionTask3": {
@@ -1944,7 +2267,9 @@
     "src/agentdojo/default_suites/v1/travel/injection_tasks.py",
     "src/agentdojo/default_suites/v1/travel/user_tasks.py",
     "src/agentdojo/data/suites/travel/injection_vectors.yaml",
-    "src/agentdojo/data/suites/travel/environment.yaml"
+    "src/agentdojo/data/suites/travel/environment.yaml",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:travel:UserTask7:InjectionTask5": {
@@ -1955,7 +2280,9 @@
     "src/agentdojo/default_suites/v1/travel/injection_tasks.py",
     "src/agentdojo/default_suites/v1/travel/user_tasks.py",
     "src/agentdojo/data/suites/travel/injection_vectors.yaml",
-    "src/agentdojo/data/suites/travel/environment.yaml"
+    "src/agentdojo/data/suites/travel/environment.yaml",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:travel:UserTask8:InjectionTask3": {
@@ -1966,7 +2293,9 @@
     "src/agentdojo/default_suites/v1/travel/injection_tasks.py",
     "src/agentdojo/default_suites/v1/travel/user_tasks.py",
     "src/agentdojo/data/suites/travel/injection_vectors.yaml",
-    "src/agentdojo/data/suites/travel/environment.yaml"
+    "src/agentdojo/data/suites/travel/environment.yaml",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:travel:UserTask8:InjectionTask5": {
@@ -1977,7 +2306,9 @@
     "src/agentdojo/default_suites/v1/travel/injection_tasks.py",
     "src/agentdojo/default_suites/v1/travel/user_tasks.py",
     "src/agentdojo/data/suites/travel/injection_vectors.yaml",
-    "src/agentdojo/data/suites/travel/environment.yaml"
+    "src/agentdojo/data/suites/travel/environment.yaml",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:travel:UserTask9:InjectionTask3": {
@@ -1988,7 +2319,9 @@
     "src/agentdojo/default_suites/v1/travel/injection_tasks.py",
     "src/agentdojo/default_suites/v1/travel/user_tasks.py",
     "src/agentdojo/data/suites/travel/injection_vectors.yaml",
-    "src/agentdojo/data/suites/travel/environment.yaml"
+    "src/agentdojo/data/suites/travel/environment.yaml",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:travel:UserTask9:InjectionTask5": {
@@ -1999,7 +2332,9 @@
     "src/agentdojo/default_suites/v1/travel/injection_tasks.py",
     "src/agentdojo/default_suites/v1/travel/user_tasks.py",
     "src/agentdojo/data/suites/travel/injection_vectors.yaml",
-    "src/agentdojo/data/suites/travel/environment.yaml"
+    "src/agentdojo/data/suites/travel/environment.yaml",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask0:InjectionTask0": {
@@ -2013,7 +2348,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask0:InjectionTask1": {
@@ -2027,7 +2365,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask0:InjectionTask4": {
@@ -2041,7 +2382,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask0:InjectionTask5": {
@@ -2055,7 +2399,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask10:InjectionTask0": {
@@ -2069,7 +2416,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask10:InjectionTask1": {
@@ -2083,7 +2433,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask10:InjectionTask4": {
@@ -2097,7 +2450,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask10:InjectionTask5": {
@@ -2111,7 +2467,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask11:InjectionTask0": {
@@ -2125,7 +2484,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask11:InjectionTask1": {
@@ -2139,7 +2501,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask11:InjectionTask4": {
@@ -2153,7 +2518,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask11:InjectionTask5": {
@@ -2167,7 +2535,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask12:InjectionTask0": {
@@ -2181,7 +2552,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask12:InjectionTask1": {
@@ -2195,7 +2569,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask12:InjectionTask4": {
@@ -2209,7 +2586,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask12:InjectionTask5": {
@@ -2223,7 +2603,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask13:InjectionTask0": {
@@ -2237,7 +2620,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask13:InjectionTask1": {
@@ -2251,7 +2637,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask13:InjectionTask4": {
@@ -2265,7 +2654,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask13:InjectionTask5": {
@@ -2279,7 +2671,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask14:InjectionTask0": {
@@ -2293,7 +2688,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask14:InjectionTask1": {
@@ -2307,7 +2705,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask14:InjectionTask4": {
@@ -2321,7 +2722,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask14:InjectionTask5": {
@@ -2335,7 +2739,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask15:InjectionTask0": {
@@ -2349,7 +2756,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask15:InjectionTask1": {
@@ -2363,7 +2773,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask15:InjectionTask4": {
@@ -2377,7 +2790,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask15:InjectionTask5": {
@@ -2391,7 +2807,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask16:InjectionTask0": {
@@ -2405,7 +2824,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask16:InjectionTask1": {
@@ -2419,7 +2841,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask16:InjectionTask4": {
@@ -2433,7 +2858,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask16:InjectionTask5": {
@@ -2447,7 +2875,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask17:InjectionTask0": {
@@ -2461,7 +2892,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask17:InjectionTask1": {
@@ -2475,7 +2909,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask17:InjectionTask4": {
@@ -2489,7 +2926,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask17:InjectionTask5": {
@@ -2503,7 +2943,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask18:InjectionTask0": {
@@ -2517,7 +2960,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask18:InjectionTask1": {
@@ -2531,7 +2977,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask18:InjectionTask4": {
@@ -2545,7 +2994,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask18:InjectionTask5": {
@@ -2559,7 +3011,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask19:InjectionTask0": {
@@ -2573,7 +3028,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask19:InjectionTask1": {
@@ -2587,7 +3045,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask19:InjectionTask4": {
@@ -2601,7 +3062,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask19:InjectionTask5": {
@@ -2615,7 +3079,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask1:InjectionTask0": {
@@ -2629,7 +3096,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask1:InjectionTask1": {
@@ -2643,7 +3113,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask1:InjectionTask4": {
@@ -2657,7 +3130,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask1:InjectionTask5": {
@@ -2671,7 +3147,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask20:InjectionTask0": {
@@ -2685,7 +3164,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask20:InjectionTask1": {
@@ -2699,7 +3181,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask20:InjectionTask4": {
@@ -2713,7 +3198,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask20:InjectionTask5": {
@@ -2727,7 +3215,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask21:InjectionTask0": {
@@ -2741,7 +3232,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask21:InjectionTask1": {
@@ -2755,7 +3249,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask21:InjectionTask4": {
@@ -2769,7 +3266,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask21:InjectionTask5": {
@@ -2783,7 +3283,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask22:InjectionTask0": {
@@ -2797,7 +3300,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask22:InjectionTask1": {
@@ -2811,7 +3317,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask22:InjectionTask4": {
@@ -2825,7 +3334,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask22:InjectionTask5": {
@@ -2839,7 +3351,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask23:InjectionTask0": {
@@ -2853,7 +3368,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask23:InjectionTask1": {
@@ -2867,7 +3385,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask23:InjectionTask4": {
@@ -2881,7 +3402,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask23:InjectionTask5": {
@@ -2895,7 +3419,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask24:InjectionTask0": {
@@ -2909,7 +3436,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask24:InjectionTask1": {
@@ -2923,7 +3453,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask24:InjectionTask4": {
@@ -2937,7 +3470,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask24:InjectionTask5": {
@@ -2951,7 +3487,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask25:InjectionTask0": {
@@ -2965,7 +3504,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask25:InjectionTask1": {
@@ -2979,7 +3521,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask25:InjectionTask4": {
@@ -2993,7 +3538,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask25:InjectionTask5": {
@@ -3007,7 +3555,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask26:InjectionTask0": {
@@ -3021,7 +3572,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask26:InjectionTask1": {
@@ -3035,7 +3589,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask26:InjectionTask4": {
@@ -3049,7 +3606,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask26:InjectionTask5": {
@@ -3063,7 +3623,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask27:InjectionTask0": {
@@ -3077,7 +3640,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask27:InjectionTask1": {
@@ -3091,7 +3657,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask27:InjectionTask4": {
@@ -3105,7 +3674,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask27:InjectionTask5": {
@@ -3119,7 +3691,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask28:InjectionTask0": {
@@ -3133,7 +3708,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask28:InjectionTask1": {
@@ -3147,7 +3725,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask28:InjectionTask4": {
@@ -3161,7 +3742,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask28:InjectionTask5": {
@@ -3175,7 +3759,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask29:InjectionTask0": {
@@ -3189,7 +3776,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask29:InjectionTask1": {
@@ -3203,7 +3793,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask29:InjectionTask4": {
@@ -3217,7 +3810,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask29:InjectionTask5": {
@@ -3231,7 +3827,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask2:InjectionTask0": {
@@ -3245,7 +3844,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask2:InjectionTask1": {
@@ -3259,7 +3861,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask2:InjectionTask4": {
@@ -3273,7 +3878,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask2:InjectionTask5": {
@@ -3287,7 +3895,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask30:InjectionTask0": {
@@ -3301,7 +3912,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask30:InjectionTask1": {
@@ -3315,7 +3929,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask30:InjectionTask4": {
@@ -3329,7 +3946,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask30:InjectionTask5": {
@@ -3343,7 +3963,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask31:InjectionTask0": {
@@ -3357,7 +3980,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask31:InjectionTask1": {
@@ -3371,7 +3997,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask31:InjectionTask4": {
@@ -3385,7 +4014,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask31:InjectionTask5": {
@@ -3399,7 +4031,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask32:InjectionTask0": {
@@ -3413,7 +4048,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask32:InjectionTask1": {
@@ -3427,7 +4065,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask32:InjectionTask4": {
@@ -3441,7 +4082,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask32:InjectionTask5": {
@@ -3455,7 +4099,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask33:InjectionTask0": {
@@ -3469,7 +4116,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask33:InjectionTask1": {
@@ -3483,7 +4133,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask33:InjectionTask4": {
@@ -3497,7 +4150,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask33:InjectionTask5": {
@@ -3511,7 +4167,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask34:InjectionTask0": {
@@ -3525,7 +4184,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask34:InjectionTask1": {
@@ -3539,7 +4201,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask34:InjectionTask4": {
@@ -3553,7 +4218,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask34:InjectionTask5": {
@@ -3567,7 +4235,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask35:InjectionTask0": {
@@ -3581,7 +4252,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask35:InjectionTask1": {
@@ -3595,7 +4269,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask35:InjectionTask4": {
@@ -3609,7 +4286,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask35:InjectionTask5": {
@@ -3623,7 +4303,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask36:InjectionTask0": {
@@ -3637,7 +4320,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask36:InjectionTask1": {
@@ -3651,7 +4337,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask36:InjectionTask4": {
@@ -3665,7 +4354,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask36:InjectionTask5": {
@@ -3679,7 +4371,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask37:InjectionTask0": {
@@ -3693,7 +4388,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask37:InjectionTask1": {
@@ -3707,7 +4405,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask37:InjectionTask4": {
@@ -3721,7 +4422,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask37:InjectionTask5": {
@@ -3735,7 +4439,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask38:InjectionTask0": {
@@ -3749,7 +4456,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask38:InjectionTask1": {
@@ -3763,7 +4473,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask38:InjectionTask4": {
@@ -3777,7 +4490,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask38:InjectionTask5": {
@@ -3791,7 +4507,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask39:InjectionTask0": {
@@ -3805,7 +4524,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask39:InjectionTask1": {
@@ -3819,7 +4541,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask39:InjectionTask4": {
@@ -3833,7 +4558,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask39:InjectionTask5": {
@@ -3847,7 +4575,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask3:InjectionTask0": {
@@ -3861,7 +4592,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask3:InjectionTask1": {
@@ -3875,7 +4609,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask3:InjectionTask4": {
@@ -3889,7 +4626,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask3:InjectionTask5": {
@@ -3903,7 +4643,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask4:InjectionTask0": {
@@ -3917,7 +4660,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask4:InjectionTask1": {
@@ -3931,7 +4677,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask4:InjectionTask4": {
@@ -3945,7 +4694,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask4:InjectionTask5": {
@@ -3959,7 +4711,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask5:InjectionTask0": {
@@ -3973,7 +4728,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask5:InjectionTask1": {
@@ -3987,7 +4745,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask5:InjectionTask4": {
@@ -4001,7 +4762,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask5:InjectionTask5": {
@@ -4015,7 +4779,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask6:InjectionTask0": {
@@ -4029,7 +4796,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask6:InjectionTask1": {
@@ -4043,7 +4813,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask6:InjectionTask4": {
@@ -4057,7 +4830,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask6:InjectionTask5": {
@@ -4071,7 +4847,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask7:InjectionTask0": {
@@ -4085,7 +4864,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask7:InjectionTask1": {
@@ -4099,7 +4881,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask7:InjectionTask4": {
@@ -4113,7 +4898,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask7:InjectionTask5": {
@@ -4127,7 +4915,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask8:InjectionTask0": {
@@ -4141,7 +4932,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask8:InjectionTask1": {
@@ -4155,7 +4949,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask8:InjectionTask4": {
@@ -4169,7 +4966,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask8:InjectionTask5": {
@@ -4183,7 +4983,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask9:InjectionTask0": {
@@ -4197,7 +5000,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask9:InjectionTask1": {
@@ -4211,7 +5017,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask9:InjectionTask4": {
@@ -4225,7 +5034,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentdojo:workspace:UserTask9:InjectionTask5": {
@@ -4239,7 +5051,10 @@
     "src/agentdojo/data/suites/workspace/environment.yaml",
     "src/agentdojo/data/suites/workspace/include/inbox.yaml",
     "src/agentdojo/data/suites/workspace/include/calendar.yaml",
-    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml"
+    "src/agentdojo/data/suites/workspace/include/cloud_drive.yaml",
+    "src/agentdojo/task_suite/task_combinators.py",
+    "src/agentdojo/attacks/important_instructions_attacks.py",
+    "src/agentdojo/attacks/base_attacks.py"
    ]
   },
   "agentsafetybench:1442": {
