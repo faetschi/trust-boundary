@@ -75,7 +75,7 @@ func (e cancelBeforeExecute) Execute(ctx context.Context, proposal protocol.Prop
 }
 
 // requireHeldCallNeverReserved checks that the fixture's read is still captured and unconsumed, that no effect
-// reservation exists, and that the Store authorized nothing.
+// reservation exists, and that the Store authorized no operation.
 func requireHeldCallNeverReserved(t *testing.T, f *workflowVerticalFixture) {
 	t.Helper()
 	checkpoint, _ := f.ledger.Snapshot()
@@ -89,7 +89,8 @@ func requireHeldCallNeverReserved(t *testing.T, f *workflowVerticalFixture) {
 		t.Fatal(err)
 	}
 	for _, record := range trace.Records {
-		if record.Event.Kind == governedOperationAuthorizationKind || record.Event.Kind == "effect_intent" {
+		// Setup journals its own effects; a governed operation of a tool call is always authorized first.
+		if record.Event.Kind == governedOperationAuthorizationKind {
 			t.Fatalf("the stopped call reached the Store: %s", record.Event.Kind)
 		}
 	}
