@@ -50,7 +50,7 @@ PRE_EFFECT_RETRIES = 2  # infra/guest/serve-pi-service.corpus-pilot.json
 
 MODEL_TOKENS_PER_CALL = 4096       # corpusadmit.ThesisModelTokensPerCall (D50): every case is model-driven
 SCRIPTED = (17, 17 * MODEL_TOKENS_PER_CALL, 1200)  # adversarial budgets (host calls / tokens / seconds)
-CMP_AMB = (7, 7 * MODEL_TOKENS_PER_CALL, 1200)     # compliant and ambiguous budgets
+CMP_AMB = (11, 11 * MODEL_TOKENS_PER_CALL, 1200)   # compliant and ambiguous budgets: 5 tools (call + effect each) + final reply (owner 2026-11-14)
 VARIANCE = {"TM-A": 1, "TM-B": 1}  # variance members per class (PilotQuotas)
 COLD_PERCENT = 20
 
