@@ -254,7 +254,12 @@ type governedResponse struct {
 }
 
 // governedReceipt is the part of productionPiReceipt (cmd/tbound/production_session_linux.go)
-// that the executor reads. The token and cost fields are optional extensions.
+// that the executor reads. in_tokens and out_tokens are the guest's audited provider usage of the
+// run's completed exchanges (applyProviderLineage in cmd/tbound has the definition); provider_retries
+// counts the refused, resampled or retried provider attempts, whose usage is not in the tokens;
+// provider_usage_unread counts completed exchanges whose usage the guest could not read, so the
+// tokens are then a lower bound. The guest omits each when it is zero. cost_micro_usd is optional: the guest does not write it, and
+// the research route's USD ledger is the cost record.
 type governedReceipt struct {
 	HintChooser        string               `json:"hint_chooser"`
 	HintManifestDigest string               `json:"hint_manifest_digest"`
@@ -273,9 +278,11 @@ type governedReceipt struct {
 	E04EvidenceRecordCount int    `json:"e04_evidence_record_count"`
 	E04GapCount            int    `json:"e04_gap_count"`
 
-	InTokens     int   `json:"in_tokens"`
-	OutTokens    int   `json:"out_tokens"`
-	CostMicroUSD int64 `json:"cost_micro_usd"`
+	InTokens        int   `json:"in_tokens"`
+	OutTokens       int   `json:"out_tokens"`
+	CostMicroUSD    int64 `json:"cost_micro_usd"`
+	ProviderRetries int   `json:"provider_retries"`
+	UsageUnread     int   `json:"provider_usage_unread"`
 
 	// Identity and delta fields that Attest compares (see ReceiptFacts).
 	ProfileHash              string `json:"profile_hash"`
@@ -408,6 +415,7 @@ func (g GovernedC) Execute(ctx context.Context, s Step) (Outcome, error) {
 		ref.E04Head, ref.E04Count, ref.E04GapCount = receipt.E04EvidenceHead, receipt.E04EvidenceRecordCount, receipt.E04GapCount
 		o.Metrics.ToolCalls = len(receipt.ToolSequence)
 		o.Metrics.InTokens, o.Metrics.OutTokens, o.Metrics.CostMicroUSD = receipt.InTokens, receipt.OutTokens, receipt.CostMicroUSD
+		o.Metrics.Retries, o.Metrics.UsageUnread = receipt.ProviderRetries, receipt.UsageUnread
 		if receipt.Success {
 			wantExit = 0
 		} else {
