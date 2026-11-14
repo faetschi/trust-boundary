@@ -65,7 +65,7 @@ func effectRefusedAfterCapture(t *testing.T) (*workflowVerticalFixture, error) {
 // The remaining case of #147 end to end: a captured call whose effect ReserveEffect refused leaves the
 // request unknown with its call still held. The effect never ran. Abandon refuses while the owners are
 // held; cleanup then drains the owner scope and releases the managed-root run, abandon settles the request
-// on the typed record of the call, and a later request is admitted.
+// from the checkpoint, which holds the call unconsumed, and a later request is admitted.
 func TestEffectRefusedAfterCaptureFreesCleanupAndAbandonSettles(t *testing.T) {
 	const reason = "effect refused after capture; operator recovery"
 	f, channelsErr := effectRefusedAfterCapture(t)
@@ -121,7 +121,6 @@ func notReservedResult(mutate func(map[string]any)) audit.Event {
 	return notStartedResult(func(fields map[string]any) {
 		delete(fields, "command_not_started")
 		fields["tool_call_id"] = notReservedToolCall
-		fields["effect_not_reserved"] = true
 		if mutate != nil {
 			mutate(fields)
 		}
@@ -186,19 +185,19 @@ func TestReconcileOwnerAcceptsOnlyAnEffectThatWasNeverReserved(t *testing.T) {
 			pins.EffectReservation.Binding.HostCallID = captured.HostCallID
 		}
 	}
-	typed := journal(decision, notReservedResult(nil))
+	unknown := journal(decision, notReservedResult(nil))
 	for name, tc := range map[string]struct {
 		mutate     []func(*ownerFixture)
 		reconciled bool
 	}{
-		"effect never reserved": {[]func(*ownerFixture){heldCall, typed}, true},
-		"first call, no effect before": {[]func(*ownerFixture){heldCall, typed,
+		"effect never reserved": {[]func(*ownerFixture){heldCall, unknown}, true},
+		"first call, no effect before": {[]func(*ownerFixture){heldCall, unknown,
 			pinned(func(pins *workflowrecovery.Pins) { pins.EffectReservation = nil })}, true},
 		// The checkpoint proves the effect never ran, so every way the call's journal can end is accepted,
-		// including journals written before the record was typed, as long as the journal released no result
-		// for the call: that would mean the checkpoint and the journal disagree.
-		"journal before the record was typed": {[]func(*ownerFixture){heldCall,
-			journal(decision, notReservedResult(field("effect_not_reserved", nil)))}, true},
+		// including a journal written while #153's effect_not_reserved field existed, as long as the journal
+		// released no result for the call: that would mean the checkpoint and the journal disagree.
+		"journal with #153's effect_not_reserved field": {[]func(*ownerFixture){heldCall,
+			journal(decision, notReservedResult(field("effect_not_reserved", true)))}, true},
 		"journal ends at the decision": {[]func(*ownerFixture){heldCall, journal(decision)}, true},
 		"journal ends at the capture": {[]func(*ownerFixture){heldCall,
 			journal(audit.Event{Kind: "provider_exchange", ID: "conversation-1:exchange:1", Data: []byte(`{}`)})}, true},
@@ -214,39 +213,39 @@ func TestReconcileOwnerAcceptsOnlyAnEffectThatWasNeverReserved(t *testing.T) {
 		"an unreadable provider journal": {[]func(*ownerFixture){heldCall, func(f *ownerFixture) {
 			f.providerTrace = func(string) (audit.Trace, error) { return audit.Trace{}, errors.New("journal unreadable") }
 		}}, false},
-		"effect reserved for the call": {[]func(*ownerFixture){heldCall, typed, pinned(ownEffect(workflowrecovery.EffectReservationReserved)),
+		"effect reserved for the call": {[]func(*ownerFixture){heldCall, unknown, pinned(ownEffect(workflowrecovery.EffectReservationReserved)),
 			pinned(func(pins *workflowrecovery.Pins) {
 				pins.HostCallReservation.CapturedCall.Disposition = workflowrecovery.CapturedCallConsumed
 			})}, false},
-		"effect reserved for the call, call unconsumed": {[]func(*ownerFixture){heldCall, typed,
+		"effect reserved for the call, call unconsumed": {[]func(*ownerFixture){heldCall, unknown,
 			pinned(ownEffect(workflowrecovery.EffectReservationReserved))}, false},
-		"terminal effect of the call": {[]func(*ownerFixture){heldCall, typed, pinned(ownEffect(workflowrecovery.EffectReservationTerminal))}, false},
-		"retired effect of the call":  {[]func(*ownerFixture){heldCall, typed, pinned(ownEffect(workflowrecovery.EffectReservationRetired))}, false},
-		"effect of the call's host call": {[]func(*ownerFixture){heldCall, typed, pinned(func(pins *workflowrecovery.Pins) {
+		"terminal effect of the call": {[]func(*ownerFixture){heldCall, unknown, pinned(ownEffect(workflowrecovery.EffectReservationTerminal))}, false},
+		"retired effect of the call":  {[]func(*ownerFixture){heldCall, unknown, pinned(ownEffect(workflowrecovery.EffectReservationRetired))}, false},
+		"effect of the call's host call": {[]func(*ownerFixture){heldCall, unknown, pinned(func(pins *workflowrecovery.Pins) {
 			pins.EffectReservation.Binding.HostCallID = g1HostCallID
 		})}, false},
-		"previous effect still reserved": {[]func(*ownerFixture){heldCall, typed, pinned(func(pins *workflowrecovery.Pins) {
+		"previous effect still reserved": {[]func(*ownerFixture){heldCall, unknown, pinned(func(pins *workflowrecovery.Pins) {
 			pins.EffectReservation.Disposition = workflowrecovery.EffectReservationReserved
 		})}, false},
-		"previous effect unknown": {[]func(*ownerFixture){heldCall, typed, pinned(func(pins *workflowrecovery.Pins) {
+		"previous effect unknown": {[]func(*ownerFixture){heldCall, unknown, pinned(func(pins *workflowrecovery.Pins) {
 			pins.EffectReservation.Disposition = workflowrecovery.EffectReservationUnknown
 		})}, false},
-		"captured call consumed": {[]func(*ownerFixture){heldCall, typed, pinned(func(pins *workflowrecovery.Pins) {
+		"captured call consumed": {[]func(*ownerFixture){heldCall, unknown, pinned(func(pins *workflowrecovery.Pins) {
 			pins.HostCallReservation.CapturedCall.Disposition = workflowrecovery.CapturedCallConsumed
 		})}, false},
-		"captured call of another conversation": {[]func(*ownerFixture){heldCall, typed, pinned(func(pins *workflowrecovery.Pins) {
+		"captured call of another conversation": {[]func(*ownerFixture){heldCall, unknown, pinned(func(pins *workflowrecovery.Pins) {
 			pins.HostCallReservation.CapturedCall.ConversationID = "conversation-2"
 		})}, false},
-		"captured call of another host call": {[]func(*ownerFixture){heldCall, typed, pinned(func(pins *workflowrecovery.Pins) {
+		"captured call of another host call": {[]func(*ownerFixture){heldCall, unknown, pinned(func(pins *workflowrecovery.Pins) {
 			pins.HostCallReservation.CapturedCall.HostCallID = "host-provider-call-other"
 		})}, false},
-		"host call still reserved": {[]func(*ownerFixture){heldCall, typed, pinned(func(pins *workflowrecovery.Pins) {
+		"host call still reserved": {[]func(*ownerFixture){heldCall, unknown, pinned(func(pins *workflowrecovery.Pins) {
 			pins.HostCallReservation.Disposition = workflowrecovery.HostCallReserved
 		})}, false},
-		"pending call in flight": {[]func(*ownerFixture){heldCall, typed, pinned(func(pins *workflowrecovery.Pins) {
+		"pending call in flight": {[]func(*ownerFixture){heldCall, unknown, pinned(func(pins *workflowrecovery.Pins) {
 			pins.PendingCallDisposition = workflowrecovery.PendingCallInFlight
 		})}, false},
-		"provider exchange awaited": {[]func(*ownerFixture){heldCall, typed, pinned(func(pins *workflowrecovery.Pins) {
+		"provider exchange awaited": {[]func(*ownerFixture){heldCall, unknown, pinned(func(pins *workflowrecovery.Pins) {
 			pins.ProviderDisposition = workflowrecovery.DispositionAwaitingProviderExchange
 			pins.ProviderTranscripts[0].Disposition = workflowrecovery.DispositionAwaitingProviderExchange
 		})}, false},

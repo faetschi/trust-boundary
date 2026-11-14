@@ -26,7 +26,6 @@ import (
 	"tbound/supervisor/internal/broker/openrouter"
 	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/gate"
-	"tbound/supervisor/internal/workflowrecovery"
 )
 
 const (
@@ -1120,9 +1119,6 @@ func (c *Conversation) recordUnknownExecutionLocked(proposal protocol.Proposal, 
 			// CommandNotStarted types the UNKNOWN: the runner proved the command never started and its cell
 			// gone, and no output exists. Abandon accepts exactly that as the call's disposition.
 			CommandNotStarted bool `json:"command_not_started,omitempty"`
-			// EffectNotReserved types the UNKNOWN: the workflow ledger refused the call's effect
-			// reservation before writing it, so the effect never ran, and no output exists.
-			EffectNotReserved bool `json:"effect_not_reserved,omitempty"`
 		}{
 			WorkflowID: c.cfg.WorkflowID, ConversationID: c.cfg.ConversationID,
 			ResponseIDIssuer: responseIssuer, ToolCallIDIssuer: callIssuer,
@@ -1131,7 +1127,6 @@ func (c *Conversation) recordUnknownExecutionLocked(proposal protocol.Proposal, 
 			ResultDigest: resultDigest, ExecutorOutputDigest: "sha256:" + hex.EncodeToString(rawDigest[:]), ExecutorOutput: rawOutput,
 			Outcome: "UNKNOWN", Failure: safeFailure(cause),
 			CommandNotStarted: proposal.Tool == "bash" && len(rawOutput) == 0 && errors.Is(cause, protocol.ErrCommandNotStarted),
-			EffectNotReserved: len(rawOutput) == 0 && errors.Is(cause, workflowrecovery.ErrEffectNotReserved),
 		})
 		if marshalErr == nil {
 			if _, appendErr := c.appendLocked("provider_tool_result_unknown", "unknown-result", data); appendErr != nil {
