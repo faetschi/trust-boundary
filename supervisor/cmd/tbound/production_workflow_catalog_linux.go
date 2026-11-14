@@ -936,13 +936,15 @@ func validateSettledServiceProfile(profile piruntime.HostProfile, template pirun
 // commandNeverStarted is likewise true only on the abandon path, once that journal closed the held
 // Bash call as a command that never started: the captured call, its reserved effect and the gate
 // result the conversation awaits then count as disposed.
-func validateSettledServiceDisposition(pins workflowrecovery.Pins, expectedConversationID string, closedUnknown, commandNeverStarted bool) error {
+func validateSettledServiceDisposition(pins workflowrecovery.Pins, expectedConversationID string,
+	closedUnknown, commandNeverStarted, effectNotReserved bool) error {
+	heldCallClosed := commandNeverStarted || effectNotReserved
 	awaitedExchangeClosed := closedUnknown && pins.ProviderDisposition == workflowrecovery.DispositionAwaitingProviderExchange
-	awaitedCallClosed := commandNeverStarted && pins.ProviderDisposition == workflowrecovery.DispositionAwaitingGateDecision
+	awaitedCallClosed := heldCallClosed && pins.ProviderDisposition == workflowrecovery.DispositionAwaitingGateDecision
 	if pins.PendingCallDisposition != workflowrecovery.PendingCallNone &&
 		pins.PendingCallDisposition != workflowrecovery.PendingCallTerminal &&
 		pins.PendingCallDisposition != workflowrecovery.PendingCallRetired &&
-		!(commandNeverStarted && pins.PendingCallDisposition == workflowrecovery.PendingCallCaptured) {
+		!(heldCallClosed && pins.PendingCallDisposition == workflowrecovery.PendingCallCaptured) {
 		return settlementRefusal("pending-call-disposition", errors.Join(ErrPiWorkflowCatalog, workflowrecovery.ErrPendingUnknown))
 	}
 	if pins.ProviderDisposition != workflowrecovery.DispositionNone &&
@@ -1003,7 +1005,7 @@ func (c *piServiceWorkflowCatalog) verifyCompletedServiceRequestPins(ctx context
 	if pins.RecoveryGeneration > 1 {
 		expectedSessionID, expectedRunID, expectedConversationID = recoveryGenerationIdentities(entry.WorkflowID, pins.RecoveryGeneration)
 	}
-	if err := validateSettledServiceDisposition(pins, expectedConversationID, false, false); err != nil {
+	if err := validateSettledServiceDisposition(pins, expectedConversationID, false, false, false); err != nil {
 		return err
 	}
 	if receipt.RunID != expectedRunID || pins.SessionID != expectedSessionID {

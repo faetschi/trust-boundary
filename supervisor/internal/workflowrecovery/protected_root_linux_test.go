@@ -990,6 +990,10 @@ func TestTerminalEffectUncertainRootCASLeavesOwnerPoisonedAndClockPauseSticky(t 
 	if _, _, _, err := owner.LoadCheckpoint(context.Background(), workflow); !errors.Is(err, ErrCAS) {
 		t.Fatalf("owner remained usable after an ambiguous local/root commit: %v", err)
 	}
+	if _, err := ledger.ReserveEffect(context.Background(), testEffectBinding("operation-after-ambiguous-cas"), nil); !errors.Is(err, ErrCAS) ||
+		errors.Is(err, ErrEffectNotReserved) {
+		t.Fatalf("ReserveEffect on a poisoned owner = %v, want ErrCAS, not typed as not reserved", err)
+	}
 	state, exists, err := loadProtectedRootState(context.Background(), root.db, workflow)
 	if err != nil || !exists || state.ClockUncertain != 1 || state.ClockExpired != 0 {
 		t.Fatalf("uncertainty pause was not retained across ambiguous terminal CAS: %+v exists=%v err=%v", state, exists, err)

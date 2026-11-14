@@ -294,11 +294,23 @@ func (l *Ledger) ReserveEffect(ctx context.Context, binding EffectBinding, verif
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if err := l.checkDeadline(ctx); err != nil {
+	// A refusal before the commit writes nothing. Only a deadline, clock or allowance refusal of an
+	// intact ledger with no other effect open is typed ErrEffectNotReserved; anything else keeps the
+	// captured call unsettleable.
+	refuse := func(err error) (Receipt, error) {
+		effect := l.checkpoint.Pins.EffectReservation
+		if (effect == nil || effect.Disposition == EffectReservationTerminal || effect.Disposition == EffectReservationRetired) &&
+			(errors.Is(err, ErrDeadline) || errors.Is(err, ErrClockUncertain) || errors.Is(err, ErrExhausted)) &&
+			!errors.Is(err, ErrCAS) && !errors.Is(err, ErrRollback) {
+			err = fmt.Errorf("%w: %w", ErrEffectNotReserved, err)
+		}
 		return Receipt{}, err
 	}
+	if err := l.checkDeadline(ctx); err != nil {
+		return refuse(err)
+	}
 	if err := validateEffectReservationAdmission(ctx, l.checkpoint, binding, verifier, time.Now()); err != nil {
-		return Receipt{}, err
+		return refuse(err)
 	}
 	if len(l.checkpoint.Pins.ProviderTranscripts) == 0 {
 		return Receipt{}, ErrObservation
@@ -307,7 +319,7 @@ func (l *Ledger) ReserveEffect(ctx context.Context, binding EffectBinding, verif
 		return Receipt{}, ErrRestartRequired
 	}
 	if l.checkpoint.Counters.HostCalls >= l.checkpoint.Limits.MaxHostCalls {
-		return Receipt{}, ErrExhausted
+		return refuse(ErrExhausted)
 	}
 	next := l.checkpoint
 	next.Pins = clonePins(l.checkpoint.Pins)
@@ -326,7 +338,13 @@ func (l *Ledger) ReserveEffect(ctx context.Context, binding EffectBinding, verif
 	next.PreviousCheckpointDigest = l.digest
 	next.ComputedCheckpointDigest = ""
 	proof := makeReservationProof(reservationEffect, l.digest, l.checkpoint, next)
-	return l.commit(ctx, next, proof, receiptEffect)
+	receipt, err := l.commit(ctx, next, proof, receiptEffect)
+	if errors.Is(err, ErrExhausted) && !errors.Is(err, ErrCAS) {
+		// The owner's headroom gate refuses before its transaction commits. Any other commit error
+		// may have written the reservation, so it stays untyped.
+		return refuse(err)
+	}
+	return receipt, err
 }
 
 // RecordTerminalEffectOutcome accounts for a known, independently verified

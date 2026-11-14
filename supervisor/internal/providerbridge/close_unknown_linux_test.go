@@ -15,6 +15,7 @@ import (
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/gate"
+	"tbound/supervisor/internal/workflowrecovery"
 )
 
 // releasedExecutor blocks inside Execute until release is closed, then returns its configured outcome.
@@ -80,6 +81,7 @@ type unknownEvidence struct {
 	Outcome           string `json:"outcome"`
 	ExecutorOutput    []byte `json:"executor_output"`
 	CommandNotStarted bool   `json:"command_not_started"`
+	EffectNotReserved bool   `json:"effect_not_reserved"`
 	Failure           string `json:"failure"`
 }
 
@@ -135,12 +137,20 @@ func TestCloseDuringExecutionRecordsExactlyOneUnknown(t *testing.T) {
 		cancel     bool
 		wantOutput bool
 		notStarted bool
+		// notReserved: the workflow ledger refused the effect reservation before writing it.
+		notReserved bool
 	}{
 		{name: "mutation output", tool: "write", args: write, wantOutput: true,
 			output: mutationOutput("write", "g1", recoveryTestTree("tree-1"), "transition-1", 1, "effect-1", nil)},
 		{name: "executor error", tool: "write", args: write, err: errors.New("executor exploded")},
 		{name: "bash command never started", tool: "bash", args: json.RawMessage(`{"command":"true"}`),
 			err: fmt.Errorf("run: %w", protocol.ErrCommandNotStarted), notStarted: true},
+		{name: "effect not reserved", tool: "write", args: write, notReserved: true,
+			err: fmt.Errorf("durable write: %w", fmt.Errorf("%w: %w", workflowrecovery.ErrEffectNotReserved, workflowrecovery.ErrDeadline))},
+		{name: "read effect not reserved", tool: "read", args: json.RawMessage(`{"path":"x"}`), notReserved: true,
+			err: fmt.Errorf("durable read: %w", fmt.Errorf("%w: %w", workflowrecovery.ErrEffectNotReserved, workflowrecovery.ErrExhausted))},
+		{name: "effect reservation outcome unknown", tool: "write", args: write,
+			err: fmt.Errorf("durable write: %w", workflowrecovery.ErrCAS)},
 		{name: "canceled", tool: "write", args: write, cancel: true, wantOutput: true,
 			output: mutationOutput("write", "g1", recoveryTestTree("tree-1"), "transition-1", 1, "effect-1", nil)},
 		{name: "admission denial", tool: "write", args: write,
@@ -183,8 +193,10 @@ func TestCloseDuringExecutionRecordsExactlyOneUnknown(t *testing.T) {
 				t.Fatalf("dispositions: %d results, %d UNKNOWN records; want exactly one UNKNOWN", results, len(unknowns))
 			}
 			unknown := unknowns[0]
-			if unknown.Outcome != "UNKNOWN" || (len(unknown.ExecutorOutput) != 0) != tc.wantOutput || unknown.CommandNotStarted != tc.notStarted {
-				t.Fatalf("UNKNOWN evidence = %+v, want output=%v command_not_started=%v", unknown, tc.wantOutput, tc.notStarted)
+			if unknown.Outcome != "UNKNOWN" || (len(unknown.ExecutorOutput) != 0) != tc.wantOutput || unknown.CommandNotStarted != tc.notStarted ||
+				unknown.EffectNotReserved != tc.notReserved {
+				t.Fatalf("UNKNOWN evidence = %+v, want output=%v command_not_started=%v effect_not_reserved=%v",
+					unknown, tc.wantOutput, tc.notStarted, tc.notReserved)
 			}
 		})
 	}
