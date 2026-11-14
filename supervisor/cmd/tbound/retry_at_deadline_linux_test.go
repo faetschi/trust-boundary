@@ -115,8 +115,9 @@ func TestRequestStoppedBetweenTurnsEndsSettleable(t *testing.T) {
 }
 
 // On the abandon path, a conversation that awaits its next provider exchange counts as quiescent only when no
-// host call is reserved and none holds a captured call. A reserved host call without its unknown record, a
-// held captured call, an open effect or a pending call keeps it refused.
+// host call is reserved, none holds an open captured call, and the provider journal's last reservation is the
+// checkpoint's. A reserved host call without its unknown record, a held captured call, an open effect, a
+// pending call, or a journal that disagrees or cannot be read keeps it refused.
 func TestReconcileOwnerAcceptsAnIdleAwaitedExchangeOnly(t *testing.T) {
 	idle := func(f *ownerFixture) {
 		pins := &f.view.Checkpoint.Pins
@@ -129,6 +130,20 @@ func TestReconcileOwnerAcceptsAnIdleAwaitedExchangeOnly(t *testing.T) {
 			Disposition: workflowrecovery.HostCallTerminal, OutcomeDigest: strings.Repeat("7", 64)}
 		f.view.Checkpoint.Counters.HostCalls, f.view.Checkpoint.Counters.Tokens = 2, g1TokenUpperBound
 	}
+	admitted := audit.Event{Kind: "provider_user_admitted", ID: "conversation-1:user:1", Data: []byte(`{}`)}
+	exchanged := audit.Event{Kind: "provider_exchange", ID: "conversation-1:exchange:2", Data: []byte(`{}`)}
+	journal := func(events ...audit.Event) func(*ownerFixture) {
+		return func(f *ownerFixture) {
+			trace := reconcileTestTrace(t, events...)
+			f.providerTrace = func(conversationID string) (audit.Trace, error) {
+				if conversationID != "conversation-1" {
+					return audit.Trace{}, errors.New("no such conversation")
+				}
+				return trace, nil
+			}
+		}
+	}
+	settled := journal(admitted, g1Reserved(), exchanged)
 	pinned := func(mutate func(*workflowrecovery.Pins)) func(*ownerFixture) {
 		return func(f *ownerFixture) { mutate(&f.view.Checkpoint.Pins) }
 	}
@@ -136,37 +151,47 @@ func TestReconcileOwnerAcceptsAnIdleAwaitedExchangeOnly(t *testing.T) {
 		mutate     []func(*ownerFixture)
 		reconciled bool
 	}{
-		"idle after a settled host call": {[]func(*ownerFixture){idle}, true},
-		"idle before any host call": {[]func(*ownerFixture){idle, pinned(func(pins *workflowrecovery.Pins) {
+		"idle after a settled host call": {[]func(*ownerFixture){idle, settled}, true},
+		"idle before any host call": {[]func(*ownerFixture){idle, journal(admitted), pinned(func(pins *workflowrecovery.Pins) {
 			pins.HostCallReservation = nil
 		})}, true},
-		"host call reserved without its unknown record": {[]func(*ownerFixture){idle, pinned(func(pins *workflowrecovery.Pins) {
+		"no provider journal reader": {[]func(*ownerFixture){idle}, false},
+		"unreadable provider journal": {[]func(*ownerFixture){idle, func(f *ownerFixture) {
+			f.providerTrace = func(string) (audit.Trace, error) { return audit.Trace{}, errors.New("unreadable") }
+		}}, false},
+		"journal holds a reservation the checkpoint lacks": {[]func(*ownerFixture){idle, settled, pinned(func(pins *workflowrecovery.Pins) {
+			pins.HostCallReservation = nil
+		})}, false},
+		"journal's last reservation is another call": {[]func(*ownerFixture){idle, settled, pinned(func(pins *workflowrecovery.Pins) {
+			pins.HostCallReservation.Binding.CallID = "host-provider-call-other"
+		})}, false},
+		"host call reserved without its unknown record": {[]func(*ownerFixture){idle, settled, pinned(func(pins *workflowrecovery.Pins) {
 			pins.HostCallReservation.Disposition = workflowrecovery.HostCallReserved
 		})}, false},
-		"host call holding a captured call": {[]func(*ownerFixture){idle, pinned(func(pins *workflowrecovery.Pins) {
+		"host call holding a captured call": {[]func(*ownerFixture){idle, settled, pinned(func(pins *workflowrecovery.Pins) {
 			pins.HostCallReservation.CapturedCall = &workflowrecovery.CapturedCallPin{WorkflowID: reconcileTestWorkflow,
 				ConversationID: "conversation-1", HostCallID: g1HostCallID, ToolCallID: "call-held", OutcomeDigest: strings.Repeat("7", 64),
 				RecoveryGeneration: 1, OwnerEpoch: 1, Disposition: workflowrecovery.CapturedCallAvailable}
 		})}, false},
-		"captured call retired after a DENY": {[]func(*ownerFixture){idle, pinned(func(pins *workflowrecovery.Pins) {
+		"captured call retired after a DENY": {[]func(*ownerFixture){idle, settled, pinned(func(pins *workflowrecovery.Pins) {
 			pins.PendingCallDisposition = workflowrecovery.PendingCallRetired
 			pins.HostCallReservation.CapturedCall = &workflowrecovery.CapturedCallPin{WorkflowID: reconcileTestWorkflow,
 				ConversationID: "conversation-1", HostCallID: g1HostCallID, ToolCallID: "call-denied", OutcomeDigest: strings.Repeat("7", 64),
 				RecoveryGeneration: 1, OwnerEpoch: 1, Disposition: workflowrecovery.CapturedCallRetired, RetirementDigest: strings.Repeat("9", 64)}
 		})}, true},
-		"captured call retired, pending call not": {[]func(*ownerFixture){idle, pinned(func(pins *workflowrecovery.Pins) {
+		"captured call retired, pending call not": {[]func(*ownerFixture){idle, settled, pinned(func(pins *workflowrecovery.Pins) {
 			pins.HostCallReservation.CapturedCall = &workflowrecovery.CapturedCallPin{WorkflowID: reconcileTestWorkflow,
 				ConversationID: "conversation-1", HostCallID: g1HostCallID, ToolCallID: "call-denied", OutcomeDigest: strings.Repeat("7", 64),
 				RecoveryGeneration: 1, OwnerEpoch: 1, Disposition: workflowrecovery.CapturedCallRetired, RetirementDigest: strings.Repeat("9", 64)}
 		})}, false},
-		"effect still reserved": {[]func(*ownerFixture){idle, pinned(func(pins *workflowrecovery.Pins) {
+		"effect still reserved": {[]func(*ownerFixture){idle, settled, pinned(func(pins *workflowrecovery.Pins) {
 			pins.EffectReservation = &workflowrecovery.EffectReservationPin{Disposition: workflowrecovery.EffectReservationReserved,
 				Binding: workflowrecovery.EffectBinding{OperationID: "sessionrepo-effect-1", SpecDigest: strings.Repeat("8", 64)}}
 		})}, false},
-		"pending call in flight": {[]func(*ownerFixture){idle, pinned(func(pins *workflowrecovery.Pins) {
+		"pending call in flight": {[]func(*ownerFixture){idle, settled, pinned(func(pins *workflowrecovery.Pins) {
 			pins.PendingCallDisposition = workflowrecovery.PendingCallInFlight
 		})}, false},
-		"older transcript still awaiting": {[]func(*ownerFixture){idle, pinned(func(pins *workflowrecovery.Pins) {
+		"older transcript still awaiting": {[]func(*ownerFixture){idle, settled, pinned(func(pins *workflowrecovery.Pins) {
 			pins.ProviderTranscripts = append([]workflowrecovery.TranscriptPin{{Ordinal: 1, ConversationID: "conversation-0",
 				Disposition: workflowrecovery.DispositionAwaitingProviderExchange}}, pins.ProviderTranscripts...)
 			pins.ProviderTranscripts[1].Ordinal = 2
