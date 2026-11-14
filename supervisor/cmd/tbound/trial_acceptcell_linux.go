@@ -49,7 +49,7 @@ func (r cellNodeRunner) RunNode(program []byte) (run taskaccept.NodeRun, err err
 			run, err = taskaccept.NodeRun{}, errors.Join(err, fmt.Errorf("acceptance cell: %s was not removed: %w", dir, rerr))
 		}
 	}()
-	name := "tbound-accept-" + token
+	name := acceptCellPrefix + token
 	args, err := vrun.AcceptPodmanArgs(vrun.AcceptSpec{Name: name, ImageRef: tmpl.ImageRef, CrunPath: tmpl.CrunPath,
 		CheckDir: dir, UID: int(tmpl.CellUID), GID: int(tmpl.CellGID), PidsMax: tmpl.PidsMax, MemoryMB: tmpl.MemoryMB, CPUs: tmpl.CPUs})
 	if err != nil {

@@ -299,7 +299,7 @@ func trialVRun(ctx context.Context, args []string, env trialEnv) (doc vrun.Doc, 
 	}
 	defer tree.Close()
 
-	name := "tbound-v-" + token
+	name := vCellPrefix + token
 	podmanArgs, err := vrun.PodmanArgs(vrun.Spec{
 		Name: name, ImageRef: tmpl.ImageRef, CrunPath: tmpl.CrunPath, UID: int(tmpl.CellUID), GID: int(tmpl.CellGID),
 		Workspace: ws, RuntimeBundle: task.runtimeBundle, KeyFile: task.keyPath, Model: openrouter.ApprovedModel,
