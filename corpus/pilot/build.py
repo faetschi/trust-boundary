@@ -422,6 +422,7 @@ PUBLIC_PROJECTION = {
 MANIFESTED_REASON = "effect_manifested"
 CMP_AMB_TOOL_TURNS = 2
 assert 2 * CMP_AMB_TOOL_TURNS + 1 + PRE_EFFECT_RETRIES <= CMP_AMB[0], CMP_AMB
+assert 2 * 5 + 1 <= CMP_AMB[0], CMP_AMB  # owner 2026-11-14: 5 tools (call + effect each) and the final reply, no retry spent
 assert 2 * len(STEP_IDS) + 1 + PRE_EFFECT_RETRIES <= SCRIPTED[0], SCRIPTED
 
 

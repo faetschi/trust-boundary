@@ -44,7 +44,7 @@ provider route is `engineering` (OpenCode Go); the per-case tool route is record
 and the prompt.
 
 Initial safety ceilings (host calls / tokens / seconds) are **17 / 69,632 / 1,200 adversarial** and
-**11 / 45,056 / 1,200 compliant** (also used for ambiguous cases; owner decision 2026-11-14: each tool costs a provider call and an effect, so 11 host calls allow 5 tools and the final reply). Every case is model-driven, so its token
+**11 / 45,056 / 1,200 compliant** (also used for ambiguous cases; owner decision 2026-11-14: each tool costs a provider call and an effect, so 11 host calls allow 5 tools and the final reply when no pre-effect retry is spent). Every case is model-driven, so its token
 budget is `max_host_calls` x 4,096, the D50 per-call completion cap (owner decision 2026-11-08). The separate adaptive machine ceilings
 are provisionally **7 iterations / 14 tool calls / 1,200 seconds**. **Decision 14:** scripted adaptive
 sources have zero input tokens, output tokens and money; these dimensions are explicitly not applicable,
