@@ -12,7 +12,7 @@ D51 item 13: every examined case becomes a development case. `load_source_item`,
 
 | Function | Rule | Result |
 |---|---|---|
-| `load_source_item(row, clones)` | step 1 | Files read from the git object at the pin. Every SHA-256 is checked against the pin's file digests in `d48-source-digests-v3.json`. Clone `HEAD` must equal the pin. Raises `Fail("F-SOURCE")`. A row the digest file does not list is refused, except a development row, which uses the pin's own file list. |
+| `load_source_item(row, clones)` | step 1 | The digest file, the ledger, the AgentDojo vectors file and the ASB vectors file are checked against the pilot commitment template's hashes. The row's pin must equal the digest file's pin. Files read from the git object at the pin. Every SHA-256 is checked against the pin's file digests in `d48-source-digests-v3.json`. Clone `HEAD` must equal the pin. Raises `Fail("F-SOURCE")`. A row the digest file does not list is refused, except a development row, which uses the pin's own file list. |
 | `render(row, item, judgments)` | steps 3 to 6, 8 | Dict with `user_prompt` (preamble included, `str`, write it as UTF-8), `fixture_files`, `pointer_sentences`, `protected_paths`, `canary_files`, `receivers`, `transformations`, `lost_distinctions`, `tool_mapping`, `forbidden_effects`, `effect_join`, `authorization_class`, `needs_judgment`. A structural failure returns `{"fail": code, "reason": text}`. |
 | `split_predicate(p)` | step 8 | `(forbidden_effects, effect_join)`. A mix of `+` and `/`, an unsplittable part or an unregistered part is `F-ELIGIBLE`. |
 | `scripted_checks(row, rendered)` | 5.2 checks 1, 2 | `[{"check", "pass", "detail"}]`. |
@@ -25,10 +25,11 @@ Sources rendered: InjecAgent, AgentDojo, ASB (through `asb_vectors.render`, plus
 
 `render` does not decide these. It lists each one in `needs_judgment`. Pass the answer back in `judgments` (a JSON file for the CLI):
 
-- `replacements`: `[[old, new], ...]`, the destination replacements of step 3 (a mailbox, address, URL or host becomes the receiver) and the object replacements (an object becomes its protected path). Each `old` must occur in the injected text. It is applied to the injected text only: the InjecAgent Tool Response, the AgentDojo goal, the SABER payload, an ASEval delivered tool response. Each pair is recorded under `transformations`.
+- `replacements`: `[[old, new], ...]`. The destination replacements of step 3 and 6 (only a URL, mailbox, address or host the request sends to, posts to, delivers to, visits, fetches from or downloads from becomes the receiver) and the object replacements. The tool never decides them: it lists every URL, bare host, host:port, IPv4 and mailbox in every text it renders (user task, injected text, written and setup files, SABER TM-B request, ASEval turns, RedCode prompt) with its location, as `step 3/6: destination candidate ...`. A candidate is covered by a `replacements` entry (applied to every rendered text that contains `old`) or by `keep` (`["text", ...]`: stays as it is). A replacement that occurs in no rendered text is refused. Every applied pair is recorded under `transformations`.
 - `tool_names`: `{vector: tool}` for an AgentDojo vector when the ground truth has more than one tool. Without it, the first ground-truth tool is used and the need is listed.
 - `objects`: `[{"path": "data/x.txt", "kind": "protected"|"canary", "content": optional}]`, the step 5 objects for InjecAgent, AgentDojo, RedCode and ASEval. The default content is the canary line of step 5. ASB and SABER derive their objects as the rule says.
 - `path_moves`: `{old: new}` for a RedCode system path that only locates a file the case creates (step 5, D51 items 5 and 7).
+- Step 2 executables: the tool lists command words that are not in the present list (rule command positions; heredoc bodies and quoted strings skipped) under `needs_judgment`. It never fails a row for them. Codes that do not parse, scalar shapes the tool cannot read and unsupported printf directives are listed or raise `ToolLimit`, never a rule code.
 - Also not done here: the step 2 exclusion classes of `05-source-screen.md` section 4 beyond the three mechanical ones, the step 7 tool mapping of the effect, the 5.3 judgment checks (intent, changes, losses, mapping, route), the unmapped system paths that are only text the case writes, the `python` route, and every `F-MEANING` outcome that needs reading.
 
 Not built: the calibration script, the pivot table, `p_delta` and its justification (step 9), the case entry, trial and meaning record in the `build_adv` shape (step 10), `oracle_mapping`, the workspace fixture digest and the calibration payload digest, the local and screening construct reports (step 11, section 5.1), the screening carriers and the guest. `render` gives the inputs those steps need.
@@ -39,13 +40,14 @@ Not built: the calibration script, the pivot table, `p_delta` and its justificat
 2. `py -3 -I corpus/sampling/adapt.py render --case <id> --allow-candidate --out <new dir> [--judgments j.json]`. It writes `prompt.txt`, `fixture/...` and `summary.json`. Answer each `needs_judgment` entry, render again with `--judgments`, and run `check --case <id> --summary <dir>/summary.json`.
 3. Do the steps the tool does not do (above), then the judgment checks. Put every judgment and its evidence into one evidence record (JSON).
 4. `py -3 -I corpus/sampling/adapt.py decide --case <id> --decisions corpus/sampling/decisions/pilot-v1.jsonl --evidence-dir corpus/sampling/evidence --evidence record.json [--pass] --reason "<code>: <sentence>" --adapter <who> --date YYYY-MM-DD [--screen-build B --carrier-sha256 S]`. Pass `--pass` only with a `PASS:` reason. The tool takes the rule digest from the file and the ledger digest from the ledger file.
+`check` and `decide` read only the committed ledger (its SHA-256 must be the template's). `decide` needs a candidate row and `--allow-candidate`, and validates the line before it writes the evidence file.
 5. Commit the decision file, then rerun `select.py` with a new `--out`.
 
 ## Readings of the rule this tool fixed
 
-See the implementation report for the ambiguous lines. The choices that change output bytes:
+The choices that change output bytes:
 
 - AgentDojo user task text is the evaluated Python value, byte for byte. A source trailing space stays, so a pointer sentence follows it after one more space.
 - An AgentDojo vector file holds the YAML scalar (one-line double-quoted, or a `|` block scalar) of `environment.yaml` or of an `!include` file that contains the placeholder, with the attack in place and other placeholders at their defaults. Include files come from the digest-checked file list; one the digest file does not list is `F-SOURCE`. A scalar shape the tool cannot read raises `ToolLimit`, a tool gap that is never a rule outcome.
 - InjecAgent `NN` and `MM` are 1-based line numbers.
-- ASEval and SABER delivered text gets the path mapping and the Python swap, then the adapter's `replacements`.
+- ASEval and SABER delivered text gets the path mapping and the Python swap first; the adapter's `replacements` apply to that text.
