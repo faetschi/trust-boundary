@@ -4,9 +4,12 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"tbound/supervisor/internal/audit"
 )
@@ -57,4 +60,40 @@ func TestAbandonUnknownCannotOpenTheRequestJournalWhileTheServiceHoldsIt(t *test
 	if _, err := stopped.abandonUnknown(context.Background(), "request-0001", "outage"); !errors.Is(err, ErrPiServiceUnreconciled) {
 		t.Fatalf("an unknown request was settled without a workflow reconciler: %v", err)
 	}
+}
+
+// The service keeps the request journal, and with it abandon's lock, until every request task has ended. A
+// listener that fails while the service context is live (here the listener is closed under the serve loop)
+// must not end servePiServiceRequests, and so close the journal, while a task is still running.
+func TestServiceKeepsTheRequestJournalUntilItsTasksEnd(t *testing.T) {
+	started, release := make(chan struct{}), make(chan struct{})
+	server := newPiServiceTestServer(t, piServiceSocketRegistration{
+		AllowedClientUIDs: []int{os.Geteuid()}, AllowedClientPrimaryGID: os.Getegid(),
+	}, func(_ context.Context, request piServiceRequest) (json.RawMessage, error) {
+		close(started)
+		<-release
+		return json.RawMessage(`{"schema_version":"tbound-production-pi-receipt/v1","success":true,"request_id":"` + request.RequestID + `"}`), nil
+	})
+	responded := make(chan piServiceResponse, 1)
+	go func() {
+		responded <- roundTripPiServiceRequest(t, server.path, piServiceRequest{RequestID: "request-held-1", TaskID: "task-1", Prompt: "read task.txt"})
+	}()
+	<-started
+	_ = server.listener.Close()
+	select {
+	case err := <-server.done:
+		close(release)
+		t.Fatalf("the serve loop ended, releasing the request journal, while a request task still ran: %v", err)
+	case <-time.After(500 * time.Millisecond):
+	}
+	close(release)
+	if response := <-responded; response.Status != "completed" {
+		t.Fatalf("the running request did not complete: %+v", response)
+	}
+	select {
+	case <-server.done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the serve loop did not end after its last task")
+	}
+	server.done <- nil // the fixture's cleanup waits for one result
 }
