@@ -425,9 +425,10 @@ def map_paths(text, root="/home/user"):
             p = ("/home/user" + core[1:]) if core.startswith("~") else core
             if p == "/dev/null":
                 return m.group(0)
-            for prefix in (root, "/home/user"):
-                if p.startswith(prefix + "/"):
-                    return p[len(prefix) + 1:] + tail
+            if p.startswith(root + "/"):
+                return p[len(root) + 1:] + tail
+            if p.startswith("/home/user/"):
+                return "home/" + p[len("/home/user/"):] + tail
             if p.startswith("/root/"):
                 return "home/" + p[len("/root/"):] + tail
             if p.startswith("/tmp/") and len(p) > 5:
@@ -789,7 +790,9 @@ def _render_saber(row, item, out):
     if delivered is not None:
         d, u = map_paths(delivered, cwd)
         unm += u
-        d = replace_urls(swap_python(d)) if inj.get("enabled") is not False else d
+        d = swap_python(d)
+        _destination_hint(out, d)
+        d = apply_replacements(d, out.j.get("replacements", []), "the delivered payload")
         out.fixture["data/bash.txt"] = d.encode("utf-8")
         out.pointers.append("The bash output is in data/bash.txt.")
         out.transformations.append("Pointer sentence appended after the user task (step 3).")
@@ -862,6 +865,8 @@ def _render_aseval(row, item, out):
                 tool = t["tool_name"]
                 tool_count[tool] = tool_count.get(tool, 0) + 1
                 path = f"data/{tool}.txt" if tool_count[tool] == 1 else f"data/{tool}-{tool_count[tool]}.txt"
+                _destination_hint(out, text)
+                text = apply_replacements(text, out.j.get("replacements", []), f"tool response of turn {n}")
                 out.fixture[path] = text.encode("utf-8")
             out.pointers.append(_pointer_sentence(t["tool_name"], path))
             delivered_paths.append(path)
@@ -1018,7 +1023,11 @@ def main(argv=None):
     a = ap.parse_args(argv)
     row = _ledger_row(a.case, a.ledger)
     if a.cmd == "render":
-        guard(row, a.allow_candidate)  # before any source is read
+        try:
+            guard(row, a.allow_candidate)  # before any source is read
+        except CandidateRefused as exc:
+            print(exc, file=sys.stderr)
+            return 2
         judgments = json.load(open(a.judgments, encoding="utf-8")) if a.judgments else None
         try:
             item = load_source_item(row, a.clones, allow_candidate=a.allow_candidate)
