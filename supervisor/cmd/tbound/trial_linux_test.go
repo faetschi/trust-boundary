@@ -74,6 +74,9 @@ type trialTestEnv struct {
 	lockErr    error
 	noReapErr  error
 	netSinkErr error
+	// leftovers and leftoverErr are what the fake leftover-container query returns.
+	leftovers   []string
+	leftoverErr error
 }
 
 func newTrialTestEnv(t *testing.T) *trialTestEnv {
@@ -138,6 +141,10 @@ func newTrialTestEnv(t *testing.T) *trialTestEnv {
 		netSink: func(context.Context, evidenceCell) error {
 			e.events = append(e.events, "net-sink")
 			return e.netSinkErr
+		},
+		leftoverCells: func(context.Context) ([]string, error) {
+			e.events = append(e.events, "leftovers")
+			return e.leftovers, e.leftoverErr
 		},
 		cellPopulated: func(evidenceCell) (bool, error) { return e.populated, nil },
 		killCell: func(cell evidenceCell) error {
@@ -325,6 +332,16 @@ func TestTrialResetRefusals(t *testing.T) {
 		"cgroup unreadable": {func(e *trialTestEnv) {
 			e.cellPopulated = func(evidenceCell) (bool, error) { return false, errors.New("cgroup.events unreadable") }
 		}, "unreadable"},
+		// procoracle F1: an acceptance or V cell left running would score as a cell escape.
+		"leftover V cell": {func(e *trialTestEnv) {
+			e.leftovers = []string{"tbound-v-0123456789abcdef"}
+		}, "tbound-v-0123456789abcdef"},
+		"leftover acceptance cell": {func(e *trialTestEnv) {
+			e.leftovers = []string{"tbound-accept-0123456789abcdef"}
+		}, "tbound-accept-0123456789abcdef"},
+		"container list unavailable": {func(e *trialTestEnv) {
+			e.leftoverErr = errors.New("podman: no runroot")
+		}, "no runroot"},
 	} {
 		for _, args := range [][]string{{"reset", trialTestCase}, {"reset", trialTestCase, "--check"}} {
 			t.Run(name+" "+strings.Join(args[2:], ""), func(t *testing.T) {
@@ -539,7 +556,7 @@ func TestTrialResetHoldsTheMaintenanceLockAcrossTheWholeReset(t *testing.T) {
 	if _, _, err := e.run(t, "reset", trialTestCase); err != nil {
 		t.Fatal(err)
 	}
-	if got, want := strings.Join(e.events, " "), "lock pending kill no-reap net-sink verify unlock"; got != want {
+	if got, want := strings.Join(e.events, " "), "lock pending leftovers kill no-reap net-sink verify unlock"; got != want {
 		t.Fatalf("seam order %q, want %q", got, want)
 	}
 }
@@ -563,13 +580,14 @@ func TestTrialResetRefusesWhenAWorkflowOrAnotherResetHoldsTheLock(t *testing.T) 
 	}
 }
 
-// --check changes nothing: it takes the lock for its reads and releases it, and runs no cleanup.
+// --check changes nothing: it takes the lock for its reads (the leftover-container query among them) and
+// releases it, and runs no cleanup. An empty container list lets it pass.
 func TestTrialResetCheckTakesTheLockAndCleansNothing(t *testing.T) {
 	e := newTrialTestEnv(t)
 	if _, _, err := e.run(t, "reset", trialTestCase, "--check"); err != nil {
 		t.Fatal(err)
 	}
-	if got, want := strings.Join(e.events, " "), "lock pending unlock"; got != want {
+	if got, want := strings.Join(e.events, " "), "lock pending leftovers unlock"; got != want {
 		t.Fatalf("seam order %q, want %q", got, want)
 	}
 }

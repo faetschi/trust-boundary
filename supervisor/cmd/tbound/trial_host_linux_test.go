@@ -537,3 +537,36 @@ func TestEnsureNetSinkRefusesWhenTheOldParentCannotBeRemoved(t *testing.T) {
 		t.Fatalf("the rule was loaded for a directory that was not replaced: %v", f.nft.calls)
 	}
 }
+
+// procoracle F1: the reset refuses while the service has an acceptance or V cell container, in any state.
+func TestLeftoverCellsNamesOnlyAcceptanceAndVCells(t *testing.T) {
+	f := newHostFixture(t)
+	pod := &fakeResetPodman{t: t, psRaw: "pi-wf-aa\ntbound-accept-0123456789abcdef\nx-tbound-v-1\ntbound-nr-bb\ntbound-v-fedcba9876543210\n"}
+	f.host.podman = pod.run
+	got, err := f.host.leftoverCells(context.Background())
+	if err != nil || strings.Join(got, " ") != "tbound-accept-0123456789abcdef tbound-v-fedcba9876543210" {
+		t.Fatalf("leftovers %v, %v", got, err)
+	}
+	if len(pod.calls) != 1 || strings.Join(pod.calls[0], " ") != "ps -a --format {{.Names}}" {
+		t.Fatalf("podman calls: %v", pod.calls)
+	}
+	pod = &fakeResetPodman{t: t}
+	f.host.podman = pod.run
+	if got, err := f.host.leftoverCells(context.Background()); err != nil || len(got) != 0 {
+		t.Fatalf("no containers: %v, %v", got, err)
+	}
+}
+
+func TestLeftoverCellsFailsClosed(t *testing.T) {
+	for name, pod := range map[string]*fakeResetPodman{
+		"podman ps fails":      {t: t, psError: errors.New("no runroot")},
+		"line is not a name":   {t: t, psRaw: "tbound-v-aa\n{{.Names}}\n"},
+		"line holds two names": {t: t, psRaw: "pi-wf-aa tbound-v-bb\n"},
+	} {
+		f := newHostFixture(t)
+		f.host.podman = pod.run
+		if got, err := f.host.leftoverCells(context.Background()); err == nil {
+			t.Fatalf("%s: %v without an error", name, got)
+		}
+	}
+}
