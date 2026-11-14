@@ -270,6 +270,21 @@ func (l *Ledger) ReserveHostCall(ctx context.Context, binding HostCallBinding) (
 	return l.commit(ctx, next, proof, receiptHostCall)
 }
 
+// HostCallsLeft is the number of host calls ReserveHostCall and ReserveEffect can still charge. The
+// provider bridge asks it so that it never captures a tool call, or retries an exchange, that the
+// remaining allowance cannot carry to a settleable end.
+func (l *Ledger) HostCallsLeft() uint64 {
+	if l == nil {
+		return 0
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.checkpoint.Counters.HostCalls >= l.checkpoint.Limits.MaxHostCalls {
+		return 0
+	}
+	return l.checkpoint.Limits.MaxHostCalls - l.checkpoint.Counters.HostCalls
+}
+
 // ReserveEffect consumes one workflow-wide host-call allowance before an
 // irreversible governed effect. It charges no provider tokens and has no
 // refund path if the effect callback or process later fails.

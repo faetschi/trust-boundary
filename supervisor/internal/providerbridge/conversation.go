@@ -48,6 +48,10 @@ var (
 	ErrWrongState        = errors.New("provider conversation is not in the required state")
 	ErrResultWithheld    = errors.New("durable provider tool result could not be recorded; result withheld")
 	ErrInvalidGeneration = errors.New("durable executor returned an invalid generation transition")
+	// ErrNoHostCallForToolEffect ends a turn whose response is a tool call while the workflow cannot charge
+	// both that call's effect and the provider call that returns its result: the call is never captured,
+	// so no call is left pending behind a refused effect.
+	ErrNoHostCallForToolEffect = errors.New("the provider returned a tool call but the workflow has no host calls left for its effect and result")
 )
 
 // eventJournal is implemented by audit.Journal. A successful Append means the
@@ -88,6 +92,11 @@ type Config struct {
 	// response has been durably captured in the provider journal.
 	ReserveHostCall  func(context.Context, broker.RequestRecord, uint64) (HostCallBinding, error)
 	CompleteHostCall func(context.Context, HostCallCompletion) error
+	// HostCallsLeft is the number of host calls the workflow can still charge. NextTurn asks it after an
+	// attempt is charged: a retry or resample needs one more, and a tool call needs two (its effect and
+	// the provider call that returns its result), else the turn ends with the attempt's host call closed
+	// as unknown, a state abandon reconciles. Nil (no workflow ledger) skips both checks.
+	HostCallsLeft func() uint64
 	// AdvanceProgress persists the exact provider/Store projection after a
 	// complete tool result is journaled and before that result is released to
 	// the adapter. It is supplied only by the governed workflow authority.
@@ -591,6 +600,11 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 		if !resample && !(retryable && retryableExchange(records)) {
 			break
 		}
+		if c.cfg.HostCallsLeft != nil && c.cfg.HostCallsLeft() == 0 {
+			// The next attempt could not be reserved, and that refusal would leave nothing reserved for
+			// abandon to close: end on this attempt, whose reservation the failure path closes as unknown.
+			break
+		}
 		if resample && spendUnit != "" {
 			// The refused attempt reached the provider and its cost is not established: its full
 			// reservation stays booked before the attempt is closed and the next one reserved.
@@ -691,6 +705,15 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 		persistErr := c.persistFailedExchangeLocked(records, identityErr, hostCallBinding)
 		disposed = exchangeDisposed(persistErr, records, hostCallBinding)
 		return Turn{}, c.failLocked(errors.Join(identityErr, persistErr))
+	}
+	if capturedCall != nil && c.cfg.HostCallsLeft != nil && c.cfg.HostCallsLeft() < 2 {
+		// Journaled like the reasoning-only stop: the host call stays reserved and closed as unknown, which
+		// abandon reconciles. Captured, the call would stay pending behind a refused effect (F26 unit 90),
+		// or its effect would take the last host call and the next exchange could not be reserved.
+		persistErr := c.persistFailedExchangeLocked(records, ErrNoHostCallForToolEffect, hostCallBinding)
+		persistErr = settleAfterJournal(persistErr, captured.Usage())
+		disposed = exchangeDisposed(persistErr, records, hostCallBinding)
+		return Turn{}, c.failLocked(errors.Join(ErrNoHostCallForToolEffect, persistErr))
 	}
 	callArray := []openrouter.PriorToolCall(nil)
 	if projection.ToolCall != nil {
