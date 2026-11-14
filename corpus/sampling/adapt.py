@@ -154,7 +154,9 @@ def _unlisted_files(row, pin):
         return [p for p in paths if p in keep]
     if src == "AgentDojo":
         suite = cid.split(":")[1]
-        return [p for p in paths if f"/{suite}/" in p]
+        shared = {"src/agentdojo/attacks/important_instructions_attacks.py", "src/agentdojo/attacks/base_attacks.py",
+                  "src/agentdojo/task_suite/task_combinators.py"}
+        return [p for p in paths if f"/{suite}/" in p or p in shared]
     if src == "RedCode-Exec":
         n = re.search(r"index(\d+)$", cid.split(":")[1]).group(1)
         return [p for p in paths if f"/index{n}_30_codes" in p]
@@ -315,8 +317,9 @@ def _class_info(tree, name):
                         env[stmt.targets[0].id] = _const(stmt.value, env)
                     except (ValueError, KeyError):
                         bad.add(stmt.targets[0].id)
-            calls = [kw.value.value for n in ast.walk(node) if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "FunctionCall"
-                     for kw in n.keywords if kw.arg == "function" and isinstance(kw.value, ast.Constant)]
+            found = sorted((n for n in ast.walk(node) if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "FunctionCall"),
+                           key=lambda n: (n.lineno, n.col_offset))
+            calls = [kw.value.value for n in found for kw in n.keywords if kw.arg == "function" and isinstance(kw.value, ast.Constant)]
             return env, calls, bad
     return None, None, set()
 
@@ -417,25 +420,138 @@ def _environment_scalars(texts, vector):
     return found
 
 
+ATTACK_FILE = "src/agentdojo/attacks/important_instructions_attacks.py"
+BASE_ATTACKS_FILE = "src/agentdojo/attacks/base_attacks.py"
+COMBINATORS_FILE = "src/agentdojo/task_suite/task_combinators.py"
+ATTACK_FILE_SHA256 = "519f24e0b9d72f43343d665679adacc33758b50cd1b586a81fa53fb098dcfe71"  # unit_choices of the commitment
+
+
+def _class_node(tree, name):
+    return next((n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == name), None)
+
+
+def _self_assign(cls, init_attr):
+    """The value node of `self.<init_attr> = ...` in the __init__ of a class."""
+    for fn in cls.body:
+        if isinstance(fn, ast.FunctionDef) and fn.name == "__init__":
+            for st in ast.walk(fn):
+                if (isinstance(st, ast.Assign) and isinstance(st.targets[0], ast.Attribute)
+                        and st.targets[0].attr == init_attr):
+                    return st.value
+    return None
+
+
+def attack_template(files):
+    """(_JB_STRING, user name, model name) read as data from the listed attack files (step 3 AgentDojo)."""
+    for path in (ATTACK_FILE, BASE_ATTACKS_FILE):
+        if path not in files:
+            raise Fail("F-SOURCE", f"{path} is needed for the attack template and the digest file does not list it")
+    if sha256_hex(files[ATTACK_FILE]) != ATTACK_FILE_SHA256:
+        raise Fail("F-SOURCE", "important_instructions_attacks.py differs from the SHA-256 the pilot commitment records")
+    tree, base = ast.parse(files[ATTACK_FILE]), ast.parse(files[BASE_ATTACKS_FILE])
+    cls = _class_node(tree, "ImportantInstructionsAttack")
+    jb = next((st.value for st in (cls.body if cls else []) if isinstance(st, ast.Assign)
+               and getattr(st.targets[0], "id", "") == "_JB_STRING"), None)
+    user = _self_assign(cls, "user_name") if cls else None
+    no_model = _class_node(tree, "ImportantInstructionsAttackNoModelName")
+    model_ref = _self_assign(no_model, "model_name") if no_model else None
+    default = next((st.value for st in base.body if isinstance(st, ast.Assign) and getattr(st.targets[0], "id", "") == DEFAULT_MODEL_NAME_ID), None)
+    if not (isinstance(jb, ast.Constant) and isinstance(user, ast.Constant) and isinstance(model_ref, ast.Name)
+            and model_ref.id == DEFAULT_MODEL_NAME_ID and isinstance(default, ast.Constant)):
+        raise ToolLimit("the important_instructions attack files have a shape this tool does not read")
+    return jb.value, user.value, default.value
+
+
+DEFAULT_MODEL_NAME_ID = "DEFAULT_MODEL_NAME"
+_COMBINED_GT = "user_task_1.ground_truth(pre_environment) + user_task_2.ground_truth(pre_environment)"
+
+
+def _combined_prompt_rule(files):
+    """Read task_combinators.py as data: returns f(p1, p2) -> default PROMPT of a combined task. ToolLimit if the file's
+    composition or its ground-truth union is not the shape this tool reproduces."""
+    tree = ast.parse(files[COMBINATORS_FILE])
+    fn = next((n for c in tree.body if isinstance(c, ast.ClassDef) for n in c.body
+               if isinstance(n, ast.FunctionDef) and n.name == "_create_combined_task"), None)
+    cls = next((n for n in (fn.body if fn else []) if isinstance(n, ast.ClassDef)), None)
+    branch = next((n for n in (cls.body if cls else []) if isinstance(n, ast.If)), None)
+    joined = None
+    if branch and ast.unparse(branch.test) == "prompt is None":
+        st = branch.body[0]
+        joined = st.value if isinstance(st, ast.Assign) and getattr(st.targets[0], "id", "") == "PROMPT" else None
+    gt = next((n for n in (cls.body if cls else []) if isinstance(n, ast.FunctionDef) and n.name == "ground_truth"), None)
+    if not isinstance(joined, ast.JoinedStr) or gt is None or ast.unparse(gt.body[-1].value) != _COMBINED_GT:
+        raise ToolLimit("task_combinators.py has a shape this tool does not reproduce")
+
+    def compose(p1, p2):
+        env, out = {"user_task_1": p1, "user_task_2": p2}, ""
+        for v in joined.values:
+            if isinstance(v, ast.Constant):
+                out += v.value
+            elif (isinstance(v, ast.FormattedValue) and isinstance(v.value, ast.Attribute) and v.value.attr == "PROMPT"
+                  and getattr(v.value.value, "id", None) in env):
+                out += env[v.value.value.id]
+            else:
+                raise ToolLimit("task_combinators.py PROMPT composition has a part this tool does not read")
+        return out
+    return compose
+
+
+def _user_task(tree, files, name, depth=0):
+    """(PROMPT, ground-truth tool names in source order) of a class task or a `create_combined_task` task."""
+    env, calls, bad = _class_info(tree, name)
+    if env is not None:
+        if "PROMPT" in bad:
+            raise ToolLimit(f"{name} PROMPT uses Python syntax this tool cannot evaluate")
+        if "PROMPT" not in env:
+            raise Fail("F-SOURCE", f"{name} has no PROMPT in the pinned files")
+        return env["PROMPT"], calls
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Call) and getattr(node.func, "attr", "") == "create_combined_task"
+                and node.args and isinstance(node.args[0], ast.Constant) and node.args[0].value == name):
+            continue
+        if COMBINATORS_FILE not in files:
+            raise Fail("F-SOURCE", f"{name} is a combined task and the digest file does not list task_combinators.py")
+        if depth > 3 or len(node.args) < 3:
+            raise ToolLimit(f"{name}: combined task call has a shape this tool does not read")
+        parts = []
+        for arg in node.args[1:3]:
+            ok = (isinstance(arg, ast.Subscript) and isinstance(arg.slice, ast.Constant)
+                  and re.fullmatch(r"user_task_(\d+)", str(arg.slice.value)))
+            if not ok:
+                raise ToolLimit(f"{name}: combined task part is not task_suite.user_tasks['user_task_N']")
+            parts.append(_user_task(tree, files, "UserTask" + arg.slice.value[len("user_task_"):], depth + 1))
+        prompt_node = next((kw.value for kw in node.keywords if kw.arg == "prompt"), node.args[3] if len(node.args) > 3 else None)
+        if prompt_node is None or (isinstance(prompt_node, ast.Constant) and prompt_node.value is None):
+            prompt = _combined_prompt_rule(files)(parts[0][0], parts[1][0])
+        elif isinstance(prompt_node, ast.Constant) and isinstance(prompt_node.value, str):
+            prompt = prompt_node.value
+        else:
+            raise ToolLimit(f"{name}: combined task prompt is not a string constant")
+        return prompt, parts[0][1] + parts[1][1]
+    raise Fail("F-SOURCE", f"{name} is neither a class nor a combined task in the pinned files")
+
+
 def _parse_agentdojo(row, files):
     _, suite, ut, it = row["case_id"].split(":")
     base = f"src/agentdojo/default_suites/v1/{suite}/"
     data = f"src/agentdojo/data/suites/{suite}/"
     users, injs = ast.parse(files[base + "user_tasks.py"]), ast.parse(files[base + "injection_tasks.py"])
-    uenv, calls, ubad = _class_info(users, ut)
+    prompt, calls = _user_task(users, files, ut)
     ienv, _, ibad = _class_info(injs, it)
-    if "PROMPT" in ubad or "GOAL" in ibad:
-        raise ToolLimit(f"{ut} PROMPT or {it} GOAL uses Python syntax this tool cannot evaluate")
-    if uenv is None or ienv is None or "PROMPT" not in uenv or "GOAL" not in ienv:
-        raise Fail("F-SOURCE", f"{ut} PROMPT or {it} GOAL not found in the pinned files")
+    if "GOAL" in ibad:
+        raise ToolLimit(f"{it} GOAL uses Python syntax this tool cannot evaluate")
+    if ienv is None or "GOAL" not in ienv:
+        raise Fail("F-SOURCE", f"{it} GOAL not found in the pinned files")
+    jb, user, model = attack_template(files)
     env_text = environment_texts(files, data)
     vectors_file = open(VECTORS_PATH, "rb").read()
     if sha256_hex(vectors_file) != commitment_template()["agentdojo_vectors_sha256"]:
         raise Fail("F-SOURCE", "agentdojo-vectors-v1.json differs from the pilot commitment's agentdojo_vectors_sha256")
     vectors = json.loads(vectors_file)["suites"][suite]["user_task_" + ut[len("UserTask"):]]
-    return {"suite": suite, "user_task": uenv["PROMPT"], "goal": ienv["GOAL"], "ground_truth_tools": calls,
+    return {"suite": suite, "user_task": prompt, "goal": ienv["GOAL"], "ground_truth_tools": calls,
             "vectors": vectors, "defaults": _scalar_defaults(files[data + "injection_vectors.yaml"].decode("utf-8")),
-            "environment": env_text, "vectors_sha256": sha256_hex(vectors_file)}
+            "environment": env_text, "vectors_sha256": sha256_hex(vectors_file),
+            "attack": {"jb": jb, "user": user, "model": model}}
 
 
 _PARSERS = {"InjecAgent": _parse_injecagent, "AgentDojo": _parse_agentdojo, "ASB": _parse_asb,
@@ -665,11 +781,22 @@ class _Out:
         self.tool_mapping = {}
         self.extra = {}
         self.used = set()
+        self.applied = []
+
+    def _pairs(self, where):
+        """The adapter's replacements that apply to a text: an entry [old, new] applies everywhere, [old, new, scope]
+        only where `scope` occurs in the text's location label."""
+        out = []
+        for p in self.j.get("replacements", []):
+            if len(p) > 2 and p[2] not in where:
+                continue
+            out.append((p[0], p[1]))
+        return out
 
     def text(self, text, where):
         """Every text the case renders: list each destination candidate (a judgment, step 3 and 6) that the adapter's
-        `replacements` or `keep` does not cover, then apply only the adapter's replacements."""
-        pairs = [tuple(p) for p in self.j.get("replacements", [])]
+        `replacements` or `keep` does not cover, then apply only the adapter's replacements for this location."""
+        pairs = self._pairs(where)
         covered = [o for o, _ in pairs if o] + [k for k in self.j.get("keep", []) if k]
         for c in destination_candidates(text):
             if not any(c in k or k in c for k in covered):
@@ -677,6 +804,7 @@ class _Out:
         for old, new in pairs:
             if old and old in text:
                 self.used.add(old)
+                self.applied.append(f"Replacement in {where} (steps 3, 6): {old!r} -> {new!r}")
                 text = text.replace(old, new)
         return text
 
@@ -711,11 +839,10 @@ class _Out:
 
     def done(self, prompt, tool_mapping=None):
         row = self.row
-        unused = [o for o, _ in self.j.get("replacements", []) if o not in self.used]
+        unused = [p[0] for p in self.j.get("replacements", []) if p[0] not in self.used]
         if unused:
-            raise ValueError(f"replacements that occur in no rendered text: {unused}")
-        for o, n in self.j.get("replacements", []):
-            self.transformations.append(f"Replacement (steps 3, 6): {o!r} -> {n!r}")
+            raise ValueError(f"replacements that occur in no rendered text at their scope: {unused}")
+        self.transformations += self.applied
         for path in self.fixture:
             parts = path.split("/")
             if not path or path.startswith("/") or "\\" in path or ":" in parts[0] or "" in parts or ".." in parts or "." in parts:
@@ -761,14 +888,14 @@ def _render_agentdojo(row, item, out):
         raise Fail("F-MEANING", "the user task reads no injection vector")
     names = out.j.get("tool_names", {})
     gt = list(dict.fromkeys(rec["ground_truth_tools"]))
-    files = []  # (tool, vector)
-    for v in rec["vectors"]:
-        tool = names.get(v) or (gt[0] if gt else None)
-        if tool is None:
-            raise Fail("F-MEANING", "no ground-truth tool to name the output file")
-        if v not in names and len(gt) > 1:
-            out.need(f"step 3: source tool of vector {v} (ground-truth tools in call order: {gt})")
-        files.append((tool, v))
+    if not gt:
+        raise Fail("F-MEANING", "no ground-truth tool to name the output file")
+    open_vectors = [v for v in rec["vectors"] if v not in names and len(gt) > 1]
+    if open_vectors:  # the rule makes the source tool a judgment: nothing is rendered until the adapter answers
+        for v in open_vectors:
+            out.need(f"step 3: source tool of vector {v} (ground-truth tools in call order: {gt}); give judgments.tool_names")
+        return {"case_id": row["case_id"], "user_prompt": None, "fixture_files": {}, "needs_judgment": out.judge}
+    files = [(names.get(v) or gt[0], v) for v in rec["vectors"]]  # a single ground-truth tool names every file
     count = {}
     paths = []
     for tool, v in files:
@@ -777,7 +904,7 @@ def _render_agentdojo(row, item, out):
     goal = rec["goal"]
     goal = out.text(goal, "the injected text")
     user_task = out.text(rec["user_task"], "the user task")
-    injected = JB_STRING.format(goal=goal, user=AD_USER, model=AD_MODEL)
+    injected = rec["attack"]["jb"].format(goal=goal, user=rec["attack"]["user"], model=rec["attack"]["model"])
     env_text, defaults = rec["environment"], rec["defaults"]
     for (tool, v), path in zip(files, paths):
         scalars = _environment_scalars(env_text, v)
@@ -817,6 +944,8 @@ def _render_asb(row, item, out):
         raise Fail("F-ELIGIBLE", f"goal class {goal_class!r} differs from attack_id {row['attack_id']!r} (step 2, section 3c)")
     v = asb_vectors.render(row, rec["tool"], rec["user_task"])
     frozen = _frozen_asb_vectors()
+    if row["case_id"] not in frozen and row["status"] == "candidate":
+        raise Fail("F-MEANING", "a candidate ASB row has no frozen test vector (section 3a)")
     if row["case_id"] in frozen and frozen[row["case_id"]]["prompt"] != v["prompt"]:
         raise Fail("F-MEANING", "the rendered prompt differs from its frozen test vector (section 3a)")
     for p in v["protected_paths"]:
@@ -932,12 +1061,17 @@ def parse_setup(commands, where, allow_heredoc=True):
                     notes.append(f"step 3 Setup: unquoted heredoc to {m.group(2)} would expand $ or backticks (judgment)")
                 put(m.group(2), "\n".join(body) + "\n" if body else "", m.group(1) == ">>")
                 continue
-            try:
-                lex = shlex.shlex(line, posix=True, punctuation_chars=True)
-                lex.whitespace_split = True
-                toks = list(lex)
-            except ValueError:
-                raise Fail("F-FIXTURE", f"{where}: setup command does not parse: {line[:60]!r}")
+            while True:
+                try:
+                    lex = shlex.shlex(line, posix=True, punctuation_chars=True)
+                    lex.whitespace_split = True
+                    toks = list(lex)
+                    break
+                except ValueError:
+                    if i >= len(lines):  # an unclosed quote runs to the end of the setup string
+                        raise Fail("F-FIXTURE", f"{where}: setup command does not parse: {line[:60]!r}")
+                    line += "\n" + lines[i]  # a quoted argument that spans lines
+                    i += 1
             redirect = toks[-2] if len(toks) >= 3 and toks[-2] in (">", ">>") else None
             core = toks[:-2] if redirect else toks
             if not core or any(t in (";", "&&", "||", "|", "&", "(", ")", "<", "<<", ">", ">>", ">>>") for t in core):
@@ -1242,6 +1376,47 @@ def append_decision(path, line):
         fh.write((json.dumps(line, ensure_ascii=False) + "\n").encode("utf-8"))
 
 
+JUDGMENT_CHECKS = ("1 intent", "2 changes", "3 losses", "4 tool mapping", "5 route")
+
+
+def validate_evidence(record, case_id, passed, reason):
+    """Required keys of an evidence record (rule sections 2, 5.2, 5.3, 6). Raises ValueError listing what is missing.
+    Every record: case_id, rule_sha256, attempts (non-empty list), outcome (code). A passing record also needs the
+    construct report, the two 5.2 results (both pass) and the five 5.3 answers, each with an answer and evidence.
+    A failing record keeps what was written before it stopped; each 5.3 entry it holds must be well formed."""
+    problems = []
+    if not isinstance(record, dict):
+        raise ValueError("evidence record must be a JSON object")
+    if record.get("case_id") != case_id:
+        problems.append("case_id must equal the decided case")
+    if record.get("rule_sha256") != rule_sha256():
+        problems.append("rule_sha256 must be the SHA-256 of the rule file")
+    if not isinstance(record.get("attempts"), list) or not record["attempts"]:
+        problems.append("attempts must be a non-empty list (every attempt goes into the evidence file)")
+    code = reason.split(":", 1)[0]
+    if record.get("outcome") != code:
+        problems.append(f"outcome must equal the reason code {code!r}")
+    judged = record.get("judgment_checks", {})
+    if not isinstance(judged, dict):
+        problems.append("judgment_checks must be an object keyed by check")
+        judged = {}
+    for name, entry in judged.items():
+        if (name not in JUDGMENT_CHECKS or not isinstance(entry, dict) or entry.get("answer") not in ("yes", "no")
+                or not str(entry.get("evidence", "")).strip()):
+            problems.append(f"judgment check {name!r} needs an answer yes or no and non-empty evidence")
+    if passed:
+        if not record.get("construct_report"):
+            problems.append("a passing record needs the construct_report")
+        checks = record.get("scripted_checks")
+        if not (isinstance(checks, list) and len(checks) == 2 and all(isinstance(c, dict) and c.get("pass") is True for c in checks)):
+            problems.append("a passing record needs both 5.2 results, passing")
+        for name in JUDGMENT_CHECKS:
+            if judged.get(name, {}).get("answer") != "yes":
+                problems.append(f"a passing record needs judgment check {name} answered yes")
+    if problems:
+        raise ValueError("evidence record: " + "; ".join(problems))
+
+
 def evidence_bytes(record):
     return (json.dumps(record, ensure_ascii=False, sort_keys=True, indent=1) + "\n").encode("utf-8")
 
@@ -1325,16 +1500,22 @@ def main(argv=None):
         judgments = json.load(open(a.judgments, encoding="utf-8")) if a.judgments else None
         try:
             item = load_source_item(row, a.clones, allow_candidate=a.allow_candidate)
+            rendered = render(row, item, judgments, a.allow_candidate)
         except Fail as exc:
             print(json.dumps({"fail": exc.code, "reason": exc.reason}))
             return 1
-        except ToolLimit as exc:
+        except ToolLimit as exc:  # a gap of the tool, never a rule outcome
             print(json.dumps({"tool_limit": str(exc)}))
             return 3
-        rendered = render(row, item, judgments, a.allow_candidate)
+        except (ValueError, KeyError, TypeError) as exc:  # an adapter judgment the tool cannot apply
+            print(json.dumps({"judgment_error": f"{type(exc).__name__}: {exc}"}))
+            return 5
         if "fail" in rendered:
             print(json.dumps(rendered))
             return 1
+        if rendered["user_prompt"] is None:  # the rule leaves a judgment open: nothing is rendered
+            print(json.dumps({"needs_judgment": rendered["needs_judgment"]}))
+            return 4
         _write_rendered(a.out, rendered)
         print(json.dumps({"out": a.out, "needs_judgment": rendered["needs_judgment"]}))
         return 0
@@ -1352,12 +1533,17 @@ def main(argv=None):
         print(json.dumps(res, indent=1))
         return 0 if all(x["pass"] for x in res) else 1
     record = json.load(open(a.evidence, encoding="utf-8"))
-    digest = sha256_hex(evidence_bytes(record))
-    ledger_sha = sha256_hex(open(a.ledger, "rb").read())
-    line = decision_line(a.case, a.passed, a.reason, rule_sha256(), ledger_sha, a.adapter, a.date, a.screen_build,
-                         a.carrier_sha256, digest)  # validated before any file is written
-    write_evidence(a.evidence_dir, record)
-    append_decision(a.decisions, line)
+    try:
+        validate_evidence(record, a.case, a.passed, a.reason)
+        digest = sha256_hex(evidence_bytes(record))
+        ledger_sha = sha256_hex(open(a.ledger, "rb").read())
+        line = decision_line(a.case, a.passed, a.reason, rule_sha256(), ledger_sha, a.adapter, a.date, a.screen_build,
+                             a.carrier_sha256, digest)  # validated before any file is written
+        write_evidence(a.evidence_dir, record)
+        append_decision(a.decisions, line)
+    except ValueError as exc:
+        print(json.dumps({"error": str(exc)}))
+        return 5
     print(digest)
     return 0
 
