@@ -81,7 +81,6 @@ type unknownEvidence struct {
 	Outcome           string `json:"outcome"`
 	ExecutorOutput    []byte `json:"executor_output"`
 	CommandNotStarted bool   `json:"command_not_started"`
-	EffectNotReserved bool   `json:"effect_not_reserved"`
 	Failure           string `json:"failure"`
 }
 
@@ -106,6 +105,10 @@ func (f *executingFixture) dispositions(t *testing.T) (results int, unknowns []u
 			results++
 		case "provider_tool_result_unknown":
 			var evidence unknownEvidence
+			// The UNKNOWN record carries no effect-reservation typing: abandon reads the workflow checkpoint.
+			if strings.Contains(string(record.Event.Data), "effect_not_reserved") {
+				t.Fatalf("UNKNOWN record carries effect_not_reserved: %s", record.Event.Data)
+			}
 			if err := json.Unmarshal(record.Event.Data, &evidence); err != nil {
 				t.Fatal(err)
 			}
@@ -137,17 +140,15 @@ func TestCloseDuringExecutionRecordsExactlyOneUnknown(t *testing.T) {
 		cancel     bool
 		wantOutput bool
 		notStarted bool
-		// notReserved: the workflow ledger refused the effect reservation before writing it.
-		notReserved bool
 	}{
 		{name: "mutation output", tool: "write", args: write, wantOutput: true,
 			output: mutationOutput("write", "g1", recoveryTestTree("tree-1"), "transition-1", 1, "effect-1", nil)},
 		{name: "executor error", tool: "write", args: write, err: errors.New("executor exploded")},
 		{name: "bash command never started", tool: "bash", args: json.RawMessage(`{"command":"true"}`),
 			err: fmt.Errorf("run: %w", protocol.ErrCommandNotStarted), notStarted: true},
-		{name: "effect not reserved", tool: "write", args: write, notReserved: true,
+		{name: "effect not reserved", tool: "write", args: write,
 			err: fmt.Errorf("durable write: %w", fmt.Errorf("%w: %w", workflowrecovery.ErrEffectNotReserved, workflowrecovery.ErrDeadline))},
-		{name: "read effect not reserved", tool: "read", args: json.RawMessage(`{"path":"x"}`), notReserved: true,
+		{name: "read effect not reserved", tool: "read", args: json.RawMessage(`{"path":"x"}`),
 			err: fmt.Errorf("durable read: %w", fmt.Errorf("%w: %w", workflowrecovery.ErrEffectNotReserved, workflowrecovery.ErrExhausted))},
 		{name: "effect reservation outcome unknown", tool: "write", args: write,
 			err: fmt.Errorf("durable write: %w", workflowrecovery.ErrCAS)},
@@ -193,10 +194,8 @@ func TestCloseDuringExecutionRecordsExactlyOneUnknown(t *testing.T) {
 				t.Fatalf("dispositions: %d results, %d UNKNOWN records; want exactly one UNKNOWN", results, len(unknowns))
 			}
 			unknown := unknowns[0]
-			if unknown.Outcome != "UNKNOWN" || (len(unknown.ExecutorOutput) != 0) != tc.wantOutput || unknown.CommandNotStarted != tc.notStarted ||
-				unknown.EffectNotReserved != tc.notReserved {
-				t.Fatalf("UNKNOWN evidence = %+v, want output=%v command_not_started=%v effect_not_reserved=%v",
-					unknown, tc.wantOutput, tc.notStarted, tc.notReserved)
+			if unknown.Outcome != "UNKNOWN" || (len(unknown.ExecutorOutput) != 0) != tc.wantOutput || unknown.CommandNotStarted != tc.notStarted {
+				t.Fatalf("UNKNOWN evidence = %+v, want output=%v command_not_started=%v", unknown, tc.wantOutput, tc.notStarted)
 			}
 		})
 	}

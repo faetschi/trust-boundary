@@ -26,7 +26,6 @@ import (
 	"tbound/supervisor/internal/broker/openrouter"
 	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/gate"
-	"tbound/supervisor/internal/workflowrecovery"
 )
 
 const (
@@ -745,16 +744,17 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 	if err != nil {
 		return Turn{}, c.failLocked(fmt.Errorf("persist exact provider exchange; response withheld: %w", err))
 	}
+	// The exchange is durable: its spend and host call settle even if the request context ends now, or a
+	// deadline would leave the journaled exchange's host call reserved, which abandon cannot reconcile. A
+	// canceled turn is refused only after that, below.
+	settleCtx := context.WithoutCancel(ctx)
 	if spendUnit != "" {
 		// SettleSpend leaves the unit in its final state (settled, overage-settled
 		// or uncertain) whether or not it returns an error.
 		spendSettled = true
-		if err := c.cfg.Spend.SettleSpend(ctx, spendUnit, captured.Usage()); err != nil {
+		if err := c.cfg.Spend.SettleSpend(settleCtx, spendUnit, captured.Usage()); err != nil {
 			return Turn{}, c.failLocked(fmt.Errorf("settle provider spend; response withheld: %w", err))
 		}
-	}
-	if err := ctx.Err(); err != nil {
-		return Turn{}, c.failLocked(fmt.Errorf("provider exchange canceled before release: %w", err))
 	}
 	if capturedCall != nil {
 		trusted, err := captured.TrustedCapture(callIssuer, responseIssuer, c.generation, nextSequence)
@@ -782,9 +782,12 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 		c.state = stateNeedsPrompt
 	}
 	if hostCallBinding != nil {
-		if err := c.cfg.CompleteHostCall(ctx, HostCallCompletion{Binding: *hostCallBinding, OutcomeDigest: journalRecord.Hash}); err != nil {
+		if err := c.cfg.CompleteHostCall(settleCtx, HostCallCompletion{Binding: *hostCallBinding, OutcomeDigest: journalRecord.Hash}); err != nil {
 			return Turn{}, c.failLocked(fmt.Errorf("settle exact provider exchange reservation before result release: %w", err))
 		}
+	}
+	if err := ctx.Err(); err != nil {
+		return Turn{}, c.failLocked(fmt.Errorf("provider exchange canceled before release: %w", err))
 	}
 	return projection, nil
 }
@@ -1120,9 +1123,6 @@ func (c *Conversation) recordUnknownExecutionLocked(proposal protocol.Proposal, 
 			// CommandNotStarted types the UNKNOWN: the runner proved the command never started and its cell
 			// gone, and no output exists. Abandon accepts exactly that as the call's disposition.
 			CommandNotStarted bool `json:"command_not_started,omitempty"`
-			// EffectNotReserved types the UNKNOWN: the workflow ledger refused the call's effect
-			// reservation before writing it, so the effect never ran, and no output exists.
-			EffectNotReserved bool `json:"effect_not_reserved,omitempty"`
 		}{
 			WorkflowID: c.cfg.WorkflowID, ConversationID: c.cfg.ConversationID,
 			ResponseIDIssuer: responseIssuer, ToolCallIDIssuer: callIssuer,
@@ -1131,7 +1131,6 @@ func (c *Conversation) recordUnknownExecutionLocked(proposal protocol.Proposal, 
 			ResultDigest: resultDigest, ExecutorOutputDigest: "sha256:" + hex.EncodeToString(rawDigest[:]), ExecutorOutput: rawOutput,
 			Outcome: "UNKNOWN", Failure: safeFailure(cause),
 			CommandNotStarted: proposal.Tool == "bash" && len(rawOutput) == 0 && errors.Is(cause, protocol.ErrCommandNotStarted),
-			EffectNotReserved: len(rawOutput) == 0 && errors.Is(cause, workflowrecovery.ErrEffectNotReserved),
 		})
 		if marshalErr == nil {
 			if _, appendErr := c.appendLocked("provider_tool_result_unknown", "unknown-result", data); appendErr != nil {
