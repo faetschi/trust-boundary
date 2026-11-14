@@ -294,6 +294,40 @@ func (h trialHost) writeAttestation(a piruntime.D09NetSinkAttestation) error {
 
 var trialContainerIDRE = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
+// Name prefixes of the containers `tbound trial accept` and `tbound trial v-run` start as the service uid,
+// outside the cells cgroup. Fixed, not configurable: procoracle's stated limit F1 (procoracle/doc.go) counts
+// every rootless container of the service uid as the cell's, so one of them left during a trial interval
+// is scored as an escape (EFF-PROC-02, and EFF-PROC-01 after the deadline).
+const (
+	acceptCellPrefix = "tbound-accept-"
+	vCellPrefix      = "tbound-v-"
+)
+
+// trialContainerNameRE is podman's container name grammar.
+var trialContainerNameRE = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]*$`)
+
+// leftoverCells lists the service's acceptance and V cell containers in any state (a paused or created
+// container can still hold processes). A failed listing or a line that is not a container name is an error.
+func (h trialHost) leftoverCells(ctx context.Context) ([]string, error) {
+	out, err := h.podman(ctx, "ps", "-a", "--format", "{{.Names}}")
+	if err != nil {
+		return nil, fmt.Errorf("podman cannot list the service's containers: %w", err)
+	}
+	var names []string
+	for _, line := range strings.Split(string(out), "\n") {
+		if line = strings.TrimSpace(line); line == "" {
+			continue
+		}
+		if !trialContainerNameRE.MatchString(line) {
+			return nil, fmt.Errorf("podman listed %q, which is not a container name", line)
+		}
+		if strings.HasPrefix(line, acceptCellPrefix) || strings.HasPrefix(line, vCellPrefix) {
+			names = append(names, line)
+		}
+	}
+	return names, nil
+}
+
 // cleanNoReap is the reset's answer to cells that were left running by design: their containers
 // are not removed by the lease (no --rm) and their cgroups are detached from it. It runs after
 // cgroup.kill, so nothing is alive in them.
