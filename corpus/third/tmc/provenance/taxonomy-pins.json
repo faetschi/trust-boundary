@@ -1,0 +1,16 @@
+{
+  "owasp": {
+    "key": "OWASP-Agentic-Top-10",
+    "revision": "2026",
+    "digest": "sha256:fa29cb9ebe84a2661805505e0c1b838b048df867819552d39768e9cd561492b0",
+    "status": "placeholder",
+    "note": "No pinned local copy exists, so this digest is sha256 of the text 'unpinned-placeholder:<key>:<revision>', not of the taxonomy. Replace with the digest of the pinned OWASP Top 10 for Agentic Applications 2026 text, then set status to pinned."
+  },
+  "mitre": {
+    "key": "MITRE-ATTACK-Enterprise",
+    "revision": "v18.1",
+    "digest": "sha256:60b7ca062fd337d121277545478ba9d6b9091b0b6f8021a620b12006792a98e5",
+    "status": "placeholder",
+    "note": "No pinned local copy exists, so this digest is sha256 of the text 'unpinned-placeholder:<key>:<revision>', not of the taxonomy. Replace with the digest of the pinned ATT&CK Enterprise v18.1 STIX bundle, then set status to pinned."
+  }
+}
