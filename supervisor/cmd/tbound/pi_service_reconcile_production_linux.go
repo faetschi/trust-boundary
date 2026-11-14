@@ -431,7 +431,7 @@ func commandNeverStartedClosesCall(checkpoint workflowrecovery.Checkpoint, trace
 		call.Disposition != workflowrecovery.HostCallTerminal || call.CapturedCall == nil ||
 		call.CapturedCall.Disposition != workflowrecovery.CapturedCallConsumed ||
 		pins.PendingCallDisposition != workflowrecovery.PendingCallCaptured ||
-		pins.ProviderDisposition != workflowrecovery.DispositionAwaitingGateDecision || len(trace.Records) == 0 {
+		pins.ProviderDisposition != workflowrecovery.DispositionAwaitingGateDecision {
 		return false
 	}
 	captured := call.CapturedCall
@@ -441,22 +441,68 @@ func commandNeverStartedClosesCall(checkpoint workflowrecovery.Checkpoint, trace
 		captured.HostCallID != call.Binding.CallID {
 		return false
 	}
+	result, ok := heldCallUnknownResult(trace, workflowID, conversationID, captured.ToolCallID)
+	return ok && result.CommandNotStarted
+}
+
+// effectNotReservedClosesCall reports whether the provider journal of the checkpoint's latest
+// conversation closes the call the checkpoint still holds as one whose effect was never reserved: the
+// checkpoint holds exactly one captured call, unconsumed and awaiting its gate result, no effect
+// reservation names it or is open, and the journal's last record is that call's UNKNOWN result typed
+// effect_not_reserved, with no executor output. ReserveEffect consumes the captured call in the same
+// commit that reserves its effect, and the Store authorizes an effect only after that commit, so an
+// unconsumed call proves that its effect never ran.
+func effectNotReservedClosesCall(checkpoint workflowrecovery.Checkpoint, trace audit.Trace, workflowID, conversationID string) bool {
+	pins := checkpoint.Pins
+	call := pins.HostCallReservation
+	if call == nil || call.Disposition != workflowrecovery.HostCallTerminal || call.CapturedCall == nil ||
+		call.CapturedCall.Disposition != workflowrecovery.CapturedCallAvailable ||
+		pins.PendingCallDisposition != workflowrecovery.PendingCallCaptured ||
+		pins.ProviderDisposition != workflowrecovery.DispositionAwaitingGateDecision {
+		return false
+	}
+	captured := call.CapturedCall
+	if captured.WorkflowID != workflowID || captured.ConversationID != conversationID || captured.HostCallID != call.Binding.CallID {
+		return false
+	}
+	if effect := pins.EffectReservation; effect != nil && (effect.Disposition != workflowrecovery.EffectReservationTerminal &&
+		effect.Disposition != workflowrecovery.EffectReservationRetired ||
+		effect.Binding.ToolCallID == captured.ToolCallID || effect.Binding.HostCallID == captured.HostCallID) {
+		return false
+	}
+	result, ok := heldCallUnknownResult(trace, workflowID, conversationID, captured.ToolCallID)
+	return ok && result.EffectNotReserved
+}
+
+// heldCallResult is the typing of the UNKNOWN result that closes a call the checkpoint still holds.
+type heldCallResult struct {
+	CommandNotStarted bool `json:"command_not_started"`
+	EffectNotReserved bool `json:"effect_not_reserved"`
+}
+
+// heldCallUnknownResult reads the provider journal's last record as the UNKNOWN result of the held call
+// toolCallID in that workflow and conversation, with no executor output. It is false for anything else.
+func heldCallUnknownResult(trace audit.Trace, workflowID, conversationID, toolCallID string) (heldCallResult, bool) {
+	if len(trace.Records) == 0 {
+		return heldCallResult{}, false
+	}
 	closed := trace.Records[len(trace.Records)-1].Event
 	var result struct {
+		heldCallResult
 		WorkflowID           string `json:"workflow_id"`
 		ConversationID       string `json:"conversation_id"`
 		ToolCallID           string `json:"tool_call_id"`
 		ExecutorOutputDigest string `json:"executor_output_digest"`
 		ExecutorOutput       []byte `json:"executor_output"`
 		Outcome              string `json:"outcome"`
-		CommandNotStarted    bool   `json:"command_not_started"`
 	}
 	if closed.Kind != "provider_tool_result_unknown" || json.Unmarshal(closed.Data, &result) != nil {
-		return false
+		return heldCallResult{}, false
 	}
-	return result.CommandNotStarted && result.Outcome == "UNKNOWN" && len(result.ExecutorOutput) == 0 &&
+	ok := result.Outcome == "UNKNOWN" && len(result.ExecutorOutput) == 0 &&
 		result.ExecutorOutputDigest == digestBytes(nil) && result.WorkflowID == workflowID &&
-		result.ConversationID == conversationID && result.ToolCallID == captured.ToolCallID
+		result.ConversationID == conversationID && result.ToolCallID == toolCallID
+	return result.heldCallResult, ok
 }
 
 // providerJournalPathFor is the provider-bridge journal of one conversation of the entry's workflow:
@@ -504,8 +550,8 @@ func providerJournalUndisposed(trace audit.Trace) int {
 // reconcileSettledOwner proves the owner side from the workflow's latest settled owner
 // checkpoint: it must be the checkpoint the catalog entry authorized, its pins must carry no
 // pending effect, host call, pending call or undisposed provider exchange (a reserved host call
-// counts as disposed only when providerTrace shows it closed as unknown, a held Bash call only when it
-// shows the command never started), every owner epoch it
+// counts as disposed only when providerTrace shows it closed as unknown, a held call only when it shows
+// the command never started or its effect never reserved), every owner epoch it
 // names must be proven drained by the owner drain verifier (drainproof, with NeverBound receipts
 // for owners that were never exposed), and the catalog's owner-scope records must be exactly
 // those epochs, all drained and removed.
@@ -524,14 +570,15 @@ func (c *piServiceWorkflowCatalog) reconcileSettledOwner(ctx context.Context, en
 	if pins.RecoveryGeneration > 1 {
 		_, _, expectedConversationID = recoveryGenerationIdentities(entry.WorkflowID, pins.RecoveryGeneration)
 	}
-	closedUnknown, commandNeverStarted := false, false
+	closedUnknown, commandNeverStarted, effectNotReserved := false, false, false
 	if providerTrace != nil {
 		if trace, err := providerTrace(expectedConversationID); err == nil {
 			closedUnknown = unknownExchangeClosesHostCall(view.Checkpoint, trace, entry.WorkflowID, expectedConversationID)
 			commandNeverStarted = commandNeverStartedClosesCall(view.Checkpoint, trace, entry.WorkflowID, expectedConversationID)
+			effectNotReserved = effectNotReservedClosesCall(view.Checkpoint, trace, entry.WorkflowID, expectedConversationID)
 		}
 	}
-	if err := validateSettledServiceDisposition(pins, expectedConversationID, closedUnknown, commandNeverStarted); err != nil {
+	if err := validateSettledServiceDisposition(pins, expectedConversationID, closedUnknown, commandNeverStarted, effectNotReserved); err != nil {
 		problems = append(problems, "owner checkpoint: pending effect, host call, pending call or provider exchange: "+err.Error())
 	}
 	proofs, err := drain.VerifyOwnerCellsDrainedWithProof(ctx, entry.WorkflowID, view.OwnerEpochs)

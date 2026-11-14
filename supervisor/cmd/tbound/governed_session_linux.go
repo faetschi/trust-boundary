@@ -1354,22 +1354,23 @@ type providerTurnFailure struct{ err error }
 func (f providerTurnFailure) Error() string { return f.err.Error() }
 func (f providerTurnFailure) Unwrap() error { return f.err }
 
-// commandNotStartedFailure is RunGovernedChannels' error when the supervisor loop failed on a command
-// cell that the runner proved never started its command. The provider result wrapper recorded that
-// call as UNKNOWN and closed the conversation, which serializes it with every provider exchange, so
-// whatever the bridge returned after that leaves no exchange open.
-type commandNotStartedFailure struct{ err error }
+// effectNeverRanFailure is RunGovernedChannels' error when the supervisor loop failed on a call whose
+// effect provably never ran: a command cell that the runner proved never started its command, or an
+// effect whose reservation the workflow ledger refused before writing it. The provider result wrapper
+// recorded that call as UNKNOWN and closed the conversation, which serializes it with every provider
+// exchange, so whatever the bridge returned after that leaves no exchange open.
+type effectNeverRanFailure struct{ err error }
 
-func (f commandNotStartedFailure) Error() string { return f.err.Error() }
-func (f commandNotStartedFailure) Unwrap() error { return f.err }
+func (f effectNeverRanFailure) Error() string { return f.err.Error() }
+func (f effectNeverRanFailure) Unwrap() error { return f.err }
 
 // governedChannelsError is the error RunGovernedChannels returns for its two loop results.
 func governedChannelsError(serveErr, bridgeErr error) error {
 	if serveErr == nil && errors.Is(bridgeErr, providerbridge.ErrProviderTurnFailed) {
 		return providerTurnFailure{err: bridgeErr}
 	}
-	if errors.Is(serveErr, protocol.ErrCommandNotStarted) {
-		return commandNotStartedFailure{err: errors.Join(serveErr, bridgeErr)}
+	if errors.Is(serveErr, protocol.ErrCommandNotStarted) || errors.Is(serveErr, workflowrecovery.ErrEffectNotReserved) {
+		return effectNeverRanFailure{err: errors.Join(serveErr, bridgeErr)}
 	}
 	return errors.Join(serveErr, bridgeErr)
 }

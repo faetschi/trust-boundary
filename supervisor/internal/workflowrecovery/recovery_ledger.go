@@ -289,32 +289,34 @@ func (l *Ledger) HostCallsLeft() uint64 {
 // irreversible governed effect. It charges no provider tokens and has no
 // refund path if the effect callback or process later fails.
 func (l *Ledger) ReserveEffect(ctx context.Context, binding EffectBinding, verifier CapturedOperationVerifier) (Receipt, error) {
+	// Every refusal before the commit writes nothing, so it is typed ErrEffectNotReserved.
+	refuse := func(err error) (Receipt, error) { return Receipt{}, fmt.Errorf("%w: %w", ErrEffectNotReserved, err) }
 	if l == nil || ctx == nil || !validEffectBinding(binding) {
-		return Receipt{}, fmt.Errorf("%w: invalid effect reservation", ErrInvalid)
+		return refuse(fmt.Errorf("%w: invalid effect reservation", ErrInvalid))
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if err := l.checkDeadline(ctx); err != nil {
-		return Receipt{}, err
+		return refuse(err)
 	}
 	if err := validateEffectReservationAdmission(ctx, l.checkpoint, binding, verifier, time.Now()); err != nil {
-		return Receipt{}, err
+		return refuse(err)
 	}
 	if len(l.checkpoint.Pins.ProviderTranscripts) == 0 {
-		return Receipt{}, ErrObservation
+		return refuse(ErrObservation)
 	}
 	if err := l.requireCurrentIncarnation(); err != nil {
-		return Receipt{}, ErrRestartRequired
+		return refuse(ErrRestartRequired)
 	}
 	if l.checkpoint.Counters.HostCalls >= l.checkpoint.Limits.MaxHostCalls {
-		return Receipt{}, ErrExhausted
+		return refuse(ErrExhausted)
 	}
 	next := l.checkpoint
 	next.Pins = clonePins(l.checkpoint.Pins)
 	if next.Pins.EffectReservation != nil &&
 		next.Pins.EffectReservation.Disposition != EffectReservationTerminal &&
 		next.Pins.EffectReservation.Disposition != EffectReservationRetired {
-		return Receipt{}, ErrPendingUnknown
+		return refuse(ErrPendingUnknown)
 	}
 	if next.Pins.ProviderDisposition == DispositionAwaitingGateDecision {
 		captured := next.Pins.HostCallReservation.CapturedCall
@@ -326,7 +328,13 @@ func (l *Ledger) ReserveEffect(ctx context.Context, binding EffectBinding, verif
 	next.PreviousCheckpointDigest = l.digest
 	next.ComputedCheckpointDigest = ""
 	proof := makeReservationProof(reservationEffect, l.digest, l.checkpoint, next)
-	return l.commit(ctx, next, proof, receiptEffect)
+	receipt, err := l.commit(ctx, next, proof, receiptEffect)
+	if errors.Is(err, ErrExhausted) && !errors.Is(err, ErrCAS) {
+		// The owner's headroom gate refuses before its transaction commits. Any other commit error
+		// may have written the reservation, so it stays untyped.
+		return refuse(err)
+	}
+	return receipt, err
 }
 
 // RecordTerminalEffectOutcome accounts for a known, independently verified
