@@ -1375,9 +1375,30 @@ func governedChannelsError(serveErr, bridgeErr error) error {
 	return errors.Join(serveErr, bridgeErr)
 }
 
-// heldCallChannelsError types the governed loops' joined error from the workflow checkpoint.
-// Red stub: it returns err unchanged.
-func (a *SessionOperationAuthority) heldCallChannelsError(err error) error { return err }
+// heldCallChannelsError types the governed loops' joined error as effectNeverRanFailure when the workflow
+// ledger holds this conversation's captured call never reserved (capturedCallNeverReserved): its effect never
+// started and no other effect is open, so cleanup may drain and release whatever stopped the loops. The
+// in-memory checkpoint can lag the durable one only after an ambiguous commit, and a reservation whose
+// commit was ambiguous also refused its effect.
+func (a *SessionOperationAuthority) heldCallChannelsError(err error) error {
+	switch err.(type) {
+	case nil, providerTurnFailure, effectNeverRanFailure:
+		return err
+	}
+	if a == nil {
+		return err
+	}
+	a.mu.Lock()
+	ledger, workflowID, conversationID := a.workflowLedger, a.workflowID, a.conversationID
+	a.mu.Unlock()
+	if ledger == nil {
+		return err
+	}
+	if checkpoint, _ := ledger.Snapshot(); !capturedCallNeverReserved(checkpoint.Pins, workflowID, conversationID) {
+		return err
+	}
+	return effectNeverRanFailure{err: err}
+}
 
 // BindAdmissionScope sets the delta-admission scope of the Store a product turn creates. It is called
 // once, before the Store exists, with the scope the catalog admitted the turn under.

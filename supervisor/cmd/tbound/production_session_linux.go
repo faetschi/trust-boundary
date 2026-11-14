@@ -612,7 +612,8 @@ func runComposedProductionPiSession(ctx context.Context, output io.Writer, confi
 	channelFailed := make(chan error, 1) // a loop failure, seen by waitTurn before the worker ends the turn
 	session.Lifecycle.markChannelsStarted()
 	go func() {
-		err := RunGovernedChannels(runCtx, supervisor, session.Channels.ProviderChannel(), conversation)
+		err := session.Authority.heldCallChannelsError(
+			RunGovernedChannels(runCtx, supervisor, session.Channels.ProviderChannel(), conversation))
 		if err != nil {
 			channelFailed <- err
 		}

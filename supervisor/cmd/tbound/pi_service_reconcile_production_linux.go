@@ -445,15 +445,13 @@ func commandNeverStartedClosesCall(checkpoint workflowrecovery.Checkpoint, trace
 	return ok && result.CommandNotStarted
 }
 
-// effectNotReservedClosesCall reports whether the provider journal of the checkpoint's latest
-// conversation closes the call the checkpoint still holds as one whose effect was never reserved: the
-// checkpoint holds exactly one captured call, unconsumed and awaiting its gate result, no effect
-// reservation names it or is open, and the journal's last record is that call's UNKNOWN result typed
-// effect_not_reserved, with no executor output. ReserveEffect consumes the captured call in the same
-// commit that reserves its effect, and the Store authorizes an effect only after that commit, so an
-// unconsumed call proves that its effect never ran.
-func effectNotReservedClosesCall(checkpoint workflowrecovery.Checkpoint, trace audit.Trace, workflowID, conversationID string) bool {
-	pins := checkpoint.Pins
+// capturedCallNeverReserved reports whether the pins hold the conversation's one captured call unconsumed
+// and awaiting its gate result, with no effect reservation that names it or is open. ReserveEffect consumes
+// the captured call in the same commit that reserves its effect, and the Store authorizes an effect only
+// after that commit, so these pins prove that the call's effect never ran, however the call ended: a
+// refused reservation, a request timeout, or a context check before the Store. Abandon reads them from the
+// authenticated settled checkpoint, the session from the workflow ledger.
+func capturedCallNeverReserved(pins workflowrecovery.Pins, workflowID, conversationID string) bool {
 	call := pins.HostCallReservation
 	if call == nil || call.Disposition != workflowrecovery.HostCallTerminal || call.CapturedCall == nil ||
 		call.CapturedCall.Disposition != workflowrecovery.CapturedCallAvailable ||
@@ -470,14 +468,12 @@ func effectNotReservedClosesCall(checkpoint workflowrecovery.Checkpoint, trace a
 		effect.Binding.ToolCallID == captured.ToolCallID || effect.Binding.HostCallID == captured.HostCallID) {
 		return false
 	}
-	result, ok := heldCallUnknownResult(trace, workflowID, conversationID, captured.ToolCallID)
-	return ok && result.EffectNotReserved
+	return true
 }
 
 // heldCallResult is the typing of the UNKNOWN result that closes a call the checkpoint still holds.
 type heldCallResult struct {
 	CommandNotStarted bool `json:"command_not_started"`
-	EffectNotReserved bool `json:"effect_not_reserved"`
 }
 
 // heldCallUnknownResult reads the provider journal's last record as the UNKNOWN result of the held call
@@ -551,7 +547,7 @@ func providerJournalUndisposed(trace audit.Trace) int {
 // checkpoint: it must be the checkpoint the catalog entry authorized, its pins must carry no
 // pending effect, host call, pending call or undisposed provider exchange (a reserved host call
 // counts as disposed only when providerTrace shows it closed as unknown, a held call only when it shows
-// the command never started or its effect never reserved), every owner epoch it
+// the command never started or the checkpoint shows its effect never reserved), every owner epoch it
 // names must be proven drained by the owner drain verifier (drainproof, with NeverBound receipts
 // for owners that were never exposed), and the catalog's owner-scope records must be exactly
 // those epochs, all drained and removed.
@@ -570,12 +566,12 @@ func (c *piServiceWorkflowCatalog) reconcileSettledOwner(ctx context.Context, en
 	if pins.RecoveryGeneration > 1 {
 		_, _, expectedConversationID = recoveryGenerationIdentities(entry.WorkflowID, pins.RecoveryGeneration)
 	}
-	closedUnknown, commandNeverStarted, effectNotReserved := false, false, false
+	closedUnknown, commandNeverStarted := false, false
+	effectNotReserved := capturedCallNeverReserved(pins, entry.WorkflowID, expectedConversationID)
 	if providerTrace != nil {
 		if trace, err := providerTrace(expectedConversationID); err == nil {
 			closedUnknown = unknownExchangeClosesHostCall(view.Checkpoint, trace, entry.WorkflowID, expectedConversationID)
 			commandNeverStarted = commandNeverStartedClosesCall(view.Checkpoint, trace, entry.WorkflowID, expectedConversationID)
-			effectNotReserved = effectNotReservedClosesCall(view.Checkpoint, trace, entry.WorkflowID, expectedConversationID)
 		}
 	}
 	if err := validateSettledServiceDisposition(pins, expectedConversationID, closedUnknown, commandNeverStarted, effectNotReserved); err != nil {
