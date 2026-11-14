@@ -1,0 +1,11 @@
+rid=tbr-6b2681f818fcb5a8b71ec64ab2e473a1
+request_records:
+pi_service_request_accepted {"client_gid": 985, "client_pid": 693414, "client_uid": 994, "config_digest": "sha256:29bc477c641ccbf2290b8cefbee6059db358d6f13d3db9cc77e6100b2a182188", "envelope_digest": "sha256:88fdfa1addea6a065cd0ec7de6bc373d10c6b282016dc9d6c43300f3eb9369c9", "payload_digest": "sha256:a46ff58fd20681d0d2d450c9315d681c009fbdf6768615d0381784e549312344", "registration_id": "sha256:6de40a956283f9c57030b6c8b5b0b8ba2541e99664b70bdb2e152277a9d8c187", "request_id": "tbr-6b2681f818fcb5a8b71ec64ab2e473a1", "schema_version": "tbound-pi-service-request-accepted/v1", "task_id": "PILOT-CMP-edi
+pi_service_request_terminal {"client_uid": 994, "payload_digest": "sha256:a46ff58fd20681d0d2d450c9315d681c009fbdf6768615d0381784e549312344", "request_id": "tbr-6b2681f818fcb5a8b71ec64ab2e473a1", "response": {"error_code": "task-outcome-unknown", "request_id": "tbr-6b2681f818fcb5a8b71ec64ab2e473a1", "schema_version": "tbound-pi-service-response/v1", "status": "unknown"}, "schema_version": "tbound-pi-service-request-terminal/v1"}
+catalog_owner_scope_drained=80
+catalog_unexposed_true=0
+cells_children=cgroup.controllers cgroup.events cgroup.freeze cgroup.kill cgroup.max.depth cgroup.max.descendants cgroup.pressure cgroup.procs cgroup.stat cgroup.stat.local cgroup.subtree_control cgroup.threads cgroup.type cpu.idle cpu.max cpu.max.burst cpu.pressure cpu.stat cpu.stat.local cpu.uclamp.max cpu.uclamp.min cpu.weight cpu.weight.nice cpuset.cpus cpuset.cpus.effective cpuset.cpus.exclusive cpuset.cpus.exclusive.effective cpuset.cpus.partition cpuset.mems cpuset.mems.effective io.max io.pressure io.prio.class io.stat io.weight memory.current memory.events memory.events.local memory.high memory.low memory.max memory.min memory.numa_stat memory.oom.group memory.peak memory.pressure memory.reclaim memory.stat memory.swap.current memory.swap.events memory.swap.high memory.swap.max memory.swap.peak memory.zswap.current memory.zswap.max memory.zswap.writeback net-sink pi-wf-e87ced813490a1271c891dd8-e1 pids.current pids.events pids.events.local pids.max pids.peak 
+cells_procs_bytes=0
+podman_ps_a_lines=0
+TOKEN=<redacted>
+re-run: abandon tbr-6b2681f818fcb5a8b71ec64ab2e473a1 --confirm <redacted> (after reading the facts: workflow finished, scope drained, no pending effect)

@@ -1,0 +1,2 @@
+Nov 14 14:24:27 tbound-abi8-seed tbound-pi-cell-550142f08bc67f2d67dbdae1[693821]: {"id":"tbr-6b2681f818fcb5a8b71ec64ab2e473a1","type":"response","command":"prompt","success":true}
+Nov 14 14:24:39 tbound-abi8-seed tbound[508866]: request tbr-6b2681f818fcb5a8b71ec64ab2e473a1 outcome unknown: governed production channels failed before the turn ended: executor failed; result withheld: provider conversation is closed

@@ -1,0 +1,17 @@
+1 managed_root_source_capture_qualified
+2 effect_intent
+3 effect_outcome
+4 managed_root_source_capture_seeded
+5 sessionlaunch_source_binding
+6 sessionlaunch_private_git_ready
+7 production_tcb_proof
+8 governed_operation_authorized
+9 effect_intent
+10 effect_outcome
+11 governed_operation_authorized
+12 effect_intent
+13 effect_outcome
+14 governed_operation_authorized
+15 effect_intent
+16 effect_outcome
+17 operation_denied
