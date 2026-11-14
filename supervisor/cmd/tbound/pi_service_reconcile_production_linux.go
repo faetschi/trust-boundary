@@ -445,6 +445,16 @@ func commandNeverStartedClosesCall(checkpoint workflowrecovery.Checkpoint, trace
 	return ok && result.CommandNotStarted
 }
 
+// providerExchangeIdle reports whether the pins await the conversation's next provider exchange with none
+// reserved: no host call, or the last one settled without a captured call. ReserveHostCall commits a
+// reservation before the request is journaled or dispatched, so no provider request is outstanding. A request
+// stopped between turns, or after a settled retryable attempt, ends here.
+func providerExchangeIdle(pins workflowrecovery.Pins) bool {
+	call := pins.HostCallReservation
+	return pins.ProviderDisposition == workflowrecovery.DispositionAwaitingProviderExchange &&
+		(call == nil || call.Disposition == workflowrecovery.HostCallTerminal && call.CapturedCall == nil)
+}
+
 // capturedCallNeverReserved reports whether the pins hold the conversation's one captured call unconsumed
 // and awaiting its gate result, with no effect reservation that names it or is open. ReserveEffect consumes
 // the captured call in the same commit that reserves its effect, and the Store authorizes an effect only
@@ -593,6 +603,7 @@ func (c *piServiceWorkflowCatalog) reconcileSettledOwner(ctx context.Context, en
 		_, _, expectedConversationID = recoveryGenerationIdentities(entry.WorkflowID, pins.RecoveryGeneration)
 	}
 	closedUnknown, commandNeverStarted, effectNotReserved := false, false, false
+	idleExchange := providerExchangeIdle(pins)
 	if providerTrace != nil {
 		if trace, err := providerTrace(expectedConversationID); err == nil {
 			closedUnknown = unknownExchangeClosesHostCall(view.Checkpoint, trace, entry.WorkflowID, expectedConversationID)
@@ -601,7 +612,8 @@ func (c *piServiceWorkflowCatalog) reconcileSettledOwner(ctx context.Context, en
 				!heldCallResultReleased(trace, pins.HostCallReservation.CapturedCall.ToolCallID)
 		}
 	}
-	if err := validateSettledServiceDisposition(pins, expectedConversationID, closedUnknown, commandNeverStarted, effectNotReserved); err != nil {
+	if err := validateSettledServiceDisposition(pins, expectedConversationID, closedUnknown, commandNeverStarted, effectNotReserved,
+		idleExchange); err != nil {
 		problems = append(problems, "owner checkpoint: pending effect, host call, pending call or provider exchange: "+err.Error())
 	}
 	proofs, err := drain.VerifyOwnerCellsDrainedWithProof(ctx, entry.WorkflowID, view.OwnerEpochs)
