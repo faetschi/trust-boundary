@@ -1375,6 +1375,10 @@ func governedChannelsError(serveErr, bridgeErr error) error {
 	return errors.Join(serveErr, bridgeErr)
 }
 
+// heldCallChannelsError types the governed loops' joined error from the workflow checkpoint.
+// Red stub: it returns err unchanged.
+func (a *SessionOperationAuthority) heldCallChannelsError(err error) error { return err }
+
 // BindAdmissionScope sets the delta-admission scope of the Store a product turn creates. It is called
 // once, before the Store exists, with the scope the catalog admitted the turn under.
 func (a *SessionOperationAuthority) BindAdmissionScope(scope sessionrepo.AdmissionScope) error {
