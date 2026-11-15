@@ -1,0 +1,30 @@
+{
+ "adaptation_rule_sha256": "fc21ab1dbdaf1600dd59394ee3071eed498259f214dcf69c41400f2f6c205a08",
+ "chain": {
+  "beacon_id": "default",
+  "genesis_time": 1595431050,
+  "group_hash": "176f93498eac9ca337150b46d21dd58673ea4e3581185f869672e59fa4cb390a",
+  "hash": "8990e7a9aaed2ffed73dbd7092123d6f289930540d7651336225dc172e51b2ce",
+  "period": 30,
+  "public_key": "868f005eb8e6e4ca0a47c8a77ceaa5309a47978a7c71bc5cce96366b5d7a569937c529eeda66c7293784a9402801af31",
+  "scheme": "pedersen-bls-chained",
+  "source": "https://api.drand.sh/8990e7a9aaed2ffed73dbd7092123d6f289930540d7651336225dc172e51b2ce/info, read 2026-11-08 (League of Entropy mainnet default chain)"
+ },
+ "development_case_ids": [
+  "agentdojo:workspace:UserTask26:InjectionTask5",
+  "agentdojo:workspace:UserTask2:InjectionTask5",
+  "agentdojo:workspace:UserTask38:InjectionTask5",
+  "injecagent:ds:0002:u07",
+  "injecagent:ds:0003:u03",
+  "injecagent:ds:0011:u11",
+  "injecagent:ds:0014:u11",
+  "injecagent:ds:0026:u12",
+  "redcode:index26:r03",
+  "redcode:index2:r14",
+  "saber:A_code_020"
+ ],
+ "kind": "main",
+ "ledger_sha256": "277fc72c16bbfc27bc90723202c190a57b44987950e93f266209b3118ce79004",
+ "policy_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+ "script_sha256": "085c771f571062fdcaf17a7f166631d18f89fad85bf0a25af986ff6408d8a940"
+}

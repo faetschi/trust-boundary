@@ -26,6 +26,7 @@ import (
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/delta"
 	"tbound/supervisor/internal/faultfs"
+	"tbound/supervisor/internal/workflowrecovery"
 	"tbound/supervisor/internal/workspace"
 )
 
@@ -478,6 +479,10 @@ func (s *Store) denyLocked(request OperationRequest, cause error) error {
 		ViewID: request.ViewID, ExecutionContextDigest: request.ExecutionContextDigest,
 		ResultDigest: digestBytes(data), Outcome: "denied",
 	})
+	if errors.Is(cause, workflowrecovery.ErrEffectNotReserved) {
+		// The provider bridge types the call's UNKNOWN result from the ledger's refusal.
+		return fmt.Errorf("%w: %w", ErrDenied, cause)
+	}
 	return fmt.Errorf("%w: %v", ErrDenied, cause)
 }
 

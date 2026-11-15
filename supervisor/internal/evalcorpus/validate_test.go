@@ -7,40 +7,6 @@ import (
 	"testing"
 )
 
-func TestThesisQuotasMatchPreregistration(t *testing.T) {
-	q := ThesisQuotas()
-	if q.Adversarial[ClassTMA] != 100 || q.Adversarial[ClassTMB] != 100 || q.Adversarial[ClassTMC] != 99 {
-		t.Errorf("adversarial quotas = %v; want TM-A=100 TM-B=100 TM-C=99", q.Adversarial)
-	}
-	total := 0
-	for _, n := range q.Adversarial {
-		total += n
-	}
-	if total != 299 {
-		t.Errorf("adversarial total = %d; want 299", total)
-	}
-	for _, tool := range []Tool{ToolRead, ToolWrite, ToolEdit, ToolBash} {
-		if q.Compliant[tool] != 25 {
-			t.Errorf("compliant quota for %s = %d; want 25", tool, q.Compliant[tool])
-		}
-	}
-	if q.Ambiguous != 20 {
-		t.Errorf("ambiguous quota = %d; want 20", q.Ambiguous)
-	}
-	if q.Variance[ClassTMA] != 17 || q.Variance[ClassTMB] != 17 || q.Variance[ClassTMC] != 16 {
-		t.Errorf("variance quotas = %v; want TM-A=17 TM-B=17 TM-C=16", q.Variance)
-	}
-	if q.ColdPercent != 20 {
-		t.Errorf("cold percent = %d; want 20", q.ColdPercent)
-	}
-	// floor(0.20*n + 0.5) per class: 100 -> 20, 100 -> 20, 99 -> 20.
-	for _, class := range []ThreatClass{ClassTMA, ClassTMB, ClassTMC} {
-		if got := ColdCount(q.ColdPercent, q.Adversarial[class]); got != 20 {
-			t.Errorf("cold count for %s = %d; want 20", class, got)
-		}
-	}
-}
-
 func TestValidateAcceptsAllocatedSyntheticManifest(t *testing.T) {
 	q := smallQuotas()
 	wantClean(t, Validate(allocated(t, synthManifest(q, synthSeed), q), q))
@@ -367,7 +333,8 @@ func TestValidateSchemaSeedAndQuotas(t *testing.T) {
 // PilotQuotas are the explicit counts of a pilot or G4 dry-run corpus. They are not the
 // registered quotas, and a pilot corpus is not evidence for any claim.
 func TestPilotQuotasAreSmallExplicitAndDistinctFromThesis(t *testing.T) {
-	q, thesis := PilotQuotas(), ThesisQuotas()
+	q := PilotQuotas()
+	thesisManifest, thesis := thesisDrawManifest(t)
 	if err := q.check(); err != nil {
 		t.Fatal(err)
 	}
@@ -380,8 +347,7 @@ func TestPilotQuotasAreSmallExplicitAndDistinctFromThesis(t *testing.T) {
 	m := allocated(t, synthManifest(q, synthSeed), q)
 	wantClean(t, Validate(m, q))
 	wantRule(t, Validate(m, thesis), "count.total")
-	pilotAsThesis := allocated(t, synthManifest(thesis, synthSeed), thesis)
-	wantRule(t, Validate(pilotAsThesis, q), "count.total")
+	wantRule(t, Validate(thesisManifest, q), "count.total")
 }
 
 func TestValidateOptionalConstructReviewDoesNotAuthorizeAdmission(t *testing.T) {

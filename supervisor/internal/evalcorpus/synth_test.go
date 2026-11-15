@@ -10,7 +10,7 @@ import (
 // synthSeed is a test seed. It is not a registered seed.
 const synthSeed = "synthetic-seed-1"
 
-// smallQuotas are test-only counts with the same keys as ThesisQuotas. They are not the
+// smallQuotas are test-only counts with the same keys as ThesisQuotasFromDraw. They are not the
 // registered quotas, and the synthetic corpus built from them is not evidence.
 func smallQuotas() Quotas {
 	return Quotas{

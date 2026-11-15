@@ -15,6 +15,7 @@ import (
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/gate"
+	"tbound/supervisor/internal/workflowrecovery"
 )
 
 // releasedExecutor blocks inside Execute until release is closed, then returns its configured outcome.
@@ -104,6 +105,10 @@ func (f *executingFixture) dispositions(t *testing.T) (results int, unknowns []u
 			results++
 		case "provider_tool_result_unknown":
 			var evidence unknownEvidence
+			// The UNKNOWN record carries no effect-reservation typing: abandon reads the workflow checkpoint.
+			if strings.Contains(string(record.Event.Data), "effect_not_reserved") {
+				t.Fatalf("UNKNOWN record carries effect_not_reserved: %s", record.Event.Data)
+			}
 			if err := json.Unmarshal(record.Event.Data, &evidence); err != nil {
 				t.Fatal(err)
 			}
@@ -141,6 +146,12 @@ func TestCloseDuringExecutionRecordsExactlyOneUnknown(t *testing.T) {
 		{name: "executor error", tool: "write", args: write, err: errors.New("executor exploded")},
 		{name: "bash command never started", tool: "bash", args: json.RawMessage(`{"command":"true"}`),
 			err: fmt.Errorf("run: %w", protocol.ErrCommandNotStarted), notStarted: true},
+		{name: "effect not reserved", tool: "write", args: write,
+			err: fmt.Errorf("durable write: %w", fmt.Errorf("%w: %w", workflowrecovery.ErrEffectNotReserved, workflowrecovery.ErrDeadline))},
+		{name: "read effect not reserved", tool: "read", args: json.RawMessage(`{"path":"x"}`),
+			err: fmt.Errorf("durable read: %w", fmt.Errorf("%w: %w", workflowrecovery.ErrEffectNotReserved, workflowrecovery.ErrExhausted))},
+		{name: "effect reservation outcome unknown", tool: "write", args: write,
+			err: fmt.Errorf("durable write: %w", workflowrecovery.ErrCAS)},
 		{name: "canceled", tool: "write", args: write, cancel: true, wantOutput: true,
 			output: mutationOutput("write", "g1", recoveryTestTree("tree-1"), "transition-1", 1, "effect-1", nil)},
 		{name: "admission denial", tool: "write", args: write,

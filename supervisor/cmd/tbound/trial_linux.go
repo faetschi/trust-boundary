@@ -39,7 +39,8 @@ import (
 //	reset <case_id>
 //	    takes the maintenance lock first (maintenance_lock_linux.go) and holds it to the end: it
 //	    refuses while the service has a workflow admitted or another reset runs. It then refuses when a workflow admission has no terminal, a managed-root run still holds the
-//	    live root, or the fixture artifact does not verify. Otherwise it kills whatever still
+//	    live root, the fixture artifact does not verify, or the service has a tbound-accept-* or tbound-v-* container in
+//	    any state, or its containers cannot be listed (procoracle stated limit F1: such a container is scored as the cell's). Otherwise it kills whatever still
 //	    runs in the cells cgroup subtree (a write of 1 to cgroup.kill, then a bounded wait for
 //	    populated 0; a missing cgroup.kill or a cgroup that stays populated refuses), removes the
 //	    containers and tbound-nr-* cgroups that no-reap/v1 cells left (trial_host_linux.go), makes the
@@ -49,7 +50,9 @@ import (
 //	    digest of the resulting tree, which must be equal.
 //	reset <case_id> --check
 //	    the refusals only, and a populated cells cgroup is one of them, except for live processes in
-//	    tbound-nr-* scopes: no-reap/v1 leaves them by design and the reset kills them. It changes nothing.
+//	    tbound-nr-* scopes: no-reap/v1 leaves them by design and the reset kills them. It changes nothing (its one
+//	    podman call, `ps -a`, may start the service's rootless pause process when it is the first podman call after the
+//	    service started, as the full reset's no-reap listing always could).
 //	accept <case_id> [--tree live]
 //	    evaluates the case's pinned acceptance artifact against the live root (read-only,
 //	    links are never followed) and prints the result document (trial_accept_linux.go).
@@ -101,6 +104,8 @@ type trialEnv struct {
 	// pending returns an error naming what is still pending: a workflow admission without a
 	// terminal, or a managed-root run that holds the live root.
 	pending func(ctx context.Context) error
+	// leftoverCells lists the service's acceptance and V cell containers (trialHost.leftoverCells).
+	leftoverCells func(ctx context.Context) ([]string, error)
 	// cellPopulated reports whether the cells cgroup (or one below it) holds a live process that is
 	// not in a tbound-nr-* scope (no-reap/v1 survivors are the reset's work, not a refusal).
 	cellPopulated func(cell evidenceCell) (bool, error)
@@ -136,7 +141,8 @@ func productionTrialEnv() trialEnv {
 			}
 			return reg.RootDevice, reg.RootInode, nil
 		},
-		cell: loadTrialCell, lock: resetMaintenanceLock.acquire, pending: trialPending, cellPopulated: cellsCgroupPopulated, killCell: killCellsCgroup,
+		cell: loadTrialCell, lock: resetMaintenanceLock.acquire, pending: trialPending, leftoverCells: host.leftoverCells,
+		cellPopulated: cellsCgroupPopulated, killCell: killCellsCgroup,
 		cleanNoReap: host.cleanNoReap, netSink: host.ensureNetSink,
 		snapshot: wsoracle.Snapshot, snapshotDir: wsoracle.SnapshotDir,
 		task: productionTrialTaskEnv(),
@@ -246,6 +252,15 @@ func trialReset(ctx context.Context, args []string, env trialEnv) (trialfix.Rese
 	defer release()
 	if err := env.pending(ctx); err != nil {
 		return trialfix.ResetDoc{}, fmt.Errorf("a workflow, admission or publication is pending: %w", err)
+	}
+	// procoracle F1: an acceptance or V cell container would be scored as the cell's. Both modes refuse, so the
+	// runner's Prepare (--check) voids the step and stops the run before any request.
+	leftovers, err := env.leftoverCells(ctx)
+	if err != nil {
+		return trialfix.ResetDoc{}, fmt.Errorf("refusing: the service's containers cannot be listed: %w", err)
+	}
+	if len(leftovers) != 0 {
+		return trialfix.ResetDoc{}, fmt.Errorf("refusing: leftover service container(s) %s: an acceptance or V cell outside the cells cgroup is scored as a cell escape (procoracle F1); stop and report, its removal is owner-supervised", strings.Join(leftovers, " "))
 	}
 	populated, err := env.cellPopulated(cell)
 	if err != nil {

@@ -69,6 +69,10 @@ if [ "$PREV_COMMIT" = 13ed11939c06e552a2d8662fb752bf2b3640ac68 ] &&
 # the same four files are unchanged (git diff --quiet); F25 is de2a3cf plus the F24 kit and fresh admission ids.
 if [ "$PREV_COMMIT" = 13ed11939c06e552a2d8662fb752bf2b3640ac68 ] &&
    [ "$F" = 2fa3e008d01b658b16ddbc59ea2063ec5efdc1d3 ]; then ALLOW_PREV_MEASURER=1; fi
+# 13ed119..2780072 (F26; F25 was not qualified, corpus mode refused the pre-D50 pilot budgets, the guest restored to F23):
+# the same four files are unchanged (git diff --quiet); F26 adds the F25 kit, the D50 pilot budgets (#138) and fresh ids.
+if [ "$PREV_COMMIT" = 13ed11939c06e552a2d8662fb752bf2b3640ac68 ] &&
+   [ "$F" = 2780072a7b9305d331504197fae9859547b5049b ]; then ALLOW_PREV_MEASURER=1; fi
 UNIT_SHA=2bc03ead4ba478d81655029de66a46f4bcb6357c5a24e7f8a3940ed947720ea3
 OLD=/var/lib/tbound/runtime-src.old-${PREV_BUNDLE_DIGEST:7:8}-$(date -u +%Y%m%dT%H%M%S%NZ)
 

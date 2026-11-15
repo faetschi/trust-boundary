@@ -251,7 +251,13 @@ type productionPiReceipt struct {
 	ToolSequence             []string `json:"tool_sequence"`
 	ProviderTurns            int      `json:"provider_turns"`
 	// ProviderRetries counts failed, retryable provider attempts that were repeated (each its own reserved host call).
-	ProviderRetries          int    `json:"provider_retries,omitempty"`
+	ProviderRetries int `json:"provider_retries,omitempty"`
+	// InTokens and OutTokens are the provider-reported usage of the run's completed exchanges, from the
+	// provider audit (applyProviderLineage has the definition). The runner journals them as the unit's
+	// in_tokens and out_tokens. A run without usage (scripted) writes neither, so its receipt is unchanged.
+	InTokens                 int    `json:"in_tokens,omitempty"`
+	OutTokens                int    `json:"out_tokens,omitempty"`
+	ProviderUsageUnread      int    `json:"provider_usage_unread,omitempty"` // completed exchanges whose usage could not be read
 	SourceGeneration         string `json:"source_generation"`
 	FinalGeneration          string `json:"final_generation"`
 	GenerationCount          int    `json:"generation_count"`
@@ -606,7 +612,8 @@ func runComposedProductionPiSession(ctx context.Context, output io.Writer, confi
 	channelFailed := make(chan error, 1) // a loop failure, seen by waitTurn before the worker ends the turn
 	session.Lifecycle.markChannelsStarted()
 	go func() {
-		err := RunGovernedChannels(runCtx, supervisor, session.Channels.ProviderChannel(), conversation)
+		err := session.Authority.heldCallChannelsError(
+			RunGovernedChannels(runCtx, supervisor, session.Channels.ProviderChannel(), conversation))
 		if err != nil {
 			channelFailed <- err
 		}
@@ -743,24 +750,7 @@ func runComposedProductionPiSession(ctx context.Context, output io.Writer, confi
 		}
 	}
 	if providerTraceErr == nil {
-		for _, record := range providerTrace.Records {
-			if record.Event.Kind == "provider_exchange_retryable_failure" {
-				receipt.ProviderRetries++
-				continue
-			}
-			if record.Event.Kind != "provider_exchange" {
-				continue
-			}
-			var exchange providerExchangeEvidence
-			if err := unmarshalGovernedJSON(record.Event.Data, &exchange); err != nil {
-				publishErr = errors.Join(publishErr, fmt.Errorf("decode production provider lineage: %w", err))
-				continue
-			}
-			receipt.ProviderTurns++
-			if exchange.ToolCall != nil && len(receipt.ToolSequence) < 32 {
-				receipt.ToolSequence = append(receipt.ToolSequence, exchange.ToolCall.Name)
-			}
-		}
+		publishErr = errors.Join(publishErr, applyProviderLineage(&receipt, providerTrace, config.providerRoute.Route()))
 	}
 	if err := applyCorpusReceipt(&receipt, session.Corpus, providerExchange, session.StorePolicyDigest,
 		session.MetadataPolicyDigest, providerTrace, providerTraceErr); err != nil {

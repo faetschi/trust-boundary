@@ -122,15 +122,11 @@ func runPreregistrationRecord(args []string, stdout, stderr io.Writer) error {
 		return errors.New("the runner config is a construct-witness run, which is non-confirmatory and cannot be pre-registered")
 	}
 
-	manifest, manifestDigest, err := admitCorpus(*manifestPath, *profile, nil)
+	manifest, manifestDigest, quotas, err := admitCorpus(*manifestPath, *profile, artifactsBeside(*manifestPath), nil)
 	if err != nil {
 		return err
 	}
 	if err := checkPanel(manifest, *panelReceipt, *panelAudit, *panelStats, flags); err != nil {
-		return err
-	}
-	quotas, err := quotasFor(*profile)
-	if err != nil {
 		return err
 	}
 	// The allocation is derived from the manifest's own split seed (manifest.SplitSeed), so no
@@ -149,14 +145,16 @@ func runPreregistrationRecord(args []string, stdout, stderr io.Writer) error {
 	if schedule.ManifestDigest != manifestDigest {
 		return errors.New("the runner plan is bound to another manifest digest")
 	}
-	if *profile == "thesis" && (schedule.Subset || schedule.Units() != evalreport.PlannedUnits) {
+	// D53 item 4: the registered total is computed from the final counts, and a plan that is not exactly it is refused.
+	planned := evalreport.PlannedUnits(allocation)
+	if *profile == "thesis" && (schedule.Subset || schedule.Units() != planned) {
 		return fmt.Errorf("a thesis plan must be the registered %d units without a subset; it has %d (subset %t)",
-			evalreport.PlannedUnits, schedule.Units(), schedule.Subset)
+			planned, schedule.Units(), schedule.Subset)
 	}
 
 	rec := preregistrationRecord{
 		Domain: preregistrationDomain, FreezeCommit: *commit, CorpusManifestDigest: manifestDigest, QuotaProfile: *profile,
-		RunnerPlanDigest: schedule.Digest, PlanSteps: schedule.Units(), PlannedUnits: evalreport.PlannedUnits,
+		RunnerPlanDigest: schedule.Digest, PlanSteps: schedule.Units(), PlannedUnits: planned,
 		RerunHeadroom: schedule.Config.RerunHeadroom, EvalscoreSchema: evalscore.SchemaVersion, Reviewers: names,
 	}
 	if *researchProfilePath != "" {

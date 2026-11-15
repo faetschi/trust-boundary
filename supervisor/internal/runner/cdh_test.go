@@ -25,7 +25,7 @@ func testCDH(t *testing.T) *CDHConfig {
 }
 
 func TestCDHPlanAndQualifiedIdentity(t *testing.T) {
-	src, alloc := synth(t, evalcorpus.ThesisQuotas())
+	src, alloc := synth(t, legacyThesisQuotas())
 	cfg := testConfig()
 	cfg.CDH = testCDH(t)
 	s, err := Plan(src, alloc, cfg)

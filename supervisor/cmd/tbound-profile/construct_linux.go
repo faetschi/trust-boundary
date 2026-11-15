@@ -49,8 +49,7 @@ func runCorpusCheck(args []string, stdout, stderr io.Writer) error {
 	if *evidence == "" && (*runConfig != "" || *binaryDigest != "") {
 		return errors.New("--run-config and --guest-binary-sha256 require --guest-evidence")
 	}
-	quotas, err := quotasFor(*profile)
-	if err != nil {
+	if err := checkProfile(*profile); err != nil {
 		return err
 	}
 	if err := os.Mkdir(*out, 0o700); err != nil {
@@ -62,6 +61,10 @@ func runCorpusCheck(args []string, stdout, stderr io.Writer) error {
 	m, err := loadConstructManifest(*manifest)
 	if err != nil {
 		return failure("manifest-load", err)
+	}
+	quotas, err := quotasFor(*profile, m, artifactsBeside(*manifest))
+	if err != nil {
+		return failure("quota-profile", err)
 	}
 	var peer *evalcorpus.Manifest
 	if *other != "" {

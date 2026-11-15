@@ -1590,8 +1590,10 @@ func servePiServiceRequests(ctx context.Context, listener net.Listener, socket p
 		}
 		conn, err := listener.Accept()
 		if err != nil {
+			// Every return waits for the request tasks: the caller then closes the request journal, which is
+			// what keeps abandon-unknown out while a request runs.
+			tasks.Wait()
 			if ctx.Err() != nil {
-				tasks.Wait()
 				return nil
 			}
 			return errors.Join(ErrPiServiceUnavailable, err)

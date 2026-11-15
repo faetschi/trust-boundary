@@ -114,6 +114,7 @@ func (a *SessionOperationAuthority) newProviderConversation(config providerbridg
 	config.SelectCompletionTokenLimit = nil
 	config.ReserveHostCall = nil
 	config.CompleteHostCall = nil
+	config.HostCallsLeft = nil
 	config.AdvanceProgress = nil
 	if ledger != nil {
 		if providerTokenUpperBound == 0 {
@@ -122,6 +123,11 @@ func (a *SessionOperationAuthority) newProviderConversation(config providerbridg
 		config.SelectCompletionTokenLimit = a.selectProviderCompletionLimit
 		config.ReserveHostCall = a.reserveProviderHostCall
 		config.CompleteHostCall = a.completeProviderHostCall
+		if !config.ProductCaptureRefusals {
+			// Product turns keep their own cap handling: a soft-refused call needs no effect, and a cap
+			// reached between product turns resolves as a failed turn.
+			config.HostCallsLeft = ledger.HostCallsLeft
+		}
 		config.AdvanceProgress = a.advanceProviderProgress
 	}
 	// The provider route and spend hook are host-bound too; a caller's are discarded.

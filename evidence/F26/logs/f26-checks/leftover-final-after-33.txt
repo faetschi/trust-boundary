@@ -1,0 +1,9 @@
+2026-11-13T23:56:39Z
+sudo -n true fails (session closed)
+active
+active
+-- runbook alternative: tbound-op diag podman-ps | grep -E tbound-(accept|v)- (must print nothing):
+diag rc=0 lines=1
+grep rc=1 (1 = nothing found)
+-- full diag output:
+CONTAINER ID  IMAGE       COMMAND     CREATED     STATUS      PORTS       NAMES

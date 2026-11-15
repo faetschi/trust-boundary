@@ -34,6 +34,8 @@ type trialTransport struct {
 	exit func(argv []string) int
 	err  error
 	argv [][]string
+	// stderr replaces the default refusal text of a non-zero exit.
+	stderr []byte
 }
 
 func (t *trialTransport) Run(_ context.Context, argv []string) ([]byte, []byte, int, error) {
@@ -45,6 +47,9 @@ func (t *trialTransport) Run(_ context.Context, argv []string) ([]byte, []byte, 
 	code := 0
 	if t.exit != nil {
 		code = t.exit(argv)
+	}
+	if code != 0 && t.stderr != nil {
+		return nil, t.stderr, code, nil
 	}
 	if code != 0 {
 		return nil, []byte("fixture digest mismatch"), code, nil
@@ -177,6 +182,36 @@ func TestResetFailureSpendsTheUnitThroughTheRunner(t *testing.T) {
 		if e.Kind == EntryDone && e.Index == 0 && !strings.Contains(e.SetupFailure, "reset") {
 			t.Fatalf("setup failure %q does not name the reset", e.SetupFailure)
 		}
+	}
+}
+
+// The guest refuses `reset --check` while an acceptance or V cell container is left over (procoracle
+// stated limit F1). The refusal is a Prepare refusal: the begin is voided, no unit is spent, no request is
+// sent and the run stops with an error and a journal reason that name the container.
+func TestLeftoverContainerRefusalStopsTheRunBeforeAnyRequest(t *testing.T) {
+	s := smallSchedule(t, smallConfig())
+	const name = "tbound-v-0123456789abcdef"
+	tr := &trialTransport{log: &orderLog{}, exit: func(argv []string) int {
+		if slices.Contains(argv, "--check") {
+			return 2
+		}
+		return 0
+	}, stderr: []byte("tbound trial: refusing: leftover service container(s) " + name +
+		": an acceptance or V cell outside the cells cgroup is scored as a cell escape (procoracle F1); stop and report, its removal is owner-supervised\n" +
+		"usage: tbound trial reset <case_id> [--check]   (root only; one JSON document on stdout)\n")}
+	fake := NewFakeExecutor(s.Config)
+	j := openJournal(t, t.TempDir(), s)
+	defer j.Close()
+	rep, err := mustRunner(t, s, j, ResetExecutor{Inner: fake, Transport: tr}, Options{}).Run(context.Background())
+	if !errors.Is(err, ErrSetupRefused) || !strings.Contains(err.Error(), name) {
+		t.Fatalf("run error %v; want a setup refusal naming %s", err, name)
+	}
+	if rep.UnitsUsed != 0 || len(fake.Calls()) != 0 || len(tr.argv) != 1 {
+		t.Fatalf("units %d, executed %v, guest calls %v; want nothing spent, run or reset", rep.UnitsUsed, fake.Calls(), tr.argv)
+	}
+	entries := j.Entries()
+	if last := entries[len(entries)-1]; last.Kind != EntryVoid || !strings.Contains(last.Reason, name) {
+		t.Fatalf("last journal entry %+v; want a void naming %s", last, name)
 	}
 }
 

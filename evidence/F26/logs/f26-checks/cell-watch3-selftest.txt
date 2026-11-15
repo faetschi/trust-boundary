@@ -1,0 +1,7 @@
+watch3 start 2026-11-13T22:58:48Z
+guest loop start 2026-11-13T22:58:49.225497101Z init_userns=4026531837
+== leftover-check 2026-11-13T22:58:52.231617613Z reason=svc-start service=active
+podman ps rc=0 lines=0
+== end leftover-check
+guest loop end 2026-11-13T22:58:54.294112289Z captures=0
+watch3 end 2026-11-13T22:58:54Z rc=0

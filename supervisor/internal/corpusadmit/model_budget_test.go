@@ -54,7 +54,9 @@ func TestCheckTrialsLeavesBudgetsWithoutAModelRoleAlone(t *testing.T) {
 
 // Both committed pilot manifests (the T5 draft that corpus mode installs and the draft the tests and the panel read)
 // are admitted under the ceilings of the signed pilot service config and the D50 per-call cap, as the corpus-mode
-// service checks them (cmd/tbound loadProductionCorpus).
+// service checks them (cmd/tbound loadProductionCorpus). Each case carries its registered budget: adversarial 17 host
+// calls / 69632 tokens, compliant and ambiguous 11 / 45056 (5 tools at a provider call and an effect each, plus the
+// final reply; owner decision 2026-11-14), 1200 s each.
 func TestPilotManifestsAreAdmittedUnderTheSignedPilotConfig(t *testing.T) {
 	raw, err := os.ReadFile("../../../infra/guest/serve-pi-service.corpus-pilot.json")
 	if err != nil {
@@ -80,6 +82,18 @@ func TestPilotManifestsAreAdmittedUnderTheSignedPilotConfig(t *testing.T) {
 		}
 		if err := CheckTrials(manifest.Cases, ceilings); err != nil {
 			t.Errorf("%s: %v", name, err)
+		}
+		for _, c := range manifest.Cases {
+			want := evalcorpus.Trial{MaxHostCalls: 11, MaxTokens: 45056, DurationSeconds: 1200}
+			if c.Kind == evalcorpus.KindAdversarial {
+				want = evalcorpus.Trial{MaxHostCalls: 17, MaxTokens: 69632, DurationSeconds: 1200}
+			}
+			if got := c.Trial; got == nil {
+				t.Errorf("%s: %s has no trial", name, c.CaseID)
+			} else if got.MaxHostCalls != want.MaxHostCalls || got.MaxTokens != want.MaxTokens || got.DurationSeconds != want.DurationSeconds {
+				t.Errorf("%s: %s budget %d / %d / %d, want %d / %d / %d", name, c.CaseID, got.MaxHostCalls, got.MaxTokens,
+					got.DurationSeconds, want.MaxHostCalls, want.MaxTokens, want.DurationSeconds)
+			}
 		}
 	}
 }

@@ -144,13 +144,14 @@ func TestPreregistrationRecordIsDeterministicAndBindsTheRegisteredFacts(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if evalreport.PlannedUnits != 1935 || runner.MaxRerunHeadroom != 97 {
-		t.Fatalf("registered constants drifted: %d units, headroom %d", evalreport.PlannedUnits, runner.MaxRerunHeadroom)
+	// A pre-D48 pilot manifest (no pinned draw) keeps the legacy totals, so its record and plan digest do not move.
+	if evalreport.LegacyPlannedUnits != 1935 || runner.RerunHeadroomFor(evalreport.LegacyPlannedUnits) != 97 {
+		t.Fatalf("registered constants drifted: %d units, headroom %d", evalreport.LegacyPlannedUnits, runner.RerunHeadroomFor(evalreport.LegacyPlannedUnits))
 	}
 	if rec.Domain != "tbound-preregistration/v1" || rec.FreezeCommit != commitA || rec.CorpusManifestDigest != m ||
 		rec.QuotaProfile != "pilot" || rec.EvalscoreSchema != evalscore.SchemaVersion ||
-		rec.PlannedUnits != evalreport.PlannedUnits ||
-		rec.RerunHeadroom != runner.MaxRerunHeadroom ||
+		rec.PlannedUnits != evalreport.LegacyPlannedUnits ||
+		rec.RerunHeadroom != 97 ||
 		rec.PlanSteps != 123 || !strings.HasPrefix(rec.RunnerPlanDigest, "sha256:") ||
 		!strings.HasPrefix(rec.ResearchProfileDigest, "sha256:") || !strings.HasPrefix(rec.ResearchLedgerConfigDigest, "sha256:") {
 		t.Fatalf("record %+v", rec)
@@ -325,20 +326,29 @@ func TestPreregistrationRecordRefusals(t *testing.T) {
 	}
 }
 
+// D53 item 4: the thesis record's planned units are computed from the final counts of the D48 manifest (here the
+// main-draw test vector: 299 main and 5 top-up cases, 100 compliant, 2 ambiguous, 50 variance), not the fixed 1,935,
+// and the rerun headroom is 5% of that total. A manifest without its draw file is refused.
 func TestPreregistrationRecordThesisPlanIsTheRegisteredUnits(t *testing.T) {
 	if testing.Short() {
-		t.Skip("builds the 419-case thesis-sized synthetic corpus")
+		t.Skip("builds the thesis-sized synthetic corpus")
 	}
 	dir := t.TempDir()
-	m, panel := signedPanel(t, dir, fixtureManifest(t, evalcorpus.ThesisQuotas(), "prereg-thesis-seed"))
+	thesis, draw := thesisDrawFixture(t, "prereg-thesis-seed")
+	m, panel := signedPanel(t, dir, thesis)
 	p := preregInputs{panel: panel, commit: commitA, manifest: writeManifest(t, dir, "thesis.json", m), quota: "thesis",
 		config: runnerConfigFile(t, dir, "runner.json", commitA, nil), reviewers: "owner,advisor"}
+	if _, _, err := runCLI(p.args()...); err == nil || !strings.Contains(err.Error(), "draw-") {
+		t.Fatalf("a thesis manifest was recorded without its draw file: %v", err)
+	}
+	writeDraw(t, dir, draw)
 	var rec preregistrationRecord
 	if err := json.Unmarshal([]byte(preregOut(t, p)), &rec); err != nil {
 		t.Fatal(err)
 	}
-	if rec.PlanSteps != 1935 || rec.PlannedUnits != 1935 || rec.RerunHeadroom != 97 || rec.QuotaProfile != "thesis" {
-		t.Fatalf("thesis record %+v", rec)
+	want := 304*5 + 100*3 + 2*2 + 50*2
+	if rec.PlanSteps != want || rec.PlannedUnits != want || rec.RerunHeadroom != runner.RerunHeadroomFor(want) || rec.QuotaProfile != "thesis" {
+		t.Fatalf("thesis record %+v, want %d units", rec, want)
 	}
 	// The same manifest is not a pilot manifest.
 	p.quota = "pilot"

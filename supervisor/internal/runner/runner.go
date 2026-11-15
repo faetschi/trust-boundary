@@ -64,8 +64,8 @@ func NewRunner(s Schedule, j *Journal, e Executor, opt Options) (*Runner, error)
 	if j.sched.Digest != s.Digest || j.sched.RunBinding != s.RunBinding {
 		return nil, ErrPlanMismatch
 	}
-	if h := s.Config.RerunHeadroom; h < 0 || h > MaxRerunHeadroom || (s.Config.NoRerunHeadroom && h != 0) {
-		return nil, fmt.Errorf("runner: rerun headroom %d is outside the owner ceiling %d", h, MaxRerunHeadroom)
+	if h, max := s.Config.RerunHeadroom, RerunHeadroomFor(s.PlannedUnits); h < 0 || h > max || (s.Config.NoRerunHeadroom && h != 0) {
+		return nil, fmt.Errorf("runner: rerun headroom %d is outside the owner ceiling %d", h, max)
 	}
 	if err := s.validateWitnessPurpose(); err != nil {
 		return nil, err

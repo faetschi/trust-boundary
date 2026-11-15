@@ -492,7 +492,7 @@ func TestSpendFlags(t *testing.T) {
 		}, "spend_cap_mismatch", false},
 		{"overspent", func(s *usdledger.Snapshot) { s.Overspent = true }, "ledger_overspent", false},
 		{"stop rule", func(s *usdledger.Snapshot) { withMoney(s, 0, 0, 4_999_000) }, "ledger_stop_rule", true},
-		{"units over planned", func(s *usdledger.Snapshot) { s.SettledUnits = PlannedUnits + 1 }, "units_over_planned", true},
+		{"units over planned", func(s *usdledger.Snapshot) { s.SettledUnits = LegacyPlannedUnits + 1 }, "units_over_planned", true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

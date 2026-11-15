@@ -1,0 +1,23 @@
+tbound-op status 2026-11-14T14:25:48Z pins F=2780072a7b9305d331504197fae9859547b5049b
+anchor: ok (pi-host-profile.pub sha256:be206a41ad321f29ef89e8157f69a6f0820a93fafa3096b71867ece745f9afac)
+runner: sha256:375990c5125afa3a tbound-profile: sha256:7b1597511796c210
+service=inactive socket=active
+installed: cfg sha256:29bc477c641ccbf2290b8cefbee6059db358d6f13d3db9cc77e6100b2a182188 reg sha256:31a5a2d206b4a436 prof sha256:1a4a9a95e9ac10d4 tpl sha256:4ee3410e2637d6a9
+installed config matches state of: pilot
+-- pilot:
+     cfg=sha256:29bc477c641ccbf2290b8cefbee6059db358d6f13d3db9cc77e6100b2a182188
+     prof=sha256:4246670b0a894701b974e7c7baaff54f5d228391aff57db563175e32b16c1a3c
+     profjson=sha256:1a4a9a95e9ac10d4c48a4ac0e4a427404c9ea5619fa5896bfc8501793aac4394
+     profsig=sha256:b3d24a63c940c5b79972336e39e6b03f973a47ab201ba0e965c1a36949bc469e
+     reg=sha256:68369ba7e2ed3e0f63bd69f6c9d810e6fb6904c320b4c7661953481884fbae18
+     regjson=sha256:31a5a2d206b4a4362a9a0d2786e31e954066828d8988f80f869e1158bb81341d
+     regsig=sha256:25f661ad390ca624be9cc8271e3cbaa00dc16ff330bf99979ba06cd925f47ef0
+     state=started
+     td=sha256:4ee3410e2637d6a9bc9749e2a158d490e741ec286a628eddcb9012ca2d35f399
+     tpl=sha256:4ee3410e2637d6a9bc9749e2a158d490e741ec286a628eddcb9012ca2d35f399
+-- last log lines
+2026-11-14T14:24:46Z tboundadmin END rc=0 argv=abandon tbr-6b2681f818fcb5a8b71ec64ab2e473a1 
+2026-11-14T14:24:47Z tboundadmin BEGIN argv=abandon tbr-6b2681f818fcb5a8b71ec64ab2e473a1 --confirm 0280b0e49fd7 
+2026-11-14T14:24:47Z tboundadmin FAIL abandon-unknown failed (socket restarted)
+2026-11-14T14:24:47Z tboundadmin END rc=1 argv=abandon tbr-6b2681f818fcb5a8b71ec64ab2e473a1 --confirm 0280b0e49fd7 
+2026-11-14T14:25:48Z tboundadmin BEGIN argv=status pilot 

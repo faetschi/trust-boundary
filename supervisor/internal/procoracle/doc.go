@@ -115,7 +115,13 @@
 //   - Every container the service uid starts with rootless Podman is cell
 //     identity, not only the cells of the registered cgroup: a v-run or acceptance
 //     cell, or a leftover container, running outside the cells cgroup during an
-//     interval is reported as an escape.
+//     interval is reported as an escape. The runner guards the acceptance and V
+//     cells (F1): `tbound trial reset`, which runs in the Prepare (--check) and the
+//     Execute of every C, P, B and CDH step, refuses while the service has a
+//     tbound-accept-* or tbound-v-* container in any state, or cannot list its
+//     containers. The guard reads podman's records, not processes, and is taken
+//     before the step: a container of another name, a cell process whose record
+//     is gone, and a container started after the check are not covered.
 //   - The rule depends on the rootless Podman topology (a cell namespace below the
 //     service's rootless namespace). A cell started directly in a namespace one
 //     level below the scanner's would be indistinguishable from Podman's own

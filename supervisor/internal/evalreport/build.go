@@ -48,6 +48,9 @@ func indexManifest(m evalcorpus.Manifest) (*manifestIndex, error) {
 			kind, key = kindAdversarial, kindAdversarial+"/unclassified"
 			if a := c.Adversarial; a != nil {
 				key = fmt.Sprintf("%s/%s/%s", kindAdversarial, orUnset(string(a.ThreatClass)), orUnset(string(a.Partition)))
+				if !inH1(c) {
+					key = fmt.Sprintf("%s/%s/%s/%s", kindAdversarial, a.SamplePart, a.ThreatClass, orUnset(string(a.Partition)))
+				}
 			}
 		case evalcorpus.KindCompliant:
 			kind, key = kindCompliant, kindCompliant+"/unclassified"
@@ -237,6 +240,8 @@ func Build(in Inputs) (Report, error) {
 	if err != nil {
 		return Report{}, err
 	}
+	full := in
+	in, separate := splitH1(in) // from here on, in holds the H1 population only (D48)
 	idx, err := indexManifest(in.Manifest)
 	if err != nil {
 		return Report{}, err
@@ -326,7 +331,10 @@ func Build(in Inputs) (Report, error) {
 		Clauses:                sum.Clauses,
 		Metrics:                sum.Metrics,
 		H1:                     requireExactCoverage(sum.H1, cov.Exact),
-		Spend:                  spendOf(in.Ledger),
+		Spend:                  spendOf(in.Ledger, PlannedUnits(full.Manifest)),
+	}
+	if r.Separate, err = separateStrata(full, separate); err != nil {
+		return Report{}, err
 	}
 	r.Flags = flagsOf(r)
 	if r.Digest, err = r.ComputeDigest(); err != nil {
@@ -499,7 +507,7 @@ func totalUnits(s usdledger.Snapshot) (int, bool) {
 	return total, true
 }
 
-func spendOf(s usdledger.Snapshot) Spend {
+func spendOf(s usdledger.Snapshot, planned int) Spend {
 	total, _ := totalUnits(s) // checkSnapshot has already rejected overflow
 	sp := Spend{
 		LedgerID:              s.LedgerID,
@@ -514,13 +522,13 @@ func spendOf(s usdledger.Snapshot) Spend {
 		UncertainUnits:        s.UncertainUnits,
 		SettledUnits:          s.SettledUnits,
 		TotalUnits:            total,
-		PlannedUnits:          PlannedUnits,
+		PlannedUnits:          planned,
 		StopRule:              s.StopRule,
 		Overspent:             s.Overspent,
 		CapMatchesRegistered:  s.CapMicroUSD == RegisteredCapMicroUSD,
 		OverCap:               s.CommittedMicroUSD > s.CapMicroUSD || s.CommittedMicroUSD > RegisteredCapMicroUSD,
 	}
-	sp.UnitsOverPlanned = sp.TotalUnits > PlannedUnits
+	sp.UnitsOverPlanned = sp.TotalUnits > planned
 	sp.WithinBudget = sp.CapMatchesRegistered && !sp.OverCap && !sp.Overspent
 	return sp
 }
@@ -648,4 +656,90 @@ func canonical(v any, drop string) ([]byte, error) {
 		delete(m, drop)
 	}
 	return encode(generic)
+}
+
+// inH1 reports whether an adversarial case counts toward H1: every case but the top-up and the TM-C set (D48).
+func inH1(c *evalcorpus.Case) bool {
+	return c.Adversarial == nil || (c.Adversarial.SamplePart != evalcorpus.SampleTopup && c.Adversarial.SamplePart != evalcorpus.SampleTMC)
+}
+
+// splitH1 returns in restricted to the H1 population, and the cases it removed: the top-up and TM-C cases with
+// their records. A record of an ID that is no case at all stays in the H1 inputs, where it is refused as unregistered.
+func splitH1(in Inputs) (Inputs, separateSet) {
+	var sep separateSet
+	ids := map[string]bool{}
+	for i := range in.Manifest.Cases {
+		if c := &in.Manifest.Cases[i]; c.Kind == evalcorpus.KindAdversarial && !inH1(c) {
+			ids[c.CaseID] = true
+		}
+	}
+	if len(ids) == 0 {
+		return in, sep
+	}
+	h1 := in
+	h1.Manifest.Cases = nil
+	for _, c := range in.Manifest.Cases {
+		if c.Kind == evalcorpus.KindAdversarial && ids[c.CaseID] {
+			sep.manifest.Cases = append(sep.manifest.Cases, c)
+		} else {
+			h1.Manifest.Cases = append(h1.Manifest.Cases, c)
+		}
+	}
+	h1.Trials.Adversarial = nil
+	for _, r := range in.Trials.Adversarial {
+		if ids[r.CaseID] {
+			sep.records = append(sep.records, r)
+		} else {
+			h1.Trials.Adversarial = append(h1.Trials.Adversarial, r)
+		}
+	}
+	return h1, sep
+}
+
+type separateSet struct {
+	manifest evalcorpus.Manifest
+	records  []evalscore.AdversarialRecord
+}
+
+// separateStrata scores the top-up and TM-C cases on their own, against their own registered identities, and
+// returns their strata (nil when there are none). Their outcomes are reported, never pooled (D48).
+func separateStrata(full Inputs, sep separateSet) ([]Stratum, error) {
+	if len(sep.manifest.Cases) == 0 {
+		return nil, nil
+	}
+	in := evalscore.Input{Schema: full.Trials.Schema, EVQPassed: full.Trials.EVQPassed, Adversarial: sep.records,
+		Registered: &evalscore.RegisteredIDs{AdversarialIDs: sep.manifest.CaseIDs(evalcorpus.KindAdversarial), CompliantIDs: []string{}}}
+	sum, err := evalscore.Summarize(in)
+	if err != nil {
+		return nil, scoringError(evalscore.Input{Schema: in.Schema, Adversarial: sep.records}, err)
+	}
+	idx, err := indexManifest(sep.manifest)
+	if err != nil {
+		return nil, err
+	}
+	records := map[string]bool{}
+	for _, r := range sep.records {
+		records[r.CaseID] = true
+	}
+	for _, c := range sum.Cases {
+		st, err := idx.stratumFor(c.Kind, c.ID)
+		if err != nil {
+			return nil, err
+		}
+		st.Scored++
+		addDisposition(&st.Dispositions, c.Disposition)
+	}
+	for _, ir := range sum.InvalidRecords {
+		st, err := idx.stratumFor(ir.Kind, ir.ID)
+		if err != nil {
+			return nil, err
+		}
+		st.InvalidRecords++
+	}
+	coverKind(idx, kindAdversarial, records, 0) // counts each stratum's missing cases
+	out := make([]Stratum, 0, len(idx.strata))
+	for _, key := range slices.Sorted(maps.Keys(idx.strata)) {
+		out = append(out, *idx.strata[key])
+	}
+	return out, nil
 }

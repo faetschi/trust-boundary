@@ -1,0 +1,458 @@
+== 32-reg-dr start 2026-11-13T23:51:49Z guest=172.31.19.28
+OK   FROZEN-COMMIT = 2780072a7b9305d331504197fae9859547b5049b
+OK   F23 record TBOUND_DIGEST == PREV_TBOUND_DIGEST = sha256:4852c78fc660d8073e6347814b2e553a41fa0494dececc0d32f8b37869dacd31
+OK   F23 record TBP_DIGEST == PREV_TBP_DIGEST = sha256:16a4b00fb4b75b56301ec699c4cd613afda9773b695d9a6d5f0831412604a468
+OK   F23 record ENTRYPOINT_DIGEST == PREV_ENTRYPOINT_DIGEST = sha256:9b7499bc356810b74bc2e5ce0bfea5e66f5918ac9c2031096f80f22b5c2aa3f4
+OK   F23 record SRC_DIGEST == PREV_SRC_DIGEST = sha256:da00b275241e06c23b49e7bd064eb3573f52f4de136c1293157e7938f520eb95
+OK   F23 record BUNDLE_DIGEST == PREV_BUNDLE_DIGEST = sha256:73866d76ad8a8a9f91f40aa8b43168e10f5844f21bb32ef2537065b48b2ff1e1
+OK   F23 record IMGDIGEST == PREV_IMGDIGEST = sha256:eb5cd99b5e7e62905cdab34a02d2116b8671c110929d86b001b00b614da89a2f
+OK   F23 record CFG == PREV_CFG = sha256:2656d410f2b5b8dd40cce326f3c3f73affdd5154fc85fa9a190cbe4d4e2f7731
+OK   F23 record BASE_TD == PREV_BASE_TD = sha256:0179bdd920627ce28ee7041c67c924df7dfcaefeb046270de54ec3b65e2e8fce
+OK   F23 record LOAD_TAR_DIGEST == PREV_LOAD_TAR_DIGEST = sha256:ae38be168c42f8c9d2d4d24adda02672432b886670736028a70540911fb7aac3
+OK   F23 record CAL_RO_DIGEST == PREV_CAL_RO_DIGEST = sha256:6b12c0ac0dcbf65684ea3889cfd8241f9e8e69cc7ccbcb52eb22e5ddd851188e
+OK   F23 record CAL_RW_DIGEST == PREV_CAL_RW_DIGEST = sha256:07b235cccb3fd8bcbd3be50b0816e708d7b5332fbefa78deb54d0a55497b3bf5
+OK   F23 record TEST_PROCORACLE == PREV_TEST_PROCORACLE = sha256:72274bf50b9977652d540999940fc9791444ed675302cb9f609c703aad5a86b9
+OK   F23 record TEST_ENTRYPOINT == PREV_TEST_ENTRYPOINT = sha256:e29b6f8b22e3c38a01274b628bf24a239b116648a00f2c32d994b8a854a5f4d6
+OK   F23 FROZEN-COMMIT record == PREV_COMMIT = 13ed11939c06e552a2d8662fb752bf2b3640ac68
+OK   F23 g1/RID record == PREV_G1_RID = g1-req-20261108T183243Z
+OK   F23 rp/RID record == PREV_RP_RID = rp-req-20261108T183452Z
+OK   F23 dr/RID record == PREV_DR_RID = dr-req-20261108T183711Z
+OK   F23 dr/RUNID record == PREV_DR_RUNID = production-run-85c9eb7a114561a194560496
+OK   F23 dr/CHECKS_OK record == 'ok' = ok
+OK   F23 dr/ADMISSION_ID record == PREV_DR_ADMISSION_ID = route-probe-dr-2026-11-08d
+OK   IMGDIGEST (session-env == HF) = sha256:0069f05766d9ab5aae1532d1eb097aa2160f15186fd5fd375b38c4fda4bfa6dd
+OK   frozen commit 2780072a7b9305d331504197fae9859547b5049b; HF=/home/tbound/tbound-h/f26
+OK   admin.key size/mode = 64 600
+OK   admin.pub digest == HF ADMIN_PUB_DIGEST = sha256:be206a41ad321f29ef89e8157f69a6f0820a93fafa3096b71867ece745f9afac
+OK   admin.pub digest == F0 = sha256:be206a41ad321f29ef89e8157f69a6f0820a93fafa3096b71867ece745f9afac
+OK   cosign.pub digest == HF COSIGN_PUB_DIGEST = sha256:caf906a4ead6cd8998502333030f0602e66302e47b1539afebe5a13c39e66bcd
+OK   cosign.pub digest == F0 = sha256:caf906a4ead6cd8998502333030f0602e66302e47b1539afebe5a13c39e66bcd
+
+== preflight: guest 172.31.19.28 (pinned host key, StrictHostKeyChecking=yes), tbound-op only
+guest address: GUEST_IP=172.31.19.28 (changes after host restarts; if a connection fails, look it up: PowerShell 'Get-NetNeighbor -LinkLayerAddress 00-15-5D-0C-40-02', or 'ip -4 addr' on the guest console, then export GUEST_IP=<IPAddress>)
+OK   ssh identity = tboundadmin
+OK   sudo -n true fails (narrowed sudo)
+guest: tbound-abi8-seed 7.0.0-38-generic 2026-11-13T23:51:55Z 
+
+== 0. dispatcher and pins
+tbound-op status 2026-11-13T23:51:56Z pins F=2780072a7b9305d331504197fae9859547b5049b
+anchor: ok (pi-host-profile.pub sha256:be206a41ad321f29ef89e8157f69a6f0820a93fafa3096b71867ece745f9afac)
+runner: sha256:375990c5125afa3a tbound-profile: sha256:7b1597511796c210
+service=active socket=active
+installed: cfg sha256:fee12397355b5f9be3553fbd09cb696b716b9bd4a75cf0e64b2b11ef30e9e422 reg sha256:2996d71c0e8b942d prof sha256:2bc91a2ae79eb7d1 tpl sha256:fa1e5dde983f89d8
+installed config matches state of: rp
+-- dr: no state
+-- last log lines
+2026-11-13T23:51:24Z tboundadmin END rc=0 argv=collect audit production-run-04bee28152234188dcb903fa 
+2026-11-13T23:51:44Z tboundadmin BEGIN argv=guest-evidence route-bash-view production-run-04bee28152234188dcb903fa 
+2026-11-13T23:51:44Z tboundadmin OK guest-evidence route-bash-view production-run-04bee28152234188dcb903fa 
+2026-11-13T23:51:44Z tboundadmin END rc=0 argv=guest-evidence route-bash-view production-run-04bee28152234188dcb903fa 
+2026-11-13T23:51:56Z tboundadmin BEGIN argv=status dr 
+dr state: none (rank 0)
+
+== 0b. baseline before the dr service starts: catalog and requests as they are on the guest
+collected catalog (42725 bytes)
+OK   saved /home/tbound/tbound-h/f26/dr/catalog-before-start.jsonl
+collected requests (8322 bytes)
+OK   saved /home/tbound/tbound-h/f26/dr/requests-before-start.jsonl
+catalog before:    16 42725 ; pi_workflow_terminal lines: 2
+== 2026-11-13T23:52:01Z cgroup
+cells
+runner
+-- cells
+cgroup.controllers
+cgroup.events
+cgroup.freeze
+cgroup.kill
+cgroup.max.depth
+cgroup.max.descendants
+cgroup.pressure
+cgroup.procs
+cgroup.stat
+cgroup.stat.local
+cgroup.subtree_control
+cgroup.threads
+cgroup.type
+cpu.idle
+cpu.max
+cpu.max.burst
+cpu.pressure
+cpu.stat
+cpu.stat.local
+cpu.uclamp.max
+cpu.uclamp.min
+cpu.weight
+cpu.weight.nice
+cpuset.cpus
+cpuset.cpus.effective
+cpuset.cpus.exclusive
+cpuset.cpus.exclusive.effective
+cpuset.cpus.partition
+cpuset.mems
+cpuset.mems.effective
+io.max
+io.pressure
+io.prio.class
+io.stat
+io.weight
+memory.current
+memory.events
+memory.events.local
+memory.high
+memory.low
+memory.max
+memory.min
+memory.numa_stat
+memory.oom.group
+memory.peak
+memory.pressure
+memory.reclaim
+memory.stat
+memory.swap.current
+memory.swap.events
+memory.swap.high
+memory.swap.max
+memory.swap.peak
+memory.zswap.current
+memory.zswap.max
+memory.zswap.writeback
+pids.current
+pids.events
+pids.events.local
+pids.max
+pids.peak
+-- cells/cgroup.procs
+== podman ps -a
+CONTAINER ID  IMAGE       COMMAND     CREATED     STATUS      PORTS       NAMES
+== mounts below podman-storage or /run/tbound-pi in any mount namespace
+      1 /run/tbound-pi
+      1 /var/lib/tbound/podman-storage/graphroot
+== requests
+4 /var/lib/tbound/audit/serve-pi-requests.jsonl
+{"version":1,"sequence":1,"previous_hash":"","event":{"kind":"pi_service_request_accepted","id":"pi-service-request-4cb5479cbe8e5801e3912edddb0b9d94492a8be1972c16abf660cbaba67d13b5","data":"eyJzY2hlbWFfdmVyc2lvbiI6InRib3VuZC1waS1zZXJ2aWNlLXJlcXVlc3QtYWNjZXB0ZWQvdjEiLCJjbGllbnRfdWlkIjo5OTQsImNsaWVudF9naWQiOjk4NSwiY2xpZW50X3BpZCI6NDgxOTY2LCJyZXF1ZXN0X2lkIjoiZzEtcmVxLTIwMjYxMTEzVDIzNDc1OFoiLCJ0YXNrX2lkIjoiZzEtcmVhZC1lZGl0LWJhc2gtcmVhZCIsInBheWxvYWRfZGlnZXN0Ijoic2hhMjU2OmYzMTVjN2IyNTEzOGNhMjZmOTlkMz
+{"version":1,"sequence":2,"previous_hash":"ce3a9d924a0bfe6b361abe68cc69cade0939b99ad501d89b64cd727706568392","event":{"kind":"pi_service_request_terminal","id":"pi-service-request-4cb5479cbe8e5801e3912edddb0b9d94492a8be1972c16abf660cbaba67d13b5/terminal","data":"eyJzY2hlbWFfdmVyc2lvbiI6InRib3VuZC1waS1zZXJ2aWNlLXJlcXVlc3QtdGVybWluYWwvdjEiLCJjbGllbnRfdWlkIjo5OTQsInJlcXVlc3RfaWQiOiJnMS1yZXEtMjAyNjExMTNUMjM0NzU4WiIsInBheWxvYWRfZGlnZXN0Ijoic2hhMjU2OmYzMTVjN2IyNTEzOGNhMjZmOTlkMzY2Nzk1M2FkYTljMzk3Y2YyN
+{"version":1,"sequence":3,"previous_hash":"c701a2f728e3c9c003bf91ce941281eaee8d702005c7c13a8cc368738aa2ea39","event":{"kind":"pi_service_request_accepted","id":"pi-service-request-f7e528a2c6521ba2f75008e07e14ec16f98ac87c0f00c9de78922fe0a8ddd9bb","data":"eyJzY2hlbWFfdmVyc2lvbiI6InRib3VuZC1waS1zZXJ2aWNlLXJlcXVlc3QtYWNjZXB0ZWQvdjEiLCJjbGllbnRfdWlkIjo5OTQsImNsaWVudF9naWQiOjk4NSwiY2xpZW50X3BpZCI6NDkwNjU3LCJyZXF1ZXN0X2lkIjoicnAtcmVxLTIwMjYxMTEzVDIzNTAwOFoiLCJ0YXNrX2lkIjoicm91dGUtcHJvYmUtYmFzaC12aWV3Ii
+{"version":1,"sequence":4,"previous_hash":"ad247ee06514d61109efa8637fa89e56776cd9f9de2e067296ab97aeee40a85f","event":{"kind":"pi_service_request_terminal","id":"pi-service-request-f7e528a2c6521ba2f75008e07e14ec16f98ac87c0f00c9de78922fe0a8ddd9bb/terminal","data":"eyJzY2hlbWFfdmVyc2lvbiI6InRib3VuZC1waS1zZXJ2aWNlLXJlcXVlc3QtdGVybWluYWwvdjEiLCJjbGllbnRfdWlkIjo5OTQsInJlcXVlc3RfaWQiOiJycC1yZXEtMjAyNjExMTNUMjM1MDA4WiIsInBheWxvYWRfZGlnZXN0Ijoic2hhMjU2OjRjZDBhYTM1NTRkODFkZmIzN2MxOTI3YzIzODk0ZjE4OTI2NDUyN
+== catalog
+16 /var/lib/tbound/private-admin/workflow-recovery/catalog.jsonl
+drained=2 unexposed_true=0
+== audit files
+total 616
+-rw------- 1 tbound-pi tbound-pi  39164 Nov 13 23:50 production-run-04bee28152234188dcb903fa-command-audit.jsonl
+-rw------- 1 tbound-pi tbound-pi 228159 Nov 13 23:50 production-run-04bee28152234188dcb903fa-provider-audit.jsonl
+-rw------- 1 tbound-pi tbound-pi  50794 Nov 13 23:50 production-run-04bee28152234188dcb903fa-session-audit.jsonl
+-rw------- 1 tbound-pi tbound-pi  10139 Nov 13 23:48 production-run-1e9d33faeae7dd0a6aeec893-command-audit.jsonl
+-rw------- 1 tbound-pi tbound-pi 159491 Nov 13 23:48 production-run-1e9d33faeae7dd0a6aeec893-provider-audit.jsonl
+-rw------- 1 tbound-pi tbound-pi  43830 Nov 13 23:48 production-run-1e9d33faeae7dd0a6aeec893-session-audit.jsonl
+-rw------- 1 tbound-pi tbound-pi  28482 Nov 13 23:50 publication-audit.jsonl
+-rw------- 1 tbound-pi tbound-pi   8322 Nov 13 23:50 serve-pi-requests.jsonl
+-rw------- 1 tbound-pi tbound-pi  13567 Nov 13 23:50 tbound-workflow-04bee28152234188dcb903fa-e04-audit.jsonl
+-rw------- 1 tbound-pi tbound-pi  16223 Nov 13 23:48 tbound-workflow-1e9d33faeae7dd0a6aeec893-e04-audit.jsonl
+== maintenance lock
+lock-free
+OK   saved /home/tbound/tbound-h/f26/dr/outdir-listing-before.txt
+
+== RG-2 svc stop; build and install the dr service config
+svc stop ok: service and socket inactive
+OK   measured CD == recorded CONTAINERS_CONF_DIGEST = sha256:39d4074e9443db514b09313e45d46923b84c372dea6b394dbc3056bf354c3ba0
+OK   measured SD == recorded STORAGE_CONF_DIGEST = sha256:9ebdcc8b5ed0ec25af5bdd93ccd8328b7a8ceb0744ee140ca9e7722cb294c0c7
+OK   recorded dr/ADMISSION_ID = route-probe-dr-2026-11-13c
+wrote /home/tbound/tbound-h/f26/dr/serve-pi-service.json
+admission id route-probe-dr-2026-11-13c (template had route-probe-2026-11-13c); sha256 members: 2
+OK   provider_route = engineering
+OK   workflow_task_id = route-probe-bash-view
+OK   workflow_admission_id = route-probe-dr-2026-11-13c
+OK   workflow_bash_output_paths = []
+admission id route-probe-dr-2026-11-13c (one use)
+OK   staged stage-dr/serve-pi-service.json == owner file = sha256:bdab82fbda715f07384fb025c791e884b652add62864264af963c5f9cffa41b4
+cfg-install dr ok: sha256:bdab82fbda715f07384fb025c791e884b652add62864264af963c5f9cffa41b4 (state config)
+
+== RG-3 reg-measure dr, fetch the unsigned registration
+svc stop ok: service and socket inactive
+reg-measure dr ok: sha256:7c6902487ac007ee5a3d58d1aae99cbba044c4eb2090f166be63f42d8355da6f -> /var/tmp/tbound-op/dr/managed-live-root.unsigned.json (fetch, sign on the owner machine)
+OK   saved /home/tbound/tbound-h/f26/dr/managed-live-root.unsigned.json
+
+== checks on the unsigned registration (before anything is signed)
+OK   runner_digest == TBOUND_DIGEST (F26) = sha256:375990c5125afa3aa82d2c30f1ddb28f75602e479d7f6dc8e3b0d4a27d9989cf
+OK   managed_root_xattr_calibration_digest == CAL_RW_DIGEST = sha256:07b235cccb3fd8bcbd3be50b0816e708d7b5332fbefa78deb54d0a55497b3bf5
+OK   service_uid/gid = 995/986
+OK   service_cgroup_path = /system.slice/tbound-pi.service
+OK   runner_path = /usr/local/bin/tbound
+OK   service_config_digest == dr config = sha256:bdab82fbda715f07384fb025c791e884b652add62864264af963c5f9cffa41b4
+
+== RG-4 [OWNER SIGN] S3 (dr): admin key by path only
+disk /home/tbound/tbound-work/f26-kit/.local: 860 GiB free (need 10)
+disk /: 860 GiB free (need 10)
+signed managed live-root registration: /home/tbound/tbound-h/f26/dr/managed-live-root.json
+Digest (bind into D09 template): sha256:b19d51dc9f75c8c95e87107249b697f409c39a9ee8023b3a289581c07400937b
+Signature: /home/tbound/tbound-h/f26/dr/managed-live-root.ed25519
+verified signed managed live-root policy tbound-managed-live-root-registration/v1 for /var/lib/tbound/live/root (service tbound-pi, digest sha256:b19d51dc9f75c8c95e87107249b697f409c39a9ee8023b3a289581c07400937b, runner sha256:375990c5125afa3aa82d2c30f1ddb28f75602e479d7f6dc8e3b0d4a27d9989cf)
+This verifies policy/signature only; it is not a live-root quiescence permit.
+REGDIGEST-dr=sha256:b19d51dc9f75c8c95e87107249b697f409c39a9ee8023b3a289581c07400937b
+080f68c1b8783c8bdbb3cbc3bec341c6f7f6cb029d7dc10984f17c643b0ddba4  /home/tbound/tbound-h/f26/dr/managed-live-root.json
+3f60efebf81123e8359988aebe966358aa72e70aeb78aa7d4f85821a542b4f43  /home/tbound/tbound-h/f26/dr/managed-live-root.ed25519
+OK sync done; no 0-byte output under /home/tbound/tbound-h/f26
+
+== RG-5 stage and reg-install dr
+OK   staged stage-dr/managed-live-root.json == owner file = sha256:080f68c1b8783c8bdbb3cbc3bec341c6f7f6cb029d7dc10984f17c643b0ddba4
+OK   staged stage-dr/managed-live-root.ed25519 == owner file = sha256:3f60efebf81123e8359988aebe966358aa72e70aeb78aa7d4f85821a542b4f43
+reg-install dr ok: REGDIGEST sha256:b19d51dc9f75c8c95e87107249b697f409c39a9ee8023b3a289581c07400937b (state reg)
+
+== RG-6 [OWNER SIGN] dr template(s) with REGDIGEST-dr, TD, S4 (dr): admin key by path only
+disk /home/tbound/tbound-work/f26-kit/.local: 860 GiB free (need 10)
+disk /: 860 GiB free (need 10)
+D09 cell template canonical digest: sha256:3f0417c93fc08767f4abab11fe0ac7b024e61fe6bd7259cb1c94f1a085a17def
+D09 base template digest (registration digest emptied; run.json pins.base_template_digest): sha256:664a57213346e68d4a1d7fbadf40d9a4ff66bd11c4758691452d54e8a9205df3
+D09 command-cell delta net-sink/v1 template digest: sha256:0e3e4b649649a37c7e4c282979560b09ae566942c6c1d4a9e620f8b6066c8659
+D09 command-cell delta no-reap/v1 template digest: sha256:90c0279b5b8eb7519ed707021e45cd0a52c84eb702d97eb035a926eb2ed84cf9
+D09 cell template canonical digest: sha256:a4f605d7f165056279862669bd877b9ce4c866db952720416165437d0b84662d
+D09 base template digest (registration digest emptied; run.json pins.base_template_digest): sha256:664a57213346e68d4a1d7fbadf40d9a4ff66bd11c4758691452d54e8a9205df3
+D09 command-cell delta net-sink/v1 template digest: sha256:381d8b9aa14638954a1395d1105f7cb8d106d5d06d8ef765298a329b9008b80c
+D09 command-cell delta no-reap/v1 template digest: sha256:3aafaf6e9f3322c53574644403403a0d5c4828f6f1a280ea2e9e41dd4212d1ca
+wrote canonical unsigned host profile: /home/tbound/tbound-h/f26/dr/pi-host-profile.unsigned.json
+Digest is empty until signed. Placeholders left (sign refuses them): none
+Then:
+  tbound-profile sign --profile /home/tbound/tbound-h/f26/dr/pi-host-profile.unsigned.json --key <ed25519-private> --out-sig <new>.ed25519 --out-pub <new>.pub --out-profile <new>.signed.json
+signed host profile: /home/tbound/tbound-h/f26/dr/pi-host-profile.signed.json
+Digest: sha256:827d7854973ac4b2d24e96e805953a0420d3305a36ae01732a297e14e30392e3
+Public key (hex): 1fc6faa24be42d32c9e522947a392c19ceb454b4dddfe2e1c0c5d703b4ac079e
+Signature: /home/tbound/tbound-h/f26/dr/pi-host-profile.ed25519
+verified signed host profile pi-host-profile-dr-2780072a7b93 (digest sha256:827d7854973ac4b2d24e96e805953a0420d3305a36ae01732a297e14e30392e3, mode production)
+NAME=dr REG=sha256:b19d51dc9f75c8c95e87107249b697f409c39a9ee8023b3a289581c07400937b TD(installed template)=sha256:a4f605d7f165056279862669bd877b9ce4c866db952720416165437d0b84662d PROFILE=sha256:827d7854973ac4b2d24e96e805953a0420d3305a36ae01732a297e14e30392e3
+4e4bbd9cae622b8547f0635cedf2a2501faaef56705e5abbaf935bed52d765cb  /home/tbound/tbound-h/f26/dr/pi-host-profile.signed.json
+7464cd735531e372aa7b7487e80c40e38b2021838e5212a74dc9608f603e31a9  /home/tbound/tbound-h/f26/dr/pi-host-profile.ed25519
+3f0417c93fc08767f4abab11fe0ac7b024e61fe6bd7259cb1c94f1a085a17def  /home/tbound/tbound-h/f26/dr/d09-cell.json
+a4f605d7f165056279862669bd877b9ce4c866db952720416165437d0b84662d  /home/tbound/tbound-h/f26/dr/d09-cell.route-probe.json
+OK sync done; no 0-byte output under /home/tbound/tbound-h/f26
+OK   template registration digest == REGDIGEST-dr = sha256:b19d51dc9f75c8c95e87107249b697f409c39a9ee8023b3a289581c07400937b
+OK   template expected_image_digest == IMGDIGEST = sha256:0069f05766d9ab5aae1532d1eb097aa2160f15186fd5fd375b38c4fda4bfa6dd
+OK   probe template registration digest == REGDIGEST-dr = sha256:b19d51dc9f75c8c95e87107249b697f409c39a9ee8023b3a289581c07400937b
+OK   probe template route_probe.name = direct-runtime/v1
+OK   probe template route_probe.target = /home/node/.profile
+OK   probe template route_probe.control = /var/lib/tbound/pi-worker/src/release.txt
+profile pins the PROBE template TD sha256:a4f605d7f165056279862669bd877b9ce4c866db952720416165437d0b84662d (production TD sha256:3f0417c93fc08767f4abab11fe0ac7b024e61fe6bd7259cb1c94f1a085a17def)
+
+== RG-7 stage and prof-install dr
+OK   staged stage-dr/pi-host-profile.json == owner file = sha256:4e4bbd9cae622b8547f0635cedf2a2501faaef56705e5abbaf935bed52d765cb
+OK   staged stage-dr/pi-host-profile.ed25519 == owner file = sha256:7464cd735531e372aa7b7487e80c40e38b2021838e5212a74dc9608f603e31a9
+OK   staged stage-dr/d09-cell.route-probe.json == owner file = sha256:a4f605d7f165056279862669bd877b9ce4c866db952720416165437d0b84662d
+OK   staged stage-dr/d09-cell.json == owner file = sha256:3f0417c93fc08767f4abab11fe0ac7b024e61fe6bd7259cb1c94f1a085a17def
+3f0417c93fc08767f4abab11fe0ac7b024e61fe6bd7259cb1c94f1a085a17def  d09-cell.json
+a4f605d7f165056279862669bd877b9ce4c866db952720416165437d0b84662d  d09-cell.route-probe.json
+3f60efebf81123e8359988aebe966358aa72e70aeb78aa7d4f85821a542b4f43  managed-live-root.ed25519
+080f68c1b8783c8bdbb3cbc3bec341c6f7f6cb029d7dc10984f17c643b0ddba4  managed-live-root.json
+7464cd735531e372aa7b7487e80c40e38b2021838e5212a74dc9608f603e31a9  pi-host-profile.ed25519
+4e4bbd9cae622b8547f0635cedf2a2501faaef56705e5abbaf935bed52d765cb  pi-host-profile.json
+be206a41ad321f29ef89e8157f69a6f0820a93fafa3096b71867ece745f9afac  pi-host-profile.pub
+bdab82fbda715f07384fb025c791e884b652add62864264af963c5f9cffa41b4  serve-pi-service.json
+prof-install dr ok: profile sha256:827d7854973ac4b2d24e96e805953a0420d3305a36ae01732a297e14e30392e3 TD sha256:a4f605d7f165056279862669bd877b9ce4c866db952720416165437d0b84662d (state prof)
+
+== svc start (the dr service starts here; a completed earlier workflow is already terminal)
+Nov 13 23:52:23 tbound-abi8-seed systemd[1]: Started tbound-pi.service - TBound managed Pi service (socket-activated, one fixed workflow).
+svc start ok for dr: service and socket active
+OK   saved /home/tbound/tbound-h/f26/dr/svc-start-journal.txt
+collected catalog (42725 bytes)
+OK   saved /home/tbound/tbound-h/f26/dr/catalog-after-start.jsonl
+pi_workflow_terminal lines after the start (before any dr request): 2
+== service cgroup
+cells
+runner
+tbound-pi:tbound-pi 755
+domain
+cpu memory pids
+-- runner procs
+498625
+-- cgroup-root-digest (profile: sha256:8c64df4047d2e49832d3fd5334c06eca57a9812c2bb374c26ab8a947ac2e03ce)
+sha256:8c64df4047d2e49832d3fd5334c06eca57a9812c2bb374c26ab8a947ac2e03ce
+== mounts
+/usr/local/bin/tbound ro,nosuid,nodev,relatime
+/usr/local/bin/node ro,nosuid,nodev,relatime
+/usr/bin/podman ro,nosuid,nodev,relatime
+/usr/bin/crun ro,nosuid,nodev,relatime
+/opt/tbound/cell ro,nosuid,nodev,relatime
+/var/lib/tbound/runtime ro,nosuid,nodev,relatime
+== maintenance lock
+lock-free
+OK   saved /home/tbound/tbound-h/f26/dr/diag-l2.txt
+
+== L client-run dr (detached; one use of the admission)
+client-run dr launched: rid dr-req-20261113T235228Z (status: tbound-op status dr; response: /var/tmp/tbound-op/dr/dr-response.txt)
+OK   recorded dr/RID = dr-req-20261113T235228Z
+
+== poll status dr until the client has returned (max ~30 min)
+2026-11-13T23:52:29Z running (launched 2026-11-13T23:52:28Z rid=dr-req-20261113T235228Z)
+client: done exit=2
+OK   recorded dr/CLIENT_STATUS = done exit=2
+
+== collect l4, catalog, requests; fetch the exports
+== 2026-11-13T23:52:51Z cgroup
+cells
+runner
+-- cells
+cgroup.controllers
+cgroup.events
+cgroup.freeze
+cgroup.kill
+cgroup.max.depth
+cgroup.max.descendants
+cgroup.pressure
+cgroup.procs
+cgroup.stat
+cgroup.stat.local
+cgroup.subtree_control
+cgroup.threads
+cgroup.type
+cpu.idle
+cpu.max
+cpu.max.burst
+cpu.pressure
+cpu.stat
+cpu.stat.local
+cpu.uclamp.max
+cpu.uclamp.min
+cpu.weight
+cpu.weight.nice
+cpuset.cpus
+cpuset.cpus.effective
+cpuset.cpus.exclusive
+cpuset.cpus.exclusive.effective
+cpuset.cpus.partition
+cpuset.mems
+cpuset.mems.effective
+io.max
+io.pressure
+io.prio.class
+io.stat
+io.weight
+memory.current
+memory.events
+memory.events.local
+memory.high
+memory.low
+memory.max
+memory.min
+memory.numa_stat
+memory.oom.group
+memory.peak
+memory.pressure
+memory.reclaim
+memory.stat
+memory.swap.current
+memory.swap.events
+memory.swap.high
+memory.swap.max
+memory.swap.peak
+memory.zswap.current
+memory.zswap.max
+memory.zswap.writeback
+pids.current
+pids.events
+pids.events.local
+pids.max
+pids.peak
+-- cells/cgroup.procs
+== podman ps -a
+CONTAINER ID  IMAGE       COMMAND     CREATED     STATUS      PORTS       NAMES
+== mounts below podman-storage or /run/tbound-pi in any mount namespace
+      1 /run/tbound-pi
+      1 /var/lib/tbound/podman-storage/graphroot
+== requests
+6 /var/lib/tbound/audit/serve-pi-requests.jsonl
+{"version":1,"sequence":2,"previous_hash":"ce3a9d924a0bfe6b361abe68cc69cade0939b99ad501d89b64cd727706568392","event":{"kind":"pi_service_request_terminal","id":"pi-service-request-4cb5479cbe8e5801e3912edddb0b9d94492a8be1972c16abf660cbaba67d13b5/terminal","data":"eyJzY2hlbWFfdmVyc2lvbiI6InRib3VuZC1waS1zZXJ2aWNlLXJlcXVlc3QtdGVybWluYWwvdjEiLCJjbGllbnRfdWlkIjo5OTQsInJlcXVlc3RfaWQiOiJnMS1yZXEtMjAyNjExMTNUMjM0NzU4WiIsInBheWxvYWRfZGlnZXN0Ijoic2hhMjU2OmYzMTVjN2IyNTEzOGNhMjZmOTlkMzY2Nzk1M2FkYTljMzk3Y2YyN
+{"version":1,"sequence":3,"previous_hash":"c701a2f728e3c9c003bf91ce941281eaee8d702005c7c13a8cc368738aa2ea39","event":{"kind":"pi_service_request_accepted","id":"pi-service-request-f7e528a2c6521ba2f75008e07e14ec16f98ac87c0f00c9de78922fe0a8ddd9bb","data":"eyJzY2hlbWFfdmVyc2lvbiI6InRib3VuZC1waS1zZXJ2aWNlLXJlcXVlc3QtYWNjZXB0ZWQvdjEiLCJjbGllbnRfdWlkIjo5OTQsImNsaWVudF9naWQiOjk4NSwiY2xpZW50X3BpZCI6NDkwNjU3LCJyZXF1ZXN0X2lkIjoicnAtcmVxLTIwMjYxMTEzVDIzNTAwOFoiLCJ0YXNrX2lkIjoicm91dGUtcHJvYmUtYmFzaC12aWV3Ii
+{"version":1,"sequence":4,"previous_hash":"ad247ee06514d61109efa8637fa89e56776cd9f9de2e067296ab97aeee40a85f","event":{"kind":"pi_service_request_terminal","id":"pi-service-request-f7e528a2c6521ba2f75008e07e14ec16f98ac87c0f00c9de78922fe0a8ddd9bb/terminal","data":"eyJzY2hlbWFfdmVyc2lvbiI6InRib3VuZC1waS1zZXJ2aWNlLXJlcXVlc3QtdGVybWluYWwvdjEiLCJjbGllbnRfdWlkIjo5OTQsInJlcXVlc3RfaWQiOiJycC1yZXEtMjAyNjExMTNUMjM1MDA4WiIsInBheWxvYWRfZGlnZXN0Ijoic2hhMjU2OjRjZDBhYTM1NTRkODFkZmIzN2MxOTI3YzIzODk0ZjE4OTI2NDUyN
+{"version":1,"sequence":5,"previous_hash":"f0f5f5a0a7e404cdbb0cde178d581b13419fefd693f92a62e077d4c0d49ce451","event":{"kind":"pi_service_request_accepted","id":"pi-service-request-e62da765295ccd656f6b849f1e04efed35a33acd90fb505ce0b14b2822350b73","data":"eyJzY2hlbWFfdmVyc2lvbiI6InRib3VuZC1waS1zZXJ2aWNlLXJlcXVlc3QtYWNjZXB0ZWQvdjEiLCJjbGllbnRfdWlkIjo5OTQsImNsaWVudF9naWQiOjk4NSwiY2xpZW50X3BpZCI6NDk5MjMwLCJyZXF1ZXN0X2lkIjoiZHItcmVxLTIwMjYxMTEzVDIzNTIyOFoiLCJ0YXNrX2lkIjoicm91dGUtcHJvYmUtYmFzaC12aWV3Ii
+{"version":1,"sequence":6,"previous_hash":"db987eca626567f8107ca969d30fae1fded3920ee22a08b06641ce3d2921ca8d","event":{"kind":"pi_service_request_terminal","id":"pi-service-request-e62da765295ccd656f6b849f1e04efed35a33acd90fb505ce0b14b2822350b73/terminal","data":"eyJzY2hlbWFfdmVyc2lvbiI6InRib3VuZC1waS1zZXJ2aWNlLXJlcXVlc3QtdGVybWluYWwvdjEiLCJjbGllbnRfdWlkIjo5OTQsInJlcXVlc3RfaWQiOiJkci1yZXEtMjAyNjExMTNUMjM1MjI4WiIsInBheWxvYWRfZGlnZXN0Ijoic2hhMjU2OjhjNzAzNmM5MGMzNzJhZjNjY2I5OWIwOThiMzQwMmFlOTQxYjA2Y
+== catalog
+22 /var/lib/tbound/private-admin/workflow-recovery/catalog.jsonl
+drained=3 unexposed_true=0
+== audit files
+total 656
+-rw------- 1 tbound-pi tbound-pi  39164 Nov 13 23:50 production-run-04bee28152234188dcb903fa-command-audit.jsonl
+-rw------- 1 tbound-pi tbound-pi 228159 Nov 13 23:50 production-run-04bee28152234188dcb903fa-provider-audit.jsonl
+-rw------- 1 tbound-pi tbound-pi  50794 Nov 13 23:50 production-run-04bee28152234188dcb903fa-session-audit.jsonl
+-rw------- 1 tbound-pi tbound-pi  10139 Nov 13 23:48 production-run-1e9d33faeae7dd0a6aeec893-command-audit.jsonl
+-rw------- 1 tbound-pi tbound-pi 159491 Nov 13 23:48 production-run-1e9d33faeae7dd0a6aeec893-provider-audit.jsonl
+-rw------- 1 tbound-pi tbound-pi  43830 Nov 13 23:48 production-run-1e9d33faeae7dd0a6aeec893-session-audit.jsonl
+-rw------- 1 tbound-pi tbound-pi      0 Nov 13 23:52 production-run-cc94f339b297c21de5522b72-command-audit.jsonl
+-rw------- 1 tbound-pi tbound-pi      0 Nov 13 23:52 production-run-cc94f339b297c21de5522b72-provider-audit.jsonl
+-rw------- 1 tbound-pi tbound-pi  22604 Nov 13 23:52 production-run-cc94f339b297c21de5522b72-session-audit.jsonl
+-rw------- 1 tbound-pi tbound-pi  32586 Nov 13 23:52 publication-audit.jsonl
+-rw------- 1 tbound-pi tbound-pi  10215 Nov 13 23:52 serve-pi-requests.jsonl
+-rw------- 1 tbound-pi tbound-pi  13567 Nov 13 23:50 tbound-workflow-04bee28152234188dcb903fa-e04-audit.jsonl
+-rw------- 1 tbound-pi tbound-pi  16223 Nov 13 23:48 tbound-workflow-1e9d33faeae7dd0a6aeec893-e04-audit.jsonl
+-rw------- 1 tbound-pi tbound-pi   5755 Nov 13 23:52 tbound-workflow-cc94f339b297c21de5522b72-e04-audit.jsonl
+== maintenance lock
+lock-free
+collected requests (10215 bytes)
+collected catalog (59444 bytes)
+OK   saved /home/tbound/tbound-h/f26/dr/l4.txt
+OK   saved /home/tbound/tbound-h/f26/dr/catalog-after-run.jsonl
+OK   saved /home/tbound/tbound-h/f26/dr/requests-after-run.jsonl
+OK   saved /home/tbound/tbound-h/f26/dr/response.txt
+OK   saved /home/tbound/tbound-h/f26/dr/client-run.status
+OK   saved /home/tbound/tbound-h/f26/dr/response.txt.err
+OK   saved /home/tbound/tbound-h/f26/dr/export-listing.txt
+
+== checks
+client: done exit=2 (a nonzero exit is expected: Pi is not started in a probe run)
+svc stop ok: service and socket inactive
+response (head):
+{"schema_version":"tbound-pi-service-response/v1","request_id":"dr-req-20261113T235228Z","status":"unknown","error_code":"task-outcome-unknown"}
+
+client stderr (head):
+local Pi service unknown: task-outcome-unknown
+hint: the run's outcome could not be established; the next request is blocked until it is abandoned: reconcile it with `tbound abandon-unknown` (guest: `tbound-op abandon <rid>`) while its registration is installed
+
+dr run id: production-run-cc94f339b297c21de5522b72
+OK   recorded dr/RUNID = production-run-cc94f339b297c21de5522b72
+collected production-run-cc94f339b297c21de5522b72-session-audit.jsonl
+collected production-run-cc94f339b297c21de5522b72-provider-audit.jsonl
+collected production-run-cc94f339b297c21de5522b72-command-audit.jsonl
+OK   saved /home/tbound/tbound-h/f26/dr/session-audit.jsonl
+OK   saved /home/tbound/tbound-h/f26/dr/command-audit.jsonl
+OK   saved /home/tbound/tbound-h/f26/dr/provider-audit.jsonl
+OK   production_tcb_proof events in the session audit (the launch proof) = 1
+-- dr one-use markers: client=dr-req-20261113T235228Z 
+-- dr client-run.status: done exit=2 2026-11-13T23:52:48Z
+-- dr:
+     cfg=sha256:bdab82fbda715f07384fb025c791e884b652add62864264af963c5f9cffa41b4
+     prof=sha256:827d7854973ac4b2d24e96e805953a0420d3305a36ae01732a297e14e30392e3
+     profjson=sha256:4e4bbd9cae622b8547f0635cedf2a2501faaef56705e5abbaf935bed52d765cb
+     profsig=sha256:7464cd735531e372aa7b7487e80c40e38b2021838e5212a74dc9608f603e31a9
+     reg=sha256:b19d51dc9f75c8c95e87107249b697f409c39a9ee8023b3a289581c07400937b
+     regjson=sha256:080f68c1b8783c8bdbb3cbc3bec341c6f7f6cb029d7dc10984f17c643b0ddba4
+     regsig=sha256:3f60efebf81123e8359988aebe966358aa72e70aeb78aa7d4f85821a542b4f43
+     state=started
+     td=sha256:a4f605d7f165056279862669bd877b9ce4c866db952720416165437d0b84662d
+     tpl=sha256:a4f605d7f165056279862669bd877b9ce4c866db952720416165437d0b84662d
+     client stderr: local Pi service unknown: task-outcome-unknown
+hint: the run's outcome could not be established; the next request is blocked until it is abandoned: reconcile it with `tbound abandon-unknown` (guest: `tbound-op abandon <rid>`) while its registration is installed
+-- last log lines
+2026-11-13T23:52:59Z tboundadmin END rc=0 argv=svc stop 
+2026-11-13T23:53:01Z tboundadmin BEGIN argv=collect audit production-run-cc94f339b297c21de5522b72 
+2026-11-13T23:53:01Z tboundadmin OK collect audit production-run-cc94f339b297c21de5522b72 
+2026-11-13T23:53:01Z tboundadmin END rc=0 argv=collect audit production-run-cc94f339b297c21de5522b72 
+2026-11-13T23:53:06Z tboundadmin BEGIN argv=status dr 
+OK   saved /home/tbound/tbound-h/f26/dr/archive.sha256
+OK   /root/ga/dr/pi-host-profile.json == owner pi-host-profile.signed.json = sha256:4e4bbd9cae622b8547f0635cedf2a2501faaef56705e5abbaf935bed52d765cb
+OK   /root/ga/dr/pi-host-profile.ed25519 == owner pi-host-profile.ed25519 = sha256:7464cd735531e372aa7b7487e80c40e38b2021838e5212a74dc9608f603e31a9
+OK   /root/ga/dr/pi-host-profile.pub == owner pi-host-profile.pub = sha256:be206a41ad321f29ef89e8157f69a6f0820a93fafa3096b71867ece745f9afac
+OK   /root/ga/dr/managed-live-root.json == owner managed-live-root.json = sha256:080f68c1b8783c8bdbb3cbc3bec341c6f7f6cb029d7dc10984f17c643b0ddba4
+OK   /root/ga/dr/managed-live-root.ed25519 == owner managed-live-root.ed25519 = sha256:3f60efebf81123e8359988aebe966358aa72e70aeb78aa7d4f85821a542b4f43
+OK   /root/ga/dr/serve-pi-service.json == owner serve-pi-service.json = sha256:bdab82fbda715f07384fb025c791e884b652add62864264af963c5f9cffa41b4
+OK   /root/ga/dr/d09-cell.json == owner d09-cell.json = sha256:3f0417c93fc08767f4abab11fe0ac7b024e61fe6bd7259cb1c94f1a085a17def
+OK   /root/ga/dr/d09-cell.route-probe.json == owner probe template = sha256:a4f605d7f165056279862669bd877b9ce4c866db952720416165437d0b84662d
+OK   the dr workflow (route-probe-dr-2026-11-13c) is open: unknown by design, settled only by the owner's abandon
+OK   the earlier (rp) workflow (route-probe-2026-11-13c) is terminal:completed
+{"version":1,"sequence":8,"previous_hash":"811f82debb0b249b248b0de40b09b839331633d1ff02777c74217a25d746c4d8","event":{"kind":"pi_workflow_terminal","id":"pi-workflow-terminal:ce3a9d924a0bfe6b361abe68cc69cade0939b99ad501d89b64cd727706568392","data":"eyJzY2hlbWFfdmVyc2lvbiI6InRib3VuZC1waS13b3JrZmxvdy1jYXRhbG9nL3YyIiwiYWRtaXNzaW9uX2hhc2giOiJjZTNhOWQ5MjRhMGJmZTZiMzYxYWJlNjhjYzY5Y2FkZTA5MzliOTlhZDUwMWQ
+{"version":1,"sequence":16,"previous_hash":"2f08eb51dac897bcb4b857daaa6fb08aef7ce095200774d80e1562fc41c3a22d","event":{"kind":"pi_workflow_terminal","id":"pi-workflow-terminal:ad247ee06514d61109efa8637fa89e56776cd9f9de2e067296ab97aeee40a85f","data":"eyJzY2hlbWFfdmVyc2lvbiI6InRib3VuZC1waS13b3JrZmxvdy1jYXRhbG9nL3YyIiwiYWRtaXNzaW9uX2hhc2giOiJhZDI0N2VlMDY1MTRkNjExMDllZmE4NjM3ZmE4OWU1Njc3NmNkOWY5ZGUyZT
+pi_workflow_admission_reserved lines: 3
+OK   request dr-req-20261113T235228Z is in serve-pi-requests.jsonl
+{"version":1,"sequence":5,"previous_hash":"f0f5f5a0a7e404cdbb0cde178d581b13419fefd693f92a62e077d4c0d49ce451","event":{"kind":"pi_service_request_accepted","id":"pi-service-request-e62da765295ccd656f6b849f1e04efed35a33acd90fb505ce0b14b2822350b73","data":{"schema_version":"tbound-pi-service-request-accepted/v1","client_uid":994,"client_gid":985,"client_pid":499230,"request_id":"dr-req-20261113T235228Z","task_id":"route-probe-bash-view","payload_digest":"sha256:8c7036c90c372af3ccb99b098b3402ae941b06a9504e51b743fa7cdad6efe448","config_digest":"sha256:bdab82fbda715f07384fb025c791e884b652add62864264
+{"version":1,"sequence":6,"previous_hash":"db987eca626567f8107ca969d30fae1fded3920ee22a08b06641ce3d2921ca8d","event":{"kind":"pi_service_request_terminal","id":"pi-service-request-e62da765295ccd656f6b849f1e04efed35a33acd90fb505ce0b14b2822350b73/terminal","data":{"schema_version":"tbound-pi-service-request-terminal/v1","client_uid":994,"request_id":"dr-req-20261113T235228Z","payload_digest":"sha256:8c7036c90c372af3ccb99b098b3402ae941b06a9504e51b743fa7cdad6efe448","response":{"schema_version":"tbound-pi-service-response/v1","request_id":"dr-req-20261113T235228Z","status":"unknown","error_code":"
+OK   recorded dr/CHECKS_OK = ok
+NOTE the dr service is stopped (unless KEEP_RUNNING=1). Next: 40-guest-evidence.sh route-direct-runtime (RUNID in /home/tbound/tbound-h/f26/dr/RUNID). Do not start the service before the pilot cycle replaces the probe template.
+
+== DONE 32-reg-dr.sh 2026-11-13T23:53:11Z
+svc stop ok: service and socket inactive

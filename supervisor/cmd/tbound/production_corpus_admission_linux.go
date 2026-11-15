@@ -25,14 +25,16 @@ import (
 var ErrPiServiceCorpus = errors.New("corpus manifest is missing, not the pinned manifest, or not admissible")
 
 // Test seams. Production reads the fixed root-owned manifest through the strict
-// no-symlink ancestor walk and validates it against the registered thesis quotas.
+// no-symlink ancestor walk and validates it against the quotas of its profile, which
+// come from the D48 draw the manifest pins (corpusadmit.QuotasFor).
 var (
 	readCorpusManifest = piruntime.ReadD09ManagedPiCorpusManifest
-	corpusQuotas       = evalcorpus.ThesisQuotas
-	pilotCorpusQuotas  = evalcorpus.PilotQuotas
+	corpusQuotasFor    = func(profile string, m evalcorpus.Manifest) (evalcorpus.Quotas, error) {
+		return corpusadmit.QuotasFor(profile, m, attackerArtifacts())
+	}
 
-	// attackerArtifacts is where the attacker artifact named by the manifest pin is read: the root-owned
-	// artifact directory the signing session installs (the same one `tbound trial reset` reads fixtures from).
+	// attackerArtifacts is where the attacker artifact and the D48 draw named by the manifest pins are read: the
+	// root-owned artifact directory the signing session installs (the same one `tbound trial reset` reads fixtures from).
 	attackerArtifacts = func() fs.FS { return os.DirFS(trialArtifactDir) }
 )
 
@@ -200,11 +202,18 @@ func loadProductionCorpus(config piServiceConfig) (*productionCorpus, error) {
 			ErrPiServiceCorpus, digest, config.CorpusManifestDigest)
 	}
 	profile := config.effectiveCorpusQuotaProfile()
-	quotas := corpusQuotas()
-	if profile == piruntime.D09ManagedPiCorpusQuotaProfilePilot {
-		quotas = pilotCorpusQuotas()
-	} else if profile != piruntime.D09ManagedPiCorpusQuotaProfileThesis {
+	if profile != piruntime.D09ManagedPiCorpusQuotaProfilePilot && profile != piruntime.D09ManagedPiCorpusQuotaProfileThesis {
 		return nil, fmt.Errorf("%w: unknown corpus quota profile %q", ErrPiServiceCorpus, profile)
+	}
+	// The research pilot's adversarial cases are the random pilot draw (D40 as amended by D48), so a pilot corpus on the
+	// research route must pin it; the rehearsal counts are for the engineering route only.
+	if profile == piruntime.D09ManagedPiCorpusQuotaProfilePilot && config.ProviderRoute == piruntime.D09ManagedPiProviderRouteResearch &&
+		manifest.Pins.DrawDigest == "" {
+		return nil, fmt.Errorf("%w: a pilot corpus on the research route is the research pilot and must pin its D48 pilot draw (pins.draw_digest)", ErrPiServiceCorpus)
+	}
+	quotas, err := corpusQuotasFor(profile, manifest)
+	if err != nil {
+		return nil, fmt.Errorf("%w: the %s quotas: %w", ErrPiServiceCorpus, profile, err)
 	}
 	if violations := evalcorpus.Validate(manifest, quotas); len(violations) != 0 {
 		return nil, fmt.Errorf("%w: evalcorpus.Validate under the %s quotas: %d violation(s), first %s: %s",

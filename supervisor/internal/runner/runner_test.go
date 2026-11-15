@@ -633,15 +633,15 @@ func TestBudgetLedgerErrorFailsClosed(t *testing.T) {
 
 func TestBudgetUnitCapNeverAbovePlannedUnits(t *testing.T) {
 	cfg := testConfig()
-	cfg.UnitCap = evalreport.PlannedUnits
-	if _, err := cfg.normalize(); err != nil {
+	cfg.UnitCap = evalreport.LegacyPlannedUnits
+	if _, err := cfg.normalize(evalreport.LegacyPlannedUnits); err != nil {
 		t.Fatal(err)
 	}
-	cfg.UnitCap = evalreport.PlannedUnits + 1
-	if _, err := cfg.normalize(); err == nil {
+	cfg.UnitCap = evalreport.LegacyPlannedUnits + 1
+	if _, err := cfg.normalize(evalreport.LegacyPlannedUnits); err == nil {
 		t.Fatal("unit cap above the registered plan accepted")
 	}
-	if n, _ := (Config{FreezeCommit: strings.Repeat("a", 40)}).normalize(); n.UnitCap != evalreport.PlannedUnits {
+	if n, _ := (Config{FreezeCommit: strings.Repeat("a", 40)}).normalize(evalreport.LegacyPlannedUnits); n.UnitCap != evalreport.LegacyPlannedUnits {
 		t.Fatalf("default unit cap %d", n.UnitCap)
 	}
 }

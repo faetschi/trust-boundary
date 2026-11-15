@@ -1096,9 +1096,10 @@ func TestConstructPilotNoFlagBytes(t *testing.T) {
 	// Regenerated for the pilot case-design fixes: the same two values moved (manifest_digest and the quoted content digest).
 	// Regenerated after review rules left evalcorpus.Validate: deferred_review is no longer populated, and the manifest-validation and source-license reasons changed; no check status changed.
 	// Regenerated for the D50 token budgets (max_host_calls x 4096): only manifest_digest moved, in both reports.
+	// Regenerated for the 11-call compliant and ambiguous budgets (2026-11-14): only manifest_digest moved, in both reports.
 	for name, want := range map[string]string{
-		"report.json": "9033bf4a2b968c5d789a91e21ae22c9d7e40a260e8a75e44fcb28c57ba288b44",
-		"report.md":   "2636fbca28c1a20ae94c043d9489e995166660e4fe2b3238878026ba2e6a179d",
+		"report.json": "2566ef6495f21f9ef15e04030f3047b3b9659a486f5094d0670712e01058f2d9",
+		"report.md":   "043a6dfa13f54efa760d4744ddde4c5bc7c7723ae4137af801ae141c83c22910",
 	} {
 		raw, err := os.ReadFile(filepath.Join(out, name))
 		if err != nil {
@@ -1166,7 +1167,7 @@ func TestConstructWitnessJournalImportsAsPEvidence(t *testing.T) {
 func TestConstructThesisImportRequiresTheWitnessPurpose(t *testing.T) {
 	w := buildWorld(t, worldOpts{})
 	thesis := w.input()
-	thesis.Quotas, thesis.Profile = evalcorpus.ThesisQuotas(), piruntime.D09ManagedPiCorpusQuotaProfileThesis
+	thesis.Profile = piruntime.D09ManagedPiCorpusQuotaProfileThesis // the guard reads the profile before the quotas
 	if _, err := constructSchedule(thesis); err == nil || !strings.Contains(err.Error(), "construct-witness") {
 		t.Fatalf("a thesis import accepted an ordinary run: %v", err)
 	}
@@ -1177,30 +1178,26 @@ func TestConstructThesisImportRequiresTheWitnessPurpose(t *testing.T) {
 	}
 }
 
-// The CLI passes --quota-profile into the thesis guard, so under thesis quotas an ordinary journal is refused with the
-// guard's reason. A witness journal gets past the purpose guard and is still refused: the pilot corpus is not a thesis
-// allocation, and the repository has no thesis-size corpus to test acceptance with.
+// Under the thesis profile corpus-check takes the quotas from the D48 main draw the manifest pins. The pilot corpus pins
+// none, so the check fails closed at the quotas and imports no evidence. The purpose guard behind it is tested on
+// constructSchedule (TestConstructThesisImportRequiresTheWitnessPurpose).
 func TestCorpusCheckThesisProfileRefusesAnOrdinaryJournal(t *testing.T) {
-	calibrationP := func(w *constructWorld) corpusadmit.ConstructCheck {
-		t.Helper()
-		out := filepath.Join(constructPrivateDir(t), "report")
-		var stdout, stderr bytes.Buffer
-		// The exit status is not asserted: the pilot manifest is judged against the thesis quota rules. The report is written either way.
-		_ = runCorpusCheck([]string{"--manifest", constructPilotManifest, "--quota-profile", "thesis", "--node", constructTestNode(t), "--out", out,
-			"--guest-evidence", w.ev, "--run-config", w.config, "--guest-binary-sha256", w.binary}, &stdout, &stderr)
-		raw, err := os.ReadFile(filepath.Join(out, "report.json"))
-		if err != nil {
-			t.Fatal(err)
-		}
-		var report corpusadmit.ConstructReport
-		if err := json.Unmarshal(raw, &report); err != nil {
-			t.Fatal(err)
-		}
-		return rowOf(t, report, constructNetCase, "calibration-p")
+	w := buildWorld(t, worldOpts{})
+	out := filepath.Join(constructPrivateDir(t), "report")
+	var stdout, stderr bytes.Buffer
+	_ = runCorpusCheck([]string{"--manifest", constructPilotManifest, "--quota-profile", "thesis", "--node", constructTestNode(t), "--out", out,
+		"--guest-evidence", w.ev, "--run-config", w.config, "--guest-binary-sha256", w.binary}, &stdout, &stderr)
+	raw, err := os.ReadFile(filepath.Join(out, "report.json"))
+	if err != nil {
+		t.Fatal(err)
 	}
-	wantRow(t, calibrationP(buildWorld(t, worldOpts{})), "guest-only", "construct-witness")
-	if row := calibrationP(buildWorld(t, worldOpts{witness: true})); strings.Contains(row.Reason, "construct-witness") {
-		t.Fatalf("the thesis guard refused a witness journal: %s", row.Reason)
+	var report corpusadmit.ConstructReport
+	if err := json.Unmarshal(raw, &report); err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Checks) != 1 || report.Checks[0].Name != "quota-profile" || report.Checks[0].Status != "fail" ||
+		!strings.Contains(report.Checks[0].Reason, "D48 main draw") {
+		t.Fatalf("thesis corpus-check of an unpinned manifest: %+v", report.Checks)
 	}
 }
 
