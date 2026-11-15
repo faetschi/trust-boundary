@@ -73,6 +73,10 @@ if [ "$PREV_COMMIT" = 13ed11939c06e552a2d8662fb752bf2b3640ac68 ] &&
 # the same four files are unchanged (git diff --quiet); F26 adds the F25 kit, the D50 pilot budgets (#138) and fresh ids.
 if [ "$PREV_COMMIT" = 13ed11939c06e552a2d8662fb752bf2b3640ac68 ] &&
    [ "$F" = 2780072a7b9305d331504197fae9859547b5049b ]; then ALLOW_PREV_MEASURER=1; fi
+# 13ed119..db07853 (F27; the guest restored to F23 again, pre-F26 checkpoint): the same four files are unchanged (git diff --quiet);
+# no piruntime file changed since F26, and the changed tbound-profile files are off the runtime-bundle-digest path.
+if [ "$PREV_COMMIT" = 13ed11939c06e552a2d8662fb752bf2b3640ac68 ] &&
+   [ "$F" = db0785367a301b17347701549e680bbdd02e8a5e ]; then ALLOW_PREV_MEASURER=1; fi
 UNIT_SHA=2bc03ead4ba478d81655029de66a46f4bcb6357c5a24e7f8a3940ed947720ea3
 OLD=/var/lib/tbound/runtime-src.old-${PREV_BUNDLE_DIGEST:7:8}-$(date -u +%Y%m%dT%H%M%S%NZ)
 
