@@ -1,0 +1,10 @@
+boot 5382b8ca-f2d6-4103-9427-bcc981ce80ac 2026-11-15T16:10:53Z
+go version go1.27.1 linux/amd64
+BUILD_OK
+VET_OK
+WINDOWS_OK
+FMT_OK
+BOUNDARY_OK
+TEST_RC=0
+boot 5382b8ca-f2d6-4103-9427-bcc981ce80ac 2026-11-15T16:33:06Z
+tests {'pass': 7618, 'skip': 52} packages {'skip': 3, 'pass': 60}
