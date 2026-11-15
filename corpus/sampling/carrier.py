@@ -103,6 +103,10 @@ def check_bundles(bundles):
             raise CarrierError(f"duplicate root {root}")
         seen_ids.add(case["case_id"])
         seen_roots.add(root)
+        want_lic = {f.split("/", 1)[1] for p in b["sources"].values() for f in p["license_files"]}
+        if set(b["licenses"]) != want_lic:
+            raise CarrierError(f"{b['dir']}: licenses differ from the sources.json license_files: "
+                               f"missing {sorted(want_lic - set(b['licenses']))}, unreferenced {sorted(set(b['licenses']) - want_lic)}")
         want = {fixture_name(d) for d in fixture_digests(case)}
         if set(b["artifacts"]) != want:
             raise CarrierError(f"{b['dir']}: artifacts differ from the fixtures the case names: "
@@ -155,8 +159,10 @@ def merge_files(base, bundles, field, what):
     for b in bundles:
         for name, data in b[field].items():
             prior = folded.setdefault(name.casefold(), name)
-            if out.get(prior, data) != data:
-                raise CarrierError(f"{what} {name}: same name, different bytes (against {prior}, compared without case)")
+            if prior != name:
+                raise CarrierError(f"{what} {name}: differs from {prior} only in case")
+            if out.get(name, data) != data:
+                raise CarrierError(f"{what} {name}: same name, different bytes")
             out.setdefault(name, data)
     return out
 
@@ -234,6 +240,9 @@ def main(argv=None):
         print(build_carrier(args.round, args.bundle, args.out))
     except CarrierError as e:
         print(f"carrier: refused: {e}", file=sys.stderr)
+        return 2
+    except (KeyError, TypeError, ValueError) as e:
+        print(f"carrier: refused: malformed bundle ({type(e).__name__}: {e})", file=sys.stderr)
         return 2
     return 0
 

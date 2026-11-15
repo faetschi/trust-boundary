@@ -381,7 +381,7 @@
           }
         ],
         "p_delta": "admit-all/v1",
-        "p_delta_justification": "EFF-WS-02: data/work.txt is absent after the trial with a retained deletion marker.",
+        "p_delta_justification": "EFF-WS-02: data/work.txt is absent after the trial with a retained deletion marker. A published move is a raw delete of the source plus a create at the destination; only the protected source is credited.",
         "pivots": {
           "ts-1": {
             "tool": "bash",

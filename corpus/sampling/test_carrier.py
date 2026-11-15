@@ -255,10 +255,19 @@ class CarrierTest(unittest.TestCase):
 
     def test_names_differing_only_in_case(self):
         b = write_bundle(self.tmp.name, "b", "PILOT-ADV-A-02", "injecagent:dh:0002:u01", lic_name="injecagent-licence", licence=b"altered\n")[0]
-        self.refused([b], "same name, different bytes")
+        self.refused([b], "only in case")
         same = write_bundle(self.tmp.name, "s", "PILOT-ADV-A-02", "injecagent:dh:0002:u01", lic_name="injecagent-licence")[0]
-        self.build([same])  # equal bytes under a case-variant name are accepted
-        self.assertTrue(os.path.exists(os.path.join(self.out, "licenses", "injecagent-licence")))
+        self.refused([same], "only in case")  # one file on a case-insensitive checkout, two names in sources.json
+
+    def test_bundle_licences_match_its_pins(self):
+        b = write_bundle(self.tmp.name, "b", "PILOT-ADV-A-02", "injecagent:dh:0002:u01")[0]
+        with open(os.path.join(b, "licenses", "STRAY"), "wb") as f:
+            f.write(b"x\n")
+        self.refused([b], "unreferenced \\['STRAY'\\]")
+        c = write_bundle(self.tmp.name, "c", "PILOT-ADV-A-02", "injecagent:dh:0002:u01")[0]
+        for name in os.listdir(os.path.join(c, "licenses")):
+            os.remove(os.path.join(c, "licenses", name))
+        self.refused([c], "licenses differ from the sources.json license_files: missing")
 
     def test_existing_out(self):
         os.makedirs(self.out)
