@@ -2,6 +2,12 @@
 # 33 Corpus mode on the guest (Part D, NAME=pilot) at $FREEZE: PREPARED, NOT RUN. Automates report 01 section 3 (steps 1-12) and PROVISIONING-SIGNING.md Part D / Spike B.
 # Every guest write is a tbound-op verb (narrowed sudo, the session drop-in CLOSED when the script starts), except the artifact install, which has no verb
 # (runbook P13.3) and runs inside the session sudo window (00-session-sudo.sh open ... close; TBA_PW; closed again even on failure).
+#   0 carrier    only with CARRIER_DIR, CARRIER_COMMIT and CARRIER_MANIFEST_DIGEST (a screening round; all three or none): the round's carrier
+#                <Linux checkout>/corpus/sampling/carriers/<round> replaces the T5 draft and artifacts of $SRC; the runtime stays $FREEZE. Before any guest write
+#                carrier-check.sh verifies the checkout (plain path outside /mnt, no symlink, HEAD == CARRIER_COMMIT, every file == its blob at that commit, no
+#                extra or missing file, sha256(manifest.draft.json) == CARRIER_MANIFEST_DIGEST), copies it to $HF/pilot/carrier and verifies the copy, which
+#                phases 2 and 3 then read. $HF/pilot/CARRIER records the round; a $HF/pilot of another round or of the T5 run is refused (move it aside),
+#                never reused, so no manifest, digest or signed file leaks between rounds. A carrier round skips phase 5 (the $FREEZE netsink evidence stands).
 #   1 abandon    the unsettled dr request (rid = $HF/dr/RID). Already abandoned/completed (reqstate verdict): continue. Otherwise the script settles NOTHING by
 #                itself: it prints tbound-op's abandon facts + TOKEN and the request-specific catalog evidence (admissions, scopes undrained, drained) and stops
 #                with the owner's instruction (the verb by hand, or rerun with ABANDON_CONFIRM=<token>). The facts cannot prove "no pending effect" while the
@@ -15,7 +21,7 @@
 #                $HF/pilot/CORPUS_DIGEST. Any refusal prints the tool's violation list and stops.
 #   3 artifacts  the 76 files of corpus/pilot/t5-2026-10-29/artifacts of $SRC into /opt/tbound/corpus/artifacts (session sudo window); afterwards count, per-file
 #                sha256, owner and modes are verified. Guest files not in the T5 set are moved (mv -n) to artifacts.pre-t5-<UTC>.
-#   3b pilot-reset  only if the guest holds a pilot state that is not from this freeze (cfg differs from $HG/serve-pi-service.json, or the signed files of its rank are not in
+#   3b pilot-reset  (a carrier round runs it before phase 3) only if the guest holds a pilot state that is not from this freeze (cfg differs from $HG/serve-pi-service.json, or the signed files of its rank are not in
 #                $HG): svc stop, `rollback pilot cfg` (its refusal stops the script), then in the session sudo window mv -n /root/ga/reg-pilot, /root/ga/pilot and
 #                /var/tmp/tbound-op/pilot into /root/ga/archive-pilot-<prev freeze>-<UTC>/rootfs/<same path> (never deleted); needs TBA_PW; marker RESET_PENDING/RESET_DONE in $HG.
 #   4 cycle      D2 `manifest-install`, then the RG cycle of rglib.sh for NAME=pilot: svc stop, cfg-install (config = infra/guest/serve-pi-service.corpus-pilot.json
@@ -27,7 +33,7 @@
 #                one real `trial reset` (attempt marker before, success marker after a valid
 #                tbound-trial-reset/v1 document; an attempt without success stops for owner recovery, never retried), then 40-guest-evidence.sh netsink. Without the key the script ends after phase 4 and prints what the owner does.
 # Resumable (phases 1-3 re-check their result; phase 4 resumes from `tbound-op status pilot`; signed files in $HF/pilot are verified, never re-signed).
-# STOP_AFTER=<abandon|keys|manifest|artifacts|pilot-reset|cfg|measure|s3|reg|s4|prof|start|cycle>.
+# STOP_AFTER=<carrier|abandon|keys|manifest|artifacts|pilot-reset|cfg|measure|s3|reg|s4|prof|start|cycle>.
 # Preconditions (checked): 10, 20, 50 done; session sudo CLOSED; 32-reg-dr.sh finished ($HF/dr/CHECKS_OK, $HF/dr/RID); the dispatcher has no pilot state.
 # The owner starts it after 32-reg-dr.sh (and 40-guest-evidence.sh route-direct-runtime). Needs TBA_PW (read -rs TBA_PW; export TBA_PW) for phase 3 only if the artifacts differ.
 # Usage: bash 33-corpus-pilot.sh     (TBOUND_TRIAL_KEY=<key path> bash 33-corpus-pilot.sh   for phase 5;  NODE_BIN=<Linux path of the pinned Node> if ~/env.sh has none)
@@ -48,6 +54,21 @@ GUEST_ART=/opt/tbound/corpus/artifacts
 T5_ARTIFACT_COUNT=76
 PILOT_CEILINGS="--max-host-calls 17 --max-tokens 69632 --duration-seconds 1200"   # the same values tbound-op manifest-install passes
 SESSION_OPEN=0
+CARRIER_ROUND="" CARRIER_REC=""
+if [ -n "${CARRIER_DIR:-}${CARRIER_COMMIT:-}${CARRIER_MANIFEST_DIGEST:-}" ]; then
+  [ -n "${CARRIER_DIR:-}" ] && [ -n "${CARRIER_COMMIT:-}" ] && [ -n "${CARRIER_MANIFEST_DIGEST:-}" ] || die "CARRIER_DIR, CARRIER_COMMIT and CARRIER_MANIFEST_DIGEST go together: set all three or none"
+  CARRIER_ROUND=${CARRIER_DIR##*/}
+  CARRIER_REPO=${CARRIER_DIR%/corpus/sampling/carriers/"$CARRIER_ROUND"}
+  linux_safe "$CARRIER_DIR" && [[ $CARRIER_ROUND =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ ]] && [ -n "$CARRIER_REPO" ] && [ "$CARRIER_REPO" != "$CARRIER_DIR" ] ||
+    die "CARRIER_DIR=$CARRIER_DIR is not a plain Linux path <checkout>/corpus/sampling/carriers/<round> outside /mnt"
+  [ ${#WXP[@]} -gt 0 ] || not_mnt "$CARRIER_DIR" || die "CARRIER_DIR=$CARRIER_DIR resolves into /mnt"
+  [ "$(WX realpath -e -- "$CARRIER_DIR" | tr -d '\r\n')" = "$CARRIER_DIR" ] || die "CARRIER_DIR=$CARRIER_DIR does not exist or passes a symlink (its realpath differs)"
+  [[ $CARRIER_COMMIT =~ ^[0-9a-f]{40}$ ]] || die "CARRIER_COMMIT is not a 40-hex lowercase commit: '$CARRIER_COMMIT'"
+  need_dig CARRIER_MANIFEST_DIGEST "$CARRIER_MANIFEST_DIGEST"
+  CARRIER_REC="$CARRIER_ROUND $CARRIER_COMMIT $CARRIER_MANIFEST_DIGEST"
+  T5_DIR=$HG/carrier                        # the verified owner-side copy (phase 0), never the checkout
+  ART=$T5_DIR/artifacts
+fi
 hf_has dr/CHECKS_OK && hf_has dr/RID || die "the dr cycle is not complete ($HF/dr/CHECKS_OK or dr/RID missing): finish 32-reg-dr.sh first"
 
 # The flag is cleared only after a successful close, so the EXIT cleanup retries a failed close.
@@ -57,6 +78,36 @@ session_close() {
     echo "FATAL: closing the session sudo window FAILED: broad passwordless sudo may still be enabled on the guest. Run: bash $GA/00-session-sudo.sh close (TBA_PW set), then check that 'sudo -n true' fails." >&2
     return 1
   fi
+}
+
+# ---- 0 carrier (screening round) -----------------------------------------------------------------------------------------------------------------
+# aside_cmd <label>: the WSL command that moves $HG aside (renamed inside $HF, nothing deleted).
+aside_cmd() { printf 'mv -T -n -- %s %s/pilot.%s-%s' "$HG" "$HF" "$1" "$(date -u +%Y%m%dT%H%M%SZ)"; }
+carrier_check() { WX bash "$WGA/carrier-check.sh" "$CARRIER_REPO" "$CARRIER_COMMIT" "$CARRIER_ROUND" "$@" | tr -d '\r'; }
+phase_carrier() {
+  local rec="" tmp
+  hf_has pilot/CARRIER && rec=$(hf_get pilot/CARRIER)
+  if [ -z "$CARRIER_REC" ]; then
+    [ -z "$rec" ] || die "$HG holds the carrier round '$rec' and no carrier is set: move it aside before the T5 run (in WSL: $(aside_cmd "${rec%% *}"))"
+    return 0
+  fi
+  say "0. carrier: $CARRIER_REC"
+  [ -n "$rec" ] || ! WX test -d "$HG" || [ -z "$(WX ls -A "$HG" | tr -d '\r')" ] ||
+    die "$HG holds an earlier pilot run without a carrier record (the T5 run): move it aside first (in WSL: $(aside_cmd t5))"
+  [ -z "$rec" ] || [ "$rec" = "$CARRIER_REC" ] || die "$HG holds the carrier round '$rec', not '$CARRIER_REC': move it aside first (in WSL: $(aside_cmd "${rec%% *}"))"
+  if hf_has pilot/carrier; then   # a resumed round: the copy is checked against the same commit and digest; the checkout is not read again
+    carrier_check "$T5_DIR" "$CARRIER_MANIFEST_DIGEST" || die "$T5_DIR (the copy of an earlier run of this round) failed verification: owner looks"
+  else
+    carrier_check "$CARRIER_DIR" "$CARRIER_MANIFEST_DIGEST" --checkout || die "the carrier checkout $CARRIER_DIR failed verification (output above): nothing was written"
+    WX mkdir -p -m 0700 "$HG"
+    hf_put pilot/CARRIER "$CARRIER_REC"
+    tmp=$(WX mktemp -d "$HG/carrier.partial.XXXXXX" | tr -d '\r\n')
+    WX cp -R -- "$CARRIER_DIR/." "$tmp/"
+    carrier_check "$tmp" "$CARRIER_MANIFEST_DIGEST" || die "the copy $tmp failed verification (the checkout changed while it was copied?)"
+    WX mv -T -- "$tmp" "$T5_DIR"; WX sync
+  fi
+  T5_ARTIFACT_COUNT=$(WB "find '$ART' -mindepth 1 -maxdepth 1 -type f | wc -l" | tr -d '\r\n')
+  ok "carrier $CARRIER_ROUND verified at $CARRIER_COMMIT and copied to $T5_DIR ($T5_ARTIFACT_COUNT artifacts): phases 2 and 3 read only that copy"
 }
 
 # ---- 1 abandon ---------------------------------------------------------------------------------------------------------------------------------
@@ -148,7 +199,7 @@ first_compliant_case() {
   local c
   c=$(WX python3 -I -c 'import json,sys
 print(next(c["case_id"] for c in json.load(open(sys.argv[1],encoding="utf-8"))["cases"] if c["kind"]=="compliant"))' "$1" | tr -d '\r\n')
-  [[ $c =~ ^[A-Za-z0-9._-]{1,128}$ ]] || die "not a usable case id: '$c'"
+  [[ $c =~ ^[A-Za-z0-9._:-]{1,128}$ ]] || die "not a usable case id: '$c'"   # ':' for ledger ids (agentdojo:slack:UserTask0:InjectionTask1)
   printf '%s' "$c"
 }
 
@@ -324,7 +375,7 @@ phase_pilot_reset() {
     [ -n "$(rg_state)" ] || { ok "no pilot state on the guest: nothing to reset (leftover reg-pilot/pilot dirs without a state are not visible without sudo; reg-measure would refuse them)"; return 0; }
     pilot_state_is_ours "$s" && { ok "the pilot state belongs to $FREEZE (cfg and signed files match $HG): resumed by the cycle"; return 0; }
     [ -n "${TBA_PW:-}" ] || die "the installed pilot state is not from $FREEZE and must be reset, which needs the session sudo window (read -rs TBA_PW; export TBA_PW)"
-    arch=/root/ga/archive-pilot-$PREV_LC-$(date -u +%Y%m%dT%H%M%SZ)
+    arch=/root/ga/archive-pilot-$([ -n "$CARRIER_ROUND" ] && echo "$FREEZE_LC" || echo "$PREV_LC")-$(date -u +%Y%m%dT%H%M%SZ)   # a carrier round archives an earlier round of $FREEZE
     hf_put pilot/RESET_PENDING "$arch"
   fi
   [[ $arch =~ ^/root/ga/archive-pilot-f[0-9]+-[0-9]{8}T[0-9]{6}Z$ ]] || die "bad archive name '$arch' in $HG/RESET_PENDING"
@@ -452,6 +503,10 @@ trial() { GSSH_IDENTITY=$TBOUND_TRIAL_KEY GSSH_USER=root sh "$GSSH_SH" "/usr/loc
 phase_netsink() {
   say "5. netsink: trial reset through the trial key, then 40-guest-evidence.sh netsink"
   local case_id chk rs ts
+  if [ -n "$CARRIER_ROUND" ]; then
+    note "carrier round $CARRIER_ROUND: no trial reset and no netsink here (the $FREEZE netsink evidence stands; the runner resets each case itself)"
+    return 0
+  fi
   if [ -z "${TBOUND_TRIAL_KEY:-}" ]; then
     note "TBOUND_TRIAL_KEY is not set: stopping after the cycle. The owner next: KSSH <TRKEY> /usr/local/bin/tbound trial reset <first compliant case> --check, then the real reset"
     note "(service running), then KIT_FREEZE=$FREEZE bash 40-guest-evidence.sh netsink; or run this script again with TBOUND_TRIAL_KEY=<trial key path> (it resumes at phase 5)."
@@ -484,13 +539,17 @@ sys.exit(0 if d.get("schema")=="tbound-trial-reset/v1" and d.get("case_id")==sys
   ok "netsink envelope fetched: $HF/evq/netsink.json"
 }
 
+phase_carrier;   phase_end carrier
 phase_abandon;   phase_end abandon
 phase_keys;      phase_end keys
 phase_manifest;  phase_end manifest
+# A carrier round resets first: the previous round's service still runs and reads the guest artifacts live, so they change only after it is stopped.
+[ -z "$CARRIER_ROUND" ] || { phase_pilot_reset; phase_end pilot-reset; }
 phase_artifacts; phase_end artifacts
-phase_pilot_reset; phase_end pilot-reset
+[ -n "$CARRIER_ROUND" ] || { phase_pilot_reset; phase_end pilot-reset; }
 phase_cycle;     phase_end cycle
 phase_netsink
-note "the pilot service is left running. Close-out: sudo -n true must still fail. Next (owner): rerun tbound-run evq with the new netsink.json (report 01 step 12b)."
+note "the pilot service is left running. Close-out: sudo -n true must still fail.$([ -n "$CARRIER_ROUND" ] || echo " Next (owner): rerun tbound-run evq with the new netsink.json (report 01 step 12b).")"
+[ -z "$CARRIER_ROUND" ] || note "carrier round $CARRIER_ROUND: run config manifest = host copy of $HG/manifest.json, artifacts_dir = host copy of $ART, corpus digest $(hf_get pilot/CORPUS_DIGEST)"
 note "NOT PROVEN: a pilot request admission (corpus mode with a real request, the Go admission path). M3 should start with ONE run with --max-steps 1 before the full pilot."
 done_step

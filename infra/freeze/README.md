@@ -62,6 +62,15 @@ F28 accepts the pinned F23 measurer (F27 was not qualified: the rp model decline
 05 requires `HF/BUNDLE_TAR_SIZE`, written by P2 rebuild after tar verification (F13's missing record was added after the same sha256 check).
 A missing 27 completion record is reported as pending in dry-run mode and blocks a live run. P3/signing and guest pins read current records.
 
+## Screening round with a carrier
+
+A screening round reruns `guest/33-corpus-pilot.sh` on a qualified freeze with a lane C carrier (`corpus/sampling/carriers/<round>/`) in place of the T5 draft.
+Set all three of `CARRIER_DIR` (the carrier directory in a Linux checkout at the delivering commit), `CARRIER_COMMIT` and `CARRIER_MANIFEST_DIGEST`
+(`sha256:` plus lane C's `sha256(manifest.draft.json)`), or none of them. With none, 33 behaves as before. Phase 0 (`guest/carrier-check.sh`) verifies the
+checkout and an owner-side copy in `$HF/pilot/carrier` before any guest write. `$HF/pilot` holds one round, and 33 refuses a `$HF/pilot` of another round
+or of the T5 run until it is renamed aside. `guest/carrier-check.sh` is one of the `TBOUND_WGA` helpers, so refresh that Linux checkout to this kit commit. `tools/test-carrier.sh [<W> <HF>]` (WSL) tests phase 0 and, with the freeze's tools, the phase-2 dry run.
+The operator steps and the run-config pins are in `infra/guest/PROVISIONING-SIGNING.md`, "Screening round with a carrier".
+
 ## Per-freeze checklist
 
 - [ ] Values file copied and `FREEZE`/`PREV_FREEZE`/`PREV_COMMIT` set; every `PREV_*` value filled from `evidence/F14/logs`.
