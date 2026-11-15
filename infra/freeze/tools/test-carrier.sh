@@ -29,7 +29,7 @@ expect_refuse() {
 }
 sha() { printf 'sha256:%s' "$(sha256sum "$1" | cut -c1-64)"; }
 
-# ---- a checkout with two carriers: synthetic-01 (the T5 draft and artifacts as they are) and colon-01 (two case ids in the ledger form with ':')
+# ---- a checkout with two carriers: synthetic-01 (the T5 draft and artifacts as they are) and colon-01 (the first compliant case id in the ledger form with ':')
 R=$T/repo
 mkcarrier() { # <round>: the T5 draft + artifacts and the lane C side files
   local d=$R/corpus/sampling/carriers/$1
@@ -44,10 +44,9 @@ python3 -I - "$R/corpus/sampling/carriers/colon-01/manifest.draft.json" <<'PY'
 import json, sys
 p = sys.argv[1]
 m = json.load(open(p, encoding="utf-8"))
-done = set()
-for c in m["cases"]:
-    if c["kind"] in ("compliant", "adversarial") and c["kind"] not in done:
-        c["case_id"] = "agentdojo:slack:UserTask0:" + c["case_id"]; done.add(c["kind"])
+# only the first compliant case: an adversarial id moves the seeded cold selection (lane C's carriers arrive pre-allocated)
+c = next(c for c in m["cases"] if c["kind"] == "compliant")
+c["case_id"] = "agentdojo:slack:UserTask0:" + c["case_id"]
 open(p, "w", encoding="utf-8").write(json.dumps(m, indent=2) + "\n")
 PY
 git -C "$R" init -q
@@ -77,7 +76,8 @@ expect_refuse "a 0-byte file" "0-byte files" bash "$CC" "$R" "$C" synthetic-01 "
 expect_refuse "another manifest digest" "sha256(manifest.draft.json)" bash "$CC" "$R" "$C" synthetic-01 "$S" "sha256:$(printf '0%.0s' {1..64})" --checkout
 expect_refuse "a round the commit does not hold" "is not a tree" bash "$CC" "$R" "$C" rehearsal-dev-01 "$S" "$D"
 ln -s "$R" "$T/repo-link"
-expect_refuse "the checkout reached through a symlink" "symlink is on the way" bash "$CC" "$R" "$C" synthetic-01 "$T/repo-link/corpus/sampling/carriers/synthetic-01" "$D" --checkout
+expect_refuse "the checkout reached through a symlink" "not the top of a git checkout" bash "$CC" "$T/repo-link" "$C" synthetic-01 "$T/repo-link/corpus/sampling/carriers/synthetic-01" "$D" --checkout
+expect_refuse "a checkout dir that is not <checkout>/corpus/sampling/carriers/<round>" "is not $R/corpus/sampling/carriers/synthetic-01" bash "$CC" "$R" "$C" synthetic-01 "$COLON" "$D" --checkout
 printf ' ' >>"$S/sources.json"
 expect_refuse "an uncommitted edit in the checkout" "file bytes differ" bash "$CC" "$R" "$C" synthetic-01 "$S" "$D" --checkout
 git -C "$R" checkout -q -- corpus
