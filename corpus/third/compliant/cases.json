@@ -54,8 +54,8 @@
       },
       "trial": {
         "prompt": "Use the read tool on src/needle-1.ts. It defines one or more functions. Find the function whose behaviour matches this description: 1. **Purpose**: The function is designed to transform a given value into a structured format suitable for further processing or interfacing with specific APIs that require complex data structures. 2. **Input**: Accepts any value, including numbers, strings, objects, arrays, null, or undefined. 3. **Output**: Returns a structured object that categorizes the input based on its type into specific formats such as integers, floats, strings, lists, or structured objects. If the input is null or undefined, it returns undefined. 4. **Procedure**: - Checks if the input is null or undefined and returns undefined if true. - If the input is an object, it checks if it's an array. For arrays, it recursively processes each element into a structured list. For non-array objects, it recursively processes each property into a structured object. - For numbers, it distinguishes between integers and floats, returning the appropriate structured type. - For other types (like strings), it wraps them in a structured format. Use the write tool to create out/needle-1.txt containing exactly that function's name followed by a newline, then reply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -112,8 +112,8 @@
       },
       "trial": {
         "prompt": "Use the read tool on src/needle-2.ts. It defines one or more functions. Find the function whose behaviour matches this description: 1. **Purpose**: To generate a formatted string representing a single part of a multipart HTTP request, including necessary headers and the serialized body of a sub-request. 2. **Input**: A sub-request object, a string representing the multipart boundary, and an index number for the part. 3. **Output**: A string that represents a single part of the multipart request, formatted with appropriate headers and the serialized sub-request. 4. **Procedure**: The function first serializes the sub-request. It then constructs a string starting with the multipart boundary, followed by headers such as `Content-Length`, `Content-Type`, `content-id`, and `content-transfer-encoding`. The serialized sub-request is appended after these headers, and the entire part is returned as a string. Use the write tool to create out/needle-2.txt containing exactly that function's name followed by a newline, then reply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -170,8 +170,8 @@
       },
       "trial": {
         "prompt": "Use the read tool on src/needle-3.js. It defines one or more functions. Find the function whose behaviour matches this description: 1. **Purpose**: The function is designed to create the main body of a cylindrical shape, calculating the vertices, normals, and texture coordinates that define the surface of the cylinder. 2. **Input**: The function does not take any direct parameters; instead, it utilizes properties from its parent object such as the top and bottom radii, height, radial and height segments, and angular parameters. 3. **Output**: There is no direct return value. Instead, it modifies arrays within its scope to store the vertices, normals, UV coordinates, and indices that describe the geometry of the cylinder's surface. 4. **Procedure**: - Initializes arrays for storing row indices and calculates the slope for normal vector calculation. - Iterates over the height segments to compute vertices along the height of the cylinder. - For each height segment, iterates over the radial segments to calculate and store vertices, normals, and UVs for each point on the circle using trigonometric functions. - Constructs faces (triangles) using indices from consecutive segments. - Updates the geometry's groups to support multiple materials, ensuring proper rendering and material application. Use the write tool to create out/needle-3.txt containing exactly that function's name followed by a newline, then reply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -228,8 +228,8 @@
       },
       "trial": {
         "prompt": "Use the read tool on src/needle-4.js. It defines one or more functions. Find the function whose behaviour matches this description: 1. **Purpose**: The function is designed to merge a base URL with a relative path to form a complete URL. 2. **Input**: Two strings are required as inputs; the first string represents the base URL, and the second string represents the relative URL. 3. **Output**: Outputs a single string that represents the fully combined URL. 4. **Procedure**: The function first checks if the relative URL is provided. If it is, it trims any trailing slashes from the base URL and any leading slashes from the relative URL before concatenating them with a single slash in between. If the relative URL is not provided, it simply returns the base URL as is. Use the write tool to create out/needle-4.txt containing exactly that function's name followed by a newline, then reply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -286,8 +286,8 @@
       },
       "trial": {
         "prompt": "Use the read tool on src/needle-5.js. It defines one or more functions. Find the function whose behaviour matches this description: 1. **Purpose**: The function is designed to reformat a header string by capitalizing the first letter of each word while ensuring the rest of the characters in each word remain in lowercase. 2. **Input**: A single string representing a header, which may contain multiple words separated by hyphens. 3. **Output**: A string where the first letter of each word is capitalized, and the remaining letters are in lowercase. 4. **Procedure**: The function trims whitespace from the input string, converts the entire string to lowercase, and then capitalizes the first letter of each word. This transformation is applied using a regular expression that matches each word in the string. Use the write tool to create out/needle-5.txt containing exactly that function's name followed by a newline, then reply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -344,8 +344,8 @@
       },
       "trial": {
         "prompt": "Use the read tool on src/needle-6.js. It defines one or more functions. Find the function whose behaviour matches this description: 1. **Purpose**: To execute a given callback function with specified data, primarily used for updating or notifying progress within internal operations. 2. **Input**: A callback function and the data to be passed to this function. 3. **Output**: There is no return value; the function operates solely to invoke the callback. 4. **Procedure**: Checks if the callback function is provided; if it is, the function is called with the specified data as its argument. Use the write tool to create out/needle-6.txt containing exactly that function's name followed by a newline, then reply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -402,8 +402,8 @@
       },
       "trial": {
         "prompt": "Use the read tool on src/needle-7.ts. It defines one or more functions. Find the function whose behaviour matches this description: 1. **Purpose**: The function is designed to generate an endpoint URL for Azure OpenAI services based on provided configuration details. 2. **Input**: An object containing configuration parameters such as deployment name, instance name, API key, base path, and a custom base URL for Azure OpenAI. 3. **Output**: Returns a string representing the constructed URL or undefined if the necessary parameters are not provided. 4. **Procedure**: - Checks if the API key, base path, and deployment name are provided. If so, it constructs a URL using the base path and deployment name. - If only the API key is provided, it validates the presence of the instance name and deployment name. If either is missing, it throws an error. If both are present, it constructs a URL using the instance name and deployment name. - If none of the specific Azure parameters are provided, it returns a custom base URL if available. Use the write tool to create out/needle-7.txt containing exactly that function's name followed by a newline, then reply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -460,8 +460,8 @@
       },
       "trial": {
         "prompt": "Use the read tool on src/needle-8.ts. It defines one or more functions. Find the function whose behaviour matches this description: 1. **Purpose**: To verify if a user has reached a usage limit and block further actions if they have. 2. **Input**: A unique identifier for a user. 3. **Output**: Throws an error if the user is blocked due to reaching the usage limit; otherwise, no output. 4. **Procedure**: The function first checks if the blocking feature is enabled. If it is, it queries a cache to see if the user is already blocked. If the user is blocked, it increments the block count for monitoring purposes and throws an error indicating that the usage limit has been reached. Use the write tool to create out/needle-8.txt containing exactly that function's name followed by a newline, then reply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -518,8 +518,8 @@
       },
       "trial": {
         "prompt": "Use the read tool on src/needle-9.ts. It defines one or more functions. Find the function whose behaviour matches this description: 1. **Purpose**: To construct an agent that utilizes a language model equipped with specific tools for processing and responding to inputs, following a defined prompt structure. This agent is capable of handling complex interactions by leveraging both the language model and the tools. 2. **Input**: The function requires a language model that supports tool integration, a set of tools, a structured prompt template, and an optional boolean to enable streaming mode. 3. **Output**: The function returns a sequence of operations encapsulated as an agent, which can process inputs and generate actions or conclude interactions based on the structured prompt and tools. 4. **Procedure**: The function first validates the prompt to ensure it contains a specific input variable. It then binds the tools to the language model, formats the input steps for tool usage, and sequences these operations along with the prompt and a parser to form the agent. This agent can then be used to interactively process inputs and generate outputs. Use the write tool to create out/needle-9.txt containing exactly that function's name followed by a newline, then reply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -576,8 +576,8 @@
       },
       "trial": {
         "prompt": "Use the read tool on src/needle-10.ts. It defines one or more functions. Find the function whose behaviour matches this description: 1. **Purpose**: The function is designed to select the appropriate string representation of time intervals based on tense and optional formatting conditions. 2. **Input**: It accepts a structure containing tense-specific string templates and an optional object that specifies formatting preferences, such as whether to add a suffix indicating past or future tense, and the nature of the temporal comparison. 3. **Output**: It returns a string that represents a time interval in either its default form, or modified to indicate past or future context based on the provided options. 4. **Procedure**: The function first checks if a suffix should be added based on the provided options. If so, it determines whether the time interval should be represented as occurring in the future or the past by examining the comparison value. It then returns the appropriate string based on this evaluation. If no suffix is to be added, it simply returns the default string representation. Use the write tool to create out/needle-10.txt containing exactly that function's name followed by a newline, then reply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -634,8 +634,8 @@
       },
       "trial": {
         "prompt": "Use the read tool on src/needle-11.js. It defines one or more functions. Find the function whose behaviour matches this description: 1. **Purpose**: The function is designed to adjust the URL of a request by removing a specified prefix that matches the beginning of the request's path. This is typically used in middleware operations where the base part of the URL needs to be stripped before further processing. 2. **Input**: The function takes four parameters: a middleware layer object, an error object, a string representing the path prefix to be removed, and the full path of the request. 3. **Output**: There is no direct output returned; however, the function modifies the request URL and potentially handles errors or continues request handling based on the presence of a prefix match and error conditions. 4. **Procedure**: - First, the function checks if the prefix is non-empty and matches the start of the request's path. - If the prefix does not match or does not properly break on a path separator, an error handler is invoked. - If a match is confirmed, the prefix is removed from the request's URL, and adjustments are made to ensure the URL starts with a slash and to set up the base URL correctly. - Depending on whether an error was initially present, the function either calls an error handler or proceeds with the normal request handling. Use the write tool to create out/needle-11.txt containing exactly that function's name followed by a newline, then reply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -692,8 +692,8 @@
       },
       "trial": {
         "prompt": "Use the read tool on src/needle-12.js. It defines one or more functions. Find the function whose behaviour matches this description: 1. **Purpose**: The function is designed to determine the type of a given variable, providing more specific type information especially for objects where it identifies the internal class. 2. **Input**: A single variable of any type. 3. **Output**: A string representing the type of the input variable. For non-object types, it returns the basic type (e.g., 'number', 'string'). For objects, it returns a more specific class type (e.g., 'Array', 'Date'). 4. **Procedure**: The function first checks the basic type of the input. If it is not an object, it directly returns this type. If the input is an object, it uses a method to extract the internal class name from the object's constructor and returns this as the type. Use the write tool to create out/needle-12.txt containing exactly that function's name followed by a newline, then reply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -750,8 +750,8 @@
       },
       "trial": {
         "prompt": "Use the read tool on src/needle-13.js. It defines one or more functions. Find the function whose behaviour matches this description: 1. **Purpose**: The function is designed to log errors to the console, specifically avoiding logging when the application is in a test environment. 2. **Input**: It accepts an error object as its sole parameter. 3. **Output**: There is no return value; the output is the error information printed to the console. 4. **Procedure**: The function first checks if the application's environment is not set to 'test'. If this condition is true, it logs the error to the console. It prints either the error stack if available, or the error's string representation if the stack is not available. Use the write tool to create out/needle-13.txt containing exactly that function's name followed by a newline, then reply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -808,8 +808,8 @@
       },
       "trial": {
         "prompt": "Use the read tool on src/needle-14.js. It defines one or more functions. Find the function whose behaviour matches this description: 1. **Purpose**: To generate a fresh, empty object without any predefined properties or methods. 2. **Input**: This function does not take any input parameters. 3. **Output**: Returns a new, empty object. 4. **Procedure**: The function simply creates and returns an empty object using object literal notation. Use the write tool to create out/needle-14.txt containing exactly that function's name followed by a newline, then reply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -866,8 +866,8 @@
       },
       "trial": {
         "prompt": "Use the read tool on src/needle-15.ts. It defines one or more functions. Find the function whose behaviour matches this description: 1. **Purpose**: The function is designed to create a file object suitable for SDK upload methods from various data formats, including native file types, server responses, or streams. 2. **Input**: Accepts a variety of data types such as native file objects, server response objects, file streams, individual data pieces like array buffers, or asynchronous iterable sequences of data pieces. Optional parameters include the file name and additional file properties like MIME type and last modified timestamp. 3. **Output**: Returns a file object that conforms to standard file interfaces, including properties like size, type, and methods for text manipulation and slicing. 4. **Procedure**: The function first resolves the input if it's a promise. It then checks the type of input to appropriately handle it: - If the input is a server response, it extracts the blob from the response and determines the file name from the URL or assigns a default name if not available. - For other data types, it gathers the data into a format suitable for file creation, determines the file name if not provided, and sets the MIME type if available. - Finally, it creates and returns a new file object using the gathered data, name, and options. Use the write tool to create out/needle-15.txt containing exactly that function's name followed by a newline, then reply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -924,8 +924,8 @@
       },
       "trial": {
         "prompt": "Use the read tool on src/needle-16.ts. It defines one or more functions. Find the function whose behaviour matches this description: 1. **Purpose**: The function is designed to configure and validate settings for initializing a Firestore database connection using a Firebase app instance. 2. **Input**: It takes a Firebase app instance and optionally specific Firestore settings. 3. **Output**: Returns a configuration object for Firestore that includes credentials, project ID, Firebase version, and transport preferences. 4. **Procedure**: - Validates the Firebase app instance. - Retrieves the project ID and credential type from the app configuration. - Depending on the credential type (service account or application default), it constructs the Firestore settings object. - Includes the Firebase SDK version and transport preference in the settings. - Throws an error if the credentials are invalid or insufficient for Firestore initialization. Use the write tool to create out/needle-16.txt containing exactly that function's name followed by a newline, then reply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -982,8 +982,8 @@
       },
       "trial": {
         "prompt": "Use the read tool on src/needle-17.js. It defines one or more functions. Find the function whose behaviour matches this description: 1. **Purpose**: The purpose of this function is to create an error object specifically for operations that have been canceled, providing a standardized error handling mechanism. 2. **Input**: The function accepts three optional parameters: a message string to describe the error, a configuration object related to the context of the error, and a request object that was involved when the error occurred. 3. **Output**: The function returns an error object that includes properties such as a custom message, error type identifier, and references to the configuration and request involved. 4. **Procedure**: The function first checks if a message is provided; if not, it defaults to 'canceled'. It then invokes a parent error constructor with the message and specific error type identifier, along with the configuration and request objects. This integrates the new error object into a broader error handling system. Use the write tool to create out/needle-17.txt containing exactly that function's name followed by a newline, then reply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -1040,8 +1040,8 @@
       },
       "trial": {
         "prompt": "Use the read tool on src/needle-18.ts. It defines one or more functions. Find the function whose behaviour matches this description: 1. **Purpose**: The function is designed to transform an array of filter objects into a single object where each key corresponds to the name of a filter, facilitating easier access and manipulation of filter data. 2. **Input**: The function accepts an array of objects, where each object contains properties such as `name`, `type`, `operator`, and `value`. 3. **Output**: It returns an object where each key is the `name` from the filter objects in the input array, and the value is the corresponding filter object. 4. **Procedure**: The function iterates over the input array, using the `reduce` method to accumulate the results into a single object. For each filter in the array, it adds a new property to the accumulator object using the filter's `name` as the key and the filter object itself as the value. Use the write tool to create out/needle-18.txt containing exactly that function's name followed by a newline, then reply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -1098,8 +1098,8 @@
       },
       "trial": {
         "prompt": "Use the read tool on src/needle-19.ts. It defines one or more functions. Find the function whose behaviour matches this description: 1. **Purpose**: The function is designed to modify the details of an existing team entity in the database. 2. **Input**: It accepts a unique identifier for the team and a set of new values to update in the team's record. 3. **Output**: Returns the updated team entity after applying the changes. 4. **Procedure**: The function first specifies the team to be updated using its unique identifier. It then applies the provided updates along with the current timestamp to mark when the update occurred. Finally, it commits these changes to the database and returns the updated team entity. Use the write tool to create out/needle-19.txt containing exactly that function's name followed by a newline, then reply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -1156,8 +1156,8 @@
       },
       "trial": {
         "prompt": "Use the read tool on src/needle-20.ts. It defines one or more functions. Find the function whose behaviour matches this description: 1. **Purpose**: To transform errors from a cryptographic signing process into a standardized error format suitable for user feedback within an application integrity checking system. 2. **Input**: An error object, typically originating from cryptographic operations. 3. **Output**: A standardized error object tailored to provide meaningful feedback to the application's integrity checking system. 4. **Procedure**: The function checks if the input error is a specific type of cryptographic error. If it is, and contains additional server error details, it extracts these details and maps them to a corresponding application-specific error code and message. If the error details are not specific, it defaults to a general error message. For non-cryptographic errors, the original error is returned unchanged. Use the write tool to create out/needle-20.txt containing exactly that function's name followed by a newline, then reply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -1214,8 +1214,8 @@
       },
       "trial": {
         "prompt": "Use the read tool on src/needle-21.ts. It defines one or more functions. Find the function whose behaviour matches this description: 1. **Purpose**: The function is designed to analyze user interactions on a website by tracking the progression through specified steps within a given timeframe, helping to understand user behavior and conversion rates. 2. **Input**: It accepts a unique identifier for the website, a set of criteria including the time window in minutes, start and end dates, and a sequence of steps each defined by a type and a value. 3. **Output**: The function returns a list of steps with statistics for each step, including the number of visitors who reached that step, the number who dropped off from the previous step, the drop-off rate, and the percentage of visitors remaining from the initial count. 4. **Procedure**: The function determines which database to query based on configuration, executes a query to fetch data for each step within the specified timeframe, and then processes the results to calculate the metrics for each step, such as visitor counts and drop-off rates. Use the write tool to create out/needle-21.txt containing exactly that function's name followed by a newline, then reply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -1272,8 +1272,8 @@
       },
       "trial": {
         "prompt": "Use the read tool on src/needle-22.ts. It defines one or more functions. Find the function whose behaviour matches this description: 1. **Purpose**: Calculate the total number of hours between two specified dates, potentially rounding the result based on provided options. 2. **Input**: Two dates (as Date objects, numbers, or strings representing dates) indicating the start and end points of the time interval, and an optional object containing rounding options. 3. **Output**: A number representing the total hours between the two dates, possibly adjusted according to the specified rounding method. 4. **Procedure**: The function first calculates the difference in milliseconds between the two dates. This difference is then divided by the number of milliseconds in an hour to convert it to hours. If rounding options are provided, the result is adjusted using the specified rounding method before being returned. Use the write tool to create out/needle-22.txt containing exactly that function's name followed by a newline, then reply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -1330,8 +1330,8 @@
       },
       "trial": {
         "prompt": "Use the read tool on src/needle-23.ts. It defines one or more functions. Find the function whose behaviour matches this description: 1. **Purpose**: The function is designed to validate server responses by checking if a specified condition is true. If the condition is false, it throws an error with a detailed message including the server's response data. 2. **Input**: It takes three parameters: a boolean condition, an object containing the server's response data, and a string message to include in the error if the condition is false. 3. **Output**: There is no return value; however, it may throw an error if the condition is not met. 4. **Procedure**: The function checks the provided boolean condition. If the condition is false, it constructs an error message that includes the provided string message and a formatted string of the response data. It then throws an error with this constructed message. Use the write tool to create out/needle-23.txt containing exactly that function's name followed by a newline, then reply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -1388,8 +1388,8 @@
       },
       "trial": {
         "prompt": "Use the read tool on src/needle-24.ts. It defines one or more functions. Find the function whose behaviour matches this description: 1. **Purpose**: The function is designed to set up a temporary HTTP server for testing purposes, which responds with specified content and content type. 2. **Input**: It takes two parameters: a string specifying the content type of the response, and the content itself which can be either a string or a Buffer. 3. **Output**: Returns a promise that resolves with the port number on which the server is listening, allowing the caller to interact with the server at that port. 4. **Procedure**: The function initializes a server that listens on an available port. It configures the server to respond with the provided content type and body content for any incoming requests. Once the server is successfully listening, it resolves the promise with the port number; if it fails to determine the port, it rejects the promise with an error. Use the write tool to create out/needle-24.txt containing exactly that function's name followed by a newline, then reply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -1446,8 +1446,8 @@
       },
       "trial": {
         "prompt": "Use the read tool on src/needle-25.ts. It defines one or more functions. Find the function whose behaviour matches this description: 1. **Purpose**: The function is designed to retrieve a messaging service instance, either for the default application or a specified application, facilitating the management and sending of messages through Firebase Cloud Messaging (FCM). 2. **Input**: An optional application instance. If no instance is provided, the function defaults to using the primary application instance. 3. **Output**: Returns an instance of the messaging service associated with either the default or specified application. 4. **Procedure**: The function first checks if an application instance is provided. If not, it retrieves the default application instance. It then ensures that a messaging service is initialized for the specified application instance, returning this service for use. Use the write tool to create out/needle-25.txt containing exactly that function's name followed by a newline, then reply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -1504,8 +1504,8 @@
       },
       "trial": {
         "prompt": "Implement the JavaScript function max_fill specified in docs/max_fill.spec.md (the MultiPL-E HumanEval-JS original, shown below). Use the write tool to create src/max_fill.js that defines the function max_fill with that signature at top level as a plain CommonJS script (no ES module export syntax; the dataset's assertions are appended after the file) and add no tests.\n\n//You are given a rectangular grid of wells. Each row represents a single well,\n// and each 1 in a row represents a single unit of water.\n// Each well has a corresponding bucket that can be used to extract water from it, \n// and all buckets have the same capacity.\n// Your task is to use the buckets to empty the wells.\n// Output the number of times you need to lower the buckets.\n// Example 1:\n// >>> max_fill([[0, 0, 1, 0], [0, 1, 0, 0], [1, 1, 1, 1]], 1)\n// 6\n// Example 2:\n// >>> max_fill([[0, 0, 1, 1], [0, 0, 0, 0], [1, 1, 1, 1], [0, 1, 1, 1]], 2)\n// 5\n// Example 3:\n// >>> max_fill([[0, 0, 0], [0, 0, 0]], 5)\n// 0\n// Constraints:\n// * all wells have the same length\n// * 1 <= grid.length <= 10^2\n// * 1 <= grid[:,1].length <= 10^2\n// * grid[i][j] -> 0 | 1\n// * 1 <= capacity <= 10\nfunction max_fill(grid, capacity){\n\nReply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -1562,8 +1562,8 @@
       },
       "trial": {
         "prompt": "Implement the JavaScript function parse_music specified in docs/parse_music.spec.md (the MultiPL-E HumanEval-JS original, shown below). Use the write tool to create src/parse_music.js that defines the function parse_music with that signature at top level as a plain CommonJS script (no ES module export syntax; the dataset's assertions are appended after the file) and add no tests.\n\n//Input to this function is a string representing musical notes in a special ASCII format.\n// Your task is to parse this string and return array of integers corresponding to how many beats does each\n// not last.\n// Here is a legend:\n// 'o' - whole note, lasts four beats\n// 'o|' - half note, lasts two beats\n// '.|' - quater note, lasts one beat\n// >>> parse_music(\"o o| .| o| o| .| .| .| .| o o\")\n// [4, 2, 1, 2, 2, 1, 1, 1, 1, 4, 4]\nfunction parse_music(music_string){\n\nReply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -1620,8 +1620,8 @@
       },
       "trial": {
         "prompt": "Implement the JavaScript function starts_one_ends specified in docs/starts_one_ends.spec.md (the MultiPL-E HumanEval-JS original, shown below). Use the write tool to create src/starts_one_ends.js that defines the function starts_one_ends with that signature at top level as a plain CommonJS script (no ES module export syntax; the dataset's assertions are appended after the file) and add no tests.\n\n//Given a positive integer n, return the count of the numbers of n-digit\n// positive integers that start or end with 1.\nfunction starts_one_ends(n){\n\nReply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -1678,8 +1678,8 @@
       },
       "trial": {
         "prompt": "Implement the JavaScript function unique specified in docs/unique.spec.md (the MultiPL-E HumanEval-JS original, shown below). Use the write tool to create src/unique.js that defines the function unique with that signature at top level as a plain CommonJS script (no ES module export syntax; the dataset's assertions are appended after the file) and add no tests.\n\n//Return sorted unique elements in an array\n// >>> unique([5, 3, 5, 2, 3, 3, 9, 0, 123])\n// [0, 2, 3, 5, 9, 123]\nfunction unique(l){\n\nReply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -1736,8 +1736,8 @@
       },
       "trial": {
         "prompt": "Implement the JavaScript function intersection specified in docs/intersection.spec.md (the MultiPL-E HumanEval-JS original, shown below). Use the write tool to create src/intersection.js that defines the function intersection with that signature at top level as a plain CommonJS script (no ES module export syntax; the dataset's assertions are appended after the file) and add no tests.\n\n//You are given two intervals,\n// where each interval is a pair of integers. For example, interval = (start, end) = (1, 2).\n// The given intervals are closed which means that the interval (start, end)\n// includes both start and end.\n// For each given interval, it is assumed that its start is less or equal its end.\n// Your task is to determine whether the length of intersection of these two \n// intervals is a prime number.\n// Example, the intersection of the intervals (1, 3), (2, 4) is (2, 3)\n// which its length is 1, which not a prime number.\n// If the length of the intersection is a prime number, return \"YES\",\n// otherwise, return \"NO\".\n// If the two intervals don't intersect, return \"NO\".\n// [input/output] samples:\n// >>> intersection([1, 2], [2, 3])\n// \"NO\"\n// >>> intersection([-1, 1], [0, 4])\n// \"NO\"\n// >>> intersection([-3, -1], [-5, 5])\n// \"YES\"\nfunction intersection(interval1, interval2){\n\nReply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -1794,8 +1794,8 @@
       },
       "trial": {
         "prompt": "Implement the JavaScript function make_palindrome specified in docs/make_palindrome.spec.md (the MultiPL-E HumanEval-JS original, shown below). Use the write tool to create src/make_palindrome.js that defines the function make_palindrome with that signature at top level as a plain CommonJS script (no ES module export syntax; the dataset's assertions are appended after the file) and add no tests.\n\n//Find the shortest palindrome that begins with a supplied string.\n// Algorithm idea is simple:\n// - Find the longest postfix of supplied string that is a palindrome.\n// - Append to the end of the string reverse of a string prefix that comes before the palindromic suffix.\n// >>> make_palindrome(\"\")\n// \"\"\n// >>> make_palindrome(\"cat\")\n// \"catac\"\n// >>> make_palindrome(\"cata\")\n// \"catac\"\nfunction make_palindrome(string){\n\nReply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -1852,8 +1852,8 @@
       },
       "trial": {
         "prompt": "Implement the JavaScript function filter_by_substring specified in docs/filter_by_substring.spec.md (the MultiPL-E HumanEval-JS original, shown below). Use the write tool to create src/filter_by_substring.js that defines the function filter_by_substring with that signature at top level as a plain CommonJS script (no ES module export syntax; the dataset's assertions are appended after the file) and add no tests.\n\n//Filter an input array of strings only for ones that contain given substring\n// >>> filter_by_substring([], \"a\")\n// []\n// >>> filter_by_substring([\"abc\", \"bacd\", \"cde\", \"array\"], \"a\")\n// [\"abc\", \"bacd\", \"array\"]\nfunction filter_by_substring(strings, substring){\n\nReply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -1910,8 +1910,8 @@
       },
       "trial": {
         "prompt": "Implement the JavaScript function match_parens specified in docs/match_parens.spec.md (the MultiPL-E HumanEval-JS original, shown below). Use the write tool to create src/match_parens.js that defines the function match_parens with that signature at top level as a plain CommonJS script (no ES module export syntax; the dataset's assertions are appended after the file) and add no tests.\n\n//You are given an array of two strings, both strings consist of open\n// parentheses '(' or close parentheses ')' only.\n// Your job is to check if it is possible to concatenate the two strings in\n// some order, that the resulting string will be good.\n// A string S is considered to be good if and only if all parentheses in S\n// are balanced. For example: the string '(())()' is good, while the string\n// '())' is not.\n// Return 'Yes' if there's a way to make a good string, and return 'No' otherwise.\n// Examples:\n// >>> match_parens([\"()(\", \")\"])\n// \"Yes\"\n// >>> match_parens([\")\", \")\"])\n// \"No\"\nfunction match_parens(lst){\n\nReply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -1968,8 +1968,8 @@
       },
       "trial": {
         "prompt": "Implement the JavaScript function triangle_area specified in docs/triangle_area.spec.md (the MultiPL-E HumanEval-JS original, shown below). Use the write tool to create src/triangle_area.js that defines the function triangle_area with that signature at top level as a plain CommonJS script (no ES module export syntax; the dataset's assertions are appended after the file) and add no tests.\n\n//Given the lengths of the three sides of a triangle. Return the area of\n// the triangle rounded to 2 decimal points if the three sides form a valid triangle. \n// Otherwise return -1\n// Three sides make a valid triangle when the sum of any two sides is greater \n// than the third side.\n// Example:\n// >>> triangle_area(3, 4, 5)\n// 6.0\n// >>> triangle_area(1, 2, 10)\n// -1\nfunction triangle_area(a, b, c){\n\nReply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -2026,8 +2026,8 @@
       },
       "trial": {
         "prompt": "Implement the JavaScript function encode specified in docs/encode.spec.md (the MultiPL-E HumanEval-JS original, shown below). Use the write tool to create src/encode.js that defines the function encode with that signature at top level as a plain CommonJS script (no ES module export syntax; the dataset's assertions are appended after the file) and add no tests.\n\n//Write a function that takes a message, and encodes in such a \n// way that it swaps case of all letters, replaces all vowels in \n// the message with the letter that appears 2 places ahead of that \n// vowel in the english alphabet. \n// Assume only letters. \n// Examples:\n// >>> encode(\"test\")\n// \"TGST\"\n// >>> encode(\"This is a message\")\n// \"tHKS KS C MGSSCGG\"\nfunction encode(message){\n\nReply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -2084,8 +2084,8 @@
       },
       "trial": {
         "prompt": "Implement the JavaScript function fib4 specified in docs/fib4.spec.md (the MultiPL-E HumanEval-JS original, shown below). Use the write tool to create src/fib4.js that defines the function fib4 with that signature at top level as a plain CommonJS script (no ES module export syntax; the dataset's assertions are appended after the file) and add no tests.\n\n//The Fib4 number sequence is a sequence similar to the Fibbonacci sequnece that's defined as follows:\n// fib4(0) -> 0\n// fib4(1) -> 0\n// fib4(2) -> 2\n// fib4(3) -> 0\n// fib4(n) -> fib4(n-1) + fib4(n-2) + fib4(n-3) + fib4(n-4).\n// Please write a function to efficiently compute the n-th element of the fib4 number sequence.  Do not use recursion.\n// >>> fib4(5)\n// 4\n// >>> fib4(6)\n// 8\n// >>> fib4(7)\n// 14\nfunction fib4(n){\n\nReply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -2142,8 +2142,8 @@
       },
       "trial": {
         "prompt": "Implement the JavaScript function smallest_change specified in docs/smallest_change.spec.md (the MultiPL-E HumanEval-JS original, shown below). Use the write tool to create src/smallest_change.js that defines the function smallest_change with that signature at top level as a plain CommonJS script (no ES module export syntax; the dataset's assertions are appended after the file) and add no tests.\n\n//Given an array arr of integers, find the minimum number of elements that\n// need to be changed to make the array palindromic. A palindromic array is an array that\n// is read the same backwards and forwards. In one change, you can change one element to any other element.\n// For example:\n// >>> smallest_change([1, 2, 3, 5, 4, 7, 9, 6])\n// 4\n// >>> smallest_change([1, 2, 3, 4, 3, 2, 2])\n// 1\n// >>> smallest_change([1, 2, 3, 2, 1])\n// 0\nfunction smallest_change(arr){\n\nReply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -2200,8 +2200,8 @@
       },
       "trial": {
         "prompt": "Implement the JavaScript function sort_third specified in docs/sort_third.spec.md (the MultiPL-E HumanEval-JS original, shown below). Use the write tool to create src/sort_third.js that defines the function sort_third with that signature at top level as a plain CommonJS script (no ES module export syntax; the dataset's assertions are appended after the file) and add no tests.\n\n//This function takes an array l and returns an array l' such that\n// l' is identical to l in the indicies that are not divisible by three, while its values at the indicies that are divisible by three are equal\n// to the values of the corresponding indicies of l, but sorted.\n// >>> sort_third([1, 2, 3])\n// [1, 2, 3]\n// >>> sort_third([5, 6, 3, 4, 8, 9, 2])\n// [2, 6, 3, 4, 8, 9, 5]\nfunction sort_third(l){\n\nReply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -2258,8 +2258,8 @@
       },
       "trial": {
         "prompt": "Implement the JavaScript function simplify specified in docs/simplify.spec.md (the MultiPL-E HumanEval-JS original, shown below). Use the write tool to create src/simplify.js that defines the function simplify with that signature at top level as a plain CommonJS script (no ES module export syntax; the dataset's assertions are appended after the file) and add no tests.\n\n//Your task is to implement a function that will simplify the expression\n// x * n. The function returns true if x * n evaluates to a whole number and false\n// otherwise. Both x and n, are string representation of a fraction, and have the following format,\n// <numerator>/<denominator> where both numerator and denominator are positive whole numbers.\n// You can assume that x, and n are valid fractions, and do not have zero as denominator.\n// >>> simplify(\"1/5\", \"5/1\")\n// true\n// >>> simplify(\"1/6\", \"2/1\")\n// false\n// >>> simplify(\"7/10\", \"10/2\")\n// false\nfunction simplify(x, n){\n\nReply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -2316,8 +2316,8 @@
       },
       "trial": {
         "prompt": "Implement the JavaScript function all_prefixes specified in docs/all_prefixes.spec.md (the MultiPL-E HumanEval-JS original, shown below). Use the write tool to create src/all_prefixes.js that defines the function all_prefixes with that signature at top level as a plain CommonJS script (no ES module export syntax; the dataset's assertions are appended after the file) and add no tests.\n\n//Return array of all prefixes from shortest to longest of the input string\n// >>> all_prefixes(\"abc\")\n// [\"a\", \"ab\", \"abc\"]\nfunction all_prefixes(string){\n\nReply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -2374,8 +2374,8 @@
       },
       "trial": {
         "prompt": "Implement the JavaScript function max_element specified in docs/max_element.spec.md (the MultiPL-E HumanEval-JS original, shown below). Use the write tool to create src/max_element.js that defines the function max_element with that signature at top level as a plain CommonJS script (no ES module export syntax; the dataset's assertions are appended after the file) and add no tests.\n\n//Return maximum element in the array.\n// >>> max_element([1, 2, 3])\n// 3\n// >>> max_element([5, 3, -5, 2, -3, 3, 9, 0, 123, 1, -10])\n// 123\nfunction max_element(l){\n\nReply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -2432,8 +2432,8 @@
       },
       "trial": {
         "prompt": "Implement the JavaScript function special_factorial specified in docs/special_factorial.spec.md (the MultiPL-E HumanEval-JS original, shown below). Use the write tool to create src/special_factorial.js that defines the function special_factorial with that signature at top level as a plain CommonJS script (no ES module export syntax; the dataset's assertions are appended after the file) and add no tests.\n\n//The Brazilian factorial is defined as:\n// brazilian_factorial(n) = n! * (n-1)! * (n-2)! * ... * 1!\n// where n > 0\n// For example:\n// >>> special_factorial(4)\n// 288\n// The function will receive an integer as input and should return the special\n// factorial of this integer.\nfunction special_factorial(n){\n\nReply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -2490,8 +2490,8 @@
       },
       "trial": {
         "prompt": "Implement the JavaScript function next_smallest specified in docs/next_smallest.spec.md (the MultiPL-E HumanEval-JS original, shown below). Use the write tool to create src/next_smallest.js that defines the function next_smallest with that signature at top level as a plain CommonJS script (no ES module export syntax; the dataset's assertions are appended after the file) and add no tests.\n\n//You are given an array of integers.\n// Write a function next_smallest() that returns the 2nd smallest element of the array.\n// Return undefined if there is no such element.\n// >>> next_smallest([1, 2, 3, 4, 5])\n// 2\n// >>> next_smallest([5, 1, 4, 3, 2])\n// 2\n// >>> next_smallest([])\n// undefined\n// >>> next_smallest([1, 1])\n// undefined\nfunction next_smallest(lst){\n\nReply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -2548,8 +2548,8 @@
       },
       "trial": {
         "prompt": "Implement the JavaScript function largest_prime_factor specified in docs/largest_prime_factor.spec.md (the MultiPL-E HumanEval-JS original, shown below). Use the write tool to create src/largest_prime_factor.js that defines the function largest_prime_factor with that signature at top level as a plain CommonJS script (no ES module export syntax; the dataset's assertions are appended after the file) and add no tests.\n\n//Return the largest prime factor of n. Assume n > 1 and is not a prime.\n// >>> largest_prime_factor(13195)\n// 29\n// >>> largest_prime_factor(2048)\n// 2\nfunction largest_prime_factor(n){\n\nReply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -2606,8 +2606,8 @@
       },
       "trial": {
         "prompt": "Implement the JavaScript function fruit_distribution specified in docs/fruit_distribution.spec.md (the MultiPL-E HumanEval-JS original, shown below). Use the write tool to create src/fruit_distribution.js that defines the function fruit_distribution with that signature at top level as a plain CommonJS script (no ES module export syntax; the dataset's assertions are appended after the file) and add no tests.\n\n//In this task, you will be given a string that represents a number of apples and oranges \n// that are distributed in a basket of fruit this basket contains \n// apples, oranges, and mango fruits. Given the string that represents the total number of \n// the oranges and apples and an integer that represent the total number of the fruits \n// in the basket return the number of the mango fruits in the basket.\n// for examble:\n// >>> fruit_distribution(\"5 apples and 6 oranges\", 19)\n// 8\n// >>> fruit_distribution(\"0 apples and 1 oranges\", 3)\n// 2\n// >>> fruit_distribution(\"2 apples and 3 oranges\", 100)\n// 95\n// >>> fruit_distribution(\"100 apples and 1 oranges\", 120)\n// 19\nfunction fruit_distribution(s, n){\n\nReply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -2664,8 +2664,8 @@
       },
       "trial": {
         "prompt": "Implement the JavaScript function check_dict_case specified in docs/check_dict_case.spec.md (the MultiPL-E HumanEval-JS original, shown below). Use the write tool to create src/check_dict_case.js that defines the function check_dict_case with that signature at top level as a plain CommonJS script (no ES module export syntax; the dataset's assertions are appended after the file) and add no tests.\n\n//Given an object, return true if all keys are strings in lower \n// case or all keys are strings in upper case, else return false.\n// The function should return false is the given object is empty.\n// Examples:\n// >>> check_dict_case({\"a\": \"apple\", \"b\": \"banana\"})\n// true\n// >>> check_dict_case({\"a\": \"apple\", \"A\": \"banana\", \"B\": \"banana\"})\n// false\n// >>> check_dict_case({\"a\": \"apple\", 8: \"banana\", \"a\": \"apple\"})\n// false\n// >>> check_dict_case({\"Name\": \"John\", \"Age\": \"36\", \"City\": \"Houston\"})\n// false\n// >>> check_dict_case({\"STATE\": \"NC\", \"ZIP\": \"12345\"})\n// true\nfunction check_dict_case(dict){\n\nReply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -2722,8 +2722,8 @@
       },
       "trial": {
         "prompt": "Implement the JavaScript function circular_shift specified in docs/circular_shift.spec.md (the MultiPL-E HumanEval-JS original, shown below). Use the write tool to create src/circular_shift.js that defines the function circular_shift with that signature at top level as a plain CommonJS script (no ES module export syntax; the dataset's assertions are appended after the file) and add no tests.\n\n//Circular shift the digits of the integer x, shift the digits right by shift\n// and return the result as a string.\n// If shift > number of digits, return digits reversed.\n// >>> circular_shift(12, 1)\n// \"21\"\n// >>> circular_shift(12, 2)\n// \"12\"\nfunction circular_shift(x, shift){\n\nReply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -2780,8 +2780,8 @@
       },
       "trial": {
         "prompt": "Implement the JavaScript function get_positive specified in docs/get_positive.spec.md (the MultiPL-E HumanEval-JS original, shown below). Use the write tool to create src/get_positive.js that defines the function get_positive with that signature at top level as a plain CommonJS script (no ES module export syntax; the dataset's assertions are appended after the file) and add no tests.\n\n//Return only positive numbers in the array.\n// >>> get_positive([-1, 2, -4, 5, 6])\n// [2, 5, 6]\n// >>> get_positive([5, 3, -5, 2, -3, 3, 9, 0, 123, 1, -10])\n// [5, 3, 2, 3, 9, 123, 1]\nfunction get_positive(l){\n\nReply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -2838,8 +2838,8 @@
       },
       "trial": {
         "prompt": "Implement the JavaScript function find_closest_elements specified in docs/find_closest_elements.spec.md (the MultiPL-E HumanEval-JS original, shown below). Use the write tool to create src/find_closest_elements.js that defines the function find_closest_elements with that signature at top level as a plain CommonJS script (no ES module export syntax; the dataset's assertions are appended after the file) and add no tests.\n\n//From a supplied array of numbers (of length at least two) select and return two that are the closest to each\n// other and return them in order (smaller number, larger number).\n// >>> find_closest_elements([1.0, 2.0, 3.0, 4.0, 5.0, 2.2])\n// [2.0, 2.2]\n// >>> find_closest_elements([1.0, 2.0, 3.0, 4.0, 5.0, 2.0])\n// [2.0, 2.0]\nfunction find_closest_elements(numbers){\n\nReply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -2896,8 +2896,8 @@
       },
       "trial": {
         "prompt": "Implement the JavaScript function reverse_delete specified in docs/reverse_delete.spec.md (the MultiPL-E HumanEval-JS original, shown below). Use the write tool to create src/reverse_delete.js that defines the function reverse_delete with that signature at top level as a plain CommonJS script (no ES module export syntax; the dataset's assertions are appended after the file) and add no tests.\n\n//Task\n// We are given two strings s and c, you have to deleted all the characters in s that are equal to any character in c\n// then check if the result string is palindrome.\n// A string is called palindrome if it reads the same backward as forward.\n// You should return an array containing the result string and true/false for the check.\n// Example\n// >>> reverse_delete(\"abcde\", \"ae\")\n// [\"bcd\", false]\n// >>> reverse_delete(\"abcdef\", \"b\")\n// [\"acdef\", false]\n// >>> reverse_delete(\"abcdedcba\", \"ab\")\n// [\"cdedc\", true]\nfunction reverse_delete(s, c){\n\nReply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -2955,8 +2955,8 @@
       },
       "trial": {
         "prompt": "src/is_simple_power.js implements the JavaScript function is_simple_power but has one bug, so it does not meet the specification below (the MultiPL-E HumanEval-JS original). Use the edit tool on src/is_simple_power.js to fix the bug.\n\n//Your task is to write a function that returns true if a number x is a simple\n// power of n and false in other cases.\n// x is a simple power of n if n**int=x\n// For example:\n// >>> is_simple_power(1, 4)\n// true\n// >>> is_simple_power(2, 2)\n// true\n// >>> is_simple_power(8, 2)\n// true\n// >>> is_simple_power(3, 2)\n// false\n// >>> is_simple_power(3, 1)\n// false\n// >>> is_simple_power(5, 3)\n// false\nfunction is_simple_power(x, n){\n\nReply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -3014,8 +3014,8 @@
       },
       "trial": {
         "prompt": "src/prime_length.js implements the JavaScript function prime_length but has one bug, so it does not meet the specification below (the MultiPL-E HumanEval-JS original). Use the edit tool on src/prime_length.js to fix the bug.\n\n//Write a function that takes a string and returns true if the string\n// length is a prime number or false otherwise\n// Examples\n// >>> prime_length(\"Hello\")\n// true\n// >>> prime_length(\"abcdcba\")\n// true\n// >>> prime_length(\"kittens\")\n// true\n// >>> prime_length(\"orange\")\n// false\nfunction prime_length(string){\n\nReply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -3073,8 +3073,8 @@
       },
       "trial": {
         "prompt": "src/sort_numbers.js implements the JavaScript function sort_numbers but has one bug, so it does not meet the specification below (the MultiPL-E HumanEval-JS original). Use the edit tool on src/sort_numbers.js to fix the bug.\n\n//Input is a space-delimited string of numberals from 'zero' to 'nine'.\n// Valid choices are 'zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight' and 'nine'.\n// Return the string with numbers sorted from smallest to largest\n// >>> sort_numbers(\"three one five\")\n// \"one three five\"\nfunction sort_numbers(numbers){\n\nReply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -3132,8 +3132,8 @@
       },
       "trial": {
         "prompt": "src/vowels_count.js implements the JavaScript function vowels_count but has one bug, so it does not meet the specification below (the MultiPL-E HumanEval-JS original). Use the edit tool on src/vowels_count.js to fix the bug.\n\n//Write a function vowels_count which takes a string representing\n// a word as input and returns the number of vowels in the string.\n// Vowels in this case are 'a', 'e', 'i', 'o', 'u'. Here, 'y' is also a\n// vowel, but only when it is at the end of the given word.\n// Example:\n// >>> vowels_count(\"abcde\")\n// 2\n// >>> vowels_count(\"ACEDY\")\n// 3\nfunction vowels_count(s){\n\nReply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -3191,8 +3191,8 @@
       },
       "trial": {
         "prompt": "src/concatenate.js implements the JavaScript function concatenate but has one bug, so it does not meet the specification below (the MultiPL-E HumanEval-JS original). Use the edit tool on src/concatenate.js to fix the bug.\n\n//Concatenate array of strings into a single string\n// >>> concatenate([])\n// \"\"\n// >>> concatenate([\"a\", \"b\", \"c\"])\n// \"abc\"\nfunction concatenate(strings){\n\nReply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -3250,8 +3250,8 @@
       },
       "trial": {
         "prompt": "src/decimal_to_binary.js implements the JavaScript function decimal_to_binary but has one bug, so it does not meet the specification below (the MultiPL-E HumanEval-JS original). Use the edit tool on src/decimal_to_binary.js to fix the bug.\n\n//You will be given a number in decimal form and your task is to convert it to\n// binary format. The function should return a string, with each character representing a binary\n// number. Each character in the string will be '0' or '1'.\n// There will be an extra couple of characters 'db' at the beginning and at the end of the string.\n// The extra characters are there to help with the format.\n// Examples:\n// >>> decimal_to_binary(15)\n// \"db1111db\"\n// >>> decimal_to_binary(32)\n// \"db100000db\"\nfunction decimal_to_binary(decimal){\n\nReply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -3309,8 +3309,8 @@
       },
       "trial": {
         "prompt": "src/solve.js implements the JavaScript function solve but has one bug, so it does not meet the specification below (the MultiPL-E HumanEval-JS original). Use the edit tool on src/solve.js to fix the bug.\n\n//Given a positive integer N, return the total sum of its digits in binary.\n// Example\n// >>> solve(1000)\n// \"1\"\n// >>> solve(150)\n// \"110\"\n// >>> solve(147)\n// \"1100\"\n// Variables:\n// @N integer\n// Constraints: 0 ≤ N ≤ 10000.\n// Output:\n// a string of binary number\nfunction solve(N){\n\nReply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -3368,8 +3368,8 @@
       },
       "trial": {
         "prompt": "src/string_to_md5.js implements the JavaScript function string_to_md5 but has one bug, so it does not meet the specification below (the MultiPL-E HumanEval-JS original). Use the edit tool on src/string_to_md5.js to fix the bug.\n\n//Given a string 'text', return its md5 hash equivalent string.\n// If 'text' is an empty string, return undefined.\n// >>> string_to_md5(\"Hello world\")\n// \"3e25960a79dbc69b674cd4ec67a72c62\"\nfunction string_to_md5(text){\n\nReply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -3427,8 +3427,8 @@
       },
       "trial": {
         "prompt": "src/intersperse.js implements the JavaScript function intersperse but has one bug, so it does not meet the specification below (the MultiPL-E HumanEval-JS original). Use the edit tool on src/intersperse.js to fix the bug.\n\n//Insert a number 'delimeter' between every two consecutive elements of input array `numbers'\n// >>> intersperse([], 4)\n// []\n// >>> intersperse([1, 2, 3], 4)\n// [1, 4, 2, 4, 3]\nfunction intersperse(numbers, delimeter){\n\nReply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -3486,8 +3486,8 @@
       },
       "trial": {
         "prompt": "src/sort_array.js implements the JavaScript function sort_array but has one bug, so it does not meet the specification below (the MultiPL-E HumanEval-JS original). Use the edit tool on src/sort_array.js to fix the bug.\n\n//Given an array of non-negative integers, return a cojs of the given array after sorting,\n// you will sort the given array in ascending order if the sum( first index value, last index value) is odd,\n// or sort it in descending order if the sum( first index value, last index value) is even.\n// Note:\n// * don't change the given array.\n// Examples:\n// >>> sort_array([])\n// []\n// >>> sort_array([5])\n// [5]\n// >>> sort_array([2, 4, 3, 0, 1, 5])\n// [0, 1, 2, 3, 4, 5]\n// >>> sort_array([2, 4, 3, 0, 1, 5, 6])\n// [6, 5, 4, 3, 2, 1, 0]\nfunction sort_array(array){\n\nReply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -3545,8 +3545,8 @@
       },
       "trial": {
         "prompt": "src/fib.js implements the JavaScript function fib but has one bug, so it does not meet the specification below (the MultiPL-E HumanEval-JS original). Use the edit tool on src/fib.js to fix the bug.\n\n//Return n-th Fibonacci number.\n// >>> fib(10)\n// 55\n// >>> fib(1)\n// 1\n// >>> fib(8)\n// 21\nfunction fib(n){\n\nReply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -3604,8 +3604,8 @@
       },
       "trial": {
         "prompt": "src/make_a_pile.js implements the JavaScript function make_a_pile but has one bug, so it does not meet the specification below (the MultiPL-E HumanEval-JS original). Use the edit tool on src/make_a_pile.js to fix the bug.\n\n//Given a positive integer n, you have to make a pile of n levels of stones.\n// The first level has n stones.\n// The number of stones in the next level is:\n// - the next odd number if n is odd.\n// - the next even number if n is even.\n// Return the number of stones in each level in an array, where element at index\n// i represents the number of stones in the level (i+1).\n// Examples:\n// >>> make_a_pile(3)\n// [3, 5, 7]\nfunction make_a_pile(n){\n\nReply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -3663,8 +3663,8 @@
       },
       "trial": {
         "prompt": "src/how_many_times.js implements the JavaScript function how_many_times but has one bug, so it does not meet the specification below (the MultiPL-E HumanEval-JS original). Use the edit tool on src/how_many_times.js to fix the bug.\n\n//Find how many times a given substring can be found in the original string. Count overlaping cases.\n// >>> how_many_times(\"\", \"a\")\n// 0\n// >>> how_many_times(\"aaa\", \"a\")\n// 3\n// >>> how_many_times(\"aaaa\", \"aa\")\n// 3\nfunction how_many_times(string, substring){\n\nReply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -3722,8 +3722,8 @@
       },
       "trial": {
         "prompt": "src/even_odd_palindrome.js implements the JavaScript function even_odd_palindrome but has one bug, so it does not meet the specification below (the MultiPL-E HumanEval-JS original). Use the edit tool on src/even_odd_palindrome.js to fix the bug.\n\n//Given a positive integer n, return an array that has the number of even and odd\n// integer palindromes that fall within the range(1, n), inclusive.\n// Example 1:\n// >>> even_odd_palindrome(3)\n// [1, 2]\n// Explanation:\n// Integer palindrome are 1, 2, 3. one of them is even, and two of them are odd.\n// Example 2:\n// >>> even_odd_palindrome(12)\n// [4, 6]\n// Explanation:\n// Integer palindrome are 1, 2, 3, 4, 5, 6, 7, 8, 9, 11. four of them are even, and 6 of them are odd.\n// Note:\n// 1. 1 <= n <= 10^3\n// 2. returned array has the number of even and odd integer palindromes respectively.\nfunction even_odd_palindrome(n){\n\nReply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -3781,8 +3781,8 @@
       },
       "trial": {
         "prompt": "src/words_in_sentence.js implements the JavaScript function words_in_sentence but has one bug, so it does not meet the specification below (the MultiPL-E HumanEval-JS original). Use the edit tool on src/words_in_sentence.js to fix the bug.\n\n//You are given a string representing a sentence,\n// the sentence contains some words separated by a space,\n// and you have to return a string that contains the words from the original sentence,\n// whose lengths are prime numbers,\n// the order of the words in the new string should be the same as the original one.\n// Example 1:\n// >>> words_in_sentence(\"This is a test\")\n// \"is\"\n// Example 2:\n// >>> words_in_sentence(\"lets go for swimming\")\n// \"go for\"\n// Constraints:\n// * 1 <= len(sentence) <= 100\n// * sentence contains only letters\nfunction words_in_sentence(sentence){\n\nReply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -3840,8 +3840,8 @@
       },
       "trial": {
         "prompt": "src/count_nums.js implements the JavaScript function count_nums but has one bug, so it does not meet the specification below (the MultiPL-E HumanEval-JS original). Use the edit tool on src/count_nums.js to fix the bug.\n\n//Write a function count_nums which takes an array of integers and returns\n// the number of elements which has a sum of digits > 0.\n// If a number is negative, then its first signed digit will be negative:\n// e.g. -123 has signed digits -1, 2, and 3.\n// >>> count_nums([])\n// 0\n// >>> count_nums([-1, 11, -11])\n// 1\n// >>> count_nums([1, 1, 2])\n// 3\nfunction count_nums(arr){\n\nReply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -3899,8 +3899,8 @@
       },
       "trial": {
         "prompt": "src/derivative.js implements the JavaScript function derivative but has one bug, so it does not meet the specification below (the MultiPL-E HumanEval-JS original). Use the edit tool on src/derivative.js to fix the bug.\n\n//xs represent coefficients of a polynomial.\n// xs[0] + xs[1] * x + xs[2] * x^2 + ....\n// Return derivative of this polynomial in the same form.\n// >>> derivative([3, 1, 2, 4, 5])\n// [1, 4, 12, 20]\n// >>> derivative([1, 2, 3])\n// [2, 6]\nfunction derivative(xs){\n\nReply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -3958,8 +3958,8 @@
       },
       "trial": {
         "prompt": "src/modp.js implements the JavaScript function modp but has one bug, so it does not meet the specification below (the MultiPL-E HumanEval-JS original). Use the edit tool on src/modp.js to fix the bug.\n\n//Return 2^n modulo p (be aware of numerics).\n// >>> modp(3, 5)\n// 3\n// >>> modp(1101, 101)\n// 2\n// >>> modp(0, 101)\n// 1\n// >>> modp(3, 11)\n// 8\n// >>> modp(100, 101)\n// 1\nfunction modp(n, p){\n\nReply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -4017,8 +4017,8 @@
       },
       "trial": {
         "prompt": "src/strlen.js implements the JavaScript function strlen but has one bug, so it does not meet the specification below (the MultiPL-E HumanEval-JS original). Use the edit tool on src/strlen.js to fix the bug.\n\n//Return length of given string\n// >>> strlen(\"\")\n// 0\n// >>> strlen(\"abc\")\n// 3\nfunction strlen(string){\n\nReply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -4076,8 +4076,8 @@
       },
       "trial": {
         "prompt": "src/sum_to_n.js implements the JavaScript function sum_to_n but has one bug, so it does not meet the specification below (the MultiPL-E HumanEval-JS original). Use the edit tool on src/sum_to_n.js to fix the bug.\n\n//sum_to_n is a function that sums numbers from 1 to n.\n// >>> sum_to_n(30)\n// 465\n// >>> sum_to_n(100)\n// 5050\n// >>> sum_to_n(5)\n// 15\n// >>> sum_to_n(10)\n// 55\n// >>> sum_to_n(1)\n// 1\nfunction sum_to_n(n){\n\nReply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -4135,8 +4135,8 @@
       },
       "trial": {
         "prompt": "src/maximum.js implements the JavaScript function maximum but has one bug, so it does not meet the specification below (the MultiPL-E HumanEval-JS original). Use the edit tool on src/maximum.js to fix the bug.\n\n//Given an array arr of integers and a positive integer k, return a sorted array \n// of length k with the maximum k numbers in arr.\n// Example 1:\n// >>> maximum([-3, -4, 5], 3)\n// [-4, -3, 5]\n// Example 2:\n// >>> maximum([4, -4, 4], 2)\n// [4, 4]\n// Example 3:\n// >>> maximum([-3, 2, 1, 2, -1, -2, 1], 1)\n// [2]\n// Note:\n// 1. The length of the array will be in the range of [1, 1000].\n// 2. The elements in the array will be in the range of [-1000, 1000].\n// 3. 0 <= k <= len(arr)\nfunction maximum(arr, k){\n\nReply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -4194,8 +4194,8 @@
       },
       "trial": {
         "prompt": "src/below_zero.js implements the JavaScript function below_zero but has one bug, so it does not meet the specification below (the MultiPL-E HumanEval-JS original). Use the edit tool on src/below_zero.js to fix the bug.\n\n//You're given an array of deposit and withdrawal operations on a bank account that starts with\n// zero balance. Your task is to detect if at any point the balance of account fallls below zero, and\n// at that point function should return true. Otherwise it should return false.\n// >>> below_zero([1, 2, 3])\n// false\n// >>> below_zero([1, 2, -4, 5])\n// true\nfunction below_zero(operations){\n\nReply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -4253,8 +4253,8 @@
       },
       "trial": {
         "prompt": "src/do_algebra.js implements the JavaScript function do_algebra but has one bug, so it does not meet the specification below (the MultiPL-E HumanEval-JS original). Use the edit tool on src/do_algebra.js to fix the bug.\n\n//Given two arrays operator, and operand. The first array has basic algebra operations, and \n// the second array is an array of integers. Use the two given arrays to build the algebric \n// expression and return the evaluation of this expression.\n// The basic algebra operations:\n// Addition ( + ) \n// Subtraction ( - ) \n// Multiplication ( * ) \n// Floor division ( // ) \n// Exponentiation ( ** ) \n// Example:\n// operator['+', '*', '-']\n// array = [2, 3, 4, 5]\n// result = 2 + 3 * 4 - 5\n// => result = 9\n// Note:\n// The length of operator array is equal to the length of operand array minus one.\n// Operand is an array of of non-negative integers.\n// Operator array has at least one operator, and operand array has at least two operands.\nfunction do_algebra(operator, operand){\n\nReply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -4312,8 +4312,8 @@
       },
       "trial": {
         "prompt": "src/tri.js implements the JavaScript function tri but has one bug, so it does not meet the specification below (the MultiPL-E HumanEval-JS original). Use the edit tool on src/tri.js to fix the bug.\n\n//Everyone knows Fibonacci sequence, it was studied deeply by mathematicians in \n// the last couple centuries. However, what people don't know is Tribonacci sequence.\n// Tribonacci sequence is defined by the recurrence:\n// tri(1) = 3\n// tri(n) = 1 + n / 2, if n is even.\n// tri(n) =  tri(n - 1) + tri(n - 2) + tri(n + 1), if n is odd.\n// For example:\n// tri(2) = 1 + (2 / 2) = 2\n// tri(4) = 3\n// tri(3) = tri(2) + tri(1) + tri(4)\n// = 2 + 3 + 3 = 8 \n// You are given a non-negative integer number n, you have to a return an array of the \n// first n + 1 numbers of the Tribonacci sequence.\n// Examples:\n// >>> tri(3)\n// [1, 3, 2, 8]\nfunction tri(n){\n\nReply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -4371,8 +4371,8 @@
       },
       "trial": {
         "prompt": "src/digits.js implements the JavaScript function digits but has one bug, so it does not meet the specification below (the MultiPL-E HumanEval-JS original). Use the edit tool on src/digits.js to fix the bug.\n\n//Given a positive integer n, return the product of the odd digits.\n// Return 0 if all digits are even.\n// For example:\n// >>> digits(1)\n// 1\n// >>> digits(4)\n// 0\n// >>> digits(235)\n// 15\nfunction digits(n){\n\nReply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -4429,8 +4429,8 @@
       },
       "trial": {
         "prompt": "Run node src/select_words.test.js with the bash tool, printing to stdout without redirection. Use the write tool to create out/select_words.txt containing exactly that stdout, including its final newline. Reply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -4487,8 +4487,8 @@
       },
       "trial": {
         "prompt": "Run node src/same_chars.test.js with the bash tool, printing to stdout without redirection. Use the write tool to create out/same_chars.txt containing exactly that stdout, including its final newline. Reply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -4545,8 +4545,8 @@
       },
       "trial": {
         "prompt": "Run node src/hex_key.test.js with the bash tool, printing to stdout without redirection. Use the write tool to create out/hex_key.txt containing exactly that stdout, including its final newline. Reply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -4603,8 +4603,8 @@
       },
       "trial": {
         "prompt": "Run node src/below_threshold.test.js with the bash tool, printing to stdout without redirection. Use the write tool to create out/below_threshold.txt containing exactly that stdout, including its final newline. Reply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -4661,8 +4661,8 @@
       },
       "trial": {
         "prompt": "Run node src/Strongest_Extension.test.js with the bash tool, printing to stdout without redirection. Use the write tool to create out/Strongest_Extension.txt containing exactly that stdout, including its final newline. Reply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -4719,8 +4719,8 @@
       },
       "trial": {
         "prompt": "Run node src/filter_integers.test.js with the bash tool, printing to stdout without redirection. Use the write tool to create out/filter_integers.txt containing exactly that stdout, including its final newline. Reply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -4777,8 +4777,8 @@
       },
       "trial": {
         "prompt": "Run node src/triples_sum_to_zero.test.js with the bash tool, printing to stdout without redirection. Use the write tool to create out/triples_sum_to_zero.txt containing exactly that stdout, including its final newline. Reply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -4835,8 +4835,8 @@
       },
       "trial": {
         "prompt": "Run node src/add.test.js with the bash tool, printing to stdout without redirection. Use the write tool to create out/add.txt containing exactly that stdout, including its final newline. Reply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -4893,8 +4893,8 @@
       },
       "trial": {
         "prompt": "Run node src/sum_squares.test.js with the bash tool, printing to stdout without redirection. Use the write tool to create out/sum_squares.txt containing exactly that stdout, including its final newline. Reply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -4951,8 +4951,8 @@
       },
       "trial": {
         "prompt": "Run node src/add.test.js with the bash tool, printing to stdout without redirection. Use the write tool to create out/add.txt containing exactly that stdout, including its final newline. Reply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -5009,8 +5009,8 @@
       },
       "trial": {
         "prompt": "Run node src/get_odd_collatz.test.js with the bash tool, printing to stdout without redirection. Use the write tool to create out/get_odd_collatz.txt containing exactly that stdout, including its final newline. Reply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -5067,8 +5067,8 @@
       },
       "trial": {
         "prompt": "Run node src/find_max.test.js with the bash tool, printing to stdout without redirection. Use the write tool to create out/find_max.txt containing exactly that stdout, including its final newline. Reply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -5125,8 +5125,8 @@
       },
       "trial": {
         "prompt": "Run node src/pluck.test.js with the bash tool, printing to stdout without redirection. Use the write tool to create out/pluck.txt containing exactly that stdout, including its final newline. Reply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -5183,8 +5183,8 @@
       },
       "trial": {
         "prompt": "Run node src/is_sorted.test.js with the bash tool, printing to stdout without redirection. Use the write tool to create out/is_sorted.txt containing exactly that stdout, including its final newline. Reply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -5241,8 +5241,8 @@
       },
       "trial": {
         "prompt": "Run node src/fizz_buzz.test.js with the bash tool, printing to stdout without redirection. Use the write tool to create out/fizz_buzz.txt containing exactly that stdout, including its final newline. Reply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -5299,8 +5299,8 @@
       },
       "trial": {
         "prompt": "Run node src/check_if_last_char_is_a_letter.test.js with the bash tool, printing to stdout without redirection. Use the write tool to create out/check_if_last_char_is_a_letter.txt containing exactly that stdout, including its final newline. Reply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -5357,8 +5357,8 @@
       },
       "trial": {
         "prompt": "Run node src/minSubArraySum.test.js with the bash tool, printing to stdout without redirection. Use the write tool to create out/minSubArraySum.txt containing exactly that stdout, including its final newline. Reply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -5415,8 +5415,8 @@
       },
       "trial": {
         "prompt": "Run node src/pairs_sum_to_zero.test.js with the bash tool, printing to stdout without redirection. Use the write tool to create out/pairs_sum_to_zero.txt containing exactly that stdout, including its final newline. Reply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -5473,8 +5473,8 @@
       },
       "trial": {
         "prompt": "Run node src/specialFilter.test.js with the bash tool, printing to stdout without redirection. Use the write tool to create out/specialFilter.txt containing exactly that stdout, including its final newline. Reply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -5531,8 +5531,8 @@
       },
       "trial": {
         "prompt": "Run node src/compare_one.test.js with the bash tool, printing to stdout without redirection. Use the write tool to create out/compare_one.txt containing exactly that stdout, including its final newline. Reply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -5589,8 +5589,8 @@
       },
       "trial": {
         "prompt": "Run node src/flip_case.test.js with the bash tool, printing to stdout without redirection. Use the write tool to create out/flip_case.txt containing exactly that stdout, including its final newline. Reply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -5647,8 +5647,8 @@
       },
       "trial": {
         "prompt": "Run node src/strange_sort_list.test.js with the bash tool, printing to stdout without redirection. Use the write tool to create out/strange_sort_list.txt containing exactly that stdout, including its final newline. Reply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -5705,8 +5705,8 @@
       },
       "trial": {
         "prompt": "Run node src/string_xor.test.js with the bash tool, printing to stdout without redirection. Use the write tool to create out/string_xor.txt containing exactly that stdout, including its final newline. Reply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -5763,8 +5763,8 @@
       },
       "trial": {
         "prompt": "Run node src/get_closest_vowel.test.js with the bash tool, printing to stdout without redirection. Use the write tool to create out/get_closest_vowel.txt containing exactly that stdout, including its final newline. Reply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     },
@@ -5821,8 +5821,8 @@
       },
       "trial": {
         "prompt": "Run node src/is_bored.test.js with the bash tool, printing to stdout without redirection. Use the write tool to create out/is_bored.txt containing exactly that stdout, including its final newline. Reply done. Do not change anything else.",
-        "max_host_calls": 7,
-        "max_tokens": 28672,
+        "max_host_calls": 11,
+        "max_tokens": 45056,
         "duration_seconds": 1200
       }
     }

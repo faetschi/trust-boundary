@@ -152,6 +152,9 @@ NEEDLE_LIC = {"axios/axios": "MIT", "cheeriojs/cheerio": "MIT", "date-fns/date-f
               "openai/openai-node": "Apache-2.0", "umami-software/umami": "MIT", "xenova/transformers.js": "Apache-2.0"}
 # D50 (owner decision 2026-11-08): per-call completion cap of the thesis routes, corpusadmit.ThesisModelTokensPerCall.
 MODEL_TOKENS_PER_CALL = 4096
+# Owner decision 2026-11-15: the confirmatory set takes the pilot's compliant budget (#149, owner 2026-11-14):
+# 5 tools (call + effect each) and the final reply.
+HOST_CALLS = 11
 HE_LIC = P.HE_LIC + "; MultiPL-E repository clause 4: not for use as training data"
 
 
@@ -187,7 +190,8 @@ def main():
     P.CMP.update(specs(src))
     cases = [P.build_cmp(cid, art) for cid in P.CMP]
     for case in cases:  # D50: every provider call books the full completion cap, so the pilot's 10,000 is refused
-        case["trial"]["max_tokens"] = case["trial"]["max_host_calls"] * MODEL_TOKENS_PER_CALL
+        case["trial"]["max_host_calls"] = HOST_CALLS
+        case["trial"]["max_tokens"] = HOST_CALLS * MODEL_TOKENS_PER_CALL
     os.makedirs(ARTIFACTS, exist_ok=True)
     for name in os.listdir(ARTIFACTS):
         if name not in art.files:

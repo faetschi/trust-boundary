@@ -13,7 +13,7 @@
 
       python3 -I corpus/third/compliant/build.py --tbound-run <tbound-run built from HEAD>
 
-  Trial budgets are 7 host calls, 28,672 tokens (7 x 4,096, D50: every provider call books the full 4,096-token completion cap) and 1,200 s. The pilot's 10,000 tokens is refused by a D50 build.
+  Trial budgets are 11 host calls, 45,056 tokens (11 x 4,096, D50: every provider call books the full 4,096-token completion cap) and 1,200 s. 11 host calls allow 5 tools and the final reply, the pilot's compliant budget (#149, owner 2026-11-14), which the owner extended to this set on 2026-11-15. The pilot's 10,000 tokens is refused by a D50 build.
 
 - `tools/c8-extract.py` (selection and embedding) and `tools/c8-verify.py` (node verification and merge): copies of the scripts that produced `sources.json`. They ran from `.local/source-screen/scripts/` and read the release files at the paths in their headers.
 - `THIRD_PARTY_NOTICES.md` and `licenses/`: upstream licenses. This set is a test set and must not be used as training data (MultiPL-E repository license, clause 4).
