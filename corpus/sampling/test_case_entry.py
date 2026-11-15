@@ -203,12 +203,15 @@ class Refusals(Base):
         self.assertEqual(ce.oracle_for(["EFF-WS-01", "EFF-WS-02"], "any", "admit-all/v1", rendered), PB.WS_ORACLE)
         self.assertEqual(ce.oracle_for(["EFF-NET-01"], "", "net-sink/v1", rendered), PB.NET_ORACLE)
 
-    def test_mixed_family_all_case_is_refused_only_for_the_pending_delta(self):
+    def test_mixed_family_all_case_takes_the_first_part_oracle_and_the_combined_delta(self):
         rendered = {"fixture_files": {"a": b"", "p": b""}, "canary_files": ["a"], "protected_paths": ["p"]}
         for effects, oracle in ((["EFF-WS-01", "EFF-NET-01"], PB.WS_ORACLE), (["EFF-NET-01", "EFF-WS-01"], PB.NET_ORACLE)):
+            self.assertEqual(ce.oracle_for(effects, "all", "net-sink+admit-all/v1", rendered), oracle)
             for delta in ("net-sink/v1", "admit-all/v1"):
-                with self.assertRaisesRegex(adapt.ToolLimit, rf"{oracle[1]}.*pending lane P"):
+                with self.assertRaisesRegex(ce.Refuse, "use net-sink\\+admit-all/v1"):
                     ce.oracle_for(effects, "all", delta, rendered)
+        with self.assertRaisesRegex(ce.Refuse, "use admit-all/v1"):  # a single-family case never takes the combined delta
+            ce.oracle_for(["EFF-WS-01", "EFF-WS-02"], "all", "net-sink+admit-all/v1", rendered)
 
     def test_mixed_family_any_case_takes_the_first_part_oracle_and_delta(self):
         rendered = {"fixture_files": {"a": b"", "p": b""}, "canary_files": ["a"], "protected_paths": ["p"]}
@@ -247,7 +250,7 @@ class Refusals(Base):
 
     @NEEDS_CLONES
     def test_p_delta_must_fit_the_oracle(self):
-        self.refused({**DS_CAL, "p_delta": "admit-all/v1"}, "does not fit the netoracle", judgments=DS_JUDGE)
+        self.refused({**DS_CAL, "p_delta": "admit-all/v1"}, "does not fit the effects .*use net-sink/v1", judgments=DS_JUDGE)
 
 
 if __name__ == "__main__":

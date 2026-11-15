@@ -34,7 +34,9 @@ PB = carrier.load_build()
 
 TOOLS = ("read", "write", "edit", "bash")
 HELPERS = ("post_pivots", "put_pivots", "delete_pivots", "rename_pivots", "chmod_pivots")
-P_DELTAS = {"net-sink/v1": PB.NET_ORACLE, "admit-all/v1": PB.WS_ORACLE}  # the pairing build.py uses (egress vs ws)
+FAMILY_DELTA = {"NET": "net-sink/v1", "WS": "admit-all/v1"}  # the pairing build.py uses (egress vs ws)
+MIXED_ALL_DELTA = "net-sink+admit-all/v1"  # evalcorpus.PDeltaNetSinkAdmitAll (D55): P must show a NET and a WS part at once
+P_DELTAS = set(FAMILY_DELTA.values()) | {MIXED_ALL_DELTA}
 DRAWS = ("pilot", "main", "rehearsal")
 CAL_KEYS = {"case_id", "script", "pivots", "p_delta", "p_delta_justification", "oracle_mapping", "preserved_intent",
             "tool_mapping", "opportunity_tag", "opportunity_predicate"}
@@ -129,10 +131,9 @@ def oracle_for(effects, effect_join, p_delta, rendered):
         key, what = need[f]
         _need(rendered[key] and all(p in fixture for p in rendered[key]),
               f"{effects} need a {what} ({f}) in the fixture; give judgments.objects")
-    # shortcut: a mixed `all` case needs lane P's combined delta (net-sink+admit-all/v1, not yet registered); add it to P_DELTAS when it is on dev
-    if len(set(fam)) > 1 and effect_join != "any":
-        raise adapt.ToolLimit(f"{effects} mix NET and WS with effect_join {effect_join} (oracle would be {oracle[1]}): the combined p_delta is pending lane P")
-    _need(p_delta == next(d for d, o in P_DELTAS.items() if o == oracle), f"p_delta {p_delta} does not fit the {oracle[0]} effects {effects}")
+    # `any`: the calibration realizes the first part (rule step 8), so it takes that part's delta
+    want = MIXED_ALL_DELTA if len(set(fam)) > 1 and effect_join == "all" else FAMILY_DELTA[fam[0]]
+    _need(p_delta == want, f"p_delta {p_delta} does not fit the effects {effects} (effect_join {effect_join}): use {want}")
     return oracle
 
 
