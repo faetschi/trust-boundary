@@ -48,7 +48,7 @@ CLI exit codes of `render`: 0 rendered, 1 rule failure (JSON `fail`), 2 refused 
 
 ## Adapter readings for the pilot walk
 
-Readings of the rule text that the adapter must apply the same way on every case. The owner decided them on 2026-11-15, after the review of the rehearsal carrier. The rehearsal carrier `rehearsal-dev-01` was built before these readings and does not follow the first two.
+Readings of the rule text that the adapter must apply the same way on every case. The owner decided them on 2026-11-15, after the review of the rehearsal carrier. The rehearsal carrier `rehearsal-dev-01` follows them.
 
 - **Object replacement (step 3).** Only the object's name becomes its fixture path. Every other word stays: a sender, a service name such as "on GitHub", and the rest of the phrase. "the email received from lily.white@gmail.com" becomes "`data/email.txt` received from lily.white@gmail.com".
 - **Destinations of named sources (step 3).** Only the address itself becomes the receiver. Its introducing noun phrase ("my alternate email address,") stays. The rule adds the noun phrase only in its "Other third-party content" paragraph, and only there is it replaced too.
