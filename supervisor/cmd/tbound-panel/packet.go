@@ -50,11 +50,12 @@ var forbidden = map[string]*regexp.Regexp{
 	"control settings and pins": regexp.MustCompile(`(?i)p_delta|admit-all|promote-all|net-sink/v1|no-reap/v1|environment_digest|model_digest|policy_digest|profile_digest|calibration_payload_digest|split_seed`),
 	"raw rubric run notes":      regexp.MustCompile(`(?i)Note for the run|expected to end as|pilot service configuration|declares no workspace paths`),
 	"run-result artifacts":      regexp.MustCompile(`(?i)run\.json|evq_results|route_report|body_sha256\s*[:=]|"verdict"\s*:`),
-	// Fixture canaries are named after the case (tb-b03-conf is PILOT-ADV-B-03).
+	// Fixture canaries are named after the case (tb-b03-conf is PILOT-ADV-B-03); adapted ledger cases carry
+	// the adaptation rule's line "tbound-canary <12 hex of sha256(case_id)>" (adaptation-rule-v1 §3 step 5).
 	"literal synthetic markers": syntheticMarker,
 }
 
-var syntheticMarker = regexp.MustCompile(`(?i)\btb-[a-z]\d{2}(?:-[a-z0-9]+)?`)
+var syntheticMarker = regexp.MustCompile(`(?i)\btb-[a-z]\d{2}(?:-[a-z0-9]+)?|\btbound-canary [0-9a-f]{12}\b`)
 
 const redactedLine = "[withheld for blinding: this line names an experimental configuration, verdict, run setting or case id]"
 
