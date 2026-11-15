@@ -250,6 +250,8 @@ func TestAttestWiringComparesTheScriptAndAdmissionPolicyDigests(t *testing.T) {
 		AdmissionPolicy: admissionPolicyPins{PolicyDigest: fixtureDigest("store-policy"), MetadataPolicyDigest: fixtureDigest("metadata-policy")}},
 		manifest: evalcorpus.Manifest{Cases: []evalcorpus.Case{
 			{CaseID: "relaxed", Trial: &evalcorpus.Trial{Script: script, PDelta: evalcorpus.PDeltaAdmitAll, ProtectedPaths: []string{"task.txt"}}},
+			{CaseID: "both", Trial: &evalcorpus.Trial{Script: script, PDelta: evalcorpus.PDeltaNetSinkAdmitAll, ProtectedPaths: []string{"task.txt"}}},
+			{CaseID: "sink", Trial: &evalcorpus.Trial{Script: script, PDelta: evalcorpus.PDeltaNetSink, ProtectedPaths: []string{"task.txt"}}},
 			{CaseID: "plain", Trial: &evalcorpus.Trial{Script: script, ProtectedPaths: []string{"task.txt"}}},
 			{CaseID: "unscripted", Trial: &evalcorpus.Trial{}},
 		}}}
@@ -263,7 +265,8 @@ func TestAttestWiringComparesTheScriptAndAdmissionPolicyDigests(t *testing.T) {
 		caseID string
 		cfg    runner.Configuration
 		want   string
-	}{{"relaxed", runner.CfgC, control}, {"relaxed", runner.CfgP, relaxed}, {"plain", runner.CfgP, control}, {"plain", runner.CfgC, control}} {
+	}{{"relaxed", runner.CfgC, control}, {"relaxed", runner.CfgP, relaxed}, {"plain", runner.CfgP, control}, {"plain", runner.CfgC, control},
+		{"both", runner.CfgP, relaxed}, {"both", runner.CfgC, control}, {"sink", runner.CfgP, control}, {"sink", runner.CfgC, control}} {
 		if got, ok := p.admissionPolicyDigest(tc.caseID, tc.cfg); !ok || got != tc.want {
 			t.Errorf("%s/%s: %q ok=%v, want %q", tc.caseID, tc.cfg, got, ok, tc.want)
 		}

@@ -5,6 +5,8 @@ package main
 import (
 	"testing"
 
+	"tbound/supervisor/internal/audit"
+	"tbound/supervisor/internal/corpusadmit"
 	"tbound/supervisor/internal/evalcorpus"
 	"tbound/supervisor/internal/piruntime"
 	"tbound/supervisor/internal/sessionrepo"
@@ -22,6 +24,7 @@ func TestCommandCellDeltaIsSelectedByRoleAndPinnedDeltaOnly(t *testing.T) {
 	pRoles := []string{corpusRolePStaticReplay, corpusRolePAdaptiveReplay}
 	for _, tc := range []struct{ pDelta, want string }{
 		{evalcorpus.PDeltaNetSink, piruntime.D09CellDeltaNetSink}, {evalcorpus.PDeltaNoReap, piruntime.D09CellDeltaNoReap},
+		{evalcorpus.PDeltaNetSinkAdmitAll, piruntime.D09CellDeltaNetSink},
 		{evalcorpus.PDeltaAdmitAll, ""}, {evalcorpus.PDeltaNone, ""}, {"", ""},
 	} {
 		for _, role := range pRoles {
@@ -40,21 +43,24 @@ func TestCommandCellDeltaIsSelectedByRoleAndPinnedDeltaOnly(t *testing.T) {
 		}
 	}
 	for _, role := range []string{corpusRoleTrajectory, corpusRoleStaticReplay, corpusRoleAdaptiveReplay, corpusRoleVariance1, corpusRoleVariance2,
-		corpusRoleCompliant, corpusRoleAmbiguous, "static-none", ""} {
-		for _, pDelta := range []string{evalcorpus.PDeltaNetSink, evalcorpus.PDeltaNoReap} {
+		corpusRoleCompliant, corpusRoleAmbiguous, corpusRoleBCompliant, corpusRoleBAmbiguous,
+		corpusadmit.CDHRole("model-a", corpusRoleTrajectory), "static-none", ""} {
+		for _, pDelta := range []string{evalcorpus.PDeltaNetSink, evalcorpus.PDeltaNoReap, evalcorpus.PDeltaNetSinkAdmitAll} {
 			if delta, err := commandCellDeltaFor(role, pDelta); err == nil || delta.Relaxed() {
 				t.Errorf("role %q was given the relaxed cell %s: %+v %v", role, pDelta, delta, err)
 			}
 		}
 	}
-	if _, err := commandCellDeltaFor(corpusRolePStaticReplay, "net-sink/v2"); err == nil {
-		t.Error("an unregistered delta selected a cell")
+	for _, near := range []string{"net-sink/v2", "admit-all+net-sink/v1", "net-sink+admit-all/v2", "net-sink+no-reap/v1"} {
+		if _, err := commandCellDeltaFor(corpusRolePStaticReplay, near); err == nil {
+			t.Errorf("the unregistered delta %q selected a cell", near)
+		}
 	}
 }
 
-// A case that registers net-sink or no-reap is still run by its C roles with the full control package.
+// A case that registers net-sink, no-reap or net-sink+admit-all is still run by its C roles with the full control package.
 func TestBindingGivesEveryNonPRoleTheSignedBaseCell(t *testing.T) {
-	for _, pDelta := range []string{evalcorpus.PDeltaNetSink, evalcorpus.PDeltaNoReap} {
+	for _, pDelta := range []string{evalcorpus.PDeltaNetSink, evalcorpus.PDeltaNoReap, evalcorpus.PDeltaNetSinkAdmitAll} {
 		_, manifest := scriptedTestCorpus(t, nil)
 		caseID := corpusCaseWithDelta(t, manifest, evalcorpus.PDeltaAdmitAll)
 		corpus, _ := scriptedTestCorpus(t, func(m *evalcorpus.Manifest) {
@@ -78,6 +84,9 @@ func TestBindingGivesEveryNonPRoleTheSignedBaseCell(t *testing.T) {
 			if err != nil || cell.Relaxed() {
 				t.Errorf("%s of a %s case runs a relaxed cell: %+v %v", role, pDelta, cell, err)
 			}
+			if binding.delta != evalcorpus.PDeltaNone || binding.scope.Rule == sessionrepo.AdmissionScopeRulePromoteAll {
+				t.Errorf("%s of a %s case binds delta %q scope %+v", role, pDelta, binding.delta, binding.scope)
+			}
 			checked++
 		}
 		if checked == 0 {
@@ -87,19 +96,87 @@ func TestBindingGivesEveryNonPRoleTheSignedBaseCell(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if cell, err := commandCellDeltaFor(binding.role, binding.delta); err != nil || cell.Name() != pDelta {
+		if cell, err := commandCellDeltaFor(binding.role, binding.delta); err != nil || cell.Name() != evalcorpus.PDeltaCell(pDelta) {
 			t.Errorf("p-static-replay of a %s case runs cell %q (%v)", pDelta, cell.Name(), err)
 		}
 	}
 }
 
+// net-sink+admit-all/v1 is both halves: the P binding runs the net-sink/v1 cell (the same template digest)
+// under promote-all admission, and the service reports the admit-all admission policy digest that the
+// host expects for it. Its C roles keep the base cell and the control package.
+func TestCombinedDeltaPBindingIsTheNetSinkCellUnderPromoteAll(t *testing.T) {
+	_, manifest := scriptedTestCorpus(t, nil)
+	caseID := corpusCaseWithDelta(t, manifest, evalcorpus.PDeltaAdmitAll)
+	corpus, _ := scriptedTestCorpus(t, func(m *evalcorpus.Manifest) {
+		for i := range m.Cases {
+			if m.Cases[i].CaseID == caseID {
+				m.Cases[i].Trial.PDelta = evalcorpus.PDeltaNetSinkAdmitAll
+				m.Cases[i].Adversarial.CalibrationPayloadDigest, _ = evalcorpus.CalibrationPayloadDigestOf(m.Cases[i].Trial.Script,
+					m.Cases[i].Trial.Pivots, evalcorpus.PDeltaNetSinkAdmitAll)
+			}
+		}
+	})
+	trial := corpus.trials[caseID]
+	policy, metadata := corpusTestDigest("sp"), corpusTestDigest("mp")
+	admitAll, _ := evalcorpus.AdmissionPolicyDigest(policy, metadata, true, nil)
+	control, _ := evalcorpus.AdmissionPolicyDigest(policy, metadata, false, trial.ProtectedPaths)
+	netSink, _ := piruntime.ParseD09CellDelta(piruntime.D09CellDeltaNetSink)
+	profile := corpusTestDigest("containment profile")
+	wantTemplate, err := netSink.TemplateDigest(profile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !corpus.roleServable(caseID, corpusRolePStaticReplay) {
+		t.Fatal("the P static replay of a net-sink+admit-all/v1 case is not served")
+	}
+	binding, err := corpus.bindingFor(caseID, corpusRolePStaticReplay)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cell, err := commandCellDeltaFor(binding.role, binding.delta)
+	if err != nil || cell.Name() != piruntime.D09CellDeltaNetSink || !cell.NetSink() || cell.NoReap() || cell.NetworkMode() != "host" {
+		t.Fatalf("P cell %+v (%v), want the net-sink/v1 cell", cell, err)
+	}
+	if template, err := cell.TemplateDigest(profile); err != nil || template != wantTemplate {
+		t.Errorf("P cell template %q (%v), want the net-sink/v1 template %q", template, err, wantTemplate)
+	}
+	if binding.delta != evalcorpus.PDeltaNetSinkAdmitAll || binding.scope.Rule != sessionrepo.AdmissionScopeRulePromoteAll {
+		t.Errorf("P binds delta %q scope %+v, want net-sink+admit-all/v1 under promote-all", binding.delta, binding.scope)
+	}
+	if got, err := binding.admissionPolicyDigest(policy, metadata); err != nil || got != admitAll {
+		t.Errorf("P admission policy digest %q (%v), want the admit-all form %q", got, err, admitAll)
+	}
+	// The assembled P receipt names the combined delta, the net-sink/v1 template and the admit-all policy.
+	receipt := productionPiReceipt{ContainmentProfileDigest: profile}
+	if err := applyCorpusReceipt(&receipt, &binding, false, policy, metadata, audit.Trace{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := applyCellDeltaReceipt(&receipt, &binding, nil); err != nil {
+		t.Fatal(err)
+	}
+	if receipt.Delta != evalcorpus.PDeltaNetSinkAdmitAll || receipt.DeltaTemplateDigest != wantTemplate || receipt.AdmissionPolicyDigest != admitAll {
+		t.Errorf("P receipt delta %q template %q policy %q", receipt.Delta, receipt.DeltaTemplateDigest, receipt.AdmissionPolicyDigest)
+	}
+	c, err := corpus.bindingFor(caseID, corpusRoleStaticReplay)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cell, err := commandCellDeltaFor(c.role, c.delta); err != nil || cell.Relaxed() || c.delta != evalcorpus.PDeltaNone {
+		t.Errorf("C binds delta %q cell %+v (%v)", c.delta, cell, err)
+	}
+	if got, err := c.admissionPolicyDigest(policy, metadata); err != nil || got != control {
+		t.Errorf("C admission policy digest %q (%v), want the control package %q", got, err, control)
+	}
+}
+
 func TestPStaticReplayIsServedForBothCellDeltas(t *testing.T) {
-	for _, pDelta := range []string{evalcorpus.PDeltaNetSink, evalcorpus.PDeltaNoReap} {
+	for _, pDelta := range []string{evalcorpus.PDeltaNetSink, evalcorpus.PDeltaNoReap, evalcorpus.PDeltaNetSinkAdmitAll} {
 		if !implementedPDelta(pDelta) {
 			t.Errorf("%s is not implemented", pDelta)
 		}
 	}
-	if implementedPDelta("net-sink/v2") || implementedPDelta("") {
+	if implementedPDelta("net-sink/v2") || implementedPDelta("") || implementedPDelta("admit-all+net-sink/v1") {
 		t.Error("an unregistered delta is implemented")
 	}
 }

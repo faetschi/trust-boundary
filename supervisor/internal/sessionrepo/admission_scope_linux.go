@@ -13,8 +13,9 @@ import (
 
 // The registered delta-admission scope rules. The default rule admits a candidate whose changed
 // paths are all in the operation's declared exact-path output scope. promote-all/v1 admits every
-// structurally valid candidate: it is the registered admission relaxation of a targeted
-// configuration delta (admit-all/v1) and nothing else selects it. product-scope/v1 is the product
+// structurally valid candidate: it is the registered admission relaxation of Configuration B and of a
+// P delta that admits all (admit-all/v1, net-sink+admit-all/v1; evalcorpus.PDeltaAdmitsAll), and
+// nothing else selects it. product-scope/v1 is the product
 // rule: the Store's own Writable, ReadOnly and Protected lists decide, never the operation's
 // declared output paths.
 const (

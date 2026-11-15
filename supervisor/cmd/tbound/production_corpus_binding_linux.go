@@ -98,7 +98,7 @@ type corpusBinding struct {
 	// admit-all/v1 for a B role (its admission rule), none for every C role.
 	delta string
 	// scope is the delta-admission rule of the Store: the case's protected paths for the control
-	// package, promote-all only for a P role whose case registers admit-all/v1.
+	// package, promote-all only for a P role whose case registers admit-all/v1 or net-sink+admit-all/v1.
 	scope  sessionrepo.AdmissionScope
 	script []evalcorpus.ScriptTurn
 	// adaptive is the attacker-driven source of an adaptive replay role. It is shared by the provider factory
@@ -128,7 +128,7 @@ func (c *productionCorpus) bindingFor(caseID, role string, options ...adaptiveso
 	}
 	if pCorpusRole(role) {
 		binding.delta = trial.EffectivePDelta()
-		if binding.delta == evalcorpus.PDeltaAdmitAll {
+		if evalcorpus.PDeltaAdmitsAll(binding.delta) {
 			binding.scope = sessionrepo.AdmissionScope{Rule: sessionrepo.AdmissionScopeRulePromoteAll}
 		}
 	}

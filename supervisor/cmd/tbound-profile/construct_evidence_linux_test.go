@@ -139,9 +139,9 @@ type worldOpts struct {
 	acceptBad map[string]string
 	// witness runs the pilot as a construct-witness run: its journal holds the static P replays and nothing else.
 	witness bool
-	// mutate edits the adversarial payload of a case before anything is built (a two-effect case), negParts are
-	// predicates whose P part did not manifest and lostParts predicates whose observer was lost.
-	mutate              map[string]func(*evalcorpus.Adversarial)
+	// mutate edits a case before anything is built (a two-effect case), negParts are predicates whose P part did
+	// not manifest and lostParts predicates whose observer was lost.
+	mutate              map[string]func(*evalcorpus.Case)
 	negParts, lostParts []string
 }
 
@@ -168,9 +168,9 @@ func (w *constructWorld) selected(id string) bool {
 func buildWorld(t *testing.T, opts worldOpts) *constructWorld {
 	t.Helper()
 	w := &constructWorld{t: t, m: constructPilot(t), cases: map[string]evalcorpus.Case{}, opts: opts, binary: geDigest("frozen tbound-profile")}
-	for _, c := range w.m.Cases {
-		if edit := opts.mutate[c.CaseID]; edit != nil {
-			edit(c.Adversarial)
+	for i := range w.m.Cases {
+		if edit := opts.mutate[w.m.Cases[i].CaseID]; edit != nil {
+			edit(&w.m.Cases[i])
 		}
 	}
 	for _, c := range w.m.Cases {
@@ -276,7 +276,9 @@ func (w *constructWorld) fillP(s runner.Step, o *runner.Outcome) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	policy, err := evalcorpus.AdmissionPolicyDigest(w.expect.PolicyDigest, w.expect.MetadataPolicyDigest, c.Trial.EffectivePDelta() == evalcorpus.PDeltaAdmitAll, c.Trial.ProtectedPaths)
+	// The service relaxes P admission to promote-all for admit-all/v1 and for net-sink+admit-all/v1, its WS half.
+	promoteAll := c.Trial.EffectivePDelta() == evalcorpus.PDeltaAdmitAll || c.Trial.EffectivePDelta() == evalcorpus.PDeltaNetSinkAdmitAll
+	policy, err := evalcorpus.AdmissionPolicyDigest(w.expect.PolicyDigest, w.expect.MetadataPolicyDigest, promoteAll, c.Trial.ProtectedPaths)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1239,9 +1241,9 @@ func TestConstructWitnessRefusesAnInjectedStep(t *testing.T) {
 // A two-effect case (NET-01 and WS-01) imports as P evidence only when its parts agree: every part for "all",
 // the first alternative for "any".
 func TestConstructTwoEffectPOutcome(t *testing.T) {
-	both := func(join string) map[string]func(*evalcorpus.Adversarial) {
-		return map[string]func(*evalcorpus.Adversarial){constructNetCase: func(a *evalcorpus.Adversarial) {
-			a.ForbiddenEffects, a.EffectJoin = []string{runner.OracleNet01, runner.OracleWS01}, join
+	both := func(join string) map[string]func(*evalcorpus.Case) {
+		return map[string]func(*evalcorpus.Case){constructNetCase: func(c *evalcorpus.Case) {
+			c.Adversarial.ForbiddenEffects, c.Adversarial.EffectJoin = []string{runner.OracleNet01, runner.OracleWS01}, join
 		}}
 	}
 	for _, tc := range []struct {
@@ -1263,5 +1265,50 @@ func TestConstructTwoEffectPOutcome(t *testing.T) {
 				t.Fatalf("calibration-p %q, want %q", got, tc.status)
 			}
 		})
+	}
+}
+
+// A mixed-family all case (NET-01 and WS-01) needs both halves in one P run: under net-sink+admit-all/v1 it passes the
+// local checks of corpus-check, is planned, and its P receipt imports with the admit-all admission policy digest.
+func TestConstructMixedAllCaseUnderTheCombinedDelta(t *testing.T) {
+	withDelta := func(delta string) map[string]func(*evalcorpus.Case) {
+		return map[string]func(*evalcorpus.Case){constructNetCase: func(c *evalcorpus.Case) {
+			c.Adversarial.ForbiddenEffects, c.Adversarial.EffectJoin = []string{runner.OracleNet01, runner.OracleWS01}, evalcorpus.EffectJoinAll
+			trial := *c.Trial
+			trial.PDelta = delta
+			c.Trial = &trial
+			digest, err := evalcorpus.CalibrationPayloadDigestOf(trial.Script, trial.Pivots, delta)
+			if err != nil {
+				t.Fatal(err)
+			}
+			c.Adversarial.CalibrationPayloadDigest = digest
+		}}
+	}
+	w := buildWorld(t, worldOpts{only: []string{constructNetCase}, mutate: withDelta(evalcorpus.PDeltaNetSinkAdmitAll)})
+	sched, err := constructSchedule(w.input())
+	if err != nil {
+		t.Fatal(err)
+	}
+	planned := false
+	for _, s := range sched.Steps {
+		planned = planned || s.CaseID == constructNetCase && s.Configuration == runner.CfgP && s.EffectJoin == evalcorpus.EffectJoinAll
+	}
+	if !planned {
+		t.Fatal("the mixed all case under net-sink+admit-all/v1 has no planned P step")
+	}
+	// The local checks of corpus-check, then the guest P import.
+	local := corpusadmit.CheckConstructs(w.m, os.DirFS(filepath.Dir(constructPilotManifest)), evalcorpus.PilotQuotas(), nil, nil)
+	for _, row := range local.Checks {
+		if row.Name == "manifest-validation" && row.Status != "pass" {
+			t.Errorf("manifest-validation %q: %s", row.Status, row.Reason)
+		}
+	}
+	for _, name := range []string{"validation", "trial-admission"} {
+		if got := rowOf(t, local, constructNetCase, name); got.Status != "pass" {
+			t.Errorf("%s %q, want pass: %s", name, got.Status, got.Reason)
+		}
+	}
+	if got := rowOf(t, w.apply(w.ev, constructNetCase), constructNetCase, "calibration-p"); got.Status != "pass" {
+		t.Errorf("calibration-p %q, want pass: %s", got.Status, got.Reason)
 	}
 }

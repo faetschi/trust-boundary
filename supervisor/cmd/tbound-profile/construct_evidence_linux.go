@@ -419,7 +419,7 @@ func (c *constructCtx) pOutcome(use *constructUse, m *constructMap, cm construct
 	if err != nil || receipt.ScriptDigest != script {
 		return "", "", errors.New("P calibration script digest mismatch")
 	}
-	policy, err := evalcorpus.AdmissionPolicyDigest(e.PolicyDigest, e.MetadataPolicyDigest, cs.Trial.EffectivePDelta() == evalcorpus.PDeltaAdmitAll, cs.Trial.ProtectedPaths)
+	policy, err := evalcorpus.AdmissionPolicyDigest(e.PolicyDigest, e.MetadataPolicyDigest, evalcorpus.PDeltaAdmitsAll(cs.Trial.EffectivePDelta()), cs.Trial.ProtectedPaths)
 	if err != nil || !guestevidence.IsDigest(e.PolicyDigest) || !guestevidence.IsDigest(e.MetadataPolicyDigest) || receipt.AdmissionPolicyDigest != policy {
 		return "", "", errors.New("P admission policy digest mismatch or missing run-config pins")
 	}
