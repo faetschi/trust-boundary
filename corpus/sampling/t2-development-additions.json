@@ -1,0 +1,10 @@
+{
+  "about": "Ledger rows that must join the T2 main commitment's development_case_ids, besides the pilot's examined cases. Owner decisions; append only.",
+  "rows": [
+    {
+      "case_id": "agentdojo:slack:UserTask0:InjectionTask1",
+      "date": "2026-11-15",
+      "reason": "A lane C helper agent printed the first 600 bytes of this candidate's ledger row (ids, pin, notes; no benchmark text) while looking up column names. Nothing was rendered or used. Owner decision 2026-11-15: disclose it and keep it out of the main sample. It stays in the pilot draw, where a drawn case becomes a development case anyway."
+    }
+  ]
+}
