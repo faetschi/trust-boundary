@@ -46,38 +46,52 @@ def replace_value(node, old, new):
     return new if node == old else node
 
 
-def write_bundle(parent, name, template_id, case_id, *, pin="InjecAgent", rev=None, licence=None, digest_seed=None):
-    """A synthetic bundle: a copy of T5 case template_id under a new ledger-style id and a fake fixture."""
+NEW_PIN = {"rev": "c" * 40, "license": "MIT", "license_files": ["licenses/NewBench-LICENSE"]}
+
+
+def write_bundle(parent, name, template_id, case_id, *, pin="InjecAgent", lic_name=None, licence=None):
+    """A synthetic bundle: a copy of T5 case template_id with only its ids, benchmark pin and fixture changed.
+    A pin that the pilot sources.json lacks is a new one (NewBench). lic_name renames the licence file."""
     base = t5_manifest()
     case = copy.deepcopy(next(c for c in base["cases"] if c["case_id"] == template_id))
     (old_digest,) = carrier.fixture_digests(case)
-    new_digest = "sha256:" + hashlib.sha256((digest_seed or case_id).encode()).hexdigest()
+    new_digest = "sha256:" + hashlib.sha256(case_id.encode()).hexdigest()
     case = replace_value(case, old_digest, new_digest)
     case["case_id"] = case["adversarial"]["root_scenario_id"] = case["meaning_record"]["root_id"] = case_id
     case["adversarial"]["source_item_id"] = case["meaning_record"]["source_item_id"] = "item-" + case_id
-    case["calibration_witness_id"] = "PILOT-WIT-" + case_id
-    case["meaning_record"]["calibration_witness_id"] = "PILOT-WIT-" + case_id
-    src = json.loads(read(os.path.join(PILOT, "sources.json")))["pins"][pin]
-    lic_name = src["license_files"][0].split("/")[1]
+    case["adversarial"]["calibration_witness_id"] = "PILOT-WIT-" + case_id
+    src = json.loads(read(os.path.join(PILOT, "sources.json")))["pins"].get(pin, NEW_PIN)
+    lic_name = lic_name or src["license_files"][0].split("/")[1]
+    lic_files = ["licenses/" + lic_name]
+    bench_digest = "sha256:" + hashlib.sha256(b"item " + case_id.encode()).hexdigest()
+    mr = case["meaning_record"]
+    mr.update(benchmark_key=pin, benchmark_revision=src["rev"], benchmark_digest=bench_digest, license=src["license"])
     root = os.path.join(parent, name)
     for sub in ("artifacts", "licenses"):
         os.makedirs(os.path.join(root, sub))
+    pilot_licence = os.path.join(PILOT, "licenses", lic_name)
     files = {
-        "case.json": (json.dumps(case, indent=2, ensure_ascii=False) + "\n").encode(),
+        "case.json": carrier.dump_json(case, 2),
         "artifacts/" + carrier.fixture_name(new_digest): b'{"fake": "fixture ' + case_id.encode() + b'"}\n',
-        "sources.json": json.dumps({"pins": {pin: {
-            "rev": rev or src["rev"], "license": src["license"],
-            "digests": ["sha256:" + hashlib.sha256(case_id.encode()).hexdigest()],
-            "license_files": src["license_files"]}}}).encode(),
-        "licenses/" + lic_name: licence if licence is not None else read(os.path.join(PILOT, "licenses", lic_name)),
-        "notice.json": json.dumps({"pin_key": pin, "repository": "https://example.invalid/" + pin, "rev": rev or src["rev"],
-                                   "license": src["license"], "license_files": src["license_files"],
+        "sources.json": json.dumps({"pins": {pin: {"rev": src["rev"], "license": src["license"], "digests": [bench_digest],
+                                                   "license_files": lic_files}}}).encode(),
+        "licenses/" + lic_name: licence if licence is not None else read(pilot_licence) if os.path.exists(pilot_licence) else b"MIT text\n",
+        "notice.json": json.dumps({"pin_key": pin, "repository": "https://example.invalid/" + pin, "rev": src["rev"],
+                                   "license": src["license"], "license_files": lic_files,
                                    "case_id": case_id, "source_item_id": "item-" + case_id}).encode(),
     }
     for rel, data in files.items():
         with open(os.path.join(root, rel), "wb") as f:
             f.write(data)
     return root, case, new_digest
+
+
+def patch_json(bundle, name, change):
+    path = os.path.join(bundle, name)
+    doc = json.loads(read(path))
+    change(doc)
+    with open(path, "wb") as f:
+        f.write(carrier.dump_json(doc, 2))
 
 
 class CarrierTest(unittest.TestCase):
@@ -153,16 +167,17 @@ class CarrierTest(unittest.TestCase):
         self.assertIn("item-asb:ddt:0001:u01", section)
 
     def test_new_pin_and_licence_are_added(self):
-        b, _, _ = write_bundle(self.tmp.name, "b", "PILOT-ADV-A-02", "injecagent:dh:0002:u01")
-        with open(os.path.join(b, "sources.json"), "w") as f:
-            json.dump({"pins": {"NewBench": {"rev": "c" * 40, "license": "MIT", "digests": ["sha256:" + "d" * 64],
-                                              "license_files": ["licenses/NewBench-LICENSE"]}}}, f)
-        with open(os.path.join(b, "licenses", "NewBench-LICENSE"), "wb") as f:
-            f.write(b"MIT text\n")
+        b, _, _ = write_bundle(self.tmp.name, "b", "PILOT-ADV-A-02", "injecagent:dh:0002:u01", pin="NewBench")
         self.build([b])
         pins = json.loads(read(os.path.join(self.out, "sources.json")))["pins"]
-        self.assertEqual(pins["NewBench"]["digests"], ["sha256:" + "d" * 64])
+        self.assertEqual(len(pins["NewBench"]["digests"]), 1)
         self.assertEqual(read(os.path.join(self.out, "licenses", "NewBench-LICENSE")), b"MIT text\n")
+
+    def test_base_pin_license_files_keep_their_order(self):
+        base = {"pins": {"X": {"rev": "r", "license": "MIT", "digests": ["sha256:1"], "license_files": ["licenses/b", "licenses/a"]}}}
+        bundle = {"sources": {"X": {"rev": "r", "license": "MIT", "digests": ["sha256:0"], "license_files": ["licenses/a", "licenses/c"]}}}
+        pin = carrier.merge_sources(base, [bundle])["pins"]["X"]
+        self.assertEqual((pin["digests"], pin["license_files"]), (["sha256:0", "sha256:1"], ["licenses/b", "licenses/a", "licenses/c"]))
 
     def refused(self, bundles, text):
         with self.assertRaisesRegex(carrier.CarrierError, text):
@@ -183,34 +198,67 @@ class CarrierTest(unittest.TestCase):
 
     def test_duplicate_case_id(self):
         a = write_bundle(self.tmp.name, "a", "PILOT-ADV-A-02", "injecagent:dh:0002:u01")[0]
-        b, case, _ = write_bundle(self.tmp.name, "b", "PILOT-ADV-A-03", "injecagent:dh:0003:u01")
-        case["case_id"] = "injecagent:dh:0002:u01"
-        with open(os.path.join(b, "case.json"), "w") as f:
-            json.dump(case, f)
+        b = write_bundle(self.tmp.name, "b", "PILOT-ADV-A-03", "injecagent:dh:0002:u01")[0]
         self.refused([a, b], "duplicate case_id")
 
     def test_case_id_colliding_with_a_kept_t5_case(self):
-        b, case, _ = write_bundle(self.tmp.name, "b", "PILOT-ADV-A-02", "injecagent:dh:0002:u01")
-        case["case_id"] = "PILOT-ADV-A-05"
-        with open(os.path.join(b, "case.json"), "w") as f:
-            json.dump(case, f)
+        b = write_bundle(self.tmp.name, "b", "PILOT-ADV-A-02", "PILOT-ADV-A-05")[0]
         self.refused([b], "duplicate case_id")
 
-    def test_duplicate_root(self):
-        a = write_bundle(self.tmp.name, "a", "PILOT-ADV-A-02", "injecagent:dh:0002:u01")[0]
-        b, case, _ = write_bundle(self.tmp.name, "b", "PILOT-ADV-A-03", "injecagent:dh:0003:u01")
-        case["adversarial"]["root_scenario_id"] = "injecagent:dh:0002:u01"
-        with open(os.path.join(b, "case.json"), "w") as f:
-            json.dump(case, f)
-        self.refused([a, b], "duplicate root")
+    def test_root_colliding_with_a_kept_t5_root(self):
+        root = next(c for c in t5_manifest()["cases"] if c["case_id"] == "PILOT-ADV-A-05")["adversarial"]["root_scenario_id"]
+        b = write_bundle(self.tmp.name, "b", "PILOT-ADV-A-02", root)[0]
+        self.refused([b], "duplicate root")
 
     def test_conflicting_pin_rev(self):
-        b = write_bundle(self.tmp.name, "b", "PILOT-ADV-A-02", "injecagent:dh:0002:u01", rev="e" * 40)[0]
+        b = write_bundle(self.tmp.name, "b", "PILOT-ADV-A-02", "injecagent:dh:0002:u01")[0]
+        patch_json(b, "sources.json", lambda d: d["pins"]["InjecAgent"].update(rev="e" * 40))
+        patch_json(b, "case.json", lambda c: c["meaning_record"].update(benchmark_revision="e" * 40))
+        patch_json(b, "notice.json", lambda n: n.update(rev="e" * 40))
         self.refused([b], "conflicting rev")
 
     def test_same_licence_name_different_bytes(self):
         b = write_bundle(self.tmp.name, "b", "PILOT-ADV-A-02", "injecagent:dh:0002:u01", licence=b"altered\n")[0]
         self.refused([b], "same name, different bytes")
+
+    def test_ids_must_agree_inside_a_bundle(self):
+        for label, change in (("root_scenario_id", lambda c: c["adversarial"].update(root_scenario_id="other")),
+                              ("root_id", lambda c: c["meaning_record"].update(root_id="other"))):
+            b = write_bundle(self.tmp.name, "b" + label, "PILOT-ADV-A-02", "injecagent:dh:0002:u01")[0]
+            patch_json(b, "case.json", change)
+            self.refused([b], "differ")
+
+    def test_witness_id_follows_the_case_id(self):
+        b = write_bundle(self.tmp.name, "b", "PILOT-ADV-A-02", "injecagent:dh:0002:u01")[0]
+        patch_json(b, "case.json", lambda c: c["adversarial"].update(calibration_witness_id="PILOT-WIT-other"))
+        self.refused([b], "calibration_witness_id is not PILOT-WIT-injecagent:dh:0002:u01")
+
+    def test_meaning_record_must_match_the_sources_pin(self):
+        for label, change in (("key", lambda c: c["meaning_record"].update(benchmark_key="Other")),
+                              ("rev", lambda c: c["meaning_record"].update(benchmark_revision="f" * 40)),
+                              ("digest", lambda c: c["meaning_record"].update(benchmark_digest="sha256:" + "0" * 64))):
+            b = write_bundle(self.tmp.name, "b" + label, "PILOT-ADV-A-02", "injecagent:dh:0002:u01")[0]
+            patch_json(b, "case.json", change)
+            self.refused([b], "do not match the bundle sources.json pin")
+
+    def test_notice_must_match_the_sources_pin(self):
+        for field in ("pin_key", "rev", "license"):
+            b = write_bundle(self.tmp.name, "b" + field, "PILOT-ADV-A-02", "injecagent:dh:0002:u01")[0]
+            patch_json(b, "notice.json", lambda n: n.update({field: "other"}))
+            self.refused([b], "notice.json pin_key, rev and license do not match")
+
+    def test_unreferenced_artifact_is_refused(self):
+        b = write_bundle(self.tmp.name, "b", "PILOT-ADV-A-02", "injecagent:dh:0002:u01")[0]
+        with open(os.path.join(b, "artifacts", "stray.json"), "wb") as f:
+            f.write(b"{}\n")
+        self.refused([b], "unreferenced \\['stray.json'\\]")
+
+    def test_names_differing_only_in_case(self):
+        b = write_bundle(self.tmp.name, "b", "PILOT-ADV-A-02", "injecagent:dh:0002:u01", lic_name="injecagent-licence", licence=b"altered\n")[0]
+        self.refused([b], "same name, different bytes")
+        same = write_bundle(self.tmp.name, "s", "PILOT-ADV-A-02", "injecagent:dh:0002:u01", lic_name="injecagent-licence")[0]
+        self.build([same])  # equal bytes under a case-variant name are accepted
+        self.assertTrue(os.path.exists(os.path.join(self.out, "licenses", "injecagent-licence")))
 
     def test_existing_out(self):
         os.makedirs(self.out)

@@ -12,6 +12,7 @@ import json
 import os
 import sys
 
+sys.dont_write_bytecode = True  # importing build.py must not write corpus/pilot/__pycache__
 HERE = os.path.dirname(os.path.abspath(__file__))
 PILOT = os.path.join(os.path.dirname(HERE), "pilot")
 BASE_DIR = os.path.join(PILOT, "t5-2026-10-29")
@@ -25,7 +26,7 @@ class CarrierError(Exception):
 def load_build():
     spec = importlib.util.spec_from_file_location("pilot_build_for_carrier", os.path.join(PILOT, "build.py"))
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    spec.loader.exec_module(module)  # reads corpus/pilot/sources.json; main() is not called
     return module
 
 
@@ -85,15 +86,27 @@ def check_bundles(bundles):
         if cls not in SLOT_CLASSES:
             raise CarrierError(f"{b['dir']}: threat class {cls!r} has no T5 slots")
         root = case["adversarial"]["root_scenario_id"]
+        mr = case["meaning_record"]
+        if not case["case_id"] == root == mr["root_id"]:
+            raise CarrierError(f"{b['dir']}: case_id {case['case_id']!r}, root_scenario_id {root!r} and meaning_record.root_id {mr['root_id']!r} differ")
+        if case["adversarial"]["calibration_witness_id"] != "PILOT-WIT-" + case["case_id"]:
+            raise CarrierError(f"{b['dir']}: calibration_witness_id is not PILOT-WIT-{case['case_id']}")
+        pin = b["sources"].get(mr["benchmark_key"])
+        if pin is None or pin["rev"] != mr["benchmark_revision"] or mr["benchmark_digest"] not in pin["digests"]:
+            raise CarrierError(f"{b['dir']}: meaning_record benchmark_key, revision and digest do not match the bundle sources.json pin")
+        n = b["notice"]
+        if (n["pin_key"], n["rev"], n["license"]) != (mr["benchmark_key"], pin["rev"], pin["license"]):
+            raise CarrierError(f"{b['dir']}: notice.json pin_key, rev and license do not match the sources.json pin")
         if case["case_id"] in seen_ids:
             raise CarrierError(f"duplicate case_id {case['case_id']}")
         if root in seen_roots:
             raise CarrierError(f"duplicate root {root}")
         seen_ids.add(case["case_id"])
         seen_roots.add(root)
-        for digest in fixture_digests(case):
-            if fixture_name(digest) not in b["artifacts"]:
-                raise CarrierError(f"{b['dir']}: missing artifacts/{fixture_name(digest)}")
+        want = {fixture_name(d) for d in fixture_digests(case)}
+        if set(b["artifacts"]) != want:
+            raise CarrierError(f"{b['dir']}: artifacts differ from the fixtures the case names: "
+                               f"missing {sorted(want - set(b['artifacts']))}, unreferenced {sorted(set(b['artifacts']) - want)}")
 
 
 def place_cases(manifest, bundles):
@@ -132,16 +145,19 @@ def merge_sources(base, bundles):
                     raise CarrierError(f"pin {key}: conflicting {field} {have[field]!r} vs {pin[field]!r}")
             if set(pin["digests"]) - set(have["digests"]):
                 have["digests"] = sorted(set(have["digests"]) | set(pin["digests"]))
-            have["license_files"] = sorted(set(have["license_files"]) | set(pin["license_files"]))
+            have["license_files"] += [f for f in pin["license_files"] if f not in have["license_files"]]
     return dict(base, pins=pins)
 
 
 def merge_files(base, bundles, field, what):
     out = dict(base)
+    folded = {name.casefold(): name for name in out}  # a case-insensitive checkout must not merge two names
     for b in bundles:
         for name, data in b[field].items():
-            if out.setdefault(name, data) != data:
-                raise CarrierError(f"{what} {name}: same name, different bytes")
+            prior = folded.setdefault(name.casefold(), name)
+            if out.get(prior, data) != data:
+                raise CarrierError(f"{what} {name}: same name, different bytes (against {prior}, compared without case)")
+            out.setdefault(name, data)
     return out
 
 

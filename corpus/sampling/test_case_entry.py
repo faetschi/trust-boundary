@@ -73,7 +73,6 @@ class Base(unittest.TestCase):
 
     def check_bundle(self, cid, calibration, effects, oracle, **kw):
         case = self.read_json("case.json")
-        ce.check_entry(case)
         adv, mr, trial = case["adversarial"], case["meaning_record"], case["trial"]
         self.assertEqual((case["case_id"], adv["root_scenario_id"], mr["root_id"]), (cid, cid, cid))
         self.assertEqual(adv["calibration_witness_id"], "PILOT-WIT-" + cid)
@@ -138,24 +137,16 @@ class Golden(Base):
         self.assertEqual(case["adversarial"]["adaptation"]["label_origin"], "external_oracle")
         self.assertEqual(case["meaning_record"]["task_unit"], adapt.commitment_template()["unit_choices"]["ASB"])
 
-    def test_cli_and_render_dir_drift(self):
-        render = self.out("render")
-        self.assertEqual(adapt.main(["render", "--case", ASB, "--out", render]), 0)
+    def test_cli_writes_a_bundle_and_refuses_an_existing_out(self):
         cal_path = os.path.join(self.tmp.name, "cal.json")
         with open(cal_path, "w", encoding="utf-8") as fh:
             json.dump(ASB_CAL, fh)
-        argv = ["build", "--case", ASB, "--calibration", cal_path, "--draw", "rehearsal", "--tbound-run", TBOUND_RUN, "--render", render]
+        argv = ["build", "--case", ASB, "--calibration", cal_path, "--draw", "rehearsal", "--tbound-run", TBOUND_RUN, "--out", self.out()]
         with contextlib.redirect_stdout(io.StringIO()) as stdout:
-            self.assertEqual(ce.main(argv + ["--out", self.out("b1")]), 0)
+            self.assertEqual(ce.main(argv), 0)
         self.assertEqual(json.loads(stdout.getvalue())["case_id"], ASB)
-        with open(os.path.join(render, "prompt.txt"), "ab") as fh:
-            fh.write(b" drift")
         with contextlib.redirect_stderr(io.StringIO()) as stderr:
-            self.assertEqual(ce.main(argv + ["--out", self.out("b2")]), 2)
-        self.assertIn("differs from the re-render", stderr.getvalue())
-        self.assertFalse(os.path.exists(self.out("b2")))
-        with contextlib.redirect_stderr(io.StringIO()) as stderr:  # an existing --out
-            self.assertEqual(ce.main(argv + ["--out", self.out("b1")]), 2)
+            self.assertEqual(ce.main(argv), 2)
         self.assertIn("exists", stderr.getvalue())
 
 
@@ -176,8 +167,9 @@ class Refusals(Base):
             ce.build_bundle(synthetic, DS_CAL, "pilot", self.out(), "unused")
         self.assertFalse(os.path.exists(self.out()))
 
-    def test_development_row_cannot_enter_main(self):
+    def test_development_row_cannot_enter_main_or_pilot(self):
         self.refused(DS_CAL, "cannot enter the main draw", draw="main")
+        self.refused(DS_CAL, "cannot enter the pilot draw", draw="pilot")
 
     def test_missing_pivot_step(self):
         pivots = {s: {"tool": t, "arguments": a} for s, (t, a) in PB.post_pivots(CANARY).items()}
@@ -206,10 +198,38 @@ class Refusals(Base):
         explicit = {s: {"tool": t, "arguments": a} for s, (t, a) in PB.post_pivots(CANARY).items()}
         self.assertEqual(ce.load_calibration(DS_CAL, DS)["pivots"], ce.load_calibration({**DS_CAL, "pivots": explicit}, DS)["pivots"])
 
-    def test_mixed_oracles_have_no_valid_entry(self):
-        with self.assertRaisesRegex(ce.Refuse, "mix oracles"):
-            ce.adversarial_oracle(["EFF-NET-01", "EFF-WS-01"])
-        self.assertEqual(ce.adversarial_oracle(["EFF-WS-01", "EFF-WS-02"]), PB.WS_ORACLE)
+    def test_oracle_comes_from_the_first_effect(self):
+        rendered = {"fixture_files": {"a": b"", "p": b""}, "canary_files": ["a"], "protected_paths": ["p"]}
+        self.assertEqual(ce.oracle_for(["EFF-WS-01", "EFF-WS-02"], "admit-all/v1", rendered), PB.WS_ORACLE)
+        self.assertEqual(ce.oracle_for(["EFF-NET-01"], "net-sink/v1", rendered), PB.NET_ORACLE)
+
+    def test_mixed_family_case_is_refused_only_for_the_pending_delta(self):
+        rendered = {"fixture_files": {"a": b"", "p": b""}, "canary_files": ["a"], "protected_paths": ["p"]}
+        for effects, oracle in ((["EFF-WS-01", "EFF-NET-01"], PB.WS_ORACLE), (["EFF-NET-01", "EFF-WS-01"], PB.NET_ORACLE)):
+            for delta in ("net-sink/v1", "admit-all/v1"):
+                with self.assertRaisesRegex(adapt.ToolLimit, rf"{oracle[1]}.*pending lane P"):
+                    ce.oracle_for(effects, delta, rendered)
+
+    def test_mixed_family_case_needs_objects_for_each_part(self):
+        effects = ["EFF-NET-01", "EFF-WS-01"]
+        base = {"fixture_files": {"a": b"", "p": b""}, "canary_files": ["a"], "protected_paths": ["p"]}
+        with self.assertRaisesRegex(ce.Refuse, "need a canary file"):
+            ce.oracle_for(effects, "net-sink/v1", {**base, "canary_files": []})
+        with self.assertRaisesRegex(ce.Refuse, "need a protected file"):
+            ce.oracle_for(effects, "net-sink/v1", {**base, "protected_paths": ["missing"]})
+
+    def test_fixture_modes_and_empty_dirs_reach_the_fixture(self):
+        files = {"project/build.sh": b"#!/bin/sh\n", "project/key": b"k", "project/plain": b"p"}
+        spec = ce.fixture_spec(files, {"project/build.sh": "+x", "project/key": "600", "project": "700"}, dirs=["project/empty"])
+        got = {e["path"]: (e["type"], e["mode"]) for e in spec["entries"]}
+        self.assertEqual(got, {"project": ("dir", "0700"), "project/build.sh": ("file", "0755"), "project/empty": ("dir", "0755"),
+                               "project/key": ("file", "0600"), "project/plain": ("file", "0644")})
+        self.assertEqual(spec["entries"][1]["content_b64"], "IyEvYmluL3NoCg==")
+        for bad in ("u+x", "999", "", 755):
+            with self.assertRaisesRegex(ce.Refuse, "cannot be mapped"):
+                ce.fixture_spec(files, {"project/key": bad})
+        with self.assertRaisesRegex(ce.Refuse, "not in the fixture"):
+            ce.fixture_spec(files, {"project/nope": "644"})
 
     @NEEDS_CLONES
     def test_net_effect_needs_a_canary(self):
