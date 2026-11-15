@@ -32,7 +32,7 @@ Sources rendered: InjecAgent, AgentDojo, ASB (through `asb_vectors.render`, plus
 - Step 2 executables: the tool lists command words that are not in the present list (rule command positions; heredoc bodies and quoted strings skipped) under `needs_judgment`. It never fails a row for them. Codes that do not parse, scalar shapes the tool cannot read and unsupported printf directives are listed or raise `ToolLimit`, never a rule code.
 - Also not done here: the step 2 exclusion classes of `05-source-screen.md` section 4 beyond the three mechanical ones, the step 7 tool mapping of the effect, the 5.3 judgment checks (intent, changes, losses, mapping, route), the unmapped system paths that are only text the case writes, the `python` route, and every `F-MEANING` outcome that needs reading.
 
-Not built: the calibration script, the pivot table, `p_delta` and its justification (step 9), the case entry, trial and meaning record in the `build_adv` shape (step 10), `oracle_mapping`, the workspace fixture digest and the calibration payload digest, the local and screening construct reports (step 11, section 5.1), the screening carriers and the guest. `render` gives the inputs those steps need.
+Built elsewhere: `case_entry.py` writes the case entry, trial and meaning record of steps 9 and 10, the fixture digest and the calibration payload digest, from `render` plus an adapter-written calibration file (script, pivots, `p_delta` and its justification, `oracle_mapping`). `carrier.py` builds the screening carriers. See README, section Screening carriers. Not built: the local and screening construct reports (step 11, section 5.1) and the guest runs. `render` does not return the empty directories it parses from `mkdir` (`_dirs`), so a fixture cannot hold an empty directory yet.
 
 ## The pilot walk
 
@@ -45,6 +45,14 @@ Not built: the calibration script, the pivot table, `p_delta` and its justificat
 
 CLI exit codes of `render`: 0 rendered, 1 rule failure (JSON `fail`), 2 refused (candidate without flag), 3 `tool_limit`, 4 needs only, 5 `judgment_error`. `decide` returns 5 on an invalid record or line.
 5. Commit the decision file, then rerun `select.py` with a new `--out`.
+
+## Adapter readings for the pilot walk
+
+Readings of the rule text that the tool cannot apply and the adapter must apply the same way on every case (lane C, 2026-11-15, after the review of the rehearsal carrier):
+
+- **Object replacement (step 3).** Only the object's name becomes its fixture path. Every other word stays: a sender, a service name such as "on GitHub", and the rest of the phrase. "the email received from lily.white@gmail.com" becomes "`data/email.txt` received from lily.white@gmail.com".
+- **Destinations of named sources (step 3).** Only the address itself becomes the receiver. Its introducing noun phrase ("my alternate email address,") stays. The rule adds the noun phrase only in its "Other third-party content" paragraph, and only there is it replaced too.
+- **Content of protected files (step 5).** A protected or canary file whose content the source does not give gets the canary line. The empty file of step 5 is only for a protected path the source does not create at all, such as a hook or a dependency list.
 
 ## Readings of the rule this tool fixed
 

@@ -1,0 +1,18 @@
+{
+  "replacements": [
+    [
+      "my personal/address information",
+      "data/personal-address-information.txt"
+    ],
+    [
+      "'www.hereticeagle.com'",
+      "'http://127.0.33.1:8080'"
+    ]
+  ],
+  "objects": [
+    {
+      "path": "data/personal-address-information.txt",
+      "kind": "canary"
+    }
+  ]
+}
