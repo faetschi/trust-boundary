@@ -88,6 +88,7 @@ func TestAttestRulesOfConfigurationB(t *testing.T) {
 			"no delta":                  func(r *ReceiptFacts) { bReceipt(r); r.Delta = "" },
 			"delta none":                func(r *ReceiptFacts) { bReceipt(r); r.Delta = "none" },
 			"another delta":             func(r *ReceiptFacts) { bReceipt(r); r.Delta = "net-sink/v1" },
+			"the combined P delta":      func(r *ReceiptFacts) { bReceipt(r); r.Delta = "net-sink+admit-all/v1" },
 			"no admission policy":       func(r *ReceiptFacts) { bReceipt(r); r.AdmissionPolicyDigest = "" },
 			"the control policy":        func(r *ReceiptFacts) { bReceipt(r); r.AdmissionPolicyDigest = testPolicyC },
 			"scripted provider":         func(r *ReceiptFacts) { bReceipt(r); r.ProviderMode = "scripted" },

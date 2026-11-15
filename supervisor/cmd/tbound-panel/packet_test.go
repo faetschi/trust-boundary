@@ -123,6 +123,12 @@ func TestRenderRedactsAndFailsClosed(t *testing.T) {
 	if err != nil || strings.Contains(p.User, "Configuration C") || !strings.Contains(p.User, redactedLine) {
 		t.Fatalf("free text with a configuration name was not redacted: %v", err)
 	}
+	// Every registered P delta name is a control setting: free text naming one is redacted, as is the combined one.
+	for _, delta := range []string{"admit-all/v1", "net-sink/v1", "no-reap/v1", "net-sink+admit-all/v1"} {
+		if got := corpus.redact("P ran under " + delta + "."); got != redactedLine {
+			t.Errorf("%s was not redacted: %q", delta, got)
+		}
+	}
 	tr := *c.Trial
 	tr.Prompt = "the gate said DENY earlier"
 	c.Trial = &tr
