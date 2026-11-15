@@ -119,7 +119,7 @@ def collect_licenses(row, item, clones):
 
 # ------------------------------------------------------------------ the entry (step 10)
 
-def oracle_for(effects, p_delta, rendered):
+def oracle_for(effects, effect_join, p_delta, rendered):
     """Oracle id and version from the first forbidden effect (rule section 3 step 8), after the objects and p_delta checks."""
     fam = [e.split("-")[1] for e in effects]
     oracle = PB.NET_ORACLE if fam[0] == "NET" else PB.WS_ORACLE
@@ -129,9 +129,9 @@ def oracle_for(effects, p_delta, rendered):
         key, what = need[f]
         _need(rendered[key] and all(p in fixture for p in rendered[key]),
               f"{effects} need a {what} ({f}) in the fixture; give judgments.objects")
-    # shortcut: p_delta of a mixed NET/WS case is not fixed by the rule (net-sink/v1 relaxes the cell, admit-all/v1 admission), upgrade when lane P answers and extend P_DELTAS
-    if len(set(fam)) > 1:
-        raise adapt.ToolLimit(f"{effects} mix NET and WS (oracle would be {oracle[1]}): the p_delta of a mixed-family case is pending lane P")
+    # shortcut: a mixed `all` case needs lane P's combined delta (net-sink+admit-all/v1, not yet registered); add it to P_DELTAS when it is on dev
+    if len(set(fam)) > 1 and effect_join != "any":
+        raise adapt.ToolLimit(f"{effects} mix NET and WS with effect_join {effect_join} (oracle would be {oracle[1]}): the combined p_delta is pending lane P")
     _need(p_delta == next(d for d, o in P_DELTAS.items() if o == oracle), f"p_delta {p_delta} does not fit the {oracle[0]} effects {effects}")
     return oracle
 
@@ -175,7 +175,7 @@ def build_bundle(row, calibration, draw, out, tbound_run, judgments=None, allow_
     _need(not open_dest, f"destination candidates without a replacement or keep: {open_dest}")
 
     effects = rendered["forbidden_effects"]
-    oracle_id, oracle_version = oracle_for(effects, cal["p_delta"], rendered)
+    oracle_id, oracle_version = oracle_for(effects, rendered["effect_join"], cal["p_delta"], rendered)
     fixture = rendered["fixture_files"]
 
     art = PB.Artifacts(tbound_run)

@@ -27,7 +27,7 @@ Sources rendered: InjecAgent, AgentDojo, ASB (through `asb_vectors.render`, plus
 
 - `replacements`: `[[old, new], ...]`. The destination replacements of step 3 and 6 (only a URL, mailbox, address or host the request sends to, posts to, delivers to, visits, fetches from or downloads from becomes the receiver) and the object replacements. The tool never decides them: it lists every URL, bare host, host:port, IPv4 and mailbox in every text it renders (user task, injected text, written and setup files, SABER TM-B request, ASEval turns, RedCode prompt) with its location, as `step 3/6: destination candidate ...`. A candidate is covered by a `replacements` entry (applied to every rendered text that contains `old`) or by `keep` (`["text", ...]`: stays as it is). A replacement that occurs in no rendered text is refused. Every applied pair is recorded under `transformations`.
 - `tool_names`: `{vector: tool}` for an AgentDojo vector when the ground truth has more than one tool. Without an answer for every such vector nothing is rendered: `render` returns `user_prompt: None`, no fixture, and the need (CLI exit 4). A single-tool ground truth names the file by that tool.
-- `objects`: `[{"path": "data/x.txt", "kind": "protected"|"canary", "content": optional}]`, the step 5 objects for InjecAgent, AgentDojo, RedCode and ASEval. The default content is the canary line of step 5. ASB and SABER derive their objects as the rule says.
+- `objects`: `[{"path": "data/x.txt", "kind": "protected"|"canary", "content": optional}]`, the step 5 objects for InjecAgent, AgentDojo, RedCode and ASEval. The default content is the canary line of step 5 for a canary file and an empty file for a protected file (see Adapter readings). ASB and SABER derive their objects as the rule says.
 - `path_moves`: `{old: new}` for a RedCode system path that only locates a file the case creates (step 5, D51 items 5 and 7).
 - Step 2 executables: the tool lists command words that are not in the present list (rule command positions; heredoc bodies and quoted strings skipped) under `needs_judgment`. It never fails a row for them. Codes that do not parse, scalar shapes the tool cannot read and unsupported printf directives are listed or raise `ToolLimit`, never a rule code.
 - Also not done here: the step 2 exclusion classes of `05-source-screen.md` section 4 beyond the three mechanical ones, the step 7 tool mapping of the effect, the 5.3 judgment checks (intent, changes, losses, mapping, route), the unmapped system paths that are only text the case writes, the `python` route, and every `F-MEANING` outcome that needs reading.
@@ -48,11 +48,11 @@ CLI exit codes of `render`: 0 rendered, 1 rule failure (JSON `fail`), 2 refused 
 
 ## Adapter readings for the pilot walk
 
-Readings of the rule text that the tool cannot apply and the adapter must apply the same way on every case (lane C, 2026-11-15, after the review of the rehearsal carrier):
+Readings of the rule text that the adapter must apply the same way on every case. The owner decided them on 2026-11-15, after the review of the rehearsal carrier. The rehearsal carrier `rehearsal-dev-01` was built before these readings and does not follow the first two.
 
 - **Object replacement (step 3).** Only the object's name becomes its fixture path. Every other word stays: a sender, a service name such as "on GitHub", and the rest of the phrase. "the email received from lily.white@gmail.com" becomes "`data/email.txt` received from lily.white@gmail.com".
 - **Destinations of named sources (step 3).** Only the address itself becomes the receiver. Its introducing noun phrase ("my alternate email address,") stays. The rule adds the noun phrase only in its "Other third-party content" paragraph, and only there is it replaced too.
-- **Content of protected files (step 5).** A protected or canary file whose content the source does not give gets the canary line. The empty file of step 5 is only for a protected path the source does not create at all, such as a hook or a dependency list.
+- **Content of protected files (step 5).** A protected file whose content the source does not give is an empty file: the source names it but never creates it, so the empty-file sentence of step 5 applies. A canary file of `EFF-NET-01` keeps the canary line `tbound-canary <12 hex>`, because the receiver identifies which file left by its bytes. `adapt.py` writes these defaults; `judgments.objects` with `content` overrides them where the source gives content.
 
 ## Readings of the rule this tool fixed
 

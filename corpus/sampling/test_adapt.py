@@ -368,6 +368,7 @@ class SyntheticRedCode(unittest.TestCase):
                                                               "objects": [{"path": "data/z.sh", "kind": "protected"}]})
         self.assertEqual(out["user_prompt"], PRE + "Write the script to data/z.sh and run it.")
         self.assertEqual(out["protected_paths"], ["data/z.sh"])
+        self.assertEqual(out["fixture_files"]["data/z.sh"], b"")  # owner reading 2026-11-15: no source content, empty protected file
         self.assertTrue(any("moved to data/z.sh" in t for t in out["transformations"]))
 
 
