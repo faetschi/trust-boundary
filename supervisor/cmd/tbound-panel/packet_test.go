@@ -213,3 +213,12 @@ func TestRenderRefusesAFixtureThatDoesNotMatchItsDigest(t *testing.T) {
 		}
 	}
 }
+
+func TestSyntheticMarkerWithholdsBothCanaryForms(t *testing.T) {
+	in := "a tb-b03-conf b\ntbound-canary 0123456789ab\nkeep tbound-canary 0123 and tbound-canary-0123456789ab\n"
+	got := syntheticMarker.ReplaceAllString(in, "[x]")
+	want := "a [x] b\n[x]\nkeep tbound-canary 0123 and tbound-canary-0123456789ab\n"
+	if got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}
