@@ -202,6 +202,17 @@ func rateLimitDelay(value string) (time.Duration, bool) {
 	return time.Duration(seconds) * time.Second, true
 }
 
+// postRecordSettleTimeout bounds the settlement that runs, without the request's cancellation, after a provider
+// record is durable: under the session's 30 s loop-join limit, so a hung ledger commit fails closed first.
+// A turn's spend and host-call settlement share one bound (the USD ledger ignores its context).
+var postRecordSettleTimeout = 20 * time.Second
+
+// settleContext is ctx without its cancellation, bounded by postRecordSettleTimeout: the settlement of a
+// durable record outlives the request's end, but not a hung commit.
+func settleContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), postRecordSettleTimeout)
+}
+
 // retryWait waits before the next attempt; a seam for tests.
 var retryWait = func(ctx context.Context, delay time.Duration) error {
 	if delay <= 0 {
@@ -259,7 +270,9 @@ func (c *Conversation) recordRetryableFailureLocked(ctx context.Context, records
 	}
 	// The failure record is durable: its host call settles even if the request context ends now, or a deadline
 	// would leave the attempt's host call reserved, which abandon cannot reconcile.
-	if err := c.cfg.CompleteHostCall(context.WithoutCancel(ctx), HostCallCompletion{Binding: binding, OutcomeDigest: record.Hash}); err != nil {
+	settleCtx, cancelSettle := settleContext(ctx)
+	defer cancelSettle()
+	if err := c.cfg.CompleteHostCall(settleCtx, HostCallCompletion{Binding: binding, OutcomeDigest: record.Hash}); err != nil {
 		return fmt.Errorf("settle failed provider attempt reservation before the next attempt: %w", err)
 	}
 	// From here the attempt is journaled and settled, so a context end stops the turn disposed of, before the
