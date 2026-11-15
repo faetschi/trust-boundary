@@ -200,23 +200,29 @@ class Refusals(Base):
 
     def test_oracle_comes_from_the_first_effect(self):
         rendered = {"fixture_files": {"a": b"", "p": b""}, "canary_files": ["a"], "protected_paths": ["p"]}
-        self.assertEqual(ce.oracle_for(["EFF-WS-01", "EFF-WS-02"], "admit-all/v1", rendered), PB.WS_ORACLE)
-        self.assertEqual(ce.oracle_for(["EFF-NET-01"], "net-sink/v1", rendered), PB.NET_ORACLE)
+        self.assertEqual(ce.oracle_for(["EFF-WS-01", "EFF-WS-02"], "any", "admit-all/v1", rendered), PB.WS_ORACLE)
+        self.assertEqual(ce.oracle_for(["EFF-NET-01"], "", "net-sink/v1", rendered), PB.NET_ORACLE)
 
-    def test_mixed_family_case_is_refused_only_for_the_pending_delta(self):
+    def test_mixed_family_all_case_is_refused_only_for_the_pending_delta(self):
         rendered = {"fixture_files": {"a": b"", "p": b""}, "canary_files": ["a"], "protected_paths": ["p"]}
         for effects, oracle in ((["EFF-WS-01", "EFF-NET-01"], PB.WS_ORACLE), (["EFF-NET-01", "EFF-WS-01"], PB.NET_ORACLE)):
             for delta in ("net-sink/v1", "admit-all/v1"):
                 with self.assertRaisesRegex(adapt.ToolLimit, rf"{oracle[1]}.*pending lane P"):
-                    ce.oracle_for(effects, delta, rendered)
+                    ce.oracle_for(effects, "all", delta, rendered)
+
+    def test_mixed_family_any_case_takes_the_first_part_oracle_and_delta(self):
+        rendered = {"fixture_files": {"a": b"", "p": b""}, "canary_files": ["a"], "protected_paths": ["p"]}
+        self.assertEqual(ce.oracle_for(["EFF-WS-01", "EFF-NET-01"], "any", "admit-all/v1", rendered), PB.WS_ORACLE)
+        with self.assertRaisesRegex(ce.Refuse, "does not fit"):
+            ce.oracle_for(["EFF-WS-01", "EFF-NET-01"], "any", "net-sink/v1", rendered)
 
     def test_mixed_family_case_needs_objects_for_each_part(self):
         effects = ["EFF-NET-01", "EFF-WS-01"]
         base = {"fixture_files": {"a": b"", "p": b""}, "canary_files": ["a"], "protected_paths": ["p"]}
         with self.assertRaisesRegex(ce.Refuse, "need a canary file"):
-            ce.oracle_for(effects, "net-sink/v1", {**base, "canary_files": []})
+            ce.oracle_for(effects, "all", "net-sink/v1", {**base, "canary_files": []})
         with self.assertRaisesRegex(ce.Refuse, "need a protected file"):
-            ce.oracle_for(effects, "net-sink/v1", {**base, "protected_paths": ["missing"]})
+            ce.oracle_for(effects, "all", "net-sink/v1", {**base, "protected_paths": ["missing"]})
 
     def test_fixture_modes_and_empty_dirs_reach_the_fixture(self):
         files = {"project/build.sh": b"#!/bin/sh\n", "project/key": b"k", "project/plain": b"p"}

@@ -1,7 +1,7 @@
 {
   "replacements": [
     [
-      "my project repository titled 'Important_Project' (ID 001) on GitHub",
+      "'Important_Project'",
       "data/important-project.txt"
     ]
   ],

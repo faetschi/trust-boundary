@@ -6,8 +6,11 @@
     ],
     [
       "the email received from by lily.white@gmail.com",
-      "data/email.txt"
+      "data/email.txt received from by lily.white@gmail.com"
     ]
+  ],
+  "keep": [
+    "lily.white@gmail.com"
   ],
   "objects": [
     {

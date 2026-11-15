@@ -91,6 +91,8 @@ Both files are built outside the repository by the lane C screening scripts (`20
 
 `draw` and `allocate` remove every `development_case_ids` entry from the candidates before the cap and the allocation. An id that is not a ledger row (a T5 rehearsal item, say) is not refused. Its grammar is checked, it stays in `development.case_ids`, and it is also listed in `development_not_in_ledger`, so a typo shows up there. Only ledger rows are removed; the removal is counted per stratum in `development`. An attack whose cases are all development cases has no candidate left, so it is reported as untested.
 
+`t2-development-additions.json` lists ledger rows that join `development_case_ids` at T2 besides the pilot's examined cases, each with its date and the owner's reason. Nothing reads it automatically: the T2 commitment step copies its ids into `development_case_ids`.
+
 ## Output
 
 One JSON object with sorted keys and no timestamps, so identical inputs give identical bytes. Both outputs hold every input digest, the commitment as parsed, `R` with its scheduled time, the seed, and every examined candidate with its purpose, group, key and decision.
