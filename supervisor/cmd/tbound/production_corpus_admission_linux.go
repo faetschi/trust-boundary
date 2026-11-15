@@ -159,11 +159,12 @@ func (c *productionCorpus) adaptiveServable(trial evalcorpus.Trial) bool {
 	return c.attacker != nil && len(trial.Pivots) != 0
 }
 
-// implementedPDelta lists the registered deltas this build implements: all four. net-sink/v1 and no-reap/v1
-// run the P command cell under a derived template (commandCellDeltaFor, piruntime.D09CellDelta).
+// implementedPDelta lists the registered deltas this build implements: all five. net-sink/v1 and no-reap/v1
+// run the P command cell under a derived template (commandCellDeltaFor, piruntime.D09CellDelta);
+// net-sink+admit-all/v1 is served because both of its halves are.
 func implementedPDelta(delta string) bool {
 	return delta == evalcorpus.PDeltaNone || delta == evalcorpus.PDeltaAdmitAll ||
-		delta == evalcorpus.PDeltaNetSink || delta == evalcorpus.PDeltaNoReap
+		delta == evalcorpus.PDeltaNetSink || delta == evalcorpus.PDeltaNoReap || delta == evalcorpus.PDeltaNetSinkAdmitAll
 }
 
 func (c *productionCorpus) trial(caseID string) (evalcorpus.Trial, bool) {

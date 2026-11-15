@@ -598,7 +598,7 @@ Unchanged: `cosign_digest` `4629c757...`, `seccomp_profile_digest` `cc374cf2...`
 TBP template-digest --template $H/d09-cell.json
 ```
 
-It prints four lines: the template digest (TD), the **base template digest** (BASE_TD: the same template with `managed_live_root_registration_digest` emptied), and the two derived delta digests (net-sink/v1, no-reap/v1); record all four. TD changes with every registration; BASE_TD does not (a test holds it constant while the registration changes), and it is what `corpus-pins` hashes into the `profile_digest` pin and what run.json pins as `pins.base_template_digest`: the evidence runs with a config of their own (G1, route probe, direct-runtime probe) must show the same BASE_TD, the same image and the same source as the pilot.
+It prints four lines: the template digest (TD), the **base template digest** (BASE_TD: the same template with `managed_live_root_registration_digest` emptied), and the two derived delta digests (net-sink/v1, no-reap/v1); record all four. The P delta `net-sink+admit-all/v1` has no template of its own: its P half runs the net-sink/v1 cell (same derived digest) under the admit-all/v1 promote-all admission. TD changes with every registration; BASE_TD does not (a test holds it constant while the registration changes), and it is what `corpus-pins` hashes into the `profile_digest` pin and what run.json pins as `pins.base_template_digest`: the evidence runs with a config of their own (G1, route probe, direct-runtime probe) must show the same BASE_TD, the same image and the same source as the pilot.
 
 ### R5-1b [READ-ONLY] manifest pins (BL-4)
 

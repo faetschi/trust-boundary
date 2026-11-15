@@ -11,20 +11,21 @@ import (
 )
 
 // commandCellDeltaFor is the command-cell delta of a corpus run, from the admitted role and the delta
-// the pinned manifest registers for it. Only the P half runs a relaxed cell: net-sink/v1 and
-// no-reap/v1 given to any other role are refused, never ignored, so a C, B, variance, compliant or
-// ambiguous run cannot reach a relaxed template. admit-all/v1 relaxes admission, not the cell, and
-// none (or the absent member) is the signed base cell.
+// the pinned manifest registers for it. Only the P half runs a relaxed cell: net-sink/v1,
+// no-reap/v1 and net-sink+admit-all/v1 given to any other role are refused, never ignored, so a C,
+// B, variance, compliant or ambiguous run cannot reach a relaxed template. net-sink+admit-all/v1
+// runs the net-sink/v1 cell itself (its template, proof delta and digest). admit-all/v1 relaxes
+// admission, not the cell, and none (or the absent member) is the signed base cell.
 func commandCellDeltaFor(role, pDelta string) (piruntime.D09CellDelta, error) {
 	switch pDelta {
 	case "", evalcorpus.PDeltaNone, evalcorpus.PDeltaAdmitAll:
 		return piruntime.D09CellDelta{}, nil
-	case evalcorpus.PDeltaNetSink, evalcorpus.PDeltaNoReap:
+	case evalcorpus.PDeltaNetSink, evalcorpus.PDeltaNoReap, evalcorpus.PDeltaNetSinkAdmitAll:
 		if !pCorpusRole(role) {
 			return piruntime.D09CellDelta{}, fmt.Errorf("%w: the command-cell delta %s is for the P half only, not role %q",
 				ErrPiServiceCorpus, pDelta, role)
 		}
-		return piruntime.ParseD09CellDelta(pDelta)
+		return piruntime.ParseD09CellDelta(evalcorpus.PDeltaCell(pDelta))
 	}
 	return piruntime.D09CellDelta{}, fmt.Errorf("%w: %q is not a registered delta", ErrPiServiceCorpus, pDelta)
 }

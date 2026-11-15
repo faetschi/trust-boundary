@@ -17,23 +17,43 @@ import (
 )
 
 // The registered targeted configuration deltas of the P half of a pair. The set is closed and
-// code-defined. "none" (or an empty p_delta) means P runs the full control package. net-sink/v1
-// and no-reap/v1 are registered names that the governed service refuses until it implements them.
+// code-defined. "none" (or an empty p_delta) means P runs the full control package. A governed
+// service refuses a registered name it does not implement. net-sink+admit-all/v1 is both
+// net-sink/v1 and admit-all/v1 at once, each half exactly as alone, for a case whose effect_join
+// all needs a NET and a WS effect; it is one delta, not a list.
 const (
-	PDeltaNone     = "none"
-	PDeltaAdmitAll = "admit-all/v1"
-	PDeltaNetSink  = "net-sink/v1"
-	PDeltaNoReap   = "no-reap/v1"
+	PDeltaNone            = "none"
+	PDeltaAdmitAll        = "admit-all/v1"
+	PDeltaNetSink         = "net-sink/v1"
+	PDeltaNoReap          = "no-reap/v1"
+	PDeltaNetSinkAdmitAll = "net-sink+admit-all/v1"
 )
 
 // ValidPDelta reports whether d is a registered delta name. The empty string is not a name; it is
 // the absent member and means PDeltaNone (Trial.EffectivePDelta).
 func ValidPDelta(d string) bool {
 	switch d {
-	case PDeltaNone, PDeltaAdmitAll, PDeltaNetSink, PDeltaNoReap:
+	case PDeltaNone, PDeltaAdmitAll, PDeltaNetSink, PDeltaNoReap, PDeltaNetSinkAdmitAll:
 		return true
 	}
 	return false
+}
+
+// PDeltaAdmitsAll reports whether the registered delta d runs P under promote-all admission:
+// admit-all/v1 and net-sink+admit-all/v1.
+func PDeltaAdmitsAll(d string) bool { return d == PDeltaAdmitAll || d == PDeltaNetSinkAdmitAll }
+
+// PDeltaCell is the command-cell delta that the registered delta d runs P in: net-sink/v1 for
+// net-sink/v1 and net-sink+admit-all/v1, no-reap/v1 for no-reap/v1, and "" (the signed base
+// cell) for every other name.
+func PDeltaCell(d string) string {
+	switch d {
+	case PDeltaNetSink, PDeltaNetSinkAdmitAll:
+		return PDeltaNetSink
+	case PDeltaNoReap:
+		return PDeltaNoReap
+	}
+	return ""
 }
 
 // EffectivePDelta is the registered delta of the trial: PDeltaNone when p_delta is absent.
