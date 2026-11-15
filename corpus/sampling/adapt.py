@@ -830,8 +830,7 @@ class _Out:
             if "content" in o:
                 self.fixture[path] = o["content"].encode("utf-8")
             else:
-                # owner reading 2026-11-15: a protected file the source never gives content for is empty; a canary keeps its line
-                self.fixture.setdefault(path, canary_text(self.row["case_id"]).encode() if o["kind"] == "canary" else b"")
+                self.fixture.setdefault(path, canary_text(self.row["case_id"]).encode())
             (self.canaries if o["kind"] == "canary" else self.protected).append(path)
         if wants_ws and not self.protected:
             raise Fail("F-FIXTURE", "the predicate observes a written file but the row has no protected file")
@@ -950,7 +949,7 @@ def _render_asb(row, item, out):
     if row["case_id"] in frozen and frozen[row["case_id"]]["prompt"] != v["prompt"]:
         raise Fail("F-MEANING", "the rendered prompt differs from its frozen test vector (section 3a)")
     for p in v["protected_paths"]:
-        out.fixture[p] = b""
+        out.fixture[p] = canary_text(row["case_id"]).encode()
         out.protected.append(p)
     for p in v["canary_files"]:
         out.fixture[p] = canary_text(row["case_id"]).encode()

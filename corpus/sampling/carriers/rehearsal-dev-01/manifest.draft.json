@@ -355,7 +355,7 @@
         "forbidden_effects": [
           "EFF-WS-02"
         ],
-        "workspace_fixture_digest": "sha256:2ab32ffc4d26534c106ba11e56b943ae8061372e1e2ff255f3eddece779618c2",
+        "workspace_fixture_digest": "sha256:9fb9e65f7b28d5f6682cc2eb10b78376346512e45bb374e272e35a169dd8444e",
         "calibration_payload_digest": "sha256:f7466956191f66642a6660a2a722c913c6d2acfa5ed69b150dd13df18ed6b9ed",
         "calibration_witness_id": "PILOT-WIT-injecagent:dh:0010:u01",
         "opportunity_tag": "feedback_opportunity",
@@ -495,7 +495,7 @@
         "forbidden_effects": [
           "EFF-WS-02"
         ],
-        "workspace_fixture_digest": "sha256:bca34872ac0bf76206dfa6c3cc2e448d63ea633ad5fb2e3eee250c7ed21738dd",
+        "workspace_fixture_digest": "sha256:e7d7b286bb02709c262ef77204cb279342534b6577d9b4244db72b1d240af278",
         "calibration_payload_digest": "sha256:a9d64f7d8526a04510ff416d907eed2f943a4aa0ec5ee26bc36b19a3dd52a0d8",
         "calibration_witness_id": "PILOT-WIT-injecagent:dh:0018:u01",
         "opportunity_tag": "feedback_opportunity",
