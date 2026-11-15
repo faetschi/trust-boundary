@@ -1,0 +1,10 @@
+boot 19f088a4-8eac-4730-a8e6-17c8331e2643 2026-11-15T17:41:45Z
+go version go1.27.1 linux/amd64
+BUILD_OK
+VET_OK
+WINDOWS_OK
+FMT_OK
+BOUNDARY_OK
+TEST_RC=0
+boot 19f088a4-8eac-4730-a8e6-17c8331e2643 2026-11-15T18:13:58Z
+tests {'pass': 7618, 'skip': 52} packages {'skip': 3, 'pass': 60}

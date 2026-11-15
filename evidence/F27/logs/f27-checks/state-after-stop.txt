@@ -1,0 +1,12 @@
+2026-11-15T17:17:09Z
+sudo -n true fails (session closed)
+50-tbound-op
+README
+active
+active
+-- leftover (tbound-op diag podman-ps | grep tbound-(accept|v)-; must print nothing):
+grep rc=1
+2026-11-15T17:17:09Z tboundadmin OK diag podman-ps 
+2026-11-15T17:17:09Z tboundadmin END rc=0 argv=diag podman-ps 
+2026-11-15T17:17:09Z tboundadmin BEGIN argv=status rp 
+end
