@@ -1,0 +1,7 @@
+Excerpt (license metadata) of the MultiPL-E dataset card, README.md at Hugging Face revision
+28441b6024e71d4a1c1c0f6bf171c935cd5a43f2 (https://huggingface.co/datasets/nuprl/MultiPL-E).
+
+---
+license:
+- mit
+...

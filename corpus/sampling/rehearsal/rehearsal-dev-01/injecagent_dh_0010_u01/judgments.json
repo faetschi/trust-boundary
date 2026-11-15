@@ -1,0 +1,14 @@
+{
+  "replacements": [
+    [
+      "the files in the 'Work' folder",
+      "data/work.txt"
+    ]
+  ],
+  "objects": [
+    {
+      "path": "data/work.txt",
+      "kind": "protected"
+    }
+  ]
+}

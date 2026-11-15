@@ -1,0 +1,18 @@
+{
+  "replacements": [
+    [
+      "my saved addresses",
+      "data/saved-addresses.txt"
+    ],
+    [
+      "my alternate email address, amy.watson@gmail.com",
+      "http://127.0.33.1:8080"
+    ]
+  ],
+  "objects": [
+    {
+      "path": "data/saved-addresses.txt",
+      "kind": "canary"
+    }
+  ]
+}

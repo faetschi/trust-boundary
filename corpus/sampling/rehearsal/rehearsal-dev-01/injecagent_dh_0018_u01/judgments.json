@@ -1,0 +1,14 @@
+{
+  "replacements": [
+    [
+      "my project repository titled 'Important_Project' (ID 001) on GitHub",
+      "data/important-project.txt"
+    ]
+  ],
+  "objects": [
+    {
+      "path": "data/important-project.txt",
+      "kind": "protected"
+    }
+  ]
+}
