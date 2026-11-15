@@ -5,6 +5,8 @@ package main
 import (
 	"testing"
 
+	"tbound/supervisor/internal/audit"
+	"tbound/supervisor/internal/corpusadmit"
 	"tbound/supervisor/internal/evalcorpus"
 	"tbound/supervisor/internal/piruntime"
 	"tbound/supervisor/internal/sessionrepo"
@@ -41,7 +43,8 @@ func TestCommandCellDeltaIsSelectedByRoleAndPinnedDeltaOnly(t *testing.T) {
 		}
 	}
 	for _, role := range []string{corpusRoleTrajectory, corpusRoleStaticReplay, corpusRoleAdaptiveReplay, corpusRoleVariance1, corpusRoleVariance2,
-		corpusRoleCompliant, corpusRoleAmbiguous, corpusRoleBCompliant, corpusRoleBAmbiguous, "static-none", ""} {
+		corpusRoleCompliant, corpusRoleAmbiguous, corpusRoleBCompliant, corpusRoleBAmbiguous,
+		corpusadmit.CDHRole("model-a", corpusRoleTrajectory), "static-none", ""} {
 		for _, pDelta := range []string{evalcorpus.PDeltaNetSink, evalcorpus.PDeltaNoReap, evalcorpus.PDeltaNetSinkAdmitAll} {
 			if delta, err := commandCellDeltaFor(role, pDelta); err == nil || delta.Relaxed() {
 				t.Errorf("role %q was given the relaxed cell %s: %+v %v", role, pDelta, delta, err)
@@ -143,6 +146,17 @@ func TestCombinedDeltaPBindingIsTheNetSinkCellUnderPromoteAll(t *testing.T) {
 	}
 	if got, err := binding.admissionPolicyDigest(policy, metadata); err != nil || got != admitAll {
 		t.Errorf("P admission policy digest %q (%v), want the admit-all form %q", got, err, admitAll)
+	}
+	// The assembled P receipt names the combined delta, the net-sink/v1 template and the admit-all policy.
+	receipt := productionPiReceipt{ContainmentProfileDigest: profile}
+	if err := applyCorpusReceipt(&receipt, &binding, false, policy, metadata, audit.Trace{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := applyCellDeltaReceipt(&receipt, &binding, nil); err != nil {
+		t.Fatal(err)
+	}
+	if receipt.Delta != evalcorpus.PDeltaNetSinkAdmitAll || receipt.DeltaTemplateDigest != wantTemplate || receipt.AdmissionPolicyDigest != admitAll {
+		t.Errorf("P receipt delta %q template %q policy %q", receipt.Delta, receipt.DeltaTemplateDigest, receipt.AdmissionPolicyDigest)
 	}
 	c, err := corpus.bindingFor(caseID, corpusRoleStaticReplay)
 	if err != nil {

@@ -1296,15 +1296,19 @@ func TestConstructMixedAllCaseUnderTheCombinedDelta(t *testing.T) {
 	if !planned {
 		t.Fatal("the mixed all case under net-sink+admit-all/v1 has no planned P step")
 	}
-	r := w.apply(w.ev, constructNetCase)
-	for _, row := range r.Checks {
+	// The local checks of corpus-check, then the guest P import.
+	local := corpusadmit.CheckConstructs(w.m, os.DirFS(filepath.Dir(constructPilotManifest)), evalcorpus.PilotQuotas(), nil, nil)
+	for _, row := range local.Checks {
 		if row.Name == "manifest-validation" && row.Status != "pass" {
 			t.Errorf("manifest-validation %q: %s", row.Status, row.Reason)
 		}
 	}
-	for _, name := range []string{"validation", "calibration-p"} {
-		if got := rowOf(t, r, constructNetCase, name); got.Status != "pass" {
+	for _, name := range []string{"validation", "trial-admission"} {
+		if got := rowOf(t, local, constructNetCase, name); got.Status != "pass" {
 			t.Errorf("%s %q, want pass: %s", name, got.Status, got.Reason)
 		}
+	}
+	if got := rowOf(t, w.apply(w.ev, constructNetCase), constructNetCase, "calibration-p"); got.Status != "pass" {
+		t.Errorf("calibration-p %q, want pass: %s", got.Status, got.Reason)
 	}
 }
