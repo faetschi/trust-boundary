@@ -115,6 +115,11 @@ out=$(h CARRIER_DIR="$S" CARRIER_COMMIT="$C" CARRIER_MANIFEST_DIGEST="$D" 2>&1) 
   [ "$(cat "$HF1/pilot/CARRIER")" = "synthetic-01 $C $D" ] && bash "$CC" "$R" "$C" synthetic-01 "$HF1/pilot/carrier" "$D" >/dev/null &&
   pass "synthetic-01: verified, copied to \$HF/pilot/carrier (76 artifacts), recorded" || fail "synthetic-01 first run: $out"
 expect_ok "synthetic-01 again: resumes on the verified copy" h CARRIER_DIR="$S" CARRIER_COMMIT="$C" CARRIER_MANIFEST_DIGEST="$D"
+git -C "$R" -c user.name=test -c user.email=test@invalid -c commit.gpgsign=false commit -q --allow-empty -m later2
+expect_ok "a resumed round after the checkout moved on: the copy is checked, not the checkout" h CARRIER_DIR="$S" CARRIER_COMMIT="$C" CARRIER_MANIFEST_DIGEST="$D"
+mkdir -m 0700 "$T/hf4"
+expect_refuse "a new round on a checkout that moved on" "checkout HEAD" env CARRIER_DIR="$COLON" CARRIER_COMMIT="$C" CARRIER_MANIFEST_DIGEST="$DCOLON" bash "$HARNESS" "$T/hf4" "$K/guest"
+git -C "$R" checkout -q "$C"
 expect_refuse "another round on the same \$HF/pilot" "holds the carrier round 'synthetic-01" h CARRIER_DIR="$COLON" CARRIER_COMMIT="$C" CARRIER_MANIFEST_DIGEST="$DCOLON"
 expect_refuse "no carrier on a carrier \$HF/pilot (the T5 run)" "no carrier is set" h
 printf 'x' >>"$HF1/pilot/carrier/sources.json"

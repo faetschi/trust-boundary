@@ -21,7 +21,7 @@
 #                $HF/pilot/CORPUS_DIGEST. Any refusal prints the tool's violation list and stops.
 #   3 artifacts  the 76 files of corpus/pilot/t5-2026-10-29/artifacts of $SRC into /opt/tbound/corpus/artifacts (session sudo window); afterwards count, per-file
 #                sha256, owner and modes are verified. Guest files not in the T5 set are moved (mv -n) to artifacts.pre-t5-<UTC>.
-#   3b pilot-reset  only if the guest holds a pilot state that is not from this freeze (cfg differs from $HG/serve-pi-service.json, or the signed files of its rank are not in
+#   3b pilot-reset  (a carrier round runs it before phase 3) only if the guest holds a pilot state that is not from this freeze (cfg differs from $HG/serve-pi-service.json, or the signed files of its rank are not in
 #                $HG): svc stop, `rollback pilot cfg` (its refusal stops the script), then in the session sudo window mv -n /root/ga/reg-pilot, /root/ga/pilot and
 #                /var/tmp/tbound-op/pilot into /root/ga/archive-pilot-<prev freeze>-<UTC>/rootfs/<same path> (never deleted); needs TBA_PW; marker RESET_PENDING/RESET_DONE in $HG.
 #   4 cycle      D2 `manifest-install`, then the RG cycle of rglib.sh for NAME=pilot: svc stop, cfg-install (config = infra/guest/serve-pi-service.corpus-pilot.json
@@ -95,12 +95,12 @@ phase_carrier() {
   [ -n "$rec" ] || ! WX test -d "$HG" || [ -z "$(WX ls -A "$HG" | tr -d '\r')" ] ||
     die "$HG holds an earlier pilot run without a carrier record (the T5 run): move it aside first (in WSL: $(aside_cmd t5))"
   [ -z "$rec" ] || [ "$rec" = "$CARRIER_REC" ] || die "$HG holds the carrier round '$rec', not '$CARRIER_REC': move it aside first (in WSL: $(aside_cmd "${rec%% *}"))"
-  carrier_check "$CARRIER_DIR" "$CARRIER_MANIFEST_DIGEST" --checkout || die "the carrier checkout $CARRIER_DIR failed verification (output above): nothing was written"
-  WX mkdir -p -m 0700 "$HG"
-  hf_put pilot/CARRIER "$CARRIER_REC"
-  if hf_has pilot/carrier; then
+  if hf_has pilot/carrier; then   # a resumed round: the copy is checked against the same commit and digest; the checkout is not read again
     carrier_check "$T5_DIR" "$CARRIER_MANIFEST_DIGEST" || die "$T5_DIR (the copy of an earlier run of this round) failed verification: owner looks"
   else
+    carrier_check "$CARRIER_DIR" "$CARRIER_MANIFEST_DIGEST" --checkout || die "the carrier checkout $CARRIER_DIR failed verification (output above): nothing was written"
+    WX mkdir -p -m 0700 "$HG"
+    hf_put pilot/CARRIER "$CARRIER_REC"
     tmp=$(WX mktemp -d "$HG/carrier.partial.XXXXXX" | tr -d '\r\n')
     WX cp -R -- "$CARRIER_DIR/." "$tmp/"
     carrier_check "$tmp" "$CARRIER_MANIFEST_DIGEST" || die "the copy $tmp failed verification (the checkout changed while it was copied?)"
@@ -375,7 +375,7 @@ phase_pilot_reset() {
     [ -n "$(rg_state)" ] || { ok "no pilot state on the guest: nothing to reset (leftover reg-pilot/pilot dirs without a state are not visible without sudo; reg-measure would refuse them)"; return 0; }
     pilot_state_is_ours "$s" && { ok "the pilot state belongs to $FREEZE (cfg and signed files match $HG): resumed by the cycle"; return 0; }
     [ -n "${TBA_PW:-}" ] || die "the installed pilot state is not from $FREEZE and must be reset, which needs the session sudo window (read -rs TBA_PW; export TBA_PW)"
-    arch=/root/ga/archive-pilot-$PREV_LC-$(date -u +%Y%m%dT%H%M%SZ)
+    arch=/root/ga/archive-pilot-$([ -n "$CARRIER_ROUND" ] && echo "$FREEZE_LC" || echo "$PREV_LC")-$(date -u +%Y%m%dT%H%M%SZ)   # a carrier round archives an earlier round of $FREEZE
     hf_put pilot/RESET_PENDING "$arch"
   fi
   [[ $arch =~ ^/root/ga/archive-pilot-f[0-9]+-[0-9]{8}T[0-9]{6}Z$ ]] || die "bad archive name '$arch' in $HG/RESET_PENDING"
@@ -543,8 +543,10 @@ phase_carrier;   phase_end carrier
 phase_abandon;   phase_end abandon
 phase_keys;      phase_end keys
 phase_manifest;  phase_end manifest
+# A carrier round resets first: the previous round's service still runs and reads the guest artifacts live, so they change only after it is stopped.
+[ -z "$CARRIER_ROUND" ] || { phase_pilot_reset; phase_end pilot-reset; }
 phase_artifacts; phase_end artifacts
-phase_pilot_reset; phase_end pilot-reset
+[ -n "$CARRIER_ROUND" ] || { phase_pilot_reset; phase_end pilot-reset; }
 phase_cycle;     phase_end cycle
 phase_netsink
 note "the pilot service is left running. Close-out: sudo -n true must still fail.$([ -n "$CARRIER_ROUND" ] || echo " Next (owner): rerun tbound-run evq with the new netsink.json (report 01 step 12b).")"
