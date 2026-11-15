@@ -378,9 +378,11 @@ if [ "$AST" = NONE ]; then
   PREVFINAL="$(printf 'version=2.4.0\nstatus=final')"
   # A corpus pilot at $PREV_FREEZE (33-corpus-pilot.sh, trial reset recorded in $PREV_HF/pilot) replaces the g1 fixture with a pilot
   # case fixture, so the g1 live-root checks do not apply; the content is archived as evidence like everything else (moved, never deleted).
-  PILOT_RAN=0; WX test -f "$PREV_HF/pilot/TRIAL_RESET_OK" && PILOT_RAN=1
+  # A carrier round (33 with CARRIER_DIR, $PREV_HF/pilot/CARRIER) records no TRIAL_RESET_OK, but the runner's trial resets leave a case fixture all the same.
+  PILOT_RAN=0; PILOT_REC=TRIAL_RESET_OK; WX test -f "$PREV_HF/pilot/TRIAL_RESET_OK" && PILOT_RAN=1
+  [ "$PILOT_RAN" = 1 ] || ! WX test -f "$PREV_HF/pilot/CARRIER" || { PILOT_RAN=1; PILOT_REC=CARRIER; }
   if [ "$PILOT_RAN" = 1 ]; then
-    note "the $PREV_FREEZE corpus pilot reset the live root to a case fixture ($PREV_HF/pilot/TRIAL_RESET_OK: $(WX cat "$PREV_HF/pilot/TRIAL_RESET_OK" | tr -d '\r')); its content is archived as evidence, not judged against the g1 fixture"
+    note "the $PREV_FREEZE corpus pilot reset the live root to a case fixture ($PREV_HF/pilot/$PILOT_REC: $(WX cat "$PREV_HF/pilot/$PILOT_REC" | tr -d '\r')); its content is archived as evidence, not judged against the g1 fixture"
   elif ! pw 'test -f /var/lib/tbound/live/root/src/release.txt'; then
     die "the live root holds no src/release.txt: the $PREV_FREEZE seed-live g1 fixture is not intact (the $PREV_FREEZE G1 completed), so this is not the $PREV_FREEZE state this script was written for. Stop and read the listing above (nothing has moved)"
   elif REL=$(pw 'cat /var/lib/tbound/live/root/src/release.txt' | tr -d '\r') && [ "$REL" = "$PREVFINAL" ]; then
