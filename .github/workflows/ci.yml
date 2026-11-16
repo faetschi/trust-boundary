@@ -28,6 +28,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       runtime: ${{ steps.paths.outputs.runtime }}
+      docs_only: ${{ steps.paths.outputs.docs_only }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -48,8 +49,13 @@ jobs:
             base="$PUSH_BEFORE"; head="$GITHUB_SHA"
           fi
           echo "runtime=$(sh scripts/ci-runtime-paths.sh "$base" "$head" "$EVENT_NAME")" >> "$GITHUB_OUTPUT"
+          echo "docs_only=$(sh scripts/ci-runtime-paths.sh "$base" "$head" "$EVENT_NAME" docs-only)" >> "$GITHUB_OUTPUT"
 
   quick-checks:
+    needs: changes
+    # Fail open: a failed decision job leaves the outputs empty, so the code
+    # checks below still run.
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -90,37 +96,46 @@ jobs:
           printf 'TMPDIR=%s\n' "$TMPDIR" >> "$GITHUB_ENV"
 
       - name: Offline setup regressions (mocks only)
+        if: ${{ needs.changes.outputs.docs_only != 'true' }}
         run: |
           bash infra/repro/test_bootstrap_package_status.sh
           bash infra/repro/test_bootstrap_userns_optin.sh
 
       - name: Hyper-V Netplan injector regression
+        if: ${{ needs.changes.outputs.docs_only != 'true' }}
         run: |
           command -v netplan >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq netplan.io; }
           python3 infra/repro/test_hyperv_netplan_injection.py -v
 
       - name: Guest provisioning helper regressions
+        if: ${{ needs.changes.outputs.docs_only != 'true' }}
         run: python3 -m unittest discover -s infra/guest -p 'test_*.py' -v
 
       - name: Cgroup teardown witness regressions
+        if: ${{ needs.changes.outputs.docs_only != 'true' }}
         run: python3 -m unittest discover -s infra/repro -p 'test_cgroup_teardown_witness.py' -v
 
       - name: Official Pi runtime closure regressions
+        if: ${{ needs.changes.outputs.docs_only != 'true' }}
         run: python3 -m unittest discover -s scripts -p 'test_prepare_official_pi_runtime.py' -v
 
       - name: Go test timing summary regressions
+        if: ${{ needs.changes.outputs.docs_only != 'true' }}
         run: python3 -m unittest discover -s scripts -p 'test_ci_go_test_timing.py' -v
 
       - name: Corpus sampling (D48) regressions
+        if: ${{ needs.changes.outputs.docs_only != 'true' }}
         run: python3 -m unittest discover -s corpus/sampling -p 'test_*.py' -v
 
       - name: Offline package and publisher regressions
+        if: ${{ needs.changes.outputs.docs_only != 'true' }}
         run: |
           umask 077
           bash tests/packaging/verify-package-manager-layout.sh
           bash tests/packaging/verify-publish-release-assets.sh
 
       - name: Release workflow coverage
+        if: ${{ needs.changes.outputs.docs_only != 'true' }}
         run: bash tests/packaging/verify-release-workflow-coverage.sh 1.2.3
 
       - name: Runtime path filter regressions
@@ -133,20 +148,25 @@ jobs:
         run: python3 scripts/check-doc-links.py
 
       - name: Governed container pins
+        if: ${{ needs.changes.outputs.docs_only != 'true' }}
         run: bash tests/packaging/verify-governed-containerfile-pins.sh
 
       - name: Workflow lint
+        if: ${{ needs.changes.outputs.docs_only != 'true' }}
         run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7 -no-color -shellcheck= -pyflakes=
 
       - name: gofmt
+        if: ${{ needs.changes.outputs.docs_only != 'true' }}
         working-directory: supervisor
         run: test -z "$(gofmt -l .)"
 
       - name: Go vet
+        if: ${{ needs.changes.outputs.docs_only != 'true' }}
         working-directory: supervisor
         run: umask 077; go vet -mod=readonly ./...
 
       - name: Adapter checks
+        if: ${{ needs.changes.outputs.docs_only != 'true' }}
         working-directory: adapter
         run: |
           umask 077

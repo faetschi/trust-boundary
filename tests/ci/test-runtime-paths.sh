@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Regression test for scripts/ci-runtime-paths.sh. Builds throwaway repos so the
-# path decision, including renames, is exercised without GitHub Actions.
+# Regression test for scripts/ci-runtime-paths.sh. Builds throwaway repos so both
+# decisions, runtime reachability and docs-only, are exercised, including
+# renames, without GitHub Actions.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -21,8 +22,8 @@ git -C "$repo" commit -qm initial
 first="$(git -C "$repo" rev-parse HEAD)"
 
 check() {
-  name=$1 want=$2 base=$3 head=$4 mode=${5:-pr}
-  got="$(cd "$repo" && sh "$FILTER" "$base" "$head" "$mode")"
+  name=$1 want=$2 base=$3 head=$4 mode=${5:-pr} field=${6:-runtime}
+  got="$(cd "$repo" && sh "$FILTER" "$base" "$head" "$mode" "$field")"
   if [ "$got" != "$want" ]; then
     echo "FAIL: $name: got $got, want $want" >&2
     exit 1
@@ -57,5 +58,18 @@ check "force reset to an ancestor runs runtime" true "$renamed" "$first" push
 
 check "missing range runs runtime" true "" ""
 check "zero before runs runtime" true "0000000000000000000000000000000000000000" "$renamed"
+
+check "docs only is docs-only" true "$first" "$docs" pr docs-only
+check "push of a docs-only change is docs-only" true "$first" "$docs" push docs-only
+check "runtime change is not docs-only" false "$prev" "$renamed" pr docs-only
+check "mixed docs and code is not docs-only" false "$docs" "$prev" pr docs-only
+check "missing range is not docs-only" false "" "" pr docs-only
+check "zero before is not docs-only" false "0000000000000000000000000000000000000000" "$renamed" pr docs-only
+
+if (cd "$repo" && sh "$FILTER" "$first" "$docs" pr unknown-field >/dev/null 2>&1); then
+  echo "FAIL: unknown field was accepted" >&2
+  exit 1
+fi
+echo "PASS: unknown field is refused"
 
 echo "ci-runtime-paths: all checks passed"
