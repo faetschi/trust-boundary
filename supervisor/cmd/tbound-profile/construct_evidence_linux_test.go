@@ -24,6 +24,7 @@ import (
 	"tbound/supervisor/internal/guestevidence"
 	"tbound/supervisor/internal/netoracle"
 	"tbound/supervisor/internal/piruntime"
+	"tbound/supervisor/internal/procoracle"
 	"tbound/supervisor/internal/runner"
 	"tbound/supervisor/internal/taskaccept"
 	"tbound/supervisor/internal/trialfix"
@@ -143,6 +144,10 @@ type worldOpts struct {
 	// not manifest and lostParts predicates whose observer was lost.
 	mutate              map[string]func(*evalcorpus.Case)
 	negParts, lostParts []string
+	// procCapture edits the retained inputs of every PROC interval before the journaled reference is computed from them.
+	procCapture func(*procoracle.Inputs)
+	// procOutcome edits the PROC findings and references journaled for that interval.
+	procOutcome func(*runner.Outcome)
 }
 
 // constructWorld is a retained capture set: the producers' real output for the pilot manifest, an evidence
@@ -208,7 +213,8 @@ func (w *constructWorld) writeConfig(edit func(map[string]any)) {
 		"pins": map[string]string{"profile_hash": b.profileDigest, "containment_profile_digest": b.templateDigest, "frozen_source_digest": b.pins.FrozenSourceDigest,
 			"base_template_digest": b.pins.BaseTemplateDigest, "admin_pubkey_digest": b.pins.AdminPubkeyDigest,
 			"runtime_bundle_digest": b.pins.RuntimeBundleDigest, "runner_digest": b.pins.RunnerDigest},
-		"admission_policy": map[string]string{"policy_digest": policy, "metadata_policy_digest": geDigest("metadata policy")}}
+		"admission_policy": map[string]string{"policy_digest": policy, "metadata_policy_digest": geDigest("metadata policy")},
+		"proc":             map[string]any{"cell_uid": 1000, "cell_gid": 1000, "teardown_grace_seconds": 2, "authorized_sockets": []string{}}}
 	if edit != nil {
 		edit(doc)
 	}
@@ -316,6 +322,8 @@ func (w *constructWorld) fillP(s runner.Step, o *runner.Outcome) {
 			}
 			collect.EndInterval(interval)
 			finding, ref = ev.Findings[part], ev.Refs[part]
+		} else if strings.HasPrefix(part, "EFF-PROC-") {
+			finding, ref = w.fillProc(s, o, part, neg)
 		} else {
 			in := constructWSInput(string(s.ThreatClass), part, neg)
 			rep := wsoracle.EvaluateE04(in)
@@ -434,7 +442,7 @@ func (w *constructWorld) writeMap() {
 	if err := os.WriteFile(filepath.Join(w.ev, "netsink.json"), sink, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	w.mapping = constructMap{Schema: constructMapSchema, Journal: "run/journal.jsonl", NetDir: "run/net-evidence", WSDir: "run/ws-evidence", NetSink: "netsink.json",
+	w.mapping = constructMap{Schema: constructMapSchema, Journal: "run/journal.jsonl", NetDir: "run/net-evidence", WSDir: "run/ws-evidence", ProcDir: "run/proc-evidence", NetSink: "netsink.json",
 		SignedRun: &constructSignedRun{Template: rel(f.template), HostProfile: rel(f.hostProfile), HostProfileSignature: rel(f.hostProfileSig), HostProfileKey: rel(f.hostProfileKey),
 			Registration: rel(f.registration), RegistrationSignature: rel(f.registrationSig)},
 		Cases: map[string]constructCaseMap{}}
@@ -464,7 +472,7 @@ func (w *constructWorld) saveMap(ev string, m constructMap) {
 func (w *constructWorld) guestChecks(id string) []string {
 	c := w.cases[id]
 	switch {
-	case c.Adversarial != nil && c.Adversarial.ForbiddenEffects[0] == runner.OracleNet01:
+	case c.Adversarial != nil && slices.Contains([]string{runner.OracleNet01, runner.OracleProc01, runner.OracleProc03}, c.Adversarial.ForbiddenEffects[0]):
 		return []string{"calibration-p", "effect-satisfiable"}
 	case c.Adversarial != nil:
 		return []string{"calibration-p"}
