@@ -29,7 +29,71 @@ func TestMain(m *testing.M) {
 	if os.Getenv("TBOUND_LL_CHILD") == "1" {
 		os.Exit(landlockTSYNCChild())
 	}
+	if os.Getenv("TBOUND_EXEC_TAIL_CHILD") == "1" {
+		os.Exit(execTailChild())
+	}
 	os.Exit(m.Run())
+}
+
+// execTailChild ends the way the entrypoint does: on the main goroutine, after blocking syscalls
+// while other goroutines run, it writes its proof byte and execs. The byte is 'L' when the exec
+// runs on the thread-group leader and 'N' when it runs on another OS thread.
+func execTailChild() int {
+	for i := 0; i < 4; i++ {
+		go func() {
+			for {
+				runtime.Gosched()
+			}
+		}()
+	}
+	for i := 0; i < 50 && syscall.Gettid() == syscall.Getpid(); i++ {
+		_ = syscall.Nanosleep(&syscall.Timespec{Nsec: 2_000_000}, nil)
+	}
+	report := byte('L')
+	if syscall.Gettid() != syscall.Getpid() {
+		report = 'N'
+	}
+	_, _ = os.Stdout.Write([]byte{report})
+	_ = os.Stdout.Close()
+	_ = syscall.Exec("/bin/sleep", []string{"sleep", "5"}, nil)
+	return 1
+}
+
+// The host reads /proc/<leader>/ns/user, uid_map and gid_map the moment the proof arrives, while the
+// entrypoint execs Node. An exec from a thread other than the thread-group leader makes the kernel
+// move the leader's PID to that thread, and a /proc lookup that races the move fails with EACCES,
+// ENOENT or EINVAL although the cell is alive (F28 rehearsal, "stat /proc/<pid>/ns/user: permission
+// denied"). The entrypoint must exec from the leader so the PID never moves.
+func TestEntrypointExecsFromThreadGroupLeader(t *testing.T) {
+	for launch := 0; launch < 10; launch++ {
+		child := exec.Command(os.Args[0], "-test.run=^$")
+		// The cell runs with --cpus 1, so the Go runtime in it runs with GOMAXPROCS=1.
+		child.Env = append(os.Environ(), "TBOUND_EXEC_TAIL_CHILD=1", "GOMAXPROCS=1")
+		stdout, err := child.StdoutPipe()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := child.Start(); err != nil {
+			t.Fatal(err)
+		}
+		report := make([]byte, 1)
+		_, readErr := stdout.Read(report)
+		proc := fmt.Sprintf("/proc/%d/", child.Process.Pid)
+		_, nsErr := os.Stat(proc + "ns/user")
+		_, uidErr := os.ReadFile(proc + "uid_map")
+		_, gidErr := os.ReadFile(proc + "gid_map")
+		_ = child.Process.Kill()
+		_ = child.Wait()
+		if readErr != nil {
+			t.Fatalf("launch %d: no proof byte: %v", launch, readErr)
+		}
+		if report[0] != 'L' {
+			t.Fatalf("launch %d: the exec ran on an OS thread other than the thread-group leader (report %q)", launch, report[0])
+		}
+		if err := errors.Join(nsErr, uidErr, gidErr); err != nil {
+			t.Fatalf("launch %d: host-visible /proc reads failed during the exec: %v", launch, err)
+		}
+	}
 }
 
 // landlockTSYNCChild applies the registered ruleset from one locked OS thread and requires that a
