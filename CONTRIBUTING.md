@@ -57,8 +57,3 @@ A documentation pull request must not change code or pinned files.
 
 TBound is released under the MIT licence in [LICENSE](LICENSE). By contributing you
 agree that your change is released under the same licence.
-
-## Security problems
-
-Do not open a public issue for a security problem. Report it privately to the
-maintainer first.
