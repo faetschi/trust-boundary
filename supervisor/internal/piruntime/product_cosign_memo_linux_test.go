@@ -48,6 +48,19 @@ func init() { productMemoMinAge = 100 * time.Millisecond }
 // waitUntilSettled waits until files touched now are older than productMemoMinAge, so a verification may memoize them.
 func waitUntilSettled() { time.Sleep(productMemoMinAge + 50*time.Millisecond) }
 
+// stallPastSettlingOnFrozenClock stops the memo clock at name's ctime, so name is fresh at every snapshot however slow the
+// test runs, and makes each snapshot stall past productMemoMinAge on that clock.
+func stallPastSettlingOnFrozenClock(t *testing.T, name string) {
+	t.Helper()
+	_, clock, ok := productFileIdentity(name)
+	if !ok {
+		t.Fatalf("no identity for %s", name)
+	}
+	productMemoNow = func() time.Time { return clock }
+	productAfterSnapshot = func() { clock = clock.Add(productMemoMinAge + 50*time.Millisecond) }
+	t.Cleanup(func() { productMemoNow, productAfterSnapshot = time.Now, nil })
+}
+
 // rewriteKeepingMtime changes only ctime (and the bytes, if mutate changes them) while keeping inode, size and mtime.
 func rewriteKeepingMtime(t *testing.T, name string, mutate func([]byte)) {
 	t.Helper()
@@ -285,8 +298,7 @@ func TestProductProbeCosignStalledScanIsNotMemoized(t *testing.T) {
 	if err := os.Chtimes(config.CosignPublicKeyPath, now, now); err != nil {
 		t.Fatal(err)
 	}
-	productAfterSnapshot = waitUntilSettled
-	defer func() { productAfterSnapshot = nil }()
+	stallPastSettlingOnFrozenClock(t, config.CosignPublicKeyPath)
 	for i := 1; i <= 2; i++ {
 		if err := launcher.verifyOfflineSignatureForProbe(context.Background(), config, cosign, false); err != nil {
 			t.Fatal(err)

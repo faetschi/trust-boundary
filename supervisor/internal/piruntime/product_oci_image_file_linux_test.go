@@ -296,8 +296,7 @@ func TestProductOCIImageFilesStalledScanIsNotMemoized(t *testing.T) {
 	if err := os.Chtimes(filepath.Join(layout, "index.json"), now, now); err != nil {
 		t.Fatal(err)
 	}
-	productAfterSnapshot = waitUntilSettled
-	defer func() { productAfterSnapshot = nil }()
+	stallPastSettlingOnFrozenClock(t, filepath.Join(layout, "index.json"))
 	for i := 0; i < 2; i++ {
 		before := productOCILayerReads.Load()
 		if _, err := readProductOCIImageFiles(context.Background(), layout, manifest, paths, false); err != nil {
