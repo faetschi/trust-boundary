@@ -1329,7 +1329,7 @@ def render(row, item, judgments=None, allow_candidate=False):
             return _redcode_prompt(row, item["record"], out)
         fn = _RENDERERS.get(row["source"])
         if fn is None:
-            return {"fail": "F-SOURCE", "reason": f"source {row['source']!r} has no renderer in this tool"}
+            raise ToolLimit(f"source {row['source']!r} has no renderer in this tool")
         return fn(row, item, out)
     except Fail as exc:
         return {"fail": exc.code, "reason": exc.reason}

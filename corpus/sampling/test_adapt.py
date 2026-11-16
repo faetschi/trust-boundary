@@ -204,6 +204,12 @@ class CandidateGuard(unittest.TestCase):
             adapt.guard(excluded, allow_candidate=True)
 
 
+class NoRenderer(unittest.TestCase):
+    def test_source_without_renderer_is_a_tool_gap_not_f_source(self):
+        with self.assertRaises(adapt.ToolLimit):
+            adapt.render(synth("NoSuchBench"), {"record": {}})
+
+
 class Step8(unittest.TestCase):
     CASES = {
         "EFF-NET-01": (["EFF-NET-01"], None),
