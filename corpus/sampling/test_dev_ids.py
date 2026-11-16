@@ -34,7 +34,7 @@ class Fixture(unittest.TestCase):
         self.dir = tmp.name
         self.ledger = self.write("ledger.jsonl", "".join(
             json.dumps({"case_id": c, "stratum": "TM-A" if c[0] == "a" else "TM-B"}) + "\n"
-            for c in ("a1", "a2", "a3", "b1", "b2", "b3")))
+            for c in ("a1", "a2", "a3", "a4", "b1", "b2", "b3")))
         self.pilot = self.write("pilot.json", json.dumps({
             "schema": sel.PILOT_SCHEMA, "memberships": {"pilot": {"TM-A": ["a1"], "TM-B": ["b1"]}},
             "examined": [{"case_id": "a1"}, {"case_id": "a2"}, {"case_id": "b1"}]}))
@@ -44,6 +44,7 @@ class Fixture(unittest.TestCase):
         self.write("carriers/c2/manifest.draft.json", json.dumps({"cases": [{"case_id": "b2"}, {"case_id": "a3"}]}))
         self.t5 = self.write("t5.json", json.dumps({"cases": [{"case_id": "PILOT-ADV-A-01"}, {"case_id": "b3"}]}))
         self.additions = self.write("additions.json", json.dumps({"rows": [{"case_id": "b3"}]}))
+        self.render_log = self.write("render-log.jsonl", '{"case_id":"a2"}\n{"case_id":"a2"}\n')
         self.out = os.path.join(self.dir, "out.json")
 
     def write(self, name, text):
@@ -54,7 +55,7 @@ class Fixture(unittest.TestCase):
 
     def run_build(self, **override):
         args = {"pilot-output": self.pilot, "carriers": os.path.join(self.dir, "carriers"), "t5": self.t5,
-                "additions": self.additions, "ledger": self.ledger, "out": self.out, **override}
+                "additions": self.additions, "render-log": self.render_log, "ledger": self.ledger, "out": self.out, **override}
         argv = ["build"] + [x for k, v in args.items() for x in (f"--{k}", v)]
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
@@ -70,6 +71,14 @@ class Join(Fixture):
     def test_the_output_is_the_sorted_union_of_every_source(self):
         self.run_build()
         self.assertEqual(self.ids(), ["PILOT-ADV-A-01", "a1", "a2", "a3", "b1", "b2", "b3"])
+
+    def test_a_rendered_but_undecided_candidate_joins(self):
+        self.run_build(**{"render-log": self.write("log2.jsonl", '{"case_id":"a4"}\n')})
+        self.assertIn("a4", self.ids())
+
+    def test_a_render_log_id_that_is_not_a_ledger_row_is_refused(self):
+        with self.assertRaises(SystemExit):
+            self.run_build(**{"render-log": self.write("log3.jsonl", '{"case_id":"zz9"}\n')})
 
     def test_a_carrier_case_that_is_not_a_ledger_row_is_left_out(self):
         self.run_build()
@@ -145,7 +154,8 @@ class RealInputs(Fixture):
         self.assertTrue(in_ledger)
         self.assertEqual({rows[c] for c in in_ledger}, {"development"})  # no candidate row is involved
         pilot = self.write("p.json", json.dumps({"schema": sel.PILOT_SCHEMA, "memberships": {"pilot": {}}, "examined": []}))
-        printed = self.run_build(carriers=CARRIERS, ledger=LEDGER, additions=ADDITIONS, t5=T5, **{"pilot-output": pilot})
+        printed = self.run_build(carriers=CARRIERS, ledger=LEDGER, additions=ADDITIONS, t5=T5,
+                                 **{"pilot-output": pilot, "render-log": self.write("empty-log.jsonl", "")})
         ids = set(self.ids())
         with open(ADDITIONS, encoding="utf-8") as fh:
             added = {r["case_id"] for r in json.load(fh)["rows"]}

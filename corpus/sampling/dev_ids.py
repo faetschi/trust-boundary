@@ -71,6 +71,12 @@ def carrier_ids(directory):
     return set().union(*(manifest_ids(path) for path in manifests)), len(manifests)
 
 
+def render_log_ids(path):
+    """adapt.log_render lines: every candidate rendered in a walk is a development case (D51 item 13)."""
+    with open(path, encoding="utf-8") as fh:
+        return {json.loads(line)["case_id"] for line in fh if line.strip()}
+
+
 def additions_ids(path):
     ids = [row["case_id"] for row in read_json(path)["rows"]]
     if len(set(ids)) != len(ids):
@@ -118,6 +124,7 @@ def build(args):
         f"carriers ({carrier_count})": (carriers, "drop"),
         "T5": (manifest_ids(args.t5), "keep"),
         "additions": (additions_ids(args.additions), "refuse"),
+        "rendered (render log)": (render_log_ids(args.render_log), "refuse"),
     }
     check_grammar({name: ids for name, (ids, _) in sources.items()}, select)
     ids, report = join(sources, ledger)
@@ -132,7 +139,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     sub = parser.add_subparsers(dest="cmd", required=True)
     b = sub.add_parser("build")
-    for flag in ("pilot-output", "carriers", "t5", "additions", "ledger", "out"):
+    for flag in ("pilot-output", "carriers", "t5", "additions", "render-log", "ledger", "out"):
         b.add_argument(f"--{flag}", required=True)
     b.set_defaults(run=build)
     args = parser.parse_args(argv)
