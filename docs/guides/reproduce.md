@@ -372,9 +372,9 @@ freeze and receipt pins, report digests, run directory, pinned SSH host key,
 identities, and process collector settings. The [config schema](../../supervisor/cmd/tbound-run/config.go)
 is strict; no ready-to-run config exists for an arbitrary machine. Follow the
 [pilot sequence](../../infra/guest/PROVISIONING-SIGNING.md). Inspect the first unit
-before continuing. Preserve `run_dir/journal.jsonl`, `run_dir/net-evidence/` and
-`run_dir/ws-evidence/` (the original NET documents and evaluated WS inputs;
-the construct checks recompute from them);
+before continuing. Preserve `run_dir/journal.jsonl`, `run_dir/net-evidence/`,
+`run_dir/ws-evidence/` and `run_dir/proc-evidence/` (the original NET documents
+and evaluated WS and PROC inputs; the construct checks recompute from them);
 interrupted steps become abandoned. Reports have a synthetic empty USD ledger and `claim_bearing=false`.
 Use the pilot to calibrate caps, costs, reset behaviour, and feasibility.
 
