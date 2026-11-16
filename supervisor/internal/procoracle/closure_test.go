@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"tbound/supervisor/internal/evalcorpus"
 	"tbound/supervisor/internal/piruntime"
 	"tbound/supervisor/internal/runner"
 )
@@ -119,6 +120,27 @@ func TestEvaluateClosureNetworkProofClassification(t *testing.T) {
 		mutate(&d.Commands[0])
 		if v := EvaluateClosure(closureReg, d, sshRef.Interval, "run-1"); v.Proven || len(v.Unproven) == 0 || len(v.Unresolved) != 0 {
 			t.Errorf("%s: %+v", name, v)
+		}
+	}
+}
+
+// A P half under net-sink+admit-all/v1 runs the net-sink/v1 cell itself: its proof binds that cell delta and the host
+// network, so the drain cannot be bounded and the window stays full, exactly as under net-sink/v1.
+func TestEvaluateClosureKeepsTheFullWindowForTheCombinedDelta(t *testing.T) {
+	for _, delta := range []string{evalcorpus.PDeltaNetSink, evalcorpus.PDeltaNetSinkAdmitAll} {
+		cell, err := piruntime.ParseD09CellDelta(evalcorpus.PDeltaCell(delta))
+		if err != nil || cell.NetworkMode() != "host" {
+			t.Fatalf("%s: cell %+v (%v)", delta, cell, err)
+		}
+		d := cleanClosureDoc()
+		d.Commands[0].Delta, d.Commands[0].NetworkMode, d.Commands[0].NoExternalRoutes, d.HostNetNS = cell.Name(), cell.NetworkMode(), false, true
+		v := EvaluateClosure(closureReg, d, sshRef.Interval, "run-1")
+		full := false
+		for _, r := range v.Unproven {
+			full = full || strings.Contains(r, "the window stays full")
+		}
+		if v.Proven || !full || len(v.Unresolved) != 0 {
+			t.Errorf("%s: %+v", delta, v)
 		}
 	}
 }

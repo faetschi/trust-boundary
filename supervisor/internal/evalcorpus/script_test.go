@@ -221,7 +221,7 @@ func TestValidateScriptAndDeltaRules(t *testing.T) {
 	adv.CalibrationPayloadDigest = digest
 	m.Cases[0].Adversarial = &adv
 	wantClean(t, validate(m, q))
-	for _, delta := range []string{PDeltaNetSink, PDeltaNoReap} {
+	for _, delta := range []string{PDeltaNetSink, PDeltaNoReap, PDeltaNetSinkAdmitAll} {
 		trial.PDelta, trial.PDeltaJustification = delta, "registered"
 		m.Cases[0].Trial = &trial
 		adv.CalibrationPayloadDigest, _ = CalibrationPayloadDigest(trial.Script, delta)
@@ -319,5 +319,51 @@ func TestScriptDigestIsTheCanonicalTurnList(t *testing.T) {
 	}
 	if _, err := ScriptDigest([]ScriptTurn{{Tool: "delete", Arguments: raw(`{}`)}}); err == nil {
 		t.Fatal("an inadmissible script has no digest")
+	}
+}
+
+// net-sink+admit-all/v1 is one registered name, both halves at once. Near misses (other orders, other
+// separators, a list, a case or version change) are not registered, and the name commits its own calibration
+// digest without changing the digests of the single deltas.
+func TestCombinedPDeltaIsExactlyBothHalves(t *testing.T) {
+	if !ValidPDelta("net-sink+admit-all/v1") || PDeltaNetSinkAdmitAll != "net-sink+admit-all/v1" {
+		t.Fatal("net-sink+admit-all/v1 is not registered")
+	}
+	for _, near := range []string{"admit-all+net-sink/v1", "net-sink/v1+admit-all/v1", "net-sink+admit-all", "net-sink+admit-all/v2",
+		"Net-Sink+Admit-All/v1", " net-sink+admit-all/v1", "net-sink+admit-all/v1 ", "net-sink,admit-all/v1", "net-sink admit-all/v1",
+		"net-sink+no-reap/v1", "no-reap+admit-all/v1", "net-sink+admit-all+no-reap/v1", "net-sink+admit-all/v1" + string(rune(0)), ""} {
+		if ValidPDelta(near) {
+			t.Errorf("near miss %q is registered", near)
+		}
+	}
+	for _, tc := range []struct {
+		delta     string
+		admitsAll bool
+		cell      string
+	}{
+		{PDeltaNone, false, ""}, {"", false, ""}, {PDeltaAdmitAll, true, ""}, {PDeltaNetSink, false, PDeltaNetSink},
+		{PDeltaNoReap, false, PDeltaNoReap}, {PDeltaNetSinkAdmitAll, true, PDeltaNetSink}, {"admit-all+net-sink/v1", false, ""},
+	} {
+		if PDeltaAdmitsAll(tc.delta) != tc.admitsAll || PDeltaCell(tc.delta) != tc.cell {
+			t.Errorf("%q: promote-all %t cell %q, want %t %q", tc.delta, PDeltaAdmitsAll(tc.delta), PDeltaCell(tc.delta), tc.admitsAll, tc.cell)
+		}
+	}
+	seen := map[string]string{}
+	for _, delta := range []string{PDeltaNone, PDeltaAdmitAll, PDeltaNetSink, PDeltaNoReap, PDeltaNetSinkAdmitAll} {
+		digest, err := CalibrationPayloadDigest(scriptFixture(), delta)
+		if err != nil {
+			t.Fatalf("%s: %v", delta, err)
+		}
+		if other, ok := seen[digest]; ok {
+			t.Fatalf("%s and %s share a calibration digest", delta, other)
+		}
+		seen[digest] = delta
+	}
+	// The canonical form names the delta verbatim, so the single deltas keep their digests.
+	canonical := `{"p_delta":"net-sink+admit-all/v1","pivots":{},"schema":"tbound-calibration-payload/v2","script":[` +
+		`{"arguments":{"content":"x","path":"docs/a.txt"},"tool":"write"},{"arguments":{"command":"rm -f secret.txt"},"tool":"bash"},{"text":"done"}]}`
+	sum := sha256.Sum256([]byte(canonical))
+	if got, _ := CalibrationPayloadDigest(scriptFixture(), PDeltaNetSinkAdmitAll); got != "sha256:"+hex.EncodeToString(sum[:]) {
+		t.Errorf("combined digest %s is not the documented canonical form", got)
 	}
 }

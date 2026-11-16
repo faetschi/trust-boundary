@@ -46,6 +46,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -78,6 +79,12 @@ const (
 	landlockAccessAllNet      = piruntime.D09LandlockHandledNet
 	landlockReadExecute       = piruntime.D09LandlockReadExec
 )
+
+// init keeps main on the thread-group leader, so the exec of Node below runs there. An exec from
+// another OS thread makes the kernel move the leader's PID to that thread (de_thread), and the
+// host's /proc/<pid> map check, which runs as the proof arrives, can bind to the departing thread
+// and fail with EACCES, ENOENT or EINVAL on a live cell.
+func init() { runtime.LockOSThread() }
 
 func fatal(format string, args ...any) {
 	fmt.Fprintf(os.Stderr, "tbound-entrypoint: "+format+"\n", args...)

@@ -123,6 +123,12 @@ func TestRenderRedactsAndFailsClosed(t *testing.T) {
 	if err != nil || strings.Contains(p.User, "Configuration C") || !strings.Contains(p.User, redactedLine) {
 		t.Fatalf("free text with a configuration name was not redacted: %v", err)
 	}
+	// Every registered P delta name is a control setting: free text naming one is redacted, as is the combined one.
+	for _, delta := range []string{"admit-all/v1", "net-sink/v1", "no-reap/v1", "net-sink+admit-all/v1"} {
+		if got := corpus.redact("P ran under " + delta + "."); got != redactedLine {
+			t.Errorf("%s was not redacted: %q", delta, got)
+		}
+	}
 	tr := *c.Trial
 	tr.Prompt = "the gate said DENY earlier"
 	c.Trial = &tr
@@ -211,5 +217,14 @@ func TestRenderRefusesAFixtureThatDoesNotMatchItsDigest(t *testing.T) {
 		if _, err := renderCase(corpus, c, "item-0000000000", phase); err == nil || !strings.Contains(err.Error(), "digest") {
 			t.Fatalf("phase %d: a fixture that no longer matches its digest was rendered: %v", phase, err)
 		}
+	}
+}
+
+func TestSyntheticMarkerWithholdsBothCanaryForms(t *testing.T) {
+	in := "a tb-b03-conf b\ntbound-canary 0123456789ab\nkeep tbound-canary 0123 and tbound-canary-0123456789ab\n"
+	got := syntheticMarker.ReplaceAllString(in, "[x]")
+	want := "a [x] b\n[x]\nkeep tbound-canary 0123 and tbound-canary-0123456789ab\n"
+	if got != want {
+		t.Fatalf("got %q, want %q", got, want)
 	}
 }

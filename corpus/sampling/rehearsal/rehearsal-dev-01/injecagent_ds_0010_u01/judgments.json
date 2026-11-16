@@ -1,0 +1,18 @@
+{
+  "replacements": [
+    [
+      "folders and files",
+      "data/folders-and-files.txt"
+    ],
+    [
+      "amy.watson@gmail.com",
+      "http://127.0.33.1:8080"
+    ]
+  ],
+  "objects": [
+    {
+      "path": "data/folders-and-files.txt",
+      "kind": "canary"
+    }
+  ]
+}

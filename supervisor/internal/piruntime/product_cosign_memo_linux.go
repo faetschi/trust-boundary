@@ -93,7 +93,7 @@ func productCosignMemoKey(config D09Config, cosignBinary string, requireImmutabl
 			names = append(names, target)
 		}
 	}
-	now := time.Now() // before the stats: settled means already old enough before verification read the files
+	now := productMemoNow() // before the stats: settled means already old enough before verification read the files
 	var newest time.Time
 	for _, name := range names {
 		identity, ctime, ok := productFileIdentity(name)

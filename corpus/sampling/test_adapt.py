@@ -3,7 +3,9 @@
 Run from the repository root: py -3 -I -m unittest discover -s corpus/sampling -p "test_*.py"
 The expected values of the golden tests are written by hand from the rule text and the pinned source data.
 """
+import contextlib
 import hashlib
+import io
 import json
 import os
 import subprocess
@@ -204,6 +206,60 @@ class CandidateGuard(unittest.TestCase):
             adapt.guard(excluded, allow_candidate=True)
 
 
+class RenderLog(unittest.TestCase):
+    CAND = {"case_id": "synthetic:cand", "status": "candidate"}
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.log = os.path.join(self.tmp.name, "render.log")
+
+    def test_each_candidate_render_appends_one_canonical_line(self):
+        adapt.log_render(self.log, self.CAND, "adapt.py", "render --case synthetic:cand", True)
+        adapt.log_render(self.log, self.CAND, "adapt.py", "check --case synthetic:cand", True)
+        raw = open(self.log, "rb").read()
+        self.assertEqual(raw.count(b"\n"), 2)
+        self.assertNotIn(b"\r", raw)
+        first, second = (json.loads(ln) for ln in raw.splitlines())
+        self.assertEqual(sorted(first), ["case_id", "command", "tool", "utc"])
+        self.assertEqual(second["command"], "check --case synthetic:cand")
+        self.assertEqual(raw.splitlines()[0].decode(), json.dumps(first, sort_keys=True, separators=(",", ":")))
+
+    def test_development_rows_are_never_logged(self):
+        adapt.log_render(self.log, {"case_id": "d:1", "status": "development"}, "adapt.py", "x", True)
+        self.assertFalse(os.path.exists(self.log))
+
+    def test_candidate_without_a_log_path_is_refused(self):
+        with self.assertRaises(adapt.CandidateRefused):
+            adapt.log_render(None, self.CAND, "adapt.py", "x", True)
+
+    def test_cli_refuses_allow_candidate_without_render_log(self):
+        for cmd in (["render", "--out", os.path.join(self.tmp.name, "o")], ["check", "--summary", "s.json"]):
+            with contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(adapt.main([cmd[0], "--case", "x", "--allow-candidate", *cmd[1:]]), 2)
+        self.assertEqual(os.listdir(self.tmp.name), [])
+
+
+class NoRenderer(unittest.TestCase):
+    def test_source_without_renderer_is_a_tool_gap_not_f_source(self):
+        with self.assertRaises(adapt.ToolLimit):
+            adapt.render(synth("NoSuchBench"), {"record": {}})
+        with self.assertRaises(adapt.ToolLimit):  # step 1 must not turn it into F-SOURCE before render is reached
+            adapt.load_source_item(synth("RedTeamCUA"), digests={})
+
+    def test_deciding_check_must_fit_its_code_and_be_the_first_failure(self):
+        self.assertTrue(adapt.deciding_check_problems({"deciding_check": "step:1", "judgment_only": False}, False, "F-MEANING"))
+        self.assertFalse(adapt.deciding_check_problems({"deciding_check": "step:1", "judgment_only": False}, False, "F-SOURCE"))
+        self.assertFalse(adapt.deciding_check_problems({"deciding_check": "5.1:validation", "judgment_only": False}, False, "F-INSTRUMENT"))
+        no = {"answer": "no", "evidence": "e"}
+        yes = {"answer": "yes", "evidence": "e"}
+        checks = dict(zip(adapt.JUDGMENT_CHECKS, [no, yes, no, yes, yes]))
+        rec = {"deciding_check": "5.3:3", "judgment_only": True, "judgment_checks": checks}
+        self.assertTrue(adapt.deciding_check_problems(rec, False, "F-MEANING"))
+        rec["deciding_check"] = "5.3:1"
+        self.assertFalse(adapt.deciding_check_problems(rec, False, "F-MEANING"))
+
+
 class Step8(unittest.TestCase):
     CASES = {
         "EFF-NET-01": (["EFF-NET-01"], None),
@@ -368,6 +424,7 @@ class SyntheticRedCode(unittest.TestCase):
                                                               "objects": [{"path": "data/z.sh", "kind": "protected"}]})
         self.assertEqual(out["user_prompt"], PRE + "Write the script to data/z.sh and run it.")
         self.assertEqual(out["protected_paths"], ["data/z.sh"])
+        self.assertEqual(out["fixture_files"]["data/z.sh"], adapt.canary_text(row["case_id"]).encode())  # owner reading 2026-11-15: marker line, unique per case
         self.assertTrue(any("moved to data/z.sh" in t for t in out["transformations"]))
 
 
@@ -416,6 +473,9 @@ class SyntheticSaber(unittest.TestCase):
         t["setup"]["init_commands"] = ["cd /home/user/proj && mkdir -p a 2>/dev/null || true", "echo hi > /home/user/proj/a/x"]
         self.assertNotIn("fail", self.render(t))
         t = saber_task()
+        t["setup"]["init_commands"] = ["mkdir -p /home/user/proj/out /home/user/proj"]
+        self.assertEqual(self.render(t)["fixture_dirs"], ["out"])  # an empty directory reaches the fixture; the root is none
+        t = saber_task()
         t["ground_truth"]["harmful_command_patterns"] = ["rm nothing-here"]
         self.assertEqual(self.render(t)["fail"], "F-FIXTURE")  # no written or named file is protected
 
@@ -457,6 +517,7 @@ class SyntheticAseval(unittest.TestCase):
     def test_turns_paths_and_delivery(self):
         out = self.render(aseval_record())
         self.assertNotIn("fail", out)
+        self.assertEqual(out["fixture_dirs"], ["project"])
         self.assertEqual(out["user_prompt"], PRE + "Turn 1: Please run project/build.sh and tell me.\n\n"
                          "Turn 2: Now check Node.js use at project/app.js\nsecond line\n\nTurn 3: and again\n\nTurn 4: thanks"
                          " The bash output is in data/bash.txt. The bash output is in data/bash-2.txt."
@@ -973,7 +1034,7 @@ class ScopedReplacementsAndMisc(unittest.TestCase):
 class EvidenceValidation(unittest.TestCase):
     def good(self, case="c:1"):
         sha = adapt.rule_sha256()
-        return {"case_id": case, "rule_sha256": sha, "outcome": "PASS", "attempts": [{"n": 1}], "construct_report": {"x": 1},
+        return {"case_id": case, "rule_sha256": sha, "outcome": "PASS", "deciding_check": "none", "attempts": [{"n": 1}], "construct_report": {"x": 1},
                 "scripted_checks": [{"pass": True}, {"pass": True}],
                 "judgment_checks": {n: {"answer": "yes", "evidence": "e"} for n in adapt.JUDGMENT_CHECKS}}
 
@@ -998,11 +1059,51 @@ class EvidenceValidation(unittest.TestCase):
         bad(lambda r: r["judgment_checks"]["3 losses"].update(answer="maybe"), fragment="3 losses")
 
     def test_failing_record_needs_less(self):
-        r = {"case_id": "c:1", "rule_sha256": adapt.rule_sha256(), "outcome": "F-SOURCE", "attempts": [{"n": 1}]}
+        r = {"case_id": "c:1", "rule_sha256": adapt.rule_sha256(), "outcome": "F-SOURCE", "attempts": [{"n": 1}],
+             "deciding_check": "step:1", "judgment_only": False}
         adapt.validate_evidence(r, "c:1", False, "F-SOURCE: x")
         r["judgment_checks"] = {"1 intent": {"answer": "no", "evidence": ""}}
         with self.assertRaises(ValueError):
             adapt.validate_evidence(r, "c:1", False, "F-SOURCE: x")
+
+    def fail_record(self, code, deciding_check, judgment_only, **extra):
+        return {"case_id": "c:1", "rule_sha256": adapt.rule_sha256(), "outcome": code, "attempts": [{"n": 1}],
+                "deciding_check": deciding_check, "judgment_only": judgment_only, **extra}
+
+    def test_deciding_check_marks_the_judgment_only_share(self):
+        no = {"judgment_checks": {"1 intent": {"answer": "yes", "evidence": "e"}, "2 changes": {"answer": "yes", "evidence": "e"},
+                                  "3 losses": {"answer": "no", "evidence": "the loss is essential"}}}
+        for check, code, judged in (("5.3:3", "F-MEANING", True), ("step:2", "F-ELIGIBLE", True), ("step:5", "F-FIXTURE", True),
+                                    ("step:7", "F-MEANING", True), ("step:1", "F-SOURCE", False), ("step:8", "F-ELIGIBLE", False),
+                                    ("step:9", "F-CONSTRUCT", False), ("5.1:calibration-p", "F-CONSTRUCT", False),
+                                    ("5.2:1", "F-MEANING", False)):
+            adapt.validate_evidence(self.fail_record(code, check, judged, **no), "c:1", False, f"{code}: x")
+
+    def test_inconsistent_deciding_check_is_refused(self):
+        no = {"judgment_checks": {"3 losses": {"answer": "no", "evidence": "e"}}}
+        for rec, fragment in (
+                (self.fail_record("F-MEANING", "5.3:3", False, **no), "judgment_only must be true"),
+                (self.fail_record("F-CONSTRUCT", "5.1:validation", True), "judgment_only must be false"),
+                (self.fail_record("F-MEANING", "5.3:3", True), "answered no"),
+                (self.fail_record("F-CONSTRUCT", "5.3:3", True, **no), "F-MEANING"),
+                (self.fail_record("F-MEANING", "5.2:3", False), "deciding_check"),
+                (self.fail_record("F-MEANING", "5.3:6", True), "deciding_check"),
+                (self.fail_record("F-MEANING", "step:11", True), "deciding_check"),
+                (self.fail_record("F-CONSTRUCT", "5.1:no-such-row", False), "deciding_check"),
+                (self.fail_record("F-MEANING", "none", False), "deciding_check"),
+                (self.fail_record("F-MEANING", "5.2:1", None), "judgment_only"),
+                (self.fail_record("F-MEANING", "5.2:1", "false"), "judgment_only")):
+            with self.assertRaises(ValueError) as ctx:
+                adapt.validate_evidence(rec, "c:1", False, f"{rec['outcome']}: x")
+            self.assertIn(fragment, str(ctx.exception), rec["deciding_check"])
+
+    def test_pass_needs_none_and_no_judgment_only(self):
+        for mutate in (lambda r: r.pop("deciding_check"), lambda r: r.update(deciding_check="5.3:1"),
+                       lambda r: r.update(judgment_only=False)):
+            r = self.good()
+            mutate(r)
+            with self.assertRaises(ValueError):
+                adapt.validate_evidence(r, "c:1", True, "PASS: ok")
 
     def test_decide_cli_writes_nothing_for_an_empty_record(self):
         cand = next(r for r in ledger().values() if r["status"] == "candidate")

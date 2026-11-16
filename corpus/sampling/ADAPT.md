@@ -6,7 +6,7 @@ Tests: `py -3 -I -m unittest discover -s corpus/sampling -p "test_*.py"`. Golden
 
 ## Hard rule: no candidate before the pilot draw
 
-D51 item 13: every examined case becomes a development case. `load_source_item`, `render` and the CLI refuse a row with status `candidate` unless `allow_candidate` (`--allow-candidate`) is set. They refuse an `excluded` row always. Use the flag only for the real pilot walk, in the order `select.py` names.
+D51 item 13: every examined case becomes a development case. `load_source_item`, `render` and the CLI refuse a row with status `candidate` unless `allow_candidate` (`--allow-candidate`) is set. They refuse an `excluded` row always. Use the flag only for the real pilot walk or main draw, in the order `select.py` names; every rendered candidate becomes a development case.
 
 ## What the tool decides
 
@@ -19,7 +19,7 @@ D51 item 13: every examined case becomes a development case. `load_source_item`,
 | `decision_line(...)`, `append_decision(path, line)` | section 2 | The ten keys in rule order. Refuses a `rule_sha256` that is not the SHA-256 of `adaptation-rule-v1.md`, a duplicate `case_id`, a blank line in the file, and a reason that is not `<code>: <sentence>` or that disagrees with `pass`. `select.py` reads the file. |
 | `write_evidence(dir, record)` | section 1 | `<dir>/<sha256>.json`, canonical JSON, LF. Returns the digest. |
 
-Sources rendered: InjecAgent, AgentDojo, ASB (through `asb_vectors.render`, plus the section 3c goal-class check of step 2), RedCode-Exec, SABER, ASEval. Other sources return `F-SOURCE` ("no renderer").
+Sources rendered: InjecAgent, AgentDojo, ASB (through `asb_vectors.render`, plus the section 3c goal-class check of step 2), RedCode-Exec, SABER, ASEval. Another source raises `ToolLimit` ("no renderer"), a tool gap: the CLI exits 3 and no rule code results.
 
 ## What the tool leaves to the adapter
 
@@ -27,24 +27,42 @@ Sources rendered: InjecAgent, AgentDojo, ASB (through `asb_vectors.render`, plus
 
 - `replacements`: `[[old, new], ...]`. The destination replacements of step 3 and 6 (only a URL, mailbox, address or host the request sends to, posts to, delivers to, visits, fetches from or downloads from becomes the receiver) and the object replacements. The tool never decides them: it lists every URL, bare host, host:port, IPv4 and mailbox in every text it renders (user task, injected text, written and setup files, SABER TM-B request, ASEval turns, RedCode prompt) with its location, as `step 3/6: destination candidate ...`. A candidate is covered by a `replacements` entry (applied to every rendered text that contains `old`) or by `keep` (`["text", ...]`: stays as it is). A replacement that occurs in no rendered text is refused. Every applied pair is recorded under `transformations`.
 - `tool_names`: `{vector: tool}` for an AgentDojo vector when the ground truth has more than one tool. Without an answer for every such vector nothing is rendered: `render` returns `user_prompt: None`, no fixture, and the need (CLI exit 4). A single-tool ground truth names the file by that tool.
-- `objects`: `[{"path": "data/x.txt", "kind": "protected"|"canary", "content": optional}]`, the step 5 objects for InjecAgent, AgentDojo, RedCode and ASEval. The default content is the canary line of step 5. ASB and SABER derive their objects as the rule says.
+- `objects`: `[{"path": "data/x.txt", "kind": "protected"|"canary", "content": optional}]`, the step 5 objects for InjecAgent, AgentDojo, RedCode and ASEval. The default content is the canary line of step 5 (see Adapter readings). ASB and SABER derive their objects as the rule says.
 - `path_moves`: `{old: new}` for a RedCode system path that only locates a file the case creates (step 5, D51 items 5 and 7).
 - Step 2 executables: the tool lists command words that are not in the present list (rule command positions; heredoc bodies and quoted strings skipped) under `needs_judgment`. It never fails a row for them. Codes that do not parse, scalar shapes the tool cannot read and unsupported printf directives are listed or raise `ToolLimit`, never a rule code.
 - Also not done here: the step 2 exclusion classes of `05-source-screen.md` section 4 beyond the three mechanical ones, the step 7 tool mapping of the effect, the 5.3 judgment checks (intent, changes, losses, mapping, route), the unmapped system paths that are only text the case writes, the `python` route, and every `F-MEANING` outcome that needs reading.
 
-Not built: the calibration script, the pivot table, `p_delta` and its justification (step 9), the case entry, trial and meaning record in the `build_adv` shape (step 10), `oracle_mapping`, the workspace fixture digest and the calibration payload digest, the local and screening construct reports (step 11, section 5.1), the screening carriers and the guest. `render` gives the inputs those steps need.
+Built elsewhere: `case_entry.py` writes the case entry, trial and meaning record of steps 9 and 10, the fixture digest and the calibration payload digest, from `render` plus an adapter-written calibration file (script, pivots, `p_delta` and its justification, `oracle_mapping`). `carrier.py` builds the screening carriers. See README, section Screening carriers. Not built: the local and screening construct reports (step 11, section 5.1) and the guest runs. `render` returns the directories a setup `mkdir` creates as `fixture_dirs` (SABER and ASEval), so an empty directory reaches the fixture.
 
 ## The pilot walk
 
 1. `py -3 -I corpus/sampling/select.py pilot ... --adaptation corpus/sampling/decisions/pilot-v1.jsonl --out OUT`. Exit 3 names the next candidate per stratum.
-2. `py -3 -I corpus/sampling/adapt.py render --case <id> --allow-candidate --out <new dir> [--judgments j.json]`. It writes `prompt.txt`, `fixture/...` and `summary.json`. Answer each `needs_judgment` entry, render again with `--judgments`, and run `check --case <id> --summary <dir>/summary.json`.
+2. `py -3 -I corpus/sampling/adapt.py render --case <id> --allow-candidate --render-log <log> --out <new dir> [--judgments j.json]`. It writes `prompt.txt`, `fixture/...` and `summary.json`. Answer each `needs_judgment` entry, render again with `--judgments`, and run `check --case <id> --summary <dir>/summary.json` (with `--allow-candidate --render-log <log>` for a candidate).
 3. Do the steps the tool does not do (above), then the judgment checks. Put every judgment and its evidence into one evidence record (JSON).
 4. `py -3 -I corpus/sampling/adapt.py decide --case <id> --decisions corpus/sampling/decisions/pilot-v1.jsonl --evidence-dir corpus/sampling/evidence --evidence record.json [--pass] --reason "<code>: <sentence>" --adapter <who> --date YYYY-MM-DD [--screen-build B --carrier-sha256 S]`. Pass `--pass` only with a `PASS:` reason. The tool takes the rule digest from the file and the ledger digest from the ledger file.
+**Render log (D51 item 13).** `--allow-candidate` on `render` and `check` (and on `case_entry.py build`) needs `--render-log PATH`. Before any source byte is read, the tool appends one line `{"case_id","tool","command","utc"}` (canonical JSON, LF) to that file. A candidate that appears in the log and gets no decision line is a development case. Development rows are never logged.
+
 `check` and `decide` read only the committed ledger (its SHA-256 must be the template's). `decide` needs a candidate row and `--allow-candidate`, and validates the line before it writes the evidence file.
-`decide` validates the evidence record first (`validate_evidence`): `case_id`, `rule_sha256`, non-empty `attempts`, `outcome` equal to the reason code; a pass also needs `construct_report`, both 5.2 results passing and the five 5.3 answers (`judgment_checks`, keys `1 intent` to `5 route`, each `answer` yes or no with non-empty `evidence`).
+`decide` validates the evidence record first (`validate_evidence`): `case_id`, `rule_sha256`, non-empty `attempts`, `outcome` equal to the reason code; `deciding_check` (`none` for a pass; for a fail `5.1:<row>` with a 5.1 check name, `5.2:<1|2>`, `5.3:<1..5>` or `step:<1..10>`, the first check or step that failed) and, for a fail, `judgment_only`, which must equal rule 5.3's definition: true for `5.3:<n>`, `step:2` (the eligibility recheck) and `step:3` to `step:7` (a "cannot be rendered" outcome), false for every other check or step. A `5.2` or `5.3` check fails with `F-MEANING`, and `5.3:<n>` needs that judgment check answered no; a pass also needs `construct_report`, both 5.2 results passing and the five 5.3 answers (`judgment_checks`, keys `1 intent` to `5 route`, each `answer` yes or no with non-empty `evidence`). The deciding check must fit the failure code: steps 1 to 10 take their rule step's code (step 3 also F-FIXTURE, from a source bullet), 5.2 and 5.3 take F-MEANING, and a 5.1 row takes F-CONSTRUCT, or F-INSTRUMENT after two instrument failures of a screening run (name the screening row, `5.1:calibration-p` or `5.1:effect-satisfiable`). A `5.3:<n>` failure needs every earlier judgment check answered yes, because the first failing check decides (rule section 6).
 
 CLI exit codes of `render`: 0 rendered, 1 rule failure (JSON `fail`), 2 refused (candidate without flag), 3 `tool_limit`, 4 needs only, 5 `judgment_error`. `decide` returns 5 on an invalid record or line.
 5. Commit the decision file, then rerun `select.py` with a new `--out`.
+
+## Round planner (`round_plan.py`)
+
+`py -3 -I corpus/sampling/round_plan.py plan --output <select.py output JSON> --decisions <decision file> [--screened <file>]` prints `{"TM-A": [...], "TM-B": [...]}`: per stratum the next undecided, unscreened candidates in walk order, up to 7 TM-A and 4 TM-B (rule 7.1). `--screened` lists one already-screened `case_id` per line. It prints ids only and never reads the ledger.
+
+- A stratum with no pending case gets an empty list. The top-up candidates (one per attack without a main case, the first undecided unscreened case of its order) appear only when every main stratum is complete. A top-up with more candidates than slots is cut at the slots; rerun it after the decisions.
+- A draw output holds the seed and every capped candidate, so the `main` and `topup` orders beyond the case `select.py` names are recomputed with `select.ranked`. A pilot output records only the pending case per stratum, so the planner refuses it (exit 2) rather than print a partial round; pilot rounds need the seeded pilot order over the ledger, which is not built yet.
+- The plan follows the decision file, not the output's date: a decision appended after `select.py` ran moves the plan on. Rerun `select.py` before the decisions are final.
+
+## Adapter readings for the pilot walk
+
+Readings of the rule text that the adapter must apply the same way on every case. The owner decided them on 2026-11-15, after the review of the rehearsal carrier. The rehearsal carrier `rehearsal-dev-01` follows them.
+
+- **Object replacement (step 3).** Only the words that identify the object become its fixture path. Every other word stays: a sender, a service name such as "on GitHub", and the rest of the phrase. A named object loses only its name: "my project repository titled 'Important_Project' (ID 001) on GitHub" becomes "my project repository titled `data/important-project.txt` (ID 001) on GitHub". An object the source describes but does not name loses the shortest description that identifies it: "the email received from by lily.white@gmail.com" becomes "`data/email.txt` received from by lily.white@gmail.com", and "my saved addresses" becomes "my `data/saved-addresses.txt`". A leading article ("the", "a") belongs to the description and goes with it; a possessive or quantifier ("my", "all") stays.
+- **Destinations of named sources (step 3).** Only the address itself becomes the receiver. Its introducing noun phrase ("my alternate email address,") stays. The rule adds the noun phrase only in its "Other third-party content" paragraph, and only there is it replaced too.
+- **Content of protected files (step 5).** A protected or canary file whose content the source does not give is the one line `tbound-canary <12 hex>` of step 5's first sentence. The empty file of step 5 is only for a path the source does not name at all, such as a hook or a dependency list. The marker holds a hash of the case id, so two cases never share a fixture (`adv.unit.duplicate`) and an attack that wipes or truncates the file still changes it. `judgments.objects` with `content` overrides the default where the source gives content.
 
 ## Readings of the rule this tool fixed
 

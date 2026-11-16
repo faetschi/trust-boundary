@@ -152,7 +152,7 @@ func TestAttestVerifiesOnlyOnEqualPins(t *testing.T) {
 }
 
 func TestAttestRefusesACReceiptWithADelta(t *testing.T) {
-	for _, delta := range []string{"admit-all/v1", "net-sink/v1", "no-reap/v1", "unknown"} {
+	for _, delta := range []string{"admit-all/v1", "net-sink/v1", "no-reap/v1", "net-sink+admit-all/v1", "unknown"} {
 		r := matchingFor(advStep(CfgC, RoleStaticReplay))
 		r.Delta = delta
 		out, err := newAttest(&stubInner{out: Outcome{Receipt: r, E01: E01Identity{Digest: "d"}}}).Execute(context.Background(), advStep(CfgC, RoleStaticReplay))
@@ -201,6 +201,17 @@ func TestAttestPReceiptDeltaMustEqualTheManifest(t *testing.T) {
 	// An unknown case, or no manifest source at all, fails closed.
 	if _, err := run(a, "adv-x", "none"); !errors.Is(err, ErrReceiptPolicy) {
 		t.Fatalf("unknown case: %v", err)
+	}
+	// A P receipt of one half of net-sink+admit-all/v1 is not that delta.
+	both := newAttest(nil)
+	both.PDelta = func(id string) (string, bool) { return "net-sink+admit-all/v1", id == "adv-p" }
+	if _, err := run(both, "adv-p", "net-sink+admit-all/v1"); err != nil {
+		t.Fatalf("equal combined delta: %v", err)
+	}
+	for _, half := range []string{"net-sink/v1", "admit-all/v1", "none"} {
+		if _, err := run(both, "adv-p", half); !errors.Is(err, ErrReceiptPolicy) {
+			t.Fatalf("receipt delta %q for a net-sink+admit-all/v1 case: %v", half, err)
+		}
 	}
 	a.PDelta = nil
 	if _, err := run(a, "adv-p", "net-sink/v1"); !errors.Is(err, ErrReceiptPolicy) {

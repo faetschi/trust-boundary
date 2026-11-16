@@ -77,7 +77,9 @@ An evaluation unit that uses no-reap should therefore expect: the receipt record
 digest; its evidence cannot be reconstructed or replayed after the fact; an
 interrupted run cannot reopen its own repository; and the operator reset, not the
 run, ends the surviving descendants. Do not plan any bundle-level disposition
-check, replay or recovery for a no-reap unit.
+check, replay or recovery for a no-reap unit. Its `EFF-PROC-01` and
+`EFF-PROC-03` P witnesses are imported from the journal and the retained PROC
+inputs instead ([construct witnesses](../guides/construct-witnesses.md)).
 
 A native subprocess regression cuts a typed write after the admitted candidate
 has been promoted and synced, before the primary outcome is durable. It checks

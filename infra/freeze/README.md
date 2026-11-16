@@ -56,10 +56,20 @@ F24 accepts the pinned F23 measurer: `launcher_linux.go`, `host.go`, `profile_to
 F25 accepts the pinned F23 measurer (F24 was not qualified: G1 UNKNOWN on an inactive provider subscription; the guest was restored to F23): the same four files are unchanged in 13ed119..2fa3e00 (`git diff --quiet`); F25 is F24's code plus the F24 kit and fresh admission ids; the pair lives in a kit commit on top of dev `e5f8b7c9` (tree identical to F25); 10 rechecks with F25.
 F26 accepts the pinned F23 measurer (F25 was not qualified: corpus mode refused the pre-D50 pilot budgets; the guest was restored to F23): the same four files are unchanged in 13ed119..2780072 (`git diff --quiet`); F26 adds the F25 kit, the D50 pilot budgets (#138, corpus drafts and tests only) and fresh admission ids; the pair lives in a kit commit on top of dev `c90f25e0` (tree identical to F26); 10 rechecks with F26.
 F27 accepts the pinned F23 measurer (F26 was verified but the guest was restored to F23 to clear its wedged rehearsal): the same four files are unchanged in 13ed119..db07853 (`git diff --quiet`); no `internal/piruntime` file changed since F26, and the changed `cmd/tbound-profile` files (corpus-digest, construct, preregistration) are off the runtime-bundle-digest path; the pair lives in a kit commit on top of dev `8f375ba9` (tree identical to F27); 10 rechecks with F27.
+F28 accepts the pinned F23 measurer (F27 was not qualified: the rp model declined commands 2-4; the guest was restored to F23): the same four files are unchanged in 13ed119..40e651b (`git diff --quiet`); F28 adds the F27 kit, fresh admission ids and the route-probe prompt (no Go change); the pair lives in a kit commit on top of dev `86a45bf8` (tree identical to F28); 10 rechecks with F28.
 `KIT_FREEZE=F14 DRY_RUN=1 bash guest/05-runtime-swap.sh` in Git Bash checks owner inputs and prints every guest command without guest contact.
 `10-freeze.sh` step 3b refuses a frozen g1/route-probe template that carries the previous freeze's admission id, and a dr id that is spent.
 05 requires `HF/BUNDLE_TAR_SIZE`, written by P2 rebuild after tar verification (F13's missing record was added after the same sha256 check).
 A missing 27 completion record is reported as pending in dry-run mode and blocks a live run. P3/signing and guest pins read current records.
+
+## Screening round with a carrier
+
+A screening round reruns `guest/33-corpus-pilot.sh` on a qualified freeze with a lane C carrier (`corpus/sampling/carriers/<round>/`) in place of the T5 draft.
+Set all three of `CARRIER_DIR` (the carrier directory in a Linux checkout at the delivering commit), `CARRIER_COMMIT` and `CARRIER_MANIFEST_DIGEST`
+(`sha256:` plus lane C's `sha256(manifest.draft.json)`), or none of them. With none, 33 behaves as before. Phase 0 (`guest/carrier-check.sh`) verifies the
+checkout and an owner-side copy in `$HF/pilot/carrier` before any guest write. `$HF/pilot` holds one round, and 33 refuses a `$HF/pilot` of another round
+or of the T5 run until it is renamed aside. `guest/carrier-check.sh` is one of the `TBOUND_WGA` helpers, so refresh that Linux checkout to this kit commit. `tools/test-carrier.sh [<W> <HF>]` (WSL) tests phase 0 and, with the freeze's tools, the phase-2 dry run.
+The operator steps and the run-config pins are in `infra/guest/PROVISIONING-SIGNING.md`, "Screening round with a carrier".
 
 ## Per-freeze checklist
 

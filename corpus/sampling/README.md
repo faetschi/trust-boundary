@@ -66,6 +66,8 @@ are still marked as seen. Extra fields beyond `case_id`, `stratum`, `attack_id`,
 the chain, the round rule and the per-source unit choices. The rule digest is filled (the rule is frozen). Before publication on Zenodo, fill `signed_tag.object` and `signed_tag.commit` from the owner-signed tag `corpus-d48-ledger-v3`. The script
 ignores those fields. `test_pilot_template.py` keeps every recorded digest equal to its file.
 
+`main-commitment-v1.template.json` is the main commitment for `T2`. Its fixed digests equal T1's. Six fields are `FILL`, each an open decision or a later input: `adaptation_rule_sha256` (rule v1 or v2 at T2), `policy_sha256`, `development_case_ids`, and the three `signed_tag` fields. `test_main_template.py` keeps the fixed digests equal to their files and checks that `select.py` accepts a filled copy. `t1_prepare.py build --kind main --tag <T2 tag> --policy-file F --dev-ids F [--rule-path F]` fills it from the signed tag, and `record` and `round` work for both kinds.
+
 ## Ledger v3 (the candidate ledger both draws use)
 
 `d48-ledger-v3.jsonl` is the candidate ledger both draws use (16 section 3 item 2). D51 item 26 binds it in the pilot commitment, and the owner signs the tag `corpus-d48-ledger-v3` on the merge commit that holds the final template. It is ledger v2 with the 211 candidates that fail the adaptation rule by construction marked excluded, one reason per row: 60 RedCode-Exec Bash rows that need `wget` or `curl`, 91 ASEval records (modules with no Node.js equivalent, absolute paths, setup commands), 50 SABER tasks (modules, setup commands, MCP tools, absent executables), 2 CodeIPI, 5 OS-Harm-injection, 2 OS-Harm-misuse and 1 SHADE-Arena. Every other row is byte-identical to v2. v3 has 3,089 rows: 1,265 candidates (TM-A 979, TM-B 286), 149 development rows and 1,675 exclusions. Only failures that are certain under the rule are excluded; a row that might pass stays a candidate and is decided by the adapter. `d48-source-digests-v3.json` is its source digest file; it also lists the files v2's missed (OS-Harm, MSB, RedTeamCUA, the three `include/` files that AgentDojo's workspace `environment.yaml` loads, AgentDojo's `task_combinators.py`, which builds the combined user tasks of the workspace and slack suites, and its attack files `important_instructions_attacks.py` and `base_attacks.py`, which hold the template and names of rule step 3). Built by `23-structural-screen.py` and `23-source-digests.py`.
@@ -91,12 +93,29 @@ Both files are built outside the repository by the lane C screening scripts (`20
 
 `draw` and `allocate` remove every `development_case_ids` entry from the candidates before the cap and the allocation. An id that is not a ledger row (a T5 rehearsal item, say) is not refused. Its grammar is checked, it stays in `development.case_ids`, and it is also listed in `development_not_in_ledger`, so a typo shows up there. Only ledger rows are removed; the removal is counted per stratum in `development`. An attack whose cases are all development cases has no candidate left, so it is reported as untested.
 
+`t2-development-additions.json` lists ledger rows that join `development_case_ids` at T2 besides the pilot's examined cases, each with its date and the owner's reason. `dev_ids.py build --pilot-output P --carriers DIR --t5 M --additions A --render-log L --ledger L --out F` writes `development_case_ids` as the sorted union of the pilot's examined cases, every screening-carrier case, the T5 cases, the 149 development ledger rows, this file and every candidate the render log records (D51 item 13). It prints counts only, never ids.
+
 ## Output
 
 One JSON object with sorted keys and no timestamps, so identical inputs give identical bytes. Both outputs hold every input digest, the commitment as parsed, `R` with its scheduled time, the seed, and every examined candidate with its purpose, group, key and decision.
 
 - `pilot`: the allocation (candidates and places per stratum, with remainders and the tie), the walk per stratum, and the pilot memberships.
 - `draw`: the cap (`k`, `M_h`, allocation remainders, tie resolution), `development` (listed ids and removals per stratum), `attacks` (each candidate attack with its stratum and `seen_in_development`, set by scenario: a scenario with a development case in either stratum counts as seen in both of its groups), `mechanisms` (each candidate mechanism with `seen_in_development`), `development_not_in_ledger`, the population bounds, and the memberships: main, top-up, cold, variance and untested attacks.
+
+## Screening carriers
+
+Rule section 7.1 runs each screening round as one carrier on the guest. Two tools build it. Neither is T1-bound.
+
+- `case_entry.py build --case <id> --calibration calib.json [--judgments j.json] --draw pilot|main|rehearsal --tbound-run PATH --out DIR` turns one ledger row into a case bundle (rule steps 9 and 10). It re-runs `adapt.py` render from the row and the judgments, and it keeps the candidate guard: `--allow-candidate` is only for the real pilot walk or main draw, in the order `select.py` names, and it needs `--render-log PATH`, which records every candidate render before any source byte is read. The calibration file holds the frozen script, the pivots (or a `build.py` pivot helper), `p_delta` and the adapter's texts. The bundle is `case.json`, the fixture artifact, a `sources.json` fragment, the licences and `notice.json`. A development row takes only `--draw rehearsal`.
+- `carrier.py build --round R --bundle DIR ... --out corpus/sampling/carriers/R` puts the bundles into the frozen T5 carrier `corpus/pilot/t5-2026-10-29`. Bundles of a stratum, sorted by `case_id`, replace that stratum's T5 adversarial cases in ascending `case_id` order. The tool keeps `split_seed`, recomputes the partitions as `evalcorpus.Allocate` does (through the `build.py` mirror of its `SelectSeeded` ranks), and writes the union of sources, licences and notices beside the manifest. With no bundles the output equals T5 byte for byte.
+
+A drawn case keeps its ledger `case_id`. Its witness id is `PILOT-WIT-<case_id>`. The oracle is the first part's oracle (rule step 8). A case that mixes NET and WS parts takes the first part's `p_delta` when its `effect_join` is `any`, and `net-sink+admit-all/v1` (D55) when it is `all`, so P can show both parts.
+
+`carriers/rehearsal-dev-01` is a rehearsal carrier built from 8 development rows (7 TM-A, 1 TM-B). It is not a screening round, and its judgments exercise the pipeline; they are not rulings for the pilot walk (see ADAPT.md, section Adapter readings). Lane P uses it to dry-run the kit's carrier input. Rebuild it with `py -3 -I corpus/sampling/rehearsal/build_rehearsal.py --tbound-run PATH --out DIR`; the inputs are in `rehearsal/rehearsal-dev-01/`.
+
+`round_plan.py plan --output O --decisions D [--screened S]` lists, per stratum, the next undecided and unscreened candidates for a main-draw round, up to 7 TM-A and 4 TM-B (rule section 7.1). It refuses a pilot output, which names only one pending case per stratum. It prints ids only and never reads the ledger.
+
+Before each round, lane P runs `tbound-profile corpus-check --quota-profile pilot` on the carrier and signs its run configuration.
 
 ## Tests
 

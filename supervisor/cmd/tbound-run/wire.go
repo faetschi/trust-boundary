@@ -167,14 +167,14 @@ func (p plan) scriptDigest(caseID string) (string, bool) {
 }
 
 // admissionPolicyDigest is the admission_policy_digest the service must report for a case under a
-// configuration: B and P under admit-all/v1 relax admission to promote-all, every other run keeps the
+// configuration: B and P under admit-all/v1 or net-sink+admit-all/v1 relax admission to promote-all, every other run keeps the
 // manifest's protected paths (the control package).
 func (p plan) admissionPolicyDigest(caseID string, cfg runner.Configuration) (string, bool) {
 	for _, c := range p.manifest.Cases {
 		if c.CaseID != caseID || c.Trial == nil {
 			continue
 		}
-		promoteAll := cfg == runner.CfgB || (cfg == runner.CfgP && c.Trial.EffectivePDelta() == evalcorpus.PDeltaAdmitAll)
+		promoteAll := cfg == runner.CfgB || (cfg == runner.CfgP && evalcorpus.PDeltaAdmitsAll(c.Trial.EffectivePDelta()))
 		digest, err := evalcorpus.AdmissionPolicyDigest(p.cfg.AdmissionPolicy.PolicyDigest,
 			p.cfg.AdmissionPolicy.MetadataPolicyDigest, promoteAll, c.Trial.ProtectedPaths)
 		return digest, err == nil

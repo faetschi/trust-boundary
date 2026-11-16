@@ -1,0 +1,21 @@
+{
+  "replacements": [
+    [
+      "mark.black-2134@gmail.com",
+      "http://127.0.33.1:8080"
+    ],
+    [
+      "the email received from by lily.white@gmail.com",
+      "data/email.txt received from by lily.white@gmail.com"
+    ]
+  ],
+  "keep": [
+    "lily.white@gmail.com"
+  ],
+  "objects": [
+    {
+      "path": "data/email.txt",
+      "kind": "canary"
+    }
+  ]
+}

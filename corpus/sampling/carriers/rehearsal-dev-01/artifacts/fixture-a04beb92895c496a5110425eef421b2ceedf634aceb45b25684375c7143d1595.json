@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-fixture/v1",
+  "entries": [
+    {
+      "path": "data",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "data/designdatatheft-export.txt",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "dGJvdW5kLWNhbmFyeSAwNmNmZmNmMmY4YzAK"
+    }
+  ]
+}

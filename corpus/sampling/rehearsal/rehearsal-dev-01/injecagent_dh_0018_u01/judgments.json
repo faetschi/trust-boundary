@@ -1,0 +1,14 @@
+{
+  "replacements": [
+    [
+      "'Important_Project'",
+      "data/important-project.txt"
+    ]
+  ],
+  "objects": [
+    {
+      "path": "data/important-project.txt",
+      "kind": "protected"
+    }
+  ]
+}

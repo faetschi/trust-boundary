@@ -1,0 +1,56 @@
+== 30-p3 start 2026-11-15T16:34:45Z as tbound freeze=F27
+78M	/home/tbound/tbound-work/inputs/base-cache
+EPOCH=1794758884 (commit time of db0785367a301b17347701549e680bbdd02e8a5e)
+{
+ "base_index_digest": "sha256:d6aa754f16b3197301076f047b5def2f02ea1dbbc2ca920407d46d7ec7f87b20",
+ "base_manifest_digest": "sha256:51b1100cc2a83d370c6a60952e3f2989c8a43159d0e38586e090f3b3326efefd",
+ "config_digest": "sha256:859239d134e921b5fb137044893a9f599ca11f6b5c33fe27583d37b6db494114",
+ "entrypoint_sha256": "sha256:755fac2ec683c2d30e0dce7392b3783adbf2a53c376ca9e509403b60c1ae09b1",
+ "layer_digest": "sha256:39a78b2dcede5a2af236a78aa0000f6068c8a58311d7fc09bb77a02f9aeeb927",
+ "layout": "/home/tbound/tbound-b.nBYXl2/oci",
+ "manifest_digest": "sha256:35f425e929f4db71b619f9bdd9b1bb95eb576664db43a6e8f328400704d75e3c"
+}
+== measure pass 1
+{
+ "bash_sha256": "sha256:55b89ab22bee4792a210f493a53fb066accd5d30b69837c28d98be5ff863efcf",
+ "config_digest": "sha256:859239d134e921b5fb137044893a9f599ca11f6b5c33fe27583d37b6db494114",
+ "entrypoint_sha256": "sha256:755fac2ec683c2d30e0dce7392b3783adbf2a53c376ca9e509403b60c1ae09b1",
+ "image_manifest_digest": "sha256:35f425e929f4db71b619f9bdd9b1bb95eb576664db43a6e8f328400704d75e3c",
+ "node_sha256": "sha256:7fde7b8afa198da66257f42ee2001d874c7355631e6d1579a5fb5ef1f246df4c"
+}
+{
+ "base_index_digest": "sha256:d6aa754f16b3197301076f047b5def2f02ea1dbbc2ca920407d46d7ec7f87b20",
+ "base_manifest_digest": "sha256:51b1100cc2a83d370c6a60952e3f2989c8a43159d0e38586e090f3b3326efefd",
+ "config_digest": "sha256:859239d134e921b5fb137044893a9f599ca11f6b5c33fe27583d37b6db494114",
+ "entrypoint_sha256": "sha256:755fac2ec683c2d30e0dce7392b3783adbf2a53c376ca9e509403b60c1ae09b1",
+ "layer_digest": "sha256:39a78b2dcede5a2af236a78aa0000f6068c8a58311d7fc09bb77a02f9aeeb927",
+ "layout": "/home/tbound/tbound-b.nBYXl2/oci2",
+ "manifest_digest": "sha256:35f425e929f4db71b619f9bdd9b1bb95eb576664db43a6e8f328400704d75e3c"
+}
+== measure pass 2
+{
+ "bash_sha256": "sha256:55b89ab22bee4792a210f493a53fb066accd5d30b69837c28d98be5ff863efcf",
+ "config_digest": "sha256:859239d134e921b5fb137044893a9f599ca11f6b5c33fe27583d37b6db494114",
+ "entrypoint_sha256": "sha256:755fac2ec683c2d30e0dce7392b3783adbf2a53c376ca9e509403b60c1ae09b1",
+ "image_manifest_digest": "sha256:35f425e929f4db71b619f9bdd9b1bb95eb576664db43a6e8f328400704d75e3c",
+ "node_sha256": "sha256:7fde7b8afa198da66257f42ee2001d874c7355631e6d1579a5fb5ef1f246df4c"
+}
+OCI LAYOUTS IDENTICAL (diff -r empty)
+MEASURE OUTPUTS IDENTICAL
+OK entrypoint in image == P1 tbound-cell-entrypoint = sha256:755fac2ec683c2d30e0dce7392b3783adbf2a53c376ca9e509403b60c1ae09b1
+OK entrypoint == P1 record = sha256:755fac2ec683c2d30e0dce7392b3783adbf2a53c376ca9e509403b60c1ae09b1
+WARNING: packaging/ changed since F0; bash/node digests are informational only
+bash_sha256: sha256:55b89ab22bee4792a210f493a53fb066accd5d30b69837c28d98be5ff863efcf  (same as F0)
+node_sha256: sha256:7fde7b8afa198da66257f42ee2001d874c7355631e6d1579a5fb5ef1f246df4c  (same as F0)
+IMGDIGEST: sha256:35f425e929f4db71b619f9bdd9b1bb95eb576664db43a6e8f328400704d75e3c  (NEW; F0 was sha256:d02a7543041a52d864fb097f636a591ff1d0d86bfc38fedce645c1537176bd3d)
+IMGDIGEST: sha256:35f425e929f4db71b619f9bdd9b1bb95eb576664db43a6e8f328400704d75e3c  (NEW; F23 was sha256:eb5cd99b5e7e62905cdab34a02d2116b8671c110929d86b001b00b614da89a2f)
+ENTRYPOINT_DIGEST: sha256:755fac2ec683c2d30e0dce7392b3783adbf2a53c376ca9e509403b60c1ae09b1  (NEW; F23 was sha256:9b7499bc356810b74bc2e5ce0bfea5e66f5918ac9c2031096f80f22b5c2aa3f4)
+CFG: sha256:859239d134e921b5fb137044893a9f599ca11f6b5c33fe27583d37b6db494114  (NEW; F23 was sha256:2656d410f2b5b8dd40cce326f3c3f73affdd5154fc85fa9a190cbe4d4e2f7731)
+IMGDIGEST CHANGED vs F23: 10-upgrade.sh installs the new layout, 50-i1-i2.sh must run I1
+OK sync done; no 0-byte output under /home/tbound/tbound-h/f27 nor in: /home/tbound/tbound-b.nBYXl2/measure1.out /home/tbound/tbound-b.nBYXl2/measure2.out
+== DONE 30-p3
+IMGDIGEST=sha256:35f425e929f4db71b619f9bdd9b1bb95eb576664db43a6e8f328400704d75e3c
+CFG=sha256:859239d134e921b5fb137044893a9f599ca11f6b5c33fe27583d37b6db494114
+ENTRYPOINT_DIGEST=sha256:755fac2ec683c2d30e0dce7392b3783adbf2a53c376ca9e509403b60c1ae09b1
+BASH_DIGEST=sha256:55b89ab22bee4792a210f493a53fb066accd5d30b69837c28d98be5ff863efcf
+NODE_DIGEST=sha256:7fde7b8afa198da66257f42ee2001d874c7355631e6d1579a5fb5ef1f246df4c
