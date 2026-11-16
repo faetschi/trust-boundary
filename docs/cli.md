@@ -64,7 +64,8 @@ Read [setup](guides/setup.md#managed-linux-client) before a governed request.
 ## `tbound chat`
 
 Flags: `--project`, `--provider`, `--mode`, `--read-only`, `--session`,
-`--socket`. A write waits for your Publish or Discard. See the
+`--socket`, `--budget-host-calls`, `--budget-tokens`, `--budget-seconds`. A
+write waits for your Publish or Discard. See the
 [first governed product turn](guides/product-first-turn.md).
 
 ## `tbound provider`
@@ -88,7 +89,7 @@ sends exactly one request. Exit `3` means the credential or provider check faile
 tbound project bundle  --source DIR [--exclude PATH]... --out FILE
 tbound project import  --bundle FILE --dest DIR [--manifest-out FILE]
 tbound project export  --baseline-manifest FILE --current DIR --out FILE
-tbound project apply   --bundle FILE --worktree DIR --state-dir DIR [--exclude PATH]...
+tbound project apply   --bundle FILE --worktree DIR --state-dir DIR [--exclude PATH]... [--direct --writer-exclusion-held]
 ```
 
 `bundle` runs as the project's owner and always excludes `.git`. `import` and

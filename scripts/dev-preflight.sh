@@ -91,7 +91,7 @@ done
 
 echo
 if [ "$fail" -eq 0 ]; then
-  echo "Development preflight passed. Next: docs/guides/quickstart.md"
+  echo "Development preflight passed. Next: make boundary and make test (quickstart step 5)."
 else
   echo "Development preflight failed: fix the 'missing' lines above and run it again."
 fi

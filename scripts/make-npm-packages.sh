@@ -6,7 +6,8 @@
 #
 # Produces, under outdir (default dist/npm):
 #   cli/                 the root @tbound/cli package (launcher + optionalDependencies)
-#   cli-<os>-<arch>/     one platform package per tarball, containing the binaries
+#   cli-linux-x64/       the Linux platform package, containing the binaries
+# Non-Linux release tarballs are skipped; npm ships the Linux amd64 binary only.
 #
 # Each platform package ships bin/tbound, bin/tbound-doctor, and bin/tbound-profile
 # (the Linux-only stub elsewhere). The linux/amd64 TCB entrypoint
@@ -170,7 +171,7 @@ JSON
   platforms+=("cli-$nos-$narch")
 done
 
-[ "${#platforms[@]}" -gt 0 ] || die "no tarballs found in $DIST for version $VERSION"
+[ "${#platforms[@]}" -gt 0 ] || die "no linux/amd64 tarball in $DIST for version $VERSION (non-Linux tarballs are skipped)"
 
 # Root package: launcher + optionalDependencies pointing at the platform packages.
 mkdir -p "$OUT/cli/bin" "$OUT/cli/scripts"

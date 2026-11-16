@@ -15,10 +15,17 @@ bash install/install.sh --version dev --local-dist dist --no-path
 # a published GitHub Release, once one exists (the default download base)
 bash install/install.sh --version <ver>
 
+# with publisher authentication (recommended for a root run)
+bash install/install.sh --version <ver> --public-key <file> --key-fingerprint <hex16>
+
 # options
 install/install.sh --version <ver> --prefix <dir> --base-url <url> --local-dist <dir> --no-path
 install/install.sh uninstall [--prefix <dir>]
 ```
+
+The default download is verified only against `SHA256SUMS` from the same release.
+That detects corruption, not a replaced download. Pass `--public-key` to verify
+the publisher signature.
 
 Artifacts are `tbound-<version>-<os>-<arch>.tar.gz` plus a `SHA256SUMS` file. The
 installer refuses to extract an artifact whose SHA-256 is missing or does not

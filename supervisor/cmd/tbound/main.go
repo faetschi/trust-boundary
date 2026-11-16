@@ -51,6 +51,9 @@ type Supervisor = piruntime.Supervisor
 
 func main() {
 	if err := run(os.Args[1:], os.Stdout, os.Stderr); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return
+		}
 		fmt.Fprintln(os.Stderr, err)
 		var exit interface{ ExitCode() int }
 		if errors.As(err, &exit) {

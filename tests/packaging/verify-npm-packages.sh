@@ -148,6 +148,44 @@ else
   if grep -q "links or special files are not allowed" "$BASE/symlink-npm.log"; then ok "npm package maker rejects symlink archive entries"; else bad "npm maker rejected symlink archive for an unexpected reason"; fi
 fi
 
+echo "[6] skip non-Linux tarballs in a mixed dist"
+mixed_dist="$BASE/mixed-dist"; mixed_out="$BASE/mixed-npm"
+mkdir -m 700 "$mixed_dist"
+cp "$DIST/tbound-$VERSION-linux-amd64.tar.gz" "$mixed_dist/"
+cp "$DIST/tbound-$VERSION-linux-amd64.tar.gz" "$mixed_dist/tbound-$VERSION-darwin-amd64.tar.gz"
+if command -v sha256sum >/dev/null 2>&1; then
+  ( cd "$mixed_dist" && sha256sum tbound-"$VERSION"-*.tar.gz > SHA256SUMS )
+else
+  ( cd "$mixed_dist" && shasum -a 256 tbound-"$VERSION"-*.tar.gz > SHA256SUMS )
+fi
+if "$ROOT/scripts/make-npm-packages.sh" "$VERSION" "$mixed_dist" "$mixed_out" >"$BASE/mixed.log" 2>&1; then
+  ok "mixed dist assembled"
+else
+  bad "mixed dist failed to assemble"
+fi
+[ -d "$mixed_out/cli-linux-x64" ] && ok "mixed dist produced the Linux package" || bad "mixed dist missing the Linux package"
+[ -d "$mixed_out/cli-darwin-amd64" ] && bad "mixed dist produced a darwin package" || ok "mixed dist skipped the darwin tarball"
+grep -q 'skipping non-linux tarball' "$BASE/mixed.log" && ok "mixed dist logged the skip" || bad "mixed dist did not log the skip"
+
+echo "[7] a non-Linux-only dist is refused"
+only_dist="$BASE/darwin-only-dist"; only_out="$BASE/darwin-only-npm"
+mkdir -m 700 "$only_dist"
+cp "$DIST/tbound-$VERSION-linux-amd64.tar.gz" "$only_dist/tbound-$VERSION-darwin-amd64.tar.gz"
+if command -v sha256sum >/dev/null 2>&1; then
+  ( cd "$only_dist" && sha256sum tbound-"$VERSION"-*.tar.gz > SHA256SUMS )
+else
+  ( cd "$only_dist" && shasum -a 256 tbound-"$VERSION"-*.tar.gz > SHA256SUMS )
+fi
+if "$ROOT/scripts/make-npm-packages.sh" "$VERSION" "$only_dist" "$only_out" >"$BASE/only.log" 2>&1; then
+  bad "non-Linux-only dist was accepted"
+else
+  if grep -q 'no linux/amd64 tarball' "$BASE/only.log"; then
+    ok "non-Linux-only dist names the missing Linux tarball"
+  else
+    bad "non-Linux-only dist failed for an unexpected reason"
+  fi
+fi
+
 echo
 echo "verify-npm-packages: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

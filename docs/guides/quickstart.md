@@ -47,7 +47,8 @@ cd trust-boundary
 git checkout codex/tbound-prototype
 ```
 
-`codex/tbound-prototype` is the development branch. CI runs on it.
+`codex/tbound-prototype` is the development branch. Full CI runs only for pull
+requests into `main` and merges to `main`.
 
 ## 4. Check the machine
 

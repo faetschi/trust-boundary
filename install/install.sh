@@ -383,6 +383,8 @@ main() {
     esac
   done
 
+  version="${version#v}"
+
   if [ -z "$local_dist" ] && [ -z "$base_url" ]; then
     [ "$version" != latest ] || die "version 'latest' has no download origin; pass --version <ver> (GitHub Releases are versioned), --base-url <url>, or --local-dist <dir>"
     base_url="https://github.com/faetschi/trust-boundary/releases/download/v${version}"

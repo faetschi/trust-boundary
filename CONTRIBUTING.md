@@ -33,8 +33,9 @@ python3 scripts/check-doc-links.py # run this for any documentation change
 
 Full CI runs only for pull requests into `main` and merges to `main`. It adds the
 race-detector suite, Python regression tests, the workflow linter, and a Linux
-runtime matrix. Pushes to development branches run no workflow, so run the local
-checks above. A `workflow_dispatch` run gives you a one-off full check.
+runtime matrix. Pushes to development branches, and pull requests into them, run
+no workflow, so run the local checks above. A `workflow_dispatch` run gives you a
+one-off full check.
 
 ## Frozen and evidence paths
 
