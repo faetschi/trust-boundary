@@ -114,6 +114,12 @@ for tgz in "$DIST"/tbound-"$VERSION"-*.tar.gz; do
   base="$(basename "$tgz")"; mid="${base#tbound-$VERSION-}"; mid="${mid%.tar.gz}"
   os="${mid%%-*}"; arch="${mid##*-}"
   [ "$os" != linux ] || [ "$arch" != arm64 ] || die "linux/arm64 is not a supported release target"
+  # npm ships the Linux binary only. Other release tarballs stay installable by
+  # hand, but no platform package is generated for them.
+  if [ "$os" != linux ]; then
+    echo "make-npm-packages: skipping non-linux tarball $base"
+    continue
+  fi
   nos="$(map_os "$os")" || die "unsupported os $os"
   narch="$(map_cpu "$arch")" || die "unsupported arch $arch"
   pkg="cli-$nos-$narch"
