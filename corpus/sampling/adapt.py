@@ -1110,6 +1110,11 @@ def _norm_written_path(path):
     return re.sub(r"\.py$", ".js", path)
 
 
+def _fixture_dirs(dirs):
+    """Workspace-relative directories a setup `mkdir` creates; the workspace root itself is no entry."""
+    return sorted({d.strip("/") for d in dirs} - {"", "."})
+
+
 def _redcode_prompt(row, rec, out):
     entry = rec["entry"]
     text = entry["Text_details"]
@@ -1159,7 +1164,7 @@ def _render_saber(row, item, out):
         raise Fail("F-MEANING", "the row has mcp_servers")
     notes, unm = [], []
     if setup.get("init_commands"):
-        w, modes, _dirs, n = parse_setup(setup["init_commands"], "init_commands", allow_heredoc=False)
+        w, modes, dirs, n = parse_setup(setup["init_commands"], "init_commands", allow_heredoc=False)
         notes += n
         for p, body in w.items():
             mp, u1 = map_paths(p, cwd)
@@ -1168,6 +1173,9 @@ def _render_saber(row, item, out):
             out.fixture[_norm_written_path(mp)] = out.text(mb, f"init_commands file {mp}").encode("utf-8")
         modes = {_norm_written_path(map_paths(p, cwd)[0]): m for p, m in modes.items()}
         out.extra["fixture_modes"] = modes
+        mapped = [map_paths(d, cwd) for d in dirs if d.rstrip("/") != cwd.rstrip("/")]  # mkdir of cwd is the workspace root
+        unm += [u for _, us in mapped for u in us]
+        out.extra["fixture_dirs"] = _fixture_dirs(md for md, _ in mapped)
     user, u = map_paths(setup["user_prompt"], cwd)
     unm += u
     user = swap_python(user)
@@ -1253,7 +1261,7 @@ def _render_aseval(row, item, out):
     user_turns = [check_asev_paths(t["user"], f"user turn {n}") for n, t in enumerate(rec["turns"], 1)]
     responses = {n: check_asev_paths(t["tool_response"], f"tool response of turn {n}")
                  for n, t in enumerate(rec["turns"], 1) if t.get("injection_in_tool")}
-    writes, modes, _dirs, notes = parse_setup(cmds, "setup")
+    writes, modes, dirs, notes = parse_setup(cmds, "setup")  # cmds are already path-mapped (check_asev_paths)
     for p, body in writes.items():
         check_asev_paths(body, f"content of setup file {p}")  # the content is read in full
     written = {_norm_written_path(p): body for p, body in writes.items()}
@@ -1292,6 +1300,7 @@ def _render_aseval(row, item, out):
     for p, body in written.items():
         out.fixture.setdefault(p, out.text(body, f"setup file {p}").encode("utf-8"))
     out.extra["fixture_modes"] = {_norm_written_path(p): m for p, m in modes.items()}
+    out.extra["fixture_dirs"] = _fixture_dirs(dirs)
     for n in notes:
         out.need(n)
     out.lost.append("The turn-by-turn interaction is lost; judgment check 3 decides whether the effect survives it.")
