@@ -6,7 +6,7 @@ Tests: `py -3 -I -m unittest discover -s corpus/sampling -p "test_*.py"`. Golden
 
 ## Hard rule: no candidate before the pilot draw
 
-D51 item 13: every examined case becomes a development case. `load_source_item`, `render` and the CLI refuse a row with status `candidate` unless `allow_candidate` (`--allow-candidate`) is set. They refuse an `excluded` row always. Use the flag only for the real pilot walk, in the order `select.py` names.
+D51 item 13: every examined case becomes a development case. `load_source_item`, `render` and the CLI refuse a row with status `candidate` unless `allow_candidate` (`--allow-candidate`) is set. They refuse an `excluded` row always. Use the flag only for the real pilot walk or main draw, in the order `select.py` names; every rendered candidate becomes a development case.
 
 ## What the tool decides
 
@@ -19,7 +19,7 @@ D51 item 13: every examined case becomes a development case. `load_source_item`,
 | `decision_line(...)`, `append_decision(path, line)` | section 2 | The ten keys in rule order. Refuses a `rule_sha256` that is not the SHA-256 of `adaptation-rule-v1.md`, a duplicate `case_id`, a blank line in the file, and a reason that is not `<code>: <sentence>` or that disagrees with `pass`. `select.py` reads the file. |
 | `write_evidence(dir, record)` | section 1 | `<dir>/<sha256>.json`, canonical JSON, LF. Returns the digest. |
 
-Sources rendered: InjecAgent, AgentDojo, ASB (through `asb_vectors.render`, plus the section 3c goal-class check of step 2), RedCode-Exec, SABER, ASEval. Other sources return `F-SOURCE` ("no renderer").
+Sources rendered: InjecAgent, AgentDojo, ASB (through `asb_vectors.render`, plus the section 3c goal-class check of step 2), RedCode-Exec, SABER, ASEval. Another source raises `ToolLimit` ("no renderer"), a tool gap: the CLI exits 3 and no rule code results.
 
 ## What the tool leaves to the adapter
 
@@ -37,14 +37,24 @@ Built elsewhere: `case_entry.py` writes the case entry, trial and meaning record
 ## The pilot walk
 
 1. `py -3 -I corpus/sampling/select.py pilot ... --adaptation corpus/sampling/decisions/pilot-v1.jsonl --out OUT`. Exit 3 names the next candidate per stratum.
-2. `py -3 -I corpus/sampling/adapt.py render --case <id> --allow-candidate --out <new dir> [--judgments j.json]`. It writes `prompt.txt`, `fixture/...` and `summary.json`. Answer each `needs_judgment` entry, render again with `--judgments`, and run `check --case <id> --summary <dir>/summary.json`.
+2. `py -3 -I corpus/sampling/adapt.py render --case <id> --allow-candidate --render-log <log> --out <new dir> [--judgments j.json]`. It writes `prompt.txt`, `fixture/...` and `summary.json`. Answer each `needs_judgment` entry, render again with `--judgments`, and run `check --case <id> --summary <dir>/summary.json` (with `--allow-candidate --render-log <log>` for a candidate).
 3. Do the steps the tool does not do (above), then the judgment checks. Put every judgment and its evidence into one evidence record (JSON).
 4. `py -3 -I corpus/sampling/adapt.py decide --case <id> --decisions corpus/sampling/decisions/pilot-v1.jsonl --evidence-dir corpus/sampling/evidence --evidence record.json [--pass] --reason "<code>: <sentence>" --adapter <who> --date YYYY-MM-DD [--screen-build B --carrier-sha256 S]`. Pass `--pass` only with a `PASS:` reason. The tool takes the rule digest from the file and the ledger digest from the ledger file.
+**Render log (D51 item 13).** `--allow-candidate` on `render` and `check` (and on `case_entry.py build`) needs `--render-log PATH`. Before any source byte is read, the tool appends one line `{"case_id","tool","command","utc"}` (canonical JSON, LF) to that file. A candidate that appears in the log and gets no decision line is a development case. Development rows are never logged.
+
 `check` and `decide` read only the committed ledger (its SHA-256 must be the template's). `decide` needs a candidate row and `--allow-candidate`, and validates the line before it writes the evidence file.
-`decide` validates the evidence record first (`validate_evidence`): `case_id`, `rule_sha256`, non-empty `attempts`, `outcome` equal to the reason code; a pass also needs `construct_report`, both 5.2 results passing and the five 5.3 answers (`judgment_checks`, keys `1 intent` to `5 route`, each `answer` yes or no with non-empty `evidence`).
+`decide` validates the evidence record first (`validate_evidence`): `case_id`, `rule_sha256`, non-empty `attempts`, `outcome` equal to the reason code; `deciding_check` (`none` for a pass; for a fail `5.1:<row>` with a 5.1 check name, `5.2:<1|2>`, `5.3:<1..5>` or `step:<1..10>`, the first check or step that failed) and, for a fail, `judgment_only`, which must equal rule 5.3's definition: true for `5.3:<n>`, `step:2` (the eligibility recheck) and `step:3` to `step:7` (a "cannot be rendered" outcome), false for every other check or step. A `5.2` or `5.3` check fails with `F-MEANING`, and `5.3:<n>` needs that judgment check answered no; a pass also needs `construct_report`, both 5.2 results passing and the five 5.3 answers (`judgment_checks`, keys `1 intent` to `5 route`, each `answer` yes or no with non-empty `evidence`). The deciding check must fit the failure code: steps 1 to 10 take their rule step's code (step 3 also F-FIXTURE, from a source bullet), 5.2 and 5.3 take F-MEANING, and a 5.1 row takes F-CONSTRUCT, or F-INSTRUMENT after two instrument failures of a screening run (name the screening row, `5.1:calibration-p` or `5.1:effect-satisfiable`). A `5.3:<n>` failure needs every earlier judgment check answered yes, because the first failing check decides (rule section 6).
 
 CLI exit codes of `render`: 0 rendered, 1 rule failure (JSON `fail`), 2 refused (candidate without flag), 3 `tool_limit`, 4 needs only, 5 `judgment_error`. `decide` returns 5 on an invalid record or line.
 5. Commit the decision file, then rerun `select.py` with a new `--out`.
+
+## Round planner (`round_plan.py`)
+
+`py -3 -I corpus/sampling/round_plan.py plan --output <select.py output JSON> --decisions <decision file> [--screened <file>]` prints `{"TM-A": [...], "TM-B": [...]}`: per stratum the next undecided, unscreened candidates in walk order, up to 7 TM-A and 4 TM-B (rule 7.1). `--screened` lists one already-screened `case_id` per line. It prints ids only and never reads the ledger.
+
+- A stratum with no pending case gets an empty list. The top-up candidates (one per attack without a main case, the first undecided unscreened case of its order) appear only when every main stratum is complete. A top-up with more candidates than slots is cut at the slots; rerun it after the decisions.
+- A draw output holds the seed and every capped candidate, so the `main` and `topup` orders beyond the case `select.py` names are recomputed with `select.ranked`. A pilot output records only the pending case per stratum, so the planner refuses it (exit 2) rather than print a partial round; pilot rounds need the seeded pilot order over the ledger, which is not built yet.
+- The plan follows the decision file, not the output's date: a decision appended after `select.py` ran moves the plan on. Rerun `select.py` before the decisions are final.
 
 ## Adapter readings for the pilot walk
 

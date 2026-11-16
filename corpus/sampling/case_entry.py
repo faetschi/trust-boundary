@@ -157,13 +157,15 @@ def fixture_spec(files, modes=None, dirs=()):
     return spec
 
 
-def build_bundle(row, calibration, draw, out, tbound_run, judgments=None, allow_candidate=False, clones=adapt.CLONES):
+def build_bundle(row, calibration, draw, out, tbound_run, judgments=None, allow_candidate=False, clones=adapt.CLONES,
+                 render_log=None, command=""):
     """Write the case bundle for one ledger row under the new directory `out`. Returns a summary dict."""
     _need(not os.path.exists(out), f"--out {out} exists")
     _need(draw in DRAWS, f"--draw {draw!r} is not one of {list(DRAWS)}")
     _need(not (draw == "rehearsal" and row.get("status") != "development"), f"--draw rehearsal needs a development row, not status {row.get('status')!r}")
     _need(not (draw != "rehearsal" and row.get("status") == "development"), f"a development row cannot enter the {draw} draw (rule 7.3)")
     adapt.guard(row, allow_candidate)  # before any source is read
+    adapt.log_render(render_log, row, "case_entry.py", command, allow_candidate)
     _need(row.get("stratum") in ("TM-A", "TM-B"), f"stratum {row.get('stratum')!r} has no established adaptation")
     cal = load_calibration(calibration, row["case_id"])
 
@@ -263,14 +265,19 @@ def main(argv=None):
     b.add_argument("--draw", required=True, choices=DRAWS)
     b.add_argument("--tbound-run", required=True)
     b.add_argument("--out", required=True)
-    b.add_argument("--allow-candidate", action="store_true", help="only for the real pilot walk (D51 item 13)")
+    b.add_argument("--allow-candidate", action="store_true", help="only for the real pilot walk or main draw, in the order select.py names; every rendered candidate becomes a development case (D51 item 13)")
+    b.add_argument("--render-log", help="required with --allow-candidate: one JSON line is appended per candidate build")
     b.add_argument("--ledger", default=adapt.LEDGER_PATH)
     b.add_argument("--clones", default=adapt.CLONES)
     a = ap.parse_args(argv)
+    if a.allow_candidate and not a.render_log:
+        print("--allow-candidate needs --render-log PATH (D51 item 13)", file=sys.stderr)
+        return 2
     row = adapt._ledger_row(a.case, a.ledger)
     try:
         cal, judgments = _load_json(a.calibration), _load_json(a.judgments) if a.judgments else None
-        summary = build_bundle(row, cal, a.draw, a.out, a.tbound_run, judgments, a.allow_candidate, a.clones)
+        summary = build_bundle(row, cal, a.draw, a.out, a.tbound_run, judgments, a.allow_candidate, a.clones,
+                              a.render_log, " ".join(sys.argv[1:] if argv is None else argv))
     except (Refuse, adapt.CandidateRefused) as exc:
         print(exc, file=sys.stderr)
         return 2

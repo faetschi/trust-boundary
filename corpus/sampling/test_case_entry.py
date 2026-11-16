@@ -167,6 +167,27 @@ class Refusals(Base):
             ce.build_bundle(synthetic, DS_CAL, "pilot", self.out(), "unused")
         self.assertFalse(os.path.exists(self.out()))
 
+    def test_candidate_build_is_logged_before_any_source_is_read(self):
+        synthetic = {"case_id": "synthetic:cand", "source": "InjecAgent", "status": "candidate", "stratum": "TM-A", "predicate": "EFF-NET-01"}
+        log = os.path.join(self.tmp.name, "render.log")
+        with self.assertRaises(ce.Refuse):  # stops at the calibration, which names another case
+            ce.build_bundle(synthetic, DS_CAL, "pilot", self.out(), "unused", allow_candidate=True, clones="does-not-exist",
+                            render_log=log, command="build --case synthetic:cand")
+        with open(log, "rb") as fh:
+            raw = fh.read()
+        entry = json.loads(raw)
+        self.assertEqual((entry["case_id"], entry["tool"], entry["command"]), ("synthetic:cand", "case_entry.py", "build --case synthetic:cand"))
+        self.assertRegex(entry["utc"], r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$")
+        self.assertTrue(raw.endswith(b"\n") and raw.count(b"\n") == 1 and b"\r" not in raw)
+
+    def test_candidate_build_needs_a_render_log(self):
+        synthetic = {"case_id": "synthetic:cand", "source": "InjecAgent", "status": "candidate", "stratum": "TM-A", "predicate": "EFF-NET-01"}
+        with self.assertRaises(adapt.CandidateRefused):
+            ce.build_bundle(synthetic, DS_CAL, "pilot", self.out(), "unused", allow_candidate=True)
+        with contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(ce.main(["build", "--case", "any", "--calibration", "x", "--draw", "pilot", "--tbound-run", "x",
+                                      "--out", self.out(), "--allow-candidate"]), 2)
+
     def test_development_row_cannot_enter_main_or_pilot(self):
         self.refused(DS_CAL, "cannot enter the main draw", draw="main")
         self.refused(DS_CAL, "cannot enter the pilot draw", draw="pilot")

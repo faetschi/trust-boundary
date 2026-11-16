@@ -8,6 +8,7 @@ and the adapter supplies its answer through the `judgments` argument (see ADAPT.
 HARD RULE: a ledger row with status "candidate" is refused unless allow_candidate is true (D51 item 13).
 """
 import ast
+import datetime
 import hashlib
 import json
 import os
@@ -68,6 +69,23 @@ class CandidateRefused(Exception):
     """D51 item 13: the adaptation procedure is not applied to a candidate row before the pilot draw."""
 
 
+def log_render(path, row, tool, command, allow_candidate=False):
+    """D51 item 13: a candidate that is rendered and never decided is a development case, so each render of a candidate
+    row appends one canonical JSON line to `path`. Call it after `guard` and before any source byte is read.
+    A development row is never logged."""
+    if row.get("status") != "candidate" or not allow_candidate:
+        return
+    if not path:
+        raise CandidateRefused(f"{row.get('case_id')}: a candidate render needs a render log (--render-log PATH)")
+    line = {"case_id": row["case_id"], "tool": tool, "command": command,
+            "utc": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
+    data = (json.dumps(line, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
+    with open(path, "ab") as fh:
+        fh.write(data)
+        fh.flush()
+        os.fsync(fh.fileno())
+
+
 def sha256_hex(data):
     return hashlib.sha256(data).hexdigest()
 
@@ -77,7 +95,7 @@ def guard(row, allow_candidate=False):
     if status == "development" or (status == "candidate" and allow_candidate):
         return
     raise CandidateRefused(f"{row.get('case_id')}: status {status!r} refused"
-                           + ("; pass allow_candidate (--allow-candidate) only for the real pilot walk" if status == "candidate" else ""))
+                           + ("; pass allow_candidate (--allow-candidate) only for the real pilot walk or main draw" if status == "candidate" else ""))
 
 
 # ------------------------------------------------------------------ step 8 and checks 5.2
@@ -172,6 +190,8 @@ def commitment_template():
 def load_source_item(row, clones=CLONES, digests=None, allow_candidate=False):
     """Step 1: read the row's source files from the git object at the pin, verify every SHA-256, parse the item."""
     guard(row, allow_candidate)
+    if row["source"] not in _PARSERS:
+        raise ToolLimit(f"{row['source']} has no renderer in this tool (a tool gap, never a rule outcome)")
     if digests is None:
         raw = open(DIGESTS_PATH, "rb").read()
         tmpl = commitment_template()
@@ -1329,7 +1349,7 @@ def render(row, item, judgments=None, allow_candidate=False):
             return _redcode_prompt(row, item["record"], out)
         fn = _RENDERERS.get(row["source"])
         if fn is None:
-            return {"fail": "F-SOURCE", "reason": f"source {row['source']!r} has no renderer in this tool"}
+            raise ToolLimit(f"source {row['source']!r} has no renderer in this tool")
         return fn(row, item, out)
     except Fail as exc:
         return {"fail": exc.code, "reason": exc.reason}
@@ -1388,9 +1408,48 @@ def append_decision(path, line):
 JUDGMENT_CHECKS = ("1 intent", "2 changes", "3 losses", "4 tool mapping", "5 route")
 
 
+CHECKS_51 = ("manifest-validation", "validation", "artifacts-reference", "attacker-artifact", "trial-admission", "source-license",
+             "leak-prompt", "leak-fixture", "root-unique", "root-disjoint", "mutation", "acceptance-cell", "effect-satisfiable",
+             "calibration-p")
+# Rule 5.3 Limitation: judgment is the 5.3 checks, the step 2 eligibility recheck and every "cannot be rendered" outcome of steps 3 to 7.
+JUDGMENT_STEPS = {"2", "3", "4", "5", "6", "7"}
+STEPS = {str(n) for n in range(1, 11)}  # step 11 is the section 5 checks, named by 5.x
+# Rule section 3 step codes and section 6 (a step 3 source bullet may reject with F-FIXTURE); 5.1 rows are deterministic
+# checks or screening-report rows, so F-CONSTRUCT, or F-INSTRUMENT after two instrument failures.
+STEP_CODES = {"1": {"F-SOURCE"}, "2": {"F-ELIGIBLE"}, "3": {"F-MEANING", "F-FIXTURE"}, "4": {"F-MEANING"}, "5": {"F-FIXTURE"},
+              "6": {"F-MEANING"}, "7": {"F-MEANING"}, "8": {"F-ELIGIBLE"}, "9": {"F-CONSTRUCT"}, "10": {"F-CONSTRUCT"}}
+
+
+def deciding_check_problems(record, passed, code):
+    """Problems with the deciding_check and judgment_only fields (rule 5.3 Limitation and 7.4)."""
+    dc, jo = record.get("deciding_check"), record.get("judgment_only")
+    if passed:
+        return [] if dc == "none" and "judgment_only" not in record else ["a passing record has deciding_check \"none\" and no judgment_only"]
+    kind, _, n = dc.partition(":") if isinstance(dc, str) else ("", "", "")
+    ok = {"5.1": n in CHECKS_51, "5.2": n in ("1", "2"), "5.3": n in ("1", "2", "3", "4", "5"), "step": n in STEPS}.get(kind, False)
+    if not ok:
+        return ['a failing record needs deciding_check "5.1:<row>", "5.2:<n>", "5.3:<n>" or "step:<n>" naming the check that decided it']
+    problems = []
+    derived = kind == "5.3" or (kind == "step" and n in JUDGMENT_STEPS)
+    if jo is not derived:
+        problems.append(f"judgment_only must be {str(derived).lower()} for deciding_check {dc!r} (rule 5.3 Limitation)")
+    allowed = {"5.1": {"F-CONSTRUCT", "F-INSTRUMENT"}, "5.2": {"F-MEANING"}, "5.3": {"F-MEANING"}}.get(kind) or STEP_CODES[n]
+    if code not in allowed:
+        problems.append(f"deciding_check {dc!r} fails with {' or '.join(sorted(allowed))}, not {code!r}")
+    if kind == "5.3":
+        answers = record.get("judgment_checks") or {}
+        earlier = [c for c in JUDGMENT_CHECKS[: int(n) - 1] if (answers.get(c) or {}).get("answer") != "yes"]
+        if earlier:
+            problems.append(f"deciding_check {dc!r}: the first failing check decides (rule 6), but {earlier} are not answered yes")
+    if kind == "5.3" and (record.get("judgment_checks") or {}).get(JUDGMENT_CHECKS[int(n) - 1], {}).get("answer") != "no":
+        problems.append(f"deciding_check {dc!r} needs judgment check {JUDGMENT_CHECKS[int(n) - 1]!r} answered no")
+    return problems
+
+
 def validate_evidence(record, case_id, passed, reason):
     """Required keys of an evidence record (rule sections 2, 5.2, 5.3, 6). Raises ValueError listing what is missing.
-    Every record: case_id, rule_sha256, attempts (non-empty list), outcome (code). A passing record also needs the
+    Every record: case_id, rule_sha256, attempts (non-empty list), outcome (code), deciding_check ("none" for a pass; for a
+    fail the check or step that decided it) and, for a fail, judgment_only (see deciding_check_problems). A passing record also needs the
     construct report, the two 5.2 results (both pass) and the five 5.3 answers, each with an answer and evidence.
     A failing record keeps what was written before it stopped; each 5.3 entry it holds must be well formed."""
     problems = []
@@ -1405,6 +1464,7 @@ def validate_evidence(record, case_id, passed, reason):
     code = reason.split(":", 1)[0]
     if record.get("outcome") != code:
         problems.append(f"outcome must equal the reason code {code!r}")
+    problems += deciding_check_problems(record, passed, code)
     judged = record.get("judgment_checks", {})
     if not isinstance(judged, dict):
         problems.append("judgment_checks must be an object keyed by check")
@@ -1475,8 +1535,9 @@ def main(argv=None):
     sub = ap.add_subparsers(dest="cmd", required=True)
     r = sub.add_parser("render", help="steps 1, 3 to 6 and 8 for one case")
     r.add_argument("--case", required=True)
-    r.add_argument("--allow-candidate", action="store_true", help="only for the real pilot walk (D51 item 13)")
+    r.add_argument("--allow-candidate", action="store_true", help="only for the real pilot walk or main draw, in the order select.py names; every rendered candidate becomes a development case (D51 item 13)")
     r.add_argument("--out", required=True)
+    r.add_argument("--render-log", help="required with --allow-candidate: one JSON line is appended per candidate render")
     r.add_argument("--ledger", default=LEDGER_PATH)
     r.add_argument("--clones", default=CLONES)
     r.add_argument("--judgments", help="JSON file with tool_names, replacements, objects, path_moves")
@@ -1485,6 +1546,7 @@ def main(argv=None):
     c.add_argument("--summary", required=True)
     c.add_argument("--ledger", default=LEDGER_PATH)
     c.add_argument("--allow-candidate", action="store_true")
+    c.add_argument("--render-log", help="required with --allow-candidate: one JSON line is appended per candidate check")
     d = sub.add_parser("decide", help="write the evidence file and append the decision line")
     d.add_argument("--case", required=True)
     d.add_argument("--decisions", required=True)
@@ -1497,12 +1559,17 @@ def main(argv=None):
     d.add_argument("--screen-build")
     d.add_argument("--carrier-sha256")
     d.add_argument("--ledger", default=LEDGER_PATH)
-    d.add_argument("--allow-candidate", action="store_true", help="required: a decision is only for a candidate (pilot walk)")
+    d.add_argument("--allow-candidate", action="store_true", help="required: a decision is only for a candidate (pilot walk or main draw)")
     a = ap.parse_args(argv)
+    if a.cmd != "decide" and a.allow_candidate and not a.render_log:
+        print("--allow-candidate needs --render-log PATH (D51 item 13)", file=sys.stderr)
+        return 2
     row = _ledger_row(a.case, a.ledger)
+    command = " ".join(sys.argv[1:] if argv is None else argv)
     if a.cmd == "render":
         try:
             guard(row, a.allow_candidate)  # before any source is read
+            log_render(a.render_log, row, "adapt.py", command, a.allow_candidate)
         except CandidateRefused as exc:
             print(exc, file=sys.stderr)
             return 2
@@ -1531,6 +1598,7 @@ def main(argv=None):
     try:
         if a.cmd == "check":
             guard(row, a.allow_candidate)
+            log_render(a.render_log, row, "adapt.py", command, a.allow_candidate)
         elif row["status"] != "candidate" or not a.allow_candidate:
             raise CandidateRefused(f"{a.case}: a decision needs a candidate row and --allow-candidate (status {row['status']!r})")
     except CandidateRefused as exc:
