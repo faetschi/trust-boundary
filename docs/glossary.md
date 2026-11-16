@@ -3,6 +3,11 @@
 Terms you will meet in the code, the docs, and the study records. Each entry
 says what the term means in this repository.
 
+For study terms, the thesis glossary is normative:
+[`tbound/AH-technical/01-decisions-glossary.md`](https://github.com/faetschi/MSE_MA_Thesis/blob/main/tbound/AH-technical/01-decisions-glossary.md)
+in `MSE_MA_Thesis`. This page restates those terms for the repository and must
+not contradict it. A disagreement is a documentation bug here.
+
 ## The product
 
 | Term | Meaning |
@@ -31,10 +36,15 @@ says what the term means in this repository.
 | **Registration** | The signed service configuration that says which task, prompt, users, and paths a governed service may run. |
 | **Admission ID** | A one-use identifier from the signed service configuration. A repeated request needs a new one. |
 | **Bash output scope** | The exact relative paths `bash` may change in a run (`--bash-output`). With none, `bash` is disabled. |
-| **Unknown outcome** | A run whose result could not be proven. The next request is blocked until it is reconciled with `tbound abandon-unknown`. |
+| **`UNKNOWN`** | An effect may have begun, but a durable terminal outcome cannot yet be established. Inspection is required, and consumed authority is never replayed. The next request is blocked until the run is reconciled with `tbound abandon-unknown`. |
 | **Refused** | A request the service declined. The error code and hint say why. |
 | **`claim_bearing=false`** | The output is not a thesis result. Fixtures and smoke runs print this. Probes may not carry the field. |
 | **Receipt** | The JSON record a run prints: tool sequence, verdicts, and publication status. |
+| **Terminal classification** | The one durable post-effect class the supervisor records: `SUCCEEDED`, `DENIED`, `FAILED` (with a typed failure class), or `UNKNOWN`. The session store also records `denied_after_effect`, which refines `DENIED` and is not a fifth class. |
+| **Settlement** | Two senses. Process settlement means a worker or transfer has terminated and its final state is recorded. Budget settlement means the cumulative recovery counters of a `workflow_id` are updated. State the sense. |
+| **Generation** | Two senses. A session generation is a sealed, immutable tree of session state (`g0`, `g1`, …). A recovery generation is the lineage counter of a workflow across restarts. State the sense. |
+| **Quarantine** | A recovery outcome in which a workflow, root, or session view with unresolved or inconsistent state is retained for inspection and refuses further effects until resolved. It never replays an effect. |
+| **Tier** | Historical numbering of enforcement mechanisms. Tier 2 is the pinned `tree-sitter-bash` pre-execution filter, which is never the security boundary. Tier 3 is the transactional staging sandbox. Tier 4 is the Linux execution-isolation layer. Tier 1 is future work. A tier is not an evidence layer and not a trial disposition. |
 
 ## Freezes and evidence
 
@@ -42,7 +52,8 @@ says what the term means in this repository.
 |---|---|
 | **Freeze** | An update to a governed host made from one exact Git commit: gate, freeze, install, smoke test. See [reproduction](guides/reproduce.md). |
 | **Pin** | A recorded digest of a binary, image, or toolchain, used to prove which build ran. |
-| **Gate** | The build, vet, format, and test checks run on a clean export of a commit before a freeze. |
+| **Release gate** | The build, vet, format, and test checks run on a clean export of a commit before a freeze. Not the same as the evidence gates G0 to G6. |
+| **Gates G0 to G6** | The thesis roadmap evidence gates. G0 is the literature screen and G1 is profile feasibility. They gate research evidence, not a release. |
 | **Construct witness** | Guest-side evidence about a construct that a test case relies on. See [construct witnesses](guides/construct-witnesses.md). |
 | **Lane** | A separate line of work with its own thread, branches, and owner, for example the corpus lane or the product lane. |
 
@@ -50,8 +61,8 @@ says what the term means in this repository.
 
 | Term | Meaning |
 |---|---|
-| **PVR** | The rate of forbidden effects in adversarial runs. |
-| **ORR** | The rate at which compliant tasks are rejected. |
+| **PVR** | The prevention-violation rate, the rate of forbidden effects in adversarial runs. |
+| **ORR** | The over-refusal rate, the rate at which compliant tasks are rejected. |
 | **H1** | The main hypothesis about PVR and ORR. It has not been executed. |
 | **Pre-registration** | An immutable record, made before H1, that fixes the thresholds, sample size, scoring, and denominators. |
 | **Corpus** | The set of test cases (attacks, normal tasks, borderline cases) used in the evaluation. |
@@ -59,7 +70,11 @@ says what the term means in this repository.
 | **Pilot** | A small preliminary case set used for testing and tuning. Pilot results are not thesis results. |
 | **T1, T2** | Public commitments that fix the case selection before a public random draw: T1 for the pilot, T2 for the final thesis run. |
 | **Construct checks** | Deterministic checks on the corpus. Full construct checks, with applicable guest witnesses, are on the path to H1. `tbound-profile corpus-digest` and `preregistration-record` do not run the full set. |
-| **Panel** | An optional, supplementary analysis by several AI models. Its agreement statistics are diagnostics only. |
+| **AI construct-review panel** | Optional supplementary evidence from several AI models. If used, retain the raw ratings, model settings, and blinding records. AC1, raw agreement, and kappa are diagnostics only. They never gate H1 and are not independent human validation. |
+| **Forbidden effect** | A registered realized change to protected host state, arrival at the synthetic unauthorized network sink, or a registered process-containment or persistence effect. A blocked proposal, syscall, or packet alone is not that effect. |
+| **EVQ, SQ-A, SQ-B, SQ-C** | The thesis research questions: EVQ is profile conformance, SQ-A security, SQ-B friction, and SQ-C secondary descriptive utility. |
+| **Configurations A, B, C, P, V** | A is native Pi in an isolated cell (diagnostic). B is proxy tools with a no-op gate. C is proxy tools with the deterministic gate (the treatment). P is a scripted channel-preserving replay with exactly one registered delta. V is native Pi in a plain container with no TBound gate (the utility baseline). |
+| **`LOSSY`, `LOST`** | `LOSSY` marks a bounded enrichment stream that overflowed, so something is missing. It is a flag, not a result. `LOST` is a display label of the web-chat demonstrator only. The supervisor never emits it, and the thesis classifies that situation as `UNKNOWN`. |
 
 ## Kernel and tools
 
