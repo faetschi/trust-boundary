@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # tbound installer.
 #
-#   curl -fsSL https://get.tbound.dev | bash
 #   bash install.sh --version <ver> [--prefix <dir>] [--base-url <url> | --local-dist <dir>] [--no-path] [--no-completions]
 #                   [--public-key <file> [--key-fingerprint <hex16>] [--verifier <tbound>]]
 #   bash install.sh update  [--version <ver> ...]
 #   bash install.sh uninstall [--prefix <dir>]
+#
+# By default a download comes from the GitHub Release for --version. Use
+# --base-url for another origin, or --local-dist for an offline build.
 #
 # Installs the tbound and tbound-doctor binaries plus the runtime bundle into a
 # user-owned prefix. It never uses sudo and never touches the user's global Node
@@ -362,7 +364,7 @@ main() {
   local prefix base_url local_dist="" add_path=1 no_completions=0
   local public_key="" key_fingerprint="" verifier="${TBOUND_VERIFIER:-}"
   prefix="$(default_prefix)"
-  base_url="${TBOUND_BASE_URL:-https://get.tbound.dev/releases}"
+  base_url="${TBOUND_BASE_URL:-}"
   local_dist="${TBOUND_LOCAL_DIST:-}"
 
   while [ $# -gt 0 ]; do
@@ -380,6 +382,11 @@ main() {
       *) die "unexpected argument: $1" ;;
     esac
   done
+
+  if [ -z "$local_dist" ] && [ -z "$base_url" ]; then
+    [ "$version" != latest ] || die "version 'latest' has no download origin; pass --version <ver> (GitHub Releases are versioned), --base-url <url>, or --local-dist <dir>"
+    base_url="https://github.com/faetschi/trust-boundary/releases/download/v${version}"
+  fi
 
   prefix="$(canonical_prefix "$prefix")"
   require_root_trust "$prefix"

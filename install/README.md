@@ -12,9 +12,8 @@ first (see the [quickstart](../docs/guides/quickstart.md)):
 make build VERSION=dev
 bash install/install.sh --version dev --local-dist dist --no-path
 
-# a published GitHub Release, once one exists (download base is the tag's asset URL)
-bash install/install.sh --version <ver> \
-  --base-url https://github.com/faetschi/trust-boundary/releases/download/v<ver>
+# a published GitHub Release, once one exists (the default download base)
+bash install/install.sh --version <ver>
 
 # options
 install/install.sh --version <ver> --prefix <dir> --base-url <url> --local-dist <dir> --no-path
