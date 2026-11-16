@@ -33,7 +33,7 @@ says what the term means in this repository.
 | **Bash output scope** | The exact relative paths `bash` may change in a run (`--bash-output`). With none, `bash` is disabled. |
 | **Unknown outcome** | A run whose result could not be proven. The next request is blocked until it is reconciled with `tbound abandon-unknown`. |
 | **Refused** | A request the service declined. The error code and hint say why. |
-| **`claim_bearing=false`** | The output is not a thesis result. Fixtures, probes, and smoke runs always show this. |
+| **`claim_bearing=false`** | The output is not a thesis result. Fixtures and smoke runs print this. Probes may not carry the field. |
 | **Receipt** | The JSON record a run prints: tool sequence, verdicts, and publication status. |
 
 ## Freezes and evidence

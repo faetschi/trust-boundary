@@ -25,10 +25,10 @@ next to the product code, and this page explains which is which.
 ## Why these stay in this repository
 
 The Go code, the scripts, and the freeze tooling refer to these paths directly.
-Counted by path, `corpus/` is named 58 times under `supervisor/`, and `evidence/`
-168 times under `supervisor/`, `scripts/`, and `infra/freeze/`. A clone of the
-product repository alone would then fail to build or test, and every pinned
-path would change. For now they stay where they are.
+32 files under `supervisor/` name `corpus/`, and 34 files across `supervisor/`,
+`scripts/` and `infra/freeze/` name `evidence/`. A clone of the product
+repository alone would then fail to build or test, and every pinned path would
+change. For now they stay where they are.
 
 Moving `evidence/` to the thesis repository is possible later, as a separate
 change once the freeze and the thesis are final. It needs updates to the

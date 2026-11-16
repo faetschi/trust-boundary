@@ -4,8 +4,9 @@ This page lists the user-facing commands. `tbound --help` prints the command
 names. Where a command has flags, its usage text lists them. Commands marked
 **Linux only** exit with an error on other systems.
 
-Commands are in the `tbound` binary unless stated otherwise. The installer
-places `tbound`, `tbound-doctor`, and `tbound-profile` on your `PATH`.
+Commands are in the `tbound` binary unless stated otherwise. The installer puts
+`tbound`, `tbound-doctor`, and `tbound-profile` in `<prefix>/bin`. It prints the
+`export PATH=...` line for you to add, unless you pass `--no-path`.
 
 ## Exit status
 
@@ -39,7 +40,7 @@ places `tbound`, `tbound-doctor`, and `tbound-profile` on your `PATH`.
 Development fixtures:
 
 ```sh
-tbound serve --native-fixture         # Go-only synthetic lifecycle; claim_bearing=false
+tbound serve --pi --native-fixture    # Go-only synthetic lifecycle; claim_bearing=false
 tbound serve --pi --dev-fixture       # real Pi CLI 0.87.1 with a scripted provider; claim_bearing=false; needs env vars (setup.md)
 ```
 
@@ -105,13 +106,17 @@ Run `tbound product help` for the full usage text.
 ## `tbound release`
 
 ```text
-tbound release verify      --manifest FILE --signature FILE --public-key FILE --artifact FILE
-tbound release fingerprint --public-key FILE
+tbound release verify      --manifest F --signature F --public-key F [--fingerprint HEX16] [--artifact F]...
+tbound release manifest    --out F ARTIFACT...
+tbound release sign        --manifest F --key PRIVATE --out F
+tbound release keygen      --out DIR
+tbound release fingerprint --public-key F
 ```
 
-`verify` checks the signature first, then the artifact's size and SHA-256. Use a
-verifier you trust independently of the download. See [`install/install.sh`](../install/install.sh)
-for the trust notes.
+`verify` checks the signature first, then each artifact's size and SHA-256. Use a
+verifier you trust independently of the download. `manifest`, `sign` and `keygen`
+are for the release maintainer. See [`install/install.sh`](../install/install.sh) for
+the trust notes.
 
 ## `tbound-doctor`
 

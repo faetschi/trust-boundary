@@ -44,7 +44,8 @@ outside the thesis.
 ## Product chat
 
 The product service runs governed chat turns on one Linux host, from the terminal
-(`tbound chat`) or a browser. Reads run through the policy gate. A write waits for
+(`tbound chat`). A browser client is the optional, frozen web chat in
+`extensions/webchat/`. Reads run through the policy gate. A write waits for
 your Publish or Discard. The chat worker is the supervisor's own agent loop, not
 Pi, and its output is not thesis evidence.
 

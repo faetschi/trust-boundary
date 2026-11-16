@@ -38,7 +38,7 @@ Commands:
   verify-retained  re-check a completed run's retained evidence (Linux, root)
 
 Run "tbound <command> --help" for a command's flags.
-Diagnostics: tbound-doctor. Setup guide: docs/guides/quickstart.md.
+Diagnostics: tbound-doctor. Documentation: https://github.com/faetschi/trust-boundary
 `
 
 // Keep the original cmd/tbound construction names source-compatible while the

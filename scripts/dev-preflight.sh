@@ -60,7 +60,11 @@ echo
 echo "Needed for the offline Pi fixture (docs/guides/setup.md):"
 
 if have pi; then
-  ok "pi $(pi --version 2>/dev/null | head -n1)"
+  have_pi="$(pi --version 2>/dev/null | head -n1)"
+  case "$have_pi" in
+    *0.87.1*) ok "pi $have_pi" ;;
+    *) warn "pi ${have_pi:-unknown} (the fixture needs 0.87.1)" "npm install --global @earendil-works/pi-coding-agent@0.87.1" ;;
+  esac
 else
   warn "pi not on PATH" "npm install --global @earendil-works/pi-coding-agent@0.87.1 (the fixture needs version 0.87.1)"
 fi
@@ -75,7 +79,7 @@ else
 fi
 
 if grep -qw landlock /sys/kernel/security/lsm 2>/dev/null; then
-  ok "Landlock present in the kernel (exact ABI 8 is checked by the probe below)"
+  ok "Landlock listed in /sys/kernel/security/lsm"
   warn "Landlock ABI not verified here" "run infra/repro/probe-landlock-abi8.sh; governed runs need exactly ABI 8"
 else
   warn "Landlock not listed by the kernel" "governed runs need Landlock ABI 8"

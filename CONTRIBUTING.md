@@ -13,7 +13,7 @@ parts. This page covers how to change it safely.
 ## Branches and pull requests
 
 - Branch from `codex/tbound-prototype`. Open pull requests into it.
-  `main` is the release line.
+  `main` is the frozen baseline that engineering freezes are cut from.
 - Keep one concern per pull request. Name the files and the reason in the description.
 - In the description, list each command you ran and its result. Say which
   checks you could not run and why.
@@ -36,7 +36,7 @@ when a local result differs.
 
 ## Frozen and evidence paths
 
-Do not edit these without the owner of the relevant study thread:
+Do not edit these without approval from the project owner:
 
 - `evidence/` and `infra/freeze/freezes/`: frozen records.
 - `corpus/`: the test-case corpus and its manifests. Changes change study inputs.
@@ -44,7 +44,7 @@ Do not edit these without the owner of the relevant study thread:
 - Anything that changes a pinned binary, image, or signed profile. These changes
   need a new freeze. See [reproduction](docs/guides/reproduce.md).
 
-A documentation pull request must not change code or pinned files.
+Keep a documentation change separate from code and pinned-file changes.
 
 ## Documentation
 

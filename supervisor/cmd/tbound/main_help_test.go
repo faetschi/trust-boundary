@@ -12,9 +12,9 @@ func TestHelpListsCommands(t *testing.T) {
 		if err := run([]string{arg}, &out, &errOut); err != nil {
 			t.Fatalf("run(%q) returned %v, want nil", arg, err)
 		}
-		for _, want := range []string{"serve", "chat", "provider", "release"} {
-			if !strings.Contains(out.String(), want) {
-				t.Fatalf("run(%q) output does not mention %q:\n%s", arg, want, out.String())
+		for _, cmd := range []string{"serve", "chat", "provider", "project", "product", "release", "abandon-unknown", "verify-retained"} {
+			if !strings.Contains(out.String(), "\n  "+cmd+" ") {
+				t.Fatalf("run(%q) output does not list %q:\n%s", arg, cmd, out.String())
 			}
 		}
 	}
