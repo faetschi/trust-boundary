@@ -399,7 +399,7 @@ full `run.json`. This command records names and digests, not approval or an
 immutable registration. Its default `reviewers: owner` is metadata, not a signature
 or independent human review. This command does not run full `CheckConstructs`.
 Register the final freeze under the protocol in
-the separate `MSE_MA_Thesis` repository. See [Master thesis](../../README.md#master-thesis).
+the separate `MSE_MA_Thesis` repository. See the [research index](../research/README.md).
 
 ```sh
 tbound-profile preregistration-record --freeze-commit "$TBOUND_COMMIT" \
@@ -417,5 +417,5 @@ execution. H1 measures PVR, forbidden effects in adversarial runs, and ORR,
 rejection of compliant tasks, with independent effect checks. Preserve the
 registered denominators and report unsupported evidence. H1 has not run.
 The current runner's synthetic-ledger report is not a claim-bearing H1
-reporting path. See [OVERVIEW](../../OVERVIEW.md) and the thesis protocol referenced
-[above](../../README.md#master-thesis).
+reporting path. See [OVERVIEW](../../OVERVIEW.md) and the thesis protocol, referenced in the
+[research index](../research/README.md).

@@ -3,87 +3,65 @@
 ![trust-boundary: a shield with a red stepped path](assets/trust-boundary-banner.png)
 
 [![status: research prototype](https://img.shields.io/badge/status-research%20prototype-orange)](#current-status)
-[![Go 1.27.1](https://img.shields.io/badge/go-1.27.1-00ADD8?logo=go&logoColor=white)](docs/guides/reproduce.md)
+[![Go 1.27.1](https://img.shields.io/badge/go-1.27.1-00ADD8?logo=go&logoColor=white)](docs/guides/quickstart.md)
 [![Linux](https://img.shields.io/badge/platform-Linux-FCC624?logo=linux&logoColor=black)](docs/runtime/architecture.md)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-TBound is a Linux supervisor prototype for Pi coding tasks.
-It mediates four tools: `read`, `write`, `edit`, and `bash`.
-Pi and model output remain untrusted; Go owns policy, durable state, isolation,
-publication, and evidence.
-Writes and edits create private workspace generations, while Bash runs in a
-fresh rootless Podman command cell under a measured Linux profile.
-Approved changes reach the live repository only through controlled publication.
-The managed service admits one fixed, signed task per configuration, or cases
-from a frozen manifest in corpus mode.
-There is no interactive Pi chat mode yet.
+TBound is a Linux supervisor for the Pi coding agent. Pi proposes four kinds of
+tool call: `read`, `write`, `edit`, and `bash`. TBound checks each call against a
+fixed policy, runs `bash` in an isolated container, and publishes changes to your
+repository only when the policy allows them. Pi and the model are treated as
+untrusted. The Go supervisor owns the decisions, the durable state, and the
+evidence.
+
+TBound is also the artifact of a master thesis. Its study records sit beside the
+code, and [docs/research](docs/research/README.md) explains which is which.
+
+## Which path are you on?
+
+| You want to | Start here |
+|---|---|
+| Build the code and run its checks | [Quickstart](docs/guides/quickstart.md) (about 30 minutes) |
+| Run a task or use the product chat | [Use TBound](USAGE.md) |
+| Look up a command or flag | [Command reference](docs/cli.md) |
+| Understand a term such as PVR, freeze, or cell | [Glossary](docs/glossary.md) |
+| Set up a governed Linux host (operators) | [Governed host setup](docs/guides/governed-setup.md), then [reproduction](docs/guides/reproduce.md) |
+| Contribute a change | [CONTRIBUTING.md](CONTRIBUTING.md) |
+| Read the study records and the thesis | [Research index](docs/research/README.md) |
+| Find any other guide | [Documentation index](docs/README.md) |
+
+Supported platforms: Linux amd64 (native or a VM). Windows can build and test
+TBound through WSL 2 with Ubuntu, but WSL is not a governed host. Native Windows
+and macOS are not supported.
 
 ## Current status
 
-[OVERVIEW.md](OVERVIEW.md) is the only current-state file. It records the
-frozen research baseline, the interim engineering freezes, the unexecuted H1
-evaluation, the product lane, and the claim boundary. Tests, fixtures, probes,
-and pilot reports are not thesis results. The optional
-[web chat](extensions/webchat/README.md) is frozen and outside the thesis.
+[OVERVIEW.md](OVERVIEW.md) is the only current-state file. Tests, fixtures,
+probes, and pilot reports are not thesis results, and the main hypothesis has not
+been run. The optional [web chat](extensions/webchat/README.md) is frozen and
+outside the thesis.
 
-## Product demo: governed chat
+## Product chat
 
-The TBound product service runs interactive, governed chat turns on one Linux
-host, from the terminal (`tbound chat`) or a browser (`tbound-webchat --live`).
-The model works through the same gate: reads run, a write waits for your
-Publish or Discard. Bash runs through the signed D09 Podman/crun cell when
-the install enables it; the first-turn guide starts with Bash denied.
-Its worker is the supervisor's own agent loop, not Pi, and nothing it produces
-is thesis evidence.
+The product service runs governed chat turns on one Linux host, from the terminal
+(`tbound chat`) or a browser. Reads run through the policy gate. A write waits for
+your Publish or Discard. The chat worker is the supervisor's own agent loop, not
+Pi, and its output is not thesis evidence.
 
-This ran end to end on 2026-11-02 on a disposable Hyper-V VM, driven from a
-Windows workstation over SSH, with a real OpenCode Go provider. To set it up
-and try it, follow [Run a first governed product turn](docs/guides/product-first-turn.md).
-Bash qualification, turns, publication, scope refusal, and predecessor replay ran
-on the demo VM on 2026-11-04. Follow [Enable Bash](docs/guides/product-bash.md)
-for that installation. Crash-recovery fixes await the next live run.
-
-## Start here
-
-- [Use TBound](USAGE.md): installation, tasks, operation, and evaluation commands.
-- [Set up TBound and Pi](docs/guides/setup.md): native Linux or Windows with a Linux VM,
-  installation, Doctor, and development fixtures.
-- [Reproduce TBound](docs/guides/reproduce.md): build, gate, offline signing, governed
-  run, and the thesis evaluation workflow.
-- [Run a first governed product turn](docs/guides/product-first-turn.md): set up the
-  product service and chat on one Linux host.
-- [Enable Bash in the product service](docs/guides/product-bash.md): sign, install,
-  and qualify the offline command image.
-- [Try the product demo from Windows](docs/guides/product-demo-windows.md): terminal
-  and browser chat with a product VM over SSH, from Git Bash or VS Code.
-- [Documentation index](docs/README.md): guides and detailed references.
-- [Architecture](docs/runtime/architecture.md): components and trust boundaries.
+- [Run a first governed product turn](docs/guides/product-first-turn.md)
+- [Enable Bash in the product service](docs/guides/product-bash.md)
+- [Try the product demo from Windows](docs/guides/product-demo-windows.md)
 
 ## Repository map
 
 - `supervisor/`: Go commands, policy gate, broker, session state, Linux runtime,
   publication, independent effect checks, and evaluation tools.
 - `adapter/`: the Pi CLI extension and broker transport.
-- `install/`, `scripts/`, `packaging/`: local installation, build, and release assets.
-- `infra/`: host preparation, guest provisioning, operator dispatcher, and evidence mappings.
-- `corpus/`: engineering smoke fixtures and the draft benchmark-adapted pilot corpus.
-- `docs/`: guides, runtime contracts, evaluation records, decisions, and design notes.
+- `install/`, `scripts/`, `packaging/`: installation, build, and release assets.
+- `infra/`: host preparation, guest provisioning, freeze tooling, and the operator dispatcher.
+- `docs/`: guides, runtime contracts, decisions, and design notes.
+- `corpus/`, `evidence/`, `infra/freeze/`: study inputs and frozen records. See
+  [docs/research](docs/research/README.md) before editing them.
 - `extensions/webchat/`: the frozen optional web chat extension.
-- `assets/`: the trust-boundary banner and logo artwork.
-
-## Master thesis
-
-TBound is the artifact of a master thesis. The thesis text, hypotheses,
-methods, and decision register live in the separate `MSE_MA_Thesis` repository:
-
-- `tbound/tbound-thesis.md`
-- `tbound/AH-technical/10-decision-register.md`
-
-The thesis evaluates policy enforcement and usability with adapted benchmark
-cases, compliant tasks, independent effect checks, and reviewed corpus labels.
-H1 concerns PVR, the rate of forbidden effects in adversarial runs, and ORR,
-the rate of rejection of compliant tasks.
-Thesis claims come only from the registered evaluation, not from tests,
-fixtures, capability probes, or engineering smoke runs.
-See [reproduction](docs/guides/reproduce.md#7-reproduce-the-evaluation-workflow) for the
-pilot, review, evidence, and pre-registration sequence.
+- `assets/`: the banner and logo artwork.
+- `thesis/`: a local, gitignored checkout of the thesis repository, if you have one.

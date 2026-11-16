@@ -4,13 +4,17 @@
 and the runtime bundle into a user-owned prefix, verifying the artifact checksum first. It never
 uses `sudo` and never modifies your global Node or Pi.
 
-```sh
-# remote (default base URL is a placeholder until a release host exists)
-curl -fsSL https://get.tbound.dev | bash
+No prebuilt release is published yet, so build the archive from a Linux checkout
+first (see the [quickstart](../docs/guides/quickstart.md)):
 
-# local build (offline)
+```sh
+# local build (offline, recommended today)
 make build VERSION=dev
 bash install/install.sh --version dev --local-dist dist --no-path
+
+# a published GitHub Release, once one exists (download base is the tag's asset URL)
+bash install/install.sh --version <ver> \
+  --base-url https://github.com/faetschi/trust-boundary/releases/download/v<ver>
 
 # options
 install/install.sh --version <ver> --prefix <dir> --base-url <url> --local-dist <dir> --no-path

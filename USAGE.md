@@ -2,7 +2,9 @@
 
 A practical guide from installation to a governed run and an evaluation. It is
 general: it works on a native Linux host, or on Windows with a Linux VM. For
-details, follow the links into `docs/`.
+details, follow the links into `docs/`. New here? Build first with the
+[quickstart](docs/guides/quickstart.md). Terms such as PVR, freeze, and cell are
+defined in the [glossary](docs/glossary.md).
 
 ## 1. What TBound does
 
