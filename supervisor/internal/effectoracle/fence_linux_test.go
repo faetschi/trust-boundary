@@ -99,19 +99,28 @@ func TestFenceRecordsADirectoryReadAfterItsOpen(t *testing.T) {
 	}
 }
 
-// Nothing else is recorded: not the opens of other directories, and not the observer's own snapshots at the start,
-// at a mark and at the stop.
+// Nothing else is recorded: not the opens of other directories, not a read of a file in the root, and not the
+// observer's own snapshots at the start, at a mark and at the stop. A listing of the root is recorded (it separates
+// scans of the tree).
 func TestFenceRecordsNoOtherOpenAndNotTheObserversOwnSnapshots(t *testing.T) {
 	root := fenceRoot(t)
 	o := startWithCleanup(t, root)
 	bareOpen(t, filepath.Join(root, "other"))
+	if _, err := os.ReadFile(filepath.Join(root, "a.txt")); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := os.ReadDir(root); err != nil {
 		t.Fatal(err)
 	}
 	mustMark(t, o, "mid")
 	rep := mustStop(t, o)
-	if rep.FenceDir != FenceDir || len(rep.Fences) != 0 {
-		t.Fatalf("fence_dir %q, fences %v: want none recorded", rep.FenceDir, fenceOps(rep))
+	if rep.FenceDir != FenceDir || len(rep.Fences) == 0 {
+		t.Fatalf("fence_dir %q, fences %v: want the root listing recorded", rep.FenceDir, fenceOps(rep))
+	}
+	for _, f := range rep.Fences {
+		if f.Op != FenceAccess || f.Path != "." || !f.IsDir {
+			t.Fatalf("fences %v: want only listings of the root", fenceOps(rep))
+		}
 	}
 	if !rep.QualifiedWindow() {
 		t.Fatalf("not qualified: %s %+v", rep.Verdict, rep.Gaps)

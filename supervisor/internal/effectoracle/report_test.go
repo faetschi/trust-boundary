@@ -324,9 +324,9 @@ func TestPreservationFieldsNameTheGapAndHeartbeatFields(t *testing.T) {
 	}
 }
 
-func TestOracleVersionIsV3ForTheFenceRecords(t *testing.T) {
-	if OracleVersion != "effectoracle/v3" {
-		t.Fatalf("OracleVersion = %q: the report gained fence_dir and fences and lost start_mono_ns", OracleVersion)
+func TestOracleVersionIsV4ForTheRootListingRecords(t *testing.T) {
+	if OracleVersion != "effectoracle/v4" {
+		t.Fatalf("OracleVersion = %q: the fences gained the root's listings (issue #184)", OracleVersion)
 	}
 }
 
