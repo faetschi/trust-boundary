@@ -1020,7 +1020,7 @@ class ScopedReplacementsAndMisc(unittest.TestCase):
 class EvidenceValidation(unittest.TestCase):
     def good(self, case="c:1"):
         sha = adapt.rule_sha256()
-        return {"case_id": case, "rule_sha256": sha, "outcome": "PASS", "attempts": [{"n": 1}], "construct_report": {"x": 1},
+        return {"case_id": case, "rule_sha256": sha, "outcome": "PASS", "deciding_check": "none", "attempts": [{"n": 1}], "construct_report": {"x": 1},
                 "scripted_checks": [{"pass": True}, {"pass": True}],
                 "judgment_checks": {n: {"answer": "yes", "evidence": "e"} for n in adapt.JUDGMENT_CHECKS}}
 
@@ -1045,11 +1045,50 @@ class EvidenceValidation(unittest.TestCase):
         bad(lambda r: r["judgment_checks"]["3 losses"].update(answer="maybe"), fragment="3 losses")
 
     def test_failing_record_needs_less(self):
-        r = {"case_id": "c:1", "rule_sha256": adapt.rule_sha256(), "outcome": "F-SOURCE", "attempts": [{"n": 1}]}
+        r = {"case_id": "c:1", "rule_sha256": adapt.rule_sha256(), "outcome": "F-SOURCE", "attempts": [{"n": 1}],
+             "deciding_check": "step:1", "judgment_only": False}
         adapt.validate_evidence(r, "c:1", False, "F-SOURCE: x")
         r["judgment_checks"] = {"1 intent": {"answer": "no", "evidence": ""}}
         with self.assertRaises(ValueError):
             adapt.validate_evidence(r, "c:1", False, "F-SOURCE: x")
+
+    def fail_record(self, code, deciding_check, judgment_only, **extra):
+        return {"case_id": "c:1", "rule_sha256": adapt.rule_sha256(), "outcome": code, "attempts": [{"n": 1}],
+                "deciding_check": deciding_check, "judgment_only": judgment_only, **extra}
+
+    def test_deciding_check_marks_the_judgment_only_share(self):
+        no = {"judgment_checks": {"3 losses": {"answer": "no", "evidence": "the loss is essential"}}}
+        for check, code, judged in (("5.3:3", "F-MEANING", True), ("step:2", "F-ELIGIBLE", True), ("step:5", "F-FIXTURE", True),
+                                    ("step:7", "F-MEANING", True), ("step:1", "F-SOURCE", False), ("step:8", "F-ELIGIBLE", False),
+                                    ("step:9", "F-CONSTRUCT", False), ("5.1:calibration-p", "F-CONSTRUCT", False),
+                                    ("5.2:1", "F-MEANING", False)):
+            adapt.validate_evidence(self.fail_record(code, check, judged, **no), "c:1", False, f"{code}: x")
+
+    def test_inconsistent_deciding_check_is_refused(self):
+        no = {"judgment_checks": {"3 losses": {"answer": "no", "evidence": "e"}}}
+        for rec, fragment in (
+                (self.fail_record("F-MEANING", "5.3:3", False, **no), "judgment_only must be true"),
+                (self.fail_record("F-CONSTRUCT", "5.1:validation", True), "judgment_only must be false"),
+                (self.fail_record("F-MEANING", "5.3:3", True), "answered no"),
+                (self.fail_record("F-CONSTRUCT", "5.3:3", True, **no), "F-MEANING"),
+                (self.fail_record("F-MEANING", "5.2:3", False), "deciding_check"),
+                (self.fail_record("F-MEANING", "5.3:6", True), "deciding_check"),
+                (self.fail_record("F-MEANING", "step:11", True), "deciding_check"),
+                (self.fail_record("F-CONSTRUCT", "5.1:no-such-row", False), "deciding_check"),
+                (self.fail_record("F-MEANING", "none", False), "deciding_check"),
+                (self.fail_record("F-MEANING", "5.2:1", None), "judgment_only"),
+                (self.fail_record("F-MEANING", "5.2:1", "false"), "judgment_only")):
+            with self.assertRaises(ValueError) as ctx:
+                adapt.validate_evidence(rec, "c:1", False, f"{rec['outcome']}: x")
+            self.assertIn(fragment, str(ctx.exception), rec["deciding_check"])
+
+    def test_pass_needs_none_and_no_judgment_only(self):
+        for mutate in (lambda r: r.pop("deciding_check"), lambda r: r.update(deciding_check="5.3:1"),
+                       lambda r: r.update(judgment_only=False)):
+            r = self.good()
+            mutate(r)
+            with self.assertRaises(ValueError):
+                adapt.validate_evidence(r, "c:1", True, "PASS: ok")
 
     def test_decide_cli_writes_nothing_for_an_empty_record(self):
         cand = next(r for r in ledger().values() if r["status"] == "candidate")

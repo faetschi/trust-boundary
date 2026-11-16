@@ -1406,9 +1406,38 @@ def append_decision(path, line):
 JUDGMENT_CHECKS = ("1 intent", "2 changes", "3 losses", "4 tool mapping", "5 route")
 
 
+CHECKS_51 = ("manifest-validation", "validation", "artifacts-reference", "attacker-artifact", "trial-admission", "source-license",
+             "leak-prompt", "leak-fixture", "root-unique", "root-disjoint", "mutation", "acceptance-cell", "effect-satisfiable",
+             "calibration-p")
+# Rule 5.3 Limitation: judgment is the 5.3 checks, the step 2 eligibility recheck and every "cannot be rendered" outcome of steps 3 to 7.
+JUDGMENT_STEPS = {"2", "3", "4", "5", "6", "7"}
+STEPS = {str(n) for n in range(1, 11)}  # step 11 is the section 5 checks, named by 5.x
+
+
+def deciding_check_problems(record, passed, code):
+    """Problems with the deciding_check and judgment_only fields (rule 5.3 Limitation and 7.4)."""
+    dc, jo = record.get("deciding_check"), record.get("judgment_only")
+    if passed:
+        return [] if dc == "none" and "judgment_only" not in record else ["a passing record has deciding_check \"none\" and no judgment_only"]
+    kind, _, n = dc.partition(":") if isinstance(dc, str) else ("", "", "")
+    ok = {"5.1": n in CHECKS_51, "5.2": n in ("1", "2"), "5.3": n in ("1", "2", "3", "4", "5"), "step": n in STEPS}.get(kind, False)
+    if not ok:
+        return ['a failing record needs deciding_check "5.1:<row>", "5.2:<n>", "5.3:<n>" or "step:<n>" naming the check that decided it']
+    problems = []
+    derived = kind == "5.3" or (kind == "step" and n in JUDGMENT_STEPS)
+    if jo is not derived:
+        problems.append(f"judgment_only must be {str(derived).lower()} for deciding_check {dc!r} (rule 5.3 Limitation)")
+    if kind in ("5.2", "5.3") and code != "F-MEANING":
+        problems.append(f"deciding_check {dc!r} fails with F-MEANING, not {code!r}")
+    if kind == "5.3" and (record.get("judgment_checks") or {}).get(JUDGMENT_CHECKS[int(n) - 1], {}).get("answer") != "no":
+        problems.append(f"deciding_check {dc!r} needs judgment check {JUDGMENT_CHECKS[int(n) - 1]!r} answered no")
+    return problems
+
+
 def validate_evidence(record, case_id, passed, reason):
     """Required keys of an evidence record (rule sections 2, 5.2, 5.3, 6). Raises ValueError listing what is missing.
-    Every record: case_id, rule_sha256, attempts (non-empty list), outcome (code). A passing record also needs the
+    Every record: case_id, rule_sha256, attempts (non-empty list), outcome (code), deciding_check ("none" for a pass; for a
+    fail the check or step that decided it) and, for a fail, judgment_only (see deciding_check_problems). A passing record also needs the
     construct report, the two 5.2 results (both pass) and the five 5.3 answers, each with an answer and evidence.
     A failing record keeps what was written before it stopped; each 5.3 entry it holds must be well formed."""
     problems = []
@@ -1423,6 +1452,7 @@ def validate_evidence(record, case_id, passed, reason):
     code = reason.split(":", 1)[0]
     if record.get("outcome") != code:
         problems.append(f"outcome must equal the reason code {code!r}")
+    problems += deciding_check_problems(record, passed, code)
     judged = record.get("judgment_checks", {})
     if not isinstance(judged, dict):
         problems.append("judgment_checks must be an object keyed by check")
