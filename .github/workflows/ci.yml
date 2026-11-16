@@ -1,10 +1,15 @@
 name: linux-ci
 
+# Cost policy: the full suite runs only for pull requests into main and for
+# merges to main. Development branches are checked locally, which keeps the free
+# Actions minutes for release-gating runs. Use workflow_dispatch for a one-off
+# full run.
 on:
-  # PR branches run through pull_request; merged trees are checked on push.
   push:
-    branches: [main, codex/tbound-prototype]
+    branches: [main]
   pull_request:
+    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
