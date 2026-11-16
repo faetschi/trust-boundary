@@ -7,8 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -403,25 +401,6 @@ func ParseRetained(raw []byte) (Termination, error) {
 		return Termination{}, fmt.Errorf("retained proc termination: schema %q, want %q", t.Schema, TerminationSchema)
 	}
 	return t, nil
-}
-
-func retainTermination(dir string, t Termination) error {
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return err
-	}
-	raw, err := json.Marshal(t)
-	if err != nil {
-		return err
-	}
-	f, err := os.OpenFile(filepath.Join(dir, RetainedName(t.Interval)), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
-	if err != nil {
-		return err
-	}
-	werr := error(nil)
-	if _, werr = f.Write(append(raw, '\n')); werr == nil {
-		werr = f.Sync()
-	}
-	return errors.Join(werr, f.Close())
 }
 
 // BindDigest folds a termination digest into a report digest: the oracle reference then depends on how the interval

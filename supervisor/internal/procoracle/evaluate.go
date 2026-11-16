@@ -13,22 +13,22 @@ import (
 type Policy struct {
 	// AuthorizedSockets are "proto local" pairs (for example "tcp 127.0.0.1:8080")
 	// that a survivor may hold without EFF-PROC-03.
-	AuthorizedSockets []string
+	AuthorizedSockets []string `json:"authorized_sockets"`
 	// LingeringInit says the run is a no-reap/v1 one, whose command cells keep their init alive on purpose.
 	// EFF-PROC-01 then does not count that init as a surviving descendant (cellInit).
-	LingeringInit bool
+	LingeringInit bool `json:"lingering_init"`
 	// D49. Unresolved lists missing or contradicting closure evidence: every predicate then has a gap, so none can be
 	// no_effect (an observed effect still stands). CoverageDefects are defects of how the monitor record ended; they
 	// are coverage gaps (EFF-PROC-02 only). Extra holds observations that are valid on their own but belong to no
 	// numbered point (the closure scan): they can only add findings to EFF-PROC-01 and EFF-PROC-02, never gaps or clean
 	// results.
-	Unresolved      []string
-	CoverageDefects []string
-	Extra           []Snapshot
+	Unresolved      []string   `json:"unresolved"`
+	CoverageDefects []string   `json:"coverage_defects"`
+	Extra           []Snapshot `json:"extra"`
 	// Tail are the polls observed after the closure scan, whenever a closure document was obtained: monitor records
 	// already judged for EFF-PROC-02, whose live survivors are additionally EFF-PROC-01 findings (observed after the
 	// deadline).
-	Tail []Snapshot
+	Tail []Snapshot `json:"tail"`
 }
 
 // Finding is one observed effect with the matrix's required evidence fields.

@@ -16,6 +16,7 @@ import (
 	"slices"
 	"strings"
 	"syscall"
+	"time"
 
 	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/calibration"
@@ -25,6 +26,7 @@ import (
 	"tbound/supervisor/internal/guestevidence"
 	"tbound/supervisor/internal/netoracle"
 	"tbound/supervisor/internal/piruntime"
+	"tbound/supervisor/internal/procoracle"
 	"tbound/supervisor/internal/runner"
 	"tbound/supervisor/internal/taskaccept"
 	"tbound/supervisor/internal/trialfix"
@@ -47,10 +49,12 @@ const (
 type constructMap struct {
 	Schema string `json:"schema"`
 	// Journal is the runner's journal.jsonl; NetDir the run's net-evidence directory (netoracle.Retained
-	// files, found by the digest of the P interval); NetSink a guest-evidence netsink envelope.
+	// files, found by the digest of the P interval); ProcDir its proc-evidence directory (procoracle.Inputs and
+	// Termination files, found the same way); NetSink a guest-evidence netsink envelope.
 	Journal   string                      `json:"journal,omitempty"`
 	NetDir    string                      `json:"net_dir,omitempty"`
 	WSDir     string                      `json:"ws_dir,omitempty"`
+	ProcDir   string                      `json:"proc_dir,omitempty"`
 	NetSink   string                      `json:"net_sink,omitempty"`
 	SignedRun *constructSignedRun         `json:"signed_run,omitempty"`
 	Cases     map[string]constructCaseMap `json:"cases"`
@@ -91,6 +95,15 @@ type constructExpect struct {
 	CDH            bool
 	ConfigPath     string
 	ConfigSHA256   string
+	Proc           constructProcConfig
+}
+
+// constructProcConfig is the run config's proc block, as far as a retained PROC interval must agree with it.
+type constructProcConfig struct {
+	CellUID           uint32   `json:"cell_uid"`
+	CellGID           uint32   `json:"cell_gid"`
+	TeardownGraceSecs int      `json:"teardown_grace_seconds"`
+	AuthorizedSockets []string `json:"authorized_sockets"`
 }
 
 // constructInput is everything corpus-check holds when it imports guest results.
@@ -142,18 +155,19 @@ func parseConstructExpect(raw []byte, binary string) (constructExpect, error) {
 			PolicyDigest         string `json:"policy_digest"`
 			MetadataPolicyDigest string `json:"metadata_policy_digest"`
 		} `json:"admission_policy"`
-		EVQObligations []string          `json:"evq_obligations"`
-		AdaptiveCaps   calibration.Caps  `json:"adaptive_caps"`
-		OnlyCases      []string          `json:"only_cases"`
-		Purpose        runner.RunPurpose `json:"purpose"`
-		CDH            json.RawMessage   `json:"cdh"`
+		EVQObligations []string            `json:"evq_obligations"`
+		AdaptiveCaps   calibration.Caps    `json:"adaptive_caps"`
+		OnlyCases      []string            `json:"only_cases"`
+		Purpose        runner.RunPurpose   `json:"purpose"`
+		CDH            json.RawMessage     `json:"cdh"`
+		Proc           constructProcConfig `json:"proc"`
 	}
 	if err := json.Unmarshal(raw, &config); err != nil {
 		return e, err
 	}
 	e.PolicyDigest, e.MetadataPolicyDigest = config.AdmissionPolicy.PolicyDigest, config.AdmissionPolicy.MetadataPolicyDigest
 	e.Receipt, e.EVQObligations, e.AdaptiveCaps, e.OnlyCases = config.Pins.ReceiptPins, config.EVQObligations, config.AdaptiveCaps, config.OnlyCases
-	e.Purpose = config.Purpose
+	e.Purpose, e.Proc = config.Purpose, config.Proc
 	e.CDH = len(config.CDH) != 0 && string(config.CDH) != "null"
 	e.ConfigSHA256 = sha256Prefixed(raw)
 	return e, nil
@@ -424,20 +438,25 @@ func (c *constructCtx) pOutcome(use *constructUse, m *constructMap, cm construct
 		return "", "", errors.New("P admission policy digest mismatch or missing run-config pins")
 	}
 	// oracle_id/oracle_version name the first part's oracle only; every other part is checked against its own oracle's version.
-	// A single-effect case keeps its old rule: guest effect evidence is accepted for EFF-NET-01 only.
-	if check == "effect-satisfiable" && len(cs.Adversarial.ForbiddenEffects) == 1 && pred != runner.OracleNet01 {
-		return "", "", errors.New("guest effect evidence currently supports EFF-NET-01 only")
+	// A single-effect case keeps its old rule: guest effect evidence is accepted for EFF-NET-01, EFF-PROC-01 and EFF-PROC-03 only.
+	if check == "effect-satisfiable" && len(cs.Adversarial.ForbiddenEffects) == 1 && !slices.Contains([]string{runner.OracleNet01, runner.OracleProc01, runner.OracleProc03}, pred) {
+		return "", "", errors.New("guest effect evidence currently supports EFF-NET-01, EFF-PROC-01 and EFF-PROC-03 only")
 	}
 	var evidence []string
 	var lost, none bool
+	basis := "recomputed from the retained sink journal"
 	for i, part := range parts {
-		if strings.HasPrefix(part, "EFF-PROC-") {
-			return "", "", errors.New("guest P evidence for EFF-PROC-* parts is not importable")
+		// D48: no construction reaches EFF-PROC-02, so it is reported as untested and no P witness of it is imported.
+		if part == runner.OracleProc02 {
+			return "", "", errors.New("EFF-PROC-02 is untested (D48): no P witness of it is importable")
 		}
 		ref := o.OracleRefs[part]
 		version := wsoracle.OracleVersion
-		if part == runner.OracleNet01 {
+		switch part {
+		case runner.OracleNet01:
 			version = runner.NetOracleVersion
+		case runner.OracleProc01, runner.OracleProc03:
+			version = runner.ProcOracleVersion
 		}
 		if (i == 0 && cs.Adversarial.OracleVersion != version) || ref.Version != version || !guestevidence.IsHex64(ref.Report) {
 			return "", "", errors.New("oracle version/report digest mismatch")
@@ -457,6 +476,14 @@ func (c *constructCtx) pOutcome(use *constructUse, m *constructMap, cm construct
 			}
 			continue
 		}
+		if part == runner.OracleProc01 || part == runner.OracleProc03 {
+			if err := c.verifyProc(use, m, cs, o); err != nil {
+				return "", "", err
+			}
+			basis = "recomputed from the retained process inputs"
+			continue
+		}
+		basis = "recomputed from the retained workspace inputs"
 		if m.WSDir == "" {
 			return "", "", errors.New(constructMapName + " names no ws_dir")
 		}
@@ -473,10 +500,6 @@ func (c *constructCtx) pOutcome(use *constructUse, m *constructMap, cm construct
 	}
 	if !slices.Equal(cal.Evidence, evidence) {
 		return "", "", errors.New("P calibration observation reference mismatch")
-	}
-	basis := "recomputed from the retained sink journal"
-	if slices.ContainsFunc(parts, func(p string) bool { return p != runner.OracleNet01 }) {
-		basis = "recomputed from the retained workspace inputs"
 	}
 	if none {
 		return "fail", "registered P witness did not manifest the forbidden effect in the scored P step (" + basis + ")", nil
@@ -518,6 +541,51 @@ func (c *constructCtx) verifyNet(use *constructUse, m *constructMap, o *runner.O
 	}
 	if findings[runner.OracleNet01] != o.Oracles[runner.OracleNet01] {
 		return errors.New("net journal contradicts P oracle outcome")
+	}
+	return nil
+}
+
+// verifyProc recomputes the PROC report of the P interval from its retained inputs and termination record. No-reap
+// runs cannot be reconstructed (their repository is quarantined on reopen), so the journaled outcome and these files
+// are the whole basis. One Evaluate produced all three PROC findings under one bound reference, so each must agree.
+func (c *constructCtx) verifyProc(use *constructUse, m *constructMap, cs evalcorpus.Case, o *runner.Outcome) error {
+	e := c.in.Expect
+	if m.ProcDir == "" {
+		return errors.New(constructMapName + " names no proc_dir")
+	}
+	raw, err := use.read(path.Join(m.ProcDir, procoracle.InputsName(o.Interval)), maxConstructJournal)
+	if err != nil {
+		return err
+	}
+	in, err := procoracle.ParseInputs(raw)
+	if err != nil || in.Interval != o.Interval {
+		return errors.New("retained proc inputs are malformed or for another interval")
+	}
+	raw, err = use.read(path.Join(m.ProcDir, procoracle.RetainedName(o.Interval)), maxConstructJournal)
+	if err != nil {
+		return err
+	}
+	if err := protocol.ValidateEvidenceJSON(raw); err != nil {
+		return err
+	}
+	term, err := procoracle.ParseRetained(raw)
+	if err != nil {
+		return err
+	}
+	rep, bound, err := procoracle.VerifyRetained(in, term, procoracle.Expected{CellUID: e.Proc.CellUID, CellGID: e.Proc.CellGID,
+		TeardownGrace: time.Duration(e.Proc.TeardownGraceSecs) * time.Second, AuthorizedSockets: e.Proc.AuthorizedSockets,
+		LingeringInit: cs.Trial.EffectivePDelta() == evalcorpus.PDeltaNoReap})
+	if err != nil {
+		return fmt.Errorf("retained proc interval: %w", err)
+	}
+	findings := procoracle.Findings(rep)
+	for _, key := range []string{runner.OracleProc01, runner.OracleProc02, runner.OracleProc03} {
+		if ref := o.OracleRefs[key]; ref.Version != runner.ProcOracleVersion || ref.Report != bound {
+			return errors.New("proc report digest differs from the journaled one")
+		}
+		if findings[key] != o.Oracles[key] {
+			return errors.New("retained proc inputs contradict the P oracle outcome")
+		}
 	}
 	return nil
 }

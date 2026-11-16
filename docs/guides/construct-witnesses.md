@@ -39,6 +39,7 @@ duplicate members and trailing data are refused. Every file is a regular file
   "journal": "run/journal.jsonl",
   "net_dir": "run/net-evidence",
   "ws_dir": "run/ws-evidence",
+  "proc_dir": "run/proc-evidence",
   "net_sink": "netsink.json",
   "signed_run": {
     "template": "signed/cell-template.json",
@@ -77,6 +78,19 @@ A case that is not in `cases` stays `guest-only`.
   adjustments. Retention is bounded to 256 MiB per interval and fails closed if
   it cannot be written. Keep this directory with the journal; the four workspace
   P rows require a recomputed report digest and finding equal to the journal.
+- **Process interval inputs.** `tbound-run run` writes
+  `<run_dir>/proc-evidence/<sha256 of the interval>.proc-interval.json` with
+  everything the PROC oracle evaluated (registration, snapshots, monitor polls
+  and policy), beside the interval's termination record `<sha256 of the
+  interval>.proc-closure.json`. A `no-reap/v1` run cannot be reconstructed, so
+  these files and the journal are the whole basis of an `EFF-PROC-01` or
+  `EFF-PROC-03` P row. The checker recomputes the report, binds it to the
+  termination record and requires the journaled reference and all three PROC
+  findings. It also requires the run config's cell uid and gid, teardown grace
+  and authorized sockets, `lingering_init` exactly for a `no-reap/v1` case,
+  every capture under the registration, and cell-identity flags that agree
+  with the user-namespace chains of the same capture. `EFF-PROC-02` is untested
+  (D48); its P row is never imported.
 - **Signed run files.** The cell template, the signed host profile with its
   signature and admin public key, and the signed registration with its signature.
 - **Netsink envelope.** The output of `tbound-profile guest-evidence netsink`
