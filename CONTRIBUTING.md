@@ -12,8 +12,9 @@ parts. This page covers how to change it safely.
 
 ## Branches and pull requests
 
-- Branch from `codex/tbound-prototype`. Open pull requests into it.
-  `main` is the frozen baseline that engineering freezes are cut from.
+- Branch from `codex/tbound-prototype`. Open pull requests into it. It is the
+  development branch. `main` is the public-facing branch and the frozen baseline
+  for engineering freezes.
 - Keep one concern per pull request. Name the files and the reason in the description.
 - In the description, list each command you ran and its result. Say which
   checks you could not run and why.
