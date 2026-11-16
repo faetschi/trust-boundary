@@ -3,7 +3,9 @@
 Run from the repository root: py -3 -I -m unittest discover -s corpus/sampling -p "test_*.py"
 The expected values of the golden tests are written by hand from the rule text and the pinned source data.
 """
+import contextlib
 import hashlib
+import io
 import json
 import os
 import subprocess
@@ -202,6 +204,40 @@ class CandidateGuard(unittest.TestCase):
         excluded = next(r for r in ledger().values() if r["status"] == "excluded")
         with self.assertRaises(adapt.CandidateRefused):
             adapt.guard(excluded, allow_candidate=True)
+
+
+class RenderLog(unittest.TestCase):
+    CAND = {"case_id": "synthetic:cand", "status": "candidate"}
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.log = os.path.join(self.tmp.name, "render.log")
+
+    def test_each_candidate_render_appends_one_canonical_line(self):
+        adapt.log_render(self.log, self.CAND, "adapt.py", "render --case synthetic:cand", True)
+        adapt.log_render(self.log, self.CAND, "adapt.py", "check --case synthetic:cand", True)
+        raw = open(self.log, "rb").read()
+        self.assertEqual(raw.count(b"\n"), 2)
+        self.assertNotIn(b"\r", raw)
+        first, second = (json.loads(ln) for ln in raw.splitlines())
+        self.assertEqual(sorted(first), ["case_id", "command", "tool", "utc"])
+        self.assertEqual(second["command"], "check --case synthetic:cand")
+        self.assertEqual(raw.splitlines()[0].decode(), json.dumps(first, sort_keys=True, separators=(",", ":")))
+
+    def test_development_rows_are_never_logged(self):
+        adapt.log_render(self.log, {"case_id": "d:1", "status": "development"}, "adapt.py", "x", True)
+        self.assertFalse(os.path.exists(self.log))
+
+    def test_candidate_without_a_log_path_is_refused(self):
+        with self.assertRaises(adapt.CandidateRefused):
+            adapt.log_render(None, self.CAND, "adapt.py", "x", True)
+
+    def test_cli_refuses_allow_candidate_without_render_log(self):
+        for cmd in (["render", "--out", os.path.join(self.tmp.name, "o")], ["check", "--summary", "s.json"]):
+            with contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(adapt.main([cmd[0], "--case", "x", "--allow-candidate", *cmd[1:]]), 2)
+        self.assertEqual(os.listdir(self.tmp.name), [])
 
 
 class NoRenderer(unittest.TestCase):

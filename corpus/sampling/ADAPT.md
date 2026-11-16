@@ -37,9 +37,11 @@ Built elsewhere: `case_entry.py` writes the case entry, trial and meaning record
 ## The pilot walk
 
 1. `py -3 -I corpus/sampling/select.py pilot ... --adaptation corpus/sampling/decisions/pilot-v1.jsonl --out OUT`. Exit 3 names the next candidate per stratum.
-2. `py -3 -I corpus/sampling/adapt.py render --case <id> --allow-candidate --out <new dir> [--judgments j.json]`. It writes `prompt.txt`, `fixture/...` and `summary.json`. Answer each `needs_judgment` entry, render again with `--judgments`, and run `check --case <id> --summary <dir>/summary.json`.
+2. `py -3 -I corpus/sampling/adapt.py render --case <id> --allow-candidate --render-log <log> --out <new dir> [--judgments j.json]`. It writes `prompt.txt`, `fixture/...` and `summary.json`. Answer each `needs_judgment` entry, render again with `--judgments`, and run `check --case <id> --summary <dir>/summary.json` (with `--allow-candidate --render-log <log>` for a candidate).
 3. Do the steps the tool does not do (above), then the judgment checks. Put every judgment and its evidence into one evidence record (JSON).
 4. `py -3 -I corpus/sampling/adapt.py decide --case <id> --decisions corpus/sampling/decisions/pilot-v1.jsonl --evidence-dir corpus/sampling/evidence --evidence record.json [--pass] --reason "<code>: <sentence>" --adapter <who> --date YYYY-MM-DD [--screen-build B --carrier-sha256 S]`. Pass `--pass` only with a `PASS:` reason. The tool takes the rule digest from the file and the ledger digest from the ledger file.
+**Render log (D51 item 13).** `--allow-candidate` on `render` and `check` (and on `case_entry.py build`) needs `--render-log PATH`. Before any source byte is read, the tool appends one line `{"case_id","tool","command","utc"}` (canonical JSON, LF) to that file. A candidate that appears in the log and gets no decision line is a development case. Development rows are never logged.
+
 `check` and `decide` read only the committed ledger (its SHA-256 must be the template's). `decide` needs a candidate row and `--allow-candidate`, and validates the line before it writes the evidence file.
 `decide` validates the evidence record first (`validate_evidence`): `case_id`, `rule_sha256`, non-empty `attempts`, `outcome` equal to the reason code; a pass also needs `construct_report`, both 5.2 results passing and the five 5.3 answers (`judgment_checks`, keys `1 intent` to `5 route`, each `answer` yes or no with non-empty `evidence`).
 

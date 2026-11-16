@@ -8,6 +8,7 @@ and the adapter supplies its answer through the `judgments` argument (see ADAPT.
 HARD RULE: a ledger row with status "candidate" is refused unless allow_candidate is true (D51 item 13).
 """
 import ast
+import datetime
 import hashlib
 import json
 import os
@@ -66,6 +67,23 @@ class ToolLimit(Exception):
 
 class CandidateRefused(Exception):
     """D51 item 13: the adaptation procedure is not applied to a candidate row before the pilot draw."""
+
+
+def log_render(path, row, tool, command, allow_candidate=False):
+    """D51 item 13: a candidate that is rendered and never decided is a development case, so each render of a candidate
+    row appends one canonical JSON line to `path`. Call it after `guard` and before any source byte is read.
+    A development row is never logged."""
+    if row.get("status") != "candidate" or not allow_candidate:
+        return
+    if not path:
+        raise CandidateRefused(f"{row.get('case_id')}: a candidate render needs a render log (--render-log PATH)")
+    line = {"case_id": row["case_id"], "tool": tool, "command": command,
+            "utc": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
+    data = (json.dumps(line, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
+    with open(path, "ab") as fh:
+        fh.write(data)
+        fh.flush()
+        os.fsync(fh.fileno())
 
 
 def sha256_hex(data):
@@ -1477,6 +1495,7 @@ def main(argv=None):
     r.add_argument("--case", required=True)
     r.add_argument("--allow-candidate", action="store_true", help="only for the real pilot walk or main draw, in the order select.py names; every rendered candidate becomes a development case (D51 item 13)")
     r.add_argument("--out", required=True)
+    r.add_argument("--render-log", help="required with --allow-candidate: one JSON line is appended per candidate render")
     r.add_argument("--ledger", default=LEDGER_PATH)
     r.add_argument("--clones", default=CLONES)
     r.add_argument("--judgments", help="JSON file with tool_names, replacements, objects, path_moves")
@@ -1485,6 +1504,7 @@ def main(argv=None):
     c.add_argument("--summary", required=True)
     c.add_argument("--ledger", default=LEDGER_PATH)
     c.add_argument("--allow-candidate", action="store_true")
+    c.add_argument("--render-log", help="required with --allow-candidate: one JSON line is appended per candidate check")
     d = sub.add_parser("decide", help="write the evidence file and append the decision line")
     d.add_argument("--case", required=True)
     d.add_argument("--decisions", required=True)
@@ -1499,10 +1519,15 @@ def main(argv=None):
     d.add_argument("--ledger", default=LEDGER_PATH)
     d.add_argument("--allow-candidate", action="store_true", help="required: a decision is only for a candidate (pilot walk or main draw)")
     a = ap.parse_args(argv)
+    if a.cmd != "decide" and a.allow_candidate and not a.render_log:
+        print("--allow-candidate needs --render-log PATH (D51 item 13)", file=sys.stderr)
+        return 2
     row = _ledger_row(a.case, a.ledger)
+    command = " ".join(sys.argv[1:] if argv is None else argv)
     if a.cmd == "render":
         try:
             guard(row, a.allow_candidate)  # before any source is read
+            log_render(a.render_log, row, "adapt.py", command, a.allow_candidate)
         except CandidateRefused as exc:
             print(exc, file=sys.stderr)
             return 2
@@ -1531,6 +1556,7 @@ def main(argv=None):
     try:
         if a.cmd == "check":
             guard(row, a.allow_candidate)
+            log_render(a.render_log, row, "adapt.py", command, a.allow_candidate)
         elif row["status"] != "candidate" or not a.allow_candidate:
             raise CandidateRefused(f"{a.case}: a decision needs a candidate row and --allow-candidate (status {row['status']!r})")
     except CandidateRefused as exc:
