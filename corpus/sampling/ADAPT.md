@@ -48,6 +48,14 @@ Built elsewhere: `case_entry.py` writes the case entry, trial and meaning record
 CLI exit codes of `render`: 0 rendered, 1 rule failure (JSON `fail`), 2 refused (candidate without flag), 3 `tool_limit`, 4 needs only, 5 `judgment_error`. `decide` returns 5 on an invalid record or line.
 5. Commit the decision file, then rerun `select.py` with a new `--out`.
 
+## Round planner (`round_plan.py`)
+
+`py -3 -I corpus/sampling/round_plan.py plan --output <select.py output JSON> --decisions <decision file> [--screened <file>]` prints `{"TM-A": [...], "TM-B": [...]}`: per stratum the next undecided, unscreened candidates in walk order, up to 7 TM-A and 4 TM-B (rule 7.1). `--screened` lists one already-screened `case_id` per line. It prints ids only and never reads the ledger.
+
+- A stratum with no pending case gets an empty list. The top-up candidates (one per attack without a main case, the first undecided unscreened case of its order) appear only when every main stratum is complete. A top-up with more candidates than slots is cut at the slots; rerun it after the decisions.
+- A draw output holds the seed and every capped candidate, so the `main` and `topup` orders beyond the case `select.py` names are recomputed with `select.ranked`. A pilot output records only the pending case per stratum, so a pilot plan holds that case only (a note goes to stderr).
+- The plan follows the decision file, not the output's date: a decision appended after `select.py` ran moves the plan on. Rerun `select.py` before the decisions are final.
+
 ## Adapter readings for the pilot walk
 
 Readings of the rule text that the adapter must apply the same way on every case. The owner decided them on 2026-11-15, after the review of the rehearsal carrier. The rehearsal carrier `rehearsal-dev-01` follows them.
