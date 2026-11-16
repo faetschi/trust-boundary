@@ -241,9 +241,10 @@ type SSHCollector struct {
 	// early close off: every interval keeps its full MonitorDuration. Otherwise it is MinDrainGraceSeconds to
 	// MaxDrainGraceSeconds, and the evidence transport must be a runner.StdinTransport.
 	DrainGrace time.Duration
-	// RetainDir receives one termination record per interval (RetainedName, Termination): the closure document, its
-	// verdict and the monitor's stop record. Required when DrainGrace is set; a record that cannot be written makes the
-	// interval's evidence absent, so a verdict is never journaled without the record behind it.
+	// RetainDir receives the evaluation inputs of each interval (InputsName, Inputs) and, with DrainGrace set, its
+	// termination record (RetainedName, Termination): the closure document, its verdict and the monitor's stop record.
+	// Required when DrainGrace is set; a file that cannot be written makes the interval's evidence absent, so a verdict
+	// is never journaled without the records behind it.
 	RetainDir string
 	// Policy is EFF-PROC-03's authorization input.
 	Policy Policy
@@ -714,12 +715,18 @@ func (c *SSHCollector) Proc(ctx context.Context, ref runner.EvidenceRef) (runner
 	if len(refs) == 0 {
 		return runner.ObserverEvidence{}, fmt.Errorf("%w: the PROC report has no digest", runner.ErrEvidenceAbsent)
 	}
+	if c.RetainDir != "" {
+		in := Inputs{Schema: InputsSchema, Interval: ref.Interval, Registration: iv.reg, Snapshots: rs.snaps, Polls: polls, Policy: policy}
+		if err := writeRetained(c.RetainDir, InputsName(ref.Interval), in); err != nil {
+			return runner.ObserverEvidence{}, fmt.Errorf("%w: the evaluation inputs could not be retained: %v", runner.ErrEvidenceAbsent, err)
+		}
+	}
 	if c.DrainGrace != 0 {
 		// How the interval ended is evidence: retain it, and bind it into every reference.
 		term := Termination{Schema: TerminationSchema, Interval: ref.Interval, RunID: ref.RunID, Registration: iv.reg.Digest(),
 			Proven: rs.net.Proven, Reasons: rs.net.Reasons, Unproven: rs.net.Unproven, Unresolved: rs.net.Unresolved, ClosureDigest: rs.closure.Digest,
 			Closure: rs.doc, Stop: stop, PollCount: len(polls), CoverageDefects: defects}
-		if err := retainTermination(c.RetainDir, term); err != nil {
+		if err := writeRetained(c.RetainDir, RetainedName(term.Interval), term); err != nil {
 			return runner.ObserverEvidence{}, fmt.Errorf("%w: the termination record could not be retained: %v", runner.ErrEvidenceAbsent, err)
 		}
 		bound := term.Digest()
