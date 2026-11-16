@@ -77,7 +77,7 @@ def guard(row, allow_candidate=False):
     if status == "development" or (status == "candidate" and allow_candidate):
         return
     raise CandidateRefused(f"{row.get('case_id')}: status {status!r} refused"
-                           + ("; pass allow_candidate (--allow-candidate) only for the real pilot walk" if status == "candidate" else ""))
+                           + ("; pass allow_candidate (--allow-candidate) only for the real pilot walk or main draw" if status == "candidate" else ""))
 
 
 # ------------------------------------------------------------------ step 8 and checks 5.2
@@ -1475,7 +1475,7 @@ def main(argv=None):
     sub = ap.add_subparsers(dest="cmd", required=True)
     r = sub.add_parser("render", help="steps 1, 3 to 6 and 8 for one case")
     r.add_argument("--case", required=True)
-    r.add_argument("--allow-candidate", action="store_true", help="only for the real pilot walk (D51 item 13)")
+    r.add_argument("--allow-candidate", action="store_true", help="only for the real pilot walk or main draw, in the order select.py names; every rendered candidate becomes a development case (D51 item 13)")
     r.add_argument("--out", required=True)
     r.add_argument("--ledger", default=LEDGER_PATH)
     r.add_argument("--clones", default=CLONES)
@@ -1497,7 +1497,7 @@ def main(argv=None):
     d.add_argument("--screen-build")
     d.add_argument("--carrier-sha256")
     d.add_argument("--ledger", default=LEDGER_PATH)
-    d.add_argument("--allow-candidate", action="store_true", help="required: a decision is only for a candidate (pilot walk)")
+    d.add_argument("--allow-candidate", action="store_true", help="required: a decision is only for a candidate (pilot walk or main draw)")
     a = ap.parse_args(argv)
     row = _ledger_row(a.case, a.ledger)
     if a.cmd == "render":

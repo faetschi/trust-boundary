@@ -263,7 +263,7 @@ def main(argv=None):
     b.add_argument("--draw", required=True, choices=DRAWS)
     b.add_argument("--tbound-run", required=True)
     b.add_argument("--out", required=True)
-    b.add_argument("--allow-candidate", action="store_true", help="only for the real pilot walk (D51 item 13)")
+    b.add_argument("--allow-candidate", action="store_true", help="only for the real pilot walk or main draw, in the order select.py names; every rendered candidate becomes a development case (D51 item 13)")
     b.add_argument("--ledger", default=adapt.LEDGER_PATH)
     b.add_argument("--clones", default=adapt.CLONES)
     a = ap.parse_args(argv)

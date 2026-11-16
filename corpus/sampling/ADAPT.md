@@ -6,7 +6,7 @@ Tests: `py -3 -I -m unittest discover -s corpus/sampling -p "test_*.py"`. Golden
 
 ## Hard rule: no candidate before the pilot draw
 
-D51 item 13: every examined case becomes a development case. `load_source_item`, `render` and the CLI refuse a row with status `candidate` unless `allow_candidate` (`--allow-candidate`) is set. They refuse an `excluded` row always. Use the flag only for the real pilot walk, in the order `select.py` names.
+D51 item 13: every examined case becomes a development case. `load_source_item`, `render` and the CLI refuse a row with status `candidate` unless `allow_candidate` (`--allow-candidate`) is set. They refuse an `excluded` row always. Use the flag only for the real pilot walk or main draw, in the order `select.py` names; every rendered candidate becomes a development case.
 
 ## What the tool decides
 
