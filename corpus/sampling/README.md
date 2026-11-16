@@ -93,7 +93,7 @@ Both files are built outside the repository by the lane C screening scripts (`20
 
 `draw` and `allocate` remove every `development_case_ids` entry from the candidates before the cap and the allocation. An id that is not a ledger row (a T5 rehearsal item, say) is not refused. Its grammar is checked, it stays in `development.case_ids`, and it is also listed in `development_not_in_ledger`, so a typo shows up there. Only ledger rows are removed; the removal is counted per stratum in `development`. An attack whose cases are all development cases has no candidate left, so it is reported as untested.
 
-`t2-development-additions.json` lists ledger rows that join `development_case_ids` at T2 besides the pilot's examined cases, each with its date and the owner's reason. `dev_ids.py build --pilot-output P --carriers DIR --t5 M --additions A --render-log L --ledger L --out F` writes `development_case_ids` as the sorted union of the pilot's examined cases, every screening-carrier case, the T5 cases, this file and every candidate the render log records (D51 item 13). It prints counts only, never ids.
+`t2-development-additions.json` lists ledger rows that join `development_case_ids` at T2 besides the pilot's examined cases, each with its date and the owner's reason. `dev_ids.py build --pilot-output P --carriers DIR --t5 M --additions A --render-log L --ledger L --out F` writes `development_case_ids` as the sorted union of the pilot's examined cases, every screening-carrier case, the T5 cases, the 149 development ledger rows, this file and every candidate the render log records (D51 item 13). It prints counts only, never ids.
 
 ## Output
 
@@ -113,7 +113,7 @@ A drawn case keeps its ledger `case_id`. Its witness id is `PILOT-WIT-<case_id>`
 
 `carriers/rehearsal-dev-01` is a rehearsal carrier built from 8 development rows (7 TM-A, 1 TM-B). It is not a screening round, and its judgments exercise the pipeline; they are not rulings for the pilot walk (see ADAPT.md, section Adapter readings). Lane P uses it to dry-run the kit's carrier input. Rebuild it with `py -3 -I corpus/sampling/rehearsal/build_rehearsal.py --tbound-run PATH --out DIR`; the inputs are in `rehearsal/rehearsal-dev-01/`.
 
-`round_plan.py plan --output O --decisions D [--screened S]` lists, per stratum, the next undecided and unscreened candidates for a round, up to 7 TM-A and 4 TM-B (rule section 7.1). It prints ids only and never reads the ledger.
+`round_plan.py plan --output O --decisions D [--screened S]` lists, per stratum, the next undecided and unscreened candidates for a main-draw round, up to 7 TM-A and 4 TM-B (rule section 7.1). It refuses a pilot output, which names only one pending case per stratum. It prints ids only and never reads the ledger.
 
 Before each round, lane P runs `tbound-profile corpus-check --quota-profile pilot` on the carrier and signs its run configuration.
 

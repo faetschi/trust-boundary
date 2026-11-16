@@ -71,6 +71,8 @@ def check_digests(commitment, blob):
     """Every <name>_sha256 with a <name>_path must equal the SHA-256 of that file at the tag's commit."""
     checked = 0
     for key, value in commitment.items():
+        if key.endswith("_sha256") and key != "policy_sha256" and key[: -len("_sha256")] + "_path" not in commitment:
+            sys.exit(f"{key}: no {key[: -len('_sha256')]}_path names its file, so it cannot be checked")
         if key.endswith("_sha256") and not value.startswith("FILL") and key[: -len("_sha256")] + "_path" in commitment:
             digest = hashlib.sha256(blob(commitment[key[: -len("_sha256")] + "_path"])).hexdigest()
             if digest != value:

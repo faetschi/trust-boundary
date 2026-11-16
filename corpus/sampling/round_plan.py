@@ -39,8 +39,9 @@ def _next(order, start, decisions, screened, limit):
 
 
 def _plan_pilot(sel, out, decisions, screened):
-    pending = {item["stratum"]: item["case_id"] for item in out["needs_adaptation_next"] if item["purpose"] == "pilot"}
-    return {h: [c for c in [pending.get(h)] if c and c not in decisions and c not in screened] for h in STRATA}
+    # shortcut: a pilot output records only the pending case per stratum, so a 7/4 pilot round needs the seeded pilot
+    # order over the ledger; until that is built, refuse rather than print a plan that looks complete
+    raise Refused("a pilot output names one pending case per stratum, not a round; plan pilot rounds from the seeded pilot order (not built)")
 
 
 def _plan_draw(sel, out, decisions, screened):
@@ -89,12 +90,18 @@ def read_decisions(path):
     decisions = {}
     with open(path, encoding="utf-8") as fh:
         for n, line in enumerate(fh, 1):
-            if line.strip():
-                try:
-                    d = json.loads(line)
-                    decisions[d["case_id"]] = (d["pass"], d.get("reason"))
-                except (ValueError, KeyError, TypeError):
-                    raise Refused(f"{path} line {n} is not a decision line") from None
+            if not line.strip():
+                raise Refused(f"{path} line {n} is blank (select.py refuses it)")
+            try:
+                d = json.loads(line)
+                case_id, passed = d["case_id"], d["pass"]
+            except (ValueError, KeyError, TypeError):
+                raise Refused(f"{path} line {n} is not a decision line") from None
+            if not isinstance(passed, bool):
+                raise Refused(f"{path} line {n}: pass is not true or false")
+            if case_id in decisions:
+                raise Refused(f"{path} line {n} repeats a case_id")
+            decisions[case_id] = (passed, d.get("reason"))
     return decisions
 
 

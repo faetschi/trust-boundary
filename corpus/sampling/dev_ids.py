@@ -2,7 +2,7 @@
 
     py -3 -I corpus/sampling/dev_ids.py build --pilot-output <select.py pilot output> --carriers <dir> \\
         --t5 corpus/pilot/t5-2026-10-29/manifest.draft.json --additions corpus/sampling/t2-development-additions.json \\
-        --ledger corpus/sampling/d48-ledger-v3.jsonl --out <new file>
+        --render-log <adapt render log> --ledger corpus/sampling/d48-ledger-v3.jsonl --out <new file>
 
 The output is a sorted JSON list, the union of
 
@@ -47,6 +47,12 @@ def read_ledger(path):
     with open(path, encoding="utf-8") as fh:
         rows = [json.loads(line) for line in fh if line.strip()]
     return {row["case_id"]: row["stratum"] for row in rows}
+
+
+def development_rows(path):
+    """Ledger rows with status development (the T5 adaptations' rows); rule 7.3 lists them with the T5 cases."""
+    with open(path, encoding="utf-8") as fh:
+        return {row["case_id"] for row in map(json.loads, fh) if row.get("status") == "development"}
 
 
 def pilot_ids(path, select):
@@ -123,6 +129,7 @@ def build(args):
         "pilot examined": (pilot_ids(args.pilot_output, select), "refuse"),
         f"carriers ({carrier_count})": (carriers, "drop"),
         "T5": (manifest_ids(args.t5), "keep"),
+        "development rows (ledger)": (development_rows(args.ledger), "refuse"),
         "additions": (additions_ids(args.additions), "refuse"),
         "rendered (render log)": (render_log_ids(args.render_log), "refuse"),
     }

@@ -244,6 +244,20 @@ class NoRenderer(unittest.TestCase):
     def test_source_without_renderer_is_a_tool_gap_not_f_source(self):
         with self.assertRaises(adapt.ToolLimit):
             adapt.render(synth("NoSuchBench"), {"record": {}})
+        with self.assertRaises(adapt.ToolLimit):  # step 1 must not turn it into F-SOURCE before render is reached
+            adapt.load_source_item(synth("RedTeamCUA"), digests={})
+
+    def test_deciding_check_must_fit_its_code_and_be_the_first_failure(self):
+        self.assertTrue(adapt.deciding_check_problems({"deciding_check": "step:1", "judgment_only": False}, False, "F-MEANING"))
+        self.assertFalse(adapt.deciding_check_problems({"deciding_check": "step:1", "judgment_only": False}, False, "F-SOURCE"))
+        self.assertFalse(adapt.deciding_check_problems({"deciding_check": "5.1:validation", "judgment_only": False}, False, "F-INSTRUMENT"))
+        no = {"answer": "no", "evidence": "e"}
+        yes = {"answer": "yes", "evidence": "e"}
+        checks = dict(zip(adapt.JUDGMENT_CHECKS, [no, yes, no, yes, yes]))
+        rec = {"deciding_check": "5.3:3", "judgment_only": True, "judgment_checks": checks}
+        self.assertTrue(adapt.deciding_check_problems(rec, False, "F-MEANING"))
+        rec["deciding_check"] = "5.3:1"
+        self.assertFalse(adapt.deciding_check_problems(rec, False, "F-MEANING"))
 
 
 class Step8(unittest.TestCase):
@@ -1057,7 +1071,8 @@ class EvidenceValidation(unittest.TestCase):
                 "deciding_check": deciding_check, "judgment_only": judgment_only, **extra}
 
     def test_deciding_check_marks_the_judgment_only_share(self):
-        no = {"judgment_checks": {"3 losses": {"answer": "no", "evidence": "the loss is essential"}}}
+        no = {"judgment_checks": {"1 intent": {"answer": "yes", "evidence": "e"}, "2 changes": {"answer": "yes", "evidence": "e"},
+                                  "3 losses": {"answer": "no", "evidence": "the loss is essential"}}}
         for check, code, judged in (("5.3:3", "F-MEANING", True), ("step:2", "F-ELIGIBLE", True), ("step:5", "F-FIXTURE", True),
                                     ("step:7", "F-MEANING", True), ("step:1", "F-SOURCE", False), ("step:8", "F-ELIGIBLE", False),
                                     ("step:9", "F-CONSTRUCT", False), ("5.1:calibration-p", "F-CONSTRUCT", False),

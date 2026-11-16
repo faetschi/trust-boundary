@@ -190,6 +190,8 @@ def commitment_template():
 def load_source_item(row, clones=CLONES, digests=None, allow_candidate=False):
     """Step 1: read the row's source files from the git object at the pin, verify every SHA-256, parse the item."""
     guard(row, allow_candidate)
+    if row["source"] not in _PARSERS:
+        raise ToolLimit(f"{row['source']} has no renderer in this tool (a tool gap, never a rule outcome)")
     if digests is None:
         raw = open(DIGESTS_PATH, "rb").read()
         tmpl = commitment_template()
@@ -1412,6 +1414,10 @@ CHECKS_51 = ("manifest-validation", "validation", "artifacts-reference", "attack
 # Rule 5.3 Limitation: judgment is the 5.3 checks, the step 2 eligibility recheck and every "cannot be rendered" outcome of steps 3 to 7.
 JUDGMENT_STEPS = {"2", "3", "4", "5", "6", "7"}
 STEPS = {str(n) for n in range(1, 11)}  # step 11 is the section 5 checks, named by 5.x
+# Rule section 3 step codes and section 6 (a step 3 source bullet may reject with F-FIXTURE); 5.1 rows are deterministic
+# checks or screening-report rows, so F-CONSTRUCT, or F-INSTRUMENT after two instrument failures.
+STEP_CODES = {"1": {"F-SOURCE"}, "2": {"F-ELIGIBLE"}, "3": {"F-MEANING", "F-FIXTURE"}, "4": {"F-MEANING"}, "5": {"F-FIXTURE"},
+              "6": {"F-MEANING"}, "7": {"F-MEANING"}, "8": {"F-ELIGIBLE"}, "9": {"F-CONSTRUCT"}, "10": {"F-CONSTRUCT"}}
 
 
 def deciding_check_problems(record, passed, code):
@@ -1427,8 +1433,14 @@ def deciding_check_problems(record, passed, code):
     derived = kind == "5.3" or (kind == "step" and n in JUDGMENT_STEPS)
     if jo is not derived:
         problems.append(f"judgment_only must be {str(derived).lower()} for deciding_check {dc!r} (rule 5.3 Limitation)")
-    if kind in ("5.2", "5.3") and code != "F-MEANING":
-        problems.append(f"deciding_check {dc!r} fails with F-MEANING, not {code!r}")
+    allowed = {"5.1": {"F-CONSTRUCT", "F-INSTRUMENT"}, "5.2": {"F-MEANING"}, "5.3": {"F-MEANING"}}.get(kind) or STEP_CODES[n]
+    if code not in allowed:
+        problems.append(f"deciding_check {dc!r} fails with {' or '.join(sorted(allowed))}, not {code!r}")
+    if kind == "5.3":
+        answers = record.get("judgment_checks") or {}
+        earlier = [c for c in JUDGMENT_CHECKS[: int(n) - 1] if (answers.get(c) or {}).get("answer") != "yes"]
+        if earlier:
+            problems.append(f"deciding_check {dc!r}: the first failing check decides (rule 6), but {earlier} are not answered yes")
     if kind == "5.3" and (record.get("judgment_checks") or {}).get(JUDGMENT_CHECKS[int(n) - 1], {}).get("answer") != "no":
         problems.append(f"deciding_check {dc!r} needs judgment check {JUDGMENT_CHECKS[int(n) - 1]!r} answered no")
     return problems

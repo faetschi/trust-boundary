@@ -93,11 +93,10 @@ class TopUpPlan(unittest.TestCase):
 
 
 class PilotPlan(unittest.TestCase):
-    def test_a_pilot_output_gives_only_its_pending_case_per_stratum(self):
+    def test_a_pilot_output_is_refused_not_planned_partially(self):
         _, out = ts.run_pilot_vector({})
-        named = {n["stratum"]: n["case_id"] for n in out["needs_adaptation_next"]}
-        self.assertEqual(rp.plan(out, {}), {h: [named[h]] for h in rp.STRATA})
-        self.assertEqual(rp.plan(out, {named["TM-A"]: (False, "x")}, {named["TM-B"]}), {"TM-A": [], "TM-B": []})
+        with self.assertRaises(rp.Refused):
+            rp.plan(out, {})
 
 
 class Cli(unittest.TestCase):

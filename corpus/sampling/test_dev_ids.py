@@ -159,7 +159,9 @@ class RealInputs(Fixture):
         ids = set(self.ids())
         with open(ADDITIONS, encoding="utf-8") as fh:
             added = {r["case_id"] for r in json.load(fh)["rows"]}
-        self.assertEqual(ids - {c for c in ids if c not in rows}, in_ledger | added)
+        development = {c for c, s in rows.items() if s == "development"}
+        self.assertEqual(len(development), 149)
+        self.assertEqual(ids - {c for c in ids if c not in rows}, in_ledger | added | development)
         self.assertIn("PILOT-ADV-A-01", ids)  # T5 ids outside the ledger are kept
         self.assertNotIn("agentdojo:", printed)
 
