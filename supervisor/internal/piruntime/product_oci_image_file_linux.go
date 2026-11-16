@@ -155,7 +155,7 @@ func productOCIMemoKey(layoutPath, manifestDigest string, requireImmutable bool,
 	for _, layer := range layers {
 		names = append(names, filepath.Join(blobs, strings.TrimPrefix(layer.Digest, "sha256:")))
 	}
-	now := time.Now() // before the stats: settled means already old enough before verification read the files
+	now := productMemoNow() // before the stats: settled means already old enough before verification read the files
 	var newest time.Time
 	for _, name := range names {
 		identity, ctime, ok := productFileIdentity(name)
@@ -179,6 +179,9 @@ var productMemoMinAge = 100 * time.Millisecond
 
 // productAfterSnapshot is a test hook that delays the caller after an identity snapshot, before verification.
 var productAfterSnapshot func()
+
+// productMemoNow is the clock that settledness is measured against. Tests replace it.
+var productMemoNow = time.Now
 
 // productFilesSettled reports whether the newest ctime is at least productMemoMinAge before now (a future ctime is not).
 // now must have been read before the identities were collected.
