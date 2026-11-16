@@ -30,7 +30,7 @@ sequence 75 pi_service_request_terminal {"schema_version": "tbound-pi-service-re
 2026-11-15T22:03:36.560615+00:00 tbound-abi8-seed tbound-pi-cell-c17d59fa6a2cbaae3e9abfe3[616785]: {"type":"agent_end","messages":[{"role":"system","content":"","sections":{"preamble":"You are an expert coding assistant operating inside pi, a coding agent harness. You help users by reading files, ex
 2026-11-15T22:03:36.561274+00:00 tbound-abi8-seed tbound-pi-cell-c17d59fa6a2cbaae3e9abfe3[616785]: {"type":"agent_settled"}
 
-# service journal line counts per minute around the host sleep (no line between 2026-11-15T22:03 and 2026-11-16T17:05)
+# service journal line counts per minute around the host shutdown (no line between 2026-11-15T22:03 and 2026-11-16T17:05)
      38 2026-11-15T22:02
      26 2026-11-15T22:03
      64 2026-11-16T17:05
