@@ -99,13 +99,13 @@ func TestFenceRecordsADirectoryReadAfterItsOpen(t *testing.T) {
 	}
 }
 
-// Nothing else is recorded: not the opens of other directories, and not the observer's own snapshots at the start,
-// at a mark and at the stop.
+// Nothing else is recorded: not the opens of other directories, not a read of a file in the root, and not the
+// observer's own snapshots (which list the root and read the fence directory) at the start, at a mark and at the stop.
 func TestFenceRecordsNoOtherOpenAndNotTheObserversOwnSnapshots(t *testing.T) {
 	root := fenceRoot(t)
 	o := startWithCleanup(t, root)
 	bareOpen(t, filepath.Join(root, "other"))
-	if _, err := os.ReadDir(root); err != nil {
+	if _, err := os.ReadFile(filepath.Join(root, "a.txt")); err != nil {
 		t.Fatal(err)
 	}
 	mustMark(t, o, "mid")
@@ -242,5 +242,68 @@ func TestFenceRootFailsWithoutTheFenceDirectoryAndCreatesNothing(t *testing.T) {
 	}
 	if entries, _ := os.ReadDir(root); len(entries) != 0 {
 		t.Fatalf("FenceRoot left %v", entries)
+	}
+}
+
+// scanOnce is what a scan of the tree does to the fence directory with nothing written between scans: it lists the
+// root, then opens the fence directory and reads it once (one round of a fence).
+func scanOnce(t *testing.T, root string) {
+	t.Helper()
+	if _, err := os.ReadDir(root); err != nil {
+		t.Fatal(err)
+	}
+	fd, err := unix.Open(filepath.Join(root, FenceDir), unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unix.Close(fd)
+	var buf [4096]byte
+	if _, err := unix.Getdents(fd, buf[:]); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// longestAlternation is the longest run of fence directory records that alternate between an open and a read in
+// consecutive sequence numbers: what the transient judge counts as a fence once it reaches 2*FenceBurst.
+func longestAlternation(r *Report) int {
+	longest, length := 0, 0
+	var prev Fence
+	for _, f := range r.Fences {
+		if f.Path != FenceDir || !f.IsDir || (length > 0 && (f.Seq != prev.Seq+1 || f.Op == prev.Op)) {
+			length = 0
+		}
+		if f.Path == FenceDir && f.IsDir {
+			length++
+		}
+		longest, prev = max(longest, length), f
+	}
+	return longest
+}
+
+// Scans of the tree that follow each other with nothing written between them each open and read the fence directory
+// once. Without a record between them, a few of them in a row are an alternation as long as a fence (issue #184: the
+// service scans the live root more than FenceBurst times before publication, so a third "fence" made the apply window
+// ambiguous and EFF-TRANSIENT lost). Every scan lists the root first, and that listing is recorded between them.
+func TestFenceScansOfTheTreeInARowAreNotAFence(t *testing.T) {
+	root := fenceRoot(t)
+	o := startWithCleanup(t, root)
+	for i := 0; i < 2*FenceBurst; i++ {
+		scanOnce(t, root)
+	}
+	rep := mustStop(t, o)
+	if n := longestAlternation(rep); n >= 2*FenceBurst {
+		t.Fatalf("%d scans in a row leave an alternation of %d records, as long as a fence: %v", 2*FenceBurst, n, fenceOps(rep))
+	}
+	listings := 0
+	for _, f := range rep.Fences {
+		if f.Path == "." && f.Op == FenceAccess && f.IsDir {
+			listings++
+		}
+	}
+	if listings < 2*FenceBurst {
+		t.Fatalf("%d root listings recorded for %d scans: %v", listings, 2*FenceBurst, fenceOps(rep))
+	}
+	if !rep.QualifiedWindow() {
+		t.Fatalf("not qualified: %s %+v", rep.Verdict, rep.Gaps)
 	}
 }

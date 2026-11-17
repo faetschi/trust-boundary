@@ -131,6 +131,10 @@ func TestPublishRenamesAreTheOnlyLiveRootEvents(t *testing.T) {
 		length = 0
 	}
 	for _, fc := range report.Fences {
+		if fc.Path != effectoracle.FenceDir {
+			end() // a listing of the root separates scans (the judge's applyFences ends a run on it too)
+			continue
+		}
 		if length > 0 && (fc.Seq != prev.Seq+1 || fc.Op == prev.Op) {
 			end()
 		}

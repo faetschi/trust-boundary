@@ -32,9 +32,16 @@ const watchMask = syscall.IN_CREATE | syscall.IN_DELETE | syscall.IN_MODIFY |
 	syscall.IN_ATTRIB | syscall.IN_DELETE_SELF | syscall.IN_MOVE_SELF |
 	syscall.IN_ONLYDIR | syscall.IN_DONT_FOLLOW
 
-// fenceMask is added to the watch of FenceDir, and to no other: the opens and reads of the fence directory. Any other
-// directory would make a record of every scan of the tree.
+// fenceMask is added to the watch of FenceDir: the opens and reads of the fence directory. Any other directory would
+// make a record of every scan of the tree.
 const fenceMask = syscall.IN_OPEN | syscall.IN_ACCESS
+
+// rootListMask is added to the watch of the root while the fences are recorded: a listing of the root is recorded too
+// (a Fence on "."), because every scan of the tree lists the root before it reads the fence directory. Without it,
+// scans that follow each other with nothing written in between leave one unbroken alternation of opens and reads of
+// the fence directory, as long as a fence after FenceBurst of them (issue #184). The root watch also reports the reads
+// of the entries of the root; those are not recorded.
+const rootListMask = syscall.IN_ACCESS
 
 // maskNames lists the requested masks, sorted, for Report.Masks.
 var maskNames = []string{
@@ -320,6 +327,13 @@ func (o *Observer) applyLocked(rec rawEvent) {
 		}
 		return
 	}
+	if rec.wd == o.rootWd && rec.mask&rootListMask != 0 {
+		// Only the root watch asks for reads. A read of an entry of the root is not a listing of the root.
+		if rec.name == "" {
+			o.fences = append(o.fences, Fence{Seq: o.nextSeqLocked(), AtNS: o.sinceLocked(), Op: FenceAccess, Path: ".", IsDir: true})
+		}
+		return
+	}
 	rel := dir
 	anomaly := false
 	if rec.name != "" {
@@ -430,11 +444,7 @@ func (o *Observer) watchTreeLocked(rel string, from uint64) {
 		return
 	}
 	defer func() { _ = dir.Close() }()
-	mask := uint32(watchMask)
-	if rel == FenceDir && o.fenceArmed {
-		mask |= fenceMask
-	}
-	wd, err := o.src.AddWatch(abs, mask)
+	wd, err := o.src.AddWatch(abs, watchMaskFor(rel, o.fenceArmed))
 	if err != nil {
 		kind := GapWatchError
 		if errors.Is(err, syscall.ENOSPC) {
@@ -832,21 +842,35 @@ func (o *Observer) setFenceLocked(on bool) {
 	if o.fenceWd < 0 || o.fenceArmed == on {
 		return
 	}
-	mask := uint32(watchMask)
-	if on {
-		mask |= fenceMask
-	}
-	wd, err := o.src.AddWatch(filepath.Join(o.root, FenceDir), mask)
-	if err != nil {
-		o.gapLocked(GapWatchError, FenceDir, o.seq, "fence: "+errnoName(err))
-		return
-	}
-	if wd != o.fenceWd {
-		o.gapLocked(GapWatchError, FenceDir, o.seq, "fence: the directory was replaced")
-		return
+	for _, w := range []struct {
+		rel string
+		wd  int
+	}{{FenceDir, o.fenceWd}, {".", o.rootWd}} {
+		wd, err := o.src.AddWatch(filepath.Join(o.root, w.rel), watchMaskFor(w.rel, on))
+		if err != nil {
+			o.gapLocked(GapWatchError, w.rel, o.seq, "fence: "+errnoName(err))
+			return
+		}
+		if wd != w.wd {
+			o.gapLocked(GapWatchError, w.rel, o.seq, "fence: the directory was replaced")
+			return
+		}
 	}
 	o.fenceArmed = on
 	if on {
 		o.fenceEver = true
 	}
+}
+
+// watchMaskFor is the watch mask of the directory rel: watchMask, and while the fences are recorded (armed) the fence
+// directory's opens and reads and the root's listings.
+func watchMaskFor(rel string, armed bool) uint32 {
+	mask := uint32(watchMask)
+	switch {
+	case armed && rel == FenceDir:
+		mask |= fenceMask
+	case armed && rel == ".":
+		mask |= rootListMask
+	}
+	return mask
 }
