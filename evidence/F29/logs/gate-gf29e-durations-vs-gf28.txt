@@ -1,0 +1,29 @@
+test                                                                                       gf28          gf29d          gf29e
+netoracle TestCollectorArrivalInTheCanaryWindowIsAnEffect                             pass 1.53     pass 16.20      pass 4.37
+netoracle TestCollectorCleanWindowIsNoneWithAReportReference                          pass 0.72     fail 38.34      pass 0.45
+netoracle TestCollectorDelayedArrivalInsideTheDrainGraceStaysInsideTheWindow          pass 0.21      pass 1.71      pass 0.17
+netoracle TestCollectorDrawsAFreshTagPerInterval                                      pass 0.41      pass 1.61      pass 0.18
+netoracle TestCollectorEvidenceFailuresAreAbsentNeverNone                             pass 3.26     pass 22.78      pass 2.59
+netoracle TestCollectorGateFailuresAreAbsentNeverClean                                pass 0.08      pass 1.12      pass 0.09
+netoracle TestCollectorRetainsAndBindsTheClosure                                      pass 0.26      pass 3.58      pass 0.63
+netoracle TestCollectorRetainsTheOriginalIntervalDocuments                            pass 0.30      pass 2.17      pass 0.41
+netoracle TestCollectorUnresolvedClosureIsLostNeverClean                              pass 0.35      pass 6.75      pass 0.36
+netoracle TestCollectorWithADeadSinkNeverSaysNone                                     pass 0.04      pass 0.46      pass 0.04
+netoracle TestCollectorWithoutATransportOrAnIntervalIsAbsentOrRefused                 pass 0.10      pass 0.97      pass 0.13
+netoracle TestCollectorWithoutProofKeepsTheFullHorizon                                pass 0.12      pass 1.39      pass 0.15
+netoracle TestCollectorWithoutRetainDirKeepsNothingAndAnUnwritableOneIsAbsentEvi      pass 0.18      pass 1.95      pass 0.21
+netoracle TestGovernedCWithTheNetCollectorRecordsTheArrivalAndTheCleanWindow          pass 0.37      pass 4.05      pass 0.32
+tbound TestProductServiceHostRefusesPublicationWithoutExclusiveManagedAncestry        pass 9.55    fail 330.87      pass 7.62
+tbound TestProductServiceHostRefusesPublicationWithoutExclusiveManagedAncestry/a      pass 2.40      pass 7.14      pass 1.76
+tbound TestProductServiceHostRefusesPublicationWithoutExclusiveManagedAncestry/f      pass 2.39    pass 206.39      pass 1.96
+tbound TestProductServiceHostRefusesPublicationWithoutExclusiveManagedAncestry/r      pass 2.39      pass 6.46      pass 1.95
+tbound TestProductServiceHostRefusesPublicationWithoutExclusiveManagedAncestry/s      pass 2.37    fail 110.89      pass 1.95
+gf28 fails: []
+   pkg netoracle ('pass', 19.796)
+   pkg tbound ('pass', 1868.348)
+gf29d fails: ['netoracle TestCollectorCleanWindowIsNoneWithAReportReference', 'tbound TestProductServiceHostRefusesPublicationWithoutExclusiveManagedAncestry/state', 'tbound TestProductServiceHostRefusesPublicationWithoutExclusiveManagedAncestry']
+   pkg netoracle ('fail', 151.787)
+   pkg tbound ('fail', 2307.316)
+gf29e fails: []
+   pkg netoracle ('pass', 22.47)
+   pkg tbound ('pass', 1505.68)

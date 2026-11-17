@@ -1,0 +1,34 @@
+2026-11-17T17:20:49.781768503Z
+tbound-abi8-seed
+active
+inactive
+Timezone=Etc/UTC
+LocalRTC=no
+CanNTP=yes
+NTP=yes
+NTPSynchronized=yes
+TimeUSec=Tue 2026-11-17 17:20:49 UTC
+RTCTimeUSec=Tue 2026-11-17 17:20:47 UTC
+       Server: 91.189.91.157 (ntp.ubuntu.com)
+Poll interval: 1min 4s (min: 32s; max 34min 8s)
+         Leap: normal
+      Version: 4
+      Stratum: 2
+    Reference: 84A36001
+    Precision: 1us (-24)
+Root distance: 23.200ms (max: 5s)
+       Offset: -15.960ms
+        Delay: 111.843ms
+       Jitter: 365.191ms
+ Packet count: 40
+    Frequency: +460.318ppm
+2026-11-17T17:17:18.239340+00:00 tbound-abi8-seed kernel: random: crng reseeded due to virtual machine fork
+2026-11-17T17:17:20.256733+00:00 tbound-abi8-seed systemd-timesyncd[456072]: Network configuration changed, trying to establish connection.
+2026-11-17T17:17:23.594991+00:00 tbound-abi8-seed systemd-timesyncd[456072]: Network configuration changed, trying to establish connection.
+2026-11-17T17:17:24.354115+00:00 tbound-abi8-seed systemd-timesyncd[456072]: Contacted time server 185.125.190.57:123 (ntp.ubuntu.com).
+2026-11-17T17:17:25.045038+00:00 tbound-abi8-seed systemd-timesyncd[456072]: No network connectivity, watching for changes.
+2026-11-17T17:17:27.093020+00:00 tbound-abi8-seed systemd-timesyncd[456072]: Network configuration changed, trying to establish connection.
+2026-11-17T17:17:27.107196+00:00 tbound-abi8-seed systemd-timesyncd[456072]: Network configuration changed, trying to establish connection.
+2026-11-17T17:17:27.141020+00:00 tbound-abi8-seed systemd-timesyncd[456072]: Contacted time server 185.125.190.56:123 (ntp.ubuntu.com).
+2026-11-17T17:19:01.573801+00:00 tbound-abi8-seed systemd-timesyncd[456072]: Contacted time server 91.189.91.157:123 (ntp.ubuntu.com).
+2026-11-17T17:19:49.747569+00:00 tbound-abi8-seed kernel: hv_utils: TimeSync IC version 4.0
