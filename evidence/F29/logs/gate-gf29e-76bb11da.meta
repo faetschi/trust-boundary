@@ -1,0 +1,4 @@
+gate gf29e on integ/f29-20261116 76bb11da9b5840412aaa52cf179977edba09f0a5, tree 2f1212f9d1d65f670291e398337f7e133fcf890b
+= tree of FREEZE_COMMIT 28f407b84291222f386134c95620c71114f6b0ed (main after #185) and of dev 04b9bea5
+archive: git -c core.autocrlf=false -c core.eol=lf archive --format=tar 76bb11da; blobs 2899/2899 byte-exact, 0 extra files (gate-gf29e-76bb11da.out)
+gate.sh: kit kf19 (/home/tbound/tbound-work/kf19/infra/freeze/tools/gate.sh), KIT_FREEZE=F18, label gf29e, inside flock /home/tbound/.linux-line.lock, nice -n 19

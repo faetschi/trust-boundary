@@ -1,0 +1,28 @@
+﻿
+2026-11-17T17:16:37.8331506Z start state=Running mac=00155D0C4002 checkpointType=ProductionOnly
+2026-11-17T17:16:38.0234235Z turn off (current F28-chain state is discarded by the restore)
+2026-11-17T17:16:38.5118468Z restore pre-F28-2026-11-15
+2026-11-17T17:17:02.7842770Z restored state=Saved
+2026-11-17T17:17:05.7914425Z Start-VM begin
+2026-11-17T17:17:18.2853641Z Start-VM returned state=Running
+2026-11-17T17:20:05.5517058Z checkpoint pre-F29-2026-11-16 created; checkpointType=ProductionOnly state=Running
+
+Name               CreationTime        SnapshotType
+----               ------------        ------------
+pre-F15-2026-11-04 04.11.2026 19:08:33     Standard
+pre-B9-2026-11-05  05.11.2026 15:48:11     Standard
+pre-F16-2026-11-06 06.11.2026 10:12:02     Standard
+pre-F17-2026-11-06 06.11.2026 14:29:58     Standard
+pre-F18-2026-11-07 07.11.2026 10:33:02     Standard
+pre-F19-2026-11-07 07.11.2026 23:19:52     Standard
+pre-F21-2026-11-08 08.11.2026 14:55:32     Standard
+pre-F24-2026-11-13 13.11.2026 16:40:31     Standard
+pre-F25-2026-11-13 13.11.2026 19:28:48     Standard
+pre-F26-2026-11-13 13.11.2026 23:57:50     Standard
+pre-F27-2026-11-15 15.11.2026 17:15:10     Standard
+pre-F28-2026-11-15 15.11.2026 18:46:19     Standard
+pre-F29-2026-11-16 17.11.2026 18:20:05     Standard
+
+
+
+2026-11-17T17:20:05.8315233Z DONE
