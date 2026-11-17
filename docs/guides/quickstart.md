@@ -44,11 +44,11 @@ Install it as described in [setup](setup.md#install-pi).
 ```sh
 git clone https://github.com/faetschi/trust-boundary.git
 cd trust-boundary
-git checkout codex/tbound-prototype
 ```
 
-`codex/tbound-prototype` is the development branch. Full CI runs only for pull
-requests into `main` and merges to `main`.
+`main` is the public branch and the default checkout. Contributors branch from
+`codex/tbound-prototype`; see [CONTRIBUTING](../../CONTRIBUTING.md). Full CI runs
+only for pull requests into `main` and merges to `main`.
 
 ## 4. Check the machine
 
