@@ -17,6 +17,23 @@ evidence.
 TBound is also the artifact of a master thesis. Its study records sit beside the
 code, and [docs/research](docs/research/README.md) explains which is which.
 
+## How it works
+
+```mermaid
+flowchart LR
+  Pi["Pi CLI (untrusted)"] -->|4 proxy tools| TB["TBound supervisor (Go)"]
+  TB --> Gate["Deterministic policy"]
+  TB --> Cell["Isolated command cell"]
+  TB --> Gen["Sealed session generations"]
+  Gen --> Pub["Controlled publication"]
+  Pub --> Live["Live repository"]
+  TB --> Log["Durable journals"]
+```
+
+Pi and the model never decide what reaches the repository. Every tool call is
+checked, `bash` runs in a fresh rootless Podman cell, and writes reach the live
+repository only through publication.
+
 ## Which path are you on?
 
 | You want to | Start here |
@@ -40,6 +57,19 @@ and macOS are not supported.
 probes, and pilot reports are not thesis results, and the main hypothesis has not
 been run. The optional [web chat](extensions/webchat/README.md) is frozen and
 outside the thesis.
+
+## Status and support
+
+TBound is the artifact of a master's thesis, not a supported product. There is no
+support SLA and no security support. Issues and pull requests are welcome, but
+responses are not guaranteed.
+
+| Included in this repository | Not included |
+|---|---|
+| Supervisor, adapter, installer, and packaging | Model provider keys and credentials |
+| Guides, command reference, and glossary | The thesis text, in a separate repository |
+| Test corpus and study evidence records | The pinned benchmark source clones |
+| CI configuration and release tooling | A published npm package, planned after v0.1.0 |
 
 ## Product chat
 
