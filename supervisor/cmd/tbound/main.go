@@ -21,11 +21,15 @@ var ErrRuntimeNotConfigured = errors.New("provider broker, durable audit, and co
 
 var errNoCommand = errors.New("no command given: run tbound --help")
 
+// version is stamped by scripts/build-release.sh; a plain go build reports devel.
+var version = "devel"
+
 const helpText = `tbound runs Pi coding tasks under a governed Linux supervisor.
 
 Usage:
   tbound <command> [flags]
   tbound --help
+  tbound --version
 
 Commands:
   serve            run one registered task through the governed service (Linux)
@@ -70,6 +74,10 @@ func run(args []string, transcript io.Writer, stderr io.Writer) error {
 	}
 	if args[0] == "--help" || args[0] == "-h" || args[0] == "help" {
 		fmt.Fprint(transcript, helpText)
+		return nil
+	}
+	if args[0] == "--version" || args[0] == "-version" || args[0] == "version" {
+		fmt.Fprintf(transcript, "tbound %s\n", version)
 		return nil
 	}
 	if len(args) > 0 && args[0] == "provider" {

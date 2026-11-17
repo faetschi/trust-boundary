@@ -20,6 +20,22 @@ func TestHelpListsCommands(t *testing.T) {
 	}
 }
 
+func TestVersionPrintsBuildVersion(t *testing.T) {
+	old := version
+	version = "1.2.3-test"
+	defer func() { version = old }()
+
+	for _, arg := range []string{"--version", "-version", "version"} {
+		var out, errOut bytes.Buffer
+		if err := run([]string{arg}, &out, &errOut); err != nil {
+			t.Fatalf("run(%q) returned %v, want nil", arg, err)
+		}
+		if got, want := out.String(), "tbound 1.2.3-test\n"; got != want {
+			t.Fatalf("run(%q) = %q, want %q", arg, got, want)
+		}
+	}
+}
+
 func TestNoCommandPrintsHelpAndFails(t *testing.T) {
 	var out, errOut bytes.Buffer
 	err := run(nil, &out, &errOut)
