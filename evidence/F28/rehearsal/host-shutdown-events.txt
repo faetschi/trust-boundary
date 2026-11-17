@@ -1,0 +1,7 @@
+﻿# Windows System log on the rehearsal host, events 12, 13, 109 and 1074 between 2026-11-15T20:00Z and 2026-11-16T17:00Z.
+# Command: Get-WinEvent -FilterHashtable @{LogName='System'; StartTime=...; EndTime=...; Id=12,13,109,1074} (EnhancedStorage id 12 dropped). Host and user names replaced by <host>.
+# Messages are German (1074 'Ausschalten' = power off, user-initiated; 109 kernel shutdown transition; 13 OS shutdown; 12 OS start).
+2026-11-15T22:09:52.800Z id=1074 provider=User32 | Vom Prozess "C:\Windows\System32\RuntimeBroker.exe (<host>)" wurde auf Anforderung des Benutzers "<host>\Admin" das Ereignis "Ausschalten" für den Computer "<host>" aus folgendem Grund initiiert: "Anderer Grund (nicht geplant)" Ursachencode: "0x0" Herunterfahrtyp: "Ausschalten" Kommentar: ""
+2026-11-15T22:11:33.961Z id=109 provider=Microsoft-Windows-Kernel-Power | Die Energieverwaltung des Kernels hat einen Wechsel beim Herunterfahren initiiert. Grund für das Herunterfahren: Kernel API
+2026-11-15T22:11:35.684Z id=13 provider=Microsoft-Windows-Kernel-General | Das Betriebssystem wird zur Systemzeit ‎2026‎-‎11‎-‎15T22:11:35.684694700Z heruntergefahren.
+2026-11-16T15:48:31.626Z id=12 provider=Microsoft-Windows-Kernel-General | Das Betriebssystem wurde zur Systemzeit ‎2026‎-‎11‎-‎16T15:48:29.500000000Z gestartet.
