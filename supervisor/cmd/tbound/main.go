@@ -72,7 +72,7 @@ func run(args []string, transcript io.Writer, stderr io.Writer) error {
 		fmt.Fprint(stderr, helpText)
 		return errNoCommand
 	}
-	if args[0] == "--help" || args[0] == "-h" || args[0] == "help" {
+	if args[0] == "--help" || args[0] == "-help" || args[0] == "-h" || args[0] == "help" {
 		fmt.Fprint(transcript, helpText)
 		return nil
 	}

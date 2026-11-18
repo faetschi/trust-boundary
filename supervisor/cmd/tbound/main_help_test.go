@@ -7,7 +7,7 @@ import (
 )
 
 func TestHelpListsCommands(t *testing.T) {
-	for _, arg := range []string{"--help", "-h", "help"} {
+	for _, arg := range []string{"--help", "-help", "-h", "help"} {
 		var out, errOut bytes.Buffer
 		if err := run([]string{arg}, &out, &errOut); err != nil {
 			t.Fatalf("run(%q) returned %v, want nil", arg, err)

@@ -169,11 +169,11 @@ gain admission.
 
 ### CLI routes and exit codes
 
-Exit 0 means the route succeeded. Any returned error exits 2 (`supervisor/cmd/tbound/main.go`).
+Exit 0 means the route succeeded or printed help (`--help`, `-help`, `-h`, `help`, or a command's `-h`). A returned error exits with its own code where it carries one (`chat`, `provider`, and the `product` admin commands) and exits 2 otherwise (`supervisor/cmd/tbound/main.go`).
 
 | Command | Result |
 |---|---|
-| `tbound` with no arguments | Exit 2: provider broker, durable audit, and contained executor are not configured. |
+| `tbound` with no arguments | Prints the command list to stderr, then `no command given: run tbound --help`. Exit 2. |
 | `tbound --smoke-listen --socket-dir <private 0700 dir>` | Linux only. Synthetic, no-effect Unix-socket listener; not a native Pi claim. Exit 0 on success. |
 | `tbound serve --pi` | Ordinary local service client. Without a verified managed registration and a reachable service it exits 2 with `registered local Pi service is unavailable`. Rejects `--native-host-profile`, `--workspace`, and `--source`. |
 | `tbound serve --pi --service` | Internal socket-activated entrypoint. Accepts no task, profile, workspace, source, or Bash-output arguments. |
