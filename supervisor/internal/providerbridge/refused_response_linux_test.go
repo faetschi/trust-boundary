@@ -39,7 +39,7 @@ func TestRefusedCompleteResponseClosesItsHostCallAsUnknown(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			conversation, journal, _, hooks := hostCallsLeftConversation(t, tc.responses, 0, 11)
-			executor, err := NewExecutor(conversation, &fixtureExecutor{outputs: []json.RawMessage{readOutput("g0", "tree-0", "content")}})
+			executor, err := NewExecutor(conversation, &fixtureExecutor{outputs: []json.RawMessage{readOutput("g0", recoveryTestTree("tree-0"), "content")}})
 			if err != nil {
 				t.Fatal(err)
 			}
