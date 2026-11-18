@@ -178,6 +178,9 @@ type GovernedC struct {
 	ProtectedPaths func(caseID string) []string
 	// WSEvidenceDir retains the evaluated E04 input beside the run journal when configured.
 	WSEvidenceDir string
+	// ResendWindow and ResendPause bound how the request is sent again when its answer is
+	// lost (see send). Zero means DefaultResendWindow and DefaultResendPause.
+	ResendWindow, ResendPause time.Duration
 }
 
 // Request maps a step of the executor's configuration to its corpus-mode request.

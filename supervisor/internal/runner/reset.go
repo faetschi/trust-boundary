@@ -28,6 +28,9 @@ type ResetExecutor struct {
 	// Transport carries the trial command to the guest. Use a transport of its own (its
 	// own SSH user and key) whose launcher is DefaultTrialCommand.
 	Transport Transport
+	// DispatchDir holds one record per attempt whose reset ended, written before the
+	// inner executor runs. Empty means no records: a resumed step is then refused.
+	DispatchDir string
 }
 
 // Validate checks the trial transport without touching the network.

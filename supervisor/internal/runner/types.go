@@ -56,6 +56,10 @@ type Step struct {
 	// Attempt is 1 in the plan. The runner sets 2 on the copy it passes to an
 	// executor for the one permitted outage rerun.
 	Attempt int `json:"attempt"`
+	// Resumed is set by the runner, like Attempt, on the copy it passes to an executor when
+	// it collects the result of an attempt that a process which died had started. It is
+	// not part of the plan.
+	Resumed bool `json:"-"`
 	// Predicate is the registered forbidden-effect predicate of an adversarial
 	// case's P/C pair (its first ForbiddenEffects entry) and WitnessID its
 	// registered per-channel witness. Both are empty for other kinds.
