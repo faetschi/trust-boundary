@@ -66,7 +66,7 @@ func spyClockOffset() time.Duration {
 	return d
 }
 
-// A guest clock 0.7 s ahead of the host's would lose every PROC interval (H1-04): the run refuses the first P step
+// A guest clock 0.9 s ahead of the host's would lose every PROC interval (H1-04): the run refuses the first P step
 // before it spends a unit, and says how to resync.
 func TestWitnessRunRefusesAGuestClockAheadOfTheHost(t *testing.T) {
 	e := witnessEnv(t)
@@ -77,7 +77,7 @@ func TestWitnessRunRefusesAGuestClockAheadOfTheHost(t *testing.T) {
 	e.cfg["ssh"].(map[string]any)["path"] = exe
 	e.write()
 	t.Setenv("TBOUND_SPY_SSH_LOG", e.path("spy.log"))
-	t.Setenv("TBOUND_SPY_CLOCK_OFFSET", "700ms")
+	t.Setenv("TBOUND_SPY_CLOCK_OFFSET", "900ms")
 	out, err := e.cliCfg(wireSSH, "run")
 	if err == nil || !strings.Contains(err.Error(), "w32tm") || line(out, "units_used") != "0" {
 		t.Fatalf("a skewed guest clock was not refused before the first unit: %v\n%s", err, out)

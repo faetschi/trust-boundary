@@ -17,8 +17,8 @@ import (
 // skewedGuest answers proc-cell and proc-capture like the guest evidence command, with its clock
 // offset from the host's.
 type skewedGuest struct {
-	offset time.Duration
-	calls  int
+	offset, launch time.Duration
+	calls          int
 }
 
 func (g *skewedGuest) Run(_ context.Context, argv []string) ([]byte, []byte, int, error) {
@@ -29,6 +29,7 @@ func (g *skewedGuest) Run(_ context.Context, argv []string) ([]byte, []byte, int
 		doc = procoracle.CellDoc{Schema: runner.EvidenceSchema, Kind: runner.EvidenceProcCell, CellID: "/cell", CellCgroupPath: "/c",
 			CellCgroupInode: 7, CellUID: 1000, CellGID: 1000}
 	case runner.EvidenceProcCapture:
+		time.Sleep(g.launch)
 		reg := argv[slices.Index(argv, "--registration")+1]
 		doc = procoracle.CaptureDoc{Schema: runner.EvidenceSchema, Kind: runner.EvidenceProcCapture, Point: procoracle.PointPostTeardown,
 			RegistrationDigest: reg, Snapshot: procoracle.Snapshot{Seq: 1, Point: procoracle.PointPostTeardown,
@@ -59,16 +60,21 @@ func guarded(g *skewedGuest, inner runner.Executor) clockGuard {
 
 func TestClockGuardRefusesAnAdversarialStepWhenTheGuestClockIsOff(t *testing.T) {
 	adversarial := runner.Step{CaseID: "a", Kind: evalcorpus.KindAdversarial}
-	for _, offset := range []time.Duration{700 * time.Millisecond, -700 * time.Millisecond} {
+	ms := time.Millisecond
+	// A launch before the guest reads its clock counts against PROC's second like the offset does.
+	for _, g := range []skewedGuest{{offset: 900 * ms}, {offset: -700 * ms}, {offset: 500 * ms, launch: 300 * ms}} {
 		inner := &countingPrepare{}
-		err := guarded(&skewedGuest{offset: offset}, inner).Prepare(context.Background(), adversarial)
+		err := guarded(&g, inner).Prepare(context.Background(), adversarial)
 		if !errors.Is(err, runner.ErrSetupRefused) || !strings.Contains(err.Error(), "w32tm") || inner.prepared != 0 {
-			t.Fatalf("offset %s: err %v, inner prepared %d; want a refusal that names the resync and stops before the step", offset, err, inner.prepared)
+			t.Fatalf("offset %s launch %s: err %v, inner prepared %d; want a refusal that names the resync and stops before the step",
+				g.offset, g.launch, err, inner.prepared)
 		}
 	}
-	inner := &countingPrepare{}
-	if err := guarded(&skewedGuest{}, inner).Prepare(context.Background(), adversarial); err != nil || inner.prepared != 1 {
-		t.Fatalf("an aligned clock: err %v, inner prepared %d", err, inner.prepared)
+	for _, g := range []skewedGuest{{}, {offset: 400 * ms}, {offset: -100 * ms, launch: 200 * ms}} {
+		inner := &countingPrepare{}
+		if err := guarded(&g, inner).Prepare(context.Background(), adversarial); err != nil || inner.prepared != 1 {
+			t.Fatalf("offset %s launch %s: err %v, inner prepared %d", g.offset, g.launch, err, inner.prepared)
+		}
 	}
 	g := &skewedGuest{offset: time.Hour}
 	if err := guarded(g, &countingPrepare{}).Prepare(context.Background(), runner.Step{CaseID: "c", Kind: evalcorpus.KindCompliant}); err != nil || g.calls != 0 {

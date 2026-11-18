@@ -66,7 +66,7 @@ func wireSSH(p plan) (runner.Executors, error) {
 			g := governed
 			g.Configuration = runner.CDHConfiguration(model)
 			g.CDH = p.cfg.CDH
-			executors.CDH[g.Configuration] = p.attest(runner.AcceptExecutor{FreezeCommit: p.sched.Config.FreezeCommit, Inner: runner.ResetExecutor{Inner: g, Transport: ts.trial}, Transport: ts.trial})
+			executors.CDH[g.Configuration] = guard(p.attest(runner.AcceptExecutor{FreezeCommit: p.sched.Config.FreezeCommit, Inner: runner.ResetExecutor{Inner: g, Transport: ts.trial}, Transport: ts.trial}))
 		}
 	}
 	return executors, nil

@@ -13,18 +13,21 @@ import (
 // PROC starts an interval on the host clock and accepts the guest monitor's first poll, stamped on the
 // guest clock, at most procoracle.GuestMaxGap (1 s) later; the ssh launch of the monitor spends part of
 // that second. A guest clock 0.65 s ahead of the host lost every PROC begin, and with it NET-01, in F29.
-// maxClockSkew is the offset the run refuses, well inside the budget.
+// A capture is launched the same way, so its lead (guest stamp minus host send) is the gap PROC sees:
+// maxClockLead leaves a quarter second of that budget for launch jitter. A guest behind the host costs
+// the full horizon of every interval; maxClockLag bounds the lag the samples prove.
 const (
-	maxClockSkew = 250 * time.Millisecond
+	maxClockLead = 750 * time.Millisecond
+	maxClockLag  = 250 * time.Millisecond
 	clockSamples = 3
 )
 
 // clockSample is one reading of the guest clock: the host read sent before it launched proc-capture and
-// received when the document came back, and the guest stamped guest in between. Whatever the transport
-// took, the guest clock is at least ahead() ahead of the host clock and at least behind() behind it.
+// received when the document came back, and the guest stamped guest in between.
 type clockSample struct{ sent, guest, received time.Time }
 
-func (s clockSample) ahead() time.Duration  { return s.guest.Sub(s.received) }
+// lead is the guest offset plus the launch; behind is a lag the sample proves, whatever the transport took.
+func (s clockSample) lead() time.Duration   { return s.guest.Sub(s.sent) }
 func (s clockSample) behind() time.Duration { return s.sent.Sub(s.guest) }
 
 // sampleGuestClock reads the guest clock with proc-cell and proc-capture, the read-only evidence
@@ -52,26 +55,30 @@ func sampleGuestClock(ctx context.Context, ev runner.EvidenceClient, cellUID, ce
 	return clockSample{sent: sent, guest: doc.Snapshot.ObservedAt, received: received}, nil
 }
 
-// checkClock refuses when any sample proves the guest clock more than maxClockSkew off the host clock,
-// or when the clock cannot be read.
+// checkClock refuses when the steadiest sample (the smallest lead) is more than maxClockLead, when any
+// sample proves the guest more than maxClockLag behind, or when the clock cannot be read. One slow
+// launch does not refuse the run; a clock offset shows in every sample.
 func checkClock(ctx context.Context, sample func(context.Context) (clockSample, error)) error {
-	var ahead, behind time.Duration
+	lead, behind := time.Duration(1<<62), time.Duration(0)
 	for range clockSamples {
 		s, err := sample(ctx)
 		if err != nil {
 			return fmt.Errorf("the guest clock cannot be read: %w", err)
 		}
-		ahead, behind = max(ahead, s.ahead()), max(behind, s.behind())
+		lead, behind = min(lead, s.lead()), max(behind, s.behind())
 	}
-	off, way := ahead, "ahead of"
-	if behind > ahead {
-		off, way = behind, "behind"
-	}
-	if off <= maxClockSkew {
+	var problem string
+	switch {
+	case lead > maxClockLead:
+		problem = fmt.Sprintf("the guest clock reads %s after the host launched a capture, more than %s of the 1 s PROC allows",
+			lead.Round(time.Millisecond), maxClockLead)
+	case behind > maxClockLag:
+		problem = fmt.Sprintf("the guest clock is at least %s behind the host clock, more than %s", behind.Round(time.Millisecond), maxClockLag)
+	default:
 		return nil
 	}
-	return fmt.Errorf("the guest clock is at least %s %s the host clock, more than %s, and PROC compares the two (H1-04): "+
-		"resync the Windows host (w32tm /resync /force) and the guest (chronyc makestep), then run again", off.Round(time.Millisecond), way, maxClockSkew)
+	return fmt.Errorf("%s, and PROC compares the two clocks (H1-04): resync the Windows host (w32tm /resync /force) and the guest "+
+		"(chronyc makestep), then run again", problem)
 }
 
 // clockGuard checks the guest clock before every adversarial step, the steps PROC observes. A refusal
