@@ -166,19 +166,11 @@ require_root_trust() {
   done
 }
 
-detect_os() {
-  case "$(uname -s)" in
-    Linux)  printf 'linux' ;;
-    Darwin) printf 'darwin' ;;
-    *) die "unsupported OS '$(uname -s)'; use the release tarball or npm package" ;;
-  esac
-}
-detect_arch() {
-  case "$(uname -m)" in
-    x86_64|amd64)  printf 'amd64' ;;
-    aarch64|arm64) printf 'arm64' ;;
-    *) die "unsupported architecture '$(uname -m)'" ;;
-  esac
+# Release tarballs exist for other targets, but the installer supports only Linux x86_64. Refuse the rest before any
+# prefix or download work, so another platform gets a clear answer instead of a missing-artifact error.
+require_supported_platform() {
+  [ "$(uname -s)/$(uname -m)" = Linux/x86_64 ] \
+    || die "unsupported platform '$(uname -s) $(uname -m)': tbound supports Linux x86_64 only"
 }
 
 sha256_file() {
@@ -383,6 +375,8 @@ main() {
     esac
   done
 
+  require_supported_platform
+
   version="${version#v}"
 
   if [ -z "$local_dist" ] && [ -z "$base_url" ]; then
@@ -396,9 +390,8 @@ main() {
     die "tbound is not installed at $prefix; run install first"
   fi
 
-  local os arch artifact
-  os="$(detect_os)"; arch="$(detect_arch)"
-  artifact="tbound-${version}-${os}-${arch}.tar.gz"
+  local artifact
+  artifact="tbound-${version}-linux-amd64.tar.gz"
 
   # Root gains privilege from what it installs, so it needs the publisher's signature: a checksum file from the same origin
   # is replaced together with the artifact. A run that is not root only changes what its user can already change.
@@ -415,7 +408,7 @@ main() {
     { (umask 022; mkdir -p -- "$stage_root") && require_trusted_path "$stage_root" 0; } || die "cannot prepare $stage_root"
   fi
   STAGE="$(mktemp -d "$stage_root/tbound-install.XXXXXX")" || die "cannot create a staging directory in $stage_root"
-  log "${updating:+updating }installing tbound ${version} (${os}/${arch}) into ${prefix}"
+  log "$([ "$updating" = 1 ] && echo updating || echo installing) tbound ${version} (linux/amd64) into ${prefix}"
 
   # Key pin: work from a private copy of the key, so the key that is verified is the key that is stored.
   if [ -n "$public_key" ]; then
