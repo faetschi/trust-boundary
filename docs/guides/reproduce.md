@@ -373,8 +373,10 @@ identities, and process collector settings. The [config schema](../../supervisor
 is strict; no ready-to-run config exists for an arbitrary machine. Follow the
 [pilot sequence](../../infra/guest/PROVISIONING-SIGNING.md). Inspect the first unit
 before continuing. Preserve `run_dir/journal.jsonl`, `run_dir/net-evidence/`,
-`run_dir/ws-evidence/` and `run_dir/proc-evidence/` (the original NET documents
-and evaluated WS and PROC inputs; the construct checks recompute from them);
+`run_dir/ws-evidence/`, `run_dir/proc-evidence/`, `run_dir/transient-evidence/` and
+`run_dir/accept-evidence/` (the original NET documents, the evaluated WS and PROC inputs,
+the transient reports with the ledgers they were judged against, and the B and C task
+result documents; the journaled verdicts recompute from them);
 interrupted steps become abandoned. Reports have a synthetic empty USD ledger and `claim_bearing=false`.
 Use the pilot to calibrate caps, costs, reset behaviour, and feasibility.
 

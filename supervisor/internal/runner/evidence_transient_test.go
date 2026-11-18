@@ -961,5 +961,10 @@ func TestTransientCollectorRetainsWhatItJudged(t *testing.T) {
 	if err != nil {
 		t.Fatalf("nothing retained: %v", err)
 	}
-	_ = raw
+	if err := VerifyTransient(raw, ref.Interval, got.Refs[OracleTransient], FindingNone); err != nil {
+		t.Fatalf("the retained interval does not recompute the journal: %v", err)
+	}
+	if err := VerifyTransient(raw, ref.Interval, got.Refs[OracleTransient], FindingObserved); err == nil {
+		t.Fatal("a finding the evidence does not support was verified")
+	}
 }

@@ -3,6 +3,7 @@ package runner
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -378,30 +379,84 @@ func (c *TransientCollector) Transient(ctx context.Context, ref EvidenceRef) (Ob
 	if iv.res.err != nil {
 		return ObserverEvidence{}, iv.res.err
 	}
-	doc := iv.res.doc
-	rep := doc.Report
+	ledger, fenced, known := c.publicationLedger(ctx, ref)
+	r := RetainedTransient{Schema: RetainedTransientSchema, Interval: ref.Interval, Doc: iv.res.doc, Ledger: ledger, LedgerKnown: known,
+		Fenced: fenced, RequestNS: ended.Sub(iv.acked).Nanoseconds()}
+	ev, err := r.evidence()
+	if err != nil {
+		return ObserverEvidence{}, err
+	}
+	if c.RetainDir != "" {
+		raw, err := json.Marshal(r)
+		if err == nil {
+			err = retainFile(c.RetainDir, RetainedWSName(ref.Interval), append(raw, '\n'), false)
+		}
+		if err != nil {
+			return ObserverEvidence{}, evidenceAbsent("the transient report could not be retained: %v", err)
+		}
+	}
+	return ev, nil
+}
+
+// RetainedTransientSchema labels a RetainedTransient.
+const RetainedTransientSchema = "tbound-transient-interval/v1"
+
+// RetainedTransient is everything the EFF-TRANSIENT finding of an interval was judged from: the guest's document, the
+// publication ledger read from the store the receipt binds (with whether it was known and whether publication fenced
+// its apply), and how long the request took from the guest's acknowledgement.
+type RetainedTransient struct {
+	Schema      string                 `json:"schema"`
+	Interval    string                 `json:"interval"`
+	Doc         TransientDoc           `json:"doc"`
+	Ledger      []wsoracle.LedgerEntry `json:"ledger"`
+	LedgerKnown bool                   `json:"ledger_known"`
+	Fenced      bool                   `json:"fenced"`
+	RequestNS   int64                  `json:"request_ns"`
+}
+
+// evidence judges the retained inputs: the finding and the reference that binds the report to its ledger.
+func (r RetainedTransient) evidence() (ObserverEvidence, error) {
+	rep := r.Doc.Report
 	digest, err := rep.Digest()
 	if err != nil {
 		return ObserverEvidence{}, evidenceAbsent("the transient report has no digest: %v", err)
 	}
-	ledger, fenced, known := c.publicationLedger(ctx, ref)
-	finding := judgeTransient(&rep, ledger, known, fenced)
+	finding := judgeTransient(&rep, r.Ledger, r.LedgerKnown, r.Fenced)
 	switch {
 	case rep.OracleVersion != effectoracle.OracleVersion:
 		// Another rule set: nothing in the report is read.
 		finding = FindingLost
-	case finding != FindingObserved && !windowCovers(doc, ended.Sub(iv.acked)):
+	case finding != FindingObserved && !windowCovers(r.Doc, time.Duration(r.RequestNS)):
 		// The window does not cover the request. An event it did record stays an observed effect.
 		finding = FindingLost
 	}
 	binding := "ledger-unknown"
-	if known {
-		binding = wsoracle.LedgerPrefixDigest(ledger, len(ledger))
+	if r.LedgerKnown {
+		binding = wsoracle.LedgerPrefixDigest(r.Ledger, len(r.Ledger))
 	}
 	return ObserverEvidence{
 		Findings: map[string]Finding{OracleTransient: finding},
 		Refs:     map[string]OracleRef{OracleTransient: {Version: effectoracle.OracleVersion, Report: foldDigest(digest, binding)}},
 	}, nil
+}
+
+// VerifyTransient recomputes the finding and reference of a retained interval and compares them with the journal's.
+func VerifyTransient(raw []byte, interval string, ref OracleRef, finding Finding) error {
+	var r RetainedTransient
+	if err := DecodeEvidenceDoc(raw, &r); err != nil {
+		return err
+	}
+	if r.Schema != RetainedTransientSchema || r.Interval != interval {
+		return errors.New("transient evidence schema or interval mismatch")
+	}
+	ev, err := r.evidence()
+	if err != nil {
+		return err
+	}
+	if ev.Findings[OracleTransient] != finding || ev.Refs[OracleTransient] != ref {
+		return errors.New("transient evidence does not recompute the journaled finding and reference")
+	}
+	return nil
 }
 
 // windowCovers is true when the guest's window is known to span the request: it stopped because the host asked
