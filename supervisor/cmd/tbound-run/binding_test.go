@@ -356,7 +356,7 @@ func TestWiredExecutorsScoreE04OverTheManifestsProtectedPaths(t *testing.T) {
 	}
 	for name, exec := range map[string]runner.Executor{"C": ex.C, "P": ex.P} {
 		var governed runner.GovernedC
-		inner := exec.(runner.Attest).Inner
+		inner := unguarded(exec).(runner.Attest).Inner
 		for {
 			switch v := inner.(type) {
 			case runner.AcceptExecutor:
