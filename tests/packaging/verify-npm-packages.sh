@@ -164,7 +164,8 @@ else
   bad "mixed dist failed to assemble"
 fi
 [ -d "$mixed_out/cli-linux-x64" ] && ok "mixed dist produced the Linux package" || bad "mixed dist missing the Linux package"
-[ -d "$mixed_out/cli-darwin-amd64" ] && bad "mixed dist produced a darwin package" || ok "mixed dist skipped the darwin tarball"
+extra="$(cd "$mixed_out" && ls -d cli-*/ | grep -vx 'cli-linux-x64/' || true)"
+[ -z "$extra" ] && ok "mixed dist skipped the darwin tarball" || bad "mixed dist produced another platform package: $extra"
 grep -q 'skipping non-linux tarball' "$BASE/mixed.log" && ok "mixed dist logged the skip" || bad "mixed dist did not log the skip"
 
 echo "[7] a non-Linux-only dist is refused"

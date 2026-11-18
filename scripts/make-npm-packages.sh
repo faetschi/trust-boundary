@@ -70,7 +70,7 @@ mkdir -p "$OUT_C"
 OUT="$OUT_C"
 DIST="$DIST_C"
 
-map_os() { case "$1" in linux) echo linux;; darwin) echo darwin;; windows) echo win32;; *) return 1;; esac; }
+map_os() { case "$1" in linux) echo linux;; *) return 1;; esac; }
 map_cpu() { case "$1" in amd64) echo x64;; arm64) echo arm64;; *) return 1;; esac; }
 
 safe_archive() {
@@ -143,16 +143,10 @@ for tgz in "$DIST"/tbound-"$VERSION"-*.tar.gz; do
   fi
   bindir="$OUT/$pkg/bin"
   mkdir -p "$bindir"
-  binfile="tbound"; [ "$os" = "windows" ] && binfile="tbound.exe"
-  exefile="tbound-doctor"; [ "$os" = "windows" ] && exefile="tbound-doctor.exe"
-  proffile="tbound-profile"; [ "$os" = "windows" ] && proffile="tbound-profile.exe"
-  src_bin="$work/bin/$binfile"; src_exe="$work/bin/$exefile"; src_prof="$work/bin/$proffile"
-  [ -f "$src_bin" ] || die "archive $base missing bin/$binfile"
-  [ -f "$src_exe" ] || die "archive $base missing bin/$exefile"
-  [ -f "$src_prof" ] || die "archive $base missing bin/$proffile"
-  cp "$src_bin" "$bindir/$binfile"
-  cp "$src_exe" "$bindir/$exefile"
-  cp "$src_prof" "$bindir/$proffile"
+  for b in tbound tbound-doctor tbound-profile; do
+    [ -f "$work/bin/$b" ] || die "archive $base missing bin/$b"
+    cp "$work/bin/$b" "$bindir/$b"
+  done
   cp "$ROOT/LICENSE" "$OUT/$pkg/LICENSE"
   rm -rf "$work"
   cat > "$OUT/$pkg/package.json" <<JSON
