@@ -6,9 +6,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"tbound/supervisor/internal/audit"
 )
@@ -72,64 +74,191 @@ func requireUnknownEnd(t *testing.T, conversation *Conversation, journal *audit.
 	}
 }
 
-// The F26 unit-90 sequence: 6 of 7 host calls spent, the exchange takes the 7th and returns a tool call.
-// It used to be captured and then its effect refused, which left it pending; now it is never captured.
-// With 2 left the effect would fit, but it would take the last host call and the result could not be
-// returned, so that tool call ends the turn too.
-func TestToolCallWithoutHostCallsForItsEffectAndResultIsNotCaptured(t *testing.T) {
-	for _, spent := range []uint64{6, 5} {
-		conversation, journal, _, hooks := hostCallsLeftConversation(t, []fixtureResponse{capToolCall}, spent, 7)
-		_, err := conversation.NextTurn(context.Background())
-		if !errors.Is(err, ErrNoHostCallForToolEffect) {
-			t.Fatalf("%d spent: turn error = %v, want ErrNoHostCallForToolEffect", spent, err)
-		}
-		requireUnknownEnd(t, conversation, journal, hooks, err)
+// toolChoice is the tool_choice member of an outbound request body.
+func toolChoice(t *testing.T, body []byte) string {
+	t.Helper()
+	var request struct {
+		ToolChoice string `json:"tool_choice"`
 	}
+	if err := json.Unmarshal(body, &request); err != nil {
+		t.Fatal(err)
+	}
+	return request.ToolChoice
 }
 
-// The exchange itself is still sent on the last host calls: a text reply needs no effect and ends the task
-// (the 2N+1 budgets of G1, the corpus scripts and the three-tool compliant runs).
-func TestTextReplyOnTheLastHostCallCompletes(t *testing.T) {
+// lastRecord is the newest provider journal record.
+func lastRecord(t *testing.T, journal *audit.Journal) audit.Record {
+	t.Helper()
+	trace, err := journal.Trace()
+	if err != nil || len(trace.Records) == 0 {
+		t.Fatalf("provider journal: %d records, %v", len(trace.Records), err)
+	}
+	return trace.Records[len(trace.Records)-1]
+}
+
+func replayHostCallsLeft(t *testing.T, journal *audit.Journal) (TranscriptProjection, error) {
+	t.Helper()
+	return ReplayTranscript(journal, RecoveryPins{Config: recoveryTestConfig(), Model: ApprovedModel,
+		Policy: recoveryTestPolicy(t, true), RequireHostCallReservations: true}, nil)
+}
+
+// F29 units 63 and 90 (F26 unit 90 before them): with 1 or 2 host calls left the exchange cannot be followed
+// by a tool call's effect and the exchange that returns its result, so it is sent with tools disabled and the
+// model's text reply ends the task. The request and the journaled exchange both show it.
+func TestLastHostCallsAreSentWithToolsDisabled(t *testing.T) {
 	for _, spent := range []uint64{6, 5} {
-		conversation, _, _, hooks := hostCallsLeftConversation(t, []fixtureResponse{capTextReply}, spent, 7)
+		conversation, journal, doer, hooks := hostCallsLeftConversation(t, []fixtureResponse{capTextReply}, spent, 7)
 		turn, err := conversation.NextTurn(context.Background())
-		if err != nil || turn.AssistantText != "done" || len(hooks.completions) != 1 {
+		if err != nil || turn.AssistantText != "done" || turn.ToolCall != nil || len(hooks.completions) != 1 {
 			t.Fatalf("%d spent: turn = %+v, err = %v, completions = %d", spent, turn, err, len(hooks.completions))
 		}
+		if got := toolChoice(t, doer.requests[0]); got != "none" {
+			t.Fatalf("%d spent: tool_choice = %q, want none", spent, got)
+		}
+		if record := lastRecord(t, journal); record.Event.Kind != "provider_exchange" ||
+			!strings.Contains(string(record.Event.Data), `"tools_disabled":true`) {
+			t.Fatalf("%d spent: last record %s does not show the tools-disabled request: %s", spent, record.Event.Kind, record.Event.Data)
+		}
+		if _, err := replayHostCallsLeft(t, journal); err != nil {
+			t.Fatalf("%d spent: replay of the tools-disabled exchange: %v", spent, err)
+		}
 	}
 }
 
-// With 3 left the exchange takes one and the effect and the result turn fit in the other two.
+// A provider that returns a tool call on a tools-disabled request: the call is refused, never captured or
+// executed, and the reply ends the turn as the final (text-less) answer. The exchange is journaled as complete
+// with the refused call, its host call is settled, and replay accepts it, so the run ends typed, not UNKNOWN.
+func TestToolCallDespiteDisabledToolsIsRefusedAndEndsTheTurn(t *testing.T) {
+	for _, spent := range []uint64{6, 5} {
+		conversation, journal, _, hooks := hostCallsLeftConversation(t, []fixtureResponse{capToolCall}, spent, 7)
+		turn, err := conversation.NextTurn(context.Background())
+		if err != nil || turn.ToolCall != nil || turn.FinishReason != "stop" || turn.AssistantText != "" {
+			t.Fatalf("%d spent: turn = %+v, err = %v; want the text-less final reply", spent, turn, err)
+		}
+		if conversation.current != nil {
+			t.Fatalf("%d spent: the refused tool call was captured", spent)
+		}
+		last := hooks.reservations[len(hooks.reservations)-1]
+		if len(hooks.completions) != 1 || hooks.completions[0].Binding != last {
+			t.Fatalf("%d spent: completions = %+v, want the last reservation settled", spent, hooks.completions)
+		}
+		record := lastRecord(t, journal)
+		if record.Event.Kind != "provider_exchange" || hooks.completions[0].OutcomeDigest != record.Hash ||
+			!strings.Contains(string(record.Event.Data), `"refused_tool_call":{"id":"call-1","name":"read"`) {
+			t.Fatalf("%d spent: last record %s does not carry the refused call: %s", spent, record.Event.Kind, record.Event.Data)
+		}
+		projection, err := replayHostCallsLeft(t, journal)
+		if err != nil || projection.CapturedCallCount != 0 || projection.ExchangeCount != 1 ||
+			projection.HostCall == nil || *projection.HostCall != last || projection.HostCallOutcomeDigest != record.Hash {
+			t.Fatalf("%d spent: replay = %+v, %v", spent, projection, err)
+		}
+	}
+}
+
+// tamperedExchangeJournal copies source with its last provider_exchange record rewritten by mutate.
+func tamperedExchangeJournal(t *testing.T, source *audit.Journal, mutate func(*exchangeEvidence)) *audit.Journal {
+	t.Helper()
+	trace, err := source.Trace()
+	if err != nil {
+		t.Fatal(err)
+	}
+	last := -1
+	for index, record := range trace.Records {
+		if record.Event.Kind == "provider_exchange" {
+			last = index
+		}
+	}
+	copied := openRecoveryTestJournal(t, filepath.Join(t.TempDir(), "tampered-exchange.audit"))
+	for index, record := range trace.Records {
+		event := audit.Event{Kind: record.Event.Kind, ID: record.Event.ID, Data: append([]byte(nil), record.Event.Data...)}
+		if index == last {
+			var evidence exchangeEvidence
+			if err := json.Unmarshal(event.Data, &evidence); err != nil {
+				t.Fatal(err)
+			}
+			mutate(&evidence)
+			if event.Data, err = json.Marshal(evidence); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if _, err := copied.Append(event); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return copied
+}
+
+// Replay accepts a refused call only where the live rule made one: on a tools-disabled request, recorded as
+// refused_tool_call and not as a captured tool call.
+func TestReplayRefusesForgedRefusedToolCalls(t *testing.T) {
+	pins := RecoveryPins{Config: recoveryTestConfig(), Model: ApprovedModel, Policy: recoveryTestPolicy(t, true), RequireHostCallReservations: true}
+	refusedConversation, refused, _, _ := hostCallsLeftConversation(t, []fixtureResponse{capToolCall}, 6, 7)
+	capturedConversation, captured, _, _ := hostCallsLeftConversation(t, []fixtureResponse{capToolCall}, 4, 7)
+	for _, conversation := range []*Conversation{refusedConversation, capturedConversation} {
+		if _, err := conversation.NextTurn(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for name, journal := range map[string]*audit.Journal{
+		"refused call recorded as captured": tamperedExchangeJournal(t, refused, func(e *exchangeEvidence) {
+			e.ToolCall, e.RefusedToolCall = e.RefusedToolCall, nil
+		}),
+		"captured call recorded as refused": tamperedExchangeJournal(t, captured, func(e *exchangeEvidence) {
+			e.RefusedToolCall, e.ToolCall = e.ToolCall, nil
+		}),
+		"refused call without its record": tamperedExchangeJournal(t, refused, func(e *exchangeEvidence) { e.RefusedToolCall = nil }),
+	} {
+		if _, err := ReplayTranscript(journal, pins, nil); !errors.Is(err, ErrTranscriptReplay) {
+			t.Errorf("%s: replay = %v, want ErrTranscriptReplay", name, err)
+		}
+	}
+	for name, journal := range map[string]*audit.Journal{"refused": refused, "captured": captured} {
+		if _, err := ReplayTranscript(journal, pins, nil); err != nil {
+			t.Errorf("untampered %s journal: replay = %v", name, err)
+		}
+	}
+}
+
+// With 3 left the exchange takes one and the effect and the result turn fit in the other two: tools stay on.
 func TestToolCallWithThreeHostCallsLeftIsCaptured(t *testing.T) {
-	conversation, _, _, hooks := hostCallsLeftConversation(t, []fixtureResponse{capToolCall}, 4, 7)
+	conversation, _, doer, hooks := hostCallsLeftConversation(t, []fixtureResponse{capToolCall}, 4, 7)
 	turn, err := conversation.NextTurn(context.Background())
 	if err != nil || turn.ToolCall == nil || conversation.current == nil || len(hooks.completions) != 1 {
 		t.Fatalf("turn = %+v, err = %v, completions = %d", turn, err, len(hooks.completions))
 	}
+	if got := toolChoice(t, doer.requests[0]); got != "auto" {
+		t.Fatalf("tool_choice = %q, want auto", got)
+	}
 }
 
-// Retried and resampled attempts each charge a host call before the response is judged, so the check
-// sees them: an attempt that takes the room makes the final tool call uncapturable, one host call more
-// and it is captured.
+// Retried and resampled attempts each charge a host call, so the rule is applied per attempt: a refused
+// attempt on 3 left leaves 2, and the next attempt goes out with tools disabled (a resample too, which
+// otherwise repeats the refused request exactly). One host call more and tools stay on.
 func TestRetriesAndResamplesCountAgainstTheToolCall(t *testing.T) {
 	for name, refused := range map[string]fixtureResponse{
 		"retry":    {failStatus: 503, failBody: unavailableBody},
 		"resample": {failStatus: 200, failBody: parallelCallStream(t)},
 	} {
 		t.Run(name, func(t *testing.T) {
-			conversation, journal, _, hooks := hostCallsLeftConversation(t, []fixtureResponse{refused, capToolCall}, 4, 7)
-			_, err := conversation.NextTurn(context.Background())
-			if len(hooks.reservations) != 2 || !errors.Is(err, ErrNoHostCallForToolEffect) {
-				t.Fatalf("reservations = %d, err = %v; want both attempts charged and the tool call refused", len(hooks.reservations), err)
+			conversation, journal, doer, hooks := hostCallsLeftConversation(t, []fixtureResponse{refused, capToolCall}, 4, 7)
+			turn, err := conversation.NextTurn(context.Background())
+			if len(hooks.reservations) != 2 || err != nil || turn.ToolCall != nil || conversation.current != nil {
+				t.Fatalf("reservations = %d, turn = %+v, err = %v; want both attempts charged and the tool call refused",
+					len(hooks.reservations), turn, err)
 			}
-			requireUnknownEnd(t, conversation, journal, hooks, err)
+			if first, second := toolChoice(t, doer.requests[0]), toolChoice(t, doer.requests[1]); first != "auto" || second != "none" {
+				t.Fatalf("tool_choice = %q then %q, want auto then none", first, second)
+			}
 			if kinds := journalKinds(t, journal); !strings.Contains(strings.Join(kinds, ","), exchangeRetryKind) {
 				t.Fatalf("journal kinds = %v, want the refused attempt journaled as retried", kinds)
 			}
+			if _, err := replayHostCallsLeft(t, journal); err != nil {
+				t.Fatalf("replay: %v", err)
+			}
 
-			conversation, _, _, hooks = hostCallsLeftConversation(t, []fixtureResponse{refused, capToolCall}, 3, 7)
-			turn, err := conversation.NextTurn(context.Background())
-			if err != nil || turn.ToolCall == nil || len(hooks.reservations) != 2 {
+			conversation, _, doer, hooks = hostCallsLeftConversation(t, []fixtureResponse{refused, capToolCall}, 3, 7)
+			turn, err = conversation.NextTurn(context.Background())
+			if err != nil || turn.ToolCall == nil || len(hooks.reservations) != 2 || toolChoice(t, doer.requests[1]) != "auto" {
 				t.Fatalf("with one host call more: turn = %+v, err = %v, reservations = %d", turn, err, len(hooks.reservations))
 			}
 		})
@@ -155,12 +284,28 @@ func TestNoRetryOrResampleWithoutAHostCallForIt(t *testing.T) {
 	}
 }
 
-// A refused tool call reaches the worker as an error frame and Serve types it as a failed provider turn,
-// the channel error the service settles and abandon reconciles.
-func TestServeTypesTheRefusedToolCallAsAProviderTurnFailure(t *testing.T) {
+// The refused call reaches the worker as an ordinary final turn: no tool call and finish reason stop, which
+// the Pi adapter requires to agree.
+func TestServeReleasesTheRefusedToolCallTurnAsAFinalReply(t *testing.T) {
 	conversation, _, _, _ := hostCallsLeftConversation(t, []fixtureResponse{capToolCall}, 6, 7)
-	if err := serveOneTurn(t, conversation); !errors.Is(err, ErrProviderTurnFailed) || !errors.Is(err, ErrNoHostCallForToolEffect) {
-		t.Fatalf("Serve = %v, want ErrProviderTurnFailed wrapping ErrNoHostCallForToolEffect", err)
+	serverConn, clientConn := net.Pipe()
+	serveDone := make(chan error, 1)
+	go func() { serveDone <- Serve(context.Background(), serverConn, conversation) }()
+	if err := writeChannelTestFrame(clientConn, map[string]any{
+		"version": bridgeSchemaVersion, "sequence": 1, "kind": "next", "request_id": "request-final",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	frame, err := readChannelTestFrame(clientConn)
+	turn, _ := frame["turn"].(map[string]any)
+	if err != nil || frame["kind"] != "turn" || turn == nil || turn["finish_reason"] != "stop" || turn["tool_call"] != nil {
+		t.Fatalf("final turn frame = %v, err = %v", frame, err)
+	}
+	clientConn.Close()
+	select {
+	case <-serveDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("provider bridge did not stop after the channel closed")
 	}
 }
 
@@ -178,8 +323,8 @@ func TestRefusedToolCallSettlesItsSpend(t *testing.T) {
 		t.Fatal(err)
 	}
 	admitSpendPrompt(t, conversation)
-	if _, err := conversation.NextTurn(context.Background()); !errors.Is(err, ErrNoHostCallForToolEffect) {
-		t.Fatalf("turn error = %v, want ErrNoHostCallForToolEffect", err)
+	if turn, err := conversation.NextTurn(context.Background()); err != nil || turn.ToolCall != nil {
+		t.Fatalf("turn = %+v, err = %v; want the refused call to end the turn", turn, err)
 	}
 	if got := strings.Join(spend.sequence(), ","); got != "reserve,settle:unit-1" {
 		t.Fatalf("spend = %s, want the unit settled to its usage", got)

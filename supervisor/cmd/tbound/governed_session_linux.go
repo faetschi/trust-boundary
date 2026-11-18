@@ -56,6 +56,12 @@ type providerExchangeEvidence struct {
 		Name      string          `json:"name"`
 		Arguments json.RawMessage `json:"arguments"`
 	} `json:"tool_call,omitempty"`
+	// RefusedToolCall is a tool call returned on a tools-disabled request: never captured (providerbridge).
+	RefusedToolCall *struct {
+		ID        string          `json:"id"`
+		Name      string          `json:"name"`
+		Arguments json.RawMessage `json:"arguments"`
+	} `json:"refused_tool_call,omitempty"`
 	HostCall *providerbridge.HostCallBinding `json:"host_call,omitempty"`
 }
 
@@ -108,6 +114,7 @@ type providerRequestEvidence struct {
 	ContentLength int64               `json:"content_length"`
 	Headers       map[string][]string `json:"headers"`
 	Body          []byte              `json:"body"`
+	ToolsDisabled bool                `json:"tools_disabled,omitempty"`
 }
 
 func providerRequestEvidenceDigest(request providerRequestEvidence) string {

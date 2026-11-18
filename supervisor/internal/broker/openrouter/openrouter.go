@@ -195,6 +195,19 @@ const (
 // member, followed by the frozen profile members. The cap, when positive, is
 // still the host-selected max_completion_tokens.
 func BuildRequestForRoute(route Route, messages []Message, completionLimit uint64) (BuiltRequest, error) {
+	return buildRequestForRoute(route, messages, completionLimit, "auto")
+}
+
+// BuildToolsDisabledRequestForRoute is BuildRequestForRoute with tool_choice "none": the request still declares
+// the four tools, which the prior tool calls in messages refer to, but the model may only answer in text. It is
+// the last provider call of a workflow whose host calls cannot carry a tool call's effect and result.
+func BuildToolsDisabledRequestForRoute(route Route, messages []Message, completionLimit uint64) (BuiltRequest, error) {
+	return buildRequestForRoute(route, messages, completionLimit, "none")
+}
+
+// buildRequestForRoute takes toolChoice "auto" or "none"; both are four bytes, the length the fixed tails
+// count in the preflight size.
+func buildRequestForRoute(route Route, messages []Message, completionLimit uint64, toolChoice string) (BuiltRequest, error) {
 	route = route.Resolved()
 	if err := route.Validate(); err != nil {
 		return BuiltRequest{}, err
@@ -253,7 +266,7 @@ func BuildRequestForRoute(route Route, messages []Message, completionLimit uint6
 	var body []byte
 	if route.IsResearch() {
 		body, err = json.Marshal(researchRequest{Model: modelID, Messages: wire, Tools: fixedTools, Stream: true,
-			ParallelToolCalls: false, ToolChoice: "auto", MaxCompletionTokens: completionLimit})
+			ParallelToolCalls: false, ToolChoice: toolChoice, MaxCompletionTokens: completionLimit})
 		if err == nil {
 			// Replace the closing brace with the frozen members: ",<members without its opening brace>".
 			body = append(append(body[:len(body)-1], ','), route.members[1:]...)
@@ -265,7 +278,7 @@ func BuildRequestForRoute(route Route, messages []Message, completionLimit uint6
 			thinking, effort = thinkingConfig{Type: "enabled"}, "high"
 		}
 		body, err = json.Marshal(request{Model: modelID, Messages: wire, Tools: fixedTools, Stream: true,
-			ParallelToolCalls: false, ToolChoice: "auto", Thinking: thinking, ReasoningEffort: effort,
+			ParallelToolCalls: false, ToolChoice: toolChoice, Thinking: thinking, ReasoningEffort: effort,
 			MaxCompletionTokens: completionLimit})
 	}
 	if err != nil {
