@@ -205,7 +205,7 @@ def main(root, out):
         "max_host_calls_used": {f"{lo}-{hi}": max((r["host_calls"] for r in guest if lo <= r["N"] <= hi), default=None) for lo, hi in ((1, 123),)},
         "deadline_budget_s": sorted({round((datetime.fromisoformat(r["deadline"].replace("Z", "+00:00")) - datetime.fromisoformat(r["reserved_at"].replace("Z", "+00:00"))).total_seconds())
                                      for r in guest if r.get("deadline") and r.get("reserved_at")}),
-        "max_elapsed_ms": {f"{lo}-{hi}": max((r["elapsed_ms"] or 0 for r in guest if lo <= r["N"] <= hi and r["config"] in ("B", "C") and r["role"] in ("compliant", "ambiguous")), default=None) for lo, hi in ((1, 123),)},
+        "max_elapsed_ms_bc_compliant_ambiguous": {f"{lo}-{hi}": max((r["elapsed_ms"] or 0 for r in guest if lo <= r["N"] <= hi and r["config"] in ("B", "C") and r["role"] in ("compliant", "ambiguous")), default=None) for lo, hi in ((1, 123),)},
         "limits_seen": sorted({(r["role"], r.get("max_host_calls"), r.get("max_tokens")) for r in guest}),
         "governed_done_ok": len(governed),
         "token_mismatch_units": tok_mismatch,
