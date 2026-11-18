@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"path/filepath"
 	"slices"
 	"time"
@@ -23,7 +24,8 @@ type wireFunc func(p plan) (runner.Executors, error)
 // the evidence key (E04, the publication journal and the EFF-WS-05/06 inputs, the NET sink, the PROC monitor,
 // the transient-mutation watch); the reset wrapper calls `tbound trial reset` with the trial key; Attest adds what the host
 // establishes (channel, E01 identity against the pins, route, EVQ, matched delivery) and
-// refuses a delta on a C receipt.
+// refuses a delta on a C receipt. clockGuard, outermost on C and P, reads the guest clock over the
+// evidence key before every adversarial step and refuses it when PROC could not compare the clocks.
 //
 // A compliant C step also gets its task result: AcceptExecutor calls `tbound trial accept` after
 // the governed run. V is GovernedV over the trial key (`tbound trial v-run`, native Pi in a plain
@@ -33,23 +35,44 @@ type wireFunc func(p plan) (runner.Executors, error)
 // and admit-all/v1 admission); a compliant B step also gets its task result from AcceptExecutor.
 func wireSSH(p plan) (runner.Executors, error) {
 	ts := p.cfg.transports()
-	governed := runner.GovernedC{PlanDigest: p.sched.Digest, Transport: ts.client, Collectors: p.collectors(), ProtectedPaths: p.protectedPaths}
+	governed := runner.GovernedC{PlanDigest: p.sched.Digest, Transport: ts.client, Collectors: p.collectors(), ProtectedPaths: p.protectedPaths,
+		ResendWindow: runner.DefaultResendWindow, ResendPause: runner.DefaultResendPause}
+	var dispatchDir string
 	if p.cfg.RunDir != "" {
 		governed.WSEvidenceDir = filepath.Join(p.cfg.RunDir, "ws-evidence")
+		dispatchDir = filepath.Join(p.cfg.RunDir, "dispatched")
+	}
+	reset := func(inner runner.Executor) runner.ResetExecutor {
+		return runner.ResetExecutor{Inner: inner, Transport: ts.trial, DispatchDir: dispatchDir}
+	}
+	evidence := runner.EvidenceClient{Transport: ts.evidence}
+	guard := func(x runner.Executor) runner.Executor {
+		return clockGuard{Executor: x, sample: func(ctx context.Context) (clockSample, error) {
+			return sampleGuestClock(ctx, evidence, p.cfg.Proc.CellUID, p.cfg.Proc.CellGID)
+		}}
 	}
 	governedP := governed
 	governedP.Configuration = runner.CfgP
-	executorP := p.attest(runner.ResetExecutor{Inner: governedP, Transport: ts.trial})
+	executorP := guard(p.attest(reset(governedP)))
 	if p.sched.Config.Purpose == runner.PurposeConstructWitness {
 		// A construct-witness run reaches the guest as Configuration P only, so no other executor is wired.
 		return runner.Executors{P: executorP}, nil
 	}
 	governedB := governed
 	governedB.Configuration = runner.CfgB
+	accept := func(inner runner.Executor) runner.AcceptExecutor {
+		x := runner.AcceptExecutor{FreezeCommit: p.sched.Config.FreezeCommit, Inner: inner, Transport: ts.trial,
+			Expect: runner.AcceptExpect{ManifestDigest: p.digest, BinarySHA256: p.cfg.Pins.RunnerDigest, ImageDigest: p.cfg.VImageDigest,
+				SpecDigest: p.acceptanceDigest}}
+		if p.cfg.RunDir != "" {
+			x.EvidenceDir = filepath.Join(p.cfg.RunDir, "accept-evidence")
+		}
+		return x
+	}
 	executors := runner.Executors{
-		C: p.attest(runner.AcceptExecutor{FreezeCommit: p.sched.Config.FreezeCommit, Inner: runner.ResetExecutor{Inner: governed, Transport: ts.trial}, Transport: ts.trial}),
+		C: guard(p.attest(accept(reset(governed)))),
 		P: executorP,
-		B: p.attest(runner.AcceptExecutor{FreezeCommit: p.sched.Config.FreezeCommit, Inner: runner.ResetExecutor{Inner: governedB, Transport: ts.trial}, Transport: ts.trial}),
+		B: p.attest(accept(reset(governedB))),
 		V: p.governedV(ts.trial),
 	}
 	if p.cfg.CDH != nil {
@@ -58,7 +81,7 @@ func wireSSH(p plan) (runner.Executors, error) {
 			g := governed
 			g.Configuration = runner.CDHConfiguration(model)
 			g.CDH = p.cfg.CDH
-			executors.CDH[g.Configuration] = p.attest(runner.AcceptExecutor{FreezeCommit: p.sched.Config.FreezeCommit, Inner: runner.ResetExecutor{Inner: g, Transport: ts.trial}, Transport: ts.trial})
+			executors.CDH[g.Configuration] = guard(p.attest(accept(reset(g))))
 		}
 	}
 	return executors, nil
@@ -85,6 +108,9 @@ func (p plan) collectorsOver(ev runner.Transport) runner.CollectorSet {
 	}
 	// The transient observer is ended by the host when the request is over; the PROC monitor's time is only its cap.
 	transient := &runner.TransientCollector{Client: runner.EvidenceClient{Transport: ev}, Duration: time.Duration(p.cfg.Proc.MonitorSeconds) * time.Second}
+	if p.cfg.RunDir != "" {
+		transient.RetainDir = filepath.Join(p.cfg.RunDir, "transient-evidence")
+	}
 	// The NET interval documents are kept next to the journal: their tags are drawn per interval and live nowhere else.
 	net := netoracle.NewCollector(ev)
 	// D49: the NET window ends after the PROC collector's proof plus the drain grace, or at the original horizon.
@@ -108,6 +134,16 @@ func (p plan) attest(inner runner.Executor) runner.Attest {
 		PDelta: p.pDelta, ScriptDigest: p.scriptDigest, AdmissionPolicyDigest: p.admissionPolicyDigest,
 		AttackerDigest: p.manifest.Pins.AttackerDigest, PivotsDigest: p.pivotsDigest,
 	}
+}
+
+// acceptanceDigest is the digest of a compliant case's pinned acceptance artifact, "" for any other case.
+func (p plan) acceptanceDigest(caseID string) string {
+	for _, c := range p.manifest.Cases {
+		if c.CaseID == caseID && c.Compliant != nil {
+			return c.Compliant.AcceptanceTest.Digest
+		}
+	}
+	return ""
 }
 
 // pivotsDigest is the digest of the pivot table of a case, as the service computes it for the receipt of an

@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"os"
+	"path/filepath"
 	"reflect"
 	"sort"
 	"sync"
@@ -943,5 +945,26 @@ func TestTransientCollectorBeginRefusesWhenTheGuestCannotBeConfirmedEnded(t *tes
 	err := c.BeginInterval(context.Background(), EvidenceRef{Interval: e04ptInterval})
 	if !errors.Is(err, ErrObserverStartUnconfirmed) || errors.Is(err, ErrEvidenceAbsent) {
 		t.Fatalf("err = %v, want ErrObserverStartUnconfirmed and not absent", err)
+	}
+}
+
+// H1-03: the report EFF-TRANSIENT was judged from is kept with its ledger, and recomputes the journaled finding.
+func TestTransientCollectorRetainsWhatItJudged(t *testing.T) {
+	g, ref := publishedGuest(t, okReport(publicationEvents()...))
+	c := newTransient(g)
+	c.RetainDir = t.TempDir()
+	got, err := runTransient(t, c, ref)
+	if err != nil || got.Findings[OracleTransient] != FindingNone {
+		t.Fatalf("findings %v err %v", got.Findings, err)
+	}
+	raw, err := os.ReadFile(filepath.Join(c.RetainDir, RetainedWSName(ref.Interval)))
+	if err != nil {
+		t.Fatalf("nothing retained: %v", err)
+	}
+	if err := VerifyTransient(raw, ref.Interval, got.Refs[OracleTransient], FindingNone); err != nil {
+		t.Fatalf("the retained interval does not recompute the journal: %v", err)
+	}
+	if err := VerifyTransient(raw, ref.Interval, got.Refs[OracleTransient], FindingObserved); err == nil {
+		t.Fatal("a finding the evidence does not support was verified")
 	}
 }

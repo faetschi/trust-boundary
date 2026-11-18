@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"time"
 
+	"tbound/supervisor/internal/evalcorpus"
 	"tbound/supervisor/internal/evalreport"
 	"tbound/supervisor/internal/evalscore"
 	"tbound/supervisor/internal/usdledger"
@@ -42,6 +43,7 @@ type RunReport struct {
 	Executed      int // steps run by this call
 	AlreadyDone   int // steps that already had a terminal record
 	Abandoned     int // interrupted steps closed by this call
+	Resumed       int // started steps of an earlier process whose result this call collected
 	SetupFailures int // setup failures in the journal (no outcome; the unit is spent)
 	ExecFailures  int // steps that failed after execution began and kept a partial outcome
 	Remaining     int // plan steps without a terminal record
@@ -83,7 +85,11 @@ func NewRunner(s Schedule, j *Journal, e Executor, opt Options) (*Runner, error)
 //
 // A step that was begun in an earlier process but has no terminal record is
 // closed as abandoned and not run again: its unit is spent and its provider
-// spend is unknown.
+// spend is unknown. The exception is a started step that resumable admits: its
+// executor is called again with Step.Resumed set, collects the result of the
+// request the earlier process sent, and the step ends with that result. A started
+// adversarial step is abandoned after its executor sent its request again with
+// Step.Resumed until the guest settled it or the resend window ended; that answer is not scored.
 func (r *Runner) Run(ctx context.Context) (RunReport, error) {
 	if c, ok := r.exec.(interface{ Check(Schedule) error }); ok {
 		if err := c.Check(r.sched); err != nil {
@@ -105,9 +111,35 @@ func (r *Runner) Run(ctx context.Context) (RunReport, error) {
 			rep.AlreadyDone++
 			continue
 		}
+		if r.j.begunOf(st.ID(), 1) && r.j.startedOf(st.ID(), 1) && resumable(st) {
+			if err := ctx.Err(); err != nil {
+				rep.Stop = StopCanceled
+				return r.report(rep), err
+			}
+			run := st
+			run.Attempt, run.Resumed = 1, true
+			if err := r.dispatch(ctx, run); err != nil {
+				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+					rep.Stop = StopCanceled
+				}
+				return r.report(rep), err
+			}
+			rep.Resumed++
+			continue
+		}
 		if r.j.begunOf(st.ID(), 1) {
+			reason := abandonReason(r.j.startedOf(st.ID(), 1), "")
+			if r.j.startedOf(st.ID(), 1) && st.Kind == evalcorpus.KindAdversarial && ctx.Err() == nil {
+				// A guest service that restarted mid-request keeps the request open until its id is sent again, and an
+				// open request blocks every later reset and begin (SB-04). The answer is not scored: the step's observers
+				// died with the earlier process.
+				run := st
+				run.Attempt, run.Resumed = 1, true
+				_, _ = r.exec.Execute(ctx, run)
+				reason += "; its request id was sent again until the guest settled it or the resend window ended, and the answer is not scored"
+			}
 			if err := r.j.append(Entry{Kind: EntryAbandoned, StepID: st.ID(), CaseID: st.CaseID, Index: st.Index, Attempt: 1,
-				Reason: abandonReason(r.j.startedOf(st.ID(), 1), "")}); err != nil {
+				Reason: reason}); err != nil {
 				return r.report(rep), err
 			}
 			rep.Abandoned++
@@ -243,6 +275,26 @@ func (r *Runner) execute(ctx context.Context, st Step, attempt int) error {
 	if err := r.j.append(started); err != nil {
 		return err
 	}
+	return r.dispatch(ctx, run)
+}
+
+// resumable is true for a step whose result a later process may collect after the
+// process that started it died. Its executor sends the same request id again
+// (GovernedRequestFor), and the governed service answers a request id it has
+// already settled with the stored terminal, never with a second workflow. An
+// adversarial step is never resumable: its interval observers (NET, PROC,
+// transient) ran in the dead process and cannot be restarted, so its outcome
+// could not be complete. V has no request id.
+func resumable(s Step) bool {
+	return s.Kind != evalcorpus.KindAdversarial && s.Configuration != CfgV
+}
+
+// dispatch calls Execute for a started attempt and journals its terminal record.
+func (r *Runner) dispatch(ctx context.Context, run Step) error {
+	base := Entry{StepID: run.ID(), CaseID: run.CaseID, Index: run.Index, Attempt: run.Attempt}
+	if run.Resumed {
+		base.Reason = "resumed: execution started in an earlier process; the request was sent again under its request id"
+	}
 	t0 := time.Now()
 	out, err := r.exec.Execute(ctx, run)
 	elapsed := time.Since(t0).Milliseconds()
@@ -261,6 +313,9 @@ func (r *Runner) execute(ctx context.Context, st Step, attempt int) error {
 		// Interrupted mid-step: abandoned, the unit stays spent, and a partial
 		// outcome is kept next to the reason.
 		end.Kind, end.Reason = EntryAbandoned, "interrupted: "+ctx.Err().Error()
+		if base.Reason != "" {
+			end.Reason = base.Reason + "; " + end.Reason
+		}
 		if partial {
 			// An interrupted step is never a rerun cause: Rerun needs a done record.
 			out.UnknownEnd, out.EvidenceLoss = "", mergeLoss(out.EvidenceLoss, evalscore.LossUnclassified)

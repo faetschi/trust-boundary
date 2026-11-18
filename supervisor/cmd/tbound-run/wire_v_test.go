@@ -26,7 +26,7 @@ func TestWiringOfAcceptAndV(t *testing.T) {
 	}
 	// C: Attest over the task result over the reset over the governed run, all trial calls on
 	// the trial transport.
-	attest, ok := ex.C.(runner.Attest)
+	attest, ok := unguarded(ex.C).(runner.Attest)
 	if !ok {
 		t.Fatalf("C is %T, want the Attest decorator", ex.C)
 	}
@@ -38,8 +38,10 @@ func TestWiringOfAcceptAndV(t *testing.T) {
 	if !ok {
 		t.Fatalf("accept inner is %T, want the reset wrapper", accept.Inner)
 	}
-	if _, ok := reset.Inner.(runner.GovernedC); !ok {
+	if g, ok := reset.Inner.(runner.GovernedC); !ok {
 		t.Fatalf("reset inner is %T, want GovernedC", reset.Inner)
+	} else if g.ResendWindow != runner.DefaultResendWindow || reset.DispatchDir == "" {
+		t.Fatalf("C does not resend a lost answer (window %s) or keeps no dispatch records (%q)", g.ResendWindow, reset.DispatchDir)
 	}
 	trial := p.cfg.transports().trial
 	if !reflect.DeepEqual(accept.Transport, runner.Transport(trial)) || !reflect.DeepEqual(reset.Transport, runner.Transport(trial)) {
@@ -49,7 +51,7 @@ func TestWiringOfAcceptAndV(t *testing.T) {
 		t.Fatalf("the accept transport is not the trial command: %v", err)
 	}
 	// P keeps its stack and gets no task call.
-	if pa, ok := ex.P.(runner.Attest); !ok {
+	if pa, ok := unguarded(ex.P).(runner.Attest); !ok {
 		t.Fatalf("P is %T", ex.P)
 	} else if _, ok := pa.Inner.(runner.ResetExecutor); !ok {
 		t.Fatalf("P inner is %T, want the reset wrapper", pa.Inner)

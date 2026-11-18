@@ -374,7 +374,7 @@ func TestR2StartedWithoutTerminalIsAbandonedOnResume(t *testing.T) {
 		t.Fatalf("%+v %v", rep, err)
 	}
 	for _, c := range fake.Calls() {
-		if c.ID() == st.ID() {
+		if c.ID() == st.ID() && !c.Resumed {
 			t.Fatal("the started step was run again")
 		}
 	}

@@ -178,7 +178,17 @@ type GovernedC struct {
 	ProtectedPaths func(caseID string) []string
 	// WSEvidenceDir retains the evaluated E04 input beside the run journal when configured.
 	WSEvidenceDir string
+	// ResendWindow and ResendPause bound how the request is sent again when its answer is
+	// lost (see send). A zero ResendWindow sends it once.
+	ResendWindow, ResendPause time.Duration
 }
+
+const (
+	// DefaultResendWindow covers a guest that still runs the request: the service ends it
+	// at the case's wall budget (1200 s) after admission.
+	DefaultResendWindow = 25 * time.Minute
+	DefaultResendPause  = 15 * time.Second
+)
 
 // Request maps a step of the executor's configuration to its corpus-mode request.
 func (g GovernedC) Request(s Step) (GovernedRequest, error) {
@@ -379,6 +389,12 @@ func (g GovernedC) Execute(ctx context.Context, s Step) (Outcome, error) {
 	if err != nil {
 		return Outcome{}, err
 	}
+	if s.Resumed && s.Kind == evalcorpus.KindAdversarial {
+		// Only settles the guest's request (Runner.Run): busy is waited out so the next unit meets a terminal
+		// admission. No observer runs and nothing is returned for scoring.
+		_, _, _, err := g.send(ctx, argv, request, true, g.ResendWindow)
+		return Outcome{}, err
+	}
 	// Collectors that must observe before the request (baseline, NET canary, PROC
 	// monitor) start here and are released when Execute returns, on every path.
 	begin := EvidenceRef{Step: s, Interval: IntervalRef(s), Request: request}
@@ -395,7 +411,11 @@ func (g GovernedC) Execute(ctx context.Context, s Step) (Outcome, error) {
 		}
 	}
 	t0 := time.Now()
-	stdout, stderr, exit, err := g.Transport.Run(ctx, argv)
+	window := g.ResendWindow
+	if s.Kind == evalcorpus.KindAdversarial {
+		window = 0
+	}
+	stdout, stderr, exit, err := g.send(ctx, argv, request, s.Resumed, window)
 	ended := time.Now()
 	latency := int(time.Since(t0).Milliseconds())
 	if err != nil {
@@ -406,6 +426,10 @@ func (g GovernedC) Execute(ctx context.Context, s Step) (Outcome, error) {
 		if len(bytes.TrimSpace(stdout)) == 0 {
 			// No response line at all (ssh failed, the client refused before dialing):
 			// nothing is known about the run.
+			if s.Kind == evalcorpus.KindAdversarial && answerLost(stdout, exit, request, false) {
+				// Not scored, but the guest may still run the request: settle it so the next unit meets a terminal admission.
+				_, _, _, _ = g.send(ctx, argv, request, true, g.ResendWindow)
+			}
 			return Outcome{}, fmt.Errorf("%w: client exit %d, stderr %s", err, exit, clip(stderr))
 		}
 		return Outcome{Metrics: Metrics{LatencyMS: latency}}, fmt.Errorf("%w (client exit %d)", err, exit)
@@ -503,6 +527,43 @@ func (g GovernedC) applyReceipt(ctx context.Context, o *Outcome, ref *EvidenceRe
 		return []error{err}
 	}
 	return nil
+}
+
+// send runs the client. When no response line comes back and the client or ssh exited
+// non-zero (ssh dropped, the client lost its service connection, the service restarted),
+// it sends the same request again until window ends. The request id makes that
+// safe: the service answers a request id it has settled with the stored terminal and
+// resumes one it accepted and never settled. On a resend a busy answer means the
+// service still runs this request, so send waits for it as well. A first send that finds
+// the service busy is answered as before. A resumed step was already sent by a process
+// that died. An adversarial step is scored from one send (window 0): a resend can reach
+// a service that restarted and recovers the workflow, and only a stored terminal of the
+// observed run may be scored. Its request is still settled by a send with resend set,
+// whose answer is discarded.
+func (g GovernedC) send(ctx context.Context, argv []string, request GovernedRequest, resend bool, window time.Duration) ([]byte, []byte, int, error) {
+	deadline := time.Now().Add(window)
+	for {
+		stdout, stderr, exit, err := g.Transport.Run(ctx, argv)
+		if err != nil || !answerLost(stdout, exit, request, resend) || !time.Now().Add(g.ResendPause).Before(deadline) {
+			return stdout, stderr, exit, err
+		}
+		resend = true
+		select {
+		case <-ctx.Done():
+			return stdout, stderr, exit, ctx.Err()
+		case <-time.After(g.ResendPause):
+		}
+	}
+}
+
+// answerLost is true when no response line came back with a non-zero exit, or, on a resend,
+// when the answer is busy.
+func answerLost(stdout []byte, exit int, request GovernedRequest, resend bool) bool {
+	if len(bytes.TrimSpace(stdout)) == 0 {
+		return exit != 0
+	}
+	resp, _, err := parseGovernedResponse(stdout, request)
+	return resend && err == nil && resp.Status == "busy"
 }
 
 // anchor builds the publication carrier from the receipt, or none.

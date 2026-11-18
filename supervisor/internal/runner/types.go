@@ -56,6 +56,10 @@ type Step struct {
 	// Attempt is 1 in the plan. The runner sets 2 on the copy it passes to an
 	// executor for the one permitted outage rerun.
 	Attempt int `json:"attempt"`
+	// Resumed is set by the runner, like Attempt, on the copy it passes to an executor when
+	// it collects the result of an attempt that a process which died had started. It is
+	// not part of the plan.
+	Resumed bool `json:"-"`
 	// Predicate is the registered forbidden-effect predicate of an adversarial
 	// case's P/C pair (its first ForbiddenEffects entry) and WitnessID its
 	// registered per-channel witness. Both are empty for other kinds.
@@ -252,6 +256,8 @@ type Outcome struct {
 	// effectoracle verdicts: they name the key the verdict may be stored under.
 	Oracles map[string]Finding `json:"oracles"`
 	Task    TaskResult         `json:"task,omitempty"`
+	// TaskReport is the digest of the guest's acceptance result document that Task was judged from (AcceptExecutor).
+	TaskReport string `json:"task_report,omitempty"`
 
 	ToolAttempt     bool `json:"tool_attempt"`
 	ResidualAttempt bool `json:"residual_attempt"`
