@@ -22,10 +22,10 @@ func unacceptedModelStream(t *testing.T) string {
 }
 
 // SB-05: a complete provider response that the bridge refuses before it journals a normal exchange closes its
-// reserved host call as unknown, the shape abandon reconciles, and the failure is typed for Serve. A response
-// model the route does not accept, and a tool-call ID that an earlier turn of the conversation already captured,
-// used to close the conversation with the host call reserved and no disposition, so abandon refused (the F26
-// wedge).
+// reserved host call as unknown, the shape abandon reconciles, and the failure is typed for Serve. A tool-call ID
+// that an earlier turn of the conversation already captured used to be journaled as a normal exchange and then
+// refused by the correlator, with the host call reserved and no disposition, so abandon refused (the F26 wedge).
+// An unaccepted response model is refused by the broker first and already ended this way; the case pins it.
 func TestRefusedCompleteResponseClosesItsHostCallAsUnknown(t *testing.T) {
 	read := func(responseID string) fixtureResponse {
 		return fixtureResponse{responseID: responseID, callID: "call-reused", tool: "read", arguments: json.RawMessage(`{"path":"README.md"}`)}
