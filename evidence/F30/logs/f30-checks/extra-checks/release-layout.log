@@ -1,0 +1,93 @@
+verify-release-layout: base=/home/tbound/tbound-work/x30tmp/tbound-pkgtest.GW40Jf version=0.0.0-f30check mode=release-acceptance
+  PASS  upload-artifact and GitHub release both include SHA256SUMS and the two exact sidecar globs
+  PASS  builder generates and adds both sidecars to SHA256SUMS
+  PASS  sample checksum members all match workflow release asset patterns
+verify-release-workflow-coverage: 3 passed, 0 failed
+  PASS  workflow upload coverage matches release sidecar names
+  PASS  dry-run uploads every tarball, both TCB sidecars, and SHA256SUMS
+  PASS  a missing checksum-listed TCB sidecar fails before publication
+  PASS  a sidecar without checksum coverage is refused before publication
+  PASS  a linux release without its TCB sidecars is refused before publication
+  PASS  a release without a linux tarball publishes without TCB sidecars
+verify-publish-release-assets: 5 passed, 0 failed
+  PASS  manual publisher uploads and checksum-covers release assets
+[1] use prebuilt windows/amd64 darwin/amd64 darwin/arm64
+  PASS  non-linux tarballs available
+  PASS  windows bin/tbound.exe
+  PASS  windows bin/tbound-doctor.exe
+  PASS  windows bin/tbound-profile.exe
+  PASS  windows runtime/package.json
+  PASS  windows carries canonical LICENSE text
+  PASS  windows VERSION
+  PASS  windows has no TCB entrypoint
+  PASS  windows MANIFEST.sha256 verifies
+  PASS  darwin-amd64 bin/tbound
+  PASS  darwin-amd64 bin/tbound-doctor
+  PASS  darwin-amd64 bin/tbound-profile
+  PASS  darwin-amd64 runtime/package.json
+  PASS  darwin-amd64 carries canonical LICENSE text
+  PASS  darwin-amd64 VERSION
+  PASS  darwin-amd64 has no TCB entrypoint
+  PASS  darwin-amd64 MANIFEST.sha256 verifies
+  PASS  darwin bin/tbound
+  PASS  darwin bin/tbound-doctor
+  PASS  darwin bin/tbound-profile
+  PASS  darwin runtime/package.json
+  PASS  darwin carries canonical LICENSE text
+  PASS  darwin VERSION
+  PASS  darwin has no TCB entrypoint
+  PASS  darwin MANIFEST.sha256 verifies
+[1b] manifest rejects bad paths and symlinks
+  PASS  manifest rejects ../ path
+  PASS  manifest rejects symlink
+  PASS  manifest detects content tamper
+  PASS  manifest rejects duplicate path
+[2] SHA256SUMS covers tarballs and standalone TCB metadata
+  PASS  SHA256SUMS has tbound-0.0.0-f30check-darwin-amd64.tar.gz
+  PASS  SHA256SUMS has tbound-0.0.0-f30check-darwin-arm64.tar.gz
+  PASS  SHA256SUMS has tbound-0.0.0-f30check-linux-amd64.tar.gz
+  PASS  SHA256SUMS has tbound-0.0.0-f30check-windows-amd64.tar.gz
+  PASS  SHA256SUMS digests verify
+[3] use prebuilt linux/amd64 (entrypoint + metadata)
+  PASS  linux bin/tbound
+  PASS  linux bin/tbound-doctor
+  PASS  linux bin/tbound-profile
+  PASS  linux carries canonical LICENSE text
+  PASS  linux TCB entrypoint present
+  PASS  linux entrypoint metadata present
+  PASS  linux MANIFEST.sha256 verifies
+  PASS  separate entrypoint metadata + checksum artifacts present
+  PASS  external metadata matches tarball metadata
+  PASS  entrypoint metadata is valid JSON
+  PASS  entrypoint metadata digest matches binary
+  PASS  entrypoint .sha256 path and digest match binary
+  PASS  entrypoint separate checksum verifies extracted binary
+  PASS  SHA256SUMS covers standalone metadata and checksum files
+  PASS  both upload-artifact and GitHub release include SHA256SUMS and exact metadata sidecar globs
+  PASS  Linux SHA256SUMS digests verify
+  PASS  entrypoint source-tree provenance present
+  PASS  entrypoint source digest present
+  PASS  D09 template source digest present
+  PASS  unmeasured registered profile stays null
+  PASS  entrypoint metadata truthfully says unsigned
+  PASS  license metadata present
+  PASS  license metadata names canonical text
+  PASS  license metadata records included text
+  PASS  license metadata digest matches canonical text
+  PASS  linux tbound-profile --help exit 0
+  PASS  DEB contains /usr/bin/tbound
+  PASS  DEB contains /usr/bin/tbound-doctor
+  PASS  DEB contains /usr/bin/tbound-profile
+  PASS  DEB contains /usr/lib/tbound/tbound-cell-entrypoint
+  PASS  DEB contains /usr/lib/tbound/cell-entrypoint.json
+  PASS  DEB keeps entrypoint outside PATH
+build-rpm: invalid version '0.0.0-f30check' (allow A-Za-z0-9._; RPM forbids '-')
+  FAIL  RPM input checks failed for verified linux/amd64 archive
+  PASS  entrypoint fails closed without governed fds
+  PASS  linux/arm64 is explicitly rejected
+  PASS  Linux npm package carries tbound
+  PASS  Linux npm package carries tbound-doctor
+  PASS  Linux npm package carries tbound-profile
+  PASS  Linux npm package omits TCB entrypoint
+
+verify-release-layout: 74 passed, 1 failed, 0 skipped

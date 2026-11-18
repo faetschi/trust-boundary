@@ -1,0 +1,5 @@
+verify-release-strict-mode: controlled fake Linux source failure
+  PASS  diagnostic mode reports the Linux candidate as skipped and exits 0
+  PASS  --require-linux fails the controlled Linux source compile failure
+  PASS  TBOUND_REQUIRE_LINUX_RELEASE=1 fails the controlled Linux source compile failure
+verify-release-strict-mode: 3 passed, 0 failed

@@ -1,0 +1,47 @@
+== 2026-11-18T12:53:39Z publication.test (F30 tree 5626e34f, go test -c -trimpath) local sha256 f9c5e684e5ef506f0bdd4b334c90796f244c2326c653c1b862e474edce5c42cc
+guest sha256 f9c5e684e5ef506f0bdd4b334c90796f244c2326c653c1b862e474edce5c42cc
+kernel 7.0.0-38-generic user tboundadmin
+--- FAIL: TestPublishRefusesToApplyWithoutTheFenceDirectory (0.00s)
+--- FAIL: TestPublishRefusesAChangeUnderTheFenceDirectory (0.00s)
+--- PASS: TestValidateRelativePathRefusesTheFenceDirectory (0.00s)
+--- FAIL: TestPublicationRecordsOneApprovedLedgerEntryPerAppliedObject (0.00s)
+--- FAIL: TestPublicationLedgerCoversEveryOperationAndComposesAgainstTheBaseline (0.00s)
+--- FAIL: TestPublicationLedgerDoesNotApproveAChangeMadeBesideIt (0.00s)
+--- FAIL: TestPublicationLedgerWithAWrongAfterStateIsAnOrdinaryE04Effect (0.00s)
+--- FAIL: TestPublicationRefusedByTheAuthorityHasNoLedgerAndNoEffect (0.00s)
+--- FAIL: TestPublicationLedgerOfAnInterruptedPublicationNamesOnlyWhatWasApplied (0.00s)
+--- FAIL: TestPublicationFailedBeforeAnyObjectHasAnEmptyLedger (0.00s)
+--- FAIL: TestPublicationDoesNotApproveADirectoryReplacedAfterCreation (0.00s)
+--- FAIL: TestPublicationDoesNotApproveADestinationReplacedBetweenCheckAndSwap (0.00s)
+--- FAIL: TestPublicationDoesNotOverwriteADestinationThatAppearsBeforeTheSwap (0.00s)
+--- SKIP: TestPublicationLiveRootMountLayout (0.00s)
+--- FAIL: TestRecoverReportsAggregateFailedForAKnownPartialApply (0.00s)
+--- PASS: TestTerminalLeaseOriginBindingIsVersionedAndBindsFullTransition (0.00s)
+--- FAIL: TestPublishComposesCreateOverwriteDeleteRenameAndDirectoryCreate (0.00s)
+--- FAIL: TestPublicationConflictAndAuthorizationBindingFailClosed (0.00s)
+--- FAIL: TestPublicationRejectsSymlinkAndHardLinkObjects (0.00s)
+--- FAIL: TestPublicationRetainsValidatedSealedSourceDescriptor (0.00s)
+--- FAIL: TestPublicationSourceValidationFaultPrecedesDurablePrepare (0.00s)
+--- FAIL: TestPublicationRejectsOriginOutsideApprovedProposalCalls (0.00s)
+--- FAIL: TestPublicationOSLockAndOwnerEpochFence (0.00s)
+--- FAIL: TestDifferentWorkflowsAndStateRootsShareLiveRootLock (0.00s)
+--- FAIL: TestDisposableCheckpointRestoreNeverOverwritesLaterLiveEffects (0.00s)
+--- FAIL: TestDisposableCheckpointRestoreRecoveryBoundaries (0.00s)
+--- FAIL: TestDisposableRestoreRecoveryTerminalCheckpointFault (0.00s)
+--- FAIL: TestPublicationFaultBoundariesRecoverByObservationWithoutReplay (0.01s)
+--- FAIL: TestPublicationPreparationAndTerminalFaultBoundaries (0.01s)
+--- FAIL: TestMixedMultiObjectRecoveryDoesNotReplayAnyRemainingOperation (0.00s)
+--- FAIL: TestPublicationRecoveryRejectsTamperedDurableStateRecord (0.00s)
+--- FAIL: TestRecoveryKeepsTamperedCheckpointedLiveStateUnknown (0.01s)
+--- FAIL: TestPublishLeavesTheEvidenceTheWSOraclesNeed (0.00s)
+--- FAIL: TestRecoverAbandoningUnboundStagingKeepsTheDirectoryOnlyWhenItsIdentityIsUnbound (0.00s)
+--- FAIL: TestNestedDirectoryCreationClassifiesAsAppliedAndRecoversByObservation (0.00s)
+--- FAIL: TestPublishRenamesAreTheOnlyLiveRootEvents (0.00s)
+--- FAIL: TestPublishFromSeededSessionRepositoryEvidence (0.00s)
+FAIL
+pass=2 fail=34 skip=1
+--- SKIP: TestPublicationLiveRootMountLayout (0.00s)
+=== RUN   TestRecoverReportsAggregateFailedForAKnownPartialApply
+    publication_linux_test.go:74: open private audit journal: open audit journal: audit journal path has broader permissions than allowed: writable ancestor mode 0777
+exit=1
+ls: cannot access '/tmp/f30-gk.gl7uUk': No such file or directory

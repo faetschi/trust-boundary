@@ -1,0 +1,52 @@
+== 2026-11-18T12:53:57Z publication.test (F30 tree 5626e34f, go test -c -trimpath) local sha256 f9c5e684e5ef506f0bdd4b334c90796f244c2326c653c1b862e474edce5c42cc; private TMPDIR (mode 0700 under the admin home, as CI and the EVQ capture use)
+guest sha256 f9c5e684e5ef506f0bdd4b334c90796f244c2326c653c1b862e474edce5c42cc
+kernel 7.0.0-38-generic user tboundadmin
+755 /
+755 /home
+750 /home/tboundadmin
+700 /home/tboundadmin/f30-gk.uFaTnF
+700 /home/tboundadmin/f30-gk.uFaTnF/tmp
+--- PASS: TestPublishRefusesToApplyWithoutTheFenceDirectory (0.03s)
+--- PASS: TestPublishRefusesAChangeUnderTheFenceDirectory (0.01s)
+--- PASS: TestValidateRelativePathRefusesTheFenceDirectory (0.00s)
+--- PASS: TestPublicationRecordsOneApprovedLedgerEntryPerAppliedObject (0.05s)
+--- PASS: TestPublicationLedgerCoversEveryOperationAndComposesAgainstTheBaseline (0.09s)
+--- PASS: TestPublicationLedgerDoesNotApproveAChangeMadeBesideIt (0.05s)
+--- PASS: TestPublicationLedgerWithAWrongAfterStateIsAnOrdinaryE04Effect (0.05s)
+--- PASS: TestPublicationRefusedByTheAuthorityHasNoLedgerAndNoEffect (0.03s)
+--- PASS: TestPublicationLedgerOfAnInterruptedPublicationNamesOnlyWhatWasApplied (0.05s)
+--- PASS: TestPublicationFailedBeforeAnyObjectHasAnEmptyLedger (0.03s)
+--- PASS: TestPublicationDoesNotApproveADirectoryReplacedAfterCreation (0.03s)
+--- PASS: TestPublicationDoesNotApproveADestinationReplacedBetweenCheckAndSwap (0.03s)
+--- PASS: TestPublicationDoesNotOverwriteADestinationThatAppearsBeforeTheSwap (0.02s)
+--- SKIP: TestPublicationLiveRootMountLayout (0.00s)
+--- PASS: TestRecoverReportsAggregateFailedForAKnownPartialApply (0.05s)
+--- PASS: TestTerminalLeaseOriginBindingIsVersionedAndBindsFullTransition (0.00s)
+--- PASS: TestPublishComposesCreateOverwriteDeleteRenameAndDirectoryCreate (0.09s)
+--- PASS: TestPublicationConflictAndAuthorizationBindingFailClosed (0.03s)
+--- PASS: TestPublicationRejectsSymlinkAndHardLinkObjects (0.02s)
+--- PASS: TestPublicationRetainsValidatedSealedSourceDescriptor (0.03s)
+--- PASS: TestPublicationSourceValidationFaultPrecedesDurablePrepare (0.01s)
+--- PASS: TestPublicationRejectsOriginOutsideApprovedProposalCalls (0.01s)
+--- PASS: TestPublicationOSLockAndOwnerEpochFence (0.01s)
+--- PASS: TestDifferentWorkflowsAndStateRootsShareLiveRootLock (0.03s)
+--- PASS: TestDisposableCheckpointRestoreNeverOverwritesLaterLiveEffects (0.02s)
+--- PASS: TestDisposableCheckpointRestoreRecoveryBoundaries (0.06s)
+--- PASS: TestDisposableRestoreRecoveryTerminalCheckpointFault (0.03s)
+--- PASS: TestPublicationFaultBoundariesRecoverByObservationWithoutReplay (0.46s)
+--- PASS: TestPublicationPreparationAndTerminalFaultBoundaries (0.29s)
+--- PASS: TestMixedMultiObjectRecoveryDoesNotReplayAnyRemainingOperation (0.06s)
+--- PASS: TestPublicationRecoveryRejectsTamperedDurableStateRecord (0.02s)
+--- PASS: TestRecoveryKeepsTamperedCheckpointedLiveStateUnknown (0.04s)
+--- PASS: TestPublishLeavesTheEvidenceTheWSOraclesNeed (0.09s)
+--- PASS: TestRecoverAbandoningUnboundStagingKeepsTheDirectoryOnlyWhenItsIdentityIsUnbound (0.06s)
+--- PASS: TestNestedDirectoryCreationClassifiesAsAppliedAndRecoversByObservation (0.21s)
+--- PASS: TestPublishRenamesAreTheOnlyLiveRootEvents (0.09s)
+--- PASS: TestPublishFromSeededSessionRepositoryEvidence (0.12s)
+PASS
+pass=36 fail=0 skip=1
+--- SKIP: TestPublicationLiveRootMountLayout (0.00s)
+=== RUN   TestRecoverReportsAggregateFailedForAKnownPartialApply
+--- PASS: TestRecoverReportsAggregateFailedForAKnownPartialApply (0.05s)
+exit=0
+ls: cannot access '/home/tboundadmin/f30-gk.uFaTnF': No such file or directory
