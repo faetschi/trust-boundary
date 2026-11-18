@@ -4,6 +4,10 @@
 
 Tests: `py -3 -I -m unittest discover -s corpus/sampling -p "test_*.py"`. Golden tests use `development` rows and synthetic records only.
 
+## Source clones
+
+`load_source_item` reads the pinned clones. They live in the local workspace, not in the repository. The default is `$TBOUND_LOCAL/source-screen/clones`, or `<repo>/.local/source-screen/clones` when `TBOUND_LOCAL` is unset (see [self-contained workspace](../../docs/guides/self-contained-workspace.md)). Worktrees set `TBOUND_LOCAL` to the primary checkout's `.local`. Pass `--clones DIR` to read a different checkout. Tests that need the clones skip when the directory is absent.
+
 ## Hard rule: no candidate before the pilot draw
 
 D51 item 13: every examined case becomes a development case. `load_source_item`, `render` and the CLI refuse a row with status `candidate` unless `allow_candidate` (`--allow-candidate`) is set. They refuse an `excluded` row always. Use the flag only for the real pilot walk or main draw, in the order `select.py` names; every rendered candidate becomes a development case.
