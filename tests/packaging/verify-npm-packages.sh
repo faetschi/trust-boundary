@@ -5,8 +5,9 @@
 # assembles the npm package trees, and asserts that the Linux package carries
 # the full binary set (tbound, tbound-doctor, tbound-profile), that no other
 # platform package is generated, and that the linux/amd64 TCB entrypoint is
-# never packaged for npm. It does not run npm,
-# does not install anything, and never touches the network or the user prefix.
+# never packaged for npm. Section 8 runs scripts/pack-npm-packages.sh, which packs
+# the trees with npm and installs the tarballs offline into a temp prefix. Nothing
+# touches the network or the user prefix.
 #
 # Usage: bash tests/packaging/verify-npm-packages.sh [version]
 set -uo pipefail
@@ -185,6 +186,13 @@ else
   else
     bad "non-Linux-only dist failed for an unexpected reason"
   fi
+fi
+
+echo "[8] packed tarballs keep the executable bit and run after an offline install"
+if "$ROOT/scripts/pack-npm-packages.sh" "$VERSION" "$OUT" "$BASE/packed" >"$BASE/pack.log" 2>&1; then
+  ok "npm tarballs packed, checked, installed offline, and ran tbound --version"
+else
+  bad "pack-npm-packages failed: $(tail -1 "$BASE/pack.log")"
 fi
 
 echo

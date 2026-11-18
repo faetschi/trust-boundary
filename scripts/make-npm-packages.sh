@@ -146,6 +146,7 @@ for tgz in "$DIST"/tbound-"$VERSION"-*.tar.gz; do
   for b in tbound tbound-doctor tbound-profile; do
     [ -f "$work/bin/$b" ] || die "archive $base missing bin/$b"
     cp "$work/bin/$b" "$bindir/$b"
+    chmod 0755 "$bindir/$b"
   done
   cp "$ROOT/LICENSE" "$OUT/$pkg/LICENSE"
   rm -rf "$work"
@@ -155,6 +156,9 @@ for tgz in "$DIST"/tbound-"$VERSION"-*.tar.gz; do
   "version": "$VERSION",
   "description": "tbound platform binary for ${nos}-${narch}",
   "license": "MIT",
+  "repository": { "type": "git", "url": "git+https://github.com/faetschi/trust-boundary.git" },
+  "homepage": "https://github.com/faetschi/trust-boundary#readme",
+  "bugs": { "url": "https://github.com/faetschi/trust-boundary/issues" },
   "os": ["${nos}"],
   "cpu": ["${narch}"],
   "files": ["bin/", "LICENSE"],
@@ -188,6 +192,9 @@ done
   printf '  "version": "%s",\n' "$VERSION"
   printf '  "description": "Install the tbound supervisor CLI next to your Pi coding agent.",\n'
   printf '  "license": "MIT",\n'
+  printf '  "repository": { "type": "git", "url": "git+https://github.com/faetschi/trust-boundary.git" },\n'
+  printf '  "homepage": "https://github.com/faetschi/trust-boundary#readme",\n'
+  printf '  "bugs": { "url": "https://github.com/faetschi/trust-boundary/issues" },\n'
   printf '  "bin": { "tbound": "bin/tbound.js" },\n'
   printf '  "files": ["bin/", "scripts/", "README.md", "LICENSE"],\n'
   printf '  "optionalDependencies": {\n'

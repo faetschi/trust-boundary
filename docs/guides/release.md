@@ -96,6 +96,8 @@ globs as workflow artifacts and GitHub release assets.
 ```sh
 scripts/make-npm-packages.sh 0.1.0 dist
 # -> dist/npm/cli (root package) + dist/npm/cli-linux-x64 (platform package)
+scripts/pack-npm-packages.sh 0.1.0 dist/npm dist/npm-tgz
+# -> dist/npm-tgz/tbound-cli-linux-x64-0.1.0.tgz + dist/npm-tgz/tbound-cli-0.1.0.tgz
 ```
 
 npm packages are generated for Linux amd64 only; non-Linux release tarballs are
@@ -105,15 +107,24 @@ profile` to the dedicated binaries; the TCB entrypoint is never packaged for
 npm. The root and platform package trees include the
 canonical `LICENSE` file and list it in their npm `files` allowlists.
 
-Publishing is manual/opt-in:
+Publish packed tarballs, not the package trees. The Actions artifact upload and
+`npm pack` on Windows both drop the executable bit, which would ship a Linux binary
+that cannot run. On Linux, `scripts/pack-npm-packages.sh` packs both trees and
+checks the result. The binaries must be mode 0755, the manifests must carry the
+version, and the TCB entrypoint must be absent. It then installs the two tarballs
+offline, runs `tbound --version`, and prints their SHA-256. The release workflow
+runs it and uploads the result as `dist/npm-tgz/` in the `tbound-dist` artifact.
+
+Publishing is manual. Use the tarballs from the tag run that made the GitHub
+release. Publish the platform package first, because the root package depends on
+it:
 
 ```sh
-for d in dist/npm/cli-*/; do (cd "$d" && npm publish --access public); done
-(cd dist/npm/cli && npm publish --access public)
+npm publish --access public dist/npm-tgz/tbound-cli-linux-x64-0.1.0.tgz
+npm publish --access public dist/npm-tgz/tbound-cli-0.1.0.tgz
 ```
 
-Only do this after confirming namespace ownership and approving publication; no
-`@tbound` packages are published by the build or currently claimed available.
+A published version cannot be replaced, and unpublishing does not free its number.
 
 ## Publish a GitHub release
 
@@ -124,10 +135,11 @@ scripts/publish-release.sh 0.1.0             # create the release via gh
 
 ## CI
 
-`.github/workflows/release.yml` builds the artifact matrix, generates the npm
-packages, runs the offline install verification, uploads the tarballs,
-`SHA256SUMS`, and the exact entrypoint metadata/checksum sidecar globs, then
-attaches these release assets on a `v*` tag. npm publishing is left manual on
+`.github/workflows/release.yml` builds the artifact matrix, generates and packs the
+npm packages, and runs the offline install verification. It uploads the release
+tarballs, `SHA256SUMS`, the exact entrypoint metadata/checksum sidecar globs, and
+the npm tarballs as the `tbound-dist` artifact. On a `v*` tag it attaches all of
+these except the npm tarballs as release assets. npm publishing is left manual on
 purpose.
 
 ## Package managers
