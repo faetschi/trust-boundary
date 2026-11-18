@@ -32,8 +32,11 @@ import (
 //     (provider_exchange_unknown) applies to the last attempt;
 //   - never after a 200 or any streamed/completion byte (a 200 parallel-call refusal is the separate
 //     decision-13 resample of resample.go, which shares this record and bound), never for other 4xx, never for a
-//     transport error (the request may have been processed), never on the research route
-//     (its monetary spend accounting has its own per-request reservation);
+//     transport error (the request may have been processed);
+//   - on the research route every attempt is also its own USD ledger reservation (SpendReservation.Attempt):
+//     the failed attempt's unit is marked uncertain before the attempt is closed, so its full worst case
+//     stays booked, and a retry the ledger refuses to reserve is never sent (register D54, as amended
+//     2026-11-18);
 //   - a crash after the retry record but before the host call is settled in the workflow
 //     ledger leaves a reservation the ledger still calls reserved: that is UNKNOWN, exactly as
 //     for a crash between provider_exchange and its settlement. A crash after the settlement
@@ -53,7 +56,7 @@ const (
 // RetryableProviderFailure reports whether a complete HTTP response that is not a completion may
 // be retried: 502, 503 and 504, 422 whose error says the endpoint is unavailable, or 429 with a
 // short Retry-After. The body must be empty or exactly the provider's error object
-// ({"error": "..."} or {"error": {"type", "message", ...}}) parsed as JSON, never stream or
+// ({"error": "..."} or {"error": {"type", "message", ...}}, optionally beside a string "user_id") parsed as JSON, never stream or
 // completion content: an SSE content type, any SSE field or comment line, extra top-level
 // members or trailing data all make it ineligible.
 func RetryableProviderFailure(status int, contentType string, body []byte, retryAfter string) bool {
@@ -156,7 +159,19 @@ func providerErrorBody(body []byte) (string, bool) {
 	}
 	decoder := json.NewDecoder(bytes.NewReader(trimmed))
 	var object map[string]json.RawMessage
-	if err := decoder.Decode(&object); err != nil || len(object) != 1 {
+	if err := decoder.Decode(&object); err != nil {
+		return "", false
+	}
+	// OpenRouter may put the account's user_id beside the error object (seen in public reports, not yet in a
+	// retained response); a string there is not completion content.
+	if userID, present := object["user_id"]; present {
+		var text string
+		if json.Unmarshal(userID, &text) != nil {
+			return "", false
+		}
+		delete(object, "user_id")
+	}
+	if len(object) != 1 {
 		return "", false
 	}
 	if _, trailing := decoder.Token(); !errors.Is(trailing, io.EOF) {

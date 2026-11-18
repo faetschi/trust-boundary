@@ -40,6 +40,7 @@ type spendRecorder struct {
 	events     []string
 	usage      json.RawMessage
 	reserveErr error
+	settleErr  error
 	reserved   SpendReservation
 	doer       *spendDoer
 }
@@ -74,7 +75,7 @@ func (s *spendRecorder) SettleSpend(_ context.Context, unit string, usage json.R
 	s.mu.Lock()
 	s.usage = append(json.RawMessage(nil), usage...)
 	s.mu.Unlock()
-	return nil
+	return s.settleErr
 }
 
 func (s *spendRecorder) UncertainSpend(_ context.Context, unit string) error {
