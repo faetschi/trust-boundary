@@ -32,8 +32,11 @@ import (
 //     (provider_exchange_unknown) applies to the last attempt;
 //   - never after a 200 or any streamed/completion byte (a 200 parallel-call refusal is the separate
 //     decision-13 resample of resample.go, which shares this record and bound), never for other 4xx, never for a
-//     transport error (the request may have been processed), never on the research route
-//     (its monetary spend accounting has its own per-request reservation);
+//     transport error (the request may have been processed);
+//   - on the research route every attempt is also its own USD ledger reservation (SpendReservation.Attempt):
+//     the failed attempt's unit is marked uncertain before the attempt is closed, so its full worst case
+//     stays booked, and a retry the ledger refuses to reserve is never sent (register D54, as amended
+//     2026-11-18);
 //   - a crash after the retry record but before the host call is settled in the workflow
 //     ledger leaves a reservation the ledger still calls reserved: that is UNKNOWN, exactly as
 //     for a crash between provider_exchange and its settlement. A crash after the settlement

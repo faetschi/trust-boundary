@@ -143,8 +143,8 @@ type SpendReservation struct {
 	ConversationID string
 	// Turn is the one-based provider turn of this conversation.
 	Turn uint64
-	// Attempt is the number of earlier attempts of this turn: zero for a first attempt, above zero only
-	// for a decision-13 resample (see resample.go), which is booked as its own reservation.
+	// Attempt is the number of earlier attempts of this turn: zero for a first attempt, above zero for a
+	// pre-effect retry (retry.go) or a decision-13 resample (resample.go), each booked as its own reservation.
 	Attempt uint64
 	// CompletionLimit is the host-selected max_completion_tokens bound of the
 	// request. Zero means the host selected none.
@@ -518,11 +518,10 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 	var captured openrouter.CapturedResponse
 	var exchangeErr error
 	var records []broker.ExchangeRecord
-	// A pre-effect provider failure may be retried (see retry.go): only with host-call accounting and
-	// without monetary spend, so every attempt is its own reserved host call. A parallel-call refusal may
-	// be resampled (see resample.go): with host-call accounting, on both routes, never in a product turn.
+	// A pre-effect provider failure may be retried (see retry.go): only with host-call accounting, so every
+	// attempt is its own reserved host call, on both routes. A parallel-call refusal may be resampled (see
+	// resample.go): with host-call accounting, on both routes, never in a product turn.
 	hostCallAccounting := c.cfg.SelectCompletionTokenLimit != nil && c.cfg.ReserveHostCall != nil && c.cfg.CompleteHostCall != nil
-	retryable := c.cfg.Spend == nil && hostCallAccounting
 	resamplable := hostCallAccounting && !c.cfg.ProductCaptureRefusals
 	// resampleOf is the refused request a resample must repeat (resampleRepeats); nil for any other attempt.
 	var resampleOf *broker.RequestRecord
@@ -608,7 +607,7 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 			break
 		}
 		resample := resamplable && resampleableExchange(records, c.route)
-		if !resample && !(retryable && retryableExchange(records)) {
+		if !resample && !(hostCallAccounting && retryableExchange(records)) {
 			break
 		}
 		if c.cfg.HostCallsLeft != nil && c.cfg.HostCallsLeft() == 0 {
@@ -616,12 +615,12 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 			// abandon to close: end on this attempt, whose reservation the failure path closes as unknown.
 			break
 		}
-		if resample && spendUnit != "" {
-			// The refused attempt reached the provider and its cost is not established: its full
+		if spendUnit != "" {
+			// The failed or refused attempt reached the provider and its cost is not established: its full
 			// reservation stays booked before the attempt is closed and the next one reserved.
 			if err := c.cfg.Spend.UncertainSpend(ctx, spendUnit); err != nil {
-				// Not resampled: the failure path below journals the refused attempt as unknown and the
-				// deferred UncertainSpend books its unit again.
+				// Not repeated: the failure path below journals the attempt as unknown and the deferred
+				// UncertainSpend books its unit again.
 				exchangeErr = errors.Join(exchangeErr, fmt.Errorf("book the refused provider attempt's spend: %w", err))
 				break
 			}
