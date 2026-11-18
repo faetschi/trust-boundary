@@ -12,69 +12,35 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
 	"tbound/supervisor/internal/broker/protocol"
+	"tbound/supervisor/internal/corpusadmit"
 	"tbound/supervisor/internal/evalcorpus"
 	"tbound/supervisor/internal/evalreport"
 	"tbound/supervisor/internal/evalscore"
+	"tbound/supervisor/internal/guestevidence"
 	"tbound/supervisor/internal/researchprofile"
 	"tbound/supervisor/internal/researchroute"
 	"tbound/supervisor/internal/runner"
 )
 
-// preregistrationDomain labels the record digest. The pre-registration is a timestamped,
-// digest-pinned repo freeze commit that the owner records; this record is the
-// reviewable summary of what that freeze pins.
-const preregistrationDomain = "tbound-preregistration/v1"
-
-const maxRunnerConfigBytes = 1 << 20
+const (
+	maxRunnerConfigBytes = 1 << 20
+	maxRubricBytes       = 16 << 20
+	maxCorpusCheckBytes  = 64 << 20
+)
 
 var (
 	freezeCommitRE = regexp.MustCompile(`^[0-9a-f]{40}$`)
 	reviewerNameRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9 ._-]{0,63}$`)
 )
 
-// preregistrationRecord is the pre-registration record. Every field except RecordDigest is
-// bound by RecordDigest. An absent research profile or ledger configuration is recorded as
-// the empty string, which is distinct from every digest.
-type preregistrationRecord struct {
-	Domain       string `json:"domain"`
-	FreezeCommit string `json:"freeze_commit"`
-	// CorpusManifestDigest is evalcorpus.Digest of the manifest, as pinned in the service config.
-	CorpusManifestDigest string `json:"corpus_manifest_digest"`
-	QuotaProfile         string `json:"quota_profile"`
-	// RunnerPlanDigest is the digest of runner.Plan over the manifest, its seeded allocation and
-	// the runner config. It binds the normalized config and every planned step.
-	RunnerPlanDigest string `json:"runner_plan_digest"`
-	// PlanSteps is the number of steps that plan holds. PlannedUnits is the registered number of
-	// units (evalreport.PlannedUnits); under the thesis profile the two must agree.
-	PlanSteps     int `json:"plan_steps"`
-	PlannedUnits  int `json:"planned_units"`
-	RerunHeadroom int `json:"rerun_headroom"`
-	// EvalscoreSchema is evalscore.SchemaVersion.
-	EvalscoreSchema            string `json:"evalscore_schema"`
-	ResearchProfileDigest      string `json:"research_profile_digest"`
-	ResearchLedgerConfigDigest string `json:"research_ledger_config_digest"`
-	// Reviewers are names only, sorted.
-	Reviewers    []string `json:"reviewers"`
-	RecordDigest string   `json:"record_digest,omitempty"`
-}
-
-// computeDigest returns sha256:<hex> over the domain label, a NUL byte and the compact JSON
-// of the record without its RecordDigest. The field order of the struct is the canonical
-// order, and every string in it is a digest, a commit, a schema name or a validated name.
-func (r preregistrationRecord) computeDigest() (string, error) {
-	r.RecordDigest = ""
-	body, err := json.Marshal(r)
-	if err != nil {
-		return "", err
-	}
-	sum := sha256.Sum256(append([]byte(preregistrationDomain+"\x00"), body...))
-	return "sha256:" + hex.EncodeToString(sum[:]), nil
-}
-
+// runPreregistrationRecord writes the pre-registration record. The pre-registration is a timestamped, digest-pinned
+// repo freeze commit that the owner records; the record (evalreport.Registration) is the reviewable summary of what
+// that freeze pins. `tbound-run report` checks a run against it before it marks a report claim-bearing.
 func runPreregistrationRecord(args []string, stdout, stderr io.Writer) error {
 	flags := flag.NewFlagSet("tbound-profile preregistration-record", flag.ContinueOnError)
 	flags.SetOutput(stderr)
@@ -89,6 +55,9 @@ func runPreregistrationRecord(args []string, stdout, stderr io.Writer) error {
 	ledgerConfigPath := flags.String("research-ledger-config", "", "optional research ledger configuration JSON")
 	schema := flags.String("evalscore-schema", evalscore.SchemaVersion, "evalscore trials schema (only the registered one is accepted)")
 	reviewers := flags.String("reviewers", "owner", "comma-separated administrative metadata names, without signatures")
+	runBinding := flags.String("run-binding", "", "the run_binding that `tbound-run plan` prints for the registered run.json (D49 drain grace, admission policy, receipt pins)")
+	rubricPath := flags.String("attribution-rubric", "", "the frozen attribution rubric file; the run's attribution file must name its sha256 as rubric_digest")
+	corpusCheckPath := flags.String("corpus-check", "", "the `tbound-profile corpus-check` report.json of this manifest, with no failed and no guest-only row")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -96,13 +65,17 @@ func runPreregistrationRecord(args []string, stdout, stderr io.Writer) error {
 		return errors.New("unexpected positional arguments")
 	}
 	for name, value := range map[string]string{"--freeze-commit": *commit, "--corpus-manifest": *manifestPath,
-		"--quota-profile": *profile, "--runner-config": *runnerConfigPath, "--reviewers": *reviewers} {
+		"--quota-profile": *profile, "--runner-config": *runnerConfigPath, "--reviewers": *reviewers,
+		"--run-binding": *runBinding, "--attribution-rubric": *rubricPath, "--corpus-check": *corpusCheckPath} {
 		if value == "" {
 			return fmt.Errorf("%s is required", name)
 		}
 	}
 	if !freezeCommitRE.MatchString(*commit) {
 		return errors.New("--freeze-commit must be a 40 digit lowercase hex git commit id")
+	}
+	if !guestevidence.IsDigest(*runBinding) {
+		return errors.New("--run-binding must be sha256:<64 hex>, as `tbound-run plan` prints it")
 	}
 	if *schema != evalscore.SchemaVersion {
 		return fmt.Errorf("--evalscore-schema %q is not the registered %q", *schema, evalscore.SchemaVersion)
@@ -129,6 +102,20 @@ func runPreregistrationRecord(args []string, stdout, stderr io.Writer) error {
 	if err := checkPanel(manifest, *panelReceipt, *panelAudit, *panelStats, flags); err != nil {
 		return err
 	}
+	corpusCheck, err := corpusCheckDigest(*corpusCheckPath, manifestDigest)
+	if err != nil {
+		return err
+	}
+	rubricData, err := readRegularBounded(*rubricPath, maxRubricBytes)
+	if err != nil {
+		return fmt.Errorf("attribution rubric: %w", err)
+	}
+	rubricSum := sha256.Sum256(rubricData)
+	// The plan digest must be the one `tbound-run plan` computes: it takes the adaptive caps of a pinned attacker
+	// artifact, so the record does too.
+	if cfg.AdaptiveCaps, err = runner.AdaptiveCapsFor(manifest, artifactsBeside(*manifestPath), cfg.AdaptiveCaps); err != nil {
+		return fmt.Errorf("corpus manifest refused: %w", err)
+	}
 	// The allocation is derived from the manifest's own split seed (manifest.SplitSeed), so no
 	// separate seed input exists. A validated manifest already carries it, which is checked.
 	allocation, err := evalcorpus.Allocate(manifest, quotas)
@@ -152,10 +139,11 @@ func runPreregistrationRecord(args []string, stdout, stderr io.Writer) error {
 			planned, schedule.Units(), schedule.Subset)
 	}
 
-	rec := preregistrationRecord{
-		Domain: preregistrationDomain, FreezeCommit: *commit, CorpusManifestDigest: manifestDigest, QuotaProfile: *profile,
+	rec := evalreport.Registration{
+		Domain: evalreport.RegistrationDomain, FreezeCommit: *commit, CorpusManifestDigest: manifestDigest, QuotaProfile: *profile,
 		RunnerPlanDigest: schedule.Digest, PlanSteps: schedule.Units(), PlannedUnits: planned,
-		RerunHeadroom: schedule.Config.RerunHeadroom, EvalscoreSchema: evalscore.SchemaVersion, Reviewers: names,
+		RerunHeadroom: schedule.Config.RerunHeadroom, EvalscoreSchema: evalscore.SchemaVersion,
+		RunBinding: *runBinding, AttributionRubricDigest: "sha256:" + hex.EncodeToString(rubricSum[:]), CorpusCheckDigest: corpusCheck, Reviewers: names,
 	}
 	if *researchProfilePath != "" {
 		if rec.ResearchProfileDigest, err = researchProfileDigest(*researchProfilePath); err != nil {
@@ -167,7 +155,7 @@ func runPreregistrationRecord(args []string, stdout, stderr io.Writer) error {
 			return err
 		}
 	}
-	if rec.RecordDigest, err = rec.computeDigest(); err != nil {
+	if rec.RecordDigest, err = rec.ComputeDigest(); err != nil {
 		return err
 	}
 	encoded, err := json.Marshal(rec)
@@ -266,4 +254,62 @@ func researchLedgerConfigDigest(path string) (string, error) {
 		return "", err
 	}
 	return "sha256:" + digest, nil
+}
+
+// readRegularBounded reads a regular file of at most limit bytes.
+func readRegularBounded(path string, limit int64) ([]byte, error) {
+	f, err := openRegularFile(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	data, err := io.ReadAll(io.LimitReader(f, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > limit {
+		return nil, fmt.Errorf("%s exceeds %d bytes", path, limit)
+	}
+	return data, nil
+}
+
+// corpusCheckDigest accepts a `tbound-profile corpus-check` report.json only for this manifest and only when it is
+// clean: it passed, and every row of it, corpus-wide and per case, is pass or not-checked. A guest-only row is a
+// guest witness still pending, so a report made without the imported guest evidence is refused. It returns the
+// sha256 of the file.
+func corpusCheckDigest(path, manifestDigest string) (string, error) {
+	data, err := readRegularBounded(path, maxCorpusCheckBytes)
+	if err != nil {
+		return "", fmt.Errorf("corpus check: %w", err)
+	}
+	if err := protocol.ValidateStrictJSON(data); err != nil {
+		return "", fmt.Errorf("corpus check: %w", err)
+	}
+	var r corpusadmit.ConstructReport
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&r); err != nil {
+		return "", fmt.Errorf("corpus check: %w", err)
+	}
+	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
+		return "", errors.New("corpus check: trailing data")
+	}
+	if r.Schema != "tbound-construct-checks/v1" || r.ManifestDigest != manifestDigest {
+		return "", fmt.Errorf("corpus check: schema %q for manifest %q is not a construct-check report of manifest %s", r.Schema, r.ManifestDigest, manifestDigest)
+	}
+	rows := slices.Clone(r.Checks)
+	for _, c := range r.Cases {
+		rows = append(rows, c.Checks...)
+	}
+	var unclean []string
+	for _, c := range rows {
+		if c.Status != "pass" && c.Status != "not-checked" {
+			unclean = append(unclean, c.Name+" "+c.Status)
+		}
+	}
+	if !r.Passed || len(rows) == 0 || len(unclean) > 0 {
+		return "", fmt.Errorf("corpus check: not clean (passed %t, %d rows, %d failed or guest-only: %v)", r.Passed, len(rows), len(unclean), unclean[:min(len(unclean), 5)])
+	}
+	sum := sha256.Sum256(data)
+	return "sha256:" + hex.EncodeToString(sum[:]), nil
 }

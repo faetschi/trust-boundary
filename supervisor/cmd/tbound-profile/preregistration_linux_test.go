@@ -3,6 +3,8 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -11,6 +13,7 @@ import (
 	"testing"
 
 	"tbound/supervisor/internal/calibration"
+	"tbound/supervisor/internal/corpusadmit"
 	"tbound/supervisor/internal/evalcorpus"
 	"tbound/supervisor/internal/evalreport"
 	"tbound/supervisor/internal/evalscore"
@@ -78,11 +81,13 @@ func writeFile(t *testing.T, dir, name, content string) string {
 type preregInputs struct {
 	panel                                                               []string
 	commit, manifest, quota, config, profile, ledger, reviewers, schema string
+	runBinding, rubric, corpusCheck                                     string
 }
 
 func (p preregInputs) args() []string {
 	args := []string{"preregistration-record", "--freeze-commit", p.commit, "--corpus-manifest", p.manifest,
-		"--quota-profile", p.quota, "--runner-config", p.config, "--reviewers", p.reviewers}
+		"--quota-profile", p.quota, "--runner-config", p.config, "--reviewers", p.reviewers,
+		"--run-binding", p.runBinding, "--attribution-rubric", p.rubric, "--corpus-check", p.corpusCheck}
 	if p.profile != "" {
 		args = append(args, "--research-profile", p.profile)
 	}
@@ -98,13 +103,44 @@ func (p preregInputs) args() []string {
 func basePrereg(t *testing.T, dir string) preregInputs {
 	t.Helper()
 	m, panel := signedPanel(t, dir, fixtureManifest(t, evalcorpus.PilotQuotas(), "prereg-seed"))
+	manifest := writeManifest(t, dir, "corpus.json", m)
 	return preregInputs{panel: panel,
-		commit: commitA, manifest: writeManifest(t, dir, "corpus.json", m), quota: "pilot",
-		config:    runnerConfigFile(t, dir, "runner.json", commitA, nil),
-		profile:   writeFile(t, dir, "profile.json", frozenResearchProfile("7")),
-		ledger:    writeFile(t, dir, "ledger.json", ledgerConfigText("5000000")),
-		reviewers: "owner,advisor",
+		commit: commitA, manifest: manifest, quota: "pilot",
+		config:      runnerConfigFile(t, dir, "runner.json", commitA, nil),
+		profile:     writeFile(t, dir, "profile.json", frozenResearchProfile("7")),
+		ledger:      writeFile(t, dir, "ledger.json", ledgerConfigText("5000000")),
+		reviewers:   "owner,advisor",
+		runBinding:  fixtureDigest("run-binding"),
+		rubric:      writeFile(t, dir, "rubric.md", "# Attribution rubric\n"),
+		corpusCheck: cleanCorpusCheck(t, manifest, nil),
 	}
+}
+
+// cleanCorpusCheck writes a corpus-check report.json of the manifest at path beside it: passed, with one corpus row,
+// one pass and one not-checked case row. mutate edits the report first.
+func cleanCorpusCheck(t *testing.T, path string, mutate func(*corpusadmit.ConstructReport)) string {
+	t.Helper()
+	m, err := loadConstructManifest(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest, err := evalcorpus.Digest(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := corpusadmit.ConstructReport{Schema: "tbound-construct-checks/v1", ManifestDigest: digest, Passed: true,
+		Summary: map[string]corpusadmit.ConstructCounts{"manifest-validation": {Pass: 1}, "calibration-p": {Pass: 1}, "mutation": {NotChecked: 1}},
+		Checks:  []corpusadmit.ConstructCheck{{Name: "manifest-validation", Status: "pass", Reason: "ok"}},
+		Cases: []corpusadmit.ConstructCase{{CaseID: m.Cases[0].CaseID, Checks: []corpusadmit.ConstructCheck{
+			{Name: "calibration-p", Status: "pass", Reason: "imported"}, {Name: "mutation", Status: "not-checked", Reason: "n/a"}}}}}
+	if mutate != nil {
+		mutate(&r)
+	}
+	raw, err := json.MarshalIndent(r, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return writeFile(t, filepath.Dir(path), filepath.Base(path)+".corpus-check.json", string(raw))
 }
 
 func preregOut(t *testing.T, p preregInputs) string {
@@ -126,7 +162,7 @@ func TestPreregistrationRecordIsDeterministicAndBindsTheRegisteredFacts(t *testi
 	if !strings.HasSuffix(first, "\n") || strings.Count(first, "\n") != 1 {
 		t.Fatalf("output must be one JSON line: %q", first)
 	}
-	var rec preregistrationRecord
+	var rec evalreport.Registration
 	dec := json.NewDecoder(strings.NewReader(first))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&rec); err != nil {
@@ -148,7 +184,17 @@ func TestPreregistrationRecordIsDeterministicAndBindsTheRegisteredFacts(t *testi
 	if evalreport.LegacyPlannedUnits != 1935 || runner.RerunHeadroomFor(evalreport.LegacyPlannedUnits) != 97 {
 		t.Fatalf("registered constants drifted: %d units, headroom %d", evalreport.LegacyPlannedUnits, runner.RerunHeadroomFor(evalreport.LegacyPlannedUnits))
 	}
-	if rec.Domain != "tbound-preregistration/v1" || rec.FreezeCommit != commitA || rec.CorpusManifestDigest != m ||
+	rubricSum := sha256.Sum256([]byte("# Attribution rubric\n"))
+	checkRaw, err := os.ReadFile(p.corpusCheck)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkSum := sha256.Sum256(checkRaw)
+	if rec.RunBinding != p.runBinding || rec.AttributionRubricDigest != "sha256:"+hex.EncodeToString(rubricSum[:]) ||
+		rec.CorpusCheckDigest != "sha256:"+hex.EncodeToString(checkSum[:]) {
+		t.Fatalf("record does not bind the run binding, rubric and corpus check: %+v", rec)
+	}
+	if rec.Domain != "tbound-preregistration/v2" || rec.FreezeCommit != commitA || rec.CorpusManifestDigest != m ||
 		rec.QuotaProfile != "pilot" || rec.EvalscoreSchema != evalscore.SchemaVersion ||
 		rec.PlannedUnits != evalreport.LegacyPlannedUnits ||
 		rec.RerunHeadroom != 97 ||
@@ -159,7 +205,7 @@ func TestPreregistrationRecordIsDeterministicAndBindsTheRegisteredFacts(t *testi
 	if !reflect.DeepEqual(rec.Reviewers, []string{"advisor", "owner"}) {
 		t.Fatalf("reviewers %v", rec.Reviewers)
 	}
-	want, err := rec.computeDigest()
+	want, err := rec.ComputeDigest()
 	if err != nil || rec.RecordDigest != want {
 		t.Fatalf("record digest %q, recomputed %q (%v)", rec.RecordDigest, want, err)
 	}
@@ -175,7 +221,7 @@ func TestPreregistrationRecordOptionalResearchInputs(t *testing.T) {
 	dir := t.TempDir()
 	p := basePrereg(t, dir)
 	p.profile, p.ledger = "", ""
-	var rec preregistrationRecord
+	var rec evalreport.Registration
 	if err := json.Unmarshal([]byte(preregOut(t, p)), &rec); err != nil {
 		t.Fatal(err)
 	}
@@ -189,7 +235,7 @@ func TestPreregistrationRecordEveryInputChangesTheDigest(t *testing.T) {
 	base := basePrereg(t, dir)
 	baseOut := preregOut(t, base)
 	digestOf := func(out string) string {
-		var rec preregistrationRecord
+		var rec evalreport.Registration
 		if err := json.Unmarshal([]byte(out), &rec); err != nil {
 			t.Fatal(err)
 		}
@@ -204,7 +250,16 @@ func TestPreregistrationRecordEveryInputChangesTheDigest(t *testing.T) {
 			p.commit = commitB
 			p.config = runnerConfigFile(t, dir, "runner-b.json", commitB, nil)
 		},
-		"corpus manifest": func(p *preregInputs) { p.manifest, p.panel = otherManifest, otherPanel },
+		"corpus manifest": func(p *preregInputs) {
+			p.manifest, p.panel, p.corpusCheck = otherManifest, otherPanel, cleanCorpusCheck(t, otherManifest, nil)
+		},
+		"run binding": func(p *preregInputs) { p.runBinding = fixtureDigest("other-run-binding") },
+		"attribution rubric": func(p *preregInputs) {
+			p.rubric = writeFile(t, dir, "rubric-b.md", "# Attribution rubric, revised\n")
+		},
+		"corpus check": func(p *preregInputs) {
+			p.corpusCheck = cleanCorpusCheck(t, p.manifest, func(r *corpusadmit.ConstructReport) { r.Checks[0].Reason = "ok, rerun" })
+		},
 		"runner config": func(p *preregInputs) {
 			p.config = runnerConfigFile(t, dir, "runner-c.json", commitA, func(c *runner.Config) { c.NET02Mandatory = true })
 		},
@@ -230,7 +285,7 @@ func TestPreregistrationRecordEveryInputChangesTheDigest(t *testing.T) {
 
 	// Inputs that the command line cannot vary while the record stays valid are checked on the
 	// record itself: changing any bound field changes the digest.
-	var rec preregistrationRecord
+	var rec evalreport.Registration
 	if err := json.Unmarshal([]byte(baseOut), &rec); err != nil {
 		t.Fatal(err)
 	}
@@ -252,15 +307,15 @@ func TestPreregistrationRecordEveryInputChangesTheDigest(t *testing.T) {
 		default:
 			t.Fatalf("field %s has kind %s", name, f.Kind())
 		}
-		d, err := mutated.computeDigest()
+		d, err := mutated.ComputeDigest()
 		if err != nil || d == rec.RecordDigest {
 			t.Errorf("field %s is not bound by the record digest (%v)", name, err)
 		}
 	}
 	// The digest is domain-labelled: the same body under another label hashes differently.
 	relabelled := rec
-	relabelled.Domain = "tbound-preregistration/v2"
-	if d, _ := relabelled.computeDigest(); d == rec.RecordDigest {
+	relabelled.Domain = "tbound-preregistration/v3"
+	if d, _ := relabelled.ComputeDigest(); d == rec.RecordDigest {
 		t.Error("the domain label is not bound")
 	}
 }
@@ -296,14 +351,34 @@ func TestPreregistrationRecordRefusals(t *testing.T) {
 		"runner config over the headroom": func(p *preregInputs) {
 			p.config = runnerConfigFile(t, dir, "runner-big.json", commitA, func(c *runner.Config) { c.RerunHeadroom = 98 })
 		},
-		"unfrozen research profile": func(p *preregInputs) { p.profile = unfrozen },
-		"bad ledger config":         func(p *preregInputs) { p.ledger = writeFile(t, dir, "ledger-bad.json", `{"schema_version":1}`) },
-		"foreign evalscore schema":  func(p *preregInputs) { p.schema = "evalscore-trials/v2" },
-		"no reviewers":              func(p *preregInputs) { p.reviewers = "" },
-		"empty reviewer name":       func(p *preregInputs) { p.reviewers = "owner,,advisor" },
-		"duplicate reviewer":        func(p *preregInputs) { p.reviewers = "owner,owner" },
-		"reviewer with a path":      func(p *preregInputs) { p.reviewers = "owner,/etc/passwd" },
-		"reviewer with an address":  func(p *preregInputs) { p.reviewers = "owner,a@example.org" },
+		"unfrozen research profile":  func(p *preregInputs) { p.profile = unfrozen },
+		"bad ledger config":          func(p *preregInputs) { p.ledger = writeFile(t, dir, "ledger-bad.json", `{"schema_version":1}`) },
+		"foreign evalscore schema":   func(p *preregInputs) { p.schema = "evalscore-trials/v2" },
+		"no reviewers":               func(p *preregInputs) { p.reviewers = "" },
+		"empty reviewer name":        func(p *preregInputs) { p.reviewers = "owner,,advisor" },
+		"duplicate reviewer":         func(p *preregInputs) { p.reviewers = "owner,owner" },
+		"reviewer with a path":       func(p *preregInputs) { p.reviewers = "owner,/etc/passwd" },
+		"reviewer with an address":   func(p *preregInputs) { p.reviewers = "owner,a@example.org" },
+		"no run binding":             func(p *preregInputs) { p.runBinding = "" },
+		"run binding not a digest":   func(p *preregInputs) { p.runBinding = "sha256:abc" },
+		"no attribution rubric":      func(p *preregInputs) { p.rubric = "" },
+		"missing attribution rubric": func(p *preregInputs) { p.rubric = filepath.Join(dir, "absent-rubric.md") },
+		"no corpus check":            func(p *preregInputs) { p.corpusCheck = "" },
+		"corpus check with a guest-only row": func(p *preregInputs) {
+			p.corpusCheck = cleanCorpusCheck(t, p.manifest, func(r *corpusadmit.ConstructReport) { r.Cases[0].Checks[0].Status = "guest-only" })
+		},
+		"corpus check with a failed row": func(p *preregInputs) {
+			p.corpusCheck = cleanCorpusCheck(t, p.manifest, func(r *corpusadmit.ConstructReport) { r.Checks[0].Status = "fail" })
+		},
+		"corpus check not passed": func(p *preregInputs) {
+			p.corpusCheck = cleanCorpusCheck(t, p.manifest, func(r *corpusadmit.ConstructReport) { r.Passed = false })
+		},
+		"corpus check of another manifest": func(p *preregInputs) {
+			p.corpusCheck = cleanCorpusCheck(t, p.manifest, func(r *corpusadmit.ConstructReport) { r.ManifestDigest = fixtureDigest("other") })
+		},
+		"corpus check with no rows": func(p *preregInputs) {
+			p.corpusCheck = cleanCorpusCheck(t, p.manifest, func(r *corpusadmit.ConstructReport) { r.Checks, r.Cases = nil, nil })
+		},
 	} {
 		p := base
 		mutate(&p)
@@ -336,13 +411,16 @@ func TestPreregistrationRecordThesisPlanIsTheRegisteredUnits(t *testing.T) {
 	dir := t.TempDir()
 	thesis, draw := thesisDrawFixture(t, "prereg-thesis-seed")
 	m, panel := signedPanel(t, dir, thesis)
-	p := preregInputs{panel: panel, commit: commitA, manifest: writeManifest(t, dir, "thesis.json", m), quota: "thesis",
-		config: runnerConfigFile(t, dir, "runner.json", commitA, nil), reviewers: "owner,advisor"}
+	base := basePrereg(t, t.TempDir())
+	manifest := writeManifest(t, dir, "thesis.json", m)
+	p := preregInputs{panel: panel, commit: commitA, manifest: manifest, quota: "thesis",
+		config: runnerConfigFile(t, dir, "runner.json", commitA, nil), reviewers: "owner,advisor",
+		runBinding: base.runBinding, rubric: base.rubric, corpusCheck: cleanCorpusCheck(t, manifest, nil)}
 	if _, _, err := runCLI(p.args()...); err == nil || !strings.Contains(err.Error(), "draw-") {
 		t.Fatalf("a thesis manifest was recorded without its draw file: %v", err)
 	}
 	writeDraw(t, dir, draw)
-	var rec preregistrationRecord
+	var rec evalreport.Registration
 	if err := json.Unmarshal([]byte(preregOut(t, p)), &rec); err != nil {
 		t.Fatal(err)
 	}
@@ -384,6 +462,7 @@ func TestPreregistrationRecordUnsignedDefaultOwnerAndOptionalPanel(t *testing.T)
 			p := basePrereg(t, dir)
 			m, panel := supplementaryPanel(t, panelMode == "incomplete", 25)
 			p.manifest = writeUnsignedManifest(t, dir, m)
+			p.corpusCheck = cleanCorpusCheck(t, p.manifest, nil)
 			p.panel = nil
 			if panelMode != "omitted" {
 				p.panel = panel
@@ -399,7 +478,7 @@ func TestPreregistrationRecordUnsignedDefaultOwnerAndOptionalPanel(t *testing.T)
 			if err != nil {
 				t.Fatal(err)
 			}
-			var rec preregistrationRecord
+			var rec evalreport.Registration
 			if err := json.Unmarshal([]byte(out), &rec); err != nil {
 				t.Fatal(err)
 			}
@@ -413,5 +492,54 @@ func TestPreregistrationRecordUnsignedDefaultOwnerAndOptionalPanel(t *testing.T)
 				}
 			}
 		})
+	}
+}
+
+// The record's plan digest is the one `tbound-run plan` computes for the run: under a pinned attacker artifact the
+// adaptive caps are the artifact's (runner.AdaptiveCapsFor), even when the runner config leaves them out, and a
+// runner config with other caps is refused.
+func TestPreregistrationPlanTakesTheAttackerArtifactCaps(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.CopyFS(filepath.Join(dir, "artifacts"), os.DirFS("../../../corpus/pilot/artifacts")); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile("../../../corpus/pilot/manifest.draft.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest := writeFile(t, dir, "corpus.json", string(raw))
+	m, err := evalcorpus.Load(strings.NewReader(string(raw)))
+	if err != nil || m.Pins.AttackerDigest == "" {
+		t.Fatalf("the pilot manifest pins no attacker artifact: %v", err)
+	}
+	p := basePrereg(t, t.TempDir())
+	p.manifest, p.panel, p.corpusCheck = manifest, nil, cleanCorpusCheck(t, manifest, nil)
+	p.config = runnerConfigFile(t, dir, "runner.json", commitA, func(c *runner.Config) { c.AdaptiveCaps = calibration.Caps{} })
+	var rec evalreport.Registration
+	if err := json.Unmarshal([]byte(preregOut(t, p)), &rec); err != nil {
+		t.Fatal(err)
+	}
+	caps, err := runner.AdaptiveCapsFor(m, filepath.Join(dir, "artifacts"), calibration.Caps{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	quotas, err := quotasFor("pilot", m, filepath.Join(dir, "artifacts"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	allocation, err := evalcorpus.Allocate(m, quotas)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sched, err := runner.Plan(m, allocation, runner.Config{FreezeCommit: commitA, EVQObligations: []string{"EVQ-1", "EVQ-2"}, AdaptiveCaps: caps})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec.RunnerPlanDigest != sched.Digest {
+		t.Fatalf("record plan digest %s, the run's plan under the artifact caps %+v is %s", rec.RunnerPlanDigest, caps, sched.Digest)
+	}
+	p.config = runnerConfigFile(t, dir, "runner-other.json", commitA, nil)
+	if out, _, err := runCLI(p.args()...); err == nil || out != "" {
+		t.Fatalf("runner caps that differ from the artifact's were recorded: %q", out)
 	}
 }
