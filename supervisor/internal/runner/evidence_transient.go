@@ -157,8 +157,9 @@ func (iv *transientInterval) abort() {
 // effectoracle.FenceBurst times) just before it applies the first object and another just after the last, and says so
 // in its evidence (FenceBursts). The observer records every open and read of that directory in the order of its queue
 // (Report.Fences). The scans of the tree that publication and others make open the directory and read it too, but
-// with a few opens and reads at most; a fence is an unbroken alternation of 2*FenceBurst of them in records with
-// consecutive sequence numbers. When publication fenced twice, the report watched the directory, and exactly two such
+// with a few opens and reads at most, and each lists the root first, which the observer records between them (so
+// scans in a row do not add up to one long alternation, issue #184); a fence is an unbroken alternation of
+// 2*FenceBurst of them in records with consecutive sequence numbers. When publication fenced twice, the report watched the directory, and exactly two such
 // alternations are in it, the events between them are inside the apply window however late they were read, and the
 // events before the first or after the second are outside it. Any other number of them (another process made one, or
 // one was missed), a report that did not watch the directory, or a publication that did not fence twice leaves the
@@ -535,7 +536,8 @@ func judgeTransient(rep *effectoracle.Report, ledger []wsoracle.LedgerEntry, kno
 // every one before or after happened before or after. A fence may be longer than FenceRoot makes it by records next to
 // it that are not publication's (its own scans open and read the directory right before and after, and cannot be told
 // apart), which changes neither end. The scans publication and others make leave a few opens and reads, not such an
-// alternation, and the observer's own snapshots are not recorded. Another process that makes an alternation this long
+// alternation, and the root listing each one starts with is a record between them (a Fence on ".", which ends a run);
+// the observer's own snapshots are not recorded. Another process that makes an alternation this long
 // leaves a third fence, an ambiguity the order cannot resolve.
 func applyFences(rep *effectoracle.Report, fenced bool) (first, last uint64, ok bool) {
 	if !fenced || rep.FenceDir != effectoracle.FenceDir {

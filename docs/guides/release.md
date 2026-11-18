@@ -95,13 +95,14 @@ globs as workflow artifacts and GitHub release assets.
 
 ```sh
 scripts/make-npm-packages.sh 0.1.0 dist
-# -> dist/npm/cli (root package) + dist/npm/cli-<os>-<arch> (platform packages)
+# -> dist/npm/cli (root package) + dist/npm/cli-linux-x64 (platform package)
 ```
 
-Each platform package ships `bin/tbound`, `bin/tbound-doctor`, and
-`bin/tbound-profile` (`.exe` on win32). The root launcher forwards `tbound
-doctor` and `tbound profile` to the dedicated binaries; the TCB entrypoint is
-never packaged for npm. The root and platform package trees include the
+npm packages are generated for Linux amd64 only; non-Linux release tarballs are
+skipped. The Linux package ships `bin/tbound`, `bin/tbound-doctor`, and
+`bin/tbound-profile`. The root launcher forwards `tbound doctor` and `tbound
+profile` to the dedicated binaries; the TCB entrypoint is never packaged for
+npm. The root and platform package trees include the
 canonical `LICENSE` file and list it in their npm `files` allowlists.
 
 Publishing is manual/opt-in:

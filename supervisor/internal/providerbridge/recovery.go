@@ -342,6 +342,7 @@ func replayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 	var turnRetries, totalRetries uint64
 	// resampledRequest is the refused request that the next reservation must repeat exactly (decision 13).
 	var resampledRequest *requestEvidence
+	resampledLimit := uint64(0)
 	hostCallIDs := make(map[string]struct{})
 	var storeDecisionChecks uint64
 	responses := make(map[string]struct{})
@@ -433,7 +434,10 @@ func replayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 				evidence.Binding.TokenUpperBound); err != nil || requestEvidenceDigest(evidence.Request) != evidence.Binding.RequestDigest {
 				return TranscriptProjection{}, errors.Join(ErrTranscriptReplay, errors.New("provider host-call reservation does not bind the exact request"), err)
 			}
-			if resampledRequest != nil && !reflect.DeepEqual(evidence.Request, *resampledRequest) {
+			// The live rule (NextTurn): a resample repeats the refused request, with tool_choice "none" when tools
+			// were on for it and are off now. The body is verified against the history above either way.
+			if resampledRequest != nil && !reflect.DeepEqual(evidence.Request, *resampledRequest) &&
+				!(evidence.Request.ToolsDisabled && !resampledRequest.ToolsDisabled && evidence.Binding.TokenUpperBound == resampledLimit) {
 				return TranscriptProjection{}, replayError("decision 13 resample does not repeat the refused request")
 			}
 			resampledRequest = nil
@@ -464,7 +468,7 @@ func replayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 			}
 			if resample {
 				request := evidence.Request
-				resampledRequest = &request
+				resampledRequest, resampledLimit = &request, pendingHostCall.Binding.TokenUpperBound
 			}
 			binding := pendingHostCall.Binding
 			lastHostCall = &binding
@@ -516,6 +520,18 @@ func replayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 			responses[captured.ResponseID()] = struct{}{}
 			var priorCalls []openrouter.PriorToolCall
 			toolCall, hasCall := captured.ToolCall()
+			finishReason := captured.FinishReason()
+			// A tool call on a tools-disabled request was refused live: never captured, and the reply ended the turn.
+			refused := hasCall && evidence.Request.ToolsDisabled
+			if refused {
+				if evidence.ToolCall != nil || !sameReplayToolCallProjection(evidence.RefusedToolCall, toolCall) ||
+					!validText(toolCall.ID, MaxIdentityBytes) || !validTool(toolCall.Name) || len(toolCall.RawArguments) == 0 {
+					return TranscriptProjection{}, replayError("refused tool call differs from its durable projection")
+				}
+				hasCall, finishReason = false, "stop"
+			} else if evidence.RefusedToolCall != nil {
+				return TranscriptProjection{}, replayError("durable exchange claims a refused tool call the request did not refuse")
+			}
 			if hasCall {
 				if !sameReplayToolCallProjection(evidence.ToolCall, toolCall) || !validText(toolCall.ID, MaxIdentityBytes) ||
 					!validTool(toolCall.Name) || len(toolCall.RawArguments) == 0 {
@@ -542,7 +558,7 @@ func replayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 			replayedTurn := Turn{
 				SchemaVersion: bridgeSchemaVersion, ResponseID: captured.ResponseID(), Model: projectedModel(route, captured.Model()),
 				Created: captured.Created(), Generation: currentGeneration, Sequence: providerSequence + 1,
-				AssistantText: assistantText, FinishReason: captured.FinishReason(), Usage: captured.Usage(),
+				AssistantText: assistantText, FinishReason: finishReason, Usage: captured.Usage(),
 			}
 			if hasCall {
 				replayedTurn.ToolCall = &ToolCallProjection{
@@ -909,7 +925,11 @@ func validateRecoveryPins(pins RecoveryPins) error {
 func verifyReplayRequestWithCompletionLimit(request requestEvidence, profileID, conversationID string,
 	route openrouter.Route, history []openrouter.Message, completionLimit uint64) error {
 	route = route.Resolved()
-	built, err := openrouter.BuildRequestForRoute(route, history, completionLimit)
+	build := openrouter.BuildRequestForRoute
+	if request.ToolsDisabled {
+		build = openrouter.BuildToolsDisabledRequestForRoute
+	}
+	built, err := build(route, history, completionLimit)
 	if err != nil {
 		return err
 	}

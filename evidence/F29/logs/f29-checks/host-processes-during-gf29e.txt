@@ -1,0 +1,143 @@
+﻿=== 2026-11-16T22:09:07.0828340+01:00
+6156 MsMpEng.exe 16.11.2026 16:49:03 
+33064 SearchProtocolHost.exe 16.11.2026 19:55:09 
+10348 wsl.exe 16.11.2026 21:25:04 C:\Windows\system32\wsl.exe -d tbound-dev --cd /home/tbound --exec bash -c "set -u
+GO=/home/tbound/toolchains/go1.27.1/bin/go
+W=/home/tbound/tbound-wo
+42504 wsl.exe 16.11.2026 21:25:04 C:\Windows\system32\wsl.exe -d tbound-dev --cd /home/tbound --exec bash -c "set -u
+GO=/home/tbound/toolchains/go1.27.1/bin/go
+W=/home/tbound/tbound-wo
+29008 wsl.exe 16.11.2026 22:05:16 "C:\Windows\system32\wsl.exe" -d tbound-dev --cd /home/tbound --exec bash /mnt/c/Users/Admin/AppData/Local/Temp/claude/1bdbf0b7223717e2/5885a9d4-6837-
+11400 wsl.exe 16.11.2026 22:05:16 "C:\Windows\system32\wsl.exe" -d tbound-dev --cd /home/tbound --exec bash /mnt/c/Users/Admin/AppData/Local/Temp/claude/1bdbf0b7223717e2/5885a9d4-6837-
+=== 2026-11-16T22:14:07.8354035+01:00
+6156 MsMpEng.exe 16.11.2026 16:49:03 
+33064 SearchProtocolHost.exe 16.11.2026 19:55:09 
+10348 wsl.exe 16.11.2026 21:25:04 C:\Windows\system32\wsl.exe -d tbound-dev --cd /home/tbound --exec bash -c "set -u
+GO=/home/tbound/toolchains/go1.27.1/bin/go
+W=/home/tbound/tbound-wo
+42504 wsl.exe 16.11.2026 21:25:04 C:\Windows\system32\wsl.exe -d tbound-dev --cd /home/tbound --exec bash -c "set -u
+GO=/home/tbound/toolchains/go1.27.1/bin/go
+W=/home/tbound/tbound-wo
+35108 wsl.exe 16.11.2026 22:10:42 C:\Windows\system32\wsl.exe -d tbound-dev --cd /home/tbound --exec bash /mnt/c/Users/Admin/AppData/Local/Temp/claude/1bdbf0b7223717e2/5885a9d4-6837-49
+38408 grep.exe 16.11.2026 22:10:42 "C:\Program Files\Git\usr\bin\grep.exe" -v "screen size"
+36732 wsl.exe 16.11.2026 22:10:42 C:\Windows\system32\wsl.exe -d tbound-dev --cd /home/tbound --exec bash /mnt/c/Users/Admin/AppData/Local/Temp/claude/1bdbf0b7223717e2/5885a9d4-6837-49
+29872 wsl.exe 16.11.2026 22:12:25 "C:\Windows\system32\wsl.exe" -d tbound-dev --cd /home/tbound --exec bash /mnt/c/Users/Admin/AppData/Local/Temp/claude/1bdbf0b7223717e2/5885a9d4-6837-
+39708 wsl.exe 16.11.2026 22:12:25 "C:\Windows\system32\wsl.exe" -d tbound-dev --cd /home/tbound --exec bash /mnt/c/Users/Admin/AppData/Local/Temp/claude/1bdbf0b7223717e2/5885a9d4-6837-
+=== 2026-11-16T22:19:07.9707550+01:00
+6156 MsMpEng.exe 16.11.2026 16:49:03 
+33064 SearchProtocolHost.exe 16.11.2026 19:55:09 
+10348 wsl.exe 16.11.2026 21:25:04 C:\Windows\system32\wsl.exe -d tbound-dev --cd /home/tbound --exec bash -c "set -u
+GO=/home/tbound/toolchains/go1.27.1/bin/go
+W=/home/tbound/tbound-wo
+42504 wsl.exe 16.11.2026 21:25:04 C:\Windows\system32\wsl.exe -d tbound-dev --cd /home/tbound --exec bash -c "set -u
+GO=/home/tbound/toolchains/go1.27.1/bin/go
+W=/home/tbound/tbound-wo
+35108 wsl.exe 16.11.2026 22:10:42 C:\Windows\system32\wsl.exe -d tbound-dev --cd /home/tbound --exec bash /mnt/c/Users/Admin/AppData/Local/Temp/claude/1bdbf0b7223717e2/5885a9d4-6837-49
+38408 grep.exe 16.11.2026 22:10:42 "C:\Program Files\Git\usr\bin\grep.exe" -v "screen size"
+36732 wsl.exe 16.11.2026 22:10:42 C:\Windows\system32\wsl.exe -d tbound-dev --cd /home/tbound --exec bash /mnt/c/Users/Admin/AppData/Local/Temp/claude/1bdbf0b7223717e2/5885a9d4-6837-49
+29872 wsl.exe 16.11.2026 22:12:25 "C:\Windows\system32\wsl.exe" -d tbound-dev --cd /home/tbound --exec bash /mnt/c/Users/Admin/AppData/Local/Temp/claude/1bdbf0b7223717e2/5885a9d4-6837-
+39708 wsl.exe 16.11.2026 22:12:25 "C:\Windows\system32\wsl.exe" -d tbound-dev --cd /home/tbound --exec bash /mnt/c/Users/Admin/AppData/Local/Temp/claude/1bdbf0b7223717e2/5885a9d4-6837-
+=== 2026-11-16T22:24:08.0933483+01:00
+6156 MsMpEng.exe 16.11.2026 16:49:03 
+33064 SearchProtocolHost.exe 16.11.2026 19:55:09 
+10348 wsl.exe 16.11.2026 21:25:04 C:\Windows\system32\wsl.exe -d tbound-dev --cd /home/tbound --exec bash -c "set -u
+GO=/home/tbound/toolchains/go1.27.1/bin/go
+W=/home/tbound/tbound-wo
+42504 wsl.exe 16.11.2026 21:25:04 C:\Windows\system32\wsl.exe -d tbound-dev --cd /home/tbound --exec bash -c "set -u
+GO=/home/tbound/toolchains/go1.27.1/bin/go
+W=/home/tbound/tbound-wo
+35108 wsl.exe 16.11.2026 22:10:42 C:\Windows\system32\wsl.exe -d tbound-dev --cd /home/tbound --exec bash /mnt/c/Users/Admin/AppData/Local/Temp/claude/1bdbf0b7223717e2/5885a9d4-6837-49
+38408 grep.exe 16.11.2026 22:10:42 "C:\Program Files\Git\usr\bin\grep.exe" -v "screen size"
+36732 wsl.exe 16.11.2026 22:10:42 C:\Windows\system32\wsl.exe -d tbound-dev --cd /home/tbound --exec bash /mnt/c/Users/Admin/AppData/Local/Temp/claude/1bdbf0b7223717e2/5885a9d4-6837-49
+29872 wsl.exe 16.11.2026 22:12:25 "C:\Windows\system32\wsl.exe" -d tbound-dev --cd /home/tbound --exec bash /mnt/c/Users/Admin/AppData/Local/Temp/claude/1bdbf0b7223717e2/5885a9d4-6837-
+39708 wsl.exe 16.11.2026 22:12:25 "C:\Windows\system32\wsl.exe" -d tbound-dev --cd /home/tbound --exec bash /mnt/c/Users/Admin/AppData/Local/Temp/claude/1bdbf0b7223717e2/5885a9d4-6837-
+=== 2026-11-16T22:29:08.2305993+01:00
+6156 MsMpEng.exe 16.11.2026 16:49:03 
+33064 SearchProtocolHost.exe 16.11.2026 19:55:09 
+10348 wsl.exe 16.11.2026 21:25:04 C:\Windows\system32\wsl.exe -d tbound-dev --cd /home/tbound --exec bash -c "set -u
+GO=/home/tbound/toolchains/go1.27.1/bin/go
+W=/home/tbound/tbound-wo
+42504 wsl.exe 16.11.2026 21:25:04 C:\Windows\system32\wsl.exe -d tbound-dev --cd /home/tbound --exec bash -c "set -u
+GO=/home/tbound/toolchains/go1.27.1/bin/go
+W=/home/tbound/tbound-wo
+35108 wsl.exe 16.11.2026 22:10:42 C:\Windows\system32\wsl.exe -d tbound-dev --cd /home/tbound --exec bash /mnt/c/Users/Admin/AppData/Local/Temp/claude/1bdbf0b7223717e2/5885a9d4-6837-49
+38408 grep.exe 16.11.2026 22:10:42 "C:\Program Files\Git\usr\bin\grep.exe" -v "screen size"
+36732 wsl.exe 16.11.2026 22:10:42 C:\Windows\system32\wsl.exe -d tbound-dev --cd /home/tbound --exec bash /mnt/c/Users/Admin/AppData/Local/Temp/claude/1bdbf0b7223717e2/5885a9d4-6837-49
+29872 wsl.exe 16.11.2026 22:12:25 "C:\Windows\system32\wsl.exe" -d tbound-dev --cd /home/tbound --exec bash /mnt/c/Users/Admin/AppData/Local/Temp/claude/1bdbf0b7223717e2/5885a9d4-6837-
+39708 wsl.exe 16.11.2026 22:12:25 "C:\Windows\system32\wsl.exe" -d tbound-dev --cd /home/tbound --exec bash /mnt/c/Users/Admin/AppData/Local/Temp/claude/1bdbf0b7223717e2/5885a9d4-6837-
+=== 2026-11-16T22:34:08.3057621+01:00
+6156 MsMpEng.exe 16.11.2026 16:49:03 
+33064 SearchProtocolHost.exe 16.11.2026 19:55:09 
+10348 wsl.exe 16.11.2026 21:25:04 C:\Windows\system32\wsl.exe -d tbound-dev --cd /home/tbound --exec bash -c "set -u
+GO=/home/tbound/toolchains/go1.27.1/bin/go
+W=/home/tbound/tbound-wo
+42504 wsl.exe 16.11.2026 21:25:04 C:\Windows\system32\wsl.exe -d tbound-dev --cd /home/tbound --exec bash -c "set -u
+GO=/home/tbound/toolchains/go1.27.1/bin/go
+W=/home/tbound/tbound-wo
+35108 wsl.exe 16.11.2026 22:10:42 C:\Windows\system32\wsl.exe -d tbound-dev --cd /home/tbound --exec bash /mnt/c/Users/Admin/AppData/Local/Temp/claude/1bdbf0b7223717e2/5885a9d4-6837-49
+38408 grep.exe 16.11.2026 22:10:42 "C:\Program Files\Git\usr\bin\grep.exe" -v "screen size"
+36732 wsl.exe 16.11.2026 22:10:42 C:\Windows\system32\wsl.exe -d tbound-dev --cd /home/tbound --exec bash /mnt/c/Users/Admin/AppData/Local/Temp/claude/1bdbf0b7223717e2/5885a9d4-6837-49
+29872 wsl.exe 16.11.2026 22:12:25 "C:\Windows\system32\wsl.exe" -d tbound-dev --cd /home/tbound --exec bash /mnt/c/Users/Admin/AppData/Local/Temp/claude/1bdbf0b7223717e2/5885a9d4-6837-
+39708 wsl.exe 16.11.2026 22:12:25 "C:\Windows\system32\wsl.exe" -d tbound-dev --cd /home/tbound --exec bash /mnt/c/Users/Admin/AppData/Local/Temp/claude/1bdbf0b7223717e2/5885a9d4-6837-
+=== 2026-11-16T22:39:08.3859139+01:00
+6156 MsMpEng.exe 16.11.2026 16:49:03 
+33064 SearchProtocolHost.exe 16.11.2026 19:55:09 
+10348 wsl.exe 16.11.2026 21:25:04 C:\Windows\system32\wsl.exe -d tbound-dev --cd /home/tbound --exec bash -c "set -u
+GO=/home/tbound/toolchains/go1.27.1/bin/go
+W=/home/tbound/tbound-wo
+42504 wsl.exe 16.11.2026 21:25:04 C:\Windows\system32\wsl.exe -d tbound-dev --cd /home/tbound --exec bash -c "set -u
+GO=/home/tbound/toolchains/go1.27.1/bin/go
+W=/home/tbound/tbound-wo
+29872 wsl.exe 16.11.2026 22:12:25 "C:\Windows\system32\wsl.exe" -d tbound-dev --cd /home/tbound --exec bash /mnt/c/Users/Admin/AppData/Local/Temp/claude/1bdbf0b7223717e2/5885a9d4-6837-
+39708 wsl.exe 16.11.2026 22:12:25 "C:\Windows\system32\wsl.exe" -d tbound-dev --cd /home/tbound --exec bash /mnt/c/Users/Admin/AppData/Local/Temp/claude/1bdbf0b7223717e2/5885a9d4-6837-
+=== 2026-11-16T22:44:08.5052997+01:00
+6156 MsMpEng.exe 16.11.2026 16:49:03 
+33064 SearchProtocolHost.exe 16.11.2026 19:55:09 
+=== 2026-11-16T22:49:08.6288983+01:00
+6156 MsMpEng.exe 16.11.2026 16:49:03 
+33064 SearchProtocolHost.exe 16.11.2026 19:55:09 
+=== 2026-11-16T22:54:08.7454016+01:00
+6156 MsMpEng.exe 16.11.2026 16:49:03 
+33064 SearchProtocolHost.exe 16.11.2026 19:55:09 
+=== 2026-11-16T22:59:08.8615749+01:00
+6156 MsMpEng.exe 16.11.2026 16:49:03 
+33064 SearchProtocolHost.exe 16.11.2026 19:55:09 
+=== 2026-11-16T23:04:08.9689925+01:00
+6156 MsMpEng.exe 16.11.2026 16:49:03 
+33064 SearchProtocolHost.exe 16.11.2026 19:55:09 
+=== 2026-11-16T23:09:09.0920890+01:00
+6156 MsMpEng.exe 16.11.2026 16:49:03 
+33064 SearchProtocolHost.exe 16.11.2026 19:55:09 
+=== 2026-11-16T23:14:09.2041860+01:00
+6156 MsMpEng.exe 16.11.2026 16:49:03 
+33064 SearchProtocolHost.exe 16.11.2026 19:55:09 
+=== 2026-11-16T23:19:09.3255443+01:00
+6156 MsMpEng.exe 16.11.2026 16:49:03 
+33064 SearchProtocolHost.exe 16.11.2026 19:55:09 
+=== 2026-11-16T23:24:09.4512529+01:00
+6156 MsMpEng.exe 16.11.2026 16:49:03 
+33064 SearchProtocolHost.exe 16.11.2026 19:55:09 
+=== 2026-11-16T23:29:09.5756526+01:00
+6156 MsMpEng.exe 16.11.2026 16:49:03 
+33064 SearchProtocolHost.exe 16.11.2026 19:55:09 
+=== 2026-11-16T23:34:09.6629072+01:00
+6156 MsMpEng.exe 16.11.2026 16:49:03 
+33064 SearchProtocolHost.exe 16.11.2026 19:55:09 
+=== 2026-11-16T23:39:09.7839682+01:00
+6156 MsMpEng.exe 16.11.2026 16:49:03 
+33064 SearchProtocolHost.exe 16.11.2026 19:55:09 
+=== 2026-11-16T23:44:09.9057796+01:00
+6156 MsMpEng.exe 16.11.2026 16:49:03 
+33064 SearchProtocolHost.exe 16.11.2026 19:55:09 
+=== 2026-11-16T23:49:10.0224657+01:00
+6156 MsMpEng.exe 16.11.2026 16:49:03 
+33064 SearchProtocolHost.exe 16.11.2026 19:55:09 
+=== 2026-11-16T23:54:10.1540657+01:00
+6156 MsMpEng.exe 16.11.2026 16:49:03 
+33064 SearchProtocolHost.exe 16.11.2026 19:55:09 
+=== 2026-11-16T23:59:10.2836527+01:00
+6156 MsMpEng.exe 16.11.2026 16:49:03 
+33064 SearchProtocolHost.exe 16.11.2026 19:55:09 
+=== 2026-11-17T00:04:10.4095132+01:00
+6156 MsMpEng.exe 16.11.2026 16:49:03 
+33064 SearchProtocolHost.exe 16.11.2026 19:55:09 

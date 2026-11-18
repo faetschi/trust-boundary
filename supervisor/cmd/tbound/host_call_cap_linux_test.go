@@ -4,8 +4,8 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"tbound/supervisor/internal/audit"
@@ -58,54 +58,58 @@ func hostCallCapWorkflow(t *testing.T, turns []providerbridge.DevelopmentProvide
 	return f
 }
 
-// requireAbandonableCapEnd checks that the refused provider turn left the checkpoint in the state abandon
-// reconciles: hostCalls charged, the last one reserved and closed by an unknown exchange, no captured or
-// pending call, and the previous effect terminal.
-func requireAbandonableCapEnd(t *testing.T, f *workflowVerticalFixture, err error, hostCalls uint64) {
+// requireTypedCapEnd checks the typed budget end: the last provider call went out with tools disabled, the
+// tool call the offline provider still returned was refused and never captured, and the turn ended as the
+// final reply. The checkpoint has every host call settled and nothing pending, the receipt lineage shows the
+// tools-disabled call and the refused call, and the governed verifier accepts the journal.
+func requireTypedCapEnd(t *testing.T, f *workflowVerticalFixture, turn providerbridge.Turn, err error, hostCalls uint64, reads int) {
 	t.Helper()
-	if !errors.Is(err, providerbridge.ErrNoHostCallForToolEffect) {
-		t.Fatalf("provider turn = %v, want ErrNoHostCallForToolEffect", err)
+	if err != nil || turn.ToolCall != nil || turn.FinishReason != "stop" {
+		t.Fatalf("last provider turn = %+v, %v; want the refused call to end the turn", turn, err)
 	}
 	checkpoint, _ := f.ledger.Snapshot()
 	call := checkpoint.Pins.HostCallReservation
-	if checkpoint.Counters.HostCalls != hostCalls || call == nil || call.Disposition != workflowrecovery.HostCallReserved ||
-		call.CapturedCall != nil || checkpoint.Pins.PendingCallDisposition != workflowrecovery.PendingCallTerminal ||
-		checkpoint.Pins.EffectReservation == nil ||
-		checkpoint.Pins.EffectReservation.Disposition != workflowrecovery.EffectReservationTerminal {
-		t.Fatalf("checkpoint after the refused tool call: pins=%+v counters=%+v", checkpoint.Pins, checkpoint.Counters)
+	if checkpoint.Counters.HostCalls != hostCalls || call == nil || call.Disposition != workflowrecovery.HostCallTerminal ||
+		call.CapturedCall != nil || checkpoint.Pins.PendingCallDisposition != workflowrecovery.PendingCallTerminal {
+		t.Fatalf("checkpoint after the typed end: pins=%+v counters=%+v", checkpoint.Pins, checkpoint.Counters)
 	}
 	trace, traceErr := f.providerJournal.Trace()
 	if traceErr != nil {
 		t.Fatal(traceErr)
 	}
-	if !unknownExchangeClosesHostCall(checkpoint, trace, workflowVerticalID, workflowVerticalConversation) {
-		t.Fatal("the provider journal does not close the reserved host call as unknown")
+	var receipt productionPiReceipt
+	if err := applyProviderLineage(&receipt, trace, f.config.Route); err != nil {
+		t.Fatal(err)
 	}
-	if err := validateSettledServiceDisposition(checkpoint.Pins, workflowVerticalConversation, true, false, false, false); err != nil {
-		t.Fatalf("abandon would refuse the checkpoint: %v", err)
+	encoded, _ := json.Marshal(receipt)
+	if len(receipt.ToolSequence) != reads || !strings.Contains(string(encoded), `"tools_disabled_calls":1`) ||
+		!strings.Contains(string(encoded), `"refused_tool_calls":1`) {
+		t.Fatalf("receipt lineage %s, want %d tools, one tools-disabled call and one refused call", encoded, reads)
+	}
+	if _, err := f.authority.resolveFromTrace(trace, "no-such-decision"); err == nil || !strings.Contains(err.Error(), "maps to 0 provider captures") {
+		t.Fatalf("governed verifier did not walk the typed-end journal: %v", err)
 	}
 }
 
-// F26 unit 90: three read turns charge 6 of 7 host calls, the fourth provider call takes the 7th and
-// returns a tool call. It used to be captured, its effect reservation was refused, and the call stayed
-// pending, a state abandon cannot settle. Now the call is never captured.
-func TestHostCallCapToolCallOnTheLastHostCallLeavesNoPendingCall(t *testing.T) {
+// F26 unit 90 and F29 units 63 and 90: three read turns charge 6 of 7 host calls and the fourth provider call
+// takes the 7th. It is sent with tools disabled; the offline provider returns a tool call anyway, which is
+// refused, so the run ends with a complete final turn instead of UNKNOWN.
+func TestHostCallCapToolCallOnTheLastHostCallEndsTyped(t *testing.T) {
 	f := hostCallCapWorkflow(t, []providerbridge.DevelopmentProviderTurn{capRead(1), capRead(2), capRead(3), capRead(4)}, 3)
-	_, err := f.conversation.NextTurn(f.ctx)
-	requireAbandonableCapEnd(t, f, err, 7)
+	turn, err := f.conversation.NextTurn(f.ctx)
+	requireTypedCapEnd(t, f, turn, err, 7, 3)
 }
 
 // A retried exchange charges a host call without an effect, so the provider calls move to even host-call
-// numbers. The third read is then the 6th host call: captured, its effect would take the 7th and the
-// provider call that returns its result could not be reserved, which leaves nothing reserved for abandon
-// to close. Now that read is refused like the unit-90 call.
-func TestHostCallCapToolCallAfterARetryLeavesNoUnreservableResultTurn(t *testing.T) {
+// numbers. The third read is then the 6th host call with 2 left: the effect would take the 7th and the call
+// that returns its result could not be reserved, so it goes out with tools disabled and ends typed too.
+func TestHostCallCapToolCallAfterARetryEndsTyped(t *testing.T) {
 	f := hostCallCapWorkflow(t, []providerbridge.DevelopmentProviderTurn{capRetryable, capRead(1), capRead(2), capRead(3)}, 2)
 	if checkpoint, _ := f.ledger.Snapshot(); checkpoint.Counters.HostCalls != 5 {
 		t.Fatalf("a retry and two read turns charged %d host calls, want 5", checkpoint.Counters.HostCalls)
 	}
-	_, err := f.conversation.NextTurn(f.ctx)
-	requireAbandonableCapEnd(t, f, err, 6)
+	turn, err := f.conversation.NextTurn(f.ctx)
+	requireTypedCapEnd(t, f, turn, err, 6, 2)
 }
 
 // The three-tool compliant pattern of F26 (8 of 22 done units): the fourth provider call takes the last

@@ -1,6 +1,9 @@
 # TBound documentation
 
-Start with [USAGE](../USAGE.md) for the user workflow. [OVERVIEW](../OVERVIEW.md)
+Start with the [quickstart](guides/quickstart.md) to build and check the code,
+then [USAGE](../USAGE.md) for the user workflow. Terms are in the
+[glossary](glossary.md), commands in the [command reference](cli.md), and study
+records in the [research index](research/README.md). [OVERVIEW](../OVERVIEW.md)
 is the only current-state file. TBound runs one fixed, signed Pi task per service
 configuration, or registered cases in corpus mode. There is no interactive Pi
 chat mode. The product service runs a governed chat with the supervisor loop,
@@ -24,6 +27,7 @@ product plan and status pages are in git history, not current instructions.
 
 ## [Guides](guides/): install, run, reproduce
 
+- [Quickstart](guides/quickstart.md): build, run the checks, and try the Go-only fixture on a fresh Linux machine.
 - [Setup](guides/setup.md): host requirements, Pi and TBound installation, Doctor, fixtures.
 - [Governed host setup](guides/governed-setup.md): host, profile, template, and live-root contracts; retains older design notes.
 - [Self-contained workspace](guides/self-contained-workspace.md): what lives where, and continuing on another machine.
@@ -59,7 +63,7 @@ product plan and status pages are in git history, not current instructions.
 - [Owner protocol decisions, 2026-10-29](evaluation/owner-protocol-decisions-2026-10-29.md): current D35, D26, T5, T7, and AMB-02 policy, superseding advisor prerequisites.
 - [Pilot corpus](../corpus/pilot/README.md): adapted cases, licenses, artifacts, quotas, optional review metadata, and pending construct evidence.
 - [G1 case](../corpus/g1/README.md): the engineering read, edit, Bash, and publish check.
-- [Master thesis](../README.md#master-thesis): the separate protocol repository, hypotheses, methods, and decision register.
+- [Research index](research/README.md): the study records, the thesis repository, and what counts as a result.
 
 The critical proof path is full deterministic construct checks, including
 applicable guest witnesses, then preregistered H1. The supervisor is

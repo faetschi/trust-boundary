@@ -3,15 +3,13 @@
 
 // Exercise the actual checked-in launcher without npm install/network by running
 // it in a VM with local fake optional-dependency metadata and a recording
-// spawnSync. The test explicitly models the win32 path module, so .exe selection
-// is tested on any host OS.
+// spawnSync. The launcher ships the Linux amd64 binary only.
 const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
 const launcherPath = path.resolve(__dirname, "../../packaging/npm/bin/tbound.js");
 const source = fs.readFileSync(launcherPath, "utf8");
-const hostPath = require("node:path");
 
 let passed = 0;
 let failed = 0;
@@ -28,7 +26,6 @@ function runCase({ platform, arch, args, installed = true, spawnError = null }) 
   const calls = [];
   const errors = [];
   let exitCode = null;
-  const platformPath = platform === "win32" ? hostPath.win32 : hostPath.posix;
   const fakeProcess = {
     platform,
     arch,
@@ -47,16 +44,13 @@ function runCase({ platform, arch, args, installed = true, spawnError = null }) 
         },
       };
     }
-    if (id === "node:path") return platformPath;
+    if (id === "node:path") return path.posix;
     throw new Error(`unexpected require ${id}`);
   };
   fakeRequire.resolve = (id) => {
     const match = /^@tbound\/cli-([^/]+)\/package\.json$/.exec(id);
     if (!match || !installed) throw new Error("optional package not installed");
-    const name = match[1];
-    return platform === "win32"
-      ? `C:\\fake\\node_modules\\@tbound\\cli-${name}\\package.json`
-      : `/fake/node_modules/@tbound/cli-${name}/package.json`;
+    return `/fake/node_modules/@tbound/cli-${match[1]}/package.json`;
   };
   const sandbox = {
     require: fakeRequire,
@@ -68,7 +62,7 @@ function runCase({ platform, arch, args, installed = true, spawnError = null }) 
   } catch (error) {
     if (error.message !== "TEST_PROCESS_EXIT") throw error;
   }
-  return { calls, errors, exitCode, platformPath };
+  return { calls, errors, exitCode };
 }
 
 function assertDispatch(label, opts, expectedBinary, expectedArgs) {
@@ -81,6 +75,16 @@ function assertDispatch(label, opts, expectedBinary, expectedArgs) {
     return;
   }
   ok(label);
+}
+
+function assertRefused(label, opts, expectedMessage) {
+  const result = runCase(opts);
+  if (result.exitCode === 1 && result.calls.length === 0 &&
+      result.errors.some((message) => message.includes(expectedMessage))) {
+    ok(label);
+    return;
+  }
+  bad(label, JSON.stringify(result));
 }
 
 console.log("verify-npm-launcher: actual wrapper in a local VM harness");
@@ -102,34 +106,27 @@ assertDispatch(
   "/fake/node_modules/@tbound/cli-linux-x64/bin/tbound",
   ["serve", "--pi"],
 );
-assertDispatch(
-  "Windows profile chooses the .exe binary using Windows path semantics",
-  { platform: "win32", arch: "x64", args: ["profile", "--help"] },
-  "C:\\fake\\node_modules\\@tbound\\cli-win32-x64\\bin\\tbound-profile.exe",
-  ["--help"],
-);
-assertDispatch(
-  "Windows doctor chooses the .exe binary using Windows path semantics",
-  { platform: "win32", arch: "x64", args: ["doctor", "--json"] },
-  "C:\\fake\\node_modules\\@tbound\\cli-win32-x64\\bin\\tbound-doctor.exe",
-  ["--json"],
-);
 
-const unsupported = runCase({ platform: "linux", arch: "arm64", args: ["doctor"] });
-if (unsupported.exitCode === 1 && unsupported.calls.length === 0 &&
-    unsupported.errors.some((message) => message.includes("does not ship a binary for linux-arm64"))) {
-  ok("unsupported Linux arm64 fails clearly without spawning");
-} else {
-  bad("unsupported Linux arm64 fails clearly without spawning", JSON.stringify(unsupported));
-}
-
-const absent = runCase({ platform: "darwin", arch: "x64", args: ["profile"], installed: false });
-if (absent.exitCode === 1 && absent.calls.length === 0 &&
-    absent.errors.some((message) => message.includes("platform package @tbound/cli-darwin-x64 is not installed"))) {
-  ok("missing platform optional dependency fails clearly");
-} else {
-  bad("missing platform optional dependency fails clearly", JSON.stringify(absent));
-}
+assertRefused(
+  "unsupported Linux arm64 fails clearly without spawning",
+  { platform: "linux", arch: "arm64", args: ["doctor"] },
+  "does not ship a binary for linux-arm64",
+);
+assertRefused(
+  "darwin is refused without spawning",
+  { platform: "darwin", arch: "arm64", args: ["profile"] },
+  "does not ship a binary for darwin-arm64",
+);
+assertRefused(
+  "win32 is refused without spawning",
+  { platform: "win32", arch: "x64", args: ["doctor"] },
+  "does not ship a binary for win32-x64",
+);
+assertRefused(
+  "missing Linux platform package fails clearly",
+  { platform: "linux", arch: "x64", args: ["profile"], installed: false },
+  "platform package @tbound/cli-linux-x64 is not installed",
+);
 
 const spawnFailure = runCase({
   platform: "linux", arch: "x64", args: ["profile"], spawnError: new Error("ENOENT"),

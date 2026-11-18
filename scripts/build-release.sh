@@ -114,7 +114,7 @@ for target in "${TARGETS[@]}"; do
   stage="$WORK/stage-$os-$arch"
   rm -rf "$stage"; mkdir -p "$stage/bin"
   echo "build-release: building $os/$arch"
-  ( cd "$ROOT/supervisor" && GOOS="$os" GOARCH="$arch" CGO_ENABLED=0 "$GO" build -trimpath -o "$stage/bin/$bin" ./cmd/tbound )
+  ( cd "$ROOT/supervisor" && GOOS="$os" GOARCH="$arch" CGO_ENABLED=0 "$GO" build -trimpath -ldflags "-X main.version=$VERSION" -o "$stage/bin/$bin" ./cmd/tbound )
   ( cd "$ROOT/supervisor" && GOOS="$os" GOARCH="$arch" CGO_ENABLED=0 "$GO" build -trimpath -o "$stage/bin/$exe" ./cmd/tbound-doctor )
   ( cd "$ROOT/supervisor" && GOOS="$os" GOARCH="$arch" CGO_ENABLED=0 "$GO" build -trimpath -o "$stage/bin/$prof" ./cmd/tbound-profile )
   if [ "$os" = "linux" ] && [ "$arch" = "amd64" ]; then

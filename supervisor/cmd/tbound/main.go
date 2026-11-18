@@ -19,6 +19,32 @@ import (
 
 var ErrRuntimeNotConfigured = errors.New("provider broker, durable audit, and contained executor are not configured")
 
+var errNoCommand = errors.New("no command given: run tbound --help")
+
+// version is stamped by scripts/build-release.sh; a plain go build reports devel.
+var version = "devel"
+
+const helpText = `tbound runs Pi coding tasks under a governed Linux supervisor.
+
+Usage:
+  tbound <command> [flags]
+  tbound --help
+  tbound --version
+
+Commands:
+  serve            run one registered task through the governed service (Linux)
+  chat             interactive governed chat through the product service (Linux)
+  provider         manage model-provider credentials for the product service
+  project          bundle, import and export a managed project
+  product          product host administration: setup, update, doctor, turns
+  release          verify release manifests and signatures
+  abandon-unknown  reconcile a run whose outcome is unknown (Linux, root)
+  verify-retained  re-check a completed run's retained evidence (Linux, root)
+
+Run "tbound <command> --help" for a command's flags.
+Diagnostics: tbound-doctor. Documentation: https://github.com/faetschi/trust-boundary
+`
+
 // Keep the original cmd/tbound construction names source-compatible while the
 // implementation is importable by the native host composition root.
 type Broker = piruntime.Broker
@@ -29,6 +55,9 @@ type Supervisor = piruntime.Supervisor
 
 func main() {
 	if err := run(os.Args[1:], os.Stdout, os.Stderr); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return
+		}
 		fmt.Fprintln(os.Stderr, err)
 		var exit interface{ ExitCode() int }
 		if errors.As(err, &exit) {
@@ -39,6 +68,18 @@ func main() {
 }
 
 func run(args []string, transcript io.Writer, stderr io.Writer) error {
+	if len(args) == 0 {
+		fmt.Fprint(stderr, helpText)
+		return errNoCommand
+	}
+	if args[0] == "--help" || args[0] == "-help" || args[0] == "-h" || args[0] == "help" {
+		fmt.Fprint(transcript, helpText)
+		return nil
+	}
+	if args[0] == "--version" || args[0] == "-version" || args[0] == "version" {
+		fmt.Fprintf(transcript, "tbound %s\n", version)
+		return nil
+	}
 	if len(args) > 0 && args[0] == "provider" {
 		return runProvider(args[1:], transcript, stderr)
 	}

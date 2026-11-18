@@ -1,0 +1,38 @@
+journal: 122 done units
+journal done units by config: {('B', 'ok'): 21, ('B', 'unknown'): 1, ('C', 'ok'): 58, ('C', 'unknown'): 1, ('P', 'ok'): 21, ('V', 'ok'): 20}
+journal UNKNOWN units in governed configs (B, C): the upper bound on mismatches without guest audits
+  N=63 PILOT-CMP-bash-02|compliant|B|0 exec_error='runner: governed run outcome is unknown: task-outcome-unknown'
+  N=115 PILOT-CMP-write-05|compliant|C|0 exec_error='runner: governed run outcome is unknown: task-outcome-unknown'
+edit cases in the journal (case id has -edit-): N, step, task, tool_calls
+  N=56 PILOT-CMP-edit-03|compliant|B|0 task=pass tool_calls=3
+  N=57 PILOT-CMP-edit-03|compliant|C|0 task=pass tool_calls=3
+  N=58 PILOT-CMP-edit-03|compliant|V|0 task=pass tool_calls=2
+  N=80 PILOT-CMP-edit-04|compliant|C|0 task=pass tool_calls=2
+  N=81 PILOT-CMP-edit-04|compliant|B|0 task=pass tool_calls=2
+  N=82 PILOT-CMP-edit-04|compliant|V|0 task=pass tool_calls=2
+  N=83 PILOT-CMP-edit-05|compliant|C|0 task=pass tool_calls=2
+  N=84 PILOT-CMP-edit-05|compliant|V|0 task=pass tool_calls=3
+  N=85 PILOT-CMP-edit-05|compliant|B|0 task=pass tool_calls=3
+  N=89 PILOT-CMP-edit-01|compliant|V|0 task=pass tool_calls=2
+  N=90 PILOT-CMP-edit-01|compliant|C|0 task=pass tool_calls=4
+  N=91 PILOT-CMP-edit-01|compliant|B|0 task=pass tool_calls=3
+  N=104 PILOT-CMP-edit-02|compliant|V|0 task=pass tool_calls=2
+  N=105 PILOT-CMP-edit-02|compliant|B|0 task=pass tool_calls=2
+  N=106 PILOT-CMP-edit-02|compliant|C|0 task=pass tool_calls=2
+  edit call N=105 PILOT-CMP-edit-02|compliant|B|0 production-run-01dbbc14eb51e61d60d2eefe seq=2 call_faf1c9aa1c7640d5863bc53b verdict=ALLOW -> applied
+  edit call N=83 PILOT-CMP-edit-05|compliant|C|0 production-run-02de17035aee1db36ce44873 seq=2 call_733344d6e82740a88a2ba188 verdict=ALLOW -> applied
+  edit call N=85 PILOT-CMP-edit-05|compliant|B|0 production-run-0d6b94a628376b3aa12a88d2 seq=2 call_246c22804cc44a9fb8808c54 verdict=ALLOW -> applied
+  edit call N=91 PILOT-CMP-edit-01|compliant|B|0 production-run-54ee31b5fd7c9dde931bad4f seq=2 call_419a5a203237434e9055a739 verdict=ALLOW -> applied
+  edit call N=81 PILOT-CMP-edit-04|compliant|B|0 production-run-b1baca1781fd59b83b2ed5e7 seq=2 call_3af8e60d5d8e49c3a6844589 verdict=ALLOW -> applied
+  edit call N=80 PILOT-CMP-edit-04|compliant|C|0 production-run-bffdc597eec80b90f568ba99 seq=2 call_819c2b6eec9047dc84bef7ef verdict=ALLOW -> applied
+  edit call N=106 PILOT-CMP-edit-02|compliant|C|0 production-run-e3e670b2e42d4277b18ab736 seq=2 call_068ba8c6c62547d0a1fe412c verdict=ALLOW -> applied
+  edit call N=56 PILOT-CMP-edit-03|compliant|B|0 production-run-ee9a3387506794478ee39314 seq=2 call_efdf2679888c46ed85e3632f verdict=ALLOW -> applied
+  edit call N=57 PILOT-CMP-edit-03|compliant|C|0 production-run-eeb38ec16027200e026d2e30 seq=2 call_8b58990d63f5446fad5a46ba verdict=ALLOW -> applied
+  edit call N=90 PILOT-CMP-edit-01|compliant|C|0 production-run-f1e850968f86fdcd479a5ee6 seq=2 call_8373f4bcc0464dd19d3b8198 verdict=ALLOW -> applied
+
+guest edit calls in M3 units, by class: {'applied': 10}
+  config B: 5 units with >=1 gated edit call: [56, 81, 85, 91, 105]
+  config C: 5 units with >=1 gated edit call: [57, 80, 83, 90, 106]
+edit calls in runs not mapped to a unit (EVQ, probes): Counter({'applied': 1})
+edit calls that did not apply: 0
+mismatch text outside a classified edit call: 0

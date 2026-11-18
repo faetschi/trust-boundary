@@ -1,4 +1,4 @@
-# `@tbound/cli` (npm distribution skeleton)
+# `@tbound/cli` (npm package, not yet published)
 
 This package installs the `tbound` command next to your Pi coding agent via the
 standard "root package + platform optional dependencies" pattern (like esbuild):
@@ -14,6 +14,9 @@ standard "root package + platform optional dependencies" pattern (like esbuild):
 `bin/tbound.js` only locates the platform binary and `exec`s it; it does no work
 of its own, so `npm i -g @tbound/cli` gives a `tbound` command without touching
 your Node or Pi installs.
+
+TBound supports Linux amd64 only. On macOS or native Windows there is no npm
+binary; run TBound inside a Linux VM or WSL.
 
 ## Subcommands
 
@@ -41,11 +44,22 @@ because the runtime does not build for linux/arm64 yet.
 
 ## Status
 
-Skeleton only. To publish you must:
+Not published yet. The plan is to publish the Linux platform package and then the
+root package after the first `v0.1.0` release is approved. Until then, build from
+source. The checked-in `package.json` has `"private": true`. The generated root
+package comes from `scripts/make-npm-packages.sh` and has **no** `private` flag, so
+review it before publishing.
 
-1. Build the per-platform binaries (`make release`).
-2. Create one platform package per target, each shipping `bin/tbound[-doctor|-profile]`.
-3. Publish the platform packages, then this root package.
+Linux amd64 only (decision 2026-11-16). `scripts/make-npm-packages.sh` skips
+non-Linux release tarballs, and the launcher refuses any other platform with a
+clear error. Release tarballs for darwin and windows are still built by
+`scripts/build-release.sh`; they are simply not packaged for npm.
 
-Until those are published, `@tbound/cli` cannot resolve a binary and will print a
-clear error. Build from source in the meantime (`docs/guides/setup.md`).
+To publish later you must:
+
+1. On a Linux amd64 host, build the release tarballs with `make build VERSION=<semver>`
+   (or `make release` for all targets).
+2. Generate the packages with `make npm-packages VERSION=<semver>`.
+3. Publish the platform packages, then the root package.
+
+Until then, build from source ([quickstart](../../docs/guides/quickstart.md)).

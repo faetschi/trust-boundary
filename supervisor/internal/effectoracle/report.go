@@ -11,7 +11,7 @@ import (
 
 // OracleVersion labels the report format and rule set. Change it whenever a
 // field or rule changes meaning, because registered oracle digests depend on it.
-const OracleVersion = "effectoracle/v3"
+const OracleVersion = "effectoracle/v4"
 
 // Instrument names the event source in Report.Instrument.
 const Instrument = "linux-inotify-recursive"
@@ -143,9 +143,11 @@ type Event struct {
 	Cookie uint32 `json:"cookie"`
 }
 
-// Fence is one open or read of the fence directory (Path is FenceDir) or of an entry in it, in the same sequence as
-// the other records. The observer's own snapshots are not recorded. Whether records are a fence of some process is for
-// the reader of the report to decide from the pattern: FenceBurst or more opens of the directory in a row.
+// Fence is one open or read of the fence directory (Path is FenceDir) or of an entry in it, or one listing of the root
+// (Path is ".", Op FenceAccess), in the same sequence as the other records. Every scan of the tree lists the root before
+// it reads the fence directory, so the listing separates the scans: scans in a row are not an alternation as long as a
+// fence. The observer's own snapshots are not recorded. Whether records are a fence of some process is for the reader of
+// the report to decide from the pattern: FenceBurst or more opens of the directory in a row.
 type Fence struct {
 	Seq   uint64 `json:"seq"`
 	AtNS  int64  `json:"at_ns"`

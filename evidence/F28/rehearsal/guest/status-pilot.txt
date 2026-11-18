@@ -1,0 +1,23 @@
+tbound-op status 2026-11-16T20:12:30Z pins F=40e651b1c661113e488dc5b28946bfb363b91fd7
+anchor: ok (pi-host-profile.pub sha256:be206a41ad321f29ef89e8157f69a6f0820a93fafa3096b71867ece745f9afac)
+runner: sha256:114d997893b3f3db tbound-profile: sha256:881c25683c608cb4
+service=active socket=active
+installed: cfg sha256:a2fceb75094a47cdc473bdf442fc6e1ff2933ed6f1eae16e72df597941457c4b reg sha256:51e0ea0065bd6c17 prof sha256:d7593e052e190205 tpl sha256:58bf77e857dff3f3
+installed config matches state of: pilot
+-- pilot:
+     cfg=sha256:a2fceb75094a47cdc473bdf442fc6e1ff2933ed6f1eae16e72df597941457c4b
+     prof=sha256:6184a8ca9849e8cc2606be570ce20688346fdbee9e11d3dd010b9798200306bc
+     profjson=sha256:d7593e052e1902051a55b1ec6734292b478181a49749d5952b76a3c3c29c314d
+     profsig=sha256:83fa61d1422054b2d68988e95a5cd5d6e6988f6275ed9abe5889e6265100099e
+     reg=sha256:f660cb6bb56afe07db3e2135d2adea29eb377db977bc507a04d16ccacc2b442c
+     regjson=sha256:51e0ea0065bd6c176e6338fdafe8d9cee27c0951a175fb59184c87f5bd36ecff
+     regsig=sha256:5d48367e2fb951d8c399dd985c6952ba7bce686f635b7a9afbb4aba00d462c44
+     state=started
+     td=sha256:58bf77e857dff3f3fabe75856bc0de7f3b70dee7467945ff4021f0e81b408dc0
+     tpl=sha256:58bf77e857dff3f3fabe75856bc0de7f3b70dee7467945ff4021f0e81b408dc0
+-- last log lines
+2026-11-16T20:12:09Z tboundadmin END rc=0 argv=collect audit production-run-fb8cb83aa130216d2179fe4d 
+2026-11-16T20:12:09Z tboundadmin BEGIN argv=collect audit production-run-fb95ea1ce489acac6aa749e5 
+2026-11-16T20:12:09Z tboundadmin OK collect audit production-run-fb95ea1ce489acac6aa749e5 
+2026-11-16T20:12:09Z tboundadmin END rc=0 argv=collect audit production-run-fb95ea1ce489acac6aa749e5 
+2026-11-16T20:12:30Z tboundadmin BEGIN argv=status pilot 

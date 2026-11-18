@@ -1,0 +1,12 @@
+plan_digest sha256:0f06777697af9e22f5e9675920bc0d171e2b59eb206c487b85cd8efa01f35a12
+planned_units 123
+units_used 123
+executed 33
+already_done 90
+abandoned 0
+setup_failures 0
+exec_failures 2
+remaining 0
+finished true
+stop ""
+spent_micro_usd 8680

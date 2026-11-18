@@ -27,7 +27,7 @@ You need:
   but does not guarantee Landlock ABI 8. If it exits 3, follow its kernel
   instructions, reboot, and rerun its checks before continuing.
 - A `tbound` binary you trust, installed from a checkout as in
-  [USAGE section 3](../../USAGE.md#3-install). Run those commands as your
+  [USAGE section 3](../../USAGE.md#3-installation). Run those commands as your
   unprivileged administrator login; the binary lands in
   `$HOME/.local/share/tbound/bin/tbound`. `make build` alone only writes a
   tarball to `dist/`. A release install also needs an independently trusted

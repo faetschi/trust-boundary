@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"net/http"
+	"reflect"
 
 	"tbound/supervisor/internal/broker"
 	"tbound/supervisor/internal/broker/openrouter"
@@ -21,8 +22,9 @@ import (
 //   - every attempt is its own reserved host call, charged against the workflow host-call and token
 //     ceilings; on the research route it is also its own USD reservation (SpendReservation.Attempt),
 //     and the refused attempt's reservation is marked uncertain, so its full worst case stays booked;
-//   - the resample must present the same request digest as the refused attempt. A host that would select
-//     another completion cap, or any refused reservation, stops the turn before dispatch;
+//   - the resample must present the same request digest as the refused attempt, or, when the typed budget end
+//     (register D56) turns tools off for it, the same request with tool_choice "none" (resampleRepeats). A host
+//     that would select another completion cap, or any refused reservation, stops the turn before dispatch;
 //   - at most MaxParallelCallResamples per turn, a bound shared with the pre-effect retries of retry.go;
 //     after it the last refused attempt takes the existing failure path (provider_exchange_unknown, the
 //     request ends UNKNOWN and H1 scores CONSERVATIVE_FAILURE);
@@ -33,6 +35,22 @@ import (
 const MaxParallelCallResamples = MaxProviderRetries
 
 var errResampleRequestChanged = errors.New("decision 13 resample: the request differs from the refused attempt")
+
+// resampleRepeats reports whether request repeats the refused attempt: the same request, or, when tools were on
+// for the refused attempt and the typed budget end turns them off, the same request with tool_choice "none" in
+// place of "auto". Message strings are JSON-escaped, so the first unescaped member is the request's own.
+func resampleRepeats(refused, request broker.RequestRecord) bool {
+	if broker.DigestRequestRecord(request) == broker.DigestRequestRecord(refused) {
+		return true
+	}
+	if !request.ToolsDisabled() || refused.ToolsDisabled() {
+		return false
+	}
+	body := bytes.Replace(refused.Body(), []byte(`"tool_choice":"auto"`), []byte(`"tool_choice":"none"`), 1)
+	return request.ProfileID() == refused.ProfileID() && request.Method() == refused.Method() && request.URL() == refused.URL() &&
+		request.Host() == refused.Host() && request.ContentLength() == refused.ContentLength() &&
+		reflect.DeepEqual(request.Header(), refused.Header()) && bytes.Equal(request.Body(), body)
+}
 
 // ParallelToolCallResample reports whether a journaled attempt is the decision 13 class: an HTTP 200
 // response whose capture on route is refused for a parallel tool call.

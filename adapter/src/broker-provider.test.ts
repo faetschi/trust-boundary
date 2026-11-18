@@ -125,6 +125,32 @@ test("Go turn projection must match its fixed model and finish/call shape", asyn
   serverDuplex.destroy();
 });
 
+// The typed budget end: a tool call refused on a tools-disabled request reaches Pi as a final turn with no text
+// and no call. It must end the turn as a stop, which ends Pi's agent loop like any text reply.
+test("an empty final turn ends as a stop with no content", async () => {
+  const [clientDuplex, serverDuplex] = duplexPair();
+  const runtime = createBrokerProvider(clientDuplex, { createAssistantMessageEventStream });
+  const reader = new FrameReader(serverDuplex);
+  const requestPromise = reader.next();
+  const stream = runtime.provider.stream(runtime.model, { messages: [] } as never, {});
+  const request = await requestPromise;
+  await writeFrame(serverDuplex, {
+    version: BROKER_CHANNEL_VERSION,
+    sequence: 1,
+    kind: "turn",
+    request_id: request.request_id,
+    turn: { ...makeTurn(1, "response-final"), assistant_text: "" },
+  });
+  const events: string[] = [];
+  for await (const event of stream) events.push(event.type);
+  const message = await stream.result();
+  assert.deepEqual(events, ["start", "done"]);
+  assert.equal(message.stopReason, "stop");
+  assert.deepEqual(message.content, []);
+  runtime.client.close();
+  serverDuplex.destroy();
+});
+
 test("provider cancellation sends only the matching bounded cancel frame", async () => {
   const [clientDuplex, serverDuplex] = duplexPair();
   const client = createBrokerProvider(clientDuplex, { createAssistantMessageEventStream }).client;

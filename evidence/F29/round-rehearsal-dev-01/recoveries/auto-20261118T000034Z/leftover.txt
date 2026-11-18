@@ -1,0 +1,4 @@
+time="2026-11-18T00:00:39Z" level=error msg="cannot find UID/GID for user tbound-pi: no subuid ranges found for user \"tbound-pi\" in /etc/subuid - check rootless mode in man pages."
+time="2026-11-18T00:00:39Z" level=warning msg="Using rootless single mapping into the namespace. This might break some images. Check /etc/subuid and /etc/subgid for adding sub*ids if not using a network user"
+CONTAINER ID  IMAGE       COMMAND     CREATED     STATUS      PORTS       NAMES
+time="2026-11-18T00:00:39Z" level=warning msg="Failed to add pause process to systemd sandbox cgroup: dbus: couldn't determine address of session bus"

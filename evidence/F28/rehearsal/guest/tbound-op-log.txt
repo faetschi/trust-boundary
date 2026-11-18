@@ -1,0 +1,443 @@
+-rw-r----- 1 root adm 643527 Nov 16 20:12 /var/log/tbound-op.log
+2026-11-15T18:52:11Z tboundadmin BEGIN argv=status g1 
+2026-11-15T18:52:11Z tboundadmin OK status g1 
+2026-11-15T18:52:11Z tboundadmin END rc=0 argv=status g1 
+2026-11-15T18:52:11Z tboundadmin BEGIN argv=collect requests 
+2026-11-15T18:52:11Z tboundadmin OK collect requests 
+2026-11-15T18:52:11Z tboundadmin END rc=0 argv=collect requests 
+2026-11-15T18:52:41Z tboundadmin BEGIN argv=collect catalog 
+2026-11-15T18:52:41Z tboundadmin OK collect catalog 
+2026-11-15T18:52:41Z tboundadmin END rc=0 argv=collect catalog 
+2026-11-15T18:52:50Z tboundadmin BEGIN argv=svc stop 
+2026-11-15T18:52:50Z tboundadmin OK svc stop 
+2026-11-15T18:52:50Z tboundadmin END rc=0 argv=svc stop 
+2026-11-15T18:53:00Z tboundadmin BEGIN argv=status g1 
+2026-11-15T18:53:00Z tboundadmin OK status g1 
+2026-11-15T18:53:00Z tboundadmin END rc=0 argv=status g1 
+2026-11-15T18:53:46Z tboundadmin BEGIN argv=status g1 
+2026-11-15T18:53:46Z tboundadmin OK status g1 
+2026-11-15T18:53:46Z tboundadmin END rc=0 argv=status g1 
+2026-11-15T18:54:59Z tboundadmin BEGIN argv=status 
+2026-11-15T18:54:59Z tboundadmin OK status 
+2026-11-15T18:54:59Z tboundadmin END rc=0 argv=status 
+2026-11-15T18:57:01Z tboundadmin BEGIN argv=status g1 
+2026-11-15T18:57:01Z tboundadmin OK status g1 
+2026-11-15T18:57:01Z tboundadmin END rc=0 argv=status g1 
+2026-11-15T18:57:22Z tboundadmin BEGIN argv=status g1 
+2026-11-15T18:57:22Z tboundadmin OK status g1 
+2026-11-15T18:57:22Z tboundadmin END rc=0 argv=status g1 
+2026-11-15T18:57:22Z tboundadmin BEGIN argv=status g1 
+2026-11-15T18:57:22Z tboundadmin OK status g1 
+2026-11-15T18:57:22Z tboundadmin END rc=0 argv=status g1 
+2026-11-15T18:57:24Z tboundadmin BEGIN argv=collect catalog 
+2026-11-15T18:57:24Z tboundadmin OK collect catalog 
+2026-11-15T18:57:24Z tboundadmin END rc=0 argv=collect catalog 
+2026-11-15T18:57:25Z tboundadmin BEGIN argv=collect requests 
+2026-11-15T18:57:25Z tboundadmin END rc=1 argv=collect requests 
+2026-11-15T18:57:26Z tboundadmin BEGIN argv=svc stop 
+2026-11-15T18:57:26Z tboundadmin OK svc stop 
+2026-11-15T18:57:26Z tboundadmin END rc=0 argv=svc stop 
+2026-11-15T18:57:32Z tboundadmin BEGIN argv=cfg-install g1 sha256:70e599c2c57492a351be515c1108b97a2422f1710919a54e4fd249c0d738c9a9 
+2026-11-15T18:57:32Z tboundadmin OK cfg-install g1 sha256:70e599c2c57492a351be515c1108b97a2422f1710919a54e4fd249c0d738c9a9 
+2026-11-15T18:57:32Z tboundadmin END rc=0 argv=cfg-install g1 sha256:70e599c2c57492a351be515c1108b97a2422f1710919a54e4fd249c0d738c9a9 
+2026-11-15T18:57:33Z tboundadmin BEGIN argv=diag live-listing 
+2026-11-15T18:57:33Z tboundadmin OK diag live-listing 
+2026-11-15T18:57:33Z tboundadmin END rc=0 argv=diag live-listing 
+2026-11-15T18:57:34Z tboundadmin BEGIN argv=svc stop 
+2026-11-15T18:57:34Z tboundadmin OK svc stop 
+2026-11-15T18:57:34Z tboundadmin END rc=0 argv=svc stop 
+2026-11-15T18:57:35Z tboundadmin BEGIN argv=reg-measure g1 
+2026-11-15T18:57:35Z tboundadmin OK reg-measure g1 
+2026-11-15T18:57:35Z tboundadmin END rc=0 argv=reg-measure g1 
+2026-11-15T18:57:45Z tboundadmin BEGIN argv=reg-install g1 sha256:6a6daff5a547414c6a03cdec7e65e1e06ccaf5a6aaba0a8b9aea325813517352 sha256:11f5ae4da296e2a8bf047aea38fd7908e63789c936d64c0585d88efabf21a732 
+2026-11-15T18:57:45Z tboundadmin OK reg-install g1 sha256:6a6daff5a547414c6a03cdec7e65e1e06ccaf5a6aaba0a8b9aea325813517352 sha256:11f5ae4da296e2a8bf047aea38fd7908e63789c936d64c0585d88efabf21a732 
+2026-11-15T18:57:45Z tboundadmin END rc=0 argv=reg-install g1 sha256:6a6daff5a547414c6a03cdec7e65e1e06ccaf5a6aaba0a8b9aea325813517352 sha256:11f5ae4da296e2a8bf047aea38fd7908e63789c936d64c0585d88efabf21a732 
+2026-11-15T18:57:53Z tboundadmin BEGIN argv=prof-install g1 sha256:b28c59feccc75dd021d588e20eb2451fc32ff52fed50d2c4f6dcbf8fafde7b35 sha256:d267c27f8df6d680647c9182560d7916887a73b0538de6ee05716ceadb772a33 sha256:a09bb63b709a37c5bfe1255ef1c29d2775f7a9a55b241030af6049ddf0ea3991 
+2026-11-15T18:57:55Z tboundadmin OK prof-install g1 sha256:b28c59feccc75dd021d588e20eb2451fc32ff52fed50d2c4f6dcbf8fafde7b35 sha256:d267c27f8df6d680647c9182560d7916887a73b0538de6ee05716ceadb772a33 sha256:a09bb63b709a37c5bfe1255ef1c29d2775f7a9a55b241030af6049ddf0ea3991 
+2026-11-15T18:57:55Z tboundadmin END rc=0 argv=prof-install g1 sha256:b28c59feccc75dd021d588e20eb2451fc32ff52fed50d2c4f6dcbf8fafde7b35 sha256:d267c27f8df6d680647c9182560d7916887a73b0538de6ee05716ceadb772a33 sha256:a09bb63b709a37c5bfe1255ef1c29d2775f7a9a55b241030af6049ddf0ea3991 
+2026-11-15T18:57:55Z tboundadmin BEGIN argv=seed-live g1 
+2026-11-15T18:57:56Z tboundadmin OK seed-live g1 
+2026-11-15T18:57:56Z tboundadmin END rc=0 argv=seed-live g1 
+2026-11-15T18:57:56Z tboundadmin BEGIN argv=svc start 
+2026-11-15T18:57:57Z tboundadmin OK svc start 
+2026-11-15T18:57:57Z tboundadmin END rc=0 argv=svc start 
+2026-11-15T18:58:00Z tboundadmin BEGIN argv=collect catalog 
+2026-11-15T18:58:00Z tboundadmin OK collect catalog 
+2026-11-15T18:58:00Z tboundadmin END rc=0 argv=collect catalog 
+2026-11-15T18:58:01Z tboundadmin BEGIN argv=diag l2 
+2026-11-15T18:58:01Z tboundadmin OK diag l2 
+2026-11-15T18:58:01Z tboundadmin END rc=0 argv=diag l2 
+2026-11-15T18:58:04Z tboundadmin BEGIN argv=client-run g1 
+2026-11-15T18:58:05Z tboundadmin OK client-run g1 
+2026-11-15T18:58:05Z tboundadmin END rc=0 argv=client-run g1 
+2026-11-15T18:58:06Z tboundadmin BEGIN argv=status g1 
+2026-11-15T18:58:06Z tboundadmin OK status g1 
+2026-11-15T18:58:06Z tboundadmin END rc=0 argv=status g1 
+2026-11-15T18:58:27Z tboundadmin BEGIN argv=status g1 
+2026-11-15T18:58:28Z tboundadmin OK status g1 
+2026-11-15T18:58:28Z tboundadmin END rc=0 argv=status g1 
+2026-11-15T18:58:49Z tboundadmin BEGIN argv=status g1 
+2026-11-15T18:58:49Z tboundadmin OK status g1 
+2026-11-15T18:58:49Z tboundadmin END rc=0 argv=status g1 
+2026-11-15T18:59:10Z tboundadmin BEGIN argv=status g1 
+2026-11-15T18:59:10Z tboundadmin OK status g1 
+2026-11-15T18:59:10Z tboundadmin END rc=0 argv=status g1 
+2026-11-15T18:59:12Z tboundadmin BEGIN argv=collect l4 
+2026-11-15T18:59:12Z tboundadmin OK collect l4 
+2026-11-15T18:59:12Z tboundadmin END rc=0 argv=collect l4 
+2026-11-15T18:59:13Z tboundadmin BEGIN argv=collect requests 
+2026-11-15T18:59:13Z tboundadmin OK collect requests 
+2026-11-15T18:59:13Z tboundadmin END rc=0 argv=collect requests 
+2026-11-15T18:59:13Z tboundadmin BEGIN argv=collect catalog 
+2026-11-15T18:59:13Z tboundadmin OK collect catalog 
+2026-11-15T18:59:13Z tboundadmin END rc=0 argv=collect catalog 
+2026-11-15T18:59:43Z tboundadmin BEGIN argv=status 
+2026-11-15T18:59:43Z tboundadmin OK status 
+2026-11-15T18:59:43Z tboundadmin END rc=0 argv=status 
+2026-11-15T18:59:46Z tboundadmin BEGIN argv=stage-ga tbound-profile sha256:881c25683c608cb4e1f2f280a677ea0abb75c2aeddc4c81dff73a60519e1fbb5 
+2026-11-15T18:59:46Z tboundadmin OK stage-ga tbound-profile sha256:881c25683c608cb4e1f2f280a677ea0abb75c2aeddc4c81dff73a60519e1fbb5 
+2026-11-15T18:59:46Z tboundadmin END rc=0 argv=stage-ga tbound-profile sha256:881c25683c608cb4e1f2f280a677ea0abb75c2aeddc4c81dff73a60519e1fbb5 
+2026-11-15T18:59:48Z tboundadmin BEGIN argv=guest-evidence capability 
+2026-11-15T18:59:48Z tboundadmin OK guest-evidence capability 
+2026-11-15T18:59:48Z tboundadmin END rc=0 argv=guest-evidence capability 
+2026-11-15T18:59:52Z tboundadmin BEGIN argv=status 
+2026-11-15T18:59:52Z tboundadmin OK status 
+2026-11-15T18:59:52Z tboundadmin END rc=0 argv=status 
+2026-11-15T18:59:55Z tboundadmin BEGIN argv=stage-ga procoracle-test sha256:92b71f2974e2020f36a41295912b40cb6830c7675c2f8be3c45a9c44ef7bc972 
+2026-11-15T18:59:55Z tboundadmin OK stage-ga procoracle-test sha256:92b71f2974e2020f36a41295912b40cb6830c7675c2f8be3c45a9c44ef7bc972 
+2026-11-15T18:59:55Z tboundadmin END rc=0 argv=stage-ga procoracle-test sha256:92b71f2974e2020f36a41295912b40cb6830c7675c2f8be3c45a9c44ef7bc972 
+2026-11-15T18:59:57Z tboundadmin BEGIN argv=guest-evidence procoracle 
+2026-11-15T19:00:07Z tboundadmin OK guest-evidence procoracle 
+2026-11-15T19:00:07Z tboundadmin END rc=0 argv=guest-evidence procoracle 
+2026-11-15T19:00:26Z tboundadmin BEGIN argv=status 
+2026-11-15T19:00:26Z tboundadmin OK status 
+2026-11-15T19:00:26Z tboundadmin END rc=0 argv=status 
+2026-11-15T19:00:31Z tboundadmin BEGIN argv=stage-ga cell-entrypoint-test sha256:3dbdba71fd70aa494e860e083c20a31404116dd56d167beb5c268afcf8b3fd10 
+2026-11-15T19:00:31Z tboundadmin OK stage-ga cell-entrypoint-test sha256:3dbdba71fd70aa494e860e083c20a31404116dd56d167beb5c268afcf8b3fd10 
+2026-11-15T19:00:31Z tboundadmin END rc=0 argv=stage-ga cell-entrypoint-test sha256:3dbdba71fd70aa494e860e083c20a31404116dd56d167beb5c268afcf8b3fd10 
+2026-11-15T19:00:33Z tboundadmin BEGIN argv=guest-evidence landlock-connect 
+2026-11-15T19:00:33Z tboundadmin OK guest-evidence landlock-connect 
+2026-11-15T19:00:33Z tboundadmin END rc=0 argv=guest-evidence landlock-connect 
+2026-11-15T19:00:42Z tboundadmin BEGIN argv=stage-ga run-json sha256:11bd41e7cf479b56f7820e0c59123ce8326649059d59ed23823e9f5a37a0cde3 
+2026-11-15T19:00:42Z tboundadmin OK stage-ga run-json sha256:11bd41e7cf479b56f7820e0c59123ce8326649059d59ed23823e9f5a37a0cde3 
+2026-11-15T19:00:42Z tboundadmin END rc=0 argv=stage-ga run-json sha256:11bd41e7cf479b56f7820e0c59123ce8326649059d59ed23823e9f5a37a0cde3 
+2026-11-15T19:00:44Z tboundadmin BEGIN argv=guest-evidence provider-exchange 
+2026-11-15T19:00:44Z tboundadmin OK guest-evidence provider-exchange 
+2026-11-15T19:00:44Z tboundadmin END rc=0 argv=guest-evidence provider-exchange 
+2026-11-15T19:01:05Z tboundadmin BEGIN argv=status rp 
+2026-11-15T19:01:05Z tboundadmin OK status rp 
+2026-11-15T19:01:05Z tboundadmin END rc=0 argv=status rp 
+2026-11-15T19:01:06Z tboundadmin BEGIN argv=status rp 
+2026-11-15T19:01:07Z tboundadmin OK status rp 
+2026-11-15T19:01:07Z tboundadmin END rc=0 argv=status rp 
+2026-11-15T19:01:09Z tboundadmin BEGIN argv=collect catalog 
+2026-11-15T19:01:09Z tboundadmin OK collect catalog 
+2026-11-15T19:01:09Z tboundadmin END rc=0 argv=collect catalog 
+2026-11-15T19:01:11Z tboundadmin BEGIN argv=collect requests 
+2026-11-15T19:01:11Z tboundadmin OK collect requests 
+2026-11-15T19:01:11Z tboundadmin END rc=0 argv=collect requests 
+2026-11-15T19:01:14Z tboundadmin BEGIN argv=svc stop 
+2026-11-15T19:01:14Z tboundadmin OK svc stop 
+2026-11-15T19:01:14Z tboundadmin END rc=0 argv=svc stop 
+2026-11-15T19:01:20Z tboundadmin BEGIN argv=cfg-install rp sha256:20f04aa08b0d1e26b03b2a5b97a07f7359bcdc3737b421e50e2375a1b36f2a66 
+2026-11-15T19:01:20Z tboundadmin OK cfg-install rp sha256:20f04aa08b0d1e26b03b2a5b97a07f7359bcdc3737b421e50e2375a1b36f2a66 
+2026-11-15T19:01:20Z tboundadmin END rc=0 argv=cfg-install rp sha256:20f04aa08b0d1e26b03b2a5b97a07f7359bcdc3737b421e50e2375a1b36f2a66 
+2026-11-15T19:01:22Z tboundadmin BEGIN argv=svc stop 
+2026-11-15T19:01:22Z tboundadmin OK svc stop 
+2026-11-15T19:01:22Z tboundadmin END rc=0 argv=svc stop 
+2026-11-15T19:01:22Z tboundadmin BEGIN argv=reg-measure rp 
+2026-11-15T19:01:23Z tboundadmin OK reg-measure rp 
+2026-11-15T19:01:23Z tboundadmin END rc=0 argv=reg-measure rp 
+2026-11-15T19:01:31Z tboundadmin BEGIN argv=reg-install rp sha256:da2b67a22cbc8205a5a6cd246e91823caec7c23cd0fb260f880a07f785c1d504 sha256:49fbcf3d85b940dc2d70a3bac6d2485989627c89650769128ca9267c3bed8934 
+2026-11-15T19:01:32Z tboundadmin OK reg-install rp sha256:da2b67a22cbc8205a5a6cd246e91823caec7c23cd0fb260f880a07f785c1d504 sha256:49fbcf3d85b940dc2d70a3bac6d2485989627c89650769128ca9267c3bed8934 
+2026-11-15T19:01:32Z tboundadmin END rc=0 argv=reg-install rp sha256:da2b67a22cbc8205a5a6cd246e91823caec7c23cd0fb260f880a07f785c1d504 sha256:49fbcf3d85b940dc2d70a3bac6d2485989627c89650769128ca9267c3bed8934 
+2026-11-15T19:01:41Z tboundadmin BEGIN argv=prof-install rp sha256:e0b0ae51bcb8fe662a7e7ef8bbbffa78c22f4a2fb8bfc433adf9af06c6028f6c sha256:ef9296b8c931101d833240bb1f00934f49b94ba6f03312004cd679c8e0b4b128 sha256:0982f88b5305ca38879e521e320b45af18b8e576dd42598b6b75a40b1cd7f6a0 
+2026-11-15T19:01:42Z tboundadmin OK prof-install rp sha256:e0b0ae51bcb8fe662a7e7ef8bbbffa78c22f4a2fb8bfc433adf9af06c6028f6c sha256:ef9296b8c931101d833240bb1f00934f49b94ba6f03312004cd679c8e0b4b128 sha256:0982f88b5305ca38879e521e320b45af18b8e576dd42598b6b75a40b1cd7f6a0 
+2026-11-15T19:01:42Z tboundadmin END rc=0 argv=prof-install rp sha256:e0b0ae51bcb8fe662a7e7ef8bbbffa78c22f4a2fb8bfc433adf9af06c6028f6c sha256:ef9296b8c931101d833240bb1f00934f49b94ba6f03312004cd679c8e0b4b128 sha256:0982f88b5305ca38879e521e320b45af18b8e576dd42598b6b75a40b1cd7f6a0 
+2026-11-15T19:01:43Z tboundadmin BEGIN argv=svc start 
+2026-11-15T19:01:43Z tboundadmin OK svc start 
+2026-11-15T19:01:43Z tboundadmin END rc=0 argv=svc start 
+2026-11-15T19:01:45Z tboundadmin BEGIN argv=collect catalog 
+2026-11-15T19:01:45Z tboundadmin OK collect catalog 
+2026-11-15T19:01:45Z tboundadmin END rc=0 argv=collect catalog 
+2026-11-15T19:01:48Z tboundadmin BEGIN argv=diag l2 
+2026-11-15T19:01:48Z tboundadmin OK diag l2 
+2026-11-15T19:01:48Z tboundadmin END rc=0 argv=diag l2 
+2026-11-15T19:01:50Z tboundadmin BEGIN argv=client-run rp 
+2026-11-15T19:01:51Z tboundadmin OK client-run rp 
+2026-11-15T19:01:51Z tboundadmin END rc=0 argv=client-run rp 
+2026-11-15T19:01:52Z tboundadmin BEGIN argv=status rp 
+2026-11-15T19:01:53Z tboundadmin OK status rp 
+2026-11-15T19:01:53Z tboundadmin END rc=0 argv=status rp 
+2026-11-15T19:02:14Z tboundadmin BEGIN argv=status rp 
+2026-11-15T19:02:14Z tboundadmin OK status rp 
+2026-11-15T19:02:14Z tboundadmin END rc=0 argv=status rp 
+2026-11-15T19:02:35Z tboundadmin BEGIN argv=status rp 
+2026-11-15T19:02:35Z tboundadmin OK status rp 
+2026-11-15T19:02:35Z tboundadmin END rc=0 argv=status rp 
+2026-11-15T19:02:56Z tboundadmin BEGIN argv=status rp 
+2026-11-15T19:02:56Z tboundadmin OK status rp 
+2026-11-15T19:02:56Z tboundadmin END rc=0 argv=status rp 
+2026-11-15T19:02:58Z tboundadmin BEGIN argv=collect l4 
+2026-11-15T19:02:58Z tboundadmin OK collect l4 
+2026-11-15T19:02:58Z tboundadmin END rc=0 argv=collect l4 
+2026-11-15T19:02:59Z tboundadmin BEGIN argv=collect requests 
+2026-11-15T19:02:59Z tboundadmin OK collect requests 
+2026-11-15T19:02:59Z tboundadmin END rc=0 argv=collect requests 
+2026-11-15T19:02:59Z tboundadmin BEGIN argv=collect catalog 
+2026-11-15T19:02:59Z tboundadmin OK collect catalog 
+2026-11-15T19:02:59Z tboundadmin END rc=0 argv=collect catalog 
+2026-11-15T19:03:59Z tboundadmin BEGIN argv=guest-evidence route-bash-view production-run-60ae62289b4834d5d3c979a5 
+2026-11-15T19:03:59Z tboundadmin OK guest-evidence route-bash-view production-run-60ae62289b4834d5d3c979a5 
+2026-11-15T19:03:59Z tboundadmin END rc=0 argv=guest-evidence route-bash-view production-run-60ae62289b4834d5d3c979a5 
+2026-11-15T19:04:21Z tboundadmin BEGIN argv=status dr 
+2026-11-15T19:04:21Z tboundadmin OK status dr 
+2026-11-15T19:04:21Z tboundadmin END rc=0 argv=status dr 
+2026-11-15T19:04:23Z tboundadmin BEGIN argv=status dr 
+2026-11-15T19:04:23Z tboundadmin OK status dr 
+2026-11-15T19:04:23Z tboundadmin END rc=0 argv=status dr 
+2026-11-15T19:04:25Z tboundadmin BEGIN argv=collect catalog 
+2026-11-15T19:04:25Z tboundadmin OK collect catalog 
+2026-11-15T19:04:25Z tboundadmin END rc=0 argv=collect catalog 
+2026-11-15T19:04:27Z tboundadmin BEGIN argv=collect requests 
+2026-11-15T19:04:27Z tboundadmin OK collect requests 
+2026-11-15T19:04:27Z tboundadmin END rc=0 argv=collect requests 
+2026-11-15T19:04:30Z tboundadmin BEGIN argv=collect l4 
+2026-11-15T19:04:30Z tboundadmin OK collect l4 
+2026-11-15T19:04:30Z tboundadmin END rc=0 argv=collect l4 
+2026-11-15T19:04:33Z tboundadmin BEGIN argv=svc stop 
+2026-11-15T19:04:33Z tboundadmin OK svc stop 
+2026-11-15T19:04:33Z tboundadmin END rc=0 argv=svc stop 
+2026-11-15T19:04:42Z tboundadmin BEGIN argv=cfg-install dr sha256:a3c53513837fda06e9edeee82a477b33a32b0f30a30500b7706ad02a7a5e6071 
+2026-11-15T19:04:43Z tboundadmin OK cfg-install dr sha256:a3c53513837fda06e9edeee82a477b33a32b0f30a30500b7706ad02a7a5e6071 
+2026-11-15T19:04:43Z tboundadmin END rc=0 argv=cfg-install dr sha256:a3c53513837fda06e9edeee82a477b33a32b0f30a30500b7706ad02a7a5e6071 
+2026-11-15T19:04:44Z tboundadmin BEGIN argv=svc stop 
+2026-11-15T19:04:44Z tboundadmin OK svc stop 
+2026-11-15T19:04:44Z tboundadmin END rc=0 argv=svc stop 
+2026-11-15T19:04:45Z tboundadmin BEGIN argv=reg-measure dr 
+2026-11-15T19:04:45Z tboundadmin OK reg-measure dr 
+2026-11-15T19:04:45Z tboundadmin END rc=0 argv=reg-measure dr 
+2026-11-15T19:04:54Z tboundadmin BEGIN argv=reg-install dr sha256:49c97196c8ca54057a07ba7ec51574e37582b605ea3a7a34f8c1f280ff06927f sha256:7c686dc73dd18399c91fc0c18987fca106750db84563eee9628ae6c4e889bc9d 
+2026-11-15T19:04:55Z tboundadmin OK reg-install dr sha256:49c97196c8ca54057a07ba7ec51574e37582b605ea3a7a34f8c1f280ff06927f sha256:7c686dc73dd18399c91fc0c18987fca106750db84563eee9628ae6c4e889bc9d 
+2026-11-15T19:04:55Z tboundadmin END rc=0 argv=reg-install dr sha256:49c97196c8ca54057a07ba7ec51574e37582b605ea3a7a34f8c1f280ff06927f sha256:7c686dc73dd18399c91fc0c18987fca106750db84563eee9628ae6c4e889bc9d 
+2026-11-15T19:05:07Z tboundadmin BEGIN argv=prof-install dr sha256:8ae9f81876a4844794da26435880a991f8f97fd3e8e34d8617be21cd1175e694 sha256:17bc6f21afc00581e8616e94815076810a051eff5fa5d1ab828a43942c1cf2df sha256:2c3087179f1785a4ce9bc039839be9a0898da6c2aabada2b020921b5cf394d58 sha256:6792e6fec18cc18d8069bd2ea315d99113908588ff20df381c4821f019baf6b5 
+2026-11-15T19:05:09Z tboundadmin OK prof-install dr sha256:8ae9f81876a4844794da26435880a991f8f97fd3e8e34d8617be21cd1175e694 sha256:17bc6f21afc00581e8616e94815076810a051eff5fa5d1ab828a43942c1cf2df sha256:2c3087179f1785a4ce9bc039839be9a0898da6c2aabada2b020921b5cf394d58 sha256:6792e6fec18cc18d8069bd2ea315d99113908588ff20df381c4821f019baf6b5 
+2026-11-15T19:05:09Z tboundadmin END rc=0 argv=prof-install dr sha256:8ae9f81876a4844794da26435880a991f8f97fd3e8e34d8617be21cd1175e694 sha256:17bc6f21afc00581e8616e94815076810a051eff5fa5d1ab828a43942c1cf2df sha256:2c3087179f1785a4ce9bc039839be9a0898da6c2aabada2b020921b5cf394d58 sha256:6792e6fec18cc18d8069bd2ea315d99113908588ff20df381c4821f019baf6b5 
+2026-11-15T19:05:09Z tboundadmin BEGIN argv=svc start 
+2026-11-15T19:05:10Z tboundadmin OK svc start 
+2026-11-15T19:05:10Z tboundadmin END rc=0 argv=svc start 
+2026-11-15T19:05:13Z tboundadmin BEGIN argv=collect catalog 
+2026-11-15T19:05:13Z tboundadmin OK collect catalog 
+2026-11-15T19:05:13Z tboundadmin END rc=0 argv=collect catalog 
+2026-11-15T19:05:15Z tboundadmin BEGIN argv=diag l2 
+2026-11-15T19:05:15Z tboundadmin OK diag l2 
+2026-11-15T19:05:15Z tboundadmin END rc=0 argv=diag l2 
+2026-11-15T19:05:18Z tboundadmin BEGIN argv=client-run dr 
+2026-11-15T19:05:19Z tboundadmin OK client-run dr 
+2026-11-15T19:05:19Z tboundadmin END rc=0 argv=client-run dr 
+2026-11-15T19:05:21Z tboundadmin BEGIN argv=status dr 
+2026-11-15T19:05:21Z tboundadmin OK status dr 
+2026-11-15T19:05:21Z tboundadmin END rc=0 argv=status dr 
+2026-11-15T19:05:43Z tboundadmin BEGIN argv=status dr 
+2026-11-15T19:05:43Z tboundadmin OK status dr 
+2026-11-15T19:05:43Z tboundadmin END rc=0 argv=status dr 
+2026-11-15T19:06:04Z tboundadmin BEGIN argv=status dr 
+2026-11-15T19:06:04Z tboundadmin OK status dr 
+2026-11-15T19:06:04Z tboundadmin END rc=0 argv=status dr 
+2026-11-15T19:06:05Z tboundadmin BEGIN argv=collect l4 
+2026-11-15T19:06:06Z tboundadmin OK collect l4 
+2026-11-15T19:06:06Z tboundadmin END rc=0 argv=collect l4 
+2026-11-15T19:06:06Z tboundadmin BEGIN argv=collect requests 
+2026-11-15T19:06:06Z tboundadmin OK collect requests 
+2026-11-15T19:06:06Z tboundadmin END rc=0 argv=collect requests 
+2026-11-15T19:06:07Z tboundadmin BEGIN argv=collect catalog 
+2026-11-15T19:06:07Z tboundadmin OK collect catalog 
+2026-11-15T19:06:07Z tboundadmin END rc=0 argv=collect catalog 
+2026-11-15T19:06:20Z tboundadmin BEGIN argv=svc stop 
+2026-11-15T19:06:20Z tboundadmin OK svc stop 
+2026-11-15T19:06:20Z tboundadmin END rc=0 argv=svc stop 
+2026-11-15T19:06:31Z tboundadmin BEGIN argv=status dr 
+2026-11-15T19:06:32Z tboundadmin OK status dr 
+2026-11-15T19:06:32Z tboundadmin END rc=0 argv=status dr 
+2026-11-15T19:06:42Z tboundadmin BEGIN argv=svc stop 
+2026-11-15T19:06:42Z tboundadmin OK svc stop 
+2026-11-15T19:06:42Z tboundadmin END rc=0 argv=svc stop 
+2026-11-15T19:07:02Z tboundadmin BEGIN argv=guest-evidence route-direct-runtime production-run-1d8c2e8e5cf3a4556d786175 
+2026-11-15T19:07:02Z tboundadmin OK guest-evidence route-direct-runtime production-run-1d8c2e8e5cf3a4556d786175 
+2026-11-15T19:07:02Z tboundadmin END rc=0 argv=guest-evidence route-direct-runtime production-run-1d8c2e8e5cf3a4556d786175 
+2026-11-15T19:07:41Z tboundadmin BEGIN argv=collect requests 
+2026-11-15T19:07:41Z tboundadmin OK collect requests 
+2026-11-15T19:07:41Z tboundadmin END rc=0 argv=collect requests 
+2026-11-15T19:07:43Z tboundadmin BEGIN argv=abandon dr-req-20261115T190519Z 
+2026-11-15T19:07:44Z tboundadmin OK abandon dr-req-20261115T190519Z 
+2026-11-15T19:07:44Z tboundadmin END rc=0 argv=abandon dr-req-20261115T190519Z 
+2026-11-15T19:07:44Z tboundadmin BEGIN argv=collect catalog 
+2026-11-15T19:07:44Z tboundadmin OK collect catalog 
+2026-11-15T19:07:44Z tboundadmin END rc=0 argv=collect catalog 
+2026-11-15T19:08:13Z tboundadmin BEGIN argv=collect requests 
+2026-11-15T19:08:13Z tboundadmin OK collect requests 
+2026-11-15T19:08:13Z tboundadmin END rc=0 argv=collect requests 
+2026-11-15T19:08:16Z tboundadmin BEGIN argv=abandon dr-req-20261115T190519Z 
+2026-11-15T19:08:17Z tboundadmin OK abandon dr-req-20261115T190519Z 
+2026-11-15T19:08:17Z tboundadmin END rc=0 argv=abandon dr-req-20261115T190519Z 
+2026-11-15T19:08:17Z tboundadmin BEGIN argv=collect catalog 
+2026-11-15T19:08:17Z tboundadmin OK collect catalog 
+2026-11-15T19:08:17Z tboundadmin END rc=0 argv=collect catalog 
+2026-11-15T19:08:21Z tboundadmin BEGIN argv=status pilot 
+2026-11-15T19:08:21Z tboundadmin OK status pilot 
+2026-11-15T19:08:21Z tboundadmin END rc=0 argv=status pilot 
+2026-11-15T19:08:22Z tboundadmin BEGIN argv=abandon dr-req-20261115T190519Z --confirm <redacted> 
+2026-11-15T19:08:22Z tboundadmin OK abandon dr-req-20261115T190519Z --confirm <redacted> 
+2026-11-15T19:08:22Z tboundadmin END rc=0 argv=abandon dr-req-20261115T190519Z --confirm <redacted> 
+2026-11-15T19:08:23Z tboundadmin BEGIN argv=collect requests 
+2026-11-15T19:08:23Z tboundadmin OK collect requests 
+2026-11-15T19:08:23Z tboundadmin END rc=0 argv=collect requests 
+2026-11-15T19:08:44Z tboundadmin BEGIN argv=status pilot 
+2026-11-15T19:08:44Z tboundadmin OK status pilot 
+2026-11-15T19:08:44Z tboundadmin END rc=0 argv=status pilot 
+2026-11-15T19:08:45Z tboundadmin BEGIN argv=status pilot 
+2026-11-15T19:08:45Z tboundadmin OK status pilot 
+2026-11-15T19:08:45Z tboundadmin END rc=0 argv=status pilot 
+2026-11-15T19:08:46Z tboundadmin BEGIN argv=status pilot 
+2026-11-15T19:08:46Z tboundadmin OK status pilot 
+2026-11-15T19:08:46Z tboundadmin END rc=0 argv=status pilot 
+2026-11-15T19:08:47Z tboundadmin BEGIN argv=svc stop 
+2026-11-15T19:08:47Z tboundadmin OK svc stop 
+2026-11-15T19:08:47Z tboundadmin END rc=0 argv=svc stop 
+2026-11-15T19:08:49Z tboundadmin BEGIN argv=manifest-install sha256:f0fd999137ffbd1051821560782918fad50a4f02e969b8070cd6d4219638f826 sha256:4cd9f7860dd7b2869691571dee19ff51c8119419b74ee8f95f5d32f1d665982a 
+2026-11-15T19:08:51Z tboundadmin OK manifest-install sha256:f0fd999137ffbd1051821560782918fad50a4f02e969b8070cd6d4219638f826 sha256:4cd9f7860dd7b2869691571dee19ff51c8119419b74ee8f95f5d32f1d665982a 
+2026-11-15T19:08:51Z tboundadmin END rc=0 argv=manifest-install sha256:f0fd999137ffbd1051821560782918fad50a4f02e969b8070cd6d4219638f826 sha256:4cd9f7860dd7b2869691571dee19ff51c8119419b74ee8f95f5d32f1d665982a 
+2026-11-15T19:08:52Z tboundadmin BEGIN argv=status pilot 
+2026-11-15T19:08:52Z tboundadmin OK status pilot 
+2026-11-15T19:08:52Z tboundadmin END rc=0 argv=status pilot 
+2026-11-15T19:08:53Z tboundadmin BEGIN argv=status pilot 
+2026-11-15T19:08:54Z tboundadmin OK status pilot 
+2026-11-15T19:08:54Z tboundadmin END rc=0 argv=status pilot 
+2026-11-15T19:08:56Z tboundadmin BEGIN argv=collect catalog 
+2026-11-15T19:08:56Z tboundadmin OK collect catalog 
+2026-11-15T19:08:56Z tboundadmin END rc=0 argv=collect catalog 
+2026-11-15T19:08:58Z tboundadmin BEGIN argv=collect requests 
+2026-11-15T19:08:58Z tboundadmin OK collect requests 
+2026-11-15T19:08:58Z tboundadmin END rc=0 argv=collect requests 
+2026-11-15T19:09:01Z tboundadmin BEGIN argv=svc stop 
+2026-11-15T19:09:01Z tboundadmin OK svc stop 
+2026-11-15T19:09:01Z tboundadmin END rc=0 argv=svc stop 
+2026-11-15T19:09:09Z tboundadmin BEGIN argv=cfg-install pilot sha256:a2fceb75094a47cdc473bdf442fc6e1ff2933ed6f1eae16e72df597941457c4b 
+2026-11-15T19:09:10Z tboundadmin OK cfg-install pilot sha256:a2fceb75094a47cdc473bdf442fc6e1ff2933ed6f1eae16e72df597941457c4b 
+2026-11-15T19:09:10Z tboundadmin END rc=0 argv=cfg-install pilot sha256:a2fceb75094a47cdc473bdf442fc6e1ff2933ed6f1eae16e72df597941457c4b 
+2026-11-15T19:09:12Z tboundadmin BEGIN argv=svc stop 
+2026-11-15T19:09:12Z tboundadmin OK svc stop 
+2026-11-15T19:09:12Z tboundadmin END rc=0 argv=svc stop 
+2026-11-15T19:09:12Z tboundadmin BEGIN argv=reg-measure pilot 
+2026-11-15T19:09:13Z tboundadmin OK reg-measure pilot 
+2026-11-15T19:09:13Z tboundadmin END rc=0 argv=reg-measure pilot 
+2026-11-15T19:09:23Z tboundadmin BEGIN argv=reg-install pilot sha256:51e0ea0065bd6c176e6338fdafe8d9cee27c0951a175fb59184c87f5bd36ecff sha256:5d48367e2fb951d8c399dd985c6952ba7bce686f635b7a9afbb4aba00d462c44 
+2026-11-15T19:09:24Z tboundadmin OK reg-install pilot sha256:51e0ea0065bd6c176e6338fdafe8d9cee27c0951a175fb59184c87f5bd36ecff sha256:5d48367e2fb951d8c399dd985c6952ba7bce686f635b7a9afbb4aba00d462c44 
+2026-11-15T19:09:24Z tboundadmin END rc=0 argv=reg-install pilot sha256:51e0ea0065bd6c176e6338fdafe8d9cee27c0951a175fb59184c87f5bd36ecff sha256:5d48367e2fb951d8c399dd985c6952ba7bce686f635b7a9afbb4aba00d462c44 
+2026-11-15T19:09:33Z tboundadmin BEGIN argv=prof-install pilot sha256:d7593e052e1902051a55b1ec6734292b478181a49749d5952b76a3c3c29c314d sha256:83fa61d1422054b2d68988e95a5cd5d6e6988f6275ed9abe5889e6265100099e sha256:58bf77e857dff3f3fabe75856bc0de7f3b70dee7467945ff4021f0e81b408dc0 
+2026-11-15T19:09:35Z tboundadmin OK prof-install pilot sha256:d7593e052e1902051a55b1ec6734292b478181a49749d5952b76a3c3c29c314d sha256:83fa61d1422054b2d68988e95a5cd5d6e6988f6275ed9abe5889e6265100099e sha256:58bf77e857dff3f3fabe75856bc0de7f3b70dee7467945ff4021f0e81b408dc0 
+2026-11-15T19:09:35Z tboundadmin END rc=0 argv=prof-install pilot sha256:d7593e052e1902051a55b1ec6734292b478181a49749d5952b76a3c3c29c314d sha256:83fa61d1422054b2d68988e95a5cd5d6e6988f6275ed9abe5889e6265100099e sha256:58bf77e857dff3f3fabe75856bc0de7f3b70dee7467945ff4021f0e81b408dc0 
+2026-11-15T19:09:35Z tboundadmin BEGIN argv=svc start 
+2026-11-15T19:09:36Z tboundadmin OK svc start 
+2026-11-15T19:09:36Z tboundadmin END rc=0 argv=svc start 
+2026-11-15T19:09:39Z tboundadmin BEGIN argv=collect catalog 
+2026-11-15T19:09:39Z tboundadmin OK collect catalog 
+2026-11-15T19:09:39Z tboundadmin END rc=0 argv=collect catalog 
+2026-11-15T19:09:42Z tboundadmin BEGIN argv=diag l2 
+2026-11-15T19:09:42Z tboundadmin OK diag l2 
+2026-11-15T19:09:42Z tboundadmin END rc=0 argv=diag l2 
+2026-11-15T19:09:50Z tboundadmin BEGIN argv=status pilot 
+2026-11-15T19:09:50Z tboundadmin OK status pilot 
+2026-11-15T19:09:50Z tboundadmin END rc=0 argv=status pilot 
+2026-11-15T19:09:51Z tboundadmin BEGIN argv=status pilot 
+2026-11-15T19:09:51Z tboundadmin OK status pilot 
+2026-11-15T19:09:51Z tboundadmin END rc=0 argv=status pilot 
+2026-11-15T19:09:52Z tboundadmin BEGIN argv=diag l2 
+2026-11-15T19:09:52Z tboundadmin OK diag l2 
+2026-11-15T19:09:52Z tboundadmin END rc=0 argv=diag l2 
+2026-11-15T19:09:57Z tboundadmin BEGIN argv=status pilot 
+2026-11-15T19:09:57Z tboundadmin OK status pilot 
+2026-11-15T19:09:57Z tboundadmin END rc=0 argv=status pilot 
+2026-11-15T19:10:18Z tboundadmin BEGIN argv=diag nft-sink 
+2026-11-15T19:10:18Z tboundadmin OK diag nft-sink 
+2026-11-15T19:10:18Z tboundadmin END rc=0 argv=diag nft-sink 
+2026-11-15T19:10:20Z tboundadmin BEGIN argv=guest-evidence netsink 
+2026-11-15T19:10:24Z tboundadmin OK guest-evidence netsink 
+2026-11-15T19:10:24Z tboundadmin END rc=0 argv=guest-evidence netsink 
+2026-11-15T19:11:06Z tboundadmin BEGIN argv=diag podman-ps 
+2026-11-15T19:11:06Z tboundadmin OK diag podman-ps 
+2026-11-15T19:11:06Z tboundadmin END rc=0 argv=diag podman-ps 
+2026-11-15T19:17:08Z tboundadmin BEGIN argv=status pilot 
+2026-11-15T19:17:08Z tboundadmin OK status pilot 
+2026-11-15T19:17:08Z tboundadmin END rc=0 argv=status pilot 
+2026-11-15T19:17:31Z tboundadmin BEGIN argv=diag podman-ps 
+2026-11-15T19:17:31Z tboundadmin OK diag podman-ps 
+2026-11-15T19:17:31Z tboundadmin END rc=0 argv=diag podman-ps 
+2026-11-16T17:04:02Z tboundadmin BEGIN argv=status pilot 
+2026-11-16T17:04:03Z tboundadmin END rc=0 argv=status pilot 
+2026-11-16T17:04:24Z tboundadmin BEGIN argv=collect requests 
+2026-11-16T17:04:24Z tboundadmin OK collect requests 
+2026-11-16T17:04:24Z tboundadmin END rc=0 argv=collect requests 
+2026-11-16T19:27:06Z tboundadmin BEGIN argv=collect requests 
+2026-11-16T19:27:06Z tboundadmin OK collect requests 
+2026-11-16T19:27:06Z tboundadmin END rc=0 argv=collect requests 
+2026-11-16T19:27:09Z tboundadmin BEGIN argv=abandon tbr-18184c789421fd086c734f2ab88a4a46 
+2026-11-16T19:27:09Z tboundadmin OK abandon tbr-18184c789421fd086c734f2ab88a4a46 
+2026-11-16T19:27:09Z tboundadmin END rc=0 argv=abandon tbr-18184c789421fd086c734f2ab88a4a46 
+2026-11-16T19:27:10Z tboundadmin BEGIN argv=abandon tbr-18184c789421fd086c734f2ab88a4a46 --confirm <redacted> 
+2026-11-16T19:27:11Z tboundadmin OK abandon tbr-18184c789421fd086c734f2ab88a4a46 --confirm <redacted> 
+2026-11-16T19:27:11Z tboundadmin END rc=0 argv=abandon tbr-18184c789421fd086c734f2ab88a4a46 --confirm <redacted> 
+2026-11-16T19:27:11Z tboundadmin BEGIN argv=svc start 
+2026-11-16T19:27:12Z tboundadmin OK svc start 
+2026-11-16T19:27:12Z tboundadmin END rc=0 argv=svc start 
+2026-11-16T19:27:13Z tboundadmin BEGIN argv=status pilot 
+2026-11-16T19:27:13Z tboundadmin END rc=0 argv=status pilot 
+2026-11-16T19:27:14Z tboundadmin BEGIN argv=diag podman-ps 
+2026-11-16T19:27:14Z tboundadmin OK diag podman-ps 
+2026-11-16T19:27:14Z tboundadmin END rc=0 argv=diag podman-ps 
+2026-11-16T19:27:15Z tboundadmin BEGIN argv=collect catalog 
+2026-11-16T19:27:15Z tboundadmin OK collect catalog 
+2026-11-16T19:27:15Z tboundadmin END rc=0 argv=collect catalog 
+2026-11-16T19:27:15Z tboundadmin BEGIN argv=collect requests 
+2026-11-16T19:27:16Z tboundadmin OK collect requests 
+2026-11-16T19:27:16Z tboundadmin END rc=0 argv=collect requests 
+2026-11-16T20:01:15Z tboundadmin BEGIN argv=collect requests 
+2026-11-16T20:01:15Z tboundadmin OK collect requests 
+2026-11-16T20:01:15Z tboundadmin END rc=0 argv=collect requests 
+2026-11-16T20:01:18Z tboundadmin BEGIN argv=abandon tbr-75d57a553656b40b578e5cbc00be7e90 
+2026-11-16T20:01:18Z tboundadmin OK abandon tbr-75d57a553656b40b578e5cbc00be7e90 
+2026-11-16T20:01:18Z tboundadmin END rc=0 argv=abandon tbr-75d57a553656b40b578e5cbc00be7e90 
+2026-11-16T20:01:19Z tboundadmin BEGIN argv=abandon tbr-75d57a553656b40b578e5cbc00be7e90 --confirm <redacted> 
+2026-11-16T20:01:20Z tboundadmin OK abandon tbr-75d57a553656b40b578e5cbc00be7e90 --confirm <redacted> 
+2026-11-16T20:01:20Z tboundadmin END rc=0 argv=abandon tbr-75d57a553656b40b578e5cbc00be7e90 --confirm <redacted> 
+2026-11-16T20:01:20Z tboundadmin BEGIN argv=svc start 
+2026-11-16T20:01:21Z tboundadmin OK svc start 
+2026-11-16T20:01:21Z tboundadmin END rc=0 argv=svc start 
+2026-11-16T20:01:22Z tboundadmin BEGIN argv=status pilot 
+2026-11-16T20:01:22Z tboundadmin END rc=0 argv=status pilot 
+2026-11-16T20:01:23Z tboundadmin BEGIN argv=diag podman-ps 
+2026-11-16T20:01:23Z tboundadmin OK diag podman-ps 
+2026-11-16T20:01:23Z tboundadmin END rc=0 argv=diag podman-ps 
+2026-11-16T20:01:24Z tboundadmin BEGIN argv=collect catalog 
+2026-11-16T20:01:24Z tboundadmin OK collect catalog 
+2026-11-16T20:01:24Z tboundadmin END rc=0 argv=collect catalog 
+2026-11-16T20:01:25Z tboundadmin BEGIN argv=collect requests 
+2026-11-16T20:01:25Z tboundadmin OK collect requests 
+2026-11-16T20:01:25Z tboundadmin END rc=0 argv=collect requests 
+2026-11-16T20:11:23Z tboundadmin BEGIN argv='' 
+2026-11-16T20:11:23Z tboundadmin USAGE no verb
+2026-11-16T20:11:23Z tboundadmin END rc=2 argv='' 
+2026-11-16T20:11:31Z tboundadmin BEGIN argv=status 
+2026-11-16T20:11:31Z tboundadmin END rc=0 argv=status 
+2026-11-16T20:11:50Z tboundadmin BEGIN argv=collect requests 
+2026-11-16T20:11:50Z tboundadmin OK collect requests 
+2026-11-16T20:11:50Z tboundadmin END rc=0 argv=collect requests 
+2026-11-16T20:11:50Z tboundadmin BEGIN argv=collect catalog 
+2026-11-16T20:11:50Z tboundadmin OK collect catalog 
+2026-11-16T20:11:50Z tboundadmin END rc=0 argv=collect catalog 
+2026-11-16T20:11:50Z tboundadmin BEGIN argv=collect l4 
+2026-11-16T20:11:53Z tboundadmin OK collect l4 
+2026-11-16T20:11:53Z tboundadmin END rc=0 argv=collect l4 
+2026-11-16T20:12:30Z tboundadmin BEGIN argv=status pilot 
+2026-11-16T20:12:30Z tboundadmin OK status pilot 
+2026-11-16T20:12:30Z tboundadmin END rc=0 argv=status pilot 

@@ -28,9 +28,8 @@ export XDG_CONFIG_HOME="$BASE/config"
 export XDG_DATA_HOME="$BASE/data"
 export GO="${GO:-go}"
 
-OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
-case "$(uname -m)" in x86_64|amd64) ARCH=amd64 ;; aarch64|arm64) ARCH=arm64 ;; *) echo "unsupported arch"; exit 1 ;; esac
-case "$OS" in linux|darwin) ;; *) echo "verify-install supports linux/darwin"; exit 1 ;; esac
+[ "$(uname -s)/$(uname -m)" = Linux/x86_64 ] || { echo "verify-install supports Linux x86_64 only"; exit 1; }
+OS=linux; ARCH=amd64
 
 pass=0; fail=0
 ok()   { printf '  PASS  %s\n' "$1"; pass=$((pass+1)); }
@@ -56,6 +55,20 @@ TBOUND_PREFIX="$PREFIX" "$ROOT/install/install.sh" --version "$VERSION" --local-
 [ -x "$PREFIX/bin/tbound" ] && ok "bin/tbound installed" || bad "bin/tbound missing"
 [ -x "$PREFIX/bin/tbound-doctor" ] && ok "bin/tbound-doctor installed" || bad "bin/tbound-doctor missing"
 [ -x "$PREFIX/bin/tbound-profile" ] && ok "bin/tbound-profile installed" || bad "bin/tbound-profile missing"
+
+STUB="$BASE/uname-stub"; mkdir "$STUB"
+for platform in "Darwin x86_64" "Linux aarch64"; do
+  printf '#!/bin/sh\ncase "$1" in -s) echo %s ;; -m) echo %s ;; *) exit 1 ;; esac\n' $platform > "$STUB/uname"
+  chmod +x "$STUB/uname"
+  set +e
+  out="$(PATH="$STUB:$PATH" TBOUND_PREFIX="$BASE/unsupported" "$ROOT/install/install.sh" --version "$VERSION" --local-dist "$DIST" --no-path 2>&1)"; rc=$?
+  set -e
+  if [ "$rc" -ne 0 ] && printf '%s' "$out" | grep -Fq "unsupported platform '$platform'" && [ ! -e "$BASE/unsupported" ]; then
+    ok "$platform refused before any prefix work"
+  else
+    bad "$platform not refused as unsupported (rc=$rc): $out"
+  fi
+done
 
 echo "[3/6] reject incomplete updates and preserve installed binaries"
 ARTIFACT="tbound-$VERSION-$OS-$ARCH.tar.gz"
