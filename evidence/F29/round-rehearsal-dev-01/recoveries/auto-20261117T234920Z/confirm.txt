@@ -1,0 +1,2 @@
+{"settlement":"abandoned-unknown","request_id":"tbr-a8891b5eafe37b08de8c7ce05dec03d5","journal_sequence":130,"journal_hash":"d20c3d6bfa98a0a9306a9efc13bc09d64b5376460e0e80922ffdcbaaef5a21a2"}
+abandon tbr-a8891b5eafe37b08de8c7ce05dec03d5 ok; socket started (service starts on demand; use svc start for a run)
