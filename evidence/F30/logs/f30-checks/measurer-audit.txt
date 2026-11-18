@@ -1,0 +1,3 @@
+(measurer audit, git in the repo, 2026-11-18T13:07:04Z)
+git diff --quiet 13ed1193 5626e34f -- piruntime/{launcher_linux.go,host.go,profile_tooling_linux.go} cmd/tbound-profile/main_linux.go: rc=0
+git diff --quiet 28f407b8 5626e34f -- supervisor/internal/piruntime supervisor/cmd/tbound-profile: rc=0
