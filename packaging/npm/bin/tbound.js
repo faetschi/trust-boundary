@@ -16,20 +16,17 @@
 const { spawnSync } = require("node:child_process");
 const path = require("node:path");
 
-// linux-arm64 is intentionally absent: the runtime does not build for linux/arm64
-// yet (amd64-only syscall helpers), so no @tbound/cli-linux-arm64 package exists.
+// Linux amd64 only: TBound is a Linux system. linux-arm64 is intentionally
+// absent because the runtime does not build for it yet (amd64-only syscall
+// helpers). darwin and win32 have no supported binary.
 const PLATFORM_PACKAGES = {
   "linux-x64": "@tbound/cli-linux-x64",
-  "darwin-x64": "@tbound/cli-darwin-x64",
-  "darwin-arm64": "@tbound/cli-darwin-arm64",
-  "win32-x64": "@tbound/cli-win32-x64",
 };
 
 function binaryName(subcommand) {
-  const isWin = process.platform === "win32";
-  if (subcommand === "doctor") return isWin ? "tbound-doctor.exe" : "tbound-doctor";
-  if (subcommand === "profile") return isWin ? "tbound-profile.exe" : "tbound-profile";
-  return isWin ? "tbound.exe" : "tbound";
+  if (subcommand === "doctor") return "tbound-doctor";
+  if (subcommand === "profile") return "tbound-profile";
+  return "tbound";
 }
 
 function resolveBinary(subcommand) {
