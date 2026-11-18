@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -10,7 +11,9 @@ import (
 
 	"tbound/supervisor/internal/evalcorpus"
 	"tbound/supervisor/internal/evalreport"
+	"tbound/supervisor/internal/evalscore"
 	"tbound/supervisor/internal/runner"
+	"tbound/supervisor/internal/usdledger"
 )
 
 // claimInputs are the arguments of claimReasons.
@@ -33,9 +36,10 @@ func claimFixture() claimInputs {
 		sched:        runner.Schedule{Digest: fixtureDigest("plan"), RunBinding: fixtureDigest("binding")},
 		attributions: attributionSet{rubricDigest: fixtureDigest("rubric")}}
 	rep := evalreport.Report{Coverage: evalreport.Coverage{Exact: true},
-		Groups: &evalreport.Groups{Certification: evalreport.Certification{Certified: true}}}
+		Groups: &evalreport.Groups{Certification: evalreport.Certification{Certified: true, Digest: fixtureDigest("certify")}}}
 	reg := evalreport.Registration{FreezeCommit: commit, CorpusManifestDigest: p.digest, QuotaProfile: quotaThesis,
-		RunnerPlanDigest: p.sched.Digest, RunBinding: p.sched.RunBinding, AttributionRubricDigest: fixtureDigest("rubric")}
+		RunnerPlanDigest: p.sched.Digest, RunBinding: p.sched.RunBinding, AttributionRubricDigest: fixtureDigest("rubric"),
+		EvalscoreSchema: evalscore.SchemaVersion, CertificationDigest: fixtureDigest("certify")}
 	return claimInputs{p: p, realLedger: true, rep: rep, reg: &reg}
 }
 
@@ -55,6 +59,9 @@ func TestClaimReasonsNameEachMissingCondition(t *testing.T) {
 		reasonMismatchPrefix + "runner_plan_digest":     func(c *claimInputs) { c.p.sched.Digest = fixtureDigest("other plan") },
 		reasonMismatchPrefix + "corpus_manifest_digest": func(c *claimInputs) { c.p.digest = fixtureDigest("other manifest") },
 		reasonMismatchPrefix + "freeze_commit":          func(c *claimInputs) { c.p.cfg.FreezeCommit = strings.Repeat("f", 40) },
+		reasonMismatchPrefix + "certification_digest":   func(c *claimInputs) { c.rep.Groups.Certification.Digest = fixtureDigest("other certify") },
+		reasonMismatchPrefix + "plan_steps":             func(c *claimInputs) { c.reg.PlanSteps = 7 },
+		reasonMismatchPrefix + "evalscore_schema":       func(c *claimInputs) { c.reg.EvalscoreSchema = "evalscore-trials/v0" },
 		reasonMismatchPrefix + "attribution_rubric_digest": func(c *claimInputs) {
 			c.p.attributions.rubricDigest = fixtureDigest("other rubric")
 		},
@@ -93,7 +100,8 @@ func writeRegistration(t *testing.T, e *env, runBinding string, mutate func(*eva
 		t.Fatal(err)
 	}
 	reg := evalreport.Registration{Domain: evalreport.RegistrationDomain, FreezeCommit: commit, CorpusManifestDigest: digest,
-		QuotaProfile: quotaPilot, RunnerPlanDigest: e.sched().Digest, RunBinding: runBinding, Reviewers: []string{"owner"}}
+		QuotaProfile: quotaPilot, RunnerPlanDigest: e.sched().Digest, PlanSteps: e.sched().Units(), EvalscoreSchema: evalscore.SchemaVersion,
+		RunBinding: runBinding, Reviewers: []string{"owner"}}
 	if mutate != nil {
 		mutate(&reg)
 	}
@@ -171,5 +179,87 @@ func TestPlanAndReportCheckTheRegistration(t *testing.T) {
 	if _, err := e.cliCfg(nil, "report", "--out", e.path("report-groups"), "--ledger-v3", e.file("ledger.jsonl", "")); err == nil ||
 		!strings.Contains(err.Error(), "pins no D48 draw") {
 		t.Fatalf("--ledger-v3 without a pinned draw: %v", err)
+	}
+}
+
+// A top-up or TM-C case without a record, or still waiting for its rerun, leaves the run unfinished, although the
+// H1 coverage and rerun counts (over the main sample) are complete. The reports are built by evalreport.Build.
+func TestSeparateStrataLeaveTheRunIncomplete(t *testing.T) {
+	adv := func(id string, part evalcorpus.SamplePart) evalcorpus.Case {
+		return evalcorpus.Case{CaseID: id, Kind: evalcorpus.KindAdversarial,
+			Adversarial: &evalcorpus.Adversarial{ThreatClass: evalcorpus.ClassTMA, Partition: evalcorpus.PartitionNonCold, SamplePart: part}}
+	}
+	clean := func(id string) evalscore.AdversarialRecord {
+		return evalscore.AdversarialRecord{CaseID: id, Attempt: 1, Channel: "tool_call", IdentityVerified: true,
+			ObserverCoverageComplete: true, EvidenceLoss: evalscore.LossNone, CEffect: evalscore.CEffectNone,
+			PStaticManifested: true, PAdaptiveManifested: true, CMatchedDelivery: true, PCEvidenceComplete: true}
+	}
+	build := func(topup *evalscore.AdversarialRecord) evalreport.Report {
+		in := evalreport.Inputs{
+			Manifest: evalcorpus.Manifest{SchemaVersion: evalcorpus.SchemaVersion, SplitSeed: "s", Cases: []evalcorpus.Case{
+				adv("main-1", evalcorpus.SampleMain), adv("topup-1", evalcorpus.SampleTopup),
+				{CaseID: "task-1", Kind: evalcorpus.KindCompliant, Compliant: &evalcorpus.Compliant{PrimaryTool: evalcorpus.ToolRead}}}},
+			Trials: evalscore.Input{Schema: evalscore.SchemaVersion, EVQPassed: true,
+				Adversarial: []evalscore.AdversarialRecord{clean("main-1")},
+				Compliant: []evalscore.CompliantRecord{{TaskID: "task-1", Attempt: 1, IdentityVerified: true, ObserverCoverageComplete: true,
+					EvidenceLoss: evalscore.LossNone, BSuccess: true, CSuccess: true, VSuccess: true, Attribution: evalscore.AttributionNotApplicable}}},
+			Ledger: usdledger.Snapshot{LedgerID: "l", CapMicroUSD: evalreport.RegisteredCapMicroUSD, MinPerUnitWorstCaseMicroUSD: 1,
+				RemainingMicroUSD: evalreport.RegisteredCapMicroUSD, HeadSHA256: strings.Repeat("a", 64)},
+		}
+		if topup != nil {
+			in.Trials.Adversarial = append(in.Trials.Adversarial, *topup)
+		}
+		rep, err := evalreport.Build(in)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return rep
+	}
+	pending := clean("topup-1")
+	pending.EvidenceLoss, pending.OutageEvidenceDigest = evalscore.LossExternalOutage, fixtureDigest("outage")
+	done := clean("topup-1")
+	for name, tc := range map[string]struct {
+		topup *evalscore.AdversarialRecord
+		want  bool
+	}{"pending rerun": {&pending, true}, "no record": {nil, true}, "finished": {&done, false}} {
+		rep := build(tc.topup)
+		if !rep.Coverage.Exact || rep.Observed.PendingExternalReruns != 0 {
+			t.Fatalf("%s: the H1 figures see the top-up: %+v %+v", name, rep.Coverage, rep.Observed)
+		}
+		c := claimFixture()
+		c.rep.Separate, c.rep.Coverage, c.rep.Observed = rep.Separate, rep.Coverage, rep.Observed
+		if got := slices.Contains(c.reasons(), reasonRunIncomplete); got != tc.want {
+			t.Errorf("%s: run_incomplete %t, want %t (reasons %v, separate %+v)", name, got, tc.want, c.reasons(), rep.Separate)
+		}
+	}
+}
+
+// The registration record plans from a runner config that holds only what tbound-run's runnerConfig sets
+// (tbound-profile preregistration-record refuses every other runner field): whatever run.json says, runnerConfig
+// leaves those fields zero, so the two tools plan from the same config.
+func TestRunnerConfigSetsOnlyTheRegistrableFields(t *testing.T) {
+	e := newEnv(t)
+	cfg, err := loadConfig(e.cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.OnlyCases, cfg.Purpose = []string{"a"}, runner.PurposeConstructWitness
+	rc := cfg.runnerConfig()
+	if rc.NET02Mandatory || rc.UnitCap != 0 || rc.RerunHeadroom != 0 || rc.NoRerunHeadroom || rc.CDH != nil {
+		t.Fatalf("runnerConfig sets a field the registration refuses: %+v", rc)
+	}
+	raw, err := json.Marshal(rc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fields map[string]any
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		t.Fatal(err)
+	}
+	allowed := map[string]bool{"freeze_commit": true, "evq_obligations": true, "adaptive_caps": true, "only_cases": true, "purpose": true}
+	for k, v := range fields {
+		if !allowed[k] && fmt.Sprint(v) != "0" && fmt.Sprint(v) != "false" {
+			t.Errorf("runnerConfig sets %s = %v", k, v)
+		}
 	}
 }

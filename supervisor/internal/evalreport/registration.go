@@ -10,7 +10,7 @@ import (
 	"io"
 )
 
-// RegistrationDomain labels the pre-registration record digest. v2 added the run binding, the attribution
+// RegistrationDomain labels the pre-registration record digest. v2 added the run binding, the certification, the attribution
 // rubric and the corpus-check report (H1-6).
 const RegistrationDomain = "tbound-preregistration/v2"
 
@@ -43,6 +43,10 @@ type Registration struct {
 	// CorpusCheckDigest is sha256:<hex> of the `tbound-profile corpus-check` report.json of the manifest, accepted
 	// only with no failed and no guest-only row.
 	CorpusCheckDigest string `json:"corpus_check_digest"`
+	// CertificationDigest is sha256:<hex> of the select.py certify output for the pinned main draw (D48 zero-event
+	// certification, CheckCertification); empty for a manifest without a main draw. The report's certification
+	// must be this file.
+	CertificationDigest string `json:"certification_digest"`
 	// Reviewers are names only, sorted.
 	Reviewers    []string `json:"reviewers"`
 	RecordDigest string   `json:"record_digest,omitempty"`

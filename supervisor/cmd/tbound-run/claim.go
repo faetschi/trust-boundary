@@ -7,12 +7,14 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/corpusadmit"
 	"tbound/supervisor/internal/evalcorpus"
 	"tbound/supervisor/internal/evalreport"
+	"tbound/supervisor/internal/evalscore"
 )
 
 const maxLedgerV3Bytes = 64 << 20
@@ -40,7 +42,7 @@ func claimReasons(p plan, realLedger bool, rep evalreport.Report, incomplete int
 	}
 	add(!realLedger, reasonLedgerSynthetic)
 	add(p.cfg.QuotaProfile != quotaThesis, reasonNotThesis)
-	add(!rep.Coverage.Exact || incomplete > 0 || rep.Observed.PendingExternalReruns > 0, reasonRunIncomplete)
+	add(!rep.Coverage.Exact || incomplete > 0 || rep.Observed.PendingExternalReruns > 0 || separateUnfinished(rep.Separate), reasonRunIncomplete)
 	add(rep.Groups == nil, reasonNoGroups)
 	add(rep.Groups != nil && !rep.Groups.Certification.Certified, reasonNotCertified)
 	add(reg == nil, reasonNotRegistered)
@@ -48,16 +50,32 @@ func claimReasons(p plan, realLedger bool, rep evalreport.Report, incomplete int
 		for _, m := range registrationMismatches(*reg, p) {
 			reasons = append(reasons, reasonMismatchPrefix+m.field)
 		}
+		if rep.Groups != nil && reg.CertificationDigest != rep.Groups.Certification.Digest {
+			reasons = append(reasons, reasonMismatchPrefix+"certification_digest")
+		}
 	}
 	return reasons
+}
+
+// separateUnfinished reports a top-up or TM-C case without a record or still waiting for its rerun: the H1
+// coverage and rerun counts do not see these strata.
+func separateUnfinished(strata []evalreport.Stratum) bool {
+	for _, s := range strata {
+		if s.Missing > 0 || s.Dispositions.ExternalInfrastructureRerun > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 type mismatch struct{ field, registered, run string }
 
 // registrationMismatches compares the registered record with this run: the freeze, the manifest, the quota
 // profile, the plan (runner config and every step), the run binding (receipt pins, admission policy, V image,
-// route and EVQ results, PROC settings with the D49 drain grace) and, when the run has an attribution file, the
-// rubric that file names.
+// route and EVQ results, PROC settings with the D49 drain grace), the evalscore schema and, when the run has an
+// attribution file, the rubric that file names. The research profile and research ledger config digests are guest
+// service inputs that tbound-run does not read, so they are not compared here; the run binding's receipt pins tie
+// the run to the guest's signed profile.
 func registrationMismatches(reg evalreport.Registration, p plan) []mismatch {
 	var out []mismatch
 	check := func(field, registered, run string) {
@@ -70,6 +88,8 @@ func registrationMismatches(reg evalreport.Registration, p plan) []mismatch {
 	check("quota_profile", reg.QuotaProfile, p.cfg.QuotaProfile)
 	check("runner_plan_digest", reg.RunnerPlanDigest, p.sched.Digest)
 	check("run_binding", reg.RunBinding, p.sched.RunBinding)
+	check("plan_steps", strconv.Itoa(reg.PlanSteps), strconv.Itoa(p.sched.Units()))
+	check("evalscore_schema", reg.EvalscoreSchema, evalscore.SchemaVersion)
 	if p.attributions.rubricDigest != "" {
 		check("attribution_rubric_digest", reg.AttributionRubricDigest, p.attributions.rubricDigest)
 	}

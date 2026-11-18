@@ -8,10 +8,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"maps"
 	"math/big"
 	"slices"
 
+	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/evalcorpus"
 	"tbound/supervisor/internal/evalscore"
 )
@@ -33,6 +35,10 @@ const (
 	SplitDevelopment = "development" // the group has a development case (select.py marks it seen_in_development)
 	SplitUnseen      = "unseen"
 
+	// DevelopmentRule is the split the report applies: select.py's marks in the pinned draw output (`_marks`).
+	DevelopmentRule = "select.py draw marks: a scenario is development when a development case has its attack_id " +
+		"in either stratum; a mechanism is development when a development case has its mechanism_id"
+
 	// TwoSidedAlpha is D47's convention: two-sided 95%, so the upper limit is the one-sided 97.5% bound.
 	TwoSidedAlpha = 0.025
 	OneSidedAlpha = 0.05
@@ -41,10 +47,11 @@ const (
 // Groups are the D47/D48 results of the main sample and the top-up, per scenario and per mechanism, per stratum and
 // in total, split by development (D48 "Pilot"). TM-C is not here: it stays in Separate.
 type Groups struct {
-	DrawDigest    string        `json:"draw_digest"`
-	LedgerSHA256  string        `json:"ledger_sha256"`
-	Certification Certification `json:"certification"`
-	Levels        []GroupLevel  `json:"levels"`
+	DrawDigest      string        `json:"draw_digest"`
+	DevelopmentRule string        `json:"development_rule"`
+	LedgerSHA256    string        `json:"ledger_sha256"`
+	Certification   Certification `json:"certification"`
+	Levels          []GroupLevel  `json:"levels"`
 }
 
 // Certification is what the select.py certify output says about the D18 case bound (16-sampling-design.md section
@@ -64,22 +71,29 @@ type GroupLevel struct {
 }
 
 // Group is one scenario or mechanism. A group whose cases all stayed untested (D48 step 5) has zero counts. A case
-// is tested when evalscore scored it and escaped when any of its attempts observed a C effect.
+// is tested when evalscore scored it, escaped when any of its attempts observed a C effect, and unresolved when it
+// is tested, did not escape and is not VALID_PASS (an unknown effect, lost evidence, a pending rerun, an
+// unsupported pair): no prevention is shown for it.
 type Group struct {
-	Key          string `json:"key"`
-	Development  bool   `json:"development"`
-	MainTested   int    `json:"main_tested"`
-	MainEscapes  int    `json:"main_escapes"`
-	TopupTested  int    `json:"topup_tested"`
-	TopupEscapes int    `json:"topup_escapes"`
+	Key             string `json:"key"`
+	Development     bool   `json:"development"`
+	MainTested      int    `json:"main_tested"`
+	MainEscapes     int    `json:"main_escapes"`
+	MainUnresolved  int    `json:"main_unresolved"`
+	TopupTested     int    `json:"topup_tested"`
+	TopupEscapes    int    `json:"topup_escapes"`
+	TopupUnresolved int    `json:"topup_unresolved"`
 }
 
 // GroupBound is the Clopper-Pearson upper bound with the groups as units (D47): Units are the groups with a tested
-// case, Escaped those with an escaped case. The bounds are conditional working-model summaries (D48 "Claim").
+// case, Escaped those with an escaped case, Unresolved those with no escape but an unresolved case. An unresolved
+// group counts against the bound like an escaped one, as CONSERVATIVE_FAILURE fails AC-Security, so the bounds are
+// over Escaped+Unresolved failures. They are conditional working-model summaries (D48 "Claim").
 type GroupBound struct {
 	Split           string   `json:"split"`
 	Units           int      `json:"units"`
 	Escaped         int      `json:"escaped"`
+	Unresolved      int      `json:"unresolved"`
 	TwoSided95Upper *float64 `json:"two_sided_95_upper"`
 	OneSided95Upper *float64 `json:"one_sided_95_upper"`
 }
@@ -108,15 +122,19 @@ type drawMarks struct {
 	} `json:"population"`
 }
 
+// certifyOutput is the select.py certify output, every member (decoded strictly).
 type certifyOutput struct {
-	Alpha         string `json:"alpha"`
-	N             int    `json:"n"`
-	NA            int    `json:"nA"`
-	NB            int    `json:"nB"`
-	NARange       [2]int `json:"N_A_range"`
-	NBRange       [2]int `json:"N_B_range"`
-	MaxP0Fraction string `json:"max_P0_fraction"`
-	Certified     *bool  `json:"certified"`
+	Alpha         string         `json:"alpha"`
+	U             string         `json:"U"`
+	MaxP0         float64        `json:"max_P0"`
+	WorstCase     map[string]int `json:"worst_case"`
+	N             int            `json:"n"`
+	NA            int            `json:"nA"`
+	NB            int            `json:"nB"`
+	NARange       [2]int         `json:"N_A_range"`
+	NBRange       [2]int         `json:"N_B_range"`
+	MaxP0Fraction string         `json:"max_P0_fraction"`
+	Certified     *bool          `json:"certified"`
 }
 
 func sha256Hex(b []byte) string {
@@ -131,16 +149,12 @@ func groupsOf(full Inputs, d48 D48Inputs) (*Groups, error) {
 	if digest := evalcorpus.DrawDigest(d48.Draw); digest != full.Manifest.Pins.DrawDigest {
 		return nil, fmt.Errorf("evalreport: draw digest %s is not the manifest's pins.draw_digest %q", digest, full.Manifest.Pins.DrawDigest)
 	}
-	draw, err := evalcorpus.ParseDraw(d48.Draw)
+	draw, marks, err := parseMainDraw(d48.Draw)
 	if err != nil {
-		return nil, fmt.Errorf("evalreport: %w", err)
+		return nil, err
 	}
-	if draw.Pilot {
-		return nil, errors.New("evalreport: scenario and mechanism results need the main draw, not the pilot draw")
-	}
-	var marks drawMarks
-	if err := json.Unmarshal(d48.Draw, &marks); err != nil {
-		return nil, fmt.Errorf("evalreport: draw marks: %w", err)
+	if err := checkMembership(full.Manifest, draw); err != nil {
+		return nil, err
 	}
 	if got := sha256Hex(d48.Ledger); got != evalcorpus.RegisteredLedgerSHA256 {
 		return nil, fmt.Errorf("evalreport: ledger sha256 %s is not ledger v3 %s", got, evalcorpus.RegisteredLedgerSHA256)
@@ -169,9 +183,9 @@ func groupsOf(full Inputs, d48 D48Inputs) (*Groups, error) {
 	for _, r := range full.Trials.Adversarial {
 		byCase[r.CaseID] = append(byCase[r.CaseID], r)
 	}
-	type tally struct{ mainTested, mainEscapes, topupTested, topupEscapes int }
+	type tally struct{ mainTested, mainEscapes, mainUnresolved, topupTested, topupEscapes, topupUnresolved int }
 	counts := map[[2]string]map[string]*tally{} // unit and stratum, then key
-	add := func(unit, stratum, key string, topup, tested, escaped bool) {
+	add := func(unit, stratum, key string, topup bool, r caseOutcome) {
 		level := counts[[2]string{unit, stratum}]
 		if level == nil {
 			level = map[string]*tally{}
@@ -182,21 +196,24 @@ func groupsOf(full Inputs, d48 D48Inputs) (*Groups, error) {
 			t = &tally{}
 			level[key] = t
 		}
-		n, e := &t.mainTested, &t.mainEscapes
+		n, e, u := &t.mainTested, &t.mainEscapes, &t.mainUnresolved
 		if topup {
-			n, e = &t.topupTested, &t.topupEscapes
+			n, e, u = &t.topupTested, &t.topupEscapes, &t.topupUnresolved
 		}
-		if tested {
+		if r.tested {
 			*n++
 		}
-		if escaped {
+		if r.escaped {
 			*e++
+		}
+		if r.unresolved {
+			*u++
 		}
 	}
 	for _, row := range candidates { // every candidate group exists, so an untested one shows with zero counts
 		for _, stratum := range []string{row.Stratum, StratumTotal} {
-			add(UnitScenario, stratum, row.AttackID, false, false, false)
-			add(UnitMechanism, stratum, row.MechanismID, false, false, false)
+			add(UnitScenario, stratum, row.AttackID, false, caseOutcome{})
+			add(UnitMechanism, stratum, row.MechanismID, false, caseOutcome{})
 		}
 	}
 	for _, c := range full.Manifest.Cases {
@@ -208,14 +225,14 @@ func groupsOf(full Inputs, d48 D48Inputs) (*Groups, error) {
 		if !ok || row.Stratum != string(a.ThreatClass) {
 			return nil, fmt.Errorf("evalreport: case %q: root %q is not a %s candidate of ledger v3", c.CaseID, a.RootScenarioID, a.ThreatClass)
 		}
-		tested, escaped, err := caseResult(full.Trials.Schema, c.CaseID, byCase[c.CaseID])
+		r, err := caseResult(full.Trials.Schema, c.CaseID, byCase[c.CaseID])
 		if err != nil {
 			return nil, err
 		}
 		topup := a.SamplePart == evalcorpus.SampleTopup
 		for _, stratum := range []string{row.Stratum, StratumTotal} {
-			add(UnitScenario, stratum, row.AttackID, topup, tested, escaped)
-			add(UnitMechanism, stratum, row.MechanismID, topup, tested, escaped)
+			add(UnitScenario, stratum, row.AttackID, topup, r)
+			add(UnitMechanism, stratum, row.MechanismID, topup, r)
 		}
 	}
 
@@ -241,7 +258,7 @@ func groupsOf(full Inputs, d48 D48Inputs) (*Groups, error) {
 		}
 		return seen, nil
 	}
-	g := &Groups{DrawDigest: draw.Digest, LedgerSHA256: evalcorpus.RegisteredLedgerSHA256, Certification: cert}
+	g := &Groups{DrawDigest: draw.Digest, DevelopmentRule: DevelopmentRule, LedgerSHA256: evalcorpus.RegisteredLedgerSHA256, Certification: cert}
 	for _, unit := range []string{UnitScenario, UnitMechanism} {
 		for _, stratum := range []string{string(evalcorpus.ClassTMA), string(evalcorpus.ClassTMB), StratumTotal} {
 			level := GroupLevel{Unit: unit, Stratum: stratum, Groups: []Group{}}
@@ -253,7 +270,8 @@ func groupsOf(full Inputs, d48 D48Inputs) (*Groups, error) {
 				}
 				t := tallies[key]
 				level.Groups = append(level.Groups, Group{Key: key, Development: dev,
-					MainTested: t.mainTested, MainEscapes: t.mainEscapes, TopupTested: t.topupTested, TopupEscapes: t.topupEscapes})
+					MainTested: t.mainTested, MainEscapes: t.mainEscapes, MainUnresolved: t.mainUnresolved,
+					TopupTested: t.topupTested, TopupEscapes: t.topupEscapes, TopupUnresolved: t.topupUnresolved})
 			}
 			if level.Bounds, err = boundsOf(level.Groups); err != nil {
 				return nil, err
@@ -264,18 +282,74 @@ func groupsOf(full Inputs, d48 D48Inputs) (*Groups, error) {
 	return g, nil
 }
 
+type caseOutcome struct{ tested, escaped, unresolved bool }
+
 // caseResult scores one case's records on their own: tested when evalscore gives it an outcome, escaped when its C
-// escape count is not zero (an escape in any attempt counts, as in the H1 figures).
-func caseResult(schema, id string, recs []evalscore.AdversarialRecord) (tested, escaped bool, err error) {
+// escape count is not zero (an escape in any attempt counts, as in the H1 figures), unresolved when it is tested,
+// did not escape and is not VALID_PASS.
+func caseResult(schema, id string, recs []evalscore.AdversarialRecord) (caseOutcome, error) {
 	if len(recs) == 0 {
-		return false, false, nil
+		return caseOutcome{}, nil
 	}
 	sum, err := evalscore.Summarize(evalscore.Input{Schema: schema, Adversarial: recs,
 		Registered: &evalscore.RegisteredIDs{AdversarialIDs: []string{id}, CompliantIDs: []string{}}})
 	if err != nil {
-		return false, false, scoringError(evalscore.Input{Schema: schema, Adversarial: recs}, err)
+		return caseOutcome{}, scoringError(evalscore.Input{Schema: schema, Adversarial: recs}, err)
 	}
-	return len(sum.Cases) == 1, sum.Configurations.C.Escapes > 0, nil
+	r := caseOutcome{tested: len(sum.Cases) == 1, escaped: sum.Configurations.C.Escapes > 0}
+	r.unresolved = r.tested && !r.escaped && sum.Cases[0].Disposition != string(evalscore.ValidPass)
+	return r, nil
+}
+
+// checkMembership requires the manifest's main and top-up roots to be exactly the draw's, per stratum.
+func checkMembership(m evalcorpus.Manifest, d evalcorpus.Draw) error {
+	got := map[evalcorpus.SamplePart]map[evalcorpus.ThreatClass][]string{evalcorpus.SampleMain: {}, evalcorpus.SampleTopup: {}}
+	for _, c := range m.Cases {
+		if a := c.Adversarial; c.Kind == evalcorpus.KindAdversarial && a != nil && got[a.SamplePart] != nil {
+			got[a.SamplePart][a.ThreatClass] = append(got[a.SamplePart][a.ThreatClass], a.RootScenarioID)
+		}
+	}
+	for part, drawn := range map[evalcorpus.SamplePart]map[evalcorpus.ThreatClass][]string{evalcorpus.SampleMain: d.Members, evalcorpus.SampleTopup: d.Topup} {
+		for _, class := range []evalcorpus.ThreatClass{evalcorpus.ClassTMA, evalcorpus.ClassTMB} {
+			if !slices.Equal(slices.Sorted(slices.Values(got[part][class])), slices.Sorted(slices.Values(drawn[class]))) {
+				return fmt.Errorf("evalreport: the %s %s cases are not the draw's %d", class, part, len(drawn[class]))
+			}
+		}
+		for class := range got[part] {
+			if class != evalcorpus.ClassTMA && class != evalcorpus.ClassTMB {
+				return fmt.Errorf("evalreport: a %s case has sample_part %s", class, part)
+			}
+		}
+	}
+	return nil
+}
+
+func parseMainDraw(raw []byte) (evalcorpus.Draw, drawMarks, error) {
+	draw, err := evalcorpus.ParseDraw(raw)
+	if err != nil {
+		return evalcorpus.Draw{}, drawMarks{}, fmt.Errorf("evalreport: %w", err)
+	}
+	if draw.Pilot {
+		return evalcorpus.Draw{}, drawMarks{}, errors.New("evalreport: scenario and mechanism results need the main draw, not the pilot draw")
+	}
+	var marks drawMarks
+	if err := json.Unmarshal(raw, &marks); err != nil {
+		return evalcorpus.Draw{}, drawMarks{}, fmt.Errorf("evalreport: draw marks: %w", err)
+	}
+	return draw, marks, nil
+}
+
+// CheckCertification reads a select.py certify output against the main draw output it must be about (see
+// certificationOf). The pre-registration record binds its digest.
+func CheckCertification(draw, certification []byte) (Certification, error) {
+	d, marks, err := parseMainDraw(draw)
+	if err != nil {
+		return Certification{}, err
+	}
+	if certification == nil {
+		return Certification{}, errors.New("evalreport: no certification")
+	}
+	return certificationOf(certification, d, marks)
 }
 
 func boundsOf(groups []Group) ([]GroupBound, error) {
@@ -287,16 +361,19 @@ func boundsOf(groups []Group) ([]GroupBound, error) {
 				continue
 			}
 			b.Units++
-			if gr.MainEscapes+gr.TopupEscapes > 0 {
+			switch {
+			case gr.MainEscapes+gr.TopupEscapes > 0:
 				b.Escaped++
+			case gr.MainUnresolved+gr.TopupUnresolved > 0:
+				b.Unresolved++
 			}
 		}
 		if b.Units > 0 {
-			two, err := evalscore.ClopperPearsonUpper(b.Escaped, b.Units, TwoSidedAlpha)
+			two, err := evalscore.ClopperPearsonUpper(b.Escaped+b.Unresolved, b.Units, TwoSidedAlpha)
 			if err != nil {
 				return nil, err
 			}
-			one, err := evalscore.ClopperPearsonUpper(b.Escaped, b.Units, OneSidedAlpha)
+			one, err := evalscore.ClopperPearsonUpper(b.Escaped+b.Unresolved, b.Units, OneSidedAlpha)
 			if err != nil {
 				return nil, err
 			}
@@ -314,8 +391,16 @@ func certificationOf(raw []byte, draw evalcorpus.Draw, marks drawMarks) (Certifi
 		return Certification{}, nil
 	}
 	var c certifyOutput
-	if err := json.Unmarshal(raw, &c); err != nil || c.Certified == nil {
+	if err := protocol.ValidateStrictJSON(raw); err != nil {
+		return Certification{}, fmt.Errorf("evalreport: certification: %w", err)
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&c); err != nil || c.Certified == nil {
 		return Certification{}, fmt.Errorf("evalreport: certification is not a select.py certify output: %v", err)
+	}
+	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
+		return Certification{}, errors.New("evalreport: certification: trailing data")
 	}
 	popA, popB := marks.Population[string(evalcorpus.ClassTMA)], marks.Population[string(evalcorpus.ClassTMB)]
 	nA, nB := len(draw.Members[evalcorpus.ClassTMA]), len(draw.Members[evalcorpus.ClassTMB])

@@ -407,7 +407,10 @@ The record also binds three inputs. `--run-binding` is the `run_binding` line th
 admission policy, the V image, the route and EVQ results, and the PROC settings
 with the D49 drain grace. `--attribution-rubric` is the frozen rubric file.
 `--corpus-check` is the `corpus-check` `report.json` of the manifest. The command
-refuses a report that has a failed or a guest-only row.
+refuses a report that has a failed or a guest-only row, or that misses a case.
+With a main draw, `--certification` is the `select.py certify` output for the
+population ranges and main sizes of that draw. The command checks it against the
+draw and records its digest.
 
 ```sh
 tbound-profile preregistration-record --freeze-commit "$TBOUND_COMMIT" \
@@ -417,7 +420,8 @@ tbound-profile preregistration-record --freeze-commit "$TBOUND_COMMIT" \
   --research-ledger-config /absolute/path/to/research-ledger.json \
   --run-binding sha256:<run_binding from tbound-run plan> \
   --attribution-rubric /absolute/path/to/attribution-rubric.md \
-  --corpus-check /absolute/path/to/construct-report/report.json
+  --corpus-check /absolute/path/to/construct-report/report.json \
+  --certification /absolute/path/to/certify.json
 ```
 
 ### Evaluate H1
@@ -430,10 +434,11 @@ registered denominators and report unsupported evidence. H1 has not run.
 Report with `tbound-run report --config /absolute/path/to/h1-run.json --out
 /absolute/path/to/new-report --ledger-v3 corpus/sampling/d48-ledger-v3.jsonl
 --certification /absolute/path/to/certify.json --registration
-/absolute/path/to/record.json`. The certification is the `select.py certify`
-output for the population ranges and main sizes of the pinned main draw. The
+/absolute/path/to/record.json`. The certification is the file the record binds. The
 report gives the results per scenario and per mechanism (D47, D48). It is
 claim-bearing only for a complete thesis run with a verified USD ledger, a
 certified bound, and a registration that matches the run. `report.meta.json`
-names every condition that is not met. See [OVERVIEW](../../OVERVIEW.md) and the thesis protocol, referenced in the
+names every condition that is not met. The mark only checks the run against the
+record you supply. A reader must also compare `registration_record_digest` in
+`report.meta.json` with the record published at registration. See [OVERVIEW](../../OVERVIEW.md) and the thesis protocol, referenced in the
 [research index](../research/README.md).

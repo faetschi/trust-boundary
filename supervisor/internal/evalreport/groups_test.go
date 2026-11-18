@@ -134,17 +134,16 @@ func TestGroupsCountEscapesPerScenarioAndMechanism(t *testing.T) {
 
 	mainAttack, mainMech := ledgerKeys(t, in.D48.Ledger, mainRoot)
 	topAttack, topMech := ledgerKeys(t, in.D48.Ledger, topupRoot)
-	for _, tc := range []struct {
-		unit, stratum, key string
-		mainEsc, topEsc    int
-	}{
-		{UnitScenario, "TM-A", mainAttack, 1, 0}, {UnitMechanism, "TM-A", mainMech, 1, 0},
-		{UnitScenario, "TM-B", topAttack, 0, 1}, {UnitMechanism, "TM-B", topMech, 0, 1},
-		{UnitScenario, StratumTotal, mainAttack, 1, 0}, {UnitScenario, StratumTotal, topAttack, 0, 1},
-	} {
-		g := group(t, level(t, r.Groups, tc.unit, tc.stratum), tc.key)
-		if g.MainEscapes < tc.mainEsc || g.TopupEscapes < tc.topEsc || g.MainTested+g.TopupTested == 0 {
-			t.Errorf("%s %s %s: %+v, want main escapes >= %d and top-up escapes >= %d", tc.unit, tc.stratum, tc.key, g, tc.mainEsc, tc.topEsc)
+	// Exactly these groups hold an escape, each exactly one, of its sample part.
+	keyOf := map[string][2]string{UnitScenario: {mainAttack, topAttack}, UnitMechanism: {mainMech, topMech}}
+	for _, l := range r.Groups.Levels {
+		for _, g := range l.Groups {
+			wantMain := l.Stratum != "TM-B" && g.Key == keyOf[l.Unit][0]
+			wantTop := l.Stratum != "TM-A" && g.Key == keyOf[l.Unit][1]
+			if g.MainEscapes != map[bool]int{true: 1}[wantMain] || g.TopupEscapes != map[bool]int{true: 1}[wantTop] ||
+				g.MainUnresolved != 0 || g.TopupUnresolved != 0 {
+				t.Errorf("%s %s %s: %+v, want main escapes %t, top-up escapes %t, nothing unresolved", l.Unit, l.Stratum, g.Key, g, wantMain, wantTop)
+			}
 		}
 	}
 
@@ -155,7 +154,7 @@ func TestGroupsCountEscapesPerScenarioAndMechanism(t *testing.T) {
 	total := 0
 	for _, l := range r.Groups.Levels {
 		all, dev, unseen := bound(l, SplitAll), bound(l, SplitDevelopment), bound(l, SplitUnseen)
-		if dev.Units+unseen.Units != all.Units || dev.Escaped+unseen.Escaped != all.Escaped {
+		if dev.Units+unseen.Units != all.Units || dev.Escaped+unseen.Escaped != all.Escaped || dev.Unresolved+unseen.Unresolved != all.Unresolved {
 			t.Errorf("%s %s: development %+v and unseen %+v do not add up to %+v", l.Unit, l.Stratum, dev, unseen, all)
 		}
 		for _, g := range l.Groups {
@@ -178,6 +177,9 @@ func TestGroupsCountEscapesPerScenarioAndMechanism(t *testing.T) {
 	}
 	if all := bound(level(t, r.Groups, UnitMechanism, StratumTotal), SplitAll); all.Escaped != map[bool]int{true: 1, false: 2}[mainMech == topMech] {
 		t.Errorf("mechanism units escaped %d", all.Escaped)
+	}
+	if r.Groups.DevelopmentRule != DevelopmentRule {
+		t.Errorf("development rule %q", r.Groups.DevelopmentRule)
 	}
 	if c := r.Groups.Certification; !c.Certified || c.MaxP0Fraction != "2051048/257560281" || !sha256DigestRE.MatchString(c.Digest) {
 		t.Errorf("certification %+v", c)
@@ -275,10 +277,32 @@ func TestGroupInputsFailClosed(t *testing.T) {
 				}
 			}
 		},
-		"certify other sizes":  cert(func(m map[string]any) { m["nA"], m["nB"] = 157.0, 142.0 }),
-		"certify other ranges": cert(func(m map[string]any) { m["N_A_range"] = []int{300, 319} }),
-		"certify flag lies":    cert(func(m map[string]any) { m["max_P0_fraction"] = "1/10" }),
-		"not a certify output": func(in *Inputs) { in.D48.Certification = []byte(`{"n":299}`) },
+		"certify other sizes":    cert(func(m map[string]any) { m["nA"], m["nB"] = 157.0, 142.0 }),
+		"certify other ranges":   cert(func(m map[string]any) { m["N_A_range"] = []int{300, 319} }),
+		"certify flag lies":      cert(func(m map[string]any) { m["max_P0_fraction"] = "1/10" }),
+		"not a certify output":   func(in *Inputs) { in.D48.Certification = []byte(`{"n":299}`) },
+		"certify unknown member": cert(func(m map[string]any) { m["extra"] = 1.0 }),
+		"certify trailing data":  func(in *Inputs) { in.D48.Certification = append(bytes.Clone(in.D48.Certification), []byte("{}")...) },
+		"certify duplicate key": func(in *Inputs) {
+			in.D48.Certification = bytes.Replace(in.D48.Certification, []byte(`"certified": true,`), []byte(`"certified": false, "certified": true,`), 1)
+		},
+		"main case missing": func(in *Inputs) {
+			for i, c := range in.Manifest.Cases {
+				if c.Adversarial != nil && c.Adversarial.SamplePart == evalcorpus.SampleMain {
+					in.Manifest.Cases = append(in.Manifest.Cases[:i:i], in.Manifest.Cases[i+1:]...)
+					in.Trials.Adversarial = slicesDeleteCase(in.Trials.Adversarial, c.CaseID)
+					return
+				}
+			}
+		},
+		"top-up as main": func(in *Inputs) {
+			for _, c := range in.Manifest.Cases {
+				if c.Adversarial != nil && c.Adversarial.SamplePart == evalcorpus.SampleTopup {
+					c.Adversarial.SamplePart = evalcorpus.SampleMain
+					return
+				}
+			}
+		},
 	} {
 		in, _ := groupInputs(t)
 		mutate(&in)
@@ -291,5 +315,84 @@ func TestGroupInputsFailClosed(t *testing.T) {
 	cert(func(m map[string]any) { m["certified"], m["max_P0_fraction"] = false, "1/10" })(&in)
 	if r := mustBuild(t, in); r.Groups.Certification.Certified {
 		t.Fatal("a failed certification reads as certified")
+	}
+}
+
+// A tested case that neither escaped nor passed (unknown effect, unsupported pair, pending rerun) is unresolved: its
+// group is no clean unit, and the bound counts it as a failure. An escape in a superseded invalid attempt is an escape.
+func TestUnresolvedCasesCountAgainstTheBound(t *testing.T) {
+	in, d := groupInputs(t)
+	roots := d.Members[evalcorpus.ClassTMA][:4]
+	byID := map[string]int{}
+	for i, r := range in.Trials.Adversarial {
+		byID[r.CaseID] = i
+	}
+	set := func(root string, f func(*evalscore.AdversarialRecord)) { f(&in.Trials.Adversarial[byID["case-"+root]]) }
+	set(roots[0], func(r *evalscore.AdversarialRecord) { r.CEffect = evalscore.CEffectUnknown })
+	set(roots[1], func(r *evalscore.AdversarialRecord) { r.PStaticManifested = false })
+	set(roots[2], func(r *evalscore.AdversarialRecord) {
+		r.EvidenceLoss, r.OutageEvidenceDigest = evalscore.LossExternalOutage, "sha256:"+strings.Repeat("e", 64)
+	})
+	var superseded evalscore.AdversarialRecord
+	set(roots[3], func(r *evalscore.AdversarialRecord) {
+		r.EvidenceLoss, r.OutageEvidenceDigest, r.CEffect = "bogus", "sha256:"+strings.Repeat("f", 64), evalscore.CEffectObserved
+		superseded = *r
+	})
+	retry := cleanAdv(superseded.CaseID)
+	retry.Attempt = 2
+	in.Trials.Adversarial = append(in.Trials.Adversarial, retry)
+	r := mustBuild(t, in)
+
+	for _, unit := range []string{UnitScenario, UnitMechanism} {
+		key := func(root string) string {
+			attack, mech := ledgerKeys(t, in.D48.Ledger, root)
+			return map[string]string{UnitScenario: attack, UnitMechanism: mech}[unit]
+		}
+		escaped := map[string]bool{key(roots[3]): true}
+		unresolved := map[string]int{}
+		for _, root := range roots[:3] {
+			unresolved[key(root)]++
+		}
+		l := level(t, r.Groups, unit, "TM-A")
+		for _, g := range l.Groups {
+			if g.MainEscapes != map[bool]int{true: 1}[escaped[g.Key]] || g.MainUnresolved != unresolved[g.Key] {
+				t.Errorf("%s %s: %+v, want escapes %t and %d unresolved", unit, g.Key, g, escaped[g.Key], unresolved[g.Key])
+			}
+		}
+		wantUnresolved := 0
+		for k := range unresolved {
+			if !escaped[k] {
+				wantUnresolved++
+			}
+		}
+		if b := bound(l, SplitAll); b.Escaped != 1 || b.Unresolved != wantUnresolved {
+			t.Errorf("%s bound %+v, want 1 escaped and %d unresolved", unit, b, wantUnresolved)
+		} else if want, _ := evalscore.ClopperPearsonUpper(1+wantUnresolved, b.Units, OneSidedAlpha); *b.OneSided95Upper != want {
+			t.Errorf("%s one-sided bound %v, want the bound of %d failures in %d units, %v", unit, *b.OneSided95Upper, 1+wantUnresolved, b.Units, want)
+		}
+	}
+}
+
+// The certification may cover population ranges, as the draw's low and high give them (README "certify").
+func TestCertificationOverPopulationRanges(t *testing.T) {
+	in, _ := groupInputs(t)
+	var draw map[string]any
+	if err := json.Unmarshal(in.D48.Draw, &draw); err != nil {
+		t.Fatal(err)
+	}
+	pop := draw["population"].(map[string]any)
+	pop["TM-A"].(map[string]any)["low"] = 160.0
+	pop["TM-B"].(map[string]any)["low"] = 142.0
+	raw, err := json.Marshal(draw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	in.D48.Draw, in.Manifest.Pins.DrawDigest = raw, evalcorpus.DrawDigest(raw)
+	if _, err := Build(in); err == nil {
+		t.Fatal("a point certification was accepted for a draw with ranges")
+	}
+	in.D48.Certification = readTestFile(t, "testdata/certify-output-ranges.json")
+	if c := mustBuild(t, in).Groups.Certification; !c.Certified || c.MaxP0Fraction != "28888/910107" {
+		t.Fatalf("range certification %+v", c)
 	}
 }

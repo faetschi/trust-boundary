@@ -81,13 +81,16 @@ func writeFile(t *testing.T, dir, name, content string) string {
 type preregInputs struct {
 	panel                                                               []string
 	commit, manifest, quota, config, profile, ledger, reviewers, schema string
-	runBinding, rubric, corpusCheck                                     string
+	runBinding, rubric, corpusCheck, certification                      string
 }
 
 func (p preregInputs) args() []string {
 	args := []string{"preregistration-record", "--freeze-commit", p.commit, "--corpus-manifest", p.manifest,
 		"--quota-profile", p.quota, "--runner-config", p.config, "--reviewers", p.reviewers,
 		"--run-binding", p.runBinding, "--attribution-rubric", p.rubric, "--corpus-check", p.corpusCheck}
+	if p.certification != "" {
+		args = append(args, "--certification", p.certification)
+	}
 	if p.profile != "" {
 		args = append(args, "--research-profile", p.profile)
 	}
@@ -130,9 +133,11 @@ func cleanCorpusCheck(t *testing.T, path string, mutate func(*corpusadmit.Constr
 	}
 	r := corpusadmit.ConstructReport{Schema: "tbound-construct-checks/v1", ManifestDigest: digest, Passed: true,
 		Summary: map[string]corpusadmit.ConstructCounts{"manifest-validation": {Pass: 1}, "calibration-p": {Pass: 1}, "mutation": {NotChecked: 1}},
-		Checks:  []corpusadmit.ConstructCheck{{Name: "manifest-validation", Status: "pass", Reason: "ok"}},
-		Cases: []corpusadmit.ConstructCase{{CaseID: m.Cases[0].CaseID, Checks: []corpusadmit.ConstructCheck{
-			{Name: "calibration-p", Status: "pass", Reason: "imported"}, {Name: "mutation", Status: "not-checked", Reason: "n/a"}}}}}
+		Checks:  []corpusadmit.ConstructCheck{{Name: "manifest-validation", Status: "pass", Reason: "ok"}}}
+	for _, c := range m.Cases {
+		r.Cases = append(r.Cases, corpusadmit.ConstructCase{CaseID: c.CaseID, Checks: []corpusadmit.ConstructCheck{
+			{Name: "calibration-p", Status: "pass", Reason: "imported"}, {Name: "mutation", Status: "not-checked", Reason: "n/a"}}})
+	}
 	if mutate != nil {
 		mutate(&r)
 	}
@@ -140,7 +145,7 @@ func cleanCorpusCheck(t *testing.T, path string, mutate func(*corpusadmit.Constr
 	if err != nil {
 		t.Fatal(err)
 	}
-	return writeFile(t, filepath.Dir(path), filepath.Base(path)+".corpus-check.json", string(raw))
+	return writeFile(t, t.TempDir(), "report.json", string(raw))
 }
 
 func preregOut(t *testing.T, p preregInputs) string {
@@ -261,13 +266,10 @@ func TestPreregistrationRecordEveryInputChangesTheDigest(t *testing.T) {
 			p.corpusCheck = cleanCorpusCheck(t, p.manifest, func(r *corpusadmit.ConstructReport) { r.Checks[0].Reason = "ok, rerun" })
 		},
 		"runner config": func(p *preregInputs) {
-			p.config = runnerConfigFile(t, dir, "runner-c.json", commitA, func(c *runner.Config) { c.NET02Mandatory = true })
+			p.config = runnerConfigFile(t, dir, "runner-c.json", commitA, func(c *runner.Config) { c.AdaptiveCaps.Iterations = 9 })
 		},
 		"runner config evq": func(p *preregInputs) {
 			p.config = runnerConfigFile(t, dir, "runner-d.json", commitA, func(c *runner.Config) { c.EVQObligations = []string{"EVQ-1"} })
-		},
-		"runner config headroom": func(p *preregInputs) {
-			p.config = runnerConfigFile(t, dir, "runner-e.json", commitA, func(c *runner.Config) { c.RerunHeadroom = 50 })
 		},
 		"research profile value":  func(p *preregInputs) { p.profile = writeFile(t, dir, "profile-b.json", frozenResearchProfile("8")) },
 		"research profile absent": func(p *preregInputs) { p.profile = "" },
@@ -376,6 +378,30 @@ func TestPreregistrationRecordRefusals(t *testing.T) {
 		"corpus check of another manifest": func(p *preregInputs) {
 			p.corpusCheck = cleanCorpusCheck(t, p.manifest, func(r *corpusadmit.ConstructReport) { r.ManifestDigest = fixtureDigest("other") })
 		},
+		"corpus check missing a case": func(p *preregInputs) {
+			p.corpusCheck = cleanCorpusCheck(t, p.manifest, func(r *corpusadmit.ConstructReport) { r.Cases = r.Cases[1:] })
+		},
+		"corpus check with a case twice": func(p *preregInputs) {
+			p.corpusCheck = cleanCorpusCheck(t, p.manifest, func(r *corpusadmit.ConstructReport) { r.Cases[1] = r.Cases[0] })
+		},
+		"certification without a main draw": func(p *preregInputs) {
+			p.certification = "../../internal/evalreport/testdata/certify-output.json"
+		},
+		"runner config net02_mandatory": func(p *preregInputs) {
+			p.config = runnerConfigFile(t, dir, "runner-net02.json", commitA, func(c *runner.Config) { c.NET02Mandatory = true })
+		},
+		"runner config rerun headroom": func(p *preregInputs) {
+			p.config = runnerConfigFile(t, dir, "runner-headroom.json", commitA, func(c *runner.Config) { c.RerunHeadroom = 50 })
+		},
+		"runner config no rerun headroom": func(p *preregInputs) {
+			p.config = runnerConfigFile(t, dir, "runner-noheadroom.json", commitA, func(c *runner.Config) { c.NoRerunHeadroom = true })
+		},
+		"runner config unit cap": func(p *preregInputs) {
+			p.config = runnerConfigFile(t, dir, "runner-unitcap.json", commitA, func(c *runner.Config) { c.UnitCap = 100 })
+		},
+		"runner config C-DH": func(p *preregInputs) {
+			p.config = runnerConfigFile(t, dir, "runner-cdh.json", commitA, func(c *runner.Config) { c.CDH = &runner.CDHConfig{} })
+		},
 		"corpus check with no rows": func(p *preregInputs) {
 			p.corpusCheck = cleanCorpusCheck(t, p.manifest, func(r *corpusadmit.ConstructReport) { r.Checks, r.Cases = nil, nil })
 		},
@@ -415,7 +441,8 @@ func TestPreregistrationRecordThesisPlanIsTheRegisteredUnits(t *testing.T) {
 	manifest := writeManifest(t, dir, "thesis.json", m)
 	p := preregInputs{panel: panel, commit: commitA, manifest: manifest, quota: "thesis",
 		config: runnerConfigFile(t, dir, "runner.json", commitA, nil), reviewers: "owner,advisor",
-		runBinding: base.runBinding, rubric: base.rubric, corpusCheck: cleanCorpusCheck(t, manifest, nil)}
+		runBinding: base.runBinding, rubric: base.rubric, corpusCheck: cleanCorpusCheck(t, manifest, nil),
+		certification: "../../internal/evalreport/testdata/certify-output.json"}
 	if _, _, err := runCLI(p.args()...); err == nil || !strings.Contains(err.Error(), "draw-") {
 		t.Fatalf("a thesis manifest was recorded without its draw file: %v", err)
 	}
@@ -427,6 +454,20 @@ func TestPreregistrationRecordThesisPlanIsTheRegisteredUnits(t *testing.T) {
 	want := 304*5 + 100*3 + 2*2 + 50*2
 	if rec.PlanSteps != want || rec.PlannedUnits != want || rec.RerunHeadroom != runner.RerunHeadroomFor(want) || rec.QuotaProfile != "thesis" {
 		t.Fatalf("thesis record %+v, want %d units", rec, want)
+	}
+	certRaw, err := os.ReadFile(p.certification)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sum := sha256.Sum256(certRaw); rec.CertificationDigest != "sha256:"+hex.EncodeToString(sum[:]) {
+		t.Fatalf("certification digest %q", rec.CertificationDigest)
+	}
+	for name, cert := range map[string]string{"none": "", "another draw's": "../../internal/evalreport/testdata/certify-output-ranges.json"} {
+		q := p
+		q.certification = cert
+		if out, _, err := runCLI(q.args()...); err == nil || out != "" {
+			t.Errorf("%s certification accepted", name)
+		}
 	}
 	// The same manifest is not a pilot manifest.
 	p.quota = "pilot"

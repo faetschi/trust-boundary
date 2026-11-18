@@ -11,6 +11,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"sort"
@@ -58,6 +59,7 @@ func runPreregistrationRecord(args []string, stdout, stderr io.Writer) error {
 	runBinding := flags.String("run-binding", "", "the run_binding that `tbound-run plan` prints for the registered run.json (D49 drain grace, admission policy, receipt pins)")
 	rubricPath := flags.String("attribution-rubric", "", "the frozen attribution rubric file; the run's attribution file must name its sha256 as rubric_digest")
 	corpusCheckPath := flags.String("corpus-check", "", "the `tbound-profile corpus-check` report.json of this manifest, with no failed and no guest-only row")
+	certificationPath := flags.String("certification", "", "the select.py certify output for the manifest's pinned main draw (required with a main draw, refused without)")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -94,6 +96,11 @@ func runPreregistrationRecord(args []string, stdout, stderr io.Writer) error {
 	if cfg.Purpose == runner.PurposeConstructWitness {
 		return errors.New("the runner config is a construct-witness run, which is non-confirmatory and cannot be pre-registered")
 	}
+	// tbound-run plans from run.json with freeze_commit, evq_obligations, adaptive_caps, only_cases and purpose only
+	// (runConfig.runnerConfig), so a record with any other runner field could match no run. C-DH is outside H1.
+	if cfg.CDH != nil || cfg.NET02Mandatory || cfg.UnitCap != 0 || cfg.RerunHeadroom != 0 || cfg.NoRerunHeadroom {
+		return errors.New("the runner config sets cdh, net02_mandatory, unit_cap, rerun_headroom or no_rerun_headroom, which no tbound-run plan sets")
+	}
 
 	manifest, manifestDigest, quotas, err := admitCorpus(*manifestPath, *profile, artifactsBeside(*manifestPath), nil)
 	if err != nil {
@@ -102,7 +109,11 @@ func runPreregistrationRecord(args []string, stdout, stderr io.Writer) error {
 	if err := checkPanel(manifest, *panelReceipt, *panelAudit, *panelStats, flags); err != nil {
 		return err
 	}
-	corpusCheck, err := corpusCheckDigest(*corpusCheckPath, manifestDigest)
+	corpusCheck, err := corpusCheckDigest(*corpusCheckPath, manifest, manifestDigest)
+	if err != nil {
+		return err
+	}
+	certification, err := certificationDigest(*certificationPath, manifest, quotas, artifactsBeside(*manifestPath))
 	if err != nil {
 		return err
 	}
@@ -143,7 +154,8 @@ func runPreregistrationRecord(args []string, stdout, stderr io.Writer) error {
 		Domain: evalreport.RegistrationDomain, FreezeCommit: *commit, CorpusManifestDigest: manifestDigest, QuotaProfile: *profile,
 		RunnerPlanDigest: schedule.Digest, PlanSteps: schedule.Units(), PlannedUnits: planned,
 		RerunHeadroom: schedule.Config.RerunHeadroom, EvalscoreSchema: evalscore.SchemaVersion,
-		RunBinding: *runBinding, AttributionRubricDigest: "sha256:" + hex.EncodeToString(rubricSum[:]), CorpusCheckDigest: corpusCheck, Reviewers: names,
+		RunBinding: *runBinding, AttributionRubricDigest: "sha256:" + hex.EncodeToString(rubricSum[:]), CorpusCheckDigest: corpusCheck,
+		CertificationDigest: certification, Reviewers: names,
 	}
 	if *researchProfilePath != "" {
 		if rec.ResearchProfileDigest, err = researchProfileDigest(*researchProfilePath); err != nil {
@@ -273,11 +285,39 @@ func readRegularBounded(path string, limit int64) ([]byte, error) {
 	return data, nil
 }
 
+// certificationDigest checks the select.py certify output against the manifest's pinned main draw
+// (evalreport.CheckCertification) and returns its digest. A manifest without a main draw has no certification.
+func certificationDigest(path string, m evalcorpus.Manifest, q evalcorpus.Quotas, artifactsDir string) (string, error) {
+	mainDraw := q.Draw != nil && !q.Draw.Pilot
+	switch {
+	case mainDraw && path == "":
+		return "", errors.New("--certification is required: the manifest pins a main draw (D48 zero-event certification)")
+	case !mainDraw && path != "":
+		return "", errors.New("--certification needs a manifest that pins a main draw")
+	case !mainDraw:
+		return "", nil
+	}
+	name, _ := corpusadmit.DrawArtifactName(m.Pins.DrawDigest)
+	draw, err := readRegularBounded(filepath.Join(artifactsDir, name), evalcorpus.MaxDrawBytes)
+	if err != nil {
+		return "", fmt.Errorf("certification: %w", err)
+	}
+	raw, err := readRegularBounded(path, maxRubricBytes)
+	if err != nil {
+		return "", fmt.Errorf("certification: %w", err)
+	}
+	c, err := evalreport.CheckCertification(draw, raw)
+	if err != nil {
+		return "", err
+	}
+	return c.Digest, nil
+}
+
 // corpusCheckDigest accepts a `tbound-profile corpus-check` report.json only for this manifest and only when it is
-// clean: it passed, and every row of it, corpus-wide and per case, is pass or not-checked. A guest-only row is a
-// guest witness still pending, so a report made without the imported guest evidence is refused. It returns the
-// sha256 of the file.
-func corpusCheckDigest(path, manifestDigest string) (string, error) {
+// clean: it passed, it has one case entry per manifest case, and every row of it, corpus-wide and per case, is pass
+// or not-checked. A guest-only row is a guest witness still pending, so a report made without the imported guest
+// evidence is refused. It returns the sha256 of the file.
+func corpusCheckDigest(path string, m evalcorpus.Manifest, manifestDigest string) (string, error) {
 	data, err := readRegularBounded(path, maxCorpusCheckBytes)
 	if err != nil {
 		return "", fmt.Errorf("corpus check: %w", err)
@@ -298,8 +338,17 @@ func corpusCheckDigest(path, manifestDigest string) (string, error) {
 		return "", fmt.Errorf("corpus check: schema %q for manifest %q is not a construct-check report of manifest %s", r.Schema, r.ManifestDigest, manifestDigest)
 	}
 	rows := slices.Clone(r.Checks)
+	var ids []string
 	for _, c := range r.Cases {
 		rows = append(rows, c.Checks...)
+		ids = append(ids, c.CaseID)
+	}
+	want := make([]string, 0, len(m.Cases))
+	for _, c := range m.Cases {
+		want = append(want, c.CaseID)
+	}
+	if slices.Sort(ids); !slices.Equal(ids, slices.Sorted(slices.Values(want))) {
+		return "", fmt.Errorf("corpus check: its %d case entries are not the manifest's %d cases", len(ids), len(want))
 	}
 	var unclean []string
 	for _, c := range rows {
