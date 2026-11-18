@@ -86,7 +86,7 @@ func NewRunner(s Schedule, j *Journal, e Executor, opt Options) (*Runner, error)
 // executor is called again with Step.Resumed set, collects the result of the
 // request the earlier process sent, and the step ends with that result. A started
 // adversarial step is abandoned after its executor sent its request again with
-// Step.Resumed until the guest settled it; that answer is not scored.
+// Step.Resumed until the guest settled it or the resend window ended; that answer is not scored.
 func (r *Runner) Run(ctx context.Context) (RunReport, error) {
 	if c, ok := r.exec.(interface{ Check(Schedule) error }); ok {
 		if err := c.Check(r.sched); err != nil {
@@ -133,7 +133,7 @@ func (r *Runner) Run(ctx context.Context) (RunReport, error) {
 				run := st
 				run.Attempt, run.Resumed = 1, true
 				_, _ = r.exec.Execute(ctx, run)
-				reason += "; its request id was sent again until the guest settled it, and the answer is not scored"
+				reason += "; its request id was sent again until the guest settled it or the resend window ended, and the answer is not scored"
 			}
 			if err := r.j.append(Entry{Kind: EntryAbandoned, StepID: st.ID(), CaseID: st.CaseID, Index: st.Index, Attempt: 1,
 				Reason: reason}); err != nil {
