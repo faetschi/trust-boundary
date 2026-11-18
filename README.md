@@ -7,17 +7,12 @@
 [![Linux](https://img.shields.io/badge/platform-Linux-FCC624?logo=linux&logoColor=black)](docs/runtime/architecture.md)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-*Fabian Jelinek, master's thesis artifact*
-
 TBound is a Linux supervisor for the Pi coding agent. Pi proposes four kinds of
 tool call: `read`, `write`, `edit`, and `bash`. TBound checks each call against a
 fixed policy, runs `bash` in an isolated container, and publishes changes to your
 repository only when the policy allows them. Pi and the model are treated as
 untrusted. The Go supervisor owns the decisions, the durable state, and the
 evidence.
-
-TBound is also the artifact of a master thesis. Its study records sit beside the
-code, and [docs/research](docs/research/README.md) explains which is which.
 
 ## Key features
 
@@ -137,7 +132,7 @@ the first archived release.
 
 ```bibtex
 @misc{jelinek2026tbound,
-  title = {TBound: a governed supervisor for AI coding agents},
+  title = {Between the Model and the Shell: Deterministic Runtime Governance for Probabilistic Software Engineering Agents},
   author = {Jelinek, Fabian},
   year = {2026},
   howpublished = {\url{https://github.com/faetschi/trust-boundary}},
