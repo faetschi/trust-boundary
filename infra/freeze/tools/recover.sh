@@ -82,7 +82,10 @@ J=$J/journal.jsonl
 start_runner() { # start_runner <chunk>
   (cd "$M" && nohup ./bin/tbound-run.exe run --config run.json > "runs/$1.txt" 2> "runs/$1.err" &)
   sleep 3
-  tasklist /FI "IMAGENAME eq tbound-run.exe" /FO CSV /NH | head -1 | cut -d, -f2 | tr -d '"' > "$M/runs/full.pid"
+  local pids
+  pids=$(tasklist /FI "IMAGENAME eq tbound-run.exe" /FO CSV /NH | grep -i 'tbound-run' | cut -d, -f2 | tr -d '"')
+  [ "$(printf '%s\n' "$pids" | grep -c .)" -eq 1 ] || { log "STOP: expected one tbound-run.exe after starting $1, found: $(echo $pids)"; exit 12; }
+  printf '%s\n' "$pids" > "$M/runs/full.pid"
   log "started runner pid $(cat "$M/runs/full.pid") as $1"
 }
 mkdir -p "$M/runs" "$M/diag"
