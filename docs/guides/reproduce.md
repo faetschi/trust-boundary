@@ -376,8 +376,11 @@ before continuing. Preserve `run_dir/journal.jsonl`, `run_dir/net-evidence/`,
 `run_dir/ws-evidence/`, `run_dir/proc-evidence/`, `run_dir/transient-evidence/` and
 `run_dir/accept-evidence/` (the original NET documents, the evaluated WS and PROC inputs,
 the transient reports with the ledgers they were judged against, and the B and C task
-result documents; the journaled verdicts recompute from them);
-interrupted steps become abandoned. Reports have a synthetic empty USD ledger and `claim_bearing=false`.
+result documents). `tbound-profile corpus-check --guest-evidence` recomputes the construct
+checks from the NET, WS and PROC files. No command recomputes the journaled transient and
+task verdicts from the retained files yet. The runner functions `VerifyTransient` and
+`AcceptExecutor.TaskOf` judge a retained file as the run did, and only tests call them on
+retained files today. Interrupted steps become abandoned. Reports have a synthetic empty USD ledger and `claim_bearing=false`.
 Use the pilot to calibrate caps, costs, reset behaviour, and feasibility.
 
 ```sh
