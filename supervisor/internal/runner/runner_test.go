@@ -469,11 +469,23 @@ func TestSecondRerunOfSameCaseOtherStepIsRefused(t *testing.T) {
 	j, _ := runAll(t, s, t.TempDir(), fake)
 	defer j.Close()
 	r := mustRunner(t, s, j, fake, Options{})
-	if err := r.Rerun(context.Background(), a.ID()); err != nil {
+	// One rerun re-executes one step, so a case with a rerun cause in two steps takes none: its attempt 1 is
+	// unclassified loss.
+	used := j.UnitsUsed()
+	for _, st := range []Step{a, b} {
+		if err := r.Rerun(context.Background(), st.ID()); !errors.Is(err, ErrRerunNotAllowed) {
+			t.Fatalf("rerun of %s: got %v, want ErrRerunNotAllowed", st.ID(), err)
+		}
+	}
+	if j.UnitsUsed() != used {
+		t.Fatal("a refused rerun consumed a unit")
+	}
+	// The journal itself refuses a second rerun of a case on another step.
+	if err := j.append(Entry{Kind: EntryBegin, StepID: a.ID(), CaseID: c, Index: a.Index, Attempt: 2}); err != nil {
 		t.Fatal(err)
 	}
-	if err := r.Rerun(context.Background(), b.ID()); !errors.Is(err, ErrRerunLimit) {
-		t.Fatalf("got %v, want ErrRerunLimit (one rerun per case)", err)
+	if err := j.append(Entry{Kind: EntryBegin, StepID: b.ID(), CaseID: c, Index: b.Index, Attempt: 2}); !errors.Is(err, ErrJournalCorrupt) {
+		t.Fatalf("second rerun of the case: got %v, want ErrJournalCorrupt", err)
 	}
 }
 

@@ -3,6 +3,7 @@ package runner
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -183,11 +184,25 @@ func TestExportRefusesRerunWhoseOriginalIsNotAnEvidencedOutage(t *testing.T) {
 	}
 	j, _ := runAll(t, s, t.TempDir(), fake)
 	defer j.Close()
-	if err := mustRunner(t, s, j, fake, Options{}).Rerun(context.Background(), st.ID()); err != nil {
+	if err := mustRunner(t, s, j, fake, Options{}).Rerun(context.Background(), st.ID()); !errors.Is(err, ErrRerunNotAllowed) {
+		t.Fatalf("rerun after a destroyed oracle: got %v, want ErrRerunNotAllowed", err)
+	}
+	// Journaled by hand, as an edited journal would hold it.
+	base := Entry{StepID: st.ID(), CaseID: st.CaseID, Index: st.Index, Attempt: 2}
+	for _, kind := range []EntryKind{EntryBegin, EntryStarted} {
+		e := base
+		e.Kind = kind
+		if err := j.append(e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	done := base
+	done.Kind, done.Outcome = EntryDone, j.terminalOf(st.ID(), 1).Outcome
+	if err := j.append(done); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Export(s, j, ExportOptions{}); err == nil {
-		t.Fatal("Export produced a rerun whose original does not classify as EXTERNAL_INFRASTRUCTURE_RERUN")
+	if _, err := Export(s, j, ExportOptions{}); !errors.Is(err, ErrRerunInconsistent) {
+		t.Fatalf("Export of a rerun whose original does not classify as EXTERNAL_INFRASTRUCTURE_RERUN: %v", err)
 	}
 }
 
