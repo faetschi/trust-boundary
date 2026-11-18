@@ -381,7 +381,12 @@ func TestRunAndResumeAfterACrash(t *testing.T) {
 	if line(out, "abandoned") != "1" || line(out, "finished") != "true" || line(out, "already_done") != "20" || line(out, "remaining") != "0" {
 		t.Fatalf("resume report:\n%s", out)
 	}
-	calls := second.Calls()
+	var calls []runner.Step
+	for _, c := range second.Calls() {
+		if !c.Resumed { // the interrupted adversarial step is only settled, not run again
+			calls = append(calls, c)
+		}
+	}
 	if len(calls) != total-21 || calls[0].Index != 21 {
 		t.Fatalf("resumed %d steps, want %d from step 21", len(calls), total-21)
 	}

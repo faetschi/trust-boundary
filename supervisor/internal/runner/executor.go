@@ -33,7 +33,10 @@ import (
 //     error, so observations already established are kept; an error without an
 //     Outcome is a setup failure; an interruption leaves the step abandoned. A
 //     crash after the started entry is closed as abandoned on resume and never
-//     run again.
+//     run again, except for a step the runner may resume (resumable): Execute is
+//     then called once more with Step.Resumed set, and must collect the result of
+//     the attempt already sent, never start a second one. A resumed adversarial step
+//     only settles the guest's request: its answer is discarded.
 //
 // An executor must honor ctx and must not retry a failed step on its own except
 // where Metrics.Retries records it.

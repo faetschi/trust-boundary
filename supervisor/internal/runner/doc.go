@@ -157,7 +157,9 @@
 //     dispatched attempt is spent by default and no cooperation is needed: whatever
 //     Execute returns, ErrSetupRefused or ErrNotWired with an empty outcome
 //     included, the unit is spent (a setup failure), and a started step with no
-//     terminal record becomes abandoned, spent, on resume. Whether an executor
+//     terminal record becomes abandoned, spent, on resume, unless it is resumable
+//     (non-adversarial, not V): then its result is collected again under the same
+//     request id (Runner.Run). Whether an executor
 //     returned an outcome is judged by comparing it with the zero Outcome.
 //   - Cost (RunReport.SpentMicroUSD) and EVQ are aggregated from every terminal
 //     record, completed, partial and abandoned alike. A failed obligation in any
