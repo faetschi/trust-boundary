@@ -234,6 +234,9 @@ func (c runConfig) validate() error {
 	if c.Proc.CellUID == 0 || c.Proc.CellGID == 0 || c.Proc.MonitorSeconds <= 0 || c.Proc.TeardownGraceSecs < 0 {
 		return errors.New("proc needs cell_uid, cell_gid, monitor_seconds and a non-negative teardown_grace_seconds")
 	}
+	if maxMonitor := int(procoracle.MaxGuestMonitorDuration.Seconds()); c.Proc.MonitorSeconds > maxMonitor {
+		return fmt.Errorf("proc.monitor_seconds %d is above %d, the longest monitor the guest runs", c.Proc.MonitorSeconds, maxMonitor)
+	}
 	if c.Proc.DrainGraceSecs < procoracle.MinDrainGraceSeconds || c.Proc.DrainGraceSecs > procoracle.MaxDrainGraceSeconds {
 		return fmt.Errorf("proc.drain_grace_seconds is required (D49) and must be between %d and %d, got %d",
 			procoracle.MinDrainGraceSeconds, procoracle.MaxDrainGraceSeconds, c.Proc.DrainGraceSecs)

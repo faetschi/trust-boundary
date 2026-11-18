@@ -117,6 +117,7 @@ func thesisEnv(t *testing.T) *env {
 	}
 	e.file(filepath.Join("artifacts", name), string(raw))
 	e.cfg["quota_profile"] = "thesis"
+	e.cfg["proc"].(map[string]any)["monitor_seconds"] = 1500 // past the fixture's 600 s case budgets (H1-05)
 	e.cfg["artifacts_dir"] = e.path("artifacts")
 	e.write()
 	return e
