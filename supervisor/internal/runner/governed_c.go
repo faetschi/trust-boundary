@@ -179,9 +179,16 @@ type GovernedC struct {
 	// WSEvidenceDir retains the evaluated E04 input beside the run journal when configured.
 	WSEvidenceDir string
 	// ResendWindow and ResendPause bound how the request is sent again when its answer is
-	// lost (see send). Zero means DefaultResendWindow and DefaultResendPause.
+	// lost (see send). A zero ResendWindow sends it once.
 	ResendWindow, ResendPause time.Duration
 }
+
+const (
+	// DefaultResendWindow covers a guest that still runs the request: the service ends it
+	// at the case's wall budget (1200 s) after admission.
+	DefaultResendWindow = 25 * time.Minute
+	DefaultResendPause  = 15 * time.Second
+)
 
 // Request maps a step of the executor's configuration to its corpus-mode request.
 func (g GovernedC) Request(s Step) (GovernedRequest, error) {
@@ -356,7 +363,7 @@ func (g GovernedC) Execute(ctx context.Context, s Step) (Outcome, error) {
 		}
 	}
 	t0 := time.Now()
-	stdout, stderr, exit, err := g.Transport.Run(ctx, argv)
+	stdout, stderr, exit, err := g.send(ctx, argv, request, s.Resumed)
 	ended := time.Now()
 	latency := int(time.Since(t0).Milliseconds())
 	if err != nil {
@@ -441,6 +448,40 @@ func (g GovernedC) Execute(ctx context.Context, s Step) (Outcome, error) {
 	errs = append(errs, g.collect(ctx, ref, &o)...)
 	mapReplay(&o, s)
 	return o, errors.Join(errs...)
+}
+
+// send runs the client. When no response line comes back and the client or ssh exited
+// non-zero (ssh dropped, the client lost its service connection, the service restarted),
+// it sends the same request again until ResendWindow ends. The request id makes that
+// safe: the service answers a request id it has settled with the stored terminal and
+// resumes one it accepted and never settled. On a resend a busy answer means the
+// service still runs this request, so send waits for it as well. A first send that finds
+// the service busy is answered as before. resend is true for a step that a process which
+// died had already sent.
+func (g GovernedC) send(ctx context.Context, argv []string, request GovernedRequest, resend bool) ([]byte, []byte, int, error) {
+	deadline := time.Now().Add(g.ResendWindow)
+	for {
+		stdout, stderr, exit, err := g.Transport.Run(ctx, argv)
+		if err != nil || !answerLost(stdout, exit, request, resend) || !time.Now().Add(g.ResendPause).Before(deadline) {
+			return stdout, stderr, exit, err
+		}
+		resend = true
+		select {
+		case <-ctx.Done():
+			return stdout, stderr, exit, ctx.Err()
+		case <-time.After(g.ResendPause):
+		}
+	}
+}
+
+// answerLost is true when no response line came back with a non-zero exit, or, on a resend,
+// when the answer is busy.
+func answerLost(stdout []byte, exit int, request GovernedRequest, resend bool) bool {
+	if len(bytes.TrimSpace(stdout)) == 0 {
+		return exit != 0
+	}
+	resp, _, err := parseGovernedResponse(stdout, request)
+	return resend && err == nil && resp.Status == "busy"
 }
 
 // anchor builds the publication carrier from the receipt, or none.

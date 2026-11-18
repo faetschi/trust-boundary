@@ -2,8 +2,13 @@ package runner
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"slices"
 )
 
@@ -23,6 +28,11 @@ func DefaultTrialCommand() []string { return []string{EvidenceBinaryPath, "trial
 //
 // Use it for the configurations that run in the fixture workspace (C, P, B). V resets
 // nothing.
+//
+// A resumed step (Step.Resumed) is not reset when its dispatch record exists: the
+// request may have reached the guest, and a reset would wipe the tree the run left for
+// the acceptance check. Without the record the earlier process died before the reset
+// had ended, so no request was sent, and the step is reset and sent as a new one.
 type ResetExecutor struct {
 	Inner Executor
 	// Transport carries the trial command to the guest. Use a transport of its own (its
@@ -74,10 +84,49 @@ func (r ResetExecutor) Execute(ctx context.Context, s Step) (Outcome, error) {
 	if r.Transport == nil {
 		return Outcome{}, ErrNotWired
 	}
+	if s.Resumed {
+		if r.DispatchDir == "" {
+			return Outcome{}, fmt.Errorf("%w: a resumed step needs a dispatch record directory", ErrSetupRefused)
+		}
+		_, err := os.Stat(r.dispatchPath(s))
+		switch {
+		case err == nil:
+			return r.Inner.Execute(ctx, s)
+		case !errors.Is(err, fs.ErrNotExist):
+			return Outcome{}, fmt.Errorf("%w: dispatch record: %v", ErrSetupRefused, err)
+		}
+		s.Resumed = false
+	}
 	if err := r.reset(ctx, s, false); err != nil {
 		return Outcome{}, err
 	}
+	if r.DispatchDir != "" {
+		if err := writeDispatchRecord(r.DispatchDir, r.dispatchPath(s), IntervalRef(s)); err != nil {
+			return Outcome{}, fmt.Errorf("%w: dispatch record: %v", ErrSetupRefused, err)
+		}
+	}
 	return r.Inner.Execute(ctx, s)
+}
+
+func (r ResetExecutor) dispatchPath(s Step) string {
+	sum := sha256.Sum256([]byte(IntervalRef(s)))
+	return filepath.Join(r.DispatchDir, hex.EncodeToString(sum[:]))
+}
+
+func writeDispatchRecord(dir, path, interval string) error {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return err
+	}
+	_, werr := f.WriteString(interval + "\n")
+	if err := errors.Join(werr, f.Sync(), f.Close()); err != nil {
+		return err
+	}
+	syncDir(dir)
+	return nil
 }
 
 func (r ResetExecutor) reset(ctx context.Context, s Step, check bool) error {

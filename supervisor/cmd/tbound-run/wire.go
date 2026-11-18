@@ -33,13 +33,19 @@ type wireFunc func(p plan) (runner.Executors, error)
 // and admit-all/v1 admission); a compliant B step also gets its task result from AcceptExecutor.
 func wireSSH(p plan) (runner.Executors, error) {
 	ts := p.cfg.transports()
-	governed := runner.GovernedC{PlanDigest: p.sched.Digest, Transport: ts.client, Collectors: p.collectors(), ProtectedPaths: p.protectedPaths}
+	governed := runner.GovernedC{PlanDigest: p.sched.Digest, Transport: ts.client, Collectors: p.collectors(), ProtectedPaths: p.protectedPaths,
+		ResendWindow: runner.DefaultResendWindow, ResendPause: runner.DefaultResendPause}
+	var dispatchDir string
 	if p.cfg.RunDir != "" {
 		governed.WSEvidenceDir = filepath.Join(p.cfg.RunDir, "ws-evidence")
+		dispatchDir = filepath.Join(p.cfg.RunDir, "dispatched")
+	}
+	reset := func(inner runner.Executor) runner.ResetExecutor {
+		return runner.ResetExecutor{Inner: inner, Transport: ts.trial, DispatchDir: dispatchDir}
 	}
 	governedP := governed
 	governedP.Configuration = runner.CfgP
-	executorP := p.attest(runner.ResetExecutor{Inner: governedP, Transport: ts.trial})
+	executorP := p.attest(reset(governedP))
 	if p.sched.Config.Purpose == runner.PurposeConstructWitness {
 		// A construct-witness run reaches the guest as Configuration P only, so no other executor is wired.
 		return runner.Executors{P: executorP}, nil
@@ -47,9 +53,9 @@ func wireSSH(p plan) (runner.Executors, error) {
 	governedB := governed
 	governedB.Configuration = runner.CfgB
 	executors := runner.Executors{
-		C: p.attest(runner.AcceptExecutor{FreezeCommit: p.sched.Config.FreezeCommit, Inner: runner.ResetExecutor{Inner: governed, Transport: ts.trial}, Transport: ts.trial}),
+		C: p.attest(runner.AcceptExecutor{FreezeCommit: p.sched.Config.FreezeCommit, Inner: reset(governed), Transport: ts.trial}),
 		P: executorP,
-		B: p.attest(runner.AcceptExecutor{FreezeCommit: p.sched.Config.FreezeCommit, Inner: runner.ResetExecutor{Inner: governedB, Transport: ts.trial}, Transport: ts.trial}),
+		B: p.attest(runner.AcceptExecutor{FreezeCommit: p.sched.Config.FreezeCommit, Inner: reset(governedB), Transport: ts.trial}),
 		V: p.governedV(ts.trial),
 	}
 	if p.cfg.CDH != nil {
@@ -58,7 +64,7 @@ func wireSSH(p plan) (runner.Executors, error) {
 			g := governed
 			g.Configuration = runner.CDHConfiguration(model)
 			g.CDH = p.cfg.CDH
-			executors.CDH[g.Configuration] = p.attest(runner.AcceptExecutor{FreezeCommit: p.sched.Config.FreezeCommit, Inner: runner.ResetExecutor{Inner: g, Transport: ts.trial}, Transport: ts.trial})
+			executors.CDH[g.Configuration] = p.attest(runner.AcceptExecutor{FreezeCommit: p.sched.Config.FreezeCommit, Inner: reset(g), Transport: ts.trial})
 		}
 	}
 	return executors, nil
