@@ -69,7 +69,7 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           bash scripts/build-release.sh "$VERSION" dist \
-            linux/amd64 darwin/amd64 darwin/arm64 windows/amd64
+            linux/amd64
 
       - name: Generate npm packages
         env:

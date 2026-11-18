@@ -118,11 +118,9 @@ if [ -n "$PREBUILT" ]; then
     *) PREBUILT="$ROOT/$PREBUILT" ;;
   esac
 fi
-DIST="$BASE/dist"
 LIN="$BASE/dist-lin"
 if [ -n "$PREBUILT" ]; then
-  mkdir -p "$DIST" "$LIN"
-  cp -a "$PREBUILT"/. "$DIST"/
+  mkdir -p "$LIN"
   cp -a "$PREBUILT"/. "$LIN"/
   linux_build=(true)
 else
@@ -144,68 +142,6 @@ else
 fi
 
 if [ -n "$PREBUILT" ]; then
-  echo "[1] use prebuilt windows/amd64 darwin/amd64 darwin/arm64"
-  ok "non-linux tarballs available"
-else
-  echo "[1] build windows/amd64 darwin/amd64 darwin/arm64"
-  if ! "$ROOT/scripts/build-release.sh" "$VERSION" "$DIST" windows/amd64 darwin/amd64 darwin/arm64 >/dev/null; then
-    bad "non-linux release build failed"
-    echo "verify-release-layout: $pass passed, $fail failed, $skip skipped"
-    exit 1
-  fi
-  ok "non-linux tarballs built"
-fi
-
-check_nonlinux() {
-  local tar="$1" os="$2" ext="$3"
-  local x="$BASE/x-$os"
-  mkdir -p "$x"; tar -xzf "$tar" -C "$x" || { bad "$os extract"; return; }
-  [ -f "$x/bin/tbound$ext" ] && ok "$os bin/tbound$ext" || bad "$os bin/tbound$ext missing"
-  [ -f "$x/bin/tbound-doctor$ext" ] && ok "$os bin/tbound-doctor$ext" || bad "$os bin/tbound-doctor$ext missing"
-  [ -f "$x/bin/tbound-profile$ext" ] && ok "$os bin/tbound-profile$ext" || bad "$os bin/tbound-profile$ext missing"
-  [ -f "$x/runtime/package.json" ] && ok "$os runtime/package.json" || bad "$os runtime/package.json missing"
-  if cmp -s "$ROOT/LICENSE" "$x/LICENSE"; then ok "$os carries canonical LICENSE text"; else bad "$os LICENSE missing or differs from source"; fi
-  [ -f "$x/VERSION" ] && ok "$os VERSION" || bad "$os VERSION missing"
-  if [ -e "$x/libexec/tbound/tbound-cell-entrypoint" ]; then
-    bad "$os must not ship the linux/amd64 TCB entrypoint"
-  else
-    ok "$os has no TCB entrypoint"
-  fi
-  if verify_manifest "$x"; then ok "$os MANIFEST.sha256 verifies"; else bad "$os MANIFEST.sha256 failed"; fi
-}
-
-check_nonlinux "$DIST/tbound-$VERSION-windows-amd64.tar.gz" windows .exe
-check_nonlinux "$DIST/tbound-$VERSION-darwin-amd64.tar.gz" darwin-amd64 ""
-check_nonlinux "$DIST/tbound-$VERSION-darwin-arm64.tar.gz" darwin ""
-
-echo "[1b] manifest rejects bad paths and symlinks"
-badpath="$BASE/x-badpath"; cp -a "$BASE/x-windows" "$badpath"
-printf '%064d  ../escape\n' 0 > "$badpath/MANIFEST.sha256"
-if verify_manifest "$badpath" >/dev/null 2>&1; then bad "manifest accepted ../ path"; else ok "manifest rejects ../ path"; fi
-symlinkdir="$BASE/x-symlink"; cp -a "$BASE/x-windows" "$symlinkdir"
-ln -s VERSION "$symlinkdir/link-to-version"
-printf '%s  link-to-version\n' "$(sha256_of "$symlinkdir/VERSION")" > "$symlinkdir/MANIFEST.sha256"
-if verify_manifest "$symlinkdir" >/dev/null 2>&1; then bad "manifest accepted symlink"; else ok "manifest rejects symlink"; fi
-tamperdir="$BASE/x-tamper"; cp -a "$BASE/x-windows" "$tamperdir"
-printf 'tamper\n' >> "$tamperdir/runtime/package.json"
-if verify_manifest "$tamperdir" >/dev/null 2>&1; then bad "manifest accepted content tamper"; else ok "manifest detects content tamper"; fi
-dupdir="$BASE/x-duplicate"; cp -a "$BASE/x-windows" "$dupdir"
-first_record="$(head -n1 "$dupdir/MANIFEST.sha256")"
-printf '%s\n' "$first_record" >> "$dupdir/MANIFEST.sha256"
-if verify_manifest "$dupdir" >/dev/null 2>&1; then bad "manifest accepted duplicate path"; else ok "manifest rejects duplicate path"; fi
-
-echo "[2] SHA256SUMS covers tarballs and standalone TCB metadata"
-sums="$DIST/SHA256SUMS"
-for f in "$DIST"/tbound-"$VERSION"-*.tar.gz; do
-  base="$(basename "$f")"
-  if grep -q "$base" "$sums"; then ok "SHA256SUMS has $base"; else bad "SHA256SUMS missing $base"; fi
-done
-if check_sums "$DIST/SHA256SUMS"; then
-  ok "SHA256SUMS digests verify"
-else
-  bad "SHA256SUMS digest verification failed"
-fi
-if [ -n "$PREBUILT" ]; then
   echo "[3] use prebuilt linux/amd64 (entrypoint + metadata)"
 else
   echo "[3] build linux/amd64 (entrypoint + metadata)"
@@ -221,6 +157,30 @@ if "${linux_build[@]}" >"$LINLOG" 2>&1; then
   [ -x "$x/libexec/tbound/tbound-cell-entrypoint" ] && ok "linux TCB entrypoint present" || bad "linux TCB entrypoint missing"
   [ -f "$x/libexec/tbound/cell-entrypoint.json" ] && ok "linux entrypoint metadata present" || bad "linux entrypoint metadata missing"
   if verify_manifest "$x"; then ok "linux MANIFEST.sha256 verifies"; else bad "linux MANIFEST.sha256 failed"; fi
+  for other in "$LIN"/tbound-"$VERSION"-*.tar.gz; do
+    [ "$(basename "$other")" = "tbound-$VERSION-linux-amd64.tar.gz" ] || bad "release has a non-linux tarball: $(basename "$other")"
+  done
+  if awk -v a="tbound-$VERSION-linux-amd64.tar.gz" '$2==a {found=1} END {exit !found}' "$LIN/SHA256SUMS"; then
+    ok "SHA256SUMS covers the linux tarball"
+  else
+    bad "SHA256SUMS omits the linux tarball"
+  fi
+
+  echo "[1b] manifest rejects bad paths and symlinks"
+  badpath="$BASE/x-badpath"; cp -a "$x" "$badpath"
+  printf '%064d  ../escape\n' 0 > "$badpath/MANIFEST.sha256"
+  if verify_manifest "$badpath" >/dev/null 2>&1; then bad "manifest accepted ../ path"; else ok "manifest rejects ../ path"; fi
+  symlinkdir="$BASE/x-symlink"; cp -a "$x" "$symlinkdir"
+  ln -s VERSION "$symlinkdir/link-to-version"
+  printf '%s  link-to-version\n' "$(sha256_of "$symlinkdir/VERSION")" > "$symlinkdir/MANIFEST.sha256"
+  if verify_manifest "$symlinkdir" >/dev/null 2>&1; then bad "manifest accepted symlink"; else ok "manifest rejects symlink"; fi
+  tamperdir="$BASE/x-tamper"; cp -a "$x" "$tamperdir"
+  printf 'tamper\n' >> "$tamperdir/runtime/package.json"
+  if verify_manifest "$tamperdir" >/dev/null 2>&1; then bad "manifest accepted content tamper"; else ok "manifest detects content tamper"; fi
+  dupdir="$BASE/x-duplicate"; cp -a "$x" "$dupdir"
+  first_record="$(head -n1 "$dupdir/MANIFEST.sha256")"
+  printf '%s\n' "$first_record" >> "$dupdir/MANIFEST.sha256"
+  if verify_manifest "$dupdir" >/dev/null 2>&1; then bad "manifest accepted duplicate path"; else ok "manifest rejects duplicate path"; fi
 
   meta="$LIN/tbound-cell-entrypoint-$VERSION-linux-amd64.metadata.json"
   metasha="$LIN/tbound-cell-entrypoint-$VERSION-linux-amd64.sha256"
@@ -326,6 +286,15 @@ if "${linux_build[@]}" >"$LINLOG" 2>&1; then
   else
     bad "linux/arm64 rejection message missing"
   fi
+  for target in darwin/amd64 darwin/arm64 windows/amd64; do
+    if "$ROOT/scripts/build-release.sh" "$VERSION" "$BASE/dist-nonlinux" "$target" >"$BASE/nonlinux.log" 2>&1; then
+      bad "non-linux target $target was built"
+    elif grep -q 'releases are linux/amd64 only' "$BASE/nonlinux.log"; then
+      ok "$target is rejected (releases are linux/amd64 only)"
+    else
+      bad "$target rejection message missing"
+    fi
+  done
   npm_linux="$BASE/npm-linux"
   if "$ROOT/scripts/make-npm-packages.sh" "$VERSION" "$LIN" "$npm_linux" >/dev/null; then
     for b in tbound tbound-doctor tbound-profile; do
