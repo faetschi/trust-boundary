@@ -66,6 +66,54 @@ check "mixed docs and code is not docs-only" false "$docs" "$prev" pr docs-only
 check "missing range is not docs-only" false "" "" pr docs-only
 check "zero before is not docs-only" false "0000000000000000000000000000000000000000" "$renamed" pr docs-only
 
+git -C "$repo" checkout -q -b side "$first"
+printf 'package y\n' >> "$repo/supervisor/a.go"
+git -C "$repo" commit -qam "side runtime"
+side_runtime="$(git -C "$repo" rev-parse HEAD)"
+git -C "$repo" reset -q --hard "$first"
+printf 'side\n' > "$repo/docs/side.md"
+git -C "$repo" add docs/side.md
+git -C "$repo" commit -qm "side docs"
+side_docs="$(git -C "$repo" rev-parse HEAD)"
+git -C "$repo" checkout -q main
+check "non-ancestor push of a runtime change runs runtime" true "$docs" "$side_runtime" push
+check "non-ancestor push of a runtime change is not docs-only" false "$docs" "$side_runtime" push docs-only
+check "non-ancestor push of a docs change is not docs-only" false "$docs" "$side_docs" push docs-only
+check "unknown revision runs runtime" true deadbeefdeadbeefdeadbeefdeadbeefdeadbeef "$renamed"
+check "unknown revision is not docs-only" false deadbeefdeadbeefdeadbeefdeadbeefdeadbeef "$renamed" pr docs-only
+
+nogit="$BASE/nogit"
+mkdir -p "$nogit"
+for field in runtime docs-only; do
+  want=true
+  [ "$field" = docs-only ] && want=false
+  got="$(cd "$nogit" && GIT_CEILING_DIRECTORIES="$BASE" sh "$FILTER" "$first" "$docs" pr "$field")"
+  if [ "$got" != "$want" ]; then
+    echo "FAIL: outside a checkout $field: got $got, want $want" >&2
+    exit 1
+  fi
+  echo "PASS: outside a checkout $field prints $want"
+done
+
+for path in README.md docs/guides/new.md CITATION.cff; do
+  before="$(git -C "$repo" rev-parse HEAD)"
+  mkdir -p "$repo/$(dirname "$path")"
+  printf 'x\n' >> "$repo/$path"
+  git -C "$repo" add "$path"
+  git -C "$repo" commit -qm "edit $path"
+  check "$path edit is docs-only" true "$before" "$(git -C "$repo" rev-parse HEAD)" pr docs-only
+done
+
+for path in corpus/sampling/adaptation-rule-v1.md corpus/pilot/artifacts/rubric-0123.md docs/evaluation/notes.md \
+  supervisor/internal/x/testdata/fixture.md evidence/F30/README.md packaging/npm/README.md; do
+  before="$(git -C "$repo" rev-parse HEAD)"
+  mkdir -p "$repo/$(dirname "$path")"
+  printf 'x\n' >> "$repo/$path"
+  git -C "$repo" add "$path"
+  git -C "$repo" commit -qm "edit $path"
+  check "$path edit is not docs-only" false "$before" "$(git -C "$repo" rev-parse HEAD)" pr docs-only
+done
+
 if (cd "$repo" && sh "$FILTER" "$first" "$docs" pr unknown-field >/dev/null 2>&1); then
   echo "FAIL: unknown field was accepted" >&2
   exit 1
