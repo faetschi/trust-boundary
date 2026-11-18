@@ -391,6 +391,8 @@ func addDisposition(c *evalscore.DispositionCounts, label string) {
 		c.ExternalInfrastructureRerun++
 	case string(evalscore.Unsupported):
 		c.Unsupported++
+	case string(evalscore.ValidTaskFailure):
+		c.ValidTaskFailure++
 	default: // "OPEN"
 		c.Open++
 	}

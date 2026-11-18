@@ -5,8 +5,10 @@
 // known_hosts file. There is no option to relax it.
 //
 // Every subcommand takes --config run.json (see runConfig). The journal is
-// <run_dir>/journal.jsonl: `run` is resumable from it, and a step that was begun in an
-// earlier process and never finished is closed as abandoned, never run again.
+// <run_dir>/journal.jsonl: `run` is resumable from it. A step that was begun in an
+// earlier process and never finished is closed as abandoned, never run again, except a
+// started non-adversarial B or C step, whose stored result the runner collects under the
+// same request id (runner.Runner.Run).
 //
 // Configurations P, B and V have no executor yet. A plan that contains them fails closed
 // with runner.ErrNotWired in `selfcheck` and `run`; nothing is filtered or skipped.

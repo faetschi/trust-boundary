@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/evalcorpus"
@@ -65,7 +66,7 @@ func newGovernedFixture(t *testing.T) *governedFixture {
 		t.Fatal("no C adversarial step in the plan")
 	}
 	tr := &fakeTransport{}
-	g := GovernedC{PlanDigest: s.Digest, Transport: tr}
+	g := GovernedC{PlanDigest: s.Digest, Transport: tr, ResendPause: time.Millisecond, ResendWindow: 20 * time.Millisecond}
 	req, err := g.Request(step)
 	if err != nil {
 		t.Fatal(err)

@@ -116,9 +116,9 @@ func (a *app) runCmd(args []string) error {
 
 func (a *app) printRun(rep runner.RunReport) {
 	fmt.Fprintf(a.out, "plan_digest %s\nplanned_units %d\nunits_used %d\nexecuted %d\nalready_done %d\nabandoned %d\n"+
-		"setup_failures %d\nexec_failures %d\nremaining %d\nfinished %t\nstop %q\nspent_micro_usd %d\n",
+		"setup_failures %d\nexec_failures %d\nremaining %d\nfinished %t\nstop %q\nspent_micro_usd %d\nresumed %d\n",
 		rep.PlanDigest, rep.PlannedUnits, rep.UnitsUsed, rep.Executed, rep.AlreadyDone, rep.Abandoned,
-		rep.SetupFailures, rep.ExecFailures, rep.Remaining, rep.Finished, rep.Stop, rep.SpentMicroUSD)
+		rep.SetupFailures, rep.ExecFailures, rep.Remaining, rep.Finished, rep.Stop, rep.SpentMicroUSD, rep.Resumed)
 }
 
 // existingJournal opens the journal of a run that has started; export, report and rerun

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"path/filepath"
 	"slices"
 	"time"
@@ -23,7 +24,8 @@ type wireFunc func(p plan) (runner.Executors, error)
 // the evidence key (E04, the publication journal and the EFF-WS-05/06 inputs, the NET sink, the PROC monitor,
 // the transient-mutation watch); the reset wrapper calls `tbound trial reset` with the trial key; Attest adds what the host
 // establishes (channel, E01 identity against the pins, route, EVQ, matched delivery) and
-// refuses a delta on a C receipt.
+// refuses a delta on a C receipt. clockGuard, outermost on C and P, reads the guest clock over the
+// evidence key before every adversarial step and refuses it when PROC could not compare the clocks.
 //
 // A compliant C step also gets its task result: AcceptExecutor calls `tbound trial accept` after
 // the governed run. V is GovernedV over the trial key (`tbound trial v-run`, native Pi in a plain
@@ -33,13 +35,25 @@ type wireFunc func(p plan) (runner.Executors, error)
 // and admit-all/v1 admission); a compliant B step also gets its task result from AcceptExecutor.
 func wireSSH(p plan) (runner.Executors, error) {
 	ts := p.cfg.transports()
-	governed := runner.GovernedC{PlanDigest: p.sched.Digest, Transport: ts.client, Collectors: p.collectors(), ProtectedPaths: p.protectedPaths}
+	governed := runner.GovernedC{PlanDigest: p.sched.Digest, Transport: ts.client, Collectors: p.collectors(), ProtectedPaths: p.protectedPaths,
+		ResendWindow: runner.DefaultResendWindow, ResendPause: runner.DefaultResendPause}
+	var dispatchDir string
 	if p.cfg.RunDir != "" {
 		governed.WSEvidenceDir = filepath.Join(p.cfg.RunDir, "ws-evidence")
+		dispatchDir = filepath.Join(p.cfg.RunDir, "dispatched")
+	}
+	reset := func(inner runner.Executor) runner.ResetExecutor {
+		return runner.ResetExecutor{Inner: inner, Transport: ts.trial, DispatchDir: dispatchDir}
+	}
+	evidence := runner.EvidenceClient{Transport: ts.evidence}
+	guard := func(x runner.Executor) runner.Executor {
+		return clockGuard{Executor: x, sample: func(ctx context.Context) (clockSample, error) {
+			return sampleGuestClock(ctx, evidence, p.cfg.Proc.CellUID, p.cfg.Proc.CellGID)
+		}}
 	}
 	governedP := governed
 	governedP.Configuration = runner.CfgP
-	executorP := p.attest(runner.ResetExecutor{Inner: governedP, Transport: ts.trial})
+	executorP := guard(p.attest(reset(governedP)))
 	if p.sched.Config.Purpose == runner.PurposeConstructWitness {
 		// A construct-witness run reaches the guest as Configuration P only, so no other executor is wired.
 		return runner.Executors{P: executorP}, nil
@@ -56,9 +70,9 @@ func wireSSH(p plan) (runner.Executors, error) {
 		return x
 	}
 	executors := runner.Executors{
-		C: p.attest(accept(runner.ResetExecutor{Inner: governed, Transport: ts.trial})),
+		C: guard(p.attest(accept(reset(governed)))),
 		P: executorP,
-		B: p.attest(accept(runner.ResetExecutor{Inner: governedB, Transport: ts.trial})),
+		B: p.attest(accept(reset(governedB))),
 		V: p.governedV(ts.trial),
 	}
 	if p.cfg.CDH != nil {
@@ -67,7 +81,7 @@ func wireSSH(p plan) (runner.Executors, error) {
 			g := governed
 			g.Configuration = runner.CDHConfiguration(model)
 			g.CDH = p.cfg.CDH
-			executors.CDH[g.Configuration] = p.attest(accept(runner.ResetExecutor{Inner: g, Transport: ts.trial}))
+			executors.CDH[g.Configuration] = guard(p.attest(accept(reset(g))))
 		}
 	}
 	return executors, nil
