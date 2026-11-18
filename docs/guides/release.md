@@ -96,6 +96,8 @@ globs as workflow artifacts and GitHub release assets.
 ```sh
 scripts/make-npm-packages.sh 0.1.0 dist
 # -> dist/npm/cli (root package) + dist/npm/cli-linux-x64 (platform package)
+scripts/pack-npm-packages.sh 0.1.0 dist/npm dist/npm-tgz
+# -> dist/npm-tgz/tbound-cli-linux-x64-0.1.0.tgz + dist/npm-tgz/tbound-cli-0.1.0.tgz
 ```
 
 npm packages are generated for Linux amd64 only; non-Linux release tarballs are
@@ -107,8 +109,10 @@ canonical `LICENSE` file and list it in their npm `files` allowlists.
 
 Publish packed tarballs, not the package trees. The Actions artifact upload and
 `npm pack` on Windows both drop the executable bit, which would ship a Linux binary
-that cannot run. On Linux, `scripts/pack-npm-packages.sh` packs both trees, checks
-that the binaries are mode 0755, and prints their SHA-256. The release workflow
+that cannot run. On Linux, `scripts/pack-npm-packages.sh` packs both trees and
+checks the result. The binaries must be mode 0755, the manifests must carry the
+version, and the TCB entrypoint must be absent. It then installs the two tarballs
+offline, runs `tbound --version`, and prints their SHA-256. The release workflow
 runs it and uploads the result as `dist/npm-tgz/` in the `tbound-dist` artifact.
 
 Publishing is manual. Use the tarballs from the tag run that made the GitHub
@@ -132,10 +136,10 @@ scripts/publish-release.sh 0.1.0             # create the release via gh
 ## CI
 
 `.github/workflows/release.yml` builds the artifact matrix, generates and packs the
-npm packages, runs the offline install verification, uploads the tarballs, the npm
-tarballs,
-`SHA256SUMS`, and the exact entrypoint metadata/checksum sidecar globs, then
-attaches these release assets on a `v*` tag. npm publishing is left manual on
+npm packages, and runs the offline install verification. It uploads the release
+tarballs, `SHA256SUMS`, the exact entrypoint metadata/checksum sidecar globs, and
+the npm tarballs as the `tbound-dist` artifact. On a `v*` tag it attaches all of
+these except the npm tarballs as release assets. npm publishing is left manual on
 purpose.
 
 ## Package managers

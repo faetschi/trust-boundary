@@ -146,6 +146,7 @@ for tgz in "$DIST"/tbound-"$VERSION"-*.tar.gz; do
   for b in tbound tbound-doctor tbound-profile; do
     [ -f "$work/bin/$b" ] || die "archive $base missing bin/$b"
     cp "$work/bin/$b" "$bindir/$b"
+    chmod 0755 "$bindir/$b"
   done
   cp "$ROOT/LICENSE" "$OUT/$pkg/LICENSE"
   rm -rf "$work"
