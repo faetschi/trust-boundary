@@ -375,7 +375,8 @@ is strict; no ready-to-run config exists for an arbitrary machine. Follow the
 before continuing. Preserve `run_dir/journal.jsonl`, `run_dir/net-evidence/`,
 `run_dir/ws-evidence/` and `run_dir/proc-evidence/` (the original NET documents
 and evaluated WS and PROC inputs; the construct checks recompute from them);
-interrupted steps become abandoned. Reports have a synthetic empty USD ledger and `claim_bearing=false`.
+interrupted steps become abandoned. A pilot report has `claim_bearing=false`; `report.meta.json`
+lists why under `not_claim_bearing`.
 Use the pilot to calibrate caps, costs, reset behaviour, and feasibility.
 
 ```sh
@@ -401,21 +402,38 @@ or independent human review. This command does not run full `CheckConstructs`.
 Register the final freeze under the protocol in
 the separate `MSE_MA_Thesis` repository. See the [research index](../research/README.md).
 
+The record also binds three inputs. `--run-binding` is the `run_binding` line that
+`tbound-run plan` prints for the H1 `run.json`. It covers the receipt pins, the
+admission policy, the V image, the route and EVQ results, and the PROC settings
+with the D49 drain grace. `--attribution-rubric` is the frozen rubric file.
+`--corpus-check` is the `corpus-check` `report.json` of the manifest. The command
+refuses a report that has a failed or a guest-only row.
+
 ```sh
 tbound-profile preregistration-record --freeze-commit "$TBOUND_COMMIT" \
   --corpus-manifest /absolute/path/to/manifest.json --quota-profile thesis \
   --runner-config /absolute/path/to/runner-config.json \
   --research-profile /absolute/path/to/research-profile.json \
-  --research-ledger-config /absolute/path/to/research-ledger.json
+  --research-ledger-config /absolute/path/to/research-ledger.json \
+  --run-binding sha256:<run_binding from tbound-run plan> \
+  --attribution-rubric /absolute/path/to/attribution-rubric.md \
+  --corpus-check /absolute/path/to/construct-report/report.json
 ```
 
 ### Evaluate H1
 
-Run H1 only after registration and the remaining gates. Use the registered
-plan with `tbound-run plan --config /absolute/path/to/h1-run.json` before any
-execution. H1 measures PVR, forbidden effects in adversarial runs, and ORR,
+Run H1 only after registration and the remaining gates. Before any execution,
+run `tbound-run plan --config /absolute/path/to/h1-run.json --registration
+/absolute/path/to/record.json`. It refuses a run that is not the registered one. H1 measures PVR, forbidden effects in adversarial runs, and ORR,
 rejection of compliant tasks, with independent effect checks. Preserve the
 registered denominators and report unsupported evidence. H1 has not run.
-The current runner's synthetic-ledger report is not a claim-bearing H1
-reporting path. See [OVERVIEW](../../OVERVIEW.md) and the thesis protocol, referenced in the
+Report with `tbound-run report --config /absolute/path/to/h1-run.json --out
+/absolute/path/to/new-report --ledger-v3 corpus/sampling/d48-ledger-v3.jsonl
+--certification /absolute/path/to/certify.json --registration
+/absolute/path/to/record.json`. The certification is the `select.py certify`
+output for the population ranges and main sizes of the pinned main draw. The
+report gives the results per scenario and per mechanism (D47, D48). It is
+claim-bearing only for a complete thesis run with a verified USD ledger, a
+certified bound, and a registration that matches the run. `report.meta.json`
+names every condition that is not met. See [OVERVIEW](../../OVERVIEW.md) and the thesis protocol, referenced in the
 [research index](../research/README.md).
