@@ -524,10 +524,8 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 	hostCallAccounting := c.cfg.SelectCompletionTokenLimit != nil && c.cfg.ReserveHostCall != nil && c.cfg.CompleteHostCall != nil
 	retryable := c.cfg.Spend == nil && hostCallAccounting
 	resamplable := hostCallAccounting && !c.cfg.ProductCaptureRefusals
-	// resampleOf is the request a resample must repeat exactly; nil for any other attempt. When tools were on
-	// for the refused attempt and are off now, the resample repeats it with tool_choice "none" instead.
+	// resampleOf is the refused request a resample must repeat (resampleRepeats); nil for any other attempt.
 	var resampleOf *broker.RequestRecord
-	resampleLimit := uint64(0)
 	toolsDisabled := false
 	for attempt := uint64(0); ; attempt++ {
 		hostCallBinding = nil
@@ -555,8 +553,7 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 			}
 		}
 		captured, exchangeErr = requestBroker.ExchangeWithCompletionLimit(ctx, completionLimit, func(request broker.RequestRecord) error {
-			if resampleOf != nil && broker.DigestRequestRecord(request) != broker.DigestRequestRecord(*resampleOf) &&
-				!(request.ToolsDisabled() && !resampleOf.ToolsDisabled() && completionLimit == resampleLimit) {
+			if resampleOf != nil && !resampleRepeats(*resampleOf, request) {
 				// Nothing is reserved yet: the resample stops here and the turn ends UNKNOWN.
 				return errResampleRequestChanged
 			}
@@ -636,7 +633,7 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 		resampleOf = nil
 		if resample {
 			refused := records[0].Request()
-			resampleOf, resampleLimit = &refused, completionLimit
+			resampleOf = &refused
 		}
 	}
 	if exchangeErr != nil {

@@ -155,6 +155,70 @@ func TestToolCallDespiteDisabledToolsIsRefusedAndEndsTheTurn(t *testing.T) {
 	}
 }
 
+// tamperedExchangeJournal copies source with its last provider_exchange record rewritten by mutate.
+func tamperedExchangeJournal(t *testing.T, source *audit.Journal, mutate func(*exchangeEvidence)) *audit.Journal {
+	t.Helper()
+	trace, err := source.Trace()
+	if err != nil {
+		t.Fatal(err)
+	}
+	last := -1
+	for index, record := range trace.Records {
+		if record.Event.Kind == "provider_exchange" {
+			last = index
+		}
+	}
+	copied := openRecoveryTestJournal(t, filepath.Join(t.TempDir(), "tampered-exchange.audit"))
+	for index, record := range trace.Records {
+		event := audit.Event{Kind: record.Event.Kind, ID: record.Event.ID, Data: append([]byte(nil), record.Event.Data...)}
+		if index == last {
+			var evidence exchangeEvidence
+			if err := json.Unmarshal(event.Data, &evidence); err != nil {
+				t.Fatal(err)
+			}
+			mutate(&evidence)
+			if event.Data, err = json.Marshal(evidence); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if _, err := copied.Append(event); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return copied
+}
+
+// Replay accepts a refused call only where the live rule made one: on a tools-disabled request, recorded as
+// refused_tool_call and not as a captured tool call.
+func TestReplayRefusesForgedRefusedToolCalls(t *testing.T) {
+	pins := RecoveryPins{Config: recoveryTestConfig(), Model: ApprovedModel, Policy: recoveryTestPolicy(t, true), RequireHostCallReservations: true}
+	refusedConversation, refused, _, _ := hostCallsLeftConversation(t, []fixtureResponse{capToolCall}, 6, 7)
+	capturedConversation, captured, _, _ := hostCallsLeftConversation(t, []fixtureResponse{capToolCall}, 4, 7)
+	for _, conversation := range []*Conversation{refusedConversation, capturedConversation} {
+		if _, err := conversation.NextTurn(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for name, journal := range map[string]*audit.Journal{
+		"refused call recorded as captured": tamperedExchangeJournal(t, refused, func(e *exchangeEvidence) {
+			e.ToolCall, e.RefusedToolCall = e.RefusedToolCall, nil
+		}),
+		"captured call recorded as refused": tamperedExchangeJournal(t, captured, func(e *exchangeEvidence) {
+			e.RefusedToolCall, e.ToolCall = e.ToolCall, nil
+		}),
+		"refused call without its record": tamperedExchangeJournal(t, refused, func(e *exchangeEvidence) { e.RefusedToolCall = nil }),
+	} {
+		if _, err := ReplayTranscript(journal, pins, nil); !errors.Is(err, ErrTranscriptReplay) {
+			t.Errorf("%s: replay = %v, want ErrTranscriptReplay", name, err)
+		}
+	}
+	for name, journal := range map[string]*audit.Journal{"refused": refused, "captured": captured} {
+		if _, err := ReplayTranscript(journal, pins, nil); err != nil {
+			t.Errorf("untampered %s journal: replay = %v", name, err)
+		}
+	}
+}
+
 // With 3 left the exchange takes one and the effect and the result turn fit in the other two: tools stay on.
 func TestToolCallWithThreeHostCallsLeftIsCaptured(t *testing.T) {
 	conversation, _, doer, hooks := hostCallsLeftConversation(t, []fixtureResponse{capToolCall}, 4, 7)
