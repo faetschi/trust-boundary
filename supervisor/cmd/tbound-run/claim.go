@@ -21,7 +21,7 @@ const maxLedgerV3Bytes = 64 << 20
 const (
 	reasonLedgerSynthetic = "ledger_synthetic"              // no verified USD ledger file: the spend section says nothing
 	reasonNotThesis       = "not_thesis_profile"            // H1 is the thesis corpus; a pilot run bears no H1 claim
-	reasonRunIncomplete   = "run_incomplete"                // a registered case has no record or an unfinished step (D36: unfinished evidence)
+	reasonRunIncomplete   = "run_incomplete"                // a case has no record, an unfinished step or a pending rerun (D36: unfinished evidence)
 	reasonNoGroups        = "no_scenario_mechanism_results" // D47/D48: the case bound is never reported alone
 	reasonNotCertified    = "bound_not_certified"           // D48: the case bound stands only after the zero-event certification
 	reasonNotRegistered   = "not_registered"                // D31/D36: no pre-registration record to check the run against
@@ -40,7 +40,7 @@ func claimReasons(p plan, realLedger bool, rep evalreport.Report, incomplete int
 	}
 	add(!realLedger, reasonLedgerSynthetic)
 	add(p.cfg.QuotaProfile != quotaThesis, reasonNotThesis)
-	add(!rep.Coverage.Exact || incomplete > 0, reasonRunIncomplete)
+	add(!rep.Coverage.Exact || incomplete > 0 || rep.Observed.PendingExternalReruns > 0, reasonRunIncomplete)
 	add(rep.Groups == nil, reasonNoGroups)
 	add(rep.Groups != nil && !rep.Groups.Certification.Certified, reasonNotCertified)
 	add(reg == nil, reasonNotRegistered)

@@ -71,6 +71,12 @@ func TestClaimReasonsNameEachMissingCondition(t *testing.T) {
 	if got := c.reasons(); !slices.Equal(got, []string{reasonRunIncomplete}) {
 		t.Errorf("incomplete step: reasons %v", got)
 	}
+	// So does a unit still waiting for its registered rerun.
+	c = claimFixture()
+	c.rep.Observed.PendingExternalReruns = 1
+	if got := c.reasons(); !slices.Equal(got, []string{reasonRunIncomplete}) {
+		t.Errorf("pending rerun: reasons %v", got)
+	}
 	// A run without an attribution file has no rubric to compare: the friction candidates stay unresolved instead.
 	c = claimFixture()
 	c.p.attributions = attributionSet{}
