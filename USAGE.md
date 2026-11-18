@@ -2,7 +2,9 @@
 
 A practical guide from installation to a governed run and an evaluation. It is
 general: it works on a native Linux host, or on Windows with a Linux VM. For
-details, follow the links into `docs/`.
+details, follow the links into `docs/`. New here? Build first with the
+[quickstart](docs/guides/quickstart.md). Terms such as PVR, freeze, and cell are
+defined in the [glossary](docs/glossary.md).
 
 ## 1. What TBound does
 
@@ -24,7 +26,7 @@ TBound sits between the [Pi](https://pi.dev) coding agent and your repository.
 TBound is a Linux system. It does not turn Windows or macOS into a security
 boundary.
 
-## 2. Where to run it
+## 2. Requirements
 
 | Setup | Supported for | Notes |
 |---|---|---|
@@ -41,7 +43,7 @@ Host requirements for the governed service:
 - **Node.js 22.19+** and the **Pi CLI 0.87.1** (`npm install --global @earendil-works/pi-coding-agent@0.87.1`).
 - To build: **Go 1.27.1**.
 
-## 3. Install
+## 3. Installation
 
 ```sh
 # from a Linux checkout of this repository
@@ -110,6 +112,21 @@ tbound serve --pi --task-id TASK_ID \
 
 Details: [docs/guides/setup.md](docs/guides/setup.md), [docs/runtime/production-pi-session.md](docs/runtime/production-pi-session.md),
 [docs/runtime/publication-contract.md](docs/runtime/publication-contract.md).
+
+### Governed chat
+
+The product service also runs interactive chat turns on one Linux host, from the
+terminal. Its worker is the supervisor's own agent loop, not Pi, so this is not an
+interactive Pi mode.
+
+```sh
+tbound chat --project demo --mode review
+```
+
+Reads run through the policy gate. A write waits for Publish or Discard. Setup is
+in [Run a first governed product turn](docs/guides/product-first-turn.md); enabling
+Bash is in [Enable Bash](docs/guides/product-bash.md). Its output is not thesis
+evidence.
 
 ## 7. Updating a governed host ("freeze")
 
@@ -217,7 +234,7 @@ unset OPENROUTER_API_KEY
 
 Full guide: [docs/guides/panel-run.md](docs/guides/panel-run.md).
 
-## 10. Where to read more
+## 10. Further reading
 
 - [Reproduce TBound](docs/guides/reproduce.md): the host, signing, freeze, and evaluation sequence.
 - [docs/README.md](docs/README.md): what each document covers.

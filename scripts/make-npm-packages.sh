@@ -6,7 +6,8 @@
 #
 # Produces, under outdir (default dist/npm):
 #   cli/                 the root @tbound/cli package (launcher + optionalDependencies)
-#   cli-<os>-<arch>/     one platform package per tarball, containing the binaries
+#   cli-linux-x64/       the Linux platform package, containing the binaries
+# Non-Linux release tarballs are skipped; npm ships the Linux amd64 binary only.
 #
 # Each platform package ships bin/tbound, bin/tbound-doctor, and bin/tbound-profile
 # (the Linux-only stub elsewhere). The linux/amd64 TCB entrypoint
@@ -69,7 +70,7 @@ mkdir -p "$OUT_C"
 OUT="$OUT_C"
 DIST="$DIST_C"
 
-map_os() { case "$1" in linux) echo linux;; darwin) echo darwin;; windows) echo win32;; *) return 1;; esac; }
+map_os() { case "$1" in linux) echo linux;; *) return 1;; esac; }
 map_cpu() { case "$1" in amd64) echo x64;; arm64) echo arm64;; *) return 1;; esac; }
 
 safe_archive() {
@@ -114,6 +115,12 @@ for tgz in "$DIST"/tbound-"$VERSION"-*.tar.gz; do
   base="$(basename "$tgz")"; mid="${base#tbound-$VERSION-}"; mid="${mid%.tar.gz}"
   os="${mid%%-*}"; arch="${mid##*-}"
   [ "$os" != linux ] || [ "$arch" != arm64 ] || die "linux/arm64 is not a supported release target"
+  # npm ships the Linux binary only. Other release tarballs stay installable by
+  # hand, but no platform package is generated for them.
+  if [ "$os" != linux ]; then
+    echo "make-npm-packages: skipping non-linux tarball $base"
+    continue
+  fi
   nos="$(map_os "$os")" || die "unsupported os $os"
   narch="$(map_cpu "$arch")" || die "unsupported arch $arch"
   pkg="cli-$nos-$narch"
@@ -136,16 +143,10 @@ for tgz in "$DIST"/tbound-"$VERSION"-*.tar.gz; do
   fi
   bindir="$OUT/$pkg/bin"
   mkdir -p "$bindir"
-  binfile="tbound"; [ "$os" = "windows" ] && binfile="tbound.exe"
-  exefile="tbound-doctor"; [ "$os" = "windows" ] && exefile="tbound-doctor.exe"
-  proffile="tbound-profile"; [ "$os" = "windows" ] && proffile="tbound-profile.exe"
-  src_bin="$work/bin/$binfile"; src_exe="$work/bin/$exefile"; src_prof="$work/bin/$proffile"
-  [ -f "$src_bin" ] || die "archive $base missing bin/$binfile"
-  [ -f "$src_exe" ] || die "archive $base missing bin/$exefile"
-  [ -f "$src_prof" ] || die "archive $base missing bin/$proffile"
-  cp "$src_bin" "$bindir/$binfile"
-  cp "$src_exe" "$bindir/$exefile"
-  cp "$src_prof" "$bindir/$proffile"
+  for b in tbound tbound-doctor tbound-profile; do
+    [ -f "$work/bin/$b" ] || die "archive $base missing bin/$b"
+    cp "$work/bin/$b" "$bindir/$b"
+  done
   cp "$ROOT/LICENSE" "$OUT/$pkg/LICENSE"
   rm -rf "$work"
   cat > "$OUT/$pkg/package.json" <<JSON
@@ -164,7 +165,7 @@ JSON
   platforms+=("cli-$nos-$narch")
 done
 
-[ "${#platforms[@]}" -gt 0 ] || die "no tarballs found in $DIST for version $VERSION"
+[ "${#platforms[@]}" -gt 0 ] || die "no linux/amd64 tarball in $DIST for version $VERSION (non-Linux tarballs are skipped)"
 
 # Root package: launcher + optionalDependencies pointing at the platform packages.
 mkdir -p "$OUT/cli/bin" "$OUT/cli/scripts"

@@ -35,6 +35,20 @@ def dev(cid):
     return row
 
 
+class LocalRootTest(unittest.TestCase):
+    def test_tbound_local_wins(self):
+        self.assertEqual(adapt._local_root({"TBOUND_LOCAL": "/tmp/x"}, "/repo"), "/tmp/x")
+
+    def test_default_is_repo_local(self):
+        self.assertEqual(adapt._local_root({}, "/repo"), os.path.join("/repo", ".local"))
+
+    def test_empty_tbound_local_falls_back(self):
+        self.assertEqual(adapt._local_root({"TBOUND_LOCAL": ""}, "/repo"), os.path.join("/repo", ".local"))
+
+    def test_clones_is_under_local_root(self):
+        self.assertEqual(adapt.CLONES, os.path.join(adapt.LOCAL_ROOT, "source-screen", "clones"))
+
+
 @unittest.skipUnless(HAVE_CLONES, "source clones not present")
 class GoldenInjecAgent(unittest.TestCase):
     def check(self, cid, instruction, tool, response):

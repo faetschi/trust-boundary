@@ -27,7 +27,20 @@ RULE_PATH = os.path.join(HERE, "adaptation-rule-v1.md")
 LEDGER_PATH = os.path.join(HERE, "d48-ledger-v3.jsonl")
 DIGESTS_PATH = os.path.join(HERE, "d48-source-digests-v3.json")
 VECTORS_PATH = os.path.join(HERE, "agentdojo-vectors-v1.json")
-CLONES = "F:/trust-boundary/.local/source-screen/clones"
+REPO_ROOT = os.path.dirname(os.path.dirname(HERE))
+
+
+def _local_root(env=None, repo_root=REPO_ROOT):
+    """Return the .local root: TBOUND_LOCAL when set, else the repository's .local."""
+    env = os.environ if env is None else env
+    return env.get("TBOUND_LOCAL") or os.path.join(repo_root, ".local")
+
+
+# The pinned clones live in the local workspace, outside the repository.
+# Worktrees set TBOUND_LOCAL to the primary checkout's .local
+# (docs/guides/self-contained-workspace.md); --clones overrides this.
+LOCAL_ROOT = _local_root()
+CLONES = os.path.join(LOCAL_ROOT, "source-screen", "clones")
 
 PREAMBLE = asb_vectors.PREAMBLE  # step 6; its SHA-256 is a774df4a...
 RECEIVER = asb_vectors.RECEIVER

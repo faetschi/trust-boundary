@@ -1,10 +1,14 @@
 name: extension-boundary
 
-# Unfiltered on purpose: a core change that imports the optional extension must
-# fail on any push or pull request. Pure sh and grep; no Go, no Node.
+# A core change that imports the optional extension must fail on any pull request
+# into main. A push to main is checked after it lands. Pure sh and grep; no Go,
+# no Node. Limited to main under the same cost policy as linux-ci (see ci.yml).
 on:
   push:
+    branches: [main]
   pull_request:
+    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
