@@ -60,7 +60,8 @@ trap 'rm -f "$notes"' EXIT
 cat > "$notes" <<NOTES
 tbound $VERSION
 
-Tarballs contain bin/tbound, bin/tbound-doctor, runtime/, and shell completions.
+Linux amd64 only. On Windows, use WSL 2 or a Linux VM. The tarball contains
+bin/tbound, bin/tbound-doctor, bin/tbound-profile, runtime/, and shell completions.
 The dev/install surface: \`tbound serve --pi --native-fixture\` runs the
 non-claim-bearing smoke path; governed \`tbound serve --pi\` remains refused until
 the runtime composition admits a signed host profile and the Podman/crun

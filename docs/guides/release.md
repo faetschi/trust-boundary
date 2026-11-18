@@ -15,7 +15,7 @@ scripts/build-release.sh 0.1.0 dist linux/amd64
 
 Releases are built for linux/amd64 only. WSL 2 and Linux VMs on Windows or macOS
 run the same tarball, so no macOS or Windows binaries are made. v0.1.0 also
-carried darwin and windows tarballs; they are unsupported leftovers.
+carried darwin and windows tarballs. They are unsupported leftovers; ignore them.
 
 The packaging layout test is diagnostic by default: when an owner-source Linux
 compile error is present, it reports the Linux checks as skipped so the other
@@ -37,23 +37,16 @@ bash tests/packaging/verify-release-strict-mode.sh
 ```
 
 Artifacts are staged and checksummed in a private work dir and the destination is
-updated only after every target builds, so a failed target never leaves partial
-tarballs or a stale `SHA256SUMS`. The final destination update is not a
+updated only after the build succeeds, so a failed build never leaves a partial
+tarball or a stale `SHA256SUMS`. The final destination update is not a
 transactional swap: if the process is interrupted while updating `dist/`, rerun the
 build.
 
-Each tarball contains:
+The `linux/amd64` tarball contains:
 
-| Path | Every target | linux/amd64 only |
-|---|---|---|
-| `bin/tbound` | yes | |
-| `bin/tbound-doctor` | yes | |
-| `bin/tbound-profile` | yes (Linux-only stub elsewhere) | |
-| `LICENSE` | yes | |
-| `libexec/tbound/tbound-cell-entrypoint` | | yes |
-| `libexec/tbound/cell-entrypoint.json` | | yes |
-| `runtime/`, `share/completions/`, `VERSION` | yes | |
-| `MANIFEST.sha256` | yes | |
+- `bin/tbound`, `bin/tbound-doctor` and `bin/tbound-profile`
+- `libexec/tbound/tbound-cell-entrypoint` and `libexec/tbound/cell-entrypoint.json`
+- `runtime/`, `share/completions/`, `LICENSE`, `VERSION` and `MANIFEST.sha256`
 
 `MANIFEST.sha256` is a per-file integrity manifest: it lists the sha256 of every
 shipped regular file except the manifest itself, using paths relative to the

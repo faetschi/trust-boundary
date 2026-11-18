@@ -156,6 +156,8 @@ if "${linux_build[@]}" >"$LINLOG" 2>&1; then
   if cmp -s "$ROOT/LICENSE" "$x/LICENSE"; then ok "linux carries canonical LICENSE text"; else bad "linux LICENSE missing or differs from source"; fi
   [ -x "$x/libexec/tbound/tbound-cell-entrypoint" ] && ok "linux TCB entrypoint present" || bad "linux TCB entrypoint missing"
   [ -f "$x/libexec/tbound/cell-entrypoint.json" ] && ok "linux entrypoint metadata present" || bad "linux entrypoint metadata missing"
+  [ -f "$x/runtime/package.json" ] && ok "linux runtime/package.json" || bad "linux runtime/package.json missing"
+  [ -f "$x/VERSION" ] && [ "$(cat "$x/VERSION")" = "$VERSION" ] && ok "linux VERSION is $VERSION" || bad "linux VERSION missing or wrong"
   if verify_manifest "$x"; then ok "linux MANIFEST.sha256 verifies"; else bad "linux MANIFEST.sha256 failed"; fi
   for other in "$LIN"/tbound-"$VERSION"-*.tar.gz; do
     [ "$(basename "$other")" = "tbound-$VERSION-linux-amd64.tar.gz" ] || bad "release has a non-linux tarball: $(basename "$other")"
