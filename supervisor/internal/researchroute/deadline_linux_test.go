@@ -21,9 +21,10 @@ import (
 )
 
 // deadlineConversation is a research-route conversation on the real USD ledger whose workflow host-call
-// settlement ends the request context first and then refuses an ended context, as the workflow ledger does
-// (its progress commit checks the context). It counts the host calls it reserved and settled.
-func deadlineConversation(t *testing.T, b *Bundle, cancel context.CancelFunc, reserved, completed *atomic.Int32) *providerbridge.Conversation {
+// settlement ends the request context first (when cancel is not nil) and then refuses an ended context, as the
+// workflow ledger does (its progress commit checks the context). It counts the host calls it reserved and
+// settled, and returns the provider journal.
+func deadlineConversation(t *testing.T, b *Bundle, cancel context.CancelFunc, reserved, completed *atomic.Int32) (*providerbridge.Conversation, *audit.Journal) {
 	t.Helper()
 	journalDir := t.TempDir()
 	if err := os.Chmod(journalDir, 0o700); err != nil {
@@ -50,7 +51,9 @@ func deadlineConversation(t *testing.T, b *Bundle, cancel context.CancelFunc, re
 				TokenUpperBound: limit}, nil
 		},
 		CompleteHostCall: func(ctx context.Context, _ providerbridge.HostCallCompletion) error {
-			cancel()
+			if cancel != nil {
+				cancel()
+			}
 			if err := ctx.Err(); err != nil {
 				return err
 			}
@@ -64,7 +67,7 @@ func deadlineConversation(t *testing.T, b *Bundle, cancel context.CancelFunc, re
 	if err := c.AdmitPrompt("task-1", "Say ok."); err != nil {
 		t.Fatal(err)
 	}
-	return c
+	return c, journal
 }
 
 // parallelCallSSE answers with two tool calls in one turn, which the bridge refuses and resamples.
@@ -126,7 +129,7 @@ func TestResearchExchangeAtTheDeadlineSettlesItsSpendAndHostCallOnce(t *testing.
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	var reserved, completed atomic.Int32
-	c := deadlineConversation(t, bundle, cancel, &reserved, &completed)
+	c, _ := deadlineConversation(t, bundle, cancel, &reserved, &completed)
 	if _, err := c.NextTurn(ctx); err == nil {
 		t.Fatal("a turn was released after the request deadline")
 	}
@@ -153,7 +156,7 @@ func TestResearchResampleAtTheDeadlineBooksTheRefusedAttemptOnce(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	var reserved, completed atomic.Int32
-	c := deadlineConversation(t, bundle, cancel, &reserved, &completed)
+	c, _ := deadlineConversation(t, bundle, cancel, &reserved, &completed)
 	if _, err := c.NextTurn(ctx); err == nil {
 		t.Fatal("a turn was released after the request deadline")
 	}
