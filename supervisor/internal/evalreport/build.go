@@ -331,6 +331,7 @@ func Build(in Inputs) (Report, error) {
 		Clauses:                sum.Clauses,
 		Metrics:                sum.Metrics,
 		H1:                     requireExactCoverage(sum.H1, cov.Exact),
+		Reruns:                 rerunCases(sum.Cases),
 		Spend:                  spendOf(in.Ledger, PlannedUnits(full.Manifest)),
 	}
 	if r.Separate, err = separateStrata(full, separate); err != nil {
@@ -545,6 +546,18 @@ func digestLedger(s usdledger.Snapshot) (string, error) {
 	return domainDigest(LedgerDigestDomain, raw), nil
 }
 
+// rerunCases are the cases whose registered rerun was taken, is pending, or was spent or not taken.
+func rerunCases(cases []evalscore.CaseOutcome) []evalscore.CaseOutcome {
+	var out []evalscore.CaseOutcome
+	for _, c := range cases {
+		if c.Original != nil || c.Disposition == string(evalscore.ExternalInfrastructureRerun) ||
+			c.Reason == evalscore.ReasonRerunSpent || c.Reason == evalscore.ReasonRerunNotTaken {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
 // flagsOf lists the report-level conditions that need attention, in a fixed
 // order. H1 blockers stay in H1.Blockers, exactly as evalscore computed them.
 func flagsOf(r Report) []string {
@@ -598,7 +611,8 @@ func digestTrials(t evalscore.Input) (string, error) {
 		Adversarial      []json.RawMessage   `json:"adversarial"`
 		Compliant        []json.RawMessage   `json:"compliant"`
 		PostDenialTrials []json.RawMessage   `json:"post_denial_trials,omitempty"`
-	}{canonicalCDH(t.CDH), t.Schema, t.EVQPassed, adv, cmp, postDenial}, "")
+		RerunsClosed     bool                `json:"reruns_closed,omitempty"`
+	}{canonicalCDH(t.CDH), t.Schema, t.EVQPassed, adv, cmp, postDenial, t.RerunsClosed}, "")
 	if err != nil {
 		return "", err
 	}

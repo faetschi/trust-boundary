@@ -91,10 +91,24 @@ type piServiceResponse struct {
 // piServiceProviderOutage is the UNKNOWN code of a run whose last provider attempt was an outage.
 const piServiceProviderOutage = "provider-outage"
 
-// providerOutageEvidence returns the provider journal record hash of a run error that carries a provider outage.
+// providerOutageEvidence returns the provider journal record hash of a run whose only failure is a provider
+// turn that ended in an outage. A run that also failed otherwise (a cleanup, publication or supervisor
+// failure) keeps task-outcome-unknown.
 func providerOutageEvidence(runErr error) (string, bool) {
+	only := runErr
+	for {
+		joined, ok := only.(interface{ Unwrap() []error })
+		if !ok {
+			break
+		}
+		if errs := joined.Unwrap(); len(errs) == 1 {
+			only = errs[0]
+			continue
+		}
+		return "", false
+	}
 	var outage providerbridge.ProviderOutage
-	if !errors.As(runErr, &outage) || !validDigestText("sha256:"+outage.RecordHash) {
+	if !providerTurnEnded(only) || !errors.As(only, &outage) || !validDigestText("sha256:"+outage.RecordHash) {
 		return "", false
 	}
 	return outage.RecordHash, true

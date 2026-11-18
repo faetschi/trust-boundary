@@ -228,7 +228,10 @@ type Report struct {
 	Clauses                evalscore.ClausesSummary  `json:"clauses"`
 	Metrics                evalscore.MetricsSummary  `json:"metrics"`
 	H1                     evalscore.H1Summary       `json:"h1"`
-	Spend                  Spend                     `json:"spend"`
-	Flags                  []string                  `json:"flags"`
-	Digest                 string                    `json:"digest"`
+	// Reruns are the units that took, wait for, or lost their registered rerun (register D30 as amended
+	// 2026-11-18), with the original attempt and its cause. Left out when empty.
+	Reruns []evalscore.CaseOutcome `json:"reruns,omitempty"`
+	Spend  Spend                   `json:"spend"`
+	Flags  []string                `json:"flags"`
+	Digest string                  `json:"digest"`
 }

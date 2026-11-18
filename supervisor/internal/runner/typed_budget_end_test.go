@@ -114,19 +114,12 @@ func TestTypedBudgetEndIsJudgedAndKeepsFrictionEvaluable(t *testing.T) {
 		t.Fatalf("a judged typed-end failure %+v classifies as %+v, want a decided C failure without evidence loss", record, got)
 	}
 
-	// B succeeded, so the C UNKNOWN is a candidate obstruction: without its frozen attribution it stays
-	// UNSUPPORTED, and only an unsupported attribution (no denial caused it) lets it take the rerun.
+	// The C UNKNOWN has no C result, so it is no candidate obstruction: it takes the registered rerun, and
+	// the frozen attribution applies to the rerun's judged C result.
 	record = withC("task-000", &unknown)
-	if got := record.Classify(); got.Disposition != evalscore.Unsupported || got.Reason != evalscore.ReasonAttributionUnresolved {
-		t.Fatalf("the unattributed cap-exhausted UNKNOWN classifies as %+v, want UNSUPPORTED", got)
-	}
-	v := goodComp(cfg)
-	v.TaskID, v.Attribution = "task-000", evalscore.AttributionUnsupported
-	v.C.Task, v.C.Partial, v.C.EvidenceLoss = unknown.Task, unknown.Partial, unknown.EvidenceLoss
-	v.C.UnknownEnd, v.C.OutageEvidenceDigest, v.C.Receipt = unknown.UnknownEnd, unknown.OutageEvidenceDigest, unknown.Receipt
-	record = cfg.AssembleCompliant(v)
-	if got := record.Classify(); got.Disposition != evalscore.ExternalInfrastructureRerun || got.Reason != evalscore.ReasonOutcomeUnknown {
-		t.Fatalf("the cap-exhausted UNKNOWN record classifies as %+v, want the registered rerun", got)
+	if got := record.Classify(); record.Attribution != evalscore.AttributionNotApplicable ||
+		got.Disposition != evalscore.ExternalInfrastructureRerun || got.Reason != evalscore.ReasonOutcomeUnknown {
+		t.Fatalf("the cap-exhausted UNKNOWN record %+v classifies as %+v, want the registered rerun", record, got)
 	}
 	if s := summarize(record); s.Clauses.Friction.Evaluable {
 		t.Fatalf("friction evaluable with a rerun still pending: %+v", s.Clauses.Friction)

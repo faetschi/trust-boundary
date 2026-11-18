@@ -28,8 +28,8 @@ usage:
   tbound-run plan      --config run.json
   tbound-run run       --config run.json [--max-steps N]
   tbound-run rerun     --config run.json --step <step id>
-  tbound-run export    --config run.json --out trials.json
-  tbound-run report    --config run.json --out <dir>
+  tbound-run export    --config run.json --out trials.json [--close-reruns]
+  tbound-run report    --config run.json --out <dir> [--close-reruns]
   tbound-run selfcheck --config run.json
   tbound-run fixture digest <spec.json>
   tbound-run source-digest --repo <git repo> --commit <40-hex>     (the frozen source digest: host profile SourceProvenanceDigest, run.json pins.frozen_source_digest)

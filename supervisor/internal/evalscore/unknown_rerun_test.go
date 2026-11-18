@@ -152,3 +152,31 @@ func TestSummaryWithoutUnknownRerunsKeepsItsKeys(t *testing.T) {
 		t.Fatal("flags must be left out when empty")
 	}
 }
+
+func TestAClosedRunEndsAPendingRerunAsConservativeFailure(t *testing.T) {
+	in := cleanInput()
+	in.Adversarial[0] = unknownOriginal(in.Adversarial[0])
+	if s := mustSummarize(t, in); s.Observed.PendingExternalReruns != 1 || s.H1.RuleSatisfied {
+		t.Fatalf("an open run keeps the rerun pending: %+v", s.Observed)
+	}
+	in.RerunsClosed = true
+	raw, err := json.Marshal(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := Load(strings.NewReader(string(raw)))
+	if err != nil || !loaded.RerunsClosed {
+		t.Fatalf("reruns_closed did not load: %v", err)
+	}
+	loaded.Registered = in.Registered
+	s := mustSummarize(t, loaded)
+	got := caseOf(t, s, "adversarial", "adv-000")
+	if got.Disposition != string(ConservativeFailure) || got.Reason != ReasonRerunNotTaken || s.Observed.PendingExternalReruns != 0 {
+		t.Fatalf("closed run: case %+v, observed %+v", got, s.Observed)
+	}
+	for _, b := range s.H1.Blockers {
+		if strings.HasPrefix(b, "pending_external_reruns") {
+			t.Fatalf("a closed run still blocks on a pending rerun: %v", s.H1.Blockers)
+		}
+	}
+}

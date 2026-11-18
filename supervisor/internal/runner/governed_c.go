@@ -436,43 +436,31 @@ func (g GovernedC) Execute(ctx context.Context, s Step) (Outcome, error) {
 	switch resp.Status {
 	case "unknown":
 		errs = append(errs, fmt.Errorf("%w: %s", ErrGovernedUnknown, resp.ErrorCode))
+		if len(resp.Receipt) == 0 || string(resp.Receipt) == "null" {
+			break
+		}
+		// A failed provider turn whose worker settled ends UNKNOWN with the receipt that binds its evidence.
+		receipt, err := parseGovernedReceipt(resp.Receipt)
+		if err == nil && receipt.Success {
+			err = fmt.Errorf("%w: an unknown answer with a success receipt", ErrGovernedMalformed)
+		}
+		if err != nil {
+			errs = append(errs, err)
+			break
+		}
+		errs = append(errs, g.applyReceipt(ctx, &o, &ref, receipt)...)
 	case "completed":
 		receipt, err := parseGovernedReceipt(resp.Receipt)
 		if err != nil {
 			errs, checkExit = append(errs, err), false
 			break
 		}
-		ref.RunID = receipt.RunID
-		o.Receipt = &ReceiptFacts{ProfileHash: receipt.ProfileHash, ContainmentProfileDigest: receipt.ContainmentProfileDigest,
-			HintChooser: receipt.HintChooser, HintManifestDigest: receipt.HintManifestDigest, Hints: slices.Clone(receipt.Hints),
-			FrozenSourceDigest: receipt.FrozenSourceDigest, Delta: receipt.Delta,
-			ProviderMode: receipt.ProviderMode, ScriptDigest: receipt.ScriptDigest,
-			AdmissionPolicyDigest: receipt.AdmissionPolicyDigest, Proposals: slices.Clone(receipt.Proposals),
-			PivotsIssued: receipt.PivotsIssued, AttackerStop: receipt.AttackerStop, AttackerStateDigest: receipt.AttackerStateDigest,
-			AttackerDigest: receipt.AttackerDigest, PivotsDigest: receipt.PivotsDigest,
-			AttackerUsage: receipt.AttackerUsage, AttackerCumulativeUsage: receipt.AttackerCumulativeUsage,
-			AttackerPredecessor: receipt.AttackerPredecessor}
-		o.ToolAttempt = slices.ContainsFunc(receipt.Proposals, func(p ProposalFact) bool { return strings.EqualFold(p.Verdict, "deny") }) || o.ToolAttempt
-		ref.Publications = receipt.PublicationJournalRecordCount
-		ref.PublicationsKnown = receipt.PublicationIntervalRef == ref.Interval && receipt.PublicationJournalHead != ""
-		if ref.PublicationsKnown {
-			ref.PublicationHead = receipt.PublicationJournalHead
-		}
-		ref.E04Head, ref.E04Count, ref.E04GapCount = receipt.E04EvidenceHead, receipt.E04EvidenceRecordCount, receipt.E04GapCount
-		o.Metrics.ToolCalls = len(receipt.ToolSequence)
-		o.Metrics.InTokens, o.Metrics.OutTokens, o.Metrics.CostMicroUSD = receipt.InTokens, receipt.OutTokens, receipt.CostMicroUSD
-		o.Metrics.Retries, o.Metrics.UsageUnread = receipt.ProviderRetries, receipt.UsageUnread
-		o.Metrics.ToolsDisabledCalls, o.Metrics.RefusedToolCalls = receipt.ToolsDisabledCalls, receipt.RefusedToolCalls
 		if receipt.Success {
 			wantExit = 0
 		} else {
 			errs = append(errs, ErrGovernedFailed)
 		}
-		pf, err := g.anchor(ctx, ref, receipt)
-		o.PublicationFree = pf
-		if err != nil {
-			errs = append(errs, err)
-		}
+		errs = append(errs, g.applyReceipt(ctx, &o, &ref, receipt)...)
 	}
 	if checkExit && exit != wantExit {
 		errs = append(errs, fmt.Errorf("%w: exit code %d does not fit status %s", ErrGovernedMalformed, exit, resp.Status))
@@ -483,6 +471,38 @@ func (g GovernedC) Execute(ctx context.Context, s Step) (Outcome, error) {
 		markUnknownEnd(&o, s, resp)
 	}
 	return o, errors.Join(errs...)
+}
+
+// applyReceipt copies what the receipt says into the outcome and the evidence reference: identity and
+// delta facts, proposals, metrics, the publication anchor and the E04 binding the collectors read.
+func (g GovernedC) applyReceipt(ctx context.Context, o *Outcome, ref *EvidenceRef, receipt governedReceipt) []error {
+	ref.RunID = receipt.RunID
+	o.Receipt = &ReceiptFacts{ProfileHash: receipt.ProfileHash, ContainmentProfileDigest: receipt.ContainmentProfileDigest,
+		HintChooser: receipt.HintChooser, HintManifestDigest: receipt.HintManifestDigest, Hints: slices.Clone(receipt.Hints),
+		FrozenSourceDigest: receipt.FrozenSourceDigest, Delta: receipt.Delta,
+		ProviderMode: receipt.ProviderMode, ScriptDigest: receipt.ScriptDigest,
+		AdmissionPolicyDigest: receipt.AdmissionPolicyDigest, Proposals: slices.Clone(receipt.Proposals),
+		PivotsIssued: receipt.PivotsIssued, AttackerStop: receipt.AttackerStop, AttackerStateDigest: receipt.AttackerStateDigest,
+		AttackerDigest: receipt.AttackerDigest, PivotsDigest: receipt.PivotsDigest,
+		AttackerUsage: receipt.AttackerUsage, AttackerCumulativeUsage: receipt.AttackerCumulativeUsage,
+		AttackerPredecessor: receipt.AttackerPredecessor}
+	o.ToolAttempt = slices.ContainsFunc(receipt.Proposals, func(p ProposalFact) bool { return strings.EqualFold(p.Verdict, "deny") }) || o.ToolAttempt
+	ref.Publications = receipt.PublicationJournalRecordCount
+	ref.PublicationsKnown = receipt.PublicationIntervalRef == ref.Interval && receipt.PublicationJournalHead != ""
+	if ref.PublicationsKnown {
+		ref.PublicationHead = receipt.PublicationJournalHead
+	}
+	ref.E04Head, ref.E04Count, ref.E04GapCount = receipt.E04EvidenceHead, receipt.E04EvidenceRecordCount, receipt.E04GapCount
+	o.Metrics.ToolCalls = len(receipt.ToolSequence)
+	o.Metrics.InTokens, o.Metrics.OutTokens, o.Metrics.CostMicroUSD = receipt.InTokens, receipt.OutTokens, receipt.CostMicroUSD
+	o.Metrics.Retries, o.Metrics.UsageUnread = receipt.ProviderRetries, receipt.UsageUnread
+	o.Metrics.ToolsDisabledCalls, o.Metrics.RefusedToolCalls = receipt.ToolsDisabledCalls, receipt.RefusedToolCalls
+	pf, err := g.anchor(ctx, *ref, receipt)
+	o.PublicationFree = pf
+	if err != nil {
+		return []error{err}
+	}
+	return nil
 }
 
 // anchor builds the publication carrier from the receipt, or none.

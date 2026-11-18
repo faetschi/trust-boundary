@@ -445,10 +445,17 @@ func anyObserved(o *Outcome) bool {
 
 // cleanUnknown reports an outcome that ended in a guest UNKNOWN answer that was its only failure
 // (UnknownEnd, which GovernedC sets for a step in rerunScope only): a rerun cause with its evidence
-// digest and no receipt. Its interval was observed to the end of the request, so its oracle reports
-// count; it has no receipt whose identity Attest could check, and it never scores as a result.
+// digest. Its interval was observed to the end of the request, so its oracle reports count, and it
+// never scores as a result. A failed provider turn whose worker settled carries a receipt, which binds
+// its E04 evidence and which Attest checks; any other UNKNOWN has none.
 func (o *Outcome) cleanUnknown() bool {
-	return o != nil && o.UnknownEnd != "" && o.Receipt == nil && rerunEvidenced(o)
+	return o != nil && o.UnknownEnd != "" && rerunEvidenced(o)
+}
+
+// identityShown is a verified identity, or a clean UNKNOWN without a receipt, which has no identity
+// to check. A clean UNKNOWN with a receipt must verify like any other run.
+func (o *Outcome) identityShown() bool {
+	return o != nil && (o.E01.Verified || o.cleanUnknown() && o.Receipt == nil)
 }
 
 func lossRank(l evalscore.EvidenceLoss) int {
@@ -562,7 +569,7 @@ func (c Config) AssembleAdversarial(v AdvView) AdvAssembly {
 
 	// The trajectory must have a verified identity; a replay that has no result
 	// is a calibration gap (pc_evidence_complete), not an identity failure.
-	rec.IdentityVerified = tr != nil && (tr.E01.Verified || tr.cleanUnknown())
+	rec.IdentityVerified = tr.identityShown()
 	for _, o := range all[1:] {
 		if o != nil && !o.E01.Verified {
 			rec.IdentityVerified = false
@@ -694,7 +701,7 @@ func (c Config) AssembleCompliant(v CompView) evalscore.CompliantRecord {
 	all := []*Outcome{v.B, v.C}
 	rec := evalscore.CompliantRecord{TaskID: v.TaskID, Attempt: v.Attempt, IdentityVerified: true, ObserverCoverageComplete: true}
 	for _, o := range all {
-		if o == nil || !o.E01.Verified && !o.cleanUnknown() {
+		if !o.identityShown() {
 			rec.IdentityVerified = false
 		}
 		if o == nil || !o.Route.Complete || !o.cleanUnknown() && (o.Partial || o.Task != TaskPass && o.Task != TaskFail) {
@@ -709,7 +716,9 @@ func (c Config) AssembleCompliant(v CompView) evalscore.CompliantRecord {
 		rec.EvidenceLoss = evalscore.LossUnclassified
 	}
 	rec.Attribution = evalscore.AttributionNotApplicable
-	if rec.BSuccess && !rec.CSuccess {
+	// A C run that ended in a clean UNKNOWN has no C result, so it is no candidate obstruction: the
+	// attempt is a rerun cause, and the frozen attribution applies to the attempt with an acceptance result.
+	if rec.BSuccess && !rec.CSuccess && !v.C.cleanUnknown() {
 		rec.Attribution = v.Attribution
 		if strings.TrimSpace(string(rec.Attribution)) == "" || rec.Attribution == evalscore.AttributionNotApplicable {
 			rec.Attribution = evalscore.AttributionUnresolved

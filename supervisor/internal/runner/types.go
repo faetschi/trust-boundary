@@ -338,7 +338,8 @@ var (
 	ErrJournalLockUnsupported = errors.New("runner: journal locking is not supported on this platform")
 	// ErrOverPlanned means the plan has more steps than the unit cap.
 	ErrOverPlanned = errors.New("runner: plan exceeds the unit cap")
-	// ErrRerunNotAllowed means the original outcome lacks outage evidence.
+	// ErrRerunNotAllowed means the original outcome is no evidenced rerun cause, or the case's attempt 1
+	// does not classify as EXTERNAL_INFRASTRUCTURE_RERUN (register D30 as amended 2026-11-18).
 	ErrRerunNotAllowed = errors.New("runner: rerun needs an original outcome with an evidenced rerun cause and a case whose attempt 1 is a registered rerun")
 	// ErrRerunLimit means the case already used its one rerun.
 	ErrRerunLimit = errors.New("runner: the case already has its one rerun")

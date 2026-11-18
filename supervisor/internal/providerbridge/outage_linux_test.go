@@ -5,6 +5,10 @@ package providerbridge
 import (
 	"context"
 	"errors"
+	"net"
+	"net/http"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"tbound/supervisor/internal/broker"
@@ -76,4 +80,44 @@ func TestRefusalsBeforeDispatchAndCanceledTurnsAreNoOutage(t *testing.T) {
 	if _, err := conversation.NextTurn(ctx); err == nil || errors.As(err, &outage) {
 		t.Fatalf("a canceled turn: err %v, want no outage", err)
 	}
+}
+
+type timeoutDoer struct{ calls int }
+
+func (d *timeoutDoer) Do(*http.Request) (*http.Response, error) {
+	d.calls++
+	return nil, &net.OpError{Op: "read", Net: "tcp", Err: os.ErrDeadlineExceeded}
+}
+
+// The transport's own response timeout, while the turn's context is still live, is an outage (no HTTP response);
+// the end of the turn's context during the exchange is not.
+func TestTransportTimeoutIsAnOutageAndTurnCancellationIsNot(t *testing.T) {
+	cfg := recoveryTestConfig()
+	(&retryHooks{}).apply(&cfg)
+	journal := openRecoveryTestJournal(t, filepath.Join(t.TempDir(), "timeout.audit"))
+	doer := &timeoutDoer{}
+	conversation, err := newWithDoer(cfg, ApprovedModel, doer, journal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := conversation.AdmitPrompt("task-timeout", "prompt"); err != nil {
+		t.Fatal(err)
+	}
+	var outage ProviderOutage
+	if _, err := conversation.NextTurn(context.Background()); !errors.As(err, &outage) || doer.calls != 1 {
+		t.Fatalf("transport timeout: err %v, calls %d; want an outage after one attempt", err, doer.calls)
+	}
+
+	block, started := make(chan struct{}), make(chan struct{})
+	conversation, _, fixture, _, _ := retryConversation(t, nil)
+	fixture.block, fixture.started = block, started
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { _, err := conversation.NextTurn(ctx); done <- err }()
+	<-started
+	cancel()
+	if err := <-done; err == nil || errors.As(err, &outage) {
+		t.Fatalf("a turn canceled during its exchange: err %v, want no outage", err)
+	}
+	close(block)
 }

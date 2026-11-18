@@ -585,6 +585,10 @@ func Summarize(in Input) (Summary, error) {
 		}
 	}
 	reg := registrationOf(in)
+	if in.RerunsClosed {
+		closeReruns(adv)
+		closeReruns(comp)
+	}
 	rerunAdv, unknownAdv := rerunUnits(adv)
 	rerunComp, unknownComp := rerunUnits(comp)
 
@@ -828,6 +832,15 @@ func Summarize(in Input) (Summary, error) {
 		})
 	}
 	return s, nil
+}
+
+// closeReruns ends every unit that still waits for its registered rerun: no rerun follows a closed run.
+func closeReruns[T any](ts []terminal[T]) {
+	for i := range ts {
+		if !ts[i].res.Open && ts[i].res.Disposition == ExternalInfrastructureRerun {
+			ts[i].res = decided(ConservativeFailure, ReasonRerunNotTaken)
+		}
+	}
 }
 
 // rerunUnits counts the units that took or still wait for their registered rerun, and

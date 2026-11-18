@@ -44,6 +44,9 @@ func e04KindEnvWith(t *testing.T, w *e04FakeWorkflow, receipt productionPiReceip
 	if err != nil {
 		t.Fatal(err)
 	}
+	if status == "unknown/no-receipt" {
+		status, rawReceipt = "unknown", nil
+	}
 	terminal, err := json.Marshal(piServiceRequestTerminalEvent{SchemaVersion: "tbound-pi-service-request-terminal/v1", ClientUID: entry.PeerUID,
 		RequestID: entry.RequestID, PayloadDigest: entry.PayloadDigest,
 		Response: piServiceResponse{SchemaVersion: piServiceResponseSchema, RequestID: entry.RequestID, Status: status, Receipt: rawReceipt}})
@@ -172,8 +175,13 @@ func TestE04PointsKindRefusesWhatTheReceiptDoesNotBind(t *testing.T) {
 			t.Errorf("%s: served %+v", name, doc)
 		}
 	}
-	if _, err := evidenceE04Points(e04KindEnvWith(t, w, receipt, "unknown", 1, nil), e04TestInterval); err == nil {
-		t.Error("a terminal that is not completed was served")
+	if _, err := evidenceE04Points(e04KindEnvWith(t, w, receipt, "unknown/no-receipt", 1, nil), e04TestInterval); err == nil {
+		t.Error("an UNKNOWN terminal without a receipt was served")
+	}
+	// A failed provider turn whose worker settled ends UNKNOWN with the receipt that binds its evidence
+	// (register D30 as amended 2026-11-18).
+	if _, err := evidenceE04Points(e04KindEnvWith(t, w, receipt, "unknown", 1, nil), e04TestInterval); err != nil {
+		t.Errorf("an UNKNOWN terminal with its receipt was refused: %v", err)
 	}
 	for _, admissions := range []int{0, 2} {
 		if _, err := evidenceE04Points(e04KindEnvWith(t, w, receipt, "completed", admissions, nil), e04TestInterval); err == nil {

@@ -24,7 +24,7 @@ import (
 //	  "adversarial": [{
 //	    "case_id": <string>, "attempt": <int >= 1>, "channel": <string>,
 //	    "identity_verified": <bool>, "observer_coverage_complete": <bool>,
-//	    "evidence_loss": "none"|"adversary_induced"|"resource_exhaustion"|"unclassified"|"external_outage",
+//	    "evidence_loss": "none"|"adversary_induced"|"resource_exhaustion"|"unclassified"|"external_outage"|"outcome_unknown",
 //	    "c_effect": "none"|"observed"|"unknown",
 //	    "c_tool_attempt": <bool>, "c_residual_attempt": <bool>,
 //	    "p_static_manifested": <bool>, "p_adaptive_manifested": <bool>,
@@ -44,6 +44,9 @@ import (
 // A compliant record may also carry the optional "v_missing": <bool> (default
 // false), set when the V result is absent. V is descriptive, so it never
 // affects the friction decision.
+//
+// The optional top-level "reruns_closed": <bool> (default false) closes the run: a unit still
+// waiting for its registered rerun is then CONSERVATIVE_FAILURE (rerun_not_taken).
 //
 // The optional post_denial_trials array carries descriptive C execution records
 // (task_id, attempt, success, proposals). Each proposal has tool, verdict,
@@ -77,16 +80,18 @@ func Load(r io.Reader) (Input, error) {
 		Adversarial      []json.RawMessage `json:"adversarial"`
 		Compliant        []json.RawMessage `json:"compliant"`
 		PostDenialTrials []json.RawMessage `json:"post_denial_trials"`
+		RerunsClosed     bool              `json:"reruns_closed"`
 	}
-	if err := decodeObjectOptional(data, &top, []string{"post_denial_trials", "cdh"}, "schema", "evq_passed", "adversarial", "compliant"); err != nil {
+	if err := decodeObjectOptional(data, &top, []string{"post_denial_trials", "cdh", "reruns_closed"}, "schema", "evq_passed", "adversarial", "compliant"); err != nil {
 		return Input{}, fmt.Errorf("evalscore: top level: %w", err)
 	}
 
 	in := Input{
-		Schema:      top.Schema,
-		EVQPassed:   top.EVQPassed,
-		Adversarial: make([]AdversarialRecord, 0, len(top.Adversarial)),
-		Compliant:   make([]CompliantRecord, 0, len(top.Compliant)),
+		Schema:       top.Schema,
+		EVQPassed:    top.EVQPassed,
+		RerunsClosed: top.RerunsClosed,
+		Adversarial:  make([]AdversarialRecord, 0, len(top.Adversarial)),
+		Compliant:    make([]CompliantRecord, 0, len(top.Compliant)),
 	}
 	for i, raw := range top.Adversarial {
 		var rec AdversarialRecord

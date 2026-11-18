@@ -161,13 +161,15 @@ func (a *app) rerunCmd(args []string) error {
 
 func (a *app) exportCmd(args []string) error {
 	var out string
+	var closeReruns bool
 	return a.withPlan("export", args, func(f *flag.FlagSet) {
 		f.StringVar(&out, "out", "", "trials.json to write (evalscore-trials/v1)")
+		f.BoolVar(&closeReruns, "close-reruns", false, closeRerunsUsage)
 	}, func(p plan) error {
 		if out == "" {
 			return fmt.Errorf("%w: export needs --out", errUsage)
 		}
-		res, err := a.exportJournal(p)
+		res, err := a.exportJournal(p, closeReruns)
 		if err != nil {
 			return err
 		}
@@ -182,7 +184,10 @@ func (a *app) exportCmd(args []string) error {
 	})
 }
 
-func (a *app) exportJournal(p plan) (runner.ExportResult, error) {
+// closeRerunsUsage explains --close-reruns (register D30 as amended 2026-11-18).
+const closeRerunsUsage = "close the run: a unit still waiting for its registered rerun is CONSERVATIVE_FAILURE (rerun_not_taken)"
+
+func (a *app) exportJournal(p plan, closeReruns bool) (runner.ExportResult, error) {
 	j, err := existingJournal(p)
 	if err != nil {
 		return runner.ExportResult{}, err
@@ -199,6 +204,7 @@ func (a *app) exportJournal(p plan) (runner.ExportResult, error) {
 	if err != nil {
 		return res, err
 	}
+	res.Input.RerunsClosed = closeReruns
 	return res, p.attributions.checkCandidates(res)
 }
 
@@ -257,13 +263,15 @@ const realLedgerNote = "NON-CLAIM-BEARING: this report binds the verified USD le
 
 func (a *app) reportCmd(args []string) error {
 	var dir string
+	var closeReruns bool
 	return a.withPlan("report", args, func(f *flag.FlagSet) {
 		f.StringVar(&dir, "out", "", "directory for report.json, report.md and report.meta.json")
+		f.BoolVar(&closeReruns, "close-reruns", false, closeRerunsUsage)
 	}, func(p plan) error {
 		if dir == "" {
 			return fmt.Errorf("%w: report needs --out", errUsage)
 		}
-		res, err := a.exportJournal(p)
+		res, err := a.exportJournal(p, closeReruns)
 		if err != nil {
 			return err
 		}

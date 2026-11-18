@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -16,9 +17,13 @@ import (
 
 var outageRecordHash = strings.Repeat("e3", 32)
 
-func respondWithOutage(f *governedFixture, digest string) {
-	line, err := json.Marshal(map[string]any{"schema_version": "tbound-pi-service-response/v1", "request_id": f.req.RequestID,
-		"status": "unknown", "error_code": "provider-outage", "outage_evidence_digest": digest})
+func respondWithOutage(f *governedFixture, digest string, receipt ...map[string]any) {
+	resp := map[string]any{"schema_version": "tbound-pi-service-response/v1", "request_id": f.req.RequestID,
+		"status": "unknown", "error_code": "provider-outage", "outage_evidence_digest": digest}
+	if len(receipt) == 1 {
+		resp["receipt"] = receipt[0]
+	}
+	line, err := json.Marshal(resp)
 	if err != nil {
 		panic(err)
 	}
@@ -57,6 +62,25 @@ func TestGovernedCTypesAnUnknownAnswerAsARerunCause(t *testing.T) {
 	}
 }
 
+// A failed provider turn whose worker settled ends UNKNOWN with a non-success receipt: the executor reads its
+// identity facts and its evidence bindings as for a completed run, so Attest and the collectors can use them.
+func TestGovernedCReadsTheReceiptOfAnUnknownAnswer(t *testing.T) {
+	f := newGovernedFixture(t)
+	respondWithOutage(f, outageRecordHash, f.receipt(false))
+	o, err := f.g.Execute(context.Background(), f.step)
+	if !errors.Is(err, ErrGovernedUnknown) || errors.Is(err, ErrGovernedFailed) {
+		t.Fatalf("err = %v, want only ErrGovernedUnknown", err)
+	}
+	if o.Receipt == nil || o.PublicationFree == nil || o.Metrics.ToolCalls != 2 || o.UnknownEnd != "provider-outage" ||
+		o.EvidenceLoss != evalscore.LossExternalOutage {
+		t.Fatalf("unknown answer with its receipt = %+v", o)
+	}
+	respondWithOutage(f, outageRecordHash, f.receipt(true))
+	if o, err = f.g.Execute(context.Background(), f.step); !errors.Is(err, ErrGovernedMalformed) || o.UnknownEnd != "" {
+		t.Fatalf("an UNKNOWN answer with a success receipt: err %v, outcome %+v", err, o)
+	}
+}
+
 func TestGovernedCLeavesUnknownReplaysUntyped(t *testing.T) {
 	f := newGovernedFixture(t)
 	s := smallSchedule(t, smallConfig())
@@ -79,6 +103,8 @@ type unknownExecutor struct {
 	loss   evalscore.EvidenceLoss
 	edit   func(*Outcome)
 	cancel context.CancelFunc
+	// receipt keeps a verified identity and a receipt, as a failed provider turn whose worker settled answers.
+	receipt bool
 }
 
 func (u unknownExecutor) Execute(ctx context.Context, s Step) (Outcome, error) {
@@ -87,6 +113,9 @@ func (u unknownExecutor) Execute(ctx context.Context, s Step) (Outcome, error) {
 		return o, err
 	}
 	o.Receipt, o.E01.Verified, o.Task = nil, false, ""
+	if u.receipt {
+		o.Receipt, o.E01.Verified = &ReceiptFacts{}, true
+	}
 	o.UnknownEnd, o.EvidenceLoss, o.OutageEvidenceDigest = "task-outcome-unknown", u.loss, "sha256:"+strings.Repeat("9f", 32)
 	if u.edit != nil {
 		u.edit(&o)
@@ -103,13 +132,13 @@ type unknownCase struct {
 	exec  unknownExecutor
 }
 
-func runWithUnknown(t *testing.T, kind string, role Role, cfg Configuration, loss evalscore.EvidenceLoss, edit func(*Outcome)) unknownCase {
+func runWithUnknown(t *testing.T, kind string, role Role, cfg Configuration, loss evalscore.EvidenceLoss, edit func(*Outcome), receipt ...bool) unknownCase {
 	t.Helper()
 	c := smallConfig()
 	c.RerunHeadroom = 2
 	s := smallSchedule(t, c)
 	target := findStep(t, s, firstCase(s, kind), role, cfg)
-	exec := unknownExecutor{FakeExecutor: NewFakeExecutor(s.Config), target: target, loss: loss, edit: edit}
+	exec := unknownExecutor{FakeExecutor: NewFakeExecutor(s.Config), target: target, loss: loss, edit: edit, receipt: len(receipt) == 1 && receipt[0]}
 	j, _ := runAll(t, s, t.TempDir(), exec)
 	t.Cleanup(func() { j.Close() })
 	if e := j.terminalOf(target.ID(), 1); e == nil || e.Outcome == nil || !e.Outcome.Partial || e.Outcome.UnknownEnd == "" {
@@ -143,8 +172,8 @@ func caseOutcome(t *testing.T, s evalscore.Summary, id string) evalscore.CaseOut
 }
 
 func TestOutageTypedUnknownTrajectoryTakesTheRerun(t *testing.T) {
-	for _, loss := range []evalscore.EvidenceLoss{evalscore.LossExternalOutage, evalscore.LossOutcomeUnknown} {
-		u := runWithUnknown(t, "adversarial", RoleTrajectory, CfgC, loss, nil)
+	for i, loss := range []evalscore.EvidenceLoss{evalscore.LossExternalOutage, evalscore.LossOutcomeUnknown, evalscore.LossExternalOutage} {
+		u := runWithUnknown(t, "adversarial", RoleTrajectory, CfgC, loss, nil, i == 2)
 		id := u.exec.target.CaseID
 		res, s := exportedSummary(t, u, nil)
 		if got := caseOutcome(t, s, id); got.Disposition != string(evalscore.ExternalInfrastructureRerun) || got.Attempts != 1 {
@@ -192,25 +221,50 @@ func TestUnknownTrajectoryWithAnEffectOrAGapTakesNoRerun(t *testing.T) {
 	}
 }
 
-func TestUnknownCompliantRunNeedsAnUnsupportedAttributionForItsRerun(t *testing.T) {
-	u := runWithUnknown(t, "compliant", RoleCompliant, CfgC, evalscore.LossExternalOutage, nil)
-	id := u.exec.target.CaseID
-	if err := mustRunner(t, u.sched, u.j, u.exec, Options{}).Rerun(context.Background(), u.exec.target.ID()); !errors.Is(err, ErrRerunNotAllowed) {
-		t.Fatalf("an unattributed candidate took a rerun: %v", err)
+// cFailsOnRerun judges the rerun of the target (attempt 2) as a failed task.
+type cFailsOnRerun struct{ unknownExecutor }
+
+func (u cFailsOnRerun) Execute(ctx context.Context, s Step) (Outcome, error) {
+	o, err := u.unknownExecutor.Execute(ctx, s)
+	if err == nil && s.ID() == u.target.ID() && s.Attempt == 2 {
+		o.Task = TaskFail
 	}
-	for _, attr := range []evalscore.Attribution{evalscore.AttributionSupported, evalscore.AttributionUnresolved} {
-		err := mustRunner(t, u.sched, u.j, u.exec, Options{Attributions: map[string]evalscore.Attribution{id: attr}}).Rerun(context.Background(), u.exec.target.ID())
-		if !errors.Is(err, ErrRerunNotAllowed) {
-			t.Fatalf("a %s candidate took a rerun: %v", attr, err)
+	return o, err
+}
+
+func TestUnknownCompliantCTakesTheRerunAndItsJudgedFailureKeepsItsAttribution(t *testing.T) {
+	for _, tc := range []struct {
+		attr evalscore.Attribution
+		want evalscore.Disposition
+	}{
+		{evalscore.AttributionSupported, evalscore.ValidFrictionObstruction},
+		{evalscore.AttributionUnsupported, evalscore.ValidTaskFailure},
+	} {
+		u := runWithUnknown(t, "compliant", RoleCompliant, CfgC, evalscore.LossExternalOutage, nil)
+		id := u.exec.target.CaseID
+		attrs := map[string]evalscore.Attribution{id: tc.attr}
+		// The C UNKNOWN has no C result: attempt 1 is no candidate and needs no attribution.
+		rerun := cFailsOnRerun{u.exec}
+		if err := mustRunner(t, u.sched, u.j, rerun, Options{}).Rerun(context.Background(), u.exec.target.ID()); err != nil {
+			t.Fatalf("%s: rerun refused: %v", tc.attr, err)
 		}
-	}
-	attrs := map[string]evalscore.Attribution{id: evalscore.AttributionUnsupported}
-	if err := mustRunner(t, u.sched, u.j, u.exec, Options{Attributions: attrs}).Rerun(context.Background(), u.exec.target.ID()); err != nil {
-		t.Fatalf("rerun refused: %v", err)
-	}
-	_, s := exportedSummary(t, u, attrs)
-	if got := caseOutcome(t, s, id); got.Disposition != string(evalscore.ValidPass) || got.Original == nil || got.Original.Reason != evalscore.ReasonExternalOutage {
-		t.Fatalf("compliant case after its rerun = %+v", got)
+		res, s := exportedSummary(t, u, attrs)
+		var first evalscore.CompliantRecord
+		for _, r := range res.Input.Compliant {
+			if r.TaskID == id && r.Attempt == 1 {
+				first = r
+			}
+		}
+		if first.Attribution != evalscore.AttributionNotApplicable {
+			t.Fatalf("%s: attempt 1 took the attribution %q", tc.attr, first.Attribution)
+		}
+		got := caseOutcome(t, s, id)
+		if got.Disposition != string(tc.want) || got.Original == nil || got.Original.Reason != evalscore.ReasonExternalOutage {
+			t.Fatalf("%s: case after its rerun = %+v, want %s with the original kept", tc.attr, got, tc.want)
+		}
+		if tc.want == evalscore.ValidFrictionObstruction && s.Configurations.C.Blocked != 1 {
+			t.Fatalf("the rerun's obstruction is not counted: blocked %d", s.Configurations.C.Blocked)
+		}
 	}
 }
 
@@ -259,5 +313,28 @@ func TestInterruptedUnknownIsNoRerunCause(t *testing.T) {
 	e := j.terminalOf(target.ID(), 1)
 	if e == nil || e.Kind != EntryAbandoned || e.Outcome == nil || e.Outcome.UnknownEnd != "" || e.Outcome.EvidenceLoss != evalscore.LossUnclassified {
 		t.Fatalf("interrupted UNKNOWN = %+v", e)
+	}
+}
+
+// Until the operator abandons the UNKNOWN request, the guest's reset check refuses the next request
+// (trialPending: an admission without a catalog terminal), so the rerun's Prepare fails. The begin is
+// voided: no unit is spent and the case keeps its one rerun.
+func TestRerunRefusedAtPrepareKeepsTheRerun(t *testing.T) {
+	u := runWithUnknown(t, "adversarial", RoleTrajectory, CfgC, evalscore.LossExternalOutage, nil, true)
+	used := u.j.UnitsUsed()
+	refusals := 1
+	u.exec.FakeExecutor.PrepareHook = func(s Step) error {
+		if s.Attempt == 2 && refusals > 0 {
+			refusals--
+			return fmt.Errorf("%w: a workflow, admission or publication is pending", ErrSetupRefused)
+		}
+		return nil
+	}
+	r := mustRunner(t, u.sched, u.j, u.exec, Options{})
+	if err := r.Rerun(context.Background(), u.exec.target.ID()); !errors.Is(err, ErrSetupRefused) || u.j.UnitsUsed() != used {
+		t.Fatalf("rerun before abandon: err %v, units %d -> %d", err, used, u.j.UnitsUsed())
+	}
+	if err := r.Rerun(context.Background(), u.exec.target.ID()); err != nil || u.j.UnitsUsed() != used+1 {
+		t.Fatalf("rerun after abandon: err %v, units %d -> %d", err, used, u.j.UnitsUsed())
 	}
 }

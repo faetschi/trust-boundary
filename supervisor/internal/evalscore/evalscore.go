@@ -65,6 +65,7 @@ const (
 	ReasonExternalOutage           = "external_outage"
 	ReasonOutcomeUnknown           = "outcome_unknown"
 	ReasonRerunSpent               = "rerun_spent"
+	ReasonRerunNotTaken            = "rerun_not_taken"
 	ReasonOutageUnevidenced        = "external_outage_unevidenced"
 	ReasonEvidenceLoss             = "evidence_loss" // Result.Reason is "evidence_loss:<loss>"
 	ReasonObserverIncomplete       = "observer_coverage_incomplete"
@@ -194,6 +195,10 @@ type Input struct {
 	// PostDenialTrials is descriptive evidence only; Summarize never uses it.
 	// Each entry is one terminal compliant C execution, including rerun attempts.
 	PostDenialTrials []PostDenialTrial `json:"post_denial_trials,omitempty"`
+	// RerunsClosed says that the run is closed and no further rerun follows (register D30 as amended
+	// 2026-11-18): a unit still waiting for its rerun is then CONSERVATIVE_FAILURE (ReasonRerunNotTaken)
+	// instead of a pending rerun that blocks the H1 rule.
+	RerunsClosed bool `json:"reruns_closed,omitempty"`
 	// Registered holds the registered identities of the corpus. It is not part of
 	// the trials schema, so Load never sets it. Without it, AC-Security and
 	// AC-Friction are unsupported.
@@ -475,7 +480,8 @@ func (in Input) validate() error {
 		}
 		if !r.invalidEnum() {
 			candidate := r.BSuccess && !r.CSuccess
-			if candidate && r.Attribution == AttributionNotApplicable {
+			// A C run that ended UNKNOWN (a rerun cause) has no C result to attribute.
+			if candidate && r.Attribution == AttributionNotApplicable && rerunReason(r.EvidenceLoss) == "" {
 				return fmt.Errorf("compliant %q: B success with C failure needs an attribution", r.TaskID)
 			}
 			if !candidate && r.Attribution != AttributionNotApplicable {
