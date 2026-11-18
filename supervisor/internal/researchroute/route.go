@@ -388,8 +388,10 @@ func (b *Bundle) ReserveSpend(_ context.Context, reservation providerbridge.Spen
 }
 
 // unitID names one request. The ledger refuses a repeated unit, so a request
-// cannot be reserved twice. A decision-13 resample (Attempt above zero) is its
-// own request; a first attempt keeps the name every earlier ledger holds.
+// cannot be reserved twice. A pre-effect retry or a decision-13 resample
+// (Attempt above zero) is its own request; a first attempt keeps the name every
+// earlier ledger holds. The "resample" label predates retries and stays, so
+// units already in a ledger keep their names.
 func unitID(r providerbridge.SpendReservation) string {
 	sum := sha256.New()
 	fmt.Fprintf(sum, "tbound-research-call/v1\x00%s\x00%s\x00%d", r.WorkflowID, r.ConversationID, r.Turn)
@@ -485,8 +487,8 @@ func LoadProfileDigest(paths Paths) (string, error) {
 const maxWorkflowUnitTurns = 4096
 
 // WorkflowUnits reports the ledger units that the requests of one workflow created: for each
-// conversation id, each provider turn 1..maxTurns and each attempt of that turn (decision-13
-// resamples included), the unit that ReserveSpend would have named. Only units the ledger holds are returned, ordered by unit id. The workflow ledger
+// conversation id, each provider turn 1..maxTurns and each attempt of that turn (pre-effect
+// retries and decision-13 resamples included), the unit that ReserveSpend would have named. Only units the ledger holds are returned, ordered by unit id. The workflow ledger
 // bounds a workflow's host calls, so maxTurns (the workflow's host-call limit) bounds the
 // turns of any one of its conversations. It reads the ledger and changes nothing.
 func (b *Bundle) WorkflowUnits(workflowID string, conversationIDs []string, maxTurns uint64) ([]usdledger.UnitInfo, error) {
@@ -501,7 +503,7 @@ func (b *Bundle) WorkflowUnits(workflowID string, conversationIDs []string, maxT
 		}
 		seen[conversationID] = struct{}{}
 		for turn := uint64(1); turn <= maxTurns; turn++ {
-			for attempt := uint64(0); attempt <= providerbridge.MaxParallelCallResamples; attempt++ {
+			for attempt := uint64(0); attempt <= providerbridge.MaxProviderRetries; attempt++ {
 				info, found, err := b.ledger.Unit(unitID(providerbridge.SpendReservation{WorkflowID: workflowID,
 					ConversationID: conversationID, Turn: turn, Attempt: attempt}))
 				if err != nil {
