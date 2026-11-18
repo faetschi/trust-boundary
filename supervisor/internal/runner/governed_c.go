@@ -348,8 +348,9 @@ func (g GovernedC) Execute(ctx context.Context, s Step) (Outcome, error) {
 		return Outcome{}, err
 	}
 	if s.Resumed && s.Kind == evalcorpus.KindAdversarial {
-		// Only settles the guest's request (Runner.Run): no observer runs and nothing is returned for scoring.
-		_, _, _, err := g.Transport.Run(ctx, argv)
+		// Only settles the guest's request (Runner.Run): busy is waited out so the next unit meets a terminal
+		// admission. No observer runs and nothing is returned for scoring.
+		_, _, _, err := g.send(ctx, argv, request, true, g.ResendWindow)
 		return Outcome{}, err
 	}
 	// Collectors that must observe before the request (baseline, NET canary, PROC
@@ -368,7 +369,11 @@ func (g GovernedC) Execute(ctx context.Context, s Step) (Outcome, error) {
 		}
 	}
 	t0 := time.Now()
-	stdout, stderr, exit, err := g.send(ctx, argv, request, s)
+	window := g.ResendWindow
+	if s.Kind == evalcorpus.KindAdversarial {
+		window = 0
+	}
+	stdout, stderr, exit, err := g.send(ctx, argv, request, s.Resumed, window)
 	ended := time.Now()
 	latency := int(time.Since(t0).Milliseconds())
 	if err != nil {
@@ -379,6 +384,10 @@ func (g GovernedC) Execute(ctx context.Context, s Step) (Outcome, error) {
 		if len(bytes.TrimSpace(stdout)) == 0 {
 			// No response line at all (ssh failed, the client refused before dialing):
 			// nothing is known about the run.
+			if s.Kind == evalcorpus.KindAdversarial && answerLost(stdout, exit, request, false) {
+				// Not scored, but the guest may still run the request: settle it so the next unit meets a terminal admission.
+				_, _, _, _ = g.send(ctx, argv, request, true, g.ResendWindow)
+			}
 			return Outcome{}, fmt.Errorf("%w: client exit %d, stderr %s", err, exit, clip(stderr))
 		}
 		return Outcome{Metrics: Metrics{LatencyMS: latency}}, fmt.Errorf("%w (client exit %d)", err, exit)
@@ -457,20 +466,16 @@ func (g GovernedC) Execute(ctx context.Context, s Step) (Outcome, error) {
 
 // send runs the client. When no response line comes back and the client or ssh exited
 // non-zero (ssh dropped, the client lost its service connection, the service restarted),
-// it sends the same request again until ResendWindow ends. The request id makes that
+// it sends the same request again until window ends. The request id makes that
 // safe: the service answers a request id it has settled with the stored terminal and
 // resumes one it accepted and never settled. On a resend a busy answer means the
 // service still runs this request, so send waits for it as well. A first send that finds
 // the service busy is answered as before. A resumed step was already sent by a process
-// that died. An adversarial step is sent once: a resend can reach a service that
-// restarted and recovers the workflow, and only a stored terminal of the observed run
-// may be scored.
-func (g GovernedC) send(ctx context.Context, argv []string, request GovernedRequest, s Step) ([]byte, []byte, int, error) {
-	resend := s.Resumed
-	window := g.ResendWindow
-	if s.Kind == evalcorpus.KindAdversarial {
-		window = 0
-	}
+// that died. An adversarial step is scored from one send (window 0): a resend can reach
+// a service that restarted and recovers the workflow, and only a stored terminal of the
+// observed run may be scored. Its request is still settled by a send with resend set,
+// whose answer is discarded.
+func (g GovernedC) send(ctx context.Context, argv []string, request GovernedRequest, resend bool, window time.Duration) ([]byte, []byte, int, error) {
 	deadline := time.Now().Add(window)
 	for {
 		stdout, stderr, exit, err := g.Transport.Run(ctx, argv)

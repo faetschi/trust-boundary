@@ -88,7 +88,7 @@ func TestResumeAfterCrashMidRun(t *testing.T) {
 	if !rep.Finished || rep.Abandoned != 1 || rep.AlreadyDone != dieAt {
 		t.Fatalf("report %+v", rep)
 	}
-	// The interrupted adversarial step is only settled (Resumed): its request is sent once more, never run anew.
+	// The interrupted adversarial step is only settled (Resumed): its request is sent again until settled, never run anew.
 	var ran []Step
 	for _, c := range second.Calls() {
 		if c.Resumed {
