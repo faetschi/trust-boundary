@@ -4,6 +4,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"net"
 	"testing"
 	"time"
@@ -67,5 +68,33 @@ func TestReusedToolCallIDEndsUnknownAndAbandonSettles(t *testing.T) {
 	if abandoned.Reconciliation.ProviderSettlement != providerSettlementBoundedRetainedLiability ||
 		abandoned.Reconciliation.WorkflowID != workflowVerticalID {
 		t.Fatalf("the abandon record does not name the bounded provider liability: %+v", abandoned.Reconciliation)
+	}
+}
+
+// A research text exchange whose spend settlement fails after it is journaled now settles its host call first and
+// ends the turn as a typed failure (providerbridge TestResearchSpendSettlementFailureSettlesTheHostCall). The
+// scripted transport books no spend, so this test builds that end state directly: a journaled text exchange with
+// its host call settled, and the typed bridge error. Cleanup runs and abandon settles the workflow. The tool-call
+// variant of this state is TestProviderExchangeJournaledAtTheRequestDeadlineSettlesItsHostCall.
+func TestJournaledTextExchangeWithAFailedSpendSettlementAbandons(t *testing.T) {
+	const reason = "research spend settlement failed after the exchange; operator recovery"
+	f := hostCallCapWorkflow(t, []providerbridge.DevelopmentProviderTurn{{ResponseID: "text-response", Text: "done"}}, 0)
+	if turn, err := f.conversation.NextTurn(f.ctx); err != nil || turn.AssistantText != "done" {
+		t.Fatalf("text turn: %+v %v", turn, err)
+	}
+	checkpoint, _ := f.ledger.Snapshot()
+	if call := checkpoint.Pins.HostCallReservation; call == nil || call.Disposition != workflowrecovery.HostCallTerminal {
+		t.Fatalf("the journaled exchange's host call is not settled: %+v", checkpoint.Pins.HostCallReservation)
+	}
+	bridgeErr := fmt.Errorf("%w; conversation closed: %w", providerbridge.ErrProviderTurnFailed,
+		errors.New("settle provider spend; response withheld: research usage missing"))
+	channelsErr := f.authority.heldCallChannelsError(governedChannelsError(nil, bridgeErr))
+	h := newUnknownRequestHarness(t, f)
+	if !h.cleanup(t, settledWorkerLifecycle(g1SettledWorker, true, channelsErr), newProductionCommandRunner(nil)) {
+		t.Fatalf("cleanup stayed quarantined: %v", channelsErr)
+	}
+	abandoned := h.abandoned(t, reason)
+	if abandoned.Reconciliation.WorkflowID != workflowVerticalID {
+		t.Fatalf("the abandon record does not settle the workflow: %+v", abandoned.Reconciliation)
 	}
 }
