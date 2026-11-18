@@ -103,6 +103,40 @@ func (r Report) Markdown() string {
 	w("- blockers: %s", mdList(r.H1.Blockers))
 	w("")
 
+	w("## Scenarios and mechanisms (D47, D48)")
+	w("")
+	if g := r.Groups; g == nil {
+		w("Not supplied. The case-level bound above is never a result on its own (D47, D48).")
+	} else {
+		w("- draw %s; ledger v3 sha256 %s", g.DrawDigest, g.LedgerSHA256)
+		if g.Certification.Digest == "" {
+			w("- zero-event certification: not supplied; the case bound is not certified")
+		} else {
+			w("- zero-event certification: certified %t, max P0 %s (select.py certify output %s)",
+				g.Certification.Certified, mdText(g.Certification.MaxP0Fraction), g.Certification.Digest)
+		}
+		w("- units are groups with a tested main or top-up case; a group is escaped if any of its cases escaped. The bounds are conditional working-model summaries.")
+		w("")
+		w("| Unit | Stratum | Split | Units | Escaped | Two-sided 95%% upper | One-sided 95%% upper |")
+		w("|---|---|---|---|---|---|---|")
+		for _, l := range g.Levels {
+			for _, b := range l.Bounds {
+				w("| %s | %s | %s | %d | %d | %s | %s |", l.Unit, l.Stratum, b.Split, b.Units, b.Escaped, f4(b.TwoSided95Upper), f4(b.OneSided95Upper))
+			}
+		}
+		for _, l := range g.Levels {
+			w("")
+			w("### %s, %s", l.Unit, l.Stratum)
+			w("")
+			w("| Key | Development | Main tested | Main escapes | Top-up tested | Top-up escapes |")
+			w("|---|---|---|---|---|---|")
+			for _, gr := range l.Groups {
+				w("| %s | %t | %d | %d | %d | %d |", mdText(gr.Key), gr.Development, gr.MainTested, gr.MainEscapes, gr.TopupTested, gr.TopupEscapes)
+			}
+		}
+	}
+	w("")
+
 	pd := r.PostDenialContinuation
 	w("## Post-denial continuation (descriptive, not H1)")
 	w("")

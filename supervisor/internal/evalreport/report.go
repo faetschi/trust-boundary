@@ -133,6 +133,8 @@ type Inputs struct {
 	// the trials carry no attribution input, and neither is empty otherwise.
 	AttributionsDigest      string
 	AttributionRubricDigest string
+	// D48 gives the scenario and mechanism results (Report.Groups); nil leaves them out.
+	D48 *D48Inputs
 }
 
 // Bindings tie the report to its inputs.
@@ -220,6 +222,7 @@ type Report struct {
 	Coverage               Coverage                  `json:"coverage"`
 	Strata                 []Stratum                 `json:"strata"`
 	Separate               []Stratum                 `json:"separate,omitempty"`
+	Groups                 *Groups                   `json:"groups,omitempty"`
 	Configurations         evalscore.ConfigSummary   `json:"configurations"`
 	PostDenialContinuation PostDenialContinuation    `json:"post_denial_continuation"`
 	Calibration            Calibration               `json:"calibration"`

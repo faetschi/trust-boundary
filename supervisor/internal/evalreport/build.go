@@ -336,6 +336,11 @@ func Build(in Inputs) (Report, error) {
 	if r.Separate, err = separateStrata(full, separate); err != nil {
 		return Report{}, err
 	}
+	if full.D48 != nil {
+		if r.Groups, err = groupsOf(full, *full.D48); err != nil {
+			return Report{}, err
+		}
+	}
 	r.Flags = flagsOf(r)
 	if r.Digest, err = r.ComputeDigest(); err != nil {
 		return Report{}, err
@@ -560,6 +565,7 @@ func flagsOf(r Report) []string {
 	add(r.Spend.Overspent, "ledger_overspent")
 	add(r.Spend.StopRule, "ledger_stop_rule")
 	add(r.Spend.UnitsOverPlanned, "units_over_planned")
+	add(r.Groups != nil && !r.Groups.Certification.Certified, "bound_not_certified")
 	return flags
 }
 
