@@ -1,65 +1,47 @@
-# `@tbound/cli` (npm package, not yet published)
+# @tbound/cli
 
-This package installs the `tbound` command next to your Pi coding agent via the
-standard "root package + platform optional dependencies" pattern (like esbuild):
+The `tbound` command for TBound, a Linux supervisor for the Pi coding agent.
+TBound checks each Pi tool call against a fixed policy, runs `bash` in an isolated
+container, and publishes changes to your repository only when the policy allows
+them.
+
+TBound is the artifact of a master's thesis, not a supported product.
+
+## Install
+
+```sh
+npm install -g @tbound/cli
+tbound --version
+tbound doctor
+```
+
+The package supports Linux amd64 only and needs Node 22.19.0 or later. The binary
+comes from the optional dependency `@tbound/cli-linux-x64`, so do not install with
+`--omit=optional`. On macOS or Windows, use a Linux VM, or WSL 2 for building and
+testing.
+
+## Commands
+
+The launcher forwards two subcommands to their own binaries:
 
 ```
-@tbound/cli                -> bin/tbound.js launcher + optionalDependencies
-@tbound/cli-linux-x64      -> bin/tbound, bin/tbound-doctor, bin/tbound-profile
-@tbound/cli-darwin-x64     -> bin/tbound, bin/tbound-doctor, bin/tbound-profile
-@tbound/cli-darwin-arm64   -> bin/tbound, bin/tbound-doctor, bin/tbound-profile
-@tbound/cli-win32-x64      -> bin/tbound.exe, bin/tbound-doctor.exe, bin/tbound-profile.exe
-```
-
-`bin/tbound.js` only locates the platform binary and `exec`s it; it does no work
-of its own, so `npm i -g @tbound/cli` gives a `tbound` command without touching
-your Node or Pi installs.
-
-TBound supports Linux amd64 only. On macOS or native Windows there is no npm
-binary; run TBound inside a Linux VM or WSL.
-
-## Subcommands
-
-The root Go CLI has no `doctor`/`profile` subcommand; the launcher forwards two
-subcommands to their dedicated binaries (the same pattern as `tbound doctor`):
-
-```
-tbound doctor ...    -> tbound-doctor
-tbound profile ...   -> tbound-profile   # Linux-only; a clear stub elsewhere
+tbound doctor ...    -> tbound-doctor   checks that Node and Pi are ready
+tbound profile ...   -> tbound-profile  creates, signs and verifies the host profile
 tbound <anything>    -> tbound
 ```
 
-`tbound-profile` generates/signs/verifies the Linux host profile. It is a
-**Linux-only** tool: on macOS/Windows the forwarded binary is a stub that exits
-with a clear "Linux-only" message. See [`../../docs/guides/setup.md`](../../docs/guides/setup.md)
-and [`../../docs/guides/release.md`](../../docs/guides/release.md).
+A governed `tbound serve --pi` also needs a signed host profile and the
+Podman/crun containment stack. The
+[setup guide](https://github.com/faetschi/trust-boundary/blob/main/docs/guides/setup.md)
+covers both.
 
-## Not shipped here
+## Not in this package
 
-The linux/amd64 TCB entrypoint (`tbound-cell-entrypoint`) is **not** an npm
-artifact. The release tarball/container carry its unsigned binary under
-`libexec/tbound/` as an input to the operator's signed in-image D09 workflow; it
-must never be launched by the npm/node launcher. `linux-arm64` is also absent
-because the runtime does not build for linux/arm64 yet.
+The cell entrypoint, `tbound-cell-entrypoint`, is not on npm. It ships in the
+Linux release tarball, and only the governed container runtime launches it.
 
-## Status
+## Links
 
-Not published yet. The plan is to publish the Linux platform package and then the
-root package after the first `v0.1.0` release is approved. Until then, build from
-source. The checked-in `package.json` has `"private": true`. The generated root
-package comes from `scripts/make-npm-packages.sh` and has **no** `private` flag, so
-review it before publishing.
-
-Linux amd64 only (decision 2026-11-16). `scripts/make-npm-packages.sh` skips
-non-Linux release tarballs, and the launcher refuses any other platform with a
-clear error. Release tarballs for darwin and windows are still built by
-`scripts/build-release.sh`; they are simply not packaged for npm.
-
-To publish later you must:
-
-1. On a Linux amd64 host, build the release tarballs with `make build VERSION=<semver>`
-   (or `make release` for all targets).
-2. Generate the packages with `make npm-packages VERSION=<semver>`.
-3. Publish the platform packages, then the root package.
-
-Until then, build from source ([quickstart](../../docs/guides/quickstart.md)).
+- [Quickstart](https://github.com/faetschi/trust-boundary/blob/main/docs/guides/quickstart.md)
+- [Release tarballs and checksums](https://github.com/faetschi/trust-boundary/releases)
+- [Source](https://github.com/faetschi/trust-boundary)

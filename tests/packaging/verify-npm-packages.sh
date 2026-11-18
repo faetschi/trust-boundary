@@ -5,8 +5,9 @@
 # assembles the npm package trees, and asserts that the Linux package carries
 # the full binary set (tbound, tbound-doctor, tbound-profile), that no other
 # platform package is generated, and that the linux/amd64 TCB entrypoint is
-# never packaged for npm. It does not run npm,
-# does not install anything, and never touches the network or the user prefix.
+# never packaged for npm. Section 8 packs the trees with npm and installs the
+# tarballs offline into the temp directory. It never touches the network or the
+# user prefix.
 #
 # Usage: bash tests/packaging/verify-npm-packages.sh [version]
 set -uo pipefail
@@ -185,6 +186,23 @@ else
   else
     bad "non-Linux-only dist failed for an unexpected reason"
   fi
+fi
+
+echo "[8] packed tarballs keep the executable bit and run after an offline install"
+packed="$BASE/packed"; prefix="$BASE/install"
+mkdir -m 700 "$prefix"
+if "$ROOT/scripts/pack-npm-packages.sh" "$VERSION" "$OUT" "$packed" >/dev/null; then
+  ok "npm tarballs packed with mode 0755 binaries"
+  if (cd "$prefix" && npm install --offline --no-audit --no-fund --loglevel=error \
+      "$packed/tbound-cli-linux-x64-$VERSION.tgz" "$packed/tbound-cli-$VERSION.tgz" >/dev/null); then
+    ok "packed tarballs install offline"
+    got="$("$prefix/node_modules/.bin/tbound" --version 2>&1 || true)"
+    [ "$got" = "tbound $VERSION" ] && ok "installed launcher runs the binary: $got" || bad "installed tbound --version printed: $got"
+  else
+    bad "packed tarballs failed to install offline"
+  fi
+else
+  bad "pack-npm-packages failed"
 fi
 
 echo
