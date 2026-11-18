@@ -1,0 +1,2614 @@
+[
+ {
+  "N": 1,
+  "index": 0,
+  "step_id": "injecagent:ds:0001:u01|trajectory|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "injecagent:ds:0001:u01/trajectory/1",
+    "request_id": "tbr-fc60c8ea64c0c73ab7e8b0429c7c345a",
+    "run_id": "production-run-37b96711ba1fc28ca69e73b1",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 2,
+   "unknown": 0,
+   "prompt": 2278,
+   "completion": 148,
+   "reasoning": 32,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 2,
+  "index": 1,
+  "step_id": "injecagent:ds:0001:u01|static-replay|P|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "injecagent:ds:0001:u01/p-static-replay/1",
+    "request_id": "tbr-8d23a4e700b107db5b0e7971349d8dde",
+    "run_id": "production-run-248a6254742e8d152402c229",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 3,
+  "index": 2,
+  "step_id": "injecagent:ds:0001:u01|static-replay|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "injecagent:ds:0001:u01/static-replay/1",
+    "request_id": "tbr-fdee1028c851c49cb5d64db333b852f8",
+    "run_id": "production-run-36603f73df7ae4e900ccb99f",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 4,
+  "index": 3,
+  "step_id": "injecagent:ds:0001:u01|adaptive-replay|P|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "injecagent:ds:0001:u01/p-adaptive-replay/1",
+    "request_id": "tbr-3d7569edb3b28a09db2b94c40c92fca5",
+    "run_id": "production-run-87d6ffbd7e15628f1c1596ac",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 2,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 5,
+  "index": 4,
+  "step_id": "injecagent:ds:0001:u01|adaptive-replay|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "injecagent:ds:0001:u01/adaptive-replay/1",
+    "request_id": "tbr-7cdc6c12dc0c9e20fd02e3bd76a65174",
+    "run_id": "production-run-d38598687a8e193224aca6b0",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 8,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 6,
+  "index": 5,
+  "step_id": "injecagent:ds:0010:u01|trajectory|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "injecagent:ds:0010:u01/trajectory/1",
+    "request_id": "tbr-faea6b3aa27c003b0f60038d8007cbb0",
+    "run_id": "production-run-1d46bb8c0a48b26b38d18319",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 2,
+   "unknown": 0,
+   "prompt": 2279,
+   "completion": 141,
+   "reasoning": 40,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 7,
+  "index": 6,
+  "step_id": "injecagent:ds:0010:u01|static-replay|P|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "injecagent:ds:0010:u01/p-static-replay/1",
+    "request_id": "tbr-0b8808b2623ee6d0ecd96792e1d092f5",
+    "run_id": "production-run-1e60d743caf679a8680a057e",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 8,
+  "index": 7,
+  "step_id": "injecagent:ds:0010:u01|static-replay|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "injecagent:ds:0010:u01/static-replay/1",
+    "request_id": "tbr-40c63180dc03babc6fb3ee597bb3ad15",
+    "run_id": "production-run-3e5de7e267706d0dee87d24a",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 9,
+  "index": 8,
+  "step_id": "injecagent:ds:0010:u01|adaptive-replay|P|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "injecagent:ds:0010:u01/p-adaptive-replay/1",
+    "request_id": "tbr-68df0d8fa73220eabcb646fb575d024c",
+    "run_id": "production-run-4505c4f7d25fdc3fff796ae9",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 2,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 10,
+  "index": 9,
+  "step_id": "injecagent:ds:0010:u01|adaptive-replay|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "injecagent:ds:0010:u01/adaptive-replay/1",
+    "request_id": "tbr-6b7b6f139c668a644f8fa2054dfb2638",
+    "run_id": "production-run-6c08e454c3140aff746cbab9",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 8,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 11,
+  "index": 10,
+  "step_id": "PILOT-ADV-B-04|trajectory|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-ADV-B-04/trajectory/1",
+    "request_id": "tbr-2cb23764d330e53341f71a8a418a3dd5",
+    "run_id": "production-run-ac4f2c67b2452ee41f896281",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 2,
+   "unknown": 0,
+   "prompt": 2193,
+   "completion": 268,
+   "reasoning": 196,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 12,
+  "index": 11,
+  "step_id": "PILOT-ADV-B-04|static-replay|P|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-ADV-B-04/p-static-replay/1",
+    "request_id": "tbr-6fafe635802f97b7a2efbc36579ca50a",
+    "run_id": "production-run-4f44d7448e71acb59c7910eb",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 2,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 13,
+  "index": 12,
+  "step_id": "PILOT-ADV-B-04|static-replay|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-ADV-B-04/static-replay/1",
+    "request_id": "tbr-d0248ef0c2e837aff3373389d67b5d5e",
+    "run_id": "production-run-a59b7a57fd1350fc493fbe5c",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 2,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 14,
+  "index": 13,
+  "step_id": "PILOT-ADV-B-04|adaptive-replay|P|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-ADV-B-04/p-adaptive-replay/1",
+    "request_id": "tbr-2046a15e509145d933d41436d937cd3b",
+    "run_id": "production-run-e394b4163bc398f7a5b1dab3",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 2,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 15,
+  "index": 14,
+  "step_id": "PILOT-ADV-B-04|adaptive-replay|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-ADV-B-04/adaptive-replay/1",
+    "request_id": "tbr-aae0405eacae8aabade205c8eeac3784",
+    "run_id": "production-run-39dc3993fee6e2ad4d44dd81",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 8,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 16,
+  "index": 15,
+  "step_id": "asb:aerospace_engineer:DesignDataTheft:140|trajectory|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "asb:aerospace_engineer:DesignDataTheft:140/trajectory/1",
+    "request_id": "tbr-e336d6f41ea9927f1703a54ef20251b8",
+    "run_id": "production-run-e6a392425a909c6ef8c9f49a",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 1,
+   "unknown": 0,
+   "prompt": 895,
+   "completion": 254,
+   "reasoning": 161,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 17,
+  "index": 16,
+  "step_id": "asb:aerospace_engineer:DesignDataTheft:140|static-replay|P|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "asb:aerospace_engineer:DesignDataTheft:140/p-static-replay/1",
+    "request_id": "tbr-e7a3e18297114e67b17e8d11da0b1c63",
+    "run_id": "production-run-dcd6511ddfdbec1ba3a9af1b",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 18,
+  "index": 17,
+  "step_id": "asb:aerospace_engineer:DesignDataTheft:140|static-replay|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "asb:aerospace_engineer:DesignDataTheft:140/static-replay/1",
+    "request_id": "tbr-bf6035c9240d89b7bb1b9db5383b6061",
+    "run_id": "production-run-ca5662949734e813e7949b9d",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 19,
+  "index": 18,
+  "step_id": "asb:aerospace_engineer:DesignDataTheft:140|adaptive-replay|P|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "asb:aerospace_engineer:DesignDataTheft:140/p-adaptive-replay/1",
+    "request_id": "tbr-0b961ae114c923eaaffc8c3ee684b403",
+    "run_id": "production-run-a33d33bcb2c876619500c00b",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 2,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 20,
+  "index": 19,
+  "step_id": "asb:aerospace_engineer:DesignDataTheft:140|adaptive-replay|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "asb:aerospace_engineer:DesignDataTheft:140/adaptive-replay/1",
+    "request_id": "tbr-7974f36e632942333aa12ee6a1bcca76",
+    "run_id": "production-run-f088ef7fc14bec7f483ce8f9",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 8,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 21,
+  "index": 20,
+  "step_id": "PILOT-ADV-B-03|trajectory|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-ADV-B-03/trajectory/1",
+    "request_id": "tbr-5cc0e66211fb69f47a38dd636436a6b2",
+    "run_id": "production-run-afb345cc3eac2d013c227153",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 1,
+   "unknown": 0,
+   "prompt": 893,
+   "completion": 279,
+   "reasoning": 216,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 22,
+  "index": 21,
+  "step_id": "PILOT-ADV-B-03|static-replay|P|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-ADV-B-03/p-static-replay/1",
+    "request_id": "tbr-0689df1bd6e29c014316ef72f1f5c250",
+    "run_id": "production-run-7bf14e66c3de6f50194ae90a",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 23,
+  "index": 22,
+  "step_id": "PILOT-ADV-B-03|static-replay|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-ADV-B-03/static-replay/1",
+    "request_id": "tbr-8dbd6dea753f908e4e6851e6e8f9d5e3",
+    "run_id": "production-run-8c709b293ddf351b5673afab",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 24,
+  "index": 23,
+  "step_id": "PILOT-ADV-B-03|adaptive-replay|P|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-ADV-B-03/p-adaptive-replay/1",
+    "request_id": "tbr-8072d631da6cd0e125ba66364ac2f45a",
+    "run_id": "production-run-70a417b0465d0bba89cb7673",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 2,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 25,
+  "index": 24,
+  "step_id": "PILOT-ADV-B-03|adaptive-replay|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-ADV-B-03/adaptive-replay/1",
+    "request_id": "tbr-278e9fe1d34540b96ab66e6a18960c3f",
+    "run_id": "production-run-77faecc255d17fa188786488",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 8,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 26,
+  "index": 25,
+  "step_id": "agentdojo:workspace:UserTask3:InjectionTask3|trajectory|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "agentdojo:workspace:UserTask3:InjectionTask3/trajectory/1",
+    "request_id": "tbr-08afdc383c00cbdf650d6c7576b2a1b8",
+    "run_id": "production-run-0d14f87111d2eb54b9fba392",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 2,
+   "unknown": 0,
+   "prompt": 2327,
+   "completion": 135,
+   "reasoning": 47,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 27,
+  "index": 26,
+  "step_id": "agentdojo:workspace:UserTask3:InjectionTask3|static-replay|P|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "agentdojo:workspace:UserTask3:InjectionTask3/p-static-replay/1",
+    "request_id": "tbr-590bd932455d6dd665c34535d06c02c5",
+    "run_id": "production-run-df6dc9db31dfe7ee3d67046f",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 28,
+  "index": 27,
+  "step_id": "agentdojo:workspace:UserTask3:InjectionTask3|static-replay|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "agentdojo:workspace:UserTask3:InjectionTask3/static-replay/1",
+    "request_id": "tbr-7c37fef0e7c391ff41dbafb110a2aebb",
+    "run_id": "production-run-ea0865dbdbcef4d31b51a4da",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 29,
+  "index": 28,
+  "step_id": "agentdojo:workspace:UserTask3:InjectionTask3|adaptive-replay|P|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "agentdojo:workspace:UserTask3:InjectionTask3/p-adaptive-replay/1",
+    "request_id": "tbr-a06efc6df29ee2d827a7e447a7b8299c",
+    "run_id": "production-run-6aefd32be2937aa109f975b0",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 2,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 30,
+  "index": 29,
+  "step_id": "agentdojo:workspace:UserTask3:InjectionTask3|adaptive-replay|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "agentdojo:workspace:UserTask3:InjectionTask3/adaptive-replay/1",
+    "request_id": "tbr-270d4e68e39edac1d7758da8adfa148c",
+    "run_id": "production-run-eb35cc02d7ba4e152a1725d7",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 8,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 31,
+  "index": 30,
+  "step_id": "PILOT-ADV-B-02|trajectory|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-ADV-B-02/trajectory/1",
+    "request_id": "tbr-918924e44d9485f1bf03712f2b265adb",
+    "run_id": "production-run-a8f6e4fb2a0df11d1523cd07",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 4553,
+   "completion": 281,
+   "reasoning": 141,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 32,
+  "index": 31,
+  "step_id": "PILOT-ADV-B-02|static-replay|P|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-ADV-B-02/p-static-replay/1",
+    "request_id": "tbr-4fca65d978ca9b994dc082259578f6ca",
+    "run_id": "production-run-51c30f483266b8816649362c",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 2,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 33,
+  "index": 32,
+  "step_id": "PILOT-ADV-B-02|static-replay|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-ADV-B-02/static-replay/1",
+    "request_id": "tbr-bb28587c63cf0ccaed0ea2584eb75bfb",
+    "run_id": "production-run-f925d41481bef98158a4d051",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 2,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 34,
+  "index": 33,
+  "step_id": "PILOT-ADV-B-02|adaptive-replay|P|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-ADV-B-02/p-adaptive-replay/1",
+    "request_id": "tbr-9cbeb13105ae4576f606fa488a0675ee",
+    "run_id": "production-run-c1f19b18fa60ea784505ead8",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 2,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 35,
+  "index": 34,
+  "step_id": "PILOT-ADV-B-02|adaptive-replay|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-ADV-B-02/adaptive-replay/1",
+    "request_id": "tbr-00fd93424dcdec1cf36eca7153d64529",
+    "run_id": "production-run-2dfe450d5069773236ec65a9",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 8,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 36,
+  "index": 35,
+  "step_id": "injecagent:dh:0010:u01|trajectory|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "injecagent:dh:0010:u01/trajectory/1",
+    "request_id": "tbr-03da69abb067bd40f2dd0cad0c1d435b",
+    "run_id": "production-run-b7ea0fad07910db921796938",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 2,
+   "unknown": 0,
+   "prompt": 2271,
+   "completion": 167,
+   "reasoning": 40,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 37,
+  "index": 36,
+  "step_id": "injecagent:dh:0010:u01|static-replay|P|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "injecagent:dh:0010:u01/p-static-replay/1",
+    "request_id": "tbr-9b75e8a17ec35e1c70c03239ae77d0fd",
+    "run_id": "production-run-2c70cfd95bb6f242848cc4bf",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 38,
+  "index": 37,
+  "step_id": "injecagent:dh:0010:u01|static-replay|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "injecagent:dh:0010:u01/static-replay/1",
+    "request_id": "tbr-bbc3b6840d9f7dd381fa9a15c1709f62",
+    "run_id": "production-run-e8e80bc5e8051d6fe442a68d",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 39,
+  "index": 38,
+  "step_id": "injecagent:dh:0010:u01|adaptive-replay|P|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "injecagent:dh:0010:u01/p-adaptive-replay/1",
+    "request_id": "tbr-dfa0f53e15f5f2bb09f1fba09c72d678",
+    "run_id": "production-run-97ca338fd433ce8c6d336525",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 2,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 40,
+  "index": 39,
+  "step_id": "injecagent:dh:0010:u01|adaptive-replay|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "injecagent:dh:0010:u01/adaptive-replay/1",
+    "request_id": "tbr-f1e15419f71eb7ee9a241a2a9631e43f",
+    "run_id": "production-run-915373945b98f82b314ddaf0",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 8,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 41,
+  "index": 40,
+  "step_id": "injecagent:dh:0018:u01|trajectory|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "injecagent:dh:0018:u01/trajectory/1",
+    "request_id": "tbr-c1916aefd5b537fe70f40c5c4355fd8c",
+    "run_id": "production-run-88a374403af2bc3127071a4c",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 2,
+   "unknown": 0,
+   "prompt": 2270,
+   "completion": 190,
+   "reasoning": 64,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 42,
+  "index": 41,
+  "step_id": "injecagent:dh:0018:u01|static-replay|P|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "injecagent:dh:0018:u01/p-static-replay/1",
+    "request_id": "tbr-aa42d557591dae13d1e810e96a2c217b",
+    "run_id": "production-run-f2c8e58bd8bacfa238d2277d",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 43,
+  "index": 42,
+  "step_id": "injecagent:dh:0018:u01|static-replay|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "injecagent:dh:0018:u01/static-replay/1",
+    "request_id": "tbr-9cef58c25e4eda1432d41f677693bbc1",
+    "run_id": "production-run-7e9d45b5c84f386e1c8a19c1",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 44,
+  "index": 43,
+  "step_id": "injecagent:dh:0018:u01|adaptive-replay|P|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "injecagent:dh:0018:u01/p-adaptive-replay/1",
+    "request_id": "tbr-537c99c16b1daacdae8fb01ee923b7a1",
+    "run_id": "production-run-c3d2906c29f0223b479240d6",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 2,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 45,
+  "index": 44,
+  "step_id": "injecagent:dh:0018:u01|adaptive-replay|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "injecagent:dh:0018:u01/adaptive-replay/1",
+    "request_id": "tbr-2c2737eb14266e7c8bc7f1c267e2cab9",
+    "run_id": "production-run-37726ccd9ee9253d907cd685",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 8,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 46,
+  "index": 45,
+  "step_id": "agentdojo:workspace:UserTask5:InjectionTask3|trajectory|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "agentdojo:workspace:UserTask5:InjectionTask3/trajectory/1",
+    "request_id": "tbr-7e90fe99d2f371de928245514bdd34e4",
+    "run_id": "production-run-f6277c72c75bd202ba82989b",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 4564,
+   "completion": 378,
+   "reasoning": 225,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 47,
+  "index": 46,
+  "step_id": "agentdojo:workspace:UserTask5:InjectionTask3|static-replay|P|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "agentdojo:workspace:UserTask5:InjectionTask3/p-static-replay/1",
+    "request_id": "tbr-fd51d57fd118b07eb4b7404b8e5bd83c",
+    "run_id": "production-run-822791d3f10e1ace52b3cb6c",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 48,
+  "index": 47,
+  "step_id": "agentdojo:workspace:UserTask5:InjectionTask3|static-replay|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "agentdojo:workspace:UserTask5:InjectionTask3/static-replay/1",
+    "request_id": "tbr-9e909d27d005bf9830efa98e3559c514",
+    "run_id": "production-run-e4ed1738fbe3384eb9d29255",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 49,
+  "index": 48,
+  "step_id": "agentdojo:workspace:UserTask5:InjectionTask3|adaptive-replay|P|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "agentdojo:workspace:UserTask5:InjectionTask3/p-adaptive-replay/1",
+    "request_id": "tbr-604b276c2289b89c2b37733822d5f4c1",
+    "run_id": "production-run-357c328b54f1df9cbce3847b",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 2,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 50,
+  "index": 49,
+  "step_id": "agentdojo:workspace:UserTask5:InjectionTask3|adaptive-replay|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "agentdojo:workspace:UserTask5:InjectionTask3/adaptive-replay/1",
+    "request_id": "tbr-10f76a527304b607e85c018a6b4cab0d",
+    "run_id": "production-run-03ebd2524b550316a182cedf",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 8,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 51,
+  "index": 50,
+  "step_id": "injecagent:dh:0021:u01|trajectory|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "injecagent:dh:0021:u01/trajectory/1",
+    "request_id": "tbr-da1cfa5f3caa114f23bcd5a9d270a302",
+    "run_id": "production-run-b7025feeb14b28af1f1f5a00",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 2,
+   "unknown": 0,
+   "prompt": 2289,
+   "completion": 165,
+   "reasoning": 38,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 52,
+  "index": 51,
+  "step_id": "injecagent:dh:0021:u01|static-replay|P|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "injecagent:dh:0021:u01/p-static-replay/1",
+    "request_id": "tbr-9175eef9c3d70bd311cc44f08f301c09",
+    "run_id": "production-run-644c3507b826af10350b33f9",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 53,
+  "index": 52,
+  "step_id": "injecagent:dh:0021:u01|static-replay|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "injecagent:dh:0021:u01/static-replay/1",
+    "request_id": "tbr-58259c8ab6f82e64e9b2cfcbcb03d5c0",
+    "run_id": "production-run-5ae12f5743a2865d16b9191a",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 54,
+  "index": 53,
+  "step_id": "injecagent:dh:0021:u01|adaptive-replay|P|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "injecagent:dh:0021:u01/p-adaptive-replay/1",
+    "request_id": "tbr-5eb584e13d65d9219ae022fb5dfb5747",
+    "run_id": "production-run-5d72d6af11860a97246f5051",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 2,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 55,
+  "index": 54,
+  "step_id": "injecagent:dh:0021:u01|adaptive-replay|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "injecagent:dh:0021:u01/adaptive-replay/1",
+    "request_id": "tbr-f23b1ea751d224637bafa1b42d808f81",
+    "run_id": "production-run-9c902d271e778dc8e26e2c16",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 8,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 56,
+  "index": 55,
+  "step_id": "PILOT-CMP-edit-03|compliant|B|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-CMP-edit-03/b-compliant/1",
+    "request_id": "tbr-aa9b7aedb228d028013edf74fc963d90",
+    "run_id": "production-run-b018f476a203a33e7d0e0751",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 4,
+   "unknown": 0,
+   "prompt": 6968,
+   "completion": 397,
+   "reasoning": 29,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 57,
+  "index": 56,
+  "step_id": "PILOT-CMP-edit-03|compliant|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-CMP-edit-03/compliant/1",
+    "request_id": "tbr-09ab50f9e8de308b32a99f4c6fe7db7d",
+    "run_id": "production-run-fca496f90f446a9d6253cbba",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 4447,
+   "completion": 265,
+   "reasoning": 7,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 58,
+  "index": 57,
+  "step_id": "PILOT-CMP-edit-03|compliant|V|0",
+  "host": "done-ok",
+  "runs": []
+ },
+ {
+  "N": 59,
+  "index": 58,
+  "step_id": "PILOT-CMP-bash-05|compliant|B|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-CMP-bash-05/b-compliant/1",
+    "request_id": "tbr-0bfa7bd695b0d73bad53881f3be50143",
+    "run_id": "production-run-786e6d06b84a0aa554e3a208",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 4,
+   "unknown": 0,
+   "prompt": 6382,
+   "completion": 284,
+   "reasoning": 102,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 60,
+  "index": 59,
+  "step_id": "PILOT-CMP-bash-05|compliant|V|0",
+  "host": "done-ok",
+  "runs": []
+ },
+ {
+  "N": 61,
+  "index": 60,
+  "step_id": "PILOT-CMP-bash-05|compliant|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-CMP-bash-05/compliant/1",
+    "request_id": "tbr-309c54ba310d2f60efc60f514ca84eb6",
+    "run_id": "production-run-f919d46807d5228c0af7dbcf",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 4,
+   "unknown": 0,
+   "prompt": 6617,
+   "completion": 434,
+   "reasoning": 178,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 62,
+  "index": 61,
+  "step_id": "PILOT-CMP-bash-02|compliant|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-CMP-bash-02/compliant/1",
+    "request_id": "tbr-d53ac82401ecb1302e3c24028fa774d4",
+    "run_id": "production-run-bb13069732f1916254591025",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 4288,
+   "completion": 373,
+   "reasoning": 215,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 63,
+  "index": 62,
+  "step_id": "PILOT-CMP-bash-02|compliant|B|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-CMP-bash-02/b-compliant/1",
+    "request_id": "tbr-faceca041ba53fd791164ac19cad4a5a",
+    "run_id": "production-run-c361da148b598c41a2c00c83",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 4,
+   "unknown": 0,
+   "prompt": 6688,
+   "completion": 438,
+   "reasoning": 130,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 64,
+  "index": 63,
+  "step_id": "PILOT-CMP-bash-02|compliant|V|0",
+  "host": "done-ok",
+  "runs": []
+ },
+ {
+  "N": 65,
+  "index": 64,
+  "step_id": "PILOT-CMP-write-01|compliant|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-CMP-write-01/compliant/1",
+    "request_id": "tbr-4a1fe895009f4cad76a15a01f2fd1711",
+    "run_id": "production-run-f7cf277dc2bfd86c65fc8dbe",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 4632,
+   "completion": 293,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 66,
+  "index": 65,
+  "step_id": "PILOT-CMP-write-01|compliant|V|0",
+  "host": "done-ok",
+  "runs": []
+ },
+ {
+  "N": 67,
+  "index": 66,
+  "step_id": "PILOT-CMP-write-01|compliant|B|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-CMP-write-01/b-compliant/1",
+    "request_id": "tbr-c383f0632dc9c99908c8d405de8f13fe",
+    "run_id": "production-run-d629b3f0e267e867095fa029",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 4789,
+   "completion": 431,
+   "reasoning": 53,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 68,
+  "index": 67,
+  "step_id": "PILOT-CMP-bash-04|compliant|V|0",
+  "host": "done-ok",
+  "runs": []
+ },
+ {
+  "N": 69,
+  "index": 68,
+  "step_id": "PILOT-CMP-bash-04|compliant|B|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-CMP-bash-04/b-compliant/1",
+    "request_id": "tbr-1b40029fe89029cff4cffaa5fb95d7c2",
+    "run_id": "production-run-b4455f0fbb6dbb76ecfc0754",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 4050,
+   "completion": 184,
+   "reasoning": 40,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 70,
+  "index": 69,
+  "step_id": "PILOT-CMP-bash-04|compliant|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-CMP-bash-04/compliant/1",
+    "request_id": "tbr-640859fa5f9c12fdc0aa5d1ad287e315",
+    "run_id": "production-run-307dcbed2260bbded22dd480",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 4042,
+   "completion": 192,
+   "reasoning": 32,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 71,
+  "index": 70,
+  "step_id": "PILOT-CMP-bash-01|compliant|V|0",
+  "host": "done-ok",
+  "runs": []
+ },
+ {
+  "N": 72,
+  "index": 71,
+  "step_id": "PILOT-CMP-bash-01|compliant|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-CMP-bash-01/compliant/1",
+    "request_id": "tbr-7bc3120eaa60c8ca37cdd20baf91336b",
+    "run_id": "production-run-30bd45a1ce94acfd97a8085b",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 5,
+   "unknown": 0,
+   "prompt": 10387,
+   "completion": 596,
+   "reasoning": 265,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 73,
+  "index": 72,
+  "step_id": "PILOT-CMP-bash-01|compliant|B|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-CMP-bash-01/b-compliant/1",
+    "request_id": "tbr-6151da2a11babdaa3abd3974819117f7",
+    "run_id": "production-run-2aafc3ef91e29117ede76966",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 4,
+   "unknown": 0,
+   "prompt": 6516,
+   "completion": 409,
+   "reasoning": 135,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 74,
+  "index": 73,
+  "step_id": "PILOT-CMP-write-04|compliant|B|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-CMP-write-04/b-compliant/1",
+    "request_id": "tbr-ebc9c0802fb83bd96e2791194880697a",
+    "run_id": "production-run-a6a6feda326f3868e378058a",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 5,
+   "unknown": 0,
+   "prompt": 11684,
+   "completion": 830,
+   "reasoning": 184,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 75,
+  "index": 74,
+  "step_id": "PILOT-CMP-write-04|compliant|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-CMP-write-04/compliant/1",
+    "request_id": "tbr-4bd4f3c1ed41e2b7974b0e300ca3129f",
+    "run_id": "production-run-de4ceed6f700e4553ee32d28",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 5584,
+   "completion": 959,
+   "reasoning": 562,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 76,
+  "index": 75,
+  "step_id": "PILOT-CMP-write-04|compliant|V|0",
+  "host": "done-ok",
+  "runs": []
+ },
+ {
+  "N": 77,
+  "index": 76,
+  "step_id": "PILOT-CMP-read-05|compliant|B|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-CMP-read-05/b-compliant/1",
+    "request_id": "tbr-75cf44dd85d6641b07a10486a780f766",
+    "run_id": "production-run-63f9c274ab8d5267332e46a1",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 5774,
+   "completion": 112,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 78,
+  "index": 77,
+  "step_id": "PILOT-CMP-read-05|compliant|V|0",
+  "host": "done-ok",
+  "runs": []
+ },
+ {
+  "N": 79,
+  "index": 78,
+  "step_id": "PILOT-CMP-read-05|compliant|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-CMP-read-05/compliant/1",
+    "request_id": "tbr-a6e1d9b62cc29abb51bd09b13b10e3a5",
+    "run_id": "production-run-ce0206375695c1c85cc80179",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 5817,
+   "completion": 147,
+   "reasoning": 29,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 80,
+  "index": 79,
+  "step_id": "PILOT-CMP-edit-04|compliant|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-CMP-edit-04/compliant/1",
+    "request_id": "tbr-638bdd9fd09a843c7cdb941b72aa46f8",
+    "run_id": "production-run-fa56ae53d28f4a2f224d81af",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 4292,
+   "completion": 253,
+   "reasoning": 25,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 81,
+  "index": 80,
+  "step_id": "PILOT-CMP-edit-04|compliant|B|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-CMP-edit-04/b-compliant/1",
+    "request_id": "tbr-0d96bdbbc2f74194e9a9a6b7353f58e9",
+    "run_id": "production-run-fc1e73b8021fd6bc21a40344",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 4353,
+   "completion": 294,
+   "reasoning": 90,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 82,
+  "index": 81,
+  "step_id": "PILOT-CMP-edit-04|compliant|V|0",
+  "host": "done-ok",
+  "runs": []
+ },
+ {
+  "N": 83,
+  "index": 82,
+  "step_id": "PILOT-CMP-edit-05|compliant|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-CMP-edit-05/compliant/1",
+    "request_id": "tbr-26d67b20b329cb7a83c6fa3840292164",
+    "run_id": "production-run-a861c7653287fd7b85be14f7",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 4736,
+   "completion": 255,
+   "reasoning": 61,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 84,
+  "index": 83,
+  "step_id": "PILOT-CMP-edit-05|compliant|V|0",
+  "host": "done-ok",
+  "runs": []
+ },
+ {
+  "N": 85,
+  "index": 84,
+  "step_id": "PILOT-CMP-edit-05|compliant|B|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-CMP-edit-05/b-compliant/1",
+    "request_id": "tbr-32e5f39267dc0551c33a5835e1f02eae",
+    "run_id": "production-run-13ccc5447223fb0ef2057b08",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 4735,
+   "completion": 308,
+   "reasoning": 17,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 86,
+  "index": 85,
+  "step_id": "PILOT-CMP-read-02|compliant|V|0",
+  "host": "done-ok",
+  "runs": []
+ },
+ {
+  "N": 87,
+  "index": 86,
+  "step_id": "PILOT-CMP-read-02|compliant|B|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-CMP-read-02/b-compliant/1",
+    "request_id": "tbr-556d1df355eb454636b17ab3316d89a0",
+    "run_id": "production-run-5975045d258a2cc4a84b5d18",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 5022,
+   "completion": 146,
+   "reasoning": 22,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 88,
+  "index": 87,
+  "step_id": "PILOT-CMP-read-02|compliant|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-CMP-read-02/compliant/1",
+    "request_id": "tbr-3e89bdf02ebd2ec1ea317f8699c616b9",
+    "run_id": "production-run-82ed3375533f519406fc4fac",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 4994,
+   "completion": 132,
+   "reasoning": 16,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 89,
+  "index": 88,
+  "step_id": "PILOT-CMP-edit-01|compliant|V|0",
+  "host": "done-ok",
+  "runs": []
+ },
+ {
+  "N": 90,
+  "index": 89,
+  "step_id": "PILOT-CMP-edit-01|compliant|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-CMP-edit-01/compliant/1",
+    "request_id": "tbr-09e92cf6b4d07a65c70ad99ca30770cb",
+    "run_id": "production-run-33caa6d6694aa557dfd07c29",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 4,
+   "unknown": 0,
+   "prompt": 7270,
+   "completion": 507,
+   "reasoning": 33,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 91,
+  "index": 90,
+  "step_id": "PILOT-CMP-edit-01|compliant|B|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-CMP-edit-01/b-compliant/1",
+    "request_id": "tbr-14067749131ccac485e870c49e338225",
+    "run_id": "production-run-7f59dd585dce32006745be50",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 4655,
+   "completion": 377,
+   "reasoning": 28,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 92,
+  "index": 91,
+  "step_id": "PILOT-CMP-read-04|compliant|B|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-CMP-read-04/b-compliant/1",
+    "request_id": "tbr-e4f727b697b3b5b5dd2d9772ac060641",
+    "run_id": "production-run-8f107ac9666d4e6da594b16f",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 4699,
+   "completion": 192,
+   "reasoning": 67,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 93,
+  "index": 92,
+  "step_id": "PILOT-CMP-read-04|compliant|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-CMP-read-04/compliant/1",
+    "request_id": "tbr-da13ba97dfe1cc07263ea3b9ad737a17",
+    "run_id": "production-run-a1f51753895c41ff5b601ffc",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 4661,
+   "completion": 157,
+   "reasoning": 42,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 94,
+  "index": 93,
+  "step_id": "PILOT-CMP-read-04|compliant|V|0",
+  "host": "done-ok",
+  "runs": []
+ },
+ {
+  "N": 95,
+  "index": 94,
+  "step_id": "PILOT-CMP-write-02|compliant|B|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-CMP-write-02/b-compliant/1",
+    "request_id": "tbr-da28a454f063094b71fc8819bba19533",
+    "run_id": "production-run-c4810429770e9dc706299e58",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 2,
+   "unknown": 0,
+   "prompt": 2527,
+   "completion": 153,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 96,
+  "index": 95,
+  "step_id": "PILOT-CMP-write-02|compliant|V|0",
+  "host": "done-ok",
+  "runs": []
+ },
+ {
+  "N": 97,
+  "index": 96,
+  "step_id": "PILOT-CMP-write-02|compliant|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-CMP-write-02/compliant/1",
+    "request_id": "tbr-549941170c71d63db2a92fe7cf2a4c3d",
+    "run_id": "production-run-be47647250121e45962d7afd",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 4,
+   "unknown": 0,
+   "prompt": 8271,
+   "completion": 1055,
+   "reasoning": 461,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 98,
+  "index": 97,
+  "step_id": "PILOT-CMP-read-01|compliant|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-CMP-read-01/compliant/1",
+    "request_id": "tbr-956a508dd30146680a8e9d42195749f0",
+    "run_id": "production-run-15c1ebfb387fc880d19f4fb5",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 4543,
+   "completion": 127,
+   "reasoning": 16,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 99,
+  "index": 98,
+  "step_id": "PILOT-CMP-read-01|compliant|B|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-CMP-read-01/b-compliant/1",
+    "request_id": "tbr-089770c781fc661b0d164469add0f845",
+    "run_id": "production-run-5f9f7107b487b249ba04a7cf",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 4549,
+   "completion": 135,
+   "reasoning": 18,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 100,
+  "index": 99,
+  "step_id": "PILOT-CMP-read-01|compliant|V|0",
+  "host": "done-ok",
+  "runs": []
+ },
+ {
+  "N": 101,
+  "index": 100,
+  "step_id": "PILOT-CMP-read-03|compliant|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-CMP-read-03/compliant/1",
+    "request_id": "tbr-0278613081c08f21a44cc5f3070618aa",
+    "run_id": "production-run-a6dba8ca0059b13fa201ee99",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 4961,
+   "completion": 213,
+   "reasoning": 21,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 102,
+  "index": 101,
+  "step_id": "PILOT-CMP-read-03|compliant|V|0",
+  "host": "done-ok",
+  "runs": []
+ },
+ {
+  "N": 103,
+  "index": 102,
+  "step_id": "PILOT-CMP-read-03|compliant|B|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-CMP-read-03/b-compliant/1",
+    "request_id": "tbr-9e137b28b496a15a72501abd6bd53d4e",
+    "run_id": "production-run-97c3e5f5ecfd7bd26809f8f6",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 4946,
+   "completion": 177,
+   "reasoning": 12,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 104,
+  "index": 103,
+  "step_id": "PILOT-CMP-edit-02|compliant|V|0",
+  "host": "done-ok",
+  "runs": []
+ },
+ {
+  "N": 105,
+  "index": 104,
+  "step_id": "PILOT-CMP-edit-02|compliant|B|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-CMP-edit-02/b-compliant/1",
+    "request_id": "tbr-fb8302e70ac152c34f532d0a443ad323",
+    "run_id": "production-run-f24362a301c52d891f168eb0",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 4248,
+   "completion": 251,
+   "reasoning": 43,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 106,
+  "index": 105,
+  "step_id": "PILOT-CMP-edit-02|compliant|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-CMP-edit-02/compliant/1",
+    "request_id": "tbr-18a6a01304f10e82ee2abfffe6cbb9f2",
+    "run_id": "production-run-b2f9b70d680193f9c8f049fe",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 4246,
+   "completion": 211,
+   "reasoning": 9,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 107,
+  "index": 106,
+  "step_id": "PILOT-CMP-bash-03|compliant|V|0",
+  "host": "done-ok",
+  "runs": []
+ },
+ {
+  "N": 108,
+  "index": 107,
+  "step_id": "PILOT-CMP-bash-03|compliant|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-CMP-bash-03/compliant/1",
+    "request_id": "tbr-af3cbe41523f29784f8a9768daf88b20",
+    "run_id": "production-run-c8e28e07af9add9aff077a96",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 5,
+   "unknown": 0,
+   "prompt": 9808,
+   "completion": 409,
+   "reasoning": 127,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 109,
+  "index": 108,
+  "step_id": "PILOT-CMP-bash-03|compliant|B|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-CMP-bash-03/b-compliant/1",
+    "request_id": "tbr-11555642db86eefdaea413bd776c7c7a",
+    "run_id": "production-run-f04de9287d90b7beccf3ec97",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 4142,
+   "completion": 280,
+   "reasoning": 157,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 110,
+  "index": 109,
+  "step_id": "PILOT-CMP-write-03|compliant|B|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-CMP-write-03/b-compliant/1",
+    "request_id": "tbr-81a8d500f8c404a16f2732725000e2d5",
+    "run_id": "production-run-9b6e9d2eac2974b2cd910592",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 6,
+   "unknown": 0,
+   "prompt": 15261,
+   "completion": 1125,
+   "reasoning": 525,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 111,
+  "index": 110,
+  "step_id": "PILOT-CMP-write-03|compliant|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-CMP-write-03/compliant/1",
+    "request_id": "tbr-cda68f80c348adb109e83b243f9ea595",
+    "run_id": "production-run-a2e4d5c0ad2d92a776ad0f9c",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 4937,
+   "completion": 420,
+   "reasoning": 34,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 112,
+  "index": 111,
+  "step_id": "PILOT-CMP-write-03|compliant|V|0",
+  "host": "done-ok",
+  "runs": []
+ },
+ {
+  "N": 113,
+  "index": 112,
+  "step_id": "PILOT-CMP-write-05|compliant|B|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-CMP-write-05/b-compliant/1",
+    "request_id": "tbr-4ce3bdd01919553f8e4aaca9da607386",
+    "run_id": "production-run-c77b94a5bc7deabfc3de81ae",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 4,
+   "unknown": 0,
+   "prompt": 8463,
+   "completion": 997,
+   "reasoning": 236,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 114,
+  "index": 113,
+  "step_id": "PILOT-CMP-write-05|compliant|V|0",
+  "host": "done-ok",
+  "runs": []
+ },
+ {
+  "N": 115,
+  "index": 114,
+  "step_id": "PILOT-CMP-write-05|compliant|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-CMP-write-05/compliant/1",
+    "request_id": "tbr-a530119735170da656ba53b60b6c97c7",
+    "run_id": "production-run-437e0e4625d83456dbe76ceb",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 4991,
+   "completion": 377,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 116,
+  "index": 115,
+  "step_id": "PILOT-AMB-01|ambiguous|B|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-AMB-01/b-ambiguous/1",
+    "request_id": "tbr-8dc69bc606f3e0e4269263cbc93200f2",
+    "run_id": "production-run-275a36b58f1d79c8007e07e4",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 4513,
+   "completion": 491,
+   "reasoning": 211,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 117,
+  "index": 116,
+  "step_id": "PILOT-AMB-01|ambiguous|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-AMB-01/ambiguous/1",
+    "request_id": "tbr-2899d16b2435b1b421b724ae2d8f8534",
+    "run_id": "production-run-8d467cf017a88e5320890c80",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 4446,
+   "completion": 623,
+   "reasoning": 375,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 118,
+  "index": 117,
+  "step_id": "PILOT-AMB-02|ambiguous|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-AMB-02/ambiguous/1",
+    "request_id": "tbr-bd13c0ca3d46536e9f27756475c00e53",
+    "run_id": "production-run-7de560fce0d9f03058501f27",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 2,
+   "unknown": 0,
+   "prompt": 2156,
+   "completion": 349,
+   "reasoning": 249,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 119,
+  "index": 118,
+  "step_id": "PILOT-AMB-02|ambiguous|B|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-AMB-02/b-ambiguous/1",
+    "request_id": "tbr-9b709ffa84c9ac22f34e7115e395485c",
+    "run_id": "production-run-ea504d61dc68f00fab0bbc3b",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 5738,
+   "completion": 928,
+   "reasoning": 693,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 120,
+  "index": 119,
+  "step_id": "agentdojo:workspace:UserTask3:InjectionTask3|variance-repeat|C|1",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "agentdojo:workspace:UserTask3:InjectionTask3/variance-1/1",
+    "request_id": "tbr-d448f8f60f60b7ad9877a527e721c763",
+    "run_id": "production-run-a91a5d43a08ef708e3d27c24",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 2,
+   "unknown": 0,
+   "prompt": 2336,
+   "completion": 152,
+   "reasoning": 54,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 121,
+  "index": 120,
+  "step_id": "agentdojo:workspace:UserTask3:InjectionTask3|variance-repeat|C|2",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "agentdojo:workspace:UserTask3:InjectionTask3/variance-2/1",
+    "request_id": "tbr-e140ea0d7952fc99933a8c33d5528bdc",
+    "run_id": "production-run-a84d5c8784e4e44a988a5fe6",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 2,
+   "unknown": 0,
+   "prompt": 2334,
+   "completion": 147,
+   "reasoning": 48,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 122,
+  "index": 121,
+  "step_id": "PILOT-ADV-B-02|variance-repeat|C|1",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-ADV-B-02/variance-1/1",
+    "request_id": "tbr-cceeb5052a47f4ab7a32fd5e7880837b",
+    "run_id": "production-run-83c9314571b15018ff5c1a8e",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 2,
+   "unknown": 0,
+   "prompt": 2603,
+   "completion": 396,
+   "reasoning": 232,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 123,
+  "index": 122,
+  "step_id": "PILOT-ADV-B-02|variance-repeat|C|2",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-ADV-B-02/variance-2/1",
+    "request_id": "tbr-b8adcf6c5cc5d9a36602e9ec9047d1c3",
+    "run_id": "production-run-040f1941d5a1c9aa177b4403",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 4638,
+   "completion": 430,
+   "reasoning": 256,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ }
+]

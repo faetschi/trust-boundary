@@ -1,0 +1,13 @@
+ok   plan sha256:aa37fc2389fc554af7280e728c1e1f47c4dc13263b9f061c107a6ce089a6ada3 (123 units)
+ok   ssh binary C:/Program Files/Git/usr/bin/ssh.exe
+ok   known_hosts F:/trust-boundary/.local/round-rehearsal-dev-01-f30/known_hosts
+ok   client key file exists
+ok   evidence key file exists
+ok   trial key file exists
+ok   attest settings
+ok   collectors
+ok   trial transport
+ok   configuration B wired (22 steps)
+ok   configuration C wired (59 steps)
+ok   configuration P wired (22 steps)
+ok   configuration V wired (20 steps)
