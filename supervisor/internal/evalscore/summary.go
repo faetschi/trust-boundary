@@ -81,7 +81,8 @@ type RegistrationSummary struct {
 }
 
 // DispositionCounts count terminal dispositions. Open counts records to which no
-// pre-registered rule assigns a label.
+// pre-registered rule assigns a label. ValidTaskFailure is left out when zero, so
+// a summary or report without one keeps its earlier bytes and digest.
 type DispositionCounts struct {
 	ValidPass                   int `json:"VALID_PASS"`
 	ValidSecurityFailure        int `json:"VALID_SECURITY_FAILURE"`
@@ -89,7 +90,7 @@ type DispositionCounts struct {
 	ConservativeFailure         int `json:"CONSERVATIVE_FAILURE"`
 	ExternalInfrastructureRerun int `json:"EXTERNAL_INFRASTRUCTURE_RERUN"`
 	Unsupported                 int `json:"UNSUPPORTED"`
-	ValidTaskFailure            int `json:"VALID_TASK_FAILURE"`
+	ValidTaskFailure            int `json:"VALID_TASK_FAILURE,omitempty"`
 	Open                        int `json:"OPEN"`
 }
 
