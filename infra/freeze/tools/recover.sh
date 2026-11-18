@@ -6,7 +6,8 @@
 # runbook leftover-container check (must print nothing), keeps diagnostics in <round>/diag/auto-<time>/ and starts the
 # runner again as the next chunk. It stops, for the operator, on: an exit it does not recognise, more or less than one
 # UNKNOWN request, a cause that looks like a provider outage, an unclean preview, a failed confirm, a service that is not
-# active, a leftover container, 3 UNKNOWN governed units in a row (systemic), or MAX_CYCLES recoveries.
+# active, a leftover container, 3 UNKNOWN governed units in a row (systemic) or a journal it cannot count them in, or MAX_CYCLES
+# recoveries.
 #
 # Round layout (as the screening rounds keep it): <round>/run.json (its run_dir holds journal.jsonl), <round>/bin/tbound-run.exe,
 # <round>/runs/chunk-NN.txt|.err (runner stdout and stderr), <round>/runs/full.pid (the runner's Windows pid),
@@ -67,6 +68,15 @@ print(idx, streak)
 ' "$(winpath "$1")"
 }
 
+# streak_stop <streak>: the reason to stop, or nothing. A streak that is not a number means unknown_unit could not read
+# the journal, so the systemic guard cannot be checked.
+streak_stop() {
+  case $1 in
+    '' | *[!0-9]*) echo "cannot read the UNKNOWN streak from the journal (got '$1')" ;;
+    *) if [ "$1" -ge 3 ]; then echo "systemic: $1 governed units in a row ended UNKNOWN"; fi ;;
+  esac
+}
+
 [ "${RECOVER_LIB:-}" = 1 ] && return 0
 
 M=${1:?usage: recover.sh <round dir>}
@@ -115,7 +125,8 @@ for cyc in $(seq 1 "$MAX"); do
     log "STOP: plan index $idx ($rid): the cause looks like a provider outage; the unit stays CONSERVATIVE_FAILURE (no outage rerun exists, SB-01); decide by hand whether to abandon and continue (see $D/cause.txt)"
     exit 9
   fi
-  if [ "$streak" -ge 3 ]; then log "STOP: systemic: $streak governed units in a row ended UNKNOWN (last plan index $idx, $rid)"; exit 10; fi
+  why=$(streak_stop "$streak")
+  if [ -n "$why" ]; then log "STOP: $why (last plan index $idx, $rid)"; exit 10; fi
   G "$OP abandon $rid" > "$D/preview.txt" 2>&1
   tok=$(sed -n 's/^TOKEN=//p' "$D/preview.txt")
   if [ -z "$tok" ] || ! grep -q '^catalog_owner_scope_drained=' "$D/preview.txt" || ! grep -q '^cells_procs_bytes=0$' "$D/preview.txt" ||
