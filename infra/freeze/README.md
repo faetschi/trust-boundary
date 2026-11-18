@@ -106,6 +106,8 @@ recover.sh picks, with synthetic files and no guest contact.
 - [ ] `33-corpus-pilot.sh` ran to "DONE" (`$HF/pilot/CYCLE_OK`; with the trial key also `$HF/evq/netsink.json`), the session sudo is closed again.
 - [ ] `27` archived the previous freeze's G1/rp/dr state and exports; it archives the pilot items too, and `33` resets a pilot install left by an earlier freeze (`pilot-reset` phase); its dr request ended UNKNOWN BY DESIGN and
       the stale-evidence commit check in `40-guest-evidence.sh` passed for this freeze.
+- [ ] Before every `tbound-run run` block (and after a host restart or sleep): `w32tm /resync /force` on the Windows host and `chronyc makestep` on the guest
+      (`infra/guest/PROVISIONING-SIGNING.md`, "Clocks before every `run` block"). The runner refuses an adversarial step when a guest capture lands more than 750 ms after its launch or the guest is 250 ms behind.
 - [ ] Every log is under `<FREEZE>\logs`; no 0-byte output except `*.err`, `evq-report/*.stderr` and the dr command/provider audits.
 - [ ] The kit scripts pass `bash -n`; the Python files pass `python -I -m py_compile`; all files are UTF-8 without
       BOM and LF-only.

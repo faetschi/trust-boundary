@@ -466,7 +466,7 @@ func TestRunWithTheRealWiringFailsClosedForUnwiredConfigurations(t *testing.T) {
 	if err != nil || ex.C == nil || ex.P == nil || ex.B == nil || ex.V == nil || ex.A != nil {
 		t.Fatalf("wiring: %+v %v", ex, err)
 	}
-	if _, ok := ex.C.(runner.Attest); !ok {
+	if _, ok := unguarded(ex.C).(runner.Attest); !ok {
 		t.Fatalf("C is %T, want the Attest decorator", ex.C)
 	}
 	if _, ok := ex.B.(runner.Attest); !ok {
