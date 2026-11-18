@@ -772,16 +772,25 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 	if err != nil {
 		return Turn{}, c.failLocked(fmt.Errorf("persist exact provider exchange; response withheld: %w", err))
 	}
-	// The exchange is durable: its spend and host call settle even if the request context ends now, or a
+	// The exchange is durable: its host call and spend settle even if the request context ends now, or a
 	// deadline would leave the journaled exchange's host call reserved, which abandon cannot reconcile. A
 	// canceled turn is refused only after that, below. The settlement is bounded (settleContext).
 	settleCtx, cancelSettle := settleContext(ctx)
 	defer cancelSettle()
+	// The host call settles first: a spend settlement that fails (usage missing, an overage) then leaves
+	// nothing reserved, and the turn ends disposed of. A failed host-call settlement is a workflow ledger
+	// failure and stays undisposed (fail closed).
+	if hostCallBinding != nil {
+		if err := c.cfg.CompleteHostCall(settleCtx, HostCallCompletion{Binding: *hostCallBinding, OutcomeDigest: journalRecord.Hash}); err != nil {
+			return Turn{}, c.failLocked(fmt.Errorf("settle exact provider exchange reservation before result release: %w", err))
+		}
+	}
 	if spendUnit != "" {
 		// SettleSpend leaves the unit in its final state (settled, overage-settled
 		// or uncertain) whether or not it returns an error.
 		spendSettled = true
 		if err := c.cfg.Spend.SettleSpend(settleCtx, spendUnit, captured.Usage()); err != nil {
+			disposed = true
 			return Turn{}, c.failLocked(fmt.Errorf("settle provider spend; response withheld: %w", err))
 		}
 	}
@@ -799,11 +808,6 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 		c.state = stateAwaitingProposal
 	} else {
 		c.state = stateNeedsPrompt
-	}
-	if hostCallBinding != nil {
-		if err := c.cfg.CompleteHostCall(settleCtx, HostCallCompletion{Binding: *hostCallBinding, OutcomeDigest: journalRecord.Hash}); err != nil {
-			return Turn{}, c.failLocked(fmt.Errorf("settle exact provider exchange reservation before result release: %w", err))
-		}
 	}
 	if err := ctx.Err(); err != nil {
 		return Turn{}, c.failLocked(fmt.Errorf("provider exchange canceled before release: %w", err))
