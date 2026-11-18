@@ -1,0 +1,4 @@
+  PASS  upload-artifact and GitHub release both include SHA256SUMS and the two exact sidecar globs
+  PASS  builder generates and adds both sidecars to SHA256SUMS
+  PASS  sample checksum members all match workflow release asset patterns
+verify-release-workflow-coverage: 3 passed, 0 failed

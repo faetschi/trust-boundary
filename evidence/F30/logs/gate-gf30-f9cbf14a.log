@@ -1,0 +1,10 @@
+boot 943e85dd-489e-40c1-87ea-a8acafd33592 2026-11-18T11:41:50Z
+go version go1.27.1 linux/amd64
+BUILD_OK
+VET_OK
+WINDOWS_OK
+FMT_OK
+BOUNDARY_OK
+TEST_RC=0
+boot 943e85dd-489e-40c1-87ea-a8acafd33592 2026-11-18T12:06:43Z
+tests {'pass': 7661, 'skip': 52} packages {'skip': 3, 'pass': 60}

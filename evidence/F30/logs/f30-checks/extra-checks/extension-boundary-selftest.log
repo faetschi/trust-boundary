@@ -1,0 +1,9 @@
+self-test ok: clean tree (pass)
+self-test ok: (a) core imports the extension (fail)
+self-test ok: (a) core names the extension (fail)
+self-test ok: (b) core go.mod requires the extension (fail)
+self-test ok: (c) extension imports a core package (fail)
+self-test ok: (c) extension go.mod requires the core (fail)
+self-test ok: (d) go.work joins core and extension (fail)
+self-test ok: (d) go.work with the extension alone is reported, not failed (pass)
+extension boundary self-test PASS: 8 of 8 cases

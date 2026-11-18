@@ -1,0 +1,6 @@
+(console output of scripts/deps30.sh in tbound-dev, 2026-11-18: which packages changed in 28f407b8..5626e34f each frozen binary links, go list -deps on the F30 tree)
+tbound changed-deps: internal/effectoracle internal/runner internal/providerbridge internal/broker internal/broker/openrouter cmd/tbound
+tbound-profile changed-deps: internal/effectoracle internal/runner internal/providerbridge internal/broker internal/broker/openrouter
+tbound-cell-entrypoint changed-deps: internal/effectoracle internal/broker/openrouter
+piruntime imports changed: tbound/supervisor/internal/broker/correlation tbound/supervisor/internal/broker/protocol tbound/supervisor/internal/effectoracle tbound/supervisor/internal/broker/openrouter
+5.15.153.1-microsoft-standard-WSL2

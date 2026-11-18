@@ -1,0 +1,15 @@
+verify-package-manager-layout: private synthetic artifact; not release binaries
+  PASS  DEB contains /usr/bin/tbound
+  PASS  DEB contains /usr/bin/tbound-doctor
+  PASS  DEB contains /usr/bin/tbound-profile
+  PASS  DEB contains /usr/lib/tbound/runtime/package.json
+  PASS  DEB contains /usr/lib/tbound/tbound-cell-entrypoint
+  PASS  DEB contains /usr/lib/tbound/cell-entrypoint.json
+  PASS  DEB keeps TCB entrypoint outside /usr/bin
+  PASS  DEB file modes are normal under umask 077
+  PASS  RPM input/check path validates the checksum and manifest
+  PASS  RPM spec includes %{_bindir}/tbound-profile
+  PASS  RPM spec includes %{_libexecdir}/tbound
+  PASS  RPM spec includes tbound-cell-entrypoint
+  PASS  RPM spec includes cell-entrypoint.json
+verify-package-manager-layout: completed (synthetic layout only; no runtime claim)

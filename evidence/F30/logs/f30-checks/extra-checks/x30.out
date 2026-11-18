@@ -1,0 +1,32 @@
+lock taken 2026-11-18T12:06:44Z
+checkout f9cbf14afa70a5eef4e4543ea3a68ab378df9210 tree a458f0268eaeaa3df2ec8fe4c3eb789f96616596 clean
+CHECK bootstrap-package-status rc=0 package-status checks: 9 passed, 0 failed
+CHECK bootstrap-userns-optin rc=0 user namespace opt-in checks: 3 passed, 0 failed
+CHECK hyperv-netplan rc=0 OK
+CHECK infra-guest-py rc=0 OK (skipped=1)
+CHECK cgroup-witness-py rc=0 OK
+CHECK pi-runtime-closure-py rc=0 OK
+CHECK go-timing-py rc=0 OK
+CHECK corpus-sampling-py rc=0 sha256 60d66935438f28fe1a92e4c0e4fa1a36695d17c40783cbad1aa149095c0321ea
+CHECK pkg-manager-layout rc=0 verify-package-manager-layout: completed (synthetic layout only; no runtime claim)
+CHECK publish-release-assets rc=0 verify-publish-release-assets: 5 passed, 0 failed
+CHECK release-workflow-coverage rc=0 verify-release-workflow-coverage: 3 passed, 0 failed
+CHECK runtime-paths rc=0 ci-runtime-paths: all checks passed
+CHECK runtime-status rc=0 ci-runtime-status: all checks passed
+CHECK doc-links rc=0 69 documents, 282 local links, 0 broken, 0 unindexed
+CHECK containerfile-pins rc=0 verify-governed-containerfile-pins: PASS (go 1.27.1 sha256:8d48e12ec567, node 24.21.0 sha256:d6aa754f16b3)
+CHECK extension-boundary rc=0 extension boundary OK: core imports no extension; extension imports no core package
+CHECK extension-boundary-selftest rc=0 extension boundary self-test PASS: 8 of 8 cases
+CHECK self-contained-selftest rc=0 OK: self-test
+CHECK actionlint rc=0 go: downloading github.com/mattn/go-isatty v0.0.20
+CHECK adapter-npm-ci rc=0 npm notice
+CHECK adapter-npm-check rc=0 ℹ duration_ms 392.760503
+CHECK release-build rc=0 1e709fdad7390fb6c8efe82da7db9f5f9d93ec89b38f6fb77f5e1c003027a979  tbound-cell-entrypoint-0.0.0-f30check-linux-amd64.sha256
+CHECK release-npm-packages rc=0 make-npm-packages: wrote /home/tbound/tbound-work/x30tmp/dist/npm (cli + 1 platform packages)
+CHECK release-verify-install rc=0 verify-install: 12 passed, 0 failed
+CHECK release-strict-mode rc=0 verify-release-strict-mode: 3 passed, 0 failed
+CHECK release-layout rc=1 verify-release-layout: 74 passed, 1 failed, 0 skipped
+CHECK release-npm-verify rc=0 verify-npm-packages: 29 passed, 0 failed
+checkout still clean
+FAILS=1 end 2026-11-18T12:08:13Z
+EXIT=0

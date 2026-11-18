@@ -1,0 +1,5 @@
+make-npm-packages: skipping non-linux tarball tbound-0.0.0-f30check-darwin-amd64.tar.gz
+make-npm-packages: skipping non-linux tarball tbound-0.0.0-f30check-darwin-arm64.tar.gz
+make-npm-packages: generated cli-linux-x64
+make-npm-packages: skipping non-linux tarball tbound-0.0.0-f30check-windows-amd64.tar.gz
+make-npm-packages: wrote /home/tbound/tbound-work/x30tmp/dist/npm (cli + 1 platform packages)

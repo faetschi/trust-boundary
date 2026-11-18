@@ -1,0 +1,11 @@
+== 2026-11-18T12:54:18Z skip reason of TestPublicationLiveRootMountLayout on the guest (same binary)
+=== RUN   TestPublicationLiveRootMountLayout
+    live_root_mount_linux_test.go:27: mount-namespace child skipped:
+        === RUN   TestPublicationLiveRootMountLayout
+            live_root_mount_linux_test.go:30: cannot make the mount namespace private: permission denied
+        --- SKIP: TestPublicationLiveRootMountLayout (0.00s)
+        PASS
+--- SKIP: TestPublicationLiveRootMountLayout (0.00s)
+PASS
+exit=0
+kernel.apparmor_restrict_unprivileged_userns = 1

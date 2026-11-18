@@ -1,0 +1,5 @@
+PASS  unattended without the opt-in stops before changing policy
+PASS  unattended with the opt-in changes policy
+PASS  an unrestricted host needs no opt-in
+
+user namespace opt-in checks: 3 passed, 0 failed

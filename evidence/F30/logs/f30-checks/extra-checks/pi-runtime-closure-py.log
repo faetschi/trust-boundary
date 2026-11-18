@@ -1,0 +1,15 @@
+test_installed_version_must_match_direct_shrinkwrap_entry (test_prepare_official_pi_runtime.DependencyLockTests.test_installed_version_must_match_direct_shrinkwrap_entry) ... ok
+test_missing_dependency_and_sibling_hoist_fail_closed (test_prepare_official_pi_runtime.DependencyLockTests.test_missing_dependency_and_sibling_hoist_fail_closed) ... ok
+test_nested_dependency_uses_its_resolved_lock_location (test_prepare_official_pi_runtime.DependencyLockTests.test_nested_dependency_uses_its_resolved_lock_location) ... ok
+test_all_four_runtime_file_lists_agree (test_prepare_official_pi_runtime.ExtensionFileListTests.test_all_four_runtime_file_lists_agree) ... ok
+test_copy_rejects_source_bytes_that_do_not_match_the_scanned_identity (test_prepare_official_pi_runtime.StagingControlTests.test_copy_rejects_source_bytes_that_do_not_match_the_scanned_identity) ... ok
+test_directory_symlink_is_refused (test_prepare_official_pi_runtime.StagingControlTests.test_directory_symlink_is_refused) ... ok
+test_existing_output_is_refused (test_prepare_official_pi_runtime.StagingControlTests.test_existing_output_is_refused) ... ok
+test_file_symlinks_are_materialized_as_regular_files (test_prepare_official_pi_runtime.StagingControlTests.test_file_symlinks_are_materialized_as_regular_files) ... ok
+test_lock_digest_comes_from_verified_staged_bytes_after_source_changes (test_prepare_official_pi_runtime.StagingControlTests.test_lock_digest_comes_from_verified_staged_bytes_after_source_changes) ... ok
+test_scan_rejects_symlink_escape (test_prepare_official_pi_runtime.StagingControlTests.test_scan_rejects_symlink_escape) ... ok
+
+----------------------------------------------------------------------
+Ran 10 tests in 0.036s
+
+OK

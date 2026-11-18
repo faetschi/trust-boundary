@@ -1,0 +1,108 @@
+watch start 2026-11-18T12:39:54Z
+guest loop start 2026-11-18T12:39:55.529817335Z init_userns=4026531837
+== leftover-check 2026-11-18T12:39:58.536449355Z reason=svc-start service=active
+podman ps rc=0 lines=0
+== end leftover-check
+== leftover-check 2026-11-18T12:43:57.269588926Z reason=svc-start service=active
+podman ps rc=0 lines=3
+time="2026-11-18T12:43:57Z" level=error msg="cannot find UID/GID for user tbound-pi: no subuid ranges found for user \"tbound-pi\" in /etc/subuid - check rootless mode in man pages."
+time="2026-11-18T12:43:57Z" level=warning msg="Using rootless single mapping into the namespace. This might break some images. Check /etc/subuid and /etc/subgid for adding sub*ids if not using a network user"
+time="2026-11-18T12:43:57Z" level=warning msg="Failed to add pause process to systemd sandbox cgroup: dbus: couldn't determine address of session bus"
+== end leftover-check
+== capture 2026-11-18T12:44:19.775288895Z scope=pi-wf-f39ca7c1ea8ee08a2a995f75-e1
+-- lsns -t user
+        NS        PNS        ONS NPROCS    PID UID USER      COMMAND
+4026531837          0          0    179      1   0 root      /usr/lib/systemd/systemd --system --deserialize=120
+4026532155 4026531837 4026531837      1 456081   0 root      ├─/usr/libexec/upowerd
+4026532159 4026531837 4026531837      3 484999 995 tbound-pi └─/usr/bin/podman
+4026532161 4026532159 4026532159      1 486068 995 tbound-pi pi                                                                                                                                                                                                                                                                                                                                                                                 
+-- cgroup tree below cells
+/system.slice/tbound-pi.service/cells/cgroup.procs: 
+/system.slice/tbound-pi.service/cells/pi-wf-f39ca7c1ea8ee08a2a995f75-e1/cgroup.procs: 
+/system.slice/tbound-pi.service/cells/pi-wf-f39ca7c1ea8ee08a2a995f75-e1/libpod-a3d6590809ccd52a84a92e616dde195e33db0050bb15df2de44d57a4513c0616/cgroup.procs: 486068 
+-- cell processes: user-ns chain to the init ns; [uid_map of a member of each level: inner outer count]
+pid=486068 comm=pi hostuid=995 cg=/system.slice/tbound-pi.service/cells/pi-wf-f39ca7c1ea8ee08a2a995f75-e1/libpod-a3d6590809ccd52a84a92e616dde195e33db0050bb15df2de44d57a4513c0616 levels_below_init=2 chain: 4026532161[uid_map:  1000 995 1;] 4026532159[uid_map:  0 995 1;] -> 4026531837(init)
+-- uid-995 processes
+pid=484629 ppid=1 comm=tbound userns=user:[4026531837] cg=/system.slice/tbound-pi.service/runner
+pid=484999 ppid=1 comm=podman pause userns=user:[4026532159] cg=/user.slice/user-1000.slice/session-5640.scope
+pid=486028 ppid=484629 comm=podman userns=user:[4026532159] cg=/system.slice/tbound-pi.service/runner
+pid=486064 ppid=1 comm=conmon userns=user:[4026532159] cg=/system.slice/tbound-pi.service/runner
+pid=486068 ppid=486064 comm=pi userns=user:[4026532161] cg=/system.slice/tbound-pi.service/cells/pi-wf-f39ca7c1ea8ee08a2a995f75-e1/libpod-a3d6590809ccd52a84a92e616dde195e33db0050bb15df2de44d57a4513c0616
+-- conmon
+pid=486064 uid=995 userns=user:[4026532159] cgroup=/system.slice/tbound-pi.service/runner
+== end capture
+== leftover-check 2026-11-18T12:44:36.172924161Z reason=after-cell-run pi-wf-f39ca7c1ea8ee08a2a995f75-e1 service=active
+podman ps rc=0 lines=0
+== end leftover-check
+== leftover-check 2026-11-18T12:46:08.030546247Z reason=svc-start service=active
+podman ps rc=0 lines=3
+time="2026-11-18T12:46:08Z" level=error msg="cannot find UID/GID for user tbound-pi: no subuid ranges found for user \"tbound-pi\" in /etc/subuid - check rootless mode in man pages."
+time="2026-11-18T12:46:08Z" level=warning msg="Using rootless single mapping into the namespace. This might break some images. Check /etc/subuid and /etc/subgid for adding sub*ids if not using a network user"
+time="2026-11-18T12:46:08Z" level=warning msg="Failed to add pause process to systemd sandbox cgroup: dbus: couldn't determine address of session bus"
+== end leftover-check
+== capture 2026-11-18T12:46:31.515063107Z scope=pi-wf-6811805759cb81788c10aafd-e1
+-- lsns -t user
+        NS        PNS        ONS NPROCS    PID UID USER      COMMAND
+4026531837          0          0    178      1   0 root      /usr/lib/systemd/systemd --system --deserialize=120
+4026532155 4026531837 4026531837      1 456081   0 root      ├─/usr/libexec/upowerd
+4026532159 4026531837 4026531837      1 484999 995 tbound-pi ├─/usr/bin/podman
+4026532161 4026531837 4026531837      3 493597 995 tbound-pi └─/usr/bin/podman
+4026532163 4026532161 4026532161      1 494704 995 tbound-pi pi                                                                                                                                                                                                                                                                                                                                                                                 
+-- cgroup tree below cells
+/system.slice/tbound-pi.service/cells/cgroup.procs: 
+/system.slice/tbound-pi.service/cells/pi-wf-6811805759cb81788c10aafd-e1/cgroup.procs: 
+/system.slice/tbound-pi.service/cells/pi-wf-6811805759cb81788c10aafd-e1/libpod-b18053391c44ed2ed2bdb7999fa7de9d7510dd9f8f70d9b38d9e66e503f6d778/cgroup.procs: 494704 
+-- cell processes: user-ns chain to the init ns; [uid_map of a member of each level: inner outer count]
+pid=494704 comm=pi hostuid=995 cg=/system.slice/tbound-pi.service/cells/pi-wf-6811805759cb81788c10aafd-e1/libpod-b18053391c44ed2ed2bdb7999fa7de9d7510dd9f8f70d9b38d9e66e503f6d778 levels_below_init=2 chain: 4026532163[uid_map:  1000 995 1;] 4026532161[uid_map:  0 995 1;] -> 4026531837(init)
+-- uid-995 processes
+pid=484999 ppid=1 comm=podman pause userns=user:[4026532159] cg=/user.slice/user-1000.slice/session-5640.scope
+pid=493278 ppid=1 comm=tbound userns=user:[4026531837] cg=/system.slice/tbound-pi.service/runner
+pid=493597 ppid=1 comm=podman pause userns=user:[4026532161] cg=/user.slice/user-1000.slice/session-5640.scope
+pid=494676 ppid=493278 comm=podman userns=user:[4026532161] cg=/system.slice/tbound-pi.service/runner
+pid=494699 ppid=1 comm=conmon userns=user:[4026532161] cg=/system.slice/tbound-pi.service/runner
+pid=494704 ppid=494699 comm=pi userns=user:[4026532163] cg=/system.slice/tbound-pi.service/cells/pi-wf-6811805759cb81788c10aafd-e1/libpod-b18053391c44ed2ed2bdb7999fa7de9d7510dd9f8f70d9b38d9e66e503f6d778
+-- conmon
+pid=494699 uid=995 userns=user:[4026532161] cgroup=/system.slice/tbound-pi.service/runner
+== end capture
+== leftover-check 2026-11-18T12:46:53.007823803Z reason=after-cell-run pi-wf-6811805759cb81788c10aafd-e1 service=active
+podman ps rc=0 lines=0
+== end leftover-check
+== leftover-check 2026-11-18T12:48:27.882759594Z reason=svc-start service=active
+podman ps rc=0 lines=3
+time="2026-11-18T12:48:27Z" level=error msg="cannot find UID/GID for user tbound-pi: no subuid ranges found for user \"tbound-pi\" in /etc/subuid - check rootless mode in man pages."
+time="2026-11-18T12:48:27Z" level=warning msg="Using rootless single mapping into the namespace. This might break some images. Check /etc/subuid and /etc/subgid for adding sub*ids if not using a network user"
+time="2026-11-18T12:48:27Z" level=warning msg="Failed to add pause process to systemd sandbox cgroup: dbus: couldn't determine address of session bus"
+== end leftover-check
+== leftover-check 2026-11-18T12:50:59.458134618Z reason=svc-start service=active
+podman ps rc=0 lines=3
+time="2026-11-18T12:50:59Z" level=error msg="cannot find UID/GID for user tbound-pi: no subuid ranges found for user \"tbound-pi\" in /etc/subuid - check rootless mode in man pages."
+time="2026-11-18T12:50:59Z" level=warning msg="Using rootless single mapping into the namespace. This might break some images. Check /etc/subuid and /etc/subgid for adding sub*ids if not using a network user"
+time="2026-11-18T12:50:59Z" level=warning msg="Failed to add pause process to systemd sandbox cgroup: dbus: couldn't determine address of session bus"
+== end leftover-check
+== capture 2026-11-18T12:51:21.418158127Z scope=net-sink
+-- lsns -t user
+        NS        PNS        ONS NPROCS    PID UID USER      COMMAND
+4026531837          0          0    177      1   0 root      /usr/lib/systemd/systemd --system --deserialize=120
+4026532155 4026531837 4026531837      1 456081   0 root      ├─/usr/libexec/upowerd
+4026532159 4026531837 4026531837      1 484999 995 tbound-pi ├─/usr/bin/podman
+4026532161 4026531837 4026531837      1 493597 995 tbound-pi ├─/usr/bin/podman
+4026532163 4026531837 4026531837      1 502017 995 tbound-pi ├─/usr/bin/podman
+4026532165 4026531837 4026531837      1 511767 995 tbound-pi └─/usr/bin/podman
+-- cgroup tree below cells
+/system.slice/tbound-pi.service/cells/cgroup.procs: 
+/system.slice/tbound-pi.service/cells/net-sink/cgroup.procs: 513167 
+-- cell processes: user-ns chain to the init ns; [uid_map of a member of each level: inner outer count]
+pid=513167 comm=tbound-profile hostuid=0 cg=/system.slice/tbound-pi.service/cells/net-sink levels_below_init=0 chain: -> 4026531837(init)
+-- uid-995 processes
+pid=484999 ppid=1 comm=podman pause userns=user:[4026532159] cg=/user.slice/user-1000.slice/session-5640.scope
+pid=493597 ppid=1 comm=podman pause userns=user:[4026532161] cg=/user.slice/user-1000.slice/session-5640.scope
+pid=502017 ppid=1 comm=podman pause userns=user:[4026532163] cg=/user.slice/user-1000.slice/session-5640.scope
+pid=511399 ppid=1 comm=tbound userns=user:[4026531837] cg=/system.slice/tbound-pi.service/runner
+pid=511767 ppid=1 comm=podman pause userns=user:[4026532165] cg=/user.slice/user-1000.slice/session-5640.scope
+-- conmon
+== end capture
+== leftover-check 2026-11-18T12:51:23.516365024Z reason=after-cell-run net-sink service=active
+podman ps rc=0 lines=0
+== end leftover-check
+watch stopped by the worker 2026-11-18T12:54:37Z after the final leftover check (local ssh client ended)
+watch end 2026-11-18T12:54:43Z rc=0
