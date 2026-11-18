@@ -48,11 +48,12 @@ var (
 	ErrWrongState        = errors.New("provider conversation is not in the required state")
 	ErrResultWithheld    = errors.New("durable provider tool result could not be recorded; result withheld")
 	ErrInvalidGeneration = errors.New("durable executor returned an invalid generation transition")
-	// ErrNoHostCallForToolEffect ends a turn whose response is a tool call while the workflow cannot charge
-	// both that call's effect and the provider call that returns its result: the call is never captured,
-	// so no call is left pending behind a refused effect.
-	ErrNoHostCallForToolEffect = errors.New("the provider returned a tool call but the workflow has no host calls left for its effect and result")
 )
+
+// hostCallsForToolTurn is what a provider call that may return a tool call needs: its own host call, the
+// call's effect, and the provider call that returns the result. With fewer left the call is sent with tools
+// disabled (the typed budget end): the model must answer in text, and the run ends with a complete receipt.
+const hostCallsForToolTurn = 3
 
 // eventJournal is implemented by audit.Journal. A successful Append means the
 // journal write and file sync completed, but does not attest filesystem power-
@@ -92,10 +93,11 @@ type Config struct {
 	// response has been durably captured in the provider journal.
 	ReserveHostCall  func(context.Context, broker.RequestRecord, uint64) (HostCallBinding, error)
 	CompleteHostCall func(context.Context, HostCallCompletion) error
-	// HostCallsLeft is the number of host calls the workflow can still charge. NextTurn asks it after an
-	// attempt is charged: a retry or resample needs one more, and a tool call needs two (its effect and
-	// the provider call that returns its result), else the turn ends with the attempt's host call closed
-	// as unknown, a state abandon reconciles. Nil (no workflow ledger) skips both checks.
+	// HostCallsLeft is the number of host calls the workflow can still charge. NextTurn asks it before each
+	// attempt: with fewer than hostCallsForToolTurn left the attempt goes out with tools disabled, and a tool
+	// call it still returns is refused, never captured. It asks again after an attempt is charged: a retry or
+	// resample needs one more, else the turn ends with the attempt's host call closed as unknown, a state
+	// abandon reconciles. Nil (no workflow ledger, product turns) skips both.
 	HostCallsLeft func() uint64
 	// AdvanceProgress persists the exact provider/Store projection after a
 	// complete tool result is journaled and before that result is released to
@@ -248,6 +250,8 @@ type requestEvidence struct {
 	ContentLength int64       `json:"content_length"`
 	Headers       httpHeaders `json:"headers"`
 	Body          []byte      `json:"body"`
+	// ToolsDisabled marks a request sent with tool_choice "none"; replay rebuilds the body with it.
+	ToolsDisabled bool `json:"tools_disabled,omitempty"`
 }
 
 type httpHeaders map[string][]string
@@ -263,7 +267,10 @@ type exchangeEvidence struct {
 	ResponseID       string              `json:"response_id"`
 	Model            string              `json:"model"`
 	ToolCall         *ToolCallProjection `json:"tool_call,omitempty"`
-	HostCall         *HostCallBinding    `json:"host_call,omitempty"`
+	// RefusedToolCall is a tool call the provider returned on a tools-disabled request. It was never captured
+	// or executed, and the exchange ended the turn as the final reply.
+	RefusedToolCall *ToolCallProjection `json:"refused_tool_call,omitempty"`
+	HostCall        *HostCallBinding    `json:"host_call,omitempty"`
 }
 
 type hostCallReservationEvidence struct {
@@ -517,14 +524,20 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 	hostCallAccounting := c.cfg.SelectCompletionTokenLimit != nil && c.cfg.ReserveHostCall != nil && c.cfg.CompleteHostCall != nil
 	retryable := c.cfg.Spend == nil && hostCallAccounting
 	resamplable := hostCallAccounting && !c.cfg.ProductCaptureRefusals
-	// resampleOf is the request digest a resample must repeat exactly; empty for any other attempt.
-	resampleOf := ""
+	// resampleOf is the request a resample must repeat exactly; nil for any other attempt. When tools were on
+	// for the refused attempt and are off now, the resample repeats it with tool_choice "none" instead.
+	var resampleOf *broker.RequestRecord
+	resampleLimit := uint64(0)
+	toolsDisabled := false
 	for attempt := uint64(0); ; attempt++ {
 		hostCallBinding = nil
+		// Decided per attempt: a retried or resampled attempt has charged a host call, so a later attempt of
+		// the turn may be the one that goes out with tools disabled, and it never turns tools back on.
+		toolsDisabled = c.cfg.HostCallsLeft != nil && c.cfg.HostCallsLeft() < hostCallsForToolTurn
 		profile := broker.Profile{
 			ID: c.cfg.ProfileID, ConversationID: c.cfg.ConversationID, Model: c.model, Route: c.cfg.Route, Messages: cloneMessages(c.history),
 			ToolManifest: broker.DeclaredToolManifest(), ToolCallIssuer: callIssuer,
-			ResponseIDIssuer: responseIssuer, Generation: c.generation,
+			ResponseIDIssuer: responseIssuer, Generation: c.generation, ToolsDisabled: toolsDisabled,
 		}
 		requestBroker, err := broker.New(profile, c.doer)
 		if err != nil {
@@ -542,7 +555,8 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 			}
 		}
 		captured, exchangeErr = requestBroker.ExchangeWithCompletionLimit(ctx, completionLimit, func(request broker.RequestRecord) error {
-			if resampleOf != "" && broker.DigestRequestRecord(request) != resampleOf {
+			if resampleOf != nil && broker.DigestRequestRecord(request) != broker.DigestRequestRecord(*resampleOf) &&
+				!(request.ToolsDisabled() && !resampleOf.ToolsDisabled() && completionLimit == resampleLimit) {
 				// Nothing is reserved yet: the resample stops here and the turn ends UNKNOWN.
 				return errResampleRequestChanged
 			}
@@ -619,9 +633,10 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 		if retryErr := c.recordRetryableFailureLocked(ctx, records, *hostCallBinding, attempt+1); retryErr != nil {
 			return Turn{}, c.failLocked(retryErr)
 		}
-		resampleOf = ""
+		resampleOf = nil
 		if resample {
-			resampleOf = broker.DigestRequestRecord(records[0].Request())
+			refused := records[0].Request()
+			resampleOf, resampleLimit = &refused, completionLimit
 		}
 	}
 	if exchangeErr != nil {
@@ -665,16 +680,24 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 	}
 	var priorCall openrouter.PriorToolCall
 	var capturedCall *openrouter.ToolCall
+	var refusedCall *ToolCallProjection
 	if call, ok := captured.ToolCall(); ok {
 		if !validText(call.ID, MaxIdentityBytes) || !validTool(call.Name) || len(call.RawArguments) == 0 {
 			return Turn{}, c.failLocked(errors.New("captured tool call is outside the fixed bridge schema"))
 		}
-		projection.ToolCall = &ToolCallProjection{ID: call.ID, Name: call.Name, Arguments: call.RawArguments}
-		priorCall = openrouter.PriorToolCall{ID: call.ID, Name: call.Name, RawArguments: call.RawArguments}
-		capturedCall = &call
+		if toolsDisabled {
+			// The provider ignored tool_choice "none". Captured, the call's effect or the provider call that
+			// returns its result could not be charged; refused, the reply is the run's final answer.
+			refusedCall = &ToolCallProjection{ID: call.ID, Name: call.Name, Arguments: call.RawArguments}
+			projection.FinishReason = "stop"
+		} else {
+			projection.ToolCall = &ToolCallProjection{ID: call.ID, Name: call.Name, Arguments: call.RawArguments}
+			priorCall = openrouter.PriorToolCall{ID: call.ID, Name: call.Name, RawArguments: call.RawArguments}
+			capturedCall = &call
+		}
 	}
 	assistantText := captured.AssistantText()
-	if assistantText == "" && projection.ToolCall == nil {
+	if assistantText == "" && projection.ToolCall == nil && refusedCall == nil {
 		emptyErr := errors.New("provider response has neither assistant text nor a tool call")
 		if !c.route.Reasoning {
 			return Turn{}, c.failLocked(emptyErr) // the product route keeps its pre-D50 behaviour
@@ -706,15 +729,6 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 		disposed = exchangeDisposed(persistErr, records, hostCallBinding)
 		return Turn{}, c.failLocked(errors.Join(identityErr, persistErr))
 	}
-	if capturedCall != nil && c.cfg.HostCallsLeft != nil && c.cfg.HostCallsLeft() < 2 {
-		// Journaled like the reasoning-only stop: the host call stays reserved and closed as unknown, which
-		// abandon reconciles. Captured, the call would stay pending behind a refused effect (F26 unit 90),
-		// or its effect would take the last host call and the next exchange could not be reserved.
-		persistErr := c.persistFailedExchangeLocked(records, ErrNoHostCallForToolEffect, hostCallBinding)
-		persistErr = settleAfterJournal(persistErr, captured.Usage())
-		disposed = exchangeDisposed(persistErr, records, hostCallBinding)
-		return Turn{}, c.failLocked(errors.Join(ErrNoHostCallForToolEffect, persistErr))
-	}
 	callArray := []openrouter.PriorToolCall(nil)
 	if projection.ToolCall != nil {
 		callArray = []openrouter.PriorToolCall{priorCall}
@@ -734,7 +748,8 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 		Request:    requestEvidenceFromBroker(requestRecord),
 		StatusCode: records[0].StatusCode(), Response: records[0].ResponseBody(),
 		ResponseIDIssuer: responseIssuer, ToolCallIDIssuer: callIssuer,
-		ResponseID: captured.ResponseID(), Model: captured.Model(), ToolCall: projection.ToolCall, HostCall: hostCallBinding,
+		ResponseID: captured.ResponseID(), Model: captured.Model(), ToolCall: projection.ToolCall, RefusedToolCall: refusedCall,
+		HostCall: hostCallBinding,
 	}
 	encodedEvidence, err := json.Marshal(evidence)
 	if err != nil {
@@ -820,7 +835,7 @@ func requestEvidenceFromBroker(record broker.RequestRecord) requestEvidence {
 	return requestEvidence{
 		ProfileID: record.ProfileID(), Method: record.Method(), URL: record.URL(),
 		Host: record.Host(), ContentLength: record.ContentLength(),
-		Headers: httpHeaders(record.Header()), Body: record.Body(),
+		Headers: httpHeaders(record.Header()), Body: record.Body(), ToolsDisabled: record.ToolsDisabled(),
 	}
 }
 

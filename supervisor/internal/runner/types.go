@@ -204,6 +204,11 @@ type Metrics struct {
 	// UsageUnread counts provider exchanges whose usage the guest could not read: InTokens and
 	// OutTokens are then a lower bound. Omitted when zero, so older journals stay byte-identical.
 	UsageUnread int `json:"usage_unread,omitempty"`
+	// ToolsDisabledCalls counts provider calls sent with tools disabled because the host calls left could not
+	// carry a tool call's effect and result (the typed budget end); RefusedToolCalls counts the tool calls a
+	// provider still returned on such a call, refused and never run. Both are omitted when zero, as above.
+	ToolsDisabledCalls int `json:"tools_disabled_calls,omitempty"`
+	RefusedToolCalls   int `json:"refused_tool_calls,omitempty"`
 }
 
 // CalibrationEvidence is what a P step reports about its witness. Whether the

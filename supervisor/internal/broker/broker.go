@@ -57,6 +57,8 @@ type Profile struct {
 	ToolCallIssuer   string
 	ResponseIDIssuer string
 	Generation       string
+	// ToolsDisabled sends the request with tool_choice "none" (openrouter.BuildToolsDisabledRequestForRoute).
+	ToolsDisabled bool
 }
 
 // HTTPDoer is the only provider transport seam. The implementation must not
@@ -76,6 +78,7 @@ type RequestRecord struct {
 	contentLength int64
 	header        http.Header
 	body          []byte
+	toolsDisabled bool
 }
 
 func (r RequestRecord) ProfileID() string    { return r.profileID }
@@ -85,6 +88,10 @@ func (r RequestRecord) Host() string         { return r.host }
 func (r RequestRecord) ContentLength() int64 { return r.contentLength }
 func (r RequestRecord) Header() http.Header  { return r.header.Clone() }
 func (r RequestRecord) Body() []byte         { return append([]byte(nil), r.body...) }
+
+// ToolsDisabled reports a request sent with tool_choice "none". The body carries it; DigestRequestRecord
+// covers the body.
+func (r RequestRecord) ToolsDisabled() bool { return r.toolsDisabled }
 
 // DigestRequestRecord commits to the exact fixed-profile request metadata and
 // bytes presented to the injected transport. The digest is lowercase hex with
@@ -222,7 +229,11 @@ func (b *Broker) ExchangeWithCompletionLimit(ctx context.Context, completionLimi
 		return openrouter.CapturedResponse{}, err
 	}
 
-	built, err := openrouter.BuildRequestForRoute(b.profile.Route, b.profile.Messages, completionLimit)
+	build := openrouter.BuildRequestForRoute
+	if b.profile.ToolsDisabled {
+		build = openrouter.BuildToolsDisabledRequestForRoute
+	}
+	built, err := build(b.profile.Route, b.profile.Messages, completionLimit)
 	if err != nil {
 		return openrouter.CapturedResponse{}, b.failLocked(-1, fmt.Errorf("build registered provider request: %w", err))
 	}
@@ -249,6 +260,7 @@ func (b *Broker) ExchangeWithCompletionLimit(ctx context.Context, completionLimi
 	requestRecord := RequestRecord{
 		profileID: b.profile.ID, method: request.Method, url: request.URL.String(), host: request.Host,
 		contentLength: request.ContentLength, header: request.Header.Clone(), body: append([]byte(nil), body...),
+		toolsDisabled: b.profile.ToolsDisabled,
 	}
 	recordIndex := len(b.records)
 	b.records = append(b.records, ExchangeRecord{request: requestRecord})
