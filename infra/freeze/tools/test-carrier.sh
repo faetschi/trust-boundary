@@ -130,6 +130,23 @@ HF3=$T/hf3; mkdir -m 0700 "$HF3"
 out=$(env CARRIER_DIR="$COLON" CARRIER_COMMIT="$C" CARRIER_MANIFEST_DIGEST="$DCOLON" FIRST_CASE_OF="$COLON/manifest.draft.json" bash "$HARNESS" "$HF3" "$K/guest" 2>&1) &&
   [[ $out == *"first compliant case: agentdojo:slack:UserTask0:"* ]] && pass "colon-01: verified; first_compliant_case returns the ':' id" || fail "colon-01: $out"
 
+# ---- hf_zero_check (glib.sh): the EVQ report's empty *.stderr captures pass, any other empty file still stops the step
+say "hf_zero_check"
+ZC=$T/zero-check.sh
+{
+  echo 'set -euo pipefail'
+  echo 'die() { printf "FATAL: %s\n" "$*" >&2; exit 1; }; WX() { "$@" </dev/null; }'
+  sed -n '/^hf_zero_check()/,/^}/p' "$K/guest/glib.sh"
+  echo 'HF=$1; hf_zero_check'
+} >"$ZC"
+mkzc() { rm -rf "$T/zc"; mkdir -p "$T/zc/evq-report" "$T/zc/dr"; : >"$T/zc/dr/command-audit.jsonl"; printf 'x' >"$T/zc/evq-report/evq.json"; printf 'e' >"$T/zc/evq-report/full.stderr"; }
+mkzc; : >"$T/zc/evq-report/x.stderr"
+expect_ok "an empty evq-report/x.stderr passes" bash "$ZC" "$T/zc"
+mkzc; : >"$T/zc/evq-report/y.json"
+expect_refuse "an empty evq-report/y.json still refuses" "y.json" bash "$ZC" "$T/zc"
+mkzc; : >"$T/zc/x.stderr"
+expect_refuse "an empty x.stderr outside evq-report still refuses" "x.stderr" bash "$ZC" "$T/zc"
+
 # ---- phase-2 dry run with the freeze's own tools and records
 if [ $# -eq 2 ]; then
   W=$1 HF=$2; TBP=$W/bin/tbound-profile
