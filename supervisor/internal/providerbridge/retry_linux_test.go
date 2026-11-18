@@ -98,6 +98,10 @@ func TestRetryableFailureClassification(t *testing.T) {
 		"200":                         {200, "", "", "", false},
 		"503 carrying stream bytes":   {503, "", "data: {\"id\":\"x\"}\n\n", "", false},
 		"503 carrying a completion":   {503, "", `{"choices":[{}]}`, "", false},
+		"503 OpenRouter with user_id": {503, "application/json", `{"error":{"code":503,"message":"Provider returned error","metadata":{"provider_name":"x"}},"user_id":"user_1"}`, "", true},
+		"503 user_id not a string":    {503, "", `{"error":{"message":"x"},"user_id":{"id":1}}`, "", false},
+		"503 user_id beside choices":  {503, "", `{"error":{"message":"x"},"user_id":"u","choices":[]}`, "", false},
+		"503 user_id alone":           {503, "", `{"user_id":"u"}`, "", false},
 		"503 above the body bound":    {503, "", strings.Repeat("x", retryFailureBodyLimit+1), "", false},
 		"422 stream bytes and phrase": {422, "", "data: Endpoint is unavailable", "", false},
 

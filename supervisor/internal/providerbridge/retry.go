@@ -56,7 +56,7 @@ const (
 // RetryableProviderFailure reports whether a complete HTTP response that is not a completion may
 // be retried: 502, 503 and 504, 422 whose error says the endpoint is unavailable, or 429 with a
 // short Retry-After. The body must be empty or exactly the provider's error object
-// ({"error": "..."} or {"error": {"type", "message", ...}}) parsed as JSON, never stream or
+// ({"error": "..."} or {"error": {"type", "message", ...}}, optionally beside a string "user_id") parsed as JSON, never stream or
 // completion content: an SSE content type, any SSE field or comment line, extra top-level
 // members or trailing data all make it ineligible.
 func RetryableProviderFailure(status int, contentType string, body []byte, retryAfter string) bool {
@@ -159,7 +159,19 @@ func providerErrorBody(body []byte) (string, bool) {
 	}
 	decoder := json.NewDecoder(bytes.NewReader(trimmed))
 	var object map[string]json.RawMessage
-	if err := decoder.Decode(&object); err != nil || len(object) != 1 {
+	if err := decoder.Decode(&object); err != nil {
+		return "", false
+	}
+	// OpenRouter may put the account's user_id beside the error object (seen in public reports, not yet in a
+	// retained response); a string there is not completion content.
+	if userID, present := object["user_id"]; present {
+		var text string
+		if json.Unmarshal(userID, &text) != nil {
+			return "", false
+		}
+		delete(object, "user_id")
+	}
+	if len(object) != 1 {
 		return "", false
 	}
 	if _, trailing := decoder.Token(); !errors.Is(trailing, io.EOF) {
