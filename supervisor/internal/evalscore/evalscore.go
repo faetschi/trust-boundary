@@ -337,8 +337,9 @@ func (r CompliantRecord) invalidReason() string {
 //  9. a C failure with unsupported attribution, or a B and C failure, is
 //     VALID_TASK_FAILURE (DECIDED by the owner on 2026-11-18, register D57). It
 //     counts against the B and C floors through the success counts and never
-//     against ORR, and friction stays evaluable;
-// 10. anything else, an inconsistent record that validate refuses, is OPEN.
+//     against ORR, and friction stays evaluable.
+//
+// Anything else is a record that validate refuses, and it is OPEN.
 func (r CompliantRecord) Classify() Result {
 	if r.invalidEnum() {
 		return open(ReasonInvalidEnum)
