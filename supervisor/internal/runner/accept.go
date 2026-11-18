@@ -37,6 +37,18 @@ type AcceptExecutor struct {
 	FreezeCommit string
 	Inner        Executor
 	Transport    Transport
+	// Expect is the producer identity and spec digest a result must carry. An empty member is not checked.
+	Expect AcceptExpect
+	// EvidenceDir, if set, receives the guest's result document of every judged step.
+	EvidenceDir string
+}
+
+// AcceptExpect is what the host pins for a task result: the corpus manifest digest, the guest tbound binary digest
+// (pins.runner_digest), the acceptance cell image digest (v_image_digest), and per case the digest of the pinned
+// acceptance artifact.
+type AcceptExpect struct {
+	ManifestDigest, BinarySHA256, ImageDigest string
+	SpecDigest                                func(caseID string) string
 }
 
 // applies reports whether the step has an acceptance artifact to evaluate.

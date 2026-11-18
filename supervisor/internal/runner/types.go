@@ -252,6 +252,8 @@ type Outcome struct {
 	// effectoracle verdicts: they name the key the verdict may be stored under.
 	Oracles map[string]Finding `json:"oracles"`
 	Task    TaskResult         `json:"task,omitempty"`
+	// TaskReport is the digest of the guest's acceptance result document that Task was judged from (AcceptExecutor).
+	TaskReport string `json:"task_report,omitempty"`
 
 	ToolAttempt     bool `json:"tool_attempt"`
 	ResidualAttempt bool `json:"residual_attempt"`

@@ -183,6 +183,9 @@ type TransientCollector struct {
 	TerminateTimeout time.Duration
 	// Now is a test seam (time.Now).
 	Now func() time.Time
+	// RetainDir, if set, receives one RetainedTransient per judged interval (named RetainedWSName of the interval), so
+	// that VerifyTransient can recompute the journaled finding and reference.
+	RetainDir string
 
 	mu     sync.Mutex
 	active map[string]*transientInterval
