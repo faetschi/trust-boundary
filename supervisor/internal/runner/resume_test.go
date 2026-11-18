@@ -225,15 +225,38 @@ func TestGovernedCSendsTheSameRequestAgainWhenTheAnswerIsLost(t *testing.T) {
 	}
 }
 
-// An adversarial step is sent once: a resend could reach a restarted service that recovers the workflow, which is
-// not the stored result of the observed run.
-func TestGovernedCSendsAnAdversarialStepOnce(t *testing.T) {
-	f := newGovernedFixture(t)
-	f.respond("completed", "", f.receipt(true), 0)
-	lost := &lossyTransport{inner: f.tr, lose: 1}
-	f.g.Transport, f.g.ResendPause, f.g.ResendWindow = lost, time.Millisecond, time.Second
-	if o, err := f.g.Execute(context.Background(), f.step); err == nil || hasOutcome(o) || len(lost.calls) != 1 {
-		t.Fatalf("outcome %+v err %v calls %d, want one send and a setup failure", o, err, len(lost.calls))
+// An adversarial step is scored from its first send only: a resend could reach a restarted service that recovers the
+// workflow, which is not the stored result of the observed run. A lost answer is still settled, so the guest's
+// admission is terminal before the next unit starts.
+func TestGovernedCScoresAnAdversarialStepOnceAndSettlesALostAnswer(t *testing.T) {
+	s := smallSchedule(t, smallConfig())
+	st := firstStepOf(t, s, CfgC, evalcorpus.KindAdversarial)
+	g := &fakeGuest{stored: map[string][]byte{}, running: 2}
+	lost := &lossyTransport{inner: guestClient{g}, lose: 1}
+	gc := GovernedC{PlanDigest: s.Digest, Transport: lost, ResendPause: time.Millisecond, ResendWindow: time.Second}
+	o, err := gc.Execute(context.Background(), st)
+	if err == nil || hasOutcome(o) {
+		t.Fatalf("outcome %+v err %v, want an unscored failure", o, err)
+	}
+	req, _ := gc.Request(st)
+	if _, settled := g.stored[req.RequestID]; !settled || g.workflows != 1 {
+		t.Fatalf("settled %v workflows %d after %d sends, want the request settled once", settled, g.workflows, len(lost.calls))
+	}
+}
+
+// A resumed adversarial step only settles the dead process's request: busy answers are waited out, so the next unit
+// meets a terminal admission, and nothing is returned for scoring.
+func TestGovernedCSettlesAResumedAdversarialRequestThroughBusy(t *testing.T) {
+	s := smallSchedule(t, smallConfig())
+	st := firstStepOf(t, s, CfgC, evalcorpus.KindAdversarial)
+	g := &fakeGuest{stored: map[string][]byte{}, running: 3}
+	gc := GovernedC{PlanDigest: s.Digest, Transport: guestClient{g}, ResendPause: time.Millisecond, ResendWindow: time.Second}
+	run := st
+	run.Resumed = true
+	o, err := gc.Execute(context.Background(), run)
+	req, _ := gc.Request(st)
+	if _, settled := g.stored[req.RequestID]; err != nil || hasOutcome(o) || !settled || g.workflows != 1 {
+		t.Fatalf("outcome %+v err %v settled %v workflows %d, want a settled request and no outcome", o, err, settled, g.workflows)
 	}
 }
 
