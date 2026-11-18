@@ -6,8 +6,10 @@
 #   ci-runtime-paths.sh BASE HEAD MODE docs-only
 #     "true" when the diff touches documentation only.
 #
-# A missing, malformed or unreadable range fails open: runtime prints "true" and
-# docs-only prints "false", so CI runs the work rather than guessing it is safe.
+# A missing, malformed or unreadable range, a push whose old tip is not an
+# ancestor of the new one, a call outside a git checkout and any git error fail
+# open: runtime prints "true" and docs-only prints "false", so CI runs the work
+# rather than guessing it is safe.
 #
 # The pathspec is deliberate: a rename out of one of these trees still matches
 # the deleted side, so it cannot hide a runtime change. Every path the suite
@@ -25,30 +27,42 @@ case "$field" in
   *) echo "ci-runtime-paths: unknown field '$field'" >&2; exit 2 ;;
 esac
 
-if [ -z "$base" ] || [ -z "$head" ] || [ "$base" = "0000000000000000000000000000000000000000" ]; then
+run_all() {
   if [ "$field" = "docs-only" ]; then echo false; else echo true; fi
   exit 0
+}
+
+if [ -z "$base" ] || [ -z "$head" ] || [ "$base" = "0000000000000000000000000000000000000000" ]; then
+  run_all
 fi
 
-root=$(git rev-parse --show-toplevel) || { echo true; exit 0; }
+root=$(git rev-parse --show-toplevel 2>/dev/null) || run_all
 cd "$root"
 
 if [ "$mode" = "push" ]; then
   # A force-push or reset can make the old tip unreachable from the new one.
   # Three-dot would compare the wrong side and could hide a revert.
   if ! git merge-base --is-ancestor "$base" "$head"; then
-    echo true
-    exit 0
+    run_all
   fi
   range="$base..$head"
 else
   range="$base...$head"
 fi
 
+# Exit status 1 means a listed input changed; any other non-zero status is an error.
+# Both callers below treat every non-zero status as "changed".
+runtime_unchanged() {
+  git diff --quiet "$range" -- \
+    supervisor adapter corpus infra install docs/evaluation .github/workflows/ci.yml scripts/ci_go_test_timing.py
+}
+
 if [ "$field" = "docs-only" ]; then
-  # Documentation is Markdown, anything under docs/, and the repository's
-  # top-level prose files. Everything else needs the code checks.
-  if git diff --quiet "$range" -- . ':(exclude)*.md' ':(exclude)docs/**' ':(exclude)CITATION.cff' ':(exclude)LICENSE'; then
+  # Documentation is top-level Markdown, docs/ outside the runtime inputs, and the
+  # top-level prose files. Markdown anywhere else (digest-pinned corpus rules and
+  # rubrics, testdata, evidence, runbooks) is an input and needs the code checks.
+  if git diff --quiet "$range" -- . ':(exclude,glob)*.md' ':(exclude)docs' ':(exclude)CITATION.cff' ':(exclude)LICENSE' \
+    && runtime_unchanged; then
     echo true
   else
     echo false
@@ -56,10 +70,8 @@ if [ "$field" = "docs-only" ]; then
   exit 0
 fi
 
-if git diff --quiet "$range" -- \
-  supervisor adapter corpus infra install docs/evaluation .github/workflows/ci.yml scripts/ci_go_test_timing.py; then
+if runtime_unchanged; then
   echo false
 else
-  # 1 means a runtime input changed; any other status is an error, so run.
   echo true
 fi
