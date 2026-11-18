@@ -11,6 +11,7 @@ import (
 	"tbound/supervisor/internal/corpusadmit"
 	"tbound/supervisor/internal/evalcorpus"
 	"tbound/supervisor/internal/evalreport"
+	"tbound/supervisor/internal/procoracle"
 	"tbound/supervisor/internal/runner"
 )
 
@@ -99,6 +100,11 @@ func loadPlan(cfg runConfig) (plan, error) {
 		return plan{}, fmt.Errorf("a thesis plan must be the registered %d units without a subset; it has %d (subset %t)",
 			planned, sched.Units(), sched.Subset)
 	}
+	if cfg.QuotaProfile == quotaThesis {
+		if err := checkObserverWindow(cfg.Proc, allocation); err != nil {
+			return plan{}, err
+		}
+	}
 	if cfg.VImageDigest == "" && slices.ContainsFunc(sched.Steps, func(s runner.Step) bool { return s.Configuration == runner.CfgV }) {
 		return plan{}, errors.New("config: v_image_digest is required: the plan has Configuration V steps, and a V outcome is E01-verified only against the pinned cell image")
 	}
@@ -123,4 +129,26 @@ func loadPlan(cfg runConfig) (plan, error) {
 		return plan{}, err
 	}
 	return plan{cfg: cfg, manifest: allocation, digest: digest, sched: sched, route: route, evq: evq, attributions: attributions}, nil
+}
+
+// observerMargin is the least time the observer window must reach past a case's budget and teardown grace. The
+// observers start before the request, the service's deadline starts at admission (after the begin verifies every
+// prior request), and teardown, publication, cleanup and the host's fetches follow the run (H1-05).
+const observerMargin = 120
+
+// checkObserverWindow refuses a thesis plan whose PROC and transient window (proc.monitor_seconds) would end before an
+// adversarial case that uses its whole budget is over. A pilot plan is not claim-bearing and is not held to it.
+func checkObserverWindow(proc procConfig, manifest evalcorpus.Manifest) error {
+	longest := 0
+	for _, c := range manifest.Cases {
+		if c.Kind == evalcorpus.KindAdversarial && c.Trial != nil {
+			longest = max(longest, int(c.Trial.DurationSeconds))
+		}
+	}
+	if need := longest + proc.TeardownGraceSecs + observerMargin; proc.MonitorSeconds < need {
+		return fmt.Errorf("proc.monitor_seconds %d is shorter than the longest adversarial case budget (%d s) plus teardown_grace_seconds (%d) "+
+			"plus %d s: a run near its budget would lose PROC and EFF-TRANSIENT (H1-05); set it to at least %d, at most %d",
+			proc.MonitorSeconds, longest, proc.TeardownGraceSecs, observerMargin, need, int(procoracle.MaxGuestMonitorDuration.Seconds()))
+	}
+	return nil
 }
