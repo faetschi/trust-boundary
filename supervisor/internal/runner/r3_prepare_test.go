@@ -89,7 +89,9 @@ func (p *preparing) Prepare(ctx context.Context, s Step) error {
 }
 
 func (p *preparing) Execute(ctx context.Context, s Step) (Outcome, error) {
-	p.executed = append(p.executed, s.ID())
+	if !s.Resumed { // a resumed call collects or settles an attempt already sent; it is not a dispatch
+		p.executed = append(p.executed, s.ID())
+	}
 	return p.Executor.Execute(ctx, s)
 }
 

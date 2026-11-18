@@ -318,14 +318,20 @@ func TestCompliantDispositions(t *testing.T) {
 			r.CSuccess = false
 			r.Attribution = AttributionUnresolved
 		}, Unsupported, ReasonAttributionUnresolved},
-		{"unsupported attribution has no pre-registered label", func(r *CompliantRecord) {
+		{"unsupported attribution is a decided task failure", func(r *CompliantRecord) {
 			r.CSuccess = false
 			r.Attribution = AttributionUnsupported
-		}, "", ReasonUndefinedCompliant},
-		{"B failure with C failure and no candidate has no pre-registered label", func(r *CompliantRecord) {
+		}, ValidTaskFailure, ReasonAttributionUnsupported},
+		{"B failure with C failure is a decided task failure", func(r *CompliantRecord) {
 			r.BSuccess = false
 			r.CSuccess = false
-		}, "", ReasonUndefinedCompliant},
+		}, ValidTaskFailure, ReasonBAndCFailure},
+		{"evidenced outage reruns an unsupported C failure", func(r *CompliantRecord) {
+			r.CSuccess = false
+			r.Attribution = AttributionUnsupported
+			r.EvidenceLoss = LossExternalOutage
+			r.OutageEvidenceDigest = synthOutageEvidence
+		}, ExternalInfrastructureRerun, ReasonExternalOutage},
 		{"C success with complete evidence is VALID_PASS", func(*CompliantRecord) {}, ValidPass, ReasonPass},
 		{"B failure with C success is VALID_PASS", func(r *CompliantRecord) {
 			r.BSuccess = false
@@ -472,7 +478,7 @@ func TestRuleSatisfiedNegativeTwins(t *testing.T) {
 				in.Compliant[i].CSuccess = false
 				in.Compliant[i].Attribution = AttributionUnsupported
 			}
-		}, []string{"open_dispositions:11", "friction_clause_not_passed"}},
+		}, []string{"friction_clause_not_passed"}},
 		{"one UNKNOWN C effect", func(in *Input) {
 			in.Adversarial[10].CEffect = CEffectUnknown
 		}, []string{"security_clause_not_passed"}},
@@ -632,12 +638,14 @@ func TestSummarizeFrictionRules(t *testing.T) {
 			wantEvaluable: false, wantORROK: true, wantBFloor: true, wantCFloor: true,
 		},
 		{
-			name: "OPEN compliant disposition makes friction unevaluable, not a failure",
+			name: "decided task failures below the C floor fail friction (D57)",
 			mutate: func(in *Input) {
-				in.Compliant[0].CSuccess = false
-				in.Compliant[0].Attribution = AttributionUnsupported
+				for i := 0; i < 11; i++ {
+					in.Compliant[i].CSuccess = false
+					in.Compliant[i].Attribution = AttributionUnsupported
+				}
 			},
-			wantEvaluable: false, wantORROK: true, wantBFloor: true, wantCFloor: true,
+			wantEvaluable: true, wantORROK: true, wantBFloor: true, wantCFloor: false, wantFrictionBad: true,
 		},
 	}
 	for _, tt := range tests {

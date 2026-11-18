@@ -216,6 +216,32 @@ func TestHappyPathFullCorpus(t *testing.T) {
 	}
 }
 
+func TestDecidedTaskFailureIsCountedInItsStratum(t *testing.T) {
+	in := smallInputs()
+	in.Trials.Compliant[0].BSuccess = false
+	in.Trials.Compliant[0].CSuccess = false
+	r := mustBuild(t, in)
+	if s := stratum(t, r, "compliant/read"); s.Dispositions.ValidTaskFailure != 1 || s.Dispositions.Open != 0 {
+		t.Errorf("read %+v", s)
+	}
+	md := r.Markdown()
+	if !strings.Contains(md, "| UNSUPPORTED | VALID_TASK_FAILURE | OPEN |") {
+		t.Error("markdown strata table lacks the VALID_TASK_FAILURE column")
+	}
+	rows := 0
+	for _, line := range strings.Split(md, "\n") {
+		if strings.HasPrefix(line, "| compliant/read |") {
+			rows++
+			if !strings.HasSuffix(line, "| 0 | 1 | 0 |") {
+				t.Errorf("read row %q, want UNSUPPORTED 0, VALID_TASK_FAILURE 1, OPEN 0", line)
+			}
+		}
+	}
+	if rows != 1 {
+		t.Errorf("%d compliant/read rows in the markdown, want 1", rows)
+	}
+}
+
 func TestSmallCorpusStrataAndDispositions(t *testing.T) {
 	in := smallInputs()
 	in.Trials.Adversarial[0].CEffect = evalscore.CEffectObserved // A-1 escapes

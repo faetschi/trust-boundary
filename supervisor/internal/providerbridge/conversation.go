@@ -143,8 +143,8 @@ type SpendReservation struct {
 	ConversationID string
 	// Turn is the one-based provider turn of this conversation.
 	Turn uint64
-	// Attempt is the number of earlier attempts of this turn: zero for a first attempt, above zero only
-	// for a decision-13 resample (see resample.go), which is booked as its own reservation.
+	// Attempt is the number of earlier attempts of this turn: zero for a first attempt, above zero for a
+	// pre-effect retry (retry.go) or a decision-13 resample (resample.go), each booked as its own reservation.
 	Attempt uint64
 	// CompletionLimit is the host-selected max_completion_tokens bound of the
 	// request. Zero means the host selected none.
@@ -518,11 +518,10 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 	var captured openrouter.CapturedResponse
 	var exchangeErr error
 	var records []broker.ExchangeRecord
-	// A pre-effect provider failure may be retried (see retry.go): only with host-call accounting and
-	// without monetary spend, so every attempt is its own reserved host call. A parallel-call refusal may
-	// be resampled (see resample.go): with host-call accounting, on both routes, never in a product turn.
+	// A pre-effect provider failure may be retried (see retry.go): only with host-call accounting, so every
+	// attempt is its own reserved host call, on both routes. A parallel-call refusal may be resampled (see
+	// resample.go): with host-call accounting, on both routes, never in a product turn.
 	hostCallAccounting := c.cfg.SelectCompletionTokenLimit != nil && c.cfg.ReserveHostCall != nil && c.cfg.CompleteHostCall != nil
-	retryable := c.cfg.Spend == nil && hostCallAccounting
 	resamplable := hostCallAccounting && !c.cfg.ProductCaptureRefusals
 	// resampleOf is the refused request a resample must repeat (resampleRepeats); nil for any other attempt.
 	var resampleOf *broker.RequestRecord
@@ -608,7 +607,7 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 			break
 		}
 		resample := resamplable && resampleableExchange(records, c.route)
-		if !resample && !(retryable && retryableExchange(records)) {
+		if !resample && !(hostCallAccounting && retryableExchange(records)) {
 			break
 		}
 		if c.cfg.HostCallsLeft != nil && c.cfg.HostCallsLeft() == 0 {
@@ -616,13 +615,13 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 			// abandon to close: end on this attempt, whose reservation the failure path closes as unknown.
 			break
 		}
-		if resample && spendUnit != "" {
-			// The refused attempt reached the provider and its cost is not established: its full
+		if spendUnit != "" {
+			// The failed or refused attempt reached the provider and its cost is not established: its full
 			// reservation stays booked before the attempt is closed and the next one reserved.
 			if err := c.cfg.Spend.UncertainSpend(ctx, spendUnit); err != nil {
-				// Not resampled: the failure path below journals the refused attempt as unknown and the
-				// deferred UncertainSpend books its unit again.
-				exchangeErr = errors.Join(exchangeErr, fmt.Errorf("book the refused provider attempt's spend: %w", err))
+				// Not repeated: the failure path below journals the attempt as unknown and the deferred
+				// UncertainSpend books its unit again.
+				exchangeErr = errors.Join(exchangeErr, fmt.Errorf("book the failed provider attempt's spend: %w", err))
 				break
 			}
 			spendUnit, spendDispatched = "", false
@@ -663,8 +662,16 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 	if len(records) != 1 || !records[0].HasResponse() {
 		return Turn{}, c.failLocked(errors.New("broker did not retain exactly one complete exchange"))
 	}
+	// refuseResponse ends the turn on a complete response that the bridge refuses before it journals a normal
+	// exchange: the raw response is journaled as provider_exchange_unknown, which closes the reserved host call
+	// for abandon, and the unsettled spend is left for the defer to mark uncertain.
+	refuseResponse := func(refusal error) (Turn, error) {
+		persistErr := c.persistFailedExchangeLocked(records, refusal, hostCallBinding)
+		disposed = exchangeDisposed(persistErr, records, hostCallBinding)
+		return Turn{}, c.failLocked(errors.Join(refusal, persistErr))
+	}
 	if !c.route.AcceptsResponseModel(captured.Model()) {
-		return Turn{}, c.failLocked(errors.New("captured response model differs from registered model"))
+		return refuseResponse(errors.New("captured response model differs from registered model"))
 	}
 	if c.turns == math.MaxUint64 || c.sequence == math.MaxUint64 {
 		return Turn{}, c.failLocked(errors.New("provider turn sequence exhausted"))
@@ -680,7 +687,7 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 	var refusedCall *ToolCallProjection
 	if call, ok := captured.ToolCall(); ok {
 		if !validText(call.ID, MaxIdentityBytes) || !validTool(call.Name) || len(call.RawArguments) == 0 {
-			return Turn{}, c.failLocked(errors.New("captured tool call is outside the fixed bridge schema"))
+			return refuseResponse(errors.New("captured tool call is outside the fixed bridge schema"))
 		}
 		if toolsDisabled {
 			// The provider ignored tool_choice "none". Captured, the call's effect or the provider call that
@@ -712,7 +719,7 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 		return Turn{}, c.failLocked(errors.Join(fmt.Errorf("provider response projection exceeds its durable evidence budget: %w", err), persistErr))
 	}
 	// Identity reuse is checked before the exchange is journaled as a normal one: the raw response is
-	// failed-exchange evidence, and the unsettled spend is left for the defer to mark uncertain.
+	// failed-exchange evidence. A tool-call ID of an earlier turn is refused by the correlator below.
 	var identityErr error
 	if _, duplicate := c.responseIDs[captured.ResponseID()]; duplicate {
 		identityErr = errors.New("provider response ID was reused across conversation turns")
@@ -722,9 +729,7 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 		}
 	}
 	if identityErr != nil {
-		persistErr := c.persistFailedExchangeLocked(records, identityErr, hostCallBinding)
-		disposed = exchangeDisposed(persistErr, records, hostCallBinding)
-		return Turn{}, c.failLocked(errors.Join(identityErr, persistErr))
+		return refuseResponse(identityErr)
 	}
 	callArray := []openrouter.PriorToolCall(nil)
 	if projection.ToolCall != nil {
@@ -738,6 +743,17 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 		persistErr = settleAfterJournal(persistErr, captured.Usage())
 		disposed = exchangeDisposed(persistErr, records, hostCallBinding)
 		return Turn{}, c.failLocked(errors.Join(fmt.Errorf("provider response does not fit the next request: %w", err), persistErr))
+	}
+	if capturedCall != nil {
+		// The correlator is the last check that can refuse the call, so it runs before the normal exchange is
+		// journaled. A refusal closes the stream; the conversation closes with it.
+		trusted, err := captured.TrustedCapture(callIssuer, responseIssuer, c.generation, nextSequence)
+		if err != nil {
+			return refuseResponse(fmt.Errorf("derive captured tool-call identity: %w", err))
+		}
+		if decision := c.correlation.Capture(trusted); !decision.Accepted || decision.StreamClosed {
+			return refuseResponse(fmt.Errorf("register captured tool call: %s", decision.ReasonCode))
+		}
 	}
 	requestRecord := records[0].Request()
 	evidence := exchangeEvidence{
@@ -756,27 +772,26 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 	if err != nil {
 		return Turn{}, c.failLocked(fmt.Errorf("persist exact provider exchange; response withheld: %w", err))
 	}
-	// The exchange is durable: its spend and host call settle even if the request context ends now, or a
+	// The exchange is durable: its host call and spend settle even if the request context ends now, or a
 	// deadline would leave the journaled exchange's host call reserved, which abandon cannot reconcile. A
 	// canceled turn is refused only after that, below. The settlement is bounded (settleContext).
 	settleCtx, cancelSettle := settleContext(ctx)
 	defer cancelSettle()
+	// The host call settles first: a spend settlement that fails (usage missing, an overage) then leaves
+	// nothing reserved, and the turn ends disposed of. A failed host-call settlement is a workflow ledger
+	// failure and stays undisposed (fail closed).
+	if hostCallBinding != nil {
+		if err := c.cfg.CompleteHostCall(settleCtx, HostCallCompletion{Binding: *hostCallBinding, OutcomeDigest: journalRecord.Hash}); err != nil {
+			return Turn{}, c.failLocked(fmt.Errorf("settle exact provider exchange reservation before result release: %w", err))
+		}
+	}
 	if spendUnit != "" {
 		// SettleSpend leaves the unit in its final state (settled, overage-settled
 		// or uncertain) whether or not it returns an error.
 		spendSettled = true
 		if err := c.cfg.Spend.SettleSpend(settleCtx, spendUnit, captured.Usage()); err != nil {
+			disposed = true
 			return Turn{}, c.failLocked(fmt.Errorf("settle provider spend; response withheld: %w", err))
-		}
-	}
-	if capturedCall != nil {
-		trusted, err := captured.TrustedCapture(callIssuer, responseIssuer, c.generation, nextSequence)
-		if err != nil {
-			return Turn{}, c.failLocked(fmt.Errorf("derive captured tool-call identity: %w", err))
-		}
-		decision := c.correlation.Capture(trusted)
-		if !decision.Accepted || decision.StreamClosed {
-			return Turn{}, c.failLocked(fmt.Errorf("register captured tool call: %s", decision.ReasonCode))
 		}
 	}
 	c.history = nextHistory
@@ -793,11 +808,6 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 		c.state = stateAwaitingProposal
 	} else {
 		c.state = stateNeedsPrompt
-	}
-	if hostCallBinding != nil {
-		if err := c.cfg.CompleteHostCall(settleCtx, HostCallCompletion{Binding: *hostCallBinding, OutcomeDigest: journalRecord.Hash}); err != nil {
-			return Turn{}, c.failLocked(fmt.Errorf("settle exact provider exchange reservation before result release: %w", err))
-		}
 	}
 	if err := ctx.Err(); err != nil {
 		return Turn{}, c.failLocked(fmt.Errorf("provider exchange canceled before release: %w", err))
