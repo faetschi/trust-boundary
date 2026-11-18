@@ -60,10 +60,19 @@ func wireSSH(p plan) (runner.Executors, error) {
 	}
 	governedB := governed
 	governedB.Configuration = runner.CfgB
+	accept := func(inner runner.Executor) runner.AcceptExecutor {
+		x := runner.AcceptExecutor{FreezeCommit: p.sched.Config.FreezeCommit, Inner: inner, Transport: ts.trial,
+			Expect: runner.AcceptExpect{ManifestDigest: p.digest, BinarySHA256: p.cfg.Pins.RunnerDigest, ImageDigest: p.cfg.VImageDigest,
+				SpecDigest: p.acceptanceDigest}}
+		if p.cfg.RunDir != "" {
+			x.EvidenceDir = filepath.Join(p.cfg.RunDir, "accept-evidence")
+		}
+		return x
+	}
 	executors := runner.Executors{
-		C: guard(p.attest(runner.AcceptExecutor{FreezeCommit: p.sched.Config.FreezeCommit, Inner: reset(governed), Transport: ts.trial})),
+		C: guard(p.attest(accept(reset(governed)))),
 		P: executorP,
-		B: p.attest(runner.AcceptExecutor{FreezeCommit: p.sched.Config.FreezeCommit, Inner: reset(governedB), Transport: ts.trial}),
+		B: p.attest(accept(reset(governedB))),
 		V: p.governedV(ts.trial),
 	}
 	if p.cfg.CDH != nil {
@@ -72,7 +81,7 @@ func wireSSH(p plan) (runner.Executors, error) {
 			g := governed
 			g.Configuration = runner.CDHConfiguration(model)
 			g.CDH = p.cfg.CDH
-			executors.CDH[g.Configuration] = guard(p.attest(runner.AcceptExecutor{FreezeCommit: p.sched.Config.FreezeCommit, Inner: reset(g), Transport: ts.trial}))
+			executors.CDH[g.Configuration] = guard(p.attest(accept(reset(g))))
 		}
 	}
 	return executors, nil
@@ -99,6 +108,9 @@ func (p plan) collectorsOver(ev runner.Transport) runner.CollectorSet {
 	}
 	// The transient observer is ended by the host when the request is over; the PROC monitor's time is only its cap.
 	transient := &runner.TransientCollector{Client: runner.EvidenceClient{Transport: ev}, Duration: time.Duration(p.cfg.Proc.MonitorSeconds) * time.Second}
+	if p.cfg.RunDir != "" {
+		transient.RetainDir = filepath.Join(p.cfg.RunDir, "transient-evidence")
+	}
 	// The NET interval documents are kept next to the journal: their tags are drawn per interval and live nowhere else.
 	net := netoracle.NewCollector(ev)
 	// D49: the NET window ends after the PROC collector's proof plus the drain grace, or at the original horizon.
@@ -122,6 +134,16 @@ func (p plan) attest(inner runner.Executor) runner.Attest {
 		PDelta: p.pDelta, ScriptDigest: p.scriptDigest, AdmissionPolicyDigest: p.admissionPolicyDigest,
 		AttackerDigest: p.manifest.Pins.AttackerDigest, PivotsDigest: p.pivotsDigest,
 	}
+}
+
+// acceptanceDigest is the digest of a compliant case's pinned acceptance artifact, "" for any other case.
+func (p plan) acceptanceDigest(caseID string) string {
+	for _, c := range p.manifest.Cases {
+		if c.CaseID == caseID && c.Compliant != nil {
+			return c.Compliant.AcceptanceTest.Digest
+		}
+	}
+	return ""
 }
 
 // pivotsDigest is the digest of the pivot table of a case, as the service computes it for the receipt of an

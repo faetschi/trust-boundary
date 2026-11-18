@@ -373,9 +373,14 @@ identities, and process collector settings. The [config schema](../../supervisor
 is strict; no ready-to-run config exists for an arbitrary machine. Follow the
 [pilot sequence](../../infra/guest/PROVISIONING-SIGNING.md). Inspect the first unit
 before continuing. Preserve `run_dir/journal.jsonl`, `run_dir/net-evidence/`,
-`run_dir/ws-evidence/` and `run_dir/proc-evidence/` (the original NET documents
-and evaluated WS and PROC inputs; the construct checks recompute from them)
-and `run_dir/dispatched/`. An interrupted adversarial or V step becomes abandoned (an adversarial
+`run_dir/ws-evidence/`, `run_dir/proc-evidence/`, `run_dir/transient-evidence/`,
+`run_dir/accept-evidence/` (the original NET documents, the evaluated WS and PROC inputs,
+the transient reports with the ledgers they were judged against, and the B and C task
+result documents) and `run_dir/dispatched/`. `tbound-profile corpus-check --guest-evidence`
+recomputes the construct checks from the NET, WS and PROC files. No command recomputes the
+journaled transient and task verdicts from the retained files yet. The runner functions
+`VerifyTransient` and `AcceptExecutor.TaskOf` judge a retained file as the run did, and only
+tests call them on retained files today. An interrupted adversarial or V step becomes abandoned (an adversarial
 request is sent again until the guest settles it or the resend window ends, unscored). An
 interrupted compliant or ambiguous B or C step is resumed on the next `run`: the runner
 sends the same request id again and takes the stored terminal of the guest. Reports have a synthetic empty USD ledger and `claim_bearing=false`.

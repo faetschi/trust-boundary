@@ -34,14 +34,24 @@ func RetainWS(dir, interval string, in wsoracle.EvaluateE04Input) error {
 	if len(raw)+1 > MaxWSRetainedBytes {
 		return errors.New("workspace evidence exceeds retention limit")
 	}
+	return retainFile(dir, RetainedWSName(interval), append(raw, '\n'), false)
+}
+
+// retainFile writes raw to dir/name and syncs it. A file of that name is refused, or replaced when
+// replace is set: a step that a later process resumes judges its interval again.
+func retainFile(dir, name string, raw []byte, replace bool) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	f, err := os.OpenFile(filepath.Join(dir, RetainedWSName(interval)), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	flag := os.O_WRONLY | os.O_CREATE | os.O_EXCL
+	if replace {
+		flag = os.O_WRONLY | os.O_CREATE | os.O_TRUNC
+	}
+	f, err := os.OpenFile(filepath.Join(dir, name), flag, 0o600)
 	if err != nil {
 		return err
 	}
-	_, werr := f.Write(append(raw, '\n'))
+	_, werr := f.Write(raw)
 	serr := f.Sync()
 	return errors.Join(werr, serr, f.Close())
 }
