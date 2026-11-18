@@ -91,7 +91,7 @@ The operator steps and the run-config pins are in `infra/guest/PROVISIONING-SIGN
 - [ ] `33-corpus-pilot.sh` ran to "DONE" (`$HF/pilot/CYCLE_OK`; with the trial key also `$HF/evq/netsink.json`), the session sudo is closed again.
 - [ ] `27` archived the previous freeze's G1/rp/dr state and exports; it archives the pilot items too, and `33` resets a pilot install left by an earlier freeze (`pilot-reset` phase); its dr request ended UNKNOWN BY DESIGN and
       the stale-evidence commit check in `40-guest-evidence.sh` passed for this freeze.
-- [ ] Every log is under `<FREEZE>\logs`; no 0-byte output except `*.err` and the dr command/provider audits.
+- [ ] Every log is under `<FREEZE>\logs`; no 0-byte output except `*.err`, `evq-report/*.stderr` and the dr command/provider audits.
 - [ ] The kit scripts pass `bash -n`; the Python files pass `python -I -m py_compile`; all files are UTF-8 without
       BOM and LF-only.
 
