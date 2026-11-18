@@ -280,9 +280,9 @@ type governedReceipt struct {
 	E04EvidenceRecordCount int    `json:"e04_evidence_record_count"`
 	E04GapCount            int    `json:"e04_gap_count"`
 
-	InTokens        int   `json:"in_tokens"`
-	OutTokens       int   `json:"out_tokens"`
-	CostMicroUSD    int64 `json:"cost_micro_usd"`
+	InTokens           int   `json:"in_tokens"`
+	OutTokens          int   `json:"out_tokens"`
+	CostMicroUSD       int64 `json:"cost_micro_usd"`
 	ProviderRetries    int   `json:"provider_retries"`
 	UsageUnread        int   `json:"provider_usage_unread"`
 	ToolsDisabledCalls int   `json:"tools_disabled_calls"`
