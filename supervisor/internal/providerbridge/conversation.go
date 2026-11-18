@@ -662,8 +662,16 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 	if len(records) != 1 || !records[0].HasResponse() {
 		return Turn{}, c.failLocked(errors.New("broker did not retain exactly one complete exchange"))
 	}
+	// refuseResponse ends the turn on a complete response that the bridge refuses before it journals a normal
+	// exchange: the raw response is journaled as provider_exchange_unknown, which closes the reserved host call
+	// for abandon, and the unsettled spend is left for the defer to mark uncertain.
+	refuseResponse := func(refusal error) (Turn, error) {
+		persistErr := c.persistFailedExchangeLocked(records, refusal, hostCallBinding)
+		disposed = exchangeDisposed(persistErr, records, hostCallBinding)
+		return Turn{}, c.failLocked(errors.Join(refusal, persistErr))
+	}
 	if !c.route.AcceptsResponseModel(captured.Model()) {
-		return Turn{}, c.failLocked(errors.New("captured response model differs from registered model"))
+		return refuseResponse(errors.New("captured response model differs from registered model"))
 	}
 	if c.turns == math.MaxUint64 || c.sequence == math.MaxUint64 {
 		return Turn{}, c.failLocked(errors.New("provider turn sequence exhausted"))
@@ -679,7 +687,7 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 	var refusedCall *ToolCallProjection
 	if call, ok := captured.ToolCall(); ok {
 		if !validText(call.ID, MaxIdentityBytes) || !validTool(call.Name) || len(call.RawArguments) == 0 {
-			return Turn{}, c.failLocked(errors.New("captured tool call is outside the fixed bridge schema"))
+			return refuseResponse(errors.New("captured tool call is outside the fixed bridge schema"))
 		}
 		if toolsDisabled {
 			// The provider ignored tool_choice "none". Captured, the call's effect or the provider call that
@@ -711,7 +719,7 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 		return Turn{}, c.failLocked(errors.Join(fmt.Errorf("provider response projection exceeds its durable evidence budget: %w", err), persistErr))
 	}
 	// Identity reuse is checked before the exchange is journaled as a normal one: the raw response is
-	// failed-exchange evidence, and the unsettled spend is left for the defer to mark uncertain.
+	// failed-exchange evidence. A tool-call ID of an earlier turn is refused by the correlator below.
 	var identityErr error
 	if _, duplicate := c.responseIDs[captured.ResponseID()]; duplicate {
 		identityErr = errors.New("provider response ID was reused across conversation turns")
@@ -721,9 +729,7 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 		}
 	}
 	if identityErr != nil {
-		persistErr := c.persistFailedExchangeLocked(records, identityErr, hostCallBinding)
-		disposed = exchangeDisposed(persistErr, records, hostCallBinding)
-		return Turn{}, c.failLocked(errors.Join(identityErr, persistErr))
+		return refuseResponse(identityErr)
 	}
 	callArray := []openrouter.PriorToolCall(nil)
 	if projection.ToolCall != nil {
@@ -737,6 +743,17 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 		persistErr = settleAfterJournal(persistErr, captured.Usage())
 		disposed = exchangeDisposed(persistErr, records, hostCallBinding)
 		return Turn{}, c.failLocked(errors.Join(fmt.Errorf("provider response does not fit the next request: %w", err), persistErr))
+	}
+	if capturedCall != nil {
+		// The correlator is the last check that can refuse the call, so it runs before the normal exchange is
+		// journaled. A refusal closes the stream; the conversation closes with it.
+		trusted, err := captured.TrustedCapture(callIssuer, responseIssuer, c.generation, nextSequence)
+		if err != nil {
+			return refuseResponse(fmt.Errorf("derive captured tool-call identity: %w", err))
+		}
+		if decision := c.correlation.Capture(trusted); !decision.Accepted || decision.StreamClosed {
+			return refuseResponse(fmt.Errorf("register captured tool call: %s", decision.ReasonCode))
+		}
 	}
 	requestRecord := records[0].Request()
 	evidence := exchangeEvidence{
@@ -766,16 +783,6 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 		spendSettled = true
 		if err := c.cfg.Spend.SettleSpend(settleCtx, spendUnit, captured.Usage()); err != nil {
 			return Turn{}, c.failLocked(fmt.Errorf("settle provider spend; response withheld: %w", err))
-		}
-	}
-	if capturedCall != nil {
-		trusted, err := captured.TrustedCapture(callIssuer, responseIssuer, c.generation, nextSequence)
-		if err != nil {
-			return Turn{}, c.failLocked(fmt.Errorf("derive captured tool-call identity: %w", err))
-		}
-		decision := c.correlation.Capture(trusted)
-		if !decision.Accepted || decision.StreamClosed {
-			return Turn{}, c.failLocked(fmt.Errorf("register captured tool call: %s", decision.ReasonCode))
 		}
 	}
 	c.history = nextHistory
