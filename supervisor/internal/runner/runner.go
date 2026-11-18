@@ -84,7 +84,9 @@ func NewRunner(s Schedule, j *Journal, e Executor, opt Options) (*Runner, error)
 // closed as abandoned and not run again: its unit is spent and its provider
 // spend is unknown. The exception is a started step that resumable admits: its
 // executor is called again with Step.Resumed set, collects the result of the
-// request the earlier process sent, and the step ends with that result.
+// request the earlier process sent, and the step ends with that result. A started
+// adversarial step is abandoned after its executor sent its request once more with
+// Step.Resumed, to settle the guest; that answer is not scored.
 func (r *Runner) Run(ctx context.Context) (RunReport, error) {
 	if c, ok := r.exec.(interface{ Check(Schedule) error }); ok {
 		if err := c.Check(r.sched); err != nil {
@@ -123,8 +125,18 @@ func (r *Runner) Run(ctx context.Context) (RunReport, error) {
 			continue
 		}
 		if r.j.begunOf(st.ID(), 1) {
+			reason := abandonReason(r.j.startedOf(st.ID(), 1), "")
+			if r.j.startedOf(st.ID(), 1) && st.Kind == evalcorpus.KindAdversarial && ctx.Err() == nil {
+				// A guest service that restarted mid-request keeps the request open until its id is sent again, and an
+				// open request blocks every later reset and begin (SB-04). The answer is not scored: the step's observers
+				// died with the earlier process.
+				run := st
+				run.Attempt, run.Resumed = 1, true
+				_, _ = r.exec.Execute(ctx, run)
+				reason += "; its request id was sent once more to settle the guest, and the answer is not scored"
+			}
 			if err := r.j.append(Entry{Kind: EntryAbandoned, StepID: st.ID(), CaseID: st.CaseID, Index: st.Index, Attempt: 1,
-				Reason: abandonReason(r.j.startedOf(st.ID(), 1), "")}); err != nil {
+				Reason: reason}); err != nil {
 				return r.report(rep), err
 			}
 			rep.Abandoned++

@@ -347,6 +347,11 @@ func (g GovernedC) Execute(ctx context.Context, s Step) (Outcome, error) {
 	if err != nil {
 		return Outcome{}, err
 	}
+	if s.Resumed && s.Kind == evalcorpus.KindAdversarial {
+		// Only settles the guest's request (Runner.Run): no observer runs and nothing is returned for scoring.
+		_, _, _, err := g.Transport.Run(ctx, argv)
+		return Outcome{}, err
+	}
 	// Collectors that must observe before the request (baseline, NET canary, PROC
 	// monitor) start here and are released when Execute returns, on every path.
 	begin := EvidenceRef{Step: s, Interval: IntervalRef(s), Request: request}
@@ -363,7 +368,7 @@ func (g GovernedC) Execute(ctx context.Context, s Step) (Outcome, error) {
 		}
 	}
 	t0 := time.Now()
-	stdout, stderr, exit, err := g.send(ctx, argv, request, s.Resumed)
+	stdout, stderr, exit, err := g.send(ctx, argv, request, s)
 	ended := time.Now()
 	latency := int(time.Since(t0).Milliseconds())
 	if err != nil {
@@ -456,10 +461,17 @@ func (g GovernedC) Execute(ctx context.Context, s Step) (Outcome, error) {
 // safe: the service answers a request id it has settled with the stored terminal and
 // resumes one it accepted and never settled. On a resend a busy answer means the
 // service still runs this request, so send waits for it as well. A first send that finds
-// the service busy is answered as before. resend is true for a step that a process which
-// died had already sent.
-func (g GovernedC) send(ctx context.Context, argv []string, request GovernedRequest, resend bool) ([]byte, []byte, int, error) {
-	deadline := time.Now().Add(g.ResendWindow)
+// the service busy is answered as before. A resumed step was already sent by a process
+// that died. An adversarial step is sent once: a resend can reach a service that
+// restarted and recovers the workflow, and only a stored terminal of the observed run
+// may be scored.
+func (g GovernedC) send(ctx context.Context, argv []string, request GovernedRequest, s Step) ([]byte, []byte, int, error) {
+	resend := s.Resumed
+	window := g.ResendWindow
+	if s.Kind == evalcorpus.KindAdversarial {
+		window = 0
+	}
+	deadline := time.Now().Add(window)
 	for {
 		stdout, stderr, exit, err := g.Transport.Run(ctx, argv)
 		if err != nil || !answerLost(stdout, exit, request, resend) || !time.Now().Add(g.ResendPause).Before(deadline) {

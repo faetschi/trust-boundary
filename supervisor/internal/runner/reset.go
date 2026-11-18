@@ -10,6 +10,8 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+
+	"tbound/supervisor/internal/evalcorpus"
 )
 
 // DefaultTrialCommand is the guest-side launcher of the trial subcommand, reached with
@@ -94,6 +96,9 @@ func (r ResetExecutor) Execute(ctx context.Context, s Step) (Outcome, error) {
 			return r.Inner.Execute(ctx, s)
 		case !errors.Is(err, fs.ErrNotExist):
 			return Outcome{}, fmt.Errorf("%w: dispatch record: %v", ErrSetupRefused, err)
+		case s.Kind == evalcorpus.KindAdversarial:
+			// Nothing was sent, so there is nothing to settle, and an unobserved run must not start.
+			return Outcome{}, fmt.Errorf("%w: no request was sent", ErrSetupRefused)
 		}
 		s.Resumed = false
 	}

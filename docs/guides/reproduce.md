@@ -375,7 +375,8 @@ is strict; no ready-to-run config exists for an arbitrary machine. Follow the
 before continuing. Preserve `run_dir/journal.jsonl`, `run_dir/net-evidence/`,
 `run_dir/ws-evidence/` and `run_dir/proc-evidence/` (the original NET documents
 and evaluated WS and PROC inputs; the construct checks recompute from them)
-and `run_dir/dispatched/`. An interrupted adversarial or V step becomes abandoned. An
+and `run_dir/dispatched/`. An interrupted adversarial or V step becomes abandoned (an adversarial
+request is sent once more to settle the guest, unscored). An
 interrupted compliant or ambiguous B or C step is resumed on the next `run`: the runner
 sends the same request id again and takes the stored terminal of the guest. Reports have a synthetic empty USD ledger and `claim_bearing=false`.
 Use the pilot to calibrate caps, costs, reset behaviour, and feasibility.

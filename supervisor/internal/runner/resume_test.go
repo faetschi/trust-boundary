@@ -177,8 +177,17 @@ func TestResumedAdversarialStepStaysAbandoned(t *testing.T) {
 	if err != nil || rep.Abandoned != 1 || !rep.Finished {
 		t.Fatalf("report %+v %v", rep, err)
 	}
-	if term, _ := j.Final(st.ID()); term.Kind != EntryAbandoned || term.Outcome != nil {
-		t.Fatalf("terminal %+v, want abandoned without an outcome: its observers died with the process", term)
+	if term, _ := j.Final(st.ID()); term.Kind != EntryAbandoned || term.Outcome != nil || !strings.Contains(term.Reason, "settle") {
+		t.Fatalf("terminal %+v, want abandoned without an outcome after settling: its observers died with the process", term)
+	}
+	cSteps := 0
+	for _, x := range s.Steps {
+		if x.Configuration == CfgC {
+			cSteps++
+		}
+	}
+	if g.workflows != cSteps || len(g.resets) != cSteps {
+		t.Fatalf("guest ran %d workflows and %d resets for %d C steps: the settle started a run", g.workflows, len(g.resets), cSteps)
 	}
 }
 
@@ -200,17 +209,31 @@ func TestResumedStepWithoutADispatchRecordIsResetAndSent(t *testing.T) {
 }
 
 func TestGovernedCSendsTheSameRequestAgainWhenTheAnswerIsLost(t *testing.T) {
-	f := newGovernedFixture(t)
-	line := f.respond("completed", "", f.receipt(true), 0)
-	lost := &lossyTransport{inner: f.tr, lose: 2}
-	f.g.Transport, f.g.ResendPause, f.g.ResendWindow = lost, time.Millisecond, time.Second
-	o, err := f.g.Execute(context.Background(), f.step)
-	if err != nil || o.Partial || o.E01.Digest != digestOfLine(line) {
-		t.Fatalf("outcome %+v err %v", o, err)
+	s := smallSchedule(t, smallConfig())
+	st := firstStepOf(t, s, CfgC, evalcorpus.KindCompliant)
+	g := &fakeGuest{stored: map[string][]byte{}}
+	lost := &lossyTransport{inner: guestClient{g}, lose: 2}
+	gc := GovernedC{PlanDigest: s.Digest, Transport: lost, ResendPause: time.Millisecond, ResendWindow: time.Second}
+	o, err := gc.Execute(context.Background(), st)
+	if err != nil || o.Partial || g.workflows != 1 {
+		t.Fatalf("outcome %+v err %v workflows %d", o, err, g.workflows)
 	}
-	want, _ := f.req.Argv()
+	req, _ := gc.Request(st)
+	want, _ := req.Argv()
 	if len(lost.calls) != 3 || !slices.EqualFunc(lost.calls, [][]string{want, want, want}, slices.Equal) {
 		t.Fatalf("calls %q, want the same request three times", lost.calls)
+	}
+}
+
+// An adversarial step is sent once: a resend could reach a restarted service that recovers the workflow, which is
+// not the stored result of the observed run.
+func TestGovernedCSendsAnAdversarialStepOnce(t *testing.T) {
+	f := newGovernedFixture(t)
+	f.respond("completed", "", f.receipt(true), 0)
+	lost := &lossyTransport{inner: f.tr, lose: 1}
+	f.g.Transport, f.g.ResendPause, f.g.ResendWindow = lost, time.Millisecond, time.Second
+	if o, err := f.g.Execute(context.Background(), f.step); err == nil || hasOutcome(o) || len(lost.calls) != 1 {
+		t.Fatalf("outcome %+v err %v calls %d, want one send and a setup failure", o, err, len(lost.calls))
 	}
 }
 

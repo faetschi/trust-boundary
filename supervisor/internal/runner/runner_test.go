@@ -88,13 +88,19 @@ func TestResumeAfterCrashMidRun(t *testing.T) {
 	if !rep.Finished || rep.Abandoned != 1 || rep.AlreadyDone != dieAt {
 		t.Fatalf("report %+v", rep)
 	}
+	// The interrupted adversarial step is only settled (Resumed): its request is sent once more, never run anew.
+	var ran []Step
 	for _, c := range second.Calls() {
+		if c.Resumed {
+			continue
+		}
 		if c.Index <= dieAt {
 			t.Fatalf("resume re-executed step %d", c.Index)
 		}
+		ran = append(ran, c)
 	}
-	if len(second.Calls()) != 89-dieAt-1 {
-		t.Fatalf("resume executed %d steps, want %d", len(second.Calls()), 89-dieAt-1)
+	if len(ran) != 89-dieAt-1 {
+		t.Fatalf("resume executed %d steps, want %d", len(ran), 89-dieAt-1)
 	}
 	// The interrupted step consumed its unit and has no outcome; it is not retried.
 	if rep.UnitsUsed != 89 {
