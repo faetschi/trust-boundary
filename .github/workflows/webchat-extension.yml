@@ -8,14 +8,15 @@ name: webchat-extension
 # the Go job and the frontend job cannot drift apart.
 on:
   workflow_dispatch:
-  # Feature branches run through pull_request; merged trees are checked on push.
+  # Same cost policy as ci.yml: main pull requests and merges only.
   push:
-    branches: [main, codex/tbound-prototype]
+    branches: [main]
     paths:
       - "extensions/webchat/**"
       - "supervisor/internal/productprotocol/testdata/**"
       - ".github/workflows/webchat-extension.yml"
   pull_request:
+    branches: [main]
     paths:
       - "extensions/webchat/**"
       - "supervisor/internal/productprotocol/testdata/**"
