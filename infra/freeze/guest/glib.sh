@@ -256,10 +256,10 @@ ro_mounts() {
 # Extract the first sha256 digest from tool output after a label; empty if absent.
 digest_after() { sed -n "s/.*$1[^:]*:[[:space:]]*\(sha256:[0-9a-f]\{64\}\).*/\1/p" | head -1; }
 
-hf_zero_check() { # sync, then no 0-byte regular file under $HF (*.err stderr captures and the dr run's two genuinely empty audits excepted)
+hf_zero_check() { # sync, then no 0-byte regular file under $HF (*.err stderr captures, the EVQ report's *.stderr captures and the dr run's two genuinely empty audits excepted)
   [ -n "${HF:-}" ] || return 0
   WX sync
-  local z; z=$(WX find "$HF" -type f -size 0 ! -name '*.err' ! -path "$HF/dr/command-audit.jsonl" ! -path "$HF/dr/provider-audit.jsonl" | tr -d '\r')
+  local z; z=$(WX find "$HF" -type f -size 0 ! -name '*.err' ! -path "$HF/evq-report/*.stderr" ! -path "$HF/dr/command-audit.jsonl" ! -path "$HF/dr/provider-audit.jsonl" | tr -d '\r')
   [ -z "$z" ] || die "0-byte output file(s) under $HF (WSL disk stall?): stop and look, do not continue:"$'\n'"$z"
 }
 done_step() { hf_zero_check; echo; echo "== DONE ${0##*/} $(date -u +%FT%TZ)"; }
