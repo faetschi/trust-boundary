@@ -1,3 +1,8 @@
-(measurer audit, git in the repo, 2026-11-18T13:07:04Z)
-git diff --quiet 13ed1193 5626e34f -- piruntime/{launcher_linux.go,host.go,profile_tooling_linux.go} cmd/tbound-profile/main_linux.go: rc=0
-git diff --quiet 28f407b8 5626e34f -- supervisor/internal/piruntime supervisor/cmd/tbound-profile: rc=0
+(measurer audit, git in the repo, 2026-11-18T13:07:56Z; each line: the exact command, then its rc)
+git diff --quiet 13ed11939c06e552a2d8662fb752bf2b3640ac68 5626e34fdbf40983949cde67f17238b82800665b -- supervisor/internal/piruntime/launcher_linux.go supervisor/internal/piruntime/host.go supervisor/internal/piruntime/profile_tooling_linux.go supervisor/cmd/tbound-profile/main_linux.go: rc=0
+git diff --quiet 28f407b84291222f386134c95620c71114f6b0ed 5626e34fdbf40983949cde67f17238b82800665b -- supervisor/internal/piruntime supervisor/cmd/tbound-profile: rc=0
+git ls-tree -r --name-only 5626e34fdbf40983949cde67f17238b82800665b -- supervisor/internal/piruntime/launcher_linux.go supervisor/internal/piruntime/host.go supervisor/internal/piruntime/profile_tooling_linux.go supervisor/cmd/tbound-profile/main_linux.go (the four paths exist, so the first pathspec matches files):
+supervisor/cmd/tbound-profile/main_linux.go
+supervisor/internal/piruntime/host.go
+supervisor/internal/piruntime/launcher_linux.go
+supervisor/internal/piruntime/profile_tooling_linux.go
