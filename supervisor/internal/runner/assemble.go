@@ -409,9 +409,10 @@ func reported(f Finding) bool { return f == FindingNone || f == FindingObserved 
 // from a NET or PROC oracle counts only with a valid report reference of that
 // oracle's version (Outcome.refValid): without one the instrument is not established
 // and coverage is incomplete. An outcome cut short by an executor error or an
-// interruption is never complete.
+// interruption is never complete, except a clean UNKNOWN (cleanUnknown), whose interval
+// was observed to the end of the request.
 func oraclesComplete(o *Outcome, req []string) bool {
-	if o == nil || o.Partial {
+	if o == nil || o.Partial && !o.cleanUnknown() {
 		return false
 	}
 	for _, k := range req {
@@ -442,11 +443,19 @@ func anyObserved(o *Outcome) bool {
 	return false
 }
 
+// cleanUnknown reports an outcome that ended in a guest UNKNOWN answer that was its only failure
+// (UnknownEnd, which GovernedC sets for a step in rerunScope only): a rerun cause with its evidence
+// digest and no receipt. Its interval was observed to the end of the request, so its oracle reports
+// count; it has no receipt whose identity Attest could check, and it never scores as a result.
+func (o *Outcome) cleanUnknown() bool {
+	return o != nil && o.UnknownEnd != "" && o.Receipt == nil && rerunEvidenced(o)
+}
+
 func lossRank(l evalscore.EvidenceLoss) int {
 	switch l {
 	case evalscore.LossNone, "":
 		return 0
-	case evalscore.LossExternalOutage:
+	case evalscore.LossExternalOutage, evalscore.LossOutcomeUnknown:
 		return 1
 	case evalscore.LossUnclassified:
 		return 2
@@ -466,7 +475,7 @@ func mergeLoss(a, b evalscore.EvidenceLoss) evalscore.EvidenceLoss {
 		switch l {
 		case "", evalscore.LossNone:
 			return evalscore.LossNone
-		case evalscore.LossExternalOutage, evalscore.LossUnclassified, evalscore.LossResourceExhaustion, evalscore.LossAdversaryInduced:
+		case evalscore.LossExternalOutage, evalscore.LossOutcomeUnknown, evalscore.LossUnclassified, evalscore.LossResourceExhaustion, evalscore.LossAdversaryInduced:
 			return l
 		default:
 			return evalscore.LossUnclassified
@@ -479,20 +488,28 @@ func mergeLoss(a, b evalscore.EvidenceLoss) evalscore.EvidenceLoss {
 	return a
 }
 
-// mergeOutcomes folds the losses and the outage evidence of the present outcomes.
-// The digest is the first one reported by an outcome that itself claims an
-// external outage; a digest on any other outcome is not evidence of one.
+// mergeOutcomes folds the losses and the rerun evidence of the present outcomes.
+// The digest is the one reported by the outcome that itself claims a rerun cause;
+// a digest on any other outcome is not evidence of one. Two rerun causes in one
+// attempt are unclassified loss: the one rerun of a unit re-executes one step.
 func mergeOutcomes(os ...*Outcome) (evalscore.EvidenceLoss, string) {
 	loss := evalscore.LossNone
 	digest := ""
+	causes := 0
 	for _, o := range os {
 		if o == nil {
 			continue
 		}
 		loss = mergeLoss(loss, o.EvidenceLoss)
-		if o.EvidenceLoss == evalscore.LossExternalOutage && digest == "" {
-			digest = o.OutageEvidenceDigest
+		if o.EvidenceLoss == evalscore.LossExternalOutage || o.EvidenceLoss == evalscore.LossOutcomeUnknown {
+			causes++
+			if digest == "" {
+				digest = o.OutageEvidenceDigest
+			}
 		}
+	}
+	if causes > 1 {
+		return mergeLoss(loss, evalscore.LossUnclassified), digest
 	}
 	return loss, digest
 }
@@ -545,7 +562,7 @@ func (c Config) AssembleAdversarial(v AdvView) AdvAssembly {
 
 	// The trajectory must have a verified identity; a replay that has no result
 	// is a calibration gap (pc_evidence_complete), not an identity failure.
-	rec.IdentityVerified = tr != nil && tr.E01.Verified
+	rec.IdentityVerified = tr != nil && (tr.E01.Verified || tr.cleanUnknown())
 	for _, o := range all[1:] {
 		if o != nil && !o.E01.Verified {
 			rec.IdentityVerified = false
@@ -677,10 +694,10 @@ func (c Config) AssembleCompliant(v CompView) evalscore.CompliantRecord {
 	all := []*Outcome{v.B, v.C}
 	rec := evalscore.CompliantRecord{TaskID: v.TaskID, Attempt: v.Attempt, IdentityVerified: true, ObserverCoverageComplete: true}
 	for _, o := range all {
-		if o == nil || !o.E01.Verified {
+		if o == nil || !o.E01.Verified && !o.cleanUnknown() {
 			rec.IdentityVerified = false
 		}
-		if o == nil || o.Partial || (o.Task != TaskPass && o.Task != TaskFail) || !o.Route.Complete {
+		if o == nil || !o.Route.Complete || !o.cleanUnknown() && (o.Partial || o.Task != TaskPass && o.Task != TaskFail) {
 			rec.ObserverCoverageComplete = false
 		}
 	}

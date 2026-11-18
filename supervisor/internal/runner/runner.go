@@ -28,6 +28,9 @@ type Options struct {
 	// unit budget is enforced. A ledger that cannot be read stops the run with
 	// an error, because the cap cannot then be checked.
 	Ledger func() (usdledger.Snapshot, error)
+	// Attributions are the frozen attributions of candidate obstructions, by task ID, as Export takes them.
+	// Rerun reads them to classify a compliant task's attempt 1; a candidate without one is unresolved.
+	Attributions map[string]evalscore.Attribution
 }
 
 // RunReport describes what a Run call did and what is still undone. The
@@ -133,12 +136,14 @@ func (r *Runner) Run(ctx context.Context) (RunReport, error) {
 	return r.report(rep), nil
 }
 
-// Rerun runs the one permitted outage rerun of the step. It is allowed only
-// when the original outcome reports an external outage with its evidence
-// digest (ErrRerunNotAllowed otherwise), only once per case (ErrRerunLimit),
-// and only if the budget has slack beyond the planned steps still to run
-// (ErrBudgetExhausted). The original record stays in the journal and the rerun
-// is the scored terminal. A rerun costs a unit.
+// Rerun runs the one registered rerun of the step (register D30 as amended
+// 2026-11-18). It is allowed only when the original outcome is an evidenced rerun
+// cause (an external outage or an UNKNOWN run, with its evidence digest) and the
+// case's attempt 1, as Export builds it, classifies as EXTERNAL_INFRASTRUCTURE_RERUN
+// (ErrRerunNotAllowed otherwise), only once per case (ErrRerunLimit), and only if
+// the budget has slack beyond the planned steps still to run (ErrBudgetExhausted).
+// The original record stays in the journal and the rerun is the scored terminal.
+// A rerun costs a unit.
 func (r *Runner) Rerun(ctx context.Context, stepID string) error {
 	st, ok := r.sched.Lookup(stepID)
 	if !ok {
@@ -149,8 +154,11 @@ func (r *Runner) Rerun(ctx context.Context, stepID string) error {
 		return fmt.Errorf("%w: %s is descriptive Configuration V", ErrRerunNotAllowed, stepID)
 	}
 	orig := r.j.terminalOf(stepID, 1)
-	if orig == nil || orig.Kind != EntryDone || !outageEvidenced(orig.Outcome) {
+	if orig == nil || orig.Kind != EntryDone || !rerunEvidenced(orig.Outcome) {
 		return fmt.Errorf("%w: %s", ErrRerunNotAllowed, stepID)
+	}
+	if err := rerunEligible(r.sched, r.j, st.CaseID, r.opt.Attributions[st.CaseID]); err != nil {
+		return fmt.Errorf("%w: %s: %v", ErrRerunNotAllowed, stepID, err)
 	}
 	if prev, dup := r.j.rerunOf(rerunCase(st)); dup {
 		return fmt.Errorf("%w: %s already rerun as %s", ErrRerunLimit, st.CaseID, prev.id)
@@ -254,6 +262,8 @@ func (r *Runner) execute(ctx context.Context, st Step, attempt int) error {
 		// outcome is kept next to the reason.
 		end.Kind, end.Reason = EntryAbandoned, "interrupted: "+ctx.Err().Error()
 		if partial {
+			// An interrupted step is never a rerun cause: Rerun needs a done record.
+			out.UnknownEnd, out.EvidenceLoss = "", mergeLoss(out.EvidenceLoss, evalscore.LossUnclassified)
 			end.Outcome = partialOutcome(out)
 			end.Reason += "; executor error: " + err.Error()
 		}

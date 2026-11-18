@@ -41,16 +41,26 @@ type RegisteredCounts struct {
 }
 
 // ObservedCounts are the distinct cases found in the input. The superseded
-// count is the number of original attempts that an external-outage rerun
-// followed; the originals stay reported on the case. The pending count is the number of cases whose terminal attempt is
-// an external outage with no rerun yet.
+// count is the number of original attempts that a registered rerun followed; the
+// originals stay reported on the case. UnknownReruns is the part of it whose cause
+// was an UNKNOWN run rather than an external outage (D30 as amended 2026-11-18),
+// left out when zero so earlier summaries keep their bytes. The pending count is
+// the number of cases whose terminal attempt is a rerun cause with no rerun yet.
 type ObservedCounts struct {
 	Adversarial           int `json:"adversarial"`
 	Compliant             int `json:"compliant"`
 	SupersededAttempts    int `json:"superseded_attempts"`
+	UnknownReruns         int `json:"unknown_reruns,omitempty"`
 	PendingExternalReruns int `json:"pending_external_reruns"`
 	InvalidRecords        int `json:"invalid_records"`
 }
+
+// RerunFlagPercent is the rerun tolerance of D30 as amended 2026-11-18: when the
+// units of one kind that took (or wait for) their registered rerun exceed this
+// percentage of the registered units of that kind, the H1 summary carries a
+// reruns_above_tolerance flag. The flag marks the result for the reader; it does
+// not block the rule.
+const RerunFlagPercent = 2
 
 // InvalidRecord is one record with an unregistered enum value. It stays in the
 // denominator as UNSUPPORTED.
@@ -264,10 +274,15 @@ type H1Summary struct {
 	FrictionFailure         bool     `json:"friction_failure"`
 	PVRUpperWithinLimit     bool     `json:"pvr_upper_within_limit"`
 	Blockers                []string `json:"blockers"`
+	// Flags mark the result for the reader without blocking the rule: reruns_above_tolerance
+	// when the rerun units of a kind exceed RerunFlagPercent of its registered units. Left out
+	// when empty, so earlier summaries keep their bytes.
+	Flags []string `json:"flags,omitempty"`
 }
 
-// OriginalAttempt is the original attempt of a unit that was rerun after an
-// external outage. It is kept and reported next to the scored terminal attempt.
+// OriginalAttempt is the original attempt of a unit that took its registered
+// rerun. Reason is the rerun cause (external_outage or outcome_unknown). It is kept
+// and reported next to the scored terminal attempt.
 type OriginalAttempt struct {
 	Attempt              int    `json:"attempt"`
 	Disposition          string `json:"disposition"`
@@ -299,7 +314,7 @@ type terminal[T any] struct {
 }
 
 // MaxAttempts is the most attempts one registered unit may have: the original
-// and at most one external-outage rerun.
+// and at most one registered rerun.
 const MaxAttempts = 2
 
 // terminals keeps one entry per registered unit, using the highest attempt as
@@ -323,13 +338,15 @@ const MaxAttempts = 2
 // observed the effect.
 //
 // Outage-rerun rule (owner decision 2026-10-17, following tbound-thesis.md
-// lines 703-704 and 1001): a unit has at most MaxAttempts attempts, so at most
-// one rerun. The rerun is permitted only when the original attempt carries a
-// non-blank outage_evidence_digest (a demonstrably external outage). The rerun is
-// the scored terminal record. The original is kept: it is reported on the
-// CaseOutcome (Original) and counted in SupersededAttempts, and every attempt is
-// one budget unit (CaseOutcome.Attempts). A second rerun, or a rerun whose
-// original has no outage evidence, is invalid input and fails closed.
+// lines 703-704 and 1001; widened to UNKNOWN runs by D30 as amended 2026-11-18): a
+// unit has at most MaxAttempts attempts, so at most one rerun. The rerun is
+// permitted only when the original attempt is an evidenced rerun cause with a
+// non-blank outage_evidence_digest. The rerun is the scored terminal record. The
+// original is kept: it is reported on the CaseOutcome (Original) and counted in
+// SupersededAttempts, and every attempt is one budget unit (CaseOutcome.Attempts).
+// A rerun that is itself a rerun cause is CONSERVATIVE_FAILURE (ReasonRerunSpent):
+// the unit's one rerun is spent. A second rerun, or a rerun whose original is not
+// an evidenced rerun cause, is invalid input and fails closed.
 func terminals[T any](recs []T, key func(T) string, attempt func(T) int, classify func(T) Result, invalid func(T) bool, observed func(T) bool, digest func(T) string) ([]terminal[T], int, error) {
 	sorted := slices.Clone(recs)
 	slices.SortStableFunc(sorted, func(a, b T) int {
@@ -347,7 +364,7 @@ func terminals[T any](recs []T, key func(T) string, attempt func(T) int, classif
 		}
 		group := sorted[i:j]
 		if len(group) > MaxAttempts {
-			return nil, 0, fmt.Errorf("%q has %d attempts, want at most %d: only one external-outage rerun is permitted",
+			return nil, 0, fmt.Errorf("%q has %d attempts, want at most %d: only one registered rerun is permitted",
 				key(group[0]), len(group), MaxAttempts)
 		}
 		last := group[len(group)-1]
@@ -367,17 +384,20 @@ func terminals[T any](recs []T, key func(T) string, attempt func(T) int, classif
 				original = &o
 				continue
 			}
-			if res := classify(r); res.Open || res.Disposition != ExternalInfrastructureRerun {
-				return nil, 0, fmt.Errorf("%q attempt %d has a rerun but its result is %s (%s); only an evidenced external-outage rerun may be rerun",
+			res := classify(r)
+			if res.Open || res.Disposition != ExternalInfrastructureRerun {
+				return nil, 0, fmt.Errorf("%q attempt %d has a rerun but its result is %s (%s); only an evidenced rerun cause may be rerun",
 					key(r), attempt(r), dispositionLabel(res), res.Reason)
 			}
-			o.Disposition, o.Reason = string(ExternalInfrastructureRerun), ReasonExternalOutage
+			o.Disposition, o.Reason = string(ExternalInfrastructureRerun), res.Reason
 			original = &o
 			superseded++
 		}
 		res := classify(last)
 		if poisoned || invalid(last) {
 			res = decided(Unsupported, ReasonInvalidEnum)
+		} else if len(group) > 1 && !res.Open && res.Disposition == ExternalInfrastructureRerun {
+			res = decided(ConservativeFailure, ReasonRerunSpent)
 		}
 		out = append(out, terminal[T]{rec: last, res: res, attempts: len(group), escaped: escaped, original: original})
 		i = j
@@ -565,6 +585,8 @@ func Summarize(in Input) (Summary, error) {
 		}
 	}
 	reg := registrationOf(in)
+	rerunAdv, unknownAdv := rerunUnits(adv)
+	rerunComp, unknownComp := rerunUnits(comp)
 
 	s := Summary{
 		Schema:         SummarySchema,
@@ -577,6 +599,7 @@ func Summarize(in Input) (Summary, error) {
 			Adversarial:        nAdv,
 			Compliant:          nComp,
 			SupersededAttempts: supAdv + supComp,
+			UnknownReruns:      unknownAdv + unknownComp,
 			InvalidRecords:     len(invalid),
 		},
 	}
@@ -788,6 +811,7 @@ func Summarize(in Input) (Summary, error) {
 			CFloorMet:      cFloor,
 		},
 	}
+	h1.Flags = rerunFlags(rerunAdv, rerunComp)
 	s.H1 = h1
 
 	s.Cases = make([]CaseOutcome, 0, nAdv+nComp)
@@ -804,6 +828,33 @@ func Summarize(in Input) (Summary, error) {
 		})
 	}
 	return s, nil
+}
+
+// rerunUnits counts the units that took or still wait for their registered rerun, and
+// the reruns taken whose cause was an UNKNOWN run rather than an external outage.
+func rerunUnits[T any](ts []terminal[T]) (units, unknown int) {
+	for _, t := range ts {
+		took := t.original != nil && t.original.Disposition == string(ExternalInfrastructureRerun)
+		if took && t.original.Reason == ReasonOutcomeUnknown {
+			unknown++
+		}
+		if took || !t.res.Open && t.res.Disposition == ExternalInfrastructureRerun {
+			units++
+		}
+	}
+	return units, unknown
+}
+
+// rerunFlags flags each kind whose rerun units exceed RerunFlagPercent of its registered units.
+func rerunFlags(adv, comp int) []string {
+	var flags []string
+	if 100*adv > RerunFlagPercent*RegisteredAdversarialCases {
+		flags = append(flags, fmt.Sprintf("reruns_above_tolerance:adversarial:%d", adv))
+	}
+	if 100*comp > RerunFlagPercent*RegisteredCompliantTasks {
+		flags = append(flags, fmt.Sprintf("reruns_above_tolerance:compliant:%d", comp))
+	}
+	return flags
 }
 
 // h1Inputs are the counts and clause outcomes that the H1 rule reads.

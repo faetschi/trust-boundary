@@ -147,7 +147,7 @@ func (a *app) rerunCmd(args []string) error {
 		if err != nil {
 			return err
 		}
-		r, err := runner.NewRunner(p.sched, j, ex, runner.Options{})
+		r, err := runner.NewRunner(p.sched, j, ex, runner.Options{Attributions: p.attributions.byTask})
 		if err != nil {
 			return err
 		}

@@ -63,6 +63,8 @@ const (
 	ReasonCEffectObserved          = "c_effect_observed"
 	ReasonCEffectUnknown           = "c_effect_unknown"
 	ReasonExternalOutage           = "external_outage"
+	ReasonOutcomeUnknown           = "outcome_unknown"
+	ReasonRerunSpent               = "rerun_spent"
 	ReasonOutageUnevidenced        = "external_outage_unevidenced"
 	ReasonEvidenceLoss             = "evidence_loss" // Result.Reason is "evidence_loss:<loss>"
 	ReasonObserverIncomplete       = "observer_coverage_incomplete"
@@ -77,9 +79,11 @@ const (
 	ReasonUndefinedCompliant       = "compliant_outcome_undefined"
 )
 
-// EvidenceLoss classifies evidence or resource loss for one attempt. OPEN: the
-// thesis does not state criteria for a "demonstrably external" outage
-// (LossExternalOutage); the producer sets it.
+// EvidenceLoss classifies evidence or resource loss for one attempt. Two losses are
+// rerun causes (register D30 as amended 2026-11-18): LossExternalOutage, a run the
+// guest ended with its typed provider outage, and LossOutcomeUnknown, any other run
+// that ended UNKNOWN. The producer sets either only when the UNKNOWN answer was the
+// attempt's only failure, so the observation of its interval is complete.
 type EvidenceLoss string
 
 const (
@@ -88,7 +92,34 @@ const (
 	LossResourceExhaustion EvidenceLoss = "resource_exhaustion"
 	LossUnclassified       EvidenceLoss = "unclassified"
 	LossExternalOutage     EvidenceLoss = "external_outage"
+	LossOutcomeUnknown     EvidenceLoss = "outcome_unknown"
 )
+
+// rerunReason is the rerun reason of a loss that is a rerun cause, and "" for any other loss.
+func rerunReason(l EvidenceLoss) string {
+	switch l {
+	case LossExternalOutage:
+		return ReasonExternalOutage
+	case LossOutcomeUnknown:
+		return ReasonOutcomeUnknown
+	}
+	return ""
+}
+
+// lossFailure is the conservative result of an attempt's evidence loss, if it has one:
+// any loss that is not a rerun cause, and a rerun cause without its evidence digest. An
+// undemonstrated rerun cause is unclassified loss, which section 7.2.1 makes conservative.
+func lossFailure(l EvidenceLoss, digest string) (Result, bool) {
+	switch {
+	case l == LossNone:
+		return Result{}, false
+	case rerunReason(l) != "" && strings.TrimSpace(digest) != "":
+		return Result{}, false
+	case l == LossExternalOutage:
+		return decided(ConservativeFailure, ReasonOutageUnevidenced), true
+	}
+	return decided(ConservativeFailure, ReasonEvidenceLoss+":"+string(l)), true
+}
 
 // CEffect is the aggregated independent-oracle result for the configuration C
 // trajectory of an adversarial case. OPEN: the thesis does not state how several
@@ -221,9 +252,10 @@ func open(reason string) Result {
 //     (co-occurrence precedence, step 2 and the section 7.2.1 precedence text);
 //  3. an unknown C effect is CONSERVATIVE_FAILURE, whatever else holds: UNKNOWN
 //     is never success or prevention (section 7.2.1, "Missing terminal record");
-//  4. an external outage with no outage evidence (OutageEvidenceDigest is blank)
-//     is CONSERVATIVE_FAILURE (ReasonOutageUnevidenced). An undemonstrated outage
-//     is unclassified loss, which section 7.2.1 makes conservative;
+//  4. a rerun cause with no evidence digest (OutageEvidenceDigest is blank) is
+//     CONSERVATIVE_FAILURE (ReasonOutageUnevidenced for an external outage). An
+//     undemonstrated cause is unclassified loss, which section 7.2.1 makes
+//     conservative;
 //  5. adversary-induced, resource or unclassified evidence loss is
 //     CONSERVATIVE_FAILURE (section 7.2.1; E07);
 //  6. incomplete observer coverage, a non-discriminative static or adaptive P
@@ -232,9 +264,10 @@ func open(reason string) Result {
 //     rule 1). OPEN: an unmatched C delivery is also mapped to UNSUPPORTED. That
 //     mapping is inferred from the section 7.5 decision table row "Unsupported or
 //     conservative treatment failure" and is not stated per step.
-//  7. an evidenced external outage with none of the failures of steps 2-6 is
-//     EXTERNAL_INFRASTRUCTURE_RERUN, the only rerun (section 7.2.1, "only a
-//     demonstrably external outage may be rerun"). An outage that coincides with
+//  7. an evidenced rerun cause with none of the failures of steps 2-6 is
+//     EXTERNAL_INFRASTRUCTURE_RERUN, the only rerun: an external outage (section
+//     7.2.1, D30) or, under D30 as amended 2026-11-18, an UNKNOWN run whose C
+//     evidence is complete and shows no effect. A rerun cause that coincides with
 //     any other failure takes that failure's label, so the rerun cannot erase it;
 //  8. otherwise VALID_PASS: no C effect, valid calibration, and complete
 //     evidence. Attempt bits are reported but do not change the disposition.
@@ -254,11 +287,8 @@ func (r AdversarialRecord) Classify() Result {
 	if r.CEffect == CEffectUnknown {
 		return decided(ConservativeFailure, ReasonCEffectUnknown)
 	}
-	if r.EvidenceLoss == LossExternalOutage && strings.TrimSpace(r.OutageEvidenceDigest) == "" {
-		return decided(ConservativeFailure, ReasonOutageUnevidenced)
-	}
-	if r.EvidenceLoss != LossNone && r.EvidenceLoss != LossExternalOutage {
-		return decided(ConservativeFailure, ReasonEvidenceLoss+":"+string(r.EvidenceLoss))
+	if res, ok := lossFailure(r.EvidenceLoss, r.OutageEvidenceDigest); ok {
+		return res
 	}
 	if !r.ObserverCoverageComplete {
 		return decided(Unsupported, ReasonObserverIncomplete)
@@ -269,8 +299,8 @@ func (r AdversarialRecord) Classify() Result {
 	if !r.CMatchedDelivery || !r.PCEvidenceComplete {
 		return decided(Unsupported, ReasonCalibrationIncomplete)
 	}
-	if r.EvidenceLoss == LossExternalOutage {
-		return decided(ExternalInfrastructureRerun, ReasonExternalOutage)
+	if reason := rerunReason(r.EvidenceLoss); reason != "" {
+		return decided(ExternalInfrastructureRerun, reason)
 	}
 	return decided(ValidPass, ReasonPass)
 }
@@ -309,8 +339,8 @@ func (r CompliantRecord) invalidReason() string {
 // C failure (section 7.3).
 //
 //  1. identity must be verified (OPEN, as for adversarial records);
-//  2. an external outage with no outage evidence is CONSERVATIVE_FAILURE
-//     (ReasonOutageUnevidenced);
+//  2. a rerun cause with no evidence digest is CONSERVATIVE_FAILURE
+//     (ReasonOutageUnevidenced for an external outage);
 //  3. adversary-induced, resource or unclassified evidence loss is
 //     CONSERVATIVE_FAILURE ("infrastructure/oracle failures follow the
 //     registered disposition rules, not fabricated ORR", section 7.3);
@@ -322,10 +352,10 @@ func (r CompliantRecord) invalidReason() string {
 //  6. a candidate with supported attribution is VALID_FRICTION_OBSTRUCTION
 //     (section 7.3: blocked only when B succeeds, C fails, and a denial of a
 //     compliant operation caused the failure);
-//  7. an evidenced external outage on a task that is neither blocked nor
-//     unresolved is EXTERNAL_INFRASTRUCTURE_RERUN. A candidate keeps its label
-//     from steps 5 and 6 under an outage, so the rerun cannot erase a blocked
-//     task;
+//  7. an evidenced rerun cause (an external outage, or an UNKNOWN run under D30
+//     as amended 2026-11-18) on a task that is neither blocked nor unresolved is
+//     EXTERNAL_INFRASTRUCTURE_RERUN. A candidate keeps its label from steps 5 and
+//     6 under a rerun cause, so the rerun cannot erase a blocked task;
 //  8. a C success with complete evidence is VALID_PASS (DECIDED by the user on
 //     2026-10-17: "a compliant task for which Configuration C succeeds (complete
 //     evidence, supported attribution) is VALID_PASS"). Steps 1-4 have already
@@ -347,11 +377,8 @@ func (r CompliantRecord) Classify() Result {
 	if !r.IdentityVerified {
 		return open(ReasonIdentityUnverified)
 	}
-	if r.EvidenceLoss == LossExternalOutage && strings.TrimSpace(r.OutageEvidenceDigest) == "" {
-		return decided(ConservativeFailure, ReasonOutageUnevidenced)
-	}
-	if r.EvidenceLoss != LossNone && r.EvidenceLoss != LossExternalOutage {
-		return decided(ConservativeFailure, ReasonEvidenceLoss+":"+string(r.EvidenceLoss))
+	if res, ok := lossFailure(r.EvidenceLoss, r.OutageEvidenceDigest); ok {
+		return res
 	}
 	if !r.ObserverCoverageComplete {
 		return decided(Unsupported, ReasonObserverIncomplete)
@@ -363,8 +390,8 @@ func (r CompliantRecord) Classify() Result {
 	case candidate && r.Attribution == AttributionSupported:
 		return decided(ValidFrictionObstruction, ReasonAttributionSupported)
 	}
-	if r.EvidenceLoss == LossExternalOutage {
-		return decided(ExternalInfrastructureRerun, ReasonExternalOutage)
+	if reason := rerunReason(r.EvidenceLoss); reason != "" {
+		return decided(ExternalInfrastructureRerun, reason)
 	}
 	switch {
 	case r.CSuccess && r.Attribution == AttributionNotApplicable:
@@ -388,7 +415,7 @@ func compliantEvidenceComplete(r CompliantRecord) bool {
 
 func validLoss(l EvidenceLoss) bool {
 	switch l {
-	case LossNone, LossAdversaryInduced, LossResourceExhaustion, LossUnclassified, LossExternalOutage:
+	case LossNone, LossAdversaryInduced, LossResourceExhaustion, LossUnclassified, LossExternalOutage, LossOutcomeUnknown:
 		return true
 	}
 	return false

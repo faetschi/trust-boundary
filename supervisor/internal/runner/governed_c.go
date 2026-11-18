@@ -251,6 +251,48 @@ type governedResponse struct {
 	Status        string          `json:"status"`
 	ErrorCode     string          `json:"error_code"`
 	Receipt       json.RawMessage `json:"receipt"`
+	// OutageEvidenceDigest is set with error code provider-outage: the hash of the guest's
+	// provider_exchange_unknown record of the failed attempt.
+	OutageEvidenceDigest string `json:"outage_evidence_digest"`
+}
+
+// governedProviderOutage is the guest's error code of an UNKNOWN run whose last provider attempt was an outage
+// (register D30 as amended 2026-11-18).
+const governedProviderOutage = "provider-outage"
+
+// rerunScope reports whether an UNKNOWN step may take the registered rerun (D30 as amended 2026-11-18): the C
+// trajectory of an adversarial case and the B and C steps of a compliant task. Replays and P steps run a scripted
+// provider; an UNKNOWN there stays unclassified loss.
+func rerunScope(s Step) bool {
+	switch s.Kind {
+	case evalcorpus.KindAdversarial:
+		return s.Role == RoleTrajectory && s.Configuration == CfgC
+	case evalcorpus.KindCompliant:
+		return s.Configuration == CfgB || s.Configuration == CfgC
+	}
+	return false
+}
+
+// markUnknownEnd types an UNKNOWN answer that was the outcome's only failure as a rerun cause: an evidenced provider
+// outage, or any other UNKNOWN with the digest of the guest's answer line as its evidence.
+func markUnknownEnd(o *Outcome, s Step, resp governedResponse) {
+	if !rerunScope(s) {
+		return
+	}
+	o.UnknownEnd = resp.ErrorCode
+	if resp.ErrorCode == governedProviderOutage && validHexDigest(resp.OutageEvidenceDigest) {
+		o.EvidenceLoss, o.OutageEvidenceDigest = evalscore.LossExternalOutage, "provider-journal:"+resp.OutageEvidenceDigest
+		return
+	}
+	o.EvidenceLoss, o.OutageEvidenceDigest = evalscore.LossOutcomeUnknown, o.E01.Digest
+}
+
+func validHexDigest(s string) bool {
+	if len(s) != 64 {
+		return false
+	}
+	_, err := hex.DecodeString(s)
+	return err == nil && strings.ToLower(s) == s
 }
 
 // governedReceipt is the part of productionPiReceipt (cmd/tbound/production_session_linux.go)
@@ -437,6 +479,9 @@ func (g GovernedC) Execute(ctx context.Context, s Step) (Outcome, error) {
 	}
 	errs = append(errs, g.collect(ctx, ref, &o)...)
 	mapReplay(&o, s)
+	if resp.Status == "unknown" && len(errs) == 1 {
+		markUnknownEnd(&o, s, resp)
+	}
 	return o, errors.Join(errs...)
 }
 

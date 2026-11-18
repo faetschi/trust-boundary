@@ -26,6 +26,7 @@ import (
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/piruntime"
+	"tbound/supervisor/internal/providerbridge"
 	"tbound/supervisor/internal/researchroute"
 	"tbound/supervisor/internal/runner"
 	"tbound/supervisor/internal/sessionrepo"
@@ -82,6 +83,21 @@ type piServiceResponse struct {
 	Status        string          `json:"status"`
 	ErrorCode     string          `json:"error_code,omitempty"`
 	Receipt       json.RawMessage `json:"receipt,omitempty"`
+	// OutageEvidenceDigest comes only with error code provider-outage: the hash of the provider journal's
+	// provider_exchange_unknown record of the failed attempt (register D30 as amended 2026-11-18).
+	OutageEvidenceDigest string `json:"outage_evidence_digest,omitempty"`
+}
+
+// piServiceProviderOutage is the UNKNOWN code of a run whose last provider attempt was an outage.
+const piServiceProviderOutage = "provider-outage"
+
+// providerOutageEvidence returns the provider journal record hash of a run error that carries a provider outage.
+func providerOutageEvidence(runErr error) (string, bool) {
+	var outage providerbridge.ProviderOutage
+	if !errors.As(runErr, &outage) || !validDigestText("sha256:"+outage.RecordHash) {
+		return "", false
+	}
+	return outage.RecordHash, true
 }
 
 type piServiceSocketRegistration struct {
@@ -1755,14 +1771,18 @@ func servePiServiceRequests(ctx context.Context, listener net.Listener, socket p
 			admission := piServiceAdmissionContext{Peer: originalPeer, CurrentPeer: peer, Request: request, PayloadDigest: payloadDigest,
 				Accepted: acceptedEvent, AcceptedRecord: acceptedRecord, IsReplay: isReplay}
 			receipt, runErr := run(withPiServiceAdmission(taskCtx, admission), request)
-			status, errorCode := "completed", ""
+			status, errorCode, outageDigest := "completed", "", ""
 			if len(receipt) == 0 || runErr != nil {
 				status, errorCode = "unknown", "task-outcome-unknown"
+				if digest, ok := providerOutageEvidence(runErr); ok {
+					errorCode, outageDigest = piServiceProviderOutage, digest
+				}
 				// The response carries only the stable code; the cause belongs in the service log.
 				fmt.Fprintf(os.Stderr, "request %s outcome unknown: %v\n", request.RequestID, runErr)
 			}
 			response := piServiceResponse{SchemaVersion: piServiceResponseSchema, RequestID: request.RequestID,
-				Status: status, ErrorCode: errorCode, Receipt: append(json.RawMessage(nil), receipt...)}
+				Status: status, ErrorCode: errorCode, Receipt: append(json.RawMessage(nil), receipt...),
+				OutageEvidenceDigest: outageDigest}
 			settling.Lock()
 			if isReplay && runErr != nil {
 				// A failed host recovery attempt remains unresolved. It cannot be
