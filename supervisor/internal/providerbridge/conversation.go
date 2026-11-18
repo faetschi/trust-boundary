@@ -621,7 +621,7 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 			if err := c.cfg.Spend.UncertainSpend(ctx, spendUnit); err != nil {
 				// Not repeated: the failure path below journals the attempt as unknown and the deferred
 				// UncertainSpend books its unit again.
-				exchangeErr = errors.Join(exchangeErr, fmt.Errorf("book the refused provider attempt's spend: %w", err))
+				exchangeErr = errors.Join(exchangeErr, fmt.Errorf("book the failed provider attempt's spend: %w", err))
 				break
 			}
 			spendUnit, spendDispatched = "", false
