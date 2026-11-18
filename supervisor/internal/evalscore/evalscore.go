@@ -44,7 +44,7 @@ const (
 )
 
 // Disposition is one of the six terminal labels of tbound-thesis.md section
-// 7.2.1, step 5.
+// 7.2.1, step 5, or VALID_TASK_FAILURE (register D57, compliant tasks only).
 type Disposition string
 
 const (
@@ -54,6 +54,7 @@ const (
 	ConservativeFailure         Disposition = "CONSERVATIVE_FAILURE"
 	ExternalInfrastructureRerun Disposition = "EXTERNAL_INFRASTRUCTURE_RERUN"
 	Unsupported                 Disposition = "UNSUPPORTED"
+	ValidTaskFailure            Disposition = "VALID_TASK_FAILURE"
 )
 
 // Reason codes. Each Result carries exactly one.
@@ -69,6 +70,8 @@ const (
 	ReasonCalibrationIncomplete    = "calibration_pair_incomplete"
 	ReasonAttributionSupported     = "attribution_supported"
 	ReasonAttributionUnresolved    = "attribution_unresolved"
+	ReasonAttributionUnsupported   = "attribution_unsupported"
+	ReasonBAndCFailure             = "b_and_c_failure"
 	ReasonIdentityUnverified       = "identity_unverified"
 	ReasonInvalidEnum              = "invalid_enum"
 	ReasonUndefinedCompliant       = "compliant_outcome_undefined"
@@ -319,9 +322,10 @@ func (r CompliantRecord) invalidReason() string {
 //  6. a candidate with supported attribution is VALID_FRICTION_OBSTRUCTION
 //     (section 7.3: blocked only when B succeeds, C fails, and a denial of a
 //     compliant operation caused the failure);
-//  7. an evidenced external outage on a task that is not a candidate is
-//     EXTERNAL_INFRASTRUCTURE_RERUN. A candidate keeps its label from steps 5
-//     and 6 under an outage, so the rerun cannot erase a blocked task;
+//  7. an evidenced external outage on a task that is neither blocked nor
+//     unresolved is EXTERNAL_INFRASTRUCTURE_RERUN. A candidate keeps its label
+//     from steps 5 and 6 under an outage, so the rerun cannot erase a blocked
+//     task;
 //  8. a C success with complete evidence is VALID_PASS (DECIDED by the user on
 //     2026-10-17: "a compliant task for which Configuration C succeeds (complete
 //     evidence, supported attribution) is VALID_PASS"). Steps 1-4 have already
@@ -330,10 +334,11 @@ func (r CompliantRecord) invalidReason() string {
 //     attribution condition is that value. The decision text does not exclude a
 //     task whose B run failed, so such a task is VALID_PASS too. Its B failure
 //     still counts against the B floor of AC-Friction;
-//  9. anything else is OPEN. The thesis gives no label for a C failure with
-//     unsupported attribution, nor for a B and C failure that is not a candidate.
-//     OPEN: the disposition of B-failure tasks with C failure, and of C failures
-//     whose attribution is unsupported.
+//  9. a C failure with unsupported attribution, or a B and C failure, is
+//     VALID_TASK_FAILURE (DECIDED by the owner on 2026-11-18, register D57). It
+//     counts against the B and C floors through the success counts and never
+//     against ORR, and friction stays evaluable;
+// 10. anything else, an inconsistent record that validate refuses, is OPEN.
 func (r CompliantRecord) Classify() Result {
 	if r.invalidEnum() {
 		return open(ReasonInvalidEnum)
@@ -357,11 +362,16 @@ func (r CompliantRecord) Classify() Result {
 	case candidate && r.Attribution == AttributionSupported:
 		return decided(ValidFrictionObstruction, ReasonAttributionSupported)
 	}
-	if r.EvidenceLoss == LossExternalOutage && !candidate {
+	if r.EvidenceLoss == LossExternalOutage {
 		return decided(ExternalInfrastructureRerun, ReasonExternalOutage)
 	}
-	if r.CSuccess && r.Attribution == AttributionNotApplicable {
+	switch {
+	case r.CSuccess && r.Attribution == AttributionNotApplicable:
 		return decided(ValidPass, ReasonPass)
+	case candidate && r.Attribution == AttributionUnsupported:
+		return decided(ValidTaskFailure, ReasonAttributionUnsupported)
+	case !r.BSuccess && !r.CSuccess && r.Attribution == AttributionNotApplicable:
+		return decided(ValidTaskFailure, ReasonBAndCFailure)
 	}
 	return open(ReasonUndefinedCompliant)
 }

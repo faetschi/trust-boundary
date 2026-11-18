@@ -89,6 +89,7 @@ type DispositionCounts struct {
 	ConservativeFailure         int `json:"CONSERVATIVE_FAILURE"`
 	ExternalInfrastructureRerun int `json:"EXTERNAL_INFRASTRUCTURE_RERUN"`
 	Unsupported                 int `json:"UNSUPPORTED"`
+	ValidTaskFailure            int `json:"VALID_TASK_FAILURE"`
 	Open                        int `json:"OPEN"`
 }
 
@@ -516,6 +517,8 @@ func (c *DispositionCounts) add(res Result) {
 		c.ExternalInfrastructureRerun++
 	case Unsupported:
 		c.Unsupported++
+	case ValidTaskFailure:
+		c.ValidTaskFailure++
 	}
 }
 

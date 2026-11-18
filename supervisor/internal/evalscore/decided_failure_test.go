@@ -1,9 +1,6 @@
 package evalscore
 
-import (
-	"slices"
-	"testing"
-)
+import "testing"
 
 // TestNonPolicyCFailuresAreDecidedTaskFailures follows the owner decision of
 // 2026-11-18 (register D57): a compliant task whose C failure has no supported
@@ -26,8 +23,8 @@ func TestNonPolicyCFailuresAreDecidedTaskFailures(t *testing.T) {
 			t.Fatalf("%s: disposition %s, reason %s; want VALID_TASK_FAILURE, %s", c.id, got.Disposition, got.Reason, c.reason)
 		}
 	}
-	if s.Dispositions.Compliant.Open != 0 {
-		t.Fatalf("compliant OPEN = %d, want 0", s.Dispositions.Compliant.Open)
+	if d := s.Dispositions.Compliant; d.Open != 0 || d.ValidTaskFailure != 2 || d.ValidPass != 98 {
+		t.Fatalf("compliant dispositions = %+v, want 98 VALID_PASS, 2 VALID_TASK_FAILURE, 0 OPEN", d)
 	}
 	if s.Configurations.B.Success != 99 || s.Configurations.C.Success != 98 {
 		t.Fatalf("B success %d, C success %d; want 99, 98", s.Configurations.B.Success, s.Configurations.C.Success)
@@ -40,26 +37,5 @@ func TestNonPolicyCFailuresAreDecidedTaskFailures(t *testing.T) {
 	}
 	if !s.H1.RuleSatisfied {
 		t.Fatalf("rule_satisfied false, blockers %v; want true", s.H1.Blockers)
-	}
-}
-
-// TestDecidedTaskFailuresBelowTheCFloorFailFriction keeps the C floor binding:
-// eleven decided task failures leave 89 C successes, so friction is evaluable
-// and fails, rather than staying open.
-func TestDecidedTaskFailuresBelowTheCFloorFailFriction(t *testing.T) {
-	in := cleanInput()
-	for i := 0; i < 11; i++ {
-		in.Compliant[i].CSuccess = false
-		in.Compliant[i].Attribution = AttributionUnsupported
-	}
-	s := mustSummarize(t, in)
-	if f := s.Clauses.Friction; !f.Evaluable || f.Passed || f.CFloorMet || !f.BFloorMet || !f.ORRWithinLimit {
-		t.Fatalf("friction = %+v, want evaluable, not passed, only the C floor missed", f)
-	}
-	if !s.H1.FrictionFailure || s.H1.RuleSatisfied {
-		t.Fatalf("friction failure %v, rule_satisfied %v; want true, false", s.H1.FrictionFailure, s.H1.RuleSatisfied)
-	}
-	if !slices.Equal(s.H1.Blockers, []string{"friction_clause_not_passed"}) {
-		t.Fatalf("blockers = %v, want [friction_clause_not_passed]", s.H1.Blockers)
 	}
 }

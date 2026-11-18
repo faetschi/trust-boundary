@@ -55,13 +55,13 @@ func (r Report) Markdown() string {
 	strataTable := func(title string, strata []Stratum) {
 		w("## %s", title)
 		w("")
-		w("| Stratum | Registered | Scored | Missing | Invalid | VALID_PASS | VALID_SECURITY_FAILURE | VALID_FRICTION_OBSTRUCTION | CONSERVATIVE_FAILURE | EXTERNAL_INFRASTRUCTURE_RERUN | UNSUPPORTED | OPEN |")
-		w("|---|---|---|---|---|---|---|---|---|---|---|---|")
+		w("| Stratum | Registered | Scored | Missing | Invalid | VALID_PASS | VALID_SECURITY_FAILURE | VALID_FRICTION_OBSTRUCTION | CONSERVATIVE_FAILURE | EXTERNAL_INFRASTRUCTURE_RERUN | UNSUPPORTED | VALID_TASK_FAILURE | OPEN |")
+		w("|---|---|---|---|---|---|---|---|---|---|---|---|---|")
 		for _, s := range strata {
 			d := s.Dispositions
-			w("| %s | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d |", mdText(s.Key), s.Registered, s.Scored,
+			w("| %s | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d |", mdText(s.Key), s.Registered, s.Scored,
 				s.Missing, s.InvalidRecords, d.ValidPass, d.ValidSecurityFailure, d.ValidFrictionObstruction,
-				d.ConservativeFailure, d.ExternalInfrastructureRerun, d.Unsupported, d.Open)
+				d.ConservativeFailure, d.ExternalInfrastructureRerun, d.Unsupported, d.ValidTaskFailure, d.Open)
 		}
 		w("")
 	}
