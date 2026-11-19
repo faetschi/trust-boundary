@@ -19,6 +19,7 @@ import (
 
 	"tbound/supervisor/internal/corpusadmit"
 	"tbound/supervisor/internal/piruntime"
+	"tbound/supervisor/internal/researchroute"
 	"tbound/supervisor/internal/trialfix"
 	"tbound/supervisor/internal/wsoracle"
 )
@@ -60,6 +61,8 @@ type trialTestEnv struct {
 	digest     string // the fixture digest the pinned corpus gives trialTestCase
 	files      fstest.MapFS
 	pendingErr error
+	// usdStopErr is what the research ledger's check before the unit returns.
+	usdStopErr error
 	// populated is what the fake cells cgroup reports.
 	populated bool
 	killed    []string // cgroup paths the kill ran on
@@ -134,6 +137,7 @@ func newTrialTestEnv(t *testing.T) *trialTestEnv {
 			e.events = append(e.events, "pending")
 			return e.pendingErr
 		},
+		usdStop: func(context.Context) error { return e.usdStopErr },
 		cleanNoReap: func(context.Context, evidenceCell) error {
 			e.events = append(e.events, "no-reap")
 			return e.noReapErr
@@ -311,6 +315,8 @@ func TestTrialResetRefusals(t *testing.T) {
 			e.files[name] = other
 		}, "digests to"},
 		"workflow pending": {func(e *trialTestEnv) { e.pendingErr = errors.New("workflow abc is not terminal") }, "not terminal"},
+		// The research route's USD stop rule: every provider request of the unit would be refused.
+		"research ledger stop rule": {func(e *trialTestEnv) { e.usdStopErr = researchroute.ErrStopRule }, "stop rule"},
 		"cell host uid is not the fixture owner": {func(e *trialTestEnv) {
 			e.cell = func(context.Context) (evidenceCell, error) {
 				return evidenceCell{CgroupPath: "/cells", UID: 1000, GID: 1000, HostUID: e.owner.UID + 1, HostGID: e.owner.GID}, nil
@@ -606,5 +612,17 @@ func TestTrialResetRefusesBeforeWipingWhenTheCleanupFails(t *testing.T) {
 		if last := e.events[len(e.events)-1]; last != "unlock" {
 			t.Fatalf("%s: the lock was not released: %v", name, e.events)
 		}
+	}
+}
+
+// Only the research route has a USD ledger: on the engineering route the check reads nothing, on the research route
+// a ledger it cannot read refuses the unit.
+func TestUSDStopReadsTheLedgerOnTheResearchRouteOnly(t *testing.T) {
+	missing := researchroute.Paths{LedgerConfig: filepath.Join(t.TempDir(), "absent.json")}
+	if err := usdStopFor(piServiceConfig{ProviderRoute: piruntime.D09ManagedPiProviderRouteEngineering}, missing); err != nil {
+		t.Fatalf("engineering route: %v", err)
+	}
+	if err := usdStopFor(piServiceConfig{ProviderRoute: piruntime.D09ManagedPiProviderRouteResearch}, missing); err == nil {
+		t.Fatal("research route with an unreadable ledger configuration admitted the unit")
 	}
 }

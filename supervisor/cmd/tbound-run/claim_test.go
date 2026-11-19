@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -116,9 +117,10 @@ func writeRegistration(t *testing.T, e *env, runBinding string, mutate func(*eva
 	return e.file("registration-"+reg.RecordDigest[7:15]+".json", string(raw))
 }
 
-// `plan --registration` refuses a run that is not the registered one before any unit is spent, and the report
-// names the mismatch; a report of the registered pilot run stays non-claim-bearing for its other reasons.
-func TestPlanAndReportCheckTheRegistration(t *testing.T) {
+// `run --registration` refuses a run that is not the registered one before any unit is spent, and the report
+// names the mismatch; a report of the registered pilot run stays non-claim-bearing for its other reasons. `plan`
+// has no registration check of its own: run's check comes first.
+func TestRunAndReportCheckTheRegistration(t *testing.T) {
 	e := newEnv(t)
 	out, err := e.cliCfg(nil, "plan")
 	if err != nil {
@@ -126,26 +128,20 @@ func TestPlanAndReportCheckTheRegistration(t *testing.T) {
 	}
 	binding := line(out, "run_binding")
 	match := writeRegistration(t, e, binding, nil)
-	if out, err := e.cliCfg(nil, "plan", "--registration", match); err != nil || !strings.Contains(out, "matches") {
-		t.Fatalf("the registered run was refused: %v\n%s", err, out)
+	if _, err := e.cliCfg(nil, "plan", "--registration", match); !errors.Is(err, errUsage) {
+		t.Fatalf("plan --registration: %v, want a usage error", err)
 	}
 	other := writeRegistration(t, e, fixtureDigest("drain grace 30"), nil)
-	if _, err := e.cliCfg(nil, "plan", "--registration", other); err == nil || !strings.Contains(err.Error(), "run_binding") {
-		t.Fatalf("a run with another run binding passed the registration: %v", err)
-	}
 	tampered, _ := os.ReadFile(match)
 	forged := e.file("forged.json", strings.Replace(string(tampered), `"quota_profile":"pilot"`, `"quota_profile":"thesis"`, 1))
-	if _, err := e.cliCfg(nil, "plan", "--registration", forged); err == nil || !strings.Contains(err.Error(), "record_digest") {
-		t.Fatalf("an edited record was accepted: %v", err)
-	}
 	noCheck := writeRegistration(t, e, binding, func(r *evalreport.Registration) { r.CorpusCheckDigest = "" })
-	if _, err := e.cliCfg(nil, "plan", "--registration", noCheck); err == nil || !strings.Contains(err.Error(), "corpus_check_digest is empty") {
-		t.Fatalf("a v2 record without its corpus-check digest was accepted: %v", err)
-	}
-
-	refused := newFake(e)
-	if _, err := e.cliCfg(fakeWire(refused), "run", "--registration", other); err == nil || !strings.Contains(err.Error(), "run_binding") || len(refused.Calls()) != 0 {
-		t.Fatalf("run of an unregistered run: %v, %d steps executed", err, len(refused.Calls()))
+	for _, tc := range []struct{ record, want string }{
+		{other, "run_binding"}, {forged, "record_digest"}, {noCheck, "corpus_check_digest is empty"},
+	} {
+		refused := newFake(e)
+		if _, err := e.cliCfg(fakeWire(refused), "run", "--registration", tc.record); err == nil || !strings.Contains(err.Error(), tc.want) || len(refused.Calls()) != 0 {
+			t.Fatalf("run with %s: %v, %d steps executed; want a refusal naming %s", tc.record, err, len(refused.Calls()), tc.want)
+		}
 	}
 	if _, err := e.cliCfg(fakeWire(newFake(e)), "run", "--registration", match); err != nil {
 		t.Fatal(err)
