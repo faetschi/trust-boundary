@@ -46,7 +46,8 @@ type crash struct{}
 func TestResumeAfterCrashMidRun(t *testing.T) {
 	s := smallSchedule(t, smallConfig())
 	dir := t.TempDir()
-	const dieAt = 30
+	// An adversarial replay: not resumable, so it is settled and abandoned (a C trajectory would be collected).
+	dieAt := findStep(t, s, firstCase(s, "adversarial"), RoleStaticReplay, CfgC).Index
 
 	first := NewFakeExecutor(s.Config)
 	first.Hook = func(st Step, _ *Outcome) error {
