@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"tbound/supervisor/internal/evalcorpus"
+	"tbound/supervisor/internal/evalscore"
 )
 
 // fakeGuest is the governed service and the trial command of one guest. Like the real
@@ -188,6 +189,41 @@ func TestResumedAdversarialStepStaysAbandoned(t *testing.T) {
 	}
 	if g.workflows != cSteps || len(g.resets) != cSteps {
 		t.Fatalf("guest ran %d workflows and %d resets for %d C steps: the settle started a run", g.workflows, len(g.resets), cSteps)
+	}
+}
+
+type dieOnRerun struct{ Executor }
+
+func (d dieOnRerun) Execute(ctx context.Context, s Step) (Outcome, error) {
+	if s.Attempt == 2 {
+		panic("host process died")
+	}
+	return d.Executor.Execute(ctx, s)
+}
+
+// A host that died inside an adversarial rerun left attempt 2 started. Like attempt 1, it is settled before it is
+// closed as abandoned: its request id is sent again, so a guest service that restarted mid-request does not keep it
+// open and block every later begin (SB-04).
+func TestInterruptedAdversarialRerunIsSettledBeforeItIsAbandoned(t *testing.T) {
+	u := runWithUnknown(t, "adversarial", RoleTrajectory, CfgC, evalscore.LossExternalOutage, nil)
+	func() {
+		defer func() {
+			if recover() == nil {
+				t.Fatal("the simulated host death did not happen")
+			}
+		}()
+		_ = mustRunner(t, u.sched, u.j, dieOnRerun{u.exec}, Options{}).Rerun(context.Background(), u.exec.target.ID())
+	}()
+	next := NewFakeExecutor(u.sched.Config)
+	rep, err := mustRunner(t, u.sched, u.j, next, Options{}).Run(context.Background())
+	if err != nil || rep.Abandoned != 1 {
+		t.Fatalf("report %+v %v", rep, err)
+	}
+	if calls := next.Calls(); len(calls) != 1 || calls[0].ID() != u.exec.target.ID() || calls[0].Attempt != 2 || !calls[0].Resumed {
+		t.Fatalf("calls %+v, want one settling send of the rerun", calls)
+	}
+	if term := u.j.terminalOf(u.exec.target.ID(), 2); term == nil || term.Kind != EntryAbandoned || !strings.Contains(term.Reason, "sent again") {
+		t.Fatalf("rerun terminal %+v, want abandoned after settling", term)
 	}
 }
 

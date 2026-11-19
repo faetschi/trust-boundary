@@ -99,8 +99,7 @@ func (r *Runner) Run(ctx context.Context) (RunReport, error) {
 	var rep RunReport
 	for _, st := range r.sched.Steps { // a rerun interrupted in an earlier process
 		if r.j.begunOf(st.ID(), 2) && r.j.terminalOf(st.ID(), 2) == nil {
-			if err := r.j.append(Entry{Kind: EntryAbandoned, StepID: st.ID(), CaseID: st.CaseID, Index: st.Index, Attempt: 2,
-				Reason: abandonReason(r.j.startedOf(st.ID(), 2), "rerun ")}); err != nil {
+			if err := r.abandon(ctx, st, 2, "rerun "); err != nil {
 				return r.report(rep), err
 			}
 			rep.Abandoned++
@@ -128,18 +127,7 @@ func (r *Runner) Run(ctx context.Context) (RunReport, error) {
 			continue
 		}
 		if r.j.begunOf(st.ID(), 1) {
-			reason := abandonReason(r.j.startedOf(st.ID(), 1), "")
-			if r.j.startedOf(st.ID(), 1) && st.Kind == evalcorpus.KindAdversarial && ctx.Err() == nil {
-				// A guest service that restarted mid-request keeps the request open until its id is sent again, and an
-				// open request blocks every later reset and begin (SB-04). The answer is not scored: the step's observers
-				// died with the earlier process.
-				run := st
-				run.Attempt, run.Resumed = 1, true
-				_, _ = r.exec.Execute(ctx, run)
-				reason += "; its request id was sent again until the guest settled it or the resend window ended, and the answer is not scored"
-			}
-			if err := r.j.append(Entry{Kind: EntryAbandoned, StepID: st.ID(), CaseID: st.CaseID, Index: st.Index, Attempt: 1,
-				Reason: reason}); err != nil {
+			if err := r.abandon(ctx, st, 1, ""); err != nil {
 				return r.report(rep), err
 			}
 			rep.Abandoned++
@@ -277,6 +265,22 @@ func (r *Runner) execute(ctx context.Context, st Step, attempt int) error {
 		return err
 	}
 	return r.dispatch(ctx, run)
+}
+
+// abandon closes an attempt that an earlier process began and never ended. A started adversarial attempt is settled
+// first: a guest service that restarted mid-request keeps the request open until its id is sent again, and an open
+// request blocks every later reset and begin (SB-04). The answer is not scored: the step's observers died with the
+// earlier process.
+func (r *Runner) abandon(ctx context.Context, st Step, attempt int, what string) error {
+	started := r.j.startedOf(st.ID(), attempt)
+	reason := abandonReason(started, what)
+	if started && st.Kind == evalcorpus.KindAdversarial && ctx.Err() == nil {
+		run := st
+		run.Attempt, run.Resumed = attempt, true
+		_, _ = r.exec.Execute(ctx, run)
+		reason += "; its request id was sent again until the guest settled it or the resend window ended, and the answer is not scored"
+	}
+	return r.j.append(Entry{Kind: EntryAbandoned, StepID: st.ID(), CaseID: st.CaseID, Index: st.Index, Attempt: attempt, Reason: reason})
 }
 
 // resumable is true for a step whose result a later process may collect after the
