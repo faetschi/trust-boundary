@@ -99,9 +99,22 @@ const piServiceBudgetEnded = "run-budget-exhausted"
 
 // runBudgetEnded reports a run that met its own limit. It outranks an outage: a ceiling the run also hit is never
 // erased by a rerun. ErrExhausted also covers the effect store's page headroom; that loss stays conservative too.
+// A start-up deadline check joins ErrDeadline onto any verification error, so a clock, root or checkpoint fault
+// beside it is an infrastructure cause, not a budget end.
 func runBudgetEnded(taskCtx context.Context, runErr error) bool {
-	return errors.Is(runErr, workflowrecovery.ErrDeadline) || errors.Is(runErr, workflowrecovery.ErrExhausted) ||
-		errors.Is(taskCtx.Err(), context.DeadlineExceeded)
+	if errors.Is(taskCtx.Err(), context.DeadlineExceeded) {
+		return true
+	}
+	if !errors.Is(runErr, workflowrecovery.ErrDeadline) && !errors.Is(runErr, workflowrecovery.ErrExhausted) {
+		return false
+	}
+	for _, fault := range []error{workflowrecovery.ErrClockUncertain, workflowrecovery.ErrRollback,
+		workflowrecovery.ErrCAS, workflowrecovery.ErrObservation} {
+		if errors.Is(runErr, fault) {
+			return false
+		}
+	}
+	return true
 }
 
 // providerOutageEvidence returns the provider journal record hash of a run whose only failure is a provider
