@@ -9,9 +9,6 @@
 // earlier process and never finished is closed as abandoned, never run again, except a
 // started non-adversarial B or C step, whose stored result the runner collects under the
 // same request id (runner.Runner.Run).
-//
-// Configurations P, B and V have no executor yet. A plan that contains them fails closed
-// with runner.ErrNotWired in `selfcheck` and `run`; nothing is filtered or skipped.
 package main
 
 import (
