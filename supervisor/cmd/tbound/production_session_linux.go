@@ -722,7 +722,7 @@ func runComposedProductionPiSession(ctx context.Context, output io.Writer, confi
 		ContainmentProfileDigest: session.Profile.ContainmentProfileDigest,
 		FrozenSourceDigest:       session.Profile.SourceProvenanceDigest, ProviderProfile: session.Profile.ProviderProfile,
 		ProviderExchange: providerExchange, ClaimBearing: false,
-		WorkerReady: true, TaskAdmitted: true, TurnCompleted: true,
+		WorkerReady: true, TaskAdmitted: true, TurnCompleted: outcome.turnErr == nil,
 		ProposalCount: supervisor.HandledProposals(),
 		Settlement:    string(settlement.State), ExitObserved: settlement.ExitObserved, ExitCode: settlement.ExitCode,
 		DescendantsSettled:     settlement.DescendantsSettled,
@@ -778,7 +778,8 @@ func runComposedProductionPiSession(ctx context.Context, output io.Writer, confi
 	if publishErr != nil || workerCloseErr != nil || cleanupErr != nil {
 		receipt.Success = false
 	}
-	return errors.Join(writeProductionPiReceipt(output, receipt), publishErr, workerCloseErr, cleanupErr)
+	// A failed provider turn (outcome.turnErr) keeps its receipt and still ends the request UNKNOWN.
+	return errors.Join(outcome.turnErr, writeProductionPiReceipt(output, receipt), publishErr, workerCloseErr, cleanupErr)
 }
 
 // productionLifecycleOps are the effects of the session between the end of the admitted prompt and
@@ -808,25 +809,49 @@ type productionSettlementOutcome struct {
 	bundle            sessionrepo.EvidenceBundle
 	bundleErr         error
 	noChangeReleased  bool
+	// turnErr is a provider turn failure that ended the run with the worker settled and nothing
+	// published (settleFailedProviderTurn): the run still ends UNKNOWN, but with its receipt and its E04
+	// points, so the host can show that the interval had no effect (register D30 as amended 2026-11-18).
+	turnErr error
+}
+
+// providerTurnEnded reports a loop failure that is only the provider bridge closing the conversation
+// after a failed provider turn (providerTurnFailure): the supervisor loop was clean, so no effect is open.
+func providerTurnEnded(err error) bool {
+	var failure providerTurnFailure
+	return errors.As(err, &failure)
 }
 
 // settleProductionTurn is the lifecycle from the end of the turn to the publication outcome, and the
 // four E04 points taken in it: post-operation-settlement (turn ended, worker not torn down),
 // post-teardown-import (worker settled, loops joined), pre-publication, and post-publication. A
-// returned error is a turn, teardown or channel failure: the points after it are not taken.
+// returned error is a turn, teardown or channel failure: the points after it are not taken. A
+// provider turn failure alone is not returned as an error: settleFailedProviderTurn takes over.
 func (session *productionPiSession) settleProductionTurn(ctx context.Context, ops productionLifecycleOps) (productionSettlementOutcome, error) {
 	var out productionSettlementOutcome
 	if err := ops.waitTurn(); err != nil {
-		return out, err
+		if !providerTurnEnded(err) {
+			return out, err
+		}
+		out.turnErr = err
+	} else {
+		session.Lifecycle.markTurnCompleted()
 	}
-	session.Lifecycle.markTurnCompleted()
 	// E04 post-operation-settlement: the turn has ended, so its operations are settled; the
 	// worker is not torn down yet.
 	session.recordE04(wsoracle.PointPostSettlement)
 
 	settlement, workerCloseErr := ops.closeWorker()
 	if err := ops.joinChannels(); err != nil {
-		return out, err
+		if !providerTurnEnded(err) {
+			return out, err
+		}
+		if out.turnErr == nil {
+			out.turnErr = err
+		}
+	}
+	if out.turnErr != nil {
+		return session.settleFailedProviderTurn(out, settlement, workerCloseErr)
 	}
 	out.publicationStatus, out.disposition = "UNAVAILABLE", "UNKNOWN"
 	e04LedgerSet := false
@@ -908,6 +933,23 @@ func (session *productionPiSession) settleProductionTurn(ctx context.Context, op
 		out.publishErr = errors.Join(out.publishErr, publicationAttemptErr)
 		out.publicationStatus, out.disposition = "UNAVAILABLE", "UNKNOWN"
 	}
+	return out, nil
+}
+
+// settleFailedProviderTurn ends a run whose provider turn failed. Publication never runs, so nothing
+// reached the live root: with the worker settled, the remaining E04 points are taken with the empty
+// ledger, and the caller writes a non-success receipt that binds them; the run still ends UNKNOWN with
+// out.turnErr. Without a settled worker nothing more is observed, and the failure is returned as before.
+func (session *productionPiSession) settleFailedProviderTurn(out productionSettlementOutcome, settlement piruntime.Settlement,
+	workerCloseErr error) (productionSettlementOutcome, error) {
+	if !productionWorkerSettlementAllowsPublication(settlement, workerCloseErr) {
+		return out, errors.Join(out.turnErr, workerCloseErr)
+	}
+	out.publicationStatus, out.disposition = "UNAVAILABLE", "UNKNOWN"
+	session.recordE04(wsoracle.PointPostTeardown)
+	session.E04.setLedger(productionE04LedgerNone())
+	session.recordE04(wsoracle.PointPrePublication)
+	session.recordE04(wsoracle.PointPostPublication)
 	return out, nil
 }
 

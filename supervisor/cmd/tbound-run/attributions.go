@@ -118,7 +118,7 @@ func loadAttributions(pin pinnedFile) (attributionSet, error) {
 func (s attributionSet) checkCandidates(res runner.ExportResult) error {
 	candidate := map[string]bool{}
 	for _, r := range res.Input.Compliant {
-		if r.BSuccess && !r.CSuccess {
+		if r.BSuccess && !r.CSuccess && r.Attribution != evalscore.AttributionNotApplicable {
 			candidate[r.TaskID] = true
 		}
 	}

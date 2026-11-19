@@ -371,3 +371,54 @@ func pointConstValue(constName string) string {
 	}
 	return constName
 }
+
+// A failed provider turn (register D30 as amended 2026-11-18) is not a lifecycle error once the worker
+// settled: publication never runs, the remaining points are taken with the empty ledger, and the
+// outcome carries the turn failure, so the run ends UNKNOWN with a receipt that binds its evidence.
+// With a worker that did not settle, nothing more is observed and the failure is returned as before.
+func TestE04LifecycleAFailedProviderTurnTakesItsPointsWithoutPublication(t *testing.T) {
+	turnFailed := providerTurnFailure{err: fmt.Errorf("%w; conversation closed: provider outage", errors.New("provider turn failed"))}
+	for name, fromJoin := range map[string]bool{"seen by the turn wait": false, "seen at the join": true} {
+		t.Run(name, func(t *testing.T) {
+			l := newE04Lifecycle(t, e04ChangedBundle(), publication.Result{}, nil)
+			if fromJoin {
+				l.ops.joinChannels = func() error {
+					l.step("join-failed")
+					return fmt.Errorf("governed production channels did not settle cleanly: %w", turnFailed)
+				}
+			} else {
+				l.ops.waitTurn = func() error {
+					l.step("turn-failed")
+					return fmt.Errorf("governed production channels failed before the turn ended: %w", turnFailed)
+				}
+				l.ops.joinChannels = func() error { l.step("join-failed"); return turnFailed }
+			}
+			out, err := l.session.settleProductionTurn(context.Background(), l.ops)
+			if err != nil || !providerTurnEnded(out.turnErr) || out.disposition != "UNKNOWN" || out.settled {
+				t.Fatalf("outcome = %+v err = %v, want an UNKNOWN outcome carrying the turn failure", out, err)
+			}
+			l.cleanup()
+			first := "turn-ended"
+			if !fromJoin {
+				first = "turn-failed"
+			}
+			e04Equal(t, "event order", l.events, []string{first, e04Pt(wsoracle.PointPostSettlement), "worker-closed", "join-failed",
+				e04Pt(wsoracle.PointPostTeardown), e04Pt(wsoracle.PointPrePublication), e04Pt(wsoracle.PointPostPublication),
+				"cleanup-start", e04Pt(wsoracle.PointFinalCleanup), "live-root-closed", "lease-released"})
+			records := l.w.trace().Records
+			if got := e04Decode(t, records[3]); got.Point != wsoracle.PointPostPublication || got.LedgerBasis != runner.E04LedgerNone {
+				t.Fatalf("post-publication record = %+v, want the empty ledger", got)
+			}
+		})
+	}
+	unsettled := piruntime.Settlement{State: piruntime.SettlementStopped, ExitObserved: false, DescendantsSettled: true}
+	l := newE04Lifecycle(t, e04ChangedBundle(), publication.Result{}, nil)
+	l.ops.waitTurn = func() error { return turnFailed }
+	l.ops.closeWorker = func() (piruntime.Settlement, error) { return unsettled, nil }
+	l.ops.joinChannels = func() error { return turnFailed }
+	if _, err := l.session.settleProductionTurn(context.Background(), l.ops); !providerTurnEnded(err) {
+		t.Fatalf("an unsettled worker: err = %v, want the turn failure", err)
+	}
+	l.cleanup()
+	e04Equal(t, "recorded points", l.recordedPoints(), []string{wsoracle.PointPostSettlement, wsoracle.PointFinalCleanup})
+}

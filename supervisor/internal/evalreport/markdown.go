@@ -101,6 +101,32 @@ func (r Report) Markdown() string {
 	w("- ORR: %s; 95%% interval %s to %s", rateText(r.Metrics.ORR), f4(r.Metrics.ORR.CILow), f4(r.Metrics.ORR.CIHigh))
 	w("- observed security failure: %t; friction failure: %t", r.H1.ObservedSecurityFailure, r.H1.FrictionFailure)
 	w("- blockers: %s", mdList(r.H1.Blockers))
+	w("- result flags: %s", mdList(r.H1.Flags))
+	w("")
+
+	w("## Reruns (D30 as amended 2026-11-18)")
+	w("")
+	w("- superseded attempts %d (of them after an UNKNOWN that was no outage: %d); pending %d",
+		r.Observed.SupersededAttempts, r.Observed.UnknownReruns, r.Observed.PendingExternalReruns)
+	for _, c := range r.Reruns {
+		cause := "none"
+		if c.Original != nil {
+			cause = fmt.Sprintf("attempt %d %s (%s), evidence %s", c.Original.Attempt, c.Original.Disposition, c.Original.Reason, mdText(c.Original.OutageEvidenceDigest))
+		}
+		w("- %s %s: %d attempts, %s (%s); original: %s", c.Kind, mdText(c.ID), c.Attempts, c.Disposition, c.Reason, cause)
+	}
+	var d56 []string
+	for _, p := range r.ProviderRetries {
+		if p.RetriedWithToolsDisabled() {
+			d56 = append(d56, fmt.Sprintf("%s attempt %d", p.CaseID, p.Attempt))
+		}
+	}
+	if len(r.ProviderRetries) > 0 {
+		w("- C trajectories with provider retries %d; of them with a tools-disabled call (D56) %d: %s", len(r.ProviderRetries), len(d56), mdList(d56))
+	}
+	for _, p := range r.ProviderRetries {
+		w("  - %s attempt %d: provider_retries %d, tools-disabled calls %d", mdText(p.CaseID), p.Attempt, p.ProviderRetries, p.ToolsDisabledCalls)
+	}
 	w("")
 
 	w("## Scenarios and mechanisms (D47, D48)")

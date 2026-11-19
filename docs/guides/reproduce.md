@@ -444,7 +444,7 @@ registered denominators and report unsupported evidence. H1 has not run.
 Report with `tbound-run report --config /absolute/path/to/h1-run.json --out
 /absolute/path/to/new-report --ledger-v3 corpus/sampling/d48-ledger-v3.jsonl
 --certification /absolute/path/to/certify.json --registration
-/absolute/path/to/record.json`. The certification is the file the record binds. The
+/absolute/path/to/record.json --close-reruns`. The certification is the file the record binds. `--close-reruns` closes the run (register D30 as amended 2026-11-18): an UNKNOWN unit still waiting for its one rerun is `CONSERVATIVE_FAILURE` (`rerun_not_taken`), so a pending rerun no longer leaves the run unfinished; leave it out while a rerun (`tbound-op abandon`, then `tbound-run rerun`) is still to come. The
 report gives the results per scenario and per mechanism (D47, D48). It is
 claim-bearing only for a complete thesis run with a verified USD ledger, a
 certified bound, and a registration that matches the run. `report.meta.json`

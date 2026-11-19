@@ -14,6 +14,7 @@ import (
 
 	"tbound/supervisor/internal/broker/correlation"
 	"tbound/supervisor/internal/broker/protocol"
+	"tbound/supervisor/internal/runend"
 )
 
 const (
@@ -296,7 +297,7 @@ func preflightRequestSize(modelID string, messages []Message, toolsJSON []byte, 
 		switch {
 		case failure != nil:
 		case amount < 0 || amount > MaxRequestBytes-size:
-			failure = errors.New("request exceeds byte limit before marshaling")
+			failure = fmt.Errorf("%w: request exceeds byte limit before marshaling", runend.ErrCeiling)
 		default:
 			size += amount
 		}
@@ -387,7 +388,7 @@ func escapedJSONStringLength(value string) (int, error) {
 	for _, r := range value {
 		part := escapedRuneLength(r)
 		if part > MaxRequestBytes-length {
-			return 0, errors.New("request string exceeds byte limit")
+			return 0, fmt.Errorf("%w: request string exceeds byte limit", runend.ErrCeiling)
 		}
 		length += part
 	}
@@ -403,7 +404,7 @@ func escapedJSONBytesLength(value []byte) (int, error) {
 		r, width := utf8.DecodeRune(value)
 		part := escapedRuneLength(r)
 		if part > MaxRequestBytes-length {
-			return 0, errors.New("request string exceeds byte limit")
+			return 0, fmt.Errorf("%w: request string exceeds byte limit", runend.ErrCeiling)
 		}
 		length += part
 		value = value[width:]
@@ -633,7 +634,7 @@ func decodeSSE(raw []byte, legacyNulls, reasoning, allowLength bool) (CapturedRe
 			}
 			s.events++
 			if s.events > s.maxEvents {
-				return CapturedResponse{}, errors.New("too many SSE events")
+				return CapturedResponse{}, fmt.Errorf("%w: too many SSE events", runend.ErrCeiling)
 			}
 			if s.done {
 				return CapturedResponse{}, errors.New("data after [DONE]")
@@ -782,6 +783,10 @@ func (s *stream) chunk(raw []byte) error {
 		return nil
 	}
 	finish, e := strRaw(finishRaw)
+	if e == nil && finish == "length" && !s.allowLength && !s.finished {
+		// The reply met max_completion_tokens: the per-call cap of the agent's own token use (D50).
+		return fmt.Errorf("%w: reply cut at the per-call completion cap (finish reason length)", runend.ErrCeiling)
+	}
 	if e != nil || (finish != "stop" && finish != "tool_calls" && !(s.allowLength && finish == "length")) || s.finished {
 		return errors.New("unsupported or repeated finish reason")
 	}

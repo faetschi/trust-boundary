@@ -475,11 +475,22 @@ func TestSecondRerunOfSameCaseOtherStepIsRefused(t *testing.T) {
 	j, _ := runAll(t, s, t.TempDir(), fake)
 	defer j.Close()
 	r := mustRunner(t, s, j, fake, Options{})
-	if err := r.Rerun(context.Background(), a.ID()); err != nil {
+	// One rerun re-executes one step, so the trajectory, in the rerun scope, takes none while a second step of its
+	// case also has a rerun cause: its attempt 1 is unclassified loss.
+	used := j.UnitsUsed()
+	if err := r.Rerun(context.Background(), a.ID()); !errors.Is(err, ErrRerunNotAllowed) || j.UnitsUsed() != used {
+		t.Fatalf("rerun of the trajectory: got %v, want ErrRerunNotAllowed and no unit spent", err)
+	}
+	// The replay keeps the step-level D30 rule; after its rerun the case has used its one rerun.
+	if err := r.Rerun(context.Background(), b.ID()); err != nil {
 		t.Fatal(err)
 	}
-	if err := r.Rerun(context.Background(), b.ID()); !errors.Is(err, ErrRerunLimit) {
-		t.Fatalf("got %v, want ErrRerunLimit (one rerun per case)", err)
+	if err := r.Rerun(context.Background(), a.ID()); !errors.Is(err, ErrRerunNotAllowed) {
+		t.Fatalf("second rerun of the case: got %v", err)
+	}
+	// The journal itself refuses a second rerun of a case on another step.
+	if err := j.append(Entry{Kind: EntryBegin, StepID: a.ID(), CaseID: c, Index: a.Index, Attempt: 2}); !errors.Is(err, ErrJournalCorrupt) {
+		t.Fatalf("second rerun of the case: got %v, want ErrJournalCorrupt", err)
 	}
 }
 

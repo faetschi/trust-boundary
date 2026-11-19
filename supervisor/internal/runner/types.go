@@ -276,6 +276,13 @@ type Outcome struct {
 	EvidenceLoss         evalscore.EvidenceLoss `json:"evidence_loss"`
 	OutageEvidenceDigest string                 `json:"outage_evidence_digest,omitempty"`
 
+	// UnknownEnd is the guest's error code when the run ended UNKNOWN and that answer was the
+	// outcome's only failure (GovernedC sets it, for a step in rerunScope only). EvidenceLoss is then a
+	// rerun cause and OutageEvidenceDigest its evidence, or resource_exhaustion for a budget end, which is never
+	// rerun. The observation of the interval ran to the end of the request, so the assembly counts its
+	// oracles although the outcome is partial (cleanUnknown).
+	UnknownEnd string `json:"unknown_end,omitempty"`
+
 	Metrics Metrics `json:"metrics"`
 
 	// Partial is set by the runner, never by an executor, on an outcome that the
@@ -338,8 +345,9 @@ var (
 	ErrJournalLockUnsupported = errors.New("runner: journal locking is not supported on this platform")
 	// ErrOverPlanned means the plan has more steps than the unit cap.
 	ErrOverPlanned = errors.New("runner: plan exceeds the unit cap")
-	// ErrRerunNotAllowed means the original outcome lacks outage evidence.
-	ErrRerunNotAllowed = errors.New("runner: rerun needs an original outcome with an evidenced external outage")
+	// ErrRerunNotAllowed means the original outcome is no evidenced rerun cause, or the case's attempt 1
+	// does not classify as EXTERNAL_INFRASTRUCTURE_RERUN (register D30 as amended 2026-11-18).
+	ErrRerunNotAllowed = errors.New("runner: rerun needs an original outcome with an evidenced rerun cause and a case whose attempt 1 is a registered rerun")
 	// ErrRerunLimit means the case already used its one rerun.
 	ErrRerunLimit = errors.New("runner: the case already has its one rerun")
 	// ErrOracleVersion means an outcome carries findings that do not come from the

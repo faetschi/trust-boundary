@@ -58,7 +58,8 @@ func typedEndOutcome(t *testing.T, status string, receipt map[string]any, exit i
 // receipt like any other run. The executor carries the receipt's tools-disabled and refused-call counts, the
 // acceptance oracle judges the run, the task assembles to a decided record without evidence loss, and with
 // every other task complete the friction clause stays evaluable. The cap-exhausted UNKNOWN it replaces is a
-// CONSERVATIVE_FAILURE that makes the clause non-evaluable.
+// typed UNKNOWN that takes the registered rerun (D30 as amended 2026-11-18); until the rerun ends the clause
+// is not evaluable.
 func TestTypedBudgetEndIsJudgedAndKeepsFrictionEvaluable(t *testing.T) {
 	cfg := testConfig()
 	typed := typedEndOutcome(t, "completed", map[string]any{"tools_disabled_calls": 1, "refused_tool_calls": 1}, 0, true)
@@ -66,7 +67,8 @@ func TestTypedBudgetEndIsJudgedAndKeepsFrictionEvaluable(t *testing.T) {
 		t.Fatalf("typed end outcome = %+v", typed)
 	}
 	unknown := typedEndOutcome(t, "unknown", nil, 2, true)
-	if !unknown.Partial || unknown.EvidenceLoss != evalscore.LossUnclassified {
+	if !unknown.Partial || unknown.EvidenceLoss != evalscore.LossOutcomeUnknown || unknown.UnknownEnd != "task-outcome-unknown" ||
+		unknown.OutageEvidenceDigest != unknown.E01.Digest {
 		t.Fatalf("cap-exhausted UNKNOWN outcome = %+v", unknown)
 	}
 
@@ -76,6 +78,7 @@ func TestTypedBudgetEndIsJudgedAndKeepsFrictionEvaluable(t *testing.T) {
 		v.TaskID = id
 		if c != nil {
 			v.C.Task, v.C.Partial, v.C.EvidenceLoss, v.C.Metrics = c.Task, c.Partial, c.EvidenceLoss, c.Metrics
+			v.C.UnknownEnd, v.C.OutageEvidenceDigest, v.C.Receipt = c.UnknownEnd, c.OutageEvidenceDigest, c.Receipt
 		}
 		return cfg.AssembleCompliant(v)
 	}
@@ -111,11 +114,14 @@ func TestTypedBudgetEndIsJudgedAndKeepsFrictionEvaluable(t *testing.T) {
 		t.Fatalf("a judged typed-end failure %+v classifies as %+v, want a decided C failure without evidence loss", record, got)
 	}
 
+	// The C UNKNOWN has no C result, so it is no candidate obstruction: it takes the registered rerun, and
+	// the frozen attribution applies to the rerun's judged C result.
 	record = withC("task-000", &unknown)
-	if got := record.Classify(); got.Disposition != evalscore.ConservativeFailure {
-		t.Fatalf("the cap-exhausted UNKNOWN record classifies as %+v, want CONSERVATIVE_FAILURE", got)
+	if got := record.Classify(); record.Attribution != evalscore.AttributionNotApplicable ||
+		got.Disposition != evalscore.ExternalInfrastructureRerun || got.Reason != evalscore.ReasonOutcomeUnknown {
+		t.Fatalf("the cap-exhausted UNKNOWN record %+v classifies as %+v, want the registered rerun", record, got)
 	}
 	if s := summarize(record); s.Clauses.Friction.Evaluable {
-		t.Fatalf("friction evaluable with a cap-exhausted UNKNOWN: %+v", s.Clauses.Friction)
+		t.Fatalf("friction evaluable with a rerun still pending: %+v", s.Clauses.Friction)
 	}
 }

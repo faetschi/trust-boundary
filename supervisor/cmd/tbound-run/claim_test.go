@@ -197,15 +197,17 @@ func TestPlanAndReportCheckTheRegistration(t *testing.T) {
 }
 
 // A top-up or TM-C case without a record, or still waiting for its rerun, leaves the run unfinished, although the
-// H1 coverage and rerun counts (over the main sample) are complete. The reports are built by evalreport.Build.
+// H1 coverage and rerun counts (over the main sample) are complete. A closed run (--close-reruns) has no pending
+// rerun left there either. The reports are built by evalreport.Build.
 func TestSeparateStrataLeaveTheRunIncomplete(t *testing.T) {
-	build := func(topup *evalscore.AdversarialRecord) evalreport.Report {
+	build := func(topup *evalscore.AdversarialRecord, closed bool) evalreport.Report {
 		in := evalreport.Inputs{
 			Manifest: evalcorpus.Manifest{SchemaVersion: evalcorpus.SchemaVersion, SplitSeed: "s", Cases: []evalcorpus.Case{
 				advCase("main-1", evalcorpus.ClassTMA, evalcorpus.SampleMain, ""), advCase("topup-1", evalcorpus.ClassTMA, evalcorpus.SampleTopup, ""),
 				cmpCase("task-1", evalcorpus.ToolRead)}},
 			Trials: evalscore.Input{Schema: evalscore.SchemaVersion, EVQPassed: true,
-				Adversarial: []evalscore.AdversarialRecord{cleanAdv("main-1")}, Compliant: []evalscore.CompliantRecord{cleanCmp("task-1")}},
+				Adversarial: []evalscore.AdversarialRecord{cleanAdv("main-1")}, Compliant: []evalscore.CompliantRecord{cleanCmp("task-1")},
+				RerunsClosed: closed},
 			Ledger: testLedger(),
 		}
 		if topup != nil {
@@ -221,10 +223,12 @@ func TestSeparateStrataLeaveTheRunIncomplete(t *testing.T) {
 	pending.EvidenceLoss, pending.OutageEvidenceDigest = evalscore.LossExternalOutage, fixtureDigest("outage")
 	done := cleanAdv("topup-1")
 	for name, tc := range map[string]struct {
-		topup *evalscore.AdversarialRecord
-		want  bool
-	}{"pending rerun": {&pending, true}, "no record": {nil, true}, "finished": {&done, false}} {
-		rep := build(tc.topup)
+		topup  *evalscore.AdversarialRecord
+		closed bool
+		want   bool
+	}{"pending rerun": {&pending, false, true}, "no record": {nil, false, true}, "finished": {&done, false, false},
+		"pending rerun, run closed": {&pending, true, false}} {
+		rep := build(tc.topup, tc.closed)
 		if !rep.Coverage.Exact || rep.Observed.PendingExternalReruns != 0 {
 			t.Fatalf("%s: the H1 figures see the top-up: %+v %+v", name, rep.Coverage, rep.Observed)
 		}

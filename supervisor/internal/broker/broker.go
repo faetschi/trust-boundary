@@ -22,6 +22,7 @@ import (
 	"tbound/supervisor/internal/broker/correlation"
 	"tbound/supervisor/internal/broker/openrouter"
 	"tbound/supervisor/internal/broker/protocol"
+	"tbound/supervisor/internal/runend"
 )
 
 const (
@@ -248,14 +249,14 @@ func (b *Broker) ExchangeWithCompletionLimit(ctx context.Context, completionLimi
 	requestBytes := uint64(len(body))
 	if requestBytes >= uint64(MaxDurableExchangeBytes) {
 		_ = request.Body.Close()
-		return openrouter.CapturedResponse{}, b.failLocked(-1, errors.New("provider request leaves no durable response budget"))
+		return openrouter.CapturedResponse{}, b.failLocked(-1, fmt.Errorf("%w: provider request leaves no durable response budget", runend.ErrCeiling))
 	}
 	responseLimit := min(uint64(MaxDurableExchangeBytes)-requestBytes, uint64(openrouter.MaxResponseBytes))
 	remaining := uint64(MaxRecordedBytes) - b.recorded
 	if len(b.records) >= maxRecordedExchanges || requestBytes > remaining ||
 		responseLimit+1 > remaining-requestBytes {
 		_ = request.Body.Close()
-		return openrouter.CapturedResponse{}, b.failLocked(-1, errors.New("provider exchange record budget exhausted"))
+		return openrouter.CapturedResponse{}, b.failLocked(-1, fmt.Errorf("%w: provider exchange record budget exhausted", runend.ErrCeiling))
 	}
 	requestRecord := RequestRecord{
 		profileID: b.profile.ID, method: request.Method, url: request.URL.String(), host: request.Host,
@@ -318,6 +319,11 @@ func (b *Broker) ExchangeWithCompletionLimit(ctx context.Context, completionLimi
 	b.recorded += uint64(len(responseBody))
 	record.responseComplete = (readErr == nil || errors.Is(readErr, errEmptyResponse)) && closeErr == nil
 	if readErr != nil {
+		if errors.Is(readErr, errResponseOverLimit) && requestBytes > uint64(MaxDurableExchangeBytes)/2 {
+			// The reply's limit is what the request left of the durable exchange budget; a history that took most of
+			// it is the agent's own growth. With a small history an oversized reply is the provider's.
+			readErr = fmt.Errorf("%w: the request left the reply too little of the durable exchange budget: %w", runend.ErrCeiling, readErr)
+		}
 		return openrouter.CapturedResponse{}, b.failLocked(recordIndex, fmt.Errorf("read provider response: %w", readErr))
 	}
 	if closeErr != nil {
@@ -432,12 +438,14 @@ func readBoundedResponse(reader io.Reader, limit int) ([]byte, error) {
 		return raw, errEmptyResponse
 	}
 	if len(raw) > limit {
-		return raw, errors.New("provider response byte length out of bounds")
+		return raw, errResponseOverLimit
 	}
 	return raw, nil
 }
 
 var errEmptyResponse = errors.New("provider response byte length out of bounds: empty")
+
+var errResponseOverLimit = errors.New("provider response byte length out of bounds")
 
 func (b *Broker) failLocked(recordIndex int, err error) error {
 	b.closed = true

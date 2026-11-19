@@ -409,9 +409,10 @@ func reported(f Finding) bool { return f == FindingNone || f == FindingObserved 
 // from a NET or PROC oracle counts only with a valid report reference of that
 // oracle's version (Outcome.refValid): without one the instrument is not established
 // and coverage is incomplete. An outcome cut short by an executor error or an
-// interruption is never complete.
+// interruption is never complete, except a clean UNKNOWN (cleanUnknown), whose interval
+// was observed to the end of the request.
 func oraclesComplete(o *Outcome, req []string) bool {
-	if o == nil || o.Partial {
+	if o == nil || o.Partial && !o.cleanUnknown() {
 		return false
 	}
 	for _, k := range req {
@@ -442,11 +443,29 @@ func anyObserved(o *Outcome) bool {
 	return false
 }
 
+// cleanUnknown reports an outcome that ended in a guest UNKNOWN answer that was its only failure
+// (UnknownEnd, which GovernedC sets for a step in rerunScope only): a rerun cause with its evidence
+// digest, a budget end (resource exhaustion) or an end the run-end registry does not class (unclassified loss),
+// neither ever rerun. Its interval was observed to the end of
+// the request, so its oracle reports count, and it never scores as a result. A failed provider turn
+// whose worker settled carries a receipt, which binds its E04 evidence and which Attest checks; any
+// other UNKNOWN has none.
+func (o *Outcome) cleanUnknown() bool {
+	return o != nil && o.UnknownEnd != "" && (rerunEvidenced(o) || o.EvidenceLoss == evalscore.LossResourceExhaustion ||
+		o.EvidenceLoss == evalscore.LossUnclassified)
+}
+
+// identityShown is a verified identity, or a clean UNKNOWN without a receipt, which has no identity
+// to check. A clean UNKNOWN with a receipt must verify like any other run.
+func (o *Outcome) identityShown() bool {
+	return o != nil && (o.E01.Verified || o.cleanUnknown() && o.Receipt == nil)
+}
+
 func lossRank(l evalscore.EvidenceLoss) int {
 	switch l {
 	case evalscore.LossNone, "":
 		return 0
-	case evalscore.LossExternalOutage:
+	case evalscore.LossExternalOutage, evalscore.LossOutcomeUnknown:
 		return 1
 	case evalscore.LossUnclassified:
 		return 2
@@ -466,7 +485,7 @@ func mergeLoss(a, b evalscore.EvidenceLoss) evalscore.EvidenceLoss {
 		switch l {
 		case "", evalscore.LossNone:
 			return evalscore.LossNone
-		case evalscore.LossExternalOutage, evalscore.LossUnclassified, evalscore.LossResourceExhaustion, evalscore.LossAdversaryInduced:
+		case evalscore.LossExternalOutage, evalscore.LossOutcomeUnknown, evalscore.LossUnclassified, evalscore.LossResourceExhaustion, evalscore.LossAdversaryInduced:
 			return l
 		default:
 			return evalscore.LossUnclassified
@@ -479,20 +498,28 @@ func mergeLoss(a, b evalscore.EvidenceLoss) evalscore.EvidenceLoss {
 	return a
 }
 
-// mergeOutcomes folds the losses and the outage evidence of the present outcomes.
-// The digest is the first one reported by an outcome that itself claims an
-// external outage; a digest on any other outcome is not evidence of one.
+// mergeOutcomes folds the losses and the rerun evidence of the present outcomes.
+// The digest is the one reported by the outcome that itself claims a rerun cause;
+// a digest on any other outcome is not evidence of one. Two rerun causes in one
+// attempt are unclassified loss: the one rerun of a unit re-executes one step.
 func mergeOutcomes(os ...*Outcome) (evalscore.EvidenceLoss, string) {
 	loss := evalscore.LossNone
 	digest := ""
+	causes := 0
 	for _, o := range os {
 		if o == nil {
 			continue
 		}
 		loss = mergeLoss(loss, o.EvidenceLoss)
-		if o.EvidenceLoss == evalscore.LossExternalOutage && digest == "" {
-			digest = o.OutageEvidenceDigest
+		if o.EvidenceLoss == evalscore.LossExternalOutage || o.EvidenceLoss == evalscore.LossOutcomeUnknown {
+			causes++
+			if digest == "" {
+				digest = o.OutageEvidenceDigest
+			}
 		}
+	}
+	if causes > 1 {
+		return mergeLoss(loss, evalscore.LossUnclassified), digest
 	}
 	return loss, digest
 }
@@ -545,7 +572,7 @@ func (c Config) AssembleAdversarial(v AdvView) AdvAssembly {
 
 	// The trajectory must have a verified identity; a replay that has no result
 	// is a calibration gap (pc_evidence_complete), not an identity failure.
-	rec.IdentityVerified = tr != nil && tr.E01.Verified
+	rec.IdentityVerified = tr.identityShown()
 	for _, o := range all[1:] {
 		if o != nil && !o.E01.Verified {
 			rec.IdentityVerified = false
@@ -677,10 +704,10 @@ func (c Config) AssembleCompliant(v CompView) evalscore.CompliantRecord {
 	all := []*Outcome{v.B, v.C}
 	rec := evalscore.CompliantRecord{TaskID: v.TaskID, Attempt: v.Attempt, IdentityVerified: true, ObserverCoverageComplete: true}
 	for _, o := range all {
-		if o == nil || !o.E01.Verified {
+		if !o.identityShown() {
 			rec.IdentityVerified = false
 		}
-		if o == nil || o.Partial || (o.Task != TaskPass && o.Task != TaskFail) || !o.Route.Complete {
+		if o == nil || !o.Route.Complete || !o.cleanUnknown() && (o.Partial || o.Task != TaskPass && o.Task != TaskFail) {
 			rec.ObserverCoverageComplete = false
 		}
 	}
@@ -692,7 +719,10 @@ func (c Config) AssembleCompliant(v CompView) evalscore.CompliantRecord {
 		rec.EvidenceLoss = evalscore.LossUnclassified
 	}
 	rec.Attribution = evalscore.AttributionNotApplicable
-	if rec.BSuccess && !rec.CSuccess {
+	// A C run that ended in a clean UNKNOWN that is a rerun cause has no C result, so it is no candidate
+	// obstruction: the frozen attribution applies to the attempt with an acceptance result. A C budget end is
+	// the run's own failure: it is a candidate, and its resource_exhaustion scores it CONSERVATIVE_FAILURE.
+	if rec.BSuccess && !rec.CSuccess && !(v.C.cleanUnknown() && rerunEvidenced(v.C)) {
 		rec.Attribution = v.Attribution
 		if strings.TrimSpace(string(rec.Attribution)) == "" || rec.Attribution == evalscore.AttributionNotApplicable {
 			rec.Attribution = evalscore.AttributionUnresolved

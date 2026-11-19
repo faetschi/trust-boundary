@@ -154,7 +154,7 @@ func (a *app) rerunCmd(args []string) error {
 		if err != nil {
 			return err
 		}
-		r, err := runner.NewRunner(p.sched, j, ex, runner.Options{})
+		r, err := runner.NewRunner(p.sched, j, ex, runner.Options{Attributions: p.attributions.byTask})
 		if err != nil {
 			return err
 		}
@@ -168,13 +168,15 @@ func (a *app) rerunCmd(args []string) error {
 
 func (a *app) exportCmd(args []string) error {
 	var out string
+	var closeReruns bool
 	return a.withPlan("export", args, func(f *flag.FlagSet) {
 		f.StringVar(&out, "out", "", "trials.json to write (evalscore-trials/v1)")
+		f.BoolVar(&closeReruns, "close-reruns", false, closeRerunsUsage)
 	}, func(p plan) error {
 		if out == "" {
 			return fmt.Errorf("%w: export needs --out", errUsage)
 		}
-		res, err := a.exportJournal(p)
+		res, err := a.exportJournal(p, closeReruns)
 		if err != nil {
 			return err
 		}
@@ -189,7 +191,10 @@ func (a *app) exportCmd(args []string) error {
 	})
 }
 
-func (a *app) exportJournal(p plan) (runner.ExportResult, error) {
+// closeRerunsUsage explains --close-reruns (register D30 as amended 2026-11-18).
+const closeRerunsUsage = "close the run: a unit still waiting for its registered rerun is CONSERVATIVE_FAILURE (rerun_not_taken)"
+
+func (a *app) exportJournal(p plan, closeReruns bool) (runner.ExportResult, error) {
 	j, err := existingJournal(p)
 	if err != nil {
 		return runner.ExportResult{}, err
@@ -206,6 +211,7 @@ func (a *app) exportJournal(p plan) (runner.ExportResult, error) {
 	if err != nil {
 		return res, err
 	}
+	res.Input.RerunsClosed = closeReruns
 	return res, p.attributions.checkCandidates(res)
 }
 
@@ -265,11 +271,13 @@ func reportNote(reasons []string, reg *evalreport.Registration) string {
 
 func (a *app) reportCmd(args []string) error {
 	var dir, ledgerV3, certification, registration string
+	var closeReruns bool
 	return a.withPlan("report", args, func(f *flag.FlagSet) {
 		f.StringVar(&dir, "out", "", "directory for report.json, report.md and report.meta.json")
 		f.StringVar(&ledgerV3, "ledger-v3", "", "corpus/sampling/d48-ledger-v3.jsonl: with the pinned main draw, the scenario and mechanism results (D47, D48)")
 		f.StringVar(&certification, "certification", "", "the select.py certify output for the pinned main draw (D48 zero-event certification)")
 		f.StringVar(&registration, "registration", "", "the pre-registration record (tbound-profile preregistration-record) of this run")
+		f.BoolVar(&closeReruns, "close-reruns", false, closeRerunsUsage)
 	}, func(p plan) error {
 		if dir == "" {
 			return fmt.Errorf("%w: report needs --out", errUsage)
@@ -286,7 +294,7 @@ func (a *app) reportCmd(args []string) error {
 			}
 			reg = &r
 		}
-		res, err := a.exportJournal(p)
+		res, err := a.exportJournal(p, closeReruns)
 		if err != nil {
 			return err
 		}

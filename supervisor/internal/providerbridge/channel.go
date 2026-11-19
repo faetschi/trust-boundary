@@ -12,6 +12,7 @@ import (
 	"sync"
 
 	"tbound/supervisor/internal/broker/protocol"
+	"tbound/supervisor/internal/runend"
 )
 
 const (
@@ -99,7 +100,7 @@ func Serve(ctx context.Context, channel io.ReadWriteCloser, conversation *Conver
 			return fmt.Errorf("encode provider channel response: %w", err)
 		}
 		if len(encoded) == 0 || len(encoded) > protocol.MaxFrameBytes {
-			return errors.New("provider channel response exceeds frame bound")
+			return fmt.Errorf("%w: provider channel response exceeds frame bound", runend.ErrCeiling)
 		}
 		var prefix [channelPrefixBytes]byte
 		binary.BigEndian.PutUint32(prefix[:], uint32(len(encoded)))
@@ -137,7 +138,7 @@ func Serve(ctx context.Context, channel io.ReadWriteCloser, conversation *Conver
 			nextInbound++
 			requestCount++
 			if requestCount > maxChannelFrames {
-				return errors.New("provider channel frame budget exhausted")
+				return fmt.Errorf("%w: provider channel frame budget exhausted", runend.ErrCeiling)
 			}
 			switch req.Kind {
 			case "next":

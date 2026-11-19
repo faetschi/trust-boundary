@@ -6,7 +6,7 @@ Which supervisor package belongs to which layer, and which imports are forbidden
 
 | Layer | Packages |
 |---|---|
-| Shared runtime (26) | audit, broker, broker/correlation, broker/openrouter, broker/protocol, cellview, delta, drainproof, effectoracle, executor, faultfs, gate, ipc, piinstall, piruntime, privategit, providerbridge, publication, publicationevents, sandbox, sessionlaunch, sessionrepo, workflow, workflowrecovery, workspace, wsoracle |
+| Shared runtime (27) | audit, broker, broker/correlation, broker/openrouter, broker/protocol, cellview, delta, drainproof, effectoracle, executor, faultfs, gate, ipc, piinstall, piruntime, privategit, providerbridge, publication, publicationevents, runend, sandbox, sessionlaunch, sessionrepo, workflow, workflowrecovery, workspace, wsoracle |
 | Product (7) | productdriver, productprotocol, productprovider, productsession, productsetup, projectbundle, releasetrust |
 | Evaluation and validation (22) | adaptivesource, attacker, calibration, cgroupguard, corpusadmit, evalcorpus, evalreport, evalscore, guestevidence, netoracle, panelaudit, procoracle, researchprofile, researchroute, routematrix, runbooklint, runner, taskaccept, trialfix, usdledger, vrun, e2e (test-only, at the module root) |
 | Commands (8) | cmd/tbound, cmd/tbound-cell-entrypoint, cmd/tbound-doctor, cmd/tbound-hint-eval, cmd/tbound-panel, cmd/tbound-profile, cmd/tbound-provider, cmd/tbound-run |

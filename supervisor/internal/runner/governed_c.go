@@ -15,6 +15,7 @@ import (
 	"tbound/supervisor/internal/corpusadmit"
 	"tbound/supervisor/internal/evalcorpus"
 	"tbound/supervisor/internal/evalscore"
+	"tbound/supervisor/internal/runend"
 	"tbound/supervisor/internal/wsoracle"
 )
 
@@ -261,6 +262,56 @@ type governedResponse struct {
 	Status        string          `json:"status"`
 	ErrorCode     string          `json:"error_code"`
 	Receipt       json.RawMessage `json:"receipt"`
+	// OutageEvidenceDigest is set with error code provider-outage: the hash of the guest's
+	// provider_exchange_unknown record of the failed attempt.
+	OutageEvidenceDigest string `json:"outage_evidence_digest"`
+}
+
+// rerunScope reports whether an UNKNOWN step may take the registered rerun (D30 as amended 2026-11-18): the C
+// trajectory of an adversarial case and the B and C steps of a compliant task. Replays and P steps run a scripted
+// provider; an UNKNOWN there stays unclassified loss.
+func rerunScope(s Step) bool {
+	switch s.Kind {
+	case evalcorpus.KindAdversarial:
+		return s.Role == RoleTrajectory && s.Configuration == CfgC
+	case evalcorpus.KindCompliant:
+		return s.Configuration == CfgB || s.Configuration == CfgC
+	}
+	return false
+}
+
+// markUnknownEnd types an UNKNOWN answer that was the outcome's only failure by the class its code carries
+// (runend.Codes, the wire half of the run-end registry): an agent ceiling is resource exhaustion, an unclassified
+// end is unclassified loss, neither ever rerun; infrastructure and model behaviour are rerun causes, an evidenced provider outage with its provider journal record or a plain UNKNOWN
+// with the digest of the guest's answer line as its evidence. A code the registry does not class is no rerun cause:
+// the outcome stays untyped, and its loss unclassified.
+func markUnknownEnd(o *Outcome, s Step, resp governedResponse) {
+	class, registered := runend.Codes[resp.ErrorCode]
+	if !rerunScope(s) || !registered {
+		return
+	}
+	o.UnknownEnd = resp.ErrorCode
+	switch class {
+	case runend.AgentCeiling:
+		o.EvidenceLoss = evalscore.LossResourceExhaustion
+		return
+	case runend.Unclassified:
+		o.EvidenceLoss = evalscore.LossUnclassified
+		return
+	}
+	if resp.ErrorCode == runend.CodeProviderOutage && validHexDigest(resp.OutageEvidenceDigest) {
+		o.EvidenceLoss, o.OutageEvidenceDigest = evalscore.LossExternalOutage, "provider-journal:"+resp.OutageEvidenceDigest
+		return
+	}
+	o.EvidenceLoss, o.OutageEvidenceDigest = evalscore.LossOutcomeUnknown, o.E01.Digest
+}
+
+func validHexDigest(s string) bool {
+	if len(s) != 64 {
+		return false
+	}
+	_, err := hex.DecodeString(s)
+	return err == nil && strings.ToLower(s) == s
 }
 
 // governedReceipt is the part of productionPiReceipt (cmd/tbound/production_session_linux.go)
@@ -418,50 +469,73 @@ func (g GovernedC) Execute(ctx context.Context, s Step) (Outcome, error) {
 	switch resp.Status {
 	case "unknown":
 		errs = append(errs, fmt.Errorf("%w: %s", ErrGovernedUnknown, resp.ErrorCode))
+		if len(resp.Receipt) == 0 || string(resp.Receipt) == "null" {
+			break
+		}
+		// A failed provider turn whose worker settled ends UNKNOWN with the receipt that binds its evidence.
+		receipt, err := parseGovernedReceipt(resp.Receipt)
+		if err == nil && receipt.Success {
+			err = fmt.Errorf("%w: an unknown answer with a success receipt", ErrGovernedMalformed)
+		}
+		if err != nil {
+			errs = append(errs, err)
+			break
+		}
+		errs = append(errs, g.applyReceipt(ctx, &o, &ref, receipt)...)
 	case "completed":
 		receipt, err := parseGovernedReceipt(resp.Receipt)
 		if err != nil {
 			errs, checkExit = append(errs, err), false
 			break
 		}
-		ref.RunID = receipt.RunID
-		o.Receipt = &ReceiptFacts{ProfileHash: receipt.ProfileHash, ContainmentProfileDigest: receipt.ContainmentProfileDigest,
-			HintChooser: receipt.HintChooser, HintManifestDigest: receipt.HintManifestDigest, Hints: slices.Clone(receipt.Hints),
-			FrozenSourceDigest: receipt.FrozenSourceDigest, Delta: receipt.Delta,
-			ProviderMode: receipt.ProviderMode, ScriptDigest: receipt.ScriptDigest,
-			AdmissionPolicyDigest: receipt.AdmissionPolicyDigest, Proposals: slices.Clone(receipt.Proposals),
-			PivotsIssued: receipt.PivotsIssued, AttackerStop: receipt.AttackerStop, AttackerStateDigest: receipt.AttackerStateDigest,
-			AttackerDigest: receipt.AttackerDigest, PivotsDigest: receipt.PivotsDigest,
-			AttackerUsage: receipt.AttackerUsage, AttackerCumulativeUsage: receipt.AttackerCumulativeUsage,
-			AttackerPredecessor: receipt.AttackerPredecessor}
-		o.ToolAttempt = slices.ContainsFunc(receipt.Proposals, func(p ProposalFact) bool { return strings.EqualFold(p.Verdict, "deny") }) || o.ToolAttempt
-		ref.Publications = receipt.PublicationJournalRecordCount
-		ref.PublicationsKnown = receipt.PublicationIntervalRef == ref.Interval && receipt.PublicationJournalHead != ""
-		if ref.PublicationsKnown {
-			ref.PublicationHead = receipt.PublicationJournalHead
-		}
-		ref.E04Head, ref.E04Count, ref.E04GapCount = receipt.E04EvidenceHead, receipt.E04EvidenceRecordCount, receipt.E04GapCount
-		o.Metrics.ToolCalls = len(receipt.ToolSequence)
-		o.Metrics.InTokens, o.Metrics.OutTokens, o.Metrics.CostMicroUSD = receipt.InTokens, receipt.OutTokens, receipt.CostMicroUSD
-		o.Metrics.Retries, o.Metrics.UsageUnread = receipt.ProviderRetries, receipt.UsageUnread
-		o.Metrics.ToolsDisabledCalls, o.Metrics.RefusedToolCalls = receipt.ToolsDisabledCalls, receipt.RefusedToolCalls
 		if receipt.Success {
 			wantExit = 0
 		} else {
 			errs = append(errs, ErrGovernedFailed)
 		}
-		pf, err := g.anchor(ctx, ref, receipt)
-		o.PublicationFree = pf
-		if err != nil {
-			errs = append(errs, err)
-		}
+		errs = append(errs, g.applyReceipt(ctx, &o, &ref, receipt)...)
 	}
 	if checkExit && exit != wantExit {
 		errs = append(errs, fmt.Errorf("%w: exit code %d does not fit status %s", ErrGovernedMalformed, exit, resp.Status))
 	}
 	errs = append(errs, g.collect(ctx, ref, &o)...)
 	mapReplay(&o, s)
+	if resp.Status == "unknown" && len(errs) == 1 {
+		markUnknownEnd(&o, s, resp)
+	}
 	return o, errors.Join(errs...)
+}
+
+// applyReceipt copies what the receipt says into the outcome and the evidence reference: identity and
+// delta facts, proposals, metrics, the publication anchor and the E04 binding the collectors read.
+func (g GovernedC) applyReceipt(ctx context.Context, o *Outcome, ref *EvidenceRef, receipt governedReceipt) []error {
+	ref.RunID = receipt.RunID
+	o.Receipt = &ReceiptFacts{ProfileHash: receipt.ProfileHash, ContainmentProfileDigest: receipt.ContainmentProfileDigest,
+		HintChooser: receipt.HintChooser, HintManifestDigest: receipt.HintManifestDigest, Hints: slices.Clone(receipt.Hints),
+		FrozenSourceDigest: receipt.FrozenSourceDigest, Delta: receipt.Delta,
+		ProviderMode: receipt.ProviderMode, ScriptDigest: receipt.ScriptDigest,
+		AdmissionPolicyDigest: receipt.AdmissionPolicyDigest, Proposals: slices.Clone(receipt.Proposals),
+		PivotsIssued: receipt.PivotsIssued, AttackerStop: receipt.AttackerStop, AttackerStateDigest: receipt.AttackerStateDigest,
+		AttackerDigest: receipt.AttackerDigest, PivotsDigest: receipt.PivotsDigest,
+		AttackerUsage: receipt.AttackerUsage, AttackerCumulativeUsage: receipt.AttackerCumulativeUsage,
+		AttackerPredecessor: receipt.AttackerPredecessor}
+	o.ToolAttempt = slices.ContainsFunc(receipt.Proposals, func(p ProposalFact) bool { return strings.EqualFold(p.Verdict, "deny") }) || o.ToolAttempt
+	ref.Publications = receipt.PublicationJournalRecordCount
+	ref.PublicationsKnown = receipt.PublicationIntervalRef == ref.Interval && receipt.PublicationJournalHead != ""
+	if ref.PublicationsKnown {
+		ref.PublicationHead = receipt.PublicationJournalHead
+	}
+	ref.E04Head, ref.E04Count, ref.E04GapCount = receipt.E04EvidenceHead, receipt.E04EvidenceRecordCount, receipt.E04GapCount
+	o.Metrics.ToolCalls = len(receipt.ToolSequence)
+	o.Metrics.InTokens, o.Metrics.OutTokens, o.Metrics.CostMicroUSD = receipt.InTokens, receipt.OutTokens, receipt.CostMicroUSD
+	o.Metrics.Retries, o.Metrics.UsageUnread = receipt.ProviderRetries, receipt.UsageUnread
+	o.Metrics.ToolsDisabledCalls, o.Metrics.RefusedToolCalls = receipt.ToolsDisabledCalls, receipt.RefusedToolCalls
+	pf, err := g.anchor(ctx, *ref, receipt)
+	o.PublicationFree = pf
+	if err != nil {
+		return []error{err}
+	}
+	return nil
 }
 
 // send runs the client. When no response line comes back and the client or ssh exited

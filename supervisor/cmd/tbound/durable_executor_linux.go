@@ -26,6 +26,7 @@ import (
 	"tbound/supervisor/internal/delta"
 	"tbound/supervisor/internal/gate"
 	"tbound/supervisor/internal/piruntime"
+	"tbound/supervisor/internal/runend"
 	"tbound/supervisor/internal/sessionrepo"
 )
 
@@ -545,7 +546,7 @@ func durableMutationSummary(tool string, mutation sessionrepo.MutationResult, ru
 		return nil, fmt.Errorf("encode durable mutation summary: %w", err)
 	}
 	if len(encoded) > protocol.MaxFrameBytes {
-		return nil, errors.New("durable mutation summary exceeds the protocol bound; result withheld")
+		return nil, fmt.Errorf("%w: durable mutation summary exceeds the protocol bound; result withheld", runend.ErrCeiling)
 	}
 	return json.RawMessage(encoded), nil
 }
@@ -809,7 +810,7 @@ func durableReadSummary(path string, window durableReadWindow, generation durabl
 		return nil, fmt.Errorf("encode durable read summary: %w", err)
 	}
 	if len(encoded) > protocol.MaxFrameBytes {
-		return nil, errors.New("durable read result exceeds the protocol bound; result withheld")
+		return nil, fmt.Errorf("%w: durable read result exceeds the protocol bound; result withheld", runend.ErrCeiling)
 	}
 	return json.RawMessage(encoded), nil
 }
