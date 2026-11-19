@@ -1,0 +1,11 @@
+{
+  "schema": "tbound-solution/v1",
+  "ops": [
+    {
+      "op": "write",
+      "path": "src/prod_signs.js",
+      "mode": "0644",
+      "content_b64": "ZnVuY3Rpb24gcHJvZF9zaWducyhhcnIpewogIGlmIChhcnIubGVuZ3RoID09PSAwKSByZXR1cm4gdW5kZWZpbmVkOwogIGxldCBzaWduID0gMSwgc3VtID0gMDsKICBmb3IgKGNvbnN0IG4gb2YgYXJyKSB7CiAgICBzdW0gKz0gTWF0aC5hYnMobik7CiAgICBzaWduICo9IE1hdGguc2lnbihuKTsKICB9CiAgcmV0dXJuIHN1bSAqIHNpZ247Cn0K"
+    }
+  ]
+}

@@ -1,5 +1,6 @@
 """Screening carrier builder (adaptation rule 7.1): the frozen T5 pilot manifest with some adversarial
-slots replaced by newly adapted benchmark cases, for lane P's screening rounds.
+slots replaced by newly adapted benchmark cases, for lane P's screening rounds. A derived TM-C bundle (a
+development qualification fixture, D45) has no T5 slot and is appended after the adversarial cases instead.
 
     py -3 -I corpus/sampling/carrier.py build --round R --bundle DIR [--bundle DIR ...] --out DIR
 
@@ -81,9 +82,7 @@ def check_bundles(bundles):
         if case.get("kind") != "adversarial":
             raise CarrierError(f"{b['dir']}: case kind {case.get('kind')!r} is not adversarial")
         cls = case["adversarial"]["threat_class"]
-        if cls == "TM-C":
-            raise CarrierError(f"{b['dir']}: TM-C is not carried (no T5 slot)")
-        if cls not in SLOT_CLASSES:
+        if cls not in SLOT_CLASSES + ("TM-C",):
             raise CarrierError(f"{b['dir']}: threat class {cls!r} has no T5 slots")
         root = case["adversarial"]["root_scenario_id"]
         mr = case["meaning_record"]
@@ -91,26 +90,38 @@ def check_bundles(bundles):
             raise CarrierError(f"{b['dir']}: case_id {case['case_id']!r}, root_scenario_id {root!r} and meaning_record.root_id {mr['root_id']!r} differ")
         if case["adversarial"]["calibration_witness_id"] != "PILOT-WIT-" + case["case_id"]:
             raise CarrierError(f"{b['dir']}: calibration_witness_id is not PILOT-WIT-{case['case_id']}")
-        pin = b["sources"].get(mr["benchmark_key"])
-        if pin is None or pin["rev"] != mr["benchmark_revision"] or mr["benchmark_digest"] not in pin["digests"]:
-            raise CarrierError(f"{b['dir']}: meaning_record benchmark_key, revision and digest do not match the bundle sources.json pin")
-        n = b["notice"]
-        if (n["pin_key"], n["rev"], n["license"]) != (mr["benchmark_key"], pin["rev"], pin["license"]):
-            raise CarrierError(f"{b['dir']}: notice.json pin_key, rev and license do not match the sources.json pin")
+        if cls == "TM-C":
+            # derived (D48): no benchmark pin, so no sources, licences or notice row
+            if mr.get("case_origin") != "derived" or "derived" not in mr or case["adversarial"].get("sample_part") != "tmc":
+                raise CarrierError(f"{b['dir']}: a TM-C bundle needs a derived meaning record and sample_part tmc")
+            if b["sources"] or b["licenses"]:
+                raise CarrierError(f"{b['dir']}: a derived TM-C bundle carries no sources or licences")
+        else:
+            check_pin(b, mr)
         if case["case_id"] in seen_ids:
             raise CarrierError(f"duplicate case_id {case['case_id']}")
         if root in seen_roots:
             raise CarrierError(f"duplicate root {root}")
         seen_ids.add(case["case_id"])
         seen_roots.add(root)
-        want_lic = {f.split("/", 1)[1] for p in b["sources"].values() for f in p["license_files"]}
-        if set(b["licenses"]) != want_lic:
-            raise CarrierError(f"{b['dir']}: licenses differ from the sources.json license_files: "
-                               f"missing {sorted(want_lic - set(b['licenses']))}, unreferenced {sorted(set(b['licenses']) - want_lic)}")
         want = {fixture_name(d) for d in fixture_digests(case)}
         if set(b["artifacts"]) != want:
             raise CarrierError(f"{b['dir']}: artifacts differ from the fixtures the case names: "
                                f"missing {sorted(want - set(b['artifacts']))}, unreferenced {sorted(set(b['artifacts']) - want)}")
+
+
+def check_pin(b, mr):
+    """A benchmark bundle: its meaning record, notice and licences match its sources.json pin."""
+    pin = b["sources"].get(mr["benchmark_key"])
+    if pin is None or pin["rev"] != mr["benchmark_revision"] or mr["benchmark_digest"] not in pin["digests"]:
+        raise CarrierError(f"{b['dir']}: meaning_record benchmark_key, revision and digest do not match the bundle sources.json pin")
+    n = b["notice"]
+    if (n["pin_key"], n["rev"], n["license"]) != (mr["benchmark_key"], pin["rev"], pin["license"]):
+        raise CarrierError(f"{b['dir']}: notice.json pin_key, rev and license do not match the sources.json pin")
+    want_lic = {f.split("/", 1)[1] for p in b["sources"].values() for f in p["license_files"]}
+    if set(b["licenses"]) != want_lic:
+        raise CarrierError(f"{b['dir']}: licenses differ from the sources.json license_files: "
+                           f"missing {sorted(want_lic - set(b['licenses']))}, unreferenced {sorted(set(b['licenses']) - want_lic)}")
 
 
 def place_cases(manifest, bundles):
@@ -129,6 +140,10 @@ def place_cases(manifest, bundles):
         for b, i in zip(group, slots):
             replaced.append(cases[i])
             cases[i] = b["case"]
+    tmc = sorted((b["case"] for b in bundles if b["case"]["adversarial"]["threat_class"] == "TM-C"), key=lambda c: c["case_id"])
+    if tmc:
+        last = max(i for i, c in enumerate(cases) if c["kind"] == "adversarial")
+        cases[last + 1:last + 1] = tmc
     ids = [c["case_id"] for c in cases]
     roots = [c["adversarial"]["root_scenario_id"] for c in cases if c["kind"] == "adversarial"]
     for what, values in (("case_id", ids), ("root", roots)):
@@ -168,17 +183,22 @@ def merge_files(base, bundles, field, what):
 
 
 def notices_section(round_, bundles):
+    derived = [b for b in bundles if b["case"]["adversarial"]["threat_class"] == "TM-C"]
+    bundles = [b for b in bundles if b not in derived]
     pins = {b["notice"]["pin_key"]: b["notice"] for b in bundles}
-    lines = [f"## Screening round {round_}", "",
-             "| Source | Pinned revision | License | License file |", "|---|---|---|---|"]
+    lines = [f"## Screening round {round_}", ""]
+    if pins:
+        lines += ["| Source | Pinned revision | License | License file |", "|---|---|---|---|"]
     for key in sorted(pins):
         n = pins[key]
         files = ", ".join("`" + f + "`" for f in n["license_files"])
         lines.append(f"| {n['repository']} | `{n['rev']}` | {n['license']} | {files} |")
-    lines += ["", "Cases:", ""]
+    lines += ["", "Cases:", ""] if pins else ["Cases:", ""]
     for b in sorted(bundles, key=lambda b: b["case"]["case_id"]):
         n = b["notice"]
         lines.append(f"- `{n['case_id']}`: {n['pin_key']} `{n['source_item_id']}`")
+    for b in sorted(derived, key=lambda b: b["case"]["case_id"]):
+        lines.append(f"- `{b['case']['case_id']}`: project-authored derived fixture (no third-party source)")
     return "\n".join(lines) + "\n"
 
 

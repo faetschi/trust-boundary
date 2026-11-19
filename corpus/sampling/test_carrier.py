@@ -189,12 +189,34 @@ class CarrierTest(unittest.TestCase):
                    for i in range(5)]
         self.refused(bundles, "5 TM-B bundles but only 4 slots")
 
-    def test_tm_c_is_refused(self):
-        b, case, _ = write_bundle(self.tmp.name, "b", "PILOT-ADV-A-02", "injecagent:dh:0002:u01")
-        case["adversarial"]["threat_class"] = "TM-C"
-        with open(os.path.join(b, "case.json"), "w") as f:
-            json.dump(case, f)
-        self.refused([b], "TM-C")
+    def tmc_bundle(self, case_id, derived=True):
+        b, case, _ = write_bundle(self.tmp.name, case_id, "PILOT-ADV-A-02", case_id)
+        case["adversarial"].update(threat_class="TM-C", sample_part="tmc")
+        if derived:
+            case["meaning_record"].update(case_origin="derived", derived={"author": "test"})
+            for name in os.listdir(os.path.join(b, "licenses")):
+                os.remove(os.path.join(b, "licenses", name))
+            with open(os.path.join(b, "sources.json"), "wb") as f:
+                f.write(b'{"pins": {}}')
+        with open(os.path.join(b, "case.json"), "wb") as f:
+            f.write(carrier.dump_json(case, 2))
+        return b
+
+    def test_derived_tm_c_is_appended_after_the_adversarial_cases(self):
+        self.build([self.tmc_bundle("QUAL-B"), self.tmc_bundle("QUAL-A")])
+        ids = [c["case_id"] for c in json.loads(read(os.path.join(self.out, "manifest.draft.json")))["cases"]]
+        base = [c["case_id"] for c in t5_manifest()["cases"]]
+        last = max(i for i, c in enumerate(t5_manifest()["cases"]) if c["kind"] == "adversarial")
+        self.assertEqual(ids, base[:last + 1] + ["QUAL-A", "QUAL-B"] + base[last + 1:])
+        self.assertIn("`QUAL-A`: project-authored derived fixture", read(os.path.join(self.out, "THIRD_PARTY_NOTICES.md")).decode())
+        self.assertEqual(read(os.path.join(self.out, "sources.json")), carrier.dump_json(json.loads(read(os.path.join(PILOT, "sources.json"))), 1))
+
+    def test_tm_c_needs_a_derived_record_and_no_sources(self):
+        self.refused([self.tmc_bundle("QUAL-A", derived=False)], "derived meaning record")
+        b = self.tmc_bundle("QUAL-B")
+        with open(os.path.join(b, "sources.json"), "wb") as f:
+            f.write(b'{"pins": {"x": {}}}')
+        self.refused([b], "carries no sources or licences")
 
     def test_duplicate_case_id(self):
         a = write_bundle(self.tmp.name, "a", "PILOT-ADV-A-02", "injecagent:dh:0002:u01")[0]
