@@ -11,7 +11,6 @@ import (
 
 	"tbound/supervisor/internal/evalreport"
 	"tbound/supervisor/internal/evalscore"
-	"tbound/supervisor/internal/usdledger"
 )
 
 func TestRunCompletesAndCountsUnits(t *testing.T) {
@@ -47,7 +46,8 @@ type crash struct{}
 func TestResumeAfterCrashMidRun(t *testing.T) {
 	s := smallSchedule(t, smallConfig())
 	dir := t.TempDir()
-	const dieAt = 30
+	// An adversarial replay: not resumable, so it is settled and abandoned (a C trajectory would be collected).
+	dieAt := findStep(t, s, firstCase(s, "adversarial"), RoleStaticReplay, CfgC).Index
 
 	first := NewFakeExecutor(s.Config)
 	first.Hook = func(st Step, _ *Outcome) error {
@@ -555,98 +555,6 @@ func TestRerunMidRunReservesCapacityForPlannedSteps(t *testing.T) {
 }
 
 // ---- budget ---------------------------------------------------------------
-
-func TestBudgetStopsOnLedgerUSDStopRule(t *testing.T) {
-	s := smallSchedule(t, smallConfig())
-	fake := NewFakeExecutor(s.Config)
-	committed := int64(0)
-	ledger := func() (snap usdledger.Snapshot, err error) {
-		return okLedger(len(fake.Calls()), committed)()
-	}
-	fake.Hook = func(st Step, _ *Outcome) error {
-		if st.Index == 9 { // after step 9 the ledger shows less than one unit of headroom
-			committed = 5_000_000 - 500
-		}
-		return nil
-	}
-	j := openJournal(t, t.TempDir(), s)
-	defer j.Close()
-	rep, err := mustRunner(t, s, j, fake, Options{Ledger: ledger}).Run(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if rep.Finished || rep.Stop != StopUSD || rep.Executed != 10 || rep.Remaining != 79 || rep.PlannedUnits != 89 {
-		t.Fatalf("report %+v", rep)
-	}
-	if len(fake.Calls()) != 10 {
-		t.Fatalf("executed %d steps", len(fake.Calls()))
-	}
-	// The denominator is not shrunk: the export omits the unfinished cases and
-	// names them, and evalreport shows the coverage as not exact.
-	res, err := Export(s, j, ExportOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(res.Incomplete) == 0 {
-		t.Fatal("unfinished cases not reported")
-	}
-	src, alloc := synth(t, smallQuotas())
-	_ = src
-	r, err := evalreport.Build(evalreport.Inputs{Manifest: alloc, Trials: res.Input, Ledger: mustSnap(t, committed)})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if r.Coverage.Exact || r.H1.RuleSatisfied {
-		t.Fatalf("an unfinished run reports exact coverage: %+v", r.Coverage)
-	}
-}
-
-func TestBudgetStopsOnLedgerUnitCount(t *testing.T) {
-	s := smallSchedule(t, smallConfig())
-	fake := NewFakeExecutor(s.Config)
-	// The ledger already holds 80 units from before this run (pilots): 9 remain.
-	ledger := func() (usdledger.Snapshot, error) { return okLedger(80+len(fake.Calls()), 1000)() }
-	j := openJournal(t, t.TempDir(), s)
-	defer j.Close()
-	rep, err := mustRunner(t, s, j, fake, Options{Ledger: ledger}).Run(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if rep.Finished || rep.Stop != StopUnits || rep.Executed != 9 || rep.Remaining != 80 {
-		t.Fatalf("report %+v", rep)
-	}
-}
-
-func TestBudgetRefusesLedgerAboveRegisteredCap(t *testing.T) {
-	s := smallSchedule(t, smallConfig())
-	fake := NewFakeExecutor(s.Config)
-	ledger := func() (usdledger.Snapshot, error) {
-		snap, _ := okLedger(0, 0)()
-		snap.CapMicroUSD = 6_000_000
-		snap.RemainingMicroUSD = 6_000_000
-		return snap, nil
-	}
-	j := openJournal(t, t.TempDir(), s)
-	defer j.Close()
-	rep, err := mustRunner(t, s, j, fake, Options{Ledger: ledger}).Run(context.Background())
-	if err != nil || rep.Stop != StopUSD || rep.Executed != 0 {
-		t.Fatalf("%+v %v", rep, err)
-	}
-}
-
-func TestBudgetLedgerErrorFailsClosed(t *testing.T) {
-	s := smallSchedule(t, smallConfig())
-	fake := NewFakeExecutor(s.Config)
-	ledger := func() (usdledger.Snapshot, error) { return usdledger.Snapshot{}, errors.New("ledger unreadable") }
-	j := openJournal(t, t.TempDir(), s)
-	defer j.Close()
-	if _, err := mustRunner(t, s, j, fake, Options{Ledger: ledger}).Run(context.Background()); err == nil {
-		t.Fatal("unreadable ledger did not stop the run")
-	}
-	if len(fake.Calls()) != 0 {
-		t.Fatal("a step started without a readable ledger")
-	}
-}
 
 func TestBudgetUnitCapNeverAbovePlannedUnits(t *testing.T) {
 	cfg := testConfig()

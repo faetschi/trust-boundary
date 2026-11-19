@@ -1191,3 +1191,39 @@ func TestUnitIDOfAFirstAttemptIsUnchanged(t *testing.T) {
 		t.Fatal("a resample shares the unit id of its first attempt")
 	}
 }
+
+// The check before each unit (`tbound trial reset`) reads the ledger while the service holds its lock: it refuses the
+// unit once the stop rule holds or an overage is recorded, and admits it before.
+func TestCheckStopRuleReadsTheLedgerTheServiceHolds(t *testing.T) {
+	f := newFixture(t, frozenProfileJSON, ledgerConfigJSON(20_000, 15_000, "request"))
+	f.genesis()
+	bundle := f.open("")
+	if _, err := usdledger.Verify(f.paths.Ledger, usdledger.Config{LedgerID: "research-test", CapMicroUSD: 20_000, MinPerUnitWorstCaseMicroUSD: 15_000}); !errors.Is(err, usdledger.ErrLocked) {
+		t.Fatalf("Verify of the held ledger = %v, want ErrLocked", err)
+	}
+	if err := CheckStopRule(f.paths); err != nil {
+		t.Fatalf("a fresh ledger refused the unit: %v", err)
+	}
+	if err := bundle.ledger.Reserve("earlier-unit", requestReserve); err != nil {
+		t.Fatal(err)
+	}
+	if err := bundle.ledger.Settle("earlier-unit", requestReserve); err != nil {
+		t.Fatal(err)
+	}
+	if err := CheckStopRule(f.paths); !errors.Is(err, ErrStopRule) {
+		t.Fatalf("stop rule: %v, want ErrStopRule", err)
+	}
+
+	f = newFixture(t, frozenProfileJSON, ledgerConfigJSON(5_000_000, 20_000, "request"))
+	f.genesis()
+	bundle = f.open("")
+	if err := bundle.ledger.Reserve("over", requestReserve); err != nil {
+		t.Fatal(err)
+	}
+	if err := bundle.ledger.SettleOverage("over", 100_000); err != nil {
+		t.Fatal(err)
+	}
+	if err := CheckStopRule(f.paths); !errors.Is(err, usdledger.ErrOverCap) {
+		t.Fatalf("overage: %v, want ErrOverCap", err)
+	}
+}

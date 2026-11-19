@@ -163,10 +163,12 @@ func (d dieOn) Execute(ctx context.Context, s Step) (Outcome, error) {
 	return d.Executor.Execute(ctx, s)
 }
 
-func TestResumedAdversarialStepStaysAbandoned(t *testing.T) {
+// A started adversarial replay of a dead process is settled and abandoned: its observers died with the process, and a
+// replay takes no rerun.
+func TestResumedAdversarialReplayStaysAbandoned(t *testing.T) {
 	s := smallSchedule(t, smallConfig())
 	dir := t.TempDir()
-	st := firstStepOf(t, s, CfgC, evalcorpus.KindAdversarial)
+	st := findStep(t, s, firstCase(s, "adversarial"), RoleStaticReplay, CfgC)
 	g := &fakeGuest{stored: map[string][]byte{}}
 	stack := governedStack(s, g, dir+"/dispatched")
 	stack.C = dieOn{Executor: stack.C, target: st, g: g}
@@ -192,6 +194,41 @@ func TestResumedAdversarialStepStaysAbandoned(t *testing.T) {
 	}
 }
 
+// A started adversarial C trajectory of a dead process is collected under its request id (register D30, P1-9
+// amendment): the guest's stored terminal is its result, typed as a host interruption, and nothing runs twice.
+func TestResumedTrajectoryTakesTheGuestsStoredTerminalAsAnInterruption(t *testing.T) {
+	s := smallSchedule(t, smallConfig())
+	dir := t.TempDir()
+	st := findStep(t, s, firstCase(s, "adversarial"), RoleTrajectory, CfgC)
+	g := &fakeGuest{stored: map[string][]byte{}}
+	stack := governedStack(s, g, dir+"/dispatched")
+	stack.C = dieOn{Executor: stack.C, target: st, g: g}
+	runUntilDeath(t, s, dir, stack)
+
+	j := openJournal(t, dir, s)
+	defer j.Close()
+	rep, err := mustRunner(t, s, j, governedStack(s, g, dir+"/dispatched"), Options{}).Run(context.Background())
+	if err != nil || rep.Abandoned != 0 || rep.Resumed != 1 || !rep.Finished {
+		t.Fatalf("report %+v %v", rep, err)
+	}
+	term, _ := j.Final(st.ID())
+	req := GovernedRequestFor(s.Digest, Step{CaseID: st.CaseID, Role: st.Role, Configuration: st.Configuration, Repeat: st.Repeat, Attempt: 1})
+	stored := digestOfLine(g.stored[req.RequestID][:len(g.stored[req.RequestID])-1])
+	if term.Kind != EntryDone || term.Outcome == nil || term.Outcome.UnknownEnd != EndHostInterruption ||
+		term.Outcome.EvidenceLoss != evalscore.LossOutcomeUnknown || term.Outcome.E01.Digest != stored || term.Outcome.OutageEvidenceDigest != stored {
+		t.Fatalf("terminal %+v, want the stored terminal typed as a host interruption", term)
+	}
+	cSteps := 0
+	for _, x := range s.Steps {
+		if x.Configuration == CfgC {
+			cSteps++
+		}
+	}
+	if g.workflows != cSteps || len(g.resets) != cSteps {
+		t.Fatalf("guest ran %d workflows and %d resets for %d C steps: the collection started a run", g.workflows, len(g.resets), cSteps)
+	}
+}
+
 type dieOnRerun struct{ Executor }
 
 func (d dieOnRerun) Execute(ctx context.Context, s Step) (Outcome, error) {
@@ -199,32 +236,6 @@ func (d dieOnRerun) Execute(ctx context.Context, s Step) (Outcome, error) {
 		panic("host process died")
 	}
 	return d.Executor.Execute(ctx, s)
-}
-
-// A host that died inside an adversarial rerun left attempt 2 started. Like attempt 1, it is settled before it is
-// closed as abandoned: its request id is sent again, so a guest service that restarted mid-request does not keep it
-// open and block every later begin (SB-04).
-func TestInterruptedAdversarialRerunIsSettledBeforeItIsAbandoned(t *testing.T) {
-	u := runWithUnknown(t, "adversarial", RoleTrajectory, CfgC, evalscore.LossExternalOutage, nil)
-	func() {
-		defer func() {
-			if recover() == nil {
-				t.Fatal("the simulated host death did not happen")
-			}
-		}()
-		_ = mustRunner(t, u.sched, u.j, dieOnRerun{u.exec}, Options{}).Rerun(context.Background(), u.exec.target.ID())
-	}()
-	next := NewFakeExecutor(u.sched.Config)
-	rep, err := mustRunner(t, u.sched, u.j, next, Options{}).Run(context.Background())
-	if err != nil || rep.Abandoned != 1 {
-		t.Fatalf("report %+v %v", rep, err)
-	}
-	if calls := next.Calls(); len(calls) != 1 || calls[0].ID() != u.exec.target.ID() || calls[0].Attempt != 2 || !calls[0].Resumed {
-		t.Fatalf("calls %+v, want one settling send of the rerun", calls)
-	}
-	if term := u.j.terminalOf(u.exec.target.ID(), 2); term == nil || term.Kind != EntryAbandoned || !strings.Contains(term.Reason, "sent again") {
-		t.Fatalf("rerun terminal %+v, want abandoned after settling", term)
-	}
 }
 
 // A process that died before its reset ended sent no request: the next process resets and
@@ -261,12 +272,12 @@ func TestGovernedCSendsTheSameRequestAgainWhenTheAnswerIsLost(t *testing.T) {
 	}
 }
 
-// An adversarial step is scored from its first send only: a resend could reach a restarted service that recovers the
+// An adversarial replay is scored from its first send only: a resend could reach a restarted service that recovers the
 // workflow, which is not the stored result of the observed run. A lost answer is still settled, so the guest's
 // admission is terminal before the next unit starts.
-func TestGovernedCScoresAnAdversarialStepOnceAndSettlesALostAnswer(t *testing.T) {
+func TestGovernedCScoresAnAdversarialReplayOnceAndSettlesALostAnswer(t *testing.T) {
 	s := smallSchedule(t, smallConfig())
-	st := firstStepOf(t, s, CfgC, evalcorpus.KindAdversarial)
+	st := findStep(t, s, firstCase(s, "adversarial"), RoleStaticReplay, CfgC)
 	g := &fakeGuest{stored: map[string][]byte{}, running: 2}
 	lost := &lossyTransport{inner: guestClient{g}, lose: 1}
 	gc := GovernedC{PlanDigest: s.Digest, Transport: lost, ResendPause: time.Millisecond, ResendWindow: time.Second}
@@ -280,19 +291,47 @@ func TestGovernedCScoresAnAdversarialStepOnceAndSettlesALostAnswer(t *testing.T)
 	}
 }
 
-// A resumed adversarial step only settles the dead process's request: busy answers are waited out, so the next unit
-// meets a terminal admission, and nothing is returned for scoring.
+// An adversarial C trajectory whose answer an SSH loss took mid-step is collected under the same request id (register
+// D30, P1-9 amendment): its observers still ran in this process, so the guest's stored terminal is its result, typed
+// as a host interruption. A loss that outlasts the resend window leaves no answer: unclassified loss, never OPEN.
+func TestGovernedCCollectsATrajectoryWhoseAnswerWasLost(t *testing.T) {
+	s := smallSchedule(t, smallConfig())
+	st := findStep(t, s, firstCase(s, "adversarial"), RoleTrajectory, CfgC)
+	g := &fakeGuest{stored: map[string][]byte{}, running: 2}
+	lost := &lossyTransport{inner: guestClient{g}, lose: 1}
+	gc := GovernedC{PlanDigest: s.Digest, Transport: lost, ResendPause: time.Millisecond, ResendWindow: time.Second}
+	o, err := gc.Execute(context.Background(), st)
+	req, _ := gc.Request(st)
+	stored := digestOfLine(g.stored[req.RequestID][:len(g.stored[req.RequestID])-1])
+	if err != nil || g.workflows != 1 || o.UnknownEnd != EndHostInterruption || o.EvidenceLoss != evalscore.LossOutcomeUnknown ||
+		o.E01.Digest != stored || o.OutageEvidenceDigest != stored {
+		t.Fatalf("outcome %+v err %v workflows %d, want the stored terminal typed as a host interruption", o, err, g.workflows)
+	}
+
+	gone := &lossyTransport{inner: guestClient{&fakeGuest{stored: map[string][]byte{}}}, lose: 1 << 20}
+	gc.Transport, gc.ResendWindow = gone, 20*time.Millisecond
+	o, err = gc.Execute(context.Background(), st)
+	if err == nil || o.UnknownEnd != EndHostInterruption || o.EvidenceLoss != evalscore.LossUnclassified || o.E01.Digest != "" {
+		t.Fatalf("outcome %+v err %v, want an unanswered interruption as unclassified loss", o, err)
+	}
+}
+
+// A resumed adversarial replay only settles the dead process's request: busy answers are waited out, so the next unit
+// meets a terminal admission, and nothing is returned for scoring. A resumed C trajectory waits the same way and
+// returns the stored terminal.
 func TestGovernedCSettlesAResumedAdversarialRequestThroughBusy(t *testing.T) {
 	s := smallSchedule(t, smallConfig())
-	st := firstStepOf(t, s, CfgC, evalcorpus.KindAdversarial)
-	g := &fakeGuest{stored: map[string][]byte{}, running: 3}
-	gc := GovernedC{PlanDigest: s.Digest, Transport: guestClient{g}, ResendPause: time.Millisecond, ResendWindow: time.Second}
-	run := st
-	run.Resumed = true
-	o, err := gc.Execute(context.Background(), run)
-	req, _ := gc.Request(st)
-	if _, settled := g.stored[req.RequestID]; err != nil || hasOutcome(o) || !settled || g.workflows != 1 {
-		t.Fatalf("outcome %+v err %v settled %v workflows %d, want a settled request and no outcome", o, err, settled, g.workflows)
+	for _, role := range []Role{RoleStaticReplay, RoleTrajectory} {
+		st := findStep(t, s, firstCase(s, "adversarial"), role, CfgC)
+		g := &fakeGuest{stored: map[string][]byte{}, running: 3}
+		gc := GovernedC{PlanDigest: s.Digest, Transport: guestClient{g}, ResendPause: time.Millisecond, ResendWindow: time.Second}
+		run := st
+		run.Resumed = true
+		o, err := gc.Execute(context.Background(), run)
+		req, _ := gc.Request(st)
+		if _, settled := g.stored[req.RequestID]; err != nil || hasOutcome(o) != (role == RoleTrajectory) || !settled || g.workflows != 1 {
+			t.Fatalf("%s: outcome %+v err %v settled %v workflows %d", role, o, err, settled, g.workflows)
+		}
 	}
 }
 

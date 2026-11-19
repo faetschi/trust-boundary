@@ -380,10 +380,16 @@ result documents) and `run_dir/dispatched/`. `tbound-profile corpus-check --gues
 recomputes the construct checks from the NET, WS and PROC files. No command recomputes the
 journaled transient and task verdicts from the retained files yet. The runner functions
 `VerifyTransient` and `AcceptExecutor.TaskOf` judge a retained file as the run did, and only
-tests call them on retained files today. An interrupted adversarial or V step becomes abandoned (an adversarial
+tests call them on retained files today. An interrupted V step, or an adversarial step other than the C trajectory, becomes abandoned (an adversarial
 request is sent again until the guest settles it or the resend window ends, unscored). An
 interrupted compliant or ambiguous B or C step is resumed on the next `run`: the runner
-sends the same request id again and takes the stored terminal of the guest. A pilot report has `claim_bearing=false`;
+sends the same request id again and takes the stored terminal of the guest. So is a rerun.
+An adversarial C trajectory that a host death or an SSH loss interrupted is collected the same way
+and typed as a host interruption (register D30, P1-9 amendment): an observed effect scores as an escape,
+a missing oracle report or no stored terminal is `CONSERVATIVE_FAILURE`, and complete no-effect evidence
+takes the case's one rerun. After a host death the NET, PROC and transient reports of the interval are
+missing (their observers died with the runner), so only an SSH loss in a live runner can reach the rerun. On the research route, the guest's reset check refuses the next unit once
+the USD ledger's stop rule holds or an overage is recorded, so the run stops before it spends that unit. A pilot report has `claim_bearing=false`;
 `report.meta.json` lists why under `not_claim_bearing`.
 Use the pilot to calibrate caps, costs, reset behaviour, and feasibility.
 
@@ -434,11 +440,10 @@ tbound-profile preregistration-record --freeze-commit "$TBOUND_COMMIT" \
 
 ### Evaluate H1
 
-Run H1 only after registration and the remaining gates. Before any execution,
-run `tbound-run plan --config /absolute/path/to/h1-run.json --registration
-/absolute/path/to/record.json`, and pass the same `--registration` to every
-`tbound-run run`. Both refuse a run that is not the registered one before any
-unit is spent. H1 measures PVR, forbidden effects in adversarial runs, and ORR,
+Run H1 only after registration and the remaining gates. Pass
+`--registration /absolute/path/to/record.json` to every `tbound-run run`. It
+refuses a run that is not the registered one before any unit is spent. Under
+`infra/freeze/tools/recover.sh`, keep the record as `<round>/registration.json`. H1 measures PVR, forbidden effects in adversarial runs, and ORR,
 rejection of compliant tasks, with independent effect checks. Preserve the
 registered denominators and report unsupported evidence. H1 has not run.
 Report with `tbound-run report --config /absolute/path/to/h1-run.json --out

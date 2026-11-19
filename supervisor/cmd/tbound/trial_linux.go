@@ -20,6 +20,7 @@ import (
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/corpusadmit"
 	"tbound/supervisor/internal/piruntime"
+	"tbound/supervisor/internal/researchroute"
 	"tbound/supervisor/internal/trialfix"
 	"tbound/supervisor/internal/workflow"
 	"tbound/supervisor/internal/wsoracle"
@@ -39,7 +40,7 @@ import (
 //	reset <case_id>
 //	    takes the maintenance lock first (maintenance_lock_linux.go) and holds it to the end: it
 //	    refuses while the service has a workflow admitted or another reset runs. It then refuses when a workflow admission has no terminal, a managed-root run still holds the
-//	    live root, the fixture artifact does not verify, or the service has a tbound-accept-* or tbound-v-* container in
+//	    live root, the research route's USD ledger stop rule holds or an overage is recorded (trialUSDStop), the fixture artifact does not verify, or the service has a tbound-accept-* or tbound-v-* container in
 //	    any state, or its containers cannot be listed (procoracle stated limit F1: such a container is scored as the cell's). Otherwise it kills whatever still
 //	    runs in the cells cgroup subtree (a write of 1 to cgroup.kill, then a bounded wait for
 //	    populated 0; a missing cgroup.kill or a cgroup that stays populated refuses), removes the
@@ -104,6 +105,9 @@ type trialEnv struct {
 	// pending returns an error naming what is still pending: a workflow admission without a
 	// terminal, or a managed-root run that holds the live root.
 	pending func(ctx context.Context) error
+	// usdStop refuses the next unit when the research route's USD ledger stop rule holds or an overage is recorded
+	// (trialUSDStop). The engineering route has no ledger and passes.
+	usdStop func(ctx context.Context) error
 	// leftoverCells lists the service's acceptance and V cell containers (trialHost.leftoverCells).
 	leftoverCells func(ctx context.Context) ([]string, error)
 	// cellPopulated reports whether the cells cgroup (or one below it) holds a live process that is
@@ -141,7 +145,7 @@ func productionTrialEnv() trialEnv {
 			}
 			return reg.RootDevice, reg.RootInode, nil
 		},
-		cell: loadTrialCell, lock: resetMaintenanceLock.acquire, pending: trialPending, leftoverCells: host.leftoverCells,
+		cell: loadTrialCell, lock: resetMaintenanceLock.acquire, pending: trialPending, usdStop: trialUSDStop, leftoverCells: host.leftoverCells,
 		cellPopulated: cellsCgroupPopulated, killCell: killCellsCgroup,
 		cleanNoReap: host.cleanNoReap, netSink: host.ensureNetSink,
 		snapshot: wsoracle.Snapshot, snapshotDir: wsoracle.SnapshotDir,
@@ -253,6 +257,13 @@ func trialReset(ctx context.Context, args []string, env trialEnv) (trialfix.Rese
 	if err := env.pending(ctx); err != nil {
 		return trialfix.ResetDoc{}, fmt.Errorf("a workflow, admission or publication is pending: %w", err)
 	}
+	// The stop rule is the check before a unit: only --check (the runner's Prepare) refuses, so the refusal voids the
+	// begin. A reset after the check spends the unit whatever it returns.
+	if check {
+		if err := env.usdStop(ctx); err != nil {
+			return trialfix.ResetDoc{}, fmt.Errorf("refusing the unit: %w", err)
+		}
+	}
 	// procoracle F1: an acceptance or V cell container would be scored as the cell's. Both modes refuse, so the
 	// runner's Prepare (--check) voids the step and stops the run before any request.
 	leftovers, err := env.leftoverCells(ctx)
@@ -341,15 +352,7 @@ func cellHostIdentity(reg piruntime.D09ManagedLiveRootRegistration, tmpl pirunti
 // trialPinnedFixtureDigest is the fixture digest of caseID in the pinned corpus manifest: the
 // manifest the signed service config references, admitted with the service's own loader.
 func trialPinnedFixtureDigest(ctx context.Context, caseID string) (string, error) {
-	registration, err := piruntime.LoadVerifiedD09ManagedLiveRootPolicy(ctx)
-	if err != nil {
-		return "", err
-	}
-	_, contract, err := serviceSocketRegistrationFromSignedRegistration(registration)
-	if err != nil {
-		return "", err
-	}
-	config, err := readProductionPiServiceConfig(contract.ServiceConfigPath, contract.ServiceConfigDigest)
+	config, err := trialServiceConfig(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -362,6 +365,39 @@ func trialPinnedFixtureDigest(ctx context.Context, caseID string) (string, error
 		return "", errors.New("not a case of the pinned corpus manifest")
 	}
 	return digest, nil
+}
+
+// trialServiceConfig is the service config the verified registration pins.
+func trialServiceConfig(ctx context.Context) (piServiceConfig, error) {
+	registration, err := piruntime.LoadVerifiedD09ManagedLiveRootPolicy(ctx)
+	if err != nil {
+		return piServiceConfig{}, err
+	}
+	_, contract, err := serviceSocketRegistrationFromSignedRegistration(registration)
+	if err != nil {
+		return piServiceConfig{}, err
+	}
+	return readProductionPiServiceConfig(contract.ServiceConfigPath, contract.ServiceConfigDigest)
+}
+
+// trialUSDStop is the USD stop rule checked before each unit (register D30 Limits): on the research route the reset
+// refuses the unit while every provider request of it would be refused, so the runner's Prepare voids it and the run
+// stops before the unit is spent. The reset holds the maintenance lock, so no workflow runs and the ledger the
+// service holds is quiescent.
+func trialUSDStop(ctx context.Context) error {
+	config, err := trialServiceConfig(ctx)
+	if err != nil {
+		return err
+	}
+	return usdStopFor(config, researchroute.DefaultPaths())
+}
+
+// usdStopFor checks the research ledger at paths when config is on the research route; the engineering route has none.
+func usdStopFor(config piServiceConfig, paths researchroute.Paths) error {
+	if config.ProviderRoute != piruntime.D09ManagedPiProviderRouteResearch {
+		return nil
+	}
+	return researchroute.CheckStopRule(paths)
 }
 
 // trialPending reads the workflow catalog, the publication lifecycle journal and the live root
