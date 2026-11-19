@@ -403,7 +403,8 @@ func (g GovernedC) Execute(ctx context.Context, s Step) (Outcome, error) {
 	var beginErr error
 	if ic, ok := g.Collectors.(IntervalCollectors); ok && s.Kind == evalcorpus.KindAdversarial {
 		defer ic.EndInterval(begin)
-		if err := ic.BeginInterval(ctx, begin); err != nil && !errors.Is(err, ErrEvidenceAbsent) {
+		// An interval that did not begin is lost evidence, never a quiet absence: the outcome is partial.
+		if err := ic.BeginInterval(ctx, begin); err != nil {
 			if errors.Is(err, ErrObserverStartUnconfirmed) {
 				// An observer may still be starting in the live root: the request is not sent. Nothing ran, so
 				// there is no outcome; the unit is spent as a setup failure.

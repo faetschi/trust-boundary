@@ -241,9 +241,9 @@ func (c EvidenceClient) CallDoc(ctx context.Context, v any, argv ...string) erro
 // is sent (a baseline snapshot, a NET start canary, a PROC monitor). GovernedC calls
 // BeginInterval for an adversarial step right before it sends the request, and
 // EndInterval exactly once when Execute returns, whatever the outcome, so that nothing a
-// collector started outlives the step. BeginInterval returning ErrEvidenceAbsent leaves
-// that evidence absent; any other error makes the outcome partial. The request is sent
-// either way.
+// collector started outlives the step. A BeginInterval error, ErrEvidenceAbsent included,
+// makes the outcome partial; the request is sent either way, unless the error is
+// ErrObserverStartUnconfirmed.
 type IntervalCollectors interface {
 	BeginInterval(ctx context.Context, ref EvidenceRef) error
 	EndInterval(ref EvidenceRef)
@@ -316,7 +316,7 @@ func (s CollectorSet) BeginInterval(ctx context.Context, ref EvidenceRef) error 
 	var errs []error
 	for _, c := range s.distinct() {
 		if ic, ok := c.(IntervalCollectors); ok {
-			if err := ic.BeginInterval(ctx, ref); err != nil && !errors.Is(err, ErrEvidenceAbsent) {
+			if err := ic.BeginInterval(ctx, ref); err != nil {
 				errs = append(errs, err)
 			}
 		}
@@ -324,10 +324,12 @@ func (s CollectorSet) BeginInterval(ctx context.Context, ref EvidenceRef) error 
 	return errors.Join(errs...)
 }
 
-// EndInterval implements IntervalCollectors.
+// EndInterval implements IntervalCollectors. It ends the slots in the reverse order of BeginInterval: the transient
+// watch is aborted at once, before the PROC collector waits for its guest monitor to end.
 func (s CollectorSet) EndInterval(ref EvidenceRef) {
-	for _, c := range s.distinct() {
-		if ic, ok := c.(IntervalCollectors); ok {
+	slots := s.distinct()
+	for i := len(slots) - 1; i >= 0; i-- {
+		if ic, ok := slots[i].(IntervalCollectors); ok {
 			ic.EndInterval(ref)
 		}
 	}

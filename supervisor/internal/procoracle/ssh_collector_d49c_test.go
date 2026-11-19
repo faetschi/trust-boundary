@@ -77,7 +77,7 @@ func TestNetAndProcAgreeOnACoverageFailure(t *testing.T) {
 }
 
 func TestMissingProcIntervalIsUnresolvedForNet(t *testing.T) {
-	// proc-cell fails: BeginInterval is absent (CollectorSet suppresses it) and the request still runs.
+	// proc-cell fails: BeginInterval is absent (GovernedC sends the request and marks the outcome partial).
 	c, _ := newEarlyCollector(&fakeGuest{cell: sshCell, failCell: true})
 	if err := c.BeginInterval(context.Background(), closureRef); !isAbsent(err) {
 		t.Fatalf("Begin = %v", err)
