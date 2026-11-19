@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/broker/openrouter"
@@ -23,6 +24,8 @@ import (
 	"tbound/supervisor/internal/providerbridge"
 	"tbound/supervisor/internal/researchroute"
 	"tbound/supervisor/internal/runend"
+	"tbound/supervisor/internal/sessionlaunch"
+	"tbound/supervisor/internal/sessionrepo"
 	"tbound/supervisor/internal/workflowrecovery"
 	"tbound/supervisor/internal/workspace"
 )
@@ -431,6 +434,58 @@ func TestLedgerVerifierCauseThroughTheRealLedger(t *testing.T) {
 		if !errors.Is(err, workflowrecovery.ErrObservation) {
 			t.Fatalf("%s: the ledger did not refuse with ErrObservation: %v", name, err)
 		}
+		if answer := unknownAnswerOf(t, err); answer.ErrorCode != tc.code {
+			t.Errorf("%s: answer %q, want %q; ledger error %v", name, answer.ErrorCode, tc.code, err)
+		}
+	}
+}
+
+type deadlineCheckOwner struct {
+	workflowrecovery.Owner
+	cause error
+}
+
+func (deadlineCheckOwner) VerifyFence(context.Context, string, uint64) error { return nil }
+
+func (o deadlineCheckOwner) VerifyWorkflowDeadline(context.Context, string, time.Time) error {
+	return o.cause
+}
+
+// The fresh workflow's start-up deadline check runs at binder time, before the agent: only an expired deadline is an
+// agent ceiling there; a broken owner store or an owner process change is infrastructure (finding 1 of #211).
+func TestStartupDeadlineCheckClassesOnlyAnExpiredDeadlineAsACeiling(t *testing.T) {
+	f := prepareWorkflowVertical(t, workflowVerticalOptions{launchProof: true, maxHostCalls: 7, maxTokens: 7 * 1024})
+	checkpoint, _ := f.ledger.Snapshot()
+	previous := workflowrecovery.Pins{WorkflowID: "workflow-1", RecoveryGeneration: 1, OwnerEpoch: 1}
+	transcript := workflowrecovery.TranscriptPin{Ordinal: 1, Disposition: workflowrecovery.DispositionAwaitingHostPrompt}
+	baseline := &sessionrepo.Generation{}
+	next := cloneWorkflowPins(previous)
+	next.ProviderTranscripts = []workflowrecovery.TranscriptPin{transcript}
+	next.ProviderProjectionDigest = workflowrecovery.TranscriptPinsDigest(next.ProviderTranscripts)
+	next.ProviderDisposition = workflowrecovery.DispositionAwaitingHostPrompt
+	next.StoreTipTreeDigest = bareStoreTreeDigest(baseline.TreeDigest())
+	for name, tc := range map[string]struct {
+		cause error
+		code  string
+	}{
+		"owner poisoned": {fmt.Errorf("%w: SQLite owner is poisoned after an ambiguous durable commit", workflowrecovery.ErrCAS),
+			runend.CodeOutcomeUnknown},
+		"owner store read error": {fmt.Errorf("%w: read protected host-root workflow state: %v", workflowrecovery.ErrOwnerStore,
+			errors.New("disk I/O error")), runend.CodeOutcomeUnknown},
+		"owner process changed": {fmt.Errorf("%w: deadline query process incarnation changed: %v", workflowrecovery.ErrOwnerFence,
+			nil), runend.CodeOutcomeUnknown},
+		"deadline expired": {workflowrecovery.ErrDeadline, runend.CodeBudgetEnded},
+	} {
+		verifier := productionInitialTranscriptProgressVerifier{
+			request:      governedRecoveryRequest{Owner: deadlineCheckOwner{cause: tc.cause}, Limits: workflowrecovery.Limits{Deadline: time.Now()}},
+			previousPins: previous, transcript: transcript, managed: &sessionlaunch.ManagedStore{}, prepared: &sessionlaunch.PreparedSession{},
+			baseline: baseline, storeJournal: &audit.Journal{}, providerJournal: &audit.Journal{},
+		}
+		cause := verifier.VerifyProgress(f.ctx, workflowrecovery.Checkpoint{Pins: previous}, next)
+		if !errors.Is(cause, tc.cause) {
+			t.Fatalf("%s: the verifier did not fail at the deadline check: %v", name, cause)
+		}
+		_, err := f.ledger.AdvanceCheckpoint(f.ctx, failingProgress{cause: cause}, checkpoint.Pins)
 		if answer := unknownAnswerOf(t, err); answer.ErrorCode != tc.code {
 			t.Errorf("%s: answer %q, want %q; ledger error %v", name, answer.ErrorCode, tc.code, err)
 		}
