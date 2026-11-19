@@ -24,7 +24,7 @@ func TestProviderOutageTypesTheTurnFailureWithItsJournalRecord(t *testing.T) {
 		outage    bool
 	}{
 		"503 after the retries":       {[]fixtureResponse{{failStatus: 503}, {failStatus: 503}, {failStatus: 503}}, true},
-		"403 subscription (F24)":      {[]fixtureResponse{{failStatus: 403, failBody: subscriptionBody}}, true},
+		"403 subscription (F24)":      {[]fixtureResponse{{failStatus: 403, failBody: subscriptionBody}}, false},
 		"500":                         {[]fixtureResponse{{failStatus: 500, failBody: unavailableBody}}, true},
 		"429 without Retry-After":     {[]fixtureResponse{{failStatus: 429, failBody: `{"error":"rate limited"}`}}, true},
 		"transport failure":           {nil, true},

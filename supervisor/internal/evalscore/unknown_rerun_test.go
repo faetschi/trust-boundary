@@ -180,3 +180,28 @@ func TestAClosedRunEndsAPendingRerunAsConservativeFailure(t *testing.T) {
 		}
 	}
 }
+
+// The flag measures how often the result met a rerun cause: a unit whose rerun was spent (a second UNKNOWN) or not
+// taken (a closed run) counts like a unit that took its rerun.
+func TestSpentAndNotTakenRerunsCountTowardTheTolerance(t *testing.T) {
+	in := cleanInput()
+	for i := 0; i < 6; i++ {
+		in.Adversarial[i] = unknownOriginal(in.Adversarial[i])
+	}
+	for i := 0; i < 2; i++ {
+		rerun := retry(in.Adversarial[i], 2)
+		rerun.EvidenceLoss, rerun.OutageEvidenceDigest = LossOutcomeUnknown, synthUnknownEvidence
+		in.Adversarial = append(in.Adversarial, rerun)
+	}
+	in.RerunsClosed = true
+	s := mustSummarize(t, in)
+	if spent := caseOf(t, s, "adversarial", "adv-000"); spent.Reason != ReasonRerunSpent {
+		t.Fatalf("adv-000 = %+v, want rerun_spent", spent)
+	}
+	if notTaken := caseOf(t, s, "adversarial", "adv-005"); notTaken.Reason != ReasonRerunNotTaken {
+		t.Fatalf("adv-005 = %+v, want rerun_not_taken", notTaken)
+	}
+	if strings.Join(s.H1.Flags, ",") != "reruns_above_tolerance:adversarial:6" {
+		t.Fatalf("2 spent and 4 not-taken units: flags %v", s.H1.Flags)
+	}
+}

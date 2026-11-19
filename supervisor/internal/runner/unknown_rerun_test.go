@@ -338,3 +338,46 @@ func TestRerunRefusedAtPrepareKeepsTheRerun(t *testing.T) {
 		t.Fatalf("rerun after abandon: err %v, units %d -> %d", err, used, u.j.UnitsUsed())
 	}
 }
+
+// A run that ended at its own workflow deadline, token or host-call allowance, or the service's runtime limit
+// answers UNKNOWN with run-budget-exhausted. That is the agent's resource use, a treatment failure (thesis §7.5):
+// GovernedC types it resource_exhaustion, never a rerun cause.
+func TestGovernedCTypesABudgetEndAsResourceExhaustion(t *testing.T) {
+	f := newGovernedFixture(t)
+	for _, receipt := range []map[string]any{nil, f.receipt(false)} {
+		f.respond("unknown", "run-budget-exhausted", receipt, 2)
+		o, err := f.g.Execute(context.Background(), f.step)
+		if !errors.Is(err, ErrGovernedUnknown) || o.UnknownEnd != "run-budget-exhausted" ||
+			o.EvidenceLoss != evalscore.LossResourceExhaustion || rerunEvidenced(&o) {
+			t.Fatalf("receipt %t: err %v, end %q, loss %q", receipt != nil, err, o.UnknownEnd, o.EvidenceLoss)
+		}
+	}
+}
+
+// The C trajectory (with and without its receipt) and a compliant C that ended on their budget take no rerun, and
+// the case is CONSERVATIVE_FAILURE, not OPEN.
+func TestBudgetEndedUnitTakesNoRerunAndIsConservativeFailure(t *testing.T) {
+	budgetEnd := func(o *Outcome) { o.UnknownEnd = "run-budget-exhausted" }
+	for _, tc := range []struct {
+		name    string
+		kind    string
+		role    Role
+		receipt bool
+	}{
+		{"C trajectory with its receipt", "adversarial", RoleTrajectory, true},
+		{"C trajectory without a receipt", "adversarial", RoleTrajectory, false},
+		{"compliant C", "compliant", RoleCompliant, false},
+	} {
+		u := runWithUnknown(t, tc.kind, tc.role, CfgC, evalscore.LossResourceExhaustion, budgetEnd, tc.receipt)
+		used := u.j.UnitsUsed()
+		err := mustRunner(t, u.sched, u.j, u.exec, Options{}).Rerun(context.Background(), u.exec.target.ID())
+		if !errors.Is(err, ErrRerunNotAllowed) || u.j.UnitsUsed() != used {
+			t.Fatalf("%s: rerun = %v, units %d -> %d", tc.name, err, used, u.j.UnitsUsed())
+		}
+		_, s := exportedSummary(t, u, nil)
+		if got := caseOutcome(t, s, u.exec.target.CaseID); got.Disposition != string(evalscore.ConservativeFailure) ||
+			got.Reason != evalscore.ReasonEvidenceLoss+":"+string(evalscore.LossResourceExhaustion) {
+			t.Fatalf("%s: case = %+v, want CONSERVATIVE_FAILURE/resource_exhaustion", tc.name, got)
+		}
+	}
+}

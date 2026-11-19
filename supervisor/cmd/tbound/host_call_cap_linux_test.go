@@ -28,7 +28,13 @@ var capRetryable = providerbridge.DevelopmentProviderTurn{FailStatus: 503,
 // provider turn.
 func hostCallCapWorkflow(t *testing.T, turns []providerbridge.DevelopmentProviderTurn, reads int) *workflowVerticalFixture {
 	t.Helper()
-	f := prepareWorkflowVertical(t, workflowVerticalOptions{launchProof: true, maxHostCalls: 7, maxTokens: 7 * 1024})
+	return limitedWorkflow(t, turns, reads, 7, 7*1024)
+}
+
+// limitedWorkflow is hostCallCapWorkflow with the given host-call and token allowances.
+func limitedWorkflow(t *testing.T, turns []providerbridge.DevelopmentProviderTurn, reads int, maxHostCalls, maxTokens uint64) *workflowVerticalFixture {
+	t.Helper()
+	f := prepareWorkflowVertical(t, workflowVerticalOptions{launchProof: true, maxHostCalls: maxHostCalls, maxTokens: maxTokens})
 	f.startConversation(t, func(config providerbridge.Config, journal *audit.Journal) (*providerbridge.Conversation, error) {
 		return providerbridge.NewDevelopmentOfflineConversation(config, journal, turns)
 	})
