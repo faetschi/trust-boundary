@@ -139,6 +139,8 @@ type procInterval struct {
 	reg    Registration
 	done   chan monitorResult
 	cancel context.CancelFunc
+	// exited is closed when the monitor's session has returned: the guest monitor has ended (or the host killed the session).
+	exited chan struct{}
 	// stdin ends the monitor on proof (D49): the stop line asks for the record now. Nil when early close is off.
 	stdin    *io.PipeWriter
 	stopOnce sync.Once
@@ -355,7 +357,7 @@ func (c *SSHCollector) BeginInterval(ctx context.Context, ref runner.EvidenceRef
 	start := c.now()
 	reg := GuestRegistration(cell, start, start.Add(c.TeardownGrace))
 	mctx, cancel := context.WithCancel(ctx)
-	iv := &procInterval{reg: reg, done: make(chan monitorResult, 1), cancel: cancel}
+	iv := &procInterval{reg: reg, done: make(chan monitorResult, 1), cancel: cancel, exited: make(chan struct{})}
 	args := append([]string{runner.EvidenceProcMonitor}, registrationArgs(reg)...)
 	args = append(args, "--duration", strconv.Itoa(c.durationSeconds()),
 		"--interval", strconv.Itoa(int(c.pollInterval()/time.Millisecond)))
@@ -371,6 +373,7 @@ func (c *SSHCollector) BeginInterval(ctx context.Context, ref runner.EvidenceRef
 		stdinR, iv.stdin = io.Pipe()
 	}
 	go func() {
+		defer close(iv.exited)
 		var raw []byte
 		var err error
 		if stdinR != nil {
@@ -402,7 +405,7 @@ func (c *SSHCollector) BeginInterval(ctx context.Context, ref runner.EvidenceRef
 	// The request is sent only after the guest has acknowledged its first poll: otherwise a
 	// short request could be over before monitoring began. No acknowledgement, no interval.
 	fail := func(format string, args ...any) error {
-		cancel()
+		c.release(iv)
 		return fmt.Errorf("%w: "+format, append([]any{runner.ErrEvidenceAbsent}, args...)...)
 	}
 	timer := time.NewTimer(c.readyTimeout())
@@ -455,9 +458,23 @@ func (c *SSHCollector) EndInterval(ref runner.EvidenceRef) {
 	delete(c.active, ref.Interval)
 	c.mu.Unlock()
 	if iv != nil {
-		iv.requestStop("") // the session's input ends without a stop line: the monitor runs on to its horizon, and is cancelled
-		iv.cancel()
+		c.release(iv)
 	}
+}
+
+// release ends an interval's monitor session. The session's input ends without a stop line, so a guest monitor that was
+// not stopped on proof runs on to its horizon, and until then it holds the guest's one monitor lock: the next interval's
+// monitor would be refused (rehearsal-dev-02, units 26 and 36, after refused steps). So the session is waited out, up
+// to the horizon plus ReadyTimeout, before it is cancelled.
+func (c *SSHCollector) release(iv *procInterval) {
+	iv.requestStop("")
+	t := time.NewTimer(iv.reg.IntervalStart.Add(time.Duration(c.durationSeconds())*time.Second + c.readyTimeout()).Sub(c.now()))
+	defer t.Stop()
+	select {
+	case <-iv.exited:
+	case <-t.C:
+	}
+	iv.cancel()
 }
 
 func (c *SSHCollector) capture(ctx context.Context, reg Registration, p Point) (Snapshot, error) {

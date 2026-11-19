@@ -332,11 +332,12 @@ func TestGovernedCBeginsCollectorsBeforeTheRequestAndEndsThemOnEveryPath(t *test
 	if err == nil || !strings.Contains(err.Error(), "snapshot crashed") || o.E01.Digest == "" {
 		t.Fatalf("begin failure: outcome=%+v err=%v", o, err)
 	}
-	// Begin reporting absence is not an error.
+	// Begin reporting absence is reported too: an interval that did not begin is lost evidence, and the request is
+	// still sent.
 	events, rc.beginErr = nil, ErrEvidenceAbsent
 	f.respond("completed", "", f.receipt(true), 0)
-	if _, err := f.g.Execute(context.Background(), f.step); err != nil {
-		t.Fatalf("absent begin: %v", err)
+	if o, err := f.g.Execute(context.Background(), f.step); !errors.Is(err, ErrEvidenceAbsent) || o.E01.Digest == "" {
+		t.Fatalf("absent begin: outcome=%+v err=%v", o, err)
 	}
 }
 
@@ -382,13 +383,13 @@ func TestCollectorSetRoutesEachMethodToItsSlotAndBeginsEachCollectorOnce(t *test
 	if _, err := set.PublicationJournal(context.Background(), ref); !errors.Is(err, ErrEvidenceAbsent) {
 		t.Fatalf("Journal slot: %v", err)
 	}
-	// A failing Begin is reported, absence is not.
+	// A failing Begin is reported, absence too: an interval that did not begin is lost evidence.
 	shared.beginErr = errors.New("boom")
 	if err := set.BeginInterval(context.Background(), ref); err == nil {
 		t.Fatal("begin failure swallowed")
 	}
 	shared.beginErr = ErrEvidenceAbsent
-	if err := set.BeginInterval(context.Background(), ref); err != nil {
+	if err := set.BeginInterval(context.Background(), ref); !errors.Is(err, ErrEvidenceAbsent) {
 		t.Fatalf("absence: %v", err)
 	}
 }

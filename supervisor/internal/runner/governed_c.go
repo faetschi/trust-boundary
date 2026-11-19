@@ -405,7 +405,8 @@ func (g GovernedC) Execute(ctx context.Context, s Step) (o Outcome, err error) {
 	// A resumed step's observers ran in the dead process: a new interval would see only the tail of the run.
 	if ic, ok := g.Collectors.(IntervalCollectors); ok && adversarial && !s.Resumed {
 		defer ic.EndInterval(begin)
-		if err := ic.BeginInterval(ctx, begin); err != nil && !errors.Is(err, ErrEvidenceAbsent) {
+		// An interval that did not begin is lost evidence, never a quiet absence: the outcome is partial.
+		if err := ic.BeginInterval(ctx, begin); err != nil {
 			if errors.Is(err, ErrObserverStartUnconfirmed) {
 				// An observer may still be starting in the live root: the request is not sent. Nothing ran, so
 				// there is no outcome; the unit is spent as a setup failure.
