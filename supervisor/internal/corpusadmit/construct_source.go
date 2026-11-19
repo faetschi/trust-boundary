@@ -24,6 +24,9 @@ func checkSource(c evalcorpus.Case, set fs.FS) ConstructCheck {
 	if mr == nil {
 		return bad("missing D37 meaning record")
 	}
+	if mr.Derived != nil || mr.CaseOrigin == evalcorpus.OriginDerived {
+		return checkDerivedSource(c)
+	}
 	raw, err := fs.ReadFile(set, "sources.json")
 	if err != nil {
 		return bad(err.Error())
@@ -86,6 +89,29 @@ func checkSource(c evalcorpus.Case, set fs.FS) ConstructCheck {
 	r.Status, r.Reason = "pass", "benchmark key and revision verified, digest listed in the sources.json pin, retained license files verified; license-use interpretation is not established by this provenance check"
 	if len(r.Conditions) != 0 {
 		r.Reason += "; restricted license conditions flagged"
+	}
+	return r
+}
+
+// checkDerivedSource checks the provenance of a derived case (D37 amendment, D48 "TM-C"). The project authored it
+// from one mechanism of the pinned taxonomies its derived record names (evalcorpus.Validate checks those refs), so
+// it is a TM-C case of sample_part tmc whose source is "derived" and whose source item is its mechanism, and it
+// names no benchmark source and no source licence.
+func checkDerivedSource(c evalcorpus.Case) ConstructCheck {
+	r := ConstructCheck{Name: "source-license", Status: "fail"}
+	mr, a := c.MeaningRecord, c.Adversarial
+	switch {
+	case mr.CaseOrigin != evalcorpus.OriginDerived || mr.Derived == nil:
+		r.Reason = "a derived case needs case_origin derived and a derived record"
+	case a == nil || a.ThreatClass != evalcorpus.ClassTMC || a.SamplePart != evalcorpus.SampleTMC:
+		r.Reason = "only a TM-C case of sample_part tmc is derived"
+	case a.SourceKey != "derived" || mr.MechanismID == "" || a.SourceItemID != mr.MechanismID:
+		r.Reason = `a derived case needs source_key "derived" and source_item_id equal to its mechanism_id`
+	case mr.BenchmarkKey != "" || mr.BenchmarkRevision != "" || mr.BenchmarkDigest != "" || mr.SourceItemID != "" ||
+		mr.License != "" || mr.Redistribution != "":
+		r.Reason = "a derived record names no benchmark source or licence"
+	default:
+		r.Status, r.Reason = "pass", "derived TM-C case of mechanism "+mr.MechanismID+": no benchmark source, so no source pin or licence file"
 	}
 	return r
 }

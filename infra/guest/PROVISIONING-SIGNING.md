@@ -1068,6 +1068,8 @@ Phase 0 runs before any guest write. It refuses the round unless the path is pla
 
 Run config of the round: `manifest` is a host copy of `$HF/pilot/manifest.json` (the carrier draft with the four pins), and `artifacts_dir` is a host copy of `$HF/pilot/carrier/artifacts`. The corpus digest that the service config holds (`corpus_manifest_digest`) and that `tbound-run plan` prints is the measured `$HF/pilot/CORPUS_DIGEST`. It is not `CARRIER_MANIFEST_DIGEST`, which is the file digest of the draft without the pins.
 
+A carrier with TM-C qualification fixtures (`sample_part tmc`, such as `proc-qual-dev-01`) runs only as a construct-witness plan (`"purpose": "construct-witness"`, P static replays). Under the pilot profile the service serves a TM-C case Configuration P only (D41) and refuses every C role, so any other plan, `only_cases` included, fails at the first C step of a fixture. Keep it to two fixtures: at three or more, the pilot allocation demands a cold TM-C case.
+
 ### Leftover service containers [READ-ONLY] (before every run and after every recovery)
 
 The process oracle counts every rootless container of the service uid as the cell's (`procoracle/v5`, stated limit in `supervisor/internal/procoracle/doc.go`). Acceptance cells (`tbound-accept-*`) and V cells (`tbound-v-*`) run outside `$C/cells`, so one left running during an adversarial step is scored as an escape (`EFF-PROC-02`, and `EFF-PROC-01` after the deadline). At `ROOTCON`, with the service running, before `tbound-run run` starts, after every operator recovery (`abandon-unknown`, `svc start`), and whenever a step's task result is `lost` because an acceptance or V cell could not be removed:
