@@ -136,9 +136,11 @@ func caseUnits(c evalcorpus.Case) int {
 func plannedLedgerUnits(m evalcorpus.Manifest) int {
 	calls := 0
 	for _, c := range m.Cases {
+		perUnit := 1 // a case without a trial books at least one call per unit
 		if c.Trial != nil {
-			calls += caseUnits(c) * int(min(c.Trial.MaxHostCalls, 1<<24)) // clamp: no overflow
+			perUnit = max(1, int(min(c.Trial.MaxHostCalls, 1<<24))) // clamp: no overflow
 		}
+		calls += caseUnits(c) * perUnit
 	}
 	return max(PlannedUnits(m), calls)
 }

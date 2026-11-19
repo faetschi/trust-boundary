@@ -1061,6 +1061,9 @@ func TestUnitsOverPlannedComparesProviderCalls(t *testing.T) {
 	if normal.Spend.PlannedUnits != executionUnits || normal.Spend.TotalUnits <= executionUnits || hasFlag(normal, "units_over_planned") {
 		t.Errorf("normal research-route run: %+v flags %v", normal.Spend, normal.Flags)
 	}
+	if r := build(executionUnits * maxCalls); hasFlag(r, "units_over_planned") {
+		t.Errorf("the bound itself is flagged: %+v", r.Spend)
+	}
 	if r := build(executionUnits*maxCalls + 1); !hasFlag(r, "units_over_planned") {
 		t.Errorf("a real overrun is not flagged: %+v", r.Spend)
 	}
