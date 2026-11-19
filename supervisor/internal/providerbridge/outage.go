@@ -4,7 +4,8 @@ import "tbound/supervisor/internal/broker"
 
 // ProviderOutage marks a NextTurn failure whose last provider attempt was an outage (register D30 as amended
 // 2026-11-18): a request that was dispatched and got no HTTP response at all, or a complete response with status
-// 403, 429 or 5xx whose body is empty or only the provider's error object, so no model output exists. Retryable
+// 429 or 5xx whose body is empty or only the provider's error object, so no model output exists. A 403 is a
+// refusal (of the key, or of content by moderation), so content can provoke it: it is no outage. Retryable
 // statuses reach it only after the bounded pre-effect retries of retry.go. The failed exchange is disposed of in
 // the provider journal as provider_exchange_unknown, and RecordHash is that record's hash: the evidence the guest
 // hands to the host with the provider-outage terminal.
@@ -33,7 +34,7 @@ func outageExchange(records []broker.ExchangeRecord) bool {
 		return true
 	}
 	status := record.StatusCode()
-	if !record.ResponseComplete() || status != 403 && status != 429 && (status < 500 || status > 599) {
+	if !record.ResponseComplete() || status != 429 && (status < 500 || status > 599) {
 		return false
 	}
 	_, errorObject := providerErrorBody(record.ResponseBody())
