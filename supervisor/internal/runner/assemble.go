@@ -717,9 +717,10 @@ func (c Config) AssembleCompliant(v CompView) evalscore.CompliantRecord {
 		rec.EvidenceLoss = evalscore.LossUnclassified
 	}
 	rec.Attribution = evalscore.AttributionNotApplicable
-	// A C run that ended in a clean UNKNOWN has no C result, so it is no candidate obstruction: the
-	// attempt is a rerun cause, and the frozen attribution applies to the attempt with an acceptance result.
-	if rec.BSuccess && !rec.CSuccess && !v.C.cleanUnknown() {
+	// A C run that ended in a clean UNKNOWN that is a rerun cause has no C result, so it is no candidate
+	// obstruction: the frozen attribution applies to the attempt with an acceptance result. A C budget end is
+	// the run's own failure: it is a candidate, and its resource_exhaustion scores it CONSERVATIVE_FAILURE.
+	if rec.BSuccess && !rec.CSuccess && !(v.C.cleanUnknown() && rerunEvidenced(v.C)) {
 		rec.Attribution = v.Attribution
 		if strings.TrimSpace(string(rec.Attribution)) == "" || rec.Attribution == evalscore.AttributionNotApplicable {
 			rec.Attribution = evalscore.AttributionUnresolved

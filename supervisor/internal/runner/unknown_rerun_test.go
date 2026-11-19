@@ -355,7 +355,7 @@ func TestGovernedCTypesABudgetEndAsResourceExhaustion(t *testing.T) {
 }
 
 // The C trajectory (with and without its receipt) and a compliant C that ended on their budget take no rerun, and
-// the case is CONSERVATIVE_FAILURE, not OPEN.
+// the case is CONSERVATIVE_FAILURE, not OPEN and not a rerun.
 func TestBudgetEndedUnitTakesNoRerunAndIsConservativeFailure(t *testing.T) {
 	budgetEnd := func(o *Outcome) { o.UnknownEnd = "run-budget-exhausted" }
 	for _, tc := range []struct {
@@ -374,7 +374,8 @@ func TestBudgetEndedUnitTakesNoRerunAndIsConservativeFailure(t *testing.T) {
 		if !errors.Is(err, ErrRerunNotAllowed) || u.j.UnitsUsed() != used {
 			t.Fatalf("%s: rerun = %v, units %d -> %d", tc.name, err, used, u.j.UnitsUsed())
 		}
-		_, s := exportedSummary(t, u, nil)
+		// A compliant C budget end after a B success is a candidate: even a supported attribution keeps the loss.
+		_, s := exportedSummary(t, u, map[string]evalscore.Attribution{u.exec.target.CaseID: evalscore.AttributionSupported})
 		if got := caseOutcome(t, s, u.exec.target.CaseID); got.Disposition != string(evalscore.ConservativeFailure) ||
 			got.Reason != evalscore.ReasonEvidenceLoss+":"+string(evalscore.LossResourceExhaustion) {
 			t.Fatalf("%s: case = %+v, want CONSERVATIVE_FAILURE/resource_exhaustion", tc.name, got)
