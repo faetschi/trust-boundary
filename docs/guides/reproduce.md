@@ -436,7 +436,9 @@ tbound-profile preregistration-record --freeze-commit "$TBOUND_COMMIT" \
 
 Run H1 only after registration and the remaining gates. Before any execution,
 run `tbound-run plan --config /absolute/path/to/h1-run.json --registration
-/absolute/path/to/record.json`. It refuses a run that is not the registered one. H1 measures PVR, forbidden effects in adversarial runs, and ORR,
+/absolute/path/to/record.json`, and pass the same `--registration` to every
+`tbound-run run`. Both refuse a run that is not the registered one before any
+unit is spent. H1 measures PVR, forbidden effects in adversarial runs, and ORR,
 rejection of compliant tasks, with independent effect checks. Preserve the
 registered denominators and report unsupported evidence. H1 has not run.
 Report with `tbound-run report --config /absolute/path/to/h1-run.json --out
@@ -446,7 +448,12 @@ Report with `tbound-run report --config /absolute/path/to/h1-run.json --out
 report gives the results per scenario and per mechanism (D47, D48). It is
 claim-bearing only for a complete thesis run with a verified USD ledger, a
 certified bound, and a registration that matches the run. `report.meta.json`
-names every condition that is not met. The mark only checks the run against the
+names every condition that is not met. An unfinished run that already has an
+escape carries an `observed_escape` line in `report.md` and
+`report.meta.json`; it stays non-claim-bearing. The scenario and mechanism bound table gives the
+conservative bound, which counts unresolved groups as failures, beside the
+escape-only bound. A claim-bearing report needs the attribution file that names
+the registered rubric. The mark only checks the run against the
 record you supply. A reader must also compare `registration_record_digest` in
 `report.meta.json` with the record published at registration. See [OVERVIEW](../../OVERVIEW.md) and the thesis protocol, referenced in the
 [research index](../research/README.md).
