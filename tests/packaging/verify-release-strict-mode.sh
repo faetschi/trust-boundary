@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Controlled regression for verify-release-layout acceptance semantics.
-# A fake Go wrapper builds only non-Linux placeholder outputs, then injects a
-# deterministic Linux supervisor-source compile failure. No project source is
+# A fake Go wrapper injects a deterministic Linux supervisor-source compile
+# failure. No project source is
 # changed; all fake artifacts and logs are under a private temp directory.
 # Diagnostic mode must report SKIP/exit 0; release acceptance must fail.
 set -euo pipefail
