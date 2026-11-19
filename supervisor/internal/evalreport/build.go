@@ -729,7 +729,7 @@ func separateStrata(full Inputs, sep separateSet) ([]Stratum, error) {
 	if len(sep.manifest.Cases) == 0 {
 		return nil, nil
 	}
-	in := evalscore.Input{Schema: full.Trials.Schema, EVQPassed: full.Trials.EVQPassed, Adversarial: sep.records,
+	in := evalscore.Input{Schema: full.Trials.Schema, EVQPassed: full.Trials.EVQPassed, Adversarial: sep.records, RerunsClosed: full.Trials.RerunsClosed,
 		Registered: &evalscore.RegisteredIDs{AdversarialIDs: sep.manifest.CaseIDs(evalcorpus.KindAdversarial), CompliantIDs: []string{}}}
 	sum, err := evalscore.Summarize(in)
 	if err != nil {
