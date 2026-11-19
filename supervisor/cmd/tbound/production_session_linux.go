@@ -180,6 +180,9 @@ type productionPiSession struct {
 	recoveryPromptTaskID          string
 	recoveryPromptRequestID       string
 	recoveryPrompt                string
+	// recovered marks a session of a retained workflow (bindProductionPiRecoverySession): an earlier run of it may
+	// have admitted its task, so its launch failure is never launchNotAdmitted.
+	recovered bool
 
 	// Publication finalizes the registered session after settlement. The binder
 	// supplies the protected live root, publication state root/journal, owner
@@ -811,8 +814,7 @@ func (session *productionPiSession) completeProductionReceipt(receipt *productio
 func (session *productionPiSession) endLaunchBeforeAdmission(output io.Writer, config productionServeConfig, launchErr, failure error,
 	providerExchange bool) error {
 	var launch *piruntime.PiWorkerLaunchError
-	if !errors.As(launchErr, &launch) || launch.RouteProbe != nil || session.recoveredProviderConversation != nil ||
-		session.recoveryPrompt != "" || !session.settleLaunchBeforeAdmission() {
+	if !errors.As(launchErr, &launch) || launch.RouteProbe != nil || session.recovered || !session.settleLaunchBeforeAdmission() {
 		return failure
 	}
 	receipt := productionPiReceipt{

@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -343,6 +344,12 @@ func TestAgentCeilingsAnswerRunBudgetExhausted(t *testing.T) {
 		{"clock fault beside a ceiling", errors.Join(workflowrecovery.ErrClockUncertain, runend.ErrCeiling), runend.CodeOutcomeUnknown},
 		{"ledger verifier over a ceiling", fmt.Errorf("%w: progress verifier: %w", workflowrecovery.ErrObservation, runend.ErrCeiling), runend.CodeBudgetEnded},
 		{"CAS beside a ceiling", errors.Join(workflowrecovery.ErrCAS, runend.ErrCeiling), runend.CodeBudgetEnded},
+		{"ledger verifier with a plain cause", fmt.Errorf("%w: progress verifier: %w", workflowrecovery.ErrObservation,
+			errors.Join(workflowrecovery.ErrObservation, errors.New("sqlite: disk I/O error"))), runend.CodeOutcomeUnknown},
+		{"owner check with a plain cause", fmt.Errorf("%w: live owner/fence check for terminal accounting: %w",
+			workflowrecovery.ErrOwnerFence, errors.New("database is locked")), runend.CodeOutcomeUnknown},
+		{"ledger observation beside an unrelated failure", errors.Join(fmt.Errorf("stage: %w", workflowrecovery.ErrObservation),
+			errors.New("cleanup failed")), runend.CodeUnclassified},
 		{"parallel tool call", bridged(openrouter.ErrParallelToolCall), runend.CodeOutcomeUnknown},
 		{"refused reply", bridged(errors.New("captured response model differs from registered model")), runend.CodeOutcomeUnknown},
 		{"command never started", executorFailed(protocol.ErrCommandNotStarted), runend.CodeOutcomeUnknown},
@@ -398,5 +405,34 @@ func TestWorkspaceLimitThroughTheExecutorIsABudgetEnd(t *testing.T) {
 		governedChannelsError(fmt.Errorf("executor failed; result withheld: %w", execErr), nil)))
 	if answer := unknownAnswerOf(t, runErr); answer.ErrorCode != runend.CodeBudgetEnded {
 		t.Fatalf("answer %+v; run error %v", answer, runErr)
+	}
+}
+
+type failingProgress struct{ cause error }
+
+func (p failingProgress) VerifyProgress(context.Context, workflowrecovery.Checkpoint, workflowrecovery.Pins) error {
+	return p.cause
+}
+
+// R2 on the real ledger: a progress verifier's cause stays in the run error. A ceiling inside it ends the run as a
+// budget end; a plain cause (a store I/O error) keeps the ledger's infrastructure end, as when the cause was text.
+func TestLedgerVerifierCauseThroughTheRealLedger(t *testing.T) {
+	f := prepareWorkflowVertical(t, workflowVerticalOptions{launchProof: true, maxHostCalls: 7, maxTokens: 7 * 1024})
+	checkpoint, _ := f.ledger.Snapshot()
+	for name, tc := range map[string]struct {
+		cause error
+		code  string
+	}{
+		"ceiling in the cause": {fmt.Errorf("store evidence bundle: %w", runend.ErrCeiling), runend.CodeBudgetEnded},
+		"store I/O cause": {errors.Join(workflowrecovery.ErrObservation, errors.New("sqlite: disk I/O error")),
+			runend.CodeOutcomeUnknown},
+	} {
+		_, err := f.ledger.AdvanceCheckpoint(f.ctx, failingProgress{cause: tc.cause}, checkpoint.Pins)
+		if !errors.Is(err, workflowrecovery.ErrObservation) {
+			t.Fatalf("%s: the ledger did not refuse with ErrObservation: %v", name, err)
+		}
+		if answer := unknownAnswerOf(t, err); answer.ErrorCode != tc.code {
+			t.Errorf("%s: answer %q, want %q; ledger error %v", name, answer.ErrorCode, tc.code, err)
+		}
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"go/ast"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -14,6 +15,7 @@ import (
 
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/piruntime"
+	"tbound/supervisor/internal/providerbridge"
 	"tbound/supervisor/internal/runend"
 	"tbound/supervisor/internal/runner"
 	"tbound/supervisor/internal/wsoracle"
@@ -67,7 +69,8 @@ func TestPreAdmissionLaunchFailureAnswersLaunchNotAdmitted(t *testing.T) {
 }
 
 // launchFailedSession is a fresh run whose launch failed before task admission: the real E04 recorder with the two
-// binder points taken, an empty provider journal, and the binders' closer order (final-cleanup, then the store).
+// binder points taken, an empty provider journal, the binders' closer order (final-cleanup, then the store), and the
+// conversation a service-mode fresh workflow is bound to before launch (production_binder_linux.go).
 func launchFailedSession(t *testing.T, launchErr error) (*productionPiSession, *e04FakeWorkflow) {
 	t.Helper()
 	w := newE04FakeWorkflow(t)
@@ -77,7 +80,7 @@ func launchFailedSession(t *testing.T, launchErr error) (*productionPiSession, *
 	}
 	t.Cleanup(func() { _ = providerJournal.Close() })
 	session := &productionPiSession{E04: w.rec, Lifecycle: &productionLifecycleEvidence{}, RunID: e04TestRun,
-		ProviderJournal: providerJournal}
+		ProviderJournal: providerJournal, recoveredProviderConversation: &providerbridge.Conversation{}}
 	session.Close = func() error { return errors.Join(w.rec.finalCleanup(), w.rec.close()) }
 	session.recordE04(wsoracle.PointBaseline)
 	session.recordE04(wsoracle.PointPostMaterialization)
@@ -154,7 +157,7 @@ func TestOnlyASettledFreshLaunchBeforeAdmissionTakesThePath(t *testing.T) {
 		"worker launched":        {settledLaunchError(), func(s *productionPiSession) { s.Lifecycle.markWorkerLaunched(42) }},
 		"channels started":       {settledLaunchError(), func(s *productionPiSession) { s.Lifecycle.markChannelsStarted() }},
 		"turn completed":         {settledLaunchError(), func(s *productionPiSession) { s.Lifecycle.markTurnCompleted() }},
-		"recovered workflow":     {settledLaunchError(), func(s *productionPiSession) { s.recoveryPrompt = "resume" }},
+		"recovered workflow":     {settledLaunchError(), func(s *productionPiSession) { s.recovered = true }},
 		"cell not settled":       {unsettled, func(*productionPiSession) {}},
 		"untyped launch failure": {errors.New("start D09 rootless Podman/crun cell: exec: no such file"), func(*productionPiSession) {}},
 		"route probe":            {probe, func(*productionPiSession) {}},
@@ -169,5 +172,29 @@ func TestOnlyASettledFreshLaunchBeforeAdmissionTakesThePath(t *testing.T) {
 		if got := len(w.trace().Records); got != 2 {
 			t.Errorf("%s: %d E04 records, want only the two binder points", name, got)
 		}
+	}
+}
+
+// The guard above holds only if every session of a retained workflow is marked: the recovery binder's session literal
+// sets recovered, and no other session literal sets it.
+func TestOnlyTheRecoveryBinderMarksASessionRecovered(t *testing.T) {
+	fset, files := parseRunEndFiles(t, "*.go")
+	var sites []string
+	for _, file := range files {
+		ast.Inspect(file, func(n ast.Node) bool {
+			lit, ok := n.(*ast.CompositeLit)
+			if !ok || exprText(lit.Type) != "productionPiSession" {
+				return true
+			}
+			for _, element := range lit.Elts {
+				if kv, ok := element.(*ast.KeyValueExpr); ok && exprText(kv.Key) == "recovered" {
+					sites = append(sites, filepath.Base(fset.Position(kv.Pos()).Filename)+"="+exprText(kv.Value))
+				}
+			}
+			return true
+		})
+	}
+	if len(sites) != 1 || sites[0] != "production_recovery_binder_linux.go=true" {
+		t.Fatalf("recovered in session literals: %v, want only production_recovery_binder_linux.go=true", sites)
 	}
 }

@@ -32,6 +32,10 @@ type runEndSource struct {
 	class   runend.Class
 	carrier bool
 	fault   bool
+	// wraps marks a ledger sentinel that wraps a verifier's or owner check's cause beside it (fmt.Errorf with two %w,
+	// or errors.Join): that node is explained by the row, the cause included, as it was when the cause was text.
+	// A ceiling inside the cause still decides first (runEndClass).
+	wraps bool
 }
 
 // runEndRegistry classes the sources that can end a governed step UNKNOWN, and it fails closed: only a source it
@@ -39,16 +43,17 @@ type runEndSource struct {
 // TestRunEndRegistryClassesEverySource walks the sources and fails on one without a row (runEndClass has the order).
 var runEndRegistry = []runEndSource{
 	// Workflow ledger faults: the protected root's clock and rollback checks. Only start-up checks join one to the
-	// deadline, so a fault outranks a ceiling beside it. The CAS and observation checks wrap a verifier's cause, which
-	// can carry a ceiling, so they are plain infrastructure rows below.
+	// deadline, so a fault outranks a ceiling beside it. The CAS, observation and owner-fence checks wrap a verifier's
+	// cause, which can carry a ceiling, so they are wrapping infrastructure rows below.
 	{err: workflowrecovery.ErrClockUncertain, class: runend.Infrastructure, fault: true},
 	{err: workflowrecovery.ErrRollback, class: runend.Infrastructure, fault: true},
 
 	// Agent ceilings: the ledger's deadline and allowances (host calls, tokens, effects, the effect store's page
 	// headroom), the predecessor context an adaptive attacker carries over, the workspace limits on what the agent
 	// writes (file size, object count, depth, path length, the admission record and the operation output), an audit
-	// record the agent's content makes too large, the USD cap its spend reaches (the research route's stop rule, and a
-	// request the token allowance left no completion cap), and every bound below that carries the ceiling marker.
+	// record the agent's content makes too large, the USD cap its spend reaches (the research ledger is study-wide, so
+	// its stop rule ends the run that meets it, like usdledger's cap, and a request the token allowance left no
+	// completion cap), and every bound below that carries the ceiling marker.
 	{err: workflowrecovery.ErrDeadline, class: runend.AgentCeiling},
 	{err: workflowrecovery.ErrExhausted, class: runend.AgentCeiling},
 	{err: providerbridge.ErrContextExhausted, class: runend.AgentCeiling},
@@ -74,11 +79,11 @@ var runEndRegistry = []runEndSource{
 
 	// Infrastructure: the rest of the ledger, the bridge's own state, a command that never started, and the launch,
 	// host admission and service machinery that no agent drives.
-	{err: workflowrecovery.ErrCAS, class: runend.Infrastructure},
-	{err: workflowrecovery.ErrObservation, class: runend.Infrastructure},
+	{err: workflowrecovery.ErrCAS, class: runend.Infrastructure, wraps: true},
+	{err: workflowrecovery.ErrObservation, class: runend.Infrastructure, wraps: true},
 	{err: workflowrecovery.ErrInvalid, class: runend.Infrastructure},
 	{err: workflowrecovery.ErrMissing, class: runend.Infrastructure},
-	{err: workflowrecovery.ErrOwnerFence, class: runend.Infrastructure},
+	{err: workflowrecovery.ErrOwnerFence, class: runend.Infrastructure, wraps: true},
 	{err: workflowrecovery.ErrRestartRequired, class: runend.Infrastructure},
 	{err: workflowrecovery.ErrPendingUnknown, class: runend.Infrastructure},
 	{err: workflowrecovery.ErrFreshAuthorization, class: runend.Infrastructure},
@@ -243,8 +248,9 @@ func runEndMatches(runErr error, decides func(runEndSource) bool) bool {
 
 // runEndExplained walks the run error to its leaves. A registered sentinel explains its leaf by its row, a disposed
 // provider turn failure explains its whole subtree (an outage as infrastructure, any other as model behaviour), a
-// launch that failed before task admission (launchNotAdmitted) explains its whole subtree as infrastructure, and a
-// carrier explains nothing on its own (""). A leaf no row explains makes the whole run unclassified.
+// launch that failed before task admission (launchNotAdmitted) explains its whole subtree as infrastructure, a
+// wrapping ledger sentinel explains the cause wrapped beside it, and a carrier explains nothing on its own (""). A leaf
+// no row explains makes the whole run unclassified.
 func runEndExplained(err error) runend.Class {
 	if err == nil {
 		return ""
@@ -269,6 +275,13 @@ func runEndExplained(err error) runend.Class {
 	}
 	switch wrapped := err.(type) {
 	case interface{ Unwrap() []error }:
+		for _, inner := range wrapped.Unwrap() {
+			for _, row := range runEndRegistry {
+				if row.wraps && inner == row.err {
+					return row.class
+				}
+			}
+		}
 		class := runend.Class("")
 		for _, inner := range wrapped.Unwrap() {
 			switch explained := runEndExplained(inner); explained {
