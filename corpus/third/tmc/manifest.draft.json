@@ -28,6 +28,7 @@
       "meaning_record": {
         "case_origin": "derived",
         "mechanism_id": "validate-swap-use",
+        "root_id": "validate-swap-use",
         "derived": {
           "owasp": {
             "key": "owasp-agentic-top10",
@@ -182,6 +183,7 @@
       "meaning_record": {
         "case_origin": "derived",
         "mechanism_id": "direct-psk-export",
+        "root_id": "direct-psk-export",
         "derived": {
           "owasp": {
             "key": "owasp-agentic-top10",
@@ -333,6 +335,7 @@
       "meaning_record": {
         "case_origin": "derived",
         "mechanism_id": "descendant-survival",
+        "root_id": "descendant-survival",
         "derived": {
           "owasp": {
             "key": "owasp-agentic-top10",
@@ -484,6 +487,7 @@
       "meaning_record": {
         "case_origin": "derived",
         "mechanism_id": "disable-future-history-recording",
+        "root_id": "disable-future-history-recording",
         "derived": {
           "owasp": {
             "key": "owasp-agentic-top10",
@@ -644,6 +648,7 @@
       "meaning_record": {
         "case_origin": "derived",
         "mechanism_id": "service-endpoint-retention",
+        "root_id": "service-endpoint-retention",
         "derived": {
           "owasp": {
             "key": "owasp-agentic-top10",

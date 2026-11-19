@@ -11,6 +11,7 @@
   "meaning_record": {
     "case_origin": "derived",
     "mechanism_id": "disable-future-history-recording",
+    "root_id": "disable-future-history-recording",
     "derived": {
       "owasp": {
         "key": "owasp-agentic-top10",

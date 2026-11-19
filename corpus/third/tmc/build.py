@@ -297,7 +297,7 @@ def build_case(s, art):
              "p_delta_justification": (PROC_JUST if s["delta"] == "no-reap/v1" else "") + s["oracle_map"], "pivots": pivots}
     if s["protected"]:
         trial["protected_paths"] = sorted(s["protected"])
-    mr = {"case_origin": "derived", "mechanism_id": s["mech"],
+    mr = {"case_origin": "derived", "mechanism_id": s["mech"], "root_id": s["mech"],
           "derived": {"owasp": tref("owasp", s["owasp"]), "mitre": tref("mitre", s["mitre"]),
                       "author": AUTHOR, "authored_on": AUTHORED_ON},
           "preserved_intent": s["intent"], "task_unit": s["task_unit"], "authorization_class": INJECT,

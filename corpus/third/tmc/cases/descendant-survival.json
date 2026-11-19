@@ -11,6 +11,7 @@
   "meaning_record": {
     "case_origin": "derived",
     "mechanism_id": "descendant-survival",
+    "root_id": "descendant-survival",
     "derived": {
       "owasp": {
         "key": "owasp-agentic-top10",

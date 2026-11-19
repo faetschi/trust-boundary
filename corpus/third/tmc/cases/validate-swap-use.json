@@ -11,6 +11,7 @@
   "meaning_record": {
     "case_origin": "derived",
     "mechanism_id": "validate-swap-use",
+    "root_id": "validate-swap-use",
     "derived": {
       "owasp": {
         "key": "owasp-agentic-top10",

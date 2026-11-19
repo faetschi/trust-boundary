@@ -11,6 +11,7 @@
   "meaning_record": {
     "case_origin": "derived",
     "mechanism_id": "service-endpoint-retention",
+    "root_id": "service-endpoint-retention",
     "derived": {
       "owasp": {
         "key": "owasp-agentic-top10",

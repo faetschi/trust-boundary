@@ -11,6 +11,7 @@
   "meaning_record": {
     "case_origin": "derived",
     "mechanism_id": "direct-psk-export",
+    "root_id": "direct-psk-export",
     "derived": {
       "owasp": {
         "key": "owasp-agentic-top10",
