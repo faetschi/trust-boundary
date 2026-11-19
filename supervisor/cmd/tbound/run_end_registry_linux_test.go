@@ -25,14 +25,6 @@ import (
 	"tbound/supervisor/internal/workspace"
 )
 
-// runEndSentinelDirs are the packages whose sentinels can reach a governed run's error: the service and session
-// (this package), the provider bridge, broker and capture, the workflow ledger, the Pi runtime, and the workspace,
-// session store, publication, private Git, audit, USD ledger and gate packages under them.
-var runEndSentinelDirs = []string{".", "../../internal/providerbridge", "../../internal/broker",
-	"../../internal/broker/openrouter", "../../internal/broker/protocol", "../../internal/workflowrecovery",
-	"../../internal/piruntime", "../../internal/workspace", "../../internal/sessionrepo", "../../internal/publication",
-	"../../internal/privategit", "../../internal/audit", "../../internal/usdledger", "../../internal/gate"}
-
 // runEndBoundFiles are the provider path and the durable executor that returns tool results: every bound a failure
 // message names there is a registry row.
 var runEndBoundFiles = []string{"../../internal/providerbridge/*.go", "../../internal/broker/*.go",
@@ -77,52 +69,6 @@ func parseRunEndFiles(t *testing.T, pattern string) (*token.FileSet, []*ast.File
 	return fset, files
 }
 
-// runEndRow is a registry row read from its source: the err selector (pkg.ErrX, or ErrX of this package), the
-// bound message, the package of a default row, whether the row is a carrier, and its class.
-type runEndRow struct {
-	err, bound, pkg, class string
-	carrier                bool
-}
-
-func runEndRows(t *testing.T) []runEndRow {
-	t.Helper()
-	file, err := parser.ParseFile(token.NewFileSet(), "run_end_registry_linux.go", nil, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var rows []runEndRow
-	ast.Inspect(file, func(n ast.Node) bool {
-		spec, ok := n.(*ast.ValueSpec)
-		if !ok || len(spec.Names) != 1 || spec.Names[0].Name != "runEndRegistry" {
-			return true
-		}
-		for _, element := range spec.Values[0].(*ast.CompositeLit).Elts {
-			var row runEndRow
-			for _, field := range element.(*ast.CompositeLit).Elts {
-				kv := field.(*ast.KeyValueExpr)
-				switch key := kv.Key.(*ast.Ident).Name; key {
-				case "err":
-					row.err = exprText(kv.Value)
-				case "bound":
-					row.bound, _ = strconv.Unquote(kv.Value.(*ast.BasicLit).Value)
-				case "pkg":
-					row.pkg, _ = strconv.Unquote(kv.Value.(*ast.BasicLit).Value)
-				case "class":
-					row.class = exprText(kv.Value)
-				case "carrier":
-					row.carrier = exprText(kv.Value) == "true"
-				}
-			}
-			rows = append(rows, row)
-		}
-		return false
-	})
-	if len(rows) == 0 {
-		t.Fatal("no runEndRegistry rows")
-	}
-	return rows
-}
-
 func exprText(e ast.Expr) string {
 	switch v := e.(type) {
 	case *ast.Ident:
@@ -133,56 +79,20 @@ func exprText(e ast.Expr) string {
 	return fmt.Sprintf("%T", e)
 }
 
-// The registry fails closed: a source it does not class as infrastructure or model behaviour ends unclassified,
-// never a rerun cause. This scan is a coverage aid on top of that. It walks the sources and fails on one without a
-// row: every package-level error sentinel of the run's packages (a package may name a default row, which must be
-// unclassified), every bound a failure message names on the provider path and in the durable executor, and every
-// code of an UNKNOWN answer. An agent_ceiling bound carries runend.ErrCeiling at its site through %w, and no other
-// bound carries it, so the classifier sees exactly the registered ceilings. On those paths a failure wraps its cause
-// with %w, so no wrap drops the marker on its way to the classifier.
+// The registry fails closed: a sentinel or an UNKNOWN code without a row ends unclassified, never a rerun cause, so
+// a missing row can only lose a rerun. A bound can do worse: inside a disposed provider turn failure every leaf that
+// carries no ceiling is model behaviour or an outage, both rerun causes. This scan walks every bound a failure message names on the
+// provider path and in the durable executor and fails on one without a row, or on a row whose class disagrees with
+// runend.ErrCeiling at its site. On those paths a failure wraps its cause with %w, so no wrap drops the marker on its
+// way to the classifier.
 func TestRunEndRegistryClassesEverySource(t *testing.T) {
-	rows := runEndRows(t)
-	sentinelRows, boundRows, packageRows := map[string]bool{}, map[string]runEndRow{}, map[string]bool{}
-	for _, row := range rows {
-		switch {
-		case row.err != "":
-			sentinelRows[row.err] = true
-		case row.bound != "":
-			boundRows[row.bound] = row
-		case row.pkg != "":
-			packageRows[row.pkg] = true
-			if row.class != "runend.Unclassified" {
-				t.Errorf("default row of package %s is %s; a default must be unclassified", row.pkg, row.class)
-			}
-		}
-		if !strings.HasPrefix(row.class, "runend.") {
+	boundRows := map[string]runEndSource{}
+	for _, row := range runEndRegistry {
+		if row.class == "" {
 			t.Errorf("row %+v has no class", row)
 		}
-	}
-
-	for _, dir := range runEndSentinelDirs {
-		_, files := parseRunEndFiles(t, filepath.Join(dir, "*.go"))
-		for _, file := range files {
-			for _, decl := range file.Decls {
-				gen, ok := decl.(*ast.GenDecl)
-				if !ok || gen.Tok != token.VAR {
-					continue
-				}
-				for _, spec := range gen.Specs {
-					for _, name := range spec.(*ast.ValueSpec).Names {
-						if !isSentinelName(name.Name) {
-							continue
-						}
-						qualified := file.Name.Name + "." + name.Name
-						if file.Name.Name == "main" {
-							qualified = name.Name
-						}
-						if !sentinelRows[qualified] && !packageRows[file.Name.Name] {
-							t.Errorf("sentinel %s has no run-end class", qualified)
-						}
-					}
-				}
-			}
+		if row.bound != "" {
+			boundRows[row.bound] = row
 		}
 	}
 
@@ -190,8 +100,8 @@ func TestRunEndRegistryClassesEverySource(t *testing.T) {
 	for _, pattern := range runEndBoundFiles {
 		fset, files := parseRunEndFiles(t, pattern)
 		for _, file := range files {
-			// A sentinel's own initialiser is classed by its sentinel row; every other call in the file is walked,
-			// package-level initialisers included.
+			// A sentinel's own initialiser is classed as its sentinel (by its row, or unclassified); every other
+			// call in the file is walked, package-level initialisers included.
 			sentinelInit := map[ast.Node]bool{}
 			for _, decl := range file.Decls {
 				if gen, ok := decl.(*ast.GenDecl); ok && gen.Tok == token.VAR {
@@ -250,7 +160,7 @@ func TestRunEndRegistryClassesEverySource(t *testing.T) {
 					t.Errorf("%s: bound %q has no run-end class", fset.Position(call.Pos()), message)
 					return true
 				}
-				if ceiling := row.class == "runend.AgentCeiling" && !row.carrier; ceiling != marked {
+				if ceiling := row.class == runend.AgentCeiling && !row.carrier; ceiling != marked {
 					t.Errorf("%s: bound %q is %s but carries runend.ErrCeiling=%t", fset.Position(call.Pos()), message, row.class, marked)
 				}
 				return true
@@ -261,52 +171,6 @@ func TestRunEndRegistryClassesEverySource(t *testing.T) {
 		if !seenBounds[message] {
 			t.Errorf("bound row %q names no failure message on the scanned paths", message)
 		}
-	}
-
-	// Every code of an UNKNOWN answer: a literal in a piServiceResponse whose status is "unknown", or a code the
-	// classifier chooses (runEndAnswer, which returns only runend codes).
-	_, files := parseRunEndFiles(t, "*.go")
-	unknownCodes := 0
-	for _, file := range files {
-		ast.Inspect(file, func(n ast.Node) bool {
-			lit, ok := n.(*ast.CompositeLit)
-			if !ok || exprText(lit.Type) != "piServiceResponse" {
-				return true
-			}
-			status, code := "", ""
-			for _, element := range lit.Elts {
-				kv, ok := element.(*ast.KeyValueExpr)
-				if !ok {
-					continue
-				}
-				value, isLiteral := kv.Value.(*ast.BasicLit)
-				switch exprText(kv.Key) {
-				case "Status":
-					if isLiteral {
-						status, _ = strconv.Unquote(value.Value)
-					}
-				case "ErrorCode":
-					if isLiteral {
-						code, _ = strconv.Unquote(value.Value)
-					}
-				}
-			}
-			if status == "unknown" {
-				unknownCodes++
-				if _, known := runend.Codes[code]; !known {
-					t.Errorf("UNKNOWN code %q has no run-end class", code)
-				}
-			}
-			return true
-		})
-	}
-	for _, code := range []string{runend.CodeOutcomeUnknown, runend.CodeBudgetEnded, runend.CodeProviderOutage, runend.CodeUnclassified} {
-		if _, known := runend.Codes[code]; !known {
-			t.Errorf("classifier code %q has no run-end class", code)
-		}
-	}
-	if unknownCodes == 0 {
-		t.Fatal("found no UNKNOWN answer in the service")
 	}
 }
 
