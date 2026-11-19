@@ -21,13 +21,15 @@ var ErrRerunInconsistent = errors.New("runner: rerun whose original attempt is n
 
 // rerunEligible checks that the case's attempt 1, as Export builds it, classifies as
 // EXTERNAL_INFRASTRUCTURE_RERUN: every scored step has ended, and the record shows no
-// effect, no gap and no decided label that a rerun could erase. A C-DH plan keeps
-// its own export check (exportCDH and evalreport), and a construct-witness plan is
-// never exported (its construct check judges the rerun).
-func rerunEligible(s Schedule, j *Journal, caseID string, attr evalscore.Attribution) error {
-	if s.Config.CDH != nil || s.Config.Purpose == PurposeConstructWitness {
+// effect, no gap and no decided label that a rerun could erase. It applies to a step in
+// rerunScope (D30 as amended 2026-11-18); a P or replay step keeps the step-level rule of
+// D30, and Export refuses an inconsistent rerun as before. A C-DH plan keeps its own export
+// check (exportCDH and evalreport), and a construct-witness plan is never exported.
+func rerunEligible(s Schedule, j *Journal, st Step, attr evalscore.Attribution) error {
+	if !rerunScope(st) || s.Config.CDH != nil || s.Config.Purpose == PurposeConstructWitness {
 		return nil
 	}
+	caseID := st.CaseID
 	_, groups := caseGroups(s)
 	steps := groups[caseID]
 	if len(steps) == 0 {

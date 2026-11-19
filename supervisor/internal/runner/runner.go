@@ -189,7 +189,8 @@ func (r *Runner) Rerun(ctx context.Context, stepID string) error {
 	if orig == nil || orig.Kind != EntryDone || !rerunEvidenced(orig.Outcome) {
 		return fmt.Errorf("%w: %s", ErrRerunNotAllowed, stepID)
 	}
-	if err := rerunEligible(r.sched, r.j, st.CaseID, r.opt.Attributions[st.CaseID]); err != nil {
+	// Only a step in rerunScope can carry a rerun cause from GovernedC; any other step keeps the step-level D30 rule.
+	if err := rerunEligible(r.sched, r.j, st, r.opt.Attributions[st.CaseID]); err != nil {
 		return fmt.Errorf("%w: %s: %v", ErrRerunNotAllowed, stepID, err)
 	}
 	if prev, dup := r.j.rerunOf(rerunCase(st)); dup {
