@@ -101,7 +101,8 @@ func writeRegistration(t *testing.T, e *env, runBinding string, mutate func(*eva
 	}
 	reg := evalreport.Registration{Domain: evalreport.RegistrationDomain, FreezeCommit: commit, CorpusManifestDigest: digest,
 		QuotaProfile: quotaPilot, RunnerPlanDigest: e.sched().Digest, PlanSteps: e.sched().Units(), EvalscoreSchema: evalscore.SchemaVersion,
-		RunBinding: runBinding, Reviewers: []string{"owner"}}
+		RunBinding: runBinding, AttributionRubricDigest: fixtureDigest("rubric"), CorpusCheckDigest: fixtureDigest("corpus-check"),
+		Reviewers: []string{"owner"}}
 	if mutate != nil {
 		mutate(&reg)
 	}
@@ -136,6 +137,10 @@ func TestPlanAndReportCheckTheRegistration(t *testing.T) {
 	forged := e.file("forged.json", strings.Replace(string(tampered), `"quota_profile":"pilot"`, `"quota_profile":"thesis"`, 1))
 	if _, err := e.cliCfg(nil, "plan", "--registration", forged); err == nil || !strings.Contains(err.Error(), "record_digest") {
 		t.Fatalf("an edited record was accepted: %v", err)
+	}
+	noCheck := writeRegistration(t, e, binding, func(r *evalreport.Registration) { r.CorpusCheckDigest = "" })
+	if _, err := e.cliCfg(nil, "plan", "--registration", noCheck); err == nil || !strings.Contains(err.Error(), "corpus_check_digest is empty") {
+		t.Fatalf("a v2 record without its corpus-check digest was accepted: %v", err)
 	}
 
 	if _, err := e.cliCfg(fakeWire(newFake(e)), "run"); err != nil {

@@ -79,6 +79,12 @@ func ParseRegistration(data []byte) (Registration, error) {
 	if r.Domain != RegistrationDomain {
 		return Registration{}, fmt.Errorf("registration record: domain %q, want %q", r.Domain, RegistrationDomain)
 	}
+	// The certification digest stays optional: a manifest without a main draw has none.
+	for _, f := range [][2]string{{"run_binding", r.RunBinding}, {"attribution_rubric_digest", r.AttributionRubricDigest}, {"corpus_check_digest", r.CorpusCheckDigest}} {
+		if f[1] == "" {
+			return Registration{}, fmt.Errorf("registration record: %s is empty", f[0])
+		}
+	}
 	want, err := r.ComputeDigest()
 	if err != nil {
 		return Registration{}, err
