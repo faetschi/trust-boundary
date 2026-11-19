@@ -20,10 +20,10 @@ import (
 )
 
 // runEndSource is one row of the run-end registry (register D30 as amended 2026-11-18): a source of a failure that
-// can end a governed step UNKNOWN and its class. A row names a sentinel the run error wraps (err) or a bound on the
-// scanned paths by its failure message (bound). An agent_ceiling bound carries runend.ErrCeiling at its site, so the
-// err row of that marker classes it at run time. A carrier only marks that a failure passed through it and explains
-// nothing. A fault is an infrastructure sentinel that decides wherever it appears in the run error.
+// can end a governed step UNKNOWN and its class. A row names a sentinel the run error wraps (err) or a ceiling bound on
+// the scanned paths by its failure message (bound). A bound carries runend.ErrCeiling at its site, so the err row of
+// that marker classes it at run time; its own row is read only by the scan. A carrier only marks that a failure
+// passed through it and explains nothing. A fault is an infrastructure sentinel that decides wherever it appears in the run error.
 type runEndSource struct {
 	err     error
 	bound   string
@@ -39,7 +39,7 @@ type runEndSource struct {
 // runEndRegistry classes the sources that can end a governed step UNKNOWN, and it fails closed: only a source it
 // classes as infrastructure or model behaviour is a rerun cause; any other source, a sentinel without a row
 // included, ends unclassified, never rerun (runEndClass has the order). TestRunEndRegistryClassesEverySource fails on
-// a bound without a row.
+// a limit message that is neither a bound row nor in runEndNotCeilings.
 var runEndRegistry = []runEndSource{
 	// Workflow ledger faults: the protected root's clock and rollback checks. Only start-up checks join one to the
 	// deadline, so a fault outranks a ceiling beside it. The CAS, observation and owner-fence checks wrap a verifier's
@@ -157,47 +157,52 @@ var runEndRegistry = []runEndSource{
 	{bound: "%w: executor output is oversized", class: runend.AgentCeiling},
 	{bound: "%w: durable mutation summary exceeds the protocol bound; result withheld", class: runend.AgentCeiling},
 	{bound: "%w: durable read result exceeds the protocol bound; result withheld", class: runend.AgentCeiling},
+}
 
+// runEndNotCeilings are the limit messages on the scanned paths that carry no runend.ErrCeiling. No row classes
+// them: the classifier reads only err rows, so such a leaf is classed by where it occurs (model behaviour inside a
+// disposed provider turn failure, else unclassified). TestRunEndRegistryClassesEverySource reads this list.
+var runEndNotCeilings = []string{
 	// Bounds whose class is that of the error they wrap: a ledger refusal (the token allowance joined to the cap
 	// refusal), the end of the turn context.
-	{bound: "reserve durable provider allowance before dispatch: %w", class: runend.Infrastructure, carrier: true},
-	{bound: "wait out the provider rate limit: %w", class: runend.Infrastructure, carrier: true},
-	{bound: "host selected no positive provider completion-token cap", class: runend.Infrastructure, carrier: true},
+	"reserve durable provider allowance before dispatch: %w",
+	"wait out the provider rate limit: %w",
+	"host selected no positive provider completion-token cap",
 
 	// Bounds of the reply stream. Under D50 a reply within the 4,096-token cap stays inside them, so a stream past
 	// one is the provider's; it is a rerun cause only inside a disposed provider turn failure.
-	{bound: "malformed or oversized SSE line", class: runend.ModelBehaviour},
-	{bound: "SSE event exceeds byte limit", class: runend.ModelBehaviour},
-	{bound: "response byte length out of bounds", class: runend.ModelBehaviour},
-	{bound: "invalid or oversized assistant text", class: runend.ModelBehaviour},
-	{bound: "invalid or oversized reasoning", class: runend.ModelBehaviour},
-	{bound: "invalid or oversized tool name", class: runend.ModelBehaviour},
-	{bound: "invalid or oversized argument fragment", class: runend.ModelBehaviour},
+	"malformed or oversized SSE line",
+	"SSE event exceeds byte limit",
+	"response byte length out of bounds",
+	"invalid or oversized assistant text",
+	"invalid or oversized reasoning",
+	"invalid or oversized tool name",
+	"invalid or oversized argument fragment",
 
 	// Bounds no agent drives: counters of 2^64, configuration and parameter checks, the case's own prompt, a request
 	// rebuilt from fields its capture accepted, the hint chooser (a failure there yields no hint and never ends a run),
 	// the recovery replay of a history that fit live, and the scripted and development sources.
-	{bound: "provider response sequence exhausted", class: runend.Infrastructure},
-	{bound: "provider channel response sequence exhausted", class: runend.Infrastructure},
-	{bound: "provider evidence sequence exhausted", class: runend.Infrastructure},
-	{bound: "provider turn sequence exhausted", class: runend.Infrastructure},
-	{bound: "provider response byte budget is invalid", class: runend.Infrastructure},
-	{bound: "completion-token cap is outside the supported request range", class: runend.Infrastructure},
-	{bound: "host-call reservation does not bind the exact outbound request and completion cap", class: runend.Infrastructure},
-	{bound: "OpenCode Go HTTP timeout is outside the permitted bound", class: runend.Infrastructure},
-	{bound: "research route timeout is outside the permitted bound", class: runend.Infrastructure},
-	{bound: "research route response-model list is too long", class: runend.Infrastructure},
-	{bound: "durable executor command output bound is outside its permitted range", class: runend.Infrastructure},
-	{bound: "user task identity or prompt is invalid or exceeds its bound", class: runend.Infrastructure},
-	{bound: "invalid or oversized prior tool-call fields", class: runend.Infrastructure},
-	{bound: "decision input exceeds bound", class: runend.Infrastructure},
-	{bound: "decision response exceeds bound", class: runend.Infrastructure},
-	{bound: "local chooser input exceeds bound", class: runend.Infrastructure},
-	{bound: "local completion exceeds bound", class: runend.Infrastructure},
-	{bound: "provider replay message budget exhausted", class: runend.Infrastructure},
-	{bound: "provider replay transcript byte budget exhausted", class: runend.Infrastructure},
-	{bound: "scripted provider request body is unreadable or too large", class: runend.Infrastructure},
-	{bound: "development offline provider response script is exhausted", class: runend.Infrastructure},
+	"provider response sequence exhausted",
+	"provider channel response sequence exhausted",
+	"provider evidence sequence exhausted",
+	"provider turn sequence exhausted",
+	"provider response byte budget is invalid",
+	"completion-token cap is outside the supported request range",
+	"host-call reservation does not bind the exact outbound request and completion cap",
+	"OpenCode Go HTTP timeout is outside the permitted bound",
+	"research route timeout is outside the permitted bound",
+	"research route response-model list is too long",
+	"durable executor command output bound is outside its permitted range",
+	"user task identity or prompt is invalid or exceeds its bound",
+	"invalid or oversized prior tool-call fields",
+	"decision input exceeds bound",
+	"decision response exceeds bound",
+	"local chooser input exceeds bound",
+	"local completion exceeds bound",
+	"provider replay message budget exhausted",
+	"provider replay transcript byte budget exhausted",
+	"scripted provider request body is unreadable or too large",
+	"development offline provider response script is exhausted",
 }
 
 // runEndClass is the registry's class of a run that ended UNKNOWN. In order: the service's runtime limit is a ceiling
