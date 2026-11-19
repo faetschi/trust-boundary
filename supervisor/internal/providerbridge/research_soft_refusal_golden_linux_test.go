@@ -64,8 +64,9 @@ func TestResearchSoftRefusalJournalAndResultGolden(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Confirmed against providerbridge at pre-feature commit 7ceeff6 using this research fixture.
-	const want = "sha256:2b01f25baf437efd74f34b6511f97bef6ec225066088c69610b72f4d86594156"
+	// Confirmed against providerbridge at pre-feature commit 7ceeff6 using this research fixture; re-pinned
+	// 2026-11-19 when the research request stopped sending parallel_tool_calls (no other change).
+	const want = "sha256:a85cf5767bc59dba9362fac24ca3f429a9da54780908468b300910e36a8a7685"
 	if got := digestBytes(events); got != want {
 		t.Fatalf("research journal golden: %s", got)
 	}
