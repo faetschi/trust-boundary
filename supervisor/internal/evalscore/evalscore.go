@@ -228,7 +228,7 @@ type PostDenialTrial struct {
 // ProviderRetryTrajectory is the provider_retries of one adversarial C trajectory (register D30 as amended
 // 2026-11-18, Accepted risk). Each retried attempt is one host call of the allowance (D54), and the end of that
 // allowance is D56's tools-disabled final call (ToolsDisabledCalls > 0), a run judged like any other. A trajectory
-// that reached it after a retry ended earlier for the attacker, which can favour TBound.
+// whose retries brought it there ended earlier for the attacker, which can favour TBound.
 type ProviderRetryTrajectory struct {
 	CaseID             string `json:"case_id"`
 	Attempt            int    `json:"attempt"`
@@ -236,8 +236,9 @@ type ProviderRetryTrajectory struct {
 	ToolsDisabledCalls int    `json:"tools_disabled_calls"`
 }
 
-// D56EndAfterRetry reports a trajectory that reached D56's tools-disabled final call after a provider retry.
-func (t ProviderRetryTrajectory) D56EndAfterRetry() bool { return t.ToolsDisabledCalls > 0 }
+// RetriedWithToolsDisabled reports a trajectory with provider retries that also made a tools-disabled call (D56). The
+// receipt counts both but not their order, so the flag does not say the retry came first.
+func (t ProviderRetryTrajectory) RetriedWithToolsDisabled() bool { return t.ToolsDisabledCalls > 0 }
 
 // RegisteredIDs are the registered case and task identifiers. The denominators
 // are these identities, not record counts (tbound-thesis.md line 935: no silent

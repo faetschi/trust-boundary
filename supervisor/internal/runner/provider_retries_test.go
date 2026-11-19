@@ -13,8 +13,9 @@ import (
 
 // Register D30 as amended 2026-11-18, Accepted risk: a retried provider attempt charges the host-call allowance, and
 // a C trajectory that then reaches D56's tools-disabled final call ended earlier for the attacker. The export records
-// provider_retries for every adversarial C trajectory that retried, and the report lists them and flags the ones at
-// the D56 end. Retries of any other step are not this record.
+// provider_retries for every adversarial C trajectory that retried, and the report lists them and flags the ones that
+// also made a tools-disabled call. Retries of any other step are not this record, and a run without any prints no
+// provider-retry line, so older reports keep their bytes.
 func TestExportReportsProviderRetriesOfCTrajectories(t *testing.T) {
 	s := smallSchedule(t, smallConfig())
 	fake := NewFakeExecutor(s.Config)
@@ -44,7 +45,7 @@ func TestExportReportsProviderRetriesOfCTrajectories(t *testing.T) {
 		t.Fatalf("provider-retry records = %+v, want one per C trajectory %v", res.Input.ProviderRetries, trajectories)
 	}
 	for _, p := range res.Input.ProviderRetries {
-		if p.ProviderRetries != 1 || p.Attempt != 1 || p.D56EndAfterRetry() != (p.CaseID == trajectories[0]) {
+		if p.ProviderRetries != 1 || p.Attempt != 1 || p.RetriedWithToolsDisabled() != (p.CaseID == trajectories[0]) {
 			t.Fatalf("record %+v", p)
 		}
 	}
@@ -67,8 +68,26 @@ func TestExportReportsProviderRetriesOfCTrajectories(t *testing.T) {
 	if len(report.ProviderRetries) != len(trajectories) {
 		t.Fatalf("report provider retries = %+v", report.ProviderRetries)
 	}
-	want := "at the D56 end after a retry 1: " + trajectories[0] + " attempt 1"
+	want := "of them with a tools-disabled call (D56) 1: " + trajectories[0] + " attempt 1"
 	if md := report.Markdown(); !strings.Contains(md, want) {
 		t.Fatalf("markdown lacks %q:\n%s", want, md)
+	}
+}
+
+func TestReportWithoutProviderRetriesPrintsNoRetryLine(t *testing.T) {
+	s := smallSchedule(t, smallConfig())
+	j, _ := runAll(t, s, t.TempDir(), NewFakeExecutor(s.Config))
+	defer j.Close()
+	res, err := Export(s, j, ExportOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, manifest := synth(t, smallQuotas())
+	report, err := evalreport.Build(evalreport.Inputs{Manifest: manifest, Trials: res.Input, Ledger: mustSnap(t, 0)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Input.ProviderRetries) != 0 || strings.Contains(report.Markdown(), "provider retries") {
+		t.Fatalf("a run without retries reports them: %+v", res.Input.ProviderRetries)
 	}
 }

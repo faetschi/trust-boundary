@@ -234,8 +234,9 @@ type Report struct {
 	// Reruns are the units that took, wait for, or lost their registered rerun (register D30 as amended
 	// 2026-11-18), with the original attempt and its cause. Left out when empty.
 	Reruns []evalscore.CaseOutcome `json:"reruns,omitempty"`
-	// ProviderRetries are the adversarial C trajectories whose provider attempts were retried, with the flag for one
-	// that reached D56's tools-disabled final call after a retry (D30 as amended, Accepted risk). Left out when empty.
+	// ProviderRetries are the adversarial C trajectories whose provider attempts were retried, each with its count of
+	// tools-disabled calls (D56; D30 as amended, Accepted risk). Left out when empty, and the Markdown report prints
+	// them only when there are any.
 	ProviderRetries []evalscore.ProviderRetryTrajectory `json:"provider_retries,omitempty"`
 	Spend           Spend                               `json:"spend"`
 	Flags           []string                            `json:"flags"`

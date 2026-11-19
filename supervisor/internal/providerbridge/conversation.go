@@ -27,6 +27,7 @@ import (
 	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/gate"
 	"tbound/supervisor/internal/runend"
+	"tbound/supervisor/internal/workflowrecovery"
 )
 
 const (
@@ -550,9 +551,10 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 		if c.cfg.SelectCompletionTokenLimit != nil {
 			completionLimit, err = c.cfg.SelectCompletionTokenLimit(ctx)
 			if err != nil || completionLimit == 0 {
-				// Before this attempt's reservation: an earlier attempt's host call and spend are already closed, so
-				// nothing is left open (the token allowance's end is a disposed turn failure, with its receipt).
-				disposed = true
+				// The token allowance's end (or the deadline) refuses before this attempt's reservation, and an earlier
+				// attempt's host call and spend are already closed: nothing is left open, so it is a disposed turn
+				// failure with its receipt. Any other refusal keeps the undisposed path.
+				disposed = errors.Is(err, workflowrecovery.ErrExhausted) || errors.Is(err, workflowrecovery.ErrDeadline)
 				return Turn{}, c.failLocked(errors.Join(errors.New("host selected no positive provider completion-token cap"), err))
 			}
 		} else if c.cfg.BeforeExchange != nil {

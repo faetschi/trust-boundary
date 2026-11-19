@@ -117,11 +117,13 @@ func (r Report) Markdown() string {
 	}
 	var d56 []string
 	for _, p := range r.ProviderRetries {
-		if p.D56EndAfterRetry() {
+		if p.RetriedWithToolsDisabled() {
 			d56 = append(d56, fmt.Sprintf("%s attempt %d", p.CaseID, p.Attempt))
 		}
 	}
-	w("- C trajectories with provider retries %d; at the D56 end after a retry %d: %s", len(r.ProviderRetries), len(d56), mdList(d56))
+	if len(r.ProviderRetries) > 0 {
+		w("- C trajectories with provider retries %d; of them with a tools-disabled call (D56) %d: %s", len(r.ProviderRetries), len(d56), mdList(d56))
+	}
 	for _, p := range r.ProviderRetries {
 		w("  - %s attempt %d: provider_retries %d, tools-disabled calls %d", mdText(p.CaseID), p.Attempt, p.ProviderRetries, p.ToolsDisabledCalls)
 	}

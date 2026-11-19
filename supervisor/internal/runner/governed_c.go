@@ -281,8 +281,8 @@ func rerunScope(s Step) bool {
 }
 
 // markUnknownEnd types an UNKNOWN answer that was the outcome's only failure by the class its code carries
-// (runend.Codes, the wire half of the run-end registry): an agent ceiling is resource exhaustion; infrastructure and
-// model behaviour are rerun causes, an evidenced provider outage with its provider journal record or a plain UNKNOWN
+// (runend.Codes, the wire half of the run-end registry): an agent ceiling is resource exhaustion, an unclassified
+// end is unclassified loss, neither ever rerun; infrastructure and model behaviour are rerun causes, an evidenced provider outage with its provider journal record or a plain UNKNOWN
 // with the digest of the guest's answer line as its evidence. A code the registry does not class is no rerun cause:
 // the outcome stays untyped, and its loss unclassified.
 func markUnknownEnd(o *Outcome, s Step, resp governedResponse) {
@@ -291,8 +291,12 @@ func markUnknownEnd(o *Outcome, s Step, resp governedResponse) {
 		return
 	}
 	o.UnknownEnd = resp.ErrorCode
-	if class == runend.AgentCeiling {
+	switch class {
+	case runend.AgentCeiling:
 		o.EvidenceLoss = evalscore.LossResourceExhaustion
+		return
+	case runend.Unclassified:
+		o.EvidenceLoss = evalscore.LossUnclassified
 		return
 	}
 	if resp.ErrorCode == runend.CodeProviderOutage && validHexDigest(resp.OutageEvidenceDigest) {

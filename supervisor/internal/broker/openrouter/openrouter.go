@@ -634,7 +634,7 @@ func decodeSSE(raw []byte, legacyNulls, reasoning, allowLength bool) (CapturedRe
 			}
 			s.events++
 			if s.events > s.maxEvents {
-				return CapturedResponse{}, errors.New("too many SSE events")
+				return CapturedResponse{}, fmt.Errorf("%w: too many SSE events", runend.ErrCeiling)
 			}
 			if s.done {
 				return CapturedResponse{}, errors.New("data after [DONE]")
