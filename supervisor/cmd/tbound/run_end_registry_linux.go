@@ -251,9 +251,9 @@ func runEndExplained(err error) runend.Class {
 			return row.class
 		}
 	}
-	if providerTurnEnded(err) {
+	if failure, ok := err.(providerTurnFailure); ok {
 		var outage providerbridge.ProviderOutage
-		if errors.As(err, &outage) {
+		if errors.As(failure, &outage) {
 			return runend.Infrastructure
 		}
 		return runend.ModelBehaviour
