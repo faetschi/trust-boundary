@@ -513,7 +513,8 @@ func TestSSHCollectorBeginWithoutAValidAcknowledgementIsAbsentAndStartsNothing(t
 		"monitor ended without ack": {cell: sshCell, failMon: true},
 	} {
 		c, _ := newSSHCollector(g)
-		c.ReadyTimeout = 100 * time.Millisecond
+		// A monitor left running is waited out to its horizon plus ReadyTimeout: keep that short here.
+		c.ReadyTimeout, c.MonitorDuration = 100*time.Millisecond, time.Second
 		err := c.BeginInterval(context.Background(), sshRef)
 		if !errors.Is(err, runner.ErrEvidenceAbsent) {
 			t.Errorf("%s: Begin err = %v, want ErrEvidenceAbsent", name, err)
