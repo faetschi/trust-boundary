@@ -14,7 +14,6 @@ BASE="$(mktemp -d "$TMPDIR/tbound-publish-assets.XXXXXX")"
 trap 'rm -rf "$BASE"' EXIT
 VERSION=1.2.3
 TARBALL_LINUX="tbound-$VERSION-linux-amd64.tar.gz"
-TARBALL_WINDOWS="tbound-$VERSION-windows-amd64.tar.gz"
 METADATA="tbound-cell-entrypoint-$VERSION-linux-amd64.metadata.json"
 CHECKSUM="tbound-cell-entrypoint-$VERSION-linux-amd64.sha256"
 
@@ -40,12 +39,12 @@ dry_run() {
 }
 
 DIST="$BASE/complete"
-fixture "$DIST" "$TARBALL_LINUX" "$TARBALL_WINDOWS" "$METADATA" "$CHECKSUM"
+fixture "$DIST" "$TARBALL_LINUX" "$METADATA" "$CHECKSUM"
 dry_run > "$BASE/complete.log" 2>&1 || die "complete asset set was rejected"
-for asset in "$TARBALL_LINUX" "$TARBALL_WINDOWS" "$METADATA" "$CHECKSUM" SHA256SUMS; do
+for asset in "$TARBALL_LINUX" "$METADATA" "$CHECKSUM" SHA256SUMS; do
   grep -Fq "$DIST/$asset" "$BASE/complete.log" || die "dry-run upload arguments omit $asset"
 done
-pass "dry-run uploads every tarball, both TCB sidecars, and SHA256SUMS"
+pass "dry-run uploads the linux tarball, both TCB sidecars, and SHA256SUMS"
 
 for asset in "$METADATA" "$CHECKSUM"; do
   mv "$DIST/$asset" "$BASE/moved"
@@ -68,10 +67,16 @@ if dry_run > "$BASE/linux-without-sidecars.log" 2>&1; then die "linux release wi
 grep -Fq "linux release is missing $METADATA" "$BASE/linux-without-sidecars.log" || die "linux release without sidecars failed for an unexpected reason"
 pass "a linux release without its TCB sidecars is refused before publication"
 
-DIST="$BASE/windows-only"
-fixture "$DIST" "$TARBALL_WINDOWS"
-dry_run > "$BASE/windows-only.log" 2>&1 || die "windows-only release was rejected"
-if grep -Fq 'tbound-cell-entrypoint-' "$BASE/windows-only.log"; then die "windows-only release lists TCB sidecars"; fi
-pass "a release without a linux tarball publishes without TCB sidecars"
+DIST="$BASE/non-linux-only"
+fixture "$DIST" "tbound-$VERSION-windows-amd64.tar.gz"
+if dry_run > "$BASE/non-linux-only.log" 2>&1; then die "a release without the linux/amd64 tarball was accepted"; fi
+grep -Fq "no linux/amd64 tarball for version $VERSION" "$BASE/non-linux-only.log" || die "non-linux release failed for an unexpected reason"
+pass "a release without the linux/amd64 tarball is refused before publication"
 
-echo "verify-publish-release-assets: 5 passed, 0 failed"
+DIST="$BASE/stray-non-linux"
+fixture "$DIST" "$TARBALL_LINUX" "$METADATA" "$CHECKSUM" "tbound-$VERSION-darwin-arm64.tar.gz"
+dry_run > "$BASE/stray.log" 2>&1 || die "linux release with a stray non-linux tarball was rejected"
+if grep -Fq "darwin-arm64" "$BASE/stray.log"; then die "a stray non-linux tarball would be uploaded"; fi
+pass "a stray non-linux tarball in dist is not uploaded"
+
+echo "verify-publish-release-assets: 6 passed, 0 failed"

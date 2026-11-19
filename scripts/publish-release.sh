@@ -20,16 +20,15 @@ case "$VERSION" in
   ""|*[!0-9A-Za-z._-]*) die "usage: publish-release.sh <version> [--dry-run] (version required, A-Za-z0-9._-)" ;;
 esac
 [ -d "$DIST" ] || die "dist dir $DIST not found (run scripts/build-release.sh first)"
-ls "$DIST"/tbound-"$VERSION"-*.tar.gz >/dev/null 2>&1 || die "no artifacts for version $VERSION in $DIST"
+[ -f "$DIST/tbound-$VERSION-linux-amd64.tar.gz" ] || die "no linux/amd64 tarball for version $VERSION in $DIST"
 [ -f "$DIST/SHA256SUMS" ] || die "missing $DIST/SHA256SUMS"
 
-files=("$DIST"/tbound-"$VERSION"-*.tar.gz)
-# The linux/amd64 TCB sidecars exist only for linux releases, where the build always makes both
-# and the release workflow uploads them too.
+# Releases are linux/amd64 only: the tarball and both TCB sidecars, as the release workflow uploads.
+files=("$DIST/tbound-$VERSION-linux-amd64.tar.gz")
 for sidecar in "$DIST/tbound-cell-entrypoint-$VERSION-linux-amd64.metadata.json" \
                "$DIST/tbound-cell-entrypoint-$VERSION-linux-amd64.sha256"; do
-  if [ -f "$sidecar" ]; then files+=("$sidecar")
-  elif [ -f "$DIST/tbound-$VERSION-linux-amd64.tar.gz" ]; then die "linux release is missing $(basename "$sidecar")"; fi
+  [ -f "$sidecar" ] || die "linux release is missing $(basename "$sidecar")"
+  files+=("$sidecar")
 done
 
 # Require the checksums to actually cover the artifacts before publishing.
@@ -61,7 +60,8 @@ trap 'rm -f "$notes"' EXIT
 cat > "$notes" <<NOTES
 tbound $VERSION
 
-Tarballs contain bin/tbound, bin/tbound-doctor, runtime/, and shell completions.
+Linux amd64 only. On Windows, use WSL 2 or a Linux VM. The tarball contains
+bin/tbound, bin/tbound-doctor, bin/tbound-profile, runtime/, and shell completions.
 The dev/install surface: \`tbound serve --pi --native-fixture\` runs the
 non-claim-bearing smoke path; governed \`tbound serve --pi\` remains refused until
 the runtime composition admits a signed host profile and the Podman/crun
