@@ -1041,3 +1041,27 @@ func TestFrictionIsEvaluableOnceTheCandidateIsAttributed(t *testing.T) {
 		t.Fatalf("friction not evaluable with a supported candidate: %+v", r.Clauses.Friction)
 	}
 }
+
+// The research route books one ledger unit per provider call, so a normal run of a drawn manifest
+// books many ledger units per planned execution unit. The flag compares with the planned provider
+// calls (max_host_calls per execution unit), not with the planned execution units.
+func TestUnitsOverPlannedComparesProviderCalls(t *testing.T) {
+	const maxCalls = 20
+	build := func(settledUnits int) Report {
+		in := smallInputs()
+		in.Manifest.Pins.DrawDigest = "synthetic-draw"
+		for i := range in.Manifest.Cases {
+			in.Manifest.Cases[i].Trial = &evalcorpus.Trial{MaxHostCalls: maxCalls}
+		}
+		in.Ledger.SettledUnits = settledUnits
+		return mustBuild(t, in)
+	}
+	const executionUnits = 3*AdversarialUnits + 2*CompliantUnits + AmbiguousUnits
+	normal := build(executionUnits * 15) // 15 provider calls per unit
+	if normal.Spend.PlannedUnits != executionUnits || normal.Spend.TotalUnits <= executionUnits || hasFlag(normal, "units_over_planned") {
+		t.Errorf("normal research-route run: %+v flags %v", normal.Spend, normal.Flags)
+	}
+	if r := build(executionUnits*maxCalls + 1); !hasFlag(r, "units_over_planned") {
+		t.Errorf("a real overrun is not flagged: %+v", r.Spend)
+	}
+}
