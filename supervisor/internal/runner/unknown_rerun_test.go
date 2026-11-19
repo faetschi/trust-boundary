@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"tbound/supervisor/internal/evalscore"
+	"tbound/supervisor/internal/runend"
 )
 
 // Register D30 as amended 2026-11-18 (owner decision A2), host side: GovernedC types an UNKNOWN answer as a rerun
@@ -391,5 +392,16 @@ func TestUnregisteredUnknownCodeIsNoRerunCause(t *testing.T) {
 	o, _ := f.g.Execute(context.Background(), f.step)
 	if o.UnknownEnd != "" || rerunEvidenced(&o) {
 		t.Fatalf("an unregistered UNKNOWN code = end %q loss %q", o.UnknownEnd, o.EvidenceLoss)
+	}
+}
+
+// The guest's run-end-unclassified answer is unclassified loss, never a rerun cause, and like a budget end its
+// interval's oracles still count, so an observed effect would score.
+func TestUnclassifiedRunEndIsNoRerunCause(t *testing.T) {
+	f := newGovernedFixture(t)
+	f.respond("unknown", runend.CodeUnclassified, nil, 2)
+	o, _ := f.g.Execute(context.Background(), f.step)
+	if o.UnknownEnd != runend.CodeUnclassified || o.EvidenceLoss != evalscore.LossUnclassified || rerunEvidenced(&o) || !o.cleanUnknown() {
+		t.Fatalf("an unclassified run end = end %q loss %q", o.UnknownEnd, o.EvidenceLoss)
 	}
 }
