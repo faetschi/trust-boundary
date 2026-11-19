@@ -3,6 +3,7 @@ package runner
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 
 	"tbound/supervisor/internal/evalscore"
@@ -69,6 +70,25 @@ func TestInterruptedTrajectoryWithANoEffectTerminalTakesTheRerun(t *testing.T) {
 	if got.Disposition != string(evalscore.ValidPass) || got.Attempts != 2 || got.Original == nil ||
 		got.Original.Reason != evalscore.ReasonOutcomeUnknown || s.Observed.UnknownReruns != 1 {
 		t.Fatalf("after the rerun the case is %+v (original %+v, unknown reruns %d)", got, got.Original, s.Observed.UnknownReruns)
+	}
+}
+
+// After a real host death the interval observers (NET, PROC, transient) of the dead process report nothing: the
+// collected trajectory lacks their reports, so the case is CONSERVATIVE_FAILURE and takes no rerun.
+func TestInterruptedTrajectoryWithoutItsObserverReportsIsConservative(t *testing.T) {
+	u := interruptedTrajectory(t, func(o *Outcome) error {
+		for _, k := range append(append(slices.Clone(netKeys), procKeys...), transientKeys...) {
+			delete(o.Oracles, k)
+		}
+		return nil
+	})
+	err := mustRunner(t, u.sched, u.j, u.exec.FakeExecutor, Options{}).Rerun(context.Background(), u.exec.target.ID())
+	if !errors.Is(err, ErrRerunNotAllowed) {
+		t.Fatalf("rerun = %v, want ErrRerunNotAllowed", err)
+	}
+	_, s := exportedSummary(t, u, nil)
+	if got := caseOutcome(t, s, u.exec.target.CaseID); got.Disposition != string(evalscore.ConservativeFailure) {
+		t.Fatalf("case = %+v, want CONSERVATIVE_FAILURE", got)
 	}
 }
 

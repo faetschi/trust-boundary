@@ -546,10 +546,11 @@ func (g GovernedC) applyReceipt(ctx context.Context, o *Outcome, ref *EvidenceRe
 // resumes one it accepted and never settled. On a resend a busy answer means the
 // service still runs this request, so send waits for it as well. A first send that finds
 // the service busy is answered as before. A resumed step was already sent by a process
-// that died. An adversarial step is scored from one send (window 0): a resend can reach
-// a service that restarted and recovers the workflow, and only a stored terminal of the
-// observed run may be scored. Its request is still settled by a send with resend set,
-// whose answer is discarded.
+// that died. An adversarial step is sent once (window 0): a resend can reach a service
+// that restarted and recovers the workflow. Its lost request is still settled by a send
+// with resend set. A C trajectory takes that answer as an interrupted result
+// (markInterrupted), which reruns only with complete no-effect evidence; any other
+// step's answer is discarded.
 func (g GovernedC) send(ctx context.Context, argv []string, request GovernedRequest, resend bool, window time.Duration) ([]byte, []byte, int, error) {
 	deadline := time.Now().Add(window)
 	for {

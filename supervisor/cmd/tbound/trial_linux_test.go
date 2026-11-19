@@ -315,8 +315,6 @@ func TestTrialResetRefusals(t *testing.T) {
 			e.files[name] = other
 		}, "digests to"},
 		"workflow pending": {func(e *trialTestEnv) { e.pendingErr = errors.New("workflow abc is not terminal") }, "not terminal"},
-		// The research route's USD stop rule: every provider request of the unit would be refused.
-		"research ledger stop rule": {func(e *trialTestEnv) { e.usdStopErr = researchroute.ErrStopRule }, "stop rule"},
 		"cell host uid is not the fixture owner": {func(e *trialTestEnv) {
 			e.cell = func(context.Context) (evidenceCell, error) {
 				return evidenceCell{CgroupPath: "/cells", UID: 1000, GID: 1000, HostUID: e.owner.UID + 1, HostGID: e.owner.GID}, nil
@@ -612,6 +610,20 @@ func TestTrialResetRefusesBeforeWipingWhenTheCleanupFails(t *testing.T) {
 		if last := e.events[len(e.events)-1]; last != "unlock" {
 			t.Fatalf("%s: the lock was not released: %v", name, e.events)
 		}
+	}
+}
+
+// The research route's USD stop rule refuses the check before a unit, so the runner's Prepare voids it; the reset
+// that follows a passed check does not consult it again.
+func TestTrialResetCheckRefusesOnTheUSDStopRule(t *testing.T) {
+	e := newTrialTestEnv(t)
+	e.usdStopErr = researchroute.ErrStopRule
+	if _, out, err := e.run(t, "reset", trialTestCase, "--check"); err == nil || !strings.Contains(err.Error(), "stop rule") || out != "" {
+		t.Fatalf("check: err %v, output %q; want a stop-rule refusal", err, out)
+	}
+	e.rootUntouched(t)
+	if _, _, err := e.run(t, "reset", trialTestCase); err != nil {
+		t.Fatalf("the reset after the check consulted the stop rule: %v", err)
 	}
 }
 

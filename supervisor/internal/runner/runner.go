@@ -129,8 +129,11 @@ func (r *Runner) Run(ctx context.Context) (RunReport, error) {
 // is collected under its request id, any other is abandoned.
 func (r *Runner) resume(ctx context.Context, st Step, attempt int, rep *RunReport) error {
 	if !r.j.startedOf(st.ID(), attempt) || !resumable(st) {
+		if err := r.abandon(ctx, st, attempt); err != nil {
+			return err
+		}
 		rep.Abandoned++
-		return r.abandon(ctx, st, attempt)
+		return nil
 	}
 	if err := ctx.Err(); err != nil {
 		rep.Stop = StopCanceled

@@ -257,8 +257,12 @@ func trialReset(ctx context.Context, args []string, env trialEnv) (trialfix.Rese
 	if err := env.pending(ctx); err != nil {
 		return trialfix.ResetDoc{}, fmt.Errorf("a workflow, admission or publication is pending: %w", err)
 	}
-	if err := env.usdStop(ctx); err != nil {
-		return trialfix.ResetDoc{}, fmt.Errorf("refusing the unit: %w", err)
+	// The stop rule is the check before a unit: only --check (the runner's Prepare) refuses, so the refusal voids the
+	// begin. A reset after the check spends the unit whatever it returns.
+	if check {
+		if err := env.usdStop(ctx); err != nil {
+			return trialfix.ResetDoc{}, fmt.Errorf("refusing the unit: %w", err)
+		}
 	}
 	// procoracle F1: an acceptance or V cell container would be scored as the cell's. Both modes refuse, so the
 	// runner's Prepare (--check) voids the step and stops the run before any request.
