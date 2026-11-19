@@ -56,10 +56,10 @@ type ObservedCounts struct {
 }
 
 // RerunFlagPercent is the rerun tolerance of D30 as amended 2026-11-18: when the
-// units of one kind that took (or wait for) their registered rerun exceed this
-// percentage of the registered units of that kind, the H1 summary carries a
-// reruns_above_tolerance flag. The flag marks the result for the reader; it does
-// not block the rule.
+// units of one kind that met a rerun cause (they took, wait for, spent or did not take
+// their registered rerun) exceed this percentage of the registered units of that
+// kind, the H1 summary carries a reruns_above_tolerance flag. The flag marks the
+// result for the reader; it does not block the rule.
 const RerunFlagPercent = 2
 
 // InvalidRecord is one record with an unregistered enum value. It stays in the
@@ -843,7 +843,8 @@ func closeReruns[T any](ts []terminal[T]) {
 	}
 }
 
-// rerunUnits counts the units that took or still wait for their registered rerun, and
+// rerunUnits counts the units that met a rerun cause: they took, still wait for, spent
+// (a second rerun cause) or, in a closed run, did not take their registered rerun; and
 // the reruns taken whose cause was an UNKNOWN run rather than an external outage.
 func rerunUnits[T any](ts []terminal[T]) (units, unknown int) {
 	for _, t := range ts {
@@ -851,7 +852,7 @@ func rerunUnits[T any](ts []terminal[T]) (units, unknown int) {
 		if took && t.original.Reason == ReasonOutcomeUnknown {
 			unknown++
 		}
-		if took || !t.res.Open && t.res.Disposition == ExternalInfrastructureRerun {
+		if took || t.res.Reason == ReasonRerunNotTaken || !t.res.Open && t.res.Disposition == ExternalInfrastructureRerun {
 			units++
 		}
 	}
