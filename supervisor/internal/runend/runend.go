@@ -20,6 +20,10 @@ const (
 	// parallel tool call, a malformed or oversized stream). It stays a plain UNKNOWN, as before the registry: a
 	// rerun cause only with complete no-effect evidence.
 	ModelBehaviour Class = "model_behaviour"
+	// Unclassified is every source the registry does not class as infrastructure or model behaviour: never a rerun
+	// cause, scored like an agent ceiling (CONSERVATIVE_FAILURE) and reported as unclassified loss. The registry
+	// fails closed, so a source its scan misses can only end conservatively.
+	Unclassified Class = "unclassified"
 )
 
 // ErrCeiling marks a failure at an agent-driven bound that has no ledger sentinel: a reply cut at the D50 per-call
@@ -31,16 +35,18 @@ const (
 	CodeOutcomeUnknown = "task-outcome-unknown"
 	CodeBudgetEnded    = "run-budget-exhausted"
 	CodeProviderOutage = "provider-outage"
+	CodeUnclassified   = "run-end-unclassified"
 )
 
 // Codes is the class every code of the Pi service's UNKNOWN answer carries to the host. CodeOutcomeUnknown carries
-// both classes that have no code of their own, infrastructure and model behaviour, which the rerun rule treats
-// alike. The host reads an UNKNOWN code that is not here as no rerun cause. A refused or busy answer is no UNKNOWN:
+// both rerun-cause classes that have no code of their own, infrastructure and model behaviour, which the rerun rule
+// treats alike. The host reads an UNKNOWN code that is not here as no rerun cause. A refused or busy answer is no UNKNOWN:
 // no run happened, and the host spends the unit as a setup failure whatever its code (launch admission).
 var Codes = map[string]Class{
 	CodeOutcomeUnknown: Infrastructure,
 	CodeBudgetEnded:    AgentCeiling,
 	CodeProviderOutage: Infrastructure,
+	CodeUnclassified:   Unclassified,
 
 	"request-journal-unavailable":           Infrastructure,
 	"socket-authority-changed":              Infrastructure,

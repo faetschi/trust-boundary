@@ -38,7 +38,7 @@ func TestProviderOutageRunEndsUnknownWithItsTypedCodeAndRecord(t *testing.T) {
 		"outage":              {sessionErr(providerbridge.ProviderOutage{RecordHash: hash}), runend.CodeProviderOutage, hash},
 		"outage without hash": {sessionErr(providerbridge.ProviderOutage{RecordHash: "not-a-hash"}), "task-outcome-unknown", ""},
 		"outage and a cleanup failure": {sessionErr(providerbridge.ProviderOutage{RecordHash: hash},
-			errors.New("close settled production session before receipt: synthetic")), "task-outcome-unknown", ""},
+			errors.New("close settled production session before receipt: synthetic")), runend.CodeUnclassified, ""},
 		"other failure": {sessionErr(errors.New("registered provider exchange failed; response withheld")), "task-outcome-unknown", ""},
 		// The agent's own budget end is a treatment failure, never a rerun cause (thesis §7.5).
 		"workflow deadline refusal": {sessionErr(fmt.Errorf("durably charge exact provider request and completion cap before HTTP dispatch: %w",
