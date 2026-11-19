@@ -300,7 +300,8 @@ func TestRunEndRegistryClassesEverySource(t *testing.T) {
 			return true
 		})
 	}
-	for _, code := range []string{runend.CodeOutcomeUnknown, runend.CodeBudgetEnded, runend.CodeProviderOutage, runend.CodeUnclassified} {
+	for _, code := range []string{runend.CodeOutcomeUnknown, runend.CodeBudgetEnded, runend.CodeProviderOutage, runend.CodeUnclassified,
+		runend.CodeLaunchNotAdmitted} {
 		if _, known := runend.Codes[code]; !known {
 			t.Errorf("classifier code %q has no run-end class", code)
 		}
@@ -332,7 +333,10 @@ func TestAgentCeilingsAnswerRunBudgetExhausted(t *testing.T) {
 		{"predecessor context", fmt.Errorf("admit prompt: %w", providerbridge.ErrContextExhausted), runend.CodeBudgetEnded},
 		{"ledger deadline", bridged(workflowrecovery.ErrDeadline), runend.CodeBudgetEnded},
 		{"workspace limit", executorFailed(fmt.Errorf("durable write: %w", workspace.ErrLimit)), runend.CodeBudgetEnded},
-		{"fault beside a ceiling", errors.Join(workflowrecovery.ErrCAS, runend.ErrCeiling), runend.CodeOutcomeUnknown},
+		{"start-up fault beside a ceiling", errors.Join(workflowrecovery.ErrRollback, runend.ErrCeiling), runend.CodeOutcomeUnknown},
+		{"clock fault beside a ceiling", errors.Join(workflowrecovery.ErrClockUncertain, runend.ErrCeiling), runend.CodeOutcomeUnknown},
+		{"ledger verifier over a ceiling", fmt.Errorf("%w: progress verifier: %w", workflowrecovery.ErrObservation, runend.ErrCeiling), runend.CodeBudgetEnded},
+		{"CAS beside a ceiling", errors.Join(workflowrecovery.ErrCAS, runend.ErrCeiling), runend.CodeBudgetEnded},
 		{"parallel tool call", bridged(openrouter.ErrParallelToolCall), runend.CodeOutcomeUnknown},
 		{"refused reply", bridged(errors.New("captured response model differs from registered model")), runend.CodeOutcomeUnknown},
 		{"command never started", executorFailed(protocol.ErrCommandNotStarted), runend.CodeOutcomeUnknown},

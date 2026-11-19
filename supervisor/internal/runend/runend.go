@@ -36,6 +36,8 @@ const (
 	CodeBudgetEnded    = "run-budget-exhausted"
 	CodeProviderOutage = "provider-outage"
 	CodeUnclassified   = "run-end-unclassified"
+	// CodeLaunchNotAdmitted is a launch that failed before the task was admitted: the agent never ran.
+	CodeLaunchNotAdmitted = "launch-not-admitted"
 )
 
 // Codes is the class every code of the Pi service's UNKNOWN answer carries to the host. CodeOutcomeUnknown carries

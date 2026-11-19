@@ -1084,6 +1084,12 @@ func productionLaunchFailure(err error, journalLaunchProof func(launcherPID int,
 	return fmt.Errorf("route-probe launch proof journaled, Pi not started: %w", err)
 }
 
+// launchNotAdmitted is a launch that failed before the task was admitted.
+type launchNotAdmitted struct{ err error }
+
+func (f launchNotAdmitted) Error() string { return f.err.Error() }
+func (f launchNotAdmitted) Unwrap() error { return f.err }
+
 // productionSessionCloseIfUnsafe lets the binder's own Close guard run when
 // the session lifecycle is unsafe, so it can retain its owners in quarantine.
 func productionSessionCloseIfUnsafe(
