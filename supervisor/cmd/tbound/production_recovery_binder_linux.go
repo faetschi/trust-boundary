@@ -405,6 +405,7 @@ func bindProductionPiRecoverySession(ctx context.Context, config productionServe
 		recoveryPromptTaskID:          recovered.RecoveryPromptTask,
 		recoveryPromptRequestID:       recovered.RecoveryPromptRequest,
 		recoveryPrompt:                recovered.RecoveryPrompt,
+		recovered:                     true,
 		LiveRoot:                      liveRoot, ManagedLiveRootLease: managedRootLease,
 		PublicationStateRoot: publicationStateRoot, PublicationJournal: publicationJournal,
 		OwnerEpoch: publicationEpoch, PublicationID: publicationID,

@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,24 +15,30 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/broker/openrouter"
 	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/gate"
 	"tbound/supervisor/internal/providerbridge"
+	"tbound/supervisor/internal/researchroute"
 	"tbound/supervisor/internal/runend"
+	"tbound/supervisor/internal/sessionlaunch"
+	"tbound/supervisor/internal/sessionrepo"
 	"tbound/supervisor/internal/workflowrecovery"
 	"tbound/supervisor/internal/workspace"
 )
 
 // runEndSentinelDirs are the packages whose sentinels can reach a governed run's error: the service and session
 // (this package), the provider bridge, broker and capture, the workflow ledger, the Pi runtime, and the workspace,
-// session store, publication, private Git, audit, USD ledger and gate packages under them.
+// session store, publication, private Git, audit, USD ledger and gate packages under them, and the research route
+// whose spend reservation the provider bridge wraps.
 var runEndSentinelDirs = []string{".", "../../internal/providerbridge", "../../internal/broker",
 	"../../internal/broker/openrouter", "../../internal/broker/protocol", "../../internal/workflowrecovery",
 	"../../internal/piruntime", "../../internal/workspace", "../../internal/sessionrepo", "../../internal/publication",
-	"../../internal/privategit", "../../internal/audit", "../../internal/usdledger", "../../internal/gate"}
+	"../../internal/privategit", "../../internal/audit", "../../internal/usdledger", "../../internal/gate",
+	"../../internal/researchroute"}
 
 // runEndBoundFiles are the provider path and the durable executor that returns tool results: every bound a failure
 // message names there is a registry row.
@@ -300,7 +307,8 @@ func TestRunEndRegistryClassesEverySource(t *testing.T) {
 			return true
 		})
 	}
-	for _, code := range []string{runend.CodeOutcomeUnknown, runend.CodeBudgetEnded, runend.CodeProviderOutage, runend.CodeUnclassified} {
+	for _, code := range []string{runend.CodeOutcomeUnknown, runend.CodeBudgetEnded, runend.CodeProviderOutage, runend.CodeUnclassified,
+		runend.CodeLaunchNotAdmitted} {
 		if _, known := runend.Codes[code]; !known {
 			t.Errorf("classifier code %q has no run-end class", code)
 		}
@@ -331,8 +339,20 @@ func TestAgentCeilingsAnswerRunBudgetExhausted(t *testing.T) {
 		{"history over the request bound", bridged(fmt.Errorf("provider response does not fit the next request: %w", runend.ErrCeiling)), runend.CodeBudgetEnded},
 		{"predecessor context", fmt.Errorf("admit prompt: %w", providerbridge.ErrContextExhausted), runend.CodeBudgetEnded},
 		{"ledger deadline", bridged(workflowrecovery.ErrDeadline), runend.CodeBudgetEnded},
+		{"research USD stop rule", bridged(fmt.Errorf("reserve provider spend before dispatch: %w (remaining 10 micro-USD, threshold 20)",
+			researchroute.ErrStopRule)), runend.CodeBudgetEnded},
+		{"no completion cap left", bridged(fmt.Errorf("reserve provider spend before dispatch: %w", researchroute.ErrNoCompletionCap)), runend.CodeBudgetEnded},
 		{"workspace limit", executorFailed(fmt.Errorf("durable write: %w", workspace.ErrLimit)), runend.CodeBudgetEnded},
-		{"fault beside a ceiling", errors.Join(workflowrecovery.ErrCAS, runend.ErrCeiling), runend.CodeOutcomeUnknown},
+		{"start-up fault beside a ceiling", errors.Join(workflowrecovery.ErrRollback, runend.ErrCeiling), runend.CodeOutcomeUnknown},
+		{"clock fault beside a ceiling", errors.Join(workflowrecovery.ErrClockUncertain, runend.ErrCeiling), runend.CodeOutcomeUnknown},
+		{"ledger verifier over a ceiling", fmt.Errorf("%w: progress verifier: %w", workflowrecovery.ErrObservation, runend.ErrCeiling), runend.CodeBudgetEnded},
+		{"CAS beside a ceiling", errors.Join(workflowrecovery.ErrCAS, runend.ErrCeiling), runend.CodeBudgetEnded},
+		{"ledger verifier with a plain cause", fmt.Errorf("%w: progress verifier: %w", workflowrecovery.ErrObservation,
+			errors.Join(workflowrecovery.ErrObservation, errors.New("sqlite: disk I/O error"))), runend.CodeOutcomeUnknown},
+		{"owner check with a plain cause", fmt.Errorf("%w: live owner/fence check for terminal accounting: %w",
+			workflowrecovery.ErrOwnerFence, errors.New("database is locked")), runend.CodeOutcomeUnknown},
+		{"ledger observation beside an unrelated failure", errors.Join(fmt.Errorf("stage: %w", workflowrecovery.ErrObservation),
+			errors.New("cleanup failed")), runend.CodeUnclassified},
 		{"parallel tool call", bridged(openrouter.ErrParallelToolCall), runend.CodeOutcomeUnknown},
 		{"refused reply", bridged(errors.New("captured response model differs from registered model")), runend.CodeOutcomeUnknown},
 		{"command never started", executorFailed(protocol.ErrCommandNotStarted), runend.CodeOutcomeUnknown},
@@ -388,5 +408,86 @@ func TestWorkspaceLimitThroughTheExecutorIsABudgetEnd(t *testing.T) {
 		governedChannelsError(fmt.Errorf("executor failed; result withheld: %w", execErr), nil)))
 	if answer := unknownAnswerOf(t, runErr); answer.ErrorCode != runend.CodeBudgetEnded {
 		t.Fatalf("answer %+v; run error %v", answer, runErr)
+	}
+}
+
+type failingProgress struct{ cause error }
+
+func (p failingProgress) VerifyProgress(context.Context, workflowrecovery.Checkpoint, workflowrecovery.Pins) error {
+	return p.cause
+}
+
+// R2 on the real ledger: a progress verifier's cause stays in the run error. A ceiling inside it ends the run as a
+// budget end; a plain cause (a store I/O error) keeps the ledger's infrastructure end, as when the cause was text.
+func TestLedgerVerifierCauseThroughTheRealLedger(t *testing.T) {
+	f := prepareWorkflowVertical(t, workflowVerticalOptions{launchProof: true, maxHostCalls: 7, maxTokens: 7 * 1024})
+	checkpoint, _ := f.ledger.Snapshot()
+	for name, tc := range map[string]struct {
+		cause error
+		code  string
+	}{
+		"ceiling in the cause": {fmt.Errorf("store evidence bundle: %w", runend.ErrCeiling), runend.CodeBudgetEnded},
+		"store I/O cause": {errors.Join(workflowrecovery.ErrObservation, errors.New("sqlite: disk I/O error")),
+			runend.CodeOutcomeUnknown},
+	} {
+		_, err := f.ledger.AdvanceCheckpoint(f.ctx, failingProgress{cause: tc.cause}, checkpoint.Pins)
+		if !errors.Is(err, workflowrecovery.ErrObservation) {
+			t.Fatalf("%s: the ledger did not refuse with ErrObservation: %v", name, err)
+		}
+		if answer := unknownAnswerOf(t, err); answer.ErrorCode != tc.code {
+			t.Errorf("%s: answer %q, want %q; ledger error %v", name, answer.ErrorCode, tc.code, err)
+		}
+	}
+}
+
+type deadlineCheckOwner struct {
+	workflowrecovery.Owner
+	cause error
+}
+
+func (deadlineCheckOwner) VerifyFence(context.Context, string, uint64) error { return nil }
+
+func (o deadlineCheckOwner) VerifyWorkflowDeadline(context.Context, string, time.Time) error {
+	return o.cause
+}
+
+// The fresh workflow's start-up deadline check runs at binder time, before the agent: only an expired deadline is an
+// agent ceiling there; a broken owner store or an owner process change is infrastructure (finding 1 of #211).
+func TestStartupDeadlineCheckClassesOnlyAnExpiredDeadlineAsACeiling(t *testing.T) {
+	f := prepareWorkflowVertical(t, workflowVerticalOptions{launchProof: true, maxHostCalls: 7, maxTokens: 7 * 1024})
+	checkpoint, _ := f.ledger.Snapshot()
+	previous := workflowrecovery.Pins{WorkflowID: "workflow-1", RecoveryGeneration: 1, OwnerEpoch: 1}
+	transcript := workflowrecovery.TranscriptPin{Ordinal: 1, Disposition: workflowrecovery.DispositionAwaitingHostPrompt}
+	baseline := &sessionrepo.Generation{}
+	next := cloneWorkflowPins(previous)
+	next.ProviderTranscripts = []workflowrecovery.TranscriptPin{transcript}
+	next.ProviderProjectionDigest = workflowrecovery.TranscriptPinsDigest(next.ProviderTranscripts)
+	next.ProviderDisposition = workflowrecovery.DispositionAwaitingHostPrompt
+	next.StoreTipTreeDigest = bareStoreTreeDigest(baseline.TreeDigest())
+	for name, tc := range map[string]struct {
+		cause error
+		code  string
+	}{
+		"owner poisoned": {fmt.Errorf("%w: SQLite owner is poisoned after an ambiguous durable commit", workflowrecovery.ErrCAS),
+			runend.CodeOutcomeUnknown},
+		"owner store read error": {fmt.Errorf("%w: read protected host-root workflow state: %v", workflowrecovery.ErrOwnerStore,
+			errors.New("disk I/O error")), runend.CodeOutcomeUnknown},
+		"owner process changed": {fmt.Errorf("%w: deadline query process incarnation changed: %v", workflowrecovery.ErrOwnerFence,
+			nil), runend.CodeOutcomeUnknown},
+		"deadline expired": {workflowrecovery.ErrDeadline, runend.CodeBudgetEnded},
+	} {
+		verifier := productionInitialTranscriptProgressVerifier{
+			request:      governedRecoveryRequest{Owner: deadlineCheckOwner{cause: tc.cause}, Limits: workflowrecovery.Limits{Deadline: time.Now()}},
+			previousPins: previous, transcript: transcript, managed: &sessionlaunch.ManagedStore{}, prepared: &sessionlaunch.PreparedSession{},
+			baseline: baseline, storeJournal: &audit.Journal{}, providerJournal: &audit.Journal{},
+		}
+		cause := verifier.VerifyProgress(f.ctx, workflowrecovery.Checkpoint{Pins: previous}, next)
+		if !errors.Is(cause, tc.cause) {
+			t.Fatalf("%s: the verifier did not fail at the deadline check: %v", name, cause)
+		}
+		_, err := f.ledger.AdvanceCheckpoint(f.ctx, failingProgress{cause: cause}, checkpoint.Pins)
+		if answer := unknownAnswerOf(t, err); answer.ErrorCode != tc.code {
+			t.Errorf("%s: answer %q, want %q; ledger error %v", name, answer.ErrorCode, tc.code, err)
+		}
 	}
 }

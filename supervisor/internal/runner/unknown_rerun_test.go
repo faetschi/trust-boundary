@@ -82,6 +82,21 @@ func TestGovernedCReadsTheReceiptOfAnUnknownAnswer(t *testing.T) {
 	}
 }
 
+// A launch that failed before the task was admitted answers launch-not-admitted with the non-success receipt that
+// binds its E04 points: a rerun cause like a plain UNKNOWN, read like the receipt of a failed provider turn.
+func TestGovernedCTypesALaunchNotAdmittedAnswerAsARerunCause(t *testing.T) {
+	f := newGovernedFixture(t)
+	f.respond("unknown", "launch-not-admitted", f.receipt(false), 2)
+	o, err := f.g.Execute(context.Background(), f.step)
+	if !errors.Is(err, ErrGovernedUnknown) || errors.Is(err, ErrGovernedFailed) {
+		t.Fatalf("err = %v, want only ErrGovernedUnknown", err)
+	}
+	if o.UnknownEnd != "launch-not-admitted" || o.EvidenceLoss != evalscore.LossOutcomeUnknown || o.Receipt == nil ||
+		o.OutageEvidenceDigest == "" || o.OutageEvidenceDigest != o.E01.Digest || !rerunEvidenced(&o) {
+		t.Fatalf("launch-not-admitted answer = end %q loss %q digest %q receipt %v", o.UnknownEnd, o.EvidenceLoss, o.OutageEvidenceDigest, o.Receipt != nil)
+	}
+}
+
 func TestGovernedCLeavesUnknownReplaysUntyped(t *testing.T) {
 	f := newGovernedFixture(t)
 	s := smallSchedule(t, smallConfig())

@@ -388,13 +388,13 @@ func (l *Ledger) RecordTerminalEffectOutcome(ctx context.Context, reservation Re
 		return Receipt{}, fmt.Errorf("%w: owner cannot verify same-incarnation terminal accounting", ErrOwnerFence)
 	}
 	if err := terminalOwner.VerifyTerminalEffectOwner(ctx, workflowID, fencedEpoch, previousDigest, deadline); err != nil {
-		return Receipt{}, fmt.Errorf("%w: live owner/fence check for terminal accounting: %v", ErrOwnerFence, err)
+		return Receipt{}, fmt.Errorf("%w: live owner/fence check for terminal accounting: %w", ErrOwnerFence, err)
 	}
 	if err := validateTerminalEffectPins(previous.Pins, nextPins); err != nil {
 		return Receipt{}, err
 	}
 	if err := verifier.VerifyTerminalEffect(ctx, previous, binding, clonePins(nextPins)); err != nil {
-		return Receipt{}, fmt.Errorf("%w: terminal Store outcome verifier: %v", ErrObservation, err)
+		return Receipt{}, fmt.Errorf("%w: terminal Store outcome verifier: %w", ErrObservation, err)
 	}
 
 	next := previous
@@ -457,7 +457,7 @@ func (l *Ledger) AdvanceCheckpoint(ctx context.Context, verifier ProgressVerifie
 	fencedEpoch := l.fencedEpoch
 	l.mu.Unlock()
 	if err := verifier.VerifyProgress(ctx, previous, clonePins(nextPins)); err != nil {
-		return Receipt{}, fmt.Errorf("%w: progress verifier: %v", ErrObservation, err)
+		return Receipt{}, fmt.Errorf("%w: progress verifier: %w", ErrObservation, err)
 	}
 	proof := TransitionProof{kind: transitionProgress, previousDigest: previousDigest,
 		previousPins: clonePins(previous.Pins), observedPins: clonePins(nextPins),
@@ -533,7 +533,7 @@ func (l *Ledger) ObserveRecovery(ctx context.Context, verifier RecoveryVerifier,
 		return VerifiedRecoveryObservation{}, err
 	}
 	if err := verifier.VerifyRecoveryObservation(ctx, previous, clonePins(observed)); err != nil {
-		return VerifiedRecoveryObservation{}, fmt.Errorf("%w: recovery verifier: %v", ErrObservation, err)
+		return VerifiedRecoveryObservation{}, fmt.Errorf("%w: recovery verifier: %w", ErrObservation, err)
 	}
 	proof := TransitionProof{kind: transitionRecovery, previousDigest: previousDigest,
 		previousPins: clonePins(previous.Pins), observedPins: clonePins(observed),
