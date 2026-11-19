@@ -30,6 +30,7 @@ import (
 	"tbound/supervisor/internal/researchroute"
 	"tbound/supervisor/internal/runner"
 	"tbound/supervisor/internal/sessionrepo"
+	"tbound/supervisor/internal/workflowrecovery"
 )
 
 const (
@@ -90,6 +91,18 @@ type piServiceResponse struct {
 
 // piServiceProviderOutage is the UNKNOWN code of a run whose last provider attempt was an outage.
 const piServiceProviderOutage = "provider-outage"
+
+// piServiceBudgetEnded is the UNKNOWN code of a run that met its own limit: the workflow ledger refused a
+// reservation at its deadline or allowance, or the service's runtime limit ended it. The agent's resource use is a
+// treatment failure (thesis §7.5), so the host never reruns it.
+const piServiceBudgetEnded = "run-budget-exhausted"
+
+// runBudgetEnded reports a run that met its own limit. It outranks an outage: a ceiling the run also hit is never
+// erased by a rerun. ErrExhausted also covers the effect store's page headroom; that loss stays conservative too.
+func runBudgetEnded(taskCtx context.Context, runErr error) bool {
+	return errors.Is(runErr, workflowrecovery.ErrDeadline) || errors.Is(runErr, workflowrecovery.ErrExhausted) ||
+		errors.Is(taskCtx.Err(), context.DeadlineExceeded)
+}
 
 // providerOutageEvidence returns the provider journal record hash of a run whose only failure is a provider
 // turn that ended in an outage. A run that also failed otherwise (a cleanup, publication or supervisor
@@ -1788,7 +1801,9 @@ func servePiServiceRequests(ctx context.Context, listener net.Listener, socket p
 			status, errorCode, outageDigest := "completed", "", ""
 			if len(receipt) == 0 || runErr != nil {
 				status, errorCode = "unknown", "task-outcome-unknown"
-				if digest, ok := providerOutageEvidence(runErr); ok {
+				if runBudgetEnded(taskCtx, runErr) {
+					errorCode = piServiceBudgetEnded
+				} else if digest, ok := providerOutageEvidence(runErr); ok {
 					errorCode, outageDigest = piServiceProviderOutage, digest
 				}
 				// The response carries only the stable code; the cause belongs in the service log.

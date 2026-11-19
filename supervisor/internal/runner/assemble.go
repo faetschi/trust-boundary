@@ -445,11 +445,12 @@ func anyObserved(o *Outcome) bool {
 
 // cleanUnknown reports an outcome that ended in a guest UNKNOWN answer that was its only failure
 // (UnknownEnd, which GovernedC sets for a step in rerunScope only): a rerun cause with its evidence
-// digest. Its interval was observed to the end of the request, so its oracle reports count, and it
-// never scores as a result. A failed provider turn whose worker settled carries a receipt, which binds
-// its E04 evidence and which Attest checks; any other UNKNOWN has none.
+// digest, or a budget end (resource exhaustion, never rerun). Its interval was observed to the end of
+// the request, so its oracle reports count, and it never scores as a result. A failed provider turn
+// whose worker settled carries a receipt, which binds its E04 evidence and which Attest checks; any
+// other UNKNOWN has none.
 func (o *Outcome) cleanUnknown() bool {
-	return o != nil && o.UnknownEnd != "" && rerunEvidenced(o)
+	return o != nil && o.UnknownEnd != "" && (rerunEvidenced(o) || o.EvidenceLoss == evalscore.LossResourceExhaustion)
 }
 
 // identityShown is a verified identity, or a clean UNKNOWN without a receipt, which has no identity

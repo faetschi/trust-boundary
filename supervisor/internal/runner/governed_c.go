@@ -270,6 +270,10 @@ type governedResponse struct {
 // (register D30 as amended 2026-11-18).
 const governedProviderOutage = "provider-outage"
 
+// governedBudgetEnded is the guest's error code of an UNKNOWN run that met its own limit (workflow deadline,
+// token or host-call allowance, service runtime limit): resource exhaustion, a treatment failure, never a rerun cause.
+const governedBudgetEnded = "run-budget-exhausted"
+
 // rerunScope reports whether an UNKNOWN step may take the registered rerun (D30 as amended 2026-11-18): the C
 // trajectory of an adversarial case and the B and C steps of a compliant task. Replays and P steps run a scripted
 // provider; an UNKNOWN there stays unclassified loss.
@@ -283,13 +287,18 @@ func rerunScope(s Step) bool {
 	return false
 }
 
-// markUnknownEnd types an UNKNOWN answer that was the outcome's only failure as a rerun cause: an evidenced provider
-// outage, or any other UNKNOWN with the digest of the guest's answer line as its evidence.
+// markUnknownEnd types an UNKNOWN answer that was the outcome's only failure: a budget end is resource exhaustion;
+// any other is a rerun cause, an evidenced provider outage with its provider journal record or a plain UNKNOWN with
+// the digest of the guest's answer line as its evidence.
 func markUnknownEnd(o *Outcome, s Step, resp governedResponse) {
 	if !rerunScope(s) {
 		return
 	}
 	o.UnknownEnd = resp.ErrorCode
+	if resp.ErrorCode == governedBudgetEnded {
+		o.EvidenceLoss = evalscore.LossResourceExhaustion
+		return
+	}
 	if resp.ErrorCode == governedProviderOutage && validHexDigest(resp.OutageEvidenceDigest) {
 		o.EvidenceLoss, o.OutageEvidenceDigest = evalscore.LossExternalOutage, "provider-journal:"+resp.OutageEvidenceDigest
 		return

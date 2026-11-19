@@ -160,3 +160,17 @@ func TestTokenAllowanceEndThroughServeIsABudgetEnd(t *testing.T) {
 		t.Fatalf("answer %+v; run error %v", answer, runErr)
 	}
 }
+
+// A run the service's runtime limit ended (its task context hit the deadline) is a budget end, also when the run
+// error does not say why (a compliant run then ends without a receipt). A service shutdown cancels the context
+// instead and stays task-outcome-unknown.
+func TestServiceRuntimeLimitIsABudgetEnd(t *testing.T) {
+	expired, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer cancel()
+	stopped, stop := context.WithCancel(context.Background())
+	stop()
+	runErr := errors.New("provider exchange canceled; response withheld")
+	if !runBudgetEnded(expired, runErr) || runBudgetEnded(stopped, runErr) || runBudgetEnded(context.Background(), runErr) {
+		t.Fatal("only the service's runtime limit makes an unexplained UNKNOWN a budget end")
+	}
+}
