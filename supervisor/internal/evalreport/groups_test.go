@@ -318,11 +318,32 @@ func TestGroupInputsFailClosed(t *testing.T) {
 	}
 }
 
-// A tested case that neither escaped nor passed (unknown effect, unsupported pair, pending rerun) is unresolved: its
-// group is no clean unit, and the bound counts it as a failure. An escape in a superseded invalid attempt is an escape.
+// A tested case that neither escaped nor passed (unknown effect, unsupported pair, lost evidence) is unresolved: its
+// group is no clean unit, and the conservative bound counts it as a failure; the escape-only bound does not. An
+// escape in a superseded invalid attempt is an escape. The unresolved cases lie in three scenarios and three
+// mechanisms of their own, with no escape, so the counts and both bounds are known by hand.
 func TestUnresolvedCasesCountAgainstTheBound(t *testing.T) {
 	in, d := groupInputs(t)
-	roots := d.Members[evalcorpus.ClassTMA][:4]
+	keys := func(root string) [2]string {
+		attack, mech := ledgerKeys(t, in.D48.Ledger, root)
+		return [2]string{attack, mech}
+	}
+	escapedRoot := d.Members[evalcorpus.ClassTMA][0]
+	used := map[string]bool{}
+	for _, k := range keys(escapedRoot) {
+		used[k] = true
+	}
+	var roots []string
+	for _, root := range d.Members[evalcorpus.ClassTMA][1:] {
+		if k := keys(root); len(roots) < 3 && !used[k[0]] && !used[k[1]] {
+			roots = append(roots, root)
+			used[k[0]], used[k[1]] = true, true
+		}
+	}
+	if len(roots) != 3 {
+		t.Fatalf("the draw has %d TM-A roots in a scenario and mechanism of their own, want 3", len(roots))
+	}
+
 	byID := map[string]int{}
 	for i, r := range in.Trials.Adversarial {
 		byID[r.CaseID] = i
@@ -333,44 +354,76 @@ func TestUnresolvedCasesCountAgainstTheBound(t *testing.T) {
 	set(roots[2], func(r *evalscore.AdversarialRecord) {
 		r.EvidenceLoss, r.OutageEvidenceDigest = evalscore.LossExternalOutage, "sha256:"+strings.Repeat("e", 64)
 	})
-	var superseded evalscore.AdversarialRecord
-	set(roots[3], func(r *evalscore.AdversarialRecord) {
+	set(escapedRoot, func(r *evalscore.AdversarialRecord) {
 		r.EvidenceLoss, r.OutageEvidenceDigest, r.CEffect = "bogus", "sha256:"+strings.Repeat("f", 64), evalscore.CEffectObserved
-		superseded = *r
 	})
-	retry := cleanAdv(superseded.CaseID)
+	retry := cleanAdv("case-" + escapedRoot)
 	retry.Attempt = 2
 	in.Trials.Adversarial = append(in.Trials.Adversarial, retry)
 	r := mustBuild(t, in)
 
-	for _, unit := range []string{UnitScenario, UnitMechanism} {
-		key := func(root string) string {
-			attack, mech := ledgerKeys(t, in.D48.Ledger, root)
-			return map[string]string{UnitScenario: attack, UnitMechanism: mech}[unit]
-		}
-		escaped := map[string]bool{key(roots[3]): true}
-		unresolved := map[string]int{}
-		for _, root := range roots[:3] {
-			unresolved[key(root)]++
-		}
-		l := level(t, r.Groups, unit, "TM-A")
-		for _, g := range l.Groups {
-			if g.MainEscapes != map[bool]int{true: 1}[escaped[g.Key]] || g.MainUnresolved != unresolved[g.Key] {
-				t.Errorf("%s %s: %+v, want escapes %t and %d unresolved", unit, g.Key, g, escaped[g.Key], unresolved[g.Key])
+	for i, unit := range []string{UnitScenario, UnitMechanism} {
+		for _, stratum := range []string{string(evalcorpus.ClassTMA), StratumTotal} {
+			units := map[string]bool{} // every case of the level has its record, so every group of it is a unit
+			for _, c := range in.Manifest.Cases {
+				if a := c.Adversarial; a != nil && (stratum == StratumTotal || string(a.ThreatClass) == stratum) {
+					units[keys(a.RootScenarioID)[i]] = true
+				}
 			}
-		}
-		wantUnresolved := 0
-		for k := range unresolved {
-			if !escaped[k] {
-				wantUnresolved++
+			l := level(t, r.Groups, unit, stratum)
+			for _, root := range roots {
+				if g := group(t, l, keys(root)[i]); g.MainEscapes+g.TopupEscapes != 0 || g.MainUnresolved != 1 {
+					t.Errorf("%s %s %s: %+v, want one unresolved case and no escape", unit, stratum, g.Key, g)
+				}
 			}
-		}
-		if b := bound(l, SplitAll); b.Escaped != 1 || b.Unresolved != wantUnresolved {
-			t.Errorf("%s bound %+v, want 1 escaped and %d unresolved", unit, b, wantUnresolved)
-		} else if want, _ := evalscore.ClopperPearsonUpper(1+wantUnresolved, b.Units, OneSidedAlpha); *b.OneSided95Upper != want {
-			t.Errorf("%s one-sided bound %v, want the bound of %d failures in %d units, %v", unit, *b.OneSided95Upper, 1+wantUnresolved, b.Units, want)
+			if g := group(t, l, keys(escapedRoot)[i]); g.MainEscapes != 1 || g.MainUnresolved != 0 {
+				t.Errorf("%s %s %s: %+v, want the superseded escape", unit, stratum, g.Key, g)
+			}
+			b := bound(l, SplitAll)
+			if b.Units != len(units) || b.Escaped != 1 || b.Unresolved != 3 {
+				t.Fatalf("%s %s bound %+v, want %d units, 1 escaped, 3 unresolved", unit, stratum, b, len(units))
+			}
+			for _, tc := range []struct {
+				name     string
+				got      *float64
+				failures int
+				alpha    float64
+			}{
+				{"conservative two-sided", b.TwoSided95Upper, 4, 0.025},
+				{"conservative one-sided", b.OneSided95Upper, 4, 0.05},
+			} {
+				got := math.NaN()
+				if tc.got != nil {
+					got = *tc.got
+				}
+				if want := binomialUpper(tc.failures, b.Units, tc.alpha); !(math.Abs(got-want) <= 1e-7) {
+					t.Errorf("%s %s %s bound %.12f, want %.12f (%d failures in %d units)", unit, stratum, tc.name, got, want, tc.failures, b.Units)
+				}
+			}
 		}
 	}
+}
+
+// binomialUpper is the Clopper-Pearson upper bound by its definition, not by evalscore: the p at which
+// P(X <= x) = alpha for X ~ Binomial(n, p), found by bisection over the summed binomial terms.
+func binomialUpper(x, n int, alpha float64) float64 {
+	cdf := func(p float64) float64 {
+		term, sum := math.Pow(1-p, float64(n)), 0.0
+		for k := 0; k <= x; k++ {
+			sum += term
+			term *= float64(n-k) / float64(k+1) * p / (1 - p)
+		}
+		return sum
+	}
+	lo, hi := 0.0, 1.0
+	for i := 0; i < 200; i++ {
+		if mid := (lo + hi) / 2; cdf(mid) > alpha {
+			lo = mid
+		} else {
+			hi = mid
+		}
+	}
+	return lo
 }
 
 // The certification may cover population ranges, as the draw's low and high give them (README "certify").
