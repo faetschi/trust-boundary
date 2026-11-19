@@ -809,8 +809,9 @@ func (session *productionPiSession) completeProductionReceipt(receipt *productio
 // the remaining E04 points are taken with the empty ledger and a non-success receipt that says the task was not
 // admitted binds them, as for a failed provider turn, and the run ends UNKNOWN as launchNotAdmitted: an infrastructure
 // end the host reruns only once the receipt's evidence shows the interval had no effect. A route-probe launch, a
-// recovered workflow, a cell not proven settled, or any failure of that evidence keeps the plain failure, which the
-// run-end registry leaves unclassified.
+// recovered workflow, a cell not proven settled, or a failure to write the receipt or close the session keeps the plain
+// failure, which the run-end registry leaves unclassified. A missing E04 point does not: the receipt binds fewer points
+// and the host, without complete E04 evidence, never reruns the unit.
 func (session *productionPiSession) endLaunchBeforeAdmission(output io.Writer, config productionServeConfig, launchErr, failure error,
 	providerExchange bool) error {
 	var launch *piruntime.PiWorkerLaunchError
