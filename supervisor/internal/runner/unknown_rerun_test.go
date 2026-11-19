@@ -382,3 +382,14 @@ func TestBudgetEndedUnitTakesNoRerunAndIsConservativeFailure(t *testing.T) {
 		}
 	}
 }
+
+// An UNKNOWN code that runend.Codes does not class is no rerun cause: the step keeps no typed end, and its loss
+// stays unclassified.
+func TestUnregisteredUnknownCodeIsNoRerunCause(t *testing.T) {
+	f := newGovernedFixture(t)
+	f.respond("unknown", "a-code-no-registry-row-names", nil, 2)
+	o, _ := f.g.Execute(context.Background(), f.step)
+	if o.UnknownEnd != "" || rerunEvidenced(&o) {
+		t.Fatalf("an unregistered UNKNOWN code = end %q loss %q", o.UnknownEnd, o.EvidenceLoss)
+	}
+}
