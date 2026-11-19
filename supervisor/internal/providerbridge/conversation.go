@@ -715,7 +715,8 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 		}
 	}
 	assistantText := captured.AssistantText()
-	if assistantText == "" && projection.ToolCall == nil && refusedCall == nil {
+	// An empty reply to a tools-disabled request is the run's final answer (D56 amendment, 2026-11-19).
+	if assistantText == "" && projection.ToolCall == nil && refusedCall == nil && !toolsDisabled {
 		emptyErr := errors.New("provider response has neither assistant text nor a tool call")
 		if !c.route.Reasoning {
 			return Turn{}, c.failLocked(emptyErr) // the product route keeps its pre-D50 behaviour

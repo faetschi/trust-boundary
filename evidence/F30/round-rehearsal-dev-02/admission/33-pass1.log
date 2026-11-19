@@ -1,0 +1,276 @@
+== 33-corpus-pilot start 2026-11-19T11:34:19Z guest=172.19.180.82
+OK   FROZEN-COMMIT = 5626e34fdbf40983949cde67f17238b82800665b
+OK   F23 record TBOUND_DIGEST == PREV_TBOUND_DIGEST = sha256:4852c78fc660d8073e6347814b2e553a41fa0494dececc0d32f8b37869dacd31
+OK   F23 record TBP_DIGEST == PREV_TBP_DIGEST = sha256:16a4b00fb4b75b56301ec699c4cd613afda9773b695d9a6d5f0831412604a468
+OK   F23 record ENTRYPOINT_DIGEST == PREV_ENTRYPOINT_DIGEST = sha256:9b7499bc356810b74bc2e5ce0bfea5e66f5918ac9c2031096f80f22b5c2aa3f4
+OK   F23 record SRC_DIGEST == PREV_SRC_DIGEST = sha256:da00b275241e06c23b49e7bd064eb3573f52f4de136c1293157e7938f520eb95
+OK   F23 record BUNDLE_DIGEST == PREV_BUNDLE_DIGEST = sha256:73866d76ad8a8a9f91f40aa8b43168e10f5844f21bb32ef2537065b48b2ff1e1
+OK   F23 record IMGDIGEST == PREV_IMGDIGEST = sha256:eb5cd99b5e7e62905cdab34a02d2116b8671c110929d86b001b00b614da89a2f
+OK   F23 record CFG == PREV_CFG = sha256:2656d410f2b5b8dd40cce326f3c3f73affdd5154fc85fa9a190cbe4d4e2f7731
+OK   F23 record BASE_TD == PREV_BASE_TD = sha256:0179bdd920627ce28ee7041c67c924df7dfcaefeb046270de54ec3b65e2e8fce
+OK   F23 record LOAD_TAR_DIGEST == PREV_LOAD_TAR_DIGEST = sha256:ae38be168c42f8c9d2d4d24adda02672432b886670736028a70540911fb7aac3
+OK   F23 record CAL_RO_DIGEST == PREV_CAL_RO_DIGEST = sha256:6b12c0ac0dcbf65684ea3889cfd8241f9e8e69cc7ccbcb52eb22e5ddd851188e
+OK   F23 record CAL_RW_DIGEST == PREV_CAL_RW_DIGEST = sha256:07b235cccb3fd8bcbd3be50b0816e708d7b5332fbefa78deb54d0a55497b3bf5
+OK   F23 record TEST_PROCORACLE == PREV_TEST_PROCORACLE = sha256:72274bf50b9977652d540999940fc9791444ed675302cb9f609c703aad5a86b9
+OK   F23 record TEST_ENTRYPOINT == PREV_TEST_ENTRYPOINT = sha256:e29b6f8b22e3c38a01274b628bf24a239b116648a00f2c32d994b8a854a5f4d6
+OK   F23 FROZEN-COMMIT record == PREV_COMMIT = 13ed11939c06e552a2d8662fb752bf2b3640ac68
+OK   F23 g1/RID record == PREV_G1_RID = g1-req-20261108T183243Z
+OK   F23 rp/RID record == PREV_RP_RID = rp-req-20261108T183452Z
+OK   F23 dr/RID record == PREV_DR_RID = dr-req-20261108T183711Z
+OK   F23 dr/RUNID record == PREV_DR_RUNID = production-run-85c9eb7a114561a194560496
+OK   F23 dr/CHECKS_OK record == 'ok' = ok
+OK   F23 dr/ADMISSION_ID record == PREV_DR_ADMISSION_ID = route-probe-dr-2026-11-08d
+OK   IMGDIGEST (session-env == HF) = sha256:8e36a35eb7e2f604aae98c800ebd2c1601b07387967dcc64886caf547fe0ce85
+OK   frozen commit 5626e34fdbf40983949cde67f17238b82800665b; HF=/home/tbound/tbound-h/f30
+OK   admin.key size/mode = 64 600
+OK   admin.pub digest == HF ADMIN_PUB_DIGEST = sha256:be206a41ad321f29ef89e8157f69a6f0820a93fafa3096b71867ece745f9afac
+OK   admin.pub digest == F0 = sha256:be206a41ad321f29ef89e8157f69a6f0820a93fafa3096b71867ece745f9afac
+OK   cosign.pub digest == HF COSIGN_PUB_DIGEST = sha256:caf906a4ead6cd8998502333030f0602e66302e47b1539afebe5a13c39e66bcd
+OK   cosign.pub digest == F0 = sha256:caf906a4ead6cd8998502333030f0602e66302e47b1539afebe5a13c39e66bcd
+
+== preflight: guest 172.19.180.82 (pinned host key, StrictHostKeyChecking=yes), tbound-op only
+guest address: GUEST_IP=172.19.180.82 (changes after host restarts; if a connection fails, look it up: PowerShell 'Get-NetNeighbor -LinkLayerAddress 00-15-5D-0C-40-02', or 'ip -4 addr' on the guest console, then export GUEST_IP=<IPAddress>)
+OK   ssh identity = tboundadmin
+OK   sudo -n true fails (narrowed sudo)
+guest: tbound-abi8-seed 7.0.0-38-generic 2026-11-19T11:34:28Z 
+
+== 0. carrier: rehearsal-dev-02 ffb0bc6699b3f980eadec52fe500cc2a6beec873 sha256:72d70d13d4126b845902728a917a7d3161dfdf4e001ce0a659ab36b3b9440865
+carrier ok: rehearsal-dev-02 ffb0bc6699b3f980eadec52fe500cc2a6beec873, 94 files == blobs, 76 artifacts, manifest sha256:72d70d13d4126b845902728a917a7d3161dfdf4e001ce0a659ab36b3b9440865
+OK   recorded pilot/CARRIER = rehearsal-dev-02 ffb0bc6699b3f980eadec52fe500cc2a6beec873 sha256:72d70d13d4126b845902728a917a7d3161dfdf4e001ce0a659ab36b3b9440865
+carrier ok: rehearsal-dev-02 ffb0bc6699b3f980eadec52fe500cc2a6beec873, 94 files == blobs, 76 artifacts, manifest sha256:72d70d13d4126b845902728a917a7d3161dfdf4e001ce0a659ab36b3b9440865
+OK   carrier rehearsal-dev-02 verified at ffb0bc6699b3f980eadec52fe500cc2a6beec873 and copied to /home/tbound/tbound-h/f30/pilot/carrier (76 artifacts): phases 2 and 3 read only that copy
+
+== 1. abandon the unsettled dr request (tbound-op two-step abandon)
+collected requests (489915 bytes)
+OK   saved /home/tbound/tbound-h/f30/pilot/requests-check-20261119T113436Z.jsonl
+   journal: rid=dr-req-20261118T124829Z
+   journal: records=213
+   journal: accepted=1
+   journal: key=pi-service-request-c22596d06ff4765730531ed322387070ccdadae36d85e983e0234aef4e54c06b
+   journal: terminal=unknown
+   journal: abandoned=yes
+   journal: verdict=abandoned
+OK   dr request dr-req-20261118T124829Z is settled (abandoned): nothing to abandon
+OK   recorded pilot/DR_SETTLED = dr-req-20261118T124829Z
+
+== 1b. keys: SSH-3 restriction probes of the trial, client and evidence keys (read-only)
+NOTE M3 needs TBOUND_TRIAL_KEY, TBOUND_CLIENT_KEY and TBOUND_EVIDENCE_KEY (key paths): not all set, so the missing probes are skipped. Set them and rerun to prove the keys.
+
+== 2. manifest (D1, offline): T5 draft + four pins, corpus-digest
+OK   T5 artifact files in the frozen source = 76
+OK   NODE_DIGEST == PIN_NODE = sha256:7fde7b8afa198da66257f42ee2001d874c7355631e6d1579a5fb5ef1f246df4c
+OK   WSL node digest == NODE_DIGEST (the pinned Node; corpus-digest runs the artifacts' node_test self-checks with it) = sha256:7fde7b8afa198da66257f42ee2001d874c7355631e6d1579a5fb5ef1f246df4c
+OK   saved /home/tbound/tbound-h/f30/pilot/pins.json
+OK   saved /home/tbound/tbound-h/f30/pilot/manifest.json
+OK   corpus-pins --manifest exits 0 and prints the recorded pins = {"environment_digest":"sha256:a37f56a26d02f976b0663713eb631b0bb5a8137d9931cd354ba3dcc5b0f02c0f","model_digest":"sha256:2f97145bc1556578445df6731315e8bcd6c402553c5661e98d19cd2855fc97f5","profile_digest":"sha256:1c2b8281bf3f87f73572a365968761ed8ea0bd5ff19e8c039af5ec2d74137d1f","policy_digest":"sha256:5b881c44f5f6acfb996139699f8043021ea4b2c93b524616d309a79da0da81ff"}
+OK   recorded pilot/CORPUS_DIGEST = sha256:70eda54b6c6e896ca87e9b3c38438b1edfa2b4ed2e81ea9d9f0082d18d33d9bf
+NOTE tbound-run plan was NOT cross-checked (needs a run.json); manifest-install recomputes the digest on the guest with the pinned tbound-profile
+
+== 3b. pilot-reset: clear a pilot install that belongs to an earlier freeze (svc stop, rollback pilot cfg, archive the leftovers)
+tbound-op status 2026-11-19T11:34:54Z pins F=5626e34fdbf40983949cde67f17238b82800665b
+anchor: ok (pi-host-profile.pub sha256:be206a41ad321f29ef89e8157f69a6f0820a93fafa3096b71867ece745f9afac)
+runner: sha256:9d105056f2066ba9 tbound-profile: sha256:260868e41e4120fd
+service=active socket=active
+installed: cfg sha256:814cd9ad989e557363a9d256f1a6eef9bfc70a78d7a124b4d1c753e691030cc6 reg sha256:feaf44c1e71760a9 prof sha256:8cde5a741c6d338e tpl sha256:7768b5a6e8c83418
+installed config matches state of: pilot
+-- pilot:
+     cfg=sha256:814cd9ad989e557363a9d256f1a6eef9bfc70a78d7a124b4d1c753e691030cc6
+     prof=sha256:c7ebd0bc3c015a3802609479c14ccfcce19294aa639c367043f491a80769e98e
+     profjson=sha256:8cde5a741c6d338e5da13f41aa3b243a65141fe5e7d0a444b6d6787bd9600db3
+     profsig=sha256:9d6bb67282cf90bf9049966454b6bd8f8001deb2f1352334d593ddd62527d862
+     reg=sha256:314e7dc1abe900d6b76a63ed404cb01a2207db4c2d332303929f30f1c2d42fa8
+     regjson=sha256:feaf44c1e71760a93a63cb7d9e22f0c317b3b895045d73af26346d187666ac44
+     regsig=sha256:2333461c4521c3ce2b909506daca9d6676c4661562678174b002aca8792a6d23
+     state=started
+     td=sha256:7768b5a6e8c8341878d2faa24ba867902abf37a43d10465d47b01dfa83b18d10
+     tpl=sha256:7768b5a6e8c8341878d2faa24ba867902abf37a43d10465d47b01dfa83b18d10
+-- last log lines
+2026-11-18T19:15:10Z tboundadmin END rc=0 argv=collect audit production-run-040f1941d5a1c9aa177b4403 
+2026-11-19T11:34:37Z tboundadmin BEGIN argv=collect requests 
+2026-11-19T11:34:37Z tboundadmin OK collect requests 
+2026-11-19T11:34:37Z tboundadmin END rc=0 argv=collect requests 
+2026-11-19T11:34:54Z tboundadmin BEGIN argv=status pilot 
+OK   recorded pilot/RESET_PENDING = /root/ga/archive-pilot-f30-20261119T113455Z
+svc stop ok: service and socket inactive
+rollback pilot cfg ok (state of pilot cleared; restored: serve-pi-service.json); run status to see which NAME the installed set matches
+== 00-session-sudo start 2026-11-19T11:35:02Z guest=172.19.180.82
+OK   ssh identity = tboundadmin
+guest: tbound-abi8-seed 7.0.0-38-generic 2026-11-19T11:35:04Z 
+operator: Admin mode=open
+
+== password sudo works (one throwaway command; the password is not printed)
+OK   password sudo works
+/etc/sudoers.d/.91-tbound-f30-session.new: parsed OK
+
+== verify
+OK   sudo -n true works (session open)
+root:root 440 /etc/sudoers.d/91-tbound-f30-session
+/etc/sudoers: parsed OK
+/etc/sudoers.d/50-tbound-op: parsed OK
+/etc/sudoers.d/91-tbound-f30-session: parsed OK
+/etc/sudoers.d/README: parsed OK
+NOTE SESSION OPEN: close it when the privileged steps are done: bash 00-session-sudo.sh close
+
+== DONE 00-session-sudo.sh 2026-11-19T11:35:09Z
+moved into /root/ga/archive-pilot-f30-20261119T113455Z/rootfs: /root/ga/reg-pilot /root/ga/pilot /var/tmp/tbound-op/pilot
+drwx------ 2 0 0 4096 Nov 18 13:14 /root/ga/archive-pilot-f30-20261119T113455Z/rootfs/root/ga/reg-pilot
+drwxr-xr-x 2 0 0 4096 Nov 18 13:16 /root/ga/archive-pilot-f30-20261119T113455Z/rootfs/root/ga/pilot
+drwxr-x--- 2 0 1000 4096 Nov 18 13:16 /root/ga/archive-pilot-f30-20261119T113455Z/rootfs/var/tmp/tbound-op/pilot
+== 00-session-sudo start 2026-11-19T11:35:20Z guest=172.19.180.82
+OK   ssh identity = tboundadmin
+guest: tbound-abi8-seed 7.0.0-38-generic 2026-11-19T11:35:22Z 
+operator: Admin mode=close
+
+== remove the drop-in
+OK   /etc/sudoers.d/91-tbound-f30-session removed
+OK   sudo -n true fails again
+
+== narrowed-sudo facts
+sudo -n true: fails (good)
+Matching Defaults entries for tboundadmin on tbound-abi8-seed:
+    env_reset, mail_badpass, secure_path=/usr/local/sbin\:/usr/local/bin\:/usr/sbin\:/usr/bin\:/sbin\:/bin\:/snap/bin, use_pty
+
+Runas and Command-specific defaults for tboundadmin:
+    Defaults!/opt/tbound/operator/tbound-op env_reset, !setenv
+
+User tboundadmin may run the following commands on tbound-abi8-seed:
+    (ALL : ALL) ALL
+    (root) NOPASSWD: /opt/tbound/operator/tbound-op
+sudoers.d: 50-tbound-op README 
+OK   narrowed: only the tbound-op NOPASSWD rule plus password (ALL : ALL) ALL
+
+== DONE 00-session-sudo.sh 2026-11-19T11:35:29Z
+OK   recorded pilot/RESET_DONE = /root/ga/archive-pilot-f30-20261119T113455Z
+OK   pilot reset: state cleared, leftovers archived in /root/ga/archive-pilot-f30-20261119T113455Z/rootfs, session sudo closed
+
+== 3. artifacts: the 76 T5 files into /opt/tbound/corpus/artifacts
+OK   owner-side artifact files = 76
+guest holds 76 entries, the frozen source 76
+== 00-session-sudo start 2026-11-19T11:35:39Z guest=172.19.180.82
+OK   ssh identity = tboundadmin
+guest: tbound-abi8-seed 7.0.0-38-generic 2026-11-19T11:35:41Z 
+operator: Admin mode=open
+
+== password sudo works (one throwaway command; the password is not printed)
+OK   password sudo works
+/etc/sudoers.d/.91-tbound-f30-session.new: parsed OK
+
+== verify
+OK   sudo -n true works (session open)
+root:root 440 /etc/sudoers.d/91-tbound-f30-session
+/etc/sudoers: parsed OK
+/etc/sudoers.d/50-tbound-op: parsed OK
+/etc/sudoers.d/91-tbound-f30-session: parsed OK
+/etc/sudoers.d/README: parsed OK
+NOTE SESSION OPEN: close it when the privileged steps are done: bash 00-session-sudo.sh close
+
+== DONE 00-session-sudo.sh 2026-11-19T11:35:45Z
+moving 8 entrie(s) that are not in the T5 set or differ in sha256 to /opt/tbound/corpus/artifacts.pre-t5-20261119T113547Z:
+   fixture-2ad7574c0ef946a1d597c4afe78584ee0a828d833637fe3a907f919cf4e8f2e3.json
+   fixture-75e790f3385d44b2a7597ed16b08ece0c024c76917c54cbe4e5f4bf9d9804e47.json
+   fixture-9c30cdfd19c02fda8d43ac334b94acd08c2518dfc48f99e131c892753bdb1efc.json
+   fixture-9fb9e65f7b28d5f6682cc2eb10b78376346512e45bb374e272e35a169dd8444e.json
+   fixture-a04beb92895c496a5110425eef421b2ceedf634aceb45b25684375c7143d1595.json
+   fixture-d39051a3193f9bc5a3980fc300484c3b947bad9f611576cafcc49cc6937990cf.json
+   fixture-e7c92b28c633b97d291d6d652eb5cf24da45cfde6b295393b3725d0d36fcf685.json
+   fixture-e7d7b286bb02709c262ef77204cb279342534b6577d9b4244db72b1d240af278.json
+== 00-session-sudo start 2026-11-19T11:35:53Z guest=172.19.180.82
+OK   ssh identity = tboundadmin
+guest: tbound-abi8-seed 7.0.0-38-generic 2026-11-19T11:35:54Z 
+operator: Admin mode=close
+
+== remove the drop-in
+OK   /etc/sudoers.d/91-tbound-f30-session removed
+OK   sudo -n true fails again
+
+== narrowed-sudo facts
+sudo -n true: fails (good)
+Matching Defaults entries for tboundadmin on tbound-abi8-seed:
+    env_reset, mail_badpass, secure_path=/usr/local/sbin\:/usr/local/bin\:/usr/sbin\:/usr/bin\:/sbin\:/bin\:/snap/bin, use_pty
+
+Runas and Command-specific defaults for tboundadmin:
+    Defaults!/opt/tbound/operator/tbound-op env_reset, !setenv
+
+User tboundadmin may run the following commands on tbound-abi8-seed:
+    (ALL : ALL) ALL
+    (root) NOPASSWD: /opt/tbound/operator/tbound-op
+sudoers.d: 50-tbound-op README 
+OK   narrowed: only the tbound-op NOPASSWD rule plus password (ALL : ALL) ALL
+
+== DONE 00-session-sudo.sh 2026-11-19T11:36:02Z
+OK   everything under /opt/tbound/corpus is root:root, directories 0755, files 0644
+OK   installed: 76 files, complete entry set and per-file sha256 == frozen source; session sudo closed
+
+== 4. manifest-install (D2) and the RG cycle for NAME=pilot
+pilot state: none (rank 0)
+svc stop ok: service and socket inactive
+OK   staged stage-pilot/manifest.json == owner file = sha256:6767c49e7bb7baef9410371ad3909fc9a9996b869cede6bea54845c28b82ac8c
+manifest-install ok: sha256:70eda54b6c6e896ca87e9b3c38438b1edfa2b4ed2e81ea9d9f0082d18d33d9bf
+
+== 0. dispatcher and pins
+tbound-op status 2026-11-19T11:36:15Z pins F=5626e34fdbf40983949cde67f17238b82800665b
+anchor: ok (pi-host-profile.pub sha256:be206a41ad321f29ef89e8157f69a6f0820a93fafa3096b71867ece745f9afac)
+runner: sha256:9d105056f2066ba9 tbound-profile: sha256:260868e41e4120fd
+service=inactive socket=inactive
+installed: cfg sha256:ab19002c3fe7a14ff20b71111a69adb1fad4068f3b06fa953c4aab3e4c536e5f reg sha256:feaf44c1e71760a9 prof sha256:8cde5a741c6d338e tpl sha256:7768b5a6e8c83418
+installed config matches state of: 
+-- pilot: no state
+-- last log lines
+2026-11-19T11:36:09Z tboundadmin END rc=0 argv=svc stop 
+2026-11-19T11:36:12Z tboundadmin BEGIN argv=manifest-install sha256:6767c49e7bb7baef9410371ad3909fc9a9996b869cede6bea54845c28b82ac8c sha256:70eda54b6c6e896ca87e9b3c38438b1edfa2b4ed2e81ea9d9f0082d18d33d9bf 
+2026-11-19T11:36:15Z tboundadmin OK manifest-install sha256:6767c49e7bb7baef9410371ad3909fc9a9996b869cede6bea54845c28b82ac8c sha256:70eda54b6c6e896ca87e9b3c38438b1edfa2b4ed2e81ea9d9f0082d18d33d9bf 
+2026-11-19T11:36:15Z tboundadmin END rc=0 argv=manifest-install sha256:6767c49e7bb7baef9410371ad3909fc9a9996b869cede6bea54845c28b82ac8c sha256:70eda54b6c6e896ca87e9b3c38438b1edfa2b4ed2e81ea9d9f0082d18d33d9bf 
+2026-11-19T11:36:15Z tboundadmin BEGIN argv=status pilot 
+pilot state: none (rank 0)
+
+== 0b. baseline before the pilot service starts: catalog and requests as they are on the guest
+collected catalog (2333897 bytes)
+OK   saved /home/tbound/tbound-h/f30/pilot/catalog-before-start.jsonl
+collected requests (489915 bytes)
+OK   saved /home/tbound/tbound-h/f30/pilot/requests-before-start.jsonl
+catalog before:     869 2333897 ; pi_workflow_terminal lines: 106
+
+== RG-2 svc stop; build and install the pilot service config
+svc stop ok: service and socket inactive
+OK   measured CD == recorded CONTAINERS_CONF_DIGEST = sha256:39d4074e9443db514b09313e45d46923b84c372dea6b394dbc3056bf354c3ba0
+OK   measured SD == recorded STORAGE_CONF_DIGEST = sha256:9ebdcc8b5ed0ec25af5bdd93ccd8328b7a8ceb0744ee140ca9e7722cb294c0c7
+wrote /home/tbound/tbound-h/f30/pilot/serve-pi-service.json
+sha256 members: 3
+OK   provider_route = engineering
+OK   workflow_admission_mode = corpus
+OK   corpus_manifest_digest == CORPUS_DIGEST = sha256:70eda54b6c6e896ca87e9b3c38438b1edfa2b4ed2e81ea9d9f0082d18d33d9bf
+OK   corpus_quota_profile = pilot
+OK   workflow_bash_output_paths = []
+OK   workflow_max_host_calls/max_tokens/duration = 17/69632/1200
+OK   staged stage-pilot/serve-pi-service.json == owner file = sha256:3cce2ab225d5c04bd11eaeb03cbdbfba7e1afbf4f7298117b209cda21db13e98
+cfg-install pilot ok: sha256:3cce2ab225d5c04bd11eaeb03cbdbfba7e1afbf4f7298117b209cda21db13e98 (state config)
+
+== RG-3 reg-measure pilot, fetch the unsigned registration
+svc stop ok: service and socket inactive
+reg-measure pilot ok: sha256:673da8fc4e06eac523ae4071affa35635355886797d64a72acea36545117d3da -> /var/tmp/tbound-op/pilot/managed-live-root.unsigned.json (fetch, sign on the owner machine)
+OK   saved /home/tbound/tbound-h/f30/pilot/managed-live-root.unsigned.json
+
+== checks on the unsigned registration (before anything is signed)
+OK   runner_digest == TBOUND_DIGEST (F30) = sha256:9d105056f2066ba996737974073d8c5d6229e1f0814c9a496817795451552a46
+OK   managed_root_xattr_calibration_digest == CAL_RW_DIGEST = sha256:07b235cccb3fd8bcbd3be50b0816e708d7b5332fbefa78deb54d0a55497b3bf5
+OK   service_uid/gid = 995/986
+OK   service_cgroup_path = /system.slice/tbound-pi.service
+OK   runner_path = /usr/local/bin/tbound
+OK   service_config_digest == pilot config = sha256:3cce2ab225d5c04bd11eaeb03cbdbfba7e1afbf4f7298117b209cda21db13e98
+
+== RG-4 [OWNER SIGN] S3 (pilot): admin key by path only
+disk /home/tbound/tbound-work/f30-kit/.local: 796 GiB free (need 10)
+disk /: 796 GiB free (need 10)
+signed managed live-root registration: /home/tbound/tbound-h/f30/pilot/managed-live-root.json
+Digest (bind into D09 template): sha256:f65c44722a5b6f20c38761162e98fa0595cec104062944df2e212674232bc1f6
+Signature: /home/tbound/tbound-h/f30/pilot/managed-live-root.ed25519
+verified signed managed live-root policy tbound-managed-live-root-registration/v1 for /var/lib/tbound/live/root (service tbound-pi, digest sha256:f65c44722a5b6f20c38761162e98fa0595cec104062944df2e212674232bc1f6, runner sha256:9d105056f2066ba996737974073d8c5d6229e1f0814c9a496817795451552a46)
+This verifies policy/signature only; it is not a live-root quiescence permit.
+REGDIGEST-pilot=sha256:f65c44722a5b6f20c38761162e98fa0595cec104062944df2e212674232bc1f6
+907b2082f610884d70f5e258c8674b90ca7c86281ea7f0496e7b8b161f0f25e2  /home/tbound/tbound-h/f30/pilot/managed-live-root.json
+7c9c5e7aadd8ef1de46a96c4fccb6fa7c0224d8509d2a48492973309ded05b7b  /home/tbound/tbound-h/f30/pilot/managed-live-root.ed25519
+FATAL: 0-byte output file(s) under /home/tbound/tbound-h/f30 (disk stall?): stop and look, do not continue:
+/home/tbound/tbound-h/f30/evq-report/adapter-capture.stderr
+/home/tbound/tbound-h/f30/evq-report/route-report.stderr
+/home/tbound/tbound-h/f30/evq-report/evq.stderr
+== FAILED 33-corpus-pilot.sh:118 rc=1

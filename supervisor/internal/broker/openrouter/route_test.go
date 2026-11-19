@@ -67,7 +67,7 @@ func TestBuildRequestForResearchRouteUsesTheProfileEndpointModelAndParameters(t 
 	if err := json.Unmarshal(built.Body(), &body); err != nil {
 		t.Fatalf("research body is not one JSON object: %v", err)
 	}
-	for _, key := range []string{"model", "messages", "tools", "stream", "parallel_tool_calls", "tool_choice",
+	for _, key := range []string{"model", "messages", "tools", "stream", "tool_choice",
 		"max_completion_tokens", "provider", "temperature", "seed", "usage"} {
 		if _, ok := body[key]; !ok {
 			t.Fatalf("research body lacks %q: %s", key, built.Body())
@@ -75,6 +75,20 @@ func TestBuildRequestForResearchRouteUsesTheProfileEndpointModelAndParameters(t 
 	}
 	if _, ok := body["thinking"]; ok {
 		t.Fatal("research body carries the OpenCode Go thinking member")
+	}
+	// require_parameters drops every provider that lacks a sent member; DeepInfra lacks parallel_tool_calls.
+	none, err := BuildToolsDisabledRequestForRoute(route, []Message{{Role: User, Content: strptr("hello")}}, 256)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, raw := range [][]byte{built.Body(), none.Body()} {
+		var members map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &members); err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := members["parallel_tool_calls"]; ok {
+			t.Fatalf("research body carries parallel_tool_calls: %s", raw)
+		}
 	}
 	var model string
 	if err := json.Unmarshal(body["model"], &model); err != nil || model != researchTestModel {
