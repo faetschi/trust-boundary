@@ -193,8 +193,8 @@ func (r Report) Markdown() string {
 	w("")
 	w("- committed %s of cap %s (registered cap %s); remaining %s", usd(s.CommittedMicroUSD), usd(s.CapMicroUSD), usd(s.RegisteredCapMicroUSD), usd(s.RemainingMicroUSD))
 	w("- settled %s; open %s; uncertain %s", usd(s.SettledMicroUSD), usd(s.OpenMicroUSD), usd(s.UncertainMicroUSD))
-	w("- units %d of %d planned (settled %d, open %d, uncertain %d)", s.TotalUnits, s.PlannedUnits, s.SettledUnits, s.OpenUnits, s.UncertainUnits)
-	w("- within budget: %t; over cap: %t; cap matches registered: %t; overspent: %t; stop rule: %t; units over planned: %t",
+	w("- ledger units %d (settled %d, open %d, uncertain %d); execution units planned %d", s.TotalUnits, s.SettledUnits, s.OpenUnits, s.UncertainUnits, s.PlannedUnits)
+	w("- within budget: %t; over cap: %t; cap matches registered: %t; overspent: %t; stop rule: %t; ledger units over planned provider calls: %t",
 		s.WithinBudget, s.OverCap, s.CapMatchesRegistered, s.Overspent, s.StopRule, s.UnitsOverPlanned)
 	w("")
 	w("Flags: %s", mdList(r.Flags))
