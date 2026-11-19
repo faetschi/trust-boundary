@@ -81,11 +81,18 @@ func (l *limitExecutor) Check(s runner.Schedule) error {
 
 func (a *app) runCmd(args []string) error {
 	var maxSteps int
+	var registration string
 	return a.withPlan("run", args, func(f *flag.FlagSet) {
 		f.IntVar(&maxSteps, "max-steps", 0, "stop after this many executed steps (0 = no limit)")
+		f.StringVar(&registration, "registration", "", "pre-registration record (tbound-profile preregistration-record) this run must match")
 	}, func(p plan) error {
 		if maxSteps < 0 {
 			return fmt.Errorf("%w: --max-steps must not be negative", errUsage)
+		}
+		if registration != "" {
+			if _, err := checkRegistration(registration, p); err != nil {
+				return err
+			}
 		}
 		ex, err := a.wire(p)
 		if err != nil {

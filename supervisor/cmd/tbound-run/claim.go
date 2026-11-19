@@ -100,6 +100,22 @@ func registrationMismatches(reg evalreport.Registration, p plan) []mismatch {
 	return out
 }
 
+// checkRegistration refuses a run that is not the one registered in path, before any unit is spent.
+func checkRegistration(path string, p plan) (evalreport.Registration, error) {
+	reg, err := loadRegistration(path)
+	if err != nil {
+		return evalreport.Registration{}, err
+	}
+	if bad := registrationMismatches(reg, p); len(bad) > 0 {
+		lines := make([]string, len(bad))
+		for i, m := range bad {
+			lines[i] = fmt.Sprintf("%s registered %q, run %q", m.field, m.registered, m.run)
+		}
+		return evalreport.Registration{}, fmt.Errorf("the run is not the one registered in %s: %s", reg.RecordDigest, strings.Join(lines, "; "))
+	}
+	return reg, nil
+}
+
 // readInput reads a regular file of at most limit bytes.
 func readInput(what, path string, limit int64) ([]byte, error) {
 	f, err := os.Open(path)
@@ -167,16 +183,9 @@ func (a *app) planCmd(args []string) error {
 		if err := a.plan(p); err != nil || registration == "" {
 			return err
 		}
-		reg, err := loadRegistration(registration)
+		reg, err := checkRegistration(registration, p)
 		if err != nil {
 			return err
-		}
-		if bad := registrationMismatches(reg, p); len(bad) > 0 {
-			lines := make([]string, len(bad))
-			for i, m := range bad {
-				lines[i] = fmt.Sprintf("%s registered %q, run %q", m.field, m.registered, m.run)
-			}
-			return fmt.Errorf("the run is not the one registered in %s: %s", reg.RecordDigest, strings.Join(lines, "; "))
 		}
 		fmt.Fprintf(a.out, "registration %s matches\n", reg.RecordDigest)
 		return nil

@@ -143,7 +143,11 @@ func TestPlanAndReportCheckTheRegistration(t *testing.T) {
 		t.Fatalf("a v2 record without its corpus-check digest was accepted: %v", err)
 	}
 
-	if _, err := e.cliCfg(fakeWire(newFake(e)), "run"); err != nil {
+	refused := newFake(e)
+	if _, err := e.cliCfg(fakeWire(refused), "run", "--registration", other); err == nil || !strings.Contains(err.Error(), "run_binding") || len(refused.Calls()) != 0 {
+		t.Fatalf("run of an unregistered run: %v, %d steps executed", err, len(refused.Calls()))
+	}
+	if _, err := e.cliCfg(fakeWire(newFake(e)), "run", "--registration", match); err != nil {
 		t.Fatal(err)
 	}
 	for name, tc := range map[string]struct {

@@ -28,7 +28,7 @@ const usageText = `tbound-run - host-side runner of the TBound evaluation
 
 usage:
   tbound-run plan      --config run.json [--registration record.json]
-  tbound-run run       --config run.json [--max-steps N]
+  tbound-run run       --config run.json [--max-steps N] [--registration record.json]
   tbound-run rerun     --config run.json --step <step id>
   tbound-run export    --config run.json --out trials.json
   tbound-run report    --config run.json --out <dir> [--ledger-v3 d48-ledger-v3.jsonl [--certification certify.json]] [--registration record.json]
