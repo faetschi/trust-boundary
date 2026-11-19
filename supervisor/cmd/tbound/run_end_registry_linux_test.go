@@ -20,6 +20,7 @@ import (
 	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/gate"
 	"tbound/supervisor/internal/providerbridge"
+	"tbound/supervisor/internal/researchroute"
 	"tbound/supervisor/internal/runend"
 	"tbound/supervisor/internal/workflowrecovery"
 	"tbound/supervisor/internal/workspace"
@@ -27,11 +28,13 @@ import (
 
 // runEndSentinelDirs are the packages whose sentinels can reach a governed run's error: the service and session
 // (this package), the provider bridge, broker and capture, the workflow ledger, the Pi runtime, and the workspace,
-// session store, publication, private Git, audit, USD ledger and gate packages under them.
+// session store, publication, private Git, audit, USD ledger and gate packages under them, and the research route
+// whose spend reservation the provider bridge wraps.
 var runEndSentinelDirs = []string{".", "../../internal/providerbridge", "../../internal/broker",
 	"../../internal/broker/openrouter", "../../internal/broker/protocol", "../../internal/workflowrecovery",
 	"../../internal/piruntime", "../../internal/workspace", "../../internal/sessionrepo", "../../internal/publication",
-	"../../internal/privategit", "../../internal/audit", "../../internal/usdledger", "../../internal/gate"}
+	"../../internal/privategit", "../../internal/audit", "../../internal/usdledger", "../../internal/gate",
+	"../../internal/researchroute"}
 
 // runEndBoundFiles are the provider path and the durable executor that returns tool results: every bound a failure
 // message names there is a registry row.
@@ -332,6 +335,9 @@ func TestAgentCeilingsAnswerRunBudgetExhausted(t *testing.T) {
 		{"history over the request bound", bridged(fmt.Errorf("provider response does not fit the next request: %w", runend.ErrCeiling)), runend.CodeBudgetEnded},
 		{"predecessor context", fmt.Errorf("admit prompt: %w", providerbridge.ErrContextExhausted), runend.CodeBudgetEnded},
 		{"ledger deadline", bridged(workflowrecovery.ErrDeadline), runend.CodeBudgetEnded},
+		{"research USD stop rule", bridged(fmt.Errorf("reserve provider spend before dispatch: %w (remaining 10 micro-USD, threshold 20)",
+			researchroute.ErrStopRule)), runend.CodeBudgetEnded},
+		{"no completion cap left", bridged(fmt.Errorf("reserve provider spend before dispatch: %w", researchroute.ErrNoCompletionCap)), runend.CodeBudgetEnded},
 		{"workspace limit", executorFailed(fmt.Errorf("durable write: %w", workspace.ErrLimit)), runend.CodeBudgetEnded},
 		{"start-up fault beside a ceiling", errors.Join(workflowrecovery.ErrRollback, runend.ErrCeiling), runend.CodeOutcomeUnknown},
 		{"clock fault beside a ceiling", errors.Join(workflowrecovery.ErrClockUncertain, runend.ErrCeiling), runend.CodeOutcomeUnknown},
