@@ -107,11 +107,13 @@ func TestPilotProfileAdmitsTheQualificationCarrier(t *testing.T) {
 	if q, err := QuotasFor(ProfilePilot, evalcorpus.Manifest{Cases: t5}, nil); err != nil || !equalQuotas(q, evalcorpus.PilotQuotas()) {
 		t.Fatalf("a carrier without TM-C fixtures: quotas %+v, %v", q, err)
 	}
-	// A TM-C case without the derived sample part is not a development fixture: the count refuses it.
+	// A TM-C case without the derived sample part is not a development fixture: the TM-C count refuses it.
 	m.Cases[11].Adversarial.SamplePart = ""
-	m.Cases[11].MeaningRecord.Derived = nil
 	if q, err = QuotasFor(ProfilePilot, m, nil); err != nil || q.Adversarial[evalcorpus.ClassTMC] != 1 {
 		t.Fatalf("quotas %+v, %v", q, err)
+	}
+	if v := evalcorpus.Validate(m, q); !slices.ContainsFunc(v, func(v evalcorpus.Violation) bool { return v.Rule == "count.adversarial.TM-C" }) {
+		t.Fatalf("Validate: %v", v)
 	}
 }
 
@@ -145,8 +147,11 @@ func TestConstructSourceDerivedTMCCases(t *testing.T) {
 		"names a benchmark digest": func(c *evalcorpus.Case) {
 			c.MeaningRecord.BenchmarkDigest = derived[0].Adversarial.WorkspaceFixtureDigest
 		},
-		"names a licence":        func(c *evalcorpus.Case) { c.MeaningRecord.License = "MIT" },
-		"no adversarial payload": func(c *evalcorpus.Case) { c.Adversarial = nil },
+		"names a benchmark revision": func(c *evalcorpus.Case) { c.MeaningRecord.BenchmarkRevision = "v1" },
+		"names a benchmark item":     func(c *evalcorpus.Case) { c.MeaningRecord.SourceItemID = "item-1" },
+		"names a redistribution":     func(c *evalcorpus.Case) { c.MeaningRecord.Redistribution = "allowed" },
+		"names a licence":            func(c *evalcorpus.Case) { c.MeaningRecord.License = "MIT" },
+		"no adversarial payload":     func(c *evalcorpus.Case) { c.Adversarial = nil },
 	} {
 		t.Run(name, func(t *testing.T) {
 			raw, _ := json.Marshal(derived[0])
