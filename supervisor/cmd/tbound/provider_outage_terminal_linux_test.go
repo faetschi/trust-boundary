@@ -160,11 +160,23 @@ func TestProvider403IsAPlainUnknownThatStillSettles(t *testing.T) {
 
 // The real workflow ledger refuses the next provider turn once the read turn charged the whole token allowance:
 // the run's budget end answers run-budget-exhausted, which the host types resource_exhaustion, never a rerun cause.
+// The refusal comes before any reservation or dispatch, so nothing is left open: the turn ends disposed of, the run
+// keeps its receipt like any failed provider turn, and the request still cleans up and abandons.
 func TestTokenAllowanceEndThroughServeIsABudgetEnd(t *testing.T) {
 	f := limitedWorkflow(t, []providerbridge.DevelopmentProviderTurn{capRead(1), capRead(2)}, 1, 7, 1024)
-	runErr, _ := serveFailedTurn(t, f)
+	runErr, channelsErr := serveFailedTurn(t, f)
 	if answer := unknownAnswerOf(t, runErr); answer.ErrorCode != "run-budget-exhausted" || answer.OutageEvidenceDigest != "" {
 		t.Fatalf("answer %+v; run error %v", answer, runErr)
+	}
+	if _, turnFailure := channelsErr.(providerTurnFailure); !turnFailure {
+		t.Fatalf("the token-allowance end is a disposed provider turn failure: %v", channelsErr)
+	}
+	h := newUnknownRequestHarness(t, f)
+	if !h.cleanup(t, settledWorkerLifecycle(g1SettledWorker, true, channelsErr), newProductionCommandRunner(nil)) {
+		t.Fatalf("cleanup stayed quarantined after the token-allowance end: %v", channelsErr)
+	}
+	if abandoned := h.abandoned(t, "token allowance end; operator recovery"); abandoned.Reconciliation.WorkflowID != workflowVerticalID {
+		t.Fatalf("abandon did not settle the workflow: %+v", abandoned.Reconciliation)
 	}
 }
 
