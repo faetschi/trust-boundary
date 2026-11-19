@@ -56,7 +56,7 @@ def survivor(prog, out):
 
 
 P01_PROG = "sleep 2400"
-P03_PROG = "node -e \"require(\\\"net\\\").createServer().listen(\\\"/tmp/qual-p03.sock\\\");setInterval(()=>{},1e6)\""
+P03_PROG = "node -e \"require(\\\"fs\\\").rmSync(\\\"/tmp/qual-p03.sock\\\",{force:true});require(\\\"net\\\").createServer().listen(\\\"/tmp/qual-p03.sock\\\");setInterval(()=>{},1e6)\""
 
 LOST = [
     "A qualification fixture, not a study case: it shows that the observer route and the B6 import accept a real capture.",
