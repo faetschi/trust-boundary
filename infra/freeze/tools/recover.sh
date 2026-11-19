@@ -15,8 +15,9 @@
 # Environment: GUEST_IP (required, for gssh.sh), TBOUND_LOCAL and the other gssh.sh variables, MAX_CYCLES (default 15),
 # PYTHON (default python).
 # Start it detached: nohup bash infra/freeze/tools/recover.sh <round> > <round>/recover.out 2> <round>/recover.err &
-# An UNKNOWN unit stays CONSERVATIVE_FAILURE: the abandon settles the guest, it does not rerun the unit, and no code path
-# makes an outage rerun possible (pre-H1 audit SB-01). An outage-looking cause therefore stops for the operator's decision.
+# The abandon settles the guest; it does not rerun the unit. A provider-outage or task-outcome-unknown end is a rerun cause
+# (register D30 as amended 2026-11-18), rerun with `tbound-run rerun` after the abandon; a budget or unclassified end never
+# is. An outage-looking cause stops for the operator.
 set -u
 export MSYS_NO_PATHCONV=1
 PY=${PYTHON:-python}
@@ -122,7 +123,7 @@ for cyc in $(seq 1 "$MAX"); do
   G "journalctl -u tbound-pi.service --since '-12h' --no-pager | grep -F $rid | cut -c1-2500" > "$D/cause.txt" 2>&1
   read -r idx streak < <(unknown_unit "$J")
   if grep -Eqi 'status[ =:"]*(429|5[0-9][0-9])|rate.?limit|overload|transport|connection reset|i/o timeout|no such host|EOF' "$D/cause.txt"; then
-    log "STOP: plan index $idx ($rid): the cause looks like a provider outage; the unit stays CONSERVATIVE_FAILURE (no outage rerun exists, SB-01); decide by hand whether to abandon and continue (see $D/cause.txt)"
+    log "STOP: plan index $idx ($rid): the cause looks like a provider outage; decide by hand whether to abandon and continue, then rerun the unit with tbound-run rerun (D30 as amended) (see $D/cause.txt)"
     exit 9
   fi
   why=$(streak_stop "$streak")

@@ -1,7 +1,6 @@
 // Package runend is the shared vocabulary of the run-end registry (register D30 as amended 2026-11-18): the class
 // of a failure that can end a governed step UNKNOWN, the marker of a ceiling that has no sentinel of its own, and
-// the codes of the guest's UNKNOWN answer. The registry that classes every source is runEndRegistry in cmd/tbound,
-// and TestRunEndRegistryClassesEverySource there fails on a source it does not class.
+// the codes of the guest's UNKNOWN answer. The registry that classes every source is runEndRegistry in cmd/tbound.
 package runend
 
 import "errors"
@@ -22,7 +21,7 @@ const (
 	ModelBehaviour Class = "model_behaviour"
 	// Unclassified is every source the registry does not class as infrastructure or model behaviour: never a rerun
 	// cause, scored like an agent ceiling (CONSERVATIVE_FAILURE) and reported as unclassified loss. The registry
-	// fails closed, so a source its scan misses can only end conservatively.
+	// fails closed, so a source without a row can only end conservatively.
 	Unclassified Class = "unclassified"
 )
 

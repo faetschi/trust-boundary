@@ -79,7 +79,7 @@ The operator steps and the run-config pins are in `infra/guest/PROVISIONING-SIGN
 chunk yet, and after a runner exit that an UNKNOWN request caused ("is not terminal") it previews `tbound-op abandon`, confirms it
 only on a clean preview, runs `svc start` and the leftover-container check, keeps the diagnostics in `<round>/diag/auto-*/` and
 starts the next runner chunk. It stops for the operator on anything else: an exit it does not know, not exactly one UNKNOWN request,
-an outage-looking cause (the unit stays CONSERVATIVE_FAILURE; no outage rerun exists, pre-H1 audit SB-01), an unclean preview,
+an outage-looking cause (the unit's rerun, D30 as amended 2026-11-18, is `tbound-run rerun` after the abandon), an unclean preview,
 a service that is not active, a leftover container, 3 governed units in a row that ended UNKNOWN or a journal it cannot count them in, or `MAX_CYCLES` (default 15).
 Its log names the plan index (0-based) of the step that ended UNKNOWN. The round layout is `<round>/run.json` (its `run_dir` holds the
 journal), `<round>/bin/tbound-run.exe` and `<round>/runs/`. Start it detached:

@@ -444,6 +444,39 @@ func TestRunMaxStepsStopsCleanlyAndResumes(t *testing.T) {
 	}
 }
 
+// A host that died inside a compliant C step left it started. `run --max-steps 1` then collects that step's result
+// and still starts one new step: the limit counts the steps it starts.
+func TestRunMaxStepsDoesNotCountAResumedStep(t *testing.T) {
+	e := newEnv(t)
+	var died runner.Step
+	for _, st := range e.sched().Steps {
+		if st.Kind == evalcorpus.KindCompliant && st.Configuration == runner.CfgC {
+			died = st
+			break
+		}
+	}
+	first := newFake(e)
+	first.Hook = func(s runner.Step, _ *runner.Outcome) error {
+		if s.ID() == died.ID() {
+			panic("host died")
+		}
+		return nil
+	}
+	func() {
+		defer func() {
+			if recover() == nil {
+				t.Fatal("the simulated host death did not happen")
+			}
+		}()
+		_, _ = e.cliCfg(fakeWire(first), "run")
+	}()
+	second := newFake(e)
+	out, err := e.cliCfg(fakeWire(second), "run", "--max-steps", "1")
+	if err != nil || line(out, "resumed") != "1" || line(out, "executed") != "1" || len(second.Calls()) != 2 || !second.Calls()[0].Resumed {
+		t.Fatalf("max-steps after a resumed step: %v %d\n%s", err, len(second.Calls()), out)
+	}
+}
+
 // withoutB is the real wiring with the B executor removed, to exercise the fail-closed path.
 func withoutB(wire wireFunc) wireFunc {
 	return func(p plan) (runner.Executors, error) {

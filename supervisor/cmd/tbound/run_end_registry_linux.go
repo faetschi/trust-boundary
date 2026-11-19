@@ -20,15 +20,13 @@ import (
 )
 
 // runEndSource is one row of the run-end registry (register D30 as amended 2026-11-18): a source of a failure that
-// can end a governed step UNKNOWN and its class. A row names a sentinel the run error wraps (err), a bound on the
-// scanned paths by its failure message (bound), or a package whose sentinels without a row of their own are
-// unclassified (pkg). An agent_ceiling bound carries runend.ErrCeiling at its site, so the err row of that marker
-// classes it at run time. A carrier only marks that a failure passed through it and explains nothing. A fault is an
-// infrastructure sentinel that decides wherever it appears in the run error.
+// can end a governed step UNKNOWN and its class. A row names a sentinel the run error wraps (err) or a bound on the
+// scanned paths by its failure message (bound). An agent_ceiling bound carries runend.ErrCeiling at its site, so the
+// err row of that marker classes it at run time. A carrier only marks that a failure passed through it and explains
+// nothing. A fault is an infrastructure sentinel that decides wherever it appears in the run error.
 type runEndSource struct {
 	err     error
 	bound   string
-	pkg     string
 	class   runend.Class
 	carrier bool
 	fault   bool
@@ -39,8 +37,9 @@ type runEndSource struct {
 }
 
 // runEndRegistry classes the sources that can end a governed step UNKNOWN, and it fails closed: only a source it
-// classes as infrastructure or model behaviour is a rerun cause; any other source ends unclassified, never rerun.
-// TestRunEndRegistryClassesEverySource walks the sources and fails on one without a row (runEndClass has the order).
+// classes as infrastructure or model behaviour is a rerun cause; any other source, a sentinel without a row
+// included, ends unclassified, never rerun (runEndClass has the order). TestRunEndRegistryClassesEverySource fails on
+// a bound without a row.
 var runEndRegistry = []runEndSource{
 	// Workflow ledger faults: the protected root's clock and rollback checks. Only start-up checks join one to the
 	// deadline, so a fault outranks a ceiling beside it. The CAS, observation and owner-fence checks wrap a verifier's
@@ -134,22 +133,9 @@ var runEndRegistry = []runEndSource{
 	{err: ErrScriptedRoleNotRecoverable, class: runend.Infrastructure},
 	{err: ErrServiceProviderCredentials, class: runend.Infrastructure},
 
-	// Every other sentinel of the scanned packages is unclassified: a settlement, observation, evidence, publication,
+	// Every other sentinel has no row and ends unclassified: a settlement, observation, evidence, publication,
 	// workspace-shape or session-store failure the agent's actions can provoke (a symlink, a daemon, a special file)
 	// as well as a fault, so it is never a rerun cause.
-	{pkg: "main", class: runend.Unclassified},
-	{pkg: "providerbridge", class: runend.Unclassified},
-	{pkg: "broker", class: runend.Unclassified},
-	{pkg: "workflowrecovery", class: runend.Unclassified},
-	{pkg: "piruntime", class: runend.Unclassified},
-	{pkg: "workspace", class: runend.Unclassified},
-	{pkg: "sessionrepo", class: runend.Unclassified},
-	{pkg: "publication", class: runend.Unclassified},
-	{pkg: "privategit", class: runend.Unclassified},
-	{pkg: "audit", class: runend.Unclassified},
-	{pkg: "usdledger", class: runend.Unclassified},
-	{pkg: "researchroute", class: runend.Unclassified},
-	{pkg: "gate", class: runend.Unclassified},
 
 	// Bounds the agent's use drives: the per-call completion cap (D50) and the reply's event count, the history that
 	// must fit the next request and the durable exchange budget it shares with the reply, the turn projection and its
