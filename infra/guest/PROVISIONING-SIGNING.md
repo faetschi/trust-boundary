@@ -1068,7 +1068,7 @@ Phase 0 runs before any guest write. It refuses the round unless the path is pla
 
 Run config of the round: `manifest` is a host copy of `$HF/pilot/manifest.json` (the carrier draft with the four pins), and `artifacts_dir` is a host copy of `$HF/pilot/carrier/artifacts`. The corpus digest that the service config holds (`corpus_manifest_digest`) and that `tbound-run plan` prints is the measured `$HF/pilot/CORPUS_DIGEST`. It is not `CARRIER_MANIFEST_DIGEST`, which is the file digest of the draft without the pins.
 
-A carrier with TM-C qualification fixtures (`sample_part tmc`, such as `proc-qual-dev-01`) runs only as a construct-witness plan (`"purpose": "construct-witness"`, P static replays), optionally with `only_cases` naming the fixtures. Under the pilot profile the service serves a TM-C case Configuration P only (D41) and refuses every C role, so any other plan, `only_cases` included, fails at the first C step of a fixture. Keep it to two fixtures: at three or more, the pilot allocation demands a cold TM-C case.
+A carrier with TM-C qualification fixtures (`sample_part tmc`, such as `proc-qual-dev-01`) runs only as a construct-witness plan (`"purpose": "construct-witness"`, P static replays). Under the pilot profile the service serves a TM-C case Configuration P only (D41) and refuses every C role, so any other plan, `only_cases` included, fails at the first C step of a fixture. Keep it to two fixtures: at three or more, the pilot allocation demands a cold TM-C case.
 
 ### Leftover service containers [READ-ONLY] (before every run and after every recovery)
 
