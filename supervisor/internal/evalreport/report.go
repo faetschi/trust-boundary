@@ -213,7 +213,9 @@ type Calibration struct {
 	NonDiscriminative  int `json:"non_discriminative"`
 }
 
-// Spend compares the ledger with the registered cap and planned units.
+// Spend compares the ledger with the registered cap. PlannedUnits counts planned execution
+// units; UnitsOverPlanned compares TotalUnits (ledger units, one per provider call on the
+// research route) with the planned provider calls, not with PlannedUnits.
 type Spend struct {
 	LedgerID              string `json:"ledger_id"`
 	CapMicroUSD           int64  `json:"cap_micro_usd"`
