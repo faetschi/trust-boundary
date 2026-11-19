@@ -2,6 +2,7 @@ package evalreport
 
 import (
 	"bytes"
+	"cmp"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -12,6 +13,7 @@ import (
 	"regexp"
 	"slices"
 	"sort"
+	"strings"
 
 	"tbound/supervisor/internal/evalcorpus"
 	"tbound/supervisor/internal/evalscore"
@@ -332,6 +334,7 @@ func Build(in Inputs) (Report, error) {
 		Metrics:                sum.Metrics,
 		H1:                     requireExactCoverage(sum.H1, cov.Exact),
 		Reruns:                 rerunCases(sum.Cases),
+		ProviderRetries:        providerRetries(in.Trials.ProviderRetries),
 		Spend:                  spendOf(in.Ledger, PlannedUnits(full.Manifest)),
 	}
 	if r.Separate, err = separateStrata(full, separate); err != nil {
@@ -610,6 +613,10 @@ func digestTrials(t evalscore.Input) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	retries, err := canonicalSet(t.ProviderRetries)
+	if err != nil {
+		return "", err
+	}
 	raw, err := canonical(struct {
 		CDH              *evalscore.CDHInput `json:"cdh,omitempty"`
 		Schema           string              `json:"schema"`
@@ -617,8 +624,9 @@ func digestTrials(t evalscore.Input) (string, error) {
 		Adversarial      []json.RawMessage   `json:"adversarial"`
 		Compliant        []json.RawMessage   `json:"compliant"`
 		PostDenialTrials []json.RawMessage   `json:"post_denial_trials,omitempty"`
+		ProviderRetries  []json.RawMessage   `json:"provider_retries,omitempty"`
 		RerunsClosed     bool                `json:"reruns_closed,omitempty"`
-	}{canonicalCDH(t.CDH), t.Schema, t.EVQPassed, adv, cmp, postDenial, t.RerunsClosed}, "")
+	}{canonicalCDH(t.CDH), t.Schema, t.EVQPassed, adv, cmp, postDenial, retries, t.RerunsClosed}, "")
 	if err != nil {
 		return "", err
 	}
@@ -764,4 +772,16 @@ func separateStrata(full Inputs, sep separateSet) ([]Stratum, error) {
 		out = append(out, *idx.strata[key])
 	}
 	return out, nil
+}
+
+// providerRetries is the trials' provider-retry trajectories in case and attempt order, or nil.
+func providerRetries(in []evalscore.ProviderRetryTrajectory) []evalscore.ProviderRetryTrajectory {
+	if len(in) == 0 {
+		return nil
+	}
+	out := slices.Clone(in)
+	slices.SortFunc(out, func(a, b evalscore.ProviderRetryTrajectory) int {
+		return cmp.Or(strings.Compare(a.CaseID, b.CaseID), a.Attempt-b.Attempt)
+	})
+	return out
 }

@@ -263,6 +263,14 @@ func Export(s Schedule, j *Journal, opt ExportOptions) (ExportResult, error) {
 				})
 				break
 			}
+			if st.ID() == e.StepID && st.Kind == evalcorpus.KindAdversarial && st.Role == RoleTrajectory && st.Configuration == CfgC &&
+				e.Outcome.Metrics.Retries > 0 {
+				res.Input.ProviderRetries = append(res.Input.ProviderRetries, evalscore.ProviderRetryTrajectory{
+					CaseID: st.CaseID, Attempt: e.Attempt, ProviderRetries: e.Outcome.Metrics.Retries,
+					ToolsDisabledCalls: e.Outcome.Metrics.ToolsDisabledCalls,
+				})
+				break
+			}
 		}
 	}
 	flags, err := checkAdaptiveBudgets(s, j)

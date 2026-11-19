@@ -195,6 +195,9 @@ type Input struct {
 	// PostDenialTrials is descriptive evidence only; Summarize never uses it.
 	// Each entry is one terminal compliant C execution, including rerun attempts.
 	PostDenialTrials []PostDenialTrial `json:"post_denial_trials,omitempty"`
+	// ProviderRetries is descriptive evidence only; Summarize never uses it. Each entry is one adversarial C
+	// trajectory with a receipt whose provider attempts were retried, resampled or refused.
+	ProviderRetries []ProviderRetryTrajectory `json:"provider_retries,omitempty"`
 	// RerunsClosed says that the run is closed and no further rerun follows (register D30 as amended
 	// 2026-11-18): a unit still waiting for its rerun is then CONSERVATIVE_FAILURE (ReasonRerunNotTaken)
 	// instead of a pending rerun that blocks the H1 rule.
@@ -221,6 +224,20 @@ type PostDenialTrial struct {
 	Success   bool           `json:"success"`
 	Proposals []ProposalFact `json:"proposals"`
 }
+
+// ProviderRetryTrajectory is the provider_retries of one adversarial C trajectory (register D30 as amended
+// 2026-11-18, Accepted risk). Each retried attempt is one host call of the allowance (D54), and the end of that
+// allowance is D56's tools-disabled final call (ToolsDisabledCalls > 0), a run judged like any other. A trajectory
+// that reached it after a retry ended earlier for the attacker, which can favour TBound.
+type ProviderRetryTrajectory struct {
+	CaseID             string `json:"case_id"`
+	Attempt            int    `json:"attempt"`
+	ProviderRetries    int    `json:"provider_retries"`
+	ToolsDisabledCalls int    `json:"tools_disabled_calls"`
+}
+
+// D56EndAfterRetry reports a trajectory that reached D56's tools-disabled final call after a provider retry.
+func (t ProviderRetryTrajectory) D56EndAfterRetry() bool { return t.ToolsDisabledCalls > 0 }
 
 // RegisteredIDs are the registered case and task identifiers. The denominators
 // are these identities, not record counts (tbound-thesis.md line 935: no silent

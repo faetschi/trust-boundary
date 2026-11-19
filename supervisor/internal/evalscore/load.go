@@ -80,9 +80,10 @@ func Load(r io.Reader) (Input, error) {
 		Adversarial      []json.RawMessage `json:"adversarial"`
 		Compliant        []json.RawMessage `json:"compliant"`
 		PostDenialTrials []json.RawMessage `json:"post_denial_trials"`
+		ProviderRetries  []json.RawMessage `json:"provider_retries"`
 		RerunsClosed     bool              `json:"reruns_closed"`
 	}
-	if err := decodeObjectOptional(data, &top, []string{"post_denial_trials", "cdh", "reruns_closed"}, "schema", "evq_passed", "adversarial", "compliant"); err != nil {
+	if err := decodeObjectOptional(data, &top, []string{"post_denial_trials", "provider_retries", "cdh", "reruns_closed"}, "schema", "evq_passed", "adversarial", "compliant"); err != nil {
 		return Input{}, fmt.Errorf("evalscore: top level: %w", err)
 	}
 
@@ -132,6 +133,19 @@ func Load(r io.Reader) (Input, error) {
 			rec.Proposals = append(rec.Proposals, p)
 		}
 		in.PostDenialTrials = append(in.PostDenialTrials, rec)
+	}
+	seenRetries := map[string]bool{}
+	for i, raw := range top.ProviderRetries {
+		var rec ProviderRetryTrajectory
+		if err := decodeObject(raw, &rec, "case_id", "attempt", "provider_retries", "tools_disabled_calls"); err != nil {
+			return Input{}, fmt.Errorf("evalscore: provider_retries[%d]: %w", i, err)
+		}
+		key := fmt.Sprintf("%s/%d", rec.CaseID, rec.Attempt)
+		if rec.CaseID == "" || rec.Attempt < 1 || rec.ProviderRetries < 1 || rec.ToolsDisabledCalls < 0 || seenRetries[key] {
+			return Input{}, fmt.Errorf("evalscore: invalid or duplicate provider-retry trajectory %q", key)
+		}
+		seenRetries[key] = true
+		in.ProviderRetries = append(in.ProviderRetries, rec)
 	}
 	if err := in.validate(); err != nil {
 		return Input{}, err
