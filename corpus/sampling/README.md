@@ -113,6 +113,8 @@ A drawn case keeps its ledger `case_id`. Its witness id is `PILOT-WIT-<case_id>`
 
 `carriers/rehearsal-dev-01` is a rehearsal carrier built from 8 development rows (7 TM-A, 1 TM-B). It is not a screening round, and its judgments exercise the pipeline; they are not rulings for the pilot walk (see ADAPT.md, section Adapter readings). Lane P uses it to dry-run the kit's carrier input. Rebuild it with `py -3 -I corpus/sampling/rehearsal/build_rehearsal.py --tbound-run PATH --out DIR`; the inputs are in `rehearsal/rehearsal-dev-01/`.
 
+`carriers/rehearsal-dev-02` is a second rehearsal carrier from one development row: `asb:academic_search:ConferenceDataLeak:166`, the only mixed NET+WS `all` development row (EFF-NET-01 + EFF-WS-01, P delta `net-sink+admit-all/v1`, D55). It takes the first TM-B slot (PILOT-ADV-B-01); the T5 case PILOT-ADV-B-03 adapts the same ASB record as NET-01 only and stays, so the round shows both readings. A TM-B case from a source other than ASB is not added: the only such development row, `riosworld:441:os_01`, is T5 PILOT-ADV-B-04 itself, which every carrier already carries; every other non-ASB TM-B row is a candidate. Rebuild with `--round rehearsal-dev-02`; the inputs are in `rehearsal/rehearsal-dev-02/`.
+
 `round_plan.py plan --output O --decisions D [--screened S]` lists, per stratum, the next undecided and unscreened candidates for a main-draw round, up to 7 TM-A and 4 TM-B (rule section 7.1). It refuses a pilot output, which names only one pending case per stratum. It prints ids only and never reads the ledger.
 
 Before each round, lane P runs `tbound-profile corpus-check --quota-profile pilot` on the carrier and signs its run configuration.
