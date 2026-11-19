@@ -47,6 +47,12 @@ func TestProviderOutageRunEndsUnknownWithItsTypedCodeAndRecord(t *testing.T) {
 		"effect allowance refusal": {errors.Join(fmt.Errorf("governed production channels failed before the turn ended: %w",
 			governedChannelsError(fmt.Errorf("%w: %w", workflowrecovery.ErrEffectNotReserved, workflowrecovery.ErrExhausted), nil))),
 			"run-budget-exhausted", ""},
+		// A start-up deadline check joins ErrDeadline onto any verification fault: a clock or root fault stays a
+		// plain UNKNOWN, an infrastructure cause.
+		"deadline check with a clock fault": {errors.Join(workflowrecovery.ErrDeadline, workflowrecovery.ErrClockUncertain),
+			"task-outcome-unknown", ""},
+		"deadline check with a rollback": {errors.Join(workflowrecovery.ErrDeadline,
+			fmt.Errorf("%w: caller deadline differs from the immutable host-root deadline", workflowrecovery.ErrRollback)), "task-outcome-unknown", ""},
 	} {
 		t.Run(name, func(t *testing.T) {
 			server := newPiServiceTestServer(t, piServiceSocketRegistration{
