@@ -271,7 +271,8 @@ func (v productionInitialTranscriptProgressVerifier) VerifyProgress(ctx context.
 		return errors.Join(workflowrecovery.ErrOwnerFence, err)
 	}
 	if err := verifyWorkflowDeadline(ctx, v.request.Owner, next.WorkflowID, v.request.Limits.Deadline); err != nil {
-		return errors.Join(workflowrecovery.ErrDeadline, err)
+		// Only an expired deadline carries ErrDeadline (an agent ceiling); an owner-store failure stays infrastructure.
+		return err
 	}
 	if err := v.prepared.VerifySourceBinding(v.managed.Store(), v.baseline, v.storeJournal); err != nil {
 		return err
