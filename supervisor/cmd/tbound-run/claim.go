@@ -192,21 +192,6 @@ func d48Inputs(p plan, ledgerPath, certificationPath string) (*evalreport.D48Inp
 	return in, nil
 }
 
-// planCmd prints the plan and, with --registration, refuses a run that is not the registered one before any unit
-// is spent.
-func (a *app) planCmd(args []string) error {
-	var registration string
-	return a.withPlan("plan", args, func(f *flag.FlagSet) {
-		f.StringVar(&registration, "registration", "", "pre-registration record (tbound-profile preregistration-record) this run must match")
-	}, func(p plan) error {
-		if err := a.plan(p); err != nil || registration == "" {
-			return err
-		}
-		reg, err := checkRegistration(registration, p)
-		if err != nil {
-			return err
-		}
-		fmt.Fprintf(a.out, "registration %s matches\n", reg.RecordDigest)
-		return nil
-	})
-}
+// planCmd prints the plan. The registration check belongs to run: `run --registration` refuses a run that is not
+// the registered one before any unit is spent.
+func (a *app) planCmd(args []string) error { return a.withPlan("plan", args, nil, a.plan) }

@@ -280,7 +280,8 @@ type Outcome struct {
 	// outcome's only failure (GovernedC sets it, for a step in rerunScope only). EvidenceLoss is then a
 	// rerun cause and OutageEvidenceDigest its evidence, or resource_exhaustion for a budget end, which is never
 	// rerun. The observation of the interval ran to the end of the request, so the assembly counts its
-	// oracles although the outcome is partial (cleanUnknown).
+	// oracles although the outcome is partial (cleanUnknown). EndHostInterruption marks a C trajectory that a host
+	// death or an SSH loss interrupted (markInterrupted): a missing oracle report then keeps its case conservative.
 	UnknownEnd string `json:"unknown_end,omitempty"`
 
 	Metrics Metrics `json:"metrics"`

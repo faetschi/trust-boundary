@@ -386,13 +386,14 @@ func parseGovernedResponse(stdout []byte, want GovernedRequest) (governedRespons
 }
 
 // Execute sends the request to the service and maps the answer. See GovernedC.
-func (g GovernedC) Execute(ctx context.Context, s Step) (Outcome, error) {
+func (g GovernedC) Execute(ctx context.Context, s Step) (o Outcome, err error) {
 	request, argv, err := g.plan(s)
 	if err != nil {
 		return Outcome{}, err
 	}
-	if s.Resumed && s.Kind == evalcorpus.KindAdversarial {
-		// Only settles the guest's request (Runner.Run): busy is waited out so the next unit meets a terminal
+	adversarial := s.Kind == evalcorpus.KindAdversarial
+	if s.Resumed && !resumable(s) {
+		// Only settles the guest's request (Runner.abandon): busy is waited out so the next unit meets a terminal
 		// admission. No observer runs and nothing is returned for scoring.
 		_, _, _, err := g.send(ctx, argv, request, true, g.ResendWindow)
 		return Outcome{}, err
@@ -401,7 +402,8 @@ func (g GovernedC) Execute(ctx context.Context, s Step) (Outcome, error) {
 	// monitor) start here and are released when Execute returns, on every path.
 	begin := EvidenceRef{Step: s, Interval: IntervalRef(s), Request: request}
 	var beginErr error
-	if ic, ok := g.Collectors.(IntervalCollectors); ok && s.Kind == evalcorpus.KindAdversarial {
+	// A resumed step's observers ran in the dead process: a new interval would see only the tail of the run.
+	if ic, ok := g.Collectors.(IntervalCollectors); ok && adversarial && !s.Resumed {
 		defer ic.EndInterval(begin)
 		if err := ic.BeginInterval(ctx, begin); err != nil && !errors.Is(err, ErrEvidenceAbsent) {
 			if errors.Is(err, ErrObserverStartUnconfirmed) {
@@ -414,10 +416,20 @@ func (g GovernedC) Execute(ctx context.Context, s Step) (Outcome, error) {
 	}
 	t0 := time.Now()
 	window := g.ResendWindow
-	if s.Kind == evalcorpus.KindAdversarial {
+	if adversarial && !s.Resumed {
 		window = 0
 	}
 	stdout, stderr, exit, err := g.send(ctx, argv, request, s.Resumed, window)
+	if err == nil && adversarial && !s.Resumed && answerLost(stdout, exit, request, false) {
+		// The answer was lost mid-step (an SSH loss), and the guest may still run the request: its id is sent again
+		// until the guest settles it, so the next unit meets a terminal admission. A C trajectory takes that stored
+		// terminal as its interrupted result (register D30, P1-9 amendment); any other step's answer is not scored.
+		again, againStderr, againExit, againErr := g.send(ctx, argv, request, true, g.ResendWindow)
+		if resumable(s) {
+			stdout, stderr, exit, err = again, againStderr, againExit, againErr
+			defer func() { markInterrupted(&o, err) }()
+		}
+	}
 	ended := time.Now()
 	latency := int(time.Since(t0).Milliseconds())
 	if err != nil {
@@ -428,10 +440,6 @@ func (g GovernedC) Execute(ctx context.Context, s Step) (Outcome, error) {
 		if len(bytes.TrimSpace(stdout)) == 0 {
 			// No response line at all (ssh failed, the client refused before dialing):
 			// nothing is known about the run.
-			if s.Kind == evalcorpus.KindAdversarial && answerLost(stdout, exit, request, false) {
-				// Not scored, but the guest may still run the request: settle it so the next unit meets a terminal admission.
-				_, _, _, _ = g.send(ctx, argv, request, true, g.ResendWindow)
-			}
 			return Outcome{}, fmt.Errorf("%w: client exit %d, stderr %s", err, exit, clip(stderr))
 		}
 		return Outcome{Metrics: Metrics{LatencyMS: latency}}, fmt.Errorf("%w (client exit %d)", err, exit)
@@ -447,7 +455,7 @@ func (g GovernedC) Execute(ctx context.Context, s Step) (Outcome, error) {
 	}
 
 	sum := sha256.Sum256(line)
-	o := Outcome{
+	o = Outcome{
 		E01:     E01Identity{Digest: "sha256:" + hex.EncodeToString(sum[:])},
 		Metrics: Metrics{LatencyMS: latency},
 	}
