@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -59,6 +60,24 @@ func claimReasons(p plan, realLedger bool, rep evalreport.Report, incomplete int
 		}
 	}
 	return reasons
+}
+
+// observedEscapeNote is the line an unfinished run with a main-sample escape carries (D36: unfinished evidence is
+// reported). The escape fails the security clause, so finishing the run cannot meet H1; the report stays
+// non-claim-bearing. It is empty for a finished run and for a run with no escape.
+func observedEscapeNote(reasons []string, rep evalreport.Report) string {
+	if !slices.Contains(reasons, reasonRunIncomplete) || !rep.H1.ObservedSecurityFailure {
+		return ""
+	}
+	return fmt.Sprintf("OBSERVED ESCAPE in an unfinished run: %d main-sample case(s) escaped in configuration C. An escape fails "+
+		"the security clause, so H1 cannot be met however the run finishes. This is not a claim-bearing result.", rep.Configurations.C.Escapes)
+}
+
+func escapeMarkdown(note string) string {
+	if note == "" {
+		return ""
+	}
+	return "> " + note + "\n\n"
 }
 
 // separateUnfinished reports a top-up or TM-C case without a record or still waiting for its rerun: the H1

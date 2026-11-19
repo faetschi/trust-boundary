@@ -199,26 +199,14 @@ func TestPlanAndReportCheckTheRegistration(t *testing.T) {
 // A top-up or TM-C case without a record, or still waiting for its rerun, leaves the run unfinished, although the
 // H1 coverage and rerun counts (over the main sample) are complete. The reports are built by evalreport.Build.
 func TestSeparateStrataLeaveTheRunIncomplete(t *testing.T) {
-	adv := func(id string, part evalcorpus.SamplePart) evalcorpus.Case {
-		return evalcorpus.Case{CaseID: id, Kind: evalcorpus.KindAdversarial,
-			Adversarial: &evalcorpus.Adversarial{ThreatClass: evalcorpus.ClassTMA, Partition: evalcorpus.PartitionNonCold, SamplePart: part}}
-	}
-	clean := func(id string) evalscore.AdversarialRecord {
-		return evalscore.AdversarialRecord{CaseID: id, Attempt: 1, Channel: "tool_call", IdentityVerified: true,
-			ObserverCoverageComplete: true, EvidenceLoss: evalscore.LossNone, CEffect: evalscore.CEffectNone,
-			PStaticManifested: true, PAdaptiveManifested: true, CMatchedDelivery: true, PCEvidenceComplete: true}
-	}
 	build := func(topup *evalscore.AdversarialRecord) evalreport.Report {
 		in := evalreport.Inputs{
 			Manifest: evalcorpus.Manifest{SchemaVersion: evalcorpus.SchemaVersion, SplitSeed: "s", Cases: []evalcorpus.Case{
-				adv("main-1", evalcorpus.SampleMain), adv("topup-1", evalcorpus.SampleTopup),
-				{CaseID: "task-1", Kind: evalcorpus.KindCompliant, Compliant: &evalcorpus.Compliant{PrimaryTool: evalcorpus.ToolRead}}}},
+				advCase("main-1", evalcorpus.ClassTMA, evalcorpus.SampleMain, ""), advCase("topup-1", evalcorpus.ClassTMA, evalcorpus.SampleTopup, ""),
+				cmpCase("task-1", evalcorpus.ToolRead)}},
 			Trials: evalscore.Input{Schema: evalscore.SchemaVersion, EVQPassed: true,
-				Adversarial: []evalscore.AdversarialRecord{clean("main-1")},
-				Compliant: []evalscore.CompliantRecord{{TaskID: "task-1", Attempt: 1, IdentityVerified: true, ObserverCoverageComplete: true,
-					EvidenceLoss: evalscore.LossNone, BSuccess: true, CSuccess: true, VSuccess: true, Attribution: evalscore.AttributionNotApplicable}}},
-			Ledger: usdledger.Snapshot{LedgerID: "l", CapMicroUSD: evalreport.RegisteredCapMicroUSD, MinPerUnitWorstCaseMicroUSD: 1,
-				RemainingMicroUSD: evalreport.RegisteredCapMicroUSD, HeadSHA256: strings.Repeat("a", 64)},
+				Adversarial: []evalscore.AdversarialRecord{cleanAdv("main-1")}, Compliant: []evalscore.CompliantRecord{cleanCmp("task-1")}},
+			Ledger: testLedger(),
 		}
 		if topup != nil {
 			in.Trials.Adversarial = append(in.Trials.Adversarial, *topup)
@@ -229,9 +217,9 @@ func TestSeparateStrataLeaveTheRunIncomplete(t *testing.T) {
 		}
 		return rep
 	}
-	pending := clean("topup-1")
+	pending := cleanAdv("topup-1")
 	pending.EvidenceLoss, pending.OutageEvidenceDigest = evalscore.LossExternalOutage, fixtureDigest("outage")
-	done := clean("topup-1")
+	done := cleanAdv("topup-1")
 	for name, tc := range map[string]struct {
 		topup *evalscore.AdversarialRecord
 		want  bool
@@ -244,6 +232,112 @@ func TestSeparateStrataLeaveTheRunIncomplete(t *testing.T) {
 		c.rep.Separate, c.rep.Coverage, c.rep.Observed = rep.Separate, rep.Coverage, rep.Observed
 		if got := slices.Contains(c.reasons(), reasonRunIncomplete); got != tc.want {
 			t.Errorf("%s: run_incomplete %t, want %t (reasons %v, separate %+v)", name, got, tc.want, c.reasons(), rep.Separate)
+		}
+	}
+}
+
+func advCase(id string, class evalcorpus.ThreatClass, part evalcorpus.SamplePart, root string) evalcorpus.Case {
+	return evalcorpus.Case{CaseID: id, Kind: evalcorpus.KindAdversarial, Adversarial: &evalcorpus.Adversarial{ThreatClass: class,
+		Partition: evalcorpus.PartitionNonCold, SamplePart: part, RootScenarioID: root}}
+}
+
+func cmpCase(id string, tool evalcorpus.Tool) evalcorpus.Case {
+	return evalcorpus.Case{CaseID: id, Kind: evalcorpus.KindCompliant, Compliant: &evalcorpus.Compliant{PrimaryTool: tool}}
+}
+
+func cleanAdv(id string) evalscore.AdversarialRecord {
+	return evalscore.AdversarialRecord{CaseID: id, Attempt: 1, Channel: "tool_call", IdentityVerified: true,
+		ObserverCoverageComplete: true, EvidenceLoss: evalscore.LossNone, CEffect: evalscore.CEffectNone,
+		PStaticManifested: true, PAdaptiveManifested: true, CMatchedDelivery: true, PCEvidenceComplete: true}
+}
+
+func cleanCmp(id string) evalscore.CompliantRecord {
+	return evalscore.CompliantRecord{TaskID: id, Attempt: 1, IdentityVerified: true, ObserverCoverageComplete: true,
+		EvidenceLoss: evalscore.LossNone, BSuccess: true, CSuccess: true, VSuccess: true, Attribution: evalscore.AttributionNotApplicable}
+}
+
+func testLedger() usdledger.Snapshot {
+	return usdledger.Snapshot{LedgerID: "l", CapMicroUSD: evalreport.RegisteredCapMicroUSD, MinPerUnitWorstCaseMicroUSD: 1,
+		RemainingMicroUSD: evalreport.RegisteredCapMicroUSD, HeadSHA256: strings.Repeat("a", 64)}
+}
+
+// groupedReport builds through evalreport.Build a thesis report with real scenario and mechanism results: the
+// main-draw test vector (evalcorpus testdata/d48) with its 299 main cases and 5 top-ups by their ledger v3 roots,
+// 100 compliant tasks, every case clean, ledger v3 and the vector's certify output. mutate edits the trials.
+func groupedReport(t *testing.T, mutate func(*evalscore.Input)) evalreport.Report {
+	t.Helper()
+	read := func(path string) []byte {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return raw
+	}
+	draw := read("../../internal/evalcorpus/testdata/d48/draw-output.json")
+	d, err := evalcorpus.ParseDraw(draw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	in := evalreport.Inputs{
+		Manifest: evalcorpus.Manifest{SchemaVersion: evalcorpus.SchemaVersion, SplitSeed: "s", Pins: evalcorpus.Pins{DrawDigest: d.Digest}},
+		Trials:   evalscore.Input{Schema: evalscore.SchemaVersion, EVQPassed: true},
+		Ledger:   testLedger(),
+		D48: &evalreport.D48Inputs{Draw: draw, Ledger: read("../../../corpus/sampling/d48-ledger-v3.jsonl"),
+			Certification: read("../../internal/evalreport/testdata/certify-output.json")},
+	}
+	for _, class := range []evalcorpus.ThreatClass{evalcorpus.ClassTMA, evalcorpus.ClassTMB} {
+		for _, part := range []evalcorpus.SamplePart{evalcorpus.SampleMain, evalcorpus.SampleTopup} {
+			roots := d.Members[class]
+			if part == evalcorpus.SampleTopup {
+				roots = d.Topup[class]
+			}
+			for _, root := range roots {
+				in.Manifest.Cases = append(in.Manifest.Cases, advCase("case-"+root, class, part, root))
+				in.Trials.Adversarial = append(in.Trials.Adversarial, cleanAdv("case-"+root))
+			}
+		}
+	}
+	for i := 0; i < evalscore.RegisteredCompliantTasks; i++ {
+		id := fmt.Sprintf("task-%03d", i)
+		in.Manifest.Cases = append(in.Manifest.Cases, cmpCase(id, []evalcorpus.Tool{evalcorpus.ToolRead, evalcorpus.ToolWrite, evalcorpus.ToolEdit, evalcorpus.ToolBash}[i%4]))
+		in.Trials.Compliant = append(in.Trials.Compliant, cleanCmp(id))
+	}
+	if mutate != nil {
+		mutate(&in.Trials)
+	}
+	rep, err := evalreport.Build(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return rep
+}
+
+// A report built by evalreport.Build with real scenario and mechanism results is claim-bearing for the complete
+// registered thesis run, whatever its verdict. An unfinished run with a main-sample escape is not, and it carries
+// the observed-escape line; an unfinished run without an escape, or a finished run with one, does not.
+func TestBuiltReportWithGroupsIsClaimBearing(t *testing.T) {
+	escapeFirst := func(in *evalscore.Input) { in.Adversarial[0].CEffect = evalscore.CEffectObserved }
+	dropSecond := func(in *evalscore.Input) { in.Adversarial = slices.Delete(in.Adversarial, 1, 2) }
+	for name, tc := range map[string]struct {
+		mutate     func(*evalscore.Input)
+		reasons    []string
+		escapeNote bool
+	}{
+		"clean":             {nil, nil, false},
+		"finished escape":   {escapeFirst, nil, false},
+		"unfinished":        {dropSecond, []string{reasonRunIncomplete}, false},
+		"unfinished escape": {func(in *evalscore.Input) { escapeFirst(in); dropSecond(in) }, []string{reasonRunIncomplete}, true},
+	} {
+		c := claimFixture()
+		c.rep = groupedReport(t, tc.mutate)
+		c.reg.CertificationDigest = c.rep.Groups.Certification.Digest
+		got := c.reasons()
+		note := observedEscapeNote(got, c.rep)
+		if !slices.Equal(got, tc.reasons) || (note != "") != tc.escapeNote || (tc.escapeNote && !strings.Contains(note, "1 main-sample case(s) escaped")) {
+			t.Errorf("%s: reasons %v, observed escape %q", name, got, note)
+		}
+		if name == "finished escape" && (!c.rep.H1.ObservedSecurityFailure || c.rep.H1.RuleSatisfied) {
+			t.Errorf("finished escape: H1 %+v, want an observed security failure", c.rep.H1)
 		}
 	}
 }

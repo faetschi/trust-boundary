@@ -301,6 +301,7 @@ func (a *app) reportCmd(args []string) error {
 		}
 		reasons := claimReasons(p, p.cfg.Ledger.file != nil, rep, len(res.Incomplete), reg)
 		note := reportNote(reasons, reg)
+		escapeNote := observedEscapeNote(reasons, rep)
 		registrationDigest := ""
 		if reg != nil {
 			registrationDigest = reg.RecordDigest
@@ -327,8 +328,9 @@ func (a *app) reportCmd(args []string) error {
 			Flags           []string `json:"adaptive_budget_flags,omitempty"`
 			FlagsDigest     string   `json:"adaptive_budget_flags_sha256,omitempty"`
 			Note            string   `json:"note"`
+			ObservedEscape  string   `json:"observed_escape,omitempty"`
 		}{len(reasons) == 0, append([]string{}, reasons...), registrationDigest, ledger.LedgerID, rep.Digest, p.sched.Digest,
-			len(res.Incomplete), flagLines(res.AdaptiveBudgetFlags), flagsDigest, note})
+			len(res.Incomplete), flagLines(res.AdaptiveBudgetFlags), flagsDigest, note, escapeNote})
 		if err != nil {
 			return err
 		}
@@ -337,7 +339,7 @@ func (a *app) reportCmd(args []string) error {
 			data []byte
 		}{
 			{"report.json", append(canonical, '\n')},
-			{"report.md", []byte("> " + note + "\n\n" + flagsMarkdown(res.AdaptiveBudgetFlags) + rep.Markdown())},
+			{"report.md", []byte("> " + note + "\n\n" + escapeMarkdown(escapeNote) + flagsMarkdown(res.AdaptiveBudgetFlags) + rep.Markdown())},
 			{"report.meta.json", append(meta, '\n')},
 		} {
 			if err := writeFileAtomic(filepath.Join(dir, f.name), f.data); err != nil {
