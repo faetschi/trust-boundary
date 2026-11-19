@@ -35,6 +35,10 @@ const (
 	CodeBudgetEnded    = "run-budget-exhausted"
 	CodeProviderOutage = "provider-outage"
 	CodeUnclassified   = "run-end-unclassified"
+
+	// CodeLaunchNotAdmitted is a launch that failed before the task was admitted, with its cell settled and the
+	// receipt binding the run's E04 points: the agent never ran, so it is an infrastructure end, a rerun cause.
+	CodeLaunchNotAdmitted = "launch-not-admitted"
 )
 
 // Codes is the class every code of the Pi service's UNKNOWN answer carries to the host. CodeOutcomeUnknown carries
@@ -46,6 +50,8 @@ var Codes = map[string]Class{
 	CodeBudgetEnded:    AgentCeiling,
 	CodeProviderOutage: Infrastructure,
 	CodeUnclassified:   Unclassified,
+
+	CodeLaunchNotAdmitted: Infrastructure,
 
 	"request-journal-unavailable":           Infrastructure,
 	"socket-authority-changed":              Infrastructure,
