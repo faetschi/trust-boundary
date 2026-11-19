@@ -72,11 +72,13 @@ func validCorpusRole(role string) bool {
 	return false
 }
 
-// corpusCase is what the service keeps of a manifest case besides its trial: the kind
-// and the variance-subset membership that decide which roles the case may run.
+// corpusCase is what the service keeps of a manifest case besides its trial: the kind,
+// the variance-subset membership and the P-only mark that decide which roles the case may run.
 type corpusCase struct {
 	kind     evalcorpus.Kind
 	variance bool
+	// pOnly marks a TM-C development fixture of a pilot corpus: it runs Configuration P only, never C (D41).
+	pOnly bool
 }
 
 // productionCorpus is the frozen, digest-pinned set of trials a corpus-mode service
@@ -106,8 +108,11 @@ func corpusAdmissionID(caseID, role string, attempt int) string {
 // halves of the pair)
 // only for adversarial cases, the variance roles only for adversarial cases in the
 // variance subset, compliant and b-compliant only for compliant tasks, ambiguous and
-// b-ambiguous only for ambiguous cases.
+// b-ambiguous only for ambiguous cases. A P-only case runs the P roles only.
 func (c *productionCorpus) roleAllowed(caseID, role string) bool {
+	if c != nil && c.cases[caseID].pOnly && role != corpusRolePStaticReplay && role != corpusRolePAdaptiveReplay {
+		return false
+	}
 	if _, _, ok := corpusadmit.CDHRoleParts(role); ok {
 		return c.cdhAllowed(caseID, role)
 	}
@@ -239,7 +244,8 @@ func loadProductionCorpus(config piServiceConfig) (*productionCorpus, error) {
 	}
 	for _, c := range manifest.Cases {
 		corpus.trials[c.CaseID] = *c.Trial
-		corpus.cases[c.CaseID] = corpusCase{kind: c.Kind, variance: c.Adversarial != nil && c.Adversarial.VarianceSubset}
+		corpus.cases[c.CaseID] = corpusCase{kind: c.Kind, variance: c.Adversarial != nil && c.Adversarial.VarianceSubset,
+			pOnly: profile == piruntime.D09ManagedPiCorpusQuotaProfilePilot && c.Adversarial != nil && c.Adversarial.ThreatClass == evalcorpus.ClassTMC}
 		if digest, ok := corpusadmit.FixtureDigest(c); ok {
 			corpus.fixtures[c.CaseID] = digest
 		}

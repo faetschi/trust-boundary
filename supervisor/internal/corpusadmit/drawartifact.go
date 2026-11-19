@@ -41,7 +41,9 @@ func LoadDraw(fsys fs.FS, digest string) (evalcorpus.Draw, error) {
 // QuotasFor returns the quotas a manifest is validated under in a profile. The thesis profile takes them from the
 // main draw the manifest pins (D48, D53 item 4) and refuses a manifest that pins none. The pilot profile takes the
 // research pilot's adversarial split from the pinned pilot draw; a pilot manifest that pins no draw is a pre-D48
-// rehearsal or screening carrier and keeps evalcorpus.PilotQuotas.
+// rehearsal, screening or qualification carrier and keeps evalcorpus.PilotQuotas, except that its TM-C count is
+// the number of its derived TM-C development fixtures (sample_part tmc): TM-C has no fixed size (D48 "TM-C"), and
+// the corpus-mode service serves such a fixture Configuration P only (D41).
 func QuotasFor(profile string, m evalcorpus.Manifest, artifacts fs.FS) (evalcorpus.Quotas, error) {
 	switch profile {
 	case ProfileThesis:
@@ -55,7 +57,13 @@ func QuotasFor(profile string, m evalcorpus.Manifest, artifacts fs.FS) (evalcorp
 		return evalcorpus.ThesisQuotasFromDraw(d, m)
 	case ProfilePilot:
 		if m.Pins.DrawDigest == "" {
-			return evalcorpus.PilotQuotas(), nil
+			q := evalcorpus.PilotQuotas()
+			for _, c := range m.Cases {
+				if c.Kind == evalcorpus.KindAdversarial && c.Adversarial != nil && c.Adversarial.SamplePart == evalcorpus.SampleTMC {
+					q.Adversarial[evalcorpus.ClassTMC]++
+				}
+			}
+			return q, nil
 		}
 		d, err := LoadDraw(artifacts, m.Pins.DrawDigest)
 		if err != nil {
