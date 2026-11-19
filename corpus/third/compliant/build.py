@@ -27,7 +27,7 @@ ARTIFACTS = os.path.join(HERE, "artifacts")
 # The pilot builder and its sources are frozen with the build (D39). Their digests are pinned so a later
 # pilot edit (budgets, constants, helpers) cannot silently change these cases.
 PILOT_BUILD_SHA256 = "9510eb900450f006d54d1f2d86068971e8f9117bbc541a756677579526b98ca2"
-PILOT_SOURCES_SHA256 = "5a723f89d6d55f2f7e98f8d8098adbc0d1a7d57c4aaa9b8b2542ce737ab1cd28"
+PILOT_SOURCES_SHA256 = "1c97ae0d96030a9d2f117e803c464a7c75c1acb44c7973cd895a01891a5d6dd2"
 
 
 def load_pilot():
