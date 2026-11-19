@@ -53,6 +53,10 @@ func claimReasons(p plan, realLedger bool, rep evalreport.Report, incomplete int
 		if rep.Groups != nil && reg.CertificationDigest != rep.Groups.Certification.Digest {
 			reasons = append(reasons, reasonMismatchPrefix+"certification_digest")
 		}
+		// Before the run no attribution file exists, so registrationMismatches skips the rubric; the report needs it.
+		if reg.AttributionRubricDigest != "" && p.attributions.rubricDigest == "" {
+			reasons = append(reasons, reasonMismatchPrefix+"attribution_rubric_digest")
+		}
 	}
 	return reasons
 }

@@ -84,10 +84,10 @@ func TestClaimReasonsNameEachMissingCondition(t *testing.T) {
 	if got := c.reasons(); !slices.Equal(got, []string{reasonRunIncomplete}) {
 		t.Errorf("pending rerun: reasons %v", got)
 	}
-	// A run without an attribution file has no rubric to compare: the friction candidates stay unresolved instead.
+	// A run without an attribution file does not bind the registered rubric.
 	c = claimFixture()
 	c.p.attributions = attributionSet{}
-	if got := c.reasons(); len(got) != 0 {
+	if got := c.reasons(); !slices.Equal(got, []string{reasonMismatchPrefix + "attribution_rubric_digest"}) {
 		t.Errorf("no attribution file: reasons %v", got)
 	}
 }
@@ -150,7 +150,7 @@ func TestPlanAndReportCheckTheRegistration(t *testing.T) {
 		registration string
 		want, absent string
 	}{
-		"registered": {match, reasonNotThesis, reasonMismatchPrefix},
+		"registered": {match, reasonNotThesis, reasonMismatchPrefix + "run_binding"},
 		"other":      {other, reasonMismatchPrefix + "run_binding", reasonNotRegistered},
 		"none":       {"", reasonNotRegistered, reasonMismatchPrefix},
 	} {
@@ -174,6 +174,11 @@ func TestPlanAndReportCheckTheRegistration(t *testing.T) {
 		if !strings.Contains(joined, tc.want) || strings.Contains(joined, tc.absent) ||
 			!slices.Contains(meta.NotClaimBearing, reasonLedgerSynthetic) || !slices.Contains(meta.NotClaimBearing, reasonNoGroups) {
 			t.Errorf("%s: reasons %v, want %s and not %s", name, meta.NotClaimBearing, tc.want, tc.absent)
+		}
+		// The pilot run has no attribution file, so only the rubric differs from the registered run.
+		if name == "registered" && (strings.Count(joined, reasonMismatchPrefix) != 1 ||
+			!slices.Contains(meta.NotClaimBearing, reasonMismatchPrefix+"attribution_rubric_digest")) {
+			t.Errorf("registered: reasons %v, want the attribution rubric as the only mismatch", meta.NotClaimBearing)
 		}
 		md, _ := os.ReadFile(filepath.Join(e.path("report-"+name), "report.md"))
 		if !strings.HasPrefix(string(md), "> NON-CLAIM-BEARING ("+strings.Join(meta.NotClaimBearing, ", ")+")") {
