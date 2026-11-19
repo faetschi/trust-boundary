@@ -31,6 +31,17 @@ var runEndBoundDirs = []string{"../../internal/providerbridge", "../../internal/
 
 var runEndBoundWords = regexp.MustCompile(`(?i)exhausted|exceeds|budget|limit|too many|too large|ceiling|allowance|oversized|out of bounds|\bcap\b`)
 
+var runEndVerbs = regexp.MustCompile(`%[-+# 0-9.]*[a-zA-Z%]`)
+
+// isErrorValue reports an argument that names an error by the Go conventions: err, fooErr, ErrFoo.
+func isErrorValue(e ast.Expr) bool {
+	name := exprText(e)
+	if i := strings.LastIndex(name, "."); i >= 0 {
+		name = name[i+1:]
+	}
+	return name == "err" || strings.HasSuffix(name, "Err") || strings.HasPrefix(name, "Err")
+}
+
 func parseRunEndDir(t *testing.T, dir string) (*token.FileSet, []*ast.File) {
 	t.Helper()
 	paths, err := filepath.Glob(filepath.Join(dir, "*.go"))
@@ -110,7 +121,8 @@ func exprText(e ast.Expr) string {
 // The registry classes every source that can end a governed step UNKNOWN. The test walks the sources and fails on
 // one without a row: every exported sentinel of the run's packages, every bound a failure message on the provider
 // path names, and every code of an UNKNOWN answer. An agent_ceiling bound must carry runend.ErrCeiling at its
-// site, and no other bound may, so the classifier sees exactly the registered ceilings.
+// site, and no other bound may, so the classifier sees exactly the registered ceilings. On the provider path a
+// failure wraps its cause with %w, so no wrap drops the marker on its way to the classifier.
 func TestRunEndRegistryClassesEverySource(t *testing.T) {
 	rows := runEndRows(t)
 	sentinelRows, boundRows := map[string]bool{}, map[string]runEndRow{}
@@ -175,6 +187,19 @@ func TestRunEndRegistryClassesEverySource(t *testing.T) {
 						return true
 					}
 					message, _ := strconv.Unquote(lit.Value)
+					if fun == "fmt.Errorf" {
+						// A cause formatted with %v loses its sentinels, the ceiling marker among them.
+						arg := 0
+						for _, verb := range runEndVerbs.FindAllString(message, -1) {
+							if verb == "%%" {
+								continue
+							}
+							arg++
+							if arg < len(call.Args) && verb == "%v" && isErrorValue(call.Args[arg]) {
+								t.Errorf("%s: %q formats an error with %%v; wrap it with %%w", fset.Position(call.Pos()), message)
+							}
+						}
+					}
 					if !runEndBoundWords.MatchString(message) {
 						return true
 					}

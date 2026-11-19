@@ -401,7 +401,7 @@ func newWithDoer(cfg Config, model string, doer broker.HTTPDoer, journal eventJo
 	if predecessor := cfg.Predecessor.sealed; predecessor != nil {
 		// Imported tool calls stay out of the correlation stream; only their IDs are reserved.
 		if err := c.appendHistoryLocked(fromImportedMessages(predecessor.messages)...); err != nil {
-			return nil, fmt.Errorf("%w: %v", ErrContextExhausted, err)
+			return nil, fmt.Errorf("%w: %w", ErrContextExhausted, err)
 		}
 		for _, id := range predecessor.reservedResponseIDs {
 			c.responseIDs[id] = struct{}{}
@@ -433,7 +433,7 @@ func (c *Conversation) AdmitPrompt(taskID, prompt string) error {
 	// The prompt must fit before anything is journaled, so exhaustion leaves no unreplayable record.
 	history, err := c.boundedHistoryLocked(openrouter.Message{Role: openrouter.User, Content: &prompt})
 	if err != nil {
-		return fmt.Errorf("%w: %v", ErrContextExhausted, err)
+		return fmt.Errorf("%w: %w", ErrContextExhausted, err)
 	}
 	if predecessor := c.cfg.Predecessor.sealed; predecessor != nil && !c.importJournaled {
 		imported, err := json.Marshal(predecessor.evidence(c.cfg.WorkflowID, c.cfg.ConversationID))
@@ -1104,18 +1104,18 @@ func (c *Conversation) recordNoEffectRefused(ctx context.Context, proposal proto
 		return c.recordUnknownExecutionLocked(proposal, decision, errors.New("executor refusal has no independent no-effect proof for this call"))
 	}
 	if err := verifier.VerifyNoEffect(ctx, proposal, decision, c.generation, c.treeDigest); err != nil {
-		return c.recordUnknownExecutionLocked(proposal, decision, fmt.Errorf("no-effect proof failed; provider result withheld: %v", err))
+		return c.recordUnknownExecutionLocked(proposal, decision, fmt.Errorf("no-effect proof failed; provider result withheld: %w", err))
 	}
 	result, err := protocol.NoEffectResult(resultFor(proposal, decision, nil))
 	if err != nil {
-		return c.recordUnknownExecutionLocked(proposal, decision, fmt.Errorf("build no-effect result: %v", err))
+		return c.recordUnknownExecutionLocked(proposal, decision, fmt.Errorf("build no-effect result: %w", err))
 	}
 	if err := c.appendResultLocked(ctx, "provider_tool_result", result, "", c.generation, c.treeDigest, 0, "", ""); err != nil {
-		return c.recordUnknownExecutionLocked(proposal, decision, fmt.Errorf("persist no-effect result; IPC result withheld: %v", err))
+		return c.recordUnknownExecutionLocked(proposal, decision, fmt.Errorf("persist no-effect result; IPC result withheld: %w", err))
 	}
 	if c.cfg.AdvanceProgress != nil {
 		if err := c.cfg.AdvanceProgress(ctx); err != nil {
-			return c.failLocked(fmt.Errorf("advance workflow checkpoint after no-effect result: %v", err))
+			return c.failLocked(fmt.Errorf("advance workflow checkpoint after no-effect result: %w", err))
 		}
 	}
 	return &protocol.NoEffectError{Tool: proposal.Tool, Err: refused.Err}
