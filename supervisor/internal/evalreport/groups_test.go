@@ -277,12 +277,15 @@ func TestGroupInputsFailClosed(t *testing.T) {
 				}
 			}
 		},
-		"certify other sizes":    cert(func(m map[string]any) { m["nA"], m["nB"] = 157.0, 142.0 }),
-		"certify other ranges":   cert(func(m map[string]any) { m["N_A_range"] = []int{300, 319} }),
-		"certify flag lies":      cert(func(m map[string]any) { m["max_P0_fraction"] = "1/10" }),
-		"not a certify output":   func(in *Inputs) { in.D48.Certification = []byte(`{"n":299}`) },
-		"certify unknown member": cert(func(m map[string]any) { m["extra"] = 1.0 }),
-		"certify trailing data":  func(in *Inputs) { in.D48.Certification = append(bytes.Clone(in.D48.Certification), []byte("{}")...) },
+		"certify other sizes":        cert(func(m map[string]any) { m["nA"], m["nB"] = 157.0, 142.0 }),
+		"certify other ranges":       cert(func(m map[string]any) { m["N_A_range"] = []int{300, 319} }),
+		"certify flag lies":          cert(func(m map[string]any) { m["max_P0_fraction"] = "1/10" }),
+		"not a certify output":       func(in *Inputs) { in.D48.Certification = []byte(`{"n":299}`) },
+		"certify without U":          cert(func(m map[string]any) { delete(m, "U") }),
+		"certify without max_P0":     cert(func(m map[string]any) { delete(m, "max_P0") }),
+		"certify without worst_case": cert(func(m map[string]any) { delete(m, "worst_case") }),
+		"certify unknown member":     cert(func(m map[string]any) { m["extra"] = 1.0 }),
+		"certify trailing data":      func(in *Inputs) { in.D48.Certification = append(bytes.Clone(in.D48.Certification), []byte("{}")...) },
 		"certify duplicate key": func(in *Inputs) {
 			in.D48.Certification = bytes.Replace(in.D48.Certification, []byte(`"certified": true,`), []byte(`"certified": false, "certified": true,`), 1)
 		},

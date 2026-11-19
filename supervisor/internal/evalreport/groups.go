@@ -129,7 +129,7 @@ type drawMarks struct {
 type certifyOutput struct {
 	Alpha         string         `json:"alpha"`
 	U             string         `json:"U"`
-	MaxP0         float64        `json:"max_P0"`
+	MaxP0         *float64       `json:"max_P0"`
 	WorstCase     map[string]int `json:"worst_case"`
 	N             int            `json:"n"`
 	NA            int            `json:"nA"`
@@ -410,7 +410,7 @@ func certificationOf(raw []byte, draw evalcorpus.Draw, marks drawMarks) (Certifi
 	}
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.DisallowUnknownFields()
-	if err := dec.Decode(&c); err != nil || c.Certified == nil {
+	if err := dec.Decode(&c); err != nil || c.Certified == nil || c.U == "" || c.MaxP0 == nil || c.WorstCase == nil {
 		return Certification{}, fmt.Errorf("evalreport: certification is not a select.py certify output: %v", err)
 	}
 	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
