@@ -383,7 +383,8 @@ journaled transient and task verdicts from the retained files yet. The runner fu
 tests call them on retained files today. An interrupted adversarial or V step becomes abandoned (an adversarial
 request is sent again until the guest settles it or the resend window ends, unscored). An
 interrupted compliant or ambiguous B or C step is resumed on the next `run`: the runner
-sends the same request id again and takes the stored terminal of the guest. Reports have a synthetic empty USD ledger and `claim_bearing=false`.
+sends the same request id again and takes the stored terminal of the guest. A pilot report has `claim_bearing=false`;
+`report.meta.json` lists why under `not_claim_bearing`.
 Use the pilot to calibrate caps, costs, reset behaviour, and feasibility.
 
 ```sh
@@ -409,21 +410,50 @@ or independent human review. This command does not run full `CheckConstructs`.
 Register the final freeze under the protocol in
 the separate `MSE_MA_Thesis` repository. See the [research index](../research/README.md).
 
+The record also binds three inputs. `--run-binding` is the `run_binding` line that
+`tbound-run plan` prints for the H1 `run.json`. It covers the receipt pins, the
+admission policy, the V image, the route and EVQ results, and the PROC settings
+with the D49 drain grace. `--attribution-rubric` is the frozen rubric file.
+`--corpus-check` is the `corpus-check` `report.json` of the manifest. The command
+refuses a report that has a failed or a guest-only row, or that misses a case.
+With a main draw, `--certification` is the `select.py certify` output for the
+population ranges and main sizes of that draw. The command checks it against the
+draw and records its digest.
+
 ```sh
 tbound-profile preregistration-record --freeze-commit "$TBOUND_COMMIT" \
   --corpus-manifest /absolute/path/to/manifest.json --quota-profile thesis \
   --runner-config /absolute/path/to/runner-config.json \
   --research-profile /absolute/path/to/research-profile.json \
-  --research-ledger-config /absolute/path/to/research-ledger.json
+  --research-ledger-config /absolute/path/to/research-ledger.json \
+  --run-binding sha256:<run_binding from tbound-run plan> \
+  --attribution-rubric /absolute/path/to/attribution-rubric.md \
+  --corpus-check /absolute/path/to/construct-report/report.json \
+  --certification /absolute/path/to/certify.json
 ```
 
 ### Evaluate H1
 
-Run H1 only after registration and the remaining gates. Use the registered
-plan with `tbound-run plan --config /absolute/path/to/h1-run.json` before any
-execution. H1 measures PVR, forbidden effects in adversarial runs, and ORR,
+Run H1 only after registration and the remaining gates. Before any execution,
+run `tbound-run plan --config /absolute/path/to/h1-run.json --registration
+/absolute/path/to/record.json`, and pass the same `--registration` to every
+`tbound-run run`. Both refuse a run that is not the registered one before any
+unit is spent. H1 measures PVR, forbidden effects in adversarial runs, and ORR,
 rejection of compliant tasks, with independent effect checks. Preserve the
 registered denominators and report unsupported evidence. H1 has not run.
-The current runner's synthetic-ledger report is not a claim-bearing H1
-reporting path. See [OVERVIEW](../../OVERVIEW.md) and the thesis protocol, referenced in the
+Report with `tbound-run report --config /absolute/path/to/h1-run.json --out
+/absolute/path/to/new-report --ledger-v3 corpus/sampling/d48-ledger-v3.jsonl
+--certification /absolute/path/to/certify.json --registration
+/absolute/path/to/record.json`. The certification is the file the record binds. The
+report gives the results per scenario and per mechanism (D47, D48). It is
+claim-bearing only for a complete thesis run with a verified USD ledger, a
+certified bound, and a registration that matches the run. `report.meta.json`
+names every condition that is not met. An unfinished run that already has an
+escape carries an `observed_escape` line in `report.md` and
+`report.meta.json`; it stays non-claim-bearing. The scenario and mechanism bound table gives the
+conservative bound, which counts unresolved groups as failures, beside the
+escape-only bound. A claim-bearing report needs the attribution file that names
+the registered rubric. The mark only checks the run against the
+record you supply. A reader must also compare `registration_record_digest` in
+`report.meta.json` with the record published at registration. See [OVERVIEW](../../OVERVIEW.md) and the thesis protocol, referenced in the
 [research index](../research/README.md).

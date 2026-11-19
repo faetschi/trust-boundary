@@ -181,8 +181,9 @@ is not claimed.
    and `tbound-run route-report` under their existing requirements.
 4. Complete full deterministic construct evidence, final corpus and protocol
    freeze, and immutable preregistration before H1. Preserve the registered
-   thresholds, N, scoring, and denominators. H1 is unexecuted. The current
-   `tbound-run report` uses a synthetic empty USD ledger and is non-claim-bearing.
+   thresholds, N, scoring, and denominators. H1 is unexecuted. `tbound-run
+   report` marks a report claim-bearing only for the registered, complete and
+   certified thesis run; `report.meta.json` names every unmet condition.
 
 `corpus-digest` and `tbound-profile preregistration-record` perform strict
 loading, validation, quotas, and `CheckTrials`, with bindings and artifacts
