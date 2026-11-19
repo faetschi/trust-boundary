@@ -15,6 +15,7 @@ import (
 	"tbound/supervisor/internal/corpusadmit"
 	"tbound/supervisor/internal/evalcorpus"
 	"tbound/supervisor/internal/evalscore"
+	"tbound/supervisor/internal/guestevidence"
 	"tbound/supervisor/internal/runend"
 	"tbound/supervisor/internal/wsoracle"
 )
@@ -299,19 +300,11 @@ func markUnknownEnd(o *Outcome, s Step, resp governedResponse) {
 		o.EvidenceLoss = evalscore.LossUnclassified
 		return
 	}
-	if resp.ErrorCode == runend.CodeProviderOutage && validHexDigest(resp.OutageEvidenceDigest) {
+	if resp.ErrorCode == runend.CodeProviderOutage && guestevidence.IsDigest("sha256:"+resp.OutageEvidenceDigest) {
 		o.EvidenceLoss, o.OutageEvidenceDigest = evalscore.LossExternalOutage, "provider-journal:"+resp.OutageEvidenceDigest
 		return
 	}
 	o.EvidenceLoss, o.OutageEvidenceDigest = evalscore.LossOutcomeUnknown, o.E01.Digest
-}
-
-func validHexDigest(s string) bool {
-	if len(s) != 64 {
-		return false
-	}
-	_, err := hex.DecodeString(s)
-	return err == nil && strings.ToLower(s) == s
 }
 
 // governedReceipt is the part of productionPiReceipt (cmd/tbound/production_session_linux.go)
