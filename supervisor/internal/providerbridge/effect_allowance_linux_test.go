@@ -330,3 +330,45 @@ func TestRefusedToolCallSettlesItsSpend(t *testing.T) {
 		t.Fatalf("spend = %s, want the unit settled to its usage", got)
 	}
 }
+
+// D56 amendment (2026-11-19): an empty reply to the tools-disabled last call ends the run like the typed end.
+// The exchange is journaled complete, its host call is settled, replay accepts it, and the worker gets a
+// text-less final stop turn; the acceptance oracle then judges the workspace.
+func TestEmptyReplyToToolsDisabledRequestIsAFinalTurn(t *testing.T) {
+	conversation, journal, _, hooks := hostCallsLeftConversation(t, []fixtureResponse{{responseID: "response-empty"}}, 6, 7)
+	turn, err := conversation.NextTurn(context.Background())
+	if err != nil || turn.ToolCall != nil || turn.FinishReason != "stop" || turn.AssistantText != "" {
+		t.Fatalf("turn = %+v, err = %v; want the text-less final reply", turn, err)
+	}
+	record := lastRecord(t, journal)
+	last := hooks.reservations[len(hooks.reservations)-1]
+	if record.Event.Kind != "provider_exchange" || len(hooks.completions) != 1 ||
+		hooks.completions[0].Binding != last || hooks.completions[0].OutcomeDigest != record.Hash {
+		t.Fatalf("last record %s, completions %+v; want a complete exchange that settles the last host call", record.Event.Kind, hooks.completions)
+	}
+	if projection, err := replayHostCallsLeft(t, journal); err != nil || projection.ExchangeCount != 1 || projection.HostCallOutcomeDigest != record.Hash {
+		t.Fatalf("replay = %+v, %v", projection, err)
+	}
+}
+
+// On the research route the measured shape is reasoning only; its spend is settled to its usage.
+func TestReasoningOnlyReplyToToolsDisabledRequestSettlesItsSpend(t *testing.T) {
+	raw := withUsage(sseChunks("resp-1", spendTestModel, "stop", map[string]any{"role": "assistant", "reasoning": "only thinking"}), spendTestModel)
+	spend := &spendRecorder{}
+	conversation, err := newWithDoer(Config{
+		ConversationID: "conversation-spend", WorkflowID: "workflow-spend", ProfileID: "profile-spend",
+		InitialGenerationID: "generation-1", InitialTreeDigest: "sha256:" + strings.Repeat("0", 64),
+		SystemPrompt: "Spend system prompt.", DeveloperPrompt: "Spend developer profile.",
+		Route: spendTestRoute(t).WithReasoning(true), Spend: spend, HostCallsLeft: func() uint64 { return 1 },
+	}, spendTestModel, &rawDoer{bodies: [][]byte{raw}}, &memoryJournal{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	admitSpendPrompt(t, conversation)
+	if turn, err := conversation.NextTurn(context.Background()); err != nil || turn.ToolCall != nil || turn.AssistantText != "" || turn.FinishReason != "stop" {
+		t.Fatalf("turn = %+v, err = %v; want the text-less final reply", turn, err)
+	}
+	if got := strings.Join(spend.sequence(), ","); got != "reserve,settle:unit-1" {
+		t.Fatalf("spend = %s, want the unit settled to its usage", got)
+	}
+}

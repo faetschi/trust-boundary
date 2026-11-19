@@ -86,19 +86,29 @@ func exprText(e ast.Expr) string {
 
 // The registry fails closed: a sentinel or an UNKNOWN code without a row ends unclassified, never a rerun cause, so
 // a missing row can only lose a rerun. A bound can do worse: inside a disposed provider turn failure every leaf that
-// carries no ceiling is model behaviour or an outage, both rerun causes. This scan walks every bound a failure message names on the
-// provider path and in the durable executor and fails on one without a row, or on a row whose class disagrees with
-// runend.ErrCeiling at its site. On those paths a failure wraps its cause with %w, so no wrap drops the marker on its
+// carries no ceiling is model behaviour or an outage, both rerun causes. This scan walks every limit a failure message
+// names on the provider path and in the durable executor. It fails on a message that is neither a ceiling bound row nor
+// in runEndNotCeilings, and on one whose list disagrees with runend.ErrCeiling at its site. On those paths a failure wraps its cause with %w, so no wrap drops the marker on its
 // way to the classifier.
 func TestRunEndRegistryClassesEverySource(t *testing.T) {
-	boundRows := map[string]runEndSource{}
+	// isCeiling maps every limit message to whether it must carry runend.ErrCeiling.
+	isCeiling := map[string]bool{}
 	for _, row := range runEndRegistry {
 		if row.class == "" {
 			t.Errorf("row %+v has no class", row)
 		}
 		if row.bound != "" {
-			boundRows[row.bound] = row
+			if row.class != runend.AgentCeiling || row.carrier {
+				t.Errorf("bound row %q is not a ceiling; list it in runEndNotCeilings", row.bound)
+			}
+			isCeiling[row.bound] = true
 		}
+	}
+	for _, message := range runEndNotCeilings {
+		if _, dup := isCeiling[message]; dup {
+			t.Errorf("limit message %q is listed twice", message)
+		}
+		isCeiling[message] = false
 	}
 
 	seenBounds := map[string]bool{}
@@ -160,21 +170,21 @@ func TestRunEndRegistryClassesEverySource(t *testing.T) {
 					return true
 				}
 				seenBounds[message] = true
-				row, registered := boundRows[message]
+				ceiling, registered := isCeiling[message]
 				if !registered {
-					t.Errorf("%s: bound %q has no run-end class", fset.Position(call.Pos()), message)
+					t.Errorf("%s: bound %q is neither a bound row nor in runEndNotCeilings", fset.Position(call.Pos()), message)
 					return true
 				}
-				if ceiling := row.class == runend.AgentCeiling && !row.carrier; ceiling != marked {
-					t.Errorf("%s: bound %q is %s but carries runend.ErrCeiling=%t", fset.Position(call.Pos()), message, row.class, marked)
+				if ceiling != marked {
+					t.Errorf("%s: bound %q is a ceiling=%t but carries runend.ErrCeiling=%t", fset.Position(call.Pos()), message, ceiling, marked)
 				}
 				return true
 			})
 		}
 	}
-	for message := range boundRows {
+	for message := range isCeiling {
 		if !seenBounds[message] {
-			t.Errorf("bound row %q names no failure message on the scanned paths", message)
+			t.Errorf("limit message %q names no failure message on the scanned paths", message)
 		}
 	}
 }
