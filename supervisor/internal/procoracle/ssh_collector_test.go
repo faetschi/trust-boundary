@@ -399,13 +399,27 @@ func TestSSHCollectorRefusesAGuestCellItWasNotConfiguredFor(t *testing.T) {
 	}
 }
 
-func TestSSHCollectorEndIntervalStopsTheMonitor(t *testing.T) {
+// A guest monitor that was not stopped on proof runs to its horizon and holds the guest's one monitor lock until then:
+// EndInterval returns only once it has ended, so the next interval can begin (rehearsal-dev-02, units 26 and 36).
+func TestSSHCollectorEndIntervalWaitsForTheGuestMonitorToEnd(t *testing.T) {
 	g := &fakeGuest{cell: sshCell, release: make(chan struct{})}
 	c, _ := newSSHCollector(g)
 	if err := c.BeginInterval(context.Background(), sshRef); err != nil {
 		t.Fatal(err)
 	}
-	c.EndInterval(sshRef)
+	ended := make(chan struct{})
+	go func() { c.EndInterval(sshRef); close(ended) }()
+	select {
+	case <-ended:
+		t.Fatal("EndInterval returned while the guest monitor still runs")
+	case <-time.After(200 * time.Millisecond):
+	}
+	close(g.release) // the monitor reaches its horizon
+	select {
+	case <-ended:
+	case <-time.After(10 * time.Second):
+		t.Fatal("EndInterval did not return once the guest monitor ended")
+	}
 	if _, err := c.Proc(context.Background(), sshRef); !errors.Is(err, runner.ErrEvidenceAbsent) {
 		t.Fatalf("Proc after EndInterval: %v", err)
 	}
