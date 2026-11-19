@@ -156,9 +156,11 @@ var runEndRegistry = []runEndSource{
 	{bound: "%w: provider channel frame budget exhausted", class: runend.AgentCeiling},
 	{bound: "%w: executor output is oversized", class: runend.AgentCeiling},
 
-	// Provider-path bounds whose class is that of the error they wrap: a ledger refusal, the end of the turn context.
+	// Provider-path bounds whose class is that of the error they wrap: a ledger refusal (the token allowance joined to
+	// the cap refusal), the end of the turn context.
 	{bound: "reserve durable provider allowance before dispatch: %w", class: runend.Infrastructure, carrier: true},
 	{bound: "wait out the provider rate limit: %w", class: runend.Infrastructure, carrier: true},
+	{bound: "host selected no positive provider completion-token cap", class: runend.Infrastructure, carrier: true},
 
 	// Provider-path bounds of the reply stream. Under D50 a reply within the 4,096-token cap stays inside them, so a
 	// stream past one is the provider's.
@@ -179,6 +181,8 @@ var runEndRegistry = []runEndSource{
 	{bound: "provider evidence sequence exhausted", class: runend.Infrastructure},
 	{bound: "provider turn sequence exhausted", class: runend.Infrastructure},
 	{bound: "provider response byte budget is invalid", class: runend.Infrastructure},
+	{bound: "completion-token cap is outside the supported request range", class: runend.Infrastructure},
+	{bound: "host-call reservation does not bind the exact outbound request and completion cap", class: runend.Infrastructure},
 	{bound: "user task identity or prompt is invalid or exceeds its bound", class: runend.Infrastructure},
 	{bound: "invalid or oversized prior tool-call fields", class: runend.Infrastructure},
 	{bound: "decision input exceeds bound", class: runend.Infrastructure},
