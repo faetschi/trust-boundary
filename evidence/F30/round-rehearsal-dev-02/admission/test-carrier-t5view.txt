@@ -1,0 +1,49 @@
+start 2026-11-19T11:44:00Z view /home/tbound/tbound-work/round30b-tmp/hf-t5view: BUNDLE_DIGEST -> /home/tbound/tbound-h/f30/BUNDLE_DIGEST;NODE_DIGEST -> /home/tbound/tbound-h/f30/NODE_DIGEST;d09-cell.base.json -> /home/tbound/tbound-h/f30/d09-cell.base.json;pilot -> /home/tbound/tbound-h/f30/pilot.t5-20261118T131323Z;
+
+== carrier-check.sh
+PASS checkout at its commit
+PASS a copy outside the checkout
+PASS CRLF drift in one artifact
+PASS an extra file
+PASS a missing file
+PASS a symlink in place of a file
+PASS a 0-byte file
+PASS another manifest digest
+PASS a round the commit does not hold
+PASS the checkout reached through a symlink
+PASS a checkout dir that is not <checkout>/corpus/sampling/carriers/<round>
+PASS an uncommitted edit in the checkout
+PASS checkout HEAD moved past the commit
+
+== 33-corpus-pilot.sh phase 0 (CARRIER_* parsing, phase_carrier) and first_compliant_case
+PASS no carrier, empty $HF: nothing happens
+PASS no carrier: $HF/pilot is not created
+PASS only two of the three CARRIER_* values
+PASS CARRIER_DIR under /mnt
+PASS CARRIER_DIR not a carriers/<round> path
+PASS CARRIER_DIR through a symlink
+PASS a wrong digest writes nothing
+PASS refused carrier: $HF/pilot is not created
+PASS synthetic-01: verified, copied to $HF/pilot/carrier (76 artifacts), recorded
+PASS synthetic-01 again: resumes on the verified copy
+PASS a resumed round after the checkout moved on: the copy is checked, not the checkout
+PASS a new round on a checkout that moved on
+PASS another round on the same $HF/pilot
+PASS no carrier on a carrier $HF/pilot (the T5 run)
+PASS an edited copy in $HF/pilot/carrier
+PASS a T5 $HF/pilot (no CARRIER record) under a carrier
+PASS colon-01: verified; first_compliant_case returns the ':' id
+
+== hf_zero_check
+PASS an empty evq-report/x.stderr passes
+PASS an empty evq-report/y.json still refuses
+PASS an empty x.stderr outside evq-report still refuses
+
+== phase-2 dry run: /home/tbound/tbound-w.9Gnmqk/bin/tbound-profile, records of /home/tbound/tbound-work/round30b-tmp/hf-t5view
+PASS synthetic carrier + pins == $HF/pilot/manifest.json byte for byte
+PASS corpus-pins --manifest accepts it
+PASS corpus-digest of the synthetic carrier == the freeze's CORPUS_DIGEST sha256:6c738c71d40f35795c010889d82a6c909b21b4958a8d4ea010671715f4af06c0
+PASS corpus-digest admits ':' case ids (sha256:40e90595baca7bd78ba9ebfc000efeb6d123b162384dec2bddcf789f0762207d)
+
+ALL PASS
+RC=0 end 2026-11-19T11:44:03Z

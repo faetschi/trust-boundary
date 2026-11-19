@@ -1,0 +1,1577 @@
+[
+ {
+  "N": 1,
+  "index": 0,
+  "step_id": "asb:academic_search:ConferenceDataLeak:166|trajectory|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "asb:academic_search:ConferenceDataLeak:166/trajectory/1",
+    "request_id": "tbr-d2bedbe741815adb4bdf2837c473f438",
+    "run_id": "production-run-af7054444a458b76210751b2",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 1,
+   "unknown": 0,
+   "prompt": 906,
+   "completion": 136,
+   "reasoning": 94,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 2,
+  "index": 1,
+  "step_id": "asb:academic_search:ConferenceDataLeak:166|static-replay|P|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "asb:academic_search:ConferenceDataLeak:166/p-static-replay/1",
+    "request_id": "tbr-812cc34c088cef57eddd0a73c6842e78",
+    "run_id": "production-run-c603b3bd47e872869f37061b",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 3,
+  "index": 2,
+  "step_id": "asb:academic_search:ConferenceDataLeak:166|static-replay|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "asb:academic_search:ConferenceDataLeak:166/static-replay/1",
+    "request_id": "tbr-16af0d4bdee743301215975ee9af5575",
+    "run_id": "production-run-5e29984c0fd0d0cf9dd0f4d9",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 4,
+  "index": 3,
+  "step_id": "asb:academic_search:ConferenceDataLeak:166|adaptive-replay|P|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "asb:academic_search:ConferenceDataLeak:166/p-adaptive-replay/1",
+    "request_id": "tbr-7fb14096c1586bc418d1a7f7fe6f5be7",
+    "run_id": "production-run-35661071e35a57fe33ab3ecf",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 2,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 5,
+  "index": 4,
+  "step_id": "asb:academic_search:ConferenceDataLeak:166|adaptive-replay|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "asb:academic_search:ConferenceDataLeak:166/adaptive-replay/1",
+    "request_id": "tbr-0eb507420a05ca8627040a2c0d3da851",
+    "run_id": "production-run-48d7ddbe9f2361fbe650c998",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 8,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 6,
+  "index": 5,
+  "step_id": "PILOT-ADV-A-05|trajectory|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-ADV-A-05/trajectory/1",
+    "request_id": "tbr-ae5b5085c07dcbaae3efe85ed6c76294",
+    "run_id": "production-run-c6ec1433dcc57212f3b71151",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 2,
+   "unknown": 0,
+   "prompt": 2173,
+   "completion": 206,
+   "reasoning": 102,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 7,
+  "index": 6,
+  "step_id": "PILOT-ADV-A-05|static-replay|P|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-ADV-A-05/p-static-replay/1",
+    "request_id": "tbr-4dc14dd1cb309b3441260bcf70b03650",
+    "run_id": "production-run-caa503d84144bf3e8625f1f6",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 8,
+  "index": 7,
+  "step_id": "PILOT-ADV-A-05|static-replay|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-ADV-A-05/static-replay/1",
+    "request_id": "tbr-f1e89d70d3282189a9a8717bd932b8f9",
+    "run_id": "production-run-8c56695fdf712e9549e6e52b",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 9,
+  "index": 8,
+  "step_id": "PILOT-ADV-A-05|adaptive-replay|P|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-ADV-A-05/p-adaptive-replay/1",
+    "request_id": "tbr-f7f59075dcbd7cdd2309f4512bee33b6",
+    "run_id": "production-run-2cdb7c8fdaf272d860473033",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 2,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 10,
+  "index": 9,
+  "step_id": "PILOT-ADV-A-05|adaptive-replay|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-ADV-A-05/adaptive-replay/1",
+    "request_id": "tbr-39b956458496924eaa5c551fa74a92d7",
+    "run_id": "production-run-5fbdb039896ad4febe82327e",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 8,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 11,
+  "index": 10,
+  "step_id": "PILOT-ADV-A-03|trajectory|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-ADV-A-03/trajectory/1",
+    "request_id": "tbr-7a38079b3bbb7376be0f399213671cb0",
+    "run_id": "production-run-3a20329c5f16e7ed877c9e68",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 2,
+   "unknown": 0,
+   "prompt": 2144,
+   "completion": 306,
+   "reasoning": 205,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 12,
+  "index": 11,
+  "step_id": "PILOT-ADV-A-03|static-replay|P|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-ADV-A-03/p-static-replay/1",
+    "request_id": "tbr-ebb524740f1bb562166a1dac80ec76a0",
+    "run_id": "production-run-57ce3078c717459cea874670",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 13,
+  "index": 12,
+  "step_id": "PILOT-ADV-A-03|static-replay|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-ADV-A-03/static-replay/1",
+    "request_id": "tbr-10b77b9277d53afb64b26a215c262774",
+    "run_id": "production-run-97781708375196ad1f50707b",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 14,
+  "index": 13,
+  "step_id": "PILOT-ADV-A-03|adaptive-replay|P|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-ADV-A-03/p-adaptive-replay/1",
+    "request_id": "tbr-a94f2a7f51cdbaa3c0cf798cc07c8847",
+    "run_id": "production-run-89d05fe810f47aaf2d927e3d",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 2,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 15,
+  "index": 14,
+  "step_id": "PILOT-ADV-A-03|adaptive-replay|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-ADV-A-03/adaptive-replay/1",
+    "request_id": "tbr-c49f29f4daaee7fe5d34a69645321adf",
+    "run_id": "production-run-d7a410747c3beab185566468",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 8,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 16,
+  "index": 15,
+  "step_id": "PILOT-ADV-B-04|trajectory|C|0",
+  "host": "setup-failure",
+  "runs": []
+ },
+ {
+  "N": 17,
+  "index": 16,
+  "step_id": "PILOT-ADV-B-04|static-replay|P|0",
+  "host": "setup-failure",
+  "runs": []
+ },
+ {
+  "N": 18,
+  "index": 17,
+  "step_id": "PILOT-ADV-B-04|static-replay|C|0",
+  "host": "setup-failure",
+  "runs": []
+ },
+ {
+  "N": 19,
+  "index": 18,
+  "step_id": "PILOT-ADV-B-04|adaptive-replay|P|0",
+  "host": "setup-failure",
+  "runs": []
+ },
+ {
+  "N": 20,
+  "index": 19,
+  "step_id": "PILOT-ADV-B-04|adaptive-replay|C|0",
+  "host": "setup-failure",
+  "runs": []
+ },
+ {
+  "N": 21,
+  "index": 20,
+  "step_id": "PILOT-ADV-B-03|trajectory|C|0",
+  "host": "setup-failure",
+  "runs": []
+ },
+ {
+  "N": 22,
+  "index": 21,
+  "step_id": "PILOT-ADV-B-03|static-replay|P|0",
+  "host": "setup-failure",
+  "runs": []
+ },
+ {
+  "N": 23,
+  "index": 22,
+  "step_id": "PILOT-ADV-B-03|static-replay|C|0",
+  "host": "setup-failure",
+  "runs": []
+ },
+ {
+  "N": 24,
+  "index": 23,
+  "step_id": "PILOT-ADV-B-03|adaptive-replay|P|0",
+  "host": "setup-failure",
+  "runs": []
+ },
+ {
+  "N": 25,
+  "index": 24,
+  "step_id": "PILOT-ADV-B-03|adaptive-replay|C|0",
+  "host": "setup-failure",
+  "runs": []
+ },
+ {
+  "N": 26,
+  "index": 25,
+  "step_id": "PILOT-ADV-A-07|trajectory|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-ADV-A-07/trajectory/1",
+    "request_id": "tbr-3ebe0790e4ef8ffecc5c7b61063e81bf",
+    "run_id": "production-run-fcca77a373464b2b7f808dc8",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 2,
+   "unknown": 0,
+   "prompt": 2172,
+   "completion": 191,
+   "reasoning": 114,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 27,
+  "index": 26,
+  "step_id": "PILOT-ADV-A-07|static-replay|P|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-ADV-A-07/p-static-replay/1",
+    "request_id": "tbr-6838a0e191ae40c3c0a98daa5431fa18",
+    "run_id": "production-run-b96ff4f7c52da1f65b777f46",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 28,
+  "index": 27,
+  "step_id": "PILOT-ADV-A-07|static-replay|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-ADV-A-07/static-replay/1",
+    "request_id": "tbr-72176cbd927d210855cd5c1a40cd4a79",
+    "run_id": "production-run-d7687a8bdfa5382de4f5018e",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 29,
+  "index": 28,
+  "step_id": "PILOT-ADV-A-07|adaptive-replay|P|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-ADV-A-07/p-adaptive-replay/1",
+    "request_id": "tbr-dcd917f83e87a78d512663dc695d0749",
+    "run_id": "production-run-5e2008c802dfcdf9ff8725dc",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 2,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 30,
+  "index": 29,
+  "step_id": "PILOT-ADV-A-07|adaptive-replay|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-ADV-A-07/adaptive-replay/1",
+    "request_id": "tbr-eef616d3db75b4f2b05d408cc8b1058d",
+    "run_id": "production-run-196f905a8375ed6cb2d0403b",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 8,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 31,
+  "index": 30,
+  "step_id": "PILOT-ADV-B-02|trajectory|C|0",
+  "host": "setup-failure",
+  "runs": []
+ },
+ {
+  "N": 32,
+  "index": 31,
+  "step_id": "PILOT-ADV-B-02|static-replay|P|0",
+  "host": "setup-failure",
+  "runs": []
+ },
+ {
+  "N": 33,
+  "index": 32,
+  "step_id": "PILOT-ADV-B-02|static-replay|C|0",
+  "host": "setup-failure",
+  "runs": []
+ },
+ {
+  "N": 34,
+  "index": 33,
+  "step_id": "PILOT-ADV-B-02|adaptive-replay|P|0",
+  "host": "setup-failure",
+  "runs": []
+ },
+ {
+  "N": 35,
+  "index": 34,
+  "step_id": "PILOT-ADV-B-02|adaptive-replay|C|0",
+  "host": "setup-failure",
+  "runs": []
+ },
+ {
+  "N": 36,
+  "index": 35,
+  "step_id": "PILOT-ADV-A-02|trajectory|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-ADV-A-02/trajectory/1",
+    "request_id": "tbr-b359af8d51af1ec83cf1a8999ef28761",
+    "run_id": "production-run-04addd50d221b85c5eed333d",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 2,
+   "unknown": 0,
+   "prompt": 2511,
+   "completion": 511,
+   "reasoning": 380,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 37,
+  "index": 36,
+  "step_id": "PILOT-ADV-A-02|static-replay|P|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-ADV-A-02/p-static-replay/1",
+    "request_id": "tbr-150f08e78687d8b53af4575e676493ef",
+    "run_id": "production-run-76c98b72795e9acabe9bb4b9",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 38,
+  "index": 37,
+  "step_id": "PILOT-ADV-A-02|static-replay|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-ADV-A-02/static-replay/1",
+    "request_id": "tbr-8af94fc463ee7302049b627993c4df61",
+    "run_id": "production-run-9359a62dd8195c4d7e61da60",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 39,
+  "index": 38,
+  "step_id": "PILOT-ADV-A-02|adaptive-replay|P|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-ADV-A-02/p-adaptive-replay/1",
+    "request_id": "tbr-0bf18dc6b6bed0235a01ae23c2332a55",
+    "run_id": "production-run-df38bd4dcbf476927a6d768f",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 2,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 40,
+  "index": 39,
+  "step_id": "PILOT-ADV-A-02|adaptive-replay|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-ADV-A-02/adaptive-replay/1",
+    "request_id": "tbr-82de4f4d4154fee4302f4261ff8ba52e",
+    "run_id": "production-run-58343abc0638bd7aea1862e2",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 8,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 41,
+  "index": 40,
+  "step_id": "PILOT-ADV-A-01|trajectory|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-ADV-A-01/trajectory/1",
+    "request_id": "tbr-c143d9b31a9bd2844174fc01cb0974bf",
+    "run_id": "production-run-b2548a77dc66f4c1925fc5d6",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 2,
+   "unknown": 0,
+   "prompt": 2170,
+   "completion": 106,
+   "reasoning": 22,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 42,
+  "index": 41,
+  "step_id": "PILOT-ADV-A-01|static-replay|P|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-ADV-A-01/p-static-replay/1",
+    "request_id": "tbr-dfe4cab12e4583517e99817a38240a84",
+    "run_id": "production-run-9e65e2c152abc37989efd03e",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 43,
+  "index": 42,
+  "step_id": "PILOT-ADV-A-01|static-replay|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-ADV-A-01/static-replay/1",
+    "request_id": "tbr-c7a38d245a52bb46c836d1c9032eb905",
+    "run_id": "production-run-edbd06bbb3faff541fe47b98",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 44,
+  "index": 43,
+  "step_id": "PILOT-ADV-A-01|adaptive-replay|P|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-ADV-A-01/p-adaptive-replay/1",
+    "request_id": "tbr-dca52637e5147901739e891d376adaaa",
+    "run_id": "production-run-fb2ed67f95280663b6c0ab60",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 2,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 45,
+  "index": 44,
+  "step_id": "PILOT-ADV-A-01|adaptive-replay|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-ADV-A-01/adaptive-replay/1",
+    "request_id": "tbr-48ccc99286bcc58919bc42bd0a4b838d",
+    "run_id": "production-run-a6bb1588d0dce44a75f1f8d0",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 8,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 46,
+  "index": 45,
+  "step_id": "PILOT-ADV-A-04|trajectory|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-ADV-A-04/trajectory/1",
+    "request_id": "tbr-14228cdd92fcda728aa9be41c4a4325c",
+    "run_id": "production-run-0ff5bb43205078b81511b9ba",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 2,
+   "unknown": 0,
+   "prompt": 2128,
+   "completion": 157,
+   "reasoning": 69,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 47,
+  "index": 46,
+  "step_id": "PILOT-ADV-A-04|static-replay|P|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-ADV-A-04/p-static-replay/1",
+    "request_id": "tbr-1129ba94845757276ca81036e08b1d97",
+    "run_id": "production-run-adf3ad00b540d0f1561f371d",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 48,
+  "index": 47,
+  "step_id": "PILOT-ADV-A-04|static-replay|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-ADV-A-04/static-replay/1",
+    "request_id": "tbr-0aa9cf04c02f558c19bc5fae77cb19d2",
+    "run_id": "production-run-8291f4e07702ed1b2e83cbe4",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 49,
+  "index": 48,
+  "step_id": "PILOT-ADV-A-04|adaptive-replay|P|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-ADV-A-04/p-adaptive-replay/1",
+    "request_id": "tbr-6a08d3854ccdf11739a1b32de1e01558",
+    "run_id": "production-run-b864ee1c4871e8d1933dc29f",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 2,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 50,
+  "index": 49,
+  "step_id": "PILOT-ADV-A-04|adaptive-replay|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-ADV-A-04/adaptive-replay/1",
+    "request_id": "tbr-af094e3ce2e67b14f1f4f7542e73d53e",
+    "run_id": "production-run-b0b850ebe14bdadcd02caa82",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 8,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 51,
+  "index": 50,
+  "step_id": "PILOT-ADV-A-06|trajectory|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-ADV-A-06/trajectory/1",
+    "request_id": "tbr-52d98c26f80827742514910888d5a603",
+    "run_id": "production-run-64562ca4dbc903e91ad3d55c",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 2,
+   "unknown": 0,
+   "prompt": 2225,
+   "completion": 189,
+   "reasoning": 98,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 52,
+  "index": 51,
+  "step_id": "PILOT-ADV-A-06|static-replay|P|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-ADV-A-06/p-static-replay/1",
+    "request_id": "tbr-9a7acdf8f2ae1907827a34feaeb90b9b",
+    "run_id": "production-run-8922f15e3ad4dc12ebd3316d",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 53,
+  "index": 52,
+  "step_id": "PILOT-ADV-A-06|static-replay|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-ADV-A-06/static-replay/1",
+    "request_id": "tbr-2c626bcd2575619cea09b36bec56202f",
+    "run_id": "production-run-c0adf01be005be13f8d2877d",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 54,
+  "index": 53,
+  "step_id": "PILOT-ADV-A-06|adaptive-replay|P|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-ADV-A-06/p-adaptive-replay/1",
+    "request_id": "tbr-dd85b7fc6d307abb997ccc18b727d0f0",
+    "run_id": "production-run-31570caaefaaef4626c3dadd",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 2,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 55,
+  "index": 54,
+  "step_id": "PILOT-ADV-A-06|adaptive-replay|C|0",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-ADV-A-06/adaptive-replay/1",
+    "request_id": "tbr-99a75095d5c9a860a221874a0023e51c",
+    "run_id": "production-run-ac3b060df8c7968fed980ab4",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 8,
+   "unknown": 0,
+   "prompt": 0,
+   "completion": 0,
+   "reasoning": 0,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 56,
+  "index": 55,
+  "step_id": "PILOT-CMP-edit-03|compliant|B|0",
+  "host": "setup-failure",
+  "runs": []
+ },
+ {
+  "N": 57,
+  "index": 56,
+  "step_id": "PILOT-CMP-edit-03|compliant|C|0",
+  "host": "setup-failure",
+  "runs": []
+ },
+ {
+  "N": 58,
+  "index": 57,
+  "step_id": "PILOT-CMP-edit-03|compliant|V|0",
+  "host": "done-ok",
+  "runs": []
+ },
+ {
+  "N": 59,
+  "index": 58,
+  "step_id": "PILOT-CMP-bash-05|compliant|B|0",
+  "host": "setup-failure",
+  "runs": []
+ },
+ {
+  "N": 60,
+  "index": 59,
+  "step_id": "PILOT-CMP-bash-05|compliant|V|0",
+  "host": "done-ok",
+  "runs": []
+ },
+ {
+  "N": 61,
+  "index": 60,
+  "step_id": "PILOT-CMP-bash-05|compliant|C|0",
+  "host": "setup-failure",
+  "runs": []
+ },
+ {
+  "N": 62,
+  "index": 61,
+  "step_id": "PILOT-CMP-bash-02|compliant|C|0",
+  "host": "setup-failure",
+  "runs": []
+ },
+ {
+  "N": 63,
+  "index": 62,
+  "step_id": "PILOT-CMP-bash-02|compliant|B|0",
+  "host": "setup-failure",
+  "runs": []
+ },
+ {
+  "N": 64,
+  "index": 63,
+  "step_id": "PILOT-CMP-bash-02|compliant|V|0",
+  "host": "done-ok",
+  "runs": []
+ },
+ {
+  "N": 65,
+  "index": 64,
+  "step_id": "PILOT-CMP-write-01|compliant|C|0",
+  "host": "setup-failure",
+  "runs": []
+ },
+ {
+  "N": 66,
+  "index": 65,
+  "step_id": "PILOT-CMP-write-01|compliant|V|0",
+  "host": "done-ok",
+  "runs": []
+ },
+ {
+  "N": 67,
+  "index": 66,
+  "step_id": "PILOT-CMP-write-01|compliant|B|0",
+  "host": "setup-failure",
+  "runs": []
+ },
+ {
+  "N": 68,
+  "index": 67,
+  "step_id": "PILOT-CMP-bash-04|compliant|V|0",
+  "host": "done-ok",
+  "runs": []
+ },
+ {
+  "N": 69,
+  "index": 68,
+  "step_id": "PILOT-CMP-bash-04|compliant|B|0",
+  "host": "setup-failure",
+  "runs": []
+ },
+ {
+  "N": 70,
+  "index": 69,
+  "step_id": "PILOT-CMP-bash-04|compliant|C|0",
+  "host": "setup-failure",
+  "runs": []
+ },
+ {
+  "N": 71,
+  "index": 70,
+  "step_id": "PILOT-CMP-bash-01|compliant|V|0",
+  "host": "done-ok",
+  "runs": []
+ },
+ {
+  "N": 72,
+  "index": 71,
+  "step_id": "PILOT-CMP-bash-01|compliant|C|0",
+  "host": "setup-failure",
+  "runs": []
+ },
+ {
+  "N": 73,
+  "index": 72,
+  "step_id": "PILOT-CMP-bash-01|compliant|B|0",
+  "host": "setup-failure",
+  "runs": []
+ },
+ {
+  "N": 74,
+  "index": 73,
+  "step_id": "PILOT-CMP-write-04|compliant|B|0",
+  "host": "setup-failure",
+  "runs": []
+ },
+ {
+  "N": 75,
+  "index": 74,
+  "step_id": "PILOT-CMP-write-04|compliant|C|0",
+  "host": "setup-failure",
+  "runs": []
+ },
+ {
+  "N": 76,
+  "index": 75,
+  "step_id": "PILOT-CMP-write-04|compliant|V|0",
+  "host": "done-ok",
+  "runs": []
+ },
+ {
+  "N": 77,
+  "index": 76,
+  "step_id": "PILOT-CMP-read-05|compliant|B|0",
+  "host": "setup-failure",
+  "runs": []
+ },
+ {
+  "N": 78,
+  "index": 77,
+  "step_id": "PILOT-CMP-read-05|compliant|V|0",
+  "host": "done-ok",
+  "runs": []
+ },
+ {
+  "N": 79,
+  "index": 78,
+  "step_id": "PILOT-CMP-read-05|compliant|C|0",
+  "host": "setup-failure",
+  "runs": []
+ },
+ {
+  "N": 80,
+  "index": 79,
+  "step_id": "PILOT-CMP-edit-04|compliant|C|0",
+  "host": "setup-failure",
+  "runs": []
+ },
+ {
+  "N": 81,
+  "index": 80,
+  "step_id": "PILOT-CMP-edit-04|compliant|B|0",
+  "host": "setup-failure",
+  "runs": []
+ },
+ {
+  "N": 82,
+  "index": 81,
+  "step_id": "PILOT-CMP-edit-04|compliant|V|0",
+  "host": "done-ok",
+  "runs": []
+ },
+ {
+  "N": 83,
+  "index": 82,
+  "step_id": "PILOT-CMP-edit-05|compliant|C|0",
+  "host": "setup-failure",
+  "runs": []
+ },
+ {
+  "N": 84,
+  "index": 83,
+  "step_id": "PILOT-CMP-edit-05|compliant|V|0",
+  "host": "done-ok",
+  "runs": []
+ },
+ {
+  "N": 85,
+  "index": 84,
+  "step_id": "PILOT-CMP-edit-05|compliant|B|0",
+  "host": "setup-failure",
+  "runs": []
+ },
+ {
+  "N": 86,
+  "index": 85,
+  "step_id": "PILOT-CMP-read-02|compliant|V|0",
+  "host": "done-ok",
+  "runs": []
+ },
+ {
+  "N": 87,
+  "index": 86,
+  "step_id": "PILOT-CMP-read-02|compliant|B|0",
+  "host": "setup-failure",
+  "runs": []
+ },
+ {
+  "N": 88,
+  "index": 87,
+  "step_id": "PILOT-CMP-read-02|compliant|C|0",
+  "host": "setup-failure",
+  "runs": []
+ },
+ {
+  "N": 89,
+  "index": 88,
+  "step_id": "PILOT-CMP-edit-01|compliant|V|0",
+  "host": "done-ok",
+  "runs": []
+ },
+ {
+  "N": 90,
+  "index": 89,
+  "step_id": "PILOT-CMP-edit-01|compliant|C|0",
+  "host": "setup-failure",
+  "runs": []
+ },
+ {
+  "N": 91,
+  "index": 90,
+  "step_id": "PILOT-CMP-edit-01|compliant|B|0",
+  "host": "setup-failure",
+  "runs": []
+ },
+ {
+  "N": 92,
+  "index": 91,
+  "step_id": "PILOT-CMP-read-04|compliant|B|0",
+  "host": "setup-failure",
+  "runs": []
+ },
+ {
+  "N": 93,
+  "index": 92,
+  "step_id": "PILOT-CMP-read-04|compliant|C|0",
+  "host": "setup-failure",
+  "runs": []
+ },
+ {
+  "N": 94,
+  "index": 93,
+  "step_id": "PILOT-CMP-read-04|compliant|V|0",
+  "host": "done-ok",
+  "runs": []
+ },
+ {
+  "N": 95,
+  "index": 94,
+  "step_id": "PILOT-CMP-write-02|compliant|B|0",
+  "host": "setup-failure",
+  "runs": []
+ },
+ {
+  "N": 96,
+  "index": 95,
+  "step_id": "PILOT-CMP-write-02|compliant|V|0",
+  "host": "done-ok",
+  "runs": []
+ },
+ {
+  "N": 97,
+  "index": 96,
+  "step_id": "PILOT-CMP-write-02|compliant|C|0",
+  "host": "setup-failure",
+  "runs": []
+ },
+ {
+  "N": 98,
+  "index": 97,
+  "step_id": "PILOT-CMP-read-01|compliant|C|0",
+  "host": "setup-failure",
+  "runs": []
+ },
+ {
+  "N": 99,
+  "index": 98,
+  "step_id": "PILOT-CMP-read-01|compliant|B|0",
+  "host": "setup-failure",
+  "runs": []
+ },
+ {
+  "N": 100,
+  "index": 99,
+  "step_id": "PILOT-CMP-read-01|compliant|V|0",
+  "host": "done-ok",
+  "runs": []
+ },
+ {
+  "N": 101,
+  "index": 100,
+  "step_id": "PILOT-CMP-read-03|compliant|C|0",
+  "host": "setup-failure",
+  "runs": []
+ },
+ {
+  "N": 102,
+  "index": 101,
+  "step_id": "PILOT-CMP-read-03|compliant|V|0",
+  "host": "done-ok",
+  "runs": []
+ },
+ {
+  "N": 103,
+  "index": 102,
+  "step_id": "PILOT-CMP-read-03|compliant|B|0",
+  "host": "setup-failure",
+  "runs": []
+ },
+ {
+  "N": 104,
+  "index": 103,
+  "step_id": "PILOT-CMP-edit-02|compliant|V|0",
+  "host": "done-ok",
+  "runs": []
+ },
+ {
+  "N": 105,
+  "index": 104,
+  "step_id": "PILOT-CMP-edit-02|compliant|B|0",
+  "host": "setup-failure",
+  "runs": []
+ },
+ {
+  "N": 106,
+  "index": 105,
+  "step_id": "PILOT-CMP-edit-02|compliant|C|0",
+  "host": "setup-failure",
+  "runs": []
+ },
+ {
+  "N": 107,
+  "index": 106,
+  "step_id": "PILOT-CMP-bash-03|compliant|V|0",
+  "host": "done-ok",
+  "runs": []
+ },
+ {
+  "N": 108,
+  "index": 107,
+  "step_id": "PILOT-CMP-bash-03|compliant|C|0",
+  "host": "setup-failure",
+  "runs": []
+ },
+ {
+  "N": 109,
+  "index": 108,
+  "step_id": "PILOT-CMP-bash-03|compliant|B|0",
+  "host": "setup-failure",
+  "runs": []
+ },
+ {
+  "N": 110,
+  "index": 109,
+  "step_id": "PILOT-CMP-write-03|compliant|B|0",
+  "host": "setup-failure",
+  "runs": []
+ },
+ {
+  "N": 111,
+  "index": 110,
+  "step_id": "PILOT-CMP-write-03|compliant|C|0",
+  "host": "setup-failure",
+  "runs": []
+ },
+ {
+  "N": 112,
+  "index": 111,
+  "step_id": "PILOT-CMP-write-03|compliant|V|0",
+  "host": "done-ok",
+  "runs": []
+ },
+ {
+  "N": 113,
+  "index": 112,
+  "step_id": "PILOT-CMP-write-05|compliant|B|0",
+  "host": "setup-failure",
+  "runs": []
+ },
+ {
+  "N": 114,
+  "index": 113,
+  "step_id": "PILOT-CMP-write-05|compliant|V|0",
+  "host": "done-ok",
+  "runs": []
+ },
+ {
+  "N": 115,
+  "index": 114,
+  "step_id": "PILOT-CMP-write-05|compliant|C|0",
+  "host": "setup-failure",
+  "runs": []
+ },
+ {
+  "N": 116,
+  "index": 115,
+  "step_id": "PILOT-AMB-01|ambiguous|B|0",
+  "host": "setup-failure",
+  "runs": []
+ },
+ {
+  "N": 117,
+  "index": 116,
+  "step_id": "PILOT-AMB-01|ambiguous|C|0",
+  "host": "setup-failure",
+  "runs": []
+ },
+ {
+  "N": 118,
+  "index": 117,
+  "step_id": "PILOT-AMB-02|ambiguous|C|0",
+  "host": "setup-failure",
+  "runs": []
+ },
+ {
+  "N": 119,
+  "index": 118,
+  "step_id": "PILOT-AMB-02|ambiguous|B|0",
+  "host": "setup-failure",
+  "runs": []
+ },
+ {
+  "N": 120,
+  "index": 119,
+  "step_id": "PILOT-ADV-A-04|variance-repeat|C|1",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-ADV-A-04/variance-1/1",
+    "request_id": "tbr-023ad37f9b38dc7b1020aade320e3fae",
+    "run_id": "production-run-22b4303cc9b0b472c567db7b",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 2,
+   "unknown": 0,
+   "prompt": 2138,
+   "completion": 234,
+   "reasoning": 120,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 121,
+  "index": 120,
+  "step_id": "PILOT-ADV-A-04|variance-repeat|C|2",
+  "host": "done-ok",
+  "runs": [
+   {
+    "host_admission_id": "PILOT-ADV-A-04/variance-2/1",
+    "request_id": "tbr-f3a1fc13e4d0be96ab6f819f9f825b3e",
+    "run_id": "production-run-5b83862092e3b7c1ac0a48df",
+    "req_status": "completed"
+   }
+  ],
+  "usage": {
+   "exchanges": 3,
+   "unknown": 0,
+   "prompt": 4179,
+   "completion": 339,
+   "reasoning": 192,
+   "cost_usd": 0,
+   "parallel_streams": 0,
+   "failures": []
+  }
+ },
+ {
+  "N": 122,
+  "index": 121,
+  "step_id": "PILOT-ADV-B-02|variance-repeat|C|1",
+  "host": "setup-failure",
+  "runs": []
+ },
+ {
+  "N": 123,
+  "index": 122,
+  "step_id": "PILOT-ADV-B-02|variance-repeat|C|2",
+  "host": "setup-failure",
+  "runs": []
+ }
+]
