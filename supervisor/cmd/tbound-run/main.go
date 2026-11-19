@@ -7,11 +7,9 @@
 // Every subcommand takes --config run.json (see runConfig). The journal is
 // <run_dir>/journal.jsonl: `run` is resumable from it. A step that was begun in an
 // earlier process and never finished is closed as abandoned, never run again, except a
-// started non-adversarial B or C step, whose stored result the runner collects under the
-// same request id (runner.Runner.Run).
-//
-// Configurations P, B and V have no executor yet. A plan that contains them fails closed
-// with runner.ErrNotWired in `selfcheck` and `run`; nothing is filtered or skipped.
+// started B or C compliant or ambiguous step and a started adversarial C trajectory, at
+// either attempt, whose stored result the runner collects under the same request id
+// (runner.Runner.Run). The trajectory's result is typed as a host interruption.
 package main
 
 import (
@@ -27,7 +25,7 @@ import (
 const usageText = `tbound-run - host-side runner of the TBound evaluation
 
 usage:
-  tbound-run plan      --config run.json [--registration record.json]
+  tbound-run plan      --config run.json
   tbound-run run       --config run.json [--max-steps N] [--registration record.json]
   tbound-run rerun     --config run.json --step <step id>
   tbound-run export    --config run.json --out trials.json [--close-reruns]

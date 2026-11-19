@@ -410,11 +410,18 @@ func (b *book) checkAnchor(cfg Config) error {
 // ErrLocked; call it on a quiescent ledger. It replays the file, applies the
 // anchor rule, reports open reservations as uncertain like Open, and returns the
 // snapshot. AllowGenesis is ignored.
-func Verify(path string, cfg Config) (Snapshot, error) {
+func Verify(path string, cfg Config) (Snapshot, error) { return verify(path, cfg, true) }
+
+// Peek is Verify without the shared lock, for a ledger whose writer holds it for its whole life (the research
+// service). Call it only while the writer is quiescent: a record being written meanwhile is a torn record, which the
+// replay refuses.
+func Peek(path string, cfg Config) (Snapshot, error) { return verify(path, cfg, false) }
+
+func verify(path string, cfg Config, lock bool) (Snapshot, error) {
 	if err := cfg.validate(); err != nil {
 		return Snapshot{}, err
 	}
-	file, err := openLedgerFileShared(path)
+	file, err := openLedgerFileShared(path, lock)
 	if errors.Is(err, ErrMissingLedger) && cfg.ExpectedHeadSHA256 != "" {
 		return Snapshot{}, fmt.Errorf("%w: ledger file is absent", ErrHeadMismatch)
 	}

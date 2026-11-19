@@ -10,13 +10,15 @@
 # recoveries.
 #
 # Round layout (as the screening rounds keep it): <round>/run.json (its run_dir holds journal.jsonl), <round>/bin/tbound-run.exe,
+# <round>/registration.json (optional: the pre-registration record of a registered run; every chunk passes it as --registration),
 # <round>/runs/chunk-NN.txt|.err (runner stdout and stderr), <round>/runs/full.pid (the runner's Windows pid),
 # <round>/recover.log, <round>/recover.pid (this script's Windows pid, for watch.sh).
 # Environment: GUEST_IP (required, for gssh.sh), TBOUND_LOCAL and the other gssh.sh variables, MAX_CYCLES (default 15),
 # PYTHON (default python).
 # Start it detached: nohup bash infra/freeze/tools/recover.sh <round> > <round>/recover.out 2> <round>/recover.err &
-# An UNKNOWN unit stays CONSERVATIVE_FAILURE: the abandon settles the guest, it does not rerun the unit, and no code path
-# makes an outage rerun possible (pre-H1 audit SB-01). An outage-looking cause therefore stops for the operator's decision.
+# The abandon settles the guest; it does not rerun the unit. A provider-outage or task-outcome-unknown end is a rerun cause
+# (register D30 as amended 2026-11-18), rerun with `tbound-run rerun` after the abandon; a budget or unclassified end never
+# is. An outage-looking cause stops for the operator.
 set -u
 export MSYS_NO_PATHCONV=1
 PY=${PYTHON:-python}
@@ -77,6 +79,11 @@ streak_stop() {
   esac
 }
 
+# runner_args <round dir>: the runner's arguments. A registered run passes its record to every chunk (reproduce.md).
+runner_args() {
+  if [ -f "$1/registration.json" ]; then echo run --config run.json --registration registration.json; else echo run --config run.json; fi
+}
+
 [ "${RECOVER_LIB:-}" = 1 ] && return 0
 
 M=${1:?usage: recover.sh <round dir>}
@@ -90,7 +97,8 @@ J=$("$PY" -I -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="ut
 command -v cygpath > /dev/null && J=$(cygpath -u "$J")
 J=$J/journal.jsonl
 start_runner() { # start_runner <chunk>
-  (cd "$M" && nohup ./bin/tbound-run.exe run --config run.json > "runs/$1.txt" 2> "runs/$1.err" &)
+  # runner_args prints fixed words without spaces: the unquoted expansion splits them as intended.
+  (cd "$M" && nohup ./bin/tbound-run.exe $(runner_args "$M") > "runs/$1.txt" 2> "runs/$1.err" &)
   sleep 3
   local pids
   pids=$(tasklist /FI "IMAGENAME eq tbound-run.exe" /FO CSV /NH | grep -i 'tbound-run' | cut -d, -f2 | tr -d '"')
@@ -122,7 +130,7 @@ for cyc in $(seq 1 "$MAX"); do
   G "journalctl -u tbound-pi.service --since '-12h' --no-pager | grep -F $rid | cut -c1-2500" > "$D/cause.txt" 2>&1
   read -r idx streak < <(unknown_unit "$J")
   if grep -Eqi 'status[ =:"]*(429|5[0-9][0-9])|rate.?limit|overload|transport|connection reset|i/o timeout|no such host|EOF' "$D/cause.txt"; then
-    log "STOP: plan index $idx ($rid): the cause looks like a provider outage; the unit stays CONSERVATIVE_FAILURE (no outage rerun exists, SB-01); decide by hand whether to abandon and continue (see $D/cause.txt)"
+    log "STOP: plan index $idx ($rid): the cause looks like a provider outage; decide by hand whether to abandon and continue, then rerun the unit with tbound-run rerun (D30 as amended) (see $D/cause.txt)"
     exit 9
   fi
   why=$(streak_stop "$streak")

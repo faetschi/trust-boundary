@@ -190,6 +190,40 @@ func Genesis(paths Paths) (usdledger.Snapshot, error) {
 	return snapshot, errors.Join(snapshotErr, ledger.Close())
 }
 
+// CheckStopRule is the check before each unit (`tbound trial reset`, register D30 Limits): it refuses with
+// ErrStopRule when the remaining cap is below the per-unit worst case, and with usdledger.ErrOverCap after a
+// recorded overage, because ReserveSpend would then refuse every provider request of the unit. It reads the ledger
+// the service holds without a lock (usdledger.Peek), against the configuration and the checkpoint Open uses, so call
+// it only while no workflow runs (under the maintenance lock).
+func CheckStopRule(paths Paths) error {
+	configBytes, err := readOwnedFile(paths.LedgerConfig, maxLedgerConfigBytes, paths.OwnerUID)
+	if err != nil {
+		return err
+	}
+	config, err := LoadLedgerConfig(bytes.NewReader(configBytes))
+	if err != nil {
+		return err
+	}
+	checkpointBytes, err := readOwnedFile(paths.Checkpoint, maxCheckpointBytes, paths.OwnerUID)
+	if err != nil {
+		return err
+	}
+	checkpoint, err := parseCheckpoint(checkpointBytes)
+	if err != nil {
+		return err
+	}
+	snapshot, err := usdledger.Peek(paths.Ledger, ledgerOptions(config, false, checkpoint))
+	switch {
+	case err != nil:
+		return fmt.Errorf("read research USD ledger: %w", err)
+	case snapshot.Overspent:
+		return usdledger.ErrOverCap
+	case snapshot.StopRule:
+		return fmt.Errorf("%w (remaining %d micro-USD, threshold %d)", ErrStopRule, snapshot.RemainingMicroUSD, snapshot.MinPerUnitWorstCaseMicroUSD)
+	}
+	return nil
+}
+
 // ledgerOptions anchors Open to the operator-held checkpoint. The operator
 // updates the checkpoint between runs; the service runs as a non-root uid and
 // cannot rewrite it. Rollback within the records after the newest checkpoint

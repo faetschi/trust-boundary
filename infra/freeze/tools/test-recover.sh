@@ -1,7 +1,7 @@
 #!/bin/bash
 # test-recover.sh: local test of the decisions recover.sh takes from files, with synthetic inputs. No guest contact.
 # Which request is the one UNKNOWN to abandon (unknown_request), and which plan index ended UNKNOWN with how many governed
-# units in a row (unknown_unit), and whether that streak stops the round (streak_stop). Runs in WSL, on Linux or in Git Bash; PYTHON defaults to python3 where it exists.
+# units in a row (unknown_unit), whether that streak stops the round (streak_stop), and the runner's arguments (runner_args). Runs in WSL, on Linux or in Git Bash; PYTHON defaults to python3 where it exists.
 # Prints PASS/FAIL per case and exits non-zero on any FAIL.
 set -euo pipefail
 umask 077
@@ -39,4 +39,8 @@ check "three governed UNKNOWNs in a row stop" "$(streak_stop 3 | cut -d: -f1)" s
 printf 'not json\n' > "$T/j4.jsonl"
 read -r idx streak < <(unknown_unit "$T/j4.jsonl" 2> /dev/null) || true
 check "a journal it cannot read stops" "$(streak_stop "$streak" | cut -d' ' -f1-4)" "cannot read the UNKNOWN"
+mkdir "$T/round"
+check "a round without a registration record runs unregistered" "$(runner_args "$T/round")" "run --config run.json"
+: > "$T/round/registration.json"
+check "a registered round passes its record to every chunk" "$(runner_args "$T/round")" "run --config run.json --registration registration.json"
 [ "$FAILS" -eq 0 ] || exit 1

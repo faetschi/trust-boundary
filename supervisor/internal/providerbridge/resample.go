@@ -12,8 +12,9 @@ import (
 
 // Bounded broker resample (thesis decision 13, register entry D54).
 //
-// A provider may stream a second tool call although the request sets parallel_tool_calls=false. The
-// capture refuses that stream (openrouter.ErrParallelToolCall) and still does. When the refusal is
+// A provider may stream a second tool call although the engineering request sets parallel_tool_calls=false
+// (the research request omits that member, 2026-11-19, because require_parameters then drops its pinned
+// provider). The capture refuses that stream (openrouter.ErrParallelToolCall) and still does. When the refusal is
 // exactly that class, on a complete HTTP 200 response, the turn may send the same request bytes again:
 //
 //   - the refused attempt is closed like a retryable failure (retry.go): a

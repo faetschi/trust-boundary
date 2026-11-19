@@ -53,7 +53,8 @@ func sortedKeys(m map[string]int) []string {
 // Prepare refusal voids the begin, so the next step is neither spent nor started.
 var errMaxSteps = errors.New("stopped at --max-steps")
 
-// limitExecutor stops the run cleanly after max executed steps.
+// limitExecutor stops the run cleanly after max steps it started. Only a new step is prepared, so a resumed step's
+// result and the settling of an abandoned request are not counted.
 type limitExecutor struct {
 	runner.Executor
 	max, done int
@@ -63,12 +64,8 @@ func (l *limitExecutor) Prepare(ctx context.Context, s runner.Step) error {
 	if l.done >= l.max {
 		return errMaxSteps
 	}
-	return l.Executor.Prepare(ctx, s)
-}
-
-func (l *limitExecutor) Execute(ctx context.Context, s runner.Step) (runner.Outcome, error) {
 	l.done++
-	return l.Executor.Execute(ctx, s)
+	return l.Executor.Prepare(ctx, s)
 }
 
 // Check forwards the wiring check, which the runner runs before any unit is spent.

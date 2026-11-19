@@ -1,0 +1,23 @@
+tbound-op status 2026-11-19T13:20:55Z pins F=5626e34fdbf40983949cde67f17238b82800665b
+anchor: ok (pi-host-profile.pub sha256:be206a41ad321f29ef89e8157f69a6f0820a93fafa3096b71867ece745f9afac)
+runner: sha256:9d105056f2066ba9 tbound-profile: sha256:260868e41e4120fd
+service=active socket=active
+installed: cfg sha256:3cce2ab225d5c04bd11eaeb03cbdbfba7e1afbf4f7298117b209cda21db13e98 reg sha256:907b2082f610884d prof sha256:cd1ac8d31837b7ab tpl sha256:86891fd60415e89b
+installed config matches state of: pilot
+-- pilot:
+     cfg=sha256:3cce2ab225d5c04bd11eaeb03cbdbfba7e1afbf4f7298117b209cda21db13e98
+     prof=sha256:d9411735c966e60b6d15ca8f0e597f3d9c710b2c6da614ba3816ddd9deb6a3d8
+     profjson=sha256:cd1ac8d31837b7ab541f47f4c5e76a16da2579a7deb282f557d70eb29e372da3
+     profsig=sha256:fb60683bda1d7fdd1e093a633f7a8ddc57bf006e3fc9b54a46c323476b2daad2
+     reg=sha256:f65c44722a5b6f20c38761162e98fa0595cec104062944df2e212674232bc1f6
+     regjson=sha256:907b2082f610884d70f5e258c8674b90ca7c86281ea7f0496e7b8b161f0f25e2
+     regsig=sha256:7c9c5e7aadd8ef1de46a96c4fccb6fa7c0224d8509d2a48492973309ded05b7b
+     state=started
+     td=sha256:86891fd60415e89b7b543f11b1d41fdf98b67772df19068b269e6993985e7fbc
+     tpl=sha256:86891fd60415e89b7b543f11b1d41fdf98b67772df19068b269e6993985e7fbc
+-- last log lines
+2026-11-19T11:39:16Z tboundadmin END rc=0 argv=status pilot 
+2026-11-19T13:20:55Z tboundadmin BEGIN argv=diag podman-ps 
+2026-11-19T13:20:55Z tboundadmin OK diag podman-ps 
+2026-11-19T13:20:55Z tboundadmin END rc=0 argv=diag podman-ps 
+2026-11-19T13:20:55Z tboundadmin BEGIN argv=status pilot 

@@ -79,14 +79,15 @@ The operator steps and the run-config pins are in `infra/guest/PROVISIONING-SIGN
 chunk yet, and after a runner exit that an UNKNOWN request caused ("is not terminal") it previews `tbound-op abandon`, confirms it
 only on a clean preview, runs `svc start` and the leftover-container check, keeps the diagnostics in `<round>/diag/auto-*/` and
 starts the next runner chunk. It stops for the operator on anything else: an exit it does not know, not exactly one UNKNOWN request,
-an outage-looking cause (the unit stays CONSERVATIVE_FAILURE; no outage rerun exists, pre-H1 audit SB-01), an unclean preview,
+an outage-looking cause (the unit's rerun, D30 as amended 2026-11-18, is `tbound-run rerun` after the abandon), an unclean preview,
 a service that is not active, a leftover container, 3 governed units in a row that ended UNKNOWN or a journal it cannot count them in, or `MAX_CYCLES` (default 15).
 Its log names the plan index (0-based) of the step that ended UNKNOWN. The round layout is `<round>/run.json` (its `run_dir` holds the
-journal), `<round>/bin/tbound-run.exe` and `<round>/runs/`. Start it detached:
+journal), `<round>/bin/tbound-run.exe` and `<round>/runs/`. A registered run also keeps its pre-registration record as
+`<round>/registration.json`: every chunk then runs with `--registration registration.json`. Start it detached:
 `nohup bash infra/freeze/tools/recover.sh <round> > <round>/recover.out 2> <round>/recover.err &`.
 `tools/watch.sh <round> [line] [minutes]` returns once on the first notable journal record after `line`, a new `recover.log` line,
 a supervisor that is gone, or after `minutes` with a progress line. `tools/test-recover.sh` tests which request and which unit
-recover.sh picks, with synthetic files and no guest contact.
+recover.sh picks and the runner's arguments, with synthetic files and no guest contact.
 
 ## Per-freeze checklist
 

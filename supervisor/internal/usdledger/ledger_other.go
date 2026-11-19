@@ -14,9 +14,9 @@ func openLedgerFile(string, bool) (*os.File, bool, error) {
 	return nil, false, ErrUnsupported
 }
 
-// openLedgerFileShared opens a ledger copy read-only for Verify. There is no
-// writer here (the writer is Linux-only), so no lock is taken.
-func openLedgerFileShared(path string) (*os.File, error) {
+// openLedgerFileShared opens a ledger copy read-only for Verify and Peek. There is
+// no writer here (the writer is Linux-only), so no lock is taken.
+func openLedgerFileShared(path string, _ bool) (*os.File, error) {
 	info, err := os.Lstat(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, ErrMissingLedger
