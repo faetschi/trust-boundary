@@ -81,10 +81,10 @@ func openLedgerFile(path string, create bool) (*os.File, bool, error) {
 }
 
 // openLedgerFileShared opens the ledger read-only (O_NONBLOCK, so a FIFO cannot
-// hang the open before the regular-file check) with a shared nonblocking
+// hang the open before the regular-file check), with lock a shared nonblocking
 // flock, so an active writer yields ErrLocked and nothing is created or written.
 // The symlink and replacement checks match openLedgerFile.
-func openLedgerFileShared(path string) (*os.File, error) {
+func openLedgerFileShared(path string, lock bool) (*os.File, error) {
 	file, err := os.OpenFile(path, os.O_RDONLY|syscall.O_CLOEXEC|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
 	if err != nil {
 		switch {
@@ -95,12 +95,14 @@ func openLedgerFileShared(path string) (*os.File, error) {
 		}
 		return nil, err
 	}
-	if err := syscall.Flock(int(file.Fd()), syscall.LOCK_SH|syscall.LOCK_NB); err != nil {
-		_ = file.Close()
-		if errors.Is(err, syscall.EWOULDBLOCK) {
-			return nil, ErrLocked
+	if lock {
+		if err := syscall.Flock(int(file.Fd()), syscall.LOCK_SH|syscall.LOCK_NB); err != nil {
+			_ = file.Close()
+			if errors.Is(err, syscall.EWOULDBLOCK) {
+				return nil, ErrLocked
+			}
+			return nil, fmt.Errorf("flock ledger: %w", err)
 		}
-		return nil, fmt.Errorf("flock ledger: %w", err)
 	}
 	info, err := file.Stat()
 	if err == nil && !info.Mode().IsRegular() {

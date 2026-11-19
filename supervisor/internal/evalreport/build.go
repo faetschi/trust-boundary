@@ -335,7 +335,7 @@ func Build(in Inputs) (Report, error) {
 		H1:                     requireExactCoverage(sum.H1, cov.Exact),
 		Reruns:                 rerunCases(sum.Cases),
 		ProviderRetries:        providerRetries(in.Trials.ProviderRetries),
-		Spend:                  spendOf(in.Ledger, PlannedUnits(full.Manifest)),
+		Spend:                  spendOf(in.Ledger, PlannedUnits(full.Manifest), plannedLedgerUnits(full.Manifest)),
 	}
 	if r.Separate, err = separateStrata(full, separate); err != nil {
 		return Report{}, err
@@ -518,7 +518,7 @@ func totalUnits(s usdledger.Snapshot) (int, bool) {
 	return total, true
 }
 
-func spendOf(s usdledger.Snapshot, planned int) Spend {
+func spendOf(s usdledger.Snapshot, planned, plannedLedger int) Spend {
 	total, _ := totalUnits(s) // checkSnapshot has already rejected overflow
 	sp := Spend{
 		LedgerID:              s.LedgerID,
@@ -539,7 +539,7 @@ func spendOf(s usdledger.Snapshot, planned int) Spend {
 		CapMatchesRegistered:  s.CapMicroUSD == RegisteredCapMicroUSD,
 		OverCap:               s.CommittedMicroUSD > s.CapMicroUSD || s.CommittedMicroUSD > RegisteredCapMicroUSD,
 	}
-	sp.UnitsOverPlanned = sp.TotalUnits > planned
+	sp.UnitsOverPlanned = sp.TotalUnits > plannedLedger
 	sp.WithinBudget = sp.CapMatchesRegistered && !sp.OverCap && !sp.Overspent
 	return sp
 }
