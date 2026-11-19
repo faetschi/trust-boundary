@@ -36,7 +36,9 @@ const (
 	CodeBudgetEnded    = "run-budget-exhausted"
 	CodeProviderOutage = "provider-outage"
 	CodeUnclassified   = "run-end-unclassified"
-	// CodeLaunchNotAdmitted is a launch that failed before the task was admitted: the agent never ran.
+
+	// CodeLaunchNotAdmitted is a launch that failed before the task was admitted, with its cell settled and the
+	// receipt binding the run's E04 points: the agent never ran, so it is an infrastructure end, a rerun cause.
 	CodeLaunchNotAdmitted = "launch-not-admitted"
 )
 
@@ -49,6 +51,8 @@ var Codes = map[string]Class{
 	CodeBudgetEnded:    AgentCeiling,
 	CodeProviderOutage: Infrastructure,
 	CodeUnclassified:   Unclassified,
+
+	CodeLaunchNotAdmitted: Infrastructure,
 
 	"request-journal-unavailable":           Infrastructure,
 	"socket-authority-changed":              Infrastructure,

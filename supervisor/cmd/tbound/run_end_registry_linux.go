@@ -37,12 +37,11 @@ type runEndSource struct {
 // classes as infrastructure or model behaviour is a rerun cause; any other source ends unclassified, never rerun.
 // TestRunEndRegistryClassesEverySource walks the sources and fails on one without a row (runEndClass has the order).
 var runEndRegistry = []runEndSource{
-	// Workflow ledger faults: the protected root's clock, CAS, rollback and observation checks. Only start-up checks
-	// join one to the deadline, so a fault outranks a ceiling beside it.
+	// Workflow ledger faults: the protected root's clock and rollback checks. Only start-up checks join one to the
+	// deadline, so a fault outranks a ceiling beside it. The CAS and observation checks wrap a verifier's cause, which
+	// can carry a ceiling, so they are plain infrastructure rows below.
 	{err: workflowrecovery.ErrClockUncertain, class: runend.Infrastructure, fault: true},
 	{err: workflowrecovery.ErrRollback, class: runend.Infrastructure, fault: true},
-	{err: workflowrecovery.ErrCAS, class: runend.Infrastructure, fault: true},
-	{err: workflowrecovery.ErrObservation, class: runend.Infrastructure, fault: true},
 
 	// Agent ceilings: the ledger's deadline and allowances (host calls, tokens, effects, the effect store's page
 	// headroom), the predecessor context an adaptive attacker carries over, the workspace limits on what the agent
@@ -72,6 +71,8 @@ var runEndRegistry = []runEndSource{
 
 	// Infrastructure: the rest of the ledger, the bridge's own state, a command that never started, and the launch,
 	// host admission and service machinery that no agent drives.
+	{err: workflowrecovery.ErrCAS, class: runend.Infrastructure},
+	{err: workflowrecovery.ErrObservation, class: runend.Infrastructure},
 	{err: workflowrecovery.ErrInvalid, class: runend.Infrastructure},
 	{err: workflowrecovery.ErrMissing, class: runend.Infrastructure},
 	{err: workflowrecovery.ErrOwnerFence, class: runend.Infrastructure},
@@ -237,7 +238,8 @@ func runEndMatches(runErr error, decides func(runEndSource) bool) bool {
 }
 
 // runEndExplained walks the run error to its leaves. A registered sentinel explains its leaf by its row, a disposed
-// provider turn failure explains its whole subtree (an outage as infrastructure, any other as model behaviour), and a
+// provider turn failure explains its whole subtree (an outage as infrastructure, any other as model behaviour), a
+// launch that failed before task admission (launchNotAdmitted) explains its whole subtree as infrastructure, and a
 // carrier explains nothing on its own (""). A leaf no row explains makes the whole run unclassified.
 func runEndExplained(err error) runend.Class {
 	if err == nil {
@@ -250,6 +252,9 @@ func runEndExplained(err error) runend.Class {
 			}
 			return row.class
 		}
+	}
+	if _, ok := err.(launchNotAdmitted); ok {
+		return runend.Infrastructure
 	}
 	if failure, ok := err.(providerTurnFailure); ok {
 		var outage providerbridge.ProviderOutage
@@ -282,7 +287,7 @@ func runEndExplained(err error) runend.Class {
 
 // runEndAnswer is the code (and, for an outage, the provider journal record) of the UNKNOWN answer: a budget end for
 // an agent ceiling and run-end-unclassified for a source the registry does not class, neither ever a rerun cause;
-// else the evidenced outage or a plain UNKNOWN, both rerun causes.
+// else the evidenced outage, a launch that failed before task admission, or a plain UNKNOWN, all rerun causes.
 func runEndAnswer(taskCtx context.Context, runErr error) (code, outageDigest string) {
 	switch runEndClass(taskCtx, runErr) {
 	case runend.AgentCeiling:
@@ -292,6 +297,9 @@ func runEndAnswer(taskCtx context.Context, runErr error) (code, outageDigest str
 	}
 	if digest, ok := providerOutageEvidence(runErr); ok {
 		return runend.CodeProviderOutage, digest
+	}
+	if errors.As(runErr, new(launchNotAdmitted)) {
+		return runend.CodeLaunchNotAdmitted, ""
 	}
 	return runend.CodeOutcomeUnknown, ""
 }
