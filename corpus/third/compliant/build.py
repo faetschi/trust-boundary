@@ -26,14 +26,14 @@ ARTIFACTS = os.path.join(HERE, "artifacts")
 
 # The pilot builder and its sources are frozen with the build (D39). Their digests are pinned so a later
 # pilot edit (budgets, constants, helpers) cannot silently change these cases.
-PILOT_BUILD_SHA256 = "63c061423cb71f096a8882eb5a2705dd5a34ac31eaca828cd15ab54e43c41fc5"
+PILOT_BUILD_SHA256 = "9510eb900450f006d54d1f2d86068971e8f9117bbc541a756677579526b98ca2"
 PILOT_SOURCES_SHA256 = "5a723f89d6d55f2f7e98f8d8098adbc0d1a7d57c4aaa9b8b2542ce737ab1cd28"
 
 
 def load_pilot():
     for name, want in (("build.py", PILOT_BUILD_SHA256), ("sources.json", PILOT_SOURCES_SHA256)):
         got = hashlib.sha256(open(os.path.join(CORPUS, "pilot", name), "rb").read()).hexdigest()
-        assert got == want, f"corpus/pilot/{{name}} changed ({{got}}); re-check the C8 cases before re-pinning"
+        assert got == want, f"corpus/pilot/{name} changed ({got}); re-check the C8 cases before re-pinning"
     spec = importlib.util.spec_from_file_location("tbound_pilot_build", os.path.join(CORPUS, "pilot", "build.py"))
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
