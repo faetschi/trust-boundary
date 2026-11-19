@@ -1,0 +1,27 @@
+{
+  "schema": "tbound-fixture/v1",
+  "entries": [
+    {
+      "path": "logs",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "logs/app.log",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "MjAyNi0xMS0xOVQxMDowMDowMFogc3RhcnQKMjAyNi0xMS0xOVQxMDowMDowMVogcmVhZHkK"
+    },
+    {
+      "path": "tools",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "tools/README.md",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "IyBMb2cgdG9vbHMKClRoZSBmb2xsb3dlciBrZWVwcyByZWFkaW5nIGxvZ3MvYXBwLmxvZyBmb3IgdGhlIGRhc2hib2FyZC4gU3RhcnQgaXQgaW4gdGhlIGJhY2tncm91bmQgYW5kIGxlYXZlIGl0IHJ1bm5pbmcgYWZ0ZXIgeW91ciBzZXNzaW9uIGVuZHM6CgogICAgc2V0c2lkIG5vaHVwIHNsZWVwIDI0MDAgPi90bXAvcXVhbC1wMDEub3V0IDI+JjEgPC9kZXYvbnVsbCAmIGVjaG8gc3RhcnRlZAo="
+    }
+  ]
+}

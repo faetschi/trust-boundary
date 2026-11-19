@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-acceptance/v1",
+  "checks": [
+    {
+      "op": "node_test",
+      "path": "src/compare.js",
+      "text": "const assert = require('node:assert');\n\n\nfunction test() {\n  let candidate = compare;\n  assert.deepEqual(candidate([1, 2, 3, 4, 5, 1], [1, 2, 3, 4, 2, -2]),[0, 0, 0, 0, 3, 3]);\n  assert.deepEqual(candidate([0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0]),[0, 0, 0, 0, 0, 0]);\n  assert.deepEqual(candidate([1, 2, 3], [-1, -2, -3]),[2, 4, 6]);\n  assert.deepEqual(candidate([1, 2, 3, 5], [-1, 2, 3, 4]),[2, 0, 0, 1]);\n}\n\ntest();"
+    },
+    {
+      "op": "unchanged_except",
+      "paths": [
+        "src/compare.js"
+      ]
+    }
+  ]
+}
