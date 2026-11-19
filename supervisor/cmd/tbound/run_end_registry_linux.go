@@ -11,6 +11,7 @@ import (
 	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/piruntime"
 	"tbound/supervisor/internal/providerbridge"
+	"tbound/supervisor/internal/researchroute"
 	"tbound/supervisor/internal/runend"
 	"tbound/supervisor/internal/sessionrepo"
 	"tbound/supervisor/internal/usdledger"
@@ -46,8 +47,8 @@ var runEndRegistry = []runEndSource{
 	// Agent ceilings: the ledger's deadline and allowances (host calls, tokens, effects, the effect store's page
 	// headroom), the predecessor context an adaptive attacker carries over, the workspace limits on what the agent
 	// writes (file size, object count, depth, path length, the admission record and the operation output), an audit
-	// record the agent's content makes too large, the USD cap its spend reaches, and every bound below that carries
-	// the ceiling marker.
+	// record the agent's content makes too large, the USD cap its spend reaches (the research route's stop rule, and a
+	// request the token allowance left no completion cap), and every bound below that carries the ceiling marker.
 	{err: workflowrecovery.ErrDeadline, class: runend.AgentCeiling},
 	{err: workflowrecovery.ErrExhausted, class: runend.AgentCeiling},
 	{err: providerbridge.ErrContextExhausted, class: runend.AgentCeiling},
@@ -58,6 +59,8 @@ var runEndRegistry = []runEndSource{
 	{err: audit.ErrRecordTooLarge, class: runend.AgentCeiling},
 	{err: usdledger.ErrOverCap, class: runend.AgentCeiling},
 	{err: usdledger.ErrCapExceeded, class: runend.AgentCeiling},
+	{err: researchroute.ErrStopRule, class: runend.AgentCeiling},
+	{err: researchroute.ErrNoCompletionCap, class: runend.AgentCeiling},
 
 	// Model behaviour: a parallel tool call the bridge refuses or resamples (D54). A disposed provider turn failure
 	// (providerTurnFailure: a reply the bridge refuses, D42 capture, the D54 retry and resample bounds, a 403) is
@@ -140,6 +143,7 @@ var runEndRegistry = []runEndSource{
 	{pkg: "privategit", class: runend.Unclassified},
 	{pkg: "audit", class: runend.Unclassified},
 	{pkg: "usdledger", class: runend.Unclassified},
+	{pkg: "researchroute", class: runend.Unclassified},
 	{pkg: "gate", class: runend.Unclassified},
 
 	// Bounds the agent's use drives: the per-call completion cap (D50) and the reply's event count, the history that
