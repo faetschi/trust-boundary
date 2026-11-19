@@ -190,11 +190,11 @@ const (
 
 // BuildRequestForRoute builds the registered request for one route. The zero
 // route and the engineering route give exactly the bytes BuildRequest always
-// gave. A research route sends its frozen four Pi proxy tools to its own endpoint
-// and model, without the OpenCode Go thinking member and without
-// parallel_tool_calls (require_parameters would drop its pinned provider, which
-// lacks that parameter; the capture still refuses a second call), followed by
-// the frozen profile members. The cap, when positive, is
+// gave. A research route sends its frozen four Pi proxy tools to its own
+// endpoint and model, followed by the frozen profile members. It omits the
+// OpenCode Go thinking member and parallel_tool_calls: require_parameters would
+// drop its pinned provider, which lacks that parameter, and the capture still
+// refuses a second call. The cap, when positive, is
 // still the host-selected max_completion_tokens.
 func BuildRequestForRoute(route Route, messages []Message, completionLimit uint64) (BuiltRequest, error) {
 	return buildRequestForRoute(route, messages, completionLimit, "auto")

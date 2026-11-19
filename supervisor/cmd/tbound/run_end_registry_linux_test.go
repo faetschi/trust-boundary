@@ -86,9 +86,9 @@ func exprText(e ast.Expr) string {
 
 // The registry fails closed: a sentinel or an UNKNOWN code without a row ends unclassified, never a rerun cause, so
 // a missing row can only lose a rerun. A bound can do worse: inside a disposed provider turn failure every leaf that
-// carries no ceiling is model behaviour or an outage, both rerun causes. This scan walks every bound a failure message names on the
-// provider path and in the durable executor and fails on one without a row, or on a row whose class disagrees with
-// runend.ErrCeiling at its site. On those paths a failure wraps its cause with %w, so no wrap drops the marker on its
+// carries no ceiling is model behaviour or an outage, both rerun causes. This scan walks every limit a failure message
+// names on the provider path and in the durable executor. It fails on a message that is neither a ceiling bound row nor
+// in runEndNotCeilings, and on one whose list disagrees with runend.ErrCeiling at its site. On those paths a failure wraps its cause with %w, so no wrap drops the marker on its
 // way to the classifier.
 func TestRunEndRegistryClassesEverySource(t *testing.T) {
 	// isCeiling maps every limit message to whether it must carry runend.ErrCeiling.
