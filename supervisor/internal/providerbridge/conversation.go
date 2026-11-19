@@ -26,6 +26,7 @@ import (
 	"tbound/supervisor/internal/broker/openrouter"
 	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/gate"
+	"tbound/supervisor/internal/runend"
 )
 
 const (
@@ -480,7 +481,7 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 		return Turn{}, c.failLocked(err)
 	}
 	if c.turns >= MaxTranscriptTurns || c.sequence == math.MaxUint64 {
-		return Turn{}, c.failLocked(errors.New("provider conversation turn/sequence budget exhausted"))
+		return Turn{}, c.failLocked(fmt.Errorf("%w: provider conversation turn/sequence budget exhausted", runend.ErrCeiling))
 	}
 	var hostCallBinding *HostCallBinding
 	var completionLimit uint64
@@ -724,7 +725,7 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 	if err := validateTurnProjectionBudget(projection); err != nil {
 		_, persistErr := c.persistFailedExchangeLocked(records, err, hostCallBinding)
 		disposed = exchangeDisposed(persistErr, records, hostCallBinding)
-		return Turn{}, c.failLocked(errors.Join(fmt.Errorf("provider response projection exceeds its durable evidence budget: %w", err), persistErr))
+		return Turn{}, c.failLocked(errors.Join(fmt.Errorf("%w: provider response projection exceeds its durable evidence budget: %w", runend.ErrCeiling, err), persistErr))
 	}
 	// Identity reuse is checked before the exchange is journaled as a normal one: the raw response is
 	// failed-exchange evidence. A tool-call ID of an earlier turn is refused by the correlator below.
@@ -1300,14 +1301,14 @@ func (c *Conversation) appendHistoryLocked(messages ...openrouter.Message) error
 func (c *Conversation) boundedHistoryLocked(messages ...openrouter.Message) ([]openrouter.Message, error) {
 	proposed := append(cloneMessages(c.history), messages...)
 	if len(proposed) > MaxTranscriptTurns*3+2 {
-		return nil, errors.New("provider transcript message limit exhausted")
+		return nil, fmt.Errorf("%w: provider transcript message limit exhausted", runend.ErrCeiling)
 	}
 	request, err := openrouter.BuildRequestForRoute(c.route, proposed, 0)
 	if err != nil {
 		return nil, fmt.Errorf("bounded broker transcript rejected: %w", err)
 	}
 	if len(request.Body()) > openrouter.MaxRequestBytes || len(request.Body()) > MaxTranscriptBytes {
-		return nil, errors.New("provider transcript byte budget exhausted")
+		return nil, fmt.Errorf("%w: provider transcript byte budget exhausted", runend.ErrCeiling)
 	}
 	return proposed, nil
 }
@@ -1360,7 +1361,7 @@ func validateTurnProjectionBudget(projection Turn) error {
 		return err
 	}
 	if len(encoded) > MaxTurnProjectionBytes {
-		return errors.New("canonical provider turn projection exceeds one mebibyte")
+		return fmt.Errorf("%w: canonical provider turn projection exceeds one mebibyte", runend.ErrCeiling)
 	}
 	return nil
 }
@@ -1504,8 +1505,11 @@ type mutationSummary struct {
 // the existing durable executor. The envelope binds the current generation and
 // (for mutations) the durable transition/effect identity before history moves.
 func validateExecutorOutput(tool string, raw json.RawMessage, currentGeneration, currentTreeDigest string) (nextGeneration, nextTreeDigest, transitionID string, transitionSequence uint64, effectID string, err error) {
-	if len(raw) == 0 || len(raw) > protocol.MaxFrameBytes {
-		return "", "", "", 0, "", errors.New("executor output is empty or oversized")
+	if len(raw) == 0 {
+		return "", "", "", 0, "", errors.New("executor output is empty")
+	}
+	if len(raw) > protocol.MaxFrameBytes {
+		return "", "", "", 0, "", fmt.Errorf("%w: executor output is oversized", runend.ErrCeiling)
 	}
 	if err = protocol.ValidateStrictJSON(raw); err != nil {
 		return "", "", "", 0, "", err

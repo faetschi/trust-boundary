@@ -30,7 +30,6 @@ import (
 	"tbound/supervisor/internal/researchroute"
 	"tbound/supervisor/internal/runner"
 	"tbound/supervisor/internal/sessionrepo"
-	"tbound/supervisor/internal/workflowrecovery"
 )
 
 const (
@@ -87,34 +86,6 @@ type piServiceResponse struct {
 	// OutageEvidenceDigest comes only with error code provider-outage: the hash of the provider journal's
 	// provider_exchange_unknown record of the failed attempt (register D30 as amended 2026-11-18).
 	OutageEvidenceDigest string `json:"outage_evidence_digest,omitempty"`
-}
-
-// piServiceProviderOutage is the UNKNOWN code of a run whose last provider attempt was an outage.
-const piServiceProviderOutage = "provider-outage"
-
-// piServiceBudgetEnded is the UNKNOWN code of a run that met its own limit: the workflow ledger refused a
-// reservation at its deadline or allowance, or the service's runtime limit ended it. The agent's resource use is a
-// treatment failure (thesis §7.5), so the host never reruns it.
-const piServiceBudgetEnded = "run-budget-exhausted"
-
-// runBudgetEnded reports a run that met its own limit. It outranks an outage: a ceiling the run also hit is never
-// erased by a rerun. ErrExhausted also covers the effect store's page headroom; that loss stays conservative too.
-// A start-up deadline check joins ErrDeadline onto any verification error, so a clock, root or checkpoint fault
-// beside it is an infrastructure cause, not a budget end.
-func runBudgetEnded(taskCtx context.Context, runErr error) bool {
-	if errors.Is(taskCtx.Err(), context.DeadlineExceeded) {
-		return true
-	}
-	if !errors.Is(runErr, workflowrecovery.ErrDeadline) && !errors.Is(runErr, workflowrecovery.ErrExhausted) {
-		return false
-	}
-	for _, fault := range []error{workflowrecovery.ErrClockUncertain, workflowrecovery.ErrRollback,
-		workflowrecovery.ErrCAS, workflowrecovery.ErrObservation} {
-		if errors.Is(runErr, fault) {
-			return false
-		}
-	}
-	return true
 }
 
 // providerOutageEvidence returns the provider journal record hash of a run whose only failure is a provider
@@ -1813,12 +1784,8 @@ func servePiServiceRequests(ctx context.Context, listener net.Listener, socket p
 			receipt, runErr := run(withPiServiceAdmission(taskCtx, admission), request)
 			status, errorCode, outageDigest := "completed", "", ""
 			if len(receipt) == 0 || runErr != nil {
-				status, errorCode = "unknown", "task-outcome-unknown"
-				if runBudgetEnded(taskCtx, runErr) {
-					errorCode = piServiceBudgetEnded
-				} else if digest, ok := providerOutageEvidence(runErr); ok {
-					errorCode, outageDigest = piServiceProviderOutage, digest
-				}
+				status = "unknown"
+				errorCode, outageDigest = runEndAnswer(taskCtx, runErr)
 				// The response carries only the stable code; the cause belongs in the service log.
 				fmt.Fprintf(os.Stderr, "request %s outcome unknown: %v\n", request.RequestID, runErr)
 			}

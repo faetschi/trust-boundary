@@ -22,6 +22,7 @@ import (
 	"tbound/supervisor/internal/broker/correlation"
 	"tbound/supervisor/internal/broker/openrouter"
 	"tbound/supervisor/internal/broker/protocol"
+	"tbound/supervisor/internal/runend"
 )
 
 const (
@@ -248,14 +249,14 @@ func (b *Broker) ExchangeWithCompletionLimit(ctx context.Context, completionLimi
 	requestBytes := uint64(len(body))
 	if requestBytes >= uint64(MaxDurableExchangeBytes) {
 		_ = request.Body.Close()
-		return openrouter.CapturedResponse{}, b.failLocked(-1, errors.New("provider request leaves no durable response budget"))
+		return openrouter.CapturedResponse{}, b.failLocked(-1, fmt.Errorf("%w: provider request leaves no durable response budget", runend.ErrCeiling))
 	}
 	responseLimit := min(uint64(MaxDurableExchangeBytes)-requestBytes, uint64(openrouter.MaxResponseBytes))
 	remaining := uint64(MaxRecordedBytes) - b.recorded
 	if len(b.records) >= maxRecordedExchanges || requestBytes > remaining ||
 		responseLimit+1 > remaining-requestBytes {
 		_ = request.Body.Close()
-		return openrouter.CapturedResponse{}, b.failLocked(-1, errors.New("provider exchange record budget exhausted"))
+		return openrouter.CapturedResponse{}, b.failLocked(-1, fmt.Errorf("%w: provider exchange record budget exhausted", runend.ErrCeiling))
 	}
 	requestRecord := RequestRecord{
 		profileID: b.profile.ID, method: request.Method, url: request.URL.String(), host: request.Host,
@@ -432,7 +433,8 @@ func readBoundedResponse(reader io.Reader, limit int) ([]byte, error) {
 		return raw, errEmptyResponse
 	}
 	if len(raw) > limit {
-		return raw, errors.New("provider response byte length out of bounds")
+		// The limit is what the request left of the durable exchange budget: the history the agent grew shrinks it.
+		return raw, fmt.Errorf("%w: provider response byte length out of bounds", runend.ErrCeiling)
 	}
 	return raw, nil
 }

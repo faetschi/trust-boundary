@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"tbound/supervisor/internal/providerbridge"
+	"tbound/supervisor/internal/runend"
 	"tbound/supervisor/internal/workflowrecovery"
 )
 
@@ -34,7 +35,7 @@ func TestProviderOutageRunEndsUnknownWithItsTypedCodeAndRecord(t *testing.T) {
 		wantCode   string
 		wantDigest string
 	}{
-		"outage":              {sessionErr(providerbridge.ProviderOutage{RecordHash: hash}), piServiceProviderOutage, hash},
+		"outage":              {sessionErr(providerbridge.ProviderOutage{RecordHash: hash}), runend.CodeProviderOutage, hash},
 		"outage without hash": {sessionErr(providerbridge.ProviderOutage{RecordHash: "not-a-hash"}), "task-outcome-unknown", ""},
 		"outage and a cleanup failure": {sessionErr(providerbridge.ProviderOutage{RecordHash: hash},
 			errors.New("close settled production session before receipt: synthetic")), "task-outcome-unknown", ""},
@@ -122,7 +123,7 @@ func TestProviderOutageThroughServeIsTypedWithItsJournalRecord(t *testing.T) {
 		t.Fatal(err)
 	}
 	last := trace.Records[len(trace.Records)-1]
-	if answer := unknownAnswerOf(t, runErr); answer.ErrorCode != piServiceProviderOutage ||
+	if answer := unknownAnswerOf(t, runErr); answer.ErrorCode != runend.CodeProviderOutage ||
 		last.Event.Kind != "provider_exchange_unknown" || answer.OutageEvidenceDigest != last.Hash {
 		t.Fatalf("answer %+v, journal ends with %s %q; run error %v", answer, last.Event.Kind, last.Hash, runErr)
 	}
@@ -176,7 +177,8 @@ func TestServiceRuntimeLimitIsABudgetEnd(t *testing.T) {
 	stopped, stop := context.WithCancel(context.Background())
 	stop()
 	runErr := errors.New("provider exchange canceled; response withheld")
-	if !runBudgetEnded(expired, runErr) || runBudgetEnded(stopped, runErr) || runBudgetEnded(context.Background(), runErr) {
+	ended := func(ctx context.Context) bool { return runEndClass(ctx, runErr) == runend.AgentCeiling }
+	if !ended(expired) || ended(stopped) || ended(context.Background()) {
 		t.Fatal("only the service's runtime limit makes an unexplained UNKNOWN a budget end")
 	}
 }

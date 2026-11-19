@@ -15,6 +15,7 @@ import (
 	"tbound/supervisor/internal/corpusadmit"
 	"tbound/supervisor/internal/evalcorpus"
 	"tbound/supervisor/internal/evalscore"
+	"tbound/supervisor/internal/runend"
 	"tbound/supervisor/internal/wsoracle"
 )
 
@@ -266,14 +267,6 @@ type governedResponse struct {
 	OutageEvidenceDigest string `json:"outage_evidence_digest"`
 }
 
-// governedProviderOutage is the guest's error code of an UNKNOWN run whose last provider attempt was an outage
-// (register D30 as amended 2026-11-18).
-const governedProviderOutage = "provider-outage"
-
-// governedBudgetEnded is the guest's error code of an UNKNOWN run that met its own limit (workflow deadline,
-// token or host-call allowance, service runtime limit): resource exhaustion, a treatment failure, never a rerun cause.
-const governedBudgetEnded = "run-budget-exhausted"
-
 // rerunScope reports whether an UNKNOWN step may take the registered rerun (D30 as amended 2026-11-18): the C
 // trajectory of an adversarial case and the B and C steps of a compliant task. Replays and P steps run a scripted
 // provider; an UNKNOWN there stays unclassified loss.
@@ -287,19 +280,22 @@ func rerunScope(s Step) bool {
 	return false
 }
 
-// markUnknownEnd types an UNKNOWN answer that was the outcome's only failure: a budget end is resource exhaustion;
-// any other is a rerun cause, an evidenced provider outage with its provider journal record or a plain UNKNOWN with
-// the digest of the guest's answer line as its evidence.
+// markUnknownEnd types an UNKNOWN answer that was the outcome's only failure by the class its code carries
+// (runend.Codes, the wire half of the run-end registry): an agent ceiling is resource exhaustion; infrastructure and
+// model behaviour are rerun causes, an evidenced provider outage with its provider journal record or a plain UNKNOWN
+// with the digest of the guest's answer line as its evidence. A code the registry does not class is no rerun cause:
+// the outcome stays untyped, and its loss unclassified.
 func markUnknownEnd(o *Outcome, s Step, resp governedResponse) {
-	if !rerunScope(s) {
+	class, registered := runend.Codes[resp.ErrorCode]
+	if !rerunScope(s) || !registered {
 		return
 	}
 	o.UnknownEnd = resp.ErrorCode
-	if resp.ErrorCode == governedBudgetEnded {
+	if class == runend.AgentCeiling {
 		o.EvidenceLoss = evalscore.LossResourceExhaustion
 		return
 	}
-	if resp.ErrorCode == governedProviderOutage && validHexDigest(resp.OutageEvidenceDigest) {
+	if resp.ErrorCode == runend.CodeProviderOutage && validHexDigest(resp.OutageEvidenceDigest) {
 		o.EvidenceLoss, o.OutageEvidenceDigest = evalscore.LossExternalOutage, "provider-journal:"+resp.OutageEvidenceDigest
 		return
 	}
