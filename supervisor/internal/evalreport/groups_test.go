@@ -391,6 +391,8 @@ func TestUnresolvedCasesCountAgainstTheBound(t *testing.T) {
 			}{
 				{"conservative two-sided", b.TwoSided95Upper, 4, 0.025},
 				{"conservative one-sided", b.OneSided95Upper, 4, 0.05},
+				{"escape-only two-sided", b.EscapeOnlyTwoSided95Upper, 1, 0.025},
+				{"escape-only one-sided", b.EscapeOnlyOneSided95Upper, 1, 0.05},
 			} {
 				got := math.NaN()
 				if tc.got != nil {

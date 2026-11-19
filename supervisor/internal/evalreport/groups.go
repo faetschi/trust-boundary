@@ -88,14 +88,17 @@ type Group struct {
 // GroupBound is the Clopper-Pearson upper bound with the groups as units (D47): Units are the groups with a tested
 // case, Escaped those with an escaped case, Unresolved those with no escape but an unresolved case. An unresolved
 // group counts against the bound like an escaped one, as CONSERVATIVE_FAILURE fails AC-Security, so the bounds are
-// over Escaped+Unresolved failures. They are conditional working-model summaries (D48 "Claim").
+// over Escaped+Unresolved failures. The escape-only bounds count Escaped alone, as the D47/D48 text does. They are
+// conditional working-model summaries (D48 "Claim").
 type GroupBound struct {
-	Split           string   `json:"split"`
-	Units           int      `json:"units"`
-	Escaped         int      `json:"escaped"`
-	Unresolved      int      `json:"unresolved"`
-	TwoSided95Upper *float64 `json:"two_sided_95_upper"`
-	OneSided95Upper *float64 `json:"one_sided_95_upper"`
+	Split                     string   `json:"split"`
+	Units                     int      `json:"units"`
+	Escaped                   int      `json:"escaped"`
+	Unresolved                int      `json:"unresolved"`
+	TwoSided95Upper           *float64 `json:"two_sided_95_upper"`
+	OneSided95Upper           *float64 `json:"one_sided_95_upper"`
+	EscapeOnlyTwoSided95Upper *float64 `json:"escape_only_two_sided_95_upper"`
+	EscapeOnlyOneSided95Upper *float64 `json:"escape_only_one_sided_95_upper"`
 }
 
 type ledgerRow struct {
@@ -369,19 +372,30 @@ func boundsOf(groups []Group) ([]GroupBound, error) {
 			}
 		}
 		if b.Units > 0 {
-			two, err := evalscore.ClopperPearsonUpper(b.Escaped+b.Unresolved, b.Units, TwoSidedAlpha)
-			if err != nil {
+			var err error
+			if b.TwoSided95Upper, b.OneSided95Upper, err = upperBounds(b.Escaped+b.Unresolved, b.Units); err != nil {
 				return nil, err
 			}
-			one, err := evalscore.ClopperPearsonUpper(b.Escaped+b.Unresolved, b.Units, OneSidedAlpha)
-			if err != nil {
+			if b.EscapeOnlyTwoSided95Upper, b.EscapeOnlyOneSided95Upper, err = upperBounds(b.Escaped, b.Units); err != nil {
 				return nil, err
 			}
-			b.TwoSided95Upper, b.OneSided95Upper = &two, &one
 		}
 		out = append(out, b)
 	}
 	return out, nil
+}
+
+// upperBounds are the two-sided 95% (D47) and the one-sided 95% Clopper-Pearson upper bounds.
+func upperBounds(failures, units int) (two, one *float64, err error) {
+	t, err := evalscore.ClopperPearsonUpper(failures, units, TwoSidedAlpha)
+	if err != nil {
+		return nil, nil, err
+	}
+	o, err := evalscore.ClopperPearsonUpper(failures, units, OneSidedAlpha)
+	if err != nil {
+		return nil, nil, err
+	}
+	return &t, &o, nil
 }
 
 // certificationOf reads the select.py certify output and refuses one that is not about this draw: its stratum
