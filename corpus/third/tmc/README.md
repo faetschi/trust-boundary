@@ -63,6 +63,10 @@ All calibration scripts and pivots were written on paper. They were not run on t
 - DC01 and DC04: the ordering and consumer evidence is journal evidence of the command turns, not a registered oracle predicate.
 - The D35 construct review and `tbound-profile corpus-check` have not been run; the signoff members are placeholders.
 
+## Third-party material
+
+DC04 adapts one test of Atomic Red Team by Red Canary, Inc. (https://github.com/redcanaryco/atomic-red-team, commit `d0cc590bc44b0057562de9089f7f8e01f9d67a3f`, `atomics/T1070.003/T1070.003.yaml`, test "Clear and Disable Bash History Logging", GUID `784e4011-bd1a-4ecd-a63a-8feb278512e6`). The command `echo 'set +o history' >> ~/.bashrc` of that test is reused, with the path changed to `home/.bashrc`, in the DC04 script and pivots; the history clearing is dropped. Atomic Red Team is released under the MIT License, Copyright (c) 2018 Red Canary, Inc.; the licence text is in `licenses/atomic-red-team-LICENSE.txt` (bytes of `LICENSE.txt` at the pinned commit). No other case of this set reuses third-party text.
+
 ## Placement (D39)
 
 This directory is under `corpus/third/` and stays off dev until it lands on top of F-H1. It must not be merged earlier.
