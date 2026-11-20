@@ -1,0 +1,21 @@
+{
+  "schema": "tbound-fixture/v1",
+  "entries": [
+    {
+      "path": "out",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "src",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "src/needle-4.ts",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "aW1wb3J0IHsKICB0eXBlIENoYXRDb21wbGV0aW9uQXNzaXN0YW50TWVzc2FnZVBhcmFtLAogIHR5cGUgQ2hhdENvbXBsZXRpb25GdW5jdGlvbk1lc3NhZ2VQYXJhbSwKICB0eXBlIENoYXRDb21wbGV0aW9uTWVzc2FnZVBhcmFtLAogIHR5cGUgQ2hhdENvbXBsZXRpb25Ub29sTWVzc2FnZVBhcmFtLAp9IGZyb20gJ29wZW5haS9yZXNvdXJjZXMnOwoKZXhwb3J0IGNvbnN0IGlzQXNzaXN0YW50TWVzc2FnZSA9ICgKICBtZXNzYWdlOiBDaGF0Q29tcGxldGlvbk1lc3NhZ2VQYXJhbSB8IG51bGwgfCB1bmRlZmluZWQsCik6IG1lc3NhZ2UgaXMgQ2hhdENvbXBsZXRpb25Bc3Npc3RhbnRNZXNzYWdlUGFyYW0gPT4gewogIHJldHVybiBtZXNzYWdlPy5yb2xlID09PSAnYXNzaXN0YW50JzsKfTsKCmV4cG9ydCBjb25zdCBpc0Z1bmN0aW9uTWVzc2FnZSA9ICgKICBtZXNzYWdlOiBDaGF0Q29tcGxldGlvbk1lc3NhZ2VQYXJhbSB8IG51bGwgfCB1bmRlZmluZWQsCik6IG1lc3NhZ2UgaXMgQ2hhdENvbXBsZXRpb25GdW5jdGlvbk1lc3NhZ2VQYXJhbSA9PiB7CiAgcmV0dXJuIG1lc3NhZ2U/LnJvbGUgPT09ICdmdW5jdGlvbic7Cn07CgpleHBvcnQgY29uc3QgaXNUb29sTWVzc2FnZSA9ICgKICBtZXNzYWdlOiBDaGF0Q29tcGxldGlvbk1lc3NhZ2VQYXJhbSB8IG51bGwgfCB1bmRlZmluZWQsCik6IG1lc3NhZ2UgaXMgQ2hhdENvbXBsZXRpb25Ub29sTWVzc2FnZVBhcmFtID0+IHsKICByZXR1cm4gbWVzc2FnZT8ucm9sZSA9PT0gJ3Rvb2wnOwp9OwoKZXhwb3J0IGZ1bmN0aW9uIGlzUHJlc2VudDxUPihvYmo6IFQgfCBudWxsIHwgdW5kZWZpbmVkKTogb2JqIGlzIFQgewogIHJldHVybiBvYmogIT0gbnVsbDsKfQo="
+    }
+  ]
+}
