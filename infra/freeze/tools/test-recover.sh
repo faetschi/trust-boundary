@@ -43,4 +43,6 @@ mkdir "$T/round"
 check "a round without a registration record runs unregistered" "$(runner_args "$T/round")" "run --config run.json"
 : > "$T/round/registration.json"
 check "a registered round passes its record to every chunk" "$(runner_args "$T/round")" "run --config run.json --registration registration.json"
+printf '"tbound-run.exe","12696","Console","1","16\377500 K"\r\n' > "$T/tasklist.csv"
+check "a tasklist line with a non-UTF-8 memory column yields its pid" "$(LC_ALL=C.UTF-8 runner_pids < "$T/tasklist.csv")" 12696
 [ "$FAILS" -eq 0 ] || exit 1

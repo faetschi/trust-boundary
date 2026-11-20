@@ -84,6 +84,9 @@ runner_args() {
   if [ -f "$1/registration.json" ]; then echo run --config run.json --registration registration.json; else echo run --config run.json; fi
 }
 
+# runner_pids: the PID column of `tasklist /FO CSV /NH` lines for tbound-run.exe on stdin. -a: a localized memory column
+# ("16<NBSP>500 K" in code page 850) is not UTF-8, and grep would print "Binary file matches" instead of the line.
+runner_pids() { grep -ai 'tbound-run' | cut -d, -f2 | tr -d '"'; }
 [ "${RECOVER_LIB:-}" = 1 ] && return 0
 
 M=${1:?usage: recover.sh <round dir>}
@@ -101,7 +104,7 @@ start_runner() { # start_runner <chunk>
   (cd "$M" && nohup ./bin/tbound-run.exe $(runner_args "$M") > "runs/$1.txt" 2> "runs/$1.err" &)
   sleep 3
   local pids
-  pids=$(tasklist /FI "IMAGENAME eq tbound-run.exe" /FO CSV /NH | grep -i 'tbound-run' | cut -d, -f2 | tr -d '"')
+  pids=$(tasklist /FI "IMAGENAME eq tbound-run.exe" /FO CSV /NH | runner_pids)
   [ "$(printf '%s\n' "$pids" | grep -c .)" -eq 1 ] || { log "STOP: expected one tbound-run.exe after starting $1, found: $(echo $pids)"; exit 12; }
   printf '%s\n' "$pids" > "$M/runs/full.pid"
   log "started runner pid $(cat "$M/runs/full.pid") as $1"
