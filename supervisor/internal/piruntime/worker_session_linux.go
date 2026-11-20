@@ -33,19 +33,6 @@ func (w *PiCLIWorker) SendAdmittedPrompt(ctx context.Context, conversation GoPro
 	return w.sendPromptControl(ctx, conversation, taskID, requestID, prompt)
 }
 
-// SendDevelopmentPrompt is a development-only process-test seam. It has no Go
-// provider Conversation and therefore makes no provider-history or G1 claim.
-func (w *PiCLIWorker) SendDevelopmentPrompt(ctx context.Context, taskID, requestID, prompt string) error {
-	if w == nil || !w.development || ctx == nil {
-		return errors.New("direct prompt control is available only in the explicit developer worker")
-	}
-	if !workerValidIdentity(taskID, 128) || !workerValidIdentity(requestID, 256) ||
-		!utf8.ValidString(prompt) || len([]byte(prompt)) == 0 || len([]byte(prompt)) > PiWorkerMaxPromptBytes {
-		return errors.New("development prompt is invalid or exceeds its byte bound")
-	}
-	return w.sendPromptControl(ctx, nil, taskID, requestID, prompt)
-}
-
 func (w *PiCLIWorker) sendPromptControl(ctx context.Context, conversation GoPromptConversation, taskID, requestID, prompt string) error {
 	if w.rpc == nil {
 		return errors.New("official Pi CLI RPC is required; embedded SDK worker is not an admitted fallback")

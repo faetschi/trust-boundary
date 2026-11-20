@@ -406,10 +406,7 @@ func TestPiWorkerEventPumpConsumerCancellationDoesNotStopOrConsumeEvents(t *test
 	}
 }
 
-func TestPiCLIProductionAndD09LaunchRequireProductionAdmission(t *testing.T) {
-	if _, err := LaunchPiCLIWorker(context.Background(), nil, nil, nil, nil, PiWorkerBootstrap{}); err == nil || !strings.Contains(err.Error(), "production Pi launch refused") {
-		t.Fatalf("generic production CLI launch was not refused: %v", err)
-	}
+func TestD09LaunchRequiresProductionAdmission(t *testing.T) {
 	if _, err := LaunchD09PiCLIWorker(context.Background(), nil, nil, PiWorkerBootstrap{}); err == nil || !strings.Contains(err.Error(), "D09 Pi launch refused") {
 		t.Fatalf("D09 launch without capability/channels was not refused: %v", err)
 	}
