@@ -115,6 +115,7 @@ jobs:
           umask 077
           bash tests/packaging/verify-package-manager-layout.sh
           bash tests/packaging/verify-publish-release-assets.sh
+          bash tests/packaging/verify-release-verify-lib.sh
 
       - name: Release workflow coverage
         if: ${{ needs.changes.outputs.docs_only != 'true' }}

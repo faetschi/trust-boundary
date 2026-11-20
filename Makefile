@@ -54,6 +54,7 @@ packaging-test:
 	@set -e; umask 077; t="$$(mktemp -d)"; trap 'rm -rf "$$t"' EXIT; export TMPDIR="$$t"; \
 	bash tests/packaging/verify-package-manager-layout.sh; \
 	bash tests/packaging/verify-publish-release-assets.sh; \
+	bash tests/packaging/verify-release-verify-lib.sh; \
 	bash tests/packaging/verify-release-workflow-coverage.sh 1.2.3; \
 	bash tests/packaging/verify-governed-containerfile-pins.sh; \
 	bash tests/ci/test-runtime-paths.sh; \
