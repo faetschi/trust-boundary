@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"tbound/supervisor/internal/productsession"
 )
 
 func TestReviewParentSymlinksAndThesisRoots(t *testing.T) {
@@ -337,5 +339,12 @@ func TestReviewSetupRejectsHardlinkedMutations(t *testing.T) {
 				t.Fatalf("outside file changed: %q %v %v %v", data, info, readErr, statErr)
 			}
 		})
+	}
+}
+
+// StateAwaitingReview is a copy because this package builds where productsession does not.
+func TestStateAwaitingReviewMatchesCatalog(t *testing.T) {
+	if StateAwaitingReview != string(productsession.StateAwaitingReview) {
+		t.Fatalf("StateAwaitingReview %q != catalog %q", StateAwaitingReview, productsession.StateAwaitingReview)
 	}
 }

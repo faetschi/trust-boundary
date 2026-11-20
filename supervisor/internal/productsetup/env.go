@@ -47,7 +47,8 @@ type RegistrationSummary struct {
 // OpenTurn is a catalog turn that is not terminal.
 type OpenTurn struct{ ID, State string }
 
-// StateAwaitingReview is the one open state an update may leave: the next start discards it. StateUnknown
+// StateAwaitingReview (a copy of productsession.StateAwaitingReview, pinned by a test: this package builds off Linux)
+// is the one open state an update may leave: the next start discards it. StateUnknown
 // is a turn whose outcome cannot be established: no start settles it, an update ignores it, and it still
 // blocks any registration change.
 const (

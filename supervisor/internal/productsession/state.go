@@ -823,7 +823,7 @@ func (s *state) reduceAwaitingReview(data []byte) (func(), error) {
 	if err := checkSettlement(t, r.Receipt, r.ReceiptDigest, r.Usage, r.Refund); err != nil {
 		return nil, err
 	}
-	if err := checkReceipt(t, r.Receipt, receiptOutcomeAwaitReview, r.Settlement, r.Usage, t.BaselineDigest); err != nil {
+	if err := checkReceipt(t, r.Receipt, OutcomeAwaitingReview, r.Settlement, r.Usage, t.BaselineDigest); err != nil {
 		return nil, err
 	}
 	return func() {

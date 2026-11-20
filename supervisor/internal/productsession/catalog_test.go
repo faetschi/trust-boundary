@@ -166,7 +166,7 @@ func receiptFor(c *Catalog, turnID, outcome string, usage Budget, result string)
 func reviewFor(c *Catalog, turnID string, usage Budget, candidate string) TurnReview {
 	turn, _ := c.Turn(turnID)
 	return TurnReview{Settlement: SettlementSupervisorLoopClosed, Usage: usage, CandidateDigest: candidate,
-		Receipt: receiptFor(c, turnID, receiptOutcomeAwaitReview, usage, turn.BaselineDigest)}
+		Receipt: receiptFor(c, turnID, OutcomeAwaitingReview, usage, turn.BaselineDigest)}
 }
 
 func complete(c *Catalog, turnID, outcome string, usage Budget, result string) error {

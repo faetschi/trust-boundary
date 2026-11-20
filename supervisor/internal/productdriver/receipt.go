@@ -20,7 +20,7 @@ import (
 var receiptOutcomes = map[string]bool{
 	productsession.OutcomePublished: true, productsession.OutcomeNoDiff: true,
 	productsession.OutcomeFailed: true, productsession.OutcomeDiscarded: true, productsession.OutcomeCancelled: true,
-	"awaiting_review": true,
+	productsession.OutcomeAwaitingReview: true,
 }
 
 func EncodeReceipt(receipt productsession.TurnReceipt) ([]byte, error) {
