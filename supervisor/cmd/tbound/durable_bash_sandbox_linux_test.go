@@ -20,9 +20,6 @@ import (
 // the real sandbox-backed sandboxCommandRunner must record in the durable evidence.
 const durableBashSandboxProfile = "wsl-dev-sandbox-non-claim-bearing"
 
-// sandboxCommandRunner adapts sandbox.Launch to the sessionrepo.CommandRunner
-// seam for the dev-sandbox integration test. The seam does not carry the lease,
-// so the runner is built with the lease it is authorized to settle.
 type sandboxCommandRunner struct{ leaseID string }
 
 func (sandboxCommandRunner) Profile() string { return durableBashSandboxProfile }
@@ -34,11 +31,10 @@ func (r sandboxCommandRunner) Run(ctx context.Context, view *sessionrepo.Command
 	}
 	defer func() { _ = source.Close() }()
 	result, settlement, err := sandbox.Launch(ctx, sandbox.Request{
-		Root: source,
-		Argv: append([]string{spec.Executable}, spec.Args...),
-		Env:  []string{"PATH=/usr/bin:/bin:/usr/sbin:/sbin", "HOME=/tmp", "TMPDIR=/tmp", "LANG=C"},
-		Dir:  spec.WorkingDirectory,
-		// Default bounds; without cgroup v2 delegation the sandbox records them as unestablished.
+		Root:   source,
+		Argv:   append([]string{spec.Executable}, spec.Args...),
+		Env:    []string{"PATH=/usr/bin:/bin:/usr/sbin:/sbin", "HOME=/tmp", "TMPDIR=/tmp", "LANG=C"},
+		Dir:    spec.WorkingDirectory,
 		Limits: sandbox.Limits{MemoryBytes: 512 << 20, PidsMax: 256, CPUWeight: 100},
 	})
 	if err != nil {

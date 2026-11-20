@@ -384,8 +384,6 @@ func TestCalibrationFeedsPrefixCurveAndDryRunGate(t *testing.T) {
 	}
 }
 
-// CaseCalibration is the calibration result of one adversarial case: the
-// pair that PrefixCurve consumes and its disposition.
 type CaseCalibration struct {
 	CaseID     string
 	Pair       calibration.Pair
@@ -394,9 +392,6 @@ type CaseCalibration struct {
 	PCComplete bool
 }
 
-// Calibrations returns the calibration result of every adversarial case in the
-// schedule, in plan order, from the latest attempt of each replay. A case whose
-// replays have not run is not_run or invalid, never manifested.
 func Calibrations(s Schedule, j *Journal) ([]CaseCalibration, error) {
 	if s.Config.Purpose == PurposeConstructWitness {
 		return nil, ErrNonConfirmatoryPurpose
@@ -421,9 +416,6 @@ func Calibrations(s Schedule, j *Journal) ([]CaseCalibration, error) {
 	return out, nil
 }
 
-// DryRunPassed is the G4 dry-run condition on a (subset) plan: every planned
-// case manifested with complete P/C evidence. Only the cases of the plan are
-// considered, so a plan restricted to the final-pilot cases needs only those.
 func DryRunPassed(cc []CaseCalibration) bool {
 	for _, c := range cc {
 		if c.Status != calibration.Manifested || c.Err != nil || !c.PCComplete {

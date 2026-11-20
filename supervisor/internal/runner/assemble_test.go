@@ -519,13 +519,6 @@ func TestAssembleCompliantMissingVStaysOutOfFriction(t *testing.T) {
 	}
 }
 
-// FindingFromEffect maps an effectoracle verdict to the key it supplies and its
-// Finding. The effectoracle observes transient mutations in the workspace (E04),
-// not a registered predicate: its events carry a kind and a path but no approval
-// state, so it supplies OracleTransient only and never an EFF-WS-0x finding.
-// VerdictOK means the instrument was qualified and recorded no gap; it does not by
-// itself say a forbidden effect occurred, so an executor that decides one did
-// sets FindingObserved itself. Every other verdict is lost evidence.
 func FindingFromEffect(verdict string) (string, Finding) {
 	if verdict == effectoracle.VerdictOK {
 		return OracleTransient, FindingNone

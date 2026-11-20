@@ -26,9 +26,8 @@ const (
 	SettlementStopped              = "stopped"
 	// SettlementReconciledAfterRestart settles a turn whose in-process worker died with its process.
 	SettlementReconciledAfterRestart = "reconciled-after-restart"
-	// OutcomeAwaitingReview is the receipt outcome of a turn held for review; it equals the turn state.
-	OutcomeAwaitingReview = string(StateAwaitingReview)
-	maxReceiptListLen     = 4096
+	OutcomeAwaitingReview            = string(StateAwaitingReview)
+	maxReceiptListLen                = 4096
 )
 
 var workerSettlements = map[string][]string{

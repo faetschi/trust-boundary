@@ -114,8 +114,7 @@ type TurnReview struct {
 	Receipt         []byte
 	Usage           Budget
 	CandidateDigest string
-	// Removed is the number of objects the candidate removes: the driver's auto-publish guard input.
-	Removed int
+	Removed         int
 }
 
 // Session is a copy of one session's catalog state. Consumed holds settled
@@ -168,7 +167,7 @@ type Turn struct {
 	ResultBaselineDigest     string
 	ContextEligible          bool
 	CandidateDigest          string
-	Removed                  int // objects the candidate removes, recorded at awaiting_review
+	Removed                  int
 	UnknownReason            string
 	RefusalCode              Code
 	CancelRequested          bool

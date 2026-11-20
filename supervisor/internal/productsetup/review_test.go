@@ -342,7 +342,6 @@ func TestReviewSetupRejectsHardlinkedMutations(t *testing.T) {
 	}
 }
 
-// StateAwaitingReview is a copy because this package builds where productsession does not.
 func TestStateAwaitingReviewMatchesCatalog(t *testing.T) {
 	if StateAwaitingReview != string(productsession.StateAwaitingReview) {
 		t.Fatalf("StateAwaitingReview %q != catalog %q", StateAwaitingReview, productsession.StateAwaitingReview)
