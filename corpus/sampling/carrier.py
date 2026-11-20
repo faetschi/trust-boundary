@@ -11,6 +11,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import re
 import sys
 
 sys.dont_write_bytecode = True  # importing build.py must not write corpus/pilot/__pycache__
@@ -18,6 +19,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 PILOT = os.path.join(os.path.dirname(HERE), "pilot")
 BASE_DIR = os.path.join(PILOT, "t5-2026-10-29")
 SLOT_CLASSES = ("TM-A", "TM-B")
+LEDGER = os.path.join(HERE, "d48-ledger-v3.jsonl")
+SUFFIX_RE = re.compile(r"\.[a-z0-9]+")  # keeps ids inside dev_ids.py's [A-Za-z0-9._:-]+ grammar
 
 
 class CarrierError(Exception):
@@ -202,11 +205,31 @@ def notices_section(round_, bundles):
     return "\n".join(lines) + "\n"
 
 
+def rename_ids(cases, suffix):
+    """Append suffix to every case id, so a round on the same freeze admits fresh ids (each case/role/attempt
+    is admitted once per freeze). A bundle case keeps case_id == root_scenario_id == meaning_record.root_id and
+    its PILOT-WIT-<case_id> witness; a T5 case, whose root differs from its id, keeps its root."""
+    if not SUFFIX_RE.fullmatch(suffix):
+        raise CarrierError(f"--id-suffix {suffix!r} is not '.' followed by lowercase letters and digits")
+    with open(LEDGER, encoding="utf-8") as fh:
+        ledger = {json.loads(line)["case_id"] for line in fh if line.strip()}
+    for c in cases:
+        old, new = c["case_id"], c["case_id"] + suffix
+        if new in ledger:  # a renamed id must never pull a ledger row into development_case_ids
+            raise CarrierError(f"renamed id {new} is a ledger row")
+        c["case_id"] = new
+        a = c.get("adversarial")
+        if a and a["root_scenario_id"] == old:
+            a["root_scenario_id"] = c["meaning_record"]["root_id"] = new
+        if a and a["calibration_witness_id"] == "PILOT-WIT-" + old:
+            a["calibration_witness_id"] = "PILOT-WIT-" + new
+
+
 def dump_json(obj, indent):
     return (json.dumps(obj, indent=indent, ensure_ascii=False) + "\n").encode("utf-8")
 
 
-def build_carrier(round_, bundle_dirs, out, build=None, base_dir=BASE_DIR):
+def build_carrier(round_, bundle_dirs, out, build=None, base_dir=BASE_DIR, id_suffix=""):
     build = build or load_build()
     if os.path.exists(out):
         raise CarrierError(f"--out {out} already exists")
@@ -225,6 +248,8 @@ def build_carrier(round_, bundle_dirs, out, build=None, base_dir=BASE_DIR):
         for digest in fixture_digests(case) - kept:
             artifacts.pop(fixture_name(digest), None)
     artifacts = merge_files(artifacts, bundles, "artifacts", "artifact")
+    if id_suffix:
+        rename_ids(manifest["cases"], id_suffix)
 
     build.assign_partitions([c for c in manifest["cases"] if c["kind"] == "adversarial"], manifest["split_seed"])
 
@@ -255,9 +280,10 @@ def main(argv=None):
     p.add_argument("--round", required=True)
     p.add_argument("--bundle", action="append", default=[])
     p.add_argument("--out", required=True)
+    p.add_argument("--id-suffix", default="", help="append this to every case id (fresh ids for another round on the same freeze)")
     args = ap.parse_args(argv)
     try:
-        print(build_carrier(args.round, args.bundle, args.out))
+        print(build_carrier(args.round, args.bundle, args.out, id_suffix=args.id_suffix))
     except CarrierError as e:
         print(f"carrier: refused: {e}", file=sys.stderr)
         return 2
