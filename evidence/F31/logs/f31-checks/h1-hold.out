@@ -1,0 +1,36 @@
+== before 2026-11-20T19:19:39Z
+7.0.0-38-generic
+crun fuse-overlayfs gcc gcc-13 gcc-13-x86-64-linux-gnu libseccomp2 linux-generic-hwe-24.04 linux-headers-generic-hwe-24.04 linux-image-7.0.0-38-generic linux-image-generic-hwe-24.04 podman slirp4netns uidmap 
+enabled
+enabled
+enabled
+24:   set default="${next_entry}"
+29:   set default="gnulinux-advanced-4b840140-df63-48a3-adf5-1400444e8232>gnulinux-7.0.0-38-generic-advanced-4b840140-df63-48a3-adf5-1400444e8232"
+== hold
+linux-generic-hwe-24.04 was already set on hold.
+linux-headers-generic-hwe-24.04 was already set on hold.
+linux-image-generic-hwe-24.04 was already set on hold.
+linux-image-7.0.0-38-generic was already set on hold.
+Check GRUB_DISABLE_OS_PROBER documentation entry.
+Adding boot menu entry for UEFI Firmware Settings ...
+done
+24:   set default="${next_entry}"
+29:   set default="gnulinux-advanced-4b840140-df63-48a3-adf5-1400444e8232>gnulinux-7.0.0-38-generic-advanced-4b840140-df63-48a3-adf5-1400444e8232"
+Removed "/etc/systemd/system/timers.target.wants/apt-daily-upgrade.timer".
+Removed "/etc/systemd/system/timers.target.wants/apt-daily.timer".
+Synchronizing state of unattended-upgrades.service with SysV service script with /usr/lib/systemd/systemd-sysv-install.
+Executing: /usr/lib/systemd/systemd-sysv-install disable unattended-upgrades
+Removed "/etc/systemd/system/multi-user.target.wants/unattended-upgrades.service".
+== after 2026-11-20T19:19:52Z
+crun fuse-overlayfs gcc gcc-13 gcc-13-x86-64-linux-gnu libseccomp2 linux-generic-hwe-24.04 linux-headers-generic-hwe-24.04 linux-image-7.0.0-38-generic linux-image-generic-hwe-24.04 podman slirp4netns uidmap 
+disabled
+disabled
+disabled
+inactive
+inactive
+APT::Periodic::Update-Package-Lists "0";
+APT::Periodic::Unattended-Upgrade "0";
+GRUB_DEFAULT="gnulinux-advanced-4b840140-df63-48a3-adf5-1400444e8232>gnulinux-7.0.0-38-generic-advanced-4b840140-df63-48a3-adf5-1400444e8232"
+$nrconf{restart} = 'l';
+H1_HOLD_OK
+rc=0

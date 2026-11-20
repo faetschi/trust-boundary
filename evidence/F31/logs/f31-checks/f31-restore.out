@@ -1,0 +1,33 @@
+﻿
+2026-11-20T19:17:17.0315861Z start state=Running mac=00155D0C4002 checkpointType=ProductionOnly
+2026-11-20T19:17:17.3040854Z keep the current F30 state as post-F30-2026-11-20 (makes the restore reversible)
+2026-11-20T19:17:40.9320845Z checkpoint post-F30-2026-11-20 created
+2026-11-20T19:17:40.9575831Z turn off
+2026-11-20T19:17:41.8710834Z restore pre-F30-2026-11-18
+2026-11-20T19:18:05.9742498Z restored state=Saved
+2026-11-20T19:18:19.6349390Z Start-VM returned state=Running
+2026-11-20T19:18:19.6425563Z waiting up to 45 min for the guest hold (C:\Users\Admin\AppData\Local\Temp\claude\1bdbf0b7223717e2\300b9e68-97e7-4a01-aa27-ad0df38df07f\scratchpad\f31w\f31-restore.out.holdok or C:\Users\Admin\AppData\Local\Temp\claude\1bdbf0b7223717e2\300b9e68-97e7-4a01-aa27-ad0df38df07f\scratchpad\f31w\f31-restore.out.holdfail)
+2026-11-20T19:20:26.5591680Z checkpoint pre-F31-2026-11-20 created (after the hold); checkpointType=ProductionOnly state=Running
+
+Name                CreationTime        SnapshotType
+----                ------------        ------------
+pre-F15-2026-11-04  04.11.2026 19:08:33     Standard
+pre-B9-2026-11-05   05.11.2026 15:48:11     Standard
+pre-F16-2026-11-06  06.11.2026 10:12:02     Standard
+pre-F17-2026-11-06  06.11.2026 14:29:58     Standard
+pre-F18-2026-11-07  07.11.2026 10:33:02     Standard
+pre-F19-2026-11-07  07.11.2026 23:19:52     Standard
+pre-F21-2026-11-08  08.11.2026 14:55:32     Standard
+pre-F24-2026-11-13  13.11.2026 16:40:31     Standard
+pre-F25-2026-11-13  13.11.2026 19:28:48     Standard
+pre-F26-2026-11-13  13.11.2026 23:57:50     Standard
+pre-F27-2026-11-15  15.11.2026 17:15:10     Standard
+pre-F28-2026-11-15  15.11.2026 18:46:19     Standard
+pre-F29-2026-11-16  17.11.2026 18:20:05     Standard
+pre-F30-2026-11-18  18.11.2026 13:17:55     Standard
+post-F30-2026-11-20 20.11.2026 20:17:40     Standard
+pre-F31-2026-11-20  20.11.2026 20:20:25     Standard
+
+
+
+2026-11-20T19:20:26.8879253Z DONE

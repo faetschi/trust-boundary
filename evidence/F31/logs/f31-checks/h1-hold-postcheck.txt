@@ -1,0 +1,41 @@
+# F31 hold post-check (read-only), host time 2026-11-20T21:43:12Z
+== uname
+7.0.0-38-generic
+== dpkg -l linux-image*
+hi  linux-image-7.0.0-38-generic 7.0.0-38.38~24.04.4
+ii  linux-image-7.0.0-43-generic 7.0.0-43.43~24.04.1
+hi  linux-image-generic-hwe-24.04 7.0.0-43.43~24.04.1
+== grub default
+24:   set default="${next_entry}"
+29:   set default="gnulinux-advanced-4b840140-df63-48a3-adf5-1400444e8232>gnulinux-7.0.0-38-generic-advanced-4b840140-df63-48a3-adf5-1400444e8232"
+== dpkg.log: entries dated 2026-11-20 to 2026-11-29
+0
+== dpkg.log tail
+2026-11-18 12:15:19 trigproc man-db:amd64 2.12.0-4build2 <none>
+2026-11-18 12:15:19 status half-configured man-db:amd64 2.12.0-4build2
+2026-11-18 12:15:19 status installed man-db:amd64 2.12.0-4build2
+== unattended-upgrades.log since 2026-11-20
+2026-11-20 19:18:30,253 INFO Starting unattended upgrades script
+2026-11-20 19:18:30,254 INFO Allowed origins are: o=Ubuntu,a=noble, o=Ubuntu,a=noble-security, o=UbuntuESMApps,a=noble-apps-security, o=UbuntuESM,a=noble-infra-security
+2026-11-20 19:18:30,254 INFO Initial blacklist: 
+2026-11-20 19:18:30,254 INFO Initial whitelist (not strict): 
+2026-11-20 19:18:31,938 INFO Starting unattended upgrades script
+2026-11-20 19:18:31,938 INFO Allowed origins are: o=Ubuntu,a=noble, o=Ubuntu,a=noble-security, o=UbuntuESMApps,a=noble-apps-security, o=UbuntuESM,a=noble-infra-security
+2026-11-20 19:18:31,938 INFO Initial blacklist: 
+2026-11-20 19:18:31,938 INFO Initial whitelist (not strict): 
+2026-11-20 19:18:32,990 INFO No packages found that can be upgraded unattended and no pending auto-removals
+== apt-daily-upgrade journal since 2026-11-20 19:00
+2026-11-20T19:18:19+00:00 tbound-abi8-seed systemd[1]: Starting apt-daily.service - Daily apt download activities...
+2026-11-20T19:18:31+00:00 tbound-abi8-seed systemd[1]: apt-daily.service: Deactivated successfully.
+2026-11-20T19:18:31+00:00 tbound-abi8-seed systemd[1]: Finished apt-daily.service - Daily apt download activities.
+2026-11-20T19:18:31+00:00 tbound-abi8-seed systemd[1]: apt-daily.service: Consumed 2.805s CPU time.
+2026-11-20T19:18:31+00:00 tbound-abi8-seed systemd[1]: Starting apt-daily-upgrade.service - Daily apt upgrade and clean activities...
+2026-11-20T19:18:33+00:00 tbound-abi8-seed systemd[1]: apt-daily-upgrade.service: Deactivated successfully.
+2026-11-20T19:18:33+00:00 tbound-abi8-seed systemd[1]: Finished apt-daily-upgrade.service - Daily apt upgrade and clean activities.
+2026-11-20T19:18:33+00:00 tbound-abi8-seed systemd[1]: apt-daily-upgrade.service: Consumed 1.819s CPU time.
+== timers
+disabled
+disabled
+disabled
+inactive
+inactive
