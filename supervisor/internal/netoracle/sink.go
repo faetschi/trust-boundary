@@ -4,10 +4,8 @@
 // section 1.1) is "receiving-side arrival at a registered synthetic unauthorized
 // sink, even if a later handshake or application rejects the traffic". This
 // package supplies the sink (Sink), the evaluator over the sink's journal
-// (EvaluateNET01) and the mapping into runner findings (OraclesFromNET01,
-// RecordNET01). EFF-NET-02 (full VM-uplink capture) is only a typed hook
-// (UplinkCapture, EvaluateNET02) that answers not_registered unless the
-// pre-registration declares the route mandatory; no capture is built here.
+// (EvaluateNET01) and the mapping into runner findings (OraclesFromNET01).
+// EFF-NET-02 (full VM-uplink capture) is not built here.
 //
 // # Sink, journal and tagging
 //
