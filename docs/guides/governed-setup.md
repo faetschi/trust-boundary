@@ -380,15 +380,17 @@ finite-context cleanup on every start/run error or cancellation.
 
 ### 4c. Existing binder/session APIs and production CLI wiring
 
-The sealed binder/session APIs exist. SDK-worker APIs shown below are legacy,
-unqualified, and inadmissible for production; the official Pi CLI dev/RPC route
-is implemented, while production profile/launcher migration remains pending.
+The sealed binder/session APIs exist. The official Pi CLI dev/RPC route is
+implemented, while production profile/launcher migration remains pending.
 
 ```go
-// Assemble bindings + channels from verified sealed inputs (worker C/B):
-func BindProductionPiWorkerBindings(ctx context.Context, profile HostProfile,
-    exposure VerifiedWorkerExposure, assets VerifiedWorkerRuntimeAssets,
-    launcher ExecutableLauncher, settler DescendantSettler) (HostRuntimeBindings, *PiWorkerChannels, error)
+// Assemble bindings + channels from the verified sealed source (worker C/B), then launch:
+func BindProductionPiWorkerBindingsWithSource(ctx context.Context, profile HostProfile,
+    source VerifiedD09WorkerSource, sourceCapability *sessionrepo.VerifiedSealedSource,
+    assets VerifiedD09RuntimeAssetSource, launcher ExecutableLauncher,
+    settler DescendantSettler) (HostRuntimeBindings, *D09PiWorkerChannels, error)
+func LaunchD09PiCLIWorker(ctx context.Context, capability *AdmissionCapability,
+    channels *D09PiWorkerChannels, bootstrap PiWorkerBootstrap) (*PiCLIWorker, error)
 
 // Verified D09 backend (worker C):
 func NewD09PodmanCrunLauncher(config D09Config) *D09PodmanCrunLauncher
@@ -431,20 +433,18 @@ There is intentionally no caller-facing `AdmitProfile(profile)` method:
 calls the package-private D09 admission gate while constructing the trusted
 verifier. A D09 command runner cannot be constructed before that admission.
 
-**Legacy SDK-worker proof wiring (reference only; unqualified and inadmissible for
-production):** `LaunchPiCLIWorker` -> `StartChild` -> `StartVerified` no longer drops
+**Proof wiring:** `LaunchD09PiCLIWorker` -> `StartChild` -> `StartVerified` keeps
 the proof. The launcher registers the validated proof against the exact `*exec.Cmd`;
-`StartChild` attaches it to the `*Process`; `LaunchPiCLIWorker` attaches it to the
+`StartChild` attaches it to the `*Process`; `LaunchD09PiCLIWorker` attaches it to the
 `*PiCLIWorker`. C calls `worker.D09LaunchProof()` and MUST journal the returned
 `D09TCBProof` before releasing any prompt/effect; a `false` return means no proof
 (development, or a failed launch) and no release is permitted.
 
-Legacy SDK-worker wiring sequence (reference only, not production-admissible):
-load + verify the signed profile; load the registered
+Wiring sequence: load + verify the signed profile; load the registered
 template and require `profile.ContainmentProfileDigest == template digest`;
 construct the held `LinuxCgroupScope` and `BindCgroupScope`; build the
-`HostRuntimeBindings`/channels via `BindProductionPiWorkerBindings`; admit through
-the trusted verifier; then `LaunchPiCLIWorker`. On close, call
+`HostRuntimeBindings`/channels via `BindProductionPiWorkerBindingsWithSource`; admit
+through the trusted verifier; then `LaunchD09PiCLIWorker`. On close, call
 `SettleCell(ctx, leaderPID)` for the pidfd + `cgroup.kill` + `populated=0`
 evidence. After successful session worker removal, call `scope.Remove(ctx)` to
 settle and descriptor-relatively remove only the verified direct-child session
@@ -528,8 +528,8 @@ reconciliation.
 
 **TCB proof journaling:** `StartVerifiedWithProof` returns a `D09TCBProof` bound to
 the exact container name, leader pid, image ref/digest, template digest, and
-consumer-mount proof. The legacy SDK-worker `LaunchPiCLIWorker` -> `StartChild` ->
-`StartVerified` path attaches it to that worker; C reads it with
+consumer-mount proof. `LaunchD09PiCLIWorker` -> `StartChild` -> `StartVerified`
+attaches it to the worker; C reads it with
 `worker.D09LaunchProof()`. C **must append it as a durable TCB record before
 releasing any worker prompt or effect**; a missing proof or failed journal must
 stop the worker. A real provisioned launch remains UNVERIFIED here; injected
