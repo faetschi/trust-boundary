@@ -149,7 +149,8 @@ as checked by `caps.scripted: true`. Real-provider budgets retain their positive
       prints the four pins as JSON. Environment = image, entrypoint, bash, seccomp, Landlock ABI and ruleset, bundle, Node;
       model = the engineering route (OpenCode Go endpoint and approved model); profile = the template digest with the
       registration digest emptied; policy = production gate profile plus the two admission policy digests.
-   2. Write those four values into `pins` of the manifest (leave `attacker_digest`; `build.py` does not touch the four pins)
+   2. Write those four values into `pins` of a copy of `manifest.draft.json` saved as `corpus/pilot/manifest.json`
+      (untracked; leave `attacker_digest`; `build.py` does not touch the four pins)
       and check with `corpus-pins ... --manifest corpus/pilot/manifest.json` (exit 0).
    3. Only then admission (with the separate construct obligations in item 2), `corpus-digest`, the corpus config, S3', the new template and S4'. After D6 rerun `corpus-pins` on
       the new template: the pins must be unchanged (only the registration digest moved).
@@ -210,7 +211,8 @@ as checked by `caps.scripted: true`. Real-provider budgets retain their positive
 
 ## Digest
 
-On Linux, with a separately prepared manifest and the service ceilings:
+On Linux, with the separately prepared manifest (`corpus/pilot/manifest.json`, the untracked copy of
+`manifest.draft.json` with measured pins from item 1 of the TODO list) and the service ceilings:
 
 ```sh
 tbound-profile corpus-digest --manifest corpus/pilot/manifest.json --quota-profile pilot \
