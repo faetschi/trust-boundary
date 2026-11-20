@@ -24,8 +24,8 @@ You need:
   `sudo /usr/local/bin/tbound product doctor` reports these as `prereq`
   checks; its installation checks fail until step 6, which is expected. The
   [Create a product VM on Windows](hyperv-from-zero.md) builds a Hyper-V VM and
-  checks Landlock ABI 8. Its [reproduction bootstrap](../../infra/repro/README.md)
-  does not guarantee ABI 8 by itself. If it exits 3, follow its kernel
+  checks Landlock ABI 8. The [reproduction bootstrap](../../infra/repro/README.md)
+  it uses does not guarantee ABI 8 by itself. If it exits 3, follow its kernel
   instructions, reboot, and rerun its checks before continuing.
 - A `tbound` binary you trust, installed from a checkout as in
   [USAGE section 3](../../USAGE.md#3-installation). Run those commands as your

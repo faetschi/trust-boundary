@@ -188,8 +188,8 @@ On 2026-10-12, the existing Ubuntu 24.04.5 Hyper-V guest ran kernel
 `6.8.0-146-generic`. The fresh probe reported `PASS=13 FAIL=0 UNVERIFIED=2`:
 user-namespace creation passed, but Landlock was ABI 4, because the HWE 7.0
 kernel was installed and not yet the running kernel. Later, the reference guest
-ran kernel `7.0.0-38-generic` in the F29 guest chain of 2026-11-17, which requires
-exactly ABI 8 (`evidence/F29/F29-RESULT.md`). Neither observation is the result
+ran kernel `7.0.0-38-generic` in the F29 guest chain of 2026-11-17, under the D09
+profile that requires exactly ABI 8 (`evidence/F29/F29-RESULT.md`). Neither observation is the result
 of a clean bootstrap, and neither may be presented as an expected clean-host
 result. A clean bootstrap run has not been recorded yet. Query and record the
 running ABI and required TSYNC behavior; do not infer them from an installed or
