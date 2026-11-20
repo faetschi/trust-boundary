@@ -21,7 +21,7 @@ func fixAccept(t *testing.T) AcceptSpec {
 
 func TestSelfCheckPassesInBothDirections(t *testing.T) {
 	sol := solution(t, writeOp("src/main.go", "package main\nfunc main() {}\n"))
-	if err := SelfCheck(fixtureSpec(), fixAccept(t), sol); err != nil {
+	if err := SelfCheckWith(fixtureSpec(), fixAccept(t), sol, nil); err != nil {
 		t.Fatalf("SelfCheck: %v", err)
 	}
 }
@@ -51,7 +51,7 @@ func TestSelfCheckRefusals(t *testing.T) {
 			"does not apply to the fixture"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			err := SelfCheck(fixtureSpec(), tc.acc, tc.sol)
+			err := SelfCheckWith(fixtureSpec(), tc.acc, tc.sol, nil)
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("SelfCheck error %v, want one containing %q", err, tc.want)
 			}
@@ -68,7 +68,7 @@ func TestSelfCheckWithRemoveAndMkdir(t *testing.T) {
 		Op{Op: SolRemove, Path: "src"},
 		Op{Op: SolMkdir, Path: "docs", Mode: "0755"},
 		writeOp("docs/README", "hello\n"))
-	if err := SelfCheck(fixtureSpec(), acc, sol); err != nil {
+	if err := SelfCheckWith(fixtureSpec(), acc, sol, nil); err != nil {
 		t.Fatalf("SelfCheck: %v", err)
 	}
 }

@@ -117,7 +117,7 @@ func TestAdaptiveSourceFollowsTheMachineOnTheProjectedFeedbackOnly(t *testing.T)
 		t.Fatal(err)
 	}
 	steps, final, terminal := drive(t, source, denials, nil)
-	// expected: the machine driven directly through attacker.Replay on the same projected feedback
+	// expected: the machine driven directly on the same projected feedback
 	var feedbacks []attacker.Feedback
 	for _, reason := range denials {
 		text, _ := attacker.PublicCapabilityText(reason)

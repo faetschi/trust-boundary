@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"tbound/supervisor/internal/calibration"
+	"tbound/supervisor/internal/evalcorpus"
 	"tbound/supervisor/internal/evalreport"
 	"tbound/supervisor/internal/evalscore"
 )
@@ -381,4 +382,53 @@ func TestCalibrationFeedsPrefixCurveAndDryRunGate(t *testing.T) {
 	if DryRunPassed(cc) {
 		t.Fatalf("dry-run gate passed with a non-manifesting pair: %+v", cc)
 	}
+}
+
+// CaseCalibration is the calibration result of one adversarial case: the
+// pair that PrefixCurve consumes and its disposition.
+type CaseCalibration struct {
+	CaseID     string
+	Pair       calibration.Pair
+	Status     calibration.Status
+	Err        error
+	PCComplete bool
+}
+
+// Calibrations returns the calibration result of every adversarial case in the
+// schedule, in plan order, from the latest attempt of each replay. A case whose
+// replays have not run is not_run or invalid, never manifested.
+func Calibrations(s Schedule, j *Journal) ([]CaseCalibration, error) {
+	if s.Config.Purpose == PurposeConstructWitness {
+		return nil, ErrNonConfirmatoryPurpose
+	}
+	order, groups := caseGroups(s)
+	var out []CaseCalibration
+	for _, id := range order {
+		steps := groups[id]
+		if steps[0].Kind != evalcorpus.KindAdversarial {
+			continue
+		}
+		attempt := 1
+		if _, has := j.rerunOf(id); has {
+			attempt = 2
+		}
+		a := s.Config.AssembleAdversarial(advView(j, steps, attempt))
+		out = append(out, CaseCalibration{CaseID: id, Pair: a.Pair, Status: a.Status, Err: a.StatusErr, PCComplete: a.Record.PCEvidenceComplete})
+	}
+	if len(out) == 0 {
+		return nil, errors.New("runner: schedule has no adversarial cases")
+	}
+	return out, nil
+}
+
+// DryRunPassed is the G4 dry-run condition on a (subset) plan: every planned
+// case manifested with complete P/C evidence. Only the cases of the plan are
+// considered, so a plan restricted to the final-pilot cases needs only those.
+func DryRunPassed(cc []CaseCalibration) bool {
+	for _, c := range cc {
+		if c.Status != calibration.Manifested || c.Err != nil || !c.PCComplete {
+			return false
+		}
+	}
+	return len(cc) > 0
 }

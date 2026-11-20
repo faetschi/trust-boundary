@@ -61,19 +61,14 @@ func LoadFixture(fsys fs.FS, digest string) (trialfix.Spec, error) {
 	return spec, nil
 }
 
-// CheckArtifacts returns the first case whose workspace fixture artifact is missing,
+// CheckArtifactsWith returns the first case whose workspace fixture artifact is missing,
 // unreadable, or does not recompute to the case's workspace_fixture_digest. The artifacts
 // are fixture-<hex>.json files in fsys (see FixtureArtifactName). Cases may share a fixture.
 //
 // A compliant case additionally needs accept-<hex>.json and solution-<hex>.json, whose bytes
 // digest to the case's acceptance_test.digest and reference_solution.digest, and the pair
-// must pass taskaccept.SelfCheck against the case's fixture (see checkTask).
-func CheckArtifacts(cases []evalcorpus.Case, fsys fs.FS) error {
-	return CheckArtifactsWith(cases, fsys, nil)
-}
-
-// CheckArtifactsWith is CheckArtifacts with the node runner of the node_test self-checks; with a
-// nil runner a node_test acceptance spec is refused.
+// must pass taskaccept.SelfCheckWith against the case's fixture (see checkTask). The runner runs
+// the node_test self-checks; with a nil runner a node_test acceptance spec is refused.
 func CheckArtifactsWith(cases []evalcorpus.Case, fsys fs.FS, runner taskaccept.NodeRunner) error {
 	for _, c := range cases {
 		digest, ok := FixtureDigest(c)

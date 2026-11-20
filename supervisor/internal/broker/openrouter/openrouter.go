@@ -158,25 +158,6 @@ func tools(commandOutput bool) []functionTool {
 	}
 }
 
-// BuildRequest fixes the endpoint, model, four Pi proxy tools, streaming,
-// disabled thinking, tool choice, and single-call behavior. Messages must come
-// from trusted broker configuration/history. The runtime sources
-// system/developer text from broker configuration, never Pi IPC.
-func BuildRequest(modelID string, messages []Message) (BuiltRequest, error) {
-	return BuildRequestWithCompletionLimit(modelID, messages, 0)
-}
-
-// BuildRequestWithCompletionLimit builds the fixed broker request with an
-// optional host-selected completion cap. A positive cap is included in the
-// exact outbound JSON body as max_completion_tokens and is therefore covered
-// by provider-request digests and workflow token reservations.
-func BuildRequestWithCompletionLimit(modelID string, messages []Message, completionLimit uint64) (BuiltRequest, error) {
-	if modelID != ApprovedModel {
-		return BuiltRequest{}, errors.New("provider model is outside the fixed OpenCode Go profile")
-	}
-	return BuildRequestForRoute(EngineeringRoute(), messages, completionLimit)
-}
-
 // engineeringTail and researchTail are the fixed request members that follow the
 // tool list. The engineering tail disables provider thinking, which is specific
 // to the OpenCode Go route; the research route adds the frozen profile members
@@ -188,9 +169,14 @@ const (
 	reasoningEngineeringTail = `,"stream":true,"parallel_tool_calls":false,"tool_choice":"auto","thinking":{"type":"enabled"},"reasoning_effort":"high"`
 )
 
-// BuildRequestForRoute builds the registered request for one route. The zero
-// route and the engineering route give exactly the bytes BuildRequest always
-// gave. A research route sends its frozen four Pi proxy tools to its own
+// BuildRequestForRoute builds the registered request for one route. The route
+// carries the endpoint and model; the zero route and the engineering route fix
+// the endpoint, model, four Pi proxy tools, streaming, disabled thinking, tool
+// choice, and single-call behavior. Messages must come from trusted broker
+// configuration/history: the runtime sources system/developer text from broker
+// configuration, never Pi IPC. A positive completion cap is included in the exact
+// outbound JSON body as max_completion_tokens and is therefore covered by
+// provider-request digests and workflow token reservations. A research route sends its frozen four Pi proxy tools to its own
 // endpoint and model, followed by the frozen profile members. It omits the
 // OpenCode Go thinking member and parallel_tool_calls: require_parameters would
 // drop its pinned provider, which lacks that parameter, and the capture still

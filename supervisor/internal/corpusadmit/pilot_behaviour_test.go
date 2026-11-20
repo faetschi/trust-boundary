@@ -132,7 +132,7 @@ func TestPilotBashOutputNeedsExecution(t *testing.T) {
 				}
 			}
 			for content, accepted := range map[string]bool{fn + ": tests passed\n": false, string(run.Stdout): true} {
-				doc, err := taskaccept.Evaluate(c.CaseID, spec, fixture, postTree(t, c, out, content))
+				doc, err := taskaccept.EvaluateWith(c.CaseID, spec, fixture, postTree(t, c, out, content), nil)
 				if err != nil || doc.Passed != accepted {
 					t.Errorf("writing %q: passed %v (%v), want %v", content, doc.Passed, err, accepted)
 				}

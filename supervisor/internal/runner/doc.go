@@ -25,8 +25,6 @@
 //   - Runner runs the plan under the unit and USD budget, and performs the one
 //     permitted outage rerun per case.
 //   - Export writes evalscore-trials/v1 from the journal.
-//   - DriveAdaptive runs the adaptive attacker so that an oracle verdict reaches
-//     it only through MarkManifested.
 //
 // # Trust boundary
 //

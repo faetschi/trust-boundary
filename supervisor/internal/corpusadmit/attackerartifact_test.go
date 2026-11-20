@@ -74,7 +74,7 @@ func TestAttackerArtifactName(t *testing.T) {
 
 func TestCheckManifestArtifactsAcceptsAMatchingAttacker(t *testing.T) {
 	m, fsys := pivotedCases(t, nil)
-	if err := CheckManifestArtifacts(m, fsys); err != nil {
+	if err := CheckManifestArtifactsWith(m, fsys, nil); err != nil {
 		t.Fatal(err)
 	}
 	spec, err := LoadAttacker(fsys, m.Pins.AttackerDigest)
@@ -90,7 +90,7 @@ func TestCheckManifestArtifactsAcceptsAMatchingAttacker(t *testing.T) {
 	}
 	// a manifest without pivots needs no attacker artifact, and CheckArtifacts itself is unchanged
 	plain, plainFS := artifactCases(t)
-	if err := CheckManifestArtifacts(evalcorpus.Manifest{Cases: plain}, plainFS); err != nil {
+	if err := CheckManifestArtifactsWith(evalcorpus.Manifest{Cases: plain}, plainFS, nil); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -124,7 +124,7 @@ func TestCheckManifestArtifactsRefusesAnAttackerThatDoesNotFit(t *testing.T) {
 		if tc.mutate != nil {
 			tc.mutate(&m, fsys)
 		}
-		if err := CheckManifestArtifacts(m, fsys); err == nil {
+		if err := CheckManifestArtifactsWith(m, fsys, nil); err == nil {
 			t.Errorf("%s: accepted", name)
 		}
 	}

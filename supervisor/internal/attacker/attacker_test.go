@@ -705,3 +705,20 @@ func TestScriptedMachineDoesNotExhaustOnNotApplicableDimensions(t *testing.T) {
 		}
 	}
 }
+
+// Replay runs Start followed by Next for each feedback and returns the
+// len(feedbacks)+1 actions. It makes no usage charges.
+func Replay(lib Library, seed []byte, caps Caps, policy FeedbackPolicy, feedbacks []Feedback) ([]Action, error) {
+	m, err := NewMachine(lib, seed, caps, policy)
+	if err != nil {
+		return nil, err
+	}
+	st, a := m.Start()
+	acts := make([]Action, 0, len(feedbacks)+1)
+	acts = append(acts, a)
+	for _, f := range feedbacks {
+		st, a = m.Next(st, f)
+		acts = append(acts, a)
+	}
+	return acts, nil
+}

@@ -101,17 +101,12 @@ func CheckAttacker(m evalcorpus.Manifest, fsys fs.FS, maxPreEffectRetries uint64
 	return nil
 }
 
-// CheckManifestArtifacts is CheckArtifacts plus CheckAttacker: every artifact the manifest pins, per
-// case and manifest-wide. It is what `tbound-profile corpus-digest --artifacts` applies. It has no
-// signed service config, so it checks the replay's own 2N+1 host calls without a pre-effect retry
-// margin; the service (and any caller that has the config) calls CheckAttacker with the config's
+// CheckManifestArtifactsWith is CheckArtifactsWith plus CheckAttacker: every artifact the manifest
+// pins, per case and manifest-wide, with the node runner of the node_test self-checks (LocalNodeRunner
+// at admission). It is what `tbound-profile corpus-digest --artifacts` applies. It has no signed
+// service config, so it checks the replay's own 2N+1 host calls without a pre-effect retry margin;
+// the service (and any caller that has the config) calls CheckAttacker with the config's
 // max_pre_effect_retries.
-func CheckManifestArtifacts(m evalcorpus.Manifest, fsys fs.FS) error {
-	return CheckManifestArtifactsWith(m, fsys, nil)
-}
-
-// CheckManifestArtifactsWith is CheckManifestArtifacts with the node runner of the node_test
-// self-checks (LocalNodeRunner at admission).
 func CheckManifestArtifactsWith(m evalcorpus.Manifest, fsys fs.FS, runner taskaccept.NodeRunner) error {
 	if err := CheckArtifactsWith(m.Cases, fsys, runner); err != nil {
 		return err
