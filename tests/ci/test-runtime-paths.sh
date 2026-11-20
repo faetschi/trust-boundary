@@ -37,7 +37,7 @@ docs="$(git -C "$repo" rev-parse HEAD)"
 check "docs only skips runtime" false "$first" "$docs"
 
 prev="$docs"
-for path in supervisor/added.go adapter/added.ts corpus/added.json infra/added.sh install/added.sh docs/evaluation/added.json .github/workflows/ci.yml scripts/ci_go_test_timing.py; do
+for path in supervisor/added.go adapter/added.ts corpus/added.json infra/added.sh install/added.sh docs/evaluation/added.json .github/workflows/ci.yml scripts/ci_go_test_timing.py scripts/ci-private-tmpdir.sh; do
   mkdir -p "$repo/$(dirname "$path")"
   printf 'x\n' > "$repo/$path"
   git -C "$repo" add "$path"
