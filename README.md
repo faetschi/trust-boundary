@@ -50,6 +50,7 @@ repository only through publication.
 |---|---|
 | Build the code and run its checks | [Quickstart](docs/guides/quickstart.md) (about 30 minutes) |
 | Run a task or use the product chat | [Use TBound](USAGE.md) |
+| Create a Windows Hyper-V VM for the product | [Product VM on Windows](docs/guides/hyperv-from-zero.md) |
 | Look up a command or flag | [Command reference](docs/cli.md) |
 | Understand a term such as PVR, freeze, or cell | [Glossary](docs/glossary.md) |
 | Set up a governed Linux host (operators) | [Governed host setup](docs/guides/governed-setup.md), then [reproduction](docs/guides/reproduce.md) |
