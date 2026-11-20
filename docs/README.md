@@ -35,7 +35,7 @@ product plan and status pages are in git history, not current instructions.
 - [Construct witnesses](guides/construct-witnesses.md): retaining guest construct evidence before registration.
 - [Developer tools](guides/developer-tools.md): source-only provider probe, web chat UI QA, and similar tools, with prerequisites and status.
 - [Release](guides/release.md): package formats and release acceptance checks.
-- [Create a product VM on Windows](guides/hyperv-from-zero.md): Hyper-V VM from an Ubuntu ISO to the first governed turn; the shortest path, linking the detail guides.
+- [Create a product VM on Windows](guides/hyperv-from-zero.md): the steps from an Ubuntu ISO to the first governed turn.
 - [First governed product turn](guides/product-first-turn.md): product service setup order, terminal and browser chat on one Linux host; not thesis evidence.
 - [Enable Bash in the product service](guides/product-bash.md): offline image and command bundle, format-3 setup, qualification, review, and recovery.
 - [Product demo from Windows](guides/product-demo-windows.md): chat with a product VM over SSH from Git Bash or VS Code.
