@@ -4,7 +4,7 @@
 VERSION ?= dev
 GO ?= go
 
-.PHONY: help build release verify test check-node boundary extension-webchat extension-webchat-frontend-verify extension-webchat-csp fmt clean deb rpm container npm-packages publish
+.PHONY: help build release verify test check-node boundary extension-webchat extension-webchat-frontend-verify extension-webchat-csp fmt clean deb rpm container npm-packages publish packaging-test
 
 help:
 	@echo "tbound make targets:"
@@ -16,6 +16,7 @@ help:
 	@echo "  deb          build a .deb from the linux-amd64 tarball (needs dpkg-deb)"
 	@echo "  rpm          build an RPM from the linux-amd64 tarball (needs rpmbuild)"
 	@echo "  container    build the container image (needs podman or docker)"
+	@echo "  packaging-test  offline package, publisher and CI-script regressions, as CI runs them (needs bash, git, GNU tar/awk/stat, dpkg-deb; Linux or WSL)"
 	@echo "  test         run the extension boundary guard, then the full supervisor Go suite (needs Node on PATH)"
 	@echo "  boundary     check that core never imports the optional extensions/webchat (pure sh)"
 	@echo "  extension-webchat  gofmt, vet, race tests and Node tests for the optional web chat extension (needs Node)"
@@ -46,6 +47,16 @@ rpm:
 
 container:
 	@scripts/build-container.sh $(VERSION)
+
+packaging-test:
+	@set -e; umask 077; t="$$(mktemp -d)"; trap 'rm -rf "$$t"' EXIT; export TMPDIR="$$t"; \
+	bash tests/packaging/verify-package-manager-layout.sh; \
+	bash tests/packaging/verify-publish-release-assets.sh; \
+	bash tests/packaging/verify-release-verify-lib.sh; \
+	bash tests/packaging/verify-release-workflow-coverage.sh 1.2.3; \
+	bash tests/packaging/verify-governed-containerfile-pins.sh; \
+	bash tests/ci/test-runtime-paths.sh; \
+	bash tests/ci/test-runtime-status.sh
 
 # Several supervisor tests (internal/taskaccept, internal/corpusadmit,
 # cmd/tbound-profile and others) run node and fail, not skip, without it.
