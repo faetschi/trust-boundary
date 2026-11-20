@@ -103,6 +103,17 @@ func TestProductServiceObserveWindowIsBounded(t *testing.T) {
 	}
 }
 
+func TestProductServiceReviewEventStatesRemovals(t *testing.T) {
+	turn := productsession.Turn{ID: "turn-1", CandidateDigest: "sha256:cand"}
+	if got := reviewEvent(turn, []string{"a", "b"}).Text; got != "2 changed paths" {
+		t.Fatalf("without removals: %q", got)
+	}
+	turn.Removed = 1
+	if got := reviewEvent(turn, []string{"a", "b"}).Text; got != "2 changed paths, 1 removed" {
+		t.Fatalf("with removals: %q", got)
+	}
+}
+
 // Each byte of a path can be escaped as six bytes, so 256 long paths of `<` would alone exceed the frame.
 func TestProductServiceReviewEventFitsAFrame(t *testing.T) {
 	long := strings.Repeat("<", 1000)

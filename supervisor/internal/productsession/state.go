@@ -114,6 +114,8 @@ type TurnReview struct {
 	Receipt         []byte
 	Usage           Budget
 	CandidateDigest string
+	// Removed is the number of objects the candidate removes: the driver's auto-publish guard input.
+	Removed int
 }
 
 // Session is a copy of one session's catalog state. Consumed holds settled
@@ -166,6 +168,7 @@ type Turn struct {
 	ResultBaselineDigest     string
 	ContextEligible          bool
 	CandidateDigest          string
+	Removed                  int // objects the candidate removes, recorded at awaiting_review
 	UnknownReason            string
 	RefusalCode              Code
 	CancelRequested          bool
@@ -813,7 +816,7 @@ func (s *state) reduceAwaitingReview(data []byte) (func(), error) {
 		return nil, err
 	}
 	// An auto-mode turn awaits review only when its scope carries a removal limit.
-	if !(t.PublicationMode == PublicationReview || t.Scope != nil && t.Scope.AutoPublishMaxRemovals != nil) || !validDigest(r.CandidateDigest) {
+	if !(t.PublicationMode == PublicationReview || t.Scope != nil && t.Scope.AutoPublishMaxRemovals != nil) || !validDigest(r.CandidateDigest) || r.Removed < 0 {
 		return nil, fail(CodeInvalidRequest, "only a review-mode or removal-limited auto-mode turn with a candidate digest can await review")
 	}
 	if r.ReviewTimeoutSeconds < 1 || r.ReviewTimeoutSeconds > maxReviewTimeout ||
@@ -831,6 +834,7 @@ func (s *state) reduceAwaitingReview(data []byte) (func(), error) {
 		t.State, t.Settlement = StateAwaitingReview, r.Settlement
 		t.ReviewTimeoutSeconds = r.ReviewTimeoutSeconds
 		t.Receipt, t.ReceiptDigest, t.Usage, t.Refund, t.CandidateDigest = slices.Clone(r.Receipt), r.ReceiptDigest, r.Usage, r.Refund, r.CandidateDigest
+		t.Removed = r.Removed
 	}, nil
 }
 

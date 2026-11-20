@@ -528,6 +528,7 @@ func TestAwaitingReviewBlocksSessionAndProject(t *testing.T) {
 	wantCode(t, c.MarkAwaitingReview(turn.ID, unlinked), CodeWrongTurnState) // not linked yet
 	mustLink(t, c, turn.ID)
 	review := reviewFor(c, turn.ID, Budget{2, 10, 5}, dg("candidate"))
+	review.Removed = 3
 	bad := review
 	bad.Usage = Budget{11, 1, 1}
 	wantCode(t, c.MarkAwaitingReview(turn.ID, bad), CodeInvalidRequest)
@@ -539,7 +540,7 @@ func TestAwaitingReviewBlocksSessionAndProject(t *testing.T) {
 	}
 	got, _ := c.Turn(turn.ID)
 	sess, _ := c.Session(uid1, s.ID)
-	if got.State != StateAwaitingReview || got.Refund != (Budget{8, 990, 55}) || got.CandidateDigest != dg("candidate") ||
+	if got.State != StateAwaitingReview || got.Refund != (Budget{8, 990, 55}) || got.CandidateDigest != dg("candidate") || got.Removed != 3 ||
 		sess.Consumed != (Budget{2, 10, 5}) || sess.Reserved != (Budget{}) || sess.Revision != 2 {
 		t.Fatalf("awaiting review: turn=%+v session=%+v", got, sess)
 	}

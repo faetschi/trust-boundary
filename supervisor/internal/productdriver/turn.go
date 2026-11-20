@@ -142,7 +142,7 @@ func (d *Driver) RunTurn(ctx context.Context, admission productsession.Admission
 		s.outcome = productsession.OutcomeNoDiff
 	case turn.PublicationMode == productsession.PublicationReview,
 		turn.Scope != nil && turn.Scope.AutoPublishMaxRemovals != nil && resolved.Removed > *turn.Scope.AutoPublishMaxRemovals:
-		s.outcome, s.candidate = productsession.OutcomeAwaitingReview, sealed
+		s.outcome, s.candidate, s.removed = productsession.OutcomeAwaitingReview, sealed, resolved.Removed
 	default:
 		host.Crash("before-auto-publication")
 		// This decision is the publication-start boundary, ordered with CancelTurn's durable record.
@@ -215,6 +215,7 @@ type settlement struct {
 	resultBaseline string
 	transactionID  string
 	candidate      string
+	removed        int
 }
 
 // unknown records a linked turn whose disposition cannot be established. It never claims success.
@@ -270,7 +271,7 @@ func (s *settlement) settle() (productsession.TurnReceipt, error) {
 	}
 	if s.outcome == productsession.OutcomeAwaitingReview {
 		err = s.d.catalog.MarkAwaitingReview(s.turn.ID, productsession.TurnReview{Settlement: receipt.Settlement,
-			Receipt: encoded, Usage: usage, CandidateDigest: s.candidate})
+			Receipt: encoded, Usage: usage, CandidateDigest: s.candidate, Removed: s.removed})
 	} else {
 		err = s.d.catalog.CompleteTurn(s.turn.ID, productsession.TurnTerminal{Outcome: s.outcome, Settlement: receipt.Settlement,
 			Receipt: encoded, Usage: usage, ResultBaselineDigest: s.resultBaseline, ContextEligible: s.work.FinalAnswer})
