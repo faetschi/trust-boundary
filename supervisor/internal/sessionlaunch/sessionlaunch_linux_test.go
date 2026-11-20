@@ -163,9 +163,6 @@ func TestRebindRequiresExplicitRecoveryActivationAndNeverDestroysRetainedGit(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := OpenStore(storeRoot, previewOptions); !errors.Is(err, ErrRecoveryActivationRequired) {
-		t.Fatalf("ordinary OpenStore bypassed the recovery preview path: %v", err)
-	}
 	managed, err := OpenRecoveryPreview(storeRoot, previewOptions)
 	_ = storeRoot.Close()
 	if err != nil {

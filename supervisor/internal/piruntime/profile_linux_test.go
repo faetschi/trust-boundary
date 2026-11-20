@@ -44,11 +44,3 @@ func TestLinuxSignedHostProfileVerifiesCanonicalPinnedProfile(t *testing.T) {
 		t.Fatalf("mutated profile retained signed authority: %v", err)
 	}
 }
-
-func TestLinuxHostProfileVerifierRefusesFrozenProductionAdmission(t *testing.T) {
-	profile, _ := testHostProfile()
-	verifier := &LinuxHostProfileVerifier{profile: profile}
-	if err := verifier.admitsFrozenLinuxProfile(profile); !errors.Is(err, ErrProductionLauncherUnavailable) {
-		t.Fatalf("profile verifier did not preserve production refusal: %v", err)
-	}
-}

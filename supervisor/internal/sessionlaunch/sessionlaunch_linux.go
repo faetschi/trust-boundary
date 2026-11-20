@@ -101,12 +101,6 @@ func CreateStore(root *os.File, options sessionrepo.Options) (*ManagedStore, err
 	return newManagedStore(store, options), nil
 }
 
-// OpenStore is intentionally unavailable: recovery must use the explicit
-// read-only preview and clean-restart activation path below.
-func OpenStore(root *os.File, options sessionrepo.Options) (*ManagedStore, error) {
-	return nil, ErrRecoveryActivationRequired
-}
-
 // OpenRecoveryPreview reconstructs an existing Store using only its exact
 // retained Store/effect/admission facts. It invokes no caller-supplied live or
 // historical authority callbacks, performs no repository-state repair, and

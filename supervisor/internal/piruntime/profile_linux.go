@@ -69,13 +69,6 @@ func OpenLinuxHostProfileVerifier(runtime HostRuntimeBindings) (*LinuxHostProfil
 
 func (v *LinuxHostProfileVerifier) trustedHostProfileVerifier() {}
 
-func (v *LinuxHostProfileVerifier) admitsFrozenLinuxProfile(profile HostProfile) error {
-	if v == nil || profile != v.profile {
-		return ErrHostProfileMismatch
-	}
-	return ErrProductionLauncherUnavailable
-}
-
 // VerifyLinuxSignedHostProfileBytes verifies canonicalized HostProfile bytes.
 // This is a structural test helper, not an admission operation; callers still
 // need OpenLinuxHostProfileVerifier and its fixed root-owned trust root.
