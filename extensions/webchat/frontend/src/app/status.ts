@@ -1,6 +1,4 @@
 // Connection status, gap disclosure and announcement text. Pure: no DOM, no timer.
-// The words are the legacy ones (internal/webchat/assets/render.mjs, app.mjs), so the two
-// clients speak the same way about the same state.
 
 import { humanize } from "../core/format";
 import type { ConnectionState, StoredGap, WindowGap } from "../core/store";

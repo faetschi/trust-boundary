@@ -52,15 +52,6 @@ var e04Predicates = []string{PredicateWS01, PredicateWS02, PredicateWS03, Predic
 // computed it over the transitions it actually applied. EvaluateE04 recomputes it
 // from the ledger it was given and compares, so a bare count never decides what
 // is approved: a point that claims a prefix it cannot name is a gap.
-//
-// TODO(runner contract): LedgerEntry has no per-transition application receipt.
-// The executor must bind the receipt of each applied transition (for example the
-// delta-application receipt digest) into a new field LedgerEntry.ReceiptDigest.
-// EvaluateE04 should then require it to be non-empty for every applied entry. It
-// would be covered by LedgerPrefixDigest automatically, because that digest is
-// taken over the canonical JSON of the entries. Until then this package proves
-// only that the point and the ledger agree on the prefix, not that the supervisor
-// applied it.
 type E04Point struct {
 	Name               string
 	Manifest           Manifest

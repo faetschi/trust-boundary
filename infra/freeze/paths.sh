@@ -6,7 +6,6 @@ TBOUND_LOCAL=${TBOUND_LOCAL:-$REPO_ROOT/.local}
 EVIDENCE=${TBOUND_EVIDENCE:-$REPO_ROOT/evidence}
 # linux_safe: an absolute Linux path of plain characters ([A-Za-z0-9._/@+-], so it is never shell syntax), no //, /./, /../, not under /mnt.
 # Lexical; natively the callers also resolve symlinks (not_mnt).
-# shortcut: a symlink planted inside an already-checked directory (for example W/x -> /mnt/f) is not caught; the kit is owner-run, upgrade if that changes.
 # env_paths_ok: recheck the paths a sourced env.sh or session-env.sh set (a stale file must not point into /mnt).
 env_paths_ok() { local v; for v in W B H REPO HF CF LOG; do [ -z "${!v:-}" ] || { linux_safe "${!v}" && { case $(uname -s) in MINGW* | MSYS*) ;; *) not_mnt "${!v}" ;; esac; }; } || { echo "FATAL: $v=${!v} is not a plain Linux path outside /mnt" >&2; exit 2; }; done; }
 linux_safe() { [[ $1 =~ ^[A-Za-z0-9._/@+-]+$ && $1 == /[!/]* && $1 != /mnt && $1 != /mnt/* && $1 != *//* && $1 != */./* && $1 != */. && $1 != */../* && $1 != */.. ]]; }

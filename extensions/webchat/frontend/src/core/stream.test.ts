@@ -1,4 +1,3 @@
-// Port of internal/webchat/jstest/stream.test.mjs. Same test names and assertions.
 import { test } from "vitest";
 import assert from "node:assert/strict";
 

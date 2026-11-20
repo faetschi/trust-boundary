@@ -30,10 +30,6 @@ import (
 // A scripted exchange has no usage object and adds nothing. A completed exchange whose usage has no
 // readable token counts (or whose response cannot be captured again) adds nothing and is counted in
 // ProviderUsageUnread instead: an accounting gap never fails a run.
-//
-// shortcut: a recovered session starts a fresh provider journal, so the exchanges of its crashed
-// predecessor process are in no receipt (an undercount, never a double count); add the predecessor
-// journal's completed exchanges if recovery ever happens in a claim-bearing run.
 func applyProviderLineage(receipt *productionPiReceipt, trace audit.Trace, route openrouter.Route) error {
 	var errs []error
 	for _, record := range trace.Records {
