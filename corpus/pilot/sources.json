@@ -60,7 +60,7 @@
   },
   "nuprl/MultiPL-E": {
    "rev": "28441b6024e71d4a1c1c0f6bf171c935cd5a43f2",
-   "license": "MIT (dataset card); repository BSD-3-Clause with a no-training clause",
+   "license": "MIT",
    "digests": [
     "sha256:037debd61e3e98ee9da684054ef522d45200ce622ae36b2fab3bbb27769fa51d"
    ],
