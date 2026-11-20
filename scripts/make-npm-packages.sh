@@ -24,6 +24,8 @@ DIST="${2:-$ROOT/dist}"
 OUT="${3:-$DIST/npm}"
 
 die() { echo "make-npm-packages: $*" >&2; exit 1; }
+# shellcheck source=scripts/lib-release-verify.sh
+source "$ROOT/scripts/lib-release-verify.sh"
 
 # A real path resolver is required: without it we cannot safely prove that the
 # output directory is not an alias of DIST/HOME, so we refuse rather than fall
@@ -73,42 +75,6 @@ DIST="$DIST_C"
 map_os() { case "$1" in linux) echo linux;; *) return 1;; esac; }
 map_cpu() { case "$1" in amd64) echo x64;; arm64) echo arm64;; *) return 1;; esac; }
 
-safe_archive() {
-  local archive="$1" member
-  while IFS= read -r member; do
-    case "$member" in
-      ""|/*|../*|*/../*|*/..|*\\*) die "unsafe path in archive $(basename "$archive"): $member" ;;
-    esac
-  done < <(tar -tzf "$archive")
-  # Release packages are regular files/directories only. Reject symlink/hardlink
-  # or special entries before extraction so package assembly never follows an
-  # archive-provided link.
-  tar -tvzf "$archive" | awk 'substr($0,1,1)!="-" && substr($0,1,1)!="d" { bad=1 } END { exit bad ? 1 : 0 }' \
-    || die "links or special files are not allowed in $(basename "$archive")"
-}
-
-safe_manifest_paths() {
-  local root="$1" line rel
-  local seen="|"
-  [ -f "$root/MANIFEST.sha256" ] || die "archive is missing MANIFEST.sha256"
-  while IFS= read -r line; do
-    [[ "$line" =~ ^[0-9a-f]{64}\ \ (.+)$ ]] || die "malformed MANIFEST.sha256 record"
-    rel="${BASH_REMATCH[1]}"
-    case "$rel" in
-      ./*) rel="${rel#./}" ;;
-    esac
-    [[ "$rel" =~ ^[A-Za-z0-9._/-]+$ ]] || die "invalid manifest path '$rel'"
-    case "$rel" in ""|/*|.|..|../*|*/../*|*/..) die "unsafe manifest path '$rel'" ;; esac
-    case "$seen" in *"|$rel|"*) die "duplicate manifest path '$rel'" ;; esac
-    seen+="$rel|"
-    [ -f "$root/$rel" ] && [ ! -L "$root/$rel" ] || die "manifest path is missing, non-regular, or a symlink: $rel"
-  done < "$root/MANIFEST.sha256"
-  while IFS= read -r -d '' file; do
-    rel="${file#"$root"/}"
-    case "$seen" in *"|$rel|"*) ;; *) die "unlisted regular file in archive: $rel" ;; esac
-  done < <(find "$root" -type f ! -name MANIFEST.sha256 -print0)
-}
-
 platforms=()
 for tgz in "$DIST"/tbound-"$VERSION"-*.tar.gz; do
   [ -e "$tgz" ] || continue
@@ -124,23 +90,11 @@ for tgz in "$DIST"/tbound-"$VERSION"-*.tar.gz; do
   nos="$(map_os "$os")" || die "unsupported os $os"
   narch="$(map_cpu "$arch")" || die "unsupported arch $arch"
   pkg="cli-$nos-$narch"
-  want="$(awk -v a="$base" '$2==a || $2=="./"a {print $1; exit}' "$DIST/SHA256SUMS")"
-  [ -n "$want" ] || die "SHA256SUMS has no entry for $base"
-  if command -v sha256sum >/dev/null 2>&1; then got="$(sha256sum "$tgz" | awk '{print $1}')";
-  elif command -v shasum >/dev/null 2>&1; then got="$(shasum -a 256 "$tgz" | awk '{print $1}')";
-  else die "sha256sum or shasum is required to verify $base"; fi
-  [ "$want" = "$got" ] || die "checksum mismatch for $base"
+  verify_archive_checksum "$tgz" "$DIST/SHA256SUMS"
   work="$(mktemp -d "${TMPDIR:-/tmp}/tbound-npm.XXXXXX")"
-  safe_archive "$tgz"
+  verify_archive_members "$tgz"
   tar -xzf "$tgz" -C "$work"
-  safe_manifest_paths "$work"
-  if command -v sha256sum >/dev/null 2>&1; then
-    ( cd "$work" && sha256sum --quiet -c MANIFEST.sha256 ) || die "manifest verification failed for $base"
-  elif command -v shasum >/dev/null 2>&1; then
-    ( cd "$work" && shasum -a 256 -c MANIFEST.sha256 >/dev/null ) || die "manifest verification failed for $base"
-  else
-    die "sha256sum or shasum is required to verify $base"
-  fi
+  verify_manifest_tree "$work"
   bindir="$OUT/$pkg/bin"
   mkdir -p "$bindir"
   for b in tbound tbound-doctor tbound-profile; do
