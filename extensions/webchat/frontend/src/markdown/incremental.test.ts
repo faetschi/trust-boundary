@@ -1,5 +1,4 @@
-// Ported from the streaming group of internal/webchat/jstest/markdown.test.mjs. DOM
-// node identity becomes AST object identity: a view keys its memoised rows on it.
+// DOM node identity becomes AST object identity: a view keys its memoised rows on it.
 
 import { describe, expect, it } from "vitest";
 import type { Block } from "./ast";

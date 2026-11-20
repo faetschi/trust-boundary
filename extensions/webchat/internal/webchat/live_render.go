@@ -204,8 +204,6 @@ func reasonCode(code string) string {
 
 // resultState reads the released result: a DENY is denied, an ALLOW is succeeded
 // unless the fixed summary says the command failed, anything else is unknown.
-// shortcut: the "command failed" summary is the only signal the event carries for a
-// failed command, so this reads text, upgrade when the event gains a status field.
 func resultState(event ProductEvent) ResultState {
 	switch Verdict(event.Verdict) {
 	case VerdictDeny:

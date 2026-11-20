@@ -19,8 +19,8 @@ import { THEME_STORAGE_KEY } from "../../theme/theme";
 import { Shell } from "../Shell";
 import { WorkspaceProvider } from "../WorkspaceProvider";
 
-// The legacy render fixture (internal/webchat/jstest/render.test.mjs): two correlated tool blocks,
-// one policy ALLOW with an unverified success, and one policy DENY with a denied result.
+// Two correlated tool blocks, one policy ALLOW with an unverified success, and
+// one policy DENY with a denied result.
 function legacyFixture() {
   return [
     messageItem({ id: "m1", sequence: 1, turn_id: "t1", role: "user", text: "hello world" }),
