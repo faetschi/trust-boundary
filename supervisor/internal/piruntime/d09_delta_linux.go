@@ -247,7 +247,12 @@ func (r *D09CommandRunner) settleNoReap(ctx context.Context, n d09NoReapSettle) 
 	}
 	read := make(chan proofRead, 1)
 	go func() {
-		proof, err := readD09CommandProofNext(n.proofReader)
+		// The running Podman client holds the proof pipe open, so it never reaches EOF here. The
+		// cell init sends its final proof in one write and closes its end: nothing may follow it.
+		proof, err := decodeD09CommandProofNext(n.proofReader)
+		if err == nil && n.proofReader.Buffered() != 0 {
+			err = errors.New("final command proof is followed by extra data")
+		}
 		read <- proofRead{proof, err}
 	}()
 	var final d09CommandProof
