@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Regression: scripts/lib-release-verify.sh, which the deb, rpm and npm packagers source,
 # refuses an archive member whose name holds a backslash and a member that is a link,
-# and accepts a plain archive. Offline; builds its own tarballs in TMPDIR.
+# and a MANIFEST.sha256 tree with a duplicate entry, an unlisted file or a wrong digest;
+# it accepts the plain cases. Offline; builds its own fixtures in TMPDIR.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -23,6 +24,20 @@ tar -czf "$T/link.tgz" -C "$T/src" link
 for bad in backslash link; do
   if ( verify_archive_members "$T/$bad.tgz" ) 2>/dev/null; then
     echo "FAIL: $bad archive accepted" >&2; exit 1
+  fi
+done
+
+m="$T/tree"
+mkdir "$m"
+printf 'x\n' > "$m/a"
+(cd "$m" && sha256sum a > MANIFEST.sha256)
+( verify_manifest_tree "$m" ) || { echo "FAIL: matching manifest refused" >&2; exit 1; }
+cp -r "$m" "$T/dup" && (cd "$T/dup" && sha256sum a >> MANIFEST.sha256)
+cp -r "$m" "$T/extra" && printf 'y\n' > "$T/extra/b"
+cp -r "$m" "$T/digest" && printf 'z\n' > "$T/digest/a"
+for bad in dup extra digest; do
+  if ( verify_manifest_tree "$T/$bad" ) 2>/dev/null; then
+    echo "FAIL: $bad manifest accepted" >&2; exit 1
   fi
 done
 echo "verify-release-verify-lib: ok"
