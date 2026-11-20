@@ -47,6 +47,7 @@ s3)
   ;;
 s4)
   need "$O/REGDIGEST"; need "$HF/d09-cell.base.json"; need "$HF/BASE_TD"
+  [ "$NAME" != rr ] || need "$O/research-profile.json"
   [ ! -e "$O/pi-host-profile.signed.json" ] && [ ! -e "$O/pi-host-profile.ed25519" ] && [ ! -e "$O/d09-cell.json" ] && [ ! -e "$O/d09-cell.route-probe.json" ] \
     || { echo "$O already holds the S4 outputs (rule 4)"; exit 2; }
   REG=$(cat "$O/REGDIGEST")

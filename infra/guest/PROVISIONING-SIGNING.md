@@ -1033,7 +1033,7 @@ Now `trial reset` works. Corrections to the earlier checklist, checked against `
    Process oracle at `procoracle/v5` (all unmeasured on the guest). v5 identifies cell processes by their user namespace, not by uid: a process is the cell's when its user namespace is two or more levels below the scanner's and the topmost of those is owned by the service uid 995 (`proc-cell` now also reports `service_uid`). Check once at F24, at `ROOTCON` during a run (L4): `lsns -t user -o NS,PID,USER,COMMAND` and `readlink /proc/<cell pid>/ns/user` show each cell process in a namespace below the one the service's Podman pause process is in, owned by `tbound-pi`; conmon is not a cell process: it runs in the service's rootless namespace (one level below the initial one, beside the pause process) and its cgroup (`cat /proc/<conmon pid>/cgroup`) is the service's `runner` cgroup, not below `$C/cells` (measured at F26, `evidence/F26`; this matches the oracle's model in `procoracle/doc.go`). Only the container processes are below `$C/cells`, in `cells/pi-wf-*/libpod-*`. A cell outside that shape makes every PROC verdict `evidence_lost` (`cell_member_not_identity`), not a silent `no_effect`. The admin `tboundadmin` keeps uid 1000; its session is in the initial namespace and is not the cell's. (a) Every process of a `proc-capture` snapshot carries `ns_pid` (the `NSpid` line, host pid first). The lingering init has an `ns_pid` of at least two entries ending in 1, comm `tbound-cell-ent` (`CellInitComm`) and no observed parent; `tbound-run` sets `LingeringInit` for the P half of a no-reap case only, so PROC-01 skips exactly that init, still reports the `sleep` and anything descended from the init, and the report states `lingering_init: true`. A snapshot without `ns_pid` makes PROC-01 count the init: if a C-02 P run reports the init itself, look at its `ns_pid` first. (b) PROC-02 is unchanged and has no init exclusion. By layout the init sits in `cells/tbound-nr-*`, below the registered cell path `/system.slice/tbound-pi.service/cells` (`proc-cell`), so PROC-02 (a registered or cell-identity process outside the cell cgroup) should not flag it. The oracle's own fixtures, however, put the detached scope outside the registered cell (`/system.slice/tbound-pi.service/tbound-nr-...` against a `.../cells/pi-wf-...` cell), so PROC-02 on the real layout is untested offline. Record the PROC-02 verdict of the C-02 P run. If it flags the init or the `sleep`, that is a stated pilot limit: C-02 is registered on PROC-01 only, so its score does not use PROC-02, and no exclusion is added without a new `F`.
 4. V: `/var/lib/tbound/v-work` is created by `v-run` itself (`makeVWorkspace`, `os.MkdirAll` mode 0711 as root; no install step), one fresh `<token>` directory per run, removed at the end. `/run/tbound-pi` must exist (`vPreflight`): it exists only while `tbound-pi.service` runs (`RuntimeDirectory=tbound-pi`), so start the service first. Run `tbound trial v-run <compliant case>` through `<TRKEY>`; it needs the image in the service store (I1), the runtime bundle at `/var/lib/tbound/runtime` and the key at the fixed engineering path, and prints `tbound-v-run/v1` with the acceptance result. Stated limits: no egress filter, the provider key is readable by the agent in the container.
 
-## Pilot run (host, engineering route only, no OpenRouter)
+## Pilot run (host, engineering route; research: see RA)
 
 The host builds `tbound-run.exe` (P1) and uses Git Bash `ssh` with three keys and the pinned `known_hosts` (no spaces or quotes in that path). `run.json` is strict JSON (unknown members, duplicate keys and trailing data are refused; there is no member that relaxes host-key checking):
 
@@ -1189,18 +1189,18 @@ Only after the owner switches to the research route; none of it is part of the s
 
 For a short proving round of a freeze on OpenRouter (first F31, at `cc1de6df`), and for H1 later on the same route. `tbound-op` installs only the shipped engineering-route config templates: `cfg_structural` compares a config with the shipped template of its NAME (`infra/guest/operator/tbound-op:175-205`, `:358-369`), `svc start` re-verifies the installed chain with it (`verify_installed`, `:410-415`, called at `:658-662`), and `cfg-install` refuses a changed config (`:451-457`). The research route is therefore installed by hand in a session sudo window (`infra/freeze/guest/00-session-sudo.sh`), with the `sudo -n` commands of R2-0 to R5-4. Every step needs owner approval, one step at a time. The p12 helper writes only `opencode-go.key` (`infra/guest/helpers/p12-provider-key.sh:10`), so it is not used here. `sign-run.sh` signs the research route as NAME `rr` into `$HF/rr` (RA-7, RA-9), with every guard of the engineering signings.
 
-Two shells, each one window. Blocks marked `# WSL` run in a WSL shell with the environment of `sign-run.sh:17-19` (`F`, `H`, `HF`, `W`, `TBP`, `COSIGN`). The Linux kit checkout must hold the `rr` target of `sign-run.sh`. Every other line runs in Git Bash at the repo root of `F`, with the kit environment of `33-corpus-pilot.sh` and the variables below. No command here prints the key or the password.
+Two shells, each one window. Blocks marked `# WSL` run in a WSL shell with the environment of `sign-run.sh:17-19` (`F`, `H`, `HF`, `W`, `TBP`, `COSIGN`). The Linux kit checkout (`K`, the one `TBOUND_WGA` names) and the Windows kit checkout must both hold the `rr` target of `sign-run.sh` (e365c515 or later) and be byte-identical, or `glib.sh:126-129` stops RA-1. Every other line runs in Git Bash at the repo root of `F`, with the kit environment of `33-corpus-pilot.sh` and the variables below. No command here prints the key or the password.
 
 ```
 # WSL
-export KIT_FREEZE=F31; K=<Linux kit checkout>; . $K/infra/freeze/lib.sh; . $TBOUND_WORK/env.sh; . $W/session-env.sh; RR=$HF/rr; WGA=$K/infra/freeze/guest
+export KIT_FREEZE=F31; K=<the Linux kit checkout that TBOUND_WGA names: TBOUND_WGA=$K/infra/freeze/guest>; . $K/infra/freeze/lib.sh; . $TBOUND_WORK/env.sh; . $W/session-env.sh; RR=$HF/rr; WGA=$K/infra/freeze/guest
 # Git Bash
 export MSYS_NO_PATHCONV=1 GUEST_IP=<measured this session>
 GSSH() { sh infra/freeze/tools/gssh.sh "$@"; }                   # stdin passes through
 WSL()  { wsl.exe -d "$TBOUND_WSL_DISTRO" --cd / -e "$@"; }       # one WSL command (cat, tee, sha256sum), direct exec
 HF=<the same Linux path as in WSL>; RR=$HF/rr; OP='sudo -n /opt/tbound/operator/tbound-op'
-SVC='sudo -n setpriv --reuid 995 --regid 986 --clear-groups --bounding-set=-all --inh-caps=-all --ambient-caps=-all --no-new-privs --'      # service uid, as glib.sh:26
-SCR=/var/tmp/tbound-rr                                         # guest scratch of this section (the glib.sh:21 default is an old one)
+SVC='sudo -n setpriv --reuid 995 --regid 986 --clear-groups --bounding-set=-all --inh-caps=-all --ambient-caps=-all --no-new-privs --'      # service uid, as glib.sh:20
+SCR=/var/tmp/tbound-rr                                         # guest scratch of this section (the glib.sh:17 default is an old one)
 ```
 
 `$RR` is a new directory (rule 4). `$HF/pilot` holds the round's engineering files and is the rollback source for RA-5 to RA-10.
@@ -1269,9 +1269,9 @@ WSL cat $RR/checkpoint-1.json | GSSH 'sudo -n install -o root -g root -m 0644 /d
 GSSH 'sudo -n cat /etc/tbound/provider/research-ledger-checkpoint.json' | WSL cmp - $RR/checkpoint-1.json      # [READ-ONLY] no output
 ```
 
-Genesis refuses a second run. If it succeeded but its output was lost (`genesis.json` empty or missing), do not run it again: copy the ledger out and rebuild `records` and `head_sha256` from it with the RA-12 recipe (`wc -l`, and the hash of the last record), then write `checkpoint-1.json` from them.
+Genesis refuses a second run. If it succeeded but its output was lost (`genesis.json` empty or missing), do not run it again: copy the ledger out and rebuild `records` and `head_sha256` from it with the RA-12 recipe (`wc -l`, and the hash of the last record), then write `checkpoint-1.json` from them, and `rm $RR/genesis.json` or fill it with the rebuilt values (`finish_step` refuses a 0-byte file under `$HF`).
 
-The owner keeps `genesis.json` (records, head, `profile_digest`) and `checkpoint-1.json` off the guest. Rollback: before the first reserved request (RA-11), `sudo -n rm` the ledger and the checkpoint; after it, none.
+The owner keeps `genesis.json` (records, head, `profile_digest`) and `checkpoint-1.json` off the guest. Rollback: before the first reserved request (RA-11), `GSSH 'sudo -n rm /var/lib/tbound/sessions/usd-ledger /etc/tbound/provider/research-ledger-checkpoint.json'`; after it, none.
 
 ### RA-5 (RR-4) [PRIVILEGED WRITE, needs owner approval] research service config
 
@@ -1374,7 +1374,7 @@ The first `run` reserves the first request in the ledger. From then on RA-4 has 
 
 ### RA-12 (RR-3a) [PRIVILEGED WRITE, needs owner approval] advance the checkpoint
 
-After the round, and before any later research round on this guest: `GSSH "$OP svc stop"`, open session sudo (RA-1), copy the ledger out, and compute in WSL. `<k>` is the checkpoint in force (`1` after RA-4). `set -C` refuses to overwrite a checkpoint file, as the `x` mode of RA-4 does.
+After the round, and before any later research round on this guest: `GSSH "$OP svc stop"`, open session sudo (the `open` command of RA-1; skip its LEDGER-EXISTS expectation), copy the ledger out, and compute in WSL. `<k>` is the checkpoint in force (`1` after RA-4). `set -C` refuses to overwrite a checkpoint file, as the `x` mode of RA-4 does.
 
 ```
 GSSH 'sudo -n cat /var/lib/tbound/sessions/usd-ledger' | WSL tee $RR/usd-ledger.<round> > /dev/null
@@ -1383,6 +1383,7 @@ set -C; L=$RR/usd-ledger.<round>; CK=$RR/checkpoint-<k>.json
 CK_N=$(python3 -I $WGA/jget.py $CK records); CK_HEAD=$(python3 -I $WGA/jget.py $CK head_sha256)
 [ "$(sed -n "${CK_N}p" $L | head -c -1 | sha256sum | cut -c1-64)" = "$CK_HEAD" ] || { echo STOP; false; } &&
 printf '{"records": %s, "head_sha256": "%s"}\n' $(wc -l < $L) $(tail -n 1 $L | head -c -1 | sha256sum | cut -c1-64) > $RR/checkpoint-<k+1>.json
+set +C
 ```
 
 On `STOP`, stop: the ledger was rolled back or edited, and no new checkpoint is written. Otherwise install `checkpoint-<k+1>.json` and read it back as in RA-4, then close session sudo. Keep the new checkpoint and the ledger copy off the guest. The proving round's report is the pilot report with `ledger: "synthetic-empty"` (Pilot run), non-claim-bearing, so its `run.json` binds no ledger.
