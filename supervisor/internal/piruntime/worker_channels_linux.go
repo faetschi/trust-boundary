@@ -26,7 +26,6 @@ const (
 	PiWorkerModelID          = piinstall.PinnedPiModel
 	PiWorkerProviderID       = "tbound-go-broker"
 	PiWorkerMaxFrameBytes    = 1 << 20
-	PiWorkerMaxPromptBytes   = 16 << 10
 	PiWorkerMaxTaskIDBytes   = 128
 	PiWorkerMaxIdentityBytes = 256
 	PiWorkerMaxEventCount    = 1024

@@ -27,7 +27,7 @@ func (w *PiCLIWorker) SendAdmittedPrompt(ctx context.Context, conversation GoPro
 		return errors.New("governed Pi prompt requires an active session, Go conversation, and context")
 	}
 	if !workerValidIdentity(taskID, PiWorkerMaxTaskIDBytes) || !workerValidIdentity(requestID, PiWorkerMaxIdentityBytes) ||
-		!utf8.ValidString(prompt) || len([]byte(prompt)) == 0 || len([]byte(prompt)) > PiWorkerMaxPromptBytes {
+		!utf8.ValidString(prompt) || len([]byte(prompt)) == 0 || len([]byte(prompt)) > piRPCMaxPromptBytes {
 		return errors.New("governed Pi prompt is invalid or exceeds the broker byte bound")
 	}
 	return w.sendPromptControl(ctx, conversation, taskID, requestID, prompt)
