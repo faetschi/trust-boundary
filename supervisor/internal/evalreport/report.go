@@ -38,8 +38,9 @@
 //   - Strata are the adversarial threat class by cold partition, and the
 //     compliant primary tool.
 //   - Spend is checked against the registered US$5 cap and the planned units of
-//     the manifest (PlannedUnits). Permitted external reruns may exceed them, so
-//     exceeding them is flagged but does not by itself make WithinBudget false.
+//     the manifest (PlannedUnits), and the ledger unit total against the planned provider
+//     calls (plannedLedgerUnits: the research route books one unit per provider call).
+//     Permitted external reruns may exceed them, so exceeding them is flagged but does not by itself make WithinBudget false.
 //
 // No pooling (D48): top-up and TM-C cases (sample_part topup and tmc) never enter
 // the H1 figures. Build scores them on their own and reports them in Separate,
@@ -108,19 +109,40 @@ func PlannedUnits(m evalcorpus.Manifest) int {
 	}
 	units := 0
 	for _, c := range m.Cases {
-		switch c.Kind {
-		case evalcorpus.KindAdversarial:
-			units += AdversarialUnits
-			if c.Adversarial != nil && c.Adversarial.VarianceSubset {
-				units += VarianceUnits
-			}
-		case evalcorpus.KindCompliant:
-			units += CompliantUnits
-		case evalcorpus.KindAmbiguous:
-			units += AmbiguousUnits
-		}
+		units += caseUnits(c)
 	}
 	return units
+}
+
+// caseUnits is the number of execution units that runner.Plan schedules for one case.
+func caseUnits(c evalcorpus.Case) int {
+	switch c.Kind {
+	case evalcorpus.KindAdversarial:
+		if c.Adversarial != nil && c.Adversarial.VarianceSubset {
+			return AdversarialUnits + VarianceUnits
+		}
+		return AdversarialUnits
+	case evalcorpus.KindCompliant:
+		return CompliantUnits
+	case evalcorpus.KindAmbiguous:
+		return AmbiguousUnits
+	}
+	return 0
+}
+
+// plannedLedgerUnits is the most ledger units a normal run books. The research route books one
+// ledger unit per provider call, so a planned execution unit may book up to its case's
+// max_host_calls. It is never below PlannedUnits, so no report that was unflagged becomes flagged.
+func plannedLedgerUnits(m evalcorpus.Manifest) int {
+	calls := 0
+	for _, c := range m.Cases {
+		perUnit := 1 // a case without a trial books at least one call per unit
+		if c.Trial != nil {
+			perUnit = max(1, int(min(c.Trial.MaxHostCalls, 1<<24))) // clamp: no overflow
+		}
+		calls += caseUnits(c) * perUnit
+	}
+	return max(PlannedUnits(m), calls)
 }
 
 // Inputs are the three artifacts a report binds.
@@ -133,6 +155,8 @@ type Inputs struct {
 	// the trials carry no attribution input, and neither is empty otherwise.
 	AttributionsDigest      string
 	AttributionRubricDigest string
+	// D48 gives the scenario and mechanism results (Report.Groups); nil leaves them out.
+	D48 *D48Inputs
 }
 
 // Bindings tie the report to its inputs.
@@ -189,7 +213,9 @@ type Calibration struct {
 	NonDiscriminative  int `json:"non_discriminative"`
 }
 
-// Spend compares the ledger with the registered cap and planned units.
+// Spend compares the ledger with the registered cap. PlannedUnits counts planned execution
+// units; UnitsOverPlanned compares TotalUnits (ledger units, one per provider call on the
+// research route) with the planned provider calls, not with PlannedUnits.
 type Spend struct {
 	LedgerID              string `json:"ledger_id"`
 	CapMicroUSD           int64  `json:"cap_micro_usd"`
@@ -220,6 +246,7 @@ type Report struct {
 	Coverage               Coverage                  `json:"coverage"`
 	Strata                 []Stratum                 `json:"strata"`
 	Separate               []Stratum                 `json:"separate,omitempty"`
+	Groups                 *Groups                   `json:"groups,omitempty"`
 	Configurations         evalscore.ConfigSummary   `json:"configurations"`
 	PostDenialContinuation PostDenialContinuation    `json:"post_denial_continuation"`
 	Calibration            Calibration               `json:"calibration"`
@@ -228,7 +255,14 @@ type Report struct {
 	Clauses                evalscore.ClausesSummary  `json:"clauses"`
 	Metrics                evalscore.MetricsSummary  `json:"metrics"`
 	H1                     evalscore.H1Summary       `json:"h1"`
-	Spend                  Spend                     `json:"spend"`
-	Flags                  []string                  `json:"flags"`
-	Digest                 string                    `json:"digest"`
+	// Reruns are the units that took, wait for, or lost their registered rerun (register D30 as amended
+	// 2026-11-18), with the original attempt and its cause. Left out when empty.
+	Reruns []evalscore.CaseOutcome `json:"reruns,omitempty"`
+	// ProviderRetries are the adversarial C trajectories whose provider attempts were retried, each with its count of
+	// tools-disabled calls (D56; D30 as amended, Accepted risk). Left out when empty, and the Markdown report prints
+	// them only when there are any.
+	ProviderRetries []evalscore.ProviderRetryTrajectory `json:"provider_retries,omitempty"`
+	Spend           Spend                               `json:"spend"`
+	Flags           []string                            `json:"flags"`
+	Digest          string                              `json:"digest"`
 }

@@ -1,0 +1,16 @@
+build-release: building linux/amd64
+build-release: staged tbound-0.0.0-linux-amd64.tar.gz
+build-release: building darwin/amd64
+build-release: staged tbound-0.0.0-darwin-amd64.tar.gz
+build-release: building darwin/arm64
+build-release: staged tbound-0.0.0-darwin-arm64.tar.gz
+build-release: building windows/amd64
+build-release: staged tbound-0.0.0-windows-amd64.tar.gz
+build-release: wrote /home/tbound/tbound-work/x30tmp/dist0/tbound-cell-entrypoint-0.0.0-linux-amd64.metadata.json and .sha256
+build-release: wrote /home/tbound/tbound-work/x30tmp/dist0/SHA256SUMS
+6920c46a5d3f2b1b8ff7a15f990bc51881da31a6a1ff4be305cf19977d6eef0c  tbound-0.0.0-darwin-amd64.tar.gz
+9f533b4e70274758cb48cd8bfdd1a2369d9f3b16bc554c585085e666405cae1a  tbound-0.0.0-darwin-arm64.tar.gz
+34475720e772bdde4fcde4155e47b0b709c3e2d736385c68c3effe3837d2ccb1  tbound-0.0.0-linux-amd64.tar.gz
+5484a3b65c7500da468e24088b50aefa08475034477d9b1b9ad3931b9b9bd6d1  tbound-0.0.0-windows-amd64.tar.gz
+404b814702e4879ecfe67ea257b1f35f6528d2ff818f28bde616f2475b747445  tbound-cell-entrypoint-0.0.0-linux-amd64.metadata.json
+1e709fdad7390fb6c8efe82da7db9f5f9d93ec89b38f6fb77f5e1c003027a979  tbound-cell-entrypoint-0.0.0-linux-amd64.sha256

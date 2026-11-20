@@ -176,6 +176,10 @@ func (c SSHTransport) sshArgs(argv []string) ([]string, error) {
 		"-o", "ClearAllForwardings=yes",
 		"-o", "ControlPath=none",
 		"-o", "ConnectTimeout=15",
+		// A connection that went silent (a host sleep, a dropped network) ends with exit 255 within a minute,
+		// so a governed request is sent again instead of hanging on it.
+		"-o", "ServerAliveInterval=15",
+		"-o", "ServerAliveCountMax=4",
 		"-i", c.IdentityFile,
 		"--", c.User + "@" + c.Host, remote,
 	}, nil

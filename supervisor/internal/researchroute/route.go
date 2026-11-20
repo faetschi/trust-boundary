@@ -190,6 +190,40 @@ func Genesis(paths Paths) (usdledger.Snapshot, error) {
 	return snapshot, errors.Join(snapshotErr, ledger.Close())
 }
 
+// CheckStopRule is the check before each unit (`tbound trial reset`, register D30 Limits): it refuses with
+// ErrStopRule when the remaining cap is below the per-unit worst case, and with usdledger.ErrOverCap after a
+// recorded overage, because ReserveSpend would then refuse every provider request of the unit. It reads the ledger
+// the service holds without a lock (usdledger.Peek), against the configuration and the checkpoint Open uses, so call
+// it only while no workflow runs (under the maintenance lock).
+func CheckStopRule(paths Paths) error {
+	configBytes, err := readOwnedFile(paths.LedgerConfig, maxLedgerConfigBytes, paths.OwnerUID)
+	if err != nil {
+		return err
+	}
+	config, err := LoadLedgerConfig(bytes.NewReader(configBytes))
+	if err != nil {
+		return err
+	}
+	checkpointBytes, err := readOwnedFile(paths.Checkpoint, maxCheckpointBytes, paths.OwnerUID)
+	if err != nil {
+		return err
+	}
+	checkpoint, err := parseCheckpoint(checkpointBytes)
+	if err != nil {
+		return err
+	}
+	snapshot, err := usdledger.Peek(paths.Ledger, ledgerOptions(config, false, checkpoint))
+	switch {
+	case err != nil:
+		return fmt.Errorf("read research USD ledger: %w", err)
+	case snapshot.Overspent:
+		return usdledger.ErrOverCap
+	case snapshot.StopRule:
+		return fmt.Errorf("%w (remaining %d micro-USD, threshold %d)", ErrStopRule, snapshot.RemainingMicroUSD, snapshot.MinPerUnitWorstCaseMicroUSD)
+	}
+	return nil
+}
+
 // ledgerOptions anchors Open to the operator-held checkpoint. The operator
 // updates the checkpoint between runs; the service runs as a non-root uid and
 // cannot rewrite it. Rollback within the records after the newest checkpoint
@@ -388,8 +422,10 @@ func (b *Bundle) ReserveSpend(_ context.Context, reservation providerbridge.Spen
 }
 
 // unitID names one request. The ledger refuses a repeated unit, so a request
-// cannot be reserved twice. A decision-13 resample (Attempt above zero) is its
-// own request; a first attempt keeps the name every earlier ledger holds.
+// cannot be reserved twice. A pre-effect retry or a decision-13 resample
+// (Attempt above zero) is its own request; a first attempt keeps the name every
+// earlier ledger holds. The "resample" label predates retries and stays, so
+// units already in a ledger keep their names.
 func unitID(r providerbridge.SpendReservation) string {
 	sum := sha256.New()
 	fmt.Fprintf(sum, "tbound-research-call/v1\x00%s\x00%s\x00%d", r.WorkflowID, r.ConversationID, r.Turn)
@@ -485,8 +521,8 @@ func LoadProfileDigest(paths Paths) (string, error) {
 const maxWorkflowUnitTurns = 4096
 
 // WorkflowUnits reports the ledger units that the requests of one workflow created: for each
-// conversation id, each provider turn 1..maxTurns and each attempt of that turn (decision-13
-// resamples included), the unit that ReserveSpend would have named. Only units the ledger holds are returned, ordered by unit id. The workflow ledger
+// conversation id, each provider turn 1..maxTurns and each attempt of that turn (pre-effect
+// retries and decision-13 resamples included), the unit that ReserveSpend would have named. Only units the ledger holds are returned, ordered by unit id. The workflow ledger
 // bounds a workflow's host calls, so maxTurns (the workflow's host-call limit) bounds the
 // turns of any one of its conversations. It reads the ledger and changes nothing.
 func (b *Bundle) WorkflowUnits(workflowID string, conversationIDs []string, maxTurns uint64) ([]usdledger.UnitInfo, error) {
@@ -501,7 +537,7 @@ func (b *Bundle) WorkflowUnits(workflowID string, conversationIDs []string, maxT
 		}
 		seen[conversationID] = struct{}{}
 		for turn := uint64(1); turn <= maxTurns; turn++ {
-			for attempt := uint64(0); attempt <= providerbridge.MaxParallelCallResamples; attempt++ {
+			for attempt := uint64(0); attempt <= providerbridge.MaxProviderRetries; attempt++ {
 				info, found, err := b.ledger.Unit(unitID(providerbridge.SpendReservation{WorkflowID: workflowID,
 					ConversationID: conversationID, Turn: turn, Attempt: attempt}))
 				if err != nil {

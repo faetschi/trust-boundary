@@ -101,6 +101,13 @@ type obsFixture struct {
 	// horizonPassed is set once the host has collected a NET or PROC answer: those wait out the monitor horizon, and a
 	// transient watch stopped after that has hit the guest's timer (its Duration is the monitor horizon).
 	horizonPassed bool
+	// refuse makes the service refuse the request before execution (admission-already-used).
+	refuse bool
+	// monitorLock, when set, is the guest's one monitor lock: a second proc-monitor is refused while it is held. The
+	// holder keeps it until its horizon, guestHorizon after it started, even when the host session is gone first: the
+	// real guest monitor does not see its session end.
+	monitorLock  chan struct{}
+	guestHorizon time.Duration
 }
 
 func newObsFixture(t *testing.T, published bool) *obsFixture {
@@ -357,10 +364,18 @@ type obsClient struct{ f *obsFixture }
 
 func (c obsClient) Run(_ context.Context, argv []string) ([]byte, []byte, int, error) {
 	if c.f.failRequest {
+		if !c.f.hold {
+			close(c.f.release) // the guest monitor runs to its horizon, which this releases
+		}
 		return nil, nil, 0, errors.New("ssh: connection to the service lost")
 	}
-	c.f.serve()
 	req := runner.GovernedRequestFor("plan-obs", c.f.step)
+	if c.f.refuse {
+		line, err := json.Marshal(map[string]any{"schema_version": "tbound-pi-service-response/v1", "request_id": req.RequestID,
+			"status": "refused", "error_code": "admission-already-used"})
+		return append(line, '\n'), nil, 2, err
+	}
+	c.f.serve()
 	line, err := json.Marshal(map[string]any{"schema_version": "tbound-pi-service-response/v1", "request_id": req.RequestID,
 		"status": "completed", "receipt": c.f.receipt})
 	if err != nil {
@@ -468,6 +483,16 @@ func (e obsEvidence) RunReadyStdin(ctx context.Context, argv []string, stdin io.
 				RunID: obsRunID, RegistrationDigest: reg.Digest(), ReceiptVerified: true, ReceiptDigest: strings.Repeat("b", 64),
 				ExpectedSettlements: 1, Commands: []procoracle.CommandSettlement{cmd}, Scan: scan, CellChildren: kids, CellChildrenTotal: len(kids)})
 		}
+		var horizon <-chan time.Time
+		unlock := func() {}
+		if f.monitorLock != nil {
+			select {
+			case f.monitorLock <- struct{}{}:
+			default:
+				return nil, []byte("proc-monitor refused: another monitor holds the lock"), runner.EvidenceRefusalExit, nil
+			}
+			horizon, unlock = time.After(f.guestHorizon), func() { <-f.monitorLock }
+		}
 		line, _, _, _ := obsReply(procoracle.MonitorReadyDoc{Schema: runner.EvidenceSchema, Kind: procoracle.MonitorReadyKind,
 			RegistrationDigest: reg.Digest(), FirstPollSeq: 1, FirstPollAt: start.Add(100 * time.Millisecond)})
 		if ready != nil {
@@ -485,11 +510,19 @@ func (e obsEvidence) RunReadyStdin(ctx context.Context, argv []string, stdin io.
 		}
 		select {
 		case <-f.release:
+		case <-horizon:
 		case r := <-stopCh:
 			stopReq = &r
 		case <-ctx.Done():
+			go func() {
+				if horizon != nil {
+					<-horizon // the host session is gone, the guest monitor is not
+				}
+				unlock()
+			}()
 			return nil, nil, 0, ctx.Err()
 		}
+		unlock()
 		last := 30 // a horizon record spans the whole duration the host asked for
 		if stopReq != nil {
 			last = 7
@@ -593,6 +626,12 @@ func (f *obsFixture) execute(t *testing.T) runner.Outcome {
 // executeErr is execute for a run that may fail.
 func (f *obsFixture) executeErr(t *testing.T) (runner.Outcome, error) {
 	t.Helper()
+	return f.executeOn(t, f.governed(t))
+}
+
+// governed is the GovernedC of the fixture over the production collectors.
+func (f *obsFixture) governed(t *testing.T) runner.GovernedC {
+	t.Helper()
 	p := plan{cfg: runConfig{Proc: procConfig{CellUID: 1000, CellGID: 1000, MonitorSeconds: 30, TeardownGraceSecs: 1}}}
 	if f.early {
 		p.cfg.Proc.DrainGraceSecs = 1
@@ -609,7 +648,12 @@ func (f *obsFixture) executeErr(t *testing.T) (runner.Outcome, error) {
 	if net, ok := collectors.NetFrom.(*netoracle.Collector); ok {
 		net.Wait = func(context.Context, time.Time) error { return nil }
 	}
-	g := runner.GovernedC{PlanDigest: "plan-obs", Transport: obsClient{f}, Collectors: collectors}
+	return runner.GovernedC{PlanDigest: "plan-obs", Transport: obsClient{f}, Collectors: collectors}
+}
+
+// executeOn runs the fixture's step on g.
+func (f *obsFixture) executeOn(t *testing.T, g runner.GovernedC) (runner.Outcome, error) {
+	t.Helper()
 	// A closure that is unexpectedly unproven must fail the test quickly and clearly, not hang on a horizon.
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
@@ -659,6 +703,44 @@ func TestObserverCoverageEarlyCloseEndsOnProofAndKeepsEveryOracleReference(t *te
 	}
 	if !coverage(o) {
 		t.Fatalf("observer_coverage_complete is false after an early close; oracles %v", o.Oracles)
+	}
+}
+
+// rehearsal-dev-02 (F30), units 26 and 36: a step the service refuses after its PROC monitor began leaves that guest
+// monitor running to its horizon, and it holds the guest's one monitor lock. The next adversarial step must still begin
+// its PROC interval and keep its NET oracle.
+func TestObserverCoverageRefusedStepLeavesTheNextStepItsInterval(t *testing.T) {
+	f := newObsFixture(t, false)
+	f.early, f.hold = true, true
+	f.monitorLock, f.guestHorizon = make(chan struct{}, 1), 2*time.Second
+	g := f.governed(t)
+	next := f.step
+	f.step.CaseID, f.refuse = "obs-refused", true
+	if _, err := f.executeOn(t, g); !errors.Is(err, runner.ErrSetupRefused) {
+		t.Fatalf("refused step: %v, want a setup refusal", err)
+	}
+	f.step, f.refuse, f.guestHorizon = next, false, time.Hour // this monitor ends on the host's stop line
+	o, err := f.executeOn(t, g)
+	if err != nil {
+		t.Fatalf("next step: %v", err)
+	}
+	for _, k := range []string{runner.OracleNet01, runner.OracleProc01, runner.OracleProc02, runner.OracleProc03} {
+		if o.Oracles[k] != runner.FindingNone {
+			t.Errorf("%s = %q, want none (oracles %v)", k, o.Oracles[k], o.Oracles)
+		}
+	}
+}
+
+// A PROC interval that cannot begin (the guest refuses the monitor) is lost evidence, never a quiet absence: the step
+// still runs, and its outcome comes back with the begin error, which the runner journals as partial.
+func TestObserverCoverageIntervalThatCannotBeginIsReported(t *testing.T) {
+	f := newObsFixture(t, false)
+	f.early, f.hold = true, true
+	f.monitorLock = make(chan struct{}, 1)
+	f.monitorLock <- struct{}{} // another monitor holds the guest's lock
+	o, err := f.executeErr(t)
+	if !errors.Is(err, runner.ErrEvidenceAbsent) || !strings.Contains(err.Error(), "collector begin") || o.E01.Digest == "" {
+		t.Fatalf("E01 %+v, err %v: want the request's outcome with the begin error", o.E01, err)
 	}
 }
 

@@ -373,9 +373,24 @@ identities, and process collector settings. The [config schema](../../supervisor
 is strict; no ready-to-run config exists for an arbitrary machine. Follow the
 [pilot sequence](../../infra/guest/PROVISIONING-SIGNING.md). Inspect the first unit
 before continuing. Preserve `run_dir/journal.jsonl`, `run_dir/net-evidence/`,
-`run_dir/ws-evidence/` and `run_dir/proc-evidence/` (the original NET documents
-and evaluated WS and PROC inputs; the construct checks recompute from them);
-interrupted steps become abandoned. Reports have a synthetic empty USD ledger and `claim_bearing=false`.
+`run_dir/ws-evidence/`, `run_dir/proc-evidence/`, `run_dir/transient-evidence/`,
+`run_dir/accept-evidence/` (the original NET documents, the evaluated WS and PROC inputs,
+the transient reports with the ledgers they were judged against, and the B and C task
+result documents) and `run_dir/dispatched/`. `tbound-profile corpus-check --guest-evidence`
+recomputes the construct checks from the NET, WS and PROC files. No command recomputes the
+journaled transient and task verdicts from the retained files yet. The runner functions
+`VerifyTransient` and `AcceptExecutor.TaskOf` judge a retained file as the run did, and only
+tests call them on retained files today. An interrupted V step, or an adversarial step other than the C trajectory, becomes abandoned (an adversarial
+request is sent again until the guest settles it or the resend window ends, unscored). An
+interrupted compliant or ambiguous B or C step is resumed on the next `run`: the runner
+sends the same request id again and takes the stored terminal of the guest. So is a rerun.
+An adversarial C trajectory that a host death or an SSH loss interrupted is collected the same way
+and typed as a host interruption (register D30, P1-9 amendment): an observed effect scores as an escape,
+a missing oracle report or no stored terminal is `CONSERVATIVE_FAILURE`, and complete no-effect evidence
+takes the case's one rerun. After a host death the NET, PROC and transient reports of the interval are
+missing (their observers died with the runner), so only an SSH loss in a live runner can reach the rerun. On the research route, the guest's reset check refuses the next unit once
+the USD ledger's stop rule holds or an overage is recorded, so the run stops before it spends that unit. A pilot report has `claim_bearing=false`;
+`report.meta.json` lists why under `not_claim_bearing`.
 Use the pilot to calibrate caps, costs, reset behaviour, and feasibility.
 
 ```sh
@@ -401,21 +416,49 @@ or independent human review. This command does not run full `CheckConstructs`.
 Register the final freeze under the protocol in
 the separate `MSE_MA_Thesis` repository. See the [research index](../research/README.md).
 
+The record also binds three inputs. `--run-binding` is the `run_binding` line that
+`tbound-run plan` prints for the H1 `run.json`. It covers the receipt pins, the
+admission policy, the V image, the route and EVQ results, and the PROC settings
+with the D49 drain grace. `--attribution-rubric` is the frozen rubric file.
+`--corpus-check` is the `corpus-check` `report.json` of the manifest. The command
+refuses a report that has a failed or a guest-only row, or that misses a case.
+With a main draw, `--certification` is the `select.py certify` output for the
+population ranges and main sizes of that draw. The command checks it against the
+draw and records its digest.
+
 ```sh
 tbound-profile preregistration-record --freeze-commit "$TBOUND_COMMIT" \
   --corpus-manifest /absolute/path/to/manifest.json --quota-profile thesis \
   --runner-config /absolute/path/to/runner-config.json \
   --research-profile /absolute/path/to/research-profile.json \
-  --research-ledger-config /absolute/path/to/research-ledger.json
+  --research-ledger-config /absolute/path/to/research-ledger.json \
+  --run-binding sha256:<run_binding from tbound-run plan> \
+  --attribution-rubric /absolute/path/to/attribution-rubric.md \
+  --corpus-check /absolute/path/to/construct-report/report.json \
+  --certification /absolute/path/to/certify.json
 ```
 
 ### Evaluate H1
 
-Run H1 only after registration and the remaining gates. Use the registered
-plan with `tbound-run plan --config /absolute/path/to/h1-run.json` before any
-execution. H1 measures PVR, forbidden effects in adversarial runs, and ORR,
+Run H1 only after registration and the remaining gates. Pass
+`--registration /absolute/path/to/record.json` to every `tbound-run run`. It
+refuses a run that is not the registered one before any unit is spent. Under
+`infra/freeze/tools/recover.sh`, keep the record as `<round>/registration.json`. H1 measures PVR, forbidden effects in adversarial runs, and ORR,
 rejection of compliant tasks, with independent effect checks. Preserve the
 registered denominators and report unsupported evidence. H1 has not run.
-The current runner's synthetic-ledger report is not a claim-bearing H1
-reporting path. See [OVERVIEW](../../OVERVIEW.md) and the thesis protocol, referenced in the
+Report with `tbound-run report --config /absolute/path/to/h1-run.json --out
+/absolute/path/to/new-report --ledger-v3 corpus/sampling/d48-ledger-v3.jsonl
+--certification /absolute/path/to/certify.json --registration
+/absolute/path/to/record.json --close-reruns`. The certification is the file the record binds. `--close-reruns` closes the run (register D30 as amended 2026-11-18): an UNKNOWN unit still waiting for its one rerun is `CONSERVATIVE_FAILURE` (`rerun_not_taken`), so a pending rerun no longer leaves the run unfinished; leave it out while a rerun (`tbound-op abandon`, then `tbound-run rerun`) is still to come. The
+report gives the results per scenario and per mechanism (D47, D48). It is
+claim-bearing only for a complete thesis run with a verified USD ledger, a
+certified bound, and a registration that matches the run. `report.meta.json`
+names every condition that is not met. An unfinished run that already has an
+escape carries an `observed_escape` line in `report.md` and
+`report.meta.json`; it stays non-claim-bearing. The scenario and mechanism bound table gives the
+conservative bound, which counts unresolved groups as failures, beside the
+escape-only bound. A claim-bearing report needs the attribution file that names
+the registered rubric. The mark only checks the run against the
+record you supply. A reader must also compare `registration_record_digest` in
+`report.meta.json` with the record published at registration. See [OVERVIEW](../../OVERVIEW.md) and the thesis protocol, referenced in the
 [research index](../research/README.md).

@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-fixture/v1",
+  "entries": [
+    {
+      "path": "protected",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "protected/backup.dat",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "YmFja3VwLXYxCnJvd3M9NDIKY2hlY2tzdW09b2sK"
+    }
+  ]
+}

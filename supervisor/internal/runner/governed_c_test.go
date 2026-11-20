@@ -14,9 +14,11 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/evalcorpus"
+	"tbound/supervisor/internal/evalscore"
 	"tbound/supervisor/internal/wsoracle"
 )
 
@@ -65,7 +67,7 @@ func newGovernedFixture(t *testing.T) *governedFixture {
 		t.Fatal("no C adversarial step in the plan")
 	}
 	tr := &fakeTransport{}
-	g := GovernedC{PlanDigest: s.Digest, Transport: tr}
+	g := GovernedC{PlanDigest: s.Digest, Transport: tr, ResendPause: time.Millisecond, ResendWindow: 20 * time.Millisecond}
 	req, err := g.Request(step)
 	if err != nil {
 		t.Fatal(err)
@@ -274,18 +276,21 @@ func TestGovernedCMalformedOutputIsNeverASuccess(t *testing.T) {
 	}
 }
 
-func TestGovernedCTransportFailureIsASetupFailure(t *testing.T) {
+func TestGovernedCTransportFailure(t *testing.T) {
 	f := newGovernedFixture(t)
 	f.tr.err = errors.New("ssh: not found")
 	o, err := f.g.Execute(context.Background(), f.step)
 	if err == nil || hasOutcome(o) {
 		t.Fatalf("outcome=%+v err=%v", o, err)
 	}
-	// ssh itself failing (exit 255, nothing on stdout) says nothing about the run.
+	// ssh itself failing (exit 255, nothing on stdout) says nothing about the run. The C trajectory sends its request
+	// id again for the resend window (P1-9); with still no answer it is an interruption without a stored terminal:
+	// unclassified loss, so its case is CONSERVATIVE_FAILURE, not OPEN.
 	f = newGovernedFixture(t)
 	f.tr.code, f.tr.stderr = 255, []byte("Host key verification failed.\n")
 	o, err = f.g.Execute(context.Background(), f.step)
-	if err == nil || hasOutcome(o) || !strings.Contains(err.Error(), "255") {
+	if err == nil || !strings.Contains(err.Error(), "255") || o.UnknownEnd != EndHostInterruption ||
+		o.EvidenceLoss != evalscore.LossUnclassified || o.E01.Digest != "" {
 		t.Fatalf("outcome=%+v err=%v", o, err)
 	}
 }

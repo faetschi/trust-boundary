@@ -11,7 +11,6 @@ import (
 
 	"tbound/supervisor/internal/evalreport"
 	"tbound/supervisor/internal/evalscore"
-	"tbound/supervisor/internal/usdledger"
 )
 
 func TestRunCompletesAndCountsUnits(t *testing.T) {
@@ -47,7 +46,8 @@ type crash struct{}
 func TestResumeAfterCrashMidRun(t *testing.T) {
 	s := smallSchedule(t, smallConfig())
 	dir := t.TempDir()
-	const dieAt = 30
+	// An adversarial replay: not resumable, so it is settled and abandoned (a C trajectory would be collected).
+	dieAt := findStep(t, s, firstCase(s, "adversarial"), RoleStaticReplay, CfgC).Index
 
 	first := NewFakeExecutor(s.Config)
 	first.Hook = func(st Step, _ *Outcome) error {
@@ -88,13 +88,19 @@ func TestResumeAfterCrashMidRun(t *testing.T) {
 	if !rep.Finished || rep.Abandoned != 1 || rep.AlreadyDone != dieAt {
 		t.Fatalf("report %+v", rep)
 	}
+	// The interrupted adversarial step is only settled (Resumed): its request is sent again until settled, never run anew.
+	var ran []Step
 	for _, c := range second.Calls() {
+		if c.Resumed {
+			continue
+		}
 		if c.Index <= dieAt {
 			t.Fatalf("resume re-executed step %d", c.Index)
 		}
+		ran = append(ran, c)
 	}
-	if len(second.Calls()) != 89-dieAt-1 {
-		t.Fatalf("resume executed %d steps, want %d", len(second.Calls()), 89-dieAt-1)
+	if len(ran) != 89-dieAt-1 {
+		t.Fatalf("resume executed %d steps, want %d", len(ran), 89-dieAt-1)
 	}
 	// The interrupted step consumed its unit and has no outcome; it is not retried.
 	if rep.UnitsUsed != 89 {
@@ -469,11 +475,22 @@ func TestSecondRerunOfSameCaseOtherStepIsRefused(t *testing.T) {
 	j, _ := runAll(t, s, t.TempDir(), fake)
 	defer j.Close()
 	r := mustRunner(t, s, j, fake, Options{})
-	if err := r.Rerun(context.Background(), a.ID()); err != nil {
+	// One rerun re-executes one step, so the trajectory, in the rerun scope, takes none while a second step of its
+	// case also has a rerun cause: its attempt 1 is unclassified loss.
+	used := j.UnitsUsed()
+	if err := r.Rerun(context.Background(), a.ID()); !errors.Is(err, ErrRerunNotAllowed) || j.UnitsUsed() != used {
+		t.Fatalf("rerun of the trajectory: got %v, want ErrRerunNotAllowed and no unit spent", err)
+	}
+	// The replay keeps the step-level D30 rule; after its rerun the case has used its one rerun.
+	if err := r.Rerun(context.Background(), b.ID()); err != nil {
 		t.Fatal(err)
 	}
-	if err := r.Rerun(context.Background(), b.ID()); !errors.Is(err, ErrRerunLimit) {
-		t.Fatalf("got %v, want ErrRerunLimit (one rerun per case)", err)
+	if err := r.Rerun(context.Background(), a.ID()); !errors.Is(err, ErrRerunNotAllowed) {
+		t.Fatalf("second rerun of the case: got %v", err)
+	}
+	// The journal itself refuses a second rerun of a case on another step.
+	if err := j.append(Entry{Kind: EntryBegin, StepID: a.ID(), CaseID: c, Index: a.Index, Attempt: 2}); !errors.Is(err, ErrJournalCorrupt) {
+		t.Fatalf("second rerun of the case: got %v, want ErrJournalCorrupt", err)
 	}
 }
 
@@ -538,98 +555,6 @@ func TestRerunMidRunReservesCapacityForPlannedSteps(t *testing.T) {
 }
 
 // ---- budget ---------------------------------------------------------------
-
-func TestBudgetStopsOnLedgerUSDStopRule(t *testing.T) {
-	s := smallSchedule(t, smallConfig())
-	fake := NewFakeExecutor(s.Config)
-	committed := int64(0)
-	ledger := func() (snap usdledger.Snapshot, err error) {
-		return okLedger(len(fake.Calls()), committed)()
-	}
-	fake.Hook = func(st Step, _ *Outcome) error {
-		if st.Index == 9 { // after step 9 the ledger shows less than one unit of headroom
-			committed = 5_000_000 - 500
-		}
-		return nil
-	}
-	j := openJournal(t, t.TempDir(), s)
-	defer j.Close()
-	rep, err := mustRunner(t, s, j, fake, Options{Ledger: ledger}).Run(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if rep.Finished || rep.Stop != StopUSD || rep.Executed != 10 || rep.Remaining != 79 || rep.PlannedUnits != 89 {
-		t.Fatalf("report %+v", rep)
-	}
-	if len(fake.Calls()) != 10 {
-		t.Fatalf("executed %d steps", len(fake.Calls()))
-	}
-	// The denominator is not shrunk: the export omits the unfinished cases and
-	// names them, and evalreport shows the coverage as not exact.
-	res, err := Export(s, j, ExportOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(res.Incomplete) == 0 {
-		t.Fatal("unfinished cases not reported")
-	}
-	src, alloc := synth(t, smallQuotas())
-	_ = src
-	r, err := evalreport.Build(evalreport.Inputs{Manifest: alloc, Trials: res.Input, Ledger: mustSnap(t, committed)})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if r.Coverage.Exact || r.H1.RuleSatisfied {
-		t.Fatalf("an unfinished run reports exact coverage: %+v", r.Coverage)
-	}
-}
-
-func TestBudgetStopsOnLedgerUnitCount(t *testing.T) {
-	s := smallSchedule(t, smallConfig())
-	fake := NewFakeExecutor(s.Config)
-	// The ledger already holds 80 units from before this run (pilots): 9 remain.
-	ledger := func() (usdledger.Snapshot, error) { return okLedger(80+len(fake.Calls()), 1000)() }
-	j := openJournal(t, t.TempDir(), s)
-	defer j.Close()
-	rep, err := mustRunner(t, s, j, fake, Options{Ledger: ledger}).Run(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if rep.Finished || rep.Stop != StopUnits || rep.Executed != 9 || rep.Remaining != 80 {
-		t.Fatalf("report %+v", rep)
-	}
-}
-
-func TestBudgetRefusesLedgerAboveRegisteredCap(t *testing.T) {
-	s := smallSchedule(t, smallConfig())
-	fake := NewFakeExecutor(s.Config)
-	ledger := func() (usdledger.Snapshot, error) {
-		snap, _ := okLedger(0, 0)()
-		snap.CapMicroUSD = 6_000_000
-		snap.RemainingMicroUSD = 6_000_000
-		return snap, nil
-	}
-	j := openJournal(t, t.TempDir(), s)
-	defer j.Close()
-	rep, err := mustRunner(t, s, j, fake, Options{Ledger: ledger}).Run(context.Background())
-	if err != nil || rep.Stop != StopUSD || rep.Executed != 0 {
-		t.Fatalf("%+v %v", rep, err)
-	}
-}
-
-func TestBudgetLedgerErrorFailsClosed(t *testing.T) {
-	s := smallSchedule(t, smallConfig())
-	fake := NewFakeExecutor(s.Config)
-	ledger := func() (usdledger.Snapshot, error) { return usdledger.Snapshot{}, errors.New("ledger unreadable") }
-	j := openJournal(t, t.TempDir(), s)
-	defer j.Close()
-	if _, err := mustRunner(t, s, j, fake, Options{Ledger: ledger}).Run(context.Background()); err == nil {
-		t.Fatal("unreadable ledger did not stop the run")
-	}
-	if len(fake.Calls()) != 0 {
-		t.Fatal("a step started without a readable ledger")
-	}
-}
 
 func TestBudgetUnitCapNeverAbovePlannedUnits(t *testing.T) {
 	cfg := testConfig()

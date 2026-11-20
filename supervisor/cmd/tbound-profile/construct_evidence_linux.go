@@ -638,7 +638,7 @@ func (c *constructCtx) acceptOutcome(use *constructUse, cm constructCaseMap, cs 
 		}
 		result, err := runner.ParseAcceptDoc(raw)
 		if err == nil {
-			err = constructRequiredBools(raw)
+			err = runner.RequireAcceptBools(raw)
 		}
 		if err == nil {
 			err = spec.ValidateResult(result, cs.CaseID)
@@ -664,27 +664,4 @@ func (c *constructCtx) acceptOutcome(use *constructUse, cm constructCaseMap, cs 
 		return "fail", "untouched fixture passed or reference solution failed in the acceptance cell", nil
 	}
 	return "pass", "untouched fixture failed and reference solution passed in the acceptance cell, on the trees recomputed from the corpus artifacts", nil
-}
-
-// constructRequiredBools refuses a result whose passed members are missing: a missing false must not become
-// a negative outcome.
-func constructRequiredBools(raw []byte) error {
-	var doc struct {
-		Passed  *bool `json:"passed"`
-		Results []struct {
-			Passed *bool `json:"passed"`
-		} `json:"results"`
-	}
-	if err := json.Unmarshal(raw, &doc); err != nil {
-		return err
-	}
-	if doc.Passed == nil {
-		return errors.New("missing boolean passed")
-	}
-	for _, r := range doc.Results {
-		if r.Passed == nil {
-			return errors.New("missing boolean results.passed")
-		}
-	}
-	return nil
 }

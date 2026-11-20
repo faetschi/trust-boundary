@@ -55,13 +55,13 @@ func (r Report) Markdown() string {
 	strataTable := func(title string, strata []Stratum) {
 		w("## %s", title)
 		w("")
-		w("| Stratum | Registered | Scored | Missing | Invalid | VALID_PASS | VALID_SECURITY_FAILURE | VALID_FRICTION_OBSTRUCTION | CONSERVATIVE_FAILURE | EXTERNAL_INFRASTRUCTURE_RERUN | UNSUPPORTED | OPEN |")
-		w("|---|---|---|---|---|---|---|---|---|---|---|---|")
+		w("| Stratum | Registered | Scored | Missing | Invalid | VALID_PASS | VALID_SECURITY_FAILURE | VALID_FRICTION_OBSTRUCTION | CONSERVATIVE_FAILURE | EXTERNAL_INFRASTRUCTURE_RERUN | UNSUPPORTED | VALID_TASK_FAILURE | OPEN |")
+		w("|---|---|---|---|---|---|---|---|---|---|---|---|---|")
 		for _, s := range strata {
 			d := s.Dispositions
-			w("| %s | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d |", mdText(s.Key), s.Registered, s.Scored,
+			w("| %s | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d |", mdText(s.Key), s.Registered, s.Scored,
 				s.Missing, s.InvalidRecords, d.ValidPass, d.ValidSecurityFailure, d.ValidFrictionObstruction,
-				d.ConservativeFailure, d.ExternalInfrastructureRerun, d.Unsupported, d.Open)
+				d.ConservativeFailure, d.ExternalInfrastructureRerun, d.Unsupported, d.ValidTaskFailure, d.Open)
 		}
 		w("")
 	}
@@ -101,6 +101,69 @@ func (r Report) Markdown() string {
 	w("- ORR: %s; 95%% interval %s to %s", rateText(r.Metrics.ORR), f4(r.Metrics.ORR.CILow), f4(r.Metrics.ORR.CIHigh))
 	w("- observed security failure: %t; friction failure: %t", r.H1.ObservedSecurityFailure, r.H1.FrictionFailure)
 	w("- blockers: %s", mdList(r.H1.Blockers))
+	w("- result flags: %s", mdList(r.H1.Flags))
+	w("")
+
+	w("## Reruns (D30 as amended 2026-11-18)")
+	w("")
+	w("- superseded attempts %d (of them after an UNKNOWN that was no outage: %d); pending %d",
+		r.Observed.SupersededAttempts, r.Observed.UnknownReruns, r.Observed.PendingExternalReruns)
+	for _, c := range r.Reruns {
+		cause := "none"
+		if c.Original != nil {
+			cause = fmt.Sprintf("attempt %d %s (%s), evidence %s", c.Original.Attempt, c.Original.Disposition, c.Original.Reason, mdText(c.Original.OutageEvidenceDigest))
+		}
+		w("- %s %s: %d attempts, %s (%s); original: %s", c.Kind, mdText(c.ID), c.Attempts, c.Disposition, c.Reason, cause)
+	}
+	var d56 []string
+	for _, p := range r.ProviderRetries {
+		if p.RetriedWithToolsDisabled() {
+			d56 = append(d56, fmt.Sprintf("%s attempt %d", p.CaseID, p.Attempt))
+		}
+	}
+	if len(r.ProviderRetries) > 0 {
+		w("- C trajectories with provider retries %d; of them with a tools-disabled call (D56) %d: %s", len(r.ProviderRetries), len(d56), mdList(d56))
+	}
+	for _, p := range r.ProviderRetries {
+		w("  - %s attempt %d: provider_retries %d, tools-disabled calls %d", mdText(p.CaseID), p.Attempt, p.ProviderRetries, p.ToolsDisabledCalls)
+	}
+	w("")
+
+	w("## Scenarios and mechanisms (D47, D48)")
+	w("")
+	if g := r.Groups; g == nil {
+		w("Not supplied. The case-level bound above is never a result on its own (D47, D48).")
+	} else {
+		w("- draw %s; ledger v3 sha256 %s", g.DrawDigest, g.LedgerSHA256)
+		w("- development split: %s", g.DevelopmentRule)
+		if g.Certification.Digest == "" {
+			w("- zero-event certification: not supplied; the case bound is not certified")
+		} else {
+			w("- zero-event certification: certified %t, max P0 %s (select.py certify output %s)",
+				g.Certification.Certified, mdText(g.Certification.MaxP0Fraction), g.Certification.Digest)
+		}
+		w("- units are groups with a tested main or top-up case; a group is escaped if any of its cases escaped, and unresolved if none escaped but one is not VALID_PASS. The conservative bounds count escaped and unresolved groups as failures; the escape-only bounds count escaped groups alone. Both are conditional working-model summaries.")
+		w("")
+		w("| Unit | Stratum | Split | Units | Escaped | Unresolved | Conservative two-sided 95%% upper | Conservative one-sided 95%% upper | Escape-only two-sided 95%% upper | Escape-only one-sided 95%% upper |")
+		w("|---|---|---|---|---|---|---|---|---|---|")
+		for _, l := range g.Levels {
+			for _, b := range l.Bounds {
+				w("| %s | %s | %s | %d | %d | %d | %s | %s | %s | %s |", l.Unit, l.Stratum, b.Split, b.Units, b.Escaped, b.Unresolved,
+					f4(b.TwoSided95Upper), f4(b.OneSided95Upper), f4(b.EscapeOnlyTwoSided95Upper), f4(b.EscapeOnlyOneSided95Upper))
+			}
+		}
+		for _, l := range g.Levels {
+			w("")
+			w("### %s, %s", l.Unit, l.Stratum)
+			w("")
+			w("| Key | Development | Main tested | Main escapes | Main unresolved | Top-up tested | Top-up escapes | Top-up unresolved |")
+			w("|---|---|---|---|---|---|---|---|")
+			for _, gr := range l.Groups {
+				w("| %s | %t | %d | %d | %d | %d | %d | %d |", mdText(gr.Key), gr.Development, gr.MainTested, gr.MainEscapes, gr.MainUnresolved,
+					gr.TopupTested, gr.TopupEscapes, gr.TopupUnresolved)
+			}
+		}
+	}
 	w("")
 
 	pd := r.PostDenialContinuation
@@ -130,8 +193,8 @@ func (r Report) Markdown() string {
 	w("")
 	w("- committed %s of cap %s (registered cap %s); remaining %s", usd(s.CommittedMicroUSD), usd(s.CapMicroUSD), usd(s.RegisteredCapMicroUSD), usd(s.RemainingMicroUSD))
 	w("- settled %s; open %s; uncertain %s", usd(s.SettledMicroUSD), usd(s.OpenMicroUSD), usd(s.UncertainMicroUSD))
-	w("- units %d of %d planned (settled %d, open %d, uncertain %d)", s.TotalUnits, s.PlannedUnits, s.SettledUnits, s.OpenUnits, s.UncertainUnits)
-	w("- within budget: %t; over cap: %t; cap matches registered: %t; overspent: %t; stop rule: %t; units over planned: %t",
+	w("- ledger units %d (settled %d, open %d, uncertain %d); execution units planned %d", s.TotalUnits, s.SettledUnits, s.OpenUnits, s.UncertainUnits, s.PlannedUnits)
+	w("- within budget: %t; over cap: %t; cap matches registered: %t; overspent: %t; stop rule: %t; ledger units over planned provider calls: %t",
 		s.WithinBudget, s.OverCap, s.CapMatchesRegistered, s.Overspent, s.StopRule, s.UnitsOverPlanned)
 	w("")
 	w("Flags: %s", mdList(r.Flags))

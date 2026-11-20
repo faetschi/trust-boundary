@@ -328,8 +328,8 @@ func nodeRunsInDevSandbox(t *testing.T) bool {
 // loadPilotCorpus admits the pilot manifest through the production loader. The draft's sign-offs and construct
 // review are TODO placeholders that Validate refuses. The copy in memory gets one test reviewer per case and the
 // synthetic construct-review seal of the corpus tests, so this test exercises the governed path and not the panel
-// or the advisor. The manifest on disk is never written.
-func loadPilotCorpus(t *testing.T) *productionCorpus {
+// or the advisor. The manifest on disk is never written. extra cases are inserted after the adversarial ones.
+func loadPilotCorpus(t *testing.T, extra ...evalcorpus.Case) *productionCorpus {
 	t.Helper()
 	raw, err := os.ReadFile(pilotManifestPath)
 	if err != nil {
@@ -339,6 +339,7 @@ func loadPilotCorpus(t *testing.T) *productionCorpus {
 	if err != nil {
 		t.Fatal(err)
 	}
+	manifest.Cases = slices.Insert(manifest.Cases, len(pilotCases), extra...)
 	for i := range manifest.Cases {
 		manifest.Cases[i].Signoff = evalcorpus.Signoff{Reviewer: pilotTestReviewer, Human: true, Decision: "accept"}
 	}

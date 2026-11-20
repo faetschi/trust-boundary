@@ -1,0 +1,9 @@
+(console output of scripts/run-x30b.sh, 2026-11-18, release.yml chain again with the workflow's non-tag version 0.0.0)
+CHECK v0-release-build rc=0 1e709fdad7390fb6c8efe82da7db9f5f9d93ec89b38f6fb77f5e1c003027a979  tbound-cell-entrypoint-0.0.0-linux-amd64.sha256
+CHECK v0-release-npm-packages rc=0 make-npm-packages: wrote /home/tbound/tbound-work/x30tmp/dist0/npm (cli + 1 platform packages)
+CHECK v0-release-verify-install rc=0 verify-install: 12 passed, 0 failed
+CHECK v0-release-strict-mode rc=0 verify-release-strict-mode: 3 passed, 0 failed
+CHECK v0-release-layout rc=0 verify-release-layout: 75 passed, 0 failed, 0 skipped
+CHECK v0-release-npm-verify rc=0 verify-npm-packages: 29 passed, 0 failed
+checkout still clean
+FAILS=0

@@ -378,10 +378,16 @@ func TestRunAndResumeAfterACrash(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resume: %v\n%s", err, out)
 	}
-	if line(out, "abandoned") != "1" || line(out, "finished") != "true" || line(out, "already_done") != "20" || line(out, "remaining") != "0" {
+	// Step 20 is an adversarial C trajectory: it is collected under its request id (P1-9), not abandoned.
+	if line(out, "resumed") != "1" || line(out, "abandoned") != "0" || line(out, "finished") != "true" || line(out, "already_done") != "20" || line(out, "remaining") != "0" {
 		t.Fatalf("resume report:\n%s", out)
 	}
-	calls := second.Calls()
+	var calls []runner.Step
+	for _, c := range second.Calls() {
+		if !c.Resumed { // the interrupted step is collected, not run again
+			calls = append(calls, c)
+		}
+	}
 	if len(calls) != total-21 || calls[0].Index != 21 {
 		t.Fatalf("resumed %d steps, want %d from step 21", len(calls), total-21)
 	}
@@ -439,6 +445,39 @@ func TestRunMaxStepsStopsCleanlyAndResumes(t *testing.T) {
 	}
 }
 
+// A host that died inside a compliant C step left it started. `run --max-steps 1` then collects that step's result
+// and still starts one new step: the limit counts the steps it starts.
+func TestRunMaxStepsDoesNotCountAResumedStep(t *testing.T) {
+	e := newEnv(t)
+	var died runner.Step
+	for _, st := range e.sched().Steps {
+		if st.Kind == evalcorpus.KindCompliant && st.Configuration == runner.CfgC {
+			died = st
+			break
+		}
+	}
+	first := newFake(e)
+	first.Hook = func(s runner.Step, _ *runner.Outcome) error {
+		if s.ID() == died.ID() {
+			panic("host died")
+		}
+		return nil
+	}
+	func() {
+		defer func() {
+			if recover() == nil {
+				t.Fatal("the simulated host death did not happen")
+			}
+		}()
+		_, _ = e.cliCfg(fakeWire(first), "run")
+	}()
+	second := newFake(e)
+	out, err := e.cliCfg(fakeWire(second), "run", "--max-steps", "1")
+	if err != nil || line(out, "resumed") != "1" || line(out, "executed") != "1" || len(second.Calls()) != 2 || !second.Calls()[0].Resumed {
+		t.Fatalf("max-steps after a resumed step: %v %d\n%s", err, len(second.Calls()), out)
+	}
+}
+
 // withoutB is the real wiring with the B executor removed, to exercise the fail-closed path.
 func withoutB(wire wireFunc) wireFunc {
 	return func(p plan) (runner.Executors, error) {
@@ -461,7 +500,7 @@ func TestRunWithTheRealWiringFailsClosedForUnwiredConfigurations(t *testing.T) {
 	if err != nil || ex.C == nil || ex.P == nil || ex.B == nil || ex.V == nil || ex.A != nil {
 		t.Fatalf("wiring: %+v %v", ex, err)
 	}
-	if _, ok := ex.C.(runner.Attest); !ok {
+	if _, ok := unguarded(ex.C).(runner.Attest); !ok {
 		t.Fatalf("C is %T, want the Attest decorator", ex.C)
 	}
 	if _, ok := ex.B.(runner.Attest); !ok {

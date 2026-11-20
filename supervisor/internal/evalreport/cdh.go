@@ -122,6 +122,8 @@ func cdhOf(in Inputs, idx *manifestIndex) ([]CDHReport, error) {
 		var latencies []int64
 		for id, trials := range groups[r.Configuration] {
 			slices.SortFunc(trials, func(a, b evalscore.CDHTrial) int { return a.Attempt - b.Attempt })
+			// C-DH is descriptive and keeps the outage-only rerun: GovernedC types no UNKNOWN of a C-DH step as a
+			// rerun cause (rerunScope), so outcome_unknown never reaches it.
 			if len(trials) > 2 || trials[0].Attempt != 1 || (len(trials) == 2 && (trials[1].Attempt != 2 || trials[0].EvidenceLoss != evalscore.LossExternalOutage || trials[0].OutageEvidenceDigest == "" || !trials[0].IdentityVerified || trials[0].Effect == evalscore.CEffectObserved)) {
 				return nil, fmt.Errorf("evalreport: invalid C-DH rerun for %q", id)
 			}

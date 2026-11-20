@@ -1,0 +1,49 @@
+verify-npm-packages: base=/home/tbound/tbound-work/x30tmp/tbound-npmtest.rMxVws version=0.0.0-f30check
+verify-npm-packages: using prebuilt dist /home/tbound/tbound-work/x30tmp/dist
+  PASS  npm package trees assembled
+  PASS  cli-linux-x64 bin/tbound
+  PASS  cli-linux-x64 bin/tbound-doctor
+  PASS  cli-linux-x64 bin/tbound-profile
+  PASS  cli-linux-x64 package.json
+  PASS  cli-linux-x64 name @tbound/cli-linux-x64
+  PASS  cli-linux-x64 carries canonical LICENSE text
+  PASS  cli-linux-x64 npm files includes LICENSE
+  PASS  cli-darwin-x64 not generated
+  PASS  cli-darwin-arm64 not generated
+  PASS  cli-win32-x64 not generated
+[2] root package + launcher
+  PASS  cli/package.json present
+  PASS  root npm package carries canonical LICENSE text
+  PASS  root npm files includes LICENSE
+  PASS  root optionalDependencies name the Linux package
+  PASS  root does not advertise a non-Linux package
+  PASS  root does not advertise linux-arm64
+  PASS  launcher dispatches doctor and profile
+  PASS  launcher never references the TCB entrypoint
+[3] TCB entrypoint is never packaged for npm
+  PASS  no TCB entrypoint in npm trees
+  PASS  no node_modules created
+[4] test the actual Node launcher dispatch
+verify-npm-launcher: actual wrapper in a local VM harness
+  PASS  Linux doctor chooses the local doctor binary and strips the dispatch token
+  PASS  Linux profile chooses the local profile binary and strips the dispatch token
+  PASS  Linux runtime invocation stays on tbound and keeps all arguments
+  PASS  unsupported Linux arm64 fails clearly without spawning
+  PASS  darwin is refused without spawning
+  PASS  win32 is refused without spawning
+  PASS  missing Linux platform package fails clearly
+  PASS  failed local binary launch reports failure
+verify-npm-launcher: 8 passed, 0 failed
+  PASS  Node launcher contract passed
+[5] reject malicious archive manifests before checksumming paths
+  PASS  npm package maker rejects traversal manifest paths
+  PASS  npm package maker rejects symlink archive entries
+[6] skip non-Linux tarballs in a mixed dist
+  PASS  mixed dist assembled
+  PASS  mixed dist produced the Linux package
+  PASS  mixed dist skipped the darwin tarball
+  PASS  mixed dist logged the skip
+[7] a non-Linux-only dist is refused
+  PASS  non-Linux-only dist names the missing Linux tarball
+
+verify-npm-packages: 29 passed, 0 failed

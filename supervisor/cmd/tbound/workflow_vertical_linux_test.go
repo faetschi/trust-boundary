@@ -300,6 +300,8 @@ type workflowVerticalOptions struct {
 	withoutLedger bool
 	// maxHostCalls and maxTokens, when nonzero, replace the retry-derived workflow limits.
 	maxHostCalls, maxTokens uint64
+	// storeLimits, when set, replaces the store's default workspace limits.
+	storeLimits *workspace.Limits
 }
 
 // close closes every handle the fixture opened, newest first. It runs again harmlessly at cleanup.
@@ -566,7 +568,11 @@ func prepareWorkflowVertical(t *testing.T, options workflowVerticalOptions) *wor
 	if err != nil {
 		t.Fatal(err)
 	}
-	managed, err := authority.CreateStore(storeRoot, workspace.DefaultLimits(),
+	storeLimits := workspace.DefaultLimits()
+	if options.storeLimits != nil {
+		storeLimits = *options.storeLimits
+	}
+	managed, err := authority.CreateStore(storeRoot, storeLimits,
 		workspace.XattrVisibilityAttestation{ProfileDigest: governedReplayXattrPolicy, Authority: workspace.XattrAuthorityBoundedNoHiddenTrusted}, nil)
 	_ = storeRoot.Close()
 	if err != nil {

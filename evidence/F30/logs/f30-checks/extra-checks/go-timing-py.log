@@ -1,0 +1,15 @@
+test_artifact_write_failure_does_not_hide_test_diagnostics (test_ci_go_test_timing.GoTestTimingSummaryTest.test_artifact_write_failure_does_not_hide_test_diagnostics) ... ok
+test_build_output_without_an_attributed_import_path_is_reported (test_ci_go_test_timing.GoTestTimingSummaryTest.test_build_output_without_an_attributed_import_path_is_reported) ... ok
+test_compiler_errors_without_a_package_field_remain_in_the_job_log (test_ci_go_test_timing.GoTestTimingSummaryTest.test_compiler_errors_without_a_package_field_remain_in_the_job_log) ... ok
+test_events_missing_required_fields_fail_closed_and_name_the_problem (test_ci_go_test_timing.GoTestTimingSummaryTest.test_events_missing_required_fields_fail_closed_and_name_the_problem) ... ok
+test_failed_package_output_stays_in_the_log_and_out_of_timing_artifacts (test_ci_go_test_timing.GoTestTimingSummaryTest.test_failed_package_output_stays_in_the_log_and_out_of_timing_artifacts) ... ok
+test_interleaved_failure_output_is_grouped_by_package (test_ci_go_test_timing.GoTestTimingSummaryTest.test_interleaved_failure_output_is_grouped_by_package) ... ok
+test_late_diagnostic_attributed_to_a_passed_test_remains_in_the_job_log (test_ci_go_test_timing.GoTestTimingSummaryTest.test_late_diagnostic_attributed_to_a_passed_test_remains_in_the_job_log) ... ok
+test_malformed_stream_keeps_raw_diagnostics_in_the_job_log (test_ci_go_test_timing.GoTestTimingSummaryTest.test_malformed_stream_keeps_raw_diagnostics_in_the_job_log) ... ok
+test_slowest_rows_come_first_and_a_package_without_tests_counts_as_skip (test_ci_go_test_timing.GoTestTimingSummaryTest.test_slowest_rows_come_first_and_a_package_without_tests_counts_as_skip) ... ok
+test_timeout_output_without_a_test_result_remains_in_the_job_log (test_ci_go_test_timing.GoTestTimingSummaryTest.test_timeout_output_without_a_test_result_remains_in_the_job_log) ... ok
+
+----------------------------------------------------------------------
+Ran 10 tests in 0.007s
+
+OK

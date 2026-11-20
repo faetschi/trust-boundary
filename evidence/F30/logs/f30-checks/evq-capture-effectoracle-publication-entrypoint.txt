@@ -1,0 +1,5 @@
+(effectoracle, publication and tbound-cell-entrypoint results in the F30 EVQ capture go-test.json, sha256:254e36adc1e0be5663837235ab09b6685797a5e12f18c4ee1154b7150e9d43bf = test_json in evq-report/evq.stdout; run in tbound-dev, kernel 5.15.153.1-microsoft-standard-WSL2; counts include subtests; top-level = tests without '/')
+tbound/supervisor/cmd/tbound-cell-entrypoint package ('pass', 2.398) all {'pass': 30, 'skip': 2} top-level {'pass': 22, 'skip': 2}
+tbound/supervisor/internal/effectoracle package ('pass', 4.524) all {'pass': 73} top-level {'pass': 73}
+tbound/supervisor/internal/publication package ('pass', 21.368) all {'pass': 73} top-level {'pass': 37}
+TestEntrypointExecsFromThreadGroupLeader pass 1.24

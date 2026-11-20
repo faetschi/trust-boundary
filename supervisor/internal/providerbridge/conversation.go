@@ -26,6 +26,8 @@ import (
 	"tbound/supervisor/internal/broker/openrouter"
 	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/gate"
+	"tbound/supervisor/internal/runend"
+	"tbound/supervisor/internal/workflowrecovery"
 )
 
 const (
@@ -143,8 +145,8 @@ type SpendReservation struct {
 	ConversationID string
 	// Turn is the one-based provider turn of this conversation.
 	Turn uint64
-	// Attempt is the number of earlier attempts of this turn: zero for a first attempt, above zero only
-	// for a decision-13 resample (see resample.go), which is booked as its own reservation.
+	// Attempt is the number of earlier attempts of this turn: zero for a first attempt, above zero for a
+	// pre-effect retry (retry.go) or a decision-13 resample (resample.go), each booked as its own reservation.
 	Attempt uint64
 	// CompletionLimit is the host-selected max_completion_tokens bound of the
 	// request. Zero means the host selected none.
@@ -400,7 +402,7 @@ func newWithDoer(cfg Config, model string, doer broker.HTTPDoer, journal eventJo
 	if predecessor := cfg.Predecessor.sealed; predecessor != nil {
 		// Imported tool calls stay out of the correlation stream; only their IDs are reserved.
 		if err := c.appendHistoryLocked(fromImportedMessages(predecessor.messages)...); err != nil {
-			return nil, fmt.Errorf("%w: %v", ErrContextExhausted, err)
+			return nil, fmt.Errorf("%w: %w", ErrContextExhausted, err)
 		}
 		for _, id := range predecessor.reservedResponseIDs {
 			c.responseIDs[id] = struct{}{}
@@ -432,7 +434,7 @@ func (c *Conversation) AdmitPrompt(taskID, prompt string) error {
 	// The prompt must fit before anything is journaled, so exhaustion leaves no unreplayable record.
 	history, err := c.boundedHistoryLocked(openrouter.Message{Role: openrouter.User, Content: &prompt})
 	if err != nil {
-		return fmt.Errorf("%w: %v", ErrContextExhausted, err)
+		return fmt.Errorf("%w: %w", ErrContextExhausted, err)
 	}
 	if predecessor := c.cfg.Predecessor.sealed; predecessor != nil && !c.importJournaled {
 		imported, err := json.Marshal(predecessor.evidence(c.cfg.WorkflowID, c.cfg.ConversationID))
@@ -480,7 +482,7 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 		return Turn{}, c.failLocked(err)
 	}
 	if c.turns >= MaxTranscriptTurns || c.sequence == math.MaxUint64 {
-		return Turn{}, c.failLocked(errors.New("provider conversation turn/sequence budget exhausted"))
+		return Turn{}, c.failLocked(fmt.Errorf("%w: provider conversation turn/sequence budget exhausted", runend.ErrCeiling))
 	}
 	var hostCallBinding *HostCallBinding
 	var completionLimit uint64
@@ -490,8 +492,10 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 	// from NextTurn leaves the cost unestablished and marks the unit uncertain.
 	var spendUnit string
 	spendDispatched, spendSettled := false, false
-	// disposed is set where the failed exchange is left disposed of in the provider journal.
-	disposed := false
+	// disposed is set where the failed exchange is left disposed of in the provider journal. outageRecord is the
+	// hash of that record when the last attempt was a provider outage (outage.go); dispatched says the attempt's
+	// request was handed to the transport.
+	disposed, dispatched, outageRecord := false, false, ""
 	defer func() {
 		if spendUnit != "" && spendDispatched && !spendSettled {
 			if err := c.cfg.Spend.UncertainSpend(context.WithoutCancel(ctx), spendUnit); err != nil {
@@ -500,6 +504,9 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 			}
 		}
 		if disposed && turnErr != nil {
+			if outageRecord != "" {
+				turnErr = ProviderOutage{RecordHash: outageRecord, err: turnErr}
+			}
 			turnErr = journaledFailure{turnErr}
 		}
 	}()
@@ -518,17 +525,16 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 	var captured openrouter.CapturedResponse
 	var exchangeErr error
 	var records []broker.ExchangeRecord
-	// A pre-effect provider failure may be retried (see retry.go): only with host-call accounting and
-	// without monetary spend, so every attempt is its own reserved host call. A parallel-call refusal may
-	// be resampled (see resample.go): with host-call accounting, on both routes, never in a product turn.
+	// A pre-effect provider failure may be retried (see retry.go): only with host-call accounting, so every
+	// attempt is its own reserved host call, on both routes. A parallel-call refusal may be resampled (see
+	// resample.go): with host-call accounting, on both routes, never in a product turn.
 	hostCallAccounting := c.cfg.SelectCompletionTokenLimit != nil && c.cfg.ReserveHostCall != nil && c.cfg.CompleteHostCall != nil
-	retryable := c.cfg.Spend == nil && hostCallAccounting
 	resamplable := hostCallAccounting && !c.cfg.ProductCaptureRefusals
 	// resampleOf is the refused request a resample must repeat (resampleRepeats); nil for any other attempt.
 	var resampleOf *broker.RequestRecord
 	toolsDisabled := false
 	for attempt := uint64(0); ; attempt++ {
-		hostCallBinding = nil
+		hostCallBinding, dispatched = nil, false
 		// Decided per attempt: a retried or resampled attempt has charged a host call, so a later attempt of
 		// the turn may be the one that goes out with tools disabled, and it never turns tools back on.
 		toolsDisabled = c.cfg.HostCallsLeft != nil && c.cfg.HostCallsLeft() < hostCallsForToolTurn
@@ -545,6 +551,10 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 		if c.cfg.SelectCompletionTokenLimit != nil {
 			completionLimit, err = c.cfg.SelectCompletionTokenLimit(ctx)
 			if err != nil || completionLimit == 0 {
+				// The token allowance's end (or the deadline) refuses before this attempt's reservation, and an earlier
+				// attempt's host call and spend are already closed: nothing is left open, so it is a disposed turn
+				// failure with its receipt. Any other refusal keeps the undisposed path.
+				disposed = errors.Is(err, workflowrecovery.ErrExhausted) || errors.Is(err, workflowrecovery.ErrDeadline)
 				return Turn{}, c.failLocked(errors.Join(errors.New("host selected no positive provider completion-token cap"), err))
 			}
 		} else if c.cfg.BeforeExchange != nil {
@@ -578,7 +588,7 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 				return cause
 			}
 			if c.cfg.ReserveHostCall == nil {
-				spendDispatched = spendUnit != ""
+				spendDispatched, dispatched = spendUnit != "", true
 				return nil
 			}
 			binding, reserveErr := c.cfg.ReserveHostCall(ctx, request, completionLimit)
@@ -600,7 +610,7 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 			if _, appendErr := c.appendLocked("provider_host_call_reserved", "host-call-reserved", encoded); appendErr != nil {
 				return refuse(fmt.Errorf("persist exact host-call reservation before HTTP dispatch: %w", appendErr))
 			}
-			spendDispatched = spendUnit != ""
+			spendDispatched, dispatched = spendUnit != "", true
 			return nil
 		})
 		records = requestBroker.Records()
@@ -608,7 +618,7 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 			break
 		}
 		resample := resamplable && resampleableExchange(records, c.route)
-		if !resample && !(retryable && retryableExchange(records)) {
+		if !resample && !(hostCallAccounting && retryableExchange(records)) {
 			break
 		}
 		if c.cfg.HostCallsLeft != nil && c.cfg.HostCallsLeft() == 0 {
@@ -616,13 +626,13 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 			// abandon to close: end on this attempt, whose reservation the failure path closes as unknown.
 			break
 		}
-		if resample && spendUnit != "" {
-			// The refused attempt reached the provider and its cost is not established: its full
+		if spendUnit != "" {
+			// The failed or refused attempt reached the provider and its cost is not established: its full
 			// reservation stays booked before the attempt is closed and the next one reserved.
 			if err := c.cfg.Spend.UncertainSpend(ctx, spendUnit); err != nil {
-				// Not resampled: the failure path below journals the refused attempt as unknown and the
-				// deferred UncertainSpend books its unit again.
-				exchangeErr = errors.Join(exchangeErr, fmt.Errorf("book the refused provider attempt's spend: %w", err))
+				// Not repeated: the failure path below journals the attempt as unknown and the deferred
+				// UncertainSpend books its unit again.
+				exchangeErr = errors.Join(exchangeErr, fmt.Errorf("book the failed provider attempt's spend: %w", err))
 				break
 			}
 			spendUnit, spendDispatched = "", false
@@ -645,7 +655,10 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 				return Turn{}, c.failLocked(errors.Join(fmt.Errorf("the provider returned a response TBound cannot use (%s); the turn was not applied", reason), persistErr))
 			}
 		}
-		persistErr := c.persistFailedExchangeLocked(records, exchangeErr, hostCallBinding)
+		recordHash, persistErr := c.persistFailedExchangeLocked(records, exchangeErr, hostCallBinding)
+		if persistErr == nil && dispatched && ctx.Err() == nil && outageExchange(records) {
+			outageRecord = recordHash
+		}
 		if spendUnit != "" && spendDispatched && !spendSettled && len(records) == 1 && records[0].ResponseComplete() && records[0].StatusCode() == 200 {
 			// A Reasoning route's reply cut off at max_completion_tokens still reports what it cost.
 			if usage, ok := openrouter.TruncatedUsage(records[0].ResponseBody(), c.route); ok {
@@ -656,15 +669,23 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 		return Turn{}, c.failLocked(errors.Join(fmt.Errorf("registered provider exchange failed; response withheld: %w", exchangeErr), persistErr))
 	}
 	if err := ctx.Err(); err != nil {
-		persistErr := c.persistFailedExchangeLocked(records, err, hostCallBinding)
+		_, persistErr := c.persistFailedExchangeLocked(records, err, hostCallBinding)
 		disposed = exchangeDisposed(persistErr, records, hostCallBinding)
 		return Turn{}, c.failLocked(errors.Join(fmt.Errorf("provider exchange canceled; response withheld: %w", err), persistErr))
 	}
 	if len(records) != 1 || !records[0].HasResponse() {
 		return Turn{}, c.failLocked(errors.New("broker did not retain exactly one complete exchange"))
 	}
+	// refuseResponse ends the turn on a complete response that the bridge refuses before it journals a normal
+	// exchange: the raw response is journaled as provider_exchange_unknown, which closes the reserved host call
+	// for abandon, and the unsettled spend is left for the defer to mark uncertain.
+	refuseResponse := func(refusal error) (Turn, error) {
+		_, persistErr := c.persistFailedExchangeLocked(records, refusal, hostCallBinding)
+		disposed = exchangeDisposed(persistErr, records, hostCallBinding)
+		return Turn{}, c.failLocked(errors.Join(refusal, persistErr))
+	}
 	if !c.route.AcceptsResponseModel(captured.Model()) {
-		return Turn{}, c.failLocked(errors.New("captured response model differs from registered model"))
+		return refuseResponse(errors.New("captured response model differs from registered model"))
 	}
 	if c.turns == math.MaxUint64 || c.sequence == math.MaxUint64 {
 		return Turn{}, c.failLocked(errors.New("provider turn sequence exhausted"))
@@ -680,7 +701,7 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 	var refusedCall *ToolCallProjection
 	if call, ok := captured.ToolCall(); ok {
 		if !validText(call.ID, MaxIdentityBytes) || !validTool(call.Name) || len(call.RawArguments) == 0 {
-			return Turn{}, c.failLocked(errors.New("captured tool call is outside the fixed bridge schema"))
+			return refuseResponse(errors.New("captured tool call is outside the fixed bridge schema"))
 		}
 		if toolsDisabled {
 			// The provider ignored tool_choice "none". Captured, the call's effect or the provider call that
@@ -694,25 +715,26 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 		}
 	}
 	assistantText := captured.AssistantText()
-	if assistantText == "" && projection.ToolCall == nil && refusedCall == nil {
+	// An empty reply to a tools-disabled request is the run's final answer (D56 amendment, 2026-11-19).
+	if assistantText == "" && projection.ToolCall == nil && refusedCall == nil && !toolsDisabled {
 		emptyErr := errors.New("provider response has neither assistant text nor a tool call")
 		if !c.route.Reasoning {
 			return Turn{}, c.failLocked(emptyErr) // the product route keeps its pre-D50 behaviour
 		}
 		// A reasoning-only reply is a complete exchange: journal it as unknown and settle its spend, so
 		// neither the host call nor the cost is left open, then end the request.
-		persistErr := c.persistFailedExchangeLocked(records, emptyErr, hostCallBinding)
+		_, persistErr := c.persistFailedExchangeLocked(records, emptyErr, hostCallBinding)
 		persistErr = settleAfterJournal(persistErr, captured.Usage())
 		disposed = exchangeDisposed(persistErr, records, hostCallBinding)
 		return Turn{}, c.failLocked(errors.Join(emptyErr, persistErr))
 	}
 	if err := validateTurnProjectionBudget(projection); err != nil {
-		persistErr := c.persistFailedExchangeLocked(records, err, hostCallBinding)
+		_, persistErr := c.persistFailedExchangeLocked(records, err, hostCallBinding)
 		disposed = exchangeDisposed(persistErr, records, hostCallBinding)
-		return Turn{}, c.failLocked(errors.Join(fmt.Errorf("provider response projection exceeds its durable evidence budget: %w", err), persistErr))
+		return Turn{}, c.failLocked(errors.Join(fmt.Errorf("%w: provider response projection exceeds its durable evidence budget: %w", runend.ErrCeiling, err), persistErr))
 	}
 	// Identity reuse is checked before the exchange is journaled as a normal one: the raw response is
-	// failed-exchange evidence, and the unsettled spend is left for the defer to mark uncertain.
+	// failed-exchange evidence. A tool-call ID of an earlier turn is refused by the correlator below.
 	var identityErr error
 	if _, duplicate := c.responseIDs[captured.ResponseID()]; duplicate {
 		identityErr = errors.New("provider response ID was reused across conversation turns")
@@ -722,9 +744,7 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 		}
 	}
 	if identityErr != nil {
-		persistErr := c.persistFailedExchangeLocked(records, identityErr, hostCallBinding)
-		disposed = exchangeDisposed(persistErr, records, hostCallBinding)
-		return Turn{}, c.failLocked(errors.Join(identityErr, persistErr))
+		return refuseResponse(identityErr)
 	}
 	callArray := []openrouter.PriorToolCall(nil)
 	if projection.ToolCall != nil {
@@ -734,10 +754,21 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 	// appends it under the same bound, and a journaled exchange that replay refuses would be unrecoverable.
 	nextHistory, err := c.boundedHistoryLocked(assistantMessage(c.route, captured, assistantText, callArray))
 	if err != nil {
-		persistErr := c.persistFailedExchangeLocked(records, err, hostCallBinding)
+		_, persistErr := c.persistFailedExchangeLocked(records, err, hostCallBinding)
 		persistErr = settleAfterJournal(persistErr, captured.Usage())
 		disposed = exchangeDisposed(persistErr, records, hostCallBinding)
 		return Turn{}, c.failLocked(errors.Join(fmt.Errorf("provider response does not fit the next request: %w", err), persistErr))
+	}
+	if capturedCall != nil {
+		// The correlator is the last check that can refuse the call, so it runs before the normal exchange is
+		// journaled. A refusal closes the stream; the conversation closes with it.
+		trusted, err := captured.TrustedCapture(callIssuer, responseIssuer, c.generation, nextSequence)
+		if err != nil {
+			return refuseResponse(fmt.Errorf("derive captured tool-call identity: %w", err))
+		}
+		if decision := c.correlation.Capture(trusted); !decision.Accepted || decision.StreamClosed {
+			return refuseResponse(fmt.Errorf("register captured tool call: %s", decision.ReasonCode))
+		}
 	}
 	requestRecord := records[0].Request()
 	evidence := exchangeEvidence{
@@ -756,27 +787,26 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 	if err != nil {
 		return Turn{}, c.failLocked(fmt.Errorf("persist exact provider exchange; response withheld: %w", err))
 	}
-	// The exchange is durable: its spend and host call settle even if the request context ends now, or a
+	// The exchange is durable: its host call and spend settle even if the request context ends now, or a
 	// deadline would leave the journaled exchange's host call reserved, which abandon cannot reconcile. A
 	// canceled turn is refused only after that, below. The settlement is bounded (settleContext).
 	settleCtx, cancelSettle := settleContext(ctx)
 	defer cancelSettle()
+	// The host call settles first: a spend settlement that fails (usage missing, an overage) then leaves
+	// nothing reserved, and the turn ends disposed of. A failed host-call settlement is a workflow ledger
+	// failure and stays undisposed (fail closed).
+	if hostCallBinding != nil {
+		if err := c.cfg.CompleteHostCall(settleCtx, HostCallCompletion{Binding: *hostCallBinding, OutcomeDigest: journalRecord.Hash}); err != nil {
+			return Turn{}, c.failLocked(fmt.Errorf("settle exact provider exchange reservation before result release: %w", err))
+		}
+	}
 	if spendUnit != "" {
 		// SettleSpend leaves the unit in its final state (settled, overage-settled
 		// or uncertain) whether or not it returns an error.
 		spendSettled = true
 		if err := c.cfg.Spend.SettleSpend(settleCtx, spendUnit, captured.Usage()); err != nil {
+			disposed = true
 			return Turn{}, c.failLocked(fmt.Errorf("settle provider spend; response withheld: %w", err))
-		}
-	}
-	if capturedCall != nil {
-		trusted, err := captured.TrustedCapture(callIssuer, responseIssuer, c.generation, nextSequence)
-		if err != nil {
-			return Turn{}, c.failLocked(fmt.Errorf("derive captured tool-call identity: %w", err))
-		}
-		decision := c.correlation.Capture(trusted)
-		if !decision.Accepted || decision.StreamClosed {
-			return Turn{}, c.failLocked(fmt.Errorf("register captured tool call: %s", decision.ReasonCode))
 		}
 	}
 	c.history = nextHistory
@@ -793,11 +823,6 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 		c.state = stateAwaitingProposal
 	} else {
 		c.state = stateNeedsPrompt
-	}
-	if hostCallBinding != nil {
-		if err := c.cfg.CompleteHostCall(settleCtx, HostCallCompletion{Binding: *hostCallBinding, OutcomeDigest: journalRecord.Hash}); err != nil {
-			return Turn{}, c.failLocked(fmt.Errorf("settle exact provider exchange reservation before result release: %w", err))
-		}
 	}
 	if err := ctx.Err(); err != nil {
 		return Turn{}, c.failLocked(fmt.Errorf("provider exchange canceled before release: %w", err))
@@ -1082,18 +1107,18 @@ func (c *Conversation) recordNoEffectRefused(ctx context.Context, proposal proto
 		return c.recordUnknownExecutionLocked(proposal, decision, errors.New("executor refusal has no independent no-effect proof for this call"))
 	}
 	if err := verifier.VerifyNoEffect(ctx, proposal, decision, c.generation, c.treeDigest); err != nil {
-		return c.recordUnknownExecutionLocked(proposal, decision, fmt.Errorf("no-effect proof failed; provider result withheld: %v", err))
+		return c.recordUnknownExecutionLocked(proposal, decision, fmt.Errorf("no-effect proof failed; provider result withheld: %w", err))
 	}
 	result, err := protocol.NoEffectResult(resultFor(proposal, decision, nil))
 	if err != nil {
-		return c.recordUnknownExecutionLocked(proposal, decision, fmt.Errorf("build no-effect result: %v", err))
+		return c.recordUnknownExecutionLocked(proposal, decision, fmt.Errorf("build no-effect result: %w", err))
 	}
 	if err := c.appendResultLocked(ctx, "provider_tool_result", result, "", c.generation, c.treeDigest, 0, "", ""); err != nil {
-		return c.recordUnknownExecutionLocked(proposal, decision, fmt.Errorf("persist no-effect result; IPC result withheld: %v", err))
+		return c.recordUnknownExecutionLocked(proposal, decision, fmt.Errorf("persist no-effect result; IPC result withheld: %w", err))
 	}
 	if c.cfg.AdvanceProgress != nil {
 		if err := c.cfg.AdvanceProgress(ctx); err != nil {
-			return c.failLocked(fmt.Errorf("advance workflow checkpoint after no-effect result: %v", err))
+			return c.failLocked(fmt.Errorf("advance workflow checkpoint after no-effect result: %w", err))
 		}
 	}
 	return &protocol.NoEffectError{Tool: proposal.Tool, Err: refused.Err}
@@ -1282,14 +1307,14 @@ func (c *Conversation) appendHistoryLocked(messages ...openrouter.Message) error
 func (c *Conversation) boundedHistoryLocked(messages ...openrouter.Message) ([]openrouter.Message, error) {
 	proposed := append(cloneMessages(c.history), messages...)
 	if len(proposed) > MaxTranscriptTurns*3+2 {
-		return nil, errors.New("provider transcript message limit exhausted")
+		return nil, fmt.Errorf("%w: provider transcript message limit exhausted", runend.ErrCeiling)
 	}
 	request, err := openrouter.BuildRequestForRoute(c.route, proposed, 0)
 	if err != nil {
 		return nil, fmt.Errorf("bounded broker transcript rejected: %w", err)
 	}
 	if len(request.Body()) > openrouter.MaxRequestBytes || len(request.Body()) > MaxTranscriptBytes {
-		return nil, errors.New("provider transcript byte budget exhausted")
+		return nil, fmt.Errorf("%w: provider transcript byte budget exhausted", runend.ErrCeiling)
 	}
 	return proposed, nil
 }
@@ -1342,7 +1367,7 @@ func validateTurnProjectionBudget(projection Turn) error {
 		return err
 	}
 	if len(encoded) > MaxTurnProjectionBytes {
-		return errors.New("canonical provider turn projection exceeds one mebibyte")
+		return fmt.Errorf("%w: canonical provider turn projection exceeds one mebibyte", runend.ErrCeiling)
 	}
 	return nil
 }
@@ -1360,10 +1385,12 @@ func exchangeDisposed(persistErr error, records []broker.ExchangeRecord, hostCal
 	return persistErr == nil && (len(records) > 0 || hostCall == nil)
 }
 
+// persistFailedExchangeLocked journals the last attempt as provider_exchange_unknown and returns the record's hash
+// ("" when there is no attempt to journal).
 func (c *Conversation) persistFailedExchangeLocked(records []broker.ExchangeRecord, failure error,
-	hostCall *HostCallBinding) error {
+	hostCall *HostCallBinding) (string, error) {
 	if len(records) == 0 {
-		return nil
+		return "", nil
 	}
 	record := records[len(records)-1]
 	evidence := struct {
@@ -1377,10 +1404,10 @@ func (c *Conversation) persistFailedExchangeLocked(records []broker.ExchangeReco
 		StatusCode: record.StatusCode(), Response: record.ResponseBody(), Failure: safeFailure(failure), HostCall: hostCall}
 	data, err := json.Marshal(evidence)
 	if err != nil {
-		return err
+		return "", err
 	}
-	_, err = c.appendLocked("provider_exchange_unknown", "exchange", data)
-	return err
+	journaled, err := c.appendLocked("provider_exchange_unknown", "exchange", data)
+	return journaled.Hash, err
 }
 
 func (c *Conversation) fail(err error) error {
@@ -1484,8 +1511,11 @@ type mutationSummary struct {
 // the existing durable executor. The envelope binds the current generation and
 // (for mutations) the durable transition/effect identity before history moves.
 func validateExecutorOutput(tool string, raw json.RawMessage, currentGeneration, currentTreeDigest string) (nextGeneration, nextTreeDigest, transitionID string, transitionSequence uint64, effectID string, err error) {
-	if len(raw) == 0 || len(raw) > protocol.MaxFrameBytes {
-		return "", "", "", 0, "", errors.New("executor output is empty or oversized")
+	if len(raw) == 0 {
+		return "", "", "", 0, "", errors.New("executor output is empty")
+	}
+	if len(raw) > protocol.MaxFrameBytes {
+		return "", "", "", 0, "", fmt.Errorf("%w: executor output is oversized", runend.ErrCeiling)
 	}
 	if err = protocol.ValidateStrictJSON(raw); err != nil {
 		return "", "", "", 0, "", err

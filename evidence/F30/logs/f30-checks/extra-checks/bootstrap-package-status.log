@@ -1,0 +1,11 @@
+PASS  all packages installed: missing=none
+PASS  held package (hi) counts as installed: missing=none
+PASS  unpacked package (un) is missing: missing=libseccomp2
+PASS  config-files package (rc) is missing: missing=gnupg
+PASS  absent package is missing: missing=xz-utils
+PASS  manifest lists ii and hi rows, not rc rows
+PASS  make command absent is reported: missing=make
+PASS  make is in the provisioner apt install list
+PASS  make is in the provisioner apt-mark hold list
+
+package-status checks: 9 passed, 0 failed

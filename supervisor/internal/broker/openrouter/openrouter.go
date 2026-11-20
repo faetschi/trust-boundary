@@ -14,6 +14,7 @@ import (
 
 	"tbound/supervisor/internal/broker/correlation"
 	"tbound/supervisor/internal/broker/protocol"
+	"tbound/supervisor/internal/runend"
 )
 
 const (
@@ -98,7 +99,6 @@ type researchRequest struct {
 	Messages            []wireMessage  `json:"messages"`
 	Tools               []functionTool `json:"tools"`
 	Stream              bool           `json:"stream"`
-	ParallelToolCalls   bool           `json:"parallel_tool_calls"`
 	ToolChoice          string         `json:"tool_choice"`
 	MaxCompletionTokens uint64         `json:"max_completion_tokens,omitempty"`
 }
@@ -183,16 +183,18 @@ func BuildRequestWithCompletionLimit(modelID string, messages []Message, complet
 // after the optional completion cap instead.
 const (
 	engineeringTail = `,"stream":true,"parallel_tool_calls":false,"tool_choice":"auto","thinking":{"type":"disabled"}`
-	researchTail    = `,"stream":true,"parallel_tool_calls":false,"tool_choice":"auto"`
+	researchTail    = `,"stream":true,"tool_choice":"auto"`
 	// reasoningEngineeringTail is the engineering tail of a Reasoning route (DeepSeek-native fields).
 	reasoningEngineeringTail = `,"stream":true,"parallel_tool_calls":false,"tool_choice":"auto","thinking":{"type":"enabled"},"reasoning_effort":"high"`
 )
 
 // BuildRequestForRoute builds the registered request for one route. The zero
 // route and the engineering route give exactly the bytes BuildRequest always
-// gave. A research route sends the same four Pi proxy tools and single-call
-// behaviour to its own endpoint and model, without the OpenCode Go thinking
-// member, followed by the frozen profile members. The cap, when positive, is
+// gave. A research route sends its frozen four Pi proxy tools to its own
+// endpoint and model, followed by the frozen profile members. It omits the
+// OpenCode Go thinking member and parallel_tool_calls: require_parameters would
+// drop its pinned provider, which lacks that parameter, and the capture still
+// refuses a second call. The cap, when positive, is
 // still the host-selected max_completion_tokens.
 func BuildRequestForRoute(route Route, messages []Message, completionLimit uint64) (BuiltRequest, error) {
 	return buildRequestForRoute(route, messages, completionLimit, "auto")
@@ -266,7 +268,7 @@ func buildRequestForRoute(route Route, messages []Message, completionLimit uint6
 	var body []byte
 	if route.IsResearch() {
 		body, err = json.Marshal(researchRequest{Model: modelID, Messages: wire, Tools: fixedTools, Stream: true,
-			ParallelToolCalls: false, ToolChoice: toolChoice, MaxCompletionTokens: completionLimit})
+			ToolChoice: toolChoice, MaxCompletionTokens: completionLimit})
 		if err == nil {
 			// Replace the closing brace with the frozen members: ",<members without its opening brace>".
 			body = append(append(body[:len(body)-1], ','), route.members[1:]...)
@@ -296,7 +298,7 @@ func preflightRequestSize(modelID string, messages []Message, toolsJSON []byte, 
 		switch {
 		case failure != nil:
 		case amount < 0 || amount > MaxRequestBytes-size:
-			failure = errors.New("request exceeds byte limit before marshaling")
+			failure = fmt.Errorf("%w: request exceeds byte limit before marshaling", runend.ErrCeiling)
 		default:
 			size += amount
 		}
@@ -387,7 +389,7 @@ func escapedJSONStringLength(value string) (int, error) {
 	for _, r := range value {
 		part := escapedRuneLength(r)
 		if part > MaxRequestBytes-length {
-			return 0, errors.New("request string exceeds byte limit")
+			return 0, fmt.Errorf("%w: request string exceeds byte limit", runend.ErrCeiling)
 		}
 		length += part
 	}
@@ -403,7 +405,7 @@ func escapedJSONBytesLength(value []byte) (int, error) {
 		r, width := utf8.DecodeRune(value)
 		part := escapedRuneLength(r)
 		if part > MaxRequestBytes-length {
-			return 0, errors.New("request string exceeds byte limit")
+			return 0, fmt.Errorf("%w: request string exceeds byte limit", runend.ErrCeiling)
 		}
 		length += part
 		value = value[width:]
@@ -532,7 +534,7 @@ func (r CapturedResponse) TrustedCapture(callIssuer, responseIssuer, generation 
 }
 
 // ErrParallelToolCall is the capture refusal of a stream that starts a second tool call (a tool-call
-// index above zero) although the request sets parallel_tool_calls=false. The capture still refuses it;
+// index above zero), whether or not the request sends parallel_tool_calls=false. The capture still refuses it;
 // the sentinel only lets the bridge apply decision 13's bounded resample to exactly this class. Its text
 // is the refusal text journaled before the sentinel existed.
 var ErrParallelToolCall = errors.New("tool-call index must be zero")
@@ -633,7 +635,7 @@ func decodeSSE(raw []byte, legacyNulls, reasoning, allowLength bool) (CapturedRe
 			}
 			s.events++
 			if s.events > s.maxEvents {
-				return CapturedResponse{}, errors.New("too many SSE events")
+				return CapturedResponse{}, fmt.Errorf("%w: too many SSE events", runend.ErrCeiling)
 			}
 			if s.done {
 				return CapturedResponse{}, errors.New("data after [DONE]")
@@ -782,6 +784,10 @@ func (s *stream) chunk(raw []byte) error {
 		return nil
 	}
 	finish, e := strRaw(finishRaw)
+	if e == nil && finish == "length" && !s.allowLength && !s.finished {
+		// The reply met max_completion_tokens: the per-call cap of the agent's own token use (D50).
+		return fmt.Errorf("%w: reply cut at the per-call completion cap (finish reason length)", runend.ErrCeiling)
+	}
 	if e != nil || (finish != "stop" && finish != "tool_calls" && !(s.allowLength && finish == "length")) || s.finished {
 		return errors.New("unsupported or repeated finish reason")
 	}

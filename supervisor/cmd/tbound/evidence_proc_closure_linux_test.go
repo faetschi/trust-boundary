@@ -101,7 +101,7 @@ func TestEvidenceProcClosureRefusesWhatIsNotACompletedSettledRun(t *testing.T) {
 	tampered := cmd
 	tampered.Evidence.OutputWritersDrained = false // the receipt digest no longer matches
 	for name, env := range map[string]*evTestEnv{
-		"request not completed":   closureEnvFor(t, settledRunReceipt(1), "unknown", cmd),
+		"request not completed":   closureEnvFor(t, settledRunReceipt(1), "unknown/no-receipt", cmd),
 		"run not settled":         closureEnvFor(t, unsettled, "completed", cmd),
 		"tampered settlement":     closureEnvFor(t, settledRunReceipt(1), "completed", tampered),
 		"no command journal":      closureEnvFor(t, settledRunReceipt(1), "completed"),
@@ -230,7 +230,7 @@ func TestEvidenceProcClosureRefusalHasItsOwnExitStatus(t *testing.T) {
 		"run not settled":      closureEnvFor(t, unsettled, "completed", cmd),
 		"tampered settlement":  closureEnvFor(t, settledRunReceipt(1), "completed", tampered),
 		"no command journal":   closureEnvFor(t, settledRunReceipt(1), "completed"),
-		"request not complete": closureEnvFor(t, settledRunReceipt(1), "unknown", cmd),
+		"request not complete": closureEnvFor(t, settledRunReceipt(1), "unknown/no-receipt", cmd),
 	} {
 		var out, errOut bytes.Buffer
 		if code := evidenceMain(closureArgs(t), &out, &errOut, env.evidenceEnv); code != runner.EvidenceRefusalExit || out.Len() != 0 {

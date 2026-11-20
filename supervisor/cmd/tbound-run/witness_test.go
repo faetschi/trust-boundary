@@ -5,17 +5,20 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"tbound/supervisor/internal/corpusadmit"
 	"tbound/supervisor/internal/evalcorpus"
+	"tbound/supervisor/internal/procoracle"
 	"tbound/supervisor/internal/runner"
 )
 
 // TestMain also serves as the spy ssh of TestWitnessRunReachesOnlyConfigurationP: a child started with TBOUND_SPY_SSH_LOG
-// set appends its argument vector to that file and exits 0. The real SSH transports then carry the run, and everything
+// set appends its argument vector to that file and exits 0, answering only the clock reads. The real SSH transports then carry the run, and everything
 // they are asked to do is on the record.
 func TestMain(m *testing.M) {
 	if log := os.Getenv("TBOUND_SPY_SSH_LOG"); log != "" {
@@ -37,7 +40,48 @@ func spySSH(log string) int {
 	if _, err := f.Write(append(argv, '\n')); err != nil {
 		return 3
 	}
+	// The clock guard reads the guest clock before every P step: answer it, with the clock TBOUND_SPY_CLOCK_OFFSET ahead.
+	remote := os.Args[len(os.Args)-1]
+	var doc any
+	switch {
+	case strings.Contains(remote, "'"+runner.EvidenceProcCell+"'"):
+		doc = procoracle.CellDoc{Schema: runner.EvidenceSchema, Kind: runner.EvidenceProcCell, CellID: "/cell", CellCgroupPath: "/c",
+			CellCgroupInode: 7, CellUID: 995, CellGID: 986}
+	case strings.Contains(remote, "'"+runner.EvidenceProcCapture+"'"):
+		words := strings.Fields(remote)
+		reg := strings.Trim(words[slices.Index(words, "'--registration'")+1], "'")
+		doc = procoracle.CaptureDoc{Schema: runner.EvidenceSchema, Kind: runner.EvidenceProcCapture, Point: procoracle.PointPostTeardown,
+			RegistrationDigest: reg, Snapshot: procoracle.Snapshot{Seq: 1, Point: procoracle.PointPostTeardown, ObservedAt: time.Now().Add(spyClockOffset()), RegistrationDigest: reg}}
+	default:
+		return 0
+	}
+	if err := json.NewEncoder(os.Stdout).Encode(doc); err != nil {
+		return 3
+	}
 	return 0
+}
+
+func spyClockOffset() time.Duration {
+	d, _ := time.ParseDuration(os.Getenv("TBOUND_SPY_CLOCK_OFFSET"))
+	return d
+}
+
+// A guest clock 0.9 s ahead of the host's would lose every PROC interval (H1-04): the run refuses the first P step
+// before it spends a unit, and says how to resync.
+func TestWitnessRunRefusesAGuestClockAheadOfTheHost(t *testing.T) {
+	e := witnessEnv(t)
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.cfg["ssh"].(map[string]any)["path"] = exe
+	e.write()
+	t.Setenv("TBOUND_SPY_SSH_LOG", e.path("spy.log"))
+	t.Setenv("TBOUND_SPY_CLOCK_OFFSET", "900ms")
+	out, err := e.cliCfg(wireSSH, "run")
+	if err == nil || !strings.Contains(err.Error(), "w32tm") || line(out, "units_used") != "0" {
+		t.Fatalf("a skewed guest clock was not refused before the first unit: %v\n%s", err, out)
+	}
 }
 
 // witnessEnv is the fixture run configured as a construct-witness run.
@@ -117,6 +161,7 @@ func thesisEnv(t *testing.T) *env {
 	}
 	e.file(filepath.Join("artifacts", name), string(raw))
 	e.cfg["quota_profile"] = "thesis"
+	e.cfg["proc"].(map[string]any)["monitor_seconds"] = 1500 // past the fixture's 600 s case budgets (H1-05)
 	e.cfg["artifacts_dir"] = e.path("artifacts")
 	e.write()
 	return e

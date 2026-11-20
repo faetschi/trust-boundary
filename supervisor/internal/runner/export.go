@@ -17,7 +17,40 @@ import (
 
 // ErrRerunInconsistent means a journaled rerun does not satisfy the evalscore
 // rule that the superseded attempt is an evidenced external outage.
-var ErrRerunInconsistent = errors.New("runner: rerun whose original attempt is not an evidenced external-outage rerun")
+var ErrRerunInconsistent = errors.New("runner: rerun whose original attempt is not an evidenced registered rerun")
+
+// rerunEligible checks that the case's attempt 1, as Export builds it, classifies as
+// EXTERNAL_INFRASTRUCTURE_RERUN: every scored step has ended, and the record shows no
+// effect, no gap and no decided label that a rerun could erase. It applies to a step in
+// rerunScope (D30 as amended 2026-11-18); a P or replay step keeps the step-level rule of
+// D30, and Export refuses an inconsistent rerun as before. A C-DH plan keeps its own export
+// check (exportCDH and evalreport), and a construct-witness plan is never exported.
+func rerunEligible(s Schedule, j *Journal, st Step, attr evalscore.Attribution) error {
+	if !rerunScope(st) || s.Config.CDH != nil || s.Config.Purpose == PurposeConstructWitness {
+		return nil
+	}
+	caseID := st.CaseID
+	_, groups := caseGroups(s)
+	steps := groups[caseID]
+	if len(steps) == 0 {
+		return fmt.Errorf("case %q is not scored", caseID)
+	}
+	for _, st := range steps {
+		if st.Configuration != CfgV && j.terminalOf(st.ID(), 1) == nil {
+			return fmt.Errorf("step %s has not ended", st.ID())
+		}
+	}
+	var got evalscore.Result
+	if steps[0].Kind == evalcorpus.KindAdversarial {
+		got = s.Config.AssembleAdversarial(advView(j, steps, 1)).Record.Classify()
+	} else {
+		got = s.Config.AssembleCompliant(compView(j, steps, 1, attr)).Classify()
+	}
+	if got.Open || got.Disposition != evalscore.ExternalInfrastructureRerun {
+		return fmt.Errorf("case %s attempt 1 classifies as %q (%s)", caseID, got.Disposition, got.Reason)
+	}
+	return nil
+}
 
 // ExportOptions are the inputs of an export that the journal cannot hold.
 type ExportOptions struct {
@@ -227,6 +260,14 @@ func Export(s Schedule, j *Journal, opt ExportOptions) (ExportResult, error) {
 				res.Input.PostDenialTrials = append(res.Input.PostDenialTrials, evalscore.PostDenialTrial{
 					TaskID: st.CaseID, Attempt: e.Attempt, Success: !e.Outcome.Partial && e.Outcome.Task == TaskPass,
 					Proposals: append([]ProposalFact{}, e.Outcome.Receipt.Proposals...),
+				})
+				break
+			}
+			if st.ID() == e.StepID && st.Kind == evalcorpus.KindAdversarial && st.Role == RoleTrajectory && st.Configuration == CfgC &&
+				e.Outcome.Metrics.Retries > 0 {
+				res.Input.ProviderRetries = append(res.Input.ProviderRetries, evalscore.ProviderRetryTrajectory{
+					CaseID: st.CaseID, Attempt: e.Attempt, ProviderRetries: e.Outcome.Metrics.Retries,
+					ToolsDisabledCalls: e.Outcome.Metrics.ToolsDisabledCalls,
 				})
 				break
 			}

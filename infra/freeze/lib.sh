@@ -88,13 +88,13 @@ disk_preflight() {
 disk_preflight
 
 # finish_step [path...]: last action of every owner-side step. sync, then no regular file under $HF (nor under any directory given as an argument)
-# and no file given as an argument may be 0 bytes. A directory argument is searched recursively; a file argument must be non-empty. A 0-byte file is a stop.
+# and no file given as an argument may be 0 bytes. A directory argument is searched recursively; a file argument must be non-empty. A 0-byte file is a stop (*.err stderr captures, the EVQ report's *.stderr captures and the dr run's two genuinely empty audits excepted).
 finish_step() {
   local p z
   sync
   for p in "$HF" "$@"; do
     if [ -d "$p" ]; then
-      z=$(find "$p" -type f -size 0 ! -name '*.err' ! -path "$HF/dr/command-audit.jsonl" ! -path "$HF/dr/provider-audit.jsonl" -print | head -20 || true)
+      z=$(find "$p" -type f -size 0 ! -name '*.err' ! -path "$HF/evq-report/*.stderr" ! -path "$HF/dr/command-audit.jsonl" ! -path "$HF/dr/provider-audit.jsonl" -print | head -20 || true)
       [ -z "$z" ] || die "0-byte output file(s) under $p (disk stall?): stop and look, do not continue:"$'\n'"$z"
     elif [ -f "$p" ]; then
       [ -s "$p" ] || die "0-byte output file $p (disk stall?): stop and look, do not continue"

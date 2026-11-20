@@ -18,6 +18,9 @@ func serviceErrorCodes(t *testing.T) []string {
 			regexp.MustCompile(`"busy",\s*"([a-z][a-z-]*)"`),
 			regexp.MustCompile(`"unknown",\s*"([a-z][a-z-]*)"`),
 		},
+		"../../internal/runend/runend.go": {
+			regexp.MustCompile(`Code[A-Za-z]+\s*=\s*"([a-z-]+)"`),
+		},
 		"production_corpus_admission_linux.go": {
 			regexp.MustCompile(`return\s+"([a-z]+(?:-[a-z]+)+)"`),
 			regexp.MustCompile(`replayBindingMismatch\s*=\s*"([a-z-]+)"`),

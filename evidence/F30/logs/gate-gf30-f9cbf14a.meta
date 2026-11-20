@@ -1,0 +1,5 @@
+gate gf30 on integ/f30-20261118 f9cbf14afa70a5eef4e4543ea3a68ab378df9210, tree a458f0268eaeaa3df2ec8fe4c3eb789f96616596
+= tree of FREEZE_COMMIT 5626e34fdbf40983949cde67f17238b82800665b (main after #194) and of dev 2a204b7f
+archive: git -c core.autocrlf=false archive --format=tar f9cbf14a; blobs 3090/3090 byte-exact, 0 extra files (gate-gf30-f9cbf14a.out)
+gate.sh: kit kf19 (/home/tbound/tbound-work/kf19/infra/freeze/tools/gate.sh), KIT_FREEZE=F18, label gf30, inside flock /home/tbound/.linux-line.lock, nice -n 19 (f30-checks/scripts/run-gf30.sh)
+before the gate (2026-11-18T11:41Z): no find.exe/rg.exe/grep.exe/du.exe/robocopy.exe on the host (Get-CimInstance Win32_Process); tbound-dev up 0 min, load average 0.00 0.00 0.00, no go test/build/gate process

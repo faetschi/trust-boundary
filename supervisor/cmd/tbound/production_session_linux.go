@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"tbound/supervisor/internal/adaptivesource"
@@ -179,6 +180,9 @@ type productionPiSession struct {
 	recoveryPromptTaskID          string
 	recoveryPromptRequestID       string
 	recoveryPrompt                string
+	// recovered marks a session of a retained workflow (bindProductionPiRecoverySession): an earlier run of it may
+	// have admitted its task, so its launch failure is never launchNotAdmitted.
+	recovered bool
 
 	// Publication finalizes the registered session after settlement. The binder
 	// supplies the protected live root, publication state root/journal, owner
@@ -482,7 +486,7 @@ func runComposedProductionPiSession(ctx context.Context, output io.Writer, confi
 	}
 	session.Publication = publicationRuntime
 	previousClose := session.Close
-	session.Close = func() error {
+	closeSession := func() error {
 		if err := productionSessionCloseIfUnsafe(
 			session.Lifecycle.snapshot(), session.ProductionCommandRunner, previousClose); err != nil {
 			return err
@@ -503,6 +507,14 @@ func runComposedProductionPiSession(ctx context.Context, output io.Writer, confi
 			return previousClose()
 		}
 		return nil
+	}
+	// A run closes its session before it writes the receipt, and the caller closes it again; the managed-root abort of
+	// a run that never admitted its task must run only once.
+	var closeOnce sync.Once
+	var closeErr error
+	session.Close = func() error {
+		closeOnce.Do(func() { closeErr = closeSession() })
+		return closeErr
 	}
 	releaseSessionAdmission, err := publicationRuntime.BeginSession(ctx)
 	if err != nil {
@@ -534,12 +546,15 @@ func runComposedProductionPiSession(ctx context.Context, output io.Writer, confi
 			session.SessionID, session.WorkflowID, session.ConversationID, session.Generation.ID(),
 			session.Prepared.Provenance().BindingDigest, session.Profile, session.D09Template, launcherPID, proof)
 	}
+	conversation := session.offlineProviderConversation
+	// A scripted replay makes no provider exchange: its turns come from the frozen script.
+	providerExchange := conversation == nil && (session.Corpus == nil || !session.Corpus.scripted())
 	session.Lifecycle.markWorkerLaunchAttempted()
 	worker, err := piruntime.LaunchD09PiCLIWorker(ctx, capability, session.D09Channels, bootstrap)
 	if err != nil {
 		workerLaunchErr = err
 		session.Lifecycle.markLaunchFailed(err)
-		return productionLaunchFailure(err, journalLaunchProof)
+		return session.endLaunchBeforeAdmission(output, config, err, productionLaunchFailure(err, journalLaunchProof), providerExchange)
 	}
 	session.Lifecycle.markWorkerLaunched(worker.PID())
 	closeWorker := func() piruntime.Settlement {
@@ -567,9 +582,6 @@ func runComposedProductionPiSession(ctx context.Context, output io.Writer, confi
 		return errors.Join(fmt.Errorf("journal production D09 launch proof before task release: %w", err), workerCloseErr)
 	}
 
-	conversation := session.offlineProviderConversation
-	// A scripted replay makes no provider exchange: its turns come from the frozen script.
-	providerExchange := conversation == nil && (session.Corpus == nil || !session.Corpus.scripted())
 	if conversation == nil && session.recoveredProviderConversation != nil {
 		conversation = session.recoveredProviderConversation
 		session.Authority.mu.Lock()
@@ -711,10 +723,6 @@ func runComposedProductionPiSession(ctx context.Context, output io.Writer, confi
 		verifyProductionLaunchProofJournal(session.StoreJournal, lifecycle, session.Profile, session.D09Template, session.RunID,
 			session.SessionID, session.WorkflowID, session.ConversationID, session.Generation.ID(),
 			session.Prepared.Provenance().BindingDigest) == nil
-	providerTrace, providerTraceErr := session.ProviderJournal.Trace()
-	if providerTraceErr != nil {
-		publishErr = errors.Join(publishErr, fmt.Errorf("read production provider lineage receipt: %w", providerTraceErr))
-	}
 	receipt := productionPiReceipt{
 		SchemaVersion: "tbound-production-pi-receipt/v1", Mode: "production", RunID: session.RunID,
 		ProfileID: session.Profile.ID, ProfileHash: session.Profile.Digest,
@@ -722,7 +730,7 @@ func runComposedProductionPiSession(ctx context.Context, output io.Writer, confi
 		ContainmentProfileDigest: session.Profile.ContainmentProfileDigest,
 		FrozenSourceDigest:       session.Profile.SourceProvenanceDigest, ProviderProfile: session.Profile.ProviderProfile,
 		ProviderExchange: providerExchange, ClaimBearing: false,
-		WorkerReady: true, TaskAdmitted: true, TurnCompleted: true,
+		WorkerReady: true, TaskAdmitted: true, TurnCompleted: outcome.turnErr == nil,
 		ProposalCount: supervisor.HandledProposals(),
 		Settlement:    string(settlement.State), ExitObserved: settlement.ExitObserved, ExitCode: settlement.ExitCode,
 		DescendantsSettled:     settlement.DescendantsSettled,
@@ -734,6 +742,24 @@ func runComposedProductionPiSession(ctx context.Context, output io.Writer, confi
 			(disposition == "PUBLISHED" && publicationStatus == string(publication.StatusSucceeded) ||
 				noChangeReleased && disposition == "NO_DIFF" && publicationStatus == "NO_DIFF"),
 	}
+	publishErr, cleanupErr := session.completeProductionReceipt(&receipt, config, providerExchange, bundle, bundleErr, publishErr)
+	if publishErr != nil || workerCloseErr != nil || cleanupErr != nil {
+		receipt.Success = false
+	}
+	// A failed provider turn (outcome.turnErr) keeps its receipt and still ends the request UNKNOWN.
+	return errors.Join(outcome.turnErr, writeProductionPiReceipt(output, receipt), publishErr, workerCloseErr, cleanupErr)
+}
+
+// completeProductionReceipt fills the receipt members every ended run reports (the publication anchor, the
+// generations, the provider lineage, the corpus and attacker facts, the cell delta), closes the session, whose closer
+// takes the E04 final-cleanup point, and binds the E04 store. It returns publishErr joined with what failed here, and
+// the close error.
+func (session *productionPiSession) completeProductionReceipt(receipt *productionPiReceipt, config productionServeConfig,
+	providerExchange bool, bundle sessionrepo.EvidenceBundle, bundleErr, publishErr error) (error, error) {
+	providerTrace, providerTraceErr := session.ProviderJournal.Trace()
+	if providerTraceErr != nil {
+		publishErr = errors.Join(publishErr, fmt.Errorf("read production provider lineage receipt: %w", providerTraceErr))
+	}
 	// TraceCommitted, not Trace: a journal cut or emptied while this handle is open is still a valid
 	// hash chain, and anchoring it could give a false zero-publication head. Rollback across a
 	// reopening is not detected here (privileged interference or operational rollback).
@@ -743,7 +769,7 @@ func runComposedProductionPiSession(ctx context.Context, output io.Writer, confi
 		}
 	} else if publicationTrace, traceErr := session.PublicationJournal.TraceCommitted(); traceErr != nil {
 		publishErr = errors.Join(publishErr, fmt.Errorf("read production publication journal for the interval anchor: %w", traceErr))
-	} else if anchorErr := applyPublicationAnchor(&receipt, config.workflowAdmission, session.WorkflowID, publicationTrace); anchorErr != nil {
+	} else if anchorErr := applyPublicationAnchor(receipt, config.workflowAdmission, session.WorkflowID, publicationTrace); anchorErr != nil {
 		publishErr = errors.Join(publishErr, fmt.Errorf("anchor production publication interval: %w", anchorErr))
 	}
 	if bundleErr == nil {
@@ -754,9 +780,9 @@ func runComposedProductionPiSession(ctx context.Context, output io.Writer, confi
 		}
 	}
 	if providerTraceErr == nil {
-		publishErr = errors.Join(publishErr, applyProviderLineage(&receipt, providerTrace, config.providerRoute.Route()))
+		publishErr = errors.Join(publishErr, applyProviderLineage(receipt, providerTrace, config.providerRoute.Route()))
 	}
-	if err := applyCorpusReceipt(&receipt, session.Corpus, providerExchange, session.StorePolicyDigest,
+	if err := applyCorpusReceipt(receipt, session.Corpus, providerExchange, session.StorePolicyDigest,
 		session.MetadataPolicyDigest, providerTrace, providerTraceErr); err != nil {
 		publishErr = errors.Join(publishErr, err)
 	}
@@ -764,7 +790,7 @@ func runComposedProductionPiSession(ctx context.Context, output io.Writer, confi
 	if err := recordAttackerUsage(config.workflowAdmission, session.Corpus); err != nil {
 		publishErr = errors.Join(publishErr, err)
 	}
-	if err := applyCellDeltaReceipt(&receipt, session.Corpus, session.CommandRunner); err != nil {
+	if err := applyCellDeltaReceipt(receipt, session.Corpus, session.CommandRunner); err != nil {
 		publishErr = errors.Join(publishErr, err)
 	}
 	cleanupErr := session.close()
@@ -774,11 +800,60 @@ func runComposedProductionPiSession(ctx context.Context, output io.Writer, confi
 	// The final-cleanup point was recorded by the store's closer inside session.close(); the
 	// binding is the store as it stood when it was sealed. A recorder that cannot name its store
 	// leaves no binding, and the host has no E04 evidence for the run.
-	applyE04Binding(&receipt, session.E04)
-	if publishErr != nil || workerCloseErr != nil || cleanupErr != nil {
-		receipt.Success = false
+	applyE04Binding(receipt, session.E04)
+	return publishErr, cleanupErr
+}
+
+// endLaunchBeforeAdmission ends a fresh run whose worker launch failed before the task was admitted: the worker never
+// got the prompt, so no provider exchange, tool call or publication ran. When the launch error proves its cell settled,
+// the remaining E04 points are taken with the empty ledger and a non-success receipt that says the task was not
+// admitted binds them, as for a failed provider turn, and the run ends UNKNOWN as launchNotAdmitted: an infrastructure
+// end the host reruns only once the receipt's evidence shows the interval had no effect. A route-probe launch, a
+// recovered workflow, a cell not proven settled, or a failure to write the receipt or close the session keeps the plain
+// failure, which the run-end registry leaves unclassified. A missing E04 point does not: the receipt binds fewer points
+// and the host, without complete E04 evidence, never reruns the unit.
+func (session *productionPiSession) endLaunchBeforeAdmission(output io.Writer, config productionServeConfig, launchErr, failure error,
+	providerExchange bool) error {
+	var launch *piruntime.PiWorkerLaunchError
+	if !errors.As(launchErr, &launch) || launch.RouteProbe != nil || session.recovered || !session.settleLaunchBeforeAdmission() {
+		return failure
 	}
-	return errors.Join(writeProductionPiReceipt(output, receipt), publishErr, workerCloseErr, cleanupErr)
+	receipt := productionPiReceipt{
+		SchemaVersion: "tbound-production-pi-receipt/v1", Mode: "production", RunID: session.RunID,
+		ProfileID: session.Profile.ID, ProfileHash: session.Profile.Digest,
+		ContainmentProfile:       session.Profile.ContainmentProfile,
+		ContainmentProfileDigest: session.Profile.ContainmentProfileDigest,
+		FrozenSourceDigest:       session.Profile.SourceProvenanceDigest, ProviderProfile: session.Profile.ProviderProfile,
+		ProviderExchange: providerExchange,
+		Settlement:       string(launch.Settlement.State), ExitObserved: launch.Settlement.ExitObserved,
+		ExitCode: launch.Settlement.ExitCode, DescendantsSettled: launch.Settlement.DescendantsSettled,
+		CommandRunnerProfile:   productionCommandRunnerProfile(session.CommandRunner),
+		CommandCellSettlements: productionCommandRunnerSettlements(session.CommandRunner),
+		PublicationStatus:      "UNAVAILABLE", Disposition: "UNKNOWN",
+	}
+	publishErr, cleanupErr := session.completeProductionReceipt(&receipt, config, providerExchange, sessionrepo.EvidenceBundle{}, nil, nil)
+	if err := errors.Join(writeProductionPiReceipt(output, receipt), publishErr, cleanupErr); err != nil {
+		return errors.Join(failure, err)
+	}
+	return launchNotAdmitted{err: failure}
+}
+
+// settleLaunchBeforeAdmission takes the E04 points that follow the cell of a launch that failed before task admission:
+// nothing ran, so no operation is open, no worker is left to tear down, and publication never runs (the empty ledger).
+// It takes none and answers false unless the lifecycle shows a failed launch whose cell is settled and no launched
+// worker, no started channels and no admitted task, so nothing after admission can take this path.
+func (session *productionPiSession) settleLaunchBeforeAdmission() bool {
+	lifecycle := session.Lifecycle.snapshot()
+	if !lifecycle.workerLaunchAttempted || lifecycle.workerLaunched || lifecycle.taskAdmitted || lifecycle.turnCompleted ||
+		lifecycle.channelsStarted || !productionCleanupSafe(lifecycle, session.ProductionCommandRunner) {
+		return false
+	}
+	session.recordE04(wsoracle.PointPostSettlement)
+	session.recordE04(wsoracle.PointPostTeardown)
+	session.E04.setLedger(productionE04LedgerNone())
+	session.recordE04(wsoracle.PointPrePublication)
+	session.recordE04(wsoracle.PointPostPublication)
+	return true
 }
 
 // productionLifecycleOps are the effects of the session between the end of the admitted prompt and
@@ -808,25 +883,49 @@ type productionSettlementOutcome struct {
 	bundle            sessionrepo.EvidenceBundle
 	bundleErr         error
 	noChangeReleased  bool
+	// turnErr is a provider turn failure that ended the run with the worker settled and nothing
+	// published (settleFailedProviderTurn): the run still ends UNKNOWN, but with its receipt and its E04
+	// points, so the host can show that the interval had no effect (register D30 as amended 2026-11-18).
+	turnErr error
+}
+
+// providerTurnEnded reports a loop failure that is only the provider bridge closing the conversation
+// after a failed provider turn (providerTurnFailure): the supervisor loop was clean, so no effect is open.
+func providerTurnEnded(err error) bool {
+	var failure providerTurnFailure
+	return errors.As(err, &failure)
 }
 
 // settleProductionTurn is the lifecycle from the end of the turn to the publication outcome, and the
 // four E04 points taken in it: post-operation-settlement (turn ended, worker not torn down),
 // post-teardown-import (worker settled, loops joined), pre-publication, and post-publication. A
-// returned error is a turn, teardown or channel failure: the points after it are not taken.
+// returned error is a turn, teardown or channel failure: the points after it are not taken. A
+// provider turn failure alone is not returned as an error: settleFailedProviderTurn takes over.
 func (session *productionPiSession) settleProductionTurn(ctx context.Context, ops productionLifecycleOps) (productionSettlementOutcome, error) {
 	var out productionSettlementOutcome
 	if err := ops.waitTurn(); err != nil {
-		return out, err
+		if !providerTurnEnded(err) {
+			return out, err
+		}
+		out.turnErr = err
+	} else {
+		session.Lifecycle.markTurnCompleted()
 	}
-	session.Lifecycle.markTurnCompleted()
 	// E04 post-operation-settlement: the turn has ended, so its operations are settled; the
 	// worker is not torn down yet.
 	session.recordE04(wsoracle.PointPostSettlement)
 
 	settlement, workerCloseErr := ops.closeWorker()
 	if err := ops.joinChannels(); err != nil {
-		return out, err
+		if !providerTurnEnded(err) {
+			return out, err
+		}
+		if out.turnErr == nil {
+			out.turnErr = err
+		}
+	}
+	if out.turnErr != nil {
+		return session.settleFailedProviderTurn(out, settlement, workerCloseErr)
 	}
 	out.publicationStatus, out.disposition = "UNAVAILABLE", "UNKNOWN"
 	e04LedgerSet := false
@@ -908,6 +1007,23 @@ func (session *productionPiSession) settleProductionTurn(ctx context.Context, op
 		out.publishErr = errors.Join(out.publishErr, publicationAttemptErr)
 		out.publicationStatus, out.disposition = "UNAVAILABLE", "UNKNOWN"
 	}
+	return out, nil
+}
+
+// settleFailedProviderTurn ends a run whose provider turn failed. Publication never runs, so nothing
+// reached the live root: with the worker settled, the remaining E04 points are taken with the empty
+// ledger, and the caller writes a non-success receipt that binds them; the run still ends UNKNOWN with
+// out.turnErr. Without a settled worker nothing more is observed, and the failure is returned as before.
+func (session *productionPiSession) settleFailedProviderTurn(out productionSettlementOutcome, settlement piruntime.Settlement,
+	workerCloseErr error) (productionSettlementOutcome, error) {
+	if !productionWorkerSettlementAllowsPublication(settlement, workerCloseErr) {
+		return out, errors.Join(out.turnErr, workerCloseErr)
+	}
+	out.publicationStatus, out.disposition = "UNAVAILABLE", "UNKNOWN"
+	session.recordE04(wsoracle.PointPostTeardown)
+	session.E04.setLedger(productionE04LedgerNone())
+	session.recordE04(wsoracle.PointPrePublication)
+	session.recordE04(wsoracle.PointPostPublication)
 	return out, nil
 }
 
@@ -1041,6 +1157,14 @@ func productionLaunchFailure(err error, journalLaunchProof func(launcherPID int,
 	}
 	return fmt.Errorf("route-probe launch proof journaled, Pi not started: %w", err)
 }
+
+// launchNotAdmitted is a launch that failed before the task was admitted, with its cell settled and the run's receipt
+// and E04 points written (endLaunchBeforeAdmission, its only producer). The agent never ran, so the run-end registry
+// classes its whole chain, syscall leaves included, as infrastructure.
+type launchNotAdmitted struct{ err error }
+
+func (f launchNotAdmitted) Error() string { return f.err.Error() }
+func (f launchNotAdmitted) Unwrap() error { return f.err }
 
 // productionSessionCloseIfUnsafe lets the binder's own Close guard run when
 // the session lifecycle is unsafe, so it can retain its owners in quarantine.

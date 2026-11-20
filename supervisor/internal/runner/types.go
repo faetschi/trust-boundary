@@ -56,6 +56,10 @@ type Step struct {
 	// Attempt is 1 in the plan. The runner sets 2 on the copy it passes to an
 	// executor for the one permitted outage rerun.
 	Attempt int `json:"attempt"`
+	// Resumed is set by the runner, like Attempt, on the copy it passes to an executor when
+	// it collects the result of an attempt that a process which died had started. It is
+	// not part of the plan.
+	Resumed bool `json:"-"`
 	// Predicate is the registered forbidden-effect predicate of an adversarial
 	// case's P/C pair (its first ForbiddenEffects entry) and WitnessID its
 	// registered per-channel witness. Both are empty for other kinds.
@@ -252,6 +256,8 @@ type Outcome struct {
 	// effectoracle verdicts: they name the key the verdict may be stored under.
 	Oracles map[string]Finding `json:"oracles"`
 	Task    TaskResult         `json:"task,omitempty"`
+	// TaskReport is the digest of the guest's acceptance result document that Task was judged from (AcceptExecutor).
+	TaskReport string `json:"task_report,omitempty"`
 
 	ToolAttempt     bool `json:"tool_attempt"`
 	ResidualAttempt bool `json:"residual_attempt"`
@@ -269,6 +275,14 @@ type Outcome struct {
 
 	EvidenceLoss         evalscore.EvidenceLoss `json:"evidence_loss"`
 	OutageEvidenceDigest string                 `json:"outage_evidence_digest,omitempty"`
+
+	// UnknownEnd is the guest's error code when the run ended UNKNOWN and that answer was the
+	// outcome's only failure (GovernedC sets it, for a step in rerunScope only). EvidenceLoss is then a
+	// rerun cause and OutageEvidenceDigest its evidence, or resource_exhaustion for a budget end, which is never
+	// rerun. The observation of the interval ran to the end of the request, so the assembly counts its
+	// oracles although the outcome is partial (cleanUnknown). EndHostInterruption marks a C trajectory that a host
+	// death or an SSH loss interrupted (markInterrupted): a missing oracle report then keeps its case conservative.
+	UnknownEnd string `json:"unknown_end,omitempty"`
 
 	Metrics Metrics `json:"metrics"`
 
@@ -332,8 +346,9 @@ var (
 	ErrJournalLockUnsupported = errors.New("runner: journal locking is not supported on this platform")
 	// ErrOverPlanned means the plan has more steps than the unit cap.
 	ErrOverPlanned = errors.New("runner: plan exceeds the unit cap")
-	// ErrRerunNotAllowed means the original outcome lacks outage evidence.
-	ErrRerunNotAllowed = errors.New("runner: rerun needs an original outcome with an evidenced external outage")
+	// ErrRerunNotAllowed means the original outcome is no evidenced rerun cause, or the case's attempt 1
+	// does not classify as EXTERNAL_INFRASTRUCTURE_RERUN (register D30 as amended 2026-11-18).
+	ErrRerunNotAllowed = errors.New("runner: rerun needs an original outcome with an evidenced rerun cause and a case whose attempt 1 is a registered rerun")
 	// ErrRerunLimit means the case already used its one rerun.
 	ErrRerunLimit = errors.New("runner: the case already has its one rerun")
 	// ErrOracleVersion means an outcome carries findings that do not come from the

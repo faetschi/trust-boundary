@@ -4,22 +4,19 @@
 VERSION ?= dev
 GO ?= go
 
-UNAME_S := $(shell uname -s 2>/dev/null)
-HOST_OS := $(if $(filter Linux,$(UNAME_S)),linux,$(if $(filter Darwin,$(UNAME_S)),darwin,windows))
-HOST_ARCH := $(shell uname -m 2>/dev/null | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')
-
-.PHONY: help build release verify test check-node boundary extension-webchat extension-webchat-frontend-verify extension-webchat-csp fmt clean deb rpm container npm-packages publish
+.PHONY: help build release verify test check-node boundary extension-webchat extension-webchat-frontend-verify extension-webchat-csp fmt clean deb rpm container npm-packages publish packaging-test
 
 help:
 	@echo "tbound make targets:"
-	@echo "  build        build host-target binaries + runtime bundle into dist/ (tarballs + SHA256SUMS)"
-	@echo "  release      cross-build supported targets into dist/ (linux/amd64, darwin/amd64, darwin/arm64, windows/amd64)"
+	@echo "  build        build the linux/amd64 release tarball + SHA256SUMS into dist/"
+	@echo "  release      same as build (releases are linux/amd64 only)"
 	@echo "  verify       offline end-to-end install verification (install into a throwaway prefix)"
 	@echo "  npm-packages generate npm packages from dist/ into dist/npm"
 	@echo "  publish      publish a GitHub release (needs gh; VERSION=0.1.0)"
 	@echo "  deb          build a .deb from the linux-amd64 tarball (needs dpkg-deb)"
 	@echo "  rpm          build an RPM from the linux-amd64 tarball (needs rpmbuild)"
 	@echo "  container    build the container image (needs podman or docker)"
+	@echo "  packaging-test  offline package, publisher and CI-script regressions, as CI runs them (needs bash, git, GNU tar/awk/stat, dpkg-deb; Linux or WSL)"
 	@echo "  test         run the extension boundary guard, then the full supervisor Go suite (needs Node on PATH)"
 	@echo "  boundary     check that core never imports the optional extensions/webchat (pure sh)"
 	@echo "  extension-webchat  gofmt, vet, race tests and Node tests for the optional web chat extension (needs Node)"
@@ -29,10 +26,9 @@ help:
 	@echo "  clean        remove dist/"
 
 build:
-	@scripts/build-release.sh $(VERSION) dist $(HOST_OS)/$(HOST_ARCH)
+	@scripts/build-release.sh $(VERSION) dist linux/amd64
 
-release:
-	@scripts/build-release.sh $(VERSION) dist linux/amd64 darwin/amd64 darwin/arm64 windows/amd64
+release: build
 
 verify:
 	@scripts/verify-install.sh $(VERSION)
@@ -51,6 +47,16 @@ rpm:
 
 container:
 	@scripts/build-container.sh $(VERSION)
+
+packaging-test:
+	@set -e; umask 077; t="$$(mktemp -d)"; trap 'rm -rf "$$t"' EXIT; export TMPDIR="$$t"; \
+	bash tests/packaging/verify-package-manager-layout.sh; \
+	bash tests/packaging/verify-publish-release-assets.sh; \
+	bash tests/packaging/verify-release-verify-lib.sh; \
+	bash tests/packaging/verify-release-workflow-coverage.sh 1.2.3; \
+	bash tests/packaging/verify-governed-containerfile-pins.sh; \
+	bash tests/ci/test-runtime-paths.sh; \
+	bash tests/ci/test-runtime-status.sh
 
 # Several supervisor tests (internal/taskaccept, internal/corpusadmit,
 # cmd/tbound-profile and others) run node and fail, not skip, without it.

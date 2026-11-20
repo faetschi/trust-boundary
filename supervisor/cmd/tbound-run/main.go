@@ -5,11 +5,11 @@
 // known_hosts file. There is no option to relax it.
 //
 // Every subcommand takes --config run.json (see runConfig). The journal is
-// <run_dir>/journal.jsonl: `run` is resumable from it, and a step that was begun in an
-// earlier process and never finished is closed as abandoned, never run again.
-//
-// Configurations P, B and V have no executor yet. A plan that contains them fails closed
-// with runner.ErrNotWired in `selfcheck` and `run`; nothing is filtered or skipped.
+// <run_dir>/journal.jsonl: `run` is resumable from it. A step that was begun in an
+// earlier process and never finished is closed as abandoned, never run again, except a
+// started B or C compliant or ambiguous step and a started adversarial C trajectory, at
+// either attempt, whose stored result the runner collects under the same request id
+// (runner.Runner.Run). The trajectory's result is typed as a host interruption.
 package main
 
 import (
@@ -26,10 +26,10 @@ const usageText = `tbound-run - host-side runner of the TBound evaluation
 
 usage:
   tbound-run plan      --config run.json
-  tbound-run run       --config run.json [--max-steps N]
+  tbound-run run       --config run.json [--max-steps N] [--registration record.json]
   tbound-run rerun     --config run.json --step <step id>
-  tbound-run export    --config run.json --out trials.json
-  tbound-run report    --config run.json --out <dir>
+  tbound-run export    --config run.json --out trials.json [--close-reruns]
+  tbound-run report    --config run.json --out <dir> [--close-reruns] [--ledger-v3 d48-ledger-v3.jsonl [--certification certify.json]] [--registration record.json]
   tbound-run selfcheck --config run.json
   tbound-run fixture digest <spec.json>
   tbound-run source-digest --repo <git repo> --commit <40-hex>     (the frozen source digest: host profile SourceProvenanceDigest, run.json pins.frozen_source_digest)
@@ -69,7 +69,7 @@ func (a *app) run(args []string) error {
 	}
 	switch name, rest := args[0], args[1:]; name {
 	case "plan":
-		return a.withPlan(name, rest, nil, a.plan)
+		return a.planCmd(rest)
 	case "run":
 		return a.runCmd(rest)
 	case "rerun":

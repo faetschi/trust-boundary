@@ -53,7 +53,8 @@ func sortedKeys(m map[string]int) []string {
 // Prepare refusal voids the begin, so the next step is neither spent nor started.
 var errMaxSteps = errors.New("stopped at --max-steps")
 
-// limitExecutor stops the run cleanly after max executed steps.
+// limitExecutor stops the run cleanly after max steps it started. Only a new step is prepared, so a resumed step's
+// result and the settling of an abandoned request are not counted.
 type limitExecutor struct {
 	runner.Executor
 	max, done int
@@ -63,12 +64,8 @@ func (l *limitExecutor) Prepare(ctx context.Context, s runner.Step) error {
 	if l.done >= l.max {
 		return errMaxSteps
 	}
-	return l.Executor.Prepare(ctx, s)
-}
-
-func (l *limitExecutor) Execute(ctx context.Context, s runner.Step) (runner.Outcome, error) {
 	l.done++
-	return l.Executor.Execute(ctx, s)
+	return l.Executor.Prepare(ctx, s)
 }
 
 // Check forwards the wiring check, which the runner runs before any unit is spent.
@@ -81,11 +78,18 @@ func (l *limitExecutor) Check(s runner.Schedule) error {
 
 func (a *app) runCmd(args []string) error {
 	var maxSteps int
+	var registration string
 	return a.withPlan("run", args, func(f *flag.FlagSet) {
 		f.IntVar(&maxSteps, "max-steps", 0, "stop after this many executed steps (0 = no limit)")
+		f.StringVar(&registration, "registration", "", "pre-registration record (tbound-profile preregistration-record) this run must match")
 	}, func(p plan) error {
 		if maxSteps < 0 {
 			return fmt.Errorf("%w: --max-steps must not be negative", errUsage)
+		}
+		if registration != "" {
+			if _, err := checkRegistration(registration, p); err != nil {
+				return err
+			}
 		}
 		ex, err := a.wire(p)
 		if err != nil {
@@ -116,9 +120,9 @@ func (a *app) runCmd(args []string) error {
 
 func (a *app) printRun(rep runner.RunReport) {
 	fmt.Fprintf(a.out, "plan_digest %s\nplanned_units %d\nunits_used %d\nexecuted %d\nalready_done %d\nabandoned %d\n"+
-		"setup_failures %d\nexec_failures %d\nremaining %d\nfinished %t\nstop %q\nspent_micro_usd %d\n",
+		"setup_failures %d\nexec_failures %d\nremaining %d\nfinished %t\nstop %q\nspent_micro_usd %d\nresumed %d\n",
 		rep.PlanDigest, rep.PlannedUnits, rep.UnitsUsed, rep.Executed, rep.AlreadyDone, rep.Abandoned,
-		rep.SetupFailures, rep.ExecFailures, rep.Remaining, rep.Finished, rep.Stop, rep.SpentMicroUSD)
+		rep.SetupFailures, rep.ExecFailures, rep.Remaining, rep.Finished, rep.Stop, rep.SpentMicroUSD, rep.Resumed)
 }
 
 // existingJournal opens the journal of a run that has started; export, report and rerun
@@ -147,7 +151,7 @@ func (a *app) rerunCmd(args []string) error {
 		if err != nil {
 			return err
 		}
-		r, err := runner.NewRunner(p.sched, j, ex, runner.Options{})
+		r, err := runner.NewRunner(p.sched, j, ex, runner.Options{Attributions: p.attributions.byTask})
 		if err != nil {
 			return err
 		}
@@ -161,13 +165,15 @@ func (a *app) rerunCmd(args []string) error {
 
 func (a *app) exportCmd(args []string) error {
 	var out string
+	var closeReruns bool
 	return a.withPlan("export", args, func(f *flag.FlagSet) {
 		f.StringVar(&out, "out", "", "trials.json to write (evalscore-trials/v1)")
+		f.BoolVar(&closeReruns, "close-reruns", false, closeRerunsUsage)
 	}, func(p plan) error {
 		if out == "" {
 			return fmt.Errorf("%w: export needs --out", errUsage)
 		}
-		res, err := a.exportJournal(p)
+		res, err := a.exportJournal(p, closeReruns)
 		if err != nil {
 			return err
 		}
@@ -182,7 +188,10 @@ func (a *app) exportCmd(args []string) error {
 	})
 }
 
-func (a *app) exportJournal(p plan) (runner.ExportResult, error) {
+// closeRerunsUsage explains --close-reruns (register D30 as amended 2026-11-18).
+const closeRerunsUsage = "close the run: a unit still waiting for its registered rerun is CONSERVATIVE_FAILURE (rerun_not_taken)"
+
+func (a *app) exportJournal(p plan, closeReruns bool) (runner.ExportResult, error) {
 	j, err := existingJournal(p)
 	if err != nil {
 		return runner.ExportResult{}, err
@@ -199,6 +208,7 @@ func (a *app) exportJournal(p plan) (runner.ExportResult, error) {
 	if err != nil {
 		return res, err
 	}
+	res.Input.RerunsClosed = closeReruns
 	return res, p.attributions.checkCandidates(res)
 }
 
@@ -248,22 +258,40 @@ func reportLedger(l ledgerSetting) (usdledger.Snapshot, error) {
 	return snap, nil
 }
 
-const nonClaimNote = "NON-CLAIM-BEARING: the USD ledger of this report is synthetic and empty, so its spend section " +
-	"says nothing about the research budget. It is a pilot or dry-run report, not a result for G1, H1 or any thesis claim."
-
-// realLedgerNote replaces nonClaimNote when the report binds a verified ledger file: tbound-run
-// still marks no report claim-bearing.
-const realLedgerNote = "NON-CLAIM-BEARING: this report binds the verified USD ledger %s (%d records, head %s), but tbound-run does not mark any report claim-bearing."
+// reportNote heads report.md: whether the report is claim-bearing, and if not, why (claimReasons).
+func reportNote(reasons []string, reg *evalreport.Registration) string {
+	if len(reasons) == 0 {
+		return "CLAIM-BEARING: the registered analysis of the run registered in " + reg.RecordDigest + "."
+	}
+	return "NON-CLAIM-BEARING (" + strings.Join(reasons, ", ") + "): a correct report of its inputs, not a result for G1, H1 or any thesis claim."
+}
 
 func (a *app) reportCmd(args []string) error {
-	var dir string
+	var dir, ledgerV3, certification, registration string
+	var closeReruns bool
 	return a.withPlan("report", args, func(f *flag.FlagSet) {
 		f.StringVar(&dir, "out", "", "directory for report.json, report.md and report.meta.json")
+		f.StringVar(&ledgerV3, "ledger-v3", "", "corpus/sampling/d48-ledger-v3.jsonl: with the pinned main draw, the scenario and mechanism results (D47, D48)")
+		f.StringVar(&certification, "certification", "", "the select.py certify output for the pinned main draw (D48 zero-event certification)")
+		f.StringVar(&registration, "registration", "", "the pre-registration record (tbound-profile preregistration-record) of this run")
+		f.BoolVar(&closeReruns, "close-reruns", false, closeRerunsUsage)
 	}, func(p plan) error {
 		if dir == "" {
 			return fmt.Errorf("%w: report needs --out", errUsage)
 		}
-		res, err := a.exportJournal(p)
+		d48, err := d48Inputs(p, ledgerV3, certification)
+		if err != nil {
+			return err
+		}
+		var reg *evalreport.Registration
+		if registration != "" {
+			r, err := loadRegistration(registration)
+			if err != nil {
+				return err
+			}
+			reg = &r
+		}
+		res, err := a.exportJournal(p, closeReruns)
 		if err != nil {
 			return err
 		}
@@ -271,14 +299,17 @@ func (a *app) reportCmd(args []string) error {
 		if err != nil {
 			return err
 		}
-		note := nonClaimNote
-		if p.cfg.Ledger.file != nil {
-			note = fmt.Sprintf(realLedgerNote, ledger.LedgerID, ledger.Records, ledger.HeadSHA256)
-		}
 		rep, err := evalreport.Build(evalreport.Inputs{Manifest: p.manifest, Trials: res.Input, Ledger: ledger,
-			AttributionsDigest: p.attributions.digest, AttributionRubricDigest: p.attributions.rubricDigest})
+			AttributionsDigest: p.attributions.digest, AttributionRubricDigest: p.attributions.rubricDigest, D48: d48})
 		if err != nil {
 			return err
+		}
+		reasons := claimReasons(p, p.cfg.Ledger.file != nil, rep, len(res.Incomplete), reg)
+		note := reportNote(reasons, reg)
+		escapeNote := observedEscapeNote(reasons, rep)
+		registrationDigest := ""
+		if reg != nil {
+			registrationDigest = reg.RecordDigest
 		}
 		canonical, err := rep.CanonicalJSON()
 		if err != nil {
@@ -292,15 +323,19 @@ func (a *app) reportCmd(args []string) error {
 			return err
 		}
 		meta, err := json.Marshal(struct {
-			ClaimBearing bool     `json:"claim_bearing"`
-			Ledger       string   `json:"ledger"`
-			ReportDigest string   `json:"report_digest"`
-			PlanDigest   string   `json:"plan_digest"`
-			Incomplete   int      `json:"incomplete_cases"`
-			Flags        []string `json:"adaptive_budget_flags,omitempty"`
-			FlagsDigest  string   `json:"adaptive_budget_flags_sha256,omitempty"`
-			Note         string   `json:"note"`
-		}{false, ledger.LedgerID, rep.Digest, p.sched.Digest, len(res.Incomplete), flagLines(res.AdaptiveBudgetFlags), flagsDigest, note})
+			ClaimBearing    bool     `json:"claim_bearing"`
+			NotClaimBearing []string `json:"not_claim_bearing"`
+			Registration    string   `json:"registration_record_digest"`
+			Ledger          string   `json:"ledger"`
+			ReportDigest    string   `json:"report_digest"`
+			PlanDigest      string   `json:"plan_digest"`
+			Incomplete      int      `json:"incomplete_cases"`
+			Flags           []string `json:"adaptive_budget_flags,omitempty"`
+			FlagsDigest     string   `json:"adaptive_budget_flags_sha256,omitempty"`
+			Note            string   `json:"note"`
+			ObservedEscape  string   `json:"observed_escape,omitempty"`
+		}{len(reasons) == 0, append([]string{}, reasons...), registrationDigest, ledger.LedgerID, rep.Digest, p.sched.Digest,
+			len(res.Incomplete), flagLines(res.AdaptiveBudgetFlags), flagsDigest, note, escapeNote})
 		if err != nil {
 			return err
 		}
@@ -309,14 +344,17 @@ func (a *app) reportCmd(args []string) error {
 			data []byte
 		}{
 			{"report.json", append(canonical, '\n')},
-			{"report.md", []byte("> " + note + "\n\n" + flagsMarkdown(res.AdaptiveBudgetFlags) + rep.Markdown())},
+			{"report.md", []byte("> " + note + "\n\n" + escapeMarkdown(escapeNote) + flagsMarkdown(res.AdaptiveBudgetFlags) + rep.Markdown())},
 			{"report.meta.json", append(meta, '\n')},
 		} {
 			if err := writeFileAtomic(filepath.Join(dir, f.name), f.data); err != nil {
 				return err
 			}
 		}
-		fmt.Fprintf(a.out, "report_digest %s\nclaim_bearing false\nledger %s\n", rep.Digest, ledger.LedgerID)
+		fmt.Fprintf(a.out, "report_digest %s\nclaim_bearing %t\nledger %s\n", rep.Digest, len(reasons) == 0, ledger.LedgerID)
+		for _, r := range reasons {
+			fmt.Fprintf(a.out, "not_claim_bearing %s\n", r)
+		}
 		a.printExport(res)
 		return nil
 	})

@@ -1,0 +1,80 @@
+
+> tbound-pi-closure-spike@0.1.0 check
+> npm run typecheck && npm test
+
+
+> tbound-pi-closure-spike@0.1.0 typecheck
+> tsc --noEmit
+
+
+> tbound-pi-closure-spike@0.1.0 test
+> node scripts/test.mjs
+
+✔ adapter's registered model is the broker-approved model (0.597545ms)
+✔ Go turn projection must match its fixed model and finish/call shape (4.198ms)
+✔ an empty final turn ends as a stop with no content (1.182686ms)
+✔ provider cancellation sends only the matching bounded cancel frame (1.330915ms)
+✔ Go-compatible frame golden vector encodes and decodes (3.839266ms)
+▶ rejects oversized, truncated, and malformed frames
+  ✔ clean EOF is a normal close (4.360127ms)
+  ✔ oversized announced length (0.970467ms)
+  ✔ truncated prefix (0.722469ms)
+  ✔ truncated payload (0.930411ms)
+  ✔ duplicate and unknown fields (2.126903ms)
+✔ rejects oversized, truncated, and malformed frames (9.855949ms)
+▶ checks token, sequence, replay, and message direction
+  ✔ binding token mismatch (0.750442ms)
+  ✔ sequence must start at one and increase by one (0.722269ms)
+  ✔ replayed sequence is rejected (0.890706ms)
+  ✔ wrong direction is rejected (0.638651ms)
+  ✔ unknown kind is rejected (0.385826ms)
+✔ checks token, sequence, replay, and message direction (3.936388ms)
+✔ proxy tools each round-trip one proposal and return its correlated result (3.884581ms)
+▶ proxy feedback appends exactly the fixed hint, and leaves successful ALLOW unchanged
+  ✔ successful ALLOW (1.12614ms)
+  ✔ failed command (0.924209ms)
+  ✔ unknown reason (0.709335ms)
+  ✔ empty status (0.767675ms)
+  ✔ no-effect refusal (0.879205ms)
+  ✔ object prototype name (0.601953ms)
+  ✔ argument_digest_mismatch (0.681253ms)
+  ✔ correlation_required (0.953244ms)
+  ✔ invalid_arguments (0.703665ms)
+  ✔ invalid_policy (0.737689ms)
+  ✔ policy_default_deny (0.533304ms)
+  ✔ policy_rule_deny (0.551487ms)
+  ✔ scope_path_not_covered (0.62695ms)
+  ✔ scope_protected_path (0.656025ms)
+  ✔ unknown_tool (0.695008ms)
+✔ proxy feedback appends exactly the fixed hint, and leaves successful ALLOW unchanged (12.252711ms)
+▶ IPC rejects command status outside allowed failed bash results
+  ✔ DENY read command_failed (0.538604ms)
+  ✔ DENY read unexpected (0.395975ms)
+  ✔ ALLOW read command_failed (0.315995ms)
+✔ IPC rejects command status outside allowed failed bash results (1.589582ms)
+▶ IPC delivers a no-effect refusal for each allowed registered call with the fixed output
+  ✔ ALLOW read is delivered (0.344909ms)
+  ✔ ALLOW write is delivered (0.290758ms)
+  ✔ ALLOW edit is delivered (0.264277ms)
+  ✔ ALLOW bash is delivered (0.259819ms)
+✔ IPC delivers a no-effect refusal for each allowed registered call with the fixed output (2.240025ms)
+▶ IPC rejects a no-effect refusal that is not the fixed output of an allowed registered call
+  ✔ denial (0.337455ms)
+  ✔ changed message (0.28743ms)
+  ✔ extra member (0.428557ms)
+  ✔ missing output (0.380146ms)
+  ✔ unregistered tool (0.346312ms)
+✔ IPC rejects a no-effect refusal that is not the fixed output of an allowed registered call (2.245706ms)
+✔ binding token must be exactly IPC_BINDING_TOKEN_HEX_BYTES lowercase hex chars (0.410182ms)
+✔ the registered tool schemas hash to the digests adapter/profile.json pins (1.77982ms)
+✔ the tool schemas advertise only what the durable executor does (1.409513ms)
+﹣ official Pi CLI 0.87.1 loads the mediated extension and settles simulated host-fixture denials (0.672405ms) # set TBOUND_REQUIRE_PI_CLI_INTEGRATION=1 in CI or provide the pinned pi executable on PATH
+✔ test runner pins the spec reporter when stdout is piped for evidence (141.845984ms)
+ℹ tests 54
+ℹ suites 0
+ℹ pass 53
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 392.760503

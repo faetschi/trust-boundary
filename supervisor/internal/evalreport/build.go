@@ -2,6 +2,7 @@ package evalreport
 
 import (
 	"bytes"
+	"cmp"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -12,6 +13,7 @@ import (
 	"regexp"
 	"slices"
 	"sort"
+	"strings"
 
 	"tbound/supervisor/internal/evalcorpus"
 	"tbound/supervisor/internal/evalscore"
@@ -331,10 +333,17 @@ func Build(in Inputs) (Report, error) {
 		Clauses:                sum.Clauses,
 		Metrics:                sum.Metrics,
 		H1:                     requireExactCoverage(sum.H1, cov.Exact),
-		Spend:                  spendOf(in.Ledger, PlannedUnits(full.Manifest)),
+		Reruns:                 rerunCases(sum.Cases),
+		ProviderRetries:        providerRetries(in.Trials.ProviderRetries),
+		Spend:                  spendOf(in.Ledger, PlannedUnits(full.Manifest), plannedLedgerUnits(full.Manifest)),
 	}
 	if r.Separate, err = separateStrata(full, separate); err != nil {
 		return Report{}, err
+	}
+	if full.D48 != nil {
+		if r.Groups, err = groupsOf(full, *full.D48); err != nil {
+			return Report{}, err
+		}
 	}
 	r.Flags = flagsOf(r)
 	if r.Digest, err = r.ComputeDigest(); err != nil {
@@ -391,6 +400,8 @@ func addDisposition(c *evalscore.DispositionCounts, label string) {
 		c.ExternalInfrastructureRerun++
 	case string(evalscore.Unsupported):
 		c.Unsupported++
+	case string(evalscore.ValidTaskFailure):
+		c.ValidTaskFailure++
 	default: // "OPEN"
 		c.Open++
 	}
@@ -507,7 +518,7 @@ func totalUnits(s usdledger.Snapshot) (int, bool) {
 	return total, true
 }
 
-func spendOf(s usdledger.Snapshot, planned int) Spend {
+func spendOf(s usdledger.Snapshot, planned, plannedLedger int) Spend {
 	total, _ := totalUnits(s) // checkSnapshot has already rejected overflow
 	sp := Spend{
 		LedgerID:              s.LedgerID,
@@ -528,7 +539,7 @@ func spendOf(s usdledger.Snapshot, planned int) Spend {
 		CapMatchesRegistered:  s.CapMicroUSD == RegisteredCapMicroUSD,
 		OverCap:               s.CommittedMicroUSD > s.CapMicroUSD || s.CommittedMicroUSD > RegisteredCapMicroUSD,
 	}
-	sp.UnitsOverPlanned = sp.TotalUnits > planned
+	sp.UnitsOverPlanned = sp.TotalUnits > plannedLedger
 	sp.WithinBudget = sp.CapMatchesRegistered && !sp.OverCap && !sp.Overspent
 	return sp
 }
@@ -541,6 +552,18 @@ func digestLedger(s usdledger.Snapshot) (string, error) {
 		return "", err
 	}
 	return domainDigest(LedgerDigestDomain, raw), nil
+}
+
+// rerunCases are the cases whose registered rerun was taken, is pending, or was spent or not taken.
+func rerunCases(cases []evalscore.CaseOutcome) []evalscore.CaseOutcome {
+	var out []evalscore.CaseOutcome
+	for _, c := range cases {
+		if c.Original != nil || c.Disposition == string(evalscore.ExternalInfrastructureRerun) ||
+			c.Reason == evalscore.ReasonRerunSpent || c.Reason == evalscore.ReasonRerunNotTaken {
+			out = append(out, c)
+		}
+	}
+	return out
 }
 
 // flagsOf lists the report-level conditions that need attention, in a fixed
@@ -558,6 +581,7 @@ func flagsOf(r Report) []string {
 	add(r.Spend.Overspent, "ledger_overspent")
 	add(r.Spend.StopRule, "ledger_stop_rule")
 	add(r.Spend.UnitsOverPlanned, "units_over_planned")
+	add(r.Groups != nil && !r.Groups.Certification.Certified, "bound_not_certified")
 	return flags
 }
 
@@ -589,6 +613,10 @@ func digestTrials(t evalscore.Input) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	retries, err := canonicalSet(t.ProviderRetries)
+	if err != nil {
+		return "", err
+	}
 	raw, err := canonical(struct {
 		CDH              *evalscore.CDHInput `json:"cdh,omitempty"`
 		Schema           string              `json:"schema"`
@@ -596,7 +624,9 @@ func digestTrials(t evalscore.Input) (string, error) {
 		Adversarial      []json.RawMessage   `json:"adversarial"`
 		Compliant        []json.RawMessage   `json:"compliant"`
 		PostDenialTrials []json.RawMessage   `json:"post_denial_trials,omitempty"`
-	}{canonicalCDH(t.CDH), t.Schema, t.EVQPassed, adv, cmp, postDenial}, "")
+		ProviderRetries  []json.RawMessage   `json:"provider_retries,omitempty"`
+		RerunsClosed     bool                `json:"reruns_closed,omitempty"`
+	}{canonicalCDH(t.CDH), t.Schema, t.EVQPassed, adv, cmp, postDenial, retries, t.RerunsClosed}, "")
 	if err != nil {
 		return "", err
 	}
@@ -707,7 +737,7 @@ func separateStrata(full Inputs, sep separateSet) ([]Stratum, error) {
 	if len(sep.manifest.Cases) == 0 {
 		return nil, nil
 	}
-	in := evalscore.Input{Schema: full.Trials.Schema, EVQPassed: full.Trials.EVQPassed, Adversarial: sep.records,
+	in := evalscore.Input{Schema: full.Trials.Schema, EVQPassed: full.Trials.EVQPassed, Adversarial: sep.records, RerunsClosed: full.Trials.RerunsClosed,
 		Registered: &evalscore.RegisteredIDs{AdversarialIDs: sep.manifest.CaseIDs(evalcorpus.KindAdversarial), CompliantIDs: []string{}}}
 	sum, err := evalscore.Summarize(in)
 	if err != nil {
@@ -742,4 +772,16 @@ func separateStrata(full Inputs, sep separateSet) ([]Stratum, error) {
 		out = append(out, *idx.strata[key])
 	}
 	return out, nil
+}
+
+// providerRetries is the trials' provider-retry trajectories in case and attempt order, or nil.
+func providerRetries(in []evalscore.ProviderRetryTrajectory) []evalscore.ProviderRetryTrajectory {
+	if len(in) == 0 {
+		return nil
+	}
+	out := slices.Clone(in)
+	slices.SortFunc(out, func(a, b evalscore.ProviderRetryTrajectory) int {
+		return cmp.Or(strings.Compare(a.CaseID, b.CaseID), a.Attempt-b.Attempt)
+	})
+	return out
 }

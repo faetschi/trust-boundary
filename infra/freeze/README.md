@@ -58,6 +58,8 @@ F26 accepts the pinned F23 measurer (F25 was not qualified: corpus mode refused 
 F27 accepts the pinned F23 measurer (F26 was verified but the guest was restored to F23 to clear its wedged rehearsal): the same four files are unchanged in 13ed119..db07853 (`git diff --quiet`); no `internal/piruntime` file changed since F26, and the changed `cmd/tbound-profile` files (corpus-digest, construct, preregistration) are off the runtime-bundle-digest path; the pair lives in a kit commit on top of dev `8f375ba9` (tree identical to F27); 10 rechecks with F27.
 F28 accepts the pinned F23 measurer (F27 was not qualified: the rp model declined commands 2-4; the guest was restored to F23): the same four files are unchanged in 13ed119..40e651b (`git diff --quiet`); F28 adds the F27 kit, fresh admission ids and the route-probe prompt (no Go change); the pair lives in a kit commit on top of dev `86a45bf8` (tree identical to F28); 10 rechecks with F28.
 F29 accepts the pinned F23 measurer (F28 was verified; the guest was restored to F23 for the F29 screening build): the same four files are unchanged in 13ed119..28f407b (`git diff --quiet`); F29 adds the F28 kit and evidence, #165, #168, #169, B6 (#177), fresh admission ids (#172), the piruntime memo clock (#181) and the cell entrypoint fix (#183); the changed `internal/piruntime` memo files and `construct_evidence_linux.go` are off the runtime-bundle-digest path; the pair lives in a kit commit on top of dev `04b9bea5` (tree identical to F29); 10 rechecks with F29.
+F30 accepts the pinned F23 measurer (F29 was verified; the guest was restored to F23 for the F30 screening build): the same four files are unchanged in 13ed119..5626e34 (`git diff --quiet`); F30 adds the F29 evidence, #187 (effectoracle/v4), #191 (kit), #192 (typed end at the host-call budget), the install stack #179, #178 and #174, and fresh admission ids (#193); no `internal/piruntime` or `cmd/tbound-profile` file changed since F29; the pair lives in a kit commit on top of dev `2a204b7f` (tree identical to F30); 10 rechecks with F30.
+F19 and F22 were cut but not qualified. Their values files live with their evidence (`evidence/F19/F19.env`, `evidence/F22/F22.env`), not in `freezes/`; the `F19.env` that `freezes/F20.env` names is the first.
 `KIT_FREEZE=F14 DRY_RUN=1 bash guest/05-runtime-swap.sh` in Git Bash checks owner inputs and prints every guest command without guest contact.
 `10-freeze.sh` step 3b refuses a frozen g1/route-probe template that carries the previous freeze's admission id, and a dr id that is spent.
 05 requires `HF/BUNDLE_TAR_SIZE`, written by P2 rebuild after tar verification (F13's missing record was added after the same sha256 check).
@@ -71,6 +73,22 @@ Set all three of `CARRIER_DIR` (the carrier directory in a Linux checkout at the
 checkout and an owner-side copy in `$HF/pilot/carrier` before any guest write. `$HF/pilot` holds one round, and 33 refuses a `$HF/pilot` of another round
 or of the T5 run until it is renamed aside. `guest/carrier-check.sh` is one of the `TBOUND_WGA` helpers, so refresh that Linux checkout to this kit commit. `tools/test-carrier.sh [<W> <HF>]` (WSL) tests phase 0 and, with the freeze's tools, the phase-2 dry run.
 The operator steps and the run-config pins are in `infra/guest/PROVISIONING-SIGNING.md`, "Screening round with a carrier".
+
+## Unattended recovery of a round
+
+`tools/recover.sh <round dir>` (Git Bash, `GUEST_IP` set) supervises a runner round. It starts the runner when the round has no
+chunk yet, and after a runner exit that an UNKNOWN request caused ("is not terminal") it previews `tbound-op abandon`, confirms it
+only on a clean preview, runs `svc start` and the leftover-container check, keeps the diagnostics in `<round>/diag/auto-*/` and
+starts the next runner chunk. It stops for the operator on anything else: an exit it does not know, not exactly one UNKNOWN request,
+an outage-looking cause (the unit's rerun, D30 as amended 2026-11-18, is `tbound-run rerun` after the abandon), an unclean preview,
+a service that is not active, a leftover container, 3 governed units in a row that ended UNKNOWN or a journal it cannot count them in, or `MAX_CYCLES` (default 15).
+Its log names the plan index (0-based) of the step that ended UNKNOWN. The round layout is `<round>/run.json` (its `run_dir` holds the
+journal), `<round>/bin/tbound-run.exe` and `<round>/runs/`. A registered run also keeps its pre-registration record as
+`<round>/registration.json`: every chunk then runs with `--registration registration.json`. Start it detached:
+`nohup bash infra/freeze/tools/recover.sh <round> > <round>/recover.out 2> <round>/recover.err &`.
+`tools/watch.sh <round> [line] [minutes]` returns once on the first notable journal record after `line`, a new `recover.log` line,
+a supervisor that is gone, or after `minutes` with a progress line. `tools/test-recover.sh` tests which request and which unit
+recover.sh picks and the runner's arguments, with synthetic files and no guest contact.
 
 ## Per-freeze checklist
 
@@ -90,7 +108,9 @@ The operator steps and the run-config pins are in `infra/guest/PROVISIONING-SIGN
 - [ ] `33-corpus-pilot.sh` ran to "DONE" (`$HF/pilot/CYCLE_OK`; with the trial key also `$HF/evq/netsink.json`), the session sudo is closed again.
 - [ ] `27` archived the previous freeze's G1/rp/dr state and exports; it archives the pilot items too, and `33` resets a pilot install left by an earlier freeze (`pilot-reset` phase); its dr request ended UNKNOWN BY DESIGN and
       the stale-evidence commit check in `40-guest-evidence.sh` passed for this freeze.
-- [ ] Every log is under `<FREEZE>\logs`; no 0-byte output except `*.err` and the dr command/provider audits.
+- [ ] Before every `tbound-run run` block (and after a host restart or sleep): `w32tm /resync /force` on the Windows host and `chronyc makestep` on the guest
+      (`infra/guest/PROVISIONING-SIGNING.md`, "Clocks before every `run` block"). The runner refuses an adversarial step when a guest capture lands more than 750 ms after its launch or the guest is 250 ms behind.
+- [ ] Every log is under `<FREEZE>\logs`; no 0-byte output except `*.err`, `evq-report/*.stderr` and the dr command/provider audits.
 - [ ] The kit scripts pass `bash -n`; the Python files pass `python -I -m py_compile`; all files are UTF-8 without
       BOM and LF-only.
 

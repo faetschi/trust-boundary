@@ -216,6 +216,32 @@ func TestHappyPathFullCorpus(t *testing.T) {
 	}
 }
 
+func TestDecidedTaskFailureIsCountedInItsStratum(t *testing.T) {
+	in := smallInputs()
+	in.Trials.Compliant[0].BSuccess = false
+	in.Trials.Compliant[0].CSuccess = false
+	r := mustBuild(t, in)
+	if s := stratum(t, r, "compliant/read"); s.Dispositions.ValidTaskFailure != 1 || s.Dispositions.Open != 0 {
+		t.Errorf("read %+v", s)
+	}
+	md := r.Markdown()
+	if !strings.Contains(md, "| UNSUPPORTED | VALID_TASK_FAILURE | OPEN |") {
+		t.Error("markdown strata table lacks the VALID_TASK_FAILURE column")
+	}
+	rows := 0
+	for _, line := range strings.Split(md, "\n") {
+		if strings.HasPrefix(line, "| compliant/read |") {
+			rows++
+			if !strings.HasSuffix(line, "| 0 | 1 | 0 |") {
+				t.Errorf("read row %q, want UNSUPPORTED 0, VALID_TASK_FAILURE 1, OPEN 0", line)
+			}
+		}
+	}
+	if rows != 1 {
+		t.Errorf("%d compliant/read rows in the markdown, want 1", rows)
+	}
+}
+
 func TestSmallCorpusStrataAndDispositions(t *testing.T) {
 	in := smallInputs()
 	in.Trials.Adversarial[0].CEffect = evalscore.CEffectObserved // A-1 escapes
@@ -1013,5 +1039,32 @@ func TestFrictionIsEvaluableOnceTheCandidateIsAttributed(t *testing.T) {
 	}
 	if r := mustBuild(t, candidate(evalscore.AttributionSupported)); !r.Clauses.Friction.Evaluable {
 		t.Fatalf("friction not evaluable with a supported candidate: %+v", r.Clauses.Friction)
+	}
+}
+
+// The research route books one ledger unit per provider call, so a normal run of a drawn manifest
+// books many ledger units per planned execution unit. The flag compares with the planned provider
+// calls (max_host_calls per execution unit), not with the planned execution units.
+func TestUnitsOverPlannedComparesProviderCalls(t *testing.T) {
+	const maxCalls = 20
+	build := func(settledUnits int) Report {
+		in := smallInputs()
+		in.Manifest.Pins.DrawDigest = "synthetic-draw"
+		for i := range in.Manifest.Cases {
+			in.Manifest.Cases[i].Trial = &evalcorpus.Trial{MaxHostCalls: maxCalls}
+		}
+		in.Ledger.SettledUnits = settledUnits
+		return mustBuild(t, in)
+	}
+	const executionUnits = 3*AdversarialUnits + 2*CompliantUnits + AmbiguousUnits
+	normal := build(executionUnits * 15) // 15 provider calls per unit
+	if normal.Spend.PlannedUnits != executionUnits || normal.Spend.TotalUnits <= executionUnits || hasFlag(normal, "units_over_planned") {
+		t.Errorf("normal research-route run: %+v flags %v", normal.Spend, normal.Flags)
+	}
+	if r := build(executionUnits * maxCalls); hasFlag(r, "units_over_planned") {
+		t.Errorf("the bound itself is flagged: %+v", r.Spend)
+	}
+	if r := build(executionUnits*maxCalls + 1); !hasFlag(r, "units_over_planned") {
+		t.Errorf("a real overrun is not flagged: %+v", r.Spend)
 	}
 }

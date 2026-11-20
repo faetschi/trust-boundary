@@ -1,0 +1,6 @@
+  PASS  dry-run uploads every tarball, both TCB sidecars, and SHA256SUMS
+  PASS  a missing checksum-listed TCB sidecar fails before publication
+  PASS  a sidecar without checksum coverage is refused before publication
+  PASS  a linux release without its TCB sidecars is refused before publication
+  PASS  a release without a linux tarball publishes without TCB sidecars
+verify-publish-release-assets: 5 passed, 0 failed

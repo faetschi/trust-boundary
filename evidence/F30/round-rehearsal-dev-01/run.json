@@ -1,0 +1,78 @@
+{
+  "manifest": "F:/trust-boundary/.local/round-rehearsal-dev-01-f30/inputs/manifest.json",
+  "quota_profile": "pilot",
+  "freeze_commit": "5626e34fdbf40983949cde67f17238b82800665b",
+  "evq_obligations": [
+    "EVQ-IDENTITY",
+    "EVQ-SURFACE-INVENTORY",
+    "EVQ-SURFACE-ADAPTER-EQUIVALENCE",
+    "EVQ-PROPOSAL-INTEGRITY",
+    "EVQ-PROVIDER-CORRELATION",
+    "EVQ-PROVIDER-ROUTE",
+    "EVQ-PROVIDER-REAL-EXCHANGE",
+    "EVQ-WORKSPACE-CONFINEMENT",
+    "EVQ-STAGING-DELTA",
+    "EVQ-PUBLICATION-PROVENANCE",
+    "EVQ-RECOVERY-ADMISSION",
+    "EVQ-RECOVERY-LIFECYCLE-CUTPOINTS",
+    "EVQ-JOURNAL-FAULTS",
+    "EVQ-ORACLE-WORKSPACE",
+    "EVQ-ORACLE-TRANSIENT",
+    "EVQ-ORACLE-NETWORK",
+    "EVQ-NETWORK-SINK-GUEST",
+    "EVQ-ORACLE-PROCESS",
+    "EVQ-PROCESS-CONTAINMENT",
+    "EVQ-LINUX-CONTAINMENT",
+    "EVQ-LINUX-CAPABILITY-GUEST",
+    "EVQ-COMMAND-VIEW-FAULTS"
+  ],
+  "artifacts_dir": "F:/trust-boundary/.local/round-rehearsal-dev-01-f30/inputs/artifacts",
+  "only_cases": [],
+  "pins": {
+    "profile_hash": "sha256:c7ebd0bc3c015a3802609479c14ccfcce19294aa639c367043f491a80769e98e",
+    "containment_profile_digest": "sha256:7768b5a6e8c8341878d2faa24ba867902abf37a43d10465d47b01dfa83b18d10",
+    "frozen_source_digest": "sha256:05aeeaae81e04409f0fc1339f3240eee341084346dae04d1e8b897e793951982",
+    "admin_pubkey_digest": "sha256:be206a41ad321f29ef89e8157f69a6f0820a93fafa3096b71867ece745f9afac",
+    "base_template_digest": "sha256:a39c9210eec36329f6b5387aa1ef947ec78abba6107c628a6475c75bbbdf0a02",
+    "runtime_bundle_digest": "sha256:73866d76ad8a8a9f91f40aa8b43168e10f5844f21bb32ef2537065b48b2ff1e1",
+    "runner_digest": "sha256:9d105056f2066ba996737974073d8c5d6229e1f0814c9a496817795451552a46"
+  },
+  "admission_policy": {
+    "policy_digest": "sha256:e6a77851e90357efcba0fdc8036493acab5f74e911f38d5f32e001477419f683",
+    "metadata_policy_digest": "sha256:bf937a0d4d98f54111e82d025dc3b9aa7eeec939f71343547ba4392624e0785c"
+  },
+  "v_image_digest": "sha256:8e36a35eb7e2f604aae98c800ebd2c1601b07387967dcc64886caf547fe0ce85",
+  "route_report": "F:/trust-boundary/.local/round-rehearsal-dev-01-f30/inputs/route_report.json",
+  "evq_results": {
+    "path": "F:/trust-boundary/.local/round-rehearsal-dev-01-f30/inputs/evq_results.json",
+    "sha256": "sha256:d38298680f0f4bf63d13e045879d5facee361fbef694fc024018b8c568b27104"
+  },
+  "ledger": "synthetic-empty",
+  "run_dir": "F:/trust-boundary/.local/round-rehearsal-dev-01-f30/runs/pilot",
+  "ssh": {
+    "path": "C:/Program Files/Git/usr/bin/ssh.exe",
+    "known_hosts": "F:/trust-boundary/.local/round-rehearsal-dev-01-f30/known_hosts",
+    "host": "172.19.180.82",
+    "host_key_alias": "172.18.155.19",
+    "client": {
+      "user": "root",
+      "key": "F:/trust-boundary/.local/secrets/abi8-forced/cl.key"
+    },
+    "evidence": {
+      "user": "root",
+      "key": "F:/trust-boundary/.local/secrets/abi8-forced/ev.key"
+    },
+    "trial": {
+      "user": "root",
+      "key": "F:/trust-boundary/.local/secrets/abi8-forced/tr.key"
+    }
+  },
+  "proc": {
+    "cell_uid": 1000,
+    "cell_gid": 1000,
+    "monitor_seconds": 1200,
+    "teardown_grace_seconds": 30,
+    "authorized_sockets": [],
+    "drain_grace_seconds": 10
+  }
+}

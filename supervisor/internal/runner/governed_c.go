@@ -15,6 +15,8 @@ import (
 	"tbound/supervisor/internal/corpusadmit"
 	"tbound/supervisor/internal/evalcorpus"
 	"tbound/supervisor/internal/evalscore"
+	"tbound/supervisor/internal/guestevidence"
+	"tbound/supervisor/internal/runend"
 	"tbound/supervisor/internal/wsoracle"
 )
 
@@ -178,7 +180,17 @@ type GovernedC struct {
 	ProtectedPaths func(caseID string) []string
 	// WSEvidenceDir retains the evaluated E04 input beside the run journal when configured.
 	WSEvidenceDir string
+	// ResendWindow and ResendPause bound how the request is sent again when its answer is
+	// lost (see send). A zero ResendWindow sends it once.
+	ResendWindow, ResendPause time.Duration
 }
+
+const (
+	// DefaultResendWindow covers a guest that still runs the request: the service ends it
+	// at the case's wall budget (1200 s) after admission.
+	DefaultResendWindow = 25 * time.Minute
+	DefaultResendPause  = 15 * time.Second
+)
 
 // Request maps a step of the executor's configuration to its corpus-mode request.
 func (g GovernedC) Request(s Step) (GovernedRequest, error) {
@@ -251,6 +263,48 @@ type governedResponse struct {
 	Status        string          `json:"status"`
 	ErrorCode     string          `json:"error_code"`
 	Receipt       json.RawMessage `json:"receipt"`
+	// OutageEvidenceDigest is set with error code provider-outage: the hash of the guest's
+	// provider_exchange_unknown record of the failed attempt.
+	OutageEvidenceDigest string `json:"outage_evidence_digest"`
+}
+
+// rerunScope reports whether an UNKNOWN step may take the registered rerun (D30 as amended 2026-11-18): the C
+// trajectory of an adversarial case and the B and C steps of a compliant task. Replays and P steps run a scripted
+// provider; an UNKNOWN there stays unclassified loss.
+func rerunScope(s Step) bool {
+	switch s.Kind {
+	case evalcorpus.KindAdversarial:
+		return s.Role == RoleTrajectory && s.Configuration == CfgC
+	case evalcorpus.KindCompliant:
+		return s.Configuration == CfgB || s.Configuration == CfgC
+	}
+	return false
+}
+
+// markUnknownEnd types an UNKNOWN answer that was the outcome's only failure by the class its code carries
+// (runend.Codes, the wire half of the run-end registry): an agent ceiling is resource exhaustion, an unclassified
+// end is unclassified loss, neither ever rerun; infrastructure and model behaviour are rerun causes, an evidenced provider outage with its provider journal record or a plain UNKNOWN
+// with the digest of the guest's answer line as its evidence. A code the registry does not class is no rerun cause:
+// the outcome stays untyped, and its loss unclassified.
+func markUnknownEnd(o *Outcome, s Step, resp governedResponse) {
+	class, registered := runend.Codes[resp.ErrorCode]
+	if !rerunScope(s) || !registered {
+		return
+	}
+	o.UnknownEnd = resp.ErrorCode
+	switch class {
+	case runend.AgentCeiling:
+		o.EvidenceLoss = evalscore.LossResourceExhaustion
+		return
+	case runend.Unclassified:
+		o.EvidenceLoss = evalscore.LossUnclassified
+		return
+	}
+	if resp.ErrorCode == runend.CodeProviderOutage && guestevidence.IsDigest("sha256:"+resp.OutageEvidenceDigest) {
+		o.EvidenceLoss, o.OutageEvidenceDigest = evalscore.LossExternalOutage, "provider-journal:"+resp.OutageEvidenceDigest
+		return
+	}
+	o.EvidenceLoss, o.OutageEvidenceDigest = evalscore.LossOutcomeUnknown, o.E01.Digest
 }
 
 // governedReceipt is the part of productionPiReceipt (cmd/tbound/production_session_linux.go)
@@ -332,18 +386,27 @@ func parseGovernedResponse(stdout []byte, want GovernedRequest) (governedRespons
 }
 
 // Execute sends the request to the service and maps the answer. See GovernedC.
-func (g GovernedC) Execute(ctx context.Context, s Step) (Outcome, error) {
+func (g GovernedC) Execute(ctx context.Context, s Step) (o Outcome, err error) {
 	request, argv, err := g.plan(s)
 	if err != nil {
+		return Outcome{}, err
+	}
+	adversarial := s.Kind == evalcorpus.KindAdversarial
+	if s.Resumed && !resumable(s) {
+		// Only settles the guest's request (Runner.abandon): busy is waited out so the next unit meets a terminal
+		// admission. No observer runs and nothing is returned for scoring.
+		_, _, _, err := g.send(ctx, argv, request, true, g.ResendWindow)
 		return Outcome{}, err
 	}
 	// Collectors that must observe before the request (baseline, NET canary, PROC
 	// monitor) start here and are released when Execute returns, on every path.
 	begin := EvidenceRef{Step: s, Interval: IntervalRef(s), Request: request}
 	var beginErr error
-	if ic, ok := g.Collectors.(IntervalCollectors); ok && s.Kind == evalcorpus.KindAdversarial {
+	// A resumed step's observers ran in the dead process: a new interval would see only the tail of the run.
+	if ic, ok := g.Collectors.(IntervalCollectors); ok && adversarial && !s.Resumed {
 		defer ic.EndInterval(begin)
-		if err := ic.BeginInterval(ctx, begin); err != nil && !errors.Is(err, ErrEvidenceAbsent) {
+		// An interval that did not begin is lost evidence, never a quiet absence: the outcome is partial.
+		if err := ic.BeginInterval(ctx, begin); err != nil {
 			if errors.Is(err, ErrObserverStartUnconfirmed) {
 				// An observer may still be starting in the live root: the request is not sent. Nothing ran, so
 				// there is no outcome; the unit is spent as a setup failure.
@@ -353,7 +416,21 @@ func (g GovernedC) Execute(ctx context.Context, s Step) (Outcome, error) {
 		}
 	}
 	t0 := time.Now()
-	stdout, stderr, exit, err := g.Transport.Run(ctx, argv)
+	window := g.ResendWindow
+	if adversarial && !s.Resumed {
+		window = 0
+	}
+	stdout, stderr, exit, err := g.send(ctx, argv, request, s.Resumed, window)
+	if err == nil && adversarial && !s.Resumed && answerLost(stdout, exit, request, false) {
+		// The answer was lost mid-step (an SSH loss), and the guest may still run the request: its id is sent again
+		// until the guest settles it, so the next unit meets a terminal admission. A C trajectory takes that stored
+		// terminal as its interrupted result (register D30, P1-9 amendment); any other step's answer is not scored.
+		again, againStderr, againExit, againErr := g.send(ctx, argv, request, true, g.ResendWindow)
+		if resumable(s) {
+			stdout, stderr, exit, err = again, againStderr, againExit, againErr
+			defer func() { markInterrupted(&o, err) }()
+		}
+	}
 	ended := time.Now()
 	latency := int(time.Since(t0).Milliseconds())
 	if err != nil {
@@ -379,7 +456,7 @@ func (g GovernedC) Execute(ctx context.Context, s Step) (Outcome, error) {
 	}
 
 	sum := sha256.Sum256(line)
-	o := Outcome{
+	o = Outcome{
 		E01:     E01Identity{Digest: "sha256:" + hex.EncodeToString(sum[:])},
 		Metrics: Metrics{LatencyMS: latency},
 	}
@@ -394,50 +471,111 @@ func (g GovernedC) Execute(ctx context.Context, s Step) (Outcome, error) {
 	switch resp.Status {
 	case "unknown":
 		errs = append(errs, fmt.Errorf("%w: %s", ErrGovernedUnknown, resp.ErrorCode))
+		if len(resp.Receipt) == 0 || string(resp.Receipt) == "null" {
+			break
+		}
+		// A failed provider turn whose worker settled ends UNKNOWN with the receipt that binds its evidence.
+		receipt, err := parseGovernedReceipt(resp.Receipt)
+		if err == nil && receipt.Success {
+			err = fmt.Errorf("%w: an unknown answer with a success receipt", ErrGovernedMalformed)
+		}
+		if err != nil {
+			errs = append(errs, err)
+			break
+		}
+		errs = append(errs, g.applyReceipt(ctx, &o, &ref, receipt)...)
 	case "completed":
 		receipt, err := parseGovernedReceipt(resp.Receipt)
 		if err != nil {
 			errs, checkExit = append(errs, err), false
 			break
 		}
-		ref.RunID = receipt.RunID
-		o.Receipt = &ReceiptFacts{ProfileHash: receipt.ProfileHash, ContainmentProfileDigest: receipt.ContainmentProfileDigest,
-			HintChooser: receipt.HintChooser, HintManifestDigest: receipt.HintManifestDigest, Hints: slices.Clone(receipt.Hints),
-			FrozenSourceDigest: receipt.FrozenSourceDigest, Delta: receipt.Delta,
-			ProviderMode: receipt.ProviderMode, ScriptDigest: receipt.ScriptDigest,
-			AdmissionPolicyDigest: receipt.AdmissionPolicyDigest, Proposals: slices.Clone(receipt.Proposals),
-			PivotsIssued: receipt.PivotsIssued, AttackerStop: receipt.AttackerStop, AttackerStateDigest: receipt.AttackerStateDigest,
-			AttackerDigest: receipt.AttackerDigest, PivotsDigest: receipt.PivotsDigest,
-			AttackerUsage: receipt.AttackerUsage, AttackerCumulativeUsage: receipt.AttackerCumulativeUsage,
-			AttackerPredecessor: receipt.AttackerPredecessor}
-		o.ToolAttempt = slices.ContainsFunc(receipt.Proposals, func(p ProposalFact) bool { return strings.EqualFold(p.Verdict, "deny") }) || o.ToolAttempt
-		ref.Publications = receipt.PublicationJournalRecordCount
-		ref.PublicationsKnown = receipt.PublicationIntervalRef == ref.Interval && receipt.PublicationJournalHead != ""
-		if ref.PublicationsKnown {
-			ref.PublicationHead = receipt.PublicationJournalHead
-		}
-		ref.E04Head, ref.E04Count, ref.E04GapCount = receipt.E04EvidenceHead, receipt.E04EvidenceRecordCount, receipt.E04GapCount
-		o.Metrics.ToolCalls = len(receipt.ToolSequence)
-		o.Metrics.InTokens, o.Metrics.OutTokens, o.Metrics.CostMicroUSD = receipt.InTokens, receipt.OutTokens, receipt.CostMicroUSD
-		o.Metrics.Retries, o.Metrics.UsageUnread = receipt.ProviderRetries, receipt.UsageUnread
-		o.Metrics.ToolsDisabledCalls, o.Metrics.RefusedToolCalls = receipt.ToolsDisabledCalls, receipt.RefusedToolCalls
 		if receipt.Success {
 			wantExit = 0
 		} else {
 			errs = append(errs, ErrGovernedFailed)
 		}
-		pf, err := g.anchor(ctx, ref, receipt)
-		o.PublicationFree = pf
-		if err != nil {
-			errs = append(errs, err)
-		}
+		errs = append(errs, g.applyReceipt(ctx, &o, &ref, receipt)...)
 	}
 	if checkExit && exit != wantExit {
 		errs = append(errs, fmt.Errorf("%w: exit code %d does not fit status %s", ErrGovernedMalformed, exit, resp.Status))
 	}
 	errs = append(errs, g.collect(ctx, ref, &o)...)
 	mapReplay(&o, s)
+	if resp.Status == "unknown" && len(errs) == 1 {
+		markUnknownEnd(&o, s, resp)
+	}
 	return o, errors.Join(errs...)
+}
+
+// applyReceipt copies what the receipt says into the outcome and the evidence reference: identity and
+// delta facts, proposals, metrics, the publication anchor and the E04 binding the collectors read.
+func (g GovernedC) applyReceipt(ctx context.Context, o *Outcome, ref *EvidenceRef, receipt governedReceipt) []error {
+	ref.RunID = receipt.RunID
+	o.Receipt = &ReceiptFacts{ProfileHash: receipt.ProfileHash, ContainmentProfileDigest: receipt.ContainmentProfileDigest,
+		HintChooser: receipt.HintChooser, HintManifestDigest: receipt.HintManifestDigest, Hints: slices.Clone(receipt.Hints),
+		FrozenSourceDigest: receipt.FrozenSourceDigest, Delta: receipt.Delta,
+		ProviderMode: receipt.ProviderMode, ScriptDigest: receipt.ScriptDigest,
+		AdmissionPolicyDigest: receipt.AdmissionPolicyDigest, Proposals: slices.Clone(receipt.Proposals),
+		PivotsIssued: receipt.PivotsIssued, AttackerStop: receipt.AttackerStop, AttackerStateDigest: receipt.AttackerStateDigest,
+		AttackerDigest: receipt.AttackerDigest, PivotsDigest: receipt.PivotsDigest,
+		AttackerUsage: receipt.AttackerUsage, AttackerCumulativeUsage: receipt.AttackerCumulativeUsage,
+		AttackerPredecessor: receipt.AttackerPredecessor}
+	o.ToolAttempt = slices.ContainsFunc(receipt.Proposals, func(p ProposalFact) bool { return strings.EqualFold(p.Verdict, "deny") }) || o.ToolAttempt
+	ref.Publications = receipt.PublicationJournalRecordCount
+	ref.PublicationsKnown = receipt.PublicationIntervalRef == ref.Interval && receipt.PublicationJournalHead != ""
+	if ref.PublicationsKnown {
+		ref.PublicationHead = receipt.PublicationJournalHead
+	}
+	ref.E04Head, ref.E04Count, ref.E04GapCount = receipt.E04EvidenceHead, receipt.E04EvidenceRecordCount, receipt.E04GapCount
+	o.Metrics.ToolCalls = len(receipt.ToolSequence)
+	o.Metrics.InTokens, o.Metrics.OutTokens, o.Metrics.CostMicroUSD = receipt.InTokens, receipt.OutTokens, receipt.CostMicroUSD
+	o.Metrics.Retries, o.Metrics.UsageUnread = receipt.ProviderRetries, receipt.UsageUnread
+	o.Metrics.ToolsDisabledCalls, o.Metrics.RefusedToolCalls = receipt.ToolsDisabledCalls, receipt.RefusedToolCalls
+	pf, err := g.anchor(ctx, *ref, receipt)
+	o.PublicationFree = pf
+	if err != nil {
+		return []error{err}
+	}
+	return nil
+}
+
+// send runs the client. When no response line comes back and the client or ssh exited
+// non-zero (ssh dropped, the client lost its service connection, the service restarted),
+// it sends the same request again until window ends. The request id makes that
+// safe: the service answers a request id it has settled with the stored terminal and
+// resumes one it accepted and never settled. On a resend a busy answer means the
+// service still runs this request, so send waits for it as well. A first send that finds
+// the service busy is answered as before. A resumed step was already sent by a process
+// that died. An adversarial step is sent once (window 0): a resend can reach a service
+// that restarted and recovers the workflow. Its lost request is still settled by a send
+// with resend set. A C trajectory takes that answer as an interrupted result
+// (markInterrupted), which reruns only with complete no-effect evidence; any other
+// step's answer is discarded.
+func (g GovernedC) send(ctx context.Context, argv []string, request GovernedRequest, resend bool, window time.Duration) ([]byte, []byte, int, error) {
+	deadline := time.Now().Add(window)
+	for {
+		stdout, stderr, exit, err := g.Transport.Run(ctx, argv)
+		if err != nil || !answerLost(stdout, exit, request, resend) || !time.Now().Add(g.ResendPause).Before(deadline) {
+			return stdout, stderr, exit, err
+		}
+		resend = true
+		select {
+		case <-ctx.Done():
+			return stdout, stderr, exit, ctx.Err()
+		case <-time.After(g.ResendPause):
+		}
+	}
+}
+
+// answerLost is true when no response line came back with a non-zero exit, or, on a resend,
+// when the answer is busy.
+func answerLost(stdout []byte, exit int, request GovernedRequest, resend bool) bool {
+	if len(bytes.TrimSpace(stdout)) == 0 {
+		return exit != 0
+	}
+	resp, _, err := parseGovernedResponse(stdout, request)
+	return resend && err == nil && resp.Status == "busy"
 }
 
 // anchor builds the publication carrier from the receipt, or none.

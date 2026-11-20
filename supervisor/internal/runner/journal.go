@@ -398,8 +398,8 @@ func (j *Journal) check(e Entry) error {
 		}
 		if e.Attempt == 2 {
 			orig := j.state[stepKey{e.StepID, 1}]
-			if orig == nil || orig.terminal == nil || !outageEvidenced(orig.terminal.Outcome) {
-				return j.corrupt("rerun of %q without an evidenced outage in the original", e.StepID)
+			if orig == nil || orig.terminal == nil || !rerunEvidenced(orig.terminal.Outcome) {
+				return j.corrupt("rerun of %q without an evidenced rerun cause in the original", e.StepID)
 			}
 			if prev, dup := j.rerun[rerunCase(step)]; dup {
 				return j.corrupt("case %q has a second rerun (%q after %q)", step.CaseID, e.StepID, prev.id)
@@ -480,8 +480,10 @@ func (j *Journal) commit(e Entry) error {
 	return nil
 }
 
-// outageEvidenced is the rerun condition: the original outcome reports an
-// external outage and carries its evidence digest.
-func outageEvidenced(o *Outcome) bool {
-	return o != nil && o.EvidenceLoss == evalscore.LossExternalOutage && o.OutageEvidenceDigest != ""
+// rerunEvidenced is the step's rerun condition: the original outcome reports a
+// rerun cause (an external outage, or an UNKNOWN run under D30 as amended
+// 2026-11-18) and carries its evidence digest.
+func rerunEvidenced(o *Outcome) bool {
+	return o != nil && (o.EvidenceLoss == evalscore.LossExternalOutage || o.EvidenceLoss == evalscore.LossOutcomeUnknown) &&
+		o.OutageEvidenceDigest != ""
 }

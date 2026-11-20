@@ -147,6 +147,22 @@ expect_refuse "an empty evq-report/y.json still refuses" "y.json" bash "$ZC" "$T
 mkzc; : >"$T/zc/x.stderr"
 expect_refuse "an empty x.stderr outside evq-report still refuses" "x.stderr" bash "$ZC" "$T/zc"
 
+# ---- finish_step (lib.sh, the S3 signing step's check): same cases
+say "finish_step"
+FS=$T/finish-step.sh
+{
+  echo 'set -euo pipefail'
+  echo 'die() { printf "FATAL: %s\n" "$*" >&2; exit 1; }'
+  sed -n '/^finish_step()/,/^}/p' "$K/lib.sh"
+  echo 'HF=$1; finish_step'
+} >"$FS"
+mkzc; : >"$T/zc/evq-report/x.stderr"
+expect_ok "finish_step: an empty evq-report/x.stderr passes" bash "$FS" "$T/zc"
+mkzc; : >"$T/zc/evq-report/y.json"
+expect_refuse "finish_step: an empty evq-report/y.json still refuses" "y.json" bash "$FS" "$T/zc"
+mkzc; : >"$T/zc/x.stderr"
+expect_refuse "finish_step: an empty x.stderr outside evq-report still refuses" "x.stderr" bash "$FS" "$T/zc"
+
 # ---- phase-2 dry run with the freeze's own tools and records
 if [ $# -eq 2 ]; then
   W=$1 HF=$2; TBP=$W/bin/tbound-profile

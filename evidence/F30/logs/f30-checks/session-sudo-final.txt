@@ -1,0 +1,5 @@
+== 2026-11-18T12:53:27Z session sudo state
+sudo: a password is required
+sudo -n true rc=1
+50-tbound-op
+README

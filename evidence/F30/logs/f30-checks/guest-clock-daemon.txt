@@ -1,0 +1,32 @@
+2026-11-18T12:18:40.322644Z
+tbound-abi8-seed
+active
+inactive
+Timezone=Etc/UTC
+LocalRTC=no
+CanNTP=yes
+NTP=yes
+NTPSynchronized=yes
+TimeUSec=Wed 2026-11-18 12:18:40 UTC
+RTCTimeUSec=Wed 2026-11-18 12:18:38 UTC
+       Server: 185.125.190.56 (ntp.ubuntu.com)
+Poll interval: 1min 4s (min: 32s; max 34min 8s)
+         Leap: normal
+      Version: 4
+      Stratum: 2
+    Reference: 1D586304
+    Precision: 1us (-25)
+Root distance: 4.417ms (max: 5s)
+       Offset: -9.583ms
+        Delay: 39.864ms
+       Jitter: 131.050ms
+ Packet count: 44
+    Frequency: +425.133ppm
+2026-11-18T12:15:08.965926+00:00 tbound-abi8-seed systemd-timesyncd[456072]: Network configuration changed, trying to establish connection.
+2026-11-18T12:15:08.978029+00:00 tbound-abi8-seed systemd-timesyncd[456072]: Network configuration changed, trying to establish connection.
+2026-11-18T12:15:09.043742+00:00 tbound-abi8-seed systemd-timesyncd[456072]: Contacted time server 185.125.190.57:123 (ntp.ubuntu.com).
+2026-11-18T12:15:13.061968+00:00 tbound-abi8-seed systemd-timesyncd[456072]: No network connectivity, watching for changes.
+2026-11-18T12:15:15.109950+00:00 tbound-abi8-seed systemd-timesyncd[456072]: Network configuration changed, trying to establish connection.
+2026-11-18T12:15:15.122086+00:00 tbound-abi8-seed systemd-timesyncd[456072]: Network configuration changed, trying to establish connection.
+2026-11-18T12:15:15.159992+00:00 tbound-abi8-seed systemd-timesyncd[456072]: Contacted time server 185.125.190.57:123 (ntp.ubuntu.com).
+2026-11-18T12:15:45.204303+00:00 tbound-abi8-seed systemd-timesyncd[456072]: Contacted time server 185.125.190.56:123 (ntp.ubuntu.com).

@@ -1,21 +1,16 @@
 #!/usr/bin/env bash
 # Build tbound release artifacts into a dist directory.
 #
-# Produces, for each target:
-#   tbound-<version>-<os>-<arch>.tar.gz
+# TBound releases target linux/amd64 only. WSL 2 and Linux VMs run the same
+# build, so no macOS or Windows binaries are made. It produces:
+#   tbound-<version>-linux-amd64.tar.gz
 #     bin/tbound, bin/tbound-doctor, bin/tbound-profile
+#     libexec/tbound/tbound-cell-entrypoint, libexec/tbound/cell-entrypoint.json
 #     runtime/, share/completions/, LICENSE, MANIFEST.sha256 (except self), VERSION
-#     (linux/amd64 only) libexec/tbound/tbound-cell-entrypoint
-#                        libexec/tbound/cell-entrypoint.json
-# plus a SHA256SUMS file covering every tarball. For linux/amd64 it also writes a
-# separate cell-entrypoint metadata + checksum artifact. Artifacts are staged in
-# a private work directory and only published to <outdir> after every target
-# builds, so a failed target never leaves partial tarballs or a stale SHA256SUMS.
-#
-# Binaries per target:
-#   tbound, tbound-doctor            every target
-#   tbound-profile                   every target (Linux-only stub elsewhere)
-#   tbound-cell-entrypoint           linux/amd64 only
+# plus a SHA256SUMS file and a separate cell-entrypoint metadata + checksum
+# artifact. Artifacts are staged in a private work directory and only published
+# to <outdir> after the build succeeds, so a failed build never leaves partial
+# tarballs or a stale SHA256SUMS.
 #
 # tbound-cell-entrypoint is the unsigned Linux/amd64 binary intended for a
 # frozen in-image D09 TCB entrypoint. Its Landlock syscall numbers and the
@@ -24,7 +19,7 @@
 # keys, or invokes it; signing/profile admission remain operator-controlled.
 #
 # Usage:
-#   scripts/build-release.sh [version] [outdir] [goos/goarch ...]
+#   scripts/build-release.sh [version] [outdir] [linux/amd64]
 #
 # Environment:
 #   GO   Go toolchain to use (default: go)
@@ -35,7 +30,7 @@ VERSION="${1:-dev}"; [ "$#" -gt 0 ] && shift
 OUT="${1:-$ROOT/dist}"; [ "$#" -gt 0 ] && shift
 TARGETS=("$@")
 if [ "${#TARGETS[@]}" -eq 0 ]; then
-  TARGETS=("linux/amd64" "darwin/amd64" "darwin/arm64" "windows/amd64")
+  TARGETS=("linux/amd64")
 fi
 GO="${GO:-go}"
 
@@ -45,9 +40,9 @@ esac
 
 for target in "${TARGETS[@]}"; do
   case "$target" in
-    linux/amd64|darwin/amd64|darwin/arm64|windows/amd64) ;;
+    linux/amd64) ;;
     linux/arm64) echo "build-release: linux/arm64 is not supported/advertised (amd64-only runtime and TCB syscalls)" >&2; exit 1 ;;
-    *) echo "build-release: unsupported target '$target'" >&2; exit 1 ;;
+    *) echo "build-release: unsupported target '$target' (releases are linux/amd64 only; use WSL 2 or a Linux VM elsewhere)" >&2; exit 1 ;;
   esac
 done
 
@@ -110,7 +105,6 @@ for target in "${TARGETS[@]}"; do
   os="${target%%/*}"
   arch="${target##*/}"
   bin="tbound"; exe="tbound-doctor"; prof="tbound-profile"
-  [ "$os" = "windows" ] && bin="tbound.exe" && exe="tbound-doctor.exe" && prof="tbound-profile.exe"
   stage="$WORK/stage-$os-$arch"
   rm -rf "$stage"; mkdir -p "$stage/bin"
   echo "build-release: building $os/$arch"

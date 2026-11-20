@@ -1,0 +1,41 @@
+PASS: docs only skips runtime
+PASS: supervisor/added.go change runs runtime
+PASS: adapter/added.ts change runs runtime
+PASS: corpus/added.json change runs runtime
+PASS: infra/added.sh change runs runtime
+PASS: install/added.sh change runs runtime
+PASS: docs/evaluation/added.json change runs runtime
+PASS: .github/workflows/ci.yml change runs runtime
+PASS: scripts/ci_go_test_timing.py change runs runtime
+PASS: rename out of supervisor runs runtime
+PASS: push of a runtime change runs runtime
+PASS: push of a docs-only change skips runtime
+PASS: force reset to an ancestor runs runtime
+PASS: missing range runs runtime
+PASS: zero before runs runtime
+PASS: docs only is docs-only
+PASS: push of a docs-only change is docs-only
+PASS: runtime change is not docs-only
+PASS: mixed docs and code is not docs-only
+PASS: missing range is not docs-only
+PASS: zero before is not docs-only
+PASS: non-ancestor push of a runtime change runs runtime
+PASS: non-ancestor push of a runtime change is not docs-only
+PASS: non-ancestor push of a docs change is not docs-only
+fatal: Invalid symmetric difference expression deadbeefdeadbeefdeadbeefdeadbeefdeadbeef...9fa8f0e6a1582d9cf974dfbdbbc9c6210a469774
+PASS: unknown revision runs runtime
+fatal: Invalid symmetric difference expression deadbeefdeadbeefdeadbeefdeadbeefdeadbeef...9fa8f0e6a1582d9cf974dfbdbbc9c6210a469774
+PASS: unknown revision is not docs-only
+PASS: outside a checkout runtime prints true
+PASS: outside a checkout docs-only prints false
+PASS: README.md edit is docs-only
+PASS: docs/guides/new.md edit is docs-only
+PASS: CITATION.cff edit is docs-only
+PASS: corpus/sampling/adaptation-rule-v1.md edit is not docs-only
+PASS: corpus/pilot/artifacts/rubric-0123.md edit is not docs-only
+PASS: docs/evaluation/notes.md edit is not docs-only
+PASS: supervisor/internal/x/testdata/fixture.md edit is not docs-only
+PASS: evidence/F30/README.md edit is not docs-only
+PASS: packaging/npm/README.md edit is not docs-only
+PASS: unknown field is refused
+ci-runtime-paths: all checks passed

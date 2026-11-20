@@ -1,0 +1,445 @@
+test_flag_lets_the_guard_pass_and_excluded_never (test_adapt.CandidateGuard.test_flag_lets_the_guard_pass_and_excluded_never) ... /home/tbound/tbound-work/x30/corpus/sampling/test_adapt.py:24: ResourceWarning: unclosed file <_io.TextIOWrapper name='/home/tbound/tbound-work/x30/corpus/sampling/d48-ledger-v3.jsonl' mode='r' encoding='utf-8'>
+  return {r["case_id"]: r for r in (json.loads(ln) for ln in open(adapt.LEDGER_PATH, encoding="utf-8") if ln.strip())}
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_refused_everywhere_without_flag (test_adapt.CandidateGuard.test_refused_everywhere_without_flag) ... /home/tbound/tbound-work/x30/corpus/sampling/adapt.py:1519: ResourceWarning: unclosed file <_io.BufferedReader name='/home/tbound/tbound-work/x30/corpus/sampling/d48-ledger-v3.jsonl'>
+  raw = open(ledger, "rb").read()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+agentdojo:slack:UserTask0:InjectionTask1: status 'candidate' refused; pass allow_candidate (--allow-candidate) only for the real pilot walk or main draw
+ok
+test_attack_template_comes_from_the_listed_files (test_adapt.CombinedAgentDojoTasks.test_attack_template_comes_from_the_listed_files) ... skipped 'source clones not present'
+test_composition_prompt_override_and_order (test_adapt.CombinedAgentDojoTasks.test_composition_prompt_override_and_order) ... skipped 'source clones not present'
+test_unlisted_combinator_is_f_source_and_changed_shape_is_a_tool_limit (test_adapt.CombinedAgentDojoTasks.test_unlisted_combinator_is_f_source_and_changed_shape_is_a_tool_limit) ... skipped 'source clones not present'
+test_workspace_user_task_4_is_user_task_1_plus_6 (test_adapt.CombinedAgentDojoTasks.test_workspace_user_task_4_is_user_task_1_plus_6) ... skipped 'source clones not present'
+test_evidence_named_by_own_sha (test_adapt.DecisionFiles.test_evidence_named_by_own_sha) ... /home/tbound/tbound-work/x30/corpus/sampling/test_adapt.py:320: ResourceWarning: unclosed file <_io.BufferedReader name='/home/tbound/tbound-work/x30/corpus/sampling/adaptation-rule-v1.md'>
+  self.rule = hashlib.sha256(open(adapt.RULE_PATH, "rb").read()).hexdigest()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/home/tbound/tbound-work/x30/corpus/sampling/test_adapt.py:373: ResourceWarning: unclosed file <_io.BufferedReader name='/home/tbound/tbound-work/x30tmp/tmp8jzln78y/f5c03fca127b8301a636945f2ef9bef91f7de3f7d2d18a4009b53aa6b1bc8cbb.json'>
+  data = open(os.path.join(self.tmp.name, digest + ".json"), "rb").read()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_format (test_adapt.DecisionFiles.test_format) ... /home/tbound/tbound-work/x30/corpus/sampling/adapt.py:1378: ResourceWarning: unclosed file <_io.BufferedReader name='/home/tbound/tbound-work/x30/corpus/sampling/adaptation-rule-v1.md'>
+  return sha256_hex(open(path, "rb").read())
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/home/tbound/tbound-work/x30/corpus/sampling/adapt.py:1409: ResourceWarning: unclosed file <_io.BufferedReader name='/home/tbound/tbound-work/x30tmp/tmperdobzqn/pilot-v1.jsonl'>
+  existing = open(path, "rb").read().decode("utf-8") if os.path.exists(path) else ""
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/home/tbound/tbound-work/x30/corpus/sampling/test_adapt.py:335: ResourceWarning: unclosed file <_io.BufferedReader name='/home/tbound/tbound-work/x30tmp/tmperdobzqn/pilot-v1.jsonl'>
+  raw = open(self.path, "rb").read()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_refusals (test_adapt.DecisionFiles.test_refusals) ... /home/tbound/tbound-work/x30/corpus/sampling/adapt.py:1409: ResourceWarning: unclosed file <_io.BufferedReader name='/home/tbound/tbound-work/x30tmp/tmp208yfi6g/pilot-v1.jsonl'>
+  existing = open(path, "rb").read().decode("utf-8") if os.path.exists(path) else ""
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_select_reads_it (test_adapt.DecisionFiles.test_select_reads_it) ... /home/tbound/tbound-work/x30/corpus/sampling/test_adapt.py:366: ResourceWarning: unclosed file <_io.BufferedReader name='/home/tbound/tbound-work/x30/corpus/sampling/d48-ledger-v3.jsonl'>
+  full = sel.parse_ledger(open(adapt.LEDGER_PATH, "rb").read())
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/home/tbound/tbound-work/x30/corpus/sampling/test_adapt.py:367: ResourceWarning: unclosed file <_io.BufferedReader name='/home/tbound/tbound-work/x30tmp/tmp71_hgg1w/pilot-v1.jsonl'>
+  got = sel.parse_decisions(open(self.path, "rb").read(), full)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_aseval_setup_file_branch_and_user_turns (test_adapt.DestinationCandidates.test_aseval_setup_file_branch_and_user_turns) ... ok
+test_candidates_cover_hosts_ports_ips_mailboxes (test_adapt.DestinationCandidates.test_candidates_cover_hosts_ports_ips_mailboxes) ... ok
+test_redcode_no_blind_replacement (test_adapt.DestinationCandidates.test_redcode_no_blind_replacement) ... ok
+test_saber_written_files_and_tm_b_request (test_adapt.DestinationCandidates.test_saber_written_files_and_tm_b_request) ... ok
+test_unused_replacement_is_refused (test_adapt.DestinationCandidates.test_unused_replacement_is_refused) ... ok
+test_complete_pass_record (test_adapt.EvidenceValidation.test_complete_pass_record) ... ok
+test_decide_cli_writes_nothing_for_an_empty_record (test_adapt.EvidenceValidation.test_decide_cli_writes_nothing_for_an_empty_record) ... /home/tbound/tbound-work/x30/corpus/sampling/test_adapt.py:1125: ResourceWarning: unclosed file <_io.TextIOWrapper name='/home/tbound/tbound-work/x30tmp/tmplzqwk9_g/e.json' mode='w' encoding='UTF-8'>
+  open(os.path.join(tmp, "e.json"), "w").write("{}")
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/home/tbound/tbound-work/x30/corpus/sampling/adapt.py:1625: ResourceWarning: unclosed file <_io.TextIOWrapper name='/home/tbound/tbound-work/x30tmp/tmplzqwk9_g/e.json' mode='r' encoding='utf-8'>
+  record = json.load(open(a.evidence, encoding="utf-8"))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_deciding_check_marks_the_judgment_only_share (test_adapt.EvidenceValidation.test_deciding_check_marks_the_judgment_only_share) ... ok
+test_each_requirement (test_adapt.EvidenceValidation.test_each_requirement) ... ok
+test_failing_record_needs_less (test_adapt.EvidenceValidation.test_failing_record_needs_less) ... ok
+test_inconsistent_deciding_check_is_refused (test_adapt.EvidenceValidation.test_inconsistent_deciding_check_is_refused) ... ok
+test_pass_needs_none_and_no_judgment_only (test_adapt.EvidenceValidation.test_pass_needs_none_and_no_judgment_only) ... ok
+test_candidates_use_command_positions (test_adapt.ExecutableCandidates.test_candidates_use_command_positions) ... ok
+test_false_positives_of_the_old_scanner (test_adapt.ExecutableCandidates.test_false_positives_of_the_old_scanner) ... ok
+test_redcode_bash_lists_and_does_not_fail (test_adapt.ExecutableCandidates.test_redcode_bash_lists_and_does_not_fail) ... ok
+test_decide_and_check_guards (test_adapt.FixturePathsAndGuards.test_decide_and_check_guards) ... agentdojo:travel:UserTask0:InjectionTask1: a decision needs a candidate row and --allow-candidate (status 'development')
+agentdojo:slack:UserTask0:InjectionTask1: a decision needs a candidate row and --allow-candidate (status 'candidate')
+/home/tbound/tbound-work/x30/corpus/sampling/test_adapt.py:846: ResourceWarning: unclosed file <_io.TextIOWrapper name='/home/tbound/tbound-work/x30tmp/tmpn1ez1py3/s.json' mode='w' encoding='UTF-8'>
+  open(summary, "w").write("{}")
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+agentdojo:slack:UserTask0:InjectionTask1: status 'candidate' refused; pass allow_candidate (--allow-candidate) only for the real pilot walk or main draw
+ok
+test_frozen_hashes_are_the_templates (test_adapt.FixturePathsAndGuards.test_frozen_hashes_are_the_templates) ... /home/tbound/tbound-work/x30/corpus/sampling/test_adapt.py:872: ResourceWarning: unclosed file <_io.BufferedReader name='/home/tbound/tbound-work/x30/corpus/sampling/d48-source-digests-v3.json'>
+  self.assertEqual(hashlib.sha256(open(path, "rb").read()).hexdigest(), t[key], key)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/home/tbound/tbound-work/x30/corpus/sampling/test_adapt.py:872: ResourceWarning: unclosed file <_io.BufferedReader name='/home/tbound/tbound-work/x30/corpus/sampling/d48-ledger-v3.jsonl'>
+  self.assertEqual(hashlib.sha256(open(path, "rb").read()).hexdigest(), t[key], key)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/home/tbound/tbound-work/x30/corpus/sampling/test_adapt.py:872: ResourceWarning: unclosed file <_io.BufferedReader name='/home/tbound/tbound-work/x30/corpus/sampling/agentdojo-vectors-v1.json'>
+  self.assertEqual(hashlib.sha256(open(path, "rb").read()).hexdigest(), t[key], key)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/home/tbound/tbound-work/x30/corpus/sampling/test_adapt.py:872: ResourceWarning: unclosed file <_io.BufferedReader name='/home/tbound/tbound-work/x30/corpus/sampling/asb-template-vectors-v1.jsonl'>
+  self.assertEqual(hashlib.sha256(open(path, "rb").read()).hexdigest(), t[key], key)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_invalid_decision_line_writes_no_evidence (test_adapt.FixturePathsAndGuards.test_invalid_decision_line_writes_no_evidence) ... /home/tbound/tbound-work/x30/corpus/sampling/test_adapt.py:861: ResourceWarning: unclosed file <_io.TextIOWrapper name='/home/tbound/tbound-work/x30tmp/tmp6f718o6y/e.json' mode='w' encoding='UTF-8'>
+  open(os.path.join(tmp, "e.json"), "w").write("{}")
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/home/tbound/tbound-work/x30/corpus/sampling/adapt.py:1625: ResourceWarning: unclosed file <_io.TextIOWrapper name='/home/tbound/tbound-work/x30tmp/tmp6f718o6y/e.json' mode='r' encoding='utf-8'>
+  record = json.load(open(a.evidence, encoding="utf-8"))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_ledger_must_be_the_committed_one (test_adapt.FixturePathsAndGuards.test_ledger_must_be_the_committed_one) ... /home/tbound/tbound-work/x30/corpus/sampling/test_adapt.py:853: ResourceWarning: unclosed file <_io.BufferedReader name='/home/tbound/tbound-work/x30/corpus/sampling/d48-ledger-v3.jsonl'>
+  open(other, "wb").write(open(adapt.LEDGER_PATH, "rb").read() + b"\n")
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/home/tbound/tbound-work/x30/corpus/sampling/test_adapt.py:853: ResourceWarning: unclosed file <_io.BufferedWriter name='/home/tbound/tbound-work/x30tmp/tmppdwtbo7f/l.jsonl'>
+  open(other, "wb").write(open(adapt.LEDGER_PATH, "rb").read() + b"\n")
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/home/tbound/tbound-work/x30/corpus/sampling/adapt.py:1519: ResourceWarning: unclosed file <_io.BufferedReader name='/home/tbound/tbound-work/x30tmp/tmppdwtbo7f/l.jsonl'>
+  raw = open(ledger, "rb").read()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_missing_pin_on_the_row_is_refused (test_adapt.FixturePathsAndGuards.test_missing_pin_on_the_row_is_refused) ... /home/tbound/tbound-work/x30/corpus/sampling/test_adapt.py:598: ResourceWarning: unclosed file <_io.BufferedWriter name='/home/tbound/tbound-work/x30tmp/tmpwv82ae2l/saber/dataset/data/tasks.jsonl'>
+  open(os.path.join(clone, path), "wb").write(content)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_parser_errors_are_f_source_and_tool_gaps_are_not (test_adapt.FixturePathsAndGuards.test_parser_errors_are_f_source_and_tool_gaps_are_not) ... /home/tbound/tbound-work/x30/corpus/sampling/test_adapt.py:598: ResourceWarning: unclosed file <_io.BufferedWriter name='/home/tbound/tbound-work/x30tmp/tmpa9tdoj7b/saber/dataset/data/tasks.jsonl'>
+  open(os.path.join(clone, path), "wb").write(content)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_py_bak_is_not_a_path_end (test_adapt.FixturePathsAndGuards.test_py_bak_is_not_a_path_end) ... ok
+test_traversal_is_refused (test_adapt.FixturePathsAndGuards.test_traversal_is_refused) ... ok
+test_tampered_prompt_is_f_meaning (test_adapt.FrozenAsbVector.test_tampered_prompt_is_f_meaning) ... /home/tbound/tbound-work/x30/corpus/sampling/test_adapt.py:24: ResourceWarning: unclosed file <_io.TextIOWrapper name='/home/tbound/tbound-work/x30/corpus/sampling/d48-ledger-v3.jsonl' mode='r' encoding='utf-8'>
+  return {r["case_id"]: r for r in (json.loads(ln) for ln in open(adapt.LEDGER_PATH, encoding="utf-8") if ln.strip())}
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_jb_string_matches_pin (test_adapt.GoldenAgentDojo.test_jb_string_matches_pin) ... skipped 'source clones not present'
+test_missing_include_file_is_f_source (test_adapt.GoldenAgentDojo.test_missing_include_file_is_f_source) ... skipped 'source clones not present'
+test_travel_user_task_0 (test_adapt.GoldenAgentDojo.test_travel_user_task_0) ... skipped 'source clones not present'
+test_travel_user_task_1_with_judgments (test_adapt.GoldenAgentDojo.test_travel_user_task_1_with_judgments) ... skipped 'source clones not present'
+test_workspace_block_scalar_vector (test_adapt.GoldenAgentDojo.test_workspace_block_scalar_vector) ... skipped 'source clones not present'
+test_workspace_calendar_vector_resolved_from_include (test_adapt.GoldenAgentDojo.test_workspace_calendar_vector_resolved_from_include) ... skipped 'source clones not present'
+test_yaml_scalar_readers (test_adapt.GoldenAgentDojo.test_yaml_scalar_readers) ... skipped 'source clones not present'
+test_equals_asb_vectors_render (test_adapt.GoldenAsb.test_equals_asb_vectors_render) ... skipped 'source clones not present'
+test_flagged_row_transformations_start_with_template_line (test_adapt.GoldenAsb.test_flagged_row_transformations_start_with_template_line) ... skipped 'source clones not present'
+test_dh_0010_u01 (test_adapt.GoldenInjecAgent.test_dh_0010_u01) ... skipped 'source clones not present'
+test_dh_0010_u02 (test_adapt.GoldenInjecAgent.test_dh_0010_u02) ... skipped 'source clones not present'
+test_ds_0001_u01_net_effect_and_replacement (test_adapt.GoldenInjecAgent.test_ds_0001_u01_net_effect_and_replacement) ... skipped 'source clones not present'
+test_ok_and_mismatch (test_adapt.LoaderChecks.test_ok_and_mismatch) ... /home/tbound/tbound-work/x30/corpus/sampling/test_adapt.py:598: ResourceWarning: unclosed file <_io.BufferedWriter name='/home/tbound/tbound-work/x30tmp/tmp6ntw_n72/saber/dataset/data/tasks.jsonl'>
+  open(os.path.join(clone, path), "wb").write(content)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_unlisted_candidate_is_refused_before_reading (test_adapt.LoaderChecks.test_unlisted_candidate_is_refused_before_reading) ... /home/tbound/tbound-work/x30/corpus/sampling/test_adapt.py:598: ResourceWarning: unclosed file <_io.BufferedWriter name='/home/tbound/tbound-work/x30tmp/tmp6g0m1tpv/saber/dataset/data/tasks.jsonl'>
+  open(os.path.join(clone, path), "wb").write(content)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_working_tree_edit_is_not_read_and_head_must_be_the_pin (test_adapt.LoaderChecks.test_working_tree_edit_is_not_read_and_head_must_be_the_pin) ... /home/tbound/tbound-work/x30/corpus/sampling/test_adapt.py:598: ResourceWarning: unclosed file <_io.BufferedWriter name='/home/tbound/tbound-work/x30tmp/tmpe1zn0w82/saber/dataset/data/tasks.jsonl'>
+  open(os.path.join(clone, path), "wb").write(content)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/home/tbound/tbound-work/x30/corpus/sampling/test_adapt.py:627: ResourceWarning: unclosed file <_io.BufferedWriter name='/home/tbound/tbound-work/x30tmp/tmpe1zn0w82/saber/dataset/data/tasks.jsonl'>
+  open(os.path.join(tmp, "saber", "dataset", "data", "tasks.jsonl"), "wb").write(b"tampered\n")
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_clones_is_under_local_root (test_adapt.LocalRootTest.test_clones_is_under_local_root) ... ok
+test_default_is_repo_local (test_adapt.LocalRootTest.test_default_is_repo_local) ... ok
+test_empty_tbound_local_falls_back (test_adapt.LocalRootTest.test_empty_tbound_local_falls_back) ... ok
+test_tbound_local_wins (test_adapt.LocalRootTest.test_tbound_local_wins) ... ok
+test_non_py_written_file_with_python_shebang (test_adapt.ModuleScopes.test_non_py_written_file_with_python_shebang) ... ok
+test_saber_bare_stem_in_prose_does_not_name_a_file (test_adapt.ModuleScopes.test_saber_bare_stem_in_prose_does_not_name_a_file) ... ok
+test_saber_python_file_matched_by_original_name_in_pattern (test_adapt.ModuleScopes.test_saber_python_file_matched_by_original_name_in_pattern) ... ok
+test_unparsable_code_is_a_note_not_a_guess (test_adapt.ModuleScopes.test_unparsable_code_is_a_note_not_a_guess) ... ok
+test_user_turn_code (test_adapt.ModuleScopes.test_user_turn_code) ... ok
+test_deciding_check_must_fit_its_code_and_be_the_first_failure (test_adapt.NoRenderer.test_deciding_check_must_fit_its_code_and_be_the_first_failure) ... ok
+test_source_without_renderer_is_a_tool_gap_not_f_source (test_adapt.NoRenderer.test_source_without_renderer_is_a_tool_gap_not_f_source) ... ok
+test_candidate_without_a_log_path_is_refused (test_adapt.RenderLog.test_candidate_without_a_log_path_is_refused) ... ok
+test_cli_refuses_allow_candidate_without_render_log (test_adapt.RenderLog.test_cli_refuses_allow_candidate_without_render_log) ... ok
+test_development_rows_are_never_logged (test_adapt.RenderLog.test_development_rows_are_never_logged) ... ok
+test_each_candidate_render_appends_one_canonical_line (test_adapt.RenderLog.test_each_candidate_render_appends_one_canonical_line) ... /home/tbound/tbound-work/x30/corpus/sampling/test_adapt.py:234: ResourceWarning: unclosed file <_io.BufferedReader name='/home/tbound/tbound-work/x30tmp/tmppitlis_t/render.log'>
+  raw = open(self.log, "rb").read()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_candidate_asb_without_frozen_vector_is_f_meaning (test_adapt.ScopedReplacementsAndMisc.test_candidate_asb_without_frozen_vector_is_f_meaning) ... /home/tbound/tbound-work/x30/corpus/sampling/adapt.py:967: ResourceWarning: unclosed file <_io.BufferedReader name='/home/tbound/tbound-work/x30/corpus/sampling/asb-template-vectors-v1.jsonl'>
+  raw = open(ASB_VECTORS_PATH, "rb").read()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_multi_line_quoted_echo (test_adapt.ScopedReplacementsAndMisc.test_multi_line_quoted_echo) ... ok
+test_replacement_scope (test_adapt.ScopedReplacementsAndMisc.test_replacement_scope) ... ok
+test_aseval_order_paths_then_setup_then_modules (test_adapt.SetupParsing.test_aseval_order_paths_then_setup_then_modules) ... ok
+test_commands_outside_the_rule_fail (test_adapt.SetupParsing.test_commands_outside_the_rule_fail) ... ok
+test_echo_and_printf_semantics (test_adapt.SetupParsing.test_echo_and_printf_semantics) ... ok
+test_saber_init_commands (test_adapt.SetupParsing.test_saber_init_commands) ... ok
+test_trailing_slash_tmp_fails (test_adapt.SetupParsing.test_trailing_slash_tmp_fails) ... ok
+test_two_heredocs_in_one_string (test_adapt.SetupParsing.test_two_heredocs_in_one_string) ... ok
+test_cli_exit_codes (test_adapt.SourceToolIsAJudgment.test_cli_exit_codes) ... skipped 'source clones not present'
+test_cli_tool_limit_exit_code (test_adapt.SourceToolIsAJudgment.test_cli_tool_limit_exit_code) ... skipped 'source clones not present'
+test_needs_only_result (test_adapt.SourceToolIsAJudgment.test_needs_only_result) ... skipped 'source clones not present'
+test_partial_answer_still_renders_nothing (test_adapt.SourceToolIsAJudgment.test_partial_answer_still_renders_nothing) ... skipped 'source clones not present'
+test_single_tool_ground_truth_keeps_the_default (test_adapt.SourceToolIsAJudgment.test_single_tool_ground_truth_keeps_the_default) ... skipped 'source clones not present'
+test_every_ledger_predicate_splits (test_adapt.Step8.test_every_ledger_predicate_splits) ... /home/tbound/tbound-work/x30/corpus/sampling/test_adapt.py:24: ResourceWarning: unclosed file <_io.TextIOWrapper name='/home/tbound/tbound-work/x30/corpus/sampling/d48-ledger-v3.jsonl' mode='r' encoding='utf-8'>
+  return {r["case_id"]: r for r in (json.loads(ln) for ln in open(adapt.LEDGER_PATH, encoding="utf-8") if ln.strip())}
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_nine_forms (test_adapt.Step8.test_nine_forms) ... ok
+test_refusals (test_adapt.Step8.test_refusals) ... ok
+test_repeat_is_one_effect (test_adapt.Step8.test_repeat_is_one_effect) ... ok
+test_scripted_checks (test_adapt.Step8.test_scripted_checks) ... ok
+test_fixture_failures (test_adapt.SyntheticAseval.test_fixture_failures) ... ok
+test_module_check_covers_setup (test_adapt.SyntheticAseval.test_module_check_covers_setup) ... ok
+test_setup_must_not_start_processes (test_adapt.SyntheticAseval.test_setup_must_not_start_processes) ... ok
+test_turns_paths_and_delivery (test_adapt.SyntheticAseval.test_turns_paths_and_delivery) ... ok
+test_unrelated_response_gets_data_file_and_header_dropped_only_for_setup_files (test_adapt.SyntheticAseval.test_unrelated_response_gets_data_file_and_header_dropped_only_for_setup_files) ... ok
+test_bash_absent_executable_and_path_move (test_adapt.SyntheticRedCode.test_bash_absent_executable_and_path_move) ... ok
+test_pickle_module_fails_meaning (test_adapt.SyntheticRedCode.test_pickle_module_fails_meaning) ... ok
+test_python_swap_and_url (test_adapt.SyntheticRedCode.test_python_swap_and_url) ... ok
+test_disabled_and_file_methods_add_no_fixture_or_pointer (test_adapt.SyntheticSaber.test_disabled_and_file_methods_add_no_fixture_or_pointer) ... ok
+test_error_message (test_adapt.SyntheticSaber.test_error_message) ... ok
+test_module_without_equivalent (test_adapt.SyntheticSaber.test_module_without_equivalent) ... ok
+test_net_canary_is_the_file_the_payload_sends (test_adapt.SyntheticSaber.test_net_canary_is_the_file_the_payload_sends) ... ok
+test_structural_failures (test_adapt.SyntheticSaber.test_structural_failures) ... ok
+test_tool_output (test_adapt.SyntheticSaber.test_tool_output) ... ok
+test_map_paths (test_adapt.TextRules.test_map_paths) ... ok
+test_module_table (test_adapt.TextRules.test_module_table) ... ok
+test_receiver_url (test_adapt.TextRules.test_receiver_url) ... ok
+test_swap_python (test_adapt.TextRules.test_swap_python) ... ok
+test_alteration_needs_a_stored_record (test_asb_goal_class.GoalClass.test_alteration_needs_a_stored_record) ... ok
+test_both_effects (test_asb_goal_class.GoalClass.test_both_effects) ... ok
+test_disclosure_verbs (test_asb_goal_class.GoalClass.test_disclosure_verbs) ... ok
+test_flagged_vector_goals_match_the_ledger (test_asb_goal_class.GoalClass.test_flagged_vector_goals_match_the_ledger) ... ok
+test_object_phrase_ends_at_the_clause_break (test_asb_goal_class.GoalClass.test_object_phrase_ends_at_the_clause_break) ... ok
+test_reading_verbs_are_not_an_effect (test_asb_goal_class.GoalClass.test_reading_verbs_are_not_an_effect) ... ok
+test_removal_and_encryption (test_asb_goal_class.GoalClass.test_removal_and_encryption) ... ok
+test_base_pin_license_files_keep_their_order (test_carrier.CarrierTest.test_base_pin_license_files_keep_their_order) ... ok
+test_bundle_licences_match_its_pins (test_carrier.CarrierTest.test_bundle_licences_match_its_pins) ... ok
+test_bundles_replace_the_first_slots_of_their_stratum (test_carrier.CarrierTest.test_bundles_replace_the_first_slots_of_their_stratum) ... ok
+test_case_id_colliding_with_a_kept_t5_case (test_carrier.CarrierTest.test_case_id_colliding_with_a_kept_t5_case) ... ok
+test_cli_prints_manifest_digest_and_refuses_with_status_2 (test_carrier.CarrierTest.test_cli_prints_manifest_digest_and_refuses_with_status_2) ... ok
+test_conflicting_pin_rev (test_carrier.CarrierTest.test_conflicting_pin_rev) ... ok
+test_duplicate_case_id (test_carrier.CarrierTest.test_duplicate_case_id) ... ok
+test_existing_out (test_carrier.CarrierTest.test_existing_out) ... ok
+test_ids_must_agree_inside_a_bundle (test_carrier.CarrierTest.test_ids_must_agree_inside_a_bundle) ... ok
+test_meaning_record_must_match_the_sources_pin (test_carrier.CarrierTest.test_meaning_record_must_match_the_sources_pin) ... ok
+test_more_bundles_than_slots (test_carrier.CarrierTest.test_more_bundles_than_slots) ... ok
+test_names_differing_only_in_case (test_carrier.CarrierTest.test_names_differing_only_in_case) ... ok
+test_new_pin_and_licence_are_added (test_carrier.CarrierTest.test_new_pin_and_licence_are_added) ... ok
+test_notice_must_match_the_sources_pin (test_carrier.CarrierTest.test_notice_must_match_the_sources_pin) ... ok
+test_root_colliding_with_a_kept_t5_root (test_carrier.CarrierTest.test_root_colliding_with_a_kept_t5_root) ... ok
+test_same_licence_name_different_bytes (test_carrier.CarrierTest.test_same_licence_name_different_bytes) ... ok
+test_tm_c_is_refused (test_carrier.CarrierTest.test_tm_c_is_refused) ... ok
+test_unreferenced_artifact_is_refused (test_carrier.CarrierTest.test_unreferenced_artifact_is_refused) ... ok
+test_witness_id_follows_the_case_id (test_carrier.CarrierTest.test_witness_id_follows_the_case_id) ... ok
+test_zero_bundles_reproduce_t5_byte_for_byte (test_carrier.CarrierTest.test_zero_bundles_reproduce_t5_byte_for_byte) ... ok
+test_asb_single_effect_has_the_t5_shape (test_case_entry.Golden.test_asb_single_effect_has_the_t5_shape) ... skipped 'source clones and TBOUND_RUN are needed'
+test_cli_writes_a_bundle_and_refuses_an_existing_out (test_case_entry.Golden.test_cli_writes_a_bundle_and_refuses_an_existing_out) ... skipped 'source clones and TBOUND_RUN are needed'
+test_injecagent_net (test_case_entry.Golden.test_injecagent_net) ... skipped 'source clones and TBOUND_RUN are needed'
+test_injecagent_ws_protected_path (test_case_entry.Golden.test_injecagent_ws_protected_path) ... skipped 'source clones and TBOUND_RUN are needed'
+test_calibration_shape (test_case_entry.Refusals.test_calibration_shape) ... ok
+test_candidate_build_is_logged_before_any_source_is_read (test_case_entry.Refusals.test_candidate_build_is_logged_before_any_source_is_read) ... ok
+test_candidate_build_needs_a_render_log (test_case_entry.Refusals.test_candidate_build_needs_a_render_log) ... ok
+test_candidate_guard_passes_through (test_case_entry.Refusals.test_candidate_guard_passes_through) ... ok
+test_development_row_cannot_enter_main_or_pilot (test_case_entry.Refusals.test_development_row_cannot_enter_main_or_pilot) ... ok
+test_existing_out (test_case_entry.Refusals.test_existing_out) ... ok
+test_fixture_modes_and_empty_dirs_reach_the_fixture (test_case_entry.Refusals.test_fixture_modes_and_empty_dirs_reach_the_fixture) ... ok
+test_helper_and_explicit_pivots_agree (test_case_entry.Refusals.test_helper_and_explicit_pivots_agree) ... ok
+test_missing_pivot_step (test_case_entry.Refusals.test_missing_pivot_step) ... ok
+test_mixed_family_all_case_takes_the_first_part_oracle_and_the_combined_delta (test_case_entry.Refusals.test_mixed_family_all_case_takes_the_first_part_oracle_and_the_combined_delta) ... ok
+test_mixed_family_any_case_takes_the_first_part_oracle_and_delta (test_case_entry.Refusals.test_mixed_family_any_case_takes_the_first_part_oracle_and_delta) ... ok
+test_mixed_family_case_needs_objects_for_each_part (test_case_entry.Refusals.test_mixed_family_case_needs_objects_for_each_part) ... ok
+test_net_effect_needs_a_canary (test_case_entry.Refusals.test_net_effect_needs_a_canary) ... skipped 'source clones not present'
+test_open_destination_candidate (test_case_entry.Refusals.test_open_destination_candidate) ... skipped 'source clones not present'
+test_oracle_comes_from_the_first_effect (test_case_entry.Refusals.test_oracle_comes_from_the_first_effect) ... ok
+test_p_delta_must_fit_the_oracle (test_case_entry.Refusals.test_p_delta_must_fit_the_oracle) ... skipped 'source clones not present'
+test_rehearsal_needs_a_development_row (test_case_entry.Refusals.test_rehearsal_needs_a_development_row) ... ok
+test_unknown_p_delta (test_case_entry.Refusals.test_unknown_p_delta) ... ok
+test_a_carrier_case_that_is_not_a_ledger_row_is_left_out (test_dev_ids.Join.test_a_carrier_case_that_is_not_a_ledger_row_is_left_out) ... ok
+test_a_render_log_id_that_is_not_a_ledger_row_is_refused (test_dev_ids.Join.test_a_render_log_id_that_is_not_a_ledger_row_is_refused) ... ok
+test_a_rendered_but_undecided_candidate_joins (test_dev_ids.Join.test_a_rendered_but_undecided_candidate_joins) ... ok
+test_a_t5_id_that_is_not_a_ledger_row_is_kept (test_dev_ids.Join.test_a_t5_id_that_is_not_a_ledger_row_is_kept) ... ok
+test_counts_only_per_source_and_stratum (test_dev_ids.Join.test_counts_only_per_source_and_stratum) ... ok
+test_output_is_lf_and_accepted_by_select (test_dev_ids.Join.test_output_is_lf_and_accepted_by_select) ... ok
+test_the_output_is_the_sorted_union_of_every_source (test_dev_ids.Join.test_the_output_is_the_sorted_union_of_every_source) ... ok
+test_rehearsal_carrier_and_additions_join_the_real_ledger (test_dev_ids.RealInputs.test_rehearsal_carrier_and_additions_join_the_real_ledger) ... ok
+test_a_carriers_directory_without_carriers_is_refused (test_dev_ids.Refusals.test_a_carriers_directory_without_carriers_is_refused) ... ok
+test_a_pilot_id_that_is_not_a_ledger_row_is_refused (test_dev_ids.Refusals.test_a_pilot_id_that_is_not_a_ledger_row_is_refused) ... ok
+test_a_pilot_output_that_is_not_complete_is_refused (test_dev_ids.Refusals.test_a_pilot_output_that_is_not_complete_is_refused) ... ok
+test_an_additions_id_that_is_not_a_ledger_row_is_refused (test_dev_ids.Refusals.test_an_additions_id_that_is_not_a_ledger_row_is_refused) ... ok
+test_an_existing_output_is_refused_and_kept (test_dev_ids.Refusals.test_an_existing_output_is_refused_and_kept) ... ok
+test_bad_grammar_is_refused_in_every_source (test_dev_ids.Refusals.test_bad_grammar_is_refused_in_every_source) ... ok
+test_fixed_fields_equal_the_t1_template (test_main_template.MainTemplate.test_fixed_fields_equal_the_t1_template) ... ok
+test_only_the_listed_fields_are_unfilled (test_main_template.MainTemplate.test_only_the_listed_fields_are_unfilled) ... ok
+test_recorded_digests_equal_file_digests (test_main_template.MainTemplate.test_recorded_digests_equal_file_digests) ... ok
+test_select_reads_exactly_these_fields_and_all_are_in_the_template (test_main_template.MainTemplate.test_select_reads_exactly_these_fields_and_all_are_in_the_template) ... ok
+test_a_changed_ledger_digest_is_refused (test_main_template.SelectAccepts.test_a_changed_ledger_digest_is_refused) ... ok
+test_allocate_accepts_the_filled_template_and_removes_development_rows (test_main_template.SelectAccepts.test_allocate_accepts_the_filled_template_and_removes_development_rows) ... ok
+test_allocate_refuses_what_the_validation_path_refuses (test_main_template.SelectAccepts.test_allocate_refuses_what_the_validation_path_refuses) ... ok
+test_only_the_owner_tag_fields_are_unfilled (test_pilot_template.PilotTemplate.test_only_the_owner_tag_fields_are_unfilled) ... ok
+test_recorded_digests_equal_file_digests (test_pilot_template.PilotTemplate.test_recorded_digests_equal_file_digests) ... ok
+test_prints_one_json_object_of_ids (test_round_plan.Cli.test_prints_one_json_object_of_ids) ... ok
+test_refuses_a_bad_decision_line (test_round_plan.Cli.test_refuses_a_bad_decision_line) ... /home/tbound/tbound-work/x30/corpus/sampling/test_round_plan.py:136: ResourceWarning: unclosed file <_io.TextIOWrapper name='/home/tbound/tbound-work/x30tmp/tmp16gyq3ow/o.json' mode='w' encoding='UTF-8'>
+  json.dump(out, open(o, "w"))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/home/tbound/tbound-work/x30/corpus/sampling/test_round_plan.py:137: ResourceWarning: unclosed file <_io.TextIOWrapper name='/home/tbound/tbound-work/x30tmp/tmp16gyq3ow/d.jsonl' mode='w' encoding='UTF-8'>
+  open(d, "w").write("not json\n")
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_refuses_a_file_that_is_not_a_select_output (test_round_plan.Cli.test_refuses_a_file_that_is_not_a_select_output) ... ok
+test_a_decision_for_the_named_case_moves_the_plan_without_a_new_output (test_round_plan.DrawPlan.test_a_decision_for_the_named_case_moves_the_plan_without_a_new_output) ... ok
+test_a_pool_smaller_than_the_slots_lists_every_candidate (test_round_plan.DrawPlan.test_a_pool_smaller_than_the_slots_lists_every_candidate) ... ok
+test_decided_and_screened_cases_are_skipped (test_round_plan.DrawPlan.test_decided_and_screened_cases_are_skipped) ... ok
+test_lists_the_main_order_beyond_the_named_case_up_to_the_slots (test_round_plan.DrawPlan.test_lists_the_main_order_beyond_the_named_case_up_to_the_slots) ... ok
+test_only_a_stratum_with_a_pending_case_is_filled (test_round_plan.DrawPlan.test_only_a_stratum_with_a_pending_case_is_filled) ... ok
+test_plan_matches_the_pending_case_of_a_partly_decided_walk (test_round_plan.DrawPlan.test_plan_matches_the_pending_case_of_a_partly_decided_walk) ... ok
+test_a_pilot_output_is_refused_not_planned_partially (test_round_plan.PilotPlan.test_a_pilot_output_is_refused_not_planned_partially) ... ok
+test_a_passing_top_up_case_completes_the_attack (test_round_plan.TopUpPlan.test_a_passing_top_up_case_completes_the_attack) ... ok
+test_a_screened_top_up_case_gives_way_to_the_next_in_order (test_round_plan.TopUpPlan.test_a_screened_top_up_case_gives_way_to_the_next_in_order) ... ok
+test_no_top_up_while_a_main_stratum_is_pending (test_round_plan.TopUpPlan.test_no_top_up_while_a_main_stratum_is_pending) ... ok
+test_top_up_lists_the_attack_without_a_main_case_once_main_is_final (test_round_plan.TopUpPlan.test_top_up_lists_the_attack_without_a_main_case_once_main_is_final) ... ok
+test_a_commitment_for_another_chain_is_refused (test_select.AttestationAndChainTests.test_a_commitment_for_another_chain_is_refused) ... ok
+test_an_empty_bls_attestation_is_refused (test_select.AttestationAndChainTests.test_an_empty_bls_attestation_is_refused) ... ok
+test_bls_verified_by_is_recorded_in_the_output (test_select.AttestationAndChainTests.test_bls_verified_by_is_recorded_in_the_output) ... ok
+test_the_pinned_chain_hash_is_accepted_in_either_case (test_select.AttestationAndChainTests.test_the_pinned_chain_hash_is_accepted_in_either_case) ... ok
+test_malformed_hex_is_refused (test_select.BeaconTests.test_malformed_hex_is_refused) ... ok
+test_previous_signature_is_optional_and_hex_checked (test_select.BeaconTests.test_previous_signature_is_optional_and_hex_checked) ... ok
+test_randomness_must_equal_sha256_of_the_signature (test_select.BeaconTests.test_randomness_must_equal_sha256_of_the_signature) ... ok
+test_round_must_equal_the_computed_round (test_select.BeaconTests.test_round_must_equal_the_computed_round) ... ok
+test_valid_beacon_yields_the_32_raw_randomness_bytes_as_seed (test_select.BeaconTests.test_valid_beacon_yields_the_32_raw_randomness_bytes_as_seed) ... ok
+test_verify_beacon_says_bls_signature_was_not_verified (test_select.BeaconTests.test_verify_beacon_says_bls_signature_was_not_verified) ... ok
+test_balanced_pools_choose_k5_with_a_tie_to_tm_b (test_select.CapAndAllocationTests.test_balanced_pools_choose_k5_with_a_tie_to_tm_b) ... ok
+test_cap_keeps_first_k_in_cap_order_and_never_pads (test_select.CapAndAllocationTests.test_cap_keeps_first_k_in_cap_order_and_never_pads) ... ok
+test_cap_skips_a_k_that_leaves_a_class_empty (test_select.CapAndAllocationTests.test_cap_skips_a_k_that_leaves_a_class_empty) ... ok
+test_largest_remainder_gives_the_leftover_place_to_the_larger_remainder (test_select.CapAndAllocationTests.test_largest_remainder_gives_the_leftover_place_to_the_larger_remainder) ... ok
+test_remainder_tie_goes_to_tm_b (test_select.CapAndAllocationTests.test_remainder_tie_goes_to_tm_b) ... ok
+test_small_pools_cannot_satisfy_the_reserve_rule (test_select.CapAndAllocationTests.test_small_pools_cannot_satisfy_the_reserve_rule) ... ok
+test_tiny_class_makes_the_draw_infeasible (test_select.CapAndAllocationTests.test_tiny_class_makes_the_draw_infeasible) ... ok
+test_zero_weight_class_gets_no_places (test_select.CapAndAllocationTests.test_zero_weight_class_gets_no_places) ... ok
+test_passing_population_smaller_than_the_sample_is_refused (test_select.CertificationTests.test_passing_population_smaller_than_the_sample_is_refused) ... ok
+test_range_reports_the_worst_case_over_every_size_pair (test_select.CertificationTests.test_range_reports_the_worst_case_over_every_size_pair) ... ok
+test_reviewer_counterexample_is_not_certified (test_select.CertificationTests.test_reviewer_counterexample_is_not_certified) ... ok
+test_reviewer_split_probability (test_select.CertificationTests.test_reviewer_split_probability) ... ok
+test_small_pool_is_certified (test_select.CertificationTests.test_small_pool_is_certified) ... ok
+test_zero_event_limit_matches_the_published_arithmetic (test_select.CertificationTests.test_zero_event_limit_matches_the_published_arithmetic) ... ok
+test_allocate_prints_the_cap_for_large_balanced_pools (test_select.CommandLineTests.test_allocate_prints_the_cap_for_large_balanced_pools) ... ok
+test_certify_exit_code_follows_the_certification (test_select.CommandLineTests.test_certify_exit_code_follows_the_certification) ... ok
+test_draw_and_pilot_require_the_new_arguments (test_select.CommandLineTests.test_draw_and_pilot_require_the_new_arguments) ... ok
+test_draw_refuses_a_malformed_development_id_and_writes_nothing (test_select.CommandLineTests.test_draw_refuses_a_malformed_development_id_and_writes_nothing) ... ok
+test_draw_refuses_a_pilot_commitment_and_writes_nothing (test_select.CommandLineTests.test_draw_refuses_a_pilot_commitment_and_writes_nothing) ... ok
+test_draw_refuses_to_overwrite_an_existing_output (test_select.CommandLineTests.test_draw_refuses_to_overwrite_an_existing_output) ... ok
+test_draw_with_the_registered_total_is_infeasible_for_a_tiny_ledger (test_select.CommandLineTests.test_draw_with_the_registered_total_is_infeasible_for_a_tiny_ledger) ... ok
+test_draw_writes_needs_adaptation_and_exits_3 (test_select.CommandLineTests.test_draw_writes_needs_adaptation_and_exits_3) ... ok
+test_json_on_stdout_has_lf_line_endings_on_every_platform (test_select.CommandLineTests.test_json_on_stdout_has_lf_line_endings_on_every_platform) ... ok
+test_pilot_exit_codes_follow_the_walk (test_select.CommandLineTests.test_pilot_exit_codes_follow_the_walk) ... ok
+test_pilot_refuses_a_main_commitment_and_a_wrong_pilot_size_without_output (test_select.CommandLineTests.test_pilot_refuses_a_main_commitment_and_a_wrong_pilot_size_without_output) ... ok
+test_verify_beacon_reports_bls_not_verified_and_fails_on_mismatch (test_select.CommandLineTests.test_verify_beacon_reports_bls_not_verified_and_fails_on_mismatch) ... ok
+test_commitment_shape_is_checked (test_select.CommitmentAndTimeTests.test_commitment_shape_is_checked) ... ok
+test_digests_accept_uppercase_hex_from_get_filehash (test_select.CommitmentAndTimeTests.test_digests_accept_uppercase_hex_from_get_filehash) ... ok
+test_ledger_digest_must_match_the_ledger_bytes (test_select.CommitmentAndTimeTests.test_ledger_digest_must_match_the_ledger_bytes) ... ok
+test_parses_utc_whole_seconds_with_z_only (test_select.CommitmentAndTimeTests.test_parses_utc_whole_seconds_with_z_only) ... ok
+test_script_digest_must_match_the_running_script (test_select.CommitmentAndTimeTests.test_script_digest_must_match_the_running_script) ... ok
+test_allocate_needs_a_main_commitment (test_select.CommitmentKindTests.test_allocate_needs_a_main_commitment) ... ok
+test_draw_refuses_a_pilot_commitment (test_select.CommitmentKindTests.test_draw_refuses_a_pilot_commitment) ... ok
+test_empty_development_list_is_a_valid_main_commitment (test_select.CommitmentKindTests.test_empty_development_list_is_a_valid_main_commitment) ... ok
+test_kind_must_be_exactly_pilot_or_main (test_select.CommitmentKindTests.test_kind_must_be_exactly_pilot_or_main) ... ok
+test_main_commitment_needs_policy_rule_digests_and_a_development_list (test_select.CommitmentKindTests.test_main_commitment_needs_policy_rule_digests_and_a_development_list) ... ok
+test_pilot_commitment_needs_a_positive_integer_pilot_size (test_select.CommitmentKindTests.test_pilot_commitment_needs_a_positive_integer_pilot_size) ... ok
+test_pilot_refuses_a_main_commitment (test_select.CommitmentKindTests.test_pilot_refuses_a_main_commitment) ... ok
+test_verify_beacon_accepts_either_kind (test_select.CommitmentKindTests.test_verify_beacon_accepts_either_kind) ... ok
+test_a_listed_excluded_case_is_accepted_and_removes_nothing (test_select.DevelopmentCaseTests.test_a_listed_excluded_case_is_accepted_and_removes_nothing) ... ok
+test_allocate_applies_the_same_removal_as_the_draw (test_select.DevelopmentCaseTests.test_allocate_applies_the_same_removal_as_the_draw) ... ok
+test_attack_whose_only_cases_are_development_is_untested_not_topped_up (test_select.DevelopmentCaseTests.test_attack_whose_only_cases_are_development_is_untested_not_topped_up) ... ok
+test_decisions_for_development_cases_are_reported_as_not_consulted (test_select.DevelopmentCaseTests.test_decisions_for_development_cases_are_reported_as_not_consulted) ... ok
+test_development_cases_leave_the_population_before_the_cap (test_select.DevelopmentCaseTests.test_development_cases_leave_the_population_before_the_cap) ... ok
+test_development_ids_outside_the_ledger_are_reported_and_remove_nothing (test_select.DevelopmentCaseTests.test_development_ids_outside_the_ledger_are_reported_and_remove_nothing) ... ok
+test_malformed_development_ids_are_still_refused (test_select.DevelopmentCaseTests.test_malformed_development_ids_are_still_refused) ... ok
+test_attack_with_only_failing_cases_is_reported_untested (test_select.DrawTests.test_attack_with_only_failing_cases_is_reported_untested) ... ok
+test_cold_and_variance_are_disjoint_subsets_of_main (test_select.DrawTests.test_cold_and_variance_are_disjoint_subsets_of_main) ... ok
+test_decisions_for_unknown_or_excluded_cases_are_refused (test_select.DrawTests.test_decisions_for_unknown_or_excluded_cases_are_refused) ... ok
+test_every_examined_candidate_has_purpose_group_key_and_decision (test_select.DrawTests.test_every_examined_candidate_has_purpose_group_key_and_decision) ... ok
+test_exhausted_main_stratum_blocks_and_keeps_the_failures (test_select.DrawTests.test_exhausted_main_stratum_blocks_and_keeps_the_failures) ... ok
+test_fixed_vector_output_is_pinned (test_select.DrawTests.test_fixed_vector_output_is_pinned) ... ok
+test_identical_inputs_give_byte_identical_output (test_select.DrawTests.test_identical_inputs_give_byte_identical_output) ... ok
+test_main_is_the_first_passes_in_hash_order_of_the_capped_set (test_select.DrawTests.test_main_is_the_first_passes_in_hash_order_of_the_capped_set) ... ok
+test_missing_decision_needs_adaptation_and_names_the_next_case (test_select.DrawTests.test_missing_decision_needs_adaptation_and_names_the_next_case) ... ok
+test_output_is_canonical_json_without_run_timestamps (test_select.DrawTests.test_output_is_canonical_json_without_run_timestamps) ... ok
+test_population_range_runs_from_passes_observed_to_not_yet_failed (test_select.DrawTests.test_population_range_runs_from_passes_observed_to_not_yet_failed) ... ok
+test_replacing_a_main_case_recomputes_top_up_from_the_new_main_sample (test_select.DrawTests.test_replacing_a_main_case_recomputes_top_up_from_the_new_main_sample) ... ok
+test_row_order_in_the_ledger_file_does_not_change_the_selection (test_select.DrawTests.test_row_order_in_the_ledger_file_does_not_change_the_selection) ... ok
+test_topup_and_untested_follow_the_final_main_sample (test_select.DrawTests.test_topup_and_untested_follow_the_final_main_sample) ... ok
+test_variance_insufficient_capacity_blocks_completion (test_select.DrawTests.test_variance_insufficient_capacity_blocks_completion) ... ok
+test_accepts_missing_final_newline (test_select.IdentifierAndLedgerTests.test_accepts_missing_final_newline) ... ok
+test_accepts_one_scenario_in_both_strata_as_two_groups_capped_separately (test_select.IdentifierAndLedgerTests.test_accepts_one_scenario_in_both_strata_as_two_groups_capped_separately) ... ok
+test_accepts_stable_ascii_ids (test_select.IdentifierAndLedgerTests.test_accepts_stable_ascii_ids) ... ok
+test_rejects_attack_and_mechanism_ids_outside_the_grammar (test_select.IdentifierAndLedgerTests.test_rejects_attack_and_mechanism_ids_outside_the_grammar) ... ok
+test_rejects_blank_non_object_and_duplicate_key_lines (test_select.IdentifierAndLedgerTests.test_rejects_blank_non_object_and_duplicate_key_lines) ... ok
+test_rejects_case_ids_outside_the_grammar (test_select.IdentifierAndLedgerTests.test_rejects_case_ids_outside_the_grammar) ... ok
+test_rejects_duplicate_case_ids_including_excluded_rows (test_select.IdentifierAndLedgerTests.test_rejects_duplicate_case_ids_including_excluded_rows) ... ok
+test_rejects_non_boolean_excluded_flag (test_select.IdentifierAndLedgerTests.test_rejects_non_boolean_excluded_flag) ... ok
+test_rejects_strata_other_than_tm_a_and_tm_b (test_select.IdentifierAndLedgerTests.test_rejects_strata_other_than_tm_a_and_tm_b) ... ok
+test_skips_and_lists_excluded_rows (test_select.IdentifierAndLedgerTests.test_skips_and_lists_excluded_rows) ... ok
+test_key_matches_hand_computed_sha256 (test_select.OrderRuleTests.test_key_matches_hand_computed_sha256) ... ok
+test_ranking_is_ascending_by_hash_not_by_identifier (test_select.OrderRuleTests.test_ranking_is_ascending_by_hash_not_by_identifier) ... ok
+test_seed_is_used_as_raw_bytes (test_select.OrderRuleTests.test_seed_is_used_as_raw_bytes) ... ok
+test_ties_break_by_case_id_in_unsigned_byte_order (test_select.OrderRuleTests.test_ties_break_by_case_id_in_unsigned_byte_order) ... ok
+test_cold_quota_is_floor_of_twenty_percent_plus_half (test_select.PartitionTests.test_cold_quota_is_floor_of_twenty_percent_plus_half) ... ok
+test_variance_blocks_when_a_class_has_too_few_non_cold_cases (test_select.PartitionTests.test_variance_blocks_when_a_class_has_too_few_non_cold_cases) ... ok
+test_variance_places_follow_remaining_main_cases (test_select.PartitionTests.test_variance_places_follow_remaining_main_cases) ... ok
+test_a_stratum_whose_share_rounds_to_zero_needs_no_decision (test_select.PilotAllocationTests.test_a_stratum_whose_share_rounds_to_zero_needs_no_decision) ... ok
+test_excluded_rows_do_not_count_toward_the_split (test_select.PilotAllocationTests.test_excluded_rows_do_not_count_toward_the_split) ... ok
+test_pilot_commitment_parses_with_its_own_fields (test_select.PilotAllocationTests.test_pilot_commitment_parses_with_its_own_fields) ... ok
+test_pilot_size_comes_from_the_commitment_and_must_match_the_run (test_select.PilotAllocationTests.test_pilot_size_comes_from_the_commitment_and_must_match_the_run) ... ok
+test_pilot_size_is_registered_as_eleven (test_select.PilotAllocationTests.test_pilot_size_is_registered_as_eleven) ... ok
+test_split_uses_uncapped_counts_and_ties_go_to_tm_b (test_select.PilotAllocationTests.test_split_uses_uncapped_counts_and_ties_go_to_tm_b) ... ok
+test_a_pilot_output_that_is_not_a_complete_pilot_is_refused (test_select.PilotCoverageTests.test_a_pilot_output_that_is_not_a_complete_pilot_is_refused) ... ok
+test_every_pilot_member_must_be_in_development_case_ids (test_select.PilotCoverageTests.test_every_pilot_member_must_be_in_development_case_ids) ... ok
+test_the_real_pilot_output_feeds_the_draw (test_select.PilotCoverageTests.test_the_real_pilot_output_feeds_the_draw) ... ok
+test_fixed_pilot_vector_members_are_pinned (test_select.PilotVectorTests.test_fixed_pilot_vector_members_are_pinned) ... ok
+test_fixed_pilot_vector_output_is_pinned (test_select.PilotVectorTests.test_fixed_pilot_vector_output_is_pinned) ... ok
+test_pilot_output_is_deterministic_and_canonical (test_select.PilotVectorTests.test_pilot_output_is_deterministic_and_canonical) ... ok
+test_exhausted_pilot_stratum_blocks_and_keeps_the_audit (test_select.PilotWalkTests.test_exhausted_pilot_stratum_blocks_and_keeps_the_audit) ... ok
+test_missing_pilot_decision_needs_adaptation_and_names_the_next_case (test_select.PilotWalkTests.test_missing_pilot_decision_needs_adaptation_and_names_the_next_case) ... ok
+test_pilot_members_are_the_first_passes_in_pilot_order_per_stratum (test_select.PilotWalkTests.test_pilot_members_are_the_first_passes_in_pilot_order_per_stratum) ... ok
+test_zero_target_walk_needs_no_decisions (test_select.PilotWalkTests.test_zero_target_walk_needs_no_decisions) ... ok
+test_a_commitment_that_carries_its_own_time_is_refused (test_select.PublishedTimeTests.test_a_commitment_that_carries_its_own_time_is_refused) ... ok
+test_a_later_publication_time_gives_a_later_round (test_select.PublishedTimeTests.test_a_later_publication_time_gives_a_later_round) ... ok
+test_published_utc_is_whole_second_utc_with_z (test_select.PublishedTimeTests.test_published_utc_is_whole_second_utc_with_z) ... ok
+test_the_round_comes_from_published_utc_and_the_output_records_it (test_select.PublishedTimeTests.test_the_round_comes_from_published_utc_and_the_output_records_it) ... ok
+test_exact_boundary_and_one_second_either_side (test_select.RoundTests.test_exact_boundary_and_one_second_either_side) ... ok
+test_first_round_at_or_after_t_plus_24h_matches_brute_force (test_select.RoundTests.test_first_round_at_or_after_t_plus_24h_matches_brute_force) ... ok
+test_genesis_at_or_after_threshold_gives_round_one (test_select.RoundTests.test_genesis_at_or_after_threshold_gives_round_one) ... ok
+test_a_scenario_seen_in_either_stratum_counts_as_seen_in_both_groups (test_select.SeenInDevelopmentTests.test_a_scenario_seen_in_either_stratum_counts_as_seen_in_both_groups) ... ok
+test_an_excluded_development_case_still_marks_its_scenario_and_mechanism (test_select.SeenInDevelopmentTests.test_an_excluded_development_case_still_marks_its_scenario_and_mechanism) ... ok
+test_each_attack_is_marked_by_whether_a_development_case_has_it (test_select.SeenInDevelopmentTests.test_each_attack_is_marked_by_whether_a_development_case_has_it) ... ok
+test_each_mechanism_is_marked_by_whether_a_development_case_has_it (test_select.SeenInDevelopmentTests.test_each_mechanism_is_marked_by_whether_a_development_case_has_it) ... ok
+test_without_development_cases_no_attack_is_marked (test_select.SeenInDevelopmentTests.test_without_development_cases_no_attack_is_marked) ... ok
+test_exhaustion_is_reported_with_the_passes_found (test_select.WalkTests.test_exhaustion_is_reported_with_the_passes_found) ... ok
+test_failures_are_recorded_and_skipped_until_the_target (test_select.WalkTests.test_failures_are_recorded_and_skipped_until_the_target) ... ok
+test_missing_decision_stops_the_walk_and_names_the_next_case (test_select.WalkTests.test_missing_decision_stops_the_walk_and_names_the_next_case) ... ok
+test_a_lightweight_tag_is_refused (test_t1_prepare.Build.test_a_lightweight_tag_is_refused) ... ok
+test_a_development_id_with_bad_grammar_is_refused_by_select (test_t1_prepare.BuildMain.test_a_development_id_with_bad_grammar_is_refused_by_select) ... ok
+test_a_digest_that_differs_from_the_committed_file_is_refused (test_t1_prepare.BuildMain.test_a_digest_that_differs_from_the_committed_file_is_refused) ... ok
+test_a_left_over_fill_is_refused (test_t1_prepare.BuildMain.test_a_left_over_fill_is_refused) ... ok
+test_an_unsigned_tag_is_refused (test_t1_prepare.BuildMain.test_an_unsigned_tag_is_refused) ... ok
+test_builds_the_main_commitment_and_never_overwrites (test_t1_prepare.BuildMain.test_builds_the_main_commitment_and_never_overwrites) ... ok
+test_a_changed_file_is_refused (test_t1_prepare.Digests.test_a_changed_file_is_refused) ... ok
+test_committed_template_matches_its_files (test_t1_prepare.Digests.test_committed_template_matches_its_files) ... ok
+test_only_the_two_values_change (test_t1_prepare.Fill.test_only_the_two_values_change) ... ok
+test_refuses_a_missing_fill (test_t1_prepare.Fill.test_refuses_a_missing_fill) ... ok
+test_refuses_a_template_with_another_fill (test_t1_prepare.Fill.test_refuses_a_template_with_another_fill) ... ok
+test_an_empty_development_list_is_refused (test_t1_prepare.FillMain.test_an_empty_development_list_is_refused) ... ok
+test_every_fill_is_replaced_by_its_input (test_t1_prepare.FillMain.test_every_fill_is_replaced_by_its_input) ... ok
+test_only_the_filled_values_differ_from_the_template (test_t1_prepare.FillMain.test_only_the_filled_values_differ_from_the_template) ... ok
+test_the_rule_digest_comes_from_the_chosen_rule_file (test_t1_prepare.FillMain.test_the_rule_digest_comes_from_the_chosen_rule_file) ... ok
+test_created_rounds_up_to_the_next_second (test_t1_prepare.Record.test_created_rounds_up_to_the_next_second) ... ok
+test_record_must_hold_exactly_the_local_file (test_t1_prepare.Record.test_record_must_hold_exactly_the_local_file) ... ok
+test_a_main_record_prints_t2 (test_t1_prepare.RecordMain.test_a_main_record_prints_t2) ... ok
+test_fractions_are_refused (test_t1_prepare.Round.test_fractions_are_refused) ... ok
+test_round_equals_select_py (test_t1_prepare.Round.test_round_equals_select_py) ... ok
+test_every_addition_is_a_ledger_row_with_a_reason (test_t2_additions.T2DevelopmentAdditions.test_every_addition_is_a_ledger_row_with_a_reason) ... ok
+
+----------------------------------------------------------------------
+Ran 327 tests in 3.105s
+
+OK (skipped=28)
+{"error": "evidence record: case_id must equal the decided case; rule_sha256 must be the SHA-256 of the rule file; attempts must be a non-empty list (every attempt goes into the evidence file); outcome must equal the reason code 'F-SOURCE'; a failing record needs deciding_check \"5.1:<row>\", \"5.2:<n>\", \"5.3:<n>\" or \"step:<n>\" naming the check that decided it"}
+{"error": "evidence record: case_id must equal the decided case; rule_sha256 must be the SHA-256 of the rule file; attempts must be a non-empty list (every attempt goes into the evidence file); outcome must equal the reason code 'bad reason'; a failing record needs deciding_check \"5.1:<row>\", \"5.2:<n>\", \"5.3:<n>\" or \"step:<n>\" naming the check that decided it"}
+wrote /home/tbound/tbound-work/x30tmp/tmpi1ch_2s4/out/main-commitment-v1.json
+tag object 2742ec2f118dc162347314a362d709243fc00079
+tag commit 85bcbb6278e88272364d16ad699c0b369027eb60
+7 file digests checked
+sha256 60d66935438f28fe1a92e4c0e4fa1a36695d17c40783cbad1aa149095c0321ea

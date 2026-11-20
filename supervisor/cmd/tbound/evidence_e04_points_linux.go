@@ -156,7 +156,9 @@ func evidenceAdmissionForInterval(env evidenceEnv, ref string) (piServiceWorkflo
 
 // evidenceCompletedReceipt returns the receipt of the admission's request: the completed
 // terminal response in the service request journal, which the service wrote and the receipt
-// digest of the terminal covers.
+// digest of the terminal covers. An UNKNOWN terminal counts when it carries a receipt: a failed
+// provider turn whose worker settled ends UNKNOWN with the receipt that binds its evidence
+// (settleFailedProviderTurn).
 func evidenceCompletedReceipt(env evidenceEnv, entry piServiceWorkflowEntry) (productionPiReceipt, error) {
 	requests, err := env.readTrace(piServiceRequestJournalPath, true)
 	if err != nil {
@@ -178,8 +180,9 @@ func evidenceCompletedReceipt(env evidenceEnv, entry piServiceWorkflowEntry) (pr
 		terminal = &event
 	}
 	if terminal == nil || terminal.RequestID != entry.RequestID || terminal.PayloadDigest != entry.PayloadDigest ||
-		terminal.Response.SchemaVersion != piServiceResponseSchema || terminal.Response.Status != "completed" {
-		return productionPiReceipt{}, errors.New("the admission's request has no completed terminal response")
+		terminal.Response.SchemaVersion != piServiceResponseSchema ||
+		terminal.Response.Status != "completed" && (terminal.Response.Status != "unknown" || len(terminal.Response.Receipt) == 0) {
+		return productionPiReceipt{}, errors.New("the admission's request has no terminal response with a receipt")
 	}
 	var receipt productionPiReceipt
 	if err := unmarshalGovernedJSON(terminal.Response.Receipt, &receipt); err != nil || receipt.SchemaVersion != "tbound-production-pi-receipt/v1" ||
