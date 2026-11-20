@@ -17,7 +17,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 SAMPLING = os.path.dirname(HERE)
 # round -> (inputs under rehearsal/, id suffix). A later round on the same freeze reuses inputs under fresh ids.
 ROUNDS = {"rehearsal-dev-01": ("rehearsal-dev-01", ""), "rehearsal-dev-02": ("rehearsal-dev-02", ""),
-          "rehearsal-dev-03": ("rehearsal-dev-02", ".dev03")}
+          "rehearsal-dev-03": ("rehearsal-dev-02", ".dev03"), "soak-dev-01": ("rehearsal-dev-01", ".soak01")}
 
 
 def run(script, *args):
