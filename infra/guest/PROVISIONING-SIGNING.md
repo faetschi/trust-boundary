@@ -1187,18 +1187,20 @@ Only after the owner switches to the research route; none of it is part of the s
 
 ## Research route after Z1 (pilot or thesis profile on research)
 
-For a short proving round of a freeze on OpenRouter (first F31, at `cc1de6df`), and for H1 later on the same route. `tbound-op` installs only the shipped engineering-route config templates: `cfg_structural` compares a config with the shipped template of its NAME (`infra/guest/operator/tbound-op:175-205`, `:358-369`), `svc start` re-verifies the installed chain with it (`:410-415`), and `cfg-install` refuses a changed config (`:451-457`). The research route is therefore installed by hand in a session sudo window (`infra/freeze/guest/00-session-sudo.sh`), with the `sudo -n` commands of R2-0 to R5-4. Every step needs owner approval, one step at a time. The p12 helper writes only `opencode-go.key` (`infra/guest/helpers/p12-provider-key.sh:10`), and `sign-run.sh` signs only `--provider-route engineering` (`infra/freeze/guest/sign-run.sh:92`), so neither is used here.
+For a short proving round of a freeze on OpenRouter (first F31, at `cc1de6df`), and for H1 later on the same route. `tbound-op` installs only the shipped engineering-route config templates: `cfg_structural` compares a config with the shipped template of its NAME (`infra/guest/operator/tbound-op:175-205`, `:358-369`), `svc start` re-verifies the installed chain with it (`verify_installed`, `:410-415`, called at `:658-662`), and `cfg-install` refuses a changed config (`:451-457`). The research route is therefore installed by hand in a session sudo window (`infra/freeze/guest/00-session-sudo.sh`), with the `sudo -n` commands of R2-0 to R5-4. Every step needs owner approval, one step at a time. The p12 helper writes only `opencode-go.key` (`infra/guest/helpers/p12-provider-key.sh:10`), so it is not used here. `sign-run.sh` signs the research route as NAME `rr` into `$HF/rr` (RA-7, RA-9), with every guard of the engineering signings.
 
-Two shells, each one window. Blocks marked `# WSL` run in a WSL shell with the environment of `sign-run.sh:16-18` (`F`, `H`, `HF`, `W`, `TBP`, `COSIGN`). Every other line runs in Git Bash at the repo root of `F`, with the kit environment of `33-corpus-pilot.sh` and the variables below. No command here prints the key or the password.
+Two shells, each one window. Blocks marked `# WSL` run in a WSL shell with the environment of `sign-run.sh:17-19` (`F`, `H`, `HF`, `W`, `TBP`, `COSIGN`). The Linux kit checkout must hold the `rr` target of `sign-run.sh`. Every other line runs in Git Bash at the repo root of `F`, with the kit environment of `33-corpus-pilot.sh` and the variables below. No command here prints the key or the password.
 
 ```
 # WSL
-export KIT_FREEZE=F31; . <Linux kit checkout>/infra/freeze/lib.sh; . $TBOUND_WORK/env.sh; . $W/session-env.sh; RR=$HF/rr
+export KIT_FREEZE=F31; K=<Linux kit checkout>; . $K/infra/freeze/lib.sh; . $TBOUND_WORK/env.sh; . $W/session-env.sh; RR=$HF/rr; WGA=$K/infra/freeze/guest
 # Git Bash
 export MSYS_NO_PATHCONV=1 GUEST_IP=<measured this session>
 GSSH() { sh infra/freeze/tools/gssh.sh "$@"; }                   # stdin passes through
 WSL()  { wsl.exe -d "$TBOUND_WSL_DISTRO" --cd / -e "$@"; }       # one WSL command (cat, tee, sha256sum), direct exec
 HF=<the same Linux path as in WSL>; RR=$HF/rr; OP='sudo -n /opt/tbound/operator/tbound-op'
+SVC='sudo -n setpriv --reuid 995 --regid 986 --clear-groups --bounding-set=-all --inh-caps=-all --ambient-caps=-all --no-new-privs --'      # service uid, as glib.sh:26
+SCR=/var/tmp/tbound-rr                                         # guest scratch of this section (the glib.sh:21 default is an old one)
 ```
 
 `$RR` is a new directory (rule 4). `$HF/pilot` holds the round's engineering files and is the rollback source for RA-5 to RA-10.
@@ -1259,12 +1261,15 @@ The service reads the key again for each request (`route.go:314-316`), so a new 
 Run genesis once, as the service uid (`supervisor/cmd/tbound-profile/main_linux.go:81-87`). It refuses an unfrozen profile, an invalid configuration and an existing ledger. It prints one JSON line with `records`, `head_sha256` and `profile_digest` (`research_genesis_linux.go:42-63`). The service never creates a ledger, so a deleted one is refused, not reset (`route.go:169-174`).
 
 ```
-GSSH 'cd / && SVC /usr/local/bin/tbound-profile research-ledger-genesis' | WSL tee $RR/genesis.json      # records 1
+GSSH "cd / && $SVC /usr/local/bin/tbound-profile research-ledger-genesis" | WSL tee $RR/genesis.json      # records 1
 # WSL
 python3 -I -c 'import json,sys; g=json.load(open(sys.argv[1])); open(sys.argv[2],"x").write(json.dumps({"records":g["records"],"head_sha256":g["head_sha256"]})+"\n")' $RR/genesis.json $RR/checkpoint-1.json
 # Git Bash
 WSL cat $RR/checkpoint-1.json | GSSH 'sudo -n install -o root -g root -m 0644 /dev/stdin /etc/tbound/provider/research-ledger-checkpoint.json'
+GSSH 'sudo -n cat /etc/tbound/provider/research-ledger-checkpoint.json' | WSL cmp - $RR/checkpoint-1.json      # [READ-ONLY] no output
 ```
+
+Genesis refuses a second run. If it succeeded but its output was lost (`genesis.json` empty or missing), do not run it again: copy the ledger out and rebuild `records` and `head_sha256` from it with the RA-12 recipe (`wc -l`, and the hash of the last record), then write `checkpoint-1.json` from them.
 
 The owner keeps `genesis.json` (records, head, `profile_digest`) and `checkpoint-1.json` off the guest. Rollback: before the first reserved request (RA-11), `sudo -n rm` the ledger and the checkpoint; after it, none.
 
@@ -1287,21 +1292,34 @@ Rollback: reinstall `$HF/pilot/serve-pi-service.json` the same way.
 
 ### RA-6 [PRIVILEGED WRITE, needs owner approval] measure the registration (R2-1 to R2-3, RG-3)
 
-Run R2-1 verbatim. Run R2-2 with `SCR=/var/tmp/tbound-rr`, created first with `GSSH 'sudo -n install -d -o root -g root -m 0700 /var/tmp/tbound-rr'`. Run R2-3's `rmdir`, then fetch:
+Run R2-1 verbatim. Run R2-2 with the preamble's `SCR=/var/tmp/tbound-rr`, created first with `GSSH "sudo -n install -d -o root -g root -m 0700 $SCR"`. Run R2-3's `rmdir`, then fetch:
 
 ```
-GSSH 'sudo -n cat /var/tmp/tbound-rr/managed-live-root.unsigned.json' | WSL tee $RR/managed-live-root.unsigned.json > /dev/null      # [READ-ONLY]
+GSSH "sudo -n cat $SCR/managed-live-root.unsigned.json" | WSL tee $RR/managed-live-root.unsigned.json > /dev/null      # [READ-ONLY]
+GSSH 'cd /etc && sha256sum passwd group nsswitch.conf' | WSL tee $RR/account-files.sha256 > /dev/null      # [READ-ONLY]
 ```
 
-[READ-ONLY] Then do the checks that `reg-measure` does (`tbound-op:504-508`). `runner_digest` must equal `$HF/TBOUND_DIGEST`, `service_uid` must be 995, and `service_config_digest` must be the sha256 of `$RR/serve-pi-service.json`. Then run the RG-3 calibration comparison on `$RR/managed-live-root.unsigned.json` and stop on `STOP`. Rollback: R2-3.
-
-### RA-7 [OWNER SIGN, needs owner approval] S3 (R2-4) into `$RR`
+[READ-ONLY] Then, in WSL, do the checks that `reg-measure` does (`tbound-op:504-508`) and the RG-3 calibration comparison on `$RR/managed-live-root.unsigned.json`, with `CAL_RW_DIGEST` set as in RG-3 (R1-7). Stop on `STOP` before S3.
 
 ```
 # WSL
-$TBP managed-root-sign --registration $RR/managed-live-root.unsigned.json --key <ADMIN_KEY_PATH> --out-sig $RR/managed-live-root.ed25519 --out-registration $RR/managed-live-root.json
-$TBP managed-root-verify --registration $RR/managed-live-root.json --sig $RR/managed-live-root.ed25519 --pub <ADMIN_PUB_PATH> --runner-digest $(cat $HF/TBOUND_DIGEST) | tee $RR/s3-verify.out      # [READ-ONLY]
-REG=$(sed -n 's/.*digest \(sha256:[0-9a-f]\{64\}\),.*/\1/p' $RR/s3-verify.out | head -1)
+CAL_RW_DIGEST=<Digest of R1-7>
+J() { python3 -I $WGA/jget.py $RR/managed-live-root.unsigned.json "$1"; }
+[ -n "$CAL_RW_DIGEST" ] && [ "$(J managed_root_xattr_calibration_digest)" = "$CAL_RW_DIGEST" ] &&
+[ "$(J runner_digest)" = "$(cat $HF/TBOUND_DIGEST)" ] && [ "$(J service_uid)" = 995 ] && [ "$(J service_gid)" = 986 ] &&
+[ "$(J service_config_digest)" = "sha256:$(sha256sum < $RR/serve-pi-service.json | cut -c1-64)" ] &&
+[ "$(J passwd_digest) $(J group_digest) $(J nsswitch_digest)" = "$(awk '{print "sha256:" $1}' $RR/account-files.sha256 | paste -sd ' ')" ] && echo REG-OK || echo STOP
+```
+
+Rollback: R2-3.
+
+### RA-7 [OWNER SIGN, needs owner approval] S3 (R2-4) into `$RR`
+
+`sign-run.sh rr s3` signs with `$H/admin.key` (by path), verifies with `--runner-digest` `$HF/TBOUND_DIGEST`, checks the registration digest and the runner, and records `$RR/REGDIGEST`.
+
+```
+# WSL
+bash $WGA/sign-run.sh rr s3 $RR/managed-live-root.unsigned.json      # prints REGDIGEST-rr=sha256:...
 ```
 
 ### RA-8 [PRIVILEGED WRITE, needs owner approval] install the registration (R2-5)
@@ -1315,23 +1333,14 @@ Rollback: reinstall the two files of `$HF/pilot`.
 
 ### RA-9 [OWNER SIGN, needs owner approval] S4 (RG-6) with the research route
 
-Build the template as `sign-run.sh s4` does: the base template with `managed_live_root_registration_digest` set to `REG`. The profile pins the research route through the frozen file of RA-2 (`supervisor/cmd/tbound-profile/main_linux.go:266-272`, `corpus_pins_linux.go:177-186`).
+`sign-run.sh rr s4` builds `$RR/d09-cell.json` from the base template with `managed_live_root_registration_digest` = `$RR/REGDIGEST`, checks that its base template digest equals `$HF/BASE_TD` and that TD differs from it, recomputes the cgroup root digest against `$HF/CGROUP_ROOT_DIGEST`, and signs the host profile `pi-host-profile-rr-<F>` with `--provider-route research --research-profile $RR/research-profile.json`, the frozen file of RA-2 (`supervisor/cmd/tbound-profile/main_linux.go:266-272`, `corpus_pins_linux.go:177-186`). It verifies the signed profile, checks that it contains TD, and records `$RR/TD` and `$RR/PROFILE_DIGEST`.
 
 ```
 # WSL
-python3 -I -c 'import json,sys; t=json.load(open(sys.argv[1])); t["managed_live_root_registration_digest"]=sys.argv[3]; json.dump(t,open(sys.argv[2],"x"),separators=(",",":"))' $HF/d09-cell.base.json $RR/d09-cell.json "$REG"
-$TBP template-digest --template $RR/d09-cell.json | tee $RR/td.out      # [READ-ONLY] the base template digest line must equal $HF/BASE_TD, else stop
-TD=$(sed -n 's/^D09 cell template canonical digest: \(sha256:[0-9a-f]\{64\}\)$/\1/p' $RR/td.out)
-$TBP init --out $RR/pi-host-profile.json --id pi-host-profile-research-${F:0:12} \
-  --node-digest $(cat $HF/NODE_DIGEST) --runtime-bundle-digest $(cat $HF/BUNDLE_DIGEST) --template-digest $TD \
-  --cgroup-root-digest $(cat $HF/CGROUP_ROOT_DIGEST) --source-digest $(cat $HF/SRC_DIGEST) --cosign $COSIGN --cosign-pub $H/cosign.pub \
-  --provider-route research --research-profile $RR/research-profile.json
-$TBP sign --profile $RR/pi-host-profile.json --key <ADMIN_KEY_PATH> --out-sig $RR/pi-host-profile.ed25519 --out-pub $RR/pi-host-profile.pub --out-profile $RR/pi-host-profile.signed.json
-cmp $RR/pi-host-profile.pub <ADMIN_PUB_PATH>      # [READ-ONLY]
-$TBP verify --profile $RR/pi-host-profile.signed.json --sig $RR/pi-host-profile.ed25519 --pub <ADMIN_PUB_PATH> --runtime-bundle-digest $(cat $HF/BUNDLE_DIGEST)      # [READ-ONLY] prints the profile Digest
+bash $WGA/sign-run.sh rr s4      # prints NAME=rr REG=... TD(installed template)=... PROFILE=...
 ```
 
-The round's `run.json` takes the new profile `Digest` as `pins.profile_hash` and `TD` as `pins.containment_profile_digest`. The other pins stay. The manifest's `pins.model_digest` stays the engineering pin: only `corpus-pins --manifest` compares it, never the service or the runner.
+The round's `run.json` takes `$RR/PROFILE_DIGEST` as `pins.profile_hash` and `$RR/TD` as `pins.containment_profile_digest`. The other pins stay. The manifest's `pins.model_digest` stays the engineering pin: only `corpus-pins --manifest` compares it, never the service or the runner.
 
 ### RA-10 [PRIVILEGED WRITE, needs owner approval] install profile and template (R5-3), verify (R5-4)
 
@@ -1354,7 +1363,7 @@ GSSH "$OP diag l2"                                                     # [READ-O
 KIT_FREEZE=F31 bash infra/freeze/guest/00-session-sudo.sh close
 ```
 
-Run the round's plan (Pilot run, with the RA-9 pins in a new `run_dir`). First the check, which spends nothing: `trial reset <case> --check` refuses on the USD stop rule, a pending workflow or a leftover cell (`supervisor/cmd/tbound/trial_linux.go:384-401`). Then one step at a time (`supervisor/cmd/tbound-run/commands.go:52-70`):
+Run the round's plan (Pilot run, with the RA-9 pins in a new `run_dir`). First the check, which spends nothing: `trial reset <case> --check` refuses on the USD stop rule (`supervisor/cmd/tbound/trial_linux.go:383-401`), a pending workflow (`:403-470`) or a leftover cell (`trial_host_linux.go:309`). Then one step at a time (`supervisor/cmd/tbound-run/commands.go:52-70`):
 
 ```
 GSSH_IDENTITY=<trial key> GSSH_USER=root sh infra/freeze/tools/gssh.sh '/usr/local/bin/tbound trial reset <first case of the plan> --check' < /dev/null      # [READ-ONLY]
@@ -1363,19 +1372,20 @@ tbound-run run --config run.json --max-steps 1      # one step; inspect the jour
 
 The first `run` reserves the first request in the ledger. From then on RA-4 has no rollback. Recovery is manual, because `infra/freeze/tools/recover.sh` starts the service with `tbound-op svc start` (`recover.sh:150`), which refuses this config. On an UNKNOWN request: `GSSH "$OP abandon <rid>"` (preview), and `--confirm <token>` only when every fact is clean. The verb starts the socket again, and the socket starts the service at the next request. Then do the leftover-container check and continue with `tbound-run run` or `rerun` (Pilot run).
 
-### RA-12 (RR-3a) [PRIVILEGED WRITE, needs owner approval] advance the checkpoint; ledger for a report
+### RA-12 (RR-3a) [PRIVILEGED WRITE, needs owner approval] advance the checkpoint
 
-After the round, and before any later research round on this guest: `GSSH "$OP svc stop"`, open session sudo (RA-1), copy the ledger out, and compute in WSL. `CK_N` and `CK_HEAD` are the records and head of the checkpoint in force.
+After the round, and before any later research round on this guest: `GSSH "$OP svc stop"`, open session sudo (RA-1), copy the ledger out, and compute in WSL. `<k>` is the checkpoint in force (`1` after RA-4). `set -C` refuses to overwrite a checkpoint file, as the `x` mode of RA-4 does.
 
 ```
 GSSH 'sudo -n cat /var/lib/tbound/sessions/usd-ledger' | WSL tee $RR/usd-ledger.<round> > /dev/null
 # WSL
-L=$RR/usd-ledger.<round>
-[ "$(sed -n "${CK_N}p" $L | head -c -1 | sha256sum | cut -c1-64)" = "$CK_HEAD" ] && echo CONTINUOUS || echo STOP
-printf '{"records": %s, "head_sha256": "%s"}\n' $(wc -l < $L) $(tail -n 1 $L | head -c -1 | sha256sum | cut -c1-64) > $RR/checkpoint-<n+1>.json
+set -C; L=$RR/usd-ledger.<round>; CK=$RR/checkpoint-<k>.json
+CK_N=$(python3 -I $WGA/jget.py $CK records); CK_HEAD=$(python3 -I $WGA/jget.py $CK head_sha256)
+[ "$(sed -n "${CK_N}p" $L | head -c -1 | sha256sum | cut -c1-64)" = "$CK_HEAD" ] || { echo STOP; false; } &&
+printf '{"records": %s, "head_sha256": "%s"}\n' $(wc -l < $L) $(tail -n 1 $L | head -c -1 | sha256sum | cut -c1-64) > $RR/checkpoint-<k+1>.json
 ```
 
-On `STOP`, stop: the ledger was rolled back or edited. Install the new checkpoint as in RA-4, then close session sudo. Keep the new checkpoint and the ledger copy off the guest. For a report, bind a host copy of the ledger in `run.json`'s `ledger` object: `path`, `ledger_id`, `cap_micro_usd`, `min_per_unit_worst_case_micro_usd` from `research-ledger.json`, `checkpoint` = the checkpoint in force before the round, and `final` = the new one (`supervisor/cmd/tbound-run/ledgersetting.go:21-31`). `tbound-run report` verifies the file against both (`commands.go:238-262`).
+On `STOP`, stop: the ledger was rolled back or edited, and no new checkpoint is written. Otherwise install `checkpoint-<k+1>.json` and read it back as in RA-4, then close session sudo. Keep the new checkpoint and the ledger copy off the guest. The proving round's report is the pilot report with `ledger: "synthetic-empty"` (Pilot run), non-claim-bearing, so its `run.json` binds no ledger.
 
 ### RA-13 [READ-ONLY, then PRIVILEGED WRITE] back to the engineering route
 
