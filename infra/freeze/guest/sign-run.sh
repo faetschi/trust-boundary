@@ -1,9 +1,10 @@
 #!/bin/bash
 # [OWNER SIGN, WSL] registration and host-profile signatures of the route-probe (rp), direct-runtime probe (dr) and pilot RG cycles at $FREEZE,
+# and of the research route (rr, runbook RA-7 and RA-9: the profile pins --provider-route research with the frozen $HF/rr/research-profile.json of RA-2),
 # into the NEW directory $HF/<NAME> (rule 4: never overwritten, no --force). Same as sign-g1.sh, with NAME and the dr two-template rule.
-#   bash sign-run.sh <rp|dr|pilot> s3 <unsigned-registration.json>   S3r / S3d / S3': managed-root-sign with $H/admin.key (by path), verify with
+#   bash sign-run.sh <rp|dr|pilot|rr> s3 <unsigned-registration.json>   S3r / S3d / S3': managed-root-sign with $H/admin.key (by path), verify with
 #                                                                  --runner-digest TBOUND_DIGEST, records REGDIGEST and the registration files.
-#   bash sign-run.sh <rp|dr|pilot> s4                                 S4r / S4d / S4': builds the template(s) from the base template ($HF/d09-cell.base.json)
+#   bash sign-run.sh <rp|dr|pilot|rr> s4                                 S4r / S4d / S4': builds the template(s) from the base template ($HF/d09-cell.base.json)
 #        with managed_live_root_registration_digest = REGDIGEST. rp and pilot: $O/d09-cell.json is the installed template.
 #        dr (RG-6): $O/d09-cell.json is the PRODUCTION template, $O/d09-cell.route-probe.json = the same plus the route_probe member
 #        {"name":"direct-runtime/v1","target":"/home/node/.profile","control":"/var/lib/tbound/pi-worker/src/release.txt"}; the profile pins the PROBE template's TD.
@@ -20,7 +21,7 @@ case "$-" in *x*) echo "FATAL: refusing to run under xtrace" >&2; exit 1;; esac
 [ "$HF" = "$H/$FREEZE_LC" ] || { echo "HF ($HF) is not \$H/$FREEZE_LC: refusing (never sign into an earlier freeze directory)" >&2; exit 2; }
 NAME=${1:-}
 MODE=${2:-}
-case "$NAME" in rp|dr|pilot) ;; *) echo "usage: sign-run.sh <rp|dr|pilot> s3 <unsigned registration> | <rp|dr|pilot> s4" >&2; exit 2;; esac
+case "$NAME" in rp|dr|pilot|rr) ;; *) echo "usage: sign-run.sh <rp|dr|pilot|rr> s3 <unsigned registration> | <rp|dr|pilot|rr> s4" >&2; exit 2;; esac
 O=$HF/$NAME
 need() { [ -f "$1" ] || { echo "missing $1" >&2; exit 2; }; }
 
@@ -52,7 +53,7 @@ s4)
   python3 -I - "$NAME" "$HF/d09-cell.base.json" "$O" "$REG" <<'PY'
 import json, re, sys
 name, src, outdir, reg = sys.argv[1:5]
-assert name in ("rp", "dr", "pilot")
+assert name in ("rp", "dr", "pilot", "rr")
 assert re.fullmatch(r"sha256:[0-9a-f]{64}", reg)
 t = json.load(open(src))
 assert "managed_live_root_registration_digest" in t
@@ -84,12 +85,14 @@ PY
     tdparse "$O/td.out"
     TPL=$O/d09-cell.json
   fi
+  ROUTE=(--provider-route engineering)
+  [ "$NAME" != rr ] || { need "$O/research-profile.json"; ROUTE=(--provider-route research --research-profile "$O/research-profile.json"); }
   CGR=$("$TBP" cgroup-root-digest --uid 995 --cgroups-path /system.slice/tbound-pi.service/cells | grep -o 'sha256:[0-9a-f]\{64\}' | head -1)
   [ "$CGR" = "$(cat "$HF/CGROUP_ROOT_DIGEST")" ] || { echo "cgroup root digest changed: $CGR" >&2; exit 3; }
   "$TBP" init --out "$O/pi-host-profile.unsigned.json" --id "pi-host-profile-$NAME-${F:0:12}" \
     --node-digest "$(cat "$HF/NODE_DIGEST")" \
     --runtime-bundle-digest "$(cat "$HF/BUNDLE_DIGEST")" --template-digest "$TD" --cgroup-root-digest "$CGR" \
-    --source-digest "$(cat "$HF/SRC_DIGEST")" --cosign "$COSIGN" --cosign-pub "$H/cosign.pub" --provider-route engineering
+    --source-digest "$(cat "$HF/SRC_DIGEST")" --cosign "$COSIGN" --cosign-pub "$H/cosign.pub" "${ROUTE[@]}"
   "$TBP" sign --profile "$O/pi-host-profile.unsigned.json" --key "$H/admin.key" --out-sig "$O/pi-host-profile.ed25519" \
     --out-pub "$O/pi-host-profile.pub" --out-profile "$O/pi-host-profile.signed.json" | tee "$O/s4.out"
   cmp "$O/pi-host-profile.pub" "$H/admin.pub"
@@ -108,5 +111,5 @@ PY
     finish_step
   fi
   ;;
-*) echo "usage: sign-run.sh <rp|dr|pilot> s3 <unsigned registration> | <rp|dr|pilot> s4" >&2; exit 2;;
+*) echo "usage: sign-run.sh <rp|dr|pilot|rr> s3 <unsigned registration> | <rp|dr|pilot|rr> s4" >&2; exit 2;;
 esac
