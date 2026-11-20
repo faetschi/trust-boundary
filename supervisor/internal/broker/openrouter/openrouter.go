@@ -171,17 +171,18 @@ const (
 
 // BuildRequestForRoute builds the registered request for one route. The route
 // carries the endpoint and model; the zero route and the engineering route fix
-// the endpoint, model, four Pi proxy tools, streaming, disabled thinking, tool
-// choice, and single-call behavior. Messages must come from trusted broker
+// the endpoint, model, four Pi proxy tools, streaming, tool choice, and
+// single-call behavior, with thinking disabled unless the route is marked for
+// reasoning (reasoningEngineeringTail). Messages must come from trusted broker
 // configuration/history: the runtime sources system/developer text from broker
 // configuration, never Pi IPC. A positive completion cap is included in the exact
 // outbound JSON body as max_completion_tokens and is therefore covered by
-// provider-request digests and workflow token reservations. A research route sends its frozen four Pi proxy tools to its own
-// endpoint and model, followed by the frozen profile members. It omits the
-// OpenCode Go thinking member and parallel_tool_calls: require_parameters would
-// drop its pinned provider, which lacks that parameter, and the capture still
-// refuses a second call. The cap, when positive, is
-// still the host-selected max_completion_tokens.
+// provider-request digests and workflow token reservations. A research route
+// sends its frozen four Pi proxy tools to its own endpoint and model, followed
+// by the frozen profile members. It omits the OpenCode Go thinking member and
+// parallel_tool_calls: require_parameters would drop its pinned provider, which
+// lacks that parameter, and the capture still refuses a second call. The cap,
+// when positive, is still the host-selected max_completion_tokens.
 func BuildRequestForRoute(route Route, messages []Message, completionLimit uint64) (BuiltRequest, error) {
 	return buildRequestForRoute(route, messages, completionLimit, "auto")
 }
