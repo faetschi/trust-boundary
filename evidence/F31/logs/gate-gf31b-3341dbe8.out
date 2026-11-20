@@ -1,0 +1,15 @@
+your 131072x1 screen size is bogus. expect trouble
+583f4e26b8fb5  /home/tbound/tbound-work/gf31.tar
+meta load=0.43 0.95 2.17 start=2026-11-20T19:42:10Z
+    PID ELAPSED COMMAND
+      1      10 /sbin/init
+      2      10 /init
+      7      10 plan9 --control-socket 6 --log-level 4 --server-fd 7 --pipe-fd 9 --log-truncate
+    162       0 /init
+    163       0 /init
+GATE_RC=0 end=2026-11-20T20:06:21Z load=1.05 1.03 1.80
+BOUNDARY_OK
+TEST_RC=0
+boot 4963fbad-94cd-4484-bf39-280d5b7ff566 2026-11-20T20:06:21Z
+tests {'pass': 7811, 'skip': 52} packages {'skip': 4, 'pass': 60}
+exit=0

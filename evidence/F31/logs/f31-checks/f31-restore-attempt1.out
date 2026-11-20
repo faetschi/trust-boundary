@@ -1,0 +1,4 @@
+﻿
+2026-11-20T19:16:59.4380837Z start state=Running mac=00155D0C4002 checkpointType=ProductionOnly
+2026-11-20T19:16:59.7315841Z keep the current F30 state as post-F30-2026-11-20 (makes the restore reversible)
+2026-11-20T19:16:59.7465843Z ERROR: Der Pfad "C:\WINDOWS\system32\post-F30-2026-11-20" kann nicht gefunden werden, da er nicht vorhanden ist.

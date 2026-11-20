@@ -1,0 +1,10 @@
+6767b34181cdabbc723f4827591e2fa70744a194212e59928da583f4e26b8fb5  /home/tbound/tbound-work/gf31.tar
+BLOBS checked=3563 mismatched=0 extra_files=0
+GATE_TOOL kf19 == freeze tree
+meta load=2.91 3.83 2.89 start=2026-11-20T19:11:06Z
+GATE_RC=1 end=2026-11-20T19:40:35Z
+boot 4963fbad-94cd-4484-bf39-280d5b7ff566 2026-11-20T19:40:35Z
+FAIL tbound/supervisor/internal/netoracle TestCollectorArrivalInTheCanaryWindowIsAnEffect
+FAIL tbound/supervisor/internal/procoracle TestCaptureSeesThisProcessThroughTheRealProc
+tests {'pass': 7809, 'skip': 52, 'fail': 2} packages {'skip': 4, 'pass': 58, 'fail': 2}
+exit=0

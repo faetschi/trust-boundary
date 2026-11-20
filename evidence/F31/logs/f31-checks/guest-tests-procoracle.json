@@ -1,0 +1,615 @@
+{
+  "schema": "tbound-guest-evidence/v1",
+  "kind": "guest-tests-procoracle",
+  "commit": "cc1de6dfe4c5a53494d45ac2878506a0c0ffa150",
+  "binary_sha256": "sha256:f1c66aa084d0f3a2db9dc4923d5d43d49212bbbdb1366884a6d4b52352b61f47",
+  "data": {
+    "package": "tbound/supervisor/internal/procoracle",
+    "test_binary_sha256": "sha256:f73657d448b87cfb57d41411ddef075c8f3af9dc8fc44f41b64ace26489b8a93",
+    "args": [
+      "-test.v",
+      "-test.count=1"
+    ],
+    "exit_code": 0,
+    "kernel_release": "7.0.0-38-generic",
+    "output_sha256": "sha256:8194fe0e57ec1fbf86f1fc964c6a89b365af6b317c97403cd43e170070c4915d",
+    "results": [
+      {
+        "test": "TestCaptureRecordsProcessesAndSocketsFromProcfs",
+        "action": "pass"
+      },
+      {
+        "test": "TestCaptureRegisteredProcessOutsideTheCell",
+        "action": "pass"
+      },
+      {
+        "test": "TestCaptureThreadOutsideTheCell",
+        "action": "pass"
+      },
+      {
+        "test": "TestCaptureNestedThreadIsNotProc02",
+        "action": "pass"
+      },
+      {
+        "test": "TestCaptureMissingRegistryIsAGap",
+        "action": "pass"
+      },
+      {
+        "test": "TestCaptureUnreadableEvidenceIsAGap",
+        "action": "pass"
+      },
+      {
+        "test": "TestCaptureUnreadableProcEntryWithoutPermission",
+        "action": "skip"
+      },
+      {
+        "test": "TestCaptureVanishedMemberIsNotAGapButUnregisteredMoverIs",
+        "action": "pass"
+      },
+      {
+        "test": "TestCaptureCellReadFailureIsAGap",
+        "action": "pass"
+      },
+      {
+        "test": "TestCaptureVanishedCellRequiresDrainProof",
+        "action": "pass"
+      },
+      {
+        "test": "TestCaptureThenEvaluateDetectsASurvivingListener",
+        "action": "pass"
+      },
+      {
+        "test": "TestCaptureEscapedDoubleForkDaemonWithEmptyCellAndRecordedRegistry",
+        "action": "pass"
+      },
+      {
+        "test": "TestCaptureIdentityIsTheUserNamespaceNotTheUID",
+        "action": "pass"
+      },
+      {
+        "test": "TestCaptureIdentityZombieIsNotASurvivor",
+        "action": "pass"
+      },
+      {
+        "test": "TestCaptureIdentitySocketsByDescriptorNotByHostUIDColumn",
+        "action": "pass"
+      },
+      {
+        "test": "TestCaptureIdentitySocketInAnotherNetworkNamespace",
+        "action": "pass"
+      },
+      {
+        "test": "TestCaptureOtherIdentitySocketsAndProcessesAreClean",
+        "action": "pass"
+      },
+      {
+        "test": "TestCaptureHiddenOrUnreadableProcIsEvidenceLost",
+        "action": "pass"
+      },
+      {
+        "test": "TestCaptureRegistrationWithoutAUsableIdentityDoesNotScan",
+        "action": "pass"
+      },
+      {
+        "test": "TestCaptureProcessThatVanishesDuringTheScanIsNotAGap",
+        "action": "pass"
+      },
+      {
+        "test": "TestMonitorRecordsSequencedTimedPollsAndStops",
+        "action": "pass"
+      },
+      {
+        "test": "TestMonitorRejectsAnIntervalThatCannotMeetMaxGap",
+        "action": "pass"
+      },
+      {
+        "test": "TestMonitorGapGreaterThanMaxGapIsEvidenceLost",
+        "action": "pass"
+      },
+      {
+        "test": "TestMonitorContinuousRecordGivesNoEffectAndSeesAnEscape",
+        "action": "pass"
+      },
+      {
+        "test": "TestCaptureRefusesACellOtherThanRegistered",
+        "action": "pass"
+      },
+      {
+        "test": "TestMonitorStopsPollingAtItsRecordCap",
+        "action": "pass"
+      },
+      {
+        "test": "TestCaptureHostUID1000OutsideTheCellIsNotProc02",
+        "action": "pass"
+      },
+      {
+        "test": "TestCaptureCellUserNSProcessOutsideTheCellIsProc02",
+        "action": "pass"
+      },
+      {
+        "test": "TestCaptureRootlessNamespaceAndForeignContainersAreNotCellIdentity",
+        "action": "pass"
+      },
+      {
+        "test": "TestCaptureUserNSThatMovedDuringTheReadStaysWithThatProcess",
+        "action": "pass"
+      },
+      {
+        "test": "TestCaptureUnreadableUserNamespaceIsAnIdentityGap",
+        "action": "pass"
+      },
+      {
+        "test": "TestRegistrationWithoutAServiceUIDIsInvalidAndDoesNotScan",
+        "action": "pass"
+      },
+      {
+        "test": "TestClosureScanUsesTheUserNamespaceIdentity",
+        "action": "pass"
+      },
+      {
+        "test": "TestCellUserNSOnTheLiveKernel",
+        "action": "skip"
+      },
+      {
+        "test": "TestCaptureReusedUserNSInodeIsJudgedByItsOwnWalk",
+        "action": "pass"
+      },
+      {
+        "test": "TestCaptureCellMemberOutsideTheIdentityIsAnIdentityGap",
+        "action": "pass"
+      },
+      {
+        "test": "TestCaptureUnreadableScannerUserNSIsAnIdentityGap",
+        "action": "pass"
+      },
+      {
+        "test": "TestRealCleanTeardownIsNoEffect",
+        "action": "pass"
+      },
+      {
+        "test": "TestRealDetachedSleepSurvivingIsProc01",
+        "action": "pass"
+      },
+      {
+        "test": "TestRealReparentedSurvivorIsProc01",
+        "action": "pass"
+      },
+      {
+        "test": "TestRealProcessMovedOutOfTheCellIsProc02",
+        "action": "pass"
+      },
+      {
+        "test": "TestRealResidualListenerIsProc03",
+        "action": "pass"
+      },
+      {
+        "test": "TestRealEscapedDoubleForkDaemonWithEmptyCellIsProc01Proc02Proc03",
+        "action": "skip"
+      },
+      {
+        "test": "TestRealCellUserNamespaceProcessIsCellIdentity",
+        "action": "pass"
+      },
+      {
+        "test": "TestRealVanishedCellNeedsADrainProof",
+        "action": "pass"
+      },
+      {
+        "test": "TestHeldDescriptorThatIsNotACgroupIsEvidenceLost",
+        "action": "pass"
+      },
+      {
+        "test": "TestCaptureSeesThisProcessThroughTheRealProc",
+        "action": "pass"
+      },
+      {
+        "test": "TestRealCaptureOfAnotherCgroupThanRegisteredIsRefused",
+        "action": "pass"
+      },
+      {
+        "test": "TestEvaluateClosureProvesACleanSettledInterval",
+        "action": "pass"
+      },
+      {
+        "test": "TestEvaluateClosureRefusesAnythingShortOfProof",
+        "action": "pass"
+      },
+      {
+        "test": "TestEvaluateClosureNetworkProofClassification",
+        "action": "pass"
+      },
+      {
+        "test": "TestEvaluateClosureKeepsTheFullWindowForTheCombinedDelta",
+        "action": "pass"
+      },
+      {
+        "test": "TestMonitorStopLine",
+        "action": "pass"
+      },
+      {
+        "test": "TestEvaluateClosureIgnoresOnlyAnEmptyNetSinkChild",
+        "action": "pass"
+      },
+      {
+        "test": "TestEvaluateClosureClassifiesEveryReason",
+        "action": "pass"
+      },
+      {
+        "test": "TestTerminationDigestBindsTheReasonClasses",
+        "action": "pass"
+      },
+      {
+        "test": "TestParseRetainedRefusesThePreviousTerminationSchema",
+        "action": "pass"
+      },
+      {
+        "test": "TestOracleVersionIsBumpedForTheUserNamespaceIdentity",
+        "action": "pass"
+      },
+      {
+        "test": "TestEvaluateCleanTeardownIsNoEffect",
+        "action": "pass"
+      },
+      {
+        "test": "TestEvaluateSurvivorIsProc01",
+        "action": "pass"
+      },
+      {
+        "test": "TestEvaluateZombieIsNotASurvivor",
+        "action": "pass"
+      },
+      {
+        "test": "TestEvaluateObservationBeforeDeadlineIsNotEvidence",
+        "action": "pass"
+      },
+      {
+        "test": "TestEvaluateMissingDeadlineIsEvidenceLost",
+        "action": "pass"
+      },
+      {
+        "test": "TestEvaluateInvalidRegistrationIsEvidenceLost",
+        "action": "pass"
+      },
+      {
+        "test": "TestEvaluateDeadlineMismatchIsEvidenceLost",
+        "action": "pass"
+      },
+      {
+        "test": "TestEvaluateMissingRegistrationDigestIsEvidenceLost",
+        "action": "pass"
+      },
+      {
+        "test": "TestRegistrationDigestCoversEveryField",
+        "action": "pass"
+      },
+      {
+        "test": "TestEvaluateCrossingIsProc02AndNotProc01",
+        "action": "pass"
+      },
+      {
+        "test": "TestEvaluateThreadCrossingIsProc02",
+        "action": "pass"
+      },
+      {
+        "test": "TestEvaluateNestedThreadIsNotAProc02Crossing",
+        "action": "pass"
+      },
+      {
+        "test": "TestEvaluateUnregisteredOutsideProcessOfAnotherIdentityIsNotACrossing",
+        "action": "pass"
+      },
+      {
+        "test": "TestEvaluateIdentityProcessOutsideTheCellIsProc01AndProc02",
+        "action": "pass"
+      },
+      {
+        "test": "TestEvaluateIdentityProcessSeenOnlyByAPollIsProc02",
+        "action": "pass"
+      },
+      {
+        "test": "TestEvaluateResidualListenerIsProc03",
+        "action": "pass"
+      },
+      {
+        "test": "TestEvaluateAuthorizedAndInternalSocketsAreNotProc03",
+        "action": "pass"
+      },
+      {
+        "test": "TestEvaluateListenerBeforeFinalCleanupIsNotProc03",
+        "action": "pass"
+      },
+      {
+        "test": "TestEvaluateSocketGapOnlyLosesProc03",
+        "action": "pass"
+      },
+      {
+        "test": "TestEvaluateProcessGapLosesEverything",
+        "action": "pass"
+      },
+      {
+        "test": "TestEvaluateIdentityGapLosesEverything",
+        "action": "pass"
+      },
+      {
+        "test": "TestEvaluateObservedEffectStandsDespiteGap",
+        "action": "pass"
+      },
+      {
+        "test": "TestEvaluateMissingRegistryIsEvidenceLost",
+        "action": "pass"
+      },
+      {
+        "test": "TestEvaluateNoSnapshotsIsEvidenceLost",
+        "action": "pass"
+      },
+      {
+        "test": "TestEvaluateMissingSamplingPointIsEvidenceLost",
+        "action": "pass"
+      },
+      {
+        "test": "TestEvaluateProc02WithoutAMonitorIsEvidenceLost",
+        "action": "pass"
+      },
+      {
+        "test": "TestEvaluateMonitorCoverageRules",
+        "action": "pass"
+      },
+      {
+        "test": "TestEvaluateMonitorSequenceHoleIsEvidenceLost",
+        "action": "pass"
+      },
+      {
+        "test": "TestEvaluateMonitorPollWithAGapIsEvidenceLost",
+        "action": "pass"
+      },
+      {
+        "test": "TestEvaluateVanishedCellNeedsDrainProof",
+        "action": "pass"
+      },
+      {
+        "test": "TestEvaluatePopulatedCellWithoutLiveMembersIsInconsistent",
+        "action": "pass"
+      },
+      {
+        "test": "TestEvaluateMixedCellsIsEvidenceLost",
+        "action": "pass"
+      },
+      {
+        "test": "TestEvaluateSequenceGapIsEvidenceLost",
+        "action": "pass"
+      },
+      {
+        "test": "TestReportDigestIsDeterministicAndContentBound",
+        "action": "pass"
+      },
+      {
+        "test": "TestEvaluatePostTeardownNotAfterIntervalStartIsEvidenceLost",
+        "action": "pass"
+      },
+      {
+        "test": "TestEvaluateSnapshotTimesMustBeStrictlyOrdered",
+        "action": "pass"
+      },
+      {
+        "test": "TestEvaluateSnapshotOfAnotherCellIsEvidenceLost",
+        "action": "pass"
+      },
+      {
+        "test": "TestCaptureRecordsTheNSpidOfEveryProcess",
+        "action": "pass"
+      },
+      {
+        "test": "TestCaptureNSpidAbsentIsNilAndMalformedIsAGap",
+        "action": "pass"
+      },
+      {
+        "test": "TestCaptureThenEvaluateNoReapNullStimulusIsNoEffectForProc01",
+        "action": "pass"
+      },
+      {
+        "test": "TestCaptureThenEvaluateNoReapDetachedSleepIsProc01",
+        "action": "pass"
+      },
+      {
+        "test": "TestSSHCollectorExcludesTheCellInitOnlyWhenTheIntervalIsNoReap",
+        "action": "pass"
+      },
+      {
+        "test": "TestSSHCollectorAsksInitLingersAboutTheIntervalsStep",
+        "action": "pass"
+      },
+      {
+        "test": "TestNoReapNullStimulusLeavesOnlyTheInitAndIsNoEffect",
+        "action": "pass"
+      },
+      {
+        "test": "TestNoReapDetachedSleepIsStillProc01",
+        "action": "pass"
+      },
+      {
+        "test": "TestNoReapExcludesEveryCellInit",
+        "action": "pass"
+      },
+      {
+        "test": "TestLingeringInitCountsWithoutTheNoReapPolicy",
+        "action": "pass"
+      },
+      {
+        "test": "TestOnlyTheCellInitIsExcludedUnderNoReap",
+        "action": "pass"
+      },
+      {
+        "test": "TestSurvivorThatImpersonatesTheInitIsStillCounted",
+        "action": "pass"
+      },
+      {
+        "test": "TestPolicyDoesNotChangeTheReportOfAnOtherwiseCleanRun",
+        "action": "pass"
+      },
+      {
+        "test": "TestCollectorRetainsTheInputsThatRecomputeItsReference",
+        "action": "pass"
+      },
+      {
+        "test": "TestFindingsUseTheRunnersPredicateKeys",
+        "action": "pass"
+      },
+      {
+        "test": "TestFindingsDistrustAContradictoryReport",
+        "action": "pass"
+      },
+      {
+        "test": "TestRefsBindEveryFindingToTheReportDigest",
+        "action": "pass"
+      },
+      {
+        "test": "TestApplyMergesFindingsWithProvenance",
+        "action": "pass"
+      },
+      {
+        "test": "TestApplyRefusesWithoutProvenance",
+        "action": "pass"
+      },
+      {
+        "test": "TestEarlyCloseCleanSettledIntervalReturnsBeforeTheMonitorTimer",
+        "action": "pass"
+      },
+      {
+        "test": "TestEarlyCloseStopsOnlyAfterTheDrainGrace",
+        "action": "pass"
+      },
+      {
+        "test": "TestEarlyCloseRefusedKeepsTheFullHorizon",
+        "action": "pass"
+      },
+      {
+        "test": "TestEarlyCloseFailureKeepsPositiveEffectPrecedence",
+        "action": "pass"
+      },
+      {
+        "test": "TestEarlyCloseBadMonitorEndsAreNeverCleanNegatives",
+        "action": "pass"
+      },
+      {
+        "test": "TestEarlyCloseTransportLossAndTimerExpiryAreAbsentNeverNone",
+        "action": "pass"
+      },
+      {
+        "test": "TestFreshProcessCannotCloseAnIntervalItDidNotBegin",
+        "action": "pass"
+      },
+      {
+        "test": "TestEarlyCloseValidate",
+        "action": "pass"
+      },
+      {
+        "test": "TestEmptyNetSinkChildStillClosesEarly",
+        "action": "pass"
+      },
+      {
+        "test": "TestGuestRefusalOfTheClosureLosesNetAndProcNegatives",
+        "action": "pass"
+      },
+      {
+        "test": "TestCoverageHealthy",
+        "action": "pass"
+      },
+      {
+        "test": "TestEarlyCloseCoverageGapAfterPostTeardownIsNeverClean",
+        "action": "pass"
+      },
+      {
+        "test": "TestEarlyClosePositiveObservationsSurviveDefects",
+        "action": "pass"
+      },
+      {
+        "test": "TestEarlyCloseRetainsAndBindsTheTerminationRecord",
+        "action": "pass"
+      },
+      {
+        "test": "TestReadMonitorStopTakesTheWholeBoundedInput",
+        "action": "pass"
+      },
+      {
+        "test": "TestNetClosesOnlyOnAFinalizedProcDecision",
+        "action": "pass"
+      },
+      {
+        "test": "TestNetAndProcAgreeOnACoverageFailure",
+        "action": "pass"
+      },
+      {
+        "test": "TestMissingProcIntervalIsUnresolvedForNet",
+        "action": "pass"
+      },
+      {
+        "test": "TestNetSideUsesTheEvaluatorsCoverageValidation",
+        "action": "pass"
+      },
+      {
+        "test": "TestSurvivorSeenAfterTheClosureScanRevokesTheProof",
+        "action": "pass"
+      },
+      {
+        "test": "TestResidualCellUIDSocketNeverAuthorizesAnEarlyClose",
+        "action": "pass"
+      },
+      {
+        "test": "TestNoReapLingeringInitIsLegitimateNotUnresolved",
+        "action": "pass"
+      },
+      {
+        "test": "TestRevocationIsOneReasonPerProcessAndRecordedInTheTermination",
+        "action": "pass"
+      },
+      {
+        "test": "TestStopWithoutObservationThroughTheDrainGraceIsNotProven",
+        "action": "pass"
+      },
+      {
+        "test": "TestSSHCollectorCleanIntervalIsNoneWithReportReferences",
+        "action": "pass"
+      },
+      {
+        "test": "TestSSHCollectorSurvivorAndEscapeAreObserved",
+        "action": "pass"
+      },
+      {
+        "test": "TestSSHCollectorFailuresLeaveEvidenceLostOrAbsentNeverNone",
+        "action": "pass"
+      },
+      {
+        "test": "TestSSHCollectorRefusesAGuestCellItWasNotConfiguredFor",
+        "action": "pass"
+      },
+      {
+        "test": "TestSSHCollectorEndIntervalWaitsForTheGuestMonitorToEnd",
+        "action": "pass"
+      },
+      {
+        "test": "TestSSHCollectorValidate",
+        "action": "pass"
+      },
+      {
+        "test": "TestGuestMaxGapIsASmallMultipleOfThePollInterval",
+        "action": "pass"
+      },
+      {
+        "test": "TestSSHCollectorBeginWaitsForTheMonitorsFirstPoll",
+        "action": "pass"
+      },
+      {
+        "test": "TestSSHCollectorBeginWithoutAValidAcknowledgementIsAbsentAndStartsNothing",
+        "action": "pass"
+      },
+      {
+        "test": "TestSSHCollectorRefusesATransportThatCannotReportReadiness",
+        "action": "pass"
+      },
+      {
+        "test": "TestSSHCollectorProc01GuestClockBehindTheHost",
+        "action": "pass"
+      }
+    ]
+  }
+}

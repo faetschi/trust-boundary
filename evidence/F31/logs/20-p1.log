@@ -1,0 +1,50 @@
+== 20-p1 start 2026-11-20T20:10:37Z as tbound freeze=F31
+go version go1.27.1 linux/amd64
+go: downloading golang.org/x/sys v0.48.0
+go: downloading modernc.org/sqlite v1.60.1
+go: downloading github.com/gowebpki/jcs v1.0.1
+go: downloading modernc.org/libc v1.77.1
+go: downloading modernc.org/memory v1.12.1
+go: downloading github.com/google/uuid v1.6.0
+go: downloading modernc.org/mathutil v1.7.1
+go: downloading github.com/dustin/go-humanize v1.0.1
+go: downloading github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec
+== pass 1
+sha256:ec693482ec587b5472451554652fc70161ac9bf6b378bee7f72770675af389b1  /home/tbound/tbound-w.TKn59h/bin/tbound
+sha256:02abc8ff527630ac46cff5f7a7db6c9401aa0c302b0b04177b301811ae5a9b95  /home/tbound/tbound-w.TKn59h/bin/tbound-cell-entrypoint
+sha256:f1c66aa084d0f3a2db9dc4923d5d43d49212bbbdb1366884a6d4b52352b61f47  /home/tbound/tbound-w.TKn59h/bin/tbound-profile
+sha256:33a7aeb418da1b0a33fe66853b27ed76deee79a95a146ddb8811b88b008c3925  /home/tbound/tbound-w.TKn59h/bin/tbound-run
+sha256:232c4a8dcae928092e99a2ae3ac5b979dde36abed7755fca77ef0d0f0c053e31  /home/tbound/tbound-w.TKn59h/bin/tbound-run.exe
+== pass 2
+sha256:ec693482ec587b5472451554652fc70161ac9bf6b378bee7f72770675af389b1  /home/tbound/tbound-w.TKn59h/bin-pass2/tbound
+sha256:02abc8ff527630ac46cff5f7a7db6c9401aa0c302b0b04177b301811ae5a9b95  /home/tbound/tbound-w.TKn59h/bin-pass2/tbound-cell-entrypoint
+sha256:f1c66aa084d0f3a2db9dc4923d5d43d49212bbbdb1366884a6d4b52352b61f47  /home/tbound/tbound-w.TKn59h/bin-pass2/tbound-profile
+sha256:33a7aeb418da1b0a33fe66853b27ed76deee79a95a146ddb8811b88b008c3925  /home/tbound/tbound-w.TKn59h/bin-pass2/tbound-run
+sha256:232c4a8dcae928092e99a2ae3ac5b979dde36abed7755fca77ef0d0f0c053e31  /home/tbound/tbound-w.TKn59h/bin-pass2/tbound-run.exe
+== compare pass1 vs pass2
+IDENTICAL tbound sha256:ec693482ec587b5472451554652fc70161ac9bf6b378bee7f72770675af389b1
+IDENTICAL tbound-profile sha256:f1c66aa084d0f3a2db9dc4923d5d43d49212bbbdb1366884a6d4b52352b61f47
+IDENTICAL tbound-cell-entrypoint sha256:02abc8ff527630ac46cff5f7a7db6c9401aa0c302b0b04177b301811ae5a9b95
+IDENTICAL tbound-run sha256:33a7aeb418da1b0a33fe66853b27ed76deee79a95a146ddb8811b88b008c3925
+IDENTICAL tbound-run.exe sha256:232c4a8dcae928092e99a2ae3ac5b979dde36abed7755fca77ef0d0f0c053e31
+== source trees pass1 vs pass2
+SRC TREES IDENTICAL
+commit cc1de6dfe4c5a53494d45ac2878506a0c0ffa150
+git_tree 66413091bffe1c326311ee44a638340df1bc7f57
+archive_files 3563
+source_digest sha256:2b807ba70825d3c476592bbca03a0af099283fc5845ca65abcef1ddfa8fd21df
+SRC_DIGEST=sha256:2b807ba70825d3c476592bbca03a0af099283fc5845ca65abcef1ddfa8fd21df
+cosign tool: sha256:4629c757b7618056f8ddd7e2625ae9fdd94c0372a65049520bc7d9df9efc7f71  (F0 receipt P10 shows guest cosign hash starting 4629c757)
+OK sync done; no 0-byte output under /home/tbound/tbound-h/f31 nor in: /home/tbound/tbound-w.TKn59h/bin /home/tbound/tbound-w.TKn59h/bin-pass2 /home/tbound/tbound-w.TKn59h/source-digest.out
+== DONE 20-p1
+TBOUND_DIGEST=sha256:ec693482ec587b5472451554652fc70161ac9bf6b378bee7f72770675af389b1
+TBP_DIGEST=sha256:f1c66aa084d0f3a2db9dc4923d5d43d49212bbbdb1366884a6d4b52352b61f47
+TBOUND_RUN_DIGEST=sha256:33a7aeb418da1b0a33fe66853b27ed76deee79a95a146ddb8811b88b008c3925
+ENTRYPOINT_P1_DIGEST=sha256:02abc8ff527630ac46cff5f7a7db6c9401aa0c302b0b04177b301811ae5a9b95
+TBOUND_RUN_EXE_DIGEST=sha256:232c4a8dcae928092e99a2ae3ac5b979dde36abed7755fca77ef0d0f0c053e31
+SRC_DIGEST=sha256:2b807ba70825d3c476592bbca03a0af099283fc5845ca65abcef1ddfa8fd21df
+== comparison with F23 (informational; the guest scripts install whatever differs)
+TBOUND_DIGEST: sha256:ec693482ec587b5472451554652fc70161ac9bf6b378bee7f72770675af389b1  (NEW; F23 was sha256:4852c78fc660d8073e6347814b2e553a41fa0494dececc0d32f8b37869dacd31)
+TBP_DIGEST: sha256:f1c66aa084d0f3a2db9dc4923d5d43d49212bbbdb1366884a6d4b52352b61f47  (NEW; F23 was sha256:16a4b00fb4b75b56301ec699c4cd613afda9773b695d9a6d5f0831412604a468)
+ENTRYPOINT_P1_DIGEST: sha256:02abc8ff527630ac46cff5f7a7db6c9401aa0c302b0b04177b301811ae5a9b95  (NEW; F23 was sha256:9b7499bc356810b74bc2e5ce0bfea5e66f5918ac9c2031096f80f22b5c2aa3f4)
+SRC_DIGEST: sha256:2b807ba70825d3c476592bbca03a0af099283fc5845ca65abcef1ddfa8fd21df  (NEW; F23 was sha256:da00b275241e06c23b49e7bd064eb3573f52f4de136c1293157e7938f520eb95)

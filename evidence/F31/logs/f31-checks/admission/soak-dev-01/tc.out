@@ -1,0 +1,55 @@
+start 2026-11-20T21:37:14Z carrier HEAD cad7307a9c28b1ceabc459bb8417eda85dc68afe dirty 0 manifest f242b4e334d52900e30fc2a6ba0ce2eb82f037d6725472a647c5bd7737dc117f
+kit a9bfb6c21aca6b5409a744623d4e3d992a3065ec dirty 0
+
+== carrier-check.sh
+PASS checkout at its commit
+PASS a copy outside the checkout
+PASS CRLF drift in one artifact
+PASS an extra file
+PASS a missing file
+PASS a symlink in place of a file
+PASS a 0-byte file
+PASS another manifest digest
+PASS a round the commit does not hold
+PASS the checkout reached through a symlink
+PASS a checkout dir that is not <checkout>/corpus/sampling/carriers/<round>
+PASS an uncommitted edit in the checkout
+PASS checkout HEAD moved past the commit
+
+== 33-corpus-pilot.sh phase 0 (CARRIER_* parsing, phase_carrier) and first_compliant_case
+PASS no carrier, empty $HF: nothing happens
+PASS no carrier: $HF/pilot is not created
+PASS only two of the three CARRIER_* values
+PASS CARRIER_DIR under /mnt
+PASS CARRIER_DIR not a carriers/<round> path
+PASS CARRIER_DIR through a symlink
+PASS a wrong digest writes nothing
+PASS refused carrier: $HF/pilot is not created
+PASS synthetic-01: verified, copied to $HF/pilot/carrier (76 artifacts), recorded
+PASS synthetic-01 again: resumes on the verified copy
+PASS a resumed round after the checkout moved on: the copy is checked, not the checkout
+PASS a new round on a checkout that moved on
+PASS another round on the same $HF/pilot
+PASS no carrier on a carrier $HF/pilot (the T5 run)
+PASS an edited copy in $HF/pilot/carrier
+PASS a T5 $HF/pilot (no CARRIER record) under a carrier
+PASS colon-01: verified; first_compliant_case returns the ':' id
+
+== hf_zero_check
+PASS an empty evq-report/x.stderr passes
+PASS an empty evq-report/y.json still refuses
+PASS an empty x.stderr outside evq-report still refuses
+
+== finish_step
+PASS finish_step: an empty evq-report/x.stderr passes
+PASS finish_step: an empty evq-report/y.json still refuses
+PASS finish_step: an empty x.stderr outside evq-report still refuses
+
+== phase-2 dry run: /home/tbound/tbound-w.TKn59h/bin/tbound-profile, records of /home/tbound/tbound-h/f31
+PASS synthetic carrier + pins == $HF/pilot/manifest.json byte for byte
+PASS corpus-pins --manifest accepts it
+PASS corpus-digest of the synthetic carrier == the freeze's CORPUS_DIGEST sha256:4def64c0f45efd649da0397b74cd180f81bb87c84ce8d70f5d37e2bf1c203159
+PASS corpus-digest admits ':' case ids (sha256:3a0d8cb4ad0e264cffd92fb83da94f32b118528d862e7f8649f4f276ac279396)
+
+ALL PASS
+RC=0 end 2026-11-20T21:37:16Z
