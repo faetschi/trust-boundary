@@ -48,8 +48,6 @@ rpm:
 container:
 	@scripts/build-container.sh $(VERSION)
 
-# The offline regressions of tests/packaging and tests/ci, as CI's quick-checks job runs them. They
-# need a private mode-0700 TMPDIR, which mktemp -d gives.
 packaging-test:
 	@set -e; umask 077; t="$$(mktemp -d)"; trap 'rm -rf "$$t"' EXIT; export TMPDIR="$$t"; \
 	bash tests/packaging/verify-package-manager-layout.sh; \

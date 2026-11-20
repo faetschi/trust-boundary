@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# CI: create a private TMPDIR under $HOME and export it to later steps through $GITHUB_ENV.
-# Fails if the directory or any parent is writable by group or others.
 set -euo pipefail
 umask 077
 TMPDIR="$(mktemp -d "$HOME/tb-ci.XXXXXXXX")"

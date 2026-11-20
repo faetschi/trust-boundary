@@ -1,13 +1,8 @@
 #!/usr/bin/env bash
-# Regression: scripts/lib-release-verify.sh, which the deb, rpm and npm packagers source,
-# refuses an archive member whose name holds a backslash and a member that is a link,
-# and a MANIFEST.sha256 tree with a duplicate entry, an unlisted file or a wrong digest;
-# it accepts the plain cases. Offline; builds its own fixtures in TMPDIR.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 die() { echo "$*" >&2; exit 1; }
-# shellcheck source=scripts/lib-release-verify.sh
 source "$ROOT/scripts/lib-release-verify.sh"
 
 T="$(mktemp -d "${TMPDIR:-/tmp}/tbound-verify-lib.XXXXXX")"

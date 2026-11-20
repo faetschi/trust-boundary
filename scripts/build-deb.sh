@@ -19,7 +19,6 @@ ARCH="${TBOUND_DEB_ARCH:-amd64}"
 TGZ="$DIST/tbound-$VERSION-linux-$ARCH.tar.gz"
 
 die() { echo "build-deb: $*" >&2; exit 1; }
-# shellcheck source=scripts/lib-release-verify.sh
 source "$ROOT/scripts/lib-release-verify.sh"
 
 # Validate inputs before requiring the packaging tool, so callers get a clear

@@ -18,7 +18,6 @@ VERSION="${1:-dev}"
 DIST="${2:-$ROOT/dist}"
 
 die() { echo "build-rpm: $*" >&2; exit 1; }
-# shellcheck source=scripts/lib-release-verify.sh
 source "$ROOT/scripts/lib-release-verify.sh"
 
 case "$VERSION" in

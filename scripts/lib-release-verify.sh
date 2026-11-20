@@ -1,8 +1,4 @@
-# shellcheck shell=bash
-# Release-archive verification shared by build-deb.sh, build-rpm.sh and make-npm-packages.sh.
-# Sourced, never run. The caller owns `set -euo pipefail` and defines die().
 
-# verify_archive_checksum <archive> <SHA256SUMS>: the archive's SHA256SUMS entry matches its bytes.
 verify_archive_checksum() {
   local archive="$1" sums="$2" base want got
   base="$(basename "$archive")"
@@ -15,7 +11,6 @@ verify_archive_checksum() {
   [ "$want" = "$got" ] || die "tarball checksum mismatch for $base"
 }
 
-# verify_archive_members <archive>: no unsafe member paths, no links or special files. Run before extracting.
 verify_archive_members() {
   local archive="$1" member
   while IFS= read -r member; do
@@ -27,7 +22,6 @@ verify_archive_members() {
     || die "links or special files are not allowed in $(basename "$archive")"
 }
 
-# verify_manifest_tree <dir>: MANIFEST.sha256 of the extracted archive lists exactly its regular files, and each digest holds.
 verify_manifest_tree() {
   local root="$1" line member file seen="|"
   [ -f "$root/MANIFEST.sha256" ] || die "archive is missing MANIFEST.sha256"
