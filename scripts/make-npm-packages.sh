@@ -72,9 +72,6 @@ mkdir -p "$OUT_C"
 OUT="$OUT_C"
 DIST="$DIST_C"
 
-map_os() { case "$1" in linux) echo linux;; *) return 1;; esac; }
-map_cpu() { case "$1" in amd64) echo x64;; arm64) echo arm64;; *) return 1;; esac; }
-
 platforms=()
 for tgz in "$DIST"/tbound-"$VERSION"-*.tar.gz; do
   [ -e "$tgz" ] || continue
@@ -87,8 +84,9 @@ for tgz in "$DIST"/tbound-"$VERSION"-*.tar.gz; do
     echo "make-npm-packages: skipping non-linux tarball $base"
     continue
   fi
-  nos="$(map_os "$os")" || die "unsupported os $os"
-  narch="$(map_cpu "$arch")" || die "unsupported arch $arch"
+  # Only linux/amd64 reaches here: other OSes are skipped and linux/arm64 dies above.
+  [ "$arch" = amd64 ] || die "unsupported arch $arch"
+  nos=linux; narch=x64
   pkg="cli-$nos-$narch"
   verify_archive_checksum "$tgz" "$DIST/SHA256SUMS"
   work="$(mktemp -d "${TMPDIR:-/tmp}/tbound-npm.XXXXXX")"
