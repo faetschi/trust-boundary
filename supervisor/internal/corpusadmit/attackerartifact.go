@@ -101,6 +101,10 @@ func CheckAttacker(m evalcorpus.Manifest, fsys fs.FS, maxPreEffectRetries uint64
 	return nil
 }
 
+func CheckManifestArtifacts(m evalcorpus.Manifest, fsys fs.FS) error {
+	return CheckManifestArtifactsWith(m, fsys, nil)
+}
+
 // CheckManifestArtifactsWith is CheckArtifactsWith plus CheckAttacker: every artifact the manifest
 // pins, per case and manifest-wide, with the node runner of the node_test self-checks (LocalNodeRunner
 // at admission). It is what `tbound-profile corpus-digest --artifacts` applies. It has no signed
