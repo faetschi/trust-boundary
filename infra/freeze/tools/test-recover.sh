@@ -34,6 +34,8 @@ printf "$U$U$K" "a|trajectory|C|0" 10 "b|static-replay|P|0" 11 "c|compliant|V|0"
 check "two governed UNKNOWNs in a row, V skipped" "$(unknown_unit "$T/j2.jsonl")" "11 2"
 printf "$K" "a|trajectory|C|0" 1 > "$T/j3.jsonl"
 check "no UNKNOWN" "$(unknown_unit "$T/j3.jsonl")" "-1 0"
+read -r idx streak < <(unknown_unit "$T/j2.jsonl")
+check "the streak read as recover.sh reads it is a number" "$streak|$(streak_stop "$streak")" "2|"
 check "two governed UNKNOWNs in a row do not stop" "$(streak_stop 2)" ""
 check "three governed UNKNOWNs in a row stop" "$(streak_stop 3 | cut -d: -f1)" systemic
 printf 'not json\n' > "$T/j4.jsonl"

@@ -44,7 +44,7 @@ for line in open(sys.argv[1], encoding="utf-8"):
 open_ = {k: v for k, v in st.items() if not v.get("x") and v.get("t") not in ("completed", "refused")}
 ids = list(open_)
 print(ids[0] if len(ids) == 1 and open_[ids[0]].get("t") == "unknown" else "NONE:" + json.dumps(open_))
-' "$(winpath "$1")"
+' "$(winpath "$1")" | tr -d '\r'
 }
 
 # unknown_unit <journal.jsonl>: "<plan index> <streak>" of the last governed step that ended UNKNOWN (0-based plan index),
@@ -67,7 +67,7 @@ for d in reversed(done):
         break
     streak += 1
 print(idx, streak)
-' "$(winpath "$1")"
+' "$(winpath "$1")" | tr -d '\r'   # Windows python ends lines with CRLF; read would keep the CR
 }
 
 # streak_stop <streak>: the reason to stop, or nothing. A streak that is not a number means unknown_unit could not read
