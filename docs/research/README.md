@@ -15,7 +15,7 @@ next to the product code, and this page explains which is which.
 | Path | What it is | Who may change it |
 |---|---|---|
 | [`corpus/`](../../corpus/) | Test cases: the pilot set, the G1 engineering case, sampling tools, and digests. | Corpus owner. The `TODO` strings in `corpus/pilot/*.json` are fixture placeholders. |
-| [`evidence/`](../../evidence/) | Evidence records from earlier freezes. | Nobody. Frozen. |
+| [`evidence/`](../../evidence/) | Evidence records from earlier freezes. `evidence/source-screen/` holds the 2026-10-31 source-screen scripts and outputs that built the thesis allocation draft (`tbound/h1-path/05-allocation.draft.json`). | Nobody. Frozen. |
 | [`infra/freeze/`](../../infra/freeze/) | Freeze scripts and the frozen environment files in `freezes/`. | Freeze owner only. |
 | [`docs/evaluation/`](../evaluation/) | Owner decisions and protocol records, dated. | Nobody, for dated records. |
 | [`docs/decisions/`](../decisions/) | Dated architecture decision records. | Nobody, for dated records. |

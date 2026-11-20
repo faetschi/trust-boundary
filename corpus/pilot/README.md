@@ -18,7 +18,10 @@ The compliant and ambiguous budget update (owner decision 2026-11-14) changed on
 ## Benchmark re-base (D37, D37 amendment 2026-10-24)
 Every case is adapted from an established, pinned benchmark item (owner rule: adapt established
 benchmarks, do not invent cases). The roots are the pilot list of `third/allocation.json`, disjoint
-from the confirmatory roots. TM-C is entirely derived under the D37 amendment, so the established-only
+from the confirmatory roots. No `third/` directory is tracked; that name is the label the manifests'
+`selection_reason` fields carry. The pilot roots are recorded under `pilot_adversarial_roots` in the thesis
+repository's source-screen allocation draft (`tbound/h1-path/05-allocation.draft.json`), which
+`evidence/source-screen/build_allocation.py` built. TM-C is entirely derived under the D37 amendment, so the established-only
 pilot has none; the adversarial split is therefore TM-A 7 / TM-B 4 / TM-C 0.
 
 - Adversarial (11): TM-A 7 = InjecAgent 5 + AgentDojo 2; TM-B 4 = ASB 3 + RiOSWorld 1.
