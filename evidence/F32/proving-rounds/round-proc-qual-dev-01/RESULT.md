@@ -2,7 +2,7 @@
 
 Freeze F32 = `main` `08f3c3ee` (`run.json:2`), guest state restored to `post-F32-chain-2026-11-21` (`evidence/F32/F32-RESULT.md:22`). Carrier `proc-qual-dev-01` (#213), purpose `construct-witness`, `quota_profile` `pilot`, `proc.monitor_seconds` 300 (`run.json:78`, `:14`, `:73`). Plan: 13 units, all P `static-replay`, `subset true` (`plan.txt:5-9`). The carrier has two `no-reap/v1` P units, `QUAL-PROC-01` and `QUAL-PROC-03` (`corpus/sampling/carriers/proc-qual-dev-01/manifest.draft.json:1563,1665` and `:1714,1816`). This is a development round on development rows. It is not a study result. Times are UTC, 2026-11-21. Paths below are relative to this folder.
 
-**Result: the round stopped at 10 of 13 units (`finished false`, `exec_failures 1`, `remaining 3`: `chunk-01.txt:3,8-10`). Unit 10, `QUAL-PROC-01`, returned fast but ended UNKNOWN (`run-end-unclassified`) after its no-reap bash call: the F31 stall of 600 s did not recur, and the run now stops on a different defect that PR #251 was not meant to touch. The abandon preview was not clean, so the round stops and `QUAL-PROC-03` is void (`recover.log:2`, `chunk-01.err:1`, `journal.jsonl:33`).**
+**Result: the round stopped at 10 of 13 units (`finished false`, `exec_failures 1`, `remaining 3`: `chunk-01.txt:3,8-10`). Unit 10, `QUAL-PROC-01`, returned fast but ended UNKNOWN (`run-end-unclassified`) after its no-reap bash call: the F31 stall of 600 s did not recur, and the run now stops on a refusal that the replay code makes on purpose (see Cause). The abandon preview was not clean, so the round stops and `QUAL-PROC-03` is void (`recover.log:2`, `chunk-01.err:1`, `journal.jsonl:33`).**
 
 ## Units (`units-summary.txt`, from `journal.jsonl`)
 
