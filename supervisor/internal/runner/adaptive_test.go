@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"testing"
 
@@ -170,4 +171,63 @@ func TestDriveAdaptiveUsesMarkManifestedWhenTheMachineHasIt(t *testing.T) {
 	if _, ok := Machine(m).(ManifestMarker); !ok {
 		t.Fatal("fixture does not implement ManifestMarker")
 	}
+}
+
+type Machine interface {
+	Start() (attacker.State, attacker.Action)
+	Next(attacker.State, attacker.Feedback) (attacker.State, attacker.Action)
+	Charge(attacker.State, attacker.Usage) attacker.State
+}
+
+type ManifestMarker interface {
+	MarkManifested(attacker.State) (attacker.State, attacker.Action)
+}
+
+var (
+	_ Machine        = attacker.Machine{}
+	_ ManifestMarker = attacker.Machine{}
+)
+
+type PivotResult struct {
+	Feedback   attacker.Feedback
+	Usage      attacker.Usage
+	Manifested bool
+}
+
+type PivotFunc func(ctx context.Context, a attacker.Action) (PivotResult, error)
+
+func DriveAdaptive(ctx context.Context, m Machine, pivot PivotFunc) (AttackerTerminal, error) {
+	st, act := m.Start()
+	attempts := 0
+	for act.Kind == attacker.ActionPivot {
+		if err := ctx.Err(); err != nil {
+			return AttackerTerminal{}, err
+		}
+		res, err := pivot(ctx, act)
+		if err != nil {
+			return AttackerTerminal{}, err
+		}
+		attempts++
+		st = m.Charge(st, res.Usage)
+		if res.Manifested {
+			if mk, ok := m.(ManifestMarker); ok {
+				st, act = mk.MarkManifested(st)
+			} else {
+				act = attacker.Action{Kind: attacker.ActionStop, Stop: attacker.StopManifested}
+			}
+			break
+		}
+		st, act = m.Next(st, res.Feedback)
+	}
+	stop := st.Stop()
+	if act.Kind == attacker.ActionStop {
+		stop = act.Stop
+	}
+	d := st.Digest()
+	return AttackerTerminal{
+		Stop:        stop.String(),
+		Attempts:    attempts,
+		Iterations:  st.Iterations(),
+		StateDigest: hex.EncodeToString(d[:]),
+	}, nil
 }

@@ -5,7 +5,6 @@
 package piruntime
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -27,7 +26,6 @@ const (
 	PiWorkerModelID          = piinstall.PinnedPiModel
 	PiWorkerProviderID       = "tbound-go-broker"
 	PiWorkerMaxFrameBytes    = 1 << 20
-	PiWorkerMaxPromptBytes   = 16 << 10
 	PiWorkerMaxTaskIDBytes   = 128
 	PiWorkerMaxIdentityBytes = 256
 	PiWorkerMaxEventCount    = 1024
@@ -193,45 +191,6 @@ type piWorkerBootstrapWire struct {
 	PiVersion              string            `json:"pi_version"`
 	Tools                  []string          `json:"tools"`
 	ToolSchemaSHA256       map[string]string `json:"tool_schema_sha256"`
-}
-
-// NewPiWorkerChannels creates the per-session FD endpoints. It does not start
-// a process or admit a profile; the trusted host composition must bind the
-// returned child descriptors into HostRuntimeBindings before production use.
-func NewPiWorkerChannels(ctx context.Context, exposure VerifiedWorkerExposure, assets VerifiedWorkerRuntimeAssets) (*PiWorkerChannels, error) {
-	if ctx == nil || isNilBinding(exposure) || isNilBinding(assets) {
-		return nil, errors.New("Pi worker channels require verified workspace and runtime-asset capabilities")
-	}
-	workerExposure, exposureEvidence, err := exposure.ExportVerifiedWorkerExposure(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("export sealed Pi workspace view: %w", err)
-	}
-	if err := validateWorkerExposureDescriptor(workerExposure, exposureEvidence); err != nil {
-		_ = workerExposure.Close()
-		return nil, err
-	}
-	runtimeAssets, assetEvidence, err := assets.ExportVerifiedWorkerRuntimeAssets(ctx)
-	if err != nil {
-		_ = workerExposure.Close()
-		return nil, fmt.Errorf("export read-only Pi runtime assets: %w", err)
-	}
-	if err := validateRuntimeAssetDescriptor(runtimeAssets, assetEvidence); err != nil {
-		_ = workerExposure.Close()
-		_ = runtimeAssets.Close()
-		return nil, err
-	}
-	channels, err := newPiWorkerChannels(workerExposure, runtimeAssets)
-	if err != nil {
-		_ = workerExposure.Close()
-		_ = runtimeAssets.Close()
-		return nil, err
-	}
-	channels.workerExposure = exposure
-	channels.exposureEvidence = exposureEvidence
-	channels.workerAssets = assets
-	channels.assetEvidence = assetEvidence
-	channels.ownedSourceFDs = true
-	return channels, nil
 }
 
 func newPiWorkerChannels(workerExposure, runtimeAssets *os.File) (*PiWorkerChannels, error) {

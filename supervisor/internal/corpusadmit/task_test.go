@@ -91,7 +91,7 @@ func TestCheckArtifactsTaskRefusals(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			cases, fsys := artifactCases(t)
 			tc.mutate(cases[1].Compliant, fsys)
-			err := CheckArtifacts(cases, fsys)
+			err := CheckArtifactsWith(cases, fsys, nil)
 			if err == nil || !strings.Contains(err.Error(), "cmp-1") || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("err %v, want a refusal naming cmp-1 and %q", err, tc.want)
 			}
@@ -105,7 +105,7 @@ func TestCheckArtifactsOnlyChecksTasksOfCompliantCases(t *testing.T) {
 	if cases[0].Kind == evalcorpus.KindCompliant || cases[2].Kind == evalcorpus.KindCompliant {
 		t.Fatal("unexpected case order")
 	}
-	if err := CheckArtifacts([]evalcorpus.Case{cases[0], cases[2]}, fsys); err != nil {
+	if err := CheckArtifactsWith([]evalcorpus.Case{cases[0], cases[2]}, fsys, nil); err != nil {
 		t.Fatalf("CheckArtifacts: %v", err)
 	}
 }

@@ -107,7 +107,7 @@ func TestG1ArtifactsAreThePinnedBytesAndTheAcceptanceIsSensitive(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := SelfCheck(fixture, accept, solution); err != nil {
+	if err := SelfCheckWith(fixture, accept, solution, nil); err != nil {
 		t.Fatalf("self check: %v", err)
 	}
 	// The final state the README tells the owner to compare is what the acceptance test pins.

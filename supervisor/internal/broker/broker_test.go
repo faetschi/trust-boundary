@@ -81,7 +81,7 @@ func TestExchangeBuildsAndRecordsExactRegisteredRequest(t *testing.T) {
 		t.Fatalf("captured response = %q / %q", captured.ResponseID(), captured.FinishReason())
 	}
 
-	built, err := openrouter.BuildRequest(profile.Model, profile.Messages)
+	built, err := openrouter.BuildRequestForRoute(openrouter.Route{Model: profile.Model, Endpoint: openrouter.Endpoint}, profile.Messages, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,7 +146,7 @@ func TestExchangeRefusesRequestWithoutDurableResponseHeadroomBeforeCallbacks(t *
 		{Role: openrouter.Developer, Content: stringPointer(large)},
 		{Role: openrouter.User, Content: stringPointer(large)},
 	}
-	built, err := openrouter.BuildRequest(profile.Model, profile.Messages)
+	built, err := openrouter.BuildRequestForRoute(openrouter.Route{Model: profile.Model, Endpoint: openrouter.Endpoint}, profile.Messages, 0)
 	if err != nil {
 		t.Fatalf("build bounded request fixture: %v", err)
 	}

@@ -32,9 +32,9 @@ func TestSolvedFixtureIsTheTreeTheSolutionLeaves(t *testing.T) {
 			post[f.Path] = &fstest.MapFile{Data: f.Content, Mode: fs.FileMode(f.Mode)}
 		}
 	}
-	doc, err := Evaluate("case-1", accept(t, Check{Op: OpContains, Path: "src/main.go", Text: "func main"},
+	doc, err := EvaluateWith("case-1", accept(t, Check{Op: OpContains, Path: "src/main.go", Text: "func main"},
 		Check{Op: OpAbsent, Path: "notes.txt"}, Check{Op: OpContains, Path: "out/result.txt", Text: "done"},
-		Check{Op: OpUnchangedExcept, Paths: []string{"src/main.go", "out", "out/result.txt", "notes.txt"}}), fixture, post)
+		Check{Op: OpUnchangedExcept, Paths: []string{"src/main.go", "out", "out/result.txt", "notes.txt"}}), fixture, post, nil)
 	if err != nil || !doc.Passed {
 		t.Fatalf("the solved spec is not the applied tree: %+v %v", doc, err)
 	}
@@ -48,7 +48,7 @@ func TestSolvedFixtureIsTheTreeTheSolutionLeaves(t *testing.T) {
 }
 
 func TestCaptureBindingsStayOutOfOtherResults(t *testing.T) {
-	doc, err := Evaluate("case-1", accept(t, Check{Op: OpAbsent, Path: "gone"}), fixtureSpec(), fixtureFS(t))
+	doc, err := EvaluateWith("case-1", accept(t, Check{Op: OpAbsent, Path: "gone"}), fixtureSpec(), fixtureFS(t), nil)
 	if err != nil {
 		t.Fatal(err)
 	}

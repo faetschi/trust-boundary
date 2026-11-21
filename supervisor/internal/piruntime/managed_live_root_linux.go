@@ -233,7 +233,7 @@ func (c D09ManagedPiServiceConfig) validWorkflowAdmissionEnvelope() bool {
 			c.CorpusQuotaProfile == "" && !c.AllowPilotOnResearch &&
 			validIdentity(c.WorkflowAdmissionID) && len(c.WorkflowAdmissionID) <= 256 &&
 			validIdentity(c.WorkflowTaskID) && len(c.WorkflowTaskID) <= 256 &&
-			len(c.WorkflowPrompt) > 0 && len(c.WorkflowPrompt) <= 16<<10 && utf8.ValidString(c.WorkflowPrompt) &&
+			len(c.WorkflowPrompt) > 0 && len(c.WorkflowPrompt) <= piRPCMaxPromptBytes && utf8.ValidString(c.WorkflowPrompt) &&
 			strings.TrimSpace(c.WorkflowPrompt) != ""
 	case D09ManagedPiWorkflowAdmissionCorpus:
 		return c.SchemaVersion == D09ManagedPiServiceConfigSchema &&
