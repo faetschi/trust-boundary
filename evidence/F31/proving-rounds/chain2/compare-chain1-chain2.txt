@@ -1,0 +1,145 @@
+﻿Chain 1 (tbound-work/f31-chain1-20261120, moved aside by chain2/aside-chain1.sh) vs chain 2 (tbound-h/f31), read-only, SHA-256 per file, by relative path. Taken 2026-11-21 after round soak-dev-01; the pilot dir in tbound-h/f31 is therefore the soak carrier, not the T5 run of chain 2.
+identical: 569; different: 84; only in chain 1: 53
+
+== identical at the top level (the re-measured values: calibrations, digests, base template, xattr and cgroup measurements, R1 mode)
+BASE_TD
+CAL_RO_DIGEST
+CAL_RW_DIGEST
+cal-ro.unsigned.json
+cal-rw.unsigned.json
+CGROUP_ROOT_DIGEST
+CONTAINERS_CONF_DIGEST
+d09-cell.base.json
+d09-xattr-enumeration-calibration.ed25519
+d09-xattr-enumeration-calibration.json
+d09-xattr-enumeration-calibration-readonly.ed25519
+d09-xattr-enumeration-calibration-readonly.json
+LANDLOCK_DIGEST
+R1-MODE
+STORAGE_CONF_DIGEST
+XATTR_MAGIC
+XATTR_MOPT
+XATTR_VIS_DIGEST
+xattr-measure-runtime.json
+
+== identical in subdirectories: 550 files
+  evq-report: 391
+  rp: 21
+  g1: 18
+  pilot: 86
+  evq: 6
+  g1-prior: 1
+  dr: 27
+
+== different (run ids, timestamps, request journals, per-run guest evidence, EVQ result digests): by directory
+  evq-report: 6
+  rp: 16
+  g1: 9
+  pilot: 31
+  evq: 6
+  g1-prior: 1
+  dr: 15
+
+different files:
+  dr\catalog-after-run.jsonl
+  dr\catalog-after-start.jsonl
+  dr\catalog-before-start.jsonl
+  dr\client-run.status
+  dr\diag-l2.txt
+  dr\export-listing.txt
+  dr\l4.txt
+  dr\outdir-listing-before.txt
+  dr\requests-after-run.jsonl
+  dr\requests-before-start.jsonl
+  dr\response.txt
+  dr\RID
+  dr\RUNID
+  dr\session-audit.jsonl
+  dr\svc-start-journal.txt
+  evq\landlock-connect.json
+  evq\netsink.json
+  evq\procoracle.json
+  evq\provider.json
+  evq\route-bash-view.json
+  evq\route-direct-runtime.json
+  evq-report\adapter-capture.stdout
+  evq-report\adapter-tests.json
+  evq-report\evq.stdout
+  evq-report\evq_results.json
+  evq-report\route_report.json
+  evq-report\route-report.stdout
+  g1\catalog-after-run.jsonl
+  g1\client-run.status
+  g1\diag-l2.txt
+  g1\export-listing.txt
+  g1\l4.txt
+  g1\requests-after-run.jsonl
+  g1\response.txt
+  g1\RID
+  g1\svc-start-journal.txt
+  g1-prior\archive-done.txt
+  pilot\archive.sha256
+  pilot\CARRIER
+  pilot\carrier\manifest.draft.json
+  pilot\carrier\sources.json
+  pilot\carrier\THIRD_PARTY_NOTICES.md
+  pilot\catalog-after-start.jsonl
+  pilot\catalog-before-start.jsonl
+  pilot\CORPUS_DIGEST
+  pilot\d09-cell.json
+  pilot\diag-l2.txt
+  pilot\DR_SETTLED
+  pilot\managed-live-root.ed25519
+  pilot\managed-live-root.json
+  pilot\managed-live-root.unsigned.json
+  pilot\manifest.json
+  pilot\pi-host-profile.ed25519
+  pilot\pi-host-profile.signed.json
+  pilot\pi-host-profile.unsigned.json
+  pilot\PROFILE_DIGEST
+  pilot\REGDIGEST
+  pilot\requests-before-start.jsonl
+  pilot\RESET_DONE
+  pilot\RESET_PENDING
+  pilot\s3.out
+  pilot\s3-verify.out
+  pilot\s4.out
+  pilot\s4-verify.out
+  pilot\serve-pi-service.json
+  pilot\svc-start-journal.txt
+  pilot\TD
+  pilot\td.out
+  rp\catalog-after-run.jsonl
+  rp\catalog-after-start.jsonl
+  rp\catalog-before-start.jsonl
+  rp\client-run.status
+  rp\command-audit.jsonl
+  rp\diag-l2.txt
+  rp\export-listing.txt
+  rp\l4.txt
+  rp\provider-audit.jsonl
+  rp\requests-after-run.jsonl
+  rp\requests-before-start.jsonl
+  rp\response.txt
+  rp\RID
+  rp\RUNID
+  rp\session-audit.jsonl
+  rp\svc-start-journal.txt
+
+== only in chain 1 (its T5 pilot state dir pilot.t5-20261120T214123Z, its carrier artifacts and archive records; chain 2 has pilot.t5c2-20261120T231111Z from its own step 33): by directory
+  pilot: 12
+  g1-prior: 3
+  pilot.t5-20261120T214123Z: 38
+
+== differences in the EVQ and route report stdout (diff chain1 chain2)
+-- evq.stdout
+chain2 results_sha256 sha256:0d67bac6beb4900e4a718108365c96c820cb95a205fe495a565bedf72d10b970
+chain1 results_sha256 sha256:121fbc0d674a3fb8845701f59fa25cbc13ed861da18454ceca9e03b123c7d82e
+-- route-report.stdout
+chain2 route_report_sha256 sha256:a8478b6217b3b0c5dcc452c915771f9c7f37c3e8b03ee10e7af819304c553223
+chain1 route_report_sha256 sha256:f29a2b3e669b0bf4e9530b24778cced8478e9858de9e8716098690f1fbf9d363
+-- adapter-capture.stdout
+chain2 output_sha256 sha256:baf0a69fcc2752a0fc389b87fc8c6201ea5e59097670591ab6c9512852368cde
+chain2 artifact_sha256 sha256:6f41c10b0eb45d6707c1428a7b34a7e48e5bf9361a1e14abda07fc96a32acd5f
+chain1 output_sha256 sha256:d8b24169d98d9427a2cd4bab5b0441eadd8d12f93997b025e60d30a8161e2726
+chain1 artifact_sha256 sha256:33e108ec97b75dc92d1fd4f17cbc7e00e3250afae3145d66f9c4b73f0dbce4d8
