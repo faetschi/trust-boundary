@@ -11,18 +11,47 @@ import (
 	"testing"
 
 	"tbound/supervisor/internal/broker/protocol"
-	"tbound/supervisor/internal/executor"
 	"tbound/supervisor/internal/sandbox"
+	"tbound/supervisor/internal/sessionrepo"
 	"tbound/supervisor/internal/workspace"
 )
 
 // durableBashSandboxProfile is the descriptive, non-claim-bearing runner label
-// the real sandbox-backed executor.Runner must record in the durable evidence.
+// the real sandbox-backed sandboxCommandRunner must record in the durable evidence.
 const durableBashSandboxProfile = "wsl-dev-sandbox-non-claim-bearing"
+
+type sandboxCommandRunner struct{ leaseID string }
+
+func (sandboxCommandRunner) Profile() string { return durableBashSandboxProfile }
+
+func (r sandboxCommandRunner) Run(ctx context.Context, view *sessionrepo.CommandView, spec sessionrepo.CommandSpec) (sessionrepo.CommandResult, sessionrepo.CommandSettlement, error) {
+	source, err := view.MountSource()
+	if err != nil {
+		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, err
+	}
+	defer func() { _ = source.Close() }()
+	result, settlement, err := sandbox.Launch(ctx, sandbox.Request{
+		Root:   source,
+		Argv:   append([]string{spec.Executable}, spec.Args...),
+		Env:    []string{"PATH=/usr/bin:/bin:/usr/sbin:/sbin", "HOME=/tmp", "TMPDIR=/tmp", "LANG=C"},
+		Dir:    spec.WorkingDirectory,
+		Limits: sandbox.Limits{MemoryBytes: 512 << 20, PidsMax: 256, CPUWeight: 100},
+	})
+	if err != nil {
+		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, err
+	}
+	return sessionrepo.CommandResult{
+		ExitCode: result.ExitCode, ExitObserved: settlement.ExitObserved, Stdout: result.Stdout, Stderr: result.Stderr,
+	}, sessionrepo.CommandSettlement{
+		LeaseID: r.leaseID, ViewID: view.ID(), ProcessScopeEmpty: settlement.ProcessScopeEmpty,
+		WritersStopped: settlement.WritersStopped, MountDetached: settlement.MountDetached,
+		ExitObserved: settlement.ExitObserved, ExitCode: settlement.ExitCode, EvidenceClass: settlement.EvidenceClass,
+	}, nil
+}
 
 // TestDurableBashSandboxEndToEnd composes the REAL sandbox runner into the
 // cmd/tbound durable bash path. A trusted ALLOW bash proposal becomes one
-// sessionrepo command lease whose runner is executor.New(leaseID), which adapts
+// sessionrepo command lease whose runner is sandboxCommandRunner{leaseID}, which adapts
 // sandbox.Launch into the sessionrepo.CommandRunner seam. The command mutates
 // the private command view, so the promoted g1 differs from the seeded g0; the
 // fixture authority binds the exact expected settled tree and verifies every
@@ -62,7 +91,7 @@ func TestDurableBashSandboxEndToEnd(t *testing.T) {
 	durable, err := NewDurableExecutor(DurableExecutorConfig{
 		Store: store, Tip: g0, CallIssuer: durableCallIssuer,
 		PolicyDigest: durablePolicyDigest, MetadataPolicyDigest: durableMetadataDigest,
-		CommandRunner:   executor.New(leaseID),
+		CommandRunner:   sandboxCommandRunner{leaseID},
 		BashOutputPaths: []string{"created-by-bash.txt"},
 	})
 	if err != nil {

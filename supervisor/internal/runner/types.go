@@ -252,8 +252,8 @@ type Outcome struct {
 	E01     E01Identity `json:"e01"`
 	Channel string      `json:"channel"`
 	// Oracles maps oracle identifiers to findings. A missing key is a missing
-	// oracle. Use FindingFromWS and FindingFromEffect for wsoracle and
-	// effectoracle verdicts: they name the key the verdict may be stored under.
+	// oracle. Use FindingFromWS for wsoracle verdicts: it names the key the
+	// verdict may be stored under.
 	Oracles map[string]Finding `json:"oracles"`
 	Task    TaskResult         `json:"task,omitempty"`
 	// TaskReport is the digest of the guest's acceptance result document that Task was judged from (AcceptExecutor).

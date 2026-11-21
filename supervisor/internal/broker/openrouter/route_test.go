@@ -35,10 +35,10 @@ func TestZeroRouteIsTheEngineeringRoute(t *testing.T) {
 	}
 }
 
-func TestBuildRequestForEngineeringRouteIsByteIdenticalToBuildRequest(t *testing.T) {
+func TestZeroRouteBuildsTheEngineeringRequest(t *testing.T) {
 	messages := []Message{{Role: User, Content: strptr("hello")}}
 	for _, limit := range []uint64{0, 512} {
-		want, err := BuildRequestWithCompletionLimit(ApprovedModel, messages, limit)
+		want, err := BuildRequestForRoute(EngineeringRoute(), messages, limit)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -149,7 +149,7 @@ func TestResearchRouteAcceptsOnlyTheOpenRouterURLOrALoopbackFixture(t *testing.T
 
 func TestEngineeringBuilderRefusesAResearchModelAndTheResearchBuilderRefusesAnEngineeringModel(t *testing.T) {
 	messages := []Message{{Role: User, Content: strptr("hello")}}
-	if _, err := BuildRequest(researchTestModel, messages); err == nil {
+	if _, err := BuildRequestForRoute(Route{Model: researchTestModel, Endpoint: Endpoint}, messages, 0); err == nil {
 		t.Fatal("engineering builder accepted the research model")
 	}
 	if _, err := BuildRequestForRoute(Route{Model: researchTestModel, Endpoint: researchTestEndpoint}, messages, 0); err == nil {

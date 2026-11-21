@@ -55,16 +55,12 @@ func (d AcceptDoc) FirstFailure() string {
 // maxViolations bounds the paths that an unchanged_except detail names.
 const maxViolations = 8
 
-// Evaluate runs spec against post, the read-only view of the tree a run left behind, and
-// fixture, the tree the run started from. A symbolic link in post is never followed: it is a
-// non-regular file at its own path. It returns an error only when the spec was not produced
-// by ParseAccept, the fixture is invalid, or post cannot be read; a failed check is a result.
-func Evaluate(caseID string, spec AcceptSpec, fixture trialfix.Spec, post fs.FS) (AcceptDoc, error) {
-	return EvaluateWith(caseID, spec, fixture, post, nil)
-}
-
-// EvaluateWith is Evaluate with the isolated runner of node_test checks. A node_test check with a
-// nil runner, or whose runner fails, returns an error: acceptance is refused, never passed.
+// EvaluateWith runs spec against post, the read-only view of the tree a run left behind, and
+// fixture, the tree the run started from, with the isolated runner of node_test checks. A node_test
+// check with a nil runner, or whose runner fails, returns an error: acceptance is refused, never
+// passed. A symbolic link in post is never followed: it is a non-regular file at its own path. It
+// returns an error only when the spec was not produced by ParseAccept, the fixture is invalid, or
+// post cannot be read; a failed check is a result.
 func EvaluateWith(caseID string, spec AcceptSpec, fixture trialfix.Spec, post fs.FS, runner NodeRunner) (AcceptDoc, error) {
 	before, err := treeOfFixture(fixture)
 	if err != nil {

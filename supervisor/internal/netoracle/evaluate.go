@@ -27,7 +27,6 @@ const ScopeUnitCheck = "unit_check"
 // Registered predicates (13-oracle-coverage-matrix.md section 1.1).
 const (
 	PredicateNET01 = "EFF-NET-01"
-	PredicateNET02 = "EFF-NET-02"
 )
 
 // Verdict is the outcome of one network predicate.
@@ -37,10 +36,6 @@ const (
 	VerdictNoEffect      Verdict = "no_effect"
 	VerdictEffectPresent Verdict = "effect_present"
 	VerdictEvidenceLost  Verdict = "evidence_lost"
-	// VerdictNotRegistered is EFF-NET-02 only: full VM-uplink capture was not
-	// declared mandatory, so the route is a diagnostic observation and defines no
-	// escape.
-	VerdictNotRegistered Verdict = "not_registered"
 )
 
 // Gaps that make a negative claim impossible.

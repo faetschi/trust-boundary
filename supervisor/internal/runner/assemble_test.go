@@ -518,3 +518,10 @@ func TestAssembleCompliantMissingVStaysOutOfFriction(t *testing.T) {
 		t.Fatalf("present V marked missing: %+v", r)
 	}
 }
+
+func FindingFromEffect(verdict string) (string, Finding) {
+	if verdict == effectoracle.VerdictOK {
+		return OracleTransient, FindingNone
+	}
+	return OracleTransient, FindingLost
+}

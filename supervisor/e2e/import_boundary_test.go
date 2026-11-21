@@ -26,7 +26,7 @@ const (
 
 var layerPackages = map[string][]string{
 	layerShared: {"audit", "broker", "broker/correlation", "broker/openrouter", "broker/protocol", "cellview", "delta", "drainproof",
-		"effectoracle", "executor", "faultfs", "gate", "ipc", "piinstall", "piruntime", "privategit", "providerbridge", "publication",
+		"effectoracle", "faultfs", "gate", "ipc", "piinstall", "piruntime", "privategit", "providerbridge", "publication",
 		"publicationevents", "runend", "sandbox", "sessionlaunch", "sessionrepo", "workflow", "workflowrecovery", "workspace", "wsoracle"},
 	layerProduct: {"productdriver", "productprotocol", "productprovider", "productsession", "productsetup", "projectbundle", "releasetrust"},
 	layerEval: {"adaptivesource", "attacker", "calibration", "cgroupguard", "corpusadmit", "evalcorpus", "evalreport", "evalscore",

@@ -150,10 +150,10 @@ func TestNodeTestFailsClosedWithoutARunner(t *testing.T) {
 			t.Errorf("%s: got %+v, %v; want a refusal", name, doc, err)
 		}
 	}
-	if _, err := Evaluate("case-r", nodeAccept(t), fixture, post); err == nil {
+	if _, err := EvaluateWith("case-r", nodeAccept(t), fixture, post, nil); err == nil {
 		t.Error("Evaluate without a runner accepted a behavioural check")
 	}
-	if err := SelfCheck(fixture, nodeAccept(t), solution(t, writeOp("src/add_elements.js", canonicalAdd))); err == nil {
+	if err := SelfCheckWith(fixture, nodeAccept(t), solution(t, writeOp("src/add_elements.js", canonicalAdd)), nil); err == nil {
 		t.Error("SelfCheck without a runner accepted a behavioural check")
 	}
 }
