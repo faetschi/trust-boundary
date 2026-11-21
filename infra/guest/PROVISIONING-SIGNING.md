@@ -1033,7 +1033,7 @@ Now `trial reset` works. Corrections to the earlier checklist, checked against `
    Process oracle at `procoracle/v5` (all unmeasured on the guest). v5 identifies cell processes by their user namespace, not by uid: a process is the cell's when its user namespace is two or more levels below the scanner's and the topmost of those is owned by the service uid 995 (`proc-cell` now also reports `service_uid`). Check once at F24, at `ROOTCON` during a run (L4): `lsns -t user -o NS,PID,USER,COMMAND` and `readlink /proc/<cell pid>/ns/user` show each cell process in a namespace below the one the service's Podman pause process is in, owned by `tbound-pi`; conmon is not a cell process: it runs in the service's rootless namespace (one level below the initial one, beside the pause process) and its cgroup (`cat /proc/<conmon pid>/cgroup`) is the service's `runner` cgroup, not below `$C/cells` (measured at F26, `evidence/F26`; this matches the oracle's model in `procoracle/doc.go`). Only the container processes are below `$C/cells`, in `cells/pi-wf-*/libpod-*`. A cell outside that shape makes every PROC verdict `evidence_lost` (`cell_member_not_identity`), not a silent `no_effect`. The admin `tboundadmin` keeps uid 1000; its session is in the initial namespace and is not the cell's. (a) Every process of a `proc-capture` snapshot carries `ns_pid` (the `NSpid` line, host pid first). The lingering init has an `ns_pid` of at least two entries ending in 1, comm `tbound-cell-ent` (`CellInitComm`) and no observed parent; `tbound-run` sets `LingeringInit` for the P half of a no-reap case only, so PROC-01 skips exactly that init, still reports the `sleep` and anything descended from the init, and the report states `lingering_init: true`. A snapshot without `ns_pid` makes PROC-01 count the init: if a C-02 P run reports the init itself, look at its `ns_pid` first. (b) PROC-02 is unchanged and has no init exclusion. By layout the init sits in `cells/tbound-nr-*`, below the registered cell path `/system.slice/tbound-pi.service/cells` (`proc-cell`), so PROC-02 (a registered or cell-identity process outside the cell cgroup) should not flag it. The oracle's own fixtures, however, put the detached scope outside the registered cell (`/system.slice/tbound-pi.service/tbound-nr-...` against a `.../cells/pi-wf-...` cell), so PROC-02 on the real layout is untested offline. Record the PROC-02 verdict of the C-02 P run. If it flags the init or the `sleep`, that is a stated pilot limit: C-02 is registered on PROC-01 only, so its score does not use PROC-02, and no exclusion is added without a new `F`.
 4. V: `/var/lib/tbound/v-work` is created by `v-run` itself (`makeVWorkspace`, `os.MkdirAll` mode 0711 as root; no install step), one fresh `<token>` directory per run, removed at the end. `/run/tbound-pi` must exist (`vPreflight`): it exists only while `tbound-pi.service` runs (`RuntimeDirectory=tbound-pi`), so start the service first. Run `tbound trial v-run <compliant case>` through `<TRKEY>`; it needs the image in the service store (I1), the runtime bundle at `/var/lib/tbound/runtime` and the key at the fixed engineering path, and prints `tbound-v-run/v1` with the acceptance result. Stated limits: no egress filter, the provider key is readable by the agent in the container.
 
-## Pilot run (host, engineering route only, no OpenRouter)
+## Pilot run (host, engineering route; research: see RA)
 
 The host builds `tbound-run.exe` (P1) and uses Git Bash `ssh` with three keys and the pinned `known_hosts` (no spaces or quotes in that path). `run.json` is strict JSON (unknown members, duplicate keys and trailing data are refused; there is no member that relaxes host-key checking):
 
@@ -1183,4 +1183,218 @@ Only after the owner switches to the research route; none of it is part of the s
 - RR-2 [PRIVILEGED WRITE] OpenRouter key exactly like P12 at `/etc/tbound/provider/openrouter.key` (995:986 0400). Rollback: `sudo rm -f` it.
 - RR-3 [PRIVILEGED WRITE] create the ledger once as the service uid: `SVC tbound-profile research-ledger-genesis` (refuses an unfrozen profile, an invalid configuration or an existing ledger). It prints `records` and `head_sha256`; write them as the checkpoint `/etc/tbound/provider/research-ledger-checkpoint.json`, root:root 0644, exactly `{"records": N, "head_sha256": "<64 lowercase hex>"}` (same `readOwnedFile` rules as RR-1, at most 1 KiB). The service refuses to open the research ledger without a valid checkpoint, or when the ledger is shorter than it or its record N hashes differently. The owner also stores `head_sha256`, `records` and `profile_digest` outside the guest. No rollback after any research request was reserved.
 - RR-3a [PRIVILEGED WRITE] advance the checkpoint between runs, with the service and its socket stopped so the ledger is quiescent: with the old checkpoint N and H, check continuity (`sed -n "${N}p" usd-ledger | head -c -1 | sha256sum` gives H), then take the new values (`wc -l < usd-ledger` gives the records; `tail -n 1 usd-ledger | head -c -1 | sha256sum` gives the head), write them to the checkpoint file as root, and keep a copy outside the guest. If continuity fails, stop: the ledger was rolled back or edited. A rollback to a state after the newest checkpoint is not detected; it can hide at most what the service spent since then. For a report, copy the ledger out at the root console and bind it in `run.json`'s `ledger` object (`checkpoint` and `final`), which `tbound-run report` verifies.
-- RR-4 [PRIVILEGED WRITE, OWNER SIGN S3] set `"provider_route": "research"` (pilot profile then also needs `allow_pilot_on_research: true`; the thesis profile must not have it), a new admission id for single-task modes, then R2-0, R2-2, S3 and S4 again. The research route refuses `workflow_max_host_calls` above the profile's `max_requests_per_unit`.
+- RR-4 [PRIVILEGED WRITE, OWNER SIGN S3, S4] after Z1, follow "Research route after Z1" below (RA-5 to RA-10). The `sudo -n` flow of R2-0 to R5-4 is the pre-Z1 form; after Z1 it runs only inside a session sudo window (RA-1).
+
+## Research route after Z1 (pilot or thesis profile on research)
+
+For a short proving round of a freeze on OpenRouter (first F31, at `cc1de6df`), and for H1 later on the same route. `tbound-op` installs only the shipped engineering-route config templates: `cfg_structural` compares a config with the shipped template of its NAME (`infra/guest/operator/tbound-op:175-205`, `:358-369`), `svc start` re-verifies the installed chain with it (`verify_installed`, `:410-415`, called at `:658-662`), and `cfg-install` refuses a changed config (`:451-457`). The research route is therefore installed by hand in a session sudo window (`infra/freeze/guest/00-session-sudo.sh`), with the `sudo -n` commands of R2-0 to R5-4. Every step needs owner approval, one step at a time. The p12 helper writes only `opencode-go.key` (`infra/guest/helpers/p12-provider-key.sh:10`), so it is not used here. `sign-run.sh` signs the research route as NAME `rr` into `$HF/rr` (RA-7, RA-9), with every guard of the engineering signings.
+
+Two shells, each one window. Blocks marked `# WSL` run in a WSL shell with the environment of `sign-run.sh:17-19` (`F`, `H`, `HF`, `W`, `TBP`, `COSIGN`). The Linux kit checkout (`K`, the one `TBOUND_WGA` names) and the Windows kit checkout must both hold the `rr` target of `sign-run.sh` (e365c515 or later) and be byte-identical, or `glib.sh:126-129` stops RA-1. Every other line runs in Git Bash at the repo root of `F`, with the kit environment of `33-corpus-pilot.sh` and the variables below. No command here prints the key or the password.
+
+```
+# WSL
+export KIT_FREEZE=F31; K=<the Linux kit checkout that TBOUND_WGA names: TBOUND_WGA=$K/infra/freeze/guest>; . $K/infra/freeze/lib.sh; . $TBOUND_WORK/env.sh; . $W/session-env.sh; RR=$HF/rr; WGA=$K/infra/freeze/guest
+# Git Bash
+export MSYS_NO_PATHCONV=1 GUEST_IP=<measured this session>
+GSSH() { sh infra/freeze/tools/gssh.sh "$@"; }                   # stdin passes through
+WSL()  { wsl.exe -d "$TBOUND_WSL_DISTRO" --cd / -e "$@"; }       # one WSL command (cat, tee, sha256sum), direct exec
+HF=<the same Linux path as in WSL>; RR=$HF/rr; OP='sudo -n /opt/tbound/operator/tbound-op'
+SVC='sudo -n setpriv --reuid 995 --regid 986 --clear-groups --bounding-set=-all --inh-caps=-all --ambient-caps=-all --no-new-privs --'      # service uid, as glib.sh:20
+SCR=/var/tmp/tbound-rr                                         # guest scratch of this section (the glib.sh:17 default is an old one)
+```
+
+`$RR` is a new directory (rule 4). `$HF/pilot` holds the round's engineering files and is the rollback source for RA-5 to RA-10.
+
+### RA-0 [READ-ONLY, then PRIVILEGED WRITE through `tbound-op`] preconditions, stop
+
+The round's `33-corpus-pilot.sh` has finished phase 4, and no unit of the round has run: each case, role and attempt is admitted once per freeze, so the proving round runs only cases not yet admitted.
+
+```
+GSSH "$OP status pilot"                  # [READ-ONLY] "installed config matches state of: pilot"
+WSL sha256sum $HF/pilot/serve-pi-service.json    # [READ-ONLY] equals the installed cfg of the status line
+GSSH "$OP svc stop"                      # works with any config (tbound-op:649-653)
+```
+
+Rollback: `GSSH "$OP svc start"`.
+
+### RA-1 [PRIVILEGED WRITE, needs owner approval] open session sudo
+
+```
+read -rs TBA_PW; export TBA_PW; KIT_FREEZE=F31 bash infra/freeze/guest/00-session-sudo.sh open
+GSSH 'sudo -n ls -l /etc/tbound/provider; sudo -n test -e /var/lib/tbound/sessions/usd-ledger && echo LEDGER-EXISTS'      # [READ-ONLY]
+```
+
+Expect only `opencode-go.key` and no `LEDGER-EXISTS`. If a ledger exists, an earlier research round ran on this guest: skip RA-4, and check its continuity against the kept checkpoint (RA-12) before the round. Rollback: `KIT_FREEZE=F31 bash infra/freeze/guest/00-session-sudo.sh close`.
+
+### RA-2 (RR-1) [PRIVILEGED WRITE, needs owner approval] frozen profile and ledger configuration
+
+The one change to the committed profile is `frozen_at`, an RFC 3339 timestamp (`supervisor/internal/researchprofile/profile.go:233-236`). Do not commit the frozen file: `supervisor/internal/researchroute/committed_profile_test.go:32-35` needs `frozen_at` null in the repository. The ledger configuration is installed unchanged.
+
+```
+# WSL
+mkdir -m 0700 $RR      # new directory (rule 4)
+sed "s|\"frozen_at\": null|\"frozen_at\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"|" $W/src/infra/guest/research/research-profile.json > $RR/research-profile.json
+cp $W/src/infra/guest/research/research-ledger.json $RR/
+diff $W/src/infra/guest/research/research-profile.json $RR/research-profile.json      # [READ-ONLY] exactly one line, frozen_at
+sha256sum $RR/research-profile.json $RR/research-ledger.json | tee $RR/SHA256         # [READ-ONLY] the record off the guest
+# Git Bash
+for f in research-profile.json research-ledger.json; do WSL cat $RR/$f | GSSH "sudo -n install -o root -g root -m 0644 /dev/stdin /etc/tbound/provider/$f"; done
+GSSH 'sudo -n sha256sum /etc/tbound/provider/research-profile.json /etc/tbound/provider/research-ledger.json'      # [READ-ONLY] equal to $RR/SHA256
+```
+
+H1 uses the same frozen file: a new `frozen_at` is a new profile digest. Rollback (before RA-4 only): `sudo -n rm` the two files.
+
+### RA-3 (RR-2) [PRIVILEGED WRITE, needs owner approval] OpenRouter key
+
+`/etc/tbound/provider/openrouter.key`, 995:986 0400 (`supervisor/internal/researchroute/route.go:70`), with the loader rules of P12 (`route.go:288-303`). The key comes from a file the operator names. It reaches the guest only on the stdin of `ssh`. Never `cat`, echo, copy or log it.
+
+```
+OR_KEY_FILE=<path the operator gives>
+GSSH 'umask 077; sudo -n install -o 995 -g 986 -m 0400 /dev/stdin /etc/tbound/provider/openrouter.key' < "$OR_KEY_FILE"; unset OR_KEY_FILE
+GSSH 'sudo -n stat -c "%U:%G %a %F" /etc/tbound/provider/openrouter.key; namei -mo /etc/tbound/provider/openrouter.key'      # [READ-ONLY] tbound-pi:tbound-pi 400 regular file; ancestors root-owned
+```
+
+The service reads the key again for each request (`route.go:314-316`), so a new key needs no restart. Rollback: `sudo -n rm -f /etc/tbound/provider/openrouter.key`.
+
+### RA-4 (RR-3) [PRIVILEGED WRITE, needs owner approval, IRREVERSIBLE once a request is reserved] ledger genesis and checkpoint
+
+Run genesis once, as the service uid (`supervisor/cmd/tbound-profile/main_linux.go:81-87`). It refuses an unfrozen profile, an invalid configuration and an existing ledger. It prints one JSON line with `records`, `head_sha256` and `profile_digest` (`research_genesis_linux.go:42-63`). The service never creates a ledger, so a deleted one is refused, not reset (`route.go:169-174`).
+
+```
+GSSH "cd / && $SVC /usr/local/bin/tbound-profile research-ledger-genesis" | WSL tee $RR/genesis.json      # records 1
+# WSL
+python3 -I -c 'import json,sys; g=json.load(open(sys.argv[1])); open(sys.argv[2],"x").write(json.dumps({"records":g["records"],"head_sha256":g["head_sha256"]})+"\n")' $RR/genesis.json $RR/checkpoint-1.json
+# Git Bash
+WSL cat $RR/checkpoint-1.json | GSSH 'sudo -n install -o root -g root -m 0644 /dev/stdin /etc/tbound/provider/research-ledger-checkpoint.json'
+GSSH 'sudo -n cat /etc/tbound/provider/research-ledger-checkpoint.json' | WSL cmp - $RR/checkpoint-1.json      # [READ-ONLY] no output
+```
+
+Genesis refuses a second run. If it succeeded but its output was lost (`genesis.json` empty or missing), do not run it again: copy the ledger out and rebuild `records` and `head_sha256` from it with the RA-12 recipe (`wc -l`, and the hash of the last record), then write `checkpoint-1.json` from them, and `rm $RR/genesis.json` or fill it with the rebuilt values (`finish_step` refuses a 0-byte file under `$HF`).
+
+The owner keeps `genesis.json` (records, head, `profile_digest`) and `checkpoint-1.json` off the guest. Rollback: before the first reserved request (RA-11), `GSSH 'sudo -n rm /var/lib/tbound/sessions/usd-ledger /etc/tbound/provider/research-ledger-checkpoint.json'`; after it, none.
+
+### RA-5 (RR-4) [PRIVILEGED WRITE, needs owner approval] research service config
+
+Start from the round's installed engineering config. Change exactly `provider_route` and, for the pilot profile, add `allow_pilot_on_research: true` (`supervisor/cmd/tbound/pi_service_handoff_linux.go:864-866`). A thesis-profile config must not have it. `workflow_max_host_calls` must not exceed the profile's `max_requests_per_unit` 17 (`supervisor/cmd/tbound/research_route_linux.go:45-50`).
+
+```
+# WSL
+sed 's|^  "provider_route": "engineering",$|  "provider_route": "research",\n  "allow_pilot_on_research": true,|' $HF/pilot/serve-pi-service.json > $RR/serve-pi-service.json
+diff $HF/pilot/serve-pi-service.json $RR/serve-pi-service.json      # [READ-ONLY] provider_route changed, allow_pilot_on_research added, nothing else
+grep -c '"workflow_max_host_calls": 17,' $RR/serve-pi-service.json   # [READ-ONLY] 1
+# Git Bash
+GSSH 'systemctl is-active tbound-pi.service tbound-pi.socket'        # [READ-ONLY] inactive inactive
+WSL cat $RR/serve-pi-service.json | GSSH 'sudo -n install -o root -g root -m 0644 /dev/stdin /etc/tbound/serve-pi-service.json'
+GSSH 'sha256sum /etc/tbound/serve-pi-service.json'; WSL sha256sum $RR/serve-pi-service.json      # [READ-ONLY] equal
+```
+
+Rollback: reinstall `$HF/pilot/serve-pi-service.json` the same way.
+
+### RA-6 [PRIVILEGED WRITE, needs owner approval] measure the registration (R2-1 to R2-3, RG-3)
+
+Run R2-1 verbatim. Run R2-2 with the preamble's `SCR=/var/tmp/tbound-rr`, created first with `GSSH "sudo -n install -d -o root -g root -m 0700 $SCR"`. Run R2-3's `rmdir`, then fetch:
+
+```
+GSSH "sudo -n cat $SCR/managed-live-root.unsigned.json" | WSL tee $RR/managed-live-root.unsigned.json > /dev/null      # [READ-ONLY]
+GSSH 'cd /etc && sha256sum passwd group nsswitch.conf' | WSL tee $RR/account-files.sha256 > /dev/null      # [READ-ONLY]
+```
+
+[READ-ONLY] Then, in WSL, do the checks that `reg-measure` does (`tbound-op:504-508`) and the RG-3 calibration comparison on `$RR/managed-live-root.unsigned.json`, with `CAL_RW_DIGEST` set as in RG-3 (R1-7). Stop on `STOP` before S3.
+
+```
+# WSL
+CAL_RW_DIGEST=<Digest of R1-7>
+J() { python3 -I $WGA/jget.py $RR/managed-live-root.unsigned.json "$1"; }
+[ -n "$CAL_RW_DIGEST" ] && [ "$(J managed_root_xattr_calibration_digest)" = "$CAL_RW_DIGEST" ] &&
+[ "$(J runner_digest)" = "$(cat $HF/TBOUND_DIGEST)" ] && [ "$(J service_uid)" = 995 ] && [ "$(J service_gid)" = 986 ] &&
+[ "$(J service_config_digest)" = "sha256:$(sha256sum < $RR/serve-pi-service.json | cut -c1-64)" ] &&
+[ "$(J passwd_digest) $(J group_digest) $(J nsswitch_digest)" = "$(awk '{print "sha256:" $1}' $RR/account-files.sha256 | paste -sd ' ')" ] && echo REG-OK || echo STOP
+```
+
+Rollback: R2-3.
+
+### RA-7 [OWNER SIGN, needs owner approval] S3 (R2-4) into `$RR`
+
+`sign-run.sh rr s3` signs with `$H/admin.key` (by path), verifies with `--runner-digest` `$HF/TBOUND_DIGEST`, checks the registration digest and the runner, and records `$RR/REGDIGEST`.
+
+```
+# WSL
+bash $WGA/sign-run.sh rr s3 $RR/managed-live-root.unsigned.json      # prints REGDIGEST-rr=sha256:...
+```
+
+### RA-8 [PRIVILEGED WRITE, needs owner approval] install the registration (R2-5)
+
+```
+for f in managed-live-root.json managed-live-root.ed25519; do WSL cat $RR/$f | GSSH "sudo -n install -o root -g root -m 0644 /dev/stdin /etc/tbound/$f"; done
+GSSH 'tbound-profile managed-root-verify --registration /etc/tbound/managed-live-root.json --sig /etc/tbound/managed-live-root.ed25519 --pub /etc/tbound/pi-host-profile.pub'      # [READ-ONLY]
+```
+
+Rollback: reinstall the two files of `$HF/pilot`.
+
+### RA-9 [OWNER SIGN, needs owner approval] S4 (RG-6) with the research route
+
+`sign-run.sh rr s4` builds `$RR/d09-cell.json` from the base template with `managed_live_root_registration_digest` = `$RR/REGDIGEST`, checks that its base template digest equals `$HF/BASE_TD` and that TD differs from it, recomputes the cgroup root digest against `$HF/CGROUP_ROOT_DIGEST`, and signs the host profile `pi-host-profile-rr-<F>` with `--provider-route research --research-profile $RR/research-profile.json`, the frozen file of RA-2 (`supervisor/cmd/tbound-profile/main_linux.go:266-272`, `corpus_pins_linux.go:177-186`). It verifies the signed profile, checks that it contains TD, and records `$RR/TD` and `$RR/PROFILE_DIGEST`.
+
+```
+# WSL
+bash $WGA/sign-run.sh rr s4      # prints NAME=rr REG=... TD(installed template)=... PROFILE=...
+```
+
+The round's `run.json` takes `$RR/PROFILE_DIGEST` as `pins.profile_hash` and `$RR/TD` as `pins.containment_profile_digest`. The other pins stay. The manifest's `pins.model_digest` stays the engineering pin: only `corpus-pins --manifest` compares it, never the service or the runner.
+
+### RA-10 [PRIVILEGED WRITE, needs owner approval] install profile and template (R5-3), verify (R5-4)
+
+```
+WSL cat $RR/pi-host-profile.signed.json | GSSH 'sudo -n install -o root -g root -m 0644 /dev/stdin /etc/tbound/pi-host-profile.json'
+WSL cat $RR/pi-host-profile.ed25519     | GSSH 'sudo -n install -o root -g root -m 0644 /dev/stdin /etc/tbound/pi-host-profile.ed25519'
+WSL cat $RR/d09-cell.json               | GSSH 'sudo -n install -o root -g root -m 0644 /dev/stdin /etc/tbound/d09-cell.json'
+```
+
+Then run R5-4 [READ-ONLY]: TD == `ContainmentProfileDigest`. Rollback: reinstall `$HF/pilot/pi-host-profile.signed.json` (as `pi-host-profile.json`), `pi-host-profile.ed25519` and `d09-cell.json`.
+
+### RA-11 [PRIVILEGED WRITE, needs owner approval; the first reserved request is IRREVERSIBLE] start, close, run
+
+`tbound-op svc start` refuses this config (`tbound-op:655-656`), so start with `systemctl`. A bad research file, key or ledger refuses the service before it listens (`research_route_linux.go:36-55`).
+
+```
+GSSH 'sudo -n systemctl start tbound-pi.socket && sudo -n systemctl start tbound-pi.service; systemctl is-active tbound-pi.socket tbound-pi.service'      # active active
+GSSH 'sudo -n journalctl -u tbound-pi.service -n 50 --no-pager'      # [READ-ONLY] no "open the research provider route" or "exceeds the research profile" refusal
+GSSH "$OP diag l2"                                                     # [READ-ONLY] L2 checks; then the leftover-container check (Pilot run)
+KIT_FREEZE=F31 bash infra/freeze/guest/00-session-sudo.sh close
+```
+
+Run the round's plan (Pilot run, with the RA-9 pins in a new `run_dir`). First the check, which spends nothing: `trial reset <case> --check` refuses on the USD stop rule (`supervisor/cmd/tbound/trial_linux.go:383-401`), a pending workflow (`:403-470`) or a leftover cell (`trial_host_linux.go:309`). Then one step at a time (`supervisor/cmd/tbound-run/commands.go:52-70`):
+
+```
+GSSH_IDENTITY=<trial key> GSSH_USER=root sh infra/freeze/tools/gssh.sh '/usr/local/bin/tbound trial reset <first case of the plan> --check' < /dev/null      # [READ-ONLY]
+tbound-run run --config run.json --max-steps 1      # one step; inspect the journal and the step; repeat
+```
+
+The first `run` reserves the first request in the ledger. From then on RA-4 has no rollback. Recovery is manual, because `infra/freeze/tools/recover.sh` starts the service with `tbound-op svc start` (`recover.sh:150`), which refuses this config. On an UNKNOWN request: `GSSH "$OP abandon <rid>"` (preview), and `--confirm <token>` only when every fact is clean. The verb starts the socket again, and the socket starts the service at the next request. Then do the leftover-container check and continue with `tbound-run run` or `rerun` (Pilot run).
+
+### RA-12 (RR-3a) [PRIVILEGED WRITE, needs owner approval] advance the checkpoint
+
+After the round, and before any later research round on this guest: `GSSH "$OP svc stop"`, open session sudo (the `open` command of RA-1; skip its LEDGER-EXISTS expectation), copy the ledger out, and compute in WSL. `<k>` is the checkpoint in force (`1` after RA-4). `set -C` refuses to overwrite a checkpoint file, as the `x` mode of RA-4 does.
+
+```
+GSSH 'sudo -n cat /var/lib/tbound/sessions/usd-ledger' | WSL tee $RR/usd-ledger.<round> > /dev/null
+# WSL
+set -C; L=$RR/usd-ledger.<round>; CK=$RR/checkpoint-<k>.json
+CK_N=$(python3 -I $WGA/jget.py $CK records); CK_HEAD=$(python3 -I $WGA/jget.py $CK head_sha256)
+[ "$(sed -n "${CK_N}p" $L | head -c -1 | sha256sum | cut -c1-64)" = "$CK_HEAD" ] || { echo STOP; false; } &&
+printf '{"records": %s, "head_sha256": "%s"}\n' $(wc -l < $L) $(tail -n 1 $L | head -c -1 | sha256sum | cut -c1-64) > $RR/checkpoint-<k+1>.json
+set +C
+```
+
+On `STOP`, stop: the ledger was rolled back or edited, and no new checkpoint is written. Otherwise install `checkpoint-<k+1>.json` and read it back as in RA-4, then close session sudo. Keep the new checkpoint and the ledger copy off the guest. The proving round's report is the pilot report with `ledger: "synthetic-empty"` (Pilot run), non-claim-bearing, so its `run.json` binds no ledger.
+
+### RA-13 [READ-ONLY, then PRIVILEGED WRITE] back to the engineering route
+
+First `GSSH "$OP status pilot"`. While the research files are installed, "installed config matches state of:" is empty.
+
+- Next carrier round: run `33-corpus-pilot.sh` as usual. Its phase 4 RG cycle replaces the config (`cfg-install`, `tbound-op:470-477`), the registration and the profile through `tbound-op`.
+- Same round: stop the service, open session sudo, reinstall the six engineering files of `$HF/pilot` as in the RA-5, RA-8 and RA-10 rollbacks, and close session sudo. `GSSH "$OP status pilot"` must again name `pilot`, and then `GSSH "$OP svc start"`.
+
+The files in `/etc/tbound/provider` and the ledger can stay: the engineering route never reads a research file or opens the ledger (`research_route_linux.go:16-21`).
+
+Spend. Each request reserves the worst case at the ceiling prices: 131072 × 0.30 + 4096 × 1.20 = 44,237 µUSD, rounded up (`infra/guest/research/research-profile.json:16-20`, `profile.go:318-328`). A unit makes at most the `max_host_calls` of its trial: 11 gives 486,607 µUSD (about US$0.487), and 17 gives 752,029 µUSD. The ledger stop rule fires only when less than 752,029 µUSD of the 5,000,000 µUSD cap remain (`route.go:374-377`, `research-ledger.json:4-5`). So the stop rule does not limit a short round. Its limit comes from the plan size and `--max-steps`, and optionally from a credit limit on the OpenRouter key. The proving round and H1 on this guest share one ledger (`ledger_id` `tbound-h1-research`, one genesis), so what the round spends counts against the H1 cap.
