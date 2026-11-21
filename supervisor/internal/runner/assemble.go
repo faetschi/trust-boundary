@@ -674,8 +674,6 @@ func (c Config) pairOf(v AdvView) calibration.Pair {
 		}
 		// The adaptive caps are cumulative across the attempts of the case: the service's own measure of the
 		// attacker's tool calls and wall time (all attempts) replaces the trial's metrics.
-		// shortcut: tokens stay per attempt; the pinned attacker is scripted (zero tokens), so add the
-		// cumulative tokens here before a model-driven attacker is registered.
 		if o.Receipt != nil && o.Receipt.AttackerCumulativeUsage != nil {
 			r.ToolCalls, r.WallMS = int(o.Receipt.AttackerCumulativeUsage.ToolCalls), int(o.Receipt.AttackerCumulativeUsage.WallMS)
 		}

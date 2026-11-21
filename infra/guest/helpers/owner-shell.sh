@@ -20,7 +20,6 @@ _owner_need() { # _owner_need VAR...: each named variable must be set and non-em
 _owner_ssh() { # _owner_ssh KEY TARGET [REMOTE...]: the only place that holds the ssh options
   [ -r "$1" ] || { echo "owner-shell: identity file not readable: $1" >&2; return 1; }
   [ -r "$KNOWN_HOSTS" ] || { echo "owner-shell: known_hosts not readable: $KNOWN_HOSTS" >&2; return 1; }
-  # shortcut: ssh is found on PATH; Windows OpenSSH fails KEX with the guest, so pin Git's ssh.exe path if PATH order changes.
   MSYS_NO_PATHCONV=1 ssh -i "$1" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes \
     -o UserKnownHostsFile="$KNOWN_HOSTS" -o HostKeyAlias="$HOST_KEY_ALIAS" "${@:2}"
 }

@@ -1,5 +1,4 @@
-// Ported from the hostile-payload group of internal/webchat/jstest/markdown.test.mjs.
-// The payloads come from legacy-fixtures.json, extracted from the legacy file.
+// The payloads come from legacy-fixtures.json.
 
 import { describe, expect, it } from "vitest";
 import type { Block, LinkInline } from "./ast";

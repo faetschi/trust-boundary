@@ -116,9 +116,6 @@ func nftExpression(expr any, pinnedLevel int) (string, error) {
 
 func nftOperand(left map[string]any, pinnedLevel int) (string, error) {
 	if socket, ok := left["socket"].(map[string]any); ok && len(left) == 1 {
-		// shortcut: nft 1.0.9 (Ubuntu 24.04) leaves the level out of -j, so a socket without one is
-		// read at the pinned level, which the digest-checked rule file loaded; upgrade to a text
-		// listing check if the level must be read back from the kernel.
 		level := float64(pinnedLevel)
 		if reported, ok := socket["level"].(float64); ok {
 			level = reported

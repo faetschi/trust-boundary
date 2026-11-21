@@ -1,4 +1,3 @@
-// Ported from the performance group of internal/webchat/jstest/markdown.test.mjs.
 // Cost is judged by scanWork, the count of positions the look-ahead examined, so the
 // bound cannot flake on a slow machine. The clock is a generous backstop only. The
 // constants are the legacy ones.

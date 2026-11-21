@@ -128,7 +128,7 @@
 //     (E04Point.LedgerPrefixDigest, computed by LedgerPrefixDigest). The evaluator
 //     recomputes it from the supplied ledger. A count alone is never trusted. The
 //     ledger has no per-transition application receipt; the executor must bind
-//     one upstream (see the TODO on E04Point for the field name).
+//     one upstream.
 //
 // # Not observed (blind spots)
 //

@@ -268,7 +268,6 @@ func resolveProductOCIImageFile(ctx context.Context, imagePath string, lookup fu
 }
 
 func refuseProductOCIRedirectedWrites(ctx context.Context, layoutPath string, layers []ociLayerDescriptor, requireImmutable bool) (map[string]bool, error) {
-	// shortcut: retain whited-out symlinks until a directory header replaces them; refine if valid images need it.
 	symlinks := map[string]bool{}
 	hardlinkTargets := map[string]bool{}
 	checkAncestors := func(name string) error {

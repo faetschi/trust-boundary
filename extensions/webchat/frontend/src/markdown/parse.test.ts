@@ -1,5 +1,4 @@
-// Ported from internal/webchat/jstest/markdown.test.mjs. Each legacy test keeps its
-// title; assertions that read DOM structure now read the AST. The attribute-level
+// Assertions that read DOM structure now read the AST. The attribute-level
 // assertions moved to render.test.ts, the DOM mapping contract.
 
 import { describe, expect, it } from "vitest";

@@ -1,4 +1,6 @@
-.opencode/
+.opencode/*
+!.opencode/skills/
+!.opencode/command/
 
 # Local-only / never commit
 vm_start.txt
@@ -29,7 +31,9 @@ supervisor/internal/sessionrepo/artifacts/
 # this does not match the retained supervisor/tbound.exe pattern above.
 supervisor/tbound-*
 __pycache__/
-.claude/
+.claude/*
+!.claude/skills/
+!.claude/commands/
 
 # owner-local working files
 /TASK_STATE.md

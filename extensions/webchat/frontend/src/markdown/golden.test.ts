@@ -1,5 +1,4 @@
-// Ported from the "ordinary markdown is unchanged" test of
-// internal/webchat/jstest/markdown.test.mjs. The digests are the legacy ones, computed
+// The digests are the legacy ones, computed
 // over the legacy DOM serialization. The same serialization of the AST's DOM mapping
 // must hash to the same 16 hex digits.
 
