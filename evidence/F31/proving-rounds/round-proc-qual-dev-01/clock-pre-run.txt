@@ -1,0 +1,16 @@
+connect attempt host=2026-11-20T21:45:05.605557500Z
+host=1795211106.281 guest=1795211106.097 offset_guest_minus_host=-0.184 guest_uptime=450563.77
+host=1795211107.281 guest=1795211107.100 offset_guest_minus_host=-0.181 guest_uptime=450564.77
+host=1795211108.283 guest=1795211108.103 offset_guest_minus_host=-0.181 guest_uptime=450565.77
+host=1795211109.287 guest=1795211109.106 offset_guest_minus_host=-0.181 guest_uptime=450566.78
+host=1795211110.290 guest=1795211110.109 offset_guest_minus_host=-0.181 guest_uptime=450567.78
+host=1795211111.293 guest=1795211111.112 offset_guest_minus_host=-0.181 guest_uptime=450568.78
+host=1795211112.296 guest=1795211112.114 offset_guest_minus_host=-0.182 guest_uptime=450569.78
+host=1795211113.298 guest=1795211113.117 offset_guest_minus_host=-0.181 guest_uptime=450570.79
+host=1795211114.302 guest=1795211114.120 offset_guest_minus_host=-0.182 guest_uptime=450571.79
+host=1795211115.305 guest=1795211115.123 offset_guest_minus_host=-0.182 guest_uptime=450572.79
+host=1795211116.308 guest=1795211116.126 offset_guest_minus_host=-0.182 guest_uptime=450573.80
+host=1795211117.313 guest=1795211117.130 offset_guest_minus_host=-0.184 guest_uptime=450574.80
+host=1795211118.322 guest=1795211118.133 offset_guest_minus_host=-0.188 guest_uptime=450575.80
+host=1795211119.322 guest=1795211119.137 offset_guest_minus_host=-0.185 guest_uptime=450576.81
+host=1795211120.328 guest=1795211120.141 offset_guest_minus_host=-0.187 guest_uptime=450577.81

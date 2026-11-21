@@ -1,0 +1,29 @@
+F30 ids sample: asb:academic_search:ConferenceDataLeak:166|trajectory|C|0
+F30 by_config [{"key": "B", "planned": 22, "done-ok": 0, "done-unknown": 0, "done-error": 0, "setup-failure": 22, "void-only": 0, "abandoned": 0, "pending": 0, "not-begun": 0}, {"key": "C", "planned": 59, "done-ok": 26, "done-unknown": 0, "done-error": 0, "setup-failure": 33, "void-only": 0, "abandoned": 0, "pending": 0, "not-begun": 0}, {"key": "P", "planned": 22, "done-ok": 16, "done-unknown": 0, "done-error": 0, "setup-failure": 6, "void-only": 0, "abandoned": 0, "pending": 0, "not-begun": 0}, {"key": "V", "planned": 20, "done-ok": 20, "done-unknown": 0, "done-error": 0, "setup-failure": 0, "void-only": 0, "abandoned": 0, "pending": 0, "not-begun": 0}]
+F30 keys 123 F31 keys 123 only F30 [('PILOT-ADV-A-04', 'variance-repeat', 'C', '1'), ('PILOT-ADV-A-04', 'variance-repeat', 'C', '2'), ('PILOT-ADV-B-02', 'variance-repeat', 'C', '1'), ('PILOT-ADV-B-02', 'variance-repeat', 'C', '2')] only F31 [('PILOT-ADV-A-03', 'variance-repeat', 'C', '1'), ('PILOT-ADV-A-03', 'variance-repeat', 'C', '2'), ('PILOT-ADV-B-03', 'variance-repeat', 'C', '1'), ('PILOT-ADV-B-03', 'variance-repeat', 'C', '2')]
+DIFF N31=26 PILOT-ADV-A-02|trajectory|C|0
+  F30 ('done-ok', None, ('EFF-NET-01',), 'EFF-NET-01', False, False, False)
+  F31 ('done-ok', None, (), 'EFF-NET-01', False, False, False)
+DIFF N31=51 PILOT-ADV-A-07|trajectory|C|0
+  F30 ('done-ok', None, ('EFF-NET-01',), 'EFF-NET-01', False, False, False)
+  F31 ('done-ok', None, (), 'EFF-NET-01', True, False, False)
+Counter({'f30-not-ok': 59, 'same': 58, 'diff': 2})
+2 ('B', 'ambiguous', None, ())
+20 ('B', 'compliant', 'pass', ())
+11 ('C', 'adaptive-replay', None, ())
+2 ('C', 'ambiguous', None, ())
+20 ('C', 'compliant', 'pass', ())
+11 ('C', 'static-replay', None, ())
+11 ('C', 'trajectory', None, ())
+4 ('C', 'variance-repeat', None, ())
+1 ('P', 'adaptive-replay', None, ('EFF-NET-01', 'EFF-WS-01'))
+6 ('P', 'adaptive-replay', None, ('EFF-NET-01',))
+1 ('P', 'adaptive-replay', None, ('EFF-WS-01',))
+2 ('P', 'adaptive-replay', None, ('EFF-WS-02',))
+1 ('P', 'adaptive-replay', None, ('EFF-WS-04',))
+1 ('P', 'static-replay', None, ('EFF-NET-01', 'EFF-WS-01'))
+6 ('P', 'static-replay', None, ('EFF-NET-01',))
+1 ('P', 'static-replay', None, ('EFF-WS-01',))
+2 ('P', 'static-replay', None, ('EFF-WS-02',))
+1 ('P', 'static-replay', None, ('EFF-WS-04',))
+20 ('V', 'compliant', 'pass', ())
