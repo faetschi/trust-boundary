@@ -13,10 +13,10 @@ Freeze F32 = `main` `08f3c3ee` (`run.json:2`), guest restored to `post-F32-chain
 
 ## Checks
 
-- **Counts are from `units-summary.txt`,** which `../units.py` generated from `journal.jsonl` (123 `begin`, 123 `started`, 123 `done`, 0 `void`; the journal, 1.9 MB, is not kept). Oracle counts are the not-`none` entries per config: P only. C shows none, as in F31's round 1b.
+- **Counts are from `units-summary.txt`,** which `../units.py` generated from `journal.jsonl` (123 `done`; no `void` counter printed; the journal is not kept). Oracle counts are the not-`none` entries per config: P only. C shows none, as in F31's round 1b.
 - **PROC intervals:** 45 closed on proof, 14 at `horizon` (300 s). The 14 are the net-sink P units, by design (`supervisor/internal/procoracle/closure.go:227`, as in F31's round 1b). 59 closures are listed in all (`units-summary.txt:138-139`).
 - **Tool attempts:** 11 units have `tool_attempt true` (`units-summary.txt:144`). Tokens 418921 in, 29466 out.
-- **Guest collection:** 105 run ids decoded from the request journal, 0 bad (`guest/collect-2.txt:1`); the collection tar verifies (`guest/guest-sha256-verify.txt:1`, rc 0; its sha256 `bc6c2347…`, `guest/COLLECTION-SUMS.txt:1`). `round-run-ids.txt` has 105 lines. The raw tar (69 MB) is not kept.
+- **Guest collection:** 105 run ids decoded from the request journal, 0 bad (`guest/collect-2.txt:1`); the collection tar verifies (`guest/guest-sha256-verify.txt:1`, rc 0; its sha256 `bc6c2347…`, `guest/COLLECTION-SUMS.txt:1`). `round-run-ids.txt` has 105 lines. The raw tar (69 MB; size from the local `.local/` copy, not checkable here) is not kept.
 - **Leftover containers:** none before (`leftover-pre-run.txt:1`) and after (`guest/leftover-final.txt:1`) the run.
 - **State:** pilot service active and installed config matches state (`guest/status-pilot.txt:4-6`); collected at 12:20:27 (`guest/collected-at.txt:1`). The previous pilot state (round 1a) was set aside first (129 files, `aside.txt:3`).
 - **Clock:** guest minus host +0.094 to +0.100 s at 09:44:32 (`clock-pre-run.txt:2,9`). No check after the run.
@@ -29,4 +29,4 @@ Freeze F32 = `main` `08f3c3ee` (`run.json:2`), guest restored to `post-F32-chain
 
 ## Files
 
-`run.json`, `plan.txt`, `chunk-01.txt`/`.err`, `recover.log`, `units-summary.txt`, `guest/` (collection facts), `33-pass1.log`, `values.txt`, clock and leftover records. Not kept: the 1.9 MB `journal.jsonl`, the guest audit collection (105 audits in `diag/final/audit/`), `service-journal*.txt` (4.7 MB), `requests-now.jsonl`. They stay under `.local/round-rehearsal-dev-03-f32/`.
+`run.json`, `plan.txt`, `chunk-01.txt`/`.err`, `recover.log`, `units-summary.txt`, `guest/` (collection facts), `33-pass1.log`, `values.txt`, clock and leftover records. Not kept (sizes from the local `.local/` copy, not checkable here): the 1.9 MB `journal.jsonl`, the guest audit collection (105 audits in `diag/final/audit/`), `service-journal*.txt` (4.7 MB), `requests-now.jsonl`. They stay under `.local/round-rehearsal-dev-03-f32/`.

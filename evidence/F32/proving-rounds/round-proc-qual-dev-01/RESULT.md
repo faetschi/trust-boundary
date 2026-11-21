@@ -2,7 +2,7 @@
 
 Freeze F32 = `main` `08f3c3ee` (`run.json:2`), guest state restored to `post-F32-chain-2026-11-21` (`evidence/F32/F32-RESULT.md:22`). Carrier `proc-qual-dev-01` (#213), purpose `construct-witness`, `quota_profile` `pilot`, `proc.monitor_seconds` 300 (`run.json:78`, `:14`, `:73`). Plan: 13 units, all P `static-replay`, `subset true` (`plan.txt:5-9`). The carrier has two `no-reap/v1` P units, `QUAL-PROC-01` and `QUAL-PROC-03` (`corpus/sampling/carriers/proc-qual-dev-01/manifest.draft.json:1563,1665` and `:1714,1816`). This is a development round on development rows. It is not a study result. Times are UTC, 2026-11-21. Paths below are relative to this folder.
 
-**Result: the round stopped at 10 of 13 units (`finished false`, `exec_failures 1`, `remaining 3`: `chunk-01.txt:3,8-10`). Unit 10, `QUAL-PROC-01`, returned fast but ended UNKNOWN (`run-end-unclassified`) after its no-reap bash call: the F31 stall of 600 s did not recur, and the run now stops on a refusal that the replay code makes on purpose (see Cause). The abandon preview was not clean, so the round stops and `QUAL-PROC-03` is void (`recover.log:2`, `chunk-01.err:1`, `journal.jsonl:33`).**
+**Result: the round stopped at 10 of 13 units (`finished false`, `exec_failures 1`, `remaining 3`: `chunk-01.txt:3,8-10`). Unit 10, `QUAL-PROC-01`, ended fast without a result, UNKNOWN (`run-end-unclassified`), after its no-reap bash call: the F31 stall of 600 s did not recur, and the run now stops on a refusal that the replay code makes on purpose (see Cause). The abandon preview was not clean, so the round stops and `QUAL-PROC-03` is void (`recover.log:2`, `chunk-01.err:1`, `journal.jsonl:33`).**
 
 ## Units (`units-summary.txt`, from `journal.jsonl`)
 
@@ -34,7 +34,7 @@ The first nine units match F31's round 1a (same witnesses, 4 closed on proof and
 | 09:40:06 | diagnostics collected; the same container (`46e309f18fec`) is `Up 5 hours` | `at-unknown/collected-at.txt:1`, `at-unknown/podman-ps.txt:2` |
 | 09:41:12 | guest checkpointed as `post-F32-qual-barrier-2026-11-21`; restored to `post-F32-chain-2026-11-21` at 09:41:32; VM running 09:41:44 | `f32-restore2.out:3-5`, `f32-restore2.ps1:17-23` |
 
-`QUAL-PROC-01` returned 26 s after its interval started (04:12:25 to 04:12:51). That is the point of #251: F31's no-reap call waited the full 600 s. F32 does not.
+`QUAL-PROC-01` ended 26 s after its interval started (04:12:25 to 04:12:51). That is the point of #251: F31's no-reap call waited the full 600 s. F32 does not.
 
 ## What stopped the round
 
@@ -46,11 +46,11 @@ The first nine units match F31's round 1a (same witnesses, 4 closed on proof and
 ## Cause
 
 - **Independent investigation (not a log line of this round):** replay `Reconstruct` refuses a left-running no-reap settlement on purpose (`supervisor/internal/sessionrepo/replay_linux.go:602-607` at `08f3c3ee`, comment "Deliberate (audit #12)": the three booleans `ProcessScopeEmpty`, `WritersStopped`, `MountDetached`, not `SurvivorsTolerated`, "so a no-reap/v1 effect is unreconstructable"). The live path binds a Bash result only after `Reconstruct` accepts the bundle (`supervisor/cmd/tbound/production_command_receipts_linux.go:342,459-461` at `08f3c3ee`). So a no-reap bash call cannot return its result in a production session: the run ends UNKNOWN and the container stays. The logs show the refusal text (`service-journal-qual-proc-01.txt:80-83`) and the container; they do not show the code path, which is the investigation's reading of the two files.
-- **Fact:** this is not the F31 defect. F31 stalled 600 s in `settleNoReap` (`../../F31/proving-rounds/round-proc-qual-dev-01/RESULT.md`, Cause); F32 returns in 26 s, which is consistent with #251 (merged `0edfe78e`) working. The red-to-green run of its test is not in this PR.
+- **Fact:** this is not the F31 defect. F31's investigation placed the 600 s stall in `settleNoReap` (`../../F31/proving-rounds/round-proc-qual-dev-01/RESULT.md`, Cause); F32 ended in 26 s, which is consistent with #251 (merged `0edfe78e`) working. The red-to-green run of its test is not in this PR.
 
 ## The owner decision
 
-Keep F32 and amend D45: PROC-01 and PROC-03 are not measurable on F-H1; TM-C becomes DC01, DC02, DC04; no no-reap P unit runs on the H1 guest (decision of 2026-11-21, register change in the thesis repo PR faetschi/MSE_MA_Thesis #43, merged `0533a18f`: relayed by the coordinator; no repo file in this repository). So the freeze does not move. The guest was checkpointed as `post-F32-qual-barrier-2026-11-21` and restored to `post-F32-chain-2026-11-21` for the next rounds (`f32-restore2.out:3-5`). No chain was rerun. The restore script then looked for a go marker; it ended the wait 10 s later with "chain not confirmed" and created no `post-F32-restored-2026-11-21` checkpoint (`f32-restore2.out:6-7`, `f32-restore2.ps1:25-28`). Who wrote the `.chainfail` marker is not in this evidence.
+Keep F32 and amend D45: PROC-01 and PROC-03 are not measurable on F-H1; TM-C becomes DC01, DC02, DC04; no no-reap P unit runs on the H1 guest (decision of 2026-11-21, register change in the thesis repo PR faetschi/MSE_MA_Thesis #43, merged 2026-11-21T11:29:55Z as `0533a18f`). So the freeze does not move. The guest was checkpointed as `post-F32-qual-barrier-2026-11-21` and restored to `post-F32-chain-2026-11-21` for the next rounds (`f32-restore2.out:3-5`). No chain was rerun. The restore script then looked for a go marker; it ended the wait 10 s later with "chain not confirmed" and created no `post-F32-restored-2026-11-21` checkpoint (`f32-restore2.out:6-7`, `f32-restore2.ps1:25-28`). The script ended on a marker file (inferred `.chainfail`: the wait ended after 10 s, not 10 min); who wrote it is not in this evidence.
 
 ## Clock
 
@@ -58,4 +58,4 @@ Guest minus host +0.28 s before the run (`clock-pre-run.txt:2,9`), within the su
 
 ## Files
 
-`run.json`, `plan.txt`, `chunk-01.txt`/`.err`, `recover.log`, `journal.jsonl`, `units-summary.txt` (generated from the journal and `proc-closure/`), `at-unknown/`, `auto-20261121T041740Z/`, `podman-poll.txt` and its script, `33-pass1.log` (the step 33 pass before the round), `values.txt`, `ga-run.json`, the restore script and output. Not kept: the 55 KB `requests.jsonl` (byte-identical in `diag/at-unknown/` and `diag/auto-20261121T041740Z/`, sha256 `751b7581…`), the 3.5 MB `proc-evidence/` (interval snapshots; only the closures are here), net and transient evidence, `bin/tbound-run.exe`, `known_hosts`. They stay under `.local/round-proc-qual-dev-01-f32/`.
+`run.json`, `plan.txt`, `chunk-01.txt`/`.err`, `recover.log`, `journal.jsonl`, `units-summary.txt` (generated from the journal and `proc-closure/`), `at-unknown/`, `auto-20261121T041740Z/`, `podman-poll.txt` and its script, `33-pass1.log` (the step 33 pass before the round), `values.txt`, `ga-run.json`, the restore script and output. Not kept (size and digest from the local `.local/` copy, not checkable here): the 55 KB `requests.jsonl` (byte-identical in `diag/at-unknown/` and `diag/auto-20261121T041740Z/`, sha256 `751b7581…`), the 3.5 MB `proc-evidence/` (interval snapshots; only the closures are here), net and transient evidence, `bin/tbound-run.exe`, `known_hosts`. They stay under `.local/round-proc-qual-dev-01-f32/`.
