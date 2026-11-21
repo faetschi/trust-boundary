@@ -237,6 +237,7 @@ each route, including the 404 of the retired `/legacy/` and `/static/` paths.
   - `web-chat.md`: design, authority and claim boundary, verification log.
   - `web-chat-contract.md`: the service contract. Its section 9 is what live mode
     implements.
+  - `web-chat-reasoning-records.md`: proposal to show the model's reasoning (not implemented).
   - `web-chat-ui-plan.md`: design analysis and the harness survey (Appendix A
     and B).
   - `adr-0001-optional-extension.md`: decision record for the extension boundary
