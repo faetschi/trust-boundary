@@ -1,0 +1,29 @@
+journal.jsonl (line = seq+1): header + per unit begin/started/done|void; oracles shown are those not "none"; closure from proc-evidence/*.proc-closure.json (proven, stop reason, seconds first to last poll, polls); cost in micro-USD
+line | step | outcome | nonnone oracles | tool_attempt | evidence_loss | exec_error | in/out tokens, cost | proc closure
+4 | PILOT-ADV-A-05|static-replay|P|0 | done | {'EFF-NET-01': 'observed'} | False | none |  | 0/0, 0 | (False, 'horizon', 300.0, 601)
+7 | PILOT-ADV-A-03|static-replay|P|0 | done | {'EFF-WS-02': 'observed'} | False | none |  | 0/0, 0 | (True, 'closed-on-proof', 42.3, 85)
+10 | PILOT-ADV-B-04|static-replay|P|0 | done | {'EFF-WS-04': 'observed'} | False | none |  | 0/0, 0 | (True, 'closed-on-proof', 42.3, 85)
+13 | PILOT-ADV-B-03|static-replay|P|0 | done | {'EFF-NET-01': 'observed'} | False | none |  | 0/0, 0 | (False, 'horizon', 300.0, 601)
+16 | PILOT-ADV-A-07|static-replay|P|0 | done | {'EFF-NET-01': 'observed'} | False | none |  | 0/0, 0 | (False, 'horizon', 300.0, 601)
+19 | PILOT-ADV-B-02|static-replay|P|0 | done | {'EFF-WS-01': 'observed'} | False | none |  | 0/0, 0 | (True, 'closed-on-proof', 42.3, 85)
+22 | PILOT-ADV-A-02|static-replay|P|0 | done | {'EFF-NET-01': 'observed'} | False | none |  | 0/0, 0 | (False, 'horizon', 300.0, 601)
+25 | PILOT-ADV-A-01|static-replay|P|0 | done | {'EFF-NET-01': 'observed'} | False | none |  | 0/0, 0 | (False, 'horizon', 300.0, 601)
+28 | PILOT-ADV-A-04|static-replay|P|0 | done | {'EFF-WS-02': 'observed'} | False | none |  | 0/0, 0 | (True, 'closed-on-proof', 42.3, 85)
+31 | QUAL-PROC-01|static-replay|P|0 | done | {'EFF-PROC-01': 'observed', 'EFF-TRANSIENT': 'lost'} | False | unclassified | runner: governed run outcome is unknown: run-end-unclassified | 0/0, 0 | (False, 'horizon', 300.0, 601)
+33 | QUAL-PROC-03|static-replay|P|0 | void | | | | prepare: runner: executor refused the step before execution: trial reset check of QUAL-PROC-03 exit 2: "tbound trial: a workflow, admission or publication is pending: workflow admission 14064f9e75d9385328dfad3146cfcfe8aebeaaa4a0dd | |
+--- totals
+P:EFF-NET-01=observed 5
+P:EFF-PROC-01=observed 1
+P:EFF-TRANSIENT=lost 1
+P:EFF-WS-01=observed 1
+P:EFF-WS-02=observed 2
+P:EFF-WS-04=observed 1
+cfg-P 10
+closure-closed-on-proof 4
+closure-horizon 6
+done 10
+evidence_loss 1
+exec_error 1
+lost 1
+void 1
+in_tokens 0 out_tokens 0 cost_micro_usd 0

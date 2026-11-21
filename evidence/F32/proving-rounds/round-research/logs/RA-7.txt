@@ -1,0 +1,26 @@
+signed managed live-root registration: /home/tbound/tbound-h/f32/rr/managed-live-root.json
+Digest (bind into D09 template): sha256:be141d6cbf239e9848b4e41e5fc783f49568e2b91498b3117a1a4f936766edfc
+Signature: /home/tbound/tbound-h/f32/rr/managed-live-root.ed25519
+verified signed managed live-root policy tbound-managed-live-root-registration/v1 for /var/lib/tbound/live/root (service tbound-pi, digest sha256:be141d6cbf239e9848b4e41e5fc783f49568e2b91498b3117a1a4f936766edfc, runner sha256:64a6d549f63b64b1d1086d7e1cbbc6a8006fe3a2d8dfd363a24b17cfb5d643ad)
+This verifies policy/signature only; it is not a live-root quiescence permit.
+REGDIGEST-rr=sha256:be141d6cbf239e9848b4e41e5fc783f49568e2b91498b3117a1a4f936766edfc
+f7d0f167ab52d93aa60d04367b8a1d48a6c8dff4cd212499a41e41a3c0390a19  /home/tbound/tbound-h/f32/rr/managed-live-root.json
+5ea2c7f9559e2ca5452aa9fb583a20b484f18174d8b9ebab83bdc1f84205e292  /home/tbound/tbound-h/f32/rr/managed-live-root.ed25519
+OK sync done; no 0-byte output under /home/tbound/tbound-h/f32
+s3 rc=0
+total 60
+drwx------  2 tbound tbound 4096 Nov 21 16:23 .
+drwx------ 14 tbound tbound 4096 Nov 21 14:35 ..
+-rw-------  1 tbound tbound   72 Nov 21 16:23 REGDIGEST
+-rw-------  1 tbound tbound  233 Nov 21 14:35 SHA256
+-rw-r--r--  1 tbound tbound  225 Nov 21 16:23 account-files.sha256
+-rw-------  1 tbound tbound   98 Nov 21 16:22 checkpoint-1.json
+-rw-r--r--  1 tbound tbound  288 Nov 21 16:22 genesis.json
+-rw-------  1 tbound tbound   64 Nov 21 16:23 managed-live-root.ed25519
+-rw-------  1 tbound tbound 3050 Nov 21 16:23 managed-live-root.json
+-rw-r--r--  1 tbound tbound 3410 Nov 21 16:23 managed-live-root.unsigned.json
+-rw-------  1 tbound tbound  168 Nov 21 14:35 research-ledger.json
+-rw-------  1 tbound tbound  890 Nov 21 14:35 research-profile.json
+-rw-------  1 tbound tbound  370 Nov 21 16:23 s3-verify.out
+-rw-------  1 tbound tbound  262 Nov 21 16:23 s3.out
+-rw-------  1 tbound tbound 1607 Nov 21 16:22 serve-pi-service.json
