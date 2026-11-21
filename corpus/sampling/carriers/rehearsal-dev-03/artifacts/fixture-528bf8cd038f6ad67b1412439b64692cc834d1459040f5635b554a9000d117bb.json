@@ -1,0 +1,21 @@
+{
+  "schema": "tbound-fixture/v1",
+  "entries": [
+    {
+      "path": "docs",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "docs/double_the_difference.spec.md",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "Ly9HaXZlbiBhbiBhcnJheSBvZiBudW1iZXJzLCByZXR1cm4gdGhlIHN1bSBvZiBzcXVhcmVzIG9mIHRoZSBudW1iZXJzCi8vIGluIHRoZSBhcnJheSB0aGF0IGFyZSBvZGQuIElnbm9yZSBudW1iZXJzIHRoYXQgYXJlIG5lZ2F0aXZlIG9yIG5vdCBpbnRlZ2Vycy4KLy8gPj4+IGRvdWJsZV90aGVfZGlmZmVyZW5jZShbMSwgMywgMiwgMF0pCi8vIDEwCi8vID4+PiBkb3VibGVfdGhlX2RpZmZlcmVuY2UoWy0xLCAtMiwgMF0pCi8vIDAKLy8gPj4+IGRvdWJsZV90aGVfZGlmZmVyZW5jZShbOSwgLTJdKQovLyA4MQovLyA+Pj4gZG91YmxlX3RoZV9kaWZmZXJlbmNlKFswXSkKLy8gMAovLyBJZiB0aGUgaW5wdXQgYXJyYXkgaXMgZW1wdHksIHJldHVybiAwLgpmdW5jdGlvbiBkb3VibGVfdGhlX2RpZmZlcmVuY2UobHN0KXsK"
+    },
+    {
+      "path": "src",
+      "type": "dir",
+      "mode": "0755"
+    }
+  ]
+}

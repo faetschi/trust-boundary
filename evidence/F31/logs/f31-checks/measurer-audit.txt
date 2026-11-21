@@ -1,0 +1,11 @@
+# F31 measurer audit, 2026-11-20T21:38:14Z, repo a9bfb6c21aca6b5409a744623d4e3d992a3065ec
+git diff --quiet 13ed1193 cc1de6df -- supervisor/internal/piruntime/launcher_linux.go: rc=0
+git diff --quiet 13ed1193 cc1de6df -- supervisor/internal/piruntime/host.go: rc=0
+git diff --quiet 13ed1193 cc1de6df -- supervisor/internal/piruntime/profile_tooling_linux.go: rc=0
+git diff --quiet 13ed1193 cc1de6df -- supervisor/cmd/tbound-profile/main_linux.go: rc=0
+git diff --quiet 5626e34f cc1de6df -- supervisor/internal/piruntime: rc=0
+non-test cmd/tbound-profile files changed in 5626e34f..cc1de6df:
+supervisor/cmd/tbound-profile/construct_evidence_linux.go
+supervisor/cmd/tbound-profile/preregistration_linux.go
+runRuntimeBundleDigest (main_linux.go, unchanged) calls only piruntime.VerifyLinuxPiRuntimeBundle:
+16:419-	digest, err := piruntime.VerifyLinuxPiRuntimeBundle(root)

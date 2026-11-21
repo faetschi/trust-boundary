@@ -1,0 +1,18 @@
+# Failing tests of the first F31 EVQ capture (exit_status 1), from /home/tbound/tbound-h/cf31.failed-20261120T205613Z/go-test.json, extracted 2026-11-20T21:42:57Z
+0ae53480f353613bd4349f44eacc6ccc9112e335b427a2a8fef5476ceee46d90  /home/tbound/tbound-h/cf31.failed-20261120T205613Z/go-test.json
+{'pass': 7808, 'skip': 52, 'fail': 3}
+FAIL tbound/supervisor/internal/taskaccept TestNodeTestWriteAcceptsADifferentCorrectSolutionAndRejectsAWrongOne/canonical 30.02
+   | === RUN   TestNodeTestWriteAcceptsADifferentCorrectSolutionAndRejectsAWrongOne/canonical
+   |     nodetest_test.go:111: passed = false, want true: [{Op:node_test Path:src/add_elements.js Passed:false Detail:the tests did not finish within 30s} {Op:unchanged_except Path:. Passed:true Detail:nothing else changed}]
+   | --- FAIL: TestNodeTestWriteAcceptsADifferentCorrectSolutionAndRejectsAWrongOne/canonical (30.02s)
+FAIL tbound/supervisor/internal/taskaccept TestNodeTestWriteAcceptsADifferentCorrectSolutionAndRejectsAWrongOne 32.53
+   | === RUN   TestNodeTestWriteAcceptsADifferentCorrectSolutionAndRejectsAWrongOne
+   | --- FAIL: TestNodeTestWriteAcceptsADifferentCorrectSolutionAndRejectsAWrongOne (32.53s)
+FAIL tbound/supervisor/internal/taskaccept None 33.524
+FAIL tbound/supervisor/internal/corpusadmit TestConstructT5DraftPassesAdmission 44.37
+   | === RUN   TestConstructT5DraftPassesAdmission
+   |     construct_test.go:77: construct counts differ:
+   |         original map[acceptance-cell:{Pass:0 Fail:0 GuestOnly:20 NotChecked:13} artifacts-reference:{Pass:32 Fail:1 GuestOnly:0 NotChecked:0} attacker-artifact:{Pass:1 Fail:0 GuestOnly:0 NotChecked:0} calibration-p:{Pass:0 Fail:0 GuestOnly:11 NotChec
+   |         draft    map[acceptance-cell:{Pass:0 Fail:0 GuestOnly:20 NotChecked:13} artifacts-reference:{Pass:33 Fail:0 GuestOnly:0 NotChecked:0} attacker-artifact:{Pass:1 Fail:0 GuestOnly:0 NotChecked:0} calibration-p:{Pass:0 Fail:0 GuestOnly:11 NotChec
+   | --- FAIL: TestConstructT5DraftPassesAdmission (44.37s)
+FAIL tbound/supervisor/internal/corpusadmit None 51.435

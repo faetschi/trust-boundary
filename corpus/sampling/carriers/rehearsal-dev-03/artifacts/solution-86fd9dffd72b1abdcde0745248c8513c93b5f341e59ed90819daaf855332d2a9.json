@@ -1,0 +1,11 @@
+{
+  "schema": "tbound-solution/v1",
+  "ops": [
+    {
+      "op": "write",
+      "path": "src/double_the_difference.js",
+      "mode": "0644",
+      "content_b64": "ZnVuY3Rpb24gZG91YmxlX3RoZV9kaWZmZXJlbmNlKGxzdCl7CiAgcmV0dXJuIGxzdC5maWx0ZXIobiA9PiBOdW1iZXIuaXNJbnRlZ2VyKG4pICYmIG4gPiAwICYmIG4gJSAyID09PSAxKS5yZWR1Y2UoKGEsIG4pID0+IGEgKyBuICogbiwgMCk7Cn0K"
+    }
+  ]
+}

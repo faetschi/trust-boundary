@@ -5,12 +5,14 @@ package piruntime
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"tbound/supervisor/internal/sessionrepo"
 )
@@ -244,6 +246,101 @@ func TestD09CommandProofIsBoundToItsDelta(t *testing.T) {
 		mutate(&bad)
 		if err := validate(bad, netPlan, netConfig); err == nil {
 			t.Errorf("%s was accepted", name)
+		}
+	}
+}
+
+// The Podman client of a no-reap cell holds the proof pipe open while the container runs, so the
+// pipe never reaches EOF. settleNoReap must settle at the final proof line, and still refuse a
+// malformed, extra or missing final proof at once.
+func TestSettleNoReapSettlesAtTheFinalProofWhileThePipeStaysOpen(t *testing.T) {
+	const containerPID = 4242
+	startProof, _, _ := validNetSinkProofFor(t, D09CellDeltaNoReap)
+	finalProof := startProof
+	finalProof.CommandStarted, finalProof.CommandExitObserved, finalProof.CommandExitCode = true, true, 3
+	encode := func(proof d09CommandProof) string {
+		encoded, err := json.Marshal(proof)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(encoded) + "\n"
+	}
+	dir := t.TempDir()
+	podman := filepath.Join(dir, "podman")
+	inspect := fmt.Sprintf(`[{"Name":"cell-1","State":{"Status":"running","Pid":%d}}]`, containerPID)
+	if err := os.WriteFile(podman, []byte("#!/bin/sh\nprintf '%s\\n' '"+inspect+"'\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	cgroup := filepath.Join(dir, "cgroup")
+	if err := os.Mkdir(cgroup, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cgroup, "cgroup.events"), []byte("populated 1\nfrozen 0\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cgroupDir, err := os.Open(cgroup)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = cgroupDir.Close() })
+	scope := &d09OwnedCommandScope{scope: &LinuxCgroupScope{file: cgroupDir}}
+	marker := []byte("\n--tbound-cell-end-test--\n")
+
+	settle := func(t *testing.T, final string, closeWriter bool) (sessionrepo.CommandResult, sessionrepo.CommandSettlement, error) {
+		t.Helper()
+		proofRead, proofWrite, err := os.Pipe()
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = proofRead.Close(); _ = proofWrite.Close() })
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if _, err := proofWrite.WriteString(encode(startProof)); err != nil {
+			t.Fatal(err)
+		}
+		start, reader, err := readD09CommandProofLine(ctx, proofRead)
+		if err != nil {
+			t.Fatal(err)
+		}
+		start.LeaderPID = containerPID
+		if _, err := proofWrite.WriteString(final); err != nil {
+			t.Fatal(err)
+		}
+		if closeWriter {
+			_ = proofWrite.Close()
+		}
+		stdout, stderr := newD09MarkedOutput(1<<10, marker), newD09MarkedOutput(1<<10, marker)
+		_, _ = stdout.Write(append([]byte("out\n"), marker...))
+		_, _ = stderr.Write(marker)
+		runner := &D09CommandRunner{leaseID: "lease-1"}
+		result, settlement, _, _, err := runner.settleNoReap(ctx, d09NoReapSettle{
+			scope: scope, proofReader: reader, startProof: start, containerPID: containerPID,
+			podmanPath: podman, cid: "cid-1", viewID: "view-1", stdout: stdout, stderr: stderr,
+		})
+		return result, settlement, err
+	}
+
+	result, settlement, err := settle(t, encode(finalProof), false)
+	if err != nil {
+		t.Fatalf("no-reap settlement with the proof pipe still open: %v", err)
+	}
+	if !result.ExitObserved || result.ExitCode != 3 || string(result.Stdout) != "out\n" ||
+		!settlement.SurvivorsTolerated || settlement.ExitCode != 3 {
+		t.Fatalf("result = %+v settlement = %+v", result, settlement)
+	}
+
+	for name, tc := range map[string]struct {
+		final       string
+		closeWriter bool
+	}{
+		"malformed final proof":             {"{not json}\n", false},
+		"final proof with an unknown field": {`{"forged":true}` + "\n", false},
+		"extra data after the final proof":  {encode(finalProof) + "extra\n", false},
+		"a second final proof":              {encode(finalProof) + encode(finalProof), false},
+		"missing final proof":               {"", true},
+	} {
+		if _, _, err := settle(t, tc.final, tc.closeWriter); err == nil || errors.Is(err, context.DeadlineExceeded) {
+			t.Errorf("%s: err = %v, want a prompt refusal", name, err)
 		}
 	}
 }

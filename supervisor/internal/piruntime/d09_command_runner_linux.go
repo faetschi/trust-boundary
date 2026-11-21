@@ -1137,6 +1137,18 @@ func readD09CommandProofLine(ctx context.Context, reader io.Reader) (d09CommandP
 }
 
 func readD09CommandProofNext(reader *bufio.Reader) (d09CommandProof, error) {
+	proof, err := decodeD09CommandProofNext(reader)
+	if err != nil {
+		return proof, err
+	}
+	if _, err := reader.ReadByte(); !errors.Is(err, io.EOF) {
+		return d09CommandProof{}, errors.New("final command proof pipe remained open or emitted extra data")
+	}
+	return proof, nil
+}
+
+// decodeD09CommandProofNext reads the next bounded proof line and decodes it strictly.
+func decodeD09CommandProofNext(reader *bufio.Reader) (d09CommandProof, error) {
 	line, err := readBoundedProofLine(reader)
 	if err != nil {
 		return d09CommandProof{}, errors.Join(errors.New("read final command TCB proof"), err)
@@ -1147,13 +1159,8 @@ func readD09CommandProofNext(reader *bufio.Reader) (d09CommandProof, error) {
 	var proof d09CommandProof
 	decoder := json.NewDecoder(strings.NewReader(strings.TrimSpace(line)))
 	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&proof); err != nil {
-		return proof, err
-	}
-	if _, err := reader.ReadByte(); !errors.Is(err, io.EOF) {
-		return d09CommandProof{}, errors.New("final command proof pipe remained open or emitted extra data")
-	}
-	return proof, nil
+	err = decoder.Decode(&proof)
+	return proof, err
 }
 
 func readBoundedProofLine(reader *bufio.Reader) (string, error) {

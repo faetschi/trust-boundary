@@ -218,6 +218,34 @@ class CarrierTest(unittest.TestCase):
             f.write(b'{"pins": {"x": {}}}')
         self.refused([b], "carries no sources or licences")
 
+    def test_id_suffix_renames_every_case_and_never_yields_a_ledger_row(self):
+        b, _, _ = write_bundle(self.tmp.name, "b", "PILOT-ADV-A-02", "injecagent:dh:0002:u01")
+        carrier.build_carrier("R1", [b], self.out, build=build, id_suffix=".dev03")
+        cases = json.loads(read(os.path.join(self.out, "manifest.draft.json")))["cases"]
+        self.assertEqual([c["case_id"] for c in cases], [c["case_id"] + ".dev03" for c in self.expected_order(b)])
+        new = next(c for c in cases if c["case_id"] == "injecagent:dh:0002:u01.dev03")
+        a = new["adversarial"]
+        self.assertEqual({a["root_scenario_id"], new["meaning_record"]["root_id"]}, {new["case_id"]})
+        self.assertEqual(a["calibration_witness_id"], "PILOT-WIT-injecagent:dh:0002:u01.dev03")
+        with open(carrier.LEDGER, encoding="utf-8") as fh:
+            ledger = {json.loads(line)["case_id"] for line in fh if line.strip()}
+        self.assertFalse({c["case_id"] for c in cases} & ledger)
+        for bad in ("dev03", ".Dev03", ".dev:03"):
+            with self.assertRaisesRegex(carrier.CarrierError, "--id-suffix"):
+                carrier.build_carrier("R1", [], os.path.join(self.tmp.name, "x" + bad), build=build, id_suffix=bad)
+        fake = os.path.join(self.tmp.name, "ledger.jsonl")
+        with open(fake, "w", encoding="utf-8") as fh:
+            fh.write(json.dumps({"case_id": "PILOT-AMB-01.dev03"}) + "\n")
+        old, carrier.LEDGER = carrier.LEDGER, fake
+        self.addCleanup(setattr, carrier, "LEDGER", old)
+        with self.assertRaisesRegex(carrier.CarrierError, "is a ledger row"):
+            carrier.build_carrier("R1", [], os.path.join(self.tmp.name, "y"), build=build, id_suffix=".dev03")
+
+    def expected_order(self, bundle):
+        out = os.path.join(self.tmp.name, "plain")
+        carrier.build_carrier("R1", [bundle], out, build=build)
+        return json.loads(read(os.path.join(out, "manifest.draft.json")))["cases"]
+
     def test_duplicate_case_id(self):
         a = write_bundle(self.tmp.name, "a", "PILOT-ADV-A-02", "injecagent:dh:0002:u01")[0]
         b = write_bundle(self.tmp.name, "b", "PILOT-ADV-A-03", "injecagent:dh:0002:u01")[0]
