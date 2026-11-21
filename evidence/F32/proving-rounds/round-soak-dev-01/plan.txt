@@ -1,0 +1,12 @@
+plan_digest sha256:d7650c5c4f04d203fa53cccf8f1f10ee6779112fd23dfb7774e1072655761f5e
+manifest_digest sha256:f086ddf6b81ac3621927c7c424edd8ecca9302f0fefcc38380b5dc6412753fd0
+run_binding sha256:aa3b5c3c9c0a245aa13dc14a27cf1f4a2a348c980aeb20fa95d55f5dd242ff44
+quota_profile pilot
+units 15
+subset true
+route_complete true
+configuration C 9
+configuration P 6
+role adaptive-replay 6
+role static-replay 6
+role trajectory 3

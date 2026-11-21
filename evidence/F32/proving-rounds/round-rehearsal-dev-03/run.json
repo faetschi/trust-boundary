@@ -1,0 +1,78 @@
+{
+  "freeze_commit": "08f3c3ee4043171b55867dfd2dfe5258809cf40b",
+  "v_image_digest": "sha256:b70aff10b0d37af8f95434fb1d2e72693c6d372c1c7a068defd31f6a22ea490b",
+  "pins": {
+    "frozen_source_digest": "sha256:022b431af23103f69f3b70311f5d47c6ed5033e24aa98ef1240158e076cf4a16",
+    "base_template_digest": "sha256:2dd3e3868148bf45d939eca077431538b92310ffa5f1a0a1ddc9e06ec0439395",
+    "admin_pubkey_digest": "sha256:be206a41ad321f29ef89e8157f69a6f0820a93fafa3096b71867ece745f9afac",
+    "runtime_bundle_digest": "sha256:73866d76ad8a8a9f91f40aa8b43168e10f5844f21bb32ef2537065b48b2ff1e1",
+    "runner_digest": "sha256:64a6d549f63b64b1d1086d7e1cbbc6a8006fe3a2d8dfd363a24b17cfb5d643ad",
+    "profile_hash": "sha256:1b4cfe6885c03b6aeefbad0af73d29fe05d759c65ec668d50ff6563aacdef0fd",
+    "containment_profile_digest": "sha256:8cfe73ad39401a1ad9574bfb3bda9ca8c9bda2aaf22edde5e7fc8edd8c0036dd"
+  },
+  "manifest": "F:/trust-boundary/.local/round-rehearsal-dev-03-f32/inputs/manifest.json",
+  "quota_profile": "pilot",
+  "evq_obligations": [
+    "EVQ-IDENTITY",
+    "EVQ-SURFACE-INVENTORY",
+    "EVQ-SURFACE-ADAPTER-EQUIVALENCE",
+    "EVQ-PROPOSAL-INTEGRITY",
+    "EVQ-PROVIDER-CORRELATION",
+    "EVQ-PROVIDER-ROUTE",
+    "EVQ-PROVIDER-REAL-EXCHANGE",
+    "EVQ-WORKSPACE-CONFINEMENT",
+    "EVQ-STAGING-DELTA",
+    "EVQ-PUBLICATION-PROVENANCE",
+    "EVQ-RECOVERY-ADMISSION",
+    "EVQ-RECOVERY-LIFECYCLE-CUTPOINTS",
+    "EVQ-JOURNAL-FAULTS",
+    "EVQ-ORACLE-WORKSPACE",
+    "EVQ-ORACLE-TRANSIENT",
+    "EVQ-ORACLE-NETWORK",
+    "EVQ-NETWORK-SINK-GUEST",
+    "EVQ-ORACLE-PROCESS",
+    "EVQ-PROCESS-CONTAINMENT",
+    "EVQ-LINUX-CONTAINMENT",
+    "EVQ-LINUX-CAPABILITY-GUEST",
+    "EVQ-COMMAND-VIEW-FAULTS"
+  ],
+  "artifacts_dir": "F:/trust-boundary/.local/round-rehearsal-dev-03-f32/inputs/artifacts",
+  "only_cases": [],
+  "admission_policy": {
+    "policy_digest": "sha256:e6a77851e90357efcba0fdc8036493acab5f74e911f38d5f32e001477419f683",
+    "metadata_policy_digest": "sha256:bf937a0d4d98f54111e82d025dc3b9aa7eeec939f71343547ba4392624e0785c"
+  },
+  "route_report": "F:/trust-boundary/.local/round-rehearsal-dev-03-f32/inputs/route_report.json",
+  "evq_results": {
+    "path": "F:/trust-boundary/.local/round-rehearsal-dev-03-f32/inputs/evq_results.json",
+    "sha256": "sha256:7558c2a9ad9bab9cfccec4ae66cd3bdb29cb2cd03c375d175ca3120487a1a7c3"
+  },
+  "ledger": "synthetic-empty",
+  "run_dir": "F:/trust-boundary/.local/round-rehearsal-dev-03-f32/runs/pilot",
+  "ssh": {
+    "path": "C:/Program Files/Git/usr/bin/ssh.exe",
+    "known_hosts": "F:/trust-boundary/.local/round-rehearsal-dev-03-f32/known_hosts",
+    "host": "172.18.247.10",
+    "host_key_alias": "172.18.155.19",
+    "client": {
+      "user": "root",
+      "key": "F:/trust-boundary/.local/secrets/abi8-forced/cl.key"
+    },
+    "evidence": {
+      "user": "root",
+      "key": "F:/trust-boundary/.local/secrets/abi8-forced/ev.key"
+    },
+    "trial": {
+      "user": "root",
+      "key": "F:/trust-boundary/.local/secrets/abi8-forced/tr.key"
+    }
+  },
+  "proc": {
+    "cell_uid": 1000,
+    "cell_gid": 1000,
+    "monitor_seconds": 300,
+    "teardown_grace_seconds": 30,
+    "authorized_sockets": [],
+    "drain_grace_seconds": 10
+  }
+}

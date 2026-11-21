@@ -1,0 +1,457 @@
+watch start 2026-11-21T03:28:12Z
+guest loop start 2026-11-21T03:28:12.992907870Z init_userns=4026531837
+== leftover-check 2026-11-21T03:28:16.000522986Z reason=svc-start service=active
+podman ps rc=0 lines=0
+== end leftover-check
+watch end 2026-11-21T03:30:03Z rc=0
+== leftover-check 2026-11-21T03:32:12.796873706Z reason=svc-start service=active
+podman ps rc=0 lines=3
+time="2026-11-21T03:32:12Z" level=error msg="cannot find UID/GID for user tbound-pi: no subuid ranges found for user \"tbound-pi\" in /etc/subuid - check rootless mode in man pages."
+time="2026-11-21T03:32:12Z" level=warning msg="Using rootless single mapping into the namespace. This might break some images. Check /etc/subuid and /etc/subgid for adding sub*ids if not using a network user"
+time="2026-11-21T03:32:12Z" level=warning msg="Failed to add pause process to systemd sandbox cgroup: dbus: couldn't determine address of session bus"
+== end leftover-check
+== capture 2026-11-21T03:32:35.282571140Z scope=pi-wf-b956c520c5dc4eca6687abd2-e1
+-- lsns -t user
+        NS        PNS        ONS NPROCS    PID UID USER      COMMAND
+4026531837          0          0    173      1   0 root      /usr/lib/systemd/systemd --system --deserialize=120
+4026532155 4026531837 4026531837      1 456081   0 root      ├─/usr/libexec/upowerd
+4026532159 4026531837 4026531837      3 487320 995 tbound-pi └─/usr/bin/podman
+4026532161 4026532159 4026532159      1 488382 995 tbound-pi pi                                                                                                                                                                                                                                                                                                                                                                                 
+-- cgroup tree below cells
+/system.slice/tbound-pi.service/cells/cgroup.procs: 
+/system.slice/tbound-pi.service/cells/pi-wf-b956c520c5dc4eca6687abd2-e1/libpod-899b2ddd3b70fac007b650366749d68e902fbfb8001945f4020d57200b43636c/cgroup.procs: 488382 
+/system.slice/tbound-pi.service/cells/pi-wf-b956c520c5dc4eca6687abd2-e1/cgroup.procs: 
+-- cell processes: user-ns chain to the init ns; [uid_map of a member of each level: inner outer count]
+pid=488382 comm=pi hostuid=995 cg=/system.slice/tbound-pi.service/cells/pi-wf-b956c520c5dc4eca6687abd2-e1/libpod-899b2ddd3b70fac007b650366749d68e902fbfb8001945f4020d57200b43636c levels_below_init=2 chain: 4026532161[uid_map:  1000 995 1;] 4026532159[uid_map:  0 995 1;] -> 4026531837(init)
+-- uid-995 processes
+pid=486947 ppid=1 comm=tbound userns=user:[4026531837] cg=/system.slice/tbound-pi.service/runner
+pid=487320 ppid=1 comm=podman pause userns=user:[4026532159] cg=/user.slice/user-1000.slice/session-5645.scope
+pid=488341 ppid=486947 comm=podman userns=user:[4026532159] cg=/system.slice/tbound-pi.service/runner
+pid=488377 ppid=1 comm=conmon userns=user:[4026532159] cg=/system.slice/tbound-pi.service/runner
+pid=488382 ppid=488377 comm=pi userns=user:[4026532161] cg=/system.slice/tbound-pi.service/cells/pi-wf-b956c520c5dc4eca6687abd2-e1/libpod-899b2ddd3b70fac007b650366749d68e902fbfb8001945f4020d57200b43636c
+-- conmon
+pid=488377 uid=995 userns=user:[4026532159] cgroup=/system.slice/tbound-pi.service/runner
+== end capture
+== leftover-check 2026-11-21T03:32:45.552281013Z reason=after-cell-run pi-wf-b956c520c5dc4eca6687abd2-e1 service=active
+podman ps rc=0 lines=0
+== end leftover-check
+== leftover-check 2026-11-21T03:34:31.613876769Z reason=svc-start service=active
+podman ps rc=0 lines=3
+time="2026-11-21T03:34:31Z" level=error msg="cannot find UID/GID for user tbound-pi: no subuid ranges found for user \"tbound-pi\" in /etc/subuid - check rootless mode in man pages."
+time="2026-11-21T03:34:31Z" level=warning msg="Using rootless single mapping into the namespace. This might break some images. Check /etc/subuid and /etc/subgid for adding sub*ids if not using a network user"
+time="2026-11-21T03:34:31Z" level=warning msg="Failed to add pause process to systemd sandbox cgroup: dbus: couldn't determine address of session bus"
+== end leftover-check
+== capture 2026-11-21T03:34:54.588552288Z scope=pi-wf-fa1c71536ae22b52072daa6e-e1
+-- lsns -t user
+        NS        PNS        ONS NPROCS    PID UID USER      COMMAND
+4026531837          0          0    175      1   0 root      /usr/lib/systemd/systemd --system --deserialize=120
+4026532155 4026531837 4026531837      1 456081   0 root      ├─/usr/libexec/upowerd
+4026532159 4026531837 4026531837      1 487320 995 tbound-pi ├─/usr/bin/podman
+4026532161 4026531837 4026531837      3 496039 995 tbound-pi └─/usr/bin/podman
+4026532163 4026532161 4026532161      1 497147 995 tbound-pi pi                                                                                                                                                                                                                                                                                                                                                                                 
+-- cgroup tree below cells
+/system.slice/tbound-pi.service/cells/cgroup.procs: 
+/system.slice/tbound-pi.service/cells/pi-wf-fa1c71536ae22b52072daa6e-e1/cgroup.procs: 
+/system.slice/tbound-pi.service/cells/pi-wf-fa1c71536ae22b52072daa6e-e1/libpod-5687d57cc721421d542d28907f696edf678a2e852ad833c8a996028fce29995e/cgroup.procs: 497147 
+-- cell processes: user-ns chain to the init ns; [uid_map of a member of each level: inner outer count]
+pid=497147 comm=pi hostuid=995 cg=/system.slice/tbound-pi.service/cells/pi-wf-fa1c71536ae22b52072daa6e-e1/libpod-5687d57cc721421d542d28907f696edf678a2e852ad833c8a996028fce29995e levels_below_init=2 chain: 4026532163[uid_map:  1000 995 1;] 4026532161[uid_map:  0 995 1;] -> 4026531837(init)
+-- uid-995 processes
+pid=487320 ppid=1 comm=podman pause userns=user:[4026532159] cg=/user.slice/user-1000.slice/session-5645.scope
+pid=495717 ppid=1 comm=tbound userns=user:[4026531837] cg=/system.slice/tbound-pi.service/runner
+pid=496039 ppid=1 comm=podman pause userns=user:[4026532161] cg=/user.slice/user-1000.slice/session-5645.scope
+pid=497120 ppid=495717 comm=podman userns=user:[4026532161] cg=/system.slice/tbound-pi.service/runner
+pid=497144 ppid=1 comm=conmon userns=user:[4026532161] cg=/system.slice/tbound-pi.service/runner
+pid=497147 ppid=497144 comm=pi userns=user:[4026532163] cg=/system.slice/tbound-pi.service/cells/pi-wf-fa1c71536ae22b52072daa6e-e1/libpod-5687d57cc721421d542d28907f696edf678a2e852ad833c8a996028fce29995e
+-- conmon
+pid=497144 uid=995 userns=user:[4026532161] cgroup=/system.slice/tbound-pi.service/runner
+== end capture
+== leftover-check 2026-11-21T03:35:12.510191183Z reason=after-cell-run pi-wf-fa1c71536ae22b52072daa6e-e1 service=active
+podman ps rc=0 lines=0
+== end leftover-check
+== leftover-check 2026-11-21T03:36:29.636700514Z reason=svc-start service=active
+podman ps rc=0 lines=3
+time="2026-11-21T03:36:29Z" level=error msg="cannot find UID/GID for user tbound-pi: no subuid ranges found for user \"tbound-pi\" in /etc/subuid - check rootless mode in man pages."
+time="2026-11-21T03:36:29Z" level=warning msg="Using rootless single mapping into the namespace. This might break some images. Check /etc/subuid and /etc/subgid for adding sub*ids if not using a network user"
+time="2026-11-21T03:36:29Z" level=warning msg="Failed to add pause process to systemd sandbox cgroup: dbus: couldn't determine address of session bus"
+== end leftover-check
+== leftover-check 2026-11-21T03:38:55.594548905Z reason=svc-start service=active
+podman ps rc=0 lines=3
+time="2026-11-21T03:38:55Z" level=error msg="cannot find UID/GID for user tbound-pi: no subuid ranges found for user \"tbound-pi\" in /etc/subuid - check rootless mode in man pages."
+time="2026-11-21T03:38:55Z" level=warning msg="Using rootless single mapping into the namespace. This might break some images. Check /etc/subuid and /etc/subgid for adding sub*ids if not using a network user"
+time="2026-11-21T03:38:55Z" level=warning msg="Failed to add pause process to systemd sandbox cgroup: dbus: couldn't determine address of session bus"
+== end leftover-check
+== capture 2026-11-21T03:39:17.543848147Z scope=net-sink
+-- lsns -t user
+        NS        PNS        ONS NPROCS    PID UID USER      COMMAND
+4026531837          0          0    179      1   0 root      /usr/lib/systemd/systemd --system --deserialize=120
+4026532155 4026531837 4026531837      1 456081   0 root      ├─/usr/libexec/upowerd
+4026532159 4026531837 4026531837      1 487320 995 tbound-pi ├─/usr/bin/podman
+4026532161 4026531837 4026531837      1 496039 995 tbound-pi ├─/usr/bin/podman
+4026532163 4026531837 4026531837      1 504212 995 tbound-pi ├─/usr/bin/podman
+4026532165 4026531837 4026531837      1 513923 995 tbound-pi └─/usr/bin/podman
+-- cgroup tree below cells
+/system.slice/tbound-pi.service/cells/cgroup.procs: 
+/system.slice/tbound-pi.service/cells/net-sink/cgroup.procs: 515386 
+-- cell processes: user-ns chain to the init ns; [uid_map of a member of each level: inner outer count]
+pid=515386 comm=tbound-profile hostuid=0 cg=/system.slice/tbound-pi.service/cells/net-sink levels_below_init=0 chain: -> 4026531837(init)
+-- uid-995 processes
+pid=487320 ppid=1 comm=podman pause userns=user:[4026532159] cg=/user.slice/user-1000.slice/session-5645.scope
+pid=496039 ppid=1 comm=podman pause userns=user:[4026532161] cg=/user.slice/user-1000.slice/session-5645.scope
+pid=504212 ppid=1 comm=podman pause userns=user:[4026532163] cg=/user.slice/user-1000.slice/session-5645.scope
+pid=513600 ppid=1 comm=tbound userns=user:[4026531837] cg=/system.slice/tbound-pi.service/runner
+pid=513923 ppid=1 comm=podman pause userns=user:[4026532165] cg=/user.slice/user-1000.slice/session-5645.scope
+-- conmon
+== end capture
+== leftover-check 2026-11-21T03:39:19.637826523Z reason=after-cell-run net-sink service=active
+podman ps rc=0 lines=0
+== end leftover-check
+== leftover-check 2026-11-21T03:43:12.465741151Z reason=svc-start service=active
+podman ps rc=0 lines=3
+time="2026-11-21T03:43:12Z" level=error msg="cannot find UID/GID for user tbound-pi: no subuid ranges found for user \"tbound-pi\" in /etc/subuid - check rootless mode in man pages."
+time="2026-11-21T03:43:12Z" level=warning msg="Using rootless single mapping into the namespace. This might break some images. Check /etc/subuid and /etc/subgid for adding sub*ids if not using a network user"
+time="2026-11-21T03:43:12Z" level=warning msg="Failed to add pause process to systemd sandbox cgroup: dbus: couldn't determine address of session bus"
+== end leftover-check
+== capture 2026-11-21T03:44:24.694780792Z scope=pi-wf-f89b1ebd8d88f3a879cc5563-e1
+-- lsns -t user
+        NS        PNS        ONS NPROCS    PID UID USER      COMMAND
+4026531837          0          0    183      1   0 root      /usr/lib/systemd/systemd --system --deserialize=120
+4026532155 4026531837 4026531837      1 456081   0 root      ├─/usr/libexec/upowerd
+4026532159 4026531837 4026531837      1 487320 995 tbound-pi ├─/usr/bin/podman
+4026532161 4026531837 4026531837      1 496039 995 tbound-pi ├─/usr/bin/podman
+4026532163 4026531837 4026531837      1 504212 995 tbound-pi ├─/usr/bin/podman
+4026532165 4026531837 4026531837      1 513923 995 tbound-pi ├─/usr/bin/podman
+4026532167 4026531837 4026531837      3 526408 995 tbound-pi └─/usr/bin/podman
+4026532169 4026532167 4026532167      1 529263 995 tbound-pi pi                                                                                                                                                                                                                                                                                                                                                                                 
+-- cgroup tree below cells
+/system.slice/tbound-pi.service/cells/pi-wf-f89b1ebd8d88f3a879cc5563-e1/cgroup.procs: 
+/system.slice/tbound-pi.service/cells/pi-wf-f89b1ebd8d88f3a879cc5563-e1/libpod-3b7765a46c9a38eb4f93339a651eedf6e63a02d2fc607cbda2a36189310f253c/cgroup.procs: 529263 
+/system.slice/tbound-pi.service/cells/cgroup.procs: 
+/system.slice/tbound-pi.service/cells/net-sink/cgroup.procs: 
+-- cell processes: user-ns chain to the init ns; [uid_map of a member of each level: inner outer count]
+pid=529263 comm=pi hostuid=995 cg=/system.slice/tbound-pi.service/cells/pi-wf-f89b1ebd8d88f3a879cc5563-e1/libpod-3b7765a46c9a38eb4f93339a651eedf6e63a02d2fc607cbda2a36189310f253c levels_below_init=2 chain: 4026532169[uid_map:  1000 995 1;] 4026532167[uid_map:  0 995 1;] -> 4026531837(init)
+-- uid-995 processes
+pid=487320 ppid=1 comm=podman pause userns=user:[4026532159] cg=/user.slice/user-1000.slice/session-5645.scope
+pid=496039 ppid=1 comm=podman pause userns=user:[4026532161] cg=/user.slice/user-1000.slice/session-5645.scope
+pid=504212 ppid=1 comm=podman pause userns=user:[4026532163] cg=/user.slice/user-1000.slice/session-5645.scope
+pid=513923 ppid=1 comm=podman pause userns=user:[4026532165] cg=/user.slice/user-1000.slice/session-5645.scope
+pid=526034 ppid=1 comm=tbound userns=user:[4026531837] cg=/system.slice/tbound-pi.service/runner
+pid=526408 ppid=1 comm=podman pause userns=user:[4026532167] cg=/user.slice/user-1000.slice/session-5645.scope
+pid=529234 ppid=526034 comm=podman userns=user:[4026532167] cg=/system.slice/tbound-pi.service/runner
+pid=529259 ppid=1 comm=conmon userns=user:[4026532167] cg=/system.slice/tbound-pi.service/runner
+pid=529263 ppid=529259 comm=pi userns=user:[4026532169] cg=/system.slice/tbound-pi.service/cells/pi-wf-f89b1ebd8d88f3a879cc5563-e1/libpod-3b7765a46c9a38eb4f93339a651eedf6e63a02d2fc607cbda2a36189310f253c
+-- conmon
+pid=529259 uid=995 userns=user:[4026532167] cgroup=/system.slice/tbound-pi.service/runner
+== end capture
+== leftover-check 2026-11-21T03:44:26.327266481Z reason=after-cell-run pi-wf-f89b1ebd8d88f3a879cc5563-e1 service=active
+podman ps rc=0 lines=0
+== end leftover-check
+== capture 2026-11-21T03:49:28.543698289Z scope=pi-wf-00a8057646cf318530ca7630-e1
+-- lsns -t user
+        NS        PNS        ONS NPROCS    PID UID USER      COMMAND
+4026531837          0          0    178      1   0 root      /usr/lib/systemd/systemd --system --deserialize=120
+4026532155 4026531837 4026531837      1 456081   0 root      ├─/usr/libexec/upowerd
+4026532159 4026531837 4026531837      1 487320 995 tbound-pi ├─/usr/bin/podman
+4026532161 4026531837 4026531837      1 496039 995 tbound-pi ├─/usr/bin/podman
+4026532163 4026531837 4026531837      1 504212 995 tbound-pi ├─/usr/bin/podman
+4026532165 4026531837 4026531837      1 513923 995 tbound-pi ├─/usr/bin/podman
+4026532167 4026531837 4026531837      3 526408 995 tbound-pi └─/usr/bin/podman
+4026532169 4026532167 4026532167      1 536096 995 tbound-pi pi                                                                                                                                                                                                                                                                                                                                                                                 
+-- cgroup tree below cells
+/system.slice/tbound-pi.service/cells/cgroup.procs: 
+/system.slice/tbound-pi.service/cells/net-sink/cgroup.procs: 
+/system.slice/tbound-pi.service/cells/pi-wf-00a8057646cf318530ca7630-e1/cgroup.procs: 
+/system.slice/tbound-pi.service/cells/pi-wf-00a8057646cf318530ca7630-e1/libpod-e63a6652d6160f85548ce52797e74b2c8b7e53c160e1184d6213ba5b84793523/cgroup.procs: 536096 
+-- cell processes: user-ns chain to the init ns; [uid_map of a member of each level: inner outer count]
+pid=536096 comm=pi hostuid=995 cg=/system.slice/tbound-pi.service/cells/pi-wf-00a8057646cf318530ca7630-e1/libpod-e63a6652d6160f85548ce52797e74b2c8b7e53c160e1184d6213ba5b84793523 levels_below_init=2 chain: 4026532169[uid_map:  1000 995 1;] 4026532167[uid_map:  0 995 1;] -> 4026531837(init)
+-- uid-995 processes
+pid=487320 ppid=1 comm=podman pause userns=user:[4026532159] cg=/user.slice/user-1000.slice/session-5645.scope
+pid=496039 ppid=1 comm=podman pause userns=user:[4026532161] cg=/user.slice/user-1000.slice/session-5645.scope
+pid=504212 ppid=1 comm=podman pause userns=user:[4026532163] cg=/user.slice/user-1000.slice/session-5645.scope
+pid=513923 ppid=1 comm=podman pause userns=user:[4026532165] cg=/user.slice/user-1000.slice/session-5645.scope
+pid=526034 ppid=1 comm=tbound userns=user:[4026531837] cg=/system.slice/tbound-pi.service/runner
+pid=526408 ppid=1 comm=podman pause userns=user:[4026532167] cg=/user.slice/user-1000.slice/session-5645.scope
+pid=536067 ppid=526034 comm=podman userns=user:[4026532167] cg=/system.slice/tbound-pi.service/runner
+pid=536091 ppid=1 comm=conmon userns=user:[4026532167] cg=/system.slice/tbound-pi.service/runner
+pid=536096 ppid=536091 comm=pi userns=user:[4026532169] cg=/system.slice/tbound-pi.service/cells/pi-wf-00a8057646cf318530ca7630-e1/libpod-e63a6652d6160f85548ce52797e74b2c8b7e53c160e1184d6213ba5b84793523
+-- conmon
+pid=536091 uid=995 userns=user:[4026532167] cgroup=/system.slice/tbound-pi.service/runner
+== end capture
+== leftover-check 2026-11-21T03:49:30.170141741Z reason=after-cell-run pi-wf-00a8057646cf318530ca7630-e1 service=active
+podman ps rc=0 lines=0
+== end leftover-check
+== capture 2026-11-21T03:50:14.970650421Z scope=pi-wf-3f4c3cc0d58931b1988c0c48-e1
+-- lsns -t user
+        NS        PNS        ONS NPROCS    PID UID USER      COMMAND
+4026531837          0          0    179      1   0 root      /usr/lib/systemd/systemd --system --deserialize=120
+4026532155 4026531837 4026531837      1 456081   0 root      ├─/usr/libexec/upowerd
+4026532159 4026531837 4026531837      1 487320 995 tbound-pi ├─/usr/bin/podman
+4026532161 4026531837 4026531837      1 496039 995 tbound-pi ├─/usr/bin/podman
+4026532163 4026531837 4026531837      1 504212 995 tbound-pi ├─/usr/bin/podman
+4026532165 4026531837 4026531837      1 513923 995 tbound-pi ├─/usr/bin/podman
+4026532167 4026531837 4026531837      3 526408 995 tbound-pi └─/usr/bin/podman
+4026532169 4026532167 4026532167      1 539001 995 tbound-pi pi                                                                                                                                                                                                                                                                                                                                                                                 
+-- cgroup tree below cells
+/system.slice/tbound-pi.service/cells/cgroup.procs: 
+/system.slice/tbound-pi.service/cells/pi-wf-3f4c3cc0d58931b1988c0c48-e1/cgroup.procs: 
+/system.slice/tbound-pi.service/cells/pi-wf-3f4c3cc0d58931b1988c0c48-e1/libpod-fa7e8a5d72508b31beeb8e9e386fbae6354429e4fe1c17e8f818b6a3bbf41439/cgroup.procs: 539001 
+/system.slice/tbound-pi.service/cells/net-sink/cgroup.procs: 
+-- cell processes: user-ns chain to the init ns; [uid_map of a member of each level: inner outer count]
+pid=539001 comm=pi hostuid=995 cg=/system.slice/tbound-pi.service/cells/pi-wf-3f4c3cc0d58931b1988c0c48-e1/libpod-fa7e8a5d72508b31beeb8e9e386fbae6354429e4fe1c17e8f818b6a3bbf41439 levels_below_init=2 chain: 4026532169[uid_map:  1000 995 1;] 4026532167[uid_map:  0 995 1;] -> 4026531837(init)
+-- uid-995 processes
+pid=487320 ppid=1 comm=podman pause userns=user:[4026532159] cg=/user.slice/user-1000.slice/session-5645.scope
+pid=496039 ppid=1 comm=podman pause userns=user:[4026532161] cg=/user.slice/user-1000.slice/session-5645.scope
+pid=504212 ppid=1 comm=podman pause userns=user:[4026532163] cg=/user.slice/user-1000.slice/session-5645.scope
+pid=513923 ppid=1 comm=podman pause userns=user:[4026532165] cg=/user.slice/user-1000.slice/session-5645.scope
+pid=526034 ppid=1 comm=tbound userns=user:[4026531837] cg=/system.slice/tbound-pi.service/runner
+pid=526408 ppid=1 comm=podman pause userns=user:[4026532167] cg=/user.slice/user-1000.slice/session-5645.scope
+pid=538975 ppid=526034 comm=podman userns=user:[4026532167] cg=/system.slice/tbound-pi.service/runner
+pid=538998 ppid=1 comm=conmon userns=user:[4026532167] cg=/system.slice/tbound-pi.service/runner
+pid=539001 ppid=538998 comm=pi userns=user:[4026532169] cg=/system.slice/tbound-pi.service/cells/pi-wf-3f4c3cc0d58931b1988c0c48-e1/libpod-fa7e8a5d72508b31beeb8e9e386fbae6354429e4fe1c17e8f818b6a3bbf41439
+-- conmon
+pid=538998 uid=995 userns=user:[4026532167] cgroup=/system.slice/tbound-pi.service/runner
+== end capture
+== leftover-check 2026-11-21T03:50:16.090337078Z reason=after-cell-run pi-wf-3f4c3cc0d58931b1988c0c48-e1 service=active
+podman ps rc=0 lines=0
+== end leftover-check
+== capture 2026-11-21T03:51:00.326594773Z scope=pi-wf-24ce18afddc2a813841a5429-e1
+-- lsns -t user
+        NS        PNS        ONS NPROCS    PID UID USER      COMMAND
+4026531837          0          0    182      1   0 root      /usr/lib/systemd/systemd --system --deserialize=120
+4026532155 4026531837 4026531837      1 456081   0 root      ├─/usr/libexec/upowerd
+4026532159 4026531837 4026531837      1 487320 995 tbound-pi ├─/usr/bin/podman
+4026532161 4026531837 4026531837      1 496039 995 tbound-pi ├─/usr/bin/podman
+4026532163 4026531837 4026531837      1 504212 995 tbound-pi ├─/usr/bin/podman
+4026532165 4026531837 4026531837      1 513923 995 tbound-pi ├─/usr/bin/podman
+4026532167 4026531837 4026531837      3 526408 995 tbound-pi └─/usr/bin/podman
+4026532169 4026532167 4026532167      1 541912 995 tbound-pi pi                                                                                                                                                                                                                                                                                                                                                                                 
+-- cgroup tree below cells
+/system.slice/tbound-pi.service/cells/cgroup.procs: 
+/system.slice/tbound-pi.service/cells/net-sink/cgroup.procs: 
+/system.slice/tbound-pi.service/cells/pi-wf-24ce18afddc2a813841a5429-e1/cgroup.procs: 
+/system.slice/tbound-pi.service/cells/pi-wf-24ce18afddc2a813841a5429-e1/libpod-61dfdf6041ecb766455c504a4c26e6c35720267045c5bb8e6fb07fc838be2162/cgroup.procs: 541912 
+-- cell processes: user-ns chain to the init ns; [uid_map of a member of each level: inner outer count]
+pid=541912 comm=pi hostuid=995 cg=/system.slice/tbound-pi.service/cells/pi-wf-24ce18afddc2a813841a5429-e1/libpod-61dfdf6041ecb766455c504a4c26e6c35720267045c5bb8e6fb07fc838be2162 levels_below_init=2 chain: 4026532169[uid_map:  1000 995 1;] 4026532167[uid_map:  0 995 1;] -> 4026531837(init)
+-- uid-995 processes
+pid=487320 ppid=1 comm=podman pause userns=user:[4026532159] cg=/user.slice/user-1000.slice/session-5645.scope
+pid=496039 ppid=1 comm=podman pause userns=user:[4026532161] cg=/user.slice/user-1000.slice/session-5645.scope
+pid=504212 ppid=1 comm=podman pause userns=user:[4026532163] cg=/user.slice/user-1000.slice/session-5645.scope
+pid=513923 ppid=1 comm=podman pause userns=user:[4026532165] cg=/user.slice/user-1000.slice/session-5645.scope
+pid=526034 ppid=1 comm=tbound userns=user:[4026531837] cg=/system.slice/tbound-pi.service/runner
+pid=526408 ppid=1 comm=podman pause userns=user:[4026532167] cg=/user.slice/user-1000.slice/session-5645.scope
+pid=541884 ppid=526034 comm=podman userns=user:[4026532167] cg=/system.slice/tbound-pi.service/runner
+pid=541909 ppid=1 comm=conmon userns=user:[4026532167] cg=/system.slice/tbound-pi.service/runner
+pid=541912 ppid=541909 comm=pi userns=user:[4026532169] cg=/system.slice/tbound-pi.service/cells/pi-wf-24ce18afddc2a813841a5429-e1/libpod-61dfdf6041ecb766455c504a4c26e6c35720267045c5bb8e6fb07fc838be2162
+-- conmon
+pid=541909 uid=995 userns=user:[4026532167] cgroup=/system.slice/tbound-pi.service/runner
+== end capture
+== leftover-check 2026-11-21T03:51:01.956236714Z reason=after-cell-run pi-wf-24ce18afddc2a813841a5429-e1 service=active
+podman ps rc=0 lines=0
+== end leftover-check
+== capture 2026-11-21T03:56:03.601809397Z scope=pi-wf-47503fa1dcae94ef8d2a0baa-e1
+-- lsns -t user
+        NS        PNS        ONS NPROCS    PID UID USER      COMMAND
+4026531837          0          0    178      1   0 root      /usr/lib/systemd/systemd --system --deserialize=120
+4026532155 4026531837 4026531837      1 456081   0 root      ├─/usr/libexec/upowerd
+4026532159 4026531837 4026531837      1 487320 995 tbound-pi ├─/usr/bin/podman
+4026532161 4026531837 4026531837      1 496039 995 tbound-pi ├─/usr/bin/podman
+4026532163 4026531837 4026531837      1 504212 995 tbound-pi ├─/usr/bin/podman
+4026532165 4026531837 4026531837      1 513923 995 tbound-pi ├─/usr/bin/podman
+4026532167 4026531837 4026531837      3 526408 995 tbound-pi └─/usr/bin/podman
+4026532169 4026532167 4026532167      1 548719 995 tbound-pi pi                                                                                                                                                                                                                                                                                                                                                                                 
+-- cgroup tree below cells
+/system.slice/tbound-pi.service/cells/cgroup.procs: 
+/system.slice/tbound-pi.service/cells/net-sink/cgroup.procs: 
+/system.slice/tbound-pi.service/cells/pi-wf-47503fa1dcae94ef8d2a0baa-e1/cgroup.procs: 
+/system.slice/tbound-pi.service/cells/pi-wf-47503fa1dcae94ef8d2a0baa-e1/libpod-b805db2143da0ca11820bbb6f30e709577bb5f5991a1f5b55d8ea74bb5fe101f/cgroup.procs: 548719 
+-- cell processes: user-ns chain to the init ns; [uid_map of a member of each level: inner outer count]
+pid=548719 comm=pi hostuid=995 cg=/system.slice/tbound-pi.service/cells/pi-wf-47503fa1dcae94ef8d2a0baa-e1/libpod-b805db2143da0ca11820bbb6f30e709577bb5f5991a1f5b55d8ea74bb5fe101f levels_below_init=2 chain: 4026532169[uid_map:  1000 995 1;] 4026532167[uid_map:  0 995 1;] -> 4026531837(init)
+-- uid-995 processes
+pid=487320 ppid=1 comm=podman pause userns=user:[4026532159] cg=/user.slice/user-1000.slice/session-5645.scope
+pid=496039 ppid=1 comm=podman pause userns=user:[4026532161] cg=/user.slice/user-1000.slice/session-5645.scope
+pid=504212 ppid=1 comm=podman pause userns=user:[4026532163] cg=/user.slice/user-1000.slice/session-5645.scope
+pid=513923 ppid=1 comm=podman pause userns=user:[4026532165] cg=/user.slice/user-1000.slice/session-5645.scope
+pid=526034 ppid=1 comm=tbound userns=user:[4026531837] cg=/system.slice/tbound-pi.service/runner
+pid=526408 ppid=1 comm=podman pause userns=user:[4026532167] cg=/user.slice/user-1000.slice/session-5645.scope
+pid=548646 ppid=526034 comm=podman userns=user:[4026532167] cg=/system.slice/tbound-pi.service/runner
+pid=548716 ppid=1 comm=conmon userns=user:[4026532167] cg=/system.slice/tbound-pi.service/runner
+pid=548719 ppid=548716 comm=pi userns=user:[4026532169] cg=/system.slice/tbound-pi.service/cells/pi-wf-47503fa1dcae94ef8d2a0baa-e1/libpod-b805db2143da0ca11820bbb6f30e709577bb5f5991a1f5b55d8ea74bb5fe101f
+-- conmon
+pid=548716 uid=995 userns=user:[4026532167] cgroup=/system.slice/tbound-pi.service/runner
+== end capture
+== leftover-check 2026-11-21T03:56:05.234709930Z reason=after-cell-run pi-wf-47503fa1dcae94ef8d2a0baa-e1 service=active
+podman ps rc=0 lines=0
+== end leftover-check
+== capture 2026-11-21T04:01:52.669703697Z scope=pi-wf-e115dcbc16421c4f5d157a44-e1
+-- lsns -t user
+        NS        PNS        ONS NPROCS    PID UID USER      COMMAND
+4026531837          0          0    178      1   0 root      /usr/lib/systemd/systemd --system --deserialize=120
+4026532155 4026531837 4026531837      1 456081   0 root      ├─/usr/libexec/upowerd
+4026532159 4026531837 4026531837      1 487320 995 tbound-pi ├─/usr/bin/podman
+4026532161 4026531837 4026531837      1 496039 995 tbound-pi ├─/usr/bin/podman
+4026532163 4026531837 4026531837      1 504212 995 tbound-pi ├─/usr/bin/podman
+4026532165 4026531837 4026531837      1 513923 995 tbound-pi ├─/usr/bin/podman
+4026532167 4026531837 4026531837      3 526408 995 tbound-pi └─/usr/bin/podman
+4026532169 4026532167 4026532167      1 558135 995 tbound-pi pi                                                                                                                                                                                                                                                                                                                                                                                 
+-- cgroup tree below cells
+/system.slice/tbound-pi.service/cells/cgroup.procs: 
+/system.slice/tbound-pi.service/cells/net-sink/cgroup.procs: 
+/system.slice/tbound-pi.service/cells/pi-wf-e115dcbc16421c4f5d157a44-e1/cgroup.procs: 
+/system.slice/tbound-pi.service/cells/pi-wf-e115dcbc16421c4f5d157a44-e1/libpod-88a1ec09000576f03e82472269de438e53065cbbf99072f0517591f0f5345cff/cgroup.procs: 558135 
+-- cell processes: user-ns chain to the init ns; [uid_map of a member of each level: inner outer count]
+pid=558135 comm=pi hostuid=995 cg=/system.slice/tbound-pi.service/cells/pi-wf-e115dcbc16421c4f5d157a44-e1/libpod-88a1ec09000576f03e82472269de438e53065cbbf99072f0517591f0f5345cff levels_below_init=2 chain: 4026532169[uid_map:  1000 995 1;] 4026532167[uid_map:  0 995 1;] -> 4026531837(init)
+-- uid-995 processes
+pid=487320 ppid=1 comm=podman pause userns=user:[4026532159] cg=/user.slice/user-1000.slice/session-5645.scope
+pid=496039 ppid=1 comm=podman pause userns=user:[4026532161] cg=/user.slice/user-1000.slice/session-5645.scope
+pid=504212 ppid=1 comm=podman pause userns=user:[4026532163] cg=/user.slice/user-1000.slice/session-5645.scope
+pid=513923 ppid=1 comm=podman pause userns=user:[4026532165] cg=/user.slice/user-1000.slice/session-5645.scope
+pid=526034 ppid=1 comm=tbound userns=user:[4026531837] cg=/system.slice/tbound-pi.service/runner
+pid=526408 ppid=1 comm=podman pause userns=user:[4026532167] cg=/user.slice/user-1000.slice/session-5645.scope
+pid=558106 ppid=526034 comm=podman userns=user:[4026532167] cg=/system.slice/tbound-pi.service/runner
+pid=558132 ppid=1 comm=conmon userns=user:[4026532167] cg=/system.slice/tbound-pi.service/runner
+pid=558135 ppid=558132 comm=pi userns=user:[4026532169] cg=/system.slice/tbound-pi.service/cells/pi-wf-e115dcbc16421c4f5d157a44-e1/libpod-88a1ec09000576f03e82472269de438e53065cbbf99072f0517591f0f5345cff
+-- conmon
+pid=558132 uid=995 userns=user:[4026532167] cgroup=/system.slice/tbound-pi.service/runner
+== end capture
+== leftover-check 2026-11-21T04:01:54.311987189Z reason=after-cell-run pi-wf-e115dcbc16421c4f5d157a44-e1 service=active
+podman ps rc=0 lines=0
+== end leftover-check
+== capture 2026-11-21T04:06:56.460398974Z scope=pi-wf-5c8c081032b39a5b00999838-e1
+-- lsns -t user
+        NS        PNS        ONS NPROCS    PID UID USER      COMMAND
+4026531837          0          0    177      1   0 root      /usr/lib/systemd/systemd --system --deserialize=120
+4026532155 4026531837 4026531837      1 456081   0 root      ├─/usr/libexec/upowerd
+4026532159 4026531837 4026531837      1 487320 995 tbound-pi ├─/usr/bin/podman
+4026532161 4026531837 4026531837      1 496039 995 tbound-pi ├─/usr/bin/podman
+4026532163 4026531837 4026531837      1 504212 995 tbound-pi ├─/usr/bin/podman
+4026532165 4026531837 4026531837      1 513923 995 tbound-pi ├─/usr/bin/podman
+4026532167 4026531837 4026531837      3 526408 995 tbound-pi └─/usr/bin/podman
+4026532169 4026532167 4026532167      1 564906 995 tbound-pi pi                                                                                                                                                                                                                                                                                                                                                                                 
+-- cgroup tree below cells
+/system.slice/tbound-pi.service/cells/cgroup.procs: 
+/system.slice/tbound-pi.service/cells/net-sink/cgroup.procs: 
+/system.slice/tbound-pi.service/cells/pi-wf-5c8c081032b39a5b00999838-e1/cgroup.procs: 
+/system.slice/tbound-pi.service/cells/pi-wf-5c8c081032b39a5b00999838-e1/libpod-97211d6d9ec5625197228836af31ff0c9ff77430088117a0bcb99441831264e4/cgroup.procs: 564906 
+-- cell processes: user-ns chain to the init ns; [uid_map of a member of each level: inner outer count]
+pid=564906 comm=pi hostuid=995 cg=/system.slice/tbound-pi.service/cells/pi-wf-5c8c081032b39a5b00999838-e1/libpod-97211d6d9ec5625197228836af31ff0c9ff77430088117a0bcb99441831264e4 levels_below_init=2 chain: 4026532169[uid_map:  1000 995 1;] 4026532167[uid_map:  0 995 1;] -> 4026531837(init)
+-- uid-995 processes
+pid=487320 ppid=1 comm=podman pause userns=user:[4026532159] cg=/user.slice/user-1000.slice/session-5645.scope
+pid=496039 ppid=1 comm=podman pause userns=user:[4026532161] cg=/user.slice/user-1000.slice/session-5645.scope
+pid=504212 ppid=1 comm=podman pause userns=user:[4026532163] cg=/user.slice/user-1000.slice/session-5645.scope
+pid=513923 ppid=1 comm=podman pause userns=user:[4026532165] cg=/user.slice/user-1000.slice/session-5645.scope
+pid=526034 ppid=1 comm=tbound userns=user:[4026531837] cg=/system.slice/tbound-pi.service/runner
+pid=526408 ppid=1 comm=podman pause userns=user:[4026532167] cg=/user.slice/user-1000.slice/session-5645.scope
+pid=564879 ppid=526034 comm=podman userns=user:[4026532167] cg=/system.slice/tbound-pi.service/runner
+pid=564903 ppid=1 comm=conmon userns=user:[4026532167] cg=/system.slice/tbound-pi.service/runner
+pid=564906 ppid=564903 comm=pi userns=user:[4026532169] cg=/system.slice/tbound-pi.service/cells/pi-wf-5c8c081032b39a5b00999838-e1/libpod-97211d6d9ec5625197228836af31ff0c9ff77430088117a0bcb99441831264e4
+-- conmon
+pid=564903 uid=995 userns=user:[4026532167] cgroup=/system.slice/tbound-pi.service/runner
+== end capture
+== leftover-check 2026-11-21T04:06:58.089999798Z reason=after-cell-run pi-wf-5c8c081032b39a5b00999838-e1 service=active
+podman ps rc=0 lines=0
+== end leftover-check
+== capture 2026-11-21T04:11:59.702649749Z scope=pi-wf-ca12aebb0ab2fec170a8c61d-e1
+-- lsns -t user
+        NS        PNS        ONS NPROCS    PID UID USER      COMMAND
+4026531837          0          0    171      1   0 root      /usr/lib/systemd/systemd --system --deserialize=120
+4026532155 4026531837 4026531837      1 456081   0 root      ├─/usr/libexec/upowerd
+4026532159 4026531837 4026531837      1 487320 995 tbound-pi ├─/usr/bin/podman
+4026532161 4026531837 4026531837      1 496039 995 tbound-pi ├─/usr/bin/podman
+4026532163 4026531837 4026531837      1 504212 995 tbound-pi ├─/usr/bin/podman
+4026532165 4026531837 4026531837      1 513923 995 tbound-pi ├─/usr/bin/podman
+4026532167 4026531837 4026531837      3 526408 995 tbound-pi └─/usr/bin/podman
+4026532169 4026532167 4026532167      1 571748 995 tbound-pi pi                                                                                                                                                                                                                                                                                                                                                                                 
+-- cgroup tree below cells
+/system.slice/tbound-pi.service/cells/cgroup.procs: 
+/system.slice/tbound-pi.service/cells/pi-wf-ca12aebb0ab2fec170a8c61d-e1/libpod-555b27354f203ae9eda522d5960bb2bcba83e63c9b991222fa6dea91fd1f29e6/cgroup.procs: 571748 
+/system.slice/tbound-pi.service/cells/pi-wf-ca12aebb0ab2fec170a8c61d-e1/cgroup.procs: 
+/system.slice/tbound-pi.service/cells/net-sink/cgroup.procs: 
+-- cell processes: user-ns chain to the init ns; [uid_map of a member of each level: inner outer count]
+pid=571748 comm=pi hostuid=995 cg=/system.slice/tbound-pi.service/cells/pi-wf-ca12aebb0ab2fec170a8c61d-e1/libpod-555b27354f203ae9eda522d5960bb2bcba83e63c9b991222fa6dea91fd1f29e6 levels_below_init=2 chain: 4026532169[uid_map:  1000 995 1;] 4026532167[uid_map:  0 995 1;] -> 4026531837(init)
+-- uid-995 processes
+pid=487320 ppid=1 comm=podman pause userns=user:[4026532159] cg=/user.slice/user-1000.slice/session-5645.scope
+pid=496039 ppid=1 comm=podman pause userns=user:[4026532161] cg=/user.slice/user-1000.slice/session-5645.scope
+pid=504212 ppid=1 comm=podman pause userns=user:[4026532163] cg=/user.slice/user-1000.slice/session-5645.scope
+pid=513923 ppid=1 comm=podman pause userns=user:[4026532165] cg=/user.slice/user-1000.slice/session-5645.scope
+pid=526034 ppid=1 comm=tbound userns=user:[4026531837] cg=/system.slice/tbound-pi.service/runner
+pid=526408 ppid=1 comm=podman pause userns=user:[4026532167] cg=/user.slice/user-1000.slice/session-5645.scope
+pid=571722 ppid=526034 comm=podman userns=user:[4026532167] cg=/system.slice/tbound-pi.service/runner
+pid=571745 ppid=1 comm=conmon userns=user:[4026532167] cg=/system.slice/tbound-pi.service/runner
+pid=571748 ppid=571745 comm=pi userns=user:[4026532169] cg=/system.slice/tbound-pi.service/cells/pi-wf-ca12aebb0ab2fec170a8c61d-e1/libpod-555b27354f203ae9eda522d5960bb2bcba83e63c9b991222fa6dea91fd1f29e6
+-- conmon
+pid=571745 uid=995 userns=user:[4026532167] cgroup=/system.slice/tbound-pi.service/runner
+== end capture
+== leftover-check 2026-11-21T04:12:01.330846777Z reason=after-cell-run pi-wf-ca12aebb0ab2fec170a8c61d-e1 service=active
+podman ps rc=0 lines=0
+== end leftover-check
+== capture 2026-11-21T04:12:50.128345305Z scope=pi-wf-dbc7ff2f4a3cd4772fbea442-e1
+-- lsns -t user
+        NS        PNS        ONS NPROCS    PID UID USER      COMMAND
+4026531837          0          0    177      1   0 root      /usr/lib/systemd/systemd --system --deserialize=120
+4026532155 4026531837 4026531837      1 456081   0 root      ├─/usr/libexec/upowerd
+4026532159 4026531837 4026531837      1 487320 995 tbound-pi ├─/usr/bin/podman
+4026532161 4026531837 4026531837      1 496039 995 tbound-pi ├─/usr/bin/podman
+4026532163 4026531837 4026531837      1 504212 995 tbound-pi ├─/usr/bin/podman
+4026532165 4026531837 4026531837      1 513923 995 tbound-pi ├─/usr/bin/podman
+4026532167 4026531837 4026531837      5 526408 995 tbound-pi └─/usr/bin/podman
+4026532169 4026532167 4026532167      1 574725 995 tbound-pi pi                                                                                                                                                                                                                                                                                                                                                                                 
+-- cgroup tree below cells
+/system.slice/tbound-pi.service/cells/cgroup.procs: 
+/system.slice/tbound-pi.service/cells/net-sink/cgroup.procs: 
+/system.slice/tbound-pi.service/cells/pi-wf-dbc7ff2f4a3cd4772fbea442-e1/cgroup.procs: 
+/system.slice/tbound-pi.service/cells/pi-wf-dbc7ff2f4a3cd4772fbea442-e1/libpod-f18861365ca309765ec5c797652c564283d268a077a1fda1ca4ef5f1bc0ada7c/cgroup.procs: 574725 
+-- cell processes: user-ns chain to the init ns; [uid_map of a member of each level: inner outer count]
+pid=574725 comm=pi hostuid=995 cg=/system.slice/tbound-pi.service/cells/pi-wf-dbc7ff2f4a3cd4772fbea442-e1/libpod-f18861365ca309765ec5c797652c564283d268a077a1fda1ca4ef5f1bc0ada7c levels_below_init=2 chain: 4026532169[uid_map:  1000 995 1;] 4026532167[uid_map:  0 995 1;] -> 4026531837(init)
+-- uid-995 processes
+pid=487320 ppid=1 comm=podman pause userns=user:[4026532159] cg=/user.slice/user-1000.slice/session-5645.scope
+pid=496039 ppid=1 comm=podman pause userns=user:[4026532161] cg=/user.slice/user-1000.slice/session-5645.scope
+pid=504212 ppid=1 comm=podman pause userns=user:[4026532163] cg=/user.slice/user-1000.slice/session-5645.scope
+pid=513923 ppid=1 comm=podman pause userns=user:[4026532165] cg=/user.slice/user-1000.slice/session-5645.scope
+pid=526034 ppid=1 comm=tbound userns=user:[4026531837] cg=/system.slice/tbound-pi.service/runner
+pid=526408 ppid=1 comm=podman pause userns=user:[4026532167] cg=/user.slice/user-1000.slice/session-5645.scope
+pid=574681 ppid=526034 comm=podman userns=user:[4026532167] cg=/system.slice/tbound-pi.service/runner
+pid=574722 ppid=1 comm=conmon userns=user:[4026532167] cg=/system.slice/tbound-pi.service/runner
+pid=574725 ppid=574722 comm=pi userns=user:[4026532169] cg=/system.slice/tbound-pi.service/cells/pi-wf-dbc7ff2f4a3cd4772fbea442-e1/libpod-f18861365ca309765ec5c797652c564283d268a077a1fda1ca4ef5f1bc0ada7c
+pid=574765 ppid=526034 comm=podman userns=user:[4026532167] cg=/system.slice/tbound-pi.service/runner
+pid=574819 ppid= comm= userns= cg=
+-- conmon
+pid=574722 uid=995 userns=user:[4026532167] cgroup=/system.slice/tbound-pi.service/runner
+== end capture
+== leftover-check 2026-11-21T04:12:52.024246707Z reason=after-cell-run pi-wf-dbc7ff2f4a3cd4772fbea442-e1 service=active
+podman ps rc=0 lines=0
+== end leftover-check
+== capture 2026-11-21T04:12:54.065753042Z scope=tbound-nr-f2226b3119246e70b7807fc2
+-- lsns -t user
+        NS        PNS        ONS NPROCS    PID UID USER      COMMAND
+4026531837          0          0    174      1   0 root      /usr/lib/systemd/systemd --system --deserialize=120
+4026532155 4026531837 4026531837      1 456081   0 root      ├─/usr/libexec/upowerd
+4026532159 4026531837 4026531837      1 487320 995 tbound-pi ├─/usr/bin/podman
+4026532161 4026531837 4026531837      1 496039 995 tbound-pi ├─/usr/bin/podman
+4026532163 4026531837 4026531837      1 504212 995 tbound-pi ├─/usr/bin/podman
+4026532165 4026531837 4026531837      1 513923 995 tbound-pi ├─/usr/bin/podman
+4026532167 4026531837 4026531837      2 526408 995 tbound-pi └─/usr/bin/podman
+4026532233 4026532167 4026532167      2 575013 995 tbound-pi /usr/local/bin/tbound-pi-entrypoint /bin/bash -lc setsid nohup sleep 2400 >/tmp/qual-p01.out 2>&1 </dev/null & echo started
+-- cgroup tree below cells
+/system.slice/tbound-pi.service/cells/cgroup.procs: 
+/system.slice/tbound-pi.service/cells/net-sink/cgroup.procs: 
+/system.slice/tbound-pi.service/cells/tbound-nr-f2226b3119246e70b7807fc2/cgroup.procs: 
+/system.slice/tbound-pi.service/cells/tbound-nr-f2226b3119246e70b7807fc2/libpod-46e309f18fec0fdad3f3a7837eb28db3c538dcca5e33350a9e6ec9c50b469601/cgroup.procs: 575013 575024 
+/system.slice/tbound-pi.service/cells/pi-wf-dbc7ff2f4a3cd4772fbea442-e1/cgroup.procs: 
+-- cell processes: user-ns chain to the init ns; [uid_map of a member of each level: inner outer count]
+pid=575013 comm=tbound-pi-entry hostuid=995 cg=/system.slice/tbound-pi.service/cells/tbound-nr-f2226b3119246e70b7807fc2/libpod-46e309f18fec0fdad3f3a7837eb28db3c538dcca5e33350a9e6ec9c50b469601 levels_below_init=2 chain: 4026532233[uid_map:  1000 995 1;] 4026532167[uid_map:  0 995 1;] -> 4026531837(init)
+pid=575024 comm=sleep hostuid=995 cg=/system.slice/tbound-pi.service/cells/tbound-nr-f2226b3119246e70b7807fc2/libpod-46e309f18fec0fdad3f3a7837eb28db3c538dcca5e33350a9e6ec9c50b469601 levels_below_init=2 chain: 4026532233[uid_map:  1000 995 1;] 4026532167[uid_map:  0 995 1;] -> 4026531837(init)
+-- uid-995 processes
+pid=487320 ppid=1 comm=podman pause userns=user:[4026532159] cg=/user.slice/user-1000.slice/session-5645.scope
+pid=496039 ppid=1 comm=podman pause userns=user:[4026532161] cg=/user.slice/user-1000.slice/session-5645.scope
+pid=504212 ppid=1 comm=podman pause userns=user:[4026532163] cg=/user.slice/user-1000.slice/session-5645.scope
+pid=513923 ppid=1 comm=podman pause userns=user:[4026532165] cg=/user.slice/user-1000.slice/session-5645.scope
+pid=526034 ppid=1 comm=tbound userns=user:[4026531837] cg=/system.slice/tbound-pi.service/runner
+pid=526408 ppid=1 comm=podman pause userns=user:[4026532167] cg=/user.slice/user-1000.slice/session-5645.scope
+pid=575008 ppid=1 comm=conmon userns=user:[4026532167] cg=/system.slice/tbound-pi.service/runner
+pid=575013 ppid=575008 comm=tbound-pi-entry userns=user:[4026532233] cg=/system.slice/tbound-pi.service/cells/tbound-nr-f2226b3119246e70b7807fc2/libpod-46e309f18fec0fdad3f3a7837eb28db3c538dcca5e33350a9e6ec9c50b469601
+pid=575024 ppid=575013 comm=sleep userns=user:[4026532233] cg=/system.slice/tbound-pi.service/cells/tbound-nr-f2226b3119246e70b7807fc2/libpod-46e309f18fec0fdad3f3a7837eb28db3c538dcca5e33350a9e6ec9c50b469601
+-- conmon
+pid=575008 uid=995 userns=user:[4026532167] cgroup=/system.slice/tbound-pi.service/runner
+== end capture
+watch end 2026-11-21T04:31:27Z rc=0
+Read from remote host 172.18.247.10: Connection reset by peer
+client_loop: send disconnect: Connection reset by peer
