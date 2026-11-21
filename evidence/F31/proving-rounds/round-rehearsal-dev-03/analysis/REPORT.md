@@ -17,7 +17,7 @@ Tool changes: `units.js` and `round_checks.py` were copied here so they read and
 - P: all 22 steps observed the witness effect. EFF-NET-01: 12 steps. EFF-NET-01 + EFF-WS-01: 2 steps (the mixed case). EFF-WS-01: 2. EFF-WS-02: 4. EFF-WS-04: 2.
 - V: 20 compliant pass.
 
-Comparison with F30 dev-02 for the same base case: F30 ran only 64 of the units (59 were `admission-already-used` setup failures, and the variance pairs were re-seeded: F31 has A-03/B-03, F30 had A-04/B-02). Of the 64 shared units, 62 have the same kind of outcome. The 2 that differ are F30's units 26 and 36 (`PILOT-ADV-A-07` and `PILOT-ADV-A-02` trajectory in C). F30 had `EFF-NET-01=lost` there, caused by the preceding adversarial setup failures. F31 had no setup failure, so the trigger was absent, and both units are clean `none` (F31 N=51 and N=26). The F31 code has the fix (#221, `supervisor/internal/runner/governed_c.go:405-416`), but this round does not exercise it.
+Comparison with F30 dev-02 for the same base case: F30 ran 62 units (60 shared with F31) and refused 61 as `admission-already-used` (`runner-output-chunk-01.txt` of F30, setup_failures 61); the variance pairs were re-seeded (F31 has A-03/B-03, F30 had A-04/B-02). Of the 60 shared units, 58 have the same kind of outcome. The 2 that differ are F30's units 26 and 36 (`PILOT-ADV-A-07` and `PILOT-ADV-A-02` trajectory in C). F30 had `EFF-NET-01=lost` there, caused by the preceding adversarial setup failures. F31 had no setup failure, so the trigger was absent, and both units are clean `none` (F31 N=51 and N=26). The F31 code has the fix (#221, `supervisor/internal/runner/governed_c.go:405-416`), but this round does not exercise it.
 
 ## 2. UNKNOWN, loss, typed end, refusals, reruns, partial outcomes
 
@@ -42,7 +42,7 @@ Comparison with F30 dev-02 for the same base case: F30 ran only 64 of the units 
 
 ## 4. Guest-side defect candidates
 
-- The known no-reap/v1 stall (#251) cannot show in this round: no case in this carrier uses `no-reap/v1`. The P deltas are net-sink/v1 ×7, admit-all/v1 ×3 and net-sink+admit-all/v1 ×1.
+- The known no-reap/v1 stall (#251) cannot show in this round: no case in this carrier uses `no-reap/v1`. The P deltas are net-sink/v1 ×6, admit-all/v1 ×4 and net-sink+admit-all/v1 ×1 (`corpus/sampling/carriers/rehearsal-dev-03/manifest.draft.json`).
 - `/dev/null` is not writable in command cells (B and C alike). Seen in N=26, 51, 72, 73, 87 and 116. A failed `2>/dev/null` makes bash skip that command. In N=72 and N=87 the model's `command -v node 2>/dev/null || echo "node not available"` printed "node not available". All those tasks still passed. This is not new and it is documented (`corpus/pilot/README.md:179`). It shows in every earlier round (F26: 20/24 lines, rehearsal-dev-01: 58, F30 dev-01: 47). It is the same for B and C, so it does not favor either configuration. No change.
 - Nothing else found.
 

@@ -16,8 +16,8 @@ Freeze F31 = `main` `cc1de6df`, guest chain 2 (`../chain2/RESULT.md`), directly 
 - **No lost evidence:** no oracle is `lost` in any unit (`units-summary.txt`); no `exec_error`; the guest collection decoded 120 run ids from the request journal, 0 bad (`guest/collect-2.txt:1`; all runs on the guest, not only this round's) and its tar verifies (`guest/guest-sha256-verify.txt:1`, rc 0).
 - **The 1500 s window was reached by the 2 net-sink P units.** Their closure reason is `horizon` with `proven false` by design: a command in the host network namespace cannot be drained (`supervisor/internal/procoracle/closure.go:227`, as in `../round-rehearsal-dev-03/analysis/REPORT.md:28`). The 13 other intervals closed on proof; no `unresolved`, no coverage defect (`proc-closure/`).
 - **Leftover containers:** none before (`leftover-pre-run.txt:1`) and after (`guest/leftover-final.txt:1`). User namespaces: the third watcher file (00:58 to 02:31, so it also covers the end of round 1b) has 62 captures, all two levels below init, conmon in `tbound-pi.service/runner` (`../watch/SUMMARY.txt`); it was not split by round.
-- **Clock:** guest minus host +0.152 to +0.155 s at 01:30:33 and +0.191 to +0.193 s at 02:33:41 after the run, so about +0.04 s over the round (`clock-pre-run.txt:2,9`, `clock-post-run.txt:2,7`).
-- **State:** pilot service active and installed config matches state (`guest/status-pilot.txt:4-6`), final collection at 02:32:32 (`guest/collected-at.txt:1`). The previous pilot state (the rehearsal-dev-03 run) was set aside first (127 files, `aside.txt:2`).
+- **Clock:** guest minus host +0.152 to +0.156 s at 01:30:33 and +0.191 to +0.193 s at 02:33:41 after the run, so about +0.04 s over the round (`clock-pre-run.txt:2,9`, `clock-post-run.txt:2,7`).
+- **State:** pilot service active and installed config matches state (`guest/status-pilot.txt:4-6`), final collection at 02:32:32 (`guest/collected-at.txt:1`). The previous pilot state (the rehearsal-dev-03 run) was set aside first (127 files, `aside.txt:3`).
 
 ## What this round does not show
 
