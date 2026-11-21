@@ -1,0 +1,115 @@
+{
+  "schema": "tbound-guest-evidence/v1",
+  "kind": "guest-tests-landlock-connect",
+  "commit": "08f3c3ee4043171b55867dfd2dfe5258809cf40b",
+  "binary_sha256": "sha256:e53504b2868d442b68eb5dc4158f7c909d91e86e83dd79332630f94c689d39d4",
+  "data": {
+    "package": "tbound/supervisor/cmd/tbound-cell-entrypoint",
+    "test_binary_sha256": "sha256:d6b4b4b6e3810bd848b25e8831f5d6987388a94f864948f97c18d0c33da532df",
+    "args": [
+      "-test.v",
+      "-test.count=1"
+    ],
+    "exit_code": 0,
+    "kernel_release": "7.0.0-38-generic",
+    "output_sha256": "sha256:9454ea29dfd1dcd6a8ca6c95b2dcab2bfc9266d3ca20cca349327c2dc6ffb53a",
+    "results": [
+      {
+        "test": "TestCellDeltaFromEnvAcceptsOnlyWhatTheTemplateSays",
+        "action": "pass"
+      },
+      {
+        "test": "TestLandlockPlanGrantsTheConnectRightOnlyToNetSinkAndOnlyForItsPort",
+        "action": "pass"
+      },
+      {
+        "test": "TestNamespaceMeasurementSharesTheNetworkNamespaceOnlyForNetSink",
+        "action": "pass"
+      },
+      {
+        "test": "TestParseUIDMapRootUID",
+        "action": "pass"
+      },
+      {
+        "test": "TestRequireImageRootOwnedAcceptsOnlyTheMappedRoot",
+        "action": "pass"
+      },
+      {
+        "test": "TestRequireImageRootOwnedUsesTheMeasuredMap",
+        "action": "pass"
+      },
+      {
+        "test": "TestEntrypointExecsFromThreadGroupLeader",
+        "action": "pass"
+      },
+      {
+        "test": "TestSplitPaths",
+        "action": "pass"
+      },
+      {
+        "test": "TestDigestLandlockRulesIsDeterministicAndOrderSensitive",
+        "action": "pass"
+      },
+      {
+        "test": "TestLandlockRestrictSelfFlagIsTheUAPITSYNCValue",
+        "action": "pass"
+      },
+      {
+        "test": "TestApplyLandlockRejectsNonTSYNCProfile",
+        "action": "pass"
+      },
+      {
+        "test": "TestReopenReadOnlyDirectoryRejectsReservedAndClosedFds",
+        "action": "pass"
+      },
+      {
+        "test": "TestSignedNodeEnvironmentStripsHelperVars",
+        "action": "pass"
+      },
+      {
+        "test": "TestLandlockTSYNCReachesEnforcement",
+        "action": "pass"
+      },
+      {
+        "test": "TestLandlockNetChildSkipsOnlyUnsupportedABI",
+        "action": "pass"
+      },
+      {
+        "test": "TestLandlockConnectRightIsPort8080OnlyAndOnlyForNetSink",
+        "action": "pass"
+      },
+      {
+        "test": "TestNoExternalRoutesAcceptsTheKernelsLoopbackRejectDefaults",
+        "action": "pass"
+      },
+      {
+        "test": "TestNoExternalRoutesStillRefusesRealDefaultsAndForeignInterfaces",
+        "action": "pass"
+      },
+      {
+        "test": "TestLandlockPlanAllowsExactlyExecuteAndReadOnTheHeldBinary",
+        "action": "pass"
+      },
+      {
+        "test": "TestLandlockHeldDescriptorRuleRefusesMoreRightsAndOtherDescriptors",
+        "action": "pass"
+      },
+      {
+        "test": "TestDigestCommandExecutableRequiresTheMeasuredUIDMap",
+        "action": "pass"
+      },
+      {
+        "test": "TestReadOnlyFileRefusesAFileOnAWritableMount",
+        "action": "pass"
+      },
+      {
+        "test": "TestEntrypointTakesTheProbeModeOnlyWithTheTemplateFlag",
+        "action": "pass"
+      },
+      {
+        "test": "TestProbeRefusalNamesTheGate",
+        "action": "pass"
+      }
+    ]
+  }
+}

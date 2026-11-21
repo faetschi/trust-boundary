@@ -1,0 +1,27 @@
+disk /home/tbound/tbound-work/f32-src/.local: 781 GiB free (need 10)
+disk /: 781 GiB free (need 10)
+== 35-evq-capture start 2026-11-21T03:02:09Z as tbound freeze=F32
+commit 08f3c3ee4043171b55867dfd2dfe5258809cf40b
+git_tree 0d9a225de7a111de400b01545a4f7e48a58065e4
+archive_tree_digest sha256:022b431af23103f69f3b70311f5d47c6ed5033e24aa98ef1240158e076cf4a16
+archive_files 3858
+go go version go1.27.1 linux/amd64
+argv go test -race -count=1 -timeout 40m -json ./...
+packages 64
+exit_status 0
+test_json_sha256 sha256:e571210a060148b55cb15c1521549577fe469745b3bc152c30f6bc44f22731ee
+capture_sha256 sha256:5230ee522e8627f14af4921ab7ae8934d0db370455de109afe76b3c49550395d
+guest_test_binary tbound/supervisor/cmd/tbound-cell-entrypoint sha256:d6b4b4b6e3810bd848b25e8831f5d6987388a94f864948f97c18d0c33da532df
+guest_test_binary tbound/supervisor/internal/procoracle sha256:1b250743770fb34797afce522cdda9f399ea689516171300aeb4490b344e6a80
+exit=0
+OK sync done; no 0-byte output under /home/tbound/tbound-h/f32 nor in: /home/tbound/tbound-h/cf32/capture.json /home/tbound/tbound-h/cf32/go-test.json /home/tbound/tbound-h/cf32/guest-tests/procoracle.test /home/tbound/tbound-h/cf32/guest-tests/tbound-cell-entrypoint.test
+OK capture commit = 08f3c3ee4043171b55867dfd2dfe5258809cf40b
+OK capture archive_tree_digest == SRC_DIGEST = sha256:022b431af23103f69f3b70311f5d47c6ed5033e24aa98ef1240158e076cf4a16
+OK capture exit_status = 0
+OK guest-tests/procoracle.test sha256 == test_binaries = sha256:1b250743770fb34797afce522cdda9f399ea689516171300aeb4490b344e6a80
+OK guest-tests/tbound-cell-entrypoint.test sha256 == test_binaries = sha256:d6b4b4b6e3810bd848b25e8831f5d6987388a94f864948f97c18d0c33da532df
+TEST_PROCORACLE: sha256:1b250743770fb34797afce522cdda9f399ea689516171300aeb4490b344e6a80  (NEW; F23 was sha256:72274bf50b9977652d540999940fc9791444ed675302cb9f609c703aad5a86b9)
+TEST_ENTRYPOINT: sha256:d6b4b4b6e3810bd848b25e8831f5d6987388a94f864948f97c18d0c33da532df  (NEW; F23 was sha256:e29b6f8b22e3c38a01274b628bf24a239b116648a00f2c32d994b8a854a5f4d6)
+capture_sha256 file digest: sha256:5230ee522e8627f14af4921ab7ae8934d0db370455de109afe76b3c49550395d
+OK sync done; no 0-byte output under /home/tbound/tbound-h/f32 nor in: /home/tbound/tbound-h/cf32/capture.json /home/tbound/tbound-h/cf32/go-test.json /home/tbound/tbound-h/cf32/guest-tests/procoracle.test /home/tbound/tbound-h/cf32/guest-tests/tbound-cell-entrypoint.test
+== DONE 35-evq-capture: /home/tbound/tbound-h/cf32

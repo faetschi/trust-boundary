@@ -1,0 +1,10 @@
+boot 5e15057b-83a7-4ed0-b8df-bec354220d72 2026-11-21T02:34:54Z
+go version go1.27.1 linux/amd64
+BUILD_OK
+VET_OK
+WINDOWS_OK
+FMT_OK
+BOUNDARY_OK
+TEST_RC=0
+boot 5e15057b-83a7-4ed0-b8df-bec354220d72 2026-11-21T02:56:37Z
+tests {'pass': 7812, 'skip': 52} packages {'skip': 4, 'pass': 60}
