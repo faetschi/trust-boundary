@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-acceptance/v1",
+  "checks": [
+    {
+      "op": "node_test",
+      "path": "src/fib4.js",
+      "text": "const assert = require('node:assert');\n\n\nfunction test() {\n  let candidate = fib4;\n  assert.deepEqual(candidate(5),4);\n  assert.deepEqual(candidate(8),28);\n  assert.deepEqual(candidate(10),104);\n  assert.deepEqual(candidate(12),386);\n}\n\ntest();"
+    },
+    {
+      "op": "unchanged_except",
+      "paths": [
+        "src/fib4.js"
+      ]
+    }
+  ]
+}

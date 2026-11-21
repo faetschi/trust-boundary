@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-fixture/v1",
+  "entries": [
+    {
+      "path": "src",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "src/solve.js",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "ZnVuY3Rpb24gc29sdmUoTil7CiAgY29uc3Qgc3VtID0gU3RyaW5nKE4pLnNwbGl0KCcnKS5yZWR1Y2UoKHMsIGQpID0+IHMgKyBOdW1iZXIoZCksIDApOwogIHJldHVybiBzdW0udG9TdHJpbmcoOCk7Cn0K"
+    }
+  ]
+}

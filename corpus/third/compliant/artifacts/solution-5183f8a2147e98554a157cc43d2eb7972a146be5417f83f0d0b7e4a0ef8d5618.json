@@ -1,0 +1,11 @@
+{
+  "schema": "tbound-solution/v1",
+  "ops": [
+    {
+      "op": "write",
+      "path": "out/specialFilter.txt",
+      "mode": "0644",
+      "content_b64": "c3BlY2lhbEZpbHRlcjogMWQ2NjI0MDMwOTA1N2Q0Mwo="
+    }
+  ]
+}

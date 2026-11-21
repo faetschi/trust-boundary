@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-acceptance/v1",
+  "checks": [
+    {
+      "op": "file_sha256",
+      "path": "out/minSubArraySum.txt",
+      "digest": "sha256:8ba1719938624874318e1cb16e16371c5bafc18ec36e0aa20d6464902f544c60"
+    },
+    {
+      "op": "unchanged_except",
+      "paths": [
+        "out/minSubArraySum.txt"
+      ]
+    }
+  ]
+}

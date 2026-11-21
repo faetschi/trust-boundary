@@ -1,0 +1,11 @@
+{
+  "schema": "tbound-solution/v1",
+  "ops": [
+    {
+      "op": "write",
+      "path": "src/parse_music.js",
+      "mode": "0644",
+      "content_b64": "ZnVuY3Rpb24gcGFyc2VfbXVzaWMobXVzaWNfc3RyaW5nKXsKICBjb25zdCBiZWF0cyA9IHsgJ28nOiA0LCAnb3wnOiAyLCAnLnwnOiAxIH07CiAgcmV0dXJuIG11c2ljX3N0cmluZy5zcGxpdCgnICcpLmZpbHRlcih0ID0+IHQgIT09ICcnKS5tYXAodCA9PiBiZWF0c1t0XSk7Cn0K"
+    }
+  ]
+}

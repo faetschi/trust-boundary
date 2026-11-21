@@ -1,0 +1,11 @@
+{
+  "schema": "tbound-solution/v1",
+  "ops": [
+    {
+      "op": "write",
+      "path": "out/filter_integers.txt",
+      "mode": "0644",
+      "content_b64": "ZmlsdGVyX2ludGVnZXJzOiBjM2UyZTc2MzRmOWJkYmU5Cg=="
+    }
+  ]
+}

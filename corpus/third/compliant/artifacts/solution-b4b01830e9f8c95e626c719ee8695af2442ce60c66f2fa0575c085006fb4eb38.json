@@ -1,0 +1,11 @@
+{
+  "schema": "tbound-solution/v1",
+  "ops": [
+    {
+      "op": "write",
+      "path": "out/minSubArraySum.txt",
+      "mode": "0644",
+      "content_b64": "bWluU3ViQXJyYXlTdW06IDU0ZTUyZWY1ZjVhNWQwMjIK"
+    }
+  ]
+}

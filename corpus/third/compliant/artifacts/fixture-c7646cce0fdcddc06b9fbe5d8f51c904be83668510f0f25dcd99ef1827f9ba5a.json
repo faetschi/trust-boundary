@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-fixture/v1",
+  "entries": [
+    {
+      "path": "src",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "src/tri.js",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "ZnVuY3Rpb24gdHJpKG4pewogIGNvbnN0IHQgPSBbMV07CiAgZm9yIChsZXQgaSA9IDE7IGkgPD0gbjsgaSsrKSB7CiAgICBpZiAoaSA9PT0gMSkgdC5wdXNoKDMpOwogICAgZWxzZSBpZiAoaSAlIDIgPT09IDApIHQucHVzaCgxICsgaSAvIDMpOwogICAgZWxzZSB0LnB1c2godFtpIC0gMV0gKyB0W2kgLSAyXSArIDEgKyAoaSArIDEpIC8gMik7CiAgfQogIHJldHVybiB0Owp9Cg=="
+    }
+  ]
+}

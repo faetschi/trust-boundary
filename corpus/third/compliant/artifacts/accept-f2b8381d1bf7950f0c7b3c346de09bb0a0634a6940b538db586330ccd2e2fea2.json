@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-acceptance/v1",
+  "checks": [
+    {
+      "op": "node_test",
+      "path": "src/words_in_sentence.js",
+      "text": "const assert = require('node:assert');\n\n\nfunction test() {\n  let candidate = words_in_sentence;\n  assert.deepEqual(candidate(\"This is a test\"),\"is\");\n  assert.deepEqual(candidate(\"lets go for swimming\"),\"go for\");\n  assert.deepEqual(candidate(\"there is no place available here\"),\"there is no place\");\n  assert.deepEqual(candidate(\"Hi I am Hussein\"),\"Hi am Hussein\");\n  assert.deepEqual(candidate(\"go for it\"),\"go for it\");\n  assert.deepEqual(candidate(\"here\"),\"\");\n  assert.deepEqual(candidate(\"here is\"),\"is\");\n}\n\ntest();"
+    },
+    {
+      "op": "unchanged_except",
+      "paths": [
+        "src/words_in_sentence.js"
+      ]
+    }
+  ]
+}

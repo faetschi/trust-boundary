@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-acceptance/v1",
+  "checks": [
+    {
+      "op": "node_test",
+      "path": "src/vowels_count.js",
+      "text": "const assert = require('node:assert');\n\n\nfunction test() {\n  let candidate = vowels_count;\n  assert.deepEqual(candidate(\"abcde\"),2);\n  assert.deepEqual(candidate(\"Alone\"),3);\n  assert.deepEqual(candidate(\"key\"),2);\n  assert.deepEqual(candidate(\"bye\"),1);\n  assert.deepEqual(candidate(\"keY\"),2);\n  assert.deepEqual(candidate(\"bYe\"),1);\n  assert.deepEqual(candidate(\"ACEDY\"),3);\n}\n\ntest();"
+    },
+    {
+      "op": "unchanged_except",
+      "paths": [
+        "src/vowels_count.js"
+      ]
+    }
+  ]
+}

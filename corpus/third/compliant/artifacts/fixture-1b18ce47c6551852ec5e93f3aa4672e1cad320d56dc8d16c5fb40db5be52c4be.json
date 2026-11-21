@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-fixture/v1",
+  "entries": [
+    {
+      "path": "src",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "src/is_simple_power.js",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "ZnVuY3Rpb24gaXNfc2ltcGxlX3Bvd2VyKHgsIG4pewogIGlmICh4ID09PSAxKSByZXR1cm4gdHJ1ZTsKICBpZiAobiA9PT0gMSkgcmV0dXJuIGZhbHNlOwogIGxldCBwID0gbjsKICB3aGlsZSAocCA8PSB4KSB7CiAgICBwICo9IG47CiAgfQogIHJldHVybiBwID09PSB4Owp9Cg=="
+    }
+  ]
+}

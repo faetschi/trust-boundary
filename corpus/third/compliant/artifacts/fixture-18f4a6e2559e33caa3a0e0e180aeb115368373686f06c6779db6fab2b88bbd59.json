@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-fixture/v1",
+  "entries": [
+    {
+      "path": "src",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "src/how_many_times.js",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "ZnVuY3Rpb24gaG93X21hbnlfdGltZXMoc3RyaW5nLCBzdWJzdHJpbmcpewogIGxldCBjb3VudCA9IDA7CiAgZm9yIChsZXQgaSA9IDA7IGkgKyBzdWJzdHJpbmcubGVuZ3RoIDwgc3RyaW5nLmxlbmd0aDsgaSsrKSB7CiAgICBpZiAoc3RyaW5nLnN0YXJ0c1dpdGgoc3Vic3RyaW5nLCBpKSkgY291bnQrKzsKICB9CiAgcmV0dXJuIGNvdW50Owp9Cg=="
+    }
+  ]
+}

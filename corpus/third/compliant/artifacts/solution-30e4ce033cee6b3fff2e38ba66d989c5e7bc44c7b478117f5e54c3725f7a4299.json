@@ -1,0 +1,11 @@
+{
+  "schema": "tbound-solution/v1",
+  "ops": [
+    {
+      "op": "write",
+      "path": "src/below_zero.js",
+      "mode": "0644",
+      "content_b64": "ZnVuY3Rpb24gYmVsb3dfemVybyhvcGVyYXRpb25zKXsKICBsZXQgYmFsYW5jZSA9IDA7CiAgZm9yIChjb25zdCBvcCBvZiBvcGVyYXRpb25zKSB7CiAgICBiYWxhbmNlICs9IG9wOwogICAgaWYgKGJhbGFuY2UgPCAwKSByZXR1cm4gdHJ1ZTsKICB9CiAgcmV0dXJuIGZhbHNlOwp9Cg=="
+    }
+  ]
+}
