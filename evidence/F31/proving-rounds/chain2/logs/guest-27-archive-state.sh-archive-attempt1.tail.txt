@@ -1,0 +1,9 @@
+# last 8 lines of guest-27-archive-state.sh-archive-attempt1.txt (773 lines, 50 KB, kept on the host in tbound-work/receipts/F31/logs); the FATAL block starts at line 767
+NOTE next: 00-session-sudo.sh open, 10-upgrade.sh, 20-r1.sh, 50-i1-i2.sh, 00-session-sudo.sh close, 29-g1-recover.sh status|move (finds nothing left), 30-reg-g1.sh
+FATAL: 0-byte output file(s) under /home/tbound/tbound-h/f31 (WSL disk stall?): stop and look, do not continue:
+/home/tbound/tbound-h/f31/chain1-20261120/evq-report/adapter-capture.stderr
+/home/tbound/tbound-h/f31/chain1-20261120/evq-report/route-report.stderr
+/home/tbound/tbound-h/f31/chain1-20261120/evq-report/evq.stderr
+/home/tbound/tbound-h/f31/chain1-20261120/dr/command-audit.jsonl
+/home/tbound/tbound-h/f31/chain1-20261120/dr/provider-audit.jsonl
+cleanup: tbound-pi.socket must be active again

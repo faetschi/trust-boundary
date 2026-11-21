@@ -1,0 +1,10 @@
+boot 4963fbad-94cd-4484-bf39-280d5b7ff566 2026-11-20T19:42:11Z
+go version go1.27.1 linux/amd64
+BUILD_OK
+VET_OK
+WINDOWS_OK
+FMT_OK
+BOUNDARY_OK
+TEST_RC=0
+boot 4963fbad-94cd-4484-bf39-280d5b7ff566 2026-11-20T20:06:21Z
+tests {'pass': 7811, 'skip': 52} packages {'skip': 4, 'pass': 60}

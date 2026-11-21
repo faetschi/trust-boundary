@@ -255,7 +255,7 @@ infra/freeze/35-evq-capture.sh	5
 infra/freeze/40-sign.sh	5
 infra/freeze/freeze-guard.sh	3
 infra/freeze/guest/00-session-sudo.sh	16
-infra/freeze/guest/05-runtime-swap.sh	36
+infra/freeze/guest/05-runtime-swap.sh	40
 infra/freeze/guest/10-upgrade.sh	33
 infra/freeze/guest/20-r1.sh	21
 infra/freeze/guest/27-archive-state.sh	81
@@ -275,7 +275,7 @@ infra/freeze/guest/mk-svc-config.py	6
 infra/freeze/guest/reqstate.py	14
 infra/freeze/guest/rglib.sh	33
 infra/freeze/guest/sign-g1.sh	8
-infra/freeze/guest/sign-run.sh	11
+infra/freeze/guest/sign-run.sh	12
 infra/freeze/lib.sh	21
 infra/freeze/paths.sh	12
 infra/freeze/session-env.sh	3
@@ -285,7 +285,7 @@ infra/freeze/tools/gate.sh	1
 infra/freeze/tools/gssh.sh	2
 infra/freeze/tools/guest-chain.sh	10
 infra/freeze/tools/pull-receipts.sh	2
-infra/freeze/tools/recover.sh	28
+infra/freeze/tools/recover.sh	30
 infra/freeze/tools/test-carrier.sh	14
 infra/freeze/tools/test-recover.sh	4
 infra/freeze/tools/watch.sh	5
@@ -935,11 +935,11 @@ supervisor/internal/piruntime/corpus_manifest_linux_test.go	3
 supervisor/internal/piruntime/corpus_quota_profile_linux_test.go	3
 supervisor/internal/piruntime/d09_audit_head_linux_test.go	1
 supervisor/internal/piruntime/d09_command_prestart_linux_test.go	6
-supervisor/internal/piruntime/d09_command_runner_linux.go	112
+supervisor/internal/piruntime/d09_command_runner_linux.go	113
 supervisor/internal/piruntime/d09_consumer_proof_linux_test.go	2
 supervisor/internal/piruntime/d09_delta.go	66
-supervisor/internal/piruntime/d09_delta_linux.go	52
-supervisor/internal/piruntime/d09_delta_linux_test.go	26
+supervisor/internal/piruntime/d09_delta_linux.go	54
+supervisor/internal/piruntime/d09_delta_linux_test.go	29
 supervisor/internal/piruntime/d09_delta_test.go	2
 supervisor/internal/piruntime/d09_netsink_attest_linux.go	14
 supervisor/internal/piruntime/d09_netsink_verify.go	7

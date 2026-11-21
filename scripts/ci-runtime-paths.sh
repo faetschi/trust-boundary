@@ -54,7 +54,7 @@ fi
 # Both callers below treat every non-zero status as "changed".
 runtime_unchanged() {
   git diff --quiet "$range" -- \
-    supervisor adapter corpus infra install docs/evaluation .github/workflows/ci.yml scripts/ci_go_test_timing.py
+    supervisor adapter corpus infra install docs/evaluation .github/workflows/ci.yml scripts/ci_go_test_timing.py scripts/ci-private-tmpdir.sh
 }
 
 if [ "$field" = "docs-only" ]; then

@@ -281,7 +281,9 @@ For a supplied bundle, bind `construct_review.content_digest` to the run's
 `receipt.json`, `audit.json`, and `stats.json`. Do not reformat them after
 hashing. Retain raw ratings, requests, and responses.
 
-The normal admission command needs no panel files:
+The normal admission command needs no panel files. It reads the prepared,
+untracked `corpus/pilot/manifest.json` (a copy of `manifest.draft.json` with the
+measured pins; see [the pilot README](../../corpus/pilot/README.md)):
 
 ```sh
 tbound-profile corpus-digest --manifest corpus/pilot/manifest.json --quota-profile pilot \

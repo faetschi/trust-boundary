@@ -1,0 +1,31 @@
+##### 10-freeze.sh cc1de6dfe4c5a53494d45ac2878506a0c0ffa150 21:10:37
+drwx------ 65 tbound tbound 4096 Nov 20 21:10 ..
+-rw-------  1 tbound tbound   41 Nov 20 21:10 FROZEN-COMMIT
+OK sync done; no 0-byte output under /home/tbound/tbound-h/f31 nor in: /home/tbound/tbound-work/env.sh
+== DONE 10-freeze: F31=cc1de6dfe4c5a53494d45ac2878506a0c0ffa150
+##### 20-p1.sh 21:10:37
+TBOUND_DIGEST: sha256:ec693482ec587b5472451554652fc70161ac9bf6b378bee7f72770675af389b1  (NEW; F23 was sha256:4852c78fc660d8073e6347814b2e553a41fa0494dececc0d32f8b37869dacd31)
+TBP_DIGEST: sha256:f1c66aa084d0f3a2db9dc4923d5d43d49212bbbdb1366884a6d4b52352b61f47  (NEW; F23 was sha256:16a4b00fb4b75b56301ec699c4cd613afda9773b695d9a6d5f0831412604a468)
+ENTRYPOINT_P1_DIGEST: sha256:02abc8ff527630ac46cff5f7a7db6c9401aa0c302b0b04177b301811ae5a9b95  (NEW; F23 was sha256:9b7499bc356810b74bc2e5ce0bfea5e66f5918ac9c2031096f80f22b5c2aa3f4)
+SRC_DIGEST: sha256:2b807ba70825d3c476592bbca03a0af099283fc5845ca65abcef1ddfa8fd21df  (NEW; F23 was sha256:da00b275241e06c23b49e7bd064eb3573f52f4de136c1293157e7938f520eb95)
+##### 25-p2-rebuild.sh 21:11:47
+disk /: 789 GiB free (need 10)
+TAR=/home/tbound/tbound-w.TKn59h/p2-rebuild/runtime-bundle-cc1de6df-lf.tar sha256:54138a98860a4f868d54a5e856201b79c4850f7e39e2072d6f8b3e0dd18ea951 (429660160 bytes)
+== DONE 25-p2-rebuild: BUNDLE_DIGEST=sha256:73866d76ad8a8a9f91f40aa8b43168e10f5844f21bb32ef2537065b48b2ff1e1 (two offline builds identical)
+OK sync done; no 0-byte output under /home/tbound/tbound-h/f31 nor in: /home/tbound/tbound-w.TKn59h/p2-rebuild/runtime-bundle-cc1de6df-lf.tar /home/tbound/tbound-w.TKn59h/p2-rebuild/runtime-bundle-cc1de6df-lf.tar.sha256 /home/tbound/tbound-w.TKn59h/p2-rebuild/out/build1/find.txt /home/tbound/tbound-w.TKn59h/p2-rebuild/out/build2/find.txt /home/tbound/tbound-w.TKn59h/p2-rebuild/out/build1/sha256.txt /home/tbound/tbound-w.TKn59h/p2-rebuild/out/build2/sha256.txt /home/tbound/tbound-w.TKn59h/p2-rebuild/out/build1/measure.out /home/tbound/tbound-w.TKn59h/p2-rebuild/out/build2/measure.out
+##### 30-p3.sh 21:12:48
+CFG=sha256:4d5e8a04e29643b646d40e635cbed05c28700f88676fda5995b620a5d6944e24
+ENTRYPOINT_DIGEST=sha256:02abc8ff527630ac46cff5f7a7db6c9401aa0c302b0b04177b301811ae5a9b95
+BASH_DIGEST=sha256:55b89ab22bee4792a210f493a53fb066accd5d30b69837c28d98be5ff863efcf
+NODE_DIGEST=sha256:7fde7b8afa198da66257f42ee2001d874c7355631e6d1579a5fb5ef1f246df4c
+##### session-env.sh 21:12:55
+D() { echo "sha256:$(sha256sum "$1" | cut -d' ' -f1)"; }
+export IMGDIGEST=$(cat $HF/IMGDIGEST)
+OK sync done; no 0-byte output under /home/tbound/tbound-h/f31 nor in: /home/tbound/tbound-w.TKn59h/session-env.sh
+== DONE session-env: /home/tbound/tbound-w.TKn59h/session-env.sh
+##### 35-evq-capture.sh 21:12:55
+OK sync done; no 0-byte output under /home/tbound/tbound-h/f31 nor in: /home/tbound/tbound-h/cf31/capture.json /home/tbound/tbound-h/cf31/go-test.json /home/tbound/tbound-h/cf31/guest-tests/procoracle.test /home/tbound/tbound-h/cf31/guest-tests/tbound-cell-entrypoint.test
+OK capture commit = cc1de6dfe4c5a53494d45ac2878506a0c0ffa150
+OK capture archive_tree_digest == SRC_DIGEST = sha256:2b807ba70825d3c476592bbca03a0af099283fc5845ca65abcef1ddfa8fd21df
+FATAL: capture exit_status mismatch: got 1 want 0
+STOP rc=1 at 35-evq-capture.sh

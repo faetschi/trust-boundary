@@ -34,6 +34,8 @@ printf "$U$U$K" "a|trajectory|C|0" 10 "b|static-replay|P|0" 11 "c|compliant|V|0"
 check "two governed UNKNOWNs in a row, V skipped" "$(unknown_unit "$T/j2.jsonl")" "11 2"
 printf "$K" "a|trajectory|C|0" 1 > "$T/j3.jsonl"
 check "no UNKNOWN" "$(unknown_unit "$T/j3.jsonl")" "-1 0"
+read -r idx streak < <(unknown_unit "$T/j2.jsonl")
+check "the streak read as recover.sh reads it is a number" "$streak|$(streak_stop "$streak")" "2|"
 check "two governed UNKNOWNs in a row do not stop" "$(streak_stop 2)" ""
 check "three governed UNKNOWNs in a row stop" "$(streak_stop 3 | cut -d: -f1)" systemic
 printf 'not json\n' > "$T/j4.jsonl"
@@ -43,4 +45,6 @@ mkdir "$T/round"
 check "a round without a registration record runs unregistered" "$(runner_args "$T/round")" "run --config run.json"
 : > "$T/round/registration.json"
 check "a registered round passes its record to every chunk" "$(runner_args "$T/round")" "run --config run.json --registration registration.json"
+printf '"tbound-run.exe","12696","Console","1","16\377500 K"\r\n' > "$T/tasklist.csv"
+check "a tasklist line with a non-UTF-8 memory column yields its pid" "$(LC_ALL=C.UTF-8 runner_pids < "$T/tasklist.csv")" 12696
 [ "$FAILS" -eq 0 ] || exit 1

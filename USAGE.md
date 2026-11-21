@@ -41,7 +41,7 @@ Host requirements for the governed service:
 - A dedicated, unprivileged service user, and an ext4 filesystem for the managed
   live root.
 - **Node.js 22.19+** and the **Pi CLI 0.87.1** (`npm install --global @earendil-works/pi-coding-agent@0.87.1`).
-- To build: **Go 1.27.1**.
+- To build: **Go 1.26** or later (`supervisor/go.mod`). Reproduce the evaluation with the pinned **Go 1.27.1** ([setup](docs/guides/setup.md)).
 
 ## 3. Installation
 

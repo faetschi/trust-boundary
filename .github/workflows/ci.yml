@@ -75,25 +75,7 @@ jobs:
           cache-dependency-path: adapter/package-lock.json
 
       - name: Prepare private temporary directory
-        run: |
-          umask 077
-          TMPDIR="$(mktemp -d "$HOME/tb-ci.XXXXXXXX")"
-          chmod 700 "$TMPDIR"
-          test "$(stat -c '%a' "$TMPDIR")" = 700
-          python3 - "$TMPDIR" <<'PY'
-          import os
-          import stat
-          import sys
-
-          path = os.path.realpath(sys.argv[1])
-          while True:
-              mode = os.stat(path).st_mode
-              assert not mode & (stat.S_IWGRP | stat.S_IWOTH), path
-              if path == "/":
-                  break
-              path = os.path.dirname(path)
-          PY
-          printf 'TMPDIR=%s\n' "$TMPDIR" >> "$GITHUB_ENV"
+        run: bash scripts/ci-private-tmpdir.sh
 
       - name: Offline setup regressions (mocks only)
         if: ${{ needs.changes.outputs.docs_only != 'true' }}
@@ -133,6 +115,7 @@ jobs:
           umask 077
           bash tests/packaging/verify-package-manager-layout.sh
           bash tests/packaging/verify-publish-release-assets.sh
+          bash tests/packaging/verify-release-verify-lib.sh
 
       - name: Release workflow coverage
         if: ${{ needs.changes.outputs.docs_only != 'true' }}
@@ -207,24 +190,7 @@ jobs:
 
       - name: Prepare private temporary directory
         run: |
-          umask 077
-          TMPDIR="$(mktemp -d "$HOME/tb-ci.XXXXXXXX")"
-          chmod 700 "$TMPDIR"
-          test "$(stat -c '%a' "$TMPDIR")" = 700
-          python3 - "$TMPDIR" <<'PY'
-          import os
-          import stat
-          import sys
-
-          path = os.path.realpath(sys.argv[1])
-          while True:
-              mode = os.stat(path).st_mode
-              assert not mode & (stat.S_IWGRP | stat.S_IWOTH), path
-              if path == "/":
-                  break
-              path = os.path.dirname(path)
-          PY
-          printf 'TMPDIR=%s\n' "$TMPDIR" >> "$GITHUB_ENV"
+          bash scripts/ci-private-tmpdir.sh
           printf 'TBOUND_PI_CLI_BIN=%s/tbound-pi-cli/bin/pi\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
 
       - name: Install and verify official Pi CLI

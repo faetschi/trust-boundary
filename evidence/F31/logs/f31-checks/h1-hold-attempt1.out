@@ -1,0 +1,15 @@
+== before 2026-11-20T19:19:12Z
+7.0.0-38-generic
+crun fuse-overlayfs gcc gcc-13 gcc-13-x86-64-linux-gnu libseccomp2 podman slirp4netns uidmap 
+enabled
+enabled
+enabled
+== hold
+linux-generic-hwe-24.04 set on hold.
+linux-headers-generic-hwe-24.04 set on hold.
+linux-image-generic-hwe-24.04 set on hold.
+linux-image-7.0.0-38-generic set on hold.
+Check GRUB_DISABLE_OS_PROBER documentation entry.
+Adding boot menu entry for UEFI Firmware Settings ...
+done
+rc=1
