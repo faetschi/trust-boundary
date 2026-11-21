@@ -1,0 +1,5 @@
+verified signed host profile pi-host-profile-rr-08f3c3ee4043 (digest sha256:d9dc8dcef28f156b7b0ff4425293915cbfd7d2132daa2605f51afc0353bdf38b, mode production)
+D09 cell template canonical digest: sha256:82ae931664e9f73123e28cfdb9265c6544f9bb5aa3210abce8cdb64617fbc088
+D09 base template digest (registration digest emptied; run.json pins.base_template_digest): sha256:2dd3e3868148bf45d939eca077431538b92310ffa5f1a0a1ddc9e06ec0439395
+D09 command-cell delta net-sink/v1 template digest: sha256:bc85252d53b253f70fad125e4fb8a6307b8d229a2aa017818d62881177713ad8
+D09 command-cell delta no-reap/v1 template digest: sha256:8016d21db8052c9eb6fc30ebc1542008dd0f2083ca5a920fd0abc14f68f1f685

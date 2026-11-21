@@ -1,0 +1,12 @@
+cell-watch.f32-round1a.txt
+  watch starts: ['2026-11-21T03:28:12Z'] ; first capture 2026-11-21T03:32:35.282571140Z ; last capture 2026-11-21T04:12:54.065753042Z ; last leftover check 2026-11-21T04:12:52.024246707Z
+  captures 13 ; levels_below_init {'2': 13, '0': 1} ; levels 0 = ['/system.slice/tbound-pi.service/cells/net-sink']
+  conmon cgroup {'/system.slice/tbound-pi.service/runner': 12}
+  leftover checks 18 (svc-start 6); podman rc != 0: 0 ; lines histogram {'0': 13, '3': 5} ; lines naming a tbound-accept-/tbound-v- container: 0
+
+cell-watch.txt
+  watch starts: ['2026-11-21T09:42:11Z'] ; first capture 2026-11-21T09:45:16.531245138Z ; last capture 2026-11-21T11:56:56.352243752Z ; last leftover check 2026-11-21T15:27:16.227077500Z
+  captures 80 ; levels_below_init {'2': 80} ; levels 0 = none
+  conmon cgroup {'/system.slice/tbound-pi.service/runner': 80}
+  leftover checks 84 (svc-start 4); podman rc != 0: 0 ; lines histogram {'0': 81, '3': 3} ; lines naming a tbound-accept-/tbound-v- container: 0
+
