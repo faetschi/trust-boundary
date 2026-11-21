@@ -54,7 +54,7 @@ files are read-only for this increment.
 `supervisor/internal/providerbridge` is the trusted conversation owner. It loads
 the already-reviewed OpenRouter secure credential object in Go, fixes model
 `nvidia/nemotron-3.5-lightning:free`, and uses the existing Go broker,
-`openrouter.BuildRequest`, bounded SSE parser, fixed four-tool manifest, and
+`openrouter.BuildRequestForRoute`, bounded SSE parser, fixed four-tool manifest, and
 redirect-forbidding HTTP transport. No API key, endpoint, model selector,
 headers, message history, or tool result is sent from Node to the provider. This is the engineering/test channel pinned by `ApprovedModel`. The research evaluation model (DeepSeek V4.1 Flash, `docs/decisions/2026-10-14-qualification-and-research-procedure.md`) is not yet in code and is a candidate until frozen in the experiment manifest.
 
