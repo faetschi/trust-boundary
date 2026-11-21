@@ -93,6 +93,10 @@ if [ "$PREV_COMMIT" = 13ed11939c06e552a2d8662fb752bf2b3640ac68 ] &&
 # no piruntime file changed since F30, and the changed tbound-profile files (#206, #210) are off the digest path.
 if [ "$PREV_COMMIT" = 13ed11939c06e552a2d8662fb752bf2b3640ac68 ] &&
    [ "$F" = cc1de6dfe4c5a53494d45ac2878506a0c0ffa150 ]; then ALLOW_PREV_MEASURER=1; fi
+# 13ed119..08f3c3e (F32, final freeze; F31 verified, its round 1a found the no-reap stall; the guest restored to F23): the same four files are
+# unchanged (git diff --quiet); the only piruntime change since F31 is #251 (d09_delta_linux.go, d09_command_runner_linux.go), off the digest path.
+if [ "$PREV_COMMIT" = 13ed11939c06e552a2d8662fb752bf2b3640ac68 ] &&
+   [ "$F" = 08f3c3ee4043171b55867dfd2dfe5258809cf40b ]; then ALLOW_PREV_MEASURER=1; fi
 UNIT_SHA=2bc03ead4ba478d81655029de66a46f4bcb6357c5a24e7f8a3940ed947720ea3
 OLD=/var/lib/tbound/runtime-src.old-${PREV_BUNDLE_DIGEST:7:8}-$(date -u +%Y%m%dT%H%M%S%NZ)
 
