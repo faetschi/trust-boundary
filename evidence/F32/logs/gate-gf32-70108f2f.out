@@ -1,0 +1,10 @@
+30db3f486864c647391913d90e6ab2b72b602217ae33ba6db3d6702c7238fa4b  /home/tbound/tbound-work/gf32.tar
+BLOBS checked=3858 mismatched=0 extra_files=0
+GATE_TOOL kf19 == freeze tree
+meta load=0.08 0.02 0.01 start=2026-11-21T02:34:54Z
+GATE_RC=0 end=2026-11-21T02:56:37Z
+BOUNDARY_OK
+TEST_RC=0
+boot 5e15057b-83a7-4ed0-b8df-bec354220d72 2026-11-21T02:56:37Z
+tests {'pass': 7812, 'skip': 52} packages {'skip': 4, 'pass': 60}
+exit=0

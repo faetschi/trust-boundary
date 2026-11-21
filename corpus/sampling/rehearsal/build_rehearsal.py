@@ -15,7 +15,9 @@ import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SAMPLING = os.path.dirname(HERE)
-ROUNDS = ("rehearsal-dev-01", "rehearsal-dev-02")
+# round -> (inputs under rehearsal/, id suffix). A later round on the same freeze reuses inputs under fresh ids.
+ROUNDS = {"rehearsal-dev-01": ("rehearsal-dev-01", ""), "rehearsal-dev-02": ("rehearsal-dev-02", ""),
+          "rehearsal-dev-03": ("rehearsal-dev-02", ".dev03"), "soak-dev-01": ("rehearsal-dev-01", ".soak01")}
 
 
 def run(script, *args):
@@ -28,10 +30,11 @@ def run(script, *args):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--tbound-run", required=True)
-    ap.add_argument("--round", choices=ROUNDS, default=ROUNDS[0])
+    ap.add_argument("--round", choices=ROUNDS, default="rehearsal-dev-01")
     ap.add_argument("--out")
     a = ap.parse_args(argv)
-    inputs, a.out = os.path.join(HERE, a.round), a.out or os.path.join(SAMPLING, "carriers", a.round)
+    (inputs, suffix), a.out = ROUNDS[a.round], a.out or os.path.join(SAMPLING, "carriers", a.round)
+    inputs = os.path.join(HERE, inputs)
     if os.path.exists(a.out):
         sys.exit(f"refused: --out {a.out} exists")
     with tempfile.TemporaryDirectory() as tmp:
@@ -47,7 +50,8 @@ def main(argv=None):
             run("case_entry.py", "build", "--case", case_id, "--calibration", cal, "--judgments", os.path.join(d, "judgments.json"),
                 "--draw", "rehearsal", "--tbound-run", a.tbound_run, "--out", bundle)
             bundles += ["--bundle", bundle]
-        print("manifest sha256:", run("carrier.py", "build", "--round", a.round, *bundles, "--out", a.out))
+        print("manifest sha256:", run("carrier.py", "build", "--round", a.round, *bundles, "--out", a.out,
+                                          *(["--id-suffix", suffix] if suffix else [])))
 
 
 if __name__ == "__main__":

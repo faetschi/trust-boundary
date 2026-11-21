@@ -1,4 +1,6 @@
-.opencode/
+.opencode/*
+!.opencode/skills/
+!.opencode/command/
 
 # Local-only / never commit
 vm_start.txt
@@ -29,10 +31,11 @@ supervisor/internal/sessionrepo/artifacts/
 # this does not match the retained supervisor/tbound.exe pattern above.
 supervisor/tbound-*
 __pycache__/
-.claude/
+.claude/*
+!.claude/skills/
+!.claude/commands/
 
 # owner-local working files
-/AGENTS.md
 /TASK_STATE.md
 
 # local UI QA captures written by extensions/webchat/scripts/ui-qa.mjs

@@ -82,7 +82,7 @@ network, or Secure Boot change needs separate approval. The old 6.8/ABI-4 guest
 observations are historical, not a fresh guest inspection.
 
 **ABI floor and profile.** The adopted thesis decision
-(`MSE_MA_Thesis/agentic-harness/AH-technical/06-1-language-decision.md`) records that
+(`MSE_MA_Thesis/tbound/AH-technical/06-1-language-decision.md`) records that
 `LANDLOCK_RESTRICT_SELF_TSYNC` can apply a ruleset to all threads from ABI 8, and
 that below ABI 8 `runtime.LockOSThread` does not cover sibling threads. The
 implementation profile is exactly ABI 8 (TSYNC). `D09LandlockABI = 8` in

@@ -454,7 +454,6 @@ func (s *productService) listSessions(p productsession.Principal) *productprotoc
 		return s.errorResponse(productprotocol.OpListSessions, err)
 	}
 	response := succeeded()
-	// shortcut: the list is the first 2000 sessions by ID, without turns; page it when a principal can own more.
 	for _, session := range sessions[:min(len(sessions), productServiceMaxListSessions)] {
 		response.Sessions = append(response.Sessions, *s.sessionView(session, false))
 	}

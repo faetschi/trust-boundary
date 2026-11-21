@@ -1,0 +1,10 @@
+chain start 2026-11-20T22:57:43Z
+##### 27-archive-state.sh archive 23:57:54
+/home/tbound/tbound-h/f31/chain1-20261120/evq-report/adapter-capture.stderr
+/home/tbound/tbound-h/f31/chain1-20261120/evq-report/route-report.stderr
+/home/tbound/tbound-h/f31/chain1-20261120/evq-report/evq.stderr
+/home/tbound/tbound-h/f31/chain1-20261120/dr/command-audit.jsonl
+/home/tbound/tbound-h/f31/chain1-20261120/dr/provider-audit.jsonl
+cleanup: tbound-pi.socket must be active again
+STOP rc=1 at 27-archive-state.sh archive
+chain end 2026-11-20T22:58:42Z rc=1

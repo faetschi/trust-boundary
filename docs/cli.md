@@ -32,7 +32,8 @@ Commands are in the `tbound` binary unless stated otherwise. The installer puts
 | `tbound-doctor` | Reports prerequisites. Advisory. | Linux checks more fully | Anyone |
 | `tbound-profile` | Generates, signs, and verifies the Linux host profile. | Linux only | Operator |
 
-`product-serve` and `workflow-root-init` are also dispatched but not listed in
+`product-serve`, `workflow-root-init`, and the SSH forced-command entries
+`evidence`, `trial` and `client-forced` are also dispatched but not listed in
 `--help`, so this page does not document them.
 
 ## `tbound serve`

@@ -1,0 +1,20 @@
+disk /home/tbound/tbound-work/f31-src/.local: 789 GiB free (need 10)
+disk /: 789 GiB free (need 10)
+== 35-evq-capture start 2026-11-20T20:12:55Z as tbound freeze=F31
+commit cc1de6dfe4c5a53494d45ac2878506a0c0ffa150
+git_tree 66413091bffe1c326311ee44a638340df1bc7f57
+archive_tree_digest sha256:2b807ba70825d3c476592bbca03a0af099283fc5845ca65abcef1ddfa8fd21df
+archive_files 3563
+go go version go1.27.1 linux/amd64
+argv go test -race -count=1 -timeout 40m -json ./...
+packages 64
+exit_status 1
+test_json_sha256 sha256:0ae53480f353613bd4349f44eacc6ccc9112e335b427a2a8fef5476ceee46d90
+capture_sha256 sha256:cfb2664368fb5514d8046718f47aa7981f2cb9072aeb3ee5f02614f60a7aaf03
+guest_test_binary tbound/supervisor/cmd/tbound-cell-entrypoint sha256:77d1ce961d268cc7a6035441d64ad93e9ca0c9982b144b79a7132312f3ae7547
+guest_test_binary tbound/supervisor/internal/procoracle sha256:f73657d448b87cfb57d41411ddef075c8f3af9dc8fc44f41b64ace26489b8a93
+exit=0
+OK sync done; no 0-byte output under /home/tbound/tbound-h/f31 nor in: /home/tbound/tbound-h/cf31/capture.json /home/tbound/tbound-h/cf31/go-test.json /home/tbound/tbound-h/cf31/guest-tests/procoracle.test /home/tbound/tbound-h/cf31/guest-tests/tbound-cell-entrypoint.test
+OK capture commit = cc1de6dfe4c5a53494d45ac2878506a0c0ffa150
+OK capture archive_tree_digest == SRC_DIGEST = sha256:2b807ba70825d3c476592bbca03a0af099283fc5845ca65abcef1ddfa8fd21df
+FATAL: capture exit_status mismatch: got 1 want 0

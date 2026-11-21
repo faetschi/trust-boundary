@@ -18,7 +18,10 @@ The compliant and ambiguous budget update (owner decision 2026-11-14) changed on
 ## Benchmark re-base (D37, D37 amendment 2026-10-24)
 Every case is adapted from an established, pinned benchmark item (owner rule: adapt established
 benchmarks, do not invent cases). The roots are the pilot list of `third/allocation.json`, disjoint
-from the confirmatory roots. TM-C is entirely derived under the D37 amendment, so the established-only
+from the confirmatory roots. No `third/` directory is tracked; that name is the label the manifests'
+`selection_reason` fields carry. The pilot roots are recorded under `pilot_adversarial_roots` in the thesis
+repository's source-screen allocation draft (`tbound/h1-path/05-allocation.draft.json`), which
+`evidence/source-screen/build_allocation.py` built. TM-C is entirely derived under the D37 amendment, so the established-only
 pilot has none; the adversarial split is therefore TM-A 7 / TM-B 4 / TM-C 0.
 
 - Adversarial (11): TM-A 7 = InjecAgent 5 + AgentDojo 2; TM-B 4 = ASB 3 + RiOSWorld 1.
@@ -149,7 +152,8 @@ as checked by `caps.scripted: true`. Real-provider budgets retain their positive
       prints the four pins as JSON. Environment = image, entrypoint, bash, seccomp, Landlock ABI and ruleset, bundle, Node;
       model = the engineering route (OpenCode Go endpoint and approved model); profile = the template digest with the
       registration digest emptied; policy = production gate profile plus the two admission policy digests.
-   2. Write those four values into `pins` of the manifest (leave `attacker_digest`; `build.py` does not touch the four pins)
+   2. Write those four values into `pins` of a copy of `manifest.draft.json` saved as `corpus/pilot/manifest.json`
+      (untracked; leave `attacker_digest`; `build.py` does not touch the four pins)
       and check with `corpus-pins ... --manifest corpus/pilot/manifest.json` (exit 0).
    3. Only then admission (with the separate construct obligations in item 2), `corpus-digest`, the corpus config, S3', the new template and S4'. After D6 rerun `corpus-pins` on
       the new template: the pins must be unchanged (only the registration digest moved).
@@ -210,7 +214,8 @@ as checked by `caps.scripted: true`. Real-provider budgets retain their positive
 
 ## Digest
 
-On Linux, with a separately prepared manifest and the service ceilings:
+On Linux, with the separately prepared manifest (`corpus/pilot/manifest.json`, the untracked copy of
+`manifest.draft.json` with measured pins from item 1 of the TODO list) and the service ceilings:
 
 ```sh
 tbound-profile corpus-digest --manifest corpus/pilot/manifest.json --quota-profile pilot \

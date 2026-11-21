@@ -1,6 +1,6 @@
 cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
-title: "TBound: a governed supervisor for AI coding agents"
+title: "Between the Model and the Shell: Deterministic Runtime Governance for Probabilistic Software Engineering Agents"
 abstract: >-
   TBound is a Linux supervisor that mediates the read, write, edit and bash tool
   calls of the Pi coding agent. It enforces a fixed policy, runs bash in an

@@ -1,0 +1,31 @@
+== guard test start 2026-11-21T03:40:34Z guest=172.18.247.10 case=PILOT-CMP-read-01
+== 0 state
+active
+-- images:
+33591b5451d8 localhost/tbound/pi-cell:latest 263 MB
+== 1 baseline: trial reset PILOT-CMP-read-01 --check (expect a check document)
+{"schema":"tbound-trial-reset/v1","case_id":"PILOT-CMP-read-01","fixture_digest":"sha256:583c8bcab54783f67eeb7e4263d48daddbe39c60394cd32c64a9ff8243db8520","tree_digest":"","check":true}
+rc=0
+== 2 create tbound-v-guardtest (not started)
+image=33591b5451d8
+3cbe8507c832fb26bf2d93efd8976ac049579c787e7b84267c67c242ec256dcc
+create rc=0
+tbound-v-guardtest Created
+== 3 trial reset PILOT-CMP-read-01 --check with the container present (expect a refusal naming tbound-v-guardtest)
+tbound trial: refusing: leftover service container(s) tbound-v-guardtest: an acceptance or V cell outside the cells cgroup is scored as a cell escape (procoracle F1); stop and report, its removal is owner-supervised
+usage: tbound trial reset <case_id> [--check]   (root only; one JSON document on stdout)
+  reset <case_id>           reset the live root to the fixture of the case
+  reset <case_id> --check   verify the preconditions and the fixture artifact only
+  accept <case_id> [--tree live] [--commit F]   evaluate a private live-tree copy; label captures with the frozen commit
+  v-run <case_id>           run native Pi (Configuration V) on a fresh fixture copy in a plain container
+  ssh-original-command     (forced-command entry; reads $SSH_ORIGINAL_COMMAND)
+rc=2
+== 4 remove tbound-v-guardtest
+tbound-v-guardtest
+rm rc=0
+-- ps -a after:
+-- end ps
+== 5 trial reset PILOT-CMP-read-01 --check after removal (expect a check document)
+{"schema":"tbound-trial-reset/v1","case_id":"PILOT-CMP-read-01","fixture_digest":"sha256:583c8bcab54783f67eeb7e4263d48daddbe39c60394cd32c64a9ff8243db8520","tree_digest":"","check":true}
+rc=0
+== guard test end 2026-11-21T03:40:37Z

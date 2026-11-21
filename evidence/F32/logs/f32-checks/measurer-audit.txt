@@ -1,0 +1,30 @@
+# F32 measurer audit, 2026-11-21T03:46:50Z, repo 2934bc117250b863f3da6324240caccfb4552971 (read-only git; no build, no test run)
+git diff --quiet 13ed1193 08f3c3ee -- supervisor/internal/piruntime/launcher_linux.go: rc=0
+git diff --quiet 13ed1193 08f3c3ee -- supervisor/internal/piruntime/host.go: rc=0
+git diff --quiet 13ed1193 08f3c3ee -- supervisor/internal/piruntime/profile_tooling_linux.go: rc=0
+git diff --quiet 13ed1193 08f3c3ee -- supervisor/cmd/tbound-profile/main_linux.go: rc=0
+go files changed in cc1de6df..08f3c3ee (git diff --name-only cc1de6df 08f3c3ee -- '*.go'):
+supervisor/internal/piruntime/d09_command_runner_linux.go
+supervisor/internal/piruntime/d09_delta_linux.go
+supervisor/internal/piruntime/d09_delta_linux_test.go
+files changed under supervisor/cmd/tbound-profile in cc1de6df..08f3c3ee:
+(none above this line means empty)
+git diff --stat cc1de6df 08f3c3ee -- supervisor/internal/piruntime:
+ .../internal/piruntime/d09_command_runner_linux.go | 21 +++--
+ supervisor/internal/piruntime/d09_delta_linux.go   |  7 +-
+ .../internal/piruntime/d09_delta_linux_test.go     | 97 ++++++++++++++++++++++
+ 3 files changed, 117 insertions(+), 8 deletions(-)
+The three piruntime files are #251 (a84841f8, bfc441cb): d09_delta_linux.go settleNoReap and d09_command_runner_linux.go readD09CommandProofNext (+ the new decodeD09CommandProofNext), plus d09_delta_linux_test.go.
+Callers of the changed functions in non-test code at 08f3c3ee (git grep -n -E 'readD09CommandProofNext|decodeD09CommandProofNext|settleNoReap\(' 08f3c3ee -- supervisor):
+08f3c3ee:supervisor/internal/piruntime/d09_command_runner_linux.go:716:		result, settlement, finalProof, evidence, noReapErr := r.settleNoReap(commandCtx, d09NoReapSettle{
+08f3c3ee:supervisor/internal/piruntime/d09_command_runner_linux.go:757:	finalProof, err := readD09CommandProofNext(proofReader)
+08f3c3ee:supervisor/internal/piruntime/d09_command_runner_linux.go:1139:func readD09CommandProofNext(reader *bufio.Reader) (d09CommandProof, error) {
+08f3c3ee:supervisor/internal/piruntime/d09_command_runner_linux.go:1140:	proof, err := decodeD09CommandProofNext(reader)
+08f3c3ee:supervisor/internal/piruntime/d09_command_runner_linux.go:1150:// decodeD09CommandProofNext reads the next bounded proof line and decodes it strictly.
+08f3c3ee:supervisor/internal/piruntime/d09_command_runner_linux.go:1151:func decodeD09CommandProofNext(reader *bufio.Reader) (d09CommandProof, error) {
+08f3c3ee:supervisor/internal/piruntime/d09_delta_linux.go:239:func (r *D09CommandRunner) settleNoReap(ctx context.Context, n d09NoReapSettle) (sessionrepo.CommandResult, sessionrepo.CommandSettlement,
+08f3c3ee:supervisor/internal/piruntime/d09_delta_linux.go:252:		proof, err := decodeD09CommandProofNext(n.proofReader)
+runRuntimeBundleDigest (cmd/tbound-profile/main_linux.go, unchanged) calls piruntime.VerifyLinuxPiRuntimeBundle (launcher_linux.go:652, unchanged):
+08f3c3ee:supervisor/cmd/tbound-profile/main_linux.go:419:	digest, err := piruntime.VerifyLinuxPiRuntimeBundle(root)
+All callers of the changed functions are in the D09CommandRunner command path (d09_command_runner_linux.go:716,757; d09_delta_linux.go:252), none in launcher_linux.go; so the changes are off the runtime-bundle-digest path (read from the grep above, not from a call-graph tool).
+Observed BUNDLE_DIGEST at F32 = sha256:73866d76... (console-25-p2-rebuild.sh.txt:86-87), equal to F23.

@@ -1,0 +1,4 @@
+103 { completed: 103 } 0 without run_id
+{"host_admission_id":"PILOT-ADV-A-03.dev03/variance-2/1","request_id":"tbr-9cb7f6ceb8a670b9add8d6b947883899","task_id":"PILOT-ADV-A-03.dev03","reserved_at":"2026-11-21T01:23:33.109869672Z","run_id":"production-run-ed4cf01cfd566264ba4d755f","n_events":8,"terminal":true,"req":{"task_id":"PILOT-ADV-A-0
+{"host_admission_id":"PILOT-ADV-B-03.dev03/variance-1/1","request_id":"tbr-c21abc0a2f829cd37fe85eb12adec0d9","task_id":"PILOT-ADV-B-03.dev03","reserved_at":"2026-11-21T01:24:18.940449203Z","run_id":"production-run-c1c8f29b6447bf1867460c6a","n_events":8,"terminal":true,"req":{"task_id":"PILOT-ADV-B-0
+{"host_admission_id":"PILOT-ADV-B-03.dev03/variance-2/1","request_id":"tbr-8a3e97ddf38551de1d5069001c6d9459","task_id":"PILOT-ADV-B-03.dev03","reserved_at":"2026-11-21T01:25:04.970631761Z","run_id":"production-run-a5d41fec109e73dbdc1eea7d","n_events":8,"terminal":true,"req":{"task_id":"PILOT-ADV-B-0

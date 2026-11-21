@@ -244,8 +244,6 @@ func (s *settlement) settle() (productsession.TurnReceipt, error) {
 	}
 	link := s.prepared.Link()
 	reservation := s.turn.Reservation
-	// shortcut: elapsed time after the ledger deadline (settlement, publication) is not billed beyond
-	// the reservation; bill it once the catalog can record an overrun.
 	elapsed := min(int64(math.Ceil(time.Since(ev.Started).Seconds())), reservation.DurationSeconds)
 	usage := productsession.Budget{HostCalls: ev.HostCalls, Tokens: ev.Tokens,
 		DurationSeconds: elapsed}

@@ -1,0 +1,34 @@
+﻿
+2026-11-21T03:27:18.8580547Z start state=Running mac=00155D0C4002
+2026-11-21T03:27:30.7670945Z checkpoint post-F31-rounds-2026-11-21 created (F31 chain 2 after rounds 1b and 3)
+2026-11-21T03:27:52.9727459Z restored pre-F31-2026-11-20 state=Saved
+2026-11-21T03:27:59.5928093Z Start-VM returned state=Running
+2026-11-21T03:27:59.5989096Z waiting up to 180 min for the chain marker (C:\Users\Admin\AppData\Local\Temp\claude\1bdbf0b7223717e2\300b9e68-97e7-4a01-aa27-ad0df38df07f\scratchpad\f31w\f32-restore.out.chainok or C:\Users\Admin\AppData\Local\Temp\claude\1bdbf0b7223717e2\300b9e68-97e7-4a01-aa27-ad0df38df07f\scratchpad\f31w\f32-restore.out.chainfail)
+2026-11-21T03:39:52.9549289Z checkpoint post-F32-chain-2026-11-21 created
+
+Name                             CreationTime       
+----                             ------------       
+pre-F15-2026-11-04               04.11.2026 19:08:33
+pre-B9-2026-11-05                05.11.2026 15:48:11
+pre-F16-2026-11-06               06.11.2026 10:12:02
+pre-F17-2026-11-06               06.11.2026 14:29:58
+pre-F18-2026-11-07               07.11.2026 10:33:02
+pre-F19-2026-11-07               07.11.2026 23:19:52
+pre-F21-2026-11-08               08.11.2026 14:55:32
+pre-F24-2026-11-13               13.11.2026 16:40:31
+pre-F25-2026-11-13               13.11.2026 19:28:48
+pre-F26-2026-11-13               13.11.2026 23:57:50
+pre-F27-2026-11-15               15.11.2026 17:15:10
+pre-F28-2026-11-15               15.11.2026 18:46:19
+pre-F29-2026-11-16               17.11.2026 18:20:05
+pre-F30-2026-11-18               18.11.2026 13:17:55
+post-F30-2026-11-20              20.11.2026 20:17:40
+pre-F31-2026-11-20               20.11.2026 20:20:25
+post-F31-qual-barrier-2026-11-20 20.11.2026 23:55:55
+post-F31-chain2-2026-11-20       21.11.2026 00:10:17
+post-F31-rounds-2026-11-21       21.11.2026 04:27:30
+post-F32-chain-2026-11-21        21.11.2026 04:39:52
+
+
+
+2026-11-21T03:39:53.2757677Z DONE

@@ -1,8 +1,5 @@
 // The pure markdown parser: source text to the typed AST in ast.ts. It builds no
-// DOM and no markup. It is a port of the legacy renderer (internal/webchat/assets/
-// markdown.mjs): the same subset, bounds, look-ahead and output. Only the DOM
-// calls are replaced by AST construction, so the differential suite can hold the
-// two to the same result, text-node boundaries included.
+// DOM and no markup.
 
 import type {
   Block,

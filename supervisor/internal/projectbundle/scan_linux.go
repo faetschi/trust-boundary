@@ -114,7 +114,6 @@ func (s *scanner) isExcluded(rel, name string) bool {
 }
 
 func (s *scanner) walk(dir *os.File, rel string) error {
-	// shortcut: Readdirnames loads one whole directory before the entry limit applies; read in batches if a project may hold millions of files in one directory.
 	names, err := dir.Readdirnames(-1)
 	if err != nil {
 		s.refuse(displayPath(rel), fmt.Sprintf("cannot list directory: %v", err))

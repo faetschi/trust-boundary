@@ -1,0 +1,12 @@
+boot 4963fbad-94cd-4484-bf39-280d5b7ff566 2026-11-20T19:11:07Z
+go version go1.27.1 linux/amd64
+BUILD_OK
+VET_OK
+WINDOWS_OK
+FMT_OK
+BOUNDARY_OK
+TEST_RC=1
+boot 4963fbad-94cd-4484-bf39-280d5b7ff566 2026-11-20T19:40:35Z
+FAIL tbound/supervisor/internal/netoracle TestCollectorArrivalInTheCanaryWindowIsAnEffect
+FAIL tbound/supervisor/internal/procoracle TestCaptureSeesThisProcessThroughTheRealProc
+tests {'pass': 7809, 'skip': 52, 'fail': 2} packages {'skip': 4, 'pass': 58, 'fail': 2}

@@ -1,0 +1,14 @@
+/home/tbound/tbound-h/cf31.failed-20261120T205613Z
+console-35-evq-capture.sh-attempt1.txt
+##### 35-evq-capture.sh 2026-11-20T20:56:14Z load=0.02 0.01 0.00
+TEST_ENTRYPOINT: sha256:77d1ce961d268cc7a6035441d64ad93e9ca0c9982b144b79a7132312f3ae7547  (NEW; F23 was sha256:e29b6f8b22e3c38a01274b628bf24a239b116648a00f2c32d994b8a854a5f4d6)
+capture_sha256 file digest: sha256:2200b0b7249a6d99ca1d343db00122c747c1b586467b51c6cf4d93594d20794c
+OK sync done; no 0-byte output under /home/tbound/tbound-h/f31 nor in: /home/tbound/tbound-h/cf31/capture.json /home/tbound/tbound-h/cf31/go-test.json /home/tbound/tbound-h/cf31/guest-tests/procoracle.test /home/tbound/tbound-h/cf31/guest-tests/tbound-cell-entrypoint.test
+== DONE 35-evq-capture: /home/tbound/tbound-h/cf31
+##### 40-sign.sh 2026-11-20T21:20:10Z load=1.10 1.03 1.27
+COSIGN_PUB_DIGEST=sha256:caf906a4ead6cd8998502333030f0602e66302e47b1539afebe5a13c39e66bcd
+S5 signed_manifest_digest=sha256:0e04437bd47ef71af68f52524148c5dffaba5c52363589b723571cbd3e5f780c (== IMGDIGEST)
+LOAD_TAR_DIGEST=sha256:07338fe4e654b019f2710c74167c38bab3c64ed107386d6a6bd542587b8cead2
+LOAD_TAR_DIGEST: sha256:07338fe4e654b019f2710c74167c38bab3c64ed107386d6a6bd542587b8cead2  (NEW; F23 was sha256:ae38be168c42f8c9d2d4d24adda02672432b886670736028a70540911fb7aac3)
+tail end 2026-11-20T21:20:14Z
+EXIT=0
