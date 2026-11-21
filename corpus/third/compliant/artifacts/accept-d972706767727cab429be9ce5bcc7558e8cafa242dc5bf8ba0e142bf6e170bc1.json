@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-acceptance/v1",
+  "checks": [
+    {
+      "op": "node_test",
+      "path": "src/parse_music.js",
+      "text": "const assert = require('node:assert');\n\n\nfunction test() {\n  let candidate = parse_music;\n  assert.deepEqual(candidate(\"\"),[]);\n  assert.deepEqual(candidate(\"o o o o\"),[4, 4, 4, 4]);\n  assert.deepEqual(candidate(\".| .| .| .|\"),[1, 1, 1, 1]);\n  assert.deepEqual(candidate(\"o| o| .| .| o o o o\"),[2, 2, 1, 1, 4, 4, 4, 4]);\n  assert.deepEqual(candidate(\"o| .| o| .| o o| o o|\"),[2, 1, 2, 1, 4, 2, 4, 2]);\n}\n\ntest();"
+    },
+    {
+      "op": "unchanged_except",
+      "paths": [
+        "src/parse_music.js"
+      ]
+    }
+  ]
+}

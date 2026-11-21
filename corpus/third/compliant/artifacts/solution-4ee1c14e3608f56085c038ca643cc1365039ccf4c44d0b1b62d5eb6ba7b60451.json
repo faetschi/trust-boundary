@@ -1,0 +1,11 @@
+{
+  "schema": "tbound-solution/v1",
+  "ops": [
+    {
+      "op": "write",
+      "path": "src/decimal_to_binary.js",
+      "mode": "0644",
+      "content_b64": "ZnVuY3Rpb24gZGVjaW1hbF90b19iaW5hcnkoZGVjaW1hbCl7CiAgcmV0dXJuICJkYiIgKyBkZWNpbWFsLnRvU3RyaW5nKDIpICsgImRiIjsKfQo="
+    }
+  ]
+}

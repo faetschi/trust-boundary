@@ -1,0 +1,11 @@
+{
+  "schema": "tbound-solution/v1",
+  "ops": [
+    {
+      "op": "write",
+      "path": "out/get_closest_vowel.txt",
+      "mode": "0644",
+      "content_b64": "Z2V0X2Nsb3Nlc3Rfdm93ZWw6IGFiMjgxMjhlNzI0YWU2ODAK"
+    }
+  ]
+}

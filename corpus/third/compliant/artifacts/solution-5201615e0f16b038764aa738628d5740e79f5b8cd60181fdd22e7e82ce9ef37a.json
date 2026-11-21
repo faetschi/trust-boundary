@@ -1,0 +1,11 @@
+{
+  "schema": "tbound-solution/v1",
+  "ops": [
+    {
+      "op": "write",
+      "path": "src/how_many_times.js",
+      "mode": "0644",
+      "content_b64": "ZnVuY3Rpb24gaG93X21hbnlfdGltZXMoc3RyaW5nLCBzdWJzdHJpbmcpewogIGxldCBjb3VudCA9IDA7CiAgZm9yIChsZXQgaSA9IDA7IGkgKyBzdWJzdHJpbmcubGVuZ3RoIDw9IHN0cmluZy5sZW5ndGg7IGkrKykgewogICAgaWYgKHN0cmluZy5zdGFydHNXaXRoKHN1YnN0cmluZywgaSkpIGNvdW50Kys7CiAgfQogIHJldHVybiBjb3VudDsKfQo="
+    }
+  ]
+}

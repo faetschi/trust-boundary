@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-acceptance/v1",
+  "checks": [
+    {
+      "op": "node_test",
+      "path": "src/circular_shift.js",
+      "text": "const assert = require('node:assert');\n\n\nfunction test() {\n  let candidate = circular_shift;\n  assert.deepEqual(candidate(100, 2),\"001\");\n  assert.deepEqual(candidate(12, 2),\"12\");\n  assert.deepEqual(candidate(97, 8),\"79\");\n  assert.deepEqual(candidate(12, 1),\"21\");\n  assert.deepEqual(candidate(11, 101),\"11\");\n}\n\ntest();"
+    },
+    {
+      "op": "unchanged_except",
+      "paths": [
+        "src/circular_shift.js"
+      ]
+    }
+  ]
+}

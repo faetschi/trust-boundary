@@ -1,0 +1,11 @@
+{
+  "schema": "tbound-solution/v1",
+  "ops": [
+    {
+      "op": "write",
+      "path": "out/fizz_buzz.txt",
+      "mode": "0644",
+      "content_b64": "Zml6el9idXp6OiA3MWE5ZTdhZGNhZGE4ZjIyCg=="
+    }
+  ]
+}

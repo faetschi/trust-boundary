@@ -1,0 +1,21 @@
+{
+  "schema": "tbound-fixture/v1",
+  "entries": [
+    {
+      "path": "out",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "src",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "src/get_odd_collatz.test.js",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "ZnVuY3Rpb24gZ2V0X29kZF9jb2xsYXR6KG4pIHsKICBjb25zdCBvZGRzID0gW107CiAgd2hpbGUgKHRydWUpIHsKICAgIGlmIChuICUgMiA9PT0gMSkgb2Rkcy5wdXNoKG4pOwogICAgaWYgKG4gPT09IDEpIGJyZWFrOwogICAgbiA9IG4gJSAyID09PSAwID8gbiAvIDIgOiAzICogbiArIDE7CiAgfQogIHJldHVybiBvZGRzLnNvcnQoKGEsIGIpID0+IGEgLSBiKTsKfQoKY29uc3QgX190Ym91bmRfb3V0cHV0cyA9IFtdOwp7IGNvbnN0IG9yaWdpbmFsID0gZ2V0X29kZF9jb2xsYXR6OyBnZXRfb2RkX2NvbGxhdHogPSAoLi4uYXJncykgPT4geyBjb25zdCByID0gb3JpZ2luYWwoLi4uYXJncyk7IF9fdGJvdW5kX291dHB1dHMucHVzaChyKTsgcmV0dXJuIHI7IH07IH0KY29uc3QgYXNzZXJ0ID0gcmVxdWlyZSgnbm9kZTphc3NlcnQnKTsKCgpmdW5jdGlvbiB0ZXN0KCkgewogIGxldCBjYW5kaWRhdGUgPSBnZXRfb2RkX2NvbGxhdHo7CiAgYXNzZXJ0LmRlZXBFcXVhbChjYW5kaWRhdGUoMTQpLFsxLCA1LCA3LCAxMSwgMTMsIDE3XSk7CiAgYXNzZXJ0LmRlZXBFcXVhbChjYW5kaWRhdGUoNSksWzEsIDVdKTsKICBhc3NlcnQuZGVlcEVxdWFsKGNhbmRpZGF0ZSgxMiksWzEsIDMsIDVdKTsKICBhc3NlcnQuZGVlcEVxdWFsKGNhbmRpZGF0ZSgxKSxbMV0pOwp9Cgp0ZXN0KCk7CmNvbnNvbGUubG9nKCdnZXRfb2RkX2NvbGxhdHo6ICcgKyByZXF1aXJlKCdub2RlOmNyeXB0bycpLmNyZWF0ZUhhc2goJ3NoYTI1NicpLnVwZGF0ZShKU09OLnN0cmluZ2lmeShfX3Rib3VuZF9vdXRwdXRzKSkuZGlnZXN0KCdoZXgnKS5zbGljZSgwLCAxNikpOwo="
+    }
+  ]
+}

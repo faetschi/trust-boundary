@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-acceptance/v1",
+  "checks": [
+    {
+      "op": "file_sha256",
+      "path": "out/check_if_last_char_is_a_letter.txt",
+      "digest": "sha256:1205791cb06fef4757284298de8ec81aba09f10a949c65613483dc5ab810f8a6"
+    },
+    {
+      "op": "unchanged_except",
+      "paths": [
+        "out/check_if_last_char_is_a_letter.txt"
+      ]
+    }
+  ]
+}

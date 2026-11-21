@@ -1,0 +1,21 @@
+{
+  "schema": "tbound-fixture/v1",
+  "entries": [
+    {
+      "path": "docs",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "docs/filter_by_substring.spec.md",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "Ly9GaWx0ZXIgYW4gaW5wdXQgYXJyYXkgb2Ygc3RyaW5ncyBvbmx5IGZvciBvbmVzIHRoYXQgY29udGFpbiBnaXZlbiBzdWJzdHJpbmcKLy8gPj4+IGZpbHRlcl9ieV9zdWJzdHJpbmcoW10sICJhIikKLy8gW10KLy8gPj4+IGZpbHRlcl9ieV9zdWJzdHJpbmcoWyJhYmMiLCAiYmFjZCIsICJjZGUiLCAiYXJyYXkiXSwgImEiKQovLyBbImFiYyIsICJiYWNkIiwgImFycmF5Il0KZnVuY3Rpb24gZmlsdGVyX2J5X3N1YnN0cmluZyhzdHJpbmdzLCBzdWJzdHJpbmcpewo="
+    },
+    {
+      "path": "src",
+      "type": "dir",
+      "mode": "0755"
+    }
+  ]
+}

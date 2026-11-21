@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-acceptance/v1",
+  "checks": [
+    {
+      "op": "node_test",
+      "path": "src/filter_by_substring.js",
+      "text": "const assert = require('node:assert');\n\n\nfunction test() {\n  let candidate = filter_by_substring;\n  assert.deepEqual(candidate([], \"john\"),[]);\n  assert.deepEqual(candidate([\"xxx\", \"asd\", \"xxy\", \"john doe\", \"xxxAAA\", \"xxx\"], \"xxx\"),[\"xxx\", \"xxxAAA\", \"xxx\"]);\n  assert.deepEqual(candidate([\"xxx\", \"asd\", \"aaaxxy\", \"john doe\", \"xxxAAA\", \"xxx\"], \"xx\"),[\"xxx\", \"aaaxxy\", \"xxxAAA\", \"xxx\"]);\n  assert.deepEqual(candidate([\"grunt\", \"trumpet\", \"prune\", \"gruesome\"], \"run\"),[\"grunt\", \"prune\"]);\n}\n\ntest();"
+    },
+    {
+      "op": "unchanged_except",
+      "paths": [
+        "src/filter_by_substring.js"
+      ]
+    }
+  ]
+}

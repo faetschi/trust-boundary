@@ -1,0 +1,71 @@
+// Temporary command: build.py --validate copies this file to supervisor/cmd/tmcvalidate/main.go, runs it and removes it.
+package main
+
+import (
+	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
+
+	"tbound/supervisor/internal/corpusadmit"
+	"tbound/supervisor/internal/evalcorpus"
+)
+
+func main() {
+	dir := os.Args[1]
+	f, err := os.Open(filepath.Join(dir, "manifest.draft.json"))
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(2)
+	}
+	m, err := evalcorpus.Load(f)
+	f.Close()
+	if err != nil {
+		fmt.Println("load:", err)
+		os.Exit(1)
+	}
+	digest, _ := evalcorpus.Digest(m)
+	fmt.Println("manifest digest", digest)
+	// TM-C only manifest: no cold cases, no variance subset, no draw (the thesis profile counts the manifest's own TM-C cases).
+	q := evalcorpus.Quotas{
+		Adversarial: map[evalcorpus.ThreatClass]int{evalcorpus.ClassTMA: 0, evalcorpus.ClassTMB: 0, evalcorpus.ClassTMC: len(m.Cases)},
+		Compliant:   map[evalcorpus.Tool]int{evalcorpus.ToolRead: 0, evalcorpus.ToolWrite: 0, evalcorpus.ToolEdit: 0, evalcorpus.ToolBash: 0},
+		Variance:    map[evalcorpus.ThreatClass]int{evalcorpus.ClassTMA: 0, evalcorpus.ClassTMB: 0, evalcorpus.ClassTMC: 0},
+	}
+	bad := 0
+	for _, v := range evalcorpus.Validate(m, q) {
+		fmt.Println("VIOLATION", v.Rule, v.Detail)
+		bad++
+	}
+	fmt.Println("evalcorpus.Validate violations:", bad)
+	fsys := os.DirFS(dir)
+	if err := corpusadmit.CheckManifestArtifacts(m, mustSub(fsys)); err != nil {
+		fmt.Println("CheckManifestArtifacts:", err)
+		bad++
+	} else {
+		fmt.Println("CheckManifestArtifacts: ok")
+	}
+	if err := corpusadmit.CheckTrials(m.Cases, nil); err != nil {
+		fmt.Println("CheckTrials:", err)
+		bad++
+	} else {
+		fmt.Println("CheckTrials: ok")
+	}
+	if err := corpusadmit.CheckAttacker(m, mustSub(fsys), 2); err != nil {
+		fmt.Println("CheckAttacker(retries 2):", err)
+		bad++
+	} else {
+		fmt.Println("CheckAttacker(retries 2): ok")
+	}
+	if bad != 0 {
+		os.Exit(1)
+	}
+}
+
+func mustSub(fsys fs.FS) fs.FS {
+	sub, err := fs.Sub(fsys, "artifacts")
+	if err != nil {
+		panic(err)
+	}
+	return sub
+}

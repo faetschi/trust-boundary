@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-acceptance/v1",
+  "checks": [
+    {
+      "op": "file_sha256",
+      "path": "out/get_closest_vowel.txt",
+      "digest": "sha256:c8f67a3127d81d7fbcfbaa1fc0543c6f67ce050d127b05984e08d0fa2dfe0cf9"
+    },
+    {
+      "op": "unchanged_except",
+      "paths": [
+        "out/get_closest_vowel.txt"
+      ]
+    }
+  ]
+}

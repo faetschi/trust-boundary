@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-fixture/v1",
+  "entries": [
+    {
+      "path": "src",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "src/intersperse.js",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "ZnVuY3Rpb24gaW50ZXJzcGVyc2UobnVtYmVycywgZGVsaW1ldGVyKXsKICBjb25zdCBvdXQgPSBbXTsKICBmb3IgKGxldCBpID0gMDsgaSA8IG51bWJlcnMubGVuZ3RoOyBpKyspIHsKICAgIGlmIChpID4gMSkgb3V0LnB1c2goZGVsaW1ldGVyKTsKICAgIG91dC5wdXNoKG51bWJlcnNbaV0pOwogIH0KICByZXR1cm4gb3V0Owp9Cg=="
+    }
+  ]
+}

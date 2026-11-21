@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-acceptance/v1",
+  "checks": [
+    {
+      "op": "node_test",
+      "path": "src/prime_length.js",
+      "text": "const assert = require('node:assert');\n\n\nfunction test() {\n  let candidate = prime_length;\n  assert.deepEqual(candidate(\"Hello\"),true);\n  assert.deepEqual(candidate(\"abcdcba\"),true);\n  assert.deepEqual(candidate(\"kittens\"),true);\n  assert.deepEqual(candidate(\"orange\"),false);\n  assert.deepEqual(candidate(\"wow\"),true);\n  assert.deepEqual(candidate(\"world\"),true);\n  assert.deepEqual(candidate(\"MadaM\"),true);\n  assert.deepEqual(candidate(\"Wow\"),true);\n  assert.deepEqual(candidate(\"\"),false);\n  assert.deepEqual(candidate(\"HI\"),true);\n  assert.deepEqual(candidate(\"go\"),true);\n  assert.deepEqual(candidate(\"gogo\"),false);\n  assert.deepEqual(candidate(\"aaaaaaaaaaaaaaa\"),false);\n  assert.deepEqual(candidate(\"Madam\"),true);\n  assert.deepEqual(candidate(\"M\"),false);\n  assert.deepEqual(candidate(\"0\"),false);\n}\n\ntest();"
+    },
+    {
+      "op": "unchanged_except",
+      "paths": [
+        "src/prime_length.js"
+      ]
+    }
+  ]
+}
