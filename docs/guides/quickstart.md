@@ -58,6 +58,18 @@ bash scripts/dev-preflight.sh
 
 It reads your system and changes nothing. Fix every `missing` line it prints.
 `warn` lines are optional for development. They matter only for a governed host.
+On WSL, `warn` lines about cgroup v2, Landlock, Podman, crun and cosign are
+expected.
+
+Before steps 5 to 7, prepare the shell. The tests and the fixture refuse a
+world-writable parent directory such as `/tmp`, and many tests fail under the
+default umask `022`. Use a private umask and temporary directory, and keep this
+shell for the rest of the guide:
+
+```sh
+umask 077
+export TMPDIR="$(mktemp -d "$HOME/tbound-tmp.XXXXXX")"
+```
 
 ## 5. Run the checks
 
