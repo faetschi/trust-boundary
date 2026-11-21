@@ -32,7 +32,6 @@ __pycache__/
 .claude/
 
 # owner-local working files
-/AGENTS.md
 /TASK_STATE.md
 
 # local UI QA captures written by extensions/webchat/scripts/ui-qa.mjs
