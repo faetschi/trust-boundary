@@ -27,6 +27,15 @@ func (u AttackerUsage) add(other AttackerUsage) AttackerUsage {
 		InTokens: u.InTokens + other.InTokens, OutTokens: u.OutTokens + other.OutTokens}
 }
 
+// String keeps the three-member text of a scripted usage and adds the tokens only when some were spent.
+func (u AttackerUsage) String() string {
+	s := fmt.Sprintf("{Iterations:%d ToolCalls:%d WallMS:%d", u.Iterations, u.ToolCalls, u.WallMS)
+	if u.InTokens != 0 || u.OutTokens != 0 {
+		s += fmt.Sprintf(" InTokens:%d OutTokens:%d", u.InTokens, u.OutTokens)
+	}
+	return s + "}"
+}
+
 func (u AttackerUsage) valid() bool {
 	return u.Iterations >= 0 && u.ToolCalls >= 0 && u.WallMS >= 0 && u.InTokens >= 0 && u.OutTokens >= 0
 }
