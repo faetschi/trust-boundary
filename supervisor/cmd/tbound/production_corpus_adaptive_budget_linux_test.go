@@ -224,6 +224,7 @@ func TestAttackerUsageIsDurableInTheCatalog(t *testing.T) {
 		"a static admission":        catalog.RecordAttackerUsage(static.AdmissionRecordHash, usage),
 		"an unknown admission":      catalog.RecordAttackerUsage(strings.Repeat("f", 64), usage),
 		"negative usage":            catalog.RecordAttackerUsage(adaptive.AdmissionRecordHash, piServiceAttackerUsage{Cumulative: adaptivesource.AdaptiveUsage{WallMS: -1}}),
+		"negative tokens":           catalog.RecordAttackerUsage(adaptive.AdmissionRecordHash, piServiceAttackerUsage{Usage: adaptivesource.AdaptiveUsage{OutTokens: -1}}),
 	} {
 		if !errors.Is(err, ErrPiWorkflowCatalog) {
 			t.Errorf("%s: err = %v", name, err)
@@ -312,5 +313,64 @@ func TestScriptedAttackerUsageKeepsItsReceiptAndCatalogBytes(t *testing.T) {
 	}
 	if want := `{"stop":"cap","state_digest":"d","usage":` + usage + `,"cumulative":` + usage + `,"predecessor":"case/adaptive-replay/1"}`; string(record) != want {
 		t.Errorf("scripted catalog record bytes changed: %s", record)
+	}
+}
+
+func TestAdaptiveReceiptCumulativeTokensAreThePredecessorsPlusThisAttempts(t *testing.T) {
+	corpus, manifest, _ := pivotedCorpus(t, nil)
+	caseID := corpusCaseWithDelta(t, manifest, evalcorpus.PDeltaAdmitAll)
+	role := corpusRoleAdaptiveReplay
+	first := budgetEntry(corpus, caseID, role, 1, "1")
+	first.AttackerUsage = budgetUsage(2, 1500)
+	first.AttackerUsage.Usage.InTokens, first.AttackerUsage.Usage.OutTokens = 700, 40
+	first.AttackerUsage.Cumulative = first.AttackerUsage.Usage
+	catalog := &piServiceWorkflowCatalog{corpus: corpus, entries: map[string]piServiceWorkflowEntry{first.AdmissionRecordHash: first},
+		byHostAdmissionID: map[string]string{first.HostAdmissionID: first.AdmissionRecordHash}}
+	retry, err := catalog.bindingForEntry(budgetEntry(corpus, caseID, role, 2, "2"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	driveBinding(t, retry)
+	var receipt productionPiReceipt
+	if err := applyCorpusReceipt(&receipt, retry, true, corpusTestDigest("sp"), corpusTestDigest("mp"), audit.Trace{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if c := receipt.AttackerCumulativeUsage; c == nil || c.InTokens != 700 || c.OutTokens != 40 || receipt.AttackerUsage.InTokens != 0 {
+		t.Fatalf("receipt usage %+v cumulative %+v; want the 700/40 tokens attempt 1 spent carried", receipt.AttackerUsage, c)
+	}
+	encoded, _ := json.Marshal(receipt)
+	var facts runner.ReceiptFacts
+	if err := json.Unmarshal(encoded, &facts); err != nil || facts.AttackerCumulativeUsage == nil || facts.AttackerCumulativeUsage.InTokens != 700 ||
+		facts.AttackerPredecessor == nil || facts.AttackerPredecessor.CumulativeUsage.OutTokens != 40 {
+		t.Fatalf("the runner reads facts %+v, %v; want the tokens in the cumulative usage and the predecessor", facts, err)
+	}
+}
+
+func TestAdaptiveAttemptWithNoTokenBudgetLeftIsNotAdmitted(t *testing.T) {
+	corpus, manifest, config := pivotedCorpus(t, nil)
+	caseID := corpusCaseWithDelta(t, manifest, evalcorpus.PDeltaAdmitAll)
+	role := corpusRoleAdaptiveReplay
+	first := budgetEntry(corpus, caseID, role, 1, "1")
+	catalog := &piServiceWorkflowCatalog{corpus: corpus, entries: map[string]piServiceWorkflowEntry{},
+		byHostAdmissionID: map[string]string{first.HostAdmissionID: first.AdmissionRecordHash}}
+	spent := func(in, out int64) bool {
+		first.AttackerUsage = budgetUsage(1, 100)
+		first.AttackerUsage.Cumulative.InTokens, first.AttackerUsage.Cumulative.OutTokens = in, out
+		catalog.entries[first.AdmissionRecordHash] = first
+		_, ok := catalog.envelopeFor(config, corpusRequest("req", caseID, role, 2))
+		return ok
+	}
+	if !spent(5000, 900) {
+		t.Fatal("a scripted attempt was refused for tokens it is never charged")
+	}
+	corpus.attacker.Caps.Scripted, corpus.attacker.Caps.InTokens, corpus.attacker.Caps.OutTokens = false, 1000, 200
+	if !spent(600, 100) {
+		t.Error("an attempt with tokens left was refused")
+	}
+	if spent(1000, 100) {
+		t.Error("an attempt with no input tokens left was admitted")
+	}
+	if spent(600, 200) {
+		t.Error("an attempt with no output tokens left was admitted")
 	}
 }

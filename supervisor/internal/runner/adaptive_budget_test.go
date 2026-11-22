@@ -246,3 +246,50 @@ func TestScriptedAttackerUsageKeepsItsJournalBytes(t *testing.T) {
 		t.Errorf("scripted journal bytes changed:\n got %s\nwant %s", got, want)
 	}
 }
+
+func tokens(u *AttackerUsage, in, out int64) *AttackerUsage {
+	u.InTokens, u.OutTokens = in, out
+	return u
+}
+
+func TestAttestChecksTheCumulativeTokensOfAnAdaptiveReceipt(t *testing.T) {
+	retry := func(r *ReceiptFacts) {
+		r.AttackerUsage, r.AttackerCumulativeUsage = tokens(usage(2, 100), 30, 7), tokens(usage(5, 400), 100, 25)
+		r.AttackerPredecessor = &AttackerPredecessor{AdmissionID: "adv-p/adaptive-replay/1", StateDigest: hexOf('1'), CumulativeUsage: *tokens(usage(3, 300), 70, 18)}
+	}
+	for _, cfg := range []Configuration{CfgC, CfgP} {
+		s := adaptiveStep(cfg)
+		if out, err := attestRun(newAttest(nil), s, retry); err != nil || !out.E01.Verified {
+			t.Errorf("%s: a correct retry receipt with tokens: %+v %v", cfg, out, err)
+		}
+		for name, mutate := range map[string]func(*ReceiptFacts){
+			"input tokens that are not predecessor plus usage":  func(r *ReceiptFacts) { retry(r); r.AttackerCumulativeUsage.InTokens = 99 },
+			"output tokens that are not predecessor plus usage": func(r *ReceiptFacts) { retry(r); r.AttackerCumulativeUsage.OutTokens = 26 },
+			"a retry whose tokens start from zero": func(r *ReceiptFacts) {
+				retry(r)
+				r.AttackerCumulativeUsage.InTokens, r.AttackerCumulativeUsage.OutTokens = 30, 7
+			},
+			"negative tokens": func(r *ReceiptFacts) {
+				r.AttackerUsage, r.AttackerCumulativeUsage = tokens(usage(2, 100), -1, 0), tokens(usage(2, 100), -1, 0)
+			},
+		} {
+			if out, err := attestRun(newAttest(nil), s, mutate); !errors.Is(err, ErrReceiptPolicy) || out.E01.Verified {
+				t.Errorf("%s/%s: %+v %v", cfg, name, out, err)
+			}
+		}
+	}
+}
+
+func TestAdaptiveCalibrationUsesTheCumulativeTokens(t *testing.T) {
+	s := adaptiveStep(CfgP)
+	o := Outcome{Receipt: adaptiveReceipt("success_pivot", 2), Oracles: map[string]Finding{OracleWS01: FindingObserved},
+		OracleRefs: map[string]OracleRef{OracleWS01: {Version: "v", Report: "sha256:" + hexOf('r')}},
+		Metrics:    Metrics{ToolCalls: 2, LatencyMS: 77, InTokens: 30, OutTokens: 7}}
+	o.Receipt.AttackerStateDigest = hexOf('d')
+	o.Receipt.AttackerUsage, o.Receipt.AttackerCumulativeUsage = tokens(usage(2, 100), 30, 7), tokens(usage(5, 400), 100, 25)
+	mapReplay(&o, s)
+	run := Config{}.pairOf(AdvView{CaseID: s.CaseID, Predicate: "EFF-WS-01", WitnessID: "witness-1", Class: s.ThreatClass, AdaptiveP: &o}).Adaptive
+	if run.InTokens != 100 || run.OutTokens != 25 {
+		t.Fatalf("calibration run = %+v; want the cumulative 100 input and 25 output tokens of both attempts", run)
+	}
+}
