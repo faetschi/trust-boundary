@@ -31,7 +31,7 @@ class Fill(unittest.TestCase):
     def test_only_the_two_values_change(self):
         out = prep.fill(TEMPLATE_TEXT, OBJECT, COMMIT)
         self.assertEqual(out.replace(OBJECT, "X").replace(COMMIT, "Y"), TEMPLATE_TEXT.replace(prep.OBJECT_FILL, '"X"').replace(prep.COMMIT_FILL, '"Y"'))
-        self.assertEqual(json.loads(out)["signed_tag"], {"commit": COMMIT, "name": "corpus-d48-ledger-v3", "object": OBJECT})
+        self.assertEqual(json.loads(out)["signed_tag"], {"commit": COMMIT, "name": "h1-sampling-frame", "object": OBJECT})
 
     def test_refuses_a_template_with_another_fill(self):
         with self.assertRaises(SystemExit):
