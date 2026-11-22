@@ -11,6 +11,8 @@ Everything TBound and the thesis need lives in this repository directory, and no
 
 `scripts/check-self-contained.sh` fails in CI when a tracked file depends on a path outside the repo.
 
+**No hardcoded machine paths.** A live file (anything outside `evidence/` and the frozen `infra/freeze/freezes/`) names no drive-letter path, user profile, home directory of a real user, `.t3` worktree or Claude scratch folder. Use `$TBOUND_LOCAL`, `.local/`, a path relative to the repo root, an environment variable, or a placeholder such as `/home/<user>`. The same script enforces this.
+
 **Worktrees.** Create them in `.local/worktrees/<branch-slug>`. A worktree has no `.local/` of its own: set `TBOUND_LOCAL` to the primary checkout's.
 
 **Linux scratch.** Builds check file modes, which Windows drive mounts don't keep. On Windows, name the distro in every command (`wsl.exe -d tbound-dev`), because the machine's default distro may have its disk elsewhere. `TBOUND_WORK` points into that distro's disk, and `infra/freeze/tools/pull-receipts.sh` copies results into `evidence/`. Drive mounts must be read-only from WSL.
