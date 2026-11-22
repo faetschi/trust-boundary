@@ -345,8 +345,8 @@ Six independent installs; none is signed. All from `$W/src` (the F archive), exc
    ```
    Rollback: `sudo rm -rf /opt/tbound/corpus`.
 
-   The confirmatory corpus is not in `$W/src` (rule 5, D39). Its source is the archive of the corpus tag, restricted to its subtree, and never the working tree: `git -c core.autocrlf=false -c core.eol=lf archive --format=tar <corpus tag> corpus/third | (mkdir -p $W/corpus && tar -x -C $W/corpus)`, after the tag checks of F0. Its artifacts are installed from `$W/corpus/corpus/third` into the same directory, with the same owner and modes, before the confirmatory manifest (item 4), not in this step.
-4. Corpus manifest location: `/etc/tbound/corpus/manifest.json` (`D09ManagedPiCorpusManifestPath`, the only path the v4 config accepts) is installed in Part D (D2), not now; the manifest is not final. The confirmatory manifest is installed by digest too, but `manifest-install` measures with `--quota-profile pilot` and the pilot ceilings, so it cannot install that manifest as it stands: a reviewed change to the verb, or an owner-only `ROOTCON` step, comes first. `CORPUS_DIGEST` is then measured by `corpus-digest` on the confirmatory `--manifest` and `--artifacts` under `$W/corpus/corpus/third` (item 3).
+   The confirmatory corpus is not in `$W/src` (rule 5, D39). Its source is the archive of the corpus tag, restricted to its subtree, and never the working tree: `git -c core.autocrlf=false -c core.eol=lf archive --format=tar <corpus tag> corpus/third | (mkdir -p $W/corpus && tar -x -C $W/corpus)`, after the tag checks of F0. Its artifacts are installed from `$W/corpus/corpus/third` into the same directory, with the same owner and modes, before the confirmatory manifest (item 4), not in this step: RA-4a does both.
+4. Corpus manifest location: `/etc/tbound/corpus/manifest.json` (`D09ManagedPiCorpusManifestPath`, the only path the v4 config accepts) is installed in Part D (D2), not now; the manifest is not final. The confirmatory manifest is installed by digest too, but `manifest-install` measures with `--quota-profile pilot` and the pilot ceilings, so it cannot install that manifest. The owner installs it by hand in a session sudo window instead (RA-4a; the verb stays as frozen). `CORPUS_DIGEST` is measured by `corpus-digest --quota-profile thesis` on the confirmatory manifest and artifacts of the corpus tag archive (item 3).
 5. Helpers for the root console: `/opt/tbound/helpers/xattr-census-r9.py` and `/opt/tbound/helpers/probe-capabilities.sh` (root:root 0555). R1 streams the census to `python3 -I -` on stdin and needs nothing installed; L0, G1-3 and Spike A run at `ROOTCON` after Z1, where nothing streams from the owner machine, so the two files are on the guest before Z1.
    ```
    GSSH 'sudo -n install -d -o root -g root -m 0755 /opt/tbound/helpers'
@@ -1275,14 +1275,67 @@ Genesis refuses a second run. If it succeeded but its output was lost (`genesis.
 
 The owner keeps `genesis.json` (records, head, `profile_digest`) and `checkpoint-1.json` off the guest. Rollback: before the first reserved request (RA-11), `GSSH 'sudo -n rm /var/lib/tbound/sessions/usd-ledger /etc/tbound/provider/research-ledger-checkpoint.json'`; after it, none.
 
+### RA-4a [PRIVILEGED WRITE, needs owner approval] confirmatory corpus (thesis profile only)
+
+H1 runs the confirmatory corpus under the thesis profile. `tbound-op manifest-install` cannot install it: the verb pins `--quota-profile pilot` and the pilot ceilings (`tbound-op:616,625,639`). Changing the verb would put a `tbound-op` on the guest that is not F32's (`10-upgrade.sh:248-252` installs it from the freeze tree), and it would still leave the config, registration and profile to RA-5 to RA-10. So the owner installs the corpus by hand in this session sudo window, the same way (decision of 2026-11-22). At `ROOTCON` the guest commands are the same without `GSSH`, from files staged first.
+
+The source is the archive of the last signed corpus tag `$CT`, `corpus/third` only, never a working tree (P13.3, rule 5, D39). `$CM` is the path of the final manifest in that tag, under `corpus/third`. `f32-corpus-1` has no final manifest yet. Set `CT`, `CM` and `CC` to the same values in both shells.
+
+```
+# WSL
+CT=<last corpus tag, after its tag checks>; CM=<path of the final manifest in $CT, under corpus/third>; CC=$HF/cc-$CT; mkdir $CC $CC/art      # new directory (rule 4)
+NODE_BIN=${NODE_BIN:-$(. ~/env.sh >/dev/null 2>&1; command -v node)}; [ "sha256:$(sha256sum < $NODE_BIN | cut -c1-64)" = "$F0_NODE_DIGEST" ] && echo NODE_OK      # [READ-ONLY] NODE_OK: the pinned Node (lib.sh), as 33-corpus-pilot.sh checks
+git -C $K -c core.autocrlf=false -c core.eol=lf archive --format=tar $CT corpus/third | tar -x -C $CC
+for d in $CC/corpus/third/*/artifacts; do (cd $d && sha256sum *); done | sort -u | awk '{print $2}' | sort | uniq -d      # [READ-ONLY] no output: no file name with two contents
+for d in $CC/corpus/third/*/artifacts; do cp -n $d/* $CC/art/; done; (cd $CC/art && sha256sum *) > $CC/art.sha256
+ls $CC/art/draw-*.json      # [READ-ONLY] exactly one file: the D48 main draw the manifest pins (pins.draw_digest); the thesis quotas come from it (corpusadmit.QuotasFor)
+$TBP corpus-digest --manifest $CC/$CM --quota-profile thesis --artifacts $CC/art --node $NODE_BIN --max-host-calls 17 --max-tokens 69632 --duration-seconds 1200 | tee $CC/CORPUS_DIGEST.out      # one distinct sha256:<hex>, the CORPUS_DIGEST; the ceilings are the RA-5 config's workflow values
+# Git Bash
+CT=<the same tag>; CM=<the same path>; CC=$HF/cc-$CT
+WANT=$(WSL cat $CC/CORPUS_DIGEST.out | grep -Eo 'sha256:[0-9a-f]{64}' | sort -u); MSHA=$(WSL sha256sum $CC/$CM | cut -c1-64); echo "$WANT $MSHA"      # [READ-ONLY] one digest, one 64-hex file hash
+GSSH 'systemctl is-active tbound-pi.service tbound-pi.socket' </dev/null        # [READ-ONLY] inactive inactive (RA-0)
+WSL tar -C $CC/art -c . | GSSH 'sudo -n tar -x --skip-old-files --no-same-owner --no-same-permissions -C /opt/tbound/corpus/artifacts'
+GSSH 'sudo -n chown -R root:root /opt/tbound/corpus && sudo -n find /opt/tbound/corpus -type d -exec chmod 0755 {} + && sudo -n find /opt/tbound/corpus -type f -exec chmod 0644 {} +' </dev/null
+ART=$(WSL cat $CC/art.sha256 | GSSH 'cd /opt/tbound/corpus/artifacts && sha256sum -c --quiet - && echo ART_OK'); echo "$ART"      # [READ-ONLY] ART_OK; an older guest file of the same name with other bytes fails here
+WSL cat $CC/$CM | GSSH 'sudo -n install -o root -g root -m 0644 /dev/stdin /etc/tbound/corpus/manifest.json.new'
+GOT=$(GSSH 'sudo -n /usr/local/bin/tbound-profile corpus-digest --manifest /etc/tbound/corpus/manifest.json.new --quota-profile thesis --artifacts /opt/tbound/corpus/artifacts --node /usr/local/bin/node --max-host-calls 17 --max-tokens 69632 --duration-seconds 1200' </dev/null | grep -Eo 'sha256:[0-9a-f]{64}' | sort -u)
+GSHA=$(GSSH 'sha256sum /etc/tbound/corpus/manifest.json.new' </dev/null | cut -c1-64)
+if [ "$ART" = ART_OK ] && [ -n "$WANT" ] && [ "$GOT" = "$WANT" ] && [ -n "$MSHA" ] && [ "$GSHA" = "$MSHA" ]; then GSSH 'sudo -n mv -f /etc/tbound/corpus/manifest.json.new /etc/tbound/corpus/manifest.json && sudo -n rm -f /etc/tbound/corpus/receipt.json /etc/tbound/corpus/audit.json /etc/tbound/corpus/stats.json /root/ga/state/corpus-digest && echo CC_INSTALLED' </dev/null; else echo "STOP: art=$ART want=$WANT got=$GOT file=$GSHA expected=$MSHA"; fi
+```
+
+The last line moves the manifest into place only when every check passed, and prints `CC_INSTALLED`. Like `manifest-install` without a panel bundle (`tbound-op:635-636`), it removes the pilot's panel files and the verb's record of the pilot digest, so no `tbound-op` verb treats the pilot manifest as still installed (`cfg-install` compares with it, `tbound-op:466-467`). The verb, its `pilot` slot and `$PREV/pilot` stay as frozen.
+
+Rollback: before the `mv`, `GSSH 'sudo -n rm -f /etc/tbound/corpus/manifest.json.new'`. After it, the way back to the engineering route is the verb. The next `33-corpus-pilot.sh` run (RA-13) installs its manifest with `manifest-install` (phase 4) and first moves every artifact outside its carrier set to `artifacts.pre-t5-<UTC>` (phase 3). Rerun the Git Bash part of this step after such a run.
+
+Not covered here: the route and config of the confirmatory witnesses (D39). This step only installs files, so it serves them too.
+
 ### RA-5 (RR-4) [PRIVILEGED WRITE, needs owner approval] research service config
 
 Start from the round's installed engineering config. Change exactly `provider_route` and, for the pilot profile, add `allow_pilot_on_research: true` (`supervisor/cmd/tbound/pi_service_handoff_linux.go:864-866`). A thesis-profile config must not have it. `workflow_max_host_calls` must not exceed the profile's `max_requests_per_unit` 17 (`supervisor/cmd/tbound/research_route_linux.go:45-50`).
+
+Run exactly one of the two `sed` blocks, then the common block.
+
+Pilot profile (a proving round or the research pilot):
 
 ```
 # WSL
 sed 's|^  "provider_route": "engineering",$|  "provider_route": "research",\n  "allow_pilot_on_research": true,|' $HF/pilot/serve-pi-service.json > $RR/serve-pi-service.json
 diff $HF/pilot/serve-pi-service.json $RR/serve-pi-service.json      # [READ-ONLY] provider_route changed, allow_pilot_on_research added, nothing else
+```
+
+Thesis profile (H1, after RA-4a). It changes exactly three lines: `provider_route`, `corpus_quota_profile` to `thesis`, and `corpus_manifest_digest` to the RA-4a `CORPUS_DIGEST`. It adds no `allow_pilot_on_research`.
+
+```
+# WSL
+CD=$(grep -Eo 'sha256:[0-9a-f]{64}' $CC/CORPUS_DIGEST.out | sort -u)
+sed -e 's|^  "provider_route": "engineering",$|  "provider_route": "research",|' -e 's|^  "corpus_quota_profile": "pilot",$|  "corpus_quota_profile": "thesis",|' -e "s|^  \"corpus_manifest_digest\": \"sha256:[0-9a-f]\{64\}\",\$|  \"corpus_manifest_digest\": \"$CD\",|" $HF/pilot/serve-pi-service.json > $RR/serve-pi-service.json
+diff $HF/pilot/serve-pi-service.json $RR/serve-pi-service.json      # [READ-ONLY] exactly these three lines changed
+```
+
+Common to both:
+
+```
+# WSL
 grep -c '"workflow_max_host_calls": 17,' $RR/serve-pi-service.json   # [READ-ONLY] 1
 # Git Bash
 GSSH 'systemctl is-active tbound-pi.service tbound-pi.socket'        # [READ-ONLY] inactive inactive
