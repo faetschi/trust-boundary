@@ -122,9 +122,14 @@ func checkAdaptiveBudgets(s Schedule, j *Journal) ([]AdaptiveBudgetFlag, error) 
 				cumulative := *r.AttackerCumulativeUsage
 				if (caps.Iterations > 0 && cumulative.Iterations > int64(caps.Iterations)) ||
 					(caps.ToolCalls > 0 && cumulative.ToolCalls > int64(caps.ToolCalls)) ||
-					(caps.WallMS > 0 && cumulative.WallMS > int64(caps.WallMS)) {
-					return nil, fmt.Errorf("%w: %s attempt %d spent %+v in all, over the caps (iterations %d, tool calls %d, wall %d ms)",
-						ErrAdaptiveBudget, st.ID(), attempt, cumulative, caps.Iterations, caps.ToolCalls, caps.WallMS)
+					(caps.WallMS > 0 && cumulative.WallMS > int64(caps.WallMS)) ||
+					(caps.InTokens > 0 && cumulative.InTokens > int64(caps.InTokens)) ||
+					(caps.OutTokens > 0 && cumulative.OutTokens > int64(caps.OutTokens)) {
+					limits := fmt.Sprintf("iterations %d, tool calls %d, wall %d ms", caps.Iterations, caps.ToolCalls, caps.WallMS)
+					if caps.InTokens > 0 || caps.OutTokens > 0 {
+						limits += fmt.Sprintf(", tokens in %d out %d", caps.InTokens, caps.OutTokens)
+					}
+					return nil, fmt.Errorf("%w: %s attempt %d spent %+v in all, over the caps (%s)", ErrAdaptiveBudget, st.ID(), attempt, cumulative, limits)
 				}
 				p := r.AttackerPredecessor
 				switch {
