@@ -1,6 +1,6 @@
 """Prepare the T1 pilot or the T2 main commitment for publication, without publishing anything.
 
-    py -3 -I corpus/sampling/t1_prepare.py build --repo <repo root> --tag corpus-d48-ledger-v3 --out <new dir>
+    py -3 -I corpus/sampling/t1_prepare.py build --repo <repo root> --tag h1-sampling-frame --out <new dir>
     py -3 -I corpus/sampling/t1_prepare.py build --kind main --repo <repo root> --tag <T2 tag> --out <new dir> \
         --policy-file <policy file> --dev-ids <dev_ids.py output> [--rule-path corpus/sampling/adaptation-rule-v2.md]
     py -3 -I corpus/sampling/t1_prepare.py round --commitment <file> --t1 2026-11-12T10:00:01Z
@@ -38,8 +38,8 @@ MAIN_FILLS = {  # the FILL values of the main template, by what fills them
     "policy": '"FILL: sha256 of the evaluated policy file (G17)"',
     "dev_ids": '"FILL: sorted list built by dev_ids.py"',
 }
-OBJECT_FILL = '"FILL: git rev-parse corpus-d48-ledger-v3"'
-COMMIT_FILL = '"FILL: git rev-parse corpus-d48-ledger-v3^{commit}"'
+OBJECT_FILL = '"FILL: git rev-parse h1-sampling-frame"'
+COMMIT_FILL = '"FILL: git rev-parse h1-sampling-frame^{commit}"'
 ROUND_DELAY = 24 * 3600
 
 
@@ -200,6 +200,7 @@ def show_record(args):
     label = "T1" if commitment.get("kind") == "pilot" else "T2"
     print(f"record {args.id}: file equals {args.file}")
     print(f"created {record['created']}")
+    print(f"updated {record.get('updated')}")  # read right after publishing, this is about the publish time
     print(f"{label} = {t1}")
     chain = commitment["chain"]
     r, scheduled = round_of(chain, parse_utc(t1))
