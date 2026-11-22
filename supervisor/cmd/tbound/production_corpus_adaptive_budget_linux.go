@@ -133,7 +133,7 @@ func (c *piServiceWorkflowCatalog) attemptDurationSeconds(trial evalcorpus.Trial
 	caps := c.corpus.attacker.Caps
 	wall := caps.WallMS - prior.WallMS
 	if caps.Iterations-prior.Iterations <= 0 || caps.ToolCalls-prior.ToolCalls <= 0 || wall < 1000 ||
-		!caps.Scripted && (caps.InTokens-prior.InTokens <= 0 || caps.OutTokens-prior.OutTokens <= 0) {
+		(!caps.Scripted && (caps.InTokens-prior.InTokens <= 0 || caps.OutTokens-prior.OutTokens <= 0)) {
 		return 0, false
 	}
 	return min(uint64(wall/1000), trial.DurationSeconds), true
