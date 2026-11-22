@@ -291,3 +291,26 @@ func TestRecordedAttackerUsageIsWhatTheNextAttemptContinuesFrom(t *testing.T) {
 		t.Error("nothing to record must be a no-op")
 	}
 }
+
+func TestScriptedAttackerUsageKeepsItsReceiptAndCatalogBytes(t *testing.T) {
+	u := adaptivesource.AdaptiveUsage{Iterations: 2, ToolCalls: 2, WallMS: 150}
+	receipt, err := json.Marshal(productionPiReceipt{AttackerUsage: &u, AttackerCumulativeUsage: &u,
+		AttackerPredecessor: &productionAttackerPredecessor{AdmissionID: "case/adaptive-replay/1", StateDigest: "d", CumulativeUsage: u}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	record, err := json.Marshal(piServiceAttackerUsage{Stop: "cap", StateDigest: "d", Usage: u, Cumulative: u, Predecessor: "case/adaptive-replay/1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const usage = `{"iterations":2,"tool_calls":2,"wall_ms":150}`
+	for _, want := range []string{`"attacker_usage":` + usage + `,`, `"attacker_cumulative_usage":` + usage + `,`,
+		`"attacker_predecessor":{"admission_id":"case/adaptive-replay/1","state_digest":"d","cumulative_usage":` + usage + `}`} {
+		if !strings.Contains(string(receipt), want) {
+			t.Errorf("scripted receipt bytes changed: lack %s in %s", want, receipt)
+		}
+	}
+	if want := `{"stop":"cap","state_digest":"d","usage":` + usage + `,"cumulative":` + usage + `,"predecessor":"case/adaptive-replay/1"}`; string(record) != want {
+		t.Errorf("scripted catalog record bytes changed: %s", record)
+	}
+}

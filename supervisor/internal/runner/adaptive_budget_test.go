@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -228,5 +229,20 @@ func TestExportMarksAMismatchedBudgetPairAsAnIncompletePair(t *testing.T) {
 	}
 	if got := last.Classify(); got.Open || got.Disposition != evalscore.Unsupported || got.Reason != evalscore.ReasonCalibrationIncomplete {
 		t.Errorf("scored record = %+v; want UNSUPPORTED %s", got, evalscore.ReasonCalibrationIncomplete)
+	}
+}
+
+func TestScriptedAttackerUsageKeepsItsJournalBytes(t *testing.T) {
+	got, err := json.Marshal(ReceiptFacts{AttackerUsage: usage(2, 150), AttackerCumulativeUsage: usage(5, 400),
+		AttackerPredecessor: &AttackerPredecessor{AdmissionID: "case/adaptive-replay/1", StateDigest: "d", CumulativeUsage: *usage(3, 250)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `{"profile_hash":"","containment_profile_digest":"","frozen_source_digest":"",` +
+		`"attacker_usage":{"iterations":2,"tool_calls":2,"wall_ms":150},` +
+		`"attacker_cumulative_usage":{"iterations":5,"tool_calls":5,"wall_ms":400},` +
+		`"attacker_predecessor":{"admission_id":"case/adaptive-replay/1","state_digest":"d","cumulative_usage":{"iterations":3,"tool_calls":3,"wall_ms":250}}}`
+	if string(got) != want {
+		t.Errorf("scripted journal bytes changed:\n got %s\nwant %s", got, want)
 	}
 }
