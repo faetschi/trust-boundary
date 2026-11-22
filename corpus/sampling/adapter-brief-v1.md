@@ -23,7 +23,7 @@ The orchestrator gives you this brief with the two values above filled in, and t
    - `corpus/sampling/rehearsal/`, `corpus/sampling/carriers/`, `corpus/sampling/decisions/`, `corpus/sampling/evidence/`, `corpus/pilot-draw/`, the T5 cases under `corpus/pilot/` (you may read `build.py` and `README.md` there), any `select.py` output, any render log line other than the ones your commands append, git history, or other branches;
    - any Configuration C result. None exists before registration (D41). If you meet one, stop (section 6);
    - the stratum sizes, how many cases have passed, or the seeded order. The orchestrator owns the order. You do not compute it;
-   - any file under `tbound_local` except through the commands of sections 4.1 and 4.3, and any file outside `repo` and `work_dir`.
+   - any file under `tbound_local` except through the commands of sections 4.1 and 4.3, and any file outside `repo` and `work_dir`, except the `source_screen` file.
 4. You never render, check or open another candidate. Every candidate you render becomes a development case (D51 item 13).
 5. Every `adapt.py render`, `adapt.py check` and `case_entry.py build` you run carries `--allow-candidate --render-log <render_log>`, with the `render_log` path of the Inputs block. It is this case's own log; the orchestrator joins the logs of the walk. Never run one of them without both flags. Never run `adapt.py decide`, `select.py`, `carrier.py`, `round_plan.py`, `dev_ids.py`, any `tbound-*` binary other than through `case_entry.py`, WSL, or a guest command. Use no network.
 6. Write only inside `work_dir`. Change no file in the repository. Commit nothing.
