@@ -229,8 +229,10 @@ def dump_json(obj, indent):
     return (json.dumps(obj, indent=indent, ensure_ascii=False) + "\n").encode("utf-8")
 
 
-def build_carrier(round_, bundle_dirs, out, build=None, base_dir=BASE_DIR, id_suffix=""):
+def build_carrier(round_, bundle_dirs, out, build=None, base_dir=BASE_DIR, id_suffix="", base_id_suffix=""):
     build = build or load_build()
+    if id_suffix and base_id_suffix:
+        raise CarrierError("--id-suffix renames every case; give it or --base-id-suffix, not both")
     if os.path.exists(out):
         raise CarrierError(f"--out {out} already exists")
     bundles = [load_bundle(d) for d in bundle_dirs]
@@ -250,6 +252,8 @@ def build_carrier(round_, bundle_dirs, out, build=None, base_dir=BASE_DIR, id_su
     artifacts = merge_files(artifacts, bundles, "artifacts", "artifact")
     if id_suffix:
         rename_ids(manifest["cases"], id_suffix)
+    if base_id_suffix:  # a pilot or main round after the first: fresh ids for the T5 cases, ledger ids for the drawn ones
+        rename_ids([c for c in manifest["cases"] if c["case_id"] not in new_ids], base_id_suffix)
 
     build.assign_partitions([c for c in manifest["cases"] if c["kind"] == "adversarial"], manifest["split_seed"])
 
@@ -281,9 +285,10 @@ def main(argv=None):
     p.add_argument("--bundle", action="append", default=[])
     p.add_argument("--out", required=True)
     p.add_argument("--id-suffix", default="", help="append this to every case id (fresh ids for another round on the same freeze)")
+    p.add_argument("--base-id-suffix", default="", help="append this to the T5 case ids only; drawn cases keep their ledger ids")
     args = ap.parse_args(argv)
     try:
-        print(build_carrier(args.round, args.bundle, args.out, id_suffix=args.id_suffix))
+        print(build_carrier(args.round, args.bundle, args.out, id_suffix=args.id_suffix, base_id_suffix=args.base_id_suffix))
     except CarrierError as e:
         print(f"carrier: refused: {e}", file=sys.stderr)
         return 2
