@@ -37,6 +37,19 @@ runtime matrix. Pushes to development branches, and pull requests into them, run
 no workflow, so run the local checks above. A `workflow_dispatch` run gives you a
 one-off full check.
 
+The race-detector suite runs as three shards (`scripts/ci-race-shard.sh`), because
+`cmd/tbound` alone took 20 minutes under `-race`. `internal/evalreport` is
+excluded: it is pure computation, and the script fails if it gains goroutines.
+
+## Writing tests
+
+Prefer a test that runs the command or service as a user does and checks its output,
+exit status, or evidence record, over one per internal function. Such a test breaks
+only when behavior changes, and it needs no rewrite when the code is refactored.
+Keep a test of an internal function when it pins a security or journaling invariant.
+Before you add a test that takes more than a few seconds, say why it cannot be
+smaller: the slowest tests set the race suite's run time.
+
 ## Frozen and evidence paths
 
 Do not edit these without approval from the project owner:

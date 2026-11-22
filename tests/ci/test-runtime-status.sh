@@ -52,12 +52,15 @@ runtime_tests_job="$(job_block runtime-tests)"
 runtime_job="$(job_block runtime)"
 [ -n "$runtime_tests_job" ] && [ -n "$runtime_job" ] || fail "ci.yml needs runtime-tests and runtime jobs"
 
-# One matrix runs both suites, behind the original eligibility condition.
+# One matrix runs the unit suite and the race shards, behind the original eligibility condition.
 has_line "$runtime_tests_job" "    needs: changes"
 has_line "$runtime_tests_job" "    if: \${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.runtime == 'true') }}"
-has_line "$runtime_tests_job" '    name: runtime (${{ matrix.suite }})'
+has_line "$runtime_tests_job" '    name: runtime (${{ matrix.label }})'
 has_line "$runtime_tests_job" '      fail-fast: false'
-has_line "$runtime_tests_job" '        suite: [unit, race]'
+has_line "$runtime_tests_job" '          - { suite: unit, label: unit }'
+for shard in product cmd rest; do
+  has_line "$runtime_tests_job" "          - { suite: race, label: race-$shard, shard: $shard }"
+done
 
 # The required runtime check always runs, with a short timeout.
 has_line "$runtime_job" '    needs: [changes, runtime-tests]'
@@ -66,7 +69,8 @@ has_line "$runtime_job" '    timeout-minutes: 5'
 
 # The sweeps must preserve exit status; a suffix such as || true is forbidden.
 has_line "$runtime_tests_job" '          go test -mod=readonly -count=1 -json ./... > "$TMPDIR/go-test-unit.jsonl"'
-has_line "$runtime_tests_job" '          go test -race -mod=readonly -count=1 -timeout 40m -json ./... > "$TMPDIR/go-test-race.jsonl"'
+has_line "$runtime_tests_job" '          sh ../scripts/ci-race-shard.sh "$SHARD" > "$TMPDIR/go-test-race.jsonl"'
+has_line "$runtime_tests_job" '          name: go-race-suite-timing-${{ matrix.shard }}-${{ github.run_attempt }}'
 has_line "$runtime_job" '          CHANGES_RESULT: ${{ needs.changes.result }}'
 has_line "$runtime_job" '          CHANGES_RUNTIME: ${{ needs.changes.outputs.runtime }}'
 has_line "$runtime_job" '          RUNTIME_TESTS_RESULT: ${{ needs.runtime-tests.result }}'
