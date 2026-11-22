@@ -172,7 +172,7 @@ jobs:
       matrix:
         include:
           - { suite: unit, label: unit }
-          - { suite: race, label: race-product, shard: product }
+          - { suite: race, label: race-heavy, shard: heavy }
           - { suite: race, label: race-cmd, shard: cmd }
           - { suite: race, label: race-rest, shard: rest }
     env:

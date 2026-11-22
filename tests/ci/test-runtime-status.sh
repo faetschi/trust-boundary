@@ -58,7 +58,7 @@ has_line "$runtime_tests_job" "    if: \${{ !cancelled() && (needs.changes.resul
 has_line "$runtime_tests_job" '    name: runtime (${{ matrix.label }})'
 has_line "$runtime_tests_job" '      fail-fast: false'
 has_line "$runtime_tests_job" '          - { suite: unit, label: unit }'
-for shard in product cmd rest; do
+for shard in heavy cmd rest; do
   has_line "$runtime_tests_job" "          - { suite: race, label: race-$shard, shard: $shard }"
 done
 

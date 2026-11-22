@@ -38,8 +38,7 @@ no workflow, so run the local checks above. A `workflow_dispatch` run gives you 
 one-off full check.
 
 The race-detector suite runs as three shards (`scripts/ci-race-shard.sh`), because
-`cmd/tbound` alone took 20 minutes under `-race`. `internal/evalreport` is
-excluded: it is pure computation, and the script fails if it gains goroutines.
+`cmd/tbound` alone took 20 minutes under `-race`.
 
 ## Writing tests
 
