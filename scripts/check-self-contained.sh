@@ -68,7 +68,7 @@ if bash "$PROBE/scripts/check-self-contained.sh" >/dev/null 2>&1; then
   echo "FAIL: checker missed an outside path" >&2; exit 1
 fi
 # Machine paths are caught. Placeholders and stock Windows paths pass.
-for bad in 'C:\Users\x\a' 'D:/Users/x/a' 'E:\trust-boundary\x' 'cd /f/trust-boundary/y' '/mnt/c/Users/x' 'C:/Users/x/.t3/worktrees/w' 'x/.t3/userdata/s' 'AppData/Local/Temp/claude/s' 'as jeli2k'; do
+for bad in 'C:\Users\x\a' 'D:/Users/x/a' 'E:\trust-boundary\x' 'cd /f/trust-boundary/y' '/mnt/c/Users/x' 'C:/Users/x/.t3/worktrees/w' 'x/.t3/userdata/s' 'AppData/Local/Temp/claude/s' 'as jeli''2k'; do
   printf '%s\n' "$bad" > "$PROBE/docs/a.md"; git -C "$PROBE" add .
   if bash "$PROBE/scripts/check-self-contained.sh" >/dev/null 2>&1; then
     echo "FAIL: checker missed '$bad'" >&2; exit 1
