@@ -10,9 +10,9 @@
 # as -skip, so a new test lands in exactly one shard. The exit status is go test's.
 set -eu
 
-# shortcut: families picked from measured race times (about 630 s heavy, 680 s cmd); a new slow family
+# shortcut: families picked from measured race times (about 670 s heavy, 650 s cmd; run-to-run noise is 10 to 15%); a new slow family
 # lands in cmd, so re-measure from the go-race-suite-timing artifacts when the two legs drift apart.
-heavy='^TestProduct(Turn|Operator|Interrupted|Trust|Qualification)'
+heavy='^(TestProduct(Turn|Operator|Interrupted|Trust|Qualification)|TestPilot)'
 
 case "${1:-}" in
   heavy) set -- ./cmd/tbound -run "$heavy" ;;
