@@ -39,7 +39,7 @@ GUEST_OPTS="-F /dev/null -i id_ed25519 -o IdentitiesOnly=yes -o BatchMode=yes -o
 The key and `known_hosts` paths are relative, so run SSH from that directory:
 
 ```sh
-cd /f/trust-boundary/.local/product-demo
+cd "${TBOUND_LOCAL:-.local}/product-demo"
 . ./guest-ssh.env
 ssh $GUEST_OPTS tboundadmin@$GUEST_IP
 ```
@@ -79,7 +79,7 @@ From Git Bash on Windows, one command starts the gateway on the VM and
 forwards its port to your workstation:
 
 ```sh
-cd /f/trust-boundary/.local/product-demo && . ./guest-ssh.env
+cd "${TBOUND_LOCAL:-.local}/product-demo" && . ./guest-ssh.env
 ssh -t $GUEST_OPTS -L 127.0.0.1:8791:127.0.0.1:8791 tboundadmin@$GUEST_IP \
   '~/bin/tbound-webchat --live --socket /run/tbound-product/product.sock'
 ```

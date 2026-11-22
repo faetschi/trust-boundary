@@ -125,7 +125,7 @@ umask 077
 D() { echo "sha256:$(sha256sum "$1" | cut -d' ' -f1)"; }     # digest helper (Placeholders)
 REPO=$(git rev-parse --show-toplevel)
 W=$(mktemp -d -p $HOME tbound-w.XXXXXX); B=$(mktemp -d -p $HOME tbound-b.XXXXXX); H=$(mktemp -d -p $HOME tbound-h.XXXXXX)   # WSL ext4, mode 0700, unique
-stat -c '%a %U %n' $W $B $H; stat -f -c '%T' $H                    # 700 jeli2k ... ; ext2/ext3 (what ext4 reports), never 9p/drvfs
+stat -c '%a %U %n' $W $B $H; stat -f -c '%T' $H                    # 700 <user> ... ; ext2/ext3 (what ext4 reports), never 9p/drvfs
 git status --porcelain -- supervisor adapter scripts packaging infra corpus        # must print nothing
 F=$(git rev-parse --verify 'HEAD^{commit}'); echo $F > $H/FROZEN-COMMIT       # owner records it
 ```
@@ -153,7 +153,7 @@ SRC_DIGEST=$(tbound-run source-digest --repo $REPO --commit $F | sed -n 's/^sour
 
 ### P2 [READ-ONLY] rebuild the runtime bundle from F (LF)
 
-Scripts in `BR` (`10-setup.sh`, `20-bundle.sh`, `40-go-and-digest.sh`, `50-package.sh`, `99-cleanup.sh`) run in WSL as jeli2k, offline, with Node v24.21.0 (sha256 `7fde7b8a...df4c`) and `scripts/prepare_official_pi_runtime.py`. Regenerate `inputs/head-src.tar` from `$F` with the LF archive command of P1, rename the output tar for `$F`, build twice (byte-identical), measure with the real `tbound-profile runtime-bundle-digest` under a read-only bind. Dirs 0555, files 0555/0444, deterministic tar (`--sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner`). Record `BUNDLE_DIGEST` and the tar sha256 (both measured at F0; there is no expected value, the measured one is the pin). The installed bundle (`sha256:d7367e1b...6884`) is replaced in P11.
+Scripts in `BR` (`10-setup.sh`, `20-bundle.sh`, `40-go-and-digest.sh`, `50-package.sh`, `99-cleanup.sh`) run in WSL as the operator user, offline, with Node v24.21.0 (sha256 `7fde7b8a...df4c`) and `scripts/prepare_official_pi_runtime.py`. Regenerate `inputs/head-src.tar` from `$F` with the LF archive command of P1, rename the output tar for `$F`, build twice (byte-identical), measure with the real `tbound-profile runtime-bundle-digest` under a read-only bind. Dirs 0555, files 0555/0444, deterministic tar (`--sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner`). Record `BUNDLE_DIGEST` and the tar sha256 (both measured at F0; there is no expected value, the measured one is the pin). The installed bundle (`sha256:d7367e1b...6884`) is replaced in P11.
 
 ### P3 [READ-ONLY] build the cell image from F (offline; rebuilt because the entrypoint changed)
 

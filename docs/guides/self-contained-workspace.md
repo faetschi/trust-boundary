@@ -7,7 +7,7 @@ Everything TBound and the thesis need lives in this repository directory, and no
 | `infra/freeze/` | yes | Freeze kit: gate, freeze, guest chain. |
 | `evidence/` | yes | F14 receipts and the few files the thesis cites. |
 | `.local/` | no | VM disks, the dedicated WSL distro's disk, seed disk, owner keys, `freeze-host.env`, worktrees, local history archive. |
-| `thesis/` | no | Checkout of `github.com/faetschi/MSE_MA_Thesis`. |
+| `thesis/` | no | Checkout of the thesis repository. |
 
 `scripts/check-self-contained.sh` fails in CI when a tracked file depends on a path outside the repo.
 
