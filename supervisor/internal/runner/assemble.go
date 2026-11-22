@@ -658,11 +658,13 @@ func (c Config) pairOf(v AdvView) calibration.Pair {
 			Evidence:   o.Calibration.Evidence,
 		}
 		// The adaptive caps are cumulative across the attempts: the service's tool calls and wall time replace the
-		// trial's metrics, its tokens only raise them, so a trial that reports tokens fails the scripted-zero check.
+		// trial's metrics, its tokens only raise valid ones, so a trial's own tokens still reach the scripted-zero check.
 		if o.Receipt != nil && o.Receipt.AttackerCumulativeUsage != nil {
 			u := o.Receipt.AttackerCumulativeUsage
 			r.ToolCalls, r.WallMS = int(u.ToolCalls), int(u.WallMS)
-			r.InTokens, r.OutTokens = max(r.InTokens, int(u.InTokens)), max(r.OutTokens, int(u.OutTokens))
+			if r.InTokens >= 0 && r.OutTokens >= 0 {
+				r.InTokens, r.OutTokens = max(r.InTokens, int(u.InTokens)), max(r.OutTokens, int(u.OutTokens))
+			}
 		}
 		return r
 	}
