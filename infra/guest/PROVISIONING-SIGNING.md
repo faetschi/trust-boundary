@@ -1293,14 +1293,14 @@ $TBP corpus-digest --manifest $CC/$CM --quota-profile thesis --artifacts $CC/art
 # Git Bash
 CT=<the same tag>; CM=<the same path>; CC=$HF/cc-$CT
 WANT=$(WSL cat $CC/CORPUS_DIGEST.out | grep -Eo 'sha256:[0-9a-f]{64}' | sort -u); MSHA=$(WSL sha256sum $CC/$CM | cut -c1-64); echo "$WANT $MSHA"      # [READ-ONLY] one digest, one 64-hex file hash
-GSSH 'systemctl is-active tbound-pi.service tbound-pi.socket'        # [READ-ONLY] inactive inactive (RA-0)
+GSSH 'systemctl is-active tbound-pi.service tbound-pi.socket' </dev/null        # [READ-ONLY] inactive inactive (RA-0)
 WSL tar -C $CC/art -c . | GSSH 'sudo -n tar -x --skip-old-files --no-same-owner --no-same-permissions -C /opt/tbound/corpus/artifacts'
-GSSH 'sudo -n chown -R root:root /opt/tbound/corpus && sudo -n find /opt/tbound/corpus -type d -exec chmod 0755 {} + && sudo -n find /opt/tbound/corpus -type f -exec chmod 0644 {} +'
+GSSH 'sudo -n chown -R root:root /opt/tbound/corpus && sudo -n find /opt/tbound/corpus -type d -exec chmod 0755 {} + && sudo -n find /opt/tbound/corpus -type f -exec chmod 0644 {} +' </dev/null
 ART=$(WSL cat $CC/art.sha256 | GSSH 'cd /opt/tbound/corpus/artifacts && sha256sum -c --quiet - && echo ART_OK'); echo "$ART"      # [READ-ONLY] ART_OK; an older guest file of the same name with other bytes fails here
 WSL cat $CC/$CM | GSSH 'sudo -n install -o root -g root -m 0644 /dev/stdin /etc/tbound/corpus/manifest.json.new'
-GOT=$(GSSH 'sudo -n /usr/local/bin/tbound-profile corpus-digest --manifest /etc/tbound/corpus/manifest.json.new --quota-profile thesis --artifacts /opt/tbound/corpus/artifacts --node /usr/local/bin/node --max-host-calls 17 --max-tokens 69632 --duration-seconds 1200' | grep -Eo 'sha256:[0-9a-f]{64}' | sort -u)
-GSHA=$(GSSH 'sha256sum /etc/tbound/corpus/manifest.json.new' | cut -c1-64)
-if [ "$ART" = ART_OK ] && [ -n "$WANT" ] && [ "$GOT" = "$WANT" ] && [ "$GSHA" = "$MSHA" ]; then GSSH 'sudo -n mv -f /etc/tbound/corpus/manifest.json.new /etc/tbound/corpus/manifest.json && sudo -n rm -f /etc/tbound/corpus/receipt.json /etc/tbound/corpus/audit.json /etc/tbound/corpus/stats.json /root/ga/state/corpus-digest && echo CC_INSTALLED'; else echo "STOP: art=$ART want=$WANT got=$GOT file=$GSHA expected=$MSHA"; fi
+GOT=$(GSSH 'sudo -n /usr/local/bin/tbound-profile corpus-digest --manifest /etc/tbound/corpus/manifest.json.new --quota-profile thesis --artifacts /opt/tbound/corpus/artifacts --node /usr/local/bin/node --max-host-calls 17 --max-tokens 69632 --duration-seconds 1200' </dev/null | grep -Eo 'sha256:[0-9a-f]{64}' | sort -u)
+GSHA=$(GSSH 'sha256sum /etc/tbound/corpus/manifest.json.new' </dev/null | cut -c1-64)
+if [ "$ART" = ART_OK ] && [ -n "$WANT" ] && [ "$GOT" = "$WANT" ] && [ -n "$MSHA" ] && [ "$GSHA" = "$MSHA" ]; then GSSH 'sudo -n mv -f /etc/tbound/corpus/manifest.json.new /etc/tbound/corpus/manifest.json && sudo -n rm -f /etc/tbound/corpus/receipt.json /etc/tbound/corpus/audit.json /etc/tbound/corpus/stats.json /root/ga/state/corpus-digest && echo CC_INSTALLED' </dev/null; else echo "STOP: art=$ART want=$WANT got=$GOT file=$GSHA expected=$MSHA"; fi
 ```
 
 The last line moves the manifest into place only when every check passed, and prints `CC_INSTALLED`. Like `manifest-install` without a panel bundle (`tbound-op:635-636`), it removes the pilot's panel files and the verb's record of the pilot digest, so no `tbound-op` verb treats the pilot manifest as still installed (`cfg-install` compares with it, `tbound-op:466-467`). The verb, its `pilot` slot and `$PREV/pilot` stay as frozen.
