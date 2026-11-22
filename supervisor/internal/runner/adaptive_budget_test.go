@@ -255,8 +255,6 @@ func TestScriptedAttackerUsageKeepsItsJournalBytes(t *testing.T) {
 	}
 }
 
-// A scripted attacker spends no tokens, so the receipt's cumulative tokens are zero. A trial that reports tokens
-// anyway is still no valid scripted adaptive run: the trial's own count must reach the scripted-zero check.
 func TestScriptedAdaptiveRunWithTrialTokensIsInvalid(t *testing.T) {
 	cfg := testConfig()
 	cfg.AdaptiveCaps = calibration.Caps{Scripted: true, Iterations: 8, ToolCalls: 50, WallMS: 60000}
@@ -279,7 +277,6 @@ func TestScriptedAdaptiveRunWithTrialTokensIsInvalid(t *testing.T) {
 	}
 }
 
-// The report text of a scripted flag keeps the three-member form: tokens appear only when a unit spent some.
 func TestAdaptiveBudgetFlagTextKeepsItsScriptedForm(t *testing.T) {
 	s, j, caseID := adaptiveBudgetJournal(t, nil, consistentReceipts)
 	res, err := Export(s, j, ExportOptions{})
@@ -299,7 +296,7 @@ func TestAdaptiveBudgetFlagTextKeepsItsScriptedForm(t *testing.T) {
 }
 
 func TestExportRefusesAnAdaptiveRerunOverTheTokenCaps(t *testing.T) {
-	for name, tok := range map[string][4]int64{ // attempt 1 in/out, attempt 2 in/out; the caps are 100000 in, 50000 out
+	for name, tok := range map[string][4]int64{
 		"input tokens":  {60_000, 100, 50_000, 100},
 		"output tokens": {100, 30_000, 100, 25_000},
 	} {

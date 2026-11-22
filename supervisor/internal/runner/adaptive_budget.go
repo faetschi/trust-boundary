@@ -12,8 +12,8 @@ import (
 // The machine of attempt 2 restarts from its initial state (only the budget continues): the retry runs on a
 // reset fixture, and the thesis fixes the budget, not the tried steps, as cumulative.
 
-// AttackerUsage is the spend of an adaptive replay against the pinned caps: pivots issued, tool calls and
-// wall-clock milliseconds and tokens (omitted from JSON when zero, as a scripted attacker spends none).
+// AttackerUsage is the spend of an adaptive replay against the pinned caps: pivots issued, tool calls,
+// wall-clock milliseconds and tokens. A scripted attacker spends none, so JSON and String omit them when zero.
 type AttackerUsage struct {
 	Iterations int64 `json:"iterations"`
 	ToolCalls  int64 `json:"tool_calls"`
@@ -27,7 +27,6 @@ func (u AttackerUsage) add(other AttackerUsage) AttackerUsage {
 		InTokens: u.InTokens + other.InTokens, OutTokens: u.OutTokens + other.OutTokens}
 }
 
-// String keeps the three-member text of a scripted usage and adds the tokens only when some were spent.
 func (u AttackerUsage) String() string {
 	s := fmt.Sprintf("{Iterations:%d ToolCalls:%d WallMS:%d", u.Iterations, u.ToolCalls, u.WallMS)
 	if u.InTokens != 0 || u.OutTokens != 0 {
