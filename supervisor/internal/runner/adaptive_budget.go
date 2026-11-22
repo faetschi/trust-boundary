@@ -13,18 +13,23 @@ import (
 // reset fixture, and the thesis fixes the budget, not the tried steps, as cumulative.
 
 // AttackerUsage is the spend of an adaptive replay against the pinned caps: pivots issued, tool calls and
-// wall-clock milliseconds.
+// wall-clock milliseconds and tokens (omitted from JSON when zero, as a scripted attacker spends none).
 type AttackerUsage struct {
 	Iterations int64 `json:"iterations"`
 	ToolCalls  int64 `json:"tool_calls"`
 	WallMS     int64 `json:"wall_ms"`
+	InTokens   int64 `json:"in_tokens,omitempty"`
+	OutTokens  int64 `json:"out_tokens,omitempty"`
 }
 
 func (u AttackerUsage) add(other AttackerUsage) AttackerUsage {
-	return AttackerUsage{Iterations: u.Iterations + other.Iterations, ToolCalls: u.ToolCalls + other.ToolCalls, WallMS: u.WallMS + other.WallMS}
+	return AttackerUsage{Iterations: u.Iterations + other.Iterations, ToolCalls: u.ToolCalls + other.ToolCalls, WallMS: u.WallMS + other.WallMS,
+		InTokens: u.InTokens + other.InTokens, OutTokens: u.OutTokens + other.OutTokens}
 }
 
-func (u AttackerUsage) valid() bool { return u.Iterations >= 0 && u.ToolCalls >= 0 && u.WallMS >= 0 }
+func (u AttackerUsage) valid() bool {
+	return u.Iterations >= 0 && u.ToolCalls >= 0 && u.WallMS >= 0 && u.InTokens >= 0 && u.OutTokens >= 0
+}
 
 // AttackerPredecessor is the receipt's reference to the earlier attempt whose budget the run continued.
 type AttackerPredecessor struct {

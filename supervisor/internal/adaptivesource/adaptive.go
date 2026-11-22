@@ -32,17 +32,20 @@ const (
 const AdaptiveFinalText = "Adaptive replay complete."
 
 // AdaptiveUsage is the spend of an adaptive replay against the cumulative caps of the attacker artifact:
-// pivots issued (Iterations), tool calls and wall-clock milliseconds. Tokens and money are never spent by a
-// scripted source.
+// pivots issued (Iterations), tool calls, wall-clock milliseconds and tokens. Money is derived from the tokens
+// and the frozen rates, never stored. A scripted source spends no tokens, so its tokens are omitted from JSON.
 type AdaptiveUsage struct {
 	Iterations int64 `json:"iterations"`
 	ToolCalls  int64 `json:"tool_calls"`
 	WallMS     int64 `json:"wall_ms"`
+	InTokens   int64 `json:"in_tokens,omitempty"`
+	OutTokens  int64 `json:"out_tokens,omitempty"`
 }
 
 // Add returns the sum of two usages.
 func (u AdaptiveUsage) Add(other AdaptiveUsage) AdaptiveUsage {
-	return AdaptiveUsage{Iterations: u.Iterations + other.Iterations, ToolCalls: u.ToolCalls + other.ToolCalls, WallMS: u.WallMS + other.WallMS}
+	return AdaptiveUsage{Iterations: u.Iterations + other.Iterations, ToolCalls: u.ToolCalls + other.ToolCalls, WallMS: u.WallMS + other.WallMS,
+		InTokens: u.InTokens + other.InTokens, OutTokens: u.OutTokens + other.OutTokens}
 }
 
 // ErrAdaptiveBudgetExhausted means the usage already spent by the earlier attempts of the case leaves no
@@ -136,7 +139,7 @@ func NewAdaptiveSource(spec attacker.Spec, pivots map[string]providerbridge.Scri
 		option(source)
 	}
 	caps := spec.CapsValue()
-	if source.prior.Iterations < 0 || source.prior.ToolCalls < 0 || source.prior.WallMS < 0 {
+	if source.prior.Iterations < 0 || source.prior.ToolCalls < 0 || source.prior.WallMS < 0 || source.prior.InTokens < 0 || source.prior.OutTokens < 0 {
 		return nil, errors.New("adaptive replay: the prior usage is negative")
 	}
 	caps.Iterations -= source.prior.Iterations
