@@ -1,0 +1,4 @@
+draft 24448833 201 at 2026-11-22T20:35:53Z deposition created 2026-11-22T20:35:53.564802+00:00
+uploaded pilot-commitment-v1.json 3786 md5:f0683f9877ac60ac221bfe494b697aa3
+metadata 200
+DRAFT_ID 24448833: review it at https://zenodo.org/uploads/24448833, then rerun with --publish=24448833 within 30 minutes
