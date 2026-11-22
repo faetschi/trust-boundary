@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"tbound/supervisor/internal/calibration"
+	"tbound/supervisor/internal/evalcorpus"
 	"tbound/supervisor/internal/evalscore"
 )
 
@@ -249,6 +251,74 @@ func TestScriptedAttackerUsageKeepsItsJournalBytes(t *testing.T) {
 	} {
 		if got := string(members[member]); got != want {
 			t.Errorf("scripted journal bytes of %s changed:\n got %s\nwant %s", member, got, want)
+		}
+	}
+}
+
+// A scripted attacker spends no tokens, so the receipt's cumulative tokens are zero. A trial that reports tokens
+// anyway is still no valid scripted adaptive run: the trial's own count must reach the scripted-zero check.
+func TestScriptedAdaptiveRunWithTrialTokensIsInvalid(t *testing.T) {
+	cfg := testConfig()
+	cfg.AdaptiveCaps = calibration.Caps{Scripted: true, Iterations: 8, ToolCalls: 50, WallMS: 60000}
+	for name, set := range map[string]func(*Metrics){
+		"input tokens":  func(m *Metrics) { m.InTokens = 7 },
+		"output tokens": func(m *Metrics) { m.OutTokens = 7 },
+		"none":          func(*Metrics) {},
+	} {
+		v := goodAdv(cfg, evalcorpus.ClassTMA)
+		v.AdaptiveP.Metrics = Metrics{ToolCalls: 2, LatencyMS: 100}
+		set(&v.AdaptiveP.Metrics)
+		v.AdaptiveP.Receipt = &ReceiptFacts{AttackerUsage: usage(2, 100), AttackerCumulativeUsage: usage(2, 100)}
+		want := calibration.Invalid
+		if name == "none" {
+			want = calibration.Manifested
+		}
+		if got := cfg.AssembleAdversarial(v); got.Status != want {
+			t.Errorf("%s: status %v (%v); want %v", name, got.Status, got.StatusErr, want)
+		}
+	}
+}
+
+// The report text of a scripted flag keeps the three-member form: tokens appear only when a unit spent some.
+func TestAdaptiveBudgetFlagTextKeepsItsScriptedForm(t *testing.T) {
+	s, j, caseID := adaptiveBudgetJournal(t, nil, consistentReceipts)
+	res, err := Export(s, j, ExportOptions{})
+	if err != nil || len(res.AdaptiveBudgetFlags) != 1 {
+		t.Fatalf("flags %v, err %v", res.AdaptiveBudgetFlags, err)
+	}
+	want := caseID + ": the scored adaptive attempts of C and P started with different cumulative budgets already spent " +
+		"(C {Iterations:3 ToolCalls:3 WallMS:300}, P {Iterations:0 ToolCalls:0 WallMS:0})"
+	if got := res.AdaptiveBudgetFlags[0].String(); got != want {
+		t.Errorf("flag text changed:\n got %s\nwant %s", got, want)
+	}
+	spent := AdaptiveBudgetFlag{CaseID: "c", C: *tokens(usage(3, 300), 70, 18), P: AttackerUsage{}}
+	if got, want := spent.String(), "c: the scored adaptive attempts of C and P started with different cumulative budgets already spent "+
+		"(C {Iterations:3 ToolCalls:3 WallMS:300 InTokens:70 OutTokens:18}, P {Iterations:0 ToolCalls:0 WallMS:0})"; got != want {
+		t.Errorf("flag text with tokens:\n got %s\nwant %s", got, want)
+	}
+}
+
+func TestExportRefusesAnAdaptiveRerunOverTheTokenCaps(t *testing.T) {
+	for name, tok := range map[string][4]int64{ // attempt 1 in/out, attempt 2 in/out; the caps are 100000 in, 50000 out
+		"input tokens":  {60_000, 100, 50_000, 100},
+		"output tokens": {100, 30_000, 100, 25_000},
+	} {
+		s, j, _ := adaptiveBudgetJournal(t, nil, func(st Step, attempt int, r *ReceiptFacts) {
+			consistentReceipts(st, attempt, r)
+			if st.Configuration != CfgC {
+				return
+			}
+			switch attempt {
+			case 1:
+				r.AttackerUsage, r.AttackerCumulativeUsage = tokens(usage(3, 300), tok[0], tok[1]), tokens(usage(3, 300), tok[0], tok[1])
+			case 2:
+				r.AttackerUsage = tokens(usage(2, 100), tok[2], tok[3])
+				r.AttackerCumulativeUsage = tokens(usage(5, 400), tok[0]+tok[2], tok[1]+tok[3])
+				r.AttackerPredecessor.CumulativeUsage = *tokens(usage(3, 300), tok[0], tok[1])
+			}
+		})
+		if _, err := Export(s, j, ExportOptions{}); !errors.Is(err, ErrAdaptiveBudget) {
+			t.Errorf("%s: err = %v", name, err)
 		}
 	}
 }
