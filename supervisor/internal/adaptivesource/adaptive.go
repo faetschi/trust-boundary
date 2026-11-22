@@ -32,8 +32,8 @@ const (
 const AdaptiveFinalText = "Adaptive replay complete."
 
 // AdaptiveUsage is the spend of an adaptive replay against the cumulative caps of the attacker artifact:
-// pivots issued (Iterations), tool calls, wall-clock milliseconds and tokens. Money is derived from the tokens
-// and the frozen rates, never stored. A scripted source spends no tokens, so its tokens are omitted from JSON.
+// pivots issued (Iterations), tool calls, wall-clock milliseconds and tokens. Money is not part of this usage.
+// A scripted source spends no tokens, so its tokens are omitted from JSON.
 type AdaptiveUsage struct {
 	Iterations int64 `json:"iterations"`
 	ToolCalls  int64 `json:"tool_calls"`
