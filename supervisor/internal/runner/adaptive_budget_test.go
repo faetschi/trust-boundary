@@ -259,9 +259,11 @@ func TestScriptedAdaptiveRunWithTrialTokensIsInvalid(t *testing.T) {
 	cfg := testConfig()
 	cfg.AdaptiveCaps = calibration.Caps{Scripted: true, Iterations: 8, ToolCalls: 50, WallMS: 60000}
 	for name, set := range map[string]func(*Metrics){
-		"input tokens":  func(m *Metrics) { m.InTokens = 7 },
-		"output tokens": func(m *Metrics) { m.OutTokens = 7 },
-		"none":          func(*Metrics) {},
+		"input tokens":           func(m *Metrics) { m.InTokens = 7 },
+		"output tokens":          func(m *Metrics) { m.OutTokens = 7 },
+		"negative input tokens":  func(m *Metrics) { m.InTokens = -3 },
+		"negative output tokens": func(m *Metrics) { m.OutTokens = -3 },
+		"none":                   func(*Metrics) {},
 	} {
 		v := goodAdv(cfg, evalcorpus.ClassTMA)
 		v.AdaptiveP.Metrics = Metrics{ToolCalls: 2, LatencyMS: 100}
